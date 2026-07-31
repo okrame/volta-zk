@@ -20,6 +20,10 @@ use volta_mac::{
 };
 use volta_proto::mle::{eq_points, eq_vec, fold_low, lagrange3};
 
+use crate::c6_hidden_u::C6HiddenUFamily;
+use crate::c6_hidden_u_sumcheck_blind::{
+    C6BlindHiddenUPendingClaimsProver, C6BlindHiddenUPendingClaimsVerifier,
+};
 use crate::c6_residual_sumcheck::C6ResidualSumcheckFamily;
 use crate::c6_residual_sumcheck_blind::{
     C6BlindResidualPendingClaimsProver, C6BlindResidualPendingClaimsVerifier,
@@ -319,6 +323,26 @@ impl C6PendingSlotRegistryProverBuilder {
         Ok(())
     }
 
+    pub(crate) fn absorb_hidden_u(
+        &mut self,
+        pending: &C6BlindHiddenUPendingClaimsProver,
+    ) -> Result<()> {
+        for (descriptor, auth) in pending.link_entries() {
+            let cohort_id = hidden_u_cohort_id(descriptor.family());
+            let mut target_point = descriptor.point().to_vec();
+            target_point.push(Fp2::ZERO);
+            self.insert_source(
+                descriptor.repetition(),
+                cohort_id,
+                descriptor.slot(),
+                descriptor.statement_digest(),
+                target_point,
+                auth,
+            )?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn insert_source(
         &mut self,
         repetition: u8,
@@ -468,6 +492,26 @@ impl C6PendingSlotRegistryVerifierBuilder {
         Ok(())
     }
 
+    pub(crate) fn absorb_hidden_u(
+        &mut self,
+        pending: &C6BlindHiddenUPendingClaimsVerifier,
+    ) -> Result<()> {
+        for (descriptor, keys) in pending.link_entries() {
+            let cohort_id = hidden_u_cohort_id(descriptor.family());
+            let mut target_point = descriptor.point().to_vec();
+            target_point.push(Fp2::ZERO);
+            self.insert_source(
+                descriptor.repetition(),
+                cohort_id,
+                descriptor.slot(),
+                descriptor.statement_digest(),
+                target_point,
+                keys,
+            )?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn insert_source(
         &mut self,
         repetition: u8,
@@ -514,6 +558,13 @@ impl C6PendingSlotRegistryVerifierBuilder {
             fixed_roots_digest: self.fixed_roots_digest,
             entries: self.entries.into_values().collect(),
         })
+    }
+}
+
+fn hidden_u_cohort_id(family: C6HiddenUFamily) -> u32 {
+    match family {
+        C6HiddenUFamily::Weights => C6_HIDDEN_U_WEIGHTS_COHORT_ID,
+        C6HiddenUFamily::Embed => C6_HIDDEN_U_EMBED_COHORT_ID,
     }
 }
 
@@ -1687,6 +1738,15 @@ mod tests {
     use super::*;
     use std::collections::BTreeSet;
 
+    use crate::c6_hidden_u::{
+        encode_fp2_ntt, C6HiddenUBundleWitness, C6HiddenUFamilyPostCommit, C6HiddenUFamilyWitness,
+        C6HiddenULayout, C6HiddenUPostCommit, C6HiddenUQueryClaim, C6SealedHiddenUBundle,
+    };
+    use crate::c6_hidden_u_sumcheck::flatten_witness;
+    use crate::c6_hidden_u_sumcheck_blind::{
+        prove_c6_blind_hidden_u_sumchecks_reference, verify_c6_blind_hidden_u_sumchecks,
+        C6BlindHiddenUSumcheckProof,
+    };
     use crate::c6_residual_sumcheck::{
         C6ResidualSumcheckStatement, C6ResidualSumcheckTerm, C6ResidualSumcheckWitness,
         C6_RESIDUAL_AUXILIARY_TABLES_PER_REPETITION, C6_RESIDUAL_LEAF_TABLES_PER_REPETITION,
@@ -1701,6 +1761,8 @@ mod tests {
         C6WrapperCommitment, C6WrapperOracleKind, C6WrapperSlotWitness, C6_CACHE_COHORT_ID,
         C6_HIDDEN_U_EMBED_COHORT_ID, C6_HIDDEN_U_WEIGHTS_COHORT_ID,
     };
+    use crate::ligero::LigeroParams;
+    use crate::ntt::NttPlan;
     use volta_proto::C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS;
 
     const LEAF_ROUNDS: usize = 5;
@@ -1778,9 +1840,89 @@ mod tests {
     struct ScaledInputs {
         statements: Vec<C6BlindResidualStatement>,
         witnesses: Vec<C6ResidualSumcheckWitness>,
+        hidden_layouts: Vec<C6HiddenULayout>,
+        hidden_q_cols: Vec<Vec<Vec<Fp2>>>,
+        hidden_sealed: C6SealedHiddenUBundle,
+        hidden_postcommit: C6HiddenUPostCommit,
         cohorts: Vec<C6CommittedWrapperCohort>,
         commitments: Vec<C6WrapperCommitment>,
         tables: BTreeMap<(u32, u16), Vec<Fp2>>,
+    }
+
+    fn scaled_hidden_inputs(
+    ) -> (Vec<C6HiddenULayout>, Vec<Vec<Vec<Fp2>>>, C6SealedHiddenUBundle, C6HiddenUPostCommit)
+    {
+        let layouts = vec![
+            C6HiddenULayout {
+                family: C6HiddenUFamily::Weights,
+                params: LigeroParams { rows: 8, col_bits: 2, pad: 2, code_bits: 3, n_queries: 2 },
+                claim_count: 1,
+                vector_capacity: 2,
+                vector_stride: 8,
+            },
+            C6HiddenULayout {
+                family: C6HiddenUFamily::Embed,
+                params: LigeroParams { rows: 8, col_bits: 2, pad: 2, code_bits: 3, n_queries: 2 },
+                claim_count: 1,
+                vector_capacity: 2,
+                vector_stride: 8,
+            },
+        ];
+        let mut q_cols = Vec::with_capacity(layouts.len());
+        let mut family_witnesses = Vec::with_capacity(layouts.len());
+        for (family_index, layout) in layouts.iter().enumerate() {
+            let seed = 310_000 + family_index as u64 * 10_000;
+            let vectors = (0..layout.live_vectors())
+                .map(|vector| {
+                    (0..layout.msg_len())
+                        .map(|index| symbol(seed + vector as u64 * 100 + index as u64))
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+            let family_q_cols = vec![(0..layout.cols())
+                .map(|index| symbol(seed + 1_000 + index as u64))
+                .collect::<Vec<_>>()];
+            family_witnesses.push(
+                C6HiddenUFamilyWitness::new(
+                    *layout,
+                    vectors[0].clone(),
+                    vectors[1..].to_vec(),
+                    family_q_cols.clone(),
+                )
+                .unwrap(),
+            );
+            q_cols.push(family_q_cols);
+        }
+        let sealed = C6HiddenUBundleWitness::new(family_witnesses)
+            .unwrap()
+            .seal(vec![[0xB1; 32], [0xB2; 32]], [0xB3; 32])
+            .unwrap();
+        let families = layouts
+            .iter()
+            .zip(sealed.families())
+            .map(|(layout, family)| {
+                let plan = NttPlan::new(layout.code_len());
+                let encoded = family
+                    .vectors()
+                    .iter()
+                    .map(|vector| encode_fp2_ntt(&plan, vector))
+                    .collect::<Vec<_>>();
+                let queries = [0usize, 7]
+                    .into_iter()
+                    .map(|index| C6HiddenUQueryClaim {
+                        index: index as u32,
+                        rhs: encoded.iter().map(|vector| vector[index]).collect(),
+                    })
+                    .collect();
+                C6HiddenUFamilyPostCommit { family: layout.family, queries }
+            })
+            .collect();
+        let postcommit = C6HiddenUPostCommit {
+            prequery_digest: sealed.prequery().digest(),
+            batching_seed: [0xB4; 32],
+            families,
+        };
+        (layouts, q_cols, sealed, postcommit)
     }
 
     fn scaled_inputs() -> ScaledInputs {
@@ -1843,6 +1985,8 @@ mod tests {
             );
         }
 
+        let (hidden_layouts, hidden_q_cols, hidden_sealed, hidden_postcommit) =
+            scaled_hidden_inputs();
         let mut tables = BTreeMap::new();
         for (slot, lower) in leaf_tables.into_iter().enumerate() {
             let mut evaluations = lower;
@@ -1853,6 +1997,29 @@ mod tests {
             let mut evaluations = lower;
             evaluations.extend(table(AUXILIARY_ROUNDS, 70_000 + 100 * slot as u64));
             tables.insert((C6_WRAPPER_AUXILIARY_COHORT_ID, slot as u16), evaluations);
+        }
+        for (family_index, cohort_id) in
+            [C6_HIDDEN_U_WEIGHTS_COHORT_ID, C6_HIDDEN_U_EMBED_COHORT_ID].into_iter().enumerate()
+        {
+            let lower = flatten_witness(
+                hidden_layouts[family_index],
+                hidden_sealed.families()[family_index].vectors(),
+            )
+            .unwrap();
+            let mut actual = lower;
+            actual.extend(table(
+                hidden_layouts[family_index].padded_entries().ilog2() as usize,
+                330_000 + family_index as u64 * 10_000,
+            ));
+            tables.insert((cohort_id, 0), actual);
+            for slot in 1..8u16 {
+                let mut zero = vec![Fp2::ZERO; hidden_layouts[family_index].padded_entries()];
+                zero.extend(table(
+                    hidden_layouts[family_index].padded_entries().ilog2() as usize,
+                    340_000 + family_index as u64 * 10_000 + u64::from(slot) * 100,
+                ));
+                tables.insert((cohort_id, slot), zero);
+            }
         }
         for spec in scaled_specs() {
             for slot in 0..spec.slot_count {
@@ -1895,7 +2062,17 @@ mod tests {
             })
             .collect::<Vec<_>>();
         let commitments = cohorts.iter().map(|cohort| cohort.commitment().clone()).collect();
-        ScaledInputs { statements, witnesses, cohorts, commitments, tables }
+        ScaledInputs {
+            statements,
+            witnesses,
+            hidden_layouts,
+            hidden_q_cols,
+            hidden_sealed,
+            hidden_postcommit,
+            cohorts,
+            commitments,
+            tables,
+        }
     }
 
     fn polynomial_views<'a>(inputs: &'a ScaledInputs) -> Vec<C6LinkSlotPolynomial<'a>> {
@@ -1931,11 +2108,13 @@ mod tests {
         point
     }
 
-    fn is_residual_owned(cohort_id: u32, slot: u16) -> bool {
+    fn is_real_source_owned(cohort_id: u32, slot: u16) -> bool {
         (cohort_id == C6_DELTA_RESIDUAL_COHORT_ID
             && usize::from(slot) < C6_RESIDUAL_LEAF_TABLES_PER_REPETITION)
             || (cohort_id == C6_WRAPPER_AUXILIARY_COHORT_ID
                 && usize::from(slot) < C6_RESIDUAL_AUXILIARY_TABLES_PER_REPETITION)
+            || cohort_id == C6_HIDDEN_U_WEIGHTS_COHORT_ID
+            || cohort_id == C6_HIDDEN_U_EMBED_COHORT_ID
     }
 
     fn test_source_domain(repetition: u8, tape: usize, ordinal: usize) -> u64 {
@@ -1972,7 +2151,7 @@ mod tests {
             for commitment in fixed.commitments() {
                 let dimension = usize::from(commitment.spec.coefficient_log2().unwrap());
                 for slot in 0..commitment.spec.slot_count {
-                    if is_residual_owned(commitment.spec.cohort_id, slot) {
+                    if is_real_source_owned(commitment.spec.cohort_id, slot) {
                         continue;
                     }
                     let target_point =
@@ -2014,7 +2193,7 @@ mod tests {
                     ordinal += 1;
                 }
             }
-            assert_eq!(ordinal, 40);
+            assert_eq!(ordinal, 24);
         }
         transcript.append(
             SOURCE_TRANSFER_LABEL,
@@ -2057,6 +2236,7 @@ mod tests {
         inputs: ScaledInputs,
         residual_proof: C6BlindResidualSumcheckProof,
         residual_frame: C6BlindResidualPendingTransferFrame,
+        hidden_proof: C6BlindHiddenUSumcheckProof,
         transfers: Vec<SourceTransfer>,
         fixed: C6FixedWrapperCommitments,
         proof: C6AuthenticatedOutputLinkProof,
@@ -2083,8 +2263,17 @@ mod tests {
                 &mut transcript,
             )
             .unwrap();
+        let (hidden_proof, hidden_pending) = prove_c6_blind_hidden_u_sumchecks_reference(
+            &inputs.hidden_sealed,
+            inputs.hidden_sealed.prequery(),
+            &inputs.hidden_postcommit,
+            &mut streams,
+            &mut transcript,
+        )
+        .unwrap();
         let mut builder = C6PendingSlotRegistryProverBuilder::new(&fixed).unwrap();
         builder.absorb_residual(&residual_pending).unwrap();
+        builder.absorb_hidden_u(&hidden_pending).unwrap();
         let transfers = add_remaining_prover_sources(
             &fixed,
             &inputs,
@@ -2113,6 +2302,7 @@ mod tests {
             inputs,
             residual_proof,
             residual_frame,
+            hidden_proof,
             transfers,
             fixed,
             proof,
@@ -2153,8 +2343,19 @@ mod tests {
             &mut transcript,
         )
         .unwrap();
+        let hidden_pending = verify_c6_blind_hidden_u_sumchecks(
+            &fixture.inputs.hidden_layouts,
+            &fixture.inputs.hidden_q_cols,
+            fixture.inputs.hidden_sealed.prequery(),
+            &fixture.inputs.hidden_postcommit,
+            &fixture.hidden_proof,
+            &mut contexts,
+            &mut transcript,
+        )
+        .unwrap();
         let mut builder = C6PendingSlotRegistryVerifierBuilder::new(&fixed).unwrap();
         builder.absorb_residual(&residual_pending).unwrap();
+        builder.absorb_hidden_u(&hidden_pending).unwrap();
         add_remaining_verifier_sources(
             &fixture.transfers,
             &mut contexts,
@@ -2194,8 +2395,13 @@ mod tests {
     }
 
     #[test]
-    fn actual_c6rsc3_pending_values_close_through_packed_link_and_pcs() {
+    fn actual_residual_and_hidden_pending_values_close_through_packed_link_and_pcs() {
         let fixture = prove_integrated_fixture();
+        assert_eq!(fixture.transfers.len(), 48);
+        assert_eq!(
+            fixture.hidden_proof.encode(&fixture.inputs.hidden_layouts).unwrap().len(),
+            1_320
+        );
         assert_eq!(fixture.metrics.relations_per_repetition, 64);
         assert_eq!(fixture.metrics.rounds_per_repetition, GLOBAL_ROUNDS as u64);
         assert_eq!(fixture.metrics.full_correlations_per_tape, 28);
@@ -2257,9 +2463,9 @@ mod tests {
         );
         assert_eq!(transcript.bytes_for(LINK_ROUND_LABEL), 2 * 7 * 64);
         assert_eq!(transcript.bytes_for(LINK_AGGREGATES_LABEL), 160);
-        // C6RSC3 already contributed 64 B under the shared ZeroOpen label;
-        // the packed link contributes the final four 16-B tags.
-        assert_eq!(transcript.bytes_for("zero_open_tag"), 128);
+        // C6RSC3 contributes 64 B, blind hidden-u contributes another 64 B,
+        // and the packed link contributes the final four 16-B tags.
+        assert_eq!(transcript.bytes_for("zero_open_tag"), 192);
         assert_eq!(transcript.bytes_for(LINK_DIGEST_LABEL), 32);
     }
 

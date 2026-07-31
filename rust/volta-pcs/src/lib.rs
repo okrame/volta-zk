@@ -12,6 +12,7 @@ pub mod batch;
 pub mod c6_authenticated_output_link;
 pub mod c6_hidden_u;
 pub mod c6_hidden_u_sumcheck;
+pub mod c6_hidden_u_sumcheck_blind;
 pub mod c6_residual_sumcheck;
 pub mod c6_residual_sumcheck_blind;
 pub mod c6_wrapper_pcs;
@@ -52,6 +53,15 @@ pub use c6_hidden_u_sumcheck::{
     prepare_hidden_u_verifier_round_state, prove_hidden_u_sumchecks, reduce_hidden_u_sumchecks,
     C6HiddenUOpeningClaim, C6HiddenUProverRoundState, C6HiddenUSumcheckFamilyProof,
     C6HiddenUSumcheckProof, C6HiddenUSumcheckRepetition, C6HiddenUVerifierRoundState,
+};
+pub use c6_hidden_u_sumcheck_blind::{
+    blind_hidden_u_sumcheck_encoded_len, production_c6_blind_hidden_u_sumcheck_encoded_len,
+    prove_c6_blind_hidden_u_sumchecks_reference, verify_c6_blind_hidden_u_sumchecks,
+    C6BlindHiddenUError, C6BlindHiddenUPendingClaimsProver, C6BlindHiddenUPendingClaimsVerifier,
+    C6BlindHiddenUSumcheckProof, C6_BLIND_HIDDEN_U_FAMILIES, C6_BLIND_HIDDEN_U_MAGIC,
+    C6_BLIND_HIDDEN_U_PRODUCTION_BYTES, C6_BLIND_HIDDEN_U_PRODUCTION_FULL_CORRELATIONS_PER_TAPE,
+    C6_BLIND_HIDDEN_U_PRODUCTION_ROUND_VALUES_PER_REPETITION, C6_BLIND_HIDDEN_U_SLOTS_PER_FAMILY,
+    C6_BLIND_HIDDEN_U_TAPES, C6_BLIND_HIDDEN_U_VERSION,
 };
 pub use c6_residual_sumcheck::{
     prepare_residual_sumcheck_prover_round_state, prepare_residual_sumcheck_verifier_round_state,

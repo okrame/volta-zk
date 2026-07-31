@@ -9,9 +9,10 @@ SUMCHECK REDUCTION + SCALED DUAL-TAPE C6RSC3 CODEC/DIFFERENTIAL GREEN; FUSED
 T1 EVENT-SINK + FIRST/FOLDED/TERMINAL SCALED DIFFERENTIAL GREEN;
 ROUND-SYNCHRONOUS SINGLE-BACKING ARENA LOCAL DIFFERENTIAL GREEN; SHARED
 C6RSC3 COORDINATOR + SCALED FUSED PROVER AND VECTOR-FREE CLIENT TERMINAL
-BYTE/TRANSCRIPT/PENDING DIFFERENTIAL GREEN / PACKED AUTHENTICATED-OUTPUT LINK
-NEXT; CACHE ARGUMENT / PACKED PCS / FINAL WRAPPER PENDING; LOCAL
-IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
+BYTE/TRANSCRIPT/PENDING DIFFERENTIAL GREEN; PACKED AUTHENTICATED-OUTPUT LINK
+AND BLIND HIDDEN-U SOURCE ADAPTER GREEN; 48 CACHE/CACHE-AUXILIARY STAND-INS
+REMAIN; CACHE HASH/ARGUMENT / PRODUCTION BACKEND / FINAL WRAPPER PENDING;
+LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
 accepted C4/T1 `rate=1/4,Q=120` inline profile.  It does not reopen or rewrite
@@ -2942,6 +2943,174 @@ field, does not run the fused CUDA backend or real PCG session, and has no
 prover-time, memory, setup, cache or hardware verdict.  The next ordered
 gate is to replace the 80 typed stand-ins with those real source adapters
 before any production envelope/backend work.
+
+#### 5.1.13 Blind hidden-`u` source-adapter amendment
+
+The first source-adapter audit found that the existing `C6HUSC1` reducer
+cannot be inserted into the authenticated-output registry as-is.  It sends
+all degree-two round values and the four old-point `U(r)` values in clear.
+Wrapping only the four terminal scalars in corrections would remove the
+literal old-point values from the link frame, but would leave response-linear
+information about the hidden `u` vectors on the wire and would not provide
+an authenticated recurrence from the public initial claims to the pending
+PCS sources.  `C6HUSC1` therefore remains an immutable clear arithmetic
+oracle.  The production candidate is the separately versioned
+`C6HUB2\0\0` blind transcript below.
+
+For each of the two independently challenged hidden-linear repetitions,
+weights contributes 21 degree-two rounds and embedding contributes 19.  The
+response-global activation offsets remain 3 and 5.  The initial claim of
+each family is verifier-derived from the already sealed grand-RLC schedule,
+so every round, including the first, sends only authenticated `g(0)` and
+`g(2)` on both independent MAC tapes.  Each side reconstructs
+
+```text
+g(1) = current_claim - g(0)
+```
+
+and applies the public degree-two interpolation weights at the one shared
+round challenge.  Corrections for every active family and both tapes are
+fixed before that challenge.  No clear round polynomial or old-point
+terminal value is serialized.
+
+At the end of a repetition the prover creates one fresh dual-tape pending
+correction for each of the two actual `U(r)` values.  Let `q_w(r)` and
+`q_e(r)` be the public terminal functional evaluations independently
+reconstructed by the verifier.  Before either pending value can enter the
+common link, both sides form
+
+```text
+R_w = current_weights - q_w(r) * pending_weights
+R_e = current_embed   - q_e(r) * pending_embed.
+```
+
+After both pending corrections are fixed, the verifier releases one fresh
+`eta`; each tape ZeroOpens `R_w + eta*R_e`.  This remains valid when a
+terminal functional happens to be zero and therefore does not add a
+division or a hidden liveness assumption.  The terminal batch challenge and
+its ZeroOpen add two conservative roots per complete repetition.
+
+The hidden wrapper ownership is now fixed, not caller-selected:
+
+```text
+hidden-u weights slot 0    actual padded U_weights oracle
+hidden-u weights 1..7      identically-zero semantic witness slots
+hidden-u embed slot 0      actual padded U_embed oracle
+hidden-u embed 1..7        identically-zero semantic witness slots.
+```
+
+Every unused slot has a public-zero pending MAC at its old suffix point.
+The common random-point link plus packed PCS proves that its committed
+semantic half evaluates to zero; the independently random upper half remains
+available at the link's checked nonzero ZK coordinate.  These are real
+dummy-slot zero constraints, not arbitrary stand-ins.  The source identity
+binds the prequery/postcommit/layout digests and slot-zero policy through the
+statement digest, then repetition, family, slot and the exact
+response-global suffix point through the opaque pending descriptor.
+
+The exact production blind hidden codec is:
+
+```text
+fixed headers, family headers and terminal digest                 104 B
+2 repetitions * (21+19) rounds * 2 endpoints
+  * 2 tapes * 16 B                                              5,120 B
+4 actual terminal pending values * 2 tapes * 16 B                 128 B
+2 repetitions * 2 tape terminal-batch ZeroOpen tags * 16 B         64 B
+strict C6HUB2 payload                                            5,416 B.
+```
+
+It consumes exactly
+
+```text
+2 repetitions * (21+19) rounds * 2 endpoints = 160
+4 actual terminal pending values                   =   4
+blind hidden subtotal / tape                       = 164 full correlations.
+```
+
+Public-zero capacity slots consume no correlation.  This subtotal and the
+existing residual/link allocations remain inside the frozen
+39,116-full/tape reserve and do not change the 5,235,692-raw attempt
+reservation or the first-exchange formula.
+
+The prior clear hidden numerator `1 + 80^2 = 6,401` remains historical for
+`C6HUSC1`.  The blind terminal batch makes the descendant numerator
+
+```text
+1 + 82^2 = 6,725.
+```
+
+Together with the unchanged packed-link numerator it is
+
+```text
+6,725 + 141^2 = 26,606 < 2^16.
+```
+
+Thus the existing `2^16/|Fp2|^2` allocation and complete Q=121 soundness
+remain unchanged.  Before `C6HUB2` Rust, an additive Lean module must
+specialize the compressed authenticated recurrence, prove the `82` census,
+square the two complete repetitions and prove the exact `26,606 < 2^16`
+composition.  It may not edit the historical `C6HUSC1`, M3/M9/X4 statements
+or their earlier `26,282` certificate.
+
+This amendment closes only the hidden-source design.  Cache slots and
+auxiliary slots 16--31 remain blocked on the separately required exact
+cache-hash/constraint freeze.  Hidden integration may proceed while that
+hard stop remains open, as permitted by Section 6.
+
+The additive formal gate is now green.
+`C6HiddenUBlindTranscript.lean` proves the exact compressed Boolean-node
+recurrence, the **80 degree roots / 82 complete roots** census, the
+two-repetition product and the **6,725 + 141^2 = 26,606 < 2^16**
+composition.  Full Lean builds **3,260 jobs**.  The derived audit covers
+**315 named targets**, including the seven new hidden-source targets, with
+zero `sorry`/`admit` and only `propext`, `Classical.choice` and `Quot.sound`.
+
+The scaled/reference Rust gate is also green.  `C6HUB2` has a strict
+canonical codec, dual-tape prover/verifier, redacted pending containers and
+one fixed source adapter into the existing link registry.  At the scaled
+four-round-per-family geometry its proof is **1,320 B** and consumes **48
+full correlations/tape**.  The integrated packed-link fixture now contains
+
+```text
+48 actual C6RSC3 residual pending claims
+32 actual hidden-u pending claims
+   = 4 live U(r) claims + 28 public-zero capacity constraints
+48 typed cache/cache-auxiliary stand-ins
+128 total pending claims.
+```
+
+The complete residual→hidden→link→two-chain-PCS verifier is byte-,
+transcript- and correlation-identical to the prover and still binds only
+after the four link terminal closures.  Permanent negatives cover old,
+noncanonical and trailing codecs; either hidden tape; a round correction;
+an actual terminal correction; a terminal batch tag; equal MAC secrets; and
+the existing complete link/PCS/registry mutation inventory.  No individual
+hidden old-point value occurs in `C6HUB2`, and no individual one of the 128
+old-point values occurs in the combined link proof.
+
+Ordinary `volta-pcs` is **165 pass / 0 fail / 1 ignored** and the
+`c6-trace` build is **166 / 0 / 1**.  Workspace/all-target checks and
+formatting are green; the C6 budget is **9/9 PASS** and modified-file clippy
+filters are empty.  Production compile-time identities remain **5,416 B /
+164 full correlations/tape** for `C6HUB2` and **3,613,362 B / 100 full/tape**
+for the packed link; both remain inside the existing allocation caps, so no
+response/setup/soundness roof changes.
+
+This is still a scaled source-adapter checkpoint.  The fixture runs the
+internally round-synchronous hidden families as a source stage before the
+link; it does not yet instantiate the single production 24-round
+cache/residual/hidden coordinator, a production-size hidden witness, fused
+CUDA, real PCG or response removal.  Cache and auxiliary slots 16--31 remain
+the only 48 stand-ins and the exact cache hash/constraint census is the next
+algebraic gate.  Source SHA-256 values are
+`28889d76ed789cc9c6c72e66c20e2d3446e19a27e2846282581384de185547fc`
+for the blind hidden module,
+`96f376f2d368dcdbdbdf11ae498f035536d11514fc98ae07edb8818d21dbf081`
+for the integrated link,
+`5d7c6f58b6605f0df8ec4e124120a0266315b5fd7502482ca7365772893fbecf`
+for the clear arithmetic adapter and
+`788b4211aafca15bd0cb799d25ad276ed7afc67e4d04746672e2589c544626d6`
+for the additive Lean module.
 
 The wrapper PCS uses rate `1/8`, two independent fold/query chains and
 `s=86` queries per chain.  Under the conservative 64-active-polynomial,

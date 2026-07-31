@@ -329,6 +329,13 @@ vector-RLC bounds from being mistaken for implementation bounds.
 #print axioms VoltaZk.c6_packed_link_two_repetition_card_le
 #print axioms VoltaZk.c6_hidden_linear_plus_link_numerator
 #print axioms VoltaZk.c6_hidden_linear_plus_link_numerator_le_2_pow_16
+#print axioms VoltaZk.c6_blind_hidden_compressed_round_sum01
+#print axioms VoltaZk.c6_blind_hidden_degree_root_census
+#print axioms VoltaZk.c6_blind_hidden_root_census
+#print axioms VoltaZk.c6_blind_hidden_two_repetition_card_le
+#print axioms VoltaZk.c6_blind_hidden_numerator
+#print axioms VoltaZk.c6_blind_hidden_plus_link_numerator
+#print axioms VoltaZk.c6_blind_hidden_plus_link_numerator_le_2_pow_16
 #print axioms VoltaZk.c6_abort_preserves_accepted_state
 #print axioms VoltaZk.c6_atomic_state_is_old_or_new
 #print axioms VoltaZk.c6_false_transition_event_cover

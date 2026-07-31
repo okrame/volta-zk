@@ -216,7 +216,16 @@ pub struct C6HiddenUProverRoundState {
     max_rounds: usize,
     global_round: usize,
     pending_active: Vec<usize>,
+    initial_claims: Vec<Fp2>,
     states: Vec<InnerProductProverState>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct C6HiddenUFixedRoundMessage {
+    pub(crate) family: C6HiddenUFamily,
+    pub(crate) local_round: usize,
+    pub(crate) initial_claim: Fp2,
+    pub(crate) evaluations: [Fp2; 3],
 }
 
 impl C6HiddenUProverRoundState {
@@ -264,6 +273,32 @@ impl C6HiddenUProverRoundState {
         Ok(())
     }
 
+    pub(crate) fn fixed_active_messages(&self) -> Result<Vec<C6HiddenUFixedRoundMessage>> {
+        if self.pending_active.is_empty() || self.global_round >= self.max_rounds {
+            return Err(C6HiddenUError::new(
+                "C6 hidden-u prover messages requested outside fixed round",
+            ));
+        }
+        self.pending_active
+            .iter()
+            .map(|&state_index| {
+                let state = &self.states[state_index];
+                let family_rounds = state.layout.padded_entries().ilog2() as usize;
+                let start = self.max_rounds - family_rounds;
+                let local_round = self.global_round - start;
+                let evaluations = *state.rounds.get(local_round).ok_or_else(|| {
+                    C6HiddenUError::new("missing fixed C6 hidden-u prover message")
+                })?;
+                Ok(C6HiddenUFixedRoundMessage {
+                    family: state.layout.family,
+                    local_round,
+                    initial_claim: self.initial_claims[state_index],
+                    evaluations,
+                })
+            })
+            .collect()
+    }
+
     pub fn finish(self) -> Result<(C6HiddenUSumcheckRepetition, Vec<C6HiddenUOpeningClaim>)> {
         if !self.is_complete() {
             return Err(C6HiddenUError::new("incomplete C6 hidden-u prover repetition"));
@@ -305,6 +340,8 @@ pub fn prepare_hidden_u_prover_round_state(
         sealed.families().iter().map(|family| family.q_cols().to_vec()).collect::<Vec<_>>();
     let schedules = build_schedules(&layouts, claimed_prequery, postcommit, &q_cols)?;
     let repetition_index = usize::from(repetition);
+    let initial_claims =
+        schedules.iter().map(|schedule| schedule.rhs[repetition_index]).collect::<Vec<_>>();
     let mut states = Vec::with_capacity(layouts.len());
     for (((layout, family), schedule), family_q_cols) in
         layouts.iter().zip(sealed.families()).zip(&schedules).zip(&q_cols)
@@ -320,6 +357,7 @@ pub fn prepare_hidden_u_prover_round_state(
         max_rounds,
         global_round: 0,
         pending_active: Vec::with_capacity(states.len()),
+        initial_claims,
         states,
     })
 }
@@ -540,14 +578,23 @@ pub fn reduce_hidden_u_sumchecks(
 }
 
 #[derive(Clone)]
-struct FamilySchedule {
+pub(crate) struct FamilySchedule {
     query_indices: Vec<usize>,
     query_alphas: Vec<Vec<[Fp2; 2]>>,
     ip_alphas: Vec<[Fp2; 2]>,
     rhs: [Fp2; 2],
 }
 
-fn build_schedules(
+impl FamilySchedule {
+    pub(crate) fn initial_claim(&self, repetition: usize) -> Result<Fp2> {
+        self.rhs
+            .get(repetition)
+            .copied()
+            .ok_or_else(|| C6HiddenUError::new("C6 hidden-u repetition exceeds schedule"))
+    }
+}
+
+pub(crate) fn build_schedules(
     layouts: &[C6HiddenULayout],
     prequery: &C6HiddenUPrequery,
     postcommit: &C6HiddenUPostCommit,
@@ -605,7 +652,7 @@ fn build_schedules(
     Ok(schedules)
 }
 
-fn flatten_witness(layout: C6HiddenULayout, vectors: &[Vec<Fp2>]) -> Result<Vec<Fp2>> {
+pub(crate) fn flatten_witness(layout: C6HiddenULayout, vectors: &[Vec<Fp2>]) -> Result<Vec<Fp2>> {
     if vectors.len() != layout.live_vectors()
         || vectors.iter().any(|vector| vector.len() != layout.msg_len())
     {
@@ -734,7 +781,7 @@ impl InnerProductProverState {
     }
 }
 
-fn hidden_u_round_count(layouts: &[C6HiddenULayout]) -> Result<usize> {
+pub(crate) fn hidden_u_round_count(layouts: &[C6HiddenULayout]) -> Result<usize> {
     layouts
         .iter()
         .map(|layout| layout.padded_entries().ilog2() as usize)
@@ -754,7 +801,7 @@ fn round_message_bytes(active_families: usize) -> Result<u64> {
         .ok_or_else(|| C6HiddenUError::new("C6 hidden-u round bytes overflow"))
 }
 
-fn evaluate_functional(
+pub(crate) fn evaluate_functional(
     layout: C6HiddenULayout,
     schedule: &FamilySchedule,
     repetition: usize,
@@ -843,7 +890,7 @@ fn eq_index(point: &[Fp2], index: usize) -> Fp2 {
     })
 }
 
-fn validate_layouts(layouts: &[C6HiddenULayout]) -> Result<()> {
+pub(crate) fn validate_layouts(layouts: &[C6HiddenULayout]) -> Result<()> {
     if layouts.is_empty() || !layouts.windows(2).all(|pair| pair[0].family < pair[1].family) {
         return Err(C6HiddenUError::new("C6 hidden-u sumcheck layouts are empty or noncanonical"));
     }

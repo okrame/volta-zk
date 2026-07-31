@@ -169,6 +169,16 @@ CACHE_FOLD_TARGET_FRAME_BYTES = (
 )
 CACHE_FOLD_TARGET_FRESH_CORRELATIONS_PER_TAPE = 0
 
+# C6PIF1: exact closed outer envelope. The authenticated-output link already
+# includes the paired PCS bytes; every other component is non-PCS.
+RESIDUAL_PENDING_CORRECTION_BYTES = 1_536
+HIDDEN_U_PROOF_BYTES = 5_416
+CACHE_SOURCE_BOOTSTRAP_BYTES = 304
+CACHE_BLIND_PROOF_BYTES = 3_506
+AUTHENTICATED_OUTPUT_LINK_OVERHEAD_BYTES = 3_570
+RESPONSE_PROOF_ENVELOPE_OVERHEAD_BYTES = 324
+CERTIFICATE_NEW_PAYLOAD_FRAMING_BYTES = 857
+
 # Exact registered wrapper consumers of the historical PCS full-correlation
 # reserve.  C6FT1 does not increase this subtotal.
 HIDDEN_U_FULL_CORRELATIONS_PER_TAPE = 164
@@ -578,6 +588,21 @@ def build_report() -> dict[str, Any]:
     pcs_bytes = PCS_REPETITIONS * section["chain_bytes"]
     pi_final_maximum = pcs_bytes + NON_PCS_ALLOCATION_BYTES
     response_maximum = RETAINED_RESPONSE_BYTES + pi_final_maximum
+    strict_envelope_maximum = (
+        RESPONSE_PROOF_ENVELOPE_OVERHEAD_BYTES
+        + RESIDUAL_SUMCHECK_PROOF_BYTES
+        + RESIDUAL_PENDING_CORRECTION_BYTES
+        + HIDDEN_U_PROOF_BYTES
+        + CACHE_SOURCE_BOOTSTRAP_BYTES
+        + CACHE_BLIND_PROOF_BYTES
+        + CACHE_FOLD_TARGET_FRAME_BYTES
+        + AUTHENTICATED_OUTPUT_LINK_OVERHEAD_BYTES
+        + pcs_bytes
+    )
+    strict_pi_final_maximum = (
+        CERTIFICATE_NEW_PAYLOAD_FRAMING_BYTES + strict_envelope_maximum
+    )
+    strict_response_maximum = RETAINED_RESPONSE_BYTES + strict_pi_final_maximum
 
     pcs_error = pcs_error_amplified(SELECTED_QUERY_COUNT)
     hidden_error = Fraction(HIDDEN_LINEAR_NUMERATOR, FP2_CARDINALITY**2)
@@ -695,6 +720,18 @@ def build_report() -> dict[str, Any]:
             "complete_response_maximum_bytes": response_maximum,
             "response_cap_bytes": RESPONSE_CAP_BYTES,
             "response_headroom_bytes": RESPONSE_CAP_BYTES - response_maximum,
+            "strict_envelope_maximum_bytes": strict_envelope_maximum,
+            "certificate_new_payload_framing_bytes": (
+                CERTIFICATE_NEW_PAYLOAD_FRAMING_BYTES
+            ),
+            "strict_pi_final_maximum_bytes": strict_pi_final_maximum,
+            "strict_pi_final_headroom_to_roofline_bytes": (
+                pi_final_maximum - strict_pi_final_maximum
+            ),
+            "strict_complete_response_maximum_bytes": strict_response_maximum,
+            "strict_response_headroom_bytes": (
+                RESPONSE_CAP_BYTES - strict_response_maximum
+            ),
         },
         "setup": {
             "residual_mac_tapes": RESIDUAL_MAC_TAPES,
@@ -1095,6 +1132,11 @@ def build_report() -> dict[str, Any]:
     assert PI_FINAL_CAP_BYTES - pi_final_maximum == 20_534
     assert response_maximum == 33_656_098
     assert RESPONSE_CAP_BYTES - response_maximum == 1_343_902
+    assert strict_envelope_maximum == 3_919_502
+    assert strict_pi_final_maximum == 3_920_359
+    assert pi_final_maximum - strict_pi_final_maximum == 559_107
+    assert strict_response_maximum == 33_096_991
+    assert RESPONSE_CAP_BYTES - strict_response_maximum == 1_903_009
     assert paired_setup_bytes == 76_742_930
     assert SETUP_CAP_BYTES - paired_setup_bytes == 73_257_070
     assert initial_encoded_symbols == 5_721_030_656
@@ -1136,6 +1178,18 @@ def main() -> None:
     print(
         "complete response max:       "
         f"{wire['complete_response_maximum_bytes']:,} B"
+    )
+    print(
+        "strict C6PIF1 envelope:       "
+        f"{wire['strict_envelope_maximum_bytes']:,} B"
+    )
+    print(
+        "strict pi_final max:          "
+        f"{wire['strict_pi_final_maximum_bytes']:,} B"
+    )
+    print(
+        "strict complete response:     "
+        f"{wire['strict_complete_response_maximum_bytes']:,} B"
     )
     print(
         "PCS event bits:              "

@@ -82,6 +82,7 @@ pub struct C6ResponseResidualFixture {
     verifier_contexts: [VerifierCtx; 2],
     provider_transcript: Transcript,
     verifier_transcript: Transcript,
+    cache_fold_target_frame: Vec<u8>,
     closure_memory: C6InstalledClosureEvaluationMemoryCensus,
     census: C6ResponseResidualCensus,
     timing: C6ResponseResidualTiming,
@@ -123,6 +124,10 @@ impl C6ResponseResidualFixture {
 
     pub fn timing(&self) -> C6ResponseResidualTiming {
         self.timing
+    }
+
+    pub fn cache_fold_target_frame(&self) -> &[u8] {
+        &self.cache_fold_target_frame
     }
 
     pub fn provider_inputs(
@@ -494,6 +499,7 @@ pub fn build_c6_response_residual_fixture(
     }
 
     let topology = provider_operation_plan.topology();
+    let cache_fold_target_frame = target_frame.encode().map_err(trace_error)?;
     let residual_seeds = [[0x81; 32], [0x82; 32]];
     let residual_deltas =
         [Fp2::new(Fp::new(0x8101), Fp::new(0x8102)), Fp2::new(Fp::new(0x8201), Fp::new(0x8202))];
@@ -517,6 +523,7 @@ pub fn build_c6_response_residual_fixture(
         ],
         provider_transcript: prover_tx,
         verifier_transcript: verifier_tx,
+        cache_fold_target_frame,
         closure_memory,
         census: C6ResponseResidualCensus {
             source_groups: prover_metrics.source_groups,

@@ -193,6 +193,17 @@ the C6RSC3 proof is **6,516 B** and the coefficient arena peaks at
 **67,108,864 B**.  This is a local complete-response seam PASS, not a
 production timing/memory verdict: `leaf=23/aux=16`, response-field removal,
 strict envelope and resident backend remain pending.
+The response-field/envelope checkpoint is now locally closed. `C6PIF1` has
+exactly seven typed components, no generic/legacy kind, **324 B** of framing
+and a **3,919,502-B** maximum. Including the fixed certificate framing gives
+strict `pi_final <=3,920,359 B` and complete response
+**33,096,991 B**, leaving **1,903,009 B** below the owner cap. The former
+`4,479,466-B / 33,656,098-B` figures remain the conservative allocation
+roofline. Residual pending transfer wire is now exactly **1,536 B** of
+corrections; the verifier reconstructs all 48 owners and points from the
+bound statements and transcript rather than accepting prover metadata.
+Resident backend, frozen production geometry and a production timing/memory
+verdict remain pending; no provider or pod was contacted.
 
 Workload of record: **GPT-2 small (124M, L=12, d=768, h=12, d_ff=3072),
 prefill T=100 + 50 deferred decode tokens, causal, C3b PCS Q=120**, on the
@@ -577,6 +588,7 @@ its clean descendant closure.
 | C6 paired complete-source witness | **CLEAN APPEND-ONLY REFERENCE PASS; SOURCE EXTRACTION MILESTONE CLOSED; NEXT GATE OPERATION DAG + PRODUCTCLOSURE OPERAND LINKAGE** (2026-07-29) | Clean source `b98e453`; opt-in prover-only subfield/full-field collection on frozen local GPT-2 `100+50`; independent mock stream replay; direct plaintexts shared, ProductMasks refreshed; no model rerun, backend, provider or wire claim | Record `c6-t1-source-witness-2026-07-29-b98e453.json`, SHA-256 `c62941afd4cda3b0eed5c3e36dd27cffcd03301e7d0df14e9808ecffc9601ab5`, has `git_dirty:false`, `diagnostic:false`, `golden_match:true`, `prover_verifier_schedule_equal:true`, `all_pass:true`, `pod_contacted:false`.  Per coordinate it contains **4,793,590 subfield + 181,262 direct full-field + 673 ProductMask = 4,975,525** source leaves; coordinate one performs **0** model reruns.  Hidden direct corrections are **41,248,912 B/coordinate**; the **162,127,760-B/coordinate** complete secret sidecar is prover-only memory, never setup/wire.  The direct full-field plaintext digest matches while coordinate-wide full-field digests differ because ProductMasks are independent.  Operation/value IDs, all 673 ProductClosure operands, cache/wrapper, final bytes, real PCG and timing remain open. |
 | C6 installed terminal reverse compiler | **LOCAL DIFFERENTIAL PASS; SHARED WALKER CLOSED; CHALLENGE EXPANSION / FULL STATEMENT PENDING** (2026-07-29) | Exact installed **22,339 triple / 8,170 zero-root** terminal schedule; plaintext/tag roles; no second DAG formula; reference-only vectors | The versioned schedule binds plan artifact, topology, repetition, role and all positional weights.  Both forms use the historical compiled-residual walker; zero-product weights reproduce every accepted historical coefficient/public term, nontrivial plaintext/tag terminal evaluations match independent source-side evaluation, ProductMask coefficients remain zero and extraction binding is unconditional.  Focused tests are **11/11**, the complete feature suite is **145/0/1**, and the workspace is green.  Terminal weights are not yet transcript-derived and no statement, proof, memory, wire, soundness, timing, PCS, cache or production credit is claimed; no pod contacted. |
 | C6 post-root residual challenge bundle | **LOCAL FOUR-STREAM EXPANSION PASS; ROOT/SEED/PLAN BINDING GREEN; PCS TYPESTATE JOIN / RELATION COMPILER PENDING** (2026-07-29) | One already-budgeted 32-byte client seed; context-bound paired alpha and terminal domains; exact **22,339 triple / 8,170 zero-root** expansion | The immutable bundle binds fixed-root digest, installed artifact/topology, raw-seed commitment and four complete schedule digests.  Post-root terminal forms and paired provider/client folds consume it; replay is deterministic and changed root/seed, swapped roles or mutated weights reject.  Feature suite **145/0/1**, workspace green.  Schedules remain materialized reference state and `volta-pcs` must still source the digest from its private fixed-root token before seed release; no statement, resource, proof or production credit and no pod contact. |
+| C6 strict final response envelope | **C6PIF1 RESPONSE-FIELD REMOVAL + CORRECTION-ONLY RESIDUAL TRANSFER GREEN; RESIDENT BACKEND / PRODUCTION GEOMETRY AND TIMING PENDING; NO POD** (2026-07-31) | Closed seven-kind final-proof grammar; no direct `auth_corrections`, `u_vectors`, generic or legacy component; verifier-derived residual owners/points | Exact maximum is **3,919,502-B envelope / 3,920,359-B pi_final / 33,096,991-B complete response**, leaving **1,903,009 B** under 35 MB and **559,107 B** under the conservative allocation roofline. Residual pending wire is exactly **1,536 B**. Ordinary/trace proto are **149/0/1 / 167/0/1**; PCS are **179/0/1 / 181/0/2**; workspace all-target checks and budget are green. Explicit diagnostic response rerun is **14.833702-s provider inline / 19.279345-s complete**, still at `leaf=20/aux=15`, so no production timing/memory verdict is claimed. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -644,6 +656,42 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-31 — C6 closes response-field removal with the strict `C6PIF1`
+  envelope and verifier-derived residual pending owners.**  The final C6
+  certificate grammar has no direct `auth_corrections` or `u_vectors` field,
+  and its proof payload is no longer opaque. `C6PIF1` version 1 admits exactly
+  seven ordered kinds: C6RSC3, its pending corrections, C6HUB2, C6PS1, C6PC2,
+  C6FT1 and C6LNK2 including paired PCS. There is no generic or legacy kind.
+  Per-component length/digest headers and one final digest cost **324 B**;
+  unknown, duplicate, reordered, reserved-bit, corrupt, over-cap and trailing
+  encodings reject.
+
+  Exact maximum accounting is **3,919,178 B** of component payload plus
+  **324 B** envelope framing = **3,919,502 B**. Adding the **857-B** fixed
+  certificate framing makes strict `pi_final` **3,920,359 B** and the complete
+  response **33,096,991 B**, with **1,903,009 B** of headroom. The conservative
+  **4,479,466-B / 33,656,098-B** allocation roofline remains binding but is
+  **559,107 B** above the closed grammar.
+
+  The residual transfer object now has a canonical **1,536-B**
+  correction-only codec. The provider no longer supplies table owners or
+  evaluation points: after the sumcheck rounds the designated verifier derives
+  all 48 descriptors from statement ownership, canonical table order and the
+  leaf/auxiliary challenge points. The packed-link fixture decodes its live
+  residual, hidden-`u`, cache and link components from the envelope; the full
+  response fixture contributes its actual strict 18,480-B C6FT1 frame.
+
+  Ordinary/trace proto are **149/0/1** and **167/0/1**; ordinary/trace PCS are
+  **179/0/1** and **181/0/2**. Both workspace all-target checks, formatting,
+  diff-check and the exact budget script are green. The explicit ignored
+  release gate passes again at **6,516-B** C6RSC3,
+  **67,108,864-B** coefficient peak,
+  **4.718524 + 10.115178 = 14.833702 s** provider inline and
+  **19.279345 s** complete provider-plus-verifier wall. This is still
+  diagnostic `leaf=20/aux=15`; resident backend, frozen production geometry
+  and the production timing/memory verdict remain open. No provider or pod
+  was contacted.
 
 - **2026-07-31 — Complete T=4,Q=2 response enters compact sealed C6RSC3 at
   diagnostic geometry.**  A new artifact-gated fixture executes all 12

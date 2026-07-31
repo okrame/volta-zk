@@ -1840,11 +1840,15 @@ mod tests {
     };
     use crate::ligero::LigeroParams;
     use crate::ntt::NttPlan;
-    use volta_proto::C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS;
     #[cfg(feature = "c6-trace")]
     use volta_proto::{
         build_c6_residual_fused_scaled_fixture, C6ResidualFusedCoefficientArena,
         C6ResidualFusedScaledFixture,
+    };
+    use volta_proto::{
+        C6ResponseProofEnvelope, C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS,
+        C6_RESPONSE_CACHE_FOLD_TARGET_BYTES, C6_RESPONSE_PROOF_ENVELOPE_MAX_BYTES,
+        C6_RESPONSE_RESIDUAL_PENDING_BYTES, C6_RESPONSE_RESIDUAL_SUMCHECK_MAX_BYTES,
     };
 
     const LEAF_ROUNDS: usize = 5;
@@ -2606,6 +2610,7 @@ mod tests {
         fixed: C6FixedWrapperCommitments,
         proof: C6AuthenticatedOutputLinkProof,
         encoded: Vec<u8>,
+        response_envelope: Vec<u8>,
         metrics: C6AuthenticatedOutputLinkMetrics,
         old_values: Vec<Fp2>,
         prover_ledger: BTreeMap<&'static str, u64>,
@@ -2717,6 +2722,22 @@ mod tests {
         let prover_link_counter_delta =
             array::from_fn(|tape| streams[tape].counters.full_corrs - before[tape]);
         let encoded = proof.canonical_bytes(&fixed).unwrap();
+        // C6FT1 is produced by the response/model crate and is independently
+        // strict-codec tested there. This cross-crate fixture reserves its
+        // exact closed component while installing every PCS-owned component
+        // from the live proof objects above.
+        let response_envelope = C6ResponseProofEnvelope::new(
+            residual_proof.encode(&inputs.statements).unwrap(),
+            residual_frame.encode().unwrap(),
+            hidden_proof.encode(&inputs.hidden_layouts).unwrap(),
+            cache_source_frame.encode().unwrap(),
+            cache_proof.encode().unwrap(),
+            vec![0; C6_RESPONSE_CACHE_FOLD_TARGET_BYTES as usize],
+            encoded.clone(),
+        )
+        .unwrap()
+        .encode()
+        .unwrap();
         IntegratedFixture {
             inputs,
             residual_proof,
@@ -2730,6 +2751,7 @@ mod tests {
             fixed,
             proof,
             encoded,
+            response_envelope,
             metrics,
             old_values,
             prover_ledger: transcript.ledger().clone(),
@@ -2857,6 +2879,30 @@ mod tests {
         assert_eq!(C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_CORRELATIONS_PER_TAPE, 100);
         assert_eq!(C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_OVERHEAD_BYTES, 3_570);
         assert_eq!(C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_BYTES, 3_883_036);
+        assert_eq!(
+            volta_proto::C6_RESPONSE_RESIDUAL_SUMCHECK_MAX_BYTES,
+            crate::C6_RESIDUAL_BLIND_PROOF_BYTES
+        );
+        assert_eq!(
+            volta_proto::C6_RESPONSE_RESIDUAL_PENDING_BYTES,
+            crate::C6_RESIDUAL_BLIND_PENDING_BYTES
+        );
+        assert_eq!(
+            volta_proto::C6_RESPONSE_HIDDEN_U_MAX_BYTES,
+            crate::C6_BLIND_HIDDEN_U_PRODUCTION_BYTES
+        );
+        assert_eq!(
+            volta_proto::C6_RESPONSE_CACHE_SOURCE_BYTES,
+            crate::c6_persistent_cache_blind::C6_PERSISTENT_CACHE_SOURCE_BOOTSTRAP_BYTES
+        );
+        assert_eq!(
+            volta_proto::C6_RESPONSE_CACHE_BLIND_MAX_BYTES,
+            crate::c6_persistent_cache_blind::C6_PERSISTENT_CACHE_BLIND_PRODUCTION_BYTES
+        );
+        assert_eq!(
+            volta_proto::C6_RESPONSE_AUTHENTICATED_LINK_MAX_BYTES,
+            C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_BYTES
+        );
         for repetition in 0..C6_WRAPPER_REPETITIONS as u8 {
             for tape in 0..C6_AUTHENTICATED_OUTPUT_LINK_TAPES {
                 let domains = (0..C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_ROUNDS)
@@ -2876,6 +2922,67 @@ mod tests {
     #[test]
     fn actual_residual_hidden_and_cache_pending_values_close_through_packed_link_and_pcs() {
         let fixture = prove_integrated_fixture();
+        let response_envelope =
+            C6ResponseProofEnvelope::decode(&fixture.response_envelope).unwrap();
+        assert!(fixture.response_envelope.len() as u64 <= C6_RESPONSE_PROOF_ENVELOPE_MAX_BYTES);
+        assert!(
+            response_envelope.residual_sumcheck().len() as u64
+                <= C6_RESPONSE_RESIDUAL_SUMCHECK_MAX_BYTES
+        );
+        assert_eq!(
+            response_envelope.residual_pending_corrections().len() as u64,
+            C6_RESPONSE_RESIDUAL_PENDING_BYTES
+        );
+        assert_eq!(
+            C6BlindResidualSumcheckProof::decode(
+                &fixture.inputs.statements,
+                response_envelope.residual_sumcheck(),
+            )
+            .unwrap(),
+            fixture.residual_proof
+        );
+        assert_eq!(
+            C6BlindResidualPendingTransferFrame::decode(
+                response_envelope.residual_pending_corrections()
+            )
+            .unwrap(),
+            fixture.residual_frame
+        );
+        assert_eq!(
+            C6BlindHiddenUSumcheckProof::decode(
+                &fixture.inputs.hidden_layouts,
+                fixture.hidden_proof.statement_digest(),
+                response_envelope.hidden_u(),
+            )
+            .unwrap(),
+            fixture.hidden_proof
+        );
+        assert_eq!(
+            C6PersistentCacheSourceBootstrapFrame::decode(
+                fixture.cache_source_frame.statement_digest(),
+                response_envelope.cache_source_bootstrap(),
+            )
+            .unwrap(),
+            fixture.cache_source_frame
+        );
+        assert_eq!(
+            C6PersistentCacheBlindProof::decode(
+                fixture.cache_proof.statement_digest(),
+                fixture.inputs.cache_rounds,
+                response_envelope.cache_blind(),
+            )
+            .unwrap(),
+            fixture.cache_proof
+        );
+        assert_eq!(response_envelope.authenticated_output_link(), fixture.encoded);
+        assert_eq!(
+            C6AuthenticatedOutputLinkProof::decode(
+                &fixture.fixed,
+                response_envelope.authenticated_output_link(),
+            )
+            .unwrap(),
+            fixture.proof
+        );
         assert_eq!(fixture.cache_proof_bytes, 1_506);
         assert_eq!(fixture.cache_source_frame.encode().unwrap().len(), 304);
         assert_eq!(fixture.cache_correlations_per_tape, 32);

@@ -24,8 +24,9 @@ INLINE RUNTIME-IDENTITY ORDERING REPAIR GREEN; ONE-LAYER CPU ATTENTION
 CPU MODEL/BAND ORCHESTRATION + COMPLETE POOLED-SCHEDULE FOLLOWER + TYPED
 GRAND-RESIDUAL OPERATION-PLAN OWNERSHIP GREEN; INSTALLED TERMINAL WITNESS
 BRIDGE + LIVENESS CENSUS GREEN; INSTALLED-WITNESS SCALED C6RSC3 ->
-AUTHENTICATED LINK -> PAIRED PCS GREEN; RESPONSE-OWNED SEALED EXECUTION /
-RESIDENT BACKEND / RESPONSE-FIELD REMOVAL / FINAL ENVELOPE PENDING;
+AUTHENTICATED LINK -> PAIRED PCS GREEN; RESPONSE-OWNED SEALED EXECUTION +
+STRICT `C6PIF1` RESPONSE-FIELD REMOVAL/FINAL ENVELOPE GREEN; RESIDENT
+BACKEND / PRODUCTION GEOMETRY AND TIMING PENDING;
 LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
@@ -4474,6 +4475,73 @@ No final-response field is removed on the strength of this diagnostic alone,
 and no production byte, memory, timing or hardware credit is earned. No
 provider or pod was contacted.
 
+#### 6.2.10 Closed `C6PIF1` response envelope and residual correction wire
+
+The complete-response seam now licenses deletion of the two historical
+response fields from the C6 final-certificate grammar. The certificate has no
+`auth_corrections` or `u_vectors` member, and its former opaque
+`wrapper_proof` payload must now decode as `C6PIF1`, version 1. The outer
+grammar has exactly seven ordered component kinds and no extension, generic
+blob or legacy kind:
+
+| Component | Wire allocation |
+| --- | ---: |
+| blind residual sumcheck `C6RSC3` | at most 6,900 B |
+| residual pending corrections | exactly 1,536 B |
+| blind hidden-`u` `C6HUB2` | at most 5,416 B |
+| cache-source bootstrap `C6PS1` | exactly 304 B |
+| blind cache `C6PC2` | at most 3,506 B |
+| cache-fold targets `C6FT1` | exactly 18,480 B |
+| authenticated-output link including paired PCS `C6LNK2` | at most 3,883,036 B |
+
+Every component carries `(kind, reserved=0, u32 length, BLAKE3 digest)` and
+the envelope has a final digest. The fixed envelope overhead is **324 B**,
+so the exact maximum is:
+
+```text
+seven component payloads                         3,919,178 B
+C6PIF1 header/component headers/final digest         324 B
+strict proof envelope                            3,919,502 B
+fixed final-certificate pi_final framing               857 B
+strict pi_final                                  3,920,359 B
+retained Q=121 response                         29,176,632 B
+strict complete response                        33,096,991 B
+headroom below 35,000,000 B                      1,903,009 B.
+```
+
+The earlier **4,479,466-B pi_final / 33,656,098-B response** figures remain
+the conservative `paired PCS + 600,000-B non-PCS allocation` roofline. The
+closed grammar uses **559,107 B** less than that allocation without relaxing
+any component cap. `C6FinalCertificate::validate` enforces both the strict
+envelope ceiling and the conservative owner caps.
+
+The residual pending seam is now honest on wire as well as in accounting.
+`C6BlindResidualPendingTransferFrame` serializes only the 48 claims times two
+Fp2 corrections, exactly **1,536 B**. It no longer carries prover-supplied
+owner descriptors or evaluation points. After deriving the round points, the
+designated verifier reconstructs every statement digest, repetition, family,
+table and leaf/auxiliary point from the already-bound statement and canonical
+slot order, then applies the corrections. Truncated or noncanonical field
+encodings reject.
+
+Permanent negative tests reject old opaque certificate proofs, unknown,
+duplicate or reordered component kinds, nonzero reserved bits, wrong
+component or envelope digests, over-cap and wrong-exact lengths, corrupt
+components and trailing bytes. The packed-link fixture installs and decodes
+the live residual, hidden-`u`, cache-source, cache and link proof objects from
+one `C6PIF1`; the response-wide ignored gate installs the actual `C6FT1`
+frame alongside its live residual proof and correction frame.
+
+Ordinary/trace proto are **149/0/1** and **167/0/1**; ordinary/trace PCS are
+**179/0/1** and **181/0/2**. Both workspace all-target checks and the exact
+budget script are green. The explicit release response gate passes again at
+**6,516 B**, **67,108,864-B** coefficient peak and
+**4.718524 + 10.115178 = 14.833702 s** provider inline; the complete
+provider-plus-verifier gate is **19.279345 s**. These remain diagnostic
+`leaf=20/aux=15` measurements. Frozen production geometry, resident provider
+memory/backend work and a bound production timing verdict remain pending; no
+provider or pod was contacted.
+
 ## 7. Certificate and challenge grammar
 
 All integers are unsigned little-endian and all field elements use their
@@ -4689,17 +4757,17 @@ The scaled canonical fixtures are:
 ```text
 setup manifest     437 B   c3388a149106ea3f...525c2fd833b29d75
 genesis state v3   308 B   87f19b92d8e7a137...f234e903798b6d6b
-small certificate  935 B   454a4482ab3329fc...c6322f8465ca8c1
+small C6PIF1 certificate  21,582 B   509ebe2c4cfc9a6a...5878403e3b207735
 ```
 
 The fixture setup exchange is exactly `76,743,367 B`, including both
-`38,371,465-B` PCG tapes and the 437-byte manifest.  Certificate validation
-also enforces the preregistered roofline maximum
-`pi_final <=4,409,824 B`, strictly inside the owner hard cap
-`4,500,000 B`; with the retained transcript this is
-`33,586,456 B`.  The durable C6 module is **18/18 PASS** and the complete
-`volta-proto --features c6-trace` crate is **143 pass / 0 fail /
-1 pre-existing production-size ignore**.
+`38,371,465-B` PCG tapes and the 437-byte manifest. Certificate validation now
+requires the closed `C6PIF1` grammar and enforces strict
+`pi_final <=3,920,359 B`, below both the amended conservative
+`4,479,466-B` roofline and the owner hard cap `4,500,000 B`; with the retained
+transcript the strict maximum is `33,096,991 B`. The durable C6 module remains
+**18/18 PASS**, the envelope module adds **3/3 PASS**, and complete ordinary /
+`c6-trace` proto are **149/0/1 / 167/0/1**.
 
 The complete local lifecycle burns four baseline attempts and then accepts
 17 on one connection.  It ends at cache epoch/length `17/17`, slot

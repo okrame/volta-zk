@@ -2963,6 +2963,10 @@ mod tests {
         let encoded = frame.encode().unwrap();
         assert_eq!(encoded.len() as u64, C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES);
         assert_eq!(C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES, 18_480);
+        assert_eq!(
+            C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES,
+            crate::C6_RESPONSE_CACHE_FOLD_TARGET_BYTES
+        );
         assert_eq!(frame.live_count(), 24);
         assert_eq!(
             C6CacheFoldTargetCorrectionFrame::decode(statement_digest, prover.identity, &encoded)

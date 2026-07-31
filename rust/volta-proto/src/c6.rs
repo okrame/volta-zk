@@ -23,6 +23,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use volta_field::{Fp, Fp2, P};
 
+use crate::c6_response_envelope::{C6ResponseProofEnvelope, C6_RESPONSE_PROOF_ENVELOPE_MAX_BYTES};
+
 pub type C6Digest = [u8; 32];
 
 pub const C6_CERTIFICATE_VERSION: u16 = 2;
@@ -41,7 +43,14 @@ pub const C6_SETUP_CAP_BYTES: u64 = 150_000_000;
 pub const C6_RETAINED_Q121_BASELINE_BYTES: u64 = 29_176_632;
 pub const C6_NEW_PAYLOAD_BUDGET_BYTES: u64 = 5_823_368;
 pub const C6_PI_FINAL_CAP_BYTES: u64 = 4_500_000;
-pub const C6_ROOFLINE_PI_FINAL_MAX_BYTES: u64 = 4_409_824;
+pub const C6_ROOFLINE_PI_FINAL_MAX_BYTES: u64 = 4_479_466;
+/// Fixed certificate bytes counted in `pi_final` after subtracting the
+/// retained Q=121 transcript and before adding the strict proof envelope.
+pub const C6_CERTIFICATE_NEW_PAYLOAD_FRAMING_BYTES: u64 = 857;
+pub const C6_STRICT_PI_FINAL_MAX_BYTES: u64 =
+    C6_CERTIFICATE_NEW_PAYLOAD_FRAMING_BYTES + C6_RESPONSE_PROOF_ENVELOPE_MAX_BYTES;
+pub const C6_STRICT_RESPONSE_MAX_BYTES: u64 =
+    C6_RETAINED_Q121_BASELINE_BYTES + C6_STRICT_PI_FINAL_MAX_BYTES;
 /// Compatibility name for the cap historically described as the “final
 /// proof”.  The normative cap includes its C6 framing and public claims.
 pub const C6_FINAL_PROOF_CAP_BYTES: u64 = C6_PI_FINAL_CAP_BYTES;
@@ -697,7 +706,7 @@ impl C6FinalCertificate {
             wrapper_proof_digest: input.digest()?,
             transition_statement_digest: input.digest()?,
             retained_transcript: input.blob(C6_RETAINED_Q121_BASELINE_BYTES as usize)?,
-            wrapper_proof: input.blob(C6_FINAL_PROOF_CAP_BYTES as usize)?,
+            wrapper_proof: input.blob(C6_RESPONSE_PROOF_ENVELOPE_MAX_BYTES as usize)?,
         };
         input.finish()?;
         certificate.validate()?;
@@ -766,10 +775,13 @@ impl C6FinalCertificate {
         if self.retained_transcript.is_empty()
             || self.retained_transcript.len() as u64 > C6_RETAINED_Q121_BASELINE_BYTES
             || self.wrapper_proof.is_empty()
-            || self.wrapper_proof.len() as u64 > C6_FINAL_PROOF_CAP_BYTES
+            || self.wrapper_proof.len() as u64 > C6_RESPONSE_PROOF_ENVELOPE_MAX_BYTES
         {
             return Err(C6Error::new("C6 retained/proof payload violates its cap"));
         }
+        C6ResponseProofEnvelope::decode(&self.wrapper_proof).map_err(|error| {
+            C6Error::new(format!("invalid C6 response proof envelope: {error}"))
+        })?;
         let retained_digest =
             hash_parts(b"volta-zk/c6/retained-transcript/v1", &[&self.retained_transcript]);
         let proof_digest = hash_parts(b"volta-zk/c6/wrapper-proof/v1", &[&self.wrapper_proof]);
@@ -791,6 +803,7 @@ impl C6FinalCertificate {
         if encoded_len > C6_RESPONSE_CAP_BYTES
             || new_payload > C6_NEW_PAYLOAD_BUDGET_BYTES
             || new_payload > C6_ROOFLINE_PI_FINAL_MAX_BYTES
+            || new_payload > C6_STRICT_PI_FINAL_MAX_BYTES
             || new_payload > C6_PI_FINAL_CAP_BYTES
         {
             return Err(C6Error::new("C6 complete/new-payload wire cap exceeded"));
@@ -2087,6 +2100,13 @@ impl C6SlotHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::c6_response_envelope::{
+        C6ResponseProofEnvelope, C6_RESPONSE_AUTHENTICATED_LINK_MAX_BYTES,
+        C6_RESPONSE_CACHE_BLIND_MAX_BYTES, C6_RESPONSE_CACHE_FOLD_TARGET_BYTES,
+        C6_RESPONSE_CACHE_SOURCE_BYTES, C6_RESPONSE_HIDDEN_U_MAX_BYTES,
+        C6_RESPONSE_PROOF_ENVELOPE_MAX_BYTES, C6_RESPONSE_RESIDUAL_PENDING_BYTES,
+        C6_RESPONSE_RESIDUAL_SUMCHECK_MAX_BYTES,
+    };
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static TEST_DIRECTORY_ID: AtomicU64 = AtomicU64::new(0);
@@ -2121,6 +2141,36 @@ mod tests {
         }
     }
 
+    fn response_proof_envelope(link_len: usize) -> Vec<u8> {
+        C6ResponseProofEnvelope::new(
+            vec![0x51],
+            vec![0x52; C6_RESPONSE_RESIDUAL_PENDING_BYTES as usize],
+            vec![0x53],
+            vec![0x54; C6_RESPONSE_CACHE_SOURCE_BYTES as usize],
+            vec![0x55],
+            vec![0x56; C6_RESPONSE_CACHE_FOLD_TARGET_BYTES as usize],
+            vec![0x57; link_len],
+        )
+        .unwrap()
+        .encode()
+        .unwrap()
+    }
+
+    fn maximum_response_proof_envelope() -> Vec<u8> {
+        C6ResponseProofEnvelope::new(
+            vec![0x51; C6_RESPONSE_RESIDUAL_SUMCHECK_MAX_BYTES as usize],
+            vec![0x52; C6_RESPONSE_RESIDUAL_PENDING_BYTES as usize],
+            vec![0x53; C6_RESPONSE_HIDDEN_U_MAX_BYTES as usize],
+            vec![0x54; C6_RESPONSE_CACHE_SOURCE_BYTES as usize],
+            vec![0x55; C6_RESPONSE_CACHE_BLIND_MAX_BYTES as usize],
+            vec![0x56; C6_RESPONSE_CACHE_FOLD_TARGET_BYTES as usize],
+            vec![0x57; C6_RESPONSE_AUTHENTICATED_LINK_MAX_BYTES as usize],
+        )
+        .unwrap()
+        .encode()
+        .unwrap()
+    }
+
     fn certificate(
         state: C6ClientState,
         slot: u32,
@@ -2130,7 +2180,7 @@ mod tests {
         proof_len: usize,
     ) -> C6FinalCertificate {
         let retained_transcript = vec![0xa5; retained_len];
-        let wrapper_proof = vec![0x5a; proof_len];
+        let wrapper_proof = response_proof_envelope(proof_len);
         let workload = workload(state);
         let mut certificate = C6FinalCertificate {
             version: C6_CERTIFICATE_VERSION,
@@ -2314,10 +2364,10 @@ mod tests {
         let state = genesis(digest(20));
         let certificate = certificate(state, 0, digest(21), paired_ranges(0), 37, 41);
         let bytes = certificate.encode().unwrap();
-        assert_eq!(bytes.len(), 935);
+        assert_eq!(bytes.len(), 21_582);
         assert_eq!(
             hex_digest(certificate.digest().unwrap()),
-            "454a4482ab3329fc5991d127a812f94c1f664348c2872e358c6322f8465ca8c1"
+            "509ebe2c4cfc9a6a1b50d5a69ac99c3fc83d60a990cf29665878403e3b207735"
         );
         assert_eq!(state.encode().unwrap().len(), 308);
         assert_eq!(
@@ -2325,6 +2375,15 @@ mod tests {
             "87f19b92d8e7a1370cd2b15c81ac4bccaf426933b0dd6512f234e903798b6d6b"
         );
         assert_eq!(C6FinalCertificate::decode(&bytes).unwrap(), certificate);
+
+        let mut opaque_legacy = certificate.clone();
+        opaque_legacy.wrapper_proof = vec![0x5a; 128];
+        opaque_legacy.wrapper_proof_digest =
+            hash_parts(b"volta-zk/c6/wrapper-proof/v1", &[&opaque_legacy.wrapper_proof]);
+        let statement = opaque_legacy.compute_transition_statement_digest();
+        opaque_legacy.transition_statement_digest = statement;
+        opaque_legacy.new_head.producer_transition_digest = statement;
+        assert!(opaque_legacy.validate().is_err());
 
         let mut trailing = bytes.clone();
         trailing.push(0);
@@ -2406,24 +2465,30 @@ mod tests {
     fn pi_final_cap_includes_certificate_framing_and_public_claims() {
         let state = genesis(digest(28));
         let mut certificate = certificate(state, 0, digest(29), paired_ranges(0), 1, 1);
-        let framing = certificate.new_payload_bytes().unwrap() - 1;
-        let maximum_proof_len = usize::try_from(C6_ROOFLINE_PI_FINAL_MAX_BYTES - framing).unwrap();
-        certificate.wrapper_proof = vec![0x5a; maximum_proof_len];
+        certificate.wrapper_proof = maximum_response_proof_envelope();
         certificate.wrapper_proof_digest =
             hash_parts(b"volta-zk/c6/wrapper-proof/v1", &[&certificate.wrapper_proof]);
         let statement = certificate.compute_transition_statement_digest();
         certificate.transition_statement_digest = statement;
         certificate.new_head.producer_transition_digest = statement;
-        assert_eq!(certificate.new_payload_bytes().unwrap(), C6_ROOFLINE_PI_FINAL_MAX_BYTES);
-        assert_eq!(C6_RETAINED_Q121_BASELINE_BYTES + C6_ROOFLINE_PI_FINAL_MAX_BYTES, 33_586_456);
+        assert_eq!(certificate.wrapper_proof.len() as u64, C6_RESPONSE_PROOF_ENVELOPE_MAX_BYTES);
+        assert_eq!(certificate.new_payload_bytes().unwrap(), C6_STRICT_PI_FINAL_MAX_BYTES);
+        assert_eq!(C6_STRICT_PI_FINAL_MAX_BYTES, 3_920_359);
+        assert_eq!(C6_STRICT_RESPONSE_MAX_BYTES, 33_096_991);
+        assert!(C6_STRICT_PI_FINAL_MAX_BYTES <= C6_ROOFLINE_PI_FINAL_MAX_BYTES);
+        assert_eq!(C6_RETAINED_Q121_BASELINE_BYTES + C6_ROOFLINE_PI_FINAL_MAX_BYTES, 33_656_098);
+        assert!(certificate.validate().is_ok());
 
-        certificate.wrapper_proof.push(0x5a);
-        certificate.wrapper_proof_digest =
-            hash_parts(b"volta-zk/c6/wrapper-proof/v1", &[&certificate.wrapper_proof]);
-        let statement = certificate.compute_transition_statement_digest();
-        certificate.transition_statement_digest = statement;
-        certificate.new_head.producer_transition_digest = statement;
-        assert!(certificate.validate().is_err());
+        assert!(C6ResponseProofEnvelope::new(
+            vec![0x51; C6_RESPONSE_RESIDUAL_SUMCHECK_MAX_BYTES as usize],
+            vec![0x52; C6_RESPONSE_RESIDUAL_PENDING_BYTES as usize],
+            vec![0x53; C6_RESPONSE_HIDDEN_U_MAX_BYTES as usize],
+            vec![0x54; C6_RESPONSE_CACHE_SOURCE_BYTES as usize],
+            vec![0x55; C6_RESPONSE_CACHE_BLIND_MAX_BYTES as usize],
+            vec![0x56; C6_RESPONSE_CACHE_FOLD_TARGET_BYTES as usize],
+            vec![0x57; C6_RESPONSE_AUTHENTICATED_LINK_MAX_BYTES as usize + 1],
+        )
+        .is_err());
     }
 
     #[test]

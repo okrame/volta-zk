@@ -66,6 +66,8 @@ pub const C6_RESIDUAL_BLIND_CORE_FULL_CORRELATIONS_PER_TAPE: u64 =
     C6_RESIDUAL_SUMCHECK_REPETITIONS as u64 * CORE_FULL_CORRELATIONS_PER_REPETITION_PER_TAPE;
 pub const C6_RESIDUAL_BLIND_PENDING_FULL_CORRELATIONS_PER_TAPE: u64 =
     C6_RESIDUAL_SUMCHECK_REPETITIONS as u64 * C6_RESIDUAL_TABLES_PER_REPETITION as u64;
+pub const C6_RESIDUAL_BLIND_PENDING_BYTES: u64 =
+    C6_RESIDUAL_BLIND_PENDING_FULL_CORRELATIONS_PER_TAPE * PENDING_CORRECTION_BYTES_PER_CLAIM;
 pub const C6_RESIDUAL_BLIND_FULL_CORRELATIONS_PER_TAPE: u64 =
     C6_RESIDUAL_BLIND_CORE_FULL_CORRELATIONS_PER_TAPE
         + C6_RESIDUAL_BLIND_PENDING_FULL_CORRELATIONS_PER_TAPE;
@@ -670,27 +672,56 @@ impl C6BlindResidualPendingDescriptor {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct C6BlindResidualPendingTransfer {
-    descriptor: C6BlindResidualPendingDescriptor,
-    corrections: [Fp2; MAC_TAPES],
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6BlindResidualPendingTransferFrame {
-    entries: Vec<C6BlindResidualPendingTransfer>,
+    corrections: Vec<[Fp2; MAC_TAPES]>,
 }
 
 impl C6BlindResidualPendingTransferFrame {
     pub fn len(&self) -> usize {
-        self.entries.len()
+        self.corrections.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
+        self.corrections.is_empty()
     }
 
     pub fn correction_wire_bytes(&self) -> u64 {
-        self.entries.len() as u64 * PENDING_CORRECTION_BYTES_PER_CLAIM
+        self.corrections.len() as u64 * PENDING_CORRECTION_BYTES_PER_CLAIM
+    }
+
+    /// Canonical wire is corrections only.  Statement owners, table kinds
+    /// and evaluation points are reconstructed by the designated verifier
+    /// from the already-bound statements and round challenges.
+    pub fn encode(&self) -> Result<Vec<u8>> {
+        validate_pending_correction_census(self)?;
+        let mut bytes = Vec::with_capacity(C6_RESIDUAL_BLIND_PENDING_BYTES as usize);
+        for correction in &self.corrections {
+            for value in correction {
+                encode_fp2(&mut bytes, *value);
+            }
+        }
+        debug_assert_eq!(bytes.len() as u64, C6_RESIDUAL_BLIND_PENDING_BYTES);
+        Ok(bytes)
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self> {
+        if bytes.len() as u64 != C6_RESIDUAL_BLIND_PENDING_BYTES {
+            return Err(C6BlindResidualError::new(
+                "C6RSC3 pending correction frame length mismatch",
+            ));
+        }
+        let mut cursor = Cursor::new(bytes);
+        let mut corrections =
+            Vec::with_capacity(C6_RESIDUAL_BLIND_PENDING_FULL_CORRELATIONS_PER_TAPE as usize);
+        for _ in 0..C6_RESIDUAL_BLIND_PENDING_FULL_CORRELATIONS_PER_TAPE {
+            corrections.push([cursor.fp2()?, cursor.fp2()?]);
+        }
+        if !cursor.is_eof() {
+            return Err(C6BlindResidualError::new("trailing C6RSC3 pending correction bytes"));
+        }
+        let frame = Self { corrections };
+        validate_pending_correction_census(&frame)?;
+        Ok(frame)
     }
 }
 
@@ -1656,7 +1687,7 @@ fn fused_affine_pair(values: &[Fp2], pair: usize, at: Fp2) -> Fp2 {
 struct C6BlindResidualProverRepetitionOutput {
     proof: C6BlindResidualRepetitionProof,
     pending_claims: Vec<C6BlindResidualPendingClaimProver>,
-    pending_transfers: Vec<C6BlindResidualPendingTransfer>,
+    pending_transfers: Vec<[Fp2; MAC_TAPES]>,
     challenges: Vec<Fp2>,
     reference_proof: Option<C6ResidualSumcheckRepetitionProof>,
     opening_claims: Vec<C6ResidualOpeningClaim>,
@@ -1878,7 +1909,7 @@ pub fn prove_c6_blind_residual_sumchecks_fused(
     transcript.append("c6_residual_blind_framing", 32);
     let proof = C6BlindResidualSumcheckProof { repetitions: repetition_proofs };
     proof.validate_shape(statements)?;
-    let frame = C6BlindResidualPendingTransferFrame { entries: pending_transfers };
+    let frame = C6BlindResidualPendingTransferFrame { corrections: pending_transfers };
     validate_pending_frame_shape(statements, &frame)?;
     Ok((proof, frame, C6BlindResidualPendingClaimsProver { claims: pending_claims }))
 }
@@ -1959,7 +1990,7 @@ fn prove_c6_blind_residual_sumchecks_reference_inner(
     transcript.append("c6_residual_blind_framing", 32);
     let proof = C6BlindResidualSumcheckProof { repetitions: repetition_proofs };
     proof.validate_shape(statements)?;
-    let frame = C6BlindResidualPendingTransferFrame { entries: pending_transfers };
+    let frame = C6BlindResidualPendingTransferFrame { corrections: pending_transfers };
     validate_pending_frame_shape(statements, &frame)?;
     Ok((
         proof,
@@ -1978,7 +2009,7 @@ fn authenticate_pending_prover_claims(
     clear_claims: &[C6ResidualOpeningClaim],
     streams: &mut [CorrelationStream; MAC_TAPES],
     transcript: &mut Transcript,
-) -> Result<(Vec<C6BlindResidualPendingClaimProver>, Vec<C6BlindResidualPendingTransfer>)> {
+) -> Result<(Vec<C6BlindResidualPendingClaimProver>, Vec<[Fp2; MAC_TAPES]>)> {
     if clear_claims.len() != C6_RESIDUAL_TABLES_PER_REPETITION {
         return Err(C6BlindResidualError::new("C6RSC3 pending claim census mismatch"));
     }
@@ -2015,10 +2046,7 @@ fn authenticate_pending_prover_claims(
             descriptor: descriptors[index].clone(),
             auth: [auths[0][index], auths[1][index]],
         });
-        transfers.push(C6BlindResidualPendingTransfer {
-            descriptor: descriptors[index].clone(),
-            corrections: [corrections[0][index], corrections[1][index]],
-        });
+        transfers.push([corrections[0][index], corrections[1][index]]);
     }
     Ok((pending, transfers))
 }
@@ -2186,7 +2214,7 @@ where
         ));
     }
     transcript.append("c6_residual_blind_framing", PROOF_FIXED_FRAMING_BYTES - 32);
-    let mut accepted_pending = Vec::with_capacity(pending_frame.entries.len());
+    let mut accepted_pending = Vec::with_capacity(pending_frame.corrections.len());
     for (statement, repetition_proof) in statements.iter().zip(&proof.repetitions) {
         let repetition = statement.repetition();
         let mut leaf_states: [VerifierFamilyAuthState; MAC_TAPES] =
@@ -2279,7 +2307,7 @@ where
         let frame_end = frame_start + C6_RESIDUAL_TABLES_PER_REPETITION;
         let local_pending = authenticate_pending_verifier_claims(
             statement,
-            &pending_frame.entries[frame_start..frame_end],
+            &pending_frame.corrections[frame_start..frame_end],
             &points,
             contexts,
             transcript,
@@ -2377,28 +2405,56 @@ pub fn verify_c6_blind_residual_sumchecks_fused_scaled(
 
 fn authenticate_pending_verifier_claims(
     statement: &C6BlindResidualStatement,
-    transfers: &[C6BlindResidualPendingTransfer],
+    corrections: &[[Fp2; MAC_TAPES]],
     common_point: &[Fp2],
     contexts: &mut [VerifierCtx; MAC_TAPES],
     transcript: &mut Transcript,
 ) -> Result<Vec<C6BlindResidualPendingClaimVerifier>> {
-    validate_pending_transfer_descriptors(statement, transfers, common_point)?;
+    if corrections.len() != C6_RESIDUAL_TABLES_PER_REPETITION
+        || common_point.len() != statement.leaf_rounds()
+    {
+        return Err(C6BlindResidualError::new(
+            "C6RSC3 local pending correction/point census mismatch",
+        ));
+    }
+    let auxiliary_point = &common_point[common_point.len() - statement.auxiliary_rounds()..];
+    let descriptors = (0..corrections.len())
+        .map(|index| {
+            let (family, table, point) = if index < C6_RESIDUAL_LEAF_TABLES_PER_REPETITION {
+                (C6ResidualSumcheckFamily::LeafRaw, statement.leaf_tables()[index], common_point)
+            } else {
+                let auxiliary_index = index - C6_RESIDUAL_LEAF_TABLES_PER_REPETITION;
+                (
+                    C6ResidualSumcheckFamily::Auxiliary,
+                    statement.auxiliary_tables()[auxiliary_index],
+                    auxiliary_point,
+                )
+            };
+            C6BlindResidualPendingDescriptor {
+                statement_digest: statement.digest,
+                repetition: statement.repetition(),
+                family,
+                table,
+                point: point.to_vec(),
+            }
+        })
+        .collect::<Vec<_>>();
     let mut keys: [Vec<VerifierKey>; MAC_TAPES] = array::from_fn(|_| Vec::new());
     for tape in 0..MAC_TAPES {
-        let corrections = transfers.iter().map(|entry| entry.corrections[tape]).collect::<Vec<_>>();
+        let tape_corrections = corrections.iter().map(|entry| entry[tape]).collect::<Vec<_>>();
         let domain =
             correlation_domain(statement.repetition(), tape, CorrelationPurpose::PendingClaims, 0)?;
-        keys[tape] = contexts[tape].correct_full_verifier_keys(domain, &corrections);
+        keys[tape] = contexts[tape].correct_full_verifier_keys(domain, &tape_corrections);
     }
     transcript.append(
         "c6_residual_pending_transfers",
-        transfers.len() as u64 * PENDING_CORRECTION_BYTES_PER_CLAIM,
+        corrections.len() as u64 * PENDING_CORRECTION_BYTES_PER_CLAIM,
     );
-    Ok(transfers
+    Ok(descriptors
         .iter()
         .enumerate()
-        .map(|(index, transfer)| C6BlindResidualPendingClaimVerifier {
-            descriptor: transfer.descriptor.clone(),
+        .map(|(index, descriptor)| C6BlindResidualPendingClaimVerifier {
+            descriptor: descriptor.clone(),
             keys: [keys[0][index], keys[1][index]],
         })
         .collect())
@@ -2615,38 +2671,14 @@ fn validate_pending_frame_shape(
     frame: &C6BlindResidualPendingTransferFrame,
 ) -> Result<()> {
     validate_statement_pair(statements)?;
-    if frame.entries.len() != C6_RESIDUAL_SUMCHECK_REPETITIONS * C6_RESIDUAL_TABLES_PER_REPETITION {
-        return Err(C6BlindResidualError::new("C6RSC3 pending transfer frame census mismatch"));
-    }
-    for (statement, entries) in
-        statements.iter().zip(frame.entries.chunks_exact(C6_RESIDUAL_TABLES_PER_REPETITION))
-    {
-        for (index, entry) in entries.iter().enumerate() {
-            validate_pending_descriptor(statement, index, &entry.descriptor)?;
-        }
-    }
-    Ok(())
+    validate_pending_correction_census(frame)
 }
 
-fn validate_pending_transfer_descriptors(
-    statement: &C6BlindResidualStatement,
-    transfers: &[C6BlindResidualPendingTransfer],
-    common_point: &[Fp2],
-) -> Result<()> {
-    if transfers.len() != C6_RESIDUAL_TABLES_PER_REPETITION {
-        return Err(C6BlindResidualError::new("C6RSC3 local pending transfer census mismatch"));
-    }
-    let auxiliary_point = &common_point[common_point.len() - statement.auxiliary_rounds()..];
-    for (index, transfer) in transfers.iter().enumerate() {
-        validate_pending_descriptor(statement, index, &transfer.descriptor)?;
-        let expected_point = if index < C6_RESIDUAL_LEAF_TABLES_PER_REPETITION {
-            common_point
-        } else {
-            auxiliary_point
-        };
-        if transfer.descriptor.point != expected_point {
-            return Err(C6BlindResidualError::new("C6RSC3 pending transfer point mismatch"));
-        }
+fn validate_pending_correction_census(frame: &C6BlindResidualPendingTransferFrame) -> Result<()> {
+    if frame.corrections.len()
+        != C6_RESIDUAL_SUMCHECK_REPETITIONS * C6_RESIDUAL_TABLES_PER_REPETITION
+    {
+        return Err(C6BlindResidualError::new("C6RSC3 pending correction frame census mismatch"));
     }
     Ok(())
 }
@@ -2874,7 +2906,7 @@ mod tests {
     #[cfg(feature = "c6-trace")]
     use volta_proto::{
         build_c6_residual_fused_scaled_fixture, build_c6_response_residual_fixture,
-        C6ResidualFusedCoefficientArena,
+        C6ResidualFusedCoefficientArena, C6ResponseProofEnvelope, C6_RESPONSE_CACHE_SOURCE_BYTES,
     };
 
     const LEAF_ROUNDS: usize = 5;
@@ -3068,6 +3100,20 @@ mod tests {
         );
         assert_eq!(fixture.frame.len(), 48);
         assert_eq!(fixture.frame.correction_wire_bytes(), 1_536);
+        assert_eq!(C6_RESIDUAL_BLIND_PENDING_BYTES, 1_536);
+        let pending_bytes = fixture.frame.encode().unwrap();
+        assert_eq!(pending_bytes.len() as u64, C6_RESIDUAL_BLIND_PENDING_BYTES);
+        assert_eq!(
+            C6BlindResidualPendingTransferFrame::decode(&pending_bytes).unwrap(),
+            fixture.frame
+        );
+        assert!(C6BlindResidualPendingTransferFrame::decode(
+            &pending_bytes[..pending_bytes.len() - 1]
+        )
+        .is_err());
+        let mut noncanonical_pending = pending_bytes;
+        noncanonical_pending[..8].copy_from_slice(&P.to_le_bytes());
+        assert!(C6BlindResidualPendingTransferFrame::decode(&noncanonical_pending).is_err());
         assert_eq!(fixture.pending.len(), 48);
         assert_ne!(
             fixture.proof.repetitions[0].tapes[0].leaf_round_corrections[0],
@@ -3181,12 +3227,12 @@ mod tests {
         assert!(verify_fixture(&fixture, &zero_tag, &fixture.frame).is_err());
 
         let mut pending = fixture.frame.clone();
-        pending.entries[7].corrections[1] += Fp2::ONE;
+        pending.corrections[7][1] += Fp2::ONE;
         assert!(verify_fixture(&fixture, &fixture.proof, &pending).is_err());
 
-        let mut owner = fixture.frame.clone();
-        owner.entries.swap(0, 1);
-        assert!(verify_fixture(&fixture, &fixture.proof, &owner).is_err());
+        let mut correction_order = fixture.frame.clone();
+        correction_order.corrections.swap(0, 1);
+        assert!(verify_fixture(&fixture, &fixture.proof, &correction_order).is_err());
 
         let mut tape_swap = fixture.proof.clone();
         tape_swap.repetitions[0].tapes.swap(0, 1);
@@ -3470,16 +3516,12 @@ mod tests {
         let mut wrong_semantic_proof = fused_proof.clone();
         wrong_semantic_proof.repetitions[0].statement_digest =
             wrong_semantic_statements[0].digest();
-        let mut wrong_semantic_frame = fused_frame.clone();
-        for entry in &mut wrong_semantic_frame.entries[..C6_RESIDUAL_TABLES_PER_REPETITION] {
-            entry.descriptor.statement_digest = wrong_semantic_statements[0].digest();
-        }
         let mut wrong_semantic_contexts = verifier_contexts();
         let mut wrong_semantic_transcript = Transcript::new(CHALLENGE_SEED);
         assert!(verify_c6_blind_residual_sumchecks_fused_scaled(
             &wrong_semantic_statements,
             &wrong_semantic_proof,
-            &wrong_semantic_frame,
+            &fused_frame,
             compiler,
             &mut wrong_semantic_contexts,
             &mut wrong_semantic_transcript,
@@ -3544,6 +3586,35 @@ mod tests {
         assert_eq!(arena.peak_reserved_elements(), 4_194_304);
         assert_eq!(arena.peak_bytes(), 67_108_864);
         assert!(!arena.is_faulted());
+
+        let response_envelope = C6ResponseProofEnvelope::new(
+            proof.encode(&statements).unwrap(),
+            frame.encode().unwrap(),
+            vec![0x61],
+            vec![0x62; C6_RESPONSE_CACHE_SOURCE_BYTES as usize],
+            vec![0x63],
+            fixture.cache_fold_target_frame().to_vec(),
+            vec![0x64],
+        )
+        .unwrap();
+        let response_envelope =
+            C6ResponseProofEnvelope::decode(&response_envelope.encode().unwrap()).unwrap();
+        assert_eq!(
+            C6BlindResidualSumcheckProof::decode(
+                &statements,
+                response_envelope.residual_sumcheck(),
+            )
+            .unwrap(),
+            proof
+        );
+        assert_eq!(
+            C6BlindResidualPendingTransferFrame::decode(
+                response_envelope.residual_pending_corrections(),
+            )
+            .unwrap(),
+            frame
+        );
+        assert_eq!(response_envelope.cache_fold_targets(), fixture.cache_fold_target_frame());
 
         let residual_verifier_start = std::time::Instant::now();
         let verifier_pending_len = {

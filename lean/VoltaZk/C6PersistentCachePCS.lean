@@ -142,6 +142,58 @@ theorem c6_persistent_cache_two_repetition_numerator_lt_2_pow_12 :
   rw [c6_persistent_cache_two_repetition_numerator]
   norm_num
 
+/-!
+The direct layout checkpoint above counted the sumcheck and batching roots
+but did not yet instantiate the pointwise transition test.  An unweighted
+sum of cell residuals admits cancellation.  The blind adapter therefore
+fixes one independent 24-coordinate relation point after all cache and
+response-output roots, and proves the equality-weighted residual by the same
+24-round degree-two sumcheck.  This adds 24 Schwartz--Zippel roots but no
+wire field.
+-/
+
+def c6PersistentCacheRelationPointRoots : Nat := 24
+
+def c6PersistentCacheBlindRoots : Nat :=
+  c6PersistentCacheRoots + c6PersistentCacheRelationPointRoots
+
+def c6PersistentCacheBlindTwoRepetitionNumerator : Nat :=
+  c6PersistentCacheBlindRoots ^ 2
+
+theorem c6_persistent_cache_blind_root_census :
+    c6PersistentCacheBlindRoots = 77 := by
+  norm_num [c6PersistentCacheBlindRoots,
+    c6PersistentCacheRelationPointRoots, c6PersistentCacheRoots,
+    c6PersistentCacheDegree, c6PersistentCacheRounds,
+    c6PersistentCacheRelationRoots, c6PersistentCacheKvBatchRoots,
+    c6PersistentCacheTerminalRoots]
+
+theorem c6_persistent_cache_blind_root_census_le_conservative :
+    c6PersistentCacheBlindRoots ≤ 2 ^ 32 := by
+  rw [c6_persistent_cache_blind_root_census]
+  norm_num
+
+theorem c6_persistent_cache_blind_two_repetition_numerator :
+    c6PersistentCacheBlindTwoRepetitionNumerator = 5929 := by
+  norm_num [c6PersistentCacheBlindTwoRepetitionNumerator,
+    c6_persistent_cache_blind_root_census]
+
+theorem c6_persistent_cache_blind_two_repetition_numerator_lt_2_pow_13 :
+    c6PersistentCacheBlindTwoRepetitionNumerator < 2 ^ 13 := by
+  rw [c6_persistent_cache_blind_two_repetition_numerator]
+  norm_num
+
+theorem c6_persistent_cache_blind_two_repetition_card_le
+    {Omega0 Omega1 : Type*}
+    [DecidableEq Omega0] [DecidableEq Omega1]
+    (bad0 : Finset Omega0) (bad1 : Finset Omega1)
+    (h0 : bad0.card ≤ c6PersistentCacheBlindRoots)
+    (h1 : bad1.card ≤ c6PersistentCacheBlindRoots) :
+    (c6IndependentPairAccepting bad0 bad1).card
+      ≤ c6PersistentCacheBlindTwoRepetitionNumerator := by
+  simpa [c6PersistentCacheBlindTwoRepetitionNumerator] using
+    (c6_independent_pair_accepting_card_le bad0 bad1 h0 h1)
+
 /-- The two cache-transition repetitions use independent complete challenge
 tapes, so their accepting-set numerator squares. -/
 theorem c6_persistent_cache_two_repetition_card_le

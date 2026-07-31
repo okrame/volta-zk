@@ -3430,20 +3430,19 @@ precombined as public multilinear coefficient tables.  The resulting cache
 identity has 24 rounds and maximum per-variable degree two.  One fresh K/V
 batching root and three complete-relation batching roots precede its
 sumcheck; one terminal authenticated-output root joins its terminal claims to
-the packed opening.  The exact complete-repetition census is therefore
+the packed opening.  Before the blind adapter, these components gave the
+preliminary subtotal
 
 ```text
 2*24 degree-round roots + 3 relation roots + 1 K/V root + 1 terminal root
     = 53 roots,
-two independent repetitions: epsilon_cache <= 53^2 / |Fp2|^2
-    = 2,809 / |Fp2|^2
-    = 244.544159... bits.
 ```
 
-This sharper census fits inside, and does not spend beyond, the already named
-cache event's conservative `(2^32)^2/|Fp2|^2` allocation.  Commitment/hash
-binding remains a separately named computational assumption and is not
-converted into statistical bits.
+The adapter audit found that this subtotal omitted the challenge needed to
+prevent cancellation between invalid cells.  Section 6.1.1 below supersedes
+the complete cache-event count with 77 roots.  Commitment/hash binding
+remains a separately named computational assumption and is not converted
+into statistical bits.
 
 The packed profile consequently has six initial root groups and 72 active
 polynomials per repetition:
@@ -3505,9 +3504,11 @@ may be reclassified and no response-removal or prover-time credit is earned.
 The additive formal and first scaled-reference gates are now green.  The new
 `C6PersistentCachePCS.lean` descendant proves the exact live/padded capacity,
 append refinement, context cap, successor uniqueness under an explicit
-injective commitment premise, `53^2=2,809`, and the 72-relation/149-root
-authenticated-output-link specialization.  Full Lean builds **3,261 jobs**;
-the derived audit covers **331 total / 92 C6 named targets**, with zero
+injective commitment premise, the preliminary `53^2=2,809` subtotal, and the
+72-relation/149-root authenticated-output-link specialization.  Section
+6.1.1 adds the blind-adapter soundness repair.  Full Lean builds
+**3,261 jobs** after that additive repair;
+the derived audit covers **336 total / 97 C6 named targets**, with zero
 `sorry`/`admit` and only `propext`, `Classical.choice` and `Quot.sound`.
 
 The additive Rust module `c6_persistent_cache` freezes a strict **184-B**
@@ -3551,6 +3552,75 @@ total**.  The increase from the historical 48 is solely the newly materialized
 predecessor cohort; it earns no protocol credit.  Replacing all 64 with the
 blind cache transition's typed outputs, then removing `CacheSegK`, remains the
 next ordered gate.
+
+### 6.1.1 Blind transition pointwise-soundness amendment
+
+The pre-adapter `53`-root subtotal is not the complete blind transition
+event.  A protocol that proves only
+
+```text
+sum_x transition_residual(x) = 0
+```
+
+is invalid: two bad cells can cancel.  Before any blind-cache Rust, C6 fixes
+one independent relation point `a in Fp2^24` after both cache roots and all
+response-output roots.  The cache prover must instead reduce
+
+```text
+sum_x eq(a,x) * transition_residual(x)
+```
+
+through the 24-round degree-two sumcheck.  The 24 coordinates of `a` are
+verifier-owned transcript challenges.  They add no proof or setup bytes but
+do add 24 Schwartz--Zippel roots to the cache event.  The exact complete
+count is therefore
+
+```text
+48 degree-round roots + 24 relation-point roots
+  + 3 complete-relation batching roots + 1 K/V root + 1 terminal root
+  = 77 roots per repetition,
+two independent repetitions: epsilon_cache <= 77^2 / |Fp2|^2
+  = 5,929 / |Fp2|^2 = 243.466... bits.
+```
+
+This remains far below the frozen conservative
+`(2^32)^2/|Fp2|^2` cache allocation.  Consequently Q=121 complete
+soundness, the 149-root packed link, setup, response roofline and every time
+screen are unchanged.
+
+The three relation batching roots own, in canonical order: the pointwise
+predecessor/successor append transition; the predecessor-cache attention
+functionals; and the current-slab/output functionals.  One K/V root batches
+the two cache kinds inside each relation.  The client derives all coefficient
+tables and source aggregates from the public workload, runtime fold schedule
+and authenticated response outputs.  An implementation may stream those
+tables, but may not accept provider-authored coefficients or replace the
+equality weighting with an unweighted sum.
+
+The cache adapter owns predecessor and successor slots 0--1 as live pending
+terminal evaluations.  Slots 2--7 in both cache cohorts and wrapper
+auxiliary slots 16--31 are canonical public-zero pending constraints, not
+arbitrary fillers.  Thus each repetition has four live cache terminal
+corrections and 28 zero claims.  A strict reference `C6PC2` codec is capped
+at 24 rounds, two tapes and two repetitions:
+
+```text
+fixed header and terminal digest                                      48 B
+2 repetition prefixes                                                 66 B
+2 * 24 rounds * 2 endpoints * 2 tapes * 16 B                       3,072 B
+2 * 4 live terminals * 2 tapes * 16 B                                256 B
+2 repetitions * 2 tape terminal ZeroOpen tags * 16 B                  64 B
+total                                                               3,506 B.
+```
+
+It consumes exactly `2 * (24*2 + 4) = 104` full correlations per tape.
+Existing authenticated append/fold sources are linearly reused and consume
+no replacement correction.  The first Rust gate may use a scaled compiled
+relation, but it must exercise all three relation owners, produce the four
+live plus 28 zero pending claims per repetition, enter `C6LNK2`, and reject
+unweighted/canceling, wrong-point, wrong-owner and wrong-source-schedule
+mutations.  Production geometry must remain streaming and fail closed rather
+than materialize `2^24` coefficient tables.
 
 ### 6.2 Continuation-prefill and cache-fold source-map seam
 

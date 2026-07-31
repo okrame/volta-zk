@@ -30,8 +30,9 @@ pub const C6_PERSISTENT_CACHE_LIVE_ENTRIES: u64 = 9_437_184;
 pub const C6_PERSISTENT_CACHE_SLOT_CAPACITY: u64 = 1 << 24;
 pub const C6_PERSISTENT_CACHE_ROUNDS: u8 = 24;
 pub const C6_PERSISTENT_CACHE_DEGREE: u8 = 2;
-pub const C6_PERSISTENT_CACHE_ROOTS_PER_REPETITION: u64 = 53;
-pub const C6_PERSISTENT_CACHE_EVENT_NUMERATOR: u64 = 2_809;
+pub const C6_PERSISTENT_CACHE_RELATION_POINT_ROOTS: u64 = 24;
+pub const C6_PERSISTENT_CACHE_ROOTS_PER_REPETITION: u64 = 77;
+pub const C6_PERSISTENT_CACHE_EVENT_NUMERATOR: u64 = 5_929;
 pub const C6_PERSISTENT_LINK_RELATIONS: u64 = 72;
 pub const C6_PERSISTENT_LINK_ROOTS_PER_REPETITION: u64 = 149;
 pub const C6_BLIND_HIDDEN_PLUS_PERSISTENT_LINK_NUMERATOR: u64 = 28_926;
@@ -933,8 +934,9 @@ mod tests {
             std::hint::black_box(C6_PERSISTENT_CACHE_LIVE_ENTRIES)
                 <= C6_PERSISTENT_CACHE_SLOT_CAPACITY
         );
-        assert_eq!(C6_PERSISTENT_CACHE_ROOTS_PER_REPETITION, 53);
-        assert_eq!(C6_PERSISTENT_CACHE_EVENT_NUMERATOR, 53 * 53);
+        assert_eq!(C6_PERSISTENT_CACHE_RELATION_POINT_ROOTS, 24);
+        assert_eq!(C6_PERSISTENT_CACHE_ROOTS_PER_REPETITION, 77);
+        assert_eq!(C6_PERSISTENT_CACHE_EVENT_NUMERATOR, 77 * 77);
         assert_eq!(C6_PERSISTENT_LINK_RELATIONS + 3 * 25 + 2, 149);
         assert_eq!(C6_BLIND_HIDDEN_PLUS_PERSISTENT_LINK_NUMERATOR, 6_725 + 149 * 149);
         assert!(std::hint::black_box(C6_BLIND_HIDDEN_PLUS_PERSISTENT_LINK_NUMERATOR) < 1 << 15);
@@ -1081,7 +1083,7 @@ mod tests {
         assert_eq!(audit.checked_read_sources, 2);
         assert_eq!(audit.checked_append_sources, 12);
         assert_eq!(audit.pointwise_relation_rows, 64);
-        assert_eq!(audit.roots_per_repetition, 53);
+        assert_eq!(audit.roots_per_repetition, 77);
     }
 
     #[test]

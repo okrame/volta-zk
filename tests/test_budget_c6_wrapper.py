@@ -129,9 +129,9 @@ def test_s86_is_selected_before_benchmark_and_all_events_exceed_128_bits() -> No
         "239.99"
     )
     assert Decimal(soundness["event_bits"]["cache_argument"]) > Decimal("191.99")
-    assert soundness["cache_transition_roots_per_repetition"] == 53
-    assert soundness["cache_transition_event_numerator"] == 2_809
-    assert Decimal(soundness["cache_transition_exact_bits"]) > Decimal("244.54")
+    assert soundness["cache_transition_roots_per_repetition"] == 77
+    assert soundness["cache_transition_event_numerator"] == 5_929
+    assert Decimal(soundness["cache_transition_exact_bits"]) > Decimal("243.46")
     assert (
         soundness[
             "residual_sumcheck_degree_rounds_per_complete_proof_repetition"

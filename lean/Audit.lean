@@ -347,6 +347,11 @@ vector-RLC bounds from being mistaken for implementation bounds.
 #print axioms VoltaZk.c6_persistent_cache_two_repetition_numerator
 #print axioms VoltaZk.c6_persistent_cache_two_repetition_numerator_lt_2_pow_12
 #print axioms VoltaZk.c6_persistent_cache_two_repetition_card_le
+#print axioms VoltaZk.c6_persistent_cache_blind_root_census
+#print axioms VoltaZk.c6_persistent_cache_blind_root_census_le_conservative
+#print axioms VoltaZk.c6_persistent_cache_blind_two_repetition_numerator
+#print axioms VoltaZk.c6_persistent_cache_blind_two_repetition_numerator_lt_2_pow_13
+#print axioms VoltaZk.c6_persistent_cache_blind_two_repetition_card_le
 #print axioms VoltaZk.c6_persistent_packed_link_root_census
 #print axioms VoltaZk.c6_persistent_packed_link_two_repetition_numerator
 #print axioms VoltaZk.c6_blind_hidden_plus_persistent_link_numerator

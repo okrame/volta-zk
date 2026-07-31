@@ -339,6 +339,7 @@ vector-RLC bounds from being mistaken for implementation bounds.
 #print axioms VoltaZk.c6_cache_live_entry_census
 #print axioms VoltaZk.c6_cache_padded_geometry_is_slot_capacity
 #print axioms VoltaZk.c6_cache_live_entries_fit_slot
+#print axioms VoltaZk.c6_source_bootstrap_aggregate_corrected_key_eq
 #print axioms VoltaZk.c6_pcs_cache_transition_refines_append
 #print axioms VoltaZk.c6_pcs_cache_transition_respects_context_cap
 #print axioms VoltaZk.c6_pcs_cache_successor_unique

@@ -1,5 +1,6 @@
 import VoltaZk.C6HiddenUBlindTranscript
 import VoltaZk.C6PersistentCache
+import VoltaZk.C6ProductClosure
 import Mathlib.Tactic
 
 /-!
@@ -15,6 +16,42 @@ hypothesis.  No hash or collision-resistance axiom is introduced here.
 -/
 
 namespace VoltaZk
+
+open Finset
+
+/-!
+`C6PS1` does not authenticate new values.  It aggregates the base keys and
+the already-hidden direct-source corrections with the same public
+coefficients used by the prover.  The following identity is the complete
+algebraic seam: applying the single aggregate correction yields the MAC key
+of the correspondingly aggregated plaintext and tag.
+-/
+
+theorem c6_source_bootstrap_aggregate_corrected_key_eq
+    {F ι : Type*} [Field F] [Fintype ι]
+    (Δ : F) (α : ι → F) (source : ι → C6CorrectedSource F) :
+    (∑ i, α i * (source i).base.baseKey Δ)
+        + Δ * (∑ i, α i * (source i).d)
+      = (∑ i, α i * (source i).base.m)
+        + Δ * (∑ i, α i * (source i).x) := by
+  rw [Finset.mul_sum, ← Finset.sum_add_distrib]
+  calc
+    (∑ i, (α i * (source i).base.baseKey Δ + Δ * (α i * (source i).d))) =
+        ∑ i, α i * ((source i).correctedKey Δ) := by
+          apply Finset.sum_congr rfl
+          intro i _
+          unfold C6CorrectedSource.correctedKey
+          ring
+    _ = ∑ i, α i * ((source i).base.m + Δ * (source i).x) := by
+          apply Finset.sum_congr rfl
+          intro i _
+          rw [(source i).correctedKey_eq Δ]
+    _ = (∑ i, α i * (source i).base.m)
+        + Δ * (∑ i, α i * (source i).x) := by
+          rw [Finset.mul_sum, ← Finset.sum_add_distrib]
+          apply Finset.sum_congr rfl
+          intro i _
+          ring
 
 /-- Static fields that make a PCS cache-state commitment reusable when a
 successor becomes the next certificate's predecessor.  Dynamic response

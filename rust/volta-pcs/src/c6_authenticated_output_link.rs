@@ -1814,6 +1814,7 @@ mod tests {
     use crate::c6_persistent_cache_blind::{
         prove_c6_persistent_cache_blind_reference, verify_c6_persistent_cache_blind,
         C6PersistentCacheBlindProof, C6PersistentCacheBlindWitness, C6PersistentCacheRelationPlan,
+        C6PersistentCacheSourceBootstrapFrame, C6PersistentCacheSourceMasksProver,
         C6PersistentCacheSourcesProver, C6PersistentCacheSourcesVerifier,
     };
     use crate::c6_residual_sumcheck::{
@@ -2329,13 +2330,6 @@ mod tests {
         domain
     }
 
-    #[derive(Clone)]
-    struct CacheSourceFrame {
-        transition_append: [Vec<[Fp2; C6_AUTHENTICATED_OUTPUT_LINK_TAPES]>; 2],
-        predecessor_targets: [[Fp2; C6_AUTHENTICATED_OUTPUT_LINK_TAPES]; 2],
-        current_targets: [[Fp2; C6_AUTHENTICATED_OUTPUT_LINK_TAPES]; 2],
-    }
-
     fn authenticate_cache_source(
         streams: &mut [CorrelationStream; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
         ordinal: usize,
@@ -2345,44 +2339,44 @@ mod tests {
         [Fp2; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
     ) {
         let mut auth = [ProverAuthed::ZERO; C6_AUTHENTICATED_OUTPUT_LINK_TAPES];
-        let mut corrections = [Fp2::ZERO; C6_AUTHENTICATED_OUTPUT_LINK_TAPES];
+        let mut masks = [Fp2::ZERO; C6_AUTHENTICATED_OUTPUT_LINK_TAPES];
         for tape in 0..C6_AUTHENTICATED_OUTPUT_LINK_TAPES {
             let domain = cache_source_domain(tape, ordinal);
             let correlation = streams[tape].draw_fulls(domain, 1)[0];
             streams[tape].record_c6_fullfield_plaintexts(domain, &[value]).unwrap();
-            corrections[tape] = value - correlation.x;
+            masks[tape] = correlation.x;
             auth[tape] = correlation.authenticate(value);
         }
-        (auth, corrections)
+        (auth, masks)
     }
 
     fn cache_sources_prover(
         plan: &C6PersistentCacheRelationPlan,
         inputs: &ScaledInputs,
         streams: &mut [CorrelationStream; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
-    ) -> (C6PersistentCacheSourcesProver, CacheSourceFrame) {
+    ) -> (C6PersistentCacheSourcesProver, C6PersistentCacheSourceMasksProver) {
         let mut ordinal = 0usize;
         let mut transition_auth: [Vec<[ProverAuthed; 2]>; 2] = array::from_fn(|_| Vec::new());
-        let mut transition_corrections: [Vec<[Fp2; 2]>; 2] = array::from_fn(|_| Vec::new());
+        let mut transition_masks: [Vec<[Fp2; 2]>; 2] = array::from_fn(|_| Vec::new());
         for kv in 0..2 {
             for &value in &inputs.cache_append_values[kv] {
-                let (auth, corrections) = authenticate_cache_source(streams, ordinal, value);
+                let (auth, masks) = authenticate_cache_source(streams, ordinal, value);
                 transition_auth[kv].push(auth);
-                transition_corrections[kv].push(corrections);
+                transition_masks[kv].push(masks);
                 ordinal += 1;
             }
         }
         let mut predecessor_auth = [[ProverAuthed::ZERO; 2]; 2];
-        let mut predecessor_corrections = [[Fp2::ZERO; 2]; 2];
+        let mut predecessor_masks = [[Fp2::ZERO; 2]; 2];
         for kv in 0..2 {
-            (predecessor_auth[kv], predecessor_corrections[kv]) =
+            (predecessor_auth[kv], predecessor_masks[kv]) =
                 authenticate_cache_source(streams, ordinal, inputs.cache_predecessor_targets[kv]);
             ordinal += 1;
         }
         let mut current_auth = [[ProverAuthed::ZERO; 2]; 2];
-        let mut current_corrections = [[Fp2::ZERO; 2]; 2];
+        let mut current_masks = [[Fp2::ZERO; 2]; 2];
         for kv in 0..2 {
-            (current_auth[kv], current_corrections[kv]) =
+            (current_auth[kv], current_masks[kv]) =
                 authenticate_cache_source(streams, ordinal, inputs.cache_current_targets[kv]);
             ordinal += 1;
         }
@@ -2395,49 +2389,42 @@ mod tests {
                 current_auth,
             )
             .unwrap(),
-            CacheSourceFrame {
-                transition_append: transition_corrections,
-                predecessor_targets: predecessor_corrections,
-                current_targets: current_corrections,
-            },
+            C6PersistentCacheSourceMasksProver::new(
+                plan,
+                transition_masks,
+                predecessor_masks,
+                current_masks,
+            )
+            .unwrap(),
         )
     }
 
     fn cache_sources_verifier(
         plan: &C6PersistentCacheRelationPlan,
-        frame: &CacheSourceFrame,
         contexts: &mut [VerifierCtx; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
     ) -> C6PersistentCacheSourcesVerifier {
         let mut ordinal = 0usize;
         let mut transition_keys: [Vec<[VerifierKey; 2]>; 2] = array::from_fn(|_| Vec::new());
-        for (kv, keys) in transition_keys.iter_mut().enumerate() {
-            for corrections in &frame.transition_append[kv] {
+        for keys in &mut transition_keys {
+            for _ in 0..4 {
                 keys.push(array::from_fn(|tape| {
-                    contexts[tape].correct_full_verifier_keys(
-                        cache_source_domain(tape, ordinal),
-                        &[corrections[tape]],
-                    )[0]
+                    contexts[tape].expand_full_verifier_keys(cache_source_domain(tape, ordinal), 1)
+                        [0]
                 }));
                 ordinal += 1;
             }
         }
         let mut predecessor_keys = [[VerifierKey::ZERO; 2]; 2];
-        for (kv, keys) in predecessor_keys.iter_mut().enumerate() {
+        for keys in &mut predecessor_keys {
             *keys = array::from_fn(|tape| {
-                contexts[tape].correct_full_verifier_keys(
-                    cache_source_domain(tape, ordinal),
-                    &[frame.predecessor_targets[kv][tape]],
-                )[0]
+                contexts[tape].expand_full_verifier_keys(cache_source_domain(tape, ordinal), 1)[0]
             });
             ordinal += 1;
         }
         let mut current_keys = [[VerifierKey::ZERO; 2]; 2];
-        for (kv, keys) in current_keys.iter_mut().enumerate() {
+        for keys in &mut current_keys {
             *keys = array::from_fn(|tape| {
-                contexts[tape].correct_full_verifier_keys(
-                    cache_source_domain(tape, ordinal),
-                    &[frame.current_targets[kv][tape]],
-                )[0]
+                contexts[tape].expand_full_verifier_keys(cache_source_domain(tape, ordinal), 1)[0]
             });
             ordinal += 1;
         }
@@ -2452,7 +2439,7 @@ mod tests {
         residual_frame: C6BlindResidualPendingTransferFrame,
         hidden_proof: C6BlindHiddenUSumcheckProof,
         cache_proof: C6PersistentCacheBlindProof,
-        cache_source_frame: CacheSourceFrame,
+        cache_source_frame: C6PersistentCacheSourceBootstrapFrame,
         cache_proof_bytes: u64,
         cache_correlations_per_tape: u64,
         cache_pending_claims: u64,
@@ -2490,13 +2477,14 @@ mod tests {
         )
         .unwrap();
         let cache_plan = cache_relation_plan(&fixed, &inputs);
-        let (cache_sources, cache_source_frame) =
+        let (cache_sources, cache_source_masks) =
             cache_sources_prover(&cache_plan, &inputs, &mut streams);
-        let (cache_proof, cache_pending, cache_metrics) =
+        let (cache_proof, cache_source_frame, cache_pending, cache_metrics) =
             prove_c6_persistent_cache_blind_reference(
                 &cache_plan,
                 &inputs.cache_witness,
                 &cache_sources,
+                &cache_source_masks,
                 &mut streams,
                 &mut transcript,
             )
@@ -2582,11 +2570,11 @@ mod tests {
         )
         .unwrap();
         let cache_plan = cache_relation_plan(&fixed, &fixture.inputs);
-        let cache_sources =
-            cache_sources_verifier(&cache_plan, &fixture.cache_source_frame, &mut contexts);
+        let cache_sources = cache_sources_verifier(&cache_plan, &mut contexts);
         let cache_pending = verify_c6_persistent_cache_blind(
             &cache_plan,
             &cache_sources,
+            &fixture.cache_source_frame,
             &fixture.cache_proof,
             &mut contexts,
             &mut transcript,
@@ -2631,7 +2619,8 @@ mod tests {
     #[test]
     fn actual_residual_hidden_and_cache_pending_values_close_through_packed_link_and_pcs() {
         let fixture = prove_integrated_fixture();
-        assert_eq!(fixture.cache_proof_bytes, 1_202);
+        assert_eq!(fixture.cache_proof_bytes, 1_506);
+        assert_eq!(fixture.cache_source_frame.encode().unwrap().len(), 304);
         assert_eq!(fixture.cache_correlations_per_tape, 32);
         assert_eq!(fixture.cache_pending_claims, 64);
         assert_eq!(

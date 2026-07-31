@@ -12,9 +12,9 @@ C6RSC3 COORDINATOR + SCALED FUSED PROVER AND VECTOR-FREE CLIENT TERMINAL
 BYTE/TRANSCRIPT/PENDING DIFFERENTIAL GREEN; PACKED AUTHENTICATED-OUTPUT LINK
 AND BLIND HIDDEN-U SOURCE ADAPTER GREEN; PCS-NATIVE DUAL-ROOT PERSISTENT-CACHE
 AMENDMENT, EXACT 72-SLOT ROOFLINE AND SIX-GROUP C6LNK2 PACKED WRAPPER GREEN;
-64 TRANSITIONAL CACHE/CACHE-AUXILIARY STAND-INS REMAIN IN THE MIGRATED
-FIXTURE; CACHE PENDING ADAPTER / ARGUMENT / PRODUCTION BACKEND / FINAL
-ENVELOPE PENDING;
+POINTWISE C6PC2 AND SOURCE-BOUND C6PS1 -> C6PC2 -> C6LNK2 -> PAIRED PCS
+SCALED PATH GREEN WITH ZERO CACHE STAND-INS; PRODUCTION STREAMING COMPILER /
+`CacheSegK` REMOVAL / BACKEND / FINAL ENVELOPE PENDING;
 LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
@@ -3492,23 +3492,24 @@ is `11.1793342101 s`, leaving `0.8206657899 s` to the 12-second target,
 `3.8206657899 s` to 15 seconds and `8.8206657899 s` to the binding 20-second
 ceiling.  These are analytic projections, not measured prover walls.
 
-The next implementation gate is the exact model-global source map from
+The next production implementation gate is the exact model-global source map from
 predecessor-cache operands and response-produced K/V slabs into the cache
 relation.  It must be generated independently by the client from the static
 layout and public workload, consume no historical cache key vector, and
 leave all cache terminal values pending until the authenticated-output link
-and packed PCS accept.  Until that exact map, its pending-MAC adapter and the
-production 24-round coordinator are green, no cache/cache-auxiliary stand-in
-may be reclassified and no response-removal or prover-time credit is earned.
+and packed PCS accept.  The source-bound scaled adapter is green and has no
+cache/cache-auxiliary stand-in; the production 24-round streaming compiler
+and resident source replay remain pending, so no response-removal or
+prover-time credit is earned.
 
 The additive formal and first scaled-reference gates are now green.  The new
 `C6PersistentCachePCS.lean` descendant proves the exact live/padded capacity,
 append refinement, context cap, successor uniqueness under an explicit
 injective commitment premise, the preliminary `53^2=2,809` subtotal, and the
 72-relation/149-root authenticated-output-link specialization.  Section
-6.1.1 adds the blind-adapter soundness repair.  Full Lean builds
-**3,261 jobs** after that additive repair;
-the derived audit covers **336 total / 97 C6 named targets**, with zero
+6.1.1 adds the blind-adapter soundness repair and Section 6.1.2 adds the
+aggregate-correction identity.  Full Lean builds **3,261 jobs**;
+the derived audit covers **337 total / 98 C6 named targets**, with zero
 `sorry`/`admit` and only `propext`, `Classical.choice` and `Quot.sound`.
 
 The additive Rust module `c6_persistent_cache` freezes a strict **184-B**
@@ -3597,11 +3598,11 @@ tables, but may not accept provider-authored coefficients or replace the
 equality weighting with an unweighted sum.
 
 The cache adapter owns predecessor and successor slots 0--1 as live pending
-terminal evaluations.  Slots 2--7 in both cache cohorts and wrapper
-auxiliary slots 16--31 are canonical public-zero pending constraints, not
-arbitrary fillers.  Thus each repetition has four live cache terminal
-corrections and 28 zero claims.  A strict reference `C6PC2` codec is capped
-at 24 rounds, two tapes and two repetitions:
+terminal evaluations.  Slots 2--7 in both cache cohorts are canonical zero.
+The first scaled checkpoint also treated wrapper-auxiliary slots 16--31 as
+zero, giving four live cache terminals and 28 zero claims per repetition.
+A strict reference `C6PC2` core codec is capped at 24 rounds, two tapes and
+two repetitions:
 
 ```text
 fixed header and statement digest                                     48 B
@@ -3614,7 +3615,7 @@ total                                                               3,506 B.
 
 It consumes exactly `2 * (24*2 + 4) = 104` full correlations per tape.
 Existing authenticated append/fold sources are linearly reused and consume
-no replacement correction.  The first Rust gate may use a scaled compiled
+no replacement correlation.  The first Rust gate may use a scaled compiled
 relation, but it must exercise all three relation owners, produce the four
 live plus 28 zero pending claims per repetition, enter `C6LNK2`, and reject
 unweighted/canceling, wrong-point, wrong-owner and wrong-source-schedule
@@ -3639,7 +3640,77 @@ is rejected after equality weighting.  The materialized constructor refuses
 24 rounds, so this checkpoint provides no production memory, response-byte
 removal or prover-time credit.  The next gate must compile the same relation
 from the real runtime fold map in a streaming resident path and then remove
-`CacheSegK`.
+`CacheSegK`.  Section 6.1.2 closes the previously missing aggregate-key
+bootstrap for this scaled path without adding a pending slot.
+
+#### 6.1.2 Source-key bootstrap amendment before `CacheSegK` removal
+
+The scaled `C6PC2` fixture supplied already-corrected verifier keys for its
+append and fold-source aggregates.  That is not a production interface once
+direct corrections are hidden: the client has only the aggregate base PCG
+key and cannot reconstruct `k=m+Delta*x` from a historical corrected key.
+Regenerating `CacheSegK` or accepting a provider-authored key is forbidden.
+
+Before the production streaming compiler, C6 therefore adds one typed
+`C6PS1` source-bootstrap frame.  It carries only aggregate corrections for
+the exact authenticated sources already used by the model proof:
+
+```text
+four response-fixed fold aggregates (pred K/V, slab K/V)
+two equality-weighted append aggregates per proof repetition (K/V)
+two independent MAC tapes
+
+fixed header + statement digest                                  48 B
+(4 + 2*2) aggregates * 2 tapes * 16 B                           256 B
+total                                                           304 B.
+```
+
+The client derives every aggregate base key by streaming the same canonical
+source indices and public coefficients over its one-time PCG range, then
+applies the aggregate correction.  The provider derives the matching
+plaintext, tag and base-mask folds from the same typed sources.  No fresh
+correlation is allocated: this is a linear opening of already consumed
+one-time sources, not a replacement authentication.  The transition
+aggregate corrections are sent only after the relation point is fixed and
+are transcript-bound before the first sumcheck round.
+
+The source aggregates are authenticated **inputs** to the cache sumcheck,
+not new PCS outputs.  A tempting assignment to auxiliary slots 16--21 is
+invalid: the transition aggregate depends on the relation point sampled
+after the auxiliary commitment, creating a commit/challenge cycle.  Those
+slots therefore remain canonical zero and the pending census remains four
+live plus 28 zero claims per repetition.  The canonical direct-source
+indices and coefficient schedule determine the aggregate base key; `C6PS1`
+provides its correction, and the dual-tape `C6PC2` terminal closure rejects
+an inconsistent source authentication.  The 72-polynomial PCS profile, 149
+link roots, packed proof bytes and setup size do not change.  The
+source-bound cache package is therefore
+`3,506 + 304 = 3,810 B`; it remains inside the frozen 600,000-B non-PCS
+allocation, so the `33,656,098-B` response maximum is unchanged.
+
+The frame is not an independently acceptable proof.  Its corrected source
+keys are provisional until the same six authenticated aggregates pass the
+cache sumcheck and its four terminal outputs are accepted by `C6LNK2` plus
+both packed PCS chains.  Wrong source correction, owner, K/V kind,
+repetition, coefficient schedule or statement digest must fail closed.  This
+amendment changes no statistical event: a bad aggregate is an error in the
+already complete equality-weighted cache relation and its dual-tape terminal
+closure.
+
+The scaled implementation is now green.  `C6PS1` has a strict canonical
+**304-B** codec and binds the statement plus four response-fixed fold
+corrections before either relation point; each repetition's two append
+corrections are computed and transcript-bound after that relation point and
+before its first sumcheck round.  The verifier folds only canonical base
+keys and applies `C6PS1`; the provider folds matching source plaintexts,
+tags and base masks.  A mutation of the source frame fails the integrated
+dual-tape path.  The 6-round source-bound package is **1,506 B**, still uses
+**32 full correlations/tape**, emits **64 pending claims**, and closes through
+the real 72-slot `C6LNK2` and paired PCS fixture.  Production geometry is
+**3,810 B / 104 correlations per tape**.  Lean proves the aggregate key
+identity directly; the full audit is **337 total / 98 C6** named targets.
+This closes the scaled bootstrap only: resident source replay, the 24-round
+streaming compiler and `CacheSegK` removal remain the next gate.
 
 ### 6.2 Continuation-prefill and cache-fold source-map seam
 

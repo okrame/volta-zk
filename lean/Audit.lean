@@ -269,6 +269,8 @@ vector-RLC bounds from being mistaken for implementation bounds.
 #print axioms VoltaZk.C6CorrelationShare.authed_valid
 #print axioms VoltaZk.C6CorrectedSource.correctedKey_eq
 #print axioms VoltaZk.C6CorrectedSource.authed_valid
+#print axioms VoltaZk.c6_fold_target_corrected_key_eq
+#print axioms VoltaZk.c6_fold_target_two_stage_correction_eq
 #print axioms VoltaZk.c6_base_share_error_rlc
 #print axioms VoltaZk.c6_base_share_binding_complete
 #print axioms VoltaZk.c6_base_share_binding_sound

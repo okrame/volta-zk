@@ -16,7 +16,8 @@ POINTWISE C6PC2 AND SOURCE-BOUND C6PS1 -> C6PC2 -> C6LNK2 -> PAIRED PCS
 SCALED PATH GREEN WITH ZERO CACHE STAND-INS; FACTORIZED RUNTIME FOLD-BATCH
 COMPILER + 653-ROOT FORMAL REPAIR + STRICT C6PS1 V2 TRANSCRIPT MIGRATION GREEN;
 ROLE-TYPED RUNTIME TARGETS + STEP-WISE 24-ROUND CACHE PARTICIPANT SCALED
-GREEN; INDIVIDUAL TARGET `C6FT1` BOOTSTRAP PREREGISTERED; `CacheSegK` REMOVAL /
+GREEN; INDIVIDUAL TARGET `C6FT1` BOOTSTRAP FORMAL GATE GREEN; STRICT CODEC /
+`CacheSegK` REMOVAL /
 BACKEND / FINAL ENVELOPE PENDING;
 LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
@@ -4033,13 +4034,22 @@ remainder, not a claim that every other frame is absent.
 
 This amendment adds no statistical event.  The per-target equation is the
 same aggregate-correction identity already used by `C6PS1`; using that exact
-key in ΠProd and both cache tapes is deterministic composition.  The next
-ordered gates are: an explicit two-stage aggregate theorem/audit; strict
-`C6FT1` codec and scaled differential including ΠProd plus `C6PS1`; then a
-single-pass provider/client source-ordinal streamer that accumulates at most
-576 response-local keys/masks without retaining any per-element `CacheSegK`
-or rereading a one-time correlation as a new draw.  No wire, response-field
-removal, production-time or hardware credit is earned before those gates.
+key in ΠProd and both cache tapes is deterministic composition.
+
+The formal gate is now green.  `c6_fold_target_corrected_key_eq` specializes
+the existing aggregate identity to the individual pre-ΠProd target, and
+`c6_fold_target_two_stage_correction_eq` proves that folding those fixed
+corrections after `rho` is exactly the direct `C6PS1` correction.  Full Lean
+builds **3,261 jobs**; the audit is **347 total /108 C6** named targets,
+standard axioms only, stdout SHA-256
+`df0e4a4e7278c1f7a4f5be6ffc57d392c2aec332df80fe761fe8688ef07ada29`.
+
+The next ordered gate is the strict `C6FT1` codec and a scaled differential
+including ΠProd plus `C6PS1`, followed by a single-pass provider/client
+source-ordinal streamer that accumulates at most 576 response-local
+keys/masks without retaining any per-element `CacheSegK` or rereading a
+one-time correlation as a new draw.  No wire, response-field removal,
+production-time or hardware credit is earned before those gates.
 
 ## 7. Certificate and challenge grammar
 

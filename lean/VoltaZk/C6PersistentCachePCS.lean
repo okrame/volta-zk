@@ -53,6 +53,44 @@ theorem c6_source_bootstrap_aggregate_corrected_key_eq
           intro i _
           ring
 
+/-- `C6FT1` applies the existing aggregate-correction identity to one
+runtime cache target before its retained ProductClosure challenge.  This is
+an alias with the target role explicit; it introduces no fresh MAC source or
+soundness event. -/
+theorem c6_fold_target_corrected_key_eq
+    {F ι : Type*} [Field F] [Fintype ι]
+    (Δ : F) (coefficient : ι → F) (source : ι → C6CorrectedSource F) :
+    (∑ i, coefficient i * (source i).base.baseKey Δ)
+        + Δ * (∑ i, coefficient i * (source i).d)
+      = (∑ i, coefficient i * (source i).base.m)
+        + Δ * (∑ i, coefficient i * (source i).x) := by
+  exact c6_source_bootstrap_aggregate_corrected_key_eq Δ coefficient source
+
+/-- Folding the already fixed individual `C6FT1` corrections after `rho`
+is exactly the direct two-stage source correction required by `C6PS1`.
+Consequently the later frame has no independent correction authority. -/
+theorem c6_fold_target_two_stage_correction_eq
+    {F ι κ : Type*} [Field F] [Fintype ι] [Fintype κ]
+    (weight : κ → F) (coefficient : κ → ι → F)
+    (source : ι → C6CorrectedSource F) :
+    (∑ j, weight j * (∑ i, coefficient j i * (source i).d))
+      = ∑ i, (∑ j, weight j * coefficient j i) * (source i).d := by
+  calc
+    (∑ j, weight j * (∑ i, coefficient j i * (source i).d)) =
+        ∑ j, ∑ i, weight j * (coefficient j i * (source i).d) := by
+          apply Finset.sum_congr rfl
+          intro j _
+          rw [Finset.mul_sum]
+    _ = ∑ i, ∑ j, weight j * (coefficient j i * (source i).d) := by
+          rw [Finset.sum_comm]
+    _ = ∑ i, (∑ j, weight j * coefficient j i) * (source i).d := by
+          apply Finset.sum_congr rfl
+          intro i _
+          rw [Finset.sum_mul]
+          apply Finset.sum_congr rfl
+          intro j _
+          ring
+
 /-- Static fields that make a PCS cache-state commitment reusable when a
 successor becomes the next certificate's predecessor.  Dynamic response
 fields are deliberately absent from this type. -/

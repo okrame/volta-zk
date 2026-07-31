@@ -3545,13 +3545,12 @@ fixing also rejects a descriptor set other than the installed one.
 The strict production codec matches the executable roofline exactly at
 `1,939,733 B` per chain and `3,879,466 B` for two chains.  `C6LNK2` has 72
 relations, six aggregates per repetition, `3,570 B` of link overhead and
-`3,883,036 B` combined link-plus-PCS bytes.  The migrated scaled integration
-still uses stand-ins for both 8-slot cache cohorts and the remaining 16
+`3,883,036 B` combined link-plus-PCS bytes.  The first migrated scaled
+integration used stand-ins for both 8-slot cache cohorts and the remaining 16
 cache-owned auxiliary slots in each repetition: **32 per repetition / 64
-total**.  The increase from the historical 48 is solely the newly materialized
-predecessor cohort; it earns no protocol credit.  Replacing all 64 with the
-blind cache transition's typed outputs, then removing `CacheSegK`, remains the
-next ordered gate.
+total**.  Section 6.1.1's `C6PC2` checkpoint now replaces all 64 through the
+real packed link and both PCS chains.  Removing `CacheSegK` and connecting the
+production streaming compiler remain the next ordered gates.
 
 ### 6.1.1 Blind transition pointwise-soundness amendment
 
@@ -3605,7 +3604,7 @@ corrections and 28 zero claims.  A strict reference `C6PC2` codec is capped
 at 24 rounds, two tapes and two repetitions:
 
 ```text
-fixed header and terminal digest                                      48 B
+fixed header and statement digest                                     48 B
 2 repetition prefixes                                                 66 B
 2 * 24 rounds * 2 endpoints * 2 tapes * 16 B                       3,072 B
 2 * 4 live terminals * 2 tapes * 16 B                                256 B
@@ -3621,6 +3620,26 @@ live plus 28 zero pending claims per repetition, enter `C6LNK2`, and reject
 unweighted/canceling, wrong-point, wrong-owner and wrong-source-schedule
 mutations.  Production geometry must remain streaming and fail closed rather
 than materialize `2^24` coefficient tables.
+
+That scaled gate is now green.  `c6_persistent_cache_blind` implements a
+strict schema-2 dual-tape codec/prover/verifier, hashes the fixed owner order
+and client-derived source schedule, and derives the relation point plus all
+batching roots from the verifier transcript.  The **6-round** reference proof
+is **1,202 B**, consumes **32 full correlations/tape**, and emits exactly
+**64 pending claims** across two repetitions.  Its upstream fixture
+authenticates 12 append/fold source values before the adapter; `C6PC2` only
+reuses them linearly.  The integrated `C6LNK2` test has no generic transfer or
+stand-in entry left and closes all 72 slots through both packed PCS chains.
+
+Four focused adapter tests cover the exact **3,506-B / 104-correlation**
+production formula, domain uniqueness, canonical codec, both MAC tapes,
+wrong relation point, owner and source schedule, and all round/terminal/tag
+mutations.  A permanent `+d,-d` differential has zero unweighted residual but
+is rejected after equality weighting.  The materialized constructor refuses
+24 rounds, so this checkpoint provides no production memory, response-byte
+removal or prover-time credit.  The next gate must compile the same relation
+from the real runtime fold map in a streaming resident path and then remove
+`CacheSegK`.
 
 ### 6.2 Continuation-prefill and cache-fold source-map seam
 

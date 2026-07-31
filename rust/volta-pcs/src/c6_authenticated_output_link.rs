@@ -25,6 +25,9 @@ use crate::c6_hidden_u::C6HiddenUFamily;
 use crate::c6_hidden_u_sumcheck_blind::{
     C6BlindHiddenUPendingClaimsProver, C6BlindHiddenUPendingClaimsVerifier,
 };
+use crate::c6_persistent_cache_blind::{
+    C6PersistentCachePendingClaimsProver, C6PersistentCachePendingClaimsVerifier,
+};
 use crate::c6_residual_sumcheck::C6ResidualSumcheckFamily;
 use crate::c6_residual_sumcheck_blind::{
     C6BlindResidualPendingClaimsProver, C6BlindResidualPendingClaimsVerifier,
@@ -345,6 +348,28 @@ impl C6PendingSlotRegistryProverBuilder {
         Ok(())
     }
 
+    pub(crate) fn absorb_persistent_cache(
+        &mut self,
+        pending: &C6PersistentCachePendingClaimsProver,
+    ) -> Result<()> {
+        for (descriptor, auth) in pending.link_entries() {
+            validate_cache_pending_owner(
+                descriptor.cohort_id(),
+                descriptor.slot(),
+                descriptor.target_point(),
+            )?;
+            self.insert_source(
+                descriptor.repetition(),
+                descriptor.cohort_id(),
+                descriptor.slot(),
+                descriptor.statement_digest(),
+                descriptor.target_point().to_vec(),
+                auth,
+            )?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn insert_source(
         &mut self,
         repetition: u8,
@@ -514,6 +539,28 @@ impl C6PendingSlotRegistryVerifierBuilder {
         Ok(())
     }
 
+    pub(crate) fn absorb_persistent_cache(
+        &mut self,
+        pending: &C6PersistentCachePendingClaimsVerifier,
+    ) -> Result<()> {
+        for (descriptor, keys) in pending.link_entries() {
+            validate_cache_pending_owner(
+                descriptor.cohort_id(),
+                descriptor.slot(),
+                descriptor.target_point(),
+            )?;
+            self.insert_source(
+                descriptor.repetition(),
+                descriptor.cohort_id(),
+                descriptor.slot(),
+                descriptor.statement_digest(),
+                descriptor.target_point().to_vec(),
+                keys,
+            )?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn insert_source(
         &mut self,
         repetition: u8,
@@ -568,6 +615,20 @@ fn hidden_u_cohort_id(family: C6HiddenUFamily) -> u32 {
         C6HiddenUFamily::Weights => C6_HIDDEN_U_WEIGHTS_COHORT_ID,
         C6HiddenUFamily::Embed => C6_HIDDEN_U_EMBED_COHORT_ID,
     }
+}
+
+fn validate_cache_pending_owner(cohort_id: u32, slot: u16, point: &[Fp2]) -> Result<()> {
+    let owner_matches = match cohort_id {
+        C6_PREDECESSOR_CACHE_COHORT_ID | C6_SUCCESSOR_CACHE_COHORT_ID => slot < 8,
+        C6_WRAPPER_AUXILIARY_COHORT_ID => (16..32).contains(&slot),
+        _ => false,
+    };
+    if !owner_matches || point.is_empty() || point.last() != Some(&Fp2::ZERO) {
+        return Err(C6AuthenticatedOutputLinkError::new(
+            "C6 persistent-cache pending owner mismatch",
+        ));
+    }
+    Ok(())
 }
 
 fn expected_slot_dimensions(fixed: &C6FixedWrapperCommitments) -> Result<BTreeMap<SlotKey, usize>> {
@@ -1750,6 +1811,11 @@ mod tests {
         prove_c6_blind_hidden_u_sumchecks_reference, verify_c6_blind_hidden_u_sumchecks,
         C6BlindHiddenUSumcheckProof,
     };
+    use crate::c6_persistent_cache_blind::{
+        prove_c6_persistent_cache_blind_reference, verify_c6_persistent_cache_blind,
+        C6PersistentCacheBlindProof, C6PersistentCacheBlindWitness, C6PersistentCacheRelationPlan,
+        C6PersistentCacheSourcesProver, C6PersistentCacheSourcesVerifier,
+    };
     use crate::c6_residual_sumcheck::{
         C6ResidualSumcheckStatement, C6ResidualSumcheckTerm, C6ResidualSumcheckWitness,
         C6_RESIDUAL_AUXILIARY_TABLES_PER_REPETITION, C6_RESIDUAL_LEAF_TABLES_PER_REPETITION,
@@ -1774,8 +1840,7 @@ mod tests {
     const GLOBAL_ROUNDS: usize = 7;
     const CHALLENGE_SEED: [u8; 32] = [0x71; 32];
     const TAPE_SEEDS: [[u8; 32]; C6_AUTHENTICATED_OUTPUT_LINK_TAPES] = [[0x31; 32], [0x52; 32]];
-    const SOURCE_TRANSFER_LABEL: &str = "c6_link_test_source_transfers";
-    const TEST_SOURCE_CORRELATION_BASE: u64 = 0x0C65_0000_0000_0000;
+    const CACHE_SOURCE_CORRELATION_BASE: u64 = 0x0C67_0000_0000_0000;
 
     fn symbol(value: u64) -> Fp2 {
         Fp2::new(Fp::new(value), Fp::new(19 * value + 7))
@@ -1861,6 +1926,12 @@ mod tests {
         cohorts: Vec<C6CommittedWrapperCohort>,
         commitments: Vec<C6WrapperCommitment>,
         tables: BTreeMap<(u32, u16), Vec<Fp2>>,
+        cache_witness: C6PersistentCacheBlindWitness,
+        cache_predecessor_coefficients: [Vec<Fp2>; 2],
+        cache_current_coefficients: [Vec<Fp2>; 2],
+        cache_append_values: [Vec<Fp2>; 2],
+        cache_predecessor_targets: [Fp2; 2],
+        cache_current_targets: [Fp2; 2],
     }
 
     fn scaled_hidden_inputs(
@@ -2035,6 +2106,99 @@ mod tests {
                 tables.insert((cohort_id, slot), zero);
             }
         }
+
+        const CACHE_ROUNDS: usize = 6;
+        const CACHE_OLD_LEN: usize = 12;
+        const CACHE_APPEND_LEN: usize = 4;
+        let cache_len = 1usize << CACHE_ROUNDS;
+        let cache_predecessor: [Vec<Fp2>; 2] = array::from_fn(|kv| {
+            (0..cache_len)
+                .map(|index| {
+                    if index < CACHE_OLD_LEN {
+                        symbol(400_000 + kv as u64 * 10_000 + index as u64)
+                    } else {
+                        Fp2::ZERO
+                    }
+                })
+                .collect()
+        });
+        let cache_append_values: [Vec<Fp2>; 2] = array::from_fn(|kv| {
+            (0..CACHE_APPEND_LEN)
+                .map(|index| symbol(430_000 + kv as u64 * 10_000 + index as u64))
+                .collect()
+        });
+        let cache_successor: [Vec<Fp2>; 2] = array::from_fn(|kv| {
+            (0..cache_len)
+                .map(|index| {
+                    if index < CACHE_OLD_LEN {
+                        cache_predecessor[kv][index]
+                    } else if index < CACHE_OLD_LEN + CACHE_APPEND_LEN {
+                        cache_append_values[kv][index - CACHE_OLD_LEN]
+                    } else {
+                        Fp2::ZERO
+                    }
+                })
+                .collect()
+        });
+        let cache_predecessor_coefficients: [Vec<Fp2>; 2] =
+            array::from_fn(|kv| table(CACHE_ROUNDS, 460_000 + kv as u64 * 10_000));
+        let cache_current_coefficients: [Vec<Fp2>; 2] =
+            array::from_fn(|kv| table(CACHE_ROUNDS, 480_000 + kv as u64 * 10_000));
+        let cache_predecessor_targets: [Fp2; 2] = array::from_fn(|kv| {
+            cache_predecessor_coefficients[kv]
+                .iter()
+                .zip(&cache_predecessor[kv])
+                .fold(Fp2::ZERO, |sum, (&coefficient, &value)| sum + coefficient * value)
+        });
+        let cache_current_targets: [Fp2; 2] = array::from_fn(|kv| {
+            cache_current_coefficients[kv]
+                .iter()
+                .zip(&cache_successor[kv])
+                .fold(Fp2::ZERO, |sum, (&coefficient, &value)| sum + coefficient * value)
+        });
+        for kv in 0..2 {
+            let mut predecessor = cache_predecessor[kv].clone();
+            predecessor.extend(table(CACHE_ROUNDS, 500_000 + kv as u64 * 10_000));
+            tables.insert((C6_PREDECESSOR_CACHE_COHORT_ID, kv as u16), predecessor);
+            let mut successor = cache_successor[kv].clone();
+            successor.extend(table(CACHE_ROUNDS, 520_000 + kv as u64 * 10_000));
+            tables.insert((C6_SUCCESSOR_CACHE_COHORT_ID, kv as u16), successor);
+        }
+        for cohort_id in [C6_PREDECESSOR_CACHE_COHORT_ID, C6_SUCCESSOR_CACHE_COHORT_ID] {
+            for slot in 2..8u16 {
+                let mut zero = vec![Fp2::ZERO; cache_len];
+                zero.extend(table(
+                    CACHE_ROUNDS,
+                    540_000 + u64::from(cohort_id & 0xff) * 10_000 + u64::from(slot) * 100,
+                ));
+                tables.insert((cohort_id, slot), zero);
+            }
+        }
+        for slot in 16..32u16 {
+            tables.insert((C6_WRAPPER_AUXILIARY_COHORT_ID, slot), vec![Fp2::ZERO; 1 << 4]);
+        }
+        let placeholder_cache_plan = C6PersistentCacheRelationPlan::new_scaled_client_derived(
+            CACHE_ROUNDS,
+            CACHE_OLD_LEN,
+            CACHE_APPEND_LEN,
+            [0xC1; 32],
+            [0xC2; 32],
+            [0xC3; 32],
+            cache_predecessor_coefficients.clone(),
+            cache_current_coefficients.clone(),
+            vec![symbol(490_001), symbol(490_002), symbol(490_003), Fp2::ZERO],
+        )
+        .unwrap();
+        let cache_witness = C6PersistentCacheBlindWitness::new(
+            &placeholder_cache_plan,
+            [
+                cache_predecessor[0].clone(),
+                cache_predecessor[1].clone(),
+                cache_successor[0].clone(),
+                cache_successor[1].clone(),
+            ],
+        )
+        .unwrap();
         for spec in scaled_specs() {
             for slot in 0..spec.slot_count {
                 if tables.contains_key(&(spec.cohort_id, slot)) {
@@ -2099,6 +2263,12 @@ mod tests {
             cohorts,
             commitments,
             tables,
+            cache_witness,
+            cache_predecessor_coefficients,
+            cache_current_coefficients,
+            cache_append_values,
+            cache_predecessor_targets,
+            cache_current_targets,
         }
     }
 
@@ -2135,128 +2305,145 @@ mod tests {
         point
     }
 
-    fn is_real_source_owned(cohort_id: u32, slot: u16) -> bool {
-        (cohort_id == C6_DELTA_RESIDUAL_COHORT_ID
-            && usize::from(slot) < C6_RESIDUAL_LEAF_TABLES_PER_REPETITION)
-            || (cohort_id == C6_WRAPPER_AUXILIARY_COHORT_ID
-                && usize::from(slot) < C6_RESIDUAL_AUXILIARY_TABLES_PER_REPETITION)
-            || cohort_id == C6_HIDDEN_U_WEIGHTS_COHORT_ID
-            || cohort_id == C6_HIDDEN_U_EMBED_COHORT_ID
+    fn cache_relation_plan(
+        fixed: &C6FixedWrapperCommitments,
+        inputs: &ScaledInputs,
+    ) -> C6PersistentCacheRelationPlan {
+        C6PersistentCacheRelationPlan::new_scaled_client_derived(
+            6,
+            12,
+            4,
+            fixed.binding_digest(),
+            [0xC2; 32],
+            [0xC3; 32],
+            inputs.cache_predecessor_coefficients.clone(),
+            inputs.cache_current_coefficients.clone(),
+            vec![symbol(490_001), symbol(490_002), symbol(490_003), Fp2::ZERO],
+        )
+        .unwrap()
     }
 
-    fn test_source_domain(repetition: u8, tape: usize, ordinal: usize) -> u64 {
-        let domain = TEST_SOURCE_CORRELATION_BASE
-            | (u64::from(repetition) << 28)
-            | ((tape as u64) << 24)
-            | 0x0001_0000
-            | ordinal as u64;
+    fn cache_source_domain(tape: usize, ordinal: usize) -> u64 {
+        let domain = CACHE_SOURCE_CORRELATION_BASE | ((tape as u64) << 24) | ordinal as u64;
         assert_eq!(domain & RESERVED_DOMAIN_BITS, 0);
         domain
     }
 
     #[derive(Clone)]
-    struct SourceTransfer {
-        repetition: u8,
-        cohort_id: u32,
-        slot: u16,
-        source_digest: C6WrapperDigest,
-        target_point: Vec<Fp2>,
-        domains: [u64; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
-        corrections: [Fp2; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
+    struct CacheSourceFrame {
+        transition_append: [Vec<[Fp2; C6_AUTHENTICATED_OUTPUT_LINK_TAPES]>; 2],
+        predecessor_targets: [[Fp2; C6_AUTHENTICATED_OUTPUT_LINK_TAPES]; 2],
+        current_targets: [[Fp2; C6_AUTHENTICATED_OUTPUT_LINK_TAPES]; 2],
     }
 
-    fn add_remaining_prover_sources(
-        fixed: &C6FixedWrapperCommitments,
+    fn authenticate_cache_source(
+        streams: &mut [CorrelationStream; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
+        ordinal: usize,
+        value: Fp2,
+    ) -> (
+        [ProverAuthed; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
+        [Fp2; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
+    ) {
+        let mut auth = [ProverAuthed::ZERO; C6_AUTHENTICATED_OUTPUT_LINK_TAPES];
+        let mut corrections = [Fp2::ZERO; C6_AUTHENTICATED_OUTPUT_LINK_TAPES];
+        for tape in 0..C6_AUTHENTICATED_OUTPUT_LINK_TAPES {
+            let domain = cache_source_domain(tape, ordinal);
+            let correlation = streams[tape].draw_fulls(domain, 1)[0];
+            streams[tape].record_c6_fullfield_plaintexts(domain, &[value]).unwrap();
+            corrections[tape] = value - correlation.x;
+            auth[tape] = correlation.authenticate(value);
+        }
+        (auth, corrections)
+    }
+
+    fn cache_sources_prover(
+        plan: &C6PersistentCacheRelationPlan,
         inputs: &ScaledInputs,
         streams: &mut [CorrelationStream; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
-        builder: &mut C6PendingSlotRegistryProverBuilder,
-        transcript: &mut Transcript,
-    ) -> Vec<SourceTransfer> {
-        let mut transfers = Vec::new();
-        for repetition in 0..C6_WRAPPER_REPETITIONS as u8 {
-            let mut ordinal = 0usize;
-            for commitment in fixed.commitments() {
-                let dimension = usize::from(commitment.spec.coefficient_log2().unwrap());
-                for slot in 0..commitment.spec.slot_count {
-                    if is_real_source_owned(commitment.spec.cohort_id, slot) {
-                        continue;
-                    }
-                    let target_point =
-                        source_target(repetition, commitment.spec.cohort_id, slot, dimension);
-                    let value = evaluate_multilinear_table(
-                        &inputs.tables[&(commitment.spec.cohort_id, slot)],
-                        &target_point,
-                    )
-                    .unwrap();
-                    let source_digest = [0xB0 + repetition; 32];
-                    let domains =
-                        array::from_fn(|tape| test_source_domain(repetition, tape, ordinal));
-                    let mut corrections = [Fp2::ZERO; C6_AUTHENTICATED_OUTPUT_LINK_TAPES];
-                    let mut auth = [ProverAuthed::ZERO; C6_AUTHENTICATED_OUTPUT_LINK_TAPES];
-                    for tape in 0..C6_AUTHENTICATED_OUTPUT_LINK_TAPES {
-                        let correlation = streams[tape].draw_fulls(domains[tape], 1)[0];
-                        corrections[tape] = value - correlation.x;
-                        auth[tape] = correlation.authenticate(value);
-                    }
-                    builder
-                        .insert_source(
-                            repetition,
-                            commitment.spec.cohort_id,
-                            slot,
-                            source_digest,
-                            target_point.clone(),
-                            auth,
-                        )
-                        .unwrap();
-                    transfers.push(SourceTransfer {
-                        repetition,
-                        cohort_id: commitment.spec.cohort_id,
-                        slot,
-                        source_digest,
-                        target_point,
-                        domains,
-                        corrections,
-                    });
-                    ordinal += 1;
-                }
+    ) -> (C6PersistentCacheSourcesProver, CacheSourceFrame) {
+        let mut ordinal = 0usize;
+        let mut transition_auth: [Vec<[ProverAuthed; 2]>; 2] = array::from_fn(|_| Vec::new());
+        let mut transition_corrections: [Vec<[Fp2; 2]>; 2] = array::from_fn(|_| Vec::new());
+        for kv in 0..2 {
+            for &value in &inputs.cache_append_values[kv] {
+                let (auth, corrections) = authenticate_cache_source(streams, ordinal, value);
+                transition_auth[kv].push(auth);
+                transition_corrections[kv].push(corrections);
+                ordinal += 1;
             }
-            assert_eq!(ordinal, 32);
         }
-        transcript.append(
-            SOURCE_TRANSFER_LABEL,
-            (transfers.len() * C6_AUTHENTICATED_OUTPUT_LINK_TAPES * 16) as u64,
-        );
-        transfers
+        let mut predecessor_auth = [[ProverAuthed::ZERO; 2]; 2];
+        let mut predecessor_corrections = [[Fp2::ZERO; 2]; 2];
+        for kv in 0..2 {
+            (predecessor_auth[kv], predecessor_corrections[kv]) =
+                authenticate_cache_source(streams, ordinal, inputs.cache_predecessor_targets[kv]);
+            ordinal += 1;
+        }
+        let mut current_auth = [[ProverAuthed::ZERO; 2]; 2];
+        let mut current_corrections = [[Fp2::ZERO; 2]; 2];
+        for kv in 0..2 {
+            (current_auth[kv], current_corrections[kv]) =
+                authenticate_cache_source(streams, ordinal, inputs.cache_current_targets[kv]);
+            ordinal += 1;
+        }
+        assert_eq!(ordinal, 12);
+        (
+            C6PersistentCacheSourcesProver::new(
+                plan,
+                transition_auth,
+                predecessor_auth,
+                current_auth,
+            )
+            .unwrap(),
+            CacheSourceFrame {
+                transition_append: transition_corrections,
+                predecessor_targets: predecessor_corrections,
+                current_targets: current_corrections,
+            },
+        )
     }
 
-    fn add_remaining_verifier_sources(
-        transfers: &[SourceTransfer],
+    fn cache_sources_verifier(
+        plan: &C6PersistentCacheRelationPlan,
+        frame: &CacheSourceFrame,
         contexts: &mut [VerifierCtx; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
-        builder: &mut C6PendingSlotRegistryVerifierBuilder,
-        transcript: &mut Transcript,
-    ) {
-        for transfer in transfers {
-            let keys = array::from_fn(|tape| {
+    ) -> C6PersistentCacheSourcesVerifier {
+        let mut ordinal = 0usize;
+        let mut transition_keys: [Vec<[VerifierKey; 2]>; 2] = array::from_fn(|_| Vec::new());
+        for (kv, keys) in transition_keys.iter_mut().enumerate() {
+            for corrections in &frame.transition_append[kv] {
+                keys.push(array::from_fn(|tape| {
+                    contexts[tape].correct_full_verifier_keys(
+                        cache_source_domain(tape, ordinal),
+                        &[corrections[tape]],
+                    )[0]
+                }));
+                ordinal += 1;
+            }
+        }
+        let mut predecessor_keys = [[VerifierKey::ZERO; 2]; 2];
+        for (kv, keys) in predecessor_keys.iter_mut().enumerate() {
+            *keys = array::from_fn(|tape| {
                 contexts[tape].correct_full_verifier_keys(
-                    transfer.domains[tape],
-                    &[transfer.corrections[tape]],
+                    cache_source_domain(tape, ordinal),
+                    &[frame.predecessor_targets[kv][tape]],
                 )[0]
             });
-            builder
-                .insert_source(
-                    transfer.repetition,
-                    transfer.cohort_id,
-                    transfer.slot,
-                    transfer.source_digest,
-                    transfer.target_point.clone(),
-                    keys,
-                )
-                .unwrap();
+            ordinal += 1;
         }
-        transcript.append(
-            SOURCE_TRANSFER_LABEL,
-            (transfers.len() * C6_AUTHENTICATED_OUTPUT_LINK_TAPES * 16) as u64,
-        );
+        let mut current_keys = [[VerifierKey::ZERO; 2]; 2];
+        for (kv, keys) in current_keys.iter_mut().enumerate() {
+            *keys = array::from_fn(|tape| {
+                contexts[tape].correct_full_verifier_keys(
+                    cache_source_domain(tape, ordinal),
+                    &[frame.current_targets[kv][tape]],
+                )[0]
+            });
+            ordinal += 1;
+        }
+        assert_eq!(ordinal, 12);
+        C6PersistentCacheSourcesVerifier::new(plan, transition_keys, predecessor_keys, current_keys)
+            .unwrap()
     }
 
     struct IntegratedFixture {
@@ -2264,7 +2451,11 @@ mod tests {
         residual_proof: C6BlindResidualSumcheckProof,
         residual_frame: C6BlindResidualPendingTransferFrame,
         hidden_proof: C6BlindHiddenUSumcheckProof,
-        transfers: Vec<SourceTransfer>,
+        cache_proof: C6PersistentCacheBlindProof,
+        cache_source_frame: CacheSourceFrame,
+        cache_proof_bytes: u64,
+        cache_correlations_per_tape: u64,
+        cache_pending_claims: u64,
         fixed: C6FixedWrapperCommitments,
         proof: C6AuthenticatedOutputLinkProof,
         encoded: Vec<u8>,
@@ -2298,16 +2489,22 @@ mod tests {
             &mut transcript,
         )
         .unwrap();
+        let cache_plan = cache_relation_plan(&fixed, &inputs);
+        let (cache_sources, cache_source_frame) =
+            cache_sources_prover(&cache_plan, &inputs, &mut streams);
+        let (cache_proof, cache_pending, cache_metrics) =
+            prove_c6_persistent_cache_blind_reference(
+                &cache_plan,
+                &inputs.cache_witness,
+                &cache_sources,
+                &mut streams,
+                &mut transcript,
+            )
+            .unwrap();
         let mut builder = C6PendingSlotRegistryProverBuilder::new(&fixed).unwrap();
         builder.absorb_residual(&residual_pending).unwrap();
         builder.absorb_hidden_u(&hidden_pending).unwrap();
-        let transfers = add_remaining_prover_sources(
-            &fixed,
-            &inputs,
-            &mut streams,
-            &mut builder,
-            &mut transcript,
-        );
+        builder.absorb_persistent_cache(&cache_pending).unwrap();
         let pending = builder.finish().unwrap();
         let old_values = pending.entries.iter().map(|entry| entry.auth[0].x).collect::<Vec<_>>();
         let before: [u64; C6_AUTHENTICATED_OUTPUT_LINK_TAPES] =
@@ -2330,7 +2527,11 @@ mod tests {
             residual_proof,
             residual_frame,
             hidden_proof,
-            transfers,
+            cache_proof,
+            cache_source_frame,
+            cache_proof_bytes: cache_metrics.proof_bytes,
+            cache_correlations_per_tape: cache_metrics.full_correlations_per_tape,
+            cache_pending_claims: cache_metrics.pending_claims,
             fixed,
             proof,
             encoded,
@@ -2380,15 +2581,21 @@ mod tests {
             &mut transcript,
         )
         .unwrap();
+        let cache_plan = cache_relation_plan(&fixed, &fixture.inputs);
+        let cache_sources =
+            cache_sources_verifier(&cache_plan, &fixture.cache_source_frame, &mut contexts);
+        let cache_pending = verify_c6_persistent_cache_blind(
+            &cache_plan,
+            &cache_sources,
+            &fixture.cache_proof,
+            &mut contexts,
+            &mut transcript,
+        )
+        .unwrap();
         let mut builder = C6PendingSlotRegistryVerifierBuilder::new(&fixed).unwrap();
         builder.absorb_residual(&residual_pending).unwrap();
         builder.absorb_hidden_u(&hidden_pending).unwrap();
-        add_remaining_verifier_sources(
-            &fixture.transfers,
-            &mut contexts,
-            &mut builder,
-            &mut transcript,
-        );
+        builder.absorb_persistent_cache(&cache_pending).unwrap();
         let pending = builder.finish().unwrap();
         let counters = array::from_fn(|tape| contexts[tape].counters.full_corrs);
         (fixed, pending, contexts, transcript, counters)
@@ -2422,9 +2629,11 @@ mod tests {
     }
 
     #[test]
-    fn actual_residual_and_hidden_pending_values_close_through_packed_link_and_pcs() {
+    fn actual_residual_hidden_and_cache_pending_values_close_through_packed_link_and_pcs() {
         let fixture = prove_integrated_fixture();
-        assert_eq!(fixture.transfers.len(), 64);
+        assert_eq!(fixture.cache_proof_bytes, 1_202);
+        assert_eq!(fixture.cache_correlations_per_tape, 32);
+        assert_eq!(fixture.cache_pending_claims, 64);
         assert_eq!(
             fixture.hidden_proof.encode(&fixture.inputs.hidden_layouts).unwrap().len(),
             1_320
@@ -2449,6 +2658,9 @@ mod tests {
         );
         assert_eq!(fixture.proof.canonical_bytes(&fixture.fixed).unwrap(), fixture.encoded);
         for value in &fixture.old_values {
+            if *value == Fp2::ZERO {
+                continue;
+            }
             let mut encoded_value = Vec::new();
             encode_fp2(&mut encoded_value, *value);
             assert!(
@@ -2490,9 +2702,9 @@ mod tests {
         );
         assert_eq!(transcript.bytes_for(LINK_ROUND_LABEL), 2 * 7 * 64);
         assert_eq!(transcript.bytes_for(LINK_AGGREGATES_LABEL), 192);
-        // C6RSC3 contributes 64 B, blind hidden-u contributes another 64 B,
-        // and the packed link contributes the final four 16-B tags.
-        assert_eq!(transcript.bytes_for("zero_open_tag"), 192);
+        // C6RSC3 contributes 64 B, blind hidden-u and blind cache contribute
+        // 64 B each, and the packed link contributes the final four tags.
+        assert_eq!(transcript.bytes_for("zero_open_tag"), 256);
         assert_eq!(transcript.bytes_for(LINK_DIGEST_LABEL), 32);
     }
 

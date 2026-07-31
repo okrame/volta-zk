@@ -2899,6 +2899,50 @@ combined codec, opaque pending/bound typestate and prover/verifier
 differential; production memory, response removal and timing remain later
 gates.
 
+That scaled Rust gate is now green.  The new
+`c6_authenticated_output_link` reference module implements the exact
+`C6LNK1` order above and refuses production-fixed roots.  Its integrated
+fixture continues the same transcripts and correlation streams through
+fixed wrapper roots, a real two-repetition `C6RSC3`, all remaining
+source-specific pending transfers, the dual-tape link, both packed PCS
+chains and four terminal ZeroOpens.  The scaled cohort dimensions are
+`7/6/5/5/4`; all 64 slots are present in each repetition.  Of the 128
+pending values, 48 come from the actual residual prover/verifier and 80 are
+typed scaled stand-ins for the still-pending cache, hidden-`u` and remaining
+auxiliary source adapters.
+
+The scaled link has seven global rounds and therefore consumes exactly
+`2*7*2 = 28` full correlations per tape.  Its non-PCS strict-codec overhead
+is exactly `1,234 B`.  Compile-time identities independently retain the
+production formulas of `100` correlations per tape, `3,538 B` link overhead
+and `3,613,362 B` combined payload.  Canonical encode/decode is byte
+identical, prover/verifier transcript ledgers and correlation deltas match,
+and a leakage regression checks that none of the 128 individual old-point
+Fp2 values occurs in the complete encoded proof.
+
+The old clear assembler is now test-only and creates a typestate explicitly
+rejected by both public assembled-PCS entry points.  Raw C6RSC3 pending MAC
+accessors were removed; crate-private link extraction is the only bridge,
+and public pending/bound `Debug` output is redacted.  The sole bound
+verifier constructor runs after the embedded PCS verifies and all four
+terminal tags accept; the prover bound view is emitted only after it has
+constructed the complete PCS and tags.  Five permanent tests cover the exact
+production census, the real
+C6RSC3 round trip, strict old/noncanonical/corrupt/trailing codec rejection,
+mutations on either tape, aggregate, schedule, PCS and terminal-tag
+boundaries, and missing/duplicate/wrong-owner/wrong-slot/wrong-target/
+cross-tape registry failures.  The complete ordinary and `c6-trace` Rust
+gates, all-target checks, format, the unchanged `9/9` C6 budget and the
+`308`-target Lean audit are green.
+
+This checkpoint earns only scaled/reference algebra, byte and typestate
+credit.  It does not instantiate the production cache, hidden-`u` or
+remaining auxiliary pending sources, does not remove a production response
+field, does not run the fused CUDA backend or real PCG session, and has no
+prover-time, memory, setup, cache or hardware verdict.  The next ordered
+gate is to replace the 80 typed stand-ins with those real source adapters
+before any production envelope/backend work.
+
 The wrapper PCS uses rate `1/8`, two independent fold/query chains and
 `s=86` queries per chain.  Under the conservative 64-active-polynomial,
 `2^28` weight-oracle and `2^19` auxiliary maxima, one repetition has

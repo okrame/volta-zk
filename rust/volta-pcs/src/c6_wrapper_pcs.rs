@@ -63,6 +63,7 @@ const C6_OPENING_SCHEDULE_CONTEXT: &str = "volta-zk/c6/wrapper-opening-schedule/
 const C6_FIXED_ROOTS_CONTEXT: &str = "volta-zk/c6/wrapper-fixed-roots/v1";
 const C6_INITIAL_ROOTS_LABEL: &str = "c6_wrapper_initial_roots";
 const C6_GLOBAL_ROUND_MESSAGES_LABEL: &str = "c6_wrapper_global_sumcheck_round";
+#[cfg(test)]
 const C6_SLOT_TERMINAL_VALUES_LABEL: &str = "c6_wrapper_slot_terminal_values";
 const C6_TERMINAL_CLAIMS_LABEL: &str = "c6_wrapper_terminal_claims";
 const C6_FOLD_LINE_LABEL: &str = "c6_wrapper_fold_line";
@@ -802,6 +803,7 @@ pub struct C6AssembledWrapperClaims {
     fixed_roots_digest: C6WrapperDigest,
     slot_terminal_count: usize,
     claims_by_repetition: Vec<Vec<C6WrapperOpeningClaim>>,
+    authenticated_link: bool,
 }
 
 impl C6AssembledWrapperClaims {
@@ -814,10 +816,11 @@ impl C6AssembledWrapperClaims {
     }
 }
 
-/// Assemble the exact production registry after both 24-round coordinators
-/// finish.  Every terminal scalar is fixed before the first slot-reduction
-/// challenge is drawn.
-pub fn assemble_production_c6_wrapper_claims(
+/// Historical clear-terminal assembler retained only as a diagnostic
+/// reference.  Its output is deliberately not authorized to enter either
+/// public assembled PCS entry point.
+#[cfg(test)]
+pub(crate) fn assemble_production_c6_wrapper_claims(
     fixed: &C6FixedWrapperCommitments,
     round_points: &[C6WrapperRoundPoint],
     slot_claims: &[C6WrapperSlotOpeningClaim],
@@ -826,6 +829,7 @@ pub fn assemble_production_c6_wrapper_claims(
     assemble_c6_wrapper_claims_inner(fixed, round_points, slot_claims, true, transcript)
 }
 
+#[cfg(test)]
 fn assemble_c6_wrapper_claims_inner(
     fixed: &C6FixedWrapperCommitments,
     round_points: &[C6WrapperRoundPoint],
@@ -951,6 +955,49 @@ fn assemble_c6_wrapper_claims_inner(
         fixed_roots_digest: fixed.binding_digest,
         slot_terminal_count: expected_terminal_count,
         claims_by_repetition,
+        authenticated_link: false,
+    })
+}
+
+/// Seal the five per-repetition wrapper claims only after the packed
+/// authenticated-output link has fixed them.  This is crate-private so the
+/// provider cannot manufacture the typestate accepted by the public PCS
+/// entry points.
+pub(crate) fn seal_authenticated_link_c6_wrapper_claims(
+    fixed: &C6FixedWrapperCommitments,
+    claims_by_repetition: Vec<Vec<C6WrapperOpeningClaim>>,
+) -> Result<C6AssembledWrapperClaims> {
+    validate_commitments(&fixed.commitments)?;
+    validate_statement_and_claims(
+        fixed.statement_digest,
+        &fixed.commitments,
+        &claims_by_repetition,
+    )?;
+    let slots_per_repetition = fixed.commitments.iter().try_fold(0usize, |sum, commitment| {
+        sum.checked_add(usize::from(commitment.spec.slot_count))
+            .ok_or_else(|| C6WrapperPcsError::new("C6 linked slot count overflows"))
+    })?;
+    let slot_terminal_count = slots_per_repetition
+        .checked_mul(C6_WRAPPER_REPETITIONS)
+        .ok_or_else(|| C6WrapperPcsError::new("C6 linked terminal count overflows"))?;
+    for claims in &claims_by_repetition {
+        let common_point = claims
+            .first()
+            .ok_or_else(|| C6WrapperPcsError::new("empty C6 linked claim repetition"))?
+            .point
+            .as_slice();
+        if common_point.last() == Some(&Fp2::ZERO) {
+            return Err(C6WrapperPcsError::new(
+                "C6 authenticated link fresh ZK coordinate is zero",
+            ));
+        }
+    }
+    Ok(C6AssembledWrapperClaims {
+        statement_digest: fixed.statement_digest,
+        fixed_roots_digest: fixed.binding_digest,
+        slot_terminal_count,
+        claims_by_repetition,
+        authenticated_link: true,
     })
 }
 
@@ -1077,15 +1124,20 @@ pub fn prove_c6_wrapper_pcs(
     prove_c6_wrapper_pcs_inner(statement_digest, cohorts, claims_by_repetition, true, transcript)
 }
 
-/// Production-safe PCS entry point after verifier-owned all-slot assembly.
-/// The 128 terminal scalars were already charged and the ten deterministic
-/// aggregate values are not serialized a second time.
+/// PCS entry point after authenticated-output-link sealing.  The ten masked
+/// new-point aggregate values were already fixed by that link and are not
+/// serialized a second time; clear old-point terminal scalars are forbidden.
 pub fn prove_c6_wrapper_pcs_assembled(
     statement_digest: C6WrapperDigest,
     cohorts: &[C6CommittedWrapperCohort],
     assembled: &C6AssembledWrapperClaims,
     transcript: &mut Transcript,
 ) -> Result<C6WrapperPcsProof> {
+    if !assembled.authenticated_link {
+        return Err(C6WrapperPcsError::new(
+            "C6 assembled PCS requires authenticated-output-link sealing",
+        ));
+    }
     let commitments = cohorts.iter().map(|cohort| cohort.commitment.clone()).collect::<Vec<_>>();
     validate_assembled_claims(statement_digest, &commitments, assembled)?;
     prove_c6_wrapper_pcs_inner(
@@ -1185,6 +1237,11 @@ pub fn verify_c6_wrapper_pcs_assembled(
     proof: &C6WrapperPcsProof,
     transcript: &mut Transcript,
 ) -> Result<()> {
+    if !assembled.authenticated_link {
+        return Err(C6WrapperPcsError::new(
+            "C6 assembled PCS requires authenticated-output-link sealing",
+        ));
+    }
     validate_assembled_claims(statement_digest, commitments, assembled)?;
     verify_c6_wrapper_pcs_inner(
         statement_digest,
@@ -2717,7 +2774,7 @@ mod tests {
     }
 
     #[test]
-    fn sealed_slot_assembly_feeds_both_packed_chains_without_raw_weights() {
+    fn clear_slot_assembly_is_diagnostic_only_and_cannot_cross_public_seam() {
         let (cohorts, commitments, _) = fixture();
         let seed = [0x2b; 32];
         let mut prover_tx = Transcript::new(seed);
@@ -2757,9 +2814,16 @@ mod tests {
         let assembled =
             assemble_c6_wrapper_claims_inner(&fixed, &points, &slot_claims, false, &mut prover_tx)
                 .unwrap();
-        let proof =
-            prove_c6_wrapper_pcs_assembled(statement(), &cohorts, &assembled, &mut prover_tx)
-                .unwrap();
+        assert!(prove_c6_wrapper_pcs_assembled(statement(), &cohorts, &assembled, &mut prover_tx)
+            .is_err());
+        let proof = prove_c6_wrapper_pcs_inner(
+            statement(),
+            &cohorts,
+            assembled.claims_by_repetition(),
+            false,
+            &mut prover_tx,
+        )
+        .unwrap();
         assert_eq!(prover_tx.bytes_for(C6_TERMINAL_CLAIMS_LABEL), 0);
         assert_eq!(
             prover_tx.bytes_for(C6_SLOT_TERMINAL_VALUES_LABEL),
@@ -2787,11 +2851,20 @@ mod tests {
             &mut verifier_tx,
         )
         .unwrap();
-        verify_c6_wrapper_pcs_assembled(
+        assert!(verify_c6_wrapper_pcs_assembled(
             statement(),
             &commitments,
             &verifier_assembled,
             &proof,
+            &mut verifier_tx,
+        )
+        .is_err());
+        verify_c6_wrapper_pcs_inner(
+            statement(),
+            &commitments,
+            verifier_assembled.claims_by_repetition(),
+            &proof,
+            false,
             &mut verifier_tx,
         )
         .unwrap();

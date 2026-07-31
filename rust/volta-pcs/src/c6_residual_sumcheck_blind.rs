@@ -553,9 +553,22 @@ struct C6BlindResidualPendingClaimProver {
     auth: [ProverAuthed; MAC_TAPES],
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct C6BlindResidualPendingClaimsProver {
     claims: Vec<C6BlindResidualPendingClaimProver>,
+}
+
+impl fmt::Debug for C6BlindResidualPendingClaimsProver {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("C6BlindResidualPendingClaimsProver")
+            .field("len", &self.claims.len())
+            .field(
+                "descriptors",
+                &self.claims.iter().map(|claim| &claim.descriptor).collect::<Vec<_>>(),
+            )
+            .finish_non_exhaustive()
+    }
 }
 
 impl C6BlindResidualPendingClaimsProver {
@@ -571,8 +584,11 @@ impl C6BlindResidualPendingClaimsProver {
         self.claims.get(index).map(|claim| &claim.descriptor)
     }
 
-    pub fn authed_for_tape(&self, index: usize, tape: usize) -> Option<ProverAuthed> {
-        self.claims.get(index).and_then(|claim| claim.auth.get(tape)).copied()
+    #[allow(dead_code)]
+    pub(crate) fn link_entries(
+        &self,
+    ) -> Vec<(C6BlindResidualPendingDescriptor, [ProverAuthed; MAC_TAPES])> {
+        self.claims.iter().map(|claim| (claim.descriptor.clone(), claim.auth)).collect()
     }
 }
 
@@ -582,9 +598,22 @@ struct C6BlindResidualPendingClaimVerifier {
     keys: [VerifierKey; MAC_TAPES],
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct C6BlindResidualPendingClaimsVerifier {
     claims: Vec<C6BlindResidualPendingClaimVerifier>,
+}
+
+impl fmt::Debug for C6BlindResidualPendingClaimsVerifier {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("C6BlindResidualPendingClaimsVerifier")
+            .field("len", &self.claims.len())
+            .field(
+                "descriptors",
+                &self.claims.iter().map(|claim| &claim.descriptor).collect::<Vec<_>>(),
+            )
+            .finish_non_exhaustive()
+    }
 }
 
 impl C6BlindResidualPendingClaimsVerifier {
@@ -600,8 +629,11 @@ impl C6BlindResidualPendingClaimsVerifier {
         self.claims.get(index).map(|claim| &claim.descriptor)
     }
 
-    pub fn key_for_tape(&self, index: usize, tape: usize) -> Option<VerifierKey> {
-        self.claims.get(index).and_then(|claim| claim.keys.get(tape)).copied()
+    #[allow(dead_code)]
+    pub(crate) fn link_entries(
+        &self,
+    ) -> Vec<(C6BlindResidualPendingDescriptor, [VerifierKey; MAC_TAPES])> {
+        self.claims.iter().map(|claim| (claim.descriptor.clone(), claim.keys)).collect()
     }
 }
 
@@ -2864,8 +2896,8 @@ mod tests {
         let deltas = [symbol(0xD1), symbol(0xE2)];
         for index in 0..fixture.pending.len() {
             for (tape, delta) in deltas.iter().copied().enumerate() {
-                let prover = fixture.pending.authed_for_tape(index, tape).unwrap();
-                let verifier = verified.key_for_tape(index, tape).unwrap();
+                let prover = fixture.pending.claims[index].auth[tape];
+                let verifier = verified.claims[index].keys[tape];
                 assert_eq!(verifier.k, prover.m + delta * prover.x);
             }
         }
@@ -2886,10 +2918,7 @@ mod tests {
             );
             for (local_index, clear_claim) in fixture.trace.claims[repetition].iter().enumerate() {
                 let global_index = repetition * C6_RESIDUAL_TABLES_PER_REPETITION + local_index;
-                assert_eq!(
-                    fixture.pending.authed_for_tape(global_index, 0).unwrap().x,
-                    clear_claim.value
-                );
+                assert_eq!(fixture.pending.claims[global_index].auth[0].x, clear_claim.value);
             }
         }
     }
@@ -3083,12 +3112,8 @@ mod tests {
                     .collect::<Vec<_>>(),
                 (0..C6_RESIDUAL_TABLES_PER_REPETITION)
                     .map(|local| {
-                        fused_pending
-                            .authed_for_tape(
-                                repetition * C6_RESIDUAL_TABLES_PER_REPETITION + local,
-                                0,
-                            )
-                            .unwrap()
+                        fused_pending.claims[repetition * C6_RESIDUAL_TABLES_PER_REPETITION + local]
+                            .auth[0]
                             .x
                     })
                     .collect::<Vec<_>>()

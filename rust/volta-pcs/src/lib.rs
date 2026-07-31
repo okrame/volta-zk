@@ -9,6 +9,7 @@
 //!   → `ligero::open_zk` / `verify_open` (claim bound to the public C_W).
 
 pub mod batch;
+pub mod c6_authenticated_output_link;
 pub mod c6_hidden_u;
 pub mod c6_hidden_u_sumcheck;
 pub mod c6_residual_sumcheck;
@@ -24,6 +25,19 @@ pub use batch::{
     batch_reduce_prover, batch_reduce_prover_cpu_resident, batch_reduce_prover_cuda_resident,
     batch_reduce_verifier, BatchTimings, BlockClaim, ClaimReduceResidentCounters,
     CpuClaimReduceSettlement, CudaClaimReduceSettlement,
+};
+pub use c6_authenticated_output_link::{
+    prove_c6_authenticated_output_link_reference, verify_c6_authenticated_output_link_reference,
+    C6AuthenticatedOutputLinkError, C6AuthenticatedOutputLinkMetrics,
+    C6AuthenticatedOutputLinkProof, C6BoundSlotRegistryProver, C6BoundSlotRegistryVerifier,
+    C6LinkSlotPolynomial, C6PendingSlotDescriptor, C6PendingSlotRegistryProver,
+    C6PendingSlotRegistryVerifier, C6_AUTHENTICATED_OUTPUT_LINK_COHORTS,
+    C6_AUTHENTICATED_OUTPUT_LINK_MAGIC, C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_BYTES,
+    C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_CORRELATIONS_PER_TAPE,
+    C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_OVERHEAD_BYTES,
+    C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_RELATIONS,
+    C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_ROUNDS, C6_AUTHENTICATED_OUTPUT_LINK_TAPES,
+    C6_AUTHENTICATED_OUTPUT_LINK_VERSION,
 };
 pub use c6_hidden_u::{
     derive_hidden_u_family_claims, hidden_u_functional_digest, hidden_u_prequery_encoded_len,
@@ -70,9 +84,8 @@ pub use c6_residual_sumcheck_blind::{
     verify_c6_blind_residual_sumchecks_fused_scaled, C6BlindResidualFusedCompilerContext,
 };
 pub use c6_wrapper_pcs::{
-    assemble_production_c6_wrapper_claims, bind_hidden_u_opening_claims_to_wrapper_slots,
-    bind_production_c6_residual_relation_roots, c6_wrapper_profile_digest,
-    commit_c6_wrapper_cohort, fix_production_c6_wrapper_commitments,
+    bind_hidden_u_opening_claims_to_wrapper_slots, bind_production_c6_residual_relation_roots,
+    c6_wrapper_profile_digest, commit_c6_wrapper_cohort, fix_production_c6_wrapper_commitments,
     production_c6_wrapper_codec_reference, production_c6_wrapper_specs, prove_c6_wrapper_pcs,
     prove_c6_wrapper_pcs_assembled, verify_c6_wrapper_pcs, verify_c6_wrapper_pcs_assembled,
     C6AssembledWrapperClaims, C6CommittedWrapperCohort, C6FixedWrapperCommitments,

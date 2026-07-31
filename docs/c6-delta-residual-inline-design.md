@@ -19,8 +19,9 @@ ROLE-TYPED RUNTIME TARGETS + STEP-WISE 24-ROUND CACHE PARTICIPANT SCALED
 GREEN; INDIVIDUAL TARGET `C6FT1` BOOTSTRAP FORMAL + STRICT CODEC + INLINE
 ΠPROD/C6PS1 SCALED DIFFERENTIAL GREEN; SOURCE-ORDINAL BASE-MASK/KEY
 STREAMER + PHASE-1 POOLED-PCG RESERVATION/REPLAY DIFFERENTIAL GREEN;
-INLINE RUNTIME-IDENTITY ORDERING REPAIR GREEN; `CacheSegK` REMOVAL /
-BACKEND / FINAL ENVELOPE PENDING;
+INLINE RUNTIME-IDENTITY ORDERING REPAIR GREEN; ONE-LAYER CPU ATTENTION
+`CacheSegK` BYPASS + INLINE PRODUCT-CLOSURE DIFFERENTIAL GREEN; MODEL/BAND
+ORCHESTRATION / GRAND-RESIDUAL SINK / BACKEND / FINAL ENVELOPE PENDING;
 LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
@@ -4146,7 +4147,57 @@ accepts the complete runtime identity only at finalization.  Early finish
 stops after the 48-B header, and a changed final `instance_digest` rejects
 after all fixed slots/padding but before any successor-root transition.  The
 post-hoc full-identity API and strict decoder remain green and byte-identical.
-before that gate.
+
+#### 6.2.4 One-layer attention bypass is green; the grand residual remains mandatory
+
+The first C6-specific attention path now crosses the actual phase-2 block
+seam without constructing a corrected cache-sized client key vector.  During
+phase 1 the client reserves the direct K/V base-key rows in their original
+allocation order.  During phase 2, provider and client process the real
+attention order `ValueColumns` then `KeyRows`: each family is accumulated in
+one source pass, and each of its 12 target corrections is fixed/consumed by
+`C6FT1` immediately before the corresponding retained `ProductClosure`.
+Both tapes retain only the 24 paired target accumulators.
+
+The remaining current-slab K/V auxiliary claims expose a distinct algebraic
+role.  They are inputs only to linear LogUp zero rows; they never enter a
+`ProductClosure`.  The C6 verifier therefore replays and folds the base key
+for each of those two openings without applying a hidden correction.  The
+missing `Delta*d` contribution is intentionally owned by the response-wide
+grand residual.  Reusing such a base-only opening in any nonlinear closure
+is forbidden; a future caller must remain role-typed so that this cannot
+silently regress.
+
+A permanent `T=4`, one-layer CPU differential now runs attention phase 1,
+table finalization, the C6 phase-2 provider/client paths, table closure and
+the complete batched product check.  It constructs no `CacheSegK` in the C6
+verifier path.  The exact census is:
+
+```text
+provider/client target source groups                 2
+unique source cells per tape                     6,144
+target coefficient applications per tape         6,144
+corrected target keys                                24
+client base-only linear auxiliary source visits   6,144
+C6FT1 response frame                              18,480 B
+fresh correlations for source replay / C6FT1          0.
+```
+
+Every paired verifier target equals `m_b + Delta_b*x` on its tape, the
+runtime identity/records/factors match across roles, and the accumulated
+nonlinear product batch accepts.  The ordinary proto suite is **143 pass / 0
+fail / 1 ignored** and the `c6-trace` suite is **159 pass / 0 fail / 1
+ignored**.
+
+This is not yet a complete C6 certificate or a production `CacheSegK`
+removal.  The test deliberately does not close the legacy zero batch: the
+base-only auxiliary delta terms must first be connected to the real fused
+grand-residual sink.  The production 12-layer square/band orchestration,
+persistent prefix segments, thinned boundaries, resident provider path,
+response-field removal and timing/backend gates remain pending.  No response,
+setup, correlation or timing credit is earned at this checkpoint.  The next
+ordered local gate is the production-shaped multi-layer/band C6 orchestration
+with the auxiliary residual ownership made explicit end to end.
 
 ## 7. Certificate and challenge grammar
 

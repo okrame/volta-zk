@@ -1937,6 +1937,92 @@ pub struct CacheSegK<'a> {
     pub keys: &'a [VerifierKey],
 }
 
+/// C6-only online cache source seam.  Implementations may retain bounded
+/// per-target accumulators, but never a corrected cache-sized key vector.
+/// All factors are public and already fixed by the attention sumchecks.
+#[cfg(feature = "c6-trace")]
+pub(crate) struct C6LinearOnlyKey(VerifierKey);
+
+#[cfg(feature = "c6-trace")]
+impl C6LinearOnlyKey {
+    pub(crate) fn from_replayed_base(key: VerifierKey) -> Self {
+        Self(key)
+    }
+
+    fn into_logup_aux(self) -> VerifierKey {
+        self.0
+    }
+}
+
+#[cfg(feature = "c6-trace")]
+pub(crate) trait C6AttentionProverCache {
+    fn prepare_target_family(
+        &mut self,
+        primary: &mut CorrelationStream,
+        kind: crate::c6_cache_fold::C6CacheFoldKind,
+        model_layer: u16,
+        row_weights: &[Vec<Fp2>],
+        column_weights: &[Vec<Fp2>],
+    ) -> bool;
+
+    fn push_target_before_product(
+        &mut self,
+        kind: crate::c6_cache_fold::C6CacheFoldKind,
+        target: ProverAuthed,
+        transcript: &mut Transcript,
+    ) -> Option<ProverAuthed>;
+
+    fn finish_layer(&mut self) -> bool;
+}
+
+#[cfg(feature = "c6-trace")]
+pub(crate) trait C6AttentionVerifierCache {
+    fn segment_rows(&self, kind: crate::c6_cache_fold::C6CacheFoldKind) -> Vec<usize>;
+
+    fn prepare_target_family(
+        &mut self,
+        primary: &mut VerifierCtx,
+        kind: crate::c6_cache_fold::C6CacheFoldKind,
+        model_layer: u16,
+        row_weights: &[Vec<Fp2>],
+        column_weights: &[Vec<Fp2>],
+    ) -> bool;
+
+    fn correct_next_before_product(
+        &mut self,
+        kind: crate::c6_cache_fold::C6CacheFoldKind,
+        transcript: &mut Transcript,
+    ) -> Option<VerifierKey>;
+
+    /// Return a base-PCG linear key for the current slab.  This value may
+    /// enter only the C6 linear residual path, never a ProductClosure.
+    fn open_current_linear_base(
+        &mut self,
+        primary: &mut VerifierCtx,
+        kind: crate::c6_cache_fold::C6CacheFoldKind,
+        point: &[Fp2],
+    ) -> Option<C6LinearOnlyKey>;
+
+    fn finish_layer(&mut self) -> bool;
+}
+
+#[allow(dead_code)] // C6 variant is exercised before model-level orchestration lands.
+enum AttentionProverCacheMode<'a> {
+    Legacy(std::marker::PhantomData<&'a ()>),
+    #[cfg(feature = "c6-trace")]
+    C6(&'a mut dyn C6AttentionProverCache),
+}
+
+#[allow(dead_code)] // C6 variant is exercised before model-level orchestration lands.
+enum AttentionVerifierCacheMode<'a> {
+    Legacy {
+        k_segments: &'a [CacheSegK<'a>],
+        v_segments: &'a [CacheSegK<'a>],
+    },
+    #[cfg(feature = "c6-trace")]
+    C6(&'a mut dyn C6AttentionVerifierCache),
+}
+
 /// One earlier phase's authenticated K/V (prover side): the prefill (or a
 /// previous decode chunk's) boundary tensors + their domains.
 pub struct KvPrefixP<'a> {
@@ -5866,6 +5952,7 @@ pub(crate) fn prove_attn_block(
         v_segs,
         Some(dom_abo),
         None,
+        AttentionProverCacheMode::Legacy(std::marker::PhantomData),
         biases,
     );
     debug_assert!(deferred.is_none());
@@ -5898,12 +5985,46 @@ pub(crate) fn prove_attn_block_thinned(
         v_segs,
         None,
         Some(abo_claim),
+        AttentionProverCacheMode::Legacy(std::marker::PhantomData),
         biases,
     );
     (proof, claims, deferred.expect("T1 attention must return both X claims"))
 }
 
-#[allow(clippy::too_many_arguments)]
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments, dead_code)]
+pub(crate) fn prove_attn_block_c6(
+    wit: &LayerWitness,
+    weights: &LayerWeights,
+    luts: &Luts,
+    p1: AttnP1,
+    cx: &mut BlockCtxP,
+    dom_xin: u64,
+    k_segs: &[CacheSegP],
+    v_segs: &[CacheSegP],
+    dom_abo: u64,
+    c6_cache: &mut dyn C6AttentionProverCache,
+    biases: Option<&GemmBiases>,
+) -> (AttnBlockProof, Vec<WeightClaimP>) {
+    let (proof, claims, deferred) = prove_attn_block_impl(
+        wit,
+        weights,
+        luts,
+        p1,
+        cx,
+        Some(dom_xin),
+        k_segs,
+        v_segs,
+        Some(dom_abo),
+        None,
+        AttentionProverCacheMode::C6(c6_cache),
+        biases,
+    );
+    debug_assert!(deferred.is_none());
+    (proof, claims)
+}
+
+#[allow(clippy::too_many_arguments, unused_mut, unused_variables)]
 fn prove_attn_block_impl(
     wit: &LayerWitness,
     weights: &LayerWeights,
@@ -5915,6 +6036,7 @@ fn prove_attn_block_impl(
     v_segs: &[CacheSegP],
     dom_abo: Option<u64>,
     external_abo: Option<&BoundaryClaimP>,
+    mut cache_mode: AttentionProverCacheMode<'_>,
     biases: Option<&GemmBiases>,
 ) -> (AttnBlockProof, Vec<WeightClaimP>, Option<(BoundaryClaimP, BoundaryClaimP)>) {
     let t = wit.t;
@@ -6122,6 +6244,22 @@ fn prove_attn_block_impl(
     }
     let wv_outputs = blind_prove_batch(&wv_plan, wv_jobs, cx.stream, cx.tx)
         .expect("sealed W·V schedule and jobs must agree");
+    #[cfg(feature = "c6-trace")]
+    if let AttentionProverCacheMode::C6(c6_cache) = &mut cache_mode {
+        let row_weights = wv_outputs
+            .iter()
+            .map(|output| eq_vec(&output.point)[..s_len].to_vec())
+            .collect::<Vec<_>>();
+        let column_weights = vec![eq_within.clone(); H];
+        assert!(c6_cache.prepare_target_family(
+            cx.stream,
+            crate::c6_cache_fold::C6CacheFoldKind::ValueColumns,
+            crate::c6_cache_fold::normalize_c6_cache_fold_model_layer(layer)
+                .expect("C6 attention section must map to a model layer"),
+            &row_weights,
+            &column_weights,
+        ));
+    }
     for (h, ((output, (bvals, btags, b_authenticated)), mut timings)) in
         wv_outputs.into_iter().zip(wv_openings).zip(wv_timings).enumerate()
     {
@@ -6138,11 +6276,21 @@ fn prove_attn_block_impl(
             value += eq_l[row] * bvals[row];
             tag += eq_l[row] * btags[row];
         }
-        let b_open = b_authenticated
+        let mut b_open = b_authenticated
             .iter()
             .zip(&eq_l)
             .fold(ProverAuthed::ZERO, |sum, (&entry, &weight)| sum.add(entry.scale(weight)))
             .with_same_c6_trace(value, tag);
+        #[cfg(feature = "c6-trace")]
+        if let AttentionProverCacheMode::C6(c6_cache) = &mut cache_mode {
+            b_open = c6_cache
+                .push_target_before_product(
+                    crate::c6_cache_fold::C6CacheFoldKind::ValueColumns,
+                    b_open,
+                    cx.tx,
+                )
+                .expect("C6 W·V target source/correction must be canonical");
+        }
         #[cfg(feature = "c6-trace")]
         crate::c6_cache_fold::record_c6_cache_fold_if_active(
             crate::c6_cache_fold::C6CacheFoldKind::ValueColumns,
@@ -6481,6 +6629,22 @@ fn prove_attn_block_impl(
     }
     let qk_outputs = blind_prove_batch(&qk_plan, qk_jobs, cx.stream, cx.tx)
         .expect("sealed Q·Kᵀ schedule and jobs must agree");
+    #[cfg(feature = "c6-trace")]
+    if let AttentionProverCacheMode::C6(c6_cache) = &mut cache_mode {
+        let row_weights = vec![eq_rj_sc[..s_len].to_vec(); H];
+        let column_weights = qk_outputs
+            .iter()
+            .map(|output| eq_vec(&output.point)[..DH].to_vec())
+            .collect::<Vec<_>>();
+        assert!(c6_cache.prepare_target_family(
+            cx.stream,
+            crate::c6_cache_fold::C6CacheFoldKind::KeyRows,
+            crate::c6_cache_fold::normalize_c6_cache_fold_model_layer(layer)
+                .expect("C6 attention section must map to a model layer"),
+            &row_weights,
+            &column_weights,
+        ));
+    }
     for (h, ((output, (kvals, ktags, k_authenticated)), mut timings)) in
         qk_outputs.into_iter().zip(qk_openings).zip(qk_timings).enumerate()
     {
@@ -6497,11 +6661,21 @@ fn prove_attn_block_impl(
             value += eq_l[l] * kvals[l];
             tag += eq_l[l] * ktags[l];
         }
-        let b_open = k_authenticated
+        let mut b_open = k_authenticated
             .iter()
             .zip(&eq_l)
             .fold(ProverAuthed::ZERO, |sum, (&entry, &weight)| sum.add(entry.scale(weight)))
             .with_same_c6_trace(value, tag);
+        #[cfg(feature = "c6-trace")]
+        if let AttentionProverCacheMode::C6(c6_cache) = &mut cache_mode {
+            b_open = c6_cache
+                .push_target_before_product(
+                    crate::c6_cache_fold::C6CacheFoldKind::KeyRows,
+                    b_open,
+                    cx.tx,
+                )
+                .expect("C6 Q·K target source/correction must be canonical");
+        }
         #[cfg(feature = "c6-trace")]
         crate::c6_cache_fold::record_c6_cache_fold_if_active(
             crate::c6_cache_fold::C6CacheFoldKind::KeyRows,
@@ -6622,6 +6796,11 @@ fn prove_attn_block_impl(
         );
         (proof, Some((x_residual_claim.expect("T1 attention residual claim"), ln_claim)))
     };
+
+    #[cfg(feature = "c6-trace")]
+    if let AttentionProverCacheMode::C6(c6_cache) = &mut cache_mode {
+        assert!(c6_cache.finish_layer(), "incomplete C6 provider attention source layer");
+    }
 
     let proof = AttnBlockProof {
         ln_vec_corrs,
@@ -7826,8 +8005,7 @@ pub(crate) fn verify_attn_block(
         v1,
         cx,
         Some(xin_keys),
-        k_segs,
-        v_segs,
+        AttentionVerifierCacheMode::Legacy { k_segments: k_segs, v_segments: v_segs },
         Some(abo_keys),
         None,
         biases,
@@ -7864,13 +8042,50 @@ pub(crate) fn verify_attn_block_thinned(
         v1,
         cx,
         None,
-        k_segs,
-        v_segs,
+        AttentionVerifierCacheMode::Legacy { k_segments: k_segs, v_segments: v_segs },
         None,
         Some(abo_claim),
         biases,
     )?;
     Some((keys, deferred?))
+}
+
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments, dead_code)]
+pub(crate) fn verify_attn_block_c6(
+    sh: BandShape,
+    ln1_gain: &[i16],
+    ln1_bias: &[i16],
+    luts: &Luts,
+    proof: &AttnBlockProof,
+    v1: AttnV1,
+    cx: &mut BlockCtxV,
+    xin_keys: &[VerifierKey],
+    c6_cache: &mut dyn C6AttentionVerifierCache,
+    abo_keys: &[VerifierKey],
+    biases: Option<&GemmBiases>,
+) -> Option<Vec<(Vec<Fp2>, VerifierKey)>> {
+    if proof.t1_q_corr.is_some() || proof.t1_x_reduce.is_some() {
+        return None;
+    }
+    let (keys, deferred) = verify_attn_block_impl(
+        sh,
+        ln1_gain,
+        ln1_bias,
+        luts,
+        proof,
+        v1,
+        cx,
+        Some(xin_keys),
+        AttentionVerifierCacheMode::C6(c6_cache),
+        Some(abo_keys),
+        None,
+        biases,
+    )?;
+    if deferred.is_some() {
+        return None;
+    }
+    Some(keys)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -7883,23 +8098,31 @@ fn verify_attn_block_impl(
     v1: AttnV1,
     cx: &mut BlockCtxV,
     xin_keys: Option<&[VerifierKey]>,
-    k_segs: &[CacheSegK],
-    v_segs: &[CacheSegK],
+    mut cache_mode: AttentionVerifierCacheMode<'_>,
     abo_keys: Option<&[VerifierKey]>,
     external_abo: Option<&BoundaryClaimK>,
     biases: Option<&GemmBiases>,
 ) -> Option<(Vec<(Vec<Fp2>, VerifierKey)>, Option<(BoundaryClaimK, BoundaryClaimK)>)> {
     let p = luts.params;
     let t = sh.q;
-    if k_segs.iter().map(|g| g.rows).sum::<usize>() != sh.s()
-        || v_segs.iter().map(|g| g.rows).sum::<usize>() != sh.s()
-        || k_segs.last()?.rows != t
-        || v_segs.last()?.rows != t
+    let (k_segment_rows, v_segment_rows) = match &cache_mode {
+        AttentionVerifierCacheMode::Legacy { k_segments, v_segments } => (
+            k_segments.iter().map(|segment| segment.rows).collect::<Vec<_>>(),
+            v_segments.iter().map(|segment| segment.rows).collect::<Vec<_>>(),
+        ),
+        #[cfg(feature = "c6-trace")]
+        AttentionVerifierCacheMode::C6(c6_cache) => (
+            c6_cache.segment_rows(crate::c6_cache_fold::C6CacheFoldKind::KeyRows),
+            c6_cache.segment_rows(crate::c6_cache_fold::C6CacheFoldKind::ValueColumns),
+        ),
+    };
+    if k_segment_rows.iter().sum::<usize>() != sh.s()
+        || v_segment_rows.iter().sum::<usize>() != sh.s()
+        || k_segment_rows.last().copied()? != t
+        || v_segment_rows.last().copied()? != t
     {
         return None;
     }
-    let k_keys = k_segs.last()?.keys;
-    let v_keys = v_segs.last()?.keys;
     let (qb, sb) = (sh.qb(), sh.sb());
     let (q_pad, s_pad, sp2) = (sh.q_pad(), sh.s_pad(), sh.sp2());
     let s_len = sh.s();
@@ -8010,8 +8233,13 @@ fn verify_attn_block_impl(
     let mut wv_bkeys = Vec::with_capacity(H);
     let mut wv_jobs = Vec::with_capacity(H);
     for h in 0..H {
-        let vkeys_row = cache_fold_cols_k(v_segs, &eq_within, h * DH, DH);
-        wv_bkeys.push(vkeys_row);
+        match &cache_mode {
+            AttentionVerifierCacheMode::Legacy { v_segments, .. } => {
+                wv_bkeys.push(cache_fold_cols_k(v_segments, &eq_within, h * DH, DH));
+            }
+            #[cfg(feature = "c6-trace")]
+            AttentionVerifierCacheMode::C6(_) => {}
+        }
         wv_jobs.push(BlindSumcheckBatchVerifyJob {
             site_id: attention_act_site_id(sh.t0, layer, AttentionActRole::WeightValue, h),
             n_vars: pad_bits(s_pad),
@@ -8021,20 +8249,44 @@ fn verify_attn_block_impl(
         });
     }
     let wv_outputs = blind_verify_batch(&wv_plan, wv_jobs, cx.ctx, cx.tx)?;
-    for (h, (output, vkeys_row)) in wv_outputs.into_iter().zip(wv_bkeys).enumerate() {
+    #[cfg(feature = "c6-trace")]
+    if let AttentionVerifierCacheMode::C6(c6_cache) = &mut cache_mode {
+        let row_weights = wv_outputs
+            .iter()
+            .map(|output| eq_vec(&output.point)[..s_len].to_vec())
+            .collect::<Vec<_>>();
+        let column_weights = vec![eq_within.clone(); H];
+        if !c6_cache.prepare_target_family(
+            cx.ctx,
+            crate::c6_cache_fold::C6CacheFoldKind::ValueColumns,
+            crate::c6_cache_fold::normalize_c6_cache_fold_model_layer(layer).ok()?,
+            &row_weights,
+            &column_weights,
+        ) {
+            return None;
+        }
+    }
+    for (h, output) in wv_outputs.into_iter().enumerate() {
         if output.site_id != attention_act_site_id(sh.t0, layer, AttentionActRole::WeightValue, h) {
             return None;
         }
         let eq_l = eq_vec(&output.point);
-        let k_b =
-            (0..s_len).fold(VerifierKey::ZERO, |sum, row| sum.add(vkeys_row[row].scale(eq_l[row])));
+        let k_b = match &mut cache_mode {
+            AttentionVerifierCacheMode::Legacy { .. } => (0..s_len)
+                .fold(VerifierKey::ZERO, |sum, row| sum.add(wv_bkeys[h][row].scale(eq_l[row]))),
+            #[cfg(feature = "c6-trace")]
+            AttentionVerifierCacheMode::C6(c6_cache) => c6_cache.correct_next_before_product(
+                crate::c6_cache_fold::C6CacheFoldKind::ValueColumns,
+                cx.tx,
+            )?,
+        };
         #[cfg(feature = "c6-trace")]
         crate::c6_cache_fold::record_c6_cache_fold_if_active(
             crate::c6_cache_fold::C6CacheFoldKind::ValueColumns,
             layer,
             sh.t0,
             sh.q,
-            &v_segs.iter().map(|segment| segment.rows).collect::<Vec<_>>(),
+            &v_segment_rows,
             h,
             h * DH,
             &eq_l[..s_len],
@@ -8222,8 +8474,13 @@ fn verify_attn_block_impl(
     let mut qk_bkeys = Vec::with_capacity(H);
     let mut qk_jobs = Vec::with_capacity(H);
     for h in 0..H {
-        let kkeys_col = cache_fold_rows_k(k_segs, &eq_rj_sc, h * DH, DH);
-        qk_bkeys.push(kkeys_col);
+        match &cache_mode {
+            AttentionVerifierCacheMode::Legacy { k_segments, .. } => {
+                qk_bkeys.push(cache_fold_rows_k(k_segments, &eq_rj_sc, h * DH, DH));
+            }
+            #[cfg(feature = "c6-trace")]
+            AttentionVerifierCacheMode::C6(_) => {}
+        }
         qk_jobs.push(BlindSumcheckBatchVerifyJob {
             site_id: attention_act_site_id(sh.t0, layer, AttentionActRole::QueryKey, h),
             n_vars: pad_bits(DH),
@@ -8233,19 +8490,46 @@ fn verify_attn_block_impl(
         });
     }
     let qk_outputs = blind_verify_batch(&qk_plan, qk_jobs, cx.ctx, cx.tx)?;
-    for (h, (output, kkeys_col)) in qk_outputs.into_iter().zip(qk_bkeys).enumerate() {
+    #[cfg(feature = "c6-trace")]
+    if let AttentionVerifierCacheMode::C6(c6_cache) = &mut cache_mode {
+        let row_weights = vec![eq_rj_sc[..s_len].to_vec(); H];
+        let column_weights = qk_outputs
+            .iter()
+            .map(|output| eq_vec(&output.point)[..DH].to_vec())
+            .collect::<Vec<_>>();
+        if !c6_cache.prepare_target_family(
+            cx.ctx,
+            crate::c6_cache_fold::C6CacheFoldKind::KeyRows,
+            crate::c6_cache_fold::normalize_c6_cache_fold_model_layer(layer).ok()?,
+            &row_weights,
+            &column_weights,
+        ) {
+            return None;
+        }
+    }
+    for (h, output) in qk_outputs.into_iter().enumerate() {
         if output.site_id != attention_act_site_id(sh.t0, layer, AttentionActRole::QueryKey, h) {
             return None;
         }
         let eq_l = eq_vec(&output.point);
-        let k_b = (0..DH).fold(VerifierKey::ZERO, |sum, l| sum.add(kkeys_col[l].scale(eq_l[l])));
+        let k_b = match &mut cache_mode {
+            AttentionVerifierCacheMode::Legacy { .. } => (0..DH)
+                .fold(VerifierKey::ZERO, |sum, column| {
+                    sum.add(qk_bkeys[h][column].scale(eq_l[column]))
+                }),
+            #[cfg(feature = "c6-trace")]
+            AttentionVerifierCacheMode::C6(c6_cache) => c6_cache.correct_next_before_product(
+                crate::c6_cache_fold::C6CacheFoldKind::KeyRows,
+                cx.tx,
+            )?,
+        };
         #[cfg(feature = "c6-trace")]
         crate::c6_cache_fold::record_c6_cache_fold_if_active(
             crate::c6_cache_fold::C6CacheFoldKind::KeyRows,
             layer,
             sh.t0,
             sh.q,
-            &k_segs.iter().map(|segment| segment.rows).collect::<Vec<_>>(),
+            &k_segment_rows,
             h,
             h * DH,
             &eq_rj_sc[..s_len],
@@ -8273,14 +8557,38 @@ fn verify_attn_block_impl(
 
     // ---- 15: K/V third-slice aux claims -------------------------------------------
     let rho_k: Vec<Fp2> = (0..d_cb + rb).map(|_| cx.tx.challenge_fp2()).collect();
-    let k_bound_k = open_matrix_k(k_keys, t, D, &rho_k);
+    let k_bound_k = match &mut cache_mode {
+        AttentionVerifierCacheMode::Legacy { k_segments, .. } => {
+            open_matrix_k(k_segments.last()?.keys, t, D, &rho_k)
+        }
+        #[cfg(feature = "c6-trace")]
+        AttentionVerifierCacheMode::C6(c6_cache) => c6_cache
+            .open_current_linear_base(
+                cx.ctx,
+                crate::c6_cache_fold::C6CacheFoldKind::KeyRows,
+                &rho_k,
+            )?
+            .into_logup_aux(),
+    };
     let mut pt_k = rho_k[..d_cb].to_vec();
     pt_k.push(Fp2::ONE);
     pt_k.push(Fp2::ZERO);
     pt_k.extend_from_slice(&rho_k[d_cb..]);
     aux_qkv.push((1, pt_k, k_bound_k));
     let rho_v: Vec<Fp2> = (0..d_cb + rb).map(|_| cx.tx.challenge_fp2()).collect();
-    let v_bound_k = open_matrix_k(v_keys, t, D, &rho_v);
+    let v_bound_k = match &mut cache_mode {
+        AttentionVerifierCacheMode::Legacy { v_segments, .. } => {
+            open_matrix_k(v_segments.last()?.keys, t, D, &rho_v)
+        }
+        #[cfg(feature = "c6-trace")]
+        AttentionVerifierCacheMode::C6(c6_cache) => c6_cache
+            .open_current_linear_base(
+                cx.ctx,
+                crate::c6_cache_fold::C6CacheFoldKind::ValueColumns,
+                &rho_v,
+            )?
+            .into_logup_aux(),
+    };
     let mut pt_v = rho_v[..d_cb].to_vec();
     pt_v.push(Fp2::ZERO);
     pt_v.push(Fp2::ONE);
@@ -8322,6 +8630,13 @@ fn verify_attn_block_impl(
             verify_ln_chain_deferred(t, s_ln, ln1_gain, ln1_bias, &lvk1, &proof.ln, &wk_ln1, cx)?;
         Some((x_residual_claim?, ln_claim))
     };
+
+    #[cfg(feature = "c6-trace")]
+    if let AttentionVerifierCacheMode::C6(c6_cache) = &mut cache_mode {
+        if !c6_cache.finish_layer() {
+            return None;
+        }
+    }
 
     Some((vec![(w_pt_proj, k_w_proj), (w_pt_cattn, k_w_cattn)], deferred))
 }
@@ -11379,6 +11694,299 @@ mod tests {
                 .any(|(left, right)| left.coefficient_digest != right.coefficient_digest),
             "changing the transcript seed did not change any cache functional"
         );
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn c6_online_attention_closes_products_without_cache_key_vectors() {
+        use crate::c6_cache_fold::{
+            begin_c6_cache_fold_trace, C6CacheFoldDirectSourceSegment, C6CacheFoldKind,
+            C6CacheFoldOnlineLayerMetrics, C6CacheFoldOnlineLayerProver,
+            C6CacheFoldOnlineLayerVerifier, C6CacheFoldParty, C6CacheFoldTargetInlineProver,
+            C6CacheFoldTargetInlineVerifier, C6CacheFoldTargetPublicSchedule,
+            C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES,
+        };
+
+        let (luts, weights, witness) = fixture();
+        let primary_seed = [0xC1; 32];
+        let secondary_seed = [0xC2; 32];
+        let transcript_seed = [0xC3; 32];
+        let deltas = [
+            Fp2::new(Fp::new(0xC101), Fp::new(0xC102)),
+            Fp2::new(Fp::new(0xC201), Fp::new(0xC202)),
+        ];
+        let statement_digest = [0xC4; 32];
+        let public_schedule = C6CacheFoldTargetPublicSchedule::new(
+            std::iter::repeat_n(C6CacheFoldKind::ValueColumns, H)
+                .chain(std::iter::repeat_n(C6CacheFoldKind::KeyRows, H))
+                .collect(),
+        )
+        .unwrap();
+
+        let mut primary_stream = CorrelationStream::new(primary_seed);
+        let mut secondary_stream = CorrelationStream::new(secondary_seed);
+        let mut prover_tx = Transcript::new(transcript_seed);
+        let mut prover_bank = TableBankP::new();
+        let (p1, prover_doms, dom_xin, dom_k, dom_v, dom_abo, xin_corr, k_corr, v_corr, abo_corr) = {
+            let mut cx = BlockCtxP::new(&mut primary_stream, &mut prover_tx, 0, &mut prover_bank);
+            let dom_xin = cx.doms.take(T as u64);
+            let xin_corr = auth_matrix_rows_p(cx.stream, cx.tx, dom_xin, &witness.x_in, T, D);
+            let dom_k = cx.doms.take(T as u64);
+            let k_corr = auth_matrix_rows_p(cx.stream, cx.tx, dom_k, &witness.k, T, D);
+            let dom_v = cx.doms.take(T as u64);
+            let v_corr = auth_matrix_rows_p(cx.stream, cx.tx, dom_v, &witness.v, T, D);
+            let dom_abo = cx.doms.take(T as u64);
+            let abo_corr =
+                auth_matrix_rows_p(cx.stream, cx.tx, dom_abo, &witness.attn_block_out, T, D);
+            let p1 = attn_phase1_with_wires(
+                witness,
+                weights,
+                luts,
+                build_attn_wires(witness, luts),
+                &mut cx,
+            );
+            (p1, cx.doms, dom_xin, dom_k, dom_v, dom_abo, xin_corr, k_corr, v_corr, abo_corr)
+        };
+        for base_domain in [dom_k, dom_v] {
+            for row in 0..T {
+                let _ = secondary_stream.draw_sub_masks(base_domain + row as u64, D);
+            }
+        }
+        let mut prover_table_doms = Doms::new(layer_dom_base(238));
+        prover_bank.finalize(&mut primary_stream, &mut prover_tx, &mut prover_table_doms);
+
+        let key_sources = vec![C6CacheFoldDirectSourceSegment { base_domain: dom_k, rows: T }];
+        let value_sources = vec![C6CacheFoldDirectSourceSegment { base_domain: dom_v, rows: T }];
+        let mut target_builder = C6CacheFoldTargetInlineProver::start_public(
+            statement_digest,
+            public_schedule.clone(),
+            &mut prover_tx,
+        )
+        .unwrap();
+        let prover_trace_guard = begin_c6_cache_fold_trace(C6CacheFoldParty::Prover).unwrap();
+        let mut prover_online = C6CacheFoldOnlineLayerProver::new(
+            0,
+            key_sources.clone(),
+            value_sources.clone(),
+            &mut secondary_stream,
+            &mut target_builder,
+        )
+        .unwrap();
+        let (attention_proof, weight_claims, mut prover_products, mut prover_zero, mut counters) = {
+            let mut cx = BlockCtxP::with_doms(
+                &mut primary_stream,
+                &mut prover_tx,
+                prover_doms,
+                &mut prover_bank,
+            );
+            let key_segment = [CacheSegP { dom: dom_k, rows: T, data: &witness.k }];
+            let value_segment = [CacheSegP { dom: dom_v, rows: T, data: &witness.v }];
+            let (proof, claims) = prove_attn_block_c6(
+                witness,
+                weights,
+                luts,
+                p1,
+                &mut cx,
+                dom_xin,
+                &key_segment,
+                &value_segment,
+                dom_abo,
+                &mut prover_online,
+                None,
+            );
+            (proof, claims, cx.prod, cx.zero, cx.ctr_instances)
+        };
+        let prover_trace = prover_trace_guard.finish().unwrap();
+        let prover_metrics = prover_online.metrics();
+        let prover_targets = prover_online.paired_targets().to_vec();
+        drop(prover_online);
+        let (target_frame, prover_fixed) = target_builder
+            .finish_before_successor_root_with_identity(prover_trace.identity, &mut prover_tx)
+            .unwrap();
+        let table_proofs = prover_bank.close(
+            luts,
+            &mut primary_stream,
+            &mut prover_table_doms,
+            &mut prover_tx,
+            &mut counters,
+            &mut prover_products,
+            &mut prover_zero,
+        );
+
+        assert_eq!(weight_claims.len(), 2);
+        assert_eq!(
+            prover_metrics,
+            C6CacheFoldOnlineLayerMetrics {
+                source_groups: 2,
+                source_cells: 2 * T as u64 * D as u64,
+                coefficient_applications: 2 * T as u64 * D as u64,
+                corrected_targets: 2 * H as u64,
+                linear_auxiliary_source_cells: 0,
+            }
+        );
+        assert_eq!(prover_targets.len(), 2 * H);
+        assert_eq!(
+            target_frame.encode().unwrap().len() as u64,
+            C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES
+        );
+
+        let mut primary_verifier = VerifierCtx::new(primary_seed, deltas[0]);
+        let mut secondary_verifier = VerifierCtx::new(secondary_seed, deltas[1]);
+        let mut verifier_tx = Transcript::new(transcript_seed);
+        let mut pre_bank = TableBankV::empty();
+        let (verifier_doms, xin_keys, abo_keys, attn_v1) = {
+            let mut cx = BlockCtxV::new(&mut primary_verifier, &mut verifier_tx, 0, &mut pre_bank);
+            let dom_xin_v = cx.doms.take(T as u64);
+            assert_eq!(dom_xin_v, dom_xin);
+            let xin_keys = auth_matrix_rows_v(cx.ctx, dom_xin_v, &xin_corr, T, D);
+            let dom_k_v = cx.doms.take(T as u64);
+            assert_eq!(dom_k_v, dom_k);
+            cx.ctx.reserve_sub_key_rows(dom_k_v, T, D);
+            let dom_v_v = cx.doms.take(T as u64);
+            assert_eq!(dom_v_v, dom_v);
+            cx.ctx.reserve_sub_key_rows(dom_v_v, T, D);
+            let dom_abo_v = cx.doms.take(T as u64);
+            assert_eq!(dom_abo_v, dom_abo);
+            let abo_keys = auth_matrix_rows_v(cx.ctx, dom_abo_v, &abo_corr, T, D);
+            let attn_v1 = verify_attn_phase1(BandShape::square(T), luts, &attention_proof, &mut cx)
+                .expect("C6 attention phase 1 verifies");
+            (cx.doms, xin_keys, abo_keys, attn_v1)
+        };
+        assert_eq!(k_corr.len(), T * D);
+        assert_eq!(v_corr.len(), T * D);
+        secondary_verifier.reserve_sub_key_rows(dom_k, T, D);
+        secondary_verifier.reserve_sub_key_rows(dom_v, T, D);
+
+        let expected_contents = table_proofs.iter().map(|proof| proof.key).collect();
+        let mut verifier_table_doms = Doms::new(layer_dom_base(238));
+        let mut verifier_bank = TableBankV::finalize(
+            &expected_contents,
+            &table_proofs,
+            &mut primary_verifier,
+            &mut verifier_tx,
+            &mut verifier_table_doms,
+        )
+        .expect("C6 attention table phase 1 verifies");
+        let mut target_cursor = C6CacheFoldTargetInlineVerifier::start_public(
+            &target_frame,
+            public_schedule,
+            deltas,
+            &mut verifier_tx,
+        )
+        .unwrap();
+        let verifier_trace_guard = begin_c6_cache_fold_trace(C6CacheFoldParty::Verifier).unwrap();
+        let mut verifier_online = C6CacheFoldOnlineLayerVerifier::new(
+            0,
+            key_sources,
+            value_sources,
+            &mut secondary_verifier,
+            &mut target_cursor,
+        )
+        .unwrap();
+        let (weight_keys, mut verifier_products, mut verifier_zero) = {
+            let mut cx = BlockCtxV::with_doms(
+                &mut primary_verifier,
+                &mut verifier_tx,
+                verifier_doms,
+                &mut verifier_bank,
+            );
+            let keys = verify_attn_block_c6(
+                BandShape::square(T),
+                &weights.ln1_gain,
+                &weights.ln1_bias,
+                luts,
+                &attention_proof,
+                attn_v1,
+                &mut cx,
+                &xin_keys,
+                &mut verifier_online,
+                &abo_keys,
+                None,
+            )
+            .expect("online C6 attention proof verifies");
+            (keys, cx.kprod, cx.kzero)
+        };
+        let verifier_trace = verifier_trace_guard.finish().unwrap();
+        let verifier_metrics = verifier_online.metrics();
+        let verifier_targets = verifier_online.paired_targets().to_vec();
+        drop(verifier_online);
+        let verifier_fixed = target_cursor
+            .finish_before_successor_root_with_identity(verifier_trace.identity, &mut verifier_tx)
+            .unwrap();
+        verifier_bank
+            .close(
+                luts,
+                &table_proofs,
+                &mut primary_verifier,
+                &mut verifier_table_doms,
+                &mut verifier_tx,
+                &mut verifier_products,
+                &mut verifier_zero,
+            )
+            .expect("online C6 attention table closure verifies");
+
+        assert_eq!(weight_keys.len(), 2);
+        assert_eq!(prover_trace.identity, verifier_trace.identity);
+        assert_eq!(prover_trace.records, verifier_trace.records);
+        assert_eq!(prover_trace.factors, verifier_trace.factors);
+        assert_eq!(prover_trace.identity.fold_count, 2 * H as u32);
+        assert_eq!(prover_fixed, verifier_fixed);
+        assert_eq!(
+            verifier_metrics,
+            C6CacheFoldOnlineLayerMetrics {
+                source_groups: 2,
+                source_cells: 2 * T as u64 * D as u64,
+                coefficient_applications: 2 * T as u64 * D as u64,
+                corrected_targets: 2 * H as u64,
+                linear_auxiliary_source_cells: 2 * T as u64 * D as u64,
+            }
+        );
+        assert_eq!(verifier_targets.len(), prover_targets.len());
+        for ((prover_kind, prover_pair), (verifier_kind, verifier_pair)) in
+            prover_targets.iter().zip(&verifier_targets)
+        {
+            assert_eq!(prover_kind, verifier_kind);
+            for tape in 0..2 {
+                assert_eq!(
+                    verifier_pair[tape].k,
+                    prover_pair[tape].m + deltas[tape] * prover_pair[tape].x
+                );
+            }
+        }
+
+        for label in [
+            "c6_cache_fold_target_header",
+            "c6_cache_fold_target_corrections",
+            "c6_cache_fold_target_zero_padding",
+        ] {
+            assert_eq!(prover_tx.bytes_for(label), verifier_tx.bytes_for(label));
+        }
+        let c6_wire = prover_tx.bytes_for("c6_cache_fold_target_header")
+            + prover_tx.bytes_for("c6_cache_fold_target_corrections")
+            + prover_tx.bytes_for("c6_cache_fold_target_zero_padding");
+        assert_eq!(c6_wire, C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES);
+
+        assert_eq!(prover_products.len(), verifier_products.len());
+        let challenge = prover_tx.challenge_fp2();
+        assert_eq!(challenge, verifier_tx.challenge_fp2());
+        let mut prover_batch_doms = Doms::new(layer_dom_base(254));
+        let mut verifier_batch_doms = Doms::new(layer_dom_base(254));
+        let product_domain = prover_batch_doms.take(1);
+        assert_eq!(product_domain, verifier_batch_doms.take(1));
+        let product_mask = primary_stream.draw_product_mask(product_domain, prover_products.len());
+        let product_key = primary_verifier
+            .expand_product_mask_verifier_key(product_domain, verifier_products.len());
+        let product_proof =
+            prod_batch_prover(&prover_products, challenge, product_mask, &mut prover_tx);
+        assert!(prod_batch_verify(
+            &verifier_products,
+            product_key,
+            deltas[0],
+            challenge,
+            &product_proof,
+        ));
+        assert!(!prover_zero.is_empty());
+        assert!(!verifier_zero.is_empty());
     }
 
     /// Nonzero softmax weight above the diagonal in the prover's causal-B

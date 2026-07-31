@@ -13,7 +13,9 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use volta_field::{Fp, Fp2, P};
-use volta_mac::{C6TraceToken, ProverAuthed, Transcript, VerifierKey};
+use volta_mac::{
+    C6TraceToken, CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey,
+};
 
 pub const C6_CACHE_FOLD_TRACE_VERSION: u32 = 1;
 pub const C6_CACHE_FOLD_SCALAR_BATCH_VERSION: u32 = 1;
@@ -1100,6 +1102,578 @@ pub struct C6CacheFoldDirectSourceSegment {
     pub rows: usize,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct C6CacheFoldOnlineLayerMetrics {
+    pub source_groups: u64,
+    pub source_cells: u64,
+    pub coefficient_applications: u64,
+    pub corrected_targets: u64,
+    pub linear_auxiliary_source_cells: u64,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct C6OnlinePreparedProverTarget {
+    kind: C6CacheFoldKind,
+    primary_tag: Fp2,
+    secondary_tag: Fp2,
+    base_masks: [Fp2; C6_CACHE_FOLD_TARGET_TAPES],
+}
+
+#[derive(Clone, Copy, Debug)]
+struct C6OnlinePreparedVerifierTarget {
+    kind: C6CacheFoldKind,
+    base_keys: [VerifierKey; C6_CACHE_FOLD_TARGET_TAPES],
+}
+
+/// Per-layer provider adapter used by the actual attention ordering: prepare
+/// all 12 base masks/tags with one source pass, then release one correction
+/// immediately before each retained ProductClosure.
+pub struct C6CacheFoldOnlineLayerProver<'a, 'b> {
+    model_layer: u16,
+    key_segments: Vec<C6CacheFoldDirectSourceSegment>,
+    value_segments: Vec<C6CacheFoldDirectSourceSegment>,
+    secondary: &'a mut CorrelationStream,
+    target_builder: &'b mut C6CacheFoldTargetInlineProver,
+    prepared: Vec<C6OnlinePreparedProverTarget>,
+    next_prepared: usize,
+    completed_families: usize,
+    paired_targets: Vec<(C6CacheFoldKind, [ProverAuthed; C6_CACHE_FOLD_TARGET_TAPES])>,
+    metrics: C6CacheFoldOnlineLayerMetrics,
+    poisoned: bool,
+}
+
+impl<'a, 'b> C6CacheFoldOnlineLayerProver<'a, 'b> {
+    pub fn new(
+        model_layer: u16,
+        key_segments: Vec<C6CacheFoldDirectSourceSegment>,
+        value_segments: Vec<C6CacheFoldDirectSourceSegment>,
+        secondary: &'a mut CorrelationStream,
+        target_builder: &'b mut C6CacheFoldTargetInlineProver,
+    ) -> Result<Self, C6CacheFoldTraceError> {
+        validate_online_layer_segments(model_layer, &key_segments, &value_segments)?;
+        Ok(Self {
+            model_layer,
+            key_segments,
+            value_segments,
+            secondary,
+            target_builder,
+            prepared: Vec::new(),
+            next_prepared: 0,
+            completed_families: 0,
+            paired_targets: Vec::with_capacity(C6_CACHE_HEADS * 2),
+            metrics: C6CacheFoldOnlineLayerMetrics::default(),
+            poisoned: false,
+        })
+    }
+
+    pub fn paired_targets(
+        &self,
+    ) -> &[(C6CacheFoldKind, [ProverAuthed; C6_CACHE_FOLD_TARGET_TAPES])] {
+        &self.paired_targets
+    }
+
+    pub fn metrics(&self) -> C6CacheFoldOnlineLayerMetrics {
+        self.metrics
+    }
+
+    fn prepare_family(
+        &mut self,
+        primary: &mut CorrelationStream,
+        kind: C6CacheFoldKind,
+        model_layer: u16,
+        row_weights: &[Vec<Fp2>],
+        column_weights: &[Vec<Fp2>],
+    ) -> Result<(), C6CacheFoldTraceError> {
+        self.validate_prepare(kind, model_layer, row_weights, column_weights)?;
+        let segments = self.segments(kind).to_vec();
+        let before_primary = correlation_stream_state(primary);
+        let before_secondary = correlation_stream_state(self.secondary);
+        let mut primary_tags = [Fp2::ZERO; C6_CACHE_HEADS];
+        let mut secondary_tags = [Fp2::ZERO; C6_CACHE_HEADS];
+        let mut primary_masks = [Fp2::ZERO; C6_CACHE_HEADS];
+        let mut secondary_masks = [Fp2::ZERO; C6_CACHE_HEADS];
+        let mut global_row = 0usize;
+        for segment in &segments {
+            for local_row in 0..segment.rows {
+                let domain = checked_source_domain(segment.base_domain, local_row)?;
+                let masks = [
+                    primary.replay_consumed_sub_masks(domain, C6_CACHE_FOLD_SOURCE_COLUMNS),
+                    self.secondary.replay_consumed_sub_masks(domain, C6_CACHE_FOLD_SOURCE_COLUMNS),
+                ];
+                let tags = [
+                    primary.draw_sub_tags(domain, C6_CACHE_FOLD_SOURCE_COLUMNS),
+                    self.secondary.draw_sub_tags(domain, C6_CACHE_FOLD_SOURCE_COLUMNS),
+                ];
+                for channel in 0..C6_CACHE_FOLD_SOURCE_COLUMNS {
+                    let head = channel / C6_CACHE_HEAD_WIDTH;
+                    let within = channel % C6_CACHE_HEAD_WIDTH;
+                    let coefficient = row_weights[head][global_row] * column_weights[head][within];
+                    primary_masks[head] += coefficient.mul_base(masks[0][channel]);
+                    secondary_masks[head] += coefficient.mul_base(masks[1][channel]);
+                    primary_tags[head] += coefficient * tags[0][channel];
+                    secondary_tags[head] += coefficient * tags[1][channel];
+                }
+                global_row += 1;
+            }
+        }
+        if correlation_stream_state(primary) != before_primary
+            || correlation_stream_state(self.secondary) != before_secondary
+        {
+            return self.fail("C6 online provider source replay changed correlation state");
+        }
+        self.prepared = (0..C6_CACHE_HEADS)
+            .map(|head| C6OnlinePreparedProverTarget {
+                kind,
+                primary_tag: primary_tags[head],
+                secondary_tag: secondary_tags[head],
+                base_masks: [primary_masks[head], secondary_masks[head]],
+            })
+            .collect();
+        self.next_prepared = 0;
+        self.metrics.source_groups += 1;
+        let cells = u64::try_from(global_row * C6_CACHE_FOLD_SOURCE_COLUMNS)
+            .map_err(|_| C6CacheFoldTraceError::new("C6 online provider source census overflow"))?;
+        self.metrics.source_cells += cells;
+        self.metrics.coefficient_applications += cells;
+        Ok(())
+    }
+
+    fn push_target(
+        &mut self,
+        kind: C6CacheFoldKind,
+        target: ProverAuthed,
+        transcript: &mut Transcript,
+    ) -> Result<ProverAuthed, C6CacheFoldTraceError> {
+        if self.poisoned {
+            return Err(C6CacheFoldTraceError::new("poisoned C6 online provider layer"));
+        }
+        let prepared = self.prepared.get(self.next_prepared).copied().ok_or_else(|| {
+            C6CacheFoldTraceError::new("C6 online provider target arrived before family prepare")
+        })?;
+        if prepared.kind != kind || target.m != prepared.primary_tag {
+            return self.fail("C6 online provider target/tag/order mismatch");
+        }
+        let paired = [target, ProverAuthed::new(target.x, prepared.secondary_tag)];
+        let accepted = self.target_builder.push_target_before_product(
+            kind,
+            paired,
+            prepared.base_masks,
+            transcript,
+        )?;
+        self.paired_targets.push((kind, accepted));
+        self.next_prepared += 1;
+        self.metrics.corrected_targets += 1;
+        if self.next_prepared == self.prepared.len() {
+            self.prepared.clear();
+            self.next_prepared = 0;
+            self.completed_families += 1;
+        }
+        Ok(accepted[0])
+    }
+
+    fn validate_prepare(
+        &mut self,
+        kind: C6CacheFoldKind,
+        model_layer: u16,
+        row_weights: &[Vec<Fp2>],
+        column_weights: &[Vec<Fp2>],
+    ) -> Result<(), C6CacheFoldTraceError> {
+        if self.poisoned || !self.prepared.is_empty() || model_layer != self.model_layer {
+            return self.fail("C6 online provider family state/layer mismatch");
+        }
+        let expected = [C6CacheFoldKind::ValueColumns, C6CacheFoldKind::KeyRows]
+            .get(self.completed_families)
+            .copied();
+        let rows = source_segment_rows(self.segments(kind))?;
+        if expected != Some(kind)
+            || row_weights.len() != C6_CACHE_HEADS
+            || column_weights.len() != C6_CACHE_HEADS
+            || row_weights.iter().any(|weights| weights.len() != rows)
+            || column_weights.iter().any(|weights| weights.len() != C6_CACHE_HEAD_WIDTH)
+        {
+            return self.fail("C6 online provider family geometry/order mismatch");
+        }
+        Ok(())
+    }
+
+    fn segments(&self, kind: C6CacheFoldKind) -> &[C6CacheFoldDirectSourceSegment] {
+        match kind {
+            C6CacheFoldKind::KeyRows => &self.key_segments,
+            C6CacheFoldKind::ValueColumns => &self.value_segments,
+        }
+    }
+
+    fn finish(&mut self) -> Result<(), C6CacheFoldTraceError> {
+        if self.poisoned
+            || !self.prepared.is_empty()
+            || self.completed_families != 2
+            || self.paired_targets.len() != 2 * C6_CACHE_HEADS
+        {
+            return self.fail("incomplete C6 online provider layer");
+        }
+        Ok(())
+    }
+
+    fn fail<T>(&mut self, message: &'static str) -> Result<T, C6CacheFoldTraceError> {
+        self.poisoned = true;
+        Err(C6CacheFoldTraceError::new(message))
+    }
+}
+
+/// Client mirror of [`C6CacheFoldOnlineLayerProver`].  Direct base keys are
+/// replayed after their phase-1 reservation, folded once per family, and
+/// corrected only at the next C6FT1 ordinal.
+pub struct C6CacheFoldOnlineLayerVerifier<'a, 'b, 'frame> {
+    model_layer: u16,
+    key_segments: Vec<C6CacheFoldDirectSourceSegment>,
+    value_segments: Vec<C6CacheFoldDirectSourceSegment>,
+    secondary: &'a mut VerifierCtx,
+    target_cursor: &'b mut C6CacheFoldTargetInlineVerifier<'frame>,
+    prepared: Vec<C6OnlinePreparedVerifierTarget>,
+    next_prepared: usize,
+    completed_families: usize,
+    auxiliary_openings: usize,
+    paired_targets: Vec<(C6CacheFoldKind, [VerifierKey; C6_CACHE_FOLD_TARGET_TAPES])>,
+    metrics: C6CacheFoldOnlineLayerMetrics,
+    poisoned: bool,
+}
+
+impl<'a, 'b, 'frame> C6CacheFoldOnlineLayerVerifier<'a, 'b, 'frame> {
+    pub fn new(
+        model_layer: u16,
+        key_segments: Vec<C6CacheFoldDirectSourceSegment>,
+        value_segments: Vec<C6CacheFoldDirectSourceSegment>,
+        secondary: &'a mut VerifierCtx,
+        target_cursor: &'b mut C6CacheFoldTargetInlineVerifier<'frame>,
+    ) -> Result<Self, C6CacheFoldTraceError> {
+        validate_online_layer_segments(model_layer, &key_segments, &value_segments)?;
+        Ok(Self {
+            model_layer,
+            key_segments,
+            value_segments,
+            secondary,
+            target_cursor,
+            prepared: Vec::new(),
+            next_prepared: 0,
+            completed_families: 0,
+            auxiliary_openings: 0,
+            paired_targets: Vec::with_capacity(C6_CACHE_HEADS * 2),
+            metrics: C6CacheFoldOnlineLayerMetrics::default(),
+            poisoned: false,
+        })
+    }
+
+    pub fn paired_targets(
+        &self,
+    ) -> &[(C6CacheFoldKind, [VerifierKey; C6_CACHE_FOLD_TARGET_TAPES])] {
+        &self.paired_targets
+    }
+
+    pub fn metrics(&self) -> C6CacheFoldOnlineLayerMetrics {
+        self.metrics
+    }
+
+    fn prepare_family(
+        &mut self,
+        primary: &mut VerifierCtx,
+        kind: C6CacheFoldKind,
+        model_layer: u16,
+        row_weights: &[Vec<Fp2>],
+        column_weights: &[Vec<Fp2>],
+    ) -> Result<(), C6CacheFoldTraceError> {
+        self.validate_prepare(kind, model_layer, row_weights, column_weights)?;
+        if primary.delta == self.secondary.delta {
+            return self.fail("C6 online verifier MAC tapes are not independent");
+        }
+        let segments = self.segments(kind).to_vec();
+        let before_primary = verifier_context_state(primary);
+        let before_secondary = verifier_context_state(self.secondary);
+        let mut aggregates = [[VerifierKey::ZERO; C6_CACHE_FOLD_TARGET_TAPES]; C6_CACHE_HEADS];
+        let mut global_row = 0usize;
+        for segment in &segments {
+            for local_row in 0..segment.rows {
+                let domain = checked_source_domain(segment.base_domain, local_row)?;
+                let keys = [
+                    primary.replay_consumed_sub_verifier_keys(domain, C6_CACHE_FOLD_SOURCE_COLUMNS),
+                    self.secondary
+                        .replay_consumed_sub_verifier_keys(domain, C6_CACHE_FOLD_SOURCE_COLUMNS),
+                ];
+                for channel in 0..C6_CACHE_FOLD_SOURCE_COLUMNS {
+                    let head = channel / C6_CACHE_HEAD_WIDTH;
+                    let within = channel % C6_CACHE_HEAD_WIDTH;
+                    let coefficient = row_weights[head][global_row] * column_weights[head][within];
+                    for tape in 0..C6_CACHE_FOLD_TARGET_TAPES {
+                        aggregates[head][tape] =
+                            aggregates[head][tape].add(keys[tape][channel].scale(coefficient));
+                    }
+                }
+                global_row += 1;
+            }
+        }
+        if verifier_context_state(primary) != before_primary
+            || verifier_context_state(self.secondary) != before_secondary
+        {
+            return self.fail("C6 online verifier source replay changed correlation state");
+        }
+        self.prepared = aggregates
+            .into_iter()
+            .map(|base_keys| C6OnlinePreparedVerifierTarget { kind, base_keys })
+            .collect();
+        self.next_prepared = 0;
+        self.metrics.source_groups += 1;
+        let cells = u64::try_from(global_row * C6_CACHE_FOLD_SOURCE_COLUMNS)
+            .map_err(|_| C6CacheFoldTraceError::new("C6 online verifier source census overflow"))?;
+        self.metrics.source_cells += cells;
+        self.metrics.coefficient_applications += cells;
+        Ok(())
+    }
+
+    fn correct_next(
+        &mut self,
+        kind: C6CacheFoldKind,
+        transcript: &mut Transcript,
+    ) -> Result<VerifierKey, C6CacheFoldTraceError> {
+        if self.poisoned {
+            return Err(C6CacheFoldTraceError::new("poisoned C6 online verifier layer"));
+        }
+        let prepared = self.prepared.get(self.next_prepared).copied().ok_or_else(|| {
+            C6CacheFoldTraceError::new("C6 online verifier target arrived before family prepare")
+        })?;
+        if prepared.kind != kind {
+            return self.fail("C6 online verifier target order mismatch");
+        }
+        let corrected =
+            self.target_cursor.correct_next_before_product(kind, prepared.base_keys, transcript)?;
+        self.paired_targets.push((kind, corrected));
+        self.next_prepared += 1;
+        self.metrics.corrected_targets += 1;
+        if self.next_prepared == self.prepared.len() {
+            self.prepared.clear();
+            self.next_prepared = 0;
+            self.completed_families += 1;
+        }
+        Ok(corrected[0])
+    }
+
+    fn open_current_base(
+        &mut self,
+        primary: &mut VerifierCtx,
+        kind: C6CacheFoldKind,
+        point: &[Fp2],
+    ) -> Result<VerifierKey, C6CacheFoldTraceError> {
+        let expected = [C6CacheFoldKind::KeyRows, C6CacheFoldKind::ValueColumns]
+            .get(self.auxiliary_openings)
+            .copied();
+        if self.poisoned
+            || self.completed_families != 2
+            || !self.prepared.is_empty()
+            || expected != Some(kind)
+        {
+            return self.fail("C6 online verifier auxiliary opening order mismatch");
+        }
+        let segment = *self
+            .segments(kind)
+            .last()
+            .ok_or_else(|| C6CacheFoldTraceError::new("missing C6 current source segment"))?;
+        let column_bits = crate::thaler::pad_bits(C6_CACHE_FOLD_SOURCE_COLUMNS);
+        if point.len() != column_bits + crate::thaler::pad_bits(segment.rows) {
+            return self.fail("C6 online verifier auxiliary opening point mismatch");
+        }
+        let column_weights = crate::mle::eq_vec(&point[..column_bits]);
+        let row_weights = crate::mle::eq_vec(&point[column_bits..]);
+        let before = verifier_context_state(primary);
+        let mut result = VerifierKey::ZERO;
+        for row in 0..segment.rows {
+            let domain = checked_source_domain(segment.base_domain, row)?;
+            let keys =
+                primary.replay_consumed_sub_verifier_keys(domain, C6_CACHE_FOLD_SOURCE_COLUMNS);
+            let row_key = keys
+                .into_iter()
+                .zip(&column_weights)
+                .fold(VerifierKey::ZERO, |sum, (key, &weight)| sum.add(key.scale(weight)));
+            result = result.add(row_key.scale(row_weights[row]));
+        }
+        if verifier_context_state(primary) != before {
+            return self.fail("C6 online verifier auxiliary replay changed correlation state");
+        }
+        self.auxiliary_openings += 1;
+        self.metrics.linear_auxiliary_source_cells +=
+            u64::try_from(segment.rows * C6_CACHE_FOLD_SOURCE_COLUMNS).map_err(|_| {
+                C6CacheFoldTraceError::new("C6 online verifier auxiliary census overflow")
+            })?;
+        Ok(result)
+    }
+
+    fn validate_prepare(
+        &mut self,
+        kind: C6CacheFoldKind,
+        model_layer: u16,
+        row_weights: &[Vec<Fp2>],
+        column_weights: &[Vec<Fp2>],
+    ) -> Result<(), C6CacheFoldTraceError> {
+        if self.poisoned || !self.prepared.is_empty() || model_layer != self.model_layer {
+            return self.fail("C6 online verifier family state/layer mismatch");
+        }
+        let expected = [C6CacheFoldKind::ValueColumns, C6CacheFoldKind::KeyRows]
+            .get(self.completed_families)
+            .copied();
+        let rows = source_segment_rows(self.segments(kind))?;
+        if expected != Some(kind)
+            || row_weights.len() != C6_CACHE_HEADS
+            || column_weights.len() != C6_CACHE_HEADS
+            || row_weights.iter().any(|weights| weights.len() != rows)
+            || column_weights.iter().any(|weights| weights.len() != C6_CACHE_HEAD_WIDTH)
+        {
+            return self.fail("C6 online verifier family geometry/order mismatch");
+        }
+        Ok(())
+    }
+
+    fn segments(&self, kind: C6CacheFoldKind) -> &[C6CacheFoldDirectSourceSegment] {
+        match kind {
+            C6CacheFoldKind::KeyRows => &self.key_segments,
+            C6CacheFoldKind::ValueColumns => &self.value_segments,
+        }
+    }
+
+    fn finish(&mut self) -> Result<(), C6CacheFoldTraceError> {
+        if self.poisoned
+            || !self.prepared.is_empty()
+            || self.completed_families != 2
+            || self.auxiliary_openings != 2
+            || self.paired_targets.len() != 2 * C6_CACHE_HEADS
+        {
+            return self.fail("incomplete C6 online verifier layer");
+        }
+        Ok(())
+    }
+
+    fn fail<T>(&mut self, message: &'static str) -> Result<T, C6CacheFoldTraceError> {
+        self.poisoned = true;
+        Err(C6CacheFoldTraceError::new(message))
+    }
+}
+
+impl crate::block_proof::C6AttentionProverCache for C6CacheFoldOnlineLayerProver<'_, '_> {
+    fn prepare_target_family(
+        &mut self,
+        primary: &mut CorrelationStream,
+        kind: C6CacheFoldKind,
+        model_layer: u16,
+        row_weights: &[Vec<Fp2>],
+        column_weights: &[Vec<Fp2>],
+    ) -> bool {
+        self.prepare_family(primary, kind, model_layer, row_weights, column_weights).is_ok()
+    }
+
+    fn push_target_before_product(
+        &mut self,
+        kind: C6CacheFoldKind,
+        target: ProverAuthed,
+        transcript: &mut Transcript,
+    ) -> Option<ProverAuthed> {
+        self.push_target(kind, target, transcript).ok()
+    }
+
+    fn finish_layer(&mut self) -> bool {
+        self.finish().is_ok()
+    }
+}
+
+impl crate::block_proof::C6AttentionVerifierCache for C6CacheFoldOnlineLayerVerifier<'_, '_, '_> {
+    fn segment_rows(&self, kind: C6CacheFoldKind) -> Vec<usize> {
+        self.segments(kind).iter().map(|segment| segment.rows).collect()
+    }
+
+    fn prepare_target_family(
+        &mut self,
+        primary: &mut VerifierCtx,
+        kind: C6CacheFoldKind,
+        model_layer: u16,
+        row_weights: &[Vec<Fp2>],
+        column_weights: &[Vec<Fp2>],
+    ) -> bool {
+        self.prepare_family(primary, kind, model_layer, row_weights, column_weights).is_ok()
+    }
+
+    fn correct_next_before_product(
+        &mut self,
+        kind: C6CacheFoldKind,
+        transcript: &mut Transcript,
+    ) -> Option<VerifierKey> {
+        self.correct_next(kind, transcript).ok()
+    }
+
+    fn open_current_linear_base(
+        &mut self,
+        primary: &mut VerifierCtx,
+        kind: C6CacheFoldKind,
+        point: &[Fp2],
+    ) -> Option<crate::block_proof::C6LinearOnlyKey> {
+        self.open_current_base(primary, kind, point)
+            .ok()
+            .map(crate::block_proof::C6LinearOnlyKey::from_replayed_base)
+    }
+
+    fn finish_layer(&mut self) -> bool {
+        self.finish().is_ok()
+    }
+}
+
+fn validate_online_layer_segments(
+    model_layer: u16,
+    key_segments: &[C6CacheFoldDirectSourceSegment],
+    value_segments: &[C6CacheFoldDirectSourceSegment],
+) -> Result<(), C6CacheFoldTraceError> {
+    if model_layer >= C6_CACHE_MODEL_LAYERS
+        || key_segments.is_empty()
+        || key_segments.len() != value_segments.len()
+        || key_segments.iter().zip(value_segments).any(|(key, value)| key.rows != value.rows)
+    {
+        return Err(C6CacheFoldTraceError::new("invalid C6 online layer source geometry"));
+    }
+    let key_rows = source_segment_rows(key_segments)?;
+    let value_rows = source_segment_rows(value_segments)?;
+    if key_rows != value_rows || key_rows > C6_CACHE_MAX_CONTEXT {
+        return Err(C6CacheFoldTraceError::new("invalid C6 online layer source row census"));
+    }
+    for segments in [key_segments, value_segments] {
+        for segment in segments {
+            let _ = checked_source_domain(segment.base_domain, segment.rows - 1)?;
+        }
+    }
+    Ok(())
+}
+
+fn source_segment_rows(
+    segments: &[C6CacheFoldDirectSourceSegment],
+) -> Result<usize, C6CacheFoldTraceError> {
+    segments.iter().try_fold(0usize, |sum, segment| {
+        if segment.rows == 0 {
+            return Err(C6CacheFoldTraceError::new("empty C6 online direct-source segment"));
+        }
+        sum.checked_add(segment.rows)
+            .ok_or_else(|| C6CacheFoldTraceError::new("C6 online source rows overflow"))
+    })
+}
+
+fn checked_source_domain(base_domain: u64, local_row: usize) -> Result<u64, C6CacheFoldTraceError> {
+    base_domain
+        .checked_add(local_row as u64)
+        .ok_or_else(|| C6CacheFoldTraceError::new("C6 online source domain range overflow"))
+}
+
+fn correlation_stream_state(stream: &CorrelationStream) -> volta_mac::CorrCounters {
+    // Keep this hot-path guard O(1).  The replay primitives' permanent
+    // pooled tests separately pin audit, cursor and allocation-digest
+    // neutrality.
+    stream.counters
+}
+
+fn verifier_context_state(context: &VerifierCtx) -> volta_mac::CorrCounters {
+    context.counters
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct C6CacheFoldSourceOrdinalMetrics {
     pub groups: u64,
@@ -1788,7 +2362,9 @@ pub(crate) fn record_c6_cache_fold_if_active(
     })
 }
 
-fn model_layer(schedule_section: u16) -> Result<u16, C6CacheFoldTraceError> {
+pub(crate) fn normalize_c6_cache_fold_model_layer(
+    schedule_section: u16,
+) -> Result<u16, C6CacheFoldTraceError> {
     if schedule_section < C6_CACHE_MODEL_LAYERS {
         return Ok(schedule_section);
     }
@@ -1799,6 +2375,10 @@ fn model_layer(schedule_section: u16) -> Result<u16, C6CacheFoldTraceError> {
     Err(C6CacheFoldTraceError::new(
         "C6 cache-fold schedule section is not a GPT-2 prefill/decode layer",
     ))
+}
+
+fn model_layer(schedule_section: u16) -> Result<u16, C6CacheFoldTraceError> {
+    normalize_c6_cache_fold_model_layer(schedule_section)
 }
 
 fn take_runtime(
@@ -2786,6 +3366,233 @@ mod tests {
             )
             .is_err());
         assert!(truncated.finish().is_err());
+    }
+
+    #[test]
+    fn online_layer_family_stream_is_inline_and_keeps_auxiliary_claims_linear() {
+        let snapshot = capture(true);
+        let plan = C6CacheFoldSourceOrdinalPlan::compile(&snapshot).unwrap();
+        let full_schedule = plan.schedule().unwrap();
+        let public_schedule = full_schedule.public_schedule();
+        let statement_digest = [0x91; 32];
+        let seeds = [[0x92; 32], [0x93; 32]];
+        let deltas =
+            [Fp2::new(Fp::new(0x921), Fp::new(0x922)), Fp2::new(Fp::new(0x931), Fp::new(0x932))];
+        let groups =
+            [(C6CacheFoldKind::KeyRows, 0x9100u64), (C6CacheFoldKind::ValueColumns, 0x9200u64)];
+        let plaintexts = [
+            (0..4 * C6_CACHE_FOLD_SOURCE_COLUMNS)
+                .map(|index| Fp2::from_base(Fp::new(10_000 + index as u64)))
+                .collect::<Vec<_>>(),
+            (0..4 * C6_CACHE_FOLD_SOURCE_COLUMNS)
+                .map(|index| Fp2::from_base(Fp::new(20_000 + index as u64)))
+                .collect::<Vec<_>>(),
+        ];
+        let mut streams = [CorrelationStream::new(seeds[0]), CorrelationStream::new(seeds[1])];
+        let mut contexts =
+            [VerifierCtx::new(seeds[0], deltas[0]), VerifierCtx::new(seeds[1], deltas[1])];
+        let mut masks: [[Vec<Fp2>; 2]; C6_CACHE_FOLD_TARGET_TAPES] =
+            std::array::from_fn(|_| std::array::from_fn(|_| Vec::new()));
+        let mut tags: [[Vec<Fp2>; 2]; C6_CACHE_FOLD_TARGET_TAPES] =
+            std::array::from_fn(|_| std::array::from_fn(|_| Vec::new()));
+        for (group_index, (_, base_domain)) in groups.iter().enumerate() {
+            for tape in 0..C6_CACHE_FOLD_TARGET_TAPES {
+                for row in 0..4 {
+                    masks[tape][group_index].extend(
+                        streams[tape]
+                            .draw_sub_masks(base_domain + row as u64, C6_CACHE_FOLD_SOURCE_COLUMNS)
+                            .into_iter()
+                            .map(Fp2::from_base),
+                    );
+                    tags[tape][group_index].extend(
+                        streams[tape]
+                            .draw_sub_tags(base_domain + row as u64, C6_CACHE_FOLD_SOURCE_COLUMNS),
+                    );
+                }
+                contexts[tape].reserve_sub_key_rows(*base_domain, 4, C6_CACHE_FOLD_SOURCE_COLUMNS);
+            }
+        }
+
+        let prover_targets = plan
+            .targets
+            .iter()
+            .map(|target| {
+                let group = match target.kind {
+                    C6CacheFoldKind::KeyRows => 0,
+                    C6CacheFoldKind::ValueColumns => 1,
+                };
+                let x = dense_source_fold(target, &plaintexts[group]);
+                (
+                    target.kind,
+                    [
+                        ProverAuthed::new(x, dense_source_fold(target, &tags[0][group])),
+                        ProverAuthed::new(x, dense_source_fold(target, &tags[1][group])),
+                    ],
+                )
+            })
+            .collect::<Vec<_>>();
+        let value_rows = plan.targets[..C6_CACHE_HEADS]
+            .iter()
+            .map(|target| target.row_weights.clone())
+            .collect::<Vec<_>>();
+        let value_columns = plan.targets[..C6_CACHE_HEADS]
+            .iter()
+            .map(|target| target.column_weights.clone())
+            .collect::<Vec<_>>();
+        let key_rows = plan.targets[C6_CACHE_HEADS..]
+            .iter()
+            .map(|target| target.row_weights.clone())
+            .collect::<Vec<_>>();
+        let key_columns = plan.targets[C6_CACHE_HEADS..]
+            .iter()
+            .map(|target| target.column_weights.clone())
+            .collect::<Vec<_>>();
+        let key_segments = vec![C6CacheFoldDirectSourceSegment { base_domain: 0x9100, rows: 4 }];
+        let value_segments = vec![C6CacheFoldDirectSourceSegment { base_domain: 0x9200, rows: 4 }];
+
+        let mut prover_tx = Transcript::new([0x94; 32]);
+        let mut builder = C6CacheFoldTargetInlineProver::start_public(
+            statement_digest,
+            public_schedule.clone(),
+            &mut prover_tx,
+        )
+        .unwrap();
+        let (primary_stream, secondary_stream) = streams.split_at_mut(1);
+        let mut online_prover = C6CacheFoldOnlineLayerProver::new(
+            0,
+            key_segments.clone(),
+            value_segments.clone(),
+            &mut secondary_stream[0],
+            &mut builder,
+        )
+        .unwrap();
+        online_prover
+            .prepare_family(
+                &mut primary_stream[0],
+                C6CacheFoldKind::ValueColumns,
+                0,
+                &value_rows,
+                &value_columns,
+            )
+            .unwrap();
+        let mut product_challenges = Vec::with_capacity(2 * C6_CACHE_HEADS);
+        for &(kind, targets) in &prover_targets[..C6_CACHE_HEADS] {
+            let accepted = online_prover.push_target(kind, targets[0], &mut prover_tx).unwrap();
+            assert_eq!(accepted, targets[0]);
+            product_challenges.push(prover_tx.challenge_fp2());
+        }
+        online_prover
+            .prepare_family(
+                &mut primary_stream[0],
+                C6CacheFoldKind::KeyRows,
+                0,
+                &key_rows,
+                &key_columns,
+            )
+            .unwrap();
+        for &(kind, targets) in &prover_targets[C6_CACHE_HEADS..] {
+            let accepted = online_prover.push_target(kind, targets[0], &mut prover_tx).unwrap();
+            assert_eq!(accepted, targets[0]);
+            product_challenges.push(prover_tx.challenge_fp2());
+        }
+        online_prover.finish().unwrap();
+        assert_eq!(
+            online_prover.metrics(),
+            C6CacheFoldOnlineLayerMetrics {
+                source_groups: 2,
+                source_cells: 2 * 4 * C6_CACHE_FOLD_SOURCE_COLUMNS as u64,
+                coefficient_applications: 2 * 4 * C6_CACHE_FOLD_SOURCE_COLUMNS as u64,
+                corrected_targets: 24,
+                linear_auxiliary_source_cells: 0,
+            }
+        );
+        assert_eq!(online_prover.paired_targets(), prover_targets);
+        drop(online_prover);
+        let (frame, _) = builder
+            .finish_before_successor_root_with_identity(snapshot.identity, &mut prover_tx)
+            .unwrap();
+
+        let mut verifier_tx = Transcript::new([0x94; 32]);
+        let mut cursor = C6CacheFoldTargetInlineVerifier::start_public(
+            &frame,
+            public_schedule,
+            deltas,
+            &mut verifier_tx,
+        )
+        .unwrap();
+        let (primary_context, secondary_context) = contexts.split_at_mut(1);
+        let mut online_verifier = C6CacheFoldOnlineLayerVerifier::new(
+            0,
+            key_segments,
+            value_segments,
+            &mut secondary_context[0],
+            &mut cursor,
+        )
+        .unwrap();
+        online_verifier
+            .prepare_family(
+                &mut primary_context[0],
+                C6CacheFoldKind::ValueColumns,
+                0,
+                &value_rows,
+                &value_columns,
+            )
+            .unwrap();
+        for &(kind, targets) in &prover_targets[..C6_CACHE_HEADS] {
+            let key = online_verifier.correct_next(kind, &mut verifier_tx).unwrap();
+            assert_eq!(key.k, targets[0].m + deltas[0] * targets[0].x);
+            assert_eq!(
+                product_challenges[online_verifier.paired_targets().len() - 1],
+                verifier_tx.challenge_fp2()
+            );
+        }
+        online_verifier
+            .prepare_family(
+                &mut primary_context[0],
+                C6CacheFoldKind::KeyRows,
+                0,
+                &key_rows,
+                &key_columns,
+            )
+            .unwrap();
+        for &(kind, targets) in &prover_targets[C6_CACHE_HEADS..] {
+            let key = online_verifier.correct_next(kind, &mut verifier_tx).unwrap();
+            assert_eq!(key.k, targets[0].m + deltas[0] * targets[0].x);
+            assert_eq!(
+                product_challenges[online_verifier.paired_targets().len() - 1],
+                verifier_tx.challenge_fp2()
+            );
+        }
+
+        for (kind, group) in [(C6CacheFoldKind::KeyRows, 0), (C6CacheFoldKind::ValueColumns, 1)] {
+            let point = (0..12)
+                .map(|index| Fp2::new(Fp::new(31 + index as u64), Fp::new(61 + index as u64)))
+                .collect::<Vec<_>>();
+            let base =
+                online_verifier.open_current_base(&mut primary_context[0], kind, &point).unwrap();
+            let column_weights = crate::mle::eq_vec(&point[..10]);
+            let row_weights = crate::mle::eq_vec(&point[10..]);
+            let target = C6CacheFoldSourceTarget {
+                kind,
+                model_layer: 0,
+                column_offset: 0,
+                row_weights,
+                column_weights: column_weights[..C6_CACHE_FOLD_SOURCE_COLUMNS].to_vec(),
+            };
+            let x = dense_source_fold(&target, &plaintexts[group]);
+            let mask = dense_source_fold(&target, &masks[0][group]);
+            let tag = dense_source_fold(&target, &tags[0][group]);
+            assert_eq!(base.k + deltas[0] * (x - mask), tag + deltas[0] * x);
+        }
+        online_verifier.finish().unwrap();
+        assert_eq!(online_verifier.paired_targets().len(), 24);
+        assert_eq!(online_verifier.metrics().linear_auxiliary_source_cells, 2 * 4 * 768);
+        drop(online_verifier);
+        cursor
+            .finish_before_successor_root_with_identity(snapshot.identity, &mut verifier_tx)
+            .unwrap();
+        assert_eq!(verifier_tx.ledger(), prover_tx.ledger());
+        assert_eq!(verifier_tx.total_bytes(), C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES);
     }
 
     fn fp2_power(base: Fp2, exponent: usize) -> Fp2 {

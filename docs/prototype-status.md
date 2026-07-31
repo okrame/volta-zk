@@ -95,9 +95,15 @@ existing two-chain PCS.  `C6HUB2` is **5,416 B / 164 full correlations/tape**
 at production geometry; the packed link remains **100 full/tape / 3,538-B
 overhead / 3,613,362-B combined**.  Full Lean is **3,260 jobs / 315 audited
 targets**, and both Rust feature suites, workspace/all-target checks and
-formatting are green.  The exact cache hash/constraint census, production
-24-round all-participant coordinator, envelope/backend, local end-to-end and
-hardware gates remain pending.
+formatting are green.  The cache-hash checkpoint has since adopted the
+PCS-native dual-root descendant: its exact 72-polynomial roofline is
+**33,656,098 B**, its conservative kernel floor is **11.1793342101 s**, and
+its additive formal/scaled-static-reference gate is green at **3,261 Lean
+jobs / 331 audited targets / 7 focused Rust tests**.  This does not migrate
+the old 64-slot wrapper or replace its 48 stand-ins.  The exact production
+GPT-2 cache source map, pending-MAC/24-round transition, 72-slot packed
+integration, envelope/backend, local end-to-end and hardware gates remain
+pending.
 
 Workload of record: **GPT-2 small (124M, L=12, d=768, h=12, d_ff=3072),
 prefill T=100 + 50 deferred decode tokens, causal, C3b PCS Q=120**, on the
@@ -548,6 +554,106 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-31 — C6 continuation audit exposes and freezes the historical
+  `CacheSegK` replacement seam.**  The current T1 attention verifier retains
+  per-element corrected K/V keys for earlier segments and folds them in
+  `cache_fold_rows_k` / `cache_fold_cols_k`; the main prefill path is also
+  square at `t0=0`.  Those mechanics cannot implement a later certificate
+  from only a compact predecessor root once corrections are hidden.  This is
+  not repaired by regenerating base PCG keys, because the missing historical
+  correction is exactly what changes each corrected key.
+
+  Section 6.2 now preregisters the replacement.  A later prompt is one offset
+  prefill band at `t0=old_context`; deferred decode is a second band after the
+  prompt slab.  Every band/layer/head K-row and V-column key fold becomes a
+  client-derived linear-functional claim split between the predecessor PCS
+  state and current response K/V outputs.  At most two fixed phase slots and
+  **288 folds/live band** keep the grammar constant; empty phases are zero.
+  The provider supplies no old key vector or authoritative coefficient map.
+
+  Exact logical source-use examples are frozen before the adapter:
+  first-response `0+100+50` has 576 folds, zero predecessor uses,
+  `1,843,200` earlier-current-slab uses and `2,764,800` appended sources;
+  decode-only `150+50` has 288 folds, `2,764,800` predecessor uses and
+  `921,600` appended sources; a decode-only response from context 900 has
+  `16,588,800` predecessor uses with the same proof grammar.  These are
+  streamed relation applications, not wire bytes or new correlations.
+
+  The value-independent workload compiler is now green and pins these exact
+  counts without a per-cell allocation; plan mutation/reordering rejects.
+  It does not yet observe the runtime attention calls or their
+  challenge-derived coefficients.  The two-seed prover/verifier runtime
+  identity, typed pending targets and actual replacement of `CacheSegK`
+  remain pending.  Ordinary/`c6-trace` `volta-pcs` suites are **172/0/1** and
+  **173/0/1**, with both integration/layer suites green.  No stand-in,
+  response byte or timing credit is earned, and no pod/provider was
+  contacted.  Design, Lean, Rust and executable-budget SHA-256 values are
+  `2211746e28765e6749635b9f5f895bd514eb2b18e8cb3bc576c335b584e78d37`,
+  `98ee0570d0145b5d374fa2d8f3bd87096d58127b75eb55f3bc9786eeadfcf402`,
+  `cfc0765fc8ccae097b544f5e8e2ddceb29eb32064bb862b6cbb8eaffc0026e4a`
+  and `b7b62a103abc5e9a05561658097a44bda74943f1b5ba8e3050b883af21a7bcd0`.
+  Full workspace tests, including frozen-artifact golden E2E and KV-replay
+  rejection, exit zero; `--all-targets --features c6-trace`, formatting,
+  `git diff --check`, the **9/9** exact budget and the Lean build/audit all
+  exit zero.  The whole-crate `-D warnings` clippy command remains blocked by
+  the pre-existing `volta-field` trait-name warnings; ordinary clippy emits
+  no warning in either modified Rust file.
+
+- **2026-07-31 — C6 replaces the unspecified algebraic cache hash with two
+  reusable PCS cache-state roots; exact descendant roofline is green.**  The
+  cache-hash census found that a separately arithmetized hash over the full
+  persistent K/V state would introduce a new response-linear trace despite
+  the wrapper already having a binding vector commitment.  Before cache
+  protocol code, Section 6.1 of the C6 design therefore supersedes that local
+  mechanism: predecessor and successor are static-descriptor C6 PCS cohorts,
+  their dynamic roles/heads are outer-statement bound, and one native
+  24-round relation proves old-cache reads, prefix preservation,
+  authenticated K/V append and zero tail/padding.  Both roots enter the same
+  packed opening.  There is no second opening, recursive settlement, client
+  SRS, in-circuit BLAKE3 or unconstrained host-hash oracle.  Existing N4
+  binding remains an explicitly computational PCS assumption.
+
+  The fixed layout is two live K/V slots of `9,437,184 <=2^24` values plus
+  six public-zero slots per state.  The exact cache event has **53 roots per
+  repetition**, hence `2,809/|Fp2|^2 = 244.544159...` bits, inside its
+  conservative registered allocation.  Adding the predecessor state moves
+  the descendant from 64 to **72 active polynomials** and the link from 141
+  to **149 roots**; the combined blind-hidden/link numerator is
+  `6,725+149^2=28,926<2^15`.
+
+  The executable analytic budget is **3,879,466 B PCS**, a tightened
+  pre-backend **600,000-B** non-PCS allocation, **4,479,466 B pi_final** and
+  **33,656,098 B complete response**, leaving `20,534 B` and `1,343,902 B`
+  of the respective caps.  Known first-exchange components stay
+  `146,058,504 B`.  Charging a complete predecessor recomputation and no
+  retention credit gives a conservative **11.1793342101-s** kernel floor,
+  leaving `0.8206657899/3.8206657899/8.8206657899 s` to the 12/15/20-second
+  lines.  This is a pre-backend projection, not a timing measurement.
+
+  The additive Lean descendant is green: **3,261 jobs / 331 total / 92 C6
+  audited targets**, zero `sorry`/`admit`, standard axioms only.  It proves
+  live/padded capacity, append refinement, the context cap, unique concrete
+  successor under an explicit injective commitment premise and the exact
+  cache/link numerators without editing historical theorems.
+
+  The first additive Rust reference is also green.  Its strict **184-B**
+  static-profile codec yields eight unique response-independent slot
+  descriptors; its **320-B** outer-binding reference codec keeps roles and
+  dynamic state outside them and permits one successor root to become the
+  next predecessor root unchanged.  That 320-B fixture is not an added final
+  certificate field or wire credit.  A scaled direct transition checks exact
+  predecessor-read order, prefix preservation, authenticated-output append
+  order, tail/padding/zero slots and the client-derived source-map digest.
+  All **7 focused tests pass**, including mutations of every load-bearing
+  seam and compact first/continuation/late-session source-plan counts.
+
+  The exact production GPT-2 source-map generator, pending-MAC adapter,
+  24-round blind transition, 72-slot packed-wrapper migration, production
+  coordinator/backend, response removal and hardware walls remain pending.
+  The existing 48 cache/cache-auxiliary stand-ins are not reclassified.  No
+  provider or pod was contacted, and the unrelated untracked user note was
+  not read, staged or modified.
 
 - **2026-07-31 — C6 blind hidden-`u` source adapter is locally green.**
   The pre-code audit rejected direct reuse of clear `C6HUSC1`: terminal-only

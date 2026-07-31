@@ -10,8 +10,10 @@ T1 EVENT-SINK + FIRST/FOLDED/TERMINAL SCALED DIFFERENTIAL GREEN;
 ROUND-SYNCHRONOUS SINGLE-BACKING ARENA LOCAL DIFFERENTIAL GREEN; SHARED
 C6RSC3 COORDINATOR + SCALED FUSED PROVER AND VECTOR-FREE CLIENT TERMINAL
 BYTE/TRANSCRIPT/PENDING DIFFERENTIAL GREEN; PACKED AUTHENTICATED-OUTPUT LINK
-AND BLIND HIDDEN-U SOURCE ADAPTER GREEN; 48 CACHE/CACHE-AUXILIARY STAND-INS
-REMAIN; CACHE HASH/ARGUMENT / PRODUCTION BACKEND / FINAL WRAPPER PENDING;
+AND BLIND HIDDEN-U SOURCE ADAPTER GREEN; PCS-NATIVE DUAL-ROOT PERSISTENT-CACHE
+AMENDMENT AND EXACT 72-SLOT ROOFLINE FROZEN; 48 CACHE/CACHE-AUXILIARY
+STAND-INS REMAIN; CACHE SOURCE MAP / ARGUMENT / PRODUCTION BACKEND / FINAL
+WRAPPER PENDING;
 LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
@@ -3352,6 +3354,259 @@ gate remains open.
 The formal theorem is conditional on an explicit commitment-binding
 hypothesis.  No Lean theorem may smuggle collision resistance in as a new
 axiom.
+
+### 6.1 PCS-native dual-root amendment
+
+The exact cache-hash census exposed an avoidable obstruction in the original
+wording above.  Arithmetizing a second, newly selected hash over
+`2 * 12 * 1,024 * 768` cache values would add a response-linear hash trace,
+new round constants and a new performance surface even though the packed PCS
+already provides a binding vector commitment.  C6 therefore adopts the
+following pre-backend amendment.  It supersedes only the earlier requirements
+that cache membership/update use a separately arithmetized Merkle hash and
+that every initial descriptor bind the response statement.  All atomic-head,
+append-only, challenge-order and one-packed-opening requirements remain in
+force.
+
+The persistent `cache_root` is the N4 root of a normal C6 PCS cache-state
+cohort, not a host hash admitted as an algebraic oracle.  The N4/BLAKE3 tree is
+used only through the existing computational PCS commitment-binding
+assumption.  The cache transition itself is checked by native-field
+sumchecks whose terminal values enter the same pending authenticated-output
+link and the same packed PCS opening as every other wrapper claim.  There is
+no in-circuit BLAKE3 call, no new hash permutation, no new SRS and no second
+response opening.
+
+A reusable cache-state commitment has a static descriptor.  It binds exactly
+
+```text
+C6 cache-state domain/version,
+protocol/model/params/profile digests,
+maximum context 1,024,
+layer count 12, width 768,
+K-or-V slot kind, slot number and fixed geometry.
+```
+
+It does **not** bind a response statement, old/new role, nonce, epoch,
+current cache length or predecessor certificate.  Otherwise a successor root
+could not be reused byte-for-byte as the next certificate's predecessor root.
+Those dynamic fields and the ordered roles of both roots are bound by the
+outer response statement, `old_head`, `new_head` and certificate digest.  A
+root accepted under any other static descriptor is not a C6 cache-state root.
+
+Each cache-state cohort contains eight fixed-capacity slots:
+
+```text
+slot 0   K, natural (layer, position, channel) order
+slot 1   V, natural (layer, position, channel) order
+slot 2..7 canonical public zero
+```
+
+One K or V state has
+
+```text
+12 * 1,024 * 768 = 9,437,184 live entries <= 2^24.
+```
+
+The slot geometry is the fixed 24-bit padded product of 16 layer values,
+1,024 positions and 1,024 channels.  Invalid layers `12..15`, invalid
+channels `768..1,023`, every position at or above the committed cache length,
+and slots 2--7 are zero.  Genesis fixes the all-zero root.  Conditional on a
+valid predecessor certificate, one transition proves in a single complete
+relation per repetition that:
+
+1. every cache value consumed by the response is the corresponding value in
+   the predecessor K/V slots;
+2. the successor prefix below `old_head.cache_len` equals the predecessor;
+3. positions in `[old_head.cache_len,new_head.cache_len)` equal the response's
+   authenticated K/V output slab;
+4. the successor tail and every padded geometry entry are zero; and
+5. the public lengths and epoch satisfy the bounds in Section 6.
+
+The public range/geometry selectors and relation weights are fixed only after
+both cache roots and every response-output root are bound.  They are
+precombined as public multilinear coefficient tables.  The resulting cache
+identity has 24 rounds and maximum per-variable degree two.  One fresh K/V
+batching root and three complete-relation batching roots precede its
+sumcheck; one terminal authenticated-output root joins its terminal claims to
+the packed opening.  The exact complete-repetition census is therefore
+
+```text
+2*24 degree-round roots + 3 relation roots + 1 K/V root + 1 terminal root
+    = 53 roots,
+two independent repetitions: epsilon_cache <= 53^2 / |Fp2|^2
+    = 2,809 / |Fp2|^2
+    = 244.544159... bits.
+```
+
+This sharper census fits inside, and does not spend beyond, the already named
+cache event's conservative `(2^32)^2/|Fp2|^2` allocation.  Commitment/hash
+binding remains a separately named computational assumption and is not
+converted into statistical bits.
+
+The packed profile consequently has six initial root groups and 72 active
+polynomials per repetition:
+
+```text
+predecessor cache  8       successor cache  8
+paired residual    8       hidden-u weights 8
+hidden-u embedding 8       wrapper auxiliary 32
+total                                             72.
+```
+
+The response-local authenticated-output link now has 72 relations.  Its
+exact per-repetition root census is
+
+```text
+72 + 3*25 + 2 = 149,
+blind hidden-u plus link numerator = 6,725 + 149^2 = 28,926 < 2^15.
+```
+
+The former 64-polynomial/141-root numbers remain immutable evidence for the
+single-cache-root reference checkpoint; they are not the production C6
+profile after this amendment.
+
+The executable exact roofline for the 72-polynomial descendant is:
+
+```text
+one packed PCS chain                         1,939,733 B
+two independent chains                      3,879,466 B
+frozen non-PCS allocation                      600,000 B
+pi_final maximum                            4,479,466 B
+complete response maximum                  33,656,098 B
+response headroom                           1,343,902 B
+first-exchange known components            146,058,504 B
+```
+
+The earlier `800,000-B` non-PCS reserve is tightened to `600,000 B` before
+the cache codec/backend.  The PCS headroom is only `20,534 B`; no later field
+may be moved outside `pi_final` or added by benchmark-driven exception.  The
+setup exchange is unchanged because both cache commitments use transparent
+model-global descriptors and the existing provider-side PCS machinery.
+
+For timing screening, the predecessor commitment receives **no reuse
+credit**: the analytic model charges a full predecessor and successor
+commitment even though a durable provider implementation may retain the
+accepted predecessor tree.  The resulting conservative local kernel floor
+is `11.1793342101 s`, leaving `0.8206657899 s` to the 12-second target,
+`3.8206657899 s` to 15 seconds and `8.8206657899 s` to the binding 20-second
+ceiling.  These are analytic projections, not measured prover walls.
+
+The next implementation gate is the exact model-global source map from
+predecessor-cache operands and response-produced K/V slabs into the cache
+relation.  It must be generated independently by the client from the static
+layout and public workload, consume no historical cache key vector, and
+leave all cache terminal values pending until the authenticated-output link
+and packed PCS accept.  Until that exact map, its pending-MAC adapter and the
+production 24-round coordinator are green, the 48 cache/cache-auxiliary
+stand-ins remain stand-ins and no response-removal or prover-time credit is
+earned.
+
+The additive formal and first scaled-reference gates are now green.  The new
+`C6PersistentCachePCS.lean` descendant proves the exact live/padded capacity,
+append refinement, context cap, successor uniqueness under an explicit
+injective commitment premise, `53^2=2,809`, and the 72-relation/149-root
+authenticated-output-link specialization.  Full Lean builds **3,261 jobs**;
+the derived audit covers **331 total / 92 C6 named targets**, with zero
+`sorry`/`admit` and only `propext`, `Classical.choice` and `Quot.sound`.
+
+The additive Rust module `c6_persistent_cache` freezes a strict **184-B**
+static-profile codec, eight unique response-independent slot descriptors and
+a strict **320-B** outer transition-binding reference codec.  The latter is
+not a new certificate field or 320 bytes of earned wire: it redundantly
+encodes fields already required by Section 7 so descriptor portability and
+canonical ordering can be tested before the final envelope exists.  Its
+scaled checker verifies exact predecessor reads, unchanged prefix,
+authenticated-output append order, zero tail/padded geometry, slots 2--7,
+epoch/length bounds and the public source-map digest.  Five focused tests
+pass and reject prefix, append value/order, read value/order, tail, zero-slot,
+source-map, descriptor, corruption and trailing-byte mutations.  The compact
+workload-derived two-band plan and its exact first/continuation/late-session
+censuses add two focused tests, bringing this module to **7/7 PASS**.
+
+This direct checker is not yet the blind cache proof.  It consumes an
+expected public read map and typed append-source values, but the production
+GPT-2 operation plan has not yet generated that exact map and the values have
+not yet entered pending MAC containers.  It does not construct production
+PCS roots, change the historical 64-slot wrapper implementation, instantiate
+the 24-round sumcheck or replace any of the 48 stand-ins.  Those are the next
+ordered gates.
+
+### 6.2 Continuation-prefill and cache-fold source-map seam
+
+Inspection of the actual T1 attention path found a load-bearing seam before
+the source-map adapter.  `CacheSegK` currently gives the verifier a stored
+`VerifierKey` for every element of every earlier K/V segment, and
+`cache_fold_rows_k` / `cache_fold_cols_k` fold those keys directly.  Also, the
+main prefill path is the square `BandShape {t0=0,q=prompt}`.  Neither behavior
+implements a later C6 certificate with `old_context>0`: hidden historical
+corrections prevent reconstructing corrected keys from only the PCG seed,
+and rerunning a square prefill would ignore or duplicate the accepted cache.
+
+C6 therefore preregisters the following replacement before touching those
+functions:
+
+1. A first certificate may retain the existing square prompt band at
+   `t0=0`.  For any later certificate, nonempty prompt prefill is one offset
+   band `BandShape {t0=old_context,q=prompt_tokens}` whose prefix is the
+   accepted predecessor cache.
+2. Nonempty deferred decode is one second band at
+   `t0=old_context+prompt_tokens,q=decode_tokens`.  Its prefix is the same
+   predecessor cache followed by the current response's prompt slab.  Empty
+   prompt or decode phases occupy a public-zero phase slot.  The maximum
+   grammar is always two response-level bands, never one proof instance per
+   token.
+3. For each band/layer/head, the existing V column fold and K row fold are
+   split into a predecessor-state linear functional and a current-response
+   slab linear functional.  The old `CacheSegK` result is not accepted.
+   Instead, the model proof exposes a typed pending target; the cache
+   relation proves the predecessor contribution from the old PCS slots and
+   the current contribution from K/V outputs already owned by this response.
+4. The client derives every fold descriptor and coefficient schedule from
+   the public workload, fixed GPT-2 geometry and the already verifier-owned
+   attention challenges.  The provider supplies no authoritative indices,
+   weights or old key vector.  Both roles compile the same compact topology
+   and instance digest; missing, duplicate, reordered, wrong-axis,
+   wrong-layer/head or wrong-band folds reject.
+5. New K/V outputs are ordered by `(K then V, layer, position, channel)` and
+   fill exactly `[old_context,new_context)`.  Prefix/tail/padding checks use
+   the same ordering as Section 6.1.  No historical correction or key is
+   reintroduced on the wire.
+
+For a nonempty band there are exactly
+
+```text
+12 layers * 12 heads * (one V-column + one K-row fold) = 288 fold operations.
+```
+
+The two fixed phase slots therefore cap the topology at 576 fold operations
+regardless of token count.  Token/context length changes the number of
+coefficient applications, not the proof grammar.  At the baseline first
+response `(old,prompt,decode,new)=(0,100,50,150)` the compact plan has two
+bands, zero predecessor-cell uses, `1,843,200` earlier-current-slab uses and
+`2,764,800` appended K/V sources.  A decode-only continuation
+`(150,0,50,200)` has one live band, `2,764,800` predecessor-cell uses and
+`921,600` appended sources.  The last baseline continuation beginning at
+context 900 has `16,588,800` predecessor-cell uses but the same one-band
+proof grammar and response cap.
+
+These counts are logical source applications, not serialized values and not
+new MAC correlations.  The production implementation must stream/batch them
+inside the one 24-round cache relation.  Materializing the full coefficient
+map, retaining `CacheSegK`, or charging a key-vector retransmission is
+forbidden.  This amendment does not yet prove that the current attention
+code can be migrated within the timing cap; it makes that migration and its
+two-seed topology differential the next explicit gate.
+
+The value-independent workload compiler for this seam is now locally green.
+`derive_c6_persistent_cache_source_plan` accepts the canonical `C6Workload`,
+emits only the zero-to-two band descriptors and recomputes all four logical
+censuses above; a digest refuses reordered/mutated plans.  It does not yet
+observe the actual attention calls or their challenge-derived coefficients,
+so this is not the required prover/verifier two-seed runtime identity.  Both
+ordinary and `c6-trace` `volta-pcs` suites remain green at **172/0/1** and
+**173/0/1**, plus **14/0/2** integration and **2/0/0** layer tests in each
+mode.
 
 ## 7. Certificate and challenge grammar
 

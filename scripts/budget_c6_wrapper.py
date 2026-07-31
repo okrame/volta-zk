@@ -29,7 +29,7 @@ FP2_CARDINALITY = GOLDILOCKS_P**2
 SELECTED_QUERY_COUNT = 86
 PCS_REPETITIONS = 2
 PCS_RATE_LOG2 = 3
-ACTIVE_POLYNOMIALS = 64
+ACTIVE_POLYNOMIALS = 72
 MAX_WEIGHT_ORACLE_LOG2 = 28
 MAX_AUX_ORACLE_LOG2 = 19
 FOLD_TERMINAL_LOG2 = 3
@@ -42,7 +42,11 @@ PACKED_FOLD_ROUND_METADATA_BYTES = 10
 FOLD_COMMITMENT_FRAME_BYTES = 90
 FINAL_FOLD_EXTRA_SYMBOL_BYTES = FP2_BYTES
 
-NON_PCS_ALLOCATION_BYTES = 800_000
+# The persistent-cache descendant adds one predecessor-state PCS group. Its
+# exact packed opening leaves 620,534 B below the binding 4.5-MB proof cap;
+# 600,000 B is frozen before the cache codec/backend and may not be enlarged
+# after timing measurements.
+NON_PCS_ALLOCATION_BYTES = 600_000
 PI_FINAL_CAP_BYTES = 4_500_000
 RETAINED_RESPONSE_BYTES = 29_176_632
 RESPONSE_CAP_BYTES = 35_000_000
@@ -56,6 +60,18 @@ RESIDUAL_MAC_TAPES = 2
 SETUP_CAP_BYTES = 150_000_000
 
 CACHE_ROOT_BOUND_PER_REPETITION = 2**32
+CACHE_TRANSITION_ROUNDS = 24
+CACHE_TRANSITION_DEGREE = 2
+CACHE_TRANSITION_RELATION_BATCH_ROOTS = 3
+CACHE_TRANSITION_KV_BATCH_ROOTS = 1
+CACHE_TRANSITION_TERMINAL_ROOTS = 1
+CACHE_TRANSITION_ROOTS_PER_REPETITION = (
+    CACHE_TRANSITION_DEGREE * CACHE_TRANSITION_ROUNDS
+    + CACHE_TRANSITION_RELATION_BATCH_ROOTS
+    + CACHE_TRANSITION_KV_BATCH_ROOTS
+    + CACHE_TRANSITION_TERMINAL_ROOTS
+)
+CACHE_TRANSITION_EVENT_NUMERATOR = CACHE_TRANSITION_ROOTS_PER_REPETITION**2
 # The hidden-u reducers and the pending-output -> packed-PCS authenticated
 # link remain one named linear-functional event.  The v3 hiding amendment
 # reserves 256 roots per independent repetition for their union.
@@ -345,7 +361,8 @@ class WrapperCohort:
 
 
 COHORTS = (
-    WrapperCohort("cache_witness", "weight", 24, 8, 8, 28),
+    WrapperCohort("predecessor_cache_state", "weight", 24, 8, 8, 28),
+    WrapperCohort("successor_cache_state", "weight", 24, 8, 8, 28),
     WrapperCohort("paired_delta_residual", "weight", 23, 8, 8, 27),
     WrapperCohort("hidden_u_weights", "weight", 21, 8, 8, 25),
     WrapperCohort("hidden_u_embed", "weight", 19, 8, 8, 23),
@@ -602,8 +619,8 @@ def build_report() -> dict[str, Any]:
 
     paired_setup_bytes = RESIDUAL_MAC_TAPES * PCG_SETUP_BYTES_PER_TAPE
     report: dict[str, Any] = {
-        "schema": "volta-c6-wrapper-roofline-v1",
-        "profile": "c6-transparent-rate8-s86-p64-two-repetition-v1",
+        "schema": "volta-c6-wrapper-roofline-v2",
+        "profile": "c6-transparent-rate8-s86-p72-persistent-cache-v2",
         "capacity": {
             "rate_log2": PCS_RATE_LOG2,
             "selected_query_count": SELECTED_QUERY_COUNT,
@@ -836,6 +853,17 @@ def build_report() -> dict[str, Any]:
                 DELTA_ROOT_BOUND_PER_COMPLETE_REPETITION
             ),
             "delta_event_numerator": DELTA_EVENT_NUMERATOR,
+            "cache_transition_roots_per_repetition": (
+                CACHE_TRANSITION_ROOTS_PER_REPETITION
+            ),
+            "cache_transition_event_numerator": (
+                CACHE_TRANSITION_EVENT_NUMERATOR
+            ),
+            "cache_transition_exact_bits": str(
+                soundness_bits(
+                    Fraction(CACHE_TRANSITION_EVENT_NUMERATOR, FP2_CARDINALITY**2)
+                )
+            ),
             "event_bits": {
                 "wrapper_pcs": str(soundness_bits(pcs_error)),
                 "linear_functional_sumchecks": str(soundness_bits(hidden_error)),
@@ -882,6 +910,9 @@ def build_report() -> dict[str, Any]:
             "atomic_relation_compiler_timing_credit": (
                 "none-before-fused-compiler-benchmark"
             ),
+            "predecessor_cache_recompute_credit": (
+                "none-conservative-full-recompute-charged"
+            ),
             "base_model_prove_seconds": str(C4_MODEL_PROVE_RESPONSE_SECONDS),
             "one_commit_recompute_pass_seconds": str(one_commit_recompute_pass),
             "sumcheck_memory_floor_seconds": str(sumcheck_memory_seconds),
@@ -891,6 +922,12 @@ def build_report() -> dict[str, Any]:
             "integration_budget_to_20_seconds": str(integration_budget_to_ceiling),
             "integration_budget_to_11_seconds": str(
                 integration_budget_to_target_low
+            ),
+            "integration_budget_to_12_seconds": str(
+                Decimal("12") - total_kernel_floor_seconds
+            ),
+            "integration_budget_to_15_seconds": str(
+                Decimal("15") - total_kernel_floor_seconds
             ),
             "integration_budget_to_18_seconds": str(
                 integration_budget_to_target_high
@@ -977,23 +1014,26 @@ def build_report() -> dict[str, Any]:
     )
     assert HIDDEN_LINEAR_NUMERATOR == 2**16
     assert DELTA_EVENT_NUMERATOR == 2**17
+    assert CACHE_TRANSITION_ROOTS_PER_REPETITION == 53
+    assert CACHE_TRANSITION_EVENT_NUMERATOR == 2_809
+    assert CACHE_TRANSITION_ROOTS_PER_REPETITION <= CACHE_ROOT_BOUND_PER_REPETITION
     assert minimum_literal_128_bit_query_count() == 85
-    assert section["opened_symbols"] == 14_528
+    assert section["opened_symbols"] == 15_904
     assert section["inner_siblings"] == 0
-    assert section["outer_siblings"] == 49_052
-    assert section["metadata_bytes"] == 534
-    assert section["packed_section_bytes"] == 1_802_646
+    assert section["outer_siblings"] == 52_576
+    assert section["metadata_bytes"] == 571
+    assert section["packed_section_bytes"] == 1_937_467
     assert section["fold_commitment_bytes"] == 2_266
-    assert section["chain_bytes"] == 1_804_912
-    assert pcs_bytes == 3_609_824
-    assert pi_final_maximum == 4_409_824
-    assert PI_FINAL_CAP_BYTES - pi_final_maximum == 90_176
-    assert response_maximum == 33_586_456
-    assert RESPONSE_CAP_BYTES - response_maximum == 1_413_544
+    assert section["chain_bytes"] == 1_939_733
+    assert pcs_bytes == 3_879_466
+    assert pi_final_maximum == 4_479_466
+    assert PI_FINAL_CAP_BYTES - pi_final_maximum == 20_534
+    assert response_maximum == 33_656_098
+    assert RESPONSE_CAP_BYTES - response_maximum == 1_343_902
     assert paired_setup_bytes == 76_742_930
     assert SETUP_CAP_BYTES - paired_setup_bytes == 73_257_070
-    assert initial_encoded_symbols == 3_573_547_008
-    assert coefficient_symbols == 224_395_264
+    assert initial_encoded_symbols == 5_721_030_656
+    assert coefficient_symbols == 358_612_992
     assert fold_symbols == 536_870_896
     assert report["soundness"]["all_events_meet_literal_128_bits"] is True
     assert Decimal(report["soundness"]["q121_complete_candidate_bits"]) > Decimal(

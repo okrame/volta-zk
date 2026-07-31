@@ -13,6 +13,7 @@ pub mod c6_authenticated_output_link;
 pub mod c6_hidden_u;
 pub mod c6_hidden_u_sumcheck;
 pub mod c6_hidden_u_sumcheck_blind;
+pub mod c6_persistent_cache;
 pub mod c6_residual_sumcheck;
 pub mod c6_residual_sumcheck_blind;
 pub mod c6_wrapper_pcs;
@@ -62,6 +63,24 @@ pub use c6_hidden_u_sumcheck_blind::{
     C6_BLIND_HIDDEN_U_PRODUCTION_BYTES, C6_BLIND_HIDDEN_U_PRODUCTION_FULL_CORRELATIONS_PER_TAPE,
     C6_BLIND_HIDDEN_U_PRODUCTION_ROUND_VALUES_PER_REPETITION, C6_BLIND_HIDDEN_U_SLOTS_PER_FAMILY,
     C6_BLIND_HIDDEN_U_TAPES, C6_BLIND_HIDDEN_U_VERSION,
+};
+pub use c6_persistent_cache::{
+    c6_cache_source_map_digest, derive_c6_persistent_cache_source_plan,
+    expected_c6_cache_append_cells, validate_c6_persistent_cache_transition_reference, C6CacheCell,
+    C6CacheSlotKind, C6CacheSourceValue, C6PersistentCacheBandPlan, C6PersistentCacheBandRole,
+    C6PersistentCacheError, C6PersistentCacheLayout, C6PersistentCacheReferenceAudit,
+    C6PersistentCacheSourcePlan, C6PersistentCacheStateWitness, C6PersistentCacheStaticProfile,
+    C6PersistentCacheTransitionBinding, C6_BLIND_HIDDEN_PLUS_PERSISTENT_LINK_NUMERATOR,
+    C6_PERSISTENT_CACHE_BINDING_MAGIC, C6_PERSISTENT_CACHE_CAPACITY_TOKENS,
+    C6_PERSISTENT_CACHE_DEGREE, C6_PERSISTENT_CACHE_EVENT_NUMERATOR,
+    C6_PERSISTENT_CACHE_FOLDS_PER_LIVE_BAND, C6_PERSISTENT_CACHE_FOLD_CAPACITY,
+    C6_PERSISTENT_CACHE_HEADS, C6_PERSISTENT_CACHE_LAYERS, C6_PERSISTENT_CACHE_LIVE_ENTRIES,
+    C6_PERSISTENT_CACHE_LIVE_SLOTS, C6_PERSISTENT_CACHE_PADDED_LAYERS,
+    C6_PERSISTENT_CACHE_PADDED_WIDTH, C6_PERSISTENT_CACHE_PHASE_SLOTS,
+    C6_PERSISTENT_CACHE_PROFILE_MAGIC, C6_PERSISTENT_CACHE_ROOTS_PER_REPETITION,
+    C6_PERSISTENT_CACHE_ROUNDS, C6_PERSISTENT_CACHE_SLOTS, C6_PERSISTENT_CACHE_SLOT_CAPACITY,
+    C6_PERSISTENT_CACHE_VERSION, C6_PERSISTENT_CACHE_WIDTH, C6_PERSISTENT_LINK_RELATIONS,
+    C6_PERSISTENT_LINK_ROOTS_PER_REPETITION,
 };
 pub use c6_residual_sumcheck::{
     prepare_residual_sumcheck_prover_round_state, prepare_residual_sumcheck_verifier_round_state,

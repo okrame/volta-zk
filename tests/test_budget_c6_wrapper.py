@@ -59,22 +59,25 @@ def test_selected_profile_and_collision_safe_wire_maximum() -> None:
     wire = report["wire"]
     chain = wire["one_chain"]
 
-    assert capacity["active_polynomials"] == 64
+    assert report["schema"] == "volta-c6-wrapper-roofline-v2"
+    assert report["profile"] == "c6-transparent-rate8-s86-p72-persistent-cache-v2"
+    assert capacity["active_polynomials"] == 72
     assert [cohort["encoded_domain_log2"] for cohort in capacity["cohorts"]] == [
+        28,
         28,
         27,
         25,
         23,
         19,
     ]
-    assert capacity["initial_encoded_symbols"] == 3_573_547_008
-    assert capacity["coefficient_symbols"] == 224_395_264
-    assert chain["opened_symbols"] == 14_528
-    assert chain["outer_siblings"] == 49_052
+    assert capacity["initial_encoded_symbols"] == 5_721_030_656
+    assert capacity["coefficient_symbols"] == 358_612_992
+    assert chain["opened_symbols"] == 15_904
+    assert chain["outer_siblings"] == 52_576
     assert chain["inner_siblings"] == 0
-    assert chain["packed_section_bytes"] == 1_802_646
+    assert chain["packed_section_bytes"] == 1_937_467
     assert chain["fold_commitment_bytes"] == 2_266
-    assert chain["chain_bytes"] == 1_804_912
+    assert chain["chain_bytes"] == 1_939_733
 
     small_rounds = {
         row["domain_log2"]: row
@@ -97,17 +100,17 @@ def test_two_repetition_wire_and_setup_stay_inside_frozen_caps() -> None:
     wire = report["wire"]
     setup = report["setup"]
 
-    assert wire["two_chain_pcs_bytes"] == 3_609_824
-    assert wire["non_pcs_allocation_bytes"] == 800_000
+    assert wire["two_chain_pcs_bytes"] == 3_879_466
+    assert wire["non_pcs_allocation_bytes"] == 600_000
     assert wire["base_share_seed_bytes"] == 32
     assert wire["relation_seed_bytes"] == 32
     assert wire["total_residual_seed_bytes"] == 64
     assert wire["challenge_order_incremental_bytes"] == 32
     assert wire["residual_seeds_within_non_pcs_allocation"] is True
-    assert wire["pi_final_maximum_bytes"] == 4_409_824
-    assert wire["pi_final_headroom_bytes"] == 90_176
-    assert wire["complete_response_maximum_bytes"] == 33_586_456
-    assert wire["response_headroom_bytes"] == 1_413_544
+    assert wire["pi_final_maximum_bytes"] == 4_479_466
+    assert wire["pi_final_headroom_bytes"] == 20_534
+    assert wire["complete_response_maximum_bytes"] == 33_656_098
+    assert wire["response_headroom_bytes"] == 1_343_902
     assert setup["paired_pcg_setup_bytes"] == 76_742_930
     assert setup["client_params_and_framing_budget_bytes"] == 73_257_070
 
@@ -121,11 +124,14 @@ def test_s86_is_selected_before_benchmark_and_all_events_exceed_128_bits() -> No
     assert soundness["minimum_literal_128_bit_query_count"] == 85
     assert soundness["selected_query_count"] == 86
     assert soundness["all_events_meet_literal_128_bits"] is True
-    assert Decimal(soundness["event_bits"]["wrapper_pcs"]) > Decimal("130.77")
+    assert Decimal(soundness["event_bits"]["wrapper_pcs"]) > Decimal("130.43")
     assert Decimal(soundness["event_bits"]["linear_functional_sumchecks"]) > Decimal(
         "239.99"
     )
     assert Decimal(soundness["event_bits"]["cache_argument"]) > Decimal("191.99")
+    assert soundness["cache_transition_roots_per_repetition"] == 53
+    assert soundness["cache_transition_event_numerator"] == 2_809
+    assert Decimal(soundness["cache_transition_exact_bits"]) > Decimal("244.54")
     assert (
         soundness[
             "residual_sumcheck_degree_rounds_per_complete_proof_repetition"
@@ -252,12 +258,8 @@ def test_time_screen_rejects_x4c_and_keeps_hardware_verdict_open() -> None:
         timing["atomic_relation_fused_compiler_equivalent_symbols"]
         == 2_640_050_432
     )
-    assert Decimal(timing["sumcheck_effective_equivalent_passes"]) > Decimal(
-        "44.06"
-    )
-    assert Decimal(timing["sumcheck_effective_equivalent_passes"]) < Decimal(
-        "44.07"
-    )
+    assert Decimal(timing["sumcheck_effective_equivalent_passes"]) > Decimal("39.55")
+    assert Decimal(timing["sumcheck_effective_equivalent_passes"]) < Decimal("39.56")
     assert (
         timing["ownership_amendment_timing_credit"]
         == "none-before-fused-compiler-benchmark"
@@ -266,6 +268,12 @@ def test_time_screen_rejects_x4c_and_keeps_hardware_verdict_open() -> None:
         timing["atomic_relation_compiler_timing_credit"]
         == "none-before-fused-compiler-benchmark"
     )
-    assert Decimal(timing["total_kernel_floor_seconds"]) < Decimal("9")
-    assert Decimal(timing["integration_budget_to_20_seconds"]) > Decimal("11")
+    assert timing["predecessor_cache_recompute_credit"] == (
+        "none-conservative-full-recompute-charged"
+    )
+    assert Decimal(timing["total_kernel_floor_seconds"]) > Decimal("11.17")
+    assert Decimal(timing["total_kernel_floor_seconds"]) < Decimal("11.18")
+    assert Decimal(timing["integration_budget_to_12_seconds"]) > Decimal("0.82")
+    assert Decimal(timing["integration_budget_to_15_seconds"]) > Decimal("3.82")
+    assert Decimal(timing["integration_budget_to_20_seconds"]) > Decimal("8.82")
     assert Decimal(timing["legacy_x4c_total_projection_seconds"]) > Decimal("80")

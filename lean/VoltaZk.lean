@@ -30,3 +30,4 @@ import VoltaZk.C6Amplification
 import VoltaZk.C6BlindTranscript
 import VoltaZk.C6AuthenticatedOutputLink
 import VoltaZk.C6HiddenUBlindTranscript
+import VoltaZk.C6PersistentCachePCS

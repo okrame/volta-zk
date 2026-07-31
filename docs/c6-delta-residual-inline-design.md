@@ -2707,6 +2707,184 @@ hardware credit.  The next ordered implementation boundary is the common
 packed authenticated-output link that upgrades pending terminal claims; a
 pending C6RSC3 claim still cannot become an accepted PCS value.
 
+#### 5.1.12 Packed authenticated-output link freeze before code
+
+The pre-code M9/X4 audit found two concrete production obstructions in the
+otherwise useful all-slot assembler of Section 5.3:
+
+1. it accepts and transcript-charges all 128 terminal values in clear at the
+   old suffix points whose final coordinate is zero; and
+2. the scaled C6RSC3 pending containers expose raw `ProverAuthed` and
+   `VerifierKey` accessors even though no accepted constructor exists yet.
+
+The first behavior contradicts the later C6RSC3 amendment's explicit
+target-evaluation-leak rejection.  The second is an avoidable typestate
+escape.  The old clear assembler is therefore retained only as a
+scaled/reference differential.  It has no production authority after this
+freeze.  Production may create `C6AssembledWrapperClaims` only through the
+combined authenticated-output link below, and raw pending MAC material is
+crate-private until that combined verifier succeeds.
+
+For each proof repetition `b`, all 64 slot claims are already pending and
+dual-authenticated in canonical fixed-root order:
+
+```text
+(cache 0..7,
+ residual 0..7,
+ hidden-u weights 0..7,
+ hidden-u embed 0..7,
+ auxiliary 0..31).
+```
+
+Each opaque descriptor binds the wrapper statement, fixed-root digest,
+source-statement digest, repetition, cohort, slot and exact old target point.
+For C6RSC3 residual claims the adapter appends the fixed zero coordinate to
+the 23- or 15-coordinate semantic point; it does not reveal the terminal
+value.  Every source-specific pending correction frame for both repetitions
+and both MAC tapes is fixed before the first link challenge.
+
+After that boundary the verifier releases one `beta_b`.  With canonical
+slot ordinal `j` and `rho_j = beta_b^(j+1)`, the two tapes hold the same
+plaintext initial claim
+
+```text
+C_b = sum_j rho_j * S_j
+```
+
+under independent MAC keys.  The prover runs one degree-two,
+different-size blind sumcheck over exactly 25 global variables:
+
+```text
+G_b(X) =
+  sum_j rho_j
+      * f_j(X_suffix(j))
+      * eq(X_suffix(j), target_j)
+      * product_(leading virtual coordinates k) (1 - X_k).
+```
+
+The leading virtual factor is required because every smaller cohort is a
+suffix of the 25-coordinate global point; trailing virtual folding would
+bind the wrong variables.  At each round both tapes fix independently
+authenticated `G_b(0)` and `G_b(2)` corrections before one shared verifier
+challenge is released.  No round plaintext is serialized.
+
+Let the resulting fresh point be `z_b`.  The prover must abort before
+emitting any clear aggregate unless `z_b[24] != 0`.  A verifier-supplied zero
+is a hard failure, not a fallback to the old target point.  For an honest
+uniform verifier this adds only the separately reported liveness failure
+probability at most `2/|Fp2|` across the two repetitions; it is not a
+soundness relaxation.  The new per-slot PCS weight is
+
+```text
+w_j = rho_j
+    * eq(z_b_suffix(j), target_j)
+    * product_(leading virtual coordinates k) (1 - z_b[k]).
+```
+
+Exactly five new-point aggregate values per repetition are then sent:
+
+```text
+V_(b,c) = sum_(slot j in cohort c) w_j * f_j(z_b_suffix(c)).
+```
+
+These ten values are **160 B total**.  Individual old-point values are never
+sent.  Every witness and auxiliary polynomial has an independently random
+upper half, so the checked nonzero final coordinate one-time-pads each clear
+new-point aggregate.  The existing single C6 packed envelope proves those
+five claims in each of its two chains.  Only after both PCS chains and query
+sections verify do both tapes ZeroOpen
+
+```text
+final_authenticated_link_claim - sum_c V_(b,c).
+```
+
+The successful combined path is the sole constructor of opaque bound slot
+claims.  A pending claim, a link prefix without the PCS, or a PCS proof
+without both terminal MAC closures cannot enter a response ZeroBatch or an
+accepted certificate.
+
+The normative interaction order is:
+
+```text
+five fixed roots
+  -> every source-specific pending transfer for repetitions 0 and 1
+  -> repetition 0 beta, 25 dual-tape round messages, nonzero point,
+     five new-point aggregates
+  -> repetition 1 beta, 25 dual-tape round messages, nonzero point,
+     five new-point aggregates
+  -> both existing packed PCS root/fold/query chains
+  -> terminal ZeroOpen tags in (repetition, tape) order
+  -> bound typestate.
+```
+
+The C6-only strict combined codec is frozen as `C6LNK1\0\0`, version 1,
+with little-endian integers and canonical `Fp2` symbols.  It contains:
+
+```text
+magic/version/repetitions/tapes/relations/rounds/cohorts       16 B
+per repetition:
+  repetition + schedule digest                            1 + 32 B
+  25 rounds * 2 tapes * [G(0),G(2)] * 16 B                1,600 B
+  five new-point aggregates * 16 B                            80 B
+embedded unchanged two-chain PCS                         3,609,824 B
+four terminal ZeroOpen tags * 16 B                              64 B
+final domain-separated BLAKE3 digest                            32 B
+combined payload                                         3,613,362 B
+non-PCS link overhead                                        3,538 B.
+```
+
+The link proof context is
+`volta-zk/c6/authenticated-output-link-proof/v1`; the schedule context is
+`volta-zk/c6/authenticated-output-link-schedule/v1`.  The latter binds the
+wrapper statement, fixed roots, exact descriptor registry and the complete
+correlation-domain schedule.  Round corrections are encoded
+repetition-major, round-major, tape-major, then endpoint `0,2`; aggregates
+are commitment-major and slot weights are never serialized.  Points,
+`beta`, weights and cohort metadata are verifier-reconstructed.  A strict
+decoder rejects old magic/version, wrong census/order/digest, noncanonical
+field symbols and trailing bytes.
+
+The link consumes exactly
+
+```text
+2 repetitions * 25 rounds * 2 endpoint masks = 100
+```
+
+fresh full correlations **per tape**, inside the frozen 39,116-full PCS
+reserve.  Its domains are
+
+```text
+0x0C64_0000_0000_0000
+| (repetition << 28)
+| (tape << 24)
+| 0x0001_0000
+| (2*round + endpoint),
+```
+
+where `endpoint` is zero for `G(0)` and one for `G(2)`.  Reserved correlation
+bits, collisions with C6RSC3 and reuse across an abort are hard failures.
+No fresh correlation is needed for the final ZeroOpen.
+
+The generic M3/X4 different-point theorem gives the exact one-repetition
+link numerator
+
+```text
+64 relations + 3*25 degree-round roots + 2 = 141.
+```
+
+Two independent complete repetitions contribute `141^2 = 19,881`.  Unioned
+with the already frozen hidden-linear numerator, the shared named event is
+
+```text
+6,401 + 141^2 = 26,282 < 65,536 = 2^16.
+```
+
+Thus `c6_linear_link_event_better_than_239` and the four-event Q=121 result
+remain unchanged.  Before Rust, an additive Lean module must specialize the
+generic different-point theorem to `(64,25)`, prove the `141` census and the
+`26,282 < 2^16` composition.  It may not edit the frozen M9/X4 theorems or
+add an axiom.  Until that audit is green, implementation is hard-stopped.
+
 The wrapper PCS uses rate `1/8`, two independent fold/query chains and
 `s=86` queries per chain.  Under the conservative 64-active-polynomial,
 `2^28` weight-oracle and `2^19` auxiliary maxima, one repetition has
@@ -2827,6 +3005,12 @@ credit; the admitted production path remains the separately gated fused CUDA
 backend.
 
 ### 5.3 Global-round and all-slot assembly seam
+
+This section records the earlier clear all-slot assembly checkpoint.  Its
+challenge-ownership and registry checks remain useful, but Section 5.1.12
+supersedes its production terminal-value authority: the 2,048-B clear
+old-point path is diagnostic only, and production assembly must originate
+from the opaque pending-to-link-to-PCS typestate.
 
 Before the complete wrapper implementation, C6 fixes one production
 orchestration seam.  The five canonically ordered initial cohort roots are

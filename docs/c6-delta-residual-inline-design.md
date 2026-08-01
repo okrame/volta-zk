@@ -32,9 +32,9 @@ LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 **C6.1 amendment status (2026-08-01): OWNER REQUIREMENTS, METRIC
 BOUNDARIES, CRYPTOGRAPHIC SEAM AND ORDERED GATES FROZEN; EXACT BYTE/OPERATION
 PUBLIC/DV DECOMPOSITION GREEN; NATIVE `C6PA1`/`C6RSC4-v4` FORMULA,
-SOUNDNESS, WIRE, MEMORY AND PRE-CODE TIME ROOFLINES GREEN; ADDITIVE
-FORMALIZATION NEXT; NO C6.1 PROOF-SIZE, TIMING, MEMORY OR HARDWARE CREDIT;
-HARD STOP BEFORE POD.**
+SOUNDNESS, WIRE, MEMORY AND PRE-CODE TIME ROOFLINES GREEN; ADDITIVE LEAN
+FORMALIZATION GREEN; SCALED STRICT CODEC/RUST PATH NEXT; NO C6.1 PROOF-SIZE,
+TIMING, MEMORY OR HARDWARE CREDIT; HARD STOP BEFORE POD.**
 
 This document is the C6 plan of record.  It is a new descendant of the
 accepted C4/T1 `rate=1/4,Q=120` inline profile.  It does not reopen or rewrite
@@ -689,6 +689,46 @@ theorems for challenge timing and equality schedules, runtime MLE binding,
 output batching, sparse-adjoint/source-boundary correctness, public-to-DV
 composition, predecessor-conditioned state advancement and the exact error
 union.  Frozen M1--M11 files remain untouched.
+
+### 0.9 Gate-3 additive formalization checkpoint
+
+`lean/VoltaZk/C61PublicCompression.lean` closes Gate 3 additively; no frozen
+M1--M11 module is edited.  Its machine-checked boundary includes:
+
+1. the exact `234`-element challenge census and exact installed sparse-DAG
+   node partition;
+2. empty early-transition types forbidding schedule draws before roots,
+   output batching before 64 fixed claims, and native proof challenges before
+   the aggregate adjoint root;
+3. Mathlib's multivariate Schwartz--Zippel theorem specialized to a
+   discrepancy polynomial fixed before its MLE point, with error bounded by
+   total degree over field cardinality;
+4. a zero-based 64-terminal scalar-power polynomial whose degree is at most
+   63, giving the exact `63/|Fp2|` accepting-set bound;
+5. the independent two-fingerprint cardinality product;
+6. the sparse reverse-adjoint identity
+   `values = source + A*values` and
+   `lambda = output + A^T*lambda`, proving
+   `output dot values = lambda dot source`;
+7. named public-to-designated bad-event composition and exact predecessor-
+   conditioned state advancement/non-replay; and
+8. the exact retained-wrapper rational plus all C6.1 events, proving the
+   complete certificate error `<2^-119`, literal 79-bit compliance and the
+   separate 17-certificate error `<2^-115`.
+
+The native model/embedding/compiler failure terms are not axioms hidden in
+the numeric theorem.  `C61NativeBackendContract` carries three explicit
+nonnegative two-chain bounds, each at most `2^-148`; only a contract instance
+may discharge their `3/2^148` union allocation.  Concrete PCS binding, HVZK
+privacy and independent-chain realization remain Gate-4 implementation
+obligations.
+
+Full `lake build` is green at **3,264 jobs**.  `Audit.lean` adds **21** named
+C6.1 targets; they use only Lean's standard `propext`, `Classical.choice` and
+`Quot.sound` where required and introduce no ideal protocol axiom.  This is
+formal statement/algebra credit only.  It gives no concrete proof-size,
+codec, Rust, native-backend, timing, RAM or hardware credit.  Gate 4, the
+strict scaled Rust path, is next.
 
 ## 1. Owner requirements
 

@@ -371,6 +371,29 @@ vector-RLC bounds from being mistaken for implementation bounds.
 #print axioms VoltaZk.c6_abort_preserves_accepted_state
 #print axioms VoltaZk.c6_atomic_state_is_old_or_new
 #print axioms VoltaZk.c6_false_transition_event_cover
+
+-- C6.1 response-local public compression (additive; M1--M11 unchanged).
+#print axioms VoltaZk.c61_equality_challenge_census
+#print axioms VoltaZk.c61_node_partition_census
+#print axioms VoltaZk.c61_no_schedule_before_roots
+#print axioms VoltaZk.c61_no_output_challenge_before_terminal_claims
+#print axioms VoltaZk.c61_no_native_challenge_before_adjoint
+#print axioms VoltaZk.c61_mle_discrepancy_sound
+#print axioms VoltaZk.c61_terminal_rlc_poly_eval
+#print axioms VoltaZk.c61_terminal_rlc_poly_ne_zero
+#print axioms VoltaZk.c61_terminal_rlc_poly_degree_le
+#print axioms VoltaZk.c61_terminal_output_rlc_sound
+#print axioms VoltaZk.c61_runtime_two_fingerprint_card_le
+#print axioms VoltaZk.c61_sparse_adjoint_terminal_link
+#print axioms VoltaZk.c61_public_to_designated_composition
+#print axioms VoltaZk.C6Certificate.c61_accepted_advances_exact_predecessor
+#print axioms VoltaZk.c61_fp2_card_q_eq_x4e
+#print axioms VoltaZk.c61_native_backend_union_error_le
+#print axioms VoltaZk.c61_contract_error_le_registered
+#print axioms VoltaZk.c61_retained_wrapper_error_lt_two_pow_neg_130
+#print axioms VoltaZk.c61_complete_error_lt_two_pow_neg_119
+#print axioms VoltaZk.c61_complete_error_meets_literal_79_bits
+#print axioms VoltaZk.c61_seventeen_certificate_error_lt_two_pow_neg_115
 #print axioms VoltaZk.x4d_accepted_settlement_implies_each_m9_or_bad
 #print axioms VoltaZk.x4d_settlement_error_is_v4
 #print axioms VoltaZk.x4d_settlement_error_expanded

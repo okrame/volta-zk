@@ -414,6 +414,25 @@ theorem c61_masked_claim_shift_bijective
     Function.Bijective (fun mask => maskedClaim + mask) :=
   (c61MaskedClaimShift maskedClaim).bijective
 
+/-- The final tag in an honest C6AWH1 execution is computable from the
+designated verifier's view alone.  This is the exact algebra used by the
+claim-privacy simulator: it reads the two verifier keys and public base-case
+closure, but neither authenticated plaintext nor either prover tag. -/
+theorem c61_designated_simulator_tag_eq_honest_tag
+    {F : Type*} [Field F]
+    (Delta gamma combined maskedClaim : F) (target mask : Authed F)
+    (htarget : target.Valid Delta) (hmask : mask.Valid Delta)
+    (hbase : combined = maskedClaim + gamma * target.x) :
+    Delta * (combined - (maskedClaim + mask.x))
+        - gamma * target.k + mask.k
+      = (c61AuthenticatedTargetResidual Delta gamma combined maskedClaim
+          target mask).m := by
+  unfold Authed.Valid at htarget hmask
+  simp only [c61AuthenticatedTargetResidual, Authed.add_m, Authed.sub_m,
+    Authed.smul_m, Authed.ofPublic_m]
+  rw [htarget, hmask, hbase]
+  ring
+
 def c61AuthenticatedWhirChains : Nat := 6
 def c61AuthenticatedWhirTapes : Nat := 2
 def c61AuthenticatedWhirMasksPerTape : Nat := 3

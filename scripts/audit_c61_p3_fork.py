@@ -91,20 +91,34 @@ def require_source_guards() -> None:
 
     adapter = (ROOT / "rust/volta-pcs/src/c61_authenticated_whir_p3.rs").read_text()
     production_adapter = adapter.split("#[cfg(test)]", 1)[0]
-    if production_adapter.count("C61InteractiveChallenger::new_claimless(") != 2:
-        raise SystemExit("claimless provider/verifier must use the no-skip challenger mode")
-    if production_adapter.count(".observe_public_point(") != 2:
-        raise SystemExit("claimless provider/verifier must explicitly bind the opening point")
-    if production_adapter.count(".ensure_public_statement_bound()") != 2:
-        raise SystemExit("claimless provider/verifier must fail closed on incomplete statements")
-    if production_adapter.count("challenger.finish(") != 2:
-        raise SystemExit("claimless provider/verifier must finalize strict wire accounting")
+    if production_adapter.count("C61InteractiveChallenger::new_claimless(") != 3:
+        raise SystemExit("claimless provider/verifier/simulator must use no-skip challenger mode")
+    if production_adapter.count(".observe_public_point(") != 3:
+        raise SystemExit("claimless provider/verifier/simulator must explicitly bind the point")
+    if production_adapter.count(".ensure_public_statement_bound()") != 3:
+        raise SystemExit("claimless roles must fail closed on incomplete statements")
+    if production_adapter.count("challenger.finish(") != 3:
+        raise SystemExit("claimless roles must finalize strict wire accounting")
     if "proof.evals" in production_adapter:
         raise SystemExit("claimless adapter regressed to a clear evaluation codec field")
     if 'C61_AUTHENTICATED_P3_MAGIC: [u8; 8] = *b"C6AWP1\\0\\0"' not in production_adapter:
         raise SystemExit("claimless adapter strict codec identity changed")
     if "decode_c61_authenticated_p3_artifact_inner" not in production_adapter:
         raise SystemExit("claimless verifier no longer consumes the strict codec")
+    if "fn simulate_view_diagnostic(" not in production_adapter:
+        raise SystemExit("designated-view simulator entry point is absent")
+    simulator = production_adapter.split("fn simulate_view_diagnostic(", 1)[1].split(
+        "fn verify_diagnostic(", 1
+    )[0]
+    if "target_key: VerifierKey" not in simulator:
+        raise SystemExit("designated-view simulator lost its verifier target key")
+    for forbidden in ("target_tag", "ProverAuthed", "CorrelationStream"):
+        if forbidden in simulator:
+            raise SystemExit(
+                f"designated-view simulator reads forbidden provider state: {forbidden}"
+            )
+    if "simulate_c61_authenticated_whir_base_view(" not in simulator:
+        raise SystemExit("designated-view simulator no longer derives the tag from verifier state")
     verifier_adapter = production_adapter.split("fn verify_diagnostic(", 1)[1].split(
         "/// Run one reference-only", 1
     )[0]

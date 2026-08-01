@@ -24,14 +24,14 @@ use p3_whir_c61::pcs::zk::{
 };
 use p3_whir_c61::{ClaimlessAffineClaim, ClaimlessZkSumcheckData};
 use rand_010::rngs::StdRng;
-use rand_010::SeedableRng;
+use rand_010::{RngExt, SeedableRng};
 use volta_field::{Fp2, P};
 use volta_mac::{CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey};
 
 use crate::c61_authenticated_whir::{
     finish_c61_authenticated_whir_base, prepare_c61_authenticated_whir_mask,
-    verify_c61_authenticated_whir_base, C61AuthenticatedWhirAffineClaim,
-    C61AuthenticatedWhirBaseProof, C61AuthenticatedWhirMaskRange,
+    simulate_c61_authenticated_whir_base_view, verify_c61_authenticated_whir_base,
+    C61AuthenticatedWhirAffineClaim, C61AuthenticatedWhirBaseProof, C61AuthenticatedWhirMaskRange,
     C61AuthenticatedWhirProverFinishInput, C61AuthenticatedWhirVerifierInput,
     C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES,
 };
@@ -61,6 +61,11 @@ pub struct C61AuthenticatedP3StructuralBudget {
     pub num_variables: usize,
     pub rounds: usize,
     pub mask_queries: usize,
+    /// Largest number of private OOD answers in one code-switch round.
+    pub max_ood_samples: usize,
+    /// Numerator `sum_r t_r(t_r+1)/2` of the composed OOD privacy bad-event
+    /// bound over the quadratic-extension field.
+    pub ood_privacy_bad_event_numerator: usize,
     pub round_opening_bytes: usize,
     pub base_mask_opening_bytes: usize,
     pub blinded_mask_bytes: usize,
@@ -83,6 +88,30 @@ pub struct C61AuthenticatedP3Diagnostic {
     pub verifier_interaction: C61WhirInteractionStats,
     pub proof_has_clear_evaluation_field: bool,
     pub full_correlations: u64,
+}
+
+/// Reference-only designated-verifier view simulation report.
+///
+/// The simulator receives the target MAC key but never the real opening
+/// plaintext, its provider tag, the real witness, or provider correlation
+/// state.  It samples a surrogate witness only to materialize concrete
+/// Merkle trees in this executable differential; the security argument uses
+/// the pinned HVZK query simulators for those oracle views.
+#[derive(Debug)]
+pub struct C61AuthenticatedP3PrivacyDiagnostic {
+    pub num_variables: usize,
+    pub strict_payload_bytes: usize,
+    pub strict_payload_blake3: [u8; 32],
+    pub simulator_interaction: C61WhirInteractionStats,
+    pub verifier_interaction: C61WhirInteractionStats,
+    pub simulator_transcript_bytes: u64,
+    pub verifier_transcript_bytes: u64,
+    pub simulator_ledger: BTreeMap<&'static str, u64>,
+    pub verifier_ledger: BTreeMap<&'static str, u64>,
+    pub received_real_target_plaintext: bool,
+    pub received_provider_target_tag: bool,
+    pub received_provider_correlation_state: bool,
+    pub verifier_full_key_draws: u64,
 }
 
 #[derive(Clone)]
@@ -195,7 +224,28 @@ fn c61_authenticated_structural_budget_inner(
 
     let mut round_opening_bytes = 0usize;
     let mut rounds_bytes = 0usize;
+    let mut max_ood_samples = 0usize;
+    let mut ood_privacy_bad_event_numerator = 0usize;
     for (index, round) in config.round_parameters.iter().enumerate() {
+        let switch_mask = config
+            .switch_masks
+            .get(index)
+            .ok_or_else(|| "C6AWP1 missing code-switch privacy mask".to_owned())?;
+        let pad_slots =
+            switch_mask.message_len.checked_sub(config.oracle_randomness[index]).ok_or_else(
+                || "C6AWP1 code-switch mask is shorter than source randomness".to_owned(),
+            )?;
+        if pad_slots != round.ood_samples {
+            return Err("C6AWP1 does not have one fresh pad slot per OOD answer".to_owned());
+        }
+        max_ood_samples = max_ood_samples.max(round.ood_samples);
+        let round_bad_numerator = round
+            .ood_samples
+            .checked_add(1)
+            .and_then(|successor| round.ood_samples.checked_mul(successor))
+            .and_then(|value| value.checked_div(2))
+            .ok_or_else(|| "C6AWP1 OOD privacy numerator overflow".to_owned())?;
+        checked_add(&mut ood_privacy_bad_event_numerator, round_bad_numerator)?;
         let fold = config.round_folding_factor(index);
         let leaves = round.domain_size >> fold;
         let element_bytes = if index == 0 { C61_WHIRA1_FP_BYTES } else { C61_WHIRA1_FP2_BYTES };
@@ -278,6 +328,8 @@ fn c61_authenticated_structural_budget_inner(
         num_variables,
         rounds: config.n_rounds(),
         mask_queries: config.mask_queries,
+        max_ood_samples,
+        ood_privacy_bad_event_numerator,
         round_opening_bytes,
         base_mask_opening_bytes,
         blinded_mask_bytes,
@@ -839,6 +891,119 @@ fn prove_diagnostic(
     ))
 }
 
+/// Produce an accepting designated-verifier view without the real witness or
+/// target plaintext.  This is deliberately separate from `prove_diagnostic`:
+/// it has no target-plaintext/tag argument and never constructs a provider
+/// correlation stream.
+#[allow(clippy::too_many_arguments)]
+fn simulate_view_diagnostic(
+    num_variables: usize,
+    point: Point<C61P3Fp2>,
+    target_key: VerifierKey,
+    verifier_seed: [u8; 32],
+    simulator_rng_seed: u64,
+    pcg_seed: [u8; 32],
+    delta: Fp2,
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<(C61AuthenticatedP3Fixture, u64), String> {
+    if point.num_variables() != num_variables {
+        return Err("C6AWP1 simulator point dimension mismatch".to_owned());
+    }
+
+    // A simulator may generate internal dummy values; it must not receive the
+    // real relation witness.  A uniform surrogate makes the executable path
+    // exercise the full commitment/opening machinery without coupling it to
+    // the real target hidden behind `target_key`.
+    let mut rng = StdRng::seed_from_u64(simulator_rng_seed);
+    let surrogate = Poly::new((0..(1usize << num_variables)).map(|_| rng.random()).collect());
+    let surrogate_evaluation = surrogate.eval_base(&point);
+
+    let mut transcript = Transcript::new(verifier_seed);
+    let mut challenger = C61InteractiveChallenger::new_claimless(&mut transcript, num_variables);
+    let config = c61_authenticated_config::<C61InteractiveChallenger<'_>>(num_variables)?;
+    let mmcs = c61_reference_mmcs();
+    let dft = Radix2DFTSmallBatch::default();
+    let prover = HidingWhirProver::new(&config, &dft, &mmcs);
+    let (commitment, data) = prover.commit(surrogate, &mut challenger, &mut rng);
+    challenger.observe_public_point(&point).map_err(|error| error.to_string())?;
+
+    // In a real execution this shift is the plaintext half of the fresh
+    // C6AWH1 correlation.  Conditioned on the verifier's mask key it remains
+    // uniform, so the simulator samples it directly and later derives the
+    // only correlated observable (the final tag) from verifier state.
+    let simulated_base_shift: C61P3Fp2 = rng.random();
+    let output = prover.prove_claimless(
+        data,
+        &[(point.clone(), surrogate_evaluation)],
+        simulated_base_shift,
+        &mut challenger,
+        &mut rng,
+    );
+    challenger.ensure_public_statement_bound().map_err(|error| error.to_string())?;
+
+    let placeholder_base_proof =
+        C61AuthenticatedWhirBaseProof::decode(&[0u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES])
+            .map_err(|error| error.to_string())?;
+    let placeholder_payload = encode_c61_authenticated_p3_artifact_inner(
+        num_variables,
+        &commitment,
+        &output.proof,
+        placeholder_base_proof,
+        false,
+    )
+    .map_err(|error| error.to_string())?;
+    let whir_payload_bytes = placeholder_payload
+        .len()
+        .checked_sub(C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES)
+        .ok_or_else(|| "C6AWP1 simulator payload is shorter than its ZeroOpen tag".to_owned())?;
+    let simulator_interaction =
+        challenger.finish(whir_payload_bytes).map_err(|error| error.to_string())?;
+    drop(challenger);
+
+    let affine = affine_from_p3(output.target);
+    let final_key = affine.derive_verifier_key(target_key, delta);
+    let mut simulator_context = VerifierCtx::new(pcg_seed, delta);
+    let base_proof = simulate_c61_authenticated_whir_base_view(
+        C61AuthenticatedWhirVerifierInput {
+            id,
+            mask_range,
+            combined: c61_volta_fp2_from_p3(output.base_case.combined),
+            shifted_masked_claim: c61_volta_fp2_from_p3(output.base_case.shifted_masked_claim),
+            gamma: c61_volta_fp2_from_p3(output.base_case.gamma),
+            target: final_key,
+        },
+        &mut simulator_context,
+        &mut transcript,
+    )
+    .map_err(|error| error.to_string())?;
+    let payload = encode_c61_authenticated_p3_artifact_inner(
+        num_variables,
+        &commitment,
+        &output.proof,
+        base_proof,
+        false,
+    )
+    .map_err(|error| error.to_string())?;
+    if payload.len() != placeholder_payload.len() {
+        return Err("C6AWP1 simulator tag changed the strict payload length".to_owned());
+    }
+
+    Ok((
+        C61AuthenticatedP3Fixture {
+            artifact: C61AuthenticatedP3Artifact { payload },
+            point,
+            target_key,
+            provider_affine: affine,
+            provider_base_case: output.base_case,
+            provider_interaction: simulator_interaction,
+            provider_transcript_bytes: transcript.total_bytes(),
+            provider_ledger: transcript.ledger().clone(),
+        },
+        simulator_context.counters.full_corrs,
+    ))
+}
+
 fn verify_diagnostic(
     artifact: &C61AuthenticatedP3Artifact,
     input: C61AuthenticatedP3VerifierInput<'_>,
@@ -979,6 +1144,78 @@ pub fn run_c61_authenticated_whir_p3_diagnostic(
     })
 }
 
+/// Execute the target-plaintext-free designated-verifier view simulator and
+/// feed its strict artifact to the ordinary verifier.
+pub fn run_c61_authenticated_whir_p3_privacy_diagnostic(
+    num_variables: usize,
+) -> Result<C61AuthenticatedP3PrivacyDiagnostic, String> {
+    if !(4..=28).contains(&num_variables) {
+        return Err("C6AWP1 privacy diagnostic dimension must be in 4..=28".to_owned());
+    }
+    let point = Point::new(
+        (0..num_variables)
+            .map(|index| C61P3Fp2::from_u64((index as u64).wrapping_mul(29).wrapping_add(7)))
+            .collect(),
+    );
+    let verifier_seed = [0x93; 32];
+    let pcg_seed = [0xD5; 32];
+    let delta = Fp2::new(volta_field::Fp::new(P - 37), volta_field::Fp::new(0xC6_1001));
+    // This is verifier state, not a `(target, provider_tag)` pair.  The
+    // simulator API has no way to receive either missing provider value.
+    let target_key =
+        VerifierKey::new(Fp2::new(volta_field::Fp::new(0x1234_5678), volta_field::Fp::new(P - 41)));
+    let id = C61NativeChainId { component: C61NativeComponent::Compiler, repetition: 1 };
+    let mask_range = C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 12, range_start: 60_000 };
+    let (fixture, verifier_full_key_draws) = simulate_view_diagnostic(
+        num_variables,
+        point,
+        target_key,
+        verifier_seed,
+        0xC6_3003,
+        pcg_seed,
+        delta,
+        id,
+        mask_range,
+    )?;
+    let (_, verifier_base_case, verifier_transcript, verifier_interaction) = verify_diagnostic(
+        &fixture.artifact,
+        C61AuthenticatedP3VerifierInput {
+            point: &fixture.point,
+            target_key,
+            verifier_seed,
+            pcg_seed,
+            delta,
+            id,
+            mask_range,
+        },
+    )?;
+    if fixture.provider_base_case != verifier_base_case {
+        return Err("C6AWP1 simulator/verifier base closure mismatch".to_owned());
+    }
+    if fixture.provider_interaction != verifier_interaction {
+        return Err("C6AWP1 simulator/verifier interaction accounting mismatch".to_owned());
+    }
+    if fixture.provider_ledger != *verifier_transcript.ledger() {
+        return Err("C6AWP1 simulator/verifier transcript ledger mismatch".to_owned());
+    }
+
+    Ok(C61AuthenticatedP3PrivacyDiagnostic {
+        num_variables,
+        strict_payload_bytes: fixture.artifact.payload.len(),
+        strict_payload_blake3: *blake3::hash(&fixture.artifact.payload).as_bytes(),
+        simulator_interaction: fixture.provider_interaction,
+        verifier_interaction,
+        simulator_transcript_bytes: fixture.provider_transcript_bytes,
+        verifier_transcript_bytes: verifier_transcript.total_bytes(),
+        simulator_ledger: fixture.provider_ledger,
+        verifier_ledger: verifier_transcript.ledger().clone(),
+        received_real_target_plaintext: false,
+        received_provider_target_tag: false,
+        received_provider_correlation_state: false,
+        verifier_full_key_draws,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1019,6 +1256,10 @@ mod tests {
         assert_eq!(d28.rounds, 11);
         assert_eq!(d27.mask_queries, 187);
         assert_eq!(d28.mask_queries, 187);
+        assert_eq!(d27.max_ood_samples, 1);
+        assert_eq!(d28.max_ood_samples, 1);
+        assert_eq!(d27.ood_privacy_bad_event_numerator, 10);
+        assert_eq!(d28.ood_privacy_bad_event_numerator, 11);
         assert_eq!(d27.strict_chain_bytes, 1_085_464);
         assert_eq!(d28.strict_chain_bytes, 1_172_652);
         assert!(d28.strict_chain_bytes < C61_NATIVE_CHAIN_MAX_BYTES);
@@ -1041,11 +1282,11 @@ mod tests {
         assert!(sumcheck.contains("aux_claim,\n            false,"));
         assert_eq!(
             production_adapter.matches("C61InteractiveChallenger::new_claimless(").count(),
-            2
+            3
         );
-        assert_eq!(production_adapter.matches(".observe_public_point(").count(), 2);
-        assert_eq!(production_adapter.matches(".ensure_public_statement_bound()").count(), 2);
-        assert_eq!(production_adapter.matches("challenger.finish(").count(), 2);
+        assert_eq!(production_adapter.matches(".observe_public_point(").count(), 3);
+        assert_eq!(production_adapter.matches(".ensure_public_statement_bound()").count(), 3);
+        assert_eq!(production_adapter.matches("challenger.finish(").count(), 3);
         assert!(!production_adapter.contains("proof.evals"));
         let verifier_adapter = production_adapter
             .split("fn verify_diagnostic(")
@@ -1058,9 +1299,43 @@ mod tests {
         assert!(!verifier_adapter.contains("artifact.point"));
         assert!(!verifier_adapter.contains("artifact.target_key"));
 
+        let simulator_adapter = production_adapter
+            .split("fn simulate_view_diagnostic(")
+            .nth(1)
+            .unwrap()
+            .split("fn verify_diagnostic(")
+            .next()
+            .unwrap();
+        assert!(simulator_adapter.contains("target_key: VerifierKey"));
+        assert!(!simulator_adapter.contains("target_tag"));
+        assert!(!simulator_adapter.contains("ProverAuthed"));
+        assert!(!simulator_adapter.contains("CorrelationStream"));
+        assert!(simulator_adapter.contains("simulate_c61_authenticated_whir_base_view("));
+
         let mut transcript = Transcript::new([0x31; 32]);
         let challenger = C61InteractiveChallenger::new_claimless(&mut transcript, 4);
         assert!(challenger.ensure_public_statement_bound().is_err());
+    }
+
+    #[test]
+    fn designated_view_simulator_accepts_without_real_target_or_provider_state() {
+        let report = run_c61_authenticated_whir_p3_privacy_diagnostic(14).unwrap();
+        assert_eq!(report.simulator_ledger, report.verifier_ledger);
+        assert_eq!(report.simulator_transcript_bytes, report.verifier_transcript_bytes);
+        assert_eq!(report.simulator_interaction, report.verifier_interaction);
+        assert_eq!(
+            report.simulator_interaction.provider_payload_bytes as usize
+                + C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES,
+            report.strict_payload_bytes,
+        );
+        assert!(
+            report.strict_payload_bytes
+                <= c61_authenticated_structural_budget_inner(14, false).unwrap().strict_chain_bytes,
+        );
+        assert!(!report.received_real_target_plaintext);
+        assert!(!report.received_provider_target_tag);
+        assert!(!report.received_provider_correlation_state);
+        assert_eq!(report.verifier_full_key_draws, 1);
     }
 
     fn mutation_fixture() -> (

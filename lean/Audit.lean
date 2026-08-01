@@ -394,6 +394,7 @@ vector-RLC bounds from being mistaken for implementation bounds.
 #print axioms VoltaZk.c61_authenticated_target_residual_x_eq_zero
 #print axioms VoltaZk.c61_authenticated_target_residual_valid
 #print axioms VoltaZk.c61_masked_claim_shift_bijective
+#print axioms VoltaZk.c61_designated_simulator_tag_eq_honest_tag
 #print axioms VoltaZk.c61_authenticated_whir_mask_census
 #print axioms VoltaZk.c61_authenticated_whir_one_chain_error_nonneg
 #print axioms VoltaZk.c61_authenticated_whir_one_chain_error_lt_two_pow_neg_74

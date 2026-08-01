@@ -155,6 +155,9 @@ C61_NATIVE_MASK_LOG_INV_RATE = 1
 C61_NATIVE_MASK_QUERIES = 187
 C61_NATIVE_D28_ROUNDS = 11
 C61_NATIVE_D27_ROUNDS = 10
+C61_NATIVE_MAX_OOD_SAMPLES_PER_ROUND = 1
+C61_NATIVE_D28_OOD_PRIVACY_BAD_EVENT_NUMERATOR = 11
+C61_NATIVE_D27_OOD_PRIVACY_BAD_EVENT_NUMERATOR = 10
 C61_NATIVE_D28_PCS_STRICT_MAX_BYTES = 1_172_652
 C61_NATIVE_D27_PCS_STRICT_MAX_BYTES = 1_085_464
 # Immutable clear-target Section 0.11 diagnostic; it is not a C6AWH1 size.
@@ -360,6 +363,28 @@ def build_report() -> dict[str, Any]:
     )
     candidate_session_error = 17 * candidate_complete_error
 
+    # Claim privacy is separate from soundness.  Every code-switch round has
+    # one OOD challenge and one fresh pad slot, so the only statistical
+    # deviation in the pinned HVZK hybrid is rho=0: one event per round over
+    # Fp2.  The all-six and 17-certificate rows conservatively pretend every
+    # chain has the larger D28 round count.  BLAKE3-Merkle hiding and the
+    # production PCG remain explicit computational terms, not folded into
+    # these rational statistical bounds.
+    d27_claim_privacy_error = Fraction(
+        C61_NATIVE_D27_OOD_PRIVACY_BAD_EVENT_NUMERATOR,
+        c6.FP2_CARDINALITY,
+    )
+    d28_claim_privacy_error = Fraction(
+        C61_NATIVE_D28_OOD_PRIVACY_BAD_EVENT_NUMERATOR,
+        c6.FP2_CARDINALITY,
+    )
+    six_chain_claim_privacy_error = (
+        C61_NATIVE_COMPONENTS
+        * C61_NATIVE_CHAINS_PER_COMPONENT
+        * d28_claim_privacy_error
+    )
+    session_claim_privacy_error = 17 * six_chain_claim_privacy_error
+
     d28_known_chain_bytes = C61_NATIVE_D28_PCS_STRICT_MAX_BYTES
     d27_known_chain_bytes = C61_NATIVE_D27_PCS_STRICT_MAX_BYTES
     native_projected_certificate_bytes = (
@@ -439,8 +464,9 @@ def build_report() -> dict[str, Any]:
     report: dict[str, Any] = {
         "profile": "C6.1-public-compression-reference-v3",
         "verdict": (
-            "C6AWP1_CLAIMLESS_AFFINE_STRICT_D14_CODEC_GREEN__PRIVACY_REVIEW_"
-            "AND_C6_RELATION_ADAPTER_REQUIRED__NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
+            "C6AWP1_CLAIM_PRIVACY_LOCAL_ARGUMENT_AND_SIMULATOR_GREEN__"
+            "RESUMABLE_DRIVER_AND_C6_RELATION_ADAPTER_REQUIRED__"
+            "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
             "proof_size": False,
@@ -506,9 +532,9 @@ def build_report() -> dict[str, Any]:
         "selected_native_candidate": {
             "name": "C6PA1-native-HVZK-plus-C6RSC4-v4",
             "status": (
-                "C6AWP1_CLAIMLESS_AFFINE_STRICT_CODEC_D14_GREEN__PRIVACY_REVIEW_"
-                "AND_C6_RELATION_ADAPTER_PENDING__NO_FULL_CHAIN_"
-                "OR_BENCHMARK_CREDIT"
+                "C6AWP1_CLAIM_PRIVACY_LOCAL_ARGUMENT_AND_SIMULATOR_GREEN__"
+                "RESUMABLE_DRIVER_AND_C6_RELATION_ADAPTER_PENDING__"
+                "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
             "statement": (
                 "one response conditioned on an already accepted predecessor head"
@@ -607,11 +633,12 @@ def build_report() -> dict[str, Any]:
                     "status": (
                         "Claimless affine-target Lean/MAC seams and feature-only "
                         "modified pinned PCS strict D14 codec differential green; "
-                        "privacy review and backend integration pending"
+                        "local claim-privacy equivalent argument green under explicit "
+                        "Merkle-hiding/PCG assumptions; backend integration pending"
                     ),
                     "focused_tests_ordinary": 6,
                     "focused_tests_c6_trace": 6,
-                    "in_memory_modified_pcs_tests": 3,
+                    "in_memory_modified_pcs_tests": 4,
                     "clear_claim_observations_removed": True,
                     "clear_claim_observations_scope": (
                         "selected claimless WHIR call graph; legacy sumcheck "
@@ -640,7 +667,16 @@ def build_report() -> dict[str, Any]:
                         C61_FULL_CORRELATION_HEADROOM_PER_TAPE
                     ),
                     "raw_attempt_or_setup_increment_bytes": 0,
-                    "claim_privacy_backend_proof_pending": True,
+                    "claim_privacy_local_equivalent_argument": (
+                        "PASS_WITH_EXPLICIT_MERKLE_HIDING_AND_PCG_ASSUMPTIONS"
+                    ),
+                    "claim_privacy_backend_proof_pending": False,
+                    "full_sparse_oracle_simulator_implemented": False,
+                    "executable_designated_view_simulator": True,
+                    "simulator_reads_real_target_plaintext": False,
+                    "simulator_reads_provider_target_tag": False,
+                    "simulator_reads_provider_correlation_state": False,
+                    "external_cryptographic_review_required_before_production": True,
                 },
                 "relation_adapter": (
                     "the modified PCS now returns an affine target closure and C6AWH1 "
@@ -706,6 +742,35 @@ def build_report() -> dict[str, Any]:
                     "proof_has_clear_evaluation_field": False,
                     "codec_component_credit": True,
                     "full_chain_proof_size_credit": False,
+                },
+                "claim_privacy": {
+                    "scope": (
+                        "one claimless C6AWP1 chain in the interactive honest-verifier model, "
+                        "conditioned on verifier-owned target/mask keys"
+                    ),
+                    "max_ood_samples_per_round": (
+                        C61_NATIVE_MAX_OOD_SAMPLES_PER_ROUND
+                    ),
+                    "fresh_pad_slots_per_ood_answer": 1,
+                    "d27_statistical_error": _error_report(
+                        d27_claim_privacy_error
+                    ),
+                    "d28_statistical_error": _error_report(
+                        d28_claim_privacy_error
+                    ),
+                    "conservative_six_d28_chain_union": _error_report(
+                        six_chain_claim_privacy_error
+                    ),
+                    "informative_17_certificate_union": _error_report(
+                        session_claim_privacy_error
+                    ),
+                    "exact_final_tag_simulation": True,
+                    "computational_terms": [
+                        "BLAKE3 Merkle hiding for randomized high-min-entropy codewords",
+                        "production AES-PCG pseudorandomness and domain separation",
+                    ],
+                    "fiat_shamir_covered": False,
+                    "external_review_required": True,
                 },
             },
             "wire_screen": {
@@ -1043,6 +1108,10 @@ def build_report() -> dict[str, Any]:
     )
     assert d28_known_chain_bytes == 1_172_652
     assert d27_known_chain_bytes == 1_085_464
+    assert c6.soundness_bits(d27_claim_privacy_error) > Decimal("124.67")
+    assert c6.soundness_bits(d28_claim_privacy_error) > Decimal("124.54")
+    assert c6.soundness_bits(six_chain_claim_privacy_error) > Decimal("121.95")
+    assert c6.soundness_bits(session_claim_privacy_error) > Decimal("117.86")
     assert d28_known_chain_bytes < C61_NATIVE_CHAIN_CODEC_MAX_BYTES
     assert d27_known_chain_bytes < C61_NATIVE_CHAIN_CODEC_MAX_BYTES
     assert authenticated_target_chain_error < Fraction(

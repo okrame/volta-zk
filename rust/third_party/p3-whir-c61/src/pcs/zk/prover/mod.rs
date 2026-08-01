@@ -249,7 +249,8 @@ where
             //
             // OOD privacy needs the pad-coefficient matrix {rho_i^{l+r+s}}
             // invertible, i.e. the rho_i pairwise distinct and nonzero.
-            // Over the quartic extension both hold but for a 1/|F| event,
+            // Over the configured extension both hold except for the explicit
+            // bad event counted in the HVZK bound,
             // folded into the HVZK error; the debug_assert flags a future
             // small-field instantiation loudly rather than leaking silently.
             let mut rho_points = Vec::with_capacity(round_params.ood_samples);

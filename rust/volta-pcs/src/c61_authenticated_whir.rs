@@ -347,15 +347,47 @@ pub fn verify_c61_authenticated_whir_base(
         .into_iter()
         .next()
         .ok_or_else(|| C61AuthenticatedWhirError::new("C6AWH1 missing verifier mask key"))?;
-    let residual =
-        VerifierKey::from_public(input.combined - input.shifted_masked_claim, context.delta)
-            .sub(input.target.scale(input.gamma))
-            .add(mask_key);
+    let residual = c61_authenticated_whir_verifier_residual(input, mask_key, context.delta);
     transcript.append("zero_open_tag", C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES as u64);
     if !zero_open_verify(residual, proof.zero_open_tag) {
         return Err(C61AuthenticatedWhirError::new("C6AWH1 authenticated target ZeroOpen failed"));
     }
     Ok(())
+}
+
+fn c61_authenticated_whir_verifier_residual(
+    input: C61AuthenticatedWhirVerifierInput,
+    mask_key: VerifierKey,
+    delta: Fp2,
+) -> VerifierKey {
+    VerifierKey::from_public(input.combined - input.shifted_masked_claim, delta)
+        .sub(input.target.scale(input.gamma))
+        .add(mask_key)
+}
+
+/// Designated-verifier view simulator for the feature-only C6.1 reference.
+///
+/// The simulator reads only verifier-owned state and public transcript
+/// derivatives.  It deliberately does not receive the opening plaintext,
+/// its provider MAC tag, or the one-time mask plaintext/tag.  A designated
+/// verifier can set the final tag to its locally derived residual key; an
+/// honest execution emits exactly the same value because the residual has
+/// plaintext zero.  This is a privacy diagnostic, never a prover API.
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub(crate) fn simulate_c61_authenticated_whir_base_view(
+    input: C61AuthenticatedWhirVerifierInput,
+    context: &mut VerifierCtx,
+    transcript: &mut Transcript,
+) -> Result<C61AuthenticatedWhirBaseProof> {
+    let mask_domain = input.mask_range.correlation_domain(input.id)?;
+    let mask_key = context
+        .expand_full_verifier_keys(mask_domain, 1)
+        .into_iter()
+        .next()
+        .ok_or_else(|| C61AuthenticatedWhirError::new("C6AWH1 missing simulator mask key"))?;
+    let residual = c61_authenticated_whir_verifier_residual(input, mask_key, context.delta);
+    transcript.append("zero_open_tag", C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES as u64);
+    Ok(C61AuthenticatedWhirBaseProof { zero_open_tag: residual.k })
 }
 
 fn component_ordinal(component: C61NativeComponent) -> Result<u32> {

@@ -1311,6 +1311,73 @@ setup, soundness-backend, prover, verifier, memory, session, production and
 hardware credits remain false.  Privacy review is the next hard gate; no pod
 was contacted.
 
+### 0.17 Claim-private designated-view simulation checkpoint
+
+The local privacy gate is now green for one **interactive honest-verifier**
+`C6AWP1-v1` chain, under an explicit hybrid argument and explicit
+computational assumptions.  The statement is conditioned on the registered
+public point/configuration, the verifier's independent random tape, `Delta`,
+the verifier-owned target MAC key and a fresh verifier-owned mask key.  The
+simulator receives no real witness, target plaintext, provider target tag,
+mask plaintext, mask tag or provider correlation state.  This is not a
+Fiat--Shamir statement and gives no non-interactive privacy credit.
+
+The argument has four algebraic/statistical steps.
+
+1. The claimless sumcheck never sends or absorbs the carried target claim.
+   It removes the linear coefficient and lets the verifier replay the claim
+   only as `a * target + b`; every sent coordinate is independently masked.
+   The target therefore occurs only in the omitted affine coordinate.
+2. Every selected code-switch round uses exactly one fresh full-field pad for
+   its one OOD answer.  With `t_ood = 1`, the only statistical bad event in
+   the pinned implementation derivation is the sampled OOD point being zero,
+   so one round contributes exactly `1 / |Fp2|`.  The exact union is
+   `10 / |Fp2|` for D27 and `11 / |Fp2|` for D28, where
+   `|Fp2| = 340282366762482138490186164457219031041`.  These are respectively
+   **124.6780719** and **124.5405684 bits**.  Conservatively taking all six
+   chains as D28 gives `66 / |Fp2|`, or **121.9556059 bits** per certificate;
+   the informative 17-certificate union is `1122 / |Fp2|`, or
+   **117.8681430 bits**.  These privacy figures are distinct from the already
+   registered soundness composition.
+3. The revealed base value is one-time padded.  The shifted claim is uniform
+   under the fresh C6AWH1 full-field mask.  For a valid provider MAC share/tag,
+   the final provider tag is exactly the verifier-view expression
+   `Delta * (combined - shifted_claim) - gamma * target_key + mask_key`.
+   It gives the verifier no second equation in the hidden target.
+4. The executable designated-view diagnostic samples a surrogate witness
+   only to instantiate concrete randomized codewords and Merkle trees, then
+   constructs the terminal tag solely from verifier inputs.  It is a concrete
+   representative for the hybrid and a regression test, not the missing
+   full sparse-oracle simulator.  The security credit comes from the
+   equivalent hybrid argument plus the pinned component conditions, not from
+   empirical equality of two test distributions.
+
+Two computational terms remain explicit rather than being smuggled into the
+statistical bound: BLAKE3 Merkle commitments must hide the randomized,
+high-min-entropy codewords in the intended random-oracle-style model, and the
+production AES PCG must provide pseudorandom, one-time, domain-separated
+correlations.  Collision resistance alone is not asserted to imply hiding.
+In the interactive model the simulator may sample/look ahead at verifier
+challenges because they are independent private entropy and are not derived
+from proof bytes.  A future Fiat--Shamir conversion requires a new analysis.
+
+The local Rust differential is now **4/4** and includes a simulator call that
+has no real target/tag/provider-correlation input.  Lean remains green at
+**3,264 jobs / 381 total audit targets / 34 C6.1 targets** and adds the exact
+honest-tag/verifier-view identity to the named audit.  The derivation follows
+the HVZK composition structure of
+[Zero-Knowledge IOPPs for Constrained Interleaved Codes](https://ia.cr/2026/391);
+the code-specific OOD calculation is cross-checked against the non-primary
+[implementation parameter derivation](https://hackmd.io/gTV2ip15ReygYw20IItkKA).
+External cryptographic review remains mandatory before production.
+
+This checkpoint changes no serialized artifact, setup count, proof-size
+ceiling or timing projection and earns no complete-relation, production or
+hardware credit.  The full sparse-oracle simulator remains unimplemented.
+It closes only the local claim-privacy hard gate needed to proceed to a
+resumable private-entropy two-party driver; durable allocation and the full C6
+relation are still absent.  No pod was contacted.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

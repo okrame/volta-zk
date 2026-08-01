@@ -97,6 +97,22 @@ def require_source_guards() -> None:
         raise SystemExit("claimless provider/verifier must explicitly bind the opening point")
     if production_adapter.count(".ensure_public_statement_bound()") != 2:
         raise SystemExit("claimless provider/verifier must fail closed on incomplete statements")
+    if production_adapter.count("challenger.finish(") != 2:
+        raise SystemExit("claimless provider/verifier must finalize strict wire accounting")
+    if "proof.evals" in production_adapter:
+        raise SystemExit("claimless adapter regressed to a clear evaluation codec field")
+    if 'C61_AUTHENTICATED_P3_MAGIC: [u8; 8] = *b"C6AWP1\\0\\0"' not in production_adapter:
+        raise SystemExit("claimless adapter strict codec identity changed")
+    if "decode_c61_authenticated_p3_artifact_inner" not in production_adapter:
+        raise SystemExit("claimless verifier no longer consumes the strict codec")
+    verifier_adapter = production_adapter.split("fn verify_diagnostic(", 1)[1].split(
+        "/// Run one reference-only", 1
+    )[0]
+    if any(
+        forbidden in verifier_adapter
+        for forbidden in ("artifact.provider_", "artifact.point", "artifact.target_key")
+    ):
+        raise SystemExit("claimless verifier regained provider-local fixture metadata")
 
 
 def build_report() -> dict[str, object]:
@@ -145,6 +161,7 @@ def build_report() -> dict[str, object]:
         "crate_local_target_directories_absent": True,
         "claimless_source_guards": True,
         "claimless_adapter_statement_guards": True,
+        "claimless_strict_codec_guards": True,
         "verdict": "C61_PINNED_FORK_PROVENANCE_PASS",
     }
 

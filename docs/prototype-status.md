@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — CLAIMLESS-AFFINE PINNED PCS IN-MEMORY DIFFERENTIAL + PROVENANCE AUDIT GREEN / CODEC AND PRIVACY REVIEW NEXT / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — STRICT CLAIMLESS-AFFINE C6AWP1 D14 CODEC DIFFERENTIAL + PROVENANCE AUDIT GREEN / PRIVACY REVIEW NEXT / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -76,6 +76,18 @@ audit pins **87** imported Rust sources at revision
 deltas and proves the other **73** byte-identical.  The original
 `c61-p3-reference` dependency remains immutable.
 
+The same three-test differential now crosses the strict `C6AWP1-v1` codec:
+the provider emits and the verifier decodes an exact **378,496-B** D14
+artifact with no clear evaluation, including the final 16-B C6AWH1 tag.  Its
+BLAKE3 is `9dbaa663...7958bb`; the pre-tag WHIR payload is **378,480 B**.
+Both roles account **26** provider moves, **52,608** semantic bytes, **52**
+base-field challenges and **2,536** query candidates (**10,560 B** client
+challenge payload).  Strict round-trip, canonical field decoding, header/
+length/trailing/truncation rejection and pre-allocation multiproof caps are
+green.  The formula-only D27/D28 maxima remain **1,085,464 / 1,172,652 B**;
+neither production dimension has been executed.  The latest full default
+workspace is green at **volta-pcs 196/0/1** and **volta-proto 149/0/1**.
+
 It does **not** yet prove the complete model, embedding or compiler relation,
 does not implement `C61NativeBackendVerifier`, and is never a production fallback.
 The candidate challenge count is seed-dependent because distinct queries use
@@ -84,8 +96,9 @@ upfront Fiat--Shamir seed.  The current monolithic upstream API is exercised
 as two deterministic single-process replays under the same private diagnostic
 verifier seed; a production round state machine must never disclose that seed
 to the provider.  The existing allocation/roofline values therefore remain
-`credit:false`: no strict claimless codec, measured proof size, setup,
-timing, memory or hardware result is claimed.  Claim-privacy
+`credit:false`: the D14 number is component-level codec evidence, not a full
+certificate or production proof-size result.  No setup, timing, memory or
+hardware result is claimed.  Claim-privacy
 simulation/equivalent review, the resumable private-entropy two-party driver,
 durable mask allocation, the C6 relation adapter and then full-T1 local
 integration remain next.  C6.1 stays local-only until a separate owner GO;
@@ -683,6 +696,7 @@ its clean descendant closure.
 | C6.1 standalone authenticated-target Rust seam | **STRICT 16-B TAG / SIX-CHAIN CORRELATION AND DOMAIN DIFFERENTIAL GREEN; MODIFIED PINNED PCS NEXT; NO POD** (2026-08-01) | Lean-mirroring MAC closure only; exact three-mask typed range per tape; no native backend trait implementation or claim-private PCS credit | Provider and verifier derive the same authenticated residual without exposing target/mask plaintext to the client. The tag codec is canonical **16 B**, for **0 B net** against the removed evaluation. Domains injectively bind stage, slot, u32 range start, component and repetition below reserved MAC bits; ordinals are fixed to `{0,1,2}`. Ordinary and `c6-trace` focused suites are **5/5** each; six-chain schedule audits match at **3 full correlations/3 domains per tape**. Public/base/key/tag/component/stage/slot/range and codec mutations reject; an invalid base identity burns its mask, same-domain replay fails, and retry needs a new slot/range. Full default workspace is green (**volta-pcs 195/0/1; volta-proto 149/0/1**); joint C6.1/P3-reference filter is **22/22**. The pinned WHIR code remains unmodified and target-revealing, so no `C61NativeBackendVerifier`, proof-size, time, setup/session or production credit; no pod contacted. |
 | C6.1 claimless affine-target correction | **SECOND CLEAR-TARGET LEAK FOUND BEFORE VENDOR; AFFINE LEAN/RUST SEAM GREEN; MODIFIED PCS STILL PENDING; NO POD** (2026-08-01) | Never observe a carried sumcheck claim; client replays it as `a*target+b`; existing C6AWH1 masks only the final base closure | Source audit found that upstream `into_zk_sumcheck`/`verify_claim` observes the current claimed sum before every batch, so deleting `proof.evals` and shifting only the base claim is insufficient. The corrected prelude is `(a,b)<-(eps*a,eps*b+mu)`; a dropped-linear round is `a'=gamma*a`, `b'=c0+gamma*(b-2*c0-tail1)+tailGamma`; public code-switch terms add only to `b`. Five additive Lean theorems prove those identities and the authenticated lift. The typed Rust accumulator matches four plaintext rounds and preserves the MAC relation; focused ordinary and `c6-trace` suites are **6/6**. This correction changes no registered byte/security allocation and earns no backend credit until a reviewed fork removes every clear claim observation, replays the complete verifier affinely, connects C6AWH1 and supplies the amended privacy argument. No pod contacted. |
 | C6.1 claimless-affine pinned PCS fork | **MINIMAL FEATURE-ONLY FORK / IN-MEMORY D14 DIFFERENTIAL / MUTATIONS / PROVENANCE AUDIT GREEN; STRICT CODEC + PRIVACY REVIEW NEXT; NO POD** (2026-08-01) | Original `c61-p3-reference` remains immutable; new `c61-p3-authenticated-reference` carries one response-local target only as provider plaintext plus client MAC key, never as public proof/claim | The fork removes the ZK proof evaluation vector, routes both sumcheck batches through claimless proving, replays the complete verifier target as `a*target+b`, applies public code-switch offsets only to `b`, returns the provider/verifier-identical public base closure and feeds it into C6AWH1. D14 tests are **3/3**: honest affine/base/transcript/MAC closure, source-call-graph guard, and fail-closed target-key/base-claim/point/verifier-seed/range mutations. A pre-commit audit caught and refused reuse of the old adapter's implicit `2*D` point-limb skip; claimless mode now has zero implicit skips and requires root-then-typed-point binding on both roles before native challenges. The provenance audit pins **87** Rust sources at Plonky3 `66e2906...a1c`, allows exactly **14** deltas and requires the other **73** byte-identical; standalone library lockfiles/targets are forbidden. Full default workspace, old-reference **23/23**, ordinary/trace seam **6/6** and scoped VOLTA format are green; strict crate-wide Clippy is still blocked only by historical out-of-scope findings. This is in-memory and single-process: there is no strict claimless codec, privacy simulator/equivalent proof, resumable private-entropy driver, durable allocator connection, complete C6 relation, D27/D28 measurement or timing. All full-chain credits remain false; no pod contacted. |
+| C6.1 strict claimless WHIR codec | **C6AWP1-v1 STRICT D14 WIRE DIFFERENTIAL / EXACT DIGEST / MALFORMED-PAYLOAD GATES GREEN; PRIVACY REVIEW NEXT; NO POD** (2026-08-01) | Separate fixed-shape non-Serde grammar; verifier consumes decoded provider bytes; opening point and MAC key remain off provider-to-client wire; D27/D28 still formula-only | The exact D14 provider artifact is **378,496 B**, including the final 16-B C6AWH1 tag, at BLAKE3 `9dbaa663...7958bb`; the pre-tag WHIR portion is **378,480 B**. Both roles replay **26** provider moves, **52,608** semantic bytes, **52** base challenges and **2,536** query candidates (**10,560 B** client challenge wire). The **2,912-B** delta from immutable C6WIR1 D14 is entirely the preregistered 75-bit query profile; evaluation-to-tag remains net zero. Decoder lengths come from the dimension/config; frontier counts are capped before allocation. Header/version/dimension/reserved/body-length/truncation/trailing/noncanonical/frontier, target-key/base/tag/point/entropy/range mutations reject. Tests remain **3/3** and freeze formula maxima **1,085,464 B D27 / 1,172,652 B D28**. The audit still permits 14 vendor deltas and proves 73 files byte-identical. Full default workspace is green at **volta-pcs 196/0/1** and **volta-proto 149/0/1**; old-reference is **23/23**, ordinary/trace C6AWH1 are **6/6** each. Strict Clippy remains blocked by 24 historical out-of-scope findings and reports none in the modified C6.1 file. This earns only strict-codec/D14 component credit: privacy argument, resumable two-party entropy, durable masks, full C6 relation, production dimensions, timings and every full-chain credit remain open; no pod contacted. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -757,6 +771,26 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-08-01 — C6AWP1 closes the claimless wire gate at D14 only; full-
+  chain proof-size credit remains refused.** The new fixed-shape non-Serde
+  grammar is schema-separated from immutable `C6WIR1-v1`.  It contains the
+  initial root, claimless WHIR proof and final C6AWH1 ZeroOpen tag, but no
+  clear evaluation.  The client-owned point is not provider wire and the MAC
+  key is never serialized.  The verifier now strict-decodes the exact
+  provider artifact instead of sharing an in-memory proof object.
+
+  D14 is exactly **378,496 B** at BLAKE3
+  `9dbaa66336f8833b0a0e3a32f7023f5c25f2166e6e8431244a06b41d707958bb`.
+  Both roles agree on the byte/challenge ledger, and malformed headers,
+  lengths, field elements, trailing/truncated payloads and excessive Merkle
+  frontiers fail closed before proof-sized allocation.  D27/D28 remain
+  formula-only.  The added **2,912 B** versus the historical D14 codec is the
+  frozen 75-bit query increase, not a regression in the evaluation-to-tag
+  substitution.  Component-level codec evidence is now true in the budget;
+  complete-certificate proof size and all setup/time/memory/hardware credits
+  remain false.  Privacy review and a resumable private-entropy driver are
+  still hard stops.  No pod contacted.
 
 - **2026-08-01 — the modified pinned PCS reaches an in-memory differential,
   not a wire or privacy verdict.** A non-default local fork of only Plonky3

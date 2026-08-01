@@ -35,8 +35,8 @@ PUBLIC/DV DECOMPOSITION GREEN; NATIVE `C6PA1`/`C6RSC4-v4` FORMULA,
 SOUNDNESS, WIRE, MEMORY AND PRE-CODE TIME ROOFLINES GREEN; ADDITIVE LEAN +
 SCALED STRICT SEAM + INTERACTIVE CPU REFERENCE PCS/CODEC GREEN; CLEAR-TARGET
 OBSTRUCTION REGISTERED; `C6AWH1-v1` AUTHENTICATED-TARGET LEAN/BUDGET GREEN;
-FEATURE-ONLY CLAIMLESS-AFFINE PINNED PCS FORK + IN-MEMORY DIFFERENTIAL +
-SOURCE-PROVENANCE AUDIT GREEN; STRICT CLAIMLESS CODEC, CLAIM-PRIVACY REVIEW,
+FEATURE-ONLY CLAIMLESS-AFFINE PINNED PCS FORK + STRICT `C6AWP1-v1` D14
+CODEC DIFFERENTIAL + SOURCE-PROVENANCE AUDIT GREEN; CLAIM-PRIVACY REVIEW,
 PRIVATE-ENTROPY TWO-PARTY DRIVER, COMPLETE C6 MODEL/EMBEDDING/COMPILER
 RELATION ADAPTER AND FULL-T1 INTEGRATION NEXT; NO C6.1 FULL-CHAIN PROOF-SIZE,
 TIMING, MEMORY OR HARDWARE CREDIT; HARD STOP BEFORE POD.**
@@ -1229,16 +1229,86 @@ sources retain their pinned upstream formatting and are governed by the hash
 audit instead.  Strict crate-wide Clippy remains blocked by pre-existing
 findings outside the changed C6.1 files and is not misreported as a pass.
 
-No strict codec exists yet for the new proof type, so this checkpoint earns
-no measured certificate bytes and does not inherit the old `C6WIR1-v1` byte
-count.  It also supplies neither a transcript simulator/equivalent
-claim-privacy proof, a resumable message-by-message private-entropy driver,
+At the Section 0.15 checkpoint no strict codec existed for the new proof
+type, so it earns no measured certificate bytes and does not inherit the old
+`C6WIR1-v1` byte count.  It also supplies neither a transcript
+simulator/equivalent claim-privacy proof, a resumable message-by-message
+private-entropy driver,
 durable three-mask allocation, `C61NativeBackendVerifier`, the complete
 model/embedding/compiler relation, D27/D28 execution nor timing.  All setup,
 proof-size, soundness-backend, prover, verifier, memory, session, production
 and hardware credits remain false.  The ordered next gate is the strict
 claimless codec and exact D14 wire differential, followed by privacy review
 and the resumable two-party driver before any full-chain integration.  No pod
+was contacted.
+
+### 0.16 Strict C6AWP1-v1 claimless codec checkpoint
+
+The claimless fork now has a distinct fixed-shape, non-Serde wire grammar
+with magic `C6AWP1\0\0`, version `1` and a 16-byte header.  One nested native
+chain encodes, in order, the initial Merkle root, the two claimless masked-
+sumcheck batches, mask roots, code-switch rounds and openings, the masked
+base case, and the final canonical 16-byte C6AWH1 ZeroOpen tag.  It has no
+evaluation field.  The opening point is verifier-to-provider statement data;
+the target MAC key is client-private state; chain id, repetition and
+correlation range remain owned by the enclosing C6PA1/backend typestate.
+None is duplicated in provider-to-client wire.
+
+Every vector length other than a pruned-Merkle sibling count is reconstructed
+from the registered dimension and 75-bit profile.  Sibling counts are read as
+u32 only after the containing payload is capped and are rejected against the
+exact maximum binary-frontier census before allocation.  The decoder also
+rejects wrong magic/version/dimension, nonzero reserved byte, inconsistent
+body length, truncation, trailing bytes, noncanonical Goldilocks/Fp2 values,
+wrong opening-field shape and any payload above both its dimension-specific
+structural maximum and the 1,500,000-byte native-chain cap.  D27/D28 remain
+the only production dimensions; D14 is admitted only by the private
+diagnostic helper.
+
+The provider first serializes the WHIR body with a fixed-size placeholder tag
+to determine its exact length, finalizes interactive WHIR byte accounting on
+all bytes except the last tag, then derives the C6AWH1 tag and serializes the
+same grammar again.  The verifier strict-decodes the received bytes before
+running WHIR, independently replays the same interaction accounting, and
+only then checks the decoded ZeroOpen tag.  Thus the verifier no longer reads
+the provider's in-memory proof object.  The interactive challenge stream is
+still a single-process private-seed diagnostic: byte accounting is not a
+Fiat--Shamir transform and gives no resumable transport credit.
+
+At D14 the exact provider-to-client payload is **378,496 B**, BLAKE3
+`9dbaa66336f8833b0a0e3a32f7023f5c25f2166e6e8431244a06b41d707958bb`.
+The WHIR portion before the final tag is **378,480 B**.  Provider and verifier
+agree on **26** provider moves, **52,608** observed semantic bytes, **52**
+base-field challenges, and **2,536** seed-specific query candidates for
+**10,560 B** of client challenge payload.  The **2,912-B** increase over the
+immutable 375,584-B clear-target D14 reference comes from the preregistered
+74-to-75-bit profile change and its additional queries; replacing the old
+16-byte evaluation with the 16-byte tag remains net zero at equal profile.
+
+The three existing fork tests remain **3/3**: the honest test now freezes the
+exact payload, digest, interaction census and formula maxima
+**1,085,464 B D27 / 1,172,652 B D28**; the source guard pins strict-codec
+consumption and absence of `proof.evals`; and the mutation test now operates
+through decode/mutate/re-encode while also covering header, length,
+canonicality, trailing/truncated payload and pre-allocation multiproof caps.
+Wrong target key, base claim, tag, point, verifier entropy and correlation
+range remain fail-closed.  The source-provenance audit is extended with the
+codec guards while retaining exactly 14 allowed vendor deltas and 73
+byte-identical files.  The complete default workspace is green at
+**volta-pcs 196/0/1** and **volta-proto 149/0/1**; the immutable old-reference
+filter remains **23/23** and the ordinary/`c6-trace` C6AWH1 filters remain
+**6/6** each.  Strict crate-wide Clippy is still blocked by **24** historical
+findings outside the changed C6.1 files; after factoring the verifier input,
+it reports no finding in the modified C6.1 source.
+
+This checkpoint earns component-level strict-codec and exact D14 diagnostic
+credit only.  It does not measure a production D27/D28 chain, implement the
+complete C6 model/embedding/compiler relation, establish the amended
+claim-privacy simulator/equivalent argument, provide a resumable private-
+entropy two-party driver or durable allocator, or implement
+`C61NativeBackendVerifier`.  Consequently full-certificate proof-size,
+setup, soundness-backend, prover, verifier, memory, session, production and
+hardware credits remain false.  Privacy review is the next hard gate; no pod
 was contacted.
 
 ## 1. Owner requirements

@@ -10,6 +10,7 @@ pub(crate) mod utils;
 
 pub use fiat_shamir::domain_separator::DomainSeparator;
 pub use p3_sumcheck::zk::AffineClaim as ClaimlessAffineClaim;
+pub use p3_sumcheck::zk::ZkSumcheckData as ClaimlessZkSumcheckData;
 pub use parameters::{
     DEFAULT_MAX_POW, FoldingFactor, FoldingFactorError, ProtocolParameters, RoundConfig,
     SecurityAssumption, WhirConfig, WhirConfigError,

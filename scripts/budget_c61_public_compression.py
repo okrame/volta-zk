@@ -6,9 +6,10 @@ This report deliberately has two different verdict scopes:
 * exact reconciliation of the existing C6 certificate and residual-compiler
   operation census;
 * the preregistered C6.1 native-candidate screen, the feature-gated legacy
-  clear-target C6WIR1 PCS/codec reference, and the C6AWH1 authenticated-target
-  amendment.  The modified PCS, relation adapter and full-chain benchmark
-  remain absent, so neither reference is final proof or timing credit.
+  clear-target C6WIR1 PCS/codec reference, and the C6AWP1 claimless
+  authenticated-target codec differential.  The complete relation adapter
+  and full-chain benchmark remain absent, so neither reference is final proof
+  or timing credit.
 
 No projected ceiling or analytic roofline is proof-size, setup, prover-time,
 verifier-time or hardware credit.  The implemented PCS codec receives only
@@ -157,7 +158,20 @@ C61_NATIVE_D27_ROUNDS = 10
 C61_NATIVE_D28_PCS_STRICT_MAX_BYTES = 1_172_652
 C61_NATIVE_D27_PCS_STRICT_MAX_BYTES = 1_085_464
 # Immutable clear-target Section 0.11 diagnostic; it is not a C6AWH1 size.
-C61_NATIVE_SCALED_D14_DIAGNOSTIC_BYTES = 375_584
+C61_NATIVE_CLEAR_TARGET_D14_DIAGNOSTIC_BYTES = 375_584
+# Exact strict C6AWP1 D14 claimless codec differential.  Its WHIR payload
+# accounting excludes only the final 16-B C6AWH1 tag; the complete strict
+# provider-to-client artifact includes it.
+C61_NATIVE_CLAIMLESS_D14_DIAGNOSTIC_BYTES = 378_496
+C61_NATIVE_CLAIMLESS_D14_WHIR_PAYLOAD_BYTES = 378_480
+C61_NATIVE_CLAIMLESS_D14_PROVIDER_SEMANTIC_BYTES = 52_608
+C61_NATIVE_CLAIMLESS_D14_PROVIDER_MESSAGES = 26
+C61_NATIVE_CLAIMLESS_D14_CLIENT_FP_CHALLENGES = 52
+C61_NATIVE_CLAIMLESS_D14_CLIENT_QUERY_CANDIDATES = 2_536
+C61_NATIVE_CLAIMLESS_D14_CLIENT_CHALLENGE_BYTES = 10_560
+C61_NATIVE_CLAIMLESS_D14_BLAKE3 = (
+    "9dbaa66336f8833b0a0e3a32f7023f5c25f2166e6e8431244a06b41d707958bb"
+)
 
 # C6AWH1 draws one mask for model/embedding/compiler on each MAC tape.  These
 # slots come from the already registered attempt reserve and do not enlarge
@@ -425,9 +439,8 @@ def build_report() -> dict[str, Any]:
     report: dict[str, Any] = {
         "profile": "C6.1-public-compression-reference-v3",
         "verdict": (
-            "CLAIMLESS_AFFINE_MODIFIED_PCS_IN_MEMORY_DIFFERENTIAL_GREEN__CODEC_"
-            "PRIVACY_REVIEW_AND_C6_RELATION_ADAPTER_REQUIRED__NO_FULL_CHAIN_OR_"
-            "BENCHMARK_CREDIT"
+            "C6AWP1_CLAIMLESS_AFFINE_STRICT_D14_CODEC_GREEN__PRIVACY_REVIEW_"
+            "AND_C6_RELATION_ADAPTER_REQUIRED__NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
             "proof_size": False,
@@ -493,8 +506,8 @@ def build_report() -> dict[str, Any]:
         "selected_native_candidate": {
             "name": "C6PA1-native-HVZK-plus-C6RSC4-v4",
             "status": (
-                "C6AWH1_CLAIMLESS_AFFINE_MODIFIED_PCS_IN_MEMORY_GREEN__CODEC_"
-                "PRIVACY_REVIEW_AND_C6_RELATION_ADAPTER_PENDING__NO_FULL_CHAIN_"
+                "C6AWP1_CLAIMLESS_AFFINE_STRICT_CODEC_D14_GREEN__PRIVACY_REVIEW_"
+                "AND_C6_RELATION_ADAPTER_PENDING__NO_FULL_CHAIN_"
                 "OR_BENCHMARK_CREDIT"
             ),
             "statement": (
@@ -536,10 +549,10 @@ def build_report() -> dict[str, Any]:
                     C61_KNOWN_PRE_NATIVE_CHALLENGE_CLIENT_BYTES
                 ),
                 "native_interactive_challenge_wire": (
-                    "C6WIR1 reference uses 8-B base-field challenges and 4-B "
-                    "query candidates after each prover move; distinct-query "
-                    "rejection makes the candidate count seed-dependent, so "
-                    "runs report it exactly; no upfront chain seed"
+                    "C6WIR1 and C6AWP1 diagnostics use 8-B base-field challenges "
+                    "and 4-B query candidates after each prover move; distinct-"
+                    "query rejection makes the candidate count seed-dependent, "
+                    "so runs report it exactly; no upfront chain seed"
                 ),
                 "former_materialized_prg_oracle": False,
             },
@@ -593,8 +606,8 @@ def build_report() -> dict[str, Any]:
                     "name": "C6AWH1-v1",
                     "status": (
                         "Claimless affine-target Lean/MAC seams and feature-only "
-                        "modified pinned PCS in-memory differential green; strict "
-                        "codec, privacy review and backend integration pending"
+                        "modified pinned PCS strict D14 codec differential green; "
+                        "privacy review and backend integration pending"
                     ),
                     "focused_tests_ordinary": 6,
                     "focused_tests_c6_trace": 6,
@@ -607,7 +620,9 @@ def build_report() -> dict[str, Any]:
                     "affine_full_verifier_replay_pending": False,
                     "explicit_root_then_point_binding": True,
                     "implicit_point_limb_skip_disabled_on_claimless_path": True,
-                    "strict_claimless_codec_pending": True,
+                    "strict_claimless_codec": "C6AWP1-v1",
+                    "strict_claimless_codec_pending": False,
+                    "strict_codec_verifier_consumes_serialized_payload": True,
                     "resumable_private_entropy_driver_pending": True,
                     "clear_evaluation_bytes_removed_per_chain": 16,
                     "zero_open_tag_bytes_added_per_chain": 16,
@@ -629,7 +644,8 @@ def build_report() -> dict[str, Any]:
                 },
                 "relation_adapter": (
                     "the modified PCS now returns an affine target closure and C6AWH1 "
-                    "authenticates it in memory; the complete model/embedding/compiler "
+                    "authenticates it through a strict decoded payload; the complete "
+                    "model/embedding/compiler "
                     "relation remains absent"
                 ),
                 "d28": {
@@ -655,13 +671,41 @@ def build_report() -> dict[str, Any]:
                 "scaled_d14_diagnostic": {
                     "profile": "legacy clear-target C6WIR1 Section 0.11",
                     "strict_payload_bytes": (
-                        C61_NATIVE_SCALED_D14_DIAGNOSTIC_BYTES
+                        C61_NATIVE_CLEAR_TARGET_D14_DIAGNOSTIC_BYTES
                     ),
                     "provider_messages": 26,
                     "client_fp_challenges": 52,
                     "client_query_candidates": 2_503,
                     "client_challenge_payload_bytes": 10_428,
                     "credit": False,
+                },
+                "claimless_scaled_d14_diagnostic": {
+                    "profile": "C6AWP1-v1 claimless affine target plus C6AWH1 tag",
+                    "strict_provider_to_client_payload_bytes": (
+                        C61_NATIVE_CLAIMLESS_D14_DIAGNOSTIC_BYTES
+                    ),
+                    "whir_payload_bytes_before_final_zero_open_tag": (
+                        C61_NATIVE_CLAIMLESS_D14_WHIR_PAYLOAD_BYTES
+                    ),
+                    "payload_blake3": C61_NATIVE_CLAIMLESS_D14_BLAKE3,
+                    "provider_messages": C61_NATIVE_CLAIMLESS_D14_PROVIDER_MESSAGES,
+                    "provider_semantic_bytes": (
+                        C61_NATIVE_CLAIMLESS_D14_PROVIDER_SEMANTIC_BYTES
+                    ),
+                    "client_fp_challenges": (
+                        C61_NATIVE_CLAIMLESS_D14_CLIENT_FP_CHALLENGES
+                    ),
+                    "client_query_candidates": (
+                        C61_NATIVE_CLAIMLESS_D14_CLIENT_QUERY_CANDIDATES
+                    ),
+                    "client_challenge_payload_bytes": (
+                        C61_NATIVE_CLAIMLESS_D14_CLIENT_CHALLENGE_BYTES
+                    ),
+                    "strict_round_trip": True,
+                    "verifier_consumes_decoded_payload": True,
+                    "proof_has_clear_evaluation_field": False,
+                    "codec_component_credit": True,
+                    "full_chain_proof_size_credit": False,
                 },
             },
             "wire_screen": {
@@ -1006,6 +1050,12 @@ def build_report() -> dict[str, Any]:
     )
     assert C61_REGISTERED_WRAPPER_FULL_CORRELATIONS_PER_TAPE == 625
     assert C61_FULL_CORRELATION_HEADROOM_PER_TAPE == 38_491
+    assert C61_NATIVE_CLAIMLESS_D14_DIAGNOSTIC_BYTES == 378_496
+    assert (
+        C61_NATIVE_CLAIMLESS_D14_WHIR_PAYLOAD_BYTES
+        + c6.FP2_BYTES
+        == C61_NATIVE_CLAIMLESS_D14_DIAGNOSTIC_BYTES
+    )
     assert C61_NATIVE_PUBLIC_ARGUMENT_CODEC_MAX_BYTES == 9_500_000
     assert native_projected_certificate_bytes == 16_342_103
     assert C61_CERTIFICATE_MAX_BYTES - native_projected_certificate_bytes == 5_657_896

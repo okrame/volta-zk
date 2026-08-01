@@ -68,12 +68,13 @@ pub const C61_WHIRA1_FP2_BYTES: usize = 16;
 pub const C61_WHIRA1_MULTIPROOF_COUNT_BYTES: usize = 4;
 
 pub type C61P3Fp2 = BinomialExtensionField<Goldilocks, 2>;
-type C61SizingChallenger = SerializingChallenger64<Goldilocks, HashChallenger<u8, Blake3, 32>>;
+pub(crate) type C61SizingChallenger =
+    SerializingChallenger64<Goldilocks, HashChallenger<u8, Blake3, 32>>;
 type C61FieldHash = SerializingHasher<Blake3>;
 type C61Compress = CompressionFunctionFromHasher<Blake3, 2, 32>;
 pub(crate) type C61Mmcs = MerkleTreeMmcs<Goldilocks, u8, C61FieldHash, C61Compress, 2, 32>;
 pub(crate) type C61Commitment = MerkleCap<Goldilocks, [u8; 32]>;
-type C61MultiProof = PrunedMerklePaths<u8, 32>;
+pub(crate) type C61MultiProof = PrunedMerklePaths<u8, 32>;
 type C61Proof = ZkWhirProof<Goldilocks, C61P3Fp2, C61Mmcs>;
 
 const C61_NATIVE_MESSAGE_LABEL: &str = "c61.native.interactive_message";
@@ -83,7 +84,7 @@ const C61_NATIVE_FINAL_PAYLOAD_LABEL: &str = "c61.native.final_payload";
 pub struct C61WhirReferenceError(String);
 
 impl C61WhirReferenceError {
-    fn new(message: impl Into<String>) -> Self {
+    pub(crate) fn new(message: impl Into<String>) -> Self {
         Self(message.into())
     }
 }
@@ -96,7 +97,7 @@ impl fmt::Display for C61WhirReferenceError {
 
 impl std::error::Error for C61WhirReferenceError {}
 
-type ReferenceResult<T> = Result<T, C61WhirReferenceError>;
+pub(crate) type ReferenceResult<T> = Result<T, C61WhirReferenceError>;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct C61WhirInteractionStats {
@@ -537,41 +538,41 @@ pub fn c61_whir_structural_budget(num_variables: usize) -> Result<C61WhirStructu
 }
 
 #[derive(Default)]
-struct C61Writer {
-    bytes: Vec<u8>,
+pub(crate) struct C61Writer {
+    pub(crate) bytes: Vec<u8>,
 }
 
 impl C61Writer {
-    fn u8(&mut self, value: u8) {
+    pub(crate) fn u8(&mut self, value: u8) {
         self.bytes.push(value);
     }
 
-    fn u16(&mut self, value: u16) {
+    pub(crate) fn u16(&mut self, value: u16) {
         self.bytes.extend_from_slice(&value.to_le_bytes());
     }
 
-    fn u32(&mut self, value: usize) -> ReferenceResult<()> {
+    pub(crate) fn u32(&mut self, value: usize) -> ReferenceResult<()> {
         let value = u32::try_from(value)
             .map_err(|_| C61WhirReferenceError::new("C6WIR1 count exceeds u32"))?;
         self.bytes.extend_from_slice(&value.to_le_bytes());
         Ok(())
     }
 
-    fn fp(&mut self, value: Goldilocks) {
+    pub(crate) fn fp(&mut self, value: Goldilocks) {
         self.bytes.extend_from_slice(&value.as_canonical_u64().to_le_bytes());
     }
 
-    fn fp2(&mut self, value: C61P3Fp2) {
+    pub(crate) fn fp2(&mut self, value: C61P3Fp2) {
         for coefficient in value.as_basis_coefficients_slice() {
             self.fp(*coefficient);
         }
     }
 
-    fn digest(&mut self, value: &[u8; 32]) {
+    pub(crate) fn digest(&mut self, value: &[u8; 32]) {
         self.bytes.extend_from_slice(value);
     }
 
-    fn commitment(&mut self, value: &C61Commitment) -> ReferenceResult<()> {
+    pub(crate) fn commitment(&mut self, value: &C61Commitment) -> ReferenceResult<()> {
         if value.num_roots() != 1 {
             return Err(C61WhirReferenceError::new("C6WIR1 requires a one-root Merkle cap"));
         }
@@ -579,7 +580,11 @@ impl C61Writer {
         Ok(())
     }
 
-    fn multiproof(&mut self, proof: &C61MultiProof, max_siblings: usize) -> ReferenceResult<()> {
+    pub(crate) fn multiproof(
+        &mut self,
+        proof: &C61MultiProof,
+        max_siblings: usize,
+    ) -> ReferenceResult<()> {
         if proof.sibling_hashes.len() > max_siblings {
             return Err(C61WhirReferenceError::new(
                 "C6WIR1 multiproof exceeds its exact frontier bound",
@@ -593,17 +598,17 @@ impl C61Writer {
     }
 }
 
-struct C61Reader<'a> {
+pub(crate) struct C61Reader<'a> {
     bytes: &'a [u8],
     offset: usize,
 }
 
 impl<'a> C61Reader<'a> {
-    const fn new(bytes: &'a [u8]) -> Self {
+    pub(crate) const fn new(bytes: &'a [u8]) -> Self {
         Self { bytes, offset: 0 }
     }
 
-    fn take(&mut self, count: usize) -> ReferenceResult<&'a [u8]> {
+    pub(crate) fn take(&mut self, count: usize) -> ReferenceResult<&'a [u8]> {
         let end = self
             .offset
             .checked_add(count)
@@ -616,23 +621,23 @@ impl<'a> C61Reader<'a> {
         Ok(result)
     }
 
-    fn u8(&mut self) -> ReferenceResult<u8> {
+    pub(crate) fn u8(&mut self) -> ReferenceResult<u8> {
         Ok(self.take(1)?[0])
     }
 
-    fn u16(&mut self) -> ReferenceResult<u16> {
+    pub(crate) fn u16(&mut self) -> ReferenceResult<u16> {
         let mut bytes = [0u8; 2];
         bytes.copy_from_slice(self.take(2)?);
         Ok(u16::from_le_bytes(bytes))
     }
 
-    fn u32(&mut self) -> ReferenceResult<usize> {
+    pub(crate) fn u32(&mut self) -> ReferenceResult<usize> {
         let mut bytes = [0u8; 4];
         bytes.copy_from_slice(self.take(4)?);
         Ok(u32::from_le_bytes(bytes) as usize)
     }
 
-    fn fp(&mut self) -> ReferenceResult<Goldilocks> {
+    pub(crate) fn fp(&mut self) -> ReferenceResult<Goldilocks> {
         let mut bytes = [0u8; 8];
         bytes.copy_from_slice(self.take(8)?);
         let value = u64::from_le_bytes(bytes);
@@ -642,23 +647,23 @@ impl<'a> C61Reader<'a> {
         Ok(Goldilocks::new(value))
     }
 
-    fn fp2(&mut self) -> ReferenceResult<C61P3Fp2> {
+    pub(crate) fn fp2(&mut self) -> ReferenceResult<C61P3Fp2> {
         let coefficients = [self.fp()?, self.fp()?];
         C61P3Fp2::from_basis_coefficients_slice(&coefficients)
             .ok_or_else(|| C61WhirReferenceError::new("invalid C6WIR1 quadratic-extension element"))
     }
 
-    fn digest(&mut self) -> ReferenceResult<[u8; 32]> {
+    pub(crate) fn digest(&mut self) -> ReferenceResult<[u8; 32]> {
         let mut digest = [0u8; 32];
         digest.copy_from_slice(self.take(32)?);
         Ok(digest)
     }
 
-    fn commitment(&mut self) -> ReferenceResult<C61Commitment> {
+    pub(crate) fn commitment(&mut self) -> ReferenceResult<C61Commitment> {
         Ok(C61Commitment::new(vec![self.digest()?]))
     }
 
-    fn multiproof(&mut self, max_siblings: usize) -> ReferenceResult<C61MultiProof> {
+    pub(crate) fn multiproof(&mut self, max_siblings: usize) -> ReferenceResult<C61MultiProof> {
         let count = self.u32()?;
         if count > max_siblings {
             return Err(C61WhirReferenceError::new(
@@ -678,7 +683,7 @@ impl<'a> C61Reader<'a> {
         Ok(C61MultiProof { sibling_hashes })
     }
 
-    fn finish(self) -> ReferenceResult<()> {
+    pub(crate) fn finish(self) -> ReferenceResult<()> {
         if self.offset != self.bytes.len() {
             return Err(C61WhirReferenceError::new("trailing bytes in C6WIR1 payload"));
         }

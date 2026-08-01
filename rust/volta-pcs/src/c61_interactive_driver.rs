@@ -8,6 +8,9 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
+use std::fs::{self, File, OpenOptions};
+use std::io::Write;
+use std::path::Path;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
@@ -21,6 +24,7 @@ use p3_multilinear_util::point::Point;
 use p3_symmetric::MerkleCap;
 use volta_field::P;
 use volta_mac::Transcript;
+use volta_proto::c6::{C6ClientAttempt, C6ClientState, C6Digest, C6_MAC_COORDINATES};
 
 use crate::c61_whir_reference::{
     C61Commitment, C61P3Fp2, C61WhirInteractionStats, C61WhirReferenceError, ReferenceResult,
@@ -35,6 +39,12 @@ const C61_INTERACTIVE_CHECKPOINT_HEADER_BYTES: usize = 8 + 2 + 1 + 1 + 4 + 32;
 const C61_INTERACTIVE_CHECKPOINT_MAX_BYTES: usize = 1_000_000;
 const C61_INTERACTIVE_CHECKPOINT_MAX_RECORDS: usize = 100_000;
 const C61_INTERACTIVE_CHECKPOINT_MAX_MOVE_BYTES: usize = 1_000_000;
+const C61_DURABLE_JOURNAL_MAGIC: [u8; 8] = *b"C6ICJ1\0\0";
+const C61_DURABLE_JOURNAL_VERSION: u16 = 1;
+const C61_DURABLE_JOURNAL_MAX_MASK_EVENTS: usize = 16;
+const C61_DURABLE_RECORD_CHALLENGE: u8 = 1;
+const C61_DURABLE_RECORD_MASK_FRONTIER: u8 = 2;
+const C61_DURABLE_RECORD_FINISH: u8 = 3;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum C61ChallengeKind {
@@ -53,6 +63,63 @@ struct C61ChallengeRecord {
     provider_move: Vec<u8>,
     kind: C61ChallengeKind,
     value: C61ChallengeValue,
+}
+
+impl C61ChallengeRecord {
+    fn encode_body(&self) -> ReferenceResult<Vec<u8>> {
+        let (kind, bits, value) = match (&self.kind, &self.value) {
+            (C61ChallengeKind::Fp, C61ChallengeValue::Fp(value)) => (0u8, 0u8, *value),
+            (C61ChallengeKind::Query { bits }, C61ChallengeValue::Query(value)) => {
+                (1u8, *bits, u64::from(*value))
+            }
+            _ => return Err(C61WhirReferenceError::new("C6ICT1 challenge tag mismatch")),
+        };
+        if self.provider_move.len() > C61_INTERACTIVE_CHECKPOINT_MAX_MOVE_BYTES {
+            return Err(C61WhirReferenceError::new("C6ICT1 provider move exceeds cap"));
+        }
+        let mut bytes = Vec::with_capacity(16 + self.provider_move.len());
+        bytes.push(kind);
+        bytes.push(bits);
+        bytes.extend_from_slice(&0u16.to_le_bytes());
+        bytes.extend_from_slice(
+            &u32::try_from(self.provider_move.len())
+                .map_err(|_| C61WhirReferenceError::new("C6ICT1 move length exceeds u32"))?
+                .to_le_bytes(),
+        );
+        bytes.extend_from_slice(&value.to_le_bytes());
+        bytes.extend_from_slice(&self.provider_move);
+        Ok(bytes)
+    }
+
+    fn decode_body(bytes: &[u8]) -> ReferenceResult<Self> {
+        let mut reader = C61CheckpointReader::new(bytes);
+        let kind_tag = reader.u8()?;
+        let bits = reader.u8()?;
+        if reader.u16()? != 0 {
+            return Err(C61WhirReferenceError::new("C6ICT1 record reserved field is nonzero"));
+        }
+        let move_len = reader.u32()?;
+        if move_len > C61_INTERACTIVE_CHECKPOINT_MAX_MOVE_BYTES {
+            return Err(C61WhirReferenceError::new("C6ICT1 provider move exceeds cap"));
+        }
+        let raw_value = reader.u64()?;
+        let (kind, value) = match kind_tag {
+            0 if bits == 0 && raw_value < P => {
+                (C61ChallengeKind::Fp, C61ChallengeValue::Fp(raw_value))
+            }
+            1 if (1..=32).contains(&bits) && raw_value < (1u64 << bits) => (
+                C61ChallengeKind::Query { bits },
+                C61ChallengeValue::Query(
+                    u32::try_from(raw_value)
+                        .map_err(|_| C61WhirReferenceError::new("C6ICT1 query exceeds u32"))?,
+                ),
+            ),
+            _ => return Err(C61WhirReferenceError::new("C6ICT1 noncanonical challenge")),
+        };
+        let provider_move = reader.take(move_len)?.to_vec();
+        reader.finish()?;
+        Ok(Self { provider_move, kind, value })
+    }
 }
 
 /// Verifier-local resumable prefix.  It contains already released public
@@ -91,26 +158,7 @@ impl C61InteractiveCheckpoint {
         );
         bytes.extend_from_slice(&self.context_digest);
         for record in &self.records {
-            let (kind, bits, value) = match (&record.kind, &record.value) {
-                (C61ChallengeKind::Fp, C61ChallengeValue::Fp(value)) => (0u8, 0u8, *value),
-                (C61ChallengeKind::Query { bits }, C61ChallengeValue::Query(value)) => {
-                    (1u8, *bits, u64::from(*value))
-                }
-                _ => return Err(C61WhirReferenceError::new("C6ICT1 challenge tag mismatch")),
-            };
-            if record.provider_move.len() > C61_INTERACTIVE_CHECKPOINT_MAX_MOVE_BYTES {
-                return Err(C61WhirReferenceError::new("C6ICT1 provider move exceeds cap"));
-            }
-            bytes.push(kind);
-            bytes.push(bits);
-            bytes.extend_from_slice(&0u16.to_le_bytes());
-            bytes.extend_from_slice(
-                &u32::try_from(record.provider_move.len())
-                    .map_err(|_| C61WhirReferenceError::new("C6ICT1 move length exceeds u32"))?
-                    .to_le_bytes(),
-            );
-            bytes.extend_from_slice(&value.to_le_bytes());
-            bytes.extend_from_slice(&record.provider_move);
+            bytes.extend_from_slice(&record.encode_body()?);
             if bytes.len() > C61_INTERACTIVE_CHECKPOINT_MAX_BYTES {
                 return Err(C61WhirReferenceError::new("C6ICT1 payload exceeds cap"));
             }
@@ -141,31 +189,14 @@ impl C61InteractiveCheckpoint {
         context_digest.copy_from_slice(reader.take(32)?);
         let mut records = Vec::with_capacity(count);
         for _ in 0..count {
-            let kind_tag = reader.u8()?;
-            let bits = reader.u8()?;
-            if reader.u16()? != 0 {
-                return Err(C61WhirReferenceError::new("C6ICT1 record reserved field is nonzero"));
-            }
+            let start = reader.offset;
+            let _kind = reader.u8()?;
+            let _bits = reader.u8()?;
+            let _reserved = reader.u16()?;
             let move_len = reader.u32()?;
-            if move_len > C61_INTERACTIVE_CHECKPOINT_MAX_MOVE_BYTES {
-                return Err(C61WhirReferenceError::new("C6ICT1 provider move exceeds cap"));
-            }
-            let raw_value = reader.u64()?;
-            let (kind, value) = match kind_tag {
-                0 if bits == 0 && raw_value < P => {
-                    (C61ChallengeKind::Fp, C61ChallengeValue::Fp(raw_value))
-                }
-                1 if (1..=32).contains(&bits) && raw_value < (1u64 << bits) => (
-                    C61ChallengeKind::Query { bits },
-                    C61ChallengeValue::Query(
-                        u32::try_from(raw_value)
-                            .map_err(|_| C61WhirReferenceError::new("C6ICT1 query exceeds u32"))?,
-                    ),
-                ),
-                _ => return Err(C61WhirReferenceError::new("C6ICT1 noncanonical challenge")),
-            };
-            let provider_move = reader.take(move_len)?.to_vec();
-            records.push(C61ChallengeRecord { provider_move, kind, value });
+            let _value = reader.u64()?;
+            reader.take(move_len)?;
+            records.push(C61ChallengeRecord::decode_body(&bytes[start..reader.offset])?);
         }
         reader.finish()?;
         Ok(Self { num_variables, context_digest, records })
@@ -233,6 +264,439 @@ impl<'a> C61CheckpointReader<'a> {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct C61DurableBinding {
+    digest: C6Digest,
+    slot: u32,
+    raw_counts: [u64; C6_MAC_COORDINATES],
+    raw_ends: [u64; C6_MAC_COORDINATES],
+}
+
+impl C61DurableBinding {
+    pub(crate) fn from_reserved_attempt(
+        state: C6ClientState,
+        attempt: C6ClientAttempt,
+        num_variables: usize,
+        context_digest: [u8; 32],
+    ) -> ReferenceResult<Self> {
+        state.validate().map_err(|error| {
+            C61WhirReferenceError::new(format!("invalid C6 client state: {error}"))
+        })?;
+        if state.pending_attempt != Some(attempt) {
+            return Err(C61WhirReferenceError::new(
+                "C6ICT1 durable binding requires the current reserved attempt",
+            ));
+        }
+        let mut raw_counts = [0u64; C6_MAC_COORDINATES];
+        let mut raw_ends = [0u64; C6_MAC_COORDINATES];
+        for coordinate in 0..C6_MAC_COORDINATES {
+            let range = attempt.correlation_ranges.coordinates[coordinate];
+            raw_counts[coordinate] = range.count;
+            raw_ends[coordinate] = range
+                .start
+                .checked_add(range.count)
+                .ok_or_else(|| C61WhirReferenceError::new("C6ICT1 raw range overflows"))?;
+            if raw_ends[coordinate] != state.raw_high_water[coordinate] {
+                return Err(C61WhirReferenceError::new(
+                    "C6ICT1 durable binding does not end at client high-water",
+                ));
+            }
+        }
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(b"volta-zk/c61/durable-interaction-binding/v1");
+        hasher.update(&state.connection_id);
+        hasher.update(&state.setup_manifest_digest);
+        hasher.update(&attempt.slot.to_le_bytes());
+        hasher.update(&attempt.nonce);
+        hasher.update(&attempt.old_head_digest);
+        hasher.update(&attempt.predecessor_certificate_digest);
+        hasher.update(&(num_variables as u64).to_le_bytes());
+        hasher.update(&context_digest);
+        for range in attempt.correlation_ranges.coordinates {
+            hasher.update(&range.stage.to_le_bytes());
+            hasher.update(&range.start.to_le_bytes());
+            hasher.update(&range.count.to_le_bytes());
+        }
+        Ok(Self { digest: *hasher.finalize().as_bytes(), slot: attempt.slot, raw_counts, raw_ends })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct C61DurableResume {
+    checkpoint: C61InteractiveCheckpoint,
+    mask_events: Vec<(usize, u32, [u8; 32])>,
+    final_seal: Option<(usize, usize, [u8; 32])>,
+}
+
+#[derive(Debug)]
+pub(crate) struct C61DurableJournal {
+    file: File,
+    binding: C61DurableBinding,
+    resume: C61DurableResume,
+    sequence: u32,
+    last_checksum: [u8; 32],
+}
+
+fn c61_durable_header(
+    binding: C61DurableBinding,
+    num_variables: u8,
+    context_digest: [u8; 32],
+) -> Vec<u8> {
+    let mut body = Vec::with_capacity(128);
+    body.extend_from_slice(&C61_DURABLE_JOURNAL_MAGIC);
+    body.extend_from_slice(&C61_DURABLE_JOURNAL_VERSION.to_le_bytes());
+    body.push(num_variables);
+    body.push(0);
+    body.extend_from_slice(&context_digest);
+    body.extend_from_slice(&binding.digest);
+    body.extend_from_slice(&binding.slot.to_le_bytes());
+    for count in binding.raw_counts {
+        body.extend_from_slice(&count.to_le_bytes());
+    }
+    for end in binding.raw_ends {
+        body.extend_from_slice(&end.to_le_bytes());
+    }
+    let checksum = blake3::derive_key("volta-zk/c61/durable-header/v1", &body);
+    body.extend_from_slice(&checksum);
+    body
+}
+
+fn c61_durable_record(
+    binding_digest: [u8; 32],
+    previous_checksum: [u8; 32],
+    sequence: u32,
+    tag: u8,
+    payload: &[u8],
+) -> ReferenceResult<(Vec<u8>, [u8; 32])> {
+    let payload_len = u32::try_from(payload.len())
+        .map_err(|_| C61WhirReferenceError::new("C6ICJ1 record exceeds u32"))?;
+    let mut body = Vec::with_capacity(12 + payload.len());
+    body.push(tag);
+    body.extend_from_slice(&[0; 3]);
+    body.extend_from_slice(&sequence.to_le_bytes());
+    body.extend_from_slice(&payload_len.to_le_bytes());
+    body.extend_from_slice(payload);
+    let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c61/durable-record/v1");
+    hasher.update(&binding_digest);
+    hasher.update(&previous_checksum);
+    hasher.update(&body);
+    let checksum = *hasher.finalize().as_bytes();
+    body.extend_from_slice(&checksum);
+    Ok((body, checksum))
+}
+
+fn c61_parent(path: &Path) -> &Path {
+    path.parent().filter(|parent| !parent.as_os_str().is_empty()).unwrap_or(Path::new("."))
+}
+
+fn c61_sync_directory(path: &Path) -> ReferenceResult<()> {
+    File::open(path).and_then(|directory| directory.sync_all()).map_err(|error| {
+        C61WhirReferenceError::new(format!("cannot sync C6ICJ1 directory: {error}"))
+    })
+}
+
+#[cfg(unix)]
+fn c61_private_file(options: &mut OpenOptions) {
+    use std::os::unix::fs::OpenOptionsExt;
+    options.mode(0o600);
+}
+
+#[cfg(not(unix))]
+fn c61_private_file(_options: &mut OpenOptions) {}
+
+impl C61DurableJournal {
+    pub(crate) fn create(
+        path: impl AsRef<Path>,
+        binding: C61DurableBinding,
+        checkpoint: C61InteractiveCheckpoint,
+    ) -> ReferenceResult<Self> {
+        if checkpoint.challenge_count() != 0 {
+            return Err(C61WhirReferenceError::new("new C6ICJ1 journal must start empty"));
+        }
+        let path = path.as_ref().to_path_buf();
+        fs::create_dir_all(c61_parent(&path)).map_err(|error| {
+            C61WhirReferenceError::new(format!("cannot create C6ICJ1 directory: {error}"))
+        })?;
+        let header =
+            c61_durable_header(binding, checkpoint.num_variables, checkpoint.context_digest);
+        let mut options = OpenOptions::new();
+        options.read(true).append(true).create_new(true);
+        c61_private_file(&mut options);
+        let mut file = options.open(&path).map_err(|error| {
+            C61WhirReferenceError::new(format!("cannot create C6ICJ1 journal: {error}"))
+        })?;
+        file.write_all(&header).map_err(|error| {
+            C61WhirReferenceError::new(format!("cannot write C6ICJ1 header: {error}"))
+        })?;
+        file.sync_all().map_err(|error| {
+            C61WhirReferenceError::new(format!("cannot sync C6ICJ1 header: {error}"))
+        })?;
+        c61_sync_directory(c61_parent(&path))?;
+        let last_checksum: [u8; 32] = header[header.len() - 32..].try_into().expect("header seal");
+        Ok(Self {
+            file,
+            binding,
+            resume: C61DurableResume { checkpoint, mask_events: Vec::new(), final_seal: None },
+            sequence: 0,
+            last_checksum,
+        })
+    }
+
+    pub(crate) fn open(
+        path: impl AsRef<Path>,
+        expected_binding: C61DurableBinding,
+    ) -> ReferenceResult<Self> {
+        let path = path.as_ref().to_path_buf();
+        let bytes = fs::read(&path).map_err(|error| {
+            C61WhirReferenceError::new(format!("cannot read C6ICJ1 journal: {error}"))
+        })?;
+        let (binding, resume, sequence, last_checksum) = Self::parse(&bytes, expected_binding)?;
+        let mut options = OpenOptions::new();
+        options.read(true).append(true);
+        let file = options.open(&path).map_err(|error| {
+            C61WhirReferenceError::new(format!("cannot reopen C6ICJ1 journal: {error}"))
+        })?;
+        Ok(Self { file, binding, resume, sequence, last_checksum })
+    }
+
+    fn parse(
+        bytes: &[u8],
+        expected_binding: C61DurableBinding,
+    ) -> ReferenceResult<(C61DurableBinding, C61DurableResume, u32, [u8; 32])> {
+        let mut reader = C61CheckpointReader::new(bytes);
+        if reader.take(8)? != C61_DURABLE_JOURNAL_MAGIC {
+            return Err(C61WhirReferenceError::new("C6ICJ1 magic mismatch"));
+        }
+        if reader.u16()? != C61_DURABLE_JOURNAL_VERSION {
+            return Err(C61WhirReferenceError::new("C6ICJ1 version mismatch"));
+        }
+        let num_variables = reader.u8()?;
+        if reader.u8()? != 0 {
+            return Err(C61WhirReferenceError::new("C6ICJ1 header reserved byte is nonzero"));
+        }
+        let mut context_digest = [0u8; 32];
+        context_digest.copy_from_slice(reader.take(32)?);
+        let mut binding_digest = [0u8; 32];
+        binding_digest.copy_from_slice(reader.take(32)?);
+        let slot = reader.u32()? as u32;
+        let raw_counts = [reader.u64()?, reader.u64()?];
+        let raw_ends = [reader.u64()?, reader.u64()?];
+        let header_body_end = reader.offset;
+        let mut header_checksum = [0u8; 32];
+        header_checksum.copy_from_slice(reader.take(32)?);
+        if blake3::derive_key("volta-zk/c61/durable-header/v1", &bytes[..header_body_end])
+            != header_checksum
+        {
+            return Err(C61WhirReferenceError::new("C6ICJ1 header checksum mismatch"));
+        }
+        let binding = C61DurableBinding { digest: binding_digest, slot, raw_counts, raw_ends };
+        if binding != expected_binding {
+            return Err(C61WhirReferenceError::new("C6ICJ1 reserved-attempt binding mismatch"));
+        }
+        let mut resume = C61DurableResume {
+            checkpoint: C61InteractiveCheckpoint {
+                num_variables,
+                context_digest,
+                records: Vec::new(),
+            },
+            mask_events: Vec::new(),
+            final_seal: None,
+        };
+        let mut sequence = 0u32;
+        let mut last_checksum = header_checksum;
+        while reader.offset != bytes.len() {
+            let tag = reader.u8()?;
+            if reader.take(3)? != [0; 3] {
+                return Err(C61WhirReferenceError::new("C6ICJ1 record reserved bytes are nonzero"));
+            }
+            let record_sequence = reader.u32()? as u32;
+            let payload_len = reader.u32()?;
+            let payload = reader.take(payload_len)?;
+            let mut checksum = [0u8; 32];
+            checksum.copy_from_slice(reader.take(32)?);
+            if record_sequence
+                != sequence
+                    .checked_add(1)
+                    .ok_or_else(|| C61WhirReferenceError::new("C6ICJ1 sequence overflows"))?
+            {
+                return Err(C61WhirReferenceError::new("C6ICJ1 non-sequential record"));
+            }
+            let (_, expected_checksum) =
+                c61_durable_record(binding.digest, last_checksum, record_sequence, tag, payload)?;
+            if checksum != expected_checksum {
+                return Err(C61WhirReferenceError::new("C6ICJ1 record checksum mismatch"));
+            }
+            match tag {
+                C61_DURABLE_RECORD_CHALLENGE if resume.final_seal.is_none() => {
+                    if resume.checkpoint.records.len() >= C61_INTERACTIVE_CHECKPOINT_MAX_RECORDS {
+                        return Err(C61WhirReferenceError::new("C6ICJ1 challenge cap exceeded"));
+                    }
+                    resume.checkpoint.records.push(C61ChallengeRecord::decode_body(payload)?);
+                }
+                C61_DURABLE_RECORD_MASK_FRONTIER if resume.final_seal.is_none() => {
+                    let mut event = C61CheckpointReader::new(payload);
+                    let challenge_index = event.u32()?;
+                    let frontier = event.u32()? as u32;
+                    let mut provider_move_digest = [0u8; 32];
+                    provider_move_digest.copy_from_slice(event.take(32)?);
+                    event.finish()?;
+                    let previous = resume.mask_events.last().map_or(0, |(_, value, _)| *value);
+                    if challenge_index != resume.checkpoint.records.len()
+                        || frontier <= previous
+                        || resume.mask_events.len() >= C61_DURABLE_JOURNAL_MAX_MASK_EVENTS
+                        || u64::from(frontier) > binding.raw_counts[0]
+                        || u64::from(frontier) > binding.raw_counts[1]
+                    {
+                        return Err(C61WhirReferenceError::new("invalid C6ICJ1 mask frontier"));
+                    }
+                    resume.mask_events.push((challenge_index, frontier, provider_move_digest));
+                }
+                C61_DURABLE_RECORD_FINISH if resume.final_seal.is_none() => {
+                    let mut seal = C61CheckpointReader::new(payload);
+                    let challenge_index = seal.u32()?;
+                    let payload_bytes = usize::try_from(seal.u64()?).map_err(|_| {
+                        C61WhirReferenceError::new("C6ICJ1 final payload exceeds usize")
+                    })?;
+                    let mut digest = [0u8; 32];
+                    digest.copy_from_slice(seal.take(32)?);
+                    seal.finish()?;
+                    if challenge_index != resume.checkpoint.records.len() || payload_bytes == 0 {
+                        return Err(C61WhirReferenceError::new("invalid C6ICJ1 final seal"));
+                    }
+                    resume.final_seal = Some((challenge_index, payload_bytes, digest));
+                }
+                _ => return Err(C61WhirReferenceError::new("illegal C6ICJ1 record transition")),
+            }
+            sequence = record_sequence;
+            last_checksum = checksum;
+        }
+        Ok((binding, resume, sequence, last_checksum))
+    }
+
+    fn append(&mut self, tag: u8, payload: &[u8]) -> ReferenceResult<()> {
+        let sequence = self
+            .sequence
+            .checked_add(1)
+            .ok_or_else(|| C61WhirReferenceError::new("C6ICJ1 sequence overflows"))?;
+        let (record, checksum) =
+            c61_durable_record(self.binding.digest, self.last_checksum, sequence, tag, payload)?;
+        self.file.write_all(&record).map_err(|error| {
+            C61WhirReferenceError::new(format!("cannot append C6ICJ1 record: {error}"))
+        })?;
+        self.file.sync_all().map_err(|error| {
+            C61WhirReferenceError::new(format!("cannot sync C6ICJ1 record: {error}"))
+        })?;
+        self.sequence = sequence;
+        self.last_checksum = checksum;
+        Ok(())
+    }
+
+    fn append_challenge(&mut self, record: C61ChallengeRecord) -> ReferenceResult<()> {
+        if self.resume.final_seal.is_some() {
+            return Err(C61WhirReferenceError::new("C6ICJ1 is already sealed"));
+        }
+        self.append(C61_DURABLE_RECORD_CHALLENGE, &record.encode_body()?)?;
+        self.resume.checkpoint.records.push(record);
+        Ok(())
+    }
+
+    fn append_mask_frontier(
+        &mut self,
+        frontier: u32,
+        provider_move_digest: [u8; 32],
+    ) -> ReferenceResult<()> {
+        let previous = self.resume.mask_events.last().map_or(0, |(_, value, _)| *value);
+        if self.resume.final_seal.is_some()
+            || frontier <= previous
+            || self.resume.mask_events.len() >= C61_DURABLE_JOURNAL_MAX_MASK_EVENTS
+            || u64::from(frontier) > self.binding.raw_counts[0]
+            || u64::from(frontier) > self.binding.raw_counts[1]
+        {
+            return Err(C61WhirReferenceError::new("invalid C6ICJ1 mask frontier"));
+        }
+        let challenge_index = self.resume.checkpoint.records.len();
+        let mut payload = Vec::with_capacity(40);
+        payload.extend_from_slice(&(challenge_index as u32).to_le_bytes());
+        payload.extend_from_slice(&frontier.to_le_bytes());
+        payload.extend_from_slice(&provider_move_digest);
+        self.append(C61_DURABLE_RECORD_MASK_FRONTIER, &payload)?;
+        self.resume.mask_events.push((challenge_index, frontier, provider_move_digest));
+        Ok(())
+    }
+
+    fn append_finish(&mut self, payload_bytes: usize, digest: [u8; 32]) -> ReferenceResult<()> {
+        if self.resume.final_seal.is_some() || payload_bytes == 0 {
+            return Err(C61WhirReferenceError::new("invalid C6ICJ1 final seal"));
+        }
+        let challenge_index = self.resume.checkpoint.records.len();
+        let mut payload = Vec::with_capacity(44);
+        payload.extend_from_slice(&(challenge_index as u32).to_le_bytes());
+        payload.extend_from_slice(&(payload_bytes as u64).to_le_bytes());
+        payload.extend_from_slice(&digest);
+        self.append(C61_DURABLE_RECORD_FINISH, &payload)?;
+        self.resume.final_seal = Some((challenge_index, payload_bytes, digest));
+        Ok(())
+    }
+
+    pub(crate) fn resume(&self) -> C61DurableResume {
+        self.resume.clone()
+    }
+}
+
+pub(crate) fn create_c61_durable_checkpoint_prefix(
+    path: impl AsRef<Path>,
+    state: C6ClientState,
+    attempt: C6ClientAttempt,
+    checkpoint: C61InteractiveCheckpoint,
+    mask_events: &[(usize, u32, [u8; 32])],
+) -> ReferenceResult<C61DurableJournal> {
+    let binding = C61DurableBinding::from_reserved_attempt(
+        state,
+        attempt,
+        checkpoint.num_variables as usize,
+        checkpoint.context_digest,
+    )?;
+    let empty = C61InteractiveCheckpoint::empty(
+        checkpoint.num_variables as usize,
+        checkpoint.context_digest,
+    )?;
+    let mut journal = C61DurableJournal::create(path, binding, empty)?;
+    let mut next_mask_event = 0usize;
+    for challenge_index in 0..=checkpoint.records.len() {
+        while mask_events
+            .get(next_mask_event)
+            .is_some_and(|(index, _, _)| *index == challenge_index)
+        {
+            journal.append_mask_frontier(
+                mask_events[next_mask_event].1,
+                mask_events[next_mask_event].2,
+            )?;
+            next_mask_event += 1;
+        }
+        if let Some(record) = checkpoint.records.get(challenge_index) {
+            journal.append_challenge(record.clone())?;
+        }
+    }
+    if next_mask_event != mask_events.len() {
+        return Err(C61WhirReferenceError::new(
+            "C6ICJ1 mask event lies beyond checkpoint frontier",
+        ));
+    }
+    Ok(journal)
+}
+
+pub(crate) fn open_c61_durable_checkpoint(
+    path: impl AsRef<Path>,
+    state: C6ClientState,
+    attempt: C6ClientAttempt,
+    num_variables: usize,
+    context_digest: [u8; 32],
+) -> ReferenceResult<C61DurableJournal> {
+    let binding =
+        C61DurableBinding::from_reserved_attempt(state, attempt, num_variables, context_digest)?;
+    C61DurableJournal::open(path, binding)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct C61InteractiveTape {
     checkpoint: C61InteractiveCheckpoint,
@@ -268,6 +732,10 @@ pub(crate) struct C61PrivateEntropyBrokerOutput {
     pub(crate) transcript_bytes: u64,
     pub(crate) ledger: BTreeMap<&'static str, u64>,
     pub(crate) replayed_challenges: usize,
+    pub(crate) replayed_mask_events: usize,
+    pub(crate) mask_frontier: u32,
+    pub(crate) mask_events: Vec<(usize, u32, [u8; 32])>,
+    pub(crate) durable_record_count: u32,
 }
 
 enum C61BrokerResponse {
@@ -280,6 +748,11 @@ enum C61BrokerRequest {
     Challenge {
         provider_move: Vec<u8>,
         kind: C61ChallengeKind,
+        response: mpsc::SyncSender<ReferenceResult<C61BrokerResponse>>,
+    },
+    MaskFrontier {
+        frontier: u32,
+        provider_move_digest: [u8; 32],
         response: mpsc::SyncSender<ReferenceResult<C61BrokerResponse>>,
     },
     Finish {
@@ -386,6 +859,36 @@ impl C61PrivateEntropyProverChallenger {
         let value = state.fallback_query & mask;
         state.fallback_query = state.fallback_query.wrapping_add(1);
         value as usize
+    }
+
+    pub(crate) fn note_mask_frontier(&self, frontier: u32) -> ReferenceResult<()> {
+        let (endpoint, provider_move_digest) = {
+            let state = self.state.lock().expect("C6ICT1 provider mutex poisoned");
+            if let Some(error) = &state.failure {
+                return Err(error.clone());
+            }
+            (state.endpoint.clone(), *blake3::hash(&state.pending_provider_move).as_bytes())
+        };
+        let (response_sender, response_receiver) = mpsc::sync_channel(0);
+        endpoint
+            .sender
+            .send(C61BrokerRequest::MaskFrontier {
+                frontier,
+                provider_move_digest,
+                response: response_sender,
+            })
+            .map_err(|_| C61WhirReferenceError::new("C6ICT1 verifier broker disconnected"))?;
+        let result = response_receiver
+            .recv()
+            .map_err(|_| C61WhirReferenceError::new("C6ICT1 verifier response disconnected"))?;
+        if let Err(error) = &result {
+            self.state.lock().expect("C6ICT1 provider mutex poisoned").failure =
+                Some(error.clone());
+        }
+        match result? {
+            C61BrokerResponse::Ack => Ok(()),
+            _ => Err(C61WhirReferenceError::new("C6ICT1 mask ACK tag mismatch")),
+        }
     }
 
     pub(crate) fn finish(&self, payload: &[u8]) -> ReferenceResult<()> {
@@ -500,15 +1003,37 @@ fn broker_loop(
     receiver: mpsc::Receiver<C61BrokerRequest>,
     verifier_seed: [u8; 32],
     checkpoint: C61InteractiveCheckpoint,
+    mut durable: Option<C61DurableJournal>,
 ) -> ReferenceResult<C61PrivateEntropyBrokerOutput> {
+    let durable_resume = durable.as_ref().map(C61DurableJournal::resume);
+    if durable_resume.as_ref().is_some_and(|resume| resume.checkpoint != checkpoint) {
+        return Err(C61WhirReferenceError::new(
+            "C6ICJ1 durable checkpoint disagrees with broker checkpoint",
+        ));
+    }
     let mut transcript = Transcript::new(verifier_seed);
     let mut records = Vec::new();
     let mut interaction = C61WhirInteractionStats::default();
     let mut replayed_challenges = 0usize;
+    let mut replayed_mask_events = 0usize;
+    let mut mask_frontier = 0u32;
+    let mut mask_events = Vec::new();
 
     while let Ok(request) = receiver.recv() {
         match request {
             C61BrokerRequest::Challenge { provider_move, kind, response } => {
+                if durable_resume.as_ref().is_some_and(|resume| {
+                    resume
+                        .mask_events
+                        .get(replayed_mask_events)
+                        .is_some_and(|(index, _, _)| *index == records.len())
+                }) {
+                    let error = C61WhirReferenceError::new(
+                        "C6ICT1 replay skipped a durable mask-frontier event",
+                    );
+                    let _ = response.send(Err(error.clone()));
+                    return Err(error);
+                }
                 if !provider_move.is_empty() {
                     transcript.append(
                         C61_PRIVATE_MESSAGE_LABEL,
@@ -537,6 +1062,11 @@ fn broker_loop(
                     let _ = response.send(Err(error.clone()));
                     return Err(error);
                 }
+                if records.len() >= checkpoint.records.len() {
+                    if let Some(journal) = durable.as_mut() {
+                        journal.append_challenge(record.clone())?;
+                    }
+                }
                 interaction.client_challenge_payload_bytes += match record.kind {
                     C61ChallengeKind::Fp => {
                         interaction.client_fp_challenges += 1;
@@ -558,6 +1088,48 @@ fn broker_loop(
                     ));
                 }
             }
+            C61BrokerRequest::MaskFrontier { frontier, provider_move_digest, response } => {
+                if frontier <= mask_frontier {
+                    let error =
+                        C61WhirReferenceError::new("C6ICT1 mask frontier is not strictly monotone");
+                    let _ = response.send(Err(error.clone()));
+                    return Err(error);
+                }
+                let challenge_index = records.len();
+                let replayed = if let Some((
+                    expected_index,
+                    expected_frontier,
+                    expected_provider_move_digest,
+                )) = durable_resume
+                    .as_ref()
+                    .and_then(|resume| resume.mask_events.get(replayed_mask_events))
+                {
+                    if *expected_index != challenge_index
+                        || *expected_frontier != frontier
+                        || *expected_provider_move_digest != provider_move_digest
+                    {
+                        let error = C61WhirReferenceError::new(
+                            "C6ICT1 mask frontier diverged before durable checkpoint",
+                        );
+                        let _ = response.send(Err(error.clone()));
+                        return Err(error);
+                    }
+                    replayed_mask_events += 1;
+                    true
+                } else {
+                    false
+                };
+                if !replayed {
+                    if let Some(journal) = durable.as_mut() {
+                        journal.append_mask_frontier(frontier, provider_move_digest)?;
+                    }
+                }
+                mask_frontier = frontier;
+                mask_events.push((challenge_index, frontier, provider_move_digest));
+                response
+                    .send(Ok(C61BrokerResponse::Ack))
+                    .map_err(|_| C61WhirReferenceError::new("C6ICT1 provider dropped mask ACK"))?;
+            }
             C61BrokerRequest::Finish {
                 payload_bytes,
                 payload_blake3,
@@ -567,6 +1139,16 @@ fn broker_loop(
                 if records.len() < checkpoint.records.len() {
                     let error = C61WhirReferenceError::new(
                         "C6ICT1 provider finished before the replay frontier",
+                    );
+                    let _ = response.send(Err(error.clone()));
+                    return Err(error);
+                }
+                if durable_resume
+                    .as_ref()
+                    .is_some_and(|resume| replayed_mask_events != resume.mask_events.len())
+                {
+                    let error = C61WhirReferenceError::new(
+                        "C6ICT1 provider finished before durable mask replay completed",
                     );
                     let _ = response.send(Err(error.clone()));
                     return Err(error);
@@ -593,6 +1175,26 @@ fn broker_loop(
                     final_payload_bytes: payload_bytes,
                     final_payload_blake3: payload_blake3,
                 };
+                if let Some(resume) = &durable_resume {
+                    if let Some((expected_count, expected_bytes, expected_digest)) =
+                        resume.final_seal
+                    {
+                        if expected_count != tape.checkpoint.challenge_count()
+                            || expected_bytes != payload_bytes
+                            || expected_digest != payload_blake3
+                        {
+                            let error = C61WhirReferenceError::new(
+                                "C6ICT1 final payload diverged from durable seal",
+                            );
+                            let _ = response.send(Err(error.clone()));
+                            return Err(error);
+                        }
+                    } else if let Some(journal) = durable.as_mut() {
+                        journal.append_finish(payload_bytes, payload_blake3)?;
+                    }
+                } else if let Some(journal) = durable.as_mut() {
+                    journal.append_finish(payload_bytes, payload_blake3)?;
+                }
                 response
                     .send(Ok(C61BrokerResponse::Ack))
                     .map_err(|_| C61WhirReferenceError::new("C6ICT1 finish ACK disconnected"))?;
@@ -602,6 +1204,10 @@ fn broker_loop(
                     transcript_bytes: transcript.total_bytes(),
                     ledger: transcript.ledger().clone(),
                     replayed_challenges,
+                    replayed_mask_events,
+                    mask_frontier,
+                    mask_events,
+                    durable_record_count: durable.as_ref().map_or(0, |journal| journal.sequence),
                 });
             }
         }
@@ -626,7 +1232,30 @@ pub(crate) fn spawn_c61_private_entropy_broker(
     let (sender, receiver) = mpsc::sync_channel(0);
     let endpoint = C61ProviderEndpoint { sender };
     let challenger = C61PrivateEntropyProverChallenger::new(endpoint, num_variables);
-    let handle = thread::spawn(move || broker_loop(receiver, verifier_seed, checkpoint));
+    let handle = thread::spawn(move || broker_loop(receiver, verifier_seed, checkpoint, None));
+    Ok((challenger, handle))
+}
+
+pub(crate) fn spawn_c61_durable_private_entropy_broker(
+    verifier_seed: [u8; 32],
+    num_variables: usize,
+    context_digest: [u8; 32],
+    journal: C61DurableJournal,
+) -> ReferenceResult<(
+    C61PrivateEntropyProverChallenger,
+    JoinHandle<ReferenceResult<C61PrivateEntropyBrokerOutput>>,
+)> {
+    let checkpoint = journal.resume.checkpoint.clone();
+    if checkpoint.num_variables as usize != num_variables
+        || checkpoint.context_digest != context_digest
+    {
+        return Err(C61WhirReferenceError::new("C6ICJ1 checkpoint context mismatch"));
+    }
+    let (sender, receiver) = mpsc::sync_channel(0);
+    let endpoint = C61ProviderEndpoint { sender };
+    let challenger = C61PrivateEntropyProverChallenger::new(endpoint, num_variables);
+    let handle =
+        thread::spawn(move || broker_loop(receiver, verifier_seed, checkpoint, Some(journal)));
     Ok((challenger, handle))
 }
 

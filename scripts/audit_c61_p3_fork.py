@@ -133,6 +133,8 @@ def require_source_guards() -> None:
     driver = (ROOT / "rust/volta-pcs/src/c61_interactive_driver.rs").read_text()
     if 'C61_INTERACTIVE_CHECKPOINT_MAGIC: [u8; 8] = *b"C6ICT1\\0\\0"' not in driver:
         raise SystemExit("private-entropy checkpoint codec identity changed")
+    if 'C61_DURABLE_JOURNAL_MAGIC: [u8; 8] = *b"C6ICJ1\\0\\0"' not in driver:
+        raise SystemExit("durable private-entropy journal identity changed")
     endpoint = driver.split("struct C61ProviderEndpoint", 1)[1].split("}", 1)[0]
     if "SyncSender<C61BrokerRequest>" not in endpoint:
         raise SystemExit("private-entropy provider endpoint lost its typed broker channel")
@@ -151,11 +153,22 @@ def require_source_guards() -> None:
             )
     for required in (
         "spawn_c61_private_entropy_broker",
+        "spawn_c61_durable_private_entropy_broker",
         "C61PrivateEntropyReplayChallenger",
         "C61InteractiveCheckpoint::decode(",
+        "state.pending_attempt != Some(attempt)",
+        "journal.append_mask_frontier(frontier, provider_move_digest)?",
+        "self.file.sync_all()",
     ):
         if required not in driver and required not in production_adapter:
             raise SystemExit(f"private-entropy driver guard missing: {required}")
+    fresh_challenge = driver.split(
+        "if records.len() >= checkpoint.records.len()", 1
+    )[1].split("C61BrokerRequest::MaskFrontier", 1)[0]
+    persist_at = fresh_challenge.find("journal.append_challenge(record.clone())?")
+    release_at = fresh_challenge.find("response.send(Ok(broker_response))")
+    if persist_at < 0 or release_at < 0 or persist_at > release_at:
+        raise SystemExit("durable challenge is released before its journal fsync path")
 
 
 def build_report() -> dict[str, object]:
@@ -206,6 +219,7 @@ def build_report() -> dict[str, object]:
         "claimless_adapter_statement_guards": True,
         "claimless_strict_codec_guards": True,
         "private_entropy_driver_source_guards": True,
+        "durable_private_entropy_journal_source_guards": True,
         "verdict": "C61_PINNED_FORK_PROVENANCE_PASS",
     }
 

@@ -175,6 +175,8 @@ C61_NATIVE_CLAIMLESS_D14_CLIENT_CHALLENGE_BYTES = 10_560
 C61_PRIVATE_ENTROPY_D14_CHALLENGES = 2_588
 C61_PRIVATE_ENTROPY_D14_CHECKPOINT_FRONTIER = 1_294
 C61_PRIVATE_ENTROPY_D14_CHECKPOINT_BYTES = 73_360
+C61_PRIVATE_ENTROPY_D14_DURABLE_JOURNAL_BYTES = 208_204
+C61_PRIVATE_ENTROPY_D14_DURABLE_RECORDS = 2_590
 C61_NATIVE_CLAIMLESS_D14_BLAKE3 = (
     "9dbaa66336f8833b0a0e3a32f7023f5c25f2166e6e8431244a06b41d707958bb"
 )
@@ -468,7 +470,7 @@ def build_report() -> dict[str, Any]:
         "profile": "C6.1-public-compression-reference-v3",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
-            "DURABLE_CHECKPOINT_ALLOCATOR_AND_C6_RELATION_ADAPTER_REQUIRED__"
+            "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__C6_RELATION_ADAPTER_REQUIRED__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
@@ -536,7 +538,7 @@ def build_report() -> dict[str, Any]:
             "name": "C6PA1-native-HVZK-plus-C6RSC4-v4",
             "status": (
                 "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
-                "DURABLE_CHECKPOINT_ALLOCATOR_AND_C6_RELATION_ADAPTER_PENDING__"
+                "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__C6_RELATION_ADAPTER_PENDING__"
                 "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
             "statement": (
@@ -654,7 +656,8 @@ def build_report() -> dict[str, Any]:
                     "strict_claimless_codec_pending": False,
                     "strict_codec_verifier_consumes_serialized_payload": True,
                     "resumable_private_entropy_driver_pending": False,
-                    "durable_atomic_checkpoint_pending": True,
+                    "durable_atomic_checkpoint_pending": False,
+                    "production_full_relation_integration_pending": True,
                     "clear_evaluation_bytes_removed_per_chain": 16,
                     "zero_open_tag_bytes_added_per_chain": 16,
                     "provider_to_client_net_bytes_per_chain": 0,
@@ -769,7 +772,19 @@ def build_report() -> dict[str, Any]:
                     ),
                     "normal_inline_replay_overhead": False,
                     "retry_replays_provider_prefix": True,
-                    "durable_atomic_checkpoint_pending": True,
+                    "durable_journal_codec": "C6ICJ1-v1 append-only checksum chain",
+                    "durable_atomic_checkpoint_pending": False,
+                    "challenge_fsync_before_release": True,
+                    "client_reserved_attempt_binding": True,
+                    "paired_raw_range_burned_before_provider_exposure": True,
+                    "provider_move_bound_mask_frontier": 1,
+                    "durable_journal_bytes_after_final_seal": (
+                        C61_PRIVATE_ENTROPY_D14_DURABLE_JOURNAL_BYTES
+                    ),
+                    "durable_record_count": C61_PRIVATE_ENTROPY_D14_DURABLE_RECORDS,
+                    "wrong_attempt_torn_and_corrupt_rejected": True,
+                    "malicious_client_disk_snapshot_rollback_covered": False,
+                    "production_full_relation_integration_pending": True,
                     "full_chain_credit": False,
                 },
                 "claim_privacy": {
@@ -1154,6 +1169,10 @@ def build_report() -> dict[str, Any]:
         C61_PRIVATE_ENTROPY_D14_CHALLENGES
     )
     assert C61_PRIVATE_ENTROPY_D14_CHECKPOINT_BYTES == 73_360
+    assert C61_PRIVATE_ENTROPY_D14_DURABLE_JOURNAL_BYTES == 208_204
+    assert C61_PRIVATE_ENTROPY_D14_DURABLE_RECORDS == (
+        C61_PRIVATE_ENTROPY_D14_CHALLENGES + 2
+    )
     assert (
         C61_NATIVE_CLAIMLESS_D14_WHIR_PAYLOAD_BYTES
         + c6.FP2_BYTES

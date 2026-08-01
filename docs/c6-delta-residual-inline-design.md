@@ -38,10 +38,11 @@ OBSTRUCTION REGISTERED; `C6AWH1-v1` AUTHENTICATED-TARGET LEAN/BUDGET GREEN;
 FEATURE-ONLY CLAIMLESS-AFFINE PINNED PCS FORK + STRICT `C6AWP1-v1` D14
 CODEC DIFFERENTIAL + SOURCE-PROVENANCE AUDIT GREEN; CLAIM-PRIVACY LOCAL
 ARGUMENT + DESIGNATED-VIEW SIMULATOR + PRIVATE-ENTROPY `C6ICT1-v1`
-REPLAY-TO-FRONTIER DRIVER GREEN; DURABLE ATOMIC CHECKPOINT/MASK ALLOCATOR,
-COMPLETE C6 MODEL/EMBEDDING/COMPILER RELATION ADAPTER AND FULL-T1 INTEGRATION
-NEXT; NO C6.1 FULL-CHAIN PROOF-SIZE, TIMING, MEMORY OR HARDWARE CREDIT; HARD
-STOP BEFORE POD.**
+REPLAY-TO-FRONTIER DRIVER + DURABLE `C6ICJ1-v1` APPEND-ONLY JOURNAL,
+MASK-FRONTIER AND RESERVED-RANGE BINDING GREEN; COMPLETE C6
+MODEL/EMBEDDING/COMPILER RELATION ADAPTER AND FULL-T1 INTEGRATION NEXT; NO
+C6.1 FULL-CHAIN PROOF-SIZE, TIMING, MEMORY OR HARDWARE CREDIT; HARD STOP
+BEFORE POD.**
 
 This document is the C6 plan of record.  It is a new descendant of the
 accepted C4/T1 `rate=1/4,Q=120` inline profile.  It does not reopen or rewrite
@@ -1425,6 +1426,50 @@ private-entropy source guards.  The executable budget records the driver as
 green but keeps durable atomic persistence, the complete C6 relation adapter
 and every full-chain proof-size/timing/setup/hardware credit false.  No pod was
 contacted.
+
+### 0.19 Durable checkpoint and mask-frontier journal
+
+`C6ICJ1-v1` closes the local durable-client part of the replay seam without
+changing `C6ClientState` or allocating a second correlation pool.  Journal
+creation accepts only the current validated `pending_attempt`.  Its binding
+digest covers connection and setup identities, slot, nonce, predecessor/head,
+dimension, C6ICT1 context and both complete paired ranges; each range must end
+at the already durable client high-water.  Thus the existing C6 reservation
+burns the whole paired range before provider exposure, including any uncertain
+partial execution.
+
+The journal is create-new, mode 0600 on Unix, append-only and checksum chained.
+Every fresh challenge record contains the exact provider move, typed challenge
+and released value.  The broker appends and `fsync`s that record before sending
+the challenge response.  The C6AWH1 mask draw additionally emits a monotone
+frontier event bound to the digest of the provider bytes pending at that exact
+interaction point; this event is also durable before proving continues.  The
+terminal record seals the challenge count, artifact length and BLAKE3 digest.
+The verifier seed never enters the journal or provider endpoint.
+
+The D14 midpoint recovery now starts from a valid journal at **1,294 / 2,588**
+challenges, replays one mask-frontier event, appends the fresh suffix and seals
+at exactly **2,590 records**: 2,588 challenges, one mask event and one terminal
+seal.  The completed journal is **208,204 B** of client-local disk state.  It
+adds zero setup or certificate bytes and leaves the **378,496-B** artifact and
+**10,560-B** challenge wire byte-identical.  Wrong reserved-attempt binding,
+torn tail and checksum-corrupt body all reject; the resumed artifact and tape
+remain byte-identical.
+
+If the journal is absent, malformed or of uncertain durability after a crash,
+the attempt cannot resume: the already reserved range is burned and retry uses
+a new slot/range from the same accepted cache head.  A valid journal permits
+deterministic replay only through exact old provider moves.  This implements
+the frozen single-client durable-storage threat model; it does not defend
+against an attacker restoring an arbitrary old client-disk snapshot.  It also
+does not benchmark per-challenge `fsync`, network transport, provider process
+reconstruction or the full C6 relation.  Those costs and application wiring
+receive no timing or production credit.
+
+The next gate is the complete model/embedding/compiler relation adapter into
+the six native chains and retained designated closure.  All full-chain byte,
+setup, prover, verifier, memory, session and hardware credits remain false; no
+pod was contacted.
 
 ## 1. Owner requirements
 

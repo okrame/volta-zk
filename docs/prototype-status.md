@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — PRIVATE-ENTROPY REPLAY DRIVER GREEN / DURABLE CHECKPOINT + MASK ALLOCATOR NEXT / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — DURABLE PRIVATE-ENTROPY JOURNAL GREEN / COMPLETE RELATION ADAPTER NEXT / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -116,17 +116,27 @@ increment.  Header/canonicality/truncation/trailing and provider-move
 mutations fail closed.  The modified PCS suite is **5/5** and the provenance
 audit retains **87 / 14 / 73** sources while adding endpoint guards.
 
-This is an in-process role-separated diagnostic and replay protocol, not an
-internal O(1) Plonky3 state serialization, durable disk checkpoint or network
-benchmark.  It does **not** yet prove the complete model, embedding or
+The append-only `C6ICJ1-v1` journal now binds that checkpoint to a validated
+current C6 pending attempt, both complete paired ranges and their durable
+client high-water.  Every fresh challenge and the provider-move-bound mask
+frontier is checksum-chained and `fsync`ed before release; the final artifact
+is sealed.  Midpoint recovery appends to **2,590 records** and a **208,204-B**
+final client-local journal, with one replayed mask event/frontier.  Wrong
+attempt binding, torn tail and checksum corruption reject.  The existing C6
+reservation has already burned the whole paired range, so any uncertain
+journal aborts the attempt and retry uses a new slot/range.
+
+This remains an in-process role-separated diagnostic and replay protocol, not
+an internal O(1) Plonky3 state serialization or network benchmark.  It does
+**not** yet prove the complete model, embedding or
 compiler relation, does not implement `C61NativeBackendVerifier`, and is
 never a production fallback.  The existing allocation/roofline values remain
 `credit:false`: the D14 number is component-level evidence, not a full
 certificate or production proof-size result.  No setup, timing, memory or
-hardware result is claimed.  Durable atomic checkpoint plus correlation/mask
-allocation, the C6 relation adapter and then full-T1 local integration remain
-next.  C6.1 stays local-only until a separate owner GO; no provider/pod
-contact is authorized.
+hardware result is claimed.  The complete C6 relation adapter and then
+full-T1 local integration remain next.  The frozen V1 exclusion of malicious
+client-disk snapshot rollback is unchanged.  C6.1 stays local-only until a
+separate owner GO; no provider/pod contact is authorized.
 The exact frozen T1 source/correction census now has a clean append-only
 record and pins `4,975,525` typed leaves.  Paired complete-source witness
 extraction is also clean at all `4,975,525` leaves per coordinate with no
@@ -723,6 +733,7 @@ its clean descendant closure.
 | C6.1 strict claimless WHIR codec | **C6AWP1-v1 STRICT D14 WIRE DIFFERENTIAL / EXACT DIGEST / MALFORMED-PAYLOAD GATES GREEN; PRIVACY REVIEW NEXT; NO POD** (2026-08-01) | Separate fixed-shape non-Serde grammar; verifier consumes decoded provider bytes; opening point and MAC key remain off provider-to-client wire; D27/D28 still formula-only | The exact D14 provider artifact is **378,496 B**, including the final 16-B C6AWH1 tag, at BLAKE3 `9dbaa663...7958bb`; the pre-tag WHIR portion is **378,480 B**. Both roles replay **26** provider moves, **52,608** semantic bytes, **52** base challenges and **2,536** query candidates (**10,560 B** client challenge wire). The **2,912-B** delta from immutable C6WIR1 D14 is entirely the preregistered 75-bit query profile; evaluation-to-tag remains net zero. Decoder lengths come from the dimension/config; frontier counts are capped before allocation. Header/version/dimension/reserved/body-length/truncation/trailing/noncanonical/frontier, target-key/base/tag/point/entropy/range mutations reject. Tests remain **3/3** and freeze formula maxima **1,085,464 B D27 / 1,172,652 B D28**. The audit still permits 14 vendor deltas and proves 73 files byte-identical. Full default workspace is green at **volta-pcs 196/0/1** and **volta-proto 149/0/1**; old-reference is **23/23**, ordinary/trace C6AWH1 are **6/6** each. Strict Clippy remains blocked by 24 historical out-of-scope findings and reports none in the modified C6.1 file. This earns only strict-codec/D14 component credit: privacy argument, resumable two-party entropy, durable masks, full C6 relation, production dimensions, timings and every full-chain credit remain open; no pod contacted. |
 | C6.1 claim-private designated view | **LOCAL EQUIVALENT ARGUMENT / EXECUTABLE D14 SIMULATOR / LEAN TAG IDENTITY GREEN; RESUMABLE DRIVER NEXT; NO POD** (2026-08-01) | Interactive honest-verifier scope; simulator consumes public context and verifier-owned keys but no real target/tag/provider correlations; computational Merkle/PCG terms explicit | Claimless affine replay removes all clear carried-claim observations; one fresh pad protects the single OOD answer per code-switch round; the base claim is one-time shifted; and the final tag is exactly `Delta*(combined-shifted)-gamma*target_key+mask_key`. The statistical privacy terms are **10/|Fp2| = 124.6780719 bits D27**, **11/|Fp2| = 124.5405684 bits D28**, conservative six-D28-chain **66/|Fp2| = 121.9556059 bits/certificate**, and informative 17-certificate **1122/|Fp2| = 117.8681430 bits**. The feature suite is **4/4**; Lean is **3,264 jobs / 381 total / 34 C6.1 audit targets**. The executable simulator uses a surrogate witness only to instantiate concrete Merkle trees and is not a full sparse-oracle simulator. BLAKE3 hiding for randomized codewords and AES-PCG pseudorandomness/domain separation are explicit assumptions; external cryptographic review is mandatory. No Fiat--Shamir, full-chain wire/time/setup/memory/production or hardware credit; no pod contacted. |
 | C6.1 private-entropy replay driver | **LOCAL ROLE-SEPARATED C6ICT1 REPLAY-TO-FRONTIER GREEN; DURABLE ATOMIC CHECKPOINT + MASK ALLOCATOR NEXT; NO POD** (2026-08-01) | Verifier broker exclusively owns seed/transcript/checkpoint; provider endpoint is channel-only; deterministic retry replays exact provider moves before releasing recorded challenges | D14 remains **378,496 B** at the same BLAKE3 with **26 / 52,608-B** provider moves, **2,588** total challenges and **10,560 B** client challenge wire. The strict verifier-local midpoint checkpoint is **73,360 B** at challenge **1,294** and adds **0 B** to provider-to-client certificate traffic. Resume produces a byte-identical proof and tape; changed provider moves and magic/version/reserved/tag/truncated/trailing mutations fail closed. The feature suite is **5/5**; source audit remains **87 imported / 14 allowed deltas / 73 byte-identical** and guards the seedless provider boundary. This is local replay, not internal P3 state serialization, crash-safe persistence, network timing or full relation integration. All full-chain/setup/time/hardware credits remain false; no pod contacted. |
+| C6.1 durable private-entropy journal | **C6ICJ1 APPEND-ONLY CHECKPOINT / MASK FRONTIER / RESERVED-RANGE BINDING GREEN; COMPLETE RELATION ADAPTER NEXT; NO POD** (2026-08-01) | Current validated pending attempt only; both paired ranges end at durable client high-water; each challenge and mask event fsyncs before release; malformed/uncertain journal burns the attempt | Midpoint D14 recovery replays **1,294** challenges and one provider-move-bound mask event, then seals a **208,204-B client-local / 2,590-record** journal (2,588 challenge records + mask + final seal). Artifact, tape and provider-to-client wire remain byte-identical at **378,496 B** and zero increment. The journal contains no verifier seed; it binds connection/setup/slot/nonce/predecessor/head/context and both full ranges. Wrong pending-attempt binding, torn tail and checksum-corrupt body reject. The whole range is already burned by existing C6 reservation; unsafe recovery aborts and retries with a new slot/range from the same accepted head. No malicious client-disk snapshot rollback, network/fsync timing, full relation, proof-size/setup/time/hardware credit; no pod contacted. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -797,6 +808,18 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-08-01 — C6.1 persists the interaction as a separate append-only
+  journal bound to the existing client reservation, not by widening the C6
+  client-state codec.**  The whole paired raw range is already atomically
+  advanced before provider exposure.  `C6ICJ1-v1` therefore records exact
+  challenge moves/values, a provider-move-bound mask frontier and the final
+  artifact seal, with checksum chaining and `fsync` before each release.  It
+  never allocates or partially reclaims correlations.  This preserves C6
+  state v3 compatibility and makes a missing/torn/corrupt journal a clean
+  abort-and-burn condition.  The cost is client-local append/fsync traffic;
+  its D14 final size is 208,204 B and no timing credit is taken.  The V1
+  exclusion of malicious local-disk snapshot rollback remains explicit.
 
 - **2026-08-01 — C6.1 adopts deterministic replay-to-frontier before any
   internal Plonky3 state-serialization work.**  The local `C6ICT1-v1` driver

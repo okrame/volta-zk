@@ -27,6 +27,10 @@ use rand_010::rngs::StdRng;
 use rand_010::{RngExt, SeedableRng};
 use volta_field::{Fp2, P};
 use volta_mac::{CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey};
+use volta_proto::c6::{
+    C6CacheHead, C6ClientAttempt, C6ClientState, C6CorrelationRange, C6PairedCorrelationRanges,
+    C6Workload,
+};
 
 use crate::c61_authenticated_whir::{
     finish_c61_authenticated_whir_base, prepare_c61_authenticated_whir_mask,
@@ -36,9 +40,10 @@ use crate::c61_authenticated_whir::{
     C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES,
 };
 use crate::c61_interactive_driver::{
-    spawn_c61_private_entropy_broker, C61InteractiveCheckpoint, C61InteractiveTape,
-    C61PrivateEntropyBrokerOutput, C61PrivateEntropyProverChallenger,
-    C61PrivateEntropyReplayChallenger,
+    create_c61_durable_checkpoint_prefix, open_c61_durable_checkpoint,
+    spawn_c61_durable_private_entropy_broker, spawn_c61_private_entropy_broker, C61DurableJournal,
+    C61InteractiveCheckpoint, C61InteractiveTape, C61PrivateEntropyBrokerOutput,
+    C61PrivateEntropyProverChallenger, C61PrivateEntropyReplayChallenger,
 };
 use crate::c61_public_compression::{C61NativeChainId, C61NativeComponent};
 use crate::c61_whir_reference::{
@@ -135,6 +140,16 @@ pub struct C61PrivateEntropyDriverDiagnostic {
     pub resumed_tape_identical: bool,
     pub mutated_checkpoint_rejected: bool,
     pub checkpoint_codec_mutations_rejected: bool,
+    pub durable_journal_bytes: usize,
+    pub durable_replayed_challenges: usize,
+    pub durable_replayed_mask_events: usize,
+    pub durable_mask_frontier: u32,
+    pub durable_record_count: u32,
+    pub durable_resume_artifact_identical: bool,
+    pub durable_resume_tape_identical: bool,
+    pub durable_wrong_binding_rejected: bool,
+    pub durable_torn_journal_rejected: bool,
+    pub durable_corrupt_journal_rejected: bool,
     pub provider_received_verifier_seed: bool,
     pub provider_received_checkpoint: bool,
     pub full_correlations: u64,
@@ -1000,6 +1015,7 @@ fn prove_private_entropy_provider_diagnostic(
     let mut correlations = CorrelationStream::new(pcg_seed);
     let prepared = prepare_c61_authenticated_whir_mask(id, mask_range, &mut correlations)
         .map_err(|error| error.to_string())?;
+    challenger.note_mask_frontier(1).map_err(|error| error.to_string())?;
     let output = prover.prove_claimless(
         data,
         &[(point.clone(), evaluation_p3)],
@@ -1063,15 +1079,28 @@ fn prove_private_entropy_diagnostic(
     id: C61NativeChainId,
     mask_range: C61AuthenticatedWhirMaskRange,
     checkpoint: C61InteractiveCheckpoint,
+    durable: Option<C61DurableJournal>,
 ) -> Result<C61PrivateEntropyFixture, String> {
     let num_variables = witness.num_variables();
     let evaluation = c61_volta_fp2_from_p3(witness.eval_base(&point));
     let target_key = VerifierKey::new(target_tag + delta * evaluation);
     let context_digest =
         c61_private_entropy_context_digest(&point, target_key, delta, id, mask_range);
-    let (challenger, broker_handle) =
-        spawn_c61_private_entropy_broker(verifier_seed, num_variables, context_digest, checkpoint)
-            .map_err(|error| error.to_string())?;
+    let (challenger, broker_handle) = match durable {
+        Some(journal) => spawn_c61_durable_private_entropy_broker(
+            verifier_seed,
+            num_variables,
+            context_digest,
+            journal,
+        ),
+        None => spawn_c61_private_entropy_broker(
+            verifier_seed,
+            num_variables,
+            context_digest,
+            checkpoint,
+        ),
+    }
+    .map_err(|error| error.to_string())?;
     let provider = prove_private_entropy_provider_diagnostic(
         witness,
         point,
@@ -1538,6 +1567,7 @@ pub fn run_c61_private_entropy_driver_diagnostic(
         id,
         mask_range,
         empty_checkpoint,
+        None,
     )?;
     if first.broker.ledger.values().sum::<u64>() != first.broker.transcript_bytes {
         return Err("C6ICT1 broker transcript ledger mismatch".to_owned());
@@ -1592,6 +1622,134 @@ pub fn run_c61_private_entropy_driver_diagnostic(
                 .is_err()
             && C61InteractiveCheckpoint::decode(&trailing).is_err()
     };
+
+    let durable_root = std::env::temp_dir().join(format!(
+        "volta-c61-durable-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| "system clock predates UNIX epoch".to_owned())?
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&durable_root)
+        .map_err(|error| format!("cannot create C6ICJ1 diagnostic directory: {error}"))?;
+    let journal_path = durable_root.join("interaction.c6icj1");
+    let head = C6CacheHead {
+        epoch: 0,
+        cache_len: 0,
+        cache_root: [0x31; 32],
+        producer_transition_digest: [0; 32],
+    };
+    let attempt = C6ClientAttempt {
+        slot: 0,
+        nonce: [0x32; 32],
+        setup_manifest_digest: [0x33; 32],
+        old_head_digest: head.digest(),
+        predecessor_certificate_digest: [0; 32],
+        correlation_ranges: C6PairedCorrelationRanges {
+            coordinates: [
+                C6CorrelationRange { stage: 1, start: 40_000, count: 100 },
+                C6CorrelationRange { stage: 1, start: 40_000, count: 100 },
+            ],
+        },
+        workload: C6Workload { prompt_tokens: 1, decode_tokens: 0, old_context: 0, new_context: 1 },
+    };
+    let durable_state = C6ClientState {
+        protocol_digest: [0x34; 32],
+        model_digest: [0x35; 32],
+        params_digest: [0x36; 32],
+        setup_manifest_digest: attempt.setup_manifest_digest,
+        connection_id: [0x37; 32],
+        head,
+        accepted_certificate_digest: [0; 32],
+        next_slot: 1,
+        raw_high_water: [40_100, 40_100],
+        pending_attempt: Some(attempt),
+    };
+    durable_state.validate().map_err(|error| error.to_string())?;
+    let checkpoint_mask_events: Vec<(usize, u32, [u8; 32])> = first
+        .broker
+        .mask_events
+        .iter()
+        .copied()
+        .filter(|(index, _, _)| *index <= checkpoint_frontier)
+        .collect();
+    let durable_journal = create_c61_durable_checkpoint_prefix(
+        &journal_path,
+        durable_state,
+        attempt,
+        checkpoint.clone(),
+        &checkpoint_mask_events,
+    )
+    .map_err(|error| error.to_string())?;
+    drop(durable_journal);
+    let durable_journal = open_c61_durable_checkpoint(
+        &journal_path,
+        durable_state,
+        attempt,
+        num_variables,
+        context_digest,
+    )
+    .map_err(|error| error.to_string())?;
+    let durable_resumed = prove_private_entropy_diagnostic(
+        witness.clone(),
+        point.clone(),
+        verifier_seed,
+        0xC6_1001,
+        pcg_seed,
+        delta,
+        target_tag,
+        id,
+        mask_range,
+        checkpoint.clone(),
+        Some(durable_journal),
+    )?;
+    let durable_resume_artifact_identical =
+        durable_resumed.artifact.payload == first.artifact.payload;
+    let durable_resume_tape_identical = durable_resumed.broker.tape == first.broker.tape;
+    let durable_journal_bytes = usize::try_from(
+        std::fs::metadata(&journal_path)
+            .map_err(|error| format!("cannot stat C6ICJ1 journal: {error}"))?
+            .len(),
+    )
+    .map_err(|_| "C6ICJ1 journal length exceeds usize".to_owned())?;
+    let durable_bytes = std::fs::read(&journal_path)
+        .map_err(|error| format!("cannot read C6ICJ1 diagnostic journal: {error}"))?;
+    let wrong_binding_state = C6ClientState { connection_id: [0x38; 32], ..durable_state };
+    let durable_wrong_binding_rejected = open_c61_durable_checkpoint(
+        &journal_path,
+        wrong_binding_state,
+        attempt,
+        num_variables,
+        context_digest,
+    )
+    .is_err();
+    let torn_path = durable_root.join("torn.c6icj1");
+    std::fs::write(&torn_path, &durable_bytes[..durable_bytes.len() - 1])
+        .map_err(|error| format!("cannot write torn C6ICJ1 journal: {error}"))?;
+    let durable_torn_journal_rejected = open_c61_durable_checkpoint(
+        &torn_path,
+        durable_state,
+        attempt,
+        num_variables,
+        context_digest,
+    )
+    .is_err();
+    let corrupt_path = durable_root.join("corrupt.c6icj1");
+    let mut corrupt_bytes = durable_bytes;
+    let corrupt_index = corrupt_bytes.len() / 2;
+    corrupt_bytes[corrupt_index] ^= 1;
+    std::fs::write(&corrupt_path, &corrupt_bytes)
+        .map_err(|error| format!("cannot write corrupt C6ICJ1 journal: {error}"))?;
+    let durable_corrupt_journal_rejected = open_c61_durable_checkpoint(
+        &corrupt_path,
+        durable_state,
+        attempt,
+        num_variables,
+        context_digest,
+    )
+    .is_err();
+
     let resumed = prove_private_entropy_diagnostic(
         witness.clone(),
         point.clone(),
@@ -1603,6 +1761,7 @@ pub fn run_c61_private_entropy_driver_diagnostic(
         id,
         mask_range,
         checkpoint.clone(),
+        None,
     )?;
     let resumed_artifact_identical = resumed.artifact.payload == first.artifact.payload;
     let resumed_tape_identical = resumed.broker.tape == first.broker.tape;
@@ -1621,9 +1780,13 @@ pub fn run_c61_private_entropy_driver_diagnostic(
             id,
             mask_range,
             mutated_checkpoint,
+            None,
         )
     }))
     .map_or(true, |result| result.is_err());
+
+    std::fs::remove_dir_all(&durable_root)
+        .map_err(|error| format!("cannot remove C6ICJ1 diagnostic directory: {error}"))?;
 
     Ok(C61PrivateEntropyDriverDiagnostic {
         num_variables,
@@ -1639,6 +1802,16 @@ pub fn run_c61_private_entropy_driver_diagnostic(
         resumed_tape_identical,
         mutated_checkpoint_rejected,
         checkpoint_codec_mutations_rejected,
+        durable_journal_bytes,
+        durable_replayed_challenges: durable_resumed.broker.replayed_challenges,
+        durable_replayed_mask_events: durable_resumed.broker.replayed_mask_events,
+        durable_mask_frontier: durable_resumed.broker.mask_frontier,
+        durable_record_count: durable_resumed.broker.durable_record_count,
+        durable_resume_artifact_identical,
+        durable_resume_tape_identical,
+        durable_wrong_binding_rejected,
+        durable_torn_journal_rejected,
+        durable_corrupt_journal_rejected,
         provider_received_verifier_seed: false,
         provider_received_checkpoint: false,
         full_correlations: first.full_correlations,
@@ -1786,6 +1959,16 @@ mod tests {
         assert!(report.resumed_tape_identical);
         assert!(report.mutated_checkpoint_rejected);
         assert!(report.checkpoint_codec_mutations_rejected);
+        assert_eq!(report.durable_journal_bytes, 208_204);
+        assert_eq!(report.durable_replayed_challenges, report.checkpoint_frontier);
+        assert_eq!(report.durable_replayed_mask_events, 1);
+        assert_eq!(report.durable_mask_frontier, 1);
+        assert_eq!(report.durable_record_count, 2_590);
+        assert!(report.durable_resume_artifact_identical);
+        assert!(report.durable_resume_tape_identical);
+        assert!(report.durable_wrong_binding_rejected);
+        assert!(report.durable_torn_journal_rejected);
+        assert!(report.durable_corrupt_journal_rejected);
         assert!(!report.provider_received_verifier_seed);
         assert!(!report.provider_received_checkpoint);
         assert_eq!(report.full_correlations, 1);

@@ -35,10 +35,11 @@ PUBLIC/DV DECOMPOSITION GREEN; NATIVE `C6PA1`/`C6RSC4-v4` FORMULA,
 SOUNDNESS, WIRE, MEMORY AND PRE-CODE TIME ROOFLINES GREEN; ADDITIVE LEAN +
 SCALED STRICT SEAM + INTERACTIVE CPU REFERENCE PCS/CODEC GREEN; CLEAR-TARGET
 OBSTRUCTION REGISTERED; `C6AWH1-v1` AUTHENTICATED-TARGET LEAN/BUDGET GREEN;
-MODIFIED PINNED PCS, PRIVATE-ENTROPY TWO-PARTY DRIVER, COMPLETE C6
-MODEL/EMBEDDING/COMPILER RELATION ADAPTER AND FULL-T1 INTEGRATION NEXT; NO
-C6.1 FULL-CHAIN PROOF-SIZE, TIMING, MEMORY OR HARDWARE CREDIT; HARD STOP
-BEFORE POD.**
+FEATURE-ONLY CLAIMLESS-AFFINE PINNED PCS FORK + IN-MEMORY DIFFERENTIAL +
+SOURCE-PROVENANCE AUDIT GREEN; STRICT CLAIMLESS CODEC, CLAIM-PRIVACY REVIEW,
+PRIVATE-ENTROPY TWO-PARTY DRIVER, COMPLETE C6 MODEL/EMBEDDING/COMPILER
+RELATION ADAPTER AND FULL-T1 INTEGRATION NEXT; NO C6.1 FULL-CHAIN PROOF-SIZE,
+TIMING, MEMORY OR HARDWARE CREDIT; HARD STOP BEFORE POD.**
 
 This document is the C6 plan of record.  It is a new descendant of the
 accepted C4/T1 `rate=1/4,Q=120` inline profile.  It does not reopen or rewrite
@@ -1159,6 +1160,86 @@ all clear claimed-sum observations on both roles, (2) remove `proof.evals`,
 authenticated form into C6AWH1, and (5) supply a claim-private simulator or
 equivalent argument for the amended transcript.  Until then there is no PCS,
 wire, timing, relation, production or pod credit.
+
+### 0.15 Feature-only claimless-affine pinned PCS differential
+
+The minimum local fork required by Section 0.14 is now implemented behind
+the non-default `c61-p3-authenticated-reference` feature.  It imports only
+the Plonky3 `sumcheck` and `whir` crates at the already frozen revision
+`66e290615de1858f2f6a804158064c406cda1c`.  The immutable
+`c61-p3-reference` feature continues to resolve the original git crates, so
+the historical `C6WIR1-v1` equations, codec and measurements cannot change.
+Neither fork crate is a production fallback.
+
+The selected fork call graph makes four load-bearing changes:
+
+1. its ZK-WHIR proof type has no evaluation vector and admits exactly one
+   authenticated opening target;
+2. both HVZK sumcheck batches use a claimless prover entry point, while the
+   verifier carries `AffineClaim { coefficient, constant }` through every
+   prelude and dropped-linear round without accepting or absorbing target
+   plaintext;
+3. public code-switch/query terms update only the affine constant, and the
+   base prover/verifier return the same public
+   `(combined, shifted_masked_claim, gamma)` closure instead of checking the
+   target in clear; and
+4. the provider consumes the non-cloneable C6AWH1 mask before WHIR, supplies
+   its plaintext shift only to its own prover, then consumes that prepared
+   mask exactly once to produce the designated 16-B ZeroOpen tag.  The client
+   lifts the final affine form onto its pre-existing target MAC key and checks
+   the same closure without receiving the target or mask.
+
+The legacy clear-binding sumcheck API remains inside the fork for upstream
+tests and comparison, but it is not reachable from the exported claimless
+WHIR path.  Source provenance is fail-closed:
+`rust/third_party/C61_P3_UPSTREAM_SHA256SUMS` pins all **87** imported Rust
+sources; `scripts/audit_c61_p3_fork.py` permits exactly **14** named protocol
+deltas (**4 sumcheck + 10 WHIR**), requires the other **73** files to be
+byte-identical to upstream, rejects extra/missing sources and generated
+library lockfiles, and checks the central claimless source guards.
+
+The low-level fork also bypasses the original PCS adapter which used to
+observe the verifier-owned opening point.  The first integration attempt
+retained that adapter's implicit `2*D` public-limb skip without explicitly
+emitting the point; provider and verifier replay still matched, but the first
+provider field observations could then be misclassified as free client data.
+That attempt is refused.  The corrected `new_claimless` challenger disables
+all implicit skips, requires one typed `observe_public_point` after the root
+and before the first native challenge on both roles, and fails closed unless
+the complete statement transition occurred.  The source/runtime guard pins
+both calls, so matching transcripts alone are no longer accepted as evidence
+of correct message ownership.
+
+The in-memory D14 differential is **3/3 green**.  One test proves that
+provider and verifier obtain identical affine and base closures, byte ledger
+and transcript length before the designated MAC check; the proof object has
+no clear evaluation and consumes exactly one full correlation.  A source
+guard pins the two claimless sumcheck calls and affine verifier route.  The
+negative test rejects a wrong target key, changed base masked claim, opening
+point, verifier entropy and C6AWH1 range.  This is a differential over the
+real fork arithmetic and Merkle checks, but it is deliberately an in-memory,
+single-process diagnostic with a private seed replayed separately by the two
+roles.
+
+The same candidate snapshot passes the full default Rust workspace, the
+immutable `c61-p3-reference` C6.1 filter at **23/23**, the ordinary and
+`c6-trace` standalone C6AWH1 filters at **6/6**, and the modified-fork filter
+at **3/3**.  `cargo fmt --package volta-pcs -- --check` is green; vendored
+sources retain their pinned upstream formatting and are governed by the hash
+audit instead.  Strict crate-wide Clippy remains blocked by pre-existing
+findings outside the changed C6.1 files and is not misreported as a pass.
+
+No strict codec exists yet for the new proof type, so this checkpoint earns
+no measured certificate bytes and does not inherit the old `C6WIR1-v1` byte
+count.  It also supplies neither a transcript simulator/equivalent
+claim-privacy proof, a resumable message-by-message private-entropy driver,
+durable three-mask allocation, `C61NativeBackendVerifier`, the complete
+model/embedding/compiler relation, D27/D28 execution nor timing.  All setup,
+proof-size, soundness-backend, prover, verifier, memory, session, production
+and hardware credits remain false.  The ordered next gate is the strict
+claimless codec and exact D14 wire differential, followed by privacy review
+and the resumable two-party driver before any full-chain integration.  No pod
+was contacted.
 
 ## 1. Owner requirements
 

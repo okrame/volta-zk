@@ -10,6 +10,10 @@ members = [
     "volta-pcs",
     "volta-bench",
 ]
+exclude = [
+    "third_party/p3-sumcheck-c61",
+    "third_party/p3-whir-c61",
+]
 
 [workspace.package]
 version = "0.0.0"

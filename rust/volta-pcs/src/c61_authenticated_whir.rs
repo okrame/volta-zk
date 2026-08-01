@@ -163,6 +163,26 @@ pub struct C61AuthenticatedWhirProverClosure {
     pub mask_ordinal: u32,
 }
 
+/// One consumed provider mask waiting for the WHIR base case.  It is neither
+/// cloneable nor serializable; finishing the closure consumes it exactly once.
+#[derive(Debug)]
+pub struct C61AuthenticatedWhirPreparedMask {
+    value: Fp2,
+    authenticated: ProverAuthed,
+    mask_domain: u64,
+    mask_ordinal: u32,
+}
+
+impl C61AuthenticatedWhirPreparedMask {
+    pub fn shifted_masked_claim(&self, masked_claim: Fp2) -> Fp2 {
+        masked_claim + self.value
+    }
+
+    pub fn value(&self) -> Fp2 {
+        self.value
+    }
+}
+
 /// Typed inputs owned by the provider role.  Keeping the six algebraic and
 /// allocation fields together prevents positional swaps at the WHIR adapter
 /// boundary.
@@ -172,6 +192,14 @@ pub struct C61AuthenticatedWhirProverInput {
     pub mask_range: C61AuthenticatedWhirMaskRange,
     pub combined: Fp2,
     pub masked_claim: Fp2,
+    pub gamma: Fp2,
+    pub target: ProverAuthed,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C61AuthenticatedWhirProverFinishInput {
+    pub combined: Fp2,
+    pub shifted_masked_claim: Fp2,
     pub gamma: Fp2,
     pub target: ProverAuthed,
 }
@@ -241,13 +269,13 @@ impl C61AuthenticatedWhirAffineClaim {
 
 /// Consume one uncorrected full VOLE correlation, shift WHIR's base claim and
 /// open only the resulting authenticated zero residual.
-pub fn prove_c61_authenticated_whir_base(
-    input: C61AuthenticatedWhirProverInput,
+pub fn prepare_c61_authenticated_whir_mask(
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
     correlations: &mut CorrelationStream,
-    transcript: &mut Transcript,
-) -> Result<C61AuthenticatedWhirProverClosure> {
-    let mask_domain = input.mask_range.correlation_domain(input.id)?;
-    let mask_ordinal = input.mask_range.mask_ordinal(input.id)?;
+) -> Result<C61AuthenticatedWhirPreparedMask> {
+    let mask_domain = mask_range.correlation_domain(id)?;
+    let mask_ordinal = mask_range.mask_ordinal(id)?;
     let correlation = correlations
         .draw_fulls(mask_domain, 1)
         .into_iter()
@@ -255,10 +283,22 @@ pub fn prove_c61_authenticated_whir_base(
         .ok_or_else(|| C61AuthenticatedWhirError::new("C6AWH1 missing full correlation"))?;
     let mask_value = correlation.x;
     let mask = correlation.authenticate(mask_value);
-    let shifted_masked_claim = input.masked_claim + mask_value;
-    let residual = ProverAuthed::from_public(input.combined - shifted_masked_claim)
+    Ok(C61AuthenticatedWhirPreparedMask {
+        value: mask_value,
+        authenticated: mask,
+        mask_domain,
+        mask_ordinal,
+    })
+}
+
+pub fn finish_c61_authenticated_whir_base(
+    prepared: C61AuthenticatedWhirPreparedMask,
+    input: C61AuthenticatedWhirProverFinishInput,
+    transcript: &mut Transcript,
+) -> Result<C61AuthenticatedWhirProverClosure> {
+    let residual = ProverAuthed::from_public(input.combined - input.shifted_masked_claim)
         .sub(input.target.scale(input.gamma))
-        .add(mask);
+        .add(prepared.authenticated);
     if residual.x != Fp2::ZERO {
         return Err(C61AuthenticatedWhirError::new(
             "C6AWH1 honest WHIR base identity does not close",
@@ -266,7 +306,31 @@ pub fn prove_c61_authenticated_whir_base(
     }
     let proof =
         C61AuthenticatedWhirBaseProof { zero_open_tag: zero_open_prover(&residual, transcript) };
-    Ok(C61AuthenticatedWhirProverClosure { shifted_masked_claim, proof, mask_domain, mask_ordinal })
+    Ok(C61AuthenticatedWhirProverClosure {
+        shifted_masked_claim: input.shifted_masked_claim,
+        proof,
+        mask_domain: prepared.mask_domain,
+        mask_ordinal: prepared.mask_ordinal,
+    })
+}
+
+pub fn prove_c61_authenticated_whir_base(
+    input: C61AuthenticatedWhirProverInput,
+    correlations: &mut CorrelationStream,
+    transcript: &mut Transcript,
+) -> Result<C61AuthenticatedWhirProverClosure> {
+    let prepared = prepare_c61_authenticated_whir_mask(input.id, input.mask_range, correlations)?;
+    let shifted_masked_claim = prepared.shifted_masked_claim(input.masked_claim);
+    finish_c61_authenticated_whir_base(
+        prepared,
+        C61AuthenticatedWhirProverFinishInput {
+            combined: input.combined,
+            shifted_masked_claim,
+            gamma: input.gamma,
+            target: input.target,
+        },
+        transcript,
+    )
 }
 
 /// Verifier half of the same linear residual.  It never receives the target

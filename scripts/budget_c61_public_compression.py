@@ -425,8 +425,9 @@ def build_report() -> dict[str, Any]:
     report: dict[str, Any] = {
         "profile": "C6.1-public-compression-reference-v3",
         "verdict": (
-            "CLAIMLESS_AFFINE_TARGET_LEAN_AND_RUST_SEAM_GREEN__MODIFIED_PCS_AND_"
-            "C6_RELATION_ADAPTER_REQUIRED__NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
+            "CLAIMLESS_AFFINE_MODIFIED_PCS_IN_MEMORY_DIFFERENTIAL_GREEN__CODEC_"
+            "PRIVACY_REVIEW_AND_C6_RELATION_ADAPTER_REQUIRED__NO_FULL_CHAIN_OR_"
+            "BENCHMARK_CREDIT"
         ),
         "credit": {
             "proof_size": False,
@@ -492,8 +493,9 @@ def build_report() -> dict[str, Any]:
         "selected_native_candidate": {
             "name": "C6PA1-native-HVZK-plus-C6RSC4-v4",
             "status": (
-                "C6AWH1_CLAIMLESS_AFFINE_SEAM_GREEN__MODIFIED_PCS_AND_"
-                "C6_RELATION_ADAPTER_PENDING__NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
+                "C6AWH1_CLAIMLESS_AFFINE_MODIFIED_PCS_IN_MEMORY_GREEN__CODEC_"
+                "PRIVACY_REVIEW_AND_C6_RELATION_ADAPTER_PENDING__NO_FULL_CHAIN_"
+                "OR_BENCHMARK_CREDIT"
             ),
             "statement": (
                 "one response conditioned on an already accepted predecessor head"
@@ -590,13 +592,23 @@ def build_report() -> dict[str, Any]:
                 "authenticated_target_adapter": {
                     "name": "C6AWH1-v1",
                     "status": (
-                        "Claimless affine-target Lean and standalone Rust MAC "
-                        "seams green; modified pinned PCS and backend integration pending"
+                        "Claimless affine-target Lean/MAC seams and feature-only "
+                        "modified pinned PCS in-memory differential green; strict "
+                        "codec, privacy review and backend integration pending"
                     ),
                     "focused_tests_ordinary": 6,
                     "focused_tests_c6_trace": 6,
-                    "clear_claim_observations_removed": False,
-                    "affine_full_verifier_replay_pending": True,
+                    "in_memory_modified_pcs_tests": 3,
+                    "clear_claim_observations_removed": True,
+                    "clear_claim_observations_scope": (
+                        "selected claimless WHIR call graph; legacy sumcheck "
+                        "binding API remains but is unreachable from that path"
+                    ),
+                    "affine_full_verifier_replay_pending": False,
+                    "explicit_root_then_point_binding": True,
+                    "implicit_point_limb_skip_disabled_on_claimless_path": True,
+                    "strict_claimless_codec_pending": True,
+                    "resumable_private_entropy_driver_pending": True,
                     "clear_evaluation_bytes_removed_per_chain": 16,
                     "zero_open_tag_bytes_added_per_chain": 16,
                     "provider_to_client_net_bytes_per_chain": 0,
@@ -616,8 +628,9 @@ def build_report() -> dict[str, Any]:
                     "claim_privacy_backend_proof_pending": True,
                 },
                 "relation_adapter": (
-                    "pending: claimless affine modified PCS must return an authenticated target; "
-                    "the complete model/embedding/compiler relation is absent"
+                    "the modified PCS now returns an affine target closure and C6AWH1 "
+                    "authenticates it in memory; the complete model/embedding/compiler "
+                    "relation remains absent"
                 ),
                 "d28": {
                     "configured_security_target_bits": C61_NATIVE_PUBLIC_PCS_BITS,

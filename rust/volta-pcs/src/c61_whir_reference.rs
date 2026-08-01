@@ -71,8 +71,8 @@ pub type C61P3Fp2 = BinomialExtensionField<Goldilocks, 2>;
 type C61SizingChallenger = SerializingChallenger64<Goldilocks, HashChallenger<u8, Blake3, 32>>;
 type C61FieldHash = SerializingHasher<Blake3>;
 type C61Compress = CompressionFunctionFromHasher<Blake3, 2, 32>;
-type C61Mmcs = MerkleTreeMmcs<Goldilocks, u8, C61FieldHash, C61Compress, 2, 32>;
-type C61Commitment = MerkleCap<Goldilocks, [u8; 32]>;
+pub(crate) type C61Mmcs = MerkleTreeMmcs<Goldilocks, u8, C61FieldHash, C61Compress, 2, 32>;
+pub(crate) type C61Commitment = MerkleCap<Goldilocks, [u8; 32]>;
 type C61MultiProof = PrunedMerklePaths<u8, 32>;
 type C61Proof = ZkWhirProof<Goldilocks, C61P3Fp2, C61Mmcs>;
 
@@ -111,6 +111,9 @@ pub struct C61WhirInteractionStats {
 struct C61InteractiveState<'a> {
     transcript: &'a mut Transcript,
     initial_root_seen: bool,
+    public_statement_bound: bool,
+    #[allow(dead_code)]
+    public_point_num_variables: usize,
     public_base_observations_to_skip: usize,
     pending_provider_bytes: u64,
     stats: C61WhirInteractionStats,
@@ -121,7 +124,7 @@ struct C61InteractiveState<'a> {
 /// proof to derive a Fiat--Shamir challenge.  Each `sample*` consumes fresh
 /// verifier entropy only after any pending prover observations have been
 /// appended.  This models round order; it is not a provider-side transport.
-struct C61InteractiveChallenger<'a> {
+pub(crate) struct C61InteractiveChallenger<'a> {
     state: Arc<Mutex<C61InteractiveState<'a>>>,
 }
 
@@ -132,19 +135,65 @@ impl Clone for C61InteractiveChallenger<'_> {
 }
 
 impl<'a> C61InteractiveChallenger<'a> {
-    fn new(transcript: &'a mut Transcript, num_variables: usize) -> Self {
+    pub(crate) fn new(transcript: &'a mut Transcript, num_variables: usize) -> Self {
+        Self::new_with_point_mode(transcript, num_variables, true)
+    }
+
+    /// Low-level claimless calls bind the verifier point through an explicit
+    /// typed method, so no future provider algebra observation may be
+    /// mistaken for an implicit adapter-owned point limb.
+    #[allow(dead_code)]
+    pub(crate) fn new_claimless(transcript: &'a mut Transcript, num_variables: usize) -> Self {
+        Self::new_with_point_mode(transcript, num_variables, false)
+    }
+
+    fn new_with_point_mode(
+        transcript: &'a mut Transcript,
+        num_variables: usize,
+        implicit_adapter_point: bool,
+    ) -> Self {
         Self {
             state: Arc::new(Mutex::new(C61InteractiveState {
                 transcript,
                 initial_root_seen: false,
+                public_statement_bound: false,
+                public_point_num_variables: num_variables,
                 // The opening point is already a verifier message.  The P3
                 // adapter observes it before the claimed evaluation; do not
                 // mischarge it as provider traffic.
-                public_base_observations_to_skip: 2 * num_variables,
+                public_base_observations_to_skip: if implicit_adapter_point {
+                    2 * num_variables
+                } else {
+                    0
+                },
                 pending_provider_bytes: 0,
                 stats: C61WhirInteractionStats::default(),
             })),
         }
+    }
+
+    /// Bind one verifier-owned claimless opening point after the commitment
+    /// and before the first native challenge.  It is client-to-provider
+    /// statement data, so it is neither provider payload nor a skipped
+    /// generic provider observation.
+    #[allow(dead_code)]
+    pub(crate) fn observe_public_point(&mut self, point: &Point<C61P3Fp2>) -> ReferenceResult<()> {
+        let mut state = self.state.lock().expect("C6WIR1 challenger mutex poisoned");
+        if !state.initial_root_seen {
+            return Err(C61WhirReferenceError::new(
+                "C6WIR1 opening point must follow the initial commitment",
+            ));
+        }
+        if state.public_base_observations_to_skip != 0 || state.public_statement_bound {
+            return Err(C61WhirReferenceError::new(
+                "C6WIR1 opening point mode or multiplicity mismatch",
+            ));
+        }
+        if point.num_variables() != state.public_point_num_variables {
+            return Err(C61WhirReferenceError::new("C6WIR1 opening point arity mismatch"));
+        }
+        state.public_statement_bound = true;
+        Ok(())
     }
 
     fn flush_pending(state: &mut C61InteractiveState<'_>) {
@@ -156,8 +205,13 @@ impl<'a> C61InteractiveChallenger<'a> {
         state.pending_provider_bytes = 0;
     }
 
-    fn finish(&self, payload_bytes: usize) -> ReferenceResult<C61WhirInteractionStats> {
+    pub(crate) fn finish(&self, payload_bytes: usize) -> ReferenceResult<C61WhirInteractionStats> {
         let mut state = self.state.lock().expect("C6WIR1 challenger mutex poisoned");
+        if !state.public_statement_bound || state.public_base_observations_to_skip != 0 {
+            return Err(C61WhirReferenceError::new(
+                "C6WIR1 opening point was not completely bound before native challenges",
+            ));
+        }
         Self::flush_pending(&mut state);
         let payload_bytes = u64::try_from(payload_bytes)
             .map_err(|_| C61WhirReferenceError::new("C6WIR1 payload length exceeds u64"))?;
@@ -174,6 +228,20 @@ impl<'a> C61InteractiveChallenger<'a> {
         state.stats.provider_payload_bytes = payload_bytes;
         Ok(state.stats)
     }
+
+    /// Fail closed when a low-level caller bypasses the adapter without
+    /// replaying the verifier-owned opening point after the initial root.
+    #[allow(dead_code)]
+    pub(crate) fn ensure_public_statement_bound(&self) -> ReferenceResult<()> {
+        let state = self.state.lock().expect("C6WIR1 challenger mutex poisoned");
+        if state.public_statement_bound && state.public_base_observations_to_skip == 0 {
+            Ok(())
+        } else {
+            Err(C61WhirReferenceError::new(
+                "C6WIR1 opening point was not completely bound before native challenges",
+            ))
+        }
+    }
 }
 
 impl CanObserve<Goldilocks> for C61InteractiveChallenger<'_> {
@@ -181,6 +249,9 @@ impl CanObserve<Goldilocks> for C61InteractiveChallenger<'_> {
         let mut state = self.state.lock().expect("C6WIR1 challenger mutex poisoned");
         if state.initial_root_seen && state.public_base_observations_to_skip > 0 {
             state.public_base_observations_to_skip -= 1;
+            if state.public_base_observations_to_skip == 0 {
+                state.public_statement_bound = true;
+            }
             return;
         }
         state.pending_provider_bytes += C61_WHIRA1_FP_BYTES as u64;
@@ -1069,7 +1140,7 @@ pub fn decode_c61_whir_artifact(
     decode_c61_whir_artifact_inner(bytes, expected_num_variables, true)
 }
 
-fn c61_reference_mmcs() -> C61Mmcs {
+pub(crate) fn c61_reference_mmcs() -> C61Mmcs {
     C61Mmcs::new(C61FieldHash::new(Blake3 {}), C61Compress::new(Blake3 {}), 0)
 }
 

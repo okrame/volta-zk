@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — CLAIMLESS AFFINE TARGET LEAN/RUST SEAM GREEN / MODIFIED PCS NEXT / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — CLAIMLESS-AFFINE PINNED PCS IN-MEMORY DIFFERENTIAL + PROVENANCE AUDIT GREEN / CODEC AND PRIVACY REVIEW NEXT / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -19,7 +19,7 @@ HVZK chains.  Its registered ceilings/rooflines are **16,342,103 B** per
 certificate, **101,085,470 B** setup plus first certificate,
 **14.5038184344 s** provider and **4.565672390 s** four-thread verifier;
 complete per-certificate soundness is **119.668253692 bits**.  The additive
-Lean package is green at **3,264 jobs / 28 new audited C6.1 targets** and the
+Lean package is green at **3,264 jobs / 33 new audited C6.1 targets** and the
 strict scaled `C6PA1-v1`/`C6RSC4-v4` Rust seam remains green.
 
 The next append-only CPU-reference checkpoint now pins Plonky3 `p3-whir`
@@ -66,6 +66,16 @@ the last recorded full workspace remains green at **volta-pcs 195/0/1**,
 and the joint C6.1/P3-reference filter is **23/23**.  It remains deliberately
 disconnected from `C61NativeBackendVerifier`.
 
+A feature-only local fork now removes the evaluation field, uses the
+claimless entry point in both sumcheck batches, replays the verifier target
+affinely through every batch/code-switch step, returns the public base
+closure and connects it to the existing C6AWH1 MAC check.  Its D14 in-memory
+differential and mutation suite are **3/3 green**.  A reproducible provenance
+audit pins **87** imported Rust sources at revision
+`66e290615de1858f2f6a804158064c406cda1c`, permits exactly **14** named
+deltas and proves the other **73** byte-identical.  The original
+`c61-p3-reference` dependency remains immutable.
+
 It does **not** yet prove the complete model, embedding or compiler relation,
 does not implement `C61NativeBackendVerifier`, and is never a production fallback.
 The candidate challenge count is seed-dependent because distinct queries use
@@ -74,12 +84,12 @@ upfront Fiat--Shamir seed.  The current monolithic upstream API is exercised
 as two deterministic single-process replays under the same private diagnostic
 verifier seed; a production round state machine must never disclose that seed
 to the provider.  The existing allocation/roofline values therefore remain
-`credit:false`: no full-chain proof size, setup, timing, memory or hardware
-result is claimed.  The claimless affine modified PCS, resumable private-entropy
-two-party driver, C6 relation adapter and then full-T1 local integration are
-next.  Full `cargo test --workspace` and
-the six focused feature tests are green.  C6.1 remains local-only until a
-separate owner GO; no provider/pod contact is authorized.
+`credit:false`: no strict claimless codec, measured proof size, setup,
+timing, memory or hardware result is claimed.  Claim-privacy
+simulation/equivalent review, the resumable private-entropy two-party driver,
+durable mask allocation, the C6 relation adapter and then full-T1 local
+integration remain next.  C6.1 stays local-only until a separate owner GO;
+no provider/pod contact is authorized.
 The exact frozen T1 source/correction census now has a clean append-only
 record and pins `4,975,525` typed leaves.  Paired complete-source witness
 extraction is also clean at all `4,975,525` leaves per coordinate with no
@@ -672,6 +682,7 @@ its clean descendant closure.
 | C6.1 authenticated WHIR target seam | **C6AWH1 DEVIATION / ADDITIVE LEAN / EXECUTABLE BUDGET GREEN; MODIFIED PINNED PCS NEXT; NO POD** (2026-08-01) | One fresh authenticated mask per native chain; clear target forbidden; designated ZeroOpen closes the masked base identity; immutable C6WIR1 remains reference-only | The upstream clear evaluation and base identity obstruct direct integration. `C6AWH1-v1` replaces its `16-B` evaluation with one `16-B` ZeroOpen tag, for **zero net provider-to-client bytes**. Six chains consume **3 additional full correlations/tape**, moving use to **625/39,116** and leaving **38,491/tape** without enlarging setup/raw attempt. The public PCS setting is frozen at **75 bits** so `2^-75+1/|Fp2|<2^-74`; two chains remain `<2^-148`. Formula-only strict maxima are **1,085,464 B D27 / 1,172,652 B D28** at 187 mask queries. Lean stays **3,264 jobs** and `Audit.lean` is **375 total / 28 C6.1**, adding seven target-seam theorems with only standard axioms. Claim-private WHIR simulation, modified prover/verifier, two-party private-entropy driver and complete relation remain hard stops; no proof-size/time/setup/production credit and no pod contact. |
 | C6.1 standalone authenticated-target Rust seam | **STRICT 16-B TAG / SIX-CHAIN CORRELATION AND DOMAIN DIFFERENTIAL GREEN; MODIFIED PINNED PCS NEXT; NO POD** (2026-08-01) | Lean-mirroring MAC closure only; exact three-mask typed range per tape; no native backend trait implementation or claim-private PCS credit | Provider and verifier derive the same authenticated residual without exposing target/mask plaintext to the client. The tag codec is canonical **16 B**, for **0 B net** against the removed evaluation. Domains injectively bind stage, slot, u32 range start, component and repetition below reserved MAC bits; ordinals are fixed to `{0,1,2}`. Ordinary and `c6-trace` focused suites are **5/5** each; six-chain schedule audits match at **3 full correlations/3 domains per tape**. Public/base/key/tag/component/stage/slot/range and codec mutations reject; an invalid base identity burns its mask, same-domain replay fails, and retry needs a new slot/range. Full default workspace is green (**volta-pcs 195/0/1; volta-proto 149/0/1**); joint C6.1/P3-reference filter is **22/22**. The pinned WHIR code remains unmodified and target-revealing, so no `C61NativeBackendVerifier`, proof-size, time, setup/session or production credit; no pod contacted. |
 | C6.1 claimless affine-target correction | **SECOND CLEAR-TARGET LEAK FOUND BEFORE VENDOR; AFFINE LEAN/RUST SEAM GREEN; MODIFIED PCS STILL PENDING; NO POD** (2026-08-01) | Never observe a carried sumcheck claim; client replays it as `a*target+b`; existing C6AWH1 masks only the final base closure | Source audit found that upstream `into_zk_sumcheck`/`verify_claim` observes the current claimed sum before every batch, so deleting `proof.evals` and shifting only the base claim is insufficient. The corrected prelude is `(a,b)<-(eps*a,eps*b+mu)`; a dropped-linear round is `a'=gamma*a`, `b'=c0+gamma*(b-2*c0-tail1)+tailGamma`; public code-switch terms add only to `b`. Five additive Lean theorems prove those identities and the authenticated lift. The typed Rust accumulator matches four plaintext rounds and preserves the MAC relation; focused ordinary and `c6-trace` suites are **6/6**. This correction changes no registered byte/security allocation and earns no backend credit until a reviewed fork removes every clear claim observation, replays the complete verifier affinely, connects C6AWH1 and supplies the amended privacy argument. No pod contacted. |
+| C6.1 claimless-affine pinned PCS fork | **MINIMAL FEATURE-ONLY FORK / IN-MEMORY D14 DIFFERENTIAL / MUTATIONS / PROVENANCE AUDIT GREEN; STRICT CODEC + PRIVACY REVIEW NEXT; NO POD** (2026-08-01) | Original `c61-p3-reference` remains immutable; new `c61-p3-authenticated-reference` carries one response-local target only as provider plaintext plus client MAC key, never as public proof/claim | The fork removes the ZK proof evaluation vector, routes both sumcheck batches through claimless proving, replays the complete verifier target as `a*target+b`, applies public code-switch offsets only to `b`, returns the provider/verifier-identical public base closure and feeds it into C6AWH1. D14 tests are **3/3**: honest affine/base/transcript/MAC closure, source-call-graph guard, and fail-closed target-key/base-claim/point/verifier-seed/range mutations. A pre-commit audit caught and refused reuse of the old adapter's implicit `2*D` point-limb skip; claimless mode now has zero implicit skips and requires root-then-typed-point binding on both roles before native challenges. The provenance audit pins **87** Rust sources at Plonky3 `66e2906...a1c`, allows exactly **14** deltas and requires the other **73** byte-identical; standalone library lockfiles/targets are forbidden. Full default workspace, old-reference **23/23**, ordinary/trace seam **6/6** and scoped VOLTA format are green; strict crate-wide Clippy is still blocked only by historical out-of-scope findings. This is in-memory and single-process: there is no strict claimless codec, privacy simulator/equivalent proof, resumable private-entropy driver, durable allocator connection, complete C6 relation, D27/D28 measurement or timing. All full-chain credits remain false; no pod contacted. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -746,6 +757,39 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-08-01 — the modified pinned PCS reaches an in-memory differential,
+  not a wire or privacy verdict.** A non-default local fork of only Plonky3
+  `sumcheck` and `whir` at `66e290615de1858f2f6a804158064c406cda1c`
+  now removes the evaluation field from the selected ZK proof, uses claimless
+  proving in both batches and carries the verifier claim affinely through all
+  sumcheck and public code-switch transitions. The public base closure is
+  identical on both roles and closes through the already registered C6AWH1
+  mask and ZeroOpen.
+
+  The fork is feature-only; the immutable `c61-p3-reference` still uses the
+  original git dependencies. A committed SHA-256 census covers all **87**
+  upstream Rust sources, permits exactly **14** listed delta files and checks
+  that the remaining **73** are byte-identical. The D14 differential and
+  mutations are **3/3 green**; the full default workspace, old-reference
+  **23/23**, ordinary/trace C6AWH1 **6/6** and scoped format checks also pass.
+  Strict crate-wide Clippy remains blocked by historical findings outside the
+  changed files. Because the new proof has no strict codec and
+  no simulator/equivalent privacy argument yet, the old C6WIR1 bytes cannot be
+  inherited and no proof-size, soundness-backend, setup, timing, memory,
+  session or production credit changes. A resumable private-entropy driver,
+  durable allocator connection and complete C6 relation remain open. No pod
+  contacted.
+
+  A pre-commit call-graph audit also rejected the first low-level adapter
+  wiring: it inherited the original adapter's implicit `2*D` point-limb skip
+  even though the point observation had been bypassed. Matching single-
+  process transcripts were therefore insufficient. The corrected claimless
+  challenger has zero implicit skips, accepts exactly one typed public point
+  after the initial root, and requires that state before the first native
+  proof can be credited. Both provider and verifier calls plus the fail-closed
+  guard are pinned by source and runtime tests; no result from the refused
+  wiring is retained.
 
 - **2026-08-01 — clear claimed-sum observations require affine replay; a
   base-only C6AWH1 patch is refused.** Before creating a local fork, source

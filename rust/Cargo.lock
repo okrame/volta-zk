@@ -703,6 +703,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "p3-sumcheck-c61"
+version = "0.6.0-c61.1"
+dependencies = [
+ "itertools 0.15.0",
+ "p3-challenger",
+ "p3-commit",
+ "p3-dft",
+ "p3-field",
+ "p3-matrix",
+ "p3-maybe-rayon",
+ "p3-multilinear-util",
+ "p3-util",
+ "p3-zk-codes",
+ "rand 0.10.2",
+ "serde",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
 name = "p3-symmetric"
 version = "0.6.0"
 source = "git+https://github.com/Plonky3/Plonky3.git?rev=66e290615de1858f2f2f6a804158064c406cda1c#66e290615de1858f2f2f6a804158064c406cda1c"
@@ -740,6 +760,33 @@ dependencies = [
  "p3-multilinear-util",
  "p3-security",
  "p3-sumcheck",
+ "p3-symmetric",
+ "p3-util",
+ "p3-zk-codes",
+ "rand 0.10.2",
+ "serde",
+ "spin",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
+name = "p3-whir-c61"
+version = "0.6.0-c61.1"
+dependencies = [
+ "hashbrown",
+ "itertools 0.15.0",
+ "libm",
+ "p3-challenger",
+ "p3-commit",
+ "p3-dft",
+ "p3-field",
+ "p3-matrix",
+ "p3-maybe-rayon",
+ "p3-merkle-tree",
+ "p3-multilinear-util",
+ "p3-security",
+ "p3-sumcheck-c61",
  "p3-symmetric",
  "p3-util",
  "p3-zk-codes",
@@ -1209,6 +1256,7 @@ dependencies = [
  "p3-sumcheck",
  "p3-symmetric",
  "p3-whir",
+ "p3-whir-c61",
  "rand 0.10.2",
  "rand 0.8.6",
  "rayon",

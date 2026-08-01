@@ -31,9 +31,10 @@ LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 **C6.1 amendment status (2026-08-01): OWNER REQUIREMENTS, METRIC
 BOUNDARIES, CRYPTOGRAPHIC SEAM AND ORDERED GATES FROZEN; EXACT BYTE/OPERATION
-PUBLIC/DV DECOMPOSITION GREEN; NATIVE PROTOCOL FORMULA AND PRE-CODE TIME
-ROOFLINE NEXT; NO C6.1 PROOF, TIMING OR HARDWARE CREDIT; HARD STOP BEFORE
-POD.**
+PUBLIC/DV DECOMPOSITION GREEN; NATIVE `C6PA1`/`C6RSC4-v4` FORMULA,
+SOUNDNESS, WIRE, MEMORY AND PRE-CODE TIME ROOFLINES GREEN; ADDITIVE
+FORMALIZATION NEXT; NO C6.1 PROOF-SIZE, TIMING, MEMORY OR HARDWARE CREDIT;
+HARD STOP BEFORE POD.**
 
 This document is the C6 plan of record.  It is a new descendant of the
 accepted C4/T1 `rate=1/4,Q=120` inline profile.  It does not reopen or rewrite
@@ -439,6 +440,255 @@ checkpoint must therefore provide:
 
 Failure of any one remains a pre-code obstruction; the allocation screen
 alone is not authorization to formalize or implement the proof.
+
+### 0.8 Gate-2 closure: native `C6PA1` plus sparse-adjoint `C6RSC4-v4`
+
+This checkpoint supersedes the open items in Section 0.7 without rewriting
+that decomposition history.  The selected construction passes the ordered
+pre-code screen and authorizes only Gate 3, additive formalization.  Every
+number in this section is an exact formula, a registered codec allocation or
+an analytic roofline.  None is implemented proof-size, setup, provider-time,
+verifier-time, memory or hardware credit.
+
+#### 0.8.1 Direct MLE challenges, not a materialized PRG oracle
+
+Materializing the old pseudo-random coefficient schedules inside the public
+argument would add roughly one scalar for every atomic output and would
+defeat both memory and time gates.  `C6RSC4-v4` instead defines coefficient
+`i` by the multilinear equality polynomial
+
+```text
+w_r(i) = eq(r, bit(i)),
+```
+
+with canonical zero padding above the registered stream length.  The client
+samples each point `r` only after the roots and public claims to which it
+applies are fixed.  The exact interactive challenge census is:
+
+| Family | Streams | Point dimension | `Fp2` elements |
+| --- | ---: | ---: | ---: |
+| base-share alpha | 2 | 23 | 46 |
+| post-root terminal | 8 | 17 | 136 |
+| atomic relation | 2 | 26 | 52 |
+| **total** | **12** | -- | **234** |
+
+The resulting client-to-provider challenge traffic is `234 * 16 = 3,744 B`.
+It is interactive traffic, reported separately, and is not part of the
+provider-to-client certificate cap.  No PRG seed, PRG circuit or expanded
+challenge vector is accepted as a substitute.  By multilinear
+Schwartz--Zippel and a union bound, the complete schedule-replacement event
+is at most `234/|Fp2|`, or `120.1296352797...` bits.
+
+The binding order is:
+
+1. the provider binds the versioned statement, model/quantization/plan and
+   parameter digests, response roots, runtime root, predecessor digest,
+   `old_head`, proposed `new_head`, epoch, nonce and burned slot/range;
+2. after the relevant committed arrays are fixed, the client samples the 12
+   equality points above and the provider completes the existing response-
+   local `C6RSC3` reductions;
+3. the provider fixes all 64 terminal scalar claims, after which the client
+   samples one independent output-batching scalar;
+4. the provider builds and commits the single aggregate adjoint witness;
+   after the runtime and adjoint roots are fixed, the client samples the two
+   runtime MLE points and the native proof challenges;
+5. `C6PA1` proves the public model, embedding and compiler statements; the
+   client then checks the unchanged compact authenticated-output, MAC,
+   cache and Delta-dependent closure and advances the head atomically.
+
+The provider learns the public interactive challenges but never `Delta`, a
+verifier key, a hidden correction vector, prior cache keys or clear
+`W_tilde(r)`.  Challenge domain separators include the protocol version,
+statement digest, component, repetition, stream ordinal and slot/range.
+
+#### 0.8.2 One sparse reverse adjoint replaces 64 public replays
+
+The installed fixed public linear DAG has this exact census:
+
+| Node/edge class | Count |
+| --- | ---: |
+| source nodes | 4,970,850 |
+| public nodes | 1,436 |
+| structural zero | 1 |
+| add nodes | 12,961,295 |
+| sub nodes | 83,197 |
+| runtime-scale nodes | 10,828,852 |
+| **canonical nodes** | **28,845,631** |
+| sparse operand edges | 36,917,836 |
+| raw runtime values | 10,830,342 |
+
+The fixed topology, source maps and add/sub signs are provider-global
+preprocessing.  Their versioned roots are client parameters and are bound in
+every certificate; the old `63,994,751-B` canonical plan and
+`5,320,386-B` verifier instance map do not cross setup wire.  Runtime scale
+values remain response-local public witness.
+
+Let `A(runtime)` be the strictly topological sparse linear operator of this
+DAG.  Once the 64 terminal claims `y_j` are fixed, the client samples `beta`
+and the provider forms one root injection `b(beta)` and one reverse adjoint
+vector `lambda` satisfying
+
+```text
+lambda = b(beta) + A(runtime)^T lambda.
+```
+
+The public argument checks the recurrence over the padded `2^25` node
+domain, the source/public boundary identity, and
+`sum_j beta^j y_j`.  It uses one aggregate `lambda`, not 64 adjoint vectors.
+The response-local runtime vector and `lambda` are the two new public PCS
+vectors, batched under the same response transcript.  A source-map sumcheck
+links their boundary evaluation to the exact terminal MLE claims consumed by
+the designated closure; a compiler digest alone is insufficient.
+
+The raw runtime stream is committed before two independent dimension-24 MLE
+points.  Its binding error is at most `(24/|Fp2|)^2`, or
+`246.8300749972...` bits.  The post-claim output RLC contributes at most
+`63/|Fp2|` (`122.0227200758...` bits), and the dimension-25 sparse-adjoint
+identity at most `25/|Fp2|` (`123.3561438096...` bits).  These MLE checks
+supersede Section 0.7.2's provisional univariate fingerprint formula.
+
+The provider may hold four node-domain vectors plus the runtime vector:
+
+```text
+(4 * 28,845,631 + 10,830,342) * 16
+    = 2,019,405,856 B,
+```
+
+leaving `273,792,992 B` below the owner-frozen
+`2,293,198,848-B` ephemeral coefficient-plus-witness cap.  The state is not
+persistent between certificates.  This cap is not total process or GPU RSS.
+
+#### 0.8.3 Selected native transparent backend
+
+The selected pre-code backend is a specialized Goldilocks-quadratic-
+extension HVZK constrained Reed--Solomon argument in the WHIR family, using
+base-field embedding, Johnson decoding, starting rate `1/2`, initial fold
+`1`, subsequent fold `2`, and no proof of work.  Proof-of-work grinding is
+forbidden in both the roofline and production grammar.  Each of the three
+components -- model, embedding and compiler -- uses two independently
+domain-separated chains with an analytic floor of 74 bits per chain.
+
+The parameter solver of the official academic prototype at commit
+`92652ca01e215548c98e11834e110c43994b94c1` gives the following screening
+rows:
+
+| Domain | Analytic bits/chain | Privacy bits | Rounds | Non-deduplicated base openings | Base + mask known upper bound |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `2^28` | 74.048384912 | 124.299560281 | 13 | 424,688 B | 1,117,104 B |
+| `2^27` | 74.049168779 | 124.299560281 | 13 | 409,008 B | 1,101,424 B |
+
+The base-opening formula counts every opened row, one 32-byte sibling for
+every query at every tree level and every root, with no Merkle-frontier
+deduplication.  The codec ceiling is frozen at `1,500,000 B` per chain,
+leaving at least `382,896 B` in the larger case for remaining non-Merkle
+messages and framing.  Six chains therefore receive `9,000,000 B`; all new
+arithmetic/MAC/link/framing material receives `500,000 B`.  Strict decoding
+rejects an over-ceiling component before allocation.
+
+The cited implementation describes itself as an unaudited academic
+prototype.  Its solver and small diagnostics justify parameter selection,
+not production security, compatibility, proof-size or timing credit.  C6.1
+must implement a versioned native codec and independently test all equations.
+
+A universal/updatable-SRS fallback remains permitted but inactive.  A curve
+PCS does not share the Goldilocks scalar field, so it would require field
+emulation or a new cross-field seam.  There is currently no conservative
+operation/state roofline placing that route below 15 seconds.  This is a
+local C6.1 obstruction, not a claim that universal SRS systems are generally
+impossible.  A fixed circuit-specific ceremony remains forbidden.
+
+#### 0.8.4 Exact wire and soundness screens
+
+The selected codec ceiling tightens the earlier `12,000,000-B` provisional
+allocation:
+
+```text
+fixed retained C6 remainder                       6,842,103 B
+six native chain ceilings                         9,000,000 B
+new arithmetic/MAC/link/framing ceiling             500,000 B
+candidate certificate ceiling                    16,342,103 B
+headroom to strict 21,999,999-B maximum            5,657,896 B.
+```
+
+Setup remains `84,743,367 B`; setup plus the candidate first certificate is
+`101,085,470 B`.  Both values include all provider-to-client bytes in their
+respective metric.  The certificate ceiling is independent of cache length,
+response ordinal and earlier certificates; exactly one response conditioned
+on one accepted predecessor is proved.
+
+The exact rational per-certificate error sum is:
+
+| Event | Conservative error | Bits |
+| --- | ---: | ---: |
+| equality-challenge schedules | `234/|Fp2|` | 120.129635280 |
+| two runtime MLE fingerprints | `24^2/|Fp2|^2` | 246.830074997 |
+| 64-terminal output RLC | `63/|Fp2|` | 122.022720076 |
+| sparse-adjoint recurrence | `25/|Fp2|` | 123.356143810 |
+| three dual 74-bit native components | `3/2^148` | 146.415037499 |
+| retained C6 wrapper union | exact existing rational | 130.433049742 |
+| **complete certificate union** | exact sum above | **119.668253692** |
+
+This clears both `78.809` and 79 literal bits.  The separately reported
+17-certificate informational union is `115.580790850` bits.  Per-certificate
+soundness is not divided by 17.
+
+#### 0.8.5 Conservative time and verifier-memory screens
+
+At the immutable P7 rates, the native model component charges
+`48,337,256,448 B` sequentially through NTT, BLAKE3 and streaming roofs.  The
+transform term is `1.5189489678 s`; adding `0.600 s` linear work and a 20%
+integration factor gives `2.5427387613 s`.
+
+The sparse compiler charges 64 full equivalents over nodes, edges and
+runtime:
+
+```text
+64 * (28,845,631 + 36,917,836 + 10,830,342)
+    = 4,902,003,776 symbols.
+```
+
+Its max arithmetic/streaming floor is `0.5628580250 s`.  Two rate-`1/2`
+`2^25` PCS vectors at five transform equivalents charge
+`10,737,418,240 B`, or `0.3374124133 s`; the same 20% integration factor
+gives a `1.0803245260-s` compiler roof.  This is one aggregate sparse-adjoint
+pass over the already-emitted response data, not a fourth
+`112,998,706`-write semantic replay.
+
+Replacing the old `0.298579063-s` model PCS term in the existing
+`11.1793342101-s` floor gives:
+
+```text
+11.1793342101 - 0.2985790630
+    + 2.5427387613 + 1.0803245260
+    = 14.5038184344 s,
+```
+
+leaving only `0.4961815656 s` to the strict provider gate.  This narrow
+margin is a mandatory implementation risk: any later exact operation term
+must be added, never hidden in the integration factor.
+
+The four-thread verifier allocation is
+
+```text
+existing accounted DV work                         0.765672390 s
+6 native chains * 0.550 s                          3.300000000 s
+public arithmetic/runtime sketch                   0.500000000 s
+candidate verifier roof                            4.565672390 s,
+```
+
+leaving `0.434327610 s`.  The current local machine is four-core ARM, not the
+frozen AVX2 target, so this is an operation allocation and receives no timing
+credit.  Additional verifier memory is codec-bounded at `512,000,000 B`:
+`21,999,999 B` certificate buffer, `384,000,000 B` across six chain scratch
+budgets, `64,000,000 B` public/DV scratch and `42,000,001 B` allocator
+reserve.  It is far below the `8,000,000,000-B` gate, but remains unearned
+until the strict ordinary-build verifier measures the serialized artifact.
+
+Gate 2 is therefore **GREEN as a pre-code screen**.  Gate 3 must now add Lean
+theorems for challenge timing and equality schedules, runtime MLE binding,
+output batching, sparse-adjoint/source-boundary correctness, public-to-DV
+composition, predecessor-conditioned state advancement and the exact error
+union.  Frozen M1--M11 files remain untouched.
 
 ## 1. Owner requirements
 

@@ -95,6 +95,18 @@ C61_EQ_CHALLENGE_FP2_ELEMENTS = (
     + C61_ATOMIC_STREAMS * C61_ATOMIC_LOG2
 )
 C61_EQ_CHALLENGE_CLIENT_BYTES = C61_EQ_CHALLENGE_FP2_ELEMENTS * c6.FP2_BYTES
+C61_OUTPUT_BATCH_CHALLENGE_FP2_ELEMENTS = 1
+C61_RUNTIME_POINT_CHALLENGE_FP2_ELEMENTS = (
+    C61_RUNTIME_SKETCH_REPETITIONS * 24
+)
+C61_KNOWN_PRE_NATIVE_CHALLENGE_FP2_ELEMENTS = (
+    C61_EQ_CHALLENGE_FP2_ELEMENTS
+    + C61_OUTPUT_BATCH_CHALLENGE_FP2_ELEMENTS
+    + C61_RUNTIME_POINT_CHALLENGE_FP2_ELEMENTS
+)
+C61_KNOWN_PRE_NATIVE_CHALLENGE_CLIENT_BYTES = (
+    C61_KNOWN_PRE_NATIVE_CHALLENGE_FP2_ELEMENTS * c6.FP2_BYTES
+)
 
 # Exact installed sparse-adjoint census.  The operation-plan rows are
 # provider-global preprocessing; only the root/version enter client setup.
@@ -521,9 +533,27 @@ def build_report() -> dict[str, Any]:
                     "streams": C61_ATOMIC_STREAMS,
                     "point_dimension": C61_ATOMIC_LOG2,
                 },
-                "client_challenge_fp2_elements": C61_EQ_CHALLENGE_FP2_ELEMENTS,
-                "client_to_provider_bytes_not_in_certificate": (
+                "equality_schedule_challenge_fp2_elements": (
+                    C61_EQ_CHALLENGE_FP2_ELEMENTS
+                ),
+                "equality_schedule_client_to_provider_bytes": (
                     C61_EQ_CHALLENGE_CLIENT_BYTES
+                ),
+                "output_batch_challenge_fp2_elements": (
+                    C61_OUTPUT_BATCH_CHALLENGE_FP2_ELEMENTS
+                ),
+                "runtime_point_challenge_fp2_elements": (
+                    C61_RUNTIME_POINT_CHALLENGE_FP2_ELEMENTS
+                ),
+                "known_pre_native_challenge_fp2_elements": (
+                    C61_KNOWN_PRE_NATIVE_CHALLENGE_FP2_ELEMENTS
+                ),
+                "known_pre_native_client_to_provider_bytes_not_in_certificate": (
+                    C61_KNOWN_PRE_NATIVE_CHALLENGE_CLIENT_BYTES
+                ),
+                "native_interactive_challenge_wire": (
+                    "pending concrete round-by-round backend codec; cannot be "
+                    "represented as one upfront scalar per chain"
                 ),
                 "former_materialized_prg_oracle": False,
             },
@@ -913,6 +943,8 @@ def build_report() -> dict[str, Any]:
     assert runtime_sketch_bits > Decimal("246")
     assert C61_EQ_CHALLENGE_FP2_ELEMENTS == 234
     assert C61_EQ_CHALLENGE_CLIENT_BYTES == 3_744
+    assert C61_KNOWN_PRE_NATIVE_CHALLENGE_FP2_ELEMENTS == 283
+    assert C61_KNOWN_PRE_NATIVE_CHALLENGE_CLIENT_BYTES == 4_528
     assert (
         C61_SOURCE_NODE_COUNT
         + C61_PUBLIC_NODE_COUNT

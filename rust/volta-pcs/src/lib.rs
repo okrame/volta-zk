@@ -9,6 +9,7 @@
 //!   → `ligero::open_zk` / `verify_open` (claim bound to the public C_W).
 
 pub mod batch;
+pub mod c61_public_compression;
 pub mod c6_authenticated_output_link;
 pub mod c6_hidden_u;
 pub mod c6_hidden_u_sumcheck;
@@ -28,6 +29,23 @@ pub use batch::{
     batch_reduce_prover, batch_reduce_prover_cpu_resident, batch_reduce_prover_cuda_resident,
     batch_reduce_verifier, BatchTimings, BlockClaim, ClaimReduceResidentCounters,
     CpuClaimReduceSettlement, CudaClaimReduceSettlement,
+};
+pub use c61_public_compression::{
+    build_c61_scaled_arithmetic_frame, c61_eq_weight, c61_fp2_vector_root,
+    c61_mle_eval_fold_reference, c61_mle_eval_prefix, verify_c61_scaled_public_argument,
+    C61AdjointFixed, C61ArithmeticFrame, C61CorrelationRangeBinding, C61EqualityChallenges,
+    C61EqualityDrawn, C61LinearOp, C61NativeBackendVerifier, C61NativeChainId, C61NativeComponent,
+    C61OutputChallengeDrawn, C61PublicArgument, C61PublicCompressionError, C61ReadyChallenges,
+    C61ReadyPublicProof, C61RootsFixed, C61SparsePlan, C61StatementBinding, C61TerminalClaimsFixed,
+    C61_ALPHA_POINT_DIMENSION, C61_ALPHA_STREAMS, C61_ARITHMETIC_AND_OUTER_FRAMING_MAX_BYTES,
+    C61_ARITHMETIC_FRAME_BYTES, C61_ARITHMETIC_MAGIC, C61_ARITHMETIC_PAYLOAD_MAX_BYTES,
+    C61_ARITHMETIC_VERSION, C61_ATOMIC_POINT_DIMENSION, C61_ATOMIC_STREAMS,
+    C61_EQUALITY_CHALLENGE_ELEMENTS, C61_MAC_COORDINATES, C61_NATIVE_CHAIN_COUNT,
+    C61_NATIVE_CHAIN_MAX_BYTES, C61_PUBLIC_ARGUMENT_COMPONENTS, C61_PUBLIC_ARGUMENT_MAGIC,
+    C61_PUBLIC_ARGUMENT_MAX_BYTES, C61_PUBLIC_ARGUMENT_OUTER_FRAMING_BYTES,
+    C61_PUBLIC_ARGUMENT_V1_STRICT_MAX_BYTES, C61_PUBLIC_ARGUMENT_VERSION, C61_RUNTIME_FINGERPRINTS,
+    C61_RUNTIME_POINT_DIMENSION, C61_TERMINAL_CLAIMS, C61_TERMINAL_POINT_DIMENSION,
+    C61_TERMINAL_STREAMS,
 };
 pub use c6_authenticated_output_link::{
     prove_c6_authenticated_output_link_reference, verify_c6_authenticated_output_link_reference,

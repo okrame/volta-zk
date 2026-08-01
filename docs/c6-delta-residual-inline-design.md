@@ -33,8 +33,9 @@ LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 BOUNDARIES, CRYPTOGRAPHIC SEAM AND ORDERED GATES FROZEN; EXACT BYTE/OPERATION
 PUBLIC/DV DECOMPOSITION GREEN; NATIVE `C6PA1`/`C6RSC4-v4` FORMULA,
 SOUNDNESS, WIRE, MEMORY AND PRE-CODE TIME ROOFLINES GREEN; ADDITIVE LEAN
-FORMALIZATION GREEN; SCALED STRICT CODEC/RUST PATH NEXT; NO C6.1 PROOF-SIZE,
-TIMING, MEMORY OR HARDWARE CREDIT; HARD STOP BEFORE POD.**
+FORMALIZATION + SCALED STRICT CODEC/RUST SEAM GREEN; CPU NATIVE REFERENCE +
+FULL-T1 INTEGRATION NEXT; NO C6.1 PROOF-SIZE, TIMING, MEMORY OR HARDWARE
+CREDIT; HARD STOP BEFORE POD.**
 
 This document is the C6 plan of record.  It is a new descendant of the
 accepted C4/T1 `rate=1/4,Q=120` inline profile.  It does not reopen or rewrite
@@ -729,6 +730,108 @@ C6.1 targets; they use only Lean's standard `propext`, `Classical.choice` and
 formal statement/algebra credit only.  It gives no concrete proof-size,
 codec, Rust, native-backend, timing, RAM or hardware credit.  Gate 4, the
 strict scaled Rust path, is next.
+
+### 0.10 Gate-4 scaled Rust checkpoint
+
+`rust/volta-pcs/src/c61_public_compression.rs` closes the scaled seam required
+by Gate 4.  It does not implement or emulate a production transparent PCS:
+the only accepting digest backend is private to `#[cfg(test)]`, and production
+verification requires an explicit `C61NativeBackendVerifier` implementation.
+There is no default backend and no CPU fallback hidden behind the trait.
+
+The strict codecs are:
+
+- `C6PA1` version 1, with exactly seven ordered components: model repetitions
+  0/1, embedding repetitions 0/1, compiler repetitions 0/1, then one
+  arithmetic component;
+- `C6RSC4` version 4, a fixed canonical `1,212-B` arithmetic frame containing
+  the statement and challenge digests, aggregate-adjoint root, 64 terminal
+  claims, two runtime evaluations and the source/terminal boundary scalar;
+- `356 B` of `C6PA1` outer framing, including all component digests and the
+  final outer digest; and
+- a current version-1 structural maximum of `9,001,568 B` after applying six
+  `1,500,000-B` native-chain caps plus the fixed arithmetic frame and outer
+  framing.  This is stricter than the registered `9,500,000-B` allocation.
+
+The diagnostic scaled artifact is exactly `1,952 B` because each test-only
+chain is only 64 bytes.  That number is a codec/differential fixture, **not**
+a proof-size projection or certificate credit.  The registered
+`16,342,103-B` certificate ceiling remains the conservative allocation until
+a concrete native backend supplies real payloads.
+
+The Rust typestate now enforces this interactive order:
+
+```text
+statement digest fixed
+  -> 234 equality-point elements drawn
+  -> 64 terminal claims fixed
+  -> output beta drawn
+  -> aggregate-adjoint root fixed
+  -> two dimension-24 runtime points drawn
+  -> each native backend alternates message -> fresh challenge round by round.
+```
+
+In particular, six upfront native scalars are not a representable substitute
+for a 13-round interactive proof.  The backend receives the mutable verifier
+transcript and must append each prover message before drawing its round
+challenge.  Every chain is additionally bound to the canonical C6RSC4
+component digest, so an otherwise valid native proof cannot be transplanted
+onto different terminal claims or an adjoint root.
+
+The statement digest binds protocol, model, quantization, plan and parameter
+versions; setup manifest, connection, workload, public-I/O, retained
+transcript and retained-wrapper digests; model, embedding, compiler-source
+and runtime roots; predecessor certificate, old/new heads, nonce, epoch and
+slot; and both indivisible MAC-coordinate `(stage,start,count)` ranges.  The
+only zero predecessor exception is epoch 1.  Retry changes to nonce, slot,
+either range, workload, transcript, predecessor or either head reject the old
+artifact, while reconstructing the same challenge tape accepts an exact
+ambiguous-ACK retransmission.
+
+Private source values are no longer representable in the installed sparse
+plan.  `Source` nodes contain only bounded ordinals; source values are a
+separate committed witness under `compiler_source_root`.  Public constants
+remain explicit, runtime scale values are separately rooted, and the scaled
+reference proves the forward/reverse sparse-adjoint terminal identity.  A
+production verifier will not receive these vectors; they are present only in
+the independent scaled differential.
+
+The permanent focused suite has 11 tests covering direct-MLE versus an
+independent fold, sparse forward/reverse parity, source taint separation,
+canonical round trips, pre-allocation caps, noncanonical field elements,
+component order/reserved/trailing corruption, statement/native/source/runtime
+mutations, challenge-tape shifts, native message/challenge ordering, C6RSC4
+cross-binding, retry replay and exact retransmission.  Full
+`cargo test --workspace` is green, including the inherited C6 crash, fork,
+17-accept plus four-burn and flat-wire lifecycle tests.
+
+#### 0.10.1 Challenge-wire reporting correction
+
+Section 0.8.1's `3,744 B` is exactly the equality-schedule subtotal
+`234 * 16`; it is not the complete interactive client-to-provider traffic.
+Before native proof rounds, the now-executable known subtotal is:
+
+```text
+equality-schedule points        234 Fp2
+output batching beta             1 Fp2
+two dimension-24 runtime points 48 Fp2
+known pre-native total          283 Fp2 = 4,528 B.
+```
+
+The concrete native round/query challenge wire remains pending the real
+backend codec and must be reported separately.  It cannot be collapsed into
+one upfront seed or scalar per chain.  This correction changes neither
+provider-to-client certificate bytes nor the setup, provider-time, verifier-
+time or soundness screens.  `scripts/budget_c61_public_compression.py` now
+labels both subtotals explicitly instead of calling `3,744 B` the complete
+challenge traffic.
+
+Gate 4 is therefore green only as a strict scaled seam.  It gives no native
+proof equation, setup, certificate, timing, memory or hardware credit.  The
+next local milestone is a concrete CPU reference implementation of the
+native no-grinding chains and their round codec, followed by exact full-T1
+integration.  Pod/provider contact remains forbidden without a new explicit
+owner GO.
 
 ## 1. Owner requirements
 

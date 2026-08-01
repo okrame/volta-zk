@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — NATIVE GATE-2 + ADDITIVE LEAN + SCALED RUST SEAM GREEN / CPU NATIVE REFERENCE NEXT / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — CPU REFERENCE PCS/CODEC GREEN / C6 RELATION ADAPTER NEXT / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -12,33 +12,44 @@ Current phase: **C6.1 response-local public compression amendment of the C6
 the remainder of that document preserves the C6 requirements, Q=121 ruling,
 implementation history and local measurements as the immutable baseline.
 C6.1's exact byte/operation public/designated-verifier decomposition and
-native Gate-2 pre-code screen are now green and executable.  The selected
+native Gate-2 pre-code screen are green and executable.  The selected
 interactive `C6PA1`/`C6RSC4-v4` route uses direct postcommit MLE challenges,
 one sparse aggregate adjoint and six independently separated no-grinding
 HVZK chains.  Its registered ceilings/rooflines are **16,342,103 B** per
 certificate, **101,085,470 B** setup plus first certificate,
 **14.5038184344 s** provider and **4.565672390 s** four-thread verifier;
 complete per-certificate soundness is **119.668253692 bits**.  The additive
-Lean package is now green at **3,264 jobs / 21 new audited C6.1 targets** and
-proves challenge ordering, MLE/output bounds, the sparse-adjoint terminal
-identity, public-to-DV/state composition and exact rational error targets.
-The numeric rooflines remain formula/allocation screens and earn no concrete
-proof-size, setup, timing, memory or hardware credit.  The strict scaled Rust
-seam is now green: canonical `C6PA1-v1`/`C6RSC4-v4` codecs have exact
-`356-B`/`1,212-B` framing, a `9,001,568-B` structural v1 maximum and an
-explicit native-backend boundary with no production fallback.  The 11-test
-differential separates private source witness from topology, binds the two
-MAC ranges and full C6 attempt/state context, forces native message-before-
-challenge ordering, binds every native chain to C6RSC4, and rejects
-transcript, retry, source, runtime and codec mutations while allowing only
-exact retransmission.  The `1,952-B` diagnostic artifact uses a `#[cfg(test)]`
-digest backend and earns no proof-size credit.  The challenge ledger is
-corrected append-only: `3,744 B` is only the 234-element equality subtotal;
-beta plus the two dimension-24 runtime points make the known pre-native
-client traffic `4,528 B`, while concrete native round/query traffic remains
-pending.  Full `cargo test --workspace` is green.  A concrete CPU native
-no-grinding reference and full-T1 integration are next.  C6.1 remains local-
-only until a separate owner GO; no provider/pod contact is authorized.
+Lean package is green at **3,264 jobs / 21 new audited C6.1 targets** and the
+strict scaled `C6PA1-v1`/`C6RSC4-v4` Rust seam remains green.
+
+The next append-only CPU-reference checkpoint now pins Plonky3 `p3-whir`
+revision `66e290615de1858f2f2f6a804158064c406cda1c` behind the non-default
+`c61-p3-reference` feature.  Its interactive Goldilocks/Fp2, Johnson-bound,
+no-grinding profile uses rate `1/2`, folds `1 -> 2`, mask inverse-rate log
+`1` and `184` mask queries.  The strict `C6WIR1-v1` codec computes maximum
+deduplicated binary-Merkle frontiers rather than average collisions: one D27
+PCS opening is at most **1,076,376 B** and one D28 opening at most
+**1,162,908 B**, both below the registered `1,500,000-B` chain cap.  A scaled
+D14 prove/serialize/strict-decode/verify differential materializes at
+**375,584 B**, with 26 provider moves, 52 base-field challenges and 2,503
+seed-specific query candidates (**10,428 B** client challenge payload).
+Canonical field parsing, pre-allocation frontier caps, trailing-byte
+rejection and upstream-verifier panic containment are fail-closed.
+
+This checkpoint proves and verifies one polynomial opening only.  It does
+**not** yet prove the complete model, embedding or compiler relation, does
+not implement `C61NativeBackendVerifier`, and is never a production fallback.
+The candidate challenge count is seed-dependent because distinct queries use
+rejection sampling; it must be recorded per run and cannot be replaced by an
+upfront Fiat--Shamir seed.  The current monolithic upstream API is exercised
+as two deterministic single-process replays under the same private diagnostic
+verifier seed; a production round state machine must never disclose that seed
+to the provider.  The existing allocation/roofline values therefore remain
+`credit:false`: no full-chain proof size, setup, timing, memory or hardware
+result is claimed.  The C6 relation adapter, resumable two-party driver and
+then full-T1 local integration are next.  Full `cargo test --workspace` and
+the six focused feature tests are green.  C6.1 remains local-only until a
+separate owner GO; no provider/pod contact is authorized.
 The exact frozen T1 source/correction census now has a clean append-only
 record and pins `4,975,525` typed leaves.  Paired complete-source witness
 extraction is also clean at all `4,975,525` leaves per coordinate with no

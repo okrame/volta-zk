@@ -8,6 +8,20 @@ license.workspace = true
 default = []
 cuda = ["volta-accel/cuda", "volta-proto/cuda"]
 c6-trace = ["volta-proto/c6-trace", "volta-mac/c6-trace"]
+c61-p3-reference = [
+    "dep:p3-blake3",
+    "dep:p3-challenger",
+    "dep:p3-commit",
+    "dep:p3-dft",
+    "dep:p3-field",
+    "dep:p3-goldilocks",
+    "dep:p3-merkle-tree",
+    "dep:p3-multilinear-util",
+    "dep:p3-sumcheck",
+    "dep:p3-symmetric",
+    "dep:p3-whir",
+    "dep:rand-010",
+]
 
 [dependencies]
 volta-accel = { workspace = true }
@@ -16,6 +30,18 @@ volta-mac = { workspace = true }
 volta-proto = { workspace = true }
 rayon = { workspace = true }
 blake3 = { workspace = true }
+p3-blake3 = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
+p3-challenger = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
+p3-commit = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
+p3-dft = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
+p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
+p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
+p3-merkle-tree = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
+p3-multilinear-util = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
+p3-sumcheck = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
+p3-symmetric = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
+p3-whir = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
+rand-010 = { package = "rand", version = "0.10.1", optional = true }
 
 [dev-dependencies]
 rand = { workspace = true }

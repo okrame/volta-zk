@@ -5,13 +5,13 @@ This report deliberately has two different verdict scopes:
 
 * exact reconciliation of the existing C6 certificate and residual-compiler
   operation census;
-* a preregistered C6.1 native-candidate screen.  Its codec ceilings and
-  operation roofline are safe to use for ordered pre-code admission, but are
-  not implementation or benchmark credit.
+* the preregistered C6.1 native-candidate screen plus the feature-gated
+  C6WIR1 PCS/codec reference.  The relation adapter and full-chain benchmark
+  remain absent, so the reference is not final proof or timing credit.
 
 No projected ceiling or analytic roofline is proof-size, setup, prover-time,
-verifier-time or hardware credit.  The script must keep saying so until a
-later append-only amendment changes the verdict together with evidence.
+verifier-time or hardware credit.  The implemented PCS codec receives only
+its explicitly named CPU-reference credit.
 """
 
 from __future__ import annotations
@@ -138,43 +138,19 @@ C61_NATIVE_PUBLIC_ARGUMENT_CODEC_MAX_BYTES = (
     + C61_NATIVE_ARITHMETIC_AND_LINK_CODEC_MAX_BYTES
 )
 
-# Reference no-grinding HVZK-WHIR parameter rows.  These are copied from the
-# official academic prototype parameter solver at commit 92652ca0... and are
-# used only to upper-bound opened rows and non-deduplicated Merkle siblings.
-# Tuple fields: (codeword rows, row width, in-domain queries, element bytes).
-C61_NATIVE_D28_OPEN_ROWS = (
-    (402_653_184, 2, 103, 8),
-    (100_663_296, 4, 103, 16),
-    (50_331_648, 4, 61, 16),
-    (25_165_824, 4, 43, 16),
-    (12_582_912, 4, 34, 16),
-    (6_291_456, 4, 28, 16),
-    (3_145_728, 4, 23, 16),
-    (1_572_864, 4, 20, 16),
-    (786_432, 4, 18, 16),
-    (393_216, 4, 16, 16),
-    (196_608, 4, 15, 16),
-    (98_304, 4, 14, 16),
-    (98_304, 4, 13, 16),
-    (196_608, 1, 12, 16),
-)
-C61_NATIVE_D27_OPEN_ROWS = (
-    (201_326_592, 2, 103, 8),
-    (50_331_648, 4, 103, 16),
-    (25_165_824, 4, 61, 16),
-    (12_582_912, 4, 43, 16),
-    (6_291_456, 4, 34, 16),
-    (3_145_728, 4, 28, 16),
-    (1_572_864, 4, 23, 16),
-    (786_432, 4, 20, 16),
-    (393_216, 4, 18, 16),
-    (196_608, 4, 16, 16),
-    (98_304, 4, 15, 16),
-    (65_536, 4, 14, 16),
-    (98_304, 4, 13, 16),
-    (131_072, 1, 12, 16),
-)
-C61_NATIVE_MASK_OPENING_UPPER_BYTES = 692_416
+# Exact C6WIR1 structural maxima computed by the feature-gated Rust codec
+# against the pinned Plonky3 HVZK-WHIR profile.  The bound maximizes every
+# deduplicated binary-Merkle frontier; it is not an average collision model.
+# It covers the PCS opening only.  The C6 model/compiler relation adapter is
+# still pending, so the registered 1,500,000-B full-chain cap remains binding.
+C61_P3_REFERENCE_COMMIT = "66e290615de1858f2f2f6a804158064c406cda1c"
+C61_NATIVE_MASK_LOG_INV_RATE = 1
+C61_NATIVE_MASK_QUERIES = 184
+C61_NATIVE_D28_ROUNDS = 11
+C61_NATIVE_D27_ROUNDS = 10
+C61_NATIVE_D28_PCS_STRICT_MAX_BYTES = 1_162_908
+C61_NATIVE_D27_PCS_STRICT_MAX_BYTES = 1_076_376
+C61_NATIVE_SCALED_D14_DIAGNOSTIC_BYTES = 375_584
 
 # Conservative analytic-time charges.  They are deliberately wider than the
 # diagnostic prototype and count every transform class sequentially.
@@ -199,24 +175,6 @@ C61_VERIFIER_ADDITIONAL_MEMORY_ALLOCATION_BYTES = (
     + C61_VERIFIER_PUBLIC_DV_SCRATCH_BYTES
     + C61_VERIFIER_ALLOCATOR_RESERVE_BYTES
 )
-
-
-def _non_deduplicated_opening_upper_bytes(
-    rows: tuple[tuple[int, int, int, int], ...],
-) -> int:
-    """Raw rows + one sibling per query and tree level + roots.
-
-    Real Merkle frontiers deduplicate siblings.  This formula intentionally
-    does not, so it is an upper bound rather than a measured proof size.
-    """
-
-    opened_rows = sum(width * queries * element_bytes for _, width, queries, element_bytes in rows)
-    siblings = sum(
-        queries * (codeword_rows - 1).bit_length() * 32
-        for codeword_rows, _, queries, _ in rows
-    )
-    roots = len(rows) * 32
-    return opened_rows + siblings + roots
 
 
 def _transparent_transform_seconds(byte_count: int) -> Decimal:
@@ -358,18 +316,8 @@ def build_report() -> dict[str, Any]:
     )
     candidate_session_error = 17 * candidate_complete_error
 
-    d28_opening_upper_bytes = _non_deduplicated_opening_upper_bytes(
-        C61_NATIVE_D28_OPEN_ROWS
-    )
-    d27_opening_upper_bytes = _non_deduplicated_opening_upper_bytes(
-        C61_NATIVE_D27_OPEN_ROWS
-    )
-    d28_known_chain_bytes = (
-        d28_opening_upper_bytes + C61_NATIVE_MASK_OPENING_UPPER_BYTES
-    )
-    d27_known_chain_bytes = (
-        d27_opening_upper_bytes + C61_NATIVE_MASK_OPENING_UPPER_BYTES
-    )
+    d28_known_chain_bytes = C61_NATIVE_D28_PCS_STRICT_MAX_BYTES
+    d27_known_chain_bytes = C61_NATIVE_D27_PCS_STRICT_MAX_BYTES
     native_projected_certificate_bytes = (
         active_fixed_remainder_bytes + C61_NATIVE_PUBLIC_ARGUMENT_CODEC_MAX_BYTES
     )
@@ -445,9 +393,10 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-precode-v1",
+        "profile": "C6.1-public-compression-reference-v2",
         "verdict": (
-            "PRECODE_NATIVE_CANDIDATE_SCREEN_PASS__FORMALIZATION_REQUIRED"
+            "CPU_REFERENCE_PCS_CODEC_PASS__C6_RELATION_ADAPTER_REQUIRED__"
+            "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
             "proof_size": False,
@@ -512,7 +461,10 @@ def build_report() -> dict[str, Any]:
         },
         "selected_native_candidate": {
             "name": "C6PA1-native-HVZK-plus-C6RSC4-v4",
-            "status": "PRECODE_SCREEN_ONLY__NO_IMPLEMENTATION_OR_BENCHMARK_CREDIT",
+            "status": (
+                "CPU_REFERENCE_PCS_AND_STRICT_CODEC_GREEN__"
+                "C6_RELATION_ADAPTER_PENDING__NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
+            ),
             "statement": (
                 "one response conditioned on an already accepted predecessor head"
             ),
@@ -552,8 +504,10 @@ def build_report() -> dict[str, Any]:
                     C61_KNOWN_PRE_NATIVE_CHALLENGE_CLIENT_BYTES
                 ),
                 "native_interactive_challenge_wire": (
-                    "pending concrete round-by-round backend codec; cannot be "
-                    "represented as one upfront scalar per chain"
+                    "C6WIR1 reference uses 8-B base-field challenges and 4-B "
+                    "query candidates after each prover move; distinct-query "
+                    "rejection makes the candidate count seed-dependent, so "
+                    "runs report it exactly; no upfront chain seed"
                 ),
                 "former_materialized_prg_oracle": False,
             },
@@ -585,24 +539,26 @@ def build_report() -> dict[str, Any]:
                 "starting_rate": "1/2",
                 "initial_folding_factor": 1,
                 "later_folding_factor": 2,
+                "mask_log_inv_rate": C61_NATIVE_MASK_LOG_INV_RATE,
+                "mask_queries": C61_NATIVE_MASK_QUERIES,
                 "chains_per_component": C61_NATIVE_CHAINS_PER_COMPONENT,
                 "analytic_bits_per_chain_floor": C61_NATIVE_CHAIN_BITS,
                 "components": ["model", "embedding", "compiler"],
-                "reference_prototype_commit": (
-                    "92652ca01e215548c98e11834e110c43994b94c1"
-                ),
+                "reference_prototype": "Plonky3 p3-whir 0.6.0",
+                "reference_prototype_commit": C61_P3_REFERENCE_COMMIT,
                 "reference_warning": (
-                    "academic prototype; parameters are an analytic/code-size "
-                    "screen and not a production dependency or audit"
+                    "pinned academic implementation behind a reference-only "
+                    "feature; not audited and never a production fallback"
+                ),
+                "strict_codec": "C6WIR1-v1 fixed-shape non-Serde",
+                "relation_adapter": (
+                    "pending: the PCS proves one polynomial opening, not yet "
+                    "the complete model/embedding/compiler relation"
                 ),
                 "d28": {
-                    "analytic_bits": "74.048384912",
-                    "privacy_bits": "124.299560281",
-                    "rounds": 13,
-                    "non_deduplicated_base_opening_upper_bytes": (
-                        d28_opening_upper_bytes
-                    ),
-                    "known_chain_upper_bytes_including_mask": (
+                    "configured_security_target_bits": C61_NATIVE_CHAIN_BITS,
+                    "rounds": C61_NATIVE_D28_ROUNDS,
+                    "pcs_strict_structural_max_bytes": (
                         d28_known_chain_bytes
                     ),
                     "unallocated_bytes_to_chain_codec_ceiling": (
@@ -610,18 +566,24 @@ def build_report() -> dict[str, Any]:
                     ),
                 },
                 "d27": {
-                    "analytic_bits": "74.049168779",
-                    "privacy_bits": "124.299560281",
-                    "rounds": 13,
-                    "non_deduplicated_base_opening_upper_bytes": (
-                        d27_opening_upper_bytes
-                    ),
-                    "known_chain_upper_bytes_including_mask": (
+                    "configured_security_target_bits": C61_NATIVE_CHAIN_BITS,
+                    "rounds": C61_NATIVE_D27_ROUNDS,
+                    "pcs_strict_structural_max_bytes": (
                         d27_known_chain_bytes
                     ),
                     "unallocated_bytes_to_chain_codec_ceiling": (
                         C61_NATIVE_CHAIN_CODEC_MAX_BYTES - d27_known_chain_bytes
                     ),
+                },
+                "scaled_d14_diagnostic": {
+                    "strict_payload_bytes": (
+                        C61_NATIVE_SCALED_D14_DIAGNOSTIC_BYTES
+                    ),
+                    "provider_messages": 26,
+                    "client_fp_challenges": 52,
+                    "client_query_candidates": 2_503,
+                    "client_challenge_payload_bytes": 10_428,
+                    "credit": False,
                 },
             },
             "wire_screen": {
@@ -954,10 +916,10 @@ def build_report() -> dict[str, Any]:
         + C61_SCALE_NODE_COUNT
         == C61_CANONICAL_NODE_COUNT
     )
-    assert d28_opening_upper_bytes == 424_688
-    assert d27_opening_upper_bytes == 409_008
-    assert d28_known_chain_bytes == 1_117_104
-    assert d27_known_chain_bytes == 1_101_424
+    assert d28_known_chain_bytes == 1_162_908
+    assert d27_known_chain_bytes == 1_076_376
+    assert d28_known_chain_bytes < C61_NATIVE_CHAIN_CODEC_MAX_BYTES
+    assert d27_known_chain_bytes < C61_NATIVE_CHAIN_CODEC_MAX_BYTES
     assert C61_NATIVE_PUBLIC_ARGUMENT_CODEC_MAX_BYTES == 9_500_000
     assert native_projected_certificate_bytes == 16_342_103
     assert C61_CERTIFICATE_MAX_BYTES - native_projected_certificate_bytes == 5_657_896
@@ -1003,7 +965,7 @@ def main() -> None:
     operations = report["verifier_operation_decomposition"]
     provider = report["provider_time_screen"]
     native = report["selected_native_candidate"]
-    print(f"C6.1 pre-code profile:        {report['profile']}")
+    print(f"C6.1 reference profile:       {report['profile']}")
     print(f"verdict:                     {report['verdict']}")
     print(f"current certificate:         {certificate['bytes']:,} B")
     print(
@@ -1046,7 +1008,7 @@ def main() -> None:
         f"{Decimal(provider['unallocated_seconds_to_strict_15_second_gate']):.6f} s "
         "(no compiler/public-proof credit)"
     )
-    print("-- selected native C6.1 candidate (pre-code only) --")
+    print("-- selected native C6.1 candidate (reference PCS/codec only) --")
     print(
         "candidate certificate cap:   "
         f"{native['wire_screen']['projected_certificate_ceiling_bytes']:,} B"

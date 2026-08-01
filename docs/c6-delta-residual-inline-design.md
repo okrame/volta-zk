@@ -32,10 +32,11 @@ LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 **C6.1 amendment status (2026-08-01): OWNER REQUIREMENTS, METRIC
 BOUNDARIES, CRYPTOGRAPHIC SEAM AND ORDERED GATES FROZEN; EXACT BYTE/OPERATION
 PUBLIC/DV DECOMPOSITION GREEN; NATIVE `C6PA1`/`C6RSC4-v4` FORMULA,
-SOUNDNESS, WIRE, MEMORY AND PRE-CODE TIME ROOFLINES GREEN; ADDITIVE LEAN
-FORMALIZATION + SCALED STRICT CODEC/RUST SEAM GREEN; CPU NATIVE REFERENCE +
-FULL-T1 INTEGRATION NEXT; NO C6.1 PROOF-SIZE, TIMING, MEMORY OR HARDWARE
-CREDIT; HARD STOP BEFORE POD.**
+SOUNDNESS, WIRE, MEMORY AND PRE-CODE TIME ROOFLINES GREEN; ADDITIVE LEAN +
+SCALED STRICT SEAM + INTERACTIVE CPU REFERENCE PCS/CODEC GREEN; COMPLETE C6
+MODEL/EMBEDDING/COMPILER RELATION ADAPTER AND FULL-T1 INTEGRATION NEXT; NO
+C6.1 FULL-CHAIN PROOF-SIZE, TIMING, MEMORY OR HARDWARE CREDIT; HARD STOP
+BEFORE POD.**
 
 This document is the C6 plan of record.  It is a new descendant of the
 accepted C4/T1 `rate=1/4,Q=120` inline profile.  It does not reopen or rewrite
@@ -832,6 +833,115 @@ next local milestone is a concrete CPU reference implementation of the
 native no-grinding chains and their round codec, followed by exact full-T1
 integration.  Pod/provider contact remains forbidden without a new explicit
 owner GO.
+
+### 0.11 Interactive HVZK-WHIR PCS/codec reference checkpoint
+
+This append-only checkpoint implements the first half of the next local
+milestone: a concrete CPU reference for one native polynomial opening and its
+strict interactive wire grammar.  It deliberately does **not** identify that
+opening with the complete `C6PA1` model, embedding or compiler relation.
+Consequently it does not implement `C61NativeBackendVerifier`, cannot enter
+the production verifier path and earns no complete-chain or e2e credit.
+
+The optional Cargo feature `c61-p3-reference` pins Plonky3 `p3-whir` at exact
+revision `66e290615de1858f2f2f6a804158064c406cda1c`.  It is excluded from
+default builds, is treated as an unaudited academic reference and is never a
+CPU fallback for a production record.  The selected profile is:
+
+```text
+field / extension                         Goldilocks / Fp2
+security configuration                    74-bit Johnson bound
+proof of work                             0 bits, forbidden on wire
+starting inverse-rate log                 1  (rate 1/2)
+folding schedule                          1, then constant 2
+HVZK mask inverse-rate log                1
+HVZK mask queries                         184
+opening points                            1
+D27 / D28 intermediate rounds             10 / 11.
+```
+
+The mask inverse-rate log is `1`, rather than the smaller-proof rate-8
+alternative, because both production dimensions still fit the frozen chain
+cap and the denser mask code minimizes the reference prover's mask
+transforms.  This is a pre-benchmark engineering choice, not timing credit.
+
+`C6WIR1-v1` is a fixed-shape, non-Serde codec.  All vector lengths come from
+the registered dimension; only the number of pruned Merkle siblings is
+encoded explicitly.  The decoder checks the complete payload cap and each
+frontier count before allocating proof-sized vectors, requires canonical
+Goldilocks elements and exact dimension/version/reserved fields, rejects
+truncation and trailing bytes, and contains upstream verifier panics as
+ordinary fail-closed errors.  The structural formula maximizes the
+deduplicated binary-Merkle frontier independently at every opening.  It does
+not use expected query collisions:
+
+| PCS opening | Rounds | Strict structural maximum | Headroom to 1,500,000 B |
+| --- | ---: | ---: | ---: |
+| D27 | 10 | 1,076,376 B | 423,624 B |
+| D28 | 11 | 1,162,908 B | 337,092 B |
+
+Those maxima cover the HVZK-WHIR **PCS opening only**.  They do not prove
+that one chain enforces its assigned C6 model/embedding/compiler relation and
+therefore do not replace the registered `1,500,000-B` complete-chain
+allocation in the certificate budget.
+
+The challenger adapter preserves the existing designated-verifier message
+order.  It appends every pending provider move before sampling fresh client
+entropy, uses 8 bytes for each base-field challenge and a canonical 4-byte
+candidate for each query-index draw, forbids proof of work, and never derives
+challenges by hashing the proof.  Because the upstream API is monolithic,
+this checkpoint drives prover and verifier as two deterministic
+single-process replays under the same private diagnostic verifier seed.  It
+tests the round order and proof equations, not a deployed two-party channel.
+The production adapter must suspend after every provider move, receive only
+the fresh challenge and never expose the verifier seed to the provider.
+
+Plonky3 samples distinct query indices by rejection, so candidate count and
+client-to-provider wire are seed-dependent and theoretically unbounded.  Every
+concrete run must record the exact count; there is no sound fixed worst-case
+client-wire claim and no upfront chain seed.  This does not affect the
+provider-to-client certificate cap.
+
+The scaled D14 differential exercises actual commit, open, strict encode,
+strict decode and verify under independently replayed interactive entropy:
+
+```text
+strict provider payload                         375,584 B
+provider transcript moves                            26
+provider semantic bytes                          52,192 B
+base-field client challenges                         52
+query-index candidates                             2,503
+client challenge payload                         10,428 B.
+```
+
+The focused feature suite also checks the exact D27/D28 structural budgets,
+the pruned-frontier maximum, rejection of unregistered production dimensions,
+pre-allocation multiproof caps, canonical Volta/Plonky3 Fp2 conversion and
+multiplication, transcript-seed mutation, field noncanonicity, trailing bytes
+and proof mutation.  The D14 size and traffic are diagnostic only and cannot
+be extrapolated as a D27/D28 measurement.
+
+This checkpoint leaves four explicit obligations before native backend
+credit:
+
+1. define the exact committed polynomial(s) and constraints for each of the
+   six model/embedding/compiler chains, including statement/C6RSC4 domain
+   binding rather than a standalone opening claim;
+2. prove that accepting those six relations supplies exactly the public
+   premises required by the existing public-to-DV theorem, without exposing
+   `Delta`, private source values, corrections or verifier keys; and
+3. integrate the relation adapter with the strict `C6PA1-v1` envelope and run
+   full-T1 local correctness before assigning proof-size or verifier-time
+   credit; and
+4. split the monolithic reference driver into a resumable two-party round
+   state machine in which the provider receives challenges but never the
+   verifier seed.
+
+Until those obligations close, the executable budget verdict is
+`CPU_REFERENCE_PCS_CODEC_PASS__C6_RELATION_ADAPTER_REQUIRED__NO_FULL_CHAIN_OR_BENCHMARK_CREDIT`.
+No setup removal, certificate reduction, provider/verifier timing, RAM,
+session or hardware gate is advanced, and pod contact remains forbidden
+without a separate owner GO.
 
 ## 1. Owner requirements
 

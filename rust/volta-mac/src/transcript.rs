@@ -8,7 +8,7 @@
 //! derivable by the prover from public data alone).
 
 use std::collections::BTreeMap;
-use volta_field::{Fp2, FpStream};
+use volta_field::{Fp, Fp2, FpStream};
 
 pub struct Transcript {
     challenges: FpStream,
@@ -36,6 +36,15 @@ impl Transcript {
     /// corresponding message has been appended — callers keep that order).
     pub fn challenge_fp2(&mut self) -> Fp2 {
         self.challenges.next_fp2()
+    }
+
+    /// Fresh verifier challenge in the Goldilocks base field.
+    ///
+    /// Native C6.1 protocols use this for base-field transcript moves.  As
+    /// with [`Self::challenge_fp2`], callers must first append the prover
+    /// message on which the challenge depends.
+    pub fn challenge_fp(&mut self) -> Fp {
+        self.challenges.next_fp()
     }
 
     /// Fresh exact-bit verifier challenge for a power-of-two query domain.

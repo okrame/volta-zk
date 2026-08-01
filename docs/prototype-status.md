@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — CPU REFERENCE PCS/CODEC GREEN / C6 RELATION ADAPTER NEXT / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — AUTHENTICATED-TARGET LEAN GREEN / MODIFIED PCS NEXT / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -19,7 +19,7 @@ HVZK chains.  Its registered ceilings/rooflines are **16,342,103 B** per
 certificate, **101,085,470 B** setup plus first certificate,
 **14.5038184344 s** provider and **4.565672390 s** four-thread verifier;
 complete per-certificate soundness is **119.668253692 bits**.  The additive
-Lean package is green at **3,264 jobs / 21 new audited C6.1 targets** and the
+Lean package is green at **3,264 jobs / 28 new audited C6.1 targets** and the
 strict scaled `C6PA1-v1`/`C6RSC4-v4` Rust seam remains green.
 
 The next append-only CPU-reference checkpoint now pins Plonky3 `p3-whir`
@@ -36,9 +36,26 @@ seed-specific query candidates (**10,428 B** client challenge payload).
 Canonical field parsing, pre-allocation frontier caps, trailing-byte
 rejection and upstream-verifier panic containment are fail-closed.
 
-This checkpoint proves and verifies one polynomial opening only.  It does
-**not** yet prove the complete model, embedding or compiler relation, does
-not implement `C61NativeBackendVerifier`, and is never a production fallback.
+This checkpoint proves and verifies one polynomial opening only.  A
+post-checkpoint privacy audit found that its upstream proof exposes the
+requested evaluation directly and through the public base-case equation.
+The append-only `C6AWH1-v1` amendment therefore preregisters a fresh
+authenticated mask and designated `ZeroOpen` per chain; the clear evaluation
+is removed, for zero net provider-to-client bytes.  The configuration is
+raised before benchmarking from 74 to 75 bits, yielding formula-only maxima
+of **1,085,464 B (D27)** and **1,172,652 B (D28)** at `187` mask queries.
+Six chains consume three additional full correlations per tape, changing
+registered wrapper use from `622` to `625` of `39,116` without changing the
+raw attempt or setup allocation.  The unmodified upstream backend remains
+ineligible.
+
+Full Lean remains green at **3,264 jobs**; `Audit.lean` is **375 total / 28
+C6.1 targets** with only the permitted standard axioms.  The executable
+budget now distinguishes the immutable clear-target reference from the
+amended screen and fails closed on all full-chain credits.
+
+It does **not** yet prove the complete model, embedding or compiler relation,
+does not implement `C61NativeBackendVerifier`, and is never a production fallback.
 The candidate challenge count is seed-dependent because distinct queries use
 rejection sampling; it must be recorded per run and cannot be replaced by an
 upfront Fiat--Shamir seed.  The current monolithic upstream API is exercised
@@ -46,8 +63,9 @@ as two deterministic single-process replays under the same private diagnostic
 verifier seed; a production round state machine must never disclose that seed
 to the provider.  The existing allocation/roofline values therefore remain
 `credit:false`: no full-chain proof size, setup, timing, memory or hardware
-result is claimed.  The C6 relation adapter, resumable two-party driver and
-then full-T1 local integration are next.  Full `cargo test --workspace` and
+result is claimed.  The modified pinned PCS, resumable private-entropy
+two-party driver, C6 relation adapter and then full-T1 local integration are
+next.  Full `cargo test --workspace` and
 the six focused feature tests are green.  C6.1 remains local-only until a
 separate owner GO; no provider/pod contact is authorized.
 The exact frozen T1 source/correction census now has a clean append-only
@@ -639,6 +657,7 @@ its clean descendant closure.
 | C6.1 exact public/DV decomposition | **EXACT BYTE AND COMPILER-OPERATION RECONCILIATION PASS; CONSERVATIVE WIRE/SETUP ALLOCATION SCREEN PASS WITHOUT CREDIT; NATIVE FORMULA/TIME/SOUNDNESS ROOFLINE OPEN; NO LEAN/RUST PROOF OR POD** (2026-08-01) | Replace the complete old weight/embed PCS; retain all `C6LNK2` wrapper PCS and existing DV closure; delegate only the public 64-scalar compiler output through interactive `C6RSC4`; client binds the runtime stream with two postcommit fingerprints | The `33,096,991-B` certificate is exactly **30,132,658 B public-eligible + 2,963,152 B Delta-dependent + 1,181 B state/framing**. The active route removes the complete **26,254,888-B** old Q=121 weight/embed PCS, leaving **6,842,103 B** fixed. A preregistered **12,000,000-B** all-inclusive `C6PA1` allocation projects **18,842,103 B**, with **3,157,896 B** below the strict `21,999,999-B` maximum; this is not proof-size credit. The current terminal verifier executes exactly **112,998,706 coefficient writes/repetition / 225,997,412 total** to produce only **64 Fp2 scalars**. `C6RSC4` instead binds the raw **1,466 public + 10,828,876 scalar** client-role runtime stream with two postcommit polynomial fingerprints (>209-bit standalone event) and attests those scalars; any key/tag/Delta taint rejects. Conditional removal of the **63,994,751-B plan + 5,320,386-B map** gives a base **76,743,367-B** PCG/manifest setup; with an **8,000,000-B** client-parameter allocation it projects **84,743,367 B**, again without setup credit. Existing C6's informative A100 kernel floor is **11.1793342101 s** and excludes compiler credit, leaving only **3.8206657899 s** to the new 15-s gate. Executable source: `scripts/budget_c61_public_compression.py`. |
 | C6.1 native Gate-2 candidate | **PRE-CODE FORMULA / SOUNDNESS / WIRE / STATE / PROVIDER / VERIFIER SCREEN PASS; ADDITIVE FORMALIZATION NEXT; NO PROOF-SIZE, TIMING, MEMORY OR HARDWARE CREDIT; NO POD** (2026-08-01) | Interactive `C6PA1` with six dual-chain no-grinding Goldilocks HVZK arguments; `C6RSC4-v4` direct MLE challenge schedules and one aggregate sparse reverse adjoint; universal/updatable SRS remains permitted but locally obstructed/inactive | The old expanded schedules become **234 Fp2 / 3,744-B client-to-provider** postcommit MLE points with standalone error **120.129635280 bits**. The fixed compiler DAG has **28,845,631 nodes / 36,917,836 sparse operand edges / 10,830,342 runtime values**; four node vectors plus runtime are **2,019,405,856 B**, below the frozen ephemeral cap by **273,792,992 B**. Two runtime MLE fingerprints, a postclaim 64-output RLC and the dimension-25 adjoint recurrence compose with three dual 74-bit native components and the retained C6 wrapper to **119.668253692 bits/certificate**; the informational 17-certificate union is **115.580790850 bits**. Six **1,500,000-B** chain ceilings plus **500,000 B** new arithmetic/link material and the fixed **6,842,103 B** remainder give a strict candidate ceiling of **16,342,103 B** and setup-plus-first **101,085,470 B**. At immutable P7 rates, replacing the old model PCS gives **14.5038184344 s** provider roof with only **0.4961815656 s** headroom. The verifier allocation is **4.565672390 s** and **512,000,000 B** additional memory. All are pre-code screens with `credit:false`; the current four-core ARM host is not the AVX2 target. Executable source: `scripts/budget_c61_public_compression.py`; no pod contacted. |
 | C6.1 additive public-compression formalization | **GATE 3 LEAN PASS; CHALLENGE ORDER / MLE AND OUTPUT BOUNDS / SPARSE ADJOINT / PUBLIC-TO-DV / PREDECESSOR STATE / EXACT ERROR TARGETS GREEN; SCALED RUST NEXT; NO POD** (2026-08-01) | New `VoltaZk/C61PublicCompression.lean`; frozen M1--M11 untouched; concrete PCS binding/HVZK/two-chain realization remains an explicit backend contract | Full Lean is **3,264 jobs**. `Audit.lean` adds **21** named C6.1 targets with no ideal protocol axiom. The package proves the **234** challenge and **28,845,631-node** partition censuses; forbids schedule/output/native challenges before their binding roots/claims; specializes multivariate Schwartz--Zippel to a fixed-before-point MLE discrepancy; proves the zero-based 64-terminal RLC has degree **<=63** and at most **63** accepting field challenges; squares the two runtime-fingerprint accepting counts; proves `values=source+A*values` and `lambda=output+A^T*lambda` imply exact terminal/source dot-product equality; composes named public and designated bad events; and advances only an admissible exact predecessor before making the certificate non-replayable. The retained wrapper rational and new events prove complete error **<2^-119**, literal 79-bit compliance and 17-certificate union **<2^-115**. `C61NativeBackendContract` exposes, rather than axiomatizes, the three independent `<=2^-148` component premises. No Rust, codec, proof-size, timing, memory, native-backend or hardware credit; no pod contacted. |
+| C6.1 authenticated WHIR target seam | **C6AWH1 DEVIATION / ADDITIVE LEAN / EXECUTABLE BUDGET GREEN; MODIFIED PINNED PCS NEXT; NO POD** (2026-08-01) | One fresh authenticated mask per native chain; clear target forbidden; designated ZeroOpen closes the masked base identity; immutable C6WIR1 remains reference-only | The upstream clear evaluation and base identity obstruct direct integration. `C6AWH1-v1` replaces its `16-B` evaluation with one `16-B` ZeroOpen tag, for **zero net provider-to-client bytes**. Six chains consume **3 additional full correlations/tape**, moving use to **625/39,116** and leaving **38,491/tape** without enlarging setup/raw attempt. The public PCS setting is frozen at **75 bits** so `2^-75+1/|Fp2|<2^-74`; two chains remain `<2^-148`. Formula-only strict maxima are **1,085,464 B D27 / 1,172,652 B D28** at 187 mask queries. Lean stays **3,264 jobs** and `Audit.lean` is **375 total / 28 C6.1**, adding seven target-seam theorems with only standard axioms. Claim-private WHIR simulation, modified prover/verifier, two-party private-entropy driver and complete relation remain hard stops; no proof-size/time/setup/production credit and no pod contact. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -713,6 +732,36 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-08-01 — C6.1 preregisters `C6AWH1-v1` after the native PCS
+  reference exposes its target.** The pinned upstream `HidingWhir` proof
+  serializes the requested evaluation; deleting that field is insufficient
+  because its public base identity reveals the same target as
+  `(combined-masked_claim)/gamma`. Consequently the Section 0.11 artifact is
+  a PCS-equation/codec reference only and cannot enter the designated-
+  verifier seam unchanged.
+
+  Every amended chain consumes one fresh authenticated uniform mask `s`,
+  sends `masked_claim+s.x`, and closes
+  `public(combined-masked_claim-s.x) - gamma*target_auth + s_auth` with one
+  designated `ZeroOpen`. Removing the clear Fp2 evaluation and adding its
+  tag are exactly `-16 B +16 B`, so provider-to-client wire is unchanged.
+  The six chains use **three additional full correlations/tape**: wrapper use
+  becomes **625/39,116**, leaving **38,491/tape**, with no change to the
+  existing raw-attempt, setup or session-capacity allocations.
+
+  To preserve the existing two-chain `<2^-148` component contract after the
+  MAC event, the pre-benchmark Johnson setting is raised from 74 to **75
+  bits**. The exact inequality is `2^-75 + 1/|Fp2| < 2^-74`. A
+  configuration-only screen at the pinned revision uses `187` mask queries
+  and gives strict authenticated-opening maxima **1,085,464 B (D27)** and
+  **1,172,652 B (D28)**. These are no relation, timing, memory, setup,
+  production or hardware credit. Ledger-first recording and additive Lean are
+  complete at **3,264 jobs / 375 total audit targets / 28 C6.1 targets**;
+  seven new seam theorems use only the permitted standard axioms. The
+  executable budget is aligned and retains `credit:false`. A modified pinned
+  prover/verifier, private-entropy two-party driver and complete relation
+  adapter remain next. No pod contacted.
 
 - **2026-08-01 — C6.1 Gate 3 closes additively without editing frozen
   M1--M11.** `VoltaZk/C61PublicCompression.lean` proves the fixed-before-point

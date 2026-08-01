@@ -5,9 +5,10 @@ This report deliberately has two different verdict scopes:
 
 * exact reconciliation of the existing C6 certificate and residual-compiler
   operation census;
-* the preregistered C6.1 native-candidate screen plus the feature-gated
-  C6WIR1 PCS/codec reference.  The relation adapter and full-chain benchmark
-  remain absent, so the reference is not final proof or timing credit.
+* the preregistered C6.1 native-candidate screen, the feature-gated legacy
+  clear-target C6WIR1 PCS/codec reference, and the C6AWH1 authenticated-target
+  amendment.  The modified PCS, relation adapter and full-chain benchmark
+  remain absent, so neither reference is final proof or timing credit.
 
 No projected ceiling or analytic roofline is proof-size, setup, prover-time,
 verifier-time or hardware credit.  The implemented PCS codec receives only
@@ -123,10 +124,13 @@ C61_RUNTIME_LOG2 = 24
 C61_TERMINAL_OUTPUTS = 64
 
 # Native transparent candidate.  Each model/embedding/compiler component uses
-# two independent no-grinding chains with at least 74 analytic bits per chain.
+# two independent no-grinding chains.  C6AWH1 configures 75 public PCS bits so
+# adding one Fp2 MAC event remains strictly below a 74-bit authenticated-chain
+# allocation.
 # The 1.5-MB chain ceiling is an explicit strict codec ceiling; the underlying
 # maximum non-deduplicated Merkle openings are recomputed below.
-C61_NATIVE_CHAIN_BITS = 74
+C61_NATIVE_PUBLIC_PCS_BITS = 75
+C61_NATIVE_AUTHENTICATED_CHAIN_BITS = 74
 C61_NATIVE_CHAINS_PER_COMPONENT = 2
 C61_NATIVE_COMPONENTS = 3
 C61_NATIVE_CHAIN_CODEC_MAX_BYTES = 1_500_000
@@ -138,19 +142,37 @@ C61_NATIVE_PUBLIC_ARGUMENT_CODEC_MAX_BYTES = (
     + C61_NATIVE_ARITHMETIC_AND_LINK_CODEC_MAX_BYTES
 )
 
-# Exact C6WIR1 structural maxima computed by the feature-gated Rust codec
-# against the pinned Plonky3 HVZK-WHIR profile.  The bound maximizes every
-# deduplicated binary-Merkle frontier; it is not an average collision model.
-# It covers the PCS opening only.  The C6 model/compiler relation adapter is
-# still pending, so the registered 1,500,000-B full-chain cap remains binding.
+# Exact C6AWH1 structural screens at the pinned Plonky3 HVZK-WHIR revision.
+# They raise the upstream public security setting to 75 bits and substitute
+# one 16-B designated ZeroOpen tag for the 16-B clear evaluation, so the net
+# provider wire change is zero.  The bound maximizes every deduplicated
+# binary-Merkle frontier; it is not an average collision model.  The modified
+# PCS and C6 relation adapter remain pending, so the registered 1,500,000-B
+# full-chain cap remains binding.
 C61_P3_REFERENCE_COMMIT = "66e290615de1858f2f2f6a804158064c406cda1c"
 C61_NATIVE_MASK_LOG_INV_RATE = 1
-C61_NATIVE_MASK_QUERIES = 184
+C61_NATIVE_MASK_QUERIES = 187
 C61_NATIVE_D28_ROUNDS = 11
 C61_NATIVE_D27_ROUNDS = 10
-C61_NATIVE_D28_PCS_STRICT_MAX_BYTES = 1_162_908
-C61_NATIVE_D27_PCS_STRICT_MAX_BYTES = 1_076_376
+C61_NATIVE_D28_PCS_STRICT_MAX_BYTES = 1_172_652
+C61_NATIVE_D27_PCS_STRICT_MAX_BYTES = 1_085_464
+# Immutable clear-target Section 0.11 diagnostic; it is not a C6AWH1 size.
 C61_NATIVE_SCALED_D14_DIAGNOSTIC_BYTES = 375_584
+
+# C6AWH1 draws one mask for model/embedding/compiler on each MAC tape.  These
+# slots come from the already registered attempt reserve and do not enlarge
+# the raw-tape or paired-PCG setup allocation.
+C6_REGISTERED_WRAPPER_FULL_CORRELATIONS_PER_TAPE = 622
+C6_FULL_CORRELATION_RESERVE_PER_TAPE = 39_116
+C61_AUTHENTICATED_TARGET_MASKS_PER_TAPE = 3
+C61_REGISTERED_WRAPPER_FULL_CORRELATIONS_PER_TAPE = (
+    C6_REGISTERED_WRAPPER_FULL_CORRELATIONS_PER_TAPE
+    + C61_AUTHENTICATED_TARGET_MASKS_PER_TAPE
+)
+C61_FULL_CORRELATION_HEADROOM_PER_TAPE = (
+    C6_FULL_CORRELATION_RESERVE_PER_TAPE
+    - C61_REGISTERED_WRAPPER_FULL_CORRELATIONS_PER_TAPE
+)
 
 # Conservative analytic-time charges.  They are deliberately wider than the
 # diagnostic prototype and count every transform class sequentially.
@@ -285,7 +307,8 @@ def build_report() -> dict[str, Any]:
 
     # C6RSC4-v4 statistical composition.  The schedule/output/adjoint events
     # are sampled after the relevant roots and claims are fixed.  The three
-    # transparent components each use two independent >=74-bit chains.
+    # transparent components each use two independent authenticated chains,
+    # each strictly below the registered 74-bit error allocation.
     equality_schedule_error = Fraction(
         C61_EQ_CHALLENGE_FP2_ELEMENTS, c6.FP2_CARDINALITY
     )
@@ -293,9 +316,16 @@ def build_report() -> dict[str, Any]:
         C61_TERMINAL_OUTPUTS - 1, c6.FP2_CARDINALITY
     )
     sparse_adjoint_error = Fraction(C61_NODE_LOG2, c6.FP2_CARDINALITY)
+    authenticated_target_chain_error = Fraction(
+        1, 2**C61_NATIVE_PUBLIC_PCS_BITS
+    ) + Fraction(1, c6.FP2_CARDINALITY)
     native_backend_error = Fraction(
         C61_NATIVE_COMPONENTS,
-        2 ** (C61_NATIVE_CHAIN_BITS * C61_NATIVE_CHAINS_PER_COMPONENT),
+        2
+        ** (
+            C61_NATIVE_AUTHENTICATED_CHAIN_BITS
+            * C61_NATIVE_CHAINS_PER_COMPONENT
+        ),
     )
     existing_wrapper_error = (
         c6.pcs_error_amplified(c6.SELECTED_QUERY_COUNT)
@@ -393,10 +423,10 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v2",
+        "profile": "C6.1-public-compression-reference-v3",
         "verdict": (
-            "CPU_REFERENCE_PCS_CODEC_PASS__C6_RELATION_ADAPTER_REQUIRED__"
-            "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
+            "AUTHENTICATED_TARGET_LEAN_GREEN__MODIFIED_PCS_AND_"
+            "C6_RELATION_ADAPTER_REQUIRED__NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
             "proof_size": False,
@@ -462,7 +492,7 @@ def build_report() -> dict[str, Any]:
         "selected_native_candidate": {
             "name": "C6PA1-native-HVZK-plus-C6RSC4-v4",
             "status": (
-                "CPU_REFERENCE_PCS_AND_STRICT_CODEC_GREEN__"
+                "C6AWH1_FORMAL_SEAM_GREEN__MODIFIED_PCS_AND_"
                 "C6_RELATION_ADAPTER_PENDING__NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
             "statement": (
@@ -542,7 +572,10 @@ def build_report() -> dict[str, Any]:
                 "mask_log_inv_rate": C61_NATIVE_MASK_LOG_INV_RATE,
                 "mask_queries": C61_NATIVE_MASK_QUERIES,
                 "chains_per_component": C61_NATIVE_CHAINS_PER_COMPONENT,
-                "analytic_bits_per_chain_floor": C61_NATIVE_CHAIN_BITS,
+                "configured_public_pcs_security_bits": C61_NATIVE_PUBLIC_PCS_BITS,
+                "authenticated_chain_error_allocation_bits": (
+                    C61_NATIVE_AUTHENTICATED_CHAIN_BITS
+                ),
                 "components": ["model", "embedding", "compiler"],
                 "reference_prototype": "Plonky3 p3-whir 0.6.0",
                 "reference_prototype_commit": C61_P3_REFERENCE_COMMIT,
@@ -550,13 +583,37 @@ def build_report() -> dict[str, Any]:
                     "pinned academic implementation behind a reference-only "
                     "feature; not audited and never a production fallback"
                 ),
-                "strict_codec": "C6WIR1-v1 fixed-shape non-Serde",
+                "clear_target_reference_codec": (
+                    "C6WIR1-v1 fixed-shape non-Serde; Section 0.11 only; "
+                    "ineligible for native backend integration"
+                ),
+                "authenticated_target_adapter": {
+                    "name": "C6AWH1-v1",
+                    "status": "Lean seam green; modified pinned PCS pending",
+                    "clear_evaluation_bytes_removed_per_chain": 16,
+                    "zero_open_tag_bytes_added_per_chain": 16,
+                    "provider_to_client_net_bytes_per_chain": 0,
+                    "fresh_full_correlations_per_tape": (
+                        C61_AUTHENTICATED_TARGET_MASKS_PER_TAPE
+                    ),
+                    "registered_wrapper_full_correlations_per_tape": (
+                        C61_REGISTERED_WRAPPER_FULL_CORRELATIONS_PER_TAPE
+                    ),
+                    "reserved_full_correlations_per_tape": (
+                        C6_FULL_CORRELATION_RESERVE_PER_TAPE
+                    ),
+                    "headroom_full_correlations_per_tape": (
+                        C61_FULL_CORRELATION_HEADROOM_PER_TAPE
+                    ),
+                    "raw_attempt_or_setup_increment_bytes": 0,
+                    "claim_privacy_backend_proof_pending": True,
+                },
                 "relation_adapter": (
-                    "pending: the PCS proves one polynomial opening, not yet "
-                    "the complete model/embedding/compiler relation"
+                    "pending: modified PCS must return an authenticated target; "
+                    "the complete model/embedding/compiler relation is absent"
                 ),
                 "d28": {
-                    "configured_security_target_bits": C61_NATIVE_CHAIN_BITS,
+                    "configured_security_target_bits": C61_NATIVE_PUBLIC_PCS_BITS,
                     "rounds": C61_NATIVE_D28_ROUNDS,
                     "pcs_strict_structural_max_bytes": (
                         d28_known_chain_bytes
@@ -566,7 +623,7 @@ def build_report() -> dict[str, Any]:
                     ),
                 },
                 "d27": {
-                    "configured_security_target_bits": C61_NATIVE_CHAIN_BITS,
+                    "configured_security_target_bits": C61_NATIVE_PUBLIC_PCS_BITS,
                     "rounds": C61_NATIVE_D27_ROUNDS,
                     "pcs_strict_structural_max_bytes": (
                         d27_known_chain_bytes
@@ -576,6 +633,7 @@ def build_report() -> dict[str, Any]:
                     ),
                 },
                 "scaled_d14_diagnostic": {
+                    "profile": "legacy clear-target C6WIR1 Section 0.11",
                     "strict_payload_bytes": (
                         C61_NATIVE_SCALED_D14_DIAGNOSTIC_BYTES
                     ),
@@ -638,6 +696,9 @@ def build_report() -> dict[str, Any]:
                 "terminal_output_rlc": _error_report(output_batch_error),
                 "sparse_adjoint_recurrence": _error_report(
                     sparse_adjoint_error
+                ),
+                "one_authenticated_chain_exact_screen": _error_report(
+                    authenticated_target_chain_error
                 ),
                 "three_dual_chain_native_components": _error_report(
                     native_backend_error
@@ -916,10 +977,15 @@ def build_report() -> dict[str, Any]:
         + C61_SCALE_NODE_COUNT
         == C61_CANONICAL_NODE_COUNT
     )
-    assert d28_known_chain_bytes == 1_162_908
-    assert d27_known_chain_bytes == 1_076_376
+    assert d28_known_chain_bytes == 1_172_652
+    assert d27_known_chain_bytes == 1_085_464
     assert d28_known_chain_bytes < C61_NATIVE_CHAIN_CODEC_MAX_BYTES
     assert d27_known_chain_bytes < C61_NATIVE_CHAIN_CODEC_MAX_BYTES
+    assert authenticated_target_chain_error < Fraction(
+        1, 2**C61_NATIVE_AUTHENTICATED_CHAIN_BITS
+    )
+    assert C61_REGISTERED_WRAPPER_FULL_CORRELATIONS_PER_TAPE == 625
+    assert C61_FULL_CORRELATION_HEADROOM_PER_TAPE == 38_491
     assert C61_NATIVE_PUBLIC_ARGUMENT_CODEC_MAX_BYTES == 9_500_000
     assert native_projected_certificate_bytes == 16_342_103
     assert C61_CERTIFICATE_MAX_BYTES - native_projected_certificate_bytes == 5_657_896

@@ -33,7 +33,9 @@ LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 BOUNDARIES, CRYPTOGRAPHIC SEAM AND ORDERED GATES FROZEN; EXACT BYTE/OPERATION
 PUBLIC/DV DECOMPOSITION GREEN; NATIVE `C6PA1`/`C6RSC4-v4` FORMULA,
 SOUNDNESS, WIRE, MEMORY AND PRE-CODE TIME ROOFLINES GREEN; ADDITIVE LEAN +
-SCALED STRICT SEAM + INTERACTIVE CPU REFERENCE PCS/CODEC GREEN; COMPLETE C6
+SCALED STRICT SEAM + INTERACTIVE CPU REFERENCE PCS/CODEC GREEN; CLEAR-TARGET
+OBSTRUCTION REGISTERED; `C6AWH1-v1` AUTHENTICATED-TARGET LEAN/BUDGET GREEN;
+MODIFIED PINNED PCS, PRIVATE-ENTROPY TWO-PARTY DRIVER, COMPLETE C6
 MODEL/EMBEDDING/COMPILER RELATION ADAPTER AND FULL-T1 INTEGRATION NEXT; NO
 C6.1 FULL-CHAIN PROOF-SIZE, TIMING, MEMORY OR HARDWARE CREDIT; HARD STOP
 BEFORE POD.**
@@ -942,6 +944,106 @@ Until those obligations close, the executable budget verdict is
 No setup removal, certificate reduction, provider/verifier timing, RAM,
 session or hardware gate is advanced, and pod contact remains forbidden
 without a separate owner GO.
+
+### 0.12 C6AWH1-v1 authenticated-target amendment
+
+The Section 0.11 differential exposed a load-bearing privacy obstruction
+before the standalone PCS could be connected to C6.  The upstream
+`HidingWhir` proof serializes the requested evaluation.  Removing that field
+from `C6WIR1-v1` would not repair the leak: at the base case its public
+verification equation has the form
+
+```text
+combined - masked_claim = gamma * target.
+```
+
+Thus a nonzero public `gamma` reveals `target` even when the redundant
+evaluation field is omitted.  This is incompatible with the frozen rule that
+PCS openings resolve into VOLE-authenticated values and never reveal a
+cleartext `W_tilde(r)`.  The unmodified upstream prover/verifier therefore
+cannot implement `C61NativeBackendVerifier`.
+
+`C6AWH1-v1` preregisters the following claim-private base closure.  For every
+native chain, one fresh full VOLE correlation supplies an authenticated
+uniform mask `s`.  The prover shifts only the base claim,
+
+```text
+masked_claim' = masked_claim + s.x,
+```
+
+so the public WHIR relation becomes
+
+```text
+combined - masked_claim' = gamma * target - s.x.
+```
+
+The target is not public.  The client instead linearly derives the
+authenticated residual
+
+```text
+R = public(combined - masked_claim') - gamma * target_auth + s_auth
+```
+
+and accepts this seam only after one designated `ZeroOpen(R)` succeeds.  For
+an honest WHIR base equation `R.x = 0`; MAC validity follows only from public
+embedding and authenticated linearity.  The correlation is one-time,
+domain-separated by certificate version, component, chain/repetition, slot
+and exact range.  Abort burns it with the enclosing slot; ambiguous-ACK
+retransmission reuses the identical certificate and never creates a second
+proof on the same range.
+
+There are six native chains, aligned as model/embedding/compiler on each of
+the two independent MAC tapes.  The amendment therefore consumes exactly
+**three additional full correlations per tape per attempted certificate**.
+Registered wrapper use changes from `622` to `625` of the existing
+`39,116-full/tape` attempt reserve, leaving `38,491` full correlations per
+tape.  It does not enlarge the `5,235,692-raw/tape` attempt reservation,
+paired-PCG setup bytes or session capacity.  No correction is sent for this
+preprocessed mask.
+
+The strict provider-to-client size is unchanged per chain: omitting the
+clear Fp2 evaluation removes `16 B`, while the designated `ZeroOpen` tag adds
+`16 B`.  It remains illegal to move either field outside the chain/certificate
+accounting.  A pre-benchmark parameter re-sum raises the Johnson security
+configuration from 74 to **75 bits** because one chain now has error
+
+```text
+2^-75 + 1/|Fp2| < 2^-74.
+```
+
+Two independently separated chains therefore retain error `<2^-148` for
+each model/embedding/compiler component and still instantiate the existing
+`C61NativeBackendContract`.  At the same pinned Plonky3 revision, a
+configuration-only structural screen gives `187` mask queries and the
+following exact strict maxima after the `-16 B +16 B` substitution:
+
+| Authenticated PCS opening | Rounds | Strict structural maximum | Headroom to 1,500,000 B |
+| --- | ---: | ---: | ---: |
+| D27 | 10 | 1,085,464 B | 414,536 B |
+| D28 | 11 | 1,172,652 B | 327,348 B |
+
+These are codec/formula screens, not complete-relation proof measurements.
+The security change is fixed before any C6AWH1 benchmark and may not be
+reverted after observing timing.
+
+The additive Lean seam must prove the zero-plaintext equation, preservation
+of MAC validity, bijectivity of the one-time claim shift, exact two-tape mask
+census and the 75-bit-plus-MAC inequality.  It deliberately cannot establish
+claim privacy for the modified WHIR protocol from algebra alone.  Native
+backend credit remains hard-stopped until a reviewed local fork/vendor of
+the pinned prover and verifier implements this masked base case, a genuine
+two-party resumable driver keeps verifier entropy private, and the complete
+model/embedding/compiler relation adapter is proved and tested.  No proof-
+size, time, memory, setup, session, production or pod credit is granted by
+this amendment.
+
+That additive checkpoint is now green.  `lake build` completes **3,264
+jobs**; `Audit.lean` contains **375 total / 28 C6.1 targets**, adding seven
+named C6AWH1 theorems with only `propext`, `Classical.choice` and `Quot.sound`
+where required.  The executable budget independently checks the `625/39,116`
+correlation allocation, exact D27/D28 screens and the strict one-chain
+inequality.  This advances only the algebra/budget hard stop: modified PCS,
+claim-private simulation and complete-relation credit remain absent.
 
 ## 1. Owner requirements
 

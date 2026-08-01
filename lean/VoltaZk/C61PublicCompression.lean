@@ -23,9 +23,11 @@ concrete WHIR implementation.  The load-bearing facts here are:
 * the exact registered rational error sum clears both the per-certificate
   and 17-certificate targets.
 
-PCS binding, HVZK privacy and the concrete two-chain 74-bit bound remain
-explicit backend premises.  The Rust typestate and codec must instantiate the
-same message order and may not turn those premises into unchecked metadata.
+PCS binding and HVZK privacy remain explicit backend premises.  The
+authenticated-target amendment below proves its linear MAC seam and the
+75-bit-plus-MAC two-chain bound, but not claim privacy for a concrete modified
+WHIR implementation.  The Rust typestate and codec must instantiate the same
+message order and may not turn those premises into unchecked metadata.
 -/
 
 namespace VoltaZk
@@ -284,6 +286,66 @@ theorem c61_public_to_designated_composition
     · exact Or.inr (Or.inr hbad)
   · exact Or.inr (Or.inl hbad)
 
+/-! ## Authenticated WHIR target seam -/
+
+/-- The claim-private base closure shifts the public WHIR base claim by one
+fresh authenticated mask, then checks only this authenticated residual. -/
+def c61AuthenticatedTargetResidual
+    {F : Type*} [Field F]
+    (Delta gamma combined maskedClaim : F) (target mask : Authed F) :
+    Authed F :=
+  Authed.ofPublic Delta (combined - (maskedClaim + mask.x))
+    - gamma • target + mask
+
+/-- Under the honest unshifted WHIR base identity, the amended residual has
+zero plaintext.  In particular, the public equation contains only the
+one-time-padded value `gamma * target.x - mask.x`. -/
+theorem c61_authenticated_target_residual_x_eq_zero
+    {F : Type*} [Field F]
+    (Delta gamma combined maskedClaim : F) (target mask : Authed F)
+    (hbase : combined = maskedClaim + gamma * target.x) :
+    (c61AuthenticatedTargetResidual Delta gamma combined maskedClaim
+      target mask).x = 0 := by
+  simp [c61AuthenticatedTargetResidual, hbase]
+
+/-- Public embedding and authenticated linearity preserve the MAC invariant;
+the verifier needs no target plaintext to derive its residual key. -/
+theorem c61_authenticated_target_residual_valid
+    {F : Type*} [Field F]
+    (Delta gamma combined maskedClaim : F) (target mask : Authed F)
+    (htarget : target.Valid Delta) (hmask : mask.Valid Delta) :
+    (c61AuthenticatedTargetResidual Delta gamma combined maskedClaim
+      target mask).Valid Delta := by
+  exact ((Authed.ofPublic_valid Delta
+    (combined - (maskedClaim + mask.x))).sub (htarget.smul gamma)).add hmask
+
+/-- Adding a fixed base claim to a field mask is a permutation.  This is the
+algebraic equal-fiber fact used by the claim-privacy obligation; the concrete
+WHIR simulator remains a backend proof obligation. -/
+def c61MaskedClaimShift
+    {F : Type*} [AddCommGroup F] (maskedClaim : F) : F ≃ F where
+  toFun mask := maskedClaim + mask
+  invFun shifted := -maskedClaim + shifted
+  left_inv mask := by simp
+  right_inv shifted := by simp
+
+theorem c61_masked_claim_shift_bijective
+    {F : Type*} [AddCommGroup F] (maskedClaim : F) :
+    Function.Bijective (fun mask => maskedClaim + mask) :=
+  (c61MaskedClaimShift maskedClaim).bijective
+
+def c61AuthenticatedWhirChains : Nat := 6
+def c61AuthenticatedWhirTapes : Nat := 2
+def c61AuthenticatedWhirMasksPerTape : Nat := 3
+
+/-- Model, embedding and compiler each contribute one chain to each of the
+two independently authenticated tapes. -/
+theorem c61_authenticated_whir_mask_census :
+    c61AuthenticatedWhirMasksPerTape * c61AuthenticatedWhirTapes
+      = c61AuthenticatedWhirChains := by
+  norm_num [c61AuthenticatedWhirMasksPerTape, c61AuthenticatedWhirTapes,
+    c61AuthenticatedWhirChains]
+
 namespace C6Certificate
 
 /-- C6.1 acceptance keeps the public and designated decisions separate and
@@ -319,6 +381,31 @@ theorem c61_fp2_card_q_eq_x4e :
     c61Fp2CardQ = (Fintype.card X4E : ℚ) := by
   rw [goldilocks_fp2_card]
   norm_num [c61Fp2CardQ, c61GoldilocksP, goldilocksP]
+
+/-- One amended chain combines a 75-bit public PCS allocation with one fresh
+Fp2 MAC zero-opening event. -/
+def c61AuthenticatedWhirOneChainError : ℚ :=
+  (1 : ℚ) / 2 ^ 75 + 1 / c61Fp2CardQ
+
+theorem c61_authenticated_whir_one_chain_error_nonneg :
+    0 ≤ c61AuthenticatedWhirOneChainError := by
+  norm_num [c61AuthenticatedWhirOneChainError, c61Fp2CardQ,
+    c61GoldilocksP, goldilocksP]
+
+/-- Raising the public allocation from 74 to 75 bits absorbs the new MAC
+event while retaining a strict 74-bit bound for one authenticated chain. -/
+theorem c61_authenticated_whir_one_chain_error_lt_two_pow_neg_74 :
+    c61AuthenticatedWhirOneChainError < (1 : ℚ) / 2 ^ 74 := by
+  norm_num [c61AuthenticatedWhirOneChainError, c61Fp2CardQ,
+    c61GoldilocksP, goldilocksP]
+
+/-- Two independently separated amended chains still fit the existing
+per-component `2^-148` native-backend contract. -/
+theorem c61_authenticated_whir_two_chain_error_lt_two_pow_neg_148 :
+    c61AuthenticatedWhirOneChainError ^ 2 < (1 : ℚ) / 2 ^ 148 := by
+  have hnonneg := c61_authenticated_whir_one_chain_error_nonneg
+  have hbound := c61_authenticated_whir_one_chain_error_lt_two_pow_neg_74
+  nlinarith
 
 def c61RetainedWrapperPcsOneError : ℚ :=
   72 * ((9 : ℚ) / 16) ^ 86

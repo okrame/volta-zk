@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — AUTHENTICATED-TARGET LEAN/RUST SEAM GREEN / MODIFIED PCS NEXT / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — CLAIMLESS AFFINE TARGET LEAN/RUST SEAM GREEN / MODIFIED PCS NEXT / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -38,7 +38,8 @@ rejection and upstream-verifier panic containment are fail-closed.
 
 This checkpoint proves and verifies one polynomial opening only.  A
 post-checkpoint privacy audit found that its upstream proof exposes the
-requested evaluation directly and through the public base-case equation.
+requested evaluation directly, observes the carried claimed sum before every
+ZK-sumcheck batch, and exposes it through the public base-case equation.
 The append-only `C6AWH1-v1` amendment therefore preregisters a fresh
 authenticated mask and designated `ZeroOpen` per chain; the clear evaluation
 is removed, for zero net provider-to-client bytes.  The configuration is
@@ -49,17 +50,20 @@ registered wrapper use from `622` to `625` of `39,116` without changing the
 raw attempt or setup allocation.  The unmodified upstream backend remains
 ineligible.
 
-Full Lean remains green at **3,264 jobs**; `Audit.lean` is **375 total / 28
-C6.1 targets** with only the permitted standard axioms.  The executable
+Full Lean remains green at **3,264 jobs**; `Audit.lean` is now **380 total /
+33 C6.1 targets**, adding five affine targets with only the permitted standard
+axioms.  The executable
 budget now distinguishes the immutable clear-target reference from the
 amended screen and fails closed on all full-chain credits.
 
 The standalone Rust `C6AWH1` seam is also green.  Its nested codec replaces
 the removed 16-B evaluation with exactly one canonical 16-B tag; six chains
 consume three correlations per tape under injective stage/slot/range/
-component/repetition domains.  Five focused tests pass in both ordinary and
-`c6-trace` builds, the default workspace is green at **volta-pcs 195/0/1**,
-and the joint C6.1/P3-reference filter is **22/22**.  It remains deliberately
+component/repetition domains.  A typed affine accumulator now mirrors every
+claim-hidden sumcheck transition and lifts its final form onto the MAC
+share/key.  Six focused tests pass in both ordinary and `c6-trace` builds;
+the last recorded full workspace remains green at **volta-pcs 195/0/1**,
+and the joint C6.1/P3-reference filter is **23/23**.  It remains deliberately
 disconnected from `C61NativeBackendVerifier`.
 
 It does **not** yet prove the complete model, embedding or compiler relation,
@@ -71,7 +75,7 @@ as two deterministic single-process replays under the same private diagnostic
 verifier seed; a production round state machine must never disclose that seed
 to the provider.  The existing allocation/roofline values therefore remain
 `credit:false`: no full-chain proof size, setup, timing, memory or hardware
-result is claimed.  The modified pinned PCS, resumable private-entropy
+result is claimed.  The claimless affine modified PCS, resumable private-entropy
 two-party driver, C6 relation adapter and then full-T1 local integration are
 next.  Full `cargo test --workspace` and
 the six focused feature tests are green.  C6.1 remains local-only until a
@@ -667,6 +671,7 @@ its clean descendant closure.
 | C6.1 additive public-compression formalization | **GATE 3 LEAN PASS; CHALLENGE ORDER / MLE AND OUTPUT BOUNDS / SPARSE ADJOINT / PUBLIC-TO-DV / PREDECESSOR STATE / EXACT ERROR TARGETS GREEN; SCALED RUST NEXT; NO POD** (2026-08-01) | New `VoltaZk/C61PublicCompression.lean`; frozen M1--M11 untouched; concrete PCS binding/HVZK/two-chain realization remains an explicit backend contract | Full Lean is **3,264 jobs**. `Audit.lean` adds **21** named C6.1 targets with no ideal protocol axiom. The package proves the **234** challenge and **28,845,631-node** partition censuses; forbids schedule/output/native challenges before their binding roots/claims; specializes multivariate Schwartz--Zippel to a fixed-before-point MLE discrepancy; proves the zero-based 64-terminal RLC has degree **<=63** and at most **63** accepting field challenges; squares the two runtime-fingerprint accepting counts; proves `values=source+A*values` and `lambda=output+A^T*lambda` imply exact terminal/source dot-product equality; composes named public and designated bad events; and advances only an admissible exact predecessor before making the certificate non-replayable. The retained wrapper rational and new events prove complete error **<2^-119**, literal 79-bit compliance and 17-certificate union **<2^-115**. `C61NativeBackendContract` exposes, rather than axiomatizes, the three independent `<=2^-148` component premises. No Rust, codec, proof-size, timing, memory, native-backend or hardware credit; no pod contacted. |
 | C6.1 authenticated WHIR target seam | **C6AWH1 DEVIATION / ADDITIVE LEAN / EXECUTABLE BUDGET GREEN; MODIFIED PINNED PCS NEXT; NO POD** (2026-08-01) | One fresh authenticated mask per native chain; clear target forbidden; designated ZeroOpen closes the masked base identity; immutable C6WIR1 remains reference-only | The upstream clear evaluation and base identity obstruct direct integration. `C6AWH1-v1` replaces its `16-B` evaluation with one `16-B` ZeroOpen tag, for **zero net provider-to-client bytes**. Six chains consume **3 additional full correlations/tape**, moving use to **625/39,116** and leaving **38,491/tape** without enlarging setup/raw attempt. The public PCS setting is frozen at **75 bits** so `2^-75+1/|Fp2|<2^-74`; two chains remain `<2^-148`. Formula-only strict maxima are **1,085,464 B D27 / 1,172,652 B D28** at 187 mask queries. Lean stays **3,264 jobs** and `Audit.lean` is **375 total / 28 C6.1**, adding seven target-seam theorems with only standard axioms. Claim-private WHIR simulation, modified prover/verifier, two-party private-entropy driver and complete relation remain hard stops; no proof-size/time/setup/production credit and no pod contact. |
 | C6.1 standalone authenticated-target Rust seam | **STRICT 16-B TAG / SIX-CHAIN CORRELATION AND DOMAIN DIFFERENTIAL GREEN; MODIFIED PINNED PCS NEXT; NO POD** (2026-08-01) | Lean-mirroring MAC closure only; exact three-mask typed range per tape; no native backend trait implementation or claim-private PCS credit | Provider and verifier derive the same authenticated residual without exposing target/mask plaintext to the client. The tag codec is canonical **16 B**, for **0 B net** against the removed evaluation. Domains injectively bind stage, slot, u32 range start, component and repetition below reserved MAC bits; ordinals are fixed to `{0,1,2}`. Ordinary and `c6-trace` focused suites are **5/5** each; six-chain schedule audits match at **3 full correlations/3 domains per tape**. Public/base/key/tag/component/stage/slot/range and codec mutations reject; an invalid base identity burns its mask, same-domain replay fails, and retry needs a new slot/range. Full default workspace is green (**volta-pcs 195/0/1; volta-proto 149/0/1**); joint C6.1/P3-reference filter is **22/22**. The pinned WHIR code remains unmodified and target-revealing, so no `C61NativeBackendVerifier`, proof-size, time, setup/session or production credit; no pod contacted. |
+| C6.1 claimless affine-target correction | **SECOND CLEAR-TARGET LEAK FOUND BEFORE VENDOR; AFFINE LEAN/RUST SEAM GREEN; MODIFIED PCS STILL PENDING; NO POD** (2026-08-01) | Never observe a carried sumcheck claim; client replays it as `a*target+b`; existing C6AWH1 masks only the final base closure | Source audit found that upstream `into_zk_sumcheck`/`verify_claim` observes the current claimed sum before every batch, so deleting `proof.evals` and shifting only the base claim is insufficient. The corrected prelude is `(a,b)<-(eps*a,eps*b+mu)`; a dropped-linear round is `a'=gamma*a`, `b'=c0+gamma*(b-2*c0-tail1)+tailGamma`; public code-switch terms add only to `b`. Five additive Lean theorems prove those identities and the authenticated lift. The typed Rust accumulator matches four plaintext rounds and preserves the MAC relation; focused ordinary and `c6-trace` suites are **6/6**. This correction changes no registered byte/security allocation and earns no backend credit until a reviewed fork removes every clear claim observation, replays the complete verifier affinely, connects C6AWH1 and supplies the amended privacy argument. No pod contacted. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -741,6 +746,25 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-08-01 — clear claimed-sum observations require affine replay; a
+  base-only C6AWH1 patch is refused.** Before creating a local fork, source
+  audit found that upstream `SumcheckProver::into_zk_sumcheck` and
+  `ZkVerifier::verify_claim` both absorb the carried scalar claim before each
+  batch challenge. The first one-opening claim is the secret evaluation.
+  Removing `proof.evals` and masking only the final base identity would still
+  leak it.
+
+  The amended interactive protocol fixes the authenticated target slot before
+  fresh verifier entropy but never sends/absorbs its plaintext. The client
+  propagates a public affine form `a*target+b`; the omitted linear sumcheck
+  coefficient makes each round exactly replayable in this form. Public
+  code-switch terms affect only `b`, and the final affine form is lifted onto
+  the existing MAC key before the C6AWH1 ZeroOpen. Five Lean audit targets and
+  one Rust differential are green; focused suites are **6/6** ordinary and
+  with `c6-trace`. A future FS transform needs separate statement binding and
+  is not covered. No byte, soundness, timing, backend, production or pod
+  credit changes.
 
 - **2026-08-01 — C6AWH1 lands as a standalone typed Rust seam, not a false
   native backend.** The replacement tag is a nested canonical 16-B Fp2 value

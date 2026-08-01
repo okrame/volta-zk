@@ -35,12 +35,12 @@ pub use batch::{
 };
 pub use c61_authenticated_whir::{
     prove_c61_authenticated_whir_base, verify_c61_authenticated_whir_base,
-    C61AuthenticatedWhirBaseProof, C61AuthenticatedWhirError, C61AuthenticatedWhirMaskRange,
-    C61AuthenticatedWhirProverClosure, C61AuthenticatedWhirProverInput,
-    C61AuthenticatedWhirVerifierInput, C61_AUTHENTICATED_WHIR_CHAINS,
-    C61_AUTHENTICATED_WHIR_MASKS_PER_TAPE, C61_AUTHENTICATED_WHIR_NET_PROVIDER_BYTES,
-    C61_AUTHENTICATED_WHIR_REMOVED_EVALUATION_BYTES, C61_AUTHENTICATED_WHIR_TAPES,
-    C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES,
+    C61AuthenticatedWhirAffineClaim, C61AuthenticatedWhirBaseProof, C61AuthenticatedWhirError,
+    C61AuthenticatedWhirMaskRange, C61AuthenticatedWhirProverClosure,
+    C61AuthenticatedWhirProverInput, C61AuthenticatedWhirVerifierInput,
+    C61_AUTHENTICATED_WHIR_CHAINS, C61_AUTHENTICATED_WHIR_MASKS_PER_TAPE,
+    C61_AUTHENTICATED_WHIR_NET_PROVIDER_BYTES, C61_AUTHENTICATED_WHIR_REMOVED_EVALUATION_BYTES,
+    C61_AUTHENTICATED_WHIR_TAPES, C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES,
 };
 pub use c61_public_compression::{
     build_c61_scaled_arithmetic_frame, c61_eq_weight, c61_fp2_vector_root,

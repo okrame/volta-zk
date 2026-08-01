@@ -425,7 +425,7 @@ def build_report() -> dict[str, Any]:
     report: dict[str, Any] = {
         "profile": "C6.1-public-compression-reference-v3",
         "verdict": (
-            "AUTHENTICATED_TARGET_LEAN_AND_RUST_SEAM_GREEN__MODIFIED_PCS_AND_"
+            "CLAIMLESS_AFFINE_TARGET_LEAN_AND_RUST_SEAM_GREEN__MODIFIED_PCS_AND_"
             "C6_RELATION_ADAPTER_REQUIRED__NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
@@ -492,7 +492,7 @@ def build_report() -> dict[str, Any]:
         "selected_native_candidate": {
             "name": "C6PA1-native-HVZK-plus-C6RSC4-v4",
             "status": (
-                "C6AWH1_FORMAL_SEAM_GREEN__MODIFIED_PCS_AND_"
+                "C6AWH1_CLAIMLESS_AFFINE_SEAM_GREEN__MODIFIED_PCS_AND_"
                 "C6_RELATION_ADAPTER_PENDING__NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
             "statement": (
@@ -590,11 +590,13 @@ def build_report() -> dict[str, Any]:
                 "authenticated_target_adapter": {
                     "name": "C6AWH1-v1",
                     "status": (
-                        "Lean and standalone Rust MAC seam green; modified "
-                        "pinned PCS and backend integration pending"
+                        "Claimless affine-target Lean and standalone Rust MAC "
+                        "seams green; modified pinned PCS and backend integration pending"
                     ),
-                    "focused_tests_ordinary": 5,
-                    "focused_tests_c6_trace": 5,
+                    "focused_tests_ordinary": 6,
+                    "focused_tests_c6_trace": 6,
+                    "clear_claim_observations_removed": False,
+                    "affine_full_verifier_replay_pending": True,
                     "clear_evaluation_bytes_removed_per_chain": 16,
                     "zero_open_tag_bytes_added_per_chain": 16,
                     "provider_to_client_net_bytes_per_chain": 0,
@@ -614,7 +616,7 @@ def build_report() -> dict[str, Any]:
                     "claim_privacy_backend_proof_pending": True,
                 },
                 "relation_adapter": (
-                    "pending: modified PCS must return an authenticated target; "
+                    "pending: claimless affine modified PCS must return an authenticated target; "
                     "the complete model/embedding/compiler relation is absent"
                 ),
                 "d28": {

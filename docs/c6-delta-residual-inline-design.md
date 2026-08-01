@@ -1073,14 +1073,16 @@ only legal ordinal `range_start + {0,1,2}` and repetition must be tape 0 or
 consumes exactly **three full correlations and three domains per tape**, and
 the ordinary prover/verifier schedule audits are identical.
 
-Five focused tests pass both ordinarily and with `c6-trace`.  They cover:
+Six focused tests pass both ordinarily and with `c6-trace`.  They cover:
 
 1. the honest algebra, strict 16-B codec and one-mask counter;
 2. all six chain identities and the exact three-per-tape census;
 3. mutation of the public base values, `gamma`, target key, tag, component,
    stage, slot and range, plus malformed/noncanonical encodings;
 4. fail-closed range/repetition/reserved-bit validation; and
-5. abort semantics: a failed base identity consumes and burns its mask,
+5. affine target replay against four plaintext sumcheck rounds and the
+   derived provider/client MAC shares; and
+6. abort semantics: a failed base identity consumes and burns its mask,
    replay of the domain fails, and retry succeeds only on a new slot/range.
 
 The default workspace is green; `volta-pcs` is **195 pass / 1 ignored**, and
@@ -1091,6 +1093,72 @@ the complete model/embedding/compiler relation.  Mock PCG appears only in
 unit tests; the public seam accepts the common correlation interface and has
 no fallback policy.  It earns no PCS proof-size, timing, setup, session,
 production or hardware credit, and no pod was contacted.
+
+### 0.14 Claimless affine-sumcheck correction
+
+A source-level audit before vendoring found a second target disclosure that
+Section 0.12 did not close.  The upstream adapter first serializes the
+evaluation and then every `SumcheckProver::into_zk_sumcheck`/
+`ZkVerifier::verify_claim` observes the current claimed sum before sampling
+the batch challenge.  In the one-opening chain the first such sum is the
+opening target itself.  Therefore deleting `proof.evals` and shifting only
+the base claim would still disclose the target; such a patch is forbidden
+and receives no backend credit.  The already-landed C6AWH1 base closure is
+necessary but not sufficient.
+
+The corrected modified protocol never observes a carried claim plaintext.
+After the commitment and authenticated target slot are fixed, the client
+carries the current target as the public affine form
+
+```text
+T = a * opening_target + b,       initially (a,b) = (1,0).
+```
+
+The provider knows the opening target and runs the unchanged polynomial
+arithmetic.  The client needs only `(a,b)` and its MAC key for the original
+target.  For a sumcheck prelude it updates
+
+```text
+(a,b) <- (epsilon*a, epsilon*b + mu_tilde).
+```
+
+The upstream wire omits the linear coefficient.  Write the transmitted
+round polynomial as `c0, c2, ..., cd`, let
+`tail1=sum_{i>=2} ci`, `tailGamma=sum_{i>=2} ci*gamma^i`, and reconstruct
+symbolically rather than in plaintext:
+
+```text
+a' = gamma*a
+b' = c0 + gamma*(b - 2*c0 - tail1) + tailGamma.
+```
+
+This is exactly the ordinary update because the omitted coefficient is
+`c1=T-2*c0-tail1`.  Public OOD/query batching changes only `b`.  The same
+recurrence is used for every sumcheck/code-switch batch.  No affine
+coordinate depends on the secret target, and no reconstructed `c1` is sent
+or absorbed.  At the base case both roles lift the final form onto their
+existing MAC share/key, obtaining an authenticated `a*target+b`; C6AWH1 then
+shifts the public base claim by its one-time mask and ZeroOpens the residual.
+
+This removal is sound only in the interactive designated-verifier protocol:
+the commitment, statement, target slot/key and correlation range are fixed
+before fresh client entropy.  It is not permission to delete statement
+binding in a Fiat--Shamir variant.  Any future FS transform must bind a
+commitment to the authenticated-target relation without hashing the target
+plaintext and needs a separate proof/re-measurement.
+
+Five new Lean audit targets prove the prelude, dropped-linear round, public
+offset and authenticated lift equations/MAC validity.  Full Lean remains
+**3,264 jobs** and the audit is **380 total / 33 C6.1 targets**.  Rust now has
+the matching typed affine accumulator; the
+focused ordinary and `c6-trace` suites are **6/6** and compare four symbolic
+rounds against plaintext replay before checking the derived MAC key.  These
+are algebraic seam results only.  A reviewed local fork must still (1) omit
+all clear claimed-sum observations on both roles, (2) remove `proof.evals`,
+(3) run the client verifier entirely on affine forms, (4) feed the final
+authenticated form into C6AWH1, and (5) supply a claim-private simulator or
+equivalent argument for the amended transcript.  Until then there is no PCS,
+wire, timing, relation, production or pod credit.
 
 ## 1. Owner requirements
 

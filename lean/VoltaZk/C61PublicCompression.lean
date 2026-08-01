@@ -286,7 +286,87 @@ theorem c61_public_to_designated_composition
     · exact Or.inr (Or.inr hbad)
   · exact Or.inr (Or.inl hbad)
 
-/-! ## Authenticated WHIR target seam -/
+/-! ## Claim-hidden affine WHIR replay and authenticated target seam -/
+
+/-- A verifier that does not know the opening value carries every WHIR
+sumcheck target as `coeff * target + constant`.  Both coordinates are public;
+the opening target remains authenticated and hidden. -/
+structure C61AffineClaim (F : Type*) where
+  coeff : F
+  constant : F
+
+def C61AffineClaim.eval
+    {F : Type*} [Mul F] [Add F]
+    (claim : C61AffineClaim F) (target : F) : F :=
+  claim.coeff * target + claim.constant
+
+/-- The ZK-sumcheck prelude maps `T` to `eps*T + muTilde` without observing
+`T`. -/
+def C61AffineClaim.prelude
+    {F : Type*} [Semiring F]
+    (claim : C61AffineClaim F) (eps muTilde : F) : C61AffineClaim F :=
+  ⟨eps * claim.coeff, eps * claim.constant + muTilde⟩
+
+theorem c61_affine_prelude_eval
+    {F : Type*} [CommSemiring F]
+    (claim : C61AffineClaim F) (target eps muTilde : F) :
+    (claim.prelude eps muTilde).eval target
+      = eps * claim.eval target + muTilde := by
+  simp [C61AffineClaim.prelude, C61AffineClaim.eval]
+  ring
+
+/-- One sumcheck round sends every coefficient except the linear one.  If
+`tailAtOne = sum_{i>=2} c_i` and
+`tailAtGamma = sum_{i>=2} c_i*gamma^i`, replay can update the affine target
+without reconstructing its plaintext. -/
+def C61AffineClaim.round
+    {F : Type*} [Ring F]
+    (claim : C61AffineClaim F) (c0 tailAtOne tailAtGamma gamma : F) :
+    C61AffineClaim F :=
+  ⟨gamma * claim.coeff,
+    c0 + gamma * (claim.constant - 2 * c0 - tailAtOne) + tailAtGamma⟩
+
+theorem c61_affine_round_eval
+    {F : Type*} [CommRing F]
+    (claim : C61AffineClaim F) (target c0 tailAtOne tailAtGamma gamma : F) :
+    (claim.round c0 tailAtOne tailAtGamma gamma).eval target
+      = c0 + gamma * (claim.eval target - 2 * c0 - tailAtOne)
+          + tailAtGamma := by
+  simp [C61AffineClaim.round, C61AffineClaim.eval]
+  ring
+
+/-- Public code-switch contributions change only the constant coordinate. -/
+def C61AffineClaim.addPublic
+    {F : Type*} [Add F]
+    (claim : C61AffineClaim F) (value : F) : C61AffineClaim F :=
+  ⟨claim.coeff, claim.constant + value⟩
+
+theorem c61_affine_add_public_eval
+    {F : Type*} [CommSemiring F]
+    (claim : C61AffineClaim F) (target value : F) :
+    (claim.addPublic value).eval target = claim.eval target + value := by
+  simp [C61AffineClaim.addPublic, C61AffineClaim.eval, add_assoc]
+
+/-- Lift the final public affine coordinates onto the already-authenticated
+opening target.  This is the value consumed by the masked base closure. -/
+def C61AffineClaim.authenticated
+    {F : Type*} [Field F]
+    (claim : C61AffineClaim F) (Delta : F) (target : Authed F) : Authed F :=
+  claim.coeff • target + Authed.ofPublic Delta claim.constant
+
+theorem c61_affine_authenticated_x
+    {F : Type*} [Field F]
+    (claim : C61AffineClaim F) (Delta : F) (target : Authed F) :
+    (claim.authenticated Delta target).x = claim.eval target.x := by
+  simp [C61AffineClaim.authenticated, C61AffineClaim.eval]
+
+theorem c61_affine_authenticated_valid
+    {F : Type*} [Field F]
+    (claim : C61AffineClaim F) (Delta : F) (target : Authed F)
+    (htarget : target.Valid Delta) :
+    (claim.authenticated Delta target).Valid Delta := by
+  exact (htarget.smul claim.coeff).add
+    (Authed.ofPublic_valid Delta claim.constant)
 
 /-- The claim-private base closure shifts the public WHIR base claim by one
 fresh authenticated mask, then checks only this authenticated residual. -/

@@ -188,6 +188,57 @@ pub struct C61AuthenticatedWhirVerifierInput {
     pub target: VerifierKey,
 }
 
+/// Public affine coordinates for a claim-hidden WHIR replay.  The verifier
+/// carries `coefficient * opening_target + constant` without learning the
+/// opening target itself.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C61AuthenticatedWhirAffineClaim {
+    pub coefficient: Fp2,
+    pub constant: Fp2,
+}
+
+impl C61AuthenticatedWhirAffineClaim {
+    pub const fn identity() -> Self {
+        Self { coefficient: Fp2::ONE, constant: Fp2::ZERO }
+    }
+
+    pub fn evaluate(self, opening_target: Fp2) -> Fp2 {
+        self.coefficient * opening_target + self.constant
+    }
+
+    /// Apply the private-claim ZK-sumcheck prelude
+    /// `target <- epsilon * target + mu_tilde`.
+    pub fn prelude(self, epsilon: Fp2, mu_tilde: Fp2) -> Self {
+        Self {
+            coefficient: epsilon * self.coefficient,
+            constant: epsilon * self.constant + mu_tilde,
+        }
+    }
+
+    /// Replay one dropped-linear-coefficient sumcheck round.  `tail_at_one`
+    /// is `sum_{i>=2} c_i`; `tail_at_gamma` is
+    /// `sum_{i>=2} c_i * gamma^i`.
+    pub fn round(self, c0: Fp2, tail_at_one: Fp2, tail_at_gamma: Fp2, gamma: Fp2) -> Self {
+        Self {
+            coefficient: gamma * self.coefficient,
+            constant: c0 + gamma * (self.constant - c0 - c0 - tail_at_one) + tail_at_gamma,
+        }
+    }
+
+    /// Code-switch and query contributions are public affine offsets.
+    pub fn add_public(self, value: Fp2) -> Self {
+        Self { coefficient: self.coefficient, constant: self.constant + value }
+    }
+
+    pub fn authenticate_prover(self, opening_target: ProverAuthed) -> ProverAuthed {
+        opening_target.scale(self.coefficient).add(ProverAuthed::from_public(self.constant))
+    }
+
+    pub fn derive_verifier_key(self, opening_target: VerifierKey, delta: Fp2) -> VerifierKey {
+        opening_target.scale(self.coefficient).add(VerifierKey::from_public(self.constant, delta))
+    }
+}
+
 /// Consume one uncorrected full VOLE correlation, shift WHIR's base claim and
 /// open only the resulting authenticated zero residual.
 pub fn prove_c61_authenticated_whir_base(
@@ -326,6 +377,44 @@ mod tests {
         assert_eq!(verifier_context.counters, expected);
         assert_eq!(prover_transcript.total_bytes(), 16);
         assert_eq!(prover_transcript.ledger(), verifier_transcript.ledger());
+    }
+
+    #[test]
+    fn affine_replay_matches_plain_target_and_preserves_mac() {
+        let delta = f(131);
+        let opening_value = f(137);
+        let (opening_target, opening_key) = target(opening_value, f(139), delta);
+        let mut affine = C61AuthenticatedWhirAffineClaim::identity();
+        let mut plain = opening_value;
+
+        let epsilon = f(149);
+        let mu_tilde = f(151);
+        affine = affine.prelude(epsilon, mu_tilde);
+        plain = epsilon * plain + mu_tilde;
+        assert_eq!(affine.evaluate(opening_value), plain);
+
+        for index in 0..4u64 {
+            let c0 = f(157 + index);
+            let c2 = f(163 + index);
+            let c3 = f(167 + index);
+            let gamma = f(173 + index);
+            let tail_at_one = c2 + c3;
+            let tail_at_gamma = c2 * gamma * gamma + c3 * gamma * gamma * gamma;
+            let c1 = plain - c0 - c0 - tail_at_one;
+            plain = c0 + c1 * gamma + tail_at_gamma;
+            affine = affine.round(c0, tail_at_one, tail_at_gamma, gamma);
+            assert_eq!(affine.evaluate(opening_value), plain);
+        }
+
+        let public_switch = f(181);
+        affine = affine.add_public(public_switch);
+        plain += public_switch;
+        assert_eq!(affine.evaluate(opening_value), plain);
+
+        let final_target = affine.authenticate_prover(opening_target);
+        let final_key = affine.derive_verifier_key(opening_key, delta);
+        assert_eq!(final_target.x, plain);
+        assert_eq!(final_key.k, final_target.m + delta * final_target.x);
     }
 
     #[test]

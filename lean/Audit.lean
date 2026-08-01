@@ -386,6 +386,11 @@ vector-RLC bounds from being mistaken for implementation bounds.
 #print axioms VoltaZk.c61_runtime_two_fingerprint_card_le
 #print axioms VoltaZk.c61_sparse_adjoint_terminal_link
 #print axioms VoltaZk.c61_public_to_designated_composition
+#print axioms VoltaZk.c61_affine_prelude_eval
+#print axioms VoltaZk.c61_affine_round_eval
+#print axioms VoltaZk.c61_affine_add_public_eval
+#print axioms VoltaZk.c61_affine_authenticated_x
+#print axioms VoltaZk.c61_affine_authenticated_valid
 #print axioms VoltaZk.c61_authenticated_target_residual_x_eq_zero
 #print axioms VoltaZk.c61_authenticated_target_residual_valid
 #print axioms VoltaZk.c61_masked_claim_shift_bijective

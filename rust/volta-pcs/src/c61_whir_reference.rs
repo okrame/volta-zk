@@ -179,6 +179,16 @@ impl<'a> C61InteractiveChallenger<'a> {
     /// generic provider observation.
     #[allow(dead_code)]
     pub(crate) fn observe_public_point(&mut self, point: &Point<C61P3Fp2>) -> ReferenceResult<()> {
+        self.observe_public_points(std::slice::from_ref(point))
+    }
+
+    /// Bind one ordered batch of verifier-owned opening points.  The points
+    /// are carried by the enclosing statement, not the provider artifact.
+    #[allow(dead_code)]
+    pub(crate) fn observe_public_points(
+        &mut self,
+        points: &[Point<C61P3Fp2>],
+    ) -> ReferenceResult<()> {
         let mut state = self.state.lock().expect("C6WIR1 challenger mutex poisoned");
         if !state.initial_root_seen {
             return Err(C61WhirReferenceError::new(
@@ -190,7 +200,10 @@ impl<'a> C61InteractiveChallenger<'a> {
                 "C6WIR1 opening point mode or multiplicity mismatch",
             ));
         }
-        if point.num_variables() != state.public_point_num_variables {
+        if points.is_empty()
+            || points.len() > 128
+            || points.iter().any(|point| point.num_variables() != state.public_point_num_variables)
+        {
             return Err(C61WhirReferenceError::new("C6WIR1 opening point arity mismatch"));
         }
         state.public_statement_bound = true;

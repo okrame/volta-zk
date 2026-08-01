@@ -39,8 +39,9 @@ FEATURE-ONLY CLAIMLESS-AFFINE PINNED PCS FORK + STRICT `C6AWP1-v1` D14
 CODEC DIFFERENTIAL + SOURCE-PROVENANCE AUDIT GREEN; CLAIM-PRIVACY LOCAL
 ARGUMENT + DESIGNATED-VIEW SIMULATOR + PRIVATE-ENTROPY `C6ICT1-v1`
 REPLAY-TO-FRONTIER DRIVER + DURABLE `C6ICJ1-v1` APPEND-ONLY JOURNAL,
-MASK-FRONTIER AND RESERVED-RANGE BINDING GREEN; COMPLETE C6
-MODEL/EMBEDDING/COMPILER RELATION ADAPTER AND FULL-T1 INTEGRATION NEXT; NO
+MASK-FRONTIER AND RESERVED-RANGE BINDING + BOUNDED AUTHENTICATED ORDERED
+MULTI-OPENING REDUCTION FOR THE 96 MODEL / 6 EMBEDDING CLAIM CENSUSES GREEN;
+COMPLETE STATEMENT DIGEST AND SPARSE-COMPILER RELATION ADAPTER NEXT; NO
 C6.1 FULL-CHAIN PROOF-SIZE, TIMING, MEMORY OR HARDWARE CREDIT; HARD STOP
 BEFORE POD.**
 
@@ -1470,6 +1471,65 @@ The next gate is the complete model/embedding/compiler relation adapter into
 the six native chains and retained designated closure.  All full-chain byte,
 setup, prover, verifier, memory, session and hardware credits remain false; no
 pod was contacted.
+
+### 0.20 Bounded authenticated ordered multi-opening reduction
+
+The first relation-adapter prerequisite now replaces the fork's historical
+single-opening restriction by one ordered batch of `1..=128` openings of the
+same committed polynomial.  After the commitment and complete ordered point
+list are fixed, the verifier samples one fresh `alpha` and both roles reduce
+
+```text
+W(x) = sum_i alpha^i * eq(z_i, x)
+V    = sum_i alpha^i * W_tilde(z_i).
+```
+
+The claimless WHIR proof carries neither the individual evaluations nor `V`.
+The unchanged provider codec remains `C6AWP1-v1`, while the broadened fork
+semantics are pinned separately as `c61-claimless-affine-multi-v2`.
+It returns the public powers of `alpha` and an affine closure in `V`.  The
+provider applies those powers to the authenticated target shares, the client
+applies them to the corresponding target keys, and `C6AWH1` closes the final
+affine relation with its existing one-time mask.  Consequently an altered
+point need not be rejected by bare claimless WHIR: it is rejected when that
+new affine relation is checked against the unchanged designated target keys.
+The permanent negative test exercises that complete boundary.
+
+The scaled D14 diagnostic executes the exact embedding census of **6** claims
+and model census of **96** claims.  Both roles derive identical batching
+weights, transcript accounting and authenticated closure; point mutation
+rejects and each chain still consumes exactly one full C6AWH1 correlation.
+The strict provider artifact contains no point or target vector.  Its
+structural maximum is independent of claim count.  Concrete encoded lengths
+may differ between honest runs because sampled Merkle queries can share
+different pruned siblings, so no byte-identical comparison between unrelated
+transcripts is claimed.  The existing production formula maxima remain
+**1,085,464 B at D27** and **1,172,652 B at D28**.
+
+For `m` claims fixed before `alpha`, the additional bad-root term is at most
+`(m-1)/|Fp2|`.  At the hard cap this is
+`127/|Fp2|`, or **121.011315313 bits**.  The exact one-chain screen is now
+
+```text
+2^-75 + 127/|Fp2| + 1/|Fp2| < 2^-74,
+```
+
+where the last term is the designated MAC closure.  Two independently
+separated chains therefore retain `<2^-148`; the existing three-component
+allocation and complete **119.668253692-bit** certificate screen do not
+change.  `scripts/budget_c61_public_compression.py` reports the new term
+explicitly, and the fork audit additionally forbids a `claims[0]` /
+`points[0]` regression while retaining the **87 imported / 14 allowed / 73
+byte-identical** provenance census.  The authenticated feature suite is
+**6/6**.
+
+This checkpoint proves only a reusable PCS reduction for the model and
+embedding opening sets.  It does not yet bind their point lists and model
+commitment identities into the final `C6PA1` statement digest, and it does not
+prove the sparse compiler recurrence.  It therefore earns no complete-chain,
+certificate, setup, timing, memory, session or hardware credit.  The next
+gate is the exact complete statement/domain adapter followed by the
+source/runtime/adjoint compiler relation; no pod was contacted.
 
 ## 1. Owner requirements
 

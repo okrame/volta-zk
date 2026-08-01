@@ -134,6 +134,9 @@ C61_NATIVE_PUBLIC_PCS_BITS = 75
 C61_NATIVE_AUTHENTICATED_CHAIN_BITS = 74
 C61_NATIVE_CHAINS_PER_COMPONENT = 2
 C61_NATIVE_COMPONENTS = 3
+C61_NATIVE_MAX_ORDERED_OPENINGS = 128
+C61_NATIVE_MODEL_OPENINGS = 96
+C61_NATIVE_EMBEDDING_OPENINGS = 6
 C61_NATIVE_CHAIN_CODEC_MAX_BYTES = 1_500_000
 C61_NATIVE_ARITHMETIC_AND_LINK_CODEC_MAX_BYTES = 500_000
 C61_NATIVE_PUBLIC_ARGUMENT_CODEC_MAX_BYTES = (
@@ -338,9 +341,18 @@ def build_report() -> dict[str, Any]:
         C61_TERMINAL_OUTPUTS - 1, c6.FP2_CARDINALITY
     )
     sparse_adjoint_error = Fraction(C61_NODE_LOG2, c6.FP2_CARDINALITY)
-    authenticated_target_chain_error = Fraction(
-        1, 2**C61_NATIVE_PUBLIC_PCS_BITS
-    ) + Fraction(1, c6.FP2_CARDINALITY)
+    # One ordered batch of at most 128 fixed claims contributes a degree-127
+    # root event.  Closing its affine result through C6AWH1 adds one separate
+    # Fp2 MAC event.  Together with the configured public PCS error this must
+    # remain strictly inside the preregistered 74-bit per-chain allocation.
+    ordered_opening_batch_error = Fraction(
+        C61_NATIVE_MAX_ORDERED_OPENINGS - 1, c6.FP2_CARDINALITY
+    )
+    authenticated_target_chain_error = (
+        Fraction(1, 2**C61_NATIVE_PUBLIC_PCS_BITS)
+        + ordered_opening_batch_error
+        + Fraction(1, c6.FP2_CARDINALITY)
+    )
     native_backend_error = Fraction(
         C61_NATIVE_COMPONENTS,
         2
@@ -467,10 +479,11 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v3",
+        "profile": "C6.1-public-compression-reference-v4",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
-            "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__C6_RELATION_ADAPTER_REQUIRED__"
+            "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
+            "COMPLETE_STATEMENT_AND_SPARSE_COMPILER_RELATION_REQUIRED__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
@@ -538,7 +551,8 @@ def build_report() -> dict[str, Any]:
             "name": "C6PA1-native-HVZK-plus-C6RSC4-v4",
             "status": (
                 "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
-                "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__C6_RELATION_ADAPTER_PENDING__"
+                "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
+                "COMPLETE_STATEMENT_AND_SPARSE_COMPILER_RELATION_PENDING__"
                 "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
             "statement": (
@@ -625,6 +639,10 @@ def build_report() -> dict[str, Any]:
                 "components": ["model", "embedding", "compiler"],
                 "reference_prototype": "Plonky3 p3-whir 0.6.0",
                 "reference_prototype_commit": C61_P3_REFERENCE_COMMIT,
+                "claimless_fork_semantic_revision": (
+                    "66e290615de1858f2f2f6a804158064c406cda1c+"
+                    "c61-claimless-affine-multi-v2"
+                ),
                 "reference_warning": (
                     "pinned academic implementation behind a reference-only "
                     "feature; not audited and never a production fallback"
@@ -658,6 +676,18 @@ def build_report() -> dict[str, Any]:
                     "resumable_private_entropy_driver_pending": False,
                     "durable_atomic_checkpoint_pending": False,
                     "production_full_relation_integration_pending": True,
+                    "ordered_multi_opening_reduction": {
+                        "status": "SCALED_AUTHENTICATED_DIAGNOSTIC_GREEN",
+                        "maximum_claims_per_chain": C61_NATIVE_MAX_ORDERED_OPENINGS,
+                        "model_claims": C61_NATIVE_MODEL_OPENINGS,
+                        "embedding_claims": C61_NATIVE_EMBEDDING_OPENINGS,
+                        "compiler_claims": "pending exact relation adapter",
+                        "provider_artifact_maximum_claim_count_independent": True,
+                        "points_and_target_keys_in_enclosing_statement": True,
+                        "statement_digest_binding_pending_full_adapter": True,
+                        "batching_error": _error_report(ordered_opening_batch_error),
+                        "full_chain_credit": False,
+                    },
                     "clear_evaluation_bytes_removed_per_chain": 16,
                     "zero_open_tag_bytes_added_per_chain": 16,
                     "provider_to_client_net_bytes_per_chain": 0,
@@ -872,6 +902,9 @@ def build_report() -> dict[str, Any]:
                 ),
                 "one_authenticated_chain_exact_screen": _error_report(
                     authenticated_target_chain_error
+                ),
+                "ordered_opening_batch_max_127_over_fp2": _error_report(
+                    ordered_opening_batch_error
                 ),
                 "three_dual_chain_native_components": _error_report(
                     native_backend_error
@@ -1161,6 +1194,9 @@ def build_report() -> dict[str, Any]:
     assert authenticated_target_chain_error < Fraction(
         1, 2**C61_NATIVE_AUTHENTICATED_CHAIN_BITS
     )
+    assert C61_NATIVE_MODEL_OPENINGS <= C61_NATIVE_MAX_ORDERED_OPENINGS
+    assert C61_NATIVE_EMBEDDING_OPENINGS <= C61_NATIVE_MAX_ORDERED_OPENINGS
+    assert ordered_opening_batch_error == Fraction(127, c6.FP2_CARDINALITY)
     assert C61_REGISTERED_WRAPPER_FULL_CORRELATIONS_PER_TAPE == 625
     assert C61_FULL_CORRELATION_HEADROOM_PER_TAPE == 38_491
     assert C61_NATIVE_CLAIMLESS_D14_DIAGNOSTIC_BYTES == 378_496

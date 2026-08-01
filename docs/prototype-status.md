@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — DURABLE PRIVATE-ENTROPY JOURNAL GREEN / COMPLETE RELATION ADAPTER NEXT / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — AUTHENTICATED 96/6 MULTI-OPENING REDUCTION GREEN / COMPLETE STATEMENT AND SPARSE-COMPILER RELATION NEXT / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -125,6 +125,19 @@ final client-local journal, with one replayed mask event/frontier.  Wrong
 attempt binding, torn tail and checksum corruption reject.  The existing C6
 reservation has already burned the whole paired range, so any uncertain
 journal aborts the attempt and retry uses a new slot/range.
+
+The claimless fork now also reduces one ordered batch of up to **128**
+openings of the same committed polynomial under a fresh postcommit `alpha`.
+Scaled D14 runs close the exact **96 model** and **6 embedding** claim
+censuses through their aggregated authenticated targets and reject a changed
+point at the final designated MAC seam.  Points and target keys remain in the
+enclosing statement, not the provider artifact, and its structural maximum
+is claim-count independent.  The new explicit soundness term is at most
+`127/|Fp2|` (**121.011315313 bits**); together with the 75-bit PCS allocation
+and one MAC event, a chain stays `<2^-74` and two independent chains stay
+`<2^-148`.  The feature suite is **6/6** and the provenance audit remains
+**87 / 14 / 73**.  The complete statement digest and sparse compiler
+recurrence are still absent, so this is component evidence only.
 
 This remains an in-process role-separated diagnostic and replay protocol, not
 an internal O(1) Plonky3 state serialization or network benchmark.  It does
@@ -734,6 +747,7 @@ its clean descendant closure.
 | C6.1 claim-private designated view | **LOCAL EQUIVALENT ARGUMENT / EXECUTABLE D14 SIMULATOR / LEAN TAG IDENTITY GREEN; RESUMABLE DRIVER NEXT; NO POD** (2026-08-01) | Interactive honest-verifier scope; simulator consumes public context and verifier-owned keys but no real target/tag/provider correlations; computational Merkle/PCG terms explicit | Claimless affine replay removes all clear carried-claim observations; one fresh pad protects the single OOD answer per code-switch round; the base claim is one-time shifted; and the final tag is exactly `Delta*(combined-shifted)-gamma*target_key+mask_key`. The statistical privacy terms are **10/|Fp2| = 124.6780719 bits D27**, **11/|Fp2| = 124.5405684 bits D28**, conservative six-D28-chain **66/|Fp2| = 121.9556059 bits/certificate**, and informative 17-certificate **1122/|Fp2| = 117.8681430 bits**. The feature suite is **4/4**; Lean is **3,264 jobs / 381 total / 34 C6.1 audit targets**. The executable simulator uses a surrogate witness only to instantiate concrete Merkle trees and is not a full sparse-oracle simulator. BLAKE3 hiding for randomized codewords and AES-PCG pseudorandomness/domain separation are explicit assumptions; external cryptographic review is mandatory. No Fiat--Shamir, full-chain wire/time/setup/memory/production or hardware credit; no pod contacted. |
 | C6.1 private-entropy replay driver | **LOCAL ROLE-SEPARATED C6ICT1 REPLAY-TO-FRONTIER GREEN; DURABLE ATOMIC CHECKPOINT + MASK ALLOCATOR NEXT; NO POD** (2026-08-01) | Verifier broker exclusively owns seed/transcript/checkpoint; provider endpoint is channel-only; deterministic retry replays exact provider moves before releasing recorded challenges | D14 remains **378,496 B** at the same BLAKE3 with **26 / 52,608-B** provider moves, **2,588** total challenges and **10,560 B** client challenge wire. The strict verifier-local midpoint checkpoint is **73,360 B** at challenge **1,294** and adds **0 B** to provider-to-client certificate traffic. Resume produces a byte-identical proof and tape; changed provider moves and magic/version/reserved/tag/truncated/trailing mutations fail closed. The feature suite is **5/5**; source audit remains **87 imported / 14 allowed deltas / 73 byte-identical** and guards the seedless provider boundary. This is local replay, not internal P3 state serialization, crash-safe persistence, network timing or full relation integration. All full-chain/setup/time/hardware credits remain false; no pod contacted. |
 | C6.1 durable private-entropy journal | **C6ICJ1 APPEND-ONLY CHECKPOINT / MASK FRONTIER / RESERVED-RANGE BINDING GREEN; COMPLETE RELATION ADAPTER NEXT; NO POD** (2026-08-01) | Current validated pending attempt only; both paired ranges end at durable client high-water; each challenge and mask event fsyncs before release; malformed/uncertain journal burns the attempt | Midpoint D14 recovery replays **1,294** challenges and one provider-move-bound mask event, then seals a **208,204-B client-local / 2,590-record** journal (2,588 challenge records + mask + final seal). Artifact, tape and provider-to-client wire remain byte-identical at **378,496 B** and zero increment. The journal contains no verifier seed; it binds connection/setup/slot/nonce/predecessor/head/context and both full ranges. Wrong pending-attempt binding, torn tail and checksum-corrupt body reject. The whole range is already burned by existing C6 reservation; unsafe recovery aborts and retries with a new slot/range from the same accepted head. No malicious client-disk snapshot rollback, network/fsync timing, full relation, proof-size/setup/time/hardware credit; no pod contacted. |
+| C6.1 authenticated ordered multi-opening reduction | **SCALED 96-MODEL / 6-EMBEDDING CLAIM BATCHES GREEN; COMPLETE STATEMENT DIGEST + SPARSE-COMPILER RELATION NEXT; NO POD** (2026-08-01) | One committed polynomial per chain; ordered `1..=128` point batch fixed before fresh `alpha`; provider shares and verifier keys aggregate under identical powers; C6AWH1 closes the resulting affine target | D14 executes both production claim censuses, preserves a claim-count-independent structural artifact maximum, consumes one full correlation per chain and rejects changed points at the designated closure. No point, target or key vector enters provider-to-client wire; concrete Merkle multiproof length may vary downward with query collisions. The added error is at most **127/|Fp2| = 121.011315313 bits**; exact `2^-75 + 127/|Fp2| + 1/|Fp2| <2^-74`, so paired chains retain `<2^-148` and the complete **119.668253692-bit** screen is unchanged. Feature tests are **6/6**; fork provenance remains **87 imported / 14 allowed deltas / 73 byte-identical** and now forbids single-claim indexing regressions. This is a PCS prerequisite only: model/root/point statement binding and the compiler recurrence remain absent, and all full-chain proof-size/setup/time/memory/hardware credits remain false. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -808,6 +822,24 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-08-01 — C6.1 batches model/embedding openings inside each native
+  chain rather than allocating one chain or one proof field per target.**
+  The ordered points are fixed after the commitment and before a fresh
+  `alpha`; the provider and verifier aggregate authenticated shares/keys with
+  the same powers, and only the final affine closure reaches C6AWH1.  The
+  hard cap is 128 claims, covering the frozen 96-model and 6-embedding
+  censuses.  This makes the structural provider artifact maximum independent
+  of claim count, while concrete Merkle frontier lengths may still vary with
+  sampled query collisions.
+
+  The batching failure term is explicitly charged as `127/|Fp2|`; with the
+  configured PCS and MAC terms the exact chain remains inside its 74-bit
+  allocation.  Bare claimless WHIR is not expected to reject a substituted
+  point by itself: rejection is tested at the designated target-key closure.
+  Final statement-digest binding of the ordered point list and model
+  commitment is still required, as is the complete compiler relation.  No
+  full-chain byte, setup, timing, memory, session or production credit follows.
 
 - **2026-08-01 — C6.1 persists the interaction as a separate append-only
   journal bound to the existing client reservation, not by widening the C6

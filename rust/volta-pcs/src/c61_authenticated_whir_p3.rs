@@ -59,7 +59,7 @@ use crate::C61_NATIVE_CHAIN_MAX_BYTES;
 
 pub const C61_AUTHENTICATED_P3_SECURITY_BITS: usize = 75;
 pub const C61_AUTHENTICATED_P3_REVISION: &str =
-    "66e290615de1858f2f2f6a804158064c406cda1c+c61-claimless-affine-v1";
+    "66e290615de1858f2f2f6a804158064c406cda1c+c61-claimless-affine-multi-v2";
 pub const C61_AUTHENTICATED_P3_MAGIC: [u8; 8] = *b"C6AWP1\0\0";
 pub const C61_AUTHENTICATED_P3_VERSION: u16 = 1;
 pub const C61_AUTHENTICATED_P3_HEADER_BYTES: usize = 8 + 2 + 1 + 1 + 4;
@@ -97,6 +97,24 @@ pub struct C61AuthenticatedP3Diagnostic {
     pub provider_interaction: C61WhirInteractionStats,
     pub verifier_interaction: C61WhirInteractionStats,
     pub proof_has_clear_evaluation_field: bool,
+    pub full_correlations: u64,
+}
+
+/// Scaled ordered multi-opening report used by the model/embedding relation
+/// adapter.  Opening points and target keys stay in the enclosing statement;
+/// the strict provider artifact remains claim-count independent.
+#[derive(Debug)]
+pub struct C61AuthenticatedP3MultiOpenDiagnostic {
+    pub num_variables: usize,
+    pub claim_count: usize,
+    pub strict_payload_bytes: usize,
+    /// Claim-count-independent maximum for this WHIR geometry.  Concrete
+    /// payloads may be smaller when sampled Merkle queries share siblings.
+    pub strict_payload_max_bytes: usize,
+    pub provider_interaction: C61WhirInteractionStats,
+    pub verifier_interaction: C61WhirInteractionStats,
+    pub batching_weights_identical: bool,
+    pub point_mutation_rejected: bool,
     pub full_correlations: u64,
 }
 
@@ -231,6 +249,30 @@ fn affine_from_p3(claim: ClaimlessAffineClaim<C61P3Fp2>) -> C61AuthenticatedWhir
         coefficient: c61_volta_fp2_from_p3(claim.coefficient),
         constant: c61_volta_fp2_from_p3(claim.constant),
     }
+}
+
+fn aggregate_prover_targets(
+    targets: &[ProverAuthed],
+    claim_weights: &[C61P3Fp2],
+) -> Result<ProverAuthed, String> {
+    if targets.is_empty() || targets.len() != claim_weights.len() || targets.len() > 128 {
+        return Err("C6AWP1 provider target batch census mismatch".to_owned());
+    }
+    Ok(targets.iter().zip(claim_weights).fold(ProverAuthed::ZERO, |sum, (target, weight)| {
+        sum.add(target.scale(c61_volta_fp2_from_p3(*weight)))
+    }))
+}
+
+fn aggregate_verifier_targets(
+    targets: &[VerifierKey],
+    claim_weights: &[C61P3Fp2],
+) -> Result<VerifierKey, String> {
+    if targets.is_empty() || targets.len() != claim_weights.len() || targets.len() > 128 {
+        return Err("C6AWP1 verifier target batch census mismatch".to_owned());
+    }
+    Ok(targets.iter().zip(claim_weights).fold(VerifierKey::ZERO, |sum, (target, weight)| {
+        sum.add(target.scale(c61_volta_fp2_from_p3(*weight)))
+    }))
 }
 
 fn checked_add(total: &mut usize, value: usize) -> Result<(), String> {
@@ -912,7 +954,8 @@ fn prove_diagnostic(
     drop(challenger);
 
     let provider_affine = affine_from_p3(output.target);
-    let final_target = provider_affine.authenticate_prover(target);
+    let aggregate_target = aggregate_prover_targets(&[target], &output.claim_weights)?;
+    let final_target = provider_affine.authenticate_prover(aggregate_target);
     let provider_closure = finish_c61_authenticated_whir_base(
         prepared,
         C61AuthenticatedWhirProverFinishInput {
@@ -1029,7 +1072,8 @@ fn prove_private_entropy_provider_diagnostic(
     // challenges came through the endpoint-only transport challenger.
     let mut zero_open_transcript = Transcript::new([0u8; 32]);
     let provider_affine = affine_from_p3(output.target);
-    let final_target = provider_affine.authenticate_prover(target);
+    let aggregate_target = aggregate_prover_targets(&[target], &output.claim_weights)?;
+    let final_target = provider_affine.authenticate_prover(aggregate_target);
     let provider_closure = finish_c61_authenticated_whir_base(
         prepared,
         C61AuthenticatedWhirProverFinishInput {
@@ -1181,7 +1225,8 @@ fn verify_private_entropy_diagnostic(
     drop(challenger);
 
     let verifier_affine = affine_from_p3(result.target);
-    let final_key = verifier_affine.derive_verifier_key(target_key, delta);
+    let aggregate_target = aggregate_verifier_targets(&[target_key], &result.claim_weights)?;
+    let final_key = verifier_affine.derive_verifier_key(aggregate_target, delta);
     let mut context = VerifierCtx::new(pcg_seed, delta);
     let mut zero_open_transcript = Transcript::new([0u8; 32]);
     verify_c61_authenticated_whir_base(
@@ -1272,7 +1317,8 @@ fn simulate_view_diagnostic(
     drop(challenger);
 
     let affine = affine_from_p3(output.target);
-    let final_key = affine.derive_verifier_key(target_key, delta);
+    let aggregate_target = aggregate_verifier_targets(&[target_key], &output.claim_weights)?;
+    let final_key = affine.derive_verifier_key(aggregate_target, delta);
     let mut simulator_context = VerifierCtx::new(pcg_seed, delta);
     let base_proof = simulate_c61_authenticated_whir_base_view(
         C61AuthenticatedWhirVerifierInput {
@@ -1358,7 +1404,8 @@ fn verify_diagnostic(
     drop(challenger);
 
     let verifier_affine = affine_from_p3(result.target);
-    let final_key = verifier_affine.derive_verifier_key(input.target_key, input.delta);
+    let aggregate_target = aggregate_verifier_targets(&[input.target_key], &result.claim_weights)?;
+    let final_key = verifier_affine.derive_verifier_key(aggregate_target, input.delta);
     let mut context = VerifierCtx::new(input.pcg_seed, input.delta);
     verify_c61_authenticated_whir_base(
         C61AuthenticatedWhirVerifierInput {
@@ -1451,6 +1498,263 @@ pub fn run_c61_authenticated_whir_p3_diagnostic(
         verifier_interaction,
         proof_has_clear_evaluation_field: false,
         full_correlations,
+    })
+}
+
+/// Exercise the exact ordered multi-opening reduction needed by the future
+/// model/embedding adapter.  This remains a scaled feature-only diagnostic:
+/// it proves openings of one committed polynomial, not yet the complete C6
+/// compiler relation.
+pub fn run_c61_authenticated_whir_p3_multi_open_diagnostic(
+    num_variables: usize,
+    claim_count: usize,
+) -> Result<C61AuthenticatedP3MultiOpenDiagnostic, String> {
+    if !(4..=20).contains(&num_variables) || !(2..=128).contains(&claim_count) {
+        return Err("C6AWP1 multi-open diagnostic geometry is out of range".to_owned());
+    }
+    let witness = Poly::new(
+        (0..(1usize << num_variables))
+            .map(|index| Goldilocks::from_u64((index as u64).wrapping_mul(31).wrapping_add(7)))
+            .collect(),
+    );
+    let points: Vec<_> = (0..claim_count)
+        .map(|claim| {
+            Point::new(
+                (0..num_variables)
+                    .map(|coordinate| {
+                        C61P3Fp2::from_u64(
+                            (claim as u64 + 3)
+                                .wrapping_mul(37)
+                                .wrapping_add((coordinate as u64 + 5).wrapping_mul(41)),
+                        )
+                    })
+                    .collect(),
+            )
+        })
+        .collect();
+    let evaluations: Vec<_> = points.iter().map(|point| witness.eval_base(point)).collect();
+    let delta = Fp2::new(volta_field::Fp::new(P - 59), volta_field::Fp::new(0xC6_6101));
+    let targets: Vec<_> = evaluations
+        .iter()
+        .enumerate()
+        .map(|(index, evaluation)| {
+            let value = c61_volta_fp2_from_p3(*evaluation);
+            let tag = Fp2::new(
+                volta_field::Fp::new(101 + index as u64 * 2),
+                volta_field::Fp::new(103 + index as u64 * 2),
+            );
+            ProverAuthed::new(value, tag)
+        })
+        .collect();
+    let target_keys: Vec<_> =
+        targets.iter().map(|target| VerifierKey::new(target.m + delta * target.x)).collect();
+    let claims: Vec<_> = points.iter().cloned().zip(evaluations.iter().copied()).collect();
+    let verifier_seed = [0xB7; 32];
+    let pcg_seed = [0xD9; 32];
+    let id = C61NativeChainId { component: C61NativeComponent::Model, repetition: 1 };
+    let mask_range = C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 21, range_start: 90_000 };
+
+    let mut provider_transcript = Transcript::new(verifier_seed);
+    let mut correlations = CorrelationStream::new(pcg_seed);
+    let (
+        commitment,
+        output,
+        prepared,
+        placeholder_payload,
+        whir_payload_bytes,
+        provider_interaction,
+    ) = {
+        let mut provider_challenger =
+            C61InteractiveChallenger::new_claimless(&mut provider_transcript, num_variables);
+        let config = c61_authenticated_config::<C61InteractiveChallenger<'_>>(num_variables)?;
+        let mmcs = c61_reference_mmcs();
+        let dft = Radix2DFTSmallBatch::default();
+        let prover = HidingWhirProver::new(&config, &dft, &mmcs);
+        let mut rng = StdRng::seed_from_u64(0xC6_6101);
+        let (commitment, data) = prover.commit(witness, &mut provider_challenger, &mut rng);
+        provider_challenger.observe_public_points(&points).map_err(|error| error.to_string())?;
+        let prepared = prepare_c61_authenticated_whir_mask(id, mask_range, &mut correlations)
+            .map_err(|error| error.to_string())?;
+        let output = prover.prove_claimless(
+            data,
+            &claims,
+            c61_p3_fp2_from_volta(prepared.value()),
+            &mut provider_challenger,
+            &mut rng,
+        );
+        provider_challenger.ensure_public_statement_bound().map_err(|error| error.to_string())?;
+        let placeholder = C61AuthenticatedWhirBaseProof::decode(
+            &[0u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES],
+        )
+        .map_err(|error| error.to_string())?;
+        let placeholder_payload = encode_c61_authenticated_p3_artifact_inner(
+            num_variables,
+            &commitment,
+            &output.proof,
+            placeholder,
+            false,
+        )
+        .map_err(|error| error.to_string())?;
+        let whir_payload_bytes = placeholder_payload
+            .len()
+            .checked_sub(C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES)
+            .ok_or_else(|| "C6AWP1 multi-open payload is shorter than its tag".to_owned())?;
+        let provider_interaction =
+            provider_challenger.finish(whir_payload_bytes).map_err(|error| error.to_string())?;
+        (
+            commitment,
+            output,
+            prepared,
+            placeholder_payload,
+            whir_payload_bytes,
+            provider_interaction,
+        )
+    };
+    let provider_affine = affine_from_p3(output.target);
+    let aggregate_target = aggregate_prover_targets(&targets, &output.claim_weights)?;
+    let final_target = provider_affine.authenticate_prover(aggregate_target);
+    let provider_closure = finish_c61_authenticated_whir_base(
+        prepared,
+        C61AuthenticatedWhirProverFinishInput {
+            combined: c61_volta_fp2_from_p3(output.base_case.combined),
+            shifted_masked_claim: c61_volta_fp2_from_p3(output.base_case.shifted_masked_claim),
+            gamma: c61_volta_fp2_from_p3(output.base_case.gamma),
+            target: final_target,
+        },
+        &mut provider_transcript,
+    )
+    .map_err(|error| error.to_string())?;
+    let payload = encode_c61_authenticated_p3_artifact_inner(
+        num_variables,
+        &commitment,
+        &output.proof,
+        provider_closure.proof,
+        false,
+    )
+    .map_err(|error| error.to_string())?;
+    if payload.len() != placeholder_payload.len() {
+        return Err("C6AWP1 multi-open tag changed the strict payload length".to_owned());
+    }
+
+    let (decoded_commitment, proof, base_proof) =
+        decode_c61_authenticated_p3_artifact_inner(&payload, num_variables, false)
+            .map_err(|error| error.to_string())?;
+    let mut verifier_transcript = Transcript::new(verifier_seed);
+    let (result, verifier_interaction) = {
+        let mut verifier_challenger =
+            C61InteractiveChallenger::new_claimless(&mut verifier_transcript, num_variables);
+        let config = c61_authenticated_config::<C61InteractiveChallenger<'_>>(num_variables)?;
+        let mmcs = c61_reference_mmcs();
+        verifier_challenger.observe(decoded_commitment.clone());
+        verifier_challenger.observe_public_points(&points).map_err(|error| error.to_string())?;
+        let verifier = HidingWhirVerifier::new(&config, &mmcs);
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            verifier.verify_claimless(
+                &proof,
+                &decoded_commitment,
+                &points,
+                &mut verifier_challenger,
+            )
+        }))
+        .map_err(|_| "C6AWP1 multi-open verifier panicked".to_owned())?
+        .map_err(|error| format!("C6AWP1 multi-open verification failed: {error}"))?;
+        let verifier_interaction =
+            verifier_challenger.finish(whir_payload_bytes).map_err(|error| error.to_string())?;
+        (result, verifier_interaction)
+    };
+    let verifier_affine = affine_from_p3(result.target);
+    let aggregate_key = aggregate_verifier_targets(&target_keys, &result.claim_weights)?;
+    let final_key = verifier_affine.derive_verifier_key(aggregate_key, delta);
+    let mut context = VerifierCtx::new(pcg_seed, delta);
+    verify_c61_authenticated_whir_base(
+        C61AuthenticatedWhirVerifierInput {
+            id,
+            mask_range,
+            combined: c61_volta_fp2_from_p3(result.base_case.combined),
+            shifted_masked_claim: c61_volta_fp2_from_p3(result.base_case.shifted_masked_claim),
+            gamma: c61_volta_fp2_from_p3(result.base_case.gamma),
+            target: final_key,
+        },
+        base_proof,
+        &mut context,
+        &mut verifier_transcript,
+    )
+    .map_err(|error| error.to_string())?;
+    if provider_affine != verifier_affine
+        || provider_interaction != verifier_interaction
+        || provider_transcript.ledger() != verifier_transcript.ledger()
+    {
+        return Err("C6AWP1 multi-open role differential mismatch".to_owned());
+    }
+
+    let mut changed_points = points.clone();
+    let mut changed_coordinates = changed_points[0].as_slice().to_vec();
+    changed_coordinates[0] += C61P3Fp2::ONE;
+    changed_points[0] = Point::new(changed_coordinates);
+    let mut changed_transcript = Transcript::new(verifier_seed);
+    let mut changed_challenger =
+        C61InteractiveChallenger::new_claimless(&mut changed_transcript, num_variables);
+    let changed_config = c61_authenticated_config::<C61InteractiveChallenger<'_>>(num_variables)?;
+    let changed_mmcs = c61_reference_mmcs();
+    let changed_verifier = HidingWhirVerifier::new(&changed_config, &changed_mmcs);
+    changed_challenger.observe(decoded_commitment.clone());
+    changed_challenger.observe_public_points(&changed_points).map_err(|error| error.to_string())?;
+    let changed_result = catch_unwind(AssertUnwindSafe(|| {
+        changed_verifier.verify_claimless(
+            &proof,
+            &decoded_commitment,
+            &changed_points,
+            &mut changed_challenger,
+        )
+    }));
+    let point_mutation_rejected = match changed_result {
+        Err(_) | Ok(Err(_)) => true,
+        Ok(Ok(changed_closure)) => {
+            let finish = changed_challenger.finish(whir_payload_bytes);
+            let aggregate_key =
+                aggregate_verifier_targets(&target_keys, &changed_closure.claim_weights);
+            let (_, _, changed_base_proof) =
+                decode_c61_authenticated_p3_artifact_inner(&payload, num_variables, false)
+                    .map_err(|error| error.to_string())?;
+            match (finish, aggregate_key) {
+                (Ok(_), Ok(aggregate_key)) => {
+                    let changed_affine = affine_from_p3(changed_closure.target);
+                    let changed_final_key =
+                        changed_affine.derive_verifier_key(aggregate_key, delta);
+                    let mut changed_context = VerifierCtx::new(pcg_seed, delta);
+                    verify_c61_authenticated_whir_base(
+                        C61AuthenticatedWhirVerifierInput {
+                            id,
+                            mask_range,
+                            combined: c61_volta_fp2_from_p3(changed_closure.base_case.combined),
+                            shifted_masked_claim: c61_volta_fp2_from_p3(
+                                changed_closure.base_case.shifted_masked_claim,
+                            ),
+                            gamma: c61_volta_fp2_from_p3(changed_closure.base_case.gamma),
+                            target: changed_final_key,
+                        },
+                        changed_base_proof,
+                        &mut changed_context,
+                        &mut changed_transcript,
+                    )
+                    .is_err()
+                }
+                _ => true,
+            }
+        }
+    };
+
+    Ok(C61AuthenticatedP3MultiOpenDiagnostic {
+        num_variables,
+        claim_count,
+        strict_payload_bytes: payload.len(),
+        strict_payload_max_bytes: c61_authenticated_structural_budget_inner(num_variables, false)?
+            .strict_chain_bytes,
+        provider_interaction,
+        verifier_interaction,
+        batching_weights_identical: output.claim_weights == result.claim_weights,
+        point_mutation_rejected,
+        full_correlations: correlations.counters.full_corrs,
     })
 }
 
@@ -1870,6 +2174,38 @@ mod tests {
     }
 
     #[test]
+    fn ordered_multi_open_aggregates_authenticated_targets_without_wire_growth() {
+        let embedding = run_c61_authenticated_whir_p3_multi_open_diagnostic(14, 6).unwrap();
+        let model = run_c61_authenticated_whir_p3_multi_open_diagnostic(14, 96).unwrap();
+        assert_eq!(embedding.claim_count, 6);
+        assert_eq!(model.claim_count, 96);
+        assert!(embedding.strict_payload_bytes <= embedding.strict_payload_max_bytes);
+        assert!(model.strict_payload_bytes <= model.strict_payload_max_bytes);
+        assert_eq!(
+            embedding.strict_payload_max_bytes,
+            c61_authenticated_structural_budget_inner(14, false).unwrap().strict_chain_bytes
+        );
+        assert_eq!(embedding.strict_payload_max_bytes, model.strict_payload_max_bytes);
+        assert_eq!(embedding.provider_interaction, embedding.verifier_interaction);
+        assert_eq!(model.provider_interaction, model.verifier_interaction);
+        assert_eq!(
+            embedding.provider_interaction.provider_payload_bytes as usize + 16,
+            embedding.strict_payload_bytes
+        );
+        assert_eq!(
+            model.provider_interaction.provider_payload_bytes as usize + 16,
+            model.strict_payload_bytes
+        );
+        assert!(embedding.batching_weights_identical);
+        assert!(model.batching_weights_identical);
+        assert!(embedding.point_mutation_rejected);
+        assert!(model.point_mutation_rejected);
+        assert_eq!(embedding.full_correlations, 1);
+        assert_eq!(model.full_correlations, 1);
+        assert!(run_c61_authenticated_whir_p3_multi_open_diagnostic(14, 129).is_err());
+    }
+
+    #[test]
     fn fork_source_guard_has_no_eval_field_or_clear_claim_replay() {
         let proof = include_str!("../../third_party/p3-whir-c61/src/pcs/zk/proof.rs");
         let prover = include_str!("../../third_party/p3-whir-c61/src/pcs/zk/prover/mod.rs");
@@ -1879,16 +2215,21 @@ mod tests {
         let production_adapter = adapter.split("#[cfg(test)]").next().unwrap();
         assert!(!proof.contains("pub evals:"));
         assert_eq!(prover.matches("into_zk_sumcheck_claimless(").count(), 2);
+        assert!(prover.contains("claims.len() <= 128"));
+        assert!(!prover.contains("claims[0]"));
         assert!(verifier.contains("verify_affine_claim"));
+        assert!(verifier.contains("points.len() > 128"));
+        assert!(!verifier.contains("points[0]"));
         assert!(sumcheck.contains("into_zk_sumcheck_claimless"));
         assert!(sumcheck.contains("aux_claim,\n            false,"));
         assert_eq!(
             production_adapter.matches("C61InteractiveChallenger::new_claimless(").count(),
-            3
+            6
         );
         assert_eq!(production_adapter.matches(".observe_public_point(").count(), 5);
-        assert_eq!(production_adapter.matches(".ensure_public_statement_bound()").count(), 3);
-        assert_eq!(production_adapter.matches("challenger.finish(").count(), 4);
+        assert_eq!(production_adapter.matches(".observe_public_points(").count(), 3);
+        assert_eq!(production_adapter.matches(".ensure_public_statement_bound()").count(), 4);
+        assert_eq!(production_adapter.matches("challenger.finish(").count(), 7);
         assert!(!production_adapter.contains("proof.evals"));
         let verifier_adapter = production_adapter
             .split("fn verify_diagnostic(")

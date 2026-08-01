@@ -68,8 +68,9 @@ pub enum ZkVerifierError {
     #[error("round {round}: query count mismatch: expected {expected}, got {actual}")]
     QueryCountMismatch { round: usize, expected: usize, actual: usize },
 
-    /// C6.1 admits exactly one authenticated opening target per chain.
-    #[error("claimless point count mismatch: expected one, got {actual}")]
+    /// C6.1 admits one bounded ordered batch of authenticated opening
+    /// targets per chain.
+    #[error("claimless point count mismatch: expected 1..=128, got {actual}")]
     ClaimlessPointCountMismatch { actual: usize },
 
     /// A Merkle multi-opening failed to verify.
@@ -91,8 +92,12 @@ enum ActiveOracle<'a, C> {
 
 /// Public result of a complete claimless verifier replay.  The caller lifts
 /// `target` onto its designated MAC key and closes `base_case` with C6AWH1.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClaimlessWhirVerifierClosure<EF> {
+    /// Powers of the post-commitment batching challenge.  The designated
+    /// verifier uses these public coefficients to aggregate the individual
+    /// target keys before applying the affine closure.
+    pub claim_weights: Vec<EF>,
     pub target: AffineClaim<EF>,
     pub base_case: BaseCaseClaimlessClosure<EF>,
 }
@@ -163,7 +168,7 @@ where
             });
         }
 
-        if points.len() != 1 {
+        if points.is_empty() || points.len() > 128 {
             return Err(ZkVerifierError::ClaimlessPointCountMismatch { actual: points.len() });
         }
 
@@ -180,11 +185,15 @@ where
             }
         }
 
-        // Preserve the upstream one-claim alpha challenge, while never
-        // materializing the opening value on the verifier role.
-        let _alpha: EF = challenger.sample_algebra_element();
+        // Reduce the ordered point batch with one fresh post-commitment
+        // alpha, while never materializing any opening value on the verifier
+        // role.  The same coefficients aggregate the designated target keys.
+        let alpha: EF = challenger.sample_algebra_element();
+        let claim_weights: Vec<EF> = alpha.powers().collect_n(points.len());
         let mut source = SourceClaim::new();
-        source.push_eq(points[0].clone(), EF::ONE);
+        for (point, coefficient) in points.iter().cloned().zip(claim_weights.iter().copied()) {
+            source.push_eq(point, coefficient);
+        }
         let mut target = AffineClaim::identity();
         let mut masks = VerifierMasks::new();
 
@@ -360,7 +369,7 @@ where
             challenger,
         )?;
 
-        Ok(ClaimlessWhirVerifierClosure { target, base_case })
+        Ok(ClaimlessWhirVerifierClosure { claim_weights, target, base_case })
     }
 
     /// Replays one masked sumcheck batch and updates the carried relation.

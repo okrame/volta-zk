@@ -84,27 +84,38 @@ def require_source_guards() -> None:
         raise SystemExit("claimless ZK proof regressed to a clear evaluation field")
     if prover.count("into_zk_sumcheck_claimless(") != 2:
         raise SystemExit("claimless prover must use exactly two claimless sumcheck batches")
+    if "claims.len() <= 128" not in prover or "claims[0]" in prover:
+        raise SystemExit("claimless prover lost its bounded ordered multi-opening reduction")
     if "verify_affine_claim" not in verifier:
         raise SystemExit("claimless verifier no longer performs affine replay")
+    if "points.len() > 128" not in verifier or "points[0]" in verifier:
+        raise SystemExit("claimless verifier lost its bounded ordered multi-opening reduction")
     if "aux_claim,\n            false," not in residual:
         raise SystemExit("sumcheck claimless entry point no longer disables clear binding")
 
     adapter = (ROOT / "rust/volta-pcs/src/c61_authenticated_whir_p3.rs").read_text()
     production_adapter = adapter.split("#[cfg(test)]", 1)[0]
-    if production_adapter.count("C61InteractiveChallenger::new_claimless(") != 3:
+    if production_adapter.count("C61InteractiveChallenger::new_claimless(") != 6:
         raise SystemExit("claimless provider/verifier/simulator must use no-skip challenger mode")
     if production_adapter.count(".observe_public_point(") != 5:
         raise SystemExit(
             "claimless roles plus private-entropy provider/replay must explicitly bind the point"
         )
-    if production_adapter.count(".ensure_public_statement_bound()") != 3:
+    if production_adapter.count(".observe_public_points(") != 3:
+        raise SystemExit("claimless multi-opening roles must bind the complete ordered point batch")
+    if production_adapter.count(".ensure_public_statement_bound()") != 4:
         raise SystemExit("claimless roles must fail closed on incomplete statements")
-    if production_adapter.count("challenger.finish(") != 4:
+    if production_adapter.count("challenger.finish(") != 7:
         raise SystemExit("claimless roles must finalize strict wire accounting")
     if "proof.evals" in production_adapter:
         raise SystemExit("claimless adapter regressed to a clear evaluation codec field")
     if 'C61_AUTHENTICATED_P3_MAGIC: [u8; 8] = *b"C6AWP1\\0\\0"' not in production_adapter:
         raise SystemExit("claimless adapter strict codec identity changed")
+    if (
+        '66e290615de1858f2f2f6a804158064c406cda1c+c61-claimless-affine-multi-v2'
+        not in production_adapter
+    ):
+        raise SystemExit("claimless fork semantic revision is not pinned")
     if "decode_c61_authenticated_p3_artifact_inner" not in production_adapter:
         raise SystemExit("claimless verifier no longer consumes the strict codec")
     if "fn simulate_view_diagnostic(" not in production_adapter:

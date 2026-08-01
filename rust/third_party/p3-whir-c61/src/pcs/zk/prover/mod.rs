@@ -13,11 +13,11 @@ use core::mem;
 
 pub use data::HidingWhirProverData;
 use data::ZkRoundData;
-use masks::{ProverMasks, fold_limb_chunks};
+use masks::{fold_limb_chunks, ProverMasks};
 use p3_challenger::{CanObserve, CanSampleUniformBits, FieldChallenger, GrindingChallenger};
 use p3_commit::{ExtensionMmcs, Mmcs};
 use p3_dft::TwoAdicSubgroupDft;
-use p3_field::{ExtensionField, PackedValue, PrimeCharacteristicRing, TwoAdicField, dot_product};
+use p3_field::{dot_product, ExtensionField, PackedValue, PrimeCharacteristicRing, TwoAdicField};
 use p3_matrix::Matrix;
 use p3_maybe_rayon::prelude::*;
 use p3_multilinear_util::point::Point;
@@ -38,8 +38,8 @@ use crate::pcs::utils::get_challenge_stir_queries;
 use crate::pcs::zk::base_case::{
     BaseCaseClaimlessClosure, BaseCaseZkConfig, BaseCaseZkProver, MaskGroupWitness,
 };
-use crate::pcs::zk::code_switch::{ZkMaskClaim, switch_mask_covector};
-use crate::pcs::zk::committer::{FoldedRsCode, zk_padded_matrix};
+use crate::pcs::zk::code_switch::{switch_mask_covector, ZkMaskClaim};
+use crate::pcs::zk::committer::{zk_padded_matrix, FoldedRsCode};
 use crate::pcs::zk::config::ZkWhirConfig;
 use crate::pcs::zk::proof::{ZkRoundProof, ZkWhirProof};
 use crate::utils::padded_ood_t1;
@@ -67,6 +67,9 @@ where
 /// finish the MAC seam without replaying the verifier.
 pub struct ClaimlessWhirProverOutput<F: Send + Sync + Clone, EF, MT: Mmcs<F>> {
     pub proof: ZkWhirProof<F, EF, MT>,
+    /// Powers of the post-commitment batching challenge used to reduce the
+    /// ordered opening targets to the single affine target below.
+    pub claim_weights: Vec<EF>,
     pub target: AffineClaim<EF>,
     pub base_case: BaseCaseClaimlessClosure<EF>,
 }
@@ -126,17 +129,18 @@ where
         let config = self.config;
         let num_variables = config.num_variables;
         let sumcheck_mask_encoding = config.sumcheck_mask.encoding::<EF>();
-        assert_eq!(claims.len(), 1, "C6.1 claimless WHIR admits exactly one opening target");
+        assert!(!claims.is_empty(), "C6.1 claimless WHIR needs an opening target");
+        assert!(claims.len() <= 128, "C6.1 claimless WHIR target census exceeds 128");
 
         // Initial relation: claims batched by powers of alpha.
         //
         //     W = sum_i alpha^i eq(z_i, .)        claim = sum_i alpha^i v_i
         let alpha: EF = challenger.sample_algebra_element();
         let coeffs: Vec<EF> = alpha.powers().collect_n(claims.len());
-        let mut claim = EF::ZERO;
+        let mut batched_target = EF::ZERO;
         for ((point, eval), coeff) in claims.iter().zip(&coeffs) {
             assert_eq!(point.num_variables(), num_variables);
-            claim += *coeff * *eval;
+            batched_target += *coeff * *eval;
         }
 
         // Build the weight and evaluation polynomials in SIMD-packed form
@@ -167,7 +171,7 @@ where
                 Poly::new(prover_data.message.as_slice().par_iter().map(|&v| v.into()).collect());
             ProductPolynomial::new_unpacked(VariableOrder::Prefix, evals, weights)
         };
-        let sumcheck_prover = SumcheckProver::new(product, claim);
+        let sumcheck_prover = SumcheckProver::new(product, batched_target);
 
         // Initial masked sumcheck batch.
         let mut masks = ProverMasks::<F, EF, MT>::new();
@@ -323,7 +327,7 @@ where
                 .batched_claim(EF::ZERO, &ood_answers, &folded_values)
                 .expect("prover-built dimensions always match");
             affine_target = affine_target.add_public(public_offset);
-            debug_assert_eq!(affine_target.evaluate(claims[0].1), joint);
+            debug_assert_eq!(affine_target.evaluate(batched_target), joint);
 
             // Source side: fold the fresh power constraints into the
             // running sumcheck prover.
@@ -506,6 +510,7 @@ where
 
         ClaimlessWhirProverOutput {
             proof: ZkWhirProof { sumchecks, sumcheck_mask_commitments, rounds, base_case },
+            claim_weights: coeffs,
             target: affine_target,
             base_case: base_case_closure,
         }

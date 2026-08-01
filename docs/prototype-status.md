@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — AUTHENTICATED 96/6 MULTI-OPENING REDUCTION GREEN / COMPLETE STATEMENT AND SPARSE-COMPILER RELATION NEXT / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — CANONICAL RUNTIME SEAM GREEN / C6RSC4 TERMINAL-FUNCTIONAL RELATION HARD STOP / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -17,7 +17,7 @@ interactive `C6PA1`/`C6RSC4-v4` route uses direct postcommit MLE challenges,
 one sparse aggregate adjoint and six independently separated no-grinding
 HVZK chains.  Its registered ceilings/rooflines are **16,342,103 B** per
 certificate, **101,085,470 B** setup plus first certificate,
-**14.5038184344 s** provider and **4.565672390 s** four-thread verifier;
+**14.5038179582 s** provider and **4.565672390 s** four-thread verifier;
 complete per-certificate soundness is **119.668253692 bits**.  The additive
 Lean package is green at **3,264 jobs / 33 new audited C6.1 targets** and the
 strict scaled `C6PA1-v1`/`C6RSC4-v4` Rust seam remains green.
@@ -139,6 +139,31 @@ and one MAC event, a chain stays `<2^-74` and two independent chains stay
 **87 / 14 / 73**.  The complete statement digest and sparse compiler
 recurrence are still absent, so this is component evidence only.
 
+The next compiler-ownership audit closes the response-value seam but reaches
+a local algebraic/API hard stop before a complete relation can be claimed.
+`C61LinearOp::PublicInput` now addresses the canonical response-local runtime
+vector instead of embedding response values in the provider-global plan; the
+canonical runtime has **10,830,288 Fp2** values versus **10,830,342 Fp2** in
+the raw verifier stream, with exactly **54** duplicate raw slots removed.
+The **5,320,386-B** verifier extraction map is retained inside the existing
+**8,000,000-B** client-parameter allocation, leaving **2,679,614 B**, while
+only the **63,994,751-B** canonical plan is removed.  Setup therefore remains
+**84,743,367 B**.  The corrected provider-state screen is
+**2,019,404,992 B**, leaving **273,793,856 B**, and the formula-only provider
+roof becomes **14.5038179582 s**.
+
+The blocking fact is exact: C6RSC3's 64 consumed values are two groups of 8
+leaf-linear, 16 auxiliary-linear and 8 auxiliary-quadratic coefficient
+functionals produced only after the leaf/aux MLE points and atomic schedule
+are known.  They are not 64 fixed nodes of the installed sparse DAG.  That
+DAG instead terminates in **673 ProductClosures** and **8,170 zero roots**.
+Injecting output RLC powers into arbitrary fixed node indices would therefore
+prove the wrong statement.  `C6RSC4_TERMINAL_FUNCTIONAL_RELATION_OBSTRUCTED`
+is a hard stop until an exact challenge-dependent node-domain injection (or
+equivalent constrained relation), equality to the C6RSC3 consumed values and
+typed chain statements are specified and re-summed.  No complete-relation,
+certificate, setup, timing, memory, hardware or production credit follows.
+
 This remains an in-process role-separated diagnostic and replay protocol, not
 an internal O(1) Plonky3 state serialization or network benchmark.  It does
 **not** yet prove the complete model, embedding or
@@ -146,8 +171,9 @@ compiler relation, does not implement `C61NativeBackendVerifier`, and is
 never a production fallback.  The existing allocation/roofline values remain
 `credit:false`: the D14 number is component-level evidence, not a full
 certificate or production proof-size result.  No setup, timing, memory or
-hardware result is claimed.  The complete C6 relation adapter and then
-full-T1 local integration remain next.  The frozen V1 exclusion of malicious
+hardware result is claimed.  Work stops at the C6RSC4 terminal-functional
+relation obstruction; no arbitrary node mapping or opaque statement adapter
+is admissible.  The frozen V1 exclusion of malicious
 client-disk snapshot rollback is unchanged.  C6.1 stays local-only until a
 separate owner GO; no provider/pod contact is authorized.
 The exact frozen T1 source/correction census now has a clean append-only
@@ -748,6 +774,7 @@ its clean descendant closure.
 | C6.1 private-entropy replay driver | **LOCAL ROLE-SEPARATED C6ICT1 REPLAY-TO-FRONTIER GREEN; DURABLE ATOMIC CHECKPOINT + MASK ALLOCATOR NEXT; NO POD** (2026-08-01) | Verifier broker exclusively owns seed/transcript/checkpoint; provider endpoint is channel-only; deterministic retry replays exact provider moves before releasing recorded challenges | D14 remains **378,496 B** at the same BLAKE3 with **26 / 52,608-B** provider moves, **2,588** total challenges and **10,560 B** client challenge wire. The strict verifier-local midpoint checkpoint is **73,360 B** at challenge **1,294** and adds **0 B** to provider-to-client certificate traffic. Resume produces a byte-identical proof and tape; changed provider moves and magic/version/reserved/tag/truncated/trailing mutations fail closed. The feature suite is **5/5**; source audit remains **87 imported / 14 allowed deltas / 73 byte-identical** and guards the seedless provider boundary. This is local replay, not internal P3 state serialization, crash-safe persistence, network timing or full relation integration. All full-chain/setup/time/hardware credits remain false; no pod contacted. |
 | C6.1 durable private-entropy journal | **C6ICJ1 APPEND-ONLY CHECKPOINT / MASK FRONTIER / RESERVED-RANGE BINDING GREEN; COMPLETE RELATION ADAPTER NEXT; NO POD** (2026-08-01) | Current validated pending attempt only; both paired ranges end at durable client high-water; each challenge and mask event fsyncs before release; malformed/uncertain journal burns the attempt | Midpoint D14 recovery replays **1,294** challenges and one provider-move-bound mask event, then seals a **208,204-B client-local / 2,590-record** journal (2,588 challenge records + mask + final seal). Artifact, tape and provider-to-client wire remain byte-identical at **378,496 B** and zero increment. The journal contains no verifier seed; it binds connection/setup/slot/nonce/predecessor/head/context and both full ranges. Wrong pending-attempt binding, torn tail and checksum-corrupt body reject. The whole range is already burned by existing C6 reservation; unsafe recovery aborts and retries with a new slot/range from the same accepted head. No malicious client-disk snapshot rollback, network/fsync timing, full relation, proof-size/setup/time/hardware credit; no pod contacted. |
 | C6.1 authenticated ordered multi-opening reduction | **SCALED 96-MODEL / 6-EMBEDDING CLAIM BATCHES GREEN; COMPLETE STATEMENT DIGEST + SPARSE-COMPILER RELATION NEXT; NO POD** (2026-08-01) | One committed polynomial per chain; ordered `1..=128` point batch fixed before fresh `alpha`; provider shares and verifier keys aggregate under identical powers; C6AWH1 closes the resulting affine target | D14 executes both production claim censuses, preserves a claim-count-independent structural artifact maximum, consumes one full correlation per chain and rejects changed points at the designated closure. No point, target or key vector enters provider-to-client wire; concrete Merkle multiproof length may vary downward with query collisions. The added error is at most **127/|Fp2| = 121.011315313 bits**; exact `2^-75 + 127/|Fp2| + 1/|Fp2| <2^-74`, so paired chains retain `<2^-148` and the complete **119.668253692-bit** screen is unchanged. Feature tests are **6/6**; fork provenance remains **87 imported / 14 allowed deltas / 73 byte-identical** and now forbids single-claim indexing regressions. This is a PCS prerequisite only: model/root/point statement binding and the compiler recurrence remain absent, and all full-chain proof-size/setup/time/memory/hardware credits remain false. |
+| C6.1 canonical runtime and compiler-ownership audit | **CANONICAL RUNTIME SEAM GREEN; C6RSC4 TERMINAL-FUNCTIONAL RELATION LOCAL HARD STOP; NO POD** (2026-08-01) | Runtime-indexed public inputs; canonical public-then-scalar extraction; retain verifier map inside the existing client-parameter allocation; refuse an unjustified fixed-node terminal mapping | The canonical runtime is **10,830,288 Fp2**, deduplicating exactly **54** slots from the **10,830,342-Fp2** raw verifier stream; provider raw material is **10,838,512 Fp2**. The **5,320,386-B** verifier extraction map stays within the existing **8,000,000-B** allocation, leaving **2,679,614 B**; only the **63,994,751-B** canonical plan is removed, so projected setup remains **84,743,367 B**. Corrected provider state is **2,019,404,992 B**, with **273,793,856 B** headroom, and the formula-only provider roof is **14.5038179582 s**. The default workspace is green at **volta-pcs 196/0/1** and **volta-proto 149/0/1**; full `volta-mac c6-trace` is **36/0/0 + 5/0/0**. The obstruction is algebraic, not a benchmark failure: C6RSC3 consumes 64 challenge-dependent coefficient functionals generated after leaf/aux points and the atomic schedule, whereas the installed DAG has **673 ProductClosures / 8,170 zero roots**, not 64 corresponding fixed terminal nodes. A fixed-node RLC would prove the wrong relation. Resume requires an exact challenge-dependent injection or equivalent constrained relation, equality to the C6RSC3 values, typed per-chain statements and a fresh byte/soundness/time re-sum. All full-chain credits remain false; no pod contacted. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -822,6 +849,31 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-08-01 — C6.1 retains the verifier extraction map and stops at the
+  terminal-functional relation instead of assigning the 64 outputs to
+  arbitrary sparse-DAG nodes.**  Public operations now contain canonical
+  runtime indices, not response values, so the provider-global plan digest
+  is stable across responses.  Canonical extraction orders **1,436 public**
+  then **10,828,852 scalar** values, for **10,830,288 Fp2** total; the raw
+  verifier capture has **10,830,342 Fp2**, hence exactly **54** deduplicated
+  slots.  The **5,320,386-B** verifier extraction map remains necessary to
+  derive this stream and is retained inside the already registered
+  **8,000,000-B** client-parameter allocation.  Only the **63,994,751-B**
+  canonical plan is removed, leaving projected setup unchanged at
+  **84,743,367 B**.
+
+  The installed sparse DAG has **673 ProductClosures** and **8,170 zero
+  roots**.  C6RSC3's 64 values are instead challenge-dependent leaf-linear,
+  auxiliary-linear and auxiliary-quadratic coefficient functionals emitted
+  after the MLE points and atomic schedule are fixed.  No equality currently
+  identifies them with 64 fixed DAG nodes.  `output_injection(beta)` over
+  guessed node indices would therefore establish a different statement and
+  is forbidden.  This records
+  `C6RSC4_TERMINAL_FUNCTIONAL_RELATION_OBSTRUCTED` as a local hard stop.  A
+  concrete exact relation, its equality to the consumed C6RSC3 values, typed
+  chain statements and a fresh resource/soundness re-sum are required before
+  implementation resumes.  No pod contact or full-chain credit follows.
 
 - **2026-08-01 — C6.1 batches model/embedding openings inside each native
   chain rather than allocating one chain or one proof field per target.**
@@ -1044,11 +1096,12 @@ historical entries remain append-only evidence, not competing definitions.
   one reverse-adjoint recurrence over the exact **28,845,631-node /
   36,917,836-edge** installed DAG. The raw **10,830,342-value** runtime is
   bound by two dimension-24 MLE fingerprints. Four node vectors plus runtime
-  require **2,019,405,856 B** of ephemeral provider state, leaving
-  **273,792,992 B** under the owner cap. The plan, sparse matrices and source
-  maps are provider-global preprocessing; only their versioned roots remain
-  client parameters. No plan/map, cache vector or prior key vector crosses
-  response wire.
+  require **2,019,404,992 B** of ephemeral provider state, leaving
+  **273,793,856 B** under the owner cap. The plan, sparse matrices and source
+  maps are provider-global preprocessing.  The verifier extraction map is a
+  retained client parameter inside its existing allocation; only versioned
+  roots and response-local challenges cross certificate framing. No plan,
+  cache vector or prior key vector crosses response wire.
 
   The preferred public backend is Goldilocks-quadratic-extension HVZK,
   Johnson decoding, rate `1/2`, fold `1` then `2`, and proof-of-work
@@ -1062,7 +1115,7 @@ historical entries remain append-only evidence, not competing definitions.
   informative 17-certificate union is **115.580790850 bits**.
 
   At existing P7 anchors the conservative provider roof is
-  **14.5038184344 s**, leaving **0.4961815656 s**; the four-thread verifier
+  **14.5038179582 s**, leaving **0.4961820418 s**; the four-thread verifier
   allocation is **4.565672390 s**, leaving **0.434327610 s**, with a strict
   **512,000,000-B** additional-memory allocation. These tight values are
   formula/codec screens only: no native proof, AVX2 verifier or A100 path has
@@ -1088,7 +1141,9 @@ historical entries remain append-only evidence, not competing definitions.
   postcommit polynomial
   fingerprints bind the raw `10,830,342`-value client-role runtime stream;
   source plaintext, key, tag, PCG-state or Delta taint is forbidden. This
-  conditionally removes the old client plan/map from setup. A specialized
+  conditionally removes the old client plan from setup while retaining the
+  **5,320,386-B** verifier extraction map inside the existing **8,000,000-B**
+  client-parameter allocation. A specialized
   interactive Goldilocks sumcheck/GKR plus transparent constrained-RS PCS is
   active; universal/updatable SRS remains an inactive permitted contingency,
   and fixed circuit-specific setup remains forbidden. Exact message formulas,

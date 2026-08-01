@@ -492,12 +492,27 @@ pub fn c61_mle_eval_fold_reference(values: &[Fp2], point: &[Fp2]) -> Result<Fp2>
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum C61LinearOp {
-    Source { ordinal: u32 },
-    Public(Fp2),
+    Source {
+        ordinal: u32,
+    },
+    /// Response-local public input selected from the canonical runtime
+    /// stream.  Its value is never embedded in the provider-global plan.
+    PublicInput {
+        runtime: u32,
+    },
     Zero,
-    Add { left: u32, right: u32 },
-    Sub { left: u32, right: u32 },
-    Scale { input: u32, runtime: u32 },
+    Add {
+        left: u32,
+        right: u32,
+    },
+    Sub {
+        left: u32,
+        right: u32,
+    },
+    Scale {
+        input: u32,
+        runtime: u32,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -534,7 +549,14 @@ impl C61SparsePlan {
                         ));
                     }
                 }
-                C61LinearOp::Public(_) | C61LinearOp::Zero => {}
+                C61LinearOp::PublicInput { runtime } => {
+                    if usize::try_from(*runtime).ok().is_none_or(|value| value >= runtime_len) {
+                        return Err(C61PublicCompressionError::new(
+                            "C6.1 sparse plan public-input runtime index is out of range",
+                        ));
+                    }
+                }
+                C61LinearOp::Zero => {}
                 C61LinearOp::Add { left, right } | C61LinearOp::Sub { left, right } => {
                     prior(*left)?;
                     prior(*right)?;
@@ -577,9 +599,9 @@ impl C61SparsePlan {
                     hasher.update(&[0]);
                     hasher.update(&ordinal.to_le_bytes());
                 }
-                C61LinearOp::Public(value) => {
+                C61LinearOp::PublicInput { runtime } => {
                     hasher.update(&[1]);
-                    update_fp2(&mut hasher, *value);
+                    hasher.update(&runtime.to_le_bytes());
                 }
                 C61LinearOp::Zero => {
                     hasher.update(&[2]);
@@ -618,7 +640,13 @@ impl C61SparsePlan {
                         )
                     })?
                 }
-                C61LinearOp::Public(value) => value,
+                C61LinearOp::PublicInput { runtime: runtime_index } => {
+                    *runtime.get(index(runtime_index)?).ok_or_else(|| {
+                        C61PublicCompressionError::new(
+                            "C6.1 runtime is shorter than its public-input plan",
+                        )
+                    })?
+                }
                 C61LinearOp::Zero => Fp2::ZERO,
                 C61LinearOp::Add { left, right } => values[index(left)?] + values[index(right)?],
                 C61LinearOp::Sub { left, right } => values[index(left)?] - values[index(right)?],
@@ -667,7 +695,9 @@ impl C61SparsePlan {
         for node in (0..self.operations.len()).rev() {
             let weight = adjoint[node];
             match self.operations[node] {
-                C61LinearOp::Source { .. } | C61LinearOp::Public(_) | C61LinearOp::Zero => {}
+                C61LinearOp::Source { .. }
+                | C61LinearOp::PublicInput { .. }
+                | C61LinearOp::Zero => {}
                 C61LinearOp::Add { left, right } => {
                     adjoint[index(left)?] += weight;
                     adjoint[index(right)?] += weight;
@@ -689,7 +719,12 @@ impl C61SparsePlan {
         Ok(adjoint)
     }
 
-    pub fn source_boundary(&self, sources: &[Fp2], adjoint: &[Fp2]) -> Result<Fp2> {
+    pub fn source_boundary(
+        &self,
+        sources: &[Fp2],
+        runtime: &[Fp2],
+        adjoint: &[Fp2],
+    ) -> Result<Fp2> {
         if adjoint.len() != self.operations.len() {
             return Err(C61PublicCompressionError::new(
                 "C6.1 adjoint differs from its sparse plan",
@@ -706,7 +741,15 @@ impl C61SparsePlan {
                             "C6.1 source witness is shorter than its fixed sparse plan",
                         )
                     }),
-                C61LinearOp::Public(value) => Ok(sum + *weight * *value),
+                C61LinearOp::PublicInput { runtime: runtime_index } => runtime
+                    .get(index(*runtime_index)?)
+                    .copied()
+                    .map(|value| sum + *weight * value)
+                    .ok_or_else(|| {
+                        C61PublicCompressionError::new(
+                            "C6.1 runtime is shorter than its public-input boundary",
+                        )
+                    }),
                 _ => Ok(sum),
             }
         })
@@ -1023,7 +1066,7 @@ pub fn verify_c61_scaled_public_argument<B: C61NativeBackendVerifier>(
     if adjoint_root != frame.adjoint_root {
         return Err(C61PublicCompressionError::new("C6RSC4 adjoint root differs"));
     }
-    let source_boundary = plan.source_boundary(sources, &adjoint)?;
+    let source_boundary = plan.source_boundary(sources, runtime, &adjoint)?;
     let terminal_boundary = frame
         .terminal_claims
         .iter()
@@ -1077,7 +1120,7 @@ pub fn build_c61_scaled_arithmetic_frame(
         runtime_evaluations: try_array_from_fn(|index| {
             c61_mle_eval_prefix(runtime, &ready.challenges.runtime_points[index])
         })?,
-        source_boundary: plan.source_boundary(sources, &adjoint)?,
+        source_boundary: plan.source_boundary(sources, runtime, &adjoint)?,
     })
 }
 
@@ -1329,19 +1372,19 @@ mod tests {
 
     fn scaled_fixture() -> (C61SparsePlan, Vec<Fp2>, Vec<Fp2>) {
         let sources = vec![f(13), f(17)];
-        let runtime = vec![f(3), f(5), f(7), f(11)];
+        let runtime = vec![f(19), f(3), f(5), f(7), f(11)];
         let operations = vec![
             C61LinearOp::Source { ordinal: 0 },
             C61LinearOp::Source { ordinal: 1 },
-            C61LinearOp::Public(f(19)),
+            C61LinearOp::PublicInput { runtime: 0 },
             C61LinearOp::Zero,
             C61LinearOp::Add { left: 0, right: 1 },
-            C61LinearOp::Scale { input: 4, runtime: 0 },
+            C61LinearOp::Scale { input: 4, runtime: 1 },
             C61LinearOp::Sub { left: 5, right: 2 },
             C61LinearOp::Add { left: 6, right: 3 },
-            C61LinearOp::Scale { input: 7, runtime: 1 },
+            C61LinearOp::Scale { input: 7, runtime: 2 },
             C61LinearOp::Add { left: 8, right: 0 },
-            C61LinearOp::Scale { input: 9, runtime: 2 },
+            C61LinearOp::Scale { input: 9, runtime: 3 },
             C61LinearOp::Sub { left: 10, right: 1 },
         ];
         let terminals = array::from_fn(|index| 4 + (index % 8) as u32);
@@ -1480,7 +1523,7 @@ mod tests {
         let claims = plan.terminal_claims(&values).unwrap();
         let output = plan.output_injection(ready.challenges.output_beta);
         let mut adjoint = plan.reverse_adjoint(&runtime, &output).unwrap();
-        let source = plan.source_boundary(&sources, &adjoint).unwrap();
+        let source = plan.source_boundary(&sources, &runtime, &adjoint).unwrap();
         let terminal = claims
             .iter()
             .fold((Fp2::ZERO, Fp2::ONE), |(sum, power), claim| {
@@ -1604,15 +1647,22 @@ mod tests {
     }
 
     #[test]
-    fn sparse_plan_binds_source_ordinals_but_not_private_source_values() {
-        let (plan, mut sources, runtime) = scaled_fixture();
+    fn sparse_plan_binds_indices_but_not_response_values() {
+        let (plan, mut sources, mut runtime) = scaled_fixture();
         let digest = plan.digest();
+        let baseline = plan.evaluate(&sources, &runtime).unwrap();
         sources[0] += Fp2::ONE;
         assert_eq!(plan.digest(), digest);
-        assert!(plan.evaluate(&sources, &runtime).is_ok());
+        let source_mutated = plan.evaluate(&sources, &runtime).unwrap();
+        assert_ne!(source_mutated, baseline);
+        runtime[0] += Fp2::ONE;
+        assert_eq!(plan.digest(), digest);
+        assert_ne!(plan.evaluate(&sources, &runtime).unwrap(), source_mutated);
 
         let bad_source = vec![C61LinearOp::Source { ordinal: 2 }];
         assert!(C61SparsePlan::new(bad_source, [0; C61_TERMINAL_CLAIMS], 2, 0).is_err());
+        let bad_public = vec![C61LinearOp::PublicInput { runtime: 1 }];
+        assert!(C61SparsePlan::new(bad_public, [0; C61_TERMINAL_CLAIMS], 0, 1).is_err());
         let bad_topology = vec![C61LinearOp::Add { left: 0, right: 0 }];
         assert!(C61SparsePlan::new(bad_topology, [0; C61_TERMINAL_CLAIMS], 0, 0).is_err());
     }

@@ -552,6 +552,40 @@ impl C6RuntimeInstanceValues {
             .copied()
             .ok_or_else(|| C6TraceError::new("C6 mapped raw scalar slot is out of range"))
     }
+
+    /// Materialize the canonical response-local runtime stream consumed by
+    /// C6.1: public-input slots first, followed by scale-scalar slots.
+    ///
+    /// The installed extraction map is response-independent setup state.
+    /// Keeping this map client-side avoids asking the public proof to attest
+    /// an otherwise unbudgeted raw-to-canonical copy relation.
+    pub fn canonical_runtime_values(
+        &self,
+        extraction: &C6DecodedInstanceExtractionPlan,
+    ) -> Result<Vec<Fp2>, C6TraceError> {
+        self.validate_extraction(extraction)?;
+        let capacity = extraction
+            .public_raw_ordinals
+            .len()
+            .checked_add(extraction.scalar_raw_ordinals.len())
+            .ok_or_else(|| C6TraceError::new("C6 canonical runtime length overflows"))?;
+        let mut values = Vec::new();
+        values
+            .try_reserve_exact(capacity)
+            .map_err(|_| C6TraceError::new("C6 canonical runtime allocation failed"))?;
+        for &raw in &extraction.public_raw_ordinals {
+            values.push(*self.public_values.get(raw as usize).ok_or_else(|| {
+                C6TraceError::new("C6 canonical public map points outside the raw stream")
+            })?);
+        }
+        for &raw in &extraction.scalar_raw_ordinals {
+            values.push(*self.scalar_values.get(raw as usize).ok_or_else(|| {
+                C6TraceError::new("C6 canonical scalar map points outside the raw stream")
+            })?);
+        }
+        debug_assert_eq!(values.len(), capacity);
+        Ok(values)
+    }
 }
 
 /// Begin one exact response-local instance capture on the current thread.
@@ -4334,6 +4368,10 @@ mod tests {
             runtime.scalar_value(&extraction, 0).unwrap(),
             Fp2::new(volta_field::Fp::new(2), volta_field::Fp::new(3))
         );
+        assert_eq!(
+            runtime.canonical_runtime_values(&extraction).unwrap(),
+            vec![Fp2::ONE, Fp2::new(volta_field::Fp::new(2), volta_field::Fp::new(3)),]
+        );
         let installed_capture = begin_c6_runtime_instance_capture(&extraction).unwrap();
         let public = C6TraceToken::public(Fp2::ONE);
         let _scaled = public.scale(Fp2::new(volta_field::Fp::new(2), volta_field::Fp::new(3)));
@@ -4365,6 +4403,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(shifted_runtime.instance_identity(), shifted.plan.instance);
+        assert_eq!(
+            shifted_runtime.canonical_runtime_values(&shifted_extraction).unwrap(),
+            vec![Fp2::ONE, Fp2::new(volta_field::Fp::new(2), volta_field::Fp::new(3)),]
+        );
 
         let verifier = compile_c6_operation_trace_for_role(
             &allocation_trace(false),

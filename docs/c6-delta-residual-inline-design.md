@@ -41,7 +41,8 @@ ARGUMENT + DESIGNATED-VIEW SIMULATOR + PRIVATE-ENTROPY `C6ICT1-v1`
 REPLAY-TO-FRONTIER DRIVER + DURABLE `C6ICJ1-v1` APPEND-ONLY JOURNAL,
 MASK-FRONTIER AND RESERVED-RANGE BINDING + BOUNDED AUTHENTICATED ORDERED
 MULTI-OPENING REDUCTION FOR THE 96 MODEL / 6 EMBEDDING CLAIM CENSUSES GREEN;
-COMPLETE STATEMENT DIGEST AND SPARSE-COMPILER RELATION ADAPTER NEXT; NO
+RESPONSE-INDEPENDENT CANONICAL RUNTIME SEAM GREEN; `C6RSC4` TERMINAL-
+FUNCTIONAL RELATION LOCALLY OBSTRUCTED / HARD STOP; NO
 C6.1 FULL-CHAIN PROOF-SIZE, TIMING, MEMORY OR HARDWARE CREDIT; HARD STOP
 BEFORE POD.**
 
@@ -1530,6 +1531,85 @@ prove the sparse compiler recurrence.  It therefore earns no complete-chain,
 certificate, setup, timing, memory, session or hardware credit.  The next
 gate is the exact complete statement/domain adapter followed by the
 source/runtime/adjoint compiler relation; no pod was contacted.
+
+### 0.21 Canonical runtime seam and terminal-functional hard stop
+
+The production-plan audit first found that the provisional sparse-plan type
+was not response-independent: it embedded each of the **1,436** public-node
+values in `C61LinearOp::Public`, while only the **10,828,852** scale values
+were runtime indices.  That contradicts the provider-global plan premise.
+The scaled type now uses `PublicInput { runtime }`; public-input slots come
+first and scale-scalar slots follow in one canonical runtime vector.  Plan
+digests therefore bind only topology and indices, never response values, and
+the source boundary reads both public and scale values from that vector.
+
+The exact installed censuses are distinct:
+
+```text
+verifier raw public + scalar       1,466 + 10,828,876 = 10,830,342
+canonical public + scalar          1,436 + 10,828,852 = 10,830,288
+raw duplicates removed                                          54
+provider raw public + scalar       1,466 + 10,837,046 = 10,838,512.
+```
+
+Rather than add an unbudgeted proof that the raw stream is copied into the
+canonical order, C6.1 now retains the exact **5,320,386-B** verifier
+extraction map as client setup state.  It fits inside the already allocated
+`8,000,000 B` client-parameter envelope and leaves **2,679,614 B** for all
+other client parameters.  Only the **63,994,751-B** canonical operation plan
+is removed.  The projected setup consequently stays **84,743,367 B**.  The
+runtime recorder now materializes the canonical public-then-scalar stream
+through that validated installed map.  The scaled sparse seam is **11/11**
+and the focused installed-map differential is green.  The complete default
+workspace remains green at **volta-pcs 196/0/1** and **volta-proto 149/0/1**;
+the full `volta-mac --features c6-trace` run is **36/0/0** plus **5/0/0**
+integration tests.
+
+Using the canonical rather than raw runtime vector changes only pre-code
+screens:
+
+```text
+provider ephemeral state          2,019,404,992 B
+headroom to frozen state cap         273,793,856 B
+compiler equivalent symbols       4,902,000,320
+projected provider roofline        14.5038179582 s.
+```
+
+No measurement or production credit follows.
+
+The next ownership check reaches a binding algebraic obstruction.  The
+scaled `C61SparsePlan` currently represents its 64 outputs as **64 fixed
+canonical node indices** and forms `b(beta)` by placing powers of `beta` at
+those indices.  Production does not have such 64 terminal nodes.  Its
+`compile_c6_residual_fused_terminal_coefficients` output is two
+challenge-dependent groups of **8 leaf-linear + 16 auxiliary-linear + 8
+auxiliary-quadratic** coefficient functionals, emitted only after the leaf/
+auxiliary MLE points and atomic schedule are fixed.  The installed operation
+plan's actual terminal inventories are **673 ProductClosures** and **8,170
+Zero roots**, not the 64 C6RSC3 coefficients.
+
+Therefore assigning the production coefficients to arbitrary node indices
+would prove the wrong statement.  The current WHIR fork supplies a PCS
+opening relation only; it does not by itself constrain the sparse recurrence,
+and `C61NativeBackendVerifier` still receives only opaque digests/payload
+rather than a typed model/embedding/compiler relation with its point and
+authenticated-target context.  This is the local
+`C6RSC4_TERMINAL_FUNCTIONAL_RELATION_OBSTRUCTED` **HARD STOP**.
+
+Work may resume only after one concrete amendment supplies all of:
+
+1. the exact challenge-dependent node-domain injection, or an equivalent
+   constrained relation, for the 64 production coefficient functionals;
+2. an algebraic proof that accepting it yields exactly the terminal values
+   consumed by both C6RSC3 repetitions;
+3. typed per-chain statements binding model/embedding commitments, ordered
+   points, authenticated targets and the compiler relation; and
+4. a new exact byte, soundness, provider-work and four-thread verifier-work
+   re-sum before backend implementation.
+
+The existing **16,342,103-B**, **14.5038179582-s** and **4.565672390-s**
+figures remain screens with `credit:false`; they cannot be used to bypass the
+missing relation.  No pod was contacted.
 
 ## 1. Owner requirements
 

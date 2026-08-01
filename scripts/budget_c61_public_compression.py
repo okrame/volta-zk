@@ -65,6 +65,9 @@ C6_SETUP_MANIFEST_BYTES = 437
 C6_CANONICAL_PLAN_BYTES = 63_994_751
 C6_VERIFIER_INSTANCE_MAP_BYTES = 5_320_386
 C6_EXISTING_SETUP_BYTES = 146_058_504
+C61_CLIENT_PARAMETER_BYTES_AFTER_RETAINED_MAP = (
+    C61_CLIENT_PUBLIC_PARAMETER_ALLOCATION_BYTES - C6_VERIFIER_INSTANCE_MAP_BYTES
+)
 
 # Historical measurements.  They are informative anchors with different
 # scopes; the report never combines them into a C6.1 verdict.
@@ -310,19 +313,22 @@ def build_report() -> dict[str, Any]:
         + C61_PUBLIC_ARGUMENT_ALLOCATION_BYTES
     )
 
-    setup_without_client_compiler_artifacts = (
+    setup_without_client_plan_and_parameters = (
         C6_PAIRED_PCG_BYTES + C6_SETUP_MANIFEST_BYTES
     )
     projected_setup_bytes = (
-        setup_without_client_compiler_artifacts
+        setup_without_client_plan_and_parameters
         + C61_CLIENT_PUBLIC_PARAMETER_ALLOCATION_BYTES
     )
     projected_first_response_bytes = (
         projected_setup_bytes + active_projected_certificate_bytes
     )
 
-    runtime_stream_values = (
+    raw_verifier_runtime_values = (
         C6_VERIFIER_RAW_PUBLIC_VALUES + C6_VERIFIER_RAW_SCALAR_VALUES
+    )
+    canonical_runtime_values = (
+        C6_VERIFIER_CANONICAL_PUBLIC_VALUES + C6_VERIFIER_CANONICAL_SCALAR_VALUES
     )
     runtime_sketch_error = Fraction(
         C61_RUNTIME_LOG2**C61_RUNTIME_SKETCH_REPETITIONS,
@@ -411,7 +417,7 @@ def build_report() -> dict[str, Any]:
         projected_setup_bytes + native_projected_certificate_bytes
     )
 
-    provider_state_elements = 4 * C61_CANONICAL_NODE_COUNT + runtime_stream_values
+    provider_state_elements = 4 * C61_CANONICAL_NODE_COUNT + canonical_runtime_values
     provider_state_bytes = provider_state_elements * c6.FP2_BYTES
 
     with localcontext() as context:
@@ -426,7 +432,7 @@ def build_report() -> dict[str, Any]:
         native_compiler_symbols = C61_NATIVE_COMPILER_EQUIVALENT_PASSES * (
             C61_CANONICAL_NODE_COUNT
             + C61_SPARSE_OPERAND_COUNT
-            + runtime_stream_values
+            + canonical_runtime_values
         )
         native_compiler_memory_seconds = (
             Decimal(native_compiler_symbols * c6.FP2_BYTES)
@@ -479,11 +485,12 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v4",
+        "profile": "C6.1-public-compression-reference-v5",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
-            "COMPLETE_STATEMENT_AND_SPARSE_COMPILER_RELATION_REQUIRED__"
+            "CANONICAL_RUNTIME_SEAM_GREEN__C6RSC4_TERMINAL_FUNCTIONAL_"
+            "RELATION_OBSTRUCTED__HARD_STOP__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
@@ -552,7 +559,8 @@ def build_report() -> dict[str, Any]:
             "status": (
                 "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
                 "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
-                "COMPLETE_STATEMENT_AND_SPARSE_COMPILER_RELATION_PENDING__"
+                "CANONICAL_RUNTIME_SEAM_GREEN__C6RSC4_TERMINAL_FUNCTIONAL_"
+                "RELATION_OBSTRUCTED__HARD_STOP__"
                 "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
             "statement": (
@@ -614,12 +622,14 @@ def build_report() -> dict[str, Any]:
                     "scale": C61_SCALE_NODE_COUNT,
                 },
                 "sparse_operand_edges": C61_SPARSE_OPERAND_COUNT,
-                "runtime_values": runtime_stream_values,
+                "runtime_values": canonical_runtime_values,
+                "raw_verifier_runtime_values": raw_verifier_runtime_values,
                 "public_pcs_vectors": 2,
                 "public_pcs_vector_log2": C61_NODE_LOG2,
                 "recurrence": "lambda = root + A^T lambda",
                 "provider_global_plan": True,
-                "client_receives_plan_or_instance_map": False,
+                "client_receives_plan": False,
+                "client_retains_instance_map_bytes": C6_VERIFIER_INSTANCE_MAP_BYTES,
             },
             "native_transparent_backend": {
                 "field": "Goldilocks quadratic extension with base-field embedding",
@@ -1015,6 +1025,31 @@ def build_report() -> dict[str, Any]:
                     "15 seconds is currently available"
                 ),
             },
+            "local_hard_stop": {
+                "status": "C6RSC4_TERMINAL_FUNCTIONAL_RELATION_OBSTRUCTED",
+                "canonical_runtime_seam_green": True,
+                "raw_verifier_runtime_values": raw_verifier_runtime_values,
+                "canonical_runtime_values": canonical_runtime_values,
+                "deduplicated_raw_values": (
+                    raw_verifier_runtime_values - canonical_runtime_values
+                ),
+                "retained_instance_map_bytes": C6_VERIFIER_INSTANCE_MAP_BYTES,
+                "current_scaled_abstraction": (
+                    "injects beta powers at 64 fixed node indices"
+                ),
+                "production_terminal_semantics": (
+                    "two challenge-dependent 8+16+8 coefficient-functional "
+                    "outputs emitted by atomic replay"
+                ),
+                "native_backend_missing_typed_relation_statement": True,
+                "required_before_resume": [
+                    "define the exact challenge-dependent node-domain injection or an equivalent constrained relation",
+                    "prove that relation yields the 64 terminal coefficient functionals consumed by C6RSC3",
+                    "pass typed model/embedding/compiler statements, points and authenticated targets to each native backend chain",
+                    "re-sum proof bytes, soundness, provider work and four-thread verifier work before implementation",
+                ],
+                "credit": False,
+            },
         },
         "setup_screen": {
             "existing_setup_bytes": C6_EXISTING_SETUP_BYTES,
@@ -1024,14 +1059,18 @@ def build_report() -> dict[str, Any]:
                 "canonical_plan": C6_CANONICAL_PLAN_BYTES,
                 "verifier_instance_map": C6_VERIFIER_INSTANCE_MAP_BYTES,
             },
-            "compiler_artifacts_removed_from_client_bytes": (
-                C6_CANONICAL_PLAN_BYTES + C6_VERIFIER_INSTANCE_MAP_BYTES
+            "compiler_plan_removed_from_client_bytes": C6_CANONICAL_PLAN_BYTES,
+            "verifier_instance_map_retained_inside_parameter_allocation_bytes": (
+                C6_VERIFIER_INSTANCE_MAP_BYTES
             ),
-            "base_without_client_compiler_artifacts_bytes": (
-                setup_without_client_compiler_artifacts
+            "base_without_client_plan_or_new_parameters_bytes": (
+                setup_without_client_plan_and_parameters
             ),
             "public_parameter_preregistered_allocation_bytes": (
                 C61_CLIENT_PUBLIC_PARAMETER_ALLOCATION_BYTES
+            ),
+            "parameter_bytes_after_retained_map": (
+                C61_CLIENT_PARAMETER_BYTES_AFTER_RETAINED_MAP
             ),
             "projected_setup_bytes": projected_setup_bytes,
             "strict_setup_max_bytes": C61_SETUP_MAX_BYTES,
@@ -1041,8 +1080,8 @@ def build_report() -> dict[str, Any]:
             ),
             "allocation_screen_pass": projected_setup_bytes <= C61_SETUP_MAX_BYTES,
             "contingency": (
-                "plan/map removal requires the two-sketch runtime-stream seam; "
-                "no setup credit before formal and Rust differentials"
+                "plan removal and retained-map canonicalization require the "
+                "two-sketch runtime seam; no setup credit before full Rust integration"
             ),
             "credit": False,
         },
@@ -1059,11 +1098,12 @@ def build_report() -> dict[str, Any]:
             "runtime_stream": {
                 "raw_public_values": C6_VERIFIER_RAW_PUBLIC_VALUES,
                 "raw_scalar_values": C6_VERIFIER_RAW_SCALAR_VALUES,
-                "raw_values_total": (
-                    runtime_stream_values
-                ),
+                "raw_values_total": raw_verifier_runtime_values,
                 "canonical_public_values": C6_VERIFIER_CANONICAL_PUBLIC_VALUES,
                 "canonical_scalar_values": C6_VERIFIER_CANONICAL_SCALAR_VALUES,
+                "canonical_values_total": canonical_runtime_values,
+                "retained_extraction_map_bytes": C6_VERIFIER_INSTANCE_MAP_BYTES,
+                "canonical_order": "public inputs then scale scalars",
                 "sketch_repetitions": C61_RUNTIME_SKETCH_REPETITIONS,
                 "polynomial_fingerprint_error_numerator": (
                     runtime_sketch_error.numerator
@@ -1168,7 +1208,10 @@ def build_report() -> dict[str, Any]:
     assert sum(compiler_families.values()) == c6.RESIDUAL_COEFFICIENT_WRITES_PER_REPETITION
     assert c6.RESIDUAL_COEFFICIENT_WRITES_TOTAL == 225_997_412
     assert c6.RESIDUAL_ATOMIC_OUTPUTS_TOTAL == 94_868_704
-    assert runtime_stream_values == 10_830_342
+    assert raw_verifier_runtime_values == 10_830_342
+    assert canonical_runtime_values == 10_830_288
+    assert raw_verifier_runtime_values - canonical_runtime_values == 54
+    assert C61_CLIENT_PARAMETER_BYTES_AFTER_RETAINED_MAP == 2_679_614
     assert runtime_sketch_bits > Decimal("246")
     assert C61_EQ_CHALLENGE_FP2_ELEMENTS == 234
     assert C61_EQ_CHALLENGE_CLIENT_BYTES == 3_744
@@ -1218,14 +1261,14 @@ def build_report() -> dict[str, Any]:
     assert native_projected_certificate_bytes == 16_342_103
     assert C61_CERTIFICATE_MAX_BYTES - native_projected_certificate_bytes == 5_657_896
     assert native_projected_first_response_bytes == 101_085_470
-    assert provider_state_elements == 126_212_866
-    assert provider_state_bytes == 2_019_405_856
+    assert provider_state_elements == 126_212_812
+    assert provider_state_bytes == 2_019_404_992
     assert C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES == 2_293_198_848
-    assert C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES - provider_state_bytes == 273_792_992
+    assert C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES - provider_state_bytes == 273_793_856
     assert c6.soundness_bits(equality_schedule_error) > Decimal("120.12")
     assert c6.soundness_bits(candidate_complete_error) > Decimal("119.66")
     assert c6.soundness_bits(candidate_session_error) > Decimal("115.58")
-    assert native_compiler_symbols == 4_902_003_776
+    assert native_compiler_symbols == 4_902_000_320
     assert native_compiler_pcs_transform_bytes == 10_737_418_240
     assert Decimal("14.50") < native_provider_roof_seconds < Decimal("14.51")
     assert native_verifier_roof_seconds == Decimal("4.565672390")
@@ -1293,8 +1336,9 @@ def main() -> None:
         f"{operations['coefficient_writes_total']:,}"
     )
     print(
-        "runtime values / sketches:   "
+        "runtime raw/canonical/sketch: "
         f"{operations['runtime_stream']['raw_values_total']:,} / "
+        f"{operations['runtime_stream']['canonical_values_total']:,} / "
         f"{operations['runtime_stream']['sketch_repetitions']}"
     )
     print(

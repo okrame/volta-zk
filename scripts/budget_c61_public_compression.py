@@ -425,7 +425,7 @@ def build_report() -> dict[str, Any]:
     report: dict[str, Any] = {
         "profile": "C6.1-public-compression-reference-v3",
         "verdict": (
-            "AUTHENTICATED_TARGET_LEAN_GREEN__MODIFIED_PCS_AND_"
+            "AUTHENTICATED_TARGET_LEAN_AND_RUST_SEAM_GREEN__MODIFIED_PCS_AND_"
             "C6_RELATION_ADAPTER_REQUIRED__NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
@@ -589,7 +589,12 @@ def build_report() -> dict[str, Any]:
                 ),
                 "authenticated_target_adapter": {
                     "name": "C6AWH1-v1",
-                    "status": "Lean seam green; modified pinned PCS pending",
+                    "status": (
+                        "Lean and standalone Rust MAC seam green; modified "
+                        "pinned PCS and backend integration pending"
+                    ),
+                    "focused_tests_ordinary": 5,
+                    "focused_tests_c6_trace": 5,
                     "clear_evaluation_bytes_removed_per_chain": 16,
                     "zero_open_tag_bytes_added_per_chain": 16,
                     "provider_to_client_net_bytes_per_chain": 0,

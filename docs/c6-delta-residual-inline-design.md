@@ -1045,6 +1045,53 @@ correlation allocation, exact D27/D28 screens and the strict one-chain
 inequality.  This advances only the algebra/budget hard stop: modified PCS,
 claim-private simulation and complete-relation credit remain absent.
 
+### 0.13 Standalone C6AWH1 Rust seam checkpoint
+
+`rust/volta-pcs/src/c61_authenticated_whir.rs` now mirrors the additive Lean
+equations without pretending to implement the modified PCS.  It consumes one
+uncorrected full correlation, returns `masked_claim+s.x` to the future patched
+WHIR base case, derives
+
+```text
+public(combined - shifted_masked_claim) - gamma*target_auth + s_auth
+```
+
+on the provider side and the corresponding key expression on the client
+side, and encodes only its `ZeroOpen` tag.  The nested tag codec is exactly
+**16 B**, canonical in Fp2 and intentionally has no duplicate magic or
+version: `C6PA1`, the chain kind/repetition and the future modified-backend
+version are the enclosing grammar.  This is the exact replacement for the
+removed 16-B evaluation, hence the net provider-to-client change remains
+zero.
+
+The typed mask range contains `stage:u8`, `slot:u16` and
+`range_start:u32`; its count is fixed at three.  The correlation domain packs
+the pattern `01`, stage, slot, complete range start, component and repetition
+injectively below the three MAC-reserved bits.  Component determines the
+only legal ordinal `range_start + {0,1,2}` and repetition must be tape 0 or
+1.  Range overflow rejects before a draw.  The six-chain differential
+consumes exactly **three full correlations and three domains per tape**, and
+the ordinary prover/verifier schedule audits are identical.
+
+Five focused tests pass both ordinarily and with `c6-trace`.  They cover:
+
+1. the honest algebra, strict 16-B codec and one-mask counter;
+2. all six chain identities and the exact three-per-tape census;
+3. mutation of the public base values, `gamma`, target key, tag, component,
+   stage, slot and range, plus malformed/noncanonical encodings;
+4. fail-closed range/repetition/reserved-bit validation; and
+5. abort semantics: a failed base identity consumes and burns its mask,
+   replay of the domain fails, and retry succeeds only on a new slot/range.
+
+The default workspace is green; `volta-pcs` is **195 pass / 1 ignored**, and
+the joint `c61-p3-reference` filter is **22/22**.  This checkpoint still does
+not patch Plonky3, prove claim privacy, implement `C61NativeBackendVerifier`,
+reserve these three slots through the durable production allocator, or bind
+the complete model/embedding/compiler relation.  Mock PCG appears only in
+unit tests; the public seam accepts the common correlation interface and has
+no fallback policy.  It earns no PCS proof-size, timing, setup, session,
+production or hardware credit, and no pod was contacted.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

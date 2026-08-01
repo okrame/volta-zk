@@ -9,6 +9,7 @@
 //!   → `ligero::open_zk` / `verify_open` (claim bound to the public C_W).
 
 pub mod batch;
+pub mod c61_authenticated_whir;
 pub mod c61_public_compression;
 #[cfg(feature = "c61-p3-reference")]
 pub mod c61_whir_reference;
@@ -31,6 +32,15 @@ pub use batch::{
     batch_reduce_prover, batch_reduce_prover_cpu_resident, batch_reduce_prover_cuda_resident,
     batch_reduce_verifier, BatchTimings, BlockClaim, ClaimReduceResidentCounters,
     CpuClaimReduceSettlement, CudaClaimReduceSettlement,
+};
+pub use c61_authenticated_whir::{
+    prove_c61_authenticated_whir_base, verify_c61_authenticated_whir_base,
+    C61AuthenticatedWhirBaseProof, C61AuthenticatedWhirError, C61AuthenticatedWhirMaskRange,
+    C61AuthenticatedWhirProverClosure, C61AuthenticatedWhirProverInput,
+    C61AuthenticatedWhirVerifierInput, C61_AUTHENTICATED_WHIR_CHAINS,
+    C61_AUTHENTICATED_WHIR_MASKS_PER_TAPE, C61_AUTHENTICATED_WHIR_NET_PROVIDER_BYTES,
+    C61_AUTHENTICATED_WHIR_REMOVED_EVALUATION_BYTES, C61_AUTHENTICATED_WHIR_TAPES,
+    C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES,
 };
 pub use c61_public_compression::{
     build_c61_scaled_arithmetic_frame, c61_eq_weight, c61_fp2_vector_root,

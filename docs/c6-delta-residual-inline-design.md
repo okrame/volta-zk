@@ -36,10 +36,12 @@ SOUNDNESS, WIRE, MEMORY AND PRE-CODE TIME ROOFLINES GREEN; ADDITIVE LEAN +
 SCALED STRICT SEAM + INTERACTIVE CPU REFERENCE PCS/CODEC GREEN; CLEAR-TARGET
 OBSTRUCTION REGISTERED; `C6AWH1-v1` AUTHENTICATED-TARGET LEAN/BUDGET GREEN;
 FEATURE-ONLY CLAIMLESS-AFFINE PINNED PCS FORK + STRICT `C6AWP1-v1` D14
-CODEC DIFFERENTIAL + SOURCE-PROVENANCE AUDIT GREEN; CLAIM-PRIVACY REVIEW,
-PRIVATE-ENTROPY TWO-PARTY DRIVER, COMPLETE C6 MODEL/EMBEDDING/COMPILER
-RELATION ADAPTER AND FULL-T1 INTEGRATION NEXT; NO C6.1 FULL-CHAIN PROOF-SIZE,
-TIMING, MEMORY OR HARDWARE CREDIT; HARD STOP BEFORE POD.**
+CODEC DIFFERENTIAL + SOURCE-PROVENANCE AUDIT GREEN; CLAIM-PRIVACY LOCAL
+ARGUMENT + DESIGNATED-VIEW SIMULATOR + PRIVATE-ENTROPY `C6ICT1-v1`
+REPLAY-TO-FRONTIER DRIVER GREEN; DURABLE ATOMIC CHECKPOINT/MASK ALLOCATOR,
+COMPLETE C6 MODEL/EMBEDDING/COMPILER RELATION ADAPTER AND FULL-T1 INTEGRATION
+NEXT; NO C6.1 FULL-CHAIN PROOF-SIZE, TIMING, MEMORY OR HARDWARE CREDIT; HARD
+STOP BEFORE POD.**
 
 This document is the C6 plan of record.  It is a new descendant of the
 accepted C4/T1 `rate=1/4,Q=120` inline profile.  It does not reopen or rewrite
@@ -1377,6 +1379,52 @@ hardware credit.  The full sparse-oracle simulator remains unimplemented.
 It closes only the local claim-privacy hard gate needed to proceed to a
 resumable private-entropy two-party driver; durable allocation and the full C6
 relation are still absent.  No pod was contacted.
+
+### 0.18 Private-entropy replay-to-frontier driver checkpoint
+
+The feature-only diagnostic now executes the claimless WHIR prover against a
+typed synchronous verifier broker.  The provider endpoint contains only the
+request channel: the provider helper receives neither the verifier seed nor a
+checkpoint nor a verifier transcript.  The broker alone owns the private
+entropy, derives each challenge after the exact preceding provider move, and
+records a typed transcript.  A separate seedless verifier challenger consumes
+that tape and requires byte-exact provider observations before accepting the
+strict artifact.  The in-process channel models the role boundary; it is not
+a network deployment or timing benchmark.
+
+At D14 the ordinary run is unchanged: **378,496 B** provider-to-client,
+BLAKE3 `9dbaa66336f8833b0a0e3a32f7023f5c25f2166e6e8431244a06b41d707958bb`,
+**26** provider moves, **52,608** semantic provider bytes, **52** field plus
+**2,536** query challenges, and **10,560 B** client-to-provider challenge
+wire.  The driver takes a midpoint checkpoint after **1,294 / 2,588**
+challenges.  Its strict verifier-local `C6ICT1-v1` encoding is **73,360 B**;
+it is neither setup nor certificate nor provider-to-client traffic.
+
+Recovery uses deterministic replay to the recorded frontier.  The provider
+restarts the same response with the same witness, prover randomness and
+reserved correlation range.  For every old challenge, the broker first
+compares the newly emitted provider bytes with the checkpoint record and only
+then releases the recorded value.  Any divergence fails closed.  After the
+frontier, challenges are freshly derived from the verifier transcript.  The
+diagnostic proves that the resumed artifact and full challenge tape are
+byte-identical.  Mutated provider moves, magic, version, reserved fields,
+record tags, truncation and trailing bytes reject.  Replay work exists only
+on a retry; the normal inline path performs no prefix replay.
+
+This is deliberately not an O(1) serialization of internal Plonky3 prover
+state.  It also is not yet crash-safe persistence: before production, the
+client must atomically persist the checkpoint together with the exact burned
+correlation/mask frontier before releasing the corresponding challenge, and
+must recover without reusing an uncertain slot.  The current checkpoint is
+bounded at 1 MB and grows with the interaction transcript; it remains local
+client state and does not alter the constant certificate wire.
+
+The authenticated fork suite is now **5/5**.  The provenance audit retains
+the pinned **87 / 14 / 73** source census and adds provider-endpoint and
+private-entropy source guards.  The executable budget records the driver as
+green but keeps durable atomic persistence, the complete C6 relation adapter
+and every full-chain proof-size/timing/setup/hardware credit false.  No pod was
+contacted.
 
 ## 1. Owner requirements
 

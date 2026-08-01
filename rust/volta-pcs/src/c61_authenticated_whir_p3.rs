@@ -12,7 +12,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use p3_challenger::{CanObserve, FieldChallenger, GrindingChallenger};
 use p3_dft::Radix2DFTSmallBatch;
-use p3_field::PrimeCharacteristicRing;
+use p3_field::{BasedVectorSpace, PrimeCharacteristicRing, PrimeField64};
 use p3_goldilocks::Goldilocks;
 use p3_multilinear_util::point::Point;
 use p3_multilinear_util::poly::Poly;
@@ -34,6 +34,11 @@ use crate::c61_authenticated_whir::{
     C61AuthenticatedWhirAffineClaim, C61AuthenticatedWhirBaseProof, C61AuthenticatedWhirMaskRange,
     C61AuthenticatedWhirProverFinishInput, C61AuthenticatedWhirVerifierInput,
     C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES,
+};
+use crate::c61_interactive_driver::{
+    spawn_c61_private_entropy_broker, C61InteractiveCheckpoint, C61InteractiveTape,
+    C61PrivateEntropyBrokerOutput, C61PrivateEntropyProverChallenger,
+    C61PrivateEntropyReplayChallenger,
 };
 use crate::c61_public_compression::{C61NativeChainId, C61NativeComponent};
 use crate::c61_whir_reference::{
@@ -114,9 +119,49 @@ pub struct C61AuthenticatedP3PrivacyDiagnostic {
     pub verifier_full_key_draws: u64,
 }
 
+/// Reference-only two-party transport and replay-to-frontier report.
+#[derive(Debug)]
+pub struct C61PrivateEntropyDriverDiagnostic {
+    pub num_variables: usize,
+    pub strict_payload_bytes: usize,
+    pub strict_payload_blake3: [u8; 32],
+    pub provider_interaction: C61WhirInteractionStats,
+    pub verifier_interaction: C61WhirInteractionStats,
+    pub challenge_count: usize,
+    pub checkpoint_frontier: usize,
+    pub checkpoint_bytes: usize,
+    pub replayed_challenges: usize,
+    pub resumed_artifact_identical: bool,
+    pub resumed_tape_identical: bool,
+    pub mutated_checkpoint_rejected: bool,
+    pub checkpoint_codec_mutations_rejected: bool,
+    pub provider_received_verifier_seed: bool,
+    pub provider_received_checkpoint: bool,
+    pub full_correlations: u64,
+}
+
 #[derive(Clone)]
 struct C61AuthenticatedP3Artifact {
     payload: Vec<u8>,
+}
+
+struct C61PrivateEntropyFixture {
+    artifact: C61AuthenticatedP3Artifact,
+    point: Point<C61P3Fp2>,
+    target_key: VerifierKey,
+    provider_affine: C61AuthenticatedWhirAffineClaim,
+    provider_base_case: BaseCaseClaimlessClosure<C61P3Fp2>,
+    broker: C61PrivateEntropyBrokerOutput,
+    full_correlations: u64,
+}
+
+struct C61PrivateEntropyProviderFixture {
+    artifact: C61AuthenticatedP3Artifact,
+    point: Point<C61P3Fp2>,
+    target_key: VerifierKey,
+    provider_affine: C61AuthenticatedWhirAffineClaim,
+    provider_base_case: BaseCaseClaimlessClosure<C61P3Fp2>,
+    full_correlations: u64,
 }
 
 #[derive(Clone)]
@@ -891,6 +936,242 @@ fn prove_diagnostic(
     ))
 }
 
+fn c61_private_entropy_context_digest(
+    point: &Point<C61P3Fp2>,
+    target_key: VerifierKey,
+    delta: Fp2,
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"C6ICT1-private-entropy-context-v1");
+    hasher.update(&(point.num_variables() as u64).to_le_bytes());
+    for coordinate in point.as_slice() {
+        let coefficients: &[Goldilocks] =
+            <C61P3Fp2 as BasedVectorSpace<Goldilocks>>::as_basis_coefficients_slice(coordinate);
+        for coefficient in coefficients {
+            hasher.update(&coefficient.as_canonical_u64().to_le_bytes());
+        }
+    }
+    hasher.update(&target_key.k.c0.value().to_le_bytes());
+    hasher.update(&target_key.k.c1.value().to_le_bytes());
+    hasher.update(&delta.c0.value().to_le_bytes());
+    hasher.update(&delta.c1.value().to_le_bytes());
+    hasher.update(&[match id.component {
+        C61NativeComponent::Model => 0,
+        C61NativeComponent::Embedding => 1,
+        C61NativeComponent::Compiler => 2,
+    }]);
+    hasher.update(&[id.repetition]);
+    hasher.update(&[mask_range.stage]);
+    hasher.update(&mask_range.slot.to_le_bytes());
+    hasher.update(&mask_range.range_start.to_le_bytes());
+    *hasher.finalize().as_bytes()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_private_entropy_provider_diagnostic(
+    witness: Poly<Goldilocks>,
+    point: Point<C61P3Fp2>,
+    prover_rng_seed: u64,
+    pcg_seed: [u8; 32],
+    delta: Fp2,
+    target_tag: Fp2,
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+    mut challenger: C61PrivateEntropyProverChallenger,
+) -> Result<C61PrivateEntropyProviderFixture, String> {
+    let num_variables = witness.num_variables();
+    if point.num_variables() != num_variables {
+        return Err("C6ICT1 witness/point dimension mismatch".to_owned());
+    }
+    let evaluation_p3 = witness.eval_base(&point);
+    let evaluation = c61_volta_fp2_from_p3(evaluation_p3);
+    let target = ProverAuthed::new(evaluation, target_tag);
+    let target_key = VerifierKey::new(target_tag + delta * evaluation);
+    let config = c61_authenticated_config::<C61PrivateEntropyProverChallenger>(num_variables)?;
+    let mmcs = c61_reference_mmcs();
+    let dft = Radix2DFTSmallBatch::default();
+    let prover = HidingWhirProver::new(&config, &dft, &mmcs);
+    let mut rng = StdRng::seed_from_u64(prover_rng_seed);
+    let (commitment, data) = prover.commit(witness, &mut challenger, &mut rng);
+    challenger.observe_public_point(&point).map_err(|error| error.to_string())?;
+
+    let mut correlations = CorrelationStream::new(pcg_seed);
+    let prepared = prepare_c61_authenticated_whir_mask(id, mask_range, &mut correlations)
+        .map_err(|error| error.to_string())?;
+    let output = prover.prove_claimless(
+        data,
+        &[(point.clone(), evaluation_p3)],
+        c61_p3_fp2_from_volta(prepared.value()),
+        &mut challenger,
+        &mut rng,
+    );
+
+    // This transcript is provider-side accounting for the terminal ZeroOpen
+    // only.  Its dummy seed is never used to draw a challenge; all native
+    // challenges came through the endpoint-only transport challenger.
+    let mut zero_open_transcript = Transcript::new([0u8; 32]);
+    let provider_affine = affine_from_p3(output.target);
+    let final_target = provider_affine.authenticate_prover(target);
+    let provider_closure = finish_c61_authenticated_whir_base(
+        prepared,
+        C61AuthenticatedWhirProverFinishInput {
+            combined: c61_volta_fp2_from_p3(output.base_case.combined),
+            shifted_masked_claim: c61_volta_fp2_from_p3(output.base_case.shifted_masked_claim),
+            gamma: c61_volta_fp2_from_p3(output.base_case.gamma),
+            target: final_target,
+        },
+        &mut zero_open_transcript,
+    )
+    .map_err(|error| error.to_string())?;
+    let payload = encode_c61_authenticated_p3_artifact_inner(
+        num_variables,
+        &commitment,
+        &output.proof,
+        provider_closure.proof,
+        false,
+    )
+    .map_err(|error| error.to_string())?;
+    let whir_payload_bytes = payload
+        .len()
+        .checked_sub(C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES)
+        .ok_or_else(|| "C6ICT1 payload is shorter than its ZeroOpen tag".to_owned())?;
+    let finish_result = challenger.finish(&payload[..whir_payload_bytes]);
+    drop(challenger);
+    finish_result.map_err(|error| error.to_string())?;
+
+    Ok(C61PrivateEntropyProviderFixture {
+        artifact: C61AuthenticatedP3Artifact { payload },
+        point,
+        target_key,
+        provider_affine,
+        provider_base_case: output.base_case,
+        full_correlations: correlations.counters.full_corrs,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_private_entropy_diagnostic(
+    witness: Poly<Goldilocks>,
+    point: Point<C61P3Fp2>,
+    verifier_seed: [u8; 32],
+    prover_rng_seed: u64,
+    pcg_seed: [u8; 32],
+    delta: Fp2,
+    target_tag: Fp2,
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+    checkpoint: C61InteractiveCheckpoint,
+) -> Result<C61PrivateEntropyFixture, String> {
+    let num_variables = witness.num_variables();
+    let evaluation = c61_volta_fp2_from_p3(witness.eval_base(&point));
+    let target_key = VerifierKey::new(target_tag + delta * evaluation);
+    let context_digest =
+        c61_private_entropy_context_digest(&point, target_key, delta, id, mask_range);
+    let (challenger, broker_handle) =
+        spawn_c61_private_entropy_broker(verifier_seed, num_variables, context_digest, checkpoint)
+            .map_err(|error| error.to_string())?;
+    let provider = prove_private_entropy_provider_diagnostic(
+        witness,
+        point,
+        prover_rng_seed,
+        pcg_seed,
+        delta,
+        target_tag,
+        id,
+        mask_range,
+        challenger,
+    );
+    let broker = broker_handle
+        .join()
+        .map_err(|_| "C6ICT1 verifier broker panicked".to_owned())?
+        .map_err(|error| error.to_string())?;
+    let provider = provider?;
+    let whir_payload_bytes = provider
+        .artifact
+        .payload
+        .len()
+        .checked_sub(C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES)
+        .ok_or_else(|| "C6ICT1 payload is shorter than its ZeroOpen tag".to_owned())?;
+    if broker.transcript_bytes != whir_payload_bytes as u64 {
+        return Err("C6ICT1 broker payload accounting mismatch".to_owned());
+    }
+    Ok(C61PrivateEntropyFixture {
+        artifact: provider.artifact,
+        point: provider.point,
+        target_key: provider.target_key,
+        provider_affine: provider.provider_affine,
+        provider_base_case: provider.provider_base_case,
+        broker,
+        full_correlations: provider.full_correlations,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_private_entropy_diagnostic(
+    artifact: &C61AuthenticatedP3Artifact,
+    point: &Point<C61P3Fp2>,
+    target_key: VerifierKey,
+    pcg_seed: [u8; 32],
+    delta: Fp2,
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+    tape: C61InteractiveTape,
+) -> Result<
+    (C61AuthenticatedWhirAffineClaim, BaseCaseClaimlessClosure<C61P3Fp2>, C61WhirInteractionStats),
+    String,
+> {
+    let num_variables = point.num_variables();
+    let context_digest =
+        c61_private_entropy_context_digest(point, target_key, delta, id, mask_range);
+    let (commitment, proof, base_proof) =
+        decode_c61_authenticated_p3_artifact_inner(&artifact.payload, num_variables, false)
+            .map_err(|error| error.to_string())?;
+    let mut challenger =
+        C61PrivateEntropyReplayChallenger::new(tape, num_variables, context_digest)
+            .map_err(|error| error.to_string())?;
+    let config = c61_authenticated_config::<C61PrivateEntropyReplayChallenger>(num_variables)?;
+    let mmcs = c61_reference_mmcs();
+    challenger.observe(commitment.clone());
+    challenger.observe_public_point(point).map_err(|error| error.to_string())?;
+    let verifier = HidingWhirVerifier::new(&config, &mmcs);
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        verifier.verify_claimless(&proof, &commitment, std::slice::from_ref(point), &mut challenger)
+    }))
+    .map_err(|_| "C6ICT1 fork verifier panicked".to_owned())?
+    .map_err(|error| format!("C6ICT1 verification failed: {error}"))?;
+    let whir_payload_bytes = artifact
+        .payload
+        .len()
+        .checked_sub(C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES)
+        .ok_or_else(|| "C6ICT1 payload is shorter than its ZeroOpen tag".to_owned())?;
+    let verifier_interaction = challenger
+        .finish(&artifact.payload[..whir_payload_bytes])
+        .map_err(|error| error.to_string())?;
+    drop(challenger);
+
+    let verifier_affine = affine_from_p3(result.target);
+    let final_key = verifier_affine.derive_verifier_key(target_key, delta);
+    let mut context = VerifierCtx::new(pcg_seed, delta);
+    let mut zero_open_transcript = Transcript::new([0u8; 32]);
+    verify_c61_authenticated_whir_base(
+        C61AuthenticatedWhirVerifierInput {
+            id,
+            mask_range,
+            combined: c61_volta_fp2_from_p3(result.base_case.combined),
+            shifted_masked_claim: c61_volta_fp2_from_p3(result.base_case.shifted_masked_claim),
+            gamma: c61_volta_fp2_from_p3(result.base_case.gamma),
+            target: final_key,
+        },
+        base_proof,
+        &mut context,
+        &mut zero_open_transcript,
+    )
+    .map_err(|error| error.to_string())?;
+    Ok((verifier_affine, result.base_case, verifier_interaction))
+}
+
 /// Produce an accepting designated-verifier view without the real witness or
 /// target plaintext.  This is deliberately separate from `prove_diagnostic`:
 /// it has no target-plaintext/tag argument and never constructs a provider
@@ -1216,6 +1497,154 @@ pub fn run_c61_authenticated_whir_p3_privacy_diagnostic(
     })
 }
 
+/// Exercise the endpoint-only interactive driver, strict verifier-local
+/// checkpoint codec, and deterministic replay to a mid-proof frontier.
+pub fn run_c61_private_entropy_driver_diagnostic(
+    num_variables: usize,
+) -> Result<C61PrivateEntropyDriverDiagnostic, String> {
+    if !(4..=28).contains(&num_variables) {
+        return Err("C6ICT1 diagnostic dimension must be in 4..=28".to_owned());
+    }
+    let witness = Poly::new(
+        (0..(1usize << num_variables))
+            .map(|index| Goldilocks::from_u64((index as u64).wrapping_mul(17).wrapping_add(3)))
+            .collect(),
+    );
+    let point = Point::new(
+        (0..num_variables)
+            .map(|index| C61P3Fp2::from_u64((index as u64).wrapping_mul(19).wrapping_add(5)))
+            .collect(),
+    );
+    let verifier_seed = [0x61; 32];
+    let pcg_seed = [0xA7; 32];
+    let delta = Fp2::new(volta_field::Fp::new(P - 17), volta_field::Fp::new(0x1234_5678));
+    let target_tag = Fp2::new(volta_field::Fp::new(41), volta_field::Fp::new(43));
+    let id = C61NativeChainId { component: C61NativeComponent::Model, repetition: 0 };
+    let mask_range = C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 1, range_start: 40_000 };
+    let evaluation = c61_volta_fp2_from_p3(witness.eval_base(&point));
+    let target_key = VerifierKey::new(target_tag + delta * evaluation);
+    let context_digest =
+        c61_private_entropy_context_digest(&point, target_key, delta, id, mask_range);
+    let empty_checkpoint = C61InteractiveCheckpoint::empty(num_variables, context_digest)
+        .map_err(|error| error.to_string())?;
+    let first = prove_private_entropy_diagnostic(
+        witness.clone(),
+        point.clone(),
+        verifier_seed,
+        0xC6_1001,
+        pcg_seed,
+        delta,
+        target_tag,
+        id,
+        mask_range,
+        empty_checkpoint,
+    )?;
+    if first.broker.ledger.values().sum::<u64>() != first.broker.transcript_bytes {
+        return Err("C6ICT1 broker transcript ledger mismatch".to_owned());
+    }
+    let (verifier_affine, verifier_base_case, verifier_interaction) =
+        verify_private_entropy_diagnostic(
+            &first.artifact,
+            &first.point,
+            first.target_key,
+            pcg_seed,
+            delta,
+            id,
+            mask_range,
+            first.broker.tape.clone(),
+        )?;
+    if first.provider_affine != verifier_affine
+        || first.provider_base_case != verifier_base_case
+        || first.broker.interaction != verifier_interaction
+    {
+        return Err("C6ICT1 provider/verifier differential mismatch".to_owned());
+    }
+    let checkpoint_frontier = first.broker.tape.challenge_count() / 2;
+    let checkpoint_bytes = first
+        .broker
+        .tape
+        .checkpoint_bytes(checkpoint_frontier)
+        .map_err(|error| error.to_string())?;
+    let checkpoint =
+        C61InteractiveCheckpoint::decode(&checkpoint_bytes).map_err(|error| error.to_string())?;
+    if checkpoint.challenge_count() != checkpoint_frontier {
+        return Err("C6ICT1 checkpoint round-trip changed its frontier".to_owned());
+    }
+    let checkpoint_codec_mutations_rejected = {
+        let mut wrong_magic = checkpoint_bytes.clone();
+        wrong_magic[0] ^= 1;
+        let mut wrong_version = checkpoint_bytes.clone();
+        wrong_version[8] ^= 1;
+        let mut wrong_reserved = checkpoint_bytes.clone();
+        wrong_reserved[11] = 1;
+        let mut wrong_record_tag = checkpoint_bytes.clone();
+        wrong_record_tag[48] = 0xff;
+        let mut wrong_record_reserved = checkpoint_bytes.clone();
+        wrong_record_reserved[50] = 1;
+        let mut trailing = checkpoint_bytes.clone();
+        trailing.push(0);
+        C61InteractiveCheckpoint::decode(&wrong_magic).is_err()
+            && C61InteractiveCheckpoint::decode(&wrong_version).is_err()
+            && C61InteractiveCheckpoint::decode(&wrong_reserved).is_err()
+            && C61InteractiveCheckpoint::decode(&wrong_record_tag).is_err()
+            && C61InteractiveCheckpoint::decode(&wrong_record_reserved).is_err()
+            && C61InteractiveCheckpoint::decode(&checkpoint_bytes[..checkpoint_bytes.len() - 1])
+                .is_err()
+            && C61InteractiveCheckpoint::decode(&trailing).is_err()
+    };
+    let resumed = prove_private_entropy_diagnostic(
+        witness.clone(),
+        point.clone(),
+        verifier_seed,
+        0xC6_1001,
+        pcg_seed,
+        delta,
+        target_tag,
+        id,
+        mask_range,
+        checkpoint.clone(),
+    )?;
+    let resumed_artifact_identical = resumed.artifact.payload == first.artifact.payload;
+    let resumed_tape_identical = resumed.broker.tape == first.broker.tape;
+
+    let mut mutated_checkpoint = checkpoint;
+    mutated_checkpoint.mutate_first_move_for_test();
+    let mutated_checkpoint_rejected = catch_unwind(AssertUnwindSafe(|| {
+        prove_private_entropy_diagnostic(
+            witness,
+            point,
+            verifier_seed,
+            0xC6_1001,
+            pcg_seed,
+            delta,
+            target_tag,
+            id,
+            mask_range,
+            mutated_checkpoint,
+        )
+    }))
+    .map_or(true, |result| result.is_err());
+
+    Ok(C61PrivateEntropyDriverDiagnostic {
+        num_variables,
+        strict_payload_bytes: first.artifact.payload.len(),
+        strict_payload_blake3: *blake3::hash(&first.artifact.payload).as_bytes(),
+        provider_interaction: first.broker.interaction,
+        verifier_interaction,
+        challenge_count: first.broker.tape.challenge_count(),
+        checkpoint_frontier,
+        checkpoint_bytes: checkpoint_bytes.len(),
+        replayed_challenges: resumed.broker.replayed_challenges,
+        resumed_artifact_identical,
+        resumed_tape_identical,
+        mutated_checkpoint_rejected,
+        checkpoint_codec_mutations_rejected,
+        provider_received_verifier_seed: false,
+        provider_received_checkpoint: false,
+        full_correlations: first.full_correlations,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1284,9 +1713,9 @@ mod tests {
             production_adapter.matches("C61InteractiveChallenger::new_claimless(").count(),
             3
         );
-        assert_eq!(production_adapter.matches(".observe_public_point(").count(), 3);
+        assert_eq!(production_adapter.matches(".observe_public_point(").count(), 5);
         assert_eq!(production_adapter.matches(".ensure_public_statement_bound()").count(), 3);
-        assert_eq!(production_adapter.matches("challenger.finish(").count(), 3);
+        assert_eq!(production_adapter.matches("challenger.finish(").count(), 4);
         assert!(!production_adapter.contains("proof.evals"));
         let verifier_adapter = production_adapter
             .split("fn verify_diagnostic(")
@@ -1336,6 +1765,54 @@ mod tests {
         assert!(!report.received_provider_target_tag);
         assert!(!report.received_provider_correlation_state);
         assert_eq!(report.verifier_full_key_draws, 1);
+    }
+
+    #[test]
+    fn private_entropy_driver_replays_to_frontier_without_seed_or_checkpoint_leak() {
+        let report = run_c61_private_entropy_driver_diagnostic(14).unwrap();
+        assert_eq!(report.provider_interaction, report.verifier_interaction);
+        assert_eq!(report.strict_payload_bytes, 378_496);
+        assert_eq!(report.provider_interaction.provider_messages, 26);
+        assert_eq!(report.provider_interaction.provider_semantic_bytes, 52_608);
+        assert_eq!(report.provider_interaction.provider_payload_bytes, 378_480);
+        assert_eq!(report.provider_interaction.client_fp_challenges, 52);
+        assert_eq!(report.provider_interaction.client_query_challenges, 2_536);
+        assert_eq!(report.provider_interaction.client_challenge_payload_bytes, 10_560);
+        assert_eq!(report.challenge_count, 2_588);
+        assert_eq!(report.checkpoint_frontier, 1_294);
+        assert_eq!(report.replayed_challenges, report.checkpoint_frontier);
+        assert_eq!(report.checkpoint_bytes, 73_360);
+        assert!(report.resumed_artifact_identical);
+        assert!(report.resumed_tape_identical);
+        assert!(report.mutated_checkpoint_rejected);
+        assert!(report.checkpoint_codec_mutations_rejected);
+        assert!(!report.provider_received_verifier_seed);
+        assert!(!report.provider_received_checkpoint);
+        assert_eq!(report.full_correlations, 1);
+
+        let driver_source = include_str!("c61_interactive_driver.rs");
+        let endpoint = driver_source
+            .split("struct C61ProviderEndpoint")
+            .nth(1)
+            .unwrap()
+            .split("struct C61ProviderState")
+            .next()
+            .unwrap();
+        assert!(endpoint.contains("SyncSender<C61BrokerRequest>"));
+        assert!(!endpoint.contains("verifier_seed"));
+        assert!(!endpoint.contains("checkpoint"));
+        assert!(!endpoint.contains("Transcript"));
+
+        let provider = include_str!("c61_authenticated_whir_p3.rs")
+            .split("fn prove_private_entropy_provider_diagnostic(")
+            .nth(1)
+            .unwrap()
+            .split("fn prove_private_entropy_diagnostic(")
+            .next()
+            .unwrap();
+        assert!(provider.contains("C61PrivateEntropyProverChallenger"));
+        assert!(!provider.contains("verifier_seed"));
+        assert!(!provider.contains("checkpoint"));
     }
 
     fn mutation_fixture() -> (

@@ -93,11 +93,13 @@ def require_source_guards() -> None:
     production_adapter = adapter.split("#[cfg(test)]", 1)[0]
     if production_adapter.count("C61InteractiveChallenger::new_claimless(") != 3:
         raise SystemExit("claimless provider/verifier/simulator must use no-skip challenger mode")
-    if production_adapter.count(".observe_public_point(") != 3:
-        raise SystemExit("claimless provider/verifier/simulator must explicitly bind the point")
+    if production_adapter.count(".observe_public_point(") != 5:
+        raise SystemExit(
+            "claimless roles plus private-entropy provider/replay must explicitly bind the point"
+        )
     if production_adapter.count(".ensure_public_statement_bound()") != 3:
         raise SystemExit("claimless roles must fail closed on incomplete statements")
-    if production_adapter.count("challenger.finish(") != 3:
+    if production_adapter.count("challenger.finish(") != 4:
         raise SystemExit("claimless roles must finalize strict wire accounting")
     if "proof.evals" in production_adapter:
         raise SystemExit("claimless adapter regressed to a clear evaluation codec field")
@@ -127,6 +129,33 @@ def require_source_guards() -> None:
         for forbidden in ("artifact.provider_", "artifact.point", "artifact.target_key")
     ):
         raise SystemExit("claimless verifier regained provider-local fixture metadata")
+
+    driver = (ROOT / "rust/volta-pcs/src/c61_interactive_driver.rs").read_text()
+    if 'C61_INTERACTIVE_CHECKPOINT_MAGIC: [u8; 8] = *b"C6ICT1\\0\\0"' not in driver:
+        raise SystemExit("private-entropy checkpoint codec identity changed")
+    endpoint = driver.split("struct C61ProviderEndpoint", 1)[1].split("}", 1)[0]
+    if "SyncSender<C61BrokerRequest>" not in endpoint:
+        raise SystemExit("private-entropy provider endpoint lost its typed broker channel")
+    for forbidden in ("verifier_seed", "checkpoint", "Transcript"):
+        if forbidden in endpoint:
+            raise SystemExit(
+                f"private-entropy provider endpoint reads verifier state: {forbidden}"
+            )
+    provider = production_adapter.split(
+        "fn prove_private_entropy_provider_diagnostic(", 1
+    )[1].split("fn prove_private_entropy_diagnostic(", 1)[0]
+    for forbidden in ("verifier_seed", "checkpoint"):
+        if forbidden in provider:
+            raise SystemExit(
+                f"private-entropy provider helper reads verifier state: {forbidden}"
+            )
+    for required in (
+        "spawn_c61_private_entropy_broker",
+        "C61PrivateEntropyReplayChallenger",
+        "C61InteractiveCheckpoint::decode(",
+    ):
+        if required not in driver and required not in production_adapter:
+            raise SystemExit(f"private-entropy driver guard missing: {required}")
 
 
 def build_report() -> dict[str, object]:
@@ -176,6 +205,7 @@ def build_report() -> dict[str, object]:
         "claimless_source_guards": True,
         "claimless_adapter_statement_guards": True,
         "claimless_strict_codec_guards": True,
+        "private_entropy_driver_source_guards": True,
         "verdict": "C61_PINNED_FORK_PROVENANCE_PASS",
     }
 

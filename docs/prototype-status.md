@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — CLAIM-PRIVACY LOCAL ARGUMENT + DESIGNATED-VIEW SIMULATOR GREEN / RESUMABLE DRIVER NEXT / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — PRIVATE-ENTROPY REPLAY DRIVER GREEN / DURABLE CHECKPOINT + MASK ALLOCATOR NEXT / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -103,20 +103,30 @@ separation remain explicit computational assumptions; external cryptographic
 review is required.  There is no Fiat--Shamir privacy claim and no full
 sparse-oracle simulator.
 
-It does **not** yet prove the complete model, embedding or compiler relation,
-does not implement `C61NativeBackendVerifier`, and is never a production fallback.
-The candidate challenge count is seed-dependent because distinct queries use
-rejection sampling; it must be recorded per run and cannot be replaced by an
-upfront Fiat--Shamir seed.  The current monolithic upstream API is exercised
-as two deterministic single-process replays under the same private diagnostic
-verifier seed; a production round state machine must never disclose that seed
-to the provider.  The existing allocation/roofline values therefore remain
-`credit:false`: the D14 number is component-level codec evidence, not a full
+The private-entropy replay-to-frontier driver is now green locally.  A typed
+synchronous broker alone owns the verifier seed and transcript; the provider
+endpoint and provider helper receive neither seed nor checkpoint.  A seedless
+verifier replay consumes the resulting challenge tape.  At D14 the midpoint
+strict `C6ICT1-v1` checkpoint is **73,360 B** after **1,294 / 2,588**
+challenges.  Restart replays exact provider moves to that frontier before
+releasing recorded challenges, then continues with fresh verifier entropy;
+the resumed proof and tape are byte-identical.  The artifact remains
+**378,496 B** with **10,560 B** client challenge traffic and zero certificate
+increment.  Header/canonicality/truncation/trailing and provider-move
+mutations fail closed.  The modified PCS suite is **5/5** and the provenance
+audit retains **87 / 14 / 73** sources while adding endpoint guards.
+
+This is an in-process role-separated diagnostic and replay protocol, not an
+internal O(1) Plonky3 state serialization, durable disk checkpoint or network
+benchmark.  It does **not** yet prove the complete model, embedding or
+compiler relation, does not implement `C61NativeBackendVerifier`, and is
+never a production fallback.  The existing allocation/roofline values remain
+`credit:false`: the D14 number is component-level evidence, not a full
 certificate or production proof-size result.  No setup, timing, memory or
-hardware result is claimed.  The resumable private-entropy two-party driver,
-durable mask allocation, the C6 relation adapter and then full-T1 local
-integration remain next.  C6.1 stays local-only until a separate owner GO;
-no provider/pod contact is authorized.
+hardware result is claimed.  Durable atomic checkpoint plus correlation/mask
+allocation, the C6 relation adapter and then full-T1 local integration remain
+next.  C6.1 stays local-only until a separate owner GO; no provider/pod
+contact is authorized.
 The exact frozen T1 source/correction census now has a clean append-only
 record and pins `4,975,525` typed leaves.  Paired complete-source witness
 extraction is also clean at all `4,975,525` leaves per coordinate with no
@@ -712,6 +722,7 @@ its clean descendant closure.
 | C6.1 claimless-affine pinned PCS fork | **MINIMAL FEATURE-ONLY FORK / IN-MEMORY D14 DIFFERENTIAL / MUTATIONS / PROVENANCE AUDIT GREEN; STRICT CODEC + PRIVACY REVIEW NEXT; NO POD** (2026-08-01) | Original `c61-p3-reference` remains immutable; new `c61-p3-authenticated-reference` carries one response-local target only as provider plaintext plus client MAC key, never as public proof/claim | The fork removes the ZK proof evaluation vector, routes both sumcheck batches through claimless proving, replays the complete verifier target as `a*target+b`, applies public code-switch offsets only to `b`, returns the provider/verifier-identical public base closure and feeds it into C6AWH1. D14 tests are **3/3**: honest affine/base/transcript/MAC closure, source-call-graph guard, and fail-closed target-key/base-claim/point/verifier-seed/range mutations. A pre-commit audit caught and refused reuse of the old adapter's implicit `2*D` point-limb skip; claimless mode now has zero implicit skips and requires root-then-typed-point binding on both roles before native challenges. The provenance audit pins **87** Rust sources at Plonky3 `66e2906...a1c`, allows exactly **14** deltas and requires the other **73** byte-identical; standalone library lockfiles/targets are forbidden. Full default workspace, old-reference **23/23**, ordinary/trace seam **6/6** and scoped VOLTA format are green; strict crate-wide Clippy is still blocked only by historical out-of-scope findings. This is in-memory and single-process: there is no strict claimless codec, privacy simulator/equivalent proof, resumable private-entropy driver, durable allocator connection, complete C6 relation, D27/D28 measurement or timing. All full-chain credits remain false; no pod contacted. |
 | C6.1 strict claimless WHIR codec | **C6AWP1-v1 STRICT D14 WIRE DIFFERENTIAL / EXACT DIGEST / MALFORMED-PAYLOAD GATES GREEN; PRIVACY REVIEW NEXT; NO POD** (2026-08-01) | Separate fixed-shape non-Serde grammar; verifier consumes decoded provider bytes; opening point and MAC key remain off provider-to-client wire; D27/D28 still formula-only | The exact D14 provider artifact is **378,496 B**, including the final 16-B C6AWH1 tag, at BLAKE3 `9dbaa663...7958bb`; the pre-tag WHIR portion is **378,480 B**. Both roles replay **26** provider moves, **52,608** semantic bytes, **52** base challenges and **2,536** query candidates (**10,560 B** client challenge wire). The **2,912-B** delta from immutable C6WIR1 D14 is entirely the preregistered 75-bit query profile; evaluation-to-tag remains net zero. Decoder lengths come from the dimension/config; frontier counts are capped before allocation. Header/version/dimension/reserved/body-length/truncation/trailing/noncanonical/frontier, target-key/base/tag/point/entropy/range mutations reject. Tests remain **3/3** and freeze formula maxima **1,085,464 B D27 / 1,172,652 B D28**. The audit still permits 14 vendor deltas and proves 73 files byte-identical. Full default workspace is green at **volta-pcs 196/0/1** and **volta-proto 149/0/1**; old-reference is **23/23**, ordinary/trace C6AWH1 are **6/6** each. Strict Clippy remains blocked by 24 historical out-of-scope findings and reports none in the modified C6.1 file. This earns only strict-codec/D14 component credit: privacy argument, resumable two-party entropy, durable masks, full C6 relation, production dimensions, timings and every full-chain credit remain open; no pod contacted. |
 | C6.1 claim-private designated view | **LOCAL EQUIVALENT ARGUMENT / EXECUTABLE D14 SIMULATOR / LEAN TAG IDENTITY GREEN; RESUMABLE DRIVER NEXT; NO POD** (2026-08-01) | Interactive honest-verifier scope; simulator consumes public context and verifier-owned keys but no real target/tag/provider correlations; computational Merkle/PCG terms explicit | Claimless affine replay removes all clear carried-claim observations; one fresh pad protects the single OOD answer per code-switch round; the base claim is one-time shifted; and the final tag is exactly `Delta*(combined-shifted)-gamma*target_key+mask_key`. The statistical privacy terms are **10/|Fp2| = 124.6780719 bits D27**, **11/|Fp2| = 124.5405684 bits D28**, conservative six-D28-chain **66/|Fp2| = 121.9556059 bits/certificate**, and informative 17-certificate **1122/|Fp2| = 117.8681430 bits**. The feature suite is **4/4**; Lean is **3,264 jobs / 381 total / 34 C6.1 audit targets**. The executable simulator uses a surrogate witness only to instantiate concrete Merkle trees and is not a full sparse-oracle simulator. BLAKE3 hiding for randomized codewords and AES-PCG pseudorandomness/domain separation are explicit assumptions; external cryptographic review is mandatory. No Fiat--Shamir, full-chain wire/time/setup/memory/production or hardware credit; no pod contacted. |
+| C6.1 private-entropy replay driver | **LOCAL ROLE-SEPARATED C6ICT1 REPLAY-TO-FRONTIER GREEN; DURABLE ATOMIC CHECKPOINT + MASK ALLOCATOR NEXT; NO POD** (2026-08-01) | Verifier broker exclusively owns seed/transcript/checkpoint; provider endpoint is channel-only; deterministic retry replays exact provider moves before releasing recorded challenges | D14 remains **378,496 B** at the same BLAKE3 with **26 / 52,608-B** provider moves, **2,588** total challenges and **10,560 B** client challenge wire. The strict verifier-local midpoint checkpoint is **73,360 B** at challenge **1,294** and adds **0 B** to provider-to-client certificate traffic. Resume produces a byte-identical proof and tape; changed provider moves and magic/version/reserved/tag/truncated/trailing mutations fail closed. The feature suite is **5/5**; source audit remains **87 imported / 14 allowed deltas / 73 byte-identical** and guards the seedless provider boundary. This is local replay, not internal P3 state serialization, crash-safe persistence, network timing or full relation integration. All full-chain/setup/time/hardware credits remain false; no pod contacted. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -786,6 +797,20 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-08-01 — C6.1 adopts deterministic replay-to-frontier before any
+  internal Plonky3 state-serialization work.**  The local `C6ICT1-v1` driver
+  separates verifier entropy from the provider through a typed synchronous
+  broker.  The provider receives no seed/checkpoint; on recovery it reruns
+  the same response and receives an old challenge only after its exact prior
+  move matches the durable candidate prefix.  This avoids patching opaque P3
+  prover internals on the normal inline path and changes neither certificate
+  bytes nor normal-run computation.  It does impose retry-only replay work
+  and requires identical witness, prover randomness and reserved correlation
+  range.  The current 73,360-B midpoint checkpoint is verifier-local and
+  in-memory.  Crash-safe atomic persistence tied to the burn allocator is
+  still mandatory before lifecycle credit; uncertain slots must never be
+  reused.  No proof-size, time, setup, network or hardware credit follows.
 
 - **2026-08-01 — C6AWP1 claim privacy closes locally only in the interactive
   honest-verifier model.** The accepted equivalent hybrid never gives its

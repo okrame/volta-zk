@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — OWNER/METRICS/SEAM/GATES FROZEN / ROOFLINE NEXT / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — EXACT BYTE/OP DECOMPOSITION GREEN / NATIVE FORMULA+ROOFLINE NEXT / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,10 +11,14 @@ Current phase: **C6.1 response-local public compression amendment of the C6
 `docs/c6-delta-residual-inline-design.md` is the active append-only amendment;
 the remainder of that document preserves the C6 requirements, Q=121 ruling,
 implementation history and local measurements as the immutable baseline.
-C6.1 first requires an exact public/designated-verifier decomposition and a
-conservative pre-code roofline.  It has no implementation or benchmark
-credit.  C6.1 is local-only until a separate owner GO; no provider/pod contact
-is authorized.
+C6.1's exact byte/operation public/designated-verifier decomposition is now
+green and executable.  It freezes the conservative active route at a
+`12,000,000-B` `C6PA1` allocation while preserving `C6LNK2`; the projected
+`18,842,103-B` certificate is allocation-only and earns no proof-size credit.
+The native message formula, soundness sum and conservative provider/verifier
+rooflines remain a pre-code hard stop.  C6.1 has no implementation or
+benchmark credit and is local-only until a separate owner GO; no provider/pod
+contact is authorized.
 The exact frozen T1 source/correction census now has a clean append-only
 record and pins `4,975,525` typed leaves.  Paired complete-source witness
 extraction is also clean at all `4,975,525` leaves per coordinate with no
@@ -601,6 +605,7 @@ its clean descendant closure.
 | C6 strict final response envelope | **C6PIF1 RESPONSE-FIELD REMOVAL + CORRECTION-ONLY RESIDUAL TRANSFER GREEN; RESIDENT BACKEND / PRODUCTION GEOMETRY AND TIMING PENDING; NO POD** (2026-07-31) | Closed seven-kind final-proof grammar; no direct `auth_corrections`, `u_vectors`, generic or legacy component; verifier-derived residual owners/points | Exact maximum is **3,919,502-B envelope / 3,920,359-B pi_final / 33,096,991-B complete response**, leaving **1,903,009 B** under 35 MB and **559,107 B** under the conservative allocation roofline. Residual pending wire is exactly **1,536 B**. Ordinary/trace proto are **149/0/1 / 167/0/1**; PCS are **179/0/1 / 181/0/2**; workspace all-target checks and budget are green. Explicit diagnostic response rerun is **14.833702-s provider inline / 19.279345-s complete**, still at `leaf=20/aux=15`, so no production timing/memory verdict is claimed. |
 | C6 production-capacity compact residual | **LOCAL CPU CAPACITY/TIMING PASS — 6,900-B C6RSC3; 17.401844-s INLINE <20 s; STRICT 33,096,991-B RESPONSE UNCHANGED; NO POD** (2026-07-31) | Frozen `leaf=23/aux=15`; live-prefix witness state; prepared statement/first message; zero-pair first-round bypass; transcript/proof/correlation semantics unchanged | Exact complete-response witness census is **4,553,588 Fp2 live input**, **34,843,136 B** first-fold logical and **36,428,800 B** peak reserved. Together with the single **536,870,912-B** coefficient arena, combined reserved peak is **573,299,712 B**, replacing the former two 512-MiB states; closure working heap remains **41,322,560 B**. One pre-challenge replay supplies both compact statement and sealed first message. The first-round sink omits only pairs wholly in canonical-zero padding and retains odd live/tail boundary pairs; later coefficient tails are unchanged. Prepared/legacy scaled proofs are byte-, transcript-, counter-, pending- and verifier-identical, with odd/empty-prefix coverage. Final release is **4.698793 + 12.703051 = 17.401844 s inline PASS**; verifier is separately **1.292475 + 14.002651 s**, complete wall **33.012188 s**. Intermediate **52.577666 s** and **23.091754 s** inline runs remain FAILs. Proto ordinary/trace **149/0/1, 167/0/1**; PCS **179/0/1, 182/0/2**, integrations **14/0/2, 2/0/0**; all-target, format, diff-check and budget **9/9** green. Earlier 23/16 text was corrected to frozen 23/15 after strict-envelope rejection. Whole RSS unmeasured; no CUDA/provider/real-PCG/hardware credit or pod contact. |
 | C6.1 response-local public compression amendment | **OWNER REQUIREMENTS / METRICS / CRYPTOGRAPHIC SEAM / ORDERED GATES FROZEN; EXACT PUBLIC/DV DECOMPOSITION + PRE-CODE ROOFLINE NEXT; NO IMPLEMENTATION OR POD** (2026-08-01) | Append-only Section 0 of the C6 design; one public argument and terminal compiler attestation per response; compact Delta-dependent closure remains designated; native transparent Goldilocks preferred, universal/updatable SRS permitted fallback | Binding gates are **setup <150,000,000 B**, **complete provider-to-client certificate <22,000,000 B**, **A100 provider compute <15.000 s** and **four-thread AVX2/no-GPU verifier compute <5.000 s with <=8,000,000,000 B additional memory**. Time gates are the maximum over all **17** accepted `100+50` baseline continuations, not averages; four burn/retry slots and Q=121 remain unchanged. Setup and certificate are separate, so first-response traffic is **<172,000,000 B**. Current setup **146,058,504 B** leaves **3,941,496 B**; current response **33,096,991 B** must lose at least **11,096,992 B**. Coefficient-plus-witness ephemeral state may rise at most fourfold to **2,293,198,848 B** provider-side. Provider time includes proof/PCS/new wrapper/real-PCG consumption/synchronization and excludes setup, LLM inference/decode and network; verifier time excludes download/RTT. The proof compresses one response conditional on `old_head -> new_head`, never a cross-response accumulator. Protocol remains interactive; Fiat--Shamir is theoretical-report-only. An A100-produced exact artifact may later be verified on the local VM or an equivalently constrained pod VM, without claiming live two-machine deployment. Existing C6 results retain historical baseline status and give C6.1 no benchmark credit. |
+| C6.1 exact public/DV decomposition | **EXACT BYTE AND COMPILER-OPERATION RECONCILIATION PASS; CONSERVATIVE WIRE/SETUP ALLOCATION SCREEN PASS WITHOUT CREDIT; NATIVE FORMULA/TIME/SOUNDNESS ROOFLINE OPEN; NO LEAN/RUST PROOF OR POD** (2026-08-01) | Replace the complete old weight/embed PCS; retain all `C6LNK2` wrapper PCS and existing DV closure; delegate only the public 64-scalar compiler output through interactive `C6RSC4`; client binds the runtime stream with two postcommit fingerprints | The `33,096,991-B` certificate is exactly **30,132,658 B public-eligible + 2,963,152 B Delta-dependent + 1,181 B state/framing**. The active route removes the complete **26,254,888-B** old Q=121 weight/embed PCS, leaving **6,842,103 B** fixed. A preregistered **12,000,000-B** all-inclusive `C6PA1` allocation projects **18,842,103 B**, with **3,157,896 B** below the strict `21,999,999-B` maximum; this is not proof-size credit. The current terminal verifier executes exactly **112,998,706 coefficient writes/repetition / 225,997,412 total** to produce only **64 Fp2 scalars**. `C6RSC4` instead binds the raw **1,466 public + 10,828,876 scalar** client-role runtime stream with two postcommit polynomial fingerprints (>209-bit standalone event) and attests those scalars; any key/tag/Delta taint rejects. Conditional removal of the **63,994,751-B plan + 5,320,386-B map** gives a base **76,743,367-B** PCG/manifest setup; with an **8,000,000-B** client-parameter allocation it projects **84,743,367 B**, again without setup credit. Existing C6's informative A100 kernel floor is **11.1793342101 s** and excludes compiler credit, leaving only **3.8206657899 s** to the new 15-s gate. Executable source: `scripts/budget_c61_public_compression.py`. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -675,6 +680,30 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-08-01 — C6.1 exact decomposition selects a conservative public/DV
+  seam but leaves the cryptographic roofline open.** Executable reconciliation
+  partitions the existing certificate into `30,132,658 B` public-eligible,
+  `2,963,152 B` Delta-dependent and `1,181 B` state/framing. The active route
+  replaces the complete `26,254,888-B` old weight/embed PCS, preserves the
+  `3,879,466-B` `C6LNK2` paired PCS, and preregisters one all-inclusive
+  `12,000,000-B` `C6PA1` allocation. The resulting `18,842,103 B` and the
+  conditional `84,743,367-B` setup are allocation screens only.
+
+  The measured `14.002651-s` verifier term contains two public terminal
+  compiler replays totaling `225,997,412` coefficient writes and producing
+  only 64 `Fp2` scalars; they are its only response-wide compiler work, but
+  have not yet been separately phase-timed. `C6RSC4` will attest those
+  scalars while the client retains the small Delta/MAC closure. Two
+  postcommit polynomial
+  fingerprints bind the raw `10,830,342`-value client-role runtime stream;
+  source plaintext, key, tag, PCG-state or Delta taint is forbidden. This
+  conditionally removes the old client plan/map from setup. A specialized
+  interactive Goldilocks sumcheck/GKR plus transparent constrained-RS PCS is
+  active; universal/updatable SRS remains an inactive permitted contingency,
+  and fixed circuit-specific setup remains forbidden. Exact message formulas,
+  full soundness composition and A100/four-thread rooflines remain a hard stop
+  before formal or protocol implementation. No pod contacted.
 
 - **2026-08-01 — C6.1 append-only owner amendment supersedes the active C6
   product route without rewriting its baseline.** The single plan of record

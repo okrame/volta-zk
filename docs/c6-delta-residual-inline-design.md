@@ -30,9 +30,10 @@ BACKEND / PRODUCTION GEOMETRY AND TIMING PENDING;
 LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 **C6.1 amendment status (2026-08-01): OWNER REQUIREMENTS, METRIC
-BOUNDARIES, CRYPTOGRAPHIC SEAM AND ORDERED GATES FROZEN; EXACT PUBLIC/DV
-DECOMPOSITION AND PRE-CODE ROOFLINE NEXT; NO C6.1 IMPLEMENTATION OR HARDWARE
-CREDIT; HARD STOP BEFORE POD.**
+BOUNDARIES, CRYPTOGRAPHIC SEAM AND ORDERED GATES FROZEN; EXACT BYTE/OPERATION
+PUBLIC/DV DECOMPOSITION GREEN; NATIVE PROTOCOL FORMULA AND PRE-CODE TIME
+ROOFLINE NEXT; NO C6.1 PROOF, TIMING OR HARDWARE CREDIT; HARD STOP BEFORE
+POD.**
 
 This document is the C6 plan of record.  It is a new descendant of the
 accepted C4/T1 `rate=1/4,Q=120` inline profile.  It does not reopen or rewrite
@@ -238,6 +239,206 @@ with cache/session history; if the public proof must accept clear
 `W_tilde(r)`; if the soundness re-sum misses the frozen convention; or if a
 backend requires a fixed circuit-specific ceremony.  Pod contact continues
 to require a separate explicit owner GO.
+
+### 0.7 Exact decomposition checkpoint
+
+`scripts/budget_c61_public_compression.py` is the executable source for this
+checkpoint.  It imports the existing C6 budget constants and independently
+reconciles the immutable C3/C4 transcript labels.  Its verdict is deliberately
+`EXACT_DECOMPOSITION_PASS__CRYPTOGRAPHIC_ROOFLINE_OPEN`: allocation is not an
+implemented proof and earns no setup, byte, prover, verifier or hardware
+credit.
+
+The current `33,096,991-B` certificate partitions exactly as follows:
+
+| Class | Exact bytes | C6.1 treatment |
+| --- | ---: | --- |
+| public-eligible old weight/embed PCS columns, roots and Q=121 increment | 26,253,192 | replace by the model-global opening part of `C6PA1` |
+| public-eligible `C6LNK2` paired wrapper PCS | 3,879,466 | retain in the conservative active route; optional later absorption |
+| Delta-dependent transcript and compact wrapper payloads | 2,963,152 | retain and verify only on the client |
+| cache/state/certificate framing | 1,181 | retain byte-for-byte |
+| **total** | **33,096,991** | exact reconciliation |
+
+The old weight/embed PCS also has `1,696 B` of Delta-dependent correction
+closure.  It is included in the old PCS's exact `26,254,888-B` total and
+becomes obsolete only if the replacement model-opening protocol supplies the
+same hidden authenticated-output seam.  It is not silently reclassified as
+public.
+
+The active conservative wire route replaces that complete
+`26,254,888-B` old PCS but preserves the entire `3,879,466-B` `C6LNK2` PCS
+and every other C6 component.  The fixed remainder is therefore:
+
+```text
+current certificate                              33,096,991 B
+- old weight/embed Q=121 PCS                     26,254,888 B
+fixed C6.1 remainder                              6,842,103 B
+C6PA1 preregistered allocation                   12,000,000 B
+projected allocation-only certificate            18,842,103 B
+headroom to strict 21,999,999-B maximum            3,157,896 B.
+```
+
+The absolute `C6PA1` maximum on this route is `15,157,896 B`; the
+`12,000,000-B` allocation is frozen before a backend or benchmark.  It
+includes the complete public model-opening replacement, `C6RSC4`, all new
+commitments and its inner framing.  A later optimization may absorb the
+`C6LNK2` PCS and lower the fixed remainder to `2,962,637 B`, but the active
+route receives no such credit.
+
+#### 0.7.1 What the slow verifier is actually doing
+
+The measured local verifier split has different scopes and is not an
+end-to-end C6.1 result:
+
+- the historical full-T1 four-thread verifier was `0.644346018 s` for the
+  response plus `0.121755365 s` for the old PCS, with an accounted total of
+  `0.765672390 s`;
+- the C6 production-geometry diagnostic reported `1.292475 s` for its
+  `T=4,Q=2` response/residual setup, not a full-T1 certificate;
+- its additional `14.002651 s` term contains two terminal executions of the
+  public semantic compiler, one per residual-proof repetition.
+
+Each terminal execution reduces `112,998,706` coefficient writes to only
+`8+16+8=32` `Fp2` scalars.  The two repetitions perform exactly
+`225,997,412` writes and return 64 scalars.  The per-repetition write census
+is:
+
+| Atomic family | Writes |
+| --- | ---: |
+| source grammar | 29,851,131 |
+| affine | 29,853,150 |
+| reverse | 20,202,848 |
+| raw copy | 601,496 |
+| product | 270,760 |
+| zero | 16,340 |
+| leaf/raw tails | 31,979,441 |
+| auxiliary tails | 223,540 |
+| **total** | **112,998,706** |
+
+This is not a theoretical verifier wall.  The client can retain the existing
+small Delta/MAC terminal calculation; the expensive public compiler result
+is the correct delegation boundary.
+
+#### 0.7.2 `C6RSC4`: preprocessed streaming compiler attestation
+
+The active native construction is an interactive, Goldilocks-specialized
+sumcheck/GKR-style attestation, not a generic recursive VM and not an FHE
+evaluation of `Delta`.  GKR supplies the relevant doubly-efficient delegation
+shape for bounded-depth arithmetic computations, while a Spartan-style
+computation commitment is the candidate treatment for the fixed irregular
+plan.  The exact specialization, not either generic system by name, must be
+proved and benchmarked.  Background references are the
+[GKR paper](https://guyrothblum.wordpress.com/wp-content/uploads/2014/11/gkr08.pdf)
+and [Spartan](https://iacr.org/archive/crypto2020/12171304/12171304.pdf).
+
+The response order is frozen as follows.
+
+1. Before either runtime-sketch challenge, the provider binds the certificate
+   statement, fixed plan/model digests, old/new heads, existing C6 roots and a
+   commitment to the exact client-role runtime stream used by `C6RSC4`.
+2. The client samples two independent `Fp2` fingerprint points.  During the
+   ordinary DV transcript verification it streams, in raw construction
+   order, the `1,466` public values and `10,828,876` scale scalars and computes
+   two polynomial fingerprints.  It retains neither the `10,830,342` values
+   nor the plan.
+3. `C6RSC4` proves that the committed runtime has those two fingerprints and
+   that the frozen compiler maps it and the already-bound challenges to the
+   claimed 64 terminal scalars.  The provider must consume the atomic event
+   stream already emitted by its C6RSC3 passes; an additional full semantic
+   replay is forbidden.
+4. The client uses the proven terminal scalars in the unchanged compact
+   pending-key, ProductClosure, ZeroBatch and Delta-dependent acceptance
+   checks.  It advances the cache head only after both `C6PA1` and the
+   designated closure accept.
+
+For two unequal streams of length `N=10,830,342`, the two independent
+polynomial fingerprints have error at most
+
+```text
+((N-1)/|Fp2|)^2,
+```
+
+or more than `209` bits before composition.  This figure is only the
+runtime-stream binding event; it does not substitute for the public
+argument's own soundness proof or the complete Q=121 re-sum.
+
+The runtime capture seam is public-only by construction.  It may contain
+only `Public(value)` and `Scale(scalar)` inputs.  Any source plaintext,
+prover tag, verifier key, PCG state or `Delta` taint is a formal and Rust
+hard failure.  The provider can preinstall the client-role plan/map because
+they are model-global, but the client does not receive or retain them.
+
+#### 0.7.3 Setup consequence and public PCS choice
+
+The current first exchange reconciles exactly to:
+
+```text
+paired PCG tapes                                  76,742,930 B
+setup manifest                                           437 B
+canonical client plan                             63,994,751 B
+verifier instance map                              5,320,386 B
+current setup                                    146,058,504 B.
+```
+
+If and only if the two-fingerprint `C6RSC4` seam is proved equivalent, the
+client plan and instance map disappear from setup.  C6.1 preregisters at
+most `8,000,000 B` for all new client public-argument parameters, roots and
+framing:
+
+```text
+paired PCG plus manifest                           76,743,367 B
+C6PA1 client-parameter allocation                   8,000,000 B
+projected allocation-only setup                    84,743,367 B
+headroom to strict 149,999,999-B maximum           65,256,632 B
+setup plus projected first certificate            103,585,470 B.
+```
+
+No removal or setup PASS is earned before an ordinary-build client proves it
+can verify without either old artifact.
+
+For the static model-opening replacement, the preferred candidate is a
+native Goldilocks transparent constrained Reed--Solomon commitment in the
+WHIR/BaseFold family, with model-global commitments installed in setup and
+response-local hidden openings joined to the existing authenticated-output
+link.  WHIR reports very small transparent openings and fast verification,
+but its public implementation explicitly identifies itself as an unaudited
+academic prototype; its figures are priors, not C6.1 measurements or byte
+formulas.  See the [WHIR paper](https://eprint.iacr.org/2024/1586.pdf),
+[reference prototype](https://github.com/WizardOfMenlo/whir), and
+[BaseFold](https://eprint.iacr.org/2023/1705.pdf).
+
+The new model commitment is versioned and bound to the expected model and
+quantization digests.  It does not claim equivalence to a provider-chosen
+legacy root.  For the frozen GPT-2 model, the expected commitment is a
+registered model parameter; for another model it is part of that model's
+explicit statement and setup.
+
+A universal/updatable-SRS backend remains permitted but inactive.  A
+pairing-field backend would make the existing Goldilocks relation non-native,
+and there is no repo-local proof, A100 kernel anchor or client-parameter
+formula showing that conversion fits C6.1.  It receives no fallback credit
+and no fixed circuit-specific ceremony is admitted.
+
+#### 0.7.4 Remaining pre-code hard stop
+
+The exact byte/operation decomposition is closed, but Gate 2 is not.  The
+existing C6 A100 kernel floor is `11.1793342101 s` and explicitly gives the
+atomic compiler no timing credit.  Only `3.8206657899 s` remains to the new
+strict 15-second provider gate.  Before Lean or protocol Rust, the next
+checkpoint must therefore provide:
+
+1. the exact `C6PA1` and `C6RSC4` message formulas, challenge order and
+   public/hidden statement;
+2. exact transparent-PCS parameters, client setup bytes and serialized
+   provider-to-client bytes under the frozen `12,000,000-B` allocation;
+3. a conservative A100 work/pass/memory/synchronization roofline in which
+   `C6RSC4` reuses the provider event stream;
+4. a four-thread verifier operation/RAM roofline including the two runtime
+   fingerprints, public proof verification and unchanged DV closure; and
+5. the complete Q=121 soundness re-sum.
+
+Failure of any one remains a pre-code obstruction; the allocation screen
+alone is not authorization to formalize or implement the proof.
 
 ## 1. Owner requirements
 

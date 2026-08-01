@@ -29,6 +29,11 @@ STRICT `C6PIF1` RESPONSE-FIELD REMOVAL/FINAL ENVELOPE GREEN; RESIDENT
 BACKEND / PRODUCTION GEOMETRY AND TIMING PENDING;
 LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
+**C6.1 amendment status (2026-08-01): OWNER REQUIREMENTS, METRIC
+BOUNDARIES, CRYPTOGRAPHIC SEAM AND ORDERED GATES FROZEN; EXACT PUBLIC/DV
+DECOMPOSITION AND PRE-CODE ROOFLINE NEXT; NO C6.1 IMPLEMENTATION OR HARDWARE
+CREDIT; HARD STOP BEFORE POD.**
+
 This document is the C6 plan of record.  It is a new descendant of the
 accepted C4/T1 `rate=1/4,Q=120` inline profile.  It does not reopen or rewrite
 the immutable C4 rate-8 FAIL, the C5 typed-PCG obstruction, or any X4/X4d
@@ -47,6 +52,192 @@ The construction removes the two dominant response fields:
 All remaining T1 fields stay byte-identical unless this document names the
 change.  The wrapper is inline: acceptance of one response never waits for a
 later settlement.
+
+## 0. C6.1 amendment: response-local public compression
+
+This section is the append-only C6.1 amendment and has precedence for the
+active route and its product gates.  It does not create a second design
+document, rename the underlying C6 milestone, or rewrite Sections 1--13.
+Those sections and the existing `C6RSC3`/`C6PIF1` measurements remain the
+immutable C6 baseline and implementation history.  They give C6.1 no proof,
+byte, soundness, timing, memory or hardware credit.
+
+C6.1 investigates one response-local public argument, provisionally
+versioned `C6PA1`, plus a terminal compiler attestation, provisionally
+versioned `C6RSC4`.  Their purpose is to compress the public-eligible bulk of
+the retained Ligero/PCS material and to eliminate the verifier's full
+coefficient/witness replay.  The final designated-verifier Delta closure
+stays outside the public argument.  The exact public/designated partition is
+the next pre-code gate; these names freeze artifact lineage, not an unproved
+construction.
+
+Each `C6PA1` instance certifies exactly one response, conditional on its
+accepted `old_head`, and binds the resulting `new_head`.  It carries no
+cross-response recursive accumulator and no proof state needed by a later
+certificate.  The persistent cache remains a compact authenticated root;
+the 17 certificates therefore remain independently checkable under the
+predecessor-state convention already frozen for C6.
+
+### 0.1 Binding C6.1 product gates
+
+All byte bounds use decimal bytes and are strict.
+
+- **One-time setup:** every byte received by the client before response
+  certificates is `<150,000,000 B`, hence at most `149,999,999 B`.  The
+  existing counted setup is `146,058,504 B`, so any new client parameter,
+  verifier key and framing must fit the remaining `3,941,496 B` or replace
+  already-counted setup bytes.  A provider-only model-global proving key or
+  SRS does not consume client wire, but its digest and version are bound in
+  every certificate.
+- **Certificate wire:** the complete provider-to-client encoding of each
+  response certificate is `<22,000,000 B`, hence at most `21,999,999 B`.
+  This includes every header, commitment, public argument, designated
+  closure, cache-transition field and framing byte; no proof component may
+  be reported outside it.  The current `33,096,991-B` C6 response therefore
+  has to lose at least `11,096,992 B`.  Setup and the first certificate are
+  separate gates, so their strict combined upper bound is `<172,000,000 B`.
+- **Provider time:** on the eventual A100 campaign, the maximum complete
+  inline proving time over all 17 accepted baseline certificates is
+  `<15.000 s`.  It includes proving, PCS, `C6PA1`/`C6RSC4`, real-PCG
+  consumption and required device/host synchronization.  It excludes the
+  one-time setup, LLM inference/decode, network transfer and network RTT.
+  Those excluded quantities are reported separately and are never called
+  prover time.
+- **Verifier time:** the maximum verification compute time over the same 17
+  certificates is `<5.000 s` on a four-thread AVX2 CPU, with no GPU and at
+  most `8,000,000,000 B` additional resident memory.  Download and network
+  RTT are excluded and reported separately.  The verifier must consume the
+  exact serialized certificate, not an in-memory shortcut.
+- **Session:** the baseline remains prompt `100` plus `50` decoded tokens per
+  accepted continuation, ending at context `950`.  The gates are maxima, not
+  averages, across 17 accepted certificates.  The separate four-slot
+  abort/retry reserve, fail-closed burns, Q=121 ruling and registered
+  per-certificate soundness convention remain unchanged.
+- **Provider ephemeral state:** the combined coefficient-plus-witness
+  allowance may grow from `573,299,712 B` to at most `2,293,198,848 B`
+  (exactly four times the C6 component bound).  This is a component cap, not
+  a claim about total process RSS or GPU memory; both are measured
+  separately.
+
+Prompt prefill, response length and attention context may increase inline
+work and exact session-credit consumption.  They must not add a
+response-length, cache-length or response-count-linear certificate field.
+
+### 0.2 Candidate cryptographic seam
+
+The public argument may absorb only checks whose statement and witness do
+not require the designated secret `Delta`.  Candidate public work includes
+the response-local Ligero proximity/query relation, polynomial/PCS opening
+relations, Merkle paths and the semantic compiler evaluation that derives
+compact terminal claims from the frozen plan, runtime values and transcript
+challenges.  `C6RSC4` must make those terminal claims sufficient so that the
+client does not replay the current response-wide coefficient/witness walk.
+
+The final client-only layer checks the compact authenticated-output and MAC
+relations that genuinely require `Delta`, then atomically advances
+`old_head -> new_head`.  The provider never learns `Delta`; no clear
+`W_tilde(r)`, cache contents, prior key vector or hidden correction vector
+may enter the public statement or certificate.  PCS openings still resolve
+into authenticated values, and there remains one batched opening per
+response, never one proof or PCS claim per token.
+
+The preferred `C6PA1` backend is a specialized transparent argument native
+to Goldilocks.  A universal updatable SRS is an admissible fallback; a fixed
+circuit-specific Groth16-style ceremony is not.  Under the fallback, all
+client-received verifier material counts in the setup cap, while
+provider-only model-global material may be preinstalled and certificate-
+bound.  Neither candidate receives feasibility credit until the next gate
+provides exact proof bytes, verifier operations, prover operations, setup
+bytes and soundness composition for the same frozen statement.
+
+C6.1 remains interactive: fresh verifier challenges are sampled and bound
+at the existing transcript seams.  Fiat--Shamir may appear in reports only
+as an explicitly theoretical variant with predicted byte/time/soundness
+changes.  It receives no implementation or benchmark credit in C6.1.
+
+### 0.3 Algebraic obligations before implementation
+
+The exact decomposition must close all of the following without assuming
+the desired compiler result.
+
+1. Partition every current certificate field and verifier operation into
+   public-eligible, `Delta`-dependent, cache-state, or removable work, with
+   byte and operation totals reconciling exactly to the current C6 records.
+2. State the committed witness and public inputs of `C6PA1`/`C6RSC4`, and
+   prove that their terminal outputs are the same challenge-bound scalars
+   consumed by the designated closure.  A digest of the compiler execution
+   is not a substitute for this semantic link.
+3. Bind plan, model/quantization version, runtime-instance digest,
+   transcript, slot/range, predecessor certificate digest, `old_head`,
+   `new_head`, epoch and nonce without exposing `Delta` or accepting a
+   provider-chosen challenge.
+4. Re-sum public-argument, PCS, Merkle, compiler-attestation, authenticated-
+   output, cache and Delta-closure failure events under the frozen Q=121
+   per-certificate convention.  Seventeen-response session risk remains a
+   separately reported informational union bound.
+5. Show that verifier work and certificate bytes are independent of prior
+   responses and cache length, and that no response proof is trusted as a
+   recursive premise for a later response proof.
+
+Any failure of these obligations is an algebraic hard stop, not an
+engineering optimization item.
+
+### 0.4 Ordered C6.1 gates
+
+1. **Owner/metric freeze:** this amendment and its matching ledger entry;
+   documentation-only checkpoint.
+2. **Exact seam and roofline:** reconcile all current fields and verifier
+   operations, specify `C6PA1`/`C6RSC4`, and compare a native transparent
+   backend with the permitted universal/updatable-SRS fallback.  Continue
+   only if a conservative pre-code model simultaneously fits setup,
+   certificate, A100 prover and four-thread verifier gates.
+3. **Additive formalization:** add new Lean modules for the public-to-
+   designated composition, compiler-terminal link, state transition and
+   soundness sum.  Frozen M1--M11 files are not edited.
+4. **Scaled Rust path:** strict versioned codec and typestate, independent
+   reference differential, malformed-proof and seam-confusion negatives,
+   transcript/challenge mutation tests, and abort/retry replay tests.
+5. **Full-T1 local correctness:** run the exact `100+50` statement with the
+   production AES/real PCG path on the four-thread verifier profile.  CPU
+   prover timings are informative; certificate bytes, correctness, security
+   and verifier resource limits are binding.
+6. **Production backends:** implement the CUDA provider path and the
+   four-thread CPU verifier path.  Production records are fail-closed and
+   may not silently fall back to the CPU provider.
+7. **Local checkpoint:** append ledger evidence and stop for a new explicit
+   owner GO before any pod/provider contact.
+8. **A100/VM campaign:** create a fresh append-only artifact on the A100 pod
+   and verify that exact artifact on the local four-thread VM or an
+   equivalently constrained VM on the pod.  Report all 17 ordinal results
+   and gate on their maxima.
+
+### 0.5 Artifact and reporting boundary
+
+Artifact-separated measurement is permitted: the provider proof artifact
+may be produced on the A100 pod and verified later on the constrained VM.
+This is a hardware-measurement method, not a claim of live two-machine
+deployment.  An interactive challenge driver must preserve the real
+message order and bind the serialized transcript.  Verifier-owned secret
+state, including `Delta`, is never placed in the public proof artifact or
+benchmark JSON; it is supplied separately to the verifier and is not
+provider-to-client certificate wire.
+
+Reports list setup bytes, certificate bytes, provider compute, verifier
+compute, network/download and end-to-end wall as distinct fields.  Provider
+and verifier times are never added and relabeled as either party's time.
+Fiat--Shamir projections are labeled theoretical.  No C6.1 comparison-table
+column is added until an eventual real A100 campaign produces a complete
+eligible record.
+
+### 0.6 C6.1 hard stops
+
+C6.1 stops before the next gate if the exact model misses any strict byte,
+time or memory cap; if the public/designated seam exposes a secret or leaves
+an unproved semantic compiler step; if proof size or verifier work grows
+with cache/session history; if the public proof must accept clear
+`W_tilde(r)`; if the soundness re-sum misses the frozen convention; or if a
+backend requires a fixed circuit-specific ceremony.  Pod contact continues
+to require a separate explicit owner GO.
 
 ## 1. Owner requirements
 

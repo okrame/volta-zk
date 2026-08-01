@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — OWNER REQUIREMENTS FROZEN / Q=121 / LOCAL IMPLEMENTATION AUTHORIZED / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — OWNER/METRICS/SEAM/GATES FROZEN / ROOFLINE NEXT / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -6,13 +6,15 @@ land in `benchmarks/results/*.json`. This ledger plus the current
 task-specific design named by its latest entry are the repo-local plan of
 record; no external plan is authoritative.
 
-Current phase: **C6 Δ-residual inline certificate and persistent cache**.
-The owner requirements, pre-code Q ruling, state semantics and ordered gates
-are frozen in `docs/c6-delta-residual-inline-design.md`.  Q=121 is activated
-before implementation because the Q=120 Ligero term is exactly the registered
-floor and the new wrapper necessarily contributes a nonzero failure event.
-C6 is local-only until a separate owner GO; no provider/pod contact is
-authorized.
+Current phase: **C6.1 response-local public compression amendment of the C6
+Δ-residual inline certificate**.  Section 0 of
+`docs/c6-delta-residual-inline-design.md` is the active append-only amendment;
+the remainder of that document preserves the C6 requirements, Q=121 ruling,
+implementation history and local measurements as the immutable baseline.
+C6.1 first requires an exact public/designated-verifier decomposition and a
+conservative pre-code roofline.  It has no implementation or benchmark
+credit.  C6.1 is local-only until a separate owner GO; no provider/pod contact
+is authorized.
 The exact frozen T1 source/correction census now has a clean append-only
 record and pins `4,975,525` typed leaves.  Paired complete-source witness
 extraction is also clean at all `4,975,525` leaves per coordinate with no
@@ -598,6 +600,7 @@ its clean descendant closure.
 | C6 post-root residual challenge bundle | **LOCAL FOUR-STREAM EXPANSION PASS; ROOT/SEED/PLAN BINDING GREEN; PCS TYPESTATE JOIN / RELATION COMPILER PENDING** (2026-07-29) | One already-budgeted 32-byte client seed; context-bound paired alpha and terminal domains; exact **22,339 triple / 8,170 zero-root** expansion | The immutable bundle binds fixed-root digest, installed artifact/topology, raw-seed commitment and four complete schedule digests.  Post-root terminal forms and paired provider/client folds consume it; replay is deterministic and changed root/seed, swapped roles or mutated weights reject.  Feature suite **145/0/1**, workspace green.  Schedules remain materialized reference state and `volta-pcs` must still source the digest from its private fixed-root token before seed release; no statement, resource, proof or production credit and no pod contact. |
 | C6 strict final response envelope | **C6PIF1 RESPONSE-FIELD REMOVAL + CORRECTION-ONLY RESIDUAL TRANSFER GREEN; RESIDENT BACKEND / PRODUCTION GEOMETRY AND TIMING PENDING; NO POD** (2026-07-31) | Closed seven-kind final-proof grammar; no direct `auth_corrections`, `u_vectors`, generic or legacy component; verifier-derived residual owners/points | Exact maximum is **3,919,502-B envelope / 3,920,359-B pi_final / 33,096,991-B complete response**, leaving **1,903,009 B** under 35 MB and **559,107 B** under the conservative allocation roofline. Residual pending wire is exactly **1,536 B**. Ordinary/trace proto are **149/0/1 / 167/0/1**; PCS are **179/0/1 / 181/0/2**; workspace all-target checks and budget are green. Explicit diagnostic response rerun is **14.833702-s provider inline / 19.279345-s complete**, still at `leaf=20/aux=15`, so no production timing/memory verdict is claimed. |
 | C6 production-capacity compact residual | **LOCAL CPU CAPACITY/TIMING PASS — 6,900-B C6RSC3; 17.401844-s INLINE <20 s; STRICT 33,096,991-B RESPONSE UNCHANGED; NO POD** (2026-07-31) | Frozen `leaf=23/aux=15`; live-prefix witness state; prepared statement/first message; zero-pair first-round bypass; transcript/proof/correlation semantics unchanged | Exact complete-response witness census is **4,553,588 Fp2 live input**, **34,843,136 B** first-fold logical and **36,428,800 B** peak reserved. Together with the single **536,870,912-B** coefficient arena, combined reserved peak is **573,299,712 B**, replacing the former two 512-MiB states; closure working heap remains **41,322,560 B**. One pre-challenge replay supplies both compact statement and sealed first message. The first-round sink omits only pairs wholly in canonical-zero padding and retains odd live/tail boundary pairs; later coefficient tails are unchanged. Prepared/legacy scaled proofs are byte-, transcript-, counter-, pending- and verifier-identical, with odd/empty-prefix coverage. Final release is **4.698793 + 12.703051 = 17.401844 s inline PASS**; verifier is separately **1.292475 + 14.002651 s**, complete wall **33.012188 s**. Intermediate **52.577666 s** and **23.091754 s** inline runs remain FAILs. Proto ordinary/trace **149/0/1, 167/0/1**; PCS **179/0/1, 182/0/2**, integrations **14/0/2, 2/0/0**; all-target, format, diff-check and budget **9/9** green. Earlier 23/16 text was corrected to frozen 23/15 after strict-envelope rejection. Whole RSS unmeasured; no CUDA/provider/real-PCG/hardware credit or pod contact. |
+| C6.1 response-local public compression amendment | **OWNER REQUIREMENTS / METRICS / CRYPTOGRAPHIC SEAM / ORDERED GATES FROZEN; EXACT PUBLIC/DV DECOMPOSITION + PRE-CODE ROOFLINE NEXT; NO IMPLEMENTATION OR POD** (2026-08-01) | Append-only Section 0 of the C6 design; one public argument and terminal compiler attestation per response; compact Delta-dependent closure remains designated; native transparent Goldilocks preferred, universal/updatable SRS permitted fallback | Binding gates are **setup <150,000,000 B**, **complete provider-to-client certificate <22,000,000 B**, **A100 provider compute <15.000 s** and **four-thread AVX2/no-GPU verifier compute <5.000 s with <=8,000,000,000 B additional memory**. Time gates are the maximum over all **17** accepted `100+50` baseline continuations, not averages; four burn/retry slots and Q=121 remain unchanged. Setup and certificate are separate, so first-response traffic is **<172,000,000 B**. Current setup **146,058,504 B** leaves **3,941,496 B**; current response **33,096,991 B** must lose at least **11,096,992 B**. Coefficient-plus-witness ephemeral state may rise at most fourfold to **2,293,198,848 B** provider-side. Provider time includes proof/PCS/new wrapper/real-PCG consumption/synchronization and excludes setup, LLM inference/decode and network; verifier time excludes download/RTT. The proof compresses one response conditional on `old_head -> new_head`, never a cross-response accumulator. Protocol remains interactive; Fiat--Shamir is theoretical-report-only. An A100-produced exact artifact may later be verified on the local VM or an equivalently constrained pod VM, without claiming live two-machine deployment. Existing C6 results retain historical baseline status and give C6.1 no benchmark credit. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -654,6 +657,13 @@ historical entries remain append-only evidence, not competing definitions.
   frames already delimited by its in-process sender. Network truncation, EOF,
   bit flips and transport hardening are deployment concerns outside this
   harness.
+- **C6.1 artifact-separated measurement.** A provider artifact may be
+  produced on the A100 pod and later consumed by a four-thread local VM or an
+  equivalently constrained pod VM. An interactive challenge driver must
+  retain the actual message order and exact serialized transcript; verifier
+  secret state is a separate private input and never enters the public
+  artifact or benchmark JSON. This is a hardware-role measurement method,
+  not a live network-deployment claim.
 - **GKWY assumption.** The fixed-key AES-128 MMO GGM PRG relies on the
   registered GKWY correlation-robustness assumption; that assumption is not a
   theorem proved by this repository.
@@ -665,6 +675,33 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-08-01 — C6.1 append-only owner amendment supersedes the active C6
+  product route without rewriting its baseline.** The single plan of record
+  remains `docs/c6-delta-residual-inline-design.md`; its new Section 0 freezes
+  the complete provider-to-client certificate at `<22,000,000 B`, setup at
+  `<150,000,000 B`, maximum A100 inline prover compute across 17 certificates
+  at `<15.000 s`, and maximum four-thread AVX2 CPU verifier compute at
+  `<5.000 s` with no GPU and `<=8,000,000,000 B` additional memory. Setup and
+  the first certificate remain separately counted, allowing `<172,000,000 B`
+  on the first response. The existing setup leaves `3,941,496 B`; the
+  current response needs at least `11,096,992 B` further compression.
+  Provider coefficient-plus-witness ephemeral state may grow to
+  `2,293,198,848 B`.
+
+  C6.1 prefers a specialized transparent Goldilocks public argument and
+  permits a universal updatable-SRS fallback. Its candidate public proof and
+  terminal compiler attestation compress one response only; the genuinely
+  Delta-dependent closure remains client-side and no cross-response proof
+  accumulator is admitted. The protocol stays interactive. Fiat--Shamir
+  projections remain theoretical and earn no implementation or measurement
+  credit. Exact public/DV field-and-operation decomposition, semantic seam,
+  soundness re-sum and conservative dual-backend roofline are a hard stop
+  before Lean or Rust implementation. Existing C6 measurements remain
+  historical only, and no pod/provider contact is authorized. The temporary
+  C6 comparison-table column and references were removed by restoring
+  `docs/gpt2-comparison-WIP.md` exactly to its prior committed contents; no
+  C6.1 column will be added before an eligible real A100 record exists.
 
 - **2026-07-31 — C6 production-capacity residual passes the local inline
   ceiling after live-prefix and replay de-duplication.** The frozen gate is

@@ -54,6 +54,7 @@ const C6_SPARSE_RESPONSE_BLOCKS: usize = 4;
 const C6_SPARSE_PLAN_BLOCKS: usize = 4;
 const C6_SPARSE_RESPONSE_OPENINGS: usize = 6;
 const C6_SPARSE_PLAN_OPENINGS: usize = 3;
+const C6_SPARSE_PHYSICAL_RESPONSE_OPENINGS: usize = 2 * C6_SPARSE_RESPONSE_OPENINGS;
 const C6_SPARSE_PACKING_MAX_SCALED_LOG2: u8 = 20;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -75,6 +76,10 @@ impl C6SparseRationalPackedOracleReference {
 
     pub fn response_domain_log2(&self) -> u8 {
         self.base_domain_log2 + 2
+    }
+
+    pub fn physical_response_domain_log2(&self) -> u8 {
+        self.base_domain_log2 + 3
     }
 
     pub fn plan_domain_log2(&self) -> u8 {
@@ -99,6 +104,56 @@ impl C6SparseRationalPackedOracleReference {
             self.plan_digest,
             input_point,
         )
+    }
+
+    pub fn physical_opening_points(
+        &self,
+        input_point: &[Fp2],
+    ) -> C6ResidualResult<C6SparseRationalPhysicalOpeningPoints> {
+        C6SparseRationalPhysicalOpeningPoints::new(
+            self.base_domain_log2,
+            self.response_digest,
+            self.plan_digest,
+            input_point,
+        )
+    }
+
+    /// Base-field physical response polynomial: all `c0` coefficients,
+    /// followed by all `c1` coefficients under one final limb variable.
+    pub fn physical_response_values(&self) -> Vec<Fp> {
+        self.response_values
+            .iter()
+            .map(|value| value.c0)
+            .chain(self.response_values.iter().map(|value| value.c1))
+            .collect()
+    }
+
+    /// The fixed plan is base-valued and needs no limb selector.
+    pub fn physical_plan_values(&self) -> C6ResidualResult<Vec<Fp>> {
+        if self.plan_values.iter().any(|value| value.c1 != Fp::ZERO) {
+            return Err(C6ResidualError::new("C6SPR3 fixed plan contains a non-base coefficient"));
+        }
+        Ok(self.plan_values.iter().map(|value| value.c0).collect())
+    }
+
+    pub fn evaluate_physical_response_openings(
+        &self,
+        points: &C6SparseRationalPhysicalOpeningPoints,
+    ) -> C6ResidualResult<[Fp2; C6_SPARSE_PHYSICAL_RESPONSE_OPENINGS]> {
+        points.validate(self)?;
+        let values =
+            self.physical_response_values().into_iter().map(Fp2::from_base).collect::<Vec<_>>();
+        Ok(std::array::from_fn(|index| crate::mle::eval_mle(&values, &points.response[index])))
+    }
+
+    pub fn evaluate_physical_plan_openings(
+        &self,
+        points: &C6SparseRationalPhysicalOpeningPoints,
+    ) -> C6ResidualResult<[Fp2; C6_SPARSE_PLAN_OPENINGS]> {
+        points.validate(self)?;
+        let values =
+            self.physical_plan_values()?.into_iter().map(Fp2::from_base).collect::<Vec<_>>();
+        Ok(std::array::from_fn(|index| crate::mle::eval_mle(&values, &points.plan[index])))
     }
 
     pub fn evaluate_response_openings(
@@ -186,6 +241,110 @@ impl C6SparseRationalPackedOracleReference {
         }
         Ok(())
     }
+}
+
+/// Physical base-field points for the corrected C6SPR3 backend boundary.
+/// Response order is semantic opening major, then limb `(c0, c1)`; the plan
+/// retains its three base-valued points.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6SparseRationalPhysicalOpeningPoints {
+    base_domain_log2: u8,
+    response_digest: C6ResidualDigest,
+    plan_digest: C6ResidualDigest,
+    input_point: Vec<Fp2>,
+    response: [Vec<Fp2>; C6_SPARSE_PHYSICAL_RESPONSE_OPENINGS],
+    plan: [Vec<Fp2>; C6_SPARSE_PLAN_OPENINGS],
+    digest: C6ResidualDigest,
+}
+
+impl C6SparseRationalPhysicalOpeningPoints {
+    pub fn new(
+        base_domain_log2: u8,
+        response_digest: C6ResidualDigest,
+        plan_digest: C6ResidualDigest,
+        input_point: &[Fp2],
+    ) -> C6ResidualResult<Self> {
+        let semantic = C6SparseRationalPackedOpeningPoints::new(
+            base_domain_log2,
+            response_digest,
+            plan_digest,
+            input_point,
+        )?;
+        let response = semantic
+            .response
+            .iter()
+            .flat_map(|point| {
+                [Fp2::ZERO, Fp2::ONE].into_iter().map(move |limb| {
+                    point.iter().copied().chain(std::iter::once(limb)).collect::<Vec<_>>()
+                })
+            })
+            .collect::<Vec<_>>()
+            .try_into()
+            .map_err(|_| C6ResidualError::new("C6SPR3 physical response-point census mismatch"))?;
+        let mut points = Self {
+            base_domain_log2,
+            response_digest,
+            plan_digest,
+            input_point: input_point.to_vec(),
+            response,
+            plan: semantic.plan,
+            digest: [0; 32],
+        };
+        points.digest = points.recompute_digest();
+        Ok(points)
+    }
+
+    pub fn response(&self) -> &[Vec<Fp2>; C6_SPARSE_PHYSICAL_RESPONSE_OPENINGS] {
+        &self.response
+    }
+
+    pub fn plan(&self) -> &[Vec<Fp2>; C6_SPARSE_PLAN_OPENINGS] {
+        &self.plan
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+
+    pub fn validate(&self, packed: &C6SparseRationalPackedOracleReference) -> C6ResidualResult<()> {
+        let expected = Self::new(
+            packed.base_domain_log2,
+            packed.response_digest,
+            packed.plan_digest,
+            &self.input_point,
+        )?;
+        if *self != expected {
+            return Err(C6ResidualError::new("C6SPR3 physical opening points are noncanonical"));
+        }
+        Ok(())
+    }
+
+    fn recompute_digest(&self) -> C6ResidualDigest {
+        let mut hasher =
+            blake3::Hasher::new_derive_key("volta-zk/c6/sparse-rational-physical-points/v1");
+        hasher.update(&[self.base_domain_log2]);
+        hasher.update(&self.response_digest);
+        hasher.update(&self.plan_digest);
+        for (role, points) in [(0u8, self.response.as_slice()), (1u8, self.plan.as_slice())] {
+            hasher.update(&[role]);
+            hasher.update(&(points.len() as u64).to_le_bytes());
+            for (ordinal, point) in points.iter().enumerate() {
+                hasher.update(&(ordinal as u64).to_le_bytes());
+                hasher.update(&(point.len() as u64).to_le_bytes());
+                for &coordinate in point {
+                    hash_fp2(&mut hasher, coordinate);
+                }
+            }
+        }
+        *hasher.finalize().as_bytes()
+    }
+}
+
+pub fn fold_c6_sparse_physical_response_openings(
+    physical: &[Fp2; C6_SPARSE_PHYSICAL_RESPONSE_OPENINGS],
+) -> [Fp2; C6_SPARSE_RESPONSE_OPENINGS] {
+    let extension_generator = Fp2::new(Fp::ZERO, Fp::ONE);
+    std::array::from_fn(|index| physical[2 * index] + extension_generator * physical[2 * index + 1])
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -994,8 +1153,16 @@ mod tests {
             &source_manifest,
         )
         .unwrap();
-        let leaf_point = [Fp2::ZERO, Fp2::ONE, fp2(2), fp2(3), fp2(5), fp2(7), fp2(11)];
-        let output_beta = fp2(191);
+        let leaf_point = [
+            Fp2::new(fp(0), fp(1)),
+            Fp2::new(fp(1), fp(2)),
+            Fp2::new(fp(2), fp(3)),
+            Fp2::new(fp(3), fp(5)),
+            Fp2::new(fp(5), fp(7)),
+            Fp2::new(fp(7), fp(11)),
+            Fp2::new(fp(11), fp(13)),
+        ];
+        let output_beta = Fp2::new(fp(191), fp(17));
         let lanes: [C6ResidualFoldedTerminalAdjointLaneReference;
             C6_RESIDUAL_PROOF_REPETITIONS as usize] = std::array::from_fn(|repetition| {
             compile_c6_residual_folded_terminal_adjoint_lane_reference(
@@ -1055,6 +1222,45 @@ mod tests {
         opening_points.validate(&packed).unwrap();
         let response_openings = packed.evaluate_response_openings(&opening_points).unwrap();
         let plan_openings = packed.evaluate_plan_openings(&opening_points).unwrap();
+        let physical_points = packed.physical_opening_points(&input_point).unwrap();
+        physical_points.validate(&packed).unwrap();
+        assert_eq!(physical_points.response().len(), 2 * response_openings.len());
+        assert!(physical_points
+            .response()
+            .iter()
+            .all(|point| point.len() == packed.physical_response_domain_log2() as usize));
+        assert!(physical_points
+            .plan()
+            .iter()
+            .all(|point| point.len() == packed.plan_domain_log2() as usize));
+        let physical_response =
+            packed.evaluate_physical_response_openings(&physical_points).unwrap();
+        let physical_plan = packed.evaluate_physical_plan_openings(&physical_points).unwrap();
+        assert_eq!(
+            fold_c6_sparse_physical_response_openings(&physical_response),
+            response_openings,
+        );
+        assert_eq!(physical_plan, plan_openings);
+        let physical_response_values = packed.physical_response_values();
+        assert_eq!(physical_response_values.len(), 2 * packed.response_values.len());
+        assert!(physical_response_values[packed.response_values.len()..]
+            .iter()
+            .any(|value| *value != Fp::ZERO));
+        let extension_generator = Fp2::new(Fp::ZERO, Fp::ONE);
+        for (index, &semantic) in packed.response_values.iter().enumerate() {
+            assert_eq!(
+                semantic,
+                Fp2::from_base(physical_response_values[index])
+                    + extension_generator
+                        * Fp2::from_base(
+                            physical_response_values[packed.response_values.len() + index],
+                        ),
+            );
+        }
+        assert_eq!(
+            packed.physical_plan_values().unwrap(),
+            packed.plan_values.iter().map(|value| value.c0).collect::<Vec<_>>(),
+        );
         assert_eq!(
             response_openings[0],
             crate::mle::eval_mle(&packed.response_values[..base_rows], &input_point)
@@ -1147,6 +1353,9 @@ mod tests {
         let mut changed_opening_points = opening_points.clone();
         changed_opening_points.response[0][0] += Fp2::ONE;
         assert!(changed_opening_points.validate(&packed).is_err());
+        let mut changed_physical_points = physical_points.clone();
+        changed_physical_points.response.swap(0, 1);
+        assert!(changed_physical_points.validate(&packed).is_err());
         let seed = [0x61; 32];
         let (mut proof, counters) = prove_c6_residual_sparse_rational_gkr_reference(
             direct.operation_plan(),

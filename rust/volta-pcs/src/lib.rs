@@ -69,17 +69,19 @@ pub use c61_public_compression::{
     C61_TERMINAL_STREAMS,
 };
 pub use c61_terminal_functional::{
-    c61_sparse_plan_layout_digest, c61_sparse_response_layout_digest, fold_terminal_claims,
-    terminal_claims_digest, C61CommittedOpeningStatement, C61NativeCommitmentDescriptor,
-    C61NativeProverChainStatement, C61NativeVerifierChainStatement,
+    c61_sparse_plan_layout_digest, c61_sparse_response_layout_digest,
+    fold_c61_sparse_response_prover_targets, fold_c61_sparse_response_verifier_keys,
+    fold_terminal_claims, terminal_claims_digest, C61CommittedOpeningStatement,
+    C61NativeCommitmentDescriptor, C61NativeProverChainStatement, C61NativeVerifierChainStatement,
     C61SparseRationalCompilerOpeningPoints, C61SparseRationalCompilerOpeningStatement,
     C61SparseRationalCompilerOracles, C61SparseRationalProverOpeningStatement,
     C61SparseRationalVerifierOpeningStatement, C61TerminalFunctionalCompilerBinding,
     C61TerminalFunctionalCompilerStatement, C61TerminalFunctionalStatementError,
     C61TypedNativeBackendVerifier, C61TypedNativeChainPublicStatement,
     C61TypedNativeRelationStatement, C61_COMPILER_TERMINAL_TARGETS, C61_EMBEDDING_OPENING_TARGETS,
-    C61_MODEL_OPENING_TARGETS, C61_SPARSE_RATIONAL_INPUT_LOG2, C61_SPARSE_RATIONAL_PACKED_LOG2,
-    C61_SPARSE_RATIONAL_PLAN_OPENINGS, C61_SPARSE_RATIONAL_RESPONSE_OPENINGS,
+    C61_MODEL_OPENING_TARGETS, C61_SPARSE_RATIONAL_INPUT_LOG2, C61_SPARSE_RATIONAL_PLAN_OPENINGS,
+    C61_SPARSE_RATIONAL_PLAN_PACKED_LOG2, C61_SPARSE_RATIONAL_RESPONSE_OPENINGS,
+    C61_SPARSE_RATIONAL_RESPONSE_PACKED_LOG2, C61_SPARSE_RATIONAL_SEMANTIC_RESPONSE_OPENINGS,
     C61_TERMINAL_FUNCTIONAL_PROOF_REPETITIONS, C61_TERMINAL_FUNCTIONAL_RELATION_LOG2,
 };
 pub use c6_authenticated_output_link::{

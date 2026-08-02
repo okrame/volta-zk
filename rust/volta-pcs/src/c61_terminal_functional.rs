@@ -21,8 +21,11 @@ pub const C61_COMPILER_TERMINAL_TARGETS: usize = C61_TERMINAL_CLAIMS;
 pub const C61_TERMINAL_FUNCTIONAL_RELATION_LOG2: u8 = 28;
 pub const C61_TERMINAL_FUNCTIONAL_PROOF_REPETITIONS: usize = 2;
 pub const C61_SPARSE_RATIONAL_INPUT_LOG2: u8 = 25;
-pub const C61_SPARSE_RATIONAL_PACKED_LOG2: u8 = 27;
-pub const C61_SPARSE_RATIONAL_RESPONSE_OPENINGS: usize = 6;
+pub const C61_SPARSE_RATIONAL_RESPONSE_PACKED_LOG2: u8 = 28;
+pub const C61_SPARSE_RATIONAL_PLAN_PACKED_LOG2: u8 = 27;
+pub const C61_SPARSE_RATIONAL_SEMANTIC_RESPONSE_OPENINGS: usize = 6;
+pub const C61_SPARSE_RATIONAL_RESPONSE_OPENINGS: usize =
+    2 * C61_SPARSE_RATIONAL_SEMANTIC_RESPONSE_OPENINGS;
 pub const C61_SPARSE_RATIONAL_PLAN_OPENINGS: usize = 3;
 
 const PUBLIC_STATEMENT_DOMAIN: &str = "volta-zk/c6.1/typed-native-chain-statement/v1";
@@ -76,9 +79,9 @@ impl C61NativeCommitmentDescriptor {
     }
 }
 
-fn sparse_layout_digest(domain: &'static str, blocks: &[&[u8]]) -> [u8; 32] {
+fn sparse_layout_digest(domain: &'static str, physical_log2: u8, blocks: &[&[u8]]) -> [u8; 32] {
     let mut hasher = blake3::Hasher::new_derive_key(domain);
-    hasher.update(&[C61_SPARSE_RATIONAL_INPUT_LOG2, C61_SPARSE_RATIONAL_PACKED_LOG2]);
+    hasher.update(&[C61_SPARSE_RATIONAL_INPUT_LOG2, physical_log2]);
     hasher.update(&(blocks.len() as u64).to_le_bytes());
     for (ordinal, block) in blocks.iter().enumerate() {
         hasher.update(&(ordinal as u64).to_le_bytes());
@@ -91,14 +94,19 @@ fn sparse_layout_digest(domain: &'static str, blocks: &[&[u8]]) -> [u8; 32] {
 pub fn c61_sparse_response_layout_digest() -> [u8; 32] {
     sparse_layout_digest(
         SPARSE_RESPONSE_LAYOUT_DOMAIN,
-        &[b"lambda_0_D25", b"lambda_1_D25", b"scale_runtime_D24_g0_D23_g1_D23", b"mu_D25"],
+        C61_SPARSE_RATIONAL_RESPONSE_PACKED_LOG2,
+        &[
+            b"c0(lambda_0_D25|lambda_1_D25|scale_runtime_D24_g0_D23_g1_D23|mu_D25)",
+            b"c1(lambda_0_D25|lambda_1_D25|scale_runtime_D24_g0_D23_g1_D23|mu_D25)",
+        ],
     )
 }
 
 pub fn c61_sparse_plan_layout_digest() -> [u8; 32] {
     sparse_layout_digest(
         SPARSE_PLAN_LAYOUT_DOMAIN,
-        &[b"opcode_D25", b"lhs_D25", b"rhs_D25", b"zero_D25"],
+        C61_SPARSE_RATIONAL_PLAN_PACKED_LOG2,
+        &[b"opcode_D25_structural_zero_pad", b"lhs_D25", b"rhs_D25", b"zero_D25"],
     )
 }
 
@@ -129,11 +137,11 @@ impl C61SparseRationalCompilerOracles {
     pub fn validate(&self) -> Result<()> {
         self.response.validate()?;
         self.plan.validate()?;
-        if self.response.polynomial_domain_log2 != C61_SPARSE_RATIONAL_PACKED_LOG2
-            || self.plan.polynomial_domain_log2 != C61_SPARSE_RATIONAL_PACKED_LOG2
+        if self.response.polynomial_domain_log2 != C61_SPARSE_RATIONAL_RESPONSE_PACKED_LOG2
+            || self.plan.polynomial_domain_log2 != C61_SPARSE_RATIONAL_PLAN_PACKED_LOG2
         {
             return Err(C61TerminalFunctionalStatementError::new(
-                "C6SPR2 response and plan commitments must both use D27",
+                "C6SPR3 response/plan commitments must use physical D28/D27",
             ));
         }
         if self.response_layout_digest != c61_sparse_response_layout_digest()
@@ -160,9 +168,9 @@ impl C61SparseRationalCompilerOracles {
     }
 }
 
-/// Nine ordered points derived after the joint GKR leaf reduction.  The
-/// order is response `(lambda_0, lambda_1, mu, runtime, g_0, g_1)` followed
-/// by fixed plan `(opcode, lhs, rhs)`.
+/// Fifteen physical base-field points derived after the joint GKR reduction.
+/// Response order is semantic `(lambda_0, lambda_1, mu, runtime, g_0, g_1)`
+/// major, then limb `(c0, c1)`; fixed plan order is `(opcode, lhs, rhs)`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C61SparseRationalCompilerOpeningPoints {
     input_point: Vec<Fp2>,
@@ -182,7 +190,7 @@ impl C61SparseRationalCompilerOpeningPoints {
         let append = |prefix: &[Fp2], suffix: &[Fp2]| {
             prefix.iter().chain(suffix).copied().collect::<Vec<_>>()
         };
-        let response = [
+        let semantic_response = [
             append(input_point, &[Fp2::ZERO, Fp2::ZERO]),
             append(input_point, &[Fp2::ONE, Fp2::ZERO]),
             append(input_point, &[Fp2::ONE, Fp2::ONE]),
@@ -190,6 +198,20 @@ impl C61SparseRationalCompilerOpeningPoints {
             append(&input_point[..dimension - 2], &[Fp2::ZERO, Fp2::ONE, Fp2::ZERO, Fp2::ONE]),
             append(&input_point[..dimension - 2], &[Fp2::ONE, Fp2::ONE, Fp2::ZERO, Fp2::ONE]),
         ];
+        let response = semantic_response
+            .iter()
+            .flat_map(|point| {
+                [Fp2::ZERO, Fp2::ONE].into_iter().map(move |limb| {
+                    point.iter().copied().chain(std::iter::once(limb)).collect::<Vec<_>>()
+                })
+            })
+            .collect::<Vec<_>>()
+            .try_into()
+            .map_err(|_| {
+                C61TerminalFunctionalStatementError::new(
+                    "C6SPR3 physical response-point census mismatch",
+                )
+            })?;
         let plan = [
             append(input_point, &[Fp2::ZERO, Fp2::ZERO]),
             append(input_point, &[Fp2::ONE, Fp2::ZERO]),
@@ -332,6 +354,24 @@ pub struct C61SparseRationalVerifierOpeningStatement {
     pub public: C61SparseRationalCompilerOpeningStatement,
     pub response_target_keys: [VerifierKey; C61_SPARSE_RATIONAL_RESPONSE_OPENINGS],
     pub plan_target_keys: [VerifierKey; C61_SPARSE_RATIONAL_PLAN_OPENINGS],
+}
+
+pub fn fold_c61_sparse_response_prover_targets(
+    physical: &[ProverAuthed; C61_SPARSE_RATIONAL_RESPONSE_OPENINGS],
+) -> [ProverAuthed; C61_SPARSE_RATIONAL_SEMANTIC_RESPONSE_OPENINGS] {
+    let extension_generator = Fp2::new(volta_field::Fp::ZERO, volta_field::Fp::ONE);
+    std::array::from_fn(|index| {
+        physical[2 * index].add(physical[2 * index + 1].scale(extension_generator))
+    })
+}
+
+pub fn fold_c61_sparse_response_verifier_keys(
+    physical: &[VerifierKey; C61_SPARSE_RATIONAL_RESPONSE_OPENINGS],
+) -> [VerifierKey; C61_SPARSE_RATIONAL_SEMANTIC_RESPONSE_OPENINGS] {
+    let extension_generator = Fp2::new(volta_field::Fp::ZERO, volta_field::Fp::ONE);
+    std::array::from_fn(|index| {
+        physical[2 * index].add(physical[2 * index + 1].scale(extension_generator))
+    })
 }
 
 impl C61SparseRationalVerifierOpeningStatement {
@@ -796,8 +836,8 @@ mod tests {
             residual_public_claims_digest: [7; 32],
             relation_challenges_digest: [8; 32],
             sparse_oracles: C61SparseRationalCompilerOracles::new(
-                commitment(41, C61_SPARSE_RATIONAL_PACKED_LOG2),
-                commitment(51, C61_SPARSE_RATIONAL_PACKED_LOG2),
+                commitment(41, C61_SPARSE_RATIONAL_RESPONSE_PACKED_LOG2),
+                commitment(51, C61_SPARSE_RATIONAL_PLAN_PACKED_LOG2),
             )
             .unwrap(),
             leaf_points: std::array::from_fn(|repetition| {
@@ -963,7 +1003,7 @@ mod tests {
         assert_eq!(public.points.response().len(), C61_SPARSE_RATIONAL_RESPONSE_OPENINGS);
         assert_eq!(public.points.plan().len(), C61_SPARSE_RATIONAL_PLAN_OPENINGS);
 
-        let proto_points = volta_proto::c6_residual::C6SparseRationalPackedOpeningPoints::new(
+        let proto_points = volta_proto::c6_residual::C6SparseRationalPhysicalOpeningPoints::new(
             C61_SPARSE_RATIONAL_INPUT_LOG2,
             compiler.sparse_oracles.response.commitment_root,
             compiler.sparse_oracles.plan.commitment_root,
@@ -998,6 +1038,24 @@ mod tests {
         )
         .unwrap();
         assert_eq!(prover.public.digest(), verifier.public.digest());
+        let semantic_targets = fold_c61_sparse_response_prover_targets(&prover.response_targets);
+        let semantic_keys = fold_c61_sparse_response_verifier_keys(&verifier.response_target_keys);
+        let extension_generator = Fp2::new(Fp::ZERO, Fp::ONE);
+        for index in 0..C61_SPARSE_RATIONAL_SEMANTIC_RESPONSE_OPENINGS {
+            assert_eq!(
+                semantic_targets[index].x,
+                response_values[2 * index] + extension_generator * response_values[2 * index + 1],
+            );
+            assert_eq!(
+                semantic_keys[index].k,
+                response_keys[2 * index].k + extension_generator * response_keys[2 * index + 1].k,
+            );
+        }
+        assert!(C61SparseRationalCompilerOracles::new(
+            commitment(41, C61_SPARSE_RATIONAL_PLAN_PACKED_LOG2),
+            commitment(51, C61_SPARSE_RATIONAL_PLAN_PACKED_LOG2),
+        )
+        .is_err());
 
         let mut changed_key_verifier = verifier.clone();
         changed_key_verifier.response_target_keys[0] =

@@ -409,6 +409,23 @@ pub fn verify_c61_authenticated_whir_base_with_zero_rows(
     context: &mut VerifierCtx,
     transcript: &mut Transcript,
 ) -> Result<()> {
+    verify_c61_authenticated_whir_base_with_zero_rows_residual(
+        input, zero_rows, proof, context, transcript,
+    )
+    .map(|_| ())
+}
+
+/// Internal verifier seam that also returns the exact folded residual key.
+/// This lets integration diagnostics test a mutated terminal tag against the
+/// same challenge and correlation cursor as the accepted execution, without
+/// replaying it under unrelated verifier state.
+pub(crate) fn verify_c61_authenticated_whir_base_with_zero_rows_residual(
+    input: C61AuthenticatedWhirVerifierInput,
+    zero_rows: &[VerifierKey],
+    proof: C61AuthenticatedWhirBaseProof,
+    context: &mut VerifierCtx,
+    transcript: &mut Transcript,
+) -> Result<VerifierKey> {
     if zero_rows.is_empty() {
         return Err(C61AuthenticatedWhirError::new(
             "C6AWH1 folded arithmetic closure requires at least one zero row",
@@ -431,7 +448,7 @@ pub fn verify_c61_authenticated_whir_base_with_zero_rows(
     if !zero_open_verify(residual, proof.zero_open_tag) {
         return Err(C61AuthenticatedWhirError::new("C6AWH1 folded arithmetic ZeroOpen failed"));
     }
-    Ok(())
+    Ok(residual)
 }
 
 fn c61_authenticated_whir_verifier_residual(

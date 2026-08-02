@@ -12474,6 +12474,67 @@ mod tests {
         }
         assert_eq!(terminal_relation.terminal_functionals(), &replayed);
         assert_eq!(terminal_relation.coefficient_writes(), 2_400);
+        let folded_adjoint = compile_c6_residual_folded_terminal_adjoint_reference(
+            direct.operation_plan(),
+            direct.extraction(),
+            direct.runtime(),
+            direct.linear(),
+            direct.relation(),
+            [&leaf_point, &leaf_point],
+            [&auxiliary_point, &auxiliary_point],
+            output_beta,
+        )
+        .unwrap();
+        assert_eq!(folded_adjoint.output_beta(), output_beta);
+        assert_eq!(folded_adjoint.family_folds(), terminal_relation.family_folds());
+        assert_eq!(folded_adjoint.repetition_folds(), terminal_relation.repetition_folds());
+        assert_eq!(folded_adjoint.fold(), terminal_relation.functional_fold());
+        assert_ne!(folded_adjoint.digest(), [0; 32]);
+        for repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS as usize {
+            assert!(
+                folded_adjoint.family_folds()[repetition].iter().all(|value| *value != Fp2::ZERO),
+                "scaled C6TFA1 fixture must exercise every atomic family"
+            );
+            assert_ne!(
+                folded_adjoint.plan_family_folds()[repetition]
+                    [C6ResidualAtomicFamily::Affine.index()],
+                Fp2::ZERO
+            );
+            assert_ne!(
+                folded_adjoint.plan_family_folds()[repetition]
+                    [C6ResidualAtomicFamily::Reverse.index()],
+                Fp2::ZERO
+            );
+            let summary = &direct.compilation().statements()[repetition];
+            assert_eq!(
+                folded_adjoint.family_outputs()[repetition],
+                direct.compilation().family_outputs()[repetition]
+            );
+            assert_eq!(
+                folded_adjoint.family_coefficient_writes()[repetition],
+                expected_atomic_family_coefficient_writes(direct.manifest()).unwrap()
+            );
+            assert_eq!(
+                summary.atomic_outputs_consumed(),
+                direct.manifest().atomic_outputs_per_repetition
+            );
+            for family in C6ResidualAtomicFamily::ALL {
+                assert_eq!(
+                    folded_adjoint.family_folds()[repetition][family.index()],
+                    folded_adjoint.plan_family_folds()[repetition][family.index()]
+                        + folded_adjoint.direct_family_folds()[repetition][family.index()]
+                );
+                if !matches!(
+                    family,
+                    C6ResidualAtomicFamily::Affine | C6ResidualAtomicFamily::Reverse
+                ) {
+                    assert_eq!(
+                        folded_adjoint.plan_family_folds()[repetition][family.index()],
+                        Fp2::ZERO
+                    );
+                }
+            }
+        }
         let expected_fold = replayed
             .iter()
             .fold((Fp2::ZERO, Fp2::ONE), |(sum, power), value| {
@@ -12487,5 +12548,55 @@ mod tests {
                 terminal_relation.repetition_folds()[repetition]
             );
         }
+        let changed_leaf_point =
+            [fp2(193), fp2(197), fp2(199), fp2(211), fp2(223), fp2(227), fp2(229)];
+        let changed_point = compile_c6_residual_folded_terminal_adjoint_reference(
+            direct.operation_plan(),
+            direct.extraction(),
+            direct.runtime(),
+            direct.linear(),
+            direct.relation(),
+            [&changed_leaf_point, &leaf_point],
+            [&auxiliary_point, &auxiliary_point],
+            output_beta,
+        )
+        .unwrap();
+        assert_ne!(folded_adjoint.family_folds(), changed_point.family_folds());
+        assert_ne!(folded_adjoint.digest(), changed_point.digest());
+        let changed_beta = compile_c6_residual_folded_terminal_adjoint_reference(
+            direct.operation_plan(),
+            direct.extraction(),
+            direct.runtime(),
+            direct.linear(),
+            direct.relation(),
+            [&leaf_point, &leaf_point],
+            [&auxiliary_point, &auxiliary_point],
+            fp2(233),
+        )
+        .unwrap();
+        assert_ne!(folded_adjoint.fold(), changed_beta.fold());
+        assert_ne!(folded_adjoint.digest(), changed_beta.digest());
+        assert!(compile_c6_residual_folded_terminal_adjoint_reference(
+            legacy.operation_plan(),
+            legacy.extraction(),
+            legacy.runtime(),
+            legacy.linear(),
+            legacy.relation(),
+            [&leaf_point, &leaf_point],
+            [&auxiliary_point, &auxiliary_point],
+            output_beta,
+        )
+        .is_err());
+        assert!(compile_c6_residual_folded_terminal_adjoint_reference(
+            direct.operation_plan(),
+            direct.extraction(),
+            direct.runtime(),
+            direct.linear(),
+            direct.relation(),
+            [&leaf_point[..6], &leaf_point],
+            [&auxiliary_point, &auxiliary_point],
+            output_beta,
+        )
+        .is_err());
     }
 }

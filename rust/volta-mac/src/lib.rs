@@ -36,10 +36,10 @@ pub use c6_trace::{
     C6InstanceExtractionArtifact, C6InstanceExtractionCensus, C6InstanceExtractionRole,
     C6OperationPlanArtifact, C6OperationPlanDiagnostics, C6OperationPlanEncodingCensus,
     C6OperationPlanIdentity, C6OperationPlanInstanceIdentity,
-    C6OperationPlanSpecializedEncodingCensus, C6OperationPlanTopologyIdentity,
-    C6ProverTraceSnapshot, C6RuntimeInstanceCaptureGuard, C6RuntimeInstanceValues, C6TraceError,
-    C6TraceNode, C6TraceProductClosure, C6TraceSourceManifest, C6TraceToken,
-    C6VerifierTraceSnapshot, C6_OPERATION_PLAN_VERSION,
+    C6OperationPlanSpecializedEncodingCensus, C6OperationPlanTerminalMetadata,
+    C6OperationPlanTopologyIdentity, C6ProverTraceSnapshot, C6RuntimeInstanceCaptureGuard,
+    C6RuntimeInstanceValues, C6TraceError, C6TraceNode, C6TraceProductClosure,
+    C6TraceSourceManifest, C6TraceToken, C6VerifierTraceSnapshot, C6_OPERATION_PLAN_VERSION,
 };
 pub use corr::{
     C6FullfieldWitnessAudit, C6FullfieldWitnessDraw, C6SubfieldWitnessAudit, C6SubfieldWitnessDraw,

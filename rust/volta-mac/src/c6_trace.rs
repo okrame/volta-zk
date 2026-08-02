@@ -6,6 +6,7 @@
 //! not infer provenance from plaintexts, tags, keys, or addresses.
 
 use std::cell::RefCell;
+use std::collections::BTreeSet;
 use std::fmt;
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -34,6 +35,11 @@ const C6_INSTANCE_EXTRACTION_CODEC_VERSION: u32 = 1;
 const C6_INSTANCE_EXTRACTION_HEADER_BYTES: u64 = 120;
 const C6_INSTANCE_EXTRACTION_MAP_DOMAIN: &str =
     "volta/proto/c6/operation-plan/instance-extraction-map/v1";
+const C6_TERMINAL_METADATA_CODEC_MAGIC: &[u8; 8] = b"VC6TRM1\0";
+const C6_TERMINAL_METADATA_CODEC_VERSION: u32 = 1;
+const C6_TERMINAL_METADATA_HEADER_BYTES: u64 = 188;
+const C6_TERMINAL_METADATA_TRAILER_BYTES: u64 = 32;
+const C6_TERMINAL_METADATA_DOMAIN: &str = "volta/proto/c6/operation-plan/terminal-metadata/v1";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6TraceError(String);
@@ -962,6 +968,576 @@ impl C6InstalledProductClosure {
     pub fn mask(&self) -> u32 {
         self.mask
     }
+}
+
+/// Strict client-side projection of the terminal section of one canonical
+/// operation plan.
+///
+/// The complete ProductClosure operands, mask nodes and zero roots are
+/// needed to seed the C6TFA1 reverse recurrence.  They are authenticated by
+/// recomputing the canonical terminal-root digest and then the installed
+/// topology digest.  ProductMask source ordinals are checked against the
+/// separately installed source manifest rather than accepted from a
+/// response.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6OperationPlanTerminalMetadata {
+    operation_plan_artifact_digest: [u8; 32],
+    topology: C6OperationPlanTopologyIdentity,
+    topology_node_digest: [u8; 32],
+    terminal_root_digest: [u8; 32],
+    products: Vec<C6InstalledProductClosure>,
+    product_mask_sources: Vec<u32>,
+    zero_roots: Vec<u32>,
+    digest: [u8; 32],
+}
+
+impl C6OperationPlanTerminalMetadata {
+    pub fn from_installed(
+        operation_plan: &C6InstalledOperationPlan,
+        source_manifest: &C6TraceSourceManifest,
+    ) -> Result<Self, C6TraceError> {
+        validate_c6_terminal_source_manifest(operation_plan.topology(), source_manifest)?;
+        let topology_node_digest =
+            installed_c6_topology_node_digest(operation_plan, source_manifest)?;
+        let terminal_root_digest = c6_terminal_root_digest(
+            operation_plan.topology(),
+            operation_plan.products(),
+            operation_plan.zero_roots(),
+        )?;
+        validate_c6_terminal_topology_digest(
+            operation_plan.topology(),
+            topology_node_digest,
+            terminal_root_digest,
+        )?;
+        let mut metadata = Self {
+            operation_plan_artifact_digest: operation_plan.artifact_digest(),
+            topology: operation_plan.topology(),
+            topology_node_digest,
+            terminal_root_digest,
+            products: operation_plan.products().to_vec(),
+            product_mask_sources: source_manifest.product_mask_sources.clone(),
+            zero_roots: operation_plan.zero_roots().to_vec(),
+            digest: [0; 32],
+        };
+        metadata.digest = metadata.encoded_digest()?;
+        Ok(metadata)
+    }
+
+    pub fn decode(
+        bytes: &[u8],
+        expected_operation_plan_artifact_digest: [u8; 32],
+        expected_topology: C6OperationPlanTopologyIdentity,
+        source_manifest: &C6TraceSourceManifest,
+    ) -> Result<Self, C6TraceError> {
+        validate_c6_terminal_source_manifest(expected_topology, source_manifest)?;
+        let header_len = usize::try_from(C6_TERMINAL_METADATA_HEADER_BYTES)
+            .map_err(|_| C6TraceError::new("C6 terminal-metadata header exceeds usize"))?;
+        let header_bytes = bytes
+            .get(..header_len)
+            .ok_or_else(|| C6TraceError::new("truncated C6 terminal-metadata header"))?;
+        let mut header = C6ByteCursor::new(header_bytes);
+        if header.take(8)? != C6_TERMINAL_METADATA_CODEC_MAGIC
+            || header.u32()? != C6_TERMINAL_METADATA_CODEC_VERSION
+            || header.u32()? != 0
+        {
+            return Err(C6TraceError::new(
+                "wrong C6 terminal-metadata magic, version or reserved word",
+            ));
+        }
+        let operation_plan_artifact_digest = header.digest()?;
+        let topology = C6OperationPlanTopologyIdentity {
+            version: header.u32()?,
+            source_count: header.u32()?,
+            source_schedule_digest: header.digest()?,
+            canonical_node_count: header.u32()?,
+            public_input_count: header.u32()?,
+            scalar_input_count: header.u32()?,
+            product_closure_count: header.u32()?,
+            product_triple_count: header.u64()?,
+            zero_root_count: header.u32()?,
+            topology_digest: header.digest()?,
+        };
+        let topology_node_digest = header.digest()?;
+        let payload_bytes = header.u64()?;
+        if header.position != header_len
+            || operation_plan_artifact_digest != expected_operation_plan_artifact_digest
+            || topology != expected_topology
+            || topology_node_digest == [0; 32]
+        {
+            return Err(C6TraceError::new(
+                "C6 terminal-metadata header differs from installed plan binding",
+            ));
+        }
+        let expected_payload_bytes = c6_terminal_metadata_payload_bytes(topology)?;
+        let expected_total_bytes = C6_TERMINAL_METADATA_HEADER_BYTES
+            .checked_add(expected_payload_bytes)
+            .and_then(|value| value.checked_add(C6_TERMINAL_METADATA_TRAILER_BYTES))
+            .ok_or_else(|| C6TraceError::new("C6 terminal-metadata length overflows"))?;
+        if payload_bytes != expected_payload_bytes
+            || u64::try_from(bytes.len()).ok() != Some(expected_total_bytes)
+        {
+            return Err(C6TraceError::new("C6 terminal-metadata payload or total length mismatch"));
+        }
+
+        let payload_start = header_len;
+        let payload_end = payload_start
+            .checked_add(
+                usize::try_from(payload_bytes)
+                    .map_err(|_| C6TraceError::new("C6 terminal-metadata payload exceeds usize"))?,
+            )
+            .ok_or_else(|| C6TraceError::new("C6 terminal-metadata payload end overflows"))?;
+        let mut payload = C6ByteCursor::new(
+            bytes
+                .get(payload_start..payload_end)
+                .ok_or_else(|| C6TraceError::new("truncated C6 terminal-metadata payload"))?,
+        );
+        let mut products = Vec::new();
+        products
+            .try_reserve_exact(topology.product_closure_count as usize)
+            .map_err(|_| C6TraceError::new("C6 terminal-metadata closure allocation failed"))?;
+        let mut product_mask_sources = Vec::new();
+        product_mask_sources
+            .try_reserve_exact(topology.product_closure_count as usize)
+            .map_err(|_| C6TraceError::new("C6 terminal-metadata mask allocation failed"))?;
+        let mut decoded_triples = 0u64;
+        let mut mask_nodes = BTreeSet::new();
+        for closure in 0..topology.product_closure_count as usize {
+            let triple_count = payload.u32()?;
+            if triple_count == 0 {
+                return Err(C6TraceError::new("empty C6 terminal-metadata ProductClosure"));
+            }
+            decoded_triples = decoded_triples
+                .checked_add(u64::from(triple_count))
+                .ok_or_else(|| C6TraceError::new("C6 terminal-metadata triple count overflows"))?;
+            if decoded_triples > topology.product_triple_count {
+                return Err(C6TraceError::new(
+                    "C6 terminal-metadata triples exceed topology census",
+                ));
+            }
+            let mut triples = Vec::new();
+            triples
+                .try_reserve_exact(triple_count as usize)
+                .map_err(|_| C6TraceError::new("C6 terminal-metadata triple allocation failed"))?;
+            for _ in 0..triple_count {
+                let triple = [payload.u32()?, payload.u32()?, payload.u32()?];
+                if triple.iter().any(|node| *node >= topology.canonical_node_count) {
+                    return Err(C6TraceError::new(
+                        "C6 terminal-metadata product operand is outside the plan",
+                    ));
+                }
+                triples.push(triple);
+            }
+            let mask = payload.u32()?;
+            let mask_source = payload.u32()?;
+            if mask >= topology.canonical_node_count || !mask_nodes.insert(mask) {
+                return Err(C6TraceError::new(
+                    "C6 terminal-metadata ProductMask node is invalid or reused",
+                ));
+            }
+            if source_manifest.product_mask_sources.get(closure).copied() != Some(mask_source) {
+                return Err(C6TraceError::new(
+                    "C6 terminal-metadata ProductMask source differs from source manifest",
+                ));
+            }
+            products.push(C6InstalledProductClosure { triples, mask });
+            product_mask_sources.push(mask_source);
+        }
+        if decoded_triples != topology.product_triple_count {
+            return Err(C6TraceError::new(
+                "C6 terminal-metadata triple census differs from topology",
+            ));
+        }
+        if products
+            .iter()
+            .flat_map(|product| product.triples.iter().flatten())
+            .any(|node| mask_nodes.contains(node))
+        {
+            return Err(C6TraceError::new(
+                "C6 terminal-metadata ProductMask is used as a product operand",
+            ));
+        }
+        let mut zero_roots = Vec::new();
+        zero_roots
+            .try_reserve_exact(topology.zero_root_count as usize)
+            .map_err(|_| C6TraceError::new("C6 terminal-metadata zero-root allocation failed"))?;
+        for _ in 0..topology.zero_root_count {
+            let root = payload.u32()?;
+            if root >= topology.canonical_node_count || mask_nodes.contains(&root) {
+                return Err(C6TraceError::new(
+                    "C6 terminal-metadata zero root is invalid or a ProductMask",
+                ));
+            }
+            zero_roots.push(root);
+        }
+        if payload.position != payload.bytes.len() {
+            return Err(C6TraceError::new("trailing C6 terminal-metadata payload bytes"));
+        }
+        let claimed_digest: [u8; 32] = bytes
+            .get(payload_end..)
+            .and_then(|value| value.try_into().ok())
+            .ok_or_else(|| C6TraceError::new("truncated C6 terminal-metadata digest"))?;
+        let digest = c6_terminal_metadata_digest(&bytes[..payload_end]);
+        if digest != claimed_digest {
+            return Err(C6TraceError::new("C6 terminal-metadata digest mismatch"));
+        }
+        let terminal_root_digest = c6_terminal_root_digest(topology, &products, &zero_roots)?;
+        validate_c6_terminal_topology_digest(topology, topology_node_digest, terminal_root_digest)?;
+        let metadata = Self {
+            operation_plan_artifact_digest,
+            topology,
+            topology_node_digest,
+            terminal_root_digest,
+            products,
+            product_mask_sources,
+            zero_roots,
+            digest,
+        };
+        if metadata.encode()? != bytes {
+            return Err(C6TraceError::new("noncanonical C6 terminal-metadata artifact"));
+        }
+        Ok(metadata)
+    }
+
+    pub fn encode(&self) -> Result<Vec<u8>, C6TraceError> {
+        let payload_bytes = c6_terminal_metadata_payload_bytes(self.topology)?;
+        let total_bytes = C6_TERMINAL_METADATA_HEADER_BYTES
+            .checked_add(payload_bytes)
+            .and_then(|value| value.checked_add(C6_TERMINAL_METADATA_TRAILER_BYTES))
+            .ok_or_else(|| C6TraceError::new("C6 terminal-metadata length overflows"))?;
+        let mut bytes = Vec::new();
+        bytes
+            .try_reserve_exact(
+                usize::try_from(total_bytes)
+                    .map_err(|_| C6TraceError::new("C6 terminal-metadata length exceeds usize"))?,
+            )
+            .map_err(|_| C6TraceError::new("C6 terminal-metadata allocation failed"))?;
+        bytes.extend_from_slice(C6_TERMINAL_METADATA_CODEC_MAGIC);
+        bytes.extend_from_slice(&C6_TERMINAL_METADATA_CODEC_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&self.operation_plan_artifact_digest);
+        bytes.extend_from_slice(&self.topology.version.to_le_bytes());
+        bytes.extend_from_slice(&self.topology.source_count.to_le_bytes());
+        bytes.extend_from_slice(&self.topology.source_schedule_digest);
+        bytes.extend_from_slice(&self.topology.canonical_node_count.to_le_bytes());
+        bytes.extend_from_slice(&self.topology.public_input_count.to_le_bytes());
+        bytes.extend_from_slice(&self.topology.scalar_input_count.to_le_bytes());
+        bytes.extend_from_slice(&self.topology.product_closure_count.to_le_bytes());
+        bytes.extend_from_slice(&self.topology.product_triple_count.to_le_bytes());
+        bytes.extend_from_slice(&self.topology.zero_root_count.to_le_bytes());
+        bytes.extend_from_slice(&self.topology.topology_digest);
+        bytes.extend_from_slice(&self.topology_node_digest);
+        bytes.extend_from_slice(&payload_bytes.to_le_bytes());
+        if bytes.len() as u64 != C6_TERMINAL_METADATA_HEADER_BYTES
+            || self.products.len() != self.topology.product_closure_count as usize
+            || self.product_mask_sources.len() != self.products.len()
+            || self.zero_roots.len() != self.topology.zero_root_count as usize
+        {
+            return Err(C6TraceError::new(
+                "C6 terminal-metadata structure differs from topology census",
+            ));
+        }
+        let mut triples = 0u64;
+        for (product, mask_source) in self.products.iter().zip(&self.product_mask_sources) {
+            let triple_count = u32::try_from(product.triples.len()).map_err(|_| {
+                C6TraceError::new("C6 terminal-metadata closure length exceeds u32")
+            })?;
+            if triple_count == 0 {
+                return Err(C6TraceError::new("empty C6 terminal-metadata ProductClosure"));
+            }
+            triples = triples
+                .checked_add(u64::from(triple_count))
+                .ok_or_else(|| C6TraceError::new("C6 terminal-metadata triple count overflows"))?;
+            bytes.extend_from_slice(&triple_count.to_le_bytes());
+            for triple in &product.triples {
+                for node in triple {
+                    bytes.extend_from_slice(&node.to_le_bytes());
+                }
+            }
+            bytes.extend_from_slice(&product.mask.to_le_bytes());
+            bytes.extend_from_slice(&mask_source.to_le_bytes());
+        }
+        for root in &self.zero_roots {
+            bytes.extend_from_slice(&root.to_le_bytes());
+        }
+        if triples != self.topology.product_triple_count
+            || bytes.len() as u64 != C6_TERMINAL_METADATA_HEADER_BYTES + payload_bytes
+        {
+            return Err(C6TraceError::new(
+                "C6 terminal-metadata encoded payload differs from topology census",
+            ));
+        }
+        let digest = c6_terminal_metadata_digest(&bytes);
+        if self.digest != [0; 32] && self.digest != digest {
+            return Err(C6TraceError::new("C6 terminal-metadata stored digest mismatch"));
+        }
+        bytes.extend_from_slice(&digest);
+        Ok(bytes)
+    }
+
+    fn encoded_digest(&self) -> Result<[u8; 32], C6TraceError> {
+        let mut clone = self.clone();
+        clone.digest = [0; 32];
+        let bytes = clone.encode()?;
+        bytes
+            .get(bytes.len().saturating_sub(32)..)
+            .and_then(|value| value.try_into().ok())
+            .ok_or_else(|| C6TraceError::new("C6 terminal-metadata digest is missing"))
+    }
+
+    pub fn operation_plan_artifact_digest(&self) -> [u8; 32] {
+        self.operation_plan_artifact_digest
+    }
+
+    pub fn topology(&self) -> C6OperationPlanTopologyIdentity {
+        self.topology
+    }
+
+    pub fn topology_node_digest(&self) -> [u8; 32] {
+        self.topology_node_digest
+    }
+
+    pub fn terminal_root_digest(&self) -> [u8; 32] {
+        self.terminal_root_digest
+    }
+
+    pub fn products(&self) -> &[C6InstalledProductClosure] {
+        &self.products
+    }
+
+    pub fn product_mask_sources(&self) -> &[u32] {
+        &self.product_mask_sources
+    }
+
+    pub fn zero_roots(&self) -> &[u32] {
+        &self.zero_roots
+    }
+
+    pub fn digest(&self) -> [u8; 32] {
+        self.digest
+    }
+
+    pub fn encoded_len(&self) -> Result<u64, C6TraceError> {
+        C6_TERMINAL_METADATA_HEADER_BYTES
+            .checked_add(c6_terminal_metadata_payload_bytes(self.topology)?)
+            .and_then(|value| value.checked_add(C6_TERMINAL_METADATA_TRAILER_BYTES))
+            .ok_or_else(|| C6TraceError::new("C6 terminal-metadata length overflows"))
+    }
+}
+
+fn validate_c6_terminal_source_manifest(
+    topology: C6OperationPlanTopologyIdentity,
+    source_manifest: &C6TraceSourceManifest,
+) -> Result<(), C6TraceError> {
+    if source_manifest.source_count != topology.source_count
+        || source_manifest.source_schedule_digest != topology.source_schedule_digest
+        || source_manifest.product_mask_sources.len() != topology.product_closure_count as usize
+    {
+        return Err(C6TraceError::new(
+            "C6 terminal metadata source manifest differs from topology",
+        ));
+    }
+    let mut previous = None;
+    for &source in &source_manifest.product_mask_sources {
+        if source >= topology.source_count || previous.is_some_and(|value| source <= value) {
+            return Err(C6TraceError::new(
+                "C6 terminal metadata ProductMask sources are not canonical",
+            ));
+        }
+        previous = Some(source);
+    }
+    Ok(())
+}
+
+fn c6_terminal_metadata_payload_bytes(
+    topology: C6OperationPlanTopologyIdentity,
+) -> Result<u64, C6TraceError> {
+    u64::from(topology.product_closure_count)
+        .checked_mul(12)
+        .and_then(|value| value.checked_add(topology.product_triple_count.checked_mul(12)?))
+        .and_then(|value| value.checked_add(u64::from(topology.zero_root_count).checked_mul(4)?))
+        .ok_or_else(|| C6TraceError::new("C6 terminal-metadata payload length overflows"))
+}
+
+fn c6_terminal_metadata_digest(bytes: &[u8]) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new_derive_key(C6_TERMINAL_METADATA_DOMAIN);
+    hasher.update(bytes);
+    *hasher.finalize().as_bytes()
+}
+
+fn c6_terminal_root_digest(
+    topology: C6OperationPlanTopologyIdentity,
+    products: &[C6InstalledProductClosure],
+    zero_roots: &[u32],
+) -> Result<[u8; 32], C6TraceError> {
+    if products.len() != topology.product_closure_count as usize
+        || zero_roots.len() != topology.zero_root_count as usize
+    {
+        return Err(C6TraceError::new("C6 terminal-root arrays differ from topology census"));
+    }
+    let mut triples = 0u64;
+    let mut hasher = blake3::Hasher::new_derive_key(C6_OPERATION_ROOT_DOMAIN);
+    hasher.update(&topology.product_closure_count.to_le_bytes());
+    for (closure, product) in products.iter().enumerate() {
+        let triple_count = u64::try_from(product.triples.len())
+            .map_err(|_| C6TraceError::new("C6 terminal-root triple count exceeds u64"))?;
+        if triple_count == 0 {
+            return Err(C6TraceError::new("empty C6 terminal-root ProductClosure"));
+        }
+        triples = triples
+            .checked_add(triple_count)
+            .ok_or_else(|| C6TraceError::new("C6 terminal-root triple count overflows"))?;
+        hasher.update(&(closure as u64).to_le_bytes());
+        hasher.update(&triple_count.to_le_bytes());
+        for triple in &product.triples {
+            for node in triple {
+                if *node >= topology.canonical_node_count {
+                    return Err(C6TraceError::new(
+                        "C6 terminal-root product operand is outside the plan",
+                    ));
+                }
+                hasher.update(&node.to_le_bytes());
+            }
+        }
+        if product.mask >= topology.canonical_node_count {
+            return Err(C6TraceError::new("C6 terminal-root ProductMask is outside the plan"));
+        }
+        hasher.update(&product.mask.to_le_bytes());
+    }
+    if triples != topology.product_triple_count {
+        return Err(C6TraceError::new("C6 terminal-root triple census differs from topology"));
+    }
+    hasher.update(&topology.zero_root_count.to_le_bytes());
+    for root in zero_roots {
+        if *root >= topology.canonical_node_count {
+            return Err(C6TraceError::new("C6 terminal-root zero root is outside the plan"));
+        }
+        hasher.update(&root.to_le_bytes());
+    }
+    Ok(*hasher.finalize().as_bytes())
+}
+
+fn validate_c6_terminal_topology_digest(
+    topology: C6OperationPlanTopologyIdentity,
+    topology_node_digest: [u8; 32],
+    terminal_root_digest: [u8; 32],
+) -> Result<(), C6TraceError> {
+    let mut hasher = blake3::Hasher::new_derive_key(C6_OPERATION_TOPOLOGY_PLAN_DOMAIN);
+    hasher.update(&topology.version.to_le_bytes());
+    hasher.update(&topology.source_count.to_le_bytes());
+    hasher.update(&topology.source_schedule_digest);
+    hasher.update(&topology.canonical_node_count.to_le_bytes());
+    hasher.update(&topology.public_input_count.to_le_bytes());
+    hasher.update(&topology.scalar_input_count.to_le_bytes());
+    hasher.update(&topology.product_closure_count.to_le_bytes());
+    hasher.update(&topology.product_triple_count.to_le_bytes());
+    hasher.update(&topology.zero_root_count.to_le_bytes());
+    hasher.update(&topology_node_digest);
+    hasher.update(&terminal_root_digest);
+    if *hasher.finalize().as_bytes() != topology.topology_digest {
+        return Err(C6TraceError::new(
+            "C6 terminal metadata does not reconstruct the installed topology digest",
+        ));
+    }
+    Ok(())
+}
+
+fn installed_c6_topology_node_digest(
+    operation_plan: &C6InstalledOperationPlan,
+    source_manifest: &C6TraceSourceManifest,
+) -> Result<[u8; 32], C6TraceError> {
+    let topology = operation_plan.topology();
+    if operation_plan.operation_kinds().len() != topology.canonical_node_count as usize {
+        return Err(C6TraceError::new(
+            "C6 installed operation kinds differ from topology node census",
+        ));
+    }
+    let mut hasher = blake3::Hasher::new_derive_key(C6_OPERATION_TOPOLOGY_NODE_DOMAIN);
+    let mut source_cursor = 0usize;
+    let mut operand_cursor = 0usize;
+    let mut public_cursor = 0u32;
+    let mut scalar_cursor = 0u32;
+    let mut seen_sources = BTreeSet::new();
+    let mut mask_nodes = vec![None; source_manifest.product_mask_sources.len()];
+    for (canonical, kind) in operation_plan.operation_kinds().iter().copied().enumerate() {
+        let canonical = u32::try_from(canonical)
+            .map_err(|_| C6TraceError::new("C6 installed canonical node exceeds u32"))?;
+        hasher.update(&canonical.to_le_bytes());
+        hasher.update(&[kind as u8]);
+        match kind {
+            C6InstalledOperationKind::Source => {
+                let source = *operation_plan
+                    .source_ordinals()
+                    .get(source_cursor)
+                    .ok_or_else(|| C6TraceError::new("C6 installed source stream is truncated"))?;
+                source_cursor += 1;
+                if source >= topology.source_count || !seen_sources.insert(source) {
+                    return Err(C6TraceError::new(
+                        "C6 installed source ordinal is invalid or reused",
+                    ));
+                }
+                if let Ok(mask) = source_manifest.product_mask_sources.binary_search(&source) {
+                    if mask_nodes[mask].replace(canonical).is_some() {
+                        return Err(C6TraceError::new(
+                            "C6 installed ProductMask source appears more than once",
+                        ));
+                    }
+                }
+                hasher.update(&source.to_le_bytes());
+            }
+            C6InstalledOperationKind::StructuralZero => {}
+            C6InstalledOperationKind::PublicInput => {
+                hasher.update(&public_cursor.to_le_bytes());
+                public_cursor = public_cursor
+                    .checked_add(1)
+                    .ok_or_else(|| C6TraceError::new("C6 installed public cursor overflows"))?;
+            }
+            C6InstalledOperationKind::Add | C6InstalledOperationKind::Sub => {
+                let operands = operation_plan
+                    .operands()
+                    .get(operand_cursor..operand_cursor + 2)
+                    .ok_or_else(|| C6TraceError::new("C6 installed operand stream is truncated"))?;
+                operand_cursor += 2;
+                if operands.iter().any(|operand| *operand >= canonical) {
+                    return Err(C6TraceError::new(
+                        "C6 installed binary operand is not topological",
+                    ));
+                }
+                hasher.update(&operands[0].to_le_bytes());
+                hasher.update(&operands[1].to_le_bytes());
+            }
+            C6InstalledOperationKind::Scale => {
+                let operand = *operation_plan.operands().get(operand_cursor).ok_or_else(|| {
+                    C6TraceError::new("C6 installed scale operand stream is truncated")
+                })?;
+                operand_cursor += 1;
+                if operand >= canonical {
+                    return Err(C6TraceError::new("C6 installed scale operand is not topological"));
+                }
+                hasher.update(&operand.to_le_bytes());
+                hasher.update(&scalar_cursor.to_le_bytes());
+                scalar_cursor = scalar_cursor
+                    .checked_add(1)
+                    .ok_or_else(|| C6TraceError::new("C6 installed scalar cursor overflows"))?;
+            }
+        }
+    }
+    if source_cursor != operation_plan.source_ordinals().len()
+        || operand_cursor != operation_plan.operands().len()
+        || public_cursor != topology.public_input_count
+        || scalar_cursor != topology.scalar_input_count
+        || mask_nodes.iter().any(Option::is_none)
+        || operation_plan.products().len() != mask_nodes.len()
+        || operation_plan
+            .products()
+            .iter()
+            .zip(mask_nodes)
+            .any(|(product, mask)| Some(product.mask()) != mask)
+    {
+        return Err(C6TraceError::new(
+            "C6 installed topology-node cursors or ProductMask mapping differ",
+        ));
+    }
+    Ok(*hasher.finalize().as_bytes())
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -4320,6 +4896,56 @@ mod tests {
         assert_eq!(installed.products()[0].triples(), &[[3, 4, 0]]);
         assert_eq!(installed.products()[0].mask(), 5);
         assert_eq!(installed.zero_roots(), &[3]);
+        let terminal_metadata =
+            C6OperationPlanTerminalMetadata::from_installed(&installed, &manifest).unwrap();
+        assert_eq!(
+            terminal_metadata.topology_node_digest(),
+            normalized.diagnostics.topology_node_digest
+        );
+        assert_eq!(terminal_metadata.terminal_root_digest(), normalized.diagnostics.root_digest);
+        assert_eq!(terminal_metadata.product_mask_sources(), &[2]);
+        assert_eq!(terminal_metadata.products()[0].triples(), &[[3, 4, 0]]);
+        assert_eq!(terminal_metadata.zero_roots(), &[3]);
+        assert_eq!(terminal_metadata.encoded_len().unwrap(), 248);
+        let terminal_bytes = terminal_metadata.encode().unwrap();
+        assert_eq!(terminal_bytes.len(), 248);
+        assert_eq!(
+            C6OperationPlanTerminalMetadata::decode(
+                &terminal_bytes,
+                installed.artifact_digest(),
+                installed.topology(),
+                &manifest,
+            )
+            .unwrap(),
+            terminal_metadata
+        );
+        let reject_terminal = |mut bytes: Vec<u8>, mutate: fn(&mut Vec<u8>)| {
+            mutate(&mut bytes);
+            assert!(C6OperationPlanTerminalMetadata::decode(
+                &bytes,
+                installed.artifact_digest(),
+                installed.topology(),
+                &manifest,
+            )
+            .is_err());
+        };
+        reject_terminal(terminal_bytes.clone(), |bytes| bytes[0] ^= 1);
+        reject_terminal(terminal_bytes.clone(), |bytes| bytes[180] ^= 1);
+        reject_terminal(terminal_bytes.clone(), |bytes| bytes[188] = 0);
+        reject_terminal(terminal_bytes.clone(), |bytes| bytes[208] ^= 1);
+        reject_terminal(terminal_bytes.clone(), |bytes| bytes[216] ^= 1);
+        reject_terminal(terminal_bytes.clone(), |bytes| {
+            bytes.pop();
+        });
+        let wrong_manifest =
+            C6TraceSourceManifest::new(3, manifest.source_schedule_digest, vec![1]).unwrap();
+        assert!(C6OperationPlanTerminalMetadata::decode(
+            &terminal_bytes,
+            installed.artifact_digest(),
+            installed.topology(),
+            &wrong_manifest,
+        )
+        .is_err());
         let memory = installed.memory_census().unwrap();
         assert_eq!(memory.opcode_elements, u64::from(normalized.topology.canonical_node_count));
         assert_eq!(memory.source_elements, 3);

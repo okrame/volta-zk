@@ -96,6 +96,9 @@ const TERMINAL_FUNCTIONAL_RELATION_DOMAIN: &str =
     "volta-zk/c6/residual-terminal-functional-relation/v1";
 const FOLDED_TERMINAL_ADJOINT_REFERENCE_DOMAIN: &str =
     "volta-zk/c6/folded-terminal-adjoint-reference/v1";
+const FOLDED_TERMINAL_ADJOINT_LANE_REFERENCE_DOMAIN: &str =
+    "volta-zk/c6/folded-terminal-adjoint-lane-reference/v1";
+pub const C6_FOLDED_TERMINAL_ADJOINT_LOG2: u8 = 25;
 const TERMINAL_WEIGHT_STREAM_DOMAINS: [[[u64; 2]; 2]; 2] = [
     [
         [0xC6_54_45_52_4D_00_00_01, 0xC6_54_45_52_4D_00_00_02],
@@ -6803,6 +6806,84 @@ impl C6ResidualFoldedTerminalAdjointReference {
     }
 }
 
+/// Exact materialized reference for one of the two C6TFA1 D25 adjoint lanes.
+///
+/// `node_coefficients` is the unpadded prefix of the future D25 committed
+/// polynomial; the remaining rows are canonical zero.  This object is an
+/// executable recurrence oracle only.  Its hashes are diagnostic bindings,
+/// not a native proof or a PCS commitment.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualFoldedTerminalAdjointLaneReference {
+    proof_repetition: u8,
+    terminal_metadata_digest: C6ResidualDigest,
+    relation_challenges_digest: C6ResidualDigest,
+    leaf_point: Vec<Fp2>,
+    output_beta: Fp2,
+    rho_base: Fp2,
+    terminal_rhos: [Fp2; 4],
+    node_coefficients: Vec<Fp2>,
+    source_coefficients: Vec<Fp2>,
+    plan_fold: Fp2,
+    digest: C6ResidualDigest,
+}
+
+impl C6ResidualFoldedTerminalAdjointLaneReference {
+    pub fn proof_repetition(&self) -> u8 {
+        self.proof_repetition
+    }
+
+    pub fn terminal_metadata_digest(&self) -> C6ResidualDigest {
+        self.terminal_metadata_digest
+    }
+
+    pub fn node_domain_log2(&self) -> u8 {
+        C6_FOLDED_TERMINAL_ADJOINT_LOG2
+    }
+
+    pub fn node_coefficients(&self) -> &[Fp2] {
+        &self.node_coefficients
+    }
+
+    pub fn source_coefficients(&self) -> &[Fp2] {
+        &self.source_coefficients
+    }
+
+    pub fn plan_fold(&self) -> Fp2 {
+        self.plan_fold
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn validate(
+        &self,
+        operation_plan: &C6InstalledOperationPlan,
+        terminal_metadata: &C6OperationPlanTerminalMetadata,
+        extraction: &C6DecodedInstanceExtractionPlan,
+        runtime: &C6RuntimeInstanceValues,
+        challenges: &C6ResidualRelationChallenges,
+    ) -> C6ResidualResult<()> {
+        let expected = compile_c6_residual_folded_terminal_adjoint_lane_reference(
+            operation_plan,
+            terminal_metadata,
+            extraction,
+            runtime,
+            challenges,
+            self.proof_repetition,
+            &self.leaf_point,
+            self.output_beta,
+        )?;
+        if *self != expected {
+            return Err(C6ResidualError::new(
+                "C6TFA1 adjoint lane differs from its exact recurrence",
+            ));
+        }
+        Ok(())
+    }
+}
+
 struct C6FoldedTerminalAtomicCursor {
     stream: C6ResidualScheduleWeightStream,
     family_outputs: [u64; 8],
@@ -6985,7 +7066,7 @@ pub fn reduce_c6_residual_folded_terminal_direct(
     let expected_writes = expected_atomic_family_coefficient_writes(manifest)?;
     let family_starts = c6_residual_family_starts(expected_outputs)?;
     let mut beta_power = Fp2::ONE;
-    let beta_powers = std::array::from_fn(|_| {
+    let beta_powers: [Fp2; C6_RESIDUAL_TERMINAL_FUNCTIONALS] = std::array::from_fn(|_| {
         let current = beta_power;
         beta_power = beta_power * output_beta;
         current
@@ -7436,6 +7517,222 @@ pub fn reduce_c6_residual_folded_terminal_direct(
     hash_fp2(&mut hasher, reduction.fold);
     reduction.digest = *hasher.finalize().as_bytes();
     Ok(reduction)
+}
+
+/// Build one exact C6TFA1 reverse lane from the authenticated terminal
+/// projection and the direct-MLE challenge schedule.
+///
+/// The returned vector is a reference preimage for a future D25 polynomial
+/// commitment.  This function does not claim that its diagnostic digest
+/// proves the recurrence.
+#[allow(clippy::too_many_arguments)]
+pub fn compile_c6_residual_folded_terminal_adjoint_lane_reference(
+    operation_plan: &C6InstalledOperationPlan,
+    terminal_metadata: &C6OperationPlanTerminalMetadata,
+    extraction: &C6DecodedInstanceExtractionPlan,
+    runtime: &C6RuntimeInstanceValues,
+    challenges: &C6ResidualRelationChallenges,
+    proof_repetition: u8,
+    leaf_point: &[Fp2],
+    output_beta: Fp2,
+) -> C6ResidualResult<C6ResidualFoldedTerminalAdjointLaneReference> {
+    challenges.validate(operation_plan)?;
+    challenges.validate_terminal_metadata(terminal_metadata)?;
+    let manifest = challenges.manifest();
+    if challenges.protocol_version != RESIDUAL_RELATION_PROTOCOL_V4 {
+        return Err(C6ResidualError::new(
+            "C6TFA1 adjoint lane requires the direct-MLE C6RSC3-v4 schedule",
+        ));
+    }
+    if proof_repetition >= C6_RESIDUAL_PROOF_REPETITIONS {
+        return Err(C6ResidualError::new("C6TFA1 adjoint lane proof repetition is out of range"));
+    }
+    let node_capacity = 1u64
+        .checked_shl(u32::from(C6_FOLDED_TERMINAL_ADJOINT_LOG2))
+        .ok_or_else(|| C6ResidualError::new("C6TFA1 adjoint domain overflows"))?;
+    if u64::from(manifest.topology.canonical_node_count) > node_capacity
+        || leaf_point.len() != usize::from(manifest.leaf_log2)
+        || terminal_metadata.products() != operation_plan.products()
+        || terminal_metadata.zero_roots() != operation_plan.zero_roots()
+    {
+        return Err(C6ResidualError::new(
+            "C6TFA1 adjoint lane plan, metadata or point boundary mismatch",
+        ));
+    }
+
+    let mut beta_power = Fp2::ONE;
+    let beta_powers: [Fp2; C6_RESIDUAL_TERMINAL_FUNCTIONALS] = std::array::from_fn(|_| {
+        let current = beta_power;
+        beta_power = beta_power * output_beta;
+        current
+    });
+    let repetition = usize::from(proof_repetition);
+    let repetition_base = repetition * C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION;
+    let beta_at = |local_slot: usize| beta_powers[repetition_base + local_slot];
+    let family_outputs = expected_atomic_family_outputs(manifest)?;
+    let family_starts = c6_residual_family_starts(family_outputs)?;
+    let atomic_schedule = challenges.atomic_schedule(proof_repetition)?;
+    let atomic_point = atomic_schedule.direct_point.as_ref().ok_or_else(|| {
+        C6ResidualError::new("C6TFA1 adjoint lane is missing its direct atomic point")
+    })?;
+    let atomic_entries = 1u64
+        .checked_shl(u32::try_from(atomic_point.len()).map_err(|_| {
+            C6ResidualError::new("C6TFA1 adjoint atomic point dimension exceeds u32")
+        })?)
+        .ok_or_else(|| C6ResidualError::new("C6TFA1 adjoint atomic domain overflows"))?;
+    let mut atomic =
+        C6ResidualEqPointCursor::new(atomic_point, atomic_entries, "C6TFA1 adjoint atomic")?;
+
+    let affine_start = family_starts[C6ResidualAtomicFamily::Affine.index()];
+    let mut rho_base = Fp2::ZERO;
+    for coordinate in 0..2usize {
+        let (m_table, d_table) = if coordinate == 0 { (2usize, 3usize) } else { (5, 6) };
+        let ordinal = affine_start
+            .checked_add(2 * coordinate as u64)
+            .ok_or_else(|| C6ResidualError::new("C6TFA1 affine ordinal overflows"))?;
+        let d_weight = atomic.at(u32::try_from(ordinal)
+            .map_err(|_| C6ResidualError::new("C6TFA1 affine atomic ordinal exceeds u32"))?)?;
+        let m_weight = atomic.at(u32::try_from(ordinal + 1)
+            .map_err(|_| C6ResidualError::new("C6TFA1 affine atomic ordinal exceeds u32"))?)?;
+        rho_base += d_weight * beta_at(d_table) + m_weight * beta_at(m_table);
+    }
+
+    let reverse_start = family_starts[C6ResidualAtomicFamily::Reverse.index()];
+    let mut terminal_rhos = [Fp2::ZERO; 4];
+    for coordinate in 0..2u8 {
+        for kind in [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag] {
+            let form = usize::from(coordinate) * 2 + kind.stream_index();
+            let ordinal = reverse_start
+                .checked_add(form as u64)
+                .ok_or_else(|| C6ResidualError::new("C6TFA1 reverse ordinal overflows"))?;
+            let outer = atomic.at(u32::try_from(ordinal).map_err(|_| {
+                C6ResidualError::new("C6TFA1 reverse atomic ordinal exceeds u32")
+            })?)?;
+            let leaf_table = match kind {
+                C6ResidualTerminalFormKind::Plaintext => 0,
+                C6ResidualTerminalFormKind::Tag if coordinate == 0 => 2,
+                C6ResidualTerminalFormKind::Tag => 5,
+            };
+            terminal_rhos[form] = outer * beta_at(leaf_table);
+        }
+    }
+
+    let zero_weights =
+        challenges.base_share_context().retained.zero_weights(terminal_metadata.zero_roots().len());
+    let reverse = reverse_installed_linear_form(
+        operation_plan,
+        extraction,
+        runtime,
+        false,
+        |node_coefficients| {
+            for (&root, &weight) in terminal_metadata.zero_roots().iter().zip(&zero_weights) {
+                let coefficient = node_coefficients.get_mut(root as usize).ok_or_else(|| {
+                    C6ResidualError::new("C6TFA1 base zero root is outside the adjoint lane")
+                })?;
+                *coefficient += rho_base * weight;
+            }
+            for coordinate in 0..2u8 {
+                for kind in [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag]
+                {
+                    let form = usize::from(coordinate) * 2 + kind.stream_index();
+                    let rho = terminal_rhos[form];
+                    let schedule =
+                        challenges.terminal_schedule(proof_repetition, coordinate, kind)?;
+                    let mut triple_cursor = 0usize;
+                    for product in terminal_metadata.products() {
+                        for triple in product.triples() {
+                            let weights =
+                                *schedule.product_weights.get(triple_cursor).ok_or_else(|| {
+                                    C6ResidualError::new("C6TFA1 terminal weight stream is short")
+                                })?;
+                            triple_cursor += 1;
+                            for (node, weight) in triple.iter().zip(weights) {
+                                let coefficient =
+                                    node_coefficients.get_mut(*node as usize).ok_or_else(|| {
+                                        C6ResidualError::new(
+                                            "C6TFA1 product operand is outside the adjoint lane",
+                                        )
+                                    })?;
+                                *coefficient += rho * weight;
+                            }
+                        }
+                    }
+                    if triple_cursor != schedule.product_weights.len() {
+                        return Err(C6ResidualError::new(
+                            "C6TFA1 terminal weight stream has trailing triples",
+                        ));
+                    }
+                    for (&root, &weight) in
+                        terminal_metadata.zero_roots().iter().zip(&schedule.zero_weights)
+                    {
+                        let coefficient =
+                            node_coefficients.get_mut(root as usize).ok_or_else(|| {
+                                C6ResidualError::new(
+                                    "C6TFA1 terminal zero root is outside the adjoint lane",
+                                )
+                            })?;
+                        *coefficient += rho * weight;
+                    }
+                }
+            }
+            Ok(())
+        },
+    )?;
+    if reverse.product_mask_sources != terminal_metadata.product_mask_sources()
+        || reverse.node_coefficients.len() as u64
+            != u64::from(manifest.topology.canonical_node_count)
+        || reverse.leaf_coefficients.len() != manifest.topology.source_count as usize
+        || reverse.public_plaintext != Fp2::ZERO
+    {
+        return Err(C6ResidualError::new(
+            "C6TFA1 adjoint lane source or ProductMask boundary mismatch",
+        ));
+    }
+    let plan_fold = c6_folded_terminal_mle(
+        &reverse.leaf_coefficients,
+        leaf_point,
+        manifest.leaf_entries,
+        "native adjoint lane",
+    )?;
+    let mut lane = C6ResidualFoldedTerminalAdjointLaneReference {
+        proof_repetition,
+        terminal_metadata_digest: terminal_metadata.digest(),
+        relation_challenges_digest: challenges.digest(),
+        leaf_point: leaf_point.to_vec(),
+        output_beta,
+        rho_base,
+        terminal_rhos,
+        node_coefficients: reverse.node_coefficients,
+        source_coefficients: reverse.leaf_coefficients,
+        plan_fold,
+        digest: [0; 32],
+    };
+    let mut hasher = blake3::Hasher::new_derive_key(FOLDED_TERMINAL_ADJOINT_LANE_REFERENCE_DOMAIN);
+    hasher.update(&terminal_metadata.operation_plan_artifact_digest());
+    hasher.update(&terminal_metadata.topology().topology_digest);
+    hasher.update(&lane.terminal_metadata_digest);
+    hasher.update(&lane.relation_challenges_digest);
+    hasher.update(&[proof_repetition, C6_FOLDED_TERMINAL_ADJOINT_LOG2]);
+    hash_fp2(&mut hasher, output_beta);
+    hash_fp2(&mut hasher, rho_base);
+    for rho in lane.terminal_rhos {
+        hash_fp2(&mut hasher, rho);
+    }
+    hasher.update(&(lane.leaf_point.len() as u64).to_le_bytes());
+    for coordinate in &lane.leaf_point {
+        hash_fp2(&mut hasher, *coordinate);
+    }
+    hasher.update(&(lane.node_coefficients.len() as u64).to_le_bytes());
+    for coefficient in &lane.node_coefficients {
+        hash_fp2(&mut hasher, *coefficient);
+    }
+    hasher.update(&(lane.source_coefficients.len() as u64).to_le_bytes());
+    for coefficient in &lane.source_coefficients {
+        hash_fp2(&mut hasher, *coefficient);
+    }
+    hash_fp2(&mut hasher, plan_fold);
+    lane.digest = *hasher.finalize().as_bytes();
+    Ok(lane)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -8848,6 +9145,7 @@ fn post_root_challenges_digest(challenges: &C6ResidualPostRootChallenges) -> C6R
 struct C6ReverseInstalledLinearForm {
     topology: C6OperationPlanTopologyIdentity,
     instance: C6OperationPlanInstanceIdentity,
+    node_coefficients: Vec<Fp2>,
     leaf_coefficients: Vec<Fp2>,
     product_mask_sources: Vec<u32>,
     public_plaintext: Fp2,
@@ -9004,6 +9302,7 @@ fn reverse_installed_linear_form(
     Ok(C6ReverseInstalledLinearForm {
         topology,
         instance,
+        node_coefficients,
         leaf_coefficients,
         product_mask_sources,
         public_plaintext,
@@ -13584,6 +13883,58 @@ mod tests {
         )
         .unwrap();
         assert!(terminal_metadata.encoded_len().unwrap() < 1_000);
+        let adjoint_lanes: [C6ResidualFoldedTerminalAdjointLaneReference;
+            C6_RESIDUAL_PROOF_REPETITIONS as usize] = std::array::from_fn(|repetition| {
+            compile_c6_residual_folded_terminal_adjoint_lane_reference(
+                direct.operation_plan(),
+                &terminal_metadata,
+                direct.extraction(),
+                direct.runtime(),
+                direct.relation(),
+                repetition as u8,
+                &leaf_point,
+                output_beta,
+            )
+            .unwrap()
+        });
+        for (repetition, lane) in adjoint_lanes.iter().enumerate() {
+            lane.validate(
+                direct.operation_plan(),
+                &terminal_metadata,
+                direct.extraction(),
+                direct.runtime(),
+                direct.relation(),
+            )
+            .unwrap();
+            assert_eq!(lane.node_domain_log2(), 25);
+            assert_eq!(
+                lane.node_coefficients().len(),
+                direct.operation_plan().topology().canonical_node_count as usize
+            );
+            assert_eq!(
+                lane.source_coefficients().len(),
+                direct.manifest().topology.source_count as usize
+            );
+            assert_eq!(
+                lane.plan_fold(),
+                folded_adjoint.plan_family_folds()[repetition]
+                    [C6ResidualAtomicFamily::Affine.index()]
+                    + folded_adjoint.plan_family_folds()[repetition]
+                        [C6ResidualAtomicFamily::Reverse.index()]
+            );
+            assert_ne!(lane.digest(), [0; 32]);
+        }
+        let mut changed_lane = adjoint_lanes[0].clone();
+        changed_lane.node_coefficients[0] += Fp2::ONE;
+        assert!(changed_lane
+            .validate(
+                direct.operation_plan(),
+                &terminal_metadata,
+                direct.extraction(),
+                direct.runtime(),
+                direct.relation(),
+            )
+            .is_err());
         let direct_reduction = reduce_c6_residual_folded_terminal_direct(
             &terminal_metadata,
             direct.relation(),

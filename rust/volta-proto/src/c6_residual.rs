@@ -85,6 +85,8 @@ const PUBLIC_CLAIMS_DOMAIN: &str = "volta-zk/c6/residual-public-claims/v1";
 const RELATION_CONTEXT_DOMAIN: &str = "volta-zk/c6/residual-relation-context/v3";
 const RELATION_CHALLENGES_DOMAIN: &str = "volta-zk/c6/residual-relation-challenges/v3";
 const RELATION_CHALLENGES_DOMAIN_V4: &str = "volta-zk/c6/residual-relation-challenges/v4";
+const FOLDED_TERMINAL_SPARSE_RATIONAL_REFERENCE_DOMAIN: &str =
+    "volta-zk/c6/folded-terminal-sparse-rational-reference/v1";
 const ATOMIC_WEIGHT_SCHEDULE_DOMAIN: &str = "volta-zk/c6/residual-atomic-weight-schedule/v1";
 const ATOMIC_WEIGHT_SCHEDULE_DOMAIN_V4: &str = "volta-zk/c6/residual-atomic-weight-schedule/v4";
 const ATOMIC_EVENT_COMPLETION_DOMAIN: &str = "volta-zk/c6/residual-atomic-event-completion/v1";
@@ -7735,6 +7737,485 @@ pub fn compile_c6_residual_folded_terminal_adjoint_lane_reference(
     Ok(lane)
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6ResidualSparseRationalChallenges {
+    lane_batch: Fp2,
+    recurrence: Fp2,
+    runtime_gather: Fp2,
+    source_gather: Fp2,
+    digest: C6ResidualDigest,
+}
+
+impl C6ResidualSparseRationalChallenges {
+    pub fn new(
+        topology: C6OperationPlanTopologyIdentity,
+        lane_batch: Fp2,
+        recurrence: Fp2,
+        runtime_gather: Fp2,
+        source_gather: Fp2,
+    ) -> C6ResidualResult<Self> {
+        let has_pole = |challenge: Fp2, entries: u64| {
+            challenge.c1 == Fp::ZERO && challenge.c0.value() < entries
+        };
+        if has_pole(recurrence, u64::from(topology.canonical_node_count))
+            || has_pole(runtime_gather, u64::from(topology.scalar_input_count))
+            || has_pole(source_gather, u64::from(topology.source_count))
+        {
+            return Err(C6ResidualError::new(
+                "C6SPR1 rational challenge hits an active embedded index",
+            ));
+        }
+        let mut hasher =
+            blake3::Hasher::new_derive_key("volta-zk/c6/sparse-rational-challenges/v1");
+        hasher.update(&topology.topology_digest);
+        hasher.update(&topology.canonical_node_count.to_le_bytes());
+        hasher.update(&topology.source_count.to_le_bytes());
+        hasher.update(&topology.scalar_input_count.to_le_bytes());
+        for challenge in [lane_batch, recurrence, runtime_gather, source_gather] {
+            hash_fp2(&mut hasher, challenge);
+        }
+        Ok(Self {
+            lane_batch,
+            recurrence,
+            runtime_gather,
+            source_gather,
+            digest: *hasher.finalize().as_bytes(),
+        })
+    }
+
+    pub fn lane_batch(&self) -> Fp2 {
+        self.lane_batch
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualSparseRationalRelationReference {
+    terminal_metadata_digest: C6ResidualDigest,
+    relation_challenges_digest: C6ResidualDigest,
+    sparse_challenges: C6ResidualSparseRationalChallenges,
+    output_beta: Fp2,
+    combined_nodes: Vec<Fp2>,
+    combined_injection: Vec<Fp2>,
+    node_scale_values: Vec<Fp2>,
+    combined_sources: Vec<Fp2>,
+    recurrence_terms: [Fp2; 3],
+    runtime_gather_terms: [Fp2; 2],
+    source_gather_terms: [Fp2; 2],
+    digest: C6ResidualDigest,
+}
+
+impl C6ResidualSparseRationalRelationReference {
+    pub fn recurrence_residual(&self) -> Fp2 {
+        self.recurrence_terms[0] - self.recurrence_terms[1] - self.recurrence_terms[2]
+    }
+
+    pub fn runtime_gather_residual(&self) -> Fp2 {
+        self.runtime_gather_terms[0] - self.runtime_gather_terms[1]
+    }
+
+    pub fn source_gather_residual(&self) -> Fp2 {
+        self.source_gather_terms[0] - self.source_gather_terms[1]
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn validate(
+        &self,
+        operation_plan: &C6InstalledOperationPlan,
+        terminal_metadata: &C6OperationPlanTerminalMetadata,
+        extraction: &C6DecodedInstanceExtractionPlan,
+        runtime: &C6RuntimeInstanceValues,
+        relation_challenges: &C6ResidualRelationChallenges,
+        lanes: [&C6ResidualFoldedTerminalAdjointLaneReference;
+            C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    ) -> C6ResidualResult<()> {
+        let expected = compile_c6_residual_sparse_rational_relation_reference(
+            operation_plan,
+            terminal_metadata,
+            extraction,
+            runtime,
+            relation_challenges,
+            lanes,
+            self.sparse_challenges,
+            self.output_beta,
+        )?;
+        if *self != expected {
+            return Err(C6ResidualError::new(
+                "C6SPR1 reference differs from the exact sparse rational relation",
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn c6_sparse_rational_denominator(challenge: Fp2, index: u32) -> Fp2 {
+    challenge - Fp2::from_base(Fp::new(u64::from(index)))
+}
+
+fn compile_c6_residual_folded_terminal_injection_reference(
+    terminal_metadata: &C6OperationPlanTerminalMetadata,
+    challenges: &C6ResidualRelationChallenges,
+    proof_repetition: u8,
+    output_beta: Fp2,
+) -> C6ResidualResult<(Fp2, [Fp2; 4], Vec<Fp2>)> {
+    let topology = terminal_metadata.topology();
+    let mut beta_power = Fp2::ONE;
+    let beta_powers: [Fp2; C6_RESIDUAL_TERMINAL_FUNCTIONALS] = std::array::from_fn(|_| {
+        let current = beta_power;
+        beta_power = beta_power * output_beta;
+        current
+    });
+    let repetition = usize::from(proof_repetition);
+    let repetition_base = repetition * C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION;
+    let beta_at = |local_slot: usize| beta_powers[repetition_base + local_slot];
+    let family_outputs = expected_atomic_family_outputs(challenges.manifest())?;
+    let family_starts = c6_residual_family_starts(family_outputs)?;
+    let atomic_schedule = challenges.atomic_schedule(proof_repetition)?;
+    let atomic_point = atomic_schedule.direct_point.as_ref().ok_or_else(|| {
+        C6ResidualError::new("C6SPR1 injection is missing its direct atomic point")
+    })?;
+    let atomic_entries = 1u64
+        .checked_shl(
+            u32::try_from(atomic_point.len())
+                .map_err(|_| C6ResidualError::new("C6SPR1 atomic point dimension exceeds u32"))?,
+        )
+        .ok_or_else(|| C6ResidualError::new("C6SPR1 atomic domain overflows"))?;
+    let mut atomic = C6ResidualEqPointCursor::new(
+        atomic_point,
+        atomic_entries,
+        "C6SPR1 adjoint injection atomic",
+    )?;
+
+    let affine_start = family_starts[C6ResidualAtomicFamily::Affine.index()];
+    let mut rho_base = Fp2::ZERO;
+    for coordinate in 0..2usize {
+        let (m_table, d_table) = if coordinate == 0 { (2usize, 3usize) } else { (5, 6) };
+        let ordinal = affine_start
+            .checked_add(2 * coordinate as u64)
+            .ok_or_else(|| C6ResidualError::new("C6SPR1 affine ordinal overflows"))?;
+        let d_weight = atomic.at(u32::try_from(ordinal)
+            .map_err(|_| C6ResidualError::new("C6SPR1 affine ordinal exceeds u32"))?)?;
+        let m_weight = atomic.at(u32::try_from(ordinal + 1)
+            .map_err(|_| C6ResidualError::new("C6SPR1 affine ordinal exceeds u32"))?)?;
+        rho_base += d_weight * beta_at(d_table) + m_weight * beta_at(m_table);
+    }
+
+    let reverse_start = family_starts[C6ResidualAtomicFamily::Reverse.index()];
+    let mut terminal_rhos = [Fp2::ZERO; 4];
+    for coordinate in 0..2u8 {
+        for kind in [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag] {
+            let form = usize::from(coordinate) * 2 + kind.stream_index();
+            let ordinal = reverse_start
+                .checked_add(form as u64)
+                .ok_or_else(|| C6ResidualError::new("C6SPR1 reverse ordinal overflows"))?;
+            let outer = atomic.at(u32::try_from(ordinal)
+                .map_err(|_| C6ResidualError::new("C6SPR1 reverse ordinal exceeds u32"))?)?;
+            let leaf_table = match kind {
+                C6ResidualTerminalFormKind::Plaintext => 0,
+                C6ResidualTerminalFormKind::Tag if coordinate == 0 => 2,
+                C6ResidualTerminalFormKind::Tag => 5,
+            };
+            terminal_rhos[form] = outer * beta_at(leaf_table);
+        }
+    }
+
+    let mut injection = try_zeroed_fp2_vec(
+        topology.canonical_node_count as usize,
+        "C6SPR1 sparse injection reference",
+    )?;
+    let zero_weights =
+        challenges.base_share_context().retained.zero_weights(terminal_metadata.zero_roots().len());
+    for (&root, &weight) in terminal_metadata.zero_roots().iter().zip(&zero_weights) {
+        injection[root as usize] += rho_base * weight;
+    }
+    for coordinate in 0..2u8 {
+        for kind in [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag] {
+            let form = usize::from(coordinate) * 2 + kind.stream_index();
+            let schedule = challenges.terminal_schedule(proof_repetition, coordinate, kind)?;
+            let mut triple_cursor = 0usize;
+            for product in terminal_metadata.products() {
+                for triple in product.triples() {
+                    let weights =
+                        *schedule.product_weights.get(triple_cursor).ok_or_else(|| {
+                            C6ResidualError::new("C6SPR1 terminal weight stream is short")
+                        })?;
+                    triple_cursor += 1;
+                    for (&node, &weight) in triple.iter().zip(&weights) {
+                        injection[node as usize] += terminal_rhos[form] * weight;
+                    }
+                }
+            }
+            if triple_cursor != schedule.product_weights.len() {
+                return Err(C6ResidualError::new(
+                    "C6SPR1 terminal weight stream has trailing triples",
+                ));
+            }
+            for (&root, &weight) in
+                terminal_metadata.zero_roots().iter().zip(&schedule.zero_weights)
+            {
+                injection[root as usize] += terminal_rhos[form] * weight;
+            }
+        }
+    }
+    Ok((rho_base, terminal_rhos, injection))
+}
+
+/// Materialize the exact C6SPR1 rational identities as a scaled reference.
+///
+/// This is an independent arithmetic oracle for the future seven-subcheck
+/// GKR proof.  Its digest and materialized vectors are diagnostic only.
+#[allow(clippy::too_many_arguments)]
+pub fn compile_c6_residual_sparse_rational_relation_reference(
+    operation_plan: &C6InstalledOperationPlan,
+    terminal_metadata: &C6OperationPlanTerminalMetadata,
+    extraction: &C6DecodedInstanceExtractionPlan,
+    runtime: &C6RuntimeInstanceValues,
+    relation_challenges: &C6ResidualRelationChallenges,
+    lanes: [&C6ResidualFoldedTerminalAdjointLaneReference; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    sparse_challenges: C6ResidualSparseRationalChallenges,
+    output_beta: Fp2,
+) -> C6ResidualResult<C6ResidualSparseRationalRelationReference> {
+    relation_challenges.validate(operation_plan)?;
+    relation_challenges.validate_terminal_metadata(terminal_metadata)?;
+    let topology = operation_plan.topology();
+    if relation_challenges.manifest().production_geometry {
+        return Err(C6ResidualError::new("C6SPR1 materialized rational reference is scaled-only"));
+    }
+    if terminal_metadata.topology() != topology
+        || sparse_challenges
+            != C6ResidualSparseRationalChallenges::new(
+                topology,
+                sparse_challenges.lane_batch,
+                sparse_challenges.recurrence,
+                sparse_challenges.runtime_gather,
+                sparse_challenges.source_gather,
+            )?
+        || lanes[0].proof_repetition != 0
+        || lanes[1].proof_repetition != 1
+        || lanes.iter().any(|lane| {
+            lane.terminal_metadata_digest != terminal_metadata.digest()
+                || lane.relation_challenges_digest != relation_challenges.digest()
+                || lane.output_beta != output_beta
+                || lane.node_coefficients.len() != topology.canonical_node_count as usize
+                || lane.source_coefficients.len() != topology.source_count as usize
+        })
+    {
+        return Err(C6ResidualError::new(
+            "C6SPR1 plan, lane, challenge or metadata boundary mismatch",
+        ));
+    }
+
+    let zeta = sparse_challenges.lane_batch;
+    let combined_nodes: Vec<Fp2> = lanes[0]
+        .node_coefficients
+        .iter()
+        .zip(&lanes[1].node_coefficients)
+        .map(|(&left, &right)| left + zeta * right)
+        .collect();
+    let combined_sources: Vec<Fp2> = lanes[0]
+        .source_coefficients
+        .iter()
+        .zip(&lanes[1].source_coefficients)
+        .map(|(&left, &right)| left + zeta * right)
+        .collect();
+    let mut injections = Vec::with_capacity(C6_RESIDUAL_PROOF_REPETITIONS as usize);
+    for repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
+        let (rho_base, terminal_rhos, injection) =
+            compile_c6_residual_folded_terminal_injection_reference(
+                terminal_metadata,
+                relation_challenges,
+                repetition,
+                output_beta,
+            )?;
+        let lane = lanes[usize::from(repetition)];
+        if lane.rho_base != rho_base || lane.terminal_rhos != terminal_rhos {
+            return Err(C6ResidualError::new(
+                "C6SPR1 independently derived injection scalars differ from the lane",
+            ));
+        }
+        injections.push(injection);
+    }
+    let combined_injection: Vec<Fp2> = injections[0]
+        .iter()
+        .zip(&injections[1])
+        .map(|(&left, &right)| left + zeta * right)
+        .collect();
+
+    let mut node_scale_values = try_zeroed_fp2_vec(
+        topology.canonical_node_count as usize,
+        "C6SPR1 node-aligned runtime reference",
+    )?;
+    let mut dense_residual: Vec<Fp2> =
+        combined_nodes.iter().zip(&combined_injection).map(|(&node, &seed)| node - seed).collect();
+    let mut recurrence_anchor = Fp2::ZERO;
+    for (index, (&node, &seed)) in combined_nodes.iter().zip(&combined_injection).enumerate() {
+        recurrence_anchor += (node - seed)
+            * c6_sparse_rational_denominator(sparse_challenges.recurrence, index as u32).inv();
+    }
+    let mut recurrence_linear = Fp2::ZERO;
+    let mut recurrence_scale = Fp2::ZERO;
+    let mut runtime_plan = Fp2::ZERO;
+    let mut source_plan = Fp2::ZERO;
+    let mut source_cursor = 0usize;
+    let mut operand_cursor = 0usize;
+    let mut scalar_cursor = 0u32;
+    for (canonical, &kind) in operation_plan.operation_kinds().iter().enumerate() {
+        let coefficient = combined_nodes[canonical];
+        match kind {
+            C6InstalledOperationKind::Source => {
+                let source = *operation_plan
+                    .source_ordinals()
+                    .get(source_cursor)
+                    .ok_or_else(|| C6ResidualError::new("C6SPR1 source stream is truncated"))?;
+                source_cursor += 1;
+                source_plan += coefficient
+                    * c6_sparse_rational_denominator(sparse_challenges.source_gather, source).inv();
+            }
+            C6InstalledOperationKind::StructuralZero | C6InstalledOperationKind::PublicInput => {}
+            C6InstalledOperationKind::Add | C6InstalledOperationKind::Sub => {
+                let operands = operation_plan
+                    .operands()
+                    .get(operand_cursor..operand_cursor + 2)
+                    .ok_or_else(|| C6ResidualError::new("C6SPR1 operand stream is truncated"))?;
+                operand_cursor += 2;
+                let lhs = operands[0] as usize;
+                let rhs = operands[1] as usize;
+                dense_residual[lhs] = dense_residual[lhs] - coefficient;
+                recurrence_linear += coefficient
+                    * c6_sparse_rational_denominator(sparse_challenges.recurrence, operands[0])
+                        .inv();
+                let rhs_coefficient = if kind == C6InstalledOperationKind::Add {
+                    coefficient
+                } else {
+                    Fp2::ZERO - coefficient
+                };
+                dense_residual[rhs] = dense_residual[rhs] - rhs_coefficient;
+                recurrence_linear += rhs_coefficient
+                    * c6_sparse_rational_denominator(sparse_challenges.recurrence, operands[1])
+                        .inv();
+            }
+            C6InstalledOperationKind::Scale => {
+                let operand = *operation_plan.operands().get(operand_cursor).ok_or_else(|| {
+                    C6ResidualError::new("C6SPR1 Scale operand stream is truncated")
+                })?;
+                operand_cursor += 1;
+                let scalar = runtime
+                    .scalar_value(extraction, scalar_cursor)
+                    .map_err(|error| C6ResidualError::new(error.to_string()))?;
+                node_scale_values[canonical] = scalar;
+                let contribution = coefficient * scalar;
+                dense_residual[operand as usize] = dense_residual[operand as usize] - contribution;
+                recurrence_scale += contribution
+                    * c6_sparse_rational_denominator(sparse_challenges.recurrence, operand).inv();
+                runtime_plan += scalar
+                    * c6_sparse_rational_denominator(
+                        sparse_challenges.runtime_gather,
+                        scalar_cursor,
+                    )
+                    .inv();
+                scalar_cursor = scalar_cursor
+                    .checked_add(1)
+                    .ok_or_else(|| C6ResidualError::new("C6SPR1 scalar cursor overflows"))?;
+            }
+        }
+    }
+    if source_cursor != operation_plan.source_ordinals().len()
+        || operand_cursor != operation_plan.operands().len()
+        || scalar_cursor != topology.scalar_input_count
+        || dense_residual.iter().any(|value| *value != Fp2::ZERO)
+    {
+        return Err(C6ResidualError::new(
+            "C6SPR1 exact recurrence or installed-plan cursors do not close",
+        ));
+    }
+    let dense_rational =
+        dense_residual.iter().enumerate().fold(Fp2::ZERO, |sum, (index, &value)| {
+            sum + value
+                * c6_sparse_rational_denominator(sparse_challenges.recurrence, index as u32).inv()
+        });
+    let recurrence_terms = [recurrence_anchor, recurrence_linear, recurrence_scale];
+    if recurrence_anchor - recurrence_linear - recurrence_scale != dense_rational {
+        return Err(C6ResidualError::new(
+            "C6SPR1 rational recurrence differs from the dense residual",
+        ));
+    }
+
+    let mut runtime_table = Fp2::ZERO;
+    for scalar in 0..topology.scalar_input_count {
+        let value = runtime
+            .scalar_value(extraction, scalar)
+            .map_err(|error| C6ResidualError::new(error.to_string()))?;
+        runtime_table +=
+            value * c6_sparse_rational_denominator(sparse_challenges.runtime_gather, scalar).inv();
+    }
+    let runtime_gather_terms = [runtime_plan, runtime_table];
+    if runtime_plan != runtime_table {
+        return Err(C6ResidualError::new("C6SPR1 canonical runtime gather does not close"));
+    }
+
+    let source_boundary =
+        combined_sources.iter().enumerate().fold(Fp2::ZERO, |sum, (source, &value)| {
+            sum + value
+                * c6_sparse_rational_denominator(sparse_challenges.source_gather, source as u32)
+                    .inv()
+        });
+    let source_gather_terms = [source_boundary, source_plan];
+    if source_boundary != source_plan {
+        return Err(C6ResidualError::new("C6SPR1 exact source gather does not close"));
+    }
+
+    let mut reference = C6ResidualSparseRationalRelationReference {
+        terminal_metadata_digest: terminal_metadata.digest(),
+        relation_challenges_digest: relation_challenges.digest(),
+        sparse_challenges,
+        output_beta,
+        combined_nodes,
+        combined_injection,
+        node_scale_values,
+        combined_sources,
+        recurrence_terms,
+        runtime_gather_terms,
+        source_gather_terms,
+        digest: [0; 32],
+    };
+    let mut hasher =
+        blake3::Hasher::new_derive_key(FOLDED_TERMINAL_SPARSE_RATIONAL_REFERENCE_DOMAIN);
+    hasher.update(&operation_plan.artifact_digest());
+    hasher.update(&topology.topology_digest);
+    hasher.update(&reference.terminal_metadata_digest);
+    hasher.update(&reference.relation_challenges_digest);
+    hasher.update(&reference.sparse_challenges.digest);
+    hash_fp2(&mut hasher, output_beta);
+    for values in [
+        &reference.combined_nodes,
+        &reference.combined_injection,
+        &reference.node_scale_values,
+        &reference.combined_sources,
+    ] {
+        hasher.update(&(values.len() as u64).to_le_bytes());
+        for &value in values {
+            hash_fp2(&mut hasher, value);
+        }
+    }
+    for value in reference
+        .recurrence_terms
+        .into_iter()
+        .chain(reference.runtime_gather_terms)
+        .chain(reference.source_gather_terms)
+    {
+        hash_fp2(&mut hasher, value);
+    }
+    reference.digest = *hasher.finalize().as_bytes();
+    Ok(reference)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn compile_c6_residual_folded_terminal_adjoint_reference(
     operation_plan: &C6InstalledOperationPlan,
@@ -13924,6 +14405,103 @@ mod tests {
             );
             assert_ne!(lane.digest(), [0; 32]);
         }
+        let sparse_challenges = C6ResidualSparseRationalChallenges::new(
+            topology,
+            Fp2::new(fp(197), fp(1)),
+            Fp2::new(fp(199), fp(2)),
+            Fp2::new(fp(211), fp(3)),
+            Fp2::new(fp(223), fp(4)),
+        )
+        .unwrap();
+        let sparse_relation = compile_c6_residual_sparse_rational_relation_reference(
+            direct.operation_plan(),
+            &terminal_metadata,
+            direct.extraction(),
+            direct.runtime(),
+            direct.relation(),
+            [&adjoint_lanes[0], &adjoint_lanes[1]],
+            sparse_challenges,
+            output_beta,
+        )
+        .unwrap();
+        assert_eq!(sparse_relation.recurrence_residual(), Fp2::ZERO);
+        assert_eq!(sparse_relation.runtime_gather_residual(), Fp2::ZERO);
+        assert_eq!(sparse_relation.source_gather_residual(), Fp2::ZERO);
+        assert_ne!(sparse_relation.digest(), [0; 32]);
+        sparse_relation
+            .validate(
+                direct.operation_plan(),
+                &terminal_metadata,
+                direct.extraction(),
+                direct.runtime(),
+                direct.relation(),
+                [&adjoint_lanes[0], &adjoint_lanes[1]],
+            )
+            .unwrap();
+
+        let mut changed_sparse_relation = sparse_relation.clone();
+        changed_sparse_relation.combined_injection[0] += Fp2::ONE;
+        assert!(changed_sparse_relation
+            .validate(
+                direct.operation_plan(),
+                &terminal_metadata,
+                direct.extraction(),
+                direct.runtime(),
+                direct.relation(),
+                [&adjoint_lanes[0], &adjoint_lanes[1]],
+            )
+            .is_err());
+        let scale_node = direct
+            .operation_plan()
+            .operation_kinds()
+            .iter()
+            .position(|kind| *kind == C6InstalledOperationKind::Scale)
+            .unwrap();
+        let mut changed_runtime_gather = sparse_relation.clone();
+        changed_runtime_gather.node_scale_values[scale_node] += Fp2::ONE;
+        assert!(changed_runtime_gather
+            .validate(
+                direct.operation_plan(),
+                &terminal_metadata,
+                direct.extraction(),
+                direct.runtime(),
+                direct.relation(),
+                [&adjoint_lanes[0], &adjoint_lanes[1]],
+            )
+            .is_err());
+        let mut changed_source_gather = sparse_relation.clone();
+        changed_source_gather.combined_sources[0] += Fp2::ONE;
+        assert!(changed_source_gather
+            .validate(
+                direct.operation_plan(),
+                &terminal_metadata,
+                direct.extraction(),
+                direct.runtime(),
+                direct.relation(),
+                [&adjoint_lanes[0], &adjoint_lanes[1]],
+            )
+            .is_err());
+        let mut inconsistent_lane = adjoint_lanes[0].clone();
+        inconsistent_lane.node_coefficients[0] += Fp2::ONE;
+        assert!(compile_c6_residual_sparse_rational_relation_reference(
+            direct.operation_plan(),
+            &terminal_metadata,
+            direct.extraction(),
+            direct.runtime(),
+            direct.relation(),
+            [&inconsistent_lane, &adjoint_lanes[1]],
+            sparse_challenges,
+            output_beta,
+        )
+        .is_err());
+        assert!(C6ResidualSparseRationalChallenges::new(
+            topology,
+            Fp2::ONE,
+            Fp2::ZERO,
+            Fp2::new(fp(227), fp(1)),
+            Fp2::new(fp(229), fp(1)),
+        )
+        .is_err());
         let mut changed_lane = adjoint_lanes[0].clone();
         changed_lane.node_coefficients[0] += Fp2::ONE;
         assert!(changed_lane
@@ -14062,5 +14640,87 @@ mod tests {
             output_beta,
         )
         .is_err());
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn sparse_rational_relation_matches_exact_lanes_and_rejects_mutations() {
+        let direct = build_c6_residual_direct_fused_scaled_fixture().unwrap();
+        let topology = direct.operation_plan().topology();
+        let source_manifest = C6TraceSourceManifest::new(
+            topology.source_count,
+            topology.source_schedule_digest,
+            direct.manifest().product_mask_sources().to_vec(),
+        )
+        .unwrap();
+        let terminal_metadata = C6OperationPlanTerminalMetadata::from_installed(
+            direct.operation_plan(),
+            &source_manifest,
+        )
+        .unwrap();
+        let leaf_point = [Fp2::ZERO, Fp2::ONE, fp2(2), fp2(3), fp2(5), fp2(7), fp2(11)];
+        let output_beta = fp2(191);
+        let lanes: [C6ResidualFoldedTerminalAdjointLaneReference;
+            C6_RESIDUAL_PROOF_REPETITIONS as usize] = std::array::from_fn(|repetition| {
+            compile_c6_residual_folded_terminal_adjoint_lane_reference(
+                direct.operation_plan(),
+                &terminal_metadata,
+                direct.extraction(),
+                direct.runtime(),
+                direct.relation(),
+                repetition as u8,
+                &leaf_point,
+                output_beta,
+            )
+            .unwrap()
+        });
+        let challenges = C6ResidualSparseRationalChallenges::new(
+            topology,
+            Fp2::new(fp(197), fp(1)),
+            Fp2::new(fp(199), fp(2)),
+            Fp2::new(fp(211), fp(3)),
+            Fp2::new(fp(223), fp(4)),
+        )
+        .unwrap();
+        let relation = compile_c6_residual_sparse_rational_relation_reference(
+            direct.operation_plan(),
+            &terminal_metadata,
+            direct.extraction(),
+            direct.runtime(),
+            direct.relation(),
+            [&lanes[0], &lanes[1]],
+            challenges,
+            output_beta,
+        )
+        .unwrap();
+        assert_eq!(relation.recurrence_residual(), Fp2::ZERO);
+        assert_eq!(relation.runtime_gather_residual(), Fp2::ZERO);
+        assert_eq!(relation.source_gather_residual(), Fp2::ZERO);
+
+        let mut changed_lane = lanes[0].clone();
+        changed_lane.node_coefficients[0] += Fp2::ONE;
+        assert!(compile_c6_residual_sparse_rational_relation_reference(
+            direct.operation_plan(),
+            &terminal_metadata,
+            direct.extraction(),
+            direct.runtime(),
+            direct.relation(),
+            [&changed_lane, &lanes[1]],
+            challenges,
+            output_beta,
+        )
+        .is_err());
+        let mut changed_boundary = relation.clone();
+        changed_boundary.combined_sources[0] += Fp2::ONE;
+        assert!(changed_boundary
+            .validate(
+                direct.operation_plan(),
+                &terminal_metadata,
+                direct.extraction(),
+                direct.runtime(),
+                direct.relation(),
+                [&lanes[0], &lanes[1]],
+            )
+            .is_err());
     }
 }

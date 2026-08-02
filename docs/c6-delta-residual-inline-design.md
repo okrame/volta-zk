@@ -2387,6 +2387,68 @@ root, then closed through the claimless PCS and compiler statement.  No
 derived numerator/denominator digest, inverse commitment, edge witness or pod
 contact is authorized.
 
+### 0.31 C6SPR2 prechallenge mu binding and packed multi-oracle amendment
+
+The C6SPR1 differential exposed a challenge-order omission before PCS work.
+Its clear verifier reconstructs `mu[j]` from the complete runtime, but the
+registered production statement neither committed `mu` nor made it a
+deterministic verifier input before `gamma` and `tau`.  The two rational
+equalities alone do not repair this: after seeing those challenges, a
+malicious provider has many node-aligned `mu` vectors satisfying two scalar
+equations.  Treating the final `mu(s)` as an unauthenticated GKR input would
+therefore invalidate the registered rational-numerator bound.
+
+`C6SPR2-v1` closes that gap by fixing `mu` in the response commitment before
+`zeta`, `gamma`, `tau` and `delta`.  It does not add a fifth logical response
+oracle.  One D27 polynomial packs four D25 blocks in this exact order:
+
+```text
+block 0  lambda_0
+block 1  lambda_1
+block 2  runtime[D24] || g_0[D23] || g_1[D23]
+block 3  mu, zero on every non-Scale and padded row
+```
+
+The provider-global D27 plan polynomial independently packs
+`opcode || lhs || rhs || zero`, with one D25 block per column.  Both roots are
+fixed before the GKR-derived opening points.  After the seven fraction trees
+are reduced and their leaf equations are jointly batched to one D25 point
+`s`, the response root has six ordered openings: `lambda_0(s)`,
+`lambda_1(s)`, `mu(s)`, runtime at `s[0..24]`, and the two source boundaries
+at `s[0..23]`.  Their D27 points append the canonical block/sub-block selector
+bits.  The fixed plan root has the three ordered `opcode(s), lhs(s), rhs(s)`
+openings.  Zero-extension selector factors are applied in the leaf equation;
+they are not provider claims.
+
+Each of the two independent compiler chains must batch the response and plan
+roots in one claimless multi-oracle protocol with shared WHIR rounds.  A pair
+of independent D27 strict ceilings is **2,170,928 B**, leaving **329,072 B**
+inside each unchanged **2,500,000-B** compiler-chain cap.  The joint
+fraction-tree/leaf-reduction codec remains charged to the separate unchanged
+**500,000-B** arithmetic/MAC/link cap.  The existing `127/|Fp2|` ordered-
+opening batching screen dominates the nine input claims, so the complete
+**102.5878333635-bit** soundness screen is unchanged.  This shared-round
+multi-oracle path is a requirement, not evidence supplied by the current
+single-polynomial fork.
+
+The packed response contains **134,217,728 Fp2 = 2,147,483,648 B** and is
+committed and released before the rational workspace.  It is below the state
+cap by **145,715,200 B**; the later **2,277,715,552-B** rational peak remains
+the controlling screen with **15,483,296 B** headroom.  Moving from three to
+four response D25 transform equivalents raises compiler transform traffic to
+**21,474,836,480 B** and the provider roof to **14.9087128542 s**, leaving
+only **0.0912871458 s**.  Certificate, setup plus first and verifier screens
+remain **18,342,103 B**, **103,085,470 B** and **4.965672390 s**.  These are
+budget-v16 screens with every credit false.
+
+The active local **HARD STOP** is now
+`C6SPR2_SCALED_PACKING_AND_TYPED_MULTI_ORACLE_DIFFERENTIAL_REQUIRED`.
+Implementation must first prove the exact two D27 layouts, prechallenge root
+order, nine ordered point mappings and root/point/layout mutation rejection;
+then it may extend the claimless fork with shared rounds.  A free `mu` input,
+separate unbudgeted WHIR chains, digest-only binding, committed inverse/edge
+columns or pod contact is forbidden.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

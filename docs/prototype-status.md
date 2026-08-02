@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — C6SPR1 SCALED GKR DIFFERENTIAL GREEN / TYPED OPENING HARD STOP / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — C6SPR2 COMMITTED-MU SELECTED / PACKING DIFFERENTIAL HARD STOP / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -13,7 +13,7 @@ milestone/design checkpoint.  The material below is append-only evidence and
 cannot authorize resuming an older C6.1 branch.
 
 - **Phase/design.** C6.1 response-local public compression. Read this, then
-  design §0.30, *C6SPR1 scaled weighted-fraction differential*.
+  design §0.31, *C6SPR2 prechallenge mu binding*.
 - **Relation.** The 64 C6RSC3 values are challenge-dependent. `C6TFA1-v1`
   exactly factors them into two D25 reverse lanes plus an eight-family direct
   reducer. Fixed-node mapping, D28 event table and digest substitutes are
@@ -22,20 +22,19 @@ cannot authorize resuming an older C6.1 branch.
   and leaves **2,370,570 B** after the **5,320,386-B** extraction map. The
   direct reducer consumes it; exact D25 lane/source-boundary references match
   `Affine + Reverse`, but are diagnostic preimages, not proofs.
-- **Construction.** `C6SPR1-v1` uses a fixed `(opcode,lhs,rhs)` D27 plan
-  oracle and seven weighted fraction-tree GKR sums. The scaled differential
-  is green for all identities, roots, batching and `0/1` padding mutations;
-  inverse/edge columns are never committed.
+- **Construction.** C6SPR1's free-`mu` ordering was unsound. `C6SPR2-v1`
+  packs lanes, boundary/runtime and `mu` under one prechallenge D27 root;
+  the fixed three-column plan has a second D27 root. Shared-round
+  multi-oracle opening is mandatory; inverse/edge columns remain forbidden.
 - **Screens, no credit.** Certificate **18,342,103 B**; setup **84,743,367 B**;
   first exchange **103,085,470 B**; state **2,277,715,552 B**; roofs
-  **14.7062654062 / 4.965672390 s**; relation `44,650,006/|Fp2|` and complete
+  **14.9087128542 / 4.965672390 s**; relation `44,650,006/|Fp2|` and complete
   soundness **102.5878333635 bits**. All full-chain credits are **false**.
 - **Checks.** Workspace PCS **199/0/1**, proto **152/0/1**; trace proto
-  **175/0/1**; budget v15 green.
-- **HARD STOP.** `C6SPR1_TYPED_MULTI_ORACLE_CLAIMLESS_OPENING_REQUIRED`.
-- **Resume.** Reduce derived leaf claims to typed lane, boundary, runtime and
-  fixed-plan openings, then close them through claimless PCS and the compiler
-  statement. No result has backend/full-chain credit.
+  **175/0/1**; budget v16 green.
+- **HARD STOP.** `C6SPR2_SCALED_PACKING_AND_TYPED_MULTI_ORACLE_DIFFERENTIAL_REQUIRED`.
+- **Resume.** Implement both D27 layouts, prechallenge order and nine typed
+  point mappings; then extend shared-round claimless PCS. No backend credit.
 - **Authorization.** No pod. No diagnostic reference or screen is full-chain
   evidence.
 
@@ -873,6 +872,7 @@ its clean descendant closure.
 | C6.1 terminal projection and D25 lane oracle | **STRICT 309,044-B TERMINAL METADATA + TWO EXACT LANE REFERENCES GREEN; SPARSE APPLICATION / SOURCE GATHER BACKEND HARD STOP; NO POD** (2026-08-02) | Project the terminal plan section into authenticated setup state; derive the actual challenge-dependent injection; materialize exact D25 recurrence/source-boundary oracles without claiming a digest as proof | `VC6TRM1` contains a **188-B** header, **308,824-B** fixed-width terminal payload and **32-B** canonical digest. It binds the plan artifact, source manifest and topology-node digest, recomputes every ProductClosure/zero-root terminal root and then the installed topology digest. The direct reducer now consumes this projection rather than the complete plan. It uses **309,044 B** inside the existing 8-MB allocation, leaving **2,370,570 B** after the extraction map, so setup remains **84,743,367 B**. Each scaled lane derives the five exact `rho` scalars, matches the independent `Affine + Reverse` plan fold, reconstructs source order including absent scheduled zeros and rejects an adjoint mutation. The full default workspace is green at PCS **199/0/1** and proto **151/0/1**; full `volta-mac c6-trace` is **36/0/0 + 5/0/0** and proto is **172/0/1**. The lane vector hash is explicitly diagnostic. Claimless WHIR and its Eq/Next/Select constraints do not express arbitrary operand scatter/gather or the source-ordinal lookup, so `lambda=q+A(runtime)^T lambda` is not yet a native proof. Budget v13 preserves all byte/time/state/soundness screens with credit false. |
 | C6.1 C6SPR1 rational-memory preregistration | **SEVEN-SUBCHECK RATIONAL GKR SELECTED; PRE-CODE SCREENS GREEN; SCALED DIFFERENTIAL HARD STOP; NO POD** (2026-08-02) | Authenticate recurrence, runtime lookup and exact source gather from committed lanes/boundaries without fixed terminal nodes, committed edge vectors or committed inverse columns | A provider-global D27 oracle packs only `(opcode,lhs,rhs)` and a strict **512-B** client frame. Lanes, D23 boundaries and canonical runtime commit before fresh lane batching. Three recurrence, two runtime-map and two source-gather rational sums share internal wires and use product-tree batch-inversion GKR; claimless openings bind only response inputs and the fixed plan oracle. The exact relation charge is **44,650,006/|Fp2|**; complete/session screens are **102.5878333635 / 98.5003705223 bits**. Compiler chain ceilings become **2,500,000 B** each, giving certificate/setup-plus-first **18,342,103 / 103,085,470 B**. State is **2,277,715,552 B**; provider/verifier roofs are **14.7062654062 / 4.965672390 s**. All are v14 pre-code screens with credit false. Next requires the scaled seven-identity differential and typed multi-oracle claimless connection. |
 | C6.1 C6SPR1 scaled weighted-fraction differential | **ALL SEVEN RATIONAL GKR SUBCHECKS GREEN; TYPED MULTI-ORACLE CLAIMLESS OPENING HARD STOP; NO POD** (2026-08-02) | Execute the exact challenge-dependent lane recurrence, canonical Scale lookup and source gather with internal fraction trees and neutral padding | The exact rational oracle independently rebuilds both terminal injections from `VC6TRM1`, batches the two D25 lanes and D23 boundaries only after `zeta`, and closes all seven registered sums. A new arbitrary-Fp2 fraction-tree reference represents every inactive row as `0/1`; Add/Sub use one row fraction with the two operand denominators multiplied internally, so no edge or inverse column is committed. Every one of the seven root mutations and seven padding mutations rejects; changed recurrence/runtime/source witnesses, lane batching and rational poles also reject. The default workspace is green at PCS **199/0/1** and proto **152/0/1**; full proto `c6-trace` is **175/0/1**, with LogUp **20/0/0**. This remains clear/scaled component evidence: leaf MLE claims are checked against materialized vectors, not authenticated PCS openings. Budget v15 preserves certificate/setup-first/state/roof/soundness screens at **18,342,103 B / 103,085,470 B / 2,277,715,552 B / 14.7062654062 s / 4.965672390 s / 102.5878333635 bits**, all `credit:false`. |
+| C6.1 C6SPR2 committed-mu amendment | **CHALLENGE-ADAPTIVE MU GAP CLOSED IN DESIGN; TWO D27 PACKINGS + SHARED-ROUND MULTI-ORACLE DIFFERENTIAL HARD STOP; NO POD** (2026-08-02) | Bind the node-aligned Scale witness before every lane/rational challenge without adding inverse or edge columns | C6SPR1 reconstructed `mu` only in the clear verifier; its production statement left `mu` free after `gamma/tau`, invalidating the rational discrepancy bound. C6SPR2 packs `lambda_0`, `lambda_1`, `runtime||g_0||g_1` and `mu` into one response D27 root fixed before `zeta,gamma,tau,delta`; the fixed plan root packs `opcode||lhs||rhs||0`. One shared-round compiler chain must open six ordered response points and three plan points. Two independent D27 ceilings total **2,170,928 B**, leaving **329,072 B** per unchanged 2.5-MB chain. The packed response is **2,147,483,648 B**, below the state cap by **145,715,200 B** and scheduled before the controlling **2,277,715,552-B** rational peak. Four response transform equivalents raise traffic to **21,474,836,480 B** and the provider roof to **14.9087128542 s**, leaving **0.0912871458 s**. Certificate/setup-first/verifier/soundness remain **18,342,103 B / 103,085,470 B / 4.965672390 s / 102.5878333635 bits**. All are v16 screens with `credit:false`; implementation evidence is still required. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -947,6 +947,24 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-08-02 — C6SPR1's uncommitted `mu` is challenge-adaptive;
+  C6SPR2 binds it.**  The scaled verifier derived the node-aligned Scale
+  values from a full runtime vector, but the planned production verifier had
+  neither that vector-to-node map nor a pre-`gamma/tau` `mu` commitment.
+  Accepting a free final GKR evaluation would let the provider choose among
+  many `mu` vectors after the rational challenges and would invalidate the
+  registered numerator-degree soundness argument.
+
+  C6SPR2 fills a fourth D25 block under one response D27 root with `mu`; the
+  other blocks contain both lanes and the exact boundary/runtime packing.
+  The root is fixed before `zeta,gamma,tau,delta` and later batches with the
+  fixed three-column plan root in one shared-round multi-oracle compiler
+  chain.  Budget v16 charges the extra transform: the provider roof becomes
+  **14.9087128542 s**, with only **0.0912871458 s** screen headroom.  All other
+  registered caps remain green and all credits false.  Exact packing,
+  ordering and shared-round PCS differentials are the new hard stop; no pod
+  was contacted.
 
 - **2026-08-02 — C6SPR1 scaled differential closes; authentication does
   not.**  The exact challenge-dependent two-lane relation now feeds seven

@@ -160,15 +160,23 @@ C61_FOLDED_DIRECT_TOTAL_ROWS_AND_TERMS = (
     + C61_FOLDED_DIRECT_EXPLICIT_TERMS
 )
 
-# C6SPR1-v1 uses a three-column provider-global plan oracle and response-local
-# lane/boundary/runtime commitments.  Its scaled seven-sum weighted
-# fraction-tree differential is green; typed claimless input openings remain
-# required.  No edge-domain witness or inverse column is committed.
+# C6SPR2-v1 retains the three-column provider-global plan oracle and packs
+# lanes, boundary/runtime and the node-aligned mu witness into four D25 blocks
+# under one response D27 root.  Fixing that root before the rational
+# challenges closes C6SPR1's challenge-adaptive-mu gap.  No edge-domain
+# witness or inverse column is committed.
 C61_SPARSE_RATIONAL_PLAN_COLUMNS = 3
 C61_SPARSE_RATIONAL_PLAN_DOMAIN_LOG2 = 27
-C61_SPARSE_RATIONAL_RESPONSE_DOMAIN_EQUIVALENT_D25_VECTORS = 3
+C61_SPARSE_RATIONAL_RESPONSE_DOMAIN_EQUIVALENT_D25_VECTORS = 4
 C61_SPARSE_RATIONAL_SUBCHECKS = 7
 C61_SPARSE_RATIONAL_CLIENT_PARAMETER_FRAME_BYTES = 512
+C61_SPARSE_RATIONAL_RESPONSE_BUNDLE_FP2_ELEMENTS = (
+    C61_SPARSE_RATIONAL_RESPONSE_DOMAIN_EQUIVALENT_D25_VECTORS
+    * 2**C61_NODE_LOG2
+)
+C61_SPARSE_RATIONAL_RESPONSE_BUNDLE_BYTES = (
+    C61_SPARSE_RATIONAL_RESPONSE_BUNDLE_FP2_ELEMENTS * c6.FP2_BYTES
+)
 C61_SPARSE_RATIONAL_RECURRENCE_ACTIVE_ROWS = (
     C61_CANONICAL_NODE_COUNT + C61_SPARSE_OPERAND_COUNT
 )
@@ -482,6 +490,11 @@ def build_report() -> dict[str, Any]:
 
     d28_known_chain_bytes = C61_NATIVE_D28_PCS_STRICT_MAX_BYTES
     d27_known_chain_bytes = C61_NATIVE_D27_PCS_STRICT_MAX_BYTES
+    compiler_two_d27_independent_ceiling_bytes = 2 * d27_known_chain_bytes
+    compiler_chain_slack_after_two_d27_bytes = (
+        C61_NATIVE_COMPILER_CHAIN_CODEC_MAX_BYTES
+        - compiler_two_d27_independent_ceiling_bytes
+    )
     native_projected_certificate_bytes = (
         active_fixed_remainder_bytes + C61_NATIVE_PUBLIC_ARGUMENT_CODEC_MAX_BYTES
     )
@@ -563,7 +576,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v15",
+        "profile": "C6.1-public-compression-reference-v16",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
@@ -575,7 +588,8 @@ def build_report() -> dict[str, Any]:
             "TERMINAL_METADATA_AND_EXACT_D25_LANE_REFERENCES_GREEN__"
             "C6SPR1_RATIONAL_GKR_PREREGISTERED__"
             "SCALED_RATIONAL_GKR_DIFFERENTIAL_GREEN__"
-            "TYPED_MULTI_ORACLE_CLAIMLESS_OPENING_REQUIRED__"
+            "CHALLENGE_ADAPTIVE_MU_OBSTRUCTION_CLOSED__"
+            "PACKED_MULTI_ORACLE_DIFFERENTIAL_REQUIRED__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
@@ -652,7 +666,8 @@ def build_report() -> dict[str, Any]:
                 "TERMINAL_METADATA_AND_EXACT_D25_LANE_REFERENCES_GREEN__"
                 "C6SPR1_RATIONAL_GKR_PREREGISTERED__"
                 "SCALED_RATIONAL_GKR_DIFFERENTIAL_GREEN__"
-                "TYPED_MULTI_ORACLE_CLAIMLESS_OPENING_REQUIRED__"
+                "CHALLENGE_ADAPTIVE_MU_OBSTRUCTION_CLOSED__"
+                "PACKED_MULTI_ORACLE_DIFFERENTIAL_REQUIRED__"
                 "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
             "statement": (
@@ -969,6 +984,12 @@ def build_report() -> dict[str, Any]:
                 "compiler_chain_codec_ceiling_bytes": (
                     C61_NATIVE_COMPILER_CHAIN_CODEC_MAX_BYTES
                 ),
+                "two_independent_d27_opening_ceiling_bytes": (
+                    compiler_two_d27_independent_ceiling_bytes
+                ),
+                "compiler_chain_slack_after_two_d27_bytes": (
+                    compiler_chain_slack_after_two_d27_bytes
+                ),
                 "compiler_chain_count": C61_NATIVE_CHAINS_PER_COMPONENT,
                 "arithmetic_mac_link_framing_ceiling_bytes": (
                     C61_NATIVE_ARITHMETIC_AND_LINK_CODEC_MAX_BYTES
@@ -995,7 +1016,20 @@ def build_report() -> dict[str, Any]:
                 "credit": False,
             },
             "ephemeral_provider_state_screen": {
-                "schedule": "two active recurrence buffers plus canonical runtime",
+                "schedule": (
+                    "commit and release one packed response D27 before two active "
+                    "recurrence buffers plus canonical runtime"
+                ),
+                "packed_response_d27_fp2_elements": (
+                    C61_SPARSE_RATIONAL_RESPONSE_BUNDLE_FP2_ELEMENTS
+                ),
+                "packed_response_d27_bytes": (
+                    C61_SPARSE_RATIONAL_RESPONSE_BUNDLE_BYTES
+                ),
+                "packed_response_headroom_bytes": (
+                    C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES
+                    - C61_SPARSE_RATIONAL_RESPONSE_BUNDLE_BYTES
+                ),
                 "active_recurrence_rows_per_buffer": (
                     C61_SPARSE_RATIONAL_RECURRENCE_ACTIVE_ROWS
                 ),
@@ -1008,6 +1042,8 @@ def build_report() -> dict[str, Any]:
                 ),
                 "screen_pass": (
                     provider_state_bytes <= C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES
+                    and C61_SPARSE_RATIONAL_RESPONSE_BUNDLE_BYTES
+                    <= C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES
                 ),
                 "persistent": False,
                 "credit": False,
@@ -1149,7 +1185,7 @@ def build_report() -> dict[str, Any]:
                 ),
             },
             "local_hard_stop": {
-                "status": "C6SPR1_TYPED_MULTI_ORACLE_CLAIMLESS_OPENING_REQUIRED",
+                "status": "C6SPR2_SCALED_PACKING_AND_TYPED_MULTI_ORACLE_DIFFERENTIAL_REQUIRED",
                 "canonical_runtime_seam_green": True,
                 "raw_verifier_runtime_values": raw_verifier_runtime_values,
                 "canonical_runtime_values": canonical_runtime_values,
@@ -1231,19 +1267,21 @@ def build_report() -> dict[str, Any]:
                     "credit": False,
                 },
                 "preregistered_sparse_backend": {
-                    "name": "C6SPR1-v1 rational-memory GKR",
+                    "name": "C6SPR2-v1 committed-mu rational-memory GKR",
                     "plan_oracle_columns": ["opcode", "lhs_or_source", "rhs_or_scalar"],
                     "plan_oracle_domain_log2": C61_SPARSE_RATIONAL_PLAN_DOMAIN_LOG2,
                     "plan_oracle_client_parameter_frame_bytes": (
                         C61_SPARSE_RATIONAL_CLIENT_PARAMETER_FRAME_BYTES
                     ),
                     "response_commitments_fixed_before_lane_batch": [
-                        "lane_0_D25",
+                        "one_D27_root_packing_lane_0_D25",
                         "lane_1_D25",
-                        "source_boundary_0_D23",
-                        "source_boundary_1_D23",
-                        "canonical_runtime_D24",
+                        "source_boundary_0_D23_plus_source_boundary_1_D23_plus_canonical_runtime_D24",
+                        "node_aligned_mu_D25",
                     ],
+                    "mu_fixed_before_lane_and_rational_challenges": True,
+                    "fixed_plan_D27_root_batched_in_same_compiler_chain": True,
+                    "multi_oracle_shared_rounds_required": True,
                     "rational_subchecks": C61_SPARSE_RATIONAL_SUBCHECKS,
                     "inverse_columns_committed": 0,
                     "edge_domain_witness_committed": False,
@@ -1289,8 +1327,9 @@ def build_report() -> dict[str, Any]:
                     ),
                 },
                 "required_before_resume": [
-                    "reduce every derived weighted leaf claim to the committed lane, boundary, runtime and fixed plan inputs",
-                    "connect those typed input claims to multi-oracle claimless openings without committed inverse or edge columns",
+                    "implement and differentially test the exact four-block response and three-column plan D27 packings",
+                    "bind both roots and their ordered derived points in one typed shared-round multi-oracle compiler chain",
+                    "reduce every weighted leaf claim to those openings without committed inverse or edge columns",
                 ],
                 "credit": False,
             },
@@ -1517,11 +1556,20 @@ def build_report() -> dict[str, Any]:
         == C61_NATIVE_CLAIMLESS_D14_DIAGNOSTIC_BYTES
     )
     assert C61_NATIVE_PUBLIC_ARGUMENT_CODEC_MAX_BYTES == 11_500_000
+    assert compiler_two_d27_independent_ceiling_bytes == 2_170_928
+    assert compiler_chain_slack_after_two_d27_bytes == 329_072
     assert native_projected_certificate_bytes == 18_342_103
     assert C61_CERTIFICATE_MAX_BYTES - native_projected_certificate_bytes == 3_657_896
     assert native_projected_first_response_bytes == 103_085_470
     assert provider_state_elements == 142_357_222
     assert provider_state_bytes == 2_277_715_552
+    assert C61_SPARSE_RATIONAL_RESPONSE_BUNDLE_FP2_ELEMENTS == 134_217_728
+    assert C61_SPARSE_RATIONAL_RESPONSE_BUNDLE_BYTES == 2_147_483_648
+    assert (
+        C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES
+        - C61_SPARSE_RATIONAL_RESPONSE_BUNDLE_BYTES
+        == 145_715_200
+    )
     assert C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES == 2_293_198_848
     assert C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES - provider_state_bytes == 15_483_296
     assert c6.soundness_bits(equality_schedule_error) > Decimal("120.12")
@@ -1565,8 +1613,8 @@ def build_report() -> dict[str, Any]:
         - C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES
         == 27_569_408
     )
-    assert native_compiler_pcs_transform_bytes == 16_106_127_360
-    assert Decimal("14.70") < native_provider_roof_seconds < Decimal("14.71")
+    assert native_compiler_pcs_transform_bytes == 21_474_836_480
+    assert Decimal("14.90") < native_provider_roof_seconds < Decimal("14.91")
     assert native_verifier_roof_seconds == Decimal("4.965672390")
     assert C61_VERIFIER_ADDITIONAL_MEMORY_ALLOCATION_BYTES == 512_000_000
     assert native_projected_certificate_bytes < C61_CERTIFICATE_EXCLUSIVE_BYTES

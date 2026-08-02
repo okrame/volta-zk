@@ -2449,6 +2449,37 @@ then it may extend the claimless fork with shared rounds.  A free `mu` input,
 separate unbudgeted WHIR chains, digest-only binding, committed inverse/edge
 columns or pod contact is forbidden.
 
+### 0.32 C6SPR2 packed and typed boundary differential
+
+The required scaled packing differential is now green.  The response packer
+constructs exactly `lambda_0 || lambda_1 || (runtime || g_0 || g_1) || mu`
+and the fixed plan packer constructs exactly `opcode || lhs || rhs || zero`.
+Their constructors receive the operation plan, extraction map, runtime and
+lanes, but no `zeta`, `gamma`, `tau` or `delta`; both roots are therefore
+fixed before the rational challenges by construction.  A changed non-Scale
+`mu`, plan cell, runtime cell, source boundary, lane or root changes the
+corresponding commitment or rejects.  The scaled constructor preserves the
+production D25/D27 selector geometry.
+
+The PCS boundary independently reconstructs the exact six response points
+and three plan points from one D25 GKR input point.  Its point vectors agree
+coordinate-for-coordinate with the proto packer.  Canonical layout digests,
+both D27 roots, compiler statement, rational relation and GKR transcript all
+enter the public statement digest; provider targets and verifier keys remain
+role-local.  Layout, root and point-order mutations reject.  The full default
+PCS suite is green at **200/0/1**.  This is scaled typed-boundary evidence
+only: it does not authenticate a GKR leaf or execute a multi-oracle PCS.
+
+Budget v17 changes no screen: certificate **18,342,103 B**, setup plus first
+**103,085,470 B**, state **2,277,715,552 B**, provider/verifier roofs
+**14.9087128542 / 4.965672390 s**, and complete soundness
+**102.5878333635 bits**, all `credit:false`.  The active local **HARD STOP**
+is now `C6SPR2_SHARED_ROUND_CLAIMLESS_BACKEND_REQUIRED`.  The claimless fork
+must open both D27 commitments under one transcript with genuinely shared
+WHIR rounds before the joint leaf-reduction connection may claim backend
+evidence.  Two sequential or independently challenged chains, a digest-only
+adapter, extra inverse/edge columns and pod contact remain forbidden.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

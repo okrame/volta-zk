@@ -576,7 +576,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v16",
+        "profile": "C6.1-public-compression-reference-v17",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
@@ -589,7 +589,8 @@ def build_report() -> dict[str, Any]:
             "C6SPR1_RATIONAL_GKR_PREREGISTERED__"
             "SCALED_RATIONAL_GKR_DIFFERENTIAL_GREEN__"
             "CHALLENGE_ADAPTIVE_MU_OBSTRUCTION_CLOSED__"
-            "PACKED_MULTI_ORACLE_DIFFERENTIAL_REQUIRED__"
+            "PACKED_MULTI_ORACLE_TYPED_BOUNDARY_GREEN__"
+            "SHARED_ROUND_CLAIMLESS_BACKEND_REQUIRED__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
@@ -667,7 +668,8 @@ def build_report() -> dict[str, Any]:
                 "C6SPR1_RATIONAL_GKR_PREREGISTERED__"
                 "SCALED_RATIONAL_GKR_DIFFERENTIAL_GREEN__"
                 "CHALLENGE_ADAPTIVE_MU_OBSTRUCTION_CLOSED__"
-                "PACKED_MULTI_ORACLE_DIFFERENTIAL_REQUIRED__"
+                "PACKED_MULTI_ORACLE_TYPED_BOUNDARY_GREEN__"
+                "SHARED_ROUND_CLAIMLESS_BACKEND_REQUIRED__"
                 "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
             "statement": (
@@ -1185,7 +1187,7 @@ def build_report() -> dict[str, Any]:
                 ),
             },
             "local_hard_stop": {
-                "status": "C6SPR2_SCALED_PACKING_AND_TYPED_MULTI_ORACLE_DIFFERENTIAL_REQUIRED",
+                "status": "C6SPR2_SHARED_ROUND_CLAIMLESS_BACKEND_REQUIRED",
                 "canonical_runtime_seam_green": True,
                 "raw_verifier_runtime_values": raw_verifier_runtime_values,
                 "canonical_runtime_values": canonical_runtime_values,
@@ -1292,6 +1294,13 @@ def build_report() -> dict[str, Any]:
                     "all_seven_root_mutations_reject": True,
                     "lane_batch_binding_mutation_rejects": True,
                     "all_seven_padding_mutations_reject": True,
+                    "exact_response_d27_packing_green": True,
+                    "exact_plan_d27_packing_green": True,
+                    "prechallenge_root_typestate_green": True,
+                    "ordered_response_opening_points": 6,
+                    "ordered_plan_opening_points": 3,
+                    "typed_role_targets_green": True,
+                    "root_point_and_layout_mutations_reject": True,
                     "claimless_multi_oracle_opening_green": False,
                     "credit": False,
                 },
@@ -1327,8 +1336,7 @@ def build_report() -> dict[str, Any]:
                     ),
                 },
                 "required_before_resume": [
-                    "implement and differentially test the exact four-block response and three-column plan D27 packings",
-                    "bind both roots and their ordered derived points in one typed shared-round multi-oracle compiler chain",
+                    "extend the claimless fork so both D27 roots use one transcript and genuinely shared WHIR rounds",
                     "reduce every weighted leaf claim to those openings without committed inverse or edge columns",
                 ],
                 "credit": False,

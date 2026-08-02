@@ -41,11 +41,11 @@ struct SharedState<'a> {
     public_statement_digest: Option<[u8; 32]>,
     pending_provider_bytes: u64,
     stats: C61WhirInteractionStats,
-    generation: u64,
+    generations: [u64; 2],
     arrived: [bool; 2],
     completed: [bool; 2],
-    request: Option<ChallengeRequest>,
-    last_response: u64,
+    requests: [Option<ChallengeRequest>; 2],
+    last_responses: [u64; 2],
 }
 
 struct SharedSync<'a> {
@@ -84,11 +84,11 @@ pub(crate) fn c61_shared_round_pair(
             public_statement_digest: None,
             pending_provider_bytes: 0,
             stats: C61WhirInteractionStats::default(),
-            generation: 0,
+            generations: [0; 2],
             arrived: [false; 2],
             completed: [false; 2],
-            request: None,
-            last_response: 0,
+            requests: [None; 2],
+            last_responses: [0; 2],
         }),
         ready: Condvar::new(),
     });
@@ -133,28 +133,26 @@ impl<'a> C61SharedRoundChallenger<'a> {
         let mut state = self.lock();
         assert!(state.public_statement_bound[self.lane], "C6SPR2 challenge preceded statement");
         assert!(!state.completed[self.lane], "C6SPR3 completed lane requested a challenge");
-        let generation = state.generation;
-        match state.request {
-            Some(bound) => {
-                assert_eq!(bound, request, "C6SPR2 lanes requested different challenges")
-            }
-            None => state.request = Some(request),
-        }
+        let generation = state.generations[self.lane];
         assert!(!state.arrived[self.lane], "C6SPR2 shared challenge received duplicate arrival");
+        assert!(state.requests[self.lane].is_none(), "C6SPR3 lane retained a stale request");
+        state.requests[self.lane] = Some(request);
         state.arrived[self.lane] = true;
         if state.arrived == [true; 2] || state.completed[1 - self.lane] {
-            release_challenge(&mut state, request);
+            release_ready_challenges(&mut state);
             self.shared.ready.notify_all();
-            return state.last_response;
+            if state.generations[self.lane] != generation {
+                return state.last_responses[self.lane];
+            }
         }
-        while state.generation == generation {
+        while state.generations[self.lane] == generation {
             state = self
                 .shared
                 .ready
                 .wait(state)
                 .expect("C6SPR2 shared challenger mutex poisoned while waiting");
         }
-        state.last_response
+        state.last_responses[self.lane]
     }
 
     pub(crate) fn finish_lane(&self) -> Result<(), String> {
@@ -172,10 +170,10 @@ impl<'a> C61SharedRoundChallenger<'a> {
         state.completed[self.lane] = true;
         let other = 1 - self.lane;
         if state.arrived[other] {
-            let request = state
-                .request
-                .ok_or_else(|| "C6SPR3 waiting tail challenge has no request".to_owned())?;
-            release_challenge(&mut state, request);
+            if state.requests[other].is_none() {
+                return Err("C6SPR3 waiting tail challenge has no request".to_owned());
+            }
+            release_ready_challenges(&mut state);
             self.shared.ready.notify_all();
         }
         Ok(())
@@ -190,7 +188,7 @@ impl C61SharedRoundCoordinator<'_> {
             "C6SPR2 shared challenger mutex poisoned before residual batching".to_owned()
         })?;
         if state.arrived != [false; 2]
-            || state.request.is_some()
+            || state.requests != [None; 2]
             || state.public_statement_bound != [true; 2]
             || state.completed != [true; 2]
         {
@@ -209,7 +207,7 @@ impl C61SharedRoundCoordinator<'_> {
             .lock()
             .map_err(|_| "C6SPR2 shared challenger mutex poisoned at finish".to_owned())?;
         if state.arrived != [false; 2]
-            || state.request.is_some()
+            || state.requests != [None; 2]
             || state.public_statement_bound != [true; 2]
             || state.completed != [true; 2]
         {
@@ -239,9 +237,56 @@ fn flush_pending(state: &mut SharedState<'_>) {
     }
 }
 
-fn release_challenge(state: &mut SharedState<'_>, request: ChallengeRequest) {
+fn release_ready_challenges(state: &mut SharedState<'_>) {
     flush_pending(state);
-    state.last_response = match request {
+    let active = state
+        .requests
+        .iter()
+        .enumerate()
+        .filter_map(|(lane, request)| request.map(|request| (lane, request)))
+        .collect::<Vec<_>>();
+    assert!(!active.is_empty(), "C6SPR3 challenge release has no active lane");
+    match active.as_slice() {
+        [(lane, request)] => release_one_challenge(state, *lane, *request),
+        [(_, ChallengeRequest::Field), (_, ChallengeRequest::Field)] => {
+            state.stats.client_fp_challenges += 1;
+            state.stats.client_challenge_payload_bytes += C61_WHIRA1_FP_BYTES as u64;
+            let response = state.transcript.challenge_fp().value();
+            state.last_responses = [response; 2];
+            release_lanes(state, &[0, 1]);
+        }
+        [(_, ChallengeRequest::Bits(left)), (_, ChallengeRequest::Bits(right))] => {
+            let max_bits = (*left).max(*right);
+            assert!((1..=32).contains(&max_bits), "C6SPR2 query width must fit u32");
+            state.stats.client_query_challenges += 1;
+            state.stats.client_challenge_payload_bytes += 4;
+            let response = u64::from(state.transcript.challenge_bits(max_bits as u8));
+            let project = |bits: usize| {
+                if bits == 64 {
+                    response
+                } else {
+                    response & ((1u64 << bits) - 1)
+                }
+            };
+            state.last_responses = [project(*left), project(*right)];
+            release_lanes(state, &[0, 1]);
+        }
+        [(_, _), (_, _)] => {
+            assert_ne!(
+                state.lane_dimensions[0], state.lane_dimensions[1],
+                "C6SPR3 equal-dimension lanes requested different challenge kinds"
+            );
+            let longer = usize::from(state.lane_dimensions[1] > state.lane_dimensions[0]);
+            let request = state.requests[longer]
+                .expect("C6SPR3 longer lane has no request at asymmetric boundary");
+            release_one_challenge(state, longer, request);
+        }
+        _ => unreachable!("C6SPR3 active challenge census is impossible"),
+    }
+}
+
+fn release_one_challenge(state: &mut SharedState<'_>, lane: usize, request: ChallengeRequest) {
+    state.last_responses[lane] = match request {
         ChallengeRequest::Field => {
             state.stats.client_fp_challenges += 1;
             state.stats.client_challenge_payload_bytes += C61_WHIRA1_FP_BYTES as u64;
@@ -254,9 +299,15 @@ fn release_challenge(state: &mut SharedState<'_>, request: ChallengeRequest) {
             u64::from(state.transcript.challenge_bits(bits as u8))
         }
     };
-    state.arrived = [false; 2];
-    state.request = None;
-    state.generation += 1;
+    release_lanes(state, &[lane]);
+}
+
+fn release_lanes(state: &mut SharedState<'_>, lanes: &[usize]) {
+    for &lane in lanes {
+        state.arrived[lane] = false;
+        state.requests[lane] = None;
+        state.generations[lane] += 1;
+    }
 }
 
 impl CanObserve<Goldilocks> for C61SharedRoundChallenger<'_> {
@@ -367,12 +418,22 @@ mod tests {
             let plan_thread = scope.spawn(|| plan.sample());
             assert_eq!(response_thread.join().unwrap(), plan_thread.join().unwrap());
         });
+        let (response_query, plan_query) = thread::scope(|scope| {
+            let response_thread = scope.spawn(|| {
+                assert_ne!(response.sample(), Goldilocks::ZERO);
+                response.sample_bits(5)
+            });
+            let plan_thread = scope.spawn(|| plan.sample_bits(4));
+            (response_thread.join().unwrap(), plan_thread.join().unwrap())
+        });
+        assert_eq!(response_query & 0xf, plan_query);
         plan.finish_lane().unwrap();
         let tail = response.sample();
         assert_ne!(tail, Goldilocks::ZERO);
         response.finish_lane().unwrap();
         assert_ne!(coordinator.sample_postproof_fp2().unwrap(), Fp2::ZERO);
         let stats = coordinator.finish(64).unwrap();
-        assert_eq!(stats.client_fp_challenges, 4);
+        assert_eq!(stats.client_fp_challenges, 5);
+        assert_eq!(stats.client_query_challenges, 1);
     }
 }

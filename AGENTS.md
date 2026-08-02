@@ -20,6 +20,14 @@ work: do not substitute an unproved relation, claim component evidence as a
 full result, or contact a provider/pod until the recorded unblock and any
 required owner GO exist.
 
+The `## Active authority — read first` capsule at the top of
+`docs/prototype-status.md` is the required short-form orientation.  Update it
+in the same commit as every active-milestone or active-status change.  Keep it
+at **250 words or fewer, excluding its heading**; it must state the active
+milestone/design, hard stop and authorization, completed evidence versus
+credit, current checks, and exact resume conditions.  The append-only material
+below it is supporting history, not competing authority.
+
 ## Records and milestone discipline
 
 - Update `docs/prototype-status.md` at every milestone boundary, whenever a

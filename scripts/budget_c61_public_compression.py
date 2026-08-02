@@ -13,9 +13,11 @@ This report deliberately has two different verdict scopes:
   lanes plus an eight-family direct reducer.  Its scaled differential is now
   exact, and the direct interval reducer has an executable production-shape
   census.  The terminal projection and exact materialized D25 lane references
-  are green.  A native sparse-application/source-gather argument and the
-  full-chain benchmark remain absent, so neither reference is final proof or
-  timing credit.
+  are green.  The scaled public-only verifier now connects the seven blind
+  rational trees, joint degree-8 reduction, twelve physical response targets,
+  three public plan targets and one QuickSilver/ZeroOpen closure to the shared
+  Dn/D(n-1) WHIR flow.  Production D28/D27 execution and the full-chain
+  benchmark remain absent, so this is not final proof or timing credit.
 
 No projected ceiling or analytic roofline is proof-size, setup, prover-time,
 verifier-time or hardware credit.  The implemented PCS codec receives only
@@ -162,7 +164,8 @@ C61_FOLDED_DIRECT_TOTAL_ROWS_AND_TERMS = (
 
 # C6SPR2-v1 retains the three-column provider-global plan oracle and packs
 # lanes, boundary/runtime and the node-aligned mu witness into four D25 blocks
-# under one response D27 root.  Fixing that root before the rational
+# under one semantic response oracle, now physicalized as one D28 base-field
+# root.  Fixing that root before the rational
 # challenges closes C6SPR1's challenge-adaptive-mu gap.  No edge-domain
 # witness or inverse column is committed.
 C61_SPARSE_RATIONAL_PLAN_COLUMNS = 3
@@ -170,12 +173,16 @@ C61_SPARSE_RATIONAL_PLAN_DOMAIN_LOG2 = 27
 C61_SPARSE_RATIONAL_RESPONSE_DOMAIN_EQUIVALENT_D25_VECTORS = 4
 C61_SPARSE_RATIONAL_SUBCHECKS = 7
 C61_SPARSE_RATIONAL_CLIENT_PARAMETER_FRAME_BYTES = 512
-C61_SPARSE_RATIONAL_RESPONSE_BUNDLE_FP2_ELEMENTS = (
-    C61_SPARSE_RATIONAL_RESPONSE_DOMAIN_EQUIVALENT_D25_VECTORS
-    * 2**C61_NODE_LOG2
+# The arbitrary-Fp2 response is committed as c0||c1 in one physical D28
+# base-field polynomial.  This is byte-identical to the former D27 Fp2
+# response bundle but no longer relies on an ineligible extension-valued
+# initial polynomial.
+C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_DOMAIN_LOG2 = 28
+C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_BASE_ELEMENTS = (
+    2**C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_DOMAIN_LOG2
 )
-C61_SPARSE_RATIONAL_RESPONSE_BUNDLE_BYTES = (
-    C61_SPARSE_RATIONAL_RESPONSE_BUNDLE_FP2_ELEMENTS * c6.FP2_BYTES
+C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_BYTES = (
+    C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_BASE_ELEMENTS * 8
 )
 C61_SPARSE_RATIONAL_RECURRENCE_ACTIVE_ROWS = (
     C61_CANONICAL_NODE_COUNT + C61_SPARSE_OPERAND_COUNT
@@ -199,7 +206,7 @@ C61_NATIVE_CHAIN_CODEC_MAX_BYTES = 1_500_000
 # rational-GKR messages.  Model and embedding retain the old ceiling.
 C61_NATIVE_COMPILER_CHAIN_CODEC_MAX_BYTES = 2_500_000
 C61_NATIVE_ARITHMETIC_AND_LINK_CODEC_MAX_BYTES = 500_000
-C61_NATIVE_PUBLIC_ARGUMENT_CODEC_MAX_BYTES = (
+C61_PREREGISTERED_NATIVE_PUBLIC_ARGUMENT_CODEC_MAX_BYTES = (
     2 * C61_NATIVE_CHAINS_PER_COMPONENT * C61_NATIVE_CHAIN_CODEC_MAX_BYTES
     + C61_NATIVE_CHAINS_PER_COMPONENT * C61_NATIVE_COMPILER_CHAIN_CODEC_MAX_BYTES
     + C61_NATIVE_ARITHMETIC_AND_LINK_CODEC_MAX_BYTES
@@ -235,13 +242,36 @@ C61_NATIVE_CLAIMLESS_D14_CLIENT_FP_CHALLENGES = 52
 C61_NATIVE_CLAIMLESS_D14_CLIENT_QUERY_CANDIDATES = 2_536
 C61_NATIVE_CLAIMLESS_D14_CLIENT_CHALLENGE_BYTES = 10_560
 C61_SHARED_MULTI_ORACLE_HEADER_BYTES = 16
-C61_SHARED_MULTI_ORACLE_D14_DIAGNOSTIC_BYTES = 750_928
-C61_SHARED_MULTI_ORACLE_D14_STRICT_MAX_BYTES = 854_096
-C61_SHARED_MULTI_ORACLE_D14_PROVIDER_SEMANTIC_BYTES = 105_216
-C61_SHARED_MULTI_ORACLE_D14_PROVIDER_MESSAGES = 26
-C61_SHARED_MULTI_ORACLE_D14_CLIENT_FP_CHALLENGES = 54
-C61_SHARED_MULTI_ORACLE_D14_CLIENT_QUERY_CANDIDATES = 2_542
-C61_SHARED_MULTI_ORACLE_D14_CLIENT_CHALLENGE_BYTES = 10_600
+C61_SHARED_MULTI_ORACLE_D14_DIAGNOSTIC_BYTES = 677_532
+C61_SHARED_MULTI_ORACLE_D14_STRICT_MAX_BYTES = 770_748
+C61_SHARED_MULTI_ORACLE_D14_PROVIDER_SEMANTIC_BYTES = 94_752
+C61_SHARED_MULTI_ORACLE_D14_PROVIDER_MESSAGES = 36
+C61_SHARED_MULTI_ORACLE_D14_CLIENT_FP_CHALLENGES = 75
+C61_SHARED_MULTI_ORACLE_D14_CLIENT_QUERY_CANDIDATES = 4_193
+C61_SHARED_MULTI_ORACLE_D14_CLIENT_CHALLENGE_BYTES = 17_372
+C61_SHARED_MULTI_ORACLE_D14_ARITHMETIC_BYTES = 5_212
+C61_SHARED_MULTI_ORACLE_D14_TOTAL_PROVIDER_BYTES = 682_744
+C61_SHARED_MULTI_ORACLE_D14_TRANSCRIPT_BYTES = 682_652
+C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_OPENINGS = 12
+C61_SPARSE_RATIONAL_PLAN_OPENINGS = 3
+C61_SPARSE_RATIONAL_TOTAL_OPENINGS = (
+    C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_OPENINGS
+    + C61_SPARSE_RATIONAL_PLAN_OPENINGS
+)
+C61_SPARSE_RATIONAL_RESPONSE_TARGET_SUB_CORRELATIONS = 24
+C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTION_BYTES = 192
+C61_SPARSE_RATIONAL_PRODUCTION_DEPTHS = (25, 25, 25, 25, 24, 23, 25)
+C61_SPARSE_RATIONAL_PRODUCTION_DEPTH_SUM = sum(
+    C61_SPARSE_RATIONAL_PRODUCTION_DEPTHS
+)
+C61_SPARSE_RATIONAL_PRODUCTION_GKR_BYTES = 84_640
+C61_SPARSE_RATIONAL_PRODUCTION_JOINT_BYTES = 3_248
+C61_SPARSE_RATIONAL_PRODUCTION_ARITHMETIC_BYTES = 88_220
+C61_SPARSE_RATIONAL_PRODUCTION_PRODUCT_TRIPLES = 531
+C61_SPARSE_RATIONAL_PRODUCTION_ZERO_ROWS = 179
+C61_SPARSE_RATIONAL_PRODUCTION_GKR_FULL_CORRELATIONS = 5_290
+C61_SPARSE_RATIONAL_PRODUCTION_JOINT_FULL_CORRELATIONS = 200
+C61_SPARSE_RATIONAL_PRODUCTION_FULL_CORRELATIONS_PER_TAPE = 5_493
 C61_PRIVATE_ENTROPY_D14_CHALLENGES = 2_588
 C61_PRIVATE_ENTROPY_D14_CHECKPOINT_FRONTIER = 1_294
 C61_PRIVATE_ENTROPY_D14_CHECKPOINT_BYTES = 73_360
@@ -256,14 +286,24 @@ C61_NATIVE_CLAIMLESS_D14_BLAKE3 = (
 # the raw-tape or paired-PCG setup allocation.
 C6_REGISTERED_WRAPPER_FULL_CORRELATIONS_PER_TAPE = 622
 C6_FULL_CORRELATION_RESERVE_PER_TAPE = 39_116
-C61_AUTHENTICATED_TARGET_MASKS_PER_TAPE = 3
+# Model and embedding retain one WHIR mask each.  The compiler count below
+# includes its WHIR mask together with every arithmetic correlation.
+C61_NONCOMPILER_AUTHENTICATED_TARGET_MASKS_PER_TAPE = 2
 C61_REGISTERED_WRAPPER_FULL_CORRELATIONS_PER_TAPE = (
     C6_REGISTERED_WRAPPER_FULL_CORRELATIONS_PER_TAPE
-    + C61_AUTHENTICATED_TARGET_MASKS_PER_TAPE
+    + C61_NONCOMPILER_AUTHENTICATED_TARGET_MASKS_PER_TAPE
+    + C61_SPARSE_RATIONAL_PRODUCTION_FULL_CORRELATIONS_PER_TAPE
 )
 C61_FULL_CORRELATION_HEADROOM_PER_TAPE = (
     C6_FULL_CORRELATION_RESERVE_PER_TAPE
     - C61_REGISTERED_WRAPPER_FULL_CORRELATIONS_PER_TAPE
+)
+C61_COMPILER_RAW_CORRELATION_EQUIVALENTS_PER_TAPE = (
+    2 * C61_SPARSE_RATIONAL_PRODUCTION_FULL_CORRELATIONS_PER_TAPE
+    + C61_SPARSE_RATIONAL_RESPONSE_TARGET_SUB_CORRELATIONS
+)
+C61_RAW_CORRELATION_RESERVE_EQUIVALENTS_PER_TAPE = (
+    2 * C6_FULL_CORRELATION_RESERVE_PER_TAPE
 )
 
 # Conservative analytic-time charges.  They are deliberately wider than the
@@ -435,10 +475,11 @@ def build_report() -> dict[str, Any]:
         + runtime_gather_rational_error
         + source_gather_rational_error
     )
-    # One ordered batch of at most 128 fixed claims contributes a degree-127
-    # root event.  Closing its affine result through C6AWH1 adds one separate
-    # Fp2 MAC event.  Together with the configured public PCS error this must
-    # remain strictly inside the preregistered 74-bit per-chain allocation.
+    # Model/embedding retain the registered at-most-128 ordered batch.  The
+    # compiler has exactly fifteen physical claims, folds 179 arithmetic zero
+    # rows into the existing terminal tag, and closes all 531 products in one
+    # scalar-power QuickSilver batch.  M8 contributes (T+2)/|Fp2|.  Each of
+    # the two component chains has independent transcript/MAC randomness.
     ordered_opening_batch_error = Fraction(
         C61_NATIVE_MAX_ORDERED_OPENINGS - 1, c6.FP2_CARDINALITY
     )
@@ -447,13 +488,29 @@ def build_report() -> dict[str, Any]:
         + ordered_opening_batch_error
         + Fraction(1, c6.FP2_CARDINALITY)
     )
-    native_backend_error = Fraction(
-        C61_NATIVE_COMPONENTS,
-        2
-        ** (
-            C61_NATIVE_AUTHENTICATED_CHAIN_BITS
-            * C61_NATIVE_CHAINS_PER_COMPONENT
-        ),
+    compiler_ordered_opening_batch_error = Fraction(
+        C61_SPARSE_RATIONAL_TOTAL_OPENINGS - 1,
+        c6.FP2_CARDINALITY,
+    )
+    compiler_zero_row_rlc_error = Fraction(
+        C61_SPARSE_RATIONAL_PRODUCTION_ZERO_ROWS,
+        c6.FP2_CARDINALITY,
+    )
+    compiler_product_batch_error = Fraction(
+        C61_SPARSE_RATIONAL_PRODUCTION_PRODUCT_TRIPLES + 2,
+        c6.FP2_CARDINALITY,
+    )
+    compiler_authenticated_chain_error = (
+        Fraction(1, 2**C61_NATIVE_PUBLIC_PCS_BITS)
+        + compiler_ordered_opening_batch_error
+        + compiler_zero_row_rlc_error
+        + compiler_product_batch_error
+        + Fraction(1, c6.FP2_CARDINALITY)
+    )
+    native_backend_error = (
+        2 * authenticated_target_chain_error**C61_NATIVE_CHAINS_PER_COMPONENT
+        + compiler_authenticated_chain_error
+        ** C61_NATIVE_CHAINS_PER_COMPONENT
     )
     existing_wrapper_error = (
         c6.pcs_error_amplified(c6.SELECTED_QUERY_COUNT)
@@ -498,17 +555,25 @@ def build_report() -> dict[str, Any]:
 
     d28_known_chain_bytes = C61_NATIVE_D28_PCS_STRICT_MAX_BYTES
     d27_known_chain_bytes = C61_NATIVE_D27_PCS_STRICT_MAX_BYTES
-    compiler_two_d27_independent_ceiling_bytes = 2 * d27_known_chain_bytes
-    compiler_shared_d27_strict_ceiling_bytes = (
-        compiler_two_d27_independent_ceiling_bytes
+    compiler_shared_physical_strict_ceiling_bytes = (
+        d28_known_chain_bytes
+        + d27_known_chain_bytes
         + C61_SHARED_MULTI_ORACLE_HEADER_BYTES
     )
-    compiler_chain_slack_after_two_d27_bytes = (
+    compiler_complete_chain_ceiling_bytes = (
+        compiler_shared_physical_strict_ceiling_bytes
+        + C61_SPARSE_RATIONAL_PRODUCTION_ARITHMETIC_BYTES
+    )
+    compiler_chain_slack_after_complete_relation_bytes = (
         C61_NATIVE_COMPILER_CHAIN_CODEC_MAX_BYTES
-        - compiler_shared_d27_strict_ceiling_bytes
+        - compiler_complete_chain_ceiling_bytes
+    )
+    exact_native_public_argument_ceiling_bytes = (
+        2 * C61_NATIVE_CHAINS_PER_COMPONENT * C61_NATIVE_CHAIN_CODEC_MAX_BYTES
+        + C61_NATIVE_CHAINS_PER_COMPONENT * compiler_complete_chain_ceiling_bytes
     )
     native_projected_certificate_bytes = (
-        active_fixed_remainder_bytes + C61_NATIVE_PUBLIC_ARGUMENT_CODEC_MAX_BYTES
+        active_fixed_remainder_bytes + exact_native_public_argument_ceiling_bytes
     )
     native_projected_first_response_bytes = (
         projected_setup_bytes + native_projected_certificate_bytes
@@ -588,7 +653,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v18",
+        "profile": "C6.1-public-compression-reference-v19",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
@@ -603,7 +668,8 @@ def build_report() -> dict[str, Any]:
             "CHALLENGE_ADAPTIVE_MU_OBSTRUCTION_CLOSED__"
             "PACKED_MULTI_ORACLE_TYPED_BOUNDARY_GREEN__"
             "SHARED_ROUND_CLAIMLESS_BACKEND_GREEN__"
-            "JOINT_AUTHENTICATED_GKR_LEAF_REDUCTION_REQUIRED__"
+            "EXACT_SPARSE_RELATION_TO_PHYSICAL_SHARED_WHIR_GREEN__"
+            "PRODUCTION_D28_D27_EXECUTION_REQUIRED__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
@@ -683,7 +749,8 @@ def build_report() -> dict[str, Any]:
                 "CHALLENGE_ADAPTIVE_MU_OBSTRUCTION_CLOSED__"
                 "PACKED_MULTI_ORACLE_TYPED_BOUNDARY_GREEN__"
                 "SHARED_ROUND_CLAIMLESS_BACKEND_GREEN__"
-                "JOINT_AUTHENTICATED_GKR_LEAF_REDUCTION_REQUIRED__"
+                "EXACT_SPARSE_RELATION_TO_PHYSICAL_SHARED_WHIR_GREEN__"
+                "PRODUCTION_D28_D27_EXECUTION_REQUIRED__"
                 "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
             "statement": (
@@ -820,24 +887,31 @@ def build_report() -> dict[str, Any]:
                     "strict_codec_verifier_consumes_serialized_payload": True,
                     "resumable_private_entropy_driver_pending": False,
                     "durable_atomic_checkpoint_pending": False,
-                    "production_full_relation_integration_pending": True,
+                    "scaled_full_relation_integration_pending": False,
+                    "production_full_scale_execution_pending": True,
                     "ordered_multi_opening_reduction": {
-                        "status": "SCALED_AUTHENTICATED_DIAGNOSTIC_GREEN",
+                        "status": "SCALED_EXACT_COMPILER_FULL_FLOW_GREEN",
                         "maximum_claims_per_chain": C61_NATIVE_MAX_ORDERED_OPENINGS,
                         "model_claims": C61_NATIVE_MODEL_OPENINGS,
                         "embedding_claims": C61_NATIVE_EMBEDDING_OPENINGS,
-                        "compiler_claims": "pending exact relation adapter",
+                        "compiler_claims": C61_SPARSE_RATIONAL_TOTAL_OPENINGS,
                         "provider_artifact_maximum_claim_count_independent": True,
                         "points_and_target_keys_in_enclosing_statement": True,
-                        "statement_digest_binding_pending_full_adapter": True,
+                        "statement_digest_binding_pending_full_adapter": False,
                         "batching_error": _error_report(ordered_opening_batch_error),
                         "full_chain_credit": False,
                     },
                     "clear_evaluation_bytes_removed_per_chain": 16,
                     "zero_open_tag_bytes_added_per_chain": 16,
                     "provider_to_client_net_bytes_per_chain": 0,
-                    "fresh_full_correlations_per_tape": (
-                        C61_AUTHENTICATED_TARGET_MASKS_PER_TAPE
+                    "noncompiler_whir_masks_per_tape": (
+                        C61_NONCOMPILER_AUTHENTICATED_TARGET_MASKS_PER_TAPE
+                    ),
+                    "compiler_full_correlations_per_tape": (
+                        C61_SPARSE_RATIONAL_PRODUCTION_FULL_CORRELATIONS_PER_TAPE
+                    ),
+                    "compiler_subfield_correlations_per_tape": (
+                        C61_SPARSE_RATIONAL_RESPONSE_TARGET_SUB_CORRELATIONS
                     ),
                     "registered_wrapper_full_correlations_per_tape": (
                         C61_REGISTERED_WRAPPER_FULL_CORRELATIONS_PER_TAPE
@@ -847,6 +921,12 @@ def build_report() -> dict[str, Any]:
                     ),
                     "headroom_full_correlations_per_tape": (
                         C61_FULL_CORRELATION_HEADROOM_PER_TAPE
+                    ),
+                    "compiler_raw_correlation_equivalents_per_tape": (
+                        C61_COMPILER_RAW_CORRELATION_EQUIVALENTS_PER_TAPE
+                    ),
+                    "raw_correlation_reserve_equivalents_per_tape": (
+                        C61_RAW_CORRELATION_RESERVE_EQUIVALENTS_PER_TAPE
                     ),
                     "raw_attempt_or_setup_increment_bytes": 0,
                     "claim_privacy_local_equivalent_argument": (
@@ -861,10 +941,10 @@ def build_report() -> dict[str, Any]:
                     "external_cryptographic_review_required_before_production": True,
                 },
                 "relation_adapter": (
-                    "the modified PCS now returns an affine target closure and C6AWH1 "
-                    "authenticates it through a strict decoded payload; the complete "
-                    "model/embedding/compiler "
-                    "relation remains absent"
+                    "the public-only verifier decodes C6SBA1, verifies the exact "
+                    "challenge-dependent sparse relation, binds twelve physical response "
+                    "and three public plan openings to shared Dn/D(n-1) WHIR rounds, "
+                    "and folds every arithmetic row into one C6AWH1 ZeroOpen"
                 ),
                 "d28": {
                     "configured_security_target_bits": C61_NATIVE_PUBLIC_PCS_BITS,
@@ -959,7 +1039,8 @@ def build_report() -> dict[str, Any]:
                     "durable_record_count": C61_PRIVATE_ENTROPY_D14_DURABLE_RECORDS,
                     "wrong_attempt_torn_and_corrupt_rejected": True,
                     "malicious_client_disk_snapshot_rollback_covered": False,
-                    "production_full_relation_integration_pending": True,
+                    "scaled_full_relation_integration_pending": False,
+                    "production_full_scale_execution_pending": True,
                     "full_chain_credit": False,
                 },
                 "claim_privacy": {
@@ -1000,24 +1081,33 @@ def build_report() -> dict[str, Any]:
                 "compiler_chain_codec_ceiling_bytes": (
                     C61_NATIVE_COMPILER_CHAIN_CODEC_MAX_BYTES
                 ),
-                "two_independent_d27_opening_ceiling_bytes": (
-                    compiler_two_d27_independent_ceiling_bytes
-                ),
+                "compiler_response_d28_strict_ceiling_bytes": d28_known_chain_bytes,
+                "compiler_plan_d27_strict_ceiling_bytes": d27_known_chain_bytes,
                 "shared_multi_oracle_header_bytes": (
                     C61_SHARED_MULTI_ORACLE_HEADER_BYTES
                 ),
-                "shared_multi_oracle_d27_strict_ceiling_bytes": (
-                    compiler_shared_d27_strict_ceiling_bytes
+                "shared_multi_oracle_physical_strict_ceiling_bytes": (
+                    compiler_shared_physical_strict_ceiling_bytes
                 ),
-                "compiler_chain_slack_after_two_d27_bytes": (
-                    compiler_chain_slack_after_two_d27_bytes
+                "c6sba1_arithmetic_bytes_per_compiler_chain": (
+                    C61_SPARSE_RATIONAL_PRODUCTION_ARITHMETIC_BYTES
+                ),
+                "complete_compiler_chain_ceiling_bytes": (
+                    compiler_complete_chain_ceiling_bytes
+                ),
+                "compiler_chain_slack_after_complete_relation_bytes": (
+                    compiler_chain_slack_after_complete_relation_bytes
                 ),
                 "compiler_chain_count": C61_NATIVE_CHAINS_PER_COMPONENT,
                 "arithmetic_mac_link_framing_ceiling_bytes": (
                     C61_NATIVE_ARITHMETIC_AND_LINK_CODEC_MAX_BYTES
                 ),
+                "arithmetic_mac_link_ceiling_is_nested_not_additive": True,
                 "public_argument_codec_ceiling_bytes": (
-                    C61_NATIVE_PUBLIC_ARGUMENT_CODEC_MAX_BYTES
+                    exact_native_public_argument_ceiling_bytes
+                ),
+                "preregistered_public_argument_allocation_bytes": (
+                    C61_PUBLIC_ARGUMENT_ALLOCATION_BYTES
                 ),
                 "fixed_certificate_remainder_bytes": active_fixed_remainder_bytes,
                 "projected_certificate_ceiling_bytes": (
@@ -1039,18 +1129,18 @@ def build_report() -> dict[str, Any]:
             },
             "ephemeral_provider_state_screen": {
                 "schedule": (
-                    "commit and release one packed response D27 before two active "
-                    "recurrence buffers plus canonical runtime"
+                    "commit and release one physical base-limb response D28 before "
+                    "two active recurrence buffers plus canonical runtime"
                 ),
-                "packed_response_d27_fp2_elements": (
-                    C61_SPARSE_RATIONAL_RESPONSE_BUNDLE_FP2_ELEMENTS
+                "physical_response_d28_base_elements": (
+                    C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_BASE_ELEMENTS
                 ),
-                "packed_response_d27_bytes": (
-                    C61_SPARSE_RATIONAL_RESPONSE_BUNDLE_BYTES
+                "physical_response_d28_bytes": (
+                    C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_BYTES
                 ),
                 "packed_response_headroom_bytes": (
                     C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES
-                    - C61_SPARSE_RATIONAL_RESPONSE_BUNDLE_BYTES
+                    - C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_BYTES
                 ),
                 "active_recurrence_rows_per_buffer": (
                     C61_SPARSE_RATIONAL_RECURRENCE_ACTIVE_ROWS
@@ -1064,7 +1154,7 @@ def build_report() -> dict[str, Any]:
                 ),
                 "screen_pass": (
                     provider_state_bytes <= C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES
-                    and C61_SPARSE_RATIONAL_RESPONSE_BUNDLE_BYTES
+                    and C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_BYTES
                     <= C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES
                 ),
                 "persistent": False,
@@ -1095,6 +1185,18 @@ def build_report() -> dict[str, Any]:
                 "ordered_opening_batch_max_127_over_fp2": _error_report(
                     ordered_opening_batch_error
                 ),
+                "compiler_ordered_15_opening_batch": _error_report(
+                    compiler_ordered_opening_batch_error
+                ),
+                "compiler_folded_179_zero_rows": _error_report(
+                    compiler_zero_row_rlc_error
+                ),
+                "compiler_531_triple_quicksilver_batch": _error_report(
+                    compiler_product_batch_error
+                ),
+                "one_complete_compiler_authenticated_chain": _error_report(
+                    compiler_authenticated_chain_error
+                ),
                 "three_dual_chain_native_components": _error_report(
                     native_backend_error
                 ),
@@ -1105,9 +1207,9 @@ def build_report() -> dict[str, Any]:
                 "informative_seventeen_certificate_union": _error_report(
                     candidate_session_error
                 ),
-                "per_certificate_target_bits": "78.809",
+                "per_certificate_target_bits": "78.80929487391641",
                 "screen_pass": c6.soundness_bits(candidate_complete_error)
-                >= Decimal("78.809"),
+                >= Decimal("78.80929487391641"),
             },
             "provider_time_roofline": {
                 "existing_c6_floor_seconds": str(
@@ -1207,7 +1309,7 @@ def build_report() -> dict[str, Any]:
                 ),
             },
             "local_hard_stop": {
-                "status": "C6SPR2_JOINT_AUTHENTICATED_GKR_LEAF_REDUCTION_REQUIRED",
+                "status": "C6SPR4_PRODUCTION_D28_D27_EXECUTION_REQUIRED",
                 "canonical_runtime_seam_green": True,
                 "raw_verifier_runtime_values": raw_verifier_runtime_values,
                 "canonical_runtime_values": canonical_runtime_values,
@@ -1296,10 +1398,8 @@ def build_report() -> dict[str, Any]:
                         C61_SPARSE_RATIONAL_CLIENT_PARAMETER_FRAME_BYTES
                     ),
                     "response_commitments_fixed_before_lane_batch": [
-                        "one_D27_root_packing_lane_0_D25",
-                        "lane_1_D25",
-                        "source_boundary_0_D23_plus_source_boundary_1_D23_plus_scale_runtime_D24",
-                        "node_aligned_mu_D25",
+                        "one_physical_D28_base_root_packing_c0_and_c1_limbs_of",
+                        "lane_0_D25|lane_1_D25|scale_runtime_D24|source_boundaries_D23|mu_D25",
                     ],
                     "mu_fixed_before_lane_and_rational_challenges": True,
                     "fixed_plan_D27_root_batched_in_same_compiler_chain": True,
@@ -1314,11 +1414,13 @@ def build_report() -> dict[str, Any]:
                     "all_seven_root_mutations_reject": True,
                     "lane_batch_binding_mutation_rejects": True,
                     "all_seven_padding_mutations_reject": True,
-                    "exact_response_d27_packing_green": True,
+                    "exact_response_d28_base_limb_packing_green": True,
                     "exact_plan_d27_packing_green": True,
                     "prechallenge_root_typestate_green": True,
-                    "ordered_response_opening_points": 6,
-                    "ordered_plan_opening_points": 3,
+                    "ordered_physical_response_opening_points": (
+                        C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_OPENINGS
+                    ),
+                    "ordered_plan_opening_points": C61_SPARSE_RATIONAL_PLAN_OPENINGS,
                     "typed_role_targets_green": True,
                     "root_point_and_layout_mutations_reject": True,
                     "claimless_multi_oracle_opening_green": True,
@@ -1343,7 +1445,32 @@ def build_report() -> dict[str, Any]:
                     "shared_round_d14_client_challenge_bytes": (
                         C61_SHARED_MULTI_ORACLE_D14_CLIENT_CHALLENGE_BYTES
                     ),
-                    "shared_round_full_correlations": 1,
+                    "scaled_c6sba1_bytes": C61_SHARED_MULTI_ORACLE_D14_ARITHMETIC_BYTES,
+                    "scaled_complete_provider_bytes": (
+                        C61_SHARED_MULTI_ORACLE_D14_TOTAL_PROVIDER_BYTES
+                    ),
+                    "scaled_transcript_bytes": C61_SHARED_MULTI_ORACLE_D14_TRANSCRIPT_BYTES,
+                    "production_c6sba1_bytes_per_tape": (
+                        C61_SPARSE_RATIONAL_PRODUCTION_ARITHMETIC_BYTES
+                    ),
+                    "production_fraction_depths": C61_SPARSE_RATIONAL_PRODUCTION_DEPTHS,
+                    "production_product_triples_per_tape": (
+                        C61_SPARSE_RATIONAL_PRODUCTION_PRODUCT_TRIPLES
+                    ),
+                    "production_folded_zero_rows_per_tape": (
+                        C61_SPARSE_RATIONAL_PRODUCTION_ZERO_ROWS
+                    ),
+                    "production_response_target_correction_bytes_per_tape": (
+                        C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTION_BYTES
+                    ),
+                    "production_response_target_sub_correlations_per_tape": (
+                        C61_SPARSE_RATIONAL_RESPONSE_TARGET_SUB_CORRELATIONS
+                    ),
+                    "production_full_correlations_per_tape": (
+                        C61_SPARSE_RATIONAL_PRODUCTION_FULL_CORRELATIONS_PER_TAPE
+                    ),
+                    "verifier_private_relation_vectors_accessible": False,
+                    "one_existing_zero_open_for_whir_and_arithmetic": True,
                     "scale_runtime_is_zero_based_and_zero_padded": True,
                     "full_chain_credit": False,
                     "credit": False,
@@ -1380,8 +1507,9 @@ def build_report() -> dict[str, Any]:
                     ),
                 },
                 "required_before_resume": [
-                    "jointly reduce all fourteen fraction-tree leaf claims to one D25 point",
-                    "close that terminal equation through the six response and three plan authenticated openings",
+                    "execute the exact relation with the production D28 base-limb response and D27 plan geometries",
+                    "strict-decode both compiler chains and reconcile production memory/correlation counters",
+                    "run a clean local full-chain benchmark before any owner GO or pod contact",
                 ],
                 "credit": False,
             },
@@ -1587,11 +1715,16 @@ def build_report() -> dict[str, Any]:
     assert authenticated_target_chain_error < Fraction(
         1, 2**C61_NATIVE_AUTHENTICATED_CHAIN_BITS
     )
+    assert compiler_authenticated_chain_error < Fraction(
+        1, 2**C61_NATIVE_AUTHENTICATED_CHAIN_BITS
+    )
     assert C61_NATIVE_MODEL_OPENINGS <= C61_NATIVE_MAX_ORDERED_OPENINGS
     assert C61_NATIVE_EMBEDDING_OPENINGS <= C61_NATIVE_MAX_ORDERED_OPENINGS
     assert ordered_opening_batch_error == Fraction(127, c6.FP2_CARDINALITY)
-    assert C61_REGISTERED_WRAPPER_FULL_CORRELATIONS_PER_TAPE == 625
-    assert C61_FULL_CORRELATION_HEADROOM_PER_TAPE == 38_491
+    assert C61_REGISTERED_WRAPPER_FULL_CORRELATIONS_PER_TAPE == 6_117
+    assert C61_FULL_CORRELATION_HEADROOM_PER_TAPE == 32_999
+    assert C61_COMPILER_RAW_CORRELATION_EQUIVALENTS_PER_TAPE == 11_010
+    assert C61_RAW_CORRELATION_RESERVE_EQUIVALENTS_PER_TAPE == 78_232
     assert C61_NATIVE_CLAIMLESS_D14_DIAGNOSTIC_BYTES == 378_496
     assert C61_PRIVATE_ENTROPY_D14_CHALLENGES == 2_588
     assert C61_PRIVATE_ENTROPY_D14_CHECKPOINT_FRONTIER * 2 == (
@@ -1607,22 +1740,27 @@ def build_report() -> dict[str, Any]:
         + c6.FP2_BYTES
         == C61_NATIVE_CLAIMLESS_D14_DIAGNOSTIC_BYTES
     )
-    assert C61_NATIVE_PUBLIC_ARGUMENT_CODEC_MAX_BYTES == 11_500_000
-    assert compiler_two_d27_independent_ceiling_bytes == 2_170_928
-    assert compiler_shared_d27_strict_ceiling_bytes == 2_170_944
-    assert compiler_chain_slack_after_two_d27_bytes == 329_056
-    assert C61_SHARED_MULTI_ORACLE_D14_DIAGNOSTIC_BYTES == 750_928
-    assert C61_SHARED_MULTI_ORACLE_D14_STRICT_MAX_BYTES == 854_096
-    assert native_projected_certificate_bytes == 18_342_103
-    assert C61_CERTIFICATE_MAX_BYTES - native_projected_certificate_bytes == 3_657_896
-    assert native_projected_first_response_bytes == 103_085_470
+    assert C61_PREREGISTERED_NATIVE_PUBLIC_ARGUMENT_CODEC_MAX_BYTES == 11_500_000
+    assert compiler_shared_physical_strict_ceiling_bytes == 2_258_132
+    assert compiler_complete_chain_ceiling_bytes == 2_346_352
+    assert compiler_chain_slack_after_complete_relation_bytes == 153_648
+    assert exact_native_public_argument_ceiling_bytes == 10_692_704
+    assert exact_native_public_argument_ceiling_bytes < C61_PUBLIC_ARGUMENT_ALLOCATION_BYTES
+    assert C61_SHARED_MULTI_ORACLE_D14_DIAGNOSTIC_BYTES == 677_532
+    assert C61_SHARED_MULTI_ORACLE_D14_STRICT_MAX_BYTES == 770_748
+    assert C61_SHARED_MULTI_ORACLE_D14_ARITHMETIC_BYTES == 5_212
+    assert C61_SHARED_MULTI_ORACLE_D14_TOTAL_PROVIDER_BYTES == 682_744
+    assert C61_SHARED_MULTI_ORACLE_D14_TRANSCRIPT_BYTES == 682_652
+    assert native_projected_certificate_bytes == 17_534_807
+    assert C61_CERTIFICATE_MAX_BYTES - native_projected_certificate_bytes == 4_465_192
+    assert native_projected_first_response_bytes == 102_278_174
     assert provider_state_elements == 142_357_222
     assert provider_state_bytes == 2_277_715_552
-    assert C61_SPARSE_RATIONAL_RESPONSE_BUNDLE_FP2_ELEMENTS == 134_217_728
-    assert C61_SPARSE_RATIONAL_RESPONSE_BUNDLE_BYTES == 2_147_483_648
+    assert C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_BASE_ELEMENTS == 268_435_456
+    assert C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_BYTES == 2_147_483_648
     assert (
         C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES
-        - C61_SPARSE_RATIONAL_RESPONSE_BUNDLE_BYTES
+        - C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_BYTES
         == 145_715_200
     )
     assert C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES == 2_293_198_848
@@ -1634,6 +1772,38 @@ def build_report() -> dict[str, Any]:
         + (C61_SCALE_NODE_COUNT - 1)
         + (C61_SCHEDULED_SOURCE_COUNT - 1),
         c6.FP2_CARDINALITY,
+    )
+    assert C61_SPARSE_RATIONAL_PRODUCTION_DEPTH_SUM == 172
+    assert C61_SPARSE_RATIONAL_PRODUCTION_PRODUCT_TRIPLES == (
+        3 * C61_SPARSE_RATIONAL_PRODUCTION_DEPTH_SUM
+        + 2 * C61_SPARSE_RATIONAL_SUBCHECKS
+        + 1
+    )
+    assert C61_SPARSE_RATIONAL_PRODUCTION_ZERO_ROWS == (
+        C61_SPARSE_RATIONAL_PRODUCTION_DEPTH_SUM + 3 + 3 + 1
+    )
+    assert C61_SPARSE_RATIONAL_PRODUCTION_GKR_FULL_CORRELATIONS == (
+        sum(
+            depth * depth + 6 * depth + 2
+            for depth in C61_SPARSE_RATIONAL_PRODUCTION_DEPTHS
+        )
+        + 2 * C61_SPARSE_RATIONAL_SUBCHECKS
+    )
+    assert C61_SPARSE_RATIONAL_PRODUCTION_JOINT_FULL_CORRELATIONS == 25 * 8
+    assert C61_SPARSE_RATIONAL_PRODUCTION_FULL_CORRELATIONS_PER_TAPE == (
+        C61_SPARSE_RATIONAL_PRODUCTION_GKR_FULL_CORRELATIONS
+        + C61_SPARSE_RATIONAL_PRODUCTION_JOINT_FULL_CORRELATIONS
+        + 1  # terminal lambda*mu result
+        + 1  # global QuickSilver product mask
+        + 1  # existing compiler WHIR mask
+    )
+    assert C61_SPARSE_RATIONAL_PRODUCTION_ARITHMETIC_BYTES == (
+        92
+        + C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTION_BYTES
+        + C61_SPARSE_RATIONAL_PRODUCTION_GKR_BYTES
+        + C61_SPARSE_RATIONAL_PRODUCTION_JOINT_BYTES
+        + 16
+        + 32
     )
     assert C61_TERMINAL_FUNCTIONAL_WRITES == 225_997_412
     assert C61_TERMINAL_FUNCTIONAL_WRITES < 2**C61_TERMINAL_FUNCTIONAL_DOMAIN_LOG2

@@ -92,6 +92,14 @@ fn canonical_base_domain_log2(operation_plan: &C6InstalledOperationPlan) -> C6Re
         .map_err(|_| C6ResidualError::new("C6SPR2 base dimension exceeds u8"))
 }
 
+/// Canonical common dimension used by the joint leaf reduction and all
+/// response/plan opening points.
+pub fn c6_sparse_rational_base_domain_log2(
+    operation_plan: &C6InstalledOperationPlan,
+) -> C6ResidualResult<u8> {
+    canonical_base_domain_log2(operation_plan)
+}
+
 fn eq_lifted(leaf_point: &[Fp2], base_point: &[Fp2]) -> C6ResidualResult<Fp2> {
     if leaf_point.len() > base_point.len() {
         return Err(C6ResidualError::new(
@@ -559,6 +567,71 @@ impl C6ResidualSparseRationalBlindJointRoundsProof {
     pub fn clear_plan_values(&self) -> &[Fp2; C6_SPARSE_PLAN_OPENINGS] {
         &self.clear_plan_values
     }
+
+    pub fn relation_digest(&self) -> C6ResidualDigest {
+        self.relation_digest
+    }
+
+    pub fn correction_bytes(base_domain_log2: u8) -> C6ResidualResult<u64> {
+        16u64
+            .checked_mul(
+                C6_SPARSE_PLAN_OPENINGS as u64
+                    + u64::from(base_domain_log2) * C6_SPARSE_JOINT_SENT_VALUES as u64,
+            )
+            .ok_or_else(|| C6ResidualError::new("C6SPR3 joint correction byte count overflows"))
+    }
+
+    /// Encode transcript-visible plan evaluations and degree-eight round
+    /// corrections.  The enclosing frame owns the relation digest and D25
+    /// dimension.
+    pub fn encode_corrections(&self, base_domain_log2: u8) -> C6ResidualResult<Vec<u8>> {
+        if self.round_corrections.len() != usize::from(base_domain_log2) {
+            return Err(C6ResidualError::new(
+                "C6SPR3 joint correction round census is noncanonical",
+            ));
+        }
+        let expected_bytes = Self::correction_bytes(base_domain_log2)?;
+        let mut bytes = Vec::with_capacity(
+            usize::try_from(expected_bytes)
+                .map_err(|_| C6ResidualError::new("C6SPR3 joint body exceeds usize"))?,
+        );
+        for value in self.clear_plan_values {
+            encode_sparse_blind_fp2(&mut bytes, value);
+        }
+        for round in &self.round_corrections {
+            for correction in round {
+                encode_sparse_blind_fp2(&mut bytes, *correction);
+            }
+        }
+        if bytes.len() as u64 != expected_bytes || self.bytes() != expected_bytes {
+            return Err(C6ResidualError::new(
+                "C6SPR3 joint encoder disagrees with the exact census",
+            ));
+        }
+        Ok(bytes)
+    }
+
+    pub fn decode_corrections(
+        relation_digest: C6ResidualDigest,
+        base_domain_log2: u8,
+        bytes: &[u8],
+    ) -> C6ResidualResult<Self> {
+        if bytes.len() as u64 != Self::correction_bytes(base_domain_log2)? {
+            return Err(C6ResidualError::new("C6SPR3 strict joint correction length mismatch"));
+        }
+        let mut reader = SparseBlindCorrectionReader::new(bytes);
+        let clear_plan_values = [reader.fp2()?, reader.fp2()?, reader.fp2()?];
+        let mut round_corrections = Vec::with_capacity(usize::from(base_domain_log2));
+        for _ in 0..base_domain_log2 {
+            let mut round = [Fp2::ZERO; C6_SPARSE_JOINT_SENT_VALUES];
+            for correction in &mut round {
+                *correction = reader.fp2()?;
+            }
+            round_corrections.push(round);
+        }
+        reader.finish()?;
+        Ok(Self { relation_digest, clear_plan_values, round_corrections })
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -569,6 +642,14 @@ pub struct C6ResidualSparseRationalBlindJointTerminalProof {
 impl C6ResidualSparseRationalBlindJointTerminalProof {
     pub const fn bytes(&self) -> u64 {
         16
+    }
+
+    pub fn product_correction(&self) -> Fp2 {
+        self.product_correction
+    }
+
+    pub fn from_product_correction(product_correction: Fp2) -> Self {
+        Self { product_correction }
     }
 }
 

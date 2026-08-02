@@ -7,8 +7,10 @@
 use super::*;
 use crate::logup::{
     blind_prove_weighted_frac_tree, blind_verify_frac_tree, prove_weighted_frac_tree,
-    verify_frac_tree, BlindFracProof, Counters, Doms, FracProof, ProdKeyTriples, ProdTriples,
+    verify_frac_tree, BlindFracProof, BlindLayerProof, Counters, Doms, FracProof, ProdKeyTriples,
+    ProdTriples,
 };
+use volta_field::P;
 use volta_mac::{CorrelationStream, VerifierCtx};
 
 mod joint_leaf;
@@ -1113,6 +1115,73 @@ fn sparse_rational_subcheck_depths(
     ])
 }
 
+/// Canonical fraction-tree dimensions in the seven registered subcheck
+/// slots.  Wire codecs use this instead of trusting provider-supplied vector
+/// lengths.
+pub fn c6_sparse_rational_subcheck_depths(
+    operation_plan: &C6InstalledOperationPlan,
+) -> C6ResidualResult<[usize; C6_SPARSE_RATIONAL_SUBCHECKS]> {
+    sparse_rational_subcheck_depths(operation_plan)
+}
+
+fn sparse_blind_frac_correction_scalars(depth: usize) -> C6ResidualResult<u64> {
+    let depth = u64::try_from(depth)
+        .map_err(|_| C6ResidualError::new("C6SPR3 fraction depth exceeds u64"))?;
+    depth
+        .checked_mul(depth)
+        .and_then(|value| value.checked_add(6 * depth))
+        .and_then(|value| value.checked_add(3))
+        .ok_or_else(|| C6ResidualError::new("C6SPR3 fraction correction census overflows"))
+}
+
+fn encode_sparse_blind_fp2(bytes: &mut Vec<u8>, value: Fp2) {
+    bytes.extend_from_slice(&value.c0.value().to_le_bytes());
+    bytes.extend_from_slice(&value.c1.value().to_le_bytes());
+}
+
+struct SparseBlindCorrectionReader<'a> {
+    bytes: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> SparseBlindCorrectionReader<'a> {
+    fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes, offset: 0 }
+    }
+
+    fn fp2(&mut self) -> C6ResidualResult<Fp2> {
+        let end = self
+            .offset
+            .checked_add(16)
+            .ok_or_else(|| C6ResidualError::new("C6SPR3 correction cursor overflows"))?;
+        if end > self.bytes.len() {
+            return Err(C6ResidualError::new("truncated C6SPR3 correction body"));
+        }
+        let c0 = u64::from_le_bytes(
+            self.bytes[self.offset..self.offset + 8]
+                .try_into()
+                .expect("fixed C6SPR3 base-field slice"),
+        );
+        let c1 = u64::from_le_bytes(
+            self.bytes[self.offset + 8..end].try_into().expect("fixed C6SPR3 base-field slice"),
+        );
+        if c0 >= P || c1 >= P {
+            return Err(C6ResidualError::new(
+                "C6SPR3 correction contains a noncanonical base-field limb",
+            ));
+        }
+        self.offset = end;
+        Ok(Fp2::new(Fp::new(c0), Fp::new(c1)))
+    }
+
+    fn finish(self) -> C6ResidualResult<()> {
+        if self.offset != self.bytes.len() {
+            return Err(C6ResidualError::new("trailing C6SPR3 correction bytes"));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct C6ResidualSparseRationalBlindGkrProof {
     relation_digest: C6ResidualDigest,
@@ -1128,6 +1197,114 @@ impl C6ResidualSparseRationalBlindGkrProof {
 
     pub fn relation_digest(&self) -> C6ResidualDigest {
         self.relation_digest
+    }
+
+    pub fn correction_bytes(operation_plan: &C6InstalledOperationPlan) -> C6ResidualResult<u64> {
+        c6_sparse_rational_subcheck_depths(operation_plan)?
+            .into_iter()
+            .try_fold(0u64, |total, depth| {
+                total
+                    .checked_add(sparse_blind_frac_correction_scalars(depth)?)
+                    .ok_or_else(|| C6ResidualError::new("C6SPR3 correction byte count overflows"))
+            })?
+            .checked_mul(16)
+            .ok_or_else(|| C6ResidualError::new("C6SPR3 correction byte count overflows"))
+    }
+
+    /// Encode only transcript-visible corrections.  Dimensions and relation
+    /// ownership are supplied by the enclosing typed C6.1 frame.
+    pub fn encode_corrections(
+        &self,
+        operation_plan: &C6InstalledOperationPlan,
+    ) -> C6ResidualResult<Vec<u8>> {
+        let depths = c6_sparse_rational_subcheck_depths(operation_plan)?;
+        let expected_bytes = Self::correction_bytes(operation_plan)?;
+        let mut bytes = Vec::with_capacity(
+            usize::try_from(expected_bytes)
+                .map_err(|_| C6ResidualError::new("C6SPR3 correction body exceeds usize"))?,
+        );
+        for (index, (&depth, proof)) in depths.iter().zip(&self.subchecks).enumerate() {
+            if proof.layers.len() != depth || proof.aux.is_some() {
+                return Err(C6ResidualError::new(
+                    "C6SPR3 weighted fraction proof has noncanonical layer shape",
+                ));
+            }
+            for correction in proof.root_corrs {
+                encode_sparse_blind_fp2(&mut bytes, correction);
+            }
+            for (layer_index, layer) in proof.layers.iter().enumerate() {
+                if layer.round_corrs.len() != layer_index {
+                    return Err(C6ResidualError::new(
+                        "C6SPR3 weighted fraction round census is noncanonical",
+                    ));
+                }
+                for corrections in &layer.round_corrs {
+                    for correction in corrections {
+                        encode_sparse_blind_fp2(&mut bytes, *correction);
+                    }
+                }
+                for correction in layer.split_corrs {
+                    encode_sparse_blind_fp2(&mut bytes, correction);
+                }
+                for correction in layer.z_corrs {
+                    encode_sparse_blind_fp2(&mut bytes, correction);
+                }
+            }
+            encode_sparse_blind_fp2(&mut bytes, self.root_inverse_corrections[index]);
+        }
+        if bytes.len() as u64 != expected_bytes || self.bytes() != expected_bytes {
+            return Err(C6ResidualError::new(
+                "C6SPR3 correction encoder disagrees with the exact census",
+            ));
+        }
+        Ok(bytes)
+    }
+
+    pub fn decode_corrections(
+        operation_plan: &C6InstalledOperationPlan,
+        relation_digest: C6ResidualDigest,
+        bytes: &[u8],
+    ) -> C6ResidualResult<Self> {
+        if bytes.len() as u64 != Self::correction_bytes(operation_plan)? {
+            return Err(C6ResidualError::new("C6SPR3 strict correction length mismatch"));
+        }
+        let depths = c6_sparse_rational_subcheck_depths(operation_plan)?;
+        let mut reader = SparseBlindCorrectionReader::new(bytes);
+        let mut subchecks = Vec::with_capacity(C6_SPARSE_RATIONAL_SUBCHECKS);
+        let mut root_inverse_corrections = Vec::with_capacity(C6_SPARSE_RATIONAL_SUBCHECKS);
+        for depth in depths {
+            let root_corrs = [reader.fp2()?, reader.fp2()?];
+            let mut layers = Vec::with_capacity(depth);
+            for layer_index in 0..depth {
+                let mut round_corrs = Vec::with_capacity(layer_index);
+                for _ in 0..layer_index {
+                    round_corrs.push([reader.fp2()?, reader.fp2()?]);
+                }
+                layers.push(BlindLayerProof {
+                    round_corrs,
+                    split_corrs: [reader.fp2()?, reader.fp2()?, reader.fp2()?, reader.fp2()?],
+                    z_corrs: [reader.fp2()?, reader.fp2()?, reader.fp2()?],
+                });
+            }
+            subchecks.push(BlindFracProof { root_corrs, layers, aux: None });
+            root_inverse_corrections.push(reader.fp2()?);
+        }
+        reader.finish()?;
+        let proof = Self {
+            relation_digest,
+            subchecks: subchecks.try_into().map_err(|_| {
+                C6ResidualError::new("C6SPR3 decoded fraction-proof census differs from seven")
+            })?,
+            root_inverse_corrections: root_inverse_corrections.try_into().map_err(|_| {
+                C6ResidualError::new("C6SPR3 decoded inverse census differs from seven")
+            })?,
+        };
+        if proof.bytes() != bytes.len() as u64 {
+            return Err(C6ResidualError::new(
+                "C6SPR3 decoded correction census differs from the wire",
+            ));
+        }
+        Ok(proof)
     }
 }
 

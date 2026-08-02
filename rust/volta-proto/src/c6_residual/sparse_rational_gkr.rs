@@ -478,6 +478,10 @@ pub fn compile_c6_sparse_rational_packed_oracle_reference(
     let mut plan_values = try_zeroed_fp2_vec(plan_len, "C6SPR2 plan packing")?;
     let lhs_block = base_rows;
     let rhs_block = 2 * base_rows;
+    // The virtual terminal relation uses degree-five selectors on the six
+    // canonical opcode values.  Neutral plan padding is therefore encoded as
+    // StructuralZero rather than the non-opcode value zero.
+    plan_values[..base_rows].fill(sparse_plan_opcode(C6InstalledOperationKind::StructuralZero));
     let mut source_cursor = 0usize;
     let mut operand_cursor = 0usize;
     let mut scalar_cursor = 0u32;
@@ -1098,6 +1102,9 @@ mod tests {
                 )
             );
         }
+        assert!(packed.plan_values[topology.canonical_node_count as usize..base_rows].iter().all(
+            |&opcode| { opcode == sparse_plan_opcode(C6InstalledOperationKind::StructuralZero) }
+        ));
         let non_scale = direct
             .operation_plan()
             .operation_kinds()

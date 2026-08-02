@@ -296,6 +296,69 @@ fn sparse_plan_opcode(kind: C6InstalledOperationKind) -> Fp2 {
     Fp2::from_base(Fp::new(code))
 }
 
+/// Lagrange selector for one of the six canonical operation codes.
+///
+/// The fixed plan uses only the base-field points `1..=6` on active rows.
+/// Padding must therefore use one of those canonical codes before this
+/// selector is used by a virtual-polynomial terminal equation.
+fn c6_sparse_opcode_selector(kind: C6InstalledOperationKind, opcode: Fp2) -> Fp2 {
+    let selected = kind as u8;
+    let mut numerator = Fp2::ONE;
+    let mut denominator = Fp::ONE;
+    for code in 1u8..=6 {
+        if code == selected {
+            continue;
+        }
+        numerator = numerator * (opcode - Fp2::from_base(Fp::new(u64::from(code))));
+        denominator = denominator * Fp::from_i64(i64::from(selected) - i64::from(code));
+    }
+    numerator.mul_base(denominator.inv())
+}
+
+/// Evaluate the MLEs of `[row < active_rows]` and
+/// `[row < active_rows] * row` at one LSB-first point without materializing
+/// either public column.
+///
+/// `[0, active_rows)` is split into aligned dyadic blocks.  Each block fixes
+/// only its high bits; summing over its free low bits gives the block weight,
+/// while their conditional index is `offset + sum_j 2^j point[j]`.
+fn c6_sparse_range_mle_moments(active_rows: usize, point: &[Fp2]) -> C6ResidualResult<(Fp2, Fp2)> {
+    if point.len() >= usize::BITS as usize || point.len() >= u64::BITS as usize {
+        return Err(C6ResidualError::new("C6SPR2 public range dimension exceeds machine index"));
+    }
+    let capacity = 1usize << point.len();
+    if active_rows > capacity {
+        return Err(C6ResidualError::new("C6SPR2 public range exceeds its MLE domain"));
+    }
+
+    let mut active = Fp2::ZERO;
+    let mut active_index = Fp2::ZERO;
+    let mut offset = 0usize;
+    let mut remaining = active_rows;
+    while remaining != 0 {
+        let block_log2 = (usize::BITS - 1 - remaining.leading_zeros()) as usize;
+        let block_rows = 1usize << block_log2;
+        debug_assert_eq!(offset % block_rows, 0);
+
+        let mut block_weight = Fp2::ONE;
+        for (bit, &coordinate) in point.iter().enumerate().skip(block_log2) {
+            block_weight = block_weight
+                * if (offset >> bit) & 1 == 1 { coordinate } else { Fp2::ONE - coordinate };
+        }
+        let offset_u64 = u64::try_from(offset)
+            .map_err(|_| C6ResidualError::new("C6SPR2 public range offset exceeds u64"))?;
+        let mut conditional_index = Fp2::from_base(Fp::new(offset_u64));
+        for (bit, &coordinate) in point.iter().enumerate().take(block_log2) {
+            conditional_index += coordinate * Fp2::from_base(Fp::new(1u64 << bit));
+        }
+        active += block_weight;
+        active_index += block_weight * conditional_index;
+        offset += block_rows;
+        remaining -= block_rows;
+    }
+    Ok((active, active_index))
+}
+
 fn hash_packed_oracle(
     domain: &'static str,
     base_domain_log2: u8,
@@ -860,6 +923,53 @@ mod tests {
 
     fn fp2(value: u64) -> Fp2 {
         Fp2::from_base(fp(value))
+    }
+
+    #[test]
+    fn public_range_moments_and_opcode_selectors_are_exact() {
+        const KINDS: [C6InstalledOperationKind; 6] = [
+            C6InstalledOperationKind::Source,
+            C6InstalledOperationKind::StructuralZero,
+            C6InstalledOperationKind::PublicInput,
+            C6InstalledOperationKind::Add,
+            C6InstalledOperationKind::Sub,
+            C6InstalledOperationKind::Scale,
+        ];
+        for selected in KINDS {
+            for row_kind in KINDS {
+                assert_eq!(
+                    c6_sparse_opcode_selector(selected, sparse_plan_opcode(row_kind)),
+                    if selected == row_kind { Fp2::ONE } else { Fp2::ZERO },
+                );
+            }
+        }
+        let arbitrary_opcode = Fp2::new(fp(37), fp(9));
+        assert_eq!(
+            KINDS.into_iter().fold(Fp2::ZERO, |sum, kind| {
+                sum + c6_sparse_opcode_selector(kind, arbitrary_opcode)
+            }),
+            Fp2::ONE,
+        );
+
+        for dimension in 1usize..=8 {
+            let point = (0..dimension)
+                .map(|bit| Fp2::new(fp(41 + bit as u64), fp(3 + bit as u64)))
+                .collect::<Vec<_>>();
+            let capacity = 1usize << dimension;
+            for active_rows in 0..=capacity {
+                let mut indicator = vec![Fp2::ZERO; capacity];
+                let mut indexed = vec![Fp2::ZERO; capacity];
+                for row in 0..active_rows {
+                    indicator[row] = Fp2::ONE;
+                    indexed[row] = fp2(row as u64);
+                }
+                let (active, active_index) =
+                    c6_sparse_range_mle_moments(active_rows, &point).unwrap();
+                assert_eq!(active, crate::mle::eval_mle(&indicator, &point));
+                assert_eq!(active_index, crate::mle::eval_mle(&indexed, &point));
+            }
+            assert!(c6_sparse_range_mle_moments(capacity + 1, &point).is_err());
+        }
     }
 
     #[test]

@@ -64,8 +64,10 @@ const PAIRED_INSTALLED_CLOSURE_WRAPPER_DOMAIN: &str =
 const PAIRED_AUXILIARY_WRAPPER_DOMAIN: &str = "volta-zk/c6/paired-residual-auxiliary-wrapper/v1";
 const TERMINAL_WEIGHT_SCHEDULE_DOMAIN_V2: &str = "volta-zk/c6/residual-terminal-weight-schedule/v2";
 const TERMINAL_WEIGHT_SCHEDULE_DOMAIN_V3: &str = "volta-zk/c6/residual-terminal-weight-schedule/v3";
+const TERMINAL_WEIGHT_SCHEDULE_DOMAIN_V4: &str = "volta-zk/c6/residual-terminal-weight-schedule/v4";
 const TERMINAL_LINEAR_FORM_DOMAIN_V2: &str = "volta-zk/c6/residual-terminal-linear-form/v2";
 const TERMINAL_LINEAR_FORM_DOMAIN_V3: &str = "volta-zk/c6/residual-terminal-linear-form/v3";
+const TERMINAL_LINEAR_FORM_DOMAIN_V4: &str = "volta-zk/c6/residual-terminal-linear-form/v4";
 const POST_ROOT_CONTEXT_SEED_DOMAIN: &str = "volta-zk/c6/residual-post-root-context-seed/v2";
 const POST_ROOT_CHALLENGES_DOMAIN: &str = "volta-zk/c6/residual-post-root-challenges/v2";
 const POST_ROOT_SEED_COMMITMENT_DOMAIN: &str = "volta-zk/c6/residual-post-root-seed-commitment/v2";
@@ -73,11 +75,14 @@ const RELATION_MANIFEST_DOMAIN: &str = "volta-zk/c6/t1-residual-relation-manifes
 const RELATION_MANIFEST_MAGIC: [u8; 8] = *b"C6RLM1\0\0";
 const RELATION_ROOT_BINDING_DOMAIN: &str = "volta-zk/c6/residual-root-binding/v3";
 const BASE_SHARE_CONTEXT_DOMAIN: &str = "volta-zk/c6/residual-base-share-context/v3";
+const BASE_SHARE_CONTEXT_DOMAIN_V4: &str = "volta-zk/c6/residual-base-share-context/v4";
 const VERIFIER_SEED_COMMITMENT_DOMAIN: &str = "volta-zk/c6/residual-verifier-seed-commitment/v1";
 const PUBLIC_CLAIMS_DOMAIN: &str = "volta-zk/c6/residual-public-claims/v1";
 const RELATION_CONTEXT_DOMAIN: &str = "volta-zk/c6/residual-relation-context/v3";
 const RELATION_CHALLENGES_DOMAIN: &str = "volta-zk/c6/residual-relation-challenges/v3";
+const RELATION_CHALLENGES_DOMAIN_V4: &str = "volta-zk/c6/residual-relation-challenges/v4";
 const ATOMIC_WEIGHT_SCHEDULE_DOMAIN: &str = "volta-zk/c6/residual-atomic-weight-schedule/v1";
+const ATOMIC_WEIGHT_SCHEDULE_DOMAIN_V4: &str = "volta-zk/c6/residual-atomic-weight-schedule/v4";
 const ATOMIC_EVENT_COMPLETION_DOMAIN: &str = "volta-zk/c6/residual-atomic-event-completion/v1";
 const ATOMIC_EVENT_AUDIT_DOMAIN: &str = "volta-zk/c6/residual-atomic-event-audit/v1";
 const FUSED_FOLDED_COEFFICIENT_DOMAIN: &str = "volta-zk/c6/residual-fused-folded-coefficients/v1";
@@ -136,12 +141,13 @@ pub struct C6ResidualDirectScheduleDimensions {
     pub atomic: usize,
 }
 
-/// Exact direct-MLE point bundle preregistered for the C6.1 C6RSC3-v4 path.
+/// Complete diagnostic view of the direct-MLE point bundle preregistered for
+/// the C6.1 C6RSC3-v4 path.
 ///
-/// The eight terminal points are ordered by proof repetition, MAC
-/// coordinate, then plaintext/tag kind.  This type owns no transcript and
-/// cannot derive a PRG stream; callers must supply points drawn after the
-/// bound roots and public claims.
+/// Production typestate releases the alpha and postclaim parts separately;
+/// this aggregate is only formed after both phases exist.  The eight terminal
+/// points are ordered by proof repetition, MAC coordinate, then
+/// plaintext/tag kind.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6ResidualDirectEqualityPoints {
     manifest_digest: C6ResidualDigest,
@@ -149,6 +155,110 @@ pub struct C6ResidualDirectEqualityPoints {
     terminal: [Vec<Fp2>; C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS],
     atomic: [Vec<Fp2>; C6_RESIDUAL_PROOF_REPETITIONS as usize],
     digest: C6ResidualDigest,
+}
+
+/// Direct alpha points released after witness roots but before the provider
+/// public claims which consume them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualDirectAlphaPoints {
+    manifest_digest: C6ResidualDigest,
+    points: [Vec<Fp2>; C6_RESIDUAL_MAC_COORDINATES as usize],
+    digest: C6ResidualDigest,
+}
+
+impl C6ResidualDirectAlphaPoints {
+    pub fn new(
+        manifest: &C6ResidualRelationManifest,
+        points: [Vec<Fp2>; C6_RESIDUAL_MAC_COORDINATES as usize],
+    ) -> C6ResidualResult<Self> {
+        let dimension = C6ResidualDirectEqualityPoints::dimensions(manifest)?.alpha;
+        if points.iter().any(|point| point.len() != dimension) {
+            return Err(C6ResidualError::new(
+                "C6 direct alpha point has the wrong schedule dimension",
+            ));
+        }
+        let mut value = Self { manifest_digest: manifest.digest, points, digest: [0; 32] };
+        let mut hasher = blake3::Hasher::new_derive_key(DIRECT_EQUALITY_POINTS_DOMAIN);
+        hasher.update(&[RESIDUAL_RELATION_PROTOCOL_V4, 0]);
+        hasher.update(&value.manifest_digest);
+        hash_direct_points(&mut hasher, &value.points);
+        value.digest = *hasher.finalize().as_bytes();
+        if value.digest == [0; 32] {
+            return Err(C6ResidualError::new("C6 direct alpha point digest is zero"));
+        }
+        Ok(value)
+    }
+
+    pub fn point(&self, coordinate: u8) -> C6ResidualResult<&[Fp2]> {
+        self.points
+            .get(usize::from(coordinate))
+            .map(Vec::as_slice)
+            .ok_or_else(|| C6ResidualError::new("C6 direct alpha coordinate is out of range"))
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+}
+
+/// Terminal and atomic points released only after provider public claims are
+/// fixed.  No alpha point is representable in this phase.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualDirectPostClaimPoints {
+    manifest_digest: C6ResidualDigest,
+    terminal: [Vec<Fp2>; C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS],
+    atomic: [Vec<Fp2>; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    digest: C6ResidualDigest,
+}
+
+impl C6ResidualDirectPostClaimPoints {
+    pub fn new(
+        manifest: &C6ResidualRelationManifest,
+        terminal: [Vec<Fp2>; C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS],
+        atomic: [Vec<Fp2>; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    ) -> C6ResidualResult<Self> {
+        let dimensions = C6ResidualDirectEqualityPoints::dimensions(manifest)?;
+        if terminal.iter().any(|point| point.len() != dimensions.terminal)
+            || atomic.iter().any(|point| point.len() != dimensions.atomic)
+        {
+            return Err(C6ResidualError::new(
+                "C6 direct postclaim point has the wrong schedule dimension",
+            ));
+        }
+        let mut value =
+            Self { manifest_digest: manifest.digest, terminal, atomic, digest: [0; 32] };
+        let mut hasher = blake3::Hasher::new_derive_key(DIRECT_EQUALITY_POINTS_DOMAIN);
+        hasher.update(&[RESIDUAL_RELATION_PROTOCOL_V4, 1]);
+        hasher.update(&value.manifest_digest);
+        hash_direct_points(&mut hasher, &value.terminal);
+        hash_direct_points(&mut hasher, &value.atomic);
+        value.digest = *hasher.finalize().as_bytes();
+        if value.digest == [0; 32] {
+            return Err(C6ResidualError::new("C6 direct postclaim point digest is zero"));
+        }
+        Ok(value)
+    }
+
+    pub fn terminal_point(
+        &self,
+        proof_repetition: u8,
+        mac_coordinate: u8,
+        kind: C6ResidualTerminalFormKind,
+    ) -> C6ResidualResult<&[Fp2]> {
+        Ok(self.terminal[direct_terminal_schedule_index(proof_repetition, mac_coordinate, kind)?]
+            .as_slice())
+    }
+
+    pub fn atomic_point(&self, proof_repetition: u8) -> C6ResidualResult<&[Fp2]> {
+        self.atomic
+            .get(usize::from(proof_repetition))
+            .map(Vec::as_slice)
+            .ok_or_else(|| C6ResidualError::new("C6 direct atomic repetition is out of range"))
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
 }
 
 impl C6ResidualDirectEqualityPoints {
@@ -278,6 +388,17 @@ fn direct_equality_points_digest(points: &C6ResidualDirectEqualityPoints) -> C6R
         }
     }
     *hasher.finalize().as_bytes()
+}
+
+fn hash_direct_points<const N: usize>(hasher: &mut blake3::Hasher, points: &[Vec<Fp2>; N]) {
+    hasher.update(&(points.len() as u64).to_le_bytes());
+    for (ordinal, point) in points.iter().enumerate() {
+        hasher.update(&(ordinal as u64).to_le_bytes());
+        hasher.update(&(point.len() as u64).to_le_bytes());
+        for coordinate in point {
+            hash_fp2(hasher, *coordinate);
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1313,6 +1434,35 @@ impl C6ResidualRelationRootBound {
             retained,
             base_share_seed_commitment,
             alpha_seed,
+            direct_alpha_points: None,
+            digest: [0; 32],
+        };
+        context.digest = base_share_context_digest(&context);
+        Ok(context)
+    }
+
+    pub fn release_direct_alpha_points(
+        self,
+        retained: C6ResidualRetainedChallenges,
+        points: C6ResidualDirectAlphaPoints,
+    ) -> C6ResidualResult<C6ResidualBaseShareContext> {
+        if retained.manifest_digest != self.manifest.digest
+            || retained.digest == [0; 32]
+            || retained.digest != retained_challenges_digest(&retained)
+            || points.manifest_digest != self.manifest.digest
+            || points.digest == [0; 32]
+        {
+            return Err(C6ResidualError::new(
+                "C6 direct base-share transition has an invalid point/challenge binding",
+            ));
+        }
+        let base_share_seed_commitment = points.digest;
+        let mut context = C6ResidualBaseShareContext {
+            root: self,
+            retained,
+            base_share_seed_commitment,
+            alpha_seed: [0; 32],
+            direct_alpha_points: Some(points),
             digest: [0; 32],
         };
         context.digest = base_share_context_digest(&context);
@@ -1336,6 +1486,7 @@ pub struct C6ResidualBaseShareContext {
     retained: C6ResidualRetainedChallenges,
     base_share_seed_commitment: C6ResidualDigest,
     alpha_seed: [u8; 32],
+    direct_alpha_points: Option<C6ResidualDirectAlphaPoints>,
     digest: C6ResidualDigest,
 }
 
@@ -1357,10 +1508,25 @@ impl C6ResidualBaseShareContext {
     }
 
     pub fn alpha_stream(&self, coordinate: u8) -> C6ResidualResult<FpStream> {
+        if self.direct_alpha_points.is_some() {
+            return Err(C6ResidualError::new("C6 direct alpha schedule has no legacy PRG stream"));
+        }
         let domain = *PAIRED_COEFFICIENT_STREAM_DOMAINS
             .get(usize::from(coordinate))
             .ok_or_else(|| C6ResidualError::new("C6 residual alpha coordinate is out of range"))?;
         Ok(FpStream::domain_separated(self.alpha_seed, domain))
+    }
+
+    fn alpha_weight_stream(
+        &self,
+        coordinate: u8,
+    ) -> C6ResidualResult<C6ResidualScheduleWeightStream> {
+        match &self.direct_alpha_points {
+            Some(points) => {
+                C6ResidualScheduleWeightStream::equality(points.point(coordinate)?, "direct alpha")
+            }
+            None => Ok(C6ResidualScheduleWeightStream::Prg(self.alpha_stream(coordinate)?)),
+        }
     }
 
     pub fn commit_public_claims(
@@ -1446,11 +1612,11 @@ impl C6ResidualBaseShareContext {
         for (coordinate, ((mask, tag, correction), residual)) in
             coordinate_columns.iter().copied().zip(&mut residuals).enumerate()
         {
-            let mut alpha = self.alpha_stream(coordinate as u8)?;
+            let mut alpha = self.alpha_weight_stream(coordinate as u8)?;
             let mut correction_rlc = linear.public_plaintext();
             let mut public_tag_rlc = Fp2::ZERO;
             for source in 0..source_count {
-                let alpha = alpha.next_fp2();
+                let alpha = alpha.next_fp2()?;
                 let coefficient = linear.leaf_coefficients()[source];
                 correction_rlc += coefficient * leaf.column(correction)[source]
                     - alpha * leaf.column(mask)[source];
@@ -1535,11 +1701,23 @@ impl C6ResidualBaseShareContext {
 }
 
 fn base_share_context_digest(context: &C6ResidualBaseShareContext) -> C6ResidualDigest {
-    let mut hasher = blake3::Hasher::new_derive_key(BASE_SHARE_CONTEXT_DOMAIN);
+    let domain = if context.direct_alpha_points.is_some() {
+        BASE_SHARE_CONTEXT_DOMAIN_V4
+    } else {
+        BASE_SHARE_CONTEXT_DOMAIN
+    };
+    let mut hasher = blake3::Hasher::new_derive_key(domain);
     hasher.update(&context.root.digest);
     hasher.update(&context.retained.digest);
     hasher.update(&context.base_share_seed_commitment);
     hasher.update(&context.alpha_seed);
+    match &context.direct_alpha_points {
+        Some(points) => {
+            hasher.update(&[RESIDUAL_RELATION_PROTOCOL_V4]);
+            hasher.update(&points.digest);
+        }
+        None => {}
+    }
     *hasher.finalize().as_bytes()
 }
 
@@ -1621,6 +1799,11 @@ impl C6ResidualClaimsBoundContext {
         relation_seed: [u8; 32],
     ) -> C6ResidualResult<C6ResidualRelationChallenges> {
         self.base.root.manifest.validate(operation_plan)?;
+        if self.base.direct_alpha_points.is_some() {
+            return Err(C6ResidualError::new(
+                "C6 direct alpha context cannot release a legacy relation seed",
+            ));
+        }
         if relation_seed == [0; 32] {
             return Err(C6ResidualError::new("C6 residual relation seed is zero"));
         }
@@ -1670,9 +1853,70 @@ impl C6ResidualClaimsBoundContext {
             )
         });
         let mut challenges = C6ResidualRelationChallenges {
+            protocol_version: RESIDUAL_RELATION_PROTOCOL_V3,
             claims_bound: self,
             relation_seed_commitment,
             context_seed,
+            terminal_schedules,
+            atomic_schedules,
+            digest: [0; 32],
+        };
+        challenges.digest = relation_challenges_digest(&challenges);
+        challenges.validate(operation_plan)?;
+        Ok(challenges)
+    }
+
+    pub fn release_direct_postclaim_points(
+        self,
+        operation_plan: &C6InstalledOperationPlan,
+        points: C6ResidualDirectPostClaimPoints,
+    ) -> C6ResidualResult<C6ResidualRelationChallenges> {
+        self.base.root.manifest.validate(operation_plan)?;
+        if self.base.direct_alpha_points.is_none()
+            || points.manifest_digest != self.base.root.manifest.digest
+            || points.digest == [0; 32]
+        {
+            return Err(C6ResidualError::new(
+                "C6 direct postclaim transition has an invalid point binding",
+            ));
+        }
+        let mut terminal_schedules = Vec::with_capacity(C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS);
+        for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
+            for mac_coordinate in 0..C6_RESIDUAL_MAC_COORDINATES {
+                for kind in [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag]
+                {
+                    terminal_schedules.push(derive_direct_terminal_weight_schedule(
+                        operation_plan,
+                        proof_repetition,
+                        mac_coordinate,
+                        kind,
+                        points.terminal_point(proof_repetition, mac_coordinate, kind)?,
+                    )?);
+                }
+            }
+        }
+        let terminal_schedules: [C6ResidualTerminalWeightSchedule;
+            C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS] = terminal_schedules
+            .try_into()
+            .map_err(|_| C6ResidualError::new("C6 direct terminal expansion lost a schedule"))?;
+        let mut atomic_schedules = Vec::with_capacity(C6_RESIDUAL_PROOF_REPETITIONS as usize);
+        for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
+            atomic_schedules.push(C6ResidualAtomicWeightSchedule::new_direct(
+                self.base.root.manifest.digest,
+                self.claims.digest,
+                proof_repetition,
+                self.base.root.manifest.atomic_outputs_per_repetition,
+                points.atomic_point(proof_repetition)?.to_vec(),
+            ));
+        }
+        let atomic_schedules = atomic_schedules
+            .try_into()
+            .map_err(|_| C6ResidualError::new("C6 direct atomic expansion lost a schedule"))?;
+        let mut challenges = C6ResidualRelationChallenges {
+            protocol_version: RESIDUAL_RELATION_PROTOCOL_V4,
+            claims_bound: self,
+            relation_seed_commitment: points.digest,
+            context_seed: [0; 32],
             terminal_schedules,
             atomic_schedules,
             digest: [0; 32],
@@ -1687,12 +1931,14 @@ impl C6ResidualClaimsBoundContext {
 /// repetition.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6ResidualAtomicWeightSchedule {
+    protocol_version: u8,
     manifest_digest: C6ResidualDigest,
     public_claims_digest: C6ResidualDigest,
     context_seed: [u8; 32],
     proof_repetition: u8,
     stream_domain: u64,
     output_count: u64,
+    direct_point: Option<Vec<Fp2>>,
     digest: C6ResidualDigest,
 }
 
@@ -1706,12 +1952,36 @@ impl C6ResidualAtomicWeightSchedule {
     ) -> Self {
         let stream_domain = ATOMIC_WEIGHT_STREAM_DOMAINS[usize::from(proof_repetition)];
         let mut schedule = Self {
+            protocol_version: RESIDUAL_RELATION_PROTOCOL_V3,
             manifest_digest,
             public_claims_digest,
             context_seed,
             proof_repetition,
             stream_domain,
             output_count,
+            direct_point: None,
+            digest: [0; 32],
+        };
+        schedule.digest = atomic_weight_schedule_digest(&schedule);
+        schedule
+    }
+
+    fn new_direct(
+        manifest_digest: C6ResidualDigest,
+        public_claims_digest: C6ResidualDigest,
+        proof_repetition: u8,
+        output_count: u64,
+        point: Vec<Fp2>,
+    ) -> Self {
+        let mut schedule = Self {
+            protocol_version: RESIDUAL_RELATION_PROTOCOL_V4,
+            manifest_digest,
+            public_claims_digest,
+            context_seed: [0; 32],
+            proof_repetition,
+            stream_domain: 0,
+            output_count,
+            direct_point: Some(point),
             digest: [0; 32],
         };
         schedule.digest = atomic_weight_schedule_digest(&schedule);
@@ -1734,23 +2004,47 @@ impl C6ResidualAtomicWeightSchedule {
         self.digest
     }
 
-    pub fn stream(&self) -> FpStream {
-        FpStream::domain_separated(self.context_seed, self.stream_domain)
+    fn weight_stream(&self) -> C6ResidualResult<C6ResidualScheduleWeightStream> {
+        match &self.direct_point {
+            Some(point) => C6ResidualScheduleWeightStream::equality(point, "direct atomic"),
+            None => Ok(C6ResidualScheduleWeightStream::Prg(FpStream::domain_separated(
+                self.context_seed,
+                self.stream_domain,
+            ))),
+        }
     }
 }
 
 fn atomic_weight_schedule_digest(schedule: &C6ResidualAtomicWeightSchedule) -> C6ResidualDigest {
-    let mut hasher = blake3::Hasher::new_derive_key(ATOMIC_WEIGHT_SCHEDULE_DOMAIN);
+    let domain = if schedule.protocol_version == RESIDUAL_RELATION_PROTOCOL_V4 {
+        ATOMIC_WEIGHT_SCHEDULE_DOMAIN_V4
+    } else {
+        ATOMIC_WEIGHT_SCHEDULE_DOMAIN
+    };
+    let mut hasher = blake3::Hasher::new_derive_key(domain);
+    if schedule.protocol_version == RESIDUAL_RELATION_PROTOCOL_V4 {
+        hasher.update(&[schedule.protocol_version]);
+    }
     hasher.update(&schedule.manifest_digest);
     hasher.update(&schedule.public_claims_digest);
     hasher.update(&[schedule.proof_repetition]);
     hasher.update(&schedule.stream_domain.to_le_bytes());
     hasher.update(&schedule.output_count.to_le_bytes());
+    match &schedule.direct_point {
+        Some(point) => {
+            hasher.update(&(point.len() as u64).to_le_bytes());
+            for coordinate in point {
+                hash_fp2(&mut hasher, *coordinate);
+            }
+        }
+        None => {}
+    }
     *hasher.finalize().as_bytes()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6ResidualRelationChallenges {
+    protocol_version: u8,
     claims_bound: C6ResidualClaimsBoundContext,
     relation_seed_commitment: C6ResidualDigest,
     context_seed: [u8; 32],
@@ -1760,6 +2054,10 @@ pub struct C6ResidualRelationChallenges {
 }
 
 impl C6ResidualRelationChallenges {
+    pub fn protocol_version(&self) -> u8 {
+        self.protocol_version
+    }
+
     pub fn manifest(&self) -> &C6ResidualRelationManifest {
         &self.claims_bound.base.root.manifest
     }
@@ -1815,8 +2113,15 @@ impl C6ResidualRelationChallenges {
 
     fn validate(&self, operation_plan: &C6InstalledOperationPlan) -> C6ResidualResult<()> {
         self.manifest().validate(operation_plan)?;
+        let is_v3 = self.protocol_version == RESIDUAL_RELATION_PROTOCOL_V3;
+        let is_v4 = self.protocol_version == RESIDUAL_RELATION_PROTOCOL_V4;
+        let direct_dimensions = C6ResidualDirectEqualityPoints::dimensions(self.manifest())?;
         if self.relation_seed_commitment == [0; 32]
-            || self.context_seed == [0; 32]
+            || (!is_v3 && !is_v4)
+            || (is_v3 && self.context_seed == [0; 32])
+            || (is_v4
+                && (self.context_seed != [0; 32]
+                    || self.claims_bound.base.direct_alpha_points.is_none()))
             || self.claims().digest == [0; 32]
             || self.claims().digest != public_claims_digest(self.claims())
             || self.digest == [0; 32]
@@ -1827,8 +2132,18 @@ impl C6ResidualRelationChallenges {
         for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
             let atomic = self.atomic_schedule(proof_repetition)?;
             if atomic.proof_repetition != proof_repetition
-                || atomic.stream_domain
-                    != ATOMIC_WEIGHT_STREAM_DOMAINS[usize::from(proof_repetition)]
+                || atomic.protocol_version != self.protocol_version
+                || (is_v3
+                    && atomic.stream_domain
+                        != ATOMIC_WEIGHT_STREAM_DOMAINS[usize::from(proof_repetition)])
+                || (is_v3 && atomic.direct_point.is_some())
+                || (is_v4
+                    && (atomic.stream_domain != 0
+                        || atomic.context_seed != [0; 32]
+                        || atomic
+                            .direct_point
+                            .as_ref()
+                            .is_none_or(|point| point.len() != direct_dimensions.atomic)))
                 || atomic.output_count != self.manifest().atomic_outputs_per_repetition
                 || atomic.digest != atomic_weight_schedule_digest(atomic)
             {
@@ -1841,13 +2156,13 @@ impl C6ResidualRelationChallenges {
                 {
                     let schedule =
                         self.terminal_schedule(proof_repetition, mac_coordinate, kind)?;
-                    if schedule.protocol_version != RESIDUAL_RELATION_PROTOCOL_V3
+                    if schedule.protocol_version != self.protocol_version
                         || schedule.proof_repetition != proof_repetition
                         || schedule.mac_coordinate != mac_coordinate
                         || schedule.kind != kind
                     {
                         return Err(C6ResidualError::new(
-                            "C6 residual v3 terminal streams are swapped",
+                            "C6 residual terminal streams are swapped",
                         ));
                     }
                     schedule.validate(operation_plan)?;
@@ -1859,7 +2174,15 @@ impl C6ResidualRelationChallenges {
 }
 
 fn relation_challenges_digest(challenges: &C6ResidualRelationChallenges) -> C6ResidualDigest {
-    let mut hasher = blake3::Hasher::new_derive_key(RELATION_CHALLENGES_DOMAIN);
+    let domain = if challenges.protocol_version == RESIDUAL_RELATION_PROTOCOL_V4 {
+        RELATION_CHALLENGES_DOMAIN_V4
+    } else {
+        RELATION_CHALLENGES_DOMAIN
+    };
+    let mut hasher = blake3::Hasher::new_derive_key(domain);
+    if challenges.protocol_version == RESIDUAL_RELATION_PROTOCOL_V4 {
+        hasher.update(&[challenges.protocol_version]);
+    }
     hasher.update(&challenges.claims_bound.base.root.manifest.digest);
     hasher.update(&challenges.claims_bound.base.digest);
     hasher.update(&challenges.claims_bound.claims.digest);
@@ -2429,7 +2752,7 @@ struct C6AtomicEventEmitter<'a, S: C6ResidualAtomicEventSink> {
     proof_repetition: u8,
     leaf_entries: u64,
     auxiliary_entries: u64,
-    stream: FpStream,
+    stream: C6ResidualScheduleWeightStream,
     sink: &'a mut S,
     family_outputs: [u64; 8],
     family_coefficient_writes: [u64; 8],
@@ -2445,12 +2768,12 @@ impl<'a, S: C6ResidualAtomicEventSink> C6AtomicEventEmitter<'a, S> {
         manifest: &C6ResidualRelationManifest,
         schedule: &C6ResidualAtomicWeightSchedule,
         sink: &'a mut S,
-    ) -> Self {
-        Self {
+    ) -> C6ResidualResult<Self> {
+        Ok(Self {
             proof_repetition,
             leaf_entries: manifest.leaf_entries,
             auxiliary_entries: manifest.auxiliary_entries,
-            stream: schedule.stream(),
+            stream: schedule.weight_stream()?,
             sink,
             family_outputs: [0; 8],
             family_coefficient_writes: [0; 8],
@@ -2458,7 +2781,7 @@ impl<'a, S: C6ResidualAtomicEventSink> C6AtomicEventEmitter<'a, S> {
             coefficient_writes: 0,
             weighted_public_constant: Fp2::ZERO,
             current_output: None,
-        }
+        })
     }
 
     fn next(
@@ -2466,7 +2789,7 @@ impl<'a, S: C6ResidualAtomicEventSink> C6AtomicEventEmitter<'a, S> {
         family: C6ResidualAtomicFamily,
         public_constant: Fp2,
     ) -> C6ResidualResult<Fp2> {
-        let weight = self.stream.next_fp2();
+        let weight = self.stream.next_fp2()?;
         let output_ordinal = self.atomic_outputs;
         let weighted_public_constant = weight * public_constant;
         self.sink.output(C6ResidualAtomicOutputEvent {
@@ -2688,7 +3011,7 @@ pub fn replay_c6_residual_atomic_events<S: C6ResidualAtomicEventSink>(
         .map_err(|_| C6ResidualError::new("C6 product-triple census exceeds usize"))?;
     let zero_roots = usize::try_from(manifest.topology.zero_root_count)
         .map_err(|_| C6ResidualError::new("C6 zero-root census exceeds usize"))?;
-    let mut emitter = C6AtomicEventEmitter::new(proof_repetition, manifest, atomic_schedule, sink);
+    let mut emitter = C6AtomicEventEmitter::new(proof_repetition, manifest, atomic_schedule, sink)?;
 
     for source in 0..source_count {
         let is_mask = manifest.product_mask_sources.binary_search(&(source as u32)).is_ok();
@@ -2727,18 +3050,18 @@ pub fn replay_c6_residual_atomic_events<S: C6ResidualAtomicEventSink>(
             C6ResidualAtomicFamily::Affine,
             linear.public_plaintext - residual.correction_rlc,
         )?;
-        let mut alphas = challenges.base_share_context().alpha_stream(coordinate)?;
+        let mut alphas = challenges.base_share_context().alpha_weight_stream(coordinate)?;
         for (source, &linear_coefficient) in linear.leaf_coefficients.iter().enumerate() {
-            let alpha = alphas.next_fp2();
+            let alpha = alphas.next_fp2()?;
             emitter.add_leaf(d_table, source, weight * linear_coefficient)?;
             emitter.add_leaf(r_table, source, Fp2::ZERO - weight * alpha)?;
         }
 
         let weight =
             emitter.next(C6ResidualAtomicFamily::Affine, Fp2::ZERO - residual.public_tag_rlc)?;
-        let mut alphas = challenges.base_share_context().alpha_stream(coordinate)?;
+        let mut alphas = challenges.base_share_context().alpha_weight_stream(coordinate)?;
         for (source, &linear_coefficient) in linear.leaf_coefficients.iter().enumerate() {
-            let alpha = alphas.next_fp2();
+            let alpha = alphas.next_fp2()?;
             emitter.add_leaf(m_table, source, weight * (linear_coefficient + alpha))?;
         }
     }
@@ -2752,7 +3075,7 @@ pub fn replay_c6_residual_atomic_events<S: C6ResidualAtomicEventSink>(
                 runtime,
                 schedule,
             )?;
-            if form.protocol_version != RESIDUAL_RELATION_PROTOCOL_V3
+            if form.protocol_version != challenges.protocol_version
                 || form.topology != manifest.topology
                 || form.instance != manifest.instance
                 || form.leaf_coefficients.len() != source_count
@@ -3096,7 +3419,7 @@ pub fn compile_c6_residual_atomic_relation_reference(
 
 #[cfg(all(test, feature = "c6-trace"))]
 struct C6AtomicReferenceAccumulator {
-    stream: FpStream,
+    stream: C6ResidualScheduleWeightStream,
     consumed: u64,
     family_outputs: [u64; 8],
     family_residuals: [Fp2; 8],
@@ -3112,9 +3435,9 @@ impl C6AtomicReferenceAccumulator {
         schedule: &C6ResidualAtomicWeightSchedule,
         leaf_entries: usize,
         auxiliary_entries: usize,
-    ) -> Self {
-        Self {
-            stream: schedule.stream(),
+    ) -> C6ResidualResult<Self> {
+        Ok(Self {
+            stream: schedule.weight_stream()?,
             consumed: 0,
             family_outputs: [0; 8],
             family_residuals: [Fp2::ZERO; 8],
@@ -3125,16 +3448,21 @@ impl C6AtomicReferenceAccumulator {
                 .into_iter()
                 .map(|factors| (factors, vec![Fp2::ZERO; auxiliary_entries]))
                 .collect(),
-        }
+        })
     }
 
-    fn next(&mut self, family: C6ResidualAtomicFamily, constant: Fp2, witness: Fp2) -> Fp2 {
-        let weight = self.stream.next_fp2();
+    fn next(
+        &mut self,
+        family: C6ResidualAtomicFamily,
+        constant: Fp2,
+        witness: Fp2,
+    ) -> C6ResidualResult<Fp2> {
+        let weight = self.stream.next_fp2()?;
         self.consumed += 1;
         self.family_outputs[family.index()] += 1;
         self.family_residuals[family.index()] += weight * (constant + witness);
         self.constant += weight * constant;
-        weight
+        Ok(weight)
     }
 
     fn add_leaf(&mut self, table: usize, row: usize, value: Fp2) {
@@ -3198,9 +3526,9 @@ fn compile_c6_residual_atomic_relation_reference_legacy(
     let mask_sources = manifest.product_mask_sources.iter().copied().collect::<BTreeSet<_>>();
     let mut alphas: [Vec<Fp2>; 2] = std::array::from_fn(|_| Vec::with_capacity(source_count));
     for coordinate in 0..2u8 {
-        let mut stream = challenges.base_share_context().alpha_stream(coordinate)?;
+        let mut stream = challenges.base_share_context().alpha_weight_stream(coordinate)?;
         for _ in 0..source_count {
-            alphas[usize::from(coordinate)].push(stream.next_fp2());
+            alphas[usize::from(coordinate)].push(stream.next_fp2()?);
         }
     }
 
@@ -3216,7 +3544,7 @@ fn compile_c6_residual_atomic_relation_reference_legacy(
                     runtime,
                     schedule,
                 )?;
-                if form.protocol_version != RESIDUAL_RELATION_PROTOCOL_V3
+                if form.protocol_version != challenges.protocol_version
                     || form.topology != manifest.topology
                     || form.instance != manifest.instance
                     || form.leaf_coefficients.len() != source_count
@@ -3238,7 +3566,7 @@ fn compile_c6_residual_atomic_relation_reference_legacy(
     for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
         let atomic_schedule = challenges.atomic_schedule(proof_repetition)?;
         let mut accumulator =
-            C6AtomicReferenceAccumulator::new(atomic_schedule, leaf_entries, auxiliary_entries);
+            C6AtomicReferenceAccumulator::new(atomic_schedule, leaf_entries, auxiliary_entries)?;
 
         for source in 0..source_count {
             let is_mask = mask_sources.contains(&(source as u32));
@@ -3248,7 +3576,7 @@ fn compile_c6_residual_atomic_relation_reference_legacy(
             let source0 =
                 if direct { l[0][source] - l[1][source] - l[3][source] } else { l[3][source] };
             let weight =
-                accumulator.next(C6ResidualAtomicFamily::SourceGrammar, Fp2::ZERO, source0);
+                accumulator.next(C6ResidualAtomicFamily::SourceGrammar, Fp2::ZERO, source0)?;
             if direct {
                 accumulator.add_leaf(0, source, weight);
                 accumulator.add_leaf(1, source, Fp2::ZERO - weight);
@@ -3260,7 +3588,7 @@ fn compile_c6_residual_atomic_relation_reference_legacy(
             let source1 =
                 if direct { l[0][source] - l[4][source] - l[6][source] } else { l[6][source] };
             let weight =
-                accumulator.next(C6ResidualAtomicFamily::SourceGrammar, Fp2::ZERO, source1);
+                accumulator.next(C6ResidualAtomicFamily::SourceGrammar, Fp2::ZERO, source1)?;
             if direct {
                 accumulator.add_leaf(0, source, weight);
                 accumulator.add_leaf(4, source, Fp2::ZERO - weight);
@@ -3271,7 +3599,7 @@ fn compile_c6_residual_atomic_relation_reference_legacy(
 
             let source_x = if is_mask { l[0][source] } else { Fp2::ZERO };
             let weight =
-                accumulator.next(C6ResidualAtomicFamily::SourceGrammar, Fp2::ZERO, source_x);
+                accumulator.next(C6ResidualAtomicFamily::SourceGrammar, Fp2::ZERO, source_x)?;
             if is_mask {
                 accumulator.add_leaf(0, source, weight);
             }
@@ -3290,7 +3618,7 @@ fn compile_c6_residual_atomic_relation_reference_legacy(
                 m_witness += (linear_coefficient + alpha) * witness.leaf_tables[m_table][source];
             }
             let d_constant = linear.public_plaintext - residual.correction_rlc;
-            let weight = accumulator.next(C6ResidualAtomicFamily::Affine, d_constant, d_witness);
+            let weight = accumulator.next(C6ResidualAtomicFamily::Affine, d_constant, d_witness)?;
             for (source, (&linear_coefficient, &alpha)) in
                 linear.leaf_coefficients.iter().zip(coordinate_alphas).enumerate()
             {
@@ -3298,7 +3626,7 @@ fn compile_c6_residual_atomic_relation_reference_legacy(
                 accumulator.add_leaf(r_table, source, Fp2::ZERO - weight * alpha);
             }
             let m_constant = Fp2::ZERO - residual.public_tag_rlc;
-            let weight = accumulator.next(C6ResidualAtomicFamily::Affine, m_constant, m_witness);
+            let weight = accumulator.next(C6ResidualAtomicFamily::Affine, m_constant, m_witness)?;
             for (source, (&linear_coefficient, &alpha)) in
                 linear.leaf_coefficients.iter().zip(coordinate_alphas).enumerate()
             {
@@ -3362,7 +3690,7 @@ fn compile_c6_residual_atomic_relation_reference_legacy(
                 }
                 let constant = form.public_plaintext;
                 let outer =
-                    accumulator.next(C6ResidualAtomicFamily::Reverse, constant, witness_value);
+                    accumulator.next(C6ResidualAtomicFamily::Reverse, constant, witness_value)?;
                 for source in 0..source_count {
                     let is_mask = mask_sources.contains(&(source as u32));
                     let table = match kind {
@@ -3422,7 +3750,7 @@ fn compile_c6_residual_atomic_relation_reference_legacy(
                     let relation = witness.leaf_tables[7][raw_position]
                         - witness.auxiliary_tables[lane][triple];
                     let weight =
-                        accumulator.next(C6ResidualAtomicFamily::RawCopy, Fp2::ZERO, relation);
+                        accumulator.next(C6ResidualAtomicFamily::RawCopy, Fp2::ZERO, relation)?;
                     accumulator.add_leaf(7, raw_position, weight);
                     accumulator.add_auxiliary(lane, triple, Fp2::ZERO - weight);
                     raw_position += 1;
@@ -3436,7 +3764,7 @@ fn compile_c6_residual_atomic_relation_reference_legacy(
                     let relation =
                         witness.leaf_tables[7][raw_position] - witness.auxiliary_tables[lane][zero];
                     let weight =
-                        accumulator.next(C6ResidualAtomicFamily::RawCopy, Fp2::ZERO, relation);
+                        accumulator.next(C6ResidualAtomicFamily::RawCopy, Fp2::ZERO, relation)?;
                     accumulator.add_leaf(7, raw_position, weight);
                     accumulator.add_auxiliary(lane, zero, Fp2::ZERO - weight);
                     raw_position += 1;
@@ -3469,7 +3797,8 @@ fn compile_c6_residual_atomic_relation_reference_legacy(
                             * witness.auxiliary_tables[lane_base + 2][row]
                             - witness.auxiliary_tables[lane_base + 4][row]);
                 }
-                let outer = accumulator.next(C6ResidualAtomicFamily::Product, Fp2::ZERO, q_witness);
+                let outer =
+                    accumulator.next(C6ResidualAtomicFamily::Product, Fp2::ZERO, q_witness)?;
                 power = Fp2::ONE;
                 for triple in 0..product.triples().len() {
                     power = power * chi;
@@ -3496,7 +3825,7 @@ fn compile_c6_residual_atomic_relation_reference_legacy(
                     C6ResidualAtomicFamily::Product,
                     Fp2::ZERO - messages[0],
                     m0_witness,
-                );
+                )?;
                 accumulator.add_leaf(m_table, mask_source, outer);
                 power = Fp2::ONE;
                 for triple in 0..product.triples().len() {
@@ -3526,7 +3855,7 @@ fn compile_c6_residual_atomic_relation_reference_legacy(
                     C6ResidualAtomicFamily::Product,
                     Fp2::ZERO - messages[1],
                     m1_witness,
-                );
+                )?;
                 accumulator.add_leaf(r_table, mask_source, outer);
                 power = Fp2::ONE;
                 for triple in 0..product.triples().len() {
@@ -3562,7 +3891,7 @@ fn compile_c6_residual_atomic_relation_reference_legacy(
                 .iter()
                 .zip(&witness.auxiliary_tables[lane][..zero_roots])
                 .fold(Fp2::ZERO, |sum, (&weight, &value)| sum + weight * value);
-            let outer = accumulator.next(C6ResidualAtomicFamily::Zero, Fp2::ZERO, witness_value);
+            let outer = accumulator.next(C6ResidualAtomicFamily::Zero, Fp2::ZERO, witness_value)?;
             for (zero, weight) in zero_weights.iter().enumerate() {
                 accumulator.add_auxiliary(lane, zero, outer * *weight);
             }
@@ -3571,20 +3900,21 @@ fn compile_c6_residual_atomic_relation_reference_legacy(
         for table in 0..7usize {
             for row in source_count..leaf_entries {
                 let value = witness.leaf_tables[table][row];
-                let weight = accumulator.next(C6ResidualAtomicFamily::LeafTail, Fp2::ZERO, value);
+                let weight =
+                    accumulator.next(C6ResidualAtomicFamily::LeafTail, Fp2::ZERO, value)?;
                 accumulator.add_leaf(table, row, weight);
             }
         }
         for row in raw_position..leaf_entries {
             let value = witness.leaf_tables[7][row];
-            let weight = accumulator.next(C6ResidualAtomicFamily::LeafTail, Fp2::ZERO, value);
+            let weight = accumulator.next(C6ResidualAtomicFamily::LeafTail, Fp2::ZERO, value)?;
             accumulator.add_leaf(7, row, weight);
         }
         for lane in 0..12usize {
             for row in product_triples..auxiliary_entries {
                 let value = witness.auxiliary_tables[lane][row];
                 let weight =
-                    accumulator.next(C6ResidualAtomicFamily::AuxiliaryTail, Fp2::ZERO, value);
+                    accumulator.next(C6ResidualAtomicFamily::AuxiliaryTail, Fp2::ZERO, value)?;
                 accumulator.add_auxiliary(lane, row, weight);
             }
         }
@@ -3592,7 +3922,7 @@ fn compile_c6_residual_atomic_relation_reference_legacy(
             for row in zero_roots..auxiliary_entries {
                 let value = witness.auxiliary_tables[lane][row];
                 let weight =
-                    accumulator.next(C6ResidualAtomicFamily::AuxiliaryTail, Fp2::ZERO, value);
+                    accumulator.next(C6ResidualAtomicFamily::AuxiliaryTail, Fp2::ZERO, value)?;
                 accumulator.add_auxiliary(lane, row, weight);
             }
         }
@@ -5652,6 +5982,34 @@ struct C6ResidualEqPointCursor {
     zero_factors: u32,
 }
 
+enum C6ResidualScheduleWeightStream {
+    Prg(FpStream),
+    Equality { cursor: C6ResidualEqPointCursor, next: u32 },
+}
+
+impl C6ResidualScheduleWeightStream {
+    fn equality(point: &[Fp2], label: &str) -> C6ResidualResult<Self> {
+        if point.len() >= u64::BITS as usize {
+            return Err(C6ResidualError::new(format!("C6 {label} point dimension exceeds u64")));
+        }
+        let entries = 1u64 << point.len();
+        Ok(Self::Equality { cursor: C6ResidualEqPointCursor::new(point, entries, label)?, next: 0 })
+    }
+
+    fn next_fp2(&mut self) -> C6ResidualResult<Fp2> {
+        match self {
+            Self::Prg(stream) => Ok(stream.next_fp2()),
+            Self::Equality { cursor, next } => {
+                let value = cursor.at(*next)?;
+                *next = next
+                    .checked_add(1)
+                    .ok_or_else(|| C6ResidualError::new("C6 equality schedule cursor overflows"))?;
+                Ok(value)
+            }
+        }
+    }
+}
+
 impl C6ResidualEqPointCursor {
     fn new(point: &[Fp2], entries: u64, label: &str) -> C6ResidualResult<Self> {
         if entries == 0 || !entries.is_power_of_two() {
@@ -6382,7 +6740,9 @@ impl C6ResidualTerminalWeightSchedule {
             || mac_coordinate >= C6_RESIDUAL_MAC_COORDINATES
             || !matches!(
                 protocol_version,
-                RESIDUAL_RELATION_PROTOCOL_V2 | RESIDUAL_RELATION_PROTOCOL_V3
+                RESIDUAL_RELATION_PROTOCOL_V2
+                    | RESIDUAL_RELATION_PROTOCOL_V3
+                    | RESIDUAL_RELATION_PROTOCOL_V4
             )
         {
             return Err(C6ResidualError::new(
@@ -6446,7 +6806,9 @@ impl C6ResidualTerminalWeightSchedule {
             || self.mac_coordinate >= C6_RESIDUAL_MAC_COORDINATES
             || !matches!(
                 self.protocol_version,
-                RESIDUAL_RELATION_PROTOCOL_V2 | RESIDUAL_RELATION_PROTOCOL_V3
+                RESIDUAL_RELATION_PROTOCOL_V2
+                    | RESIDUAL_RELATION_PROTOCOL_V3
+                    | RESIDUAL_RELATION_PROTOCOL_V4
             )
             || self.operation_plan_artifact_digest != operation_plan.artifact_digest()
             || self.topology_digest != operation_plan.topology().topology_digest
@@ -6770,6 +7132,7 @@ impl C6CompiledTerminalLinearForm {
         let linear_form_domain = match schedule.protocol_version {
             RESIDUAL_RELATION_PROTOCOL_V2 => TERMINAL_LINEAR_FORM_DOMAIN_V2,
             RESIDUAL_RELATION_PROTOCOL_V3 => TERMINAL_LINEAR_FORM_DOMAIN_V3,
+            RESIDUAL_RELATION_PROTOCOL_V4 => TERMINAL_LINEAR_FORM_DOMAIN_V4,
             _ => {
                 return Err(C6ResidualError::new(
                     "C6 residual terminal linear form has an unknown protocol version",
@@ -6860,6 +7223,7 @@ fn terminal_weight_schedule_digest(
     let domain = match schedule.protocol_version {
         RESIDUAL_RELATION_PROTOCOL_V2 => TERMINAL_WEIGHT_SCHEDULE_DOMAIN_V2,
         RESIDUAL_RELATION_PROTOCOL_V3 => TERMINAL_WEIGHT_SCHEDULE_DOMAIN_V3,
+        RESIDUAL_RELATION_PROTOCOL_V4 => TERMINAL_WEIGHT_SCHEDULE_DOMAIN_V4,
         _ => return [0; 32],
     };
     let mut hasher = blake3::Hasher::new_derive_key(domain);
@@ -6916,6 +7280,41 @@ fn derive_terminal_weight_schedule(
     C6ResidualTerminalWeightSchedule::new_for_version(
         operation_plan,
         protocol_version,
+        proof_repetition,
+        mac_coordinate,
+        kind,
+        product_weights,
+        zero_weights,
+    )
+}
+
+fn derive_direct_terminal_weight_schedule(
+    operation_plan: &C6InstalledOperationPlan,
+    proof_repetition: u8,
+    mac_coordinate: u8,
+    kind: C6ResidualTerminalFormKind,
+    point: &[Fp2],
+) -> C6ResidualResult<C6ResidualTerminalWeightSchedule> {
+    let product_triples = usize::try_from(installed_product_triple_count(operation_plan)?)
+        .map_err(|_| C6ResidualError::new("C6 direct ProductClosure triple count exceeds usize"))?;
+    let mut stream = C6ResidualScheduleWeightStream::equality(point, "direct terminal")?;
+    let mut product_weights = Vec::new();
+    product_weights
+        .try_reserve_exact(product_triples)
+        .map_err(|_| C6ResidualError::new("C6 direct terminal product-weight allocation failed"))?;
+    for _ in 0..product_triples {
+        product_weights.push([stream.next_fp2()?, stream.next_fp2()?, stream.next_fp2()?]);
+    }
+    let mut zero_weights = Vec::new();
+    zero_weights
+        .try_reserve_exact(operation_plan.zero_roots().len())
+        .map_err(|_| C6ResidualError::new("C6 direct terminal zero-weight allocation failed"))?;
+    for _ in operation_plan.zero_roots() {
+        zero_weights.push(stream.next_fp2()?);
+    }
+    C6ResidualTerminalWeightSchedule::new_for_version(
+        operation_plan,
+        RESIDUAL_RELATION_PROTOCOL_V4,
         proof_repetition,
         mac_coordinate,
         kind,
@@ -11275,6 +11674,70 @@ mod tests {
         let mut malformed_alpha = alpha;
         malformed_alpha[0].pop();
         assert!(C6ResidualDirectEqualityPoints::new(manifest, malformed_alpha, terminal, atomic,)
+            .is_err());
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn direct_schedule_typestate_separates_alpha_and_postclaim_points() {
+        let fixture = build_c6_residual_fused_scaled_fixture().unwrap();
+        let manifest = fixture.manifest().clone();
+        let dimensions = C6ResidualDirectEqualityPoints::dimensions(&manifest).unwrap();
+        let alpha: [Vec<Fp2>; C6_RESIDUAL_MAC_COORDINATES as usize] =
+            std::array::from_fn(|stream| vec![fp2(401 + stream as u64); dimensions.alpha]);
+        let terminal: [Vec<Fp2>; C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS] =
+            std::array::from_fn(|stream| vec![fp2(501 + stream as u64); dimensions.terminal]);
+        let atomic: [Vec<Fp2>; C6_RESIDUAL_PROOF_REPETITIONS as usize] =
+            std::array::from_fn(|stream| vec![fp2(601 + stream as u64); dimensions.atomic]);
+        let alpha_points = C6ResidualDirectAlphaPoints::new(&manifest, alpha).unwrap();
+        let postclaim_points =
+            C6ResidualDirectPostClaimPoints::new(&manifest, terminal, atomic).unwrap();
+        let retained =
+            C6ResidualRetainedChallenges::new(&manifest, vec![fp2(37)], fp2(79)).unwrap();
+        let root =
+            C6ResidualRelationRootBound::bind_fixed_roots(manifest.clone(), [0xD1; 32], [0xD2; 32])
+                .unwrap();
+        let direct_base = root.release_direct_alpha_points(retained, alpha_points).unwrap();
+        assert!(direct_base.alpha_stream(0).is_err());
+        let direct_claims = direct_base
+            .commit_public_claims(
+                fixture.linear().linear_form_digest(),
+                fixture.relation().claims().products().to_vec(),
+                fixture.relation().claims().residual(),
+            )
+            .unwrap();
+        assert!(direct_claims
+            .clone()
+            .release_relation_seed(fixture.operation_plan(), [0xD4; 32])
+            .is_err());
+        let direct_relation = direct_claims
+            .release_direct_postclaim_points(fixture.operation_plan(), postclaim_points.clone())
+            .unwrap();
+        assert_eq!(direct_relation.protocol_version(), RESIDUAL_RELATION_PROTOCOL_V4);
+        assert_eq!(direct_relation.atomic_schedule(0).unwrap().stream_domain(), 0);
+        assert_eq!(
+            direct_relation
+                .terminal_schedule(1, 1, C6ResidualTerminalFormKind::Tag)
+                .unwrap()
+                .protocol_version(),
+            RESIDUAL_RELATION_PROTOCOL_V4
+        );
+
+        let retained =
+            C6ResidualRetainedChallenges::new(&manifest, vec![fp2(37)], fp2(79)).unwrap();
+        let root = C6ResidualRelationRootBound::bind_fixed_roots(manifest, [0xD1; 32], [0xD2; 32])
+            .unwrap();
+        let legacy_claims = root
+            .release_base_share_seed(retained, [0xD3; 32])
+            .unwrap()
+            .commit_public_claims(
+                fixture.linear().linear_form_digest(),
+                fixture.relation().claims().products().to_vec(),
+                fixture.relation().claims().residual(),
+            )
+            .unwrap();
+        assert!(legacy_claims
+            .release_direct_postclaim_points(fixture.operation_plan(), postclaim_points)
             .is_err());
     }
 }

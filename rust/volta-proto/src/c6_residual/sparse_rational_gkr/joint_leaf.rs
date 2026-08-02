@@ -123,18 +123,30 @@ fn range_denominator_mle(
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct TerminalLinearization {
+    leaf_coefficients: [[Fp2; 2]; C6_SPARSE_RATIONAL_SUBCHECKS],
     response_coefficients: [Fp2; C6_SPARSE_RESPONSE_OPENINGS],
     lambda_mu_coefficient: Fp2,
     public_constant: Fp2,
 }
 
 impl TerminalLinearization {
-    fn evaluate(&self, response: &[Fp2; C6_SPARSE_RESPONSE_OPENINGS], lane_batch: Fp2) -> Fp2 {
+    fn evaluate(
+        &self,
+        leaf_values: &[[Fp2; 2]; C6_SPARSE_RATIONAL_SUBCHECKS],
+        response: &[Fp2; C6_SPARSE_RESPONSE_OPENINGS],
+        lane_batch: Fp2,
+    ) -> Fp2 {
+        let leaf_linear = self.leaf_coefficients.iter().zip(leaf_values).fold(
+            self.public_constant,
+            |sum, (coefficients, values)| {
+                sum + coefficients[0] * values[0] + coefficients[1] * values[1]
+            },
+        );
         let linear = self
             .response_coefficients
             .iter()
             .zip(response)
-            .fold(self.public_constant, |sum, (&coefficient, &value)| sum + coefficient * value);
+            .fold(leaf_linear, |sum, (&coefficient, &value)| sum + coefficient * value);
         let lambda = response[0] + lane_batch * response[1];
         linear + self.lambda_mu_coefficient * lambda * response[2]
     }
@@ -245,13 +257,12 @@ fn terminal_linearization(
         let index = subcheck.index();
         eq[index] * powers[2 * index + usize::from(!numerator)]
     };
+    let leaf_coefficients = std::array::from_fn(|index| {
+        [Fp2::ZERO - eq[index] * powers[2 * index], Fp2::ZERO - eq[index] * powers[2 * index + 1]]
+    });
     let mut response_coefficients = [Fp2::ZERO; C6_SPARSE_RESPONSE_OPENINGS];
     let mut lambda_mu_coefficient = Fp2::ZERO;
     let mut public_constant = Fp2::ZERO;
-    for (index, claim) in claims.iter().enumerate() {
-        public_constant = public_constant
-            - eq[index] * (powers[2 * index] * claim.p + powers[2 * index + 1] * claim.q);
-    }
 
     let opcode = plan[0];
     let lhs = plan[1];
@@ -322,7 +333,18 @@ fn terminal_linearization(
     public_constant += weighted(C6SparseRationalSubcheck::SourcePlan, false)
         * (Fp2::ONE + select_source * (delta - lhs - Fp2::ONE));
 
-    Ok(TerminalLinearization { response_coefficients, lambda_mu_coefficient, public_constant })
+    Ok(TerminalLinearization {
+        leaf_coefficients,
+        response_coefficients,
+        lambda_mu_coefficient,
+        public_constant,
+    })
+}
+
+fn fraction_leaf_values(
+    claims: &[FracLeafClaims; C6_SPARSE_RATIONAL_SUBCHECKS],
+) -> [[Fp2; 2]; C6_SPARSE_RATIONAL_SUBCHECKS] {
+    std::array::from_fn(|index| [claims[index].p, claims[index].q])
 }
 
 #[derive(Clone, Debug)]
@@ -465,6 +487,7 @@ fn joint_round_evaluations(
     state: &JointWitnessState,
 ) -> C6ResidualResult<[Fp2; C6_SPARSE_JOINT_DEGREE + 1]> {
     let round = prefix.len();
+    let leaf_values = fraction_leaf_values(claims);
     let suffix_rows = 1usize << (dimension - round - 1);
     let mut evaluations = [Fp2::ZERO; C6_SPARSE_JOINT_DEGREE + 1];
     for (integer, evaluation) in evaluations.iter_mut().enumerate() {
@@ -481,7 +504,11 @@ fn joint_round_evaluations(
                 &plan,
                 injection,
             )?;
-            *evaluation += linearization.evaluate(&response, relation.sparse_challenges.lane_batch);
+            *evaluation += linearization.evaluate(
+                &leaf_values,
+                &response,
+                relation.sparse_challenges.lane_batch,
+            );
         }
     }
     Ok(evaluations)
@@ -550,6 +577,8 @@ pub struct C6SparseRationalJointTerminalRelation {
     relation_digest: C6ResidualDigest,
     points: C6SparseRationalPackedOpeningPoints,
     clear_plan_values: [Fp2; C6_SPARSE_PLAN_OPENINGS],
+    clear_leaf_values: [[Fp2; 2]; C6_SPARSE_RATIONAL_SUBCHECKS],
+    leaf_coefficients: [[Fp2; 2]; C6_SPARSE_RATIONAL_SUBCHECKS],
     response_coefficients: [Fp2; C6_SPARSE_RESPONSE_OPENINGS],
     lambda_mu_coefficient: Fp2,
     public_constant: Fp2,
@@ -574,6 +603,10 @@ impl C6SparseRationalJointTerminalRelation {
         &self.response_coefficients
     }
 
+    pub fn leaf_coefficients(&self) -> &[[Fp2; 2]; C6_SPARSE_RATIONAL_SUBCHECKS] {
+        &self.leaf_coefficients
+    }
+
     pub fn lambda_mu_coefficient(&self) -> Fp2 {
         self.lambda_mu_coefficient
     }
@@ -592,11 +625,13 @@ impl C6SparseRationalJointTerminalRelation {
 
     pub fn clear_residual(&self, response: &[Fp2; C6_SPARSE_RESPONSE_OPENINGS]) -> Fp2 {
         let linearization = TerminalLinearization {
+            leaf_coefficients: self.leaf_coefficients,
             response_coefficients: self.response_coefficients,
             lambda_mu_coefficient: self.lambda_mu_coefficient,
             public_constant: self.public_constant,
         };
-        linearization.evaluate(response, self.lane_batch) - self.sumcheck_claim
+        linearization.evaluate(&self.clear_leaf_values, response, self.lane_batch)
+            - self.sumcheck_claim
     }
 }
 
@@ -744,6 +779,8 @@ pub fn reduce_c6_residual_sparse_rational_joint_leaf_reference(
         relation_digest: relation.digest(),
         points,
         clear_plan_values: proof.clear_plan_values,
+        clear_leaf_values: fraction_leaf_values(&claims),
+        leaf_coefficients: linearization.leaf_coefficients,
         response_coefficients: linearization.response_coefficients,
         lambda_mu_coefficient: linearization.lambda_mu_coefficient,
         public_constant: linearization.public_constant,

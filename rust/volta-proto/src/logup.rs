@@ -236,6 +236,45 @@ fn build_tree_cpu(leaf_p: &LeafP, leaf_q: &LeafQ, ctr: &mut Counters) -> Tree {
     Tree { p: p_layers, q: q_layers, depth }
 }
 
+/// Build a fraction tree from arbitrary Fp2 numerators and denominators.
+///
+/// This is the CPU/reference path for rational-memory relations whose leaf
+/// numerators are not restricted to LogUp's `1` or base-field
+/// multiplicities.  Callers may encode inactive padding as the neutral
+/// fraction `0 / 1`; no padded denominator is therefore allowed to create a
+/// spurious pole.
+fn build_weighted_tree(leaf_p: &[Fp2], leaf_q: &[Fp2], ctr: &mut Counters) -> Tree {
+    assert_eq!(leaf_p.len(), leaf_q.len());
+    assert!(leaf_p.len().is_power_of_two() && leaf_p.len() >= 2);
+    let depth = leaf_p.len().trailing_zeros() as usize;
+    let combine_layer = |p: &[Fp2], q: &[Fp2]| {
+        let size = p.len() / 2;
+        let combine = |i: usize| {
+            let (pa, pb) = (p[2 * i], p[2 * i + 1]);
+            let (qa, qb) = (q[2 * i], q[2 * i + 1]);
+            (pa * qb + pb * qa, qa * qb)
+        };
+        if size >= PAR_THRESHOLD {
+            (0..size).into_par_iter().map(combine).unzip()
+        } else {
+            (0..size).map(combine).unzip()
+        }
+    };
+    let mut p_layers = vec![Vec::new(); depth];
+    let mut q_layers = vec![Vec::new(); depth];
+    ctr.bulk(3 * (leaf_p.len() / 2) as u64, 0);
+    let (mut p_cur, mut q_cur): (Vec<Fp2>, Vec<Fp2>) = combine_layer(leaf_p, leaf_q);
+    for k in (1..depth).rev() {
+        ctr.bulk(3 * (p_cur.len() / 2) as u64, 0);
+        let (p_next, q_next): (Vec<Fp2>, Vec<Fp2>) = combine_layer(&p_cur, &q_cur);
+        p_layers[k] = std::mem::replace(&mut p_cur, p_next);
+        q_layers[k] = std::mem::replace(&mut q_cur, q_next);
+    }
+    p_layers[0] = p_cur;
+    q_layers[0] = q_cur;
+    Tree { p: p_layers, q: q_layers, depth }
+}
+
 // ---------------------------------------------------------------------------
 // Gruen layer sumcheck
 // ---------------------------------------------------------------------------
@@ -1503,6 +1542,55 @@ fn prove_engine(
     out
 }
 
+/// CPU/reference fraction-tree engine for arbitrary Fp2 leaf fractions.
+/// The protocol and verifier messages are identical to [`prove_engine`];
+/// only the leaf construction for the final layer is fully generic.
+fn prove_weighted_engine(
+    leaf_p: &[Fp2],
+    leaf_q: &[Fp2],
+    sink: &mut impl Sink,
+    ctr: &mut Counters,
+) -> (Fp2, Fp2, Vec<Fp2>) {
+    let tree = build_weighted_tree(leaf_p, leaf_q, ctr);
+    sink.root(tree.p[0][0], tree.q[0][0]);
+    let mut point = Vec::new();
+    let evens =
+        |values: &[Fp2]| (0..values.len() / 2).map(|index| values[2 * index]).collect::<Vec<_>>();
+    let odds = |values: &[Fp2]| {
+        (0..values.len() / 2).map(|index| values[2 * index + 1]).collect::<Vec<_>>()
+    };
+
+    for layer in 0..tree.depth {
+        let leaf_layer = layer + 1 == tree.depth;
+        let (rprime, splits) = if leaf_layer {
+            layer_general(
+                evens(leaf_p),
+                odds(leaf_p),
+                evens(leaf_q),
+                odds(leaf_q),
+                &point,
+                sink,
+                ctr,
+                None,
+            )
+        } else {
+            layer_general(
+                evens(&tree.p[layer + 1]),
+                odds(&tree.p[layer + 1]),
+                evens(&tree.q[layer + 1]),
+                odds(&tree.q[layer + 1]),
+                &point,
+                sink,
+                ctr,
+                None,
+            )
+        };
+        let child = sink.splits(splits);
+        point = std::iter::once(child).chain(rprime).collect();
+    }
+    (tree.p[0][0], tree.q[0][0], point)
+}
+
 /// Clear sink: records messages, draws challenges from an `FpStream`.
 struct ClearSink<'a> {
     chal: &'a mut FpStream,
@@ -1544,9 +1632,85 @@ pub fn prove_frac_tree(
     FracProof { root_p, root_q, layers: sink.layers }
 }
 
+/// Prove one fraction tree with arbitrary Fp2 numerators and denominators.
+///
+/// This clear CPU/reference seam is intended for circuit differentials.  It
+/// does not authenticate the resulting leaf claims; callers must connect
+/// those claims to their committed input oracles separately.
+pub fn prove_weighted_frac_tree(
+    leaf_p: &[Fp2],
+    leaf_q: &[Fp2],
+    chal: &mut FpStream,
+    ctr: &mut Counters,
+) -> FracProof {
+    let mut sink = ClearSink { chal, rounds_cur: Vec::new(), layers: Vec::new() };
+    let (root_p, root_q, _) = prove_weighted_engine(leaf_p, leaf_q, &mut sink, ctr);
+    FracProof { root_p, root_q, layers: sink.layers }
+}
+
 // ---------------------------------------------------------------------------
 // Clear verifier
 // ---------------------------------------------------------------------------
+
+/// Leaf claims left after reducing a fraction-tree GKR proof.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FracLeafClaims {
+    pub point: Vec<Fp2>,
+    pub p: Fp2,
+    pub q: Fp2,
+}
+
+/// Reduce a clear fraction-tree proof to its two leaf MLE claims.
+/// Authentication of those claims is deliberately the caller's boundary.
+pub fn reduce_frac_tree(
+    proof: &FracProof,
+    chal: &mut FpStream,
+    ctr: &mut Counters,
+) -> Option<FracLeafClaims> {
+    let mut point: Vec<Fp2> = Vec::new();
+    let mut cp = proof.root_p;
+    let mut cq = proof.root_q;
+
+    for (l, layer) in proof.layers.iter().enumerate() {
+        if layer.rounds.len() != l {
+            return None;
+        }
+        let lambda = chal.next_fp2();
+        let mut claim = ctr.mul(lambda, cp) + cq;
+        let mut cpref = Fp2::ONE;
+        let mut rprime = Vec::with_capacity(l);
+        for (j, h) in layer.rounds.iter().enumerate() {
+            let ptj = point[j];
+            if ptj == Fp2::ZERO {
+                return None;
+            }
+            let ell0 = Fp2::ONE - ptj;
+            let ell0_h0 = ctr.mul(ell0, h[0]);
+            let h1 = ctr.mul(claim - ell0_h0, ptj.inv());
+            let r = chal.next_fp2();
+            let w = lagrange3(r);
+            ctr.bulk(3, 0);
+            let hr = w[0] * h[0] + w[1] * h1 + w[2] * h[1];
+            let ell_r = ell0 + ctr.mul(ptj + ptj - Fp2::ONE, r);
+            claim = ctr.mul(ell_r, hr);
+            let pr = ctr.mul(ptj, r);
+            cpref = ctr.mul(cpref, pr + pr - ptj - r + Fp2::ONE);
+            rprime.push(r);
+        }
+        let ad = ctr.mul(layer.p0, layer.q1);
+        let bc = ctr.mul(layer.p1, layer.q0);
+        let cd = ctr.mul(layer.q0, layer.q1);
+        let frac = ctr.mul(lambda, ad + bc) + cd;
+        if claim != ctr.mul(cpref, frac) {
+            return None;
+        }
+        let child = chal.next_fp2();
+        cp = layer.p0 + ctr.mul(child, layer.p1 - layer.p0);
+        cq = layer.q0 + ctr.mul(child, layer.q1 - layer.q0);
+        point = std::iter::once(child).chain(rprime).collect();
+    }
+    Some(FracLeafClaims { point, p: cp, q: cq })
+}
 
 /// Verify one fraction tree against caller-supplied leaf-MLE evaluations.
 pub fn verify_frac_tree(
@@ -1556,53 +1720,10 @@ pub fn verify_frac_tree(
     chal: &mut FpStream,
     ctr: &mut Counters,
 ) -> bool {
-    let depth = proof.layers.len();
-    let mut point: Vec<Fp2> = Vec::new();
-    let mut cp = proof.root_p;
-    let mut cq = proof.root_q;
-
-    for (l, layer) in proof.layers.iter().enumerate() {
-        if layer.rounds.len() != l {
-            return false;
-        }
-        let lambda = chal.next_fp2();
-        let mut claim = ctr.mul(lambda, cp) + cq;
-        let mut cpref = Fp2::ONE;
-        let mut rprime = Vec::with_capacity(l);
-        for (j, h) in layer.rounds.iter().enumerate() {
-            // g(X) = ℓ(X)·h(X); claim = ℓ(0)h(0) + ℓ(1)h(1) recovers h(1).
-            let ptj = point[j];
-            if ptj == Fp2::ZERO {
-                return false;
-            }
-            let ell0 = Fp2::ONE - ptj;
-            let ell0_h0 = ctr.mul(ell0, h[0]);
-            let h1 = ctr.mul(claim - ell0_h0, ptj.inv());
-            let r = chal.next_fp2();
-            let w = lagrange3(r);
-            ctr.bulk(3, 0);
-            let hr = w[0] * h[0] + w[1] * h1 + w[2] * h[1];
-            let ell_r = ell0 + ctr.mul(ptj + ptj - Fp2::ONE, r); // (1−pt)(1−r)+pt·r
-            claim = ctr.mul(ell_r, hr);
-            let pr = ctr.mul(ptj, r);
-            cpref = ctr.mul(cpref, pr + pr - ptj - r + Fp2::ONE);
-            rprime.push(r);
-        }
-        // Final check: claim == c_l·(λ(p0q1+p1q0) + q0q1).
-        let ad = ctr.mul(layer.p0, layer.q1);
-        let bc = ctr.mul(layer.p1, layer.q0);
-        let cd = ctr.mul(layer.q0, layer.q1);
-        let frac = ctr.mul(lambda, ad + bc) + cd;
-        if claim != ctr.mul(cpref, frac) {
-            return false;
-        }
-        let t = chal.next_fp2();
-        cp = layer.p0 + ctr.mul(t, layer.p1 - layer.p0);
-        cq = layer.q0 + ctr.mul(t, layer.q1 - layer.q0);
-        point = std::iter::once(t).chain(rprime).collect();
-    }
-    debug_assert_eq!(point.len(), depth);
-    cp == leaf_p_eval(&point, ctr) && cq == leaf_q_eval(&point, ctr)
+    let Some(claims) = reduce_frac_tree(proof, chal, ctr) else {
+        return false;
+    };
+    claims.p == leaf_p_eval(&claims.point, ctr) && claims.q == leaf_q_eval(&claims.point, ctr)
 }
 
 /// Counted fold-based MLE evaluation (LSB-first).
@@ -3148,6 +3269,48 @@ mod tests {
             );
             assert!(ok, "ones-tree completeness failed at depth {bits}");
         }
+    }
+
+    #[test]
+    fn weighted_frac_tree_closes_dense_leaves_and_neutral_padding() {
+        let active = 5usize;
+        let domain = 8usize;
+        let mut numerators = vec![Fp2::ZERO; domain];
+        let mut denominators = vec![Fp2::ONE; domain];
+        for index in 0..active {
+            numerators[index] = Fp2::new(Fp::new((index + 3) as u64), Fp::new(2));
+            denominators[index] =
+                Fp2::new(Fp::new((2 * index + 7) as u64), Fp::new((index + 1) as u64));
+        }
+        let expected = (0..active)
+            .fold(Fp2::ZERO, |sum, index| sum + numerators[index] * denominators[index].inv());
+        let (mut prover_challenges, mut verifier_challenges) = chal_pair(0xC6);
+        let mut prover_counters = Counters::default();
+        let proof = prove_weighted_frac_tree(
+            &numerators,
+            &denominators,
+            &mut prover_challenges,
+            &mut prover_counters,
+        );
+        assert_ne!(proof.root_q, Fp2::ZERO);
+        assert_eq!(proof.root_p, expected * proof.root_q);
+
+        let mut verifier_counters = Counters::default();
+        let claims =
+            reduce_frac_tree(&proof, &mut verifier_challenges, &mut verifier_counters).unwrap();
+        assert_eq!(claims.p, crate::mle::eval_mle(&numerators, &claims.point));
+        assert_eq!(claims.q, crate::mle::eval_mle(&denominators, &claims.point));
+
+        let mut changed_padding = numerators.clone();
+        changed_padding[active] = Fp2::ONE;
+        let (_, mut verifier_challenges) = chal_pair(0xC6);
+        assert!(!verify_frac_tree(
+            &proof,
+            |point, _| crate::mle::eval_mle(&changed_padding, point),
+            |point, _| crate::mle::eval_mle(&denominators, point),
+            &mut verifier_challenges,
+            &mut Counters::default(),
+        ));
     }
 
     #[test]

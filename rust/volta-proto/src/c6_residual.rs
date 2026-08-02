@@ -34,8 +34,9 @@ use std::sync::{Arc, Mutex};
 use volta_field::{Fp, Fp2, FpStream};
 use volta_mac::{
     C6DecodedInstanceExtractionPlan, C6InstalledOperationKind, C6InstalledOperationPlan,
-    C6OperationPlanInstanceIdentity, C6OperationPlanTopologyIdentity, C6RuntimeInstanceValues,
-    CorrScheduleAudit, CorrScheduleKind, CorrScheduleRole, ProverAuthed, Transcript, VerifierKey,
+    C6OperationPlanInstanceIdentity, C6OperationPlanTerminalMetadata,
+    C6OperationPlanTopologyIdentity, C6RuntimeInstanceValues, CorrScheduleAudit, CorrScheduleKind,
+    CorrScheduleRole, ProverAuthed, Transcript, VerifierKey,
 };
 
 #[cfg(feature = "c6-trace")]
@@ -1248,6 +1249,21 @@ impl C6ResidualRelationManifest {
         }
         Ok(())
     }
+
+    fn validate_terminal_metadata(
+        &self,
+        metadata: &C6OperationPlanTerminalMetadata,
+    ) -> C6ResidualResult<()> {
+        if self.operation_plan_artifact_digest != metadata.operation_plan_artifact_digest()
+            || self.topology != metadata.topology()
+            || self.product_mask_sources != metadata.product_mask_sources()
+        {
+            return Err(C6ResidualError::new(
+                "C6 residual relation manifest differs from terminal metadata",
+            ));
+        }
+        Ok(())
+    }
 }
 
 fn residual_relation_manifest_digest(manifest: &C6ResidualRelationManifest) -> C6ResidualDigest {
@@ -2172,6 +2188,72 @@ impl C6ResidualRelationChallenges {
                         ));
                     }
                     schedule.validate(operation_plan)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_terminal_metadata(
+        &self,
+        metadata: &C6OperationPlanTerminalMetadata,
+    ) -> C6ResidualResult<()> {
+        self.manifest().validate_terminal_metadata(metadata)?;
+        let is_v3 = self.protocol_version == RESIDUAL_RELATION_PROTOCOL_V3;
+        let is_v4 = self.protocol_version == RESIDUAL_RELATION_PROTOCOL_V4;
+        let direct_dimensions = C6ResidualDirectEqualityPoints::dimensions(self.manifest())?;
+        if self.relation_seed_commitment == [0; 32]
+            || (!is_v3 && !is_v4)
+            || (is_v3 && self.context_seed == [0; 32])
+            || (is_v4
+                && (self.context_seed != [0; 32]
+                    || self.claims_bound.base.direct_alpha_points.is_none()))
+            || self.claims().digest == [0; 32]
+            || self.claims().digest != public_claims_digest(self.claims())
+            || self.digest == [0; 32]
+            || self.digest != relation_challenges_digest(self)
+        {
+            return Err(C6ResidualError::new(
+                "C6 residual relation-challenge metadata binding mismatch",
+            ));
+        }
+        for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
+            let atomic = self.atomic_schedule(proof_repetition)?;
+            if atomic.proof_repetition != proof_repetition
+                || atomic.protocol_version != self.protocol_version
+                || (is_v3
+                    && atomic.stream_domain
+                        != ATOMIC_WEIGHT_STREAM_DOMAINS[usize::from(proof_repetition)])
+                || (is_v3 && atomic.direct_point.is_some())
+                || (is_v4
+                    && (atomic.stream_domain != 0
+                        || atomic.context_seed != [0; 32]
+                        || atomic
+                            .direct_point
+                            .as_ref()
+                            .is_none_or(|point| point.len() != direct_dimensions.atomic)))
+                || atomic.output_count != self.manifest().atomic_outputs_per_repetition
+                || atomic.digest != atomic_weight_schedule_digest(atomic)
+            {
+                return Err(C6ResidualError::new(
+                    "C6 residual atomic-weight metadata binding mismatch",
+                ));
+            }
+            for mac_coordinate in 0..C6_RESIDUAL_MAC_COORDINATES {
+                for kind in [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag]
+                {
+                    let schedule =
+                        self.terminal_schedule(proof_repetition, mac_coordinate, kind)?;
+                    if schedule.protocol_version != self.protocol_version
+                        || schedule.proof_repetition != proof_repetition
+                        || schedule.mac_coordinate != mac_coordinate
+                        || schedule.kind != kind
+                    {
+                        return Err(C6ResidualError::new(
+                            "C6 residual terminal metadata streams are swapped",
+                        ));
+                    }
+                    schedule.validate_terminal_metadata(metadata)?;
                 }
             }
         }
@@ -6877,13 +6959,13 @@ fn c6_residual_family_starts(outputs: [u64; 8]) -> C6ResidualResult<[u64; 8]> {
 
 #[allow(clippy::too_many_arguments)]
 pub fn reduce_c6_residual_folded_terminal_direct(
-    operation_plan: &C6InstalledOperationPlan,
+    terminal_metadata: &C6OperationPlanTerminalMetadata,
     challenges: &C6ResidualRelationChallenges,
     leaf_points: [&[Fp2]; C6_RESIDUAL_PROOF_REPETITIONS as usize],
     auxiliary_points: [&[Fp2]; C6_RESIDUAL_PROOF_REPETITIONS as usize],
     output_beta: Fp2,
 ) -> C6ResidualResult<C6ResidualFoldedTerminalDirectReduction> {
-    challenges.validate(operation_plan)?;
+    challenges.validate_terminal_metadata(terminal_metadata)?;
     let manifest = challenges.manifest();
     if challenges.protocol_version != RESIDUAL_RELATION_PROTOCOL_V4 {
         return Err(C6ResidualError::new(
@@ -7114,7 +7196,7 @@ pub fn reduce_c6_residual_folded_terminal_direct(
         let product_start = family_starts[C6ResidualAtomicFamily::Product.index()];
         let mut triple_cursor = 0u64;
         atomic_ordinal = product_start;
-        for (closure, product) in operation_plan.products().iter().enumerate() {
+        for (closure, product) in terminal_metadata.products().iter().enumerate() {
             let chi = challenges.base_share_context().retained.product_challenges[closure];
             let mask_equality = leaf_cursor.at(manifest.product_mask_sources[closure])?;
             for coordinate in 0..2usize {
@@ -8214,6 +8296,32 @@ impl C6ResidualTerminalWeightSchedule {
         {
             return Err(C6ResidualError::new(
                 "C6 residual terminal-weight schedule binding mismatch",
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_terminal_metadata(
+        &self,
+        metadata: &C6OperationPlanTerminalMetadata,
+    ) -> C6ResidualResult<()> {
+        if self.proof_repetition >= C6_RESIDUAL_PROOF_REPETITIONS
+            || self.mac_coordinate >= C6_RESIDUAL_MAC_COORDINATES
+            || !matches!(
+                self.protocol_version,
+                RESIDUAL_RELATION_PROTOCOL_V2
+                    | RESIDUAL_RELATION_PROTOCOL_V3
+                    | RESIDUAL_RELATION_PROTOCOL_V4
+            )
+            || self.operation_plan_artifact_digest != metadata.operation_plan_artifact_digest()
+            || self.topology_digest != metadata.topology().topology_digest
+            || self.product_weights.len() as u64 != metadata.topology().product_triple_count
+            || self.zero_weights.len() != metadata.zero_roots().len()
+            || self.digest == [0; 32]
+            || self.digest != terminal_weight_schedule_digest(self)
+        {
+            return Err(C6ResidualError::new(
+                "C6 residual terminal-weight metadata binding mismatch",
             ));
         }
         Ok(())
@@ -13463,8 +13571,21 @@ mod tests {
         assert_eq!(folded_adjoint.repetition_folds(), terminal_relation.repetition_folds());
         assert_eq!(folded_adjoint.fold(), terminal_relation.functional_fold());
         assert_ne!(folded_adjoint.digest(), [0; 32]);
-        let direct_reduction = reduce_c6_residual_folded_terminal_direct(
+        let topology = direct.operation_plan().topology();
+        let source_manifest = C6TraceSourceManifest::new(
+            topology.source_count,
+            topology.source_schedule_digest,
+            direct.manifest().product_mask_sources().to_vec(),
+        )
+        .unwrap();
+        let terminal_metadata = C6OperationPlanTerminalMetadata::from_installed(
             direct.operation_plan(),
+            &source_manifest,
+        )
+        .unwrap();
+        assert!(terminal_metadata.encoded_len().unwrap() < 1_000);
+        let direct_reduction = reduce_c6_residual_folded_terminal_direct(
+            &terminal_metadata,
             direct.relation(),
             [&leaf_point, &leaf_point],
             [&auxiliary_point, &auxiliary_point],

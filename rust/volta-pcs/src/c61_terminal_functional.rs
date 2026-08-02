@@ -30,6 +30,11 @@ pub const C61_SPARSE_RATIONAL_SEMANTIC_RESPONSE_OPENINGS: usize = 6;
 pub const C61_SPARSE_RATIONAL_RESPONSE_OPENINGS: usize =
     2 * C61_SPARSE_RATIONAL_SEMANTIC_RESPONSE_OPENINGS;
 pub const C61_SPARSE_RATIONAL_PLAN_OPENINGS: usize = 3;
+pub const C61_SPARSE_RATIONAL_RESPONSE_TARGET_LIMBS: usize = 2;
+pub const C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTIONS: usize =
+    C61_SPARSE_RATIONAL_RESPONSE_OPENINGS * C61_SPARSE_RATIONAL_RESPONSE_TARGET_LIMBS;
+pub const C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTION_BYTES: u64 =
+    8 * C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTIONS as u64;
 pub const C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_MAGIC: [u8; 8] = *b"C6SBA1\0\0";
 pub const C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_VERSION: u16 = 1;
 pub const C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_SUBCHECKS: usize = 7;
@@ -45,7 +50,7 @@ pub const C61_SPARSE_RATIONAL_BLIND_PRODUCTION_GKR_BYTES: u64 = 84_640;
 pub const C61_SPARSE_RATIONAL_BLIND_PRODUCTION_JOINT_BYTES: u64 = 3_248;
 pub const C61_SPARSE_RATIONAL_BLIND_TERMINAL_BYTES: u64 = 16;
 pub const C61_SPARSE_RATIONAL_BLIND_PRODUCT_BYTES: u64 = 32;
-pub const C61_SPARSE_RATIONAL_BLIND_PRODUCTION_ARITHMETIC_BYTES: u64 = 88_028;
+pub const C61_SPARSE_RATIONAL_BLIND_PRODUCTION_ARITHMETIC_BYTES: u64 = 88_220;
 
 const PUBLIC_STATEMENT_DOMAIN: &str = "volta-zk/c6.1/typed-native-chain-statement/v1";
 const COMMITTED_OPENINGS_DOMAIN: &str = "volta-zk/c6.1/typed-committed-openings/v1";
@@ -91,6 +96,122 @@ fn sparse_blind_arithmetic_proof_digest(prefix: &[u8]) -> [u8; 32] {
 struct SparseBlindArithmeticReader<'a> {
     bytes: &'a [u8],
     offset: usize,
+}
+
+/// Fixed-width nested correction block for the twelve physical response
+/// openings.  Although their committed coefficients are base-field limbs,
+/// evaluation at the Fp2 sumcheck point produces Fp2 values.  Each opening
+/// therefore uses two subfield correlations and two canonical 8-byte Fp
+/// corrections; the outer C6SBA1 checksum authenticates this block on wire.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C61SparseRationalResponseTargetProof {
+    corrections: [u64; C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTIONS],
+}
+
+impl C61SparseRationalResponseTargetProof {
+    fn new(corrections: [u64; C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTIONS]) -> Result<Self> {
+        if corrections.iter().any(|&correction| correction >= P) {
+            return Err(C61TerminalFunctionalStatementError::new(
+                "C6SPR3 response-target correction is noncanonical",
+            ));
+        }
+        Ok(Self { corrections })
+    }
+
+    pub fn encode(self) -> [u8; C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTION_BYTES as usize] {
+        let mut bytes = [0u8; C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTION_BYTES as usize];
+        for (chunk, correction) in bytes.chunks_exact_mut(8).zip(self.corrections) {
+            chunk.copy_from_slice(&correction.to_le_bytes());
+        }
+        bytes
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self> {
+        if bytes.len() as u64 != C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTION_BYTES {
+            return Err(C61TerminalFunctionalStatementError::new(
+                "C6SPR3 response-target correction block has noncanonical length",
+            ));
+        }
+        let corrections = bytes
+            .chunks_exact(8)
+            .map(|chunk| u64::from_le_bytes(chunk.try_into().expect("fixed Fp correction slice")))
+            .collect::<Vec<_>>()
+            .try_into()
+            .map_err(|_| {
+                C61TerminalFunctionalStatementError::new(
+                    "C6SPR3 response-target correction census differs from 24",
+                )
+            })?;
+        Self::new(corrections)
+    }
+}
+
+pub fn authenticate_c61_sparse_response_targets_prover(
+    values: &[Fp2; C61_SPARSE_RATIONAL_RESPONSE_OPENINGS],
+    stream: &mut CorrelationStream,
+    doms: &mut volta_proto::logup::Doms,
+    tx: &mut Transcript,
+) -> Result<(
+    C61SparseRationalResponseTargetProof,
+    [ProverAuthed; C61_SPARSE_RATIONAL_RESPONSE_OPENINGS],
+)> {
+    let domain = doms.take(1);
+    let correlations = stream.draw_subs(domain, C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTIONS);
+    let limbs = values.iter().flat_map(|value| [value.c0, value.c1]).collect::<Vec<_>>();
+    let corrections = limbs
+        .iter()
+        .zip(&correlations)
+        .map(|(&limb, correlation)| (limb - correlation.r).value())
+        .collect::<Vec<_>>();
+    stream
+        .record_c6_subfield_corrections(domain, &corrections)
+        .map_err(C61TerminalFunctionalStatementError::new)?;
+    tx.append(
+        "c6_sparse_response_target_corrections",
+        C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTION_BYTES,
+    );
+    let extension_generator = Fp2::new(Fp::ZERO, Fp::ONE);
+    let targets = std::array::from_fn(|index| {
+        correlations[2 * index].authenticate(values[index].c0).embed().add(
+            correlations[2 * index + 1]
+                .authenticate(values[index].c1)
+                .embed()
+                .scale(extension_generator),
+        )
+    });
+    let proof =
+        C61SparseRationalResponseTargetProof::new(corrections.try_into().map_err(|_| {
+            C61TerminalFunctionalStatementError::new(
+                "C6SPR3 response-target correction census differs from 24",
+            )
+        })?)?;
+    Ok((proof, targets))
+}
+
+pub fn authenticate_c61_sparse_response_targets_verifier(
+    proof: C61SparseRationalResponseTargetProof,
+    ctx: &mut VerifierCtx,
+    doms: &mut volta_proto::logup::Doms,
+    tx: &mut Transcript,
+) -> Result<[VerifierKey; C61_SPARSE_RATIONAL_RESPONSE_OPENINGS]> {
+    let domain = doms.take(1);
+    let base_keys =
+        ctx.expand_sub_verifier_keys(domain, C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTIONS);
+    tx.append(
+        "c6_sparse_response_target_corrections",
+        C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTION_BYTES,
+    );
+    let extension_generator = Fp2::new(Fp::ZERO, Fp::ONE);
+    Ok(std::array::from_fn(|index| {
+        let c0 = base_keys[2 * index].with_same_c6_trace(
+            base_keys[2 * index].k + ctx.delta.mul_base(Fp::new(proof.corrections[2 * index])),
+        );
+        let c1 = base_keys[2 * index + 1].with_same_c6_trace(
+            base_keys[2 * index + 1].k
+                + ctx.delta.mul_base(Fp::new(proof.corrections[2 * index + 1])),
+        );
+        c0.add(c1.scale(extension_generator))
+    }))
 }
 
 impl<'a> SparseBlindArithmeticReader<'a> {
@@ -156,6 +277,7 @@ impl<'a> SparseBlindArithmeticReader<'a> {
 /// remains in C6SMO1 and is deliberately not duplicated here.
 #[derive(Debug, PartialEq, Eq)]
 pub struct C61SparseRationalBlindArithmeticProof {
+    response_targets: C61SparseRationalResponseTargetProof,
     gkr: volta_proto::c6_residual::C6ResidualSparseRationalBlindGkrProof,
     joint: volta_proto::c6_residual::C6ResidualSparseRationalBlindJointRoundsProof,
     terminal: volta_proto::c6_residual::C6ResidualSparseRationalBlindJointTerminalProof,
@@ -166,12 +288,13 @@ impl C61SparseRationalBlindArithmeticProof {
     pub fn new(
         operation_plan: &C6InstalledOperationPlan,
         relation_digest: [u8; 32],
+        response_targets: C61SparseRationalResponseTargetProof,
         gkr: volta_proto::c6_residual::C6ResidualSparseRationalBlindGkrProof,
         joint: volta_proto::c6_residual::C6ResidualSparseRationalBlindJointRoundsProof,
         terminal: volta_proto::c6_residual::C6ResidualSparseRationalBlindJointTerminalProof,
         product: ProdProof,
     ) -> Result<Self> {
-        let proof = Self { gkr, joint, terminal, product };
+        let proof = Self { response_targets, gkr, joint, terminal, product };
         proof.validate(operation_plan, relation_digest)?;
         Ok(proof)
     }
@@ -196,7 +319,8 @@ impl C61SparseRationalBlindArithmeticProof {
             )
             .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))?;
         C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_FRAMING_BYTES
-            .checked_add(gkr_bytes)
+            .checked_add(C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTION_BYTES)
+            .and_then(|bytes| bytes.checked_add(gkr_bytes))
             .and_then(|bytes| bytes.checked_add(joint_bytes))
             .and_then(|bytes| bytes.checked_add(C61_SPARSE_RATIONAL_BLIND_TERMINAL_BYTES))
             .and_then(|bytes| bytes.checked_add(C61_SPARSE_RATIONAL_BLIND_PRODUCT_BYTES))
@@ -261,6 +385,7 @@ impl C61SparseRationalBlindArithmeticProof {
                 .to_le_bytes(),
         );
         debug_assert_eq!(bytes.len() as u64, C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_HEADER_BYTES);
+        bytes.extend_from_slice(&self.response_targets.encode());
         bytes.extend_from_slice(&gkr);
         bytes.extend_from_slice(&joint);
         encode_sparse_blind_fp2(&mut bytes, self.terminal.product_correction());
@@ -302,7 +427,8 @@ impl C61SparseRationalBlindArithmeticProof {
             )
             .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))?;
         let expected_len = C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_FRAMING_BYTES
-            .checked_add(expected_gkr)
+            .checked_add(C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTION_BYTES)
+            .and_then(|value| value.checked_add(expected_gkr))
             .and_then(|value| value.checked_add(expected_joint))
             .and_then(|value| value.checked_add(C61_SPARSE_RATIONAL_BLIND_TERMINAL_BYTES))
             .and_then(|value| value.checked_add(C61_SPARSE_RATIONAL_BLIND_PRODUCT_BYTES))
@@ -345,6 +471,9 @@ impl C61SparseRationalBlindArithmeticProof {
                 "C6SBA1 nested body length mismatch",
             ));
         }
+        let response_targets = C61SparseRationalResponseTargetProof::decode(
+            reader.take(C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTION_BYTES as usize)?,
+        )?;
         let gkr =
             volta_proto::c6_residual::C6ResidualSparseRationalBlindGkrProof::decode_corrections(
                 operation_plan,
@@ -371,18 +500,19 @@ impl C61SparseRationalBlindArithmeticProof {
                 "corrupt or noncanonical C6SBA1 proof",
             ));
         }
-        Self::new(operation_plan, relation_digest, gkr, joint, terminal, product)
+        Self::new(operation_plan, relation_digest, response_targets, gkr, joint, terminal, product)
     }
 
     pub fn into_parts(
         self,
     ) -> (
+        C61SparseRationalResponseTargetProof,
         volta_proto::c6_residual::C6ResidualSparseRationalBlindGkrProof,
         volta_proto::c6_residual::C6ResidualSparseRationalBlindJointRoundsProof,
         volta_proto::c6_residual::C6ResidualSparseRationalBlindJointTerminalProof,
         ProdProof,
     ) {
-        (self.gkr, self.joint, self.terminal, self.product)
+        (self.response_targets, self.gkr, self.joint, self.terminal, self.product)
     }
 
     fn validate(
@@ -624,6 +754,7 @@ pub struct C61SparseRationalCompilerOpeningStatement {
     pub gkr_transcript_digest: [u8; 32],
     pub oracles: C61SparseRationalCompilerOracles,
     pub points: C61SparseRationalCompilerOpeningPoints,
+    pub plan_values: [Fp2; C61_SPARSE_RATIONAL_PLAN_OPENINGS],
     digest: [u8; 32],
 }
 
@@ -634,6 +765,7 @@ impl C61SparseRationalCompilerOpeningStatement {
         gkr_transcript_digest: [u8; 32],
         oracles: C61SparseRationalCompilerOracles,
         input_point: &[Fp2],
+        plan_values: [Fp2; C61_SPARSE_RATIONAL_PLAN_OPENINGS],
     ) -> Result<Self> {
         if [compiler_statement_digest, sparse_relation_digest, gkr_transcript_digest]
             .contains(&[0; 32])
@@ -650,6 +782,7 @@ impl C61SparseRationalCompilerOpeningStatement {
             gkr_transcript_digest,
             oracles,
             points,
+            plan_values,
             digest: [0; 32],
         };
         statement.digest = statement.recompute_digest()?;
@@ -681,6 +814,9 @@ impl C61SparseRationalCompilerOpeningStatement {
         hasher.update(&self.gkr_transcript_digest);
         hasher.update(&self.oracles.digest()?);
         hasher.update(&self.points.digest());
+        for value in self.plan_values {
+            hash_fp2(&mut hasher, value);
+        }
         Ok(*hasher.finalize().as_bytes())
     }
 }
@@ -689,17 +825,15 @@ impl C61SparseRationalCompilerOpeningStatement {
 pub struct C61SparseRationalProverOpeningStatement {
     pub public: C61SparseRationalCompilerOpeningStatement,
     pub response_targets: [ProverAuthed; C61_SPARSE_RATIONAL_RESPONSE_OPENINGS],
-    pub plan_targets: [ProverAuthed; C61_SPARSE_RATIONAL_PLAN_OPENINGS],
 }
 
 impl C61SparseRationalProverOpeningStatement {
     pub fn new(
         public: C61SparseRationalCompilerOpeningStatement,
         response_targets: [ProverAuthed; C61_SPARSE_RATIONAL_RESPONSE_OPENINGS],
-        plan_targets: [ProverAuthed; C61_SPARSE_RATIONAL_PLAN_OPENINGS],
     ) -> Result<Self> {
         public.validate()?;
-        Ok(Self { public, response_targets, plan_targets })
+        Ok(Self { public, response_targets })
     }
 }
 
@@ -707,7 +841,6 @@ impl C61SparseRationalProverOpeningStatement {
 pub struct C61SparseRationalVerifierOpeningStatement {
     pub public: C61SparseRationalCompilerOpeningStatement,
     pub response_target_keys: [VerifierKey; C61_SPARSE_RATIONAL_RESPONSE_OPENINGS],
-    pub plan_target_keys: [VerifierKey; C61_SPARSE_RATIONAL_PLAN_OPENINGS],
 }
 
 pub fn fold_c61_sparse_response_prover_targets(
@@ -801,10 +934,11 @@ pub fn finish_c61_sparse_rational_blind_terminal_prover(
             "C6SPR3 prover PCS statement differs from the blind terminal relation",
         ));
     }
+    let plan_targets = statement.public.plan_values.map(ProverAuthed::from_public);
     finish_c61_sparse_rational_blind_physical_terminal_prover(
         terminal,
         &statement.response_targets,
-        &statement.plan_targets,
+        &plan_targets,
         stream,
         doms,
         tx,
@@ -834,10 +968,12 @@ pub fn finish_c61_sparse_rational_blind_terminal_verifier(
             "C6SPR3 verifier PCS statement differs from the blind terminal relation",
         ));
     }
+    let plan_keys =
+        statement.public.plan_values.map(|value| VerifierKey::from_public(value, ctx.delta));
     finish_c61_sparse_rational_blind_physical_terminal_verifier(
         terminal,
         &statement.response_target_keys,
-        &statement.plan_target_keys,
+        &plan_keys,
         proof,
         ctx,
         doms,
@@ -851,10 +987,9 @@ impl C61SparseRationalVerifierOpeningStatement {
     pub fn new(
         public: C61SparseRationalCompilerOpeningStatement,
         response_target_keys: [VerifierKey; C61_SPARSE_RATIONAL_RESPONSE_OPENINGS],
-        plan_target_keys: [VerifierKey; C61_SPARSE_RATIONAL_PLAN_OPENINGS],
     ) -> Result<Self> {
         public.validate()?;
-        Ok(Self { public, response_target_keys, plan_target_keys })
+        Ok(Self { public, response_target_keys })
     }
 }
 
@@ -1464,12 +1599,15 @@ mod tests {
         let input_point: Vec<Fp2> = (0..C61_SPARSE_RATIONAL_INPUT_LOG2)
             .map(|coordinate| fp2(900 + u64::from(coordinate)))
             .collect();
+        let plan_values: [Fp2; C61_SPARSE_RATIONAL_PLAN_OPENINGS] =
+            std::array::from_fn(|index| fp2(1_100 + index as u64));
         let public = C61SparseRationalCompilerOpeningStatement::new(
             compiler_digest,
             [61; 32],
             [62; 32],
             compiler.sparse_oracles,
             &input_point,
+            plan_values,
         )
         .unwrap();
         public.validate().unwrap();
@@ -1488,29 +1626,16 @@ mod tests {
 
         let response_values: [Fp2; C61_SPARSE_RATIONAL_RESPONSE_OPENINGS] =
             std::array::from_fn(|index| fp2(1_000 + index as u64));
-        let plan_values: [Fp2; C61_SPARSE_RATIONAL_PLAN_OPENINGS] =
-            std::array::from_fn(|index| fp2(1_100 + index as u64));
         let (response_targets, response_keys) = {
             let (targets, keys) = role_targets(&response_values);
             (targets.try_into().unwrap(), keys.try_into().unwrap())
         };
-        let (plan_targets, plan_keys) = {
-            let (targets, keys) = role_targets(&plan_values);
-            (targets.try_into().unwrap(), keys.try_into().unwrap())
-        };
-        let prover = C61SparseRationalProverOpeningStatement::new(
-            public.clone(),
-            response_targets,
-            plan_targets,
-        )
-        .unwrap();
-        let verifier = C61SparseRationalVerifierOpeningStatement::new(
-            public.clone(),
-            response_keys,
-            plan_keys,
-        )
-        .unwrap();
+        let prover =
+            C61SparseRationalProverOpeningStatement::new(public.clone(), response_targets).unwrap();
+        let verifier =
+            C61SparseRationalVerifierOpeningStatement::new(public.clone(), response_keys).unwrap();
         assert_eq!(prover.public.digest(), verifier.public.digest());
+        assert_eq!(prover.public.plan_values, plan_values);
         let semantic_targets = fold_c61_sparse_response_prover_targets(&prover.response_targets);
         let semantic_keys = fold_c61_sparse_response_verifier_keys(&verifier.response_target_keys);
         let extension_generator = Fp2::new(Fp::ZERO, Fp::ONE);
@@ -1541,6 +1666,9 @@ mod tests {
         let mut changed_points = public.clone();
         changed_points.points.response.swap(0, 1);
         assert!(changed_points.validate().is_err());
+        let mut changed_plan_value = public.clone();
+        changed_plan_value.plan_values[0] += Fp2::ONE;
+        assert!(changed_plan_value.validate().is_err());
         let mut changed_root = compiler.clone();
         changed_root.sparse_oracles.response.commitment_root[0] ^= 1;
         assert_ne!(compiler.digest().unwrap(), changed_root.digest().unwrap());
@@ -1560,6 +1688,7 @@ mod tests {
         assert_eq!(
             C61_SPARSE_RATIONAL_BLIND_PRODUCTION_ARITHMETIC_BYTES,
             C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_FRAMING_BYTES
+                + C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTION_BYTES
                 + C61_SPARSE_RATIONAL_BLIND_PRODUCTION_GKR_BYTES
                 + C61_SPARSE_RATIONAL_BLIND_PRODUCTION_JOINT_BYTES
                 + C61_SPARSE_RATIONAL_BLIND_TERMINAL_BYTES
@@ -1719,38 +1848,31 @@ mod tests {
         let physical_response =
             packed.evaluate_physical_response_openings(&physical_points).unwrap();
         let physical_plan = packed.evaluate_physical_plan_openings(&physical_points).unwrap();
-        let target_values =
-            physical_response.iter().chain(&physical_plan).copied().collect::<Vec<_>>();
-        let target_domain = prover_doms.take(1);
-        assert_eq!(target_domain, verifier_doms.take(1));
-        let masks = prover_stream.draw_fulls(target_domain, target_values.len());
-        prover_stream.record_c6_fullfield_plaintexts(target_domain, &target_values).unwrap();
-        let corrections = target_values
-            .iter()
-            .zip(&masks)
-            .map(|(&value, mask)| value - mask.x)
-            .collect::<Vec<_>>();
-        let keys = verifier.correct_full_verifier_keys(target_domain, &corrections);
-        let response_targets: [ProverAuthed; C61_SPARSE_RATIONAL_RESPONSE_OPENINGS] = masks
-            [..C61_SPARSE_RATIONAL_RESPONSE_OPENINGS]
-            .iter()
-            .zip(physical_response)
-            .map(|(mask, value)| mask.authenticate(value))
-            .collect::<Vec<_>>()
-            .try_into()
+        assert!(physical_response.iter().any(|value| value.c1 != Fp::ZERO));
+        let full_before_targets = prover_stream.counters.full_corrs;
+        let sub_before_targets = prover_stream.counters.sub_corrs;
+        let (response_target_proof, response_targets) =
+            authenticate_c61_sparse_response_targets_prover(
+                &physical_response,
+                &mut prover_stream,
+                &mut prover_doms,
+                &mut prover_transcript,
+            )
             .unwrap();
-        let plan_targets: [ProverAuthed; C61_SPARSE_RATIONAL_PLAN_OPENINGS] = masks
-            [C61_SPARSE_RATIONAL_RESPONSE_OPENINGS..]
-            .iter()
-            .zip(physical_plan)
-            .map(|(mask, value)| mask.authenticate(value))
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
-        let response_keys: [VerifierKey; C61_SPARSE_RATIONAL_RESPONSE_OPENINGS] =
-            keys[..C61_SPARSE_RATIONAL_RESPONSE_OPENINGS].try_into().unwrap();
-        let plan_keys: [VerifierKey; C61_SPARSE_RATIONAL_PLAN_OPENINGS] =
-            keys[C61_SPARSE_RATIONAL_RESPONSE_OPENINGS..].try_into().unwrap();
+        let response_keys = authenticate_c61_sparse_response_targets_verifier(
+            response_target_proof,
+            &mut verifier,
+            &mut verifier_doms,
+            &mut verifier_transcript,
+        )
+        .unwrap();
+        assert_eq!(prover_stream.counters.full_corrs, full_before_targets);
+        assert_eq!(
+            prover_stream.counters.sub_corrs - sub_before_targets,
+            C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTIONS as u64,
+        );
+        let plan_targets = physical_plan.map(ProverAuthed::from_public);
+        let plan_keys = physical_plan.map(|value| VerifierKey::from_public(value, delta));
         assert_eq!(
             fold_c61_sparse_response_prover_targets(&response_targets).map(|target| target.x),
             packed.evaluate_response_openings(prover_terminal.points()).unwrap(),
@@ -1800,6 +1922,7 @@ mod tests {
             prod_batch_prover(&prover_products, chi, product_mask, &mut prover_transcript);
         assert!(prod_batch_verify(&verifier_products, product_key, delta, chi, &product_proof,));
         let expected_arithmetic_bytes = C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_FRAMING_BYTES
+            + C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTION_BYTES
             + gkr_proof.bytes()
             + rounds.bytes()
             + terminal_proof.bytes()
@@ -1807,6 +1930,7 @@ mod tests {
         let arithmetic_proof = C61SparseRationalBlindArithmeticProof::new(
             direct.operation_plan(),
             public_relation.digest(),
+            response_target_proof,
             gkr_proof,
             rounds,
             terminal_proof,

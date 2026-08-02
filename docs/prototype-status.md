@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — JOINT LEAF REFERENCE GREEN / FP2 PHYSICALIZATION HARD STOP / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — EXACT PHYSICAL SPARSE FULL-FLOW SCALED GREEN / PRODUCTION D28-D27 HARD STOP / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -12,27 +12,33 @@ This capsule is authoritative. Historical entries cannot authorize an older
 C6.1 branch.
 
 - **Phase/design.** C6.1 response-local public compression. Read this, then
-  design §0.34, *joint leaf reference and base-field audit*.
+  design §0.35, *exact physical sparse relation closure and v19 re-sum*.
 - **Relation.** The 64 C6RSC3 values are challenge-dependent. `C6TFA1-v1`
   exactly factors them into two D25 reverse lanes plus an eight-family direct
   reducer. Fixed-node mapping, D28 event table and digest substitutes are
   forbidden.
-- **Construction.** A degree-8 clear reference reduces all fourteen fraction
-  leaf claims to one point. Boolean formulas and terminal linearization match
-  independently. Its endpoint is affine in six semantic response openings
-  plus one `lambda*mu` product; three clear plan values must equal their
-  authenticated targets. The core reducer performs no clear leaf evaluation.
-- **Deviation.** The fork commits `Poly<Goldilocks>`, but the registered D27
-  response is an `Fp2` table. The synthetic D14 run did not exercise this.
-  Its two limbs therefore need an exact physical layout and semantic fold;
-  the old two-D27 ceiling is not applicable to that layout.
-- **Checks.** Sparse trace **4/0/0**; helper, family differential, transcript
-  and nine-opening mutations reject. Commits `117e692`, `82fff9a`, `a65c9a9`.
-- **HARD STOP.** `C6SPR3_FP2_PHYSICALIZATION_AND_BLIND_TERMINAL_CLOSURE_REQUIRED`.
-- **Resume.** Type the Fp2 response as base-field limbs, re-establish shared
-  challenge/codec bounds, then authenticate the degree-8 rounds and the one
-  product inside one closure. Re-sum all gates; prior screens are
-  `credit:false`.
+- **Construction.** One physical D28 `c0||c1` response and one public D27
+  plan root are fixed before `zeta/gamma/tau/delta`. Seven blind fraction
+  trees reduce fourteen claims through one degree-8 joint proof to 12
+  response plus 3 plan openings. The public-only verifier has no private
+  relation vectors. Exactly 531 products and 179 zero rows share one
+  QuickSilver proof and the existing compiler ZeroOpen.
+- **Wire/correlations.** `C6SBA1` is **88,220 B/tape**. One production
+  compiler chain is at most **2,346,352 B**; it consumes **5,493 full + 24
+  subfield** correlations. Two compiler chains plus four unchanged
+  model/embedding ceilings give **17,534,807 B** complete certificate.
+- **Screens.** Budget v19: setup **84,743,367 B**; first exchange
+  **102,278,174 B**; state **2,277,715,552 B**; provider/verifier roofs
+  **14.9087128542 / 4.965672390 s**; complete soundness
+  **102.587833363526... bits**. Every value remains `credit:false`.
+- **Checks/checkpoints.** Scaled D14/D13 exact full-flow **682,744 B**, with
+  role separation and codec/arithmetic/tag mutations rejecting;
+  authenticated-WHIR **14/0/0**, feature-gated PCS **223/0/2**. Checkpoints
+  `e3b4259`, `8b459b4`, `694b486`, `f72e490`.
+- **HARD STOP.** `C6SPR4_PRODUCTION_D28_D27_EXECUTION_REQUIRED`.
+- **Resume.** Execute both strict compiler chains at production D28/D27,
+  reconcile real memory/correlation counters and obtain a clean local
+  full-chain record before any owner GO.
 - **Authorization.** No pod. No diagnostic reference or screen is full-chain
   evidence.
 

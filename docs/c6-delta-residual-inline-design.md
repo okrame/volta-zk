@@ -29,23 +29,14 @@ STRICT `C6PIF1` RESPONSE-FIELD REMOVAL/FINAL ENVELOPE GREEN; RESIDENT
 BACKEND / PRODUCTION GEOMETRY AND TIMING PENDING;
 LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
-**C6.1 amendment status (2026-08-01): OWNER REQUIREMENTS, METRIC
-BOUNDARIES, CRYPTOGRAPHIC SEAM AND ORDERED GATES FROZEN; EXACT BYTE/OPERATION
-PUBLIC/DV DECOMPOSITION GREEN; NATIVE `C6PA1`/`C6RSC4-v4` FORMULA,
-SOUNDNESS, WIRE, MEMORY AND PRE-CODE TIME ROOFLINES GREEN; ADDITIVE LEAN +
-SCALED STRICT SEAM + INTERACTIVE CPU REFERENCE PCS/CODEC GREEN; CLEAR-TARGET
-OBSTRUCTION REGISTERED; `C6AWH1-v1` AUTHENTICATED-TARGET LEAN/BUDGET GREEN;
-FEATURE-ONLY CLAIMLESS-AFFINE PINNED PCS FORK + STRICT `C6AWP1-v1` D14
-CODEC DIFFERENTIAL + SOURCE-PROVENANCE AUDIT GREEN; CLAIM-PRIVACY LOCAL
-ARGUMENT + DESIGNATED-VIEW SIMULATOR + PRIVATE-ENTROPY `C6ICT1-v1`
-REPLAY-TO-FRONTIER DRIVER + DURABLE `C6ICJ1-v1` APPEND-ONLY JOURNAL,
-MASK-FRONTIER AND RESERVED-RANGE BINDING + BOUNDED AUTHENTICATED ORDERED
-MULTI-OPENING REDUCTION FOR THE 96 MODEL / 6 EMBEDDING CLAIM CENSUSES GREEN;
-RESPONSE-INDEPENDENT CANONICAL RUNTIME SEAM GREEN; EXACT EVENT-DOMAIN
-`C6TFR1` TERMINAL-FUNCTIONAL RELATION PREREGISTERED; ADDITIVE LEAN GREEN;
-RUST DIFFERENTIAL REQUIRED; NO
-C6.1 FULL-CHAIN PROOF-SIZE, TIMING, MEMORY OR HARDWARE CREDIT; HARD STOP
-BEFORE POD.**
+**C6.1 amendment status (2026-08-02): OWNER REQUIREMENTS AND ORDERED GATES
+FROZEN; CANONICAL RUNTIME, EXACT CHALLENGE-DEPENDENT `C6TFR1`/`C6TFA1`,
+SEVEN-TREE BLIND RATIONAL GKR, JOINT DEGREE-8 LEAF REDUCTION, PHYSICAL D28
+BASE-LIMB RESPONSE / D27 PLAN BOUNDARY, PUBLIC-ONLY VERIFIER, STRICT
+`C6SBA1`, SHARED-ROUND CLAIMLESS WHIR AND ONE FOLDED QUICK-SILVER/ZERO-OPEN
+CLOSURE GREEN AT SCALED GEOMETRY; BUDGET V19 GREEN; PRODUCTION D28/D27
+EXECUTION AND FULL-CHAIN BENCHMARK ABSENT; NO C6.1 PROOF-SIZE, SETUP, TIMING,
+MEMORY OR HARDWARE CREDIT; HARD STOP BEFORE POD.**
 
 This document is the C6 plan of record.  It is a new descendant of the
 accepted C4/T1 `rate=1/4,Q=120` inline profile.  It does not reopen or rewrite
@@ -2569,6 +2560,126 @@ physical layout.  Resume only with a typed base-limb construction, exact
 semantic-target fold, shared-challenge/codec proof, blind degree-8 round
 corrections, the one certified product, and a complete re-sum.  Pod contact
 remains forbidden.
+
+### 0.35 Exact physical sparse relation closure and v19 re-sum
+
+The §0.34 obstruction is closed at scaled executable geometry without mapping
+any functional to a fixed DAG node.  The response oracle is the canonical
+base-field polynomial `c0 || c1`: twelve physical openings at D28 fold in
+semantic-major, limb-minor order to the six arbitrary-`Fp2` values used by the
+terminal equation.  The public fixed-plan oracle remains base-valued at D27
+and contributes exactly three openings.  The boundary adapter reverses the
+complete zero-extended point because Volta MLEs are LSB-first while the pinned
+P3 polynomial evaluator is MSB-first; an executable equality guard compares
+all fifteen evaluations before proving.
+
+Both commitment roots are fixed before a one-shot pre-statement transaction
+samples the lane, recurrence, runtime-gather and source-gather challenges.
+The provider compiles the private combined relation, but the verifier receives
+a public-only fixture containing the installed plan, terminal metadata,
+public relation challenges, output scalar, oracle descriptors and public plan
+coefficients.  Its type has no extraction map, runtime values, adjoint lanes,
+response coefficients or combined relation vectors, and a source guard freezes
+that separation.  The public relation digest, strict `C6SBA1` payload, roots,
+ordered points and three plan targets all enter the shared statement digest.
+
+The blind arithmetic path consists of seven weighted fraction trees with
+production depths
+
+```text
+[25, 25, 25, 25, 24, 23, 25],  sum = 172.
+```
+
+Their fourteen authenticated leaf claims enter one 25-round degree-8
+reduction.  The twelve physical response targets use **24** base-field
+correlations and **192 B** of corrections; the three plan targets are public.
+The semantic limb fold then closes the unique `lambda*mu` product.  All
+products share one scalar-power QuickSilver proof, and all arithmetic zero
+rows share the compiler WHIR chain's existing designated ZeroOpen:
+
+```text
+fraction-tree/root products       530
+terminal lambda*mu product          1
+complete product triples          531
+
+fraction-tree zero rows           175
+public-plan equality rows           3
+terminal affine residual            1
+complete folded zero rows          179
+
+blind GKR full correlations      5,290
+joint degree-8 correlations        200
+terminal/product-mask/WHIR masks     3
+complete full correlations/tape  5,493
+subfield correlations/tape          24.
+```
+
+The strict production arithmetic frame is
+
+```text
+C6SBA1 framing                       92 B
+physical response corrections       192 B
+seven-tree blind GKR              84,640 B
+joint degree-8 rounds              3,248 B
+terminal product correction           16 B
+QuickSilver M0/M1                     32 B
+total                              88,220 B.
+```
+
+The scaled D14/D13 full-flow differential emits **677,532 B** of strict
+shared-WHIR artifact plus **5,212 B** of scaled `C6SBA1`, or **682,744 B**
+provider total.  Its transcript accounts **682,652 B**, the exact **92-B**
+framing difference; it consumes **305 full / 24 subfield** correlations,
+**87** products and **31** folded zero rows.  Provider and verifier transcripts
+are equal.  Strict-codec, arithmetic-payload and final-tag mutations reject;
+the final-tag negative uses the exact accepted residual key and challenge,
+not a fresh unrelated transcript.  The authenticated-WHIR filter is
+**14/0/0**, and the complete feature-gated `volta-pcs` library is
+**223/0/2**.
+
+At production geometry one compiler chain has the exact structural ceiling
+
+```text
+D28 response WHIR maximum        1,172,652 B
+D27 plan WHIR maximum            1,085,464 B
+shared multi-oracle header              16 B
+C6SBA1                              88,220 B
+complete compiler chain          2,346,352 B
+headroom below 2.5 MB              153,648 B.
+```
+
+Two such compiler chains plus the four unchanged 1.5-MB model/embedding
+ceilings give a **10,692,704-B** public-argument ceiling.  Budget profile
+`C6.1-public-compression-reference-v19` therefore re-sums:
+
+```text
+complete certificate             17,534,807 B
+certificate headroom              4,465,192 B
+setup                             84,743,367 B
+setup plus first certificate     102,278,174 B
+physical response D28 state       2,147,483,648 B
+scheduled provider peak           2,277,715,552 B
+provider-state headroom              15,483,296 B
+provider roofline                    14.9087128542 s
+verifier roofline                     4.965672390 s
+complete soundness                  102.587833363526... bits.
+```
+
+The soundness sum now explicitly includes `14/|Fp2|` for the fifteen-opening
+batch, `179/|Fp2|` for the arithmetic-row RLC and `533/|Fp2|` for the
+531-triple scalar-power QuickSilver batch.  Each complete compiler chain is
+still strictly below its registered 74-bit allocation; the two chains retain
+independent transcript/MAC randomness.  The registered per-tape full
+correlation use becomes **6,117 <=39,116**, leaving **32,999** full slots;
+the compiler's exact raw equivalent is **11,010 <=78,232**.  Setup does not
+grow.
+
+All production sizes, state, soundness and times above remain analytic
+`credit:false` screens.  The new local **HARD STOP** is
+`C6SPR4_PRODUCTION_D28_D27_EXECUTION_REQUIRED`: execute both strict compiler
+chains at production D28/D27, reconcile their real memory and correlation
+counters, and obtain a clean local full-chain record before any owner GO or
+pod contact.  No provider has been contacted.
 
 ## 1. Owner requirements
 

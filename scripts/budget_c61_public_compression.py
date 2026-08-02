@@ -86,7 +86,7 @@ C6_VERIFIER_CANONICAL_PUBLIC_VALUES = 1_436
 C6_VERIFIER_CANONICAL_SCALAR_VALUES = 10_828_852
 C61_RUNTIME_SKETCH_REPETITIONS = 2
 
-# C6RSC4-v4 challenge compression.  Every former pseudo-random scalar stream
+# C6RSC4-v5 challenge compression.  Every former pseudo-random scalar stream
 # is replaced by a post-commit multilinear equality point.  The public claims
 # and roots are fixed before these points are sampled.
 C61_ALPHA_STREAMS = c6.RESIDUAL_ALPHA_STREAMS
@@ -339,9 +339,9 @@ def build_report() -> dict[str, Any]:
     )
     runtime_sketch_bits = c6.soundness_bits(runtime_sketch_error)
 
-    # C6RSC4-v4 statistical composition.  The schedule/output/adjoint events
-    # are sampled after the relevant roots and claims are fixed.  The three
-    # transparent components each use two independent authenticated chains,
+    # C6RSC4-v5 statistical composition.  The schedule/output/functional
+    # relation events are sampled after the relevant roots and claims are fixed.
+    # The three transparent components each use two independent authenticated chains,
     # each strictly below the registered 74-bit error allocation.
     equality_schedule_error = Fraction(
         C61_EQ_CHALLENGE_FP2_ELEMENTS, c6.FP2_CARDINALITY
@@ -490,12 +490,13 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v6",
+        "profile": "C6.1-public-compression-reference-v7",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
             "CANONICAL_RUNTIME_SEAM_GREEN__C6TFR1_EXACT_EVENT_RELATION_"
-            "LEAN_GREEN__RUST_DIFFERENTIAL_REQUIRED__"
+            "LEAN_RUST_DIFFERENTIAL_TYPED_STATEMENTS_GREEN__"
+            "NATIVE_TRACE_REALIZATION_REQUIRED__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
@@ -560,12 +561,13 @@ def build_report() -> dict[str, Any]:
             "credit": False,
         },
         "selected_native_candidate": {
-            "name": "C6PA1-native-HVZK-plus-C6RSC4-v4",
+            "name": "C6PA1-native-HVZK-plus-C6RSC4-v5",
             "status": (
                 "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
                 "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
                 "CANONICAL_RUNTIME_SEAM_GREEN__C6TFR1_EXACT_EVENT_RELATION_"
-                "LEAN_GREEN__RUST_DIFFERENTIAL_REQUIRED__"
+                "LEAN_RUST_DIFFERENTIAL_TYPED_STATEMENTS_GREEN__"
+                "NATIVE_TRACE_REALIZATION_REQUIRED__"
                 "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
             "statement": (
@@ -1043,7 +1045,7 @@ def build_report() -> dict[str, Any]:
                 ),
             },
             "local_hard_stop": {
-                "status": "C6TFR1_RUST_DIFFERENTIAL_REQUIRED",
+                "status": "C6TFR1_NATIVE_TRACE_REALIZATION_REQUIRED",
                 "canonical_runtime_seam_green": True,
                 "raw_verifier_runtime_values": raw_verifier_runtime_values,
                 "canonical_runtime_values": canonical_runtime_values,
@@ -1065,10 +1067,12 @@ def build_report() -> dict[str, Any]:
                 "selected_relation_domain_log2": (
                     C61_TERMINAL_FUNCTIONAL_DOMAIN_LOG2
                 ),
-                "native_backend_missing_typed_relation_statement": True,
+                "rust_terminal_differential_green": True,
+                "typed_native_chain_statements_green": True,
+                "native_backend_consumes_typed_relation_statement": False,
                 "required_before_resume": [
-                    "differential C6TFR1 against the exact C6RSC3 terminal compiler",
-                    "install typed model/embedding/compiler statement boundaries without enabling the opaque backend",
+                    "fuse the 64 C6TFR1 accumulators into the existing C6RSC3 event emission before beta",
+                    "realize and verify the native D28 C6TFR1 trace through the typed compiler boundary",
                 ],
                 "credit": False,
             },

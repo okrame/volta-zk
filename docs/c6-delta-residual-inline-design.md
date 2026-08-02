@@ -1742,6 +1742,44 @@ installs the typed chain statements.  The next hard stop is then the concrete
 native trace realization; it may not be bypassed by the historical fixed-node
 scaled seam.  No pod contact is authorized.
 
+The subsequent local implementation checkpoint supplies that exact Rust and
+statement boundary without crossing the native-trace stop.  A diagnostic-only
+`C6ResidualTerminalFunctionalSink` consumes the canonical typed events from
+the existing atomic replay, independently accumulates the 64 C6TFR1 slots and
+also accumulates the event-side `beta^slot` fold.  On the scaled complete
+fixture its two 32-value slices are element-for-element equal to the arrays
+returned by the two actual
+`compile_c6_residual_fused_terminal_coefficients` calls:
+**2,370 coefficient writes / 64 terminal outputs**.  Direct event fold equals
+the RLC of those outputs.  Changed leaf points, `beta`, terminal claims,
+ordering and malformed leaf/auxiliary dimensions are covered by permanent
+checks.  This independent replay is differential evidence only and remains
+forbidden in a production provider.
+
+The six native statement shapes are now explicit and role-typed.  Model and
+embedding chains bind their component/repetition, parameterized commitment
+and exactly **96 / 6** ordered points.  Each compiler chain binds exactly
+**64** authenticated terminal targets plus the operation-plan and topology
+digests, extraction-map digest, canonical runtime root, C6RLM/public-claim/
+relation-challenge digests, both ordered leaf/auxiliary point pairs, ordered
+terminal digest, `beta`, the C6TFR1 relation root and the recomputed functional
+fold.  Public digests exclude provider target shares, verifier target keys and
+`Delta`; the role-specific vectors remain mandatory inputs to the structured
+backend boundary.  The historical opaque digest/payload verifier does not
+implement that boundary and earns no credit.
+
+The default workspace is green with `volta-pcs` **199/0/1** and
+`volta-proto` **149/0/1**; `volta-proto --features c6-trace` is **167/0/1**.
+Scoped formatting and Clippy report no finding in either new C6TFR1 file.
+Budget profile `C6.1-public-compression-reference-v7` is green with every
+registered byte, soundness, provider/verifier roof and provider-state value
+unchanged and still `credit:false`.  This closes
+`C6RSC4_TERMINAL_FUNCTIONAL_RELATION_OBSTRUCTED` only at the exact
+relation/statement level.  The active hard stop is now a concrete native D28
+trace that fuses the 64 accumulators into the one existing C6RSC3 event
+emission before `beta`; there is still no native backend, full-chain result or
+pod authorization.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

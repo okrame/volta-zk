@@ -83,6 +83,8 @@ const ATOMIC_EVENT_AUDIT_DOMAIN: &str = "volta-zk/c6/residual-atomic-event-audit
 const FUSED_FOLDED_COEFFICIENT_DOMAIN: &str = "volta-zk/c6/residual-fused-folded-coefficients/v1";
 const FUSED_TERMINAL_COEFFICIENT_DOMAIN: &str =
     "volta-zk/c6/residual-fused-terminal-coefficients/v1";
+const TERMINAL_FUNCTIONAL_RELATION_DOMAIN: &str =
+    "volta-zk/c6/residual-terminal-functional-relation/v1";
 const TERMINAL_WEIGHT_STREAM_DOMAINS: [[[u64; 2]; 2]; 2] = [
     [
         [0xC6_54_45_52_4D_00_00_01, 0xC6_54_45_52_4D_00_00_02],
@@ -105,6 +107,12 @@ const RESIDUAL_RELATION_SOURCE_FORMULAS: [&[u8]; 3] =
 pub const C6_RESIDUAL_PROOF_REPETITIONS: u8 = 2;
 pub const C6_RESIDUAL_MAC_COORDINATES: u8 = 2;
 pub const C6_RESIDUAL_TERMINAL_FORM_KINDS: usize = 2;
+pub const C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION: usize = C6_RESIDUAL_RELATION_LEAF_TABLES
+    + C6_RESIDUAL_AUXILIARY_LANES as usize
+    + C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS.len();
+pub const C6_RESIDUAL_TERMINAL_FUNCTIONALS: usize =
+    C6_RESIDUAL_PROOF_REPETITIONS as usize * C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION;
+pub const C6_RESIDUAL_TERMINAL_FUNCTIONAL_DOMAIN_LOG2: usize = 28;
 pub const C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS: usize = C6_RESIDUAL_PROOF_REPETITIONS as usize
     * C6_RESIDUAL_MAC_COORDINATES as usize
     * C6_RESIDUAL_TERMINAL_FORM_KINDS;
@@ -5658,6 +5666,288 @@ impl C6ResidualFusedTerminalCoefficients {
     pub fn digest(&self) -> C6ResidualDigest {
         self.digest
     }
+
+    /// Canonical C6TFR1 order for one proof repetition: eight leaf-linear,
+    /// sixteen auxiliary-linear, then the eight frozen quadratic pairs.
+    pub fn terminal_functionals(&self) -> [Fp2; C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION] {
+        std::array::from_fn(|slot| {
+            if slot < C6_RESIDUAL_RELATION_LEAF_TABLES {
+                self.leaf_linear[slot]
+            } else if slot < C6_RESIDUAL_RELATION_LEAF_TABLES + C6_RESIDUAL_AUXILIARY_LANES as usize
+            {
+                self.auxiliary_linear[slot - C6_RESIDUAL_RELATION_LEAF_TABLES]
+            } else {
+                self.auxiliary_quadratic
+                    [slot - C6_RESIDUAL_RELATION_LEAF_TABLES - C6_RESIDUAL_AUXILIARY_LANES as usize]
+            }
+        })
+    }
+}
+
+/// Independent C6TFR1 reference result over the exact typed coefficient
+/// events emitted by C6RSC3.  Production must fuse the 64 accumulators into
+/// the existing event emission; this diagnostic is intentionally a separate
+/// replay so it can differential the production sink.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualTerminalFunctionalRelation {
+    output_beta: Fp2,
+    terminal_functionals: [Fp2; C6_RESIDUAL_TERMINAL_FUNCTIONALS],
+    repetition_folds: [Fp2; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    event_fold: Fp2,
+    coefficient_writes: u64,
+    semantic_digests: [C6ResidualDigest; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    digest: C6ResidualDigest,
+}
+
+impl C6ResidualTerminalFunctionalRelation {
+    pub fn output_beta(&self) -> Fp2 {
+        self.output_beta
+    }
+
+    pub fn terminal_functionals(&self) -> &[Fp2; C6_RESIDUAL_TERMINAL_FUNCTIONALS] {
+        &self.terminal_functionals
+    }
+
+    pub fn repetition_folds(&self) -> &[Fp2; C6_RESIDUAL_PROOF_REPETITIONS as usize] {
+        &self.repetition_folds
+    }
+
+    pub fn functional_fold(&self) -> Fp2 {
+        self.event_fold
+    }
+
+    pub fn coefficient_writes(&self) -> u64 {
+        self.coefficient_writes
+    }
+
+    pub fn semantic_digests(&self) -> &[C6ResidualDigest; C6_RESIDUAL_PROOF_REPETITIONS as usize] {
+        &self.semantic_digests
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+}
+
+struct C6ResidualTerminalFunctionalSink {
+    proof_repetition: u8,
+    leaf_cursor: C6ResidualEqPointCursor,
+    auxiliary_cursor: C6ResidualEqPointCursor,
+    beta_powers: [Fp2; C6_RESIDUAL_TERMINAL_FUNCTIONALS],
+    terminal_functionals: [Fp2; C6_RESIDUAL_TERMINAL_FUNCTIONALS],
+    event_fold: Fp2,
+    coefficient_writes: u64,
+}
+
+impl C6ResidualTerminalFunctionalSink {
+    fn new(
+        proof_repetition: u8,
+        leaf_point: &[Fp2],
+        auxiliary_point: &[Fp2],
+        leaf_entries: u64,
+        auxiliary_entries: u64,
+        output_beta: Fp2,
+    ) -> C6ResidualResult<Self> {
+        if proof_repetition >= C6_RESIDUAL_PROOF_REPETITIONS {
+            return Err(C6ResidualError::new("C6TFR1 proof repetition is out of range"));
+        }
+        let mut power = Fp2::ONE;
+        let beta_powers = std::array::from_fn(|_| {
+            let current = power;
+            power = power * output_beta;
+            current
+        });
+        Ok(Self {
+            proof_repetition,
+            leaf_cursor: C6ResidualEqPointCursor::new(leaf_point, leaf_entries, "C6TFR1 leaf")?,
+            auxiliary_cursor: C6ResidualEqPointCursor::new(
+                auxiliary_point,
+                auxiliary_entries,
+                "C6TFR1 auxiliary",
+            )?,
+            beta_powers,
+            terminal_functionals: [Fp2::ZERO; C6_RESIDUAL_TERMINAL_FUNCTIONALS],
+            event_fold: Fp2::ZERO,
+            coefficient_writes: 0,
+        })
+    }
+
+    fn target_slot_and_equality(
+        &mut self,
+        target: C6ResidualAtomicCoefficientTarget,
+    ) -> C6ResidualResult<(usize, Fp2)> {
+        let repetition_base = usize::from(self.proof_repetition)
+            .checked_mul(C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION)
+            .ok_or_else(|| C6ResidualError::new("C6TFR1 repetition slot overflows"))?;
+        match target {
+            C6ResidualAtomicCoefficientTarget::LeafLinear { table, row } => {
+                let table = usize::from(table);
+                if table >= C6_RESIDUAL_RELATION_LEAF_TABLES {
+                    return Err(C6ResidualError::new("C6TFR1 leaf table is out of range"));
+                }
+                Ok((repetition_base + table, self.leaf_cursor.at(row)?))
+            }
+            C6ResidualAtomicCoefficientTarget::AuxiliaryLinear { table, row } => {
+                let table = usize::from(table);
+                if table >= C6_RESIDUAL_AUXILIARY_LANES as usize {
+                    return Err(C6ResidualError::new(
+                        "C6TFR1 auxiliary-linear table is out of range",
+                    ));
+                }
+                Ok((
+                    repetition_base + C6_RESIDUAL_RELATION_LEAF_TABLES + table,
+                    self.auxiliary_cursor.at(row)?,
+                ))
+            }
+            C6ResidualAtomicCoefficientTarget::AuxiliaryQuadratic { lhs, rhs, row } => {
+                let pair = C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS
+                    .iter()
+                    .position(|candidate| *candidate == (lhs, rhs))
+                    .ok_or_else(|| {
+                        C6ResidualError::new("C6TFR1 quadratic pair is not canonical")
+                    })?;
+                Ok((
+                    repetition_base
+                        + C6_RESIDUAL_RELATION_LEAF_TABLES
+                        + C6_RESIDUAL_AUXILIARY_LANES as usize
+                        + pair,
+                    self.auxiliary_cursor.at(row)?,
+                ))
+            }
+        }
+    }
+}
+
+impl C6ResidualAtomicEventSink for C6ResidualTerminalFunctionalSink {
+    fn output(&mut self, event: C6ResidualAtomicOutputEvent) -> C6ResidualResult<()> {
+        if event.proof_repetition != self.proof_repetition {
+            return Err(C6ResidualError::new(
+                "C6TFR1 received an output from a swapped repetition",
+            ));
+        }
+        Ok(())
+    }
+
+    fn coefficient(&mut self, event: C6ResidualAtomicCoefficientEvent) -> C6ResidualResult<()> {
+        if event.proof_repetition != self.proof_repetition {
+            return Err(C6ResidualError::new(
+                "C6TFR1 received a coefficient from a swapped repetition",
+            ));
+        }
+        let (slot, equality) = self.target_slot_and_equality(event.target)?;
+        let kernel = event.coefficient * equality;
+        self.terminal_functionals[slot] += kernel;
+        self.event_fold += self.beta_powers[slot] * kernel;
+        self.coefficient_writes = self
+            .coefficient_writes
+            .checked_add(1)
+            .ok_or_else(|| C6ResidualError::new("C6TFR1 coefficient census overflows"))?;
+        Ok(())
+    }
+}
+
+/// Independent exact C6TFR1 coefficient-event fold.
+///
+/// This reference deliberately replays the event grammar and therefore must
+/// not be called by a production provider.  The production construction owns
+/// the same 64 accumulators inside the existing C6RSC3 event sink, fixes them
+/// before `output_beta`, and only then forms their scalar-power fold.
+#[allow(clippy::too_many_arguments)]
+pub fn compile_c6_residual_terminal_functional_relation_reference(
+    operation_plan: &C6InstalledOperationPlan,
+    extraction: &C6DecodedInstanceExtractionPlan,
+    runtime: &C6RuntimeInstanceValues,
+    linear: &C6CompiledLinearResidual,
+    challenges: &C6ResidualRelationChallenges,
+    leaf_points: [&[Fp2]; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    auxiliary_points: [&[Fp2]; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    output_beta: Fp2,
+) -> C6ResidualResult<C6ResidualTerminalFunctionalRelation> {
+    challenges.validate(operation_plan)?;
+    let manifest = challenges.manifest();
+    let mut terminal_functionals = [Fp2::ZERO; C6_RESIDUAL_TERMINAL_FUNCTIONALS];
+    let mut repetition_folds = [Fp2::ZERO; C6_RESIDUAL_PROOF_REPETITIONS as usize];
+    let mut semantic_digests = [[0; 32]; C6_RESIDUAL_PROOF_REPETITIONS as usize];
+    let mut event_fold = Fp2::ZERO;
+    let mut coefficient_writes = 0u64;
+
+    for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
+        let repetition = usize::from(proof_repetition);
+        let mut sink = C6ResidualTerminalFunctionalSink::new(
+            proof_repetition,
+            leaf_points[repetition],
+            auxiliary_points[repetition],
+            manifest.leaf_entries,
+            manifest.auxiliary_entries,
+            output_beta,
+        )?;
+        let summary = replay_c6_residual_atomic_events(
+            operation_plan,
+            extraction,
+            runtime,
+            linear,
+            challenges,
+            proof_repetition,
+            &mut sink,
+        )?;
+        if sink.coefficient_writes != summary.coefficient_writes {
+            return Err(C6ResidualError::new(
+                "C6TFR1 coefficient census differs from atomic replay",
+            ));
+        }
+        let start = repetition * C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION;
+        let end = start + C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION;
+        terminal_functionals[start..end].copy_from_slice(&sink.terminal_functionals[start..end]);
+        semantic_digests[repetition] = summary.semantic_digest;
+        coefficient_writes = coefficient_writes
+            .checked_add(sink.coefficient_writes)
+            .ok_or_else(|| C6ResidualError::new("C6TFR1 total write census overflows"))?;
+        event_fold += sink.event_fold;
+
+        repetition_folds[repetition] = terminal_functionals[start..end].iter().enumerate().fold(
+            Fp2::ZERO,
+            |sum, (local_slot, value)| {
+                let global_slot = start + local_slot;
+                sum + sink.beta_powers[global_slot] * *value
+            },
+        );
+    }
+
+    let terminal_fold = repetition_folds.iter().copied().fold(Fp2::ZERO, |sum, value| sum + value);
+    if terminal_fold != event_fold {
+        return Err(C6ResidualError::new(
+            "C6TFR1 event fold differs from its 64 accumulated functionals",
+        ));
+    }
+    let mut relation = C6ResidualTerminalFunctionalRelation {
+        output_beta,
+        terminal_functionals,
+        repetition_folds,
+        event_fold,
+        coefficient_writes,
+        semantic_digests,
+        digest: [0; 32],
+    };
+    let mut hasher = blake3::Hasher::new_derive_key(TERMINAL_FUNCTIONAL_RELATION_DOMAIN);
+    hasher.update(&manifest.digest);
+    hasher.update(&challenges.digest);
+    hash_fp2(&mut hasher, output_beta);
+    for point in leaf_points.into_iter().chain(auxiliary_points) {
+        hasher.update(&(point.len() as u64).to_le_bytes());
+        for value in point {
+            hash_fp2(&mut hasher, *value);
+        }
+    }
+    for value in relation.terminal_functionals {
+        hash_fp2(&mut hasher, value);
+    }
+    for semantic_digest in relation.semantic_digests {
+        hasher.update(&semantic_digest);
+    }
+    hash_fp2(&mut hasher, relation.event_fold);
+    hasher.update(&relation.coefficient_writes.to_le_bytes());
+    relation.digest = *hasher.finalize().as_bytes();
+    Ok(relation)
 }
 
 struct C6ResidualFusedTerminalCoefficientSink {
@@ -9942,6 +10232,7 @@ mod tests {
             });
             assert_eq!(cursor.at(row).unwrap(), expected);
         }
+        let mut expected_terminal_functionals = [Fp2::ZERO; C6_RESIDUAL_TERMINAL_FUNCTIONALS];
         for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
             let statement = &compiled.statements()[usize::from(proof_repetition)];
             let terminal = compile_c6_residual_fused_terminal_coefficients(
@@ -9989,7 +10280,92 @@ mod tests {
             )
             .unwrap();
             assert_ne!(terminal.digest(), changed.digest());
+
+            let start =
+                usize::from(proof_repetition) * C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION;
+            let end = start + C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION;
+            expected_terminal_functionals[start..end]
+                .copy_from_slice(&terminal.terminal_functionals());
         }
+        assert_eq!(C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION, 32);
+        assert_eq!(C6_RESIDUAL_TERMINAL_FUNCTIONALS, 64);
+        assert_eq!(C6_RESIDUAL_TERMINAL_FUNCTIONAL_DOMAIN_LOG2, 28);
+        let output_beta = fp2(191);
+        let terminal_relation = compile_c6_residual_terminal_functional_relation_reference(
+            &installed,
+            &extraction,
+            &runtime,
+            &linear,
+            &relation,
+            [&leaf_point, &leaf_point],
+            [&auxiliary_point, &auxiliary_point],
+            output_beta,
+        )
+        .unwrap();
+        assert_eq!(terminal_relation.output_beta(), output_beta);
+        assert_eq!(terminal_relation.terminal_functionals(), &expected_terminal_functionals);
+        assert_eq!(terminal_relation.coefficient_writes(), 2 * 1_185);
+        assert!(terminal_relation.semantic_digests().iter().all(|digest| *digest != [0; 32]));
+        assert_ne!(terminal_relation.digest(), [0; 32]);
+        let expected_fold = expected_terminal_functionals
+            .iter()
+            .fold((Fp2::ZERO, Fp2::ONE), |(sum, power), value| {
+                (sum + power * *value, power * output_beta)
+            })
+            .0;
+        assert_eq!(terminal_relation.functional_fold(), expected_fold);
+        assert_eq!(
+            terminal_relation
+                .repetition_folds()
+                .iter()
+                .copied()
+                .fold(Fp2::ZERO, |sum, value| sum + value),
+            expected_fold
+        );
+
+        let changed_leaf_point = [fp2(7), fp2(11), fp2(13), fp2(17), fp2(19), fp2(23), fp2(29)];
+        let changed_point_relation = compile_c6_residual_terminal_functional_relation_reference(
+            &installed,
+            &extraction,
+            &runtime,
+            &linear,
+            &relation,
+            [&changed_leaf_point, &leaf_point],
+            [&auxiliary_point, &auxiliary_point],
+            output_beta,
+        )
+        .unwrap();
+        assert_ne!(
+            terminal_relation.terminal_functionals(),
+            changed_point_relation.terminal_functionals()
+        );
+        assert_ne!(terminal_relation.digest(), changed_point_relation.digest());
+        let changed_beta_relation = compile_c6_residual_terminal_functional_relation_reference(
+            &installed,
+            &extraction,
+            &runtime,
+            &linear,
+            &relation,
+            [&leaf_point, &leaf_point],
+            [&auxiliary_point, &auxiliary_point],
+            fp2(193),
+        )
+        .unwrap();
+        assert_eq!(
+            terminal_relation.terminal_functionals(),
+            changed_beta_relation.terminal_functionals()
+        );
+        assert_ne!(terminal_relation.functional_fold(), changed_beta_relation.functional_fold());
+        assert_ne!(terminal_relation.digest(), changed_beta_relation.digest());
+        let mut changed_terminal_claims = expected_terminal_functionals;
+        changed_terminal_claims[0] += Fp2::ONE;
+        let changed_claim_fold = changed_terminal_claims
+            .iter()
+            .fold((Fp2::ZERO, Fp2::ONE), |(sum, power), value| {
+                (sum + power * *value, power * output_beta)
+            })
+            .0;
+        assert_ne!(expected_fold, changed_claim_fold);
         assert!(compile_c6_residual_fused_terminal_coefficients(
             &installed,
             &extraction,
@@ -9999,6 +10375,28 @@ mod tests {
             0,
             &leaf_point[..6],
             &auxiliary_point,
+        )
+        .is_err());
+        assert!(compile_c6_residual_terminal_functional_relation_reference(
+            &installed,
+            &extraction,
+            &runtime,
+            &linear,
+            &relation,
+            [&leaf_point[..6], &leaf_point],
+            [&auxiliary_point, &auxiliary_point],
+            output_beta,
+        )
+        .is_err());
+        assert!(compile_c6_residual_terminal_functional_relation_reference(
+            &installed,
+            &extraction,
+            &runtime,
+            &linear,
+            &relation,
+            [&leaf_point, &leaf_point],
+            [&auxiliary_point, &auxiliary_point[..1]],
+            output_beta,
         )
         .is_err());
         assert!(compile_c6_residual_fused_terminal_coefficients(

@@ -8,6 +8,9 @@
 use super::*;
 use crate::logup::{prove_weighted_frac_tree, verify_frac_tree, Counters, FracProof};
 
+mod joint_leaf;
+pub use joint_leaf::*;
+
 const C6_SPARSE_RATIONAL_SUBCHECKS: usize = 7;
 const C6_SPARSE_RATIONAL_GKR_STREAM_DOMAINS: [u64; C6_SPARSE_RATIONAL_SUBCHECKS] = [
     0xC6_53_50_52_01,

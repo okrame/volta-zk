@@ -2329,6 +2329,7 @@ pub fn blind_verify_frac_tree(
     }
     let kroots = {
         let ks = ctx.correct_full_verifier_keys(doms.take(1), &proof.root_corrs);
+        tx.append("logup_root_corrections", 32);
         (ks[0], ks[1])
     };
     let mut kcp = kroots.0;
@@ -2345,6 +2346,7 @@ pub fn blind_verify_frac_tree(
         let mut rprime = Vec::with_capacity(l);
         for (j, corrs) in layer.round_corrs.iter().enumerate() {
             let kms = ctx.correct_full_verifier_keys(doms.take(1), corrs);
+            tx.append("logup_round_corrections", 32);
             let kh0 = kms[0];
             let kh2 = kms[1];
             let ptj = point[j];
@@ -2362,7 +2364,9 @@ pub fn blind_verify_frac_tree(
             rprime.push(r);
         }
         let ksp = ctx.correct_full_verifier_keys(doms.take(1), &layer.split_corrs);
+        tx.append("logup_split_corrections", 64);
         let kz = ctx.correct_full_verifier_keys(doms.take(1), &layer.z_corrs);
+        tx.append("logup_prod_corrections", 48);
         kprod.push((ksp[0], ksp[3], kz[0]));
         kprod.push((ksp[1], ksp[2], kz[1]));
         kprod.push((ksp[2], ksp[3], kz[2]));
@@ -2405,6 +2409,7 @@ pub fn blind_verify_frac_tree_aux(
     }
     let kroots = {
         let ks = ctx.correct_full_verifier_keys(doms.take(1), &proof.root_corrs);
+        tx.append("logup_root_corrections", 32);
         (ks[0], ks[1])
     };
     let mut kcp = kroots.0;
@@ -2429,6 +2434,7 @@ pub fn blind_verify_frac_tree_aux(
             }
             for (j, corrs) in aux.rounds3.iter().enumerate() {
                 let kg = ctx.correct_full_verifier_keys(doms.take(1), corrs);
+                tx.append("logup_aux_round_corrections", 48);
                 let r = tx.challenge_fp2();
                 let kg1 = kclaim.sub(kg[0]);
                 let w = lagrange4(r);
@@ -2448,6 +2454,7 @@ pub fn blind_verify_frac_tree_aux(
             }
             for (j, corrs) in layer.round_corrs.iter().enumerate() {
                 let kms = ctx.correct_full_verifier_keys(doms.take(1), corrs);
+                tx.append("logup_round_corrections", 32);
                 let kh0 = kms[0];
                 let kh2 = kms[1];
                 let ptj = point[j];
@@ -2466,7 +2473,9 @@ pub fn blind_verify_frac_tree_aux(
             }
         }
         let ksp = ctx.correct_full_verifier_keys(doms.take(1), &layer.split_corrs);
+        tx.append("logup_split_corrections", 64);
         let kz = ctx.correct_full_verifier_keys(doms.take(1), &layer.z_corrs);
+        tx.append("logup_prod_corrections", 48);
         kprod.push((ksp[0], ksp[3], kz[0]));
         kprod.push((ksp[1], ksp[2], kz[1]));
         kprod.push((ksp[2], ksp[3], kz[2]));
@@ -2474,6 +2483,7 @@ pub fn blind_verify_frac_tree_aux(
         let t;
         if leaf {
             let kcs = ctx.expand_full_verifier_keys(doms.take(1), 2 * n_cols);
+            tx.append("logup_col_corrections", 32 * n_cols as u64);
             let kcols: Vec<[VerifierKey; 2]> = (0..n_cols)
                 .map(|ci| {
                     [

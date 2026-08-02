@@ -3,13 +3,14 @@
 
 This report deliberately has two different verdict scopes:
 
-* exact reconciliation of the existing C6 certificate and residual-compiler
-  operation census;
+* exact reconciliation of the existing C6 certificate, residual-compiler
+  operation census and C6TFR1 coefficient-event domain;
 * the preregistered C6.1 native-candidate screen, the feature-gated legacy
   clear-target C6WIR1 PCS/codec reference, and the C6AWP1 claimless
-  authenticated-target codec differential.  The complete relation adapter
-  and full-chain benchmark remain absent, so neither reference is final proof
-  or timing credit.
+  authenticated-target codec differential.  C6TFR1 now specifies the exact
+  terminal-functional relation, but its native trace realization and the
+  full-chain benchmark remain absent, so neither reference is final proof or
+  timing credit.
 
 No projected ceiling or analytic roofline is proof-size, setup, prover-time,
 verifier-time or hardware credit.  The implemented PCS codec receives only
@@ -126,6 +127,8 @@ C61_SPARSE_OPERAND_COUNT = 36_917_836
 C61_NODE_LOG2 = 25
 C61_RUNTIME_LOG2 = 24
 C61_TERMINAL_OUTPUTS = 64
+C61_TERMINAL_FUNCTIONAL_DOMAIN_LOG2 = 28
+C61_TERMINAL_FUNCTIONAL_WRITES = c6.RESIDUAL_COEFFICIENT_WRITES_TOTAL
 
 # Native transparent candidate.  Each model/embedding/compiler component uses
 # two independent no-grinding chains.  C6AWH1 configures 75 public PCS bits so
@@ -346,7 +349,9 @@ def build_report() -> dict[str, Any]:
     output_batch_error = Fraction(
         C61_TERMINAL_OUTPUTS - 1, c6.FP2_CARDINALITY
     )
-    sparse_adjoint_error = Fraction(C61_NODE_LOG2, c6.FP2_CARDINALITY)
+    terminal_functional_relation_error = Fraction(
+        C61_TERMINAL_FUNCTIONAL_DOMAIN_LOG2, c6.FP2_CARDINALITY
+    )
     # One ordered batch of at most 128 fixed claims contributes a degree-127
     # root event.  Closing its affine result through C6AWH1 adds one separate
     # Fp2 MAC event.  Together with the configured public PCS error this must
@@ -380,7 +385,7 @@ def build_report() -> dict[str, Any]:
         equality_schedule_error
         + runtime_sketch_error
         + output_batch_error
-        + sparse_adjoint_error
+        + terminal_functional_relation_error
         + native_backend_error
         + existing_wrapper_error
     )
@@ -485,12 +490,12 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v5",
+        "profile": "C6.1-public-compression-reference-v6",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
-            "CANONICAL_RUNTIME_SEAM_GREEN__C6RSC4_TERMINAL_FUNCTIONAL_"
-            "RELATION_OBSTRUCTED__HARD_STOP__"
+            "CANONICAL_RUNTIME_SEAM_GREEN__C6TFR1_EXACT_EVENT_RELATION_"
+            "PREREGISTERED__FORMAL_RUST_REQUIRED__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
@@ -559,8 +564,8 @@ def build_report() -> dict[str, Any]:
             "status": (
                 "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
                 "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
-                "CANONICAL_RUNTIME_SEAM_GREEN__C6RSC4_TERMINAL_FUNCTIONAL_"
-                "RELATION_OBSTRUCTED__HARD_STOP__"
+                "CANONICAL_RUNTIME_SEAM_GREEN__C6TFR1_EXACT_EVENT_RELATION_"
+                "PREREGISTERED__FORMAL_RUST_REQUIRED__"
                 "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
             "statement": (
@@ -609,9 +614,16 @@ def build_report() -> dict[str, Any]:
                 ),
                 "former_materialized_prg_oracle": False,
             },
-            "sparse_adjoint_compiler": {
+            "terminal_functional_compiler": {
                 "terminal_claims": C61_TERMINAL_OUTPUTS,
                 "one_postclaim_output_rlc": True,
+                "relation": "C6TFR1-v1 coefficient-event functional fold",
+                "coefficient_event_writes": C61_TERMINAL_FUNCTIONAL_WRITES,
+                "combined_padded_domain_log2": (
+                    C61_TERMINAL_FUNCTIONAL_DOMAIN_LOG2
+                ),
+                "terminal_slot_grammar": "2 repetitions * (8 leaf + 16 auxiliary-linear + 8 auxiliary-quadratic)",
+                "fixed_node_output_mapping": False,
                 "canonical_nodes": C61_CANONICAL_NODE_COUNT,
                 "node_partition": {
                     "source": C61_SOURCE_NODE_COUNT,
@@ -626,10 +638,15 @@ def build_report() -> dict[str, Any]:
                 "raw_verifier_runtime_values": raw_verifier_runtime_values,
                 "public_pcs_vectors": 2,
                 "public_pcs_vector_log2": C61_NODE_LOG2,
-                "recurrence": "lambda = root + A^T lambda",
+                "recurrence": (
+                    "the installed plan/runtime constrain the atomic event generator; "
+                    "the terminal relation folds typed coefficient writes"
+                ),
                 "provider_global_plan": True,
                 "client_receives_plan": False,
                 "client_retains_instance_map_bytes": C6_VERIFIER_INSTANCE_MAP_BYTES,
+                "additional_semantic_replay_allowed": False,
+                "materialized_event_table_allowed": False,
             },
             "native_transparent_backend": {
                 "field": "Goldilocks quadratic extension with base-field embedding",
@@ -907,8 +924,8 @@ def build_report() -> dict[str, Any]:
                     runtime_sketch_error
                 ),
                 "terminal_output_rlc": _error_report(output_batch_error),
-                "sparse_adjoint_recurrence": _error_report(
-                    sparse_adjoint_error
+                "terminal_functional_relation_d28": _error_report(
+                    terminal_functional_relation_error
                 ),
                 "one_authenticated_chain_exact_screen": _error_report(
                     authenticated_target_chain_error
@@ -1026,7 +1043,7 @@ def build_report() -> dict[str, Any]:
                 ),
             },
             "local_hard_stop": {
-                "status": "C6RSC4_TERMINAL_FUNCTIONAL_RELATION_OBSTRUCTED",
+                "status": "C6TFR1_FORMAL_RUST_DIFFERENTIAL_REQUIRED",
                 "canonical_runtime_seam_green": True,
                 "raw_verifier_runtime_values": raw_verifier_runtime_values,
                 "canonical_runtime_values": canonical_runtime_values,
@@ -1035,18 +1052,24 @@ def build_report() -> dict[str, Any]:
                 ),
                 "retained_instance_map_bytes": C6_VERIFIER_INSTANCE_MAP_BYTES,
                 "current_scaled_abstraction": (
-                    "injects beta powers at 64 fixed node indices"
+                    "historical and ineligible: injects beta powers at 64 fixed node indices"
                 ),
                 "production_terminal_semantics": (
                     "two challenge-dependent 8+16+8 coefficient-functional "
                     "outputs emitted by atomic replay"
                 ),
+                "selected_exact_relation": (
+                    "typed coefficient-event slot injection and postclaim beta fold"
+                ),
+                "selected_relation_domain_writes": C61_TERMINAL_FUNCTIONAL_WRITES,
+                "selected_relation_domain_log2": (
+                    C61_TERMINAL_FUNCTIONAL_DOMAIN_LOG2
+                ),
                 "native_backend_missing_typed_relation_statement": True,
                 "required_before_resume": [
-                    "define the exact challenge-dependent node-domain injection or an equivalent constrained relation",
-                    "prove that relation yields the 64 terminal coefficient functionals consumed by C6RSC3",
-                    "pass typed model/embedding/compiler statements, points and authenticated targets to each native backend chain",
-                    "re-sum proof bytes, soundness, provider work and four-thread verifier work before implementation",
+                    "prove the C6TFR1 event-domain fold identity additively in Lean",
+                    "differential C6TFR1 against the exact C6RSC3 terminal compiler",
+                    "install typed model/embedding/compiler statement boundaries without enabling the opaque backend",
                 ],
                 "credit": False,
             },
@@ -1266,8 +1289,13 @@ def build_report() -> dict[str, Any]:
     assert C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES == 2_293_198_848
     assert C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES - provider_state_bytes == 273_793_856
     assert c6.soundness_bits(equality_schedule_error) > Decimal("120.12")
-    assert c6.soundness_bits(candidate_complete_error) > Decimal("119.66")
-    assert c6.soundness_bits(candidate_session_error) > Decimal("115.58")
+    assert terminal_functional_relation_error == Fraction(
+        28, c6.FP2_CARDINALITY
+    )
+    assert C61_TERMINAL_FUNCTIONAL_WRITES == 225_997_412
+    assert C61_TERMINAL_FUNCTIONAL_WRITES < 2**C61_TERMINAL_FUNCTIONAL_DOMAIN_LOG2
+    assert c6.soundness_bits(candidate_complete_error) > Decimal("119.65")
+    assert c6.soundness_bits(candidate_session_error) > Decimal("115.56")
     assert native_compiler_symbols == 4_902_000_320
     assert native_compiler_pcs_transform_bytes == 10_737_418_240
     assert Decimal("14.50") < native_provider_roof_seconds < Decimal("14.51")

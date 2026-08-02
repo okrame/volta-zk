@@ -41,8 +41,9 @@ ARGUMENT + DESIGNATED-VIEW SIMULATOR + PRIVATE-ENTROPY `C6ICT1-v1`
 REPLAY-TO-FRONTIER DRIVER + DURABLE `C6ICJ1-v1` APPEND-ONLY JOURNAL,
 MASK-FRONTIER AND RESERVED-RANGE BINDING + BOUNDED AUTHENTICATED ORDERED
 MULTI-OPENING REDUCTION FOR THE 96 MODEL / 6 EMBEDDING CLAIM CENSUSES GREEN;
-RESPONSE-INDEPENDENT CANONICAL RUNTIME SEAM GREEN; `C6RSC4` TERMINAL-
-FUNCTIONAL RELATION LOCALLY OBSTRUCTED / HARD STOP; NO
+RESPONSE-INDEPENDENT CANONICAL RUNTIME SEAM GREEN; EXACT EVENT-DOMAIN
+`C6TFR1` TERMINAL-FUNCTIONAL RELATION PREREGISTERED; FORMAL/RUST
+DIFFERENTIAL REQUIRED; NO
 C6.1 FULL-CHAIN PROOF-SIZE, TIMING, MEMORY OR HARDWARE CREDIT; HARD STOP
 BEFORE POD.**
 
@@ -1610,6 +1611,132 @@ Work may resume only after one concrete amendment supplies all of:
 The existing **16,342,103-B**, **14.5038179582-s** and **4.565672390-s**
 figures remain screens with `credit:false`; they cannot be used to bypass the
 missing relation.  No pod was contacted.
+
+### 0.22 C6TFR1 exact coefficient-event relation
+
+This amendment resolves the semantic ambiguity in Section 0.21 without
+assigning any C6RSC3 value to a fixed sparse-DAG node.  The relation domain is
+the canonical coefficient-write stream already emitted by
+`replay_c6_residual_atomic_events`.  Across the two proof repetitions it has
+exactly **225,997,412** writes.  Every write carries an exact typed tuple
+
+```text
+(proof_repetition, output_ordinal, atomic_family,
+ coefficient_target, coefficient),
+```
+
+where `coefficient_target` is exactly one of
+
+```text
+LeafLinear(table in 0..8, row in 0..2^23)
+AuxiliaryLinear(table in 0..16, row in 0..2^15)
+AuxiliaryQuadratic((lhs,rhs) in the frozen 8-pair order,
+                   row in 0..2^15).
+```
+
+`C6TFR1-v1` assigns a write to a terminal-functional slot, not to a DAG node:
+
+```text
+slot(b, LeafLinear(t,_))       = 32*b + t
+slot(b, AuxiliaryLinear(t,_))  = 32*b + 8 + t
+slot(b, AuxiliaryQuadratic(q,_)) = 32*b + 24 + q.
+```
+
+The quadratic ordinal `q` is the position in the frozen
+`C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS` list.  Swapped repetitions,
+out-of-range tables/rows and a quadratic pair outside that list are malformed
+statements, not values that can be reduced modulo a domain.
+
+Let `p_leaf[b]` and `p_aux[b]` be the exact terminal points carried by the
+C6RSC3 pending descriptors after the corresponding sumcheck rounds.  For a
+coefficient write `e`, define
+
+```text
+kappa(e) = coefficient(e)
+         * eq(p_leaf[b], row(e))  if e targets LeafLinear
+         * eq(p_aux[b],  row(e))  otherwise,
+
+T[j] = sum_{e : slot(e)=j} kappa(e).
+```
+
+The two multiplications in the display are cases, not a product of both
+equality weights.  By construction, `T[32*b .. 32*b+32]` is exactly the
+`8 leaf-linear + 16 auxiliary-linear + 8 auxiliary-quadratic` array returned
+by `compile_c6_residual_fused_terminal_coefficients` for repetition `b`.
+After all 64 `T[j]` values are fixed, the client samples the existing fresh
+`beta` and the compiler statement checks the exact identity
+
+```text
+sum_{j=0}^{63} beta^j * T[j]
+  = sum_e beta^slot(e) * kappa(e).
+```
+
+This is a challenge-dependent injection on the typed coefficient-event
+domain.  It is the permitted equivalent constrained relation from Section
+0.21: there is no `output_injection(beta)` on 64 guessed canonical nodes.
+The installed operation plan remains load-bearing because the native compiler
+relation must prove that the event stream is the exact output of the frozen
+atomic grammar for the bound plan, extraction map, canonical runtime,
+relation manifest, public claims and challenge schedule.  A digest of an
+unconstrained event stream is not sufficient.
+
+The provider must attach the C6TFR1 accumulator/proof sink to the existing
+C6RSC3 event emission.  It retains the 64 scalar accumulators and fixes their
+root before `beta`; after `beta` it forms only their scalar-power fold.
+Replaying the **225,997,412** writes after `beta`, materializing a new event
+table, or mapping the values back onto fixed DAG nodes is forbidden.  The
+native compiler relation is a vector-output streaming relation whose 64
+outputs are post-batched, not 64 proof instances or 64 PCS claims.
+
+The typed verifier boundary is correspondingly frozen.  Each native chain
+receives a role-specific statement containing its component/repetition,
+model or embedding commitment, complete ordered point descriptors and
+verifier-owned authenticated target keys.  Compiler chains additionally bind
+the operation-plan artifact and topology digests, extraction/runtime roots,
+C6RLM/public-claim/relation-challenge digests, both leaf/auxiliary point pairs,
+the ordered 64-terminal digest, `beta`, the C6TFR1 root and its folded target.
+None of the target keys or `Delta` enters the provider artifact or statement
+digest.  An opaque `(statement_digest, arithmetic_digest, payload)` adapter is
+not a production implementation of this boundary.
+
+`C6RSC4-v5` reuses the exact **1,212-B** arithmetic frame width: the former
+32-B fixed-node adjoint root becomes the C6TFR1 relation root and the former
+16-B source boundary becomes the coefficient-event functional fold.  The 64
+terminal values, two runtime evaluations and outer framing are unchanged.
+There is therefore no provider-to-client byte increment:
+
+```text
+certificate ceiling                         16,342,103 B
+setup                                        84,743,367 B
+setup plus first certificate                101,085,470 B.
+```
+
+The relation is padded once to the combined dimension `2^28`, since
+`225,997,412 < 2^28`.  The old dimension-25 fixed-node recurrence term is
+removed and the conservative relation-discrepancy term is `28/|Fp2|`.
+Keeping every other registered term unchanged gives
+
+```text
+complete per-certificate soundness          119.6548823158 bits
+17-certificate informative union            115.5674194746 bits.
+```
+
+The exact event census fits inside the already registered compiler-work
+allocation of **4,902,000,320 coefficient-equivalent symbols**; it does not
+authorize an extra semantic pass.  The conservative roof consequently stays
+**14.5038179582 s** provider and **4.565672390 s** four-thread verifier.
+Likewise the 64 scalar accumulators replace, rather than add to, the old
+terminal state, so the conservative provider-state screen remains
+**2,019,404,992 B**.  All these values remain `credit:false` until a concrete
+native relation implementation consumes the fused event sink and the strict
+serialized artifact.
+
+The Section 0.21 obstruction is cleared only when the additive theorem proves
+the event-domain identity and a Rust differential shows equality with the
+actual C6RSC3 terminal compiler under point, target, ordering and schedule
+mutations.  The next hard stop is then the concrete native trace realization;
+it may not be bypassed by the historical fixed-node scaled seam.  No pod
+contact is authorized.
 
 ## 1. Owner requirements
 

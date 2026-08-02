@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — CANONICAL RUNTIME SEAM GREEN / C6RSC4 TERMINAL-FUNCTIONAL RELATION HARD STOP / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — CANONICAL RUNTIME SEAM GREEN / EXACT C6TFR1 EVENT-DOMAIN RELATION PREREGISTERED / FORMAL+RUST HARD STOP / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -13,14 +13,17 @@ the remainder of that document preserves the C6 requirements, Q=121 ruling,
 implementation history and local measurements as the immutable baseline.
 C6.1's exact byte/operation public/designated-verifier decomposition and
 native Gate-2 pre-code screen are green and executable.  The selected
-interactive `C6PA1`/`C6RSC4-v4` route uses direct postcommit MLE challenges,
-one sparse aggregate adjoint and six independently separated no-grinding
-HVZK chains.  Its registered ceilings/rooflines are **16,342,103 B** per
+interactive `C6PA1`/`C6RSC4-v5` route uses direct postcommit MLE challenges,
+the exact `C6TFR1-v1` coefficient-event functional relation and six
+independently separated no-grinding HVZK chains.  Its registered
+ceilings/rooflines are **16,342,103 B** per
 certificate, **101,085,470 B** setup plus first certificate,
 **14.5038179582 s** provider and **4.565672390 s** four-thread verifier;
-complete per-certificate soundness is **119.668253692 bits**.  The additive
-Lean package is green at **3,264 jobs / 33 new audited C6.1 targets** and the
-strict scaled `C6PA1-v1`/`C6RSC4-v4` Rust seam remains green.
+the amended complete per-certificate screen is **119.6548823158 bits**.  The
+historical additive Lean package is green at **3,264 jobs / 33 new audited
+C6.1 targets** and the strict scaled fixed-node `C6PA1-v1`/`C6RSC4-v4` Rust
+seam remains historical component evidence only.  C6TFR1 formal and Rust
+differentials are the active hard stop.
 
 The next append-only CPU-reference checkpoint now pins Plonky3 `p3-whir`
 revision `66e290615de1858f2f2f6a804158064c406cda1c` behind the non-default
@@ -152,17 +155,36 @@ only the **63,994,751-B** canonical plan is removed.  Setup therefore remains
 **2,019,404,992 B**, leaving **273,793,856 B**, and the formula-only provider
 roof becomes **14.5038179582 s**.
 
-The blocking fact is exact: C6RSC3's 64 consumed values are two groups of 8
+The previously blocking fact is exact: C6RSC3's 64 consumed values are two groups of 8
 leaf-linear, 16 auxiliary-linear and 8 auxiliary-quadratic coefficient
 functionals produced only after the leaf/aux MLE points and atomic schedule
 are known.  They are not 64 fixed nodes of the installed sparse DAG.  That
 DAG instead terminates in **673 ProductClosures** and **8,170 zero roots**.
 Injecting output RLC powers into arbitrary fixed node indices would therefore
-prove the wrong statement.  `C6RSC4_TERMINAL_FUNCTIONAL_RELATION_OBSTRUCTED`
-is a hard stop until an exact challenge-dependent node-domain injection (or
-equivalent constrained relation), equality to the C6RSC3 consumed values and
-typed chain statements are specified and re-summed.  No complete-relation,
-certificate, setup, timing, memory, hardware or production credit follows.
+prove the wrong statement.
+
+The append-only `C6TFR1-v1` amendment now preregisters the permitted exact
+equivalent relation on the canonical coefficient-write domain.  Its
+**225,997,412** typed writes map injectively by repetition and target kind to
+the exact `2 * (8+16+8) = 64` functional slots; each write is multiplied by
+the matching leaf or auxiliary equality weight, and one fresh postclaim
+`beta` folds those 64 fixed values.  The combined relation fits `2^28` and
+never assigns a functional to a DAG node.  `C6RSC4-v5` reuses the existing
+1,212-B frame by replacing the fixed-node adjoint root/source boundary with
+the functional-relation root/fold, so setup and certificate screens are
+unchanged.  Replacing the old `25/|Fp2|` recurrence event by `28/|Fp2|`
+gives **119.6548823158 bits** per certificate and **115.5674194746 bits**
+for the informative 17-certificate union.  The provider/verifier roofs stay
+**14.5038179582 / 4.565672390 s** and provider state stays
+**2,019,404,992 B**, all `credit:false`.
+
+The algebraic choice is now precise, but implementation remains stopped
+before any backend: additive proof, exact Rust differential against the
+C6RSC3 terminal compiler and role-typed chain statements are required next.
+The provider must fuse the relation sink into the existing atomic event
+emission; a post-`beta` replay or materialized event table is forbidden.  No
+complete-relation, certificate, setup, timing, memory, hardware or production
+credit follows.
 
 This remains an in-process role-separated diagnostic and replay protocol, not
 an internal O(1) Plonky3 state serialization or network benchmark.  It does
@@ -171,9 +193,10 @@ compiler relation, does not implement `C61NativeBackendVerifier`, and is
 never a production fallback.  The existing allocation/roofline values remain
 `credit:false`: the D14 number is component-level evidence, not a full
 certificate or production proof-size result.  No setup, timing, memory or
-hardware result is claimed.  Work stops at the C6RSC4 terminal-functional
-relation obstruction; no arbitrary node mapping or opaque statement adapter
-is admissible.  The frozen V1 exclusion of malicious
+hardware result is claimed.  Work stops before the C6TFR1 formal/Rust
+differential and typed native statement boundary; no arbitrary node mapping,
+event-table materialization or opaque statement adapter is admissible.  The
+frozen V1 exclusion of malicious
 client-disk snapshot rollback is unchanged.  C6.1 stays local-only until a
 separate owner GO; no provider/pod contact is authorized.
 The exact frozen T1 source/correction census now has a clean append-only
@@ -775,6 +798,7 @@ its clean descendant closure.
 | C6.1 durable private-entropy journal | **C6ICJ1 APPEND-ONLY CHECKPOINT / MASK FRONTIER / RESERVED-RANGE BINDING GREEN; COMPLETE RELATION ADAPTER NEXT; NO POD** (2026-08-01) | Current validated pending attempt only; both paired ranges end at durable client high-water; each challenge and mask event fsyncs before release; malformed/uncertain journal burns the attempt | Midpoint D14 recovery replays **1,294** challenges and one provider-move-bound mask event, then seals a **208,204-B client-local / 2,590-record** journal (2,588 challenge records + mask + final seal). Artifact, tape and provider-to-client wire remain byte-identical at **378,496 B** and zero increment. The journal contains no verifier seed; it binds connection/setup/slot/nonce/predecessor/head/context and both full ranges. Wrong pending-attempt binding, torn tail and checksum-corrupt body reject. The whole range is already burned by existing C6 reservation; unsafe recovery aborts and retries with a new slot/range from the same accepted head. No malicious client-disk snapshot rollback, network/fsync timing, full relation, proof-size/setup/time/hardware credit; no pod contacted. |
 | C6.1 authenticated ordered multi-opening reduction | **SCALED 96-MODEL / 6-EMBEDDING CLAIM BATCHES GREEN; COMPLETE STATEMENT DIGEST + SPARSE-COMPILER RELATION NEXT; NO POD** (2026-08-01) | One committed polynomial per chain; ordered `1..=128` point batch fixed before fresh `alpha`; provider shares and verifier keys aggregate under identical powers; C6AWH1 closes the resulting affine target | D14 executes both production claim censuses, preserves a claim-count-independent structural artifact maximum, consumes one full correlation per chain and rejects changed points at the designated closure. No point, target or key vector enters provider-to-client wire; concrete Merkle multiproof length may vary downward with query collisions. The added error is at most **127/|Fp2| = 121.011315313 bits**; exact `2^-75 + 127/|Fp2| + 1/|Fp2| <2^-74`, so paired chains retain `<2^-148` and the complete **119.668253692-bit** screen is unchanged. Feature tests are **6/6**; fork provenance remains **87 imported / 14 allowed deltas / 73 byte-identical** and now forbids single-claim indexing regressions. This is a PCS prerequisite only: model/root/point statement binding and the compiler recurrence remain absent, and all full-chain proof-size/setup/time/memory/hardware credits remain false. |
 | C6.1 canonical runtime and compiler-ownership audit | **CANONICAL RUNTIME SEAM GREEN; C6RSC4 TERMINAL-FUNCTIONAL RELATION LOCAL HARD STOP; NO POD** (2026-08-01) | Runtime-indexed public inputs; canonical public-then-scalar extraction; retain verifier map inside the existing client-parameter allocation; refuse an unjustified fixed-node terminal mapping | The canonical runtime is **10,830,288 Fp2**, deduplicating exactly **54** slots from the **10,830,342-Fp2** raw verifier stream; provider raw material is **10,838,512 Fp2**. The **5,320,386-B** verifier extraction map stays within the existing **8,000,000-B** allocation, leaving **2,679,614 B**; only the **63,994,751-B** canonical plan is removed, so projected setup remains **84,743,367 B**. Corrected provider state is **2,019,404,992 B**, with **273,793,856 B** headroom, and the formula-only provider roof is **14.5038179582 s**. The default workspace is green at **volta-pcs 196/0/1** and **volta-proto 149/0/1**; full `volta-mac c6-trace` is **36/0/0 + 5/0/0**. The obstruction is algebraic, not a benchmark failure: C6RSC3 consumes 64 challenge-dependent coefficient functionals generated after leaf/aux points and the atomic schedule, whereas the installed DAG has **673 ProductClosures / 8,170 zero roots**, not 64 corresponding fixed terminal nodes. A fixed-node RLC would prove the wrong relation. Resume requires an exact challenge-dependent injection or equivalent constrained relation, equality to the C6RSC3 values, typed per-chain statements and a fresh byte/soundness/time re-sum. All full-chain credits remain false; no pod contacted. |
+| C6.1 exact terminal-functional relation preregistration | **C6TFR1-v1 EXACT EVENT-DOMAIN RELATION PREREGISTERED; FORMAL/RUST DIFFERENTIAL HARD STOP; NO POD** (2026-08-02) | Fold the typed C6RSC3 coefficient-write stream into its actual challenge-dependent functionals; never map them to fixed DAG nodes | The exact domain is **225,997,412** writes, each carrying repetition, atomic output/family, typed target and coefficient. Canonical slots are `32*b + {0..7 leaf, 8..23 auxiliary-linear, 24..31 auxiliary-quadratic}`; the row receives exactly the matching leaf/aux MLE equality weight. The postclaim identity is `sum_j beta^j T_j = sum_e beta^slot(e) coefficient(e) eq(point(e),row(e))`, padded once to `2^28`. `C6RSC4-v5` repurposes its fixed **1,212-B** frame fields, so the **16,342,103-B** certificate, **84,743,367-B** setup, **101,085,470-B** first exchange, **2,019,404,992-B** state and **14.5038179582 / 4.565672390-s** roofs are unchanged screens. The exact soundness re-sum is **119.6548823158 bits/certificate** and **115.5674194746 bits/17**. The sink must run with the existing event emission and retain only 64 outputs before `beta`; replay/materialized event tables are forbidden. Lean proof, exact C6RSC3 Rust differential and typed chain statements are the only authorized next work; all credits remain false and no pod was contacted. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -849,6 +873,26 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-08-02 — C6.1 replaces the invalid fixed-node terminal abstraction
+  with the exact `C6TFR1-v1` coefficient-event relation.**  The 64 consumed
+  values are defined by the typed writes of the already frozen C6RSC3 atomic
+  grammar, not by terminal nodes of the installed sparse plan.  The slot map
+  is exactly two repetitions of `8 leaf + 16 auxiliary-linear + 8
+  auxiliary-quadratic`; row weights use the corresponding post-sumcheck MLE
+  point.  Only after all 64 values are fixed does `beta` fold them.  The
+  resulting event-domain identity is the authorized equivalent constrained
+  relation from Section 0.21 and contains no guessed node ordinal.
+
+  The relation root/fold replace the old adjoint-root/source-boundary fields
+  in `C6RSC4-v5`, preserving its 1,212-B width.  The combined write domain is
+  `225,997,412 < 2^28`; the exact re-sum substitutes `28/|Fp2|` for the old
+  fixed-node `25/|Fp2|` event and yields 119.6548823158 bits per certificate.
+  This is a preregistration, not implementation credit.  The next authorized
+  work is additive Lean, an independent Rust event-fold differential and
+  typed native-chain statements.  An extra postchallenge semantic replay,
+  a materialized coefficient-event table or any return to fixed node outputs
+  is forbidden.  No pod contact follows.
 
 - **2026-08-01 — C6.1 retains the verifier extraction map and stops at the
   terminal-functional relation instead of assigning the 64 outputs to

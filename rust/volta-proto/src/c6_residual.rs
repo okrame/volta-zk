@@ -93,6 +93,8 @@ const FUSED_TERMINAL_COEFFICIENT_DOMAIN: &str =
     "volta-zk/c6/residual-fused-terminal-coefficients/v1";
 const TERMINAL_FUNCTIONAL_RELATION_DOMAIN: &str =
     "volta-zk/c6/residual-terminal-functional-relation/v1";
+const FOLDED_TERMINAL_ADJOINT_REFERENCE_DOMAIN: &str =
+    "volta-zk/c6/folded-terminal-adjoint-reference/v1";
 const TERMINAL_WEIGHT_STREAM_DOMAINS: [[[u64; 2]; 2]; 2] = [
     [
         [0xC6_54_45_52_4D_00_00_01, 0xC6_54_45_52_4D_00_00_02],
@@ -6488,6 +6490,619 @@ pub fn compile_c6_residual_terminal_functional_relation_reference(
     hasher.update(&relation.coefficient_writes.to_le_bytes());
     relation.digest = *hasher.finalize().as_bytes();
     Ok(relation)
+}
+
+/// Scaled-only C6TFA1 reference that factors the exact C6TFR1 fold without
+/// assigning any functional to a fixed operation-plan node.
+///
+/// The reference independently reduces direct emitter terms and combines the
+/// five plan-dependent reverse forms into one challenge-dependent seed per
+/// repetition. Production geometry is rejected: the native direct reducer
+/// must replace the loops below with constrained interval identities.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualFoldedTerminalAdjointReference {
+    output_beta: Fp2,
+    repetition_folds: [Fp2; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    family_folds: [[Fp2; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    plan_family_folds: [[Fp2; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    direct_family_folds: [[Fp2; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    family_outputs: [[u64; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    family_coefficient_writes: [[u64; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    fold: Fp2,
+    digest: C6ResidualDigest,
+}
+
+impl C6ResidualFoldedTerminalAdjointReference {
+    pub fn output_beta(&self) -> Fp2 {
+        self.output_beta
+    }
+
+    pub fn repetition_folds(&self) -> &[Fp2; C6_RESIDUAL_PROOF_REPETITIONS as usize] {
+        &self.repetition_folds
+    }
+
+    pub fn family_folds(&self) -> &[[Fp2; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize] {
+        &self.family_folds
+    }
+
+    pub fn plan_family_folds(&self) -> &[[Fp2; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize] {
+        &self.plan_family_folds
+    }
+
+    pub fn direct_family_folds(&self) -> &[[Fp2; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize] {
+        &self.direct_family_folds
+    }
+
+    pub fn family_outputs(&self) -> &[[u64; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize] {
+        &self.family_outputs
+    }
+
+    pub fn family_coefficient_writes(&self) -> &[[u64; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize] {
+        &self.family_coefficient_writes
+    }
+
+    pub fn fold(&self) -> Fp2 {
+        self.fold
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+}
+
+struct C6FoldedTerminalAtomicCursor {
+    stream: C6ResidualScheduleWeightStream,
+    family_outputs: [u64; 8],
+    outputs: u64,
+}
+
+impl C6FoldedTerminalAtomicCursor {
+    fn new(schedule: &C6ResidualAtomicWeightSchedule) -> C6ResidualResult<Self> {
+        Ok(Self { stream: schedule.weight_stream()?, family_outputs: [0; 8], outputs: 0 })
+    }
+
+    fn next(&mut self, family: C6ResidualAtomicFamily) -> C6ResidualResult<Fp2> {
+        let weight = self.stream.next_fp2()?;
+        self.family_outputs[family.index()] = self.family_outputs[family.index()]
+            .checked_add(1)
+            .ok_or_else(|| C6ResidualError::new("C6TFA1 family output census overflows"))?;
+        self.outputs = self
+            .outputs
+            .checked_add(1)
+            .ok_or_else(|| C6ResidualError::new("C6TFA1 atomic output census overflows"))?;
+        Ok(weight)
+    }
+}
+
+fn c6_folded_terminal_mle(
+    coefficients: &[Fp2],
+    point: &[Fp2],
+    entries: u64,
+    label: &str,
+) -> C6ResidualResult<Fp2> {
+    let mut cursor = C6ResidualEqPointCursor::new(point, entries, label)?;
+    coefficients.iter().enumerate().try_fold(Fp2::ZERO, |sum, (row, coefficient)| {
+        let row = u32::try_from(row)
+            .map_err(|_| C6ResidualError::new(format!("C6TFA1 {label} row exceeds u32")))?;
+        Ok(sum + *coefficient * cursor.at(row)?)
+    })
+}
+
+fn c6_folded_terminal_quadratic_power(
+    beta_powers: &[Fp2; C6_RESIDUAL_TERMINAL_FUNCTIONALS],
+    repetition_base: usize,
+    lhs: u8,
+    rhs: u8,
+) -> C6ResidualResult<Fp2> {
+    let pair = C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS
+        .iter()
+        .position(|candidate| *candidate == (lhs, rhs))
+        .ok_or_else(|| C6ResidualError::new("C6TFA1 quadratic pair is not canonical"))?;
+    Ok(beta_powers[repetition_base
+        + C6_RESIDUAL_RELATION_LEAF_TABLES
+        + C6_RESIDUAL_AUXILIARY_LANES as usize
+        + pair])
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn compile_c6_residual_folded_terminal_adjoint_reference(
+    operation_plan: &C6InstalledOperationPlan,
+    extraction: &C6DecodedInstanceExtractionPlan,
+    runtime: &C6RuntimeInstanceValues,
+    linear: &C6CompiledLinearResidual,
+    challenges: &C6ResidualRelationChallenges,
+    leaf_points: [&[Fp2]; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    auxiliary_points: [&[Fp2]; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    output_beta: Fp2,
+) -> C6ResidualResult<C6ResidualFoldedTerminalAdjointReference> {
+    challenges.validate(operation_plan)?;
+    let manifest = challenges.manifest();
+    if challenges.protocol_version != RESIDUAL_RELATION_PROTOCOL_V4 {
+        return Err(C6ResidualError::new("C6TFA1 requires the direct-MLE C6RSC3-v4 schedule"));
+    }
+    if manifest.production_geometry {
+        return Err(C6ResidualError::new(
+            "C6TFA1 reference cannot iterate production direct ranges",
+        ));
+    }
+    if manifest.leaf_entries > (1 << 20) || manifest.auxiliary_entries > (1 << 16) {
+        return Err(C6ResidualError::new("C6TFA1 reference exceeds its scaled allocation guard"));
+    }
+    if linear.operation_plan_artifact_digest != manifest.operation_plan_artifact_digest
+        || linear.topology != manifest.topology
+        || linear.instance != manifest.instance
+        || linear.product_mask_sources != manifest.product_mask_sources
+        || linear.linear_form_digest != challenges.claims().linear_form_digest
+    {
+        return Err(C6ResidualError::new("C6TFA1 linear form differs from the relation binding"));
+    }
+
+    let mut beta_power = Fp2::ONE;
+    let beta_powers = std::array::from_fn(|_| {
+        let current = beta_power;
+        beta_power = beta_power * output_beta;
+        current
+    });
+    let source_count = usize::try_from(manifest.topology.source_count)
+        .map_err(|_| C6ResidualError::new("C6TFA1 source count exceeds usize"))?;
+    let product_triples = usize::try_from(manifest.topology.product_triple_count)
+        .map_err(|_| C6ResidualError::new("C6TFA1 product-triple count exceeds usize"))?;
+    let zero_roots = usize::try_from(manifest.topology.zero_root_count)
+        .map_err(|_| C6ResidualError::new("C6TFA1 zero-root count exceeds usize"))?;
+    let leaf_entries = usize::try_from(manifest.leaf_entries)
+        .map_err(|_| C6ResidualError::new("C6TFA1 leaf entries exceed usize"))?;
+    let auxiliary_entries = usize::try_from(manifest.auxiliary_entries)
+        .map_err(|_| C6ResidualError::new("C6TFA1 auxiliary entries exceed usize"))?;
+    let expected_outputs = expected_atomic_family_outputs(manifest)?;
+    let expected_writes = expected_atomic_family_coefficient_writes(manifest)?;
+    let zero_weights = challenges.base_share_context().retained.zero_weights(zero_roots);
+    let reconstructed_linear =
+        C6CompiledLinearResidual::compile(operation_plan, extraction, runtime, &zero_weights)?;
+    if reconstructed_linear.linear_form_digest != linear.linear_form_digest
+        || reconstructed_linear.leaf_coefficients != linear.leaf_coefficients
+    {
+        return Err(C6ResidualError::new(
+            "C6TFA1 base seed does not reconstruct the bound linear form",
+        ));
+    }
+
+    let mut repetition_folds = [Fp2::ZERO; C6_RESIDUAL_PROOF_REPETITIONS as usize];
+    let mut family_folds = [[Fp2::ZERO; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize];
+    let mut plan_family_folds = [[Fp2::ZERO; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize];
+    let mut direct_family_folds = [[Fp2::ZERO; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize];
+    let mut family_outputs = [[0u64; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize];
+    let family_coefficient_writes = [expected_writes; C6_RESIDUAL_PROOF_REPETITIONS as usize];
+
+    for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
+        let repetition = usize::from(proof_repetition);
+        let repetition_base = repetition * C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION;
+        let beta_at = |local_slot: usize| beta_powers[repetition_base + local_slot];
+        let mut leaf_cursor = C6ResidualEqPointCursor::new(
+            leaf_points[repetition],
+            manifest.leaf_entries,
+            "C6TFA1 leaf",
+        )?;
+        let mut auxiliary_cursor = C6ResidualEqPointCursor::new(
+            auxiliary_points[repetition],
+            manifest.auxiliary_entries,
+            "C6TFA1 auxiliary",
+        )?;
+        let atomic_schedule = challenges.atomic_schedule(proof_repetition)?;
+        let mut atomic = C6FoldedTerminalAtomicCursor::new(atomic_schedule)?;
+        let mut direct_folds = [Fp2::ZERO; 8];
+
+        for source in 0..source_count {
+            let row = u32::try_from(source)
+                .map_err(|_| C6ResidualError::new("C6TFA1 source row exceeds u32"))?;
+            let equality = leaf_cursor.at(row)?;
+            let is_mask = manifest.product_mask_sources.binary_search(&row).is_ok();
+
+            let weight = atomic.next(C6ResidualAtomicFamily::SourceGrammar)?;
+            let coefficient =
+                if is_mask { beta_at(3) } else { beta_at(0) - beta_at(1) - beta_at(3) };
+            direct_folds[C6ResidualAtomicFamily::SourceGrammar.index()] +=
+                weight * equality * coefficient;
+
+            let weight = atomic.next(C6ResidualAtomicFamily::SourceGrammar)?;
+            let coefficient =
+                if is_mask { beta_at(6) } else { beta_at(0) - beta_at(4) - beta_at(6) };
+            direct_folds[C6ResidualAtomicFamily::SourceGrammar.index()] +=
+                weight * equality * coefficient;
+
+            let weight = atomic.next(C6ResidualAtomicFamily::SourceGrammar)?;
+            if is_mask {
+                direct_folds[C6ResidualAtomicFamily::SourceGrammar.index()] +=
+                    weight * equality * beta_at(0);
+            }
+        }
+
+        let mut rho_base = Fp2::ZERO;
+        for coordinate in 0..2u8 {
+            let (r_table, m_table, d_table) =
+                if coordinate == 0 { (1usize, 2usize, 3usize) } else { (4, 5, 6) };
+            let d_weight = atomic.next(C6ResidualAtomicFamily::Affine)?;
+            let m_weight = atomic.next(C6ResidualAtomicFamily::Affine)?;
+            rho_base += d_weight * beta_at(d_table) + m_weight * beta_at(m_table);
+            let mut alphas = challenges.base_share_context().alpha_weight_stream(coordinate)?;
+            for source in 0..source_count {
+                let row = u32::try_from(source)
+                    .map_err(|_| C6ResidualError::new("C6TFA1 alpha row exceeds u32"))?;
+                let equality = leaf_cursor.at(row)?;
+                let alpha = alphas.next_fp2()?;
+                direct_folds[C6ResidualAtomicFamily::Affine.index()] +=
+                    alpha * equality * (m_weight * beta_at(m_table) - d_weight * beta_at(r_table));
+            }
+        }
+
+        let mut terminal_rhos = [Fp2::ZERO; 4];
+        for coordinate in 0..2u8 {
+            for kind in [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag] {
+                let form_index = usize::from(coordinate) * 2 + kind.stream_index();
+                let schedule = challenges.terminal_schedule(proof_repetition, coordinate, kind)?;
+                let outer = atomic.next(C6ResidualAtomicFamily::Reverse)?;
+                let leaf_table = match kind {
+                    C6ResidualTerminalFormKind::Plaintext => 0,
+                    C6ResidualTerminalFormKind::Tag if coordinate == 0 => 2,
+                    C6ResidualTerminalFormKind::Tag => 5,
+                };
+                terminal_rhos[form_index] = outer * beta_at(leaf_table);
+                let lane_base = usize::from(coordinate) * 6;
+                let lanes = match kind {
+                    C6ResidualTerminalFormKind::Plaintext => {
+                        [lane_base, lane_base + 2, lane_base + 4]
+                    }
+                    C6ResidualTerminalFormKind::Tag => {
+                        [lane_base + 1, lane_base + 3, lane_base + 5]
+                    }
+                };
+                for (triple, weights) in schedule.product_weights.iter().enumerate() {
+                    let row = u32::try_from(triple).map_err(|_| {
+                        C6ResidualError::new("C6TFA1 reverse triple row exceeds u32")
+                    })?;
+                    let equality = auxiliary_cursor.at(row)?;
+                    for (lane, terminal_weight) in lanes.into_iter().zip(weights) {
+                        direct_folds[C6ResidualAtomicFamily::Reverse.index()] = direct_folds
+                            [C6ResidualAtomicFamily::Reverse.index()]
+                            - outer * *terminal_weight * equality * beta_at(8 + lane);
+                    }
+                }
+                let zero_lane = 12
+                    + 2 * usize::from(coordinate)
+                    + usize::from(kind == C6ResidualTerminalFormKind::Tag);
+                for (zero, terminal_weight) in schedule.zero_weights.iter().enumerate() {
+                    let row = u32::try_from(zero)
+                        .map_err(|_| C6ResidualError::new("C6TFA1 reverse zero row exceeds u32"))?;
+                    direct_folds[C6ResidualAtomicFamily::Reverse.index()] = direct_folds
+                        [C6ResidualAtomicFamily::Reverse.index()]
+                        - outer
+                            * *terminal_weight
+                            * auxiliary_cursor.at(row)?
+                            * beta_at(8 + zero_lane);
+                }
+            }
+        }
+
+        let mut raw_position = 0usize;
+        for triple in 0..product_triples {
+            let auxiliary_equality = auxiliary_cursor.at(u32::try_from(triple)
+                .map_err(|_| C6ResidualError::new("C6TFA1 raw-copy triple row exceeds u32"))?)?;
+            for coordinate in 0..2usize {
+                for component in 0..6usize {
+                    let lane = 6 * coordinate + component;
+                    let weight = atomic.next(C6ResidualAtomicFamily::RawCopy)?;
+                    let leaf_equality =
+                        leaf_cursor.at(u32::try_from(raw_position).map_err(|_| {
+                            C6ResidualError::new("C6TFA1 raw-copy leaf row exceeds u32")
+                        })?)?;
+                    direct_folds[C6ResidualAtomicFamily::RawCopy.index()] += weight
+                        * (beta_at(7) * leaf_equality - beta_at(8 + lane) * auxiliary_equality);
+                    raw_position += 1;
+                }
+            }
+        }
+        for zero in 0..zero_roots {
+            let auxiliary_equality = auxiliary_cursor.at(u32::try_from(zero)
+                .map_err(|_| C6ResidualError::new("C6TFA1 raw-copy zero row exceeds u32"))?)?;
+            for coordinate in 0..2usize {
+                for component in 0..2usize {
+                    let lane = 12 + 2 * coordinate + component;
+                    let weight = atomic.next(C6ResidualAtomicFamily::RawCopy)?;
+                    let leaf_equality =
+                        leaf_cursor.at(u32::try_from(raw_position).map_err(|_| {
+                            C6ResidualError::new("C6TFA1 raw-copy leaf row exceeds u32")
+                        })?)?;
+                    direct_folds[C6ResidualAtomicFamily::RawCopy.index()] += weight
+                        * (beta_at(7) * leaf_equality - beta_at(8 + lane) * auxiliary_equality);
+                    raw_position += 1;
+                }
+            }
+        }
+        if raw_position as u64 != manifest.raw_copy_entries {
+            return Err(C6ResidualError::new("C6TFA1 raw-copy cursor mismatch"));
+        }
+
+        let mut triple_cursor = 0usize;
+        for (closure, product) in operation_plan.products().iter().enumerate() {
+            let chi = challenges.base_share_context().retained.product_challenges[closure];
+            let mask_source = manifest.product_mask_sources[closure];
+            let mask_equality = leaf_cursor.at(mask_source)?;
+            for coordinate in 0..2usize {
+                let lane_base = 6 * coordinate;
+                let r_table = if coordinate == 0 { 1 } else { 4 };
+                let m_table = if coordinate == 0 { 2 } else { 5 };
+
+                let outer = atomic.next(C6ResidualAtomicFamily::Product)?;
+                let mut power = Fp2::ONE;
+                for triple in 0..product.triples().len() {
+                    power = power * chi;
+                    let row = triple_cursor + triple;
+                    let equality = auxiliary_cursor.at(u32::try_from(row)
+                        .map_err(|_| C6ResidualError::new("C6TFA1 Product row exceeds u32"))?)?;
+                    let quadratic = c6_folded_terminal_quadratic_power(
+                        &beta_powers,
+                        repetition_base,
+                        lane_base as u8,
+                        (lane_base + 2) as u8,
+                    )?;
+                    direct_folds[C6ResidualAtomicFamily::Product.index()] +=
+                        outer * power * equality * (quadratic - beta_at(8 + lane_base + 4));
+                }
+
+                let outer = atomic.next(C6ResidualAtomicFamily::Product)?;
+                direct_folds[C6ResidualAtomicFamily::Product.index()] +=
+                    outer * mask_equality * beta_at(m_table);
+                let mut power = Fp2::ONE;
+                for triple in 0..product.triples().len() {
+                    power = power * chi;
+                    let row = triple_cursor + triple;
+                    let equality = auxiliary_cursor.at(u32::try_from(row)
+                        .map_err(|_| C6ResidualError::new("C6TFA1 Product row exceeds u32"))?)?;
+                    let quadratic = c6_folded_terminal_quadratic_power(
+                        &beta_powers,
+                        repetition_base,
+                        (lane_base + 1) as u8,
+                        (lane_base + 3) as u8,
+                    )?;
+                    direct_folds[C6ResidualAtomicFamily::Product.index()] +=
+                        outer * power * equality * quadratic;
+                }
+
+                let outer = atomic.next(C6ResidualAtomicFamily::Product)?;
+                direct_folds[C6ResidualAtomicFamily::Product.index()] +=
+                    outer * mask_equality * beta_at(r_table);
+                let mut power = Fp2::ONE;
+                for triple in 0..product.triples().len() {
+                    power = power * chi;
+                    let row = triple_cursor + triple;
+                    let equality = auxiliary_cursor.at(u32::try_from(row)
+                        .map_err(|_| C6ResidualError::new("C6TFA1 Product row exceeds u32"))?)?;
+                    let first = c6_folded_terminal_quadratic_power(
+                        &beta_powers,
+                        repetition_base,
+                        lane_base as u8,
+                        (lane_base + 3) as u8,
+                    )?;
+                    let second = c6_folded_terminal_quadratic_power(
+                        &beta_powers,
+                        repetition_base,
+                        (lane_base + 1) as u8,
+                        (lane_base + 2) as u8,
+                    )?;
+                    direct_folds[C6ResidualAtomicFamily::Product.index()] +=
+                        outer * power * equality * (first + second - beta_at(8 + lane_base + 5));
+                }
+            }
+            triple_cursor += product.triples().len();
+        }
+        if triple_cursor != product_triples {
+            return Err(C6ResidualError::new("C6TFA1 Product cursor mismatch"));
+        }
+
+        for coordinate in 0..2usize {
+            let lane = 12 + 2 * coordinate;
+            let outer = atomic.next(C6ResidualAtomicFamily::Zero)?;
+            for (zero, weight) in zero_weights.iter().enumerate() {
+                direct_folds[C6ResidualAtomicFamily::Zero.index()] += outer
+                    * *weight
+                    * auxiliary_cursor.at(u32::try_from(zero)
+                        .map_err(|_| C6ResidualError::new("C6TFA1 Zero row exceeds u32"))?)?
+                    * beta_at(8 + lane);
+            }
+        }
+
+        for table in 0..7usize {
+            for row in source_count..leaf_entries {
+                let weight = atomic.next(C6ResidualAtomicFamily::LeafTail)?;
+                direct_folds[C6ResidualAtomicFamily::LeafTail.index()] += weight
+                    * leaf_cursor.at(u32::try_from(row)
+                        .map_err(|_| C6ResidualError::new("C6TFA1 leaf-tail row exceeds u32"))?)?
+                    * beta_at(table);
+            }
+        }
+        for row in raw_position..leaf_entries {
+            let weight = atomic.next(C6ResidualAtomicFamily::LeafTail)?;
+            direct_folds[C6ResidualAtomicFamily::LeafTail.index()] += weight
+                * leaf_cursor.at(u32::try_from(row)
+                    .map_err(|_| C6ResidualError::new("C6TFA1 raw-tail row exceeds u32"))?)?
+                * beta_at(7);
+        }
+        for lane in 0..12usize {
+            for row in product_triples..auxiliary_entries {
+                let weight = atomic.next(C6ResidualAtomicFamily::AuxiliaryTail)?;
+                direct_folds[C6ResidualAtomicFamily::AuxiliaryTail.index()] += weight
+                    * auxiliary_cursor.at(u32::try_from(row).map_err(|_| {
+                        C6ResidualError::new("C6TFA1 auxiliary-tail row exceeds u32")
+                    })?)?
+                    * beta_at(8 + lane);
+            }
+        }
+        for lane in 12..16usize {
+            for row in zero_roots..auxiliary_entries {
+                let weight = atomic.next(C6ResidualAtomicFamily::AuxiliaryTail)?;
+                direct_folds[C6ResidualAtomicFamily::AuxiliaryTail.index()] += weight
+                    * auxiliary_cursor.at(u32::try_from(row)
+                        .map_err(|_| C6ResidualError::new("C6TFA1 zero-tail row exceeds u32"))?)?
+                    * beta_at(8 + lane);
+            }
+        }
+        if atomic.family_outputs != expected_outputs
+            || atomic.outputs != atomic_schedule.output_count
+            || atomic.outputs != manifest.atomic_outputs_per_repetition
+        {
+            return Err(C6ResidualError::new("C6TFA1 atomic family/output cursor mismatch"));
+        }
+
+        let combined_reverse = reverse_installed_linear_form(
+            operation_plan,
+            extraction,
+            runtime,
+            false,
+            |node_coefficients| {
+                for (&root, &weight) in operation_plan.zero_roots().iter().zip(&zero_weights) {
+                    let coefficient =
+                        node_coefficients.get_mut(root as usize).ok_or_else(|| {
+                            C6ResidualError::new("C6TFA1 base zero root is outside the plan")
+                        })?;
+                    *coefficient += rho_base * weight;
+                }
+                for coordinate in 0..2u8 {
+                    for kind in
+                        [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag]
+                    {
+                        let form_index = usize::from(coordinate) * 2 + kind.stream_index();
+                        let rho = terminal_rhos[form_index];
+                        let schedule =
+                            challenges.terminal_schedule(proof_repetition, coordinate, kind)?;
+                        let mut product_cursor = 0usize;
+                        for product in operation_plan.products() {
+                            for triple in product.triples() {
+                                let weights = schedule.product_weights[product_cursor];
+                                product_cursor += 1;
+                                for (node, weight) in triple.iter().zip(weights) {
+                                    let coefficient = node_coefficients
+                                        .get_mut(*node as usize)
+                                        .ok_or_else(|| {
+                                            C6ResidualError::new(
+                                                "C6TFA1 ProductClosure operand is outside the plan",
+                                            )
+                                        })?;
+                                    *coefficient += rho * weight;
+                                }
+                            }
+                        }
+                        if product_cursor != schedule.product_weights.len() {
+                            return Err(C6ResidualError::new(
+                                "C6TFA1 terminal ProductClosure cursor mismatch",
+                            ));
+                        }
+                        for (&root, &weight) in
+                            operation_plan.zero_roots().iter().zip(&schedule.zero_weights)
+                        {
+                            let coefficient =
+                                node_coefficients.get_mut(root as usize).ok_or_else(|| {
+                                    C6ResidualError::new(
+                                        "C6TFA1 terminal zero root is outside the plan",
+                                    )
+                                })?;
+                            *coefficient += rho * weight;
+                        }
+                    }
+                }
+                Ok(())
+            },
+        )?;
+        if combined_reverse.product_mask_sources != manifest.product_mask_sources {
+            return Err(C6ResidualError::new("C6TFA1 reverse mask boundary mismatch"));
+        }
+        let combined_reverse_fold = c6_folded_terminal_mle(
+            &combined_reverse.leaf_coefficients,
+            leaf_points[repetition],
+            manifest.leaf_entries,
+            "combined reverse",
+        )?;
+        let affine_plan_fold = rho_base
+            * c6_folded_terminal_mle(
+                &linear.leaf_coefficients,
+                leaf_points[repetition],
+                manifest.leaf_entries,
+                "base reverse",
+            )?;
+        let mut reverse_plan_fold = Fp2::ZERO;
+        for coordinate in 0..2u8 {
+            for kind in [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag] {
+                let form_index = usize::from(coordinate) * 2 + kind.stream_index();
+                let schedule = challenges.terminal_schedule(proof_repetition, coordinate, kind)?;
+                let form = C6CompiledTerminalLinearForm::compile(
+                    operation_plan,
+                    extraction,
+                    runtime,
+                    schedule,
+                )?;
+                reverse_plan_fold += terminal_rhos[form_index]
+                    * c6_folded_terminal_mle(
+                        &form.leaf_coefficients,
+                        leaf_points[repetition],
+                        manifest.leaf_entries,
+                        "terminal reverse",
+                    )?;
+            }
+        }
+        if combined_reverse_fold != affine_plan_fold + reverse_plan_fold {
+            return Err(C6ResidualError::new(
+                "C6TFA1 combined reverse differs from its five exact forms",
+            ));
+        }
+
+        let mut plan_folds = [Fp2::ZERO; 8];
+        plan_folds[C6ResidualAtomicFamily::Affine.index()] = affine_plan_fold;
+        plan_folds[C6ResidualAtomicFamily::Reverse.index()] = reverse_plan_fold;
+        let repetition_family_folds =
+            std::array::from_fn(|family| direct_folds[family] + plan_folds[family]);
+        let repetition_fold =
+            repetition_family_folds.iter().copied().fold(Fp2::ZERO, |sum, value| sum + value);
+
+        repetition_folds[repetition] = repetition_fold;
+        family_folds[repetition] = repetition_family_folds;
+        plan_family_folds[repetition] = plan_folds;
+        direct_family_folds[repetition] = direct_folds;
+        family_outputs[repetition] = atomic.family_outputs;
+    }
+
+    let fold = repetition_folds.iter().copied().fold(Fp2::ZERO, |sum, value| sum + value);
+    let mut reference = C6ResidualFoldedTerminalAdjointReference {
+        output_beta,
+        repetition_folds,
+        family_folds,
+        plan_family_folds,
+        direct_family_folds,
+        family_outputs,
+        family_coefficient_writes,
+        fold,
+        digest: [0; 32],
+    };
+    let mut hasher = blake3::Hasher::new_derive_key(FOLDED_TERMINAL_ADJOINT_REFERENCE_DOMAIN);
+    hasher.update(&manifest.digest);
+    hasher.update(&challenges.digest);
+    hash_fp2(&mut hasher, output_beta);
+    for point in leaf_points.into_iter().chain(auxiliary_points) {
+        hasher.update(&(point.len() as u64).to_le_bytes());
+        for coordinate in point {
+            hash_fp2(&mut hasher, *coordinate);
+        }
+    }
+    for repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS as usize {
+        hash_fp2(&mut hasher, reference.repetition_folds[repetition]);
+        for family in 0..8 {
+            hash_fp2(&mut hasher, reference.family_folds[repetition][family]);
+            hash_fp2(&mut hasher, reference.plan_family_folds[repetition][family]);
+            hash_fp2(&mut hasher, reference.direct_family_folds[repetition][family]);
+            hasher.update(&reference.family_outputs[repetition][family].to_le_bytes());
+            hasher.update(&reference.family_coefficient_writes[repetition][family].to_le_bytes());
+        }
+    }
+    hash_fp2(&mut hasher, reference.fold);
+    reference.digest = *hasher.finalize().as_bytes();
+    Ok(reference)
 }
 
 struct C6ResidualFusedTerminalCoefficientSink {

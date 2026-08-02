@@ -1,9 +1,10 @@
 //! Lockstep interactive challenger for the two C6SPR2 compiler oracles.
 //!
-//! Response and plan remain independently committed D27 polynomials, but
-//! every native challenge is released only after both lanes reach the same
-//! transcript boundary.  This is reference-only coordination for the
-//! feature-gated claimless backend; it is not a production transport.
+//! Response and plan remain independently committed polynomials. Challenges
+//! at common transcript boundaries are released only after both lanes arrive;
+//! once the shorter lane finishes, the longer lane may consume its exact
+//! terminal tail from the same transcript. This is reference-only
+//! coordination for the feature-gated claimless backend.
 
 #![allow(dead_code)]
 
@@ -34,14 +35,15 @@ enum ChallengeRequest {
 
 struct SharedState<'a> {
     transcript: &'a mut Transcript,
-    num_variables: usize,
+    lane_dimensions: [usize; 2],
     initial_root_seen: [bool; 2],
     public_statement_bound: [bool; 2],
     public_statement_digest: Option<[u8; 32]>,
     pending_provider_bytes: u64,
     stats: C61WhirInteractionStats,
     generation: u64,
-    arrivals: usize,
+    arrived: [bool; 2],
+    completed: [bool; 2],
     request: Option<ChallengeRequest>,
     last_response: u64,
 }
@@ -71,19 +73,20 @@ pub(crate) struct C61SharedRoundCoordinator<'a> {
 
 pub(crate) fn c61_shared_round_pair(
     transcript: &mut Transcript,
-    num_variables: usize,
+    lane_dimensions: [usize; 2],
 ) -> (C61SharedRoundChallenger<'_>, C61SharedRoundChallenger<'_>, C61SharedRoundCoordinator<'_>) {
     let shared = Arc::new(SharedSync {
         state: Mutex::new(SharedState {
             transcript,
-            num_variables,
+            lane_dimensions,
             initial_root_seen: [false; 2],
             public_statement_bound: [false; 2],
             public_statement_digest: None,
             pending_provider_bytes: 0,
             stats: C61WhirInteractionStats::default(),
             generation: 0,
-            arrivals: 0,
+            arrived: [false; 2],
+            completed: [false; 2],
             request: None,
             last_response: 0,
         }),
@@ -107,7 +110,7 @@ impl<'a> C61SharedRoundChallenger<'a> {
             || state.public_statement_bound[self.lane]
             || points.is_empty()
             || points.len() > 128
-            || points.iter().any(|point| point.num_variables() != state.num_variables)
+            || points.iter().any(|point| point.num_variables() != state.lane_dimensions[self.lane])
         {
             return Err("C6SPR2 shared-round public statement shape mismatch".to_owned());
         }
@@ -129,6 +132,7 @@ impl<'a> C61SharedRoundChallenger<'a> {
     fn shared_challenge(&self, request: ChallengeRequest) -> u64 {
         let mut state = self.lock();
         assert!(state.public_statement_bound[self.lane], "C6SPR2 challenge preceded statement");
+        assert!(!state.completed[self.lane], "C6SPR3 completed lane requested a challenge");
         let generation = state.generation;
         match state.request {
             Some(bound) => {
@@ -136,26 +140,10 @@ impl<'a> C61SharedRoundChallenger<'a> {
             }
             None => state.request = Some(request),
         }
-        state.arrivals += 1;
-        assert!(state.arrivals <= 2, "C6SPR2 shared challenge received duplicate arrival");
-        if state.arrivals == 2 {
-            flush_pending(&mut state);
-            state.last_response = match request {
-                ChallengeRequest::Field => {
-                    state.stats.client_fp_challenges += 1;
-                    state.stats.client_challenge_payload_bytes += C61_WHIRA1_FP_BYTES as u64;
-                    state.transcript.challenge_fp().value()
-                }
-                ChallengeRequest::Bits(bits) => {
-                    assert!((1..=32).contains(&bits), "C6SPR2 query width must fit u32");
-                    state.stats.client_query_challenges += 1;
-                    state.stats.client_challenge_payload_bytes += 4;
-                    u64::from(state.transcript.challenge_bits(bits as u8))
-                }
-            };
-            state.arrivals = 0;
-            state.request = None;
-            state.generation += 1;
+        assert!(!state.arrived[self.lane], "C6SPR2 shared challenge received duplicate arrival");
+        state.arrived[self.lane] = true;
+        if state.arrived == [true; 2] || state.completed[1 - self.lane] {
+            release_challenge(&mut state, request);
             self.shared.ready.notify_all();
             return state.last_response;
         }
@@ -168,6 +156,30 @@ impl<'a> C61SharedRoundChallenger<'a> {
         }
         state.last_response
     }
+
+    pub(crate) fn finish_lane(&self) -> Result<(), String> {
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| "C6SPR3 shared challenger mutex poisoned at lane finish".to_owned())?;
+        if !state.public_statement_bound[self.lane]
+            || state.completed[self.lane]
+            || state.arrived[self.lane]
+        {
+            return Err("C6SPR3 lane finished from a noncanonical boundary".to_owned());
+        }
+        state.completed[self.lane] = true;
+        let other = 1 - self.lane;
+        if state.arrived[other] {
+            let request = state
+                .request
+                .ok_or_else(|| "C6SPR3 waiting tail challenge has no request".to_owned())?;
+            release_challenge(&mut state, request);
+            self.shared.ready.notify_all();
+        }
+        Ok(())
+    }
 }
 
 impl C61SharedRoundCoordinator<'_> {
@@ -177,9 +189,10 @@ impl C61SharedRoundCoordinator<'_> {
         let mut state = self.shared.state.lock().map_err(|_| {
             "C6SPR2 shared challenger mutex poisoned before residual batching".to_owned()
         })?;
-        if state.arrivals != 0
+        if state.arrived != [false; 2]
             || state.request.is_some()
             || state.public_statement_bound != [true; 2]
+            || state.completed != [true; 2]
         {
             return Err("C6SPR2 lanes did not reach the common post-proof boundary".to_owned());
         }
@@ -195,9 +208,10 @@ impl C61SharedRoundCoordinator<'_> {
             .state
             .lock()
             .map_err(|_| "C6SPR2 shared challenger mutex poisoned at finish".to_owned())?;
-        if state.arrivals != 0
+        if state.arrived != [false; 2]
             || state.request.is_some()
             || state.public_statement_bound != [true; 2]
+            || state.completed != [true; 2]
         {
             return Err("C6SPR2 shared challenger finished off the common boundary".to_owned());
         }
@@ -223,6 +237,26 @@ fn flush_pending(state: &mut SharedState<'_>) {
         state.stats.provider_messages += 1;
         state.pending_provider_bytes = 0;
     }
+}
+
+fn release_challenge(state: &mut SharedState<'_>, request: ChallengeRequest) {
+    flush_pending(state);
+    state.last_response = match request {
+        ChallengeRequest::Field => {
+            state.stats.client_fp_challenges += 1;
+            state.stats.client_challenge_payload_bytes += C61_WHIRA1_FP_BYTES as u64;
+            state.transcript.challenge_fp().value()
+        }
+        ChallengeRequest::Bits(bits) => {
+            assert!((1..=32).contains(&bits), "C6SPR2 query width must fit u32");
+            state.stats.client_query_challenges += 1;
+            state.stats.client_challenge_payload_bytes += 4;
+            u64::from(state.transcript.challenge_bits(bits as u8))
+        }
+    };
+    state.arrived = [false; 2];
+    state.request = None;
+    state.generation += 1;
 }
 
 impl CanObserve<Goldilocks> for C61SharedRoundChallenger<'_> {
@@ -286,7 +320,7 @@ mod tests {
     #[test]
     fn both_lanes_wait_for_one_shared_challenge_and_one_postproof_batch() {
         let mut transcript = Transcript::new([0x61; 32]);
-        let (mut response, mut plan, coordinator) = c61_shared_round_pair(&mut transcript, 4);
+        let (mut response, mut plan, coordinator) = c61_shared_round_pair(&mut transcript, [4, 4]);
         let point = Point::new(vec![C61P3Fp2::ONE; 4]);
         let root = C61Commitment::from(vec![[0x11; 32]]);
         response.observe(root.clone());
@@ -294,23 +328,51 @@ mod tests {
         response.observe_public_points([0xA1; 32], std::slice::from_ref(&point)).unwrap();
         plan.observe_public_points([0xA1; 32], std::slice::from_ref(&point)).unwrap();
 
-        let (response_values, plan_values) = thread::scope(|scope| {
+        let ((response_values, response), (plan_values, plan)) = thread::scope(|scope| {
             let response_thread = scope.spawn(move || {
                 response.observe(Goldilocks::new(7));
-                (response.sample(), response.sample_bits(13))
+                ((response.sample(), response.sample_bits(13)), response)
             });
             let plan_thread = scope.spawn(move || {
                 plan.observe(Goldilocks::new(9));
-                (plan.sample(), plan.sample_bits(13))
+                ((plan.sample(), plan.sample_bits(13)), plan)
             });
             (response_thread.join().unwrap(), plan_thread.join().unwrap())
         });
         assert_eq!(response_values, plan_values);
+        response.finish_lane().unwrap();
+        plan.finish_lane().unwrap();
         assert_ne!(coordinator.sample_postproof_fp2().unwrap(), Fp2::ZERO);
         let stats = coordinator.finish(80).unwrap();
         assert_eq!(stats.provider_semantic_bytes, 80);
         assert_eq!(stats.provider_payload_bytes, 80);
         assert_eq!(stats.client_fp_challenges, 3);
         assert_eq!(stats.client_query_challenges, 1);
+    }
+
+    #[test]
+    fn shorter_lane_releases_only_the_longer_terminal_tail() {
+        let mut transcript = Transcript::new([0x62; 32]);
+        let (mut response, mut plan, coordinator) = c61_shared_round_pair(&mut transcript, [5, 4]);
+        let response_point = Point::new(vec![C61P3Fp2::ONE; 5]);
+        let plan_point = Point::new(vec![C61P3Fp2::ONE; 4]);
+        let root = C61Commitment::from(vec![[0x12; 32]]);
+        response.observe(root.clone());
+        plan.observe(root);
+        response.observe_public_points([0xA2; 32], std::slice::from_ref(&response_point)).unwrap();
+        plan.observe_public_points([0xA2; 32], std::slice::from_ref(&plan_point)).unwrap();
+
+        thread::scope(|scope| {
+            let response_thread = scope.spawn(|| response.sample());
+            let plan_thread = scope.spawn(|| plan.sample());
+            assert_eq!(response_thread.join().unwrap(), plan_thread.join().unwrap());
+        });
+        plan.finish_lane().unwrap();
+        let tail = response.sample();
+        assert_ne!(tail, Goldilocks::ZERO);
+        response.finish_lane().unwrap();
+        assert_ne!(coordinator.sample_postproof_fp2().unwrap(), Fp2::ZERO);
+        let stats = coordinator.finish(64).unwrap();
+        assert_eq!(stats.client_fp_challenges, 4);
     }
 }

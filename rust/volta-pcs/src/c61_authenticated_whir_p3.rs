@@ -2014,7 +2014,7 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
 
     let mut provider_transcript = Transcript::new(verifier_seed);
     let (mut response_challenger, mut plan_challenger, provider_coordinator) =
-        c61_shared_round_pair(&mut provider_transcript, num_variables);
+        c61_shared_round_pair(&mut provider_transcript, [num_variables, num_variables]);
     let response_config = c61_authenticated_config::<
         crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
     >(num_variables)?;
@@ -2048,27 +2048,29 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
 
     let (response_output, plan_output) = thread::scope(|scope| {
         let response_thread = scope.spawn(move || {
-            response_prover.prove_claimless(
+            let output = response_prover.prove_claimless(
                 response_data,
                 &response_claims,
                 response_base_shift,
                 &mut response_challenger,
                 &mut response_rng,
-            )
+            );
+            response_challenger.finish_lane().map(|()| output)
         });
         let plan_thread = scope.spawn(move || {
-            plan_prover.prove_claimless(
+            let output = plan_prover.prove_claimless(
                 plan_data,
                 &plan_claims,
                 C61P3Fp2::ZERO,
                 &mut plan_challenger,
                 &mut plan_rng,
-            )
+            );
+            plan_challenger.finish_lane().map(|()| output)
         });
         (response_thread.join(), plan_thread.join())
     });
-    let response_output = response_output.map_err(|_| "C6SMO1 response prover panicked")?;
-    let plan_output = plan_output.map_err(|_| "C6SMO1 plan prover panicked")?;
+    let response_output = response_output.map_err(|_| "C6SMO1 response prover panicked")??;
+    let plan_output = plan_output.map_err(|_| "C6SMO1 plan prover panicked")??;
     let provider_eta = provider_coordinator.sample_postproof_fp2()?;
     let placeholder =
         C61AuthenticatedWhirBaseProof::decode(&[0u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES])
@@ -2188,7 +2190,7 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
             .map_err(|error| error.to_string())?;
     let mut verifier_transcript = Transcript::new(verifier_seed);
     let (mut response_challenger, mut plan_challenger, verifier_coordinator) =
-        c61_shared_round_pair(&mut verifier_transcript, num_variables);
+        c61_shared_round_pair(&mut verifier_transcript, [num_variables, num_variables]);
     let response_config = c61_authenticated_config::<
         crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
     >(num_variables)?;
@@ -2215,33 +2217,39 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
     let plan_verifier = HidingWhirVerifier::new(&plan_config, &plan_mmcs);
     let (response_result, plan_result) = thread::scope(|scope| {
         let response_thread = scope.spawn(move || {
-            catch_unwind(AssertUnwindSafe(|| {
+            let result = catch_unwind(AssertUnwindSafe(|| {
                 response_verifier.verify_claimless(
                     &response_proof,
                     &response_commitment,
                     &response_points,
                     &mut response_challenger,
                 )
-            }))
+            }));
+            (result, response_challenger.finish_lane())
         });
         let plan_thread = scope.spawn(move || {
-            catch_unwind(AssertUnwindSafe(|| {
+            let result = catch_unwind(AssertUnwindSafe(|| {
                 plan_verifier.verify_claimless(
                     &plan_proof,
                     &plan_commitment,
                     &plan_points,
                     &mut plan_challenger,
                 )
-            }))
+            }));
+            (result, plan_challenger.finish_lane())
         });
         (response_thread.join(), plan_thread.join())
     });
+    let (response_result, response_finish) =
+        response_result.map_err(|_| "C6SMO1 response verifier thread panicked")?;
+    response_finish?;
     let response_result = response_result
-        .map_err(|_| "C6SMO1 response verifier thread panicked")?
         .map_err(|_| "C6SMO1 response verifier panicked")?
         .map_err(|error| format!("C6SMO1 response verification failed: {error}"))?;
+    let (plan_result, plan_finish) =
+        plan_result.map_err(|_| "C6SMO1 plan verifier thread panicked")?;
+    plan_finish?;
     let plan_result = plan_result
-        .map_err(|_| "C6SMO1 plan verifier thread panicked")?
         .map_err(|_| "C6SMO1 plan verifier panicked")?
         .map_err(|error| format!("C6SMO1 plan verification failed: {error}"))?;
     let verifier_eta = verifier_coordinator.sample_postproof_fp2()?;

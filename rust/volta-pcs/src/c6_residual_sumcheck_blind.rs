@@ -36,6 +36,8 @@ use volta_proto::{
     C6CompiledLinearResidual, C6ResidualAtomicEventAuditSink, C6ResidualFusedCoefficientArena,
     C6ResidualFusedCoefficientFamily, C6ResidualFusedFirstRound, C6ResidualFusedFoldedCoefficients,
     C6ResidualFusedWitnessView, C6ResidualRelationChallenges,
+    C6_RESIDUAL_RELATION_PROTOCOL_DIRECT_MLE, C6_RESIDUAL_TERMINAL_FUNCTIONALS,
+    C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION,
 };
 
 use crate::c6_residual_sumcheck::{
@@ -51,6 +53,11 @@ const PROOF_MAGIC: [u8; 8] = *b"C6RSC3\0\0";
 const PROOF_VERSION: u16 = 3;
 const PROOF_DOMAIN: &str = "volta-zk/c6/residual-sumcheck-proof/v3";
 const STATEMENT_DOMAIN: &str = "volta-zk/c6/residual-sumcheck-statement/v3";
+#[cfg(feature = "c6-trace")]
+const DIRECT_TERMINAL_OUTPUTS_DOMAIN: &str =
+    "volta-zk/c6/residual-sumcheck-direct-terminal-outputs/v4";
+#[cfg(feature = "c6-trace")]
+const DIRECT_TERMINAL_FOLD_DOMAIN: &str = "volta-zk/c6/residual-sumcheck-direct-terminal-fold/v4";
 const PROOF_FIXED_FRAMING_BYTES: u64 = 116;
 const MAC_TAPES: usize = 2;
 const FP2_BYTES: u64 = 16;
@@ -1057,6 +1064,177 @@ struct C6BlindResidualTerminalScalars {
     auxiliary_quadratic: [Fp2; TERMINAL_PRODUCTS],
 }
 
+#[cfg(feature = "c6-trace")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct C6BlindResidualDirectTerminalRepetition {
+    leaf_point: Vec<Fp2>,
+    auxiliary_point: Vec<Fp2>,
+    terminal_functionals: [Fp2; C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION],
+}
+
+/// The exact 64 C6RSC3-v4 terminal coefficient functionals, fixed by the
+/// fused prover before the independent output-fold challenge exists.
+#[cfg(feature = "c6-trace")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6BlindResidualDirectTerminalOutputs {
+    relation_challenges_digest: [u8; 32],
+    statement_digests: [[u8; 32]; C6_RESIDUAL_SUMCHECK_REPETITIONS],
+    leaf_points: [Vec<Fp2>; C6_RESIDUAL_SUMCHECK_REPETITIONS],
+    auxiliary_points: [Vec<Fp2>; C6_RESIDUAL_SUMCHECK_REPETITIONS],
+    terminal_functionals: [Fp2; C6_RESIDUAL_TERMINAL_FUNCTIONALS],
+    digest: [u8; 32],
+}
+
+#[cfg(feature = "c6-trace")]
+impl C6BlindResidualDirectTerminalOutputs {
+    fn new(
+        statements: &[C6BlindResidualStatement],
+        relation: &C6ResidualRelationChallenges,
+        repetitions: Vec<C6BlindResidualDirectTerminalRepetition>,
+    ) -> Result<Self> {
+        if relation.protocol_version() != C6_RESIDUAL_RELATION_PROTOCOL_DIRECT_MLE
+            || statements.len() != C6_RESIDUAL_SUMCHECK_REPETITIONS
+            || repetitions.len() != C6_RESIDUAL_SUMCHECK_REPETITIONS
+        {
+            return Err(C6BlindResidualError::new(
+                "C6RSC3-v4 terminal outputs require the direct-MLE relation and two repetitions",
+            ));
+        }
+        let statement_digests = statements
+            .iter()
+            .map(C6BlindResidualStatement::digest)
+            .collect::<Vec<_>>()
+            .try_into()
+            .map_err(|_| C6BlindResidualError::new("C6RSC3-v4 statement census mismatch"))?;
+        let leaf_points = repetitions
+            .iter()
+            .map(|repetition| repetition.leaf_point.clone())
+            .collect::<Vec<_>>()
+            .try_into()
+            .map_err(|_| C6BlindResidualError::new("C6RSC3-v4 leaf-point census mismatch"))?;
+        let auxiliary_points = repetitions
+            .iter()
+            .map(|repetition| repetition.auxiliary_point.clone())
+            .collect::<Vec<_>>()
+            .try_into()
+            .map_err(|_| C6BlindResidualError::new("C6RSC3-v4 auxiliary-point census mismatch"))?;
+        let mut terminal_functionals = [Fp2::ZERO; C6_RESIDUAL_TERMINAL_FUNCTIONALS];
+        for (repetition, values) in repetitions.iter().enumerate() {
+            let start = repetition * C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION;
+            terminal_functionals[start..start + C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION]
+                .copy_from_slice(&values.terminal_functionals);
+        }
+        let mut outputs = Self {
+            relation_challenges_digest: relation.digest(),
+            statement_digests,
+            leaf_points,
+            auxiliary_points,
+            terminal_functionals,
+            digest: [0; 32],
+        };
+        outputs.digest = direct_terminal_outputs_digest(&outputs);
+        if outputs.digest == [0; 32] {
+            return Err(C6BlindResidualError::new("C6RSC3-v4 terminal-output digest is zero"));
+        }
+        Ok(outputs)
+    }
+
+    pub fn relation_challenges_digest(&self) -> [u8; 32] {
+        self.relation_challenges_digest
+    }
+
+    pub fn leaf_point(&self, repetition: usize) -> Result<&[Fp2]> {
+        self.leaf_points
+            .get(repetition)
+            .map(Vec::as_slice)
+            .ok_or_else(|| C6BlindResidualError::new("C6RSC3-v4 leaf repetition is out of range"))
+    }
+
+    pub fn auxiliary_point(&self, repetition: usize) -> Result<&[Fp2]> {
+        self.auxiliary_points.get(repetition).map(Vec::as_slice).ok_or_else(|| {
+            C6BlindResidualError::new("C6RSC3-v4 auxiliary repetition is out of range")
+        })
+    }
+
+    pub fn terminal_functionals(&self) -> &[Fp2; C6_RESIDUAL_TERMINAL_FUNCTIONALS] {
+        &self.terminal_functionals
+    }
+
+    pub fn digest(&self) -> [u8; 32] {
+        self.digest
+    }
+
+    pub fn bind_output_beta(self, beta: Fp2) -> C6BlindResidualDirectTerminalFold {
+        let functional_fold = self
+            .terminal_functionals
+            .iter()
+            .fold((Fp2::ZERO, Fp2::ONE), |(sum, power), value| (sum + power * *value, power * beta))
+            .0;
+        let mut fold = C6BlindResidualDirectTerminalFold {
+            terminal_outputs_digest: self.digest,
+            beta,
+            functional_fold,
+            digest: [0; 32],
+        };
+        let mut hasher = blake3::Hasher::new_derive_key(DIRECT_TERMINAL_FOLD_DOMAIN);
+        hasher.update(&fold.terminal_outputs_digest);
+        hash_fp2(&mut hasher, fold.beta);
+        hash_fp2(&mut hasher, fold.functional_fold);
+        fold.digest = *hasher.finalize().as_bytes();
+        fold
+    }
+}
+
+#[cfg(feature = "c6-trace")]
+fn direct_terminal_outputs_digest(outputs: &C6BlindResidualDirectTerminalOutputs) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new_derive_key(DIRECT_TERMINAL_OUTPUTS_DOMAIN);
+    hasher.update(&outputs.relation_challenges_digest);
+    for repetition in 0..C6_RESIDUAL_SUMCHECK_REPETITIONS {
+        hasher.update(&(repetition as u64).to_le_bytes());
+        hasher.update(&outputs.statement_digests[repetition]);
+        for point in [&outputs.leaf_points[repetition], &outputs.auxiliary_points[repetition]] {
+            hasher.update(&(point.len() as u64).to_le_bytes());
+            for coordinate in point {
+                hash_fp2(&mut hasher, *coordinate);
+            }
+        }
+    }
+    for value in outputs.terminal_functionals {
+        hash_fp2(&mut hasher, value);
+    }
+    *hasher.finalize().as_bytes()
+}
+
+/// Post-beta scalar fold of the already-fixed 64 direct-schedule terminal
+/// outputs.  This adds no proof or response bytes.
+#[cfg(feature = "c6-trace")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6BlindResidualDirectTerminalFold {
+    terminal_outputs_digest: [u8; 32],
+    beta: Fp2,
+    functional_fold: Fp2,
+    digest: [u8; 32],
+}
+
+#[cfg(feature = "c6-trace")]
+impl C6BlindResidualDirectTerminalFold {
+    pub fn terminal_outputs_digest(&self) -> [u8; 32] {
+        self.terminal_outputs_digest
+    }
+
+    pub fn beta(&self) -> Fp2 {
+        self.beta
+    }
+
+    pub fn functional_fold(&self) -> Fp2 {
+        self.functional_fold
+    }
+
+    pub fn digest(&self) -> [u8; 32] {
+        self.digest
+    }
+}
+
 fn terminal_scalars_from_reference(
     statement: &C6BlindResidualStatement,
     leaf_point: &[Fp2],
@@ -1818,6 +1996,61 @@ struct C6BlindResidualProverRepetitionOutput {
     challenges: Vec<Fp2>,
     reference_proof: Option<C6ResidualSumcheckRepetitionProof>,
     opening_claims: Vec<C6ResidualOpeningClaim>,
+    #[cfg(feature = "c6-trace")]
+    terminal_scalars: C6BlindResidualTerminalScalars,
+}
+
+#[cfg(feature = "c6-trace")]
+fn direct_terminal_repetition(
+    statement: &C6BlindResidualStatement,
+    output: &C6BlindResidualProverRepetitionOutput,
+) -> Result<C6BlindResidualDirectTerminalRepetition> {
+    if output.opening_claims.len() != C6_RESIDUAL_TABLES_PER_REPETITION {
+        return Err(C6BlindResidualError::new("C6RSC3-v4 terminal output opening census mismatch"));
+    }
+    let (leaf_claims, auxiliary_claims) =
+        output.opening_claims.split_at(C6_RESIDUAL_LEAF_TABLES_PER_REPETITION);
+    let leaf_point = leaf_claims
+        .first()
+        .ok_or_else(|| C6BlindResidualError::new("C6RSC3-v4 leaf point is missing"))?
+        .point
+        .clone();
+    let auxiliary_point = auxiliary_claims
+        .first()
+        .ok_or_else(|| C6BlindResidualError::new("C6RSC3-v4 auxiliary point is missing"))?
+        .point
+        .clone();
+    if leaf_claims.iter().any(|claim| {
+        claim.repetition != statement.repetition()
+            || claim.family != C6ResidualSumcheckFamily::LeafRaw
+            || claim.point != leaf_point
+    }) || auxiliary_claims.iter().any(|claim| {
+        claim.repetition != statement.repetition()
+            || claim.family != C6ResidualSumcheckFamily::Auxiliary
+            || claim.point != auxiliary_point
+    }) {
+        return Err(C6BlindResidualError::new(
+            "C6RSC3-v4 terminal output points or owners are noncanonical",
+        ));
+    }
+    let mut terminal_functionals = [Fp2::ZERO; C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION];
+    let mut cursor = 0usize;
+    for values in [
+        output.terminal_scalars.leaf_linear.as_slice(),
+        output.terminal_scalars.auxiliary_linear.as_slice(),
+        output.terminal_scalars.auxiliary_quadratic.as_slice(),
+    ] {
+        terminal_functionals[cursor..cursor + values.len()].copy_from_slice(values);
+        cursor += values.len();
+    }
+    if cursor != C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION {
+        return Err(C6BlindResidualError::new("C6RSC3-v4 terminal functional census mismatch"));
+    }
+    Ok(C6BlindResidualDirectTerminalRepetition {
+        leaf_point,
+        auxiliary_point,
+        terminal_functionals,
+    })
 }
 
 fn prove_c6_blind_residual_repetition(
@@ -1962,6 +2195,8 @@ fn prove_c6_blind_residual_repetition(
         challenges: challenge_trace,
         reference_proof: finished.reference_proof,
         opening_claims: finished.opening_claims,
+        #[cfg(feature = "c6-trace")]
+        terminal_scalars: finished.terminal_scalars,
     })
 }
 
@@ -2000,7 +2235,7 @@ pub fn prove_c6_blind_residual_sumchecks_fused(
     C6BlindResidualPendingTransferFrame,
     C6BlindResidualPendingClaimsProver,
 )> {
-    prove_c6_blind_residual_sumchecks_fused_inner(
+    let (proof, frame, pending, _) = prove_c6_blind_residual_sumchecks_fused_inner(
         statements,
         None,
         compiler,
@@ -2008,7 +2243,50 @@ pub fn prove_c6_blind_residual_sumchecks_fused(
         arena,
         streams,
         transcript,
-    )
+    )?;
+    Ok((proof, frame, pending))
+}
+
+/// Direct-MLE C6RSC3-v4 prover seam.  The fourth result is fixed by the
+/// actual fused terminal coefficient state before a caller may draw and bind
+/// the independent output-fold challenge.
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+pub fn prove_c6_blind_residual_sumchecks_fused_direct(
+    statements: &[C6BlindResidualStatement],
+    compiler: C6BlindResidualFusedCompilerContext<'_>,
+    fused_witness: C6ResidualFusedWitnessView<'_>,
+    arena: &C6ResidualFusedCoefficientArena,
+    streams: &mut [CorrelationStream; MAC_TAPES],
+    transcript: &mut Transcript,
+) -> Result<(
+    C6BlindResidualSumcheckProof,
+    C6BlindResidualPendingTransferFrame,
+    C6BlindResidualPendingClaimsProver,
+    C6BlindResidualDirectTerminalOutputs,
+)> {
+    if compiler.relation.protocol_version() != C6_RESIDUAL_RELATION_PROTOCOL_DIRECT_MLE {
+        return Err(C6BlindResidualError::new(
+            "C6RSC3-v4 direct prover received a legacy relation schedule",
+        ));
+    }
+    let (proof, frame, pending, terminal_outputs) = prove_c6_blind_residual_sumchecks_fused_inner(
+        statements,
+        None,
+        compiler,
+        fused_witness,
+        arena,
+        streams,
+        transcript,
+    )?;
+    Ok((
+        proof,
+        frame,
+        pending,
+        terminal_outputs.ok_or_else(|| {
+            C6BlindResidualError::new("C6RSC3-v4 direct prover omitted its terminal outputs")
+        })?,
+    ))
 }
 
 /// Prover entry point that reuses the first-round messages which already
@@ -2034,7 +2312,7 @@ pub fn prove_c6_blind_residual_sumchecks_fused_prepared(
     }
     let statements = prepared.iter().map(|item| item.statement.clone()).collect::<Vec<_>>();
     let first_rounds = prepared.iter().map(|item| item.first_round.clone()).collect::<Vec<_>>();
-    let (proof, frame, pending) = prove_c6_blind_residual_sumchecks_fused_inner(
+    let (proof, frame, pending, _) = prove_c6_blind_residual_sumchecks_fused_inner(
         &statements,
         Some(&first_rounds),
         compiler,
@@ -2060,6 +2338,7 @@ fn prove_c6_blind_residual_sumchecks_fused_inner(
     C6BlindResidualSumcheckProof,
     C6BlindResidualPendingTransferFrame,
     C6BlindResidualPendingClaimsProver,
+    Option<C6BlindResidualDirectTerminalOutputs>,
 )> {
     validate_statement_pair(statements)?;
     if first_rounds.is_some_and(|rounds| rounds.len() != statements.len()) {
@@ -2076,6 +2355,7 @@ fn prove_c6_blind_residual_sumchecks_fused_inner(
         Vec::with_capacity(C6_RESIDUAL_SUMCHECK_REPETITIONS * C6_RESIDUAL_TABLES_PER_REPETITION);
     let mut pending_claims =
         Vec::with_capacity(C6_RESIDUAL_SUMCHECK_REPETITIONS * C6_RESIDUAL_TABLES_PER_REPETITION);
+    let mut terminal_repetitions = Vec::with_capacity(C6_RESIDUAL_SUMCHECK_REPETITIONS);
     for (index, statement) in statements.iter().enumerate() {
         let arithmetic = Box::new(C6BlindResidualFusedArithmetic::new(
             statement,
@@ -2094,6 +2374,9 @@ fn prove_c6_blind_residual_sumchecks_fused_inner(
                 "C6RSC3 fused arithmetic retained reference proof or coefficient state",
             ));
         }
+        if compiler.relation.protocol_version() == C6_RESIDUAL_RELATION_PROTOCOL_DIRECT_MLE {
+            terminal_repetitions.push(direct_terminal_repetition(statement, &output)?);
+        }
         repetition_proofs.push(output.proof);
         pending_claims.extend(output.pending_claims);
         pending_transfers.extend(output.pending_transfers);
@@ -2103,7 +2386,22 @@ fn prove_c6_blind_residual_sumchecks_fused_inner(
     proof.validate_shape(statements)?;
     let frame = C6BlindResidualPendingTransferFrame { corrections: pending_transfers };
     validate_pending_frame_shape(statements, &frame)?;
-    Ok((proof, frame, C6BlindResidualPendingClaimsProver { claims: pending_claims }))
+    let terminal_outputs =
+        if compiler.relation.protocol_version() == C6_RESIDUAL_RELATION_PROTOCOL_DIRECT_MLE {
+            Some(C6BlindResidualDirectTerminalOutputs::new(
+                statements,
+                compiler.relation,
+                terminal_repetitions,
+            )?)
+        } else {
+            None
+        };
+    Ok((
+        proof,
+        frame,
+        C6BlindResidualPendingClaimsProver { claims: pending_claims },
+        terminal_outputs,
+    ))
 }
 
 /// Compatibility entry point for the scaled differential harness.  The
@@ -3097,9 +3395,10 @@ mod tests {
     use volta_mac::CorrCounters;
     #[cfg(feature = "c6-trace")]
     use volta_proto::{
-        build_c6_residual_fused_scaled_fixture,
-        build_c6_response_residual_fixture_production_geometry, C6ResidualFusedCoefficientArena,
-        C6ResponseProofEnvelope, C6_RESPONSE_CACHE_SOURCE_BYTES,
+        build_c6_residual_direct_fused_scaled_fixture, build_c6_residual_fused_scaled_fixture,
+        build_c6_response_residual_fixture_production_geometry,
+        compile_c6_residual_terminal_functional_relation_reference,
+        C6ResidualFusedCoefficientArena, C6ResponseProofEnvelope, C6_RESPONSE_CACHE_SOURCE_BYTES,
     };
 
     const LEAF_ROUNDS: usize = 5;
@@ -3816,6 +4115,117 @@ mod tests {
             compiler,
             &mut wrong_semantic_contexts,
             &mut wrong_semantic_transcript,
+        )
+        .is_err());
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn direct_fused_prover_fixes_exact_terminal_outputs_before_beta() {
+        let fixture = build_c6_residual_direct_fused_scaled_fixture().unwrap();
+        let compiler = C6BlindResidualFusedCompilerContext::new(
+            fixture.operation_plan(),
+            fixture.extraction(),
+            fixture.runtime(),
+            fixture.linear(),
+            fixture.relation(),
+        );
+        let statements = (0..C6_RESIDUAL_SUMCHECK_REPETITIONS)
+            .map(|repetition| prepare_c6_blind_residual_statement_fused(compiler, repetition as u8))
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        let arena = C6ResidualFusedCoefficientArena::new(fixture.manifest());
+        let mut streams = prover_streams();
+        let mut prover_transcript = Transcript::new(CHALLENGE_SEED);
+        let (proof, frame, pending, terminal_outputs) =
+            prove_c6_blind_residual_sumchecks_fused_direct(
+                &statements,
+                compiler,
+                fixture.witness_view().unwrap(),
+                &arena,
+                &mut streams,
+                &mut prover_transcript,
+            )
+            .unwrap();
+        assert_eq!(
+            pending.len(),
+            C6_RESIDUAL_SUMCHECK_REPETITIONS * C6_RESIDUAL_TABLES_PER_REPETITION
+        );
+        assert_eq!(terminal_outputs.relation_challenges_digest(), fixture.relation().digest());
+        assert_eq!(terminal_outputs.leaf_point(0).unwrap().len(), 7);
+        assert_eq!(terminal_outputs.auxiliary_point(0).unwrap().len(), 2);
+        assert_ne!(terminal_outputs.digest(), [0; 32]);
+        assert_eq!(
+            C6BlindResidualSumcheckProof::decode(&statements, &proof.encode(&statements).unwrap(),)
+                .unwrap(),
+            proof
+        );
+
+        let output_beta = prover_transcript.challenge_fp2();
+        let terminal_reference = compile_c6_residual_terminal_functional_relation_reference(
+            fixture.operation_plan(),
+            fixture.extraction(),
+            fixture.runtime(),
+            fixture.linear(),
+            fixture.relation(),
+            [terminal_outputs.leaf_point(0).unwrap(), terminal_outputs.leaf_point(1).unwrap()],
+            [
+                terminal_outputs.auxiliary_point(0).unwrap(),
+                terminal_outputs.auxiliary_point(1).unwrap(),
+            ],
+            output_beta,
+        )
+        .unwrap();
+        assert_eq!(
+            terminal_outputs.terminal_functionals(),
+            terminal_reference.terminal_functionals()
+        );
+        let terminal_output_digest = terminal_outputs.digest();
+        let terminal_fold = terminal_outputs.bind_output_beta(output_beta);
+        assert_eq!(terminal_fold.terminal_outputs_digest(), terminal_output_digest);
+        assert_eq!(terminal_fold.beta(), output_beta);
+        assert_eq!(terminal_fold.functional_fold(), terminal_reference.functional_fold());
+        assert_ne!(terminal_fold.digest(), [0; 32]);
+
+        let mut contexts = verifier_contexts();
+        let mut verifier_transcript = Transcript::new(CHALLENGE_SEED);
+        verify_c6_blind_residual_sumchecks_fused(
+            &statements,
+            &proof,
+            &frame,
+            compiler,
+            &mut contexts,
+            &mut verifier_transcript,
+        )
+        .unwrap();
+        assert_eq!(verifier_transcript.challenge_fp2(), output_beta);
+
+        let legacy = build_c6_residual_fused_scaled_fixture().unwrap();
+        let legacy_compiler = C6BlindResidualFusedCompilerContext::new(
+            legacy.operation_plan(),
+            legacy.extraction(),
+            legacy.runtime(),
+            legacy.linear(),
+            legacy.relation(),
+        );
+        let legacy_statements = (0..C6_RESIDUAL_SUMCHECK_REPETITIONS)
+            .map(|repetition| {
+                prepare_c6_blind_residual_statement_fused(legacy_compiler, repetition as u8)
+            })
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(
+            blind_residual_sumcheck_encoded_len(&statements).unwrap(),
+            blind_residual_sumcheck_encoded_len(&legacy_statements).unwrap()
+        );
+        let legacy_arena = C6ResidualFusedCoefficientArena::new(legacy.manifest());
+        assert!(prove_c6_blind_residual_sumchecks_fused_direct(
+            &legacy_statements,
+            legacy_compiler,
+            legacy.witness_view().unwrap(),
+            &legacy_arena,
+            &mut prover_streams(),
+            &mut Transcript::new(CHALLENGE_SEED),
         )
         .is_err());
     }

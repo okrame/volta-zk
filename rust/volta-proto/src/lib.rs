@@ -68,7 +68,10 @@ pub use c6_census::{
     C6_T1_TOTAL_PRODUCT_TRIPLES, C6_T1_ZERO_CLOSURES,
 };
 #[cfg(feature = "c6-trace")]
-pub use c6_residual::{build_c6_residual_fused_scaled_fixture, C6ResidualFusedScaledFixture};
+pub use c6_residual::{
+    build_c6_residual_direct_fused_scaled_fixture, build_c6_residual_fused_scaled_fixture,
+    C6ResidualFusedScaledFixture,
+};
 pub use c6_residual::{
     c6_residual_fused_coefficient_memory_census, compile_c6_residual_atomic_relation_reference,
     compile_c6_residual_fused_first_round, compile_c6_residual_fused_folded_coefficients,
@@ -100,9 +103,9 @@ pub use c6_residual::{
     C6_RESIDUAL_FUSED_MAX_COEFFICIENT_STATE_BYTES,
     C6_RESIDUAL_FUSED_MAX_COEFFICIENT_STATE_ELEMENTS, C6_RESIDUAL_MAC_COORDINATES,
     C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS, C6_RESIDUAL_PROOF_REPETITIONS,
-    C6_RESIDUAL_RELATION_LEAF_TABLES, C6_RESIDUAL_TERMINAL_FORM_KINDS,
-    C6_RESIDUAL_TERMINAL_FUNCTIONALS, C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION,
-    C6_RESIDUAL_TERMINAL_FUNCTIONAL_DOMAIN_LOG2,
+    C6_RESIDUAL_RELATION_LEAF_TABLES, C6_RESIDUAL_RELATION_PROTOCOL_DIRECT_MLE,
+    C6_RESIDUAL_TERMINAL_FORM_KINDS, C6_RESIDUAL_TERMINAL_FUNCTIONALS,
+    C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION, C6_RESIDUAL_TERMINAL_FUNCTIONAL_DOMAIN_LOG2,
 };
 pub use c6_response_envelope::{
     C6ResponseProofEnvelope, C6ResponseProofEnvelopeError,

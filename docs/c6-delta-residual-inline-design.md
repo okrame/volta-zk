@@ -2018,6 +2018,58 @@ codec allocation, **16,342,103-B** certificate, **84,743,367-B** setup,
 `C6TFA1_EXACT_EIGHT_FAMILY_DIFFERENTIAL_REQUIRED`.  No pod contact is
 authorized.
 
+### 0.26 C6TFA1 scaled eight-family differential
+
+The preregistered factorization in Section 0.25 is now executable and exact
+at the scaled direct-MLE geometry.  A new reference compiler rejects v3 and
+production geometry, derives every family start from the manifest, consumes
+the v4 atomic schedule in canonical order and computes two values per proof
+repetition:
+
+```text
+P_b = leaf-point MLE of one reverse traversal seeded by five scaled forms,
+D_b = exact direct contribution of the remaining eight-family terms.
+```
+
+As an internal linearity guard, the same scaled diagnostic independently
+reconstructs the bound base form and all four terminal forms, and requires
+their five separately evaluated leaf MLEs to equal the single combined
+reverse result.  Only `Affine` and `Reverse` have nonzero plan-dependent
+parts.  The other six families have exactly zero plan part, while their
+direct parts remain explicit.
+
+Against the independent typed C6TFR1 event sink, both repetitions match
+family by family and in the final fold over exactly **2,400 coefficient
+writes**.  The canonical per-repetition family-output census is
+
+```text
+[15, 4, 4, 36, 6, 2, 953, 28],
+```
+
+and every one of the eight scaled family folds is nonzero.  The test also
+binds the expected family coefficient-write census, rejects v3 and a short
+leaf point, and observes distinct results after changing either the first
+leaf point or `beta`.  Full `volta-proto --features c6-trace` is green at
+**170 passed / 0 failed / 1 ignored**.
+
+This closes `C6TFA1_EXACT_EIGHT_FAMILY_DIFFERENTIAL_REQUIRED`, but the
+reference loops over the scaled direct ranges and performs extra reverse
+passes.  It is therefore diagnostic only and earns no production, timing,
+memory or native-relation credit.  The active local **HARD STOP** is now
+`C6TFA1_NATIVE_INTERVAL_REDUCER_AND_D25_RECURRENCE_REQUIRED`.  Resume
+requires:
+
+1. constrained interval identities for the long direct equality-polynomial
+   ranges, with exact family offsets and final cursors;
+2. two committed D25 reverse lanes with an exact recurrence and source
+   boundary; and
+3. connection of both parts to claimless authenticated openings and the
+   existing role-typed compiler statement.
+
+Budget profile v11 leaves the conservative `28/|Fp2|` relation event and all
+registered byte, setup, state and roofline values unchanged with
+`credit:false`.  No pod was contacted or authorized.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

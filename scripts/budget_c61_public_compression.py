@@ -10,9 +10,10 @@ This report deliberately has two different verdict scopes:
   authenticated-target codec differential.  C6TFR1 now specifies the exact
   terminal-functional relation.  Direct-point integration is complete.  The
   C6TFA1 preregistration factors the exact event fold into two D25 reverse
-  lanes plus an eight-family direct reducer, but its differential, native
-  realization and the full-chain benchmark remain absent, so neither
-  reference is final proof or timing credit.
+  lanes plus an eight-family direct reducer.  Its scaled differential is now
+  exact; the constrained interval reducer, native recurrence and full-chain
+  benchmark remain absent, so neither reference is final proof or timing
+  credit.
 
 No projected ceiling or analytic roofline is proof-size, setup, prover-time,
 verifier-time or hardware credit.  The implemented PCS codec receives only
@@ -498,15 +499,15 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v10",
+        "profile": "C6.1-public-compression-reference-v11",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
             "CANONICAL_RUNTIME_SEAM_GREEN__C6TFR1_EXACT_EVENT_RELATION_"
             "LEAN_RUST_DIFFERENTIAL_TYPED_STATEMENTS_GREEN__"
             "DIRECT_MLE_SCHEDULE_AND_FUSED_PRE_BETA_OUTPUTS_GREEN__"
-            "C6TFA1_FOLDED_ADJOINT_PREREGISTERED__"
-            "EXACT_EIGHT_FAMILY_DIFFERENTIAL_REQUIRED__"
+            "C6TFA1_EXACT_EIGHT_FAMILY_DIFFERENTIAL_GREEN__"
+            "NATIVE_INTERVAL_REDUCER_AND_D25_RECURRENCE_REQUIRED__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
@@ -578,8 +579,8 @@ def build_report() -> dict[str, Any]:
                 "CANONICAL_RUNTIME_SEAM_GREEN__C6TFR1_EXACT_EVENT_RELATION_"
                 "LEAN_RUST_DIFFERENTIAL_TYPED_STATEMENTS_GREEN__"
                 "DIRECT_MLE_SCHEDULE_AND_FUSED_PRE_BETA_OUTPUTS_GREEN__"
-                "C6TFA1_FOLDED_ADJOINT_PREREGISTERED__"
-                "EXACT_EIGHT_FAMILY_DIFFERENTIAL_REQUIRED__"
+                "C6TFA1_EXACT_EIGHT_FAMILY_DIFFERENTIAL_GREEN__"
+                "NATIVE_INTERVAL_REDUCER_AND_D25_RECURRENCE_REQUIRED__"
                 "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
             "statement": (
@@ -1057,7 +1058,7 @@ def build_report() -> dict[str, Any]:
                 ),
             },
             "local_hard_stop": {
-                "status": "C6TFA1_EXACT_EIGHT_FAMILY_DIFFERENTIAL_REQUIRED",
+                "status": "C6TFA1_NATIVE_INTERVAL_REDUCER_AND_D25_RECURRENCE_REQUIRED",
                 "canonical_runtime_seam_green": True,
                 "raw_verifier_runtime_values": raw_verifier_runtime_values,
                 "canonical_runtime_values": canonical_runtime_values,
@@ -1102,7 +1103,11 @@ def build_report() -> dict[str, Any]:
                         "leaf_tail",
                         "auxiliary_tail",
                     ],
-                    "scaled_eight_family_differential_green": False,
+                    "scaled_eight_family_differential_green": True,
+                    "scaled_coefficient_writes": 2_400,
+                    "scaled_family_outputs_per_repetition": [15, 4, 4, 36, 6, 2, 953, 28],
+                    "scaled_all_family_folds_nonzero": True,
+                    "v3_and_malformed_dimension_reject": True,
                     "constrained_interval_reducer_required": True,
                     "credit": False,
                 },
@@ -1138,7 +1143,6 @@ def build_report() -> dict[str, Any]:
                     ),
                 },
                 "required_before_resume": [
-                    "prove the two-lane folded-adjoint plus direct-reducer identity against every typed C6TFR1 family at scaled geometry",
                     "realize the exact D25 recurrences and constrained direct reducer without materializing the D28 event stream",
                     "connect the factorized relation to the claimless authenticated WHIR opening and typed compiler-chain boundary",
                 ],

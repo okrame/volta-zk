@@ -34,9 +34,12 @@ selected claimless WHIR fork exposes polynomial-opening relations only and
 has no generic application-trace interface.  The D28 event table remains
 inadmissible.  `C6TFA1-v1` instead factors the exact fold into two
 challenge-dependent D25 reverse lanes plus an exact direct reducer covering
-all eight atomic families.  The active hard stop is its family-by-family Rust
-differential against the independent C6TFR1 event sink; no backend credit,
-digest-only shortcut or materialized event stream is permitted.
+all eight atomic families.  Its scaled family-by-family Rust differential is
+green against the independent C6TFR1 event sink.  The active hard stop is the
+constrained production interval reducer plus two native D25 recurrence
+lanes, connected to the authenticated opening and typed compiler boundary;
+no backend credit, digest-only shortcut or materialized event stream is
+permitted.
 
 The next append-only CPU-reference checkpoint now pins Plonky3 `p3-whir`
 revision `66e290615de1858f2f2f6a804158064c406cda1c` behind the non-default
@@ -825,6 +828,7 @@ its clean descendant closure.
 | C6.1 native-trace schedule audit | **DETACHED DIRECT-MLE POINTS FOUND; C6RSC3-v4 INTEGRATION PREREGISTERED; LOCAL HARD STOP; NO POD** (2026-08-02) | Replace only the C6.1 path's v3 ChaCha8/FpStream alpha, terminal and atomic schedules with the already-budgeted `2*D23 + 8*D17 + 2*D26` equality points before attempting the native trace | Current C6TFR1-v1 is exact for v3, but the selected public algebra cannot treat a PRG-stream digest as proof that its weights were generated correctly. The pinned WHIR fork supplies polynomial openings, no ChaCha8/rejection circuit and no generic trace verifier. A single materialized D28 Fp2 column is **4,294,967,296 B**, **2,001,768,448 B** over the state cap; two base limbs have the same size, and one limb plus canonical runtime is already **27,569,408 B** over. The admissible repair makes the actual C6RSC3 emitter consume the 234 typed equality coordinates already charged as **3,744 B client-to-provider** and `234/|Fp2|`; event/write/slot censuses and all provider-to-client screens remain unchanged. Required checkpoints are typed direct schedules, scaled grammar/terminal differential, fused C6RSC3 integration, then native relation/PCS trace. No credit and no pod contact. |
 | C6.1 direct-MLE C6RSC3 integration | **V4 SCHEDULE + ACTUAL PRE-BETA 64 OUTPUTS GREEN; NATIVE D28 RELATION API HARD STOP; NO POD** (2026-08-02) | Versioned transcript phases and exact terminal-state capture in the real fused prover; no arbitrary fixed-node mapping and no second production event replay | `C6RSC3-v4` releases `2*D23` alpha points after binding roots and before public claims, then `8*D17 + 2*D26` terminal/atomic points only after those claims; the exact **234 Fp2 / 3,744-B** schedule and its existing `234/|Fp2|` term are unchanged. A scaled v3/v4 differential has identical family-output and coefficient-write censuses but separated semantic digests; v3 preimages and ChaCha8/FpStream behavior remain byte-for-byte historical. The actual fused blind prover captures `2 * (8 leaf + 16 auxiliary-linear + 8 auxiliary-quadratic) = 64` values directly from its final folded arithmetic state before `beta`; the typed output binds statement/challenge digests and actual ordered points, then is consumed once by the postclaim fold. Across the proof codec and fused verifier, all 64 values and their fold equal the independent C6TFR1 compiler reference at **2,400 writes**, and v3/v4 proof lengths are identical at the same geometry. Default workspace is green at **volta-pcs 199/0/1** and **volta-proto 149/0/1**; `c6-trace` is **203/0/2** and **170/0/1** respectively. The pinned claimless WHIR backend still has no generic relation API for the typed coefficient-event grammar. A digest of an unconstrained stream is forbidden, while one D28 Fp2 event column is **4,294,967,296 B** and inadmissible. Resume requires a non-materialized native D28 relation prover/verifier connected to the authenticated opening and typed compiler-chain boundary. Budget profile v9 changes no registered byte, setup, state, soundness or time screen; every full-chain credit remains false and no pod was contacted. |
 | C6.1 folded terminal adjoint preregistration | **C6TFA1-v1 EXACT FACTORIZATION SELECTED; EIGHT-FAMILY DIFFERENTIAL HARD STOP; NO BACKEND CREDIT; NO POD** (2026-08-02) | Factor the actual C6TFR1 fold into two challenge-dependent reverse seeds plus an exact direct reducer; retain the 64 functional claims and forbid fixed-node outputs | For each repetition, the base linear form and four terminal forms are scaled by the exact atomic and `beta` weights and combined into one installed-plan seed; one D25 reverse traversal then supplies their leaf-MLE contribution. `SourceGrammar`, affine alpha terms, reverse auxiliary subtractions, `RawCopy`, `Product`, `Zero` and both tail families remain in an explicit constrained direct scalar with checked family ordinals/cursors. The exact identity is `sum_t beta^t T_t = sum_b(P_b+D_b)`. This covers all eight atomic families without a D28 event column, but it is preregistration only: a scaled family-by-family differential against the independent typed sink is now mandatory before native relation/PCS work. The conservative `28/|Fp2|` charge, **16,342,103-B** certificate, **84,743,367-B** setup, **101,085,470-B** first exchange, **2,019,404,992-B** state and **14.5038179582 / 4.565672390-s** roofs remain unchanged with `credit:false`. Budget profile is v10; no pod was contacted. |
+| C6.1 folded terminal adjoint differential | **C6TFA1-v1 EIGHT-FAMILY RUST DIFFERENTIAL GREEN; NATIVE INTERVAL + D25 RECURRENCE HARD STOP; NO POD** (2026-08-02) | Independently reduce the exact direct-MLE emitter and compare two combined challenge-dependent reverse seeds against the typed C6TFR1 sink; scaled diagnostic only | At scaled geometry the factorized result equals C6TFR1 per family, repetition and final fold over exactly **2,400 writes**. Per-repetition family outputs are `[15,4,4,36,6,2,953,28]`; all eight family folds are nonzero. Only `Affine` and `Reverse` have plan-dependent parts, and one combined reverse result equals the separately reconstructed base plus four terminal forms. Expected family write censuses match; changed leaf point or `beta` changes the result, while v3 and malformed dimensions reject. Full proto `c6-trace` is **170/0/1**. The scaled implementation loops direct ranges and uses extra reverse passes, so it is ineligible for production/time/memory/native credit. Next requires constrained interval identities, two exact committed D25 recurrence lanes and connection to claimless authenticated openings plus the typed compiler statement. Budget v11 changes no registered number or credit; no pod was contacted. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -899,6 +903,25 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-08-02 — the C6TFA1 factorization matches C6TFR1 exactly across all
+  eight atomic families at scaled direct-MLE geometry.**  The diagnostic
+  derives all atomic ordinals from the manifest, splits only `Affine` and
+  `Reverse` into plan and direct parts, combines the base and four terminal
+  seeds into one reverse traversal per repetition, and independently checks
+  that traversal against the five separately reconstructed forms.  The
+  resulting family folds, repetition folds and final `beta` fold equal the
+  typed event sink over **2,400 writes**; every family is exercised by a
+  nonzero fold.
+
+  The reference rejects v3, production geometry and malformed leaf-point
+  dimension, and changed point/`beta` mutations alter the bound result.  Full
+  proto `c6-trace` is **170/0/1**.  Because the diagnostic iterates scaled
+  direct ranges and performs extra reverse passes, it earns no production or
+  native-relation credit.  The hard stop advances to
+  `C6TFA1_NATIVE_INTERVAL_REDUCER_AND_D25_RECURRENCE_REQUIRED`; a scalar or
+  digest-only reducer remains forbidden.  Budget profile v11 changes no
+  registered screen, and no pod contact follows.
 
 - **2026-08-02 — C6.1 preregisters the exact folded-adjoint factorization of
   C6TFR1 instead of materializing its D28 coefficient-event domain.**  For

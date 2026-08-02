@@ -124,12 +124,13 @@ pub struct C61AuthenticatedP3MultiOpenDiagnostic {
     pub full_correlations: u64,
 }
 
-/// Scaled response/plan compiler opening under one lockstep transcript and
-/// one aggregated designated ZeroOpen.  The two strict WHIR payloads remain
-/// separate because they authenticate independent D27 roots.
+/// Scaled physical response/plan compiler opening under one shared-round
+/// transcript and one aggregated designated ZeroOpen.  The response carries
+/// the two base-field limbs at Dn while the plan remains at D(n-1).
 #[derive(Debug)]
 pub struct C61AuthenticatedP3SharedMultiOracleDiagnostic {
-    pub num_variables: usize,
+    pub response_num_variables: usize,
+    pub plan_num_variables: usize,
     pub response_claim_count: usize,
     pub plan_claim_count: usize,
     pub strict_payload_bytes: usize,
@@ -916,14 +917,18 @@ fn decode_c61_authenticated_p3_artifact_inner(
 }
 
 fn encode_c61_shared_multi_oracle_artifact(
-    num_variables: usize,
+    response_num_variables: usize,
+    plan_num_variables: usize,
     response_payload: &[u8],
     plan_payload: &[u8],
 ) -> ReferenceResult<C61SharedMultiOracleArtifact> {
-    let (_, _, _) =
-        decode_c61_authenticated_p3_artifact_inner(response_payload, num_variables, false)?;
+    let (_, _, _) = decode_c61_authenticated_p3_artifact_inner(
+        response_payload,
+        response_num_variables,
+        false,
+    )?;
     let (_, _, plan_reserved_tag) =
-        decode_c61_authenticated_p3_artifact_inner(plan_payload, num_variables, false)?;
+        decode_c61_authenticated_p3_artifact_inner(plan_payload, plan_num_variables, false)?;
     if plan_reserved_tag.tag() != Fp2::ZERO {
         return Err(C61WhirReferenceError::new(
             "C6SMO1 plan payload must carry the canonical zero reserved tag",
@@ -942,9 +947,10 @@ fn encode_c61_shared_multi_oracle_artifact(
     let mut writer = C61Writer::default();
     writer.bytes.extend_from_slice(&C61_SHARED_MULTI_ORACLE_MAGIC);
     writer.u16(C61_SHARED_MULTI_ORACLE_VERSION);
-    writer.u8(u8::try_from(num_variables)
-        .map_err(|_| C61WhirReferenceError::new("C6SMO1 dimension exceeds u8"))?);
-    writer.u8(0);
+    writer.u8(u8::try_from(response_num_variables)
+        .map_err(|_| C61WhirReferenceError::new("C6SMO1 response dimension exceeds u8"))?);
+    writer.u8(u8::try_from(plan_num_variables)
+        .map_err(|_| C61WhirReferenceError::new("C6SMO1 plan dimension exceeds u8"))?);
     writer.u32(response_payload.len())?;
     writer.bytes.extend_from_slice(response_payload);
     writer.bytes.extend_from_slice(plan_payload);
@@ -953,7 +959,8 @@ fn encode_c61_shared_multi_oracle_artifact(
 
 fn decode_c61_shared_multi_oracle_artifact(
     artifact: &C61SharedMultiOracleArtifact,
-    expected_num_variables: usize,
+    expected_response_num_variables: usize,
+    expected_plan_num_variables: usize,
 ) -> ReferenceResult<(
     (C61Commitment, C61AuthenticatedP3Proof),
     (C61Commitment, C61AuthenticatedP3Proof),
@@ -969,11 +976,11 @@ fn decode_c61_shared_multi_oracle_artifact(
     if reader.u16()? != C61_SHARED_MULTI_ORACLE_VERSION {
         return Err(C61WhirReferenceError::new("C6SMO1 version mismatch"));
     }
-    if reader.u8()? as usize != expected_num_variables {
-        return Err(C61WhirReferenceError::new("C6SMO1 dimension mismatch"));
+    if reader.u8()? as usize != expected_response_num_variables {
+        return Err(C61WhirReferenceError::new("C6SMO1 response dimension mismatch"));
     }
-    if reader.u8()? != 0 {
-        return Err(C61WhirReferenceError::new("C6SMO1 reserved byte is nonzero"));
+    if reader.u8()? as usize != expected_plan_num_variables {
+        return Err(C61WhirReferenceError::new("C6SMO1 plan dimension mismatch"));
     }
     let response_len = reader.u32()?;
     if response_len == 0
@@ -997,11 +1004,15 @@ fn decode_c61_shared_multi_oracle_artifact(
     let (response_commitment, response_proof, joint_tag) =
         decode_c61_authenticated_p3_artifact_inner(
             response_payload,
-            expected_num_variables,
+            expected_response_num_variables,
             false,
         )?;
     let (plan_commitment, plan_proof, plan_reserved_tag) =
-        decode_c61_authenticated_p3_artifact_inner(plan_payload, expected_num_variables, false)?;
+        decode_c61_authenticated_p3_artifact_inner(
+            plan_payload,
+            expected_plan_num_variables,
+            false,
+        )?;
     if plan_reserved_tag.tag() != Fp2::ZERO {
         return Err(C61WhirReferenceError::new("C6SMO1 plan reserved tag is nonzero"));
     }
@@ -1910,16 +1921,18 @@ fn c61_shared_statement_digest(
     Ok(*hasher.finalize().as_bytes())
 }
 
-/// Exercise the C6SPR2 response/plan opening as two Dn commitments sharing
-/// every native verifier challenge and one final authenticated residual.  At
-/// production this geometry is D27; the executable differential uses D14.
+/// Exercise the C6SPR3 physical response/plan opening as Dn and D(n-1)
+/// commitments sharing every common native verifier challenge, the exact
+/// response-only tail, and one final authenticated residual.  At production
+/// this geometry is D28/D27; the executable differential uses D14/D13.
 pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
-    num_variables: usize,
+    response_num_variables: usize,
 ) -> Result<C61AuthenticatedP3SharedMultiOracleDiagnostic, String> {
-    if !(6..=20).contains(&num_variables) {
-        return Err("C6SMO1 diagnostic dimension must be in 6..=20".to_owned());
+    if !(7..=20).contains(&response_num_variables) {
+        return Err("C6SMO1 response diagnostic dimension must be in 7..=20".to_owned());
     }
-    let base_domain_log2 = u8::try_from(num_variables - 2)
+    let plan_num_variables = response_num_variables - 1;
+    let base_domain_log2 = u8::try_from(response_num_variables - 3)
         .map_err(|_| "C6SMO1 scaled base dimension exceeds u8".to_owned())?;
     let input_point: Vec<Fp2> = (0..base_domain_log2)
         .map(|index| {
@@ -1929,34 +1942,39 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
             )
         })
         .collect();
-    let packed_points = volta_proto::c6_residual::C6SparseRationalPackedOpeningPoints::new(
+    let physical_points = volta_proto::c6_residual::C6SparseRationalPhysicalOpeningPoints::new(
         base_domain_log2,
         [0x31; 32],
         [0x41; 32],
         &input_point,
     )
     .map_err(|error| error.to_string())?;
-    let response_points: Vec<_> = packed_points
+    let response_points: Vec<_> = physical_points
         .response()
         .iter()
         .map(|point| Point::new(point.iter().copied().map(c61_p3_fp2_from_volta).collect()))
         .collect();
-    let plan_points: Vec<_> = packed_points
+    let plan_points: Vec<_> = physical_points
         .plan()
         .iter()
         .map(|point| Point::new(point.iter().copied().map(c61_p3_fp2_from_volta).collect()))
         .collect();
-    if response_points.len() != 6 || plan_points.len() != 3 {
-        return Err("C6SMO1 scaled opening census is not 6+3".to_owned());
+    if response_points.len() != 12 || plan_points.len() != 3 {
+        return Err("C6SMO1 physical opening census is not 12+3".to_owned());
+    }
+    if response_points.iter().any(|point| point.num_variables() != response_num_variables)
+        || plan_points.iter().any(|point| point.num_variables() != plan_num_variables)
+    {
+        return Err("C6SMO1 physical opening dimensions are noncanonical".to_owned());
     }
 
     let response_witness = Poly::new(
-        (0..1usize << num_variables)
+        (0..1usize << response_num_variables)
             .map(|index| Goldilocks::from_u64((index as u64).wrapping_mul(43).wrapping_add(11)))
             .collect(),
     );
     let plan_witness = Poly::new(
-        (0..1usize << num_variables)
+        (0..1usize << plan_num_variables)
             .map(|index| Goldilocks::from_u64((index as u64).wrapping_mul(47).wrapping_add(13)))
             .collect(),
     );
@@ -2014,13 +2032,16 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
 
     let mut provider_transcript = Transcript::new(verifier_seed);
     let (mut response_challenger, mut plan_challenger, provider_coordinator) =
-        c61_shared_round_pair(&mut provider_transcript, [num_variables, num_variables]);
+        c61_shared_round_pair(
+            &mut provider_transcript,
+            [response_num_variables, plan_num_variables],
+        );
     let response_config = c61_authenticated_config::<
         crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
-    >(num_variables)?;
+    >(response_num_variables)?;
     let plan_config = c61_authenticated_config::<
         crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
-    >(num_variables)?;
+    >(plan_num_variables)?;
     let response_mmcs = c61_reference_mmcs();
     let plan_mmcs = c61_reference_mmcs();
     let response_dft = Radix2DFTSmallBatch::default();
@@ -2076,7 +2097,7 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
         C61AuthenticatedWhirBaseProof::decode(&[0u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES])
             .map_err(|error| error.to_string())?;
     let response_placeholder = encode_c61_authenticated_p3_artifact_inner(
-        num_variables,
+        response_num_variables,
         &response_commitment,
         &response_output.proof,
         placeholder,
@@ -2084,7 +2105,7 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
     )
     .map_err(|error| error.to_string())?;
     let plan_payload = encode_c61_authenticated_p3_artifact_inner(
-        num_variables,
+        plan_num_variables,
         &plan_commitment,
         &plan_output.proof,
         placeholder,
@@ -2092,7 +2113,8 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
     )
     .map_err(|error| error.to_string())?;
     let placeholder_artifact = encode_c61_shared_multi_oracle_artifact(
-        num_variables,
+        response_num_variables,
+        plan_num_variables,
         &response_placeholder,
         &plan_payload,
     )
@@ -2134,16 +2156,20 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
     )
     .map_err(|error| error.to_string())?;
     let response_payload = encode_c61_authenticated_p3_artifact_inner(
-        num_variables,
+        response_num_variables,
         &response_commitment,
         &response_output.proof,
         joint_closure.proof,
         false,
     )
     .map_err(|error| error.to_string())?;
-    let artifact =
-        encode_c61_shared_multi_oracle_artifact(num_variables, &response_payload, &plan_payload)
-            .map_err(|error| error.to_string())?;
+    let artifact = encode_c61_shared_multi_oracle_artifact(
+        response_num_variables,
+        plan_num_variables,
+        &response_payload,
+        &plan_payload,
+    )
+    .map_err(|error| error.to_string())?;
     if artifact.payload.len() != placeholder_artifact.payload.len() {
         return Err("C6SMO1 joint tag changed strict payload length".to_owned());
     }
@@ -2151,7 +2177,8 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
         let rejects = |payload: Vec<u8>| {
             decode_c61_shared_multi_oracle_artifact(
                 &C61SharedMultiOracleArtifact { payload },
-                num_variables,
+                response_num_variables,
+                plan_num_variables,
             )
             .is_err()
         };
@@ -2159,10 +2186,10 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
         bad_magic[0] ^= 1;
         let mut bad_version = artifact.payload.clone();
         bad_version[8] ^= 1;
-        let mut bad_dimension = artifact.payload.clone();
-        bad_dimension[10] ^= 1;
-        let mut bad_reserved = artifact.payload.clone();
-        bad_reserved[11] = 1;
+        let mut bad_response_dimension = artifact.payload.clone();
+        bad_response_dimension[10] ^= 1;
+        let mut bad_plan_dimension = artifact.payload.clone();
+        bad_plan_dimension[11] ^= 1;
         let mut bad_response_len = artifact.payload.clone();
         bad_response_len[12..16].copy_from_slice(&0u32.to_le_bytes());
         let mut bad_plan_reserved_tag = artifact.payload.clone();
@@ -2174,8 +2201,8 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
         [
             bad_magic,
             bad_version,
-            bad_dimension,
-            bad_reserved,
+            bad_response_dimension,
+            bad_plan_dimension,
             bad_response_len,
             bad_plan_reserved_tag,
             trailing,
@@ -2186,17 +2213,24 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
     };
 
     let ((response_commitment, response_proof), (plan_commitment, plan_proof), joint_tag) =
-        decode_c61_shared_multi_oracle_artifact(&artifact, num_variables)
-            .map_err(|error| error.to_string())?;
+        decode_c61_shared_multi_oracle_artifact(
+            &artifact,
+            response_num_variables,
+            plan_num_variables,
+        )
+        .map_err(|error| error.to_string())?;
     let mut verifier_transcript = Transcript::new(verifier_seed);
     let (mut response_challenger, mut plan_challenger, verifier_coordinator) =
-        c61_shared_round_pair(&mut verifier_transcript, [num_variables, num_variables]);
+        c61_shared_round_pair(
+            &mut verifier_transcript,
+            [response_num_variables, plan_num_variables],
+        );
     let response_config = c61_authenticated_config::<
         crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
-    >(num_variables)?;
+    >(response_num_variables)?;
     let plan_config = c61_authenticated_config::<
         crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
-    >(num_variables)?;
+    >(plan_num_variables)?;
     let response_mmcs = c61_reference_mmcs();
     let plan_mmcs = c61_reference_mmcs();
     response_challenger.observe(response_commitment.clone());
@@ -2311,14 +2345,19 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
         return Err("C6SMO1 provider/verifier shared transcript mismatch".to_owned());
     }
 
-    let strict_one =
-        c61_authenticated_structural_budget_inner(num_variables, false)?.strict_chain_bytes;
+    let strict_response = c61_authenticated_structural_budget_inner(response_num_variables, false)?
+        .strict_chain_bytes;
+    let strict_plan =
+        c61_authenticated_structural_budget_inner(plan_num_variables, false)?.strict_chain_bytes;
     Ok(C61AuthenticatedP3SharedMultiOracleDiagnostic {
-        num_variables,
+        response_num_variables,
+        plan_num_variables,
         response_claim_count: response_targets.len(),
         plan_claim_count: plan_targets.len(),
         strict_payload_bytes: artifact.payload.len(),
-        strict_payload_max_bytes: C61_SHARED_MULTI_ORACLE_HEADER_BYTES + 2 * strict_one,
+        strict_payload_max_bytes: C61_SHARED_MULTI_ORACLE_HEADER_BYTES
+            + strict_response
+            + strict_plan,
         provider_interaction,
         verifier_interaction,
         native_challenges_shared: response_output.claim_weights[..plan_output.claim_weights.len()]
@@ -2779,20 +2818,22 @@ mod tests {
     }
 
     #[test]
-    fn response_and_plan_share_every_whir_round_and_one_authenticated_residual() {
+    fn physical_response_and_plan_share_common_rounds_and_one_authenticated_residual() {
         let report = run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(14).unwrap();
-        assert_eq!(report.response_claim_count, 6);
+        assert_eq!(report.response_num_variables, 14);
+        assert_eq!(report.plan_num_variables, 13);
+        assert_eq!(report.response_claim_count, 12);
         assert_eq!(report.plan_claim_count, 3);
-        assert_eq!(report.strict_payload_bytes, 750_928);
-        assert_eq!(report.strict_payload_max_bytes, 854_096);
+        assert_eq!(report.strict_payload_bytes, 674_972);
+        assert_eq!(report.strict_payload_max_bytes, 770_748);
         assert!(report.strict_payload_bytes <= report.strict_payload_max_bytes);
         assert!(report.strict_payload_max_bytes < C61_SHARED_MULTI_ORACLE_MAX_BYTES);
         assert_eq!(report.provider_interaction, report.verifier_interaction);
-        assert_eq!(report.provider_interaction.provider_messages, 26);
-        assert_eq!(report.provider_interaction.provider_semantic_bytes, 105_216);
-        assert_eq!(report.provider_interaction.client_fp_challenges, 54);
-        assert_eq!(report.provider_interaction.client_query_challenges, 2_542);
-        assert_eq!(report.provider_interaction.client_challenge_payload_bytes, 10_600);
+        assert_eq!(report.provider_interaction.provider_messages, 36);
+        assert_eq!(report.provider_interaction.provider_semantic_bytes, 94_752);
+        assert_eq!(report.provider_interaction.client_fp_challenges, 75);
+        assert_eq!(report.provider_interaction.client_query_challenges, 4_162);
+        assert_eq!(report.provider_interaction.client_challenge_payload_bytes, 17_248);
         assert_eq!(
             report.provider_interaction.provider_payload_bytes as usize
                 + C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES,

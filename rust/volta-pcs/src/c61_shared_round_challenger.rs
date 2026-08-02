@@ -39,6 +39,7 @@ struct SharedState<'a> {
     initial_root_seen: [bool; 2],
     public_statement_bound: [bool; 2],
     public_statement_digest: Option<[u8; 32]>,
+    pre_statement_transaction_complete: bool,
     pending_provider_bytes: u64,
     stats: C61WhirInteractionStats,
     generations: [u64; 2],
@@ -82,6 +83,7 @@ pub(crate) fn c61_shared_round_pair(
             initial_root_seen: [false; 2],
             public_statement_bound: [false; 2],
             public_statement_digest: None,
+            pre_statement_transaction_complete: false,
             pending_provider_bytes: 0,
             stats: C61WhirInteractionStats::default(),
             generations: [0; 2],
@@ -181,6 +183,36 @@ impl<'a> C61SharedRoundChallenger<'a> {
 }
 
 impl C61SharedRoundCoordinator<'_> {
+    /// Run the challenge-dependent compiler relation after both commitment
+    /// roots are fixed and before either lane binds its derived opening
+    /// points.  This is a one-shot transcript transaction: it cannot be
+    /// reopened after success or interleaved with a native WHIR challenge.
+    pub(crate) fn with_pre_statement_transcript<T>(
+        &self,
+        action: impl FnOnce(&mut Transcript) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let mut state = self.shared.state.lock().map_err(|_| {
+            "C6SPR3 shared challenger mutex poisoned before pre-statement relation".to_owned()
+        })?;
+        if state.initial_root_seen != [true; 2]
+            || state.public_statement_bound != [false; 2]
+            || state.public_statement_digest.is_some()
+            || state.pre_statement_transaction_complete
+            || state.arrived != [false; 2]
+            || state.requests != [None; 2]
+            || state.completed != [false; 2]
+            || state.generations != [0; 2]
+        {
+            return Err(
+                "C6SPR3 pre-statement relation did not start at the post-root boundary".to_owned()
+            );
+        }
+        flush_pending(&mut state);
+        let output = action(state.transcript)?;
+        state.pre_statement_transaction_complete = true;
+        Ok(output)
+    }
+
     /// Fresh post-proof scalar used to aggregate both affine base residuals
     /// before the compiler chain's single designated ZeroOpen.
     pub(crate) fn sample_postproof_fp2(&self) -> Result<Fp2, String> {
@@ -399,6 +431,25 @@ mod tests {
         assert_eq!(stats.provider_payload_bytes, 80);
         assert_eq!(stats.client_fp_challenges, 3);
         assert_eq!(stats.client_query_challenges, 1);
+    }
+
+    #[test]
+    fn pre_statement_transaction_is_post_root_pre_point_and_one_shot() {
+        let mut transcript = Transcript::new([0x63; 32]);
+        let (mut response, mut plan, coordinator) = c61_shared_round_pair(&mut transcript, [4, 4]);
+        let point = Point::new(vec![C61P3Fp2::ONE; 4]);
+        let root = C61Commitment::from(vec![[0x13; 32]]);
+        response.observe(root.clone());
+        assert!(coordinator.with_pre_statement_transcript(|_| Ok::<_, String>(())).is_err());
+        plan.observe(root);
+        let relation_challenge = coordinator
+            .with_pre_statement_transcript(|transcript| Ok(transcript.challenge_fp2()))
+            .unwrap();
+        assert_ne!(relation_challenge, Fp2::ZERO);
+        assert!(coordinator.with_pre_statement_transcript(|_| Ok::<_, String>(())).is_err());
+        response.observe_public_points([0xA3; 32], std::slice::from_ref(&point)).unwrap();
+        plan.observe_public_points([0xA3; 32], std::slice::from_ref(&point)).unwrap();
+        assert!(coordinator.with_pre_statement_transcript(|_| Ok::<_, String>(())).is_err());
     }
 
     #[test]

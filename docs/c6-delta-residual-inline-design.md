@@ -2070,6 +2070,60 @@ Budget profile v11 leaves the conservative `28/|Fp2|` relation event and all
 registered byte, setup, state and roofline values unchanged with
 `credit:false`.  No pod was contacted or authorized.
 
+### 0.27 C6TFA1 direct interval reducer
+
+The long direct ranges no longer require iteration over atomic outputs.  The
+new exact public primitive evaluates
+
+```text
+sum_(i=0)^(n-1)
+  eq(p, left_offset + left_stride*i)
+  * eq(q, right_offset + right_stride*i)
+```
+
+by decomposing `[0,n)` into aligned dyadic blocks.  Inside one block, a
+binary carry automaton evaluates both affine index maps; its states are the
+two carries and its transition weights are the corresponding equality-bit
+factors.  The algorithm allocates and visits only the carry states.  It
+supports zero stride, handles challenge coordinates equal to zero or one
+without division and rejects endpoint overflow or an index outside either
+point domain.
+
+An exhaustive small differential covers both offsets `0..7`, both strides
+`0..3`, all legal lengths through 16, zero/one coordinates, empty ranges and
+overflow.  The result equals naive equality evaluation in every case.  The
+complete C6TFA1 direct reducer then uses this primitive for `SourceGrammar`,
+affine-alpha and both tail families.  Reverse auxiliary terms, `RawCopy`,
+`Product`, `Zero` and the 673 ProductMask corrections remain explicit and
+are bounded by the compact closure census.  On the scaled direct fixture,
+its family folds equal the already-green iterative direct reference; the
+exact reducer census is **140 dyadic blocks / 2,666 transitions / at most 3
+carry states / 194 explicit terms**.
+
+The frozen T1 production-shape screen is also executable and pins the exact
+per-repetition atomic-output census
+
+```text
+[14,926,575, 4, 4, 300,748, 4,038, 2, 31,979,441, 223,540].
+```
+
+Across both repetitions, all 56 interval reductions total **510 dyadic
+blocks / 30,072 transition rows**, again with at most three carry states.
+The closure-bounded part is **1,513,162 explicit terms**, for **1,543,234
+rows/terms** instead of **225,997,412 typed coefficient writes**.  This is an
+arithmetic census, not a timing measurement or a native-proof row count.
+
+The direct reducer still receives the installed operation plan locally to
+obtain ProductClosure lengths and mask sources.  The client no longer stores
+that plan, so those compact data must be authenticated against the plan
+commitment before the verifier may recompute the scalar.  The active local
+**HARD STOP** advances to
+`C6TFA1_NATIVE_D25_RECURRENCE_AND_METADATA_BINDING_REQUIRED`.  It requires
+the authenticated compact metadata, two committed D25 reverse recurrences,
+their exact source boundaries and the claimless typed-backend connection.
+Budget profile v12 changes no registered bytes, soundness, state, roofline or
+credit.  No pod contact is authorized.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

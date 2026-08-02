@@ -11,9 +11,9 @@ This report deliberately has two different verdict scopes:
   terminal-functional relation.  Direct-point integration is complete.  The
   C6TFA1 preregistration factors the exact event fold into two D25 reverse
   lanes plus an eight-family direct reducer.  Its scaled differential is now
-  exact; the constrained interval reducer, native recurrence and full-chain
-  benchmark remain absent, so neither reference is final proof or timing
-  credit.
+  exact, and the direct interval reducer has an executable production-shape
+  census.  Native metadata binding, recurrence and the full-chain benchmark
+  remain absent, so neither reference is final proof or timing credit.
 
 No projected ceiling or analytic roofline is proof-size, setup, prover-time,
 verifier-time or hardware credit.  The implemented PCS codec receives only
@@ -132,6 +132,15 @@ C61_RUNTIME_LOG2 = 24
 C61_TERMINAL_OUTPUTS = 64
 C61_TERMINAL_FUNCTIONAL_DOMAIN_LOG2 = 28
 C61_TERMINAL_FUNCTIONAL_WRITES = c6.RESIDUAL_COEFFICIENT_WRITES_TOTAL
+C61_FOLDED_DIRECT_INTERVAL_REDUCTIONS = 56
+C61_FOLDED_DIRECT_INTERVAL_DYADIC_BLOCKS = 510
+C61_FOLDED_DIRECT_INTERVAL_TRANSITION_ROWS = 30_072
+C61_FOLDED_DIRECT_INTERVAL_MAX_CARRY_STATES = 3
+C61_FOLDED_DIRECT_EXPLICIT_TERMS = 1_513_162
+C61_FOLDED_DIRECT_TOTAL_ROWS_AND_TERMS = (
+    C61_FOLDED_DIRECT_INTERVAL_TRANSITION_ROWS
+    + C61_FOLDED_DIRECT_EXPLICIT_TERMS
+)
 
 # Native transparent candidate.  Each model/embedding/compiler component uses
 # two independent no-grinding chains.  C6AWH1 configures 75 public PCS bits so
@@ -499,7 +508,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v11",
+        "profile": "C6.1-public-compression-reference-v12",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
@@ -507,7 +516,8 @@ def build_report() -> dict[str, Any]:
             "LEAN_RUST_DIFFERENTIAL_TYPED_STATEMENTS_GREEN__"
             "DIRECT_MLE_SCHEDULE_AND_FUSED_PRE_BETA_OUTPUTS_GREEN__"
             "C6TFA1_EXACT_EIGHT_FAMILY_DIFFERENTIAL_GREEN__"
-            "NATIVE_INTERVAL_REDUCER_AND_D25_RECURRENCE_REQUIRED__"
+            "DIRECT_INTERVAL_REDUCER_GREEN__"
+            "NATIVE_D25_RECURRENCE_AND_METADATA_BINDING_REQUIRED__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
@@ -580,7 +590,8 @@ def build_report() -> dict[str, Any]:
                 "LEAN_RUST_DIFFERENTIAL_TYPED_STATEMENTS_GREEN__"
                 "DIRECT_MLE_SCHEDULE_AND_FUSED_PRE_BETA_OUTPUTS_GREEN__"
                 "C6TFA1_EXACT_EIGHT_FAMILY_DIFFERENTIAL_GREEN__"
-                "NATIVE_INTERVAL_REDUCER_AND_D25_RECURRENCE_REQUIRED__"
+                "DIRECT_INTERVAL_REDUCER_GREEN__"
+                "NATIVE_D25_RECURRENCE_AND_METADATA_BINDING_REQUIRED__"
                 "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
             "statement": (
@@ -1058,7 +1069,7 @@ def build_report() -> dict[str, Any]:
                 ),
             },
             "local_hard_stop": {
-                "status": "C6TFA1_NATIVE_INTERVAL_REDUCER_AND_D25_RECURRENCE_REQUIRED",
+                "status": "C6TFA1_NATIVE_D25_RECURRENCE_AND_METADATA_BINDING_REQUIRED",
                 "canonical_runtime_seam_green": True,
                 "raw_verifier_runtime_values": raw_verifier_runtime_values,
                 "canonical_runtime_values": canonical_runtime_values,
@@ -1108,7 +1119,30 @@ def build_report() -> dict[str, Any]:
                     "scaled_family_outputs_per_repetition": [15, 4, 4, 36, 6, 2, 953, 28],
                     "scaled_all_family_folds_nonzero": True,
                     "v3_and_malformed_dimension_reject": True,
-                    "constrained_interval_reducer_required": True,
+                    "constrained_interval_reducer_required": False,
+                    "direct_interval_reducer_green": True,
+                    "production_interval_reductions": (
+                        C61_FOLDED_DIRECT_INTERVAL_REDUCTIONS
+                    ),
+                    "production_interval_dyadic_blocks": (
+                        C61_FOLDED_DIRECT_INTERVAL_DYADIC_BLOCKS
+                    ),
+                    "production_interval_transition_rows": (
+                        C61_FOLDED_DIRECT_INTERVAL_TRANSITION_ROWS
+                    ),
+                    "production_interval_max_carry_states": (
+                        C61_FOLDED_DIRECT_INTERVAL_MAX_CARRY_STATES
+                    ),
+                    "production_explicit_terms": C61_FOLDED_DIRECT_EXPLICIT_TERMS,
+                    "production_direct_reducer_total_rows_and_terms": (
+                        C61_FOLDED_DIRECT_TOTAL_ROWS_AND_TERMS
+                    ),
+                    "production_event_writes_avoided": (
+                        C61_TERMINAL_FUNCTIONAL_WRITES
+                        - C61_FOLDED_DIRECT_TOTAL_ROWS_AND_TERMS
+                    ),
+                    "product_metadata_authenticated": False,
+                    "native_d25_recurrences_green": False,
                     "credit": False,
                 },
                 "native_trace_audit": {
@@ -1143,7 +1177,8 @@ def build_report() -> dict[str, Any]:
                     ),
                 },
                 "required_before_resume": [
-                    "realize the exact D25 recurrences and constrained direct reducer without materializing the D28 event stream",
+                    "bind ProductClosure lengths, product-mask sources and zero-root metadata to the installed-plan commitment",
+                    "realize the two exact D25 reverse recurrences and source boundaries",
                     "connect the factorized relation to the claimless authenticated WHIR opening and typed compiler-chain boundary",
                 ],
                 "credit": False,
@@ -1369,6 +1404,17 @@ def build_report() -> dict[str, Any]:
     )
     assert C61_TERMINAL_FUNCTIONAL_WRITES == 225_997_412
     assert C61_TERMINAL_FUNCTIONAL_WRITES < 2**C61_TERMINAL_FUNCTIONAL_DOMAIN_LOG2
+    assert C61_FOLDED_DIRECT_INTERVAL_REDUCTIONS == 56
+    assert C61_FOLDED_DIRECT_INTERVAL_DYADIC_BLOCKS == 510
+    assert C61_FOLDED_DIRECT_INTERVAL_TRANSITION_ROWS == 30_072
+    assert C61_FOLDED_DIRECT_INTERVAL_MAX_CARRY_STATES == 3
+    assert C61_FOLDED_DIRECT_EXPLICIT_TERMS == 1_513_162
+    assert C61_FOLDED_DIRECT_TOTAL_ROWS_AND_TERMS == 1_543_234
+    assert (
+        C61_TERMINAL_FUNCTIONAL_WRITES
+        - C61_FOLDED_DIRECT_TOTAL_ROWS_AND_TERMS
+        == 224_454_178
+    )
     assert c6.soundness_bits(candidate_complete_error) > Decimal("119.65")
     assert c6.soundness_bits(candidate_session_error) > Decimal("115.56")
     assert native_compiler_symbols == 4_902_000_320

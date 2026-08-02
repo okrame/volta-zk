@@ -20,11 +20,19 @@ pub const C61_EMBEDDING_OPENING_TARGETS: usize = 6;
 pub const C61_COMPILER_TERMINAL_TARGETS: usize = C61_TERMINAL_CLAIMS;
 pub const C61_TERMINAL_FUNCTIONAL_RELATION_LOG2: u8 = 28;
 pub const C61_TERMINAL_FUNCTIONAL_PROOF_REPETITIONS: usize = 2;
+pub const C61_SPARSE_RATIONAL_INPUT_LOG2: u8 = 25;
+pub const C61_SPARSE_RATIONAL_PACKED_LOG2: u8 = 27;
+pub const C61_SPARSE_RATIONAL_RESPONSE_OPENINGS: usize = 6;
+pub const C61_SPARSE_RATIONAL_PLAN_OPENINGS: usize = 3;
 
 const PUBLIC_STATEMENT_DOMAIN: &str = "volta-zk/c6.1/typed-native-chain-statement/v1";
 const COMMITTED_OPENINGS_DOMAIN: &str = "volta-zk/c6.1/typed-committed-openings/v1";
 const COMPILER_RELATION_DOMAIN: &str = "volta-zk/c6.1/typed-terminal-functional-compiler/v1";
 const TERMINAL_CLAIMS_DOMAIN: &str = "volta-zk/c6.1/ordered-terminal-claims/v1";
+const SPARSE_RESPONSE_LAYOUT_DOMAIN: &str = "volta-zk/c6.1/sparse-response-layout/v1";
+const SPARSE_PLAN_LAYOUT_DOMAIN: &str = "volta-zk/c6.1/sparse-plan-layout/v1";
+const SPARSE_ORACLES_DOMAIN: &str = "volta-zk/c6.1/sparse-compiler-oracles/v1";
+const SPARSE_OPENING_STATEMENT_DOMAIN: &str = "volta-zk/c6.1/sparse-compiler-opening-statement/v1";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C61TerminalFunctionalStatementError(String);
@@ -65,6 +73,275 @@ impl C61NativeCommitmentDescriptor {
             ));
         }
         Ok(())
+    }
+}
+
+fn sparse_layout_digest(domain: &'static str, blocks: &[&[u8]]) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new_derive_key(domain);
+    hasher.update(&[C61_SPARSE_RATIONAL_INPUT_LOG2, C61_SPARSE_RATIONAL_PACKED_LOG2]);
+    hasher.update(&(blocks.len() as u64).to_le_bytes());
+    for (ordinal, block) in blocks.iter().enumerate() {
+        hasher.update(&(ordinal as u64).to_le_bytes());
+        hasher.update(&(block.len() as u64).to_le_bytes());
+        hasher.update(block);
+    }
+    *hasher.finalize().as_bytes()
+}
+
+pub fn c61_sparse_response_layout_digest() -> [u8; 32] {
+    sparse_layout_digest(
+        SPARSE_RESPONSE_LAYOUT_DOMAIN,
+        &[b"lambda_0_D25", b"lambda_1_D25", b"runtime_D24_g0_D23_g1_D23", b"mu_D25"],
+    )
+}
+
+pub fn c61_sparse_plan_layout_digest() -> [u8; 32] {
+    sparse_layout_digest(
+        SPARSE_PLAN_LAYOUT_DOMAIN,
+        &[b"opcode_D25", b"lhs_D25", b"rhs_D25", b"zero_D25"],
+    )
+}
+
+/// The two commitment roots fixed before C6SPR2's lane/rational challenges.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C61SparseRationalCompilerOracles {
+    pub response: C61NativeCommitmentDescriptor,
+    pub plan: C61NativeCommitmentDescriptor,
+    pub response_layout_digest: [u8; 32],
+    pub plan_layout_digest: [u8; 32],
+}
+
+impl C61SparseRationalCompilerOracles {
+    pub fn new(
+        response: C61NativeCommitmentDescriptor,
+        plan: C61NativeCommitmentDescriptor,
+    ) -> Result<Self> {
+        let oracles = Self {
+            response,
+            plan,
+            response_layout_digest: c61_sparse_response_layout_digest(),
+            plan_layout_digest: c61_sparse_plan_layout_digest(),
+        };
+        oracles.validate()?;
+        Ok(oracles)
+    }
+
+    pub fn validate(&self) -> Result<()> {
+        self.response.validate()?;
+        self.plan.validate()?;
+        if self.response.polynomial_domain_log2 != C61_SPARSE_RATIONAL_PACKED_LOG2
+            || self.plan.polynomial_domain_log2 != C61_SPARSE_RATIONAL_PACKED_LOG2
+        {
+            return Err(C61TerminalFunctionalStatementError::new(
+                "C6SPR2 response and plan commitments must both use D27",
+            ));
+        }
+        if self.response_layout_digest != c61_sparse_response_layout_digest()
+            || self.plan_layout_digest != c61_sparse_plan_layout_digest()
+        {
+            return Err(C61TerminalFunctionalStatementError::new(
+                "C6SPR2 compiler oracle layout digest is noncanonical",
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn digest(&self) -> Result<[u8; 32]> {
+        self.validate()?;
+        let mut hasher = blake3::Hasher::new_derive_key(SPARSE_ORACLES_DOMAIN);
+        for descriptor in [self.response, self.plan] {
+            hasher.update(&descriptor.parameter_digest);
+            hasher.update(&descriptor.commitment_root);
+            hasher.update(&[descriptor.polynomial_domain_log2]);
+        }
+        hasher.update(&self.response_layout_digest);
+        hasher.update(&self.plan_layout_digest);
+        Ok(*hasher.finalize().as_bytes())
+    }
+}
+
+/// Nine ordered points derived after the joint GKR leaf reduction.  The
+/// order is response `(lambda_0, lambda_1, mu, runtime, g_0, g_1)` followed
+/// by fixed plan `(opcode, lhs, rhs)`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C61SparseRationalCompilerOpeningPoints {
+    input_point: Vec<Fp2>,
+    response: [Vec<Fp2>; C61_SPARSE_RATIONAL_RESPONSE_OPENINGS],
+    plan: [Vec<Fp2>; C61_SPARSE_RATIONAL_PLAN_OPENINGS],
+    digest: [u8; 32],
+}
+
+impl C61SparseRationalCompilerOpeningPoints {
+    pub fn new(input_point: &[Fp2]) -> Result<Self> {
+        if input_point.len() != usize::from(C61_SPARSE_RATIONAL_INPUT_LOG2) {
+            return Err(C61TerminalFunctionalStatementError::new(
+                "C6SPR2 GKR input point must be D25",
+            ));
+        }
+        let dimension = input_point.len();
+        let append = |prefix: &[Fp2], suffix: &[Fp2]| {
+            prefix.iter().chain(suffix).copied().collect::<Vec<_>>()
+        };
+        let response = [
+            append(input_point, &[Fp2::ZERO, Fp2::ZERO]),
+            append(input_point, &[Fp2::ONE, Fp2::ZERO]),
+            append(input_point, &[Fp2::ONE, Fp2::ONE]),
+            append(&input_point[..dimension - 1], &[Fp2::ZERO, Fp2::ZERO, Fp2::ONE]),
+            append(&input_point[..dimension - 2], &[Fp2::ZERO, Fp2::ONE, Fp2::ZERO, Fp2::ONE]),
+            append(&input_point[..dimension - 2], &[Fp2::ONE, Fp2::ONE, Fp2::ZERO, Fp2::ONE]),
+        ];
+        let plan = [
+            append(input_point, &[Fp2::ZERO, Fp2::ZERO]),
+            append(input_point, &[Fp2::ONE, Fp2::ZERO]),
+            append(input_point, &[Fp2::ZERO, Fp2::ONE]),
+        ];
+        let mut points =
+            Self { input_point: input_point.to_vec(), response, plan, digest: [0; 32] };
+        points.digest = points.recompute_digest();
+        Ok(points)
+    }
+
+    pub fn input_point(&self) -> &[Fp2] {
+        &self.input_point
+    }
+
+    pub fn response(&self) -> &[Vec<Fp2>; C61_SPARSE_RATIONAL_RESPONSE_OPENINGS] {
+        &self.response
+    }
+
+    pub fn plan(&self) -> &[Vec<Fp2>; C61_SPARSE_RATIONAL_PLAN_OPENINGS] {
+        &self.plan
+    }
+
+    pub fn digest(&self) -> [u8; 32] {
+        self.digest
+    }
+
+    pub fn validate(&self) -> Result<()> {
+        if *self != Self::new(&self.input_point)? {
+            return Err(C61TerminalFunctionalStatementError::new(
+                "C6SPR2 compiler opening points are noncanonical",
+            ));
+        }
+        Ok(())
+    }
+
+    fn recompute_digest(&self) -> [u8; 32] {
+        let mut hasher =
+            blake3::Hasher::new_derive_key("volta-zk/c6.1/sparse-compiler-opening-points/v1");
+        for (role, points) in [(0u8, self.response.as_slice()), (1u8, self.plan.as_slice())] {
+            hasher.update(&[role]);
+            hasher.update(&(points.len() as u64).to_le_bytes());
+            for (ordinal, point) in points.iter().enumerate() {
+                hasher.update(&(ordinal as u64).to_le_bytes());
+                hash_point(&mut hasher, point);
+            }
+        }
+        *hasher.finalize().as_bytes()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C61SparseRationalCompilerOpeningStatement {
+    pub compiler_statement_digest: [u8; 32],
+    pub sparse_relation_digest: [u8; 32],
+    pub gkr_transcript_digest: [u8; 32],
+    pub oracles: C61SparseRationalCompilerOracles,
+    pub points: C61SparseRationalCompilerOpeningPoints,
+    digest: [u8; 32],
+}
+
+impl C61SparseRationalCompilerOpeningStatement {
+    pub fn new(
+        compiler_statement_digest: [u8; 32],
+        sparse_relation_digest: [u8; 32],
+        gkr_transcript_digest: [u8; 32],
+        oracles: C61SparseRationalCompilerOracles,
+        input_point: &[Fp2],
+    ) -> Result<Self> {
+        if [compiler_statement_digest, sparse_relation_digest, gkr_transcript_digest]
+            .contains(&[0; 32])
+        {
+            return Err(C61TerminalFunctionalStatementError::new(
+                "C6SPR2 opening statement contains a zero binding digest",
+            ));
+        }
+        oracles.validate()?;
+        let points = C61SparseRationalCompilerOpeningPoints::new(input_point)?;
+        let mut statement = Self {
+            compiler_statement_digest,
+            sparse_relation_digest,
+            gkr_transcript_digest,
+            oracles,
+            points,
+            digest: [0; 32],
+        };
+        statement.digest = statement.recompute_digest()?;
+        Ok(statement)
+    }
+
+    pub fn digest(&self) -> [u8; 32] {
+        self.digest
+    }
+
+    pub fn validate(&self) -> Result<()> {
+        self.oracles.validate()?;
+        self.points.validate()?;
+        if [self.compiler_statement_digest, self.sparse_relation_digest, self.gkr_transcript_digest]
+            .contains(&[0; 32])
+            || self.digest != self.recompute_digest()?
+        {
+            return Err(C61TerminalFunctionalStatementError::new(
+                "C6SPR2 opening statement binding is inconsistent",
+            ));
+        }
+        Ok(())
+    }
+
+    fn recompute_digest(&self) -> Result<[u8; 32]> {
+        let mut hasher = blake3::Hasher::new_derive_key(SPARSE_OPENING_STATEMENT_DOMAIN);
+        hasher.update(&self.compiler_statement_digest);
+        hasher.update(&self.sparse_relation_digest);
+        hasher.update(&self.gkr_transcript_digest);
+        hasher.update(&self.oracles.digest()?);
+        hasher.update(&self.points.digest());
+        Ok(*hasher.finalize().as_bytes())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C61SparseRationalProverOpeningStatement {
+    pub public: C61SparseRationalCompilerOpeningStatement,
+    pub response_targets: [ProverAuthed; C61_SPARSE_RATIONAL_RESPONSE_OPENINGS],
+    pub plan_targets: [ProverAuthed; C61_SPARSE_RATIONAL_PLAN_OPENINGS],
+}
+
+impl C61SparseRationalProverOpeningStatement {
+    pub fn new(
+        public: C61SparseRationalCompilerOpeningStatement,
+        response_targets: [ProverAuthed; C61_SPARSE_RATIONAL_RESPONSE_OPENINGS],
+        plan_targets: [ProverAuthed; C61_SPARSE_RATIONAL_PLAN_OPENINGS],
+    ) -> Result<Self> {
+        public.validate()?;
+        Ok(Self { public, response_targets, plan_targets })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C61SparseRationalVerifierOpeningStatement {
+    pub public: C61SparseRationalCompilerOpeningStatement,
+    pub response_target_keys: [VerifierKey; C61_SPARSE_RATIONAL_RESPONSE_OPENINGS],
+    pub plan_target_keys: [VerifierKey; C61_SPARSE_RATIONAL_PLAN_OPENINGS],
+}
+
+impl C61SparseRationalVerifierOpeningStatement {
+    pub fn new(
+        public: C61SparseRationalCompilerOpeningStatement,
+        response_target_keys: [VerifierKey; C61_SPARSE_RATIONAL_RESPONSE_OPENINGS],
+        plan_target_keys: [VerifierKey; C61_SPARSE_RATIONAL_PLAN_OPENINGS],
+    ) -> Result<Self> {
+        public.validate()?;
+        Ok(Self { public, response_target_keys, plan_target_keys })
     }
 }
 
@@ -119,6 +396,7 @@ pub struct C61TerminalFunctionalCompilerBinding {
     pub residual_manifest_digest: [u8; 32],
     pub residual_public_claims_digest: [u8; 32],
     pub relation_challenges_digest: [u8; 32],
+    pub sparse_oracles: C61SparseRationalCompilerOracles,
     pub leaf_points: [Vec<Fp2>; C61_TERMINAL_FUNCTIONAL_PROOF_REPETITIONS],
     pub auxiliary_points: [Vec<Fp2>; C61_TERMINAL_FUNCTIONAL_PROOF_REPETITIONS],
     pub terminal_claims: [Fp2; C61_TERMINAL_CLAIMS],
@@ -136,6 +414,7 @@ pub struct C61TerminalFunctionalCompilerStatement {
     pub residual_manifest_digest: [u8; 32],
     pub residual_public_claims_digest: [u8; 32],
     pub relation_challenges_digest: [u8; 32],
+    pub sparse_oracles: C61SparseRationalCompilerOracles,
     pub leaf_points: [Vec<Fp2>; C61_TERMINAL_FUNCTIONAL_PROOF_REPETITIONS],
     pub auxiliary_points: [Vec<Fp2>; C61_TERMINAL_FUNCTIONAL_PROOF_REPETITIONS],
     pub terminal_claims: [Fp2; C61_TERMINAL_CLAIMS],
@@ -156,6 +435,7 @@ impl C61TerminalFunctionalCompilerStatement {
             residual_manifest_digest,
             residual_public_claims_digest,
             relation_challenges_digest,
+            sparse_oracles,
             leaf_points,
             auxiliary_points,
             terminal_claims,
@@ -173,6 +453,7 @@ impl C61TerminalFunctionalCompilerStatement {
             residual_manifest_digest,
             residual_public_claims_digest,
             relation_challenges_digest,
+            sparse_oracles,
             leaf_points,
             auxiliary_points,
             terminal_claims,
@@ -202,6 +483,7 @@ impl C61TerminalFunctionalCompilerStatement {
                 "C6TFR1 compiler statement contains a zero binding digest",
             ));
         }
+        self.sparse_oracles.validate()?;
         if self.leaf_points.iter().any(|point| point.len() != C6_RESIDUAL_LEAF_ROUNDS) {
             return Err(C61TerminalFunctionalStatementError::new(
                 "C6TFR1 compiler statement has a malformed leaf point",
@@ -241,6 +523,7 @@ impl C61TerminalFunctionalCompilerStatement {
         ] {
             hasher.update(&digest);
         }
+        hasher.update(&self.sparse_oracles.digest()?);
         for (repetition, point) in self.leaf_points.iter().enumerate() {
             hasher.update(&[repetition as u8, 0]);
             hash_point(&mut hasher, point);
@@ -512,6 +795,11 @@ mod tests {
             residual_manifest_digest: [6; 32],
             residual_public_claims_digest: [7; 32],
             relation_challenges_digest: [8; 32],
+            sparse_oracles: C61SparseRationalCompilerOracles::new(
+                commitment(41, C61_SPARSE_RATIONAL_PACKED_LOG2),
+                commitment(51, C61_SPARSE_RATIONAL_PACKED_LOG2),
+            )
+            .unwrap(),
             leaf_points: std::array::from_fn(|repetition| {
                 (0..C6_RESIDUAL_LEAF_ROUNDS)
                     .map(|coordinate| fp2(200 + (repetition * 31 + coordinate) as u64))
@@ -654,6 +942,77 @@ mod tests {
             C61TypedNativeRelationStatement::Compiler(Box::new(compiler)),
         )
         .is_err());
+    }
+
+    #[test]
+    fn sparse_compiler_oracles_points_and_role_targets_are_exact_and_typed() {
+        let compiler = compiler_statement();
+        let compiler_digest = compiler.digest().unwrap();
+        let input_point: Vec<Fp2> = (0..C61_SPARSE_RATIONAL_INPUT_LOG2)
+            .map(|coordinate| fp2(900 + u64::from(coordinate)))
+            .collect();
+        let public = C61SparseRationalCompilerOpeningStatement::new(
+            compiler_digest,
+            [61; 32],
+            [62; 32],
+            compiler.sparse_oracles,
+            &input_point,
+        )
+        .unwrap();
+        public.validate().unwrap();
+        assert_eq!(public.points.response().len(), C61_SPARSE_RATIONAL_RESPONSE_OPENINGS);
+        assert_eq!(public.points.plan().len(), C61_SPARSE_RATIONAL_PLAN_OPENINGS);
+
+        let proto_points = volta_proto::c6_residual::C6SparseRationalPackedOpeningPoints::new(
+            C61_SPARSE_RATIONAL_INPUT_LOG2,
+            compiler.sparse_oracles.response.commitment_root,
+            compiler.sparse_oracles.plan.commitment_root,
+            &input_point,
+        )
+        .unwrap();
+        assert_eq!(public.points.response(), proto_points.response());
+        assert_eq!(public.points.plan(), proto_points.plan());
+
+        let response_values: [Fp2; C61_SPARSE_RATIONAL_RESPONSE_OPENINGS] =
+            std::array::from_fn(|index| fp2(1_000 + index as u64));
+        let plan_values: [Fp2; C61_SPARSE_RATIONAL_PLAN_OPENINGS] =
+            std::array::from_fn(|index| fp2(1_100 + index as u64));
+        let (response_targets, response_keys) = {
+            let (targets, keys) = role_targets(&response_values);
+            (targets.try_into().unwrap(), keys.try_into().unwrap())
+        };
+        let (plan_targets, plan_keys) = {
+            let (targets, keys) = role_targets(&plan_values);
+            (targets.try_into().unwrap(), keys.try_into().unwrap())
+        };
+        let prover = C61SparseRationalProverOpeningStatement::new(
+            public.clone(),
+            response_targets,
+            plan_targets,
+        )
+        .unwrap();
+        let verifier = C61SparseRationalVerifierOpeningStatement::new(
+            public.clone(),
+            response_keys,
+            plan_keys,
+        )
+        .unwrap();
+        assert_eq!(prover.public.digest(), verifier.public.digest());
+
+        let mut changed_key_verifier = verifier.clone();
+        changed_key_verifier.response_target_keys[0] =
+            VerifierKey::new(changed_key_verifier.response_target_keys[0].k + Fp2::ONE);
+        assert_eq!(changed_key_verifier.public.digest(), public.digest());
+
+        let mut changed_layout = compiler.sparse_oracles;
+        changed_layout.response_layout_digest[0] ^= 1;
+        assert!(changed_layout.validate().is_err());
+        let mut changed_points = public.clone();
+        changed_points.points.response.swap(0, 1);
+        assert!(changed_points.validate().is_err());
+        let mut changed_root = compiler.clone();
+        changed_root.sparse_oracles.response.commitment_root[0] ^= 1;
+        assert_ne!(compiler.digest().unwrap(), changed_root.digest().unwrap());
     }
 
     #[test]

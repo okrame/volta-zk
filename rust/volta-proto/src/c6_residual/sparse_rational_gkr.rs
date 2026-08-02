@@ -197,7 +197,7 @@ pub struct C6SparseRationalPackedOpeningPoints {
 }
 
 impl C6SparseRationalPackedOpeningPoints {
-    fn new(
+    pub fn new(
         base_domain_log2: u8,
         response_digest: C6ResidualDigest,
         plan_digest: C6ResidualDigest,

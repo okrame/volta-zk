@@ -1,12 +1,15 @@
 //! C6SPR1 scaled differential over the generic weighted fraction-tree GKR.
 //!
-//! This module is intentionally a clear CPU/reference seam.  It proves all
-//! seven preregistered rational sums and exposes the final leaf claims through
-//! the underlying fraction-tree proof, but it does not yet authenticate those
-//! claims against PCS commitments.  The latter is the next typed boundary.
+//! The clear CPU/reference seam proves all seven preregistered rational sums.
+//! Its blind counterpart reuses the installed authenticated LogUp grammar and
+//! leaves fourteen authenticated MLE claims for the joint PCS boundary.
 
 use super::*;
-use crate::logup::{prove_weighted_frac_tree, verify_frac_tree, Counters, FracProof};
+use crate::logup::{
+    blind_prove_weighted_frac_tree, blind_verify_frac_tree, prove_weighted_frac_tree,
+    verify_frac_tree, BlindFracProof, Counters, Doms, FracProof, ProdKeyTriples, ProdTriples,
+};
+use volta_mac::{CorrelationStream, VerifierCtx};
 
 mod joint_leaf;
 pub use joint_leaf::*;
@@ -1078,10 +1081,225 @@ pub fn verify_c6_residual_sparse_rational_gkr_reference(
             == sums[C6SparseRationalSubcheck::SourcePlan.index()])
 }
 
+fn sparse_rational_subcheck_depths(
+    operation_plan: &C6InstalledOperationPlan,
+) -> C6ResidualResult<[usize; C6_SPARSE_RATIONAL_SUBCHECKS]> {
+    let topology = operation_plan.topology();
+    let node_count = usize::try_from(topology.canonical_node_count)
+        .map_err(|_| C6ResidualError::new("C6SPR3 node count exceeds usize"))?;
+    let scalar_count = usize::try_from(topology.scalar_input_count)
+        .map_err(|_| C6ResidualError::new("C6SPR3 scalar count exceeds usize"))?;
+    let source_count = usize::try_from(topology.source_count)
+        .map_err(|_| C6ResidualError::new("C6SPR3 source count exceeds usize"))?;
+    let depth = |active_rows: usize| -> C6ResidualResult<usize> {
+        let rows = active_rows
+            .max(2)
+            .checked_next_power_of_two()
+            .ok_or_else(|| C6ResidualError::new("C6SPR3 fraction domain overflows"))?;
+        Ok(rows.trailing_zeros() as usize)
+    };
+    Ok([
+        depth(node_count)?,
+        depth(node_count)?,
+        depth(node_count)?,
+        depth(node_count)?,
+        depth(scalar_count)?,
+        depth(source_count)?,
+        depth(node_count)?,
+    ])
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct C6ResidualSparseRationalBlindGkrProof {
+    relation_digest: C6ResidualDigest,
+    subchecks: [BlindFracProof; C6_SPARSE_RATIONAL_SUBCHECKS],
+    root_inverse_corrections: [Fp2; C6_SPARSE_RATIONAL_SUBCHECKS],
+}
+
+impl C6ResidualSparseRationalBlindGkrProof {
+    pub fn bytes(&self) -> u64 {
+        self.subchecks.iter().map(BlindFracProof::bytes).sum::<u64>()
+            + 16 * C6_SPARSE_RATIONAL_SUBCHECKS as u64
+    }
+
+    pub fn relation_digest(&self) -> C6ResidualDigest {
+        self.relation_digest
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6SparseRationalBlindLeafClaim {
+    point: Vec<Fp2>,
+    numerator: ProverAuthed,
+    denominator: ProverAuthed,
+}
+
+impl C6SparseRationalBlindLeafClaim {
+    pub fn point(&self) -> &[Fp2] {
+        &self.point
+    }
+
+    pub fn numerator(&self) -> ProverAuthed {
+        self.numerator
+    }
+
+    pub fn denominator(&self) -> ProverAuthed {
+        self.denominator
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6SparseRationalBlindLeafKey {
+    point: Vec<Fp2>,
+    numerator: VerifierKey,
+    denominator: VerifierKey,
+}
+
+impl C6SparseRationalBlindLeafKey {
+    pub fn point(&self) -> &[Fp2] {
+        &self.point
+    }
+
+    pub fn numerator(&self) -> VerifierKey {
+        self.numerator
+    }
+
+    pub fn denominator(&self) -> VerifierKey {
+        self.denominator
+    }
+}
+
+/// Blind seven-tree prover.  Every fraction-tree message is a correction;
+/// the returned fourteen authenticated leaf claims are the only leaf values
+/// handed to the joint reducer.  Root ratios are enforced through one linear
+/// zero row and one nonzero-denominator product triple per subcheck.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+pub fn prove_c6_residual_sparse_rational_gkr_blind_reference(
+    operation_plan: &C6InstalledOperationPlan,
+    extraction: &C6DecodedInstanceExtractionPlan,
+    runtime: &C6RuntimeInstanceValues,
+    relation: &C6ResidualSparseRationalRelationReference,
+    stream: &mut CorrelationStream,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+    counters: &mut Counters,
+    products: &mut ProdTriples,
+    zeros: &mut Vec<ProverAuthed>,
+) -> C6ResidualResult<(
+    C6ResidualSparseRationalBlindGkrProof,
+    [C6SparseRationalBlindLeafClaim; C6_SPARSE_RATIONAL_SUBCHECKS],
+)> {
+    let leaves = materialize_sparse_rational_leaves(operation_plan, extraction, runtime, relation)?;
+    let mut subchecks = Vec::with_capacity(C6_SPARSE_RATIONAL_SUBCHECKS);
+    let mut root_inverse_corrections = Vec::with_capacity(C6_SPARSE_RATIONAL_SUBCHECKS);
+    let mut claims = Vec::with_capacity(C6_SPARSE_RATIONAL_SUBCHECKS);
+    for leaves in &leaves {
+        let (proof, point, numerator, denominator, roots) = blind_prove_weighted_frac_tree(
+            &leaves.numerator,
+            &leaves.denominator,
+            stream,
+            doms,
+            tx,
+            counters,
+            products,
+            zeros,
+        );
+        if roots.1.x == Fp2::ZERO || roots.0.x != leaves.expected_sum * roots.1.x {
+            return Err(C6ResidualError::new(
+                "C6SPR3 blind fraction root differs from its exact rational sum",
+            ));
+        }
+        let inverse = roots.1.x.inv();
+        let inverse_domain = doms.take(1);
+        let inverse_mask = stream
+            .draw_fulls(inverse_domain, 1)
+            .into_iter()
+            .next()
+            .ok_or_else(|| C6ResidualError::new("C6SPR3 missing root-inverse correlation"))?;
+        stream
+            .record_c6_fullfield_plaintexts(inverse_domain, &[inverse])
+            .map_err(|error| C6ResidualError::new(error.to_string()))?;
+        root_inverse_corrections.push(inverse - inverse_mask.x);
+        tx.append("c6_sparse_root_inverse_correction", 16);
+        let inverse = inverse_mask.authenticate(inverse);
+        products.push((roots.1, inverse, ProverAuthed::from_public(Fp2::ONE)));
+        zeros.push(roots.0.sub(roots.1.scale(leaves.expected_sum)));
+        subchecks.push(proof);
+        claims.push(C6SparseRationalBlindLeafClaim { point, numerator, denominator });
+    }
+    Ok((
+        C6ResidualSparseRationalBlindGkrProof {
+            relation_digest: relation.digest(),
+            subchecks: subchecks.try_into().map_err(|_| {
+                C6ResidualError::new("C6SPR3 blind fraction-proof census differs from seven")
+            })?,
+            root_inverse_corrections: root_inverse_corrections.try_into().map_err(|_| {
+                C6ResidualError::new("C6SPR3 root-inverse census differs from seven")
+            })?,
+        },
+        claims.try_into().map_err(|_| {
+            C6ResidualError::new("C6SPR3 blind leaf-claim census differs from seven")
+        })?,
+    ))
+}
+
+/// Verifier mirror of
+/// [`prove_c6_residual_sparse_rational_gkr_blind_reference`].
+pub fn verify_c6_residual_sparse_rational_gkr_blind_reference(
+    operation_plan: &C6InstalledOperationPlan,
+    relation: &C6ResidualSparseRationalRelationReference,
+    proof: &C6ResidualSparseRationalBlindGkrProof,
+    ctx: &mut VerifierCtx,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+    products: &mut ProdKeyTriples,
+    zeros: &mut Vec<VerifierKey>,
+) -> C6ResidualResult<Option<[C6SparseRationalBlindLeafKey; C6_SPARSE_RATIONAL_SUBCHECKS]>> {
+    if proof.relation_digest != relation.digest() {
+        return Ok(None);
+    }
+    let depths = sparse_rational_subcheck_depths(operation_plan)?;
+    let expected = [
+        relation.recurrence_terms[0],
+        relation.recurrence_terms[1],
+        relation.recurrence_terms[2],
+        relation.runtime_gather_terms[0],
+        relation.runtime_gather_terms[1],
+        relation.source_gather_terms[0],
+        relation.source_gather_terms[1],
+    ];
+    let mut claims = Vec::with_capacity(C6_SPARSE_RATIONAL_SUBCHECKS);
+    for index in 0..C6_SPARSE_RATIONAL_SUBCHECKS {
+        let Some((point, numerator, denominator, roots)) = blind_verify_frac_tree(
+            depths[index],
+            &proof.subchecks[index],
+            ctx,
+            doms,
+            tx,
+            products,
+            zeros,
+        ) else {
+            return Ok(None);
+        };
+        let inverse =
+            ctx.correct_full_verifier_key(doms.take(1), proof.root_inverse_corrections[index]);
+        tx.append("c6_sparse_root_inverse_correction", 16);
+        products.push((roots.1, inverse, VerifierKey::from_public(Fp2::ONE, ctx.delta)));
+        zeros.push(roots.0.sub(roots.1.scale(expected[index])));
+        claims.push(C6SparseRationalBlindLeafKey { point, numerator, denominator });
+    }
+    Ok(Some(
+        claims
+            .try_into()
+            .map_err(|_| C6ResidualError::new("C6SPR3 blind leaf-key census differs from seven"))?,
+    ))
+}
+
 #[cfg(all(test, feature = "c6-trace"))]
 mod tests {
     use super::*;
-    use volta_mac::C6TraceSourceManifest;
+    use crate::prod_check::{prod_batch_prover, prod_batch_verify};
+    use volta_mac::{zero_batch_exchange, C6TraceSourceManifest};
 
     fn fp(value: u64) -> Fp {
         Fp::new(value)
@@ -1376,6 +1594,109 @@ mod tests {
             &proof,
         )
         .unwrap());
+
+        let correlation_seed = [0x72; 32];
+        let transcript_seed = [0x73; 32];
+        let delta = Fp2::new(fp(313), fp(317));
+        let mut prover_stream = CorrelationStream::new(correlation_seed);
+        let mut prover_doms = Doms::new(10_000);
+        let mut prover_transcript = Transcript::new(transcript_seed);
+        let mut prover_products = Vec::new();
+        let mut prover_zeros = Vec::new();
+        let (mut blind_proof, blind_claims) =
+            prove_c6_residual_sparse_rational_gkr_blind_reference(
+                direct.operation_plan(),
+                direct.extraction(),
+                direct.runtime(),
+                &relation,
+                &mut prover_stream,
+                &mut prover_doms,
+                &mut prover_transcript,
+                &mut Counters::default(),
+                &mut prover_products,
+                &mut prover_zeros,
+            )
+            .unwrap();
+        assert!(blind_proof.bytes() > 0);
+        let mut verifier = VerifierCtx::new(correlation_seed, delta);
+        let mut verifier_doms = Doms::new(10_000);
+        let mut verifier_transcript = Transcript::new(transcript_seed);
+        let mut verifier_products = Vec::new();
+        let mut verifier_zeros = Vec::new();
+        let blind_keys = verify_c6_residual_sparse_rational_gkr_blind_reference(
+            direct.operation_plan(),
+            &relation,
+            &blind_proof,
+            &mut verifier,
+            &mut verifier_doms,
+            &mut verifier_transcript,
+            &mut verifier_products,
+            &mut verifier_zeros,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(prover_doms.cursor(), verifier_doms.cursor());
+        assert_eq!(prover_products.len(), verifier_products.len());
+        assert_eq!(prover_zeros.len(), verifier_zeros.len());
+        for (claim, key) in blind_claims.iter().zip(&blind_keys) {
+            assert_eq!(claim.point(), key.point());
+            assert_eq!(key.numerator().k, claim.numerator().m + delta * claim.numerator().x,);
+            assert_eq!(key.denominator().k, claim.denominator().m + delta * claim.denominator().x,);
+        }
+        let product_challenge = prover_transcript.challenge_fp2();
+        assert_eq!(product_challenge, verifier_transcript.challenge_fp2());
+        let product_mask = prover_stream.draw_product_mask(20_000, prover_products.len());
+        let product_mask_key =
+            verifier.expand_product_mask_verifier_key(20_000, verifier_products.len());
+        let product_proof = prod_batch_prover(
+            &prover_products,
+            product_challenge,
+            product_mask,
+            &mut prover_transcript,
+        );
+        assert!(prod_batch_verify(
+            &verifier_products,
+            product_mask_key,
+            delta,
+            product_challenge,
+            &product_proof,
+        ));
+        assert!(zero_batch_exchange(
+            &prover_zeros,
+            &verifier_zeros,
+            &mut prover_stream,
+            &mut verifier,
+            20_001,
+            &mut prover_transcript,
+        ));
+        blind_proof.root_inverse_corrections[0] += Fp2::ONE;
+        let mut changed_verifier = VerifierCtx::new(correlation_seed, delta);
+        let mut changed_doms = Doms::new(10_000);
+        let mut changed_transcript = Transcript::new(transcript_seed);
+        let mut changed_products = Vec::new();
+        let mut changed_zeros = Vec::new();
+        assert!(verify_c6_residual_sparse_rational_gkr_blind_reference(
+            direct.operation_plan(),
+            &relation,
+            &blind_proof,
+            &mut changed_verifier,
+            &mut changed_doms,
+            &mut changed_transcript,
+            &mut changed_products,
+            &mut changed_zeros,
+        )
+        .unwrap()
+        .is_some());
+        assert_eq!(product_challenge, changed_transcript.challenge_fp2());
+        let changed_product_mask_key =
+            changed_verifier.expand_product_mask_verifier_key(20_000, changed_products.len());
+        assert!(!prod_batch_verify(
+            &changed_products,
+            changed_product_mask_key,
+            delta,
+            product_challenge,
+            &product_proof,
+        ));
 
         for subcheck in C6SparseRationalSubcheck::ALL {
             proof.subchecks[subcheck.index()].root_p += Fp2::ONE;

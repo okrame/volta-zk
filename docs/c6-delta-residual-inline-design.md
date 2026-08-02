@@ -42,8 +42,8 @@ REPLAY-TO-FRONTIER DRIVER + DURABLE `C6ICJ1-v1` APPEND-ONLY JOURNAL,
 MASK-FRONTIER AND RESERVED-RANGE BINDING + BOUNDED AUTHENTICATED ORDERED
 MULTI-OPENING REDUCTION FOR THE 96 MODEL / 6 EMBEDDING CLAIM CENSUSES GREEN;
 RESPONSE-INDEPENDENT CANONICAL RUNTIME SEAM GREEN; EXACT EVENT-DOMAIN
-`C6TFR1` TERMINAL-FUNCTIONAL RELATION PREREGISTERED; FORMAL/RUST
-DIFFERENTIAL REQUIRED; NO
+`C6TFR1` TERMINAL-FUNCTIONAL RELATION PREREGISTERED; ADDITIVE LEAN GREEN;
+RUST DIFFERENTIAL REQUIRED; NO
 C6.1 FULL-CHAIN PROOF-SIZE, TIMING, MEMORY OR HARDWARE CREDIT; HARD STOP
 BEFORE POD.**
 
@@ -1731,12 +1731,16 @@ terminal state, so the conservative provider-state screen remains
 native relation implementation consumes the fused event sink and the strict
 serialized artifact.
 
-The Section 0.21 obstruction is cleared only when the additive theorem proves
-the event-domain identity and a Rust differential shows equality with the
-actual C6RSC3 terminal compiler under point, target, ordering and schedule
-mutations.  The next hard stop is then the concrete native trace realization;
-it may not be bypassed by the historical fixed-node scaled seam.  No pod
-contact is authorized.
+The additive theorem now proves the event-domain identity, the exact
+two-repetition slot census, the accepting-error RLC equation and the amended
+soundness bounds.  Full Lean is green at **3,265 jobs / 392 audited targets /
+45 C6.1 targets**, with only the permitted standard axioms.  This is formal
+algebra credit only.  The Section 0.21 obstruction remains stopped before
+Rust until an exact differential shows equality with the actual C6RSC3
+terminal compiler under point, target, ordering and schedule mutations and
+installs the typed chain statements.  The next hard stop is then the concrete
+native trace realization; it may not be bypassed by the historical fixed-node
+scaled seam.  No pod contact is authorized.
 
 ## 1. Owner requirements
 

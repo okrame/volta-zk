@@ -32,3 +32,4 @@ import VoltaZk.C6AuthenticatedOutputLink
 import VoltaZk.C6HiddenUBlindTranscript
 import VoltaZk.C6PersistentCachePCS
 import VoltaZk.C61PublicCompression
+import VoltaZk.C61TerminalFunctional

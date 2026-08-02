@@ -407,6 +407,19 @@ vector-RLC bounds from being mistaken for implementation bounds.
 #print axioms VoltaZk.c61_complete_error_lt_two_pow_neg_119
 #print axioms VoltaZk.c61_complete_error_meets_literal_79_bits
 #print axioms VoltaZk.c61_seventeen_certificate_error_lt_two_pow_neg_115
+
+-- C6TFR1 exact coefficient-event terminal relation (additive).
+#print axioms VoltaZk.c61_terminal_functional_slot_census
+#print axioms VoltaZk.c61_leaf_slot_value
+#print axioms VoltaZk.c61_auxiliary_linear_slot_value
+#print axioms VoltaZk.c61_auxiliary_quadratic_slot_value
+#print axioms VoltaZk.c61_terminal_functional_event_fold_exact
+#print axioms VoltaZk.c61_terminal_accumulator_yields_exact_event_fold
+#print axioms VoltaZk.c61_terminal_functional_acceptance_is_error_root
+#print axioms VoltaZk.c61_terminal_functional_relation_error_eq
+#print axioms VoltaZk.c61_terminal_functional_complete_error_lt_two_pow_neg_119
+#print axioms VoltaZk.c61_terminal_functional_complete_error_meets_literal_79_bits
+#print axioms VoltaZk.c61_terminal_functional_seventeen_error_lt_two_pow_neg_115
 #print axioms VoltaZk.x4d_accepted_settlement_implies_each_m9_or_bad
 #print axioms VoltaZk.x4d_settlement_error_is_v4
 #print axioms VoltaZk.x4d_settlement_error_expanded

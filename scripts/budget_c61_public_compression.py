@@ -495,7 +495,7 @@ def build_report() -> dict[str, Any]:
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
             "CANONICAL_RUNTIME_SEAM_GREEN__C6TFR1_EXACT_EVENT_RELATION_"
-            "PREREGISTERED__FORMAL_RUST_REQUIRED__"
+            "LEAN_GREEN__RUST_DIFFERENTIAL_REQUIRED__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
@@ -565,7 +565,7 @@ def build_report() -> dict[str, Any]:
                 "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
                 "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
                 "CANONICAL_RUNTIME_SEAM_GREEN__C6TFR1_EXACT_EVENT_RELATION_"
-                "PREREGISTERED__FORMAL_RUST_REQUIRED__"
+                "LEAN_GREEN__RUST_DIFFERENTIAL_REQUIRED__"
                 "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
             "statement": (
@@ -1043,7 +1043,7 @@ def build_report() -> dict[str, Any]:
                 ),
             },
             "local_hard_stop": {
-                "status": "C6TFR1_FORMAL_RUST_DIFFERENTIAL_REQUIRED",
+                "status": "C6TFR1_RUST_DIFFERENTIAL_REQUIRED",
                 "canonical_runtime_seam_green": True,
                 "raw_verifier_runtime_values": raw_verifier_runtime_values,
                 "canonical_runtime_values": canonical_runtime_values,
@@ -1067,7 +1067,6 @@ def build_report() -> dict[str, Any]:
                 ),
                 "native_backend_missing_typed_relation_statement": True,
                 "required_before_resume": [
-                    "prove the C6TFR1 event-domain fold identity additively in Lean",
                     "differential C6TFR1 against the exact C6RSC3 terminal compiler",
                     "install typed model/embedding/compiler statement boundaries without enabling the opaque backend",
                 ],

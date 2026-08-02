@@ -9,8 +9,11 @@
 
 use std::fmt;
 
-use volta_field::Fp2;
-use volta_mac::{CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey};
+use volta_field::{Fp, Fp2, P};
+use volta_mac::{
+    C6InstalledOperationPlan, CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey,
+};
+use volta_proto::prod_check::ProdProof;
 
 use crate::c61_public_compression::{C61NativeChainId, C61NativeComponent, C61_TERMINAL_CLAIMS};
 use crate::c6_residual_sumcheck::{C6_RESIDUAL_AUXILIARY_ROUNDS, C6_RESIDUAL_LEAF_ROUNDS};
@@ -27,6 +30,22 @@ pub const C61_SPARSE_RATIONAL_SEMANTIC_RESPONSE_OPENINGS: usize = 6;
 pub const C61_SPARSE_RATIONAL_RESPONSE_OPENINGS: usize =
     2 * C61_SPARSE_RATIONAL_SEMANTIC_RESPONSE_OPENINGS;
 pub const C61_SPARSE_RATIONAL_PLAN_OPENINGS: usize = 3;
+pub const C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_MAGIC: [u8; 8] = *b"C6SBA1\0\0";
+pub const C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_VERSION: u16 = 1;
+pub const C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_SUBCHECKS: usize = 7;
+pub const C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_HEADER_BYTES: u64 = 60;
+pub const C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_DIGEST_BYTES: u64 = 32;
+pub const C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_FRAMING_BYTES: u64 =
+    C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_HEADER_BYTES
+        + C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_DIGEST_BYTES;
+pub const C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_MAX_BYTES: u64 = 500_000;
+pub const C61_SPARSE_RATIONAL_BLIND_PRODUCTION_DEPTHS: [u8;
+    C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_SUBCHECKS] = [25, 25, 25, 25, 24, 23, 25];
+pub const C61_SPARSE_RATIONAL_BLIND_PRODUCTION_GKR_BYTES: u64 = 84_528;
+pub const C61_SPARSE_RATIONAL_BLIND_PRODUCTION_JOINT_BYTES: u64 = 3_248;
+pub const C61_SPARSE_RATIONAL_BLIND_TERMINAL_BYTES: u64 = 16;
+pub const C61_SPARSE_RATIONAL_BLIND_PRODUCT_BYTES: u64 = 32;
+pub const C61_SPARSE_RATIONAL_BLIND_PRODUCTION_ARITHMETIC_BYTES: u64 = 87_916;
 
 const PUBLIC_STATEMENT_DOMAIN: &str = "volta-zk/c6.1/typed-native-chain-statement/v1";
 const COMMITTED_OPENINGS_DOMAIN: &str = "volta-zk/c6.1/typed-committed-openings/v1";
@@ -36,6 +55,7 @@ const SPARSE_RESPONSE_LAYOUT_DOMAIN: &str = "volta-zk/c6.1/sparse-response-layou
 const SPARSE_PLAN_LAYOUT_DOMAIN: &str = "volta-zk/c6.1/sparse-plan-layout/v1";
 const SPARSE_ORACLES_DOMAIN: &str = "volta-zk/c6.1/sparse-compiler-oracles/v1";
 const SPARSE_OPENING_STATEMENT_DOMAIN: &str = "volta-zk/c6.1/sparse-compiler-opening-statement/v1";
+const SPARSE_BLIND_ARITHMETIC_PROOF_DOMAIN: &str = "volta-zk/c6.1/sparse-blind-arithmetic-proof/v1";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C61TerminalFunctionalStatementError(String);
@@ -55,6 +75,340 @@ impl fmt::Display for C61TerminalFunctionalStatementError {
 impl std::error::Error for C61TerminalFunctionalStatementError {}
 
 type Result<T> = std::result::Result<T, C61TerminalFunctionalStatementError>;
+
+fn encode_sparse_blind_fp2(bytes: &mut Vec<u8>, value: Fp2) {
+    bytes.extend_from_slice(&value.c0.value().to_le_bytes());
+    bytes.extend_from_slice(&value.c1.value().to_le_bytes());
+}
+
+fn sparse_blind_arithmetic_proof_digest(prefix: &[u8]) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new_derive_key(SPARSE_BLIND_ARITHMETIC_PROOF_DOMAIN);
+    hasher.update(&(prefix.len() as u64).to_le_bytes());
+    hasher.update(prefix);
+    *hasher.finalize().as_bytes()
+}
+
+struct SparseBlindArithmeticReader<'a> {
+    bytes: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> SparseBlindArithmeticReader<'a> {
+    fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes, offset: 0 }
+    }
+
+    fn take(&mut self, count: usize) -> Result<&'a [u8]> {
+        let end = self
+            .offset
+            .checked_add(count)
+            .ok_or_else(|| C61TerminalFunctionalStatementError::new("C6SBA1 cursor overflows"))?;
+        if end > self.bytes.len() {
+            return Err(C61TerminalFunctionalStatementError::new("truncated C6SBA1 proof"));
+        }
+        let result = &self.bytes[self.offset..end];
+        self.offset = end;
+        Ok(result)
+    }
+
+    fn u8(&mut self) -> Result<u8> {
+        Ok(self.take(1)?[0])
+    }
+
+    fn u16(&mut self) -> Result<u16> {
+        Ok(u16::from_le_bytes(self.take(2)?.try_into().expect("fixed C6SBA1 u16 slice")))
+    }
+
+    fn u32(&mut self) -> Result<usize> {
+        Ok(u32::from_le_bytes(self.take(4)?.try_into().expect("fixed C6SBA1 u32 slice")) as usize)
+    }
+
+    fn fp2(&mut self) -> Result<Fp2> {
+        let c0 = u64::from_le_bytes(self.take(8)?.try_into().expect("fixed C6SBA1 Fp slice"));
+        let c1 = u64::from_le_bytes(self.take(8)?.try_into().expect("fixed C6SBA1 Fp slice"));
+        if c0 >= P || c1 >= P {
+            return Err(C61TerminalFunctionalStatementError::new(
+                "C6SBA1 contains a noncanonical base-field limb",
+            ));
+        }
+        Ok(Fp2::new(Fp::new(c0), Fp::new(c1)))
+    }
+
+    fn digest(&mut self) -> Result<[u8; 32]> {
+        Ok(self.take(32)?.try_into().expect("fixed C6SBA1 digest slice"))
+    }
+
+    fn position(&self) -> usize {
+        self.offset
+    }
+
+    fn finish(self) -> Result<()> {
+        if self.offset != self.bytes.len() {
+            return Err(C61TerminalFunctionalStatementError::new("trailing C6SBA1 proof bytes"));
+        }
+        Ok(())
+    }
+}
+
+/// Strict provider artifact for the blind seven-tree reduction, joint
+/// degree-eight sumcheck, terminal product correction and the single global
+/// QuickSilver product proof.  The compiler chain's designated ZeroOpen tag
+/// remains in C6SMO1 and is deliberately not duplicated here.
+#[derive(Debug, PartialEq, Eq)]
+pub struct C61SparseRationalBlindArithmeticProof {
+    gkr: volta_proto::c6_residual::C6ResidualSparseRationalBlindGkrProof,
+    joint: volta_proto::c6_residual::C6ResidualSparseRationalBlindJointRoundsProof,
+    terminal: volta_proto::c6_residual::C6ResidualSparseRationalBlindJointTerminalProof,
+    product: ProdProof,
+}
+
+impl C61SparseRationalBlindArithmeticProof {
+    pub fn new(
+        operation_plan: &C6InstalledOperationPlan,
+        relation_digest: [u8; 32],
+        gkr: volta_proto::c6_residual::C6ResidualSparseRationalBlindGkrProof,
+        joint: volta_proto::c6_residual::C6ResidualSparseRationalBlindJointRoundsProof,
+        terminal: volta_proto::c6_residual::C6ResidualSparseRationalBlindJointTerminalProof,
+        product: ProdProof,
+    ) -> Result<Self> {
+        let proof = Self { gkr, joint, terminal, product };
+        proof.validate(operation_plan, relation_digest)?;
+        Ok(proof)
+    }
+
+    pub fn encoded_len(
+        &self,
+        operation_plan: &C6InstalledOperationPlan,
+        relation_digest: [u8; 32],
+    ) -> Result<u64> {
+        self.validate(operation_plan, relation_digest)?;
+        let base_domain_log2 =
+            volta_proto::c6_residual::c6_sparse_rational_base_domain_log2(operation_plan)
+                .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))?;
+        let gkr_bytes =
+            volta_proto::c6_residual::C6ResidualSparseRationalBlindGkrProof::correction_bytes(
+                operation_plan,
+            )
+            .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))?;
+        let joint_bytes =
+            volta_proto::c6_residual::C6ResidualSparseRationalBlindJointRoundsProof::correction_bytes(
+                base_domain_log2,
+            )
+            .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))?;
+        C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_FRAMING_BYTES
+            .checked_add(gkr_bytes)
+            .and_then(|bytes| bytes.checked_add(joint_bytes))
+            .and_then(|bytes| bytes.checked_add(C61_SPARSE_RATIONAL_BLIND_TERMINAL_BYTES))
+            .and_then(|bytes| bytes.checked_add(C61_SPARSE_RATIONAL_BLIND_PRODUCT_BYTES))
+            .ok_or_else(|| {
+                C61TerminalFunctionalStatementError::new("C6SBA1 encoded length overflows")
+            })
+    }
+
+    pub fn encode(
+        &self,
+        operation_plan: &C6InstalledOperationPlan,
+        relation_digest: [u8; 32],
+    ) -> Result<Vec<u8>> {
+        self.validate(operation_plan, relation_digest)?;
+        let base_domain_log2 =
+            volta_proto::c6_residual::c6_sparse_rational_base_domain_log2(operation_plan)
+                .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))?;
+        let depths =
+            volta_proto::c6_residual::c6_sparse_rational_subcheck_depths(operation_plan)
+                .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))?;
+        let gkr = self
+            .gkr
+            .encode_corrections(operation_plan)
+            .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))?;
+        let joint = self
+            .joint
+            .encode_corrections(base_domain_log2)
+            .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))?;
+        let expected_len = self.encoded_len(operation_plan, relation_digest)?;
+        if expected_len > C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_MAX_BYTES {
+            return Err(C61TerminalFunctionalStatementError::new(
+                "C6SBA1 exceeds the arithmetic/MAC/link cap",
+            ));
+        }
+        let mut bytes = Vec::with_capacity(
+            usize::try_from(expected_len)
+                .map_err(|_| C61TerminalFunctionalStatementError::new("C6SBA1 exceeds usize"))?,
+        );
+        bytes.extend_from_slice(&C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_MAGIC);
+        bytes.extend_from_slice(&C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_VERSION.to_le_bytes());
+        bytes.push(base_domain_log2);
+        bytes.push(C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_SUBCHECKS as u8);
+        for depth in depths {
+            bytes.push(u8::try_from(depth).map_err(|_| {
+                C61TerminalFunctionalStatementError::new("C6SBA1 fraction depth exceeds u8")
+            })?);
+        }
+        bytes.push(0);
+        bytes.extend_from_slice(&relation_digest);
+        bytes.extend_from_slice(
+            &u32::try_from(gkr.len())
+                .map_err(|_| {
+                    C61TerminalFunctionalStatementError::new("C6SBA1 GKR body exceeds u32")
+                })?
+                .to_le_bytes(),
+        );
+        bytes.extend_from_slice(
+            &u32::try_from(joint.len())
+                .map_err(|_| {
+                    C61TerminalFunctionalStatementError::new("C6SBA1 joint body exceeds u32")
+                })?
+                .to_le_bytes(),
+        );
+        debug_assert_eq!(bytes.len() as u64, C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_HEADER_BYTES);
+        bytes.extend_from_slice(&gkr);
+        bytes.extend_from_slice(&joint);
+        encode_sparse_blind_fp2(&mut bytes, self.terminal.product_correction());
+        encode_sparse_blind_fp2(&mut bytes, self.product.m0);
+        encode_sparse_blind_fp2(&mut bytes, self.product.m1);
+        bytes.extend_from_slice(&sparse_blind_arithmetic_proof_digest(&bytes));
+        if bytes.len() as u64 != expected_len {
+            return Err(C61TerminalFunctionalStatementError::new(
+                "C6SBA1 encoder length disagrees with the exact census",
+            ));
+        }
+        Ok(bytes)
+    }
+
+    pub fn decode(
+        operation_plan: &C6InstalledOperationPlan,
+        relation_digest: [u8; 32],
+        bytes: &[u8],
+    ) -> Result<Self> {
+        if bytes.len() as u64 > C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_MAX_BYTES {
+            return Err(C61TerminalFunctionalStatementError::new(
+                "C6SBA1 exceeds the arithmetic/MAC/link cap",
+            ));
+        }
+        let expected_base =
+            volta_proto::c6_residual::c6_sparse_rational_base_domain_log2(operation_plan)
+                .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))?;
+        let expected_depths =
+            volta_proto::c6_residual::c6_sparse_rational_subcheck_depths(operation_plan)
+                .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))?;
+        let expected_gkr =
+            volta_proto::c6_residual::C6ResidualSparseRationalBlindGkrProof::correction_bytes(
+                operation_plan,
+            )
+            .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))?;
+        let expected_joint =
+            volta_proto::c6_residual::C6ResidualSparseRationalBlindJointRoundsProof::correction_bytes(
+                expected_base,
+            )
+            .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))?;
+        let expected_len = C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_FRAMING_BYTES
+            .checked_add(expected_gkr)
+            .and_then(|value| value.checked_add(expected_joint))
+            .and_then(|value| value.checked_add(C61_SPARSE_RATIONAL_BLIND_TERMINAL_BYTES))
+            .and_then(|value| value.checked_add(C61_SPARSE_RATIONAL_BLIND_PRODUCT_BYTES))
+            .ok_or_else(|| C61TerminalFunctionalStatementError::new("C6SBA1 length overflows"))?;
+        if bytes.len() as u64 != expected_len {
+            return Err(C61TerminalFunctionalStatementError::new(
+                "C6SBA1 strict proof length mismatch",
+            ));
+        }
+        let mut reader = SparseBlindArithmeticReader::new(bytes);
+        if reader.take(8)? != C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_MAGIC {
+            return Err(C61TerminalFunctionalStatementError::new("bad C6SBA1 magic"));
+        }
+        if reader.u16()? != C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_VERSION {
+            return Err(C61TerminalFunctionalStatementError::new("unknown C6SBA1 version"));
+        }
+        if reader.u8()? != expected_base
+            || reader.u8()? as usize != C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_SUBCHECKS
+        {
+            return Err(C61TerminalFunctionalStatementError::new(
+                "C6SBA1 base dimension or subcheck census mismatch",
+            ));
+        }
+        for expected in expected_depths {
+            if reader.u8()? as usize != expected {
+                return Err(C61TerminalFunctionalStatementError::new(
+                    "C6SBA1 fraction depth mismatch",
+                ));
+            }
+        }
+        if reader.u8()? != 0 || reader.digest()? != relation_digest {
+            return Err(C61TerminalFunctionalStatementError::new(
+                "C6SBA1 reserved byte or relation digest mismatch",
+            ));
+        }
+        let gkr_len = reader.u32()?;
+        let joint_len = reader.u32()?;
+        if gkr_len as u64 != expected_gkr || joint_len as u64 != expected_joint {
+            return Err(C61TerminalFunctionalStatementError::new(
+                "C6SBA1 nested body length mismatch",
+            ));
+        }
+        let gkr =
+            volta_proto::c6_residual::C6ResidualSparseRationalBlindGkrProof::decode_corrections(
+                operation_plan,
+                relation_digest,
+                reader.take(gkr_len)?,
+            )
+            .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))?;
+        let joint = volta_proto::c6_residual::C6ResidualSparseRationalBlindJointRoundsProof::decode_corrections(
+            relation_digest,
+            expected_base,
+            reader.take(joint_len)?,
+        )
+        .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))?;
+        let terminal =
+            volta_proto::c6_residual::C6ResidualSparseRationalBlindJointTerminalProof::from_product_correction(
+                reader.fp2()?,
+            );
+        let product = ProdProof { m0: reader.fp2()?, m1: reader.fp2()? };
+        let digest_offset = reader.position();
+        let encoded_digest = reader.digest()?;
+        reader.finish()?;
+        if encoded_digest != sparse_blind_arithmetic_proof_digest(&bytes[..digest_offset]) {
+            return Err(C61TerminalFunctionalStatementError::new(
+                "corrupt or noncanonical C6SBA1 proof",
+            ));
+        }
+        Self::new(operation_plan, relation_digest, gkr, joint, terminal, product)
+    }
+
+    pub fn into_parts(
+        self,
+    ) -> (
+        volta_proto::c6_residual::C6ResidualSparseRationalBlindGkrProof,
+        volta_proto::c6_residual::C6ResidualSparseRationalBlindJointRoundsProof,
+        volta_proto::c6_residual::C6ResidualSparseRationalBlindJointTerminalProof,
+        ProdProof,
+    ) {
+        (self.gkr, self.joint, self.terminal, self.product)
+    }
+
+    fn validate(
+        &self,
+        operation_plan: &C6InstalledOperationPlan,
+        relation_digest: [u8; 32],
+    ) -> Result<()> {
+        if self.gkr.relation_digest() != relation_digest
+            || self.joint.relation_digest() != relation_digest
+        {
+            return Err(C61TerminalFunctionalStatementError::new(
+                "C6SBA1 nested proof relation digest mismatch",
+            ));
+        }
+        let base_domain_log2 =
+            volta_proto::c6_residual::c6_sparse_rational_base_domain_log2(operation_plan)
+                .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))?;
+        self.gkr
+            .encode_corrections(operation_plan)
+            .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))?;
+        self.joint
+            .encode_corrections(base_domain_log2)
+            .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))?;
+        Ok(())
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct C61NativeCommitmentDescriptor {
@@ -1192,6 +1546,31 @@ mod tests {
         assert_ne!(compiler.digest().unwrap(), changed_root.digest().unwrap());
     }
 
+    #[test]
+    fn production_blind_arithmetic_codec_census_is_exact() {
+        let tree_bytes = |depth: u64| 16 * (depth * depth + 6 * depth + 3);
+        assert_eq!(
+            C61_SPARSE_RATIONAL_BLIND_PRODUCTION_GKR_BYTES,
+            C61_SPARSE_RATIONAL_BLIND_PRODUCTION_DEPTHS
+                .into_iter()
+                .map(|depth| tree_bytes(u64::from(depth)))
+                .sum::<u64>(),
+        );
+        assert_eq!(C61_SPARSE_RATIONAL_BLIND_PRODUCTION_JOINT_BYTES, 16 * (3 + 25 * 8));
+        assert_eq!(
+            C61_SPARSE_RATIONAL_BLIND_PRODUCTION_ARITHMETIC_BYTES,
+            C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_FRAMING_BYTES
+                + C61_SPARSE_RATIONAL_BLIND_PRODUCTION_GKR_BYTES
+                + C61_SPARSE_RATIONAL_BLIND_PRODUCTION_JOINT_BYTES
+                + C61_SPARSE_RATIONAL_BLIND_TERMINAL_BYTES
+                + C61_SPARSE_RATIONAL_BLIND_PRODUCT_BYTES,
+        );
+        assert!(
+            C61_SPARSE_RATIONAL_BLIND_PRODUCTION_ARITHMETIC_BYTES
+                < C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_MAX_BYTES
+        );
+    }
+
     #[cfg(feature = "c6-trace")]
     #[test]
     fn physical_limb_targets_close_the_blind_sparse_terminal() {
@@ -1408,6 +1787,87 @@ mod tests {
         let product_proof =
             prod_batch_prover(&prover_products, chi, product_mask, &mut prover_transcript);
         assert!(prod_batch_verify(&verifier_products, product_key, delta, chi, &product_proof,));
+        let expected_arithmetic_bytes = C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_FRAMING_BYTES
+            + gkr_proof.bytes()
+            + rounds.bytes()
+            + terminal_proof.bytes()
+            + C61_SPARSE_RATIONAL_BLIND_PRODUCT_BYTES;
+        let arithmetic_proof = C61SparseRationalBlindArithmeticProof::new(
+            direct.operation_plan(),
+            relation.digest(),
+            gkr_proof,
+            rounds,
+            terminal_proof,
+            product_proof,
+        )
+        .unwrap();
+        let encoded = arithmetic_proof.encode(direct.operation_plan(), relation.digest()).unwrap();
+        assert_eq!(encoded.len() as u64, expected_arithmetic_bytes);
+        assert_eq!(
+            arithmetic_proof.encoded_len(direct.operation_plan(), relation.digest()).unwrap(),
+            expected_arithmetic_bytes,
+        );
+        let decoded = C61SparseRationalBlindArithmeticProof::decode(
+            direct.operation_plan(),
+            relation.digest(),
+            &encoded,
+        )
+        .unwrap();
+        assert_eq!(decoded, arithmetic_proof);
+        let rejects = |payload: Vec<u8>| {
+            C61SparseRationalBlindArithmeticProof::decode(
+                direct.operation_plan(),
+                relation.digest(),
+                &payload,
+            )
+            .is_err()
+        };
+        let mut bad_magic = encoded.clone();
+        bad_magic[0] ^= 1;
+        let mut bad_version = encoded.clone();
+        bad_version[8] ^= 1;
+        let mut bad_base_dimension = encoded.clone();
+        bad_base_dimension[10] ^= 1;
+        let mut bad_subcheck_count = encoded.clone();
+        bad_subcheck_count[11] ^= 1;
+        let mut bad_depth = encoded.clone();
+        bad_depth[12] ^= 1;
+        let mut bad_reserved = encoded.clone();
+        bad_reserved[19] ^= 1;
+        let mut bad_relation = encoded.clone();
+        bad_relation[20] ^= 1;
+        let mut bad_gkr_len = encoded.clone();
+        bad_gkr_len[52] ^= 1;
+        let mut bad_joint_len = encoded.clone();
+        bad_joint_len[56] ^= 1;
+        let mut noncanonical = encoded.clone();
+        noncanonical[C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_HEADER_BYTES as usize
+            ..C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_HEADER_BYTES as usize + 8]
+            .copy_from_slice(&P.to_le_bytes());
+        let digest_offset =
+            noncanonical.len() - C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_DIGEST_BYTES as usize;
+        let digest = sparse_blind_arithmetic_proof_digest(&noncanonical[..digest_offset]);
+        noncanonical[digest_offset..].copy_from_slice(&digest);
+        let mut trailing = encoded.clone();
+        trailing.push(0);
+        let mut truncated = encoded.clone();
+        truncated.pop();
+        assert!([
+            bad_magic,
+            bad_version,
+            bad_base_dimension,
+            bad_subcheck_count,
+            bad_depth,
+            bad_reserved,
+            bad_relation,
+            bad_gkr_len,
+            bad_joint_len,
+            noncanonical,
+            trailing,
+            truncated,
+        ]
+        .into_iter()
+        .all(rejects));
         assert!(zero_batch_exchange(
             &prover_zeros,
             &verifier_zeros,

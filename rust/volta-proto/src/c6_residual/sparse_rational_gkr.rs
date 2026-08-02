@@ -1359,14 +1359,15 @@ impl C6SparseRationalBlindLeafKey {
 
 /// Blind seven-tree prover.  Every fraction-tree message is a correction;
 /// the returned fourteen authenticated leaf claims are the only leaf values
-/// handed to the joint reducer.  Root ratios are enforced through one linear
-/// zero row and one nonzero-denominator product triple per subcheck.
+/// handed to the joint reducer.  Each root gets an authenticated inverse and
+/// ratio product; the seven ratios close through exactly three linear rows.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn prove_c6_residual_sparse_rational_gkr_blind_reference(
     operation_plan: &C6InstalledOperationPlan,
     extraction: &C6DecodedInstanceExtractionPlan,
     runtime: &C6RuntimeInstanceValues,
     relation: &C6ResidualSparseRationalRelationReference,
+    public_relation: &C6ResidualSparseRationalPublicRelation,
     stream: &mut CorrelationStream,
     doms: &mut Doms,
     tx: &mut Transcript,
@@ -1377,6 +1378,8 @@ pub fn prove_c6_residual_sparse_rational_gkr_blind_reference(
     C6ResidualSparseRationalBlindGkrProof,
     [C6SparseRationalBlindLeafClaim; C6_SPARSE_RATIONAL_SUBCHECKS],
 )> {
+    public_relation.validate_operation_plan(operation_plan)?;
+    relation.validate_public_relation(public_relation)?;
     let leaves = materialize_sparse_rational_leaves(operation_plan, extraction, runtime, relation)?;
     let mut subchecks = Vec::with_capacity(C6_SPARSE_RATIONAL_SUBCHECKS);
     let mut root_inverse_corrections = Vec::with_capacity(C6_SPARSE_RATIONAL_SUBCHECKS);
@@ -1441,7 +1444,7 @@ pub fn prove_c6_residual_sparse_rational_gkr_blind_reference(
     }
     Ok((
         C6ResidualSparseRationalBlindGkrProof {
-            relation_digest: relation.digest(),
+            relation_digest: public_relation.digest(),
             subchecks: subchecks.try_into().map_err(|_| {
                 C6ResidualError::new("C6SPR3 blind fraction-proof census differs from seven")
             })?,
@@ -1462,7 +1465,7 @@ pub fn prove_c6_residual_sparse_rational_gkr_blind_reference(
 /// [`prove_c6_residual_sparse_rational_gkr_blind_reference`].
 pub fn verify_c6_residual_sparse_rational_gkr_blind_reference(
     operation_plan: &C6InstalledOperationPlan,
-    relation: &C6ResidualSparseRationalRelationReference,
+    public_relation: &C6ResidualSparseRationalPublicRelation,
     proof: &C6ResidualSparseRationalBlindGkrProof,
     ctx: &mut VerifierCtx,
     doms: &mut Doms,
@@ -1470,7 +1473,8 @@ pub fn verify_c6_residual_sparse_rational_gkr_blind_reference(
     products: &mut ProdKeyTriples,
     zeros: &mut Vec<VerifierKey>,
 ) -> C6ResidualResult<Option<[C6SparseRationalBlindLeafKey; C6_SPARSE_RATIONAL_SUBCHECKS]>> {
-    if proof.relation_digest != relation.digest() {
+    public_relation.validate_operation_plan(operation_plan)?;
+    if proof.relation_digest != public_relation.digest() {
         return Ok(None);
     }
     let depths = sparse_rational_subcheck_depths(operation_plan)?;
@@ -1624,6 +1628,14 @@ mod tests {
             direct.runtime(),
             direct.relation(),
             [&lanes[0], &lanes[1]],
+            sparse_challenges,
+            output_beta,
+        )
+        .unwrap();
+        let public_relation = C6ResidualSparseRationalPublicRelation::new(
+            direct.operation_plan(),
+            &terminal_metadata,
+            direct.relation(),
             sparse_challenges,
             output_beta,
         )
@@ -1823,6 +1835,7 @@ mod tests {
                 direct.extraction(),
                 direct.runtime(),
                 &relation,
+                &public_relation,
                 &mut prover_stream,
                 &mut prover_doms,
                 &mut prover_transcript,
@@ -1839,7 +1852,7 @@ mod tests {
         let mut verifier_zeros = Vec::new();
         let blind_keys = verify_c6_residual_sparse_rational_gkr_blind_reference(
             direct.operation_plan(),
-            &relation,
+            &public_relation,
             &blind_proof,
             &mut verifier,
             &mut verifier_doms,
@@ -1852,6 +1865,11 @@ mod tests {
         assert_eq!(prover_doms.cursor(), verifier_doms.cursor());
         assert_eq!(prover_products.len(), verifier_products.len());
         assert_eq!(prover_zeros.len(), verifier_zeros.len());
+        let depth_sum: usize =
+            c6_sparse_rational_subcheck_depths(direct.operation_plan()).unwrap().into_iter().sum();
+        assert_eq!(prover_products.len(), 3 * depth_sum + 2 * C6_SPARSE_RATIONAL_SUBCHECKS);
+        assert_eq!(prover_zeros.len(), depth_sum + 3);
+        assert_eq!(prover_stream.counters.full_corrs, blind_proof.bytes() / 16);
         for (claim, key) in blind_claims.iter().zip(&blind_keys) {
             assert_eq!(claim.point(), key.point());
             assert_eq!(key.numerator().k, claim.numerator().m + delta * claim.numerator().x,);
@@ -1891,7 +1909,7 @@ mod tests {
         let mut changed_zeros = Vec::new();
         assert!(verify_c6_residual_sparse_rational_gkr_blind_reference(
             direct.operation_plan(),
-            &relation,
+            &public_relation,
             &blind_proof,
             &mut changed_verifier,
             &mut changed_doms,

@@ -231,7 +231,7 @@ fn terminal_leaf_values(
 
 fn terminal_linearization(
     operation_plan: &C6InstalledOperationPlan,
-    relation: &C6ResidualSparseRationalRelationReference,
+    sparse_challenges: C6ResidualSparseRationalChallenges,
     claim_points: &[Vec<Fp2>; C6_SPARSE_RATIONAL_SUBCHECKS],
     theta: Fp2,
     base_point: &[Fp2],
@@ -279,10 +279,10 @@ fn terminal_linearization(
     let select_add = c6_sparse_opcode_selector(C6InstalledOperationKind::Add, opcode);
     let select_sub = c6_sparse_opcode_selector(C6InstalledOperationKind::Sub, opcode);
     let select_scale = c6_sparse_opcode_selector(C6InstalledOperationKind::Scale, opcode);
-    let gamma = relation.sparse_challenges.recurrence;
-    let tau = relation.sparse_challenges.runtime_gather;
-    let delta = relation.sparse_challenges.source_gather;
-    let zeta = relation.sparse_challenges.lane_batch;
+    let gamma = sparse_challenges.recurrence;
+    let tau = sparse_challenges.runtime_gather;
+    let delta = sparse_challenges.source_gather;
+    let zeta = sparse_challenges.lane_batch;
     let anchor_p = weighted(C6SparseRationalSubcheck::RecurrenceAnchor, true);
     response_coefficients[0] += anchor_p;
     response_coefficients[1] += anchor_p * zeta;
@@ -512,7 +512,7 @@ fn joint_round_evaluations(
             let (response, plan, injection) = state.evaluate(round, value, suffix);
             let linearization = terminal_linearization(
                 operation_plan,
-                relation,
+                relation.sparse_challenges,
                 &leaf_points,
                 theta,
                 &point,
@@ -713,6 +713,7 @@ fn blind_leaf_claims_as_clear(
 pub fn prove_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
     operation_plan: &C6InstalledOperationPlan,
     relation: &C6ResidualSparseRationalRelationReference,
+    public_relation: &C6ResidualSparseRationalPublicRelation,
     packed: &C6SparseRationalPackedOracleReference,
     leaf_claims: &[C6SparseRationalBlindLeafClaim; C6_SPARSE_RATIONAL_SUBCHECKS],
     stream: &mut CorrelationStream,
@@ -722,6 +723,8 @@ pub fn prove_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
     C6ResidualSparseRationalBlindJointRoundsProof,
     C6SparseRationalBlindJointProverTerminal,
 )> {
+    public_relation.validate_operation_plan(operation_plan)?;
+    relation.validate_public_relation(public_relation)?;
     if packed.base_domain_log2 != canonical_base_domain_log2(operation_plan)? {
         return Err(C6ResidualError::new(
             "C6SPR3 blind joint reduction base dimension is noncanonical",
@@ -801,7 +804,7 @@ pub fn prove_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
     let injection = crate::mle::eval_mle(&relation.combined_injection, &point);
     let linearization = terminal_linearization(
         operation_plan,
-        relation,
+        relation.sparse_challenges,
         &fraction_leaf_points(&clear_claims),
         theta,
         &point,
@@ -810,12 +813,12 @@ pub fn prove_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
     )?;
     Ok((
         C6ResidualSparseRationalBlindJointRoundsProof {
-            relation_digest: relation.digest(),
+            relation_digest: public_relation.digest(),
             clear_plan_values,
             round_corrections,
         },
         C6SparseRationalBlindJointProverTerminal {
-            relation_digest: relation.digest(),
+            relation_digest: public_relation.digest(),
             points,
             expected_response,
             clear_plan_values,
@@ -831,7 +834,9 @@ pub fn prove_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
 #[allow(clippy::too_many_arguments)]
 pub fn verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
     operation_plan: &C6InstalledOperationPlan,
-    relation: &C6ResidualSparseRationalRelationReference,
+    terminal_metadata: &C6OperationPlanTerminalMetadata,
+    relation_challenges: &C6ResidualRelationChallenges,
+    public_relation: &C6ResidualSparseRationalPublicRelation,
     base_domain_log2: u8,
     response_digest: C6ResidualDigest,
     plan_digest: C6ResidualDigest,
@@ -841,8 +846,9 @@ pub fn verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
     doms: &mut Doms,
     tx: &mut Transcript,
 ) -> C6ResidualResult<Option<C6SparseRationalBlindJointVerifierTerminal>> {
+    public_relation.validate(operation_plan, terminal_metadata, relation_challenges)?;
     if base_domain_log2 != canonical_base_domain_log2(operation_plan)?
-        || proof.relation_digest != relation.digest()
+        || proof.relation_digest != public_relation.digest()
         || proof.round_corrections.len() != usize::from(base_domain_log2)
     {
         return Ok(None);
@@ -876,11 +882,18 @@ pub fn verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
         point.push(challenge);
     }
     tx.append("c6_sparse_joint_plan_values", 16 * C6_SPARSE_PLAN_OPENINGS as u64);
-    let injection = crate::mle::eval_mle(&relation.combined_injection, &point);
+    let sparse_challenges = public_relation.sparse_challenges();
+    let injection = evaluate_c6_residual_folded_terminal_injection_sparse(
+        terminal_metadata,
+        relation_challenges,
+        sparse_challenges.lane_batch(),
+        public_relation.output_beta(),
+        &point,
+    )?;
     let claim_points = std::array::from_fn(|index| leaf_keys[index].point.clone());
     let linearization = terminal_linearization(
         operation_plan,
-        relation,
+        sparse_challenges,
         &claim_points,
         theta,
         &point,
@@ -888,7 +901,7 @@ pub fn verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
         injection,
     )?;
     Ok(Some(C6SparseRationalBlindJointVerifierTerminal {
-        relation_digest: relation.digest(),
+        relation_digest: public_relation.digest(),
         points: C6SparseRationalPackedOpeningPoints::new(
             base_domain_log2,
             response_digest,
@@ -899,7 +912,7 @@ pub fn verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
         linearization,
         leaf_keys: leaf_keys.clone(),
         sumcheck_claim: claim,
-        lane_batch: relation.sparse_challenges.lane_batch,
+        lane_batch: sparse_challenges.lane_batch,
     }))
 }
 
@@ -1238,7 +1251,7 @@ pub fn reduce_c6_residual_sparse_rational_joint_leaf_reference(
     let injection = crate::mle::eval_mle(&relation.combined_injection, &point);
     let linearization = terminal_linearization(
         operation_plan,
-        relation,
+        relation.sparse_challenges,
         &fraction_leaf_points(&claims),
         theta,
         &point,
@@ -1359,6 +1372,14 @@ mod tests {
             output_beta,
         )
         .unwrap();
+        let public_relation = C6ResidualSparseRationalPublicRelation::new(
+            direct.operation_plan(),
+            &terminal_metadata,
+            direct.relation(),
+            sparse_challenges,
+            output_beta,
+        )
+        .unwrap();
         let packed = compile_c6_sparse_rational_packed_oracle_reference(
             direct.operation_plan(),
             direct.extraction(),
@@ -1435,6 +1456,7 @@ mod tests {
                 direct.extraction(),
                 direct.runtime(),
                 &relation,
+                &public_relation,
                 &mut prover_stream,
                 &mut prover_doms,
                 &mut prover_transcript,
@@ -1450,7 +1472,7 @@ mod tests {
         let mut verifier_zeros = Vec::new();
         let blind_leaf_keys = verify_c6_residual_sparse_rational_gkr_blind_reference(
             direct.operation_plan(),
-            &relation,
+            &public_relation,
             &blind_gkr_proof,
             &mut verifier,
             &mut verifier_doms,
@@ -1464,6 +1486,7 @@ mod tests {
             prove_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
                 direct.operation_plan(),
                 &relation,
+                &public_relation,
                 &packed,
                 &blind_leaf_claims,
                 &mut prover_stream,
@@ -1474,7 +1497,9 @@ mod tests {
         let verifier_terminal =
             verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
                 direct.operation_plan(),
-                &relation,
+                &terminal_metadata,
+                direct.relation(),
+                &public_relation,
                 packed.base_domain_log2(),
                 packed.response_digest(),
                 packed.plan_digest(),
@@ -1593,7 +1618,7 @@ mod tests {
         let mut changed_zeros = Vec::new();
         let changed_leaf_keys = verify_c6_residual_sparse_rational_gkr_blind_reference(
             direct.operation_plan(),
-            &relation,
+            &public_relation,
             &blind_gkr_proof,
             &mut changed_verifier,
             &mut changed_doms,
@@ -1606,7 +1631,9 @@ mod tests {
         let changed_terminal =
             verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
                 direct.operation_plan(),
-                &relation,
+                &terminal_metadata,
+                direct.relation(),
+                &public_relation,
                 packed.base_domain_log2(),
                 packed.response_digest(),
                 packed.plan_digest(),

@@ -7748,6 +7748,119 @@ pub struct C6ResidualSparseRationalChallenges {
     digest: C6ResidualDigest,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualSparseRationalPublicRelation {
+    operation_plan_digest: C6ResidualDigest,
+    topology_digest: C6ResidualDigest,
+    terminal_metadata_digest: C6ResidualDigest,
+    relation_challenges_digest: C6ResidualDigest,
+    sparse_challenges: C6ResidualSparseRationalChallenges,
+    output_beta: Fp2,
+    digest: C6ResidualDigest,
+}
+
+impl C6ResidualSparseRationalPublicRelation {
+    pub fn new(
+        operation_plan: &C6InstalledOperationPlan,
+        terminal_metadata: &C6OperationPlanTerminalMetadata,
+        relation_challenges: &C6ResidualRelationChallenges,
+        sparse_challenges: C6ResidualSparseRationalChallenges,
+        output_beta: Fp2,
+    ) -> C6ResidualResult<Self> {
+        relation_challenges.validate(operation_plan)?;
+        relation_challenges.validate_terminal_metadata(terminal_metadata)?;
+        let topology = operation_plan.topology();
+        if terminal_metadata.topology() != topology
+            || sparse_challenges
+                != C6ResidualSparseRationalChallenges::new(
+                    topology,
+                    sparse_challenges.lane_batch,
+                    sparse_challenges.recurrence,
+                    sparse_challenges.runtime_gather,
+                    sparse_challenges.source_gather,
+                )?
+        {
+            return Err(C6ResidualError::new(
+                "C6SPR3 public relation has a noncanonical plan, metadata or challenge binding",
+            ));
+        }
+        let mut relation = Self {
+            operation_plan_digest: operation_plan.artifact_digest(),
+            topology_digest: topology.topology_digest,
+            terminal_metadata_digest: terminal_metadata.digest(),
+            relation_challenges_digest: relation_challenges.digest(),
+            sparse_challenges,
+            output_beta,
+            digest: [0; 32],
+        };
+        let mut hasher =
+            blake3::Hasher::new_derive_key("volta-zk/c6/sparse-rational-public-relation/v1");
+        hasher.update(&relation.operation_plan_digest);
+        hasher.update(&relation.topology_digest);
+        hasher.update(&relation.terminal_metadata_digest);
+        hasher.update(&relation.relation_challenges_digest);
+        hasher.update(&relation.sparse_challenges.digest);
+        hash_fp2(&mut hasher, relation.output_beta);
+        relation.digest = *hasher.finalize().as_bytes();
+        Ok(relation)
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+
+    pub fn sparse_challenges(&self) -> C6ResidualSparseRationalChallenges {
+        self.sparse_challenges
+    }
+
+    pub fn output_beta(&self) -> Fp2 {
+        self.output_beta
+    }
+
+    pub fn validate_operation_plan(
+        &self,
+        operation_plan: &C6InstalledOperationPlan,
+    ) -> C6ResidualResult<()> {
+        let topology = operation_plan.topology();
+        if self.operation_plan_digest != operation_plan.artifact_digest()
+            || self.topology_digest != topology.topology_digest
+            || self.sparse_challenges
+                != C6ResidualSparseRationalChallenges::new(
+                    topology,
+                    self.sparse_challenges.lane_batch,
+                    self.sparse_challenges.recurrence,
+                    self.sparse_challenges.runtime_gather,
+                    self.sparse_challenges.source_gather,
+                )?
+        {
+            return Err(C6ResidualError::new(
+                "C6SPR3 public relation operation-plan binding mismatch",
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn validate(
+        &self,
+        operation_plan: &C6InstalledOperationPlan,
+        terminal_metadata: &C6OperationPlanTerminalMetadata,
+        relation_challenges: &C6ResidualRelationChallenges,
+    ) -> C6ResidualResult<()> {
+        self.validate_operation_plan(operation_plan)?;
+        let expected = Self::new(
+            operation_plan,
+            terminal_metadata,
+            relation_challenges,
+            self.sparse_challenges,
+            self.output_beta,
+        )?;
+        if *self != expected {
+            return Err(C6ResidualError::new("C6SPR3 public relation statement binding mismatch"));
+        }
+        Ok(())
+    }
+}
+
 impl C6ResidualSparseRationalChallenges {
     pub fn new(
         topology: C6OperationPlanTopologyIdentity,
@@ -7825,6 +7938,22 @@ impl C6ResidualSparseRationalRelationReference {
 
     pub fn digest(&self) -> C6ResidualDigest {
         self.digest
+    }
+
+    pub fn validate_public_relation(
+        &self,
+        public: &C6ResidualSparseRationalPublicRelation,
+    ) -> C6ResidualResult<()> {
+        if self.terminal_metadata_digest != public.terminal_metadata_digest
+            || self.relation_challenges_digest != public.relation_challenges_digest
+            || self.sparse_challenges != public.sparse_challenges
+            || self.output_beta != public.output_beta
+        {
+            return Err(C6ResidualError::new(
+                "C6SPR3 materialized witness relation differs from its public statement",
+            ));
+        }
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -14557,6 +14686,19 @@ mod tests {
                 [&adjoint_lanes[0], &adjoint_lanes[1]],
             )
             .unwrap();
+        let public_sparse_relation = C6ResidualSparseRationalPublicRelation::new(
+            direct.operation_plan(),
+            &terminal_metadata,
+            direct.relation(),
+            sparse_challenges,
+            output_beta,
+        )
+        .unwrap();
+        public_sparse_relation
+            .validate(direct.operation_plan(), &terminal_metadata, direct.relation())
+            .unwrap();
+        sparse_relation.validate_public_relation(&public_sparse_relation).unwrap();
+        assert_ne!(public_sparse_relation.digest(), sparse_relation.digest());
         let injection_dimension =
             (topology.canonical_node_count as usize).max(2).next_power_of_two().trailing_zeros()
                 as usize;
@@ -14585,6 +14727,16 @@ mod tests {
             &short_point,
         )
         .is_err());
+        let mut changed_public_sparse_relation = public_sparse_relation.clone();
+        changed_public_sparse_relation.output_beta += Fp2::ONE;
+        assert!(changed_public_sparse_relation
+            .validate(direct.operation_plan(), &terminal_metadata, direct.relation())
+            .is_err());
+        let mut changed_public_plan_binding = public_sparse_relation.clone();
+        changed_public_plan_binding.operation_plan_digest[0] ^= 1;
+        assert!(changed_public_plan_binding
+            .validate_operation_plan(direct.operation_plan())
+            .is_err());
 
         let mut changed_sparse_relation = sparse_relation.clone();
         changed_sparse_relation.combined_injection[0] += Fp2::ONE;

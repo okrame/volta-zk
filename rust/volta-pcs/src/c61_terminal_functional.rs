@@ -1630,6 +1630,14 @@ mod tests {
             output_beta,
         )
         .unwrap();
+        let public_relation = C6ResidualSparseRationalPublicRelation::new(
+            direct.operation_plan(),
+            &terminal_metadata,
+            direct.relation(),
+            sparse_challenges,
+            output_beta,
+        )
+        .unwrap();
         let packed = compile_c6_sparse_rational_packed_oracle_reference(
             direct.operation_plan(),
             direct.extraction(),
@@ -1651,6 +1659,7 @@ mod tests {
             direct.extraction(),
             direct.runtime(),
             &relation,
+            &public_relation,
             &mut prover_stream,
             &mut prover_doms,
             &mut prover_transcript,
@@ -1666,7 +1675,7 @@ mod tests {
         let mut verifier_zeros = Vec::new();
         let leaf_keys = verify_c6_residual_sparse_rational_gkr_blind_reference(
             direct.operation_plan(),
-            &relation,
+            &public_relation,
             &gkr_proof,
             &mut verifier,
             &mut verifier_doms,
@@ -1680,6 +1689,7 @@ mod tests {
             prove_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
                 direct.operation_plan(),
                 &relation,
+                &public_relation,
                 &packed,
                 &leaf_claims,
                 &mut prover_stream,
@@ -1690,7 +1700,9 @@ mod tests {
         let verifier_terminal =
             verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
                 direct.operation_plan(),
-                &relation,
+                &terminal_metadata,
+                direct.relation(),
+                &public_relation,
                 packed.base_domain_log2(),
                 packed.response_digest(),
                 packed.plan_digest(),
@@ -1794,22 +1806,25 @@ mod tests {
             + C61_SPARSE_RATIONAL_BLIND_PRODUCT_BYTES;
         let arithmetic_proof = C61SparseRationalBlindArithmeticProof::new(
             direct.operation_plan(),
-            relation.digest(),
+            public_relation.digest(),
             gkr_proof,
             rounds,
             terminal_proof,
             product_proof,
         )
         .unwrap();
-        let encoded = arithmetic_proof.encode(direct.operation_plan(), relation.digest()).unwrap();
+        let encoded =
+            arithmetic_proof.encode(direct.operation_plan(), public_relation.digest()).unwrap();
         assert_eq!(encoded.len() as u64, expected_arithmetic_bytes);
         assert_eq!(
-            arithmetic_proof.encoded_len(direct.operation_plan(), relation.digest()).unwrap(),
+            arithmetic_proof
+                .encoded_len(direct.operation_plan(), public_relation.digest())
+                .unwrap(),
             expected_arithmetic_bytes,
         );
         let decoded = C61SparseRationalBlindArithmeticProof::decode(
             direct.operation_plan(),
-            relation.digest(),
+            public_relation.digest(),
             &encoded,
         )
         .unwrap();
@@ -1817,7 +1832,7 @@ mod tests {
         let rejects = |payload: Vec<u8>| {
             C61SparseRationalBlindArithmeticProof::decode(
                 direct.operation_plan(),
-                relation.digest(),
+                public_relation.digest(),
                 &payload,
             )
             .is_err()

@@ -138,6 +138,7 @@ C61_KNOWN_PRE_NATIVE_CHALLENGE_CLIENT_BYTES = (
 # provider-global preprocessing; only the root/version enter client setup.
 C61_CANONICAL_NODE_COUNT = 28_845_631
 C61_SOURCE_NODE_COUNT = 4_970_850
+C61_SCHEDULED_SOURCE_COUNT = 4_975_525
 C61_PUBLIC_NODE_COUNT = 1_436
 C61_STRUCTURAL_ZERO_NODE_COUNT = 1
 C61_ADD_NODE_COUNT = 12_961_295
@@ -159,6 +160,19 @@ C61_FOLDED_DIRECT_TOTAL_ROWS_AND_TERMS = (
     + C61_FOLDED_DIRECT_EXPLICIT_TERMS
 )
 
+# C6SPR1-v1 preregisters a three-column provider-global plan oracle and
+# response-local lane/boundary/runtime commitments.  Seven rational memory
+# sums are evaluated by batch-inversion GKR circuits; no edge-domain witness
+# or inverse column is committed.
+C61_SPARSE_RATIONAL_PLAN_COLUMNS = 3
+C61_SPARSE_RATIONAL_PLAN_DOMAIN_LOG2 = 27
+C61_SPARSE_RATIONAL_RESPONSE_DOMAIN_EQUIVALENT_D25_VECTORS = 3
+C61_SPARSE_RATIONAL_SUBCHECKS = 7
+C61_SPARSE_RATIONAL_CLIENT_PARAMETER_FRAME_BYTES = 512
+C61_SPARSE_RATIONAL_RECURRENCE_ACTIVE_ROWS = (
+    C61_CANONICAL_NODE_COUNT + C61_SPARSE_OPERAND_COUNT
+)
+
 # Native transparent candidate.  Each model/embedding/compiler component uses
 # two independent no-grinding chains.  C6AWH1 configures 75 public PCS bits so
 # adding one Fp2 MAC event remains strictly below a 74-bit authenticated-chain
@@ -173,11 +187,13 @@ C61_NATIVE_MAX_ORDERED_OPENINGS = 128
 C61_NATIVE_MODEL_OPENINGS = 96
 C61_NATIVE_EMBEDDING_OPENINGS = 6
 C61_NATIVE_CHAIN_CODEC_MAX_BYTES = 1_500_000
+# The compiler chains additionally carry the preregistered multi-oracle
+# rational-GKR messages.  Model and embedding retain the old ceiling.
+C61_NATIVE_COMPILER_CHAIN_CODEC_MAX_BYTES = 2_500_000
 C61_NATIVE_ARITHMETIC_AND_LINK_CODEC_MAX_BYTES = 500_000
 C61_NATIVE_PUBLIC_ARGUMENT_CODEC_MAX_BYTES = (
-    C61_NATIVE_COMPONENTS
-    * C61_NATIVE_CHAINS_PER_COMPONENT
-    * C61_NATIVE_CHAIN_CODEC_MAX_BYTES
+    2 * C61_NATIVE_CHAINS_PER_COMPONENT * C61_NATIVE_CHAIN_CODEC_MAX_BYTES
+    + C61_NATIVE_CHAINS_PER_COMPONENT * C61_NATIVE_COMPILER_CHAIN_CODEC_MAX_BYTES
     + C61_NATIVE_ARITHMETIC_AND_LINK_CODEC_MAX_BYTES
 )
 
@@ -240,10 +256,13 @@ C61_OLD_MODEL_PCS_OPEN_SECONDS = Decimal("0.298579063")
 C61_NATIVE_MODEL_TRANSFORM_BYTES = 48_337_256_448
 C61_NATIVE_MODEL_LINEAR_SECONDS = Decimal("0.600")
 C61_NATIVE_COMPILER_EQUIVALENT_PASSES = 64
-C61_NATIVE_COMPILER_PCS_VECTORS = 2
+C61_NATIVE_COMPILER_PCS_VECTORS = (
+    C61_SPARSE_RATIONAL_RESPONSE_DOMAIN_EQUIVALENT_D25_VECTORS
+)
 C61_NATIVE_COMPILER_PCS_TRANSFORM_EQUIVALENTS = 5
 C61_NATIVE_INTEGRATION_FACTOR = Decimal("1.20")
 C61_VERIFIER_PER_NATIVE_CHAIN_SECONDS = Decimal("0.550")
+C61_VERIFIER_PER_COMPILER_CHAIN_SECONDS = Decimal("0.750")
 C61_VERIFIER_PUBLIC_ARITHMETIC_SECONDS = Decimal("0.500")
 C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES = 4 * 573_299_712
 C61_TERMINAL_FUNCTIONAL_TRACE_FP2_BYTES = (
@@ -384,8 +403,21 @@ def build_report() -> dict[str, Any]:
     output_batch_error = Fraction(
         C61_TERMINAL_OUTPUTS - 1, c6.FP2_CARDINALITY
     )
-    terminal_functional_relation_error = Fraction(
-        C61_TERMINAL_FUNCTIONAL_DOMAIN_LOG2, c6.FP2_CARDINALITY
+    lane_batch_error = Fraction(1, c6.FP2_CARDINALITY)
+    sparse_recurrence_rational_error = Fraction(
+        C61_CANONICAL_NODE_COUNT - 1, c6.FP2_CARDINALITY
+    )
+    runtime_gather_rational_error = Fraction(
+        C61_SCALE_NODE_COUNT - 1, c6.FP2_CARDINALITY
+    )
+    source_gather_rational_error = Fraction(
+        C61_SCHEDULED_SOURCE_COUNT - 1, c6.FP2_CARDINALITY
+    )
+    terminal_functional_relation_error = (
+        lane_batch_error
+        + sparse_recurrence_rational_error
+        + runtime_gather_rational_error
+        + source_gather_rational_error
     )
     # One ordered batch of at most 128 fixed claims contributes a degree-127
     # root event.  Closing its affine result through C6AWH1 adds one separate
@@ -457,7 +489,13 @@ def build_report() -> dict[str, Any]:
         projected_setup_bytes + native_projected_certificate_bytes
     )
 
-    provider_state_elements = 4 * C61_CANONICAL_NODE_COUNT + canonical_runtime_values
+    # Production scheduling commits and releases the lane/boundary inputs
+    # before the largest rational-GKR workspace.  The conservative peak is
+    # two active recurrence buffers plus the canonical runtime vector.
+    provider_state_elements = (
+        2 * C61_SPARSE_RATIONAL_RECURRENCE_ACTIVE_ROWS
+        + canonical_runtime_values
+    )
     provider_state_bytes = provider_state_elements * c6.FP2_BYTES
 
     with localcontext() as context:
@@ -506,10 +544,10 @@ def build_report() -> dict[str, Any]:
         )
         native_verifier_roof_seconds = (
             T1_FOUR_THREAD_VERIFIER_ACCOUNTED_SECONDS
-            + Decimal(
-                C61_NATIVE_COMPONENTS * C61_NATIVE_CHAINS_PER_COMPONENT
-            )
+            + Decimal(2 * C61_NATIVE_CHAINS_PER_COMPONENT)
             * C61_VERIFIER_PER_NATIVE_CHAIN_SECONDS
+            + Decimal(C61_NATIVE_CHAINS_PER_COMPONENT)
+            * C61_VERIFIER_PER_COMPILER_CHAIN_SECONDS
             + C61_VERIFIER_PUBLIC_ARITHMETIC_SECONDS
         )
 
@@ -525,7 +563,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v13",
+        "profile": "C6.1-public-compression-reference-v14",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
@@ -535,7 +573,8 @@ def build_report() -> dict[str, Any]:
             "C6TFA1_EXACT_EIGHT_FAMILY_DIFFERENTIAL_GREEN__"
             "DIRECT_INTERVAL_REDUCER_GREEN__"
             "TERMINAL_METADATA_AND_EXACT_D25_LANE_REFERENCES_GREEN__"
-            "SPARSE_APPLICATION_AND_SOURCE_GATHER_BACKEND_REQUIRED__"
+            "C6SPR1_RATIONAL_GKR_PREREGISTERED__"
+            "SCALED_RATIONAL_GKR_DIFFERENTIAL_REQUIRED__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
@@ -610,7 +649,8 @@ def build_report() -> dict[str, Any]:
                 "C6TFA1_EXACT_EIGHT_FAMILY_DIFFERENTIAL_GREEN__"
                 "DIRECT_INTERVAL_REDUCER_GREEN__"
                 "TERMINAL_METADATA_AND_EXACT_D25_LANE_REFERENCES_GREEN__"
-                "SPARSE_APPLICATION_AND_SOURCE_GATHER_BACKEND_REQUIRED__"
+                "C6SPR1_RATIONAL_GKR_PREREGISTERED__"
+                "SCALED_RATIONAL_GKR_DIFFERENTIAL_REQUIRED__"
                 "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
             "statement": (
@@ -920,10 +960,14 @@ def build_report() -> dict[str, Any]:
                 },
             },
             "wire_screen": {
-                "chain_codec_ceiling_bytes": C61_NATIVE_CHAIN_CODEC_MAX_BYTES,
-                "chain_count": (
-                    C61_NATIVE_COMPONENTS * C61_NATIVE_CHAINS_PER_COMPONENT
+                "model_embedding_chain_codec_ceiling_bytes": (
+                    C61_NATIVE_CHAIN_CODEC_MAX_BYTES
                 ),
+                "model_embedding_chain_count": 2 * C61_NATIVE_CHAINS_PER_COMPONENT,
+                "compiler_chain_codec_ceiling_bytes": (
+                    C61_NATIVE_COMPILER_CHAIN_CODEC_MAX_BYTES
+                ),
+                "compiler_chain_count": C61_NATIVE_CHAINS_PER_COMPONENT,
                 "arithmetic_mac_link_framing_ceiling_bytes": (
                     C61_NATIVE_ARITHMETIC_AND_LINK_CODEC_MAX_BYTES
                 ),
@@ -949,7 +993,10 @@ def build_report() -> dict[str, Any]:
                 "credit": False,
             },
             "ephemeral_provider_state_screen": {
-                "node_vectors": 4,
+                "schedule": "two active recurrence buffers plus canonical runtime",
+                "active_recurrence_rows_per_buffer": (
+                    C61_SPARSE_RATIONAL_RECURRENCE_ACTIVE_ROWS
+                ),
                 "runtime_vectors": 1,
                 "fp2_elements": provider_state_elements,
                 "bytes": provider_state_bytes,
@@ -969,7 +1016,17 @@ def build_report() -> dict[str, Any]:
                     runtime_sketch_error
                 ),
                 "terminal_output_rlc": _error_report(output_batch_error),
-                "terminal_functional_relation_d28": _error_report(
+                "postcommit_lane_batch": _error_report(lane_batch_error),
+                "sparse_recurrence_rational_fingerprint": _error_report(
+                    sparse_recurrence_rational_error
+                ),
+                "runtime_gather_rational_fingerprint": _error_report(
+                    runtime_gather_rational_error
+                ),
+                "source_gather_rational_fingerprint": _error_report(
+                    source_gather_rational_error
+                ),
+                "terminal_functional_relation_total": _error_report(
                     terminal_functional_relation_error
                 ),
                 "one_authenticated_chain_exact_screen": _error_report(
@@ -1032,11 +1089,13 @@ def build_report() -> dict[str, Any]:
                 "existing_accounted_seconds": str(
                     T1_FOUR_THREAD_VERIFIER_ACCOUNTED_SECONDS
                 ),
-                "native_chain_count": (
-                    C61_NATIVE_COMPONENTS * C61_NATIVE_CHAINS_PER_COMPONENT
-                ),
-                "seconds_per_chain_allocation": str(
+                "model_embedding_chain_count": 2 * C61_NATIVE_CHAINS_PER_COMPONENT,
+                "seconds_per_model_embedding_chain_allocation": str(
                     C61_VERIFIER_PER_NATIVE_CHAIN_SECONDS
+                ),
+                "compiler_chain_count": C61_NATIVE_CHAINS_PER_COMPONENT,
+                "seconds_per_compiler_chain_allocation": str(
+                    C61_VERIFIER_PER_COMPILER_CHAIN_SECONDS
                 ),
                 "public_arithmetic_seconds": str(
                     C61_VERIFIER_PUBLIC_ARITHMETIC_SECONDS
@@ -1088,7 +1147,7 @@ def build_report() -> dict[str, Any]:
                 ),
             },
             "local_hard_stop": {
-                "status": "C6TFA1_SPARSE_APPLICATION_AND_SOURCE_GATHER_BACKEND_REQUIRED",
+                "status": "C6SPR1_SCALED_RATIONAL_GKR_DIFFERENTIAL_REQUIRED",
                 "canonical_runtime_seam_green": True,
                 "raw_verifier_runtime_values": raw_verifier_runtime_values,
                 "canonical_runtime_values": canonical_runtime_values,
@@ -1169,6 +1228,28 @@ def build_report() -> dict[str, Any]:
                     "native_d25_recurrences_green": False,
                     "credit": False,
                 },
+                "preregistered_sparse_backend": {
+                    "name": "C6SPR1-v1 rational-memory GKR",
+                    "plan_oracle_columns": ["opcode", "lhs_or_source", "rhs_or_scalar"],
+                    "plan_oracle_domain_log2": C61_SPARSE_RATIONAL_PLAN_DOMAIN_LOG2,
+                    "plan_oracle_client_parameter_frame_bytes": (
+                        C61_SPARSE_RATIONAL_CLIENT_PARAMETER_FRAME_BYTES
+                    ),
+                    "response_commitments_fixed_before_lane_batch": [
+                        "lane_0_D25",
+                        "lane_1_D25",
+                        "source_boundary_0_D23",
+                        "source_boundary_1_D23",
+                        "canonical_runtime_D24",
+                    ],
+                    "rational_subchecks": C61_SPARSE_RATIONAL_SUBCHECKS,
+                    "inverse_columns_committed": 0,
+                    "edge_domain_witness_committed": False,
+                    "batch_inversion": "product-tree GKR with one checked root inverse",
+                    "scaled_differential_green": False,
+                    "claimless_multi_oracle_opening_green": False,
+                    "credit": False,
+                },
                 "native_trace_audit": {
                     "implemented_c6rsc3_schedules": (
                         "historical ChaCha8/FpStream v3 plus versioned direct-MLE v4"
@@ -1201,9 +1282,9 @@ def build_report() -> dict[str, Any]:
                     ),
                 },
                 "required_before_resume": [
-                    "supply a native sparse-application argument for lambda=q+A(runtime)^T*lambda over the committed D25 lanes",
-                    "supply the exact source-ordinal-to-canonical-node gather boundary, including absent scheduled sources and zero padding",
-                    "connect those relations to claimless authenticated openings and the typed compiler-chain boundary",
+                    "implement the scaled seven-subcheck C6SPR1 rational-memory differential",
+                    "prove mutation rejection for recurrence, runtime gather, source gather, lane batching and padding",
+                    "connect the GKR input claims to typed multi-oracle claimless openings without committed inverse or edge columns",
                 ],
                 "credit": False,
             },
@@ -1234,11 +1315,18 @@ def build_report() -> dict[str, Any]:
             "parameter_bytes_after_terminal_metadata": (
                 C61_CLIENT_PARAMETER_BYTES_AFTER_TERMINAL_METADATA
             ),
+            "sparse_rational_plan_parameter_frame_bytes": (
+                C61_SPARSE_RATIONAL_CLIENT_PARAMETER_FRAME_BYTES
+            ),
+            "parameter_bytes_after_sparse_rational_frame": (
+                C61_CLIENT_PARAMETER_BYTES_AFTER_TERMINAL_METADATA
+                - C61_SPARSE_RATIONAL_CLIENT_PARAMETER_FRAME_BYTES
+            ),
             "projected_setup_bytes": projected_setup_bytes,
             "strict_setup_max_bytes": C61_SETUP_MAX_BYTES,
             "headroom_bytes": C61_SETUP_MAX_BYTES - projected_setup_bytes,
-            "projected_setup_plus_first_certificate_bytes": (
-                projected_first_response_bytes
+            "projected_setup_plus_native_first_certificate_bytes": (
+                native_projected_first_response_bytes
             ),
             "allocation_screen_pass": projected_setup_bytes <= C61_SETUP_MAX_BYTES,
             "contingency": (
@@ -1422,17 +1510,21 @@ def build_report() -> dict[str, Any]:
         + c6.FP2_BYTES
         == C61_NATIVE_CLAIMLESS_D14_DIAGNOSTIC_BYTES
     )
-    assert C61_NATIVE_PUBLIC_ARGUMENT_CODEC_MAX_BYTES == 9_500_000
-    assert native_projected_certificate_bytes == 16_342_103
-    assert C61_CERTIFICATE_MAX_BYTES - native_projected_certificate_bytes == 5_657_896
-    assert native_projected_first_response_bytes == 101_085_470
-    assert provider_state_elements == 126_212_812
-    assert provider_state_bytes == 2_019_404_992
+    assert C61_NATIVE_PUBLIC_ARGUMENT_CODEC_MAX_BYTES == 11_500_000
+    assert native_projected_certificate_bytes == 18_342_103
+    assert C61_CERTIFICATE_MAX_BYTES - native_projected_certificate_bytes == 3_657_896
+    assert native_projected_first_response_bytes == 103_085_470
+    assert provider_state_elements == 142_357_222
+    assert provider_state_bytes == 2_277_715_552
     assert C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES == 2_293_198_848
-    assert C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES - provider_state_bytes == 273_793_856
+    assert C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES - provider_state_bytes == 15_483_296
     assert c6.soundness_bits(equality_schedule_error) > Decimal("120.12")
     assert terminal_functional_relation_error == Fraction(
-        28, c6.FP2_CARDINALITY
+        1
+        + (C61_CANONICAL_NODE_COUNT - 1)
+        + (C61_SCALE_NODE_COUNT - 1)
+        + (C61_SCHEDULED_SOURCE_COUNT - 1),
+        c6.FP2_CARDINALITY,
     )
     assert C61_TERMINAL_FUNCTIONAL_WRITES == 225_997_412
     assert C61_TERMINAL_FUNCTIONAL_WRITES < 2**C61_TERMINAL_FUNCTIONAL_DOMAIN_LOG2
@@ -1447,8 +1539,8 @@ def build_report() -> dict[str, Any]:
         - C61_FOLDED_DIRECT_TOTAL_ROWS_AND_TERMS
         == 224_454_178
     )
-    assert c6.soundness_bits(candidate_complete_error) > Decimal("119.65")
-    assert c6.soundness_bits(candidate_session_error) > Decimal("115.56")
+    assert c6.soundness_bits(candidate_complete_error) > Decimal("101")
+    assert c6.soundness_bits(candidate_session_error) > Decimal("97")
     assert native_compiler_symbols == 4_902_000_320
     assert C61_TERMINAL_FUNCTIONAL_TRACE_FP2_BYTES == 4_294_967_296
     assert (
@@ -1467,9 +1559,9 @@ def build_report() -> dict[str, Any]:
         - C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES
         == 27_569_408
     )
-    assert native_compiler_pcs_transform_bytes == 10_737_418_240
-    assert Decimal("14.50") < native_provider_roof_seconds < Decimal("14.51")
-    assert native_verifier_roof_seconds == Decimal("4.565672390")
+    assert native_compiler_pcs_transform_bytes == 16_106_127_360
+    assert Decimal("14.70") < native_provider_roof_seconds < Decimal("14.71")
+    assert native_verifier_roof_seconds == Decimal("4.965672390")
     assert C61_VERIFIER_ADDITIONAL_MEMORY_ALLOCATION_BYTES == 512_000_000
     assert native_projected_certificate_bytes < C61_CERTIFICATE_EXCLUSIVE_BYTES
     assert projected_setup_bytes < C61_SETUP_EXCLUSIVE_BYTES

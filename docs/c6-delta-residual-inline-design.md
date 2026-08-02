@@ -2215,6 +2215,120 @@ requires a preregistered native construction that:
 
 No pod contact is authorized.
 
+### 0.29 C6SPR1 rational-memory GKR preregistration
+
+The sparse-application obstruction is narrowed to a concrete native
+construction, `C6SPR1-v1`.  It does not assign a terminal functional to a
+fixed node, materialize the D28 coefficient-event table, or commit an
+edge-domain witness.  The two exact C6TFA1 lanes and their two exact source
+boundaries remain the response witness.
+
+The provider-global plan oracle has exactly three row columns over D25:
+
+```text
+opcode[j]   one of Source, Zero, Public, Add, Sub, Scale
+lhs[j]      source ordinal, first operand, or Scale operand
+rhs[j]      second operand or canonical Scale-scalar ordinal
+```
+
+Its strict **512-B** client parameter frame binds the operation-plan artifact,
+topology and oracle/codeword roots plus all exact censuses and domains.  The
+full oracle/codeword remains provider-global.  Together with `VC6TRM1` and
+the retained extraction map, the frame leaves **2,370,058 B** in the existing
+8-MB parameter allocation; projected setup remains **84,743,367 B**.
+
+Before any new batching scalar, the provider fixes commitments to
+`lambda_0`, `lambda_1`, `g_0`, `g_1` and the canonical runtime.  The client
+then samples `zeta` and forms only inside the relation
+
+```text
+lambda = lambda_0 + zeta * lambda_1
+q      = q_0      + zeta * q_1
+g      = g_0      + zeta * g_1.
+```
+
+The injection `q_b` is recomputed from the authenticated terminal metadata
+and registered schedules.  The claimed boundary values are the authenticated
+openings `P_b = MLE(g_b, leaf_point[b])`; they are not provider-selected
+digests.
+
+Three fresh Fp2 challenges define seven rational sums.  With `mu[j]` the
+single internal node-aligned Scale value, the recurrence check is
+
+```text
+sum_v (lambda[v] - q[v]) / (gamma - v)
+  = sum_Add j lambda[j] * (1/(gamma-lhs[j]) + 1/(gamma-rhs[j]))
+  + sum_Sub j lambda[j] * (1/(gamma-lhs[j]) - 1/(gamma-rhs[j]))
+  + sum_Scale j lambda[j] * mu[j] / (gamma-lhs[j]).
+```
+
+The same circuit constrains `mu`, rather than accepting it as another
+commitment:
+
+```text
+sum_Scale j mu[j] / (tau-rhs[j])
+  = sum_k runtime_scalar[k] / (tau-k).
+```
+
+The source gather, including every absent scheduled source as a committed
+zero boundary row, is
+
+```text
+sum_s g[s] / (delta-s)
+  = sum_Source j lambda[j] / (delta-lhs[j]).
+```
+
+These are respectively three, two and two rational subchecks.  Each inverse
+family is evaluated by a product-tree batch-inversion GKR circuit with one
+checked root inverse.  Inverses and edge values are internal circuit wires:
+no inverse column, routing trace or edge-domain polynomial is committed.
+The seven subchecks share the same `mu`, lane and boundary wires.  GKR reduces
+their input claims to multi-oracle claimless openings of the response roots
+and the fixed three-column plan root, which are then bound by the existing
+role-typed compiler statement and C6AWH1 authenticated target seam.
+
+If one combined recurrence discrepancy is nonzero, its rational numerator
+has degree at most **28,845,630**.  The runtime and source gather numerators
+have degrees at most **10,828,851** and **4,975,524**.  Including the one
+postcommit lane-batch event gives the exact new relation charge
+
+```text
+(1 + 28,845,630 + 10,828,851 + 4,975,524) / |Fp2|
+  = 44,650,006 / |Fp2|,
+```
+
+or **102.5878429659 bits**.  A challenge equal to an active embedded index is
+a terminal attempt abort; it is never selectively redrawn.  The complete
+certificate screen becomes **102.5878333635 bits**, and the informative
+17-certificate union is **98.5003705223 bits**, still above the frozen
+78.809-bit requirement.
+
+The response inputs occupy one D26 lane oracle plus one D25
+boundary/runtime oracle, exactly three D25-domain transform equivalents.
+The fixed plan oracle is preprocessed and response-bound but not credited as
+free prover work: its query/fold work remains inside the existing conservative
+64-pass compiler charge.  Two compiler chains receive a strict
+**2,500,000-B** ceiling each; the four model/embedding chains retain
+**1,500,000 B** each.  With the unchanged **500,000-B** arithmetic/link cap,
+the certificate screen is **18,342,103 B** and setup plus first certificate
+is **103,085,470 B**.
+
+The conservative production schedule peaks at two active
+`28,845,631 + 36,917,836 = 65,763,467`-row work buffers plus canonical
+runtime: **2,277,715,552 B**, leaving **15,483,296 B** below the component
+cap.  Three response transform equivalents give a provider roof of
+**14.7062654062 s**.  Reallocating the two compiler verifier chains to
+**0.750 s** each gives **4.965672390 s**.  The margins are only
+**0.2937345938 / 0.034327610 s**; all byte, setup, state and timing values
+remain `credit:false` screens.
+
+Budget profile v14 is green.  The active local **HARD STOP** is now
+`C6SPR1_SCALED_RATIONAL_GKR_DIFFERENTIAL_REQUIRED`: implementation must first
+show the seven identities against the independent lane oracle, reject every
+recurrence/runtime/source/batching/padding mutation, and only then extend the
+claimless backend to the typed multi-oracle GKR input openings.  No pod
+contact is authorized.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

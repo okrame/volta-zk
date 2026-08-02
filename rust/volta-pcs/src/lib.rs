@@ -15,6 +15,8 @@ pub mod c61_authenticated_whir_p3;
 #[cfg(feature = "c61-p3-authenticated-reference")]
 mod c61_interactive_driver;
 pub mod c61_public_compression;
+#[cfg(feature = "c61-p3-authenticated-reference")]
+mod c61_shared_round_challenger;
 pub mod c61_terminal_functional;
 #[cfg(feature = "c61-p3-reference")]
 pub mod c61_whir_reference;

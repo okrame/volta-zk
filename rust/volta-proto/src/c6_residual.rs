@@ -6130,6 +6130,177 @@ impl C6ResidualEqPointCursor {
     }
 }
 
+/// Exact public reduction of two equality-polynomial schedules over an
+/// affine integer range.
+///
+/// This is the non-iterating primitive required by C6TFA1 padding and source
+/// ranges. It decomposes `[0, length)` into dyadic blocks and evaluates the
+/// binary add/multiply carry automata for
+/// `left_offset + left_stride*i` and
+/// `right_offset + right_stride*i`. No table proportional to `length` is
+/// allocated or visited.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6ResidualEqualityAffineRangeSum {
+    value: Fp2,
+    dyadic_blocks: u32,
+    transition_rows: u64,
+    max_carry_states: u64,
+}
+
+impl C6ResidualEqualityAffineRangeSum {
+    pub fn value(self) -> Fp2 {
+        self.value
+    }
+
+    pub fn dyadic_blocks(self) -> u32 {
+        self.dyadic_blocks
+    }
+
+    pub fn transition_rows(self) -> u64 {
+        self.transition_rows
+    }
+
+    pub fn max_carry_states(self) -> u64 {
+        self.max_carry_states
+    }
+}
+
+fn c6_residual_eq_bit(point: &[Fp2], bit: usize, value: u64) -> C6ResidualResult<Fp2> {
+    if bit >= point.len() {
+        if value != 0 {
+            return Err(C6ResidualError::new(
+                "C6 equality affine range produced an out-of-domain bit",
+            ));
+        }
+        return Ok(Fp2::ONE);
+    }
+    Ok(if value == 0 { Fp2::ONE - point[bit] } else { point[bit] })
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn c6_residual_equality_affine_range_sum(
+    left_point: &[Fp2],
+    left_offset: u64,
+    left_stride: u64,
+    right_point: &[Fp2],
+    right_offset: u64,
+    right_stride: u64,
+    length: u64,
+) -> C6ResidualResult<C6ResidualEqualityAffineRangeSum> {
+    if left_point.len() >= u64::BITS as usize || right_point.len() >= u64::BITS as usize {
+        return Err(C6ResidualError::new("C6 equality affine range point dimension exceeds u64"));
+    }
+    if length == 0 {
+        return Ok(C6ResidualEqualityAffineRangeSum {
+            value: Fp2::ZERO,
+            dyadic_blocks: 0,
+            transition_rows: 0,
+            max_carry_states: 0,
+        });
+    }
+    let last = length - 1;
+    let left_last =
+        left_offset
+            .checked_add(left_stride.checked_mul(last).ok_or_else(|| {
+                C6ResidualError::new("C6 equality affine left endpoint overflows")
+            })?)
+            .ok_or_else(|| C6ResidualError::new("C6 equality affine left endpoint overflows"))?;
+    let right_last =
+        right_offset
+            .checked_add(right_stride.checked_mul(last).ok_or_else(|| {
+                C6ResidualError::new("C6 equality affine right endpoint overflows")
+            })?)
+            .ok_or_else(|| C6ResidualError::new("C6 equality affine right endpoint overflows"))?;
+    let left_entries = 1u64 << left_point.len();
+    let right_entries = 1u64 << right_point.len();
+    if left_offset >= left_entries
+        || left_last >= left_entries
+        || right_offset >= right_entries
+        || right_last >= right_entries
+    {
+        return Err(C6ResidualError::new("C6 equality affine range exceeds a point domain"));
+    }
+
+    let mut range_base = 0u64;
+    let mut value = Fp2::ZERO;
+    let mut dyadic_blocks = 0u32;
+    let mut transition_rows = 0u64;
+    let mut max_carry_states = 0u64;
+    for log_block in (0..u64::BITS).rev() {
+        let block_len = 1u64 << log_block;
+        if length & block_len == 0 {
+            continue;
+        }
+        let left_constant = left_offset
+            .checked_add(left_stride.checked_mul(range_base).ok_or_else(|| {
+                C6ResidualError::new("C6 equality affine left block offset overflows")
+            })?)
+            .ok_or_else(|| {
+                C6ResidualError::new("C6 equality affine left block offset overflows")
+            })?;
+        let right_constant = right_offset
+            .checked_add(right_stride.checked_mul(range_base).ok_or_else(|| {
+                C6ResidualError::new("C6 equality affine right block offset overflows")
+            })?)
+            .ok_or_else(|| {
+                C6ResidualError::new("C6 equality affine right block offset overflows")
+            })?;
+        let processed_bits = left_point.len().max(right_point.len()).max(log_block as usize);
+        let mut states = BTreeMap::from([((0u64, 0u64), Fp2::ONE)]);
+        for bit in 0..processed_bits {
+            let mut next_states = BTreeMap::<(u64, u64), Fp2>::new();
+            let variable_bit = bit < log_block as usize;
+            for ((left_carry, right_carry), state_weight) in states {
+                for input_bit in 0..=u64::from(variable_bit) {
+                    let left_total = ((left_constant >> bit) & 1)
+                        .checked_add(left_stride.checked_mul(input_bit).ok_or_else(|| {
+                            C6ResidualError::new("C6 equality affine left transition overflows")
+                        })?)
+                        .and_then(|total| total.checked_add(left_carry))
+                        .ok_or_else(|| {
+                            C6ResidualError::new("C6 equality affine left transition overflows")
+                        })?;
+                    let right_total = ((right_constant >> bit) & 1)
+                        .checked_add(right_stride.checked_mul(input_bit).ok_or_else(|| {
+                            C6ResidualError::new("C6 equality affine right transition overflows")
+                        })?)
+                        .and_then(|total| total.checked_add(right_carry))
+                        .ok_or_else(|| {
+                            C6ResidualError::new("C6 equality affine right transition overflows")
+                        })?;
+                    let left_bit = left_total & 1;
+                    let right_bit = right_total & 1;
+                    let transition_weight = c6_residual_eq_bit(left_point, bit, left_bit)?
+                        * c6_residual_eq_bit(right_point, bit, right_bit)?;
+                    *next_states.entry((left_total >> 1, right_total >> 1)).or_insert(Fp2::ZERO) +=
+                        state_weight * transition_weight;
+                    transition_rows = transition_rows.checked_add(1).ok_or_else(|| {
+                        C6ResidualError::new("C6 equality affine transition census overflows")
+                    })?;
+                }
+            }
+            max_carry_states = max_carry_states.max(next_states.len() as u64);
+            states = next_states;
+        }
+        if states.keys().any(|carry| *carry != (0, 0)) {
+            return Err(C6ResidualError::new(
+                "C6 equality affine range ended with a nonzero carry",
+            ));
+        }
+        value += states.values().copied().fold(Fp2::ZERO, |sum, term| sum + term);
+        range_base = range_base
+            .checked_add(block_len)
+            .ok_or_else(|| C6ResidualError::new("C6 equality affine dyadic cursor overflows"))?;
+        dyadic_blocks = dyadic_blocks
+            .checked_add(1)
+            .ok_or_else(|| C6ResidualError::new("C6 equality affine block census overflows"))?;
+    }
+    if range_base != length {
+        return Err(C6ResidualError::new("C6 equality affine dyadic cursor mismatch"));
+    }
+    Ok(C6ResidualEqualityAffineRangeSum { value, dyadic_blocks, transition_rows, max_carry_states })
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6ResidualFusedTerminalCoefficients {
     proof_repetition: u8,
@@ -12275,6 +12446,81 @@ mod tests {
         let _unused = dead.add_public(Fp2::ONE).unwrap();
         dead.add_zero_closure(live).unwrap();
         assert!(dead.census().is_err());
+    }
+
+    #[test]
+    fn equality_affine_range_sum_matches_naive_strides_offsets_and_edges() {
+        let left_point = [Fp2::ZERO, Fp2::ONE, fp2(2), fp2(3), fp2(5), fp2(7), fp2(11)];
+        let right_point = [fp2(13), Fp2::ONE, Fp2::ZERO, fp2(17), fp2(19), fp2(23)];
+        for left_stride in 0..=3u64 {
+            for right_stride in 0..=3u64 {
+                for left_offset in 0..8u64 {
+                    for right_offset in 0..8u64 {
+                        let left_capacity = if left_stride == 0 {
+                            16
+                        } else {
+                            ((1u64 << left_point.len()) - 1 - left_offset) / left_stride + 1
+                        };
+                        let right_capacity = if right_stride == 0 {
+                            16
+                        } else {
+                            ((1u64 << right_point.len()) - 1 - right_offset) / right_stride + 1
+                        };
+                        for length in 0..=left_capacity.min(right_capacity).min(16) {
+                            let reduced = c6_residual_equality_affine_range_sum(
+                                &left_point,
+                                left_offset,
+                                left_stride,
+                                &right_point,
+                                right_offset,
+                                right_stride,
+                                length,
+                            )
+                            .unwrap();
+                            let mut left = C6ResidualEqPointCursor::new(
+                                &left_point,
+                                1 << left_point.len(),
+                                "test left",
+                            )
+                            .unwrap();
+                            let mut right = C6ResidualEqPointCursor::new(
+                                &right_point,
+                                1 << right_point.len(),
+                                "test right",
+                            )
+                            .unwrap();
+                            let naive = (0..length).fold(Fp2::ZERO, |sum, index| {
+                                sum + left.at((left_offset + left_stride * index) as u32).unwrap()
+                                    * right
+                                        .at((right_offset + right_stride * index) as u32)
+                                        .unwrap()
+                            });
+                            assert_eq!(reduced.value(), naive);
+                            assert_eq!(reduced.dyadic_blocks(), length.count_ones());
+                            if length == 0 {
+                                assert_eq!(reduced.transition_rows(), 0);
+                                assert_eq!(reduced.max_carry_states(), 0);
+                            } else {
+                                assert!(reduced.transition_rows() > 0);
+                                assert!(reduced.max_carry_states() > 0);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert!(c6_residual_equality_affine_range_sum(&left_point, 127, 1, &right_point, 0, 1, 2,)
+            .is_err());
+        assert!(c6_residual_equality_affine_range_sum(
+            &left_point,
+            u64::MAX,
+            2,
+            &right_point,
+            0,
+            1,
+            2,
+        )
+        .is_err());
     }
 
     #[cfg(feature = "c6-trace")]

@@ -10,7 +10,7 @@
 use std::fmt;
 
 use volta_field::Fp2;
-use volta_mac::{ProverAuthed, Transcript, VerifierKey};
+use volta_mac::{CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey};
 
 use crate::c61_public_compression::{C61NativeChainId, C61NativeComponent, C61_TERMINAL_CLAIMS};
 use crate::c6_residual_sumcheck::{C6_RESIDUAL_AUXILIARY_ROUNDS, C6_RESIDUAL_LEAF_ROUNDS};
@@ -372,6 +372,125 @@ pub fn fold_c61_sparse_response_verifier_keys(
     std::array::from_fn(|index| {
         physical[2 * index].add(physical[2 * index + 1].scale(extension_generator))
     })
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn finish_c61_sparse_rational_blind_physical_terminal_prover(
+    terminal: volta_proto::c6_residual::C6SparseRationalBlindJointProverTerminal,
+    response_targets: &[ProverAuthed; C61_SPARSE_RATIONAL_RESPONSE_OPENINGS],
+    plan_targets: &[ProverAuthed; C61_SPARSE_RATIONAL_PLAN_OPENINGS],
+    stream: &mut CorrelationStream,
+    doms: &mut volta_proto::logup::Doms,
+    tx: &mut Transcript,
+    products: &mut volta_proto::logup::ProdTriples,
+    zeros: &mut Vec<ProverAuthed>,
+) -> Result<volta_proto::c6_residual::C6ResidualSparseRationalBlindJointTerminalProof> {
+    let semantic_response = fold_c61_sparse_response_prover_targets(response_targets);
+    volta_proto::c6_residual::finish_c6_residual_sparse_rational_joint_leaf_blind_prover(
+        terminal,
+        &semantic_response,
+        plan_targets,
+        stream,
+        doms,
+        tx,
+        products,
+        zeros,
+    )
+    .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn finish_c61_sparse_rational_blind_physical_terminal_verifier(
+    terminal: volta_proto::c6_residual::C6SparseRationalBlindJointVerifierTerminal,
+    response_keys: &[VerifierKey; C61_SPARSE_RATIONAL_RESPONSE_OPENINGS],
+    plan_keys: &[VerifierKey; C61_SPARSE_RATIONAL_PLAN_OPENINGS],
+    proof: &volta_proto::c6_residual::C6ResidualSparseRationalBlindJointTerminalProof,
+    ctx: &mut VerifierCtx,
+    doms: &mut volta_proto::logup::Doms,
+    tx: &mut Transcript,
+    products: &mut volta_proto::logup::ProdKeyTriples,
+    zeros: &mut Vec<VerifierKey>,
+) -> Result<()> {
+    let semantic_response = fold_c61_sparse_response_verifier_keys(response_keys);
+    volta_proto::c6_residual::finish_c6_residual_sparse_rational_joint_leaf_blind_verifier(
+        terminal,
+        &semantic_response,
+        plan_keys,
+        proof,
+        ctx,
+        doms,
+        tx,
+        products,
+        zeros,
+    )
+    .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))
+}
+
+/// Connect the twelve physical base-field response targets to the six
+/// semantic Fp2 inputs of the blind joint terminal relation.  The typed PCS
+/// statement must carry the same relation digest and common input point.
+#[allow(clippy::too_many_arguments)]
+pub fn finish_c61_sparse_rational_blind_terminal_prover(
+    terminal: volta_proto::c6_residual::C6SparseRationalBlindJointProverTerminal,
+    statement: &C61SparseRationalProverOpeningStatement,
+    stream: &mut CorrelationStream,
+    doms: &mut volta_proto::logup::Doms,
+    tx: &mut Transcript,
+    products: &mut volta_proto::logup::ProdTriples,
+    zeros: &mut Vec<ProverAuthed>,
+) -> Result<volta_proto::c6_residual::C6ResidualSparseRationalBlindJointTerminalProof> {
+    statement.public.validate()?;
+    if statement.public.sparse_relation_digest != terminal.relation_digest()
+        || statement.public.points.input_point() != terminal.points().input_point()
+    {
+        return Err(C61TerminalFunctionalStatementError::new(
+            "C6SPR3 prover PCS statement differs from the blind terminal relation",
+        ));
+    }
+    finish_c61_sparse_rational_blind_physical_terminal_prover(
+        terminal,
+        &statement.response_targets,
+        &statement.plan_targets,
+        stream,
+        doms,
+        tx,
+        products,
+        zeros,
+    )
+}
+
+/// Verifier mirror of
+/// [`finish_c61_sparse_rational_blind_terminal_prover`].
+#[allow(clippy::too_many_arguments)]
+pub fn finish_c61_sparse_rational_blind_terminal_verifier(
+    terminal: volta_proto::c6_residual::C6SparseRationalBlindJointVerifierTerminal,
+    statement: &C61SparseRationalVerifierOpeningStatement,
+    proof: &volta_proto::c6_residual::C6ResidualSparseRationalBlindJointTerminalProof,
+    ctx: &mut VerifierCtx,
+    doms: &mut volta_proto::logup::Doms,
+    tx: &mut Transcript,
+    products: &mut volta_proto::logup::ProdKeyTriples,
+    zeros: &mut Vec<VerifierKey>,
+) -> Result<()> {
+    statement.public.validate()?;
+    if statement.public.sparse_relation_digest != terminal.relation_digest()
+        || statement.public.points.input_point() != terminal.points().input_point()
+    {
+        return Err(C61TerminalFunctionalStatementError::new(
+            "C6SPR3 verifier PCS statement differs from the blind terminal relation",
+        ));
+    }
+    finish_c61_sparse_rational_blind_physical_terminal_verifier(
+        terminal,
+        &statement.response_target_keys,
+        &statement.plan_target_keys,
+        proof,
+        ctx,
+        doms,
+        tx,
+        products,
+        zeros,
+    )
 }
 
 impl C61SparseRationalVerifierOpeningStatement {
@@ -1071,6 +1190,232 @@ mod tests {
         let mut changed_root = compiler.clone();
         changed_root.sparse_oracles.response.commitment_root[0] ^= 1;
         assert_ne!(compiler.digest().unwrap(), changed_root.digest().unwrap());
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn physical_limb_targets_close_the_blind_sparse_terminal() {
+        use volta_mac::{
+            zero_batch_exchange, C6OperationPlanTerminalMetadata, C6TraceSourceManifest,
+            CorrelationStream, VerifierCtx,
+        };
+        use volta_proto::c6_residual::*;
+        use volta_proto::logup::Doms;
+        use volta_proto::{prod_batch_prover, prod_batch_verify};
+
+        let direct = build_c6_residual_direct_fused_scaled_fixture().unwrap();
+        let topology = direct.operation_plan().topology();
+        let source_manifest = C6TraceSourceManifest::new(
+            topology.source_count,
+            topology.source_schedule_digest,
+            direct.manifest().product_mask_sources().to_vec(),
+        )
+        .unwrap();
+        let terminal_metadata = C6OperationPlanTerminalMetadata::from_installed(
+            direct.operation_plan(),
+            &source_manifest,
+        )
+        .unwrap();
+        let leaf_point = [fp2(2), fp2(3), fp2(5), fp2(7), fp2(11), fp2(13), fp2(17)];
+        let output_beta = fp2(191);
+        let lanes: [C6ResidualFoldedTerminalAdjointLaneReference;
+            C6_RESIDUAL_PROOF_REPETITIONS as usize] = std::array::from_fn(|repetition| {
+            compile_c6_residual_folded_terminal_adjoint_lane_reference(
+                direct.operation_plan(),
+                &terminal_metadata,
+                direct.extraction(),
+                direct.runtime(),
+                direct.relation(),
+                repetition as u8,
+                &leaf_point,
+                output_beta,
+            )
+            .unwrap()
+        });
+        let sparse_challenges = C6ResidualSparseRationalChallenges::new(
+            topology,
+            fp2(197),
+            fp2(199),
+            fp2(211),
+            fp2(223),
+        )
+        .unwrap();
+        let relation = compile_c6_residual_sparse_rational_relation_reference(
+            direct.operation_plan(),
+            &terminal_metadata,
+            direct.extraction(),
+            direct.runtime(),
+            direct.relation(),
+            [&lanes[0], &lanes[1]],
+            sparse_challenges,
+            output_beta,
+        )
+        .unwrap();
+        let packed = compile_c6_sparse_rational_packed_oracle_reference(
+            direct.operation_plan(),
+            direct.extraction(),
+            direct.runtime(),
+            [&lanes[0], &lanes[1]],
+        )
+        .unwrap();
+
+        let correlation_seed = [0x81; 32];
+        let transcript_seed = [0x82; 32];
+        let delta = fp2(P - 103);
+        let mut prover_stream = CorrelationStream::new(correlation_seed);
+        let mut prover_doms = Doms::new(50_000);
+        let mut prover_transcript = Transcript::new(transcript_seed);
+        let mut prover_products = Vec::new();
+        let mut prover_zeros = Vec::new();
+        let (gkr_proof, leaf_claims) = prove_c6_residual_sparse_rational_gkr_blind_reference(
+            direct.operation_plan(),
+            direct.extraction(),
+            direct.runtime(),
+            &relation,
+            &mut prover_stream,
+            &mut prover_doms,
+            &mut prover_transcript,
+            &mut volta_proto::logup::Counters::default(),
+            &mut prover_products,
+            &mut prover_zeros,
+        )
+        .unwrap();
+        let mut verifier = VerifierCtx::new(correlation_seed, delta);
+        let mut verifier_doms = Doms::new(50_000);
+        let mut verifier_transcript = Transcript::new(transcript_seed);
+        let mut verifier_products = Vec::new();
+        let mut verifier_zeros = Vec::new();
+        let leaf_keys = verify_c6_residual_sparse_rational_gkr_blind_reference(
+            direct.operation_plan(),
+            &relation,
+            &gkr_proof,
+            &mut verifier,
+            &mut verifier_doms,
+            &mut verifier_transcript,
+            &mut verifier_products,
+            &mut verifier_zeros,
+        )
+        .unwrap()
+        .unwrap();
+        let (rounds, prover_terminal) =
+            prove_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
+                direct.operation_plan(),
+                &relation,
+                &packed,
+                &leaf_claims,
+                &mut prover_stream,
+                &mut prover_doms,
+                &mut prover_transcript,
+            )
+            .unwrap();
+        let verifier_terminal =
+            verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
+                direct.operation_plan(),
+                &relation,
+                packed.base_domain_log2(),
+                packed.response_digest(),
+                packed.plan_digest(),
+                &leaf_keys,
+                &rounds,
+                &mut verifier,
+                &mut verifier_doms,
+                &mut verifier_transcript,
+            )
+            .unwrap()
+            .unwrap();
+        let physical_points =
+            packed.physical_opening_points(prover_terminal.points().input_point()).unwrap();
+        let physical_response =
+            packed.evaluate_physical_response_openings(&physical_points).unwrap();
+        let physical_plan = packed.evaluate_physical_plan_openings(&physical_points).unwrap();
+        let target_values =
+            physical_response.iter().chain(&physical_plan).copied().collect::<Vec<_>>();
+        let target_domain = prover_doms.take(1);
+        assert_eq!(target_domain, verifier_doms.take(1));
+        let masks = prover_stream.draw_fulls(target_domain, target_values.len());
+        prover_stream.record_c6_fullfield_plaintexts(target_domain, &target_values).unwrap();
+        let corrections = target_values
+            .iter()
+            .zip(&masks)
+            .map(|(&value, mask)| value - mask.x)
+            .collect::<Vec<_>>();
+        let keys = verifier.correct_full_verifier_keys(target_domain, &corrections);
+        let response_targets: [ProverAuthed; C61_SPARSE_RATIONAL_RESPONSE_OPENINGS] = masks
+            [..C61_SPARSE_RATIONAL_RESPONSE_OPENINGS]
+            .iter()
+            .zip(physical_response)
+            .map(|(mask, value)| mask.authenticate(value))
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+        let plan_targets: [ProverAuthed; C61_SPARSE_RATIONAL_PLAN_OPENINGS] = masks
+            [C61_SPARSE_RATIONAL_RESPONSE_OPENINGS..]
+            .iter()
+            .zip(physical_plan)
+            .map(|(mask, value)| mask.authenticate(value))
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+        let response_keys: [VerifierKey; C61_SPARSE_RATIONAL_RESPONSE_OPENINGS] =
+            keys[..C61_SPARSE_RATIONAL_RESPONSE_OPENINGS].try_into().unwrap();
+        let plan_keys: [VerifierKey; C61_SPARSE_RATIONAL_PLAN_OPENINGS] =
+            keys[C61_SPARSE_RATIONAL_RESPONSE_OPENINGS..].try_into().unwrap();
+        assert_eq!(
+            fold_c61_sparse_response_prover_targets(&response_targets).map(|target| target.x),
+            packed.evaluate_response_openings(prover_terminal.points()).unwrap(),
+        );
+        let mut changed_targets = response_targets;
+        changed_targets[0].x += Fp2::ONE;
+        assert!(finish_c61_sparse_rational_blind_physical_terminal_prover(
+            prover_terminal.clone(),
+            &changed_targets,
+            &plan_targets,
+            &mut prover_stream,
+            &mut prover_doms,
+            &mut prover_transcript,
+            &mut prover_products,
+            &mut prover_zeros,
+        )
+        .is_err());
+        let terminal_proof = finish_c61_sparse_rational_blind_physical_terminal_prover(
+            prover_terminal,
+            &response_targets,
+            &plan_targets,
+            &mut prover_stream,
+            &mut prover_doms,
+            &mut prover_transcript,
+            &mut prover_products,
+            &mut prover_zeros,
+        )
+        .unwrap();
+        finish_c61_sparse_rational_blind_physical_terminal_verifier(
+            verifier_terminal,
+            &response_keys,
+            &plan_keys,
+            &terminal_proof,
+            &mut verifier,
+            &mut verifier_doms,
+            &mut verifier_transcript,
+            &mut verifier_products,
+            &mut verifier_zeros,
+        )
+        .unwrap();
+        let chi = prover_transcript.challenge_fp2();
+        assert_eq!(chi, verifier_transcript.challenge_fp2());
+        let product_mask = prover_stream.draw_product_mask(60_000, prover_products.len());
+        let product_key =
+            verifier.expand_product_mask_verifier_key(60_000, verifier_products.len());
+        let product_proof =
+            prod_batch_prover(&prover_products, chi, product_mask, &mut prover_transcript);
+        assert!(prod_batch_verify(&verifier_products, product_key, delta, chi, &product_proof,));
+        assert!(zero_batch_exchange(
+            &prover_zeros,
+            &verifier_zeros,
+            &mut prover_stream,
+            &mut verifier,
+            60_001,
+            &mut prover_transcript,
+        ));
     }
 
     #[test]

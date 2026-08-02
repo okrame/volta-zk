@@ -405,6 +405,10 @@ impl C6SparseRationalPackedOpeningPoints {
         self.digest
     }
 
+    pub fn input_point(&self) -> &[Fp2] {
+        &self.input_point
+    }
+
     pub fn response(&self) -> &[Vec<Fp2>; C6_SPARSE_RESPONSE_OPENINGS] {
         &self.response
     }

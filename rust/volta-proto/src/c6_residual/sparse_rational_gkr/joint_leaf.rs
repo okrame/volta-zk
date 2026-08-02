@@ -574,6 +574,7 @@ impl C6ResidualSparseRationalBlindJointTerminalProof {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6SparseRationalBlindJointProverTerminal {
+    relation_digest: C6ResidualDigest,
     points: C6SparseRationalPackedOpeningPoints,
     expected_response: [Fp2; C6_SPARSE_RESPONSE_OPENINGS],
     clear_plan_values: [Fp2; C6_SPARSE_PLAN_OPENINGS],
@@ -584,6 +585,10 @@ pub struct C6SparseRationalBlindJointProverTerminal {
 }
 
 impl C6SparseRationalBlindJointProverTerminal {
+    pub fn relation_digest(&self) -> C6ResidualDigest {
+        self.relation_digest
+    }
+
     pub fn points(&self) -> &C6SparseRationalPackedOpeningPoints {
         &self.points
     }
@@ -591,6 +596,7 @@ impl C6SparseRationalBlindJointProverTerminal {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6SparseRationalBlindJointVerifierTerminal {
+    relation_digest: C6ResidualDigest,
     points: C6SparseRationalPackedOpeningPoints,
     clear_plan_values: [Fp2; C6_SPARSE_PLAN_OPENINGS],
     linearization: TerminalLinearization,
@@ -600,6 +606,10 @@ pub struct C6SparseRationalBlindJointVerifierTerminal {
 }
 
 impl C6SparseRationalBlindJointVerifierTerminal {
+    pub fn relation_digest(&self) -> C6ResidualDigest {
+        self.relation_digest
+    }
+
     pub fn points(&self) -> &C6SparseRationalPackedOpeningPoints {
         &self.points
     }
@@ -724,6 +734,7 @@ pub fn prove_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
             round_corrections,
         },
         C6SparseRationalBlindJointProverTerminal {
+            relation_digest: relation.digest(),
             points,
             expected_response,
             clear_plan_values,
@@ -796,6 +807,7 @@ pub fn verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
         injection,
     )?;
     Ok(Some(C6SparseRationalBlindJointVerifierTerminal {
+        relation_digest: relation.digest(),
         points: C6SparseRationalPackedOpeningPoints::new(
             base_domain_log2,
             response_digest,

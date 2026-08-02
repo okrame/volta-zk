@@ -15,6 +15,7 @@ pub mod c61_authenticated_whir_p3;
 #[cfg(feature = "c61-p3-authenticated-reference")]
 mod c61_interactive_driver;
 pub mod c61_public_compression;
+pub mod c61_terminal_functional;
 #[cfg(feature = "c61-p3-reference")]
 pub mod c61_whir_reference;
 pub mod c6_authenticated_output_link;
@@ -64,6 +65,15 @@ pub use c61_public_compression::{
     C61_PUBLIC_ARGUMENT_V1_STRICT_MAX_BYTES, C61_PUBLIC_ARGUMENT_VERSION, C61_RUNTIME_FINGERPRINTS,
     C61_RUNTIME_POINT_DIMENSION, C61_TERMINAL_CLAIMS, C61_TERMINAL_POINT_DIMENSION,
     C61_TERMINAL_STREAMS,
+};
+pub use c61_terminal_functional::{
+    fold_terminal_claims, terminal_claims_digest, C61CommittedOpeningStatement,
+    C61NativeCommitmentDescriptor, C61NativeProverChainStatement, C61NativeVerifierChainStatement,
+    C61TerminalFunctionalCompilerBinding, C61TerminalFunctionalCompilerStatement,
+    C61TerminalFunctionalStatementError, C61TypedNativeBackendVerifier,
+    C61TypedNativeChainPublicStatement, C61TypedNativeRelationStatement,
+    C61_COMPILER_TERMINAL_TARGETS, C61_EMBEDDING_OPENING_TARGETS, C61_MODEL_OPENING_TARGETS,
+    C61_TERMINAL_FUNCTIONAL_PROOF_REPETITIONS, C61_TERMINAL_FUNCTIONAL_RELATION_LOG2,
 };
 pub use c6_authenticated_output_link::{
     prove_c6_authenticated_output_link_reference, verify_c6_authenticated_output_link_reference,

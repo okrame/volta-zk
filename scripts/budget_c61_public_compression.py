@@ -8,12 +8,11 @@ This report deliberately has two different verdict scopes:
 * the preregistered C6.1 native-candidate screen, the feature-gated legacy
   clear-target C6WIR1 PCS/codec reference, and the C6AWP1 claimless
   authenticated-target codec differential.  C6TFR1 now specifies the exact
-  terminal-functional relation.  The native-trace audit additionally records
-  that the current C6RSC3 implementation still expands ChaCha8/FpStream
-  schedules instead of consuming the already-budgeted direct MLE points.
-  Direct-point integration, native trace realization and the full-chain
-  benchmark remain absent, so neither reference is final proof or timing
-  credit.
+  terminal-functional relation.  Direct-point integration is complete.  The
+  C6TFA1 preregistration factors the exact event fold into two D25 reverse
+  lanes plus an eight-family direct reducer, but its differential, native
+  realization and the full-chain benchmark remain absent, so neither
+  reference is final proof or timing credit.
 
 No projected ceiling or analytic roofline is proof-size, setup, prover-time,
 verifier-time or hardware credit.  The implemented PCS codec receives only
@@ -499,14 +498,15 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v9",
+        "profile": "C6.1-public-compression-reference-v10",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
             "CANONICAL_RUNTIME_SEAM_GREEN__C6TFR1_EXACT_EVENT_RELATION_"
             "LEAN_RUST_DIFFERENTIAL_TYPED_STATEMENTS_GREEN__"
             "DIRECT_MLE_SCHEDULE_AND_FUSED_PRE_BETA_OUTPUTS_GREEN__"
-            "NATIVE_TRACE_REALIZATION_REQUIRED__"
+            "C6TFA1_FOLDED_ADJOINT_PREREGISTERED__"
+            "EXACT_EIGHT_FAMILY_DIFFERENTIAL_REQUIRED__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
@@ -578,7 +578,8 @@ def build_report() -> dict[str, Any]:
                 "CANONICAL_RUNTIME_SEAM_GREEN__C6TFR1_EXACT_EVENT_RELATION_"
                 "LEAN_RUST_DIFFERENTIAL_TYPED_STATEMENTS_GREEN__"
                 "DIRECT_MLE_SCHEDULE_AND_FUSED_PRE_BETA_OUTPUTS_GREEN__"
-                "NATIVE_TRACE_REALIZATION_REQUIRED__"
+                "C6TFA1_FOLDED_ADJOINT_PREREGISTERED__"
+                "EXACT_EIGHT_FAMILY_DIFFERENTIAL_REQUIRED__"
                 "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
             "statement": (
@@ -1056,7 +1057,7 @@ def build_report() -> dict[str, Any]:
                 ),
             },
             "local_hard_stop": {
-                "status": "C6TFR1_NATIVE_TRACE_REALIZATION_REQUIRED",
+                "status": "C6TFA1_EXACT_EIGHT_FAMILY_DIFFERENTIAL_REQUIRED",
                 "canonical_runtime_seam_green": True,
                 "raw_verifier_runtime_values": raw_verifier_runtime_values,
                 "canonical_runtime_values": canonical_runtime_values,
@@ -1086,6 +1087,25 @@ def build_report() -> dict[str, Any]:
                 "historical_v3_schedule_preserved": True,
                 "typed_native_chain_statements_green": True,
                 "native_backend_consumes_typed_relation_statement": False,
+                "selected_native_factorization": {
+                    "name": "C6TFA1-v1",
+                    "reverse_lanes": C61_RUNTIME_SKETCH_REPETITIONS,
+                    "plan_dependent_forms_per_lane": 5,
+                    "fixed_terminal_node_mapping": False,
+                    "direct_families": [
+                        "source_grammar",
+                        "affine_alpha",
+                        "reverse_auxiliary_subtractions",
+                        "raw_copy",
+                        "product",
+                        "zero",
+                        "leaf_tail",
+                        "auxiliary_tail",
+                    ],
+                    "scaled_eight_family_differential_green": False,
+                    "constrained_interval_reducer_required": True,
+                    "credit": False,
+                },
                 "native_trace_audit": {
                     "implemented_c6rsc3_schedules": (
                         "historical ChaCha8/FpStream v3 plus versioned direct-MLE v4"
@@ -1118,8 +1138,9 @@ def build_report() -> dict[str, Any]:
                     ),
                 },
                 "required_before_resume": [
-                    "supply a non-materialized native D28 relation prover/verifier for the exact typed coefficient-event grammar",
-                    "connect that relation to the claimless authenticated WHIR opening and typed compiler-chain boundary",
+                    "prove the two-lane folded-adjoint plus direct-reducer identity against every typed C6TFR1 family at scaled geometry",
+                    "realize the exact D25 recurrences and constrained direct reducer without materializing the D28 event stream",
+                    "connect the factorized relation to the claimless authenticated WHIR opening and typed compiler-chain boundary",
                 ],
                 "credit": False,
             },

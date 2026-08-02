@@ -1927,6 +1927,97 @@ Budget profile `C6.1-public-compression-reference-v9` preserves the
 benchmark, memory, session and hardware credits remain false.  No pod was
 contacted or authorized.
 
+### 0.25 C6TFA1 folded-adjoint factorization preregistration
+
+The D28 materialization obstruction in Section 0.24 does not force the exact
+C6TFR1 identity to be abandoned.  For the direct-MLE v4 schedules only, this
+checkpoint preregisters an algebraically equivalent factorization named
+`C6TFA1-v1`.  It remains a statement about the actual 64 challenge-dependent
+functionals and never assigns one of them to a fixed operation-plan node.
+
+For repetition `b`, write
+
+```text
+B[b,t] = beta^(32*b+t)
+L[b,s] = eq(leaf_point[b], s)
+H[b,r] = eq(auxiliary_point[b], r)
+A[b,k] = eq(atomic_point[b], k).
+```
+
+The only coefficient vectors in the eight-family emitter that depend on a
+reverse traversal of the installed plan are the existing base linear form
+and the four terminal forms `(coordinate, kind)` in
+`{0,1} x {plaintext,tag}`.  If `k_aff[c,kind]` and `k_rev[c,kind]` denote
+their exact atomic-output ordinals, their five scalars are
+
+```text
+rho_base = A[b,k_aff[0,plaintext]] * B[b,3]
+         + A[b,k_aff[0,tag]]       * B[b,2]
+         + A[b,k_aff[1,plaintext]] * B[b,6]
+         + A[b,k_aff[1,tag]]       * B[b,5]
+
+rho[0,plaintext] = A[b,k_rev[0,plaintext]] * B[b,0]
+rho[0,tag]       = A[b,k_rev[0,tag]]       * B[b,2]
+rho[1,plaintext] = A[b,k_rev[1,plaintext]] * B[b,0]
+rho[1,tag]       = A[b,k_rev[1,tag]]       * B[b,5].
+```
+
+The ordinals above are derived from the checked family-output census, not
+accepted as statement input.  Let `q_b` be the node seed obtained by scaling
+the base zero-root seed by `rho_base` and each terminal ProductClosure/zero
+seed by its matching `rho`.  One reverse traversal computes
+
+```text
+lambda_b = q_b + A(runtime)^T lambda_b,
+P_b      = sum_s L[b,s] * lambda_b[source_node(s)].
+```
+
+Linearity makes `P_b` exactly the leaf-coefficient contribution of all four
+`Affine` outputs and all four `Reverse` outputs.  Product-mask sources remain
+zero at this boundary, as required by the installed reverse compiler.
+
+The remaining scalar `D_b` is not a digest and is not left implicit.  It is
+the exact direct reduction of:
+
+1. all `SourceGrammar` writes;
+2. the alpha terms of `Affine`;
+3. the ProductClosure and zero-root subtraction terms of `Reverse`;
+4. all `RawCopy`, `Product` and `Zero` writes; and
+5. every `LeafTail` and `AuxiliaryTail` write.
+
+Each term retains its original atomic ordinal, target table/lane or quadratic
+pair, row and direct equality weight.  Long padding ranges must be evaluated
+by a constrained interval identity for products of equality polynomials;
+iterating or materializing the D28 event table is not permitted.  The native
+relation must prove the exact family starts, lengths and final cursors from
+the manifest and installed ProductClosure metadata.  In particular, a
+claimed `D_b`, an unconstrained reducer digest or provider-supplied family
+offset is insufficient.
+
+The required equality is
+
+```text
+sum_(t=0)^63 beta^t * terminal[t] = sum_(b=0)^1 (P_b + D_b).
+```
+
+This is a factorization of C6TFR1-v1, not a replacement terminal vector.  A
+scaled differential must compare it against the independent typed event
+sink family by family, including all coefficient-write censuses, before any
+native backend work.  The production relation then needs two exact D25
+reverse lanes, the constrained direct reducer, claimless authenticated
+openings and the existing role-typed compiler statement boundary.  The two
+lanes may be batched only under a fresh challenge sampled after both lane
+commitments are fixed.
+
+Until that differential and a fresh formal/soundness analysis exist, the
+registered C6TFR1 charge remains conservatively `28/|Fp2|`; the D28 chain
+codec allocation, **16,342,103-B** certificate, **84,743,367-B** setup,
+**101,085,470-B** first exchange, **2,019,404,992-B** provider state and
+**14.5038179582 / 4.565672390-s** rooflines do not change and retain
+`credit:false`.  The active local **HARD STOP** is
+`C6TFA1_EXACT_EIGHT_FAMILY_DIFFERENTIAL_REQUIRED`.  No pod contact is
+authorized.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

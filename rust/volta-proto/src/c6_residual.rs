@@ -99,6 +99,7 @@ const ATOMIC_WEIGHT_STREAM_DOMAINS: [u64; 2] =
     [0xC6_41_54_4F_4D_00_00_01, 0xC6_41_54_4F_4D_01_00_01];
 const RESIDUAL_RELATION_PROTOCOL_V2: u8 = 2;
 const RESIDUAL_RELATION_PROTOCOL_V3: u8 = 3;
+const RESIDUAL_RELATION_PROTOCOL_V4: u8 = 4;
 pub const C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS: [(u8, u8); 8] =
     [(0, 2), (0, 3), (1, 2), (1, 3), (6, 8), (6, 9), (7, 8), (7, 9)];
 const RESIDUAL_RELATION_SOURCE_FORMULAS: [&[u8]; 3] =
@@ -125,6 +126,159 @@ pub const C6_RESIDUAL_FUSED_MAX_COEFFICIENT_STATE_ELEMENTS: u64 =
     C6_RESIDUAL_RELATION_LEAF_TABLES as u64 * (C6_RESIDUAL_SLOT_ENTRIES / 2);
 pub const C6_RESIDUAL_FUSED_MAX_COEFFICIENT_STATE_BYTES: u64 =
     C6_RESIDUAL_FUSED_MAX_COEFFICIENT_STATE_ELEMENTS * std::mem::size_of::<Fp2>() as u64;
+
+const DIRECT_EQUALITY_POINTS_DOMAIN: &str = "volta-zk/c6/residual-direct-equality-points/v4";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6ResidualDirectScheduleDimensions {
+    pub alpha: usize,
+    pub terminal: usize,
+    pub atomic: usize,
+}
+
+/// Exact direct-MLE point bundle preregistered for the C6.1 C6RSC3-v4 path.
+///
+/// The eight terminal points are ordered by proof repetition, MAC
+/// coordinate, then plaintext/tag kind.  This type owns no transcript and
+/// cannot derive a PRG stream; callers must supply points drawn after the
+/// bound roots and public claims.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualDirectEqualityPoints {
+    manifest_digest: C6ResidualDigest,
+    alpha: [Vec<Fp2>; C6_RESIDUAL_MAC_COORDINATES as usize],
+    terminal: [Vec<Fp2>; C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS],
+    atomic: [Vec<Fp2>; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    digest: C6ResidualDigest,
+}
+
+impl C6ResidualDirectEqualityPoints {
+    pub fn dimensions(
+        manifest: &C6ResidualRelationManifest,
+    ) -> C6ResidualResult<C6ResidualDirectScheduleDimensions> {
+        let terminal_values = manifest
+            .topology
+            .product_triple_count
+            .checked_mul(3)
+            .and_then(|count| count.checked_add(u64::from(manifest.topology.zero_root_count)))
+            .ok_or_else(|| C6ResidualError::new("C6 direct terminal schedule length overflows"))?;
+        Ok(C6ResidualDirectScheduleDimensions {
+            alpha: exact_schedule_dimension(manifest.leaf_entries)?,
+            terminal: exact_schedule_dimension(terminal_values)?,
+            atomic: exact_schedule_dimension(manifest.atomic_outputs_per_repetition)?,
+        })
+    }
+
+    pub fn new(
+        manifest: &C6ResidualRelationManifest,
+        alpha: [Vec<Fp2>; C6_RESIDUAL_MAC_COORDINATES as usize],
+        terminal: [Vec<Fp2>; C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS],
+        atomic: [Vec<Fp2>; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    ) -> C6ResidualResult<Self> {
+        let dimensions = Self::dimensions(manifest)?;
+        if alpha.iter().any(|point| point.len() != dimensions.alpha)
+            || terminal.iter().any(|point| point.len() != dimensions.terminal)
+            || atomic.iter().any(|point| point.len() != dimensions.atomic)
+        {
+            return Err(C6ResidualError::new(
+                "C6 direct equality point has the wrong schedule dimension",
+            ));
+        }
+        let mut points =
+            Self { manifest_digest: manifest.digest, alpha, terminal, atomic, digest: [0; 32] };
+        points.digest = direct_equality_points_digest(&points);
+        if points.digest == [0; 32] {
+            return Err(C6ResidualError::new("C6 direct equality point digest is zero"));
+        }
+        Ok(points)
+    }
+
+    pub fn manifest_digest(&self) -> C6ResidualDigest {
+        self.manifest_digest
+    }
+
+    pub fn alpha_point(&self, coordinate: u8) -> C6ResidualResult<&[Fp2]> {
+        self.alpha
+            .get(usize::from(coordinate))
+            .map(Vec::as_slice)
+            .ok_or_else(|| C6ResidualError::new("C6 direct alpha coordinate is out of range"))
+    }
+
+    pub fn terminal_point(
+        &self,
+        proof_repetition: u8,
+        mac_coordinate: u8,
+        kind: C6ResidualTerminalFormKind,
+    ) -> C6ResidualResult<&[Fp2]> {
+        let index = direct_terminal_schedule_index(proof_repetition, mac_coordinate, kind)?;
+        Ok(self.terminal[index].as_slice())
+    }
+
+    pub fn atomic_point(&self, proof_repetition: u8) -> C6ResidualResult<&[Fp2]> {
+        self.atomic
+            .get(usize::from(proof_repetition))
+            .map(Vec::as_slice)
+            .ok_or_else(|| C6ResidualError::new("C6 direct atomic repetition is out of range"))
+    }
+
+    pub fn element_count(&self) -> usize {
+        self.alpha.iter().chain(&self.terminal).chain(&self.atomic).map(Vec::len).sum()
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+}
+
+fn exact_schedule_dimension(live_values: u64) -> C6ResidualResult<usize> {
+    if live_values == 0 {
+        return Err(C6ResidualError::new("C6 direct equality schedule is empty"));
+    }
+    let padded = live_values
+        .checked_next_power_of_two()
+        .ok_or_else(|| C6ResidualError::new("C6 direct equality schedule domain overflows"))?;
+    usize::try_from(padded.trailing_zeros())
+        .map_err(|_| C6ResidualError::new("C6 direct equality point length exceeds usize"))
+}
+
+fn direct_terminal_schedule_index(
+    proof_repetition: u8,
+    mac_coordinate: u8,
+    kind: C6ResidualTerminalFormKind,
+) -> C6ResidualResult<usize> {
+    if proof_repetition >= C6_RESIDUAL_PROOF_REPETITIONS
+        || mac_coordinate >= C6_RESIDUAL_MAC_COORDINATES
+    {
+        return Err(C6ResidualError::new("C6 direct terminal schedule identity is out of range"));
+    }
+    usize::from(proof_repetition)
+        .checked_mul(usize::from(C6_RESIDUAL_MAC_COORDINATES))
+        .and_then(|base| base.checked_add(usize::from(mac_coordinate)))
+        .and_then(|base| base.checked_mul(C6_RESIDUAL_TERMINAL_FORM_KINDS))
+        .and_then(|base| base.checked_add(kind.stream_index()))
+        .ok_or_else(|| C6ResidualError::new("C6 direct terminal schedule index overflows"))
+}
+
+fn direct_equality_points_digest(points: &C6ResidualDirectEqualityPoints) -> C6ResidualDigest {
+    let mut hasher = blake3::Hasher::new_derive_key(DIRECT_EQUALITY_POINTS_DOMAIN);
+    hasher.update(&[RESIDUAL_RELATION_PROTOCOL_V4]);
+    hasher.update(&points.manifest_digest);
+    for (family, schedules) in [
+        (0u8, points.alpha.as_slice()),
+        (1u8, points.terminal.as_slice()),
+        (2u8, points.atomic.as_slice()),
+    ] {
+        hasher.update(&[family]);
+        hasher.update(&(schedules.len() as u64).to_le_bytes());
+        for (ordinal, point) in schedules.iter().enumerate() {
+            hasher.update(&(ordinal as u64).to_le_bytes());
+            hasher.update(&(point.len() as u64).to_le_bytes());
+            for coordinate in point {
+                hash_fp2(&mut hasher, *coordinate);
+            }
+        }
+    }
+    *hasher.finalize().as_bytes()
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6ResidualError(String);
@@ -11073,5 +11227,54 @@ mod tests {
         let _unused = dead.add_public(Fp2::ONE).unwrap();
         dead.add_zero_closure(live).unwrap();
         assert!(dead.census().is_err());
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn direct_equality_point_bundle_binds_exact_scaled_schedule_geometry() {
+        let fixture = build_c6_residual_fused_scaled_fixture().unwrap();
+        let manifest = fixture.manifest();
+        let dimensions = C6ResidualDirectEqualityPoints::dimensions(manifest).unwrap();
+        assert_eq!(
+            dimensions,
+            C6ResidualDirectScheduleDimensions { alpha: 7, terminal: 4, atomic: 11 }
+        );
+
+        let alpha: [Vec<Fp2>; C6_RESIDUAL_MAC_COORDINATES as usize] =
+            std::array::from_fn(|stream| vec![fp2(101 + stream as u64); dimensions.alpha]);
+        let terminal: [Vec<Fp2>; C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS] =
+            std::array::from_fn(|stream| vec![fp2(201 + stream as u64); dimensions.terminal]);
+        let atomic: [Vec<Fp2>; C6_RESIDUAL_PROOF_REPETITIONS as usize] =
+            std::array::from_fn(|stream| vec![fp2(301 + stream as u64); dimensions.atomic]);
+        let points = C6ResidualDirectEqualityPoints::new(
+            manifest,
+            alpha.clone(),
+            terminal.clone(),
+            atomic.clone(),
+        )
+        .unwrap();
+        assert_eq!(points.manifest_digest(), manifest.digest());
+        assert_eq!(points.element_count(), 68);
+        assert_ne!(points.digest(), [0; 32]);
+        assert_eq!(points.alpha_point(1).unwrap(), alpha[1]);
+        assert_eq!(
+            points.terminal_point(1, 0, C6ResidualTerminalFormKind::Tag).unwrap(),
+            terminal[5]
+        );
+        assert_eq!(points.atomic_point(1).unwrap(), atomic[1]);
+        assert!(points.alpha_point(2).is_err());
+        assert!(points.atomic_point(2).is_err());
+
+        let mut reordered = terminal.clone();
+        reordered.swap(0, 1);
+        let reordered =
+            C6ResidualDirectEqualityPoints::new(manifest, alpha.clone(), reordered, atomic.clone())
+                .unwrap();
+        assert_ne!(reordered.digest(), points.digest());
+
+        let mut malformed_alpha = alpha;
+        malformed_alpha[0].pop();
+        assert!(C6ResidualDirectEqualityPoints::new(manifest, malformed_alpha, terminal, atomic,)
+            .is_err());
     }
 }

@@ -224,7 +224,7 @@ fn terminal_leaf_values(
 fn terminal_linearization(
     operation_plan: &C6InstalledOperationPlan,
     relation: &C6ResidualSparseRationalRelationReference,
-    claims: &[FracLeafClaims; C6_SPARSE_RATIONAL_SUBCHECKS],
+    claim_points: &[Vec<Fp2>; C6_SPARSE_RATIONAL_SUBCHECKS],
     theta: Fp2,
     base_point: &[Fp2],
     plan: &[Fp2; C6_SPARSE_PLAN_OPENINGS],
@@ -237,7 +237,7 @@ fn terminal_linearization(
         .map_err(|_| C6ResidualError::new("C6SPR2 scalar count exceeds usize"))?;
     let source_count = usize::try_from(topology.source_count)
         .map_err(|_| C6ResidualError::new("C6SPR2 source count exceeds usize"))?;
-    if claims.iter().any(|claim| claim.point.len() > base_point.len()) {
+    if claim_points.iter().any(|point| point.len() > base_point.len()) {
         return Err(C6ResidualError::new(
             "C6SPR2 reduced leaf point exceeds the common terminal point",
         ));
@@ -247,9 +247,9 @@ fn terminal_linearization(
     for index in 1..powers.len() {
         powers[index] = powers[index - 1] * theta;
     }
-    let eq: [Fp2; C6_SPARSE_RATIONAL_SUBCHECKS] = claims
+    let eq: [Fp2; C6_SPARSE_RATIONAL_SUBCHECKS] = claim_points
         .iter()
-        .map(|claim| eq_lifted(&claim.point, base_point))
+        .map(|point| eq_lifted(point, base_point))
         .collect::<C6ResidualResult<Vec<_>>>()?
         .try_into()
         .map_err(|_| C6ResidualError::new("C6SPR2 equality-weight census differs from seven"))?;
@@ -283,7 +283,7 @@ fn terminal_linearization(
         * range_denominator_mle(
             node_count,
             gamma,
-            &claims[C6SparseRationalSubcheck::RecurrenceAnchor.index()].point,
+            &claim_points[C6SparseRationalSubcheck::RecurrenceAnchor.index()],
             base_point,
         )?;
 
@@ -312,7 +312,7 @@ fn terminal_linearization(
         * range_denominator_mle(
             scalar_count,
             tau,
-            &claims[C6SparseRationalSubcheck::RuntimeTable.index()].point,
+            &claim_points[C6SparseRationalSubcheck::RuntimeTable.index()],
             base_point,
         )?;
 
@@ -323,7 +323,7 @@ fn terminal_linearization(
         * range_denominator_mle(
             source_count,
             delta,
-            &claims[C6SparseRationalSubcheck::SourceBoundary.index()].point,
+            &claim_points[C6SparseRationalSubcheck::SourceBoundary.index()],
             base_point,
         )?;
 
@@ -345,6 +345,12 @@ fn fraction_leaf_values(
     claims: &[FracLeafClaims; C6_SPARSE_RATIONAL_SUBCHECKS],
 ) -> [[Fp2; 2]; C6_SPARSE_RATIONAL_SUBCHECKS] {
     std::array::from_fn(|index| [claims[index].p, claims[index].q])
+}
+
+fn fraction_leaf_points(
+    claims: &[FracLeafClaims; C6_SPARSE_RATIONAL_SUBCHECKS],
+) -> [Vec<Fp2>; C6_SPARSE_RATIONAL_SUBCHECKS] {
+    std::array::from_fn(|index| claims[index].point.clone())
 }
 
 #[derive(Clone, Debug)]
@@ -488,6 +494,7 @@ fn joint_round_evaluations(
 ) -> C6ResidualResult<[Fp2; C6_SPARSE_JOINT_DEGREE + 1]> {
     let round = prefix.len();
     let leaf_values = fraction_leaf_values(claims);
+    let leaf_points = fraction_leaf_points(claims);
     let suffix_rows = 1usize << (dimension - round - 1);
     let mut evaluations = [Fp2::ZERO; C6_SPARSE_JOINT_DEGREE + 1];
     for (integer, evaluation) in evaluations.iter_mut().enumerate() {
@@ -498,7 +505,7 @@ fn joint_round_evaluations(
             let linearization = terminal_linearization(
                 operation_plan,
                 relation,
-                claims,
+                &leaf_points,
                 theta,
                 &point,
                 &plan,
@@ -514,9 +521,8 @@ fn joint_round_evaluations(
     Ok(evaluations)
 }
 
-fn interpolate_degree_eight(evaluations: &[Fp2; C6_SPARSE_JOINT_DEGREE + 1], point: Fp2) -> Fp2 {
-    let mut result = Fp2::ZERO;
-    for (index, &evaluation) in evaluations.iter().enumerate() {
+fn degree_eight_lagrange_weights(point: Fp2) -> [Fp2; C6_SPARSE_JOINT_DEGREE + 1] {
+    std::array::from_fn(|index| {
         let mut numerator = Fp2::ONE;
         let mut denominator = Fp::ONE;
         for other in 0..=C6_SPARSE_JOINT_DEGREE {
@@ -526,9 +532,386 @@ fn interpolate_degree_eight(evaluations: &[Fp2; C6_SPARSE_JOINT_DEGREE + 1], poi
             numerator = numerator * (point - Fp2::from_base(Fp::new(other as u64)));
             denominator = denominator * Fp::from_i64(index as i64 - other as i64);
         }
-        result += evaluation * numerator.mul_base(denominator.inv());
+        numerator.mul_base(denominator.inv())
+    })
+}
+
+fn interpolate_degree_eight(evaluations: &[Fp2; C6_SPARSE_JOINT_DEGREE + 1], point: Fp2) -> Fp2 {
+    evaluations
+        .iter()
+        .zip(degree_eight_lagrange_weights(point))
+        .fold(Fp2::ZERO, |sum, (&evaluation, weight)| sum + evaluation * weight)
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualSparseRationalBlindJointRoundsProof {
+    relation_digest: C6ResidualDigest,
+    clear_plan_values: [Fp2; C6_SPARSE_PLAN_OPENINGS],
+    round_corrections: Vec<[Fp2; C6_SPARSE_JOINT_SENT_VALUES]>,
+}
+
+impl C6ResidualSparseRationalBlindJointRoundsProof {
+    pub fn bytes(&self) -> u64 {
+        16 * (C6_SPARSE_PLAN_OPENINGS as u64
+            + self.round_corrections.len() as u64 * C6_SPARSE_JOINT_SENT_VALUES as u64)
     }
-    result
+
+    pub fn clear_plan_values(&self) -> &[Fp2; C6_SPARSE_PLAN_OPENINGS] {
+        &self.clear_plan_values
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualSparseRationalBlindJointTerminalProof {
+    product_correction: Fp2,
+}
+
+impl C6ResidualSparseRationalBlindJointTerminalProof {
+    pub const fn bytes(&self) -> u64 {
+        16
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6SparseRationalBlindJointProverTerminal {
+    points: C6SparseRationalPackedOpeningPoints,
+    expected_response: [Fp2; C6_SPARSE_RESPONSE_OPENINGS],
+    clear_plan_values: [Fp2; C6_SPARSE_PLAN_OPENINGS],
+    linearization: TerminalLinearization,
+    leaf_claims: [C6SparseRationalBlindLeafClaim; C6_SPARSE_RATIONAL_SUBCHECKS],
+    sumcheck_claim: ProverAuthed,
+    lane_batch: Fp2,
+}
+
+impl C6SparseRationalBlindJointProverTerminal {
+    pub fn points(&self) -> &C6SparseRationalPackedOpeningPoints {
+        &self.points
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6SparseRationalBlindJointVerifierTerminal {
+    points: C6SparseRationalPackedOpeningPoints,
+    clear_plan_values: [Fp2; C6_SPARSE_PLAN_OPENINGS],
+    linearization: TerminalLinearization,
+    leaf_keys: [C6SparseRationalBlindLeafKey; C6_SPARSE_RATIONAL_SUBCHECKS],
+    sumcheck_claim: VerifierKey,
+    lane_batch: Fp2,
+}
+
+impl C6SparseRationalBlindJointVerifierTerminal {
+    pub fn points(&self) -> &C6SparseRationalPackedOpeningPoints {
+        &self.points
+    }
+}
+
+fn blind_leaf_claims_as_clear(
+    claims: &[C6SparseRationalBlindLeafClaim; C6_SPARSE_RATIONAL_SUBCHECKS],
+) -> [FracLeafClaims; C6_SPARSE_RATIONAL_SUBCHECKS] {
+    std::array::from_fn(|index| FracLeafClaims {
+        point: claims[index].point.clone(),
+        p: claims[index].numerator.x,
+        q: claims[index].denominator.x,
+    })
+}
+
+/// Authenticate the degree-8 joint sumcheck rounds.  The response and plan
+/// PCS targets are deliberately absent here: they become available only at
+/// the returned common point and are connected by the terminal finish step.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
+    operation_plan: &C6InstalledOperationPlan,
+    relation: &C6ResidualSparseRationalRelationReference,
+    packed: &C6SparseRationalPackedOracleReference,
+    leaf_claims: &[C6SparseRationalBlindLeafClaim; C6_SPARSE_RATIONAL_SUBCHECKS],
+    stream: &mut CorrelationStream,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+) -> C6ResidualResult<(
+    C6ResidualSparseRationalBlindJointRoundsProof,
+    C6SparseRationalBlindJointProverTerminal,
+)> {
+    if packed.base_domain_log2 != canonical_base_domain_log2(operation_plan)? {
+        return Err(C6ResidualError::new(
+            "C6SPR3 blind joint reduction base dimension is noncanonical",
+        ));
+    }
+    packed.validate_relation(relation)?;
+    let depths = sparse_rational_subcheck_depths(operation_plan)?;
+    if leaf_claims.iter().zip(depths).any(|(claim, depth)| claim.point.len() != depth) {
+        return Err(C6ResidualError::new("C6SPR3 blind leaf-claim point is noncanonical"));
+    }
+    let clear_claims = blind_leaf_claims_as_clear(leaf_claims);
+    let dimension = usize::from(packed.base_domain_log2);
+    let mut state = JointWitnessState::new(packed, relation)?;
+    let theta = tx.challenge_fp2();
+    let mut claim = ProverAuthed::ZERO;
+    let mut point = Vec::with_capacity(dimension);
+    let mut round_corrections = Vec::with_capacity(dimension);
+    for round in 0..dimension {
+        let evaluations = joint_round_evaluations(
+            operation_plan,
+            relation,
+            &clear_claims,
+            theta,
+            dimension,
+            &point,
+            &state,
+        )?;
+        if evaluations[0] + evaluations[1] != claim.x {
+            return Err(C6ResidualError::new(
+                "C6SPR3 blind joint polynomial differs from its authenticated claim",
+            ));
+        }
+        let sent: [Fp2; C6_SPARSE_JOINT_SENT_VALUES] =
+            std::array::from_fn(
+                |index| {
+                    if index == 0 {
+                        evaluations[0]
+                    } else {
+                        evaluations[index + 1]
+                    }
+                },
+            );
+        let domain = doms.take(1);
+        let masks = stream.draw_fulls(domain, C6_SPARSE_JOINT_SENT_VALUES);
+        stream
+            .record_c6_fullfield_plaintexts(domain, &sent)
+            .map_err(|error| C6ResidualError::new(error.to_string()))?;
+        round_corrections.push(std::array::from_fn(|index| sent[index] - masks[index].x));
+        tx.append("c6_sparse_joint_round_corrections", 16 * C6_SPARSE_JOINT_SENT_VALUES as u64);
+        let authenticated_sent: [ProverAuthed; C6_SPARSE_JOINT_SENT_VALUES] = masks
+            .into_iter()
+            .zip(sent)
+            .map(|(mask, value)| mask.authenticate(value))
+            .collect::<Vec<_>>()
+            .try_into()
+            .map_err(|_| C6ResidualError::new("C6SPR3 authenticated round census mismatch"))?;
+        let authenticated_evaluations: [ProverAuthed; C6_SPARSE_JOINT_DEGREE + 1] =
+            std::array::from_fn(|index| match index {
+                0 => authenticated_sent[0],
+                1 => claim.sub(authenticated_sent[0]),
+                _ => authenticated_sent[index - 1],
+            });
+        let challenge = tx.challenge_fp2();
+        claim = authenticated_evaluations
+            .iter()
+            .zip(degree_eight_lagrange_weights(challenge))
+            .fold(ProverAuthed::ZERO, |sum, (&evaluation, weight)| {
+                sum.add(evaluation.scale(weight))
+            });
+        state.fold(round, challenge);
+        point.push(challenge);
+    }
+    let points = packed.opening_points(&point)?;
+    let expected_response = packed.evaluate_response_openings(&points)?;
+    let clear_plan_values = packed.evaluate_plan_openings(&points)?;
+    tx.append("c6_sparse_joint_plan_values", 16 * C6_SPARSE_PLAN_OPENINGS as u64);
+    let injection = crate::mle::eval_mle(&relation.combined_injection, &point);
+    let linearization = terminal_linearization(
+        operation_plan,
+        relation,
+        &fraction_leaf_points(&clear_claims),
+        theta,
+        &point,
+        &clear_plan_values,
+        injection,
+    )?;
+    Ok((
+        C6ResidualSparseRationalBlindJointRoundsProof {
+            relation_digest: relation.digest(),
+            clear_plan_values,
+            round_corrections,
+        },
+        C6SparseRationalBlindJointProverTerminal {
+            points,
+            expected_response,
+            clear_plan_values,
+            linearization,
+            leaf_claims: leaf_claims.clone(),
+            sumcheck_claim: claim,
+            lane_batch: relation.sparse_challenges.lane_batch,
+        },
+    ))
+}
+
+/// Verifier mirror of the blind degree-8 round reduction.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
+    operation_plan: &C6InstalledOperationPlan,
+    relation: &C6ResidualSparseRationalRelationReference,
+    base_domain_log2: u8,
+    response_digest: C6ResidualDigest,
+    plan_digest: C6ResidualDigest,
+    leaf_keys: &[C6SparseRationalBlindLeafKey; C6_SPARSE_RATIONAL_SUBCHECKS],
+    proof: &C6ResidualSparseRationalBlindJointRoundsProof,
+    ctx: &mut VerifierCtx,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+) -> C6ResidualResult<Option<C6SparseRationalBlindJointVerifierTerminal>> {
+    if base_domain_log2 != canonical_base_domain_log2(operation_plan)?
+        || proof.relation_digest != relation.digest()
+        || proof.round_corrections.len() != usize::from(base_domain_log2)
+    {
+        return Ok(None);
+    }
+    let depths = sparse_rational_subcheck_depths(operation_plan)?;
+    if leaf_keys.iter().zip(depths).any(|(claim, depth)| claim.point.len() != depth) {
+        return Ok(None);
+    }
+    let theta = tx.challenge_fp2();
+    let mut claim = VerifierKey::ZERO;
+    let mut point = Vec::with_capacity(usize::from(base_domain_log2));
+    for corrections in &proof.round_corrections {
+        let authenticated_sent: [VerifierKey; C6_SPARSE_JOINT_SENT_VALUES] = ctx
+            .correct_full_verifier_keys(doms.take(1), corrections)
+            .try_into()
+            .map_err(|_| C6ResidualError::new("C6SPR3 authenticated key census mismatch"))?;
+        tx.append("c6_sparse_joint_round_corrections", 16 * C6_SPARSE_JOINT_SENT_VALUES as u64);
+        let authenticated_evaluations: [VerifierKey; C6_SPARSE_JOINT_DEGREE + 1] =
+            std::array::from_fn(|index| match index {
+                0 => authenticated_sent[0],
+                1 => claim.sub(authenticated_sent[0]),
+                _ => authenticated_sent[index - 1],
+            });
+        let challenge = tx.challenge_fp2();
+        claim = authenticated_evaluations
+            .iter()
+            .zip(degree_eight_lagrange_weights(challenge))
+            .fold(VerifierKey::ZERO, |sum, (&evaluation, weight)| {
+                sum.add(evaluation.scale(weight))
+            });
+        point.push(challenge);
+    }
+    tx.append("c6_sparse_joint_plan_values", 16 * C6_SPARSE_PLAN_OPENINGS as u64);
+    let injection = crate::mle::eval_mle(&relation.combined_injection, &point);
+    let claim_points = std::array::from_fn(|index| leaf_keys[index].point.clone());
+    let linearization = terminal_linearization(
+        operation_plan,
+        relation,
+        &claim_points,
+        theta,
+        &point,
+        &proof.clear_plan_values,
+        injection,
+    )?;
+    Ok(Some(C6SparseRationalBlindJointVerifierTerminal {
+        points: C6SparseRationalPackedOpeningPoints::new(
+            base_domain_log2,
+            response_digest,
+            plan_digest,
+            &point,
+        )?,
+        clear_plan_values: proof.clear_plan_values,
+        linearization,
+        leaf_keys: leaf_keys.clone(),
+        sumcheck_claim: claim,
+        lane_batch: relation.sparse_challenges.lane_batch,
+    }))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn finish_c6_residual_sparse_rational_joint_leaf_blind_prover(
+    terminal: C6SparseRationalBlindJointProverTerminal,
+    response_targets: &[ProverAuthed; C6_SPARSE_RESPONSE_OPENINGS],
+    plan_targets: &[ProverAuthed; C6_SPARSE_PLAN_OPENINGS],
+    stream: &mut CorrelationStream,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+    products: &mut ProdTriples,
+    zeros: &mut Vec<ProverAuthed>,
+) -> C6ResidualResult<C6ResidualSparseRationalBlindJointTerminalProof> {
+    if response_targets
+        .iter()
+        .zip(terminal.expected_response)
+        .any(|(target, expected)| target.x != expected)
+        || plan_targets
+            .iter()
+            .zip(terminal.clear_plan_values)
+            .any(|(target, expected)| target.x != expected)
+    {
+        return Err(C6ResidualError::new("C6SPR3 PCS target plaintext mismatch"));
+    }
+    let lambda = response_targets[0].add(response_targets[1].scale(terminal.lane_batch));
+    let mu = response_targets[2];
+    let product_value = lambda.x * mu.x;
+    let domain = doms.take(1);
+    let product_mask = stream
+        .draw_fulls(domain, 1)
+        .into_iter()
+        .next()
+        .ok_or_else(|| C6ResidualError::new("C6SPR3 missing terminal-product correlation"))?;
+    stream
+        .record_c6_fullfield_plaintexts(domain, &[product_value])
+        .map_err(|error| C6ResidualError::new(error.to_string()))?;
+    let product_correction = product_value - product_mask.x;
+    tx.append("c6_sparse_joint_product_correction", 16);
+    let product = product_mask.authenticate(product_value);
+    products.push((lambda, mu, product));
+
+    for (target, clear) in plan_targets.iter().zip(terminal.clear_plan_values) {
+        zeros.push(target.sub(ProverAuthed::from_public(clear)));
+    }
+    let mut residual = ProverAuthed::from_public(terminal.linearization.public_constant)
+        .sub(terminal.sumcheck_claim);
+    for (coefficients, claim) in
+        terminal.linearization.leaf_coefficients.iter().zip(&terminal.leaf_claims)
+    {
+        residual = residual
+            .add(claim.numerator.scale(coefficients[0]))
+            .add(claim.denominator.scale(coefficients[1]));
+    }
+    for (&coefficient, target) in
+        terminal.linearization.response_coefficients.iter().zip(response_targets)
+    {
+        residual = residual.add(target.scale(coefficient));
+    }
+    residual = residual.add(product.scale(terminal.linearization.lambda_mu_coefficient));
+    if residual.x != Fp2::ZERO {
+        return Err(C6ResidualError::new("C6SPR3 honest blind terminal residual is nonzero"));
+    }
+    zeros.push(residual);
+    Ok(C6ResidualSparseRationalBlindJointTerminalProof { product_correction })
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn finish_c6_residual_sparse_rational_joint_leaf_blind_verifier(
+    terminal: C6SparseRationalBlindJointVerifierTerminal,
+    response_keys: &[VerifierKey; C6_SPARSE_RESPONSE_OPENINGS],
+    plan_keys: &[VerifierKey; C6_SPARSE_PLAN_OPENINGS],
+    proof: &C6ResidualSparseRationalBlindJointTerminalProof,
+    ctx: &mut VerifierCtx,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+    products: &mut ProdKeyTriples,
+    zeros: &mut Vec<VerifierKey>,
+) -> C6ResidualResult<()> {
+    let lambda = response_keys[0].add(response_keys[1].scale(terminal.lane_batch));
+    let mu = response_keys[2];
+    let product = ctx.correct_full_verifier_key(doms.take(1), proof.product_correction);
+    tx.append("c6_sparse_joint_product_correction", 16);
+    products.push((lambda, mu, product));
+
+    for (target, clear) in plan_keys.iter().zip(terminal.clear_plan_values) {
+        zeros.push(target.sub(VerifierKey::from_public(clear, ctx.delta)));
+    }
+    let mut residual = VerifierKey::from_public(terminal.linearization.public_constant, ctx.delta)
+        .sub(terminal.sumcheck_claim);
+    for (coefficients, claim) in
+        terminal.linearization.leaf_coefficients.iter().zip(&terminal.leaf_keys)
+    {
+        residual = residual
+            .add(claim.numerator.scale(coefficients[0]))
+            .add(claim.denominator.scale(coefficients[1]));
+    }
+    for (&coefficient, target) in
+        terminal.linearization.response_coefficients.iter().zip(response_keys)
+    {
+        residual = residual.add(target.scale(coefficient));
+    }
+    residual = residual.add(product.scale(terminal.linearization.lambda_mu_coefficient));
+    zeros.push(residual);
+    Ok(())
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -763,7 +1146,7 @@ pub fn reduce_c6_residual_sparse_rational_joint_leaf_reference(
     let linearization = terminal_linearization(
         operation_plan,
         relation,
-        &claims,
+        &fraction_leaf_points(&claims),
         theta,
         &point,
         &proof.clear_plan_values,
@@ -822,7 +1205,8 @@ pub fn verify_c6_residual_sparse_rational_joint_leaf_clear_reference(
 #[cfg(all(test, feature = "c6-trace"))]
 mod tests {
     use super::*;
-    use volta_mac::C6TraceSourceManifest;
+    use crate::prod_check::{prod_batch_prover, prod_batch_verify};
+    use volta_mac::{zero_batch_exchange, C6TraceSourceManifest};
 
     fn fp(value: u64) -> Fp {
         Fp::new(value)
@@ -833,7 +1217,7 @@ mod tests {
     }
 
     #[test]
-    fn joint_leaf_reduction_closes_only_through_the_exact_nine_openings() {
+    fn joint_leaf_reduction_closes_clear_and_blind_exact_openings() {
         let direct = build_c6_residual_direct_fused_scaled_fixture().unwrap();
         let topology = direct.operation_plan().topology();
         let source_manifest = C6TraceSourceManifest::new(
@@ -943,6 +1327,234 @@ mod tests {
         assert_eq!(terminal.clear_residual(openings.response()), Fp2::ZERO);
         assert_ne!(terminal.lambda_mu_coefficient(), Fp2::ZERO);
         assert!(terminal.response_coefficients().iter().any(|value| *value != Fp2::ZERO));
+
+        let correlation_seed = [0x74; 32];
+        let transcript_seed = [0x75; 32];
+        let delta = Fp2::new(fp(331), fp(337));
+        let mut prover_stream = CorrelationStream::new(correlation_seed);
+        let mut prover_doms = Doms::new(30_000);
+        let mut prover_transcript = Transcript::new(transcript_seed);
+        let mut prover_products = Vec::new();
+        let mut prover_zeros = Vec::new();
+        let (blind_gkr_proof, blind_leaf_claims) =
+            prove_c6_residual_sparse_rational_gkr_blind_reference(
+                direct.operation_plan(),
+                direct.extraction(),
+                direct.runtime(),
+                &relation,
+                &mut prover_stream,
+                &mut prover_doms,
+                &mut prover_transcript,
+                &mut Counters::default(),
+                &mut prover_products,
+                &mut prover_zeros,
+            )
+            .unwrap();
+        let mut verifier = VerifierCtx::new(correlation_seed, delta);
+        let mut verifier_doms = Doms::new(30_000);
+        let mut verifier_transcript = Transcript::new(transcript_seed);
+        let mut verifier_products = Vec::new();
+        let mut verifier_zeros = Vec::new();
+        let blind_leaf_keys = verify_c6_residual_sparse_rational_gkr_blind_reference(
+            direct.operation_plan(),
+            &relation,
+            &blind_gkr_proof,
+            &mut verifier,
+            &mut verifier_doms,
+            &mut verifier_transcript,
+            &mut verifier_products,
+            &mut verifier_zeros,
+        )
+        .unwrap()
+        .unwrap();
+        let (blind_rounds, prover_terminal) =
+            prove_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
+                direct.operation_plan(),
+                &relation,
+                &packed,
+                &blind_leaf_claims,
+                &mut prover_stream,
+                &mut prover_doms,
+                &mut prover_transcript,
+            )
+            .unwrap();
+        let verifier_terminal =
+            verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
+                direct.operation_plan(),
+                &relation,
+                packed.base_domain_log2(),
+                packed.response_digest(),
+                packed.plan_digest(),
+                &blind_leaf_keys,
+                &blind_rounds,
+                &mut verifier,
+                &mut verifier_doms,
+                &mut verifier_transcript,
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(prover_terminal.points(), verifier_terminal.points());
+        assert_eq!(
+            blind_rounds.bytes(),
+            16 * (C6_SPARSE_PLAN_OPENINGS as u64
+                + u64::from(packed.base_domain_log2()) * C6_SPARSE_JOINT_SENT_VALUES as u64),
+        );
+        let response_values = packed.evaluate_response_openings(prover_terminal.points()).unwrap();
+        let plan_values = packed.evaluate_plan_openings(prover_terminal.points()).unwrap();
+        let target_domain = prover_doms.take(1);
+        assert_eq!(target_domain, verifier_doms.take(1));
+        let target_values = response_values.iter().chain(&plan_values).copied().collect::<Vec<_>>();
+        let target_masks = prover_stream.draw_fulls(target_domain, target_values.len());
+        prover_stream.record_c6_fullfield_plaintexts(target_domain, &target_values).unwrap();
+        let target_corrections = target_values
+            .iter()
+            .zip(&target_masks)
+            .map(|(&value, mask)| value - mask.x)
+            .collect::<Vec<_>>();
+        prover_transcript.append("c6_sparse_joint_test_pcs_targets", 16 * 9);
+        verifier_transcript.append("c6_sparse_joint_test_pcs_targets", 16 * 9);
+        let target_keys = verifier.correct_full_verifier_keys(target_domain, &target_corrections);
+        let response_targets: [ProverAuthed; C6_SPARSE_RESPONSE_OPENINGS] = target_masks
+            [..C6_SPARSE_RESPONSE_OPENINGS]
+            .iter()
+            .zip(response_values)
+            .map(|(mask, value)| mask.authenticate(value))
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+        let plan_targets: [ProverAuthed; C6_SPARSE_PLAN_OPENINGS] = target_masks
+            [C6_SPARSE_RESPONSE_OPENINGS..]
+            .iter()
+            .zip(plan_values)
+            .map(|(mask, value)| mask.authenticate(value))
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+        let response_keys: [VerifierKey; C6_SPARSE_RESPONSE_OPENINGS] =
+            target_keys[..C6_SPARSE_RESPONSE_OPENINGS].try_into().unwrap();
+        let plan_keys: [VerifierKey; C6_SPARSE_PLAN_OPENINGS] =
+            target_keys[C6_SPARSE_RESPONSE_OPENINGS..].try_into().unwrap();
+        let products_before_terminal = prover_products.len();
+        let zeros_before_terminal = prover_zeros.len();
+        let blind_terminal = finish_c6_residual_sparse_rational_joint_leaf_blind_prover(
+            prover_terminal,
+            &response_targets,
+            &plan_targets,
+            &mut prover_stream,
+            &mut prover_doms,
+            &mut prover_transcript,
+            &mut prover_products,
+            &mut prover_zeros,
+        )
+        .unwrap();
+        finish_c6_residual_sparse_rational_joint_leaf_blind_verifier(
+            verifier_terminal,
+            &response_keys,
+            &plan_keys,
+            &blind_terminal,
+            &mut verifier,
+            &mut verifier_doms,
+            &mut verifier_transcript,
+            &mut verifier_products,
+            &mut verifier_zeros,
+        )
+        .unwrap();
+        assert_eq!(blind_terminal.bytes(), 16);
+        assert_eq!(prover_products.len(), products_before_terminal + 1);
+        assert_eq!(prover_zeros.len(), zeros_before_terminal + 4);
+        assert_eq!(prover_products.len(), verifier_products.len());
+        assert_eq!(prover_zeros.len(), verifier_zeros.len());
+        assert_eq!(prover_doms.cursor(), verifier_doms.cursor());
+        let product_challenge = prover_transcript.challenge_fp2();
+        assert_eq!(product_challenge, verifier_transcript.challenge_fp2());
+        let product_mask = prover_stream.draw_product_mask(40_000, prover_products.len());
+        let product_mask_key =
+            verifier.expand_product_mask_verifier_key(40_000, verifier_products.len());
+        let product_proof = prod_batch_prover(
+            &prover_products,
+            product_challenge,
+            product_mask,
+            &mut prover_transcript,
+        );
+        assert!(prod_batch_verify(
+            &verifier_products,
+            product_mask_key,
+            delta,
+            product_challenge,
+            &product_proof,
+        ));
+        assert!(zero_batch_exchange(
+            &prover_zeros,
+            &verifier_zeros,
+            &mut prover_stream,
+            &mut verifier,
+            40_001,
+            &mut prover_transcript,
+        ));
+        let mut changed_terminal_proof = blind_terminal.clone();
+        changed_terminal_proof.product_correction += Fp2::ONE;
+        let mut changed_verifier = VerifierCtx::new(correlation_seed, delta);
+        let mut changed_doms = Doms::new(30_000);
+        let mut changed_transcript = Transcript::new(transcript_seed);
+        let mut changed_products = Vec::new();
+        let mut changed_zeros = Vec::new();
+        let changed_leaf_keys = verify_c6_residual_sparse_rational_gkr_blind_reference(
+            direct.operation_plan(),
+            &relation,
+            &blind_gkr_proof,
+            &mut changed_verifier,
+            &mut changed_doms,
+            &mut changed_transcript,
+            &mut changed_products,
+            &mut changed_zeros,
+        )
+        .unwrap()
+        .unwrap();
+        let changed_terminal =
+            verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
+                direct.operation_plan(),
+                &relation,
+                packed.base_domain_log2(),
+                packed.response_digest(),
+                packed.plan_digest(),
+                &changed_leaf_keys,
+                &blind_rounds,
+                &mut changed_verifier,
+                &mut changed_doms,
+                &mut changed_transcript,
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(changed_doms.take(1), target_domain);
+        changed_transcript.append("c6_sparse_joint_test_pcs_targets", 16 * 9);
+        let changed_target_keys =
+            changed_verifier.correct_full_verifier_keys(target_domain, &target_corrections);
+        let changed_response_keys: [VerifierKey; C6_SPARSE_RESPONSE_OPENINGS] =
+            changed_target_keys[..C6_SPARSE_RESPONSE_OPENINGS].try_into().unwrap();
+        let changed_plan_keys: [VerifierKey; C6_SPARSE_PLAN_OPENINGS] =
+            changed_target_keys[C6_SPARSE_RESPONSE_OPENINGS..].try_into().unwrap();
+        finish_c6_residual_sparse_rational_joint_leaf_blind_verifier(
+            changed_terminal,
+            &changed_response_keys,
+            &changed_plan_keys,
+            &changed_terminal_proof,
+            &mut changed_verifier,
+            &mut changed_doms,
+            &mut changed_transcript,
+            &mut changed_products,
+            &mut changed_zeros,
+        )
+        .unwrap();
+        assert_eq!(product_challenge, changed_transcript.challenge_fp2());
+        let changed_product_mask_key =
+            changed_verifier.expand_product_mask_verifier_key(40_000, changed_products.len());
+        assert!(!prod_batch_verify(
+            &changed_products,
+            changed_product_mask_key,
+            delta,
+            product_challenge,
+            &product_proof,
+        ));
 
         let claims =
             reduce_sparse_fraction_claims(&relation, gkr_seed, &gkr_proof).unwrap().unwrap();

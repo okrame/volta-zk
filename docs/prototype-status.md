@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — DIRECT-MLE C6RSC3-v4 + EXACT PRE-BETA 64 OUTPUTS GREEN / NATIVE D28 RELATION API HARD STOP / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — EXACT C6TFA1 METADATA/LANE ORACLES GREEN / SPARSE APPLICATION + SOURCE GATHER BACKEND HARD STOP / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -35,12 +35,16 @@ has no generic application-trace interface.  The D28 event table remains
 inadmissible.  `C6TFA1-v1` instead factors the exact fold into two
 challenge-dependent D25 reverse lanes plus an exact direct reducer covering
 all eight atomic families.  Its scaled family-by-family Rust differential is
-green against the independent C6TFR1 event sink.  The active hard stop is the
-authenticated compact ProductClosure metadata plus two native D25 recurrence
-lanes, connected to the authenticated opening and typed compiler boundary.
-The exact direct interval reducer and its production-shape census are green;
-no backend credit, digest-only shortcut or materialized event stream is
-permitted.
+green against the independent C6TFR1 event sink.  The strict **309,044-B**
+terminal projection now authenticates every ProductClosure operand/mask and
+zero root by reconstructing the topology digest, and the direct reducer no
+longer receives the complete plan.  Two exact materialized D25 lane oracles
+also reproduce the registered plan folds and source boundaries.  They are
+reference preimages, not proofs: the selected backend has no arbitrary sparse
+operand application or source-ordinal gather relation.  The active hard stop
+is a native sparse-application/source-gather construction connected to the
+claimless opening and typed compiler boundary.  No backend credit,
+digest-only shortcut or materialized event stream is permitted.
 
 The next append-only CPU-reference checkpoint now pins Plonky3 `p3-whir`
 revision `66e290615de1858f2f2f6a804158064c406cda1c` behind the non-default
@@ -831,6 +835,7 @@ its clean descendant closure.
 | C6.1 folded terminal adjoint preregistration | **C6TFA1-v1 EXACT FACTORIZATION SELECTED; EIGHT-FAMILY DIFFERENTIAL HARD STOP; NO BACKEND CREDIT; NO POD** (2026-08-02) | Factor the actual C6TFR1 fold into two challenge-dependent reverse seeds plus an exact direct reducer; retain the 64 functional claims and forbid fixed-node outputs | For each repetition, the base linear form and four terminal forms are scaled by the exact atomic and `beta` weights and combined into one installed-plan seed; one D25 reverse traversal then supplies their leaf-MLE contribution. `SourceGrammar`, affine alpha terms, reverse auxiliary subtractions, `RawCopy`, `Product`, `Zero` and both tail families remain in an explicit constrained direct scalar with checked family ordinals/cursors. The exact identity is `sum_t beta^t T_t = sum_b(P_b+D_b)`. This covers all eight atomic families without a D28 event column, but it is preregistration only: a scaled family-by-family differential against the independent typed sink is now mandatory before native relation/PCS work. The conservative `28/|Fp2|` charge, **16,342,103-B** certificate, **84,743,367-B** setup, **101,085,470-B** first exchange, **2,019,404,992-B** state and **14.5038179582 / 4.565672390-s** roofs remain unchanged with `credit:false`. Budget profile is v10; no pod was contacted. |
 | C6.1 folded terminal adjoint differential | **C6TFA1-v1 EIGHT-FAMILY RUST DIFFERENTIAL GREEN; NATIVE INTERVAL + D25 RECURRENCE HARD STOP; NO POD** (2026-08-02) | Independently reduce the exact direct-MLE emitter and compare two combined challenge-dependent reverse seeds against the typed C6TFR1 sink; scaled diagnostic only | At scaled geometry the factorized result equals C6TFR1 per family, repetition and final fold over exactly **2,400 writes**. Per-repetition family outputs are `[15,4,4,36,6,2,953,28]`; all eight family folds are nonzero. Only `Affine` and `Reverse` have plan-dependent parts, and one combined reverse result equals the separately reconstructed base plus four terminal forms. Expected family write censuses match; changed leaf point or `beta` changes the result, while v3 and malformed dimensions reject. Full proto `c6-trace` is **170/0/1**. The scaled implementation loops direct ranges and uses extra reverse passes, so it is ineligible for production/time/memory/native credit. Next requires constrained interval identities, two exact committed D25 recurrence lanes and connection to claimless authenticated openings plus the typed compiler statement. Budget v11 changes no registered number or credit; no pod was contacted. |
 | C6.1 direct interval reducer | **EXACT RANGE AUTOMATON + COMPLETE DIRECT REDUCER GREEN; NATIVE D25 RECURRENCE / METADATA BINDING HARD STOP; NO POD** (2026-08-02) | Replace long source/alpha/tail iteration by dyadic equality-affine reductions; retain explicit closure-bounded terms and exact family cursors | Exhaustive offset/stride/length edge tests match naive equality evaluation. The scaled complete reducer matches the iterative direct family folds at **140 blocks / 2,666 transitions / max 3 carry states / 194 explicit terms**. The frozen T1 shape reduces both repetitions to **510 blocks / 30,072 transitions / max 3 states + 1,513,162 explicit terms = 1,543,234 rows/terms**, versus **225,997,412** typed writes; this is a structural arithmetic census, not timing or proof rows. The per-repetition family outputs remain `[14,926,575,4,4,300,748,4,038,2,31,979,441,223,540]`. ProductClosure lengths/mask sources still come from the local installed plan and need compact authentication; two D25 recurrences and source boundaries remain absent. Budget v12 changes no registered screen or credit; no pod was contacted. |
+| C6.1 terminal projection and D25 lane oracle | **STRICT 309,044-B TERMINAL METADATA + TWO EXACT LANE REFERENCES GREEN; SPARSE APPLICATION / SOURCE GATHER BACKEND HARD STOP; NO POD** (2026-08-02) | Project the terminal plan section into authenticated setup state; derive the actual challenge-dependent injection; materialize exact D25 recurrence/source-boundary oracles without claiming a digest as proof | `VC6TRM1` contains a **188-B** header, **308,824-B** fixed-width terminal payload and **32-B** canonical digest. It binds the plan artifact, source manifest and topology-node digest, recomputes every ProductClosure/zero-root terminal root and then the installed topology digest. The direct reducer now consumes this projection rather than the complete plan. It uses **309,044 B** inside the existing 8-MB allocation, leaving **2,370,570 B** after the extraction map, so setup remains **84,743,367 B**. Each scaled lane derives the five exact `rho` scalars, matches the independent `Affine + Reverse` plan fold, reconstructs source order including absent scheduled zeros and rejects an adjoint mutation. The full default workspace is green at PCS **199/0/1** and proto **151/0/1**; full `volta-mac c6-trace` is **36/0/0 + 5/0/0** and proto is **172/0/1**. The lane vector hash is explicitly diagnostic. Claimless WHIR and its Eq/Next/Select constraints do not express arbitrary operand scatter/gather or the source-ordinal lookup, so `lambda=q+A(runtime)^T lambda` is not yet a native proof. Budget v13 preserves all byte/time/state/soundness screens with credit false. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -905,6 +910,27 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-08-02 — terminal metadata and exact D25 lane preimages are closed,
+  but the native sparse application is not.**  The strict `VC6TRM1`
+  projection retains all 22,339 ProductClosure triples, 673 mask nodes/source
+  ordinals and 8,170 zero roots.  Its **309,044 B** recompute the canonical
+  terminal-root and topology digests and fit beside the extraction map in the
+  existing 8-MB parameter allocation, leaving **2,370,570 B**.  The direct
+  reducer no longer reads the complete installed plan.
+
+  Two materialized reference lanes derive the exact challenge-dependent
+  injection, traverse the canonical plan, reconstruct every scheduled source
+  coefficient and match the independent `Affine + Reverse` fold.  They fix
+  the intended recurrence and source boundary, but their vector hashes are
+  diagnostic only.  The selected claimless WHIR path authenticates polynomial
+  openings; neither it nor the imported Eq/Next/Select statement vocabulary
+  supplies the arbitrary operand scatter/gather and source lookup needed to
+  prove `lambda=q+A(runtime)^T lambda`.  The new hard stop is
+  `C6TFA1_SPARSE_APPLICATION_AND_SOURCE_GATHER_BACKEND_REQUIRED`.  A new
+  lookup/permutation or equivalent native construction must be preregistered
+  and re-budgeted before coding.  Budget v13 leaves all full-chain credits
+  false; no pod was contacted.
 
 - **2026-08-02 — C6TFA1 replaces its long direct loops with exact dyadic
   equality-affine reductions.**  A two-carry binary automaton evaluates two

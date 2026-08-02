@@ -2124,6 +2124,97 @@ their exact source boundaries and the claimless typed-backend connection.
 Budget profile v12 changes no registered bytes, soundness, state, roofline or
 credit.  No pod contact is authorized.
 
+### 0.28 Authenticated terminal projection and exact D25 lane oracle
+
+The direct reducer no longer receives the complete installed operation plan.
+The strict `VC6TRM1` setup codec projects exactly the plan data required by
+the C6TFA1 seed and direct closure terms:
+
+```text
+header                                                       188 B
+673 * (triple count + mask node + mask source)              8,076 B
+22,339 * (a,b,c canonical nodes)                          268,068 B
+8,170 zero-root canonical nodes                            32,680 B
+canonical trailing digest                                    32 B
+total                                                    309,044 B
+```
+
+The header binds the canonical operation-plan artifact digest, complete
+topology identity and topology-node digest.  The strict decoder recomputes
+the terminal-root digest from every ProductClosure operand, mask and zero
+root, then recomputes the installed topology digest.  ProductMask source
+ordinals must equal the separately installed source manifest.  Counts,
+empty closures, node bounds, mask reuse, mask-as-product, mask-as-zero,
+truncation, trailing bytes, nonzero reserved fields and digest/topology
+mutations reject.  Thus the provider does not get to choose closure lengths,
+mask sources or reverse seed nodes per response.
+
+The projection consumes **309,044 B** of the already registered
+`8,000,000-B` client-parameter allocation.  Together with the retained
+**5,320,386-B** extraction map it leaves **2,370,570 B**.  Projected setup
+therefore remains **84,743,367 B**; this is still a screen with
+`setup_credit:false`.
+
+An executable reference now materializes each of the two exact adjoint
+lanes independently.  For repetition `b` it derives `rho_base` and the four
+terminal `rho` values from the registered atomic point and global `beta`
+powers, seeds only the authenticated ProductClosure operands and zero roots,
+and performs the installed reverse traversal.  Its node vector is the exact
+unpadded prefix of a D25 polynomial; rows after the **28,845,631** canonical
+nodes are fixed zero.  The source boundary has one entry for each of the
+**4,975,525** scheduled sources, including zero for a scheduled source absent
+from the reachable graph, and its leaf-point MLE equals the already-green
+`Affine + Reverse` plan contribution.  Both scaled lanes match the independent
+five-form reconstruction, and changing one adjoint entry fails exact
+revalidation.
+
+This object is deliberately named a reference oracle.  Its vector digest is
+diagnostic and is neither a PCS commitment nor evidence for the recurrence.
+The exact native statement still has to establish, for both lanes,
+
+```text
+lambda_b[v] = q_b[v]
+            + sum_(j > v, v is an operand of j)
+                edge_weight(j,v,runtime) * lambda_b[j]
+
+g_b[s] = sum_(v is Source(s)) lambda_b[v]
+P_b    = sum_s eq(leaf_point[b],s) * g_b[s],
+```
+
+with canonical zero padding in both domains.  The selected claimless WHIR
+adapter proves openings of one committed polynomial.  Its symbolic source
+claims and the imported sumcheck statement vocabulary cover evaluation
+constraints (`Eq`, `Next`, `Select`); they do not supply the arbitrary sparse
+operand scatter/gather or the source-ordinal-to-canonical-node lookup above.
+The generic-degree sumcheck driver alone also does not bind its final factor
+evaluations to the committed lane and fixed plan oracle.  Hashing the
+reference vectors would therefore be the forbidden unconstrained-digest
+shortcut.
+
+The full default workspace is green at `volta-pcs` **199/0/1** and
+`volta-proto` **151/0/1**.  The full local feature suites are green at
+`volta-mac` **36/0/0 + 5/0/0** and `volta-proto` **172/0/1**.  Budget
+profile v13 keeps the
+**16,342,103-B** certificate, **84,743,367-B** setup,
+**101,085,470-B** first exchange, **2,019,404,992-B** provider state,
+**14.5038179582 / 4.565672390-s** rooflines and conservative
+`28/|Fp2|` relation charge unchanged, all with full-chain credit false.
+
+The active local **HARD STOP** is
+`C6TFA1_SPARSE_APPLICATION_AND_SOURCE_GATHER_BACKEND_REQUIRED`.  Resume
+requires a preregistered native construction that:
+
+1. commits the two D25 lanes and their exact source boundaries before any
+   batching challenge;
+2. authenticates the fixed opcode/operand/runtime application relation and
+   the source gather, including absent scheduled sources and padding;
+3. connects the resulting openings to claimless authenticated WHIR and the
+   role-typed compiler statement; and
+4. re-sums proof bytes, setup, state, prover/verifier work and soundness
+   before implementation.
+
+No pod contact is authorized.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

@@ -12,8 +12,10 @@ This report deliberately has two different verdict scopes:
   C6TFA1 preregistration factors the exact event fold into two D25 reverse
   lanes plus an eight-family direct reducer.  Its scaled differential is now
   exact, and the direct interval reducer has an executable production-shape
-  census.  Native metadata binding, recurrence and the full-chain benchmark
-  remain absent, so neither reference is final proof or timing credit.
+  census.  The terminal projection and exact materialized D25 lane references
+  are green.  A native sparse-application/source-gather argument and the
+  full-chain benchmark remain absent, so neither reference is final proof or
+  timing credit.
 
 No projected ceiling or analytic roofline is proof-size, setup, prover-time,
 verifier-time or hardware credit.  The implemented PCS codec receives only
@@ -71,6 +73,21 @@ C6_VERIFIER_INSTANCE_MAP_BYTES = 5_320_386
 C6_EXISTING_SETUP_BYTES = 146_058_504
 C61_CLIENT_PARAMETER_BYTES_AFTER_RETAINED_MAP = (
     C61_CLIENT_PUBLIC_PARAMETER_ALLOCATION_BYTES - C6_VERIFIER_INSTANCE_MAP_BYTES
+)
+C61_TERMINAL_METADATA_HEADER_BYTES = 188
+C61_TERMINAL_METADATA_TRAILER_BYTES = 32
+C61_TERMINAL_METADATA_PAYLOAD_BYTES = (
+    12 * c6.T1_PRODUCT_CLOSURE_COUNT
+    + 12 * c6.T1_PRODUCT_TRIPLE_COUNT
+    + 4 * c6.T1_ZERO_ROOT_COUNT
+)
+C61_TERMINAL_METADATA_BYTES = (
+    C61_TERMINAL_METADATA_HEADER_BYTES
+    + C61_TERMINAL_METADATA_PAYLOAD_BYTES
+    + C61_TERMINAL_METADATA_TRAILER_BYTES
+)
+C61_CLIENT_PARAMETER_BYTES_AFTER_TERMINAL_METADATA = (
+    C61_CLIENT_PARAMETER_BYTES_AFTER_RETAINED_MAP - C61_TERMINAL_METADATA_BYTES
 )
 
 # Historical measurements.  They are informative anchors with different
@@ -508,7 +525,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v12",
+        "profile": "C6.1-public-compression-reference-v13",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
@@ -517,7 +534,8 @@ def build_report() -> dict[str, Any]:
             "DIRECT_MLE_SCHEDULE_AND_FUSED_PRE_BETA_OUTPUTS_GREEN__"
             "C6TFA1_EXACT_EIGHT_FAMILY_DIFFERENTIAL_GREEN__"
             "DIRECT_INTERVAL_REDUCER_GREEN__"
-            "NATIVE_D25_RECURRENCE_AND_METADATA_BINDING_REQUIRED__"
+            "TERMINAL_METADATA_AND_EXACT_D25_LANE_REFERENCES_GREEN__"
+            "SPARSE_APPLICATION_AND_SOURCE_GATHER_BACKEND_REQUIRED__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
@@ -591,7 +609,8 @@ def build_report() -> dict[str, Any]:
                 "DIRECT_MLE_SCHEDULE_AND_FUSED_PRE_BETA_OUTPUTS_GREEN__"
                 "C6TFA1_EXACT_EIGHT_FAMILY_DIFFERENTIAL_GREEN__"
                 "DIRECT_INTERVAL_REDUCER_GREEN__"
-                "NATIVE_D25_RECURRENCE_AND_METADATA_BINDING_REQUIRED__"
+                "TERMINAL_METADATA_AND_EXACT_D25_LANE_REFERENCES_GREEN__"
+                "SPARSE_APPLICATION_AND_SOURCE_GATHER_BACKEND_REQUIRED__"
                 "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
             "statement": (
@@ -1069,7 +1088,7 @@ def build_report() -> dict[str, Any]:
                 ),
             },
             "local_hard_stop": {
-                "status": "C6TFA1_NATIVE_D25_RECURRENCE_AND_METADATA_BINDING_REQUIRED",
+                "status": "C6TFA1_SPARSE_APPLICATION_AND_SOURCE_GATHER_BACKEND_REQUIRED",
                 "canonical_runtime_seam_green": True,
                 "raw_verifier_runtime_values": raw_verifier_runtime_values,
                 "canonical_runtime_values": canonical_runtime_values,
@@ -1141,7 +1160,12 @@ def build_report() -> dict[str, Any]:
                         C61_TERMINAL_FUNCTIONAL_WRITES
                         - C61_FOLDED_DIRECT_TOTAL_ROWS_AND_TERMS
                     ),
-                    "product_metadata_authenticated": False,
+                    "terminal_metadata_codec": "VC6TRM1",
+                    "terminal_metadata_bytes": C61_TERMINAL_METADATA_BYTES,
+                    "terminal_metadata_authenticated": True,
+                    "terminal_metadata_reconstructs_topology_digest": True,
+                    "exact_d25_lane_references_green": True,
+                    "exact_source_boundary_references_green": True,
                     "native_d25_recurrences_green": False,
                     "credit": False,
                 },
@@ -1177,9 +1201,9 @@ def build_report() -> dict[str, Any]:
                     ),
                 },
                 "required_before_resume": [
-                    "bind ProductClosure lengths, product-mask sources and zero-root metadata to the installed-plan commitment",
-                    "realize the two exact D25 reverse recurrences and source boundaries",
-                    "connect the factorized relation to the claimless authenticated WHIR opening and typed compiler-chain boundary",
+                    "supply a native sparse-application argument for lambda=q+A(runtime)^T*lambda over the committed D25 lanes",
+                    "supply the exact source-ordinal-to-canonical-node gather boundary, including absent scheduled sources and zero padding",
+                    "connect those relations to claimless authenticated openings and the typed compiler-chain boundary",
                 ],
                 "credit": False,
             },
@@ -1204,6 +1228,11 @@ def build_report() -> dict[str, Any]:
             ),
             "parameter_bytes_after_retained_map": (
                 C61_CLIENT_PARAMETER_BYTES_AFTER_RETAINED_MAP
+            ),
+            "terminal_metadata_codec": "VC6TRM1",
+            "terminal_metadata_bytes": C61_TERMINAL_METADATA_BYTES,
+            "parameter_bytes_after_terminal_metadata": (
+                C61_CLIENT_PARAMETER_BYTES_AFTER_TERMINAL_METADATA
             ),
             "projected_setup_bytes": projected_setup_bytes,
             "strict_setup_max_bytes": C61_SETUP_MAX_BYTES,
@@ -1345,6 +1374,9 @@ def build_report() -> dict[str, Any]:
     assert canonical_runtime_values == 10_830_288
     assert raw_verifier_runtime_values - canonical_runtime_values == 54
     assert C61_CLIENT_PARAMETER_BYTES_AFTER_RETAINED_MAP == 2_679_614
+    assert C61_TERMINAL_METADATA_PAYLOAD_BYTES == 308_824
+    assert C61_TERMINAL_METADATA_BYTES == 309_044
+    assert C61_CLIENT_PARAMETER_BYTES_AFTER_TERMINAL_METADATA == 2_370_570
     assert runtime_sketch_bits > Decimal("246")
     assert C61_EQ_CHALLENGE_FP2_ELEMENTS == 234
     assert C61_EQ_CHALLENGE_CLIENT_BYTES == 3_744

@@ -6775,6 +6775,587 @@ fn c6_folded_terminal_quadratic_power(
         + pair])
 }
 
+/// Production-shape direct half of C6TFA1.
+///
+/// Long source/alpha/tail ranges use exact dyadic equality reductions. The
+/// remaining explicit work is bounded by ProductClosure, product-triple,
+/// zero-root and product-mask censuses; it never visits the D28 write domain.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualFoldedTerminalDirectReduction {
+    output_beta: Fp2,
+    family_folds: [[Fp2; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    repetition_folds: [Fp2; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    family_outputs: [[u64; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    family_coefficient_writes: [[u64; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    interval_blocks: u64,
+    interval_transition_rows: u64,
+    max_interval_carry_states: u64,
+    explicit_terms: u64,
+    fold: Fp2,
+    digest: C6ResidualDigest,
+}
+
+impl C6ResidualFoldedTerminalDirectReduction {
+    pub fn output_beta(&self) -> Fp2 {
+        self.output_beta
+    }
+
+    pub fn family_folds(&self) -> &[[Fp2; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize] {
+        &self.family_folds
+    }
+
+    pub fn repetition_folds(&self) -> &[Fp2; C6_RESIDUAL_PROOF_REPETITIONS as usize] {
+        &self.repetition_folds
+    }
+
+    pub fn family_outputs(&self) -> &[[u64; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize] {
+        &self.family_outputs
+    }
+
+    pub fn family_coefficient_writes(&self) -> &[[u64; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize] {
+        &self.family_coefficient_writes
+    }
+
+    pub fn interval_blocks(&self) -> u64 {
+        self.interval_blocks
+    }
+
+    pub fn interval_transition_rows(&self) -> u64 {
+        self.interval_transition_rows
+    }
+
+    pub fn max_interval_carry_states(&self) -> u64 {
+        self.max_interval_carry_states
+    }
+
+    pub fn explicit_terms(&self) -> u64 {
+        self.explicit_terms
+    }
+
+    pub fn fold(&self) -> Fp2 {
+        self.fold
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+}
+
+#[derive(Default)]
+struct C6ResidualIntervalReductionCensus {
+    blocks: u64,
+    transition_rows: u64,
+    max_carry_states: u64,
+}
+
+impl C6ResidualIntervalReductionCensus {
+    fn add(&mut self, reduction: C6ResidualEqualityAffineRangeSum) -> C6ResidualResult<Fp2> {
+        self.blocks = self
+            .blocks
+            .checked_add(u64::from(reduction.dyadic_blocks()))
+            .ok_or_else(|| C6ResidualError::new("C6TFA1 interval block census overflows"))?;
+        self.transition_rows = self
+            .transition_rows
+            .checked_add(reduction.transition_rows())
+            .ok_or_else(|| C6ResidualError::new("C6TFA1 interval row census overflows"))?;
+        self.max_carry_states = self.max_carry_states.max(reduction.max_carry_states());
+        Ok(reduction.value())
+    }
+}
+
+fn c6_residual_family_starts(outputs: [u64; 8]) -> C6ResidualResult<[u64; 8]> {
+    let mut cursor = 0u64;
+    let mut starts = [0u64; 8];
+    for family in C6ResidualAtomicFamily::ALL {
+        starts[family.index()] = cursor;
+        cursor = cursor
+            .checked_add(outputs[family.index()])
+            .ok_or_else(|| C6ResidualError::new("C6TFA1 family-output prefix sum overflows"))?;
+    }
+    Ok(starts)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn reduce_c6_residual_folded_terminal_direct(
+    operation_plan: &C6InstalledOperationPlan,
+    challenges: &C6ResidualRelationChallenges,
+    leaf_points: [&[Fp2]; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    auxiliary_points: [&[Fp2]; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    output_beta: Fp2,
+) -> C6ResidualResult<C6ResidualFoldedTerminalDirectReduction> {
+    challenges.validate(operation_plan)?;
+    let manifest = challenges.manifest();
+    if challenges.protocol_version != RESIDUAL_RELATION_PROTOCOL_V4 {
+        return Err(C6ResidualError::new(
+            "C6TFA1 direct reducer requires the direct-MLE C6RSC3-v4 schedule",
+        ));
+    }
+    let alpha_points =
+        challenges.base_share_context().direct_alpha_points.as_ref().ok_or_else(|| {
+            C6ResidualError::new("C6TFA1 direct reducer is missing direct alpha points")
+        })?;
+    let source_count = u64::from(manifest.topology.source_count);
+    let product_triples = manifest.topology.product_triple_count;
+    let zero_roots = u64::from(manifest.topology.zero_root_count);
+    let leaf_entries = manifest.leaf_entries;
+    let auxiliary_entries = manifest.auxiliary_entries;
+    let expected_outputs = expected_atomic_family_outputs(manifest)?;
+    let expected_writes = expected_atomic_family_coefficient_writes(manifest)?;
+    let family_starts = c6_residual_family_starts(expected_outputs)?;
+    let mut beta_power = Fp2::ONE;
+    let beta_powers = std::array::from_fn(|_| {
+        let current = beta_power;
+        beta_power = beta_power * output_beta;
+        current
+    });
+    let zero_weights =
+        challenges
+            .base_share_context()
+            .retained
+            .zero_weights(usize::try_from(zero_roots).map_err(|_| {
+                C6ResidualError::new("C6TFA1 direct zero-root count exceeds usize")
+            })?);
+    let mut family_folds = [[Fp2::ZERO; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize];
+    let mut repetition_folds = [Fp2::ZERO; C6_RESIDUAL_PROOF_REPETITIONS as usize];
+    let family_outputs = [expected_outputs; C6_RESIDUAL_PROOF_REPETITIONS as usize];
+    let family_coefficient_writes = [expected_writes; C6_RESIDUAL_PROOF_REPETITIONS as usize];
+    let mut interval_census = C6ResidualIntervalReductionCensus::default();
+    let mut explicit_terms = 0u64;
+
+    for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
+        let repetition = usize::from(proof_repetition);
+        let repetition_base = repetition * C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION;
+        let beta_at = |local_slot: usize| beta_powers[repetition_base + local_slot];
+        let atomic_schedule = challenges.atomic_schedule(proof_repetition)?;
+        let atomic_point = atomic_schedule.direct_point.as_deref().ok_or_else(|| {
+            C6ResidualError::new("C6TFA1 direct reducer is missing an atomic point")
+        })?;
+        let atomic_entries = 1u64 << atomic_point.len();
+        let mut atomic_cursor =
+            C6ResidualEqPointCursor::new(atomic_point, atomic_entries, "C6TFA1 direct atomic")?;
+        let mut leaf_cursor = C6ResidualEqPointCursor::new(
+            leaf_points[repetition],
+            leaf_entries,
+            "C6TFA1 direct leaf",
+        )?;
+        let mut auxiliary_cursor = C6ResidualEqPointCursor::new(
+            auxiliary_points[repetition],
+            auxiliary_entries,
+            "C6TFA1 direct auxiliary",
+        )?;
+        let mut direct = [Fp2::ZERO; 8];
+
+        let source_start = family_starts[C6ResidualAtomicFamily::SourceGrammar.index()];
+        let source_coefficients =
+            [beta_at(0) - beta_at(1) - beta_at(3), beta_at(0) - beta_at(4) - beta_at(6)];
+        for component in 0..2u64 {
+            let reduction = c6_residual_equality_affine_range_sum(
+                atomic_point,
+                source_start + component,
+                3,
+                leaf_points[repetition],
+                0,
+                1,
+                source_count,
+            )?;
+            direct[C6ResidualAtomicFamily::SourceGrammar.index()] +=
+                source_coefficients[component as usize] * interval_census.add(reduction)?;
+        }
+        for &mask_source in &manifest.product_mask_sources {
+            let mask = u64::from(mask_source);
+            let equality = leaf_cursor.at(mask_source)?;
+            let first = atomic_cursor.at(u32::try_from(source_start + 3 * mask)
+                .map_err(|_| C6ResidualError::new("C6TFA1 source atomic ordinal exceeds u32"))?)?;
+            let second = atomic_cursor.at(u32::try_from(source_start + 3 * mask + 1)
+                .map_err(|_| C6ResidualError::new("C6TFA1 source atomic ordinal exceeds u32"))?)?;
+            let third = atomic_cursor.at(u32::try_from(source_start + 3 * mask + 2)
+                .map_err(|_| C6ResidualError::new("C6TFA1 source atomic ordinal exceeds u32"))?)?;
+            direct[C6ResidualAtomicFamily::SourceGrammar.index()] += equality
+                * (first * (beta_at(3) - source_coefficients[0])
+                    + second * (beta_at(6) - source_coefficients[1])
+                    + third * beta_at(0));
+            explicit_terms = explicit_terms
+                .checked_add(3)
+                .ok_or_else(|| C6ResidualError::new("C6TFA1 explicit-term census overflows"))?;
+        }
+
+        let affine_start = family_starts[C6ResidualAtomicFamily::Affine.index()];
+        for coordinate in 0..2u8 {
+            let (r_table, m_table) = if coordinate == 0 { (1usize, 2usize) } else { (4, 5) };
+            let d_weight = atomic_cursor
+                .at(u32::try_from(affine_start + 2 * u64::from(coordinate)).map_err(|_| {
+                    C6ResidualError::new("C6TFA1 affine atomic ordinal exceeds u32")
+                })?)?;
+            let m_weight = atomic_cursor
+                .at(u32::try_from(affine_start + 2 * u64::from(coordinate) + 1).map_err(
+                    |_| C6ResidualError::new("C6TFA1 affine atomic ordinal exceeds u32"),
+                )?)?;
+            let reduction = c6_residual_equality_affine_range_sum(
+                alpha_points.point(coordinate)?,
+                0,
+                1,
+                leaf_points[repetition],
+                0,
+                1,
+                source_count,
+            )?;
+            direct[C6ResidualAtomicFamily::Affine.index()] += interval_census.add(reduction)?
+                * (m_weight * beta_at(m_table) - d_weight * beta_at(r_table));
+        }
+
+        let reverse_start = family_starts[C6ResidualAtomicFamily::Reverse.index()];
+        for coordinate in 0..2u8 {
+            for kind in [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag] {
+                let form_index = usize::from(coordinate) * 2 + kind.stream_index();
+                let outer = atomic_cursor
+                    .at(u32::try_from(reverse_start + form_index as u64).map_err(|_| {
+                        C6ResidualError::new("C6TFA1 reverse atomic ordinal exceeds u32")
+                    })?)?;
+                let schedule = challenges.terminal_schedule(proof_repetition, coordinate, kind)?;
+                let lane_base = usize::from(coordinate) * 6;
+                let lanes = match kind {
+                    C6ResidualTerminalFormKind::Plaintext => {
+                        [lane_base, lane_base + 2, lane_base + 4]
+                    }
+                    C6ResidualTerminalFormKind::Tag => {
+                        [lane_base + 1, lane_base + 3, lane_base + 5]
+                    }
+                };
+                for (triple, weights) in schedule.product_weights.iter().enumerate() {
+                    let equality = auxiliary_cursor.at(u32::try_from(triple).map_err(|_| {
+                        C6ResidualError::new("C6TFA1 reverse triple row exceeds u32")
+                    })?)?;
+                    for (lane, terminal_weight) in lanes.into_iter().zip(weights) {
+                        direct[C6ResidualAtomicFamily::Reverse.index()] = direct
+                            [C6ResidualAtomicFamily::Reverse.index()]
+                            - outer * *terminal_weight * equality * beta_at(8 + lane);
+                        explicit_terms = explicit_terms.checked_add(1).ok_or_else(|| {
+                            C6ResidualError::new("C6TFA1 explicit-term census overflows")
+                        })?;
+                    }
+                }
+                let zero_lane = 12
+                    + 2 * usize::from(coordinate)
+                    + usize::from(kind == C6ResidualTerminalFormKind::Tag);
+                for (zero, terminal_weight) in schedule.zero_weights.iter().enumerate() {
+                    direct[C6ResidualAtomicFamily::Reverse.index()] = direct
+                        [C6ResidualAtomicFamily::Reverse.index()]
+                        - outer
+                            * *terminal_weight
+                            * auxiliary_cursor.at(u32::try_from(zero).map_err(|_| {
+                                C6ResidualError::new("C6TFA1 reverse zero row exceeds u32")
+                            })?)?
+                            * beta_at(8 + zero_lane);
+                    explicit_terms = explicit_terms.checked_add(1).ok_or_else(|| {
+                        C6ResidualError::new("C6TFA1 explicit-term census overflows")
+                    })?;
+                }
+            }
+        }
+
+        let raw_start = family_starts[C6ResidualAtomicFamily::RawCopy.index()];
+        let mut raw_position = 0u64;
+        let mut atomic_ordinal = raw_start;
+        for triple in 0..product_triples {
+            let auxiliary_equality = auxiliary_cursor.at(u32::try_from(triple)
+                .map_err(|_| C6ResidualError::new("C6TFA1 raw-copy triple exceeds u32"))?)?;
+            for coordinate in 0..2usize {
+                for component in 0..6usize {
+                    let lane = 6 * coordinate + component;
+                    let weight =
+                        atomic_cursor.at(u32::try_from(atomic_ordinal).map_err(|_| {
+                            C6ResidualError::new("C6TFA1 raw-copy atomic ordinal exceeds u32")
+                        })?)?;
+                    direct[C6ResidualAtomicFamily::RawCopy.index()] += weight
+                        * (beta_at(7)
+                            * leaf_cursor.at(u32::try_from(raw_position).map_err(|_| {
+                                C6ResidualError::new("C6TFA1 raw-copy leaf row exceeds u32")
+                            })?)?
+                            - beta_at(8 + lane) * auxiliary_equality);
+                    raw_position += 1;
+                    atomic_ordinal += 1;
+                    explicit_terms = explicit_terms.checked_add(1).ok_or_else(|| {
+                        C6ResidualError::new("C6TFA1 explicit-term census overflows")
+                    })?;
+                }
+            }
+        }
+        for zero in 0..zero_roots {
+            let auxiliary_equality = auxiliary_cursor.at(u32::try_from(zero)
+                .map_err(|_| C6ResidualError::new("C6TFA1 raw-copy zero exceeds u32"))?)?;
+            for coordinate in 0..2usize {
+                for component in 0..2usize {
+                    let lane = 12 + 2 * coordinate + component;
+                    let weight =
+                        atomic_cursor.at(u32::try_from(atomic_ordinal).map_err(|_| {
+                            C6ResidualError::new("C6TFA1 raw-copy atomic ordinal exceeds u32")
+                        })?)?;
+                    direct[C6ResidualAtomicFamily::RawCopy.index()] += weight
+                        * (beta_at(7)
+                            * leaf_cursor.at(u32::try_from(raw_position).map_err(|_| {
+                                C6ResidualError::new("C6TFA1 raw-copy leaf row exceeds u32")
+                            })?)?
+                            - beta_at(8 + lane) * auxiliary_equality);
+                    raw_position += 1;
+                    atomic_ordinal += 1;
+                    explicit_terms = explicit_terms.checked_add(1).ok_or_else(|| {
+                        C6ResidualError::new("C6TFA1 explicit-term census overflows")
+                    })?;
+                }
+            }
+        }
+        if raw_position != manifest.raw_copy_entries
+            || atomic_ordinal
+                != raw_start + expected_outputs[C6ResidualAtomicFamily::RawCopy.index()]
+        {
+            return Err(C6ResidualError::new("C6TFA1 direct RawCopy cursor mismatch"));
+        }
+
+        let product_start = family_starts[C6ResidualAtomicFamily::Product.index()];
+        let mut triple_cursor = 0u64;
+        atomic_ordinal = product_start;
+        for (closure, product) in operation_plan.products().iter().enumerate() {
+            let chi = challenges.base_share_context().retained.product_challenges[closure];
+            let mask_equality = leaf_cursor.at(manifest.product_mask_sources[closure])?;
+            for coordinate in 0..2usize {
+                let lane_base = 6 * coordinate;
+                let r_table = if coordinate == 0 { 1 } else { 4 };
+                let m_table = if coordinate == 0 { 2 } else { 5 };
+
+                let outer = atomic_cursor.at(u32::try_from(atomic_ordinal).map_err(|_| {
+                    C6ResidualError::new("C6TFA1 Product atomic ordinal exceeds u32")
+                })?)?;
+                atomic_ordinal += 1;
+                let mut power = Fp2::ONE;
+                for local in 0..product.triples().len() as u64 {
+                    power = power * chi;
+                    let equality = auxiliary_cursor.at(u32::try_from(triple_cursor + local)
+                        .map_err(|_| C6ResidualError::new("C6TFA1 Product row exceeds u32"))?)?;
+                    let quadratic = c6_folded_terminal_quadratic_power(
+                        &beta_powers,
+                        repetition_base,
+                        lane_base as u8,
+                        (lane_base + 2) as u8,
+                    )?;
+                    direct[C6ResidualAtomicFamily::Product.index()] +=
+                        outer * power * equality * (quadratic - beta_at(8 + lane_base + 4));
+                    explicit_terms = explicit_terms.checked_add(1).ok_or_else(|| {
+                        C6ResidualError::new("C6TFA1 explicit-term census overflows")
+                    })?;
+                }
+
+                let outer = atomic_cursor.at(u32::try_from(atomic_ordinal).map_err(|_| {
+                    C6ResidualError::new("C6TFA1 Product atomic ordinal exceeds u32")
+                })?)?;
+                atomic_ordinal += 1;
+                direct[C6ResidualAtomicFamily::Product.index()] +=
+                    outer * mask_equality * beta_at(m_table);
+                explicit_terms = explicit_terms
+                    .checked_add(1)
+                    .ok_or_else(|| C6ResidualError::new("C6TFA1 explicit-term census overflows"))?;
+                power = Fp2::ONE;
+                for local in 0..product.triples().len() as u64 {
+                    power = power * chi;
+                    let equality = auxiliary_cursor.at(u32::try_from(triple_cursor + local)
+                        .map_err(|_| C6ResidualError::new("C6TFA1 Product row exceeds u32"))?)?;
+                    let quadratic = c6_folded_terminal_quadratic_power(
+                        &beta_powers,
+                        repetition_base,
+                        (lane_base + 1) as u8,
+                        (lane_base + 3) as u8,
+                    )?;
+                    direct[C6ResidualAtomicFamily::Product.index()] +=
+                        outer * power * equality * quadratic;
+                    explicit_terms = explicit_terms.checked_add(1).ok_or_else(|| {
+                        C6ResidualError::new("C6TFA1 explicit-term census overflows")
+                    })?;
+                }
+
+                let outer = atomic_cursor.at(u32::try_from(atomic_ordinal).map_err(|_| {
+                    C6ResidualError::new("C6TFA1 Product atomic ordinal exceeds u32")
+                })?)?;
+                atomic_ordinal += 1;
+                direct[C6ResidualAtomicFamily::Product.index()] +=
+                    outer * mask_equality * beta_at(r_table);
+                explicit_terms = explicit_terms
+                    .checked_add(1)
+                    .ok_or_else(|| C6ResidualError::new("C6TFA1 explicit-term census overflows"))?;
+                power = Fp2::ONE;
+                for local in 0..product.triples().len() as u64 {
+                    power = power * chi;
+                    let equality = auxiliary_cursor.at(u32::try_from(triple_cursor + local)
+                        .map_err(|_| C6ResidualError::new("C6TFA1 Product row exceeds u32"))?)?;
+                    let first = c6_folded_terminal_quadratic_power(
+                        &beta_powers,
+                        repetition_base,
+                        lane_base as u8,
+                        (lane_base + 3) as u8,
+                    )?;
+                    let second = c6_folded_terminal_quadratic_power(
+                        &beta_powers,
+                        repetition_base,
+                        (lane_base + 1) as u8,
+                        (lane_base + 2) as u8,
+                    )?;
+                    direct[C6ResidualAtomicFamily::Product.index()] +=
+                        outer * power * equality * (first + second - beta_at(8 + lane_base + 5));
+                    explicit_terms = explicit_terms.checked_add(1).ok_or_else(|| {
+                        C6ResidualError::new("C6TFA1 explicit-term census overflows")
+                    })?;
+                }
+            }
+            triple_cursor += product.triples().len() as u64;
+        }
+        if triple_cursor != product_triples
+            || atomic_ordinal
+                != product_start + expected_outputs[C6ResidualAtomicFamily::Product.index()]
+        {
+            return Err(C6ResidualError::new("C6TFA1 direct Product cursor mismatch"));
+        }
+
+        let zero_start = family_starts[C6ResidualAtomicFamily::Zero.index()];
+        for coordinate in 0..2usize {
+            let outer = atomic_cursor.at(u32::try_from(zero_start + coordinate as u64)
+                .map_err(|_| C6ResidualError::new("C6TFA1 Zero atomic ordinal exceeds u32"))?)?;
+            let lane = 12 + 2 * coordinate;
+            for (zero, weight) in zero_weights.iter().enumerate() {
+                direct[C6ResidualAtomicFamily::Zero.index()] += outer
+                    * *weight
+                    * auxiliary_cursor.at(u32::try_from(zero)
+                        .map_err(|_| C6ResidualError::new("C6TFA1 Zero row exceeds u32"))?)?
+                    * beta_at(8 + lane);
+                explicit_terms = explicit_terms
+                    .checked_add(1)
+                    .ok_or_else(|| C6ResidualError::new("C6TFA1 explicit-term census overflows"))?;
+            }
+        }
+
+        atomic_ordinal = family_starts[C6ResidualAtomicFamily::LeafTail.index()];
+        let source_tail = leaf_entries
+            .checked_sub(source_count)
+            .ok_or_else(|| C6ResidualError::new("C6TFA1 source leaf-tail length underflows"))?;
+        for table in 0..7usize {
+            let reduction = c6_residual_equality_affine_range_sum(
+                atomic_point,
+                atomic_ordinal,
+                1,
+                leaf_points[repetition],
+                source_count,
+                1,
+                source_tail,
+            )?;
+            direct[C6ResidualAtomicFamily::LeafTail.index()] +=
+                beta_at(table) * interval_census.add(reduction)?;
+            atomic_ordinal += source_tail;
+        }
+        let raw_tail = leaf_entries
+            .checked_sub(raw_position)
+            .ok_or_else(|| C6ResidualError::new("C6TFA1 raw leaf-tail length underflows"))?;
+        let reduction = c6_residual_equality_affine_range_sum(
+            atomic_point,
+            atomic_ordinal,
+            1,
+            leaf_points[repetition],
+            raw_position,
+            1,
+            raw_tail,
+        )?;
+        direct[C6ResidualAtomicFamily::LeafTail.index()] +=
+            beta_at(7) * interval_census.add(reduction)?;
+        atomic_ordinal += raw_tail;
+        if atomic_ordinal
+            != family_starts[C6ResidualAtomicFamily::LeafTail.index()]
+                + expected_outputs[C6ResidualAtomicFamily::LeafTail.index()]
+        {
+            return Err(C6ResidualError::new("C6TFA1 direct LeafTail cursor mismatch"));
+        }
+
+        atomic_ordinal = family_starts[C6ResidualAtomicFamily::AuxiliaryTail.index()];
+        let product_tail = auxiliary_entries.checked_sub(product_triples).ok_or_else(|| {
+            C6ResidualError::new("C6TFA1 product auxiliary-tail length underflows")
+        })?;
+        for lane in 0..12usize {
+            let reduction = c6_residual_equality_affine_range_sum(
+                atomic_point,
+                atomic_ordinal,
+                1,
+                auxiliary_points[repetition],
+                product_triples,
+                1,
+                product_tail,
+            )?;
+            direct[C6ResidualAtomicFamily::AuxiliaryTail.index()] +=
+                beta_at(8 + lane) * interval_census.add(reduction)?;
+            atomic_ordinal += product_tail;
+        }
+        let zero_tail = auxiliary_entries
+            .checked_sub(zero_roots)
+            .ok_or_else(|| C6ResidualError::new("C6TFA1 zero auxiliary-tail length underflows"))?;
+        for lane in 12..16usize {
+            let reduction = c6_residual_equality_affine_range_sum(
+                atomic_point,
+                atomic_ordinal,
+                1,
+                auxiliary_points[repetition],
+                zero_roots,
+                1,
+                zero_tail,
+            )?;
+            direct[C6ResidualAtomicFamily::AuxiliaryTail.index()] +=
+                beta_at(8 + lane) * interval_census.add(reduction)?;
+            atomic_ordinal += zero_tail;
+        }
+        if atomic_ordinal != manifest.atomic_outputs_per_repetition {
+            return Err(C6ResidualError::new("C6TFA1 direct final atomic cursor mismatch"));
+        }
+
+        family_folds[repetition] = direct;
+        repetition_folds[repetition] =
+            direct.iter().copied().fold(Fp2::ZERO, |sum, value| sum + value);
+    }
+
+    let fold = repetition_folds.iter().copied().fold(Fp2::ZERO, |sum, value| sum + value);
+    let mut reduction = C6ResidualFoldedTerminalDirectReduction {
+        output_beta,
+        family_folds,
+        repetition_folds,
+        family_outputs,
+        family_coefficient_writes,
+        interval_blocks: interval_census.blocks,
+        interval_transition_rows: interval_census.transition_rows,
+        max_interval_carry_states: interval_census.max_carry_states,
+        explicit_terms,
+        fold,
+        digest: [0; 32],
+    };
+    let mut hasher =
+        blake3::Hasher::new_derive_key("volta-zk/c6/folded-terminal-direct-reduction/v1");
+    hasher.update(&manifest.digest);
+    hasher.update(&challenges.digest);
+    hash_fp2(&mut hasher, output_beta);
+    for point in leaf_points.into_iter().chain(auxiliary_points) {
+        hasher.update(&(point.len() as u64).to_le_bytes());
+        for coordinate in point {
+            hash_fp2(&mut hasher, *coordinate);
+        }
+    }
+    for repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS as usize {
+        hash_fp2(&mut hasher, reduction.repetition_folds[repetition]);
+        for family in 0..8 {
+            hash_fp2(&mut hasher, reduction.family_folds[repetition][family]);
+            hasher.update(&reduction.family_outputs[repetition][family].to_le_bytes());
+            hasher.update(&reduction.family_coefficient_writes[repetition][family].to_le_bytes());
+        }
+    }
+    hasher.update(&reduction.interval_blocks.to_le_bytes());
+    hasher.update(&reduction.interval_transition_rows.to_le_bytes());
+    hasher.update(&reduction.max_interval_carry_states.to_le_bytes());
+    hasher.update(&reduction.explicit_terms.to_le_bytes());
+    hash_fp2(&mut hasher, reduction.fold);
+    reduction.digest = *hasher.finalize().as_bytes();
+    Ok(reduction)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn compile_c6_residual_folded_terminal_adjoint_reference(
     operation_plan: &C6InstalledOperationPlan,

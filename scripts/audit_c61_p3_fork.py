@@ -101,7 +101,7 @@ def require_source_guards() -> None:
         raise SystemExit(
             "claimless roles plus private-entropy provider/replay must explicitly bind the point"
         )
-    if production_adapter.count(".observe_public_points(") != 3:
+    if production_adapter.count(".observe_public_points(") != 7:
         raise SystemExit("claimless multi-opening roles must bind the complete ordered point batch")
     if production_adapter.count(".ensure_public_statement_bound()") != 4:
         raise SystemExit("claimless roles must fail closed on incomplete statements")
@@ -111,6 +111,12 @@ def require_source_guards() -> None:
         raise SystemExit("claimless adapter regressed to a clear evaluation codec field")
     if 'C61_AUTHENTICATED_P3_MAGIC: [u8; 8] = *b"C6AWP1\\0\\0"' not in production_adapter:
         raise SystemExit("claimless adapter strict codec identity changed")
+    if 'C61_SHARED_MULTI_ORACLE_MAGIC: [u8; 8] = *b"C6SMO1\\0\\0"' not in production_adapter:
+        raise SystemExit("shared-round multi-oracle strict codec identity changed")
+    if production_adapter.count("c61_shared_round_pair(") != 2:
+        raise SystemExit("shared-round provider and verifier must each use one lockstep pair")
+    if production_adapter.count(".sample_postproof_fp2()") != 2:
+        raise SystemExit("shared-round roles lost the fresh post-proof residual batch")
     if (
         '66e290615de1858f2f2f6a804158064c406cda1c+c61-claimless-affine-multi-v2'
         not in production_adapter

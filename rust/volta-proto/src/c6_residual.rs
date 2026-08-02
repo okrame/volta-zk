@@ -13104,6 +13104,152 @@ mod tests {
         .is_err());
     }
 
+    #[test]
+    fn production_direct_interval_census_is_sublinear_and_exact() {
+        let sources = 4_975_525u64;
+        let closures = u64::from(C6_T1_TOTAL_PRODUCT_CLOSURES as u32);
+        let triples = C6_T1_TOTAL_PRODUCT_TRIPLES;
+        let zeros = u64::from(C6_T1_ZERO_CLOSURES as u32);
+        let leaf_entries = 1u64 << C6_RESIDUAL_SLOT_LOG2;
+        let auxiliary_entries = 1u64 << C6_RESIDUAL_AUXILIARY_SEMANTIC_LOG2;
+        let (raw, leaf_tail, atomic_outputs) = residual_relation_atomic_outputs(
+            sources,
+            closures,
+            triples,
+            zeros,
+            leaf_entries,
+            auxiliary_entries,
+        )
+        .unwrap();
+        let auxiliary_tail = (auxiliary_entries - triples) * 12 + (auxiliary_entries - zeros) * 4;
+        let family_outputs = [3 * sources, 4, 4, raw, 6 * closures, 2, leaf_tail, auxiliary_tail];
+        assert_eq!(family_outputs.iter().sum::<u64>(), atomic_outputs);
+        let starts = c6_residual_family_starts(family_outputs).unwrap();
+        let atomic_point = [Fp2::ZERO; 26];
+        let leaf_point = [Fp2::ZERO; 23];
+        let auxiliary_point = [Fp2::ZERO; 17];
+        let alpha_point = [Fp2::ZERO; 23];
+        let mut census = C6ResidualIntervalReductionCensus::default();
+        for _ in 0..C6_RESIDUAL_PROOF_REPETITIONS {
+            for component in 0..2u64 {
+                census
+                    .add(
+                        c6_residual_equality_affine_range_sum(
+                            &atomic_point,
+                            starts[C6ResidualAtomicFamily::SourceGrammar.index()] + component,
+                            3,
+                            &leaf_point,
+                            0,
+                            1,
+                            sources,
+                        )
+                        .unwrap(),
+                    )
+                    .unwrap();
+            }
+            for _ in 0..2 {
+                census
+                    .add(
+                        c6_residual_equality_affine_range_sum(
+                            &alpha_point,
+                            0,
+                            1,
+                            &leaf_point,
+                            0,
+                            1,
+                            sources,
+                        )
+                        .unwrap(),
+                    )
+                    .unwrap();
+            }
+            let mut ordinal = starts[C6ResidualAtomicFamily::LeafTail.index()];
+            let source_tail = leaf_entries - sources;
+            for _ in 0..7 {
+                census
+                    .add(
+                        c6_residual_equality_affine_range_sum(
+                            &atomic_point,
+                            ordinal,
+                            1,
+                            &leaf_point,
+                            sources,
+                            1,
+                            source_tail,
+                        )
+                        .unwrap(),
+                    )
+                    .unwrap();
+                ordinal += source_tail;
+            }
+            let raw_tail = leaf_entries - raw;
+            census
+                .add(
+                    c6_residual_equality_affine_range_sum(
+                        &atomic_point,
+                        ordinal,
+                        1,
+                        &leaf_point,
+                        raw,
+                        1,
+                        raw_tail,
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+            ordinal = starts[C6ResidualAtomicFamily::AuxiliaryTail.index()];
+            let product_tail = auxiliary_entries - triples;
+            for _ in 0..12 {
+                census
+                    .add(
+                        c6_residual_equality_affine_range_sum(
+                            &atomic_point,
+                            ordinal,
+                            1,
+                            &auxiliary_point,
+                            triples,
+                            1,
+                            product_tail,
+                        )
+                        .unwrap(),
+                    )
+                    .unwrap();
+                ordinal += product_tail;
+            }
+            let zero_tail = auxiliary_entries - zeros;
+            for _ in 0..4 {
+                census
+                    .add(
+                        c6_residual_equality_affine_range_sum(
+                            &atomic_point,
+                            ordinal,
+                            1,
+                            &auxiliary_point,
+                            zeros,
+                            1,
+                            zero_tail,
+                        )
+                        .unwrap(),
+                    )
+                    .unwrap();
+                ordinal += zero_tail;
+            }
+            assert_eq!(ordinal, atomic_outputs);
+        }
+        let explicit_per_repetition = 3 * closures
+            + 4 * (3 * triples + zeros)
+            + raw
+            + (6 * triples + 4 * closures)
+            + 2 * zeros;
+        let explicit_terms = explicit_per_repetition * u64::from(C6_RESIDUAL_PROOF_REPETITIONS);
+        assert_eq!(family_outputs, [14_926_575, 4, 4, 300_748, 4_038, 2, 31_979_441, 223_540]);
+        assert_eq!(census.blocks, 510);
+        assert_eq!(census.transition_rows, 30_072);
+        assert_eq!(census.max_carry_states, 3);
+        assert_eq!(explicit_terms, 1_513_162);
+        assert_eq!(census.transition_rows + explicit_terms, 1_543_234);
+    }
+
     #[cfg(feature = "c6-trace")]
     #[test]
     fn direct_equality_point_bundle_binds_exact_scaled_schedule_geometry() {

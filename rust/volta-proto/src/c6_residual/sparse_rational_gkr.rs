@@ -47,6 +47,470 @@ impl C6SparseRationalSubcheck {
     }
 }
 
+const C6_SPARSE_RESPONSE_BLOCKS: usize = 4;
+const C6_SPARSE_PLAN_BLOCKS: usize = 4;
+const C6_SPARSE_RESPONSE_OPENINGS: usize = 6;
+const C6_SPARSE_PLAN_OPENINGS: usize = 3;
+const C6_SPARSE_PACKING_MAX_SCALED_LOG2: u8 = 20;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6SparseRationalPackedOracleReference {
+    base_domain_log2: u8,
+    operation_plan_digest: C6ResidualDigest,
+    lane_digests: [C6ResidualDigest; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    runtime_instance: C6OperationPlanInstanceIdentity,
+    response_values: Vec<Fp2>,
+    plan_values: Vec<Fp2>,
+    response_digest: C6ResidualDigest,
+    plan_digest: C6ResidualDigest,
+}
+
+impl C6SparseRationalPackedOracleReference {
+    pub fn base_domain_log2(&self) -> u8 {
+        self.base_domain_log2
+    }
+
+    pub fn response_domain_log2(&self) -> u8 {
+        self.base_domain_log2 + 2
+    }
+
+    pub fn plan_domain_log2(&self) -> u8 {
+        self.base_domain_log2 + 2
+    }
+
+    pub fn response_digest(&self) -> C6ResidualDigest {
+        self.response_digest
+    }
+
+    pub fn plan_digest(&self) -> C6ResidualDigest {
+        self.plan_digest
+    }
+
+    pub fn opening_points(
+        &self,
+        input_point: &[Fp2],
+    ) -> C6ResidualResult<C6SparseRationalPackedOpeningPoints> {
+        C6SparseRationalPackedOpeningPoints::new(
+            self.base_domain_log2,
+            self.response_digest,
+            self.plan_digest,
+            input_point,
+        )
+    }
+
+    pub fn evaluate_response_openings(
+        &self,
+        points: &C6SparseRationalPackedOpeningPoints,
+    ) -> C6ResidualResult<[Fp2; C6_SPARSE_RESPONSE_OPENINGS]> {
+        points.validate(self)?;
+        Ok(std::array::from_fn(|index| {
+            crate::mle::eval_mle(&self.response_values, &points.response[index])
+        }))
+    }
+
+    pub fn evaluate_plan_openings(
+        &self,
+        points: &C6SparseRationalPackedOpeningPoints,
+    ) -> C6ResidualResult<[Fp2; C6_SPARSE_PLAN_OPENINGS]> {
+        points.validate(self)?;
+        Ok(std::array::from_fn(|index| {
+            crate::mle::eval_mle(&self.plan_values, &points.plan[index])
+        }))
+    }
+
+    pub fn validate(
+        &self,
+        operation_plan: &C6InstalledOperationPlan,
+        extraction: &C6DecodedInstanceExtractionPlan,
+        runtime: &C6RuntimeInstanceValues,
+        lanes: [&C6ResidualFoldedTerminalAdjointLaneReference;
+            C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    ) -> C6ResidualResult<()> {
+        let expected = compile_c6_sparse_rational_packed_oracle_reference(
+            operation_plan,
+            extraction,
+            runtime,
+            lanes,
+        )?;
+        if *self != expected {
+            return Err(C6ResidualError::new(
+                "C6SPR2 packed oracle differs from the canonical prechallenge layout",
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn validate_relation(
+        &self,
+        relation: &C6ResidualSparseRationalRelationReference,
+    ) -> C6ResidualResult<()> {
+        let base_rows = 1usize << self.base_domain_log2;
+        let lane_0 = &self.response_values[..base_rows];
+        let lane_1 = &self.response_values[base_rows..2 * base_rows];
+        let packed_runtime_and_boundaries = &self.response_values[2 * base_rows..3 * base_rows];
+        let mu = &self.response_values[3 * base_rows..4 * base_rows];
+        let node_count = relation.combined_nodes.len();
+        let source_count = relation.combined_sources.len();
+        let source_capacity = base_rows / 4;
+        if node_count > base_rows
+            || source_count > source_capacity
+            || relation.node_scale_values.len() != node_count
+            || relation.combined_injection.len() != node_count
+        {
+            return Err(C6ResidualError::new(
+                "C6SPR2 relation exceeds its packed oracle capacities",
+            ));
+        }
+        let zeta = relation.sparse_challenges.lane_batch;
+        if (0..node_count).any(|index| {
+            relation.combined_nodes[index] != lane_0[index] + zeta * lane_1[index]
+                || relation.node_scale_values[index] != mu[index]
+        }) {
+            return Err(C6ResidualError::new(
+                "C6SPR2 committed lanes or mu differ from the postchallenge relation",
+            ));
+        }
+        let g0_start = base_rows / 2;
+        let g1_start = g0_start + source_capacity;
+        if (0..source_count).any(|source| {
+            relation.combined_sources[source]
+                != packed_runtime_and_boundaries[g0_start + source]
+                    + zeta * packed_runtime_and_boundaries[g1_start + source]
+        }) {
+            return Err(C6ResidualError::new(
+                "C6SPR2 committed source boundaries differ from the postchallenge relation",
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6SparseRationalPackedOpeningPoints {
+    base_domain_log2: u8,
+    response_digest: C6ResidualDigest,
+    plan_digest: C6ResidualDigest,
+    input_point: Vec<Fp2>,
+    response: [Vec<Fp2>; C6_SPARSE_RESPONSE_OPENINGS],
+    plan: [Vec<Fp2>; C6_SPARSE_PLAN_OPENINGS],
+    digest: C6ResidualDigest,
+}
+
+impl C6SparseRationalPackedOpeningPoints {
+    fn new(
+        base_domain_log2: u8,
+        response_digest: C6ResidualDigest,
+        plan_digest: C6ResidualDigest,
+        input_point: &[Fp2],
+    ) -> C6ResidualResult<Self> {
+        let base_dimension = usize::from(base_domain_log2);
+        if input_point.len() != base_dimension || base_dimension < 2 {
+            return Err(C6ResidualError::new("C6SPR2 packed input point has the wrong dimension"));
+        }
+        let append = |prefix: &[Fp2], suffix: &[Fp2]| {
+            prefix.iter().chain(suffix).copied().collect::<Vec<_>>()
+        };
+        let response = [
+            append(input_point, &[Fp2::ZERO, Fp2::ZERO]),
+            append(input_point, &[Fp2::ONE, Fp2::ZERO]),
+            append(input_point, &[Fp2::ONE, Fp2::ONE]),
+            append(&input_point[..base_dimension - 1], &[Fp2::ZERO, Fp2::ZERO, Fp2::ONE]),
+            append(&input_point[..base_dimension - 2], &[Fp2::ZERO, Fp2::ONE, Fp2::ZERO, Fp2::ONE]),
+            append(&input_point[..base_dimension - 2], &[Fp2::ONE, Fp2::ONE, Fp2::ZERO, Fp2::ONE]),
+        ];
+        let plan = [
+            append(input_point, &[Fp2::ZERO, Fp2::ZERO]),
+            append(input_point, &[Fp2::ONE, Fp2::ZERO]),
+            append(input_point, &[Fp2::ZERO, Fp2::ONE]),
+        ];
+        let mut points = Self {
+            base_domain_log2,
+            response_digest,
+            plan_digest,
+            input_point: input_point.to_vec(),
+            response,
+            plan,
+            digest: [0; 32],
+        };
+        points.digest = points.recompute_digest();
+        Ok(points)
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+
+    pub fn response(&self) -> &[Vec<Fp2>; C6_SPARSE_RESPONSE_OPENINGS] {
+        &self.response
+    }
+
+    pub fn plan(&self) -> &[Vec<Fp2>; C6_SPARSE_PLAN_OPENINGS] {
+        &self.plan
+    }
+
+    pub fn validate(&self, packed: &C6SparseRationalPackedOracleReference) -> C6ResidualResult<()> {
+        let expected = Self::new(
+            packed.base_domain_log2,
+            packed.response_digest,
+            packed.plan_digest,
+            &self.input_point,
+        )?;
+        if *self != expected {
+            return Err(C6ResidualError::new(
+                "C6SPR2 ordered packed opening points are noncanonical",
+            ));
+        }
+        Ok(())
+    }
+
+    fn recompute_digest(&self) -> C6ResidualDigest {
+        let mut hasher =
+            blake3::Hasher::new_derive_key("volta-zk/c6/sparse-rational-packed-points/v1");
+        hasher.update(&[self.base_domain_log2]);
+        hasher.update(&self.response_digest);
+        hasher.update(&self.plan_digest);
+        for (role, points) in [(0u8, self.response.as_slice()), (1u8, self.plan.as_slice())] {
+            hasher.update(&[role]);
+            hasher.update(&(points.len() as u64).to_le_bytes());
+            for (ordinal, point) in points.iter().enumerate() {
+                hasher.update(&(ordinal as u64).to_le_bytes());
+                hasher.update(&(point.len() as u64).to_le_bytes());
+                for &coordinate in point {
+                    hash_fp2(&mut hasher, coordinate);
+                }
+            }
+        }
+        *hasher.finalize().as_bytes()
+    }
+}
+
+fn sparse_plan_opcode(kind: C6InstalledOperationKind) -> Fp2 {
+    let code = match kind {
+        C6InstalledOperationKind::Source => 1,
+        C6InstalledOperationKind::StructuralZero => 2,
+        C6InstalledOperationKind::PublicInput => 3,
+        C6InstalledOperationKind::Add => 4,
+        C6InstalledOperationKind::Sub => 5,
+        C6InstalledOperationKind::Scale => 6,
+    };
+    Fp2::from_base(Fp::new(code))
+}
+
+fn hash_packed_oracle(
+    domain: &'static str,
+    base_domain_log2: u8,
+    operation_plan_digest: C6ResidualDigest,
+    lane_digests: &[C6ResidualDigest],
+    runtime_instance: C6OperationPlanInstanceIdentity,
+    values: &[Fp2],
+) -> C6ResidualDigest {
+    let mut hasher = blake3::Hasher::new_derive_key(domain);
+    hasher.update(&[base_domain_log2]);
+    hasher.update(&operation_plan_digest);
+    for digest in lane_digests {
+        hasher.update(digest);
+    }
+    hasher.update(&runtime_instance.version.to_le_bytes());
+    hasher.update(&runtime_instance.topology_digest);
+    hasher.update(&runtime_instance.public_input_count.to_le_bytes());
+    hasher.update(&runtime_instance.scalar_input_count.to_le_bytes());
+    hasher.update(&runtime_instance.instance_digest);
+    hasher.update(&(values.len() as u64).to_le_bytes());
+    for &value in values {
+        hash_fp2(&mut hasher, value);
+    }
+    *hasher.finalize().as_bytes()
+}
+
+/// Materialize the exact C6SPR2 response and fixed-plan packings before any
+/// sparse lane-batch or rational challenge is supplied.
+pub fn compile_c6_sparse_rational_packed_oracle_reference(
+    operation_plan: &C6InstalledOperationPlan,
+    extraction: &C6DecodedInstanceExtractionPlan,
+    runtime: &C6RuntimeInstanceValues,
+    lanes: [&C6ResidualFoldedTerminalAdjointLaneReference; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+) -> C6ResidualResult<C6SparseRationalPackedOracleReference> {
+    let topology = operation_plan.topology();
+    let node_count = usize::try_from(topology.canonical_node_count)
+        .map_err(|_| C6ResidualError::new("C6SPR2 node count exceeds usize"))?;
+    let public_count = usize::try_from(topology.public_input_count)
+        .map_err(|_| C6ResidualError::new("C6SPR2 public count exceeds usize"))?;
+    let scalar_count = usize::try_from(topology.scalar_input_count)
+        .map_err(|_| C6ResidualError::new("C6SPR2 scalar count exceeds usize"))?;
+    let source_count = usize::try_from(topology.source_count)
+        .map_err(|_| C6ResidualError::new("C6SPR2 source count exceeds usize"))?;
+    let runtime_count = public_count
+        .checked_add(scalar_count)
+        .ok_or_else(|| C6ResidualError::new("C6SPR2 runtime count overflows"))?;
+    let base_rows = node_count
+        .max(
+            runtime_count
+                .checked_mul(2)
+                .ok_or_else(|| C6ResidualError::new("C6SPR2 runtime packing overflows"))?,
+        )
+        .max(
+            source_count
+                .checked_mul(4)
+                .ok_or_else(|| C6ResidualError::new("C6SPR2 source packing overflows"))?,
+        )
+        .max(2)
+        .checked_next_power_of_two()
+        .ok_or_else(|| C6ResidualError::new("C6SPR2 base domain overflows"))?;
+    let base_domain_log2 = u8::try_from(base_rows.trailing_zeros())
+        .map_err(|_| C6ResidualError::new("C6SPR2 base dimension exceeds u8"))?;
+    if base_domain_log2 >= C6_SPARSE_PACKING_MAX_SCALED_LOG2
+        || operation_plan.operation_kinds().len() != node_count
+        || runtime_count > base_rows / 2
+        || source_count > base_rows / 4
+        || lanes[0].proof_repetition != 0
+        || lanes[1].proof_repetition != 1
+        || lanes[0].terminal_metadata_digest != lanes[1].terminal_metadata_digest
+        || lanes[0].relation_challenges_digest != lanes[1].relation_challenges_digest
+        || lanes[0].output_beta != lanes[1].output_beta
+        || lanes.iter().any(|lane| {
+            lane.node_coefficients.len() != node_count
+                || lane.source_coefficients.len() != source_count
+        })
+    {
+        return Err(C6ResidualError::new(format!(
+            "C6SPR2 scaled packing geometry or lane boundary mismatch: base_log2={base_domain_log2}, base_rows={base_rows}, runtime={}, sources={source_count}, lane_nodes={}/{}, lane_sources={}/{}",
+            runtime_count,
+            lanes[0].node_coefficients.len(),
+            lanes[1].node_coefficients.len(),
+            lanes[0].source_coefficients.len(),
+            lanes[1].source_coefficients.len(),
+        )));
+    }
+    runtime
+        .validate_extraction_binding(extraction)
+        .map_err(|error| C6ResidualError::new(error.to_string()))?;
+
+    let response_len = base_rows
+        .checked_mul(C6_SPARSE_RESPONSE_BLOCKS)
+        .ok_or_else(|| C6ResidualError::new("C6SPR2 response packing length overflows"))?;
+    let mut response_values = try_zeroed_fp2_vec(response_len, "C6SPR2 response packing")?;
+    response_values[..node_count].copy_from_slice(&lanes[0].node_coefficients);
+    response_values[base_rows..base_rows + node_count].copy_from_slice(&lanes[1].node_coefficients);
+    let boundary_block = 2 * base_rows;
+    for public in 0..public_count {
+        response_values[boundary_block + public] = runtime
+            .public_value(
+                extraction,
+                u32::try_from(public)
+                    .map_err(|_| C6ResidualError::new("C6SPR2 public index exceeds u32"))?,
+            )
+            .map_err(|error| C6ResidualError::new(error.to_string()))?;
+    }
+    for scalar in 0..scalar_count {
+        response_values[boundary_block + public_count + scalar] = runtime
+            .scalar_value(
+                extraction,
+                u32::try_from(scalar)
+                    .map_err(|_| C6ResidualError::new("C6SPR2 scalar index exceeds u32"))?,
+            )
+            .map_err(|error| C6ResidualError::new(error.to_string()))?;
+    }
+    let g0_start = boundary_block + base_rows / 2;
+    let g1_start = g0_start + base_rows / 4;
+    response_values[g0_start..g0_start + source_count]
+        .copy_from_slice(&lanes[0].source_coefficients);
+    response_values[g1_start..g1_start + source_count]
+        .copy_from_slice(&lanes[1].source_coefficients);
+
+    let mu_block = 3 * base_rows;
+    let plan_len = base_rows
+        .checked_mul(C6_SPARSE_PLAN_BLOCKS)
+        .ok_or_else(|| C6ResidualError::new("C6SPR2 plan packing length overflows"))?;
+    let mut plan_values = try_zeroed_fp2_vec(plan_len, "C6SPR2 plan packing")?;
+    let lhs_block = base_rows;
+    let rhs_block = 2 * base_rows;
+    let mut source_cursor = 0usize;
+    let mut operand_cursor = 0usize;
+    let mut scalar_cursor = 0u32;
+    for (canonical, &kind) in operation_plan.operation_kinds().iter().enumerate() {
+        plan_values[canonical] = sparse_plan_opcode(kind);
+        match kind {
+            C6InstalledOperationKind::Source => {
+                let source = *operation_plan
+                    .source_ordinals()
+                    .get(source_cursor)
+                    .ok_or_else(|| C6ResidualError::new("C6SPR2 source stream is truncated"))?;
+                source_cursor += 1;
+                plan_values[lhs_block + canonical] = Fp2::from_base(Fp::new(u64::from(source)));
+            }
+            C6InstalledOperationKind::StructuralZero | C6InstalledOperationKind::PublicInput => {}
+            C6InstalledOperationKind::Add | C6InstalledOperationKind::Sub => {
+                let operands = operation_plan
+                    .operands()
+                    .get(operand_cursor..operand_cursor + 2)
+                    .ok_or_else(|| C6ResidualError::new("C6SPR2 operand stream is truncated"))?;
+                operand_cursor += 2;
+                plan_values[lhs_block + canonical] =
+                    Fp2::from_base(Fp::new(u64::from(operands[0])));
+                plan_values[rhs_block + canonical] =
+                    Fp2::from_base(Fp::new(u64::from(operands[1])));
+            }
+            C6InstalledOperationKind::Scale => {
+                let operand = *operation_plan.operands().get(operand_cursor).ok_or_else(|| {
+                    C6ResidualError::new("C6SPR2 Scale operand stream is truncated")
+                })?;
+                operand_cursor += 1;
+                plan_values[lhs_block + canonical] = Fp2::from_base(Fp::new(u64::from(operand)));
+                plan_values[rhs_block + canonical] =
+                    Fp2::from_base(Fp::new(u64::from(scalar_cursor)));
+                response_values[mu_block + canonical] = runtime
+                    .scalar_value(extraction, scalar_cursor)
+                    .map_err(|error| C6ResidualError::new(error.to_string()))?;
+                scalar_cursor = scalar_cursor
+                    .checked_add(1)
+                    .ok_or_else(|| C6ResidualError::new("C6SPR2 scalar cursor overflows"))?;
+            }
+        }
+    }
+    if source_cursor != operation_plan.source_ordinals().len()
+        || operand_cursor != operation_plan.operands().len()
+        || usize::try_from(scalar_cursor).ok() != Some(scalar_count)
+    {
+        return Err(C6ResidualError::new("C6SPR2 packed plan cursors do not close"));
+    }
+
+    let lane_digests = [lanes[0].digest(), lanes[1].digest()];
+    let runtime_instance = runtime.instance_identity();
+    let operation_plan_digest = operation_plan.artifact_digest();
+    let response_digest = hash_packed_oracle(
+        "volta-zk/c6/sparse-rational-packed-response/v1",
+        base_domain_log2,
+        operation_plan_digest,
+        &lane_digests,
+        runtime_instance,
+        &response_values,
+    );
+    let plan_digest = hash_packed_oracle(
+        "volta-zk/c6/sparse-rational-packed-plan/v1",
+        base_domain_log2,
+        operation_plan_digest,
+        &[],
+        C6OperationPlanInstanceIdentity {
+            version: runtime_instance.version,
+            topology_digest: runtime_instance.topology_digest,
+            public_input_count: runtime_instance.public_input_count,
+            scalar_input_count: runtime_instance.scalar_input_count,
+            instance_digest: [0; 32],
+        },
+        &plan_values,
+    );
+    Ok(C6SparseRationalPackedOracleReference {
+        base_domain_log2,
+        operation_plan_digest,
+        lane_digests,
+        runtime_instance,
+        response_values,
+        plan_values,
+        response_digest,
+        plan_digest,
+    })
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct C6SparseRationalLeaves {
     active_rows: usize,
@@ -457,6 +921,117 @@ mod tests {
             output_beta,
         )
         .unwrap();
+        let packed = compile_c6_sparse_rational_packed_oracle_reference(
+            direct.operation_plan(),
+            direct.extraction(),
+            direct.runtime(),
+            [&lanes[0], &lanes[1]],
+        )
+        .unwrap();
+        packed
+            .validate(
+                direct.operation_plan(),
+                direct.extraction(),
+                direct.runtime(),
+                [&lanes[0], &lanes[1]],
+            )
+            .unwrap();
+        packed.validate_relation(&relation).unwrap();
+        let base_rows = 1usize << packed.base_domain_log2();
+        assert_eq!(packed.response_values.len(), C6_SPARSE_RESPONSE_BLOCKS * base_rows);
+        assert_eq!(packed.plan_values.len(), C6_SPARSE_PLAN_BLOCKS * base_rows);
+        let input_point: Vec<Fp2> = (0..packed.base_domain_log2())
+            .map(|coordinate| fp2(307 + u64::from(coordinate) * 2))
+            .collect();
+        let opening_points = packed.opening_points(&input_point).unwrap();
+        opening_points.validate(&packed).unwrap();
+        let response_openings = packed.evaluate_response_openings(&opening_points).unwrap();
+        let plan_openings = packed.evaluate_plan_openings(&opening_points).unwrap();
+        assert_eq!(
+            response_openings[0],
+            crate::mle::eval_mle(&packed.response_values[..base_rows], &input_point)
+        );
+        assert_eq!(
+            response_openings[1],
+            crate::mle::eval_mle(&packed.response_values[base_rows..2 * base_rows], &input_point)
+        );
+        assert_eq!(
+            response_openings[2],
+            crate::mle::eval_mle(
+                &packed.response_values[3 * base_rows..4 * base_rows],
+                &input_point
+            )
+        );
+        let packed_middle = &packed.response_values[2 * base_rows..3 * base_rows];
+        assert_eq!(
+            response_openings[3],
+            crate::mle::eval_mle(
+                &packed_middle[..base_rows / 2],
+                &input_point[..input_point.len() - 1]
+            )
+        );
+        assert_eq!(
+            response_openings[4],
+            crate::mle::eval_mle(
+                &packed_middle[base_rows / 2..3 * base_rows / 4],
+                &input_point[..input_point.len() - 2],
+            )
+        );
+        assert_eq!(
+            response_openings[5],
+            crate::mle::eval_mle(
+                &packed_middle[3 * base_rows / 4..],
+                &input_point[..input_point.len() - 2],
+            )
+        );
+        for (opening, block) in plan_openings.iter().zip(0..C6_SPARSE_PLAN_OPENINGS) {
+            assert_eq!(
+                *opening,
+                crate::mle::eval_mle(
+                    &packed.plan_values[block * base_rows..(block + 1) * base_rows],
+                    &input_point,
+                )
+            );
+        }
+        let non_scale = direct
+            .operation_plan()
+            .operation_kinds()
+            .iter()
+            .position(|kind| *kind != C6InstalledOperationKind::Scale)
+            .unwrap();
+        let mut changed_packed_response = packed.clone();
+        changed_packed_response.response_values[3 * base_rows + non_scale] += Fp2::ONE;
+        assert!(changed_packed_response
+            .validate(
+                direct.operation_plan(),
+                direct.extraction(),
+                direct.runtime(),
+                [&lanes[0], &lanes[1]],
+            )
+            .is_err());
+        let mut changed_response_digest = packed.clone();
+        changed_response_digest.response_digest[0] ^= 1;
+        assert!(changed_response_digest
+            .validate(
+                direct.operation_plan(),
+                direct.extraction(),
+                direct.runtime(),
+                [&lanes[0], &lanes[1]],
+            )
+            .is_err());
+        let mut changed_packed_plan = packed.clone();
+        changed_packed_plan.plan_values[0] += Fp2::ONE;
+        assert!(changed_packed_plan
+            .validate(
+                direct.operation_plan(),
+                direct.extraction(),
+                direct.runtime(),
+                [&lanes[0], &lanes[1]],
+            )
+            .is_err());
+        let mut changed_opening_points = opening_points.clone();
+        changed_opening_points.response[0][0] += Fp2::ONE;
+        assert!(changed_opening_points.validate(&packed).is_err());
         let seed = [0x61; 32];
         let (mut proof, counters) = prove_c6_residual_sparse_rational_gkr_reference(
             direct.operation_plan(),
@@ -512,6 +1087,7 @@ mod tests {
             output_beta,
         )
         .unwrap();
+        packed.validate_relation(&changed_relation).unwrap();
         assert!(!verify_c6_residual_sparse_rational_gkr_reference(
             direct.operation_plan(),
             direct.extraction(),

@@ -6209,6 +6209,7 @@ pub struct C6ResidualTerminalFunctionalRelation {
     output_beta: Fp2,
     terminal_functionals: [Fp2; C6_RESIDUAL_TERMINAL_FUNCTIONALS],
     repetition_folds: [Fp2; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    family_folds: [[Fp2; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize],
     event_fold: Fp2,
     coefficient_writes: u64,
     semantic_digests: [C6ResidualDigest; C6_RESIDUAL_PROOF_REPETITIONS as usize],
@@ -6226,6 +6227,10 @@ impl C6ResidualTerminalFunctionalRelation {
 
     pub fn repetition_folds(&self) -> &[Fp2; C6_RESIDUAL_PROOF_REPETITIONS as usize] {
         &self.repetition_folds
+    }
+
+    pub fn family_folds(&self) -> &[[Fp2; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize] {
+        &self.family_folds
     }
 
     pub fn functional_fold(&self) -> Fp2 {
@@ -6251,6 +6256,7 @@ struct C6ResidualTerminalFunctionalSink {
     auxiliary_cursor: C6ResidualEqPointCursor,
     beta_powers: [Fp2; C6_RESIDUAL_TERMINAL_FUNCTIONALS],
     terminal_functionals: [Fp2; C6_RESIDUAL_TERMINAL_FUNCTIONALS],
+    family_folds: [Fp2; 8],
     event_fold: Fp2,
     coefficient_writes: u64,
 }
@@ -6283,6 +6289,7 @@ impl C6ResidualTerminalFunctionalSink {
             )?,
             beta_powers,
             terminal_functionals: [Fp2::ZERO; C6_RESIDUAL_TERMINAL_FUNCTIONALS],
+            family_folds: [Fp2::ZERO; 8],
             event_fold: Fp2::ZERO,
             coefficient_writes: 0,
         })
@@ -6352,8 +6359,10 @@ impl C6ResidualAtomicEventSink for C6ResidualTerminalFunctionalSink {
         }
         let (slot, equality) = self.target_slot_and_equality(event.target)?;
         let kernel = event.coefficient * equality;
+        let folded_kernel = self.beta_powers[slot] * kernel;
         self.terminal_functionals[slot] += kernel;
-        self.event_fold += self.beta_powers[slot] * kernel;
+        self.family_folds[event.family.index()] += folded_kernel;
+        self.event_fold += folded_kernel;
         self.coefficient_writes = self
             .coefficient_writes
             .checked_add(1)
@@ -6383,6 +6392,7 @@ pub fn compile_c6_residual_terminal_functional_relation_reference(
     let manifest = challenges.manifest();
     let mut terminal_functionals = [Fp2::ZERO; C6_RESIDUAL_TERMINAL_FUNCTIONALS];
     let mut repetition_folds = [Fp2::ZERO; C6_RESIDUAL_PROOF_REPETITIONS as usize];
+    let mut family_folds = [[Fp2::ZERO; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize];
     let mut semantic_digests = [[0; 32]; C6_RESIDUAL_PROOF_REPETITIONS as usize];
     let mut event_fold = Fp2::ZERO;
     let mut coefficient_writes = 0u64;
@@ -6414,6 +6424,7 @@ pub fn compile_c6_residual_terminal_functional_relation_reference(
         let start = repetition * C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION;
         let end = start + C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION;
         terminal_functionals[start..end].copy_from_slice(&sink.terminal_functionals[start..end]);
+        family_folds[repetition] = sink.family_folds;
         semantic_digests[repetition] = summary.semantic_digest;
         coefficient_writes = coefficient_writes
             .checked_add(sink.coefficient_writes)
@@ -6427,6 +6438,13 @@ pub fn compile_c6_residual_terminal_functional_relation_reference(
                 sum + sink.beta_powers[global_slot] * *value
             },
         );
+        let family_fold =
+            family_folds[repetition].iter().copied().fold(Fp2::ZERO, |sum, value| sum + value);
+        if family_fold != repetition_folds[repetition] {
+            return Err(C6ResidualError::new(
+                "C6TFR1 family fold differs from its repetition fold",
+            ));
+        }
     }
 
     let terminal_fold = repetition_folds.iter().copied().fold(Fp2::ZERO, |sum, value| sum + value);
@@ -6439,6 +6457,7 @@ pub fn compile_c6_residual_terminal_functional_relation_reference(
         output_beta,
         terminal_functionals,
         repetition_folds,
+        family_folds,
         event_fold,
         coefficient_writes,
         semantic_digests,
@@ -6456,6 +6475,11 @@ pub fn compile_c6_residual_terminal_functional_relation_reference(
     }
     for value in relation.terminal_functionals {
         hash_fp2(&mut hasher, value);
+    }
+    for family_folds in relation.family_folds {
+        for value in family_folds {
+            hash_fp2(&mut hasher, value);
+        }
     }
     for semantic_digest in relation.semantic_digests {
         hasher.update(&semantic_digest);
@@ -10871,6 +10895,12 @@ mod tests {
             })
             .0;
         assert_eq!(terminal_relation.functional_fold(), expected_fold);
+        for (repetition, family_folds) in terminal_relation.family_folds().iter().enumerate() {
+            assert_eq!(
+                family_folds.iter().copied().fold(Fp2::ZERO, |sum, value| sum + value),
+                terminal_relation.repetition_folds()[repetition]
+            );
+        }
         assert_eq!(
             terminal_relation
                 .repetition_folds()
@@ -11836,5 +11866,11 @@ mod tests {
             })
             .0;
         assert_eq!(terminal_relation.functional_fold(), expected_fold);
+        for (repetition, family_folds) in terminal_relation.family_folds().iter().enumerate() {
+            assert_eq!(
+                family_folds.iter().copied().fold(Fp2::ZERO, |sum, value| sum + value),
+                terminal_relation.repetition_folds()[repetition]
+            );
+        }
     }
 }

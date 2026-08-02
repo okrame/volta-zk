@@ -8,9 +8,12 @@ This report deliberately has two different verdict scopes:
 * the preregistered C6.1 native-candidate screen, the feature-gated legacy
   clear-target C6WIR1 PCS/codec reference, and the C6AWP1 claimless
   authenticated-target codec differential.  C6TFR1 now specifies the exact
-  terminal-functional relation, but its native trace realization and the
-  full-chain benchmark remain absent, so neither reference is final proof or
-  timing credit.
+  terminal-functional relation.  The native-trace audit additionally records
+  that the current C6RSC3 implementation still expands ChaCha8/FpStream
+  schedules instead of consuming the already-budgeted direct MLE points.
+  Direct-point integration, native trace realization and the full-chain
+  benchmark remain absent, so neither reference is final proof or timing
+  credit.
 
 No projected ceiling or analytic roofline is proof-size, setup, prover-time,
 verifier-time or hardware credit.  The implemented PCS codec receives only
@@ -217,6 +220,12 @@ C61_NATIVE_INTEGRATION_FACTOR = Decimal("1.20")
 C61_VERIFIER_PER_NATIVE_CHAIN_SECONDS = Decimal("0.550")
 C61_VERIFIER_PUBLIC_ARITHMETIC_SECONDS = Decimal("0.500")
 C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES = 4 * 573_299_712
+C61_TERMINAL_FUNCTIONAL_TRACE_FP2_BYTES = (
+    2**C61_TERMINAL_FUNCTIONAL_DOMAIN_LOG2 * c6.FP2_BYTES
+)
+C61_TERMINAL_FUNCTIONAL_TRACE_BASE_LIMB_BYTES = (
+    2**C61_TERMINAL_FUNCTIONAL_DOMAIN_LOG2 * 8
+)
 C61_VERIFIER_ADDITIONAL_MEMORY_GATE_BYTES = 8_000_000_000
 C61_VERIFIER_CERTIFICATE_BUFFER_BYTES = C61_CERTIFICATE_MAX_BYTES
 C61_VERIFIER_NATIVE_CHAIN_SCRATCH_BYTES = 6 * 64_000_000
@@ -490,12 +499,13 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v7",
+        "profile": "C6.1-public-compression-reference-v8",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
             "CANONICAL_RUNTIME_SEAM_GREEN__C6TFR1_EXACT_EVENT_RELATION_"
             "LEAN_RUST_DIFFERENTIAL_TYPED_STATEMENTS_GREEN__"
+            "DIRECT_MLE_SCHEDULE_INTEGRATION_REQUIRED__"
             "NATIVE_TRACE_REALIZATION_REQUIRED__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
@@ -567,6 +577,7 @@ def build_report() -> dict[str, Any]:
                 "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
                 "CANONICAL_RUNTIME_SEAM_GREEN__C6TFR1_EXACT_EVENT_RELATION_"
                 "LEAN_RUST_DIFFERENTIAL_TYPED_STATEMENTS_GREEN__"
+                "DIRECT_MLE_SCHEDULE_INTEGRATION_REQUIRED__"
                 "NATIVE_TRACE_REALIZATION_REQUIRED__"
                 "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
@@ -1045,7 +1056,7 @@ def build_report() -> dict[str, Any]:
                 ),
             },
             "local_hard_stop": {
-                "status": "C6TFR1_NATIVE_TRACE_REALIZATION_REQUIRED",
+                "status": "C6TFR1_DIRECT_MLE_SCHEDULE_INTEGRATION_REQUIRED",
                 "canonical_runtime_seam_green": True,
                 "raw_verifier_runtime_values": raw_verifier_runtime_values,
                 "canonical_runtime_values": canonical_runtime_values,
@@ -1070,7 +1081,33 @@ def build_report() -> dict[str, Any]:
                 "rust_terminal_differential_green": True,
                 "typed_native_chain_statements_green": True,
                 "native_backend_consumes_typed_relation_statement": False,
+                "native_trace_audit": {
+                    "implemented_c6rsc3_schedule": "ChaCha8/FpStream v3",
+                    "registered_c61_schedule": "direct multilinear equality points",
+                    "direct_point_fp2_elements_already_budgeted": (
+                        C61_EQ_CHALLENGE_FP2_ELEMENTS
+                    ),
+                    "materialized_d28_fp2_trace_bytes": (
+                        C61_TERMINAL_FUNCTIONAL_TRACE_FP2_BYTES
+                    ),
+                    "materialized_d28_fp2_trace_over_state_cap_bytes": (
+                        C61_TERMINAL_FUNCTIONAL_TRACE_FP2_BYTES
+                        - C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES
+                    ),
+                    "one_base_limb_plus_runtime_bytes": (
+                        C61_TERMINAL_FUNCTIONAL_TRACE_BASE_LIMB_BYTES
+                        + canonical_runtime_values * c6.FP2_BYTES
+                    ),
+                    "one_base_limb_plus_runtime_over_state_cap_bytes": (
+                        C61_TERMINAL_FUNCTIONAL_TRACE_BASE_LIMB_BYTES
+                        + canonical_runtime_values * c6.FP2_BYTES
+                        - C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES
+                    ),
+                    "materialized_event_table_allowed": False,
+                    "unconstrained_stream_digest_allowed": False,
+                },
                 "required_before_resume": [
+                    "replace the detached v3 PRG schedules in the C6.1 path with the already-budgeted 2xD23, 8xD17 and 2xD26 equality points",
                     "fuse the 64 C6TFR1 accumulators into the existing C6RSC3 event emission before beta",
                     "realize and verify the native D28 C6TFR1 trace through the typed compiler boundary",
                 ],
@@ -1300,6 +1337,23 @@ def build_report() -> dict[str, Any]:
     assert c6.soundness_bits(candidate_complete_error) > Decimal("119.65")
     assert c6.soundness_bits(candidate_session_error) > Decimal("115.56")
     assert native_compiler_symbols == 4_902_000_320
+    assert C61_TERMINAL_FUNCTIONAL_TRACE_FP2_BYTES == 4_294_967_296
+    assert (
+        C61_TERMINAL_FUNCTIONAL_TRACE_FP2_BYTES
+        - C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES
+        == 2_001_768_448
+    )
+    assert (
+        C61_TERMINAL_FUNCTIONAL_TRACE_BASE_LIMB_BYTES
+        + canonical_runtime_values * c6.FP2_BYTES
+        == 2_320_768_256
+    )
+    assert (
+        C61_TERMINAL_FUNCTIONAL_TRACE_BASE_LIMB_BYTES
+        + canonical_runtime_values * c6.FP2_BYTES
+        - C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES
+        == 27_569_408
+    )
     assert native_compiler_pcs_transform_bytes == 10_737_418_240
     assert Decimal("14.50") < native_provider_roof_seconds < Decimal("14.51")
     assert native_verifier_roof_seconds == Decimal("4.565672390")

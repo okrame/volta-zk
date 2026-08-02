@@ -1780,6 +1780,74 @@ trace that fuses the 64 accumulators into the one existing C6RSC3 event
 emission before `beta`; there is still no native backend, full-chain result or
 pod authorization.
 
+### 0.23 Native-trace schedule audit and direct-MLE prerequisite
+
+The first native-trace ownership audit found a protocol/API mismatch before
+trace code was written.  Section 0.8 preregistered direct multilinear
+equality schedules of exactly
+
+```text
+2 base-share streams * D23       =  46 Fp2
+8 terminal streams   * D17       = 136 Fp2
+2 atomic streams     * D26       =  52 Fp2
+total                              234 Fp2 / 3,744 B client-to-provider.
+```
+
+Those points exist in the C6.1 typestate and budget, but the concrete v3
+`C6ResidualRelationChallenges` consumed by C6RSC3 still derives all three
+schedule families through `FpStream`, whose implementation is ChaCha8 plus
+Goldilocks rejection sampling.  The exact C6TFR1-v1 Rust differential is
+therefore exact for the current v3 C6RSC3 semantics, but a native trace that
+only binds the v3 schedule digest would not algebraically constrain the
+weights emitted by that stream.  The pinned claimless WHIR fork opens a
+committed base-field polynomial; it supplies neither a ChaCha8/rejection
+circuit nor a generic trace verifier.  Treating the digest as the missing
+relation is forbidden.
+
+Materializing the coefficient-event trace is not an admissible repair.  One
+Fp2 column over the padded D28 domain already requires
+
+```text
+2^28 * 16 B                         = 4,294,967,296 B
+frozen provider-state cap           = 2,293,198,848 B
+excess before any runtime/PCS state = 2,001,768,448 B.
+```
+
+The selected backend commits base-field polynomials, but C6RSC3 coefficients
+are Fp2-valued.  Splitting them into two Goldilocks limbs has the same
+4,294,967,296-B lower bound.  Even one D28 base limb plus the canonical
+runtime is `2,320,768,256 B`, already `27,569,408 B` above the cap and still
+does not represent the second limb or any WHIR working state.  This confirms
+independently why Section 0.22 forbids an event table.
+
+The only active repair within the registered C6RSC4 schedule and soundness
+budget is `C6RSC3-v4` direct schedule integration.  The same transcript-owned
+point bundle already counted above must drive the actual C6RSC3 emitter:
+
+```text
+alpha_b(i)        = eq(alpha_point[b], i)
+terminal(b,s,i)   = eq(terminal_point[b,s], i)
+atomic_b(i)       = eq(atomic_point[b], i).
+```
+
+Indices outside each exact live stream stay canonical zero padding; point
+dimensions, repetition/coordinate/kind order and transcript domains are
+typed and fixed.  The event grammar, its **225,997,412** coefficient writes,
+the 64 C6TFR1 slots and the postclaim `beta` identity do not change.  The
+direct points replace the detached PRG schedules; they do not add a second
+challenge family or another statistical term.  The existing
+`234/|Fp2|` schedule event, 3,744-B client challenge traffic and all current
+provider-to-client byte ceilings therefore remain the preregistered screen.
+
+Implementation must land additively and in small checkpoints: first a typed
+direct-point schedule with a scaled v3/v4 grammar differential, then the
+actual fused C6RSC3 path and terminal-output equality, and only then a
+constraint/PCS trace.  The v3 path remains historical and may not be silently
+reinterpreted as v4.  Until the first two steps are green, the active local
+**HARD STOP** is `C6TFR1_DIRECT_MLE_SCHEDULE_INTEGRATION_REQUIRED`.  After
+that it returns to `C6TFR1_NATIVE_TRACE_REALIZATION_REQUIRED`.  No backend,
+proof-size, timing, state, production or pod credit follows.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

@@ -2134,6 +2134,29 @@ pub fn blind_prove_frac_tree(
     blind_prove_frac_tree_impl(leaf_p, leaf_q, stream, doms, tx, ctr, prod, zero, None)
 }
 
+/// Blind prover for one fraction tree with arbitrary Fp2 numerator and
+/// denominator leaves.  It uses the same authenticated round/split/product
+/// grammar as [`blind_prove_frac_tree`]; only the leaf construction differs.
+/// The returned leaf claims remain open for the caller to bind to committed
+/// input oracles.
+#[allow(clippy::type_complexity)]
+pub fn blind_prove_weighted_frac_tree(
+    leaf_p: &[Fp2],
+    leaf_q: &[Fp2],
+    stream: &mut CorrelationStream,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+    ctr: &mut Counters,
+    prod: &mut ProdTriples,
+    zero: &mut Vec<ProverAuthed>,
+) -> (BlindFracProof, Vec<Fp2>, ProverAuthed, ProverAuthed, (ProverAuthed, ProverAuthed)) {
+    let mut sink = new_blind_sink(stream, tx, doms, prod, zero);
+    let (_root_p, _root_q, point) = prove_weighted_engine(leaf_p, leaf_q, &mut sink, ctr);
+    ctr.bulk(sink.ctr.fp2_mults, sink.ctr.base_mults);
+    let proof = BlindFracProof { root_corrs: sink.root_corrs, layers: sink.layers, aux: None };
+    (proof, point, sink.cp, sink.cq, sink.roots)
+}
+
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn blind_prove_frac_tree_impl(
     leaf_p: &LeafP,
@@ -3422,6 +3445,78 @@ mod tests {
             txp: Transcript::new(ts),
             txv: Transcript::new(ts),
         }
+    }
+
+    #[test]
+    fn blind_weighted_fraction_tree_closes_arbitrary_fp2_leaves() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(0xC6_5350);
+        let mut h = harness(0x53, &mut rng);
+        let numerator: Vec<Fp2> = (0..32)
+            .map(|index| Fp2::new(Fp::new(3 + index as u64 * 5), Fp::new(7 + index as u64 * 11)))
+            .collect();
+        let denominator: Vec<Fp2> = (0..32)
+            .map(|index| {
+                Fp2::new(Fp::new(101 + index as u64 * 13), Fp::new(103 + index as u64 * 17))
+            })
+            .collect();
+        let mut prover_doms = Doms::new(700);
+        let mut prover_products = Vec::new();
+        let mut prover_zeros = Vec::new();
+        let mut counters = Counters::default();
+        let (proof, point, numerator_claim, denominator_claim, _) = blind_prove_weighted_frac_tree(
+            &numerator,
+            &denominator,
+            &mut h.ps,
+            &mut prover_doms,
+            &mut h.txp,
+            &mut counters,
+            &mut prover_products,
+            &mut prover_zeros,
+        );
+
+        let mut verifier_doms = Doms::new(700);
+        let mut verifier_products = Vec::new();
+        let mut verifier_zeros = Vec::new();
+        let (verifier_point, numerator_key, denominator_key, _) = blind_verify_frac_tree(
+            5,
+            &proof,
+            &mut h.vc,
+            &mut verifier_doms,
+            &mut h.txv,
+            &mut verifier_products,
+            &mut verifier_zeros,
+        )
+        .unwrap();
+        assert_eq!(point, verifier_point);
+        let numerator_value = crate::mle::eval_mle(&numerator, &point);
+        let denominator_value = crate::mle::eval_mle(&denominator, &point);
+        prover_zeros.push(numerator_claim.sub(ProverAuthed::from_public(numerator_value)));
+        prover_zeros.push(denominator_claim.sub(ProverAuthed::from_public(denominator_value)));
+        verifier_zeros
+            .push(numerator_key.sub(VerifierKey::from_public(numerator_value, h.vc.delta)));
+        verifier_zeros
+            .push(denominator_key.sub(VerifierKey::from_public(denominator_value, h.vc.delta)));
+
+        let chi = h.txp.challenge_fp2();
+        assert_eq!(chi, h.txv.challenge_fp2());
+        let product_mask = h.ps.draw_product_mask(9_000, prover_products.len());
+        let product_key = h.vc.expand_product_mask_verifier_key(9_000, verifier_products.len());
+        let product_proof = prod_batch_prover(&prover_products, chi, product_mask, &mut h.txp);
+        assert!(prod_batch_verify(
+            &verifier_products,
+            product_key,
+            h.vc.delta,
+            chi,
+            &product_proof,
+        ));
+        assert!(zero_batch_exchange(
+            &prover_zeros,
+            &verifier_zeros,
+            &mut h.ps,
+            &mut h.vc,
+            9_001,
+            &mut h.txp,
+        ));
     }
 
     /// Run blind logup end-to-end, close Π_Prod + Π_ZeroBatch, and MAC-open

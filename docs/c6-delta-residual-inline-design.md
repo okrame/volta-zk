@@ -2480,6 +2480,54 @@ WHIR rounds before the joint leaf-reduction connection may claim backend
 evidence.  Two sequential or independently challenged chains, a digest-only
 adapter, extra inverse/edge columns and pod contact remain forbidden.
 
+### 0.33 C6SPR2 shared-round claimless differential
+
+The feature-only claimless backend now runs the response and plan proofs in
+lockstep.  Both initial roots and their ordered public points are fixed before
+the first native challenge; at every later boundary the coordinator waits for
+both lanes and releases one private-verifier challenge to both.  After both
+base cases are fixed, one fresh `eta` batches their affine residuals.  Only
+the response lane receives the single C6AWH1 plaintext mask shift; the plan
+lane receives zero, and the two residuals close under one authenticated mask
+and one designated `ZeroOpen`.  Thus the compiler chain still consumes one,
+not two, full correlations.
+
+The strict `C6SMO1-v1` codec contains the two independent WHIR payloads under
+one 16-B outer header.  The response's former tag slot carries the joint tag;
+the plan slot is reserved canonical zero and cannot be interpreted as a
+second closure.  At D14 the complete artifact is **750,928 B**, with a
+structural maximum of **854,096 B**, **26** provider moves, **105,216**
+semantic bytes, **54** base-field challenges, **2,542** query candidates and
+**10,600 B** of client challenge traffic.  Provider and verifier views match;
+framing, length, reserved-tag and joint-tag mutations reject.  The fork audit
+remains **87 sources / 14 registered deltas / 73 byte-identical**.
+
+The subsequent leaf audit found that `public || scalar` in the runtime D24
+sub-block could not authenticate the rational table indexed by zero-based
+scalar ordinals with one opening: the scalar slice begins at non-dyadic
+offset **1,436**.  C6SPR2 therefore commits exactly
+`scale_runtime || zero` in that sub-block.  Public inputs are verifier-owned
+and never enter a Scale row.  The scaled packed opening now equals an
+independently rebuilt zero-padded scalar table; D24/D27 dimensions, state,
+transform and wire allocations are unchanged.
+
+The production structural ceiling is now the conservative two D27 maxima
+plus the outer header, **2,170,944 B**, leaving **329,056 B** inside the
+2.5-MB compiler-chain cap.  The fresh post-proof batch is covered by the
+existing conservative `127/|Fp2|` ordered-opening allocation.  Budget v18
+therefore preserves certificate **18,342,103 B**, setup plus first
+**103,085,470 B**, state **2,277,715,552 B**, roofs
+**14.9087128542 / 4.965672390 s** and soundness **102.5878333635 bits**, all
+`credit:false`.
+
+The active local **HARD STOP** is now
+`C6SPR2_JOINT_AUTHENTICATED_GKR_LEAF_REDUCTION_REQUIRED`.  All fourteen final
+numerator/denominator claims from the seven fraction trees must be jointly
+reduced to one D25 point and expressed exactly through the six response and
+three plan authenticated targets.  Clear leaf evaluation, an unproved
+shifted runtime slice, extra committed selector/inverse/edge columns and pod
+contact remain forbidden.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

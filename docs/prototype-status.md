@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — C6SPR2 PACKING/TYPED BOUNDARY GREEN / SHARED-ROUND HARD STOP / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — C6SPR2 SHARED-ROUND GREEN / AUTHENTICATED LEAF HARD STOP / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -13,29 +13,27 @@ milestone/design checkpoint.  The material below is append-only evidence and
 cannot authorize resuming an older C6.1 branch.
 
 - **Phase/design.** C6.1 response-local public compression. Read this, then
-  design §0.32, *C6SPR2 packed and typed boundary differential*.
+  design §0.33, *C6SPR2 shared-round claimless differential*.
 - **Relation.** The 64 C6RSC3 values are challenge-dependent. `C6TFA1-v1`
   exactly factors them into two D25 reverse lanes plus an eight-family direct
   reducer. Fixed-node mapping, D28 event table and digest substitutes are
   forbidden.
-- **Evidence.** `VC6TRM1` is **309,044 B**, authenticates terminal topology,
-  and leaves **2,370,570 B** after the **5,320,386-B** extraction map. The
-  direct reducer consumes it; exact D25 lane/source-boundary references match
-  `Affine + Reverse`, but are diagnostic preimages, not proofs.
-- **Construction.** Exact scaled D27 response/plan packing, prechallenge root
-  typestate and all 6+3 ordered PCS points now agree across proto and PCS.
-  Layout/root/point mutations reject and role targets remain private. Shared
-  WHIR rounds and authenticated GKR leaf reduction remain absent.
+- **Evidence.** `VC6TRM1` is **309,044 B**; exact D25 lanes reproduce the
+  challenge-dependent factorization. They remain diagnostic preimages.
+- **Construction.** Response and plan now run in one lockstep claimless
+  transcript with shared WHIR challenges, 6+3 ordered points, one fresh
+  post-proof residual batch and one `ZeroOpen`. D14 is **750,928 B**; codec
+  mutations reject. Scale runtime is zero-based/zero-padded, not shifted.
 - **Screens, no credit.** Certificate **18,342,103 B**; setup **84,743,367 B**;
   first exchange **103,085,470 B**; state **2,277,715,552 B**; roofs
   **14.9087128542 / 4.965672390 s**; relation `44,650,006/|Fp2|` and complete
   soundness **102.5878333635 bits**. All full-chain credits are **false**.
-- **Checks.** PCS **200/0/1**, proto **152/0/1**; trace proto
-  **175/0/1**; budget v17 green.
-- **HARD STOP.** `C6SPR2_SHARED_ROUND_CLAIMLESS_BACKEND_REQUIRED`.
-- **Resume.** Extend the claimless fork so both D27 roots share one transcript
-  and WHIR rounds; then reduce the GKR leaves to its nine authenticated
-  targets. Independent unbudgeted chains are forbidden. No backend credit.
+- **Checks.** PCS **200/0/1**; trace proto **175/0/1**; authenticated PCS
+  **7/0/0 + 1/0/0**; fork audit **87/14/73**; budget v18 green.
+- **HARD STOP.** `C6SPR2_JOINT_AUTHENTICATED_GKR_LEAF_REDUCTION_REQUIRED`.
+- **Resume.** Reduce all fourteen fraction-tree leaf claims to one D25 point
+  and close its equation through the nine authenticated openings. No D27,
+  full-chain or benchmark credit.
 - **Authorization.** No pod. No diagnostic reference or screen is full-chain
   evidence.
 

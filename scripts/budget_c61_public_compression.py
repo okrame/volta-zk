@@ -234,6 +234,14 @@ C61_NATIVE_CLAIMLESS_D14_PROVIDER_MESSAGES = 26
 C61_NATIVE_CLAIMLESS_D14_CLIENT_FP_CHALLENGES = 52
 C61_NATIVE_CLAIMLESS_D14_CLIENT_QUERY_CANDIDATES = 2_536
 C61_NATIVE_CLAIMLESS_D14_CLIENT_CHALLENGE_BYTES = 10_560
+C61_SHARED_MULTI_ORACLE_HEADER_BYTES = 16
+C61_SHARED_MULTI_ORACLE_D14_DIAGNOSTIC_BYTES = 750_928
+C61_SHARED_MULTI_ORACLE_D14_STRICT_MAX_BYTES = 854_096
+C61_SHARED_MULTI_ORACLE_D14_PROVIDER_SEMANTIC_BYTES = 105_216
+C61_SHARED_MULTI_ORACLE_D14_PROVIDER_MESSAGES = 26
+C61_SHARED_MULTI_ORACLE_D14_CLIENT_FP_CHALLENGES = 54
+C61_SHARED_MULTI_ORACLE_D14_CLIENT_QUERY_CANDIDATES = 2_542
+C61_SHARED_MULTI_ORACLE_D14_CLIENT_CHALLENGE_BYTES = 10_600
 C61_PRIVATE_ENTROPY_D14_CHALLENGES = 2_588
 C61_PRIVATE_ENTROPY_D14_CHECKPOINT_FRONTIER = 1_294
 C61_PRIVATE_ENTROPY_D14_CHECKPOINT_BYTES = 73_360
@@ -491,9 +499,13 @@ def build_report() -> dict[str, Any]:
     d28_known_chain_bytes = C61_NATIVE_D28_PCS_STRICT_MAX_BYTES
     d27_known_chain_bytes = C61_NATIVE_D27_PCS_STRICT_MAX_BYTES
     compiler_two_d27_independent_ceiling_bytes = 2 * d27_known_chain_bytes
+    compiler_shared_d27_strict_ceiling_bytes = (
+        compiler_two_d27_independent_ceiling_bytes
+        + C61_SHARED_MULTI_ORACLE_HEADER_BYTES
+    )
     compiler_chain_slack_after_two_d27_bytes = (
         C61_NATIVE_COMPILER_CHAIN_CODEC_MAX_BYTES
-        - compiler_two_d27_independent_ceiling_bytes
+        - compiler_shared_d27_strict_ceiling_bytes
     )
     native_projected_certificate_bytes = (
         active_fixed_remainder_bytes + C61_NATIVE_PUBLIC_ARGUMENT_CODEC_MAX_BYTES
@@ -576,7 +588,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v17",
+        "profile": "C6.1-public-compression-reference-v18",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
@@ -590,7 +602,8 @@ def build_report() -> dict[str, Any]:
             "SCALED_RATIONAL_GKR_DIFFERENTIAL_GREEN__"
             "CHALLENGE_ADAPTIVE_MU_OBSTRUCTION_CLOSED__"
             "PACKED_MULTI_ORACLE_TYPED_BOUNDARY_GREEN__"
-            "SHARED_ROUND_CLAIMLESS_BACKEND_REQUIRED__"
+            "SHARED_ROUND_CLAIMLESS_BACKEND_GREEN__"
+            "JOINT_AUTHENTICATED_GKR_LEAF_REDUCTION_REQUIRED__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
@@ -669,7 +682,8 @@ def build_report() -> dict[str, Any]:
                 "SCALED_RATIONAL_GKR_DIFFERENTIAL_GREEN__"
                 "CHALLENGE_ADAPTIVE_MU_OBSTRUCTION_CLOSED__"
                 "PACKED_MULTI_ORACLE_TYPED_BOUNDARY_GREEN__"
-                "SHARED_ROUND_CLAIMLESS_BACKEND_REQUIRED__"
+                "SHARED_ROUND_CLAIMLESS_BACKEND_GREEN__"
+                "JOINT_AUTHENTICATED_GKR_LEAF_REDUCTION_REQUIRED__"
                 "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
             "statement": (
@@ -989,6 +1003,12 @@ def build_report() -> dict[str, Any]:
                 "two_independent_d27_opening_ceiling_bytes": (
                     compiler_two_d27_independent_ceiling_bytes
                 ),
+                "shared_multi_oracle_header_bytes": (
+                    C61_SHARED_MULTI_ORACLE_HEADER_BYTES
+                ),
+                "shared_multi_oracle_d27_strict_ceiling_bytes": (
+                    compiler_shared_d27_strict_ceiling_bytes
+                ),
                 "compiler_chain_slack_after_two_d27_bytes": (
                     compiler_chain_slack_after_two_d27_bytes
                 ),
@@ -1187,7 +1207,7 @@ def build_report() -> dict[str, Any]:
                 ),
             },
             "local_hard_stop": {
-                "status": "C6SPR2_SHARED_ROUND_CLAIMLESS_BACKEND_REQUIRED",
+                "status": "C6SPR2_JOINT_AUTHENTICATED_GKR_LEAF_REDUCTION_REQUIRED",
                 "canonical_runtime_seam_green": True,
                 "raw_verifier_runtime_values": raw_verifier_runtime_values,
                 "canonical_runtime_values": canonical_runtime_values,
@@ -1278,7 +1298,7 @@ def build_report() -> dict[str, Any]:
                     "response_commitments_fixed_before_lane_batch": [
                         "one_D27_root_packing_lane_0_D25",
                         "lane_1_D25",
-                        "source_boundary_0_D23_plus_source_boundary_1_D23_plus_canonical_runtime_D24",
+                        "source_boundary_0_D23_plus_source_boundary_1_D23_plus_scale_runtime_D24",
                         "node_aligned_mu_D25",
                     ],
                     "mu_fixed_before_lane_and_rational_challenges": True,
@@ -1301,7 +1321,31 @@ def build_report() -> dict[str, Any]:
                     "ordered_plan_opening_points": 3,
                     "typed_role_targets_green": True,
                     "root_point_and_layout_mutations_reject": True,
-                    "claimless_multi_oracle_opening_green": False,
+                    "claimless_multi_oracle_opening_green": True,
+                    "shared_round_d14_payload_bytes": (
+                        C61_SHARED_MULTI_ORACLE_D14_DIAGNOSTIC_BYTES
+                    ),
+                    "shared_round_d14_strict_max_bytes": (
+                        C61_SHARED_MULTI_ORACLE_D14_STRICT_MAX_BYTES
+                    ),
+                    "shared_round_d14_provider_messages": (
+                        C61_SHARED_MULTI_ORACLE_D14_PROVIDER_MESSAGES
+                    ),
+                    "shared_round_d14_provider_semantic_bytes": (
+                        C61_SHARED_MULTI_ORACLE_D14_PROVIDER_SEMANTIC_BYTES
+                    ),
+                    "shared_round_d14_client_fp_challenges": (
+                        C61_SHARED_MULTI_ORACLE_D14_CLIENT_FP_CHALLENGES
+                    ),
+                    "shared_round_d14_client_query_candidates": (
+                        C61_SHARED_MULTI_ORACLE_D14_CLIENT_QUERY_CANDIDATES
+                    ),
+                    "shared_round_d14_client_challenge_bytes": (
+                        C61_SHARED_MULTI_ORACLE_D14_CLIENT_CHALLENGE_BYTES
+                    ),
+                    "shared_round_full_correlations": 1,
+                    "scale_runtime_is_zero_based_and_zero_padded": True,
+                    "full_chain_credit": False,
                     "credit": False,
                 },
                 "native_trace_audit": {
@@ -1336,8 +1380,8 @@ def build_report() -> dict[str, Any]:
                     ),
                 },
                 "required_before_resume": [
-                    "extend the claimless fork so both D27 roots use one transcript and genuinely shared WHIR rounds",
-                    "reduce every weighted leaf claim to those openings without committed inverse or edge columns",
+                    "jointly reduce all fourteen fraction-tree leaf claims to one D25 point",
+                    "close that terminal equation through the six response and three plan authenticated openings",
                 ],
                 "credit": False,
             },
@@ -1565,7 +1609,10 @@ def build_report() -> dict[str, Any]:
     )
     assert C61_NATIVE_PUBLIC_ARGUMENT_CODEC_MAX_BYTES == 11_500_000
     assert compiler_two_d27_independent_ceiling_bytes == 2_170_928
-    assert compiler_chain_slack_after_two_d27_bytes == 329_072
+    assert compiler_shared_d27_strict_ceiling_bytes == 2_170_944
+    assert compiler_chain_slack_after_two_d27_bytes == 329_056
+    assert C61_SHARED_MULTI_ORACLE_D14_DIAGNOSTIC_BYTES == 750_928
+    assert C61_SHARED_MULTI_ORACLE_D14_STRICT_MAX_BYTES == 854_096
     assert native_projected_certificate_bytes == 18_342_103
     assert C61_CERTIFICATE_MAX_BYTES - native_projected_certificate_bytes == 3_657_896
     assert native_projected_first_response_bytes == 103_085_470

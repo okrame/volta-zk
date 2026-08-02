@@ -1,76 +1,76 @@
-# VOLTA-ZK — agent instructions
+# VOLTA-ZK — project instructions
 
-Designated-verifier proving system for transformer inference (VOLE-MAC blind
-GKR), GPT-2 small fixed-point. Formal milestones M1–M11 are CLOSED (Lean
-theorems in `lean/`, frozen). Prototype milestones P0–P7b, fase-D and X1–X3
-are CLOSED.
-X4/X4d is suspended with immutable history. C4 is closed as an immutable raw
-FAIL: its rate-8 candidate saved 4,977,848 B/response and passed pure-prover
-and device gates, but measured complete-session ratio
-`1.050816638 >1.05` and absolute synchronization
-`0.155717607 s >0.150 s`. The product owner has adopted that rate-8 profile
-as the baseline for a distinct new milestone without rewriting C4.
-**C5 Packed16 over inline Ligero rate-8 is locally obstructed.** Its exact
-projected `61,292,904-B` response would meet the response goal, but no cited
-dealerless malicious typed-PCG directly supplies authenticated uniform-u16
-and bit masks under the existing `Fp2 Delta` within the binding
-`56,645,065-B` combined-setup ceiling. The best exact conversion from current
-sVOLE has an optimistic `217,728,000-B` typed increment; C2's per-bit lift is
-`4,230,144,000 B` at the C5 five-inventory census. No Lean/Rust/CUDA protocol
-implementation or performance verdict exists. Current phase: **C5 local
-obstruction checkpoint / HARD STOP**. A new concrete typed-PCG design and a
-new explicit owner GO are both required before any pod/provider contact.
+Designated-verifier proving system for fixed-point transformer inference using
+VOLE-MAC blind GKR.  Formal milestones M1–M11 are closed and frozen in
+`lean/`.  Prototype history is append-only; this file contains durable working
+rules, not a second state ledger.
 
-**Read `docs/prototype-status.md` first**, then the current task-specific
-design named by its latest ledger entry. For C5, that is
-`docs/c5-packed16-rate8-design.md`. The ledger and current design are the
-plan of record; historical runbooks and designs do not override them.
+## Authority and orientation
 
-## State ledger — single source of truth
+Before acting, read in this order:
 
-`docs/prototype-status.md`: milestone status, gates, key numbers, deviations
-log. Update it at every milestone boundary, whenever a measured number lands,
-and whenever a decision deviates from plan — never silently assume. Raw bench
-runs go to `benchmarks/results/<milestone>-<date>-<gitsha>.json` (never
-overwrite old runs; runs of record need a clean tree, `git_dirty: false`).
+1. `docs/prototype-status.md` — the single source of truth for the active
+   milestone, gates, measured values, credits, hard stops and deviations;
+2. the current task-specific design named by that ledger entry.
 
-## Build / test / bench
+The ledger and its active design override historical designs, runbooks and
+this file's examples.  Do not infer the active milestone from an old commit or
+from this file.  A ledger/design **HARD STOP** is terminal for that line of
+work: do not substitute an unproved relation, claim component evidence as a
+full result, or contact a provider/pod until the recorded unblock and any
+required owner GO exist.
 
-- Rust via rustup, not on default PATH: `source ~/.cargo/env`.
-- `cd rust && cargo test --workspace` | `cargo bench -p volta-bench`.
-- Milestone reports: `cargo run --release -p volta-bench --bin p6_report
-  [--quick]` (likewise `p5_report`, …). One-command e2e:
-  `scripts/run_prefill.sh`, `scripts/run_decode.sh`.
-- Weights/golden artifacts in `benchmarks/weights/` are generated, not
-  committed: `.venv/bin/python scripts/export_gpt2.py` then
-  `.venv/bin/python scripts/dump_golden.py --gen 50`.
-- Python: repo-root `.venv`; `pytest` is a global uv tool. Analytic budget:
-  `python3 scripts/budget_p0.py`.
-- Lean (frozen, only touch if the protocol changes):
+## Records and milestone discipline
+
+- Update `docs/prototype-status.md` at every milestone boundary, whenever a
+  measured value lands, or whenever a decision deviates from the plan.
+- Raw benchmark runs are new files under
+  `benchmarks/results/<milestone>-<date>-<gitsha>.json`; never overwrite an
+  old run.  A run of record requires a clean tree and `git_dirty: false`.
+- A milestone end requires a scoped commit checkpoint and ledger update.
+- Preserve unrelated dirty work.  Do not fold user files or historical
+  artifacts into a protocol commit.
+- Production/provider work needs the explicit owner GO required by the active
+  ledger.  Production records are create-new and append-only; no selective
+  retry is allowed unless separately authorized.
+
+## Build, test and generated artifacts
+
+- Rust is installed through rustup, not the default `PATH`:
+  `source ~/.cargo/env`; then use `cd rust && cargo test --workspace`.
+- Use the narrowest relevant test first; run the full workspace before a
+  milestone checkpoint when resources permit.  `rust/.cargo/config.toml`
+  pins `target-cpu=native`, so timing results are machine-specific.  Re-measure
+  the native baseline with the registered paired method before quoting a new
+  rate on another machine.
+- Milestone reports are `cargo run --release -p volta-bench --bin <report>`;
+  the active design names the applicable report and any e2e scripts.
+- Python uses the repository `.venv`; `pytest` is the global uv tool.  Use the
+  active budget script named by the design, not an historical budget by
+  default.
+- Weights and golden artifacts in `benchmarks/weights/` are generated, not
+  committed.  Generate them only through the registered export/dump scripts.
+- Lean is frozen unless the protocol statement changes:
   `export PATH="$HOME/.elan/bin:$PATH"; cd lean && lake build`.
-- `rust/.cargo/config.toml` pins `target-cpu=native`: benches are
-  machine-specific; on a new machine, re-measure the native baseline (ABBA
-  paired timing, `time_paired`) before quoting any ρ.
 
-## Non-negotiable conventions
+## Non-negotiable protocol conventions
 
-- Quantization semantics are frozen in `docs/quantization-spec.md`; the Rust
-  fixed-point forward is the witness generator and must match
-  `scripts/gpt2_fixed.py` bit-for-bit (golden checks are load-bearing gates).
-- Prover time may be bought with verifier time, **never with final proof
-  size / communication** (the binding product constraint: ≤150–200 MB per
-  response).
-- Never per-token proof instances or per-token PCS claims; decode proving is
-  deferred and stacked.
-- PCS openings resolve into VOLE-authenticated values — never cleartext
-  W̃(r); one batched opening per response.
-- Corrections are 8 bytes (F_p). Correlations are connection-scoped,
-  one-time use and domain-separated; every consumption is counted.
-- Production correlations use the real/AES PCG; mock PCG is diagnostic and
-  test-only. Production records are fail-closed and may not fall back to CPU.
-- Protocol code mirrors the Lean theorems (M2–M11 as applicable); anything
-  the theorems don't cover goes in the ledger's deviations log first.
-- Milestone end = commit checkpoint + ledger update.
-- Pod/provider contact requires an explicit owner GO after the local
-  checkpoint. Production runs use create-new append-only records and permit
-  no selective retry unless separately authorized.
+- `docs/quantization-spec.md` is frozen.  The Rust fixed-point forward is the
+  witness generator and must remain bit-for-bit aligned with
+  `scripts/gpt2_fixed.py`; golden checks are load-bearing.
+- Do not buy prover time with certificate bytes or communication.  The active
+  ledger/design supplies the binding byte, setup, prover, verifier and memory
+  gates; all certificate framing counts.
+- Never introduce per-token proof instances or per-token PCS claims.  Decode
+  proving is deferred and stacked as specified by the active design.
+- PCS openings resolve into VOLE-authenticated values, never cleartext
+  `W̃(r)`.  Batch only as the active statement authorizes.
+- Corrections are 8-byte `F_p` values.  Correlations are connection-scoped,
+  one-time and domain-separated; account for every consumption.
+- Production correlations use the real/AES PCG.  Mock PCG is diagnostic only;
+  production paths fail closed and may not silently fall back to CPU.
+- Protocol code must mirror the applicable Lean theorems.  Record any
+  uncovered assumption in the ledger deviations log before relying on it.
+- Distinguish executable seams, analytic screens and measured full-chain
+  results.  Never promote a `credit:false` screen to proof-size, timing,
+  memory, session or hardware credit.

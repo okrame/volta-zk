@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — C6SPR2 SHARED-ROUND GREEN / AUTHENTICATED LEAF HARD STOP / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — JOINT LEAF REFERENCE GREEN / FP2 PHYSICALIZATION HARD STOP / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,32 +8,31 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This is the authoritative short-form orientation; update it with the latest
-milestone/design checkpoint.  The material below is append-only evidence and
-cannot authorize resuming an older C6.1 branch.
+This capsule is authoritative. Historical entries cannot authorize an older
+C6.1 branch.
 
 - **Phase/design.** C6.1 response-local public compression. Read this, then
-  design §0.33, *C6SPR2 shared-round claimless differential*.
+  design §0.34, *joint leaf reference and base-field audit*.
 - **Relation.** The 64 C6RSC3 values are challenge-dependent. `C6TFA1-v1`
   exactly factors them into two D25 reverse lanes plus an eight-family direct
   reducer. Fixed-node mapping, D28 event table and digest substitutes are
   forbidden.
-- **Evidence.** `VC6TRM1` is **309,044 B**; exact D25 lanes reproduce the
-  challenge-dependent factorization. They remain diagnostic preimages.
-- **Construction.** Response and plan now run in one lockstep claimless
-  transcript with shared WHIR challenges, 6+3 ordered points, one fresh
-  post-proof residual batch and one `ZeroOpen`. D14 is **750,928 B**; codec
-  mutations reject. Scale runtime is zero-based/zero-padded, not shifted.
-- **Screens, no credit.** Certificate **18,342,103 B**; setup **84,743,367 B**;
-  first exchange **103,085,470 B**; state **2,277,715,552 B**; roofs
-  **14.9087128542 / 4.965672390 s**; relation `44,650,006/|Fp2|` and complete
-  soundness **102.5878333635 bits**. All full-chain credits are **false**.
-- **Checks.** PCS **200/0/1**; trace proto **175/0/1**; authenticated PCS
-  **7/0/0 + 1/0/0**; fork audit **87/14/73**; budget v18 green.
-- **HARD STOP.** `C6SPR2_JOINT_AUTHENTICATED_GKR_LEAF_REDUCTION_REQUIRED`.
-- **Resume.** Reduce all fourteen fraction-tree leaf claims to one D25 point
-  and close its equation through the nine authenticated openings. No D27,
-  full-chain or benchmark credit.
+- **Construction.** A degree-8 clear reference reduces all fourteen fraction
+  leaf claims to one point. Boolean formulas and terminal linearization match
+  independently. Its endpoint is affine in six semantic response openings
+  plus one `lambda*mu` product; three clear plan values must equal their
+  authenticated targets. The core reducer performs no clear leaf evaluation.
+- **Deviation.** The fork commits `Poly<Goldilocks>`, but the registered D27
+  response is an `Fp2` table. The synthetic D14 run did not exercise this.
+  Its two limbs therefore need an exact physical layout and semantic fold;
+  the old two-D27 ceiling is not applicable to that layout.
+- **Checks.** Sparse trace **4/0/0**; helper, family differential, transcript
+  and nine-opening mutations reject. Commits `117e692`, `82fff9a`, `a65c9a9`.
+- **HARD STOP.** `C6SPR3_FP2_PHYSICALIZATION_AND_BLIND_TERMINAL_CLOSURE_REQUIRED`.
+- **Resume.** Type the Fp2 response as base-field limbs, re-establish shared
+  challenge/codec bounds, then authenticate the degree-8 rounds and the one
+  product inside one closure. Re-sum all gates; prior screens are
+  `credit:false`.
 - **Authorization.** No pod. No diagnostic reference or screen is full-chain
   evidence.
 

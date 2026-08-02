@@ -2528,6 +2528,48 @@ three plan authenticated targets.  Clear leaf evaluation, an unproved
 shifted runtime slice, extra committed selector/inverse/edge columns and pod
 contact remain forbidden.
 
+### 0.34 Joint leaf reference and base-field physicalization audit
+
+The next scoped CPU reference jointly reduces the fourteen final fraction-tree
+claims after they are fixed.  One fresh `theta` weights numerator and
+denominator discrepancies in canonical subcheck order.  A degree-8 sumcheck
+reduces their equality-lifted sum to one common base point, sending `g(0)` and
+`g(2)..g(8)` per round while reconstructing `g(1)` from the running claim.
+The core reducer never evaluates a materialized leaf polynomial.  Independent
+tests compare every numerator and denominator formula on every Boolean row,
+and compare the terminal linearization with a direct fourteen-claim batch.
+Transcript, plan, response and seed mutations reject.
+
+At the endpoint, fixed-plan `opcode/lhs/rhs` evaluations may be clear because
+the plan is public, but they must equal their three authenticated opening
+targets.  After that substitution the equation is affine in the six semantic
+response targets except for exactly one product, `lambda * mu`.  Thus a blind
+implementation needs one authenticated product result and one QuickSilver
+product triple; its affine residual can be folded into the compiler chain's
+single designated `ZeroOpen`.  The clear reference contributes no privacy,
+wire, correlation or production credit.
+
+The subsequent backend audit found a representation error in §0.33.  The
+claimless fork commits `Poly<Goldilocks>` at the initial layer, whereas the
+registered response packing contains arbitrary `Fp2` coefficients.  The D14
+shared-oracle diagnostic used a base-field synthetic polynomial and therefore
+did not validate this boundary.  A single D27 base polynomial cannot commit
+the semantic response table.  The response must be split into canonical
+`c0/c1` base-field limbs (or an exactly equivalent extension-message backend),
+and the physical opening targets must be folded back to the six semantic
+`Fp2` targets.  A direct limb packing suggests D28 and twelve physical response
+claims; that geometry is not yet selected because D28/D27 asymmetric shared
+rounds, peak state and the strict codec must be proved together.
+
+The active local **HARD STOP** is
+`C6SPR3_FP2_PHYSICALIZATION_AND_BLIND_TERMINAL_CLOSURE_REQUIRED`.  The old
+two-D27 **2,170,944-B** ceiling and v18 timing/state/soundness screens remain
+historical `credit:false` values and cannot be applied to the corrected
+physical layout.  Resume only with a typed base-limb construction, exact
+semantic-target fold, shared-challenge/codec proof, blind degree-8 round
+corrections, the one certified product, and a complete re-sum.  Pod contact
+remains forbidden.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

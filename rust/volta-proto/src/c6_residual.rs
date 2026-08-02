@@ -41,11 +41,13 @@ use volta_mac::{
 
 #[cfg(feature = "c6-trace")]
 mod fused_fixture;
+mod sparse_rational_gkr;
 #[cfg(feature = "c6-trace")]
 pub use fused_fixture::{
     build_c6_residual_direct_fused_scaled_fixture, build_c6_residual_fused_scaled_fixture,
     C6ResidualFusedScaledFixture,
 };
+pub use sparse_rational_gkr::*;
 
 #[cfg(feature = "c6-trace")]
 pub(crate) static C6_RESIDUAL_TRACE_FIXTURE_LOCK: Mutex<()> = Mutex::new(());

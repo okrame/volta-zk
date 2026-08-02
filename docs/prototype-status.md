@@ -6,10 +6,60 @@ land in `benchmarks/results/*.json`. This ledger plus the current
 task-specific design named by its latest entry are the repo-local plan of
 record; no external plan is authoritative.
 
-Current phase: **C6.1 response-local public compression amendment of the C6
-Δ-residual inline certificate**.  Section 0 of
-`docs/c6-delta-residual-inline-design.md` is the active append-only amendment;
-the remainder of that document preserves the C6 requirements, Q=121 ruling,
+## Active authority — read first
+
+This is the authoritative orientation for the next local action.  It is a
+compact index within this ledger, not a second status record: update it in the
+same change as the latest milestone row and active-design checkpoint.  The
+historical chronology, milestone rows and deviations below remain append-only
+evidence; they do not authorize resuming an older C6.1 branch.
+
+- **Active milestone and design.** C6.1 response-local public compression
+  amendment of the C6 Δ-residual inline certificate.  Read this capsule, then
+  section 0.28, *Authenticated terminal projection and exact D25 lane oracle*,
+  in `docs/c6-delta-residual-inline-design.md` before acting.
+- **Exact relation in scope.** C6RSC3's 64 consumed values are
+  challenge-dependent functionals.  `C6TFA1-v1` factors their exact fold into
+  two challenge-dependent D25 reverse lanes plus an eight-family direct
+  reducer.  A mapping to 64 fixed DAG nodes, a materialized D28 event table,
+  or a digest standing in for a relation is forbidden.
+- **Completed local evidence.** The strict `VC6TRM1` terminal projection is
+  **309,044 B**, authenticates ProductClosure operands/masks and zero roots by
+  recomputing the installed topology digest, and leaves **2,370,570 B** of the
+  existing client-parameter allocation after the retained **5,320,386-B**
+  extraction map.  The direct reducer consumes this projection rather than the
+  complete plan.  Two exact D25 lane/source-boundary references reproduce the
+  independent `Affine + Reverse` folds, but are diagnostic preimages rather
+  than commitments or proofs.
+- **Registered screens, not credit.** Certificate **16,342,103 B**; projected
+  setup **84,743,367 B**; first exchange **101,085,470 B**; provider state
+  **2,019,404,992 B**; provider/verifier rooflines
+  **14.5038179582 / 4.565672390 s**; relation charge `28/|Fp2|`.  All
+  full-chain proof-size, setup, time, memory, session and hardware credits are
+  **false**.
+- **Current checks.** Default workspace: PCS **199/0/1**, proto **151/0/1**.
+  `c6-trace`: MAC **36/0/0 + 5/0/0**, proto **172/0/1**.  Budget profile v13
+  is executable and green.
+- **Active HARD STOP.**
+  `C6TFA1_SPARSE_APPLICATION_AND_SOURCE_GATHER_BACKEND_REQUIRED`.
+  Claimless WHIR authenticates polynomial openings but does not express the
+  required sparse opcode/operand/runtime application or source-ordinal to
+  canonical-node gather.  The lane-vector digest has no proof force.
+- **Required before resume.** Preregister an exact native construction which
+  (1) commits the two D25 lanes and source boundaries before batching,
+  (2) authenticates the fixed sparse application and gather, including absent
+  scheduled sources and canonical padding, (3) connects it to claimless
+  authenticated WHIR and the role-typed compiler statement, then (4) re-sums
+  bytes, setup, state, prover/verifier work and soundness before coding.
+- **Authorization.** No pod contact is authorized.  Do not promote the local
+  references or any analytic screen to full-chain evidence.
+
+## Historical C6.1 component chronology (append-only; not active authority)
+
+Historical phase at the time of this entry: **C6.1 response-local public compression amendment of the C6
+Δ-residual inline certificate**.  At that time, section 0 of
+`docs/c6-delta-residual-inline-design.md` was the then-current append-only
+amendment; the remainder of that document preserves the C6 requirements, Q=121 ruling,
 implementation history and local measurements as the immutable baseline.
 C6.1's exact byte/operation public/designated-verifier decomposition and
 native Gate-2 pre-code screen are green and executable.  The selected

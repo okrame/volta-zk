@@ -160,10 +160,10 @@ C61_FOLDED_DIRECT_TOTAL_ROWS_AND_TERMS = (
     + C61_FOLDED_DIRECT_EXPLICIT_TERMS
 )
 
-# C6SPR1-v1 preregisters a three-column provider-global plan oracle and
-# response-local lane/boundary/runtime commitments.  Seven rational memory
-# sums are evaluated by batch-inversion GKR circuits; no edge-domain witness
-# or inverse column is committed.
+# C6SPR1-v1 uses a three-column provider-global plan oracle and response-local
+# lane/boundary/runtime commitments.  Its scaled seven-sum weighted
+# fraction-tree differential is green; typed claimless input openings remain
+# required.  No edge-domain witness or inverse column is committed.
 C61_SPARSE_RATIONAL_PLAN_COLUMNS = 3
 C61_SPARSE_RATIONAL_PLAN_DOMAIN_LOG2 = 27
 C61_SPARSE_RATIONAL_RESPONSE_DOMAIN_EQUIVALENT_D25_VECTORS = 3
@@ -563,7 +563,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v14",
+        "profile": "C6.1-public-compression-reference-v15",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
@@ -574,7 +574,8 @@ def build_report() -> dict[str, Any]:
             "DIRECT_INTERVAL_REDUCER_GREEN__"
             "TERMINAL_METADATA_AND_EXACT_D25_LANE_REFERENCES_GREEN__"
             "C6SPR1_RATIONAL_GKR_PREREGISTERED__"
-            "SCALED_RATIONAL_GKR_DIFFERENTIAL_REQUIRED__"
+            "SCALED_RATIONAL_GKR_DIFFERENTIAL_GREEN__"
+            "TYPED_MULTI_ORACLE_CLAIMLESS_OPENING_REQUIRED__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
@@ -650,7 +651,8 @@ def build_report() -> dict[str, Any]:
                 "DIRECT_INTERVAL_REDUCER_GREEN__"
                 "TERMINAL_METADATA_AND_EXACT_D25_LANE_REFERENCES_GREEN__"
                 "C6SPR1_RATIONAL_GKR_PREREGISTERED__"
-                "SCALED_RATIONAL_GKR_DIFFERENTIAL_REQUIRED__"
+                "SCALED_RATIONAL_GKR_DIFFERENTIAL_GREEN__"
+                "TYPED_MULTI_ORACLE_CLAIMLESS_OPENING_REQUIRED__"
                 "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
             "statement": (
@@ -1147,7 +1149,7 @@ def build_report() -> dict[str, Any]:
                 ),
             },
             "local_hard_stop": {
-                "status": "C6SPR1_SCALED_RATIONAL_GKR_DIFFERENTIAL_REQUIRED",
+                "status": "C6SPR1_TYPED_MULTI_ORACLE_CLAIMLESS_OPENING_REQUIRED",
                 "canonical_runtime_seam_green": True,
                 "raw_verifier_runtime_values": raw_verifier_runtime_values,
                 "canonical_runtime_values": canonical_runtime_values,
@@ -1246,7 +1248,12 @@ def build_report() -> dict[str, Any]:
                     "inverse_columns_committed": 0,
                     "edge_domain_witness_committed": False,
                     "batch_inversion": "product-tree GKR with one checked root inverse",
-                    "scaled_differential_green": False,
+                    "scaled_differential_green": True,
+                    "weighted_fp2_fraction_tree_green": True,
+                    "neutral_zero_over_one_padding_green": True,
+                    "all_seven_root_mutations_reject": True,
+                    "lane_batch_binding_mutation_rejects": True,
+                    "all_seven_padding_mutations_reject": True,
                     "claimless_multi_oracle_opening_green": False,
                     "credit": False,
                 },
@@ -1282,9 +1289,8 @@ def build_report() -> dict[str, Any]:
                     ),
                 },
                 "required_before_resume": [
-                    "implement the scaled seven-subcheck C6SPR1 rational-memory differential",
-                    "prove mutation rejection for recurrence, runtime gather, source gather, lane batching and padding",
-                    "connect the GKR input claims to typed multi-oracle claimless openings without committed inverse or edge columns",
+                    "reduce every derived weighted leaf claim to the committed lane, boundary, runtime and fixed plan inputs",
+                    "connect those typed input claims to multi-oracle claimless openings without committed inverse or edge columns",
                 ],
                 "credit": False,
             },

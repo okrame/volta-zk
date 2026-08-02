@@ -2329,6 +2329,64 @@ recurrence/runtime/source/batching/padding mutation, and only then extend the
 claimless backend to the typed multi-oracle GKR input openings.  No pod
 contact is authorized.
 
+### 0.30 C6SPR1 scaled weighted-fraction differential
+
+The preregistered seven-subcheck construction is now executable at scaled
+geometry.  `C6ResidualSparseRationalRelationReference` independently derives
+the two terminal injections from `VC6TRM1` and the registered challenge
+schedules, combines the two exact adjoint lanes and source boundaries only
+after `zeta`, and materializes the three recurrence, two runtime-gather and
+two source-gather sums.  It remains a diagnostic arithmetic oracle, not a
+commitment or proof.
+
+The existing LogUp fraction-tree GKR now has a separate clear CPU/reference
+path for arbitrary Fp2 numerators and dense denominators.  Every inactive
+power-of-two row is the neutral fraction `0/1`; consequently a challenge that
+misses every active embedded index cannot acquire a padding pole.  The tree
+commits no inverse column and checks nonzero only at its denominator root.
+The seven C6SPR1 leaf families are exactly:
+
+```text
+node anchor       (lambda[v] - q[v]) / (gamma-v)
+Add/Sub row       lambda[j] * ((gamma-rhs) +/- (gamma-lhs))
+                  / ((gamma-lhs)(gamma-rhs))
+Scale row         lambda[j] * mu[j] / (gamma-lhs)
+Scale lookup      mu[j] / (tau-rhs)
+runtime table     runtime[k] / (tau-k)
+source boundary   g[s] / (delta-s)
+Source row        lambda[j] / (delta-lhs)
+```
+
+Thus the two Add/Sub operands are internal factors of one row fraction; no
+edge-domain polynomial is introduced.  `mu` is zero on every non-Scale row,
+and Scale `rhs` is the canonical scalar ordinal.  The verifier checks every
+fraction root against its exact sum, reduces each tree to its two leaf MLE
+claims, and checks the three outer equalities.  The clear challenge seed
+models verifier draws after the response commitments and rational challenges;
+it is not a Fiat--Shamir transform.
+
+The scaled differential rejects a changed root in each of all seven
+subchecks, changed recurrence/runtime/source witnesses, a changed lane-batch
+relation digest, a rational pole and a nonzero padding row in each of all
+seven domains.  The complete `volta-proto --features c6-trace` suite is
+**175/0/1**; the default workspace is green at PCS **199/0/1** and proto
+**152/0/1**.  Commits `cf747db`, `5158045` and `00aa1c1` respectively pin the
+exact rational oracle, weighted fraction tree and seven-subcheck differential.
+
+Budget profile v15 changes no numeric screen: certificate, setup plus first,
+state and provider/verifier roofs remain **18,342,103 B**, **103,085,470 B**,
+**2,277,715,552 B** and **14.7062654062 / 4.965672390 s**; complete soundness
+remains **102.5878333635 bits**.  Every credit remains false.
+
+The new local **HARD STOP** is
+`C6SPR1_TYPED_MULTI_ORACLE_CLAIMLESS_OPENING_REQUIRED`.  The derived leaf MLE
+claims are still checked by materializing their full vectors.  They must next
+be reduced to typed openings of the two lane commitments, two source-boundary
+commitments, canonical-runtime commitment and fixed `(opcode,lhs,rhs)` plan
+root, then closed through the claimless PCS and compiler statement.  No
+derived numerator/denominator digest, inverse commitment, edge witness or pod
+contact is authorized.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

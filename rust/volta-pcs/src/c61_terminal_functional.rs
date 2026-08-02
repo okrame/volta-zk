@@ -41,11 +41,11 @@ pub const C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_FRAMING_BYTES: u64 =
 pub const C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_MAX_BYTES: u64 = 500_000;
 pub const C61_SPARSE_RATIONAL_BLIND_PRODUCTION_DEPTHS: [u8;
     C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_SUBCHECKS] = [25, 25, 25, 25, 24, 23, 25];
-pub const C61_SPARSE_RATIONAL_BLIND_PRODUCTION_GKR_BYTES: u64 = 84_528;
+pub const C61_SPARSE_RATIONAL_BLIND_PRODUCTION_GKR_BYTES: u64 = 84_640;
 pub const C61_SPARSE_RATIONAL_BLIND_PRODUCTION_JOINT_BYTES: u64 = 3_248;
 pub const C61_SPARSE_RATIONAL_BLIND_TERMINAL_BYTES: u64 = 16;
 pub const C61_SPARSE_RATIONAL_BLIND_PRODUCT_BYTES: u64 = 32;
-pub const C61_SPARSE_RATIONAL_BLIND_PRODUCTION_ARITHMETIC_BYTES: u64 = 87_916;
+pub const C61_SPARSE_RATIONAL_BLIND_PRODUCTION_ARITHMETIC_BYTES: u64 = 88_028;
 
 const PUBLIC_STATEMENT_DOMAIN: &str = "volta-zk/c6.1/typed-native-chain-statement/v1";
 const COMMITTED_OPENINGS_DOMAIN: &str = "volta-zk/c6.1/typed-committed-openings/v1";
@@ -1548,7 +1548,7 @@ mod tests {
 
     #[test]
     fn production_blind_arithmetic_codec_census_is_exact() {
-        let tree_bytes = |depth: u64| 16 * (depth * depth + 6 * depth + 3);
+        let tree_bytes = |depth: u64| 16 * (depth * depth + 6 * depth + 4);
         assert_eq!(
             C61_SPARSE_RATIONAL_BLIND_PRODUCTION_GKR_BYTES,
             C61_SPARSE_RATIONAL_BLIND_PRODUCTION_DEPTHS

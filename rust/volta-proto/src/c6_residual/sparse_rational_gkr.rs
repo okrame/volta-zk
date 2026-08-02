@@ -1130,7 +1130,7 @@ fn sparse_blind_frac_correction_scalars(depth: usize) -> C6ResidualResult<u64> {
     depth
         .checked_mul(depth)
         .and_then(|value| value.checked_add(6 * depth))
-        .and_then(|value| value.checked_add(3))
+        .and_then(|value| value.checked_add(4))
         .ok_or_else(|| C6ResidualError::new("C6SPR3 fraction correction census overflows"))
 }
 
@@ -1187,12 +1187,13 @@ pub struct C6ResidualSparseRationalBlindGkrProof {
     relation_digest: C6ResidualDigest,
     subchecks: [BlindFracProof; C6_SPARSE_RATIONAL_SUBCHECKS],
     root_inverse_corrections: [Fp2; C6_SPARSE_RATIONAL_SUBCHECKS],
+    root_ratio_corrections: [Fp2; C6_SPARSE_RATIONAL_SUBCHECKS],
 }
 
 impl C6ResidualSparseRationalBlindGkrProof {
     pub fn bytes(&self) -> u64 {
         self.subchecks.iter().map(BlindFracProof::bytes).sum::<u64>()
-            + 16 * C6_SPARSE_RATIONAL_SUBCHECKS as u64
+            + 32 * C6_SPARSE_RATIONAL_SUBCHECKS as u64
     }
 
     pub fn relation_digest(&self) -> C6ResidualDigest {
@@ -1251,6 +1252,7 @@ impl C6ResidualSparseRationalBlindGkrProof {
                 }
             }
             encode_sparse_blind_fp2(&mut bytes, self.root_inverse_corrections[index]);
+            encode_sparse_blind_fp2(&mut bytes, self.root_ratio_corrections[index]);
         }
         if bytes.len() as u64 != expected_bytes || self.bytes() != expected_bytes {
             return Err(C6ResidualError::new(
@@ -1272,6 +1274,7 @@ impl C6ResidualSparseRationalBlindGkrProof {
         let mut reader = SparseBlindCorrectionReader::new(bytes);
         let mut subchecks = Vec::with_capacity(C6_SPARSE_RATIONAL_SUBCHECKS);
         let mut root_inverse_corrections = Vec::with_capacity(C6_SPARSE_RATIONAL_SUBCHECKS);
+        let mut root_ratio_corrections = Vec::with_capacity(C6_SPARSE_RATIONAL_SUBCHECKS);
         for depth in depths {
             let root_corrs = [reader.fp2()?, reader.fp2()?];
             let mut layers = Vec::with_capacity(depth);
@@ -1288,6 +1291,7 @@ impl C6ResidualSparseRationalBlindGkrProof {
             }
             subchecks.push(BlindFracProof { root_corrs, layers, aux: None });
             root_inverse_corrections.push(reader.fp2()?);
+            root_ratio_corrections.push(reader.fp2()?);
         }
         reader.finish()?;
         let proof = Self {
@@ -1297,6 +1301,9 @@ impl C6ResidualSparseRationalBlindGkrProof {
             })?,
             root_inverse_corrections: root_inverse_corrections.try_into().map_err(|_| {
                 C6ResidualError::new("C6SPR3 decoded inverse census differs from seven")
+            })?,
+            root_ratio_corrections: root_ratio_corrections.try_into().map_err(|_| {
+                C6ResidualError::new("C6SPR3 decoded ratio census differs from seven")
             })?,
         };
         if proof.bytes() != bytes.len() as u64 {
@@ -1373,6 +1380,8 @@ pub fn prove_c6_residual_sparse_rational_gkr_blind_reference(
     let leaves = materialize_sparse_rational_leaves(operation_plan, extraction, runtime, relation)?;
     let mut subchecks = Vec::with_capacity(C6_SPARSE_RATIONAL_SUBCHECKS);
     let mut root_inverse_corrections = Vec::with_capacity(C6_SPARSE_RATIONAL_SUBCHECKS);
+    let mut root_ratio_corrections = Vec::with_capacity(C6_SPARSE_RATIONAL_SUBCHECKS);
+    let mut root_ratios = Vec::with_capacity(C6_SPARSE_RATIONAL_SUBCHECKS);
     let mut claims = Vec::with_capacity(C6_SPARSE_RATIONAL_SUBCHECKS);
     for leaves in &leaves {
         let (proof, point, numerator, denominator, roots) = blind_prove_weighted_frac_tree(
@@ -1404,9 +1413,31 @@ pub fn prove_c6_residual_sparse_rational_gkr_blind_reference(
         tx.append("c6_sparse_root_inverse_correction", 16);
         let inverse = inverse_mask.authenticate(inverse);
         products.push((roots.1, inverse, ProverAuthed::from_public(Fp2::ONE)));
-        zeros.push(roots.0.sub(roots.1.scale(leaves.expected_sum)));
+        let ratio_value = roots.0.x * inverse.x;
+        let ratio_domain = doms.take(1);
+        let ratio_mask = stream
+            .draw_fulls(ratio_domain, 1)
+            .into_iter()
+            .next()
+            .ok_or_else(|| C6ResidualError::new("C6SPR3 missing root-ratio correlation"))?;
+        stream
+            .record_c6_fullfield_plaintexts(ratio_domain, &[ratio_value])
+            .map_err(|error| C6ResidualError::new(error.to_string()))?;
+        root_ratio_corrections.push(ratio_value - ratio_mask.x);
+        tx.append("c6_sparse_root_ratio_correction", 16);
+        let ratio = ratio_mask.authenticate(ratio_value);
+        products.push((roots.0, inverse, ratio));
+        root_ratios.push(ratio);
         subchecks.push(proof);
         claims.push(C6SparseRationalBlindLeafClaim { point, numerator, denominator });
+    }
+    zeros.push(root_ratios[0].sub(root_ratios[1]).sub(root_ratios[2]));
+    zeros.push(root_ratios[3].sub(root_ratios[4]));
+    zeros.push(root_ratios[5].sub(root_ratios[6]));
+    if zeros[zeros.len() - 3..].iter().any(|row| row.x != Fp2::ZERO) {
+        return Err(C6ResidualError::new(
+            "C6SPR3 blind fraction roots do not satisfy the three rational identities",
+        ));
     }
     Ok((
         C6ResidualSparseRationalBlindGkrProof {
@@ -1417,6 +1448,9 @@ pub fn prove_c6_residual_sparse_rational_gkr_blind_reference(
             root_inverse_corrections: root_inverse_corrections.try_into().map_err(|_| {
                 C6ResidualError::new("C6SPR3 root-inverse census differs from seven")
             })?,
+            root_ratio_corrections: root_ratio_corrections
+                .try_into()
+                .map_err(|_| C6ResidualError::new("C6SPR3 root-ratio census differs from seven"))?,
         },
         claims.try_into().map_err(|_| {
             C6ResidualError::new("C6SPR3 blind leaf-claim census differs from seven")
@@ -1440,16 +1474,8 @@ pub fn verify_c6_residual_sparse_rational_gkr_blind_reference(
         return Ok(None);
     }
     let depths = sparse_rational_subcheck_depths(operation_plan)?;
-    let expected = [
-        relation.recurrence_terms[0],
-        relation.recurrence_terms[1],
-        relation.recurrence_terms[2],
-        relation.runtime_gather_terms[0],
-        relation.runtime_gather_terms[1],
-        relation.source_gather_terms[0],
-        relation.source_gather_terms[1],
-    ];
     let mut claims = Vec::with_capacity(C6_SPARSE_RATIONAL_SUBCHECKS);
+    let mut root_ratios = Vec::with_capacity(C6_SPARSE_RATIONAL_SUBCHECKS);
     for index in 0..C6_SPARSE_RATIONAL_SUBCHECKS {
         let Some((point, numerator, denominator, roots)) = blind_verify_frac_tree(
             depths[index],
@@ -1466,9 +1492,16 @@ pub fn verify_c6_residual_sparse_rational_gkr_blind_reference(
             ctx.correct_full_verifier_key(doms.take(1), proof.root_inverse_corrections[index]);
         tx.append("c6_sparse_root_inverse_correction", 16);
         products.push((roots.1, inverse, VerifierKey::from_public(Fp2::ONE, ctx.delta)));
-        zeros.push(roots.0.sub(roots.1.scale(expected[index])));
+        let ratio =
+            ctx.correct_full_verifier_key(doms.take(1), proof.root_ratio_corrections[index]);
+        tx.append("c6_sparse_root_ratio_correction", 16);
+        products.push((roots.0, inverse, ratio));
+        root_ratios.push(ratio);
         claims.push(C6SparseRationalBlindLeafKey { point, numerator, denominator });
     }
+    zeros.push(root_ratios[0].sub(root_ratios[1]).sub(root_ratios[2]));
+    zeros.push(root_ratios[3].sub(root_ratios[4]));
+    zeros.push(root_ratios[5].sub(root_ratios[6]));
     Ok(Some(
         claims
             .try_into()

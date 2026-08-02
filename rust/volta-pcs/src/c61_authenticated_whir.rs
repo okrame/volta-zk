@@ -296,9 +296,7 @@ pub fn finish_c61_authenticated_whir_base(
     input: C61AuthenticatedWhirProverFinishInput,
     transcript: &mut Transcript,
 ) -> Result<C61AuthenticatedWhirProverClosure> {
-    let residual = ProverAuthed::from_public(input.combined - input.shifted_masked_claim)
-        .sub(input.target.scale(input.gamma))
-        .add(prepared.authenticated);
+    let residual = c61_authenticated_whir_prover_residual(&prepared, input);
     if residual.x != Fp2::ZERO {
         return Err(C61AuthenticatedWhirError::new(
             "C6AWH1 honest WHIR base identity does not close",
@@ -312,6 +310,53 @@ pub fn finish_c61_authenticated_whir_base(
         mask_domain: prepared.mask_domain,
         mask_ordinal: prepared.mask_ordinal,
     })
+}
+
+/// Fold already-authenticated arithmetic zero rows into the compiler chain's
+/// existing C6AWH1 closure.  The fresh RLC challenge is drawn only after the
+/// WHIR residual and every additional row are fixed.  The prepared WHIR mask
+/// supplies the one-time random tag, so this emits the same single 16-byte
+/// ZeroOpen and consumes no second mask correlation.
+pub fn finish_c61_authenticated_whir_base_with_zero_rows(
+    prepared: C61AuthenticatedWhirPreparedMask,
+    input: C61AuthenticatedWhirProverFinishInput,
+    zero_rows: &[ProverAuthed],
+    transcript: &mut Transcript,
+) -> Result<C61AuthenticatedWhirProverClosure> {
+    if zero_rows.is_empty() {
+        return Err(C61AuthenticatedWhirError::new(
+            "C6AWH1 folded arithmetic closure requires at least one zero row",
+        ));
+    }
+    let mut residual = c61_authenticated_whir_prover_residual(&prepared, input);
+    if residual.x != Fp2::ZERO || zero_rows.iter().any(|row| row.x != Fp2::ZERO) {
+        return Err(C61AuthenticatedWhirError::new(
+            "C6AWH1 honest folded arithmetic residual is nonzero",
+        ));
+    }
+    let challenge = transcript.challenge_fp2();
+    let mut weight = Fp2::ONE;
+    for row in zero_rows {
+        weight = weight * challenge;
+        residual = residual.add(row.scale(weight));
+    }
+    let proof =
+        C61AuthenticatedWhirBaseProof { zero_open_tag: zero_open_prover(&residual, transcript) };
+    Ok(C61AuthenticatedWhirProverClosure {
+        shifted_masked_claim: input.shifted_masked_claim,
+        proof,
+        mask_domain: prepared.mask_domain,
+        mask_ordinal: prepared.mask_ordinal,
+    })
+}
+
+fn c61_authenticated_whir_prover_residual(
+    prepared: &C61AuthenticatedWhirPreparedMask,
+    input: C61AuthenticatedWhirProverFinishInput,
+) -> ProverAuthed {
+    ProverAuthed::from_public(input.combined - input.shifted_masked_claim)
+        .sub(input.target.scale(input.gamma))
+        .add(prepared.authenticated)
 }
 
 pub fn prove_c61_authenticated_whir_base(
@@ -351,6 +396,40 @@ pub fn verify_c61_authenticated_whir_base(
     transcript.append("zero_open_tag", C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES as u64);
     if !zero_open_verify(residual, proof.zero_open_tag) {
         return Err(C61AuthenticatedWhirError::new("C6AWH1 authenticated target ZeroOpen failed"));
+    }
+    Ok(())
+}
+
+/// Verifier mirror of
+/// [`finish_c61_authenticated_whir_base_with_zero_rows`].
+pub fn verify_c61_authenticated_whir_base_with_zero_rows(
+    input: C61AuthenticatedWhirVerifierInput,
+    zero_rows: &[VerifierKey],
+    proof: C61AuthenticatedWhirBaseProof,
+    context: &mut VerifierCtx,
+    transcript: &mut Transcript,
+) -> Result<()> {
+    if zero_rows.is_empty() {
+        return Err(C61AuthenticatedWhirError::new(
+            "C6AWH1 folded arithmetic closure requires at least one zero row",
+        ));
+    }
+    let mask_domain = input.mask_range.correlation_domain(input.id)?;
+    let mask_key = context
+        .expand_full_verifier_keys(mask_domain, 1)
+        .into_iter()
+        .next()
+        .ok_or_else(|| C61AuthenticatedWhirError::new("C6AWH1 missing verifier mask key"))?;
+    let mut residual = c61_authenticated_whir_verifier_residual(input, mask_key, context.delta);
+    let challenge = transcript.challenge_fp2();
+    let mut weight = Fp2::ONE;
+    for row in zero_rows {
+        weight = weight * challenge;
+        residual = residual.add(row.scale(weight));
+    }
+    transcript.append("zero_open_tag", C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES as u64);
+    if !zero_open_verify(residual, proof.zero_open_tag) {
+        return Err(C61AuthenticatedWhirError::new("C6AWH1 folded arithmetic ZeroOpen failed"));
     }
     Ok(())
 }
@@ -473,6 +552,88 @@ mod tests {
         assert_eq!(verifier_context.counters, expected);
         assert_eq!(prover_transcript.total_bytes(), 16);
         assert_eq!(prover_transcript.ledger(), verifier_transcript.ledger());
+    }
+
+    #[test]
+    fn arithmetic_zero_rows_share_the_existing_whir_mask_and_tag() {
+        let id = C61NativeChainId { component: C61NativeComponent::Compiler, repetition: 0 };
+        let delta = f(701);
+        let gamma = f(709);
+        let masked_claim = f(719);
+        let (target, target_key) = target(f(727), f(733), delta);
+        let combined = masked_claim + gamma * target.x;
+        let zero_rows: Vec<_> =
+            (0..7).map(|index| ProverAuthed::new(Fp2::ZERO, f(739 + index))).collect();
+        let zero_keys: Vec<_> = zero_rows.iter().map(|row| VerifierKey::new(row.m)).collect();
+        let mut prover_correlations = CorrelationStream::new(PCG_SEEDS[0]);
+        let prepared =
+            prepare_c61_authenticated_whir_mask(id, range(0), &mut prover_correlations).unwrap();
+        let shifted_masked_claim = prepared.shifted_masked_claim(masked_claim);
+        let mut prover_transcript = Transcript::new([0xA7; 32]);
+        let closure = finish_c61_authenticated_whir_base_with_zero_rows(
+            prepared,
+            C61AuthenticatedWhirProverFinishInput { combined, shifted_masked_claim, gamma, target },
+            &zero_rows,
+            &mut prover_transcript,
+        )
+        .unwrap();
+        let verifier_input = C61AuthenticatedWhirVerifierInput {
+            id,
+            mask_range: range(0),
+            combined,
+            shifted_masked_claim,
+            gamma,
+            target: target_key,
+        };
+        let mut verifier_context = VerifierCtx::new(PCG_SEEDS[0], delta);
+        let mut verifier_transcript = Transcript::new([0xA7; 32]);
+        verify_c61_authenticated_whir_base_with_zero_rows(
+            verifier_input,
+            &zero_keys,
+            closure.proof,
+            &mut verifier_context,
+            &mut verifier_transcript,
+        )
+        .unwrap();
+        assert_eq!(closure.proof.encode().len(), C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES);
+        assert_eq!(
+            prover_correlations.counters,
+            CorrCounters { sub_corrs: 0, full_corrs: 1, domains: 1 }
+        );
+        assert_eq!(prover_correlations.counters, verifier_context.counters);
+        assert_eq!(prover_transcript.total_bytes(), 16);
+        assert_eq!(prover_transcript.ledger(), verifier_transcript.ledger());
+
+        let verify_changed = |rows: &[VerifierKey]| {
+            let mut context = VerifierCtx::new(PCG_SEEDS[0], delta);
+            let mut transcript = Transcript::new([0xA7; 32]);
+            verify_c61_authenticated_whir_base_with_zero_rows(
+                verifier_input,
+                rows,
+                closure.proof,
+                &mut context,
+                &mut transcript,
+            )
+        };
+        assert!(verify_changed(&zero_keys[..zero_keys.len() - 1]).is_err());
+        let mut changed_keys = zero_keys.clone();
+        changed_keys[3] = changed_keys[3].add(VerifierKey::new(Fp2::ONE));
+        assert!(verify_changed(&changed_keys).is_err());
+        assert!(verify_changed(&[]).is_err());
+
+        let mut changed_rows = zero_rows;
+        changed_rows[2].x = Fp2::ONE;
+        let mut changed_correlations = CorrelationStream::new(PCG_SEEDS[0]);
+        let changed_prepared =
+            prepare_c61_authenticated_whir_mask(id, range(0), &mut changed_correlations).unwrap();
+        let mut changed_transcript = Transcript::new([0xA7; 32]);
+        assert!(finish_c61_authenticated_whir_base_with_zero_rows(
+            changed_prepared,
+            C61AuthenticatedWhirProverFinishInput { combined, shifted_masked_claim, gamma, target },
+            &changed_rows,
+            &mut changed_transcript,
+        )
+        .is_err());
     }
 
     #[test]

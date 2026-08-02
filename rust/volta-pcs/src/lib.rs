@@ -41,8 +41,9 @@ pub use batch::{
     CpuClaimReduceSettlement, CudaClaimReduceSettlement,
 };
 pub use c61_authenticated_whir::{
-    finish_c61_authenticated_whir_base, prepare_c61_authenticated_whir_mask,
-    prove_c61_authenticated_whir_base, verify_c61_authenticated_whir_base,
+    finish_c61_authenticated_whir_base, finish_c61_authenticated_whir_base_with_zero_rows,
+    prepare_c61_authenticated_whir_mask, prove_c61_authenticated_whir_base,
+    verify_c61_authenticated_whir_base, verify_c61_authenticated_whir_base_with_zero_rows,
     C61AuthenticatedWhirAffineClaim, C61AuthenticatedWhirBaseProof, C61AuthenticatedWhirError,
     C61AuthenticatedWhirMaskRange, C61AuthenticatedWhirPreparedMask,
     C61AuthenticatedWhirProverClosure, C61AuthenticatedWhirProverFinishInput,

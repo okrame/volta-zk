@@ -41,7 +41,10 @@ use volta_mac::{
 #[cfg(feature = "c6-trace")]
 mod fused_fixture;
 #[cfg(feature = "c6-trace")]
-pub use fused_fixture::{build_c6_residual_fused_scaled_fixture, C6ResidualFusedScaledFixture};
+pub use fused_fixture::{
+    build_c6_residual_direct_fused_scaled_fixture, build_c6_residual_fused_scaled_fixture,
+    C6ResidualFusedScaledFixture,
+};
 
 #[cfg(feature = "c6-trace")]
 pub(crate) static C6_RESIDUAL_TRACE_FIXTURE_LOCK: Mutex<()> = Mutex::new(());
@@ -11739,5 +11742,98 @@ mod tests {
         assert!(legacy_claims
             .release_direct_postclaim_points(fixture.operation_plan(), postclaim_points)
             .is_err());
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn direct_schedule_matches_v3_grammar_and_exact_terminal_functionals() {
+        let legacy = build_c6_residual_fused_scaled_fixture().unwrap();
+        let direct = build_c6_residual_direct_fused_scaled_fixture().unwrap();
+        assert_eq!(legacy.manifest(), direct.manifest());
+        assert_eq!(legacy.relation().protocol_version(), RESIDUAL_RELATION_PROTOCOL_V3);
+        assert_eq!(direct.relation().protocol_version(), RESIDUAL_RELATION_PROTOCOL_V4);
+        assert!(direct.compilation().is_satisfied());
+        assert_eq!(legacy.compilation().family_outputs(), direct.compilation().family_outputs());
+        assert_eq!(direct.compilation().family_outputs()[0], [15, 4, 4, 36, 6, 2, 953, 28]);
+
+        for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
+            let mut legacy_audit = C6ResidualAtomicEventAuditSink::new(proof_repetition);
+            let legacy_summary = replay_c6_residual_atomic_events(
+                legacy.operation_plan(),
+                legacy.extraction(),
+                legacy.runtime(),
+                legacy.linear(),
+                legacy.relation(),
+                proof_repetition,
+                &mut legacy_audit,
+            )
+            .unwrap();
+            let mut direct_audit = C6ResidualAtomicEventAuditSink::new(proof_repetition);
+            let direct_summary = replay_c6_residual_atomic_events(
+                direct.operation_plan(),
+                direct.extraction(),
+                direct.runtime(),
+                direct.linear(),
+                direct.relation(),
+                proof_repetition,
+                &mut direct_audit,
+            )
+            .unwrap();
+            assert_eq!(legacy_summary.family_outputs(), direct_summary.family_outputs());
+            assert_eq!(
+                legacy_summary.family_coefficient_writes(),
+                direct_summary.family_coefficient_writes()
+            );
+            assert_eq!(legacy_summary.atomic_outputs(), direct_summary.atomic_outputs());
+            assert_eq!(legacy_summary.coefficient_writes(), direct_summary.coefficient_writes());
+            assert_ne!(legacy_summary.semantic_digest(), direct_summary.semantic_digest());
+        }
+
+        let leaf_point = [Fp2::ZERO, Fp2::ONE, fp2(2), fp2(3), fp2(5), fp2(7), fp2(11)];
+        let auxiliary_point = [fp2(13), fp2(17)];
+        let output_beta = fp2(191);
+        let terminal_relation = compile_c6_residual_terminal_functional_relation_reference(
+            direct.operation_plan(),
+            direct.extraction(),
+            direct.runtime(),
+            direct.linear(),
+            direct.relation(),
+            [&leaf_point, &leaf_point],
+            [&auxiliary_point, &auxiliary_point],
+            output_beta,
+        )
+        .unwrap();
+        let mut replayed = [Fp2::ZERO; C6_RESIDUAL_TERMINAL_FUNCTIONALS];
+        for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
+            let terminal = compile_c6_residual_fused_terminal_coefficients(
+                direct.operation_plan(),
+                direct.extraction(),
+                direct.runtime(),
+                direct.linear(),
+                direct.relation(),
+                proof_repetition,
+                &leaf_point,
+                &auxiliary_point,
+            )
+            .unwrap();
+            assert_eq!(terminal.coefficient_writes(), 1_200);
+            assert_eq!(
+                terminal.target(),
+                direct.compilation().statements()[usize::from(proof_repetition)].target()
+            );
+            let start =
+                usize::from(proof_repetition) * C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION;
+            replayed[start..start + C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION]
+                .copy_from_slice(&terminal.terminal_functionals());
+        }
+        assert_eq!(terminal_relation.terminal_functionals(), &replayed);
+        assert_eq!(terminal_relation.coefficient_writes(), 2_400);
+        let expected_fold = replayed
+            .iter()
+            .fold((Fp2::ZERO, Fp2::ONE), |(sum, power), value| {
+                (sum + power * *value, power * output_beta)
+            })
+            .0;
+        assert_eq!(terminal_relation.functional_fold(), expected_fold);
     }
 }

@@ -298,7 +298,41 @@ fn build_relation(
     Ok(relation)
 }
 
-pub fn build_c6_residual_fused_scaled_fixture() -> C6ResidualResult<C6ResidualFusedScaledFixture> {
+fn build_direct_relation(
+    installed: &C6InstalledOperationPlan,
+    linear: &C6CompiledLinearResidual,
+    manifest: C6ResidualRelationManifest,
+    leaf: &C6PairedResidualLeafWitness,
+    auxiliary: &C6PairedResidualAuxiliaryWitness,
+    chi: Fp2,
+) -> C6ResidualResult<C6ResidualRelationChallenges> {
+    let dimensions = C6ResidualDirectEqualityPoints::dimensions(&manifest)?;
+    let point = |base: u64, stream: usize, dimension: usize| {
+        (0..dimension)
+            .map(|coordinate| fp2(base + 31 * stream as u64 + coordinate as u64))
+            .collect::<Vec<_>>()
+    };
+    let alpha = std::array::from_fn(|stream| point(0x401, stream, dimensions.alpha));
+    let terminal = std::array::from_fn(|stream| point(0x501, stream, dimensions.terminal));
+    let atomic = std::array::from_fn(|stream| point(0x601, stream, dimensions.atomic));
+    let alpha = C6ResidualDirectAlphaPoints::new(&manifest, alpha)?;
+    let postclaim = C6ResidualDirectPostClaimPoints::new(&manifest, terminal, atomic)?;
+    let retained = C6ResidualRetainedChallenges::new(&manifest, vec![chi], fp2(79))?;
+    let root = C6ResidualRelationRootBound::bind_fixed_roots(manifest, [0xD1; 32], [0xD2; 32])?;
+    root.release_direct_alpha_points(retained, alpha)?
+        .commit_public_claims_from_live(installed, linear, leaf, auxiliary)?
+        .release_direct_postclaim_points(installed, postclaim)
+}
+
+#[derive(Clone, Copy)]
+enum ScaledRelationSchedule {
+    LegacyV3,
+    DirectV4,
+}
+
+fn build_scaled_fixture(
+    schedule: ScaledRelationSchedule,
+) -> C6ResidualResult<C6ResidualFusedScaledFixture> {
     let _fixture_guard = C6_RESIDUAL_TRACE_FIXTURE_LOCK
         .lock()
         .map_err(|_| C6ResidualError::new("C6 scaled fixture lock is poisoned"))?;
@@ -331,8 +365,14 @@ pub fn build_c6_residual_fused_scaled_fixture() -> C6ResidualResult<C6ResidualFu
     let auxiliary = closure.transpose_auxiliary_lanes()?;
     let reference =
         C6ResidualRelationReferenceWitness::from_live(&manifest, &leaf, &closure, &auxiliary)?;
-    let relation =
-        build_relation(&operation_plan, &linear, manifest, &leaf, &auxiliary, &reference, chi)?;
+    let relation = match schedule {
+        ScaledRelationSchedule::LegacyV3 => {
+            build_relation(&operation_plan, &linear, manifest, &leaf, &auxiliary, &reference, chi)?
+        }
+        ScaledRelationSchedule::DirectV4 => {
+            build_direct_relation(&operation_plan, &linear, manifest, &leaf, &auxiliary, chi)?
+        }
+    };
     let compilation = compile_c6_residual_atomic_relation_reference(
         &operation_plan,
         &extraction,
@@ -374,6 +414,15 @@ pub fn build_c6_residual_fused_scaled_fixture() -> C6ResidualResult<C6ResidualFu
         compilation,
         semantic_compiler_digests,
     })
+}
+
+pub fn build_c6_residual_fused_scaled_fixture() -> C6ResidualResult<C6ResidualFusedScaledFixture> {
+    build_scaled_fixture(ScaledRelationSchedule::LegacyV3)
+}
+
+pub fn build_c6_residual_direct_fused_scaled_fixture(
+) -> C6ResidualResult<C6ResidualFusedScaledFixture> {
+    build_scaled_fixture(ScaledRelationSchedule::DirectV4)
 }
 
 fn trace_error(error: impl fmt::Display) -> C6ResidualError {

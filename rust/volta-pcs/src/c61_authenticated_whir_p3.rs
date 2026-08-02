@@ -26,16 +26,20 @@ use p3_whir_c61::pcs::zk::{
 use p3_whir_c61::{ClaimlessAffineClaim, ClaimlessZkSumcheckData};
 use rand_010::rngs::StdRng;
 use rand_010::{RngExt, SeedableRng};
-use volta_field::{Fp2, P};
-use volta_mac::{CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey};
+use volta_field::{Fp, Fp2, P};
+use volta_mac::{
+    zero_open_verify, C6InstalledOperationPlan, C6OperationPlanTerminalMetadata,
+    C6TraceSourceManifest, CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey,
+};
 use volta_proto::c6::{
     C6CacheHead, C6ClientAttempt, C6ClientState, C6CorrelationRange, C6PairedCorrelationRanges,
     C6Workload,
 };
 
 use crate::c61_authenticated_whir::{
-    finish_c61_authenticated_whir_base, prepare_c61_authenticated_whir_mask,
-    simulate_c61_authenticated_whir_base_view, verify_c61_authenticated_whir_base,
+    finish_c61_authenticated_whir_base, finish_c61_authenticated_whir_base_with_zero_rows,
+    prepare_c61_authenticated_whir_mask, simulate_c61_authenticated_whir_base_view,
+    verify_c61_authenticated_whir_base, verify_c61_authenticated_whir_base_with_zero_rows_residual,
     C61AuthenticatedWhirAffineClaim, C61AuthenticatedWhirBaseProof, C61AuthenticatedWhirMaskRange,
     C61AuthenticatedWhirProverFinishInput, C61AuthenticatedWhirVerifierInput,
     C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES,
@@ -48,6 +52,10 @@ use crate::c61_interactive_driver::{
 };
 use crate::c61_public_compression::{C61NativeChainId, C61NativeComponent};
 use crate::c61_shared_round_challenger::c61_shared_round_pair;
+use crate::c61_terminal_functional::{
+    authenticate_c61_sparse_response_targets_prover,
+    authenticate_c61_sparse_response_targets_verifier, C61SparseRationalBlindArithmeticProof,
+};
 use crate::c61_whir_reference::{
     c61_max_pruned_binary_siblings, c61_p3_fp2_from_volta, c61_reference_mmcs,
     c61_volta_fp2_from_p3, C61Commitment, C61InteractiveChallenger, C61Mmcs, C61MultiProof,
@@ -135,13 +143,26 @@ pub struct C61AuthenticatedP3SharedMultiOracleDiagnostic {
     pub plan_claim_count: usize,
     pub strict_payload_bytes: usize,
     pub strict_payload_max_bytes: usize,
+    /// C6SBA1 bytes for the scaled executable relation fixture.
+    pub arithmetic_payload_bytes: usize,
+    /// Scaled C6SBA1 plus the strict two-oracle C6SMO1 artifact.
+    pub total_provider_payload_bytes: usize,
+    pub response_target_correction_bytes: u64,
+    /// QuickSilver triples in the scaled executable relation fixture.
+    pub arithmetic_product_triples: usize,
+    /// Arithmetic rows folded into the one existing WHIR ZeroOpen.
+    pub folded_zero_rows: usize,
+    /// Wire ledger, including C6SBA1 bodies but excluding its framing.
+    pub provider_transcript_bytes: u64,
     pub provider_interaction: C61WhirInteractionStats,
     pub verifier_interaction: C61WhirInteractionStats,
     pub native_challenges_shared: bool,
     pub postproof_batching_challenge_identical: bool,
     pub plan_reserved_tag_is_zero: bool,
     pub codec_mutations_rejected: bool,
+    pub arithmetic_payload_mutation_rejected: bool,
     pub joint_tag_mutation_rejected: bool,
+    pub subfield_correlations: u64,
     pub full_correlations: u64,
 }
 
@@ -1921,6 +1942,374 @@ fn c61_shared_statement_digest(
     Ok(*hasher.finalize().as_bytes())
 }
 
+fn c61_sparse_shared_statement_digest(
+    response: &C61Commitment,
+    plan: &C61Commitment,
+    response_points: &[Point<C61P3Fp2>],
+    plan_points: &[Point<C61P3Fp2>],
+    relation_digest: [u8; 32],
+    arithmetic_payload: &[u8],
+    plan_values: &[Fp2; 3],
+) -> Result<[u8; 32], String> {
+    let base = c61_shared_statement_digest(response, plan, response_points, plan_points)?;
+    let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c6.1/sparse-shared-statement/v1");
+    hasher.update(&base);
+    hasher.update(&relation_digest);
+    hasher.update(blake3::hash(arithmetic_payload).as_bytes());
+    for value in plan_values {
+        hasher.update(&value.c0.value().to_le_bytes());
+        hasher.update(&value.c1.value().to_le_bytes());
+    }
+    Ok(*hasher.finalize().as_bytes())
+}
+
+struct C61SparseCompilerPhysicalFixture {
+    direct: volta_proto::c6_residual::C6ResidualFusedScaledFixture,
+    terminal_metadata: C6OperationPlanTerminalMetadata,
+    lanes: [volta_proto::c6_residual::C6ResidualFoldedTerminalAdjointLaneReference; 2],
+    packed: volta_proto::c6_residual::C6SparseRationalPackedOracleReference,
+    output_beta: Fp2,
+}
+
+/// Public-only view handed to the verifier phase.  In particular this type
+/// has no extraction map, runtime values, adjoint lanes, response
+/// coefficients, or combined relation vectors.
+struct C61SparseCompilerVerifierFixture<'a> {
+    operation_plan: &'a C6InstalledOperationPlan,
+    terminal_metadata: &'a C6OperationPlanTerminalMetadata,
+    relation_challenges: &'a volta_proto::c6_residual::C6ResidualRelationChallenges,
+    output_beta: Fp2,
+    base_domain_log2: u8,
+    response_digest: [u8; 32],
+    plan_digest: [u8; 32],
+    physical_plan_values: Vec<Fp2>,
+}
+
+impl C61SparseCompilerPhysicalFixture {
+    fn verifier_fixture(&self) -> Result<C61SparseCompilerVerifierFixture<'_>, String> {
+        Ok(C61SparseCompilerVerifierFixture {
+            operation_plan: self.direct.operation_plan(),
+            terminal_metadata: &self.terminal_metadata,
+            relation_challenges: self.direct.relation(),
+            output_beta: self.output_beta,
+            base_domain_log2: self.packed.base_domain_log2(),
+            response_digest: self.packed.response_digest(),
+            plan_digest: self.packed.plan_digest(),
+            physical_plan_values: self
+                .packed
+                .physical_plan_values()
+                .map_err(|error| error.to_string())?
+                .into_iter()
+                .map(Fp2::from_base)
+                .collect(),
+        })
+    }
+}
+
+struct C61SparseCompilerProviderPhase {
+    public_relation: volta_proto::c6_residual::C6ResidualSparseRationalPublicRelation,
+    physical_points: volta_proto::c6_residual::C6SparseRationalPhysicalOpeningPoints,
+    response_values: [Fp2; 12],
+    plan_values: [Fp2; 3],
+    response_targets: [ProverAuthed; 12],
+    zero_rows: Vec<ProverAuthed>,
+    arithmetic_payload: Vec<u8>,
+    product_triples: usize,
+}
+
+struct C61SparseCompilerVerifierPhase {
+    public_relation: volta_proto::c6_residual::C6ResidualSparseRationalPublicRelation,
+    physical_points: volta_proto::c6_residual::C6SparseRationalPhysicalOpeningPoints,
+    response_keys: [VerifierKey; 12],
+    plan_values: [Fp2; 3],
+    zero_rows: Vec<VerifierKey>,
+    product_triples: usize,
+}
+
+fn c61_sparse_compiler_physical_fixture() -> Result<C61SparseCompilerPhysicalFixture, String> {
+    use volta_proto::c6_residual::*;
+
+    let direct =
+        build_c6_residual_direct_fused_scaled_fixture().map_err(|error| error.to_string())?;
+    let topology = direct.operation_plan().topology();
+    let source_manifest = C6TraceSourceManifest::new(
+        topology.source_count,
+        topology.source_schedule_digest,
+        direct.manifest().product_mask_sources().to_vec(),
+    )
+    .map_err(|error| error.to_string())?;
+    let terminal_metadata =
+        C6OperationPlanTerminalMetadata::from_installed(direct.operation_plan(), &source_manifest)
+            .map_err(|error| error.to_string())?;
+    let leaf_point = [
+        Fp2::from_base(Fp::new(2)),
+        Fp2::from_base(Fp::new(3)),
+        Fp2::from_base(Fp::new(5)),
+        Fp2::from_base(Fp::new(7)),
+        Fp2::from_base(Fp::new(11)),
+        Fp2::from_base(Fp::new(13)),
+        Fp2::from_base(Fp::new(17)),
+    ];
+    let output_beta = Fp2::new(Fp::new(191), Fp::new(17));
+    let lanes = std::array::from_fn(|repetition| {
+        compile_c6_residual_folded_terminal_adjoint_lane_reference(
+            direct.operation_plan(),
+            &terminal_metadata,
+            direct.extraction(),
+            direct.runtime(),
+            direct.relation(),
+            repetition as u8,
+            &leaf_point,
+            output_beta,
+        )
+        .expect("scaled C6SPR3 adjoint lane fixture")
+    });
+    let packed = compile_c6_sparse_rational_packed_oracle_reference(
+        direct.operation_plan(),
+        direct.extraction(),
+        direct.runtime(),
+        [&lanes[0], &lanes[1]],
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(C61SparseCompilerPhysicalFixture { direct, terminal_metadata, lanes, packed, output_beta })
+}
+
+fn sample_c61_sparse_relation_challenges(
+    operation_plan: &C6InstalledOperationPlan,
+    transcript: &mut Transcript,
+) -> Result<volta_proto::c6_residual::C6ResidualSparseRationalChallenges, String> {
+    volta_proto::c6_residual::C6ResidualSparseRationalChallenges::new(
+        operation_plan.topology(),
+        transcript.challenge_fp2(),
+        transcript.challenge_fp2(),
+        transcript.challenge_fp2(),
+        transcript.challenge_fp2(),
+    )
+    .map_err(|error| error.to_string())
+}
+
+fn prove_c61_sparse_compiler_relation_phase(
+    fixture: &C61SparseCompilerPhysicalFixture,
+    stream: &mut CorrelationStream,
+    doms: &mut volta_proto::logup::Doms,
+    transcript: &mut Transcript,
+) -> Result<C61SparseCompilerProviderPhase, String> {
+    use volta_proto::c6_residual::*;
+    use volta_proto::prod_check::prod_batch_prover;
+
+    let sparse_challenges =
+        sample_c61_sparse_relation_challenges(fixture.direct.operation_plan(), transcript)?;
+    let relation = compile_c6_residual_sparse_rational_relation_reference(
+        fixture.direct.operation_plan(),
+        &fixture.terminal_metadata,
+        fixture.direct.extraction(),
+        fixture.direct.runtime(),
+        fixture.direct.relation(),
+        [&fixture.lanes[0], &fixture.lanes[1]],
+        sparse_challenges,
+        fixture.output_beta,
+    )
+    .map_err(|error| error.to_string())?;
+    let public_relation = C6ResidualSparseRationalPublicRelation::new(
+        fixture.direct.operation_plan(),
+        &fixture.terminal_metadata,
+        fixture.direct.relation(),
+        sparse_challenges,
+        fixture.output_beta,
+    )
+    .map_err(|error| error.to_string())?;
+    fixture.packed.validate_relation(&relation).map_err(|error| error.to_string())?;
+
+    let mut products = Vec::new();
+    let mut zero_rows = Vec::new();
+    let (gkr, leaf_claims) = prove_c6_residual_sparse_rational_gkr_blind_reference(
+        fixture.direct.operation_plan(),
+        fixture.direct.extraction(),
+        fixture.direct.runtime(),
+        &relation,
+        &public_relation,
+        stream,
+        doms,
+        transcript,
+        &mut volta_proto::logup::Counters::default(),
+        &mut products,
+        &mut zero_rows,
+    )
+    .map_err(|error| error.to_string())?;
+    let (joint, terminal) = prove_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
+        fixture.direct.operation_plan(),
+        &relation,
+        &public_relation,
+        &fixture.packed,
+        &leaf_claims,
+        stream,
+        doms,
+        transcript,
+    )
+    .map_err(|error| error.to_string())?;
+    let physical_points = fixture
+        .packed
+        .physical_opening_points(terminal.points().input_point())
+        .map_err(|error| error.to_string())?;
+    let response_values = fixture
+        .packed
+        .evaluate_physical_response_openings(&physical_points)
+        .map_err(|error| error.to_string())?;
+    let plan_values = fixture
+        .packed
+        .evaluate_physical_plan_openings(&physical_points)
+        .map_err(|error| error.to_string())?;
+    let (response_target_proof, response_targets) =
+        authenticate_c61_sparse_response_targets_prover(&response_values, stream, doms, transcript)
+            .map_err(|error| error.to_string())?;
+    let plan_targets = plan_values.map(ProverAuthed::from_public);
+    let terminal_proof = crate::finish_c61_sparse_rational_blind_physical_terminal_prover(
+        terminal,
+        &response_targets,
+        &plan_targets,
+        stream,
+        doms,
+        transcript,
+        &mut products,
+        &mut zero_rows,
+    )
+    .map_err(|error| error.to_string())?;
+    let product_triples = products.len();
+    let chi = transcript.challenge_fp2();
+    let product_domain = doms.take(1);
+    let product_mask = stream.draw_product_mask(product_domain, product_triples);
+    let product_proof = prod_batch_prover(&products, chi, product_mask, transcript);
+    let arithmetic = C61SparseRationalBlindArithmeticProof::new(
+        fixture.direct.operation_plan(),
+        public_relation.digest(),
+        response_target_proof,
+        gkr,
+        joint,
+        terminal_proof,
+        product_proof,
+    )
+    .map_err(|error| error.to_string())?;
+    let arithmetic_payload = arithmetic
+        .encode(fixture.direct.operation_plan(), public_relation.digest())
+        .map_err(|error| error.to_string())?;
+    Ok(C61SparseCompilerProviderPhase {
+        public_relation,
+        physical_points,
+        response_values,
+        plan_values,
+        response_targets,
+        zero_rows,
+        arithmetic_payload,
+        product_triples,
+    })
+}
+
+fn verify_c61_sparse_compiler_relation_phase(
+    fixture: &C61SparseCompilerVerifierFixture<'_>,
+    arithmetic_payload: &[u8],
+    context: &mut VerifierCtx,
+    doms: &mut volta_proto::logup::Doms,
+    transcript: &mut Transcript,
+) -> Result<C61SparseCompilerVerifierPhase, String> {
+    use volta_proto::c6_residual::*;
+    use volta_proto::prod_check::prod_batch_verify;
+
+    let sparse_challenges =
+        sample_c61_sparse_relation_challenges(fixture.operation_plan, transcript)?;
+    let public_relation = C6ResidualSparseRationalPublicRelation::new(
+        fixture.operation_plan,
+        fixture.terminal_metadata,
+        fixture.relation_challenges,
+        sparse_challenges,
+        fixture.output_beta,
+    )
+    .map_err(|error| error.to_string())?;
+    let arithmetic = C61SparseRationalBlindArithmeticProof::decode(
+        fixture.operation_plan,
+        public_relation.digest(),
+        arithmetic_payload,
+    )
+    .map_err(|error| error.to_string())?;
+    let (response_target_proof, gkr, joint, terminal_proof, product_proof) =
+        arithmetic.into_parts();
+    let mut products = Vec::new();
+    let mut zero_rows = Vec::new();
+    let leaf_keys = verify_c6_residual_sparse_rational_gkr_blind_reference(
+        fixture.operation_plan,
+        &public_relation,
+        &gkr,
+        context,
+        doms,
+        transcript,
+        &mut products,
+        &mut zero_rows,
+    )
+    .map_err(|error| error.to_string())?
+    .ok_or_else(|| "C6SPR3 blind GKR verifier rejected".to_owned())?;
+    let terminal = verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
+        fixture.operation_plan,
+        fixture.terminal_metadata,
+        fixture.relation_challenges,
+        &public_relation,
+        fixture.base_domain_log2,
+        fixture.response_digest,
+        fixture.plan_digest,
+        &leaf_keys,
+        &joint,
+        context,
+        doms,
+        transcript,
+    )
+    .map_err(|error| error.to_string())?
+    .ok_or_else(|| "C6SPR3 blind joint verifier rejected".to_owned())?;
+    let physical_points = C6SparseRationalPhysicalOpeningPoints::new(
+        fixture.base_domain_log2,
+        fixture.response_digest,
+        fixture.plan_digest,
+        terminal.points().input_point(),
+    )
+    .map_err(|error| error.to_string())?;
+    let plan_values = std::array::from_fn(|index| {
+        volta_proto::mle::eval_mle(&fixture.physical_plan_values, &physical_points.plan()[index])
+    });
+    let response_keys = authenticate_c61_sparse_response_targets_verifier(
+        response_target_proof,
+        context,
+        doms,
+        transcript,
+    )
+    .map_err(|error| error.to_string())?;
+    let plan_keys = plan_values.map(|value| VerifierKey::from_public(value, context.delta));
+    crate::finish_c61_sparse_rational_blind_physical_terminal_verifier(
+        terminal,
+        &response_keys,
+        &plan_keys,
+        &terminal_proof,
+        context,
+        doms,
+        transcript,
+        &mut products,
+        &mut zero_rows,
+    )
+    .map_err(|error| error.to_string())?;
+    let product_triples = products.len();
+    let chi = transcript.challenge_fp2();
+    let product_domain = doms.take(1);
+    let product_key = context.expand_product_mask_verifier_key(product_domain, product_triples);
+    transcript.append("prod_check_m0_m1", 32);
+    if !prod_batch_verify(&products, product_key, context.delta, chi, &product_proof) {
+        return Err("C6SPR3 global QuickSilver product verification failed".to_owned());
+    }
+    Ok(C61SparseCompilerVerifierPhase {
+        public_relation,
+        physical_points,
+        response_keys,
+        plan_values,
+        zero_rows,
+        product_triples,
+    })
+}
+
 /// Exercise the C6SPR3 physical response/plan opening as Dn and D(n-1)
 /// commitments sharing every common native verifier challenge, the exact
 /// response-only tail, and one final authenticated residual.  At production
@@ -1928,107 +2317,45 @@ fn c61_shared_statement_digest(
 pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
     response_num_variables: usize,
 ) -> Result<C61AuthenticatedP3SharedMultiOracleDiagnostic, String> {
-    if !(7..=20).contains(&response_num_variables) {
-        return Err("C6SMO1 response diagnostic dimension must be in 7..=20".to_owned());
+    let fixture = c61_sparse_compiler_physical_fixture()?;
+    let verifier_fixture = fixture.verifier_fixture()?;
+    let native_response_num_variables = usize::from(fixture.packed.physical_response_domain_log2());
+    let native_plan_num_variables = usize::from(fixture.packed.plan_domain_log2());
+    if !(native_response_num_variables..=20).contains(&response_num_variables) {
+        return Err(format!(
+            "C6SPR3 padded response geometry must be in D{native_response_num_variables}..=D20"
+        ));
     }
     let plan_num_variables = response_num_variables - 1;
-    let base_domain_log2 = u8::try_from(response_num_variables - 3)
-        .map_err(|_| "C6SMO1 scaled base dimension exceeds u8".to_owned())?;
-    let input_point: Vec<Fp2> = (0..base_domain_log2)
-        .map(|index| {
-            Fp2::new(
-                volta_field::Fp::new(700 + u64::from(index) * 2),
-                volta_field::Fp::new(701 + u64::from(index) * 2),
-            )
-        })
-        .collect();
-    let physical_points = volta_proto::c6_residual::C6SparseRationalPhysicalOpeningPoints::new(
-        base_domain_log2,
-        [0x31; 32],
-        [0x41; 32],
-        &input_point,
-    )
-    .map_err(|error| error.to_string())?;
-    let response_points: Vec<_> = physical_points
-        .response()
-        .iter()
-        .map(|point| Point::new(point.iter().copied().map(c61_p3_fp2_from_volta).collect()))
-        .collect();
-    let plan_points: Vec<_> = physical_points
-        .plan()
-        .iter()
-        .map(|point| Point::new(point.iter().copied().map(c61_p3_fp2_from_volta).collect()))
-        .collect();
-    if response_points.len() != 12 || plan_points.len() != 3 {
-        return Err("C6SMO1 physical opening census is not 12+3".to_owned());
+    if plan_num_variables < native_plan_num_variables {
+        return Err("C6SPR3 plan padding dimension is below its native layout".to_owned());
     }
-    if response_points.iter().any(|point| point.num_variables() != response_num_variables)
-        || plan_points.iter().any(|point| point.num_variables() != plan_num_variables)
-    {
-        return Err("C6SMO1 physical opening dimensions are noncanonical".to_owned());
-    }
-
-    let response_witness = Poly::new(
-        (0..1usize << response_num_variables)
-            .map(|index| Goldilocks::from_u64((index as u64).wrapping_mul(43).wrapping_add(11)))
-            .collect(),
-    );
-    let plan_witness = Poly::new(
-        (0..1usize << plan_num_variables)
-            .map(|index| Goldilocks::from_u64((index as u64).wrapping_mul(47).wrapping_add(13)))
-            .collect(),
-    );
-    let response_evaluations: Vec<_> =
-        response_points.iter().map(|point| response_witness.eval_base(point)).collect();
-    let plan_evaluations: Vec<_> =
-        plan_points.iter().map(|point| plan_witness.eval_base(point)).collect();
-    let response_claims: Vec<_> =
-        response_points.iter().cloned().zip(response_evaluations.iter().copied()).collect();
-    let plan_claims: Vec<_> =
-        plan_points.iter().cloned().zip(plan_evaluations.iter().copied()).collect();
-
-    let delta = Fp2::new(volta_field::Fp::new(P - 83), volta_field::Fp::new(0xC6_5202));
-    let response_targets: Vec<_> = response_evaluations
-        .iter()
-        .enumerate()
-        .map(|(index, evaluation)| {
-            ProverAuthed::new(
-                c61_volta_fp2_from_p3(*evaluation),
-                Fp2::new(
-                    volta_field::Fp::new(1_301 + index as u64 * 2),
-                    volta_field::Fp::new(1_302 + index as u64 * 2),
-                ),
-            )
-        })
-        .collect();
-    let plan_targets: Vec<_> = plan_evaluations
-        .iter()
-        .enumerate()
-        .map(|(index, evaluation)| {
-            ProverAuthed::new(
-                c61_volta_fp2_from_p3(*evaluation),
-                Fp2::new(
-                    volta_field::Fp::new(1_401 + index as u64 * 2),
-                    volta_field::Fp::new(1_402 + index as u64 * 2),
-                ),
-            )
-        })
-        .collect();
-    let response_keys: Vec<_> = response_targets
-        .iter()
-        .map(|target| VerifierKey::new(target.m + delta * target.x))
-        .collect();
-    let plan_keys: Vec<_> =
-        plan_targets.iter().map(|target| VerifierKey::new(target.m + delta * target.x)).collect();
-
+    let mut response_coefficients = fixture
+        .packed
+        .physical_response_values()
+        .into_iter()
+        .map(|value| Goldilocks::from_u64(value.value()))
+        .collect::<Vec<_>>();
+    response_coefficients.resize(1usize << response_num_variables, Goldilocks::ZERO);
+    let response_check = Poly::new(response_coefficients.clone());
+    let response_witness = Poly::new(response_coefficients);
+    let mut plan_coefficients = fixture
+        .packed
+        .physical_plan_values()
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(|value| Goldilocks::from_u64(value.value()))
+        .collect::<Vec<_>>();
+    plan_coefficients.resize(1usize << plan_num_variables, Goldilocks::ZERO);
+    let plan_check = Poly::new(plan_coefficients.clone());
+    let plan_witness = Poly::new(plan_coefficients);
     let verifier_seed = [0xC2; 32];
     let pcg_seed = [0xD3; 32];
+    let delta = Fp2::new(Fp::new(P - 83), Fp::new(0xC6_5202));
     let id = C61NativeChainId { component: C61NativeComponent::Compiler, repetition: 0 };
     let mask_range = C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 29, range_start: 120_000 };
     let mut correlations = CorrelationStream::new(pcg_seed);
-    let prepared = prepare_c61_authenticated_whir_mask(id, mask_range, &mut correlations)
-        .map_err(|error| error.to_string())?;
-    let response_base_shift = c61_p3_fp2_from_volta(prepared.value());
+    let mut provider_doms = volta_proto::logup::Doms::new(50_000);
 
     let mut provider_transcript = Transcript::new(verifier_seed);
     let (mut response_challenger, mut plan_challenger, provider_coordinator) =
@@ -2054,11 +2381,91 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
         response_prover.commit(response_witness, &mut response_challenger, &mut response_rng);
     let (plan_commitment, plan_data) =
         plan_prover.commit(plan_witness, &mut plan_challenger, &mut plan_rng);
-    let statement_digest = c61_shared_statement_digest(
+    let provider_phase = provider_coordinator.with_pre_statement_transcript(|transcript| {
+        prove_c61_sparse_compiler_relation_phase(
+            &fixture,
+            &mut correlations,
+            &mut provider_doms,
+            transcript,
+        )
+    })?;
+    let arithmetic_payload_mutation_rejected = {
+        let mut changed_payload = provider_phase.arithmetic_payload.clone();
+        let changed_index = changed_payload.len() / 2;
+        changed_payload[changed_index] ^= 1;
+        let mut changed_context = VerifierCtx::new(pcg_seed, delta);
+        let mut changed_doms = volta_proto::logup::Doms::new(50_000);
+        let mut changed_transcript = Transcript::new(verifier_seed);
+        verify_c61_sparse_compiler_relation_phase(
+            &verifier_fixture,
+            &changed_payload,
+            &mut changed_context,
+            &mut changed_doms,
+            &mut changed_transcript,
+        )
+        .is_err()
+    };
+    let response_points: Vec<_> = provider_phase
+        .physical_points
+        .response()
+        .iter()
+        .map(|point| {
+            let mut backend_point = point.clone();
+            backend_point.resize(response_num_variables, Fp2::ZERO);
+            backend_point.reverse();
+            Point::new(backend_point.into_iter().map(c61_p3_fp2_from_volta).collect())
+        })
+        .collect();
+    let plan_points: Vec<_> = provider_phase
+        .physical_points
+        .plan()
+        .iter()
+        .map(|point| {
+            let mut backend_point = point.clone();
+            backend_point.resize(plan_num_variables, Fp2::ZERO);
+            backend_point.reverse();
+            Point::new(backend_point.into_iter().map(c61_p3_fp2_from_volta).collect())
+        })
+        .collect();
+    if response_points.len() != 12
+        || plan_points.len() != 3
+        || response_points.iter().any(|point| point.num_variables() != response_num_variables)
+        || plan_points.iter().any(|point| point.num_variables() != plan_num_variables)
+    {
+        return Err("C6SPR3 exact physical opening point shape mismatch".to_owned());
+    }
+    if response_points
+        .iter()
+        .zip(provider_phase.response_values)
+        .any(|(point, expected)| c61_volta_fp2_from_p3(response_check.eval_base(point)) != expected)
+        || plan_points
+            .iter()
+            .zip(provider_phase.plan_values)
+            .any(|(point, expected)| c61_volta_fp2_from_p3(plan_check.eval_base(point)) != expected)
+    {
+        return Err("C6SPR3 Volta-LSB/P3-MSB physical evaluation adapter mismatch".to_owned());
+    }
+    let response_claims: Vec<_> = response_points
+        .iter()
+        .cloned()
+        .zip(provider_phase.response_values.map(c61_p3_fp2_from_volta))
+        .collect();
+    let plan_claims: Vec<_> = plan_points
+        .iter()
+        .cloned()
+        .zip(provider_phase.plan_values.map(c61_p3_fp2_from_volta))
+        .collect();
+    let prepared = prepare_c61_authenticated_whir_mask(id, mask_range, &mut correlations)
+        .map_err(|error| error.to_string())?;
+    let response_base_shift = c61_p3_fp2_from_volta(prepared.value());
+    let statement_digest = c61_sparse_shared_statement_digest(
         &response_commitment,
         &plan_commitment,
         &response_points,
         &plan_points,
+        provider_phase.public_relation.digest(),
+        &provider_phase.arithmetic_payload,
+        &provider_phase.plan_values,
     )?;
     response_challenger
         .observe_public_points(statement_digest, &response_points)
@@ -2130,9 +2537,10 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
     let response_affine = affine_from_p3(response_output.target);
     let plan_affine = affine_from_p3(plan_output.target);
     let response_target = response_affine.authenticate_prover(aggregate_prover_targets(
-        &response_targets,
+        &provider_phase.response_targets,
         &response_output.claim_weights,
     )?);
+    let plan_targets = provider_phase.plan_values.map(ProverAuthed::from_public);
     let plan_target = plan_affine
         .authenticate_prover(aggregate_prover_targets(&plan_targets, &plan_output.claim_weights)?);
     let response_gamma = c61_volta_fp2_from_p3(response_output.base_case.gamma);
@@ -2144,7 +2552,7 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
         + provider_eta
             * (c61_volta_fp2_from_p3(plan_output.base_case.combined)
                 - c61_volta_fp2_from_p3(plan_output.base_case.shifted_masked_claim));
-    let joint_closure = finish_c61_authenticated_whir_base(
+    let joint_closure = finish_c61_authenticated_whir_base_with_zero_rows(
         prepared,
         C61AuthenticatedWhirProverFinishInput {
             combined: joint_combined,
@@ -2152,6 +2560,7 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
             gamma: Fp2::ONE,
             target: joint_target,
         },
+        &provider_phase.zero_rows,
         &mut provider_transcript,
     )
     .map_err(|error| error.to_string())?;
@@ -2235,11 +2644,33 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
     let plan_mmcs = c61_reference_mmcs();
     response_challenger.observe(response_commitment.clone());
     plan_challenger.observe(plan_commitment.clone());
-    let verifier_statement_digest = c61_shared_statement_digest(
+    let mut context = VerifierCtx::new(pcg_seed, delta);
+    let mut verifier_doms = volta_proto::logup::Doms::new(50_000);
+    let verifier_phase = verifier_coordinator.with_pre_statement_transcript(|transcript| {
+        verify_c61_sparse_compiler_relation_phase(
+            &verifier_fixture,
+            &provider_phase.arithmetic_payload,
+            &mut context,
+            &mut verifier_doms,
+            transcript,
+        )
+    })?;
+    if verifier_phase.public_relation.digest() != provider_phase.public_relation.digest()
+        || verifier_phase.physical_points != provider_phase.physical_points
+        || verifier_phase.plan_values != provider_phase.plan_values
+        || verifier_phase.product_triples != provider_phase.product_triples
+        || verifier_phase.zero_rows.len() != provider_phase.zero_rows.len()
+    {
+        return Err("C6SPR3 provider/verifier pre-statement relation mismatch".to_owned());
+    }
+    let verifier_statement_digest = c61_sparse_shared_statement_digest(
         &response_commitment,
         &plan_commitment,
         &response_points,
         &plan_points,
+        verifier_phase.public_relation.digest(),
+        &provider_phase.arithmetic_payload,
+        &verifier_phase.plan_values,
     )?;
     response_challenger
         .observe_public_points(verifier_statement_digest, &response_points)
@@ -2291,9 +2722,10 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
     drop(verifier_coordinator);
 
     let response_key = affine_from_p3(response_result.target).derive_verifier_key(
-        aggregate_verifier_targets(&response_keys, &response_result.claim_weights)?,
+        aggregate_verifier_targets(&verifier_phase.response_keys, &response_result.claim_weights)?,
         delta,
     );
+    let plan_keys = verifier_phase.plan_values.map(|value| VerifierKey::from_public(value, delta));
     let plan_key = affine_from_p3(plan_result.target).derive_verifier_key(
         aggregate_verifier_targets(&plan_keys, &plan_result.claim_weights)?,
         delta,
@@ -2307,7 +2739,6 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
         + verifier_eta
             * (c61_volta_fp2_from_p3(plan_result.base_case.combined)
                 - c61_volta_fp2_from_p3(plan_result.base_case.shifted_masked_claim));
-    let mut context = VerifierCtx::new(pcg_seed, delta);
     let joint_verifier_input = C61AuthenticatedWhirVerifierInput {
         id,
         mask_range,
@@ -2316,8 +2747,9 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
         gamma: Fp2::ONE,
         target: joint_key,
     };
-    verify_c61_authenticated_whir_base(
+    let joint_residual = verify_c61_authenticated_whir_base_with_zero_rows_residual(
         joint_verifier_input,
+        &verifier_phase.zero_rows,
         joint_tag,
         &mut context,
         &mut verifier_transcript,
@@ -2328,21 +2760,22 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
         bytes[0] ^= 1;
         let changed_tag =
             C61AuthenticatedWhirBaseProof::decode(&bytes).map_err(|error| error.to_string())?;
-        let mut changed_context = VerifierCtx::new(pcg_seed, delta);
-        let mut changed_transcript = Transcript::new(verifier_seed);
-        verify_c61_authenticated_whir_base(
-            joint_verifier_input,
-            changed_tag,
-            &mut changed_context,
-            &mut changed_transcript,
-        )
-        .is_err()
+        !zero_open_verify(joint_residual, changed_tag.tag())
     };
-    if provider_interaction != verifier_interaction
-        || provider_transcript.ledger() != verifier_transcript.ledger()
-        || statement_digest != verifier_statement_digest
-    {
-        return Err("C6SMO1 provider/verifier shared transcript mismatch".to_owned());
+    if provider_interaction != verifier_interaction {
+        return Err(format!(
+            "C6SMO1 provider/verifier shared interaction mismatch: provider={provider_interaction:?}, verifier={verifier_interaction:?}"
+        ));
+    }
+    if provider_transcript.ledger() != verifier_transcript.ledger() {
+        return Err(format!(
+            "C6SMO1 provider/verifier transcript ledger mismatch: provider={:?}, verifier={:?}",
+            provider_transcript.ledger(),
+            verifier_transcript.ledger()
+        ));
+    }
+    if statement_digest != verifier_statement_digest {
+        return Err("C6SMO1 provider/verifier statement digest mismatch".to_owned());
     }
 
     let strict_response = c61_authenticated_structural_budget_inner(response_num_variables, false)?
@@ -2352,12 +2785,23 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
     Ok(C61AuthenticatedP3SharedMultiOracleDiagnostic {
         response_num_variables,
         plan_num_variables,
-        response_claim_count: response_targets.len(),
-        plan_claim_count: plan_targets.len(),
+        response_claim_count: provider_phase.response_targets.len(),
+        plan_claim_count: provider_phase.plan_values.len(),
         strict_payload_bytes: artifact.payload.len(),
         strict_payload_max_bytes: C61_SHARED_MULTI_ORACLE_HEADER_BYTES
             + strict_response
             + strict_plan,
+        arithmetic_payload_bytes: provider_phase.arithmetic_payload.len(),
+        total_provider_payload_bytes: provider_phase
+            .arithmetic_payload
+            .len()
+            .checked_add(artifact.payload.len())
+            .ok_or_else(|| "C6SPR3 complete provider byte count overflow".to_owned())?,
+        response_target_correction_bytes: provider_transcript
+            .bytes_for("c6_sparse_response_target_corrections"),
+        arithmetic_product_triples: provider_phase.product_triples,
+        folded_zero_rows: provider_phase.zero_rows.len(),
+        provider_transcript_bytes: provider_transcript.total_bytes(),
         provider_interaction,
         verifier_interaction,
         native_challenges_shared: response_output.claim_weights[..plan_output.claim_weights.len()]
@@ -2365,7 +2809,9 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
         postproof_batching_challenge_identical: provider_eta == verifier_eta,
         plan_reserved_tag_is_zero: true,
         codec_mutations_rejected,
+        arithmetic_payload_mutation_rejected,
         joint_tag_mutation_rejected,
+        subfield_correlations: correlations.counters.sub_corrs,
         full_correlations: correlations.counters.full_corrs,
     })
 }
@@ -2824,16 +3270,26 @@ mod tests {
         assert_eq!(report.plan_num_variables, 13);
         assert_eq!(report.response_claim_count, 12);
         assert_eq!(report.plan_claim_count, 3);
-        assert_eq!(report.strict_payload_bytes, 674_972);
+        assert_eq!(report.strict_payload_bytes, 677_532);
         assert_eq!(report.strict_payload_max_bytes, 770_748);
+        assert_eq!(report.arithmetic_payload_bytes, 5_212);
+        assert_eq!(report.total_provider_payload_bytes, 682_744);
+        assert_eq!(report.response_target_correction_bytes, 192);
+        assert_eq!(report.arithmetic_product_triples, 87);
+        assert_eq!(report.folded_zero_rows, 31);
+        assert_eq!(report.provider_transcript_bytes, 682_652);
+        assert_eq!(
+            report.total_provider_payload_bytes as u64 - report.provider_transcript_bytes,
+            crate::C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_FRAMING_BYTES,
+        );
         assert!(report.strict_payload_bytes <= report.strict_payload_max_bytes);
         assert!(report.strict_payload_max_bytes < C61_SHARED_MULTI_ORACLE_MAX_BYTES);
         assert_eq!(report.provider_interaction, report.verifier_interaction);
         assert_eq!(report.provider_interaction.provider_messages, 36);
         assert_eq!(report.provider_interaction.provider_semantic_bytes, 94_752);
         assert_eq!(report.provider_interaction.client_fp_challenges, 75);
-        assert_eq!(report.provider_interaction.client_query_challenges, 4_162);
-        assert_eq!(report.provider_interaction.client_challenge_payload_bytes, 17_248);
+        assert_eq!(report.provider_interaction.client_query_challenges, 4_193);
+        assert_eq!(report.provider_interaction.client_challenge_payload_bytes, 17_372);
         assert_eq!(
             report.provider_interaction.provider_payload_bytes as usize
                 + C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES,
@@ -2843,8 +3299,10 @@ mod tests {
         assert!(report.postproof_batching_challenge_identical);
         assert!(report.plan_reserved_tag_is_zero);
         assert!(report.codec_mutations_rejected);
+        assert!(report.arithmetic_payload_mutation_rejected);
         assert!(report.joint_tag_mutation_rejected);
-        assert_eq!(report.full_correlations, 1);
+        assert_eq!(report.subfield_correlations, 24);
+        assert_eq!(report.full_correlations, 305);
     }
 
     #[test]
@@ -2855,6 +3313,13 @@ mod tests {
         let sumcheck = include_str!("../../third_party/p3-sumcheck-c61/src/zk/prover/residual.rs");
         let adapter = include_str!("c61_authenticated_whir_p3.rs");
         let production_adapter = adapter.split("#[cfg(test)]").next().unwrap();
+        let sparse_verifier = production_adapter
+            .split("fn verify_c61_sparse_compiler_relation_phase(")
+            .nth(1)
+            .unwrap()
+            .split("/// Exercise the C6SPR3 physical response/plan opening")
+            .next()
+            .unwrap();
         assert!(!proof.contains("pub evals:"));
         assert_eq!(prover.matches("into_zk_sumcheck_claimless(").count(), 2);
         assert!(prover.contains("claims.len() <= 128"));
@@ -2873,6 +3338,10 @@ mod tests {
         assert_eq!(production_adapter.matches(".ensure_public_statement_bound()").count(), 4);
         assert_eq!(production_adapter.matches("challenger.finish(").count(), 7);
         assert_eq!(production_adapter.matches("c61_shared_round_pair(").count(), 2);
+        assert!(!sparse_verifier.contains(".direct"));
+        assert!(!sparse_verifier.contains(".packed"));
+        assert!(!sparse_verifier.contains("extraction"));
+        assert!(!sparse_verifier.contains("runtime"));
         assert_eq!(production_adapter.matches(".sample_postproof_fp2()").count(), 2);
         assert!(production_adapter
             .contains("C61_SHARED_MULTI_ORACLE_MAGIC: [u8; 8] = *b\"C6SMO1\\0\\0\""));

@@ -333,20 +333,15 @@ pub fn compile_c6_sparse_rational_packed_oracle_reference(
     let topology = operation_plan.topology();
     let node_count = usize::try_from(topology.canonical_node_count)
         .map_err(|_| C6ResidualError::new("C6SPR2 node count exceeds usize"))?;
-    let public_count = usize::try_from(topology.public_input_count)
-        .map_err(|_| C6ResidualError::new("C6SPR2 public count exceeds usize"))?;
     let scalar_count = usize::try_from(topology.scalar_input_count)
         .map_err(|_| C6ResidualError::new("C6SPR2 scalar count exceeds usize"))?;
     let source_count = usize::try_from(topology.source_count)
         .map_err(|_| C6ResidualError::new("C6SPR2 source count exceeds usize"))?;
-    let runtime_count = public_count
-        .checked_add(scalar_count)
-        .ok_or_else(|| C6ResidualError::new("C6SPR2 runtime count overflows"))?;
     let base_rows = node_count
         .max(
-            runtime_count
+            scalar_count
                 .checked_mul(2)
-                .ok_or_else(|| C6ResidualError::new("C6SPR2 runtime packing overflows"))?,
+                .ok_or_else(|| C6ResidualError::new("C6SPR2 Scale-runtime packing overflows"))?,
         )
         .max(
             source_count
@@ -360,7 +355,7 @@ pub fn compile_c6_sparse_rational_packed_oracle_reference(
         .map_err(|_| C6ResidualError::new("C6SPR2 base dimension exceeds u8"))?;
     if base_domain_log2 >= C6_SPARSE_PACKING_MAX_SCALED_LOG2
         || operation_plan.operation_kinds().len() != node_count
-        || runtime_count > base_rows / 2
+        || scalar_count > base_rows / 2
         || source_count > base_rows / 4
         || lanes[0].proof_repetition != 0
         || lanes[1].proof_repetition != 1
@@ -374,7 +369,7 @@ pub fn compile_c6_sparse_rational_packed_oracle_reference(
     {
         return Err(C6ResidualError::new(format!(
             "C6SPR2 scaled packing geometry or lane boundary mismatch: base_log2={base_domain_log2}, base_rows={base_rows}, runtime={}, sources={source_count}, lane_nodes={}/{}, lane_sources={}/{}",
-            runtime_count,
+            scalar_count,
             lanes[0].node_coefficients.len(),
             lanes[1].node_coefficients.len(),
             lanes[0].source_coefficients.len(),
@@ -392,17 +387,13 @@ pub fn compile_c6_sparse_rational_packed_oracle_reference(
     response_values[..node_count].copy_from_slice(&lanes[0].node_coefficients);
     response_values[base_rows..base_rows + node_count].copy_from_slice(&lanes[1].node_coefficients);
     let boundary_block = 2 * base_rows;
-    for public in 0..public_count {
-        response_values[boundary_block + public] = runtime
-            .public_value(
-                extraction,
-                u32::try_from(public)
-                    .map_err(|_| C6ResidualError::new("C6SPR2 public index exceeds u32"))?,
-            )
-            .map_err(|error| C6ResidualError::new(error.to_string()))?;
-    }
+    // Only Scale operands enter the sparse rational relation. They are
+    // indexed from zero by the fixed plan, so this D(base-1) sub-block must
+    // be `scalar_runtime || zero`. Packing verifier-owned public inputs ahead
+    // of them would create a non-dyadic shifted slice that one MLE opening
+    // cannot authenticate.
     for scalar in 0..scalar_count {
-        response_values[boundary_block + public_count + scalar] = runtime
+        response_values[boundary_block + scalar] = runtime
             .scalar_value(
                 extraction,
                 u32::try_from(scalar)
@@ -963,13 +954,17 @@ mod tests {
             )
         );
         let packed_middle = &packed.response_values[2 * base_rows..3 * base_rows];
+        let mut expected_scale_runtime = vec![Fp2::ZERO; base_rows / 2];
+        for (scalar, expected) in
+            expected_scale_runtime.iter_mut().take(topology.scalar_input_count as usize).enumerate()
+        {
+            *expected = direct.runtime().scalar_value(direct.extraction(), scalar as u32).unwrap();
+        }
         assert_eq!(
             response_openings[3],
-            crate::mle::eval_mle(
-                &packed_middle[..base_rows / 2],
-                &input_point[..input_point.len() - 1]
-            )
+            crate::mle::eval_mle(&expected_scale_runtime, &input_point[..input_point.len() - 1])
         );
+        assert_eq!(&packed_middle[..base_rows / 2], expected_scale_runtime);
         assert_eq!(
             response_openings[4],
             crate::mle::eval_mle(

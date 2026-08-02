@@ -91,7 +91,7 @@ fn sparse_layout_digest(domain: &'static str, blocks: &[&[u8]]) -> [u8; 32] {
 pub fn c61_sparse_response_layout_digest() -> [u8; 32] {
     sparse_layout_digest(
         SPARSE_RESPONSE_LAYOUT_DOMAIN,
-        &[b"lambda_0_D25", b"lambda_1_D25", b"runtime_D24_g0_D23_g1_D23", b"mu_D25"],
+        &[b"lambda_0_D25", b"lambda_1_D25", b"scale_runtime_D24_g0_D23_g1_D23", b"mu_D25"],
     )
 }
 

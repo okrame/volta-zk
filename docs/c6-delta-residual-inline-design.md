@@ -1848,6 +1848,85 @@ reinterpreted as v4.  Until the first two steps are green, the active local
 that it returns to `C6TFR1_NATIVE_TRACE_REALIZATION_REQUIRED`.  No backend,
 proof-size, timing, state, production or pod credit follows.
 
+### 0.24 Direct-MLE C6RSC3 integration and native-relation hard stop
+
+The two schedule-integration checkpoints required by Section 0.23 are now
+green.  The additive `C6RSC3-v4` path consumes the preregistered direct MLE
+coordinates in two transcript-typed phases:
+
+1. after the witness roots are bound and before public claims, exactly two
+   D23 alpha points become available;
+2. only after those public claims are bound, eight D17 terminal points and
+   two D26 atomic points become available.
+
+The dimension, repetition, coordinate and schedule-kind types prevent a
+point from crossing those phases.  Mixed v3/v4 transitions fail closed.  The
+v4 equality streams drive the actual base-share, terminal and atomic
+coefficient generation; they are not detached statement metadata.  The
+historical v3 domains, digest preimages and ChaCha8/FpStream schedules remain
+unchanged.  On the scaled complete fixture, v3 and v4 produce identical
+family-output and coefficient-write censuses while their semantic digests
+remain separated.  The existing schedule charge is still exactly
+
+```text
+2 * D23 + 8 * D17 + 2 * D26 = 234 Fp2 = 3,744 B client-to-provider,
+```
+
+with the same `234/|Fp2|` soundness term and no provider-to-client byte
+change.
+
+The actual fused blind C6RSC3 prover now also exposes a local typed value
+before the fresh output RLC challenge exists.  It captures directly from the
+final folded arithmetic state, in each repetition, exactly
+
+```text
+8 leaf + 16 auxiliary-linear + 8 auxiliary-quadratic = 32 values,
+2 repetitions                                             = 64 values.
+```
+
+This is the C6TFR1 terminal vector itself, not 64 selected DAG nodes.  The
+capture binds the relation-challenge digest, public statement digests and
+the actual ordered leaf/auxiliary points.  Its consuming transition accepts
+`beta` only afterward and returns the typed terminal fold/digest.  There is
+no second production event replay.  At the cross-crate scaled fixture, the
+real proof, strict codec and fused verifier all pass, and the 64 captured
+values plus their fold equal the independent
+`compile_c6_residual_terminal_functional_relation_reference` result over
+exactly **2,400 coefficient writes**.  The v3 and v4 proofs have identical
+encoded length at the same geometry.  The older in-module diagnostic remains
+the separately recorded **2,370-write** fixture.
+
+This closes the direct-schedule and exact-output portions of
+`C6RSC4_TERMINAL_FUNCTIONAL_RELATION_OBSTRUCTED`.  It does not yet prove the
+coefficient-event relation.  The pinned claimless authenticated WHIR fork
+proves polynomial openings; its `Constraint` machinery is owned by WHIR's
+opening/OOD/STIR claims and does not expose a generic application-relation
+prover/verifier for the typed C6TFR1 event grammar.  A digest of a coefficient
+stream not constrained by the proof would add no such relation and is
+forbidden.
+
+Materialization remains inadmissible: one Fp2 column on D28 is
+**4,294,967,296 B**, and even one base-field limb plus the canonical runtime
+is **2,320,768,256 B**, or **27,569,408 B** over the provider-state cap,
+before the second limb or WHIR working state.  Consequently the active local
+**HARD STOP** is `C6TFR1_NATIVE_TRACE_REALIZATION_REQUIRED`.  Resume requires
+both:
+
+1. a non-materialized native D28 relation prover/verifier for the exact typed
+   coefficient-event grammar; and
+2. a connection from that relation to the claimless authenticated WHIR
+   opening and the role-typed compiler-chain statement boundary.
+
+The final local matrix is green at default workspace PCS **199/0/1** and
+proto **149/0/1**, plus `c6-trace` PCS **203/0/2** and proto **170/0/1**.
+Budget profile `C6.1-public-compression-reference-v9` preserves the
+**16,342,103-B** certificate, **84,743,367-B** setup,
+**101,085,470-B** first exchange, **2,019,404,992-B** provider state,
+**14.5038179582 / 4.565672390-s** provider/verifier roofs and
+**119.6548823158 / 115.5674194746-bit** soundness screens.  All full-chain,
+benchmark, memory, session and hardware credits remain false.  No pod was
+contacted or authorized.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

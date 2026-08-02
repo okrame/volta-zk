@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — EXACT C6TFR1 LEAN/RUST DIFFERENTIAL + TYPED STATEMENTS GREEN / DIRECT-MLE SCHEDULE INTEGRATION HARD STOP / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION AMENDMENT — DIRECT-MLE C6RSC3-v4 + EXACT PRE-BETA 64 OUTPUTS GREEN / NATIVE D28 RELATION API HARD STOP / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -23,11 +23,18 @@ the amended complete per-certificate screen is **119.6548823158 bits**.  The
 additive Lean package is green at **3,265 jobs / 45 audited C6.1 targets**
 and the strict scaled fixed-node `C6PA1-v1`/`C6RSC4-v4` Rust seam remains
 historical component evidence only.  The exact C6TFR1 event-fold differential
-and all six role-typed native statement shapes are now green.  A native-trace
-audit found that concrete C6RSC3 still consumes ChaCha8/FpStream v3 schedules,
-while the registered 234 direct-MLE coordinates are only detached C6.1
-typestate.  The active hard stop is therefore their exact integration into
-the C6RSC3 emitter before the concrete native D28 trace can resume.
+and all six role-typed native statement shapes are green.  The versioned
+`C6RSC3-v4` path now consumes the registered 234 direct-MLE coordinates in
+two transcript-typed phases, preserves the historical v3 schedule exactly,
+and fixes the actual fused prover's 64 terminal coefficient values before
+the fresh output `beta`.  Those values equal the independent C6TFR1 compiler
+reference at scaled geometry without a second production event replay.  The
+selected claimless WHIR fork, however, exposes polynomial-opening relations
+only and has no generic application-trace interface that can enforce the
+typed coefficient-event grammar.  The active hard stop is therefore a
+non-materialized native D28 relation prover/verifier, connected to the
+authenticated opening and typed compiler boundary; a digest-only or
+materialized event stream remains forbidden.
 
 The next append-only CPU-reference checkpoint now pins Plonky3 `p3-whir`
 revision `66e290615de1858f2f2f6a804158064c406cda1c` behind the non-default
@@ -814,6 +821,7 @@ its clean descendant closure.
 | C6.1 canonical runtime and compiler-ownership audit | **CANONICAL RUNTIME SEAM GREEN; C6RSC4 TERMINAL-FUNCTIONAL RELATION LOCAL HARD STOP; NO POD** (2026-08-01) | Runtime-indexed public inputs; canonical public-then-scalar extraction; retain verifier map inside the existing client-parameter allocation; refuse an unjustified fixed-node terminal mapping | The canonical runtime is **10,830,288 Fp2**, deduplicating exactly **54** slots from the **10,830,342-Fp2** raw verifier stream; provider raw material is **10,838,512 Fp2**. The **5,320,386-B** verifier extraction map stays within the existing **8,000,000-B** allocation, leaving **2,679,614 B**; only the **63,994,751-B** canonical plan is removed, so projected setup remains **84,743,367 B**. Corrected provider state is **2,019,404,992 B**, with **273,793,856 B** headroom, and the formula-only provider roof is **14.5038179582 s**. The default workspace is green at **volta-pcs 196/0/1** and **volta-proto 149/0/1**; full `volta-mac c6-trace` is **36/0/0 + 5/0/0**. The obstruction is algebraic, not a benchmark failure: C6RSC3 consumes 64 challenge-dependent coefficient functionals generated after leaf/aux points and the atomic schedule, whereas the installed DAG has **673 ProductClosures / 8,170 zero roots**, not 64 corresponding fixed terminal nodes. A fixed-node RLC would prove the wrong relation. Resume requires an exact challenge-dependent injection or equivalent constrained relation, equality to the C6RSC3 values, typed per-chain statements and a fresh byte/soundness/time re-sum. All full-chain credits remain false; no pod contacted. |
 | C6.1 exact terminal-functional relation | **C6TFR1-v1 LEAN/RUST DIFFERENTIAL + ROLE-TYPED STATEMENTS GREEN; NATIVE TRACE HARD STOP; NO POD** (2026-08-02) | Fold the typed C6RSC3 coefficient-write stream into its actual challenge-dependent functionals; never map them to fixed DAG nodes | The exact domain is **225,997,412** writes, each carrying repetition, atomic output/family, typed target and coefficient. Canonical slots are `32*b + {0..7 leaf, 8..23 auxiliary-linear, 24..31 auxiliary-quadratic}`; the row receives exactly the matching leaf/aux MLE equality weight. The postclaim identity is `sum_j beta^j T_j = sum_e beta^slot(e) coefficient(e) eq(point(e),row(e))`, padded once to `2^28`. The additive module proves the exact event fold, accumulator equality, accepting-error RLC and amended bounds; full Lean is **3,265 jobs / 392 audited / 45 C6.1**. An independent Rust sink replays the same typed grammar only as a diagnostic and matches both C6RSC3 terminal compilers exactly at scaled geometry: **2,370 writes / 64 outputs**, with point, `beta`, claim, ordering and malformed-dimension checks. Six role-typed statement shapes bind component/repetition, model **96** or embedding **6** ordered openings, and compiler **64** terminal targets; commitments, points and every C6TFR1 compiler binding enter the public digest, while provider target shares and verifier target keys remain role-local and `Delta` is unrepresentable. PCS is green at **199/0/1**, proto `c6-trace` at **167/0/1**, and the default workspace is green. `C6RSC4-v5` keeps the **16,342,103-B** certificate, **84,743,367-B** setup, **101,085,470-B** first exchange, **2,019,404,992-B** state, **14.5038179582 / 4.565672390-s** roofs and **119.6548823158 / 115.5674194746-bit** soundness screens unchanged. Production must fuse the 64 accumulators into the existing event emission before `beta`; the diagnostic replay, a materialized event table and the opaque backend are ineligible. The next hard stop is the concrete native D28 trace realization. All full-chain credits remain false and no pod was contacted. |
 | C6.1 native-trace schedule audit | **DETACHED DIRECT-MLE POINTS FOUND; C6RSC3-v4 INTEGRATION PREREGISTERED; LOCAL HARD STOP; NO POD** (2026-08-02) | Replace only the C6.1 path's v3 ChaCha8/FpStream alpha, terminal and atomic schedules with the already-budgeted `2*D23 + 8*D17 + 2*D26` equality points before attempting the native trace | Current C6TFR1-v1 is exact for v3, but the selected public algebra cannot treat a PRG-stream digest as proof that its weights were generated correctly. The pinned WHIR fork supplies polynomial openings, no ChaCha8/rejection circuit and no generic trace verifier. A single materialized D28 Fp2 column is **4,294,967,296 B**, **2,001,768,448 B** over the state cap; two base limbs have the same size, and one limb plus canonical runtime is already **27,569,408 B** over. The admissible repair makes the actual C6RSC3 emitter consume the 234 typed equality coordinates already charged as **3,744 B client-to-provider** and `234/|Fp2|`; event/write/slot censuses and all provider-to-client screens remain unchanged. Required checkpoints are typed direct schedules, scaled grammar/terminal differential, fused C6RSC3 integration, then native relation/PCS trace. No credit and no pod contact. |
+| C6.1 direct-MLE C6RSC3 integration | **V4 SCHEDULE + ACTUAL PRE-BETA 64 OUTPUTS GREEN; NATIVE D28 RELATION API HARD STOP; NO POD** (2026-08-02) | Versioned transcript phases and exact terminal-state capture in the real fused prover; no arbitrary fixed-node mapping and no second production event replay | `C6RSC3-v4` releases `2*D23` alpha points after binding roots and before public claims, then `8*D17 + 2*D26` terminal/atomic points only after those claims; the exact **234 Fp2 / 3,744-B** schedule and its existing `234/|Fp2|` term are unchanged. A scaled v3/v4 differential has identical family-output and coefficient-write censuses but separated semantic digests; v3 preimages and ChaCha8/FpStream behavior remain byte-for-byte historical. The actual fused blind prover captures `2 * (8 leaf + 16 auxiliary-linear + 8 auxiliary-quadratic) = 64` values directly from its final folded arithmetic state before `beta`; the typed output binds statement/challenge digests and actual ordered points, then is consumed once by the postclaim fold. Across the proof codec and fused verifier, all 64 values and their fold equal the independent C6TFR1 compiler reference at **2,400 writes**, and v3/v4 proof lengths are identical at the same geometry. Default workspace is green at **volta-pcs 199/0/1** and **volta-proto 149/0/1**; `c6-trace` is **203/0/2** and **170/0/1** respectively. The pinned claimless WHIR backend still has no generic relation API for the typed coefficient-event grammar. A digest of an unconstrained stream is forbidden, while one D28 Fp2 event column is **4,294,967,296 B** and inadmissible. Resume requires a non-materialized native D28 relation prover/verifier connected to the authenticated opening and typed compiler-chain boundary. Budget profile v9 changes no registered byte, setup, state, soundness or time screen; every full-chain credit remains false and no pod was contacted. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -888,6 +896,34 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-08-02 — direct-MLE schedule integration and the actual fused
+  pre-`beta` terminal boundary are green; native D28 relation enforcement is
+  now the hard stop.**  `C6RSC3-v4` separates root-bound alpha points from
+  post-public-claim terminal/atomic points and consumes exactly the already
+  budgeted `2*D23 + 8*D17 + 2*D26` equality coordinates.  The scaled v3/v4
+  differential preserves coefficient-write and family-output censuses while
+  requiring different semantic digests.  Historical v3 transcript
+  preimages, domains and ChaCha8/FpStream behavior are unchanged.
+
+  The real fused blind prover now returns a typed, pre-`beta` capture of its
+  own final 64 coefficient values in canonical C6TFR1 order.  It does not
+  replay the event stream.  Only after that value is available may the fresh
+  `beta` be bound; the resulting fold and all 64 values match the independent
+  compiler reference across the actual proof codec and fused verifier at the
+  scaled **2,400-write** fixture.  Default workspace tests pass at PCS
+  **199/0/1** and proto **149/0/1**; the corresponding `c6-trace` suites are
+  **203/0/2** and **170/0/1**.
+
+  Source/API audit of the pinned claimless WHIR fork found only authenticated
+  polynomial-opening relations, not a generic relation interface capable of
+  constraining the C6TFR1 coefficient-event grammar.  Its internal opening,
+  OOD and STIR constraints cannot be reclassified as the application trace.
+  Hashing an unconstrained stream is forbidden, and materializing even one
+  D28 Fp2 column remains above the state cap.  The next authorized work is a
+  non-materialized native D28 relation prover/verifier plus its authenticated
+  opening and typed compiler-boundary connection.  Budget profile v9 leaves
+  all numeric screens unchanged and `credit:false`.  No pod was contacted.
 
 - **2026-08-02 — native trace pauses at direct-MLE schedule integration,
   before any trace/backend code.**  The 234 MLE coordinates selected and

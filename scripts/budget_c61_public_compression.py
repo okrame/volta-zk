@@ -499,13 +499,13 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v8",
+        "profile": "C6.1-public-compression-reference-v9",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
             "CANONICAL_RUNTIME_SEAM_GREEN__C6TFR1_EXACT_EVENT_RELATION_"
             "LEAN_RUST_DIFFERENTIAL_TYPED_STATEMENTS_GREEN__"
-            "DIRECT_MLE_SCHEDULE_INTEGRATION_REQUIRED__"
+            "DIRECT_MLE_SCHEDULE_AND_FUSED_PRE_BETA_OUTPUTS_GREEN__"
             "NATIVE_TRACE_REALIZATION_REQUIRED__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
@@ -577,7 +577,7 @@ def build_report() -> dict[str, Any]:
                 "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
                 "CANONICAL_RUNTIME_SEAM_GREEN__C6TFR1_EXACT_EVENT_RELATION_"
                 "LEAN_RUST_DIFFERENTIAL_TYPED_STATEMENTS_GREEN__"
-                "DIRECT_MLE_SCHEDULE_INTEGRATION_REQUIRED__"
+                "DIRECT_MLE_SCHEDULE_AND_FUSED_PRE_BETA_OUTPUTS_GREEN__"
                 "NATIVE_TRACE_REALIZATION_REQUIRED__"
                 "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
@@ -1056,7 +1056,7 @@ def build_report() -> dict[str, Any]:
                 ),
             },
             "local_hard_stop": {
-                "status": "C6TFR1_DIRECT_MLE_SCHEDULE_INTEGRATION_REQUIRED",
+                "status": "C6TFR1_NATIVE_TRACE_REALIZATION_REQUIRED",
                 "canonical_runtime_seam_green": True,
                 "raw_verifier_runtime_values": raw_verifier_runtime_values,
                 "canonical_runtime_values": canonical_runtime_values,
@@ -1079,10 +1079,17 @@ def build_report() -> dict[str, Any]:
                     C61_TERMINAL_FUNCTIONAL_DOMAIN_LOG2
                 ),
                 "rust_terminal_differential_green": True,
+                "direct_mle_schedule_typestate_green": True,
+                "scaled_v3_v4_grammar_differential_green": True,
+                "actual_fused_c6rsc3_terminal_outputs_green": True,
+                "terminal_outputs_fixed_before_beta": True,
+                "historical_v3_schedule_preserved": True,
                 "typed_native_chain_statements_green": True,
                 "native_backend_consumes_typed_relation_statement": False,
                 "native_trace_audit": {
-                    "implemented_c6rsc3_schedule": "ChaCha8/FpStream v3",
+                    "implemented_c6rsc3_schedules": (
+                        "historical ChaCha8/FpStream v3 plus versioned direct-MLE v4"
+                    ),
                     "registered_c61_schedule": "direct multilinear equality points",
                     "direct_point_fp2_elements_already_budgeted": (
                         C61_EQ_CHALLENGE_FP2_ELEMENTS
@@ -1105,11 +1112,14 @@ def build_report() -> dict[str, Any]:
                     ),
                     "materialized_event_table_allowed": False,
                     "unconstrained_stream_digest_allowed": False,
+                    "selected_whir_backend_has_generic_trace_relation": False,
+                    "selected_whir_backend_scope": (
+                        "claimless authenticated polynomial openings only"
+                    ),
                 },
                 "required_before_resume": [
-                    "replace the detached v3 PRG schedules in the C6.1 path with the already-budgeted 2xD23, 8xD17 and 2xD26 equality points",
-                    "fuse the 64 C6TFR1 accumulators into the existing C6RSC3 event emission before beta",
-                    "realize and verify the native D28 C6TFR1 trace through the typed compiler boundary",
+                    "supply a non-materialized native D28 relation prover/verifier for the exact typed coefficient-event grammar",
+                    "connect that relation to the claimless authenticated WHIR opening and typed compiler-chain boundary",
                 ],
                 "credit": False,
             },

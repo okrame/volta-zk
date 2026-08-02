@@ -7861,13 +7861,11 @@ fn c6_sparse_rational_denominator(challenge: Fp2, index: u32) -> Fp2 {
     challenge - Fp2::from_base(Fp::new(u64::from(index)))
 }
 
-fn compile_c6_residual_folded_terminal_injection_reference(
-    terminal_metadata: &C6OperationPlanTerminalMetadata,
+fn compile_c6_residual_folded_terminal_injection_scalars(
     challenges: &C6ResidualRelationChallenges,
     proof_repetition: u8,
     output_beta: Fp2,
-) -> C6ResidualResult<(Fp2, [Fp2; 4], Vec<Fp2>)> {
-    let topology = terminal_metadata.topology();
+) -> C6ResidualResult<(Fp2, [Fp2; 4])> {
     let mut beta_power = Fp2::ONE;
     let beta_powers: [Fp2; C6_RESIDUAL_TERMINAL_FUNCTIONALS] = std::array::from_fn(|_| {
         let current = beta_power;
@@ -7928,6 +7926,22 @@ fn compile_c6_residual_folded_terminal_injection_reference(
         }
     }
 
+    Ok((rho_base, terminal_rhos))
+}
+
+fn compile_c6_residual_folded_terminal_injection_reference(
+    terminal_metadata: &C6OperationPlanTerminalMetadata,
+    challenges: &C6ResidualRelationChallenges,
+    proof_repetition: u8,
+    output_beta: Fp2,
+) -> C6ResidualResult<(Fp2, [Fp2; 4], Vec<Fp2>)> {
+    let topology = terminal_metadata.topology();
+    let (rho_base, terminal_rhos) = compile_c6_residual_folded_terminal_injection_scalars(
+        challenges,
+        proof_repetition,
+        output_beta,
+    )?;
+
     let mut injection = try_zeroed_fp2_vec(
         topology.canonical_node_count as usize,
         "C6SPR1 sparse injection reference",
@@ -7967,6 +7981,109 @@ fn compile_c6_residual_folded_terminal_injection_reference(
         }
     }
     Ok((rho_base, terminal_rhos, injection))
+}
+
+/// Constant-memory evaluation of the exact challenge-dependent C6TFA1
+/// terminal injection.  It traverses only installed ProductClosure operands
+/// and zero roots; it never builds the D25 node column or replays coefficient
+/// events.  This is the verifier-side injection used by the blind joint
+/// terminal relation.
+pub fn evaluate_c6_residual_folded_terminal_injection_sparse(
+    terminal_metadata: &C6OperationPlanTerminalMetadata,
+    challenges: &C6ResidualRelationChallenges,
+    lane_batch: Fp2,
+    output_beta: Fp2,
+    point: &[Fp2],
+) -> C6ResidualResult<Fp2> {
+    challenges.validate_terminal_metadata(terminal_metadata)?;
+    if point.len() >= u32::BITS as usize {
+        return Err(C6ResidualError::new("C6SPR3 sparse injection point dimension exceeds u32"));
+    }
+    let entries = 1u64
+        .checked_shl(
+            u32::try_from(point.len())
+                .map_err(|_| C6ResidualError::new("C6SPR3 sparse injection point overflows"))?,
+        )
+        .ok_or_else(|| C6ResidualError::new("C6SPR3 sparse injection domain overflows"))?;
+    if entries < u64::from(terminal_metadata.topology().canonical_node_count) {
+        return Err(C6ResidualError::new(
+            "C6SPR3 sparse injection point does not cover the installed node domain",
+        ));
+    }
+    let mut equality =
+        C6ResidualEqPointCursor::new(point, entries, "C6SPR3 sparse terminal injection")?;
+    let retained_zero_weights =
+        challenges.base_share_context().retained.zero_weights(terminal_metadata.zero_roots().len());
+    let mut result = Fp2::ZERO;
+    let mut repetition_factor = Fp2::ONE;
+    for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
+        let (rho_base, terminal_rhos) = compile_c6_residual_folded_terminal_injection_scalars(
+            challenges,
+            proof_repetition,
+            output_beta,
+        )?;
+        let schedules: [&C6ResidualTerminalWeightSchedule;
+            C6_RESIDUAL_MAC_COORDINATES as usize * C6_RESIDUAL_TERMINAL_FORM_KINDS] =
+            std::array::from_fn(|form| {
+                let coordinate = (form / C6_RESIDUAL_TERMINAL_FORM_KINDS) as u8;
+                let kind = if form % C6_RESIDUAL_TERMINAL_FORM_KINDS == 0 {
+                    C6ResidualTerminalFormKind::Plaintext
+                } else {
+                    C6ResidualTerminalFormKind::Tag
+                };
+                challenges
+                    .terminal_schedule(proof_repetition, coordinate, kind)
+                    .expect("validated C6SPR3 terminal schedule")
+            });
+
+        for (zero_index, (&root, &retained_weight)) in
+            terminal_metadata.zero_roots().iter().zip(&retained_zero_weights).enumerate()
+        {
+            let coefficient = schedules.iter().zip(terminal_rhos).try_fold(
+                rho_base * retained_weight,
+                |coefficient, (schedule, rho)| {
+                    Ok::<_, C6ResidualError>(
+                        coefficient
+                            + rho
+                                * *schedule.zero_weights().get(zero_index).ok_or_else(|| {
+                                    C6ResidualError::new(
+                                        "C6SPR3 sparse injection zero schedule is truncated",
+                                    )
+                                })?,
+                    )
+                },
+            )?;
+            result += repetition_factor * coefficient * equality.at(root)?;
+        }
+
+        for (form, schedule) in schedules.into_iter().enumerate() {
+            let rho = terminal_rhos[form];
+            let mut triple_cursor = 0usize;
+            for product in terminal_metadata.products() {
+                for triple in product.triples() {
+                    let weights =
+                        schedule.product_weights().get(triple_cursor).ok_or_else(|| {
+                            C6ResidualError::new(
+                                "C6SPR3 sparse injection product schedule is truncated",
+                            )
+                        })?;
+                    triple_cursor = triple_cursor.checked_add(1).ok_or_else(|| {
+                        C6ResidualError::new("C6SPR3 sparse injection triple cursor overflows")
+                    })?;
+                    for (&node, &weight) in triple.iter().zip(weights) {
+                        result += repetition_factor * rho * weight * equality.at(node)?;
+                    }
+                }
+            }
+            if triple_cursor != schedule.product_weights().len() {
+                return Err(C6ResidualError::new(
+                    "C6SPR3 sparse injection product schedule has trailing weights",
+                ));
+            }
+        }
+        repetition_factor = repetition_factor * lane_batch;
+    }
+    Ok(result)
 }
 
 /// Materialize the exact C6SPR1 rational identities as a scaled reference.
@@ -14440,6 +14557,34 @@ mod tests {
                 [&adjoint_lanes[0], &adjoint_lanes[1]],
             )
             .unwrap();
+        let injection_dimension =
+            (topology.canonical_node_count as usize).max(2).next_power_of_two().trailing_zeros()
+                as usize;
+        for offset in [0u64, 17, 41] {
+            let point = (0..injection_dimension)
+                .map(|coordinate| fp2(251 + offset + coordinate as u64 * 2))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                evaluate_c6_residual_folded_terminal_injection_sparse(
+                    &terminal_metadata,
+                    direct.relation(),
+                    sparse_challenges.lane_batch(),
+                    output_beta,
+                    &point,
+                )
+                .unwrap(),
+                crate::mle::eval_mle(&sparse_relation.combined_injection, &point),
+            );
+        }
+        let short_point = vec![Fp2::ONE; injection_dimension - 1];
+        assert!(evaluate_c6_residual_folded_terminal_injection_sparse(
+            &terminal_metadata,
+            direct.relation(),
+            sparse_challenges.lane_batch(),
+            output_beta,
+            &short_point,
+        )
+        .is_err());
 
         let mut changed_sparse_relation = sparse_relation.clone();
         changed_sparse_relation.combined_injection[0] += Fp2::ONE;

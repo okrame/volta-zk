@@ -113,6 +113,7 @@ impl C61CommittedOpeningStatement {
 pub struct C61TerminalFunctionalCompilerBinding {
     pub operation_plan_digest: [u8; 32],
     pub operation_topology_digest: [u8; 32],
+    pub terminal_metadata_digest: [u8; 32],
     pub extraction_map_digest: [u8; 32],
     pub runtime_root: [u8; 32],
     pub residual_manifest_digest: [u8; 32],
@@ -129,6 +130,7 @@ pub struct C61TerminalFunctionalCompilerBinding {
 pub struct C61TerminalFunctionalCompilerStatement {
     pub operation_plan_digest: [u8; 32],
     pub operation_topology_digest: [u8; 32],
+    pub terminal_metadata_digest: [u8; 32],
     pub extraction_map_digest: [u8; 32],
     pub runtime_root: [u8; 32],
     pub residual_manifest_digest: [u8; 32],
@@ -148,6 +150,7 @@ impl C61TerminalFunctionalCompilerStatement {
         let C61TerminalFunctionalCompilerBinding {
             operation_plan_digest,
             operation_topology_digest,
+            terminal_metadata_digest,
             extraction_map_digest,
             runtime_root,
             residual_manifest_digest,
@@ -164,6 +167,7 @@ impl C61TerminalFunctionalCompilerStatement {
         let statement = Self {
             operation_plan_digest,
             operation_topology_digest,
+            terminal_metadata_digest,
             extraction_map_digest,
             runtime_root,
             residual_manifest_digest,
@@ -185,6 +189,7 @@ impl C61TerminalFunctionalCompilerStatement {
         let required_digests = [
             self.operation_plan_digest,
             self.operation_topology_digest,
+            self.terminal_metadata_digest,
             self.extraction_map_digest,
             self.runtime_root,
             self.residual_manifest_digest,
@@ -227,6 +232,7 @@ impl C61TerminalFunctionalCompilerStatement {
         for digest in [
             self.operation_plan_digest,
             self.operation_topology_digest,
+            self.terminal_metadata_digest,
             self.extraction_map_digest,
             self.runtime_root,
             self.residual_manifest_digest,
@@ -500,11 +506,12 @@ mod tests {
         C61TerminalFunctionalCompilerStatement::new(C61TerminalFunctionalCompilerBinding {
             operation_plan_digest: [1; 32],
             operation_topology_digest: [2; 32],
-            extraction_map_digest: [3; 32],
-            runtime_root: [4; 32],
-            residual_manifest_digest: [5; 32],
-            residual_public_claims_digest: [6; 32],
-            relation_challenges_digest: [7; 32],
+            terminal_metadata_digest: [3; 32],
+            extraction_map_digest: [4; 32],
+            runtime_root: [5; 32],
+            residual_manifest_digest: [6; 32],
+            residual_public_claims_digest: [7; 32],
+            relation_challenges_digest: [8; 32],
             leaf_points: std::array::from_fn(|repetition| {
                 (0..C6_RESIDUAL_LEAF_ROUNDS)
                     .map(|coordinate| fp2(200 + (repetition * 31 + coordinate) as u64))
@@ -517,7 +524,7 @@ mod tests {
             }),
             terminal_claims,
             output_beta: fp2(509),
-            relation_root: [8; 32],
+            relation_root: [9; 32],
         })
         .unwrap()
     }
@@ -624,6 +631,10 @@ mod tests {
         let mut changed_relation_root = compiler.clone();
         changed_relation_root.relation_root[0] ^= 1;
         assert_ne!(compiler.digest().unwrap(), changed_relation_root.digest().unwrap());
+
+        let mut changed_terminal_metadata = compiler.clone();
+        changed_terminal_metadata.terminal_metadata_digest[0] ^= 1;
+        assert_ne!(compiler.digest().unwrap(), changed_terminal_metadata.digest().unwrap());
 
         let public = C61TypedNativeChainPublicStatement::new(
             C61NativeChainId { component: C61NativeComponent::Compiler, repetition: 0 },

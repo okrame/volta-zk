@@ -13317,6 +13317,25 @@ mod tests {
         assert_eq!(folded_adjoint.repetition_folds(), terminal_relation.repetition_folds());
         assert_eq!(folded_adjoint.fold(), terminal_relation.functional_fold());
         assert_ne!(folded_adjoint.digest(), [0; 32]);
+        let direct_reduction = reduce_c6_residual_folded_terminal_direct(
+            direct.operation_plan(),
+            direct.relation(),
+            [&leaf_point, &leaf_point],
+            [&auxiliary_point, &auxiliary_point],
+            output_beta,
+        )
+        .unwrap();
+        assert_eq!(direct_reduction.family_folds(), folded_adjoint.direct_family_folds());
+        assert_eq!(direct_reduction.family_outputs(), folded_adjoint.family_outputs());
+        assert_eq!(
+            direct_reduction.family_coefficient_writes(),
+            folded_adjoint.family_coefficient_writes()
+        );
+        assert_eq!(direct_reduction.interval_blocks(), 140);
+        assert_eq!(direct_reduction.interval_transition_rows(), 2_666);
+        assert_eq!(direct_reduction.max_interval_carry_states(), 3);
+        assert_eq!(direct_reduction.explicit_terms(), 194);
+        assert_ne!(direct_reduction.digest(), [0; 32]);
         for repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS as usize {
             assert!(
                 folded_adjoint.family_folds()[repetition].iter().all(|value| *value != Fp2::ZERO),

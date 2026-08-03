@@ -781,6 +781,149 @@ impl DelayedTerm {
     }
 }
 
+/// Coefficient-domain form used by the persisted production link.  It never
+/// reconstructs the Boolean evaluation table or an equality vector.  The
+/// resident `Vec` here is the scaled differential state; production replaces
+/// it with the create-new folded coefficient owner.
+#[derive(Clone)]
+#[allow(dead_code)]
+pub(crate) struct C6CoefficientDelayedTerm {
+    coefficient: Fp2,
+    coefficients: Vec<Fp2>,
+    target_point: Vec<Fp2>,
+    leading_virtual_rounds: usize,
+    virtual_factor: Fp2,
+}
+
+#[allow(dead_code)]
+impl C6CoefficientDelayedTerm {
+    pub(crate) fn new(
+        coefficient: Fp2,
+        coefficients: Vec<Fp2>,
+        target_point: &[Fp2],
+        global_rounds: usize,
+    ) -> Result<Self> {
+        if target_point.is_empty()
+            || target_point.len() > global_rounds
+            || coefficients.len()
+                != 1usize.checked_shl(target_point.len() as u32).unwrap_or_default()
+        {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "C6 coefficient link term geometry mismatch",
+            ));
+        }
+        Ok(Self {
+            coefficient,
+            coefficients,
+            target_point: target_point.to_vec(),
+            leading_virtual_rounds: global_rounds - target_point.len(),
+            virtual_factor: Fp2::ONE,
+        })
+    }
+
+    pub(crate) fn round_values(&self) -> Result<(Fp2, Fp2)> {
+        if self.coefficients.is_empty()
+            || self.coefficients.len()
+                != 1usize.checked_shl(self.target_point.len() as u32).unwrap_or_default()
+        {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "invalid C6 coefficient link term state",
+            ));
+        }
+        if self.leading_virtual_rounds > 0 {
+            let value = evaluate_coefficients_streaming(&self.coefficients, &self.target_point)?;
+            let at_zero = self.coefficient * value * self.virtual_factor;
+            return Ok((at_zero, Fp2::ZERO - at_zero));
+        }
+        if self.coefficients.len() == 1 {
+            let at_zero = self.coefficient * self.coefficients[0] * self.virtual_factor;
+            return Ok((at_zero, Fp2::ZERO - at_zero));
+        }
+        let target = self.target_point[0];
+        let (value_zero, value_two) =
+            evaluate_coefficient_round_endpoints(&self.coefficients, &self.target_point[1..])?;
+        let equality_zero = Fp2::ONE - target;
+        let equality_two = target + target - equality_zero;
+        Ok((
+            self.coefficient * value_zero * equality_zero * self.virtual_factor,
+            self.coefficient * value_two * equality_two * self.virtual_factor,
+        ))
+    }
+
+    pub(crate) fn bind(&mut self, challenge: Fp2) {
+        if self.leading_virtual_rounds > 0 {
+            self.virtual_factor = self.virtual_factor * (Fp2::ONE - challenge);
+            self.leading_virtual_rounds -= 1;
+            return;
+        }
+        if self.coefficients.len() == 1 {
+            self.virtual_factor = self.virtual_factor * (Fp2::ONE - challenge);
+            return;
+        }
+        self.virtual_factor =
+            self.virtual_factor * eq_points(&[challenge], &[self.target_point[0]]);
+        let half = self.coefficients.len() / 2;
+        for index in 0..half {
+            self.coefficients[index] =
+                self.coefficients[2 * index] + challenge * self.coefficients[2 * index + 1];
+        }
+        self.coefficients.truncate(half);
+        self.target_point.remove(0);
+    }
+
+    pub(crate) fn terminal(&self) -> Result<Fp2> {
+        if self.leading_virtual_rounds != 0
+            || self.coefficients.len() != 1
+            || self.target_point.len() != 0
+        {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "invalid C6 coefficient link terminal state",
+            ));
+        }
+        Ok(self.coefficient * self.coefficients[0] * self.virtual_factor)
+    }
+}
+
+fn evaluate_coefficient_round_endpoints(
+    coefficients: &[Fp2],
+    suffix_point: &[Fp2],
+) -> Result<(Fp2, Fp2)> {
+    if coefficients.len() != 2usize.checked_shl(suffix_point.len() as u32).unwrap_or_default() {
+        return Err(C6AuthenticatedOutputLinkError::new(
+            "C6 coefficient endpoint geometry mismatch",
+        ));
+    }
+    let mut zero = Fp2::ZERO;
+    let mut two = Fp2::ZERO;
+    for (index, pair) in coefficients.chunks_exact(2).enumerate() {
+        let weight = coefficient_monomial_weight(index, suffix_point);
+        zero += pair[0] * weight;
+        two += (pair[0] + Fp2::from_base(Fp::new(2)) * pair[1]) * weight;
+    }
+    Ok((zero, two))
+}
+
+fn evaluate_coefficients_streaming(coefficients: &[Fp2], point: &[Fp2]) -> Result<Fp2> {
+    if coefficients.len() != 1usize.checked_shl(point.len() as u32).unwrap_or_default() {
+        return Err(C6AuthenticatedOutputLinkError::new(
+            "C6 streaming coefficient evaluation geometry mismatch",
+        ));
+    }
+    Ok(coefficients.iter().enumerate().fold(Fp2::ZERO, |sum, (index, value)| {
+        sum + *value * coefficient_monomial_weight(index, point)
+    }))
+}
+
+fn coefficient_monomial_weight(index: usize, point: &[Fp2]) -> Fp2 {
+    point.iter().enumerate().fold(Fp2::ONE, |weight, (bit, coordinate)| {
+        if index & (1usize << bit) == 0 {
+            weight
+        } else {
+            weight * *coordinate
+        }
+    })
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct C6LinkRepetitionProof {
     repetition: u8,
@@ -1892,6 +2035,27 @@ mod tests {
 
     fn table(rounds: usize, base: u64) -> Vec<Fp2> {
         (0..(1usize << rounds)).map(|index| symbol(base + index as u64 + 1)).collect()
+    }
+
+    #[test]
+    fn coefficient_delayed_term_matches_resident_evaluation_term_round_by_round() {
+        let evaluations = table(5, 9_000);
+        let coefficients = crate::x4::ntt::multilinear_coefficients(&evaluations).unwrap();
+        let target = (0..5).map(|index| symbol(10_000 + index)).collect::<Vec<_>>();
+        let mut resident = DelayedTerm::new(symbol(77), &evaluations, &target, 7).unwrap();
+        let mut persisted =
+            C6CoefficientDelayedTerm::new(symbol(77), coefficients, &target, 7).unwrap();
+        for round in 0..7 {
+            assert_eq!(
+                persisted.round_values().unwrap(),
+                resident.round_values().unwrap(),
+                "round {round}",
+            );
+            let challenge = symbol(11_000 + round as u64);
+            resident.bind(challenge);
+            persisted.bind(challenge);
+        }
+        assert_eq!(persisted.terminal().unwrap(), resident.terminal().unwrap());
     }
 
     fn expression_sum(terms: &[C6ResidualSumcheckTerm], tables: &[Vec<Fp2>]) -> Fp2 {

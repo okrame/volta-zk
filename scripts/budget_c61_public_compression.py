@@ -16,8 +16,10 @@ This report deliberately has two different verdict scopes:
   are green.  The scaled public-only verifier now connects the seven blind
   rational trees, joint degree-8 reduction, twelve physical response targets,
   three public plan targets and one QuickSilver/ZeroOpen closure to the shared
-  Dn/D(n-1) WHIR flow.  Production D28/D27 execution and the full-chain
-  benchmark remain absent, so this is not final proof or timing credit.
+  Dn/D(n-1) WHIR flow.  The selected monolithic P3 prover-data memory is now
+  censused exactly at D28/D27, but a resource-instrumented persisted or
+  GPU-resident executor and the full-chain benchmark remain absent, so this
+  is not final proof or timing credit.
 
 No projected ceiling or analytic roofline is proof-size, setup, prover-time,
 verifier-time or hardware credit.  The implemented PCS codec receives only
@@ -229,6 +231,30 @@ C61_NATIVE_D28_OOD_PRIVACY_BAD_EVENT_NUMERATOR = 11
 C61_NATIVE_D27_OOD_PRIVACY_BAD_EVENT_NUMERATOR = 10
 C61_NATIVE_D28_PCS_STRICT_MAX_BYTES = 1_172_652
 C61_NATIVE_D27_PCS_STRICT_MAX_BYTES = 1_085_464
+# The generic P3 prover retains the Boolean message, the rate-1/2 initial
+# codeword and every binary-Merkle digest layer.  This is total implementation
+# memory, not the narrower coefficient-plus-witness component state below.
+C61_MONOLITHIC_BASE_FIELD_BYTES = 8
+C61_MONOLITHIC_D28_MESSAGE_BYTES = (1 << 28) * C61_MONOLITHIC_BASE_FIELD_BYTES
+C61_MONOLITHIC_D28_ENCODED_BYTES = (1 << 29) * C61_MONOLITHIC_BASE_FIELD_BYTES
+C61_MONOLITHIC_D28_MERKLE_BYTES = ((1 << 29) - 1) * 32
+C61_MONOLITHIC_D28_RETAINED_LOWER_BOUND_BYTES = (
+    C61_MONOLITHIC_D28_MESSAGE_BYTES
+    + C61_MONOLITHIC_D28_ENCODED_BYTES
+    + C61_MONOLITHIC_D28_MERKLE_BYTES
+)
+C61_MONOLITHIC_D27_MESSAGE_BYTES = (1 << 27) * C61_MONOLITHIC_BASE_FIELD_BYTES
+C61_MONOLITHIC_D27_ENCODED_BYTES = (1 << 28) * C61_MONOLITHIC_BASE_FIELD_BYTES
+C61_MONOLITHIC_D27_MERKLE_BYTES = ((1 << 28) - 1) * 32
+C61_MONOLITHIC_D27_RETAINED_LOWER_BOUND_BYTES = (
+    C61_MONOLITHIC_D27_MESSAGE_BYTES
+    + C61_MONOLITHIC_D27_ENCODED_BYTES
+    + C61_MONOLITHIC_D27_MERKLE_BYTES
+)
+C61_MONOLITHIC_CONCURRENT_RETAINED_LOWER_BOUND_BYTES = (
+    C61_MONOLITHIC_D28_RETAINED_LOWER_BOUND_BYTES
+    + C61_MONOLITHIC_D27_RETAINED_LOWER_BOUND_BYTES
+)
 # Immutable clear-target Section 0.11 diagnostic; it is not a C6AWH1 size.
 C61_NATIVE_CLEAR_TARGET_D14_DIAGNOSTIC_BYTES = 375_584
 # Exact strict C6AWP1 D14 claimless codec differential.  Its WHIR payload
@@ -653,7 +679,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v19",
+        "profile": "C6.1-public-compression-reference-v20",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
@@ -669,7 +695,8 @@ def build_report() -> dict[str, Any]:
             "PACKED_MULTI_ORACLE_TYPED_BOUNDARY_GREEN__"
             "SHARED_ROUND_CLAIMLESS_BACKEND_GREEN__"
             "EXACT_SPARSE_RELATION_TO_PHYSICAL_SHARED_WHIR_GREEN__"
-            "PRODUCTION_D28_D27_EXECUTION_REQUIRED__"
+            "PRODUCTION_D28_D27_MONOLITHIC_MEMORY_CENSUSED__"
+            "PERSISTED_OR_GPU_RESIDENT_WHIR_EXECUTOR_REQUIRED__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
@@ -750,7 +777,8 @@ def build_report() -> dict[str, Any]:
                 "PACKED_MULTI_ORACLE_TYPED_BOUNDARY_GREEN__"
                 "SHARED_ROUND_CLAIMLESS_BACKEND_GREEN__"
                 "EXACT_SPARSE_RELATION_TO_PHYSICAL_SHARED_WHIR_GREEN__"
-                "PRODUCTION_D28_D27_EXECUTION_REQUIRED__"
+                "PRODUCTION_D28_D27_MONOLITHIC_MEMORY_CENSUSED__"
+                "PERSISTED_OR_GPU_RESIDENT_WHIR_EXECUTOR_REQUIRED__"
                 "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
             "statement": (
@@ -1309,7 +1337,7 @@ def build_report() -> dict[str, Any]:
                 ),
             },
             "local_hard_stop": {
-                "status": "C6SPR4_PRODUCTION_D28_D27_EXECUTION_REQUIRED",
+                "status": "C6SPR5_PERSISTED_OR_GPU_RESIDENT_WHIR_EXECUTOR_REQUIRED",
                 "canonical_runtime_seam_green": True,
                 "raw_verifier_runtime_values": raw_verifier_runtime_values,
                 "canonical_runtime_values": canonical_runtime_values,
@@ -1506,9 +1534,31 @@ def build_report() -> dict[str, Any]:
                         "claimless authenticated polynomial openings only"
                     ),
                 },
+                "monolithic_p3_memory_census": {
+                    "response_d28_message_bytes": C61_MONOLITHIC_D28_MESSAGE_BYTES,
+                    "response_d28_encoded_bytes": C61_MONOLITHIC_D28_ENCODED_BYTES,
+                    "response_d28_merkle_bytes": C61_MONOLITHIC_D28_MERKLE_BYTES,
+                    "response_d28_retained_lower_bound_bytes": (
+                        C61_MONOLITHIC_D28_RETAINED_LOWER_BOUND_BYTES
+                    ),
+                    "plan_d27_message_bytes": C61_MONOLITHIC_D27_MESSAGE_BYTES,
+                    "plan_d27_encoded_bytes": C61_MONOLITHIC_D27_ENCODED_BYTES,
+                    "plan_d27_merkle_bytes": C61_MONOLITHIC_D27_MERKLE_BYTES,
+                    "plan_d27_retained_lower_bound_bytes": (
+                        C61_MONOLITHIC_D27_RETAINED_LOWER_BOUND_BYTES
+                    ),
+                    "concurrent_retained_lower_bound_bytes": (
+                        C61_MONOLITHIC_CONCURRENT_RETAINED_LOWER_BOUND_BYTES
+                    ),
+                    "includes_later_rounds_gkr_and_allocator_overhead": False,
+                    "compared_to_coefficient_witness_cap_as_protocol_gate": False,
+                    "production_execution_credit": False,
+                },
                 "required_before_resume": [
+                    "implement a resource-instrumented persisted/recomputable or GPU-resident WHIR prover-data executor byte-identical to the pinned fork",
+                    "preserve the two prechallenge roots, shared-round transcript, strict codec and designated ZeroOpen without a silent monolithic or CPU fallback",
                     "execute the exact relation with the production D28 base-limb response and D27 plan geometries",
-                    "strict-decode both compiler chains and reconcile production memory/correlation counters",
+                    "strict-decode both compiler chains and reconcile coefficient/witness, total RSS, GPU and correlation counters separately",
                     "run a clean local full-chain benchmark before any owner GO or pod contact",
                 ],
                 "credit": False,
@@ -1726,6 +1776,15 @@ def build_report() -> dict[str, Any]:
     assert C61_COMPILER_RAW_CORRELATION_EQUIVALENTS_PER_TAPE == 11_010
     assert C61_RAW_CORRELATION_RESERVE_EQUIVALENTS_PER_TAPE == 78_232
     assert C61_NATIVE_CLAIMLESS_D14_DIAGNOSTIC_BYTES == 378_496
+    assert C61_MONOLITHIC_D28_MESSAGE_BYTES == 2_147_483_648
+    assert C61_MONOLITHIC_D28_ENCODED_BYTES == 4_294_967_296
+    assert C61_MONOLITHIC_D28_MERKLE_BYTES == 17_179_869_152
+    assert C61_MONOLITHIC_D28_RETAINED_LOWER_BOUND_BYTES == 23_622_320_096
+    assert C61_MONOLITHIC_D27_MESSAGE_BYTES == 1_073_741_824
+    assert C61_MONOLITHIC_D27_ENCODED_BYTES == 2_147_483_648
+    assert C61_MONOLITHIC_D27_MERKLE_BYTES == 8_589_934_560
+    assert C61_MONOLITHIC_D27_RETAINED_LOWER_BOUND_BYTES == 11_811_160_032
+    assert C61_MONOLITHIC_CONCURRENT_RETAINED_LOWER_BOUND_BYTES == 35_433_480_128
     assert C61_PRIVATE_ENTROPY_D14_CHALLENGES == 2_588
     assert C61_PRIVATE_ENTROPY_D14_CHECKPOINT_FRONTIER * 2 == (
         C61_PRIVATE_ENTROPY_D14_CHALLENGES

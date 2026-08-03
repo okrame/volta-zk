@@ -208,15 +208,16 @@ pub struct C61AuthenticatedP3SharedMultiOracleDiagnostic {
     pub plan_spill: C61PersistedMmcsMetrics,
 }
 
-pub const C61_PRODUCTION_COMPILER_PROOF_MAGIC: [u8; 8] = *b"C6CPX1\0\0";
-pub const C61_PRODUCTION_COMPILER_PROOF_VERSION: u16 = 1;
-const C61_PRODUCTION_COMPILER_PROOF_HEADER_BYTES: usize = 84;
+pub const C61_PRODUCTION_COMPILER_PROOF_MAGIC: [u8; 8] = *b"C6CPX2\0\0";
+pub const C61_PRODUCTION_COMPILER_PROOF_VERSION: u16 = 2;
+const C61_PRODUCTION_COMPILER_PROOF_HEADER_BYTES: usize = 148;
 const C61_PRODUCTION_COMPILER_PROOF_DIGEST_BYTES: usize = 32;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C61ProductionCompilerChainProof {
     terminal_binding_digest: [u8; 32],
     plan_folds: [Fp2; 2],
+    physical_plan_fold_values: [Fp2; C61_EXACT_PLAN_FOLD_PHYSICAL_OPENINGS],
     arithmetic_payload: Vec<u8>,
     shared_payload: Vec<u8>,
 }
@@ -228,6 +229,18 @@ impl C61ProductionCompilerChainProof {
 
     pub fn plan_folds(&self) -> [Fp2; 2] {
         self.plan_folds
+    }
+
+    pub fn physical_plan_fold_values(&self) -> [Fp2; C61_EXACT_PLAN_FOLD_PHYSICAL_OPENINGS] {
+        self.physical_plan_fold_values
+    }
+
+    pub fn arithmetic_payload(&self) -> &[u8] {
+        &self.arithmetic_payload
+    }
+
+    pub fn shared_payload(&self) -> &[u8] {
+        &self.shared_payload
     }
 
     pub fn encoded_len(&self) -> usize {
@@ -244,18 +257,22 @@ impl C61ProductionCompilerChainProof {
             || self.arithmetic_payload.len() > 500_000
             || self.shared_payload.len() > C61_SHARED_MULTI_ORACLE_MAX_BYTES
         {
-            return Err("C6CPX1 proof shape is noncanonical".to_owned());
+            return Err("C6CPX2 proof shape is noncanonical".to_owned());
         }
         let arithmetic_len = u32::try_from(self.arithmetic_payload.len())
-            .map_err(|_| "C6CPX1 arithmetic payload exceeds u32".to_owned())?;
+            .map_err(|_| "C6CPX2 arithmetic payload exceeds u32".to_owned())?;
         let shared_len = u32::try_from(self.shared_payload.len())
-            .map_err(|_| "C6CPX1 shared payload exceeds u32".to_owned())?;
+            .map_err(|_| "C6CPX2 shared payload exceeds u32".to_owned())?;
         let mut bytes = Vec::with_capacity(self.encoded_len());
         bytes.extend_from_slice(&C61_PRODUCTION_COMPILER_PROOF_MAGIC);
         bytes.extend_from_slice(&C61_PRODUCTION_COMPILER_PROOF_VERSION.to_le_bytes());
         bytes.extend_from_slice(&0u16.to_le_bytes());
         bytes.extend_from_slice(&self.terminal_binding_digest);
         for value in self.plan_folds {
+            bytes.extend_from_slice(&value.c0.value().to_le_bytes());
+            bytes.extend_from_slice(&value.c1.value().to_le_bytes());
+        }
+        for value in self.physical_plan_fold_values {
             bytes.extend_from_slice(&value.c0.value().to_le_bytes());
             bytes.extend_from_slice(&value.c1.value().to_le_bytes());
         }
@@ -274,44 +291,53 @@ impl C61ProductionCompilerChainProof {
             < C61_PRODUCTION_COMPILER_PROOF_HEADER_BYTES
                 + C61_PRODUCTION_COMPILER_PROOF_DIGEST_BYTES
         {
-            return Err("truncated C6CPX1 proof".to_owned());
+            return Err("truncated C6CPX2 proof".to_owned());
         }
         let payload_end = bytes.len() - C61_PRODUCTION_COMPILER_PROOF_DIGEST_BYTES;
         if blake3::hash(&bytes[..payload_end]).as_bytes() != &bytes[payload_end..] {
-            return Err("C6CPX1 proof digest mismatch".to_owned());
+            return Err("C6CPX2 proof digest mismatch".to_owned());
         }
         let mut offset = 0usize;
         let mut take = |count: usize| -> Result<&[u8], String> {
             let end = offset
                 .checked_add(count)
                 .filter(|end| *end <= payload_end)
-                .ok_or_else(|| "truncated C6CPX1 field".to_owned())?;
+                .ok_or_else(|| "truncated C6CPX2 field".to_owned())?;
             let field = &bytes[offset..end];
             offset = end;
             Ok(field)
         };
         if take(8)? != C61_PRODUCTION_COMPILER_PROOF_MAGIC
-            || u16::from_le_bytes(take(2)?.try_into().expect("fixed C6CPX1 version"))
+            || u16::from_le_bytes(take(2)?.try_into().expect("fixed C6CPX2 version"))
                 != C61_PRODUCTION_COMPILER_PROOF_VERSION
-            || u16::from_le_bytes(take(2)?.try_into().expect("fixed C6CPX1 reserved")) != 0
+            || u16::from_le_bytes(take(2)?.try_into().expect("fixed C6CPX2 reserved")) != 0
         {
-            return Err("C6CPX1 header mismatch".to_owned());
+            return Err("C6CPX2 header mismatch".to_owned());
         }
-        let terminal_binding_digest = take(32)?.try_into().expect("fixed C6CPX1 digest");
+        let terminal_binding_digest = take(32)?.try_into().expect("fixed C6CPX2 digest");
         let mut plan_folds = [Fp2::ZERO; 2];
         for value in &mut plan_folds {
-            let c0 = u64::from_le_bytes(take(8)?.try_into().expect("fixed C6CPX1 c0"));
-            let c1 = u64::from_le_bytes(take(8)?.try_into().expect("fixed C6CPX1 c1"));
+            let c0 = u64::from_le_bytes(take(8)?.try_into().expect("fixed C6CPX2 c0"));
+            let c1 = u64::from_le_bytes(take(8)?.try_into().expect("fixed C6CPX2 c1"));
             if c0 >= P || c1 >= P {
-                return Err("noncanonical C6CPX1 field element".to_owned());
+                return Err("noncanonical C6CPX2 field element".to_owned());
+            }
+            *value = Fp2::new(Fp::new(c0), Fp::new(c1));
+        }
+        let mut physical_plan_fold_values = [Fp2::ZERO; C61_EXACT_PLAN_FOLD_PHYSICAL_OPENINGS];
+        for value in &mut physical_plan_fold_values {
+            let c0 = u64::from_le_bytes(take(8)?.try_into().expect("fixed C6CPX2 c0"));
+            let c1 = u64::from_le_bytes(take(8)?.try_into().expect("fixed C6CPX2 c1"));
+            if c0 >= P || c1 >= P {
+                return Err("noncanonical C6CPX2 physical field element".to_owned());
             }
             *value = Fp2::new(Fp::new(c0), Fp::new(c1));
         }
         let arithmetic_len =
-            u32::from_le_bytes(take(4)?.try_into().expect("fixed C6CPX1 arithmetic length"))
+            u32::from_le_bytes(take(4)?.try_into().expect("fixed C6CPX2 arithmetic length"))
                 as usize;
         let shared_len =
-            u32::from_le_bytes(take(4)?.try_into().expect("fixed C6CPX1 shared length")) as usize;
+            u32::from_le_bytes(take(4)?.try_into().expect("fixed C6CPX2 shared length")) as usize;
         if arithmetic_len == 0
             || arithmetic_len > 500_000
             || shared_len == 0
@@ -319,14 +345,19 @@ impl C61ProductionCompilerChainProof {
             || C61_PRODUCTION_COMPILER_PROOF_HEADER_BYTES + arithmetic_len + shared_len
                 != payload_end
         {
-            return Err("C6CPX1 payload lengths are noncanonical".to_owned());
+            return Err("C6CPX2 payload lengths are noncanonical".to_owned());
         }
         let arithmetic_payload = take(arithmetic_len)?.to_vec();
         let shared_payload = take(shared_len)?.to_vec();
-        let proof =
-            Self { terminal_binding_digest, plan_folds, arithmetic_payload, shared_payload };
+        let proof = Self {
+            terminal_binding_digest,
+            plan_folds,
+            physical_plan_fold_values,
+            arithmetic_payload,
+            shared_payload,
+        };
         if proof.encode()? != bytes {
-            return Err("noncanonical C6CPX1 encoding".to_owned());
+            return Err("noncanonical C6CPX2 encoding".to_owned());
         }
         Ok(proof)
     }
@@ -2838,6 +2869,37 @@ impl C61ExactTerminalFoldBinding {
         }
         Ok(())
     }
+
+    fn validate_physical_plan_fold_values(
+        &self,
+        base_domain_log2: u8,
+        values: &[Fp2; C61_EXACT_PLAN_FOLD_PHYSICAL_OPENINGS],
+    ) -> Result<(), String> {
+        self.validate()?;
+        let source_dimension = usize::from(base_domain_log2)
+            .checked_sub(2)
+            .ok_or_else(|| "C6CPX2 compact source dimension underflows".to_owned())?;
+        for repetition in 0..2usize {
+            let leaf = &self.leaf_points[repetition];
+            if leaf.len() < source_dimension {
+                return Err(
+                    "C6CPX2 terminal leaf point is shorter than its source block".to_owned()
+                );
+            }
+            let value =
+                values[2 * repetition] + Fp2::new(Fp::ZERO, Fp::ONE) * values[2 * repetition + 1];
+            let padding = leaf[source_dimension..]
+                .iter()
+                .fold(Fp2::ONE, |factor, coordinate| factor * (Fp2::ONE - *coordinate));
+            if value * padding != self.plan_folds[repetition] {
+                return Err(
+                    "C6CPX2 physical plan-fold targets do not reconstruct the semantic fold"
+                        .to_owned(),
+                );
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Public-only view handed to the verifier phase.  In particular this type
@@ -4280,9 +4342,18 @@ where
     let response_spill = response_mmcs.c61_persisted_metrics();
     let plan_spill = plan_mmcs.c61_persisted_metrics();
     let persisted_executor = response_spill.is_some() && plan_spill.is_some();
+    let physical_plan_fold_values: [Fp2; C61_EXACT_PLAN_FOLD_PHYSICAL_OPENINGS] = response_values
+        [C61_SPARSE_ARITHMETIC_PHYSICAL_RESPONSE_OPENINGS..]
+        .try_into()
+        .map_err(|_| "C6CPX2 physical plan-fold target census mismatch".to_owned())?;
+    fixture.terminal_binding.validate_physical_plan_fold_values(
+        fixture.packed.base_domain_log2(),
+        &physical_plan_fold_values,
+    )?;
     let proof = C61ProductionCompilerChainProof {
         terminal_binding_digest: fixture.terminal_binding.digest,
         plan_folds: fixture.terminal_binding.plan_folds,
+        physical_plan_fold_values,
         arithmetic_payload: provider_phase.arithmetic_payload.clone(),
         shared_payload: artifact.payload.clone(),
     };
@@ -4840,6 +4911,22 @@ mod tests {
     fn exact_terminal_fold_and_compiler_frame_reject_mutations() {
         let fixture = c61_sparse_compiler_physical_fixture().unwrap();
         fixture.terminal_binding.validate().unwrap();
+        let (_, physical_values) = c61_exact_plan_fold_physical_openings(&fixture, 14).unwrap();
+        let physical_values: [Fp2; C61_EXACT_PLAN_FOLD_PHYSICAL_OPENINGS] =
+            physical_values.try_into().unwrap();
+        fixture
+            .terminal_binding
+            .validate_physical_plan_fold_values(fixture.packed.base_domain_log2(), &physical_values)
+            .unwrap();
+        let mut changed_physical = physical_values;
+        changed_physical[0] += Fp2::ONE;
+        assert!(fixture
+            .terminal_binding
+            .validate_physical_plan_fold_values(
+                fixture.packed.base_domain_log2(),
+                &changed_physical
+            )
+            .is_err());
 
         let mut changed_fold = fixture.terminal_binding.clone();
         changed_fold.plan_folds[0] += Fp2::ONE;
@@ -4849,10 +4936,12 @@ mod tests {
         let proof = C61ProductionCompilerChainProof {
             terminal_binding_digest: fixture.terminal_binding.digest,
             plan_folds: fixture.terminal_binding.plan_folds,
+            physical_plan_fold_values: [Fp2::new(Fp::new(7), Fp::new(11)); 4],
             arithmetic_payload: vec![0xA5; 97],
             shared_payload: vec![0x5A; 193],
         };
         let encoded = proof.encode().unwrap();
+        assert_eq!(encoded.len(), 180 + 97 + 193);
         assert_eq!(C61ProductionCompilerChainProof::decode(&encoded).unwrap(), proof);
         for index in [0, 12, 51, encoded.len() / 2, encoded.len() - 1] {
             let mut changed = encoded.clone();

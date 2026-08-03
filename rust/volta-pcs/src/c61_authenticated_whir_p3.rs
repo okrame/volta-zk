@@ -2821,7 +2821,6 @@ where
         .map(|value| Goldilocks::from_u64(value.value()))
         .collect::<Vec<_>>();
     response_coefficients.resize(1usize << response_num_variables, Goldilocks::ZERO);
-    let response_check = Poly::new(response_coefficients.clone());
     let response_witness = Poly::new(response_coefficients);
     let mut plan_coefficients = fixture
         .packed
@@ -2831,7 +2830,6 @@ where
         .map(|value| Goldilocks::from_u64(value.value()))
         .collect::<Vec<_>>();
     plan_coefficients.resize(1usize << plan_num_variables, Goldilocks::ZERO);
-    let plan_check = Poly::new(plan_coefficients.clone());
     let plan_witness = Poly::new(plan_coefficients);
     let pooled_pcg = correlations.uses_pooled_pcg() && context.uses_pooled_pcg();
     if fixture.production && !pooled_pcg {
@@ -2918,11 +2916,15 @@ where
     if response_points
         .iter()
         .zip(provider_phase.response_values)
-        .any(|(point, expected)| c61_volta_fp2_from_p3(response_check.eval_base(point)) != expected)
+        .any(|(point, expected)| {
+            c61_volta_fp2_from_p3(response_data.message.eval_base(point)) != expected
+        })
         || plan_points
             .iter()
             .zip(provider_phase.plan_values)
-            .any(|(point, expected)| c61_volta_fp2_from_p3(plan_check.eval_base(point)) != expected)
+            .any(|(point, expected)| {
+                c61_volta_fp2_from_p3(plan_data.message.eval_base(point)) != expected
+            })
     {
         return Err("C6SPR3 Volta-LSB/P3-MSB physical evaluation adapter mismatch".to_owned());
     }

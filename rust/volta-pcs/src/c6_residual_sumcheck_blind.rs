@@ -839,7 +839,7 @@ impl C6BlindResidualPendingClaimsProver {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct C6BlindResidualPendingClaimVerifier {
+pub(crate) struct C6BlindResidualPendingClaimVerifier {
     descriptor: C6BlindResidualPendingDescriptor,
     keys: [VerifierKey; MAC_TAPES],
 }
@@ -2459,22 +2459,11 @@ fn prove_c6_blind_residual_sumchecks_fused_inner(
     C6BlindResidualPendingClaimsProver,
     Option<C6BlindResidualDirectTerminalOutputs>,
 )> {
-    validate_statement_pair(statements)?;
     if first_rounds.is_some_and(|rounds| rounds.len() != statements.len()) {
         return Err(C6BlindResidualError::new("C6RSC3 prepared first-round census mismatch"));
     }
-    if arena.active_repetition().is_some() || arena.is_faulted() {
-        return Err(C6BlindResidualError::new(
-            "C6RSC3 fused prover starts from invalid coefficient-arena state",
-        ));
-    }
-    transcript.append("c6_residual_blind_framing", PROOF_FIXED_FRAMING_BYTES - 32);
-    let mut repetition_proofs = Vec::with_capacity(C6_RESIDUAL_SUMCHECK_REPETITIONS);
-    let mut pending_transfers =
-        Vec::with_capacity(C6_RESIDUAL_SUMCHECK_REPETITIONS * C6_RESIDUAL_TABLES_PER_REPETITION);
-    let mut pending_claims =
-        Vec::with_capacity(C6_RESIDUAL_SUMCHECK_REPETITIONS * C6_RESIDUAL_TABLES_PER_REPETITION);
-    let mut terminal_repetitions = Vec::with_capacity(C6_RESIDUAL_SUMCHECK_REPETITIONS);
+    begin_c6_blind_residual_prover_stepwise(statements, arena, transcript)?;
+    let mut outputs = Vec::with_capacity(C6_RESIDUAL_SUMCHECK_REPETITIONS);
     for (index, statement) in statements.iter().enumerate() {
         let state = prepare_c6_blind_residual_prover_round_state_fused(
             statement,
@@ -2492,8 +2481,63 @@ fn prove_c6_blind_residual_sumchecks_fused_inner(
                 "C6RSC3 fused arithmetic retained reference proof or coefficient state",
             ));
         }
+        outputs.push(output);
+    }
+    assemble_c6_blind_residual_prover_stepwise(statements, compiler, arena, outputs, transcript)
+}
+
+#[cfg(feature = "c6-trace")]
+pub(crate) fn begin_c6_blind_residual_prover_stepwise(
+    statements: &[C6BlindResidualStatement],
+    arena: &C6ResidualFusedCoefficientArena,
+    transcript: &mut Transcript,
+) -> Result<()> {
+    validate_statement_pair(statements)?;
+    if arena.active_repetition().is_some() || arena.is_faulted() {
+        return Err(C6BlindResidualError::new(
+            "C6RSC3 fused prover starts from invalid coefficient-arena state",
+        ));
+    }
+    transcript.append("c6_residual_blind_framing", PROOF_FIXED_FRAMING_BYTES - 32);
+    Ok(())
+}
+
+#[cfg(feature = "c6-trace")]
+pub(crate) fn assemble_c6_blind_residual_prover_stepwise(
+    statements: &[C6BlindResidualStatement],
+    compiler: C6BlindResidualFusedCompilerContext<'_>,
+    arena: &C6ResidualFusedCoefficientArena,
+    outputs: Vec<C6BlindResidualProverRepetitionOutput>,
+    transcript: &mut Transcript,
+) -> Result<(
+    C6BlindResidualSumcheckProof,
+    C6BlindResidualPendingTransferFrame,
+    C6BlindResidualPendingClaimsProver,
+    Option<C6BlindResidualDirectTerminalOutputs>,
+)> {
+    validate_statement_pair(statements)?;
+    if outputs.len() != C6_RESIDUAL_SUMCHECK_REPETITIONS
+        || arena.active_repetition().is_some()
+        || arena.is_faulted()
+    {
+        return Err(C6BlindResidualError::new(
+            "C6RSC3 coordinated prover repetition or arena mismatch",
+        ));
+    }
+    let mut repetition_proofs = Vec::with_capacity(C6_RESIDUAL_SUMCHECK_REPETITIONS);
+    let mut pending_transfers =
+        Vec::with_capacity(C6_RESIDUAL_SUMCHECK_REPETITIONS * C6_RESIDUAL_TABLES_PER_REPETITION);
+    let mut pending_claims =
+        Vec::with_capacity(C6_RESIDUAL_SUMCHECK_REPETITIONS * C6_RESIDUAL_TABLES_PER_REPETITION);
+    let mut terminal_repetitions = Vec::with_capacity(C6_RESIDUAL_SUMCHECK_REPETITIONS);
+    for (index, output) in outputs.into_iter().enumerate() {
+        if usize::from(output.proof.repetition) != index || output.reference_proof.is_some() {
+            return Err(C6BlindResidualError::new(
+                "C6RSC3 coordinated prover repetition order mismatch",
+            ));
+        }
         if compiler.relation.protocol_version() == C6_RESIDUAL_RELATION_PROTOCOL_DIRECT_MLE {
-            terminal_repetitions.push(direct_terminal_repetition(statement, &output)?);
+            terminal_repetitions.push(direct_terminal_repetition(&statements[index], &output)?);
         }
         repetition_proofs.push(output.proof);
         pending_claims.extend(output.pending_claims);
@@ -3019,15 +3063,14 @@ fn verify_c6_blind_residual_sumchecks_inner<T>(
 where
     T: FnMut(&C6BlindResidualStatement, &[Fp2], &[Fp2]) -> Result<C6BlindResidualTerminalScalars>,
 {
-    proof.validate_shape(statements)?;
-    validate_pending_frame_shape(statements, pending_frame)?;
-    if contexts[0].delta == contexts[1].delta {
-        return Err(C6BlindResidualError::new(
-            "C6RSC3 residual MAC coordinates are not independent",
-        ));
-    }
-    transcript.append("c6_residual_blind_framing", PROOF_FIXED_FRAMING_BYTES - 32);
-    let mut accepted_pending = Vec::with_capacity(pending_frame.corrections.len());
+    begin_c6_blind_residual_verifier_stepwise(
+        statements,
+        proof,
+        pending_frame,
+        contexts,
+        transcript,
+    )?;
+    let mut repetitions = Vec::with_capacity(C6_RESIDUAL_SUMCHECK_REPETITIONS);
     for statement in statements {
         let repetition = statement.repetition();
         let mut state = prepare_c6_blind_residual_verifier_round_state(statement, proof)?;
@@ -3053,10 +3096,62 @@ where
                 terminal_compiler(statement, leaf_point, auxiliary_point)
             },
         )?;
-        accepted_pending.extend(local_pending);
+        repetitions.push(local_pending);
+    }
+    assemble_c6_blind_residual_verifier_stepwise(repetitions, transcript)
+}
+
+pub(crate) fn begin_c6_blind_residual_verifier_stepwise(
+    statements: &[C6BlindResidualStatement],
+    proof: &C6BlindResidualSumcheckProof,
+    pending_frame: &C6BlindResidualPendingTransferFrame,
+    contexts: &[VerifierCtx; MAC_TAPES],
+    transcript: &mut Transcript,
+) -> Result<()> {
+    proof.validate_shape(statements)?;
+    validate_pending_frame_shape(statements, pending_frame)?;
+    if contexts[0].delta == contexts[1].delta {
+        return Err(C6BlindResidualError::new(
+            "C6RSC3 residual MAC coordinates are not independent",
+        ));
+    }
+    transcript.append("c6_residual_blind_framing", PROOF_FIXED_FRAMING_BYTES - 32);
+    Ok(())
+}
+
+pub(crate) fn assemble_c6_blind_residual_verifier_stepwise(
+    repetitions: Vec<Vec<C6BlindResidualPendingClaimVerifier>>,
+    transcript: &mut Transcript,
+) -> Result<C6BlindResidualPendingClaimsVerifier> {
+    if repetitions.len() != C6_RESIDUAL_SUMCHECK_REPETITIONS
+        || repetitions.iter().any(|pending| pending.len() != C6_RESIDUAL_TABLES_PER_REPETITION)
+    {
+        return Err(C6BlindResidualError::new(
+            "C6RSC3 coordinated verifier repetition/pending census mismatch",
+        ));
     }
     transcript.append("c6_residual_blind_framing", 32);
-    Ok(C6BlindResidualPendingClaimsVerifier { claims: accepted_pending })
+    Ok(C6BlindResidualPendingClaimsVerifier { claims: repetitions.into_iter().flatten().collect() })
+}
+
+#[cfg(feature = "c6-trace")]
+#[allow(dead_code)]
+pub(crate) fn finish_c6_blind_residual_verifier_round_state_fused(
+    state: C6BlindResidualVerifierRoundState<'_>,
+    pending_frame: &C6BlindResidualPendingTransferFrame,
+    compiler: C6BlindResidualFusedCompilerContext<'_>,
+    contexts: &mut [VerifierCtx; MAC_TAPES],
+    transcript: &mut Transcript,
+) -> Result<Vec<C6BlindResidualPendingClaimVerifier>> {
+    let repetition = state.repetition();
+    let frame_start = usize::from(repetition) * C6_RESIDUAL_TABLES_PER_REPETITION;
+    let frame_end = frame_start + C6_RESIDUAL_TABLES_PER_REPETITION;
+    let corrections = pending_frame.corrections.get(frame_start..frame_end).ok_or_else(|| {
+        C6BlindResidualError::new("C6RSC3 coordinated verifier pending slice is absent")
+    })?;
+    state.finish(corrections, contexts, transcript, |statement, leaf_point, auxiliary_point| {
+        terminal_scalars_from_fused(compiler, statement, leaf_point, auxiliary_point)
+    })
 }
 
 /// Designated verifier whose terminal coefficient evaluation is the
@@ -3078,35 +3173,45 @@ pub fn verify_c6_blind_residual_sumchecks_fused(
         contexts,
         transcript,
         |statement, leaf_point, auxiliary_point| {
-            let terminal = compile_c6_residual_fused_terminal_coefficients(
-                compiler.operation_plan,
-                compiler.extraction,
-                compiler.runtime,
-                compiler.linear,
-                compiler.relation,
-                statement.repetition(),
-                leaf_point,
-                auxiliary_point,
-            )
-            .map_err(clear_error)?;
-            if terminal.proof_repetition() != statement.repetition()
-                || terminal.target() != statement.target()
-                || terminal.leaf_point() != leaf_point
-                || terminal.auxiliary_point() != auxiliary_point
-                || terminal.semantic_digest() != statement.semantic_compiler_digest()
-                || terminal.coefficient_writes() == 0
-            {
-                return Err(C6BlindResidualError::new(
-                    "C6RSC3 fused terminal replay differs from its semantic statement",
-                ));
-            }
-            Ok(C6BlindResidualTerminalScalars {
-                leaf_linear: *terminal.leaf_linear(),
-                auxiliary_linear: *terminal.auxiliary_linear(),
-                auxiliary_quadratic: *terminal.auxiliary_quadratic(),
-            })
+            terminal_scalars_from_fused(compiler, statement, leaf_point, auxiliary_point)
         },
     )
+}
+
+#[cfg(feature = "c6-trace")]
+fn terminal_scalars_from_fused(
+    compiler: C6BlindResidualFusedCompilerContext<'_>,
+    statement: &C6BlindResidualStatement,
+    leaf_point: &[Fp2],
+    auxiliary_point: &[Fp2],
+) -> Result<C6BlindResidualTerminalScalars> {
+    let terminal = compile_c6_residual_fused_terminal_coefficients(
+        compiler.operation_plan,
+        compiler.extraction,
+        compiler.runtime,
+        compiler.linear,
+        compiler.relation,
+        statement.repetition(),
+        leaf_point,
+        auxiliary_point,
+    )
+    .map_err(clear_error)?;
+    if terminal.proof_repetition() != statement.repetition()
+        || terminal.target() != statement.target()
+        || terminal.leaf_point() != leaf_point
+        || terminal.auxiliary_point() != auxiliary_point
+        || terminal.semantic_digest() != statement.semantic_compiler_digest()
+        || terminal.coefficient_writes() == 0
+    {
+        return Err(C6BlindResidualError::new(
+            "C6RSC3 fused terminal replay differs from its semantic statement",
+        ));
+    }
+    Ok(C6BlindResidualTerminalScalars {
+        leaf_linear: *terminal.leaf_linear(),
+        auxiliary_linear: *terminal.auxiliary_linear(),
+        auxiliary_quadratic: *terminal.auxiliary_quadratic(),
+    })
 }
 
 /// Compatibility name retained for the scaled differential harness.

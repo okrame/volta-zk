@@ -92,6 +92,8 @@ pub const C61_PRODUCTION_COEFFICIENT_WITNESS_CAP_BYTES: u64 = 2_293_198_848;
 /// bound for materialized relation vectors, later WHIR rounds and allocator
 /// overhead.  The production record must still measure actual RSS.
 pub const C61_PRODUCTION_MONOLITHIC_MIN_AVAILABLE_HOST_BYTES: u64 = 64 * 1024 * 1024 * 1024;
+pub const C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_HOST_BYTES: u64 = 64 * 1024 * 1024 * 1024;
+pub const C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES: u64 = 128 * 1024 * 1024 * 1024;
 
 type C61AuthenticatedP3Proof = ZkWhirProof<Goldilocks, C61P3Fp2, C61Mmcs>;
 
@@ -159,6 +161,7 @@ pub struct C61AuthenticatedP3SharedMultiOracleDiagnostic {
     pub persisted_executor: bool,
     pub gpu_performance_credit: bool,
     pub admitted_available_host_bytes: u64,
+    pub admitted_available_spill_bytes: u64,
     pub monolithic_retained_lower_bound_bytes: u64,
     pub pooled_pcg: bool,
     pub response_num_variables: usize,
@@ -204,6 +207,15 @@ pub struct C61ProductionMonolithicResourceAdmission {
     pub a100_present: bool,
     /// Must be set explicitly by the owner-authorized campaign runner.
     pub allow_host_monolithic_baseline: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C61ProductionPersistedResourceAdmission {
+    pub available_host_bytes: u64,
+    pub available_spill_bytes: u64,
+    pub gpu_total_bytes: u64,
+    pub a100_present: bool,
+    pub allow_persisted_executor: bool,
 }
 
 /// Production total-memory census for the selected monolithic P3 prover data
@@ -2417,6 +2429,98 @@ pub fn run_c61_authenticated_whir_p3_production_monolithic_baseline(
     )
 }
 
+/// Execute one exact production compiler chain with the C6SPX1 persisted
+/// prover-data lifecycle.  This is the only host executor admitted for the
+/// C6SPR5 campaign; it never falls back to the resident MMCS and earns no GPU
+/// performance credit.
+#[allow(clippy::too_many_arguments)]
+pub fn run_c61_authenticated_whir_p3_production_persisted(
+    operation_plan: &C6InstalledOperationPlan,
+    terminal_metadata: C6OperationPlanTerminalMetadata,
+    extraction: &volta_mac::C6DecodedInstanceExtractionPlan,
+    runtime: &volta_mac::C6RuntimeInstanceValues,
+    relation: &volta_proto::c6_residual::C6ResidualRelationChallenges,
+    leaf_points: [&[Fp2]; 2],
+    output_beta: Fp2,
+    spill_root: &Path,
+    admission: C61ProductionPersistedResourceAdmission,
+    correlations: CorrelationStream,
+    context: VerifierCtx,
+    verifier_seed: [u8; 32],
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<C61AuthenticatedP3SharedMultiOracleDiagnostic, String> {
+    if !admission.allow_persisted_executor
+        || !admission.a100_present
+        || admission.gpu_total_bytes == 0
+        || admission.available_host_bytes < C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_HOST_BYTES
+        || admission.available_spill_bytes < C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES
+    {
+        return Err(format!(
+            "C6SPR5 persisted A100 admission failed: available_host={} B, minimum_host={} B, available_spill={} B, minimum_spill={} B, gpu={} B, a100={}, owner_persisted={}",
+            admission.available_host_bytes,
+            C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_HOST_BYTES,
+            admission.available_spill_bytes,
+            C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES,
+            admission.gpu_total_bytes,
+            admission.a100_present,
+            admission.allow_persisted_executor,
+        ));
+    }
+    if id.component != C61NativeComponent::Compiler {
+        return Err("C6SPR5 persisted runner admits only compiler chains".to_owned());
+    }
+    if !correlations.uses_pooled_pcg() || !context.uses_pooled_pcg() {
+        return Err("C6SPR5 persisted runner forbids mock PCG state".to_owned());
+    }
+    let fixture = c61_sparse_compiler_production_fixture(
+        operation_plan,
+        terminal_metadata,
+        extraction,
+        runtime,
+        relation,
+        leaf_points,
+        output_beta,
+    )?;
+    let mut session_hasher = blake3::Hasher::new_derive_key("volta-zk/c6.1/c6spx1-session/v1");
+    session_hasher.update(&verifier_seed);
+    session_hasher.update(&operation_plan.artifact_digest());
+    session_hasher.update(&(id.component as u16).to_le_bytes());
+    session_hasher.update(&[id.repetition, mask_range.stage]);
+    session_hasher.update(&mask_range.slot.to_le_bytes());
+    session_hasher.update(&mask_range.range_start.to_le_bytes());
+    let session_digest = *session_hasher.finalize().as_bytes();
+    let response_mmcs = C61PersistedMmcs::new(
+        c61_reference_mmcs(),
+        spill_root.join("response"),
+        session_digest,
+        *b"response",
+    )?;
+    let plan_mmcs = C61PersistedMmcs::new(
+        c61_reference_mmcs(),
+        spill_root.join("plan"),
+        session_digest,
+        *b"planlane",
+    )?;
+    let report = run_c61_authenticated_whir_p3_shared_multi_oracle_with_provider_mmcs(
+        &fixture,
+        28,
+        correlations,
+        context,
+        verifier_seed,
+        id,
+        mask_range,
+        admission.available_host_bytes,
+        admission.available_spill_bytes,
+        response_mmcs,
+        plan_mmcs,
+    )?;
+    if !report.production_geometry || !report.persisted_executor || report.monolithic_host_baseline {
+        return Err("C6SPR5 persisted runner returned a non-persisted production report".to_owned());
+    }
+    Ok(report)
+}
+
 fn sample_c61_sparse_relation_challenges(
     operation_plan: &C6InstalledOperationPlan,
     transcript: &mut Transcript,
@@ -2740,6 +2844,7 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_persisted_diagnostic(
         id,
         mask_range,
         0,
+        0,
         response_mmcs,
         plan_mmcs,
     )
@@ -2764,6 +2869,7 @@ fn run_c61_authenticated_whir_p3_shared_multi_oracle_materialized(
         id,
         mask_range,
         admitted_available_host_bytes,
+        0,
         c61_reference_mmcs(),
         c61_reference_mmcs(),
     )
@@ -2779,6 +2885,7 @@ fn run_c61_authenticated_whir_p3_shared_multi_oracle_with_provider_mmcs<RM, PM>(
     id: C61NativeChainId,
     mask_range: C61AuthenticatedWhirMaskRange,
     admitted_available_host_bytes: u64,
+    admitted_available_spill_bytes: u64,
     response_mmcs: RM,
     plan_mmcs: PM,
 ) -> Result<C61AuthenticatedP3SharedMultiOracleDiagnostic, String>
@@ -3273,6 +3380,7 @@ where
         persisted_executor,
         gpu_performance_credit: false,
         admitted_available_host_bytes,
+        admitted_available_spill_bytes,
         monolithic_retained_lower_bound_bytes: if fixture.production {
             c61_production_monolithic_memory_census()?.concurrent_retained_lower_bound_bytes
         } else {
@@ -3770,6 +3878,7 @@ mod tests {
         assert!(!report.persisted_executor);
         assert!(!report.gpu_performance_credit);
         assert_eq!(report.admitted_available_host_bytes, 0);
+        assert_eq!(report.admitted_available_spill_bytes, 0);
         assert_eq!(report.monolithic_retained_lower_bound_bytes, 0);
         assert!(!report.pooled_pcg);
         assert_eq!(report.response_num_variables, 14);
@@ -3928,6 +4037,49 @@ mod tests {
             allow_host_monolithic_baseline: true,
         });
         assert!(pcg_error.contains("forbids mock PCG state"));
+
+        let persisted_invoke = |admission| {
+            run_c61_authenticated_whir_p3_production_persisted(
+                direct.operation_plan(),
+                terminal_metadata.clone(),
+                direct.extraction(),
+                direct.runtime(),
+                direct.relation(),
+                [&leaf_point, &leaf_point],
+                Fp2::new(Fp::new(191), Fp::new(17)),
+                Path::new("/tmp/volta-c61-persisted-admission-unused"),
+                admission,
+                CorrelationStream::new([0xD3; 32]),
+                VerifierCtx::new([0xD3; 32], delta),
+                [0xC2; 32],
+                C61NativeChainId {
+                    component: C61NativeComponent::Compiler,
+                    repetition: 0,
+                },
+                C61AuthenticatedWhirMaskRange {
+                    stage: 0x61,
+                    slot: 29,
+                    range_start: 120_000,
+                },
+            )
+            .unwrap_err()
+        };
+        let resource_error = persisted_invoke(C61ProductionPersistedResourceAdmission {
+            available_host_bytes: 11 * 1024 * 1024 * 1024,
+            available_spill_bytes: 64 * 1024 * 1024 * 1024,
+            gpu_total_bytes: 0,
+            a100_present: false,
+            allow_persisted_executor: false,
+        });
+        assert!(resource_error.contains("persisted A100 admission failed"));
+        let pcg_error = persisted_invoke(C61ProductionPersistedResourceAdmission {
+            available_host_bytes: C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_HOST_BYTES,
+            available_spill_bytes: C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES,
+            gpu_total_bytes: 80 * 1024 * 1024 * 1024,
+            a100_present: true,
+            allow_persisted_executor: true,
+        });
+        assert!(pcg_error.contains("persisted runner forbids mock PCG state"));
     }
 
     #[test]

@@ -2868,6 +2868,52 @@ execute both independently separated C6SPX1 compiler chains.  The existing
 owner A100 GO remains valid for that later clean runner.  It does not
 authorize bypassing this local ownership gate.
 
+### 0.40 Paired real-PCG allocation binding obstruction
+
+The same-attempt root obstruction is closed locally at the owner boundary.
+`d546d6c` materializes and fixes all six cohorts from typed live sources;
+`75e2909` captures hidden weights/embed vectors directly from the retained
+96/6 `MultiOpenProof` claims; and `b6bc544` maps the canonical first-response
+K/V slabs into the exact zero predecessor and 150-token successor cache
+states.  Scaled differentials are green.  External roots and fixed-node
+terminal substitutes remain inadmissible.
+
+Attempting to admit that bridge as production exposed the next earlier
+dependency.  The authoritative C6 tape identities live in the validated
+`C6SetupManifest`, and the exact one-time ranges live in the indivisible
+`C6PairedCorrelationRanges`.  The current production allocator returns one
+`AllocatedPcgPools` and one `CorrelationAllocation` at a time.  No non-test
+type joins two such allocations to the ordered manifest tapes, exact paired
+ranges, common response identity and durable burn/high-water lifecycle.
+Conversely, `C6PairedSourceWitness::new` accepts opaque caller-supplied tape
+IDs; the existing T1 census supplies constants and two mock streams.  The
+live wrapper materializer therefore cannot prove that its residual leaf came
+from the two authorized real/AES PCG ranges.
+
+An explored shortcut derived tape IDs from logical allocation-order digests.
+It is invalid: equal response scopes and schedules give equal logical digests,
+while the design explicitly makes the setup manifest--not digest
+inequality--the source of tape identity and independence.  The shortcut was
+removed before checkpoint and earns no evidence.
+
+The new **HARD STOP** is
+`C6SPR8_PAIRED_REAL_PCG_ALLOCATION_BINDING_REQUIRED`.  Resume requires a
+fail-closed token which:
+
+1. validates one setup manifest and one paired range reservation;
+2. allocates both ordered ranges from their corresponding production
+   real/AES PCG tapes under one connection/response attempt;
+3. proves exact range start/count, equal raw count, capacity and durable
+   burn/high-water binding for both coordinates;
+4. constructs both prover/verifier streams and the paired source witness
+   without caller-authored tape identities; and
+5. propagates that provenance into the residual leaf consumed by the
+   same-attempt six-root materializer.
+
+Only then may the clean runner execute the production PCS/root/terminal/
+C6SPX1 chain.  The owner A100 GO remains valid after this local gate.  No pod
+was contacted.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

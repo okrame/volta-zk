@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — PERSISTED D28-D27 EXECUTOR GREEN / A100 OWNER GO / LIVE-WRAPPER-ROOT HARD STOP)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — LIVE ROOT MATERIALIZER GREEN / A100 OWNER GO / PAIRED REAL-PCG ALLOCATION HARD STOP)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §0.39 next.
+This capsule is authoritative; read design §0.40 next.
 
 - **Phase/relation.** C6.1 response-local public compression. The 64 C6RSC3
   values are challenge-dependent and exactly factor through two D25 reverse
@@ -19,20 +19,28 @@ This capsule is authoritative; read design §0.39 next.
   D14/D13 resident/persisted roots, proofs, bytes, transcripts, correlations
   and closure match; production selection requires A100, 64-GiB available
   host, 128-GiB spill and pooled real PCG. Direct terminal prover export is
-  checkpoint `c5703b9`; no production run or credit exists.
+  checkpoint `c5703b9`. Checkpoints `d546d6c`, `75e2909` and `b6bc544`
+  respectively materialize all six roots from same-attempt owners, retain the
+  exact 96/6 hidden PCS owners, and map canonical T1 K/V slabs into genesis and
+  successor cache states. No production run or credit exists.
 - **Screens.** Certificate **17,534,807 B**, setup **84,743,367 B**, state
   **2,277,715,552 B**, provider/verifier **14.9087128542 / 4.965672390 s** and
   soundness **102.587833363526... bits** remain `credit:false`.
-- **HARD STOP.** `C6SPR7_LIVE_WRAPPER_ROOT_BINDING_REQUIRED`. The T1 runner
-  obtains its fresh paired source witness from the response PCG, but no
-  non-test adapter materializes the six production wrapper commitments from
-  those exact live slots before retained challenges. External roots can bind
-  a different witness and are inadmissible; that attempted path was reverted
-  by `15f6cfc`. No pod was contacted.
-- **Resume.** In one attempt, bind the six real roots to the exact paired
-  witness/PCG scope before `chi`, then derive direct points and terminal
-  outputs and execute both separated C6SPX1 chains. Record component state,
-  RSS, GPU, spill, correlations and sync separately.
+- **HARD STOP.** `C6SPR8_PAIRED_REAL_PCG_ALLOCATION_BINDING_REQUIRED`. The
+  setup manifest and `C6PairedCorrelationRanges` are authoritative for the
+  two ordered tape identities and indivisible ranges. No production API
+  currently allocates both ranges into typed real/AES `AllocatedPcgPools` and
+  carries that provenance into `C6PairedSourceWitness`. Its ordinary
+  constructor accepts caller-provided tape IDs, while the T1 runner uses
+  constants plus mock streams. Treating allocation-order digests as tape
+  identities was audited and rejected before commit. No pod was contacted.
+- **Resume.** Add one fail-closed dual-tape allocation token joining the setup
+  manifest, exact paired ranges, response/connection scope, both production
+  pools and durable burn/high-water lifecycle. It must be the only production
+  constructor for the paired source witness. Then run the real T1 PCS, fix the
+  six roots before retained challenges, derive the exact terminal outputs and
+  execute both separated C6SPX1 chains. Record component state, RSS, GPU,
+  spill, correlations and sync separately.
 - **Owner GO.** The 2026-08-03 A100 full-e2e authorization remains valid after
   this local gate; it waives none of the clean-record, real/AES-PCG,
   fail-closed or no-dummy requirements.

@@ -8,11 +8,13 @@ use crate::c6_hidden_u_sumcheck_blind::{
 };
 use crate::c6_persistent_cache_blind::{
     assemble_c6_persistent_cache_production_proof, begin_c6_persistent_cache_production,
-    finish_c6_persistent_cache_production_prover_repetition, C6PersistentCacheBlindProof,
+    draw_c6_persistent_cache_production_roots,
+    finish_c6_persistent_cache_production_prover_repetition,
+    fix_c6_persistent_cache_production_fold_prover, C6PersistentCacheBlindProof,
     C6PersistentCachePendingClaimsProver, C6PersistentCacheProductionMetrics,
-    C6PersistentCacheProductionPreparedProver, C6PersistentCacheProductionVerifierRoundState,
-    C6PersistentCacheSourceBootstrapFrame, C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS,
-    C6_PERSISTENT_CACHE_BLIND_ROUND_BYTES,
+    C6PersistentCacheProductionPreparedProver, C6PersistentCacheProductionRelationCompiler,
+    C6PersistentCacheProductionVerifierRoundState, C6PersistentCacheSourceBootstrapFrame,
+    C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS, C6_PERSISTENT_CACHE_BLIND_ROUND_BYTES,
 };
 use crate::c6_residual_sumcheck_blind::{
     assemble_c6_blind_residual_prover_stepwise, begin_c6_blind_residual_prover_stepwise,
@@ -28,8 +30,14 @@ use crate::c6_wrapper_pcs::{
     C6_HIDDEN_U_WEIGHTS_ACTIVATION_ROUND, C6_WRAPPER_RANDOM_POINT_LEN, C6_WRAPPER_REPETITIONS,
 };
 use volta_field::Fp2;
-use volta_mac::{CorrelationStream, Transcript, VerifierCtx};
+use volta_mac::{CorrelationStream, ProverAuthed, Transcript, VerifierCtx};
+use volta_proto::c6_cache_fold::{
+    compile_c6_cache_fold_scalar_batch, C6CacheFoldPairedProverTargets,
+    C6CacheFoldTargetFixedCorrections, C6CacheFoldTraceSnapshot,
+};
 use volta_proto::{C6ResidualFusedCoefficientArena, C6ResidualFusedWitnessView};
+
+use crate::c6_wrapper_persisted::C6PersistedCacheSemanticReader;
 
 const TAPES: usize = 2;
 
@@ -54,9 +62,18 @@ pub(crate) struct C6ProductionBlindProverOutput {
 /// preparation remains a callback because its relation roots and point are
 /// drawn from this same transcript immediately before each repetition.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn prove_c6_production_blind_components<'a, F>(
+pub(crate) fn prove_c6_production_blind_components<'a>(
     fixed: &C6FixedWrapperCommitments,
     cache_statement_digest: [u8; 32],
+    cache_snapshot: &C6CacheFoldTraceSnapshot,
+    cache_targets: &C6CacheFoldPairedProverTargets,
+    cache_fixed_targets: &C6CacheFoldTargetFixedCorrections,
+    predecessor_cache: &C6PersistedCacheSemanticReader,
+    successor_cache: &C6PersistedCacheSemanticReader,
+    old_len: u16,
+    new_len: u16,
+    append_sources: &[Vec<[ProverAuthed; TAPES]>; 2],
+    append_masks: &[Vec<[Fp2; TAPES]>; 2],
     statements: &[C6BlindResidualStatement],
     residual_compiler: C6BlindResidualFusedCompilerContext<'a>,
     residual_witness: C6ResidualFusedWitnessView<'a>,
@@ -66,15 +83,7 @@ pub(crate) fn prove_c6_production_blind_components<'a, F>(
     hidden_postcommit: &C6HiddenUPostCommit,
     streams: &mut [CorrelationStream; TAPES],
     transcript: &mut Transcript,
-    mut prepare_cache: F,
-) -> Result<C6ProductionBlindProverOutput, String>
-where
-    F: FnMut(
-        u8,
-        &mut [CorrelationStream; TAPES],
-        &mut Transcript,
-    ) -> Result<C6PersistentCacheProductionPreparedProver<'a>, String>,
-{
+) -> Result<C6ProductionBlindProverOutput, String> {
     validate_production_streams(streams)?;
     begin_c6_persistent_cache_production(cache_statement_digest, transcript).map_err(text_error)?;
     begin_c6_blind_residual_prover_stepwise(statements, residual_arena, transcript)
@@ -88,7 +97,43 @@ where
     let mut residual_finished = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
     let mut hidden_finished = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
     for repetition in 0..C6_WRAPPER_REPETITIONS as u8 {
-        let mut cache = prepare_cache(repetition, streams, transcript)?;
+        let (relation_roots, kv_root) =
+            draw_c6_persistent_cache_production_roots(repetition, transcript)
+                .map_err(text_error)?;
+        let scalar_batch = compile_c6_cache_fold_scalar_batch(cache_snapshot, relation_roots[2])
+            .map_err(text_error)?;
+        let fixed_fold = fix_c6_persistent_cache_production_fold_prover(
+            repetition,
+            cache_statement_digest,
+            &scalar_batch,
+            cache_targets,
+            cache_fixed_targets,
+            transcript,
+        )
+        .map_err(text_error)?;
+        let relation_point = fixed_fold.draw_relation_point(transcript);
+        let compiler = C6PersistentCacheProductionRelationCompiler::new(
+            repetition,
+            cache_statement_digest,
+            old_len,
+            new_len,
+            relation_point,
+            relation_roots,
+            kv_root,
+            scalar_batch,
+        )
+        .map_err(text_error)?;
+        let mut cache =
+            crate::c6_persistent_cache_blind::prepare_c6_persistent_cache_production_prover(
+                &compiler,
+                predecessor_cache,
+                successor_cache,
+                append_sources,
+                append_masks,
+                fixed_fold,
+                transcript,
+            )
+            .map_err(text_error)?;
         let mut residual = prepare_c6_blind_residual_prover_round_state_fused(
             &statements[usize::from(repetition)],
             residual_compiler,

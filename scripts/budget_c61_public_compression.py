@@ -14,8 +14,9 @@ This report deliberately has two different verdict scopes:
   exact, and the direct interval reducer has an executable production-shape
   census.  The terminal projection and exact materialized D25 lane references
   are green.  The scaled public-only verifier now connects the seven blind
-  rational trees, joint degree-8 reduction, twelve physical response targets,
-  three public plan targets and one QuickSilver/ZeroOpen closure to the shared
+  rational trees, joint degree-8 reduction, twelve arithmetic response targets,
+  four challenge-dependent terminal-fold response targets, three public plan
+  targets and one QuickSilver/ZeroOpen closure to the shared
   Dn/D(n-1) WHIR flow.  The selected monolithic P3 prover-data memory is now
   censused exactly at D28/D27, but a resource-instrumented persisted or
   GPU-resident executor and the full-chain benchmark remain absent, so this
@@ -278,7 +279,12 @@ C61_SHARED_MULTI_ORACLE_D14_CLIENT_CHALLENGE_BYTES = 17_372
 C61_SHARED_MULTI_ORACLE_D14_ARITHMETIC_BYTES = 5_212
 C61_SHARED_MULTI_ORACLE_D14_TOTAL_PROVIDER_BYTES = 682_744
 C61_SHARED_MULTI_ORACLE_D14_TRANSCRIPT_BYTES = 682_652
-C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_OPENINGS = 12
+C61_SPARSE_RATIONAL_ARITHMETIC_RESPONSE_OPENINGS = 12
+C61_EXACT_TERMINAL_FOLD_PHYSICAL_RESPONSE_OPENINGS = 4
+C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_OPENINGS = (
+    C61_SPARSE_RATIONAL_ARITHMETIC_RESPONSE_OPENINGS
+    + C61_EXACT_TERMINAL_FOLD_PHYSICAL_RESPONSE_OPENINGS
+)
 C61_SPARSE_RATIONAL_PLAN_OPENINGS = 3
 C61_SPARSE_RATIONAL_TOTAL_OPENINGS = (
     C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_OPENINGS
@@ -293,6 +299,9 @@ C61_SPARSE_RATIONAL_PRODUCTION_DEPTH_SUM = sum(
 C61_SPARSE_RATIONAL_PRODUCTION_GKR_BYTES = 84_640
 C61_SPARSE_RATIONAL_PRODUCTION_JOINT_BYTES = 3_248
 C61_SPARSE_RATIONAL_PRODUCTION_ARITHMETIC_BYTES = 88_220
+# Strict C6CPX1 outer frame: 84-B typed header plus a 32-B checksum.  Its
+# arithmetic and shared-WHIR payloads are already counted below.
+C61_PRODUCTION_COMPILER_CHAIN_OUTER_BYTES = 116
 C61_SPARSE_RATIONAL_PRODUCTION_PRODUCT_TRIPLES = 531
 C61_SPARSE_RATIONAL_PRODUCTION_ZERO_ROWS = 179
 C61_SPARSE_RATIONAL_PRODUCTION_GKR_FULL_CORRELATIONS = 5_290
@@ -502,7 +511,7 @@ def build_report() -> dict[str, Any]:
         + source_gather_rational_error
     )
     # Model/embedding retain the registered at-most-128 ordered batch.  The
-    # compiler has exactly fifteen physical claims, folds 179 arithmetic zero
+    # compiler has exactly nineteen physical claims, folds 179 arithmetic zero
     # rows into the existing terminal tag, and closes all 531 products in one
     # scalar-power QuickSilver batch.  M8 contributes (T+2)/|Fp2|.  Each of
     # the two component chains has independent transcript/MAC randomness.
@@ -589,6 +598,7 @@ def build_report() -> dict[str, Any]:
     compiler_complete_chain_ceiling_bytes = (
         compiler_shared_physical_strict_ceiling_bytes
         + C61_SPARSE_RATIONAL_PRODUCTION_ARITHMETIC_BYTES
+        + C61_PRODUCTION_COMPILER_CHAIN_OUTER_BYTES
     )
     compiler_chain_slack_after_complete_relation_bytes = (
         C61_NATIVE_COMPILER_CHAIN_CODEC_MAX_BYTES
@@ -679,7 +689,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v20",
+        "profile": "C6.1-public-compression-reference-v21",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
@@ -970,8 +980,9 @@ def build_report() -> dict[str, Any]:
                 },
                 "relation_adapter": (
                     "the public-only verifier decodes C6SBA1, verifies the exact "
-                    "challenge-dependent sparse relation, binds twelve physical response "
-                    "and three public plan openings to shared Dn/D(n-1) WHIR rounds, "
+                    "challenge-dependent sparse relation, binds twelve arithmetic plus "
+                    "four terminal-fold physical response openings and three public plan "
+                    "openings to shared Dn/D(n-1) WHIR rounds, "
                     "and folds every arithmetic row into one C6AWH1 ZeroOpen"
                 ),
                 "d28": {
@@ -1120,6 +1131,9 @@ def build_report() -> dict[str, Any]:
                 "c6sba1_arithmetic_bytes_per_compiler_chain": (
                     C61_SPARSE_RATIONAL_PRODUCTION_ARITHMETIC_BYTES
                 ),
+                "c6cpx1_outer_bytes_per_compiler_chain": (
+                    C61_PRODUCTION_COMPILER_CHAIN_OUTER_BYTES
+                ),
                 "complete_compiler_chain_ceiling_bytes": (
                     compiler_complete_chain_ceiling_bytes
                 ),
@@ -1213,7 +1227,7 @@ def build_report() -> dict[str, Any]:
                 "ordered_opening_batch_max_127_over_fp2": _error_report(
                     ordered_opening_batch_error
                 ),
-                "compiler_ordered_15_opening_batch": _error_report(
+                "compiler_ordered_19_opening_batch": _error_report(
                     compiler_ordered_opening_batch_error
                 ),
                 "compiler_folded_179_zero_rows": _error_report(
@@ -1445,6 +1459,12 @@ def build_report() -> dict[str, Any]:
                     "exact_response_d28_base_limb_packing_green": True,
                     "exact_plan_d27_packing_green": True,
                     "prechallenge_root_typestate_green": True,
+                    "ordered_arithmetic_response_opening_points": (
+                        C61_SPARSE_RATIONAL_ARITHMETIC_RESPONSE_OPENINGS
+                    ),
+                    "ordered_terminal_fold_response_opening_points": (
+                        C61_EXACT_TERMINAL_FOLD_PHYSICAL_RESPONSE_OPENINGS
+                    ),
                     "ordered_physical_response_opening_points": (
                         C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_OPENINGS
                     ),
@@ -1801,18 +1821,20 @@ def build_report() -> dict[str, Any]:
     )
     assert C61_PREREGISTERED_NATIVE_PUBLIC_ARGUMENT_CODEC_MAX_BYTES == 11_500_000
     assert compiler_shared_physical_strict_ceiling_bytes == 2_258_132
-    assert compiler_complete_chain_ceiling_bytes == 2_346_352
-    assert compiler_chain_slack_after_complete_relation_bytes == 153_648
-    assert exact_native_public_argument_ceiling_bytes == 10_692_704
+    assert C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_OPENINGS == 16
+    assert C61_SPARSE_RATIONAL_TOTAL_OPENINGS == 19
+    assert compiler_complete_chain_ceiling_bytes == 2_346_468
+    assert compiler_chain_slack_after_complete_relation_bytes == 153_532
+    assert exact_native_public_argument_ceiling_bytes == 10_692_936
     assert exact_native_public_argument_ceiling_bytes < C61_PUBLIC_ARGUMENT_ALLOCATION_BYTES
     assert C61_SHARED_MULTI_ORACLE_D14_DIAGNOSTIC_BYTES == 677_532
     assert C61_SHARED_MULTI_ORACLE_D14_STRICT_MAX_BYTES == 770_748
     assert C61_SHARED_MULTI_ORACLE_D14_ARITHMETIC_BYTES == 5_212
     assert C61_SHARED_MULTI_ORACLE_D14_TOTAL_PROVIDER_BYTES == 682_744
     assert C61_SHARED_MULTI_ORACLE_D14_TRANSCRIPT_BYTES == 682_652
-    assert native_projected_certificate_bytes == 17_534_807
-    assert C61_CERTIFICATE_MAX_BYTES - native_projected_certificate_bytes == 4_465_192
-    assert native_projected_first_response_bytes == 102_278_174
+    assert native_projected_certificate_bytes == 17_535_039
+    assert C61_CERTIFICATE_MAX_BYTES - native_projected_certificate_bytes == 4_464_960
+    assert native_projected_first_response_bytes == 102_278_406
     assert provider_state_elements == 142_357_222
     assert provider_state_bytes == 2_277_715_552
     assert C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_BASE_ELEMENTS == 268_435_456

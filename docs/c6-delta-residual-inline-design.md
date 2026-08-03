@@ -3081,6 +3081,59 @@ provider wire and `<15 s` A100 inline prover.  The later 35-MB/20-s envelope
 may still be reported but cannot by itself close C6.1.  No pod is contacted
 before the local runner gates are green.
 
+### 0.45 Exact challenge-dependent terminal relation and v21 re-sum
+
+The former `C6RSC4_TERMINAL_FUNCTIONAL_RELATION_OBSTRUCTED` line is now
+retired locally without assigning the 64 C6RSC3 outputs to fixed DAG nodes.
+After the blind coordinator has fixed those outputs and samples the single
+output batching challenge `beta`, their exact folded statement is
+
+```text
+sum_{j=0}^{63} beta^j T_j
+  = direct_reducer(metadata, relation, leaf_points, auxiliary_points, beta)
+  + plan_fold_0(leaf_point_0)
+  + plan_fold_1(leaf_point_1).
+```
+
+Here `T_j` are exactly the 64 terminal scalars exported by C6RSC3.  The direct
+term is reconstructed from authenticated terminal metadata and the exact
+eight-family reducer.  Each `plan_fold_i` is evaluated at the actual
+challenge-dependent leaf point for that repetition.  It is not a lookup of a
+terminal DAG node and does not introduce an event table, a second relation or
+a digest-only substitute.
+
+The two semantic plan folds are opened as four base-limb points in the same
+physical D28 response commitment already used by the sparse compiler.  Thus a
+compiler chain has 16 ordered response openings (12 arithmetic plus four
+terminal-fold limbs) and the existing three D27 plan openings.  The four new
+targets are public values, while the original 12 response targets retain their
+authenticated subfield corrections.  The shared WHIR proof shape is unchanged
+at the executable scaled geometry.  The strict `C6CPX1-v1` outer codec binds
+the terminal relation digest, the two plan folds, both nested payload lengths
+and a checksum; its additional framing is exactly 116 B per compiler chain.
+
+The v21 screen consequently counts 19 rather than 15 ordered compiler
+openings, changes that batch term from `14/|Fp2|` to `18/|Fp2|`, and adds 232 B
+for the two compiler-chain outer frames.  The resulting values are
+**17,535,039 B** per subsequent certificate, **102,278,406 B** for projected
+setup plus first certificate, **102.587833363526... bits** per certificate and
+**98.500370522276... bits** for the informative 17-certificate union.  Setup
+remains **84,743,367 B**, projected coefficient-plus-witness state remains
+**2,277,715,552 B**, and the analytic provider/verifier screens remain
+**14.9087128542 / 4.965672390 s** because this binding adds no transform or
+compiler pass.  Every value in this paragraph remains `credit:false` until the
+complete clean production record exists.
+
+The scaled resident/persisted proof bytes are identical, the strict codec and
+terminal-fold mutation tests reject, and the focused authenticated compiler
+suite is 11/0/0.  The global wrapper now draws `beta` before C6LNK2 and both
+compiler chains consume the same fixed terminal statement.  These facts close
+the exact-relation construction gate only.  The next gate remains a complete
+exact runner joining the global blind wrapper, production C6LNK2, both
+persisted/CUDA compiler chains and one real/AES-PCG attempt with fail-closed
+resource accounting.  No pod contact or full-chain credit follows from this
+local checkpoint.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

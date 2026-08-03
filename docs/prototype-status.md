@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — C6SPR9 PERSISTED/CUDA CONSTRUCTION OWNER-AUTHORIZED / LOCAL IMPLEMENTATION / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — C6SPR10 EXACT TERMINAL RELATION GREEN / EXACT RUNNER PENDING / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,12 +8,13 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §0.44 next.
+This capsule is authoritative; read design §0.45 next.
 
 - **Phase/relation.** C6.1 response-local public compression. The 64 C6RSC3
   values are challenge-dependent and exactly factor through two D25 reverse
-  lanes plus the eight-family reducer. Fixed-node, event-table and digest
-  substitutes remain forbidden.
+  lanes plus the eight-family reducer. They are now bound by two exact
+  challenge-dependent plan-fold openings in the existing shared compiler
+  WHIR; fixed-node, event-table and digest substitutes remain forbidden.
 - **Completed evidence.** `C6SPX1-v1` provides create-new root/session-bound
   spills, random-access openings and serialized response/plan commits. Scaled
   D14/D13 resident/persisted roots, proofs, bytes, transcripts, correlations
@@ -35,7 +36,7 @@ This capsule is authoritative; read design §0.44 next.
   no resident codeword/tree is built, every fold is session/root/descriptor
   bound, both complete chains precede query draws, and coefficient, opening,
   file, fsync, staging and CUDA-transfer counters are explicit.
-- **Screens.** Certificate **17,534,807 B**, setup **84,743,367 B**, state
+- **Screens.** Certificate **17,535,039 B**, setup **84,743,367 B**, state
   **2,277,715,552 B**, provider/verifier **14.9087128542 / 4.965672390 s** and
   soundness **102.587833363526... bits** remain `credit:false`.
 - **Authorized construction gate.** On 2026-08-03 the product owner explicitly
@@ -54,6 +55,17 @@ This capsule is authoritative; read design §0.44 next.
   still join wrapper, compiler and real/AES-PCG allocation and report RSS,
   GPU, spill, I/O and synchronization separately. No pod may be contacted
   before those local gates are green.
+- **Exact terminal relation checkpoint.** Checkpoints `061a829`, `925b995`,
+  `6038c3e`, `0ea9774` and `7cab8f1` expose the exact C6RSC3 terminal outputs,
+  verify the blind coordinator without compiler replay, retain one same-attempt
+  PCG stream across both compiler chains, and bind the beta-folded 64 outputs
+  to the direct eight-family reducer plus two challenge-dependent plan folds.
+  The latter are four additional base-limb openings in the same D28 response
+  WHIR, not fixed DAG nodes.  `C6CPX1-v1` adds 116 B of strict framing per
+  compiler chain; v21 therefore counts 19 ordered openings and **232 B** of
+  certificate framing.  Focused authenticated compiler tests are **11/0/0**
+  and the scaled persisted proof remains byte-identical to resident.  This is
+  exact local relation evidence only, not production or full-chain credit.
 - **Production C6PC2 checkpoint.** Checkpoints `ca4a38e`, `16d6e58`,
   `ed7f950`, `b864d85`, `2580cd1`, `84c7341`, `04a8c69` and `0ef6b13`
   install semantic cache owners, the factorized per-layer compiler, the
@@ -107,6 +119,15 @@ This capsule is authoritative; read design §0.44 next.
   this local gate, but pod contact remains deferred until the local backend,
   C6PC2 and complete runner are green. It waives none of the clean-record,
   real/AES-PCG, fail-closed or no-dummy requirements.
+
+- **2026-08-03 — C6SPR10 exact terminal-functional relation closes locally.**
+  The compiler now proves the exact challenge-dependent equality between the
+  64 C6RSC3 terminal outputs, the direct reducer and the two reverse-lane plan
+  folds using four extra openings in its already committed response oracle.
+  The v21 re-sum is **17,535,039 B**, **102.587833363526... bits** and
+  **98.500370522276... bits** for 17 certificates; all remain `credit:false`.
+  The next and only active construction gate is the fail-closed exact runner.
+  No pod was contacted.
 
 - **2026-08-03 — C6SPR8 closed; production wrapper lifecycle reaches the next
   ordered hard stop.** Checkpoint `c81a4ff` binds both ordered manifest tapes

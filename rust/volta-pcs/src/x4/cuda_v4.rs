@@ -62,6 +62,7 @@ pub struct X4bCudaCommitMetricsV4 {
     pub maximum_n4_tile_bytes: u64,
     pub page_cache_dontneed_bytes: u64,
     pub page_cache_advice_calls: u64,
+    pub fsync_count: u64,
     pub ntt_calls: u64,
     pub inner_tile_calls: u64,
     pub outer_tile_calls: u64,
@@ -108,6 +109,7 @@ impl X4bCudaCommitMetricsV4 {
         add!(directories_deleted);
         add!(page_cache_dontneed_bytes);
         add!(page_cache_advice_calls);
+        add!(fsync_count);
         self.peak_live_staging_bytes =
             self.peak_live_staging_bytes.max(other.peak_live_staging_bytes);
         self.maximum_n4_tile_bytes = self.maximum_n4_tile_bytes.max(other.maximum_n4_tile_bytes);
@@ -622,6 +624,8 @@ pub fn commit_cohort_cuda_v4_instrumented(
     coefficient_writer.get_ref().sync_data()?;
     oracle_writer.flush()?;
     oracle_writer.get_ref().sync_data()?;
+    metrics.fsync_count =
+        metrics.fsync_count.checked_add(2).ok_or(X4bCudaCommitErrorV4::Overflow)?;
     advise_dontneed(coefficient_writer.get_ref(), metrics.coefficient_bytes_persisted)?;
     advise_dontneed(oracle_writer.get_ref(), metrics.oracle_bytes_persisted)?;
     metrics.page_cache_dontneed_bytes = metrics
@@ -770,6 +774,8 @@ pub fn commit_cohort_cuda_v4_instrumented(
     );
     leaves_writer.flush()?;
     leaves_writer.get_ref().sync_data()?;
+    metrics.fsync_count =
+        metrics.fsync_count.checked_add(1).ok_or(X4bCudaCommitErrorV4::Overflow)?;
     let leaves_bytes = u64::try_from(config.outer_len)
         .map_err(|_| X4bCudaCommitErrorV4::Overflow)?
         .checked_mul(DIGEST_BYTES)
@@ -892,6 +898,8 @@ pub fn commit_cohort_cuda_v4_instrumented(
         );
         next_writer.flush()?;
         next_writer.get_ref().sync_data()?;
+        metrics.fsync_count =
+            metrics.fsync_count.checked_add(1).ok_or(X4bCudaCommitErrorV4::Overflow)?;
         let next_bytes = u64::try_from(parent_count)
             .map_err(|_| X4bCudaCommitErrorV4::Overflow)?
             .checked_mul(DIGEST_BYTES)
@@ -1016,6 +1024,8 @@ pub fn commit_cohort_cuda_v4_instrumented(
     );
     root_writer.flush()?;
     root_writer.get_ref().sync_data()?;
+    metrics.fsync_count =
+        metrics.fsync_count.checked_add(1).ok_or(X4bCudaCommitErrorV4::Overflow)?;
     advise_dontneed(root_writer.get_ref(), DIGEST_BYTES)?;
     metrics.page_cache_dontneed_bytes = metrics
         .page_cache_dontneed_bytes

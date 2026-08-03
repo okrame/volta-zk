@@ -863,6 +863,56 @@ fn commit_c6_wrapper_cohort_inner(
     Ok(C6CommittedWrapperCohort { commitment, coefficients, codewords, tree })
 }
 
+pub(crate) fn compile_c6_wrapper_slot_coefficients(
+    spec: C6WrapperCohortSpec,
+    slots: Vec<C6WrapperSlotWitness>,
+) -> Result<Vec<Option<Vec<Fp2>>>> {
+    spec.validate()?;
+    if slots.len() != usize::from(spec.slot_count) {
+        return Err(C6WrapperPcsError::new("C6 wrapper coefficient slot census mismatch"));
+    }
+    let payload_len = spec.payload_len()?;
+    slots
+        .into_iter()
+        .map(|slot| {
+            let evaluations = match (spec.oracle_kind, slot) {
+                (
+                    C6WrapperOracleKind::Witness,
+                    C6WrapperSlotWitness::Witness { witness, zk_mask },
+                ) if witness.len() == payload_len && zk_mask.len() == payload_len => {
+                    let mut extended =
+                        Vec::with_capacity(payload_len.checked_mul(2).ok_or_else(|| {
+                            C6WrapperPcsError::new("C6 ZK twin length overflows")
+                        })?);
+                    extended.extend(witness);
+                    extended.extend(zk_mask);
+                    extended
+                }
+                (
+                    C6WrapperOracleKind::Auxiliary,
+                    C6WrapperSlotWitness::Auxiliary { evaluations },
+                ) if evaluations.len() == payload_len => evaluations,
+                _ => {
+                    return Err(C6WrapperPcsError::new(
+                        "C6 wrapper slot kind or evaluation length mismatch",
+                    ))
+                }
+            };
+            multilinear_coefficients(&evaluations)
+                .map(Some)
+                .map_err(|error| C6WrapperPcsError::frame("C6 multilinear conversion", error))
+        })
+        .collect()
+}
+
+pub(crate) fn c6_wrapper_commit_config(
+    statement_digest: C6WrapperDigest,
+    spec: C6WrapperCohortSpec,
+    cache_descriptors: Option<&C6CacheStateDescriptors>,
+) -> Result<CohortVerifierConfigV4> {
+    wrapper_verifier_config(statement_digest, spec, cache_descriptors)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6WrapperOpeningClaim {
     pub repetition: u8,

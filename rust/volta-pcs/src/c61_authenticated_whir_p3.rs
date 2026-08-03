@@ -6784,4 +6784,26 @@ mod tests {
             .copy_from_slice(&u32::MAX.to_le_bytes());
         assert!(decode_c61_authenticated_p3_artifact_inner(&excessive_frontier, 14, false).is_err());
     }
+
+    #[test]
+    fn production_coefficient_owner_rejects_bad_placements_before_filesystem_effects() {
+        assert!(C61SignedCoefficientPlacement::new(&[1], 0, 1, 0, 1).is_err());
+        assert!(C61SignedCoefficientPlacement::new(&[1, 2], 1, 2, 0, 1).is_err());
+        let count = 1usize << C61_MODEL_POLYNOMIAL_LOG2;
+        let placement = C61SignedCoefficientPlacement::new(&[1], 1, 1, count, 1).unwrap();
+        let root = std::env::temp_dir().join(format!(
+            "c61-coefficient-owner-reject-{}-{}",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("unnamed")
+        ));
+        assert!(!root.exists());
+        let result = create_c61_production_coefficient_owner(
+            &root,
+            C61NativeComponent::Model,
+            [0xA5; 32],
+            &[placement],
+        );
+        assert!(matches!(result, Err(error) if error.contains("exceeds")));
+        assert!(!root.exists());
+    }
 }

@@ -30,7 +30,11 @@ This capsule is authoritative; read design §0.42 next.
   production cohort constructor and stream the exact six same-attempt live
   cohorts one at a time into create-new persisted coefficient/oracle owners;
   CPU rejects before allocation or I/O and all six roots are fixed before
-  transcript challenge draws.
+  transcript challenge draws. Checkpoints `21fe48a` and `e045f20` add the
+  create-new CUDA fold owner and the assembled production two-chain prover:
+  no resident codeword/tree is built, every fold is session/root/descriptor
+  bound, both complete chains precede query draws, and coefficient, opening,
+  file, fsync, staging and CUDA-transfer counters are explicit.
 - **Screens.** Certificate **17,534,807 B**, setup **84,743,367 B**, state
   **2,277,715,552 B**, provider/verifier **14.9087128542 / 4.965672390 s** and
   soundness **102.587833363526... bits** remain `credit:false`.
@@ -38,22 +42,18 @@ This capsule is authoritative; read design §0.42 next.
   authorized resuming `C6SPR9_PRODUCTION_WRAPPER_PCS_BACKEND_REQUIRED` through
   the persisted/CUDA construction with small commits on `main`. The initial
   six-root resident obstruction and its **188,810,788,864-B (175.84375-GiB)**
-  executable lower bound are now retired by the persisted/CUDA selector, but
-  the strict two-chain prover still constructs each fold through resident
-  `fold_codeword` plus `CohortTreeV4` and its persisted reference deliberately
-  rejects production depth. The next local gate is therefore the production
-  CUDA fold-chain owner with exact root/byte/transcript identity, compact
-  opening cache and complete I/O/resource accounting. No production admission
-  exists yet and no pod may be contacted.
-- **Construction.** Implement one resource-aware production wrapper backend which
-  derives the same six roots and both strict `C6LNK2` chains from the exact
-  live owners without retaining duplicate codewords or all resident cohorts.
-  It must persist/recompute or keep GPU-resident authenticated opening sources,
-  use the CUDA provider fail-closed, preserve byte/transcript/root identity,
-  and report RSS, GPU, spill, I/O and synchronization separately. A scaled
-  differential is mandatory before production admission. The already-known
-  production 24-round streaming `C6PC2` compiler remains the next separate
-  mandatory gate after this earlier root/backend obstruction.
+  executable lower bound are now retired by the persisted/CUDA selector and
+  two-chain prover. Local ordinary/trace checks and **15/15** wrapper tests are
+  green; CUDA test targets compile and the registered scaled fold differential
+  becomes mandatory under `VOLTA_REQUIRE_CUDA=1`. This is implementation
+  evidence only: no hardware execution or production admission exists yet.
+- **Construction.** The persisted wrapper backend now derives the six roots and
+  both strict `C6LNK2` chains from exact live owners without retaining duplicate
+  codewords or all resident cohorts. The already-known production 24-round
+  streaming `C6PC2` compiler is the next separate mandatory local gate, then
+  the exact runner must join wrapper, compiler and real/AES-PCG allocation and
+  report RSS, GPU, spill, I/O and synchronization separately. No pod may be
+  contacted before those local gates are green.
 - **Owner GO.** The 2026-08-03 A100 full-e2e authorization remains valid after
   this local gate, but pod contact remains deferred until the local backend,
   C6PC2 and complete runner are green. It waives none of the clean-record,

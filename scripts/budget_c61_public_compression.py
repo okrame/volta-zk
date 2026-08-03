@@ -302,9 +302,10 @@ C61_SPARSE_RATIONAL_PRODUCTION_DEPTH_SUM = sum(
 C61_SPARSE_RATIONAL_PRODUCTION_GKR_BYTES = 84_640
 C61_SPARSE_RATIONAL_PRODUCTION_JOINT_BYTES = 3_248
 C61_SPARSE_RATIONAL_PRODUCTION_ARITHMETIC_BYTES = 88_220
-# Strict C6CPX1 outer frame: 84-B typed header plus a 32-B checksum.  Its
-# arithmetic and shared-WHIR payloads are already counted below.
-C61_PRODUCTION_COMPILER_CHAIN_OUTER_BYTES = 116
+# Strict C6CPX2 outer frame: 148-B typed header plus a 32-B checksum.  The
+# four physical plan-fold values are required by the compact verifier; the
+# arithmetic and shared-WHIR payloads are counted separately below.
+C61_PRODUCTION_COMPILER_CHAIN_OUTER_BYTES = 180
 C61_SPARSE_RATIONAL_PRODUCTION_PRODUCT_TRIPLES = 531
 C61_SPARSE_RATIONAL_PRODUCTION_ZERO_ROWS = 179
 C61_SPARSE_RATIONAL_PRODUCTION_GKR_FULL_CORRELATIONS = 5_290
@@ -694,7 +695,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v22",
+        "profile": "C6.1-public-compression-reference-v23",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
@@ -711,7 +712,8 @@ def build_report() -> dict[str, Any]:
             "SHARED_ROUND_CLAIMLESS_BACKEND_GREEN__"
             "EXACT_SPARSE_RELATION_TO_PHYSICAL_SHARED_WHIR_GREEN__"
             "PRODUCTION_D28_D27_MONOLITHIC_MEMORY_CENSUSED__"
-            "PRODUCTION_NATIVE_COMPONENTS_AND_WIRE_VERIFIER_REQUIRED__"
+            "PRODUCTION_NATIVE_AND_COMPACT_WIRE_BOUNDARIES_GREEN__"
+            "EXACT_T1_OWNER_EXPORT_REQUIRED__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
@@ -1834,18 +1836,18 @@ def build_report() -> dict[str, Any]:
     assert compiler_shared_physical_strict_ceiling_bytes == 2_258_132
     assert C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_OPENINGS == 16
     assert C61_SPARSE_RATIONAL_TOTAL_OPENINGS == 19
-    assert compiler_complete_chain_ceiling_bytes == 2_346_468
-    assert compiler_chain_slack_after_complete_relation_bytes == 153_532
-    assert exact_native_public_argument_ceiling_bytes == 10_694_504
+    assert compiler_complete_chain_ceiling_bytes == 2_346_532
+    assert compiler_chain_slack_after_complete_relation_bytes == 153_468
+    assert exact_native_public_argument_ceiling_bytes == 10_694_632
     assert exact_native_public_argument_ceiling_bytes < C61_PUBLIC_ARGUMENT_ALLOCATION_BYTES
     assert C61_SHARED_MULTI_ORACLE_D14_DIAGNOSTIC_BYTES == 677_532
     assert C61_SHARED_MULTI_ORACLE_D14_STRICT_MAX_BYTES == 770_748
     assert C61_SHARED_MULTI_ORACLE_D14_ARITHMETIC_BYTES == 5_212
     assert C61_SHARED_MULTI_ORACLE_D14_TOTAL_PROVIDER_BYTES == 682_744
     assert C61_SHARED_MULTI_ORACLE_D14_TRANSCRIPT_BYTES == 682_652
-    assert native_projected_certificate_bytes == 17_536_607
-    assert C61_CERTIFICATE_MAX_BYTES - native_projected_certificate_bytes == 4_463_392
-    assert native_projected_first_response_bytes == 102_279_974
+    assert native_projected_certificate_bytes == 17_536_735
+    assert C61_CERTIFICATE_MAX_BYTES - native_projected_certificate_bytes == 4_463_264
+    assert native_projected_first_response_bytes == 102_280_102
     assert provider_state_elements == 142_357_222
     assert provider_state_bytes == 2_277_715_552
     assert C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_BASE_ELEMENTS == 268_435_456

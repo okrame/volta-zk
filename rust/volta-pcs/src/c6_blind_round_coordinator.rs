@@ -3,28 +3,41 @@
 use std::path::Path;
 
 use crate::c6_authenticated_output_link::{
-    prove_c6_authenticated_output_link_persisted_cuda, C6AuthenticatedOutputLinkProof,
-    C6PendingSlotRegistryProverBuilder, C6ProductionAuthenticatedOutputLinkMetrics,
+    prove_c6_authenticated_output_link_persisted_cuda,
+    verify_c6_authenticated_output_link_production, C6AuthenticatedOutputLinkProof,
+    C6PendingSlotRegistryProverBuilder, C6PendingSlotRegistryVerifierBuilder,
+    C6ProductionAuthenticatedOutputLinkMetrics,
 };
-use crate::c6_hidden_u::{C6HiddenUPostCommit, C6HiddenUPrequery, C6SealedHiddenUBundle};
+use crate::c6_hidden_u::{
+    C6HiddenULayout, C6HiddenUPostCommit, C6HiddenUPrequery, C6SealedHiddenUBundle,
+};
 use crate::c6_hidden_u_sumcheck_blind::{
-    assemble_c6_blind_hidden_u_prover_stepwise, begin_c6_blind_hidden_u_stepwise,
-    prepare_c6_blind_hidden_u_prover_round_state, C6BlindHiddenUPendingClaimsProver,
-    C6BlindHiddenUProverRoundState, C6BlindHiddenUSumcheckProof, C6BlindHiddenUVerifierRoundState,
+    assemble_c6_blind_hidden_u_prover_stepwise, assemble_c6_blind_hidden_u_verifier_stepwise,
+    begin_c6_blind_hidden_u_stepwise, begin_c6_blind_hidden_u_verifier_stepwise,
+    prepare_c6_blind_hidden_u_prover_round_state, prepare_c6_blind_hidden_u_verifier_round_state,
+    C6BlindHiddenUPendingClaimsProver, C6BlindHiddenUProverRoundState, C6BlindHiddenUSumcheckProof,
+    C6BlindHiddenUVerifierRoundState,
 };
 use crate::c6_persistent_cache_blind::{
-    assemble_c6_persistent_cache_production_proof, begin_c6_persistent_cache_production,
+    assemble_c6_persistent_cache_production_proof,
+    assemble_c6_persistent_cache_production_verifier_pending, begin_c6_persistent_cache_production,
     draw_c6_persistent_cache_production_roots,
     finish_c6_persistent_cache_production_prover_repetition,
-    fix_c6_persistent_cache_production_fold_prover, C6PersistentCacheBlindProof,
+    finish_c6_persistent_cache_production_verifier_repetition,
+    fix_c6_persistent_cache_production_fold_prover,
+    fix_c6_persistent_cache_production_fold_verifier,
+    prepare_c6_persistent_cache_production_verifier, C6PersistentCacheBlindProof,
     C6PersistentCachePendingClaimsProver, C6PersistentCacheProductionMetrics,
     C6PersistentCacheProductionPreparedProver, C6PersistentCacheProductionRelationCompiler,
     C6PersistentCacheProductionVerifierRoundState, C6PersistentCacheSourceBootstrapFrame,
     C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS, C6_PERSISTENT_CACHE_BLIND_ROUND_BYTES,
 };
 use crate::c6_residual_sumcheck_blind::{
-    assemble_c6_blind_residual_prover_stepwise, begin_c6_blind_residual_prover_stepwise,
-    prepare_c6_blind_residual_prover_round_state_fused, C6BlindResidualDirectTerminalOutputs,
+    assemble_c6_blind_residual_prover_stepwise, assemble_c6_blind_residual_verifier_stepwise,
+    begin_c6_blind_residual_prover_stepwise, begin_c6_blind_residual_verifier_stepwise,
+    finish_c6_blind_residual_verifier_round_state_direct,
+    prepare_c6_blind_residual_prover_round_state_fused,
+    prepare_c6_blind_residual_verifier_round_state, C6BlindResidualDirectTerminalOutputs,
     C6BlindResidualFusedCompilerContext, C6BlindResidualPendingClaimsProver,
     C6BlindResidualPendingTransferFrame, C6BlindResidualProverRoundState, C6BlindResidualStatement,
     C6BlindResidualSumcheckProof, C6BlindResidualVerifierRoundState,
@@ -39,7 +52,7 @@ use volta_field::Fp2;
 use volta_mac::{CorrelationStream, ProverAuthed, Transcript, VerifierCtx};
 use volta_proto::c6_cache_fold::{
     compile_c6_cache_fold_scalar_batch, C6CacheFoldPairedProverTargets,
-    C6CacheFoldTargetFixedCorrections, C6CacheFoldTraceSnapshot,
+    C6CacheFoldPairedVerifierTargets, C6CacheFoldTargetFixedCorrections, C6CacheFoldTraceSnapshot,
 };
 use volta_proto::{C6ResidualFusedCoefficientArena, C6ResidualFusedWitnessView};
 
@@ -76,6 +89,11 @@ pub(crate) struct C6ExactProductionProverProof {
     pub(crate) cache_metrics: C6PersistentCacheProductionMetrics,
     pub(crate) authenticated_link: C6AuthenticatedOutputLinkProof,
     pub(crate) authenticated_link_metrics: C6ProductionAuthenticatedOutputLinkMetrics,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct C6ExactProductionVerifierOutput {
+    pub(crate) bound_slots: u64,
 }
 
 /// Consume all opaque pending values exactly once into the production
@@ -275,9 +293,181 @@ pub(crate) fn prove_c6_production_blind_components<'a>(
     })
 }
 
+/// Witness-free mirror of the complete blind coordinator and production
+/// C6LNK2 verifier.  The residual terminal values come from the strict proof
+/// object fixed before the next transcript challenge; no verifier compiler
+/// replay or fixed-DAG-node substitute is admitted here.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn verify_c6_exact_production_proof(
+    roots: &C6PersistedLiveWrapperRootBinding,
+    cache_statement_digest: [u8; 32],
+    cache_snapshot: &C6CacheFoldTraceSnapshot,
+    cache_targets: &C6CacheFoldPairedVerifierTargets,
+    cache_fixed_targets: &C6CacheFoldTargetFixedCorrections,
+    old_len: u16,
+    new_len: u16,
+    append_base_keys: &[Vec<[volta_mac::VerifierKey; TAPES]>; 2],
+    statements: &[C6BlindResidualStatement],
+    hidden_layouts: &[C6HiddenULayout],
+    hidden_q_cols: &[Vec<Vec<Fp2>>],
+    hidden_prequery: &C6HiddenUPrequery,
+    hidden_postcommit: &C6HiddenUPostCommit,
+    proof: &C6ExactProductionProverProof,
+    contexts: &mut [VerifierCtx; TAPES],
+    transcript: &mut Transcript,
+) -> Result<C6ExactProductionVerifierOutput, String> {
+    validate_production_contexts(contexts)?;
+    begin_c6_persistent_cache_production(cache_statement_digest, transcript).map_err(text_error)?;
+    begin_c6_blind_residual_verifier_stepwise(
+        statements,
+        &proof.residual_proof,
+        &proof.residual_frame,
+        contexts,
+        transcript,
+    )
+    .map_err(text_error)?;
+    begin_c6_blind_hidden_u_verifier_stepwise(
+        hidden_layouts,
+        hidden_q_cols,
+        hidden_prequery,
+        hidden_postcommit,
+        &proof.hidden_proof,
+        transcript,
+    )
+    .map_err(text_error)?;
+
+    let mut cache_finished = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
+    let mut residual_finished = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
+    let mut hidden_finished = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
+    for repetition in 0..C6_WRAPPER_REPETITIONS as u8 {
+        let (relation_roots, kv_root) =
+            draw_c6_persistent_cache_production_roots(repetition, transcript)
+                .map_err(text_error)?;
+        let scalar_batch = compile_c6_cache_fold_scalar_batch(cache_snapshot, relation_roots[2])
+            .map_err(text_error)?;
+        let fixed_fold = fix_c6_persistent_cache_production_fold_verifier(
+            repetition,
+            cache_statement_digest,
+            &scalar_batch,
+            cache_targets,
+            cache_fixed_targets,
+            &proof.cache_source_frame,
+            transcript,
+        )
+        .map_err(text_error)?;
+        let relation_point = fixed_fold.draw_relation_point(transcript);
+        let compiler = C6PersistentCacheProductionRelationCompiler::new(
+            repetition,
+            cache_statement_digest,
+            old_len,
+            new_len,
+            relation_point,
+            relation_roots,
+            kv_root,
+            scalar_batch,
+        )
+        .map_err(text_error)?;
+        let mut cache = prepare_c6_persistent_cache_production_verifier(
+            &compiler,
+            append_base_keys,
+            fixed_fold,
+            &proof.cache_source_frame,
+            [contexts[0].delta, contexts[1].delta],
+            transcript,
+        )
+        .map_err(text_error)?;
+        let mut residual = prepare_c6_blind_residual_verifier_round_state(
+            &statements[usize::from(repetition)],
+            &proof.residual_proof,
+        )
+        .map_err(text_error)?;
+        let mut hidden = prepare_c6_blind_hidden_u_verifier_round_state(
+            hidden_layouts,
+            hidden_q_cols,
+            hidden_prequery,
+            hidden_postcommit,
+            &proof.hidden_proof,
+            repetition,
+        )
+        .map_err(text_error)?;
+        let cache_corrections = proof
+            .cache_proof
+            .production_round_corrections(usize::from(repetition))
+            .map_err(text_error)?;
+        let point = drive_c6_production_blind_verifier_rounds(
+            roots.fixed(),
+            &mut cache,
+            cache_corrections,
+            &mut residual,
+            &mut hidden,
+            contexts,
+            transcript,
+        )?;
+        cache_finished.push(
+            finish_c6_persistent_cache_production_verifier_repetition(
+                cache,
+                &point,
+                &proof.cache_proof,
+                contexts,
+                transcript,
+            )
+            .map_err(text_error)?,
+        );
+        residual_finished.push(
+            finish_c6_blind_residual_verifier_round_state_direct(
+                residual,
+                &proof.residual_frame,
+                &proof.residual_terminal_outputs,
+                contexts,
+                transcript,
+            )
+            .map_err(text_error)?,
+        );
+        hidden_finished.push(hidden.finish(contexts, transcript).map_err(text_error)?);
+    }
+
+    let (cache_pending, _) =
+        assemble_c6_persistent_cache_production_verifier_pending(cache_finished)
+            .map_err(text_error)?;
+    let residual_pending =
+        assemble_c6_blind_residual_verifier_stepwise(residual_finished, transcript)
+            .map_err(text_error)?;
+    let hidden_pending =
+        assemble_c6_blind_hidden_u_verifier_stepwise(hidden_finished).map_err(text_error)?;
+    let mut pending =
+        C6PendingSlotRegistryVerifierBuilder::new(roots.fixed()).map_err(text_error)?;
+    pending.absorb_residual(&residual_pending).map_err(text_error)?;
+    pending.absorb_hidden_u(&hidden_pending).map_err(text_error)?;
+    pending.absorb_persistent_cache(&cache_pending).map_err(text_error)?;
+    let pending = pending.finish().map_err(text_error)?;
+    let bound = verify_c6_authenticated_output_link_production(
+        roots.fixed(),
+        pending,
+        &proof.authenticated_link,
+        contexts,
+        transcript,
+    )
+    .map_err(text_error)?;
+    let bound_slots = bound.len() as u64;
+    if bound_slots != 2 * crate::c6_wrapper_pcs::C6_WRAPPER_ACTIVE_SLOTS as u64 {
+        return Err("C6 exact verifier bound-slot census mismatch".to_owned());
+    }
+    Ok(C6ExactProductionVerifierOutput { bound_slots })
+}
+
 fn validate_production_streams(streams: &[CorrelationStream; TAPES]) -> Result<(), String> {
     if streams.iter().any(|stream| !stream.uses_pooled_pcg()) {
         return Err("C6 exact blind join requires paired pooled PCG streams".to_owned());
+    }
+    Ok(())
+}
+
+fn validate_production_contexts(contexts: &[VerifierCtx; TAPES]) -> Result<(), String> {
+    if contexts.iter().any(|context| !context.uses_pooled_pcg()) {
+        return Err("C6 exact verifier requires paired pooled PCG contexts".to_owned());
+    }
+    if contexts[0].delta == contexts[1].delta {
+        return Err("C6 exact verifier requires independent MAC coordinates".to_owned());
     }
     Ok(())
 }
@@ -493,6 +683,15 @@ mod tests {
         assert!(streams.iter().all(|stream| stream.counters.sub_corrs == 0
             && stream.counters.full_corrs == 0
             && stream.counters.domains == 0));
+
+        let contexts = [
+            VerifierCtx::new([0x41; 32], Fp2::from_base(volta_field::Fp::new(17))),
+            VerifierCtx::new([0x42; 32], Fp2::from_base(volta_field::Fp::new(19))),
+        ];
+        assert_eq!(
+            validate_production_contexts(&contexts).unwrap_err(),
+            "C6 exact verifier requires paired pooled PCG contexts"
+        );
     }
 
     #[test]

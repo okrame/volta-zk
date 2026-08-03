@@ -1164,6 +1164,48 @@ impl C6BlindResidualDirectTerminalOutputs {
         self.digest
     }
 
+    fn terminal_scalars_for(
+        &self,
+        statement: &C6BlindResidualStatement,
+        leaf_point: &[Fp2],
+        auxiliary_point: &[Fp2],
+    ) -> Result<C6BlindResidualTerminalScalars> {
+        if self.relation_challenges_digest == [0; 32]
+            || self.digest == [0; 32]
+            || self.digest != direct_terminal_outputs_digest(self)
+        {
+            return Err(C6BlindResidualError::new(
+                "C6RSC3-v4 direct terminal object is noncanonical",
+            ));
+        }
+        let repetition = usize::from(statement.repetition());
+        if repetition >= C6_RESIDUAL_SUMCHECK_REPETITIONS
+            || self.statement_digests[repetition] != statement.digest()
+            || self.leaf_points[repetition] != leaf_point
+            || self.auxiliary_points[repetition] != auxiliary_point
+        {
+            return Err(C6BlindResidualError::new(
+                "C6RSC3-v4 direct terminal statement or point mismatch",
+            ));
+        }
+        let start = repetition * C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION;
+        let values = &self.terminal_functionals
+            [start..start + C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION];
+        let leaf_end = C6_RESIDUAL_LEAF_TABLES_PER_REPETITION;
+        let auxiliary_end = leaf_end + C6_RESIDUAL_AUXILIARY_TABLES_PER_REPETITION;
+        Ok(C6BlindResidualTerminalScalars {
+            leaf_linear: values[..leaf_end].try_into().map_err(|_| {
+                C6BlindResidualError::new("C6RSC3-v4 leaf terminal census mismatch")
+            })?,
+            auxiliary_linear: values[leaf_end..auxiliary_end].try_into().map_err(|_| {
+                C6BlindResidualError::new("C6RSC3-v4 auxiliary terminal census mismatch")
+            })?,
+            auxiliary_quadratic: values[auxiliary_end..].try_into().map_err(|_| {
+                C6BlindResidualError::new("C6RSC3-v4 product terminal census mismatch")
+            })?,
+        })
+    }
+
     pub fn bind_output_beta(self, beta: Fp2) -> C6BlindResidualDirectTerminalFold {
         let functional_fold = self
             .terminal_functionals
@@ -3154,6 +3196,29 @@ pub(crate) fn finish_c6_blind_residual_verifier_round_state_fused(
     })
 }
 
+/// Finish one coordinated verifier repetition from the exact 64-scalar
+/// C6RSC3-v4 terminal object.  The values are already fixed by the blind
+/// terminal corrections that precede the independent output challenge; the
+/// enclosing C6RSC4 proof is responsible for attesting their compiler fold.
+#[cfg(feature = "c6-trace")]
+pub(crate) fn finish_c6_blind_residual_verifier_round_state_direct(
+    state: C6BlindResidualVerifierRoundState<'_>,
+    pending_frame: &C6BlindResidualPendingTransferFrame,
+    direct: &C6BlindResidualDirectTerminalOutputs,
+    contexts: &mut [VerifierCtx; MAC_TAPES],
+    transcript: &mut Transcript,
+) -> Result<Vec<C6BlindResidualPendingClaimVerifier>> {
+    let repetition = state.repetition();
+    let frame_start = usize::from(repetition) * C6_RESIDUAL_TABLES_PER_REPETITION;
+    let frame_end = frame_start + C6_RESIDUAL_TABLES_PER_REPETITION;
+    let corrections = pending_frame.corrections.get(frame_start..frame_end).ok_or_else(|| {
+        C6BlindResidualError::new("C6RSC3 coordinated verifier pending slice is absent")
+    })?;
+    state.finish(corrections, contexts, transcript, |statement, leaf_point, auxiliary_point| {
+        direct.terminal_scalars_for(statement, leaf_point, auxiliary_point)
+    })
+}
+
 /// Designated verifier whose terminal coefficient evaluation is the
 /// witness-free fused atomic replay.  It accepts compact statements and never
 /// reads materialized coefficient arrays.
@@ -3174,6 +3239,31 @@ pub fn verify_c6_blind_residual_sumchecks_fused(
         transcript,
         |statement, leaf_point, auxiliary_point| {
             terminal_scalars_from_fused(compiler, statement, leaf_point, auxiliary_point)
+        },
+    )
+}
+
+/// Standalone verifier differential for the production direct-terminal
+/// path.  Unlike the historical fused verifier, this never replays the
+/// coefficient compiler.
+#[cfg(feature = "c6-trace")]
+#[allow(dead_code)]
+pub(crate) fn verify_c6_blind_residual_sumchecks_direct(
+    statements: &[C6BlindResidualStatement],
+    proof: &C6BlindResidualSumcheckProof,
+    pending_frame: &C6BlindResidualPendingTransferFrame,
+    direct: &C6BlindResidualDirectTerminalOutputs,
+    contexts: &mut [VerifierCtx; MAC_TAPES],
+    transcript: &mut Transcript,
+) -> Result<C6BlindResidualPendingClaimsVerifier> {
+    verify_c6_blind_residual_sumchecks_inner(
+        statements,
+        proof,
+        pending_frame,
+        contexts,
+        transcript,
+        |statement, leaf_point, auxiliary_point| {
+            direct.terminal_scalars_for(statement, leaf_point, auxiliary_point)
         },
     )
 }
@@ -4553,6 +4643,33 @@ mod tests {
             terminal_outputs.terminal_functionals(),
             terminal_reference.terminal_functionals()
         );
+        let mut direct_contexts = verifier_contexts();
+        let mut direct_transcript = Transcript::new(CHALLENGE_SEED);
+        verify_c6_blind_residual_sumchecks_direct(
+            &statements,
+            &proof,
+            &frame,
+            &terminal_outputs,
+            &mut direct_contexts,
+            &mut direct_transcript,
+        )
+        .unwrap();
+        assert_eq!(direct_transcript.challenge_fp2(), output_beta);
+
+        let mut changed_outputs = terminal_outputs.clone();
+        changed_outputs.terminal_functionals[0] += Fp2::ONE;
+        changed_outputs.digest = direct_terminal_outputs_digest(&changed_outputs);
+        let mut changed_contexts = verifier_contexts();
+        let mut changed_transcript = Transcript::new(CHALLENGE_SEED);
+        assert!(verify_c6_blind_residual_sumchecks_direct(
+            &statements,
+            &proof,
+            &frame,
+            &changed_outputs,
+            &mut changed_contexts,
+            &mut changed_transcript,
+        )
+        .is_err());
         let terminal_output_digest = terminal_outputs.digest();
         let terminal_fold = terminal_outputs.bind_output_beta(output_beta);
         assert_eq!(terminal_fold.terminal_outputs_digest(), terminal_output_digest);

@@ -2914,6 +2914,67 @@ Only then may the clean runner execute the production PCS/root/terminal/
 C6SPX1 chain.  The owner A100 GO remains valid after this local gate.  No pod
 was contacted.
 
+### 0.41 Production wrapper PCS lifecycle obstruction
+
+`c81a4ff` closes C6SPR8 without changing tape authority. One production token
+validates the setup manifest and paired reservation, begins and burns both
+response authorizations before allocation, checks the exact ordered
+`5,235,692`-raw ranges against the two TerminalOne/AES pools, rejects equal
+verifier Deltas, derives both source streams and seals the paired source
+witness. Its provenance digest is carried into the residual leaf, and the
+production live-root constructor rejects an ordinary leaf. No caller supplies
+production tape identities.
+
+Proceeding to the first root exposed an earlier resource/backend gap in the
+retained C6 wrapper PCS. `materialize_production_c6_live_wrapper_roots` still
+uses `commit_c6_{cache_state_,}wrapper_cohort`, which stores every cohort's
+coefficients and codewords and passes cloned codewords to
+`CohortTreeV4::build_flat`. The returned root binding retains all six owners so
+that their later openings use the committed witnesses. For the frozen profile,
+the executable census is:
+
+```text
+all initial codewords                           91,536,490,496 B
+second codeword copy in resident cohort trees  91,536,490,496 B
+all retained coefficients                       5,737,807,872 B
+resident implementation lower bound           188,810,788,864 B
+                                                175.84375 GiB.
+```
+
+The lower bound excludes Merkle outer caches, live input witnesses and ZK
+masks, allocator overhead, both folding chains and every C6SPX1 allocation.
+It is now executable and test-pinned in `scripts/budget_c6_wrapper.py` at
+`cb74866`. It is total implementation memory, not the Section 0.1
+coefficient-plus-witness protocol component, and therefore is not itself a
+product memory FAIL. It does prove that the existing 64-GiB C6SPX1 admission
+cannot admit the complete runner and that an A100 device does not convert this
+CPU resident path into GPU credit.
+
+The new **HARD STOP** is
+`C6SPR9_PRODUCTION_WRAPPER_PCS_BACKEND_REQUIRED`. Resume requires a
+resource-aware wrapper prover which:
+
+1. consumes the exact same-attempt six live owners and produces roots,
+   challenges, strict `C6LNK2` bytes and verifier results identical to the
+   resident reference at scaled geometry;
+2. persists/recomputes or keeps GPU-resident initial and folded opening
+   sources without two resident codeword copies or six simultaneously
+   resident cohorts;
+3. binds every storage handle to statement, cohort, slot descriptors, root,
+   response and monotone oracle identity, with create-new/fail-closed reuse;
+4. uses an explicit CUDA production selector with no CPU fallback and records
+   coefficient/witness state, RSS, GPU allocation, spill, I/O and
+   synchronization separately; and
+5. preserves the existing 72-slot authenticated link and two-chain transcript
+   without adding response bytes or changing the relation.
+
+The production 24-round streaming `C6PC2` compiler is already known to remain
+absent: its reference constructor deliberately rejects production geometry.
+That is the next separate local gate only after C6SPR9, because the live roots
+must be fixed before the response-wide coordinator releases the cache and
+residual challenges. No production run, comparison-table update or credit is
+admissible at this stop. No pod was contacted.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

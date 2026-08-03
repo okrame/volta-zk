@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — LIVE ROOT MATERIALIZER GREEN / A100 OWNER GO / PAIRED REAL-PCG ALLOCATION HARD STOP)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — PAIRED REAL-PCG TOKEN GREEN / A100 OWNER GO / PRODUCTION WRAPPER PCS BACKEND HARD STOP)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §0.40 next.
+This capsule is authoritative; read design §0.41 next.
 
 - **Phase/relation.** C6.1 response-local public compression. The 64 C6RSC3
   values are challenge-dependent and exactly factor through two D25 reverse
@@ -22,28 +22,55 @@ This capsule is authoritative; read design §0.40 next.
   checkpoint `c5703b9`. Checkpoints `d546d6c`, `75e2909` and `b6bc544`
   respectively materialize all six roots from same-attempt owners, retain the
   exact 96/6 hidden PCS owners, and map canonical T1 K/V slabs into genesis and
-  successor cache states. No production run or credit exists.
+  successor cache states. `c81a4ff` adds the fail-closed two-tape production
+  allocation token: both manifest tape IDs, exact paired ranges, response
+  authorization, AES/TerminalOne pools, distinct Deltas, source witness and
+  residual-leaf provenance are one indivisible lifecycle. No production run or
+  credit exists.
 - **Screens.** Certificate **17,534,807 B**, setup **84,743,367 B**, state
   **2,277,715,552 B**, provider/verifier **14.9087128542 / 4.965672390 s** and
   soundness **102.587833363526... bits** remain `credit:false`.
-- **HARD STOP.** `C6SPR8_PAIRED_REAL_PCG_ALLOCATION_BINDING_REQUIRED`. The
-  setup manifest and `C6PairedCorrelationRanges` are authoritative for the
-  two ordered tape identities and indivisible ranges. No production API
-  currently allocates both ranges into typed real/AES `AllocatedPcgPools` and
-  carries that provenance into `C6PairedSourceWitness`. Its ordinary
-  constructor accepts caller-provided tape IDs, while the T1 runner uses
-  constants plus mock streams. Treating allocation-order digests as tape
-  identities was audited and rejected before commit. No pod was contacted.
-- **Resume.** Add one fail-closed dual-tape allocation token joining the setup
-  manifest, exact paired ranges, response/connection scope, both production
-  pools and durable burn/high-water lifecycle. It must be the only production
-  constructor for the paired source witness. Then run the real T1 PCS, fix the
-  six roots before retained challenges, derive the exact terminal outputs and
-  execute both separated C6SPX1 chains. Record component state, RSS, GPU,
-  spill, correlations and sync separately.
+- **HARD STOP.** `C6SPR9_PRODUCTION_WRAPPER_PCS_BACKEND_REQUIRED`. The
+  same-attempt root materializer still calls the resident CPU
+  `commit_c6_wrapper_cohort*` path and retains all six
+  `C6CommittedWrapperCohort`s. That implementation retains **91,536,490,496
+  B** of initial codewords twice (owner plus `CohortTreeV4`) and
+  **5,737,807,872 B** of coefficients: an executable lower bound of
+  **188,810,788,864 B (175.84375 GiB)** before Merkle outer caches, input
+  witnesses/masks, allocator overhead or fold trees. It has no production
+  CUDA/out-of-core selector, so neither the 64-GiB C6SPX1 admission nor an
+  A100 alone makes the complete flow eligible. No pod was contacted.
+- **Resume.** Implement one resource-aware production wrapper backend which
+  derives the same six roots and both strict `C6LNK2` chains from the exact
+  live owners without retaining duplicate codewords or all resident cohorts.
+  It must persist/recompute or keep GPU-resident authenticated opening sources,
+  use the CUDA provider fail-closed, preserve byte/transcript/root identity,
+  and report RSS, GPU, spill, I/O and synchronization separately. A scaled
+  differential is mandatory before production admission. The already-known
+  production 24-round streaming `C6PC2` compiler remains the next separate
+  mandatory gate after this earlier root/backend obstruction.
 - **Owner GO.** The 2026-08-03 A100 full-e2e authorization remains valid after
   this local gate; it waives none of the clean-record, real/AES-PCG,
   fail-closed or no-dummy requirements.
+
+- **2026-08-03 — C6SPR8 closed; production wrapper lifecycle reaches the next
+  ordered hard stop.** Checkpoint `c81a4ff` binds both ordered manifest tapes
+  and exact `5,235,692`-raw ranges to one production attempt, burns both
+  authorizations before allocation, validates TerminalOne/AES pools and
+  distinct Deltas, and carries the resulting allocation provenance through
+  `C6PairedSourceWitness` into the residual leaf accepted by the production
+  six-root materializer. Targeted ordinary/trace differentials and PCS checks
+  are green.
+
+  The subsequent source audit found that root ownership is exact but its
+  production lifecycle is not executable under the registered admission. The
+  current owner retains all six coefficient/codeword cohorts and the tree
+  retains a second codeword copy. `scripts/budget_c6_wrapper.py` now pins the
+  **188,810,788,864-B** lower bound and explicitly excludes every additional
+  Merkle/cache/witness/fold allocation; its six tests pass at checkpoint
+  `cb74866`. This is a local implementation obstruction, not a memory-gate
+  verdict and not evidence against the protocol state cap. No comparison
+  column, production record or credit is created, and no pod was contacted.
 
 ## Historical C6.1 component chronology (append-only; not active authority)
 

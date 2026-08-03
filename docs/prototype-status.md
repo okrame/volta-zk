@@ -39,12 +39,17 @@ C6.1 branch.
 - **Checks/checkpoints.** D28 rejects before allocation; the source guard
   pins retained message+Merkle data. Budget v20 is green. Checkpoints
   `18569c4`, semantic correction `e408099`, `162f3e7`.
+- **Executor preregistration.** Design §0.37 fixes `C6SPX1-v1`: a
+  session/root/ordinal-bound persisted MMCS whose openings read only requested
+  rows and Merkle-frontier digests, while the unchanged pinned MMCS remains
+  the verifier.  Response and plan resident trees may not coexist.  This is
+  design only and grants no credit.
 - **HARD STOP.** `C6SPR5_PERSISTED_OR_GPU_RESIDENT_WHIR_EXECUTOR_REQUIRED`.
-- **Resume.** Implement a resource-instrumented persisted/recomputable or
-  GPU-resident prover-data executor byte-identical to the pinned fork, with
-  no silent monolithic/CPU fallback. Then execute both production chains on
-  the authorized A100 campaign, separating coefficient+witness, RSS, GPU and
-  correlation counters, before a clean full-chain record.
+- **Resume.** Implement the strict spill codec, scaled byte-identity
+  differential, resource counters and fail-closed production selector. Then
+  execute both production chains on the authorized A100 campaign, separating
+  coefficient+witness, RSS, GPU and correlation counters, before a clean
+  full-chain record.
 - **Owner GO (2026-08-03).** The product owner explicitly authorizes contact
   with an A100 provider/pod and a real full C6.1 e2e execution because the
   local VM cannot admit the production prover-data footprint. The GO is

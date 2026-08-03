@@ -2754,6 +2754,48 @@ baseline executed on the A100 node is not GPU performance credit: the record
 must keep coefficient+witness component state, process RSS and GPU memory
 separate.  No provider had been contacted at the time this GO was recorded.
 
+### 0.37 Preregistered persisted WHIR executor `C6SPX1-v1`
+
+The selected C6SPR5 repair is a persisted prover-data MMCS, not a change to
+the WHIR relation, transcript or verifier.  `C6SPX1-v1` uses the pinned
+Goldilocks/Blake3 binary-Merkle construction to compute each commitment, then
+writes the committed matrix and every digest layer to an ordinal file before
+releasing the resident tree.  The response spill is sealed and its resident
+tree dropped before the plan tree is built.  Later response and plan round
+oracles use the same lifecycle.  Consequently two roots may coexist as small
+typed handles while their complete Merkle prover data do not coexist in RAM.
+
+Each spill starts with a strict fixed-endian header binding the format
+version, session digest, lane/chain identity, monotone oracle ordinal, matrix
+dimensions, layer lengths and offsets, arity schedule, exact commitment and
+total file length.  The header and payload receive an integrity digest and the
+file is `fsync`ed before the handle becomes live.  Reopen checks every bound,
+offset and length before reading data.  A handle from another session, lane,
+ordinal or root is rejected.  Existing files are never silently reused or
+overwritten.
+
+`open_batch` and `open_multi_batch` read only the requested matrix rows and
+the boundary digests forced by the verifier-derived indices.  Multi-opening
+frontier order is identical to the pinned `PrunedMerklePaths` algorithm:
+levels rise from the leaves, parent groups are ascending, and missing child
+positions are ascending.  No whole-tree deserialize/reload is permitted.
+The ordinary pinned MMCS remains the verifier, so a byte difference in a root,
+opened row or frontier rejects through the unchanged verification path.
+
+The executor reports, separately, spill bytes written/read, `fsync` count,
+spill files, current and peak spill allocation, process peak RSS, GPU peak
+allocation and coefficient+witness state.  Its backend selector is explicit:
+production D28/D27 refuses the diagnostic resident MMCS and refuses mock PCG.
+The first implementation differential must compare resident and persisted
+roots, openings, pruned proofs, strict `C6SMO1` bytes and final designated
+closure at scaled geometry before production admission is enabled.
+
+This preregistration grants no production, memory, timing or GPU credit.  The
+active stop remains `C6SPR5_PERSISTED_OR_GPU_RESIDENT_WHIR_EXECUTOR_REQUIRED`
+until the strict codec, scaled byte-identity differential, resource counters
+and fail-closed production selector are implemented and green.  Only then may
+the authorized A100 campaign execute the exact D28/D27 chains.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

@@ -13,6 +13,8 @@ use volta_mac::Transcript;
 
 pub const C61_PUBLIC_ARGUMENT_MAGIC: [u8; 8] = *b"C6PA1\0\0\0";
 pub const C61_PUBLIC_ARGUMENT_VERSION: u16 = 1;
+pub const C61_JOINT_PUBLIC_ARGUMENT_MAGIC: [u8; 8] = *b"C6PA2\0\0\0";
+pub const C61_JOINT_PUBLIC_ARGUMENT_VERSION: u16 = 2;
 pub const C61_PUBLIC_ARGUMENT_COMPONENTS: usize = 7;
 pub const C61_NATIVE_COMPONENTS: usize = 3;
 pub const C61_NATIVE_CHAINS_PER_COMPONENT: usize = 2;
@@ -990,6 +992,100 @@ impl C61PublicArgument {
     }
 }
 
+/// Wire-neutral outer semantic version for the generic joint native bridge.
+/// All component headers and payloads retain their exact widths; only the
+/// outer magic/version and domain-separated trailer differ from C6PA1.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C61JointPublicArgument {
+    inner: C61PublicArgument,
+}
+
+impl C61JointPublicArgument {
+    pub fn new(
+        statement_digest: [u8; 32],
+        native_chains: [Vec<u8>; C61_NATIVE_CHAIN_COUNT],
+        arithmetic: Vec<u8>,
+    ) -> Result<Self> {
+        Ok(Self { inner: C61PublicArgument::new(statement_digest, native_chains, arithmetic)? })
+    }
+
+    pub fn statement_digest(&self) -> [u8; 32] {
+        self.inner.statement_digest()
+    }
+
+    pub fn native_chains(&self) -> &[Vec<u8>; C61_NATIVE_CHAIN_COUNT] {
+        self.inner.native_chains()
+    }
+
+    pub fn arithmetic(&self) -> &[u8] {
+        self.inner.arithmetic()
+    }
+
+    pub fn encoded_len(&self) -> Result<usize> {
+        self.inner.encoded_len()
+    }
+
+    pub fn encode(&self) -> Result<Vec<u8>> {
+        let mut bytes = self.inner.encode()?;
+        let digest_offset = bytes.len() - OUTER_DIGEST_BYTES;
+        bytes[..8].copy_from_slice(&C61_JOINT_PUBLIC_ARGUMENT_MAGIC);
+        bytes[8..10].copy_from_slice(&C61_JOINT_PUBLIC_ARGUMENT_VERSION.to_le_bytes());
+        let digest = domain_digest(b"volta/c6.1/public-argument/v2-joint", &bytes[..digest_offset]);
+        bytes[digest_offset..].copy_from_slice(&digest);
+        Ok(bytes)
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self> {
+        if bytes.len() < OUTER_HEADER_BYTES + OUTER_DIGEST_BYTES
+            || bytes[..8] != C61_JOINT_PUBLIC_ARGUMENT_MAGIC
+            || u16::from_le_bytes(bytes[8..10].try_into().expect("fixed C6PA2 version"))
+                != C61_JOINT_PUBLIC_ARGUMENT_VERSION
+        {
+            return Err(C61PublicCompressionError::new("C6PA2 header/version mismatch"));
+        }
+        let digest_offset = bytes.len() - OUTER_DIGEST_BYTES;
+        if bytes[digest_offset..]
+            != domain_digest(b"volta/c6.1/public-argument/v2-joint", &bytes[..digest_offset])
+        {
+            return Err(C61PublicCompressionError::new("C6PA2 outer digest mismatch"));
+        }
+        let mut ordinary = bytes.to_vec();
+        ordinary[..8].copy_from_slice(&C61_PUBLIC_ARGUMENT_MAGIC);
+        ordinary[8..10].copy_from_slice(&C61_PUBLIC_ARGUMENT_VERSION.to_le_bytes());
+        let digest = domain_digest(b"volta/c6.1/public-argument/v1", &ordinary[..digest_offset]);
+        ordinary[digest_offset..].copy_from_slice(&digest);
+        let argument = Self { inner: C61PublicArgument::decode(&ordinary)? };
+        if argument.encode()?.as_slice() != bytes {
+            return Err(C61PublicCompressionError::new("noncanonical C6PA2 public argument"));
+        }
+        Ok(argument)
+    }
+}
+
+pub fn c61_joint_public_statement_digest(
+    base_statement_digest: [u8; 32],
+    native_target_profile_digest: [u8; 32],
+    body_schedule_digest: [u8; 32],
+    compiler_functional_digest: [u8; 32],
+) -> Result<[u8; 32]> {
+    if [
+        base_statement_digest,
+        native_target_profile_digest,
+        body_schedule_digest,
+        compiler_functional_digest,
+    ]
+    .contains(&[0; 32])
+    {
+        return Err(C61PublicCompressionError::new("C6PA2 joint statement contains a zero digest"));
+    }
+    let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c6.1/joint-public-statement/v2");
+    hasher.update(&base_statement_digest);
+    hasher.update(&native_target_profile_digest);
+    hasher.update(&body_schedule_digest);
+    hasher.update(&compiler_functional_digest);
+    Ok(*hasher.finalize().as_bytes())
+}
+
 /// Explicit backend boundary.  A production implementation must verify the
 /// native HVZK proof represented by `payload`; the outer codec never treats a
 /// digest or successful parse as proof acceptance.  The mutable verifier
@@ -1559,6 +1655,50 @@ mod tests {
         )
         .unwrap();
         assert_eq!(frame.terminal_claims, *ready.terminal_claims());
+    }
+
+    #[test]
+    fn joint_pa2_codec_is_wire_neutral_and_domain_separated() {
+        let (_, _, _, _, ordinary, _) = honest_fixture([0xB4; 32]);
+        let joint_digest = c61_joint_public_statement_digest(
+            ordinary.statement_digest(),
+            [0xB5; 32],
+            [0xB6; 32],
+            [0xB7; 32],
+        )
+        .unwrap();
+        let joint = C61JointPublicArgument::new(
+            joint_digest,
+            ordinary.native_chains().clone(),
+            ordinary.arithmetic().to_vec(),
+        )
+        .unwrap();
+        let encoded = joint.encode().unwrap();
+        assert_eq!(encoded.len(), ordinary.encoded_len().unwrap());
+        assert_eq!(C61JointPublicArgument::decode(&encoded).unwrap(), joint);
+        assert!(C61PublicArgument::decode(&encoded).is_err());
+
+        let mut bad_magic = encoded.clone();
+        bad_magic[0] ^= 1;
+        let mut bad_version = encoded.clone();
+        bad_version[8] ^= 1;
+        let mut bad_digest = encoded;
+        let last = bad_digest.len() - 1;
+        bad_digest[last] ^= 1;
+        for mutation in [bad_magic, bad_version, bad_digest] {
+            assert!(C61JointPublicArgument::decode(&mutation).is_err());
+        }
+        assert!(c61_joint_public_statement_digest([0; 32], [1; 32], [2; 32], [3; 32]).is_err());
+        assert_ne!(
+            joint_digest,
+            c61_joint_public_statement_digest(
+                ordinary.statement_digest(),
+                [0xB6; 32],
+                [0xB5; 32],
+                [0xB7; 32],
+            )
+            .unwrap(),
+        );
     }
 
     #[test]

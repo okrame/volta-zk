@@ -33,6 +33,8 @@ use crate::c6_persistent_cache::{
     C6_PERSISTENT_CACHE_LAYERS, C6_PERSISTENT_CACHE_PADDED_LAYERS,
     C6_PERSISTENT_CACHE_PADDED_WIDTH, C6_PERSISTENT_CACHE_SLOT_CAPACITY, C6_PERSISTENT_CACHE_WIDTH,
 };
+#[cfg(feature = "c6-trace")]
+use crate::c6_wrapper_pcs::{production_c6_wrapper_specs, C6WrapperRoundPoint};
 use crate::c6_wrapper_pcs::{
     C6WrapperDigest, C6_PREDECESSOR_CACHE_COHORT_ID, C6_SUCCESSOR_CACHE_COHORT_ID,
     C6_WRAPPER_AUXILIARY_COHORT_ID, C6_WRAPPER_REPETITIONS,
@@ -932,6 +934,52 @@ pub(crate) struct C6PersistentCacheProductionFixedFoldVerifier {
 }
 
 #[cfg(feature = "c6-trace")]
+pub(crate) fn begin_c6_persistent_cache_production(
+    statement_digest: C6WrapperDigest,
+    transcript: &mut Transcript,
+) -> Result<()> {
+    if statement_digest == [0; 32] {
+        return Err(C6PersistentCacheBlindError::new("zero C6PC2 production statement digest"));
+    }
+    transcript.append(FRAMING_LABEL, HEADER_AND_STATEMENT_BYTES);
+    transcript.append(SOURCE_BOOTSTRAP_HEADER_LABEL, SOURCE_BOOTSTRAP_HEADER_BYTES);
+    Ok(())
+}
+
+#[cfg(feature = "c6-trace")]
+pub(crate) fn draw_c6_persistent_cache_production_roots(
+    repetition: u8,
+    transcript: &mut Transcript,
+) -> Result<([Fp2; SOURCE_OWNER_COUNT], Fp2)> {
+    if usize::from(repetition) >= C6_WRAPPER_REPETITIONS {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6PC2 production root repetition is out of range",
+        ));
+    }
+    Ok((array::from_fn(|_| transcript.challenge_fp2()), transcript.challenge_fp2()))
+}
+
+#[cfg(feature = "c6-trace")]
+impl C6PersistentCacheProductionFixedFoldProver {
+    pub(crate) fn draw_relation_point(
+        &self,
+        transcript: &mut Transcript,
+    ) -> [Fp2; C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS] {
+        array::from_fn(|_| transcript.challenge_fp2())
+    }
+}
+
+#[cfg(feature = "c6-trace")]
+impl C6PersistentCacheProductionFixedFoldVerifier {
+    pub(crate) fn draw_relation_point(
+        &self,
+        transcript: &mut Transcript,
+    ) -> [Fp2; C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS] {
+        array::from_fn(|_| transcript.challenge_fp2())
+    }
+}
+
+#[cfg(feature = "c6-trace")]
 pub(crate) fn fix_c6_persistent_cache_production_fold_prover(
     repetition: u8,
     statement_digest: C6WrapperDigest,
@@ -1012,6 +1060,8 @@ pub(crate) fn fix_c6_persistent_cache_production_fold_verifier(
 #[cfg(feature = "c6-trace")]
 pub(crate) struct C6PersistentCacheProductionPreparedProver<'a> {
     pub(crate) round_state: C6PersistentCacheProductionProverRoundState<'a>,
+    statement_digest: C6WrapperDigest,
+    schedule_digest: C6WrapperDigest,
     fold_corrections: [[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT],
     append_corrections: [[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT],
 }
@@ -1063,6 +1113,7 @@ pub(crate) fn prepare_c6_persistent_cache_production_prover<'a>(
         array::from_fn(|tape| append_values[kv][tape].x - append_masks[kv][tape])
     });
     transcript.append(SOURCE_BOOTSTRAP_APPEND_LABEL, SOURCE_BOOTSTRAP_APPEND_BYTES);
+    transcript.append(REPETITION_LABEL, REPETITION_PREFIX_BYTES);
 
     let source_aggregates =
         assemble_source_aggregates(append_values, fixed_fold.values, ProverAuthed::ZERO);
@@ -1083,6 +1134,8 @@ pub(crate) fn prepare_c6_persistent_cache_production_prover<'a>(
     )?;
     Ok(C6PersistentCacheProductionPreparedProver {
         round_state,
+        statement_digest: compiler.statement_digest,
+        schedule_digest: compiler.schedule_digest,
         fold_corrections: fixed_fold.corrections,
         append_corrections,
     })
@@ -1128,6 +1181,7 @@ pub(crate) fn prepare_c6_persistent_cache_production_verifier<'a>(
         })
     });
     source_frame.charge_append(repetition, transcript)?;
+    transcript.append(REPETITION_LABEL, REPETITION_PREFIX_BYTES);
 
     let source_aggregates =
         assemble_source_aggregates(append_values, fixed_fold.values, VerifierKey::ZERO);
@@ -2941,6 +2995,382 @@ fn append_pending_verifier(
     }
 }
 
+#[cfg(feature = "c6-trace")]
+fn production_auxiliary_point(point: &C6WrapperRoundPoint) -> Result<Vec<Fp2>> {
+    let spec = production_c6_wrapper_specs()
+        .into_iter()
+        .find(|spec| spec.cohort_id == C6_WRAPPER_AUXILIARY_COHORT_ID)
+        .ok_or_else(|| C6PersistentCacheBlindError::new("C6PC2 auxiliary cohort disappeared"))?;
+    point.cohort_point(spec).map_err(|error| C6PersistentCacheBlindError::new(error.to_string()))
+}
+
+#[cfg(feature = "c6-trace")]
+fn append_pending_production_prover(
+    entries: &mut Vec<PendingProverEntry>,
+    statement_digest: C6WrapperDigest,
+    repetition: u8,
+    point: &C6WrapperRoundPoint,
+    terminals: [[ProverAuthed; C6_PERSISTENT_CACHE_BLIND_TAPES];
+        C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS],
+) -> Result<()> {
+    if point.repetition() != repetition {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6PC2 prover wrapper-point repetition mismatch",
+        ));
+    }
+    let cache_point = point.common_point().to_vec();
+    let auxiliary_point = production_auxiliary_point(point)?;
+    for (cohort_offset, cohort_id) in
+        [C6_PREDECESSOR_CACHE_COHORT_ID, C6_SUCCESSOR_CACHE_COHORT_ID].into_iter().enumerate()
+    {
+        for slot in 0..8u16 {
+            let terminal = cohort_offset * 2 + usize::from(slot.min(1));
+            entries.push(PendingProverEntry {
+                descriptor: C6PersistentCachePendingDescriptor {
+                    statement_digest,
+                    repetition,
+                    cohort_id,
+                    slot,
+                    target_point: cache_point.clone(),
+                },
+                auth: if slot < 2 {
+                    terminals[terminal]
+                } else {
+                    [ProverAuthed::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES]
+                },
+            });
+        }
+    }
+    for slot in 16..32u16 {
+        entries.push(PendingProverEntry {
+            descriptor: C6PersistentCachePendingDescriptor {
+                statement_digest,
+                repetition,
+                cohort_id: C6_WRAPPER_AUXILIARY_COHORT_ID,
+                slot,
+                target_point: auxiliary_point.clone(),
+            },
+            auth: [ProverAuthed::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES],
+        });
+    }
+    Ok(())
+}
+
+#[cfg(feature = "c6-trace")]
+fn append_pending_production_verifier(
+    entries: &mut Vec<PendingVerifierEntry>,
+    statement_digest: C6WrapperDigest,
+    repetition: u8,
+    point: &C6WrapperRoundPoint,
+    terminals: [[VerifierKey; C6_PERSISTENT_CACHE_BLIND_TAPES];
+        C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS],
+) -> Result<()> {
+    if point.repetition() != repetition {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6PC2 verifier wrapper-point repetition mismatch",
+        ));
+    }
+    let cache_point = point.common_point().to_vec();
+    let auxiliary_point = production_auxiliary_point(point)?;
+    for (cohort_offset, cohort_id) in
+        [C6_PREDECESSOR_CACHE_COHORT_ID, C6_SUCCESSOR_CACHE_COHORT_ID].into_iter().enumerate()
+    {
+        for slot in 0..8u16 {
+            let terminal = cohort_offset * 2 + usize::from(slot.min(1));
+            entries.push(PendingVerifierEntry {
+                descriptor: C6PersistentCachePendingDescriptor {
+                    statement_digest,
+                    repetition,
+                    cohort_id,
+                    slot,
+                    target_point: cache_point.clone(),
+                },
+                keys: if slot < 2 {
+                    terminals[terminal]
+                } else {
+                    [VerifierKey::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES]
+                },
+            });
+        }
+    }
+    for slot in 16..32u16 {
+        entries.push(PendingVerifierEntry {
+            descriptor: C6PersistentCachePendingDescriptor {
+                statement_digest,
+                repetition,
+                cohort_id: C6_WRAPPER_AUXILIARY_COHORT_ID,
+                slot,
+                target_point: auxiliary_point.clone(),
+            },
+            keys: [VerifierKey::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES],
+        });
+    }
+    Ok(())
+}
+
+#[cfg(feature = "c6-trace")]
+pub(crate) struct C6PersistentCacheProductionFinishedProver {
+    repetition: u8,
+    proof: C6PersistentCacheBlindRepetitionProof,
+    fold_corrections: [[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT],
+    append_corrections: [[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT],
+    pending: Vec<PendingProverEntry>,
+    compiler_metrics: C6PersistentCacheProductionCompilerMetrics,
+}
+
+#[cfg(feature = "c6-trace")]
+pub(crate) fn finish_c6_persistent_cache_production_prover_repetition(
+    prepared: C6PersistentCacheProductionPreparedProver<'_>,
+    point: &C6WrapperRoundPoint,
+    streams: &mut [CorrelationStream; C6_PERSISTENT_CACHE_BLIND_TAPES],
+    transcript: &mut Transcript,
+    round_corrections: Vec<[[Fp2; 2]; C6_PERSISTENT_CACHE_BLIND_TAPES]>,
+) -> Result<C6PersistentCacheProductionFinishedProver> {
+    let C6PersistentCacheProductionPreparedProver {
+        round_state,
+        statement_digest,
+        schedule_digest,
+        fold_corrections,
+        append_corrections,
+    } = prepared;
+    let repetition = round_state.repetition;
+    if point.repetition() != repetition
+        || round_corrections.len() != C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS
+    {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6PC2 production prover terminal schedule mismatch",
+        ));
+    }
+    let (current, coefficients, witness, sumcheck_point, compiler_metrics) =
+        round_state.terminal_state()?;
+    if sumcheck_point != point.random_point() {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6PC2 production prover point diverges from global coordinator",
+        ));
+    }
+    let mut terminal_corrections =
+        [[Fp2::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES]; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS];
+    let mut terminals = [[ProverAuthed::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES];
+        C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS];
+    for terminal in 0..C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS {
+        for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
+            let (correction, auth) = authenticate_one(
+                &mut streams[tape],
+                correlation_domain(repetition, tape, CorrelationPurpose::Terminal, terminal)?,
+                witness[terminal],
+            )?;
+            terminal_corrections[terminal][tape] = correction;
+            terminals[terminal][tape] = auth;
+        }
+    }
+    transcript.append(TERMINAL_LABEL, TERMINAL_BYTES);
+    let terminal_root = transcript.challenge_fp2();
+    let terminal_tags = array::from_fn(|tape| {
+        let expected = (0..C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS)
+            .fold(ProverAuthed::ZERO, |sum, terminal| {
+                sum.add(terminals[terminal][tape].scale(coefficients[terminal]))
+            });
+        zero_open_prover(&current[tape].sub(expected).scale(terminal_root), transcript)
+    });
+    let mut pending = Vec::with_capacity(C6_PERSISTENT_CACHE_BLIND_PENDING_PER_REPETITION);
+    append_pending_production_prover(&mut pending, statement_digest, repetition, point, terminals)?;
+    Ok(C6PersistentCacheProductionFinishedProver {
+        repetition,
+        proof: C6PersistentCacheBlindRepetitionProof {
+            schedule_digest,
+            round_corrections,
+            terminal_corrections,
+            terminal_tags,
+        },
+        fold_corrections,
+        append_corrections,
+        pending,
+        compiler_metrics,
+    })
+}
+
+#[cfg(feature = "c6-trace")]
+pub(crate) struct C6PersistentCacheProductionFinishedVerifier {
+    repetition: u8,
+    pending: Vec<PendingVerifierEntry>,
+    compiler_metrics: C6PersistentCacheProductionCompilerMetrics,
+}
+
+#[cfg(feature = "c6-trace")]
+pub(crate) fn finish_c6_persistent_cache_production_verifier_repetition(
+    round_state: C6PersistentCacheProductionVerifierRoundState<'_>,
+    point: &C6WrapperRoundPoint,
+    proof: &C6PersistentCacheBlindProof,
+    contexts: &mut [VerifierCtx; C6_PERSISTENT_CACHE_BLIND_TAPES],
+    transcript: &mut Transcript,
+) -> Result<C6PersistentCacheProductionFinishedVerifier> {
+    let repetition = round_state.repetition;
+    if proof.statement_digest != round_state.compiler.statement_digest
+        || usize::from(proof.rounds) != C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS
+        || proof.repetitions.len() != C6_WRAPPER_REPETITIONS
+        || point.repetition() != repetition
+    {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6PC2 production verifier proof binding mismatch",
+        ));
+    }
+    let repetition_proof = &proof.repetitions[usize::from(repetition)];
+    if point.repetition() != repetition
+        || repetition_proof.schedule_digest != round_state.compiler.schedule_digest
+    {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6PC2 production verifier terminal schedule mismatch",
+        ));
+    }
+    let (current, coefficients, sumcheck_point, compiler_metrics) = round_state.terminal_state()?;
+    if sumcheck_point != point.random_point() {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6PC2 production verifier point diverges from global coordinator",
+        ));
+    }
+    let mut terminals = [[VerifierKey::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES];
+        C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS];
+    for terminal in 0..C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS {
+        for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
+            terminals[terminal][tape] = contexts[tape].correct_full_verifier_keys(
+                correlation_domain(repetition, tape, CorrelationPurpose::Terminal, terminal)?,
+                &[repetition_proof.terminal_corrections[terminal][tape]],
+            )[0];
+        }
+    }
+    transcript.append(TERMINAL_LABEL, TERMINAL_BYTES);
+    let terminal_root = transcript.challenge_fp2();
+    for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
+        let expected = (0..C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS)
+            .fold(VerifierKey::ZERO, |sum, terminal| {
+                sum.add(terminals[terminal][tape].scale(coefficients[terminal]))
+            });
+        let residual = current[tape].sub(expected).scale(terminal_root);
+        transcript.append("zero_open_tag", FP2_BYTES);
+        if !zero_open_verify(residual, repetition_proof.terminal_tags[tape]) {
+            return Err(C6PersistentCacheBlindError::new(
+                "C6PC2 production terminal ZeroOpen failed",
+            ));
+        }
+    }
+    let mut pending = Vec::with_capacity(C6_PERSISTENT_CACHE_BLIND_PENDING_PER_REPETITION);
+    append_pending_production_verifier(
+        &mut pending,
+        round_state.compiler.statement_digest,
+        repetition,
+        point,
+        terminals,
+    )?;
+    Ok(C6PersistentCacheProductionFinishedVerifier { repetition, pending, compiler_metrics })
+}
+
+#[cfg(feature = "c6-trace")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct C6PersistentCacheProductionMetrics {
+    pub protocol: C6PersistentCacheBlindMetrics,
+    pub compiler: [C6PersistentCacheProductionCompilerMetrics; C6_WRAPPER_REPETITIONS],
+}
+
+#[cfg(feature = "c6-trace")]
+pub(crate) fn assemble_c6_persistent_cache_production_proof(
+    statement_digest: C6WrapperDigest,
+    repetitions: Vec<C6PersistentCacheProductionFinishedProver>,
+) -> Result<(
+    C6PersistentCacheBlindProof,
+    C6PersistentCacheSourceBootstrapFrame,
+    C6PersistentCachePendingClaimsProver,
+    C6PersistentCacheProductionMetrics,
+)> {
+    if statement_digest == [0; 32] || repetitions.len() != C6_WRAPPER_REPETITIONS {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6PC2 production prover repetition census mismatch",
+        ));
+    }
+    let mut proofs = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
+    let mut pending = Vec::with_capacity(
+        C6_WRAPPER_REPETITIONS * C6_PERSISTENT_CACHE_BLIND_PENDING_PER_REPETITION,
+    );
+    let mut fold_corrections =
+        [[[Fp2::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT]; C6_WRAPPER_REPETITIONS];
+    let mut append_corrections =
+        [[[Fp2::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT]; C6_WRAPPER_REPETITIONS];
+    let mut compiler =
+        [C6PersistentCacheProductionCompilerMetrics::default(); C6_WRAPPER_REPETITIONS];
+    for (expected, repetition) in repetitions.into_iter().enumerate() {
+        if usize::from(repetition.repetition) != expected
+            || repetition.pending.len() != C6_PERSISTENT_CACHE_BLIND_PENDING_PER_REPETITION
+        {
+            return Err(C6PersistentCacheBlindError::new(
+                "C6PC2 production prover repetition order mismatch",
+            ));
+        }
+        fold_corrections[expected] = repetition.fold_corrections;
+        append_corrections[expected] = repetition.append_corrections;
+        compiler[expected] = repetition.compiler_metrics;
+        proofs.push(repetition.proof);
+        pending.extend(repetition.pending);
+    }
+    let proof = C6PersistentCacheBlindProof {
+        statement_digest,
+        rounds: C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS as u8,
+        repetitions: proofs,
+    };
+    proof.validate_shape()?;
+    if proof.encoded_len()? != C6_PERSISTENT_CACHE_BLIND_PRODUCTION_BYTES {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6PC2 production proof byte formula changed",
+        ));
+    }
+    let source_frame = C6PersistentCacheSourceBootstrapFrame::new(
+        statement_digest,
+        fold_corrections,
+        append_corrections,
+    )?;
+    let protocol = C6PersistentCacheBlindMetrics {
+        rounds_per_repetition: C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS as u64,
+        proof_bytes: C6_PERSISTENT_CACHE_SOURCE_BOUND_PRODUCTION_BYTES,
+        full_correlations_per_tape: C6_PERSISTENT_CACHE_BLIND_PRODUCTION_CORRELATIONS_PER_TAPE,
+        pending_claims: pending.len() as u64,
+    };
+    Ok((
+        proof,
+        source_frame,
+        C6PersistentCachePendingClaimsProver { entries: pending },
+        C6PersistentCacheProductionMetrics { protocol, compiler },
+    ))
+}
+
+#[cfg(feature = "c6-trace")]
+pub(crate) fn assemble_c6_persistent_cache_production_verifier_pending(
+    repetitions: Vec<C6PersistentCacheProductionFinishedVerifier>,
+) -> Result<(
+    C6PersistentCachePendingClaimsVerifier,
+    [C6PersistentCacheProductionCompilerMetrics; C6_WRAPPER_REPETITIONS],
+)> {
+    if repetitions.len() != C6_WRAPPER_REPETITIONS {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6PC2 production verifier repetition census mismatch",
+        ));
+    }
+    let mut pending = Vec::with_capacity(
+        C6_WRAPPER_REPETITIONS * C6_PERSISTENT_CACHE_BLIND_PENDING_PER_REPETITION,
+    );
+    let mut compiler =
+        [C6PersistentCacheProductionCompilerMetrics::default(); C6_WRAPPER_REPETITIONS];
+    for (expected, repetition) in repetitions.into_iter().enumerate() {
+        if usize::from(repetition.repetition) != expected
+            || repetition.pending.len() != C6_PERSISTENT_CACHE_BLIND_PENDING_PER_REPETITION
+        {
+            return Err(C6PersistentCacheBlindError::new(
+                "C6PC2 production verifier repetition order mismatch",
+            ));
+        }
+        compiler[expected] = repetition.compiler_metrics;
+        pending.extend(repetition.pending);
+    }
+    Ok((C6PersistentCachePendingClaimsVerifier { entries: pending }, compiler))
+}
+
 fn sumcheck_round_evaluations(
     coefficients: &[Vec<Fp2>; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS],
     witness: &[Vec<Fp2>; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS],
@@ -3263,6 +3693,95 @@ mod tests {
         assert!(state.bind_challenge(symbol(17)).is_err());
         assert_eq!(state.round, 0);
         assert!(state.point.is_empty());
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn production_pending_and_strict_frames_assemble_at_exact_census() {
+        use crate::c6_wrapper_pcs::{
+            fix_test_c6_wrapper_commitments, C6WrapperCohortSpec, C6WrapperCommitment,
+            C6WrapperOracleKind, C6WrapperRoundCoordinator, C6WrapperRoundMessageReceipt,
+        };
+
+        let statement = [0xC6; 32];
+        let spec = C6WrapperCohortSpec {
+            cohort_id: 99,
+            oracle_kind: C6WrapperOracleKind::Witness,
+            payload_log2: 2,
+            slot_count: 2,
+        };
+        let commitment = C6WrapperCommitment::from_root(statement, spec, [0x51; 32]).unwrap();
+        let mut root_transcript = Transcript::new([0x61; 32]);
+        let fixed = fix_test_c6_wrapper_commitments(statement, &[commitment], &mut root_transcript)
+            .unwrap();
+        let mut finished = Vec::new();
+        for repetition in 0..C6_WRAPPER_REPETITIONS as u8 {
+            let mut transcript = Transcript::new([0x70 + repetition; 32]);
+            let mut coordinator = C6WrapperRoundCoordinator::new_test(
+                &fixed,
+                repetition,
+                C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS,
+                2,
+                3,
+            )
+            .unwrap();
+            while coordinator.round_index() < C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS {
+                let ids = coordinator.expected_participant_ids().unwrap();
+                let receipts = ids
+                    .iter()
+                    .map(|&participant_id| C6WrapperRoundMessageReceipt {
+                        participant_id,
+                        message_bytes: 1,
+                    })
+                    .collect::<Vec<_>>();
+                coordinator.fix_messages_and_release_challenge(&receipts, &mut transcript).unwrap();
+                coordinator.confirm_participants_bound(&ids).unwrap();
+            }
+            let point = coordinator.finish().unwrap();
+            let mut pending = Vec::new();
+            append_pending_production_prover(
+                &mut pending,
+                statement,
+                repetition,
+                &point,
+                [[ProverAuthed::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES];
+                    C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS],
+            )
+            .unwrap();
+            assert_eq!(pending.len(), C6_PERSISTENT_CACHE_BLIND_PENDING_PER_REPETITION);
+            assert!(pending[..16].iter().all(|entry| entry.descriptor.target_point.len() == 25));
+            assert!(pending[16..].iter().all(|entry| entry.descriptor.target_point.len() == 16));
+            finished.push(C6PersistentCacheProductionFinishedProver {
+                repetition,
+                proof: C6PersistentCacheBlindRepetitionProof {
+                    schedule_digest: [repetition + 1; 32],
+                    round_corrections: vec![
+                        [[Fp2::ZERO; 2]; C6_PERSISTENT_CACHE_BLIND_TAPES];
+                        C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS
+                    ],
+                    terminal_corrections: [[Fp2::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES];
+                        C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS],
+                    terminal_tags: [Fp2::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES],
+                },
+                fold_corrections: [[Fp2::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT],
+                append_corrections: [[Fp2::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT],
+                pending,
+                compiler_metrics: C6PersistentCacheProductionCompilerMetrics::default(),
+            });
+        }
+        let (proof, frame, pending, metrics) =
+            assemble_c6_persistent_cache_production_proof(statement, finished).unwrap();
+        assert_eq!(
+            proof.encode().unwrap().len() as u64,
+            C6_PERSISTENT_CACHE_BLIND_PRODUCTION_BYTES
+        );
+        assert_eq!(
+            frame.encode().unwrap().len() as u64,
+            C6_PERSISTENT_CACHE_SOURCE_BOOTSTRAP_BYTES
+        );
+        assert_eq!(pending.len(), 64);
+        assert_eq!(metrics.protocol.proof_bytes, C6_PERSISTENT_CACHE_SOURCE_BOUND_PRODUCTION_BYTES);
+        assert_eq!(metrics.protocol.full_correlations_per_tape, 104);
     }
 
     fn fixture() -> (

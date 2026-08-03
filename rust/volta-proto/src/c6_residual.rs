@@ -4664,8 +4664,24 @@ impl C6PairedResidualAuxiliaryWitness {
     pub fn materialize_semantic_halves(
         &self,
     ) -> C6ResidualResult<[Vec<Fp2>; C6_RESIDUAL_AUXILIARY_LANES as usize]> {
-        let semantic_entries = usize::try_from(C6_RESIDUAL_AUXILIARY_SEMANTIC_ENTRIES)
-            .map_err(|_| C6ResidualError::new("C6 auxiliary semantic length exceeds usize"))?;
+        self.materialize_semantic_halves_at_log2(C6_RESIDUAL_AUXILIARY_SEMANTIC_LOG2 as u8)
+    }
+
+    /// Scaled/reference form of [`Self::materialize_semantic_halves`].
+    /// Production callers use the frozen `2^15` method above; a smaller
+    /// geometry is admitted only when every live row fits exactly.
+    pub fn materialize_semantic_halves_at_log2(
+        &self,
+        semantic_log2: u8,
+    ) -> C6ResidualResult<[Vec<Fp2>; C6_RESIDUAL_AUXILIARY_LANES as usize]> {
+        if semantic_log2 > C6_RESIDUAL_AUXILIARY_SEMANTIC_LOG2 as u8 {
+            return Err(C6ResidualError::new(
+                "C6 auxiliary semantic dimension exceeds the frozen capacity",
+            ));
+        }
+        let semantic_entries = 1usize
+            .checked_shl(u32::from(semantic_log2))
+            .ok_or_else(|| C6ResidualError::new("C6 auxiliary semantic length exceeds usize"))?;
         let mut semantic = std::array::from_fn(|_| vec![Fp2::ZERO; semantic_entries]);
         for lane in C6ResidualAuxiliaryLane::ALL {
             let live = self.lane(lane);

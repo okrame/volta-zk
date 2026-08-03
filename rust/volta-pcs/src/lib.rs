@@ -26,6 +26,7 @@ pub mod c6_authenticated_output_link;
 pub mod c6_hidden_u;
 pub mod c6_hidden_u_sumcheck;
 pub mod c6_hidden_u_sumcheck_blind;
+pub mod c6_live_wrapper;
 pub mod c6_persistent_cache;
 pub mod c6_persistent_cache_blind;
 pub mod c6_residual_sumcheck;
@@ -139,6 +140,10 @@ pub use c6_hidden_u_sumcheck_blind::{
     C6_BLIND_HIDDEN_U_PRODUCTION_BYTES, C6_BLIND_HIDDEN_U_PRODUCTION_FULL_CORRELATIONS_PER_TAPE,
     C6_BLIND_HIDDEN_U_PRODUCTION_ROUND_VALUES_PER_REPETITION, C6_BLIND_HIDDEN_U_SLOTS_PER_FAMILY,
     C6_BLIND_HIDDEN_U_TAPES, C6_BLIND_HIDDEN_U_VERSION,
+};
+pub use c6_live_wrapper::{
+    materialize_production_c6_live_wrapper_roots, C6LiveWrapperError, C6LiveWrapperMaskSeed,
+    C6LiveWrapperRootBinding, C6LiveWrapperSources,
 };
 pub use c6_persistent_cache::{
     c6_cache_source_map_digest, derive_c6_persistent_cache_source_plan,

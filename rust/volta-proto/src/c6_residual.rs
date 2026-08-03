@@ -8230,11 +8230,71 @@ pub fn compile_c6_residual_sparse_rational_relation_reference(
     sparse_challenges: C6ResidualSparseRationalChallenges,
     output_beta: Fp2,
 ) -> C6ResidualResult<C6ResidualSparseRationalRelationReference> {
+    compile_c6_residual_sparse_rational_relation_materialized(
+        operation_plan,
+        terminal_metadata,
+        extraction,
+        runtime,
+        relation_challenges,
+        lanes,
+        sparse_challenges,
+        output_beta,
+        false,
+    )
+}
+
+/// Materialize the exact production C6SPR1 rational identities.
+///
+/// This is an explicit, memory-heavy A100 campaign seam.  It accepts only
+/// the frozen production manifest and is intentionally distinct from the
+/// scaled reference entry point, so a caller cannot obtain production
+/// admission by changing a dimension on a diagnostic fixture.  The returned
+/// vectors are still prover inputs rather than proof or performance credit.
+#[allow(clippy::too_many_arguments)]
+pub fn compile_c6_residual_sparse_rational_relation_production(
+    operation_plan: &C6InstalledOperationPlan,
+    terminal_metadata: &C6OperationPlanTerminalMetadata,
+    extraction: &C6DecodedInstanceExtractionPlan,
+    runtime: &C6RuntimeInstanceValues,
+    relation_challenges: &C6ResidualRelationChallenges,
+    lanes: [&C6ResidualFoldedTerminalAdjointLaneReference; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    sparse_challenges: C6ResidualSparseRationalChallenges,
+    output_beta: Fp2,
+) -> C6ResidualResult<C6ResidualSparseRationalRelationReference> {
+    compile_c6_residual_sparse_rational_relation_materialized(
+        operation_plan,
+        terminal_metadata,
+        extraction,
+        runtime,
+        relation_challenges,
+        lanes,
+        sparse_challenges,
+        output_beta,
+        true,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn compile_c6_residual_sparse_rational_relation_materialized(
+    operation_plan: &C6InstalledOperationPlan,
+    terminal_metadata: &C6OperationPlanTerminalMetadata,
+    extraction: &C6DecodedInstanceExtractionPlan,
+    runtime: &C6RuntimeInstanceValues,
+    relation_challenges: &C6ResidualRelationChallenges,
+    lanes: [&C6ResidualFoldedTerminalAdjointLaneReference; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    sparse_challenges: C6ResidualSparseRationalChallenges,
+    output_beta: Fp2,
+    require_production: bool,
+) -> C6ResidualResult<C6ResidualSparseRationalRelationReference> {
     relation_challenges.validate(operation_plan)?;
     relation_challenges.validate_terminal_metadata(terminal_metadata)?;
     let topology = operation_plan.topology();
-    if relation_challenges.manifest().production_geometry {
-        return Err(C6ResidualError::new("C6SPR1 materialized rational reference is scaled-only"));
+    if relation_challenges.manifest().production_geometry != require_production {
+        return Err(C6ResidualError::new(if require_production {
+            "C6SPR1 production materializer requires the frozen production manifest"
+        } else {
+            "C6SPR1 materialized rational reference is scaled-only"
+        }));
     }
     if terminal_metadata.topology() != topology
         || sparse_challenges
@@ -14995,6 +15055,17 @@ mod tests {
         assert_eq!(relation.recurrence_residual(), Fp2::ZERO);
         assert_eq!(relation.runtime_gather_residual(), Fp2::ZERO);
         assert_eq!(relation.source_gather_residual(), Fp2::ZERO);
+        assert!(compile_c6_residual_sparse_rational_relation_production(
+            direct.operation_plan(),
+            &terminal_metadata,
+            direct.extraction(),
+            direct.runtime(),
+            direct.relation(),
+            [&lanes[0], &lanes[1]],
+            challenges,
+            output_beta,
+        )
+        .is_err());
 
         let mut changed_lane = lanes[0].clone();
         changed_lane.node_coefficients[0] += Fp2::ONE;

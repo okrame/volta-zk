@@ -564,6 +564,41 @@ pub fn compile_c6_sparse_rational_packed_oracle_reference(
     runtime: &C6RuntimeInstanceValues,
     lanes: [&C6ResidualFoldedTerminalAdjointLaneReference; C6_RESIDUAL_PROOF_REPETITIONS as usize],
 ) -> C6ResidualResult<C6SparseRationalPackedOracleReference> {
+    compile_c6_sparse_rational_packed_oracle_materialized(
+        operation_plan,
+        extraction,
+        runtime,
+        lanes,
+        false,
+    )
+}
+
+/// Materialize the frozen physical D28 response and D27 public plan inputs.
+///
+/// This entry point is reserved for a resource-instrumented production
+/// campaign.  It does not grant PCS, memory, timing or GPU credit by itself.
+pub fn compile_c6_sparse_rational_packed_oracle_production(
+    operation_plan: &C6InstalledOperationPlan,
+    extraction: &C6DecodedInstanceExtractionPlan,
+    runtime: &C6RuntimeInstanceValues,
+    lanes: [&C6ResidualFoldedTerminalAdjointLaneReference; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+) -> C6ResidualResult<C6SparseRationalPackedOracleReference> {
+    compile_c6_sparse_rational_packed_oracle_materialized(
+        operation_plan,
+        extraction,
+        runtime,
+        lanes,
+        true,
+    )
+}
+
+fn compile_c6_sparse_rational_packed_oracle_materialized(
+    operation_plan: &C6InstalledOperationPlan,
+    extraction: &C6DecodedInstanceExtractionPlan,
+    runtime: &C6RuntimeInstanceValues,
+    lanes: [&C6ResidualFoldedTerminalAdjointLaneReference; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    require_production: bool,
+) -> C6ResidualResult<C6SparseRationalPackedOracleReference> {
     let topology = operation_plan.topology();
     let node_count = usize::try_from(topology.canonical_node_count)
         .map_err(|_| C6ResidualError::new("C6SPR2 node count exceeds usize"))?;
@@ -587,7 +622,12 @@ pub fn compile_c6_sparse_rational_packed_oracle_reference(
         .ok_or_else(|| C6ResidualError::new("C6SPR2 base domain overflows"))?;
     let base_domain_log2 = u8::try_from(base_rows.trailing_zeros())
         .map_err(|_| C6ResidualError::new("C6SPR2 base dimension exceeds u8"))?;
-    if base_domain_log2 >= C6_SPARSE_PACKING_MAX_SCALED_LOG2
+    let production_geometry = base_domain_log2 == 25
+        && topology.source_count == 4_975_525
+        && topology.canonical_node_count == 28_845_631
+        && topology.scalar_input_count == 10_828_852;
+    if (require_production && !production_geometry)
+        || (!require_production && base_domain_log2 >= C6_SPARSE_PACKING_MAX_SCALED_LOG2)
         || operation_plan.operation_kinds().len() != node_count
         || scalar_count > base_rows / 2
         || source_count > base_rows / 4
@@ -602,7 +642,8 @@ pub fn compile_c6_sparse_rational_packed_oracle_reference(
         })
     {
         return Err(C6ResidualError::new(format!(
-            "C6SPR2 scaled packing geometry or lane boundary mismatch: base_log2={base_domain_log2}, base_rows={base_rows}, runtime={}, sources={source_count}, lane_nodes={}/{}, lane_sources={}/{}",
+            "C6SPR2 {} packing geometry or lane boundary mismatch: base_log2={base_domain_log2}, base_rows={base_rows}, runtime={}, sources={source_count}, lane_nodes={}/{}, lane_sources={}/{}",
+            if require_production { "production" } else { "scaled" },
             scalar_count,
             lanes[0].node_coefficients.len(),
             lanes[1].node_coefficients.len(),
@@ -1647,6 +1688,13 @@ mod tests {
             [&lanes[0], &lanes[1]],
         )
         .unwrap();
+        assert!(compile_c6_sparse_rational_packed_oracle_production(
+            direct.operation_plan(),
+            direct.extraction(),
+            direct.runtime(),
+            [&lanes[0], &lanes[1]],
+        )
+        .is_err());
         packed
             .validate(
                 direct.operation_plan(),

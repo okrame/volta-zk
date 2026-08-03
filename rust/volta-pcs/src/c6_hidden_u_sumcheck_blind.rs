@@ -830,6 +830,51 @@ impl C6BlindHiddenUVerifierRoundState {
     }
 }
 
+pub(crate) fn assemble_c6_blind_hidden_u_prover_stepwise(
+    statement_digest: C6HiddenUDigest,
+    layouts: &[C6HiddenULayout],
+    repetitions: Vec<(C6BlindHiddenURepetitionProof, Vec<PendingProverEntry>)>,
+) -> Result<(C6BlindHiddenUSumcheckProof, C6BlindHiddenUPendingClaimsProver)> {
+    if repetitions.len() != C6_HIDDEN_U_REPETITIONS as usize {
+        return Err(C6BlindHiddenUError::new("C6HUB2 step-wise prover repetition census mismatch"));
+    }
+    let mut proofs = Vec::with_capacity(repetitions.len());
+    let mut pending_entries = Vec::with_capacity(
+        repetitions.len()
+            * C6_BLIND_HIDDEN_U_FAMILIES
+            * C6_BLIND_HIDDEN_U_SLOTS_PER_FAMILY as usize,
+    );
+    for (proof, pending) in repetitions {
+        if pending.len() != C6_BLIND_HIDDEN_U_FAMILIES * C6_BLIND_HIDDEN_U_SLOTS_PER_FAMILY as usize
+        {
+            return Err(C6BlindHiddenUError::new(
+                "C6HUB2 step-wise prover pending census mismatch",
+            ));
+        }
+        proofs.push(proof);
+        pending_entries.extend(pending);
+    }
+    let proof = C6BlindHiddenUSumcheckProof { statement_digest, repetitions: proofs };
+    proof.validate_shape(layouts)?;
+    Ok((proof, C6BlindHiddenUPendingClaimsProver { entries: pending_entries }))
+}
+
+pub(crate) fn assemble_c6_blind_hidden_u_verifier_stepwise(
+    repetitions: Vec<Vec<PendingVerifierEntry>>,
+) -> Result<C6BlindHiddenUPendingClaimsVerifier> {
+    if repetitions.len() != C6_HIDDEN_U_REPETITIONS as usize
+        || repetitions.iter().any(|pending| {
+            pending.len()
+                != C6_BLIND_HIDDEN_U_FAMILIES * C6_BLIND_HIDDEN_U_SLOTS_PER_FAMILY as usize
+        })
+    {
+        return Err(C6BlindHiddenUError::new(
+            "C6HUB2 step-wise verifier repetition/pending census mismatch",
+        ));
+    }
+    Ok(C6BlindHiddenUPendingClaimsVerifier { entries: repetitions.into_iter().flatten().collect() })
+}
+
 pub fn prove_c6_blind_hidden_u_sumchecks_reference(
     sealed: &C6SealedHiddenUBundle,
     prequery: &C6HiddenUPrequery,
@@ -841,11 +886,6 @@ pub fn prove_c6_blind_hidden_u_sumchecks_reference(
     let statement_digest =
         begin_c6_blind_hidden_u_stepwise(sealed, prequery, postcommit, transcript)?;
     let mut repetitions = Vec::with_capacity(C6_HIDDEN_U_REPETITIONS as usize);
-    let mut pending_entries = Vec::with_capacity(
-        C6_HIDDEN_U_REPETITIONS as usize
-            * C6_BLIND_HIDDEN_U_FAMILIES
-            * C6_BLIND_HIDDEN_U_SLOTS_PER_FAMILY as usize,
-    );
     for repetition in 0..C6_HIDDEN_U_REPETITIONS as u8 {
         let mut state =
             prepare_c6_blind_hidden_u_prover_round_state(sealed, prequery, postcommit, repetition)?;
@@ -855,13 +895,9 @@ pub fn prove_c6_blind_hidden_u_sumchecks_reference(
             let challenge = transcript.challenge_fp2();
             state.bind_challenge(challenge)?;
         }
-        let (repetition_proof, repetition_pending) = state.finish(streams, transcript)?;
-        repetitions.push(repetition_proof);
-        pending_entries.extend(repetition_pending);
+        repetitions.push(state.finish(streams, transcript)?);
     }
-    let proof = C6BlindHiddenUSumcheckProof { statement_digest, repetitions };
-    proof.validate_shape(&layouts)?;
-    Ok((proof, C6BlindHiddenUPendingClaimsProver { entries: pending_entries }))
+    assemble_c6_blind_hidden_u_prover_stepwise(statement_digest, &layouts, repetitions)
 }
 
 pub fn verify_c6_blind_hidden_u_sumchecks(
@@ -879,11 +915,7 @@ pub fn verify_c6_blind_hidden_u_sumchecks(
     begin_c6_blind_hidden_u_verifier_stepwise(
         layouts, q_cols, prequery, postcommit, proof, transcript,
     )?;
-    let mut pending_entries = Vec::with_capacity(
-        C6_HIDDEN_U_REPETITIONS as usize
-            * C6_BLIND_HIDDEN_U_FAMILIES
-            * C6_BLIND_HIDDEN_U_SLOTS_PER_FAMILY as usize,
-    );
+    let mut repetitions = Vec::with_capacity(C6_HIDDEN_U_REPETITIONS as usize);
     for repetition in 0..C6_HIDDEN_U_REPETITIONS as u8 {
         let mut state = prepare_c6_blind_hidden_u_verifier_round_state(
             layouts, q_cols, prequery, postcommit, proof, repetition,
@@ -894,9 +926,9 @@ pub fn verify_c6_blind_hidden_u_sumchecks(
             let challenge = transcript.challenge_fp2();
             state.bind_challenge(challenge)?;
         }
-        pending_entries.extend(state.finish(contexts, transcript)?);
+        repetitions.push(state.finish(contexts, transcript)?);
     }
-    Ok(C6BlindHiddenUPendingClaimsVerifier { entries: pending_entries })
+    assemble_c6_blind_hidden_u_verifier_stepwise(repetitions)
 }
 
 fn append_family_pending_prover_entries(

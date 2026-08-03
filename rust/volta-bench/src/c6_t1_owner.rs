@@ -17,9 +17,14 @@ use volta_gpt2::{
 };
 
 #[cfg(feature = "c6-trace")]
-use volta_mac::{C6DecodedInstanceExtractionPlan, C6InstalledOperationPlan, Transcript};
+use volta_mac::{
+    C6DecodedInstanceExtractionPlan, C6InstalledOperationPlan, ProverAuthed, Transcript,
+    VerifierKey,
+};
 #[cfg(feature = "c6-trace")]
-use volta_pcs::C6PersistentCacheStateWitness;
+use volta_pcs::{
+    layout_gpt2_embed_c3, layout_gpt2_weights_c3, BlockClaim, C6PersistentCacheStateWitness,
+};
 #[cfg(feature = "c6-trace")]
 use volta_proto::{
     build_c6_t1_production_response_owner, C6ProductionPairedPcgAttempt,
@@ -72,8 +77,108 @@ impl C6T1WorkloadOwner {
 pub struct C6T1ProductionOwnerExport {
     workload: C6T1WorkloadOwner,
     response: C6T1ProductionResponseOwner,
+    native_claims: C6T1NativeClaimOwner,
     predecessor_cache: C6PersistentCacheStateWitness,
     successor_cache: C6PersistentCacheStateWitness,
+}
+
+/// Exact ordered model/embedding claim boundary exported from the one T1
+/// response.  The points are translated once into the consolidated C3
+/// commitment domains; authenticated targets and verifier keys remain the
+/// objects emitted by that response rather than caller-supplied values.
+#[cfg(feature = "c6-trace")]
+pub struct C6T1NativeClaimOwner {
+    model_claims: Vec<BlockClaim>,
+    embedding_claims: Vec<BlockClaim>,
+    primary_model_targets: Vec<ProverAuthed>,
+    primary_embedding_targets: Vec<ProverAuthed>,
+    primary_model_keys: Vec<VerifierKey>,
+    primary_embedding_keys: Vec<VerifierKey>,
+}
+
+#[cfg(feature = "c6-trace")]
+impl C6T1NativeClaimOwner {
+    fn from_response(response: &C6T1ProductionResponseOwner) -> Result<Self, String> {
+        let output = response.prover_output();
+        let verifier = response.verifier_output();
+        if output.weight_claims.len() != 96
+            || output.embed_claims.len() != 6
+            || verifier.weight_keys.len() != 96
+            || verifier.embed_keys.len() != 6
+        {
+            return Err("C6SPR12 native claim owner has the wrong 96/6 census".to_owned());
+        }
+
+        let model_layout = layout_gpt2_weights_c3();
+        let model_claims = output
+            .weight_claims
+            .iter()
+            .enumerate()
+            .map(|(index, claim)| {
+                let phase_slot = index % (4 * volta_gpt2::L);
+                model_layout.block_claim(phase_slot / 4, phase_slot % 4, &claim.point)
+            })
+            .collect::<Vec<_>>();
+        let embedding_layout = layout_gpt2_embed_c3();
+        let embedding_claims = output
+            .embed_claims
+            .iter()
+            .enumerate()
+            .map(|(index, claim)| {
+                embedding_layout.block_claim(if index % 3 == 2 { 1 } else { 0 }, &claim.point)
+            })
+            .collect::<Vec<_>>();
+        if verifier
+            .weight_keys
+            .iter()
+            .zip(&model_claims)
+            .any(|((point, _), claim)| point != &claim.point)
+            || verifier
+                .embed_keys
+                .iter()
+                .zip(&embedding_claims)
+                .any(|((point, _), claim)| point != &claim.point)
+        {
+            return Err("C6SPR12 prover/verifier native claim points differ".to_owned());
+        }
+
+        Ok(Self {
+            model_claims,
+            embedding_claims,
+            primary_model_targets: output.weight_claims.iter().map(|claim| claim.value).collect(),
+            primary_embedding_targets: output
+                .embed_claims
+                .iter()
+                .map(|claim| claim.value)
+                .collect(),
+            primary_model_keys: verifier.weight_keys.iter().map(|(_, key)| *key).collect(),
+            primary_embedding_keys: verifier.embed_keys.iter().map(|(_, key)| *key).collect(),
+        })
+    }
+
+    pub fn model_claims(&self) -> &[BlockClaim] {
+        &self.model_claims
+    }
+
+    pub fn embedding_claims(&self) -> &[BlockClaim] {
+        &self.embedding_claims
+    }
+
+    pub fn primary_model_targets(&self) -> &[ProverAuthed] {
+        &self.primary_model_targets
+    }
+
+    pub fn primary_embedding_targets(&self) -> &[ProverAuthed] {
+        &self.primary_embedding_targets
+    }
+
+    pub fn primary_model_keys(&self) -> &[VerifierKey] {
+        &self.primary_model_keys
+    }
+
+    pub fn primary_embedding_keys(&self) -> &[VerifierKey] {
+        &self.primary_embedding_keys
+    }
 }
 
 #[cfg(feature = "c6-trace")]
@@ -84,6 +189,10 @@ impl C6T1ProductionOwnerExport {
 
     pub fn response(&self) -> &C6T1ProductionResponseOwner {
         &self.response
+    }
+
+    pub fn native_claims(&self) -> &C6T1NativeClaimOwner {
+        &self.native_claims
     }
 
     pub fn predecessor_cache(&self) -> &C6PersistentCacheStateWitness {
@@ -123,7 +232,14 @@ pub fn execute_c6_t1_production_owner_export(
         provider_transcript,
         verifier_transcript,
     )?;
-    Ok(C6T1ProductionOwnerExport { workload, response, predecessor_cache, successor_cache })
+    let native_claims = C6T1NativeClaimOwner::from_response(&response)?;
+    Ok(C6T1ProductionOwnerExport {
+        workload,
+        response,
+        native_claims,
+        predecessor_cache,
+        successor_cache,
+    })
 }
 
 /// Load, validate and execute the exact frozen T1 witness generator once.

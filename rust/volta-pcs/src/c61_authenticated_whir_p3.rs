@@ -8,6 +8,7 @@
 //! in-memory proof object.
 
 use std::collections::BTreeMap;
+use std::fs;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -30,6 +31,7 @@ use p3_whir_c61::pcs::zk::{
 use p3_whir_c61::{ClaimlessAffineClaim, ClaimlessZkSumcheckData};
 use rand_010::rngs::StdRng;
 use rand_010::{RngExt, SeedableRng};
+use volta_accel::{Backend, BackendKind};
 use volta_field::{Fp, Fp2, P};
 use volta_mac::{
     zero_open_verify, C6InstalledOperationPlan, C6OperationPlanTerminalMetadata,
@@ -61,7 +63,11 @@ use crate::c61_public_compression::{C61NativeChainId, C61NativeComponent};
 use crate::c61_shared_round_challenger::c61_shared_round_pair;
 use crate::c61_terminal_functional::{
     authenticate_c61_sparse_response_targets_prover,
-    authenticate_c61_sparse_response_targets_verifier, C61SparseRationalBlindArithmeticProof,
+    authenticate_c61_sparse_response_targets_verifier,
+    build_c61_production_model_embedding_public_statement, C61NativeCommitmentDescriptor,
+    C61NativeProverChainStatement, C61NativeVerifierChainStatement,
+    C61SparseRationalBlindArithmeticProof, C61TypedNativeChainPublicStatement,
+    C61TypedNativeRelationStatement, C61_EMBEDDING_POLYNOMIAL_LOG2, C61_MODEL_POLYNOMIAL_LOG2,
 };
 use crate::c61_whir_reference::{
     c61_max_pruned_binary_siblings, c61_p3_fp2_from_volta, c61_reference_mmcs,
@@ -331,6 +337,84 @@ pub struct C61ProductionCompilerChainExecution {
     pub report: C61AuthenticatedP3SharedMultiOracleDiagnostic,
 }
 
+/// Strict production model/embedding proof boundary.  `payload` is exactly
+/// one canonical C6AWP1 chain; this wrapper contributes no additional wire
+/// bytes when nested in C6PA1.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C61ProductionCommittedChainProof {
+    payload: Vec<u8>,
+}
+
+impl C61ProductionCommittedChainProof {
+    pub fn payload(&self) -> &[u8] {
+        &self.payload
+    }
+
+    pub fn into_payload(self) -> Vec<u8> {
+        self.payload
+    }
+
+    pub fn decode(
+        payload: &[u8],
+        public: &C61TypedNativeChainPublicStatement,
+    ) -> Result<Self, String> {
+        let openings = c61_model_embedding_openings(public)?;
+        let num_variables = usize::from(openings.commitment.polynomial_domain_log2);
+        let (commitment, proof, base_proof) =
+            decode_c61_authenticated_p3_artifact_inner(payload, num_variables, true)
+                .map_err(|error| error.to_string())?;
+        c61_validate_committed_chain_root(public, &commitment)?;
+        let canonical = encode_c61_authenticated_p3_artifact_inner(
+            num_variables,
+            &commitment,
+            &proof,
+            base_proof,
+            true,
+        )
+        .map_err(|error| error.to_string())?;
+        if canonical != payload {
+            return Err("noncanonical production C6AWP1 chain".to_owned());
+        }
+        Ok(Self { payload: payload.to_vec() })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C61ProductionCommittedChainReport {
+    pub id: C61NativeChainId,
+    pub num_variables: usize,
+    pub claim_count: usize,
+    pub strict_payload_bytes: usize,
+    pub strict_payload_blake3: [u8; 32],
+    pub strict_payload_max_bytes: usize,
+    pub pooled_pcg: bool,
+    pub persisted_executor: bool,
+    pub cuda_resident_admission: bool,
+    pub gpu_performance_credit: bool,
+    pub provider_interaction: C61WhirInteractionStats,
+    pub provider_transcript_bytes: u64,
+    pub provider_ledger: BTreeMap<&'static str, u64>,
+    pub spill: C61PersistedMmcsMetrics,
+}
+
+#[derive(Debug)]
+pub struct C61ProductionCommittedChainExecution {
+    pub statement: C61NativeProverChainStatement,
+    pub proof: C61ProductionCommittedChainProof,
+    pub report: C61ProductionCommittedChainReport,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C61ProductionCommittedChainVerification {
+    pub id: C61NativeChainId,
+    pub num_variables: usize,
+    pub claim_count: usize,
+    pub strict_payload_bytes: usize,
+    pub verifier_interaction: C61WhirInteractionStats,
+    pub verifier_transcript_bytes: u64,
+    pub verifier_ledger: BTreeMap<&'static str, u64>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct C61ProductionMonolithicResourceAdmission {
     /// Available host memory sampled immediately before entering the runner,
@@ -541,6 +625,89 @@ fn aggregate_verifier_targets(
     Ok(targets.iter().zip(claim_weights).fold(VerifierKey::ZERO, |sum, (target, weight)| {
         sum.add(target.scale(c61_volta_fp2_from_p3(*weight)))
     }))
+}
+
+fn c61_model_embedding_openings(
+    public: &C61TypedNativeChainPublicStatement,
+) -> Result<&crate::c61_terminal_functional::C61CommittedOpeningStatement, String> {
+    let rebuilt = C61TypedNativeChainPublicStatement::new(public.id(), public.relation().clone())
+        .map_err(|error| error.to_string())?;
+    if &rebuilt != public {
+        return Err("C6SPR11 typed native public statement is noncanonical".to_owned());
+    }
+    match public.relation() {
+        C61TypedNativeRelationStatement::Model(openings)
+        | C61TypedNativeRelationStatement::Embedding(openings) => Ok(openings),
+        C61TypedNativeRelationStatement::Compiler(_) => {
+            Err("C6SPR11 committed-chain boundary rejects compiler statements".to_owned())
+        }
+    }
+}
+
+/// Canonical digest of the selected authenticated WHIR production profile.
+/// It is setup metadata, not a response field.
+pub fn c61_authenticated_p3_parameter_digest(num_variables: usize) -> Result<[u8; 32], String> {
+    let budget = c61_authenticated_structural_budget_inner(num_variables, true)?;
+    let mut hasher =
+        blake3::Hasher::new_derive_key("volta-zk/c6.1/authenticated-whir-parameters/v1");
+    hasher.update(C61_AUTHENTICATED_P3_REVISION.as_bytes());
+    hasher.update(&(num_variables as u64).to_le_bytes());
+    hasher.update(&(C61_AUTHENTICATED_P3_SECURITY_BITS as u64).to_le_bytes());
+    hasher.update(&(budget.rounds as u64).to_le_bytes());
+    hasher.update(&(budget.mask_queries as u64).to_le_bytes());
+    hasher.update(&(budget.strict_chain_bytes as u64).to_le_bytes());
+    hasher.update(&(C61_WHIRA1_INITIAL_FOLD as u64).to_le_bytes());
+    hasher.update(&(C61_WHIRA1_LATER_FOLD as u64).to_le_bytes());
+    hasher.update(&(C61_WHIRA1_STARTING_LOG_INV_RATE as u64).to_le_bytes());
+    hasher.update(&(C61_WHIRA1_MASK_LOG_INV_RATE as u64).to_le_bytes());
+    Ok(*hasher.finalize().as_bytes())
+}
+
+fn c61_validate_committed_chain_root(
+    public: &C61TypedNativeChainPublicStatement,
+    commitment: &C61Commitment,
+) -> Result<(), String> {
+    let openings = c61_model_embedding_openings(public)?;
+    let num_variables = usize::from(openings.commitment.polynomial_domain_log2);
+    let expected_dimension = match public.id().component {
+        C61NativeComponent::Model => usize::from(C61_MODEL_POLYNOMIAL_LOG2),
+        C61NativeComponent::Embedding => usize::from(C61_EMBEDDING_POLYNOMIAL_LOG2),
+        C61NativeComponent::Compiler => unreachable!("compiler rejected above"),
+    };
+    if num_variables != expected_dimension
+        || openings.commitment.parameter_digest
+            != c61_authenticated_p3_parameter_digest(num_variables)?
+        || commitment.num_roots() != 1
+        || commitment.roots()[0] != openings.commitment.commitment_root
+    {
+        return Err(
+            "C6SPR11 native commitment differs from its typed production statement".to_owned()
+        );
+    }
+    Ok(())
+}
+
+fn c61_model_embedding_points(
+    public: &C61TypedNativeChainPublicStatement,
+) -> Result<Vec<Point<C61P3Fp2>>, String> {
+    let openings = c61_model_embedding_openings(public)?;
+    let num_variables = usize::from(openings.commitment.polynomial_domain_log2);
+    let points = openings
+        .ordered_points
+        .iter()
+        .map(|point| {
+            let mut point = point.clone();
+            point.reverse();
+            Point::new(point.into_iter().map(c61_p3_fp2_from_volta).collect())
+        })
+        .collect::<Vec<_>>();
+    if points.is_empty()
+        || points.len() != public.target_count()
+        || points.iter().any(|point| point.num_variables() != num_variables)
+    {
+        return Err("C6SPR11 typed production opening points are malformed".to_owned());
+    }
+    Ok(points)
 }
 
 fn checked_add(total: &mut usize, value: usize) -> Result<(), String> {
@@ -2224,6 +2391,289 @@ pub fn run_c61_authenticated_whir_p3_multi_open_diagnostic(
         batching_weights_identical: output.claim_weights == result.claim_weights,
         point_mutation_rejected,
         full_correlations: correlations.counters.full_corrs,
+    })
+}
+
+/// Produce one exact model or embedding chain from the retained global
+/// coefficient polynomial and its ordered 96/6 authenticated claims.  The
+/// C6SPX1 owner is create-new, the caller's coefficient vector is moved into
+/// the prover, and CPU/hybrid or mock-PCG entry fails before filesystem I/O.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_c61_authenticated_whir_p3_production_committed_chain_persisted_cuda_in_attempt(
+    coefficients: Vec<Goldilocks>,
+    claims: &[crate::batch::BlockClaim],
+    targets: Vec<ProverAuthed>,
+    parameter_digest: [u8; 32],
+    spill_root: &Path,
+    admission: C61ProductionPersistedResourceAdmission,
+    backend: &mut Backend,
+    correlations: &mut CorrelationStream,
+    verifier_seed: [u8; 32],
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<C61ProductionCommittedChainExecution, String> {
+    let num_variables = match id.component {
+        C61NativeComponent::Model => usize::from(C61_MODEL_POLYNOMIAL_LOG2),
+        C61NativeComponent::Embedding => usize::from(C61_EMBEDDING_POLYNOMIAL_LOG2),
+        C61NativeComponent::Compiler => {
+            return Err("C6SPR11 committed-chain prover rejects compiler chains".to_owned());
+        }
+    };
+    let expected_claims = match id.component {
+        C61NativeComponent::Model => 96,
+        C61NativeComponent::Embedding => 6,
+        C61NativeComponent::Compiler => unreachable!("compiler rejected above"),
+    };
+    if id.repetition >= 2
+        || backend.kind() != BackendKind::CudaResident
+        || !admission.allow_persisted_executor
+        || !admission.a100_present
+        || admission.gpu_total_bytes == 0
+        || admission.available_host_bytes < C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_HOST_BYTES
+        || admission.available_spill_bytes < C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES
+    {
+        return Err(format!(
+            "C6SPR11 persisted/CUDA admission failed: component={:?}, repetition={}, backend={:?}, available_host={} B, available_spill={} B, gpu={} B, a100={}, owner_persisted={}",
+            id.component,
+            id.repetition,
+            backend.kind(),
+            admission.available_host_bytes,
+            admission.available_spill_bytes,
+            admission.gpu_total_bytes,
+            admission.a100_present,
+            admission.allow_persisted_executor,
+        ));
+    }
+    if !correlations.uses_pooled_pcg() {
+        return Err("C6SPR11 production committed-chain prover forbids mock PCG state".to_owned());
+    }
+    if parameter_digest != c61_authenticated_p3_parameter_digest(num_variables)?
+        || coefficients.len() != (1usize << num_variables)
+        || claims.len() != expected_claims
+        || targets.len() != expected_claims
+    {
+        return Err("C6SPR11 production coefficient/claim/profile geometry mismatch".to_owned());
+    }
+    if spill_root.exists() {
+        return Err("C6SPR11 production committed-chain spill owner must be create-new".to_owned());
+    }
+    let parent = spill_root
+        .parent()
+        .filter(|parent| parent.is_dir())
+        .ok_or_else(|| "C6SPR11 production committed-chain spill parent is absent".to_owned())?;
+    fs::create_dir(spill_root)
+        .map_err(|error| format!("create C6SPR11 committed-chain spill root: {error}"))?;
+    std::fs::File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| format!("fsync C6SPR11 committed-chain spill parent: {error}"))?;
+
+    let mut session_hasher =
+        blake3::Hasher::new_derive_key("volta-zk/c6.1/committed-chain-c6spx1-session/v1");
+    session_hasher.update(&verifier_seed);
+    session_hasher.update(&parameter_digest);
+    session_hasher.update(&(id.component as u16).to_le_bytes());
+    session_hasher.update(&[id.repetition, mask_range.stage]);
+    session_hasher.update(&mask_range.slot.to_le_bytes());
+    session_hasher.update(&mask_range.range_start.to_le_bytes());
+    let session_digest = *session_hasher.finalize().as_bytes();
+    let lane = match id.component {
+        C61NativeComponent::Model => *b"modelpcs",
+        C61NativeComponent::Embedding => *b"embedpcs",
+        C61NativeComponent::Compiler => unreachable!("compiler rejected above"),
+    };
+    let mmcs = C61PersistedMmcs::new(
+        c61_reference_mmcs(),
+        spill_root.join("oracle"),
+        session_digest,
+        lane,
+    )?;
+    let witness = Poly::new(coefficients);
+    let mut transcript = Transcript::new(verifier_seed);
+    let mut challenger = C61InteractiveChallenger::new_claimless(&mut transcript, num_variables);
+    let config = c61_authenticated_config::<C61InteractiveChallenger<'_>>(num_variables)?;
+    let dft = Radix2DFTSmallBatch::default();
+    let prover = HidingWhirProver::new(&config, &dft, &mmcs);
+    let rng_seed = 0xC6_6110u64
+        .wrapping_add((id.component as u64) << 8)
+        .wrapping_add(u64::from(id.repetition));
+    let mut rng = StdRng::seed_from_u64(rng_seed);
+    let (commitment, data) = prover.commit(witness, &mut challenger, &mut rng);
+    if commitment.num_roots() != 1 {
+        return Err("C6SPR11 production committed chain has a noncanonical root cap".to_owned());
+    }
+    let public = build_c61_production_model_embedding_public_statement(
+        id,
+        C61NativeCommitmentDescriptor {
+            parameter_digest,
+            commitment_root: commitment.roots()[0],
+            polynomial_domain_log2: num_variables as u8,
+        },
+        claims,
+    )
+    .map_err(|error| error.to_string())?;
+    let statement =
+        C61NativeProverChainStatement::new(public, targets).map_err(|error| error.to_string())?;
+    let points = c61_model_embedding_points(statement.public())?;
+    let evaluations = points.iter().map(|point| data.message.eval_base(point)).collect::<Vec<_>>();
+    if evaluations
+        .iter()
+        .zip(statement.targets())
+        .any(|(evaluation, target)| c61_volta_fp2_from_p3(*evaluation) != target.x)
+    {
+        return Err(
+            "C6SPR11 retained authenticated target differs from its committed polynomial opening"
+                .to_owned(),
+        );
+    }
+    let native_claims = points.iter().cloned().zip(evaluations).collect::<Vec<_>>();
+    challenger.observe_public_points(&points).map_err(|error| error.to_string())?;
+    let prepared = prepare_c61_authenticated_whir_mask(id, mask_range, correlations)
+        .map_err(|error| error.to_string())?;
+    let output = prover.prove_claimless(
+        data,
+        &native_claims,
+        c61_p3_fp2_from_volta(prepared.value()),
+        &mut challenger,
+        &mut rng,
+    );
+    challenger.ensure_public_statement_bound().map_err(|error| error.to_string())?;
+    let placeholder =
+        C61AuthenticatedWhirBaseProof::decode(&[0u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES])
+            .map_err(|error| error.to_string())?;
+    let placeholder_payload = encode_c61_authenticated_p3_artifact_inner(
+        num_variables,
+        &commitment,
+        &output.proof,
+        placeholder,
+        true,
+    )
+    .map_err(|error| error.to_string())?;
+    let whir_payload_bytes = placeholder_payload
+        .len()
+        .checked_sub(C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES)
+        .ok_or_else(|| "C6SPR11 production C6AWP1 payload is shorter than its tag".to_owned())?;
+    let provider_interaction =
+        challenger.finish(whir_payload_bytes).map_err(|error| error.to_string())?;
+    drop(challenger);
+
+    let aggregate_target = aggregate_prover_targets(statement.targets(), &output.claim_weights)?;
+    let final_target = affine_from_p3(output.target).authenticate_prover(aggregate_target);
+    let closure = finish_c61_authenticated_whir_base(
+        prepared,
+        C61AuthenticatedWhirProverFinishInput {
+            combined: c61_volta_fp2_from_p3(output.base_case.combined),
+            shifted_masked_claim: c61_volta_fp2_from_p3(output.base_case.shifted_masked_claim),
+            gamma: c61_volta_fp2_from_p3(output.base_case.gamma),
+            target: final_target,
+        },
+        &mut transcript,
+    )
+    .map_err(|error| error.to_string())?;
+    let payload = encode_c61_authenticated_p3_artifact_inner(
+        num_variables,
+        &commitment,
+        &output.proof,
+        closure.proof,
+        true,
+    )
+    .map_err(|error| error.to_string())?;
+    if payload.len() != placeholder_payload.len() {
+        return Err("C6SPR11 production ZeroOpen changed the C6AWP1 length".to_owned());
+    }
+    let proof = C61ProductionCommittedChainProof::decode(&payload, statement.public())?;
+    let strict_payload_max_bytes =
+        c61_authenticated_structural_budget_inner(num_variables, true)?.strict_chain_bytes;
+    let report = C61ProductionCommittedChainReport {
+        id,
+        num_variables,
+        claim_count: points.len(),
+        strict_payload_bytes: payload.len(),
+        strict_payload_blake3: *blake3::hash(&payload).as_bytes(),
+        strict_payload_max_bytes,
+        pooled_pcg: true,
+        persisted_executor: true,
+        cuda_resident_admission: true,
+        gpu_performance_credit: false,
+        provider_interaction,
+        provider_transcript_bytes: transcript.total_bytes(),
+        provider_ledger: transcript.ledger().clone(),
+        spill: mmcs.metrics(),
+    };
+    Ok(C61ProductionCommittedChainExecution { statement, proof, report })
+}
+
+/// Verify one decoded production model/embedding C6AWP1 chain using only the
+/// typed verifier statement, verifier PCG state and strict provider bytes.
+/// No witness, provider target share or resident prover object crosses this
+/// boundary.
+pub fn verify_c61_authenticated_whir_p3_production_committed_chain_in_attempt(
+    statement: &C61NativeVerifierChainStatement,
+    proof: &C61ProductionCommittedChainProof,
+    context: &mut VerifierCtx,
+    verifier_seed: [u8; 32],
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<C61ProductionCommittedChainVerification, String> {
+    let public = statement.public();
+    let validated =
+        C61NativeVerifierChainStatement::new(public.clone(), statement.target_keys().to_vec())
+            .map_err(|error| error.to_string())?;
+    if &validated != statement || !context.uses_pooled_pcg() {
+        return Err("C6SPR11 production verifier requires canonical statement and real pooled PCG"
+            .to_owned());
+    }
+    C61ProductionCommittedChainProof::decode(proof.payload(), public)?;
+    let openings = c61_model_embedding_openings(public)?;
+    let num_variables = usize::from(openings.commitment.polynomial_domain_log2);
+    let points = c61_model_embedding_points(public)?;
+    let (commitment, native_proof, base_proof) =
+        decode_c61_authenticated_p3_artifact_inner(proof.payload(), num_variables, true)
+            .map_err(|error| error.to_string())?;
+
+    let mut transcript = Transcript::new(verifier_seed);
+    let mut challenger = C61InteractiveChallenger::new_claimless(&mut transcript, num_variables);
+    let config = c61_authenticated_config::<C61InteractiveChallenger<'_>>(num_variables)?;
+    let mmcs = c61_reference_mmcs();
+    challenger.observe(commitment.clone());
+    challenger.observe_public_points(&points).map_err(|error| error.to_string())?;
+    let verifier = HidingWhirVerifier::new(&config, &mmcs);
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        verifier.verify_claimless(&native_proof, &commitment, &points, &mut challenger)
+    }))
+    .map_err(|_| "C6SPR11 production committed-chain verifier panicked".to_owned())?
+    .map_err(|error| format!("C6SPR11 production committed-chain verification failed: {error}"))?;
+    let whir_payload_bytes =
+        proof.payload().len().checked_sub(C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES).ok_or_else(
+            || "C6SPR11 production C6AWP1 payload is shorter than its tag".to_owned(),
+        )?;
+    let verifier_interaction =
+        challenger.finish(whir_payload_bytes).map_err(|error| error.to_string())?;
+    drop(challenger);
+
+    let aggregate_key = aggregate_verifier_targets(statement.target_keys(), &result.claim_weights)?;
+    let final_key = affine_from_p3(result.target).derive_verifier_key(aggregate_key, context.delta);
+    verify_c61_authenticated_whir_base(
+        C61AuthenticatedWhirVerifierInput {
+            id: public.id(),
+            mask_range,
+            combined: c61_volta_fp2_from_p3(result.base_case.combined),
+            shifted_masked_claim: c61_volta_fp2_from_p3(result.base_case.shifted_masked_claim),
+            gamma: c61_volta_fp2_from_p3(result.base_case.gamma),
+            target: final_key,
+        },
+        base_proof,
+        context,
+        &mut transcript,
+    )
+    .map_err(|error| error.to_string())?;
+
+    Ok(C61ProductionCommittedChainVerification {
+        id: public.id(),
+        num_variables,
+        claim_count: points.len(),
+        strict_payload_bytes: proof.payload().len(),
+        verifier_interaction,
+        verifier_transcript_bytes: transcript.total_bytes(),
+        verifier_ledger: transcript.ledger().clone(),
     })
 }
 
@@ -4566,6 +5016,66 @@ mod tests {
     }
 
     #[test]
+    fn production_committed_chain_binds_profile_root_and_rejects_before_io() {
+        let model_parameters = c61_authenticated_p3_parameter_digest(28).unwrap();
+        let embedding_parameters = c61_authenticated_p3_parameter_digest(27).unwrap();
+        assert_ne!(model_parameters, embedding_parameters);
+        assert!(c61_authenticated_p3_parameter_digest(26).is_err());
+
+        let claims = (0..96)
+            .map(|index| crate::batch::BlockClaim {
+                offset: index * 2,
+                point: vec![Fp2::new(Fp::new(index as u64 + 2), Fp::new(3))],
+            })
+            .collect::<Vec<_>>();
+        let root = [0x51; 32];
+        let public = build_c61_production_model_embedding_public_statement(
+            C61NativeChainId { component: C61NativeComponent::Model, repetition: 0 },
+            C61NativeCommitmentDescriptor {
+                parameter_digest: model_parameters,
+                commitment_root: root,
+                polynomial_domain_log2: 28,
+            },
+            &claims,
+        )
+        .unwrap();
+        c61_validate_committed_chain_root(&public, &C61Commitment::new(vec![root])).unwrap();
+        assert!(c61_validate_committed_chain_root(&public, &C61Commitment::new(vec![[0x52; 32]]))
+            .is_err());
+
+        let spill_root = std::env::temp_dir().join(format!(
+            "volta-c61-committed-admission-unused-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let mut backend = Backend::cpu();
+        let mut correlations = CorrelationStream::new([0x91; 32]);
+        let error =
+            prove_c61_authenticated_whir_p3_production_committed_chain_persisted_cuda_in_attempt(
+                Vec::new(),
+                &[],
+                Vec::new(),
+                model_parameters,
+                &spill_root,
+                C61ProductionPersistedResourceAdmission {
+                    available_host_bytes: C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_HOST_BYTES,
+                    available_spill_bytes: C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES,
+                    gpu_total_bytes: 80 * 1024 * 1024 * 1024,
+                    a100_present: true,
+                    allow_persisted_executor: true,
+                },
+                &mut backend,
+                &mut correlations,
+                [0x92; 32],
+                C61NativeChainId { component: C61NativeComponent::Model, repetition: 0 },
+                C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 31, range_start: 130_000 },
+            )
+            .unwrap_err();
+        assert!(error.contains("persisted/CUDA admission failed"));
+        assert!(!spill_root.exists());
+    }
+
+    #[test]
     fn fork_source_guard_has_no_eval_field_or_clear_claim_replay() {
         let proof = include_str!("../../third_party/p3-whir-c61/src/pcs/zk/proof.rs");
         let prover = include_str!("../../third_party/p3-whir-c61/src/pcs/zk/prover/mod.rs");
@@ -4594,12 +5104,12 @@ mod tests {
         assert!(prover_data.contains("pub merkle: MT::ProverData<DenseMatrix<F>>"));
         assert_eq!(
             production_adapter.matches("C61InteractiveChallenger::new_claimless(").count(),
-            6
+            8
         );
         assert_eq!(production_adapter.matches(".observe_public_point(").count(), 5);
-        assert_eq!(production_adapter.matches(".observe_public_points(").count(), 7);
-        assert_eq!(production_adapter.matches(".ensure_public_statement_bound()").count(), 4);
-        assert_eq!(production_adapter.matches("challenger.finish(").count(), 7);
+        assert_eq!(production_adapter.matches(".observe_public_points(").count(), 9);
+        assert_eq!(production_adapter.matches(".ensure_public_statement_bound()").count(), 5);
+        assert_eq!(production_adapter.matches("challenger.finish(").count(), 9);
         assert_eq!(production_adapter.matches("c61_shared_round_pair(").count(), 2);
         assert!(!sparse_verifier.contains(".direct"));
         assert!(!sparse_verifier.contains(".packed"));

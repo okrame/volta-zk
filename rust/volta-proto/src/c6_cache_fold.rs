@@ -1002,6 +1002,50 @@ pub struct C6CacheFoldScalarBatchPlan {
 }
 
 impl C6CacheFoldScalarBatchPlan {
+    /// Expand one real model layer into the fixed `1024 x 1024` padded cache
+    /// slice. This is the production streaming unit: callers may retain one
+    /// layer, but there is no API that materializes the `2^24` coefficient
+    /// field.
+    pub fn write_padded_layer_coefficients(
+        &self,
+        kind: C6CacheFoldKind,
+        model_layer: usize,
+        output: &mut [Fp2],
+    ) -> Result<u64, C6CacheFoldTraceError> {
+        let expected_len = C6_CACHE_MAX_CONTEXT
+            .checked_mul(1usize << 10)
+            .ok_or_else(|| C6CacheFoldTraceError::new("C6 layer coefficient length overflows"))?;
+        if model_layer >= usize::from(C6_CACHE_MODEL_LAYERS) || output.len() != expected_len {
+            return Err(C6CacheFoldTraceError::new(
+                "C6 layer coefficient output has wrong production geometry",
+            ));
+        }
+        output.fill(Fp2::ZERO);
+        let mut applications = 0u64;
+        for term in self.terms.iter().filter(|term| {
+            term.record.kind == kind && usize::from(term.record.model_layer) == model_layer
+        }) {
+            let column_start = term.record.column_offset as usize;
+            for (position, &row_weight) in term.factors.row_weights.iter().enumerate() {
+                let row_factor = term.scalar_weight * row_weight;
+                let row_start = position
+                    .checked_mul(1usize << 10)
+                    .and_then(|base| base.checked_add(column_start))
+                    .ok_or_else(|| {
+                        C6CacheFoldTraceError::new("C6 layer coefficient offset overflows")
+                    })?;
+                for (column, &column_weight) in term.factors.column_weights.iter().enumerate() {
+                    output[row_start + column] += row_factor * column_weight;
+                }
+            }
+            applications =
+                applications.checked_add(term.record.coefficient_applications).ok_or_else(
+                    || C6CacheFoldTraceError::new("C6 layer coefficient applications overflow"),
+                )?;
+        }
+        Ok(applications)
+    }
+
     /// Evaluate the factorized coefficient of one live GPT-2 cache cell.
     /// This is a local reference query, not a materialization API.
     pub fn coefficient(
@@ -3728,6 +3772,22 @@ mod tests {
                     plan.coefficient(C6CacheFoldKind::KeyRows, 0, row, channel).unwrap(),
                     dense_key[dense_index]
                 );
+            }
+        }
+        let mut layer = vec![Fp2::ONE; C6_CACHE_MAX_CONTEXT * (1 << 10)];
+        assert_eq!(
+            plan.write_padded_layer_coefficients(C6CacheFoldKind::ValueColumns, 0, &mut layer)
+                .unwrap(),
+            (C6_CACHE_HEADS * 4 * C6_CACHE_HEAD_WIDTH) as u64
+        );
+        for row in 0..C6_CACHE_MAX_CONTEXT {
+            for channel in 0..(1 << 10) {
+                let expected = if row < 4 && channel < C6_CACHE_HEADS * C6_CACHE_HEAD_WIDTH {
+                    dense_value[row * C6_CACHE_HEADS * C6_CACHE_HEAD_WIDTH + channel]
+                } else {
+                    Fp2::ZERO
+                };
+                assert_eq!(layer[row * (1 << 10) + channel], expected);
             }
         }
         assert_eq!(plan.coefficient(C6CacheFoldKind::ValueColumns, 0, 4, 0).unwrap(), Fp2::ZERO);

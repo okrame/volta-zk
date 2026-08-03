@@ -1365,6 +1365,13 @@ impl CorrelationStream {
         }
     }
 
+    /// True only for correlations expanded from a real PCG pool.
+    /// Production callers use this to fail closed instead of accepting the
+    /// deterministic mock backend.
+    pub fn uses_pooled_pcg(&self) -> bool {
+        matches!(&self.backend, ProverBackend::Pooled(_))
+    }
+
     /// Enable canonical source-token assignment for one diagnostic operation
     /// trace. The process-local trace must already be active, and the stream
     /// must not have consumed any correlation.
@@ -2070,6 +2077,11 @@ impl VerifierCtx {
             #[cfg(feature = "c6-trace")]
             c6_trace_full_sources: HashMap::new(),
         }
+    }
+
+    /// True only for verifier keys expanded from a real PCG pool.
+    pub fn uses_pooled_pcg(&self) -> bool {
+        matches!(&self.backend, VerifierBackend::Pooled(_))
     }
 
     /// Enable canonical source-token assignment for one independently
@@ -2986,6 +2998,10 @@ mod tests {
         let mut mock_v = VerifierCtx::new_connection_mock(seed, delta, scope);
         let mut real_p = CorrelationStream::from_pcg_pool_connection(pool.prover, scope);
         let mut real_v = VerifierCtx::from_pcg_pool_connection(delta, pool.verifier, scope);
+        assert!(!mock_p.uses_pooled_pcg());
+        assert!(!mock_v.uses_pooled_pcg());
+        assert!(real_p.uses_pooled_pcg());
+        assert!(real_v.uses_pooled_pcg());
 
         for (domain, count) in [(0x10, 5), (0x11, 4)] {
             let _ = mock_p.draw_subs(domain, count);

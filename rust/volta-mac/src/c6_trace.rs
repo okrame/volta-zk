@@ -45,7 +45,7 @@ const C6_TERMINAL_METADATA_DOMAIN: &str = "volta/proto/c6/operation-plan/termina
 pub struct C6TraceError(String);
 
 impl C6TraceError {
-    fn new(message: impl Into<String>) -> Self {
+    pub(crate) fn new(message: impl Into<String>) -> Self {
         Self(message.into())
     }
 }

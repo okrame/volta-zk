@@ -16,9 +16,9 @@ use volta_mac::{
     compile_c6_operation_trace_for_role_with_target_profile,
     derive_c6_runtime_instance_from_trace_diagnostic, finish_c6_prover_trace,
     finish_c6_verifier_trace, C6CanonicalTargetProfile, C6DecodedInstanceExtractionPlan,
-    C6InstalledOperationPlan, C6InstanceExtractionRole, C6RuntimeInstanceValues,
-    C6TraceSourceManifest, C6TraceTargetCohort, C6TraceTargetProfile, C6TraceToken,
-    CorrScheduleAudit, CorrScheduleRole, CorrelationStream, Transcript, VerifierCtx,
+    C6InstalledOperationPlan, C6InstanceExtractionRole, C6NativeTargetProfileArtifact,
+    C6RuntimeInstanceValues, C6TraceSourceManifest, C6TraceTargetCohort, C6TraceTargetProfile,
+    C6TraceToken, CorrScheduleAudit, CorrScheduleRole, CorrelationStream, Transcript, VerifierCtx,
 };
 
 use crate::block_proof::layer_dom_base;
@@ -75,6 +75,7 @@ pub struct C6ResponseResidualCensus {
     pub zero_roots: u32,
     pub native_target_cohorts: u32,
     pub native_targets: u32,
+    pub native_target_setup_bytes: u64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -102,6 +103,7 @@ pub struct C6ResponseResidualFixture {
     verifier_transcript: Transcript,
     cache_fold_target_frame: Vec<u8>,
     native_target_profile: C6CanonicalTargetProfile,
+    native_target_artifact: Vec<u8>,
     closure_memory: C6InstalledClosureEvaluationMemoryCensus,
     census: C6ResponseResidualCensus,
     timing: C6ResponseResidualTiming,
@@ -539,6 +541,10 @@ impl C6ResponseResidualFixture {
 
     pub fn native_target_profile(&self) -> &C6CanonicalTargetProfile {
         &self.native_target_profile
+    }
+
+    pub fn native_target_artifact(&self) -> &[u8] {
+        &self.native_target_artifact
     }
 
     pub fn provider_inputs(
@@ -979,6 +985,16 @@ fn build_c6_response_residual_fixture_with_geometry(
     )?;
     let verifier_response_and_residual_ns = u64::try_from(verifier_start.elapsed().as_nanos())
         .map_err(|_| C6ResidualError::new("C6 verifier diagnostic wall exceeds u64 ns"))?;
+    let native_target_artifact = C6NativeTargetProfileArtifact::encode(
+        &prover_native_targets,
+        prover_compiled.plan.topology,
+    )
+    .map_err(trace_error)?;
+    let (_, decoded_native_targets) = C6NativeTargetProfileArtifact::decode(
+        native_target_artifact.as_bytes(),
+        verifier_compiled.plan.topology,
+    )
+    .map_err(trace_error)?;
 
     let expected_source_cells = (2 * L * (2 * RESPONSE_T + RESPONSE_Q) * D) as u64;
     let expected_auxiliary_cells = (2 * L * (RESPONSE_T + RESPONSE_Q) * D) as u64;
@@ -997,6 +1013,7 @@ fn build_c6_response_residual_fixture_with_geometry(
         || prover_compiled.plan.topology != verifier_compiled.plan.topology
         || prover_compiled.plan.instance != verifier_compiled.plan.instance
         || prover_native_targets != verifier_native_targets
+        || decoded_native_targets != verifier_native_targets
         || prover_native_targets.cohorts.len() != 2
         || prover_native_targets.target_count() != 8 * L + 6
         || provider_linear.linear_form_digest() != verifier_linear.linear_form_digest()
@@ -1056,6 +1073,7 @@ fn build_c6_response_residual_fixture_with_geometry(
         verifier_transcript: verifier_tx,
         cache_fold_target_frame,
         native_target_profile: prover_native_targets,
+        native_target_artifact: native_target_artifact.as_bytes().to_vec(),
         closure_memory,
         census: C6ResponseResidualCensus {
             source_groups: prover_metrics.source_groups,
@@ -1069,6 +1087,7 @@ fn build_c6_response_residual_fixture_with_geometry(
             native_target_cohorts: 2,
             native_targets: u32::try_from(8 * L + 6)
                 .map_err(|_| C6ResidualError::new("C6 native target census exceeds u32"))?,
+            native_target_setup_bytes: native_target_artifact.census().total_bytes,
         },
         timing: C6ResponseResidualTiming {
             provider_response_and_residual_ns,

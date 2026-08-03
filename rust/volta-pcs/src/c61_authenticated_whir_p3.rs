@@ -81,6 +81,11 @@ pub const C61_SHARED_MULTI_ORACLE_MAX_BYTES: usize = 2_500_000;
 /// not a cap on total process RSS or GPU memory; those must be measured
 /// separately by the production executor.
 pub const C61_PRODUCTION_COEFFICIENT_WITNESS_CAP_BYTES: u64 = 2_293_198_848;
+/// Admission floor for the explicit host-monolithic A100 baseline.  This is
+/// not a protocol cap: it leaves room above the 35.43-GB initial-oracle lower
+/// bound for materialized relation vectors, later WHIR rounds and allocator
+/// overhead.  The production record must still measure actual RSS.
+pub const C61_PRODUCTION_MONOLITHIC_MIN_AVAILABLE_HOST_BYTES: u64 = 64 * 1024 * 1024 * 1024;
 
 type C61AuthenticatedP3Proof = ZkWhirProof<Goldilocks, C61P3Fp2, C61Mmcs>;
 
@@ -141,6 +146,14 @@ pub struct C61AuthenticatedP3MultiOpenDiagnostic {
 /// the two base-field limbs at Dn while the plan remains at D(n-1).
 #[derive(Debug)]
 pub struct C61AuthenticatedP3SharedMultiOracleDiagnostic {
+    pub production_geometry: bool,
+    /// True only for the explicitly admitted host-monolithic A100 baseline.
+    /// It is never GPU performance credit.
+    pub monolithic_host_baseline: bool,
+    pub gpu_performance_credit: bool,
+    pub admitted_available_host_bytes: u64,
+    pub monolithic_retained_lower_bound_bytes: u64,
+    pub pooled_pcg: bool,
     pub response_num_variables: usize,
     pub plan_num_variables: usize,
     pub response_claim_count: usize,
@@ -168,6 +181,19 @@ pub struct C61AuthenticatedP3SharedMultiOracleDiagnostic {
     pub joint_tag_mutation_rejected: bool,
     pub subfield_correlations: u64,
     pub full_correlations: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C61ProductionMonolithicResourceAdmission {
+    /// Available host memory sampled immediately before entering the runner,
+    /// not installed RAM.
+    pub available_host_bytes: u64,
+    /// Informative A100 device capacity.  The monolithic P3 baseline does not
+    /// consume it and receives no GPU performance credit.
+    pub gpu_total_bytes: u64,
+    pub a100_present: bool,
+    /// Must be set explicitly by the owner-authorized campaign runner.
+    pub allow_host_monolithic_baseline: bool,
 }
 
 /// Production total-memory census for the selected monolithic P3 prover data
@@ -2090,12 +2116,23 @@ fn c61_sparse_shared_statement_digest(
     Ok(*hasher.finalize().as_bytes())
 }
 
-struct C61SparseCompilerPhysicalFixture {
-    direct: volta_proto::c6_residual::C6ResidualFusedScaledFixture,
+enum C61SparseCompilerSource<'a> {
+    Scaled(volta_proto::c6_residual::C6ResidualFusedScaledFixture),
+    Production {
+        operation_plan: &'a C6InstalledOperationPlan,
+        extraction: &'a volta_mac::C6DecodedInstanceExtractionPlan,
+        runtime: &'a volta_mac::C6RuntimeInstanceValues,
+        relation: &'a volta_proto::c6_residual::C6ResidualRelationChallenges,
+    },
+}
+
+struct C61SparseCompilerPhysicalFixture<'a> {
+    source: C61SparseCompilerSource<'a>,
     terminal_metadata: C6OperationPlanTerminalMetadata,
     lanes: [volta_proto::c6_residual::C6ResidualFoldedTerminalAdjointLaneReference; 2],
     packed: volta_proto::c6_residual::C6SparseRationalPackedOracleReference,
     output_beta: Fp2,
+    production: bool,
 }
 
 /// Public-only view handed to the verifier phase.  In particular this type
@@ -2112,12 +2149,40 @@ struct C61SparseCompilerVerifierFixture<'a> {
     physical_plan_values: Vec<Fp2>,
 }
 
-impl C61SparseCompilerPhysicalFixture {
+impl C61SparseCompilerPhysicalFixture<'_> {
+    fn operation_plan(&self) -> &C6InstalledOperationPlan {
+        match &self.source {
+            C61SparseCompilerSource::Scaled(direct) => direct.operation_plan(),
+            C61SparseCompilerSource::Production { operation_plan, .. } => operation_plan,
+        }
+    }
+
+    fn extraction(&self) -> &volta_mac::C6DecodedInstanceExtractionPlan {
+        match &self.source {
+            C61SparseCompilerSource::Scaled(direct) => direct.extraction(),
+            C61SparseCompilerSource::Production { extraction, .. } => extraction,
+        }
+    }
+
+    fn runtime(&self) -> &volta_mac::C6RuntimeInstanceValues {
+        match &self.source {
+            C61SparseCompilerSource::Scaled(direct) => direct.runtime(),
+            C61SparseCompilerSource::Production { runtime, .. } => runtime,
+        }
+    }
+
+    fn relation(&self) -> &volta_proto::c6_residual::C6ResidualRelationChallenges {
+        match &self.source {
+            C61SparseCompilerSource::Scaled(direct) => direct.relation(),
+            C61SparseCompilerSource::Production { relation, .. } => relation,
+        }
+    }
+
     fn verifier_fixture(&self) -> Result<C61SparseCompilerVerifierFixture<'_>, String> {
         Ok(C61SparseCompilerVerifierFixture {
-            operation_plan: self.direct.operation_plan(),
+            operation_plan: self.operation_plan(),
             terminal_metadata: &self.terminal_metadata,
-            relation_challenges: self.direct.relation(),
+            relation_challenges: self.relation(),
             output_beta: self.output_beta,
             base_domain_log2: self.packed.base_domain_log2(),
             response_digest: self.packed.response_digest(),
@@ -2153,7 +2218,8 @@ struct C61SparseCompilerVerifierPhase {
     product_triples: usize,
 }
 
-fn c61_sparse_compiler_physical_fixture() -> Result<C61SparseCompilerPhysicalFixture, String> {
+fn c61_sparse_compiler_physical_fixture(
+) -> Result<C61SparseCompilerPhysicalFixture<'static>, String> {
     use volta_proto::c6_residual::*;
 
     let direct =
@@ -2198,7 +2264,144 @@ fn c61_sparse_compiler_physical_fixture() -> Result<C61SparseCompilerPhysicalFix
         [&lanes[0], &lanes[1]],
     )
     .map_err(|error| error.to_string())?;
-    Ok(C61SparseCompilerPhysicalFixture { direct, terminal_metadata, lanes, packed, output_beta })
+    Ok(C61SparseCompilerPhysicalFixture {
+        source: C61SparseCompilerSource::Scaled(direct),
+        terminal_metadata,
+        lanes,
+        packed,
+        output_beta,
+        production: false,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn c61_sparse_compiler_production_fixture<'a>(
+    operation_plan: &'a C6InstalledOperationPlan,
+    terminal_metadata: C6OperationPlanTerminalMetadata,
+    extraction: &'a volta_mac::C6DecodedInstanceExtractionPlan,
+    runtime: &'a volta_mac::C6RuntimeInstanceValues,
+    relation: &'a volta_proto::c6_residual::C6ResidualRelationChallenges,
+    leaf_points: [&[Fp2]; 2],
+    output_beta: Fp2,
+) -> Result<C61SparseCompilerPhysicalFixture<'a>, String> {
+    use volta_proto::c6_residual::{
+        compile_c6_residual_folded_terminal_adjoint_lane_reference,
+        compile_c6_sparse_rational_packed_oracle_production,
+    };
+
+    if !relation.manifest().is_production_geometry() {
+        return Err("C6SPR5 production fixture requires the frozen C6RLM1 geometry".to_owned());
+    }
+    let lanes: [volta_proto::c6_residual::C6ResidualFoldedTerminalAdjointLaneReference; 2] =
+        (0..2usize)
+        .map(|repetition| {
+            compile_c6_residual_folded_terminal_adjoint_lane_reference(
+                operation_plan,
+                &terminal_metadata,
+                extraction,
+                runtime,
+                relation,
+                repetition as u8,
+                leaf_points[repetition],
+                output_beta,
+            )
+            .map_err(|error| error.to_string())
+        })
+        .collect::<Result<Vec<_>, _>>()?
+        .try_into()
+        .map_err(|_| "C6SPR5 production adjoint-lane census differs from two".to_owned())?;
+    let packed = compile_c6_sparse_rational_packed_oracle_production(
+        operation_plan,
+        extraction,
+        runtime,
+        [&lanes[0], &lanes[1]],
+    )
+    .map_err(|error| error.to_string())?;
+    if packed.physical_response_domain_log2() != 28 || packed.plan_domain_log2() != 27 {
+        return Err("C6SPR5 production packing is not physical D28/D27".to_owned());
+    }
+    Ok(C61SparseCompilerPhysicalFixture {
+        source: C61SparseCompilerSource::Production {
+            operation_plan,
+            extraction,
+            runtime,
+            relation,
+        },
+        terminal_metadata,
+        lanes,
+        packed,
+        output_beta,
+        production: true,
+    })
+}
+
+/// Execute one exact compiler chain with the pinned host-monolithic P3
+/// prover on an owner-authorized A100 node.
+///
+/// This is a resource-instrumented production-geometry baseline, not the
+/// persisted/GPU-resident C6SPR5 solution and not GPU performance credit.
+/// It fails closed unless the caller reports an A100, at least 64 GiB of
+/// immediately available host memory, and real pooled PCG state for both
+/// roles.  The caller remains responsible for measuring RSS and GPU memory
+/// around this call and for using append-only clean records.
+#[allow(clippy::too_many_arguments)]
+pub fn run_c61_authenticated_whir_p3_production_monolithic_baseline(
+    operation_plan: &C6InstalledOperationPlan,
+    terminal_metadata: C6OperationPlanTerminalMetadata,
+    extraction: &volta_mac::C6DecodedInstanceExtractionPlan,
+    runtime: &volta_mac::C6RuntimeInstanceValues,
+    relation: &volta_proto::c6_residual::C6ResidualRelationChallenges,
+    leaf_points: [&[Fp2]; 2],
+    output_beta: Fp2,
+    admission: C61ProductionMonolithicResourceAdmission,
+    correlations: CorrelationStream,
+    context: VerifierCtx,
+    verifier_seed: [u8; 32],
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<C61AuthenticatedP3SharedMultiOracleDiagnostic, String> {
+    let census = c61_production_monolithic_memory_census()?;
+    if !admission.allow_host_monolithic_baseline
+        || !admission.a100_present
+        || admission.gpu_total_bytes == 0
+        || admission.available_host_bytes < C61_PRODUCTION_MONOLITHIC_MIN_AVAILABLE_HOST_BYTES
+        || admission.available_host_bytes < census.concurrent_retained_lower_bound_bytes
+    {
+        return Err(format!(
+            "C6SPR5 monolithic A100 baseline admission failed: available_host={} B, minimum={} B, retained_lower_bound={} B, gpu={} B, a100={}, owner_baseline={}",
+            admission.available_host_bytes,
+            C61_PRODUCTION_MONOLITHIC_MIN_AVAILABLE_HOST_BYTES,
+            census.concurrent_retained_lower_bound_bytes,
+            admission.gpu_total_bytes,
+            admission.a100_present,
+            admission.allow_host_monolithic_baseline,
+        ));
+    }
+    if id.component != C61NativeComponent::Compiler {
+        return Err("C6SPR5 production runner admits only compiler chains".to_owned());
+    }
+    if !correlations.uses_pooled_pcg() || !context.uses_pooled_pcg() {
+        return Err("C6SPR5 production runner forbids mock PCG state".to_owned());
+    }
+    let fixture = c61_sparse_compiler_production_fixture(
+        operation_plan,
+        terminal_metadata,
+        extraction,
+        runtime,
+        relation,
+        leaf_points,
+        output_beta,
+    )?;
+    run_c61_authenticated_whir_p3_shared_multi_oracle_materialized(
+        &fixture,
+        28,
+        correlations,
+        context,
+        verifier_seed,
+        id,
+        mask_range,
+        admission.available_host_bytes,
+    )
 }
 
 fn sample_c61_sparse_relation_challenges(
@@ -2216,7 +2419,7 @@ fn sample_c61_sparse_relation_challenges(
 }
 
 fn prove_c61_sparse_compiler_relation_phase(
-    fixture: &C61SparseCompilerPhysicalFixture,
+    fixture: &C61SparseCompilerPhysicalFixture<'_>,
     stream: &mut CorrelationStream,
     doms: &mut volta_proto::logup::Doms,
     transcript: &mut Transcript,
@@ -2225,22 +2428,35 @@ fn prove_c61_sparse_compiler_relation_phase(
     use volta_proto::prod_check::prod_batch_prover;
 
     let sparse_challenges =
-        sample_c61_sparse_relation_challenges(fixture.direct.operation_plan(), transcript)?;
-    let relation = compile_c6_residual_sparse_rational_relation_reference(
-        fixture.direct.operation_plan(),
-        &fixture.terminal_metadata,
-        fixture.direct.extraction(),
-        fixture.direct.runtime(),
-        fixture.direct.relation(),
-        [&fixture.lanes[0], &fixture.lanes[1]],
-        sparse_challenges,
-        fixture.output_beta,
-    )
+        sample_c61_sparse_relation_challenges(fixture.operation_plan(), transcript)?;
+    let relation = if fixture.production {
+        compile_c6_residual_sparse_rational_relation_production(
+            fixture.operation_plan(),
+            &fixture.terminal_metadata,
+            fixture.extraction(),
+            fixture.runtime(),
+            fixture.relation(),
+            [&fixture.lanes[0], &fixture.lanes[1]],
+            sparse_challenges,
+            fixture.output_beta,
+        )
+    } else {
+        compile_c6_residual_sparse_rational_relation_reference(
+            fixture.operation_plan(),
+            &fixture.terminal_metadata,
+            fixture.extraction(),
+            fixture.runtime(),
+            fixture.relation(),
+            [&fixture.lanes[0], &fixture.lanes[1]],
+            sparse_challenges,
+            fixture.output_beta,
+        )
+    }
     .map_err(|error| error.to_string())?;
     let public_relation = C6ResidualSparseRationalPublicRelation::new(
-        fixture.direct.operation_plan(),
+        fixture.operation_plan(),
         &fixture.terminal_metadata,
-        fixture.direct.relation(),
+        fixture.relation(),
         sparse_challenges,
         fixture.output_beta,
     )
@@ -2250,9 +2466,9 @@ fn prove_c61_sparse_compiler_relation_phase(
     let mut products = Vec::new();
     let mut zero_rows = Vec::new();
     let (gkr, leaf_claims) = prove_c6_residual_sparse_rational_gkr_blind_reference(
-        fixture.direct.operation_plan(),
-        fixture.direct.extraction(),
-        fixture.direct.runtime(),
+        fixture.operation_plan(),
+        fixture.extraction(),
+        fixture.runtime(),
         &relation,
         &public_relation,
         stream,
@@ -2264,7 +2480,7 @@ fn prove_c61_sparse_compiler_relation_phase(
     )
     .map_err(|error| error.to_string())?;
     let (joint, terminal) = prove_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
-        fixture.direct.operation_plan(),
+        fixture.operation_plan(),
         &relation,
         &public_relation,
         &fixture.packed,
@@ -2307,7 +2523,7 @@ fn prove_c61_sparse_compiler_relation_phase(
     let product_mask = stream.draw_product_mask(product_domain, product_triples);
     let product_proof = prod_batch_prover(&products, chi, product_mask, transcript);
     let arithmetic = C61SparseRationalBlindArithmeticProof::new(
-        fixture.direct.operation_plan(),
+        fixture.operation_plan(),
         public_relation.digest(),
         response_target_proof,
         gkr,
@@ -2317,7 +2533,7 @@ fn prove_c61_sparse_compiler_relation_phase(
     )
     .map_err(|error| error.to_string())?;
     let arithmetic_payload = arithmetic
-        .encode(fixture.direct.operation_plan(), public_relation.digest())
+        .encode(fixture.operation_plan(), public_relation.digest())
         .map_err(|error| error.to_string())?;
     Ok(C61SparseCompilerProviderPhase {
         public_relation,
@@ -2449,10 +2665,47 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
         return Err("C6SPR4 production admission returned without a production backend".to_owned());
     }
     let fixture = c61_sparse_compiler_physical_fixture()?;
+    let verifier_seed = [0xC2; 32];
+    let pcg_seed = [0xD3; 32];
+    let delta = Fp2::new(Fp::new(P - 83), Fp::new(0xC6_5202));
+    let correlations = CorrelationStream::new(pcg_seed);
+    let context = VerifierCtx::new(pcg_seed, delta);
+    let id = C61NativeChainId { component: C61NativeComponent::Compiler, repetition: 0 };
+    let mask_range = C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 29, range_start: 120_000 };
+    run_c61_authenticated_whir_p3_shared_multi_oracle_materialized(
+        &fixture,
+        response_num_variables,
+        correlations,
+        context,
+        verifier_seed,
+        id,
+        mask_range,
+        0,
+    )
+}
+
+fn run_c61_authenticated_whir_p3_shared_multi_oracle_materialized(
+    fixture: &C61SparseCompilerPhysicalFixture<'_>,
+    response_num_variables: usize,
+    mut correlations: CorrelationStream,
+    mut context: VerifierCtx,
+    verifier_seed: [u8; 32],
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+    admitted_available_host_bytes: u64,
+) -> Result<C61AuthenticatedP3SharedMultiOracleDiagnostic, String> {
     let verifier_fixture = fixture.verifier_fixture()?;
     let native_response_num_variables = usize::from(fixture.packed.physical_response_domain_log2());
     let native_plan_num_variables = usize::from(fixture.packed.plan_domain_log2());
-    if !(native_response_num_variables..=20).contains(&response_num_variables) {
+    if fixture.production
+        && (native_response_num_variables != 28
+            || native_plan_num_variables != 27
+            || response_num_variables != 28)
+    {
+        return Err("C6SPR5 production materialization must be exact D28/D27".to_owned());
+    }
+    if !fixture.production && !(native_response_num_variables..=20).contains(&response_num_variables)
+    {
         return Err(format!(
             "C6SPR3 scaled response geometry must be in D{native_response_num_variables}..=D20; production uses the separate fail-closed D28 admission"
         ));
@@ -2480,12 +2733,11 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
     plan_coefficients.resize(1usize << plan_num_variables, Goldilocks::ZERO);
     let plan_check = Poly::new(plan_coefficients.clone());
     let plan_witness = Poly::new(plan_coefficients);
-    let verifier_seed = [0xC2; 32];
-    let pcg_seed = [0xD3; 32];
-    let delta = Fp2::new(Fp::new(P - 83), Fp::new(0xC6_5202));
-    let id = C61NativeChainId { component: C61NativeComponent::Compiler, repetition: 0 };
-    let mask_range = C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 29, range_start: 120_000 };
-    let mut correlations = CorrelationStream::new(pcg_seed);
+    let pooled_pcg = correlations.uses_pooled_pcg() && context.uses_pooled_pcg();
+    if fixture.production && !pooled_pcg {
+        return Err("C6SPR5 production executor requires real pooled PCG correlations".to_owned());
+    }
+    let delta = context.delta;
     let mut provider_doms = volta_proto::logup::Doms::new(50_000);
 
     let mut provider_transcript = Transcript::new(verifier_seed);
@@ -2524,7 +2776,7 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
         let mut changed_payload = provider_phase.arithmetic_payload.clone();
         let changed_index = changed_payload.len() / 2;
         changed_payload[changed_index] ^= 1;
-        let mut changed_context = VerifierCtx::new(pcg_seed, delta);
+        let mut changed_context = VerifierCtx::new([0xD3; 32], delta);
         let mut changed_doms = volta_proto::logup::Doms::new(50_000);
         let mut changed_transcript = Transcript::new(verifier_seed);
         verify_c61_sparse_compiler_relation_phase(
@@ -2775,7 +3027,6 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
     let plan_mmcs = c61_reference_mmcs();
     response_challenger.observe(response_commitment.clone());
     plan_challenger.observe(plan_commitment.clone());
-    let mut context = VerifierCtx::new(pcg_seed, delta);
     let mut verifier_doms = volta_proto::logup::Doms::new(50_000);
     let verifier_phase = verifier_coordinator.with_pre_statement_transcript(|transcript| {
         verify_c61_sparse_compiler_relation_phase(
@@ -2914,6 +3165,16 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
     let strict_plan =
         c61_authenticated_structural_budget_inner(plan_num_variables, false)?.strict_chain_bytes;
     Ok(C61AuthenticatedP3SharedMultiOracleDiagnostic {
+        production_geometry: fixture.production,
+        monolithic_host_baseline: fixture.production,
+        gpu_performance_credit: false,
+        admitted_available_host_bytes,
+        monolithic_retained_lower_bound_bytes: if fixture.production {
+            c61_production_monolithic_memory_census()?.concurrent_retained_lower_bound_bytes
+        } else {
+            0
+        },
+        pooled_pcg,
         response_num_variables,
         plan_num_variables,
         response_claim_count: provider_phase.response_targets.len(),
@@ -3397,6 +3658,12 @@ mod tests {
     #[test]
     fn physical_response_and_plan_share_common_rounds_and_one_authenticated_residual() {
         let report = run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(14).unwrap();
+        assert!(!report.production_geometry);
+        assert!(!report.monolithic_host_baseline);
+        assert!(!report.gpu_performance_credit);
+        assert_eq!(report.admitted_available_host_bytes, 0);
+        assert_eq!(report.monolithic_retained_lower_bound_bytes, 0);
+        assert!(!report.pooled_pcg);
         assert_eq!(report.response_num_variables, 14);
         assert_eq!(report.plan_num_variables, 13);
         assert_eq!(report.response_claim_count, 12);
@@ -3458,6 +3725,66 @@ mod tests {
         assert!(error.contains("persisted/recomputable or GPU-resident executor"));
         assert!(error.contains("35433480128 B"));
         assert!(!error.contains("provider-state gate"));
+    }
+
+    #[test]
+    fn production_monolithic_entry_requires_owner_resources_and_real_pcg() {
+        use volta_proto::c6_residual::*;
+
+        let direct = build_c6_residual_direct_fused_scaled_fixture().unwrap();
+        let topology = direct.operation_plan().topology();
+        let source_manifest = C6TraceSourceManifest::new(
+            topology.source_count,
+            topology.source_schedule_digest,
+            direct.manifest().product_mask_sources().to_vec(),
+        )
+        .unwrap();
+        let terminal_metadata = C6OperationPlanTerminalMetadata::from_installed(
+            direct.operation_plan(),
+            &source_manifest,
+        )
+        .unwrap();
+        let leaf_point = [Fp2::ZERO; 7];
+        let delta = Fp2::new(Fp::new(P - 83), Fp::new(0xC6_5202));
+        let invoke = |admission| {
+            run_c61_authenticated_whir_p3_production_monolithic_baseline(
+                direct.operation_plan(),
+                terminal_metadata.clone(),
+                direct.extraction(),
+                direct.runtime(),
+                direct.relation(),
+                [&leaf_point, &leaf_point],
+                Fp2::new(Fp::new(191), Fp::new(17)),
+                admission,
+                CorrelationStream::new([0xD3; 32]),
+                VerifierCtx::new([0xD3; 32], delta),
+                [0xC2; 32],
+                C61NativeChainId {
+                    component: C61NativeComponent::Compiler,
+                    repetition: 0,
+                },
+                C61AuthenticatedWhirMaskRange {
+                    stage: 0x61,
+                    slot: 29,
+                    range_start: 120_000,
+                },
+            )
+            .unwrap_err()
+        };
+        let resource_error = invoke(C61ProductionMonolithicResourceAdmission {
+            available_host_bytes: 11 * 1024 * 1024 * 1024,
+            gpu_total_bytes: 0,
+            a100_present: false,
+            allow_host_monolithic_baseline: false,
+        });
+        assert!(resource_error.contains("baseline admission failed"));
+        let pcg_error = invoke(C61ProductionMonolithicResourceAdmission {
+            available_host_bytes: C61_PRODUCTION_MONOLITHIC_MIN_AVAILABLE_HOST_BYTES,
+            gpu_total_bytes: 80 * 1024 * 1024 * 1024,
+            a100_present: true,
+            allow_host_monolithic_baseline: true,
+        });
+        assert!(pcg_error.contains("forbids mock PCG state"));
     }
 
     #[test]

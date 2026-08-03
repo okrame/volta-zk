@@ -37,9 +37,8 @@ use volta_accel::{Backend, BackendKind};
 use volta_field::{Fp, Fp2, P};
 use volta_mac::{
     zero_open_verify, C6CanonicalTargetProfile, C6InstalledOperationPlan,
-    C6OperationPlanTerminalMetadata,
-    C6OperationPlanTopologyIdentity, C6TraceSourceManifest, CorrelationStream, ProverAuthed,
-    Transcript, VerifierCtx, VerifierKey,
+    C6OperationPlanTerminalMetadata, C6OperationPlanTopologyIdentity, C6TraceSourceManifest,
+    CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey,
 };
 use volta_proto::c6::{
     C6CacheHead, C6ClientAttempt, C6ClientState, C6CorrelationRange, C6PairedCorrelationRanges,
@@ -50,21 +49,20 @@ use crate::c61_authenticated_whir::{
     finish_c61_authenticated_whir_base, finish_c61_authenticated_whir_base_with_zero_rows,
     finish_c61_joint_native_bridge, prepare_c61_authenticated_whir_mask,
     simulate_c61_authenticated_whir_base_view, verify_c61_authenticated_whir_base,
-    verify_c61_authenticated_whir_base_with_zero_rows_residual,
-    verify_c61_joint_native_bridge,
+    verify_c61_authenticated_whir_base_with_zero_rows_residual, verify_c61_joint_native_bridge,
     C61AuthenticatedWhirAffineClaim, C61AuthenticatedWhirBaseProof, C61AuthenticatedWhirMaskRange,
     C61AuthenticatedWhirProverFinishInput, C61AuthenticatedWhirVerifierInput,
     C61JointNativeBridgeFrame, C61JointNativeProverTerm, C61JointNativeVerifierTerm,
     C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES,
-};
-use crate::c61_joint_native_bridge::{
-    C61JointNativeBodyBinding, C61JointNativeBodyScheduleBuilder, C61JointNativeChallenge,
 };
 use crate::c61_interactive_driver::{
     create_c61_durable_checkpoint_prefix, open_c61_durable_checkpoint,
     spawn_c61_durable_private_entropy_broker, spawn_c61_private_entropy_broker, C61DurableJournal,
     C61InteractiveCheckpoint, C61InteractiveTape, C61PrivateEntropyBrokerOutput,
     C61PrivateEntropyProverChallenger, C61PrivateEntropyReplayChallenger,
+};
+use crate::c61_joint_native_bridge::{
+    C61JointNativeBodyBinding, C61JointNativeBodyScheduleBuilder, C61JointNativeChallenge,
 };
 use crate::c61_persisted_mmcs::{
     C61MmcsResourceMetrics, C61PersistedMmcs, C61PersistedMmcsMetrics,
@@ -1125,10 +1123,8 @@ impl C61ProductionCommittedChainVerifierBody {
         if !context.uses_pooled_pcg() {
             return Err("C6NBR1 production verifier forbids mock PCG state".to_owned());
         }
-        let mask_domain = self
-            .mask_range
-            .correlation_domain(self.id)
-            .map_err(|error| error.to_string())?;
+        let mask_domain =
+            self.mask_range.correlation_domain(self.id).map_err(|error| error.to_string())?;
         let mask_key = context
             .expand_full_verifier_keys(mask_domain, 1)
             .into_iter()
@@ -1213,11 +1209,8 @@ impl C61ProductionJointNativeProverBodiesFixed {
         compiler_base_fold: ProverAuthed,
         compiler_correction: Fp2,
     ) -> Result<C61ProductionJointNativeProverExecution, String> {
-        let statements = self
-            .bodies
-            .iter()
-            .map(|body| body.statement.public().clone())
-            .collect::<Vec<_>>();
+        let statements =
+            self.bodies.iter().map(|body| body.statement.public().clone()).collect::<Vec<_>>();
         let terms = self
             .bodies
             .into_iter()
@@ -1308,6 +1301,13 @@ impl C61ProductionJointNativeVerifierBodiesFixed {
         &self.challenge
     }
 
+    /// Ordered weights recovered while replaying the fixed tagless bodies.
+    /// This borrow is available only after `zeta` exists, so callers cannot
+    /// compile the joint functional against a partial native schedule.
+    pub fn claim_weights(&self) -> Vec<&[Fp2]> {
+        self.bodies.iter().map(|body| body.claim_weights.as_slice()).collect()
+    }
+
     pub fn finish(
         mut self,
         compiler_base_key: VerifierKey,
@@ -1336,6 +1336,41 @@ impl C61ProductionJointNativeVerifierBodiesFixed {
             transcript_ledger: self.transcript.ledger().clone(),
         })
     }
+}
+
+/// Recompile and validate the exact generic target functional from verifier
+/// inputs after every secondary native body and `zeta` are fixed.  Retaining
+/// the canonical installed plan in response-independent setup is deliberate:
+/// neither topology nor a provider functional digest contains its operands.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_c61_joint_native_compiler_functional(
+    fixed: &C61ProductionJointNativeVerifierBodiesFixed,
+    operation_plan: &C6InstalledOperationPlan,
+    extraction: &volta_mac::C6DecodedInstanceExtractionPlan,
+    runtime: &volta_mac::C6RuntimeInstanceValues,
+    profile: &C6CanonicalTargetProfile,
+    expected_schedule_digest: [u8; 32],
+    expected_functional_digest: [u8; 32],
+) -> Result<volta_proto::c6_residual::C6CompiledNativeTargetFunctional, String> {
+    if fixed.challenge.schedule_digest != expected_schedule_digest {
+        return Err(
+            "C6PA2 body schedule differs before compiler-functional verification".to_owned()
+        );
+    }
+    let claim_weights = fixed.claim_weights().into_iter().map(<[Fp2]>::to_vec).collect::<Vec<_>>();
+    let functional = volta_proto::c6_residual::C6CompiledNativeTargetFunctional::compile(
+        operation_plan,
+        extraction,
+        runtime,
+        profile,
+        &claim_weights,
+        &fixed.challenge.cohort_weights,
+    )
+    .map_err(|error| error.to_string())?;
+    if functional.functional_digest() != expected_functional_digest {
+        return Err("C6PA2 locally compiled functional differs from C6CPX3 binding".to_owned());
+    }
+    Ok(functional)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1400,7 +1435,8 @@ pub fn prepare_c61_production_joint_native_verifier_bodies(
         })?;
         bodies.push(body);
     }
-    let frame = C61JointNativeBridgeFrame::decode(&frame_bytes).map_err(|error| error.to_string())?;
+    let frame =
+        C61JointNativeBridgeFrame::decode(&frame_bytes).map_err(|error| error.to_string())?;
     let challenge = schedule.finish()?.draw_zeta(&mut transcript);
     Ok(C61ProductionJointNativeVerifierBodiesFixed { bodies, frame, challenge, transcript })
 }
@@ -4144,12 +4180,13 @@ pub fn prepare_c61_authenticated_whir_p3_production_committed_chain_verifier_bod
     if &validated != statement {
         return Err("C6SPR13 production verifier body requires a canonical statement".to_owned());
     }
-    let mut body = prepare_c61_authenticated_whir_p3_production_committed_chain_public_verifier_body(
-        public,
-        tagless_payload,
-        verifier_seed,
-        mask_range,
-    )?;
+    let mut body =
+        prepare_c61_authenticated_whir_p3_production_committed_chain_public_verifier_body(
+            public,
+            tagless_payload,
+            verifier_seed,
+            mask_range,
+        )?;
     body.aggregate_key = Some(aggregate_verifier_targets(
         statement.target_keys(),
         &body.claim_weights.iter().copied().map(c61_p3_fp2_from_volta).collect::<Vec<_>>(),
@@ -4225,12 +4262,13 @@ pub fn prepare_c61_authenticated_whir_p3_production_joint_chain_public_verifier_
     complete.extend_from_slice(&[0u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES]);
     let ordinary = c61_awp1_payload_from_joint(&complete)?;
     let ordinary_tagless = &ordinary[..ordinary.len() - C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES];
-    let mut body = prepare_c61_authenticated_whir_p3_production_committed_chain_public_verifier_body(
-        public,
-        ordinary_tagless,
-        verifier_seed,
-        mask_range,
-    )?;
+    let mut body =
+        prepare_c61_authenticated_whir_p3_production_committed_chain_public_verifier_body(
+            public,
+            ordinary_tagless,
+            verifier_seed,
+            mask_range,
+        )?;
     body.tagless_digest = *blake3::hash(joint_tagless_payload).as_bytes();
     Ok(body)
 }
@@ -6871,21 +6909,14 @@ mod tests {
         let encoded = proof.encode().unwrap();
         assert_eq!(encoded.len(), 180 + 97 + 193);
         assert_eq!(C61ProductionCompilerChainProof::decode(&encoded).unwrap(), proof);
-        let joint = C61ProductionJointCompilerChainProof::new(
-            proof.clone(),
-            [0xC3; 32],
-            [0xC4; 32],
-        )
-        .unwrap();
+        let joint =
+            C61ProductionJointCompilerChainProof::new(proof.clone(), [0xC3; 32], [0xC4; 32])
+                .unwrap();
         let joint_encoded = joint.encode().unwrap();
         assert_eq!(joint_encoded.len(), encoded.len());
         assert_eq!(
-            C61ProductionJointCompilerChainProof::decode(
-                &joint_encoded,
-                [0xC3; 32],
-                [0xC4; 32],
-            )
-            .unwrap(),
+            C61ProductionJointCompilerChainProof::decode(&joint_encoded, [0xC3; 32], [0xC4; 32],)
+                .unwrap(),
             joint,
         );
         assert!(C61ProductionCompilerChainProof::decode(&joint_encoded).is_err());
@@ -6897,8 +6928,7 @@ mod tests {
             [0xC4; 32],
         )
         .is_err());
-        assert!(C61ProductionJointCompilerChainProof::new(proof.clone(), [0; 32], [1; 32])
-            .is_err());
+        assert!(C61ProductionJointCompilerChainProof::new(proof.clone(), [0; 32], [1; 32]).is_err());
         for index in [0, 12, 51, encoded.len() / 2, encoded.len() - 1] {
             let mut changed = encoded.clone();
             changed[index] ^= 1;
@@ -7552,7 +7582,8 @@ mod tests {
     #[test]
     fn joint_awp2_header_preserves_the_exact_tagless_whir_body() {
         let (fixture, _, _, _, _, _) = mutation_fixture();
-        let tail_start = fixture.artifact.payload.len() - C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES;
+        let tail_start =
+            fixture.artifact.payload.len() - C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES;
         let ordinary_tagless = &fixture.artifact.payload[..tail_start];
         let joint_tagless = c61_joint_tagless_from_awp1(ordinary_tagless).unwrap();
         assert_eq!(joint_tagless.len(), ordinary_tagless.len());
@@ -7644,14 +7675,10 @@ mod tests {
             C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 31, range_start: 70_000 },
             C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 31, range_start: 70_100 },
         ];
-        let gamma = [
-            Fp2::new(Fp::new(1_807), Fp::new(1_811)),
-            Fp2::new(Fp::new(1_813), Fp::new(1_817)),
-        ];
-        let targets = [
-            Fp2::new(Fp::new(1_819), Fp::new(1_821)),
-            Fp2::new(Fp::new(1_823), Fp::new(1_827)),
-        ];
+        let gamma =
+            [Fp2::new(Fp::new(1_807), Fp::new(1_811)), Fp2::new(Fp::new(1_813), Fp::new(1_817))];
+        let targets =
+            [Fp2::new(Fp::new(1_819), Fp::new(1_821)), Fp2::new(Fp::new(1_823), Fp::new(1_827))];
         let zeta = Fp2::new(Fp::new(1_829), Fp::new(1_831));
         let weights = [Fp2::ONE, zeta];
         let mut prover_terms = Vec::new();
@@ -7699,8 +7726,7 @@ mod tests {
             corrected_plaintext - compiler_correction,
             Fp2::new(Fp::new(1_843), Fp::new(1_849)),
         );
-        let compiler_base_key =
-            VerifierKey::new(compiler_base.m + delta * compiler_base.x);
+        let compiler_base_key = VerifierKey::new(compiler_base.m + delta * compiler_base.x);
         let challenge = C61JointNativeChallenge {
             schedule_digest: [0xDB; 32],
             zeta,
@@ -7720,9 +7746,75 @@ mod tests {
             challenge: challenge.clone(),
             transcript,
         };
-        let verified = fixed
-            .finish(compiler_base_key, compiler_correction, &mut verifier_context)
-            .unwrap();
+        let direct =
+            volta_proto::c6_residual::build_c6_residual_direct_fused_scaled_fixture().unwrap();
+        let topology = direct.operation_plan().topology();
+        let profile = C6CanonicalTargetProfile {
+            inference_profile_digest: [0xDD; 32],
+            topology_digest: topology.topology_digest,
+            source_schedule_digest: topology.source_schedule_digest,
+            cohorts: vec![
+                volta_mac::C6CanonicalTargetCohort {
+                    cohort_id: 7,
+                    chain_slot: C61NativeComponent::Model as u16,
+                    polynomial_log2: 12,
+                    claim_layout_digest: [0xDE; 32],
+                    canonical_nodes: vec![topology.canonical_node_count - 2],
+                },
+                volta_mac::C6CanonicalTargetCohort {
+                    cohort_id: 9,
+                    chain_slot: C61NativeComponent::Embedding as u16,
+                    polynomial_log2: 11,
+                    claim_layout_digest: [0xDF; 32],
+                    canonical_nodes: vec![topology.canonical_node_count - 1],
+                },
+            ],
+        };
+        let compiled = volta_proto::c6_residual::C6CompiledNativeTargetFunctional::compile(
+            direct.operation_plan(),
+            direct.extraction(),
+            direct.runtime(),
+            &profile,
+            &[vec![Fp2::ONE], vec![Fp2::ONE]],
+            &weights,
+        )
+        .unwrap();
+        assert_eq!(
+            verify_c61_joint_native_compiler_functional(
+                &fixed,
+                direct.operation_plan(),
+                direct.extraction(),
+                direct.runtime(),
+                &profile,
+                challenge.schedule_digest,
+                compiled.functional_digest(),
+            )
+            .unwrap()
+            .functional_digest(),
+            compiled.functional_digest(),
+        );
+        assert!(verify_c61_joint_native_compiler_functional(
+            &fixed,
+            direct.operation_plan(),
+            direct.extraction(),
+            direct.runtime(),
+            &profile,
+            [0; 32],
+            compiled.functional_digest(),
+        )
+        .is_err());
+        assert!(verify_c61_joint_native_compiler_functional(
+            &fixed,
+            direct.operation_plan(),
+            direct.extraction(),
+            direct.runtime(),
+            &profile,
+            challenge.schedule_digest,
+            [0; 32],
+        )
+        .is_err());
+        let verified =
+            fixed.finish(compiler_base_key, compiler_correction, &mut verifier_context).unwrap();
         assert_eq!(verified.cohort_count, 2);
         assert_eq!(verified.challenge, challenge);
         assert_eq!(verified.transcript_bytes, 32);

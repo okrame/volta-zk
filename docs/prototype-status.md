@@ -21,9 +21,9 @@ This capsule is authoritative; read design §0.49 next.
   are **1/0/0**. Native typestate/schedule gates are **17/0/0 + 2/0/0**.
   The exact joint functional gate is **1/0/0** and proto trace is
   **180/0/1**. The generic 32-B joint MAC closure is **2/0/0** and its exact
-  source-correction split is **1/0/0**; C6PA2/CPX3 codecs are **2/0/0**. CUDA targets
-  compile, but no production response, GPU timing, full-chain or hardware
-  credit exists.
+  source-correction split and installed-plan verifier recompilation are each
+  **1/0/0**; C6PA2/CPX3 codecs are **2/0/0**. CUDA targets compile, but no
+  production response, GPU timing, full-chain or hardware credit exists.
 - **Screens.** v23 certificate remains `credit:false` at **17,536,735 B**.
   The exact-plan fallback projects setup **148,738,118 B** and setup+first
   **166,274,853 B**; state **2,277,715,552 B**, provider/verifier
@@ -230,6 +230,17 @@ This capsule is authoritative; read design §0.49 next.
   below the original strict gates with **1,261,881 B** and **5,725,146 B**
   headroom respectively. Verifier time/memory, v24 and all full-chain credits
   remain open; no pod contact is authorized.
+
+- **2026-08-03 — Challenge-ordered verifier recompilation closes locally.**
+  The secondary-body verifier typestate now exposes ordered `alpha` weights
+  only after every tagless body is fixed and `zeta` has been sampled. From
+  that state it installs the canonical plan, compiles the generic `C6NTO1`
+  sparse seed with the same cohort weights and requires exact equality with
+  the C6CPX3 functional digest before joint closure. Schedule and functional
+  mutations reject **1/0/0**; the complete authenticated module remains
+  **17/0/0**. This is a local scaled seam, not outer C6PA2 acceptance or
+  verifier-time credit. The strict nested decoder, tape-1 source-key fold,
+  Lean theorem and v24 re-sum remain required; no pod contact is authorized.
 
 - **2026-08-03 — C6SPR8 closed; production wrapper lifecycle reaches the next
   ordered hard stop.** Checkpoint `c81a4ff` binds both ordered manifest tapes

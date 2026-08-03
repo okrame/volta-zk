@@ -1253,7 +1253,19 @@ impl C6ResidualSparseRationalBlindGkrProof {
     }
 
     pub fn correction_bytes(operation_plan: &C6InstalledOperationPlan) -> C6ResidualResult<u64> {
-        c6_sparse_rational_subcheck_depths(operation_plan)?
+        Self::correction_bytes_for_depths(c6_sparse_rational_subcheck_depths(operation_plan)?)
+    }
+
+    pub fn correction_bytes_compact(
+        topology: C6OperationPlanTopologyIdentity,
+    ) -> C6ResidualResult<u64> {
+        Self::correction_bytes_for_depths(c6_sparse_rational_subcheck_depths_compact(topology)?)
+    }
+
+    fn correction_bytes_for_depths(
+        depths: [usize; C6_SPARSE_RATIONAL_SUBCHECKS],
+    ) -> C6ResidualResult<u64> {
+        depths
             .into_iter()
             .try_fold(0u64, |total, depth| {
                 total
@@ -1319,10 +1331,33 @@ impl C6ResidualSparseRationalBlindGkrProof {
         relation_digest: C6ResidualDigest,
         bytes: &[u8],
     ) -> C6ResidualResult<Self> {
-        if bytes.len() as u64 != Self::correction_bytes(operation_plan)? {
+        Self::decode_corrections_with_depths(
+            c6_sparse_rational_subcheck_depths(operation_plan)?,
+            relation_digest,
+            bytes,
+        )
+    }
+
+    pub fn decode_corrections_compact(
+        topology: C6OperationPlanTopologyIdentity,
+        relation_digest: C6ResidualDigest,
+        bytes: &[u8],
+    ) -> C6ResidualResult<Self> {
+        Self::decode_corrections_with_depths(
+            c6_sparse_rational_subcheck_depths_compact(topology)?,
+            relation_digest,
+            bytes,
+        )
+    }
+
+    fn decode_corrections_with_depths(
+        depths: [usize; C6_SPARSE_RATIONAL_SUBCHECKS],
+        relation_digest: C6ResidualDigest,
+        bytes: &[u8],
+    ) -> C6ResidualResult<Self> {
+        if bytes.len() as u64 != Self::correction_bytes_for_depths(depths)? {
             return Err(C6ResidualError::new("C6SPR3 strict correction length mismatch"));
         }
-        let depths = c6_sparse_rational_subcheck_depths(operation_plan)?;
         let mut reader = SparseBlindCorrectionReader::new(bytes);
         let mut subchecks = Vec::with_capacity(C6_SPARSE_RATIONAL_SUBCHECKS);
         let mut root_inverse_corrections = Vec::with_capacity(C6_SPARSE_RATIONAL_SUBCHECKS);

@@ -408,11 +408,6 @@ impl C61SparseRationalBlindArithmeticProof {
         relation_digest: [u8; 32],
         bytes: &[u8],
     ) -> Result<Self> {
-        if bytes.len() as u64 > C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_MAX_BYTES {
-            return Err(C61TerminalFunctionalStatementError::new(
-                "C6SBA1 exceeds the arithmetic/MAC/link cap",
-            ));
-        }
         let expected_base =
             volta_proto::c6_residual::c6_sparse_rational_base_domain_log2(operation_plan)
                 .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))?;
@@ -424,6 +419,72 @@ impl C61SparseRationalBlindArithmeticProof {
                 operation_plan,
             )
             .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))?;
+        let proof = Self::decode_with_geometry(
+            relation_digest,
+            bytes,
+            expected_base,
+            expected_depths,
+            expected_gkr,
+            |body| {
+                volta_proto::c6_residual::C6ResidualSparseRationalBlindGkrProof::decode_corrections(
+                    operation_plan,
+                    relation_digest,
+                    body,
+                )
+                .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))
+            },
+        )?;
+        proof.validate(operation_plan, relation_digest)?;
+        Ok(proof)
+    }
+
+    pub fn decode_compact(
+        topology: volta_mac::C6OperationPlanTopologyIdentity,
+        relation_digest: [u8; 32],
+        bytes: &[u8],
+    ) -> Result<Self> {
+        let expected_base =
+            volta_proto::c6_residual::c6_sparse_rational_base_domain_log2_compact(topology)
+                .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))?;
+        let expected_depths =
+            volta_proto::c6_residual::c6_sparse_rational_subcheck_depths_compact(topology)
+                .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))?;
+        let expected_gkr = volta_proto::c6_residual::C6ResidualSparseRationalBlindGkrProof::correction_bytes_compact(topology)
+            .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))?;
+        Self::decode_with_geometry(
+            relation_digest,
+            bytes,
+            expected_base,
+            expected_depths,
+            expected_gkr,
+            |body| {
+                volta_proto::c6_residual::C6ResidualSparseRationalBlindGkrProof::decode_corrections_compact(
+                    topology,
+                    relation_digest,
+                    body,
+                )
+                .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))
+            },
+        )
+    }
+
+    fn decode_with_geometry(
+        relation_digest: [u8; 32],
+        bytes: &[u8],
+        expected_base: u8,
+        expected_depths: [usize; C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_SUBCHECKS],
+        expected_gkr: u64,
+        decode_gkr: impl FnOnce(
+            &[u8],
+        ) -> Result<
+            volta_proto::c6_residual::C6ResidualSparseRationalBlindGkrProof,
+        >,
+    ) -> Result<Self> {
+        if bytes.len() as u64 > C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_MAX_BYTES {
+            return Err(C61TerminalFunctionalStatementError::new(
+                "C6SBA1 exceeds the arithmetic/MAC/link cap",
+            ));
+        }
         let expected_joint =
             volta_proto::c6_residual::C6ResidualSparseRationalBlindJointRoundsProof::correction_bytes(
                 expected_base,
@@ -477,13 +538,7 @@ impl C61SparseRationalBlindArithmeticProof {
         let response_targets = C61SparseRationalResponseTargetProof::decode(
             reader.take(C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTION_BYTES as usize)?,
         )?;
-        let gkr =
-            volta_proto::c6_residual::C6ResidualSparseRationalBlindGkrProof::decode_corrections(
-                operation_plan,
-                relation_digest,
-                reader.take(gkr_len)?,
-            )
-            .map_err(|error| C61TerminalFunctionalStatementError::new(error.to_string()))?;
+        let gkr = decode_gkr(reader.take(gkr_len)?)?;
         let joint = volta_proto::c6_residual::C6ResidualSparseRationalBlindJointRoundsProof::decode_corrections(
             relation_digest,
             expected_base,
@@ -503,7 +558,12 @@ impl C61SparseRationalBlindArithmeticProof {
                 "corrupt or noncanonical C6SBA1 proof",
             ));
         }
-        Self::new(operation_plan, relation_digest, response_targets, gkr, joint, terminal, product)
+        if gkr.relation_digest() != relation_digest || joint.relation_digest() != relation_digest {
+            return Err(C61TerminalFunctionalStatementError::new(
+                "C6SBA1 nested proof relation digest mismatch",
+            ));
+        }
+        Ok(Self { response_targets, gkr, joint, terminal, product })
     }
 
     pub fn into_parts(
@@ -2134,6 +2194,13 @@ mod tests {
         )
         .unwrap();
         assert_eq!(decoded, arithmetic_proof);
+        let compact_decoded = C61SparseRationalBlindArithmeticProof::decode_compact(
+            direct.operation_plan().topology(),
+            public_relation.digest(),
+            &encoded,
+        )
+        .unwrap();
+        assert_eq!(compact_decoded, arithmetic_proof);
         let rejects = |payload: Vec<u8>| {
             C61SparseRationalBlindArithmeticProof::decode(
                 direct.operation_plan(),

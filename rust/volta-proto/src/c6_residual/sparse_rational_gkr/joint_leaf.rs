@@ -105,6 +105,12 @@ pub fn c6_sparse_rational_base_domain_log2(
     canonical_base_domain_log2(operation_plan)
 }
 
+pub fn c6_sparse_rational_base_domain_log2_compact(
+    topology: C6OperationPlanTopologyIdentity,
+) -> C6ResidualResult<u8> {
+    canonical_base_domain_log2_from_topology(topology)
+}
+
 fn eq_lifted(leaf_point: &[Fp2], base_point: &[Fp2]) -> C6ResidualResult<Fp2> {
     if leaf_point.len() > base_point.len() {
         return Err(C6ResidualError::new(

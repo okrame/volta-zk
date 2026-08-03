@@ -80,6 +80,18 @@ impl C6ResidualFusedScaledFixture {
         )
     }
 
+    pub fn leaf_witness(&self) -> &C6PairedResidualLeafWitness {
+        &self.leaf
+    }
+
+    pub fn closure_witness(&self) -> &C6PairedResidualClosureWitness {
+        &self.closure
+    }
+
+    pub fn auxiliary_witness(&self) -> &C6PairedResidualAuxiliaryWitness {
+        &self.auxiliary
+    }
+
     pub fn closure_memory_census(&self) -> C6InstalledClosureEvaluationMemoryCensus {
         self.closure_memory_census
     }

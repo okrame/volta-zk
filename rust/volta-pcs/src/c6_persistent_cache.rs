@@ -441,7 +441,15 @@ impl C6PersistentCacheStateWitness {
         Ok(())
     }
 
-    fn validate_canonical(&self, layout: C6PersistentCacheLayout, cache_len: u16) -> Result<()> {
+    /// Validate the exact fixed-capacity cache source committed by the C6
+    /// wrapper.  Only K/V slots 0--1 and live cells before `cache_len` may be
+    /// nonzero; all tail, padded and inactive-slot coordinates are canonical
+    /// zero.
+    pub fn validate_canonical(
+        &self,
+        layout: C6PersistentCacheLayout,
+        cache_len: u16,
+    ) -> Result<()> {
         let entries = layout.padded_entries()?;
         if cache_len > layout.capacity_tokens
             || self.slots.len() != C6_PERSISTENT_CACHE_SLOTS

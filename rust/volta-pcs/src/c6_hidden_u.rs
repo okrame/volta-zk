@@ -727,6 +727,22 @@ impl C6HiddenUFamilyWitness {
         hidden_u_functional_digest(self.layout, &self.q_cols)
             .expect("validated C6 hidden-u q_col schedule")
     }
+
+    /// Materialize the canonical fixed-capacity family oracle.
+    ///
+    /// Live vectors occupy the leading `msg_len` entries of their fixed
+    /// stride.  Every tail coordinate and inactive vector is canonical zero.
+    /// This is the provider-side source consumed by the packed C6 wrapper;
+    /// it is not a proof or a serialized response field.
+    pub fn materialize_padded_oracle(&self) -> C6HiddenUResult<Vec<Fp2>> {
+        let mut flattened = vec![Fp2::ZERO; self.layout.padded_entries()];
+        for (source, destination) in
+            self.vectors.iter().zip(flattened.chunks_mut(self.layout.vector_stride))
+        {
+            destination[..self.layout.msg_len()].copy_from_slice(source);
+        }
+        Ok(flattened)
+    }
 }
 
 fn hash_zero_fp2s(hasher: &mut blake3::Hasher, count: usize) {
@@ -1267,6 +1283,39 @@ mod tests {
             vec![q.clone(), q]
         )
         .is_err());
+    }
+
+    #[test]
+    fn padded_oracle_preserves_live_vectors_and_zeros_every_inactive_coordinate() {
+        let layout = test_layout();
+        let u_c = (0..layout.msg_len() as u64).map(|value| fp2(value + 1)).collect::<Vec<_>>();
+        let u_gs = (0..layout.claim_count)
+            .map(|claim| {
+                (0..layout.msg_len() as u64)
+                    .map(|value| fp2(100 * claim as u64 + value + 11))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        let q_cols = vec![vec![Fp2::ZERO; layout.cols()]; layout.claim_count];
+        let witness =
+            C6HiddenUFamilyWitness::new(layout, u_c.clone(), u_gs.clone(), q_cols).unwrap();
+        let oracle = witness.materialize_padded_oracle().unwrap();
+
+        assert_eq!(oracle.len(), layout.padded_entries());
+        assert_eq!(&oracle[..layout.msg_len()], u_c.as_slice());
+        assert!(oracle[layout.msg_len()..layout.vector_stride]
+            .iter()
+            .all(|value| *value == Fp2::ZERO));
+        for (claim, vector) in u_gs.iter().enumerate() {
+            let start = (claim + 1) * layout.vector_stride;
+            assert_eq!(&oracle[start..start + layout.msg_len()], vector.as_slice());
+            assert!(oracle[start + layout.msg_len()..start + layout.vector_stride]
+                .iter()
+                .all(|value| *value == Fp2::ZERO));
+        }
+        assert!(oracle[layout.live_vectors() * layout.vector_stride..]
+            .iter()
+            .all(|value| *value == Fp2::ZERO));
     }
 
     #[test]

@@ -70,8 +70,8 @@ pub const C61_WHIRA1_MULTIPROOF_COUNT_BYTES: usize = 4;
 pub type C61P3Fp2 = BinomialExtensionField<Goldilocks, 2>;
 pub(crate) type C61SizingChallenger =
     SerializingChallenger64<Goldilocks, HashChallenger<u8, Blake3, 32>>;
-type C61FieldHash = SerializingHasher<Blake3>;
-type C61Compress = CompressionFunctionFromHasher<Blake3, 2, 32>;
+pub(crate) type C61FieldHash = SerializingHasher<Blake3>;
+pub(crate) type C61Compress = CompressionFunctionFromHasher<Blake3, 2, 32>;
 pub(crate) type C61Mmcs = MerkleTreeMmcs<Goldilocks, u8, C61FieldHash, C61Compress, 2, 32>;
 pub(crate) type C61Commitment = MerkleCap<Goldilocks, [u8; 32]>;
 pub(crate) type C61MultiProof = PrunedMerklePaths<u8, 32>;

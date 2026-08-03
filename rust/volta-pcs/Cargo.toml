@@ -16,6 +16,7 @@ c61-p3-reference = [
     "dep:p3-field",
     "dep:p3-goldilocks",
     "dep:p3-merkle-tree",
+    "dep:p3-matrix",
     "dep:p3-multilinear-util",
     "dep:p3-sumcheck",
     "dep:p3-symmetric",
@@ -41,6 +42,7 @@ p3-dft = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de185
 p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
 p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
 p3-merkle-tree = { path = "../third_party/p3-merkle-tree-c61", optional = true }
+p3-matrix = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
 p3-multilinear-util = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
 p3-sumcheck = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
 p3-symmetric = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }

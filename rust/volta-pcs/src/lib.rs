@@ -187,8 +187,10 @@ pub use c6_residual_sumcheck_blind::{
 #[cfg(feature = "c6-trace")]
 pub use c6_residual_sumcheck_blind::{
     prepare_c6_blind_residual_statement_fused, prove_c6_blind_residual_sumchecks_fused,
+    prove_c6_blind_residual_sumchecks_fused_direct,
     prove_c6_blind_residual_sumchecks_fused_scaled, verify_c6_blind_residual_sumchecks_fused,
-    verify_c6_blind_residual_sumchecks_fused_scaled, C6BlindResidualFusedCompilerContext,
+    verify_c6_blind_residual_sumchecks_fused_scaled, C6BlindResidualDirectTerminalFold,
+    C6BlindResidualDirectTerminalOutputs, C6BlindResidualFusedCompilerContext,
 };
 pub use c6_wrapper_pcs::{
     bind_hidden_u_opening_claims_to_wrapper_slots, bind_production_c6_residual_relation_roots,

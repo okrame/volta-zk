@@ -24,19 +24,18 @@ This capsule is authoritative; read design §0.49 next.
   source-correction split is **1/0/0**; C6PA2/CPX3 codecs are **2/0/0**. CUDA targets
   compile, but no production response, GPU timing, full-chain or hardware
   credit exists.
-- **Screens.** v23 remains `credit:false`: certificate **17,536,735 B**,
-  setup **84,743,367 B**, state **2,277,715,552 B**, provider/verifier
-  **14.9087128542 / 4.965672390 s**, soundness **102.587833363526... bits**.
-  Original owner gates `<22 MB` and `<15 s` remain controlling.
+- **Screens.** v23 certificate remains `credit:false` at **17,536,735 B**.
+  The exact-plan fallback projects setup **148,738,118 B** and setup+first
+  **166,274,853 B**; state **2,277,715,552 B**, provider/verifier
+  **14.9087128542 / 4.965672390 s** and soundness are still old screens.
 - **Authorization and hard stop.** On 2026-08-03 the owner authorized the
   model-agnostic, challenge-dependent, wire-neutral `C6NBR1/C6NTO1` bridge
   with small commits on `main`. Local construction may proceed. HARD STOP
   remains before exact-runner admission or pod contact.
-- **Resume conditions.** Implement the strict `C6PA2` challenge-ordered
-  decoder and compiler-functional verification, then re-sum bytes,
-  setup, correlations, soundness, state and time and run the complete local
-  gates. No fixed `96/6`, clear target, mock PCG, CPU fallback or
-  provider-derived verifier key is admissible.
+- **Resume conditions.** Implement strict challenge-ordered `C6PA2` with
+  locally installed-plan functional verification, then v24 re-sums, Lean and
+  complete local gates. No fixed `96/6`, clear target, mock PCG, CPU fallback
+  or provider-derived verifier key is admissible.
 
 - **2026-08-03 — C6SPR10 exact terminal-functional relation closes locally.**
   The compiler now proves the exact challenge-dependent equality between the
@@ -217,6 +216,20 @@ This capsule is authoritative; read design §0.49 next.
   focused compiler gate **1/0/0**. This does not yet verify the functional or
   accept an outer proof; the challenge-ordered C6PA2 decoder remains next and
   v23, all credits and the exact-runner/pod hard stop are unchanged.
+
+- **2026-08-03 — Exact verifier compilation requires the canonical plan.**
+  The compact profile can evaluate a sparse terminal injection but cannot
+  derive its challenge-dependent source coefficients: topology and a digest
+  omit the installed operands, while trusting provider coefficients would be
+  a digest-as-proof substitution. The owner-authorized generic bridge is
+  therefore narrowed to retain the response-independent **63,994,751-B**
+  canonical plan in client setup. Both roles compile the same `C6NTO1`
+  functional after `alpha,zeta`; the verifier folds only its own tape-1 keys.
+  This remains model-agnostic and adds no certificate bytes. Arithmetic-only
+  projections are setup **148,738,118 B** and setup+first **166,274,853 B**,
+  below the original strict gates with **1,261,881 B** and **5,725,146 B**
+  headroom respectively. Verifier time/memory, v24 and all full-chain credits
+  remain open; no pod contact is authorized.
 
 - **2026-08-03 — C6SPR8 closed; production wrapper lifecycle reaches the next
   ordered hard stop.** Checkpoint `c81a4ff` binds both ordered manifest tapes

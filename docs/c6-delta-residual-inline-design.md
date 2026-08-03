@@ -3439,6 +3439,36 @@ theorems but may introduce no trusted axiom. Until that theorem kernel-checks,
 the Rust bridge is differential/codec evidence only and cannot enter the exact
 runner.
 
+#### 0.49.5 Exact verifier compilation amendment
+
+The compact-profile-only verifier described above cannot validate the
+challenge-dependent compiled source coefficients. `C6NTO1`, topology and a
+functional digest determine the sparse target seed, but they do not contain
+the installed operands needed to propagate that seed backwards. `C6SPR3`
+proves a provider-committed coefficient recurrence; by itself it does not let
+the verifier derive the tape-1 source-key fold, and accepting the provider's
+functional digest would be a digest-as-proof substitution.
+
+The exact route therefore retains the canonical response-independent
+**63,994,751-B** operation-plan artifact in client setup and installs it
+locally after strict digest/topology validation. After all tagless bodies are
+fixed and `zeta` is sampled, both roles compile the same generic sparse
+functional from that plan. The verifier then streams its own tape-1 source
+keys through those coefficients and independently derives the correction and
+compiler key consumed by `C6NBR1`. No plan bytes, coefficients or target
+values enter a response certificate.
+
+This changes the projected setup from **84,743,367 B** to **148,738,118 B**,
+leaving **1,261,881 B** below the strict `<150,000,000-B` gate. With the v23
+certificate it projects setup plus first exchange at **166,274,853 B**, below
+the `<172,000,000-B` gate by **5,725,146 B**. Certificate bytes remain
+unchanged. These are arithmetic screens with `credit:false`; verifier memory
+and time must be remeasured and remain `<5 s`. The strict C6PA2 decoder must
+reject before joint acceptance if plan installation, functional recompilation
+or role-local source folding differs. This generic fallback is parameterized
+only by `C6NTO1` and the installed plan and contains no GPT-2 cohort census or
+tensor switch.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

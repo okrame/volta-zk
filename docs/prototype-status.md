@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — C6SPR11 PRODUCTION NATIVE/WIRE VERIFIER HARD STOP / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — C6SPR12 EXACT T1 OWNER EXPORT HARD STOP / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §0.46 next.
+This capsule is authoritative; read design §0.47 next.
 
 - **Phase/relation.** C6.1 response-local public compression. The 64 C6RSC3
   values are challenge-dependent and exactly factor through two D25 reverse
@@ -36,7 +36,7 @@ This capsule is authoritative; read design §0.46 next.
   no resident codeword/tree is built, every fold is session/root/descriptor
   bound, both complete chains precede query draws, and coefficient, opening,
   file, fsync, staging and CUDA-transfer counters are explicit.
-- **Screens.** Certificate **17,536,607 B**, setup **84,743,367 B**, state
+- **Screens.** Certificate **17,536,735 B**, setup **84,743,367 B**, state
   **2,277,715,552 B**, provider/verifier **14.9087128542 / 4.965672390 s** and
   soundness **102.587833363526... bits** remain `credit:false`.
 - **Authorized construction gate.** On 2026-08-03 the product owner explicitly
@@ -61,11 +61,14 @@ This capsule is authoritative; read design §0.46 next.
   PCG stream across both compiler chains, and bind the beta-folded 64 outputs
   to the direct eight-family reducer plus two challenge-dependent plan folds.
   The latter are four additional base-limb openings in the same D28 response
-  WHIR, not fixed DAG nodes.  `C6CPX1-v1` adds 116 B of strict framing per
-  compiler chain; v21 therefore counts 19 ordered openings and **232 B** of
-  certificate framing.  Focused authenticated compiler tests are **11/0/0**
-  and the scaled persisted proof remains byte-identical to resident.  This is
-  exact local relation evidence only, not production or full-chain credit.
+  WHIR, not fixed DAG nodes.  `C6CPX2-v2` carries the four exact physical
+  plan-fold targets and adds 180 B of strict framing per compiler chain; v23
+  therefore counts 19 ordered openings and **360 B** of certificate framing.
+  Focused authenticated compiler tests are **14/0/0**; the post-integration
+  ordinary workspace is green at **volta-pcs 219/0/1** and **volta-proto
+  154/0/1**.  The scaled persisted proof remains byte-identical to resident.
+  This is exact local relation evidence only, not production or full-chain
+  credit.
 - **Production C6PC2 checkpoint.** Checkpoints `ca4a38e`, `16d6e58`,
   `ed7f950`, `b864d85`, `2580cd1`, `84c7341`, `04a8c69` and `0ef6b13`
   install semantic cache owners, the factorized per-layer compiler, the
@@ -109,16 +112,23 @@ This capsule is authoritative; read design §0.46 next.
   later 35-MB/20-s envelope is insufficient by itself to close C6.1; the
   final record and comparison column must report both and pass the stricter
   owner-restated limits.
+- **C6SPR11 local boundary.** Checkpoints `e30e3e5`, `a7e6cee`, `ede35a3`,
+  `165caa9` and `15f2f80` add compact C6SBA1/GKR decoding, a 309,192-B
+  compiler profile, role-separated C6CPX2 verification, strict six-chain
+  C6PA1+C6RSC4 assembly and a sequential four-chain production driver.  The
+  profile plus the retained 5,320,386-B extraction map is **5,629,578 B < 8
+  MB**.  Scaled role verification is byte/transcript/correlation identical;
+  production execution and GPU credit remain absent.
 - **Active hard stop.**
-  `C6SPR11_PRODUCTION_NATIVE_COMPONENTS_AND_WIRE_VERIFIER_REQUIRED`: the four
-  model/embedding native chains are still synthetic D14 diagnostics and the
-  production persisted entry point admits only compiler chains.  The compiler
-  verifier also shares the live PCG state and materializes the removed
-  63,994,751-B operation plan/D27 vector instead of consuming decoded proof
-  bytes under the 8-MB setup allocation.  Resume requires production 96/6
-  persisted/CUDA proofs, strict six-chain `C6PA1`+`C6RSC4` assembly, and a
-  role-separated compact-profile compiler verifier.  A wrapper+compiler-only
-  runner is forbidden as full-chain evidence.  No pod contact is authorized.
+  `C6SPR12_EXACT_T1_OWNER_EXPORT_REQUIRED`: the only exact T=100/Q=50 builder
+  is the diagnostic `c6_t1_census_record`; it uses mock streams and explicitly
+  drops its model proof, 96/6 output claims and workload.  It exports neither
+  the retained MultiOpen hidden-u owner nor the installed witness/runtime
+  bundle under the indivisible real/AES-PCG attempt.  Resume requires one
+  no-replay library owner export feeding the same typed objects to six roots,
+  the global blind join, all six native chains and role-separated verification.
+  A component-only or reconstructed runner is forbidden. No pod contact is
+  authorized.
 - **Owner GO.** The 2026-08-03 A100 full-e2e authorization remains valid after
   this local gate, but pod contact remains deferred until the local backend,
   C6PC2 and complete runner are green. It waives none of the clean-record,
@@ -140,6 +150,16 @@ This capsule is authoritative; read design §0.46 next.
   model/embed constructors and a setup-compliant decoded compiler verifier do
   not exist, so the exact runner cannot honestly be assembled.  No pod was
   contacted.
+
+- **2026-08-03 — C6SPR11 wire/native boundaries close locally; T1 owner export
+  obstructed.** `C6CPX2` supplies the four physical plan-fold targets needed
+  by the compact verifier. Profile v23 is **17,536,735 B** per certificate and
+  **102,280,102 B** setup plus first, still `credit:false`. Strict six-chain
+  assembly and the one-at-a-time 96/6 production driver are implemented, but
+  the exact T1 census owns and drops the required claims/workload under mock
+  PCG and cannot feed the real same-attempt runner. The final ordinary
+  workspace validation is green at **volta-pcs 219/0/1** and **volta-proto
+  154/0/1**. New hard stop is C6SPR12; no pod was contacted.
 
 - **2026-08-03 — C6SPR8 closed; production wrapper lifecycle reaches the next
   ordered hard stop.** Checkpoint `c81a4ff` binds both ordered manifest tapes

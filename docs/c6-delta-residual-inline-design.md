@@ -3188,6 +3188,69 @@ their completed differentials.  It forbids assigning full-chain credit to the
 currently available component join.  No pod contact is authorized at this
 stop.
 
+### 0.47 Compact wire verifier, six-chain assembly and exact-owner hard stop
+
+The C6SPR11 component boundary is now implemented locally.  `C6CPX2-v2`
+adds the four physical base-limb values of the two semantic plan folds to the
+strict compiler frame.  These 64 B per compiler chain are necessary public
+opening targets: the compact verifier cannot derive them from the two
+extension-field folds without materializing the removed response vector, and
+a digest substitute would prove a different relation.  The strict outer
+compiler frame is therefore **180 B** rather than 116 B.  Across two compiler
+chains profile v23 adds exactly 128 B to v22: the projected certificate is
+**17,536,735 B**, setup plus first certificate is **102,280,102 B**, and
+strict certificate headroom is **4,463,264 B**.  Setup, state, soundness and
+analytic times are unchanged; every value remains `credit:false`.
+
+The verifier now decodes `C6SBA1` and both sparse GKR layers from topology and
+terminal metadata only.  Its three D27 values come from the strict joint proof
+and are authenticated by the shared plan WHIR opening.  The role-separated
+compiler verifier consumes decoded `C6CPX2`, the typed compiler statement, a
+response-independent compact profile and verifier-role PCG state.  It retains
+neither the 63,994,751-B installed plan nor a D27 plan vector.  The compact
+profile is **309,192 B** including its strict header; together with the
+registered **5,320,386-B** extraction map the client allocation is
+**5,629,578 B < 8,000,000 B**.  At scaled geometry its roots, proof bytes,
+interaction, transcript ledger, correlation counts and terminal closure are
+identical to the former inline verifier even when commitment roots, rather
+than packed-vector digests, supply the compact oracle identity.
+
+The production boundary also has strict proof objects for model/embed
+`C6AWP1` and compiler `C6CPX2`, a canonical six-chain assembler in order
+`model0, model1, embed0, embed1, compiler0, compiler1`, one exact `C6RSC4`
+frame, and a nested decoder that checks every chain against its typed public
+statement.  A sequential four-chain driver reloads one durable coefficient
+owner at a time, checks a preregistered polynomial digest before proof effects,
+uses the two same-attempt real-PCG tapes and requires create-new persisted/CUDA
+children.  CPU, hybrid, mock-PCG and malformed geometry reject before the
+coefficient loader.  These are local construction and scaled/negative-test
+facts.  Focused authenticated compiler tests are **14/0/0**, and the final
+ordinary workspace is green at **volta-pcs 219/0/1** and **volta-proto
+154/0/1**.  No production proof or GPU timing exists.
+
+Attempting to connect these boundaries to the frozen T=100/Q=50 response
+reaches the next **HARD STOP**:
+`C6SPR12_EXACT_T1_OWNER_EXPORT_REQUIRED`.  The only exact T1 constructor is
+the local-only `c6_t1_census_record` binary.  It creates mock
+`CorrelationStream::new`/`VerifierCtx::new` state, retains the model output
+only inside the function and then explicitly drops `proof`, `output` and
+`workload`.  Consequently no production caller receives the exact ordered
+96/6 claims and keys, packed model/embed coefficient owners, installed
+plan/runtime/witness owners, or the retained `MultiOpenProof` needed by the
+same-attempt hidden-u/live-wrapper materializer.  Replaying the model or
+reconstructing those objects under another PCG allocation would break the
+registered owner and tape provenance.
+
+Resume requires one library-level production T1 owner export which, under the
+existing indivisible paired real/AES-PCG attempt, returns all of those typed
+owners without replay; feeds the same objects to live-root materialization,
+the global blind coordinator, four model/embed chains and two compiler chains;
+and then executes strict decode plus role-separated verification and complete
+resource accounting.  The export must preserve the frozen golden forward and
+96/6 order, and must not add wire, dummy claims, mock correlations or CPU
+fallback.  Only after its local negative/codec gates are green may the
+authorized A100 run occur.  No pod was contacted.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

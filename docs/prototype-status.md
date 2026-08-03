@@ -54,6 +54,25 @@ This capsule is authoritative; read design §0.42 next.
   the exact runner must join wrapper, compiler and real/AES-PCG allocation and
   report RSS, GPU, spill, I/O and synchronization separately. No pod may be
   contacted before those local gates are green.
+- **Production C6PC2 checkpoint.** Checkpoints `ca4a38e`, `16d6e58`,
+  `ed7f950`, `b864d85`, `2580cd1`, `84c7341`, `04a8c69` and `0ef6b13`
+  install semantic cache owners, the factorized per-layer compiler, the
+  streamed first round, authenticated 24-round prover/verifier typestates,
+  strict pre-point C6PS1 fold ownership, canonical post-point append folds
+  and terminal assembly. The construction never materializes D24: its
+  post-first-challenge prover state is 1 GiB of coefficient+witness tables
+  and the verifier retains 512 MiB of coefficients. The strict assembly is
+  executable at exactly **3,506 B + 304 B / 104 correlations per tape / 64
+  pending claims**; local C6PC2 tests are **11/0/0** and `cuda,c6-trace` test
+  targets compile. This is local implementation evidence, not a full-chain,
+  timing, memory or hardware record.
+- **Next local seam.** The exact runner must first move the existing blind
+  C6RSC3 and C6HUB2 prover/verifier loops behind their already registered
+  step-wise arithmetic states. Their current blind entry points draw private
+  per-component challenges and therefore cannot be substituted into the
+  response-global coordinator. This is an implementation seam, not authority
+  to use the clear states, alter either codec or claim component evidence as
+  an e2e result.
 - **Owner GO.** The 2026-08-03 A100 full-e2e authorization remains valid after
   this local gate, but pod contact remains deferred until the local backend,
   C6PC2 and complete runner are green. It waives none of the clean-record,

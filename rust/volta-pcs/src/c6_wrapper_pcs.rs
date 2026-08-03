@@ -29,7 +29,7 @@ use crate::x4::frame_v4::{
 };
 use crate::x4::merkle_v4::{
     verify_fold_round_packed_opening_v4, verify_initial_packed_opening_v4, CohortIdentityV4,
-    CohortTreeV4, CohortVerifierConfigV4,
+    CohortTreeV4, CohortVerifierConfigV4, DenseOuterNodeCacheV4,
 };
 use crate::x4::ntt::{
     encode_rate_eighth, evaluate_multilinear_coefficients, fold_codeword, fold_coefficients,
@@ -87,6 +87,14 @@ impl C6WrapperPcsError {
 
     fn frame(context: &'static str, error: impl fmt::Debug) -> Self {
         Self(format!("{context}: {error:?}"))
+    }
+
+    pub(crate) fn external(context: &'static str, error: impl fmt::Debug) -> Self {
+        Self(format!("{context}: {error:?}"))
+    }
+
+    pub(crate) fn external_message(message: impl Into<String>) -> Self {
+        Self(message.into())
     }
 }
 
@@ -694,6 +702,36 @@ impl C6CommittedWrapperCohort {
         &self.commitment
     }
 
+    /// Consume only the scaled resident reference owner into the persisted
+    /// differential. Production geometry must enter through the separately
+    /// gated CUDA constructor and is rejected here before any file is made.
+    pub(crate) fn into_scaled_persisted_parts(self) -> Result<C6ScaledPersistedCohortParts> {
+        if self.commitment.spec.encoded_domain_log2()? > 16 {
+            return Err(C6WrapperPcsError::new(
+                "C6 scaled persisted adapter rejects production geometry",
+            ));
+        }
+        let tree = self.tree.into_lifecycle_parts();
+        if tree.config != self.commitment.config
+            || tree.slot_symbols.len() != self.codewords.len()
+            || tree
+                .slot_symbols
+                .iter()
+                .zip(&self.codewords)
+                .any(|(tree_slot, codeword)| tree_slot.as_ref() != Some(codeword))
+        {
+            return Err(C6WrapperPcsError::new(
+                "C6 resident tree differs from its persisted source owner",
+            ));
+        }
+        Ok(C6ScaledPersistedCohortParts {
+            commitment: self.commitment,
+            coefficients: self.coefficients,
+            codewords: self.codewords,
+            outer_cache: tree.outer_cache,
+        })
+    }
+
     fn combine(&self, claim: &C6WrapperOpeningClaim) -> Result<CombinedCohort> {
         validate_claim(&self.commitment, claim)?;
         let coefficient_len = self.commitment.spec.coefficient_len()?;
@@ -724,6 +762,13 @@ impl C6CommittedWrapperCohort {
             claimed_value: claim.value,
         })
     }
+}
+
+pub(crate) struct C6ScaledPersistedCohortParts {
+    pub(crate) commitment: C6WrapperCommitment,
+    pub(crate) coefficients: Vec<Vec<Fp2>>,
+    pub(crate) codewords: Vec<Vec<Fp2>>,
+    pub(crate) outer_cache: DenseOuterNodeCacheV4,
 }
 
 /// Build one response-local cohort with every capacity slot present.
@@ -2524,6 +2569,7 @@ mod tests {
     use super::*;
     use std::array;
 
+    use crate::c6_wrapper_persisted::persist_scaled_c6_wrapper_cohort_reference;
     use crate::x4::ntt::evaluate_multilinear_table;
 
     fn symbol(value: u64) -> Fp2 {
@@ -2706,6 +2752,59 @@ mod tests {
             .collect::<Vec<_>>();
         let commitments = cohorts.iter().map(|cohort| cohort.commitment.clone()).collect();
         (cohorts, commitments, claims)
+    }
+
+    #[test]
+    fn scaled_persisted_owner_matches_resident_root_and_opening_byte_for_byte() {
+        let (mut cohorts, _, _) = fixture();
+        let cohort = cohorts.remove(0);
+        let commitment = cohort.commitment.clone();
+        let draw_bound = 1u64 << (commitment.config.outer_depth() - 1);
+        let draws = (0..C6_WRAPPER_QUERY_COUNT)
+            .map(|index| (3 * index as u64 + 1) % draw_bound)
+            .collect::<Vec<_>>();
+        let touched = all_slots(commitment.spec.slot_count);
+        let reference = cohort.tree.open_initial(&draws, &touched).unwrap();
+        let root = std::env::temp_dir().join(format!(
+            "volta-c6-wrapper-persisted-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let persisted =
+            persist_scaled_c6_wrapper_cohort_reference(cohort, &root, [0x51; 32], 7).unwrap();
+        let (opening, traffic) = persisted.open_initial(&draws).unwrap();
+        assert_eq!(persisted.commitment(), &commitment);
+        assert_eq!(opening, reference);
+        assert_eq!(persisted.session_digest(), [0x51; 32]);
+        assert_eq!(persisted.oracle_ordinal(), 7);
+        assert_eq!(persisted.metrics().resident_codeword_copies_after_seal, 0);
+        assert_eq!(persisted.metrics().files_created, 3);
+        assert_eq!(persisted.metrics().fsync_count, 4);
+        assert!(traffic.oracle_file_bytes_read > 0);
+        verify_initial_packed_opening_v4(
+            commitment.root,
+            &commitment.config,
+            &draws,
+            &touched,
+            &opening,
+        )
+        .unwrap();
+        let duplicate =
+            commit_c6_wrapper_cohort(statement(), scaled_specs()[0], slots(scaled_specs()[0]))
+                .unwrap();
+        assert!(
+            persist_scaled_c6_wrapper_cohort_reference(duplicate, &root, [0x51; 32], 7,).is_err()
+        );
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(persisted.directory().join("oracle.fp2"))
+            .unwrap()
+            .set_len(0)
+            .unwrap();
+        assert!(persisted.open_initial(&draws).is_err());
+        drop(persisted);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     fn assert_rejects(

@@ -1,0 +1,223 @@
+//! Create-new persisted opening owners for the C6 wrapper PCS.
+//!
+//! The first checkpoint is deliberately scaled and consumes the resident
+//! reference owner. Production geometry has a separate CUDA constructor and
+//! cannot enter through this module's reference adapter.
+
+use std::fs::{self, File, OpenOptions};
+use std::io::{BufWriter, Write};
+use std::path::{Path, PathBuf};
+
+use volta_field::Fp2;
+
+use crate::c6_wrapper_pcs::{
+    C6CommittedWrapperCohort, C6WrapperCommitment, C6WrapperDigest, C6WrapperPcsError,
+};
+use crate::x4::frame_v4::InitialOpeningGroupV4;
+use crate::x4::merkle_v4::DenseOuterNodeCacheV4;
+use crate::x4::persisted_v4::{
+    write_canonical_fp2_slice_v4, PersistedCohortOpeningV4, PersistedOpeningTrafficV4,
+    PersistedOracleBindingV4,
+};
+
+const MANIFEST_MAGIC: [u8; 8] = *b"C6WSP1\0\0";
+const MANIFEST_VERSION: u16 = 1;
+const MANIFEST_DOMAIN: &str = "volta-zk/c6/wrapper-persisted-manifest/v1";
+
+type Result<T> = std::result::Result<T, C6WrapperPcsError>;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct C6PersistedWrapperMetrics {
+    pub coefficient_bytes_written: u64,
+    pub oracle_bytes_written: u64,
+    pub files_created: u64,
+    pub fsync_count: u64,
+    pub resident_codeword_copies_after_seal: u64,
+}
+
+#[derive(Debug)]
+pub struct C6PersistedWrapperCohort {
+    commitment: C6WrapperCommitment,
+    session_digest: C6WrapperDigest,
+    oracle_ordinal: u64,
+    directory: PathBuf,
+    opening: PersistedCohortOpeningV4<DenseOuterNodeCacheV4>,
+    metrics: C6PersistedWrapperMetrics,
+}
+
+impl C6PersistedWrapperCohort {
+    pub fn commitment(&self) -> &C6WrapperCommitment {
+        &self.commitment
+    }
+
+    pub fn session_digest(&self) -> C6WrapperDigest {
+        self.session_digest
+    }
+
+    pub fn oracle_ordinal(&self) -> u64 {
+        self.oracle_ordinal
+    }
+
+    pub fn directory(&self) -> &Path {
+        &self.directory
+    }
+
+    pub fn metrics(&self) -> C6PersistedWrapperMetrics {
+        self.metrics
+    }
+
+    pub fn open_initial(
+        &self,
+        query_draws: &[u64],
+    ) -> Result<(InitialOpeningGroupV4, PersistedOpeningTrafficV4)> {
+        let touched = (0..self.commitment.spec.slot_count).collect::<Vec<_>>();
+        self.opening
+            .open_initial(query_draws, &touched)
+            .map_err(|error| C6WrapperPcsError::external("C6 persisted initial opening", error))
+    }
+}
+
+/// Consume a scaled resident cohort and seal its canonical coefficient and
+/// oracle files. Existing directories/files fail closed; production geometry
+/// is rejected by `into_scaled_persisted_parts` before this function writes.
+pub fn persist_scaled_c6_wrapper_cohort_reference(
+    cohort: C6CommittedWrapperCohort,
+    root: impl AsRef<Path>,
+    session_digest: C6WrapperDigest,
+    oracle_ordinal: u64,
+) -> Result<C6PersistedWrapperCohort> {
+    if session_digest == [0; 32] {
+        return Err(C6WrapperPcsError::external_message(
+            "zero C6 persisted wrapper session digest",
+        ));
+    }
+    let parts = cohort.into_scaled_persisted_parts()?;
+    let directory = root.as_ref().join(format!(
+        "cohort-{:08x}-ordinal-{oracle_ordinal:04}",
+        parts.commitment.spec.cohort_id
+    ));
+    fs::create_dir(&directory)
+        .map_err(|error| C6WrapperPcsError::external("create C6 persisted cohort", error))?;
+
+    let coefficient_path = directory.join("coefficients.fp2");
+    let oracle_path = directory.join("oracle.fp2");
+    let manifest_path = directory.join("manifest.c6wsp1");
+    let coefficient_bytes = write_slot_file_create_new(&coefficient_path, &parts.coefficients)?;
+    let oracle_bytes = write_slot_file_create_new(&oracle_path, &parts.codewords)?;
+
+    let manifest = encode_manifest(
+        &parts.commitment,
+        session_digest,
+        oracle_ordinal,
+        coefficient_bytes,
+        oracle_bytes,
+    )?;
+    write_bytes_create_new(&manifest_path, &manifest)?;
+    File::open(&directory)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| C6WrapperPcsError::external("fsync C6 persisted directory", error))?;
+
+    let binding = PersistedOracleBindingV4::new(
+        parts.commitment.statement_digest,
+        session_digest,
+        parts.commitment.root,
+    );
+    let opening = PersistedCohortOpeningV4::load(
+        &oracle_path,
+        parts.commitment.config.clone(),
+        parts.outer_cache,
+        binding,
+        binding,
+    )
+    .map_err(|error| C6WrapperPcsError::external("load C6 persisted opening", error))?;
+    if opening.root() != parts.commitment.root {
+        return Err(C6WrapperPcsError::external_message("C6 persisted opening root changed"));
+    }
+    Ok(C6PersistedWrapperCohort {
+        commitment: parts.commitment,
+        session_digest,
+        oracle_ordinal,
+        directory,
+        opening,
+        metrics: C6PersistedWrapperMetrics {
+            coefficient_bytes_written: coefficient_bytes,
+            oracle_bytes_written: oracle_bytes,
+            files_created: 3,
+            fsync_count: 4,
+            resident_codeword_copies_after_seal: 0,
+        },
+    })
+}
+
+fn write_slot_file_create_new(path: &Path, slots: &[Vec<Fp2>]) -> Result<u64> {
+    let file = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(path)
+        .map_err(|error| C6WrapperPcsError::external("create C6 persisted slot file", error))?;
+    let mut writer = BufWriter::with_capacity(8 * 1024 * 1024, file);
+    let mut symbols = 0u64;
+    for slot in slots {
+        write_canonical_fp2_slice_v4(&mut writer, slot)
+            .map_err(|error| C6WrapperPcsError::external("write C6 persisted slot", error))?;
+        symbols = symbols
+            .checked_add(
+                u64::try_from(slot.len()).map_err(|error| {
+                    C6WrapperPcsError::external("count C6 persisted slot", error)
+                })?,
+            )
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 persisted symbol overflow"))?;
+    }
+    writer
+        .flush()
+        .map_err(|error| C6WrapperPcsError::external("flush C6 persisted slot", error))?;
+    writer
+        .get_ref()
+        .sync_all()
+        .map_err(|error| C6WrapperPcsError::external("fsync C6 persisted slot", error))?;
+    symbols
+        .checked_mul(16)
+        .ok_or_else(|| C6WrapperPcsError::external_message("C6 persisted byte overflow"))
+}
+
+fn write_bytes_create_new(path: &Path, bytes: &[u8]) -> Result<()> {
+    let mut file = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(path)
+        .map_err(|error| C6WrapperPcsError::external("create C6 persisted manifest", error))?;
+    file.write_all(bytes)
+        .map_err(|error| C6WrapperPcsError::external("write C6 persisted manifest", error))?;
+    file.sync_all()
+        .map_err(|error| C6WrapperPcsError::external("fsync C6 persisted manifest", error))
+}
+
+fn encode_manifest(
+    commitment: &C6WrapperCommitment,
+    session_digest: C6WrapperDigest,
+    oracle_ordinal: u64,
+    coefficient_bytes: u64,
+    oracle_bytes: u64,
+) -> Result<Vec<u8>> {
+    let mut bytes = Vec::with_capacity(172);
+    bytes.extend_from_slice(&MANIFEST_MAGIC);
+    bytes.extend_from_slice(&MANIFEST_VERSION.to_le_bytes());
+    bytes.extend_from_slice(&0u16.to_le_bytes());
+    bytes.extend_from_slice(&session_digest);
+    bytes.extend_from_slice(&commitment.statement_digest);
+    bytes.extend_from_slice(&commitment.root);
+    bytes.extend_from_slice(&commitment.spec.cohort_id.to_le_bytes());
+    bytes.push(commitment.spec.oracle_kind as u8);
+    bytes.push(commitment.spec.payload_log2);
+    bytes.extend_from_slice(&commitment.spec.slot_count.to_le_bytes());
+    bytes.extend_from_slice(&oracle_ordinal.to_le_bytes());
+    bytes.extend_from_slice(&coefficient_bytes.to_le_bytes());
+    bytes.extend_from_slice(&oracle_bytes.to_le_bytes());
+    let mut hasher = blake3::Hasher::new_derive_key(MANIFEST_DOMAIN);
+    hasher.update(&bytes);
+    bytes.extend_from_slice(hasher.finalize().as_bytes());
+    if bytes.len() != 172 {
+        return Err(C6WrapperPcsError::external_message("C6 persisted manifest length changed"));
+    }
+    Ok(bytes)
+}

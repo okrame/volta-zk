@@ -32,6 +32,7 @@ pub mod c6_persistent_cache_blind;
 pub mod c6_residual_sumcheck;
 pub mod c6_residual_sumcheck_blind;
 pub mod c6_wrapper_pcs;
+pub mod c6_wrapper_persisted;
 pub mod layer_layout;
 pub mod ligero;
 pub mod merkle;

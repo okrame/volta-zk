@@ -15,11 +15,14 @@ use volta_mac::{
 };
 use volta_proto::prod_check::ProdProof;
 
+use crate::batch::BlockClaim;
 use crate::c61_public_compression::{C61NativeChainId, C61NativeComponent, C61_TERMINAL_CLAIMS};
 use crate::c6_residual_sumcheck::{C6_RESIDUAL_AUXILIARY_ROUNDS, C6_RESIDUAL_LEAF_ROUNDS};
 
 pub const C61_MODEL_OPENING_TARGETS: usize = 96;
 pub const C61_EMBEDDING_OPENING_TARGETS: usize = 6;
+pub const C61_MODEL_POLYNOMIAL_LOG2: u8 = 28;
+pub const C61_EMBEDDING_POLYNOMIAL_LOG2: u8 = 27;
 pub const C61_COMPILER_TERMINAL_TARGETS: usize = C61_TERMINAL_CLAIMS;
 pub const C61_TERMINAL_FUNCTIONAL_RELATION_LOG2: u8 = 28;
 pub const C61_TERMINAL_FUNCTIONAL_PROOF_REPETITIONS: usize = 2;
@@ -1029,6 +1032,99 @@ impl C61CommittedOpeningStatement {
         }
         *hasher.finalize().as_bytes()
     }
+
+    fn from_block_claims(
+        component: C61NativeComponent,
+        commitment: C61NativeCommitmentDescriptor,
+        claims: &[BlockClaim],
+    ) -> Result<Self> {
+        let expected = match component {
+            C61NativeComponent::Model => C61_MODEL_OPENING_TARGETS,
+            C61NativeComponent::Embedding => C61_EMBEDDING_OPENING_TARGETS,
+            C61NativeComponent::Compiler => {
+                return Err(C61TerminalFunctionalStatementError::new(
+                    "C6.1 block-claim bridge does not admit compiler chains",
+                ));
+            }
+        };
+        commitment.validate()?;
+        if claims.len() != expected {
+            return Err(C61TerminalFunctionalStatementError::new(
+                "C6.1 block-claim bridge has the wrong target census",
+            ));
+        }
+        let dimension = usize::from(commitment.polynomial_domain_log2);
+        if dimension >= usize::BITS as usize {
+            return Err(C61TerminalFunctionalStatementError::new(
+                "C6.1 block-claim commitment exceeds the host index width",
+            ));
+        }
+        let domain_len = 1usize << dimension;
+        let mut ordered_points = Vec::with_capacity(claims.len());
+        for claim in claims {
+            let block_variables = claim.point.len();
+            if block_variables > dimension || block_variables >= usize::BITS as usize {
+                return Err(C61TerminalFunctionalStatementError::new(
+                    "C6.1 block claim exceeds its committed polynomial dimension",
+                ));
+            }
+            let block_len = 1usize << block_variables;
+            let block_end = claim.offset.checked_add(block_len).ok_or_else(|| {
+                C61TerminalFunctionalStatementError::new("C6.1 block claim range overflows")
+            })?;
+            if claim.offset % block_len != 0 || block_end > domain_len {
+                return Err(C61TerminalFunctionalStatementError::new(
+                    "C6.1 block claim is unaligned or outside its committed polynomial",
+                ));
+            }
+            let block_index = claim.offset >> block_variables;
+            let mut point = claim.point.clone();
+            point.extend((0..dimension - block_variables).map(|bit| {
+                if (block_index >> bit) & 1 == 1 {
+                    Fp2::ONE
+                } else {
+                    Fp2::ZERO
+                }
+            }));
+            ordered_points.push(point);
+        }
+        let statement = Self { commitment, ordered_points };
+        statement.validate(expected)?;
+        Ok(statement)
+    }
+}
+
+/// Convert the exact ordered Ligero-era model or embedding `BlockClaim`s into
+/// the global MLE points consumed by the production native chain.  This is a
+/// statement bridge only: it neither constructs a proof nor permits a
+/// synthetic point schedule.
+pub fn build_c61_production_model_embedding_public_statement(
+    id: C61NativeChainId,
+    commitment: C61NativeCommitmentDescriptor,
+    claims: &[BlockClaim],
+) -> Result<C61TypedNativeChainPublicStatement> {
+    let expected_dimension = match id.component {
+        C61NativeComponent::Model => C61_MODEL_POLYNOMIAL_LOG2,
+        C61NativeComponent::Embedding => C61_EMBEDDING_POLYNOMIAL_LOG2,
+        C61NativeComponent::Compiler => {
+            return Err(C61TerminalFunctionalStatementError::new(
+                "C6.1 model/embedding statement bridge rejects compiler chains",
+            ));
+        }
+    };
+    if commitment.polynomial_domain_log2 != expected_dimension {
+        return Err(C61TerminalFunctionalStatementError::new(
+            "C6.1 production model/embedding polynomial dimension is noncanonical",
+        ));
+    }
+    let openings =
+        C61CommittedOpeningStatement::from_block_claims(id.component, commitment, claims)?;
+    let relation = match id.component {
+        C61NativeComponent::Model => C61TypedNativeRelationStatement::Model(openings),
+        C61NativeComponent::Embedding => C61TypedNativeRelationStatement::Embedding(openings),
+        C61NativeComponent::Compiler => unreachable!("compiler rejected above"),
+    };
+    C61TypedNativeChainPublicStatement::new(id, relation)
 }
 
 /// Complete public input of each of the two compiler chains.  The two chains
@@ -1477,6 +1573,22 @@ mod tests {
         (provider, verifier)
     }
 
+    fn block_claims(count: usize, dimension: u8) -> Vec<BlockClaim> {
+        (0..count)
+            .map(|index| {
+                let block_variables = 4usize;
+                let block = index * 3;
+                assert!(block < (1usize << (usize::from(dimension) - block_variables)));
+                BlockClaim {
+                    offset: block << block_variables,
+                    point: (0..block_variables)
+                        .map(|coordinate| fp2(10_000 + (index * 17 + coordinate) as u64))
+                        .collect(),
+                }
+            })
+            .collect()
+    }
+
     #[test]
     fn all_six_role_typed_statements_bind_exact_censuses_without_hashing_keys() {
         for (component, relation, values) in [
@@ -1533,6 +1645,75 @@ mod tests {
                 assert_eq!(changed_verifier.public().digest(), public.digest());
             }
         }
+    }
+
+    #[test]
+    fn production_model_embedding_bridge_preserves_exact_block_claim_order() {
+        for (component, dimension, count, marker) in [
+            (C61NativeComponent::Model, C61_MODEL_POLYNOMIAL_LOG2, C61_MODEL_OPENING_TARGETS, 71),
+            (
+                C61NativeComponent::Embedding,
+                C61_EMBEDDING_POLYNOMIAL_LOG2,
+                C61_EMBEDDING_OPENING_TARGETS,
+                81,
+            ),
+        ] {
+            let claims = block_claims(count, dimension);
+            let id = C61NativeChainId { component, repetition: 1 };
+            let public = build_c61_production_model_embedding_public_statement(
+                id,
+                commitment(marker, dimension),
+                &claims,
+            )
+            .unwrap();
+            let openings = match public.relation() {
+                C61TypedNativeRelationStatement::Model(openings)
+                | C61TypedNativeRelationStatement::Embedding(openings) => openings,
+                C61TypedNativeRelationStatement::Compiler(_) => panic!("unexpected compiler"),
+            };
+            assert_eq!(openings.ordered_points.len(), count);
+            for (claim, point) in claims.iter().zip(&openings.ordered_points) {
+                assert_eq!(point, &claim.global_point(usize::from(dimension)));
+            }
+
+            let mut reordered = claims.clone();
+            reordered.swap(0, 1);
+            let reordered = build_c61_production_model_embedding_public_statement(
+                id,
+                commitment(marker, dimension),
+                &reordered,
+            )
+            .unwrap();
+            assert_ne!(public.digest(), reordered.digest());
+
+            let mut unaligned = claims.clone();
+            unaligned[0].offset += 1;
+            assert!(build_c61_production_model_embedding_public_statement(
+                id,
+                commitment(marker, dimension),
+                &unaligned,
+            )
+            .is_err());
+            assert!(build_c61_production_model_embedding_public_statement(
+                id,
+                commitment(marker, dimension - 1),
+                &claims,
+            )
+            .is_err());
+            assert!(build_c61_production_model_embedding_public_statement(
+                id,
+                commitment(marker, dimension),
+                &claims[..count - 1],
+            )
+            .is_err());
+        }
+
+        assert!(build_c61_production_model_embedding_public_statement(
+            C61NativeChainId { component: C61NativeComponent::Compiler, repetition: 0 },
+            commitment(91, C61_MODEL_POLYNOMIAL_LOG2),
+            &block_claims(C61_MODEL_OPENING_TARGETS, C61_MODEL_POLYNOMIAL_LOG2),
+        )
+        .is_err());
     }
 
     #[test]

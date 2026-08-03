@@ -77,7 +77,8 @@ pub use c61_public_compression::{
 };
 pub use c61_terminal_functional::{
     authenticate_c61_sparse_response_targets_prover,
-    authenticate_c61_sparse_response_targets_verifier, c61_sparse_plan_layout_digest,
+    authenticate_c61_sparse_response_targets_verifier,
+    build_c61_production_model_embedding_public_statement, c61_sparse_plan_layout_digest,
     c61_sparse_response_layout_digest, finish_c61_sparse_rational_blind_physical_terminal_prover,
     finish_c61_sparse_rational_blind_physical_terminal_verifier,
     finish_c61_sparse_rational_blind_terminal_prover,
@@ -91,7 +92,8 @@ pub use c61_terminal_functional::{
     C61TerminalFunctionalCompilerBinding, C61TerminalFunctionalCompilerStatement,
     C61TerminalFunctionalStatementError, C61TypedNativeBackendVerifier,
     C61TypedNativeChainPublicStatement, C61TypedNativeRelationStatement,
-    C61_COMPILER_TERMINAL_TARGETS, C61_EMBEDDING_OPENING_TARGETS, C61_MODEL_OPENING_TARGETS,
+    C61_COMPILER_TERMINAL_TARGETS, C61_EMBEDDING_OPENING_TARGETS, C61_EMBEDDING_POLYNOMIAL_LOG2,
+    C61_MODEL_OPENING_TARGETS, C61_MODEL_POLYNOMIAL_LOG2,
     C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_DIGEST_BYTES,
     C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_FRAMING_BYTES,
     C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_HEADER_BYTES, C61_SPARSE_RATIONAL_BLIND_ARITHMETIC_MAGIC,

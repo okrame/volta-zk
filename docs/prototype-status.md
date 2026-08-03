@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — PAIRED REAL-PCG TOKEN GREEN / A100 OWNER GO / PRODUCTION WRAPPER PCS BACKEND HARD STOP)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — C6SPR9 PERSISTED/CUDA CONSTRUCTION OWNER-AUTHORIZED / LOCAL IMPLEMENTATION / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §0.41 next.
+This capsule is authoritative; read design §0.42 next.
 
 - **Phase/relation.** C6.1 response-local public compression. The 64 C6RSC3
   values are challenge-dependent and exactly factor through two D25 reverse
@@ -30,7 +30,9 @@ This capsule is authoritative; read design §0.41 next.
 - **Screens.** Certificate **17,534,807 B**, setup **84,743,367 B**, state
   **2,277,715,552 B**, provider/verifier **14.9087128542 / 4.965672390 s** and
   soundness **102.587833363526... bits** remain `credit:false`.
-- **HARD STOP.** `C6SPR9_PRODUCTION_WRAPPER_PCS_BACKEND_REQUIRED`. The
+- **Authorized construction gate.** On 2026-08-03 the product owner explicitly
+  authorized resuming `C6SPR9_PRODUCTION_WRAPPER_PCS_BACKEND_REQUIRED` through
+  the persisted/CUDA construction with small commits on `main`. The
   same-attempt root materializer still calls the resident CPU
   `commit_c6_wrapper_cohort*` path and retains all six
   `C6CommittedWrapperCohort`s. That implementation retains **91,536,490,496
@@ -39,8 +41,10 @@ This capsule is authoritative; read design §0.41 next.
   **188,810,788,864 B (175.84375 GiB)** before Merkle outer caches, input
   witnesses/masks, allocator overhead or fold trees. It has no production
   CUDA/out-of-core selector, so neither the 64-GiB C6SPX1 admission nor an
-  A100 alone makes the complete flow eligible. No pod was contacted.
-- **Resume.** Implement one resource-aware production wrapper backend which
+  A100 alone makes the complete flow eligible. This is the active local
+  implementation gate; no production admission exists yet and no pod may be
+  contacted.
+- **Construction.** Implement one resource-aware production wrapper backend which
   derives the same six roots and both strict `C6LNK2` chains from the exact
   live owners without retaining duplicate codewords or all resident cohorts.
   It must persist/recompute or keep GPU-resident authenticated opening sources,
@@ -50,8 +54,9 @@ This capsule is authoritative; read design §0.41 next.
   production 24-round streaming `C6PC2` compiler remains the next separate
   mandatory gate after this earlier root/backend obstruction.
 - **Owner GO.** The 2026-08-03 A100 full-e2e authorization remains valid after
-  this local gate; it waives none of the clean-record, real/AES-PCG,
-  fail-closed or no-dummy requirements.
+  this local gate, but pod contact remains deferred until the local backend,
+  C6PC2 and complete runner are green. It waives none of the clean-record,
+  real/AES-PCG, fail-closed or no-dummy requirements.
 
 - **2026-08-03 — C6SPR8 closed; production wrapper lifecycle reaches the next
   ordered hard stop.** Checkpoint `c81a4ff` binds both ordered manifest tapes

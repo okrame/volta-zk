@@ -2975,6 +2975,32 @@ must be fixed before the response-wide coordinator releases the cache and
 residual challenges. No production run, comparison-table update or credit is
 admissible at this stop. No pod was contacted.
 
+### 0.42 Owner unblock and persisted/CUDA lifecycle freeze
+
+On 2026-08-03 the product owner explicitly authorized resuming C6SPR9 through
+the persisted/CUDA construction with small commits on `main`. This unblocks
+local implementation only. Pod contact remains deferred until the production
+wrapper backend, the separately required 24-round C6PC2 compiler and the exact
+runner are locally green.
+
+The selected lifecycle retains at most one cohort's source material during
+commit. Its coefficient and rate-eight oracle files are create-new and bound
+to the response, statement, cohort identity, slot descriptors and committed
+root. CUDA produces the production root and compact upper Merkle cache; the
+oracle and cache answer later verifier-derived openings without rebuilding or
+retaining the full resident tree. Each repetition streams the six persisted
+cohorts into one active aggregate in descending-domain order, persists every
+fold oracle before releasing its predecessor, fixes both complete root chains
+before query draws, and then opens only the required initial/fold frontiers.
+
+The implementation order is frozen as: scaled resident-to-persisted
+root/opening differential; scaled complete two-chain byte/transcript
+differential; production CUDA selector and resource accounting; production
+C6PC2; exact runner. Create-new failure, binding mismatch, unavailable CUDA,
+truncated/noncanonical files and any root/transcript difference fail closed.
+No CPU production fallback, provider-authored root, changed relation or new
+wire field is authorized.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

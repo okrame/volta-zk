@@ -34,8 +34,8 @@ use std::fmt;
 use std::sync::{Arc, Mutex};
 use volta_field::{Fp, Fp2, FpStream};
 use volta_mac::{
-    C6DecodedInstanceExtractionPlan, C6InstalledOperationKind, C6InstalledOperationPlan,
-    C6OperationPlanInstanceIdentity, C6OperationPlanTerminalMetadata,
+    C6CanonicalTargetProfile, C6DecodedInstanceExtractionPlan, C6InstalledOperationKind,
+    C6InstalledOperationPlan, C6OperationPlanInstanceIdentity, C6OperationPlanTerminalMetadata,
     C6OperationPlanTopologyIdentity, C6RuntimeInstanceValues, CorrScheduleAudit, CorrScheduleKind,
     CorrScheduleRole, ProverAuthed, Transcript, VerifierKey,
 };
@@ -60,6 +60,8 @@ const PROGRAM_DOMAIN: &[u8] = b"volta-zk/c6/residual-program/v1";
 const PREQUERY_DOMAIN: &[u8] = b"volta-zk/c6/residual-prequery/v1";
 const RESPONSE_DOMAIN: &[u8] = b"volta-zk/c6/residual-response/v1";
 const COMPILED_LINEAR_FORM_DOMAIN: &[u8] = b"volta-zk/c6/compiled-linear-form/v1";
+const COMPILED_NATIVE_FUNCTIONAL_DOMAIN: &str =
+    "volta-zk/c6.1/compiled-native-target-functional/v1";
 const COMPILED_COEFFICIENT_DOMAIN: &[u8] = b"volta-zk/c6/compiled-coefficients/v1";
 const PAIRED_COMPILED_COEFFICIENT_DOMAIN: &[u8] = b"volta-zk/c6/paired-compiled-coefficients/v2";
 const PAIRED_COEFFICIENT_STREAM_DOMAINS: [u64; 2] =
@@ -10220,6 +10222,231 @@ pub struct C6CompiledLinearResidual {
     linear_form_digest: C6ResidualDigest,
 }
 
+/// Exact reverse-compiled linear functional over the generic native target
+/// profile. It is response-local scratch: only its digest is statement data;
+/// neither the dense reverse workspace nor the source coefficients cross the
+/// setup or certificate wire.
+pub struct C6CompiledNativeTargetFunctional {
+    operation_plan_artifact_digest: C6ResidualDigest,
+    topology: C6OperationPlanTopologyIdentity,
+    instance: C6OperationPlanInstanceIdentity,
+    inference_profile_digest: C6ResidualDigest,
+    leaf_coefficients: Vec<Fp2>,
+    public_plaintext: Fp2,
+    functional_digest: C6ResidualDigest,
+}
+
+impl fmt::Debug for C6CompiledNativeTargetFunctional {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("C6CompiledNativeTargetFunctional")
+            .field("operation_plan_artifact_digest", &self.operation_plan_artifact_digest)
+            .field("topology", &self.topology)
+            .field("instance", &self.instance)
+            .field("inference_profile_digest", &self.inference_profile_digest)
+            .field("leaf_coefficients", &self.leaf_coefficients.len())
+            .field("public_plaintext", &self.public_plaintext)
+            .field("functional_digest", &self.functional_digest)
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6NativeTargetProverFold {
+    pub functional_digest: C6ResidualDigest,
+    pub coordinate: u8,
+    pub value: ProverAuthed,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6NativeTargetVerifierFold {
+    pub functional_digest: C6ResidualDigest,
+    pub coordinate: u8,
+    pub key: VerifierKey,
+}
+
+impl C6CompiledNativeTargetFunctional {
+    pub fn compile(
+        operation_plan: &C6InstalledOperationPlan,
+        extraction: &C6DecodedInstanceExtractionPlan,
+        runtime: &C6RuntimeInstanceValues,
+        profile: &C6CanonicalTargetProfile,
+        claim_weights: &[Vec<Fp2>],
+        cohort_weights: &[Fp2],
+    ) -> C6ResidualResult<Self> {
+        let topology = operation_plan.topology();
+        if profile.topology_digest != topology.topology_digest
+            || profile.source_schedule_digest != topology.source_schedule_digest
+            || profile.inference_profile_digest == [0; 32]
+            || profile.cohorts.len() < 2
+            || claim_weights.len() != profile.cohorts.len()
+            || cohort_weights.len() != profile.cohorts.len()
+        {
+            return Err(C6ResidualError::new(
+                "C6NBR1 native functional profile or cohort census differs",
+            ));
+        }
+        let mut seen_nodes = BTreeSet::new();
+        for (cohort, weights) in profile.cohorts.iter().zip(claim_weights) {
+            if weights.len() != cohort.canonical_nodes.len() {
+                return Err(C6ResidualError::new(
+                    "C6NBR1 claim weights differ from their target cohort",
+                ));
+            }
+            for &node in &cohort.canonical_nodes {
+                if node >= topology.canonical_node_count || !seen_nodes.insert(node) {
+                    return Err(C6ResidualError::new(
+                        "C6NBR1 native functional target node is invalid",
+                    ));
+                }
+            }
+        }
+
+        let reverse = reverse_installed_linear_form(
+            operation_plan,
+            extraction,
+            runtime,
+            true,
+            |node_coefficients| {
+                for ((cohort, weights), &cohort_weight) in
+                    profile.cohorts.iter().zip(claim_weights).zip(cohort_weights)
+                {
+                    for (&node, &weight) in cohort.canonical_nodes.iter().zip(weights) {
+                        let coefficient =
+                            node_coefficients.get_mut(node as usize).ok_or_else(|| {
+                                C6ResidualError::new(
+                                    "C6NBR1 target node is outside the reverse workspace",
+                                )
+                            })?;
+                        *coefficient += cohort_weight * weight;
+                    }
+                }
+                Ok(())
+            },
+        )?;
+
+        let mut hasher = blake3::Hasher::new_derive_key(COMPILED_NATIVE_FUNCTIONAL_DOMAIN);
+        hasher.update(&operation_plan.artifact_digest());
+        hasher.update(&reverse.topology.topology_digest);
+        hasher.update(&reverse.instance.instance_digest);
+        hasher.update(&profile.inference_profile_digest);
+        hasher.update(&(profile.cohorts.len() as u32).to_le_bytes());
+        for ((cohort, weights), &cohort_weight) in
+            profile.cohorts.iter().zip(claim_weights).zip(cohort_weights)
+        {
+            hasher.update(&cohort.cohort_id.to_le_bytes());
+            hasher.update(&cohort.chain_slot.to_le_bytes());
+            hasher.update(&cohort.claim_layout_digest);
+            hash_fp2(&mut hasher, cohort_weight);
+            for (&node, &weight) in cohort.canonical_nodes.iter().zip(weights) {
+                hasher.update(&node.to_le_bytes());
+                hash_fp2(&mut hasher, weight);
+            }
+        }
+        hash_fp2(&mut hasher, reverse.public_plaintext);
+        for (source, &coefficient) in reverse.leaf_coefficients.iter().enumerate() {
+            hasher.update(&(source as u32).to_le_bytes());
+            hash_fp2(&mut hasher, coefficient);
+        }
+        let functional_digest = *hasher.finalize().as_bytes();
+        Ok(Self {
+            operation_plan_artifact_digest: operation_plan.artifact_digest(),
+            topology: reverse.topology,
+            instance: reverse.instance,
+            inference_profile_digest: profile.inference_profile_digest,
+            leaf_coefficients: reverse.leaf_coefficients,
+            public_plaintext: reverse.public_plaintext,
+            functional_digest,
+        })
+    }
+
+    pub fn functional_digest(&self) -> C6ResidualDigest {
+        self.functional_digest
+    }
+
+    pub fn leaf_coefficients(&self) -> &[Fp2] {
+        &self.leaf_coefficients
+    }
+
+    pub fn public_plaintext(&self) -> Fp2 {
+        self.public_plaintext
+    }
+
+    pub fn fold_prover_coordinate(
+        &self,
+        sources: &C6PairedSourceWitness,
+        schedule: &CorrScheduleAudit,
+        coordinate: u8,
+    ) -> C6ResidualResult<C6NativeTargetProverFold> {
+        let coordinate_index = usize::from(coordinate);
+        if coordinate_index >= 2
+            || !schedule.is_canonical()
+            || sources.schedule_digest() != schedule.digest
+            || sources.source_schedule_digest() != self.topology.source_schedule_digest
+        {
+            return Err(C6ResidualError::new("C6NBR1 provider source fold binding differs"));
+        }
+        let mut cursor = C6PairedSourceCursor::new(sources, schedule);
+        let mut value = ProverAuthed::from_public(self.public_plaintext);
+        for (source, &coefficient) in self.leaf_coefficients.iter().enumerate() {
+            let witnesses = cursor.next(source as u32)?;
+            value = value.add(witnesses[coordinate_index].prover_value().scale(coefficient));
+        }
+        cursor.finish(self.topology.source_count)?;
+        Ok(C6NativeTargetProverFold {
+            functional_digest: self.functional_digest,
+            coordinate,
+            value,
+        })
+    }
+
+    pub fn fold_verifier_coordinate(
+        &self,
+        coordinate: u8,
+        delta: Fp2,
+        mut source_key: impl FnMut(u32) -> C6ResidualResult<VerifierKey>,
+    ) -> C6ResidualResult<C6NativeTargetVerifierFold> {
+        if coordinate >= 2 {
+            return Err(C6ResidualError::new("C6NBR1 verifier source-fold coordinate is invalid"));
+        }
+        let mut key = VerifierKey::from_public(self.public_plaintext, delta);
+        for (source, &coefficient) in self.leaf_coefficients.iter().enumerate() {
+            key = key.add(source_key(source as u32)?.scale(coefficient));
+        }
+        Ok(C6NativeTargetVerifierFold {
+            functional_digest: self.functional_digest,
+            coordinate,
+            key,
+        })
+    }
+
+    #[doc(hidden)]
+    pub fn fold_verifier_coordinate_from_sources_diagnostic(
+        &self,
+        sources: &C6PairedSourceWitness,
+        schedule: &CorrScheduleAudit,
+        coordinate: u8,
+        delta: Fp2,
+    ) -> C6ResidualResult<C6NativeTargetVerifierFold> {
+        let coordinate_index = usize::from(coordinate);
+        if coordinate_index >= 2
+            || !schedule.is_canonical()
+            || sources.schedule_digest() != schedule.digest
+            || sources.source_schedule_digest() != self.topology.source_schedule_digest
+        {
+            return Err(C6ResidualError::new(
+                "C6NBR1 diagnostic verifier source fold binding differs",
+            ));
+        }
+        let lookup = C6PairedSourceLookup::new(sources, schedule)?;
+        self.fold_verifier_coordinate(coordinate, delta, |source| {
+            let witness = lookup.get(source)?[coordinate_index];
+            Ok(VerifierKey::new(
+                witness.tag() + delta * (witness.base_plaintext() + witness.correction()),
+            ))
+        })
+    }
+}
+
 impl fmt::Debug for C6CompiledLinearResidual {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("C6CompiledLinearResidual")
@@ -15228,5 +15455,81 @@ mod tests {
                 [&lanes[0], &lanes[1]],
             )
             .is_err());
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn generic_native_target_functional_seeds_exact_nodes_and_rejects_aliases() {
+        let fixture = build_c6_residual_direct_fused_scaled_fixture().unwrap();
+        let topology = fixture.operation_plan().topology();
+        let triple = fixture.operation_plan().products()[0].triples()[0];
+        let profile = C6CanonicalTargetProfile {
+            inference_profile_digest: [0x91; 32],
+            topology_digest: topology.topology_digest,
+            source_schedule_digest: topology.source_schedule_digest,
+            cohorts: vec![
+                volta_mac::C6CanonicalTargetCohort {
+                    cohort_id: 1,
+                    chain_slot: 1,
+                    polynomial_log2: 12,
+                    claim_layout_digest: [0x92; 32],
+                    canonical_nodes: vec![triple[0]],
+                },
+                volta_mac::C6CanonicalTargetCohort {
+                    cohort_id: 2,
+                    chain_slot: 2,
+                    polynomial_log2: 11,
+                    claim_layout_digest: [0x93; 32],
+                    canonical_nodes: vec![triple[1], triple[2]],
+                },
+            ],
+        };
+        let weights = vec![vec![fp2(3)], vec![fp2(5), fp2(7)]];
+        let cohort_weights = [Fp2::ONE, fp2(11)];
+        let compiled = C6CompiledNativeTargetFunctional::compile(
+            fixture.operation_plan(),
+            fixture.extraction(),
+            fixture.runtime(),
+            &profile,
+            &weights,
+            &cohort_weights,
+        )
+        .unwrap();
+        assert_eq!(compiled.leaf_coefficients().len(), topology.source_count as usize);
+        assert_ne!(compiled.functional_digest(), [0; 32]);
+
+        let mut changed_weights = weights.clone();
+        changed_weights[1][1] += Fp2::ONE;
+        let changed = C6CompiledNativeTargetFunctional::compile(
+            fixture.operation_plan(),
+            fixture.extraction(),
+            fixture.runtime(),
+            &profile,
+            &changed_weights,
+            &cohort_weights,
+        )
+        .unwrap();
+        assert_ne!(compiled.functional_digest(), changed.functional_digest());
+
+        let mut aliased = profile.clone();
+        aliased.cohorts[1].canonical_nodes[0] = triple[0];
+        assert!(C6CompiledNativeTargetFunctional::compile(
+            fixture.operation_plan(),
+            fixture.extraction(),
+            fixture.runtime(),
+            &aliased,
+            &weights,
+            &cohort_weights,
+        )
+        .is_err());
+        assert!(C6CompiledNativeTargetFunctional::compile(
+            fixture.operation_plan(),
+            fixture.extraction(),
+            fixture.runtime(),
+            &profile,
+            &weights[..1],
+            &cohort_weights,
+        )
+        .is_err());
     }
 }

@@ -4742,6 +4742,7 @@ mod tests {
         assert_eq!(census.native_target_cohorts, 2);
         assert_eq!(census.native_targets, 102);
         assert_eq!(census.native_target_setup_bytes, 1_088);
+        assert_eq!(census.native_functional_sources, census.scheduled_sources);
         assert_eq!(fixture.native_target_profile().cohorts.len(), 2);
         assert_eq!(fixture.native_target_profile().target_count(), 102);
         assert_eq!(fixture.native_target_artifact().len(), 1_088);

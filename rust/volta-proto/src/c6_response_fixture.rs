@@ -18,7 +18,8 @@ use volta_mac::{
     finish_c6_verifier_trace, C6CanonicalTargetProfile, C6DecodedInstanceExtractionPlan,
     C6InstalledOperationPlan, C6InstanceExtractionRole, C6NativeTargetProfileArtifact,
     C6RuntimeInstanceValues, C6TraceSourceManifest, C6TraceTargetCohort, C6TraceTargetProfile,
-    C6TraceToken, CorrScheduleAudit, CorrScheduleRole, CorrelationStream, Transcript, VerifierCtx,
+    C6TraceToken, CorrScheduleAudit, CorrScheduleRole, CorrelationStream, ProverAuthed, Transcript,
+    VerifierCtx, VerifierKey,
 };
 
 use crate::block_proof::layer_dom_base;
@@ -31,11 +32,11 @@ use crate::c6_cache_fold::{
 use crate::c6_census::{C6_T1_TOTAL_PRODUCT_TRIPLES, C6_T1_ZERO_CLOSURES};
 use crate::c6_production_pcg::{C6ProductionPairedPcgAttempt, C6ProductionPairedSourceWitness};
 use crate::c6_residual::{
-    C6CompiledLinearResidual, C6InstalledClosureEvaluationMemoryCensus,
-    C6PairedResidualAuxiliaryWitness, C6PairedResidualClosureWitness, C6PairedResidualLeafWitness,
-    C6ResidualError, C6ResidualFusedWitnessView, C6ResidualRelationChallenges,
-    C6ResidualRelationManifest, C6ResidualRelationRootBound, C6ResidualRetainedChallenges,
-    C6_RESIDUAL_TRACE_FIXTURE_LOCK,
+    C6CompiledLinearResidual, C6CompiledNativeTargetFunctional,
+    C6InstalledClosureEvaluationMemoryCensus, C6PairedResidualAuxiliaryWitness,
+    C6PairedResidualClosureWitness, C6PairedResidualLeafWitness, C6ResidualError,
+    C6ResidualFusedWitnessView, C6ResidualRelationChallenges, C6ResidualRelationManifest,
+    C6ResidualRelationRootBound, C6ResidualRetainedChallenges, C6_RESIDUAL_TRACE_FIXTURE_LOCK,
 };
 use crate::c6_source::{
     C6PairedSourceWitness, C6SourceCoordinate, C6SourceScheduleProverFollower,
@@ -76,6 +77,7 @@ pub struct C6ResponseResidualCensus {
     pub native_target_cohorts: u32,
     pub native_targets: u32,
     pub native_target_setup_bytes: u64,
+    pub native_functional_sources: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -996,6 +998,82 @@ fn build_c6_response_residual_fixture_with_geometry(
     )
     .map_err(trace_error)?;
 
+    // Diagnostic stand-in for the already fixed native-body batching
+    // challenges. Each cohort uses powers of one rho; zeta is sampled only
+    // after both complete weight vectors exist.
+    let mut native_challenges = Transcript::new([0x67; 32]);
+    let mut native_claim_weights = Vec::with_capacity(prover_native_targets.cohorts.len());
+    for cohort in &prover_native_targets.cohorts {
+        native_challenges.append("c6_native_body_fixed_diagnostic", 0);
+        let rho = native_challenges.challenge_fp2();
+        let mut power = Fp2::ONE;
+        let mut weights = Vec::with_capacity(cohort.canonical_nodes.len());
+        for _ in &cohort.canonical_nodes {
+            weights.push(power);
+            power = power * rho;
+        }
+        native_claim_weights.push(weights);
+    }
+    let zeta = native_challenges.challenge_fp2();
+    let mut zeta_power = Fp2::ONE;
+    let native_cohort_weights = (0..prover_native_targets.cohorts.len())
+        .map(|_| {
+            let weight = zeta_power;
+            zeta_power = zeta_power * zeta;
+            weight
+        })
+        .collect::<Vec<_>>();
+    let provider_native_functional = C6CompiledNativeTargetFunctional::compile(
+        &provider_operation_plan,
+        &provider_extraction,
+        &provider_runtime,
+        &prover_native_targets,
+        &native_claim_weights,
+        &native_cohort_weights,
+    )?;
+    let verifier_native_functional = C6CompiledNativeTargetFunctional::compile(
+        &verifier_operation_plan,
+        &verifier_extraction,
+        &verifier_runtime,
+        &verifier_native_targets,
+        &native_claim_weights,
+        &native_cohort_weights,
+    )?;
+    let provider_native_primary =
+        provider_native_functional.fold_prover_coordinate(&paired_sources, &primary_schedule, 0)?;
+    let provider_native_secondary =
+        provider_native_functional.fold_prover_coordinate(&paired_sources, &primary_schedule, 1)?;
+    let verifier_native_primary = verifier_native_functional
+        .fold_verifier_coordinate_from_sources_diagnostic(
+            &paired_sources,
+            &primary_schedule,
+            0,
+            deltas[0],
+        )?;
+    let verifier_native_secondary = verifier_native_functional
+        .fold_verifier_coordinate_from_sources_diagnostic(
+            &paired_sources,
+            &primary_schedule,
+            1,
+            deltas[1],
+        )?;
+    let prover_claim_cohorts = [&prover_out.weight_claims[..], &prover_out.embed_claims[..]];
+    let verifier_key_cohorts = [&verifier_out.weight_keys[..], &verifier_out.embed_keys[..]];
+    let mut direct_prover_primary = ProverAuthed::ZERO;
+    let mut direct_verifier_primary = VerifierKey::ZERO;
+    for (((prover_claims, verifier_keys), weights), &cohort_weight) in prover_claim_cohorts
+        .into_iter()
+        .zip(verifier_key_cohorts)
+        .zip(&native_claim_weights)
+        .zip(&native_cohort_weights)
+    {
+        for ((claim, (_, key)), &weight) in prover_claims.iter().zip(verifier_keys).zip(weights) {
+            let coefficient = cohort_weight * weight;
+            direct_prover_primary = direct_prover_primary.add(claim.value.scale(coefficient));
+            direct_verifier_primary = direct_verifier_primary.add(key.scale(coefficient));
+        }
+    }
+
     let expected_source_cells = (2 * L * (2 * RESPONSE_T + RESPONSE_Q) * D) as u64;
     let expected_auxiliary_cells = (2 * L * (RESPONSE_T + RESPONSE_Q) * D) as u64;
     if prover_trace.identity != verifier_trace.identity
@@ -1016,6 +1094,15 @@ fn build_c6_response_residual_fixture_with_geometry(
         || decoded_native_targets != verifier_native_targets
         || prover_native_targets.cohorts.len() != 2
         || prover_native_targets.target_count() != 8 * L + 6
+        || provider_native_functional.functional_digest()
+            != verifier_native_functional.functional_digest()
+        || provider_native_primary.value != direct_prover_primary
+        || verifier_native_primary.key != direct_verifier_primary
+        || provider_native_primary.value.x != provider_native_secondary.value.x
+        || verifier_native_secondary.key
+            != VerifierKey::new(
+                provider_native_secondary.value.m + deltas[1] * provider_native_secondary.value.x,
+            )
         || provider_linear.linear_form_digest() != verifier_linear.linear_form_digest()
         || prover_metrics.source_groups != (2 * 2 * L) as u64
         || prover_metrics.corrected_targets != 576
@@ -1088,6 +1175,10 @@ fn build_c6_response_residual_fixture_with_geometry(
             native_targets: u32::try_from(8 * L + 6)
                 .map_err(|_| C6ResidualError::new("C6 native target census exceeds u32"))?,
             native_target_setup_bytes: native_target_artifact.census().total_bytes,
+            native_functional_sources: u32::try_from(
+                provider_native_functional.leaf_coefficients().len(),
+            )
+            .map_err(|_| C6ResidualError::new("C6 native functional source count exceeds u32"))?,
         },
         timing: C6ResponseResidualTiming {
             provider_response_and_residual_ns,

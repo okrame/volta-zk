@@ -19,8 +19,9 @@ This capsule is authoritative; read design §0.49 next.
   **41/0/0 + 5/0/0** including the strict `C6NTO1` codec; the exact
   102-target response differential, codec round trip and sealed residual gate
   are **1/0/0**. Native typestate/schedule gates are **15/0/0 + 2/0/0**.
-  CUDA targets compile, but no production response, GPU timing, full-chain or
-  hardware credit exists.
+  The exact joint functional gate is **1/0/0** and proto trace is
+  **180/0/1**. CUDA targets compile, but no production response, GPU timing,
+  full-chain or hardware credit exists.
 - **Screens.** v23 remains `credit:false`: certificate **17,536,735 B**,
   setup **84,743,367 B**, state **2,277,715,552 B**, provider/verifier
   **14.9087128542 / 4.965672390 s**, soundness **102.587833363526... bits**.
@@ -29,12 +30,11 @@ This capsule is authoritative; read design §0.49 next.
   model-agnostic, challenge-dependent, wire-neutral `C6NBR1/C6NTO1` bridge
   with small commits on `main`. Local construction may proceed. HARD STOP
   remains before exact-runner admission or pod contact.
-- **Resume conditions.** Implement the generic joint tape-1 compiler
-  functional and source-fold role differential, then the `C6NBR1/C6AWP2`
-  closure and strict outer decoder; re-sum bytes, setup, correlations,
-  soundness, state and time and run the complete local gates. No fixed `96/6`,
-  clear target, mock PCG, CPU fallback or provider-derived verifier key is
-  admissible.
+- **Resume conditions.** Implement the wire-neutral `C6NBR1/C6AWP2` joint
+  correction/ZeroOpen closure and strict outer decoder, then re-sum bytes,
+  setup, correlations, soundness, state and time and run the complete local
+  gates. No fixed `96/6`, clear target, mock PCG, CPU fallback or
+  provider-derived verifier key is admissible.
 
 - **2026-08-03 — C6SPR10 exact terminal-functional relation closes locally.**
   The compiler now proves the exact challenge-dependent equality between the
@@ -131,6 +131,22 @@ This capsule is authoritative; read design §0.49 next.
   compilation is green. This is an executable local seam, not a production
   proof or timing credit. v23 and the no-pod hard stop remain unchanged; the
   next construction is the generic compiler adjoint/source fold.
+
+- **2026-08-03 — Exact generic compiler functional and tape-1 fold close.**
+  The installed reverse compiler now accepts only sparse seeds from the
+  decoded `C6NTO1` nodes, weighted by each native body's ordered `alpha` and
+  the post-body `zeta` powers. It derives the exact public term and canonical
+  source coefficients without treating targets as terminal roots. Provider
+  and verifier have role-separated streaming folds for either tape; the
+  verifier API consumes source keys and never provider tags or plaintexts.
+  On the complete 102-target response, the tape-0 fold equals the direct live
+  claim aggregate, the verifier fold equals the direct live key aggregate,
+  and the independent tape-1 provider/key folds satisfy the same MAC under
+  the secondary Delta. The sealed response/residual gate is **1/0/0**, the
+  focused mutation gate **1/0/0**, and proto trace **180/0/1**. This adds no
+  wire; its extra coefficient residency and passes await the mandatory v24
+  re-sum. v23 and the no-pod hard stop remain unchanged. The next construction
+  is the 32-B joint correction/ZeroOpen tail and strict outer decoder.
 
 - **2026-08-03 — C6SPR8 closed; production wrapper lifecycle reaches the next
   ordered hard stop.** Checkpoint `c81a4ff` binds both ordered manifest tapes

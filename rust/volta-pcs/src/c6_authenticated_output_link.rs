@@ -13,6 +13,7 @@
 use std::array;
 use std::collections::BTreeMap;
 use std::fmt;
+use std::path::Path;
 
 use volta_field::{Fp, Fp2, P};
 use volta_mac::{
@@ -41,6 +42,9 @@ use crate::c6_wrapper_pcs::{
     C6_HIDDEN_U_WEIGHTS_COHORT_ID, C6_PREDECESSOR_CACHE_COHORT_ID, C6_SUCCESSOR_CACHE_COHORT_ID,
     C6_WRAPPER_ACTIVE_SLOTS, C6_WRAPPER_AUXILIARY_COHORT_ID, C6_WRAPPER_REPETITIONS,
     C6_WRAPPER_TWO_CHAIN_BYTES,
+};
+use crate::c6_wrapper_persisted::{
+    C6PersistedCoefficientSlotReader, C6PersistedLinkFoldMetrics, C6PersistedLinkFoldOwner,
 };
 use crate::x4::ntt::evaluate_multilinear_table;
 
@@ -882,6 +886,297 @@ impl C6CoefficientDelayedTerm {
         }
         Ok(self.coefficient * self.coefficients[0] * self.virtual_factor)
     }
+}
+
+#[allow(dead_code)]
+const C6_LINK_EVALUATION_CHUNK_SYMBOLS: usize = 16 * 1024;
+#[allow(dead_code)]
+const C6_LINK_LOW_WEIGHT_BITS: usize = 12;
+#[allow(dead_code)]
+const C6_LINK_TERM_BINDING_DOMAIN: &str = "volta-zk/c6/link-persisted-term/v1";
+
+#[allow(dead_code)]
+struct C6PersistedCoefficientDelayedTerm {
+    coefficient: Fp2,
+    owner: Option<C6PersistedLinkFoldOwner>,
+    target_point: Vec<Fp2>,
+    leading_virtual_rounds: usize,
+    virtual_factor: Fp2,
+    global_round: u16,
+    target_value: Option<Fp2>,
+}
+
+#[allow(dead_code)]
+impl C6PersistedCoefficientDelayedTerm {
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        coefficient: Fp2,
+        descriptor: &C6PendingSlotDescriptor,
+        source: &C6PersistedCoefficientSlotReader,
+        spill_root: &Path,
+        global_rounds: usize,
+        metrics: &mut C6PersistedLinkFoldMetrics,
+    ) -> Result<Self> {
+        if descriptor.target_point.is_empty()
+            || descriptor.target_point.len() > global_rounds
+            || source.coefficient_len()
+                != 1usize.checked_shl(descriptor.target_point.len() as u32).unwrap_or_default()
+        {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "C6 persisted coefficient link term geometry mismatch",
+            ));
+        }
+        let (statement_digest, _, root) = source.binding();
+        if descriptor.wrapper_statement_digest != statement_digest {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "C6 persisted coefficient link statement mismatch",
+            ));
+        }
+        let target_digest = persisted_link_term_digest(descriptor, coefficient);
+        let (owner, initial_metrics) = source.open_link_fold_owner(
+            spill_root,
+            descriptor.repetition,
+            descriptor.cohort_id,
+            descriptor.slot,
+            target_digest,
+        )?;
+        if owner.binding().root != root {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "C6 persisted coefficient link root mismatch",
+            ));
+        }
+        metrics.absorb_nonlive(initial_metrics)?;
+        Ok(Self {
+            coefficient,
+            owner: Some(owner),
+            target_point: descriptor.target_point.clone(),
+            leading_virtual_rounds: global_rounds - descriptor.target_point.len(),
+            virtual_factor: Fp2::ONE,
+            global_round: 0,
+            target_value: None,
+        })
+    }
+
+    fn initial_value(&mut self, metrics: &mut C6PersistedLinkFoldMetrics) -> Result<Fp2> {
+        if self.target_value.is_none() {
+            self.target_value =
+                Some(evaluate_persisted_coefficients(self.owner()?, &self.target_point, metrics)?);
+        }
+        Ok(self.coefficient * self.target_value.unwrap())
+    }
+
+    fn round_values(&self, metrics: &mut C6PersistedLinkFoldMetrics) -> Result<(Fp2, Fp2)> {
+        let owner = self.owner()?;
+        if owner.binding().round != self.global_round
+            || owner.coefficient_len()
+                != 1usize.checked_shl(self.target_point.len() as u32).unwrap_or_default()
+        {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "invalid C6 persisted coefficient link term state",
+            ));
+        }
+        if self.leading_virtual_rounds > 0 {
+            let value = self.target_value.ok_or_else(|| {
+                C6AuthenticatedOutputLinkError::new(
+                    "C6 persisted link virtual value was not initialized",
+                )
+            })?;
+            let at_zero = self.coefficient * value * self.virtual_factor;
+            return Ok((at_zero, Fp2::ZERO - at_zero));
+        }
+        if owner.coefficient_len() < 2 || self.target_point.is_empty() {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "C6 persisted link has no active round",
+            ));
+        }
+        let target = self.target_point[0];
+        let (value_zero, value_two) =
+            evaluate_persisted_round_endpoints(owner, &self.target_point[1..], metrics)?;
+        let equality_zero = Fp2::ONE - target;
+        let equality_two = target + target - equality_zero;
+        Ok((
+            self.coefficient * value_zero * equality_zero * self.virtual_factor,
+            self.coefficient * value_two * equality_two * self.virtual_factor,
+        ))
+    }
+
+    fn bind(&mut self, challenge: Fp2, metrics: &mut C6PersistedLinkFoldMetrics) -> Result<()> {
+        let next_round = self.global_round.checked_add(1).ok_or_else(|| {
+            C6AuthenticatedOutputLinkError::new("C6 persisted link round overflow")
+        })?;
+        let owner = self.owner.take().ok_or_else(|| {
+            C6AuthenticatedOutputLinkError::new("C6 persisted link owner already consumed")
+        })?;
+        let successor = if self.leading_virtual_rounds > 0 {
+            self.virtual_factor = self.virtual_factor * (Fp2::ONE - challenge);
+            self.leading_virtual_rounds -= 1;
+            owner.advance_virtual_create_new(challenge, next_round, metrics)?
+        } else {
+            let target = *self.target_point.first().ok_or_else(|| {
+                C6AuthenticatedOutputLinkError::new("C6 persisted link target exhausted")
+            })?;
+            self.virtual_factor = self.virtual_factor * eq_points(&[challenge], &[target]);
+            self.target_point.remove(0);
+            owner.bind_create_new(challenge, next_round, metrics)?
+        };
+        self.owner = Some(successor);
+        self.global_round = next_round;
+        Ok(())
+    }
+
+    fn terminal(&self, metrics: &mut C6PersistedLinkFoldMetrics) -> Result<Fp2> {
+        let owner = self.owner()?;
+        if self.leading_virtual_rounds != 0
+            || !self.target_point.is_empty()
+            || owner.coefficient_len() != 1
+            || owner.binding().round != self.global_round
+        {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "invalid C6 persisted coefficient link terminal state",
+            ));
+        }
+        let (coefficient, bytes_read) = owner.read_range(0, 1)?;
+        metrics.coefficient_bytes_read =
+            metrics.coefficient_bytes_read.checked_add(bytes_read).ok_or_else(|| {
+                C6AuthenticatedOutputLinkError::new("C6 persisted link read metric overflow")
+            })?;
+        Ok(self.coefficient * coefficient[0] * self.virtual_factor)
+    }
+
+    fn release(mut self, metrics: &mut C6PersistedLinkFoldMetrics) -> Result<()> {
+        self.owner
+            .take()
+            .ok_or_else(|| {
+                C6AuthenticatedOutputLinkError::new("C6 persisted link owner already released")
+            })?
+            .release(metrics)?;
+        Ok(())
+    }
+
+    fn owner(&self) -> Result<&C6PersistedLinkFoldOwner> {
+        self.owner
+            .as_ref()
+            .ok_or_else(|| C6AuthenticatedOutputLinkError::new("C6 persisted link owner missing"))
+    }
+}
+
+#[allow(dead_code)]
+fn persisted_link_term_digest(
+    descriptor: &C6PendingSlotDescriptor,
+    coefficient: Fp2,
+) -> C6WrapperDigest {
+    let mut hasher = blake3::Hasher::new_derive_key(C6_LINK_TERM_BINDING_DOMAIN);
+    hasher.update(&descriptor.wrapper_statement_digest);
+    hasher.update(&descriptor.fixed_roots_digest);
+    hasher.update(&descriptor.source_statement_digest);
+    hasher.update(&[descriptor.repetition]);
+    hasher.update(&descriptor.cohort_id.to_le_bytes());
+    hasher.update(&descriptor.slot.to_le_bytes());
+    hasher.update(&[descriptor.target_point.len() as u8]);
+    for coordinate in &descriptor.target_point {
+        hash_fp2(&mut hasher, *coordinate);
+    }
+    hash_fp2(&mut hasher, coefficient);
+    *hasher.finalize().as_bytes()
+}
+
+#[allow(dead_code)]
+fn evaluate_persisted_coefficients(
+    owner: &C6PersistedLinkFoldOwner,
+    point: &[Fp2],
+    metrics: &mut C6PersistedLinkFoldMetrics,
+) -> Result<Fp2> {
+    if owner.coefficient_len() != 1usize.checked_shl(point.len() as u32).unwrap_or_default() {
+        return Err(C6AuthenticatedOutputLinkError::new(
+            "C6 persisted coefficient evaluation geometry mismatch",
+        ));
+    }
+    let low_weights = low_monomial_weights(point);
+    let low_bits = C6_LINK_LOW_WEIGHT_BITS.min(point.len());
+    let low_mask = low_weights.len() - 1;
+    let mut sum = Fp2::ZERO;
+    let mut start = 0usize;
+    while start < owner.coefficient_len() {
+        let count = (owner.coefficient_len() - start).min(C6_LINK_EVALUATION_CHUNK_SYMBOLS);
+        let (coefficients, bytes_read) = owner.read_range(start, count)?;
+        metrics.coefficient_bytes_read =
+            metrics.coefficient_bytes_read.checked_add(bytes_read).ok_or_else(|| {
+                C6AuthenticatedOutputLinkError::new("C6 persisted link read metric overflow")
+            })?;
+        let mut high_index = usize::MAX;
+        let mut high_weight = Fp2::ZERO;
+        for (offset, coefficient) in coefficients.into_iter().enumerate() {
+            let index = start + offset;
+            let next_high_index = index >> low_bits;
+            if next_high_index != high_index {
+                high_index = next_high_index;
+                high_weight = coefficient_monomial_weight(high_index, &point[low_bits..]);
+            }
+            sum += coefficient * low_weights[index & low_mask] * high_weight;
+        }
+        start += count;
+    }
+    Ok(sum)
+}
+
+#[allow(dead_code)]
+fn evaluate_persisted_round_endpoints(
+    owner: &C6PersistedLinkFoldOwner,
+    suffix_point: &[Fp2],
+    metrics: &mut C6PersistedLinkFoldMetrics,
+) -> Result<(Fp2, Fp2)> {
+    if owner.coefficient_len() != 2usize.checked_shl(suffix_point.len() as u32).unwrap_or_default()
+    {
+        return Err(C6AuthenticatedOutputLinkError::new(
+            "C6 persisted coefficient endpoint geometry mismatch",
+        ));
+    }
+    let low_weights = low_monomial_weights(suffix_point);
+    let low_bits = C6_LINK_LOW_WEIGHT_BITS.min(suffix_point.len());
+    let low_mask = low_weights.len() - 1;
+    let two = Fp2::from_base(Fp::new(2));
+    let mut zero = Fp2::ZERO;
+    let mut endpoint_two = Fp2::ZERO;
+    let mut start = 0usize;
+    while start < owner.coefficient_len() {
+        let mut count = (owner.coefficient_len() - start).min(C6_LINK_EVALUATION_CHUNK_SYMBOLS);
+        count -= count % 2;
+        let (coefficients, bytes_read) = owner.read_range(start, count)?;
+        metrics.coefficient_bytes_read =
+            metrics.coefficient_bytes_read.checked_add(bytes_read).ok_or_else(|| {
+                C6AuthenticatedOutputLinkError::new("C6 persisted link read metric overflow")
+            })?;
+        let pair_start = start / 2;
+        let mut high_index = usize::MAX;
+        let mut high_weight = Fp2::ZERO;
+        for (offset, pair) in coefficients.chunks_exact(2).enumerate() {
+            let index = pair_start + offset;
+            let next_high_index = index >> low_bits;
+            if next_high_index != high_index {
+                high_index = next_high_index;
+                high_weight = coefficient_monomial_weight(high_index, &suffix_point[low_bits..]);
+            }
+            let weight = low_weights[index & low_mask] * high_weight;
+            zero += pair[0] * weight;
+            endpoint_two += (pair[0] + two * pair[1]) * weight;
+        }
+        start += count;
+    }
+    Ok((zero, endpoint_two))
+}
+
+#[allow(dead_code)]
+fn low_monomial_weights(point: &[Fp2]) -> Vec<Fp2> {
+    let low_bits = C6_LINK_LOW_WEIGHT_BITS.min(point.len());
+    let mut weights = Vec::with_capacity(1usize << low_bits);
+    weights.push(Fp2::ONE);
+    for coordinate in point.iter().take(low_bits) {
+        let prior = weights.len();
+        for index in 0..prior {
+            weights.push(weights[index] * *coordinate);
+        }
+    }
+    weights
 }
 
 fn evaluate_coefficient_round_endpoints(
@@ -2009,6 +2304,7 @@ mod tests {
         C6WrapperSlotWitness, C6_HIDDEN_U_EMBED_COHORT_ID, C6_HIDDEN_U_WEIGHTS_COHORT_ID,
         C6_PREDECESSOR_CACHE_COHORT_ID, C6_SUCCESSOR_CACHE_COHORT_ID,
     };
+    use crate::c6_wrapper_persisted::persist_scaled_c6_wrapper_cohort_reference;
     use crate::ligero::LigeroParams;
     use crate::ntt::NttPlan;
     #[cfg(feature = "c6-trace")]
@@ -2056,6 +2352,89 @@ mod tests {
             persisted.bind(challenge);
         }
         assert_eq!(persisted.terminal().unwrap(), resident.terminal().unwrap());
+    }
+
+    #[test]
+    fn persisted_coefficient_term_matches_resident_and_accounts_create_new_lifecycle() {
+        let root = std::env::temp_dir().join(format!(
+            "volta-c6-link-term-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let cohort_root = root.join("cohorts");
+        let spill_root = root.join("link");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::create_dir(&cohort_root).unwrap();
+        std::fs::create_dir(&spill_root).unwrap();
+        let statement_digest = [0x61; 32];
+        let spec = C6WrapperCohortSpec {
+            cohort_id: C6_WRAPPER_AUXILIARY_COHORT_ID,
+            oracle_kind: C6WrapperOracleKind::Auxiliary,
+            payload_log2: 5,
+            slot_count: 32,
+        };
+        let evaluations = table(5, 9_500);
+        let slots = (0..usize::from(spec.slot_count))
+            .map(|slot| C6WrapperSlotWitness::Auxiliary {
+                evaluations: if slot == 0 {
+                    evaluations.clone()
+                } else {
+                    table(5, 20_000 + slot as u64 * 100)
+                },
+            })
+            .collect::<Vec<_>>();
+        let cohort = commit_c6_wrapper_cohort(statement_digest, spec, slots).unwrap();
+        let persisted =
+            persist_scaled_c6_wrapper_cohort_reference(cohort, &cohort_root, [0x62; 32], 0)
+                .unwrap();
+        let source = persisted.open_coefficient_slots().unwrap();
+        let target = (0..5).map(|index| symbol(10_500 + index)).collect::<Vec<_>>();
+        let descriptor = C6PendingSlotDescriptor {
+            wrapper_statement_digest: statement_digest,
+            fixed_roots_digest: [0x63; 32],
+            source_statement_digest: [0x64; 32],
+            repetition: 1,
+            cohort_id: spec.cohort_id,
+            slot: 0,
+            target_point: target.clone(),
+        };
+        let coefficient = symbol(81);
+        let mut resident = DelayedTerm::new(coefficient, &evaluations, &target, 7).unwrap();
+        let mut metrics = C6PersistedLinkFoldMetrics::default();
+        let mut persisted_term = C6PersistedCoefficientDelayedTerm::new(
+            coefficient,
+            &descriptor,
+            &source,
+            &spill_root,
+            7,
+            &mut metrics,
+        )
+        .unwrap();
+        assert_eq!(persisted_term.initial_value(&mut metrics).unwrap(), resident.active_sum());
+        for round in 0..7 {
+            assert_eq!(
+                persisted_term.round_values(&mut metrics).unwrap(),
+                resident.round_values().unwrap(),
+                "round {round}",
+            );
+            let challenge = symbol(11_500 + round as u64);
+            resident.bind(challenge);
+            persisted_term.bind(challenge, &mut metrics).unwrap();
+        }
+        assert_eq!(persisted_term.terminal(&mut metrics).unwrap(), resident.terminal().unwrap());
+        persisted_term.release(&mut metrics).unwrap();
+        assert_eq!(metrics.coefficient_bytes_read, 2_512);
+        assert_eq!(metrics.coefficient_bytes_written, 496);
+        assert_eq!(metrics.manifest_bytes_written, 1_792);
+        assert_eq!(metrics.files_created, 12);
+        assert_eq!(metrics.files_deleted_after_successor_durable, 12);
+        assert_eq!(metrics.directories_created, 1);
+        assert_eq!(metrics.fsync_count, 27);
+        assert_eq!(metrics.current_live_spill_bytes, 0);
+        assert_eq!(metrics.peak_live_spill_bytes, 896);
+        drop(source);
+        drop(persisted);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     fn expression_sum(terms: &[C6ResidualSumcheckTerm], tables: &[Vec<Fp2>]) -> Fp2 {

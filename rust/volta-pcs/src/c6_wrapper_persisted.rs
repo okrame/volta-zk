@@ -188,6 +188,8 @@ impl C6PersistedCoefficientSlotReader {
                     C6WrapperPcsError::external("clone C6 link coefficient source", error)
                 })?,
                 symbol_start,
+                manifest_path: None,
+                live_bytes: 0,
             },
         };
         Ok((
@@ -228,6 +230,30 @@ pub(crate) struct C6PersistedLinkFoldMetrics {
 
 impl C6PersistedLinkFoldMetrics {
     #[allow(dead_code)]
+    pub(crate) fn absorb_nonlive(&mut self, next: Self) -> Result<()> {
+        if next.current_live_spill_bytes != 0 || next.peak_live_spill_bytes != 0 {
+            return Err(C6WrapperPcsError::external_message(
+                "C6 persisted link setup unexpectedly owns live spill",
+            ));
+        }
+        macro_rules! add {
+            ($field:ident) => {
+                self.$field = self.$field.checked_add(next.$field).ok_or_else(|| {
+                    C6WrapperPcsError::external_message("C6 persisted link metric overflow")
+                })?;
+            };
+        }
+        add!(coefficient_bytes_read);
+        add!(coefficient_bytes_written);
+        add!(manifest_bytes_written);
+        add!(files_created);
+        add!(files_deleted_after_successor_durable);
+        add!(directories_created);
+        add!(fsync_count);
+        Ok(())
+    }
+
+    #[allow(dead_code)]
     fn add_live(&mut self, bytes: u64) -> Result<()> {
         self.current_live_spill_bytes =
             self.current_live_spill_bytes.checked_add(bytes).ok_or_else(|| {
@@ -250,7 +276,7 @@ impl C6PersistedLinkFoldMetrics {
 #[derive(Debug)]
 #[allow(dead_code)]
 enum C6PersistedLinkFoldStorage {
-    Cohort { file: File, symbol_start: usize },
+    Cohort { file: File, symbol_start: usize, manifest_path: Option<PathBuf>, live_bytes: u64 },
     Owned { file: File, coefficient_path: PathBuf, manifest_path: PathBuf, live_bytes: u64 },
 }
 
@@ -281,7 +307,7 @@ impl C6PersistedLinkFoldOwner {
             ));
         }
         match &self.storage {
-            C6PersistedLinkFoldStorage::Cohort { file, symbol_start } => {
+            C6PersistedLinkFoldStorage::Cohort { file, symbol_start, .. } => {
                 let absolute = symbol_start.checked_add(start).ok_or_else(|| {
                     C6WrapperPcsError::external_message("C6 persisted link read offset overflow")
                 })?;
@@ -291,6 +317,96 @@ impl C6PersistedLinkFoldOwner {
                 read_canonical_fp2_range(file, start, count)
             }
         }
+    }
+
+    pub(crate) fn advance_virtual_create_new(
+        self,
+        challenge: Fp2,
+        next_round: u16,
+        metrics: &mut C6PersistedLinkFoldMetrics,
+    ) -> Result<Self> {
+        if next_round != self.binding.round.checked_add(1).unwrap_or_default() {
+            return Err(C6WrapperPcsError::external_message(
+                "C6 persisted link virtual successor round mismatch",
+            ));
+        }
+        let C6PersistedLinkFoldStorage::Cohort {
+            file,
+            symbol_start,
+            manifest_path: predecessor_manifest,
+            live_bytes: predecessor_live_bytes,
+        } = self.storage
+        else {
+            return Err(C6WrapperPcsError::external_message(
+                "C6 persisted link virtual successor follows coefficient fold",
+            ));
+        };
+        let manifest_path = self.directory.join(format!("round-{next_round:02}.c6lfp1"));
+        let mut next_binding = self.binding;
+        next_binding.round = next_round;
+        let coefficient_bytes = u64::try_from(self.coefficient_len)
+            .ok()
+            .and_then(|symbols| symbols.checked_mul(16))
+            .ok_or_else(|| {
+                C6WrapperPcsError::external_message("C6 link virtual coefficient byte overflow")
+            })?;
+        let manifest = encode_link_fold_manifest(
+            &next_binding,
+            self.coefficient_len,
+            self.state_digest,
+            challenge,
+            coefficient_bytes,
+        )?;
+        write_bytes_create_new(&manifest_path, &manifest)?;
+        metrics.manifest_bytes_written =
+            metrics.manifest_bytes_written.checked_add(manifest.len() as u64).ok_or_else(|| {
+                C6WrapperPcsError::external_message("C6 link virtual manifest overflow")
+            })?;
+        metrics.files_created = metrics.files_created.checked_add(1).ok_or_else(|| {
+            C6WrapperPcsError::external_message("C6 link virtual file metric overflow")
+        })?;
+        metrics.fsync_count = metrics.fsync_count.checked_add(1).ok_or_else(|| {
+            C6WrapperPcsError::external_message("C6 link virtual fsync metric overflow")
+        })?;
+        File::open(&self.directory).and_then(|directory| directory.sync_all()).map_err(
+            |error| C6WrapperPcsError::external("fsync durable C6 link virtual successor", error),
+        )?;
+        metrics.fsync_count = metrics.fsync_count.checked_add(1).ok_or_else(|| {
+            C6WrapperPcsError::external_message("C6 link virtual fsync metric overflow")
+        })?;
+        let live_bytes = manifest.len() as u64;
+        metrics.add_live(live_bytes)?;
+        if let Some(predecessor_manifest) = predecessor_manifest {
+            fs::remove_file(predecessor_manifest).map_err(|error| {
+                C6WrapperPcsError::external("release C6 link virtual predecessor", error)
+            })?;
+            File::open(&self.directory).and_then(|directory| directory.sync_all()).map_err(
+                |error| {
+                    C6WrapperPcsError::external("fsync C6 link virtual predecessor release", error)
+                },
+            )?;
+            metrics.files_deleted_after_successor_durable =
+                metrics.files_deleted_after_successor_durable.checked_add(1).ok_or_else(|| {
+                    C6WrapperPcsError::external_message("C6 link deleted-file overflow")
+                })?;
+            metrics.fsync_count = metrics.fsync_count.checked_add(1).ok_or_else(|| {
+                C6WrapperPcsError::external_message("C6 link virtual fsync overflow")
+            })?;
+            metrics.remove_live(predecessor_live_bytes)?;
+        }
+        let state_digest = manifest[manifest.len() - 32..].try_into().unwrap();
+        Ok(Self {
+            binding: next_binding,
+            coefficient_len: self.coefficient_len,
+            state_digest,
+            directory: self.directory,
+            storage: C6PersistedLinkFoldStorage::Cohort {
+                file,
+                symbol_start,
+                manifest_path: Some(manifest_path),
+                live_bytes,
+            },
+        })
     }
 
     pub(crate) fn bind_create_new(
@@ -414,6 +530,28 @@ impl C6PersistedLinkFoldOwner {
                 C6WrapperPcsError::external_message("C6 link fsync metric overflow")
             })?;
             metrics.remove_live(*predecessor_live_bytes)?;
+        } else if let C6PersistedLinkFoldStorage::Cohort {
+            manifest_path: Some(predecessor_manifest),
+            live_bytes: predecessor_live_bytes,
+            ..
+        } = &self.storage
+        {
+            fs::remove_file(predecessor_manifest).map_err(|error| {
+                C6WrapperPcsError::external("release C6 link virtual predecessor", error)
+            })?;
+            File::open(&self.directory).and_then(|directory| directory.sync_all()).map_err(
+                |error| {
+                    C6WrapperPcsError::external("fsync C6 link virtual predecessor release", error)
+                },
+            )?;
+            metrics.files_deleted_after_successor_durable =
+                metrics.files_deleted_after_successor_durable.checked_add(1).ok_or_else(|| {
+                    C6WrapperPcsError::external_message("C6 link deleted-file overflow")
+                })?;
+            metrics.fsync_count = metrics.fsync_count.checked_add(1).ok_or_else(|| {
+                C6WrapperPcsError::external_message("C6 link virtual fsync overflow")
+            })?;
+            metrics.remove_live(*predecessor_live_bytes)?;
         }
         let state_digest = manifest[manifest.len() - 32..].try_into().unwrap();
         let file = OpenOptions::new().read(true).open(&coefficient_path).map_err(|error| {
@@ -442,24 +580,33 @@ impl C6PersistedLinkFoldOwner {
     }
 
     pub(crate) fn release(self, metrics: &mut C6PersistedLinkFoldMetrics) -> Result<()> {
-        if let C6PersistedLinkFoldStorage::Owned {
-            coefficient_path,
-            manifest_path,
-            live_bytes,
-            ..
-        } = self.storage
-        {
-            fs::remove_file(coefficient_path).map_err(|error| {
-                C6WrapperPcsError::external("release terminal C6 link coefficients", error)
+        let (paths, live_bytes) = match self.storage {
+            C6PersistedLinkFoldStorage::Owned {
+                coefficient_path,
+                manifest_path,
+                live_bytes,
+                ..
+            } => (vec![coefficient_path, manifest_path], live_bytes),
+            C6PersistedLinkFoldStorage::Cohort {
+                manifest_path: Some(manifest_path),
+                live_bytes,
+                ..
+            } => (vec![manifest_path], live_bytes),
+            C6PersistedLinkFoldStorage::Cohort { manifest_path: None, .. } => return Ok(()),
+        };
+        for path in &paths {
+            fs::remove_file(path).map_err(|error| {
+                C6WrapperPcsError::external("release terminal C6 link state", error)
             })?;
-            fs::remove_file(manifest_path).map_err(|error| {
-                C6WrapperPcsError::external("release terminal C6 link manifest", error)
-            })?;
+        }
+        if !paths.is_empty() {
             File::open(&self.directory).and_then(|directory| directory.sync_all()).map_err(
                 |error| C6WrapperPcsError::external("fsync terminal C6 link release", error),
             )?;
-            metrics.files_deleted_after_successor_durable =
-                metrics.files_deleted_after_successor_durable.checked_add(2).ok_or_else(|| {
+            metrics.files_deleted_after_successor_durable = metrics
+                .files_deleted_after_successor_durable
+                .checked_add(paths.len() as u64)
+                .ok_or_else(|| {
                     C6WrapperPcsError::external_message("C6 link deleted-file overflow")
                 })?;
             metrics.fsync_count = metrics.fsync_count.checked_add(1).ok_or_else(|| {

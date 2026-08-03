@@ -77,9 +77,10 @@ pub const C61_SHARED_MULTI_ORACLE_MAGIC: [u8; 8] = *b"C6SMO1\0\0";
 pub const C61_SHARED_MULTI_ORACLE_VERSION: u16 = 1;
 pub const C61_SHARED_MULTI_ORACLE_HEADER_BYTES: usize = 8 + 2 + 1 + 1 + 4;
 pub const C61_SHARED_MULTI_ORACLE_MAX_BYTES: usize = 2_500_000;
-/// Frozen C6.1 component-state gate.  The production backend must remain
-/// below this bound while fixing and later opening the D28/D27 roots.
-pub const C61_PRODUCTION_PROVIDER_STATE_GATE_BYTES: u64 = 2_293_198_848;
+/// Frozen C6.1 coefficient-plus-witness component cap.  This is deliberately
+/// not a cap on total process RSS or GPU memory; those must be measured
+/// separately by the production executor.
+pub const C61_PRODUCTION_COEFFICIENT_WITNESS_CAP_BYTES: u64 = 2_293_198_848;
 
 type C61AuthenticatedP3Proof = ZkWhirProof<Goldilocks, C61P3Fp2, C61Mmcs>;
 
@@ -169,8 +170,8 @@ pub struct C61AuthenticatedP3SharedMultiOracleDiagnostic {
     pub full_correlations: u64,
 }
 
-/// Fail-closed production admission census for the selected monolithic P3
-/// prover data layout.
+/// Production total-memory census for the selected monolithic P3 prover data
+/// layout.
 ///
 /// `HidingWhirProverData` retains the Boolean message and the encoded initial
 /// oracle, while `MerkleTreeMmcs` retains every digest layer.  Both response
@@ -179,7 +180,7 @@ pub struct C61AuthenticatedP3SharedMultiOracleDiagnostic {
 /// randomness, later round oracles, GKR state and allocator overhead are not
 /// included.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct C61ProductionBackendAdmission {
+pub struct C61ProductionMonolithicMemoryCensus {
     pub response_num_variables: usize,
     pub plan_num_variables: usize,
     pub response_message_bytes: u64,
@@ -191,9 +192,10 @@ pub struct C61ProductionBackendAdmission {
     pub plan_merkle_bytes: u64,
     pub plan_retained_lower_bound_bytes: u64,
     pub concurrent_retained_lower_bound_bytes: u64,
-    pub provider_state_gate_bytes: u64,
-    pub over_gate_bytes: u64,
-    pub selected_monolithic_backend_admissible: bool,
+    /// Informative comparison only.  The owner-frozen component cap excludes
+    /// encoded PCS oracles and Merkle prover data.
+    pub coefficient_witness_cap_bytes: u64,
+    pub retained_minus_component_cap_bytes: u64,
 }
 
 /// Reference-only designated-verifier view simulation report.
@@ -574,14 +576,14 @@ fn c61_monolithic_initial_oracle_retained_lower_bound(
     Ok((message_bytes, encoded_bytes, merkle_bytes, retained))
 }
 
-/// Compute the exact retained-memory lower bound that must be admitted before
-/// invoking the selected P3 prover at the registered D28/D27 geometry.
+/// Compute the exact total-memory lower bound retained by the generic P3
+/// prover at the registered D28/D27 geometry.
 ///
-/// The current backend is deliberately rejected rather than attempting a
-/// multi-gigabyte allocation.  A production implementation must replace the
-/// monolithic prover data with a persisted/recomputable or GPU-resident
-/// commitment handle and must not silently fall back to this path.
-pub fn c61_production_backend_admission() -> Result<C61ProductionBackendAdmission, String> {
+/// The generic diagnostic rejects D28 rather than attempting this allocation
+/// without resource instrumentation.  This report does not compare total
+/// memory against the narrower coefficient-plus-witness protocol cap.
+pub fn c61_production_monolithic_memory_census(
+) -> Result<C61ProductionMonolithicMemoryCensus, String> {
     let response_num_variables = 28;
     let plan_num_variables = 27;
     let (
@@ -599,10 +601,10 @@ pub fn c61_production_backend_admission() -> Result<C61ProductionBackendAdmissio
     let concurrent_retained_lower_bound_bytes = response_retained_lower_bound_bytes
         .checked_add(plan_retained_lower_bound_bytes)
         .ok_or_else(|| "C6SPR4 concurrent retained bytes overflow".to_owned())?;
-    let over_gate_bytes = concurrent_retained_lower_bound_bytes
-        .checked_sub(C61_PRODUCTION_PROVIDER_STATE_GATE_BYTES)
-        .ok_or_else(|| "C6SPR4 selected backend unexpectedly fits the state gate".to_owned())?;
-    Ok(C61ProductionBackendAdmission {
+    let retained_minus_component_cap_bytes = concurrent_retained_lower_bound_bytes
+        .checked_sub(C61_PRODUCTION_COEFFICIENT_WITNESS_CAP_BYTES)
+        .ok_or_else(|| "C6SPR4 retained total is below its informative comparison".to_owned())?;
+    Ok(C61ProductionMonolithicMemoryCensus {
         response_num_variables,
         plan_num_variables,
         response_message_bytes,
@@ -614,22 +616,16 @@ pub fn c61_production_backend_admission() -> Result<C61ProductionBackendAdmissio
         plan_merkle_bytes,
         plan_retained_lower_bound_bytes,
         concurrent_retained_lower_bound_bytes,
-        provider_state_gate_bytes: C61_PRODUCTION_PROVIDER_STATE_GATE_BYTES,
-        over_gate_bytes,
-        selected_monolithic_backend_admissible: false,
+        coefficient_witness_cap_bytes: C61_PRODUCTION_COEFFICIENT_WITNESS_CAP_BYTES,
+        retained_minus_component_cap_bytes,
     })
 }
 
 fn reject_monolithic_production_backend() -> Result<(), String> {
-    let admission = c61_production_backend_admission()?;
-    if admission.selected_monolithic_backend_admissible {
-        return Ok(());
-    }
+    let census = c61_production_monolithic_memory_census()?;
     Err(format!(
-        "C6SPR4 selected monolithic P3 backend retains at least {} B for concurrent D28/D27 roots, exceeding the {}-B provider-state gate by {} B; persisted/recomputable or GPU-resident WHIR prover data is required",
-        admission.concurrent_retained_lower_bound_bytes,
-        admission.provider_state_gate_bytes,
-        admission.over_gate_bytes,
+        "C6SPR4 generic diagnostic is not a resource-instrumented production executor: its concurrent D28/D27 P3 prover data retains at least {} B; use an explicit persisted/recomputable or GPU-resident executor and measure total RSS/GPU memory separately",
+        census.concurrent_retained_lower_bound_bytes,
     ))
 }
 
@@ -3441,28 +3437,27 @@ mod tests {
     }
 
     #[test]
-    fn production_d28_d27_rejects_monolithic_prover_data_before_allocation() {
-        let admission = c61_production_backend_admission().unwrap();
-        assert_eq!(admission.response_num_variables, 28);
-        assert_eq!(admission.plan_num_variables, 27);
-        assert_eq!(admission.response_message_bytes, 2_147_483_648);
-        assert_eq!(admission.response_encoded_bytes, 4_294_967_296);
-        assert_eq!(admission.response_merkle_bytes, 17_179_869_152);
-        assert_eq!(admission.response_retained_lower_bound_bytes, 23_622_320_096);
-        assert_eq!(admission.plan_message_bytes, 1_073_741_824);
-        assert_eq!(admission.plan_encoded_bytes, 2_147_483_648);
-        assert_eq!(admission.plan_merkle_bytes, 8_589_934_560);
-        assert_eq!(admission.plan_retained_lower_bound_bytes, 11_811_160_032);
-        assert_eq!(admission.concurrent_retained_lower_bound_bytes, 35_433_480_128);
-        assert_eq!(admission.provider_state_gate_bytes, 2_293_198_848);
-        assert_eq!(admission.over_gate_bytes, 33_140_281_280);
-        assert!(!admission.selected_monolithic_backend_admissible);
+    fn production_d28_d27_censuses_monolithic_memory_before_allocation() {
+        let census = c61_production_monolithic_memory_census().unwrap();
+        assert_eq!(census.response_num_variables, 28);
+        assert_eq!(census.plan_num_variables, 27);
+        assert_eq!(census.response_message_bytes, 2_147_483_648);
+        assert_eq!(census.response_encoded_bytes, 4_294_967_296);
+        assert_eq!(census.response_merkle_bytes, 17_179_869_152);
+        assert_eq!(census.response_retained_lower_bound_bytes, 23_622_320_096);
+        assert_eq!(census.plan_message_bytes, 1_073_741_824);
+        assert_eq!(census.plan_encoded_bytes, 2_147_483_648);
+        assert_eq!(census.plan_merkle_bytes, 8_589_934_560);
+        assert_eq!(census.plan_retained_lower_bound_bytes, 11_811_160_032);
+        assert_eq!(census.concurrent_retained_lower_bound_bytes, 35_433_480_128);
+        assert_eq!(census.coefficient_witness_cap_bytes, 2_293_198_848);
+        assert_eq!(census.retained_minus_component_cap_bytes, 33_140_281_280);
 
         let error = run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(28)
             .expect_err("D28 must reject before materializing the scaled fixture or witness");
-        assert!(error.contains("persisted/recomputable or GPU-resident WHIR prover data"));
+        assert!(error.contains("persisted/recomputable or GPU-resident executor"));
         assert!(error.contains("35433480128 B"));
-        assert!(error.contains("33140281280 B"));
+        assert!(!error.contains("provider-state gate"));
     }
 
     #[test]

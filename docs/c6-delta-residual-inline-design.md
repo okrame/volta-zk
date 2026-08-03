@@ -3134,6 +3134,60 @@ persisted/CUDA compiler chains and one real/AES-PCG attempt with fail-closed
 resource accounting.  No pod contact or full-chain credit follows from this
 local checkpoint.
 
+### 0.46 Exact-runner assembly audit and production-native hard stop
+
+The first certificate-assembly audit found that §0.45 counted the two new
+`C6CPX1` frames but inherited an older omission: the component sum did not add
+the registered **356-B** `C6PA1` outer framing or its single canonical
+**1,212-B** `C6RSC4` arithmetic frame.  Those bytes are neither part of the
+retained C6 remainder nor nested inside `C6SBA1`.  Profile v22 adds the exact
+1,568 B once per certificate.  The corrected `credit:false` screens are
+**17,536,607 B** per subsequent certificate, **102,279,974 B** setup plus
+first certificate and **4,463,392 B** of strict certificate headroom.  Setup,
+state, soundness and analytic time are unchanged.
+
+The same audit proves that a complete exact runner cannot yet be assembled.
+The only production persisted/CUDA C61 entry point accepts
+`C61NativeComponent::Compiler` and fails closed for Model or Embedding.  The
+96-weight and six-embedding multi-opening paths are D14 diagnostics over a
+synthetic resident polynomial; they do not consume the retained live claims,
+their production commitments or the same real-PCG attempt.  Consequently four
+of the six native C6PA1 component proofs have no production constructor or
+strict production proof object.  Running the wrapper and two compiler chains
+alone would retain the old public PCS gap and is not a C6.1 full-chain result.
+
+There is a second verifier-boundary gap.  The current compiler executor proves
+and verifies within one function, passes both live PCG roles in memory and
+constructs its verifier fixture by retaining the complete installed operation
+plan and materializing the D27 plan vector.  This is valid as a scaled
+differential, but it neither verifies from decoded certificate bytes nor fits
+the registered client setup in which the 63,994,751-B plan is removed and only
+the 5,320,386-B extraction map remains inside the 8-MB allocation.  The three
+plan evaluations already present in `C6SBA1` must instead be checked by their
+D27 WHIR opening against the registered plan root, while a compact typed
+verifier profile supplies only topology, dimensions, digests and terminal
+metadata.
+
+The new **HARD STOP** is
+`C6SPR11_PRODUCTION_NATIVE_COMPONENTS_AND_WIRE_VERIFIER_REQUIRED`.  Resume
+requires, in order:
+
+1. create-new persisted/CUDA production provers for both model and embedding
+   repetitions, consuming the exact retained 96/6 claims and same-attempt
+   real/AES-PCG state;
+2. strict proof objects and a decoded `C6PA1` assembly containing all six
+   native chains plus the one `C6RSC4` frame, with no old PCS payload;
+3. a role-separated compiler verifier driven by decoded `C6CPX1` bytes and a
+   setup-compliant compact profile, with no installed plan or materialized D27
+   vector; and
+4. scaled mutation/byte/transcript/correlation differentials before the exact
+   T=100/Q=50 runner is admitted.
+
+This stop does not reopen the exact terminal relation, persisted C6LNK2 or
+their completed differentials.  It forbids assigning full-chain credit to the
+currently available component join.  No pod contact is authorized at this
+stop.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

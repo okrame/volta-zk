@@ -17,10 +17,11 @@ This report deliberately has two different verdict scopes:
   rational trees, joint degree-8 reduction, twelve arithmetic response targets,
   four challenge-dependent terminal-fold response targets, three public plan
   targets and one QuickSilver/ZeroOpen closure to the shared
-  Dn/D(n-1) WHIR flow.  The selected monolithic P3 prover-data memory is now
-  censused exactly at D28/D27, but a resource-instrumented persisted or
-  GPU-resident executor and the full-chain benchmark remain absent, so this
-  is not final proof or timing credit.
+  Dn/D(n-1) WHIR flow.  The selected monolithic P3 prover-data memory is
+  censused exactly at D28/D27 and the persisted/CUDA compiler executor is
+  locally implemented.  Production model/embedding chains, a role-separated
+  wire verifier and the full-chain benchmark remain absent, so this is not
+  final proof or timing credit.
 
 No projected ceiling or analytic roofline is proof-size, setup, prover-time,
 verifier-time or hardware credit.  The implemented PCS codec receives only
@@ -209,6 +210,8 @@ C61_NATIVE_CHAIN_CODEC_MAX_BYTES = 1_500_000
 # rational-GKR messages.  Model and embedding retain the old ceiling.
 C61_NATIVE_COMPILER_CHAIN_CODEC_MAX_BYTES = 2_500_000
 C61_NATIVE_ARITHMETIC_AND_LINK_CODEC_MAX_BYTES = 500_000
+C61_PUBLIC_ARGUMENT_OUTER_FRAMING_BYTES = 356
+C61_C6RSC4_ARITHMETIC_FRAME_BYTES = 1_212
 C61_PREREGISTERED_NATIVE_PUBLIC_ARGUMENT_CODEC_MAX_BYTES = (
     2 * C61_NATIVE_CHAINS_PER_COMPONENT * C61_NATIVE_CHAIN_CODEC_MAX_BYTES
     + C61_NATIVE_CHAINS_PER_COMPONENT * C61_NATIVE_COMPILER_CHAIN_CODEC_MAX_BYTES
@@ -607,6 +610,8 @@ def build_report() -> dict[str, Any]:
     exact_native_public_argument_ceiling_bytes = (
         2 * C61_NATIVE_CHAINS_PER_COMPONENT * C61_NATIVE_CHAIN_CODEC_MAX_BYTES
         + C61_NATIVE_CHAINS_PER_COMPONENT * compiler_complete_chain_ceiling_bytes
+        + C61_PUBLIC_ARGUMENT_OUTER_FRAMING_BYTES
+        + C61_C6RSC4_ARITHMETIC_FRAME_BYTES
     )
     native_projected_certificate_bytes = (
         active_fixed_remainder_bytes + exact_native_public_argument_ceiling_bytes
@@ -689,7 +694,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v21",
+        "profile": "C6.1-public-compression-reference-v22",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
@@ -706,7 +711,7 @@ def build_report() -> dict[str, Any]:
             "SHARED_ROUND_CLAIMLESS_BACKEND_GREEN__"
             "EXACT_SPARSE_RELATION_TO_PHYSICAL_SHARED_WHIR_GREEN__"
             "PRODUCTION_D28_D27_MONOLITHIC_MEMORY_CENSUSED__"
-            "PERSISTED_OR_GPU_RESIDENT_WHIR_EXECUTOR_REQUIRED__"
+            "PRODUCTION_NATIVE_COMPONENTS_AND_WIRE_VERIFIER_REQUIRED__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
@@ -788,7 +793,7 @@ def build_report() -> dict[str, Any]:
                 "SHARED_ROUND_CLAIMLESS_BACKEND_GREEN__"
                 "EXACT_SPARSE_RELATION_TO_PHYSICAL_SHARED_WHIR_GREEN__"
                 "PRODUCTION_D28_D27_MONOLITHIC_MEMORY_CENSUSED__"
-                "PERSISTED_OR_GPU_RESIDENT_WHIR_EXECUTOR_REQUIRED__"
+                "PRODUCTION_NATIVE_COMPONENTS_AND_WIRE_VERIFIER_REQUIRED__"
                 "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
             "statement": (
@@ -1144,6 +1149,8 @@ def build_report() -> dict[str, Any]:
                 "arithmetic_mac_link_framing_ceiling_bytes": (
                     C61_NATIVE_ARITHMETIC_AND_LINK_CODEC_MAX_BYTES
                 ),
+                "c6pa1_outer_framing_bytes": C61_PUBLIC_ARGUMENT_OUTER_FRAMING_BYTES,
+                "c6rsc4_arithmetic_frame_bytes": C61_C6RSC4_ARITHMETIC_FRAME_BYTES,
                 "arithmetic_mac_link_ceiling_is_nested_not_additive": True,
                 "public_argument_codec_ceiling_bytes": (
                     exact_native_public_argument_ceiling_bytes
@@ -1351,7 +1358,11 @@ def build_report() -> dict[str, Any]:
                 ),
             },
             "local_hard_stop": {
-                "status": "C6SPR5_PERSISTED_OR_GPU_RESIDENT_WHIR_EXECUTOR_REQUIRED",
+                "status": "C6SPR11_PRODUCTION_NATIVE_COMPONENTS_AND_WIRE_VERIFIER_REQUIRED",
+                "persisted_cuda_compiler_executor_green": True,
+                "production_model_embedding_chains_green": False,
+                "strict_six_chain_c6pa1_assembly_green": False,
+                "setup_compliant_role_separated_compiler_verifier_green": False,
                 "canonical_runtime_seam_green": True,
                 "raw_verifier_runtime_values": raw_verifier_runtime_values,
                 "canonical_runtime_values": canonical_runtime_values,
@@ -1825,16 +1836,16 @@ def build_report() -> dict[str, Any]:
     assert C61_SPARSE_RATIONAL_TOTAL_OPENINGS == 19
     assert compiler_complete_chain_ceiling_bytes == 2_346_468
     assert compiler_chain_slack_after_complete_relation_bytes == 153_532
-    assert exact_native_public_argument_ceiling_bytes == 10_692_936
+    assert exact_native_public_argument_ceiling_bytes == 10_694_504
     assert exact_native_public_argument_ceiling_bytes < C61_PUBLIC_ARGUMENT_ALLOCATION_BYTES
     assert C61_SHARED_MULTI_ORACLE_D14_DIAGNOSTIC_BYTES == 677_532
     assert C61_SHARED_MULTI_ORACLE_D14_STRICT_MAX_BYTES == 770_748
     assert C61_SHARED_MULTI_ORACLE_D14_ARITHMETIC_BYTES == 5_212
     assert C61_SHARED_MULTI_ORACLE_D14_TOTAL_PROVIDER_BYTES == 682_744
     assert C61_SHARED_MULTI_ORACLE_D14_TRANSCRIPT_BYTES == 682_652
-    assert native_projected_certificate_bytes == 17_535_039
-    assert C61_CERTIFICATE_MAX_BYTES - native_projected_certificate_bytes == 4_464_960
-    assert native_projected_first_response_bytes == 102_278_406
+    assert native_projected_certificate_bytes == 17_536_607
+    assert C61_CERTIFICATE_MAX_BYTES - native_projected_certificate_bytes == 4_463_392
+    assert native_projected_first_response_bytes == 102_279_974
     assert provider_state_elements == 142_357_222
     assert provider_state_bytes == 2_277_715_552
     assert C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_BASE_ELEMENTS == 268_435_456

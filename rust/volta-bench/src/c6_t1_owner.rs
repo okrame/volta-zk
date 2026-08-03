@@ -16,6 +16,19 @@ use volta_gpt2::{
     BandModelWitness, Gpt2Model, KvCache, ModelWitness,
 };
 
+#[cfg(feature = "c6-trace")]
+use volta_mac::{C6DecodedInstanceExtractionPlan, C6InstalledOperationPlan, Transcript};
+#[cfg(feature = "c6-trace")]
+use volta_pcs::C6PersistentCacheStateWitness;
+#[cfg(feature = "c6-trace")]
+use volta_proto::{
+    build_c6_t1_production_response_owner, C6ProductionPairedPcgAttempt,
+    C6T1ProductionResponseOwner,
+};
+
+#[cfg(feature = "c6-trace")]
+use crate::c6_t1_live_sources::materialize_c6_t1_genesis_cache_states;
+
 pub const C6_T1_PROMPT_TOKENS: usize = 100;
 pub const C6_T1_DECODE_TOKENS: usize = 50;
 
@@ -50,6 +63,67 @@ impl C6T1WorkloadOwner {
     pub fn sequence(&self) -> &[u32] {
         &self.sequence
     }
+}
+
+/// Same-allocation workload, response proof/runtime and exact cache-state
+/// owners. The production runner moves this object forward; no constructor
+/// accepts detached claims, cache slabs, or a second witness pass.
+#[cfg(feature = "c6-trace")]
+pub struct C6T1ProductionOwnerExport {
+    workload: C6T1WorkloadOwner,
+    response: C6T1ProductionResponseOwner,
+    predecessor_cache: C6PersistentCacheStateWitness,
+    successor_cache: C6PersistentCacheStateWitness,
+}
+
+#[cfg(feature = "c6-trace")]
+impl C6T1ProductionOwnerExport {
+    pub fn workload(&self) -> &C6T1WorkloadOwner {
+        &self.workload
+    }
+
+    pub fn response(&self) -> &C6T1ProductionResponseOwner {
+        &self.response
+    }
+
+    pub fn predecessor_cache(&self) -> &C6PersistentCacheStateWitness {
+        &self.predecessor_cache
+    }
+
+    pub fn successor_cache(&self) -> &C6PersistentCacheStateWitness {
+        &self.successor_cache
+    }
+}
+
+/// Consume the frozen workload owner into the production response lifecycle.
+/// Cache states are derived from the already-owned K/V slabs before the same
+/// model witness is passed to the real/AES-PCG response constructor.
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+pub fn execute_c6_t1_production_owner_export(
+    workload: C6T1WorkloadOwner,
+    statement_digest: [u8; 32],
+    installed_plans: [C6InstalledOperationPlan; 2],
+    extraction_maps: [C6DecodedInstanceExtractionPlan; 2],
+    attempt: &mut C6ProductionPairedPcgAttempt,
+    provider_transcript: &mut Transcript,
+    verifier_transcript: &mut Transcript,
+) -> Result<C6T1ProductionOwnerExport, String> {
+    let (predecessor_cache, successor_cache) =
+        materialize_c6_t1_genesis_cache_states(workload.prefill(), workload.decode())?;
+    let response = build_c6_t1_production_response_owner(
+        workload.model(),
+        workload.prefill(),
+        workload.decode(),
+        workload.sequence(),
+        statement_digest,
+        installed_plans,
+        extraction_maps,
+        attempt,
+        provider_transcript,
+        verifier_transcript,
+    )?;
+    Ok(C6T1ProductionOwnerExport { workload, response, predecessor_cache, successor_cache })
 }
 
 /// Load, validate and execute the exact frozen T1 witness generator once.

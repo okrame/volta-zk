@@ -12,19 +12,23 @@ use volta_gpt2::{
     band_model_witness, forward_model, forward_model_tokens, generate, load_model, KvCache, D, H, L,
 };
 use volta_mac::{
-    begin_c6_prover_trace, begin_c6_verifier_trace, compile_c6_operation_trace_for_role,
-    derive_c6_runtime_instance_from_trace_diagnostic, finish_c6_prover_trace,
-    finish_c6_verifier_trace, C6DecodedInstanceExtractionPlan, C6InstalledOperationPlan,
-    C6InstanceExtractionRole, C6RuntimeInstanceValues, C6TraceSourceManifest, CorrScheduleRole,
-    CorrelationStream, Transcript, VerifierCtx,
+    begin_c6_prover_trace, begin_c6_runtime_instance_capture, begin_c6_verifier_trace,
+    compile_c6_operation_trace_for_role, derive_c6_runtime_instance_from_trace_diagnostic,
+    finish_c6_prover_trace, finish_c6_verifier_trace, C6DecodedInstanceExtractionPlan,
+    C6InstalledOperationPlan, C6InstanceExtractionRole, C6RuntimeInstanceValues,
+    C6TraceSourceManifest, CorrScheduleAudit, CorrScheduleRole, CorrelationStream, Transcript,
+    VerifierCtx,
 };
 
 use crate::block_proof::layer_dom_base;
 use crate::c6_cache_fold::{
-    begin_c6_cache_fold_trace, C6CacheFoldKind, C6CacheFoldParty, C6CacheFoldTargetInlineProver,
+    begin_c6_cache_fold_trace, C6CacheFoldKind, C6CacheFoldParty, C6CacheFoldTargetCorrectionFrame,
+    C6CacheFoldTargetFixedCorrections, C6CacheFoldTargetInlineProver,
     C6CacheFoldTargetInlineVerifier, C6CacheFoldTargetPublicSchedule,
     C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES,
 };
+use crate::c6_census::{C6_T1_TOTAL_PRODUCT_TRIPLES, C6_T1_ZERO_CLOSURES};
+use crate::c6_production_pcg::{C6ProductionPairedPcgAttempt, C6ProductionPairedSourceWitness};
 use crate::c6_residual::{
     C6CompiledLinearResidual, C6InstalledClosureEvaluationMemoryCensus,
     C6PairedResidualAuxiliaryWitness, C6PairedResidualClosureWitness, C6PairedResidualLeafWitness,
@@ -38,9 +42,12 @@ use crate::c6_source::{
 };
 use crate::logup::Doms;
 use crate::model_proof::{
-    prove_response_c6_cache_inline, verify_response_c6_cache_inline, ChunkPub, ChunkRef,
+    prove_response_c6_cache_inline, prove_response_private_logits_c6_cache_inline,
+    verify_response_c6_cache_inline, verify_response_private_logits_c6_cache_inline,
+    C6GrandResidualProverRoots, C6GrandResidualVerifierRoots, ChunkPub, ChunkRef, ModelOut,
+    ModelOutV, ModelProof, PrivateChunkPub,
 };
-use crate::prod_check::{prod_batch_prover, prod_batch_verify};
+use crate::prod_check::{prod_batch_prover, prod_batch_verify, ProdProof};
 
 const RESPONSE_T: usize = 4;
 const RESPONSE_Q: usize = 2;
@@ -109,6 +116,394 @@ pub struct C6ResponseResidualVerifierInputs<'a> {
     pub relation: &'a C6ResidualRelationChallenges,
     pub contexts: &'a mut [VerifierCtx; 2],
     pub transcript: &'a mut Transcript,
+}
+
+/// Installed role owner captured in the same production T1 response pass.
+/// The runtime values are accepted only through the preinstalled extraction
+/// map; the diagnostic trace-to-runtime reconstruction is unreachable here.
+pub struct C6T1InstalledRoleOwner {
+    operation_plan: C6InstalledOperationPlan,
+    extraction: C6DecodedInstanceExtractionPlan,
+    runtime: C6RuntimeInstanceValues,
+}
+
+impl C6T1InstalledRoleOwner {
+    pub fn operation_plan(&self) -> &C6InstalledOperationPlan {
+        &self.operation_plan
+    }
+
+    pub fn extraction(&self) -> &C6DecodedInstanceExtractionPlan {
+        &self.extraction
+    }
+
+    pub fn runtime(&self) -> &C6RuntimeInstanceValues {
+        &self.runtime
+    }
+}
+
+/// Exact response owners exported before any public-compression chain is
+/// constructed. Nothing in this object is clonable or reconstructed from a
+/// digest: model claims, verifier keys, paired source witness, installed
+/// runtime values and cache-fold corrections all originate in one execution.
+pub struct C6T1ProductionResponseOwner {
+    model_proof: ModelProof,
+    prover_output: ModelOut,
+    verifier_output: ModelOutV,
+    product_proof: ProdProof,
+    product_challenge: Fp2,
+    product_mask_domain: u64,
+    prover_zero_roots: C6GrandResidualProverRoots,
+    verifier_zero_roots: C6GrandResidualVerifierRoots,
+    paired_sources: C6ProductionPairedSourceWitness,
+    source_schedule: CorrScheduleAudit,
+    source_manifest: C6TraceSourceManifest,
+    provider: C6T1InstalledRoleOwner,
+    verifier: C6T1InstalledRoleOwner,
+    cache_target_frame: C6CacheFoldTargetCorrectionFrame,
+    cache_target_fixed: C6CacheFoldTargetFixedCorrections,
+    provider_cache_metrics: crate::c6_cache_fold::C6CacheFoldOnlineLayerMetrics,
+    verifier_cache_metrics: crate::c6_cache_fold::C6CacheFoldOnlineLayerMetrics,
+}
+
+impl C6T1ProductionResponseOwner {
+    pub fn model_proof(&self) -> &ModelProof {
+        &self.model_proof
+    }
+
+    pub fn prover_output(&self) -> &ModelOut {
+        &self.prover_output
+    }
+
+    pub fn verifier_output(&self) -> &ModelOutV {
+        &self.verifier_output
+    }
+
+    pub fn product_proof(&self) -> &ProdProof {
+        &self.product_proof
+    }
+
+    pub fn product_challenge(&self) -> Fp2 {
+        self.product_challenge
+    }
+
+    pub fn product_mask_domain(&self) -> u64 {
+        self.product_mask_domain
+    }
+
+    pub fn paired_sources(&self) -> &C6ProductionPairedSourceWitness {
+        &self.paired_sources
+    }
+
+    pub fn source_schedule(&self) -> &CorrScheduleAudit {
+        &self.source_schedule
+    }
+
+    pub fn source_manifest(&self) -> &C6TraceSourceManifest {
+        &self.source_manifest
+    }
+
+    pub fn provider(&self) -> &C6T1InstalledRoleOwner {
+        &self.provider
+    }
+
+    pub fn verifier(&self) -> &C6T1InstalledRoleOwner {
+        &self.verifier
+    }
+
+    pub fn cache_target_frame(&self) -> &C6CacheFoldTargetCorrectionFrame {
+        &self.cache_target_frame
+    }
+
+    pub fn cache_target_fixed(&self) -> &C6CacheFoldTargetFixedCorrections {
+        &self.cache_target_fixed
+    }
+
+    pub fn zero_root_count(&self) -> usize {
+        debug_assert_eq!(self.prover_zero_roots.len(), self.verifier_zero_roots.len());
+        self.prover_zero_roots.len()
+    }
+
+    pub fn provider_cache_metrics(&self) -> crate::c6_cache_fold::C6CacheFoldOnlineLayerMetrics {
+        self.provider_cache_metrics
+    }
+
+    pub fn verifier_cache_metrics(&self) -> crate::c6_cache_fold::C6CacheFoldOnlineLayerMetrics {
+        self.verifier_cache_metrics
+    }
+}
+
+/// Execute the frozen private-logit response once under the already allocated
+/// production tapes and return every owner needed by the residual/compiler
+/// continuation. This entry point cannot accept mock streams, diagnostic
+/// runtime extraction, or caller-supplied claims.
+#[allow(clippy::too_many_arguments)]
+pub fn build_c6_t1_production_response_owner(
+    model: &volta_gpt2::Gpt2Model,
+    prefill: &volta_gpt2::ModelWitness,
+    decode: &volta_gpt2::BandModelWitness,
+    sequence: &[u32],
+    statement_digest: [u8; 32],
+    installed_plans: [C6InstalledOperationPlan; 2],
+    extraction_maps: [C6DecodedInstanceExtractionPlan; 2],
+    attempt: &mut C6ProductionPairedPcgAttempt,
+    provider_transcript: &mut Transcript,
+    verifier_transcript: &mut Transcript,
+) -> Result<C6T1ProductionResponseOwner, String> {
+    if statement_digest == [0; 32]
+        || prefill.t != 100
+        || decode.t0 != 100
+        || decode.q != 50
+        || sequence.len() != 150
+        || extraction_maps[0].role() != C6InstanceExtractionRole::Prover
+        || extraction_maps[1].role() != C6InstanceExtractionRole::Verifier
+        || extraction_maps[0].topology_digest() != installed_plans[0].topology().topology_digest
+        || extraction_maps[1].topology_digest() != installed_plans[1].topology().topology_digest
+        || installed_plans[0].topology() != installed_plans[1].topology()
+    {
+        return Err("C6SPR12 installed T1 response profile mismatch".to_owned());
+    }
+    let public_schedule = C6CacheFoldTargetPublicSchedule::new(
+        (0..2 * L)
+            .flat_map(|_| {
+                std::iter::repeat_n(C6CacheFoldKind::ValueColumns, H)
+                    .chain(std::iter::repeat_n(C6CacheFoldKind::KeyRows, H))
+            })
+            .collect(),
+    )
+    .map_err(|error| error.to_string())?;
+    let chunks = [ChunkRef { band: decode, seq: sequence }];
+
+    let (
+        model_proof,
+        prover_output,
+        products,
+        prover_zero_roots,
+        provider_cache_metrics,
+        product_proof,
+        product_challenge,
+        product_mask_domain,
+        cache_target_frame,
+        cache_target_fixed,
+        source_schedule,
+        coordinates,
+        provider_runtime,
+    ) = {
+        let streams = attempt.prover_streams_array_mut();
+        if streams.iter().any(|stream| !stream.uses_pooled_pcg()) {
+            return Err("C6SPR12 production response received mock prover tapes".to_owned());
+        }
+        let [primary, secondary] = streams;
+        begin_c6_prover_trace().map_err(|error| error.to_string())?;
+        primary.enable_c6_operation_trace().map_err(|error| error.to_string())?;
+        primary.enable_c6_source_witness_collection().map_err(|error| error.to_string())?;
+        let runtime_capture = begin_c6_runtime_instance_capture(&extraction_maps[0])
+            .map_err(|error| error.to_string())?;
+        let mut follower =
+            C6SourceScheduleProverFollower::start(secondary).map_err(|error| error.to_string())?;
+        let mut target_builder = C6CacheFoldTargetInlineProver::start_public(
+            statement_digest,
+            public_schedule.clone(),
+            provider_transcript,
+        )
+        .map_err(|error| error.to_string())?;
+        let cache_trace = begin_c6_cache_fold_trace(C6CacheFoldParty::Prover)
+            .map_err(|error| error.to_string())?;
+        let (proof, output, products, zero_roots, metrics) =
+            prove_response_private_logits_c6_cache_inline(
+                model,
+                prefill,
+                &chunks,
+                primary,
+                secondary,
+                &mut follower,
+                &mut target_builder,
+                provider_transcript,
+            );
+        let cache_trace = cache_trace.finish().map_err(|error| error.to_string())?;
+        let (target_frame, target_fixed) = target_builder
+            .finish_before_successor_root_with_identity(cache_trace.identity, provider_transcript)
+            .map_err(|error| error.to_string())?;
+        let mut doms = Doms::new(layer_dom_base(255));
+        let chi = provider_transcript.challenge_fp2();
+        let product_domain = doms.take(1);
+        let product_mask = primary.draw_product_mask(product_domain, products.len());
+        let product_proof = prod_batch_prover(&products, chi, product_mask, provider_transcript);
+        zero_roots.record_operation_trace_ownership().map_err(|error| error.to_string())?;
+        let _operation_trace = finish_c6_prover_trace().map_err(|error| error.to_string())?;
+        let runtime = runtime_capture
+            .finish_installed(&installed_plans[0], &extraction_maps[0])
+            .map_err(|error| error.to_string())?;
+        follower.sync_primary(primary, secondary).map_err(|error| error.to_string())?;
+        let schedule = primary
+            .schedule_audit()
+            .ok_or_else(|| "C6SPR12 production prover schedule audit is absent".to_owned())?;
+        let primary_coordinate = C6SourceCoordinate::new(
+            primary.finish_c6_subfield_witness_collection().map_err(|error| error.to_string())?,
+            primary.finish_c6_fullfield_witness_collection().map_err(|error| error.to_string())?,
+            &schedule,
+        )
+        .map_err(|error| error.to_string())?;
+        let secondary_coordinate = follower
+            .finish_coordinate(&primary_coordinate, &schedule, secondary)
+            .map_err(|error| error.to_string())?;
+        (
+            proof,
+            output,
+            products,
+            zero_roots,
+            metrics,
+            product_proof,
+            chi,
+            product_domain,
+            target_frame,
+            target_fixed,
+            schedule,
+            [primary_coordinate, secondary_coordinate],
+            runtime,
+        )
+    };
+    if products.len() as u64 != C6_T1_TOTAL_PRODUCT_TRIPLES
+        || prover_zero_roots.len() as u64 != C6_T1_ZERO_CLOSURES
+        || prover_output.weight_claims.len() != 96
+        || prover_output.embed_claims.len() != 6
+    {
+        return Err("C6SPR12 exact provider claim/closure census changed".to_owned());
+    }
+    let paired_sources =
+        attempt.seal_sources(coordinates, &source_schedule, source_schedule.digest)?;
+    let mut next_source = 0u64;
+    let mut product_mask_sources = Vec::new();
+    for draw in &source_schedule.draws {
+        if draw.role == CorrScheduleRole::ProductMask {
+            product_mask_sources.push(
+                u32::try_from(next_source)
+                    .map_err(|_| "C6SPR12 product-mask source exceeds u32".to_owned())?,
+            );
+        }
+        next_source = next_source
+            .checked_add(draw.count)
+            .ok_or_else(|| "C6SPR12 source census overflows".to_owned())?;
+    }
+    let source_manifest = C6TraceSourceManifest::new(
+        u32::try_from(next_source).map_err(|_| "C6SPR12 source manifest exceeds u32".to_owned())?,
+        source_schedule.digest,
+        product_mask_sources,
+    )
+    .map_err(|error| error.to_string())?;
+
+    let (
+        verifier_output,
+        verifier_zero_roots,
+        verifier_cache_metrics,
+        verifier_runtime,
+        verifier_target_fixed,
+    ) = {
+        let contexts = attempt.verifier_contexts_array_mut();
+        if contexts.iter().any(|context| !context.uses_pooled_pcg()) {
+            return Err("C6SPR12 production response received mock verifier tapes".to_owned());
+        }
+        let deltas = [contexts[0].delta, contexts[1].delta];
+        let [primary, secondary] = contexts;
+        begin_c6_verifier_trace().map_err(|error| error.to_string())?;
+        primary.enable_c6_operation_trace().map_err(|error| error.to_string())?;
+        primary.enable_schedule_audit().map_err(|error| error.to_string())?;
+        let runtime_capture = begin_c6_runtime_instance_capture(&extraction_maps[1])
+            .map_err(|error| error.to_string())?;
+        let mut follower = C6SourceScheduleVerifierFollower::start(secondary)
+            .map_err(|error| error.to_string())?;
+        let public = [PrivateChunkPub { q: decode.q, seq: sequence }];
+        let mut target_cursor = C6CacheFoldTargetInlineVerifier::start_public(
+            &cache_target_frame,
+            public_schedule,
+            deltas,
+            verifier_transcript,
+        )
+        .map_err(|error| error.to_string())?;
+        let cache_trace = begin_c6_cache_fold_trace(C6CacheFoldParty::Verifier)
+            .map_err(|error| error.to_string())?;
+        let (output, product_keys, zero_roots, metrics) =
+            verify_response_private_logits_c6_cache_inline(
+                model,
+                prefill.t,
+                &public,
+                &model_proof,
+                primary,
+                secondary,
+                &mut follower,
+                &mut target_cursor,
+                verifier_transcript,
+            )
+            .ok_or_else(|| "C6SPR12 exact private-logit response rejected".to_owned())?;
+        let cache_trace = cache_trace.finish().map_err(|error| error.to_string())?;
+        let target_fixed = target_cursor
+            .finish_before_successor_root_with_identity(cache_trace.identity, verifier_transcript)
+            .map_err(|error| error.to_string())?;
+        let mut doms = Doms::new(layer_dom_base(255));
+        if product_challenge != verifier_transcript.challenge_fp2()
+            || product_mask_domain != doms.take(1)
+            || !prod_batch_verify(
+                &product_keys,
+                primary.expand_product_mask_verifier_key(product_mask_domain, product_keys.len()),
+                primary.delta,
+                product_challenge,
+                &product_proof,
+            )
+        {
+            return Err("C6SPR12 exact ProductClosure batch rejected".to_owned());
+        }
+        zero_roots.record_operation_trace_ownership().map_err(|error| error.to_string())?;
+        let _operation_trace = finish_c6_verifier_trace().map_err(|error| error.to_string())?;
+        let runtime = runtime_capture
+            .finish_installed(&installed_plans[1], &extraction_maps[1])
+            .map_err(|error| error.to_string())?;
+        follower.sync_primary(primary, secondary).map_err(|error| error.to_string())?;
+        if primary.schedule_audit() != Some(source_schedule.clone())
+            || secondary.schedule_audit() != Some(source_schedule.clone())
+        {
+            return Err("C6SPR12 provider/verifier source schedules differ".to_owned());
+        }
+        (output, zero_roots, metrics, runtime, target_fixed)
+    };
+    if verifier_output.weight_keys.len() != 96
+        || verifier_output.embed_keys.len() != 6
+        || verifier_zero_roots.len() != prover_zero_roots.len()
+        || verifier_target_fixed != cache_target_fixed
+        || verifier_runtime.instance_identity() != provider_runtime.instance_identity()
+        || provider_transcript.ledger() != verifier_transcript.ledger()
+        || provider_transcript.total_bytes() != verifier_transcript.total_bytes()
+    {
+        return Err("C6SPR12 same-pass role owner differential failed".to_owned());
+    }
+
+    let [provider_plan, verifier_plan] = installed_plans;
+    let [provider_extraction, verifier_extraction] = extraction_maps;
+    Ok(C6T1ProductionResponseOwner {
+        model_proof,
+        prover_output,
+        verifier_output,
+        product_proof,
+        product_challenge,
+        product_mask_domain,
+        prover_zero_roots,
+        verifier_zero_roots,
+        paired_sources,
+        source_schedule,
+        source_manifest,
+        provider: C6T1InstalledRoleOwner {
+            operation_plan: provider_plan,
+            extraction: provider_extraction,
+            runtime: provider_runtime,
+        },
+        verifier: C6T1InstalledRoleOwner {
+            operation_plan: verifier_plan,
+            extraction: verifier_extraction,
+            runtime: verifier_runtime,
+        },
+        cache_target_frame,
+        cache_target_fixed,
+        provider_cache_metrics,
+        verifier_cache_metrics,
+    })
 }
 
 impl C6ResponseResidualFixture {

@@ -124,8 +124,9 @@ pub use c6_response_envelope::{
 #[cfg(feature = "c6-trace")]
 pub use c6_response_fixture::{
     build_c6_response_residual_fixture, build_c6_response_residual_fixture_production_geometry,
-    C6ResponseResidualCensus, C6ResponseResidualFixture, C6ResponseResidualProviderInputs,
-    C6ResponseResidualTiming, C6ResponseResidualVerifierInputs,
+    build_c6_t1_production_response_owner, C6ResponseResidualCensus, C6ResponseResidualFixture,
+    C6ResponseResidualProviderInputs, C6ResponseResidualTiming, C6ResponseResidualVerifierInputs,
+    C6T1InstalledRoleOwner, C6T1ProductionResponseOwner,
 };
 pub use c6_source::{
     replay_c6_source_coordinate, C6PairedSourceWitness, C6SourceCoordinate, C6SourceDigest,

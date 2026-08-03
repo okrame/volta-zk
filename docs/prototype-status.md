@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §0.42 next.
+This capsule is authoritative; read design §0.43 next.
 
 - **Phase/relation.** C6.1 response-local public compression. The 64 C6RSC3
   values are challenge-dependent and exactly factor through two D25 reverse
@@ -48,12 +48,12 @@ This capsule is authoritative; read design §0.42 next.
   becomes mandatory under `VOLTA_REQUIRE_CUDA=1`. This is implementation
   evidence only: no hardware execution or production admission exists yet.
 - **Construction.** The persisted wrapper backend now derives the six roots and
-  both strict `C6LNK2` chains from exact live owners without retaining duplicate
-  codewords or all resident cohorts. The already-known production 24-round
-  streaming `C6PC2` compiler is the next separate mandatory local gate, then
-  the exact runner must join wrapper, compiler and real/AES-PCG allocation and
-  report RSS, GPU, spill, I/O and synchronization separately. No pod may be
-  contacted before those local gates are green.
+  both packed PCS fold chains from exact live owners without retaining
+  duplicate codewords or all resident cohorts. The production 24-round
+  streaming `C6PC2` compiler is locally implemented. The exact runner must
+  still join wrapper, compiler and real/AES-PCG allocation and report RSS,
+  GPU, spill, I/O and synchronization separately. No pod may be contacted
+  before those local gates are green.
 - **Production C6PC2 checkpoint.** Checkpoints `ca4a38e`, `16d6e58`,
   `ed7f950`, `b864d85`, `2580cd1`, `84c7341`, `04a8c69` and `0ef6b13`
   install semantic cache owners, the factorized per-layer compiler, the
@@ -66,13 +66,23 @@ This capsule is authoritative; read design §0.42 next.
   pending claims**; local C6PC2 tests are **11/0/0** and `cuda,c6-trace` test
   targets compile. This is local implementation evidence, not a full-chain,
   timing, memory or hardware record.
-- **Next local seam.** The exact runner must first move the existing blind
-  C6RSC3 and C6HUB2 prover/verifier loops behind their already registered
-  step-wise arithmetic states. Their current blind entry points draw private
-  per-component challenges and therefore cannot be substituted into the
-  response-global coordinator. This is an implementation seam, not authority
-  to use the clear states, alter either codec or claim component evidence as
-  an e2e result.
+- **Global blind join checkpoint.** Checkpoints `77487e5`, `fbc9066`,
+  `2e2161f` and `098e652` place the actual C6RSC3/C6HUB2 blind messages behind
+  step-wise states, join C6PC2/C6RSC3/C6HUB2 at exact offsets `0/1/3`, and
+  assemble both repetitions only after the shared 24-round schedule. Focused
+  C6RSC3 is **9/0/1**, C6HUB2 is **4/0/0**, the coordinator schedule test is
+  green and `cuda,c6-trace` test targets compile. No production response has
+  executed.
+- **New hard stop.** Exact-runner integration exposed
+  `C6SPR9_C6LNK2_PERSISTED_PROVER_REQUIRED`: the only C6LNK2 prover still
+  rejects production roots and clones resident evaluation/equality tables,
+  while the persisted/CUDA PCS accepts only claims sealed by that link.
+  Checkpoints `0372f96`, `b5026f3` and `ccf7ea4` add the witness-free
+  production verifier, canonical persisted coefficient-slot reads and an
+  exact round/terminal differential for coefficient-domain folding without
+  `eq_vec`. The remaining gate is the create-new 72-term fold owner with
+  binding and I/O/spill counters, then the production link entry point and
+  full runner. No clear-claim or typestate bypass is authorized.
 - **Owner GO.** The 2026-08-03 A100 full-e2e authorization remains valid after
   this local gate, but pod contact remains deferred until the local backend,
   C6PC2 and complete runner are green. It waives none of the clean-record,

@@ -3001,6 +3001,46 @@ truncated/noncanonical files and any root/transcript difference fail closed.
 No CPU production fallback, provider-authored root, changed relation or new
 wire field is authorized.
 
+### 0.43 Global blind join closure and persisted C6LNK2 hard stop
+
+The C6RSC3 and C6HUB2 blind loops now expose actual message-before-challenge
+prover/verifier states and post-global-round assemblers.  A concrete
+production driver joins them to C6PC2 at offsets `0/1/3`, accepts only the
+exact `24/23/21` round census, charges one canonically ordered active-message
+set and releases one shared challenge.  The existing proof codecs, pending
+claims and terminal checks are unchanged.  This is local implementation
+evidence only; the driver has not executed a production response.
+
+Auditing the next exact-runner call exposed an omitted production boundary.
+`prove_c6_authenticated_output_link_reference` deliberately rejects
+production-fixed roots and clones both every Boolean evaluation table and its
+full equality table.  The persisted/CUDA PCS accepts only
+`authenticated_link=true` claims, and that typestate can be created only by
+C6LNK2.  Therefore the production PCS cannot be reached by the exact runner;
+manufacturing the typestate or passing clear terminal claims would bypass the
+registered 72-relation statement.
+
+The exact coefficient-domain relation is now differential-tested.  For a
+slot polynomial with monomial coefficients `c`, a target suffix `a` and live
+prefix challenges `r`, each round evaluates
+`W(r, z, a_suffix) * eq(r || z, a)` at `z=0,2`; after the shared challenge it
+persists the exact bind `c'[i] = c[2i] + r*c[2i+1]`.  This agrees round by
+round and at the terminal with the resident evaluation/equality construction
+without materializing either table.  Persisted coefficient owners now have a
+canonical random-access, length-checked reader; the production verifier is
+witness-free and already admits production-fixed roots.
+
+The new **HARD STOP** is
+`C6SPR9_C6LNK2_PERSISTED_PROVER_REQUIRED`.  Resume requires a create-new
+fold-state owner for all 72 coefficient-domain terms, bound to statement,
+session, root, repetition, cohort, slot and round; exact read/write/fsync and
+peak-live-spill counters; a scaled byte/transcript/correlation/terminal
+differential against resident C6LNK2; and a production entry point which alone
+seals the assembled claims before the existing two-chain persisted/CUDA PCS.
+It may release a predecessor fold only after its successor is durable.  No
+resident production fallback, equality table, changed proof byte or pod
+contact is authorized at this stop.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

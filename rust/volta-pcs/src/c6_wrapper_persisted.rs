@@ -9,7 +9,7 @@ use std::io::{BufWriter, Write};
 use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
 
-use volta_accel::{Backend, BackendKind};
+use volta_accel::{Backend, BackendKind, DeviceBuffer, Fp2Repr};
 use volta_field::{Fp, Fp2, P};
 
 use crate::c6_wrapper_pcs::{
@@ -201,6 +201,93 @@ impl C6PersistedCoefficientSlotReader {
             },
         ))
     }
+
+    pub(crate) fn open_cuda_link_fold_owner(
+        &self,
+        backend: &mut Backend,
+        spill_root: impl AsRef<Path>,
+        repetition: u8,
+        cohort_id: u32,
+        slot: u16,
+        target_digest: C6WrapperDigest,
+    ) -> Result<(C6CudaPersistedLinkFoldOwner, C6PersistedLinkFoldMetrics)> {
+        if backend.kind() != BackendKind::CudaResident {
+            return Err(C6WrapperPcsError::external_message(
+                "C6 CUDA link fold owner requires cuda-resident backend",
+            ));
+        }
+        if slot >= self.slot_count || target_digest == [0; 32] {
+            return Err(C6WrapperPcsError::external_message(
+                "C6 CUDA link fold source binding mismatch",
+            ));
+        }
+        let device = backend.alloc_device::<Fp2Repr>(self.coefficient_len).map_err(|error| {
+            C6WrapperPcsError::external("allocate C6 CUDA link coefficients", error)
+        })?;
+        let mut metrics = C6PersistedLinkFoldMetrics::default();
+        let mut start = 0usize;
+        while start < self.coefficient_len {
+            let count = (self.coefficient_len - start).min(LINK_FOLD_CHUNK_SYMBOLS);
+            let (values, bytes_read) = match self.read_slot_range(slot, start, count) {
+                Ok(values) => values,
+                Err(error) => {
+                    let _ = backend.free_device(device);
+                    return Err(error);
+                }
+            };
+            let raw = values.into_iter().map(Fp2Repr::from).collect::<Vec<_>>();
+            if let Err(error) = backend.upload_device(&device, start, &raw) {
+                let _ = backend.free_device(device);
+                return Err(C6WrapperPcsError::external("upload C6 CUDA link coefficients", error));
+            }
+            metrics.coefficient_bytes_read =
+                metrics.coefficient_bytes_read.checked_add(bytes_read).ok_or_else(|| {
+                    C6WrapperPcsError::external_message("C6 CUDA link read metric overflow")
+                })?;
+            metrics.cuda_h2d_bytes =
+                metrics.cuda_h2d_bytes.checked_add(bytes_read).ok_or_else(|| {
+                    C6WrapperPcsError::external_message("C6 CUDA link H2D metric overflow")
+                })?;
+            start += count;
+        }
+        let directory = spill_root
+            .as_ref()
+            .join(format!("link-repetition-{repetition}-cohort-{cohort_id}-slot-{slot}"));
+        if let Err(error) = fs::create_dir(&directory) {
+            let _ = backend.free_device(device);
+            return Err(C6WrapperPcsError::external("create C6 CUDA link fold directory", error));
+        }
+        if let Err(error) = File::open(spill_root.as_ref()).and_then(|root| root.sync_all()) {
+            let _ = backend.free_device(device);
+            return Err(C6WrapperPcsError::external("fsync C6 CUDA link fold root", error));
+        }
+        metrics.directories_created = 1;
+        metrics.fsync_count = 1;
+        let binding = C6PersistedLinkFoldBinding {
+            statement_digest: self.statement_digest,
+            session_digest: self.session_digest,
+            root: self.root,
+            repetition,
+            cohort_id,
+            slot,
+            round: 0,
+            target_digest,
+        };
+        let state_digest = link_fold_source_digest(&binding, self.coefficient_len)?;
+        Ok((
+            C6CudaPersistedLinkFoldOwner {
+                binding,
+                coefficient_len: self.coefficient_len,
+                state_digest,
+                directory,
+                device,
+                coefficient_path: None,
+                manifest_path: None,
+                live_bytes: 0,
+            },
+            metrics,
+        ))
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -216,16 +303,19 @@ pub(crate) struct C6PersistedLinkFoldBinding {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct C6PersistedLinkFoldMetrics {
-    pub(crate) coefficient_bytes_read: u64,
-    pub(crate) coefficient_bytes_written: u64,
-    pub(crate) manifest_bytes_written: u64,
-    pub(crate) files_created: u64,
-    pub(crate) files_deleted_after_successor_durable: u64,
-    pub(crate) directories_created: u64,
-    pub(crate) fsync_count: u64,
-    pub(crate) current_live_spill_bytes: u64,
-    pub(crate) peak_live_spill_bytes: u64,
+pub struct C6PersistedLinkFoldMetrics {
+    pub coefficient_bytes_read: u64,
+    pub coefficient_bytes_written: u64,
+    pub manifest_bytes_written: u64,
+    pub files_created: u64,
+    pub files_deleted_after_successor_durable: u64,
+    pub directories_created: u64,
+    pub fsync_count: u64,
+    pub current_live_spill_bytes: u64,
+    pub peak_live_spill_bytes: u64,
+    pub cuda_h2d_bytes: u64,
+    pub cuda_d2h_bytes: u64,
+    pub cuda_kernel_calls: u64,
 }
 
 impl C6PersistedLinkFoldMetrics {
@@ -250,6 +340,9 @@ impl C6PersistedLinkFoldMetrics {
         add!(files_deleted_after_successor_durable);
         add!(directories_created);
         add!(fsync_count);
+        add!(cuda_h2d_bytes);
+        add!(cuda_d2h_bytes);
+        add!(cuda_kernel_calls);
         Ok(())
     }
 
@@ -613,6 +706,324 @@ impl C6PersistedLinkFoldOwner {
                 C6WrapperPcsError::external_message("C6 link fsync metric overflow")
             })?;
             metrics.remove_live(live_bytes)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct C6CudaPersistedLinkFoldOwner {
+    binding: C6PersistedLinkFoldBinding,
+    coefficient_len: usize,
+    state_digest: C6WrapperDigest,
+    directory: PathBuf,
+    device: DeviceBuffer<Fp2Repr>,
+    coefficient_path: Option<PathBuf>,
+    manifest_path: Option<PathBuf>,
+    live_bytes: u64,
+}
+
+impl C6CudaPersistedLinkFoldOwner {
+    pub(crate) fn binding(&self) -> C6PersistedLinkFoldBinding {
+        self.binding
+    }
+
+    pub(crate) fn coefficient_len(&self) -> usize {
+        self.coefficient_len
+    }
+
+    pub(crate) fn round_endpoints(
+        &self,
+        backend: &mut Backend,
+        suffix_point: &[Fp2],
+        metrics: &mut C6PersistedLinkFoldMetrics,
+    ) -> Result<(Fp2, Fp2)> {
+        if backend.kind() != BackendKind::CudaResident
+            || self.coefficient_len
+                != 2usize.checked_shl(suffix_point.len() as u32).unwrap_or_default()
+        {
+            return Err(C6WrapperPcsError::external_message(
+                "C6 CUDA link endpoint geometry mismatch",
+            ));
+        }
+        let mut point = Vec::with_capacity(suffix_point.len() + 1);
+        point.push(Fp2::ZERO);
+        point.extend_from_slice(suffix_point);
+        let at_zero = backend
+            .fp2_monomial_evaluate_device(&self.device, &point)
+            .map_err(|error| C6WrapperPcsError::external("C6 CUDA link endpoint zero", error))?;
+        point[0] = Fp2::from_base(Fp::new(2));
+        let at_two = backend
+            .fp2_monomial_evaluate_device(&self.device, &point)
+            .map_err(|error| C6WrapperPcsError::external("C6 CUDA link endpoint two", error))?;
+        let calls = u64::try_from(point.len())
+            .ok()
+            .and_then(|count| count.checked_mul(2))
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA kernel metric overflow"))?;
+        metrics.cuda_kernel_calls = metrics
+            .cuda_kernel_calls
+            .checked_add(calls)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA kernel metric overflow"))?;
+        metrics.cuda_h2d_bytes = metrics
+            .cuda_h2d_bytes
+            .checked_add(calls.checked_mul(32).ok_or_else(|| {
+                C6WrapperPcsError::external_message("C6 CUDA point transfer overflow")
+            })?)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA H2D metric overflow"))?;
+        metrics.cuda_d2h_bytes = metrics
+            .cuda_d2h_bytes
+            .checked_add(32)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA D2H metric overflow"))?;
+        Ok((at_zero, at_two))
+    }
+
+    pub(crate) fn advance_virtual_create_new(
+        mut self,
+        challenge: Fp2,
+        next_round: u16,
+        metrics: &mut C6PersistedLinkFoldMetrics,
+    ) -> Result<Self> {
+        if next_round != self.binding.round.checked_add(1).unwrap_or_default() {
+            return Err(C6WrapperPcsError::external_message(
+                "C6 CUDA link virtual successor round mismatch",
+            ));
+        }
+        let manifest_path = self.directory.join(format!("round-{next_round:02}.c6lfp1"));
+        let mut next_binding = self.binding;
+        next_binding.round = next_round;
+        let coefficient_bytes = u64::try_from(self.coefficient_len)
+            .ok()
+            .and_then(|symbols| symbols.checked_mul(16))
+            .ok_or_else(|| {
+                C6WrapperPcsError::external_message("C6 CUDA virtual coefficient byte overflow")
+            })?;
+        let manifest = encode_link_fold_manifest(
+            &next_binding,
+            self.coefficient_len,
+            self.state_digest,
+            challenge,
+            coefficient_bytes,
+        )?;
+        write_bytes_create_new(&manifest_path, &manifest)?;
+        metrics.manifest_bytes_written = metrics
+            .manifest_bytes_written
+            .checked_add(manifest.len() as u64)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA manifest overflow"))?;
+        metrics.files_created = metrics
+            .files_created
+            .checked_add(1)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA file metric overflow"))?;
+        metrics.fsync_count = metrics
+            .fsync_count
+            .checked_add(1)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA fsync overflow"))?;
+        File::open(&self.directory).and_then(|directory| directory.sync_all()).map_err(
+            |error| C6WrapperPcsError::external("fsync durable C6 CUDA virtual successor", error),
+        )?;
+        metrics.fsync_count = metrics
+            .fsync_count
+            .checked_add(1)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA fsync overflow"))?;
+        metrics.add_live(manifest.len() as u64)?;
+        if let Some(predecessor_manifest) = self.manifest_path.take() {
+            fs::remove_file(predecessor_manifest).map_err(|error| {
+                C6WrapperPcsError::external("release C6 CUDA virtual predecessor", error)
+            })?;
+            File::open(&self.directory).and_then(|directory| directory.sync_all()).map_err(
+                |error| {
+                    C6WrapperPcsError::external("fsync C6 CUDA virtual predecessor release", error)
+                },
+            )?;
+            metrics.files_deleted_after_successor_durable =
+                metrics.files_deleted_after_successor_durable.checked_add(1).ok_or_else(|| {
+                    C6WrapperPcsError::external_message("C6 CUDA deleted-file overflow")
+                })?;
+            metrics.fsync_count = metrics
+                .fsync_count
+                .checked_add(1)
+                .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA fsync overflow"))?;
+            metrics.remove_live(self.live_bytes)?;
+        }
+        self.binding = next_binding;
+        self.state_digest = manifest[manifest.len() - 32..].try_into().unwrap();
+        self.manifest_path = Some(manifest_path);
+        self.live_bytes = manifest.len() as u64;
+        Ok(self)
+    }
+
+    pub(crate) fn bind_create_new(
+        mut self,
+        backend: &mut Backend,
+        challenge: Fp2,
+        next_round: u16,
+        metrics: &mut C6PersistedLinkFoldMetrics,
+    ) -> Result<Self> {
+        if backend.kind() != BackendKind::CudaResident
+            || self.coefficient_len < 2
+            || !self.coefficient_len.is_power_of_two()
+            || next_round != self.binding.round.checked_add(1).unwrap_or_default()
+        {
+            return Err(C6WrapperPcsError::external_message(
+                "C6 CUDA link successor geometry mismatch",
+            ));
+        }
+        let successor = backend
+            .fp2_monomial_bind_device(&self.device, challenge)
+            .map_err(|error| C6WrapperPcsError::external("bind C6 CUDA coefficients", error))?;
+        let next_len = self.coefficient_len / 2;
+        if successor.len() != next_len {
+            let _ = backend.free_device(successor);
+            return Err(C6WrapperPcsError::external_message(
+                "C6 CUDA link successor length mismatch",
+            ));
+        }
+        metrics.cuda_kernel_calls = metrics
+            .cuda_kernel_calls
+            .checked_add(1)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA kernel overflow"))?;
+        metrics.cuda_h2d_bytes = metrics
+            .cuda_h2d_bytes
+            .checked_add(32)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA H2D overflow"))?;
+        let coefficient_path = self.directory.join(format!("round-{next_round:02}.fp2"));
+        let manifest_path = self.directory.join(format!("round-{next_round:02}.c6lfp1"));
+        let coefficient_bytes = write_cuda_link_coefficients_create_new(
+            backend,
+            &successor,
+            &coefficient_path,
+            metrics,
+        )?;
+        let mut next_binding = self.binding;
+        next_binding.round = next_round;
+        let manifest = encode_link_fold_manifest(
+            &next_binding,
+            next_len,
+            self.state_digest,
+            challenge,
+            coefficient_bytes,
+        )?;
+        write_bytes_create_new(&manifest_path, &manifest)?;
+        metrics.manifest_bytes_written = metrics
+            .manifest_bytes_written
+            .checked_add(manifest.len() as u64)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA manifest overflow"))?;
+        metrics.files_created = metrics
+            .files_created
+            .checked_add(1)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA file overflow"))?;
+        metrics.fsync_count = metrics
+            .fsync_count
+            .checked_add(1)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA fsync overflow"))?;
+        File::open(&self.directory).and_then(|directory| directory.sync_all()).map_err(
+            |error| C6WrapperPcsError::external("fsync durable C6 CUDA link successor", error),
+        )?;
+        metrics.fsync_count = metrics
+            .fsync_count
+            .checked_add(1)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA fsync overflow"))?;
+        let successor_live_bytes = coefficient_bytes
+            .checked_add(manifest.len() as u64)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA live spill overflow"))?;
+        metrics.add_live(successor_live_bytes)?;
+
+        backend.free_device(self.device).map_err(|error| {
+            C6WrapperPcsError::external("release C6 CUDA predecessor device", error)
+        })?;
+        let predecessor_files =
+            u64::from(self.coefficient_path.is_some()) + u64::from(self.manifest_path.is_some());
+        if let Some(predecessor_coefficients) = self.coefficient_path.take() {
+            fs::remove_file(predecessor_coefficients).map_err(|error| {
+                C6WrapperPcsError::external("release C6 CUDA predecessor coefficients", error)
+            })?;
+        }
+        if let Some(predecessor_manifest) = self.manifest_path.take() {
+            fs::remove_file(predecessor_manifest).map_err(|error| {
+                C6WrapperPcsError::external("release C6 CUDA predecessor manifest", error)
+            })?;
+        }
+        if self.live_bytes != 0 {
+            File::open(&self.directory).and_then(|directory| directory.sync_all()).map_err(
+                |error| C6WrapperPcsError::external("fsync C6 CUDA predecessor release", error),
+            )?;
+            metrics.files_deleted_after_successor_durable = metrics
+                .files_deleted_after_successor_durable
+                .checked_add(predecessor_files)
+                .ok_or_else(|| {
+                    C6WrapperPcsError::external_message("C6 CUDA deleted-file overflow")
+                })?;
+            metrics.fsync_count = metrics
+                .fsync_count
+                .checked_add(1)
+                .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA fsync overflow"))?;
+            metrics.remove_live(self.live_bytes)?;
+        }
+        Ok(Self {
+            binding: next_binding,
+            coefficient_len: next_len,
+            state_digest: manifest[manifest.len() - 32..].try_into().unwrap(),
+            directory: self.directory,
+            device: successor,
+            coefficient_path: Some(coefficient_path),
+            manifest_path: Some(manifest_path),
+            live_bytes: successor_live_bytes,
+        })
+    }
+
+    pub(crate) fn terminal(
+        &self,
+        backend: &mut Backend,
+        metrics: &mut C6PersistedLinkFoldMetrics,
+    ) -> Result<Fp2> {
+        if self.coefficient_len != 1 || self.device.len() != 1 {
+            return Err(C6WrapperPcsError::external_message(
+                "C6 CUDA link terminal geometry mismatch",
+            ));
+        }
+        let value = backend
+            .download_device(&self.device, 0, 1)
+            .map_err(|error| C6WrapperPcsError::external("read C6 CUDA link terminal", error))?;
+        metrics.cuda_d2h_bytes = metrics
+            .cuda_d2h_bytes
+            .checked_add(16)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA D2H overflow"))?;
+        Ok(Fp2::from(value[0]))
+    }
+
+    pub(crate) fn release(
+        mut self,
+        backend: &mut Backend,
+        metrics: &mut C6PersistedLinkFoldMetrics,
+    ) -> Result<()> {
+        backend.free_device(self.device).map_err(|error| {
+            C6WrapperPcsError::external("release terminal C6 CUDA device", error)
+        })?;
+        let mut deleted = 0u64;
+        if let Some(path) = self.coefficient_path.take() {
+            fs::remove_file(path).map_err(|error| {
+                C6WrapperPcsError::external("release terminal C6 CUDA coefficients", error)
+            })?;
+            deleted += 1;
+        }
+        if let Some(path) = self.manifest_path.take() {
+            fs::remove_file(path).map_err(|error| {
+                C6WrapperPcsError::external("release terminal C6 CUDA manifest", error)
+            })?;
+            deleted += 1;
+        }
+        if deleted != 0 {
+            File::open(&self.directory).and_then(|directory| directory.sync_all()).map_err(
+                |error| C6WrapperPcsError::external("fsync terminal C6 CUDA release", error),
+            )?;
+            metrics.files_deleted_after_successor_durable =
+                metrics.files_deleted_after_successor_durable.checked_add(deleted).ok_or_else(
+                    || C6WrapperPcsError::external_message("C6 CUDA deleted-file overflow"),
+                )?;
+            metrics.fsync_count = metrics
+                .fsync_count
+                .checked_add(1)
+                .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA fsync overflow"))?;
+            metrics.remove_live(self.live_bytes)?;
         }
         Ok(())
     }
@@ -1323,6 +1734,67 @@ fn encode_link_fold_manifest(
     if bytes.len() != 256 {
         return Err(C6WrapperPcsError::external_message("C6 link fold manifest length changed"));
     }
+    Ok(bytes)
+}
+
+fn write_cuda_link_coefficients_create_new(
+    backend: &mut Backend,
+    coefficients: &DeviceBuffer<Fp2Repr>,
+    path: &Path,
+    metrics: &mut C6PersistedLinkFoldMetrics,
+) -> Result<u64> {
+    if backend.kind() != BackendKind::CudaResident || coefficients.is_empty() {
+        return Err(C6WrapperPcsError::external_message(
+            "C6 CUDA link coefficient writer backend/geometry mismatch",
+        ));
+    }
+    let file = OpenOptions::new().create_new(true).write(true).open(path).map_err(|error| {
+        C6WrapperPcsError::external("create C6 CUDA link coefficient file", error)
+    })?;
+    let mut writer = BufWriter::with_capacity(8 * 1024 * 1024, file);
+    let mut start = 0usize;
+    while start < coefficients.len() {
+        let count = (coefficients.len() - start).min(LINK_FOLD_CHUNK_SYMBOLS);
+        let raw = backend.download_device(coefficients, start, count).map_err(|error| {
+            C6WrapperPcsError::external("download C6 CUDA link coefficients", error)
+        })?;
+        let values = raw.into_iter().map(Fp2::from).collect::<Vec<_>>();
+        write_canonical_fp2_slice_v4(&mut writer, &values).map_err(|error| {
+            C6WrapperPcsError::external("write C6 CUDA link coefficients", error)
+        })?;
+        let bytes =
+            u64::try_from(count).ok().and_then(|symbols| symbols.checked_mul(16)).ok_or_else(
+                || C6WrapperPcsError::external_message("C6 CUDA link transfer byte overflow"),
+            )?;
+        metrics.cuda_d2h_bytes = metrics.cuda_d2h_bytes.checked_add(bytes).ok_or_else(|| {
+            C6WrapperPcsError::external_message("C6 CUDA link D2H metric overflow")
+        })?;
+        start += count;
+    }
+    writer.flush().map_err(|error| {
+        C6WrapperPcsError::external("flush C6 CUDA link coefficient file", error)
+    })?;
+    writer.get_ref().sync_all().map_err(|error| {
+        C6WrapperPcsError::external("fsync C6 CUDA link coefficient file", error)
+    })?;
+    let bytes = u64::try_from(coefficients.len())
+        .ok()
+        .and_then(|symbols| symbols.checked_mul(16))
+        .ok_or_else(|| {
+            C6WrapperPcsError::external_message("C6 CUDA link coefficient byte overflow")
+        })?;
+    metrics.coefficient_bytes_written = metrics
+        .coefficient_bytes_written
+        .checked_add(bytes)
+        .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA write metric overflow"))?;
+    metrics.files_created = metrics
+        .files_created
+        .checked_add(1)
+        .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA file metric overflow"))?;
+    metrics.fsync_count = metrics
+        .fsync_count
+        .checked_add(1)
+        .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA fsync metric overflow"))?;
     Ok(bytes)
 }
 

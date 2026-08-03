@@ -36,6 +36,15 @@ const MANIFEST_DOMAIN: &str = "volta-zk/c6/wrapper-persisted-manifest/v2";
 const FOLD_MANIFEST_MAGIC: [u8; 8] = *b"C6WFP1\0\0";
 const FOLD_MANIFEST_VERSION: u16 = 1;
 const FOLD_MANIFEST_DOMAIN: &str = "volta-zk/c6/wrapper-persisted-fold-manifest/v1";
+#[allow(dead_code)]
+const LINK_FOLD_MANIFEST_MAGIC: [u8; 8] = *b"C6LFP1\0\0";
+#[allow(dead_code)]
+const LINK_FOLD_MANIFEST_VERSION: u16 = 1;
+#[allow(dead_code)]
+const LINK_FOLD_MANIFEST_DOMAIN: &str = "volta-zk/c6/link-persisted-fold-manifest/v1";
+const LINK_FOLD_SOURCE_DOMAIN: &str = "volta-zk/c6/link-persisted-fold-source/v1";
+#[allow(dead_code)]
+const LINK_FOLD_CHUNK_SYMBOLS: usize = 16 * 1024;
 pub const C6_PRODUCTION_WRAPPER_CACHE_OMITTED_LEVELS: u8 = 8;
 
 type Result<T> = std::result::Result<T, C6WrapperPcsError>;
@@ -131,6 +140,334 @@ impl C6PersistedCoefficientSlotReader {
                 C6WrapperPcsError::external_message("C6 persisted coefficient offset overflow")
             })?;
         read_canonical_fp2_range(&self.file, symbol_start, count)
+    }
+
+    pub(crate) fn open_link_fold_owner(
+        &self,
+        spill_root: impl AsRef<Path>,
+        repetition: u8,
+        cohort_id: u32,
+        slot: u16,
+        target_digest: C6WrapperDigest,
+    ) -> Result<(C6PersistedLinkFoldOwner, C6PersistedLinkFoldMetrics)> {
+        if slot >= self.slot_count || target_digest == [0; 32] {
+            return Err(C6WrapperPcsError::external_message(
+                "C6 persisted link fold source binding mismatch",
+            ));
+        }
+        let symbol_start =
+            usize::from(slot).checked_mul(self.coefficient_len).ok_or_else(|| {
+                C6WrapperPcsError::external_message("C6 persisted link source offset overflow")
+            })?;
+        let directory = spill_root
+            .as_ref()
+            .join(format!("link-repetition-{repetition}-cohort-{cohort_id}-slot-{slot}"));
+        fs::create_dir(&directory)
+            .map_err(|error| C6WrapperPcsError::external("create C6 link fold directory", error))?;
+        File::open(spill_root.as_ref())
+            .and_then(|root| root.sync_all())
+            .map_err(|error| C6WrapperPcsError::external("fsync C6 link fold root", error))?;
+        let binding = C6PersistedLinkFoldBinding {
+            statement_digest: self.statement_digest,
+            session_digest: self.session_digest,
+            root: self.root,
+            repetition,
+            cohort_id,
+            slot,
+            round: 0,
+            target_digest,
+        };
+        let state_digest = link_fold_source_digest(&binding, self.coefficient_len)?;
+        let owner = C6PersistedLinkFoldOwner {
+            binding,
+            coefficient_len: self.coefficient_len,
+            state_digest,
+            directory,
+            storage: C6PersistedLinkFoldStorage::Cohort {
+                file: self.file.try_clone().map_err(|error| {
+                    C6WrapperPcsError::external("clone C6 link coefficient source", error)
+                })?,
+                symbol_start,
+            },
+        };
+        Ok((
+            owner,
+            C6PersistedLinkFoldMetrics {
+                directories_created: 1,
+                fsync_count: 1,
+                ..Default::default()
+            },
+        ))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct C6PersistedLinkFoldBinding {
+    pub(crate) statement_digest: C6WrapperDigest,
+    pub(crate) session_digest: C6WrapperDigest,
+    pub(crate) root: C6WrapperDigest,
+    pub(crate) repetition: u8,
+    pub(crate) cohort_id: u32,
+    pub(crate) slot: u16,
+    pub(crate) round: u16,
+    pub(crate) target_digest: C6WrapperDigest,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct C6PersistedLinkFoldMetrics {
+    pub(crate) coefficient_bytes_read: u64,
+    pub(crate) coefficient_bytes_written: u64,
+    pub(crate) manifest_bytes_written: u64,
+    pub(crate) files_created: u64,
+    pub(crate) files_deleted_after_successor_durable: u64,
+    pub(crate) directories_created: u64,
+    pub(crate) fsync_count: u64,
+    pub(crate) current_live_spill_bytes: u64,
+    pub(crate) peak_live_spill_bytes: u64,
+}
+
+impl C6PersistedLinkFoldMetrics {
+    #[allow(dead_code)]
+    fn add_live(&mut self, bytes: u64) -> Result<()> {
+        self.current_live_spill_bytes =
+            self.current_live_spill_bytes.checked_add(bytes).ok_or_else(|| {
+                C6WrapperPcsError::external_message("C6 persisted link live spill overflow")
+            })?;
+        self.peak_live_spill_bytes = self.peak_live_spill_bytes.max(self.current_live_spill_bytes);
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    fn remove_live(&mut self, bytes: u64) -> Result<()> {
+        self.current_live_spill_bytes =
+            self.current_live_spill_bytes.checked_sub(bytes).ok_or_else(|| {
+                C6WrapperPcsError::external_message("C6 persisted link live spill underflow")
+            })?;
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+enum C6PersistedLinkFoldStorage {
+    Cohort { file: File, symbol_start: usize },
+    Owned { file: File, coefficient_path: PathBuf, manifest_path: PathBuf, live_bytes: u64 },
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub(crate) struct C6PersistedLinkFoldOwner {
+    binding: C6PersistedLinkFoldBinding,
+    coefficient_len: usize,
+    state_digest: C6WrapperDigest,
+    directory: PathBuf,
+    storage: C6PersistedLinkFoldStorage,
+}
+
+#[allow(dead_code)]
+impl C6PersistedLinkFoldOwner {
+    pub(crate) fn binding(&self) -> C6PersistedLinkFoldBinding {
+        self.binding
+    }
+
+    pub(crate) fn coefficient_len(&self) -> usize {
+        self.coefficient_len
+    }
+
+    pub(crate) fn read_range(&self, start: usize, count: usize) -> Result<(Vec<Fp2>, u64)> {
+        if count == 0 || start.checked_add(count).is_none_or(|end| end > self.coefficient_len) {
+            return Err(C6WrapperPcsError::external_message(
+                "C6 persisted link coefficient read range mismatch",
+            ));
+        }
+        match &self.storage {
+            C6PersistedLinkFoldStorage::Cohort { file, symbol_start } => {
+                let absolute = symbol_start.checked_add(start).ok_or_else(|| {
+                    C6WrapperPcsError::external_message("C6 persisted link read offset overflow")
+                })?;
+                read_canonical_fp2_range(file, absolute, count)
+            }
+            C6PersistedLinkFoldStorage::Owned { file, .. } => {
+                read_canonical_fp2_range(file, start, count)
+            }
+        }
+    }
+
+    pub(crate) fn bind_create_new(
+        self,
+        challenge: Fp2,
+        next_round: u16,
+        metrics: &mut C6PersistedLinkFoldMetrics,
+    ) -> Result<Self> {
+        if self.coefficient_len < 2
+            || self.coefficient_len % 2 != 0
+            || next_round != self.binding.round.checked_add(1).unwrap_or_default()
+        {
+            return Err(C6WrapperPcsError::external_message(
+                "C6 persisted link successor round mismatch",
+            ));
+        }
+        let next_len = self.coefficient_len / 2;
+        let coefficient_path = self.directory.join(format!("round-{next_round:02}.fp2"));
+        let manifest_path = self.directory.join(format!("round-{next_round:02}.c6lfp1"));
+        let file =
+            OpenOptions::new().create_new(true).write(true).open(&coefficient_path).map_err(
+                |error| C6WrapperPcsError::external("create C6 link folded coefficients", error),
+            )?;
+        let mut writer = BufWriter::with_capacity(8 * 1024 * 1024, file);
+        let mut read_symbols = 0usize;
+        while read_symbols < self.coefficient_len {
+            let count = (self.coefficient_len - read_symbols).min(LINK_FOLD_CHUNK_SYMBOLS);
+            let count = count - count % 2;
+            let (source, bytes_read) = self.read_range(read_symbols, count)?;
+            metrics.coefficient_bytes_read =
+                metrics.coefficient_bytes_read.checked_add(bytes_read).ok_or_else(|| {
+                    C6WrapperPcsError::external_message("C6 link coefficient read overflow")
+                })?;
+            let folded = source
+                .chunks_exact(2)
+                .map(|pair| pair[0] + challenge * pair[1])
+                .collect::<Vec<_>>();
+            write_canonical_fp2_slice_v4(&mut writer, &folded).map_err(|error| {
+                C6WrapperPcsError::external("write C6 link folded coefficients", error)
+            })?;
+            read_symbols += count;
+        }
+        writer.flush().map_err(|error| {
+            C6WrapperPcsError::external("flush C6 link folded coefficients", error)
+        })?;
+        writer.get_ref().sync_all().map_err(|error| {
+            C6WrapperPcsError::external("fsync C6 link folded coefficients", error)
+        })?;
+        metrics.fsync_count = metrics
+            .fsync_count
+            .checked_add(1)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 link fsync metric overflow"))?;
+        let coefficient_bytes =
+            u64::try_from(next_len).ok().and_then(|symbols| symbols.checked_mul(16)).ok_or_else(
+                || C6WrapperPcsError::external_message("C6 link coefficient byte overflow"),
+            )?;
+        metrics.coefficient_bytes_written =
+            metrics.coefficient_bytes_written.checked_add(coefficient_bytes).ok_or_else(|| {
+                C6WrapperPcsError::external_message("C6 link coefficient write overflow")
+            })?;
+        metrics.files_created = metrics
+            .files_created
+            .checked_add(1)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 link file metric overflow"))?;
+
+        let mut next_binding = self.binding;
+        next_binding.round = next_round;
+        let manifest = encode_link_fold_manifest(
+            &next_binding,
+            next_len,
+            self.state_digest,
+            challenge,
+            coefficient_bytes,
+        )?;
+        write_bytes_create_new(&manifest_path, &manifest)?;
+        metrics.manifest_bytes_written = metrics
+            .manifest_bytes_written
+            .checked_add(u64::try_from(manifest.len()).unwrap())
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 link manifest overflow"))?;
+        metrics.files_created = metrics
+            .files_created
+            .checked_add(1)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 link file metric overflow"))?;
+        metrics.fsync_count = metrics
+            .fsync_count
+            .checked_add(1)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 link fsync metric overflow"))?;
+        File::open(&self.directory).and_then(|directory| directory.sync_all()).map_err(
+            |error| C6WrapperPcsError::external("fsync durable C6 link successor", error),
+        )?;
+        metrics.fsync_count = metrics
+            .fsync_count
+            .checked_add(1)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 link fsync metric overflow"))?;
+        let live_bytes = coefficient_bytes
+            .checked_add(manifest.len() as u64)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 link live byte overflow"))?;
+        metrics.add_live(live_bytes)?;
+
+        if let C6PersistedLinkFoldStorage::Owned {
+            coefficient_path: predecessor_coefficients,
+            manifest_path: predecessor_manifest,
+            live_bytes: predecessor_live_bytes,
+            ..
+        } = &self.storage
+        {
+            fs::remove_file(predecessor_coefficients).map_err(|error| {
+                C6WrapperPcsError::external("release C6 link predecessor coefficients", error)
+            })?;
+            fs::remove_file(predecessor_manifest).map_err(|error| {
+                C6WrapperPcsError::external("release C6 link predecessor manifest", error)
+            })?;
+            File::open(&self.directory).and_then(|directory| directory.sync_all()).map_err(
+                |error| C6WrapperPcsError::external("fsync C6 link predecessor release", error),
+            )?;
+            metrics.files_deleted_after_successor_durable =
+                metrics.files_deleted_after_successor_durable.checked_add(2).ok_or_else(|| {
+                    C6WrapperPcsError::external_message("C6 link deleted-file overflow")
+                })?;
+            metrics.fsync_count = metrics.fsync_count.checked_add(1).ok_or_else(|| {
+                C6WrapperPcsError::external_message("C6 link fsync metric overflow")
+            })?;
+            metrics.remove_live(*predecessor_live_bytes)?;
+        }
+        let state_digest = manifest[manifest.len() - 32..].try_into().unwrap();
+        let file = OpenOptions::new().read(true).open(&coefficient_path).map_err(|error| {
+            C6WrapperPcsError::external("open durable C6 link successor", error)
+        })?;
+        if file
+            .metadata()
+            .map_err(|error| C6WrapperPcsError::external("stat C6 link successor", error))?
+            .len()
+            != coefficient_bytes
+        {
+            return Err(C6WrapperPcsError::external_message("C6 link successor length mismatch"));
+        }
+        Ok(Self {
+            binding: next_binding,
+            coefficient_len: next_len,
+            state_digest,
+            directory: self.directory,
+            storage: C6PersistedLinkFoldStorage::Owned {
+                file,
+                coefficient_path,
+                manifest_path,
+                live_bytes,
+            },
+        })
+    }
+
+    pub(crate) fn release(self, metrics: &mut C6PersistedLinkFoldMetrics) -> Result<()> {
+        if let C6PersistedLinkFoldStorage::Owned {
+            coefficient_path,
+            manifest_path,
+            live_bytes,
+            ..
+        } = self.storage
+        {
+            fs::remove_file(coefficient_path).map_err(|error| {
+                C6WrapperPcsError::external("release terminal C6 link coefficients", error)
+            })?;
+            fs::remove_file(manifest_path).map_err(|error| {
+                C6WrapperPcsError::external("release terminal C6 link manifest", error)
+            })?;
+            File::open(&self.directory).and_then(|directory| directory.sync_all()).map_err(
+                |error| C6WrapperPcsError::external("fsync terminal C6 link release", error),
+            )?;
+            metrics.files_deleted_after_successor_durable =
+                metrics.files_deleted_after_successor_durable.checked_add(2).ok_or_else(|| {
+                    C6WrapperPcsError::external_message("C6 link deleted-file overflow")
+                })?;
+            metrics.fsync_count = metrics.fsync_count.checked_add(1).ok_or_else(|| {
+                C6WrapperPcsError::external_message("C6 link fsync metric overflow")
+            })?;
+            metrics.remove_live(live_bytes)?;
+        }
+        Ok(())
     }
 }
 
@@ -771,6 +1108,77 @@ fn include_c6_owner_metadata(
     Ok(())
 }
 
+fn link_fold_source_digest(
+    binding: &C6PersistedLinkFoldBinding,
+    coefficient_len: usize,
+) -> Result<C6WrapperDigest> {
+    let coefficient_len = u64::try_from(coefficient_len).map_err(|_| {
+        C6WrapperPcsError::external_message("C6 link source coefficient length exceeds u64")
+    })?;
+    let mut hasher = blake3::Hasher::new_derive_key(LINK_FOLD_SOURCE_DOMAIN);
+    hasher.update(&binding.statement_digest);
+    hasher.update(&binding.session_digest);
+    hasher.update(&binding.root);
+    hasher.update(&[binding.repetition]);
+    hasher.update(&binding.cohort_id.to_le_bytes());
+    hasher.update(&binding.slot.to_le_bytes());
+    hasher.update(&binding.round.to_le_bytes());
+    hasher.update(&coefficient_len.to_le_bytes());
+    hasher.update(&binding.target_digest);
+    Ok(*hasher.finalize().as_bytes())
+}
+
+#[allow(dead_code)]
+fn encode_link_fold_manifest(
+    binding: &C6PersistedLinkFoldBinding,
+    coefficient_len: usize,
+    predecessor_digest: C6WrapperDigest,
+    challenge: Fp2,
+    coefficient_bytes: u64,
+) -> Result<Vec<u8>> {
+    if binding.statement_digest == [0; 32]
+        || binding.session_digest == [0; 32]
+        || binding.root == [0; 32]
+        || binding.target_digest == [0; 32]
+        || binding.round == 0
+        || predecessor_digest == [0; 32]
+        || coefficient_bytes
+            != u64::try_from(coefficient_len)
+                .ok()
+                .and_then(|symbols| symbols.checked_mul(16))
+                .unwrap_or_default()
+    {
+        return Err(C6WrapperPcsError::external_message("C6 link fold manifest binding mismatch"));
+    }
+    let mut bytes = Vec::with_capacity(256);
+    bytes.extend_from_slice(&LINK_FOLD_MANIFEST_MAGIC);
+    bytes.extend_from_slice(&LINK_FOLD_MANIFEST_VERSION.to_le_bytes());
+    bytes.extend_from_slice(&0u16.to_le_bytes());
+    bytes.extend_from_slice(&binding.statement_digest);
+    bytes.extend_from_slice(&binding.session_digest);
+    bytes.extend_from_slice(&binding.root);
+    bytes.push(binding.repetition);
+    bytes.extend_from_slice(&[0; 3]);
+    bytes.extend_from_slice(&binding.cohort_id.to_le_bytes());
+    bytes.extend_from_slice(&binding.slot.to_le_bytes());
+    bytes.extend_from_slice(&0u16.to_le_bytes());
+    bytes.extend_from_slice(&binding.round.to_le_bytes());
+    bytes.extend_from_slice(&[0; 6]);
+    bytes.extend_from_slice(&(coefficient_len as u64).to_le_bytes());
+    bytes.extend_from_slice(&binding.target_digest);
+    bytes.extend_from_slice(&predecessor_digest);
+    bytes.extend_from_slice(&challenge.c0.value().to_le_bytes());
+    bytes.extend_from_slice(&challenge.c1.value().to_le_bytes());
+    bytes.extend_from_slice(&coefficient_bytes.to_le_bytes());
+    let mut hasher = blake3::Hasher::new_derive_key(LINK_FOLD_MANIFEST_DOMAIN);
+    hasher.update(&bytes);
+    bytes.extend_from_slice(hasher.finalize().as_bytes());
+    if bytes.len() != 256 {
+        return Err(C6WrapperPcsError::external_message("C6 link fold manifest length changed"));
+    }
+    Ok(bytes)
+}
+
 fn write_slot_file_create_new(path: &Path, slots: &[Vec<Fp2>]) -> Result<u64> {
     let file = OpenOptions::new()
         .create_new(true)
@@ -945,6 +1353,75 @@ fn encode_fold_manifest(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn link_fold_owner_is_create_new_bound_and_releases_only_durable_predecessors() {
+        let root = std::env::temp_dir().join(format!(
+            "volta-c6-link-fold-owner-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let spill = root.join("spill");
+        fs::create_dir(&root).unwrap();
+        fs::create_dir(&spill).unwrap();
+        let path = root.join("coefficients.fp2");
+        let coefficients = (1..=8).map(|value| Fp2::from_base(Fp::new(value))).collect::<Vec<_>>();
+        assert_eq!(write_slot_file_create_new(&path, &[coefficients.clone()]).unwrap(), 128);
+        let reader = C6PersistedCoefficientSlotReader {
+            file: OpenOptions::new().read(true).open(&path).unwrap(),
+            slot_count: 1,
+            coefficient_len: 8,
+            statement_digest: [0x81; 32],
+            session_digest: [0x82; 32],
+            root: [0x83; 32],
+        };
+        let (mut owner, mut metrics) =
+            reader.open_link_fold_owner(&spill, 1, 17, 0, [0x84; 32]).unwrap();
+        assert_eq!(
+            owner.binding(),
+            C6PersistedLinkFoldBinding {
+                statement_digest: [0x81; 32],
+                session_digest: [0x82; 32],
+                root: [0x83; 32],
+                repetition: 1,
+                cohort_id: 17,
+                slot: 0,
+                round: 0,
+                target_digest: [0x84; 32],
+            }
+        );
+        let challenges =
+            [Fp2::from_base(Fp::new(3)), Fp2::from_base(Fp::new(5)), Fp2::from_base(Fp::new(7))];
+        let mut expected = coefficients;
+        for (round, challenge) in challenges.into_iter().enumerate() {
+            let next = expected
+                .chunks_exact(2)
+                .map(|pair| pair[0] + challenge * pair[1])
+                .collect::<Vec<_>>();
+            owner = owner.bind_create_new(challenge, (round + 1) as u16, &mut metrics).unwrap();
+            assert_eq!(owner.coefficient_len(), next.len());
+            assert_eq!(owner.read_range(0, next.len()).unwrap().0, next);
+            expected = next;
+        }
+        let term_directory = spill.join("link-repetition-1-cohort-17-slot-0");
+        assert!(!term_directory.join("round-01.fp2").exists());
+        assert!(!term_directory.join("round-02.fp2").exists());
+        assert!(term_directory.join("round-03.fp2").exists());
+        assert!(reader.open_link_fold_owner(&spill, 1, 17, 0, [0x84; 32]).is_err());
+        owner.release(&mut metrics).unwrap();
+        assert_eq!(metrics.coefficient_bytes_read, 224);
+        assert_eq!(metrics.coefficient_bytes_written, 112);
+        assert_eq!(metrics.manifest_bytes_written, 768);
+        assert_eq!(metrics.files_created, 6);
+        assert_eq!(metrics.files_deleted_after_successor_durable, 6);
+        assert_eq!(metrics.directories_created, 1);
+        assert_eq!(metrics.fsync_count, 13);
+        assert_eq!(metrics.current_live_spill_bytes, 0);
+        assert_eq!(metrics.peak_live_spill_bytes, 608);
+        assert_eq!(fs::read_dir(&term_directory).unwrap().count(), 0);
+        drop(reader);
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn coefficient_slot_reader_is_random_access_bound_and_truncation_closed() {

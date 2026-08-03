@@ -6063,6 +6063,91 @@ impl Backend {
         Ok(output)
     }
 
+    /// Bind the first variable of one resident monomial-coefficient table:
+    /// `c'[i] = c[2i] + r*c[2i+1]`. This is deliberately distinct from the
+    /// evaluation-table interpolation fold used by LogUp.
+    pub fn fp2_monomial_bind_device(
+        &mut self,
+        input: &DeviceBuffer<Fp2Repr>,
+        r: Fp2,
+    ) -> Result<DeviceBuffer<Fp2Repr>, AccelError> {
+        if self.kind == BackendKind::Cpu {
+            return Err(AccelError::InvalidInput(
+                "resident monomial bind requires accelerator backend",
+            ));
+        }
+        self.validate_buffer(input)?;
+        if input.len < 2 || !input.len.is_power_of_two() {
+            return Err(AccelError::InvalidInput("invalid resident monomial-bind geometry"));
+        }
+        let weights = self.upload_new_device(&[Fp2Repr::from(Fp2::ONE), Fp2Repr::from(r)])?;
+        let output = self.matrix_fold_device(
+            DeviceSlice::new(input, 0, input.len).expect("whole monomial coefficient table"),
+            DeviceSlice::new(&weights, 0, 2).expect("monomial bind weights"),
+            input.len / 2,
+            2,
+            MatrixFoldAxis::Columns,
+        );
+        let free_result = self.free_device(weights);
+        match (output, free_result) {
+            (Ok(output), Ok(())) => Ok(output),
+            (Ok(output), Err(error)) => {
+                let _ = self.free_device(output);
+                Err(error)
+            }
+            (Err(error), _) => Err(error),
+        }
+    }
+
+    /// Evaluate one resident monomial-coefficient table at an LSB-first
+    /// point. Every bind is D2D; only the final scalar crosses to the host.
+    pub fn fp2_monomial_evaluate_device(
+        &mut self,
+        input: &DeviceBuffer<Fp2Repr>,
+        point: &[Fp2],
+    ) -> Result<Fp2, AccelError> {
+        if self.kind == BackendKind::Cpu {
+            return Err(AccelError::InvalidInput(
+                "resident monomial evaluation requires accelerator backend",
+            ));
+        }
+        self.validate_buffer(input)?;
+        let expected = 1usize
+            .checked_shl(point.len() as u32)
+            .ok_or(AccelError::InvalidInput("resident monomial evaluation dimension overflow"))?;
+        if input.len != expected || point.is_empty() {
+            return Err(AccelError::InvalidInput("resident monomial evaluation geometry mismatch"));
+        }
+        let mut current: Option<DeviceBuffer<Fp2Repr>> = None;
+        for coordinate in point {
+            let source = current.as_ref().unwrap_or(input);
+            let next = match self.fp2_monomial_bind_device(source, *coordinate) {
+                Ok(next) => next,
+                Err(error) => {
+                    if let Some(current) = current {
+                        let _ = self.free_device(current);
+                    }
+                    return Err(error);
+                }
+            };
+            if let Some(previous) = current.replace(next) {
+                if let Err(error) = self.free_device(previous) {
+                    if let Some(current) = current {
+                        let _ = self.free_device(current);
+                    }
+                    return Err(error);
+                }
+            }
+        }
+        let scalar = current.expect("non-empty point creates one monomial fold");
+        let value = self.download_device(&scalar, 0, 1).map(|values| Fp2::from(values[0]));
+        let free_result = self.free_device(scalar);
+        match (value, free_result) {
+            (Ok(value), Ok(())) => Ok(value),
+            (Err(error), _) | (_, Err(error)) => Err(error),
+        }
+    }
+
     /// Build `rows` full equality tables from row-major resident points.
     pub fn logup_eq_rows_device(
         &mut self,
@@ -9313,6 +9398,38 @@ mod cuda_tests {
             }
         }
         let challenge = Fp2::new(Fp::new(123), Fp::new(456));
+        let monomial_point = [
+            Fp2::new(Fp::new(17), Fp::new(19)),
+            Fp2::new(Fp::new(23), Fp::new(29)),
+            Fp2::new(Fp::new(31), Fp::new(37)),
+        ];
+        let expected_monomial = av.iter().enumerate().fold(Fp2::ZERO, |sum, (index, value)| {
+            let weight =
+                monomial_point.iter().enumerate().fold(Fp2::ONE, |weight, (bit, coordinate)| {
+                    if index & (1 << bit) == 0 {
+                        weight
+                    } else {
+                        weight * *coordinate
+                    }
+                });
+            sum + *value * weight
+        });
+        assert_eq!(
+            gpu.fp2_monomial_evaluate_device(&da, &monomial_point).unwrap(),
+            expected_monomial
+        );
+        let monomial_bound = gpu.fp2_monomial_bind_device(&da, challenge).unwrap();
+        let got_monomial_bound = gpu
+            .download_device(&monomial_bound, 0, av.len() / 2)
+            .unwrap()
+            .into_iter()
+            .map(Fp2::from)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            got_monomial_bound,
+            av.chunks_exact(2).map(|pair| pair[0] + challenge * pair[1]).collect::<Vec<_>>()
+        );
+        gpu.free_device(monomial_bound).unwrap();
         let folded_a = gpu.fp2_fold_rows_device(&da, 0, 1, av.len(), challenge).unwrap();
         let got_fold: Vec<Fp2> = gpu
             .download_device(&folded_a, 0, av.len() / 2)

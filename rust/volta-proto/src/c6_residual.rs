@@ -2110,6 +2110,29 @@ impl C6ResidualRelationChallenges {
         self.digest
     }
 
+    /// Validate the response-dependent relation state against the compact
+    /// verifier setup boundary.  This checks every internal schedule and the
+    /// terminal projection without requiring the 64-MB installed operation
+    /// plan.
+    pub fn validate_compact_terminal_metadata(
+        &self,
+        operation_plan_artifact_digest: C6ResidualDigest,
+        topology: C6OperationPlanTopologyIdentity,
+        metadata: &C6OperationPlanTerminalMetadata,
+    ) -> C6ResidualResult<()> {
+        if operation_plan_artifact_digest == [0; 32]
+            || self.manifest().operation_plan_artifact_digest != operation_plan_artifact_digest
+            || self.manifest().topology() != topology
+            || metadata.operation_plan_artifact_digest() != operation_plan_artifact_digest
+            || metadata.topology() != topology
+        {
+            return Err(C6ResidualError::new(
+                "C6 residual compact relation/profile binding mismatch",
+            ));
+        }
+        self.validate_terminal_metadata(metadata)
+    }
+
     pub fn terminal_schedule(
         &self,
         proof_repetition: u8,
@@ -7808,8 +7831,44 @@ impl C6ResidualSparseRationalPublicRelation {
                 "C6SPR3 public relation has a noncanonical plan, metadata or challenge binding",
             ));
         }
+        Self::new_compact(
+            operation_plan.artifact_digest(),
+            topology,
+            terminal_metadata,
+            relation_challenges,
+            sparse_challenges,
+            output_beta,
+        )
+    }
+
+    pub fn new_compact(
+        operation_plan_digest: C6ResidualDigest,
+        topology: C6OperationPlanTopologyIdentity,
+        terminal_metadata: &C6OperationPlanTerminalMetadata,
+        relation_challenges: &C6ResidualRelationChallenges,
+        sparse_challenges: C6ResidualSparseRationalChallenges,
+        output_beta: Fp2,
+    ) -> C6ResidualResult<Self> {
+        relation_challenges.validate_compact_terminal_metadata(
+            operation_plan_digest,
+            topology,
+            terminal_metadata,
+        )?;
+        if sparse_challenges
+            != C6ResidualSparseRationalChallenges::new(
+                topology,
+                sparse_challenges.lane_batch,
+                sparse_challenges.recurrence,
+                sparse_challenges.runtime_gather,
+                sparse_challenges.source_gather,
+            )?
+        {
+            return Err(C6ResidualError::new(
+                "C6SPR11 compact public relation challenge binding mismatch",
+            ));
+        }
         let mut relation = Self {
-            operation_plan_digest: operation_plan.artifact_digest(),
+            operation_plan_digest,
             topology_digest: topology.topology_digest,
             terminal_metadata_digest: terminal_metadata.digest(),
             relation_challenges_digest: relation_challenges.digest(),
@@ -7880,6 +7939,29 @@ impl C6ResidualSparseRationalPublicRelation {
         )?;
         if *self != expected {
             return Err(C6ResidualError::new("C6SPR3 public relation statement binding mismatch"));
+        }
+        Ok(())
+    }
+
+    pub fn validate_compact(
+        &self,
+        operation_plan_digest: C6ResidualDigest,
+        topology: C6OperationPlanTopologyIdentity,
+        terminal_metadata: &C6OperationPlanTerminalMetadata,
+        relation_challenges: &C6ResidualRelationChallenges,
+    ) -> C6ResidualResult<()> {
+        let expected = Self::new_compact(
+            operation_plan_digest,
+            topology,
+            terminal_metadata,
+            relation_challenges,
+            self.sparse_challenges,
+            self.output_beta,
+        )?;
+        if *self != expected {
+            return Err(C6ResidualError::new(
+                "C6SPR11 compact public relation statement binding mismatch",
+            ));
         }
         Ok(())
     }

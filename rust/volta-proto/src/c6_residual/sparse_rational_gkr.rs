@@ -1128,10 +1128,9 @@ pub fn verify_c6_residual_sparse_rational_gkr_reference(
             == sums[C6SparseRationalSubcheck::SourcePlan.index()])
 }
 
-fn sparse_rational_subcheck_depths(
-    operation_plan: &C6InstalledOperationPlan,
+fn sparse_rational_subcheck_depths_from_topology(
+    topology: C6OperationPlanTopologyIdentity,
 ) -> C6ResidualResult<[usize; C6_SPARSE_RATIONAL_SUBCHECKS]> {
-    let topology = operation_plan.topology();
     let node_count = usize::try_from(topology.canonical_node_count)
         .map_err(|_| C6ResidualError::new("C6SPR3 node count exceeds usize"))?;
     let scalar_count = usize::try_from(topology.scalar_input_count)
@@ -1156,6 +1155,12 @@ fn sparse_rational_subcheck_depths(
     ])
 }
 
+fn sparse_rational_subcheck_depths(
+    operation_plan: &C6InstalledOperationPlan,
+) -> C6ResidualResult<[usize; C6_SPARSE_RATIONAL_SUBCHECKS]> {
+    sparse_rational_subcheck_depths_from_topology(operation_plan.topology())
+}
+
 /// Canonical fraction-tree dimensions in the seven registered subcheck
 /// slots.  Wire codecs use this instead of trusting provider-supplied vector
 /// lengths.
@@ -1163,6 +1168,12 @@ pub fn c6_sparse_rational_subcheck_depths(
     operation_plan: &C6InstalledOperationPlan,
 ) -> C6ResidualResult<[usize; C6_SPARSE_RATIONAL_SUBCHECKS]> {
     sparse_rational_subcheck_depths(operation_plan)
+}
+
+pub fn c6_sparse_rational_subcheck_depths_compact(
+    topology: C6OperationPlanTopologyIdentity,
+) -> C6ResidualResult<[usize; C6_SPARSE_RATIONAL_SUBCHECKS]> {
+    sparse_rational_subcheck_depths_from_topology(topology)
 }
 
 fn sparse_blind_frac_correction_scalars(depth: usize) -> C6ResidualResult<u64> {
@@ -1515,10 +1526,64 @@ pub fn verify_c6_residual_sparse_rational_gkr_blind_reference(
     zeros: &mut Vec<VerifierKey>,
 ) -> C6ResidualResult<Option<[C6SparseRationalBlindLeafKey; C6_SPARSE_RATIONAL_SUBCHECKS]>> {
     public_relation.validate_operation_plan(operation_plan)?;
+    verify_c6_residual_sparse_rational_gkr_blind_with_depths(
+        public_relation,
+        sparse_rational_subcheck_depths(operation_plan)?,
+        proof,
+        ctx,
+        doms,
+        tx,
+        products,
+        zeros,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn verify_c6_residual_sparse_rational_gkr_blind_compact(
+    operation_plan_digest: C6ResidualDigest,
+    topology: C6OperationPlanTopologyIdentity,
+    terminal_metadata: &C6OperationPlanTerminalMetadata,
+    relation_challenges: &C6ResidualRelationChallenges,
+    public_relation: &C6ResidualSparseRationalPublicRelation,
+    proof: &C6ResidualSparseRationalBlindGkrProof,
+    ctx: &mut VerifierCtx,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+    products: &mut ProdKeyTriples,
+    zeros: &mut Vec<VerifierKey>,
+) -> C6ResidualResult<Option<[C6SparseRationalBlindLeafKey; C6_SPARSE_RATIONAL_SUBCHECKS]>> {
+    public_relation.validate_compact(
+        operation_plan_digest,
+        topology,
+        terminal_metadata,
+        relation_challenges,
+    )?;
+    verify_c6_residual_sparse_rational_gkr_blind_with_depths(
+        public_relation,
+        sparse_rational_subcheck_depths_from_topology(topology)?,
+        proof,
+        ctx,
+        doms,
+        tx,
+        products,
+        zeros,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_c6_residual_sparse_rational_gkr_blind_with_depths(
+    public_relation: &C6ResidualSparseRationalPublicRelation,
+    depths: [usize; C6_SPARSE_RATIONAL_SUBCHECKS],
+    proof: &C6ResidualSparseRationalBlindGkrProof,
+    ctx: &mut VerifierCtx,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+    products: &mut ProdKeyTriples,
+    zeros: &mut Vec<VerifierKey>,
+) -> C6ResidualResult<Option<[C6SparseRationalBlindLeafKey; C6_SPARSE_RATIONAL_SUBCHECKS]>> {
     if proof.relation_digest != public_relation.digest() {
         return Ok(None);
     }
-    let depths = sparse_rational_subcheck_depths(operation_plan)?;
     let mut claims = Vec::with_capacity(C6_SPARSE_RATIONAL_SUBCHECKS);
     let mut root_ratios = Vec::with_capacity(C6_SPARSE_RATIONAL_SUBCHECKS);
     for index in 0..C6_SPARSE_RATIONAL_SUBCHECKS {

@@ -66,8 +66,9 @@ fn reduce_sparse_fraction_claims(
     })?))
 }
 
-fn canonical_base_domain_log2(operation_plan: &C6InstalledOperationPlan) -> C6ResidualResult<u8> {
-    let topology = operation_plan.topology();
+fn canonical_base_domain_log2_from_topology(
+    topology: C6OperationPlanTopologyIdentity,
+) -> C6ResidualResult<u8> {
     let node_count = usize::try_from(topology.canonical_node_count)
         .map_err(|_| C6ResidualError::new("C6SPR2 node count exceeds usize"))?;
     let scalar_count = usize::try_from(topology.scalar_input_count)
@@ -90,6 +91,10 @@ fn canonical_base_domain_log2(operation_plan: &C6InstalledOperationPlan) -> C6Re
         .ok_or_else(|| C6ResidualError::new("C6SPR2 base domain overflows"))?;
     u8::try_from(rows.trailing_zeros())
         .map_err(|_| C6ResidualError::new("C6SPR2 base dimension exceeds u8"))
+}
+
+fn canonical_base_domain_log2(operation_plan: &C6InstalledOperationPlan) -> C6ResidualResult<u8> {
+    canonical_base_domain_log2_from_topology(operation_plan.topology())
 }
 
 /// Canonical common dimension used by the joint leaf reduction and all
@@ -238,7 +243,27 @@ fn terminal_linearization(
     plan: &[Fp2; C6_SPARSE_PLAN_OPENINGS],
     injection: Fp2,
 ) -> C6ResidualResult<TerminalLinearization> {
-    let topology = operation_plan.topology();
+    terminal_linearization_from_topology(
+        operation_plan.topology(),
+        sparse_challenges,
+        claim_points,
+        theta,
+        base_point,
+        plan,
+        injection,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn terminal_linearization_from_topology(
+    topology: C6OperationPlanTopologyIdentity,
+    sparse_challenges: C6ResidualSparseRationalChallenges,
+    claim_points: &[Vec<Fp2>; C6_SPARSE_RATIONAL_SUBCHECKS],
+    theta: Fp2,
+    base_point: &[Fp2],
+    plan: &[Fp2; C6_SPARSE_PLAN_OPENINGS],
+    injection: Fp2,
+) -> C6ResidualResult<TerminalLinearization> {
     let node_count = usize::try_from(topology.canonical_node_count)
         .map_err(|_| C6ResidualError::new("C6SPR2 node count exceeds usize"))?;
     let scalar_count = usize::try_from(topology.scalar_input_count)
@@ -847,13 +872,82 @@ pub fn verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
     tx: &mut Transcript,
 ) -> C6ResidualResult<Option<C6SparseRationalBlindJointVerifierTerminal>> {
     public_relation.validate(operation_plan, terminal_metadata, relation_challenges)?;
-    if base_domain_log2 != canonical_base_domain_log2(operation_plan)?
+    verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_with_topology(
+        operation_plan.topology(),
+        terminal_metadata,
+        relation_challenges,
+        public_relation,
+        base_domain_log2,
+        response_digest,
+        plan_digest,
+        leaf_keys,
+        proof,
+        ctx,
+        doms,
+        tx,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_compact(
+    operation_plan_digest: C6ResidualDigest,
+    topology: C6OperationPlanTopologyIdentity,
+    terminal_metadata: &C6OperationPlanTerminalMetadata,
+    relation_challenges: &C6ResidualRelationChallenges,
+    public_relation: &C6ResidualSparseRationalPublicRelation,
+    base_domain_log2: u8,
+    response_digest: C6ResidualDigest,
+    plan_digest: C6ResidualDigest,
+    leaf_keys: &[C6SparseRationalBlindLeafKey; C6_SPARSE_RATIONAL_SUBCHECKS],
+    proof: &C6ResidualSparseRationalBlindJointRoundsProof,
+    ctx: &mut VerifierCtx,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+) -> C6ResidualResult<Option<C6SparseRationalBlindJointVerifierTerminal>> {
+    public_relation.validate_compact(
+        operation_plan_digest,
+        topology,
+        terminal_metadata,
+        relation_challenges,
+    )?;
+    verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_with_topology(
+        topology,
+        terminal_metadata,
+        relation_challenges,
+        public_relation,
+        base_domain_log2,
+        response_digest,
+        plan_digest,
+        leaf_keys,
+        proof,
+        ctx,
+        doms,
+        tx,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_with_topology(
+    topology: C6OperationPlanTopologyIdentity,
+    terminal_metadata: &C6OperationPlanTerminalMetadata,
+    relation_challenges: &C6ResidualRelationChallenges,
+    public_relation: &C6ResidualSparseRationalPublicRelation,
+    base_domain_log2: u8,
+    response_digest: C6ResidualDigest,
+    plan_digest: C6ResidualDigest,
+    leaf_keys: &[C6SparseRationalBlindLeafKey; C6_SPARSE_RATIONAL_SUBCHECKS],
+    proof: &C6ResidualSparseRationalBlindJointRoundsProof,
+    ctx: &mut VerifierCtx,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+) -> C6ResidualResult<Option<C6SparseRationalBlindJointVerifierTerminal>> {
+    if base_domain_log2 != canonical_base_domain_log2_from_topology(topology)?
         || proof.relation_digest != public_relation.digest()
         || proof.round_corrections.len() != usize::from(base_domain_log2)
     {
         return Ok(None);
     }
-    let depths = sparse_rational_subcheck_depths(operation_plan)?;
+    let depths = sparse_rational_subcheck_depths_from_topology(topology)?;
     if leaf_keys.iter().zip(depths).any(|(claim, depth)| claim.point.len() != depth) {
         return Ok(None);
     }
@@ -891,8 +985,8 @@ pub fn verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
         &point,
     )?;
     let claim_points = std::array::from_fn(|index| leaf_keys[index].point.clone());
-    let linearization = terminal_linearization(
-        operation_plan,
+    let linearization = terminal_linearization_from_topology(
+        topology,
         sparse_challenges,
         &claim_points,
         theta,
@@ -1482,6 +1576,31 @@ mod tests {
         )
         .unwrap()
         .unwrap();
+        let mut compact_verifier = VerifierCtx::new(correlation_seed, delta);
+        let mut compact_doms = Doms::new(30_000);
+        let mut compact_transcript = Transcript::new(transcript_seed);
+        let mut compact_products = Vec::new();
+        let mut compact_zeros = Vec::new();
+        let compact_leaf_keys = verify_c6_residual_sparse_rational_gkr_blind_compact(
+            direct.operation_plan().artifact_digest(),
+            direct.operation_plan().topology(),
+            &terminal_metadata,
+            direct.relation(),
+            &public_relation,
+            &blind_gkr_proof,
+            &mut compact_verifier,
+            &mut compact_doms,
+            &mut compact_transcript,
+            &mut compact_products,
+            &mut compact_zeros,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(compact_leaf_keys, blind_leaf_keys);
+        assert_eq!(compact_products, verifier_products);
+        assert_eq!(compact_zeros, verifier_zeros);
+        assert_eq!(compact_doms.cursor(), verifier_doms.cursor());
+        assert_eq!(compact_transcript.ledger(), verifier_transcript.ledger());
         let (blind_rounds, prover_terminal) =
             prove_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
                 direct.operation_plan(),
@@ -1511,7 +1630,29 @@ mod tests {
             )
             .unwrap()
             .unwrap();
+        let compact_terminal = verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_compact(
+            direct.operation_plan().artifact_digest(),
+            direct.operation_plan().topology(),
+            &terminal_metadata,
+            direct.relation(),
+            &public_relation,
+            packed.base_domain_log2(),
+            packed.response_digest(),
+            packed.plan_digest(),
+            &compact_leaf_keys,
+            &blind_rounds,
+            &mut compact_verifier,
+            &mut compact_doms,
+            &mut compact_transcript,
+        )
+        .unwrap()
+        .unwrap();
         assert_eq!(prover_terminal.points(), verifier_terminal.points());
+        assert_eq!(compact_terminal.points(), verifier_terminal.points());
+        assert_eq!(compact_products, verifier_products);
+        assert_eq!(compact_zeros, verifier_zeros);
+        assert_eq!(compact_doms.cursor(), verifier_doms.cursor());
+        assert_eq!(compact_transcript.ledger(), verifier_transcript.ledger());
         assert_eq!(
             blind_rounds.bytes(),
             16 * (C6_SPARSE_PLAN_OPENINGS as u64

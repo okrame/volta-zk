@@ -37,6 +37,8 @@ use crate::c6_wrapper_pcs::{
     C6WrapperDigest, C6_PREDECESSOR_CACHE_COHORT_ID, C6_SUCCESSOR_CACHE_COHORT_ID,
     C6_WRAPPER_AUXILIARY_COHORT_ID, C6_WRAPPER_REPETITIONS,
 };
+#[cfg(feature = "c6-trace")]
+use crate::c6_wrapper_persisted::C6PersistedCacheSemanticReader;
 
 pub const C6_PERSISTENT_CACHE_BLIND_MAGIC: [u8; 8] = *b"C6PC2\0\0\0";
 pub const C6_PERSISTENT_CACHE_BLIND_VERSION: u16 = 2;
@@ -752,6 +754,289 @@ fn production_schedule_digest(
     hasher.update(&scalar_batch.identity.instance_digest);
     hasher.update(&scalar_batch.identity.batch_digest);
     *hasher.finalize().as_bytes()
+}
+
+#[cfg(feature = "c6-trace")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct C6PersistentCacheProductionCompilerMetrics {
+    pub semantic_bytes_read: u64,
+    pub factor_applications: u64,
+    pub peak_layer_source_bytes: u64,
+    pub peak_layer_coefficient_bytes: u64,
+    pub folded_state_bytes: u64,
+    pub full_d24_tables_materialized: u64,
+}
+
+/// Algebraic first-round message fixed before the response-global challenge.
+/// Binding consumes this value and performs the second semantic scan.
+#[cfg(feature = "c6-trace")]
+pub(crate) struct C6PersistentCacheProductionFixedFirstRound<'a> {
+    compiler: &'a C6PersistentCacheProductionRelationCompiler,
+    predecessor: &'a C6PersistedCacheSemanticReader,
+    successor: &'a C6PersistedCacheSemanticReader,
+    evaluations: [Fp2; 3],
+    metrics: C6PersistentCacheProductionCompilerMetrics,
+}
+
+#[cfg(feature = "c6-trace")]
+impl C6PersistentCacheProductionFixedFirstRound<'_> {
+    pub(crate) fn evaluations(&self) -> [Fp2; 3] {
+        self.evaluations
+    }
+
+    pub(crate) fn metrics(&self) -> C6PersistentCacheProductionCompilerMetrics {
+        self.metrics
+    }
+
+    pub(crate) fn bind_challenge(
+        self,
+        challenge: Fp2,
+    ) -> Result<C6PersistentCacheProductionFoldedTables> {
+        let mut coefficient_tables: [Vec<Fp2>; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS] =
+            array::from_fn(|_| Vec::with_capacity(1 << 23));
+        let mut witness_tables: [Vec<Fp2>; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS] =
+            array::from_fn(|_| Vec::with_capacity(1 << 23));
+        let mut metrics = self.metrics;
+        for padded_layer in 0..C6_PERSISTENT_CACHE_PADDED_LAYERS {
+            let (witness, bytes_read) = read_production_semantic_layer(
+                self.compiler,
+                self.predecessor,
+                self.successor,
+                padded_layer,
+            )?;
+            metrics.semantic_bytes_read =
+                metrics.semantic_bytes_read.checked_add(bytes_read).ok_or_else(|| {
+                    C6PersistentCacheBlindError::new("C6PC2 semantic-read metric overflows")
+                })?;
+            let mut coefficients: [Vec<Fp2>; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS] =
+                array::from_fn(|_| vec![Fp2::ZERO; C6PC2_LAYER_LEN]);
+            metrics.factor_applications = metrics
+                .factor_applications
+                .checked_add(
+                    self.compiler.write_layer_coefficients(padded_layer, &mut coefficients)?,
+                )
+                .ok_or_else(|| C6PersistentCacheBlindError::new("C6PC2 factor metric overflows"))?;
+            fold_layer_into(&coefficients, challenge, &mut coefficient_tables)?;
+            fold_layer_into(&witness, challenge, &mut witness_tables)?;
+        }
+        if coefficient_tables.iter().any(|table| table.len() != 1 << 23)
+            || witness_tables.iter().any(|table| table.len() != 1 << 23)
+        {
+            return Err(C6PersistentCacheBlindError::new(
+                "C6PC2 folded production state geometry mismatch",
+            ));
+        }
+        metrics.folded_state_bytes = folded_state_bytes(&coefficient_tables, &witness_tables)?;
+        Ok(C6PersistentCacheProductionFoldedTables {
+            round: 1,
+            coefficient_tables,
+            witness_tables,
+            metrics,
+        })
+    }
+}
+
+#[cfg(feature = "c6-trace")]
+pub(crate) struct C6PersistentCacheProductionFoldedTables {
+    round: usize,
+    coefficient_tables: [Vec<Fp2>; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS],
+    witness_tables: [Vec<Fp2>; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS],
+    metrics: C6PersistentCacheProductionCompilerMetrics,
+}
+
+#[cfg(feature = "c6-trace")]
+impl C6PersistentCacheProductionFoldedTables {
+    pub(crate) fn round(&self) -> usize {
+        self.round
+    }
+
+    pub(crate) fn metrics(&self) -> C6PersistentCacheProductionCompilerMetrics {
+        self.metrics
+    }
+
+    pub(crate) fn fix_next_round(&self) -> Result<[Fp2; 3]> {
+        if self.round >= C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS {
+            return Err(C6PersistentCacheBlindError::new(
+                "C6PC2 production folded state is complete",
+            ));
+        }
+        sumcheck_round_evaluations(&self.coefficient_tables, &self.witness_tables)
+    }
+
+    pub(crate) fn bind_challenge(&mut self, challenge: Fp2) -> Result<()> {
+        if self.round >= C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS {
+            return Err(C6PersistentCacheBlindError::new(
+                "C6PC2 production folded challenge exceeds round count",
+            ));
+        }
+        fold_tables(&mut self.coefficient_tables, challenge)?;
+        fold_tables(&mut self.witness_tables, challenge)?;
+        self.round += 1;
+        self.metrics.folded_state_bytes = self
+            .metrics
+            .folded_state_bytes
+            .max(folded_state_bytes(&self.coefficient_tables, &self.witness_tables)?);
+        Ok(())
+    }
+
+    pub(crate) fn terminal_tables(
+        &self,
+    ) -> Result<(
+        [Fp2; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS],
+        [Fp2; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS],
+    )> {
+        if self.round != C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS
+            || self.coefficient_tables.iter().any(|table| table.len() != 1)
+            || self.witness_tables.iter().any(|table| table.len() != 1)
+        {
+            return Err(C6PersistentCacheBlindError::new(
+                "C6PC2 production terminal requested before completion",
+            ));
+        }
+        Ok((
+            array::from_fn(|index| self.coefficient_tables[index][0]),
+            array::from_fn(|index| self.witness_tables[index][0]),
+        ))
+    }
+}
+
+#[cfg(feature = "c6-trace")]
+pub(crate) fn fix_c6_persistent_cache_production_first_round<'a>(
+    compiler: &'a C6PersistentCacheProductionRelationCompiler,
+    predecessor: &'a C6PersistedCacheSemanticReader,
+    successor: &'a C6PersistedCacheSemanticReader,
+) -> Result<C6PersistentCacheProductionFixedFirstRound<'a>> {
+    validate_production_semantic_bindings(compiler, predecessor, successor)?;
+    let layer_bytes = u64::try_from(C6PC2_LAYER_LEN)
+        .ok()
+        .and_then(|values| values.checked_mul(16))
+        .ok_or_else(|| C6PersistentCacheBlindError::new("C6PC2 layer bytes overflow"))?;
+    let peak_layer_bytes = layer_bytes
+        .checked_mul(4)
+        .ok_or_else(|| C6PersistentCacheBlindError::new("C6PC2 layer peak overflows"))?;
+    let mut metrics = C6PersistentCacheProductionCompilerMetrics {
+        peak_layer_source_bytes: peak_layer_bytes,
+        peak_layer_coefficient_bytes: peak_layer_bytes,
+        ..C6PersistentCacheProductionCompilerMetrics::default()
+    };
+    let mut evaluations = [Fp2::ZERO; 3];
+    for padded_layer in 0..C6_PERSISTENT_CACHE_PADDED_LAYERS {
+        let (witness, bytes_read) =
+            read_production_semantic_layer(compiler, predecessor, successor, padded_layer)?;
+        metrics.semantic_bytes_read =
+            metrics.semantic_bytes_read.checked_add(bytes_read).ok_or_else(|| {
+                C6PersistentCacheBlindError::new("C6PC2 semantic-read metric overflows")
+            })?;
+        let mut coefficients: [Vec<Fp2>; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS] =
+            array::from_fn(|_| vec![Fp2::ZERO; C6PC2_LAYER_LEN]);
+        metrics.factor_applications = metrics
+            .factor_applications
+            .checked_add(compiler.write_layer_coefficients(padded_layer, &mut coefficients)?)
+            .ok_or_else(|| C6PersistentCacheBlindError::new("C6PC2 factor metric overflows"))?;
+        let layer_evaluations = sumcheck_round_evaluations(&coefficients, &witness)?;
+        for (total, layer) in evaluations.iter_mut().zip(layer_evaluations) {
+            *total += layer;
+        }
+    }
+    Ok(C6PersistentCacheProductionFixedFirstRound {
+        compiler,
+        predecessor,
+        successor,
+        evaluations,
+        metrics,
+    })
+}
+
+#[cfg(feature = "c6-trace")]
+fn validate_production_semantic_bindings(
+    compiler: &C6PersistentCacheProductionRelationCompiler,
+    predecessor: &C6PersistedCacheSemanticReader,
+    successor: &C6PersistedCacheSemanticReader,
+) -> Result<()> {
+    let predecessor_binding = predecessor.binding();
+    let successor_binding = successor.binding();
+    if predecessor.payload_len() != C6_PERSISTENT_CACHE_SLOT_CAPACITY as usize
+        || successor.payload_len() != C6_PERSISTENT_CACHE_SLOT_CAPACITY as usize
+        || predecessor_binding.0 != compiler.statement_digest
+        || successor_binding.0 != compiler.statement_digest
+        || predecessor_binding.1 != successor_binding.1
+        || predecessor_binding.2 == successor_binding.2
+    {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6PC2 semantic owners do not bind the production relation",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "c6-trace")]
+fn read_production_semantic_layer(
+    _compiler: &C6PersistentCacheProductionRelationCompiler,
+    predecessor: &C6PersistedCacheSemanticReader,
+    successor: &C6PersistedCacheSemanticReader,
+    padded_layer: u16,
+) -> Result<([Vec<Fp2>; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS], u64)> {
+    let start = usize::from(padded_layer)
+        .checked_mul(C6PC2_LAYER_LEN)
+        .ok_or_else(|| C6PersistentCacheBlindError::new("C6PC2 semantic layer offset overflows"))?;
+    let (predecessor_k, bytes_0) = predecessor
+        .read_slot_range(0, start, C6PC2_LAYER_LEN)
+        .map_err(|error| C6PersistentCacheBlindError::new(error.to_string()))?;
+    let (predecessor_v, bytes_1) = predecessor
+        .read_slot_range(1, start, C6PC2_LAYER_LEN)
+        .map_err(|error| C6PersistentCacheBlindError::new(error.to_string()))?;
+    let (successor_k, bytes_2) = successor
+        .read_slot_range(0, start, C6PC2_LAYER_LEN)
+        .map_err(|error| C6PersistentCacheBlindError::new(error.to_string()))?;
+    let (successor_v, bytes_3) = successor
+        .read_slot_range(1, start, C6PC2_LAYER_LEN)
+        .map_err(|error| C6PersistentCacheBlindError::new(error.to_string()))?;
+    let bytes_read = bytes_0
+        .checked_add(bytes_1)
+        .and_then(|value| value.checked_add(bytes_2))
+        .and_then(|value| value.checked_add(bytes_3))
+        .ok_or_else(|| C6PersistentCacheBlindError::new("C6PC2 semantic bytes overflow"))?;
+    Ok(([predecessor_k, predecessor_v, successor_k, successor_v], bytes_read))
+}
+
+#[cfg(feature = "c6-trace")]
+fn fold_layer_into<const N: usize>(
+    source: &[Vec<Fp2>; N],
+    challenge: Fp2,
+    output: &mut [Vec<Fp2>; N],
+) -> Result<()> {
+    if N == 0 {
+        return Err(C6PersistentCacheBlindError::new("C6PC2 production layer has no tables"));
+    }
+    let len = source[0].len();
+    if len < 2 || !len.is_multiple_of(2) || source.iter().any(|table| table.len() != len) {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6PC2 production source layer geometry mismatch",
+        ));
+    }
+    for (source, output) in source.iter().zip(output) {
+        output.extend(source.chunks_exact(2).map(|pair| pair[0] + (pair[1] - pair[0]) * challenge));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "c6-trace")]
+fn folded_state_bytes<const N: usize>(
+    coefficients: &[Vec<Fp2>; N],
+    witness: &[Vec<Fp2>; N],
+) -> Result<u64> {
+    coefficients.iter().chain(witness).try_fold(0u64, |bytes, table| {
+        bytes
+            .checked_add(
+                u64::try_from(table.len())
+                    .ok()
+                    .and_then(|values| values.checked_mul(16))
+                    .ok_or_else(|| {
+                        C6PersistentCacheBlindError::new("C6PC2 folded bytes overflow")
+                    })?,
+            )
+            .ok_or_else(|| C6PersistentCacheBlindError::new("C6PC2 folded bytes overflow"))
+    })
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -2139,6 +2424,21 @@ mod tests {
         assert_eq!(output[1][0], Fp2::ZERO);
         assert_eq!(output[2][0], transition_root);
         assert_eq!(output[3][0], transition_root * kv_root);
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn production_layer_fold_matches_resident_fold_without_full_domain_state() {
+        let source: [Vec<Fp2>; 4] = array::from_fn(|table| {
+            (0..8).map(|index| symbol((100 * table + index + 1) as u64)).collect()
+        });
+        let challenge = symbol(17);
+        let mut output: [Vec<Fp2>; 4] = array::from_fn(|_| Vec::new());
+        fold_layer_into(&source, challenge, &mut output).unwrap();
+        let mut expected = source.clone();
+        fold_tables(&mut expected, challenge).unwrap();
+        assert_eq!(output, expected);
+        assert_eq!(folded_state_bytes(&output, &expected).unwrap(), 512);
     }
 
     fn fixture() -> (

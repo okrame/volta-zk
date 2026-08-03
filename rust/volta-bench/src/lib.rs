@@ -6,6 +6,7 @@
 //! `k_x = k_r + Δ·δ`, and accumulates `⟨eq(r,·), k_x⟩` in one scan.
 
 pub mod c6_t1_live_sources;
+pub mod c6_t1_owner;
 pub mod crypto_build_identity;
 pub mod logits_pack;
 pub mod logup;

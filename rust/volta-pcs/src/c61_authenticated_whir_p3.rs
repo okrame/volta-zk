@@ -60,7 +60,10 @@ use crate::c61_interactive_driver::{
 use crate::c61_persisted_mmcs::{
     C61MmcsResourceMetrics, C61PersistedMmcs, C61PersistedMmcsMetrics,
 };
-use crate::c61_public_compression::{C61NativeChainId, C61NativeComponent};
+use crate::c61_public_compression::{
+    C61ArithmeticFrame, C61NativeChainId, C61NativeComponent, C61PublicArgument,
+    C61_ARITHMETIC_FRAME_BYTES, C61_NATIVE_CHAIN_COUNT, C61_PUBLIC_ARGUMENT_OUTER_FRAMING_BYTES,
+};
 use crate::c61_shared_round_challenger::c61_shared_round_pair;
 use crate::c61_terminal_functional::{
     authenticate_c61_sparse_response_targets_prover,
@@ -503,6 +506,172 @@ pub struct C61ProductionCompilerChainVerification {
     pub compact_profile_digest: [u8; 32],
     pub compact_profile_setup_bytes: u64,
     pub client_setup_allocation_bytes: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum C61ProductionNativeChainProof {
+    Committed(C61ProductionCommittedChainProof),
+    Compiler(C61ProductionCompilerChainProof),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C61ProductionNativeChainArtifact {
+    id: C61NativeChainId,
+    proof: C61ProductionNativeChainProof,
+}
+
+impl C61ProductionNativeChainArtifact {
+    pub fn committed(
+        id: C61NativeChainId,
+        proof: C61ProductionCommittedChainProof,
+    ) -> Result<Self, String> {
+        if id.component == C61NativeComponent::Compiler || id.repetition >= 2 {
+            return Err("C6SPR11 committed artifact has a non-model/embed identity".to_owned());
+        }
+        Ok(Self { id, proof: C61ProductionNativeChainProof::Committed(proof) })
+    }
+
+    pub fn compiler(
+        id: C61NativeChainId,
+        proof: C61ProductionCompilerChainProof,
+    ) -> Result<Self, String> {
+        if id.component != C61NativeComponent::Compiler || id.repetition >= 2 {
+            return Err("C6SPR11 compiler artifact has a non-compiler identity".to_owned());
+        }
+        Ok(Self { id, proof: C61ProductionNativeChainProof::Compiler(proof) })
+    }
+
+    pub fn id(&self) -> C61NativeChainId {
+        self.id
+    }
+
+    fn payload(&self) -> Result<Vec<u8>, String> {
+        match &self.proof {
+            C61ProductionNativeChainProof::Committed(proof) => Ok(proof.payload.clone()),
+            C61ProductionNativeChainProof::Compiler(proof) => proof.encode(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C61ProductionPublicArgumentAssembly {
+    argument: C61PublicArgument,
+    encoded: Vec<u8>,
+    native_payload_bytes: [usize; C61_NATIVE_CHAIN_COUNT],
+}
+
+impl C61ProductionPublicArgumentAssembly {
+    pub fn argument(&self) -> &C61PublicArgument {
+        &self.argument
+    }
+
+    pub fn encoded(&self) -> &[u8] {
+        &self.encoded
+    }
+
+    pub fn native_payload_bytes(&self) -> [usize; C61_NATIVE_CHAIN_COUNT] {
+        self.native_payload_bytes
+    }
+
+    pub fn outer_framing_bytes(&self) -> usize {
+        C61_PUBLIC_ARGUMENT_OUTER_FRAMING_BYTES
+    }
+
+    pub fn arithmetic_frame_bytes(&self) -> usize {
+        C61_ARITHMETIC_FRAME_BYTES
+    }
+}
+
+/// Assemble the exact ordered production C6PA1 object from four committed
+/// model/embed chains, two compiler C6CPX2 chains and one C6RSC4 frame.
+pub fn assemble_c61_production_public_argument(
+    statement_digest: [u8; 32],
+    chains: [C61ProductionNativeChainArtifact; C61_NATIVE_CHAIN_COUNT],
+    arithmetic: C61ArithmeticFrame,
+) -> Result<C61ProductionPublicArgumentAssembly, String> {
+    if statement_digest == [0; 32] || arithmetic.statement_digest != statement_digest {
+        return Err("C6SPR11 C6PA1/C6RSC4 statement digest mismatch".to_owned());
+    }
+    let arithmetic = arithmetic.encode();
+    let mut payloads: [Vec<u8>; C61_NATIVE_CHAIN_COUNT] = std::array::from_fn(|_| Vec::new());
+    for (index, (expected, artifact)) in
+        C61NativeChainId::ordered().into_iter().zip(chains).enumerate()
+    {
+        if artifact.id != expected {
+            return Err("C6SPR11 production native chains are not in canonical order".to_owned());
+        }
+        payloads[index] = artifact.payload()?;
+    }
+    let native_payload_bytes = std::array::from_fn(|index| payloads[index].len());
+    let argument = C61PublicArgument::new(statement_digest, payloads, arithmetic)
+        .map_err(|error| error.to_string())?;
+    let encoded = argument.encode().map_err(|error| error.to_string())?;
+    let decoded = C61PublicArgument::decode(&encoded).map_err(|error| error.to_string())?;
+    if decoded != argument {
+        return Err("C6SPR11 decoded C6PA1 differs from its exact assembly".to_owned());
+    }
+    Ok(C61ProductionPublicArgumentAssembly { argument, encoded, native_payload_bytes })
+}
+
+/// Strictly decode every nested production chain against its typed public
+/// statement.  The caller subsequently runs the role-specific verifiers on
+/// these exact proof objects; parsing alone never grants proof acceptance.
+pub fn decode_c61_production_public_argument(
+    bytes: &[u8],
+    public: &[C61TypedNativeChainPublicStatement; C61_NATIVE_CHAIN_COUNT],
+) -> Result<
+    (
+        C61PublicArgument,
+        [C61ProductionNativeChainArtifact; C61_NATIVE_CHAIN_COUNT],
+        C61ArithmeticFrame,
+    ),
+    String,
+> {
+    let argument = C61PublicArgument::decode(bytes).map_err(|error| error.to_string())?;
+    let mut artifacts = Vec::with_capacity(C61_NATIVE_CHAIN_COUNT);
+    for (index, id) in C61NativeChainId::ordered().into_iter().enumerate() {
+        if public[index].id() != id {
+            return Err("C6SPR11 typed native statements are not in canonical order".to_owned());
+        }
+        let rebuilt = C61TypedNativeChainPublicStatement::new(id, public[index].relation().clone())
+            .map_err(|error| error.to_string())?;
+        if rebuilt != public[index] {
+            return Err("C6SPR11 typed native statement is noncanonical".to_owned());
+        }
+        let payload = &argument.native_chains()[index];
+        let artifact = if id.component == C61NativeComponent::Compiler {
+            C61ProductionNativeChainArtifact::compiler(
+                id,
+                C61ProductionCompilerChainProof::decode(payload)?,
+            )?
+        } else {
+            C61ProductionNativeChainArtifact::committed(
+                id,
+                C61ProductionCommittedChainProof::decode(payload, &public[index])?,
+            )?
+        };
+        artifacts.push(artifact);
+    }
+    let artifacts: [C61ProductionNativeChainArtifact; C61_NATIVE_CHAIN_COUNT] = artifacts
+        .try_into()
+        .map_err(|_| "C6SPR11 decoded native-chain census mismatch".to_owned())?;
+    let arithmetic =
+        C61ArithmeticFrame::decode(argument.arithmetic()).map_err(|error| error.to_string())?;
+    if arithmetic.statement_digest != argument.statement_digest() {
+        return Err("C6SPR11 decoded C6RSC4 differs from C6PA1 statement".to_owned());
+    }
+    for statement in &public[4..] {
+        let compiler = match statement.relation() {
+            C61TypedNativeRelationStatement::Compiler(statement) => statement,
+            _ => {
+                return Err("C6SPR11 final native statements are not compiler relations".to_owned())
+            }
+        };
+        if compiler.terminal_claims != arithmetic.terminal_claims {
+            return Err("C6SPR11 C6RSC4 terminal values differ from compiler statements".to_owned());
+        }
+    }
+    Ok((argument, artifacts, arithmetic))
 }
 
 /// Strict production model/embedding proof boundary.  `payload` is exactly
@@ -5490,6 +5659,81 @@ mod tests {
         let mut trailing = encoded;
         trailing.push(0);
         assert!(C61ProductionCompilerChainProof::decode(&trailing).is_err());
+    }
+
+    #[test]
+    fn production_public_argument_assembles_six_typed_artifacts_and_one_rsc4_frame() {
+        let statement_digest = [0x61; 32];
+        let committed = |marker| C61ProductionCommittedChainProof { payload: vec![marker; 17] };
+        let compiler = |marker| C61ProductionCompilerChainProof {
+            terminal_binding_digest: [marker; 32],
+            plan_folds: [Fp2::ZERO; 2],
+            physical_plan_fold_values: [Fp2::ZERO; C61_EXACT_PLAN_FOLD_PHYSICAL_OPENINGS],
+            arithmetic_payload: vec![marker; 19],
+            shared_payload: vec![marker.wrapping_add(1); 23],
+        };
+        let chains = [
+            C61ProductionNativeChainArtifact::committed(
+                C61NativeChainId { component: C61NativeComponent::Model, repetition: 0 },
+                committed(1),
+            )
+            .unwrap(),
+            C61ProductionNativeChainArtifact::committed(
+                C61NativeChainId { component: C61NativeComponent::Model, repetition: 1 },
+                committed(2),
+            )
+            .unwrap(),
+            C61ProductionNativeChainArtifact::committed(
+                C61NativeChainId { component: C61NativeComponent::Embedding, repetition: 0 },
+                committed(3),
+            )
+            .unwrap(),
+            C61ProductionNativeChainArtifact::committed(
+                C61NativeChainId { component: C61NativeComponent::Embedding, repetition: 1 },
+                committed(4),
+            )
+            .unwrap(),
+            C61ProductionNativeChainArtifact::compiler(
+                C61NativeChainId { component: C61NativeComponent::Compiler, repetition: 0 },
+                compiler(5),
+            )
+            .unwrap(),
+            C61ProductionNativeChainArtifact::compiler(
+                C61NativeChainId { component: C61NativeComponent::Compiler, repetition: 1 },
+                compiler(6),
+            )
+            .unwrap(),
+        ];
+        let arithmetic = C61ArithmeticFrame {
+            statement_digest,
+            challenge_digest: [0x62; 32],
+            adjoint_root: [0x63; 32],
+            terminal_claims: [Fp2::ZERO; 64],
+            runtime_evaluations: [Fp2::ZERO; 2],
+            source_boundary: Fp2::ZERO,
+        };
+        let assembly =
+            assemble_c61_production_public_argument(statement_digest, chains.clone(), arithmetic)
+                .unwrap();
+        assert_eq!(
+            assembly.encoded().len(),
+            C61_PUBLIC_ARGUMENT_OUTER_FRAMING_BYTES
+                + C61_ARITHMETIC_FRAME_BYTES
+                + assembly.native_payload_bytes().into_iter().sum::<usize>()
+        );
+        assert_eq!(C61PublicArgument::decode(assembly.encoded()).unwrap(), *assembly.argument());
+        let mut wrong_order = chains.clone();
+        wrong_order.swap(0, 1);
+        assert!(assemble_c61_production_public_argument(
+            statement_digest,
+            wrong_order,
+            C61ArithmeticFrame::decode(assembly.argument().arithmetic()).unwrap(),
+        )
+        .is_err());
+        let mut wrong_frame = C61ArithmeticFrame::decode(assembly.argument().arithmetic()).unwrap();
+        wrong_frame.statement_digest[0] ^= 1;
+        assert!(assemble_c61_production_public_argument(statement_digest, chains, wrong_frame,)
+            .is_err());
     }
 
     #[test]

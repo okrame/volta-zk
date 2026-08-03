@@ -89,6 +89,51 @@ pub struct C6PersistedCacheSemanticReader {
     root: C6WrapperDigest,
 }
 
+#[derive(Debug)]
+#[allow(dead_code)]
+pub(crate) struct C6PersistedCoefficientSlotReader {
+    file: File,
+    slot_count: u16,
+    coefficient_len: usize,
+    statement_digest: C6WrapperDigest,
+    session_digest: C6WrapperDigest,
+    root: C6WrapperDigest,
+}
+
+#[allow(dead_code)]
+impl C6PersistedCoefficientSlotReader {
+    pub(crate) fn coefficient_len(&self) -> usize {
+        self.coefficient_len
+    }
+
+    pub(crate) fn binding(&self) -> (C6WrapperDigest, C6WrapperDigest, C6WrapperDigest) {
+        (self.statement_digest, self.session_digest, self.root)
+    }
+
+    pub(crate) fn read_slot_range(
+        &self,
+        slot: u16,
+        start: usize,
+        count: usize,
+    ) -> Result<(Vec<Fp2>, u64)> {
+        if slot >= self.slot_count
+            || count == 0
+            || start.checked_add(count).is_none_or(|end| end > self.coefficient_len)
+        {
+            return Err(C6WrapperPcsError::external_message(
+                "C6 persisted coefficient read range mismatch",
+            ));
+        }
+        let symbol_start = usize::from(slot)
+            .checked_mul(self.coefficient_len)
+            .and_then(|base| base.checked_add(start))
+            .ok_or_else(|| {
+                C6WrapperPcsError::external_message("C6 persisted coefficient offset overflow")
+            })?;
+        read_canonical_fp2_range(&self.file, symbol_start, count)
+    }
+}
+
 impl C6PersistedCacheSemanticReader {
     pub fn payload_len(&self) -> usize {
         self.payload_len
@@ -219,6 +264,41 @@ impl C6PersistedWrapperCohort {
         })
     }
 
+    #[allow(dead_code)]
+    pub(crate) fn open_coefficient_slots(&self) -> Result<C6PersistedCoefficientSlotReader> {
+        let coefficient_len = self.commitment.config.outer_len / 8;
+        let expected_bytes = u64::from(self.commitment.spec.slot_count)
+            .checked_mul(u64::try_from(coefficient_len).map_err(|_| {
+                C6WrapperPcsError::external_message("C6 coefficient length exceeds u64")
+            })?)
+            .and_then(|symbols| symbols.checked_mul(16))
+            .ok_or_else(|| {
+                C6WrapperPcsError::external_message("C6 persisted coefficient bytes overflow")
+            })?;
+        let file = OpenOptions::new()
+            .read(true)
+            .open(self.directory.join("coefficients.fp2"))
+            .map_err(|error| C6WrapperPcsError::external("open C6 coefficients", error))?;
+        if file
+            .metadata()
+            .map_err(|error| C6WrapperPcsError::external("stat C6 coefficients", error))?
+            .len()
+            != expected_bytes
+        {
+            return Err(C6WrapperPcsError::external_message(
+                "C6 persisted coefficient file length mismatch",
+            ));
+        }
+        Ok(C6PersistedCoefficientSlotReader {
+            file,
+            slot_count: self.commitment.spec.slot_count,
+            coefficient_len,
+            statement_digest: self.commitment.statement_digest,
+            session_digest: self.session_digest,
+            root: self.commitment.root,
+        })
+    }
+
     pub fn metrics(&self) -> C6PersistedWrapperMetrics {
         self.metrics
     }
@@ -289,6 +369,49 @@ impl C6PersistedWrapperCohort {
         }
         Ok((coefficients, coefficient_bytes))
     }
+}
+
+#[allow(dead_code)]
+fn read_canonical_fp2_range(
+    file: &File,
+    symbol_start: usize,
+    count: usize,
+) -> Result<(Vec<Fp2>, u64)> {
+    let byte_offset = u64::try_from(symbol_start)
+        .ok()
+        .and_then(|value| value.checked_mul(16))
+        .ok_or_else(|| C6WrapperPcsError::external_message("C6 persisted field offset overflow"))?;
+    let byte_count = count
+        .checked_mul(16)
+        .ok_or_else(|| C6WrapperPcsError::external_message("C6 persisted field read overflow"))?;
+    let mut encoded = vec![0u8; byte_count];
+    let mut read = 0usize;
+    while read < encoded.len() {
+        let got = file
+            .read_at(&mut encoded[read..], byte_offset + read as u64)
+            .map_err(|error| C6WrapperPcsError::external("read C6 persisted fields", error))?;
+        if got == 0 {
+            return Err(C6WrapperPcsError::external_message("truncated C6 persisted field file"));
+        }
+        read += got;
+    }
+    let mut values = Vec::with_capacity(count);
+    for chunk in encoded.chunks_exact(16) {
+        let c0 = u64::from_le_bytes(chunk[..8].try_into().unwrap());
+        let c1 = u64::from_le_bytes(chunk[8..].try_into().unwrap());
+        if c0 >= P || c1 >= P {
+            return Err(C6WrapperPcsError::external_message(
+                "noncanonical C6 persisted field element",
+            ));
+        }
+        values.push(Fp2::new(Fp::new(c0), Fp::new(c1)));
+    }
+    Ok((
+        values,
+        u64::try_from(byte_count).map_err(|_| {
+            C6WrapperPcsError::external_message("C6 persisted field byte count exceeds u64")
+        })?,
+    ))
 }
 
 #[derive(Debug)]
@@ -822,6 +945,45 @@ fn encode_fold_manifest(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn coefficient_slot_reader_is_random_access_bound_and_truncation_closed() {
+        let root = std::env::temp_dir().join(format!(
+            "volta-c6-coefficient-reader-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        fs::create_dir(&root).unwrap();
+        let path = root.join("coefficients.fp2");
+        let slots = (0..3)
+            .map(|slot| {
+                (0..8)
+                    .map(|index| Fp2::from_base(Fp::new((100 * slot + index + 1) as u64)))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(write_slot_file_create_new(&path, &slots).unwrap(), 384);
+        let reader = C6PersistedCoefficientSlotReader {
+            file: OpenOptions::new().read(true).open(&path).unwrap(),
+            slot_count: 3,
+            coefficient_len: 8,
+            statement_digest: [0xA1; 32],
+            session_digest: [0xA2; 32],
+            root: [0xA3; 32],
+        };
+        assert_eq!(reader.coefficient_len(), 8);
+        assert_eq!(reader.binding(), ([0xA1; 32], [0xA2; 32], [0xA3; 32]));
+        assert_eq!(
+            reader.read_slot_range(1, 2, 3).unwrap().0,
+            (103..=105).map(|value| Fp2::from_base(Fp::new(value))).collect::<Vec<_>>()
+        );
+        assert!(reader.read_slot_range(3, 0, 1).is_err());
+        assert!(reader.read_slot_range(0, 7, 2).is_err());
+        OpenOptions::new().write(true).open(&path).unwrap().set_len(16).unwrap();
+        assert!(reader.read_slot_range(2, 0, 1).is_err());
+        drop(reader);
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn semantic_cache_owner_is_canonical_random_access_and_truncation_closed() {

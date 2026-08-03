@@ -23,7 +23,8 @@ use crate::c6_hidden_u::{
 };
 use crate::c6_hidden_u_sumcheck::{
     build_schedules, evaluate_functional, hidden_u_round_count,
-    prepare_hidden_u_prover_round_state, validate_layouts,
+    prepare_hidden_u_prover_round_state, validate_layouts, C6HiddenUProverRoundState,
+    FamilySchedule,
 };
 
 pub const C6_BLIND_HIDDEN_U_MAGIC: [u8; 8] = *b"C6HUB2\0\0";
@@ -76,7 +77,7 @@ struct C6BlindHiddenUFamilyProof {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct C6BlindHiddenURepetitionProof {
+pub(crate) struct C6BlindHiddenURepetitionProof {
     families: Vec<C6BlindHiddenUFamilyProof>,
     terminal_tags: [Fp2; C6_BLIND_HIDDEN_U_TAPES],
 }
@@ -310,13 +311,13 @@ impl C6BlindHiddenUPendingDescriptor {
 }
 
 #[derive(Clone)]
-struct PendingProverEntry {
+pub(crate) struct PendingProverEntry {
     descriptor: C6BlindHiddenUPendingDescriptor,
     auth: [ProverAuthed; C6_BLIND_HIDDEN_U_TAPES],
 }
 
 #[derive(Clone)]
-struct PendingVerifierEntry {
+pub(crate) struct PendingVerifierEntry {
     descriptor: C6BlindHiddenUPendingDescriptor,
     keys: [VerifierKey; C6_BLIND_HIDDEN_U_TAPES],
 }
@@ -381,13 +382,43 @@ impl C6BlindHiddenUPendingClaimsVerifier {
     }
 }
 
-pub fn prove_c6_blind_hidden_u_sumchecks_reference(
+pub(crate) struct C6BlindHiddenUProverRoundState {
+    repetition: u8,
+    layouts: Vec<C6HiddenULayout>,
+    schedules: Vec<FamilySchedule>,
+    q_cols: Vec<Vec<Vec<Fp2>>>,
+    statement_digest: C6HiddenUDigest,
+    arithmetic: C6HiddenUProverRoundState,
+    current: [[Option<ProverAuthed>; C6_BLIND_HIDDEN_U_TAPES]; C6_BLIND_HIDDEN_U_FAMILIES],
+    proof_builders: [[Vec<[Fp2; 2]>; C6_BLIND_HIDDEN_U_TAPES]; C6_BLIND_HIDDEN_U_FAMILIES],
+    points: Vec<Vec<Fp2>>,
+    pending_nodes:
+        Option<[[Option<[ProverAuthed; 3]>; C6_BLIND_HIDDEN_U_TAPES]; C6_BLIND_HIDDEN_U_FAMILIES]>,
+}
+
+pub(crate) fn begin_c6_blind_hidden_u_stepwise(
     sealed: &C6SealedHiddenUBundle,
     prequery: &C6HiddenUPrequery,
     postcommit: &C6HiddenUPostCommit,
-    streams: &mut [CorrelationStream; C6_BLIND_HIDDEN_U_TAPES],
     transcript: &mut Transcript,
-) -> Result<(C6BlindHiddenUSumcheckProof, C6BlindHiddenUPendingClaimsProver)> {
+) -> Result<C6HiddenUDigest> {
+    let layouts = sealed.validate_prequery_binding(prequery).map_err(hidden_error)?;
+    validate_protocol_layouts(&layouts)?;
+    if postcommit.prequery_digest != prequery.digest() {
+        return Err(C6BlindHiddenUError::new("C6HUB2 prequery mismatch"));
+    }
+    postcommit.validate(&layouts).map_err(hidden_error)?;
+    let statement_digest = statement_digest(&layouts, prequery, postcommit)?;
+    transcript.append(FRAMING_LABEL, FIXED_FRAMING_BYTES - 32);
+    Ok(statement_digest)
+}
+
+pub(crate) fn prepare_c6_blind_hidden_u_prover_round_state(
+    sealed: &C6SealedHiddenUBundle,
+    prequery: &C6HiddenUPrequery,
+    postcommit: &C6HiddenUPostCommit,
+    repetition: u8,
+) -> Result<C6BlindHiddenUProverRoundState> {
     let layouts = sealed.validate_prequery_binding(prequery).map_err(hidden_error)?;
     validate_protocol_layouts(&layouts)?;
     if postcommit.prequery_digest != prequery.digest() {
@@ -399,96 +430,139 @@ pub fn prove_c6_blind_hidden_u_sumchecks_reference(
     let schedules =
         build_schedules(&layouts, prequery, postcommit, &q_cols).map_err(hidden_error)?;
     let statement_digest = statement_digest(&layouts, prequery, postcommit)?;
-    transcript.append(FRAMING_LABEL, FIXED_FRAMING_BYTES - 32);
+    let arithmetic = prepare_hidden_u_prover_round_state(sealed, prequery, postcommit, repetition)
+        .map_err(hidden_error)?;
+    let proof_builders = array::from_fn(|family| {
+        let rounds = layouts[family].padded_entries().ilog2() as usize;
+        array::from_fn(|_| Vec::with_capacity(rounds))
+    });
+    Ok(C6BlindHiddenUProverRoundState {
+        repetition,
+        points: vec![Vec::new(); layouts.len()],
+        layouts,
+        schedules,
+        q_cols,
+        statement_digest,
+        arithmetic,
+        current: array::from_fn(|_| array::from_fn(|_| None)),
+        proof_builders,
+        pending_nodes: None,
+    })
+}
 
-    let mut repetitions = Vec::with_capacity(C6_HIDDEN_U_REPETITIONS as usize);
-    let mut pending_entries = Vec::with_capacity(
-        C6_HIDDEN_U_REPETITIONS as usize
-            * C6_BLIND_HIDDEN_U_FAMILIES
-            * C6_BLIND_HIDDEN_U_SLOTS_PER_FAMILY as usize,
-    );
-    for repetition in 0..C6_HIDDEN_U_REPETITIONS as u8 {
-        let mut arithmetic =
-            prepare_hidden_u_prover_round_state(sealed, prequery, postcommit, repetition)
-                .map_err(hidden_error)?;
-        let mut current: [[Option<ProverAuthed>; C6_BLIND_HIDDEN_U_TAPES];
+impl C6BlindHiddenUProverRoundState {
+    pub(crate) fn round_index(&self) -> usize {
+        self.arithmetic.round_index()
+    }
+
+    pub(crate) fn round_count(&self) -> usize {
+        self.arithmetic.round_count()
+    }
+
+    pub(crate) fn fix_next_round(
+        &mut self,
+        streams: &mut [CorrelationStream; C6_BLIND_HIDDEN_U_TAPES],
+    ) -> Result<u64> {
+        if self.pending_nodes.is_some() || self.arithmetic.is_complete() {
+            return Err(C6BlindHiddenUError::new(
+                "C6HUB2 step-wise prover is not awaiting a round message",
+            ));
+        }
+        self.arithmetic.fix_next_round().map_err(hidden_error)?;
+        let messages = self.arithmetic.fixed_active_messages().map_err(hidden_error)?;
+        let active = messages.len();
+        let mut nodes: [[Option<[ProverAuthed; 3]>; C6_BLIND_HIDDEN_U_TAPES];
             C6_BLIND_HIDDEN_U_FAMILIES] = array::from_fn(|_| array::from_fn(|_| None));
-        let mut proof_builders: [[Vec<[Fp2; 2]>; C6_BLIND_HIDDEN_U_TAPES];
-            C6_BLIND_HIDDEN_U_FAMILIES] = array::from_fn(|family| {
-            let rounds = layouts[family].padded_entries().ilog2() as usize;
-            array::from_fn(|_| Vec::with_capacity(rounds))
-        });
-        let mut points = vec![Vec::new(); layouts.len()];
-
-        while !arithmetic.is_complete() {
-            arithmetic.fix_next_round().map_err(hidden_error)?;
-            let messages = arithmetic.fixed_active_messages().map_err(hidden_error)?;
-            let mut nodes: [[Option<[ProverAuthed; 3]>; C6_BLIND_HIDDEN_U_TAPES];
-                C6_BLIND_HIDDEN_U_FAMILIES] = array::from_fn(|_| array::from_fn(|_| None));
-            for message in messages {
-                let family_index = family_index(message.family)?;
-                for tape in 0..C6_BLIND_HIDDEN_U_TAPES {
-                    let live = current[family_index][tape]
-                        .unwrap_or_else(|| ProverAuthed::from_public(message.initial_claim));
-                    if message.evaluations[0] + message.evaluations[1] != live.x {
-                        return Err(C6BlindHiddenUError::new(
-                            "C6HUB2 clear arithmetic diverges from authenticated live claim",
-                        ));
-                    }
-                    let values = [message.evaluations[0], message.evaluations[2]];
-                    let domain = correlation_domain(
-                        repetition,
-                        tape,
-                        round_purpose(message.family),
-                        message.local_round,
-                    )?;
-                    let (corrections, sent) =
-                        authenticate_values(&mut streams[tape], domain, &values)?;
-                    transcript.append(ROUND_LABEL, 2 * FP2_BYTES);
-                    proof_builders[family_index][tape].push([corrections[0], corrections[1]]);
-                    let g1 = live.sub(sent[0]);
-                    if g1.x != message.evaluations[1] {
-                        return Err(C6BlindHiddenUError::new(
-                            "C6HUB2 compressed node-one reconstruction mismatch",
-                        ));
-                    }
-                    nodes[family_index][tape] = Some([sent[0], g1, sent[1]]);
+        for message in messages {
+            let family_index = family_index(message.family)?;
+            for tape in 0..C6_BLIND_HIDDEN_U_TAPES {
+                let live = self.current[family_index][tape]
+                    .unwrap_or_else(|| ProverAuthed::from_public(message.initial_claim));
+                if message.evaluations[0] + message.evaluations[1] != live.x {
+                    return Err(C6BlindHiddenUError::new(
+                        "C6HUB2 clear arithmetic diverges from authenticated live claim",
+                    ));
                 }
-            }
-            let challenge = transcript.challenge_fp2();
-            arithmetic.bind_challenge(challenge).map_err(hidden_error)?;
-            let weights = lagrange3(challenge);
-            for family_index in 0..layouts.len() {
-                if nodes[family_index][0].is_none() {
-                    continue;
+                let domain = correlation_domain(
+                    self.repetition,
+                    tape,
+                    round_purpose(message.family),
+                    message.local_round,
+                )?;
+                let (corrections, sent) = authenticate_values(
+                    &mut streams[tape],
+                    domain,
+                    &[message.evaluations[0], message.evaluations[2]],
+                )?;
+                self.proof_builders[family_index][tape].push([corrections[0], corrections[1]]);
+                let g1 = live.sub(sent[0]);
+                if g1.x != message.evaluations[1] {
+                    return Err(C6BlindHiddenUError::new(
+                        "C6HUB2 compressed node-one reconstruction mismatch",
+                    ));
                 }
-                points[family_index].push(challenge);
-                for tape in 0..C6_BLIND_HIDDEN_U_TAPES {
-                    let round_nodes = nodes[family_index][tape]
-                        .ok_or_else(|| C6BlindHiddenUError::new("C6HUB2 cross-tape round gap"))?;
-                    current[family_index][tape] = Some(interpolate_prover(round_nodes, weights));
-                }
+                nodes[family_index][tape] = Some([sent[0], g1, sent[1]]);
             }
         }
+        self.pending_nodes = Some(nodes);
+        u64::try_from(active)
+            .ok()
+            .and_then(|families| families.checked_mul(2 * C6_BLIND_HIDDEN_U_TAPES as u64))
+            .and_then(|values| values.checked_mul(FP2_BYTES))
+            .ok_or_else(|| C6BlindHiddenUError::new("C6HUB2 round byte count overflows"))
+    }
 
-        let (_, clear_claims) = arithmetic.finish().map_err(hidden_error)?;
-        if clear_claims.len() != layouts.len() {
+    pub(crate) fn bind_challenge(&mut self, challenge: Fp2) -> Result<()> {
+        let nodes = self.pending_nodes.take().ok_or_else(|| {
+            C6BlindHiddenUError::new("C6HUB2 prover challenge precedes round message")
+        })?;
+        self.arithmetic.bind_challenge(challenge).map_err(hidden_error)?;
+        let weights = lagrange3(challenge);
+        for family_index in 0..self.layouts.len() {
+            if nodes[family_index][0].is_none() {
+                continue;
+            }
+            self.points[family_index].push(challenge);
+            for tape in 0..C6_BLIND_HIDDEN_U_TAPES {
+                let round_nodes = nodes[family_index][tape]
+                    .ok_or_else(|| C6BlindHiddenUError::new("C6HUB2 cross-tape round gap"))?;
+                self.current[family_index][tape] = Some(interpolate_prover(round_nodes, weights));
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn finish(
+        mut self,
+        streams: &mut [CorrelationStream; C6_BLIND_HIDDEN_U_TAPES],
+        transcript: &mut Transcript,
+    ) -> Result<(C6BlindHiddenURepetitionProof, Vec<PendingProverEntry>)> {
+        if self.pending_nodes.is_some() || !self.arithmetic.is_complete() {
+            return Err(C6BlindHiddenUError::new("incomplete C6HUB2 step-wise prover repetition"));
+        }
+        let (_, clear_claims) = self.arithmetic.finish().map_err(hidden_error)?;
+        if clear_claims.len() != self.layouts.len() {
             return Err(C6BlindHiddenUError::new("C6HUB2 terminal family census mismatch"));
         }
-        let mut family_proofs = Vec::with_capacity(layouts.len());
+        let mut pending_entries = Vec::with_capacity(
+            C6_BLIND_HIDDEN_U_FAMILIES * C6_BLIND_HIDDEN_U_SLOTS_PER_FAMILY as usize,
+        );
+        let mut family_proofs = Vec::with_capacity(self.layouts.len());
         let mut terminal_residuals: [[ProverAuthed; C6_BLIND_HIDDEN_U_FAMILIES];
             C6_BLIND_HIDDEN_U_TAPES] =
             array::from_fn(|_| [ProverAuthed::ZERO; C6_BLIND_HIDDEN_U_FAMILIES]);
-        for family_index in 0..layouts.len() {
+        for family_index in 0..self.layouts.len() {
             let claim = &clear_claims[family_index];
-            if claim.family != layouts[family_index].family || claim.point != points[family_index] {
+            if claim.family != self.layouts[family_index].family
+                || claim.point != self.points[family_index]
+            {
                 return Err(C6BlindHiddenUError::new("C6HUB2 terminal point mismatch"));
             }
             let functional = evaluate_functional(
-                layouts[family_index],
-                &schedules[family_index],
-                usize::from(repetition),
-                &q_cols[family_index],
+                self.layouts[family_index],
+                &self.schedules[family_index],
+                usize::from(self.repetition),
+                &self.q_cols[family_index],
                 &claim.point,
             )
             .map_err(hidden_error)?;
@@ -496,13 +570,13 @@ pub fn prove_c6_blind_hidden_u_sumchecks_reference(
             let mut pending_auth = [ProverAuthed::ZERO; C6_BLIND_HIDDEN_U_TAPES];
             for tape in 0..C6_BLIND_HIDDEN_U_TAPES {
                 let domain =
-                    correlation_domain(repetition, tape, pending_purpose(claim.family), 0)?;
+                    correlation_domain(self.repetition, tape, pending_purpose(claim.family), 0)?;
                 let (corrections, auth) =
                     authenticate_values(&mut streams[tape], domain, &[claim.value])?;
                 pending_corrections[tape] = corrections[0];
                 pending_auth[tape] = auth[0];
                 transcript.append(PENDING_LABEL, FP2_BYTES);
-                let live = current[family_index][tape].ok_or_else(|| {
+                let live = self.current[family_index][tape].ok_or_else(|| {
                     C6BlindHiddenUError::new("missing C6HUB2 terminal live claim")
                 })?;
                 terminal_residuals[tape][family_index] = live.sub(auth[0].scale(functional));
@@ -514,15 +588,15 @@ pub fn prove_c6_blind_hidden_u_sumchecks_reference(
             }
             append_family_pending_prover_entries(
                 &mut pending_entries,
-                statement_digest,
-                repetition,
+                self.statement_digest,
+                self.repetition,
                 claim.family,
                 claim.point.clone(),
                 pending_auth,
             );
             family_proofs.push(C6BlindHiddenUFamilyProof {
                 family: claim.family,
-                round_corrections: std::mem::take(&mut proof_builders[family_index]),
+                round_corrections: std::mem::take(&mut self.proof_builders[family_index]),
                 pending_corrections,
             });
         }
@@ -531,7 +605,249 @@ pub fn prove_c6_blind_hidden_u_sumchecks_reference(
             let aggregate = terminal_residuals[tape][0].add(terminal_residuals[tape][1].scale(eta));
             zero_open_prover(&aggregate, transcript)
         });
-        repetitions.push(C6BlindHiddenURepetitionProof { families: family_proofs, terminal_tags });
+        Ok((
+            C6BlindHiddenURepetitionProof { families: family_proofs, terminal_tags },
+            pending_entries,
+        ))
+    }
+}
+
+pub(crate) struct C6BlindHiddenUVerifierRoundState {
+    repetition: u8,
+    layouts: Vec<C6HiddenULayout>,
+    schedules: Vec<FamilySchedule>,
+    q_cols: Vec<Vec<Vec<Fp2>>>,
+    statement_digest: C6HiddenUDigest,
+    repetition_proof: C6BlindHiddenURepetitionProof,
+    current: [[Option<VerifierKey>; C6_BLIND_HIDDEN_U_TAPES]; C6_BLIND_HIDDEN_U_FAMILIES],
+    points: Vec<Vec<Fp2>>,
+    max_rounds: usize,
+    global_round: usize,
+    pending_nodes:
+        Option<[[Option<[VerifierKey; 3]>; C6_BLIND_HIDDEN_U_TAPES]; C6_BLIND_HIDDEN_U_FAMILIES]>,
+}
+
+pub(crate) fn begin_c6_blind_hidden_u_verifier_stepwise(
+    layouts: &[C6HiddenULayout],
+    q_cols: &[Vec<Vec<Fp2>>],
+    prequery: &C6HiddenUPrequery,
+    postcommit: &C6HiddenUPostCommit,
+    proof: &C6BlindHiddenUSumcheckProof,
+    transcript: &mut Transcript,
+) -> Result<C6HiddenUDigest> {
+    validate_protocol_layouts(layouts)?;
+    if postcommit.prequery_digest != prequery.digest() {
+        return Err(C6BlindHiddenUError::new("C6HUB2 prequery mismatch"));
+    }
+    postcommit.validate(layouts).map_err(hidden_error)?;
+    build_schedules(layouts, prequery, postcommit, q_cols).map_err(hidden_error)?;
+    let expected_statement = statement_digest(layouts, prequery, postcommit)?;
+    if proof.statement_digest != expected_statement {
+        return Err(C6BlindHiddenUError::new("C6HUB2 proof statement mismatch"));
+    }
+    proof.validate_shape(layouts)?;
+    transcript.append(FRAMING_LABEL, FIXED_FRAMING_BYTES - 32);
+    Ok(expected_statement)
+}
+
+pub(crate) fn prepare_c6_blind_hidden_u_verifier_round_state(
+    layouts: &[C6HiddenULayout],
+    q_cols: &[Vec<Vec<Fp2>>],
+    prequery: &C6HiddenUPrequery,
+    postcommit: &C6HiddenUPostCommit,
+    proof: &C6BlindHiddenUSumcheckProof,
+    repetition: u8,
+) -> Result<C6BlindHiddenUVerifierRoundState> {
+    validate_protocol_layouts(layouts)?;
+    if usize::from(repetition) >= C6_HIDDEN_U_REPETITIONS as usize
+        || postcommit.prequery_digest != prequery.digest()
+    {
+        return Err(C6BlindHiddenUError::new("C6HUB2 verifier repetition or prequery mismatch"));
+    }
+    postcommit.validate(layouts).map_err(hidden_error)?;
+    let schedules = build_schedules(layouts, prequery, postcommit, q_cols).map_err(hidden_error)?;
+    let statement_digest = statement_digest(layouts, prequery, postcommit)?;
+    if proof.statement_digest != statement_digest {
+        return Err(C6BlindHiddenUError::new("C6HUB2 proof statement mismatch"));
+    }
+    proof.validate_shape(layouts)?;
+    Ok(C6BlindHiddenUVerifierRoundState {
+        repetition,
+        layouts: layouts.to_vec(),
+        schedules,
+        q_cols: q_cols.to_vec(),
+        statement_digest,
+        repetition_proof: proof.repetitions[usize::from(repetition)].clone(),
+        current: array::from_fn(|_| array::from_fn(|_| None)),
+        points: vec![Vec::new(); layouts.len()],
+        max_rounds: hidden_u_round_count(layouts).map_err(hidden_error)?,
+        global_round: 0,
+        pending_nodes: None,
+    })
+}
+
+impl C6BlindHiddenUVerifierRoundState {
+    pub(crate) fn round_index(&self) -> usize {
+        self.global_round
+    }
+
+    pub(crate) fn round_count(&self) -> usize {
+        self.max_rounds
+    }
+
+    pub(crate) fn check_next_round(
+        &mut self,
+        contexts: &mut [VerifierCtx; C6_BLIND_HIDDEN_U_TAPES],
+    ) -> Result<u64> {
+        if self.pending_nodes.is_some() || self.global_round >= self.max_rounds {
+            return Err(C6BlindHiddenUError::new(
+                "C6HUB2 step-wise verifier is not awaiting a round message",
+            ));
+        }
+        let mut nodes: [[Option<[VerifierKey; 3]>; C6_BLIND_HIDDEN_U_TAPES];
+            C6_BLIND_HIDDEN_U_FAMILIES] = array::from_fn(|_| array::from_fn(|_| None));
+        let mut active = 0u64;
+        for family_index in 0..self.layouts.len() {
+            let rounds = self.layouts[family_index].padded_entries().ilog2() as usize;
+            let start = self.max_rounds - rounds;
+            if self.global_round < start {
+                continue;
+            }
+            active += 1;
+            let local_round = self.global_round - start;
+            for tape in 0..C6_BLIND_HIDDEN_U_TAPES {
+                let live = self.current[family_index][tape].unwrap_or(VerifierKey::from_public(
+                    self.schedules[family_index]
+                        .initial_claim(usize::from(self.repetition))
+                        .map_err(hidden_error)?,
+                    contexts[tape].delta,
+                ));
+                let corrections = self.repetition_proof.families[family_index].round_corrections
+                    [tape][local_round];
+                let domain = correlation_domain(
+                    self.repetition,
+                    tape,
+                    round_purpose(self.layouts[family_index].family),
+                    local_round,
+                )?;
+                let sent = contexts[tape].correct_full_verifier_keys(domain, &corrections);
+                nodes[family_index][tape] = Some([sent[0], live.sub(sent[0]), sent[1]]);
+            }
+        }
+        self.pending_nodes = Some(nodes);
+        active
+            .checked_mul(2 * C6_BLIND_HIDDEN_U_TAPES as u64)
+            .and_then(|values| values.checked_mul(FP2_BYTES))
+            .ok_or_else(|| C6BlindHiddenUError::new("C6HUB2 verifier bytes overflow"))
+    }
+
+    pub(crate) fn bind_challenge(&mut self, challenge: Fp2) -> Result<()> {
+        let nodes = self.pending_nodes.take().ok_or_else(|| {
+            C6BlindHiddenUError::new("C6HUB2 verifier challenge precedes round message")
+        })?;
+        let weights = lagrange3(challenge);
+        for family_index in 0..self.layouts.len() {
+            if nodes[family_index][0].is_none() {
+                continue;
+            }
+            self.points[family_index].push(challenge);
+            for tape in 0..C6_BLIND_HIDDEN_U_TAPES {
+                let round_nodes = nodes[family_index][tape]
+                    .ok_or_else(|| C6BlindHiddenUError::new("C6HUB2 cross-tape round gap"))?;
+                self.current[family_index][tape] = Some(interpolate_verifier(round_nodes, weights));
+            }
+        }
+        self.global_round += 1;
+        Ok(())
+    }
+
+    pub(crate) fn finish(
+        self,
+        contexts: &mut [VerifierCtx; C6_BLIND_HIDDEN_U_TAPES],
+        transcript: &mut Transcript,
+    ) -> Result<Vec<PendingVerifierEntry>> {
+        if self.pending_nodes.is_some() || self.global_round != self.max_rounds {
+            return Err(C6BlindHiddenUError::new(
+                "incomplete C6HUB2 step-wise verifier repetition",
+            ));
+        }
+        let mut pending_entries = Vec::with_capacity(
+            C6_BLIND_HIDDEN_U_FAMILIES * C6_BLIND_HIDDEN_U_SLOTS_PER_FAMILY as usize,
+        );
+        let mut terminal_residuals: [[VerifierKey; C6_BLIND_HIDDEN_U_FAMILIES];
+            C6_BLIND_HIDDEN_U_TAPES] =
+            array::from_fn(|_| [VerifierKey::ZERO; C6_BLIND_HIDDEN_U_FAMILIES]);
+        for family_index in 0..self.layouts.len() {
+            let family = self.layouts[family_index].family;
+            let functional = evaluate_functional(
+                self.layouts[family_index],
+                &self.schedules[family_index],
+                usize::from(self.repetition),
+                &self.q_cols[family_index],
+                &self.points[family_index],
+            )
+            .map_err(hidden_error)?;
+            let mut pending_keys = [VerifierKey::ZERO; C6_BLIND_HIDDEN_U_TAPES];
+            for (tape, residuals) in terminal_residuals.iter_mut().enumerate() {
+                let domain = correlation_domain(self.repetition, tape, pending_purpose(family), 0)?;
+                pending_keys[tape] = contexts[tape].correct_full_verifier_keys(
+                    domain,
+                    &[self.repetition_proof.families[family_index].pending_corrections[tape]],
+                )[0];
+                transcript.append(PENDING_LABEL, FP2_BYTES);
+                let live = self.current[family_index][tape]
+                    .ok_or_else(|| C6BlindHiddenUError::new("missing C6HUB2 verifier terminal"))?;
+                residuals[family_index] = live.sub(pending_keys[tape].scale(functional));
+            }
+            append_family_pending_verifier_entries(
+                &mut pending_entries,
+                self.statement_digest,
+                self.repetition,
+                family,
+                self.points[family_index].clone(),
+                pending_keys,
+            );
+        }
+        let eta = transcript.challenge_fp2();
+        for (tape, residuals) in terminal_residuals.iter().enumerate() {
+            let aggregate = residuals[0].add(residuals[1].scale(eta));
+            transcript.append("zero_open_tag", FP2_BYTES);
+            if !zero_open_verify(aggregate, self.repetition_proof.terminal_tags[tape]) {
+                return Err(C6BlindHiddenUError::new("C6HUB2 terminal ZeroOpen failed"));
+            }
+        }
+        Ok(pending_entries)
+    }
+}
+
+pub fn prove_c6_blind_hidden_u_sumchecks_reference(
+    sealed: &C6SealedHiddenUBundle,
+    prequery: &C6HiddenUPrequery,
+    postcommit: &C6HiddenUPostCommit,
+    streams: &mut [CorrelationStream; C6_BLIND_HIDDEN_U_TAPES],
+    transcript: &mut Transcript,
+) -> Result<(C6BlindHiddenUSumcheckProof, C6BlindHiddenUPendingClaimsProver)> {
+    let layouts = sealed.validate_prequery_binding(prequery).map_err(hidden_error)?;
+    let statement_digest =
+        begin_c6_blind_hidden_u_stepwise(sealed, prequery, postcommit, transcript)?;
+    let mut repetitions = Vec::with_capacity(C6_HIDDEN_U_REPETITIONS as usize);
+    let mut pending_entries = Vec::with_capacity(
+        C6_HIDDEN_U_REPETITIONS as usize
+            * C6_BLIND_HIDDEN_U_FAMILIES
+            * C6_BLIND_HIDDEN_U_SLOTS_PER_FAMILY as usize,
+    );
+    for repetition in 0..C6_HIDDEN_U_REPETITIONS as u8 {
+        let mut state =
+            prepare_c6_blind_hidden_u_prover_round_state(sealed, prequery, postcommit, repetition)?;
+        while state.round_index() < state.round_count() {
+            let bytes = state.fix_next_round(streams)?;
+            transcript.append(ROUND_LABEL, bytes);
+            let challenge = transcript.challenge_fp2();
+            state.bind_challenge(challenge)?;
+        }
+        let (repetition_proof, repetition_pending) = state.finish(streams, transcript)?;
+        repetitions.push(repetition_proof);
+        pending_entries.extend(repetition_pending);
     }
     let proof = C6BlindHiddenUSumcheckProof { statement_digest, repetitions };
     proof.validate_shape(&layouts)?;
@@ -547,119 +863,28 @@ pub fn verify_c6_blind_hidden_u_sumchecks(
     contexts: &mut [VerifierCtx; C6_BLIND_HIDDEN_U_TAPES],
     transcript: &mut Transcript,
 ) -> Result<C6BlindHiddenUPendingClaimsVerifier> {
-    validate_protocol_layouts(layouts)?;
     if contexts[0].delta == contexts[1].delta {
         return Err(C6BlindHiddenUError::new("C6HUB2 MAC tapes are not independent"));
     }
-    if postcommit.prequery_digest != prequery.digest() {
-        return Err(C6BlindHiddenUError::new("C6HUB2 prequery mismatch"));
-    }
-    postcommit.validate(layouts).map_err(hidden_error)?;
-    let schedules = build_schedules(layouts, prequery, postcommit, q_cols).map_err(hidden_error)?;
-    let expected_statement = statement_digest(layouts, prequery, postcommit)?;
-    if proof.statement_digest != expected_statement {
-        return Err(C6BlindHiddenUError::new("C6HUB2 proof statement mismatch"));
-    }
-    proof.validate_shape(layouts)?;
-    transcript.append(FRAMING_LABEL, FIXED_FRAMING_BYTES - 32);
-    let max_rounds = hidden_u_round_count(layouts).map_err(hidden_error)?;
+    begin_c6_blind_hidden_u_verifier_stepwise(
+        layouts, q_cols, prequery, postcommit, proof, transcript,
+    )?;
     let mut pending_entries = Vec::with_capacity(
         C6_HIDDEN_U_REPETITIONS as usize
             * C6_BLIND_HIDDEN_U_FAMILIES
             * C6_BLIND_HIDDEN_U_SLOTS_PER_FAMILY as usize,
     );
-
-    for repetition in 0..C6_HIDDEN_U_REPETITIONS as usize {
-        let repetition_proof = &proof.repetitions[repetition];
-        let mut current: [[Option<VerifierKey>; C6_BLIND_HIDDEN_U_TAPES];
-            C6_BLIND_HIDDEN_U_FAMILIES] = array::from_fn(|_| array::from_fn(|_| None));
-        let mut points = vec![Vec::new(); layouts.len()];
-        for global_round in 0..max_rounds {
-            let mut nodes: [[Option<[VerifierKey; 3]>; C6_BLIND_HIDDEN_U_TAPES];
-                C6_BLIND_HIDDEN_U_FAMILIES] = array::from_fn(|_| array::from_fn(|_| None));
-            for family_index in 0..layouts.len() {
-                let rounds = layouts[family_index].padded_entries().ilog2() as usize;
-                let start = max_rounds - rounds;
-                if global_round < start {
-                    continue;
-                }
-                let local_round = global_round - start;
-                for tape in 0..C6_BLIND_HIDDEN_U_TAPES {
-                    let live = current[family_index][tape].unwrap_or(VerifierKey::from_public(
-                        schedules[family_index].initial_claim(repetition).map_err(hidden_error)?,
-                        contexts[tape].delta,
-                    ));
-                    let corrections = repetition_proof.families[family_index].round_corrections
-                        [tape][local_round];
-                    let domain = correlation_domain(
-                        repetition as u8,
-                        tape,
-                        round_purpose(layouts[family_index].family),
-                        local_round,
-                    )?;
-                    let sent = contexts[tape].correct_full_verifier_keys(domain, &corrections);
-                    transcript.append(ROUND_LABEL, 2 * FP2_BYTES);
-                    nodes[family_index][tape] = Some([sent[0], live.sub(sent[0]), sent[1]]);
-                }
-            }
+    for repetition in 0..C6_HIDDEN_U_REPETITIONS as u8 {
+        let mut state = prepare_c6_blind_hidden_u_verifier_round_state(
+            layouts, q_cols, prequery, postcommit, proof, repetition,
+        )?;
+        while state.round_index() < state.round_count() {
+            let bytes = state.check_next_round(contexts)?;
+            transcript.append(ROUND_LABEL, bytes);
             let challenge = transcript.challenge_fp2();
-            let weights = lagrange3(challenge);
-            for family_index in 0..layouts.len() {
-                if nodes[family_index][0].is_none() {
-                    continue;
-                }
-                points[family_index].push(challenge);
-                for tape in 0..C6_BLIND_HIDDEN_U_TAPES {
-                    let round_nodes = nodes[family_index][tape]
-                        .ok_or_else(|| C6BlindHiddenUError::new("C6HUB2 cross-tape round gap"))?;
-                    current[family_index][tape] = Some(interpolate_verifier(round_nodes, weights));
-                }
-            }
+            state.bind_challenge(challenge)?;
         }
-
-        let mut terminal_residuals: [[VerifierKey; C6_BLIND_HIDDEN_U_FAMILIES];
-            C6_BLIND_HIDDEN_U_TAPES] =
-            array::from_fn(|_| [VerifierKey::ZERO; C6_BLIND_HIDDEN_U_FAMILIES]);
-        for family_index in 0..layouts.len() {
-            let family = layouts[family_index].family;
-            let functional = evaluate_functional(
-                layouts[family_index],
-                &schedules[family_index],
-                repetition,
-                &q_cols[family_index],
-                &points[family_index],
-            )
-            .map_err(hidden_error)?;
-            let mut pending_keys = [VerifierKey::ZERO; C6_BLIND_HIDDEN_U_TAPES];
-            for (tape, residuals) in terminal_residuals.iter_mut().enumerate() {
-                let domain =
-                    correlation_domain(repetition as u8, tape, pending_purpose(family), 0)?;
-                pending_keys[tape] = contexts[tape].correct_full_verifier_keys(
-                    domain,
-                    &[repetition_proof.families[family_index].pending_corrections[tape]],
-                )[0];
-                transcript.append(PENDING_LABEL, FP2_BYTES);
-                let live = current[family_index][tape]
-                    .ok_or_else(|| C6BlindHiddenUError::new("missing C6HUB2 verifier terminal"))?;
-                residuals[family_index] = live.sub(pending_keys[tape].scale(functional));
-            }
-            append_family_pending_verifier_entries(
-                &mut pending_entries,
-                expected_statement,
-                repetition as u8,
-                family,
-                points[family_index].clone(),
-                pending_keys,
-            );
-        }
-        let eta = transcript.challenge_fp2();
-        for (tape, residuals) in terminal_residuals.iter().enumerate() {
-            let aggregate = residuals[0].add(residuals[1].scale(eta));
-            transcript.append("zero_open_tag", FP2_BYTES);
-            if !zero_open_verify(aggregate, repetition_proof.terminal_tags[tape]) {
-                return Err(C6BlindHiddenUError::new("C6HUB2 terminal ZeroOpen failed"));
-            }
-        }
+        pending_entries.extend(state.finish(contexts, transcript)?);
     }
     Ok(C6BlindHiddenUPendingClaimsVerifier { entries: pending_entries })
 }
@@ -1007,6 +1232,45 @@ mod tests {
             C6_BLIND_HIDDEN_U_PRODUCTION_BYTES
         );
         assert_eq!(C6_BLIND_HIDDEN_U_PRODUCTION_FULL_CORRELATIONS_PER_TAPE, 164);
+    }
+
+    #[test]
+    fn blind_hidden_stepwise_states_reject_out_of_order_challenges() {
+        let (layouts, q_cols, sealed, postcommit) = fixture();
+        let mut streams = TAPE_SEEDS.map(CorrelationStream::new);
+        let mut prover = prepare_c6_blind_hidden_u_prover_round_state(
+            &sealed,
+            sealed.prequery(),
+            &postcommit,
+            0,
+        )
+        .unwrap();
+        assert!(prover.bind_challenge(Fp2::ONE).is_err());
+        assert!(prover.fix_next_round(&mut streams).unwrap() > 0);
+        assert!(prover.fix_next_round(&mut streams).is_err());
+
+        let mut transcript = Transcript::new([0x59; 32]);
+        let (proof, _) = prove_c6_blind_hidden_u_sumchecks_reference(
+            &sealed,
+            sealed.prequery(),
+            &postcommit,
+            &mut TAPE_SEEDS.map(CorrelationStream::new),
+            &mut transcript,
+        )
+        .unwrap();
+        let mut verifier = prepare_c6_blind_hidden_u_verifier_round_state(
+            &layouts,
+            &q_cols,
+            sealed.prequery(),
+            &postcommit,
+            &proof,
+            0,
+        )
+        .unwrap();
+        let mut contexts = array::from_fn(|tape| VerifierCtx::new(TAPE_SEEDS[tape], DELTAS[tape]));
+        assert!(verifier.bind_challenge(Fp2::ONE).is_err());
+        assert!(verifier.check_next_round(&mut contexts).unwrap() > 0);
+        assert!(verifier.check_next_round(&mut contexts).is_err());
     }
 
     #[test]

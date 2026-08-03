@@ -37,10 +37,11 @@ use crate::c6_residual_sumcheck_blind::{
     begin_c6_blind_residual_prover_stepwise, begin_c6_blind_residual_verifier_stepwise,
     finish_c6_blind_residual_verifier_round_state_direct,
     prepare_c6_blind_residual_prover_round_state_fused,
-    prepare_c6_blind_residual_verifier_round_state, C6BlindResidualDirectTerminalOutputs,
-    C6BlindResidualFusedCompilerContext, C6BlindResidualPendingClaimsProver,
-    C6BlindResidualPendingTransferFrame, C6BlindResidualProverRoundState, C6BlindResidualStatement,
-    C6BlindResidualSumcheckProof, C6BlindResidualVerifierRoundState,
+    prepare_c6_blind_residual_verifier_round_state, C6BlindResidualDirectTerminalFold,
+    C6BlindResidualDirectTerminalOutputs, C6BlindResidualFusedCompilerContext,
+    C6BlindResidualPendingClaimsProver, C6BlindResidualPendingTransferFrame,
+    C6BlindResidualProverRoundState, C6BlindResidualStatement, C6BlindResidualSumcheckProof,
+    C6BlindResidualVerifierRoundState,
 };
 use crate::c6_wrapper_pcs::{
     C6FixedWrapperCommitments, C6WrapperRoundCoordinator, C6WrapperRoundMessageReceipt,
@@ -83,6 +84,7 @@ pub(crate) struct C6ExactProductionProverProof {
     pub(crate) residual_proof: C6BlindResidualSumcheckProof,
     pub(crate) residual_frame: C6BlindResidualPendingTransferFrame,
     pub(crate) residual_terminal_outputs: C6BlindResidualDirectTerminalOutputs,
+    pub(crate) residual_terminal_fold: C6BlindResidualDirectTerminalFold,
     pub(crate) hidden_proof: C6BlindHiddenUSumcheckProof,
     pub(crate) cache_proof: C6PersistentCacheBlindProof,
     pub(crate) cache_source_frame: C6PersistentCacheSourceBootstrapFrame,
@@ -113,6 +115,9 @@ pub(crate) fn finish_c6_production_blind_with_persisted_link(
     if roots.session_digest() != session_digest {
         return Err("C6 exact runner root/session mismatch".to_owned());
     }
+    let output_beta = transcript.challenge_fp2();
+    let residual_terminal_fold =
+        blind.residual_terminal_outputs.clone().bind_output_beta(output_beta);
     let mut pending = C6PendingSlotRegistryProverBuilder::new(roots.fixed()).map_err(text_error)?;
     pending.absorb_residual(&blind.residual_pending).map_err(text_error)?;
     pending.absorb_hidden_u(&blind.hidden_pending).map_err(text_error)?;
@@ -137,6 +142,7 @@ pub(crate) fn finish_c6_production_blind_with_persisted_link(
         residual_proof: blind.residual_proof,
         residual_frame: blind.residual_frame,
         residual_terminal_outputs: blind.residual_terminal_outputs,
+        residual_terminal_fold,
         hidden_proof: blind.hidden_proof,
         cache_proof: blind.cache_proof,
         cache_source_frame: blind.cache_source_frame,
@@ -434,6 +440,12 @@ pub(crate) fn verify_c6_exact_production_proof(
             .map_err(text_error)?;
     let hidden_pending =
         assemble_c6_blind_hidden_u_verifier_stepwise(hidden_finished).map_err(text_error)?;
+    let output_beta = transcript.challenge_fp2();
+    let expected_terminal_fold =
+        proof.residual_terminal_outputs.clone().bind_output_beta(output_beta);
+    if expected_terminal_fold != proof.residual_terminal_fold {
+        return Err("C6 exact verifier terminal output-fold mismatch".to_owned());
+    }
     let mut pending =
         C6PendingSlotRegistryVerifierBuilder::new(roots.fixed()).map_err(text_error)?;
     pending.absorb_residual(&residual_pending).map_err(text_error)?;

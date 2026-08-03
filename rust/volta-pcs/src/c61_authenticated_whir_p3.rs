@@ -2318,8 +2318,8 @@ fn c61_sparse_compiler_production_fixture<'a>(
     if !relation.manifest().is_production_geometry() {
         return Err("C6SPR5 production fixture requires the frozen C6RLM1 geometry".to_owned());
     }
-    let lanes: [volta_proto::c6_residual::C6ResidualFoldedTerminalAdjointLaneReference; 2] =
-        (0..2usize)
+    let lanes: [volta_proto::c6_residual::C6ResidualFoldedTerminalAdjointLaneReference; 2] = (0
+        ..2usize)
         .map(|repetition| {
             compile_c6_residual_folded_terminal_adjoint_lane_reference(
                 operation_plan,
@@ -2380,8 +2380,8 @@ pub fn run_c61_authenticated_whir_p3_production_monolithic_baseline(
     leaf_points: [&[Fp2]; 2],
     output_beta: Fp2,
     admission: C61ProductionMonolithicResourceAdmission,
-    correlations: CorrelationStream,
-    context: VerifierCtx,
+    mut correlations: CorrelationStream,
+    mut context: VerifierCtx,
     verifier_seed: [u8; 32],
     id: C61NativeChainId,
     mask_range: C61AuthenticatedWhirMaskRange,
@@ -2421,8 +2421,8 @@ pub fn run_c61_authenticated_whir_p3_production_monolithic_baseline(
     run_c61_authenticated_whir_p3_shared_multi_oracle_materialized(
         &fixture,
         28,
-        correlations,
-        context,
+        &mut correlations,
+        &mut context,
         verifier_seed,
         id,
         mask_range,
@@ -2445,8 +2445,45 @@ pub fn run_c61_authenticated_whir_p3_production_persisted(
     output_beta: Fp2,
     spill_root: &Path,
     admission: C61ProductionPersistedResourceAdmission,
-    correlations: CorrelationStream,
-    context: VerifierCtx,
+    mut correlations: CorrelationStream,
+    mut context: VerifierCtx,
+    verifier_seed: [u8; 32],
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<C61AuthenticatedP3SharedMultiOracleDiagnostic, String> {
+    run_c61_authenticated_whir_p3_production_persisted_in_attempt(
+        operation_plan,
+        terminal_metadata,
+        extraction,
+        runtime,
+        relation,
+        leaf_points,
+        output_beta,
+        spill_root,
+        admission,
+        &mut correlations,
+        &mut context,
+        verifier_seed,
+        id,
+        mask_range,
+    )
+}
+
+/// Same production executor, borrowing the connection-owned PCG states so
+/// an exact response runner can continue the indivisible paired attempt.
+#[allow(clippy::too_many_arguments)]
+pub fn run_c61_authenticated_whir_p3_production_persisted_in_attempt(
+    operation_plan: &C6InstalledOperationPlan,
+    terminal_metadata: C6OperationPlanTerminalMetadata,
+    extraction: &volta_mac::C6DecodedInstanceExtractionPlan,
+    runtime: &volta_mac::C6RuntimeInstanceValues,
+    relation: &volta_proto::c6_residual::C6ResidualRelationChallenges,
+    leaf_points: [&[Fp2]; 2],
+    output_beta: Fp2,
+    spill_root: &Path,
+    admission: C61ProductionPersistedResourceAdmission,
+    correlations: &mut CorrelationStream,
+    context: &mut VerifierCtx,
     verifier_seed: [u8; 32],
     id: C61NativeChainId,
     mask_range: C61AuthenticatedWhirMaskRange,
@@ -2519,7 +2556,8 @@ pub fn run_c61_authenticated_whir_p3_production_persisted(
         response_mmcs,
         plan_mmcs,
     )?;
-    if !report.production_geometry || !report.persisted_executor || report.monolithic_host_baseline {
+    if !report.production_geometry || !report.persisted_executor || report.monolithic_host_baseline
+    {
         return Err("C6SPR5 persisted runner returned a non-persisted production report".to_owned());
     }
     Ok(report)
@@ -2789,15 +2827,15 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
     let verifier_seed = [0xC2; 32];
     let pcg_seed = [0xD3; 32];
     let delta = Fp2::new(Fp::new(P - 83), Fp::new(0xC6_5202));
-    let correlations = CorrelationStream::new(pcg_seed);
-    let context = VerifierCtx::new(pcg_seed, delta);
+    let mut correlations = CorrelationStream::new(pcg_seed);
+    let mut context = VerifierCtx::new(pcg_seed, delta);
     let id = C61NativeChainId { component: C61NativeComponent::Compiler, repetition: 0 };
     let mask_range = C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 29, range_start: 120_000 };
     run_c61_authenticated_whir_p3_shared_multi_oracle_materialized(
         &fixture,
         response_num_variables,
-        correlations,
-        context,
+        &mut correlations,
+        &mut context,
         verifier_seed,
         id,
         mask_range,
@@ -2819,8 +2857,8 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_persisted_diagnostic(
     let verifier_seed = [0xC2; 32];
     let pcg_seed = [0xD3; 32];
     let delta = Fp2::new(Fp::new(P - 83), Fp::new(0xC6_5202));
-    let correlations = CorrelationStream::new(pcg_seed);
-    let context = VerifierCtx::new(pcg_seed, delta);
+    let mut correlations = CorrelationStream::new(pcg_seed);
+    let mut context = VerifierCtx::new(pcg_seed, delta);
     let id = C61NativeChainId { component: C61NativeComponent::Compiler, repetition: 0 };
     let mask_range = C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 29, range_start: 120_000 };
     let mut session_hasher = blake3::Hasher::new_derive_key("volta-zk/c6.1/c6spx1-session/v1");
@@ -2845,8 +2883,8 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_persisted_diagnostic(
     run_c61_authenticated_whir_p3_shared_multi_oracle_with_provider_mmcs(
         &fixture,
         response_num_variables,
-        correlations,
-        context,
+        &mut correlations,
+        &mut context,
         verifier_seed,
         id,
         mask_range,
@@ -2860,8 +2898,8 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_persisted_diagnostic(
 fn run_c61_authenticated_whir_p3_shared_multi_oracle_materialized(
     fixture: &C61SparseCompilerPhysicalFixture<'_>,
     response_num_variables: usize,
-    correlations: CorrelationStream,
-    context: VerifierCtx,
+    correlations: &mut CorrelationStream,
+    context: &mut VerifierCtx,
     verifier_seed: [u8; 32],
     id: C61NativeChainId,
     mask_range: C61AuthenticatedWhirMaskRange,
@@ -2886,8 +2924,8 @@ fn run_c61_authenticated_whir_p3_shared_multi_oracle_materialized(
 fn run_c61_authenticated_whir_p3_shared_multi_oracle_with_provider_mmcs<RM, PM>(
     fixture: &C61SparseCompilerPhysicalFixture<'_>,
     response_num_variables: usize,
-    mut correlations: CorrelationStream,
-    mut context: VerifierCtx,
+    correlations: &mut CorrelationStream,
+    context: &mut VerifierCtx,
     verifier_seed: [u8; 32],
     id: C61NativeChainId,
     mask_range: C61AuthenticatedWhirMaskRange,
@@ -2918,7 +2956,8 @@ where
     {
         return Err("C6SPR5 production materialization must be exact D28/D27".to_owned());
     }
-    if !fixture.production && !(native_response_num_variables..=20).contains(&response_num_variables)
+    if !fixture.production
+        && !(native_response_num_variables..=20).contains(&response_num_variables)
     {
         return Err(format!(
             "C6SPR3 scaled response geometry must be in D{native_response_num_variables}..=D20; production uses the separate fail-closed D28 admission"
@@ -2977,7 +3016,7 @@ where
     let provider_phase = provider_coordinator.with_pre_statement_transcript(|transcript| {
         prove_c61_sparse_compiler_relation_phase(
             &fixture,
-            &mut correlations,
+            correlations,
             &mut provider_doms,
             transcript,
         )
@@ -3027,19 +3066,11 @@ where
     {
         return Err("C6SPR3 exact physical opening point shape mismatch".to_owned());
     }
-    if response_points
-        .iter()
-        .zip(provider_phase.response_values)
-        .any(|(point, expected)| {
-            c61_volta_fp2_from_p3(response_data.message.eval_base(point)) != expected
-        })
-        || plan_points
-            .iter()
-            .zip(provider_phase.plan_values)
-            .any(|(point, expected)| {
-                c61_volta_fp2_from_p3(plan_data.message.eval_base(point)) != expected
-            })
-    {
+    if response_points.iter().zip(provider_phase.response_values).any(|(point, expected)| {
+        c61_volta_fp2_from_p3(response_data.message.eval_base(point)) != expected
+    }) || plan_points.iter().zip(provider_phase.plan_values).any(|(point, expected)| {
+        c61_volta_fp2_from_p3(plan_data.message.eval_base(point)) != expected
+    }) {
         return Err("C6SPR3 Volta-LSB/P3-MSB physical evaluation adapter mismatch".to_owned());
     }
     let response_claims: Vec<_> = response_points
@@ -3052,7 +3083,7 @@ where
         .cloned()
         .zip(provider_phase.plan_values.map(c61_p3_fp2_from_volta))
         .collect();
-    let prepared = prepare_c61_authenticated_whir_mask(id, mask_range, &mut correlations)
+    let prepared = prepare_c61_authenticated_whir_mask(id, mask_range, correlations)
         .map_err(|error| error.to_string())?;
     let response_base_shift = c61_p3_fp2_from_volta(prepared.value());
     let statement_digest = c61_sparse_shared_statement_digest(
@@ -3246,7 +3277,7 @@ where
         verify_c61_sparse_compiler_relation_phase(
             &verifier_fixture,
             &provider_phase.arithmetic_payload,
-            &mut context,
+            context,
             &mut verifier_doms,
             transcript,
         )
@@ -3347,7 +3378,7 @@ where
         joint_verifier_input,
         &verifier_phase.zero_rows,
         joint_tag,
-        &mut context,
+        context,
         &mut verifier_transcript,
     )
     .map_err(|error| error.to_string())?;
@@ -4018,15 +4049,8 @@ mod tests {
                 CorrelationStream::new([0xD3; 32]),
                 VerifierCtx::new([0xD3; 32], delta),
                 [0xC2; 32],
-                C61NativeChainId {
-                    component: C61NativeComponent::Compiler,
-                    repetition: 0,
-                },
-                C61AuthenticatedWhirMaskRange {
-                    stage: 0x61,
-                    slot: 29,
-                    range_start: 120_000,
-                },
+                C61NativeChainId { component: C61NativeComponent::Compiler, repetition: 0 },
+                C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 29, range_start: 120_000 },
             )
             .unwrap_err()
         };
@@ -4059,15 +4083,8 @@ mod tests {
                 CorrelationStream::new([0xD3; 32]),
                 VerifierCtx::new([0xD3; 32], delta),
                 [0xC2; 32],
-                C61NativeChainId {
-                    component: C61NativeComponent::Compiler,
-                    repetition: 0,
-                },
-                C61AuthenticatedWhirMaskRange {
-                    stage: 0x61,
-                    slot: 29,
-                    range_start: 120_000,
-                },
+                C61NativeChainId { component: C61NativeComponent::Compiler, repetition: 0 },
+                C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 29, range_start: 120_000 },
             )
             .unwrap_err()
         };

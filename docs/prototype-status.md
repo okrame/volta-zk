@@ -26,24 +26,25 @@ This capsule is authoritative; read design §0.42 next.
   allocation token: both manifest tape IDs, exact paired ranges, response
   authorization, AES/TerminalOne pools, distinct Deltas, source witness and
   residual-leaf provenance are one indivisible lifecycle. No production run or
-  credit exists.
+  credit exists. Checkpoints `a3cd567` and `ca99ab3` add the fail-closed CUDA
+  production cohort constructor and stream the exact six same-attempt live
+  cohorts one at a time into create-new persisted coefficient/oracle owners;
+  CPU rejects before allocation or I/O and all six roots are fixed before
+  transcript challenge draws.
 - **Screens.** Certificate **17,534,807 B**, setup **84,743,367 B**, state
   **2,277,715,552 B**, provider/verifier **14.9087128542 / 4.965672390 s** and
   soundness **102.587833363526... bits** remain `credit:false`.
 - **Authorized construction gate.** On 2026-08-03 the product owner explicitly
   authorized resuming `C6SPR9_PRODUCTION_WRAPPER_PCS_BACKEND_REQUIRED` through
-  the persisted/CUDA construction with small commits on `main`. The
-  same-attempt root materializer still calls the resident CPU
-  `commit_c6_wrapper_cohort*` path and retains all six
-  `C6CommittedWrapperCohort`s. That implementation retains **91,536,490,496
-  B** of initial codewords twice (owner plus `CohortTreeV4`) and
-  **5,737,807,872 B** of coefficients: an executable lower bound of
-  **188,810,788,864 B (175.84375 GiB)** before Merkle outer caches, input
-  witnesses/masks, allocator overhead or fold trees. It has no production
-  CUDA/out-of-core selector, so neither the 64-GiB C6SPX1 admission nor an
-  A100 alone makes the complete flow eligible. This is the active local
-  implementation gate; no production admission exists yet and no pod may be
-  contacted.
+  the persisted/CUDA construction with small commits on `main`. The initial
+  six-root resident obstruction and its **188,810,788,864-B (175.84375-GiB)**
+  executable lower bound are now retired by the persisted/CUDA selector, but
+  the strict two-chain prover still constructs each fold through resident
+  `fold_codeword` plus `CohortTreeV4` and its persisted reference deliberately
+  rejects production depth. The next local gate is therefore the production
+  CUDA fold-chain owner with exact root/byte/transcript identity, compact
+  opening cache and complete I/O/resource accounting. No production admission
+  exists yet and no pod may be contacted.
 - **Construction.** Implement one resource-aware production wrapper backend which
   derives the same six roots and both strict `C6LNK2` chains from the exact
   live owners without retaining duplicate codewords or all resident cohorts.

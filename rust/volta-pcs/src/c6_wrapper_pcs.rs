@@ -1366,6 +1366,59 @@ pub fn prove_c6_wrapper_pcs_persisted_reference(
     session_digest: C6WrapperDigest,
     transcript: &mut Transcript,
 ) -> Result<C6WrapperPcsProof> {
+    let commitments = cohorts.iter().map(|cohort| cohort.commitment().clone()).collect::<Vec<_>>();
+    validate_statement_and_claims(statement_digest, &commitments, claims_by_repetition)?;
+    prove_c6_wrapper_pcs_persisted_reference_inner(
+        statement_digest,
+        cohorts,
+        claims_by_repetition,
+        spill_root.as_ref(),
+        session_digest,
+        true,
+        transcript,
+    )
+}
+
+/// Scaled persisted companion of the authenticated-link assembled entry
+/// point. Aggregate claims were already absorbed by C6LNK2 and therefore are
+/// not appended to the transcript a second time.
+#[allow(dead_code)]
+pub(crate) fn prove_c6_wrapper_pcs_persisted_reference_assembled(
+    statement_digest: C6WrapperDigest,
+    cohorts: &[C6PersistedWrapperCohort],
+    assembled: &C6AssembledWrapperClaims,
+    spill_root: impl AsRef<Path>,
+    session_digest: C6WrapperDigest,
+    transcript: &mut Transcript,
+) -> Result<C6WrapperPcsProof> {
+    if !assembled.authenticated_link {
+        return Err(C6WrapperPcsError::new(
+            "C6 persisted assembled PCS requires authenticated-output-link sealing",
+        ));
+    }
+    let commitments = cohorts.iter().map(|cohort| cohort.commitment().clone()).collect::<Vec<_>>();
+    validate_assembled_claims(statement_digest, &commitments, assembled)?;
+    prove_c6_wrapper_pcs_persisted_reference_inner(
+        statement_digest,
+        cohorts,
+        &assembled.claims_by_repetition,
+        spill_root.as_ref(),
+        session_digest,
+        false,
+        transcript,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_c6_wrapper_pcs_persisted_reference_inner(
+    statement_digest: C6WrapperDigest,
+    cohorts: &[C6PersistedWrapperCohort],
+    claims_by_repetition: &[Vec<C6WrapperOpeningClaim>],
+    spill_root: &Path,
+    session_digest: C6WrapperDigest,
+    append_aggregate_claims: bool,
+    transcript: &mut Transcript,
+) -> Result<C6WrapperPcsProof> {
     if session_digest == [0; 32]
         || cohorts.iter().any(|cohort| cohort.session_digest() != session_digest)
         || !cohorts.windows(2).all(|pair| pair[0].oracle_ordinal() < pair[1].oracle_ordinal())
@@ -1374,7 +1427,9 @@ pub fn prove_c6_wrapper_pcs_persisted_reference(
     }
     let commitments = cohorts.iter().map(|cohort| cohort.commitment().clone()).collect::<Vec<_>>();
     validate_statement_and_claims(statement_digest, &commitments, claims_by_repetition)?;
-    append_terminal_claims(transcript, claims_by_repetition)?;
+    if append_aggregate_claims {
+        append_terminal_claims(transcript, claims_by_repetition)?;
+    }
     let activations = derive_activation_challenges(transcript, commitments.len());
     let mut sealed = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
     for repetition in 0..C6_WRAPPER_REPETITIONS {
@@ -1384,7 +1439,7 @@ pub fn prove_c6_wrapper_pcs_persisted_reference(
             cohorts,
             &claims_by_repetition[repetition],
             activations[repetition].clone(),
-            spill_root.as_ref(),
+            spill_root,
             session_digest,
             transcript,
         )?);

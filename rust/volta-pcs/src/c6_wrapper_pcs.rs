@@ -15,6 +15,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::Path;
 
+use volta_accel::{Backend, BackendKind};
 use volta_field::{Fp, Fp2};
 use volta_mac::Transcript;
 use volta_proto::{C6ResidualRelationManifest, C6ResidualRelationRootBound};
@@ -23,9 +24,11 @@ use crate::c6_hidden_u::C6HiddenUFamily;
 use crate::c6_hidden_u_sumcheck::C6HiddenUOpeningClaim;
 use crate::c6_persistent_cache::{C6PersistentCacheStaticProfile, C6_PERSISTENT_CACHE_SLOTS};
 use crate::c6_wrapper_persisted::{
-    persist_scaled_c6_wrapper_fold_reference, C6PersistedFoldOpening, C6PersistedWrapperCohort,
+    commit_production_c6_wrapper_fold_cuda, persist_scaled_c6_wrapper_fold_reference,
+    C6PersistedFoldOpening, C6PersistedWrapperCohort,
 };
 use crate::x4::accounting::projected_query_indices;
+use crate::x4::cuda_v4::X4bCudaCommitMetricsV4;
 use crate::x4::frame::Digest;
 use crate::x4::frame_v4::{
     decode_v4, FoldCommitmentFrameV4, FoldRoundOpeningV4, FrameV4, InitialOpeningGroupV4,
@@ -39,6 +42,7 @@ use crate::x4::ntt::{
     encode_rate_eighth, evaluate_multilinear_coefficients, fold_codeword, fold_coefficients,
     fp2_pow, multilinear_coefficients, root_of_unity,
 };
+use crate::x4::persisted_v4::PersistedOpeningTrafficV4;
 
 pub const C6_WRAPPER_QUERY_COUNT: usize = 86;
 pub const C6_WRAPPER_REPETITIONS: usize = 2;
@@ -1330,6 +1334,14 @@ struct PersistedSealedChain {
     fold_openings: Vec<C6PersistedFoldOpening>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct C6ProductionWrapperPcsMetrics {
+    pub coefficient_bytes_read: u64,
+    pub fold_commit: X4bCudaCommitMetricsV4,
+    pub opening: PersistedOpeningTrafficV4,
+    pub resident_codeword_copies_after_seal: u64,
+}
+
 /// Diagnostic/raw-weight in-memory prover.  Production callers use
 /// [`prove_c6_wrapper_pcs_assembled`], which cannot accept provider-selected
 /// slot weights.
@@ -1406,6 +1418,100 @@ pub fn prove_c6_wrapper_pcs_persisted_reference(
         chains.push(chain);
     }
     Ok(C6WrapperPcsProof { chains })
+}
+
+/// Production assembled PCS over the create-new persisted owners. Every fold
+/// oracle/root is produced by CUDA directly from the folded coefficients;
+/// both complete chains are fixed before either proximity-query tape is drawn.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_c6_wrapper_pcs_persisted_cuda_assembled(
+    statement_digest: C6WrapperDigest,
+    cohorts: &[C6PersistedWrapperCohort],
+    assembled: &C6AssembledWrapperClaims,
+    backend: &mut Backend,
+    spill_root: impl AsRef<Path>,
+    session_digest: C6WrapperDigest,
+    transcript: &mut Transcript,
+) -> Result<(C6WrapperPcsProof, C6ProductionWrapperPcsMetrics)> {
+    if backend.kind() == BackendKind::Cpu {
+        return Err(C6WrapperPcsError::new("C6 production persisted PCS refuses CPU backend"));
+    }
+    let commitments = cohorts.iter().map(|cohort| cohort.commitment().clone()).collect::<Vec<_>>();
+    let production_specs = production_c6_wrapper_specs();
+    if session_digest == [0; 32]
+        || cohorts.len() != production_specs.len()
+        || cohorts.iter().enumerate().any(|(index, cohort)| {
+            cohort.session_digest() != session_digest
+                || cohort.oracle_ordinal() != index as u64
+                || cohort.commitment().spec != production_specs[index]
+        })
+    {
+        return Err(C6WrapperPcsError::new(
+            "C6 production persisted PCS response/profile binding mismatch",
+        ));
+    }
+    if !assembled.authenticated_link {
+        return Err(C6WrapperPcsError::new(
+            "C6 production persisted PCS requires authenticated-output-link sealing",
+        ));
+    }
+    validate_assembled_claims(statement_digest, &commitments, assembled)?;
+    let activations = derive_activation_challenges(transcript, commitments.len());
+    let mut sealed = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
+    let mut metrics = C6ProductionWrapperPcsMetrics::default();
+    for repetition in 0..C6_WRAPPER_REPETITIONS {
+        let (chain, coefficient_bytes_read, fold_commit) = seal_persisted_cuda_chain(
+            statement_digest,
+            repetition,
+            cohorts,
+            &assembled.claims_by_repetition[repetition],
+            activations[repetition].clone(),
+            backend,
+            spill_root.as_ref(),
+            session_digest,
+            transcript,
+        )?;
+        metrics.coefficient_bytes_read = metrics
+            .coefficient_bytes_read
+            .checked_add(coefficient_bytes_read)
+            .ok_or_else(|| C6WrapperPcsError::new("C6 coefficient-read metric overflows"))?;
+        metrics
+            .fold_commit
+            .include(&fold_commit)
+            .map_err(|error| C6WrapperPcsError::frame("C6 fold metric", error))?;
+        sealed.push(chain);
+    }
+    let draw_width = commitments[0].config.outer_depth();
+    let query_tapes = (0..C6_WRAPPER_REPETITIONS)
+        .map(|_| {
+            (0..C6_WRAPPER_QUERY_COUNT)
+                .map(|_| transcript.challenge_bits(draw_width))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let mut chains = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
+    for (sealed, draws) in sealed.into_iter().zip(&query_tapes) {
+        let repetition = usize::from(sealed.repetition);
+        let (chain, opening) = issue_persisted_openings(
+            statement_digest,
+            cohorts,
+            &assembled.claims_by_repetition[repetition],
+            sealed,
+            draws,
+        )?;
+        include_opening_traffic(&mut metrics.opening, opening)?;
+        let packed_len = FrameV4::PackedBatchOpening(chain.packed_opening.clone())
+            .encode()
+            .map_err(|error| C6WrapperPcsError::frame("C6 production packed opening", error))?
+            .len();
+        transcript.append(
+            C6_PACKED_OPENING_LABEL,
+            u64::try_from(packed_len)
+                .map_err(|_| C6WrapperPcsError::new("C6 packed opening length exceeds u64"))?,
+        );
+        chains.push(chain);
+    }
+    Ok((C6WrapperPcsProof { chains }, metrics))
 }
 
 /// PCS entry point after authenticated-output-link sealing.  The ten masked
@@ -1862,6 +1968,182 @@ fn seal_persisted_reference_chain(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn seal_persisted_cuda_chain(
+    statement_digest: C6WrapperDigest,
+    repetition: usize,
+    cohorts: &[C6PersistedWrapperCohort],
+    claims: &[C6WrapperOpeningClaim],
+    activation_challenges: Vec<Fp2>,
+    backend: &mut Backend,
+    spill_root: &Path,
+    session_digest: C6WrapperDigest,
+    transcript: &mut Transcript,
+) -> Result<(PersistedSealedChain, u64, X4bCudaCommitMetricsV4)> {
+    let common_point = claims[0].point.clone();
+    let commitments = cohorts.iter().map(|cohort| cohort.commitment().clone()).collect::<Vec<_>>();
+    let max_outer_len = commitments[0].spec.encoded_len()?;
+    let mut current_coefficients = vec![Fp2::ZERO; max_outer_len / 8];
+    let mut current_claim = Fp2::ZERO;
+    let (mut activated, mut coefficient_bytes_read) = activate_persisted_coefficients_at_domain(
+        max_outer_len,
+        cohorts,
+        claims,
+        &activation_challenges,
+        &mut current_coefficients,
+        &mut current_claim,
+    )?;
+    if activated == 0 {
+        return Err(C6WrapperPcsError::new("C6 CUDA persisted maximum cohort did not activate"));
+    }
+    let fold_descriptor = fold_descriptor_digest(statement_digest, repetition as u8, &commitments);
+    let global_cohort_id = C6_GLOBAL_FOLD_COHORT_BASE
+        .checked_add(repetition as u32)
+        .ok_or_else(|| C6WrapperPcsError::new("C6 CUDA fold cohort id overflows"))?;
+    let mut fold_frames = Vec::with_capacity(common_point.len());
+    let mut fold_openings = Vec::with_capacity(common_point.len());
+    let mut fold_challenges = Vec::with_capacity(common_point.len());
+    let mut fold_commit = X4bCudaCommitMetricsV4::default();
+    let mut input_len = max_outer_len;
+    for round_index in 0..common_point.len() {
+        let (line_zero, line_one) =
+            claim_line(&current_coefficients, &common_point[round_index + 1..])?;
+        if interpolate(line_zero, line_one, common_point[round_index]) != current_claim {
+            return Err(C6WrapperPcsError::new("C6 CUDA persisted claim-line input mismatch"));
+        }
+        transcript.append(C6_FOLD_LINE_LABEL, 32);
+        let fold_challenge = transcript.challenge_fp2();
+        fold_challenges.push(fold_challenge);
+        current_claim = interpolate(line_zero, line_one, fold_challenge);
+        current_coefficients = fold_coefficients(&current_coefficients, fold_challenge)
+            .map_err(|error| C6WrapperPcsError::frame("C6 CUDA coefficient fold", error))?;
+        let output_len = input_len / 2;
+        let (activated_now, bytes_read_now) = activate_persisted_coefficients_at_domain(
+            output_len,
+            cohorts,
+            claims,
+            &activation_challenges,
+            &mut current_coefficients,
+            &mut current_claim,
+        )?;
+        activated = activated
+            .checked_add(activated_now)
+            .ok_or_else(|| C6WrapperPcsError::new("C6 CUDA activation count overflows"))?;
+        coefficient_bytes_read = coefficient_bytes_read
+            .checked_add(bytes_read_now)
+            .ok_or_else(|| C6WrapperPcsError::new("C6 CUDA coefficient reads overflow"))?;
+        let fold_round = u8::try_from(round_index + 1)
+            .map_err(|_| C6WrapperPcsError::new("C6 CUDA fold round overflows"))?;
+        let config = CohortVerifierConfigV4 {
+            identity: CohortIdentityV4 {
+                cohort_id: global_cohort_id,
+                oracle_kind: OracleKindV4::GlobalFoldAggregate,
+                fold_round,
+            },
+            slot_descriptors: vec![Some(fold_descriptor)],
+            outer_len: output_len,
+            expected_symbol_count: 1,
+        };
+        let (opening, round_metrics, returned_coefficients) =
+            commit_production_c6_wrapper_fold_cuda(
+                backend,
+                config,
+                current_coefficients,
+                spill_root,
+                statement_digest,
+                session_digest,
+                repetition as u8,
+                fold_round,
+            )?;
+        current_coefficients = returned_coefficients;
+        fold_commit
+            .include(&round_metrics)
+            .map_err(|error| C6WrapperPcsError::frame("C6 CUDA fold metric", error))?;
+        let mut messages = vec![line_zero, line_one];
+        if round_index + 1 == common_point.len() {
+            if current_coefficients.as_slice() != [current_claim] {
+                return Err(C6WrapperPcsError::new(
+                    "C6 CUDA persisted final folded scalar mismatch",
+                ));
+            }
+            messages.push(current_claim);
+        }
+        let frame = FoldCommitmentFrameV4 {
+            cohort_id: global_cohort_id,
+            oracle_kind: OracleKindV4::GlobalFoldAggregate,
+            fold_round,
+            input_log2: input_len.ilog2() as u8,
+            output_log2: output_len.ilog2() as u8,
+            root_digest: opening.root(),
+            ordered_message_symbols: messages,
+        };
+        let frame_len = FrameV4::FoldCommitment(frame.clone())
+            .encode()
+            .map_err(|error| C6WrapperPcsError::frame("C6 CUDA fold frame", error))?
+            .len();
+        transcript.append(
+            C6_FOLD_POST_CHALLENGE_LABEL,
+            u64::try_from(
+                frame_len
+                    .checked_sub(32)
+                    .ok_or_else(|| C6WrapperPcsError::new("C6 fold frame shorter than line"))?,
+            )
+            .map_err(|_| C6WrapperPcsError::new("C6 fold frame length exceeds u64"))?,
+        );
+        fold_frames.push(frame);
+        fold_openings.push(opening);
+        input_len = output_len;
+    }
+    if input_len != 1usize << C6_WRAPPER_TERMINAL_LOG2 || activated != cohorts.len() {
+        return Err(C6WrapperPcsError::new("C6 CUDA persisted activation schedule incomplete"));
+    }
+    Ok((
+        PersistedSealedChain {
+            repetition: repetition as u8,
+            common_point,
+            activation_challenges,
+            fold_challenges,
+            fold_frames,
+            fold_openings,
+        },
+        coefficient_bytes_read,
+        fold_commit,
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn activate_persisted_coefficients_at_domain(
+    domain_len: usize,
+    cohorts: &[C6PersistedWrapperCohort],
+    claims: &[C6WrapperOpeningClaim],
+    activation_challenges: &[Fp2],
+    current_coefficients: &mut [Fp2],
+    current_claim: &mut Fp2,
+) -> Result<(usize, u64)> {
+    let mut activated = 0usize;
+    let mut bytes_read = 0u64;
+    for ((cohort, claim), activation) in cohorts.iter().zip(claims).zip(activation_challenges) {
+        if cohort.commitment().spec.encoded_len()? != domain_len {
+            continue;
+        }
+        let (combined, cohort_bytes_read) = cohort.combine_coefficients(claim)?;
+        if combined.len() != current_coefficients.len() {
+            return Err(C6WrapperPcsError::new("C6 CUDA persisted activation domain mismatch"));
+        }
+        for (output, value) in current_coefficients.iter_mut().zip(combined) {
+            *output += *activation * value;
+        }
+        *current_claim += *activation * claim.value;
+        activated = activated
+            .checked_add(1)
+            .ok_or_else(|| C6WrapperPcsError::new("C6 CUDA activation count overflows"))?;
+        bytes_read = bytes_read
+            .checked_add(cohort_bytes_read)
+            .ok_or_else(|| C6WrapperPcsError::new("C6 CUDA coefficient reads overflow"))?;
+    }
+    Ok((activated, bytes_read))
+}
+
+#[allow(clippy::too_many_arguments)]
 fn activate_persisted_at_domain(
     domain_len: usize,
     cohorts: &[C6PersistedWrapperCohort],
@@ -1958,6 +2240,17 @@ fn issue_persisted_reference_openings(
     sealed: PersistedSealedChain,
     query_draws: &[u64],
 ) -> Result<C6WrapperChainProof> {
+    issue_persisted_openings(statement_digest, cohorts, claims, sealed, query_draws)
+        .map(|(chain, _)| chain)
+}
+
+fn issue_persisted_openings(
+    statement_digest: C6WrapperDigest,
+    cohorts: &[C6PersistedWrapperCohort],
+    claims: &[C6WrapperOpeningClaim],
+    sealed: PersistedSealedChain,
+    query_draws: &[u64],
+) -> Result<(C6WrapperChainProof, PersistedOpeningTrafficV4)> {
     validate_query_draws(query_draws, cohorts[0].commitment().config.outer_depth())?;
     if sealed.common_point != claims[0].point
         || sealed.activation_challenges.len() != cohorts.len()
@@ -1966,17 +2259,20 @@ fn issue_persisted_reference_openings(
     {
         return Err(C6WrapperPcsError::new("C6 persisted sealed-chain geometry mismatch"));
     }
+    let mut traffic = PersistedOpeningTrafficV4::default();
     let mut initial_groups = Vec::with_capacity(cohorts.len());
     for cohort in cohorts {
-        let (mut opening, _) = cohort.open_initial(query_draws)?;
+        let (mut opening, opening_traffic) = cohort.open_initial(query_draws)?;
+        include_opening_traffic(&mut traffic, opening_traffic)?;
         opening.cohort_id = cohort.commitment().spec.cohort_id;
         initial_groups.push(opening);
     }
-    let fold_rounds = sealed
-        .fold_openings
-        .iter()
-        .map(|opening| opening.open(query_draws).map(|(opening, _)| opening))
-        .collect::<Result<Vec<_>>>()?;
+    let mut fold_rounds = Vec::with_capacity(sealed.fold_openings.len());
+    for opening in &sealed.fold_openings {
+        let (round, opening_traffic) = opening.open(query_draws)?;
+        include_opening_traffic(&mut traffic, opening_traffic)?;
+        fold_rounds.push(round);
+    }
     let commitments = cohorts.iter().map(|cohort| cohort.commitment().clone()).collect::<Vec<_>>();
     let opening_schedule_digest = opening_schedule_digest(
         statement_digest,
@@ -1991,11 +2287,34 @@ fn issue_persisted_reference_openings(
     packed_opening
         .validate()
         .map_err(|error| C6WrapperPcsError::frame("C6 persisted packed opening shape", error))?;
-    Ok(C6WrapperChainProof {
-        repetition: sealed.repetition,
-        fold_frames: sealed.fold_frames,
-        packed_opening,
-    })
+    Ok((
+        C6WrapperChainProof {
+            repetition: sealed.repetition,
+            fold_frames: sealed.fold_frames,
+            packed_opening,
+        },
+        traffic,
+    ))
+}
+
+fn include_opening_traffic(
+    total: &mut PersistedOpeningTrafficV4,
+    next: PersistedOpeningTrafficV4,
+) -> Result<()> {
+    macro_rules! add {
+        ($field:ident) => {
+            total.$field = total
+                .$field
+                .checked_add(next.$field)
+                .ok_or_else(|| C6WrapperPcsError::new("C6 opening traffic metric overflows"))?;
+        };
+    }
+    add!(oracle_file_bytes_read);
+    add!(outer_cache_bytes_read);
+    add!(inner_trees_rebuilt);
+    add!(outer_frontier_leaves_rebuilt);
+    add!(outer_internal_nodes_rebuilt);
+    Ok(())
 }
 
 fn replay_fold_messages(
@@ -3101,8 +3420,15 @@ mod tests {
 
     #[test]
     fn scaled_persisted_owner_matches_resident_root_and_opening_byte_for_byte() {
-        let (mut cohorts, _, _) = fixture();
+        let (mut cohorts, _, claims) = fixture();
         let cohort = cohorts.remove(0);
+        let claim = claims[0][0].clone();
+        let mut expected_coefficients = vec![Fp2::ZERO; cohort.coefficients[0].len()];
+        for (source, weight) in cohort.coefficients.iter().zip(&claim.slot_weights) {
+            for (output, value) in expected_coefficients.iter_mut().zip(source) {
+                *output += *weight * *value;
+            }
+        }
         let commitment = cohort.commitment.clone();
         let draw_bound = 1u64 << (commitment.config.outer_depth() - 1);
         let draws = (0..C6_WRAPPER_QUERY_COUNT)
@@ -3127,6 +3453,13 @@ mod tests {
         assert_eq!(persisted.metrics().files_created, 3);
         assert_eq!(persisted.metrics().fsync_count, 4);
         assert!(traffic.oracle_file_bytes_read > 0);
+        let (combined_coefficients, coefficient_bytes_read) =
+            persisted.combine_coefficients(&claim).unwrap();
+        assert_eq!(combined_coefficients, expected_coefficients);
+        assert_eq!(
+            coefficient_bytes_read,
+            std::fs::metadata(persisted.directory().join("coefficients.fp2")).unwrap().len()
+        );
         verify_initial_packed_opening_v4(
             commitment.root,
             &commitment.config,
@@ -3150,6 +3483,34 @@ mod tests {
         assert!(persisted.open_initial(&draws).is_err());
         drop(persisted);
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn production_persisted_pcs_refuses_cpu_before_profile_or_io() {
+        let root = std::env::temp_dir().join(format!(
+            "volta-c6-wrapper-pcs-cuda-reject-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let assembled = C6AssembledWrapperClaims {
+            statement_digest: [0; 32],
+            fixed_roots_digest: [0; 32],
+            slot_terminal_count: 0,
+            claims_by_repetition: Vec::new(),
+            authenticated_link: false,
+        };
+        let error = prove_c6_wrapper_pcs_persisted_cuda_assembled(
+            [0; 32],
+            &[],
+            &assembled,
+            &mut Backend::cpu(),
+            &root,
+            [0; 32],
+            &mut Transcript::new([0x84; 32]),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("refuses CPU"));
+        assert!(!root.exists());
     }
 
     #[test]

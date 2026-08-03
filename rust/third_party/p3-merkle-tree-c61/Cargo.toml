@@ -1,32 +1,20 @@
 [package]
-name = "p3-whir-c61"
-version = "0.6.0-c61.1"
+name = "p3-merkle-tree"
+description = "Pinned Plonky3 Merkle tree with VOLTA C6SPX1 spill accessors."
+version = "0.6.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Plonky3/Plonky3"
-description = "VOLTA C6.1 claimless-affine fork of Plonky3 WHIR"
-
-[features]
-default = []
-parallel = ["p3-maybe-rayon/parallel", "p3-sumcheck/parallel"]
 
 [dependencies]
-hashbrown = "0.17.1"
-itertools = { version = "0.15.0", default-features = false, features = ["use_alloc"] }
-libm = "0.2"
-p3-challenger = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c" }
 p3-commit = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c" }
-p3-dft = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c" }
 p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c" }
 p3-matrix = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c" }
 p3-maybe-rayon = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c" }
-p3-merkle-tree = { path = "../p3-merkle-tree-c61" }
-p3-multilinear-util = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c" }
-p3-security = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c" }
-p3-sumcheck = { package = "p3-sumcheck-c61", path = "../p3-sumcheck-c61" }
 p3-symmetric = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c" }
 p3-util = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c" }
-p3-zk-codes = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c" }
+
+itertools = { version = "0.15.0", default-features = false, features = ["use_alloc"] }
 rand = { version = "0.10.1", default-features = false, features = ["std_rng"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
 spin = "0.12.0"

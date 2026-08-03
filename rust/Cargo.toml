@@ -12,6 +12,7 @@ members = [
 ]
 exclude = [
     "third_party/p3-sumcheck-c61",
+    "third_party/p3-merkle-tree-c61",
     "third_party/p3-whir-c61",
 ]
 

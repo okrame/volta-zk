@@ -40,7 +40,7 @@ p3-commit = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de
 p3-dft = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
 p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
 p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
-p3-merkle-tree = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
+p3-merkle-tree = { path = "../third_party/p3-merkle-tree-c61", optional = true }
 p3-multilinear-util = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
 p3-sumcheck = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
 p3-symmetric = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }

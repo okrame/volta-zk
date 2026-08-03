@@ -615,6 +615,24 @@ dependencies = [
 [[package]]
 name = "p3-merkle-tree"
 version = "0.6.0"
+dependencies = [
+ "itertools 0.15.0",
+ "p3-commit",
+ "p3-field",
+ "p3-matrix",
+ "p3-maybe-rayon",
+ "p3-symmetric",
+ "p3-util",
+ "rand 0.10.2",
+ "serde",
+ "spin",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
+name = "p3-merkle-tree"
+version = "0.6.0"
 source = "git+https://github.com/Plonky3/Plonky3.git?rev=66e290615de1858f2f2f6a804158064c406cda1c#66e290615de1858f2f2f6a804158064c406cda1c"
 dependencies = [
  "itertools 0.15.0",
@@ -756,7 +774,7 @@ dependencies = [
  "p3-field",
  "p3-matrix",
  "p3-maybe-rayon",
- "p3-merkle-tree",
+ "p3-merkle-tree 0.6.0 (git+https://github.com/Plonky3/Plonky3.git?rev=66e290615de1858f2f2f6a804158064c406cda1c)",
  "p3-multilinear-util",
  "p3-security",
  "p3-sumcheck",
@@ -783,7 +801,7 @@ dependencies = [
  "p3-field",
  "p3-matrix",
  "p3-maybe-rayon",
- "p3-merkle-tree",
+ "p3-merkle-tree 0.6.0",
  "p3-multilinear-util",
  "p3-security",
  "p3-sumcheck-c61",
@@ -1251,7 +1269,7 @@ dependencies = [
  "p3-dft",
  "p3-field",
  "p3-goldilocks",
- "p3-merkle-tree",
+ "p3-merkle-tree 0.6.0",
  "p3-multilinear-util",
  "p3-sumcheck",
  "p3-symmetric",

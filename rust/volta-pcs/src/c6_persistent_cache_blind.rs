@@ -616,6 +616,17 @@ impl C6PersistentCacheProductionRelationCompiler {
         self.schedule_digest
     }
 
+    fn append_cell_count(&self) -> Result<usize> {
+        production_append_cell_count(self.old_len, self.new_len)
+    }
+
+    fn append_coefficient(&self, ordinal: usize) -> Result<Fp2> {
+        let (padded_layer, layer_index) =
+            production_append_indices(self.old_len, self.new_len, ordinal)?;
+        Ok(self.equality_within_layer[layer_index]
+            * equality_boolean_index(&self.relation_point[C6PC2_LAYER_LOG2..], padded_layer))
+    }
+
     pub(crate) fn write_layer_coefficients(
         &self,
         padded_layer: u16,
@@ -682,6 +693,320 @@ impl C6PersistentCacheProductionRelationCompiler {
         }
         Ok(applications)
     }
+}
+
+#[cfg(feature = "c6-trace")]
+fn production_append_cell_count(old_len: u16, new_len: u16) -> Result<usize> {
+    if old_len >= new_len || new_len > C6_PERSISTENT_CACHE_CAPACITY_TOKENS {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6PC2 production append geometry is invalid",
+        ));
+    }
+    usize::from(new_len - old_len)
+        .checked_mul(usize::from(C6_PERSISTENT_CACHE_LAYERS))
+        .and_then(|cells| cells.checked_mul(usize::from(C6_PERSISTENT_CACHE_WIDTH)))
+        .ok_or_else(|| C6PersistentCacheBlindError::new("C6PC2 append census overflows"))
+}
+
+#[cfg(feature = "c6-trace")]
+fn production_append_indices(old_len: u16, new_len: u16, ordinal: usize) -> Result<(usize, usize)> {
+    let append_positions = usize::from(new_len - old_len);
+    let cells_per_layer = append_positions
+        .checked_mul(usize::from(C6_PERSISTENT_CACHE_WIDTH))
+        .ok_or_else(|| C6PersistentCacheBlindError::new("C6PC2 append layer overflows"))?;
+    if ordinal >= production_append_cell_count(old_len, new_len)? || cells_per_layer == 0 {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6PC2 append ordinal is outside production geometry",
+        ));
+    }
+    let padded_layer = ordinal / cells_per_layer;
+    let within_layer = ordinal % cells_per_layer;
+    let position = usize::from(old_len)
+        .checked_add(within_layer / usize::from(C6_PERSISTENT_CACHE_WIDTH))
+        .ok_or_else(|| C6PersistentCacheBlindError::new("C6PC2 append position overflows"))?;
+    let channel = within_layer % usize::from(C6_PERSISTENT_CACHE_WIDTH);
+    let layer_index = position
+        .checked_mul(usize::from(C6_PERSISTENT_CACHE_PADDED_WIDTH))
+        .and_then(|base| base.checked_add(channel))
+        .ok_or_else(|| C6PersistentCacheBlindError::new("C6PC2 append index overflows"))?;
+    Ok((padded_layer, layer_index))
+}
+
+#[cfg(feature = "c6-trace")]
+fn validate_production_fold_identity(
+    compiler: &C6PersistentCacheProductionRelationCompiler,
+    identity: C6CacheFoldTraceIdentity,
+) -> Result<()> {
+    let batch = compiler.scalar_batch.identity;
+    if identity.version != batch.version
+        || identity.fold_count != batch.fold_count
+        || identity.coefficient_applications != batch.coefficient_applications
+        || identity.topology_digest != batch.topology_digest
+        || identity.instance_digest != batch.instance_digest
+    {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6PC2 production fold identity diverges from coefficient compiler",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "c6-trace")]
+fn aggregate_production_append_prover(
+    compiler: &C6PersistentCacheProductionRelationCompiler,
+    sources: &[Vec<[ProverAuthed; C6_PERSISTENT_CACHE_BLIND_TAPES]>; SOURCE_KV_COUNT],
+) -> Result<[[ProverAuthed; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT]> {
+    let expected = compiler.append_cell_count()?;
+    if sources.iter().any(|values| values.len() != expected)
+        || sources.iter().flatten().any(|values| values[0].x != values[1].x)
+    {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6PC2 production prover append source binding mismatch",
+        ));
+    }
+    let mut aggregates = [[ProverAuthed::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT];
+    for kv in 0..SOURCE_KV_COUNT {
+        for (ordinal, values) in sources[kv].iter().enumerate() {
+            let coefficient = compiler.append_coefficient(ordinal)?;
+            for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
+                aggregates[kv][tape] = aggregates[kv][tape].add(values[tape].scale(coefficient));
+            }
+        }
+    }
+    Ok(aggregates)
+}
+
+#[cfg(feature = "c6-trace")]
+fn aggregate_production_append_masks(
+    compiler: &C6PersistentCacheProductionRelationCompiler,
+    sources: &[Vec<[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]>; SOURCE_KV_COUNT],
+) -> Result<[[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT]> {
+    let expected = compiler.append_cell_count()?;
+    if sources.iter().any(|values| values.len() != expected) {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6PC2 production append mask binding mismatch",
+        ));
+    }
+    let mut aggregates = [[Fp2::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT];
+    for kv in 0..SOURCE_KV_COUNT {
+        for (ordinal, values) in sources[kv].iter().enumerate() {
+            let coefficient = compiler.append_coefficient(ordinal)?;
+            for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
+                aggregates[kv][tape] += values[tape] * coefficient;
+            }
+        }
+    }
+    Ok(aggregates)
+}
+
+#[cfg(feature = "c6-trace")]
+fn aggregate_production_append_verifier(
+    compiler: &C6PersistentCacheProductionRelationCompiler,
+    sources: &[Vec<[VerifierKey; C6_PERSISTENT_CACHE_BLIND_TAPES]>; SOURCE_KV_COUNT],
+) -> Result<[[VerifierKey; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT]> {
+    let expected = compiler.append_cell_count()?;
+    if sources.iter().any(|values| values.len() != expected) {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6PC2 production verifier append source binding mismatch",
+        ));
+    }
+    let mut aggregates = [[VerifierKey::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT];
+    for kv in 0..SOURCE_KV_COUNT {
+        for (ordinal, values) in sources[kv].iter().enumerate() {
+            let coefficient = compiler.append_coefficient(ordinal)?;
+            for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
+                aggregates[kv][tape] = aggregates[kv][tape].add(values[tape].scale(coefficient));
+            }
+        }
+    }
+    Ok(aggregates)
+}
+
+#[cfg(feature = "c6-trace")]
+fn aggregate_production_fold_prover(
+    compiler: &C6PersistentCacheProductionRelationCompiler,
+    targets: &C6CacheFoldPairedProverTargets,
+) -> Result<[[ProverAuthed; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT]> {
+    validate_production_fold_identity(compiler, targets.identity)?;
+    let mut aggregates = [[ProverAuthed::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT];
+    let mut weight = compiler.relation_roots[2];
+    let mut count = 0usize;
+    for (kind, values) in targets.terms() {
+        let kv = match kind {
+            C6CacheFoldKind::KeyRows => 0,
+            C6CacheFoldKind::ValueColumns => 1,
+        };
+        for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
+            aggregates[kv][tape] = aggregates[kv][tape].add(values[tape].scale(weight));
+        }
+        weight = weight * compiler.relation_roots[2];
+        count += 1;
+    }
+    if count != compiler.scalar_batch.identity.fold_count as usize {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6PC2 production prover fold census mismatch",
+        ));
+    }
+    Ok(aggregates)
+}
+
+#[cfg(feature = "c6-trace")]
+fn aggregate_production_fold_verifier(
+    compiler: &C6PersistentCacheProductionRelationCompiler,
+    targets: &C6CacheFoldPairedVerifierTargets,
+) -> Result<[[VerifierKey; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT]> {
+    validate_production_fold_identity(compiler, targets.identity)?;
+    let mut aggregates = [[VerifierKey::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT];
+    let mut weight = compiler.relation_roots[2];
+    let mut count = 0usize;
+    for (kind, values) in targets.terms() {
+        let kv = match kind {
+            C6CacheFoldKind::KeyRows => 0,
+            C6CacheFoldKind::ValueColumns => 1,
+        };
+        for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
+            aggregates[kv][tape] = aggregates[kv][tape].add(values[tape].scale(weight));
+        }
+        weight = weight * compiler.relation_roots[2];
+        count += 1;
+    }
+    if count != compiler.scalar_batch.identity.fold_count as usize {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6PC2 production verifier fold census mismatch",
+        ));
+    }
+    Ok(aggregates)
+}
+
+#[cfg(feature = "c6-trace")]
+pub(crate) struct C6PersistentCacheProductionPreparedProver<'a> {
+    pub(crate) round_state: C6PersistentCacheProductionProverRoundState<'a>,
+    fold_corrections: [[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT],
+    append_corrections: [[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT],
+}
+
+#[cfg(feature = "c6-trace")]
+impl C6PersistentCacheProductionPreparedProver<'_> {
+    fn corrections(
+        &self,
+    ) -> (
+        [[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT],
+        [[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT],
+    ) {
+        (self.fold_corrections, self.append_corrections)
+    }
+}
+
+/// Fix the exact repetition-local C6PS1 sources and start the streamed C6PC2
+/// prover. Fold corrections are derived from the already sealed C6FT1 slots;
+/// append corrections are the canonical D24 equality fold of response K/V.
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prepare_c6_persistent_cache_production_prover<'a>(
+    compiler: &'a C6PersistentCacheProductionRelationCompiler,
+    predecessor: &'a C6PersistedCacheSemanticReader,
+    successor: &'a C6PersistedCacheSemanticReader,
+    append_sources: &[Vec<[ProverAuthed; C6_PERSISTENT_CACHE_BLIND_TAPES]>; SOURCE_KV_COUNT],
+    append_masks: &[Vec<[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]>; SOURCE_KV_COUNT],
+    fold_targets: &C6CacheFoldPairedProverTargets,
+    fixed_targets: &C6CacheFoldTargetFixedCorrections,
+    transcript: &mut Transcript,
+) -> Result<C6PersistentCacheProductionPreparedProver<'a>> {
+    validate_production_fold_identity(compiler, fold_targets.identity)?;
+    if fixed_targets.identity() != fold_targets.identity {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6PC2 production prover C6FT1 identity mismatch",
+        ));
+    }
+    let fold_values = aggregate_production_fold_prover(compiler, fold_targets)?;
+    let fold_corrections = fixed_targets.fold_corrections(compiler.relation_roots[2]);
+    transcript.append(SOURCE_BOOTSTRAP_FOLD_LABEL, SOURCE_BOOTSTRAP_FOLD_BYTES);
+
+    let append_values = aggregate_production_append_prover(compiler, append_sources)?;
+    let append_masks = aggregate_production_append_masks(compiler, append_masks)?;
+    let append_corrections = array::from_fn(|kv| {
+        array::from_fn(|tape| append_values[kv][tape].x - append_masks[kv][tape])
+    });
+    transcript.append(SOURCE_BOOTSTRAP_APPEND_LABEL, SOURCE_BOOTSTRAP_APPEND_BYTES);
+
+    let source_aggregates =
+        assemble_source_aggregates(append_values, fold_values, ProverAuthed::ZERO);
+    let current = array::from_fn(|tape| {
+        combine_source_aggregates_prover(
+            &source_aggregates,
+            compiler.relation_roots,
+            compiler.kv_root,
+            tape,
+        )
+    });
+    let round_state = C6PersistentCacheProductionProverRoundState::new(
+        compiler.repetition,
+        current,
+        compiler,
+        predecessor,
+        successor,
+    )?;
+    Ok(C6PersistentCacheProductionPreparedProver {
+        round_state,
+        fold_corrections,
+        append_corrections,
+    })
+}
+
+/// Apply the strict C6PS1 frame to verifier-owned append base keys while
+/// reusing the C6FT1-corrected fold targets. No historical corrected cache
+/// key vector is admitted.
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prepare_c6_persistent_cache_production_verifier<'a>(
+    compiler: &'a C6PersistentCacheProductionRelationCompiler,
+    append_base_keys: &[Vec<[VerifierKey; C6_PERSISTENT_CACHE_BLIND_TAPES]>; SOURCE_KV_COUNT],
+    fold_targets: &C6CacheFoldPairedVerifierTargets,
+    fixed_targets: &C6CacheFoldTargetFixedCorrections,
+    source_frame: &C6PersistentCacheSourceBootstrapFrame,
+    deltas: [Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES],
+    transcript: &mut Transcript,
+) -> Result<C6PersistentCacheProductionVerifierRoundState<'a>> {
+    let repetition = usize::from(compiler.repetition);
+    if source_frame.statement_digest != compiler.statement_digest
+        || deltas[0] == deltas[1]
+        || fixed_targets.identity() != fold_targets.identity
+    {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6PC2 production verifier source binding mismatch",
+        ));
+    }
+    validate_production_fold_identity(compiler, fold_targets.identity)?;
+    source_frame.validate_c6ft1_fold_corrections(
+        repetition,
+        compiler.relation_roots[2],
+        fixed_targets,
+    )?;
+    let fold_values = aggregate_production_fold_verifier(compiler, fold_targets)?;
+    source_frame.charge_fold(repetition, transcript)?;
+
+    let append_base = aggregate_production_append_verifier(compiler, append_base_keys)?;
+    let append_values = array::from_fn(|kv| {
+        array::from_fn(|tape| {
+            let base = append_base[kv][tape];
+            base.with_same_c6_trace(
+                base.k + deltas[tape] * source_frame.append_corrections[repetition][kv][tape],
+            )
+        })
+    });
+    source_frame.charge_append(repetition, transcript)?;
+
+    let source_aggregates =
+        assemble_source_aggregates(append_values, fold_values, VerifierKey::ZERO);
+    let current = array::from_fn(|tape| {
+        combine_source_aggregates_verifier(
+            &source_aggregates,
+            compiler.relation_roots,
+            compiler.kv_root,
+            tape,
+        )
+    });
+    C6PersistentCacheProductionVerifierRoundState::new(compiler.repetition, current, compiler)
 }
 
 #[cfg(feature = "c6-trace")]
@@ -2763,6 +3088,31 @@ mod tests {
         fold_tables(&mut expected, challenge).unwrap();
         assert_eq!(output, expected);
         assert_eq!(folded_state_bytes(&output, &expected).unwrap(), 512);
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn production_append_ordinals_match_canonical_d24_equality_indices() {
+        let point = array::from_fn::<_, C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS, _>(|index| {
+            symbol(100 + index as u64)
+        });
+        let equality_within_layer = eq_vec(&point[..C6PC2_LAYER_LOG2]);
+        let old_len = 17;
+        let new_len = 19;
+        let cells_per_layer =
+            usize::from(new_len - old_len) * usize::from(C6_PERSISTENT_CACHE_WIDTH);
+        let count = production_append_cell_count(old_len, new_len).unwrap();
+        assert_eq!(count, cells_per_layer * usize::from(C6_PERSISTENT_CACHE_LAYERS));
+        for ordinal in [0, 767, 768, cells_per_layer, count - 1] {
+            let (layer, layer_index) =
+                production_append_indices(old_len, new_len, ordinal).unwrap();
+            let coefficient = equality_within_layer[layer_index]
+                * equality_boolean_index(&point[C6PC2_LAYER_LOG2..], layer);
+            let global_index = layer * C6PC2_LAYER_LEN + layer_index;
+            assert_eq!(coefficient, equality_boolean_index(&point, global_index));
+        }
+        assert!(production_append_indices(old_len, new_len, count).is_err());
+        assert!(production_append_cell_count(new_len, old_len).is_err());
     }
 
     #[cfg(feature = "c6-trace")]

@@ -12,7 +12,7 @@ use std::marker::PhantomData;
 use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use p3_commit::{BatchOpening, BatchOpeningRef, Mmcs};
 use p3_field::{PrimeCharacteristicRing, PrimeField64};
@@ -229,6 +229,7 @@ pub struct C61PersistedMmcs {
     lane: [u8; 8],
     next_ordinal: Arc<AtomicU64>,
     metrics: Arc<Metrics>,
+    commit_gate: Arc<Mutex<()>>,
 }
 
 pub(crate) trait C61MmcsResourceMetrics {
@@ -254,6 +255,22 @@ impl C61PersistedMmcs {
         session_digest: [u8; 32],
         lane: [u8; 8],
     ) -> Result<Self, String> {
+        Self::new_with_commit_gate(
+            inner,
+            directory,
+            session_digest,
+            lane,
+            Arc::new(Mutex::new(())),
+        )
+    }
+
+    pub fn new_with_commit_gate(
+        inner: C61Mmcs,
+        directory: impl Into<PathBuf>,
+        session_digest: [u8; 32],
+        lane: [u8; 8],
+        commit_gate: Arc<Mutex<()>>,
+    ) -> Result<Self, String> {
         if session_digest == [0u8; 32] || lane == [0u8; 8] {
             return Err("C6SPX1 requires nonzero session and lane bindings".to_owned());
         }
@@ -274,6 +291,7 @@ impl C61PersistedMmcs {
             lane,
             next_ordinal: Arc::new(AtomicU64::new(0)),
             metrics: Arc::new(Metrics::default()),
+            commit_gate,
         })
     }
 
@@ -424,6 +442,7 @@ impl Mmcs<Goldilocks> for C61PersistedMmcs {
         &self,
         inputs: Vec<M>,
     ) -> (Self::Commitment, Self::ProverData<M>) {
+        let _commit_guard = self.commit_gate.lock().expect("C6SPX1 commit gate is poisoned");
         let (commitment, resident) = self.inner.commit(inputs);
         let persisted = self.persist(&commitment, &resident);
         drop(resident);

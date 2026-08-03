@@ -10,6 +10,7 @@
 use std::collections::BTreeMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use p3_challenger::{CanObserve, FieldChallenger, GrindingChallenger};
@@ -2490,17 +2491,20 @@ pub fn run_c61_authenticated_whir_p3_production_persisted(
     session_hasher.update(&mask_range.slot.to_le_bytes());
     session_hasher.update(&mask_range.range_start.to_le_bytes());
     let session_digest = *session_hasher.finalize().as_bytes();
-    let response_mmcs = C61PersistedMmcs::new(
+    let commit_gate = Arc::new(Mutex::new(()));
+    let response_mmcs = C61PersistedMmcs::new_with_commit_gate(
         c61_reference_mmcs(),
         spill_root.join("response"),
         session_digest,
         *b"response",
+        Arc::clone(&commit_gate),
     )?;
-    let plan_mmcs = C61PersistedMmcs::new(
+    let plan_mmcs = C61PersistedMmcs::new_with_commit_gate(
         c61_reference_mmcs(),
         spill_root.join("plan"),
         session_digest,
         *b"planlane",
+        commit_gate,
     )?;
     let report = run_c61_authenticated_whir_p3_shared_multi_oracle_with_provider_mmcs(
         &fixture,
@@ -2823,17 +2827,20 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_persisted_diagnostic(
     session_hasher.update(&verifier_seed);
     session_hasher.update(&(response_num_variables as u64).to_le_bytes());
     let session_digest = *session_hasher.finalize().as_bytes();
-    let response_mmcs = C61PersistedMmcs::new(
+    let commit_gate = Arc::new(Mutex::new(()));
+    let response_mmcs = C61PersistedMmcs::new_with_commit_gate(
         c61_reference_mmcs(),
         spill_root.join("response"),
         session_digest,
         *b"response",
+        Arc::clone(&commit_gate),
     )?;
-    let plan_mmcs = C61PersistedMmcs::new(
+    let plan_mmcs = C61PersistedMmcs::new_with_commit_gate(
         c61_reference_mmcs(),
         spill_root.join("plan"),
         session_digest,
         *b"planlane",
+        commit_gate,
     )?;
     run_c61_authenticated_whir_p3_shared_multi_oracle_with_provider_mmcs(
         &fixture,

@@ -679,6 +679,35 @@ impl C6HiddenUFamilyWitness {
         Self::new(layout, proof.u_c.clone(), proof.u_gs.clone(), q_cols)
     }
 
+    /// Capture the exact hidden vectors owned by a retained Ligero
+    /// multi-opening.  The column equality vectors are derived from the
+    /// opening's typed claims, not supplied by a second caller-controlled
+    /// schedule.
+    pub fn from_retained_multi_open(
+        layout: C6HiddenULayout,
+        claims: &[BlockClaim],
+        proof: &MultiOpenProof,
+    ) -> C6HiddenUResult<Self> {
+        layout.validate()?;
+        if claims.len() != layout.claim_count
+            || proof.u_gs.len() != layout.claim_count
+            || proof.corr_ss.len() != layout.claim_count
+            || proof.columns.len() != layout.params.n_queries
+            || proof.columns.iter().any(|column| {
+                usize::try_from(column.j).map_or(true, |index| index >= layout.code_len())
+                    || column.col.len() != layout.params.rows
+                    || column.mask_col.len() != layout.live_vectors()
+            })
+        {
+            return Err(C6HiddenUError::new("C6 hidden-u retained multi-opening census mismatch"));
+        }
+        let q_cols = claims
+            .iter()
+            .map(|claim| claim_geometry(&layout, claim).map(|geometry| geometry.q_col))
+            .collect::<C6HiddenUResult<Vec<_>>>()?;
+        Self::from_multi_open(layout, proof, q_cols)
+    }
+
     pub fn layout(&self) -> C6HiddenULayout {
         self.layout
     }
@@ -1503,7 +1532,12 @@ mod tests {
         )
         .is_err());
         let witness =
-            C6HiddenUFamilyWitness::from_multi_open(layout, &proof, derived.q_cols).unwrap();
+            C6HiddenUFamilyWitness::from_retained_multi_open(layout, &bare_claims, &proof).unwrap();
+        assert_eq!(witness.q_cols(), derived.q_cols);
+        let mut missing_claim = bare_claims.clone();
+        missing_claim.pop();
+        assert!(C6HiddenUFamilyWitness::from_retained_multi_open(layout, &missing_claim, &proof,)
+            .is_err());
         let sealed = C6HiddenUBundleWitness::new(vec![witness])
             .unwrap()
             .seal(vec![[0x76; 32]], [0x77; 32])

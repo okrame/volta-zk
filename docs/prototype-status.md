@@ -21,7 +21,7 @@ This capsule is authoritative; read design §0.49 next.
   are **1/0/0**. Native typestate/schedule gates are **17/0/0 + 2/0/0**.
   The exact joint functional gate is **1/0/0** and proto trace is
   **180/0/1**. The generic 32-B joint MAC closure is **2/0/0** and its exact
-  source-correction split is **1/0/0**; C6PA2 codec is **1/0/0**. CUDA targets
+  source-correction split is **1/0/0**; C6PA2/CPX3 codecs are **2/0/0**. CUDA targets
   compile, but no production response, GPU timing, full-chain or hardware
   credit exists.
 - **Screens.** v23 remains `credit:false`: certificate **17,536,735 B**,
@@ -32,8 +32,8 @@ This capsule is authoritative; read design §0.49 next.
   model-agnostic, challenge-dependent, wire-neutral `C6NBR1/C6NTO1` bridge
   with small commits on `main`. Local construction may proceed. HARD STOP
   remains before exact-runner admission or pod contact.
-- **Resume conditions.** Implement the strict `C6CPX3/C6PA2` outer statement,
-  challenge-ordered decoder and compiler-functional binding, then re-sum bytes,
+- **Resume conditions.** Implement the strict `C6PA2` challenge-ordered
+  decoder and compiler-functional verification, then re-sum bytes,
   setup, correlations, soundness, state and time and run the complete local
   gates. No fixed `96/6`, clear target, mock PCG, CPU fallback or
   provider-derived verifier key is admissible.
@@ -206,6 +206,16 @@ This capsule is authoritative; read design §0.49 next.
   compiler functional without adding wire. Round trip, cross-version,
   magic/version/trailer, zero-binding and digest-order mutations pass
   **1/0/0**. C6CPX3 and the challenge-ordered semantic decoder remain absent;
+  v23, all credits and the exact-runner/pod hard stop are unchanged.
+
+- **2026-08-03 — Wire-neutral C6CPX3 compiler codec closes locally.** The
+  compiler payload now has a distinct magic/version/digest domain at exactly
+  the C6CPX2 length. Its role-local type requires the nonzero post-body
+  schedule and exact functional digests already carried by the C6PA2
+  statement, so neither digest is duplicated on wire. Round trip,
+  cross-version, header, trailer and zero-binding mutations pass within the
+  focused compiler gate **1/0/0**. This does not yet verify the functional or
+  accept an outer proof; the challenge-ordered C6PA2 decoder remains next and
   v23, all credits and the exact-runner/pod hard stop are unchanged.
 
 - **2026-08-03 — C6SPR8 closed; production wrapper lifecycle reaches the next

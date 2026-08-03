@@ -226,6 +226,8 @@ pub struct C61AuthenticatedP3SharedMultiOracleDiagnostic {
 
 pub const C61_PRODUCTION_COMPILER_PROOF_MAGIC: [u8; 8] = *b"C6CPX2\0\0";
 pub const C61_PRODUCTION_COMPILER_PROOF_VERSION: u16 = 2;
+pub const C61_JOINT_COMPILER_PROOF_MAGIC: [u8; 8] = *b"C6CPX3\0\0";
+pub const C61_JOINT_COMPILER_PROOF_VERSION: u16 = 3;
 const C61_PRODUCTION_COMPILER_PROOF_HEADER_BYTES: usize = 148;
 const C61_PRODUCTION_COMPILER_PROOF_DIGEST_BYTES: usize = 32;
 pub const C61_COMPILER_VERIFIER_SETUP_CAP_BYTES: u64 = 8_000_000;
@@ -492,6 +494,89 @@ impl C61ProductionCompilerChainProof {
         };
         if proof.encode()? != bytes {
             return Err("noncanonical C6CPX2 encoding".to_owned());
+        }
+        Ok(proof)
+    }
+}
+
+/// Wire-neutral compiler semantic version bound to the post-body native
+/// schedule and exact compiled target functional. The two digests live in the
+/// C6PA2 statement and are verifier inputs, not duplicated provider bytes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C61ProductionJointCompilerChainProof {
+    inner: C61ProductionCompilerChainProof,
+    body_schedule_digest: [u8; 32],
+    functional_digest: [u8; 32],
+}
+
+impl C61ProductionJointCompilerChainProof {
+    pub fn new(
+        inner: C61ProductionCompilerChainProof,
+        body_schedule_digest: [u8; 32],
+        functional_digest: [u8; 32],
+    ) -> Result<Self, String> {
+        if body_schedule_digest == [0; 32] || functional_digest == [0; 32] {
+            return Err("C6CPX3 compiler binding contains a zero digest".to_owned());
+        }
+        Ok(Self { inner, body_schedule_digest, functional_digest })
+    }
+
+    pub fn inner(&self) -> &C61ProductionCompilerChainProof {
+        &self.inner
+    }
+
+    pub fn body_schedule_digest(&self) -> [u8; 32] {
+        self.body_schedule_digest
+    }
+
+    pub fn functional_digest(&self) -> [u8; 32] {
+        self.functional_digest
+    }
+
+    pub fn encoded_len(&self) -> usize {
+        self.inner.encoded_len()
+    }
+
+    pub fn encode(&self) -> Result<Vec<u8>, String> {
+        let mut bytes = self.inner.encode()?;
+        let digest_offset = bytes.len() - C61_PRODUCTION_COMPILER_PROOF_DIGEST_BYTES;
+        bytes[..8].copy_from_slice(&C61_JOINT_COMPILER_PROOF_MAGIC);
+        bytes[8..10].copy_from_slice(&C61_JOINT_COMPILER_PROOF_VERSION.to_le_bytes());
+        let digest = blake3::hash(&bytes[..digest_offset]);
+        bytes[digest_offset..].copy_from_slice(digest.as_bytes());
+        Ok(bytes)
+    }
+
+    pub fn decode(
+        bytes: &[u8],
+        body_schedule_digest: [u8; 32],
+        functional_digest: [u8; 32],
+    ) -> Result<Self, String> {
+        if bytes.len()
+            < C61_PRODUCTION_COMPILER_PROOF_HEADER_BYTES
+                + C61_PRODUCTION_COMPILER_PROOF_DIGEST_BYTES
+            || bytes[..8] != C61_JOINT_COMPILER_PROOF_MAGIC
+            || u16::from_le_bytes(bytes[8..10].try_into().expect("fixed C6CPX3 version"))
+                != C61_JOINT_COMPILER_PROOF_VERSION
+        {
+            return Err("C6CPX3 header/version mismatch".to_owned());
+        }
+        let digest_offset = bytes.len() - C61_PRODUCTION_COMPILER_PROOF_DIGEST_BYTES;
+        if blake3::hash(&bytes[..digest_offset]).as_bytes() != &bytes[digest_offset..] {
+            return Err("C6CPX3 proof digest mismatch".to_owned());
+        }
+        let mut ordinary = bytes.to_vec();
+        ordinary[..8].copy_from_slice(&C61_PRODUCTION_COMPILER_PROOF_MAGIC);
+        ordinary[8..10].copy_from_slice(&C61_PRODUCTION_COMPILER_PROOF_VERSION.to_le_bytes());
+        let digest = blake3::hash(&ordinary[..digest_offset]);
+        ordinary[digest_offset..].copy_from_slice(digest.as_bytes());
+        let proof = Self::new(
+            C61ProductionCompilerChainProof::decode(&ordinary)?,
+            body_schedule_digest,
+            functional_digest,
+        )?;
+        if proof.encode()? != bytes {
+            return Err("noncanonical C6CPX3 proof".to_owned());
         }
         Ok(proof)
     }
@@ -6786,6 +6871,34 @@ mod tests {
         let encoded = proof.encode().unwrap();
         assert_eq!(encoded.len(), 180 + 97 + 193);
         assert_eq!(C61ProductionCompilerChainProof::decode(&encoded).unwrap(), proof);
+        let joint = C61ProductionJointCompilerChainProof::new(
+            proof.clone(),
+            [0xC3; 32],
+            [0xC4; 32],
+        )
+        .unwrap();
+        let joint_encoded = joint.encode().unwrap();
+        assert_eq!(joint_encoded.len(), encoded.len());
+        assert_eq!(
+            C61ProductionJointCompilerChainProof::decode(
+                &joint_encoded,
+                [0xC3; 32],
+                [0xC4; 32],
+            )
+            .unwrap(),
+            joint,
+        );
+        assert!(C61ProductionCompilerChainProof::decode(&joint_encoded).is_err());
+        let mut changed_joint = joint_encoded;
+        changed_joint[8] ^= 1;
+        assert!(C61ProductionJointCompilerChainProof::decode(
+            &changed_joint,
+            [0xC3; 32],
+            [0xC4; 32],
+        )
+        .is_err());
+        assert!(C61ProductionJointCompilerChainProof::new(proof.clone(), [0; 32], [1; 32])
+            .is_err());
         for index in [0, 12, 51, encoded.len() / 2, encoded.len() - 1] {
             let mut changed = encoded.clone();
             changed[index] ^= 1;

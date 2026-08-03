@@ -901,6 +901,320 @@ impl C6PersistentCacheProductionFoldedTables {
 }
 
 #[cfg(feature = "c6-trace")]
+pub(crate) struct C6PersistentCacheProductionProverRoundState<'a> {
+    repetition: u8,
+    round: usize,
+    current: [ProverAuthed; C6_PERSISTENT_CACHE_BLIND_TAPES],
+    first_round: Option<C6PersistentCacheProductionFixedFirstRound<'a>>,
+    folded: Option<C6PersistentCacheProductionFoldedTables>,
+    point: Vec<Fp2>,
+    pending_nodes: Option<[[ProverAuthed; 3]; C6_PERSISTENT_CACHE_BLIND_TAPES]>,
+}
+
+#[cfg(feature = "c6-trace")]
+impl<'a> C6PersistentCacheProductionProverRoundState<'a> {
+    pub(crate) fn new(
+        repetition: u8,
+        current: [ProverAuthed; C6_PERSISTENT_CACHE_BLIND_TAPES],
+        compiler: &'a C6PersistentCacheProductionRelationCompiler,
+        predecessor: &'a C6PersistedCacheSemanticReader,
+        successor: &'a C6PersistedCacheSemanticReader,
+    ) -> Result<Self> {
+        if repetition != compiler.repetition {
+            return Err(C6PersistentCacheBlindError::new(
+                "C6PC2 production prover repetition mismatch",
+            ));
+        }
+        Ok(Self {
+            repetition,
+            round: 0,
+            current,
+            first_round: Some(fix_c6_persistent_cache_production_first_round(
+                compiler,
+                predecessor,
+                successor,
+            )?),
+            folded: None,
+            point: Vec::with_capacity(C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS),
+            pending_nodes: None,
+        })
+    }
+
+    pub(crate) fn fix_next_round(
+        &mut self,
+        streams: &mut [CorrelationStream; C6_PERSISTENT_CACHE_BLIND_TAPES],
+    ) -> Result<[[Fp2; 2]; C6_PERSISTENT_CACHE_BLIND_TAPES]> {
+        if self.pending_nodes.is_some() || self.round >= C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS
+        {
+            return Err(C6PersistentCacheBlindError::new(
+                "C6PC2 production prover is not awaiting a round message",
+            ));
+        }
+        let evaluations = if self.round == 0 {
+            self.first_round
+                .as_ref()
+                .ok_or_else(|| {
+                    C6PersistentCacheBlindError::new("C6PC2 first-round owner disappeared")
+                })?
+                .evaluations()
+        } else {
+            self.folded
+                .as_ref()
+                .ok_or_else(|| {
+                    C6PersistentCacheBlindError::new("C6PC2 folded prover owner is absent")
+                })?
+                .fix_next_round()?
+        };
+        if evaluations[0] + evaluations[1] != self.current[0].x
+            || evaluations[0] + evaluations[1] != self.current[1].x
+        {
+            return Err(C6PersistentCacheBlindError::new(
+                "C6PC2 production clear relation diverges from authenticated source",
+            ));
+        }
+        let mut corrections = [[Fp2::ZERO; 2]; C6_PERSISTENT_CACHE_BLIND_TAPES];
+        let mut nodes = [[ProverAuthed::ZERO; 3]; C6_PERSISTENT_CACHE_BLIND_TAPES];
+        for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
+            let sent0 = authenticate_one(
+                &mut streams[tape],
+                correlation_domain(
+                    self.repetition,
+                    tape,
+                    CorrelationPurpose::Round,
+                    self.round * 2,
+                )?,
+                evaluations[0],
+            )?;
+            let sent2 = authenticate_one(
+                &mut streams[tape],
+                correlation_domain(
+                    self.repetition,
+                    tape,
+                    CorrelationPurpose::Round,
+                    self.round * 2 + 1,
+                )?,
+                evaluations[2],
+            )?;
+            corrections[tape] = [sent0.0, sent2.0];
+            nodes[tape] = [sent0.1, self.current[tape].sub(sent0.1), sent2.1];
+            if nodes[tape][1].x != evaluations[1] {
+                return Err(C6PersistentCacheBlindError::new(
+                    "C6PC2 production compressed node-one mismatch",
+                ));
+            }
+        }
+        self.pending_nodes = Some(nodes);
+        Ok(corrections)
+    }
+
+    pub(crate) fn bind_challenge(&mut self, challenge: Fp2) -> Result<()> {
+        let nodes = self.pending_nodes.take().ok_or_else(|| {
+            C6PersistentCacheBlindError::new(
+                "C6PC2 production prover challenge precedes round message",
+            )
+        })?;
+        let weights = lagrange3(challenge);
+        for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
+            self.current[tape] = interpolate_prover(nodes[tape], weights);
+        }
+        if self.round == 0 {
+            let first = self.first_round.take().ok_or_else(|| {
+                C6PersistentCacheBlindError::new("C6PC2 first-round owner disappeared")
+            })?;
+            self.folded = Some(first.bind_challenge(challenge)?);
+        } else {
+            self.folded
+                .as_mut()
+                .ok_or_else(|| {
+                    C6PersistentCacheBlindError::new("C6PC2 folded prover owner is absent")
+                })?
+                .bind_challenge(challenge)?;
+        }
+        self.point.push(challenge);
+        self.round += 1;
+        Ok(())
+    }
+
+    pub(crate) fn terminal_state(
+        &self,
+    ) -> Result<(
+        [ProverAuthed; C6_PERSISTENT_CACHE_BLIND_TAPES],
+        [Fp2; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS],
+        [Fp2; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS],
+        &[Fp2],
+        C6PersistentCacheProductionCompilerMetrics,
+    )> {
+        if self.pending_nodes.is_some() || self.round != C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS
+        {
+            return Err(C6PersistentCacheBlindError::new(
+                "C6PC2 production prover terminal requested before completion",
+            ));
+        }
+        let folded = self.folded.as_ref().ok_or_else(|| {
+            C6PersistentCacheBlindError::new("C6PC2 folded prover owner is absent")
+        })?;
+        let (coefficients, witness) = folded.terminal_tables()?;
+        Ok((self.current, coefficients, witness, &self.point, folded.metrics()))
+    }
+}
+
+#[cfg(feature = "c6-trace")]
+pub(crate) struct C6PersistentCacheProductionVerifierRoundState<'a> {
+    repetition: u8,
+    round: usize,
+    current: [VerifierKey; C6_PERSISTENT_CACHE_BLIND_TAPES],
+    compiler: &'a C6PersistentCacheProductionRelationCompiler,
+    coefficient_tables: Option<[Vec<Fp2>; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS]>,
+    point: Vec<Fp2>,
+    pending_nodes: Option<[[VerifierKey; 3]; C6_PERSISTENT_CACHE_BLIND_TAPES]>,
+    metrics: C6PersistentCacheProductionCompilerMetrics,
+}
+
+#[cfg(feature = "c6-trace")]
+impl<'a> C6PersistentCacheProductionVerifierRoundState<'a> {
+    pub(crate) fn new(
+        repetition: u8,
+        current: [VerifierKey; C6_PERSISTENT_CACHE_BLIND_TAPES],
+        compiler: &'a C6PersistentCacheProductionRelationCompiler,
+    ) -> Result<Self> {
+        if repetition != compiler.repetition {
+            return Err(C6PersistentCacheBlindError::new(
+                "C6PC2 production verifier repetition mismatch",
+            ));
+        }
+        Ok(Self {
+            repetition,
+            round: 0,
+            current,
+            compiler,
+            coefficient_tables: None,
+            point: Vec::with_capacity(C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS),
+            pending_nodes: None,
+            metrics: C6PersistentCacheProductionCompilerMetrics::default(),
+        })
+    }
+
+    pub(crate) fn check_next_round(
+        &mut self,
+        corrections: [[Fp2; 2]; C6_PERSISTENT_CACHE_BLIND_TAPES],
+        contexts: &mut [VerifierCtx; C6_PERSISTENT_CACHE_BLIND_TAPES],
+    ) -> Result<()> {
+        if self.pending_nodes.is_some() || self.round >= C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS
+        {
+            return Err(C6PersistentCacheBlindError::new(
+                "C6PC2 production verifier is not awaiting a round message",
+            ));
+        }
+        let mut nodes = [[VerifierKey::ZERO; 3]; C6_PERSISTENT_CACHE_BLIND_TAPES];
+        for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
+            let sent0 = contexts[tape].correct_full_verifier_keys(
+                correlation_domain(
+                    self.repetition,
+                    tape,
+                    CorrelationPurpose::Round,
+                    self.round * 2,
+                )?,
+                &[corrections[tape][0]],
+            )[0];
+            let sent2 = contexts[tape].correct_full_verifier_keys(
+                correlation_domain(
+                    self.repetition,
+                    tape,
+                    CorrelationPurpose::Round,
+                    self.round * 2 + 1,
+                )?,
+                &[corrections[tape][1]],
+            )[0];
+            nodes[tape] = [sent0, self.current[tape].sub(sent0), sent2];
+        }
+        self.pending_nodes = Some(nodes);
+        Ok(())
+    }
+
+    pub(crate) fn bind_challenge(&mut self, challenge: Fp2) -> Result<()> {
+        let nodes = self.pending_nodes.take().ok_or_else(|| {
+            C6PersistentCacheBlindError::new(
+                "C6PC2 production verifier challenge precedes round message",
+            )
+        })?;
+        let weights = lagrange3(challenge);
+        for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
+            self.current[tape] = interpolate_verifier(nodes[tape], weights);
+        }
+        if self.round == 0 {
+            let (coefficients, factor_applications) =
+                fold_production_coefficient_first_round(self.compiler, challenge)?;
+            self.metrics.factor_applications = factor_applications;
+            self.metrics.folded_state_bytes = table_bytes(&coefficients)?;
+            self.coefficient_tables = Some(coefficients);
+        } else {
+            fold_tables(
+                self.coefficient_tables.as_mut().ok_or_else(|| {
+                    C6PersistentCacheBlindError::new("C6PC2 verifier coefficients are absent")
+                })?,
+                challenge,
+            )?;
+        }
+        self.point.push(challenge);
+        self.round += 1;
+        Ok(())
+    }
+
+    pub(crate) fn terminal_state(
+        &self,
+    ) -> Result<(
+        [VerifierKey; C6_PERSISTENT_CACHE_BLIND_TAPES],
+        [Fp2; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS],
+        &[Fp2],
+        C6PersistentCacheProductionCompilerMetrics,
+    )> {
+        let coefficients = self.coefficient_tables.as_ref().ok_or_else(|| {
+            C6PersistentCacheBlindError::new("C6PC2 verifier coefficients are absent")
+        })?;
+        if self.pending_nodes.is_some()
+            || self.round != C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS
+            || coefficients.iter().any(|table| table.len() != 1)
+        {
+            return Err(C6PersistentCacheBlindError::new(
+                "C6PC2 production verifier terminal requested before completion",
+            ));
+        }
+        Ok((
+            self.current,
+            array::from_fn(|index| coefficients[index][0]),
+            &self.point,
+            self.metrics,
+        ))
+    }
+}
+
+#[cfg(feature = "c6-trace")]
+fn fold_production_coefficient_first_round(
+    compiler: &C6PersistentCacheProductionRelationCompiler,
+    challenge: Fp2,
+) -> Result<([Vec<Fp2>; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS], u64)> {
+    let mut folded: [Vec<Fp2>; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS] =
+        array::from_fn(|_| Vec::with_capacity(1 << 23));
+    let mut factor_applications = 0u64;
+    for padded_layer in 0..C6_PERSISTENT_CACHE_PADDED_LAYERS {
+        let mut coefficients: [Vec<Fp2>; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS] =
+            array::from_fn(|_| vec![Fp2::ZERO; C6PC2_LAYER_LEN]);
+        factor_applications = factor_applications
+            .checked_add(compiler.write_layer_coefficients(padded_layer, &mut coefficients)?)
+            .ok_or_else(|| {
+                C6PersistentCacheBlindError::new("C6PC2 verifier factor metric overflows")
+            })?;
+        fold_layer_into(&coefficients, challenge, &mut folded)?;
+    }
+    if folded.iter().any(|table| table.len() != 1 << 23) {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6PC2 verifier folded coefficient geometry mismatch",
+        ));
+    }
+    Ok((folded, factor_applications))
+}
+
+#[cfg(feature = "c6-trace")]
 pub(crate) fn fix_c6_persistent_cache_production_first_round<'a>(
     compiler: &'a C6PersistentCacheProductionRelationCompiler,
     predecessor: &'a C6PersistedCacheSemanticReader,
@@ -1025,7 +1339,17 @@ fn folded_state_bytes<const N: usize>(
     coefficients: &[Vec<Fp2>; N],
     witness: &[Vec<Fp2>; N],
 ) -> Result<u64> {
-    coefficients.iter().chain(witness).try_fold(0u64, |bytes, table| {
+    table_bytes_iter(coefficients.iter().chain(witness))
+}
+
+#[cfg(feature = "c6-trace")]
+fn table_bytes<const N: usize>(tables: &[Vec<Fp2>; N]) -> Result<u64> {
+    table_bytes_iter(tables)
+}
+
+#[cfg(feature = "c6-trace")]
+fn table_bytes_iter<'a>(tables: impl IntoIterator<Item = &'a Vec<Fp2>>) -> Result<u64> {
+    tables.into_iter().try_fold(0u64, |bytes, table| {
         bytes
             .checked_add(
                 u64::try_from(table.len())
@@ -2439,6 +2763,23 @@ mod tests {
         fold_tables(&mut expected, challenge).unwrap();
         assert_eq!(output, expected);
         assert_eq!(folded_state_bytes(&output, &expected).unwrap(), 512);
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn production_prover_round_state_rejects_challenge_before_message() {
+        let mut state = C6PersistentCacheProductionProverRoundState {
+            repetition: 0,
+            round: 0,
+            current: [ProverAuthed::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES],
+            first_round: None,
+            folded: None,
+            point: Vec::new(),
+            pending_nodes: None,
+        };
+        assert!(state.bind_challenge(symbol(17)).is_err());
+        assert_eq!(state.round, 0);
+        assert!(state.point.is_empty());
     }
 
     fn fixture() -> (

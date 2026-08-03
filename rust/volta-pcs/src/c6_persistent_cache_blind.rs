@@ -2343,6 +2343,26 @@ impl C6PersistentCacheBlindProof {
         c6_persistent_cache_blind_encoded_len(usize::from(self.rounds))
     }
 
+    /// Coordinator-only view of the already-decoded production round
+    /// messages.  The verifier still obtains these values exclusively from
+    /// the strict proof codec; this accessor only lets the global 24-round
+    /// owner preserve the message-before-challenge schedule.
+    #[cfg(feature = "c6-trace")]
+    pub(crate) fn production_round_corrections(
+        &self,
+        repetition: usize,
+    ) -> Result<&[[[Fp2; 2]; C6_PERSISTENT_CACHE_BLIND_TAPES]]> {
+        self.validate_shape()?;
+        if usize::from(self.rounds) != C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS {
+            return Err(C6PersistentCacheBlindError::new(
+                "C6PC2 coordinator requires the production round census",
+            ));
+        }
+        self.repetitions.get(repetition).map(|proof| proof.round_corrections.as_slice()).ok_or_else(
+            || C6PersistentCacheBlindError::new("C6PC2 coordinator repetition is out of range"),
+        )
+    }
+
     fn validate_shape(&self) -> Result<()> {
         let rounds = usize::from(self.rounds);
         if self.statement_digest == [0; 32]

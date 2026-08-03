@@ -231,6 +231,22 @@ pub struct C61PersistedMmcs {
     metrics: Arc<Metrics>,
 }
 
+pub(crate) trait C61MmcsResourceMetrics {
+    fn c61_persisted_metrics(&self) -> Option<C61PersistedMmcsMetrics>;
+}
+
+impl C61MmcsResourceMetrics for C61Mmcs {
+    fn c61_persisted_metrics(&self) -> Option<C61PersistedMmcsMetrics> {
+        None
+    }
+}
+
+impl C61MmcsResourceMetrics for C61PersistedMmcs {
+    fn c61_persisted_metrics(&self) -> Option<C61PersistedMmcsMetrics> {
+        Some(self.metrics())
+    }
+}
+
 impl C61PersistedMmcs {
     pub fn new(
         inner: C61Mmcs,

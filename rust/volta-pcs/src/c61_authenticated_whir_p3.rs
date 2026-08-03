@@ -9,12 +9,15 @@
 
 use std::collections::BTreeMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::path::Path;
 use std::thread;
 
 use p3_challenger::{CanObserve, FieldChallenger, GrindingChallenger};
+use p3_commit::Mmcs;
 use p3_dft::Radix2DFTSmallBatch;
 use p3_field::{BasedVectorSpace, PrimeCharacteristicRing, PrimeField64};
 use p3_goldilocks::Goldilocks;
+use p3_matrix::dense::DenseMatrix;
 use p3_multilinear_util::point::Point;
 use p3_multilinear_util::poly::Poly;
 use p3_whir_c61::parameters::{FoldingFactor, ProtocolParameters, SecurityAssumption};
@@ -49,6 +52,9 @@ use crate::c61_interactive_driver::{
     spawn_c61_durable_private_entropy_broker, spawn_c61_private_entropy_broker, C61DurableJournal,
     C61InteractiveCheckpoint, C61InteractiveTape, C61PrivateEntropyBrokerOutput,
     C61PrivateEntropyProverChallenger, C61PrivateEntropyReplayChallenger,
+};
+use crate::c61_persisted_mmcs::{
+    C61MmcsResourceMetrics, C61PersistedMmcs, C61PersistedMmcsMetrics,
 };
 use crate::c61_public_compression::{C61NativeChainId, C61NativeComponent};
 use crate::c61_shared_round_challenger::c61_shared_round_pair;
@@ -150,6 +156,7 @@ pub struct C61AuthenticatedP3SharedMultiOracleDiagnostic {
     /// True only for the explicitly admitted host-monolithic A100 baseline.
     /// It is never GPU performance credit.
     pub monolithic_host_baseline: bool,
+    pub persisted_executor: bool,
     pub gpu_performance_credit: bool,
     pub admitted_available_host_bytes: u64,
     pub monolithic_retained_lower_bound_bytes: u64,
@@ -159,6 +166,7 @@ pub struct C61AuthenticatedP3SharedMultiOracleDiagnostic {
     pub response_claim_count: usize,
     pub plan_claim_count: usize,
     pub strict_payload_bytes: usize,
+    pub strict_payload_blake3: [u8; 32],
     pub strict_payload_max_bytes: usize,
     /// C6SBA1 bytes for the scaled executable relation fixture.
     pub arithmetic_payload_bytes: usize,
@@ -181,6 +189,8 @@ pub struct C61AuthenticatedP3SharedMultiOracleDiagnostic {
     pub joint_tag_mutation_rejected: bool,
     pub subfield_correlations: u64,
     pub full_correlations: u64,
+    pub response_spill: C61PersistedMmcsMetrics,
+    pub plan_spill: C61PersistedMmcsMetrics,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -727,13 +737,16 @@ fn decode_fp2_opening(
     Ok(SharedProofOpening { rows, proof })
 }
 
-fn encode_c61_authenticated_p3_artifact_inner(
+fn encode_c61_authenticated_p3_artifact_inner<MT>(
     num_variables: usize,
     commitment: &C61Commitment,
-    proof: &C61AuthenticatedP3Proof,
+    proof: &ZkWhirProof<Goldilocks, C61P3Fp2, MT>,
     base_proof: C61AuthenticatedWhirBaseProof,
     production_dimensions_only: bool,
-) -> ReferenceResult<Vec<u8>> {
+) -> ReferenceResult<Vec<u8>>
+where
+    MT: Mmcs<Goldilocks, Commitment = C61Commitment, MultiProof = C61MultiProof>,
+{
     let budget =
         c61_authenticated_structural_budget_inner(num_variables, production_dimensions_only)
             .map_err(C61WhirReferenceError::new)?;
@@ -2684,7 +2697,80 @@ pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(
     )
 }
 
+/// Execute the scaled shared-chain differential through the C6SPX1 persisted
+/// prover-data lifecycle.  The unchanged resident MMCS is still used by the
+/// verifier after strict decoding.
+pub fn run_c61_authenticated_whir_p3_shared_multi_oracle_persisted_diagnostic(
+    response_num_variables: usize,
+    spill_root: &Path,
+) -> Result<C61AuthenticatedP3SharedMultiOracleDiagnostic, String> {
+    if response_num_variables == 28 {
+        return Err("C6SPX1 diagnostic does not admit production geometry".to_owned());
+    }
+    let fixture = c61_sparse_compiler_physical_fixture()?;
+    let verifier_seed = [0xC2; 32];
+    let pcg_seed = [0xD3; 32];
+    let delta = Fp2::new(Fp::new(P - 83), Fp::new(0xC6_5202));
+    let correlations = CorrelationStream::new(pcg_seed);
+    let context = VerifierCtx::new(pcg_seed, delta);
+    let id = C61NativeChainId { component: C61NativeComponent::Compiler, repetition: 0 };
+    let mask_range = C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 29, range_start: 120_000 };
+    let mut session_hasher = blake3::Hasher::new_derive_key("volta-zk/c6.1/c6spx1-session/v1");
+    session_hasher.update(&verifier_seed);
+    session_hasher.update(&(response_num_variables as u64).to_le_bytes());
+    let session_digest = *session_hasher.finalize().as_bytes();
+    let response_mmcs = C61PersistedMmcs::new(
+        c61_reference_mmcs(),
+        spill_root.join("response"),
+        session_digest,
+        *b"response",
+    )?;
+    let plan_mmcs = C61PersistedMmcs::new(
+        c61_reference_mmcs(),
+        spill_root.join("plan"),
+        session_digest,
+        *b"planlane",
+    )?;
+    run_c61_authenticated_whir_p3_shared_multi_oracle_with_provider_mmcs(
+        &fixture,
+        response_num_variables,
+        correlations,
+        context,
+        verifier_seed,
+        id,
+        mask_range,
+        0,
+        response_mmcs,
+        plan_mmcs,
+    )
+}
+
 fn run_c61_authenticated_whir_p3_shared_multi_oracle_materialized(
+    fixture: &C61SparseCompilerPhysicalFixture<'_>,
+    response_num_variables: usize,
+    correlations: CorrelationStream,
+    context: VerifierCtx,
+    verifier_seed: [u8; 32],
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+    admitted_available_host_bytes: u64,
+) -> Result<C61AuthenticatedP3SharedMultiOracleDiagnostic, String> {
+    run_c61_authenticated_whir_p3_shared_multi_oracle_with_provider_mmcs(
+        fixture,
+        response_num_variables,
+        correlations,
+        context,
+        verifier_seed,
+        id,
+        mask_range,
+        admitted_available_host_bytes,
+        c61_reference_mmcs(),
+        c61_reference_mmcs(),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_c61_authenticated_whir_p3_shared_multi_oracle_with_provider_mmcs<RM, PM>(
     fixture: &C61SparseCompilerPhysicalFixture<'_>,
     response_num_variables: usize,
     mut correlations: CorrelationStream,
@@ -2693,7 +2779,21 @@ fn run_c61_authenticated_whir_p3_shared_multi_oracle_materialized(
     id: C61NativeChainId,
     mask_range: C61AuthenticatedWhirMaskRange,
     admitted_available_host_bytes: u64,
-) -> Result<C61AuthenticatedP3SharedMultiOracleDiagnostic, String> {
+    response_mmcs: RM,
+    plan_mmcs: PM,
+) -> Result<C61AuthenticatedP3SharedMultiOracleDiagnostic, String>
+where
+    RM: Mmcs<Goldilocks, Commitment = C61Commitment, MultiProof = C61MultiProof>
+        + C61MmcsResourceMetrics
+        + Send
+        + Sync,
+    PM: Mmcs<Goldilocks, Commitment = C61Commitment, MultiProof = C61MultiProof>
+        + C61MmcsResourceMetrics
+        + Send
+        + Sync,
+    RM::ProverData<DenseMatrix<Goldilocks>>: Send,
+    PM::ProverData<DenseMatrix<Goldilocks>>: Send,
+{
     let verifier_fixture = fixture.verifier_fixture()?;
     let native_response_num_variables = usize::from(fixture.packed.physical_response_domain_log2());
     let native_plan_num_variables = usize::from(fixture.packed.plan_domain_log2());
@@ -2752,8 +2852,6 @@ fn run_c61_authenticated_whir_p3_shared_multi_oracle_materialized(
     let plan_config = c61_authenticated_config::<
         crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
     >(plan_num_variables)?;
-    let response_mmcs = c61_reference_mmcs();
-    let plan_mmcs = c61_reference_mmcs();
     let response_dft = Radix2DFTSmallBatch::default();
     let plan_dft = Radix2DFTSmallBatch::default();
     let response_prover = HidingWhirProver::new(&response_config, &response_dft, &response_mmcs);
@@ -3023,8 +3121,8 @@ fn run_c61_authenticated_whir_p3_shared_multi_oracle_materialized(
     let plan_config = c61_authenticated_config::<
         crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
     >(plan_num_variables)?;
-    let response_mmcs = c61_reference_mmcs();
-    let plan_mmcs = c61_reference_mmcs();
+    let verifier_response_mmcs = c61_reference_mmcs();
+    let verifier_plan_mmcs = c61_reference_mmcs();
     response_challenger.observe(response_commitment.clone());
     plan_challenger.observe(plan_commitment.clone());
     let mut verifier_doms = volta_proto::logup::Doms::new(50_000);
@@ -3060,8 +3158,8 @@ fn run_c61_authenticated_whir_p3_shared_multi_oracle_materialized(
     plan_challenger
         .observe_public_points(verifier_statement_digest, &plan_points)
         .map_err(|error| error.to_string())?;
-    let response_verifier = HidingWhirVerifier::new(&response_config, &response_mmcs);
-    let plan_verifier = HidingWhirVerifier::new(&plan_config, &plan_mmcs);
+    let response_verifier = HidingWhirVerifier::new(&response_config, &verifier_response_mmcs);
+    let plan_verifier = HidingWhirVerifier::new(&plan_config, &verifier_plan_mmcs);
     let (response_result, plan_result) = thread::scope(|scope| {
         let response_thread = scope.spawn(move || {
             let result = catch_unwind(AssertUnwindSafe(|| {
@@ -3164,9 +3262,13 @@ fn run_c61_authenticated_whir_p3_shared_multi_oracle_materialized(
         .strict_chain_bytes;
     let strict_plan =
         c61_authenticated_structural_budget_inner(plan_num_variables, false)?.strict_chain_bytes;
+    let response_spill = response_mmcs.c61_persisted_metrics();
+    let plan_spill = plan_mmcs.c61_persisted_metrics();
+    let persisted_executor = response_spill.is_some() && plan_spill.is_some();
     Ok(C61AuthenticatedP3SharedMultiOracleDiagnostic {
         production_geometry: fixture.production,
-        monolithic_host_baseline: fixture.production,
+        monolithic_host_baseline: fixture.production && !persisted_executor,
+        persisted_executor,
         gpu_performance_credit: false,
         admitted_available_host_bytes,
         monolithic_retained_lower_bound_bytes: if fixture.production {
@@ -3180,6 +3282,7 @@ fn run_c61_authenticated_whir_p3_shared_multi_oracle_materialized(
         response_claim_count: provider_phase.response_targets.len(),
         plan_claim_count: provider_phase.plan_values.len(),
         strict_payload_bytes: artifact.payload.len(),
+        strict_payload_blake3: *blake3::hash(&artifact.payload).as_bytes(),
         strict_payload_max_bytes: C61_SHARED_MULTI_ORACLE_HEADER_BYTES
             + strict_response
             + strict_plan,
@@ -3205,6 +3308,8 @@ fn run_c61_authenticated_whir_p3_shared_multi_oracle_materialized(
         joint_tag_mutation_rejected,
         subfield_correlations: correlations.counters.sub_corrs,
         full_correlations: correlations.counters.full_corrs,
+        response_spill: response_spill.unwrap_or_default(),
+        plan_spill: plan_spill.unwrap_or_default(),
     })
 }
 
@@ -3660,6 +3765,7 @@ mod tests {
         let report = run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(14).unwrap();
         assert!(!report.production_geometry);
         assert!(!report.monolithic_host_baseline);
+        assert!(!report.persisted_executor);
         assert!(!report.gpu_performance_credit);
         assert_eq!(report.admitted_available_host_bytes, 0);
         assert_eq!(report.monolithic_retained_lower_bound_bytes, 0);
@@ -3701,6 +3807,41 @@ mod tests {
         assert!(report.joint_tag_mutation_rejected);
         assert_eq!(report.subfield_correlations, 24);
         assert_eq!(report.full_correlations, 305);
+        assert_eq!(report.response_spill, C61PersistedMmcsMetrics::default());
+        assert_eq!(report.plan_spill, C61PersistedMmcsMetrics::default());
+    }
+
+    #[test]
+    fn persisted_shared_flow_is_byte_identical_to_resident_reference() {
+        let resident = run_c61_authenticated_whir_p3_shared_multi_oracle_diagnostic(14).unwrap();
+        let spill_root = std::env::temp_dir().join(format!(
+            "volta-c61-shared-spill-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let persisted =
+            run_c61_authenticated_whir_p3_shared_multi_oracle_persisted_diagnostic(14, &spill_root)
+                .unwrap();
+        assert!(persisted.persisted_executor);
+        assert!(!persisted.monolithic_host_baseline);
+        assert!(!persisted.gpu_performance_credit);
+        assert_eq!(persisted.strict_payload_blake3, resident.strict_payload_blake3);
+        assert_eq!(persisted.strict_payload_bytes, resident.strict_payload_bytes);
+        assert_eq!(persisted.arithmetic_payload_bytes, resident.arithmetic_payload_bytes);
+        assert_eq!(persisted.total_provider_payload_bytes, resident.total_provider_payload_bytes);
+        assert_eq!(persisted.provider_interaction, resident.provider_interaction);
+        assert_eq!(persisted.verifier_interaction, resident.verifier_interaction);
+        assert_eq!(persisted.subfield_correlations, resident.subfield_correlations);
+        assert_eq!(persisted.full_correlations, resident.full_correlations);
+        for metrics in [persisted.response_spill, persisted.plan_spill] {
+            assert!(metrics.spill_files > 1);
+            assert!(metrics.logical_spill_bytes > 0);
+            assert!(metrics.host_bytes_written >= metrics.logical_spill_bytes);
+            assert!(metrics.host_bytes_read > 0);
+            assert!(metrics.host_bytes_read < metrics.logical_spill_bytes);
+            assert_eq!(metrics.fsync_calls, metrics.spill_files);
+        }
+        std::fs::remove_dir_all(spill_root).unwrap();
     }
 
     #[test]

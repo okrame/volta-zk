@@ -203,6 +203,7 @@ pub struct C61AuthenticatedP3SharedMultiOracleDiagnostic {
     pub codec_mutations_rejected: bool,
     pub arithmetic_payload_mutation_rejected: bool,
     pub joint_tag_mutation_rejected: bool,
+    pub role_separated_compact_verifier_checked: bool,
     pub subfield_correlations: u64,
     pub full_correlations: u64,
     pub response_spill: C61PersistedMmcsMetrics,
@@ -485,6 +486,23 @@ impl C61ProductionCompilerChainProof {
 pub struct C61ProductionCompilerChainExecution {
     pub proof: C61ProductionCompilerChainProof,
     pub report: C61AuthenticatedP3SharedMultiOracleDiagnostic,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C61ProductionCompilerChainVerification {
+    pub id: C61NativeChainId,
+    pub response_num_variables: usize,
+    pub plan_num_variables: usize,
+    pub response_claim_count: usize,
+    pub plan_claim_count: usize,
+    pub strict_payload_bytes: usize,
+    pub arithmetic_payload_bytes: usize,
+    pub verifier_interaction: C61WhirInteractionStats,
+    pub verifier_transcript_bytes: u64,
+    pub verifier_ledger: BTreeMap<&'static str, u64>,
+    pub compact_profile_digest: [u8; 32],
+    pub compact_profile_setup_bytes: u64,
+    pub client_setup_allocation_bytes: u64,
 }
 
 /// Strict production model/embedding proof boundary.  `payload` is exactly
@@ -3851,6 +3869,333 @@ fn verify_c61_sparse_compiler_relation_phase(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
+fn verify_c61_authenticated_whir_p3_compiler_chain_compact(
+    fixture: &C61SparseCompilerVerifierFixture<'_>,
+    expected_response_root: [u8; 32],
+    expected_plan_root: [u8; 32],
+    response_num_variables: usize,
+    proof: &C61ProductionCompilerChainProof,
+    context: &mut VerifierCtx,
+    verifier_seed: [u8; 32],
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+    compact_profile_digest: [u8; 32],
+    compact_profile_setup_bytes: u64,
+    client_setup_allocation_bytes: u64,
+) -> Result<C61ProductionCompilerChainVerification, String> {
+    if id.component != C61NativeComponent::Compiler || id.repetition >= 2 {
+        return Err("C6SPR11 compact verifier requires one canonical compiler chain".to_owned());
+    }
+    fixture.terminal_binding.validate()?;
+    if proof.terminal_binding_digest != fixture.terminal_binding.digest
+        || proof.plan_folds != fixture.terminal_binding.plan_folds
+    {
+        return Err("C6SPR11 C6CPX2 terminal binding differs from the public relation".to_owned());
+    }
+    fixture.terminal_binding.validate_physical_plan_fold_values(
+        fixture.base_domain_log2,
+        &proof.physical_plan_fold_values,
+    )?;
+    let native_response_num_variables = usize::from(fixture.base_domain_log2) + 3;
+    if response_num_variables < native_response_num_variables || response_num_variables > 28 {
+        return Err("C6SPR11 compact response dimension is noncanonical".to_owned());
+    }
+    let plan_num_variables = response_num_variables
+        .checked_sub(1)
+        .ok_or_else(|| "C6SPR11 compact plan dimension underflows".to_owned())?;
+    let artifact = C61SharedMultiOracleArtifact { payload: proof.shared_payload.clone() };
+    let ((response_commitment, response_proof), (plan_commitment, plan_proof), joint_tag) =
+        decode_c61_shared_multi_oracle_artifact(
+            &artifact,
+            response_num_variables,
+            plan_num_variables,
+        )
+        .map_err(|error| error.to_string())?;
+    if response_commitment.num_roots() != 1
+        || plan_commitment.num_roots() != 1
+        || response_commitment.roots()[0] != expected_response_root
+        || plan_commitment.roots()[0] != expected_plan_root
+    {
+        return Err(
+            "C6SPR11 decoded compiler commitments differ from the typed statement".to_owned()
+        );
+    }
+
+    let mut transcript = Transcript::new(verifier_seed);
+    let (mut response_challenger, mut plan_challenger, coordinator) =
+        c61_shared_round_pair(&mut transcript, [response_num_variables, plan_num_variables]);
+    let response_config = c61_authenticated_config::<
+        crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
+    >(response_num_variables)?;
+    let plan_config = c61_authenticated_config::<
+        crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
+    >(plan_num_variables)?;
+    let response_mmcs = c61_reference_mmcs();
+    let plan_mmcs = c61_reference_mmcs();
+    response_challenger.observe(response_commitment.clone());
+    plan_challenger.observe(plan_commitment.clone());
+    let mut doms = volta_proto::logup::Doms::new(50_000);
+    let phase = coordinator.with_pre_statement_transcript(|transcript| {
+        verify_c61_sparse_compiler_relation_phase(
+            fixture,
+            proof.arithmetic_payload(),
+            context,
+            &mut doms,
+            transcript,
+        )
+    })?;
+
+    let mut response_points: Vec<_> = phase
+        .physical_points
+        .response()
+        .iter()
+        .map(|point| {
+            let mut backend_point = point.clone();
+            backend_point.resize(response_num_variables, Fp2::ZERO);
+            backend_point.reverse();
+            Point::new(backend_point.into_iter().map(c61_p3_fp2_from_volta).collect())
+        })
+        .collect();
+    response_points.extend(c61_exact_plan_fold_physical_points(
+        &fixture.terminal_binding,
+        fixture.base_domain_log2,
+        response_num_variables,
+    )?);
+    let plan_points: Vec<_> = phase
+        .physical_points
+        .plan()
+        .iter()
+        .map(|point| {
+            let mut backend_point = point.clone();
+            backend_point.resize(plan_num_variables, Fp2::ZERO);
+            backend_point.reverse();
+            Point::new(backend_point.into_iter().map(c61_p3_fp2_from_volta).collect())
+        })
+        .collect();
+    if response_points.len() != C61_EXACT_PHYSICAL_RESPONSE_OPENINGS
+        || plan_points.len() != 3
+        || response_points.iter().any(|point| point.num_variables() != response_num_variables)
+        || plan_points.iter().any(|point| point.num_variables() != plan_num_variables)
+    {
+        return Err("C6SPR11 compact compiler opening point shape mismatch".to_owned());
+    }
+    let statement_digest = c61_sparse_shared_statement_digest(
+        &response_commitment,
+        &plan_commitment,
+        &response_points,
+        &plan_points,
+        phase.public_relation.digest(),
+        proof.arithmetic_payload(),
+        &phase.plan_values,
+        &fixture.terminal_binding,
+    )?;
+    response_challenger
+        .observe_public_points(statement_digest, &response_points)
+        .map_err(|error| error.to_string())?;
+    plan_challenger
+        .observe_public_points(statement_digest, &plan_points)
+        .map_err(|error| error.to_string())?;
+    let response_verifier = HidingWhirVerifier::new(&response_config, &response_mmcs);
+    let plan_verifier = HidingWhirVerifier::new(&plan_config, &plan_mmcs);
+    let (response_result, plan_result) = thread::scope(|scope| {
+        let response_thread = scope.spawn(move || {
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                response_verifier.verify_claimless(
+                    &response_proof,
+                    &response_commitment,
+                    &response_points,
+                    &mut response_challenger,
+                )
+            }));
+            (result, response_challenger.finish_lane())
+        });
+        let plan_thread = scope.spawn(move || {
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                plan_verifier.verify_claimless(
+                    &plan_proof,
+                    &plan_commitment,
+                    &plan_points,
+                    &mut plan_challenger,
+                )
+            }));
+            (result, plan_challenger.finish_lane())
+        });
+        (response_thread.join(), plan_thread.join())
+    });
+    let (response_result, response_finish) =
+        response_result.map_err(|_| "C6SPR11 response verifier thread panicked")?;
+    response_finish?;
+    let response_result = response_result
+        .map_err(|_| "C6SPR11 response verifier panicked")?
+        .map_err(|error| format!("C6SPR11 response verification failed: {error}"))?;
+    let (plan_result, plan_finish) =
+        plan_result.map_err(|_| "C6SPR11 plan verifier thread panicked")?;
+    plan_finish?;
+    let plan_result = plan_result
+        .map_err(|_| "C6SPR11 plan verifier panicked")?
+        .map_err(|error| format!("C6SPR11 plan verification failed: {error}"))?;
+    let eta = coordinator.sample_postproof_fp2()?;
+    let whir_payload_bytes = proof
+        .shared_payload
+        .len()
+        .checked_sub(C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES)
+        .ok_or_else(|| "C6SPR11 shared payload is shorter than its joint tag".to_owned())?;
+    let verifier_interaction = coordinator.finish(whir_payload_bytes)?;
+    drop(coordinator);
+
+    let delta = context.delta;
+    let mut response_keys = phase.response_keys.to_vec();
+    response_keys.extend(
+        proof
+            .physical_plan_fold_values
+            .iter()
+            .copied()
+            .map(|value| VerifierKey::from_public(value, delta)),
+    );
+    let response_key = affine_from_p3(response_result.target).derive_verifier_key(
+        aggregate_verifier_targets(&response_keys, &response_result.claim_weights)?,
+        delta,
+    );
+    let plan_keys = phase.plan_values.map(|value| VerifierKey::from_public(value, delta));
+    let plan_key = affine_from_p3(plan_result.target).derive_verifier_key(
+        aggregate_verifier_targets(&plan_keys, &plan_result.claim_weights)?,
+        delta,
+    );
+    let response_gamma = c61_volta_fp2_from_p3(response_result.base_case.gamma);
+    let plan_gamma = c61_volta_fp2_from_p3(plan_result.base_case.gamma);
+    let joint_key = response_key.scale(response_gamma).add(plan_key.scale(eta * plan_gamma));
+    let joint_combined = c61_volta_fp2_from_p3(response_result.base_case.combined)
+        - c61_volta_fp2_from_p3(response_result.base_case.shifted_masked_claim)
+        + eta
+            * (c61_volta_fp2_from_p3(plan_result.base_case.combined)
+                - c61_volta_fp2_from_p3(plan_result.base_case.shifted_masked_claim));
+    let _residual = verify_c61_authenticated_whir_base_with_zero_rows_residual(
+        C61AuthenticatedWhirVerifierInput {
+            id,
+            mask_range,
+            combined: joint_combined,
+            shifted_masked_claim: Fp2::ZERO,
+            gamma: Fp2::ONE,
+            target: joint_key,
+        },
+        &phase.zero_rows,
+        joint_tag,
+        context,
+        &mut transcript,
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(C61ProductionCompilerChainVerification {
+        id,
+        response_num_variables,
+        plan_num_variables,
+        response_claim_count: C61_EXACT_PHYSICAL_RESPONSE_OPENINGS,
+        plan_claim_count: 3,
+        strict_payload_bytes: proof.shared_payload.len(),
+        arithmetic_payload_bytes: proof.arithmetic_payload.len(),
+        verifier_interaction,
+        verifier_transcript_bytes: transcript.total_bytes(),
+        verifier_ledger: transcript.ledger().clone(),
+        compact_profile_digest,
+        compact_profile_setup_bytes,
+        client_setup_allocation_bytes,
+    })
+}
+
+/// Verify one production compiler chain from strict wire bytes and compact
+/// client setup.  This boundary has no provider correlations, installed
+/// operation plan, extraction map contents, response witness, or D27 vector.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_c61_authenticated_whir_p3_production_compiler_chain_in_attempt(
+    profile: &C61CompilerVerifierProfile,
+    extraction_map_setup_bytes: u64,
+    public: &C61TypedNativeChainPublicStatement,
+    relation_challenges: &volta_proto::c6_residual::C6ResidualRelationChallenges,
+    proof_bytes: &[u8],
+    context: &mut VerifierCtx,
+    verifier_seed: [u8; 32],
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<C61ProductionCompilerChainVerification, String> {
+    profile.validate()?;
+    if !context.uses_pooled_pcg() {
+        return Err("C6SPR11 production compiler verifier forbids mock PCG state".to_owned());
+    }
+    let rebuilt = C61TypedNativeChainPublicStatement::new(id, public.relation().clone())
+        .map_err(|error| error.to_string())?;
+    if &rebuilt != public || public.id() != id || id.component != C61NativeComponent::Compiler {
+        return Err(
+            "C6SPR11 compiler public statement or chain identity is noncanonical".to_owned()
+        );
+    }
+    let compiler = match public.relation() {
+        C61TypedNativeRelationStatement::Compiler(statement) => statement.as_ref(),
+        _ => return Err("C6SPR11 compiler verifier rejects a non-compiler statement".to_owned()),
+    };
+    if compiler.operation_plan_digest != profile.operation_plan_digest
+        || compiler.operation_topology_digest != profile.topology.topology_digest
+        || compiler.terminal_metadata_digest != profile.terminal_metadata.digest()
+        || compiler.relation_challenges_digest != relation_challenges.digest()
+        || compiler.sparse_oracles.response.polynomial_domain_log2 != 28
+        || compiler.sparse_oracles.plan.polynomial_domain_log2 != 27
+        || compiler.sparse_oracles.response.parameter_digest != profile.response_parameter_digest
+        || compiler.sparse_oracles.plan.parameter_digest != profile.plan_parameter_digest
+    {
+        return Err(
+            "C6SPR11 compiler statement differs from compact setup or response relation".to_owned()
+        );
+    }
+    let client_setup_allocation_bytes = extraction_map_setup_bytes
+        .checked_add(profile.encoded_setup_bytes)
+        .ok_or_else(|| "C6SPR11 client setup allocation overflows".to_owned())?;
+    if client_setup_allocation_bytes > C61_COMPILER_VERIFIER_SETUP_CAP_BYTES {
+        return Err("C6SPR11 extraction map plus compact profile exceeds 8 MB".to_owned());
+    }
+    let proof = C61ProductionCompilerChainProof::decode(proof_bytes)?;
+    let terminal_binding = C61ExactTerminalFoldBinding::new(
+        &profile.terminal_metadata,
+        relation_challenges,
+        [&compiler.leaf_points[0], &compiler.leaf_points[1]],
+        [&compiler.auxiliary_points[0], &compiler.auxiliary_points[1]],
+        compiler.terminal_claims,
+        compiler.output_beta,
+        proof.plan_folds,
+    )?;
+    if terminal_binding.digest != proof.terminal_binding_digest {
+        return Err(
+            "C6SPR11 decoded C6CPX2 terminal digest differs from the typed statement".to_owned()
+        );
+    }
+    // The packed-oracle content digests do not alter physical coordinates;
+    // the verifier binds their identity to the already decoded commitment
+    // roots, avoiding an additional response field.
+    let fixture = C61SparseCompilerVerifierFixture {
+        operation_plan_digest: profile.operation_plan_digest,
+        topology: profile.topology,
+        terminal_metadata: &profile.terminal_metadata,
+        relation_challenges,
+        output_beta: compiler.output_beta,
+        base_domain_log2: profile.base_domain_log2,
+        response_digest: compiler.sparse_oracles.response.commitment_root,
+        plan_digest: compiler.sparse_oracles.plan.commitment_root,
+        terminal_binding,
+    };
+    verify_c61_authenticated_whir_p3_compiler_chain_compact(
+        &fixture,
+        compiler.sparse_oracles.response.commitment_root,
+        compiler.sparse_oracles.plan.commitment_root,
+        28,
+        &proof,
+        context,
+        verifier_seed,
+        id,
+        mask_range,
+        profile.digest,
+        profile.encoded_setup_bytes,
+        client_setup_allocation_bytes,
+    )
+}
+
 /// Exercise the C6SPR3 physical response/plan opening as Dn and D(n-1)
 /// commitments sharing every common native verifier challenge, the exact
 /// response-only tail, and one final authenticated residual.  At production
@@ -4503,6 +4848,52 @@ where
         shared_payload: artifact.payload.clone(),
     };
     let proof = C61ProductionCompilerChainProof::decode(&proof.encode()?)?;
+    let role_separated_compact_verifier_checked = if fixture.production {
+        false
+    } else {
+        let ((response_commitment, _), (plan_commitment, _), _) =
+            decode_c61_shared_multi_oracle_artifact(
+                &C61SharedMultiOracleArtifact { payload: proof.shared_payload.clone() },
+                response_num_variables,
+                plan_num_variables,
+            )
+            .map_err(|error| error.to_string())?;
+        let compact_fixture = C61SparseCompilerVerifierFixture {
+            operation_plan_digest: verifier_fixture.operation_plan_digest,
+            topology: verifier_fixture.topology,
+            terminal_metadata: verifier_fixture.terminal_metadata,
+            relation_challenges: verifier_fixture.relation_challenges,
+            output_beta: verifier_fixture.output_beta,
+            base_domain_log2: verifier_fixture.base_domain_log2,
+            response_digest: response_commitment.roots()[0],
+            plan_digest: plan_commitment.roots()[0],
+            terminal_binding: verifier_fixture.terminal_binding.clone(),
+        };
+        let mut compact_context = VerifierCtx::new([0xD3; 32], delta);
+        let compact = verify_c61_authenticated_whir_p3_compiler_chain_compact(
+            &compact_fixture,
+            response_commitment.roots()[0],
+            plan_commitment.roots()[0],
+            response_num_variables,
+            &proof,
+            &mut compact_context,
+            verifier_seed,
+            id,
+            mask_range,
+            [0; 32],
+            0,
+            0,
+        )?;
+        if compact.verifier_interaction != verifier_interaction
+            || compact.verifier_transcript_bytes != verifier_transcript.total_bytes()
+            || compact.verifier_ledger != *verifier_transcript.ledger()
+        {
+            return Err(
+                "C6SPR11 role-separated compact verifier differs from inline verifier".to_owned()
+            );
+        }
+        true
+    };
     let report = C61AuthenticatedP3SharedMultiOracleDiagnostic {
         production_geometry: fixture.production,
         monolithic_host_baseline: fixture.production && !persisted_executor,
@@ -4545,6 +4936,7 @@ where
         codec_mutations_rejected,
         arithmetic_payload_mutation_rejected,
         joint_tag_mutation_rejected,
+        role_separated_compact_verifier_checked,
         subfield_correlations: correlations.counters.sub_corrs,
         full_correlations: correlations.counters.full_corrs,
         response_spill: response_spill.unwrap_or_default(),
@@ -5046,6 +5438,7 @@ mod tests {
         assert!(report.codec_mutations_rejected);
         assert!(report.arithmetic_payload_mutation_rejected);
         assert!(report.joint_tag_mutation_rejected);
+        assert!(report.role_separated_compact_verifier_checked);
         assert_eq!(report.subfield_correlations, 24);
         assert_eq!(report.full_correlations, 305);
         assert_eq!(report.response_spill, C61PersistedMmcsMetrics::default());
@@ -5322,7 +5715,7 @@ mod tests {
             .split("fn verify_c61_sparse_compiler_relation_phase(")
             .nth(1)
             .unwrap()
-            .split("/// Exercise the C6SPR3 physical response/plan opening")
+            .split("fn verify_c61_authenticated_whir_p3_compiler_chain_compact(")
             .next()
             .unwrap();
         assert!(!proof.contains("pub evals:"));
@@ -5341,15 +5734,15 @@ mod tests {
             8
         );
         assert_eq!(production_adapter.matches(".observe_public_point(").count(), 5);
-        assert_eq!(production_adapter.matches(".observe_public_points(").count(), 9);
+        assert_eq!(production_adapter.matches(".observe_public_points(").count(), 11);
         assert_eq!(production_adapter.matches(".ensure_public_statement_bound()").count(), 5);
         assert_eq!(production_adapter.matches("challenger.finish(").count(), 9);
-        assert_eq!(production_adapter.matches("c61_shared_round_pair(").count(), 2);
+        assert_eq!(production_adapter.matches("c61_shared_round_pair(").count(), 3);
         assert!(!sparse_verifier.contains(".direct"));
         assert!(!sparse_verifier.contains(".packed"));
         assert!(!sparse_verifier.contains("extraction"));
         assert!(!sparse_verifier.contains("runtime"));
-        assert_eq!(production_adapter.matches(".sample_postproof_fp2()").count(), 2);
+        assert_eq!(production_adapter.matches(".sample_postproof_fp2()").count(), 3);
         assert!(production_adapter
             .contains("C61_SHARED_MULTI_ORACLE_MAGIC: [u8; 8] = *b\"C6SMO1\\0\\0\""));
         assert!(!production_adapter.contains("proof.evals"));

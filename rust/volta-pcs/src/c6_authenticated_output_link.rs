@@ -1133,6 +1133,34 @@ pub fn verify_c6_authenticated_output_link_reference(
     transcript: &mut Transcript,
 ) -> Result<C6BoundSlotRegistryVerifier> {
     refuse_production_reference(fixed)?;
+    verify_c6_authenticated_output_link_inner(fixed, pending, proof, contexts, transcript)
+}
+
+/// Production verifier for a link proof whose packed PCS was created from
+/// the persisted/CUDA owners. Verification remains witness-free and uses the
+/// same strict proof grammar and transcript as the scaled reference path.
+pub fn verify_c6_authenticated_output_link_production(
+    fixed: &C6FixedWrapperCommitments,
+    pending: C6PendingSlotRegistryVerifier,
+    proof: &C6AuthenticatedOutputLinkProof,
+    contexts: &mut [VerifierCtx; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
+    transcript: &mut Transcript,
+) -> Result<C6BoundSlotRegistryVerifier> {
+    if !fixed.is_production_profile() {
+        return Err(C6AuthenticatedOutputLinkError::new(
+            "C6 production link verifier requires production-fixed roots",
+        ));
+    }
+    verify_c6_authenticated_output_link_inner(fixed, pending, proof, contexts, transcript)
+}
+
+fn verify_c6_authenticated_output_link_inner(
+    fixed: &C6FixedWrapperCommitments,
+    pending: C6PendingSlotRegistryVerifier,
+    proof: &C6AuthenticatedOutputLinkProof,
+    contexts: &mut [VerifierCtx; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
+    transcript: &mut Transcript,
+) -> Result<C6BoundSlotRegistryVerifier> {
     let (relations, rounds, cohorts) = link_geometry(fixed)?;
     validate_verifier_registry(fixed, &pending)?;
     validate_proof_shape(proof, relations, rounds, cohorts)?;

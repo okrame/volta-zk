@@ -109,8 +109,9 @@ pub use c61_terminal_functional::{
     C61_TERMINAL_FUNCTIONAL_PROOF_REPETITIONS, C61_TERMINAL_FUNCTIONAL_RELATION_LOG2,
 };
 pub use c6_authenticated_output_link::{
-    prove_c6_authenticated_output_link_reference, verify_c6_authenticated_output_link_reference,
-    C6AuthenticatedOutputLinkError, C6AuthenticatedOutputLinkMetrics,
+    prove_c6_authenticated_output_link_reference, verify_c6_authenticated_output_link_production,
+    verify_c6_authenticated_output_link_reference, C6AuthenticatedOutputLinkError,
+    C6AuthenticatedOutputLinkMetrics,
     C6AuthenticatedOutputLinkProof, C6BoundSlotRegistryProver, C6BoundSlotRegistryVerifier,
     C6LinkSlotPolynomial, C6PendingSlotDescriptor, C6PendingSlotRegistryProver,
     C6PendingSlotRegistryVerifier, C6_AUTHENTICATED_OUTPUT_LINK_COHORTS,

@@ -179,6 +179,15 @@ impl C6ProductionPairedPcgAttempt {
         (first, second)
     }
 
+    /// Borrow both production prover tapes as the canonical paired owner.
+    /// Complete-response drivers use this instead of constructing a second
+    /// stream array or replaying one coordinate from a diagnostic seed.
+    pub fn prover_streams_array_mut(
+        &mut self,
+    ) -> &mut [CorrelationStream; C6_MAC_COORDINATES] {
+        &mut self.prover
+    }
+
     pub fn reservation(&self) -> C6SlotReservation {
         self.reservation
     }
@@ -186,6 +195,11 @@ impl C6ProductionPairedPcgAttempt {
     pub fn verifier_contexts_mut(&mut self) -> (&mut VerifierCtx, &mut VerifierCtx) {
         let [first, second] = &mut self.verifier;
         (first, second)
+    }
+
+    /// Borrow both verifier contexts from the same paired allocation.
+    pub fn verifier_contexts_array_mut(&mut self) -> &mut [VerifierCtx; C6_MAC_COORDINATES] {
+        &mut self.verifier
     }
 
     pub fn seal_sources(

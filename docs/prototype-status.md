@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §0.43 next.
+This capsule is authoritative; read design §0.44 next.
 
 - **Phase/relation.** C6.1 response-local public compression. The 64 C6RSC3
   values are challenge-dependent and exactly factor through two D25 reverse
@@ -73,16 +73,36 @@ This capsule is authoritative; read design §0.43 next.
   C6RSC3 is **9/0/1**, C6HUB2 is **4/0/0**, the coordinator schedule test is
   green and `cuda,c6-trace` test targets compile. No production response has
   executed.
-- **New hard stop.** Exact-runner integration exposed
-  `C6SPR9_C6LNK2_PERSISTED_PROVER_REQUIRED`: the only C6LNK2 prover still
-  rejects production roots and clones resident evaluation/equality tables,
-  while the persisted/CUDA PCS accepts only claims sealed by that link.
-  Checkpoints `0372f96`, `b5026f3` and `ccf7ea4` add the witness-free
-  production verifier, canonical persisted coefficient-slot reads and an
-  exact round/terminal differential for coefficient-domain folding without
-  `eq_vec`. The remaining gate is the create-new 72-term fold owner with
-  binding and I/O/spill counters, then the production link entry point and
-  full runner. No clear-claim or typestate bypass is authorized.
+- **Persisted C6LNK2 checkpoint.** The
+  `C6SPR9_C6LNK2_PERSISTED_PROVER_REQUIRED` hard stop is retired locally at
+  checkpoints `3affe99`, `c5fb4b1`, `fab7780`, `683878b` and `9bc61a5`.
+  All 72 relations per repetition now have statement/session/root/repetition/
+  cohort/slot/round-bound create-new owners. Predecessors are released only
+  after the successor coefficient file and 256-B manifest are durable. The
+  scaled two-repetition differential is byte-, transcript-, correlation- and
+  terminal-identical to resident C6LNK2; its exact owner counters are
+  **566,528 B read / 112,384 B coefficient write / 258,048 B manifest /
+  1,744 create + 1,744 durable delete / 3,904 fsync / 35,584-B peak live
+  spill / zero terminal spill**. Production accepts only CUDA-resident
+  monomial evaluation/binds, rejects CPU/hybrid before effects, and alone
+  seals `authenticated_link` before the persisted/CUDA PCS. Focused C6LNK2
+  is **10/0/0**, owner lifecycle **5/0/0**, and `cuda,c6-trace` targets compile.
+  The registered CUDA arithmetic differential is not executed on this VM;
+  none of these facts is hardware, timing, memory or full-response credit.
+- **Owner-restated closure gates.** The 2026-08-03 product-owner reminder
+  preserves the stricter original C6.1 success targets where they dominate
+  the later design envelope: every subsequent provider certificate must be
+  **<22 MB** and the A100 inline prover must be **<15 s** (12--15 s target).
+  The preregistered Q=121 soundness contingency remains active. Therefore the
+  later 35-MB/20-s envelope is insufficient by itself to close C6.1; the
+  final record and comparison column must report both and pass the stricter
+  owner-restated limits.
+- **Next construction gate.** Join the already-green global blind coordinator
+  directly to `prove_c6_authenticated_output_link_persisted_cuda`, the
+  persisted two-chain PCS and the real/AES-PCG allocation in the exact runner.
+  The runner must fail closed on dummy/mock correlations or CPU/hybrid work
+  and emit separate RSS, GPU, spill, read/write/fsync, H2D/D2H, kernel and
+  synchronization counters. No pod contact precedes those local gates.
 - **Owner GO.** The 2026-08-03 A100 full-e2e authorization remains valid after
   this local gate, but pod contact remains deferred until the local backend,
   C6PC2 and complete runner are green. It waives none of the clean-record,

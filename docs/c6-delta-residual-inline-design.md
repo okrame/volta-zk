@@ -3041,6 +3041,46 @@ It may release a predecessor fold only after its successor is durable.  No
 resident production fallback, equality table, changed proof byte or pod
 contact is authorized at this stop.
 
+### 0.44 Persisted/CUDA C6LNK2 closure and exact-runner gate
+
+The `C6SPR9_C6LNK2_PERSISTED_PROVER_REQUIRED` hard stop is retired locally.
+Each of the exact 72 coefficient-domain terms per repetition now starts as a
+canonical random-access view of its persisted cohort slot and advances through
+create-new round owners.  Every owner is bound to statement, session, root,
+repetition, cohort, slot, target relation and round; each successor manifest
+also binds its challenge and predecessor digest.  Coefficient and manifest
+files are fsynced before their directory is fsynced, and a predecessor is not
+released until that successor is durable.
+
+The full scaled two-repetition path matches resident C6LNK2 in proof bytes,
+transcript ledger and total, both correlation tapes, cohort aggregates and all
+terminal residuals.  Its exact counters are `566,528 B` read, `112,384 B`
+coefficient write, `258,048 B` manifest write, `1,744` files created and
+durably deleted, `3,904` fsyncs, `35,584 B` peak live spill and zero terminal
+spill.  This closes the required scaled differential; it is not a production
+resource measurement.
+
+The production entry point accepts only a CUDA-resident backend before any
+allocation, I/O, transcript or correlation effect.  Monomial coefficient
+endpoints and binds remain device-resident: a bind uses weights `[1,r]`, only
+the two endpoint scalars cross D2H, and folded coefficients cross D2H solely to
+create the durable successor.  CPU and hybrid backends are rejected rather
+than used as fallbacks.  This entry point alone seals `authenticated_link` and
+then invokes the existing persisted/CUDA two-chain PCS.  The CUDA arithmetic
+differential is registered under `VOLTA_REQUIRE_CUDA=1`, but has not run on
+this VM; compilation is not hardware or timing credit.
+
+The next construction gate is the complete exact runner.  It must consume the
+actual global blind coordinator outputs, call the production C6LNK2 entry,
+use only the real/AES PCG allocation, and account RSS, device memory, live and
+cumulative spill, file I/O/fsync, H2D/D2H, kernels and synchronization
+separately.  Dummy claims, mock correlations, CPU/hybrid fallback and a
+component-only timing record fail closed.  The owner's 2026-08-03 reminder
+also reinstates the stricter original closure targets: `<22 MB` subsequent
+provider wire and `<15 s` A100 inline prover.  The later 35-MB/20-s envelope
+may still be reported but cannot by itself close C6.1.  No pod is contacted
+before the local runner gates are green.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

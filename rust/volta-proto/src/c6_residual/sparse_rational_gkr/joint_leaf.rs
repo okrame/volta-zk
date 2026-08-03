@@ -725,6 +725,13 @@ impl C6SparseRationalBlindJointVerifierTerminal {
     pub fn points(&self) -> &C6SparseRationalPackedOpeningPoints {
         &self.points
     }
+
+    /// The three clear plan evaluations are carried by the strict joint
+    /// proof and authenticated later by the shared D27 opening.  Exposing
+    /// them lets a compact verifier avoid materializing the plan oracle.
+    pub fn clear_plan_values(&self) -> &[Fp2; C6_SPARSE_PLAN_OPENINGS] {
+        &self.clear_plan_values
+    }
 }
 
 fn blind_leaf_claims_as_clear(

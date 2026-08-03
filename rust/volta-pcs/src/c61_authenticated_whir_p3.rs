@@ -35,7 +35,8 @@ use volta_accel::{Backend, BackendKind};
 use volta_field::{Fp, Fp2, P};
 use volta_mac::{
     zero_open_verify, C6InstalledOperationPlan, C6OperationPlanTerminalMetadata,
-    C6TraceSourceManifest, CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey,
+    C6OperationPlanTopologyIdentity, C6TraceSourceManifest, CorrelationStream, ProverAuthed,
+    Transcript, VerifierCtx, VerifierKey,
 };
 use volta_proto::c6::{
     C6CacheHead, C6ClientAttempt, C6ClientState, C6CorrelationRange, C6PairedCorrelationRanges,
@@ -212,6 +213,124 @@ pub const C61_PRODUCTION_COMPILER_PROOF_MAGIC: [u8; 8] = *b"C6CPX2\0\0";
 pub const C61_PRODUCTION_COMPILER_PROOF_VERSION: u16 = 2;
 const C61_PRODUCTION_COMPILER_PROOF_HEADER_BYTES: usize = 148;
 const C61_PRODUCTION_COMPILER_PROOF_DIGEST_BYTES: usize = 32;
+pub const C61_COMPILER_VERIFIER_SETUP_CAP_BYTES: u64 = 8_000_000;
+
+/// Response-independent compiler verifier state retained by the client.
+/// It deliberately contains neither the installed operation plan nor the
+/// physical D27 plan oracle.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C61CompilerVerifierProfile {
+    operation_plan_digest: [u8; 32],
+    topology: C6OperationPlanTopologyIdentity,
+    terminal_metadata: C6OperationPlanTerminalMetadata,
+    base_domain_log2: u8,
+    response_parameter_digest: [u8; 32],
+    plan_parameter_digest: [u8; 32],
+    encoded_setup_bytes: u64,
+    digest: [u8; 32],
+}
+
+impl C61CompilerVerifierProfile {
+    pub fn new(terminal_metadata: C6OperationPlanTerminalMetadata) -> Result<Self, String> {
+        let topology = terminal_metadata.topology();
+        let operation_plan_digest = terminal_metadata.operation_plan_artifact_digest();
+        let base_domain_log2 =
+            volta_proto::c6_residual::c6_sparse_rational_base_domain_log2_compact(topology)
+                .map_err(|error| error.to_string())?;
+        if base_domain_log2 != 25 {
+            return Err(
+                "C6SPR11 production compiler profile must use the canonical D25 base".to_owned()
+            );
+        }
+        let response_parameter_digest = c61_authenticated_p3_parameter_digest(28)?;
+        let plan_parameter_digest = c61_authenticated_p3_parameter_digest(27)?;
+        // Strict persisted bytes: the canonical terminal projection plus the
+        // fixed profile header/digests.  This excludes the separately counted
+        // extraction map but includes every byte owned by this profile.
+        let encoded_setup_bytes = terminal_metadata
+            .encoded_len()
+            .map_err(|error| error.to_string())?
+            .checked_add(8 + 2 + 2 + 32 * 4 + 1 + 7)
+            .ok_or_else(|| "C6SPR11 compact setup census overflows".to_owned())?;
+        if encoded_setup_bytes > C61_COMPILER_VERIFIER_SETUP_CAP_BYTES {
+            return Err("C6SPR11 compact compiler profile exceeds the 8-MB allocation".to_owned());
+        }
+        let mut profile = Self {
+            operation_plan_digest,
+            topology,
+            terminal_metadata,
+            base_domain_log2,
+            response_parameter_digest,
+            plan_parameter_digest,
+            encoded_setup_bytes,
+            digest: [0; 32],
+        };
+        profile.digest = profile.recompute_digest();
+        profile.validate()?;
+        Ok(profile)
+    }
+
+    pub fn operation_plan_digest(&self) -> [u8; 32] {
+        self.operation_plan_digest
+    }
+
+    pub fn topology(&self) -> C6OperationPlanTopologyIdentity {
+        self.topology
+    }
+
+    pub fn terminal_metadata(&self) -> &C6OperationPlanTerminalMetadata {
+        &self.terminal_metadata
+    }
+
+    pub fn base_domain_log2(&self) -> u8 {
+        self.base_domain_log2
+    }
+
+    pub fn response_parameter_digest(&self) -> [u8; 32] {
+        self.response_parameter_digest
+    }
+
+    pub fn plan_parameter_digest(&self) -> [u8; 32] {
+        self.plan_parameter_digest
+    }
+
+    pub fn encoded_setup_bytes(&self) -> u64 {
+        self.encoded_setup_bytes
+    }
+
+    pub fn digest(&self) -> [u8; 32] {
+        self.digest
+    }
+
+    fn recompute_digest(&self) -> [u8; 32] {
+        let mut hasher =
+            blake3::Hasher::new_derive_key("volta-zk/c6.1/compiler-verifier-profile/v1");
+        hasher.update(&self.operation_plan_digest);
+        hasher.update(&self.topology.topology_digest);
+        hasher.update(&self.terminal_metadata.digest());
+        hasher.update(&[self.base_domain_log2]);
+        hasher.update(&self.response_parameter_digest);
+        hasher.update(&self.plan_parameter_digest);
+        hasher.update(&self.encoded_setup_bytes.to_le_bytes());
+        *hasher.finalize().as_bytes()
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        if self.operation_plan_digest == [0; 32]
+            || self.operation_plan_digest != self.terminal_metadata.operation_plan_artifact_digest()
+            || self.topology != self.terminal_metadata.topology()
+            || self.base_domain_log2 != 25
+            || self.response_parameter_digest != c61_authenticated_p3_parameter_digest(28)?
+            || self.plan_parameter_digest != c61_authenticated_p3_parameter_digest(27)?
+            || self.encoded_setup_bytes > C61_COMPILER_VERIFIER_SETUP_CAP_BYTES
+            || self.digest == [0; 32]
+            || self.digest != self.recompute_digest()
+        {
+            return Err("C6SPR11 compiler verifier profile is noncanonical".to_owned());
+        }
+        Ok(())
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C61ProductionCompilerChainProof {
@@ -2906,14 +3025,14 @@ impl C61ExactTerminalFoldBinding {
 /// has no extraction map, runtime values, adjoint lanes, response
 /// coefficients, or combined relation vectors.
 struct C61SparseCompilerVerifierFixture<'a> {
-    operation_plan: &'a C6InstalledOperationPlan,
+    operation_plan_digest: [u8; 32],
+    topology: C6OperationPlanTopologyIdentity,
     terminal_metadata: &'a C6OperationPlanTerminalMetadata,
     relation_challenges: &'a volta_proto::c6_residual::C6ResidualRelationChallenges,
     output_beta: Fp2,
     base_domain_log2: u8,
     response_digest: [u8; 32],
     plan_digest: [u8; 32],
-    physical_plan_values: Vec<Fp2>,
     terminal_binding: C61ExactTerminalFoldBinding,
 }
 
@@ -2948,20 +3067,14 @@ impl C61SparseCompilerPhysicalFixture<'_> {
 
     fn verifier_fixture(&self) -> Result<C61SparseCompilerVerifierFixture<'_>, String> {
         Ok(C61SparseCompilerVerifierFixture {
-            operation_plan: self.operation_plan(),
+            operation_plan_digest: self.operation_plan().artifact_digest(),
+            topology: self.operation_plan().topology(),
             terminal_metadata: &self.terminal_metadata,
             relation_challenges: self.relation(),
             output_beta: self.output_beta,
             base_domain_log2: self.packed.base_domain_log2(),
             response_digest: self.packed.response_digest(),
             plan_digest: self.packed.plan_digest(),
-            physical_plan_values: self
-                .packed
-                .physical_plan_values()
-                .map_err(|error| error.to_string())?
-                .into_iter()
-                .map(Fp2::from_base)
-                .collect(),
             terminal_binding: self.terminal_binding.clone(),
         })
     }
@@ -2975,7 +3088,47 @@ fn c61_exact_plan_fold_physical_openings(
     if fixture.terminal_binding.output_beta != fixture.output_beta {
         return Err("C6SPR10 terminal fold beta differs from the sparse relation".to_owned());
     }
-    let base_dimension = usize::from(fixture.packed.base_domain_log2());
+    let points = c61_exact_plan_fold_physical_points(
+        &fixture.terminal_binding,
+        fixture.packed.base_domain_log2(),
+        response_num_variables,
+    )?;
+    let physical_coefficients = fixture
+        .packed
+        .physical_response_values()
+        .into_iter()
+        .map(Fp2::from_base)
+        .collect::<Vec<_>>();
+    let values = points
+        .iter()
+        .map(|point| {
+            let native_point = point
+                .as_slice()
+                .iter()
+                .rev()
+                .take(usize::from(fixture.packed.base_domain_log2()) + 3)
+                .map(|coordinate| c61_volta_fp2_from_p3(*coordinate))
+                .collect::<Vec<_>>();
+            volta_proto::mle::eval_mle(&physical_coefficients, &native_point)
+        })
+        .collect::<Vec<_>>();
+    fixture.terminal_binding.validate_physical_plan_fold_values(
+        fixture.packed.base_domain_log2(),
+        &values
+            .as_slice()
+            .try_into()
+            .map_err(|_| "C6SPR10 physical plan-fold value census mismatch".to_owned())?,
+    )?;
+    Ok((points, values))
+}
+
+fn c61_exact_plan_fold_physical_points(
+    binding: &C61ExactTerminalFoldBinding,
+    base_domain_log2: u8,
+    response_num_variables: usize,
+) -> Result<Vec<Point<C61P3Fp2>>, String> {
+    binding.validate()?;
+    let base_dimension = usize::from(base_domain_log2);
     let source_dimension = base_dimension
         .checked_sub(2)
         .ok_or_else(|| "C6SPR10 source opening dimension underflows".to_owned())?;
@@ -2983,16 +3136,9 @@ fn c61_exact_plan_fold_physical_openings(
     if response_num_variables < native_physical_dimension {
         return Err("C6SPR10 response padding is below the native oracle".to_owned());
     }
-    let physical_coefficients = fixture
-        .packed
-        .physical_response_values()
-        .into_iter()
-        .map(Fp2::from_base)
-        .collect::<Vec<_>>();
     let mut points = Vec::with_capacity(C61_EXACT_PLAN_FOLD_PHYSICAL_OPENINGS);
-    let mut values = Vec::with_capacity(C61_EXACT_PLAN_FOLD_PHYSICAL_OPENINGS);
     for repetition in 0..2usize {
-        let leaf = &fixture.terminal_binding.leaf_points[repetition];
+        let leaf = &binding.leaf_points[repetition];
         if leaf.len() < source_dimension {
             return Err("C6SPR10 terminal leaf point is shorter than the source block".to_owned());
         }
@@ -3006,26 +3152,15 @@ fn c61_exact_plan_fold_physical_openings(
         if semantic.len() + 1 != native_physical_dimension {
             return Err("C6SPR10 packed plan-fold point has the wrong dimension".to_owned());
         }
-        let mut semantic_value = Fp2::ZERO;
         for limb in [Fp2::ZERO, Fp2::ONE] {
             let mut native_point = semantic.clone();
             native_point.push(limb);
-            let value = volta_proto::mle::eval_mle(&physical_coefficients, &native_point);
-            semantic_value +=
-                if limb == Fp2::ZERO { value } else { Fp2::new(Fp::ZERO, Fp::ONE) * value };
             native_point.resize(response_num_variables, Fp2::ZERO);
             native_point.reverse();
             points.push(Point::new(native_point.into_iter().map(c61_p3_fp2_from_volta).collect()));
-            values.push(value);
-        }
-        let padding_factor = leaf[source_dimension..]
-            .iter()
-            .fold(Fp2::ONE, |factor, coordinate| factor * (Fp2::ONE - *coordinate));
-        if semantic_value * padding_factor != fixture.terminal_binding.plan_folds[repetition] {
-            return Err("C6SPR10 packed opening differs from its exact plan fold".to_owned());
         }
     }
-    Ok((points, values))
+    Ok(points)
 }
 
 struct C61SparseCompilerProviderPhase {
@@ -3461,8 +3596,15 @@ fn sample_c61_sparse_relation_challenges(
     operation_plan: &C6InstalledOperationPlan,
     transcript: &mut Transcript,
 ) -> Result<volta_proto::c6_residual::C6ResidualSparseRationalChallenges, String> {
+    sample_c61_sparse_relation_challenges_compact(operation_plan.topology(), transcript)
+}
+
+fn sample_c61_sparse_relation_challenges_compact(
+    topology: C6OperationPlanTopologyIdentity,
+    transcript: &mut Transcript,
+) -> Result<volta_proto::c6_residual::C6ResidualSparseRationalChallenges, String> {
     volta_proto::c6_residual::C6ResidualSparseRationalChallenges::new(
-        operation_plan.topology(),
+        topology,
         transcript.challenge_fp2(),
         transcript.challenge_fp2(),
         transcript.challenge_fp2(),
@@ -3611,17 +3753,18 @@ fn verify_c61_sparse_compiler_relation_phase(
     use volta_proto::prod_check::prod_batch_verify;
 
     let sparse_challenges =
-        sample_c61_sparse_relation_challenges(fixture.operation_plan, transcript)?;
-    let public_relation = C6ResidualSparseRationalPublicRelation::new(
-        fixture.operation_plan,
+        sample_c61_sparse_relation_challenges_compact(fixture.topology, transcript)?;
+    let public_relation = C6ResidualSparseRationalPublicRelation::new_compact(
+        fixture.operation_plan_digest,
+        fixture.topology,
         fixture.terminal_metadata,
         fixture.relation_challenges,
         sparse_challenges,
         fixture.output_beta,
     )
     .map_err(|error| error.to_string())?;
-    let arithmetic = C61SparseRationalBlindArithmeticProof::decode(
-        fixture.operation_plan,
+    let arithmetic = C61SparseRationalBlindArithmeticProof::decode_compact(
+        fixture.topology,
         public_relation.digest(),
         arithmetic_payload,
     )
@@ -3630,8 +3773,11 @@ fn verify_c61_sparse_compiler_relation_phase(
         arithmetic.into_parts();
     let mut products = Vec::new();
     let mut zero_rows = Vec::new();
-    let leaf_keys = verify_c6_residual_sparse_rational_gkr_blind_reference(
-        fixture.operation_plan,
+    let leaf_keys = verify_c6_residual_sparse_rational_gkr_blind_compact(
+        fixture.operation_plan_digest,
+        fixture.topology,
+        fixture.terminal_metadata,
+        fixture.relation_challenges,
         &public_relation,
         &gkr,
         context,
@@ -3642,8 +3788,9 @@ fn verify_c61_sparse_compiler_relation_phase(
     )
     .map_err(|error| error.to_string())?
     .ok_or_else(|| "C6SPR3 blind GKR verifier rejected".to_owned())?;
-    let terminal = verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
-        fixture.operation_plan,
+    let terminal = verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_compact(
+        fixture.operation_plan_digest,
+        fixture.topology,
         fixture.terminal_metadata,
         fixture.relation_challenges,
         &public_relation,
@@ -3665,9 +3812,7 @@ fn verify_c61_sparse_compiler_relation_phase(
         terminal.points().input_point(),
     )
     .map_err(|error| error.to_string())?;
-    let plan_values = std::array::from_fn(|index| {
-        volta_proto::mle::eval_mle(&fixture.physical_plan_values, &physical_points.plan()[index])
-    });
+    let plan_values = *terminal.clear_plan_values();
     let response_keys = authenticate_c61_sparse_response_targets_verifier(
         response_target_proof,
         context,

@@ -108,6 +108,51 @@ pub struct C6TraceSourceManifest {
     pub product_mask_sources: Vec<u32>,
 }
 
+/// Response-independent description of one family of private native opening
+/// targets. Counts and layout digests come from the inference profile rather
+/// than from a model-specific protocol constant.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6TraceTargetCohort {
+    pub cohort_id: u32,
+    pub chain_slot: u16,
+    pub polynomial_log2: u8,
+    pub claim_layout_digest: [u8; 32],
+    pub targets: Vec<C6TraceToken>,
+}
+
+/// Exact target tokens exported by one traced inference profile. The profile
+/// digest binds model architecture/layout outside the generic bridge.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6TraceTargetProfile {
+    pub inference_profile_digest: [u8; 32],
+    pub cohorts: Vec<C6TraceTargetCohort>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6CanonicalTargetCohort {
+    pub cohort_id: u32,
+    pub chain_slot: u16,
+    pub polynomial_log2: u8,
+    pub claim_layout_digest: [u8; 32],
+    pub canonical_nodes: Vec<u32>,
+}
+
+/// Canonical target map emitted alongside the installed operation plan. It is
+/// a setup object, not provider wire and not an independently trusted claim.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6CanonicalTargetProfile {
+    pub inference_profile_digest: [u8; 32],
+    pub topology_digest: [u8; 32],
+    pub source_schedule_digest: [u8; 32],
+    pub cohorts: Vec<C6CanonicalTargetCohort>,
+}
+
+impl C6CanonicalTargetProfile {
+    pub fn target_count(&self) -> usize {
+        self.cohorts.iter().map(|cohort| cohort.canonical_nodes.len()).sum()
+    }
+}
+
 impl C6TraceSourceManifest {
     pub fn new(
         source_count: u32,
@@ -2888,7 +2933,7 @@ pub fn normalize_c6_operation_trace(
     trace: &C6ProverTraceSnapshot,
     manifest: &C6TraceSourceManifest,
 ) -> Result<C6CanonicalOperationPlan, C6TraceError> {
-    normalize_c6_operation_trace_impl(trace, manifest, None, None).map(|(plan, _, _)| plan)
+    normalize_c6_operation_trace_impl(trace, manifest, None, None, None).map(|(plan, _, _, _)| plan)
 }
 
 /// Compile one canonical parameterized topology artifact while producing the
@@ -2908,8 +2953,8 @@ pub fn compile_c6_operation_trace_for_role(
     manifest: &C6TraceSourceManifest,
     role: C6InstanceExtractionRole,
 ) -> Result<C6CompiledOperationPlan, C6TraceError> {
-    let (plan, artifact, instance_extraction) =
-        normalize_c6_operation_trace_impl(trace, manifest, None, Some(role))?;
+    let (plan, artifact, instance_extraction, _) =
+        normalize_c6_operation_trace_impl(trace, manifest, None, Some(role), None)?;
     Ok(C6CompiledOperationPlan {
         plan,
         artifact: artifact
@@ -2920,6 +2965,32 @@ pub fn compile_c6_operation_trace_for_role(
     })
 }
 
+/// Compile the installed plan while retaining a generic, typed list of exact
+/// response-output nodes. Target roots are normalized after the historical
+/// ProductClosure/zero terminals and therefore cannot change their ordering.
+pub fn compile_c6_operation_trace_for_role_with_target_profile(
+    trace: &C6ProverTraceSnapshot,
+    manifest: &C6TraceSourceManifest,
+    role: C6InstanceExtractionRole,
+    target_profile: &C6TraceTargetProfile,
+) -> Result<(C6CompiledOperationPlan, C6CanonicalTargetProfile), C6TraceError> {
+    let (plan, artifact, instance_extraction, canonical_targets) =
+        normalize_c6_operation_trace_impl(trace, manifest, None, Some(role), Some(target_profile))?;
+    Ok((
+        C6CompiledOperationPlan {
+            plan,
+            artifact: artifact.ok_or_else(|| {
+                C6TraceError::new("C6 target-map compiler emitted no operation-plan artifact")
+            })?,
+            instance_extraction: instance_extraction.ok_or_else(|| {
+                C6TraceError::new("C6 target-map compiler emitted no extraction artifact")
+            })?,
+        },
+        canonical_targets
+            .ok_or_else(|| C6TraceError::new("C6 target-map compiler emitted no target map"))?,
+    ))
+}
+
 /// Targeted diagnostic twin of [`normalize_c6_operation_trace`]. The
 /// captured block is informative only and cannot affect program identity.
 #[doc(hidden)]
@@ -2928,7 +2999,8 @@ pub fn normalize_c6_operation_trace_debug_block(
     manifest: &C6TraceSourceManifest,
     block: u64,
 ) -> Result<C6CanonicalOperationPlan, C6TraceError> {
-    normalize_c6_operation_trace_impl(trace, manifest, Some(block), None).map(|(plan, _, _)| plan)
+    normalize_c6_operation_trace_impl(trace, manifest, Some(block), None, None)
+        .map(|(plan, _, _, _)| plan)
 }
 
 fn normalize_c6_operation_trace_impl(
@@ -2936,11 +3008,13 @@ fn normalize_c6_operation_trace_impl(
     manifest: &C6TraceSourceManifest,
     capture_block: Option<u64>,
     compile_role: Option<C6InstanceExtractionRole>,
+    target_profile: Option<&C6TraceTargetProfile>,
 ) -> Result<
     (
         C6CanonicalOperationPlan,
         Option<C6OperationPlanArtifact>,
         Option<C6InstanceExtractionArtifact>,
+        Option<C6CanonicalTargetProfile>,
     ),
     C6TraceError,
 > {
@@ -3030,6 +3104,59 @@ fn normalize_c6_operation_trace_impl(
             }
         }
         normalizer.current_terminal = None;
+
+        let canonical_target_cohorts = if let Some(profile) = target_profile {
+            if profile.inference_profile_digest == [0; 32] || profile.cohorts.len() < 2 {
+                return Err(C6TraceError::new(
+                    "C6NTO1 target profile requires a nonzero profile digest and two cohorts",
+                ));
+            }
+            let mut previous_cohort_id = None;
+            let mut previous_chain_slot = None;
+            let mut seen_nodes = BTreeSet::new();
+            let mut total_targets = 0u64;
+            let mut cohorts = Vec::with_capacity(profile.cohorts.len());
+            for cohort in &profile.cohorts {
+                if cohort.cohort_id == 0
+                    || cohort.claim_layout_digest == [0; 32]
+                    || !(4..=28).contains(&cohort.polynomial_log2)
+                    || cohort.targets.is_empty()
+                    || previous_cohort_id.is_some_and(|previous| cohort.cohort_id <= previous)
+                    || previous_chain_slot.is_some_and(|previous| cohort.chain_slot <= previous)
+                {
+                    return Err(C6TraceError::new(
+                        "C6NTO1 target cohorts are empty, malformed or noncanonical",
+                    ));
+                }
+                previous_cohort_id = Some(cohort.cohort_id);
+                previous_chain_slot = Some(cohort.chain_slot);
+                total_targets = total_targets
+                    .checked_add(cohort.targets.len() as u64)
+                    .ok_or_else(|| C6TraceError::new("C6NTO1 target count overflows"))?;
+                let mut canonical_nodes = Vec::with_capacity(cohort.targets.len());
+                for &target in &cohort.targets {
+                    let canonical = normalizer.normalize_root(target, true)?;
+                    if !seen_nodes.insert(canonical) {
+                        return Err(C6TraceError::new(
+                            "C6NTO1 target cohorts reuse one canonical node",
+                        ));
+                    }
+                    canonical_nodes.push(canonical);
+                }
+                cohorts.push(C6CanonicalTargetCohort {
+                    cohort_id: cohort.cohort_id,
+                    chain_slot: cohort.chain_slot,
+                    polynomial_log2: cohort.polynomial_log2,
+                    claim_layout_digest: cohort.claim_layout_digest,
+                    canonical_nodes,
+                });
+            }
+            u32::try_from(total_targets)
+                .map_err(|_| C6TraceError::new("C6NTO1 target count exceeds u32"))?;
+            Some(cohorts)
+        } else {
+            None
+        };
 
         let raw_operation_count = u64::try_from(trace.nodes.len())
             .map_err(|_| C6TraceError::new("C6 raw operation count exceeds u64"))?;
@@ -3180,11 +3307,19 @@ fn normalize_c6_operation_trace_impl(
                 specialized_encoding_projection,
             },
         };
-        return Ok((plan, artifact, instance_extraction));
+        let canonical_targets = canonical_target_cohorts.map(|cohorts| C6CanonicalTargetProfile {
+            inference_profile_digest: target_profile
+                .expect("target cohorts exist only with their input profile")
+                .inference_profile_digest,
+            topology_digest,
+            source_schedule_digest: manifest.source_schedule_digest,
+            cohorts,
+        });
+        return Ok((plan, artifact, instance_extraction, canonical_targets));
     }
     #[cfg(not(feature = "c6-trace"))]
     {
-        let _ = (trace, manifest, capture_block, compile_role);
+        let _ = (trace, manifest, capture_block, compile_role, target_profile);
         Err(C6TraceError::new(
             "C6 operation-plan normalization requires the diagnostic c6-trace feature",
         ))
@@ -4545,6 +4680,54 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "c6-trace")]
+    fn generic_target_trace(
+        with_dead_prefix: bool,
+    ) -> (C6ProverTraceSnapshot, C6TraceTargetProfile) {
+        let mut nodes = Vec::new();
+        if with_dead_prefix {
+            nodes.push(C6TraceNode::Public(Fp2::new(
+                volta_field::Fp::new(99),
+                volta_field::Fp::new(7),
+            )));
+        }
+        let offset = u32::from(with_dead_prefix);
+        nodes.push(C6TraceNode::Public(Fp2::from_base(volta_field::Fp::new(5))));
+        nodes.push(C6TraceNode::Add { lhs: source(0), rhs: operation(offset) });
+        nodes.push(C6TraceNode::Public(Fp2::from_base(volta_field::Fp::new(7))));
+        nodes.push(C6TraceNode::Sub { lhs: source(1), rhs: source(1) });
+        let snapshot = C6ProverTraceSnapshot {
+            namespace: TEST_NAMESPACE,
+            source_count: 3,
+            nodes,
+            zero_roots: vec![operation(offset + 3)],
+            products: vec![C6TraceProductClosure {
+                triples: vec![[operation(offset + 3), source(0), source(1)]],
+                mask: source(2),
+            }],
+        };
+        let profile = C6TraceTargetProfile {
+            inference_profile_digest: [0xC6; 32],
+            cohorts: vec![
+                C6TraceTargetCohort {
+                    cohort_id: 10,
+                    chain_slot: 0,
+                    polynomial_log2: 8,
+                    claim_layout_digest: [0xA1; 32],
+                    targets: vec![operation(offset), operation(offset + 1)],
+                },
+                C6TraceTargetCohort {
+                    cohort_id: 20,
+                    chain_slot: 1,
+                    polynomial_log2: 7,
+                    claim_layout_digest: [0xB2; 32],
+                    targets: vec![operation(offset + 2)],
+                },
+            ],
+        };
+        (snapshot, profile)
+    }
+
     #[test]
     fn ordinary_trace_token_is_zero_sized() {
         #[cfg(not(feature = "c6-trace"))]
@@ -4807,6 +4990,75 @@ mod tests {
                 unit_operand_count: 2,
             }
         );
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn generic_target_profile_retains_exact_dead_outputs_without_fixed_counts() {
+        let manifest = manifest(3, vec![2]);
+        let (compact_trace, compact_profile) = generic_target_trace(false);
+        let baseline = normalize_c6_operation_trace(&compact_trace, &manifest).unwrap();
+        let (compiled, compact_targets) = compile_c6_operation_trace_for_role_with_target_profile(
+            &compact_trace,
+            &manifest,
+            C6InstanceExtractionRole::Prover,
+            &compact_profile,
+        )
+        .unwrap();
+        let (shifted_trace, shifted_profile) = generic_target_trace(true);
+        let (shifted, shifted_targets) = compile_c6_operation_trace_for_role_with_target_profile(
+            &shifted_trace,
+            &manifest,
+            C6InstanceExtractionRole::Verifier,
+            &shifted_profile,
+        )
+        .unwrap();
+
+        assert_eq!(compact_targets.target_count(), 3);
+        assert_eq!(compact_targets.cohorts[0].canonical_nodes.len(), 2);
+        assert_eq!(compact_targets.cohorts[1].canonical_nodes.len(), 1);
+        assert_eq!(compact_targets, shifted_targets);
+        assert_eq!(compiled.plan.identity, shifted.plan.identity);
+        assert_eq!(compiled.plan.topology, shifted.plan.topology);
+        assert!(
+            compiled.plan.diagnostics.reachable_operation_count
+                > baseline.diagnostics.reachable_operation_count
+        );
+        assert_eq!(
+            compiled.artifact.install(&manifest).unwrap().topology(),
+            compiled.plan.topology
+        );
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn generic_target_profile_rejects_aliases_and_noncanonical_cohorts() {
+        let manifest = manifest(3, vec![2]);
+        let (trace, mut aliased) = generic_target_trace(false);
+        aliased.cohorts[1].targets[0] = aliased.cohorts[0].targets[0];
+        assert!(compile_c6_operation_trace_for_role_with_target_profile(
+            &trace,
+            &manifest,
+            C6InstanceExtractionRole::Prover,
+            &aliased,
+        )
+        .err()
+        .expect("aliased target map must reject")
+        .to_string()
+        .contains("reuse one canonical node"));
+
+        let (_, mut reordered) = generic_target_trace(false);
+        reordered.cohorts.swap(0, 1);
+        assert!(compile_c6_operation_trace_for_role_with_target_profile(
+            &trace,
+            &manifest,
+            C6InstanceExtractionRole::Prover,
+            &reordered,
+        )
+        .err()
+        .expect("reordered target map must reject")
+        .to_string()
+        .contains("noncanonical"));
     }
 
     #[cfg(feature = "c6-trace")]

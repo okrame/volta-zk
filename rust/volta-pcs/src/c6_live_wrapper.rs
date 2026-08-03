@@ -8,6 +8,8 @@
 use std::fmt;
 
 use rand::{rngs::OsRng, RngCore};
+use std::path::Path;
+use volta_accel::{Backend, BackendKind};
 use volta_field::{Fp2, FpStream};
 use volta_mac::Transcript;
 use volta_proto::{
@@ -27,6 +29,10 @@ use crate::c6_wrapper_pcs::{
     C6_DELTA_RESIDUAL_COHORT_ID, C6_HIDDEN_U_EMBED_COHORT_ID, C6_HIDDEN_U_WEIGHTS_COHORT_ID,
     C6_PREDECESSOR_CACHE_COHORT_ID, C6_SUCCESSOR_CACHE_COHORT_ID, C6_WRAPPER_AUXILIARY_COHORT_ID,
 };
+use crate::c6_wrapper_persisted::{
+    commit_production_c6_wrapper_cohort_cuda, C6PersistedWrapperCohort,
+};
+use crate::x4::cuda_v4::X4bCudaCommitMetricsV4;
 
 const LIVE_SOURCE_BINDING_DOMAIN: &str = "volta-zk/c6/live-wrapper-source-binding/v1";
 const MASK_SEED_COMMITMENT_DOMAIN: &str = "volta-zk/c6/live-wrapper-mask-seed/v1";
@@ -265,6 +271,67 @@ pub struct C6LiveWrapperRootBinding {
     mask_seed_commitment: C6WrapperDigest,
 }
 
+/// Production counterpart which owns only create-new persisted/CUDA opening
+/// sources. It has no conversion from resident cohorts or external roots.
+pub struct C6PersistedLiveWrapperRootBinding {
+    cohorts: Vec<C6PersistedWrapperCohort>,
+    fixed: C6FixedWrapperCommitments,
+    source_binding_digest: C6WrapperDigest,
+    paired_source_digest: C6WrapperDigest,
+    residual_manifest_digest: C6WrapperDigest,
+    residual_view_digest: C6WrapperDigest,
+    mask_seed_commitment: C6WrapperDigest,
+    session_digest: C6WrapperDigest,
+    commit_metrics: X4bCudaCommitMetricsV4,
+}
+
+impl C6PersistedLiveWrapperRootBinding {
+    pub fn cohorts(&self) -> &[C6PersistedWrapperCohort] {
+        &self.cohorts
+    }
+
+    pub fn fixed(&self) -> &C6FixedWrapperCommitments {
+        &self.fixed
+    }
+
+    pub fn source_binding_digest(&self) -> C6WrapperDigest {
+        self.source_binding_digest
+    }
+
+    pub fn session_digest(&self) -> C6WrapperDigest {
+        self.session_digest
+    }
+
+    pub fn commit_metrics(&self) -> &X4bCudaCommitMetricsV4 {
+        &self.commit_metrics
+    }
+
+    pub fn mask_seed_commitment(&self) -> C6WrapperDigest {
+        self.mask_seed_commitment
+    }
+
+    pub fn bind_residual_relation(
+        &self,
+        manifest: C6ResidualRelationManifest,
+        leaf: &C6PairedResidualLeafWitness,
+        closure: &C6PairedResidualClosureWitness,
+        auxiliary: &C6PairedResidualAuxiliaryWitness,
+    ) -> Result<C6ResidualRelationRootBound> {
+        let view = C6ResidualFusedWitnessView::new(&manifest, leaf, closure, auxiliary)
+            .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+        if manifest.digest() != self.residual_manifest_digest
+            || view.digest() != self.residual_view_digest
+            || leaf.paired_source_digest() != self.paired_source_digest
+        {
+            return Err(C6LiveWrapperError::new(
+                "C6 residual owners differ from persisted live-wrapper roots",
+            ));
+        }
+        bind_production_c6_residual_relation_roots(&self.fixed, manifest)
+            .map_err(|error| C6LiveWrapperError::new(error.to_string()))
+    }
+}
+
 impl C6LiveWrapperRootBinding {
     pub fn cohorts(&self) -> &[C6CommittedWrapperCohort] {
         &self.cohorts
@@ -351,6 +418,195 @@ pub fn materialize_production_c6_live_wrapper_roots(
         residual_manifest_digest: materialized.residual_manifest_digest,
         residual_view_digest: materialized.residual_view_digest,
         mask_seed_commitment: mask_seed.commitment(),
+    })
+}
+
+/// Commit the exact six production cohorts one at a time through the
+/// fail-closed CUDA/persisted backend, then fix all roots before `chi`.
+#[allow(clippy::too_many_arguments)]
+pub fn materialize_production_c6_live_wrapper_roots_cuda(
+    sources: C6LiveWrapperSources<'_>,
+    mask_seed: C6LiveWrapperMaskSeed,
+    backend: &mut Backend,
+    spill_root: impl AsRef<Path>,
+    session_digest: C6WrapperDigest,
+    transcript: &mut Transcript,
+) -> Result<C6PersistedLiveWrapperRootBinding> {
+    if backend.kind() == BackendKind::Cpu {
+        return Err(C6LiveWrapperError::new("C6 production live-wrapper refuses CPU backend"));
+    }
+    if session_digest == [0; 32] || !sources.production {
+        return Err(C6LiveWrapperError::new("C6 persisted live-wrapper session/profile mismatch"));
+    }
+    let specs = production_c6_wrapper_specs();
+    let residual_view_digest = sources.validate(&specs)?.digest();
+    let residual_manifest_digest = sources.residual_manifest.digest();
+    let paired_source_digest = sources.residual_leaf.paired_source_digest();
+    let hidden_witness_digests = [
+        sources.hidden_weights.reference_witness_digest(),
+        sources.hidden_embed.reference_witness_digest(),
+    ];
+    let statement_digest = sources.statement_digest;
+    let cache_binding_digest = sources.cache_binding_digest;
+    let cache_descriptors = sources.cache_descriptors.clone();
+    let old_len = sources.old_len;
+    let new_len = sources.new_len;
+    let mask_seed_commitment = mask_seed.commitment();
+    let mut cohorts = Vec::with_capacity(specs.len());
+    let mut commit_metrics = X4bCudaCommitMetricsV4::default();
+    let mut commit_group = |index: usize, slots: Vec<C6WrapperSlotWitness>| -> Result<()> {
+        if slots.len() != usize::from(specs[index].slot_count) {
+            return Err(C6LiveWrapperError::new(format!(
+                "C6 persisted live cohort {index} slot census mismatch"
+            )));
+        }
+        let descriptors = (index < 2).then_some(&cache_descriptors);
+        let (cohort, metrics) = commit_production_c6_wrapper_cohort_cuda(
+            backend,
+            statement_digest,
+            specs[index],
+            slots,
+            descriptors,
+            spill_root.as_ref(),
+            session_digest,
+            index as u64,
+        )
+        .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+        commit_metrics
+            .include(&metrics)
+            .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+        cohorts.push(cohort);
+        Ok(())
+    };
+
+    for (index, state) in [sources.predecessor, sources.successor].into_iter().enumerate() {
+        let slots = state
+            .slots
+            .into_iter()
+            .enumerate()
+            .map(|(slot, witness)| C6WrapperSlotWitness::Witness {
+                witness,
+                zk_mask: wrapper_mask_table(
+                    &mask_seed,
+                    specs[index].cohort_id,
+                    slot as u16,
+                    checked_pow2(specs[index].payload_log2).expect("validated production spec"),
+                ),
+            })
+            .collect();
+        commit_group(index, slots)?;
+    }
+
+    let mut residual_slots = sources
+        .residual_leaf
+        .materialize_padded_columns(u32::from(specs[2].payload_log2))
+        .map_err(|error| C6LiveWrapperError::new(error.to_string()))?
+        .into_iter()
+        .enumerate()
+        .map(|(slot, witness)| C6WrapperSlotWitness::Witness {
+            witness,
+            zk_mask: wrapper_mask_table(
+                &mask_seed,
+                specs[2].cohort_id,
+                slot as u16,
+                checked_pow2(specs[2].payload_log2).expect("validated production spec"),
+            ),
+        })
+        .collect::<Vec<_>>();
+    residual_slots.push(C6WrapperSlotWitness::Witness {
+        witness: sources
+            .residual_closure
+            .materialize_padded(u32::from(specs[2].payload_log2))
+            .map_err(|error| C6LiveWrapperError::new(error.to_string()))?,
+        zk_mask: wrapper_mask_table(
+            &mask_seed,
+            specs[2].cohort_id,
+            7,
+            checked_pow2(specs[2].payload_log2).expect("validated production spec"),
+        ),
+    });
+    commit_group(2, residual_slots)?;
+
+    for (index, hidden) in [(3usize, sources.hidden_weights), (4usize, sources.hidden_embed)] {
+        let payload_len = checked_pow2(specs[index].payload_log2)?;
+        let mut slots = Vec::with_capacity(usize::from(specs[index].slot_count));
+        slots.push(C6WrapperSlotWitness::Witness {
+            witness: hidden
+                .materialize_padded_oracle()
+                .map_err(|error| C6LiveWrapperError::new(error.to_string()))?,
+            zk_mask: wrapper_mask_table(&mask_seed, specs[index].cohort_id, 0, payload_len),
+        });
+        for slot in 1..specs[index].slot_count {
+            slots.push(C6WrapperSlotWitness::Witness {
+                witness: vec![Fp2::ZERO; payload_len],
+                zk_mask: wrapper_mask_table(&mask_seed, specs[index].cohort_id, slot, payload_len),
+            });
+        }
+        commit_group(index, slots)?;
+    }
+
+    let semantic = sources
+        .residual_auxiliary
+        .materialize_semantic_halves_at_log2(sources.residual_manifest.auxiliary_log2())
+        .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+    let semantic_len = checked_pow2(sources.residual_manifest.auxiliary_log2())?;
+    let encoded_semantic_len = semantic_len
+        .checked_mul(2)
+        .ok_or_else(|| C6LiveWrapperError::new("C6 auxiliary encoded length overflow"))?;
+    let mut auxiliary_slots = semantic
+        .into_iter()
+        .enumerate()
+        .map(|(slot, lower)| {
+            let mut evaluations = Vec::with_capacity(encoded_semantic_len);
+            evaluations.extend(lower);
+            evaluations.extend(wrapper_mask_table(
+                &mask_seed,
+                specs[5].cohort_id,
+                slot as u16,
+                semantic_len,
+            ));
+            C6WrapperSlotWitness::Auxiliary { evaluations }
+        })
+        .collect::<Vec<_>>();
+    let auxiliary_len = checked_pow2(specs[5].payload_log2)?;
+    auxiliary_slots.extend(
+        (16..specs[5].slot_count).map(|_| C6WrapperSlotWitness::Auxiliary {
+            evaluations: vec![Fp2::ZERO; auxiliary_len],
+        }),
+    );
+    commit_group(5, auxiliary_slots)?;
+    drop(commit_group);
+
+    let commitments = cohorts.iter().map(|cohort| cohort.commitment().clone()).collect::<Vec<_>>();
+    let fixed = fix_production_c6_wrapper_commitments(
+        statement_digest,
+        &cache_descriptors,
+        &commitments,
+        transcript,
+    )
+    .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+    let source_binding_digest = live_source_binding_digest(
+        statement_digest,
+        cache_binding_digest,
+        old_len,
+        new_len,
+        residual_manifest_digest,
+        residual_view_digest,
+        paired_source_digest,
+        hidden_witness_digests,
+        mask_seed_commitment,
+        fixed.binding_digest(),
+    );
+    Ok(C6PersistedLiveWrapperRootBinding {
+        cohorts,
+        fixed,
+        source_binding_digest,
+        paired_source_digest,
+        residual_manifest_digest,
+        residual_view_digest,
+        mask_seed_commitment,
+        session_digest,
+        commit_metrics,
     })
 }
 

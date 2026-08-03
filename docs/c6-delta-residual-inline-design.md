@@ -3393,6 +3393,14 @@ canonical reserved fields bound by the outer statement; they cannot add a
 second bridge or weaken the one joint closure. Profiles with fewer than two
 cohorts are not admitted by v1.
 
+The aggregate correction is specifically the public linear fold of the
+canonical per-source VOLE corrections under the compiled source
+coefficients. It is derived independently by both roles from the same source
+schedule and must match the 16-B carrier exactly. It is **not** a free
+post-hoc difference between the native aggregate and the compiler aggregate;
+such a difference would make the equality vacuous and is rejected before the
+joint ZeroOpen.
+
 `C6AWP2`, `C6CPX3` and the outer `C6PA2` are new semantic versions even when
 their lengths equal v1/v2 predecessors. The decoder must first validate every
 typed/tagless native body and derive all `alpha`, then derive `zeta`, verify

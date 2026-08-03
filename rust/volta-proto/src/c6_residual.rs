@@ -10264,6 +10264,22 @@ pub struct C6NativeTargetVerifierFold {
     pub key: VerifierKey,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6NativeTargetProverBridgeFold {
+    pub functional_digest: C6ResidualDigest,
+    pub coordinate: u8,
+    pub base_value: ProverAuthed,
+    pub correction: Fp2,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6NativeTargetVerifierBridgeFold {
+    pub functional_digest: C6ResidualDigest,
+    pub coordinate: u8,
+    pub base_key: VerifierKey,
+    pub correction: Fp2,
+}
+
 impl C6CompiledNativeTargetFunctional {
     pub fn compile(
         operation_plan: &C6InstalledOperationPlan,
@@ -10399,6 +10415,45 @@ impl C6CompiledNativeTargetFunctional {
         })
     }
 
+    /// Split the compiler source fold into its raw correlation plaintext/tag
+    /// fold and the independently auditable linear correction. C6NBR1 puts
+    /// exactly this correction on the reassigned 16-byte carrier; it is not
+    /// chosen from the difference between two claimed target aggregates.
+    pub fn fold_prover_bridge_coordinate(
+        &self,
+        sources: &C6PairedSourceWitness,
+        schedule: &CorrScheduleAudit,
+        coordinate: u8,
+    ) -> C6ResidualResult<C6NativeTargetProverBridgeFold> {
+        let coordinate_index = usize::from(coordinate);
+        if coordinate_index >= 2
+            || !schedule.is_canonical()
+            || sources.schedule_digest() != schedule.digest
+            || sources.source_schedule_digest() != self.topology.source_schedule_digest
+        {
+            return Err(C6ResidualError::new(
+                "C6NBR1 provider bridge source fold binding differs",
+            ));
+        }
+        let mut cursor = C6PairedSourceCursor::new(sources, schedule);
+        let mut base_value = ProverAuthed::from_public(self.public_plaintext);
+        let mut correction = Fp2::ZERO;
+        for (source, &coefficient) in self.leaf_coefficients.iter().enumerate() {
+            let witness = cursor.next(source as u32)?[coordinate_index];
+            base_value = base_value.add(
+                ProverAuthed::new(witness.base_plaintext(), witness.tag()).scale(coefficient),
+            );
+            correction += coefficient * witness.correction();
+        }
+        cursor.finish(self.topology.source_count)?;
+        Ok(C6NativeTargetProverBridgeFold {
+            functional_digest: self.functional_digest,
+            coordinate,
+            base_value,
+            correction,
+        })
+    }
+
     pub fn fold_verifier_coordinate(
         &self,
         coordinate: u8,
@@ -10416,6 +10471,35 @@ impl C6CompiledNativeTargetFunctional {
             functional_digest: self.functional_digest,
             coordinate,
             key,
+        })
+    }
+
+    /// Verifier mirror of [`Self::fold_prover_bridge_coordinate`]. The caller
+    /// streams raw source keys and the already authenticated source
+    /// corrections from verifier-owned response state.
+    pub fn fold_verifier_bridge_coordinate(
+        &self,
+        coordinate: u8,
+        delta: Fp2,
+        mut source_base: impl FnMut(u32) -> C6ResidualResult<(VerifierKey, Fp2)>,
+    ) -> C6ResidualResult<C6NativeTargetVerifierBridgeFold> {
+        if coordinate >= 2 {
+            return Err(C6ResidualError::new(
+                "C6NBR1 verifier bridge source-fold coordinate is invalid",
+            ));
+        }
+        let mut base_key = VerifierKey::from_public(self.public_plaintext, delta);
+        let mut correction = Fp2::ZERO;
+        for (source, &coefficient) in self.leaf_coefficients.iter().enumerate() {
+            let (source_key, source_correction) = source_base(source as u32)?;
+            base_key = base_key.add(source_key.scale(coefficient));
+            correction += coefficient * source_correction;
+        }
+        Ok(C6NativeTargetVerifierBridgeFold {
+            functional_digest: self.functional_digest,
+            coordinate,
+            base_key,
+            correction,
         })
     }
 
@@ -15531,5 +15615,78 @@ mod tests {
             &cohort_weights,
         )
         .is_err());
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn native_bridge_correction_is_the_exact_source_correction_fold() {
+        let (installed, extraction, runtime, schedule, paired) = installed_paired_fixture();
+        let topology = installed.topology();
+        let triple = installed.products()[0].triples()[0];
+        let profile = C6CanonicalTargetProfile {
+            inference_profile_digest: [0xA1; 32],
+            topology_digest: topology.topology_digest,
+            source_schedule_digest: topology.source_schedule_digest,
+            cohorts: vec![
+                volta_mac::C6CanonicalTargetCohort {
+                    cohort_id: 11,
+                    chain_slot: 1,
+                    polynomial_log2: 12,
+                    claim_layout_digest: [0xA2; 32],
+                    canonical_nodes: vec![triple[0]],
+                },
+                volta_mac::C6CanonicalTargetCohort {
+                    cohort_id: 12,
+                    chain_slot: 2,
+                    polynomial_log2: 11,
+                    claim_layout_digest: [0xA3; 32],
+                    canonical_nodes: vec![triple[1], triple[2]],
+                },
+            ],
+        };
+        let compiled = C6CompiledNativeTargetFunctional::compile(
+            &installed,
+            &extraction,
+            &runtime,
+            &profile,
+            &[vec![fp2(3)], vec![fp2(5), fp2(7)]],
+            &[Fp2::ONE, fp2(11)],
+        )
+        .unwrap();
+        let bridge = compiled.fold_prover_bridge_coordinate(&paired, &schedule, 1).unwrap();
+        let corrected = compiled.fold_prover_coordinate(&paired, &schedule, 1).unwrap();
+        assert_eq!(
+            bridge.base_value.add(ProverAuthed::from_public(bridge.correction)),
+            corrected.value,
+        );
+
+        let delta = fp2(1_701);
+        let mut cursor = C6PairedSourceCursor::new(&paired, &schedule);
+        let mut raw = Vec::new();
+        let mut corrected_keys = Vec::new();
+        for source in 0..topology.source_count {
+            let witness = cursor.next(source).unwrap()[1];
+            raw.push((
+                VerifierKey::new(witness.tag() + delta * witness.base_plaintext()),
+                witness.correction(),
+            ));
+            corrected_keys.push(VerifierKey::new(
+                witness.tag() + delta * (witness.base_plaintext() + witness.correction()),
+            ));
+        }
+        cursor.finish(topology.source_count).unwrap();
+        let verifier_bridge = compiled
+            .fold_verifier_bridge_coordinate(1, delta, |source| Ok(raw[source as usize]))
+            .unwrap();
+        let verifier_corrected = compiled
+            .fold_verifier_coordinate(1, delta, |source| Ok(corrected_keys[source as usize]))
+            .unwrap();
+        assert_eq!(verifier_bridge.correction, bridge.correction);
+        assert_eq!(
+            verifier_bridge
+                .base_key
+                .add(VerifierKey::from_public(verifier_bridge.correction, delta)),
+            verifier_corrected.key,
+        );
     }
 }

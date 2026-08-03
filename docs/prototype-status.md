@@ -20,9 +20,9 @@ This capsule is authoritative; read design §0.49 next.
   102-target response differential, codec round trip and sealed residual gate
   are **1/0/0**. Native typestate/schedule gates are **15/0/0 + 2/0/0**.
   The exact joint functional gate is **1/0/0** and proto trace is
-  **180/0/1**. The generic 32-B joint MAC closure is **2/0/0**. CUDA targets
-  compile, but no production response, GPU timing, full-chain or hardware
-  credit exists.
+  **180/0/1**. The generic 32-B joint MAC closure is **2/0/0** and its exact
+  source-correction split is **1/0/0**. CUDA targets compile, but no production
+  response, GPU timing, full-chain or hardware credit exists.
 - **Screens.** v23 remains `credit:false`: certificate **17,536,735 B**,
   setup **84,743,367 B**, state **2,277,715,552 B**, provider/verifier
   **14.9087128542 / 4.965672390 s**, soundness **102.587833363526... bits**.
@@ -161,6 +161,17 @@ This capsule is authoritative; read design §0.49 next.
   gates are **2/0/0**. This is low-level differential evidence only: v23 and
   all credits remain unchanged. `C6AWP2` body integration and the strict
   outer decoder are next; the exact-runner/pod hard stop remains active.
+
+- **2026-08-03 — C6NBR1 correction provenance closes a soundness gap.** The
+  16-B correction is now the exact coefficient fold of the already recorded
+  per-source VOLE corrections, derived separately from the raw compiler
+  source fold by both roles. The verifier requires the carrier to equal that
+  independently derived value before ZeroOpen. A provider can therefore no
+  longer choose the difference between unrelated native and compiler folds
+  after seeing them. The raw-plus-correction identity and its corrected-key
+  mirror pass **1/0/0**; the generic joint closure remains **2/0/0**. No byte,
+  soundness, time or full-chain credit changes. `C6AWP2`/outer integration and
+  the Lean theorem remain required before exact-runner admission.
 
 - **2026-08-03 — C6SPR8 closed; production wrapper lifecycle reaches the next
   ordered hard stop.** Checkpoint `c81a4ff` binds both ordered manifest tapes

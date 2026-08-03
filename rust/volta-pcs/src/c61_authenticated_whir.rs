@@ -243,7 +243,8 @@ fn c61_joint_native_normalization(
 /// the joint tag entropy.
 pub fn finish_c61_joint_native_bridge(
     terms: Vec<C61JointNativeProverTerm>,
-    compiler_fold: ProverAuthed,
+    compiler_base_fold: ProverAuthed,
+    compiler_correction: Fp2,
     transcript: &mut Transcript,
 ) -> Result<C61JointNativeBridgeFrame> {
     if terms.len() < 2 {
@@ -264,21 +265,23 @@ pub fn finish_c61_joint_native_bridge(
             .scale(term.cohort_weight);
         native_fold = native_fold.add(normalized);
     }
-    let correction = compiler_fold.x - native_fold.x;
     transcript.append("c6_joint_native_corrections", 16);
-    let residual = native_fold.add(ProverAuthed::from_public(correction)).sub(compiler_fold);
+    let residual = native_fold
+        .sub(compiler_base_fold)
+        .sub(ProverAuthed::from_public(compiler_correction));
     if residual.x != Fp2::ZERO {
         return Err(C61AuthenticatedWhirError::new("C6NBR1 corrected joint residual is nonzero"));
     }
     Ok(C61JointNativeBridgeFrame {
-        correction,
+        correction: compiler_correction,
         zero_open_tag: zero_open_prover(&residual, transcript),
     })
 }
 
 pub fn verify_c61_joint_native_bridge(
     terms: &[C61JointNativeVerifierTerm],
-    compiler_fold: VerifierKey,
+    compiler_base_fold: VerifierKey,
+    expected_compiler_correction: Fp2,
     delta: Fp2,
     frame: C61JointNativeBridgeFrame,
     transcript: &mut Transcript,
@@ -286,6 +289,11 @@ pub fn verify_c61_joint_native_bridge(
     if terms.len() < 2 {
         return Err(C61AuthenticatedWhirError::new(
             "C6NBR1 joint verifier requires at least two native bodies",
+        ));
+    }
+    if frame.correction != expected_compiler_correction {
+        return Err(C61AuthenticatedWhirError::new(
+            "C6NBR1 compiler correction differs from its independently derived source fold",
         ));
     }
     let mut native_fold = VerifierKey::ZERO;
@@ -302,8 +310,9 @@ pub fn verify_c61_joint_native_bridge(
         native_fold = native_fold.add(normalized);
     }
     transcript.append("c6_joint_native_corrections", 16);
-    let residual =
-        native_fold.add(VerifierKey::from_public(frame.correction, delta)).sub(compiler_fold);
+    let residual = native_fold
+        .sub(compiler_base_fold)
+        .sub(VerifierKey::from_public(frame.correction, delta));
     transcript.append("zero_open_tag", C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES as u64);
     if !zero_open_verify(residual, frame.zero_open_tag) {
         return Err(C61AuthenticatedWhirError::new("C6NBR1 joint native ZeroOpen failed"));
@@ -722,6 +731,10 @@ mod tests {
 
         let compiler_fold = target_auth[0].scale(weights[0]).add(target_auth[1].scale(weights[1]));
         let compiler_key = target_keys[0].scale(weights[0]).add(target_keys[1].scale(weights[1]));
+        let compiler_correction = f(1_399);
+        let compiler_base_fold = compiler_fold.sub(ProverAuthed::from_public(compiler_correction));
+        let compiler_base_key =
+            compiler_key.sub(VerifierKey::from_public(compiler_correction, delta));
         let prover_terms: Vec<_> = prepared
             .into_iter()
             .enumerate()
@@ -750,16 +763,21 @@ mod tests {
             })
             .collect();
         let mut prover_transcript = Transcript::new([0xD1; 32]);
-        let frame =
-            finish_c61_joint_native_bridge(prover_terms, compiler_fold, &mut prover_transcript)
-                .unwrap();
+        let frame = finish_c61_joint_native_bridge(
+            prover_terms,
+            compiler_base_fold,
+            compiler_correction,
+            &mut prover_transcript,
+        )
+        .unwrap();
         let encoded = frame.encode();
         assert_eq!(encoded.len(), C61_JOINT_NATIVE_BRIDGE_FRAME_BYTES);
         let decoded = C61JointNativeBridgeFrame::decode(&encoded).unwrap();
         let mut verifier_transcript = Transcript::new([0xD1; 32]);
         verify_c61_joint_native_bridge(
             &verifier_terms,
-            compiler_key,
+            compiler_base_key,
+            compiler_correction,
             delta,
             decoded,
             &mut verifier_transcript,
@@ -771,7 +789,8 @@ mod tests {
         changed_correction.correction = changed_correction.correction + Fp2::ONE;
         assert!(verify_c61_joint_native_bridge(
             &verifier_terms,
-            compiler_key,
+            compiler_base_key,
+            compiler_correction,
             delta,
             changed_correction,
             &mut Transcript::new([0xD1; 32]),
@@ -781,7 +800,8 @@ mod tests {
         changed_tag.zero_open_tag = changed_tag.zero_open_tag + Fp2::ONE;
         assert!(verify_c61_joint_native_bridge(
             &verifier_terms,
-            compiler_key,
+            compiler_base_key,
+            compiler_correction,
             delta,
             changed_tag,
             &mut Transcript::new([0xD1; 32]),
@@ -794,7 +814,8 @@ mod tests {
         wrong_order[1].cohort_weight = weights[1];
         assert!(verify_c61_joint_native_bridge(
             &wrong_order,
-            compiler_key,
+            compiler_base_key,
+            compiler_correction,
             delta,
             decoded,
             &mut Transcript::new([0xD1; 32]),
@@ -811,6 +832,7 @@ mod tests {
         assert!(verify_c61_joint_native_bridge(
             &[],
             VerifierKey::ZERO,
+            Fp2::ZERO,
             f(1_501),
             C61JointNativeBridgeFrame { correction: Fp2::ZERO, zero_open_tag: Fp2::ZERO },
             &mut Transcript::new([0xD2; 32]),
@@ -827,6 +849,7 @@ mod tests {
         assert!(verify_c61_joint_native_bridge(
             &[term, term],
             VerifierKey::ZERO,
+            Fp2::ZERO,
             f(1_503),
             C61JointNativeBridgeFrame { correction: Fp2::ZERO, zero_open_tag: Fp2::ZERO },
             &mut Transcript::new([0xD3; 32]),

@@ -664,6 +664,27 @@ impl<C: OuterNodeSourceV4> PersistedCohortOpeningV4<C> {
         self.oracle.logical_bytes()
     }
 
+    pub(crate) fn combine_slots(
+        &self,
+        touched_slots: &[u16],
+        weights: &[Fp2],
+    ) -> Result<(Vec<Fp2>, u64), PersistedOracleErrorV4> {
+        if touched_slots.is_empty()
+            || touched_slots.len() != weights.len()
+            || !touched_slots.windows(2).all(|pair| pair[0] < pair[1])
+        {
+            return Err(PersistedOracleErrorV4::Invalid("v4 persisted combination geometry"));
+        }
+        let mut output = vec![Fp2::ZERO; self.config.outer_len];
+        let mut bytes_read = 0u64;
+        for (&slot, &weight) in touched_slots.iter().zip(weights) {
+            bytes_read = bytes_read
+                .checked_add(self.oracle.accumulate_slot(slot, weight, &mut output)?)
+                .ok_or(MerkleError::Overflow)?;
+        }
+        Ok((output, bytes_read))
+    }
+
     pub fn open_initial(
         &self,
         query_draws: &[u64],

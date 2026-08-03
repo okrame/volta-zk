@@ -13,6 +13,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
+use std::path::Path;
 
 use volta_field::{Fp, Fp2};
 use volta_mac::Transcript;
@@ -21,6 +22,9 @@ use volta_proto::{C6ResidualRelationManifest, C6ResidualRelationRootBound};
 use crate::c6_hidden_u::C6HiddenUFamily;
 use crate::c6_hidden_u_sumcheck::C6HiddenUOpeningClaim;
 use crate::c6_persistent_cache::{C6PersistentCacheStaticProfile, C6_PERSISTENT_CACHE_SLOTS};
+use crate::c6_wrapper_persisted::{
+    persist_scaled_c6_wrapper_fold_reference, C6PersistedFoldOpening, C6PersistedWrapperCohort,
+};
 use crate::x4::accounting::projected_query_indices;
 use crate::x4::frame::Digest;
 use crate::x4::frame_v4::{
@@ -1249,11 +1253,11 @@ impl C6WrapperPcsProof {
 }
 
 #[derive(Clone, Debug)]
-struct CombinedCohort {
-    outer_len: usize,
-    coefficients: Vec<Fp2>,
-    codeword: Vec<Fp2>,
-    claimed_value: Fp2,
+pub(crate) struct CombinedCohort {
+    pub(crate) outer_len: usize,
+    pub(crate) coefficients: Vec<Fp2>,
+    pub(crate) codeword: Vec<Fp2>,
+    pub(crate) claimed_value: Fp2,
 }
 
 #[derive(Debug)]
@@ -1266,6 +1270,16 @@ struct SealedChain {
     fold_trees: Vec<CohortTreeV4>,
 }
 
+#[derive(Debug)]
+struct PersistedSealedChain {
+    repetition: u8,
+    common_point: Vec<Fp2>,
+    activation_challenges: Vec<Fp2>,
+    fold_challenges: Vec<Fp2>,
+    fold_frames: Vec<FoldCommitmentFrameV4>,
+    fold_openings: Vec<C6PersistedFoldOpening>,
+}
+
 /// Diagnostic/raw-weight in-memory prover.  Production callers use
 /// [`prove_c6_wrapper_pcs_assembled`], which cannot accept provider-selected
 /// slot weights.
@@ -1276,6 +1290,72 @@ pub fn prove_c6_wrapper_pcs(
     transcript: &mut Transcript,
 ) -> Result<C6WrapperPcsProof> {
     prove_c6_wrapper_pcs_inner(statement_digest, cohorts, claims_by_repetition, true, transcript)
+}
+
+/// Scaled byte-identity differential for the resource-aware owner. Every
+/// initial and folded query is served from a create-new persisted oracle.
+/// Production-sized owners are rejected by their constructors and must use
+/// the separately gated CUDA path.
+pub fn prove_c6_wrapper_pcs_persisted_reference(
+    statement_digest: C6WrapperDigest,
+    cohorts: &[C6PersistedWrapperCohort],
+    claims_by_repetition: &[Vec<C6WrapperOpeningClaim>],
+    spill_root: impl AsRef<Path>,
+    session_digest: C6WrapperDigest,
+    transcript: &mut Transcript,
+) -> Result<C6WrapperPcsProof> {
+    if session_digest == [0; 32]
+        || cohorts.iter().any(|cohort| cohort.session_digest() != session_digest)
+        || !cohorts.windows(2).all(|pair| pair[0].oracle_ordinal() < pair[1].oracle_ordinal())
+    {
+        return Err(C6WrapperPcsError::new("C6 persisted wrapper response binding mismatch"));
+    }
+    let commitments = cohorts.iter().map(|cohort| cohort.commitment().clone()).collect::<Vec<_>>();
+    validate_statement_and_claims(statement_digest, &commitments, claims_by_repetition)?;
+    append_terminal_claims(transcript, claims_by_repetition)?;
+    let activations = derive_activation_challenges(transcript, commitments.len());
+    let mut sealed = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
+    for repetition in 0..C6_WRAPPER_REPETITIONS {
+        sealed.push(seal_persisted_reference_chain(
+            statement_digest,
+            repetition,
+            cohorts,
+            &claims_by_repetition[repetition],
+            activations[repetition].clone(),
+            spill_root.as_ref(),
+            session_digest,
+            transcript,
+        )?);
+    }
+    let draw_width = commitments[0].config.outer_depth();
+    let query_tapes = (0..C6_WRAPPER_REPETITIONS)
+        .map(|_| {
+            (0..C6_WRAPPER_QUERY_COUNT)
+                .map(|_| transcript.challenge_bits(draw_width))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let mut chains = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
+    for (sealed, draws) in sealed.into_iter().zip(&query_tapes) {
+        let chain = issue_persisted_reference_openings(
+            statement_digest,
+            cohorts,
+            &claims_by_repetition[usize::from(sealed.repetition)],
+            sealed,
+            draws,
+        )?;
+        let packed_len = FrameV4::PackedBatchOpening(chain.packed_opening.clone())
+            .encode()
+            .map_err(|error| C6WrapperPcsError::frame("C6 persisted packed opening", error))?
+            .len();
+        transcript.append(
+            C6_PACKED_OPENING_LABEL,
+            u64::try_from(packed_len)
+                .map_err(|_| C6WrapperPcsError::new("C6 packed opening length exceeds u64"))?,
+        );
+        chains.push(chain);
+    }
+    Ok(C6WrapperPcsProof { chains })
 }
 
 /// PCS entry point after authenticated-output-link sealing.  The ten masked
@@ -1599,6 +1679,171 @@ fn seal_chain(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
+fn seal_persisted_reference_chain(
+    statement_digest: C6WrapperDigest,
+    repetition: usize,
+    cohorts: &[C6PersistedWrapperCohort],
+    claims: &[C6WrapperOpeningClaim],
+    activation_challenges: Vec<Fp2>,
+    spill_root: &Path,
+    session_digest: C6WrapperDigest,
+    transcript: &mut Transcript,
+) -> Result<PersistedSealedChain> {
+    let common_point = claims[0].point.clone();
+    let commitments = cohorts.iter().map(|cohort| cohort.commitment().clone()).collect::<Vec<_>>();
+    let max_outer_len = commitments[0].spec.encoded_len()?;
+    let max_coefficient_len = max_outer_len / 8;
+    let mut current_coefficients = vec![Fp2::ZERO; max_coefficient_len];
+    let mut current_codeword = vec![Fp2::ZERO; max_outer_len];
+    let mut current_claim = Fp2::ZERO;
+    let mut activated = activate_persisted_at_domain(
+        max_outer_len,
+        cohorts,
+        claims,
+        &activation_challenges,
+        &mut current_coefficients,
+        &mut current_codeword,
+        &mut current_claim,
+    )?;
+    if activated == 0 {
+        return Err(C6WrapperPcsError::new("C6 persisted maximum cohort did not activate"));
+    }
+    let fold_descriptor = fold_descriptor_digest(statement_digest, repetition as u8, &commitments);
+    let global_cohort_id = C6_GLOBAL_FOLD_COHORT_BASE
+        .checked_add(repetition as u32)
+        .ok_or_else(|| C6WrapperPcsError::new("C6 persisted fold cohort id overflows"))?;
+    let mut fold_frames = Vec::with_capacity(common_point.len());
+    let mut fold_openings = Vec::with_capacity(common_point.len());
+    let mut fold_challenges = Vec::with_capacity(common_point.len());
+    let mut input_len = max_outer_len;
+    for round_index in 0..common_point.len() {
+        let (line_zero, line_one) =
+            claim_line(&current_coefficients, &common_point[round_index + 1..])?;
+        if interpolate(line_zero, line_one, common_point[round_index]) != current_claim {
+            return Err(C6WrapperPcsError::new("C6 persisted claim-line input mismatch"));
+        }
+        transcript.append(C6_FOLD_LINE_LABEL, 32);
+        let fold_challenge = transcript.challenge_fp2();
+        fold_challenges.push(fold_challenge);
+        current_claim = interpolate(line_zero, line_one, fold_challenge);
+        current_coefficients = fold_coefficients(&current_coefficients, fold_challenge)
+            .map_err(|error| C6WrapperPcsError::frame("C6 persisted coefficient fold", error))?;
+        current_codeword = fold_codeword(&current_codeword, fold_challenge)
+            .map_err(|error| C6WrapperPcsError::frame("C6 persisted codeword fold", error))?;
+        let output_len = input_len / 2;
+        activated += activate_persisted_at_domain(
+            output_len,
+            cohorts,
+            claims,
+            &activation_challenges,
+            &mut current_coefficients,
+            &mut current_codeword,
+            &mut current_claim,
+        )?;
+        let fold_round = u8::try_from(round_index + 1)
+            .map_err(|_| C6WrapperPcsError::new("C6 persisted fold round overflows"))?;
+        let config = CohortVerifierConfigV4 {
+            identity: CohortIdentityV4 {
+                cohort_id: global_cohort_id,
+                oracle_kind: OracleKindV4::GlobalFoldAggregate,
+                fold_round,
+            },
+            slot_descriptors: vec![Some(fold_descriptor)],
+            outer_len: output_len,
+            expected_symbol_count: 1,
+        };
+        let tree = CohortTreeV4::build_flat(config, vec![Some(current_codeword.clone())])
+            .map_err(|error| C6WrapperPcsError::frame("C6 persisted fold commitment", error))?;
+        let root = tree.root();
+        let opening = persist_scaled_c6_wrapper_fold_reference(
+            tree,
+            &current_codeword,
+            spill_root,
+            statement_digest,
+            session_digest,
+            repetition as u8,
+            fold_round,
+        )?;
+        let mut messages = vec![line_zero, line_one];
+        if round_index + 1 == common_point.len() {
+            if current_coefficients.as_slice() != [current_claim] {
+                return Err(C6WrapperPcsError::new("C6 persisted final folded scalar mismatch"));
+            }
+            messages.push(current_claim);
+        }
+        let frame = FoldCommitmentFrameV4 {
+            cohort_id: global_cohort_id,
+            oracle_kind: OracleKindV4::GlobalFoldAggregate,
+            fold_round,
+            input_log2: input_len.ilog2() as u8,
+            output_log2: output_len.ilog2() as u8,
+            root_digest: root,
+            ordered_message_symbols: messages,
+        };
+        let frame_len = FrameV4::FoldCommitment(frame.clone())
+            .encode()
+            .map_err(|error| C6WrapperPcsError::frame("C6 persisted fold frame", error))?
+            .len();
+        transcript.append(
+            C6_FOLD_POST_CHALLENGE_LABEL,
+            u64::try_from(
+                frame_len
+                    .checked_sub(32)
+                    .ok_or_else(|| C6WrapperPcsError::new("C6 fold frame shorter than line"))?,
+            )
+            .map_err(|_| C6WrapperPcsError::new("C6 fold frame length exceeds u64"))?,
+        );
+        fold_frames.push(frame);
+        fold_openings.push(opening);
+        input_len = output_len;
+    }
+    if input_len != 1usize << C6_WRAPPER_TERMINAL_LOG2 || activated != cohorts.len() {
+        return Err(C6WrapperPcsError::new("C6 persisted activation schedule incomplete"));
+    }
+    Ok(PersistedSealedChain {
+        repetition: repetition as u8,
+        common_point,
+        activation_challenges,
+        fold_challenges,
+        fold_frames,
+        fold_openings,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn activate_persisted_at_domain(
+    domain_len: usize,
+    cohorts: &[C6PersistedWrapperCohort],
+    claims: &[C6WrapperOpeningClaim],
+    activation_challenges: &[Fp2],
+    current_coefficients: &mut [Fp2],
+    current_codeword: &mut [Fp2],
+    current_claim: &mut Fp2,
+) -> Result<usize> {
+    let mut activated = 0usize;
+    for ((cohort, claim), activation) in cohorts.iter().zip(claims).zip(activation_challenges) {
+        if cohort.commitment().spec.encoded_len()? != domain_len {
+            continue;
+        }
+        let combined = cohort.combine(claim)?;
+        if combined.coefficients.len() != current_coefficients.len()
+            || combined.codeword.len() != current_codeword.len()
+        {
+            return Err(C6WrapperPcsError::new("C6 persisted activation domain mismatch"));
+        }
+        for (output, value) in current_coefficients.iter_mut().zip(&combined.coefficients) {
+            *output += *activation * *value;
+        }
+        for (output, value) in current_codeword.iter_mut().zip(&combined.codeword) {
+            *output += *activation * *value;
+        }
+        *current_claim += *activation * combined.claimed_value;
+        activated += 1;
+    }
+    Ok(activated)
+}
+
 fn issue_chain_openings(
     statement_digest: C6WrapperDigest,
     cohorts: &[C6CommittedWrapperCohort],
@@ -1649,6 +1894,53 @@ fn issue_chain_openings(
     packed_opening
         .validate()
         .map_err(|error| C6WrapperPcsError::frame("C6 packed opening shape", error))?;
+    Ok(C6WrapperChainProof {
+        repetition: sealed.repetition,
+        fold_frames: sealed.fold_frames,
+        packed_opening,
+    })
+}
+
+fn issue_persisted_reference_openings(
+    statement_digest: C6WrapperDigest,
+    cohorts: &[C6PersistedWrapperCohort],
+    claims: &[C6WrapperOpeningClaim],
+    sealed: PersistedSealedChain,
+    query_draws: &[u64],
+) -> Result<C6WrapperChainProof> {
+    validate_query_draws(query_draws, cohorts[0].commitment().config.outer_depth())?;
+    if sealed.common_point != claims[0].point
+        || sealed.activation_challenges.len() != cohorts.len()
+        || sealed.fold_challenges.len() != sealed.fold_frames.len()
+        || sealed.fold_openings.len() != sealed.fold_frames.len()
+    {
+        return Err(C6WrapperPcsError::new("C6 persisted sealed-chain geometry mismatch"));
+    }
+    let mut initial_groups = Vec::with_capacity(cohorts.len());
+    for cohort in cohorts {
+        let (mut opening, _) = cohort.open_initial(query_draws)?;
+        opening.cohort_id = cohort.commitment().spec.cohort_id;
+        initial_groups.push(opening);
+    }
+    let fold_rounds = sealed
+        .fold_openings
+        .iter()
+        .map(|opening| opening.open(query_draws).map(|(opening, _)| opening))
+        .collect::<Result<Vec<_>>>()?;
+    let commitments = cohorts.iter().map(|cohort| cohort.commitment().clone()).collect::<Vec<_>>();
+    let opening_schedule_digest = opening_schedule_digest(
+        statement_digest,
+        sealed.repetition,
+        &commitments,
+        claims,
+        &sealed.fold_frames,
+        query_draws,
+    )?;
+    let packed_opening =
+        PackedBatchOpeningFrameV4 { opening_schedule_digest, initial_groups, fold_rounds };
+    packed_opening
+        .validate()
+        .map_err(|error| C6WrapperPcsError::frame("C6 persisted packed opening shape", error))?;
     Ok(C6WrapperChainProof {
         repetition: sealed.repetition,
         fold_frames: sealed.fold_frames,
@@ -2161,7 +2453,10 @@ fn validate_commitments(commitments: &[C6WrapperCommitment]) -> Result<()> {
     Ok(())
 }
 
-fn validate_claim(commitment: &C6WrapperCommitment, claim: &C6WrapperOpeningClaim) -> Result<()> {
+pub(crate) fn validate_claim(
+    commitment: &C6WrapperCommitment,
+    claim: &C6WrapperOpeningClaim,
+) -> Result<()> {
     if claim.cohort_id != commitment.spec.cohort_id
         || claim.point.len() != usize::from(commitment.spec.coefficient_log2()?)
         || claim.slot_weights.len() != usize::from(commitment.spec.slot_count)
@@ -2803,6 +3098,50 @@ mod tests {
             .set_len(0)
             .unwrap();
         assert!(persisted.open_initial(&draws).is_err());
+        drop(persisted);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn scaled_persisted_two_chain_proof_matches_resident_bytes_and_transcript() {
+        let (cohorts, commitments, claims) = fixture();
+        let seed = [0x72; 32];
+        let mut resident_tx = Transcript::new(seed);
+        let resident =
+            prove_c6_wrapper_pcs(statement(), &cohorts, &claims, &mut resident_tx).unwrap();
+        let root = std::env::temp_dir().join(format!(
+            "volta-c6-wrapper-persisted-chain-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let session = [0x73; 32];
+        let persisted = cohorts
+            .into_iter()
+            .enumerate()
+            .map(|(ordinal, cohort)| {
+                persist_scaled_c6_wrapper_cohort_reference(cohort, &root, session, ordinal as u64)
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+        let mut persisted_tx = Transcript::new(seed);
+        let proof = prove_c6_wrapper_pcs_persisted_reference(
+            statement(),
+            &persisted,
+            &claims,
+            &root,
+            session,
+            &mut persisted_tx,
+        )
+        .unwrap();
+        assert_eq!(proof, resident);
+        assert_eq!(proof.canonical_bytes().unwrap(), resident.canonical_bytes().unwrap());
+        assert_eq!(persisted_tx.ledger(), resident_tx.ledger());
+        assert_eq!(persisted_tx.total_bytes(), resident_tx.total_bytes());
+        let mut verifier_tx = Transcript::new(seed);
+        verify_c6_wrapper_pcs(statement(), &commitments, &claims, &proof, &mut verifier_tx)
+            .unwrap();
+        assert_eq!(verifier_tx.ledger(), persisted_tx.ledger());
         drop(persisted);
         std::fs::remove_dir_all(root).unwrap();
     }

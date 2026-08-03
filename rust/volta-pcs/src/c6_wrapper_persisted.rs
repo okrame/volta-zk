@@ -11,13 +11,15 @@ use std::path::{Path, PathBuf};
 use volta_field::Fp2;
 
 use crate::c6_wrapper_pcs::{
-    C6CommittedWrapperCohort, C6WrapperCommitment, C6WrapperDigest, C6WrapperPcsError,
+    validate_claim, C6CommittedWrapperCohort, C6WrapperCommitment, C6WrapperDigest,
+    C6WrapperOpeningClaim, C6WrapperPcsError, CombinedCohort,
 };
-use crate::x4::frame_v4::InitialOpeningGroupV4;
-use crate::x4::merkle_v4::DenseOuterNodeCacheV4;
+use crate::x4::frame_v4::{FoldRoundOpeningV4, InitialOpeningGroupV4};
+use crate::x4::merkle_v4::{CohortTreeV4, DenseOuterNodeCacheV4};
+use crate::x4::ntt::evaluate_multilinear_coefficients;
 use crate::x4::persisted_v4::{
-    write_canonical_fp2_slice_v4, PersistedCohortOpeningV4, PersistedOpeningTrafficV4,
-    PersistedOracleBindingV4,
+    read_persisted_coefficients_v4, write_canonical_fp2_slice_v4, PersistedCohortOpeningV4,
+    PersistedOpeningTrafficV4, PersistedOracleBindingV4,
 };
 
 const MANIFEST_MAGIC: [u8; 8] = *b"C6WSP1\0\0";
@@ -75,6 +77,104 @@ impl C6PersistedWrapperCohort {
             .open_initial(query_draws, &touched)
             .map_err(|error| C6WrapperPcsError::external("C6 persisted initial opening", error))
     }
+
+    pub(crate) fn combine(&self, claim: &C6WrapperOpeningClaim) -> Result<CombinedCohort> {
+        validate_claim(&self.commitment, claim)?;
+        let slots = (0..self.commitment.spec.slot_count).collect::<Vec<_>>();
+        let coefficient_slots = read_persisted_coefficients_v4(
+            self.directory.join("coefficients.fp2"),
+            &self.commitment.config,
+        )
+        .map_err(|error| C6WrapperPcsError::external("read C6 persisted coefficients", error))?;
+        let coefficient_len = self.commitment.config.outer_len / 8;
+        let mut coefficients = vec![Fp2::ZERO; coefficient_len];
+        for ((slot, weight), source) in
+            slots.iter().zip(&claim.slot_weights).zip(coefficient_slots.iter())
+        {
+            let source = source.as_ref().ok_or_else(|| {
+                C6WrapperPcsError::external_message("missing C6 persisted coefficient slot")
+            })?;
+            if usize::from(*slot) >= coefficient_slots.len() || source.len() != coefficient_len {
+                return Err(C6WrapperPcsError::external_message(
+                    "C6 persisted coefficient geometry changed",
+                ));
+            }
+            for (output, value) in coefficients.iter_mut().zip(source) {
+                *output += *weight * *value;
+            }
+        }
+        let (codeword, _bytes_read) = self
+            .opening
+            .combine_slots(&slots, &claim.slot_weights)
+            .map_err(|error| C6WrapperPcsError::external("combine C6 persisted oracle", error))?;
+        let actual = evaluate_multilinear_coefficients(&coefficients, &claim.point)
+            .map_err(|error| C6WrapperPcsError::external("evaluate C6 persisted claim", error))?;
+        if actual != claim.value {
+            return Err(C6WrapperPcsError::external_message(
+                "C6 persisted claim does not match coefficients",
+            ));
+        }
+        Ok(CombinedCohort {
+            outer_len: self.commitment.config.outer_len,
+            coefficients,
+            codeword,
+            claimed_value: claim.value,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct C6PersistedFoldOpening {
+    opening: PersistedCohortOpeningV4<DenseOuterNodeCacheV4>,
+}
+
+impl C6PersistedFoldOpening {
+    pub(crate) fn open(
+        &self,
+        query_draws: &[u64],
+    ) -> Result<(FoldRoundOpeningV4, PersistedOpeningTrafficV4)> {
+        self.opening
+            .open_fold_round(query_draws)
+            .map_err(|error| C6WrapperPcsError::external("C6 persisted fold opening", error))
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn persist_scaled_c6_wrapper_fold_reference(
+    tree: CohortTreeV4,
+    codeword: &[Fp2],
+    root: impl AsRef<Path>,
+    statement_digest: C6WrapperDigest,
+    session_digest: C6WrapperDigest,
+    repetition: u8,
+    fold_round: u8,
+) -> Result<C6PersistedFoldOpening> {
+    let parts = tree.into_lifecycle_parts();
+    if parts.config.outer_depth() > 16
+        || parts.slot_symbols.as_slice() != [Some(codeword.to_vec())]
+        || parts.config.identity.fold_round != fold_round
+    {
+        return Err(C6WrapperPcsError::external_message("C6 scaled persisted fold owner mismatch"));
+    }
+    let directory = root.as_ref().join(format!("repetition-{repetition}-fold-{fold_round:02}"));
+    fs::create_dir(&directory)
+        .map_err(|error| C6WrapperPcsError::external("create C6 persisted fold", error))?;
+    let oracle_path = directory.join("oracle.fp2");
+    write_slot_file_create_new(&oracle_path, &[codeword.to_vec()])?;
+    let binding =
+        PersistedOracleBindingV4::new(statement_digest, session_digest, parts.outer_cache.root());
+    let opening = PersistedCohortOpeningV4::load(
+        &oracle_path,
+        parts.config,
+        parts.outer_cache,
+        binding,
+        binding,
+    )
+    .map_err(|error| C6WrapperPcsError::external("load C6 persisted fold", error))?;
+    File::open(&directory)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| C6WrapperPcsError::external("fsync C6 persisted fold directory", error))?;
+    Ok(C6PersistedFoldOpening { opening })
 }
 
 /// Consume a scaled resident cohort and seal its canonical coefficient and

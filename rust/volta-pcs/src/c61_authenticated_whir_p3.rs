@@ -741,6 +741,151 @@ pub struct C61ProductionCommittedChainExecution {
     pub report: C61ProductionCommittedChainReport,
 }
 
+#[derive(Debug)]
+pub struct C61ProductionCommittedFourChainExecution {
+    pub chains: [C61ProductionCommittedChainExecution; 4],
+    pub model_coefficient_digest: [u8; 32],
+    pub embedding_coefficient_digest: [u8; 32],
+    pub peak_loaded_coefficient_bytes: u64,
+}
+
+pub fn c61_production_coefficient_digest(
+    component: C61NativeComponent,
+    coefficients: &[Goldilocks],
+) -> Result<[u8; 32], String> {
+    let expected = match component {
+        C61NativeComponent::Model => 1usize << C61_MODEL_POLYNOMIAL_LOG2,
+        C61NativeComponent::Embedding => 1usize << C61_EMBEDDING_POLYNOMIAL_LOG2,
+        C61NativeComponent::Compiler => {
+            return Err("C6SPR11 coefficient owner rejects compiler polynomials".to_owned())
+        }
+    };
+    if coefficients.len() != expected {
+        return Err("C6SPR11 coefficient owner has the wrong production geometry".to_owned());
+    }
+    let mut hasher =
+        blake3::Hasher::new_derive_key("volta-zk/c6.1/production-coefficient-owner/v1");
+    hasher.update(&(component as u16).to_le_bytes());
+    hasher.update(&(coefficients.len() as u64).to_le_bytes());
+    for coefficient in coefficients {
+        hasher.update(&coefficient.as_canonical_u64().to_le_bytes());
+    }
+    Ok(*hasher.finalize().as_bytes())
+}
+
+/// Produce model0/model1/embed0/embed1 sequentially from a reloadable durable
+/// source.  Only one coefficient vector is live at a time; the preregistered
+/// digest guarantees both repetitions use the same exact polynomial.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_c61_authenticated_whir_p3_production_four_committed_chains_in_attempt(
+    mut load_coefficients: impl FnMut(C61NativeComponent, u8) -> Result<Vec<Goldilocks>, String>,
+    expected_model_coefficient_digest: [u8; 32],
+    expected_embedding_coefficient_digest: [u8; 32],
+    model_claims: [&[crate::batch::BlockClaim]; 2],
+    embedding_claims: [&[crate::batch::BlockClaim]; 2],
+    model_targets: [Vec<ProverAuthed>; 2],
+    embedding_targets: [Vec<ProverAuthed>; 2],
+    spill_root: &Path,
+    admission: C61ProductionPersistedResourceAdmission,
+    backend: &mut Backend,
+    correlations: &mut [CorrelationStream; 2],
+    verifier_seeds: [[u8; 32]; 4],
+    mask_ranges: [C61AuthenticatedWhirMaskRange; 4],
+) -> Result<C61ProductionCommittedFourChainExecution, String> {
+    if expected_model_coefficient_digest == [0; 32]
+        || expected_embedding_coefficient_digest == [0; 32]
+        || backend.kind() != BackendKind::CudaResident
+        || !admission.allow_persisted_executor
+        || !admission.a100_present
+        || admission.gpu_total_bytes == 0
+        || admission.available_host_bytes < C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_HOST_BYTES
+        || admission.available_spill_bytes < C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES
+        || correlations.iter().any(|stream| !stream.uses_pooled_pcg())
+        || model_claims.iter().any(|claims| claims.len() != 96)
+        || embedding_claims.iter().any(|claims| claims.len() != 6)
+        || model_targets.iter().any(|targets| targets.len() != 96)
+        || embedding_targets.iter().any(|targets| targets.len() != 6)
+        || !spill_root.is_dir()
+    {
+        return Err(
+            "C6SPR11 four-chain persisted/CUDA preflight failed before source load".to_owned()
+        );
+    }
+    let schedule = [
+        (C61NativeComponent::Model, 0u8),
+        (C61NativeComponent::Model, 1u8),
+        (C61NativeComponent::Embedding, 0u8),
+        (C61NativeComponent::Embedding, 1u8),
+    ];
+    if schedule.iter().any(|(component, repetition)| {
+        spill_root.join(format!("{:?}-{repetition}", component).to_ascii_lowercase()).exists()
+    }) {
+        return Err("C6SPR11 four-chain spill children must all be create-new".to_owned());
+    }
+    let mut model_targets = model_targets.into_iter();
+    let mut embedding_targets = embedding_targets.into_iter();
+    let mut executions = Vec::with_capacity(4);
+    let mut peak_loaded_coefficient_bytes = 0u64;
+    for (ordinal, (component, repetition)) in schedule.into_iter().enumerate() {
+        let coefficients = load_coefficients(component, repetition)?;
+        let digest = c61_production_coefficient_digest(component, &coefficients)?;
+        let expected_digest = match component {
+            C61NativeComponent::Model => expected_model_coefficient_digest,
+            C61NativeComponent::Embedding => expected_embedding_coefficient_digest,
+            C61NativeComponent::Compiler => unreachable!("compiler absent from schedule"),
+        };
+        if digest != expected_digest {
+            return Err(
+                "C6SPR11 reloaded coefficient polynomial differs from its owner digest".to_owned()
+            );
+        }
+        peak_loaded_coefficient_bytes = peak_loaded_coefficient_bytes.max(
+            (coefficients.len() as u64)
+                .checked_mul(std::mem::size_of::<Goldilocks>() as u64)
+                .ok_or_else(|| "C6SPR11 coefficient byte census overflows".to_owned())?,
+        );
+        let (claims, targets, parameter_digest) = match component {
+            C61NativeComponent::Model => (
+                model_claims[usize::from(repetition)],
+                model_targets.next().expect("two model target owners"),
+                c61_authenticated_p3_parameter_digest(28)?,
+            ),
+            C61NativeComponent::Embedding => (
+                embedding_claims[usize::from(repetition)],
+                embedding_targets.next().expect("two embedding target owners"),
+                c61_authenticated_p3_parameter_digest(27)?,
+            ),
+            C61NativeComponent::Compiler => unreachable!("compiler absent from schedule"),
+        };
+        let id = C61NativeChainId { component, repetition };
+        let child = spill_root.join(format!("{:?}-{repetition}", component).to_ascii_lowercase());
+        executions.push(
+            prove_c61_authenticated_whir_p3_production_committed_chain_persisted_cuda_in_attempt(
+                coefficients,
+                claims,
+                targets,
+                parameter_digest,
+                &child,
+                admission,
+                backend,
+                &mut correlations[usize::from(repetition)],
+                verifier_seeds[ordinal],
+                id,
+                mask_ranges[ordinal],
+            )?,
+        );
+    }
+    let chains = executions
+        .try_into()
+        .map_err(|_| "C6SPR11 four-chain execution census mismatch".to_owned())?;
+    Ok(C61ProductionCommittedFourChainExecution {
+        chains,
+        model_coefficient_digest: expected_model_coefficient_digest,
+        embedding_coefficient_digest: expected_embedding_coefficient_digest,
+        peak_loaded_coefficient_bytes,
+    })
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C61ProductionCommittedChainVerification {
     pub id: C61NativeChainId,
@@ -5944,6 +6089,47 @@ mod tests {
             .unwrap_err();
         assert!(error.contains("persisted/CUDA admission failed"));
         assert!(!spill_root.exists());
+    }
+
+    #[test]
+    fn four_committed_chain_driver_rejects_before_loading_any_coefficient_owner() {
+        let mut backend = Backend::cpu();
+        let mut correlations =
+            [CorrelationStream::new([0xA1; 32]), CorrelationStream::new([0xA2; 32])];
+        let claims: [&[crate::batch::BlockClaim]; 2] = [&[], &[]];
+        let loaded = std::cell::Cell::new(false);
+        let error = prove_c61_authenticated_whir_p3_production_four_committed_chains_in_attempt(
+            |_, _| {
+                loaded.set(true);
+                Ok(Vec::new())
+            },
+            [1; 32],
+            [2; 32],
+            claims,
+            claims,
+            [Vec::new(), Vec::new()],
+            [Vec::new(), Vec::new()],
+            Path::new("/definitely/not/a/c61/attempt"),
+            C61ProductionPersistedResourceAdmission {
+                available_host_bytes: C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_HOST_BYTES,
+                available_spill_bytes: C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES,
+                gpu_total_bytes: 80 * 1024 * 1024 * 1024,
+                a100_present: true,
+                allow_persisted_executor: true,
+            },
+            &mut backend,
+            &mut correlations,
+            [[0xB1; 32], [0xB2; 32], [0xB3; 32], [0xB4; 32]],
+            [
+                C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 41, range_start: 140_000 },
+                C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 42, range_start: 141_000 },
+                C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 43, range_start: 142_000 },
+                C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 44, range_start: 143_000 },
+            ],
+        )
+        .unwrap_err();
+        assert!(error.contains("preflight failed before source load"));
+        assert!(!loaded.get());
     }
 
     #[test]

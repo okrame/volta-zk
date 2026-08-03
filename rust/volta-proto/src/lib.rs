@@ -152,6 +152,11 @@ pub use model_proof::{
     verify_response, verify_response_private_logits, ChunkPub, ChunkRef, EmbedProof, FinalLnProof,
     ModelOut, ModelOutV, ModelProof, PrivateChunkPub, ResidentChunkRef, SeamProof,
 };
+#[cfg(feature = "c6-trace")]
+pub use model_proof::{
+    prove_response_private_logits_c6_cache_inline, verify_response_private_logits_c6_cache_inline,
+    C6GrandResidualProverRoots, C6GrandResidualVerifierRoots,
+};
 pub use prod_check::{prod_batch_prover, prod_batch_verify, ProdProof};
 pub use schedule::{
     CorrelationScope, CorrelationSegment, RoundFamily, SchedulePlan, ScheduleSite, SiteCorrPlan,

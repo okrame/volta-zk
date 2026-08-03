@@ -120,7 +120,7 @@ fn add_bytes(a: &mut LayerBytes, b: &LayerBytes) {
 /// response seam.
 #[cfg(feature = "c6-trace")]
 #[allow(dead_code)]
-pub(crate) struct C6GrandResidualProverRoots(Vec<ProverAuthed>);
+pub struct C6GrandResidualProverRoots(Vec<ProverAuthed>);
 
 #[cfg(feature = "c6-trace")]
 #[allow(dead_code)]
@@ -129,11 +129,15 @@ impl C6GrandResidualProverRoots {
         Self(roots)
     }
 
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.0.len()
     }
 
-    pub(crate) fn record_operation_trace_ownership(&self) -> Result<(), volta_mac::C6TraceError> {
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn record_operation_trace_ownership(&self) -> Result<(), volta_mac::C6TraceError> {
         let roots = self.0.iter().copied().map(ProverAuthed::c6_trace_token).collect::<Vec<_>>();
         volta_mac::record_c6_zero_roots(&roots)
     }
@@ -141,7 +145,7 @@ impl C6GrandResidualProverRoots {
 
 #[cfg(feature = "c6-trace")]
 #[allow(dead_code)]
-pub(crate) struct C6GrandResidualVerifierRoots(Vec<VerifierKey>);
+pub struct C6GrandResidualVerifierRoots(Vec<VerifierKey>);
 
 #[cfg(feature = "c6-trace")]
 #[allow(dead_code)]
@@ -150,11 +154,15 @@ impl C6GrandResidualVerifierRoots {
         Self(roots)
     }
 
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.0.len()
     }
 
-    pub(crate) fn record_operation_trace_ownership(&self) -> Result<(), volta_mac::C6TraceError> {
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn record_operation_trace_ownership(&self) -> Result<(), volta_mac::C6TraceError> {
         let roots = self.0.iter().copied().map(VerifierKey::c6_trace_token).collect::<Vec<_>>();
         volta_mac::record_c6_zero_roots(&roots)
     }
@@ -2736,6 +2744,38 @@ pub(crate) fn prove_response_c6_cache_inline(
     (proof, out, prod, C6GrandResidualProverRoots::new(zero), metrics)
 }
 
+/// Production C6 response entry point. It combines the exact private-logit
+/// T1 statement with the dual-tape cache target stream in the original model
+/// execution; callers cannot obtain the same owner by replaying either mode
+/// after the fact.
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+pub fn prove_response_private_logits_c6_cache_inline(
+    model: &Gpt2Model,
+    wit: &ModelWitness,
+    chunks: &[ChunkRef],
+    stream: &mut CorrelationStream,
+    secondary: &mut CorrelationStream,
+    schedule_follower: &mut C6SourceScheduleProverFollower,
+    target_builder: &mut C6CacheFoldTargetInlineProver,
+    tx: &mut Transcript,
+) -> (ModelProof, ModelOut, ProdTriples, C6GrandResidualProverRoots, C6CacheFoldOnlineLayerMetrics)
+{
+    assert_eq!(chunks.len(), 1, "C6 v1 requires one stacked decode phase");
+    let mut cache_mode = ResponseProverCacheMode::C6 {
+        secondary,
+        schedule_follower,
+        target_builder,
+        metrics: C6CacheFoldOnlineLayerMetrics::default(),
+    };
+    let (proof, out, prod, zero) =
+        prove_response_impl(model, wit, chunks, stream, tx, None, true, true, &mut cache_mode);
+    let ResponseProverCacheMode::C6 { metrics, .. } = cache_mode else {
+        unreachable!("C6 private-logit provider mode changed during execution")
+    };
+    (proof, out, prod, C6GrandResidualProverRoots::new(zero), metrics)
+}
+
 /// Historical C3b control arm retained solely for the preregistered T1/C3b
 /// same-process CPU ABBA measurement. It is not a selectable production
 /// protocol and deliberately has no resident/backend entry point.
@@ -4378,6 +4418,42 @@ pub(crate) fn verify_response_c6_cache_inline(
     Some((out, prod, C6GrandResidualVerifierRoots::new(zero), metrics))
 }
 
+/// Verifier mirror of [`prove_response_private_logits_c6_cache_inline`].
+/// The private-logit statement and inline cache schedule are selected before
+/// any verifier-key expansion.
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+pub fn verify_response_private_logits_c6_cache_inline(
+    model: &Gpt2Model,
+    t: usize,
+    chunks: &[PrivateChunkPub<'_>],
+    proof: &ModelProof,
+    vc: &mut VerifierCtx,
+    secondary: &mut VerifierCtx,
+    schedule_follower: &mut C6SourceScheduleVerifierFollower,
+    target_cursor: &mut C6CacheFoldTargetInlineVerifier<'_>,
+    tx: &mut Transcript,
+) -> Option<(ModelOutV, ProdKeyTriples, C6GrandResidualVerifierRoots, C6CacheFoldOnlineLayerMetrics)>
+{
+    if chunks.len() != 1 {
+        return None;
+    }
+    let views: Vec<ChunkPub<'_>> =
+        chunks.iter().map(|chunk| ChunkPub { q: chunk.q, logits: &[], seq: chunk.seq }).collect();
+    let mut cache_mode = ResponseVerifierCacheMode::C6 {
+        secondary,
+        schedule_follower,
+        target_cursor,
+        metrics: C6CacheFoldOnlineLayerMetrics::default(),
+    };
+    let (out, prod, zero) =
+        verify_response_impl(model, t, &[], &views, proof, vc, tx, true, &mut cache_mode)?;
+    let ResponseVerifierCacheMode::C6 { metrics, .. } = cache_mode else {
+        unreachable!("C6 private-logit verifier mode changed during execution")
+    };
+    Some((out, prod, C6GrandResidualVerifierRoots::new(zero), metrics))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn verify_response_impl(
     model: &Gpt2Model,
@@ -5158,7 +5234,7 @@ mod tests {
         let full = volta_gpt2::forward_model_tokens(&model, &sequence);
         let band = volta_gpt2::band_model_witness(&model, &full, t);
         let chunks_p = [ChunkRef { band: &band, seq: &sequence }];
-        let chunks_v = [ChunkPub { q, logits: &band.logits, seq: &sequence }];
+        let chunks_v = [PrivateChunkPub { q, seq: &sequence }];
 
         let primary_seed = [0x61; 32];
         let secondary_seed = [0x62; 32];
@@ -5194,7 +5270,7 @@ mod tests {
         .unwrap();
         let prover_trace_guard = begin_c6_cache_fold_trace(C6CacheFoldParty::Prover).unwrap();
         let (proof, prover_out, products, grand_residual_roots, prover_metrics) =
-            prove_response_c6_cache_inline(
+            prove_response_private_logits_c6_cache_inline(
                 &model,
                 &prefill,
                 &chunks_p,
@@ -5312,10 +5388,9 @@ mod tests {
         .unwrap();
         let verifier_trace_guard = begin_c6_cache_fold_trace(C6CacheFoldParty::Verifier).unwrap();
         let (verifier_out, product_keys, verifier_residual_roots, verifier_metrics) =
-            verify_response_c6_cache_inline(
+            verify_response_private_logits_c6_cache_inline(
                 &model,
                 t,
-                &prefill.logits,
                 &chunks_v,
                 &proof,
                 &mut primary_verifier,

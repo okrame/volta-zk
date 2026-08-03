@@ -16,10 +16,13 @@ use crate::c6_wrapper_pcs::{
     validate_claim, C6CacheStateDescriptors, C6CommittedWrapperCohort, C6WrapperCommitment,
     C6WrapperDigest, C6WrapperOpeningClaim, C6WrapperPcsError, C6WrapperSlotWitness,
     CombinedCohort, C6_PREDECESSOR_CACHE_COHORT_ID, C6_SUCCESSOR_CACHE_COHORT_ID,
+    C6_WRAPPER_REPETITIONS,
 };
 use crate::x4::cuda_v4::{commit_cohort_cuda_v4, X4bCudaCohortPathsV4, X4bCudaCommitMetricsV4};
-use crate::x4::frame_v4::{FoldRoundOpeningV4, InitialOpeningGroupV4};
-use crate::x4::merkle_v4::{CohortTreeV4, DenseOuterNodeCacheV4, OuterCachePolicyV4};
+use crate::x4::frame_v4::{FoldRoundOpeningV4, InitialOpeningGroupV4, OracleKindV4};
+use crate::x4::merkle_v4::{
+    CohortTreeV4, CohortVerifierConfigV4, DenseOuterNodeCacheV4, OuterCachePolicyV4,
+};
 use crate::x4::ntt::evaluate_multilinear_coefficients;
 use crate::x4::persisted_v4::{
     read_persisted_coefficients_v4, write_canonical_fp2_slice_v4, PersistedCohortOpeningV4,
@@ -29,6 +32,9 @@ use crate::x4::persisted_v4::{
 const MANIFEST_MAGIC: [u8; 8] = *b"C6WSP1\0\0";
 const MANIFEST_VERSION: u16 = 1;
 const MANIFEST_DOMAIN: &str = "volta-zk/c6/wrapper-persisted-manifest/v1";
+const FOLD_MANIFEST_MAGIC: [u8; 8] = *b"C6WFP1\0\0";
+const FOLD_MANIFEST_VERSION: u16 = 1;
+const FOLD_MANIFEST_DOMAIN: &str = "volta-zk/c6/wrapper-persisted-fold-manifest/v1";
 pub const C6_PRODUCTION_WRAPPER_CACHE_OMITTED_LEVELS: u8 = 8;
 
 type Result<T> = std::result::Result<T, C6WrapperPcsError>;
@@ -84,13 +90,35 @@ impl C6PersistedWrapperCohort {
     }
 
     pub(crate) fn combine(&self, claim: &C6WrapperOpeningClaim) -> Result<CombinedCohort> {
+        let (coefficients, _) = self.combine_coefficients(claim)?;
+        let slots = (0..self.commitment.spec.slot_count).collect::<Vec<_>>();
+        let (codeword, _bytes_read) = self
+            .opening
+            .combine_slots(&slots, &claim.slot_weights)
+            .map_err(|error| C6WrapperPcsError::external("combine C6 persisted oracle", error))?;
+        Ok(CombinedCohort {
+            outer_len: self.commitment.config.outer_len,
+            coefficients,
+            codeword,
+            claimed_value: claim.value,
+        })
+    }
+
+    pub(crate) fn combine_coefficients(
+        &self,
+        claim: &C6WrapperOpeningClaim,
+    ) -> Result<(Vec<Fp2>, u64)> {
         validate_claim(&self.commitment, claim)?;
         let slots = (0..self.commitment.spec.slot_count).collect::<Vec<_>>();
-        let coefficient_slots = read_persisted_coefficients_v4(
-            self.directory.join("coefficients.fp2"),
-            &self.commitment.config,
-        )
-        .map_err(|error| C6WrapperPcsError::external("read C6 persisted coefficients", error))?;
+        let coefficient_path = self.directory.join("coefficients.fp2");
+        let coefficient_bytes = File::open(&coefficient_path)
+            .and_then(|file| file.metadata())
+            .map_err(|error| C6WrapperPcsError::external("stat C6 persisted coefficients", error))?
+            .len();
+        let coefficient_slots =
+            read_persisted_coefficients_v4(&coefficient_path, &self.commitment.config).map_err(
+                |error| C6WrapperPcsError::external("read C6 persisted coefficients", error),
+            )?;
         let coefficient_len = self.commitment.config.outer_len / 8;
         let mut coefficients = vec![Fp2::ZERO; coefficient_len];
         for ((slot, weight), source) in
@@ -108,10 +136,6 @@ impl C6PersistedWrapperCohort {
                 *output += *weight * *value;
             }
         }
-        let (codeword, _bytes_read) = self
-            .opening
-            .combine_slots(&slots, &claim.slot_weights)
-            .map_err(|error| C6WrapperPcsError::external("combine C6 persisted oracle", error))?;
         let actual = evaluate_multilinear_coefficients(&coefficients, &claim.point)
             .map_err(|error| C6WrapperPcsError::external("evaluate C6 persisted claim", error))?;
         if actual != claim.value {
@@ -119,12 +143,7 @@ impl C6PersistedWrapperCohort {
                 "C6 persisted claim does not match coefficients",
             ));
         }
-        Ok(CombinedCohort {
-            outer_len: self.commitment.config.outer_len,
-            coefficients,
-            codeword,
-            claimed_value: claim.value,
-        })
+        Ok((coefficients, coefficient_bytes))
     }
 }
 
@@ -134,6 +153,10 @@ pub(crate) struct C6PersistedFoldOpening {
 }
 
 impl C6PersistedFoldOpening {
+    pub(crate) fn root(&self) -> C6WrapperDigest {
+        self.opening.root()
+    }
+
     pub(crate) fn open(
         &self,
         query_draws: &[u64],
@@ -338,7 +361,8 @@ pub fn commit_production_c6_wrapper_cohort_cuda(
         binding,
     )
     .map_err(|error| C6WrapperPcsError::external("load C6 CUDA opening", error))?;
-    let metrics = artifacts.metrics;
+    let mut metrics = artifacts.metrics;
+    include_c6_owner_metadata(&mut metrics)?;
     let owner = C6PersistedWrapperCohort {
         commitment,
         session_digest,
@@ -348,18 +372,121 @@ pub fn commit_production_c6_wrapper_cohort_cuda(
         metrics: C6PersistedWrapperMetrics {
             coefficient_bytes_written: metrics.coefficient_bytes_persisted,
             oracle_bytes_written: metrics.oracle_bytes_persisted,
-            files_created: metrics
-                .files_created
-                .checked_add(1)
-                .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA file overflow"))?,
-            fsync_count: metrics
-                .fsync_count
-                .checked_add(2)
-                .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA fsync overflow"))?,
+            files_created: metrics.files_created,
+            fsync_count: metrics.fsync_count,
             resident_codeword_copies_after_seal: 0,
         },
     };
     Ok((owner, metrics))
+}
+
+/// Commit one production global-fold aggregate directly from its folded
+/// coefficients. CUDA creates the rate-eight oracle and Merkle root; no
+/// resident codeword or `CohortTreeV4` is constructed.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn commit_production_c6_wrapper_fold_cuda(
+    backend: &mut Backend,
+    config: CohortVerifierConfigV4,
+    coefficients: Vec<Fp2>,
+    root: impl AsRef<Path>,
+    statement_digest: C6WrapperDigest,
+    session_digest: C6WrapperDigest,
+    repetition: u8,
+    fold_round: u8,
+) -> Result<(C6PersistedFoldOpening, X4bCudaCommitMetricsV4, Vec<Fp2>)> {
+    if backend.kind() == BackendKind::Cpu {
+        return Err(C6WrapperPcsError::external_message("C6 production fold refuses CPU backend"));
+    }
+    config
+        .validate()
+        .map_err(|error| C6WrapperPcsError::external("validate C6 CUDA fold", error))?;
+    if statement_digest == [0; 32]
+        || session_digest == [0; 32]
+        || usize::from(repetition) >= C6_WRAPPER_REPETITIONS
+        || fold_round == 0
+        || config.identity.oracle_kind != OracleKindV4::GlobalFoldAggregate
+        || config.identity.fold_round != fold_round
+        || config.slot_descriptors.len() != 1
+        || config.slot_descriptors[0].is_none()
+        || coefficients.len() != config.outer_len / 8
+    {
+        return Err(C6WrapperPcsError::external_message(
+            "C6 production fold statement/profile binding mismatch",
+        ));
+    }
+    let directory = root.as_ref().join(format!("repetition-{repetition}-fold-{fold_round:02}"));
+    fs::create_dir(&directory)
+        .map_err(|error| C6WrapperPcsError::external("create C6 CUDA fold", error))?;
+    let paths = X4bCudaCohortPathsV4 {
+        coefficients: directory.join("coefficients.fp2"),
+        oracle: directory.join("oracle.fp2"),
+        root: directory.join("root.digest"),
+        staging_directory: directory.join("staging"),
+    };
+    let cache_policy = OuterCachePolicyV4 {
+        bottom_levels_omitted: C6_PRODUCTION_WRAPPER_CACHE_OMITTED_LEVELS
+            .min(config.outer_depth() - 1),
+    };
+    let coefficient_slots = vec![Some(coefficients)];
+    let artifacts = commit_cohort_cuda_v4(
+        backend,
+        config.clone(),
+        &coefficient_slots,
+        paths.clone(),
+        cache_policy,
+    )
+    .map_err(|error| C6WrapperPcsError::external("commit C6 CUDA fold", error))?;
+    if artifacts.commitment.config != config {
+        return Err(C6WrapperPcsError::external_message(
+            "C6 CUDA fold returned different verifier config",
+        ));
+    }
+    let manifest = encode_fold_manifest(
+        &config,
+        statement_digest,
+        session_digest,
+        repetition,
+        artifacts.commitment.root,
+        artifacts.metrics.coefficient_bytes_persisted,
+        artifacts.metrics.oracle_bytes_persisted,
+    )?;
+    write_bytes_create_new(&directory.join("manifest.c6wfp1"), &manifest)?;
+    File::open(&directory)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| C6WrapperPcsError::external("fsync C6 CUDA fold directory", error))?;
+    let binding =
+        PersistedOracleBindingV4::new(statement_digest, session_digest, artifacts.commitment.root);
+    let opening = PersistedCohortOpeningV4::load(
+        &paths.oracle,
+        config,
+        artifacts.outer_cache,
+        binding,
+        binding,
+    )
+    .map_err(|error| C6WrapperPcsError::external("load C6 CUDA fold opening", error))?;
+    let mut metrics = artifacts.metrics;
+    include_c6_owner_metadata(&mut metrics)?;
+    let coefficients =
+        coefficient_slots.into_iter().next().flatten().ok_or_else(|| {
+            C6WrapperPcsError::external_message("C6 fold coefficients disappeared")
+        })?;
+    Ok((C6PersistedFoldOpening { opening }, metrics, coefficients))
+}
+
+fn include_c6_owner_metadata(metrics: &mut X4bCudaCommitMetricsV4) -> Result<()> {
+    metrics.files_created = metrics
+        .files_created
+        .checked_add(1)
+        .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA file overflow"))?;
+    metrics.directories_created = metrics
+        .directories_created
+        .checked_add(1)
+        .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA directory overflow"))?;
+    metrics.fsync_count = metrics
+        .fsync_count
+        .checked_add(2)
+        .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA fsync overflow"))?;
+    Ok(())
 }
 
 fn write_slot_file_create_new(path: &Path, slots: &[Vec<Fp2>]) -> Result<u64> {
@@ -435,6 +562,53 @@ fn encode_manifest(
     Ok(bytes)
 }
 
+#[allow(clippy::too_many_arguments)]
+fn encode_fold_manifest(
+    config: &CohortVerifierConfigV4,
+    statement_digest: C6WrapperDigest,
+    session_digest: C6WrapperDigest,
+    repetition: u8,
+    root: C6WrapperDigest,
+    coefficient_bytes: u64,
+    oracle_bytes: u64,
+) -> Result<Vec<u8>> {
+    let descriptor = config
+        .slot_descriptors
+        .first()
+        .copied()
+        .flatten()
+        .ok_or_else(|| C6WrapperPcsError::external_message("missing C6 fold descriptor"))?;
+    let mut bytes = Vec::with_capacity(204);
+    bytes.extend_from_slice(&FOLD_MANIFEST_MAGIC);
+    bytes.extend_from_slice(&FOLD_MANIFEST_VERSION.to_le_bytes());
+    bytes.extend_from_slice(&0u16.to_le_bytes());
+    bytes.extend_from_slice(&session_digest);
+    bytes.extend_from_slice(&statement_digest);
+    bytes.extend_from_slice(&root);
+    bytes.extend_from_slice(&descriptor);
+    bytes.extend_from_slice(&config.identity.cohort_id.to_le_bytes());
+    bytes.push(config.identity.oracle_kind as u8);
+    bytes.push(config.identity.fold_round);
+    bytes.push(repetition);
+    bytes.push(0);
+    bytes.extend_from_slice(
+        &u64::try_from(config.outer_len)
+            .map_err(|_| C6WrapperPcsError::external_message("C6 fold outer length overflow"))?
+            .to_le_bytes(),
+    );
+    bytes.extend_from_slice(&coefficient_bytes.to_le_bytes());
+    bytes.extend_from_slice(&oracle_bytes.to_le_bytes());
+    let mut hasher = blake3::Hasher::new_derive_key(FOLD_MANIFEST_DOMAIN);
+    hasher.update(&bytes);
+    bytes.extend_from_slice(hasher.finalize().as_bytes());
+    if bytes.len() != 204 {
+        return Err(C6WrapperPcsError::external_message(
+            "C6 persisted fold manifest length changed",
+        ));
+    }
+    Ok(bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -460,5 +634,95 @@ mod tests {
         .unwrap_err();
         assert!(error.to_string().contains("refuses CPU"));
         assert!(!root.exists());
+    }
+
+    #[test]
+    fn production_fold_constructor_refuses_cpu_before_allocation_or_io() {
+        let root = std::env::temp_dir().join(format!(
+            "volta-c6-wrapper-fold-cuda-reject-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let config = CohortVerifierConfigV4 {
+            identity: crate::x4::merkle_v4::CohortIdentityV4 {
+                cohort_id: 0xC6F0_0000,
+                oracle_kind: OracleKindV4::GlobalFoldAggregate,
+                fold_round: 1,
+            },
+            slot_descriptors: vec![Some([0x83; 32])],
+            outer_len: 16,
+            expected_symbol_count: 1,
+        };
+        let error = commit_production_c6_wrapper_fold_cuda(
+            &mut Backend::cpu(),
+            config,
+            vec![Fp2::ZERO; 2],
+            &root,
+            [0x81; 32],
+            [0x82; 32],
+            0,
+            1,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("refuses CPU"));
+        assert!(!root.exists());
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn scaled_cuda_fold_owner_matches_resident_root_and_opening() {
+        use volta_field::Fp;
+
+        let mut backend = match Backend::cuda_hybrid() {
+            Ok(backend) => backend,
+            Err(error) if std::env::var_os("VOLTA_REQUIRE_CUDA").is_some() => {
+                panic!("VOLTA_REQUIRE_CUDA set but C6 fold CUDA failed to initialize: {error}")
+            }
+            Err(_) => return,
+        };
+        let root = std::env::temp_dir().join(format!(
+            "volta-c6-wrapper-fold-cuda-diff-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        fs::create_dir(&root).unwrap();
+        let config = CohortVerifierConfigV4 {
+            identity: crate::x4::merkle_v4::CohortIdentityV4 {
+                cohort_id: 0xC6F0_0000,
+                oracle_kind: OracleKindV4::GlobalFoldAggregate,
+                fold_round: 1,
+            },
+            slot_descriptors: vec![Some([0x83; 32])],
+            outer_len: 32,
+            expected_symbol_count: 1,
+        };
+        let coefficients = (0..4)
+            .map(|index| Fp2::new(Fp::new(19 * index + 3), Fp::new(31 * index * index + 5)))
+            .collect::<Vec<_>>();
+        let codeword = crate::x4::ntt::encode_rate_eighth(&coefficients).unwrap();
+        let reference = CohortTreeV4::build_flat(config.clone(), vec![Some(codeword)]).unwrap();
+        let (opening, metrics, returned) = commit_production_c6_wrapper_fold_cuda(
+            &mut backend,
+            config,
+            coefficients.clone(),
+            &root,
+            [0x81; 32],
+            [0x82; 32],
+            0,
+            1,
+        )
+        .unwrap();
+        assert_eq!(opening.root(), reference.root());
+        assert_eq!(returned, coefficients);
+        let draws = [1, 3, 5, 7];
+        assert_eq!(opening.open(&draws).unwrap().0, reference.open_fold_round(&draws).unwrap());
+        assert_eq!(metrics.files_created, 4);
+        assert_eq!(metrics.directories_created, 2);
+        assert!(metrics.fsync_count >= 2);
+        assert_eq!(
+            fs::metadata(root.join("repetition-0-fold-01/manifest.c6wfp1")).unwrap().len(),
+            204
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 }

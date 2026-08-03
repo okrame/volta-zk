@@ -50,3 +50,6 @@ p3-symmetric = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e29061
 p3-whir = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
 p3-whir-c61 = { path = "../third_party/p3-whir-c61", optional = true }
 rand-010 = { package = "rand", version = "0.10.1", optional = true }
+
+[dev-dependencies]
+volta-pcg = { workspace = true }

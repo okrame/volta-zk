@@ -18,7 +18,7 @@ This capsule is authoritative; read design §0.49 next.
   record is PCS **219/0/1**, proto **154/0/1**. Generic trace targets are
   **41/0/0 + 5/0/0** including the strict `C6NTO1` codec; the exact
   102-target response differential, codec round trip and sealed residual gate
-  are **1/0/0**. Native typestate/schedule gates are **16/0/0 + 2/0/0**.
+  are **1/0/0**. Native typestate/schedule gates are **17/0/0 + 2/0/0**.
   The exact joint functional gate is **1/0/0** and proto trace is
   **180/0/1**. The generic 32-B joint MAC closure is **2/0/0** and its exact
   source-correction split is **1/0/0**. CUDA targets compile, but no production
@@ -31,8 +31,8 @@ This capsule is authoritative; read design §0.49 next.
   model-agnostic, challenge-dependent, wire-neutral `C6NBR1/C6NTO1` bridge
   with small commits on `main`. Local construction may proceed. HARD STOP
   remains before exact-runner admission or pod contact.
-- **Resume conditions.** Complete the role-separated `C6AWP2` cohort
-  orchestration and strict `C6CPX3/C6PA2` outer decoder, then re-sum bytes,
+- **Resume conditions.** Implement the strict `C6CPX3/C6PA2` outer statement,
+  challenge-ordered decoder and compiler-functional binding, then re-sum bytes,
   setup, correlations, soundness, state and time and run the complete local
   gates. No fixed `96/6`, clear target, mock PCG, CPU fallback or
   provider-derived verifier key is admissible.
@@ -184,6 +184,19 @@ This capsule is authoritative; read design §0.49 next.
   authenticated P3 module is **16/0/0**. This is body/codec evidence, not an
   accepted outer proof; v23 and all credits remain unchanged. Cohort
   orchestration plus `C6CPX3/C6PA2` are next under the no-pod hard stop.
+
+- **2026-08-03 — Role-separated joint cohort orchestration closes locally.**
+  Provider and verifier typestates now bind arbitrary ordered `C6NTO1`
+  cohorts to their typed statements and exact C6AWP2 body digests before
+  sampling one `zeta`. The provider consumes every prepared secondary body
+  once and distributes the 32-B frame across the fixed carriers. The verifier
+  replays bodies from public statements only, expands each mask key from real
+  pooled PCG, reconstructs the frame, checks the independently derived source
+  correction and accepts one joint tag. A pooled role differential closes
+  without secondary target keys; the complete authenticated P3 module is
+  **17/0/0**. This is not yet an accepted certificate: strict
+  `C6CPX3/C6PA2` binding and decoder ordering remain absent, so v23, all
+  credits and the exact-runner/pod hard stop are unchanged.
 
 - **2026-08-03 — C6SPR8 closed; production wrapper lifecycle reaches the next
   ordered hard stop.** Checkpoint `c81a4ff` binds both ordered manifest tapes

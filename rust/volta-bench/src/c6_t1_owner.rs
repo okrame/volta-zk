@@ -23,6 +23,13 @@ use volta_mac::{
     C6DecodedInstanceExtractionPlan, C6InstalledOperationPlan, ProverAuthed, Transcript,
     VerifierKey,
 };
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+use volta_pcs::c61_authenticated_whir_p3::{
+    create_c61_production_coefficient_owner, C61ProductionCoefficientOwner,
+    C61SignedCoefficientPlacement,
+};
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+use volta_pcs::c61_public_compression::C61NativeComponent;
 #[cfg(feature = "c6-trace")]
 use volta_pcs::{
     commit_resident, free_resident_matrix, layout_gpt2_embed_c3, layout_gpt2_weights_c3,
@@ -124,6 +131,37 @@ pub struct C6T1HiddenUOwner {
     model_opening: MultiOpenProof,
     embedding_opening: MultiOpenProof,
     hidden_bundle: C6HiddenUBundleWitness,
+}
+
+/// Hidden-u response owner plus the two durable native coefficient sources.
+/// The D28/D27 files are derived directly from the same model allocation and
+/// are the only coefficient loader admitted by the exact four-chain runner.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub struct C6T1PersistedNativeOwner {
+    hidden: C6T1HiddenUOwner,
+    model_coefficients: C61ProductionCoefficientOwner,
+    embedding_coefficients: C61ProductionCoefficientOwner,
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+impl C6T1PersistedNativeOwner {
+    pub fn hidden(&self) -> &C6T1HiddenUOwner {
+        &self.hidden
+    }
+
+    pub fn model_coefficients(&self) -> &C61ProductionCoefficientOwner {
+        &self.model_coefficients
+    }
+
+    pub fn embedding_coefficients(&self) -> &C61ProductionCoefficientOwner {
+        &self.embedding_coefficients
+    }
+
+    pub fn into_parts(
+        self,
+    ) -> (C6T1HiddenUOwner, C61ProductionCoefficientOwner, C61ProductionCoefficientOwner) {
+        (self.hidden, self.model_coefficients, self.embedding_coefficients)
+    }
 }
 
 #[cfg(feature = "c6-trace")]
@@ -490,6 +528,68 @@ pub fn attach_c6_t1_hidden_u_owner(
         embedding_opening,
         hidden_bundle,
     })
+}
+
+/// Persist the exact D28 model and D27 embedding polynomials without first
+/// materializing either padded Goldilocks vector. Tensor rows are written at
+/// their consolidated C3 offsets; sparse-file gaps and suffixes are the
+/// canonical zero padding consumed by both native repetitions.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub fn persist_c6_t1_native_coefficient_owners(
+    hidden: C6T1HiddenUOwner,
+    root: &Path,
+    session_digest: [u8; 32],
+) -> Result<C6T1PersistedNativeOwner, String> {
+    if session_digest == [0; 32] || !root.is_dir() {
+        return Err("C6SPR12 native coefficient root/session preflight failed".to_owned());
+    }
+    let model = hidden.response().workload().model();
+    let model_layout = layout_gpt2_weights_c3();
+    let c_attn =
+        model.layers.iter().map(|layer| cattn_permuted(&layer.0.c_attn)).collect::<Vec<_>>();
+    let mut model_placements = Vec::with_capacity(4 * volta_gpt2::L);
+    for layer in 0..volta_gpt2::L {
+        let weights = &model.layers[layer].0;
+        let values: [&[i16]; 4] =
+            [&c_attn[layer], &weights.attn_proj, &weights.ffn_up, &weights.ffn_down];
+        for (slot, values) in model_layout.layer.tensors.iter().zip(values) {
+            model_placements.push(C61SignedCoefficientPlacement::new(
+                values,
+                slot.k,
+                slot.n,
+                layer * model_layout.layer_stride + slot.offset,
+                slot.n_pad,
+            )?);
+        }
+    }
+    let model_coefficients = create_c61_production_coefficient_owner(
+        &root.join("model"),
+        C61NativeComponent::Model,
+        session_digest,
+        &model_placements,
+    )?;
+    drop(model_placements);
+    drop(c_attn);
+
+    let embedding_layout = layout_gpt2_embed_c3();
+    let embedding_values: [&[i16]; 2] = [&model.wte, &model.wpe];
+    let embedding_placements = embedding_layout
+        .tensors
+        .iter()
+        .zip(embedding_values)
+        .map(|(slot, values)| {
+            C61SignedCoefficientPlacement::new(values, slot.k, slot.n, slot.offset, slot.n_pad)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let embedding_coefficients = create_c61_production_coefficient_owner(
+        &root.join("embedding"),
+        C61NativeComponent::Embedding,
+        session_digest,
+        &embedding_placements,
+    )?;
+    drop(embedding_placements);
+
+    Ok(C6T1PersistedNativeOwner { hidden, model_coefficients, embedding_coefficients })
 }
 
 /// Load, validate and execute the exact frozen T1 witness generator once.

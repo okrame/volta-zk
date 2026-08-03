@@ -8,7 +8,9 @@
 //! in-memory proof object.
 
 use std::collections::BTreeMap;
-use std::fs;
+use std::fs::{self, File, OpenOptions};
+use std::io::{BufReader, Read};
+use std::os::unix::fs::FileExt;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -749,28 +751,366 @@ pub struct C61ProductionCommittedFourChainExecution {
     pub peak_loaded_coefficient_bytes: u64,
 }
 
+const C61_COEFFICIENT_OWNER_MAGIC: [u8; 8] = *b"C6PCO1\0\0";
+const C61_COEFFICIENT_OWNER_VERSION: u32 = 1;
+const C61_COEFFICIENT_OWNER_MANIFEST_BYTES: usize = 128;
+
+/// One row-strided signed source placement into a production D28/D27 native
+/// polynomial.  Gaps and the suffix are canonical zero coefficients in the
+/// create-new sparse file; overlapping placements are rejected.
+pub struct C61SignedCoefficientPlacement<'a> {
+    values: &'a [i16],
+    rows: usize,
+    cols: usize,
+    destination_offset: usize,
+    destination_stride: usize,
+    destination_end: usize,
+}
+
+impl<'a> C61SignedCoefficientPlacement<'a> {
+    pub fn new(
+        values: &'a [i16],
+        rows: usize,
+        cols: usize,
+        destination_offset: usize,
+        destination_stride: usize,
+    ) -> Result<Self, String> {
+        if rows == 0
+            || cols == 0
+            || cols > destination_stride
+            || values.len() != rows.checked_mul(cols).unwrap_or(usize::MAX)
+        {
+            return Err("C6SPR12 signed coefficient placement geometry mismatch".to_owned());
+        }
+        let destination_end = destination_offset
+            .checked_add(
+                rows.checked_sub(1)
+                    .and_then(|rows| rows.checked_mul(destination_stride))
+                    .and_then(|span| span.checked_add(cols))
+                    .ok_or_else(|| "C6SPR12 signed coefficient placement overflows".to_owned())?,
+            )
+            .ok_or_else(|| "C6SPR12 signed coefficient placement end overflows".to_owned())?;
+        Ok(Self { values, rows, cols, destination_offset, destination_stride, destination_end })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct C61ProductionCoefficientOwnerMetrics {
+    pub logical_coefficient_bytes: u64,
+    pub placed_coefficient_bytes_written: u64,
+    pub manifest_bytes_written: u64,
+    pub coefficient_files_created: u64,
+    pub manifest_files_created: u64,
+    pub fsync_calls: u64,
+}
+
+/// Durable create-new D28/D27 coefficient source.  Loading validates the
+/// complete canonical file and content digest before returning a vector to a
+/// native chain; repetitions therefore cannot silently switch polynomials.
+pub struct C61ProductionCoefficientOwner {
+    component: C61NativeComponent,
+    session_digest: [u8; 32],
+    coefficient_digest: [u8; 32],
+    manifest_digest: [u8; 32],
+    root: std::path::PathBuf,
+    metrics: C61ProductionCoefficientOwnerMetrics,
+}
+
+impl C61ProductionCoefficientOwner {
+    pub fn component(&self) -> C61NativeComponent {
+        self.component
+    }
+
+    pub fn session_digest(&self) -> [u8; 32] {
+        self.session_digest
+    }
+
+    pub fn coefficient_digest(&self) -> [u8; 32] {
+        self.coefficient_digest
+    }
+
+    pub fn manifest_digest(&self) -> [u8; 32] {
+        self.manifest_digest
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    pub fn metrics(&self) -> C61ProductionCoefficientOwnerMetrics {
+        self.metrics
+    }
+
+    pub fn load_for(
+        &self,
+        component: C61NativeComponent,
+        repetition: u8,
+    ) -> Result<Vec<Goldilocks>, String> {
+        if component != self.component || repetition >= 2 {
+            return Err("C6SPR12 coefficient owner component/repetition mismatch".to_owned());
+        }
+        let expected = c61_production_coefficient_count(component)?;
+        self.validate_manifest(expected)?;
+        let file = File::open(self.root.join("coefficients.bin"))
+            .map_err(|error| format!("open C6SPR12 coefficient owner: {error}"))?;
+        if file
+            .metadata()
+            .map_err(|error| format!("stat C6SPR12 coefficient owner: {error}"))?
+            .len()
+            != (expected as u64) * 8
+        {
+            return Err("C6SPR12 coefficient owner file length changed".to_owned());
+        }
+        let mut reader = BufReader::with_capacity(8 * 1024 * 1024, file);
+        let mut coefficients = Vec::new();
+        coefficients
+            .try_reserve_exact(expected)
+            .map_err(|_| "C6SPR12 coefficient reload allocation failed".to_owned())?;
+        let mut hasher = c61_coefficient_digest_hasher(component, expected);
+        let mut bytes = [0u8; 8];
+        for _ in 0..expected {
+            reader
+                .read_exact(&mut bytes)
+                .map_err(|error| format!("read C6SPR12 coefficient owner: {error}"))?;
+            let value = u64::from_le_bytes(bytes);
+            if value >= P {
+                return Err(
+                    "C6SPR12 coefficient owner contains a noncanonical field value".to_owned()
+                );
+            }
+            hasher.update(&bytes);
+            coefficients.push(Goldilocks::from_u64(value));
+        }
+        let mut trailing = [0u8; 1];
+        if reader
+            .read(&mut trailing)
+            .map_err(|error| format!("finish C6SPR12 coefficient owner read: {error}"))?
+            != 0
+            || *hasher.finalize().as_bytes() != self.coefficient_digest
+        {
+            return Err("C6SPR12 coefficient owner content digest changed".to_owned());
+        }
+        Ok(coefficients)
+    }
+
+    fn validate_manifest(&self, expected: usize) -> Result<(), String> {
+        let bytes = fs::read(self.root.join("manifest.bin"))
+            .map_err(|error| format!("read C6SPR12 coefficient manifest: {error}"))?;
+        let expected_dimension = match self.component {
+            C61NativeComponent::Model => C61_MODEL_POLYNOMIAL_LOG2,
+            C61NativeComponent::Embedding => C61_EMBEDDING_POLYNOMIAL_LOG2,
+            C61NativeComponent::Compiler => {
+                return Err("C6SPR12 coefficient manifest has compiler component".to_owned())
+            }
+        };
+        if bytes.len() != C61_COEFFICIENT_OWNER_MANIFEST_BYTES
+            || bytes[..8] != C61_COEFFICIENT_OWNER_MAGIC
+            || u32::from_le_bytes(bytes[8..12].try_into().expect("four manifest bytes"))
+                != C61_COEFFICIENT_OWNER_VERSION
+            || u16::from_le_bytes(bytes[12..14].try_into().expect("two manifest bytes"))
+                != self.component as u16
+            || bytes[14] != expected_dimension
+            || bytes[15] != 0
+            || u64::from_le_bytes(bytes[16..24].try_into().expect("eight manifest bytes"))
+                != expected as u64
+            || u64::from_le_bytes(bytes[24..32].try_into().expect("eight manifest bytes"))
+                != (expected as u64) * 8
+            || bytes[32..64] != self.session_digest
+            || bytes[64..96] != self.coefficient_digest
+            || bytes[96..128] != self.manifest_digest
+            || *blake3::hash(&bytes[..96]).as_bytes() != self.manifest_digest
+        {
+            return Err("C6SPR12 coefficient owner manifest changed or is noncanonical".to_owned());
+        }
+        Ok(())
+    }
+}
+
+fn c61_production_coefficient_count(component: C61NativeComponent) -> Result<usize, String> {
+    match component {
+        C61NativeComponent::Model => Ok(1usize << C61_MODEL_POLYNOMIAL_LOG2),
+        C61NativeComponent::Embedding => Ok(1usize << C61_EMBEDDING_POLYNOMIAL_LOG2),
+        C61NativeComponent::Compiler => {
+            Err("C6SPR12 coefficient owner rejects compiler polynomials".to_owned())
+        }
+    }
+}
+
+fn c61_coefficient_digest_hasher(component: C61NativeComponent, count: usize) -> blake3::Hasher {
+    let mut hasher =
+        blake3::Hasher::new_derive_key("volta-zk/c6.1/production-coefficient-owner/v1");
+    hasher.update(&(component as u16).to_le_bytes());
+    hasher.update(&(count as u64).to_le_bytes());
+    hasher
+}
+
 pub fn c61_production_coefficient_digest(
     component: C61NativeComponent,
     coefficients: &[Goldilocks],
 ) -> Result<[u8; 32], String> {
-    let expected = match component {
-        C61NativeComponent::Model => 1usize << C61_MODEL_POLYNOMIAL_LOG2,
-        C61NativeComponent::Embedding => 1usize << C61_EMBEDDING_POLYNOMIAL_LOG2,
-        C61NativeComponent::Compiler => {
-            return Err("C6SPR11 coefficient owner rejects compiler polynomials".to_owned())
-        }
-    };
+    let expected = c61_production_coefficient_count(component)?;
     if coefficients.len() != expected {
         return Err("C6SPR11 coefficient owner has the wrong production geometry".to_owned());
     }
-    let mut hasher =
-        blake3::Hasher::new_derive_key("volta-zk/c6.1/production-coefficient-owner/v1");
-    hasher.update(&(component as u16).to_le_bytes());
-    hasher.update(&(coefficients.len() as u64).to_le_bytes());
+    let mut hasher = c61_coefficient_digest_hasher(component, coefficients.len());
     for coefficient in coefficients {
         hasher.update(&coefficient.as_canonical_u64().to_le_bytes());
     }
     Ok(*hasher.finalize().as_bytes())
+}
+
+/// Create and durably seal one sparse-on-disk production coefficient owner.
+/// Only explicitly placed tensor rows allocate data blocks; holes are read as
+/// canonical zero coefficients and are included in the complete digest.
+pub fn create_c61_production_coefficient_owner(
+    root: &Path,
+    component: C61NativeComponent,
+    session_digest: [u8; 32],
+    placements: &[C61SignedCoefficientPlacement<'_>],
+) -> Result<C61ProductionCoefficientOwner, String> {
+    let count = c61_production_coefficient_count(component)?;
+    if session_digest == [0; 32] || placements.is_empty() || root.exists() {
+        return Err("C6SPR12 coefficient owner preflight or create-new gate failed".to_owned());
+    }
+    let mut ranges = placements
+        .iter()
+        .map(|placement| (placement.destination_offset, placement.destination_end))
+        .collect::<Vec<_>>();
+    if ranges.iter().any(|(_, end)| *end > count) {
+        return Err("C6SPR12 coefficient placement exceeds its native polynomial".to_owned());
+    }
+    ranges.sort_unstable();
+    if ranges.windows(2).any(|pair| pair[0].1 > pair[1].0) {
+        return Err("C6SPR12 coefficient placements overlap".to_owned());
+    }
+    let parent = root
+        .parent()
+        .filter(|parent| parent.is_dir())
+        .ok_or_else(|| "C6SPR12 coefficient owner parent is absent".to_owned())?;
+    fs::create_dir(root).map_err(|error| format!("create C6SPR12 coefficient owner: {error}"))?;
+    File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| format!("fsync C6SPR12 coefficient owner parent: {error}"))?;
+
+    let coefficient_path = root.join("coefficients.bin");
+    let coefficient_file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&coefficient_path)
+        .map_err(|error| format!("create C6SPR12 coefficient file: {error}"))?;
+    let logical_bytes = (count as u64)
+        .checked_mul(8)
+        .ok_or_else(|| "C6SPR12 coefficient byte length overflows".to_owned())?;
+    coefficient_file
+        .set_len(logical_bytes)
+        .map_err(|error| format!("size C6SPR12 coefficient file: {error}"))?;
+    let mut placed_values = 0u64;
+    let mut row_bytes = Vec::new();
+    for placement in placements {
+        row_bytes.clear();
+        row_bytes
+            .try_reserve_exact(placement.cols * 8)
+            .map_err(|_| "C6SPR12 coefficient row buffer allocation failed".to_owned())?;
+        for row in 0..placement.rows {
+            row_bytes.clear();
+            let start = row * placement.cols;
+            for value in &placement.values[start..start + placement.cols] {
+                row_bytes.extend_from_slice(&Fp::from_i64(i64::from(*value)).value().to_le_bytes());
+            }
+            let destination = placement
+                .destination_offset
+                .checked_add(row * placement.destination_stride)
+                .and_then(|value| value.checked_mul(8))
+                .ok_or_else(|| "C6SPR12 coefficient write offset overflows".to_owned())?;
+            coefficient_file
+                .write_all_at(&row_bytes, destination as u64)
+                .map_err(|error| format!("write C6SPR12 coefficient row: {error}"))?;
+            placed_values = placed_values
+                .checked_add(placement.cols as u64)
+                .ok_or_else(|| "C6SPR12 placed coefficient census overflows".to_owned())?;
+        }
+    }
+    coefficient_file
+        .sync_all()
+        .map_err(|error| format!("fsync C6SPR12 coefficient file: {error}"))?;
+
+    let digest = {
+        let mut reader = BufReader::with_capacity(
+            8 * 1024 * 1024,
+            File::open(&coefficient_path)
+                .map_err(|error| format!("reopen C6SPR12 coefficient file: {error}"))?,
+        );
+        let mut hasher = c61_coefficient_digest_hasher(component, count);
+        let mut buffer = vec![0u8; 8 * 1024 * 1024];
+        let mut remaining = logical_bytes;
+        while remaining != 0 {
+            let take = usize::try_from(remaining.min(buffer.len() as u64))
+                .map_err(|_| "C6SPR12 coefficient digest chunk exceeds usize".to_owned())?;
+            reader
+                .read_exact(&mut buffer[..take])
+                .map_err(|error| format!("read C6SPR12 coefficient digest: {error}"))?;
+            for bytes in buffer[..take].chunks_exact(8) {
+                if u64::from_le_bytes(bytes.try_into().expect("eight-byte coefficient")) >= P {
+                    return Err(
+                        "C6SPR12 coefficient writer produced a noncanonical field value".to_owned()
+                    );
+                }
+            }
+            hasher.update(&buffer[..take]);
+            remaining -= take as u64;
+        }
+        *hasher.finalize().as_bytes()
+    };
+
+    let dimension = match component {
+        C61NativeComponent::Model => C61_MODEL_POLYNOMIAL_LOG2,
+        C61NativeComponent::Embedding => C61_EMBEDDING_POLYNOMIAL_LOG2,
+        C61NativeComponent::Compiler => unreachable!("compiler rejected above"),
+    };
+    let mut manifest = Vec::with_capacity(C61_COEFFICIENT_OWNER_MANIFEST_BYTES);
+    manifest.extend_from_slice(&C61_COEFFICIENT_OWNER_MAGIC);
+    manifest.extend_from_slice(&C61_COEFFICIENT_OWNER_VERSION.to_le_bytes());
+    manifest.extend_from_slice(&(component as u16).to_le_bytes());
+    manifest.push(dimension);
+    manifest.push(0);
+    manifest.extend_from_slice(&(count as u64).to_le_bytes());
+    manifest.extend_from_slice(&logical_bytes.to_le_bytes());
+    manifest.extend_from_slice(&session_digest);
+    manifest.extend_from_slice(&digest);
+    manifest.resize(C61_COEFFICIENT_OWNER_MANIFEST_BYTES - 32, 0);
+    let manifest_digest = *blake3::hash(&manifest).as_bytes();
+    manifest.extend_from_slice(&manifest_digest);
+    let manifest_path = root.join("manifest.bin");
+    let manifest_file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&manifest_path)
+        .map_err(|error| format!("create C6SPR12 coefficient manifest: {error}"))?;
+    manifest_file
+        .write_all_at(&manifest, 0)
+        .map_err(|error| format!("write C6SPR12 coefficient manifest: {error}"))?;
+    manifest_file
+        .sync_all()
+        .map_err(|error| format!("fsync C6SPR12 coefficient manifest: {error}"))?;
+    File::open(root)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| format!("fsync C6SPR12 coefficient owner directory: {error}"))?;
+
+    Ok(C61ProductionCoefficientOwner {
+        component,
+        session_digest,
+        coefficient_digest: digest,
+        manifest_digest,
+        root: root.to_path_buf(),
+        metrics: C61ProductionCoefficientOwnerMetrics {
+            logical_coefficient_bytes: logical_bytes,
+            placed_coefficient_bytes_written: placed_values * 8,
+            manifest_bytes_written: manifest.len() as u64,
+            coefficient_files_created: 1,
+            manifest_files_created: 1,
+            fsync_calls: 4,
+        },
+    })
 }
 
 /// Produce model0/model1/embed0/embed1 sequentially from a reloadable durable

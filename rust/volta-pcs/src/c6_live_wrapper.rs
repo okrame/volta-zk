@@ -30,7 +30,7 @@ use crate::c6_wrapper_pcs::{
     C6_PREDECESSOR_CACHE_COHORT_ID, C6_SUCCESSOR_CACHE_COHORT_ID, C6_WRAPPER_AUXILIARY_COHORT_ID,
 };
 use crate::c6_wrapper_persisted::{
-    commit_production_c6_wrapper_cohort_cuda, C6PersistedWrapperCohort,
+    commit_production_c6_wrapper_cohort_cuda, C6PersistedWrapperCohort, C6PersistedWrapperMetrics,
 };
 use crate::x4::cuda_v4::X4bCudaCommitMetricsV4;
 
@@ -283,6 +283,7 @@ pub struct C6PersistedLiveWrapperRootBinding {
     mask_seed_commitment: C6WrapperDigest,
     session_digest: C6WrapperDigest,
     commit_metrics: X4bCudaCommitMetricsV4,
+    persisted_metrics: C6PersistedWrapperMetrics,
 }
 
 impl C6PersistedLiveWrapperRootBinding {
@@ -304,6 +305,10 @@ impl C6PersistedLiveWrapperRootBinding {
 
     pub fn commit_metrics(&self) -> &X4bCudaCommitMetricsV4 {
         &self.commit_metrics
+    }
+
+    pub fn persisted_metrics(&self) -> C6PersistedWrapperMetrics {
+        self.persisted_metrics
     }
 
     pub fn mask_seed_commitment(&self) -> C6WrapperDigest {
@@ -454,6 +459,7 @@ pub fn materialize_production_c6_live_wrapper_roots_cuda(
     let mask_seed_commitment = mask_seed.commitment();
     let mut cohorts = Vec::with_capacity(specs.len());
     let mut commit_metrics = X4bCudaCommitMetricsV4::default();
+    let mut persisted_metrics = C6PersistedWrapperMetrics::default();
     let mut commit_group = |index: usize, slots: Vec<C6WrapperSlotWitness>| -> Result<()> {
         if slots.len() != usize::from(specs[index].slot_count) {
             return Err(C6LiveWrapperError::new(format!(
@@ -474,6 +480,9 @@ pub fn materialize_production_c6_live_wrapper_roots_cuda(
         .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
         commit_metrics
             .include(&metrics)
+            .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+        persisted_metrics
+            .include(cohort.metrics())
             .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
         cohorts.push(cohort);
         Ok(())
@@ -607,6 +616,7 @@ pub fn materialize_production_c6_live_wrapper_roots_cuda(
         mask_seed_commitment,
         session_digest,
         commit_metrics,
+        persisted_metrics,
     })
 }
 

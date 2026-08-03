@@ -6,10 +6,11 @@
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufWriter, Write};
+use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
 
 use volta_accel::{Backend, BackendKind};
-use volta_field::Fp2;
+use volta_field::{Fp, Fp2, P};
 
 use crate::c6_wrapper_pcs::{
     c6_wrapper_commit_config, compile_c6_wrapper_slot_coefficients, production_c6_wrapper_specs,
@@ -30,8 +31,8 @@ use crate::x4::persisted_v4::{
 };
 
 const MANIFEST_MAGIC: [u8; 8] = *b"C6WSP1\0\0";
-const MANIFEST_VERSION: u16 = 1;
-const MANIFEST_DOMAIN: &str = "volta-zk/c6/wrapper-persisted-manifest/v1";
+const MANIFEST_VERSION: u16 = 2;
+const MANIFEST_DOMAIN: &str = "volta-zk/c6/wrapper-persisted-manifest/v2";
 const FOLD_MANIFEST_MAGIC: [u8; 8] = *b"C6WFP1\0\0";
 const FOLD_MANIFEST_VERSION: u16 = 1;
 const FOLD_MANIFEST_DOMAIN: &str = "volta-zk/c6/wrapper-persisted-fold-manifest/v1";
@@ -43,9 +44,29 @@ type Result<T> = std::result::Result<T, C6WrapperPcsError>;
 pub struct C6PersistedWrapperMetrics {
     pub coefficient_bytes_written: u64,
     pub oracle_bytes_written: u64,
+    pub semantic_cache_bytes_written: u64,
     pub files_created: u64,
     pub fsync_count: u64,
     pub resident_codeword_copies_after_seal: u64,
+}
+
+impl C6PersistedWrapperMetrics {
+    pub fn include(&mut self, next: Self) -> Result<()> {
+        macro_rules! add {
+            ($field:ident) => {
+                self.$field = self.$field.checked_add(next.$field).ok_or_else(|| {
+                    C6WrapperPcsError::external_message("C6 persisted-wrapper metric overflow")
+                })?;
+            };
+        }
+        add!(coefficient_bytes_written);
+        add!(oracle_bytes_written);
+        add!(semantic_cache_bytes_written);
+        add!(files_created);
+        add!(fsync_count);
+        add!(resident_codeword_copies_after_seal);
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -54,8 +75,81 @@ pub struct C6PersistedWrapperCohort {
     session_digest: C6WrapperDigest,
     oracle_ordinal: u64,
     directory: PathBuf,
+    semantic_cache_path: Option<PathBuf>,
     opening: PersistedCohortOpeningV4<DenseOuterNodeCacheV4>,
     metrics: C6PersistedWrapperMetrics,
+}
+
+#[derive(Debug)]
+pub struct C6PersistedCacheSemanticReader {
+    file: File,
+    payload_len: usize,
+    statement_digest: C6WrapperDigest,
+    session_digest: C6WrapperDigest,
+    root: C6WrapperDigest,
+}
+
+impl C6PersistedCacheSemanticReader {
+    pub fn payload_len(&self) -> usize {
+        self.payload_len
+    }
+
+    pub fn binding(&self) -> (C6WrapperDigest, C6WrapperDigest, C6WrapperDigest) {
+        (self.statement_digest, self.session_digest, self.root)
+    }
+
+    pub fn read_slot_range(&self, slot: u8, start: usize, count: usize) -> Result<(Vec<Fp2>, u64)> {
+        if slot >= 2
+            || count == 0
+            || start.checked_add(count).is_none_or(|end| end > self.payload_len)
+        {
+            return Err(C6WrapperPcsError::external_message(
+                "C6 semantic cache read range mismatch",
+            ));
+        }
+        let symbol_start = usize::from(slot)
+            .checked_mul(self.payload_len)
+            .and_then(|base| base.checked_add(start))
+            .ok_or_else(|| {
+                C6WrapperPcsError::external_message("C6 semantic cache offset overflow")
+            })?;
+        let byte_offset =
+            u64::try_from(symbol_start).ok().and_then(|value| value.checked_mul(16)).ok_or_else(
+                || C6WrapperPcsError::external_message("C6 semantic cache offset overflow"),
+            )?;
+        let byte_count = count.checked_mul(16).ok_or_else(|| {
+            C6WrapperPcsError::external_message("C6 semantic cache read overflow")
+        })?;
+        let mut encoded = vec![0u8; byte_count];
+        let mut read = 0usize;
+        while read < encoded.len() {
+            let got = self
+                .file
+                .read_at(&mut encoded[read..], byte_offset + read as u64)
+                .map_err(|error| C6WrapperPcsError::external("read C6 semantic cache", error))?;
+            if got == 0 {
+                return Err(C6WrapperPcsError::external_message("truncated C6 semantic cache"));
+            }
+            read += got;
+        }
+        let mut values = Vec::with_capacity(count);
+        for chunk in encoded.chunks_exact(16) {
+            let c0 = u64::from_le_bytes(chunk[..8].try_into().unwrap());
+            let c1 = u64::from_le_bytes(chunk[8..].try_into().unwrap());
+            if c0 >= P || c1 >= P {
+                return Err(C6WrapperPcsError::external_message(
+                    "noncanonical C6 semantic cache field element",
+                ));
+            }
+            values.push(Fp2::new(Fp::new(c0), Fp::new(c1)));
+        }
+        Ok((
+            values,
+            u64::try_from(byte_count).map_err(|_| {
+                C6WrapperPcsError::external_message("C6 semantic cache byte count overflow")
+            })?,
+        ))
+    }
 }
 
 impl C6PersistedWrapperCohort {
@@ -73,6 +167,56 @@ impl C6PersistedWrapperCohort {
 
     pub fn directory(&self) -> &Path {
         &self.directory
+    }
+
+    pub fn semantic_cache_path(&self) -> Option<&Path> {
+        self.semantic_cache_path.as_deref()
+    }
+
+    pub fn open_semantic_cache(&self) -> Result<C6PersistedCacheSemanticReader> {
+        let path = self.semantic_cache_path.as_ref().ok_or_else(|| {
+            C6WrapperPcsError::external_message("C6 cohort has no semantic cache owner")
+        })?;
+        if !matches!(
+            self.commitment.spec.cohort_id,
+            C6_PREDECESSOR_CACHE_COHORT_ID | C6_SUCCESSOR_CACHE_COHORT_ID
+        ) {
+            return Err(C6WrapperPcsError::external_message(
+                "non-cache C6 cohort has semantic cache owner",
+            ));
+        }
+        let payload_len =
+            1usize.checked_shl(u32::from(self.commitment.spec.payload_log2)).ok_or_else(|| {
+                C6WrapperPcsError::external_message("C6 semantic cache length overflow")
+            })?;
+        let expected_bytes = u64::try_from(payload_len)
+            .ok()
+            .and_then(|symbols| symbols.checked_mul(2))
+            .and_then(|symbols| symbols.checked_mul(16))
+            .ok_or_else(|| {
+                C6WrapperPcsError::external_message("C6 semantic cache bytes overflow")
+            })?;
+        let file = OpenOptions::new()
+            .read(true)
+            .open(path)
+            .map_err(|error| C6WrapperPcsError::external("open C6 semantic cache", error))?;
+        if file
+            .metadata()
+            .map_err(|error| C6WrapperPcsError::external("stat C6 semantic cache", error))?
+            .len()
+            != expected_bytes
+        {
+            return Err(C6WrapperPcsError::external_message(
+                "C6 semantic cache file length mismatch",
+            ));
+        }
+        Ok(C6PersistedCacheSemanticReader {
+            file,
+            payload_len,
+            statement_digest: self.commitment.statement_digest,
+            session_digest: self.session_digest,
+            root: self.commitment.root,
+        })
     }
 
     pub fn metrics(&self) -> C6PersistedWrapperMetrics {
@@ -239,6 +383,7 @@ pub fn persist_scaled_c6_wrapper_cohort_reference(
         oracle_ordinal,
         coefficient_bytes,
         oracle_bytes,
+        0,
     )?;
     write_bytes_create_new(&manifest_path, &manifest)?;
     File::open(&directory)
@@ -266,10 +411,12 @@ pub fn persist_scaled_c6_wrapper_cohort_reference(
         session_digest,
         oracle_ordinal,
         directory,
+        semantic_cache_path: None,
         opening,
         metrics: C6PersistedWrapperMetrics {
             coefficient_bytes_written: coefficient_bytes,
             oracle_bytes_written: oracle_bytes,
+            semantic_cache_bytes_written: 0,
             files_created: 3,
             fsync_count: 4,
             resident_codeword_copies_after_seal: 0,
@@ -311,6 +458,12 @@ pub fn commit_production_c6_wrapper_cohort_cuda(
         root.as_ref().join(format!("cohort-{:08x}-ordinal-{oracle_ordinal:04}", spec.cohort_id));
     fs::create_dir(&directory)
         .map_err(|error| C6WrapperPcsError::external("create C6 CUDA cohort", error))?;
+    let semantic_cache_path = cache_descriptors.map(|_| directory.join("semantic-cache.fp2"));
+    let semantic_cache_bytes = semantic_cache_path
+        .as_ref()
+        .map(|path| write_cache_semantic_create_new(path, spec, &slots))
+        .transpose()?
+        .unwrap_or(0);
     let coefficients = compile_c6_wrapper_slot_coefficients(spec, slots)?;
     let paths = X4bCudaCohortPathsV4 {
         coefficients: directory.join("coefficients.fp2"),
@@ -347,6 +500,7 @@ pub fn commit_production_c6_wrapper_cohort_cuda(
         oracle_ordinal,
         artifacts.metrics.coefficient_bytes_persisted,
         artifacts.metrics.oracle_bytes_persisted,
+        semantic_cache_bytes,
     )?;
     write_bytes_create_new(&directory.join("manifest.c6wsp1"), &manifest)?;
     File::open(&directory)
@@ -362,16 +516,18 @@ pub fn commit_production_c6_wrapper_cohort_cuda(
     )
     .map_err(|error| C6WrapperPcsError::external("load C6 CUDA opening", error))?;
     let mut metrics = artifacts.metrics;
-    include_c6_owner_metadata(&mut metrics)?;
+    include_c6_owner_metadata(&mut metrics, semantic_cache_path.is_some())?;
     let owner = C6PersistedWrapperCohort {
         commitment,
         session_digest,
         oracle_ordinal,
         directory,
+        semantic_cache_path,
         opening,
         metrics: C6PersistedWrapperMetrics {
             coefficient_bytes_written: metrics.coefficient_bytes_persisted,
             oracle_bytes_written: metrics.oracle_bytes_persisted,
+            semantic_cache_bytes_written: semantic_cache_bytes,
             files_created: metrics.files_created,
             fsync_count: metrics.fsync_count,
             resident_codeword_copies_after_seal: 0,
@@ -465,7 +621,7 @@ pub(crate) fn commit_production_c6_wrapper_fold_cuda(
     )
     .map_err(|error| C6WrapperPcsError::external("load C6 CUDA fold opening", error))?;
     let mut metrics = artifacts.metrics;
-    include_c6_owner_metadata(&mut metrics)?;
+    include_c6_owner_metadata(&mut metrics, false)?;
     let coefficients =
         coefficient_slots.into_iter().next().flatten().ok_or_else(|| {
             C6WrapperPcsError::external_message("C6 fold coefficients disappeared")
@@ -473,10 +629,13 @@ pub(crate) fn commit_production_c6_wrapper_fold_cuda(
     Ok((C6PersistedFoldOpening { opening }, metrics, coefficients))
 }
 
-fn include_c6_owner_metadata(metrics: &mut X4bCudaCommitMetricsV4) -> Result<()> {
+fn include_c6_owner_metadata(
+    metrics: &mut X4bCudaCommitMetricsV4,
+    has_semantic_cache: bool,
+) -> Result<()> {
     metrics.files_created = metrics
         .files_created
-        .checked_add(1)
+        .checked_add(1 + u64::from(has_semantic_cache))
         .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA file overflow"))?;
     metrics.directories_created = metrics
         .directories_created
@@ -484,7 +643,7 @@ fn include_c6_owner_metadata(metrics: &mut X4bCudaCommitMetricsV4) -> Result<()>
         .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA directory overflow"))?;
     metrics.fsync_count = metrics
         .fsync_count
-        .checked_add(2)
+        .checked_add(2 + u64::from(has_semantic_cache))
         .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA fsync overflow"))?;
     Ok(())
 }
@@ -520,6 +679,55 @@ fn write_slot_file_create_new(path: &Path, slots: &[Vec<Fp2>]) -> Result<u64> {
         .ok_or_else(|| C6WrapperPcsError::external_message("C6 persisted byte overflow"))
 }
 
+fn write_cache_semantic_create_new(
+    path: &Path,
+    spec: crate::c6_wrapper_pcs::C6WrapperCohortSpec,
+    slots: &[C6WrapperSlotWitness],
+) -> Result<u64> {
+    if !matches!(spec.cohort_id, C6_PREDECESSOR_CACHE_COHORT_ID | C6_SUCCESSOR_CACHE_COHORT_ID)
+        || slots.len() != usize::from(spec.slot_count)
+    {
+        return Err(C6WrapperPcsError::external_message(
+            "C6 semantic cache owner geometry mismatch",
+        ));
+    }
+    let payload_len = 1usize
+        .checked_shl(u32::from(spec.payload_log2))
+        .ok_or_else(|| C6WrapperPcsError::external_message("C6 semantic cache length overflow"))?;
+    let file = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(path)
+        .map_err(|error| C6WrapperPcsError::external("create C6 semantic cache", error))?;
+    let mut writer = BufWriter::with_capacity(8 * 1024 * 1024, file);
+    for slot in slots.iter().take(2) {
+        let C6WrapperSlotWitness::Witness { witness, zk_mask } = slot else {
+            return Err(C6WrapperPcsError::external_message(
+                "C6 semantic cache slot kind mismatch",
+            ));
+        };
+        if witness.len() != payload_len || zk_mask.len() != payload_len {
+            return Err(C6WrapperPcsError::external_message(
+                "C6 semantic cache slot length mismatch",
+            ));
+        }
+        write_canonical_fp2_slice_v4(&mut writer, witness)
+            .map_err(|error| C6WrapperPcsError::external("write C6 semantic cache", error))?;
+    }
+    writer
+        .flush()
+        .map_err(|error| C6WrapperPcsError::external("flush C6 semantic cache", error))?;
+    writer
+        .get_ref()
+        .sync_all()
+        .map_err(|error| C6WrapperPcsError::external("fsync C6 semantic cache", error))?;
+    u64::try_from(payload_len)
+        .ok()
+        .and_then(|symbols| symbols.checked_mul(2))
+        .and_then(|symbols| symbols.checked_mul(16))
+        .ok_or_else(|| C6WrapperPcsError::external_message("C6 semantic cache bytes overflow"))
+}
+
 fn write_bytes_create_new(path: &Path, bytes: &[u8]) -> Result<()> {
     let mut file = OpenOptions::new()
         .create_new(true)
@@ -538,8 +746,9 @@ fn encode_manifest(
     oracle_ordinal: u64,
     coefficient_bytes: u64,
     oracle_bytes: u64,
+    semantic_cache_bytes: u64,
 ) -> Result<Vec<u8>> {
-    let mut bytes = Vec::with_capacity(172);
+    let mut bytes = Vec::with_capacity(180);
     bytes.extend_from_slice(&MANIFEST_MAGIC);
     bytes.extend_from_slice(&MANIFEST_VERSION.to_le_bytes());
     bytes.extend_from_slice(&0u16.to_le_bytes());
@@ -553,10 +762,11 @@ fn encode_manifest(
     bytes.extend_from_slice(&oracle_ordinal.to_le_bytes());
     bytes.extend_from_slice(&coefficient_bytes.to_le_bytes());
     bytes.extend_from_slice(&oracle_bytes.to_le_bytes());
+    bytes.extend_from_slice(&semantic_cache_bytes.to_le_bytes());
     let mut hasher = blake3::Hasher::new_derive_key(MANIFEST_DOMAIN);
     hasher.update(&bytes);
     bytes.extend_from_slice(hasher.finalize().as_bytes());
-    if bytes.len() != 172 {
+    if bytes.len() != 180 {
         return Err(C6WrapperPcsError::external_message("C6 persisted manifest length changed"));
     }
     Ok(bytes)
@@ -612,6 +822,54 @@ fn encode_fold_manifest(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn semantic_cache_owner_is_canonical_random_access_and_truncation_closed() {
+        let root = std::env::temp_dir().join(format!(
+            "volta-c6-semantic-cache-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        fs::create_dir(&root).unwrap();
+        let path = root.join("semantic-cache.fp2");
+        let spec = crate::c6_wrapper_pcs::C6WrapperCohortSpec {
+            cohort_id: C6_PREDECESSOR_CACHE_COHORT_ID,
+            oracle_kind: crate::c6_wrapper_pcs::C6WrapperOracleKind::Witness,
+            payload_log2: 2,
+            slot_count: 8,
+        };
+        let slots = (0..8)
+            .map(|slot| C6WrapperSlotWitness::Witness {
+                witness: (0..4)
+                    .map(|index| Fp2::from_base(Fp::new((100 * slot + index + 1) as u64)))
+                    .collect(),
+                zk_mask: vec![Fp2::ZERO; 4],
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(write_cache_semantic_create_new(&path, spec, &slots).unwrap(), 128);
+        let file = OpenOptions::new().read(true).open(&path).unwrap();
+        let reader = C6PersistedCacheSemanticReader {
+            file,
+            payload_len: 4,
+            statement_digest: [0x91; 32],
+            session_digest: [0x92; 32],
+            root: [0x93; 32],
+        };
+        assert_eq!(reader.binding(), ([0x91; 32], [0x92; 32], [0x93; 32]));
+        assert_eq!(
+            reader.read_slot_range(0, 1, 2).unwrap().0,
+            vec![Fp2::from_base(Fp::new(2)), Fp2::from_base(Fp::new(3))]
+        );
+        assert_eq!(
+            reader.read_slot_range(1, 0, 4).unwrap().0,
+            (101..=104).map(|value| Fp2::from_base(Fp::new(value))).collect::<Vec<_>>()
+        );
+        assert!(reader.read_slot_range(2, 0, 1).is_err());
+        OpenOptions::new().write(true).open(&path).unwrap().set_len(16).unwrap();
+        assert!(reader.read_slot_range(1, 0, 1).is_err());
+        drop(reader);
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn production_constructor_refuses_cpu_before_allocation_or_io() {

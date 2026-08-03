@@ -24,11 +24,15 @@ use volta_mac::{
 #[cfg(feature = "c6-trace")]
 use volta_proto::c6_cache_fold::{
     C6CacheFoldKind, C6CacheFoldPairedProverTargets, C6CacheFoldPairedVerifierTargets,
-    C6CacheFoldTargetFixedCorrections, C6CacheFoldTraceIdentity,
+    C6CacheFoldScalarBatchPlan, C6CacheFoldTargetFixedCorrections, C6CacheFoldTraceIdentity,
 };
 use volta_proto::mle::{eq_vec, lagrange3};
 
-use crate::c6_persistent_cache::C6_PERSISTENT_CACHE_FOLD_CAPACITY;
+use crate::c6_persistent_cache::{
+    C6_PERSISTENT_CACHE_CAPACITY_TOKENS, C6_PERSISTENT_CACHE_FOLD_CAPACITY,
+    C6_PERSISTENT_CACHE_LAYERS, C6_PERSISTENT_CACHE_PADDED_LAYERS,
+    C6_PERSISTENT_CACHE_PADDED_WIDTH, C6_PERSISTENT_CACHE_SLOT_CAPACITY, C6_PERSISTENT_CACHE_WIDTH,
+};
 use crate::c6_wrapper_pcs::{
     C6WrapperDigest, C6_PREDECESSOR_CACHE_COHORT_ID, C6_SUCCESSOR_CACHE_COHORT_ID,
     C6_WRAPPER_AUXILIARY_COHORT_ID, C6_WRAPPER_REPETITIONS,
@@ -523,6 +527,231 @@ struct CompiledRelation {
     equality: Vec<Fp2>,
     coefficients: [Vec<Fp2>; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS],
     schedule_digest: C6WrapperDigest,
+}
+
+#[cfg(feature = "c6-trace")]
+const C6PC2_LAYER_LOG2: usize = 20;
+#[cfg(feature = "c6-trace")]
+const C6PC2_LAYER_LEN: usize = 1 << C6PC2_LAYER_LOG2;
+
+/// One repetition's production coefficient compiler. It retains one `2^20`
+/// equality slice plus the factorized runtime batch and can write one cache
+/// layer at a time. There is deliberately no `2^24` materialization method.
+#[cfg(feature = "c6-trace")]
+#[derive(Clone, Debug)]
+pub(crate) struct C6PersistentCacheProductionRelationCompiler {
+    repetition: u8,
+    statement_digest: C6WrapperDigest,
+    old_len: u16,
+    new_len: u16,
+    relation_point: [Fp2; C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS],
+    relation_roots: [Fp2; SOURCE_OWNER_COUNT],
+    kv_root: Fp2,
+    equality_within_layer: Vec<Fp2>,
+    scalar_batch: C6CacheFoldScalarBatchPlan,
+    schedule_digest: C6WrapperDigest,
+}
+
+#[cfg(feature = "c6-trace")]
+impl C6PersistentCacheProductionRelationCompiler {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new(
+        repetition: u8,
+        statement_digest: C6WrapperDigest,
+        old_len: u16,
+        new_len: u16,
+        relation_point: [Fp2; C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS],
+        relation_roots: [Fp2; SOURCE_OWNER_COUNT],
+        kv_root: Fp2,
+        scalar_batch: C6CacheFoldScalarBatchPlan,
+    ) -> Result<Self> {
+        if usize::from(repetition) >= C6_WRAPPER_REPETITIONS
+            || statement_digest == [0; 32]
+            || old_len > new_len
+            || new_len > C6_PERSISTENT_CACHE_CAPACITY_TOKENS
+            || scalar_batch.identity.scalar_root != relation_roots[2]
+            || scalar_batch.identity.fold_count == 0
+            || u64::from(scalar_batch.identity.fold_count) > C6_PERSISTENT_CACHE_FOLD_CAPACITY
+        {
+            return Err(C6PersistentCacheBlindError::new(
+                "invalid production C6PC2 factorized compiler binding",
+            ));
+        }
+        let equality_within_layer = eq_vec(&relation_point[..C6PC2_LAYER_LOG2]);
+        if equality_within_layer.len() != C6PC2_LAYER_LEN
+            || u64::from(C6_PERSISTENT_CACHE_PADDED_LAYERS)
+                * u64::from(C6_PERSISTENT_CACHE_CAPACITY_TOKENS)
+                * u64::from(C6_PERSISTENT_CACHE_PADDED_WIDTH)
+                != C6_PERSISTENT_CACHE_SLOT_CAPACITY
+        {
+            return Err(C6PersistentCacheBlindError::new("production C6PC2 geometry changed"));
+        }
+        let schedule_digest = production_schedule_digest(
+            repetition,
+            statement_digest,
+            old_len,
+            new_len,
+            &relation_point,
+            relation_roots,
+            kv_root,
+            &scalar_batch,
+        );
+        Ok(Self {
+            repetition,
+            statement_digest,
+            old_len,
+            new_len,
+            relation_point,
+            relation_roots,
+            kv_root,
+            equality_within_layer,
+            scalar_batch,
+            schedule_digest,
+        })
+    }
+
+    pub(crate) fn schedule_digest(&self) -> C6WrapperDigest {
+        self.schedule_digest
+    }
+
+    pub(crate) fn write_layer_coefficients(
+        &self,
+        padded_layer: u16,
+        output: &mut [Vec<Fp2>; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS],
+    ) -> Result<u64> {
+        if padded_layer >= C6_PERSISTENT_CACHE_PADDED_LAYERS
+            || output.iter().any(|table| table.len() != C6PC2_LAYER_LEN)
+        {
+            return Err(C6PersistentCacheBlindError::new(
+                "C6PC2 production layer output geometry mismatch",
+            ));
+        }
+        for table in output.iter_mut() {
+            table.fill(Fp2::ZERO);
+        }
+        let layer_equality = equality_boolean_index(
+            &self.relation_point[C6PC2_LAYER_LOG2..],
+            usize::from(padded_layer),
+        );
+        write_production_transition_layer(
+            padded_layer,
+            self.old_len,
+            layer_equality,
+            &self.equality_within_layer,
+            self.relation_roots[0],
+            self.kv_root,
+            output,
+        )?;
+        let mut applications = 0u64;
+        if padded_layer < C6_PERSISTENT_CACHE_LAYERS {
+            let mut model = vec![Fp2::ZERO; C6PC2_LAYER_LEN];
+            applications = applications
+                .checked_add(
+                    self.scalar_batch
+                        .write_padded_layer_coefficients(
+                            C6CacheFoldKind::KeyRows,
+                            usize::from(padded_layer),
+                            &mut model,
+                        )
+                        .map_err(|error| C6PersistentCacheBlindError::new(error.to_string()))?,
+                )
+                .ok_or_else(|| {
+                    C6PersistentCacheBlindError::new("C6PC2 factor applications overflow")
+                })?;
+            for (coefficient, model) in output[2].iter_mut().zip(&model) {
+                *coefficient += self.relation_roots[2] * *model;
+            }
+            applications = applications
+                .checked_add(
+                    self.scalar_batch
+                        .write_padded_layer_coefficients(
+                            C6CacheFoldKind::ValueColumns,
+                            usize::from(padded_layer),
+                            &mut model,
+                        )
+                        .map_err(|error| C6PersistentCacheBlindError::new(error.to_string()))?,
+                )
+                .ok_or_else(|| {
+                    C6PersistentCacheBlindError::new("C6PC2 factor applications overflow")
+                })?;
+            for (coefficient, model) in output[3].iter_mut().zip(&model) {
+                *coefficient += self.relation_roots[2] * self.kv_root * *model;
+            }
+        }
+        Ok(applications)
+    }
+}
+
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+fn write_production_transition_layer(
+    padded_layer: u16,
+    old_len: u16,
+    layer_equality: Fp2,
+    equality_within_layer: &[Fp2],
+    transition_root: Fp2,
+    kv_root: Fp2,
+    output: &mut [Vec<Fp2>; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS],
+) -> Result<()> {
+    if padded_layer >= C6_PERSISTENT_CACHE_PADDED_LAYERS
+        || old_len > C6_PERSISTENT_CACHE_CAPACITY_TOKENS
+        || equality_within_layer.len() != C6PC2_LAYER_LEN
+        || output.iter().any(|table| table.len() != C6PC2_LAYER_LEN)
+    {
+        return Err(C6PersistentCacheBlindError::new("C6PC2 transition layer geometry mismatch"));
+    }
+    for index in 0..C6PC2_LAYER_LEN {
+        let position = index >> 10;
+        let channel = index & ((1 << 10) - 1);
+        let transition = equality_within_layer[index] * layer_equality * transition_root;
+        let is_old_live = padded_layer < C6_PERSISTENT_CACHE_LAYERS
+            && position < usize::from(old_len)
+            && channel < usize::from(C6_PERSISTENT_CACHE_WIDTH);
+        if is_old_live {
+            output[0][index] = output[0][index] - transition;
+            output[1][index] = output[1][index] - transition * kv_root;
+        }
+        output[2][index] += transition;
+        output[3][index] += transition * kv_root;
+    }
+    Ok(())
+}
+
+#[cfg(feature = "c6-trace")]
+fn equality_boolean_index(point: &[Fp2], index: usize) -> Fp2 {
+    point.iter().enumerate().fold(Fp2::ONE, |value, (bit, coordinate)| {
+        value * if index & (1 << bit) == 0 { Fp2::ONE - *coordinate } else { *coordinate }
+    })
+}
+
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+fn production_schedule_digest(
+    repetition: u8,
+    statement_digest: C6WrapperDigest,
+    old_len: u16,
+    new_len: u16,
+    relation_point: &[Fp2; C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS],
+    relation_roots: [Fp2; SOURCE_OWNER_COUNT],
+    kv_root: Fp2,
+    scalar_batch: &C6CacheFoldScalarBatchPlan,
+) -> C6WrapperDigest {
+    let mut hasher = blake3::Hasher::new_derive_key(SCHEDULE_DOMAIN);
+    hasher.update(&statement_digest);
+    hasher.update(&[repetition]);
+    hasher.update(&old_len.to_le_bytes());
+    hasher.update(&new_len.to_le_bytes());
+    hash_fp2_slice(&mut hasher, relation_point);
+    hash_fp2_slice(&mut hasher, &relation_roots);
+    hash_fp2_slice(&mut hasher, &[kv_root]);
+    hasher.update(&scalar_batch.identity.version.to_le_bytes());
+    hasher.update(&scalar_batch.identity.fold_count.to_le_bytes());
+    hasher.update(&scalar_batch.identity.factor_values.to_le_bytes());
+    hasher.update(&scalar_batch.identity.coefficient_applications.to_le_bytes());
+    hasher.update(&scalar_batch.identity.topology_digest);
+    hasher.update(&scalar_batch.identity.instance_digest);
+    hasher.update(&scalar_batch.identity.batch_digest);
+    *hasher.finalize().as_bytes()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1861,6 +2090,55 @@ mod tests {
             .iter()
             .zip(values)
             .fold(Fp2::ZERO, |sum, (&coefficient, &value)| sum + coefficient * value)
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn production_transition_layer_enforces_prefix_tail_and_padding_without_d24_table() {
+        let equality = vec![Fp2::ONE; C6PC2_LAYER_LEN];
+        let mut output: [Vec<Fp2>; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS] =
+            array::from_fn(|_| vec![Fp2::ZERO; C6PC2_LAYER_LEN]);
+        let transition_root = Fp2::from_base(Fp::new(3));
+        let kv_root = Fp2::from_base(Fp::new(5));
+        write_production_transition_layer(
+            0,
+            2,
+            Fp2::from_base(Fp::new(2)),
+            &equality,
+            transition_root,
+            kv_root,
+            &mut output,
+        )
+        .unwrap();
+        let transition = Fp2::from_base(Fp::new(6));
+        assert_eq!(output[0][0], Fp2::ZERO - transition);
+        assert_eq!(output[1][0], Fp2::ZERO - transition * kv_root);
+        assert_eq!(output[2][0], transition);
+        assert_eq!(output[3][0], transition * kv_root);
+        assert_eq!(output[0][2 << 10], Fp2::ZERO);
+        assert_eq!(output[1][2 << 10], Fp2::ZERO);
+        assert_eq!(output[2][2 << 10], transition);
+        assert_eq!(output[0][768], Fp2::ZERO);
+        assert_eq!(output[1][768], Fp2::ZERO);
+        assert_eq!(output[2][768], transition);
+
+        for table in &mut output {
+            table.fill(Fp2::ZERO);
+        }
+        write_production_transition_layer(
+            C6_PERSISTENT_CACHE_LAYERS,
+            2,
+            Fp2::ONE,
+            &equality,
+            transition_root,
+            kv_root,
+            &mut output,
+        )
+        .unwrap();
+        assert_eq!(output[0][0], Fp2::ZERO);
+        assert_eq!(output[1][0], Fp2::ZERO);
+        assert_eq!(output[2][0], transition_root);
+        assert_eq!(output[3][0], transition_root * kv_root);
     }
 
     fn fixture() -> (

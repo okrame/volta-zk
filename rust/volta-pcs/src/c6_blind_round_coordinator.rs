@@ -1,5 +1,11 @@
 #![allow(dead_code)]
 
+use std::path::Path;
+
+use crate::c6_authenticated_output_link::{
+    prove_c6_authenticated_output_link_persisted_cuda, C6AuthenticatedOutputLinkProof,
+    C6PendingSlotRegistryProverBuilder, C6ProductionAuthenticatedOutputLinkMetrics,
+};
 use crate::c6_hidden_u::{C6HiddenUPostCommit, C6HiddenUPrequery, C6SealedHiddenUBundle};
 use crate::c6_hidden_u_sumcheck_blind::{
     assemble_c6_blind_hidden_u_prover_stepwise, begin_c6_blind_hidden_u_stepwise,
@@ -37,7 +43,9 @@ use volta_proto::c6_cache_fold::{
 };
 use volta_proto::{C6ResidualFusedCoefficientArena, C6ResidualFusedWitnessView};
 
+use crate::c6_live_wrapper::C6PersistedLiveWrapperRootBinding;
 use crate::c6_wrapper_persisted::C6PersistedCacheSemanticReader;
+use volta_accel::Backend;
 
 const TAPES: usize = 2;
 
@@ -56,6 +64,68 @@ pub(crate) struct C6ProductionBlindProverOutput {
     pub(crate) cache_source_frame: C6PersistentCacheSourceBootstrapFrame,
     pub(crate) cache_pending: C6PersistentCachePendingClaimsProver,
     pub(crate) cache_metrics: C6PersistentCacheProductionMetrics,
+}
+
+pub(crate) struct C6ExactProductionProverProof {
+    pub(crate) residual_proof: C6BlindResidualSumcheckProof,
+    pub(crate) residual_frame: C6BlindResidualPendingTransferFrame,
+    pub(crate) residual_terminal_outputs: C6BlindResidualDirectTerminalOutputs,
+    pub(crate) hidden_proof: C6BlindHiddenUSumcheckProof,
+    pub(crate) cache_proof: C6PersistentCacheBlindProof,
+    pub(crate) cache_source_frame: C6PersistentCacheSourceBootstrapFrame,
+    pub(crate) cache_metrics: C6PersistentCacheProductionMetrics,
+    pub(crate) authenticated_link: C6AuthenticatedOutputLinkProof,
+    pub(crate) authenticated_link_metrics: C6ProductionAuthenticatedOutputLinkMetrics,
+}
+
+/// Consume all opaque pending values exactly once into the production
+/// 72-slot relation and its persisted/CUDA PCS.  There is no constructor from
+/// terminal scalar values or caller-authored slot descriptors.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn finish_c6_production_blind_with_persisted_link(
+    roots: &C6PersistedLiveWrapperRootBinding,
+    blind: C6ProductionBlindProverOutput,
+    streams: &mut [CorrelationStream; TAPES],
+    backend: &mut Backend,
+    spill_root: &Path,
+    session_digest: [u8; 32],
+    transcript: &mut Transcript,
+) -> Result<C6ExactProductionProverProof, String> {
+    validate_production_streams(streams)?;
+    if roots.session_digest() != session_digest {
+        return Err("C6 exact runner root/session mismatch".to_owned());
+    }
+    let mut pending = C6PendingSlotRegistryProverBuilder::new(roots.fixed()).map_err(text_error)?;
+    pending.absorb_residual(&blind.residual_pending).map_err(text_error)?;
+    pending.absorb_hidden_u(&blind.hidden_pending).map_err(text_error)?;
+    pending.absorb_persistent_cache(&blind.cache_pending).map_err(text_error)?;
+    let pending = pending.finish().map_err(text_error)?;
+    let (authenticated_link, bound, authenticated_link_metrics) =
+        prove_c6_authenticated_output_link_persisted_cuda(
+            roots.fixed(),
+            roots.cohorts(),
+            pending,
+            streams,
+            backend,
+            spill_root,
+            session_digest,
+            transcript,
+        )
+        .map_err(text_error)?;
+    if bound.len() != 2 * crate::c6_wrapper_pcs::C6_WRAPPER_ACTIVE_SLOTS {
+        return Err("C6 exact runner bound-slot census mismatch".to_owned());
+    }
+    Ok(C6ExactProductionProverProof {
+        residual_proof: blind.residual_proof,
+        residual_frame: blind.residual_frame,
+        residual_terminal_outputs: blind.residual_terminal_outputs,
+        hidden_proof: blind.hidden_proof,
+        cache_proof: blind.cache_proof,
+        cache_source_frame: blind.cache_source_frame,
+        cache_metrics: blind.cache_metrics,
+        authenticated_link,
+        authenticated_link_metrics,
+    })
 }
 
 /// Complete prover-side join for the three real blind participants.  Cache

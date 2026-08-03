@@ -3,7 +3,7 @@
 //! both response-wide MAC closures with the optional logical schedule audit.
 //! It performs no PCS/backend work and has no provider mode.
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::BTreeMap;
 use std::env;
 use std::fs::{self, OpenOptions};
@@ -20,7 +20,7 @@ use volta_mac::{
     begin_c6_prover_trace, begin_c6_runtime_instance_capture_diagnostic, begin_c6_verifier_trace,
     compile_c6_operation_trace_for_role, finish_c6_prover_trace, finish_c6_verifier_trace,
     fresh_zero_mask, normalize_c6_operation_trace_debug_block, zero_batch_prover,
-    zero_batch_verify, zero_mask_key, C6DecodedInstanceExtractionPlan, C6InstalledOperationPlan,
+    zero_batch_verify, zero_mask_key, C6DecodedInstanceExtractionPlan,
     C6InstalledOperationPlanMemoryCensus, C6InstanceExtractionRole, C6RuntimeInstanceValues,
     CorrelationStream, Transcript, VerifierCtx,
 };
@@ -57,8 +57,6 @@ struct Args {
     source_witness: bool,
     operation_trace: bool,
     compiled_residual: bool,
-    production_c61_roots: Option<PathBuf>,
-    production_c61_spill: Option<PathBuf>,
     operation_trace_debug_block: Option<u64>,
     transcript_seed_byte: u8,
 }
@@ -71,8 +69,6 @@ fn args() -> Result<Args, String> {
     let mut source_witness = false;
     let mut operation_trace = false;
     let mut compiled_residual = false;
-    let mut production_c61_roots = None;
-    let mut production_c61_spill = None;
     let mut operation_trace_debug_block = None;
     let mut transcript_seed_byte = 0x18;
     let mut values = env::args().skip(1);
@@ -93,20 +89,6 @@ fn args() -> Result<Args, String> {
             "--source-witness" => source_witness = true,
             "--operation-trace" => operation_trace = true,
             "--compiled-residual" => compiled_residual = true,
-            "--production-c61-roots" => {
-                production_c61_roots = Some(PathBuf::from(
-                    values
-                        .next()
-                        .ok_or_else(|| "--production-c61-roots requires a path".to_owned())?,
-                ));
-            }
-            "--production-c61-spill" => {
-                production_c61_spill = Some(PathBuf::from(
-                    values
-                        .next()
-                        .ok_or_else(|| "--production-c61-spill requires a path".to_owned())?,
-                ));
-            }
             "--operation-trace-debug-block" => {
                 operation_trace_debug_block = Some(
                     values
@@ -149,13 +131,6 @@ fn args() -> Result<Args, String> {
     if operation_trace_debug_block.is_some() && !diagnostic {
         return Err("--operation-trace-debug-block is diagnostic-only".to_owned());
     }
-    if production_c61_roots.is_some() != production_c61_spill.is_some() {
-        return Err("--production-c61-roots and --production-c61-spill must be supplied together"
-            .to_owned());
-    }
-    if production_c61_roots.is_some() && (diagnostic || !compiled_residual) {
-        return Err("production C6.1 requires record mode and --compiled-residual".to_owned());
-    }
     Ok(Args {
         weights,
         output,
@@ -164,123 +139,8 @@ fn args() -> Result<Args, String> {
         source_witness,
         operation_trace,
         compiled_residual,
-        production_c61_roots,
-        production_c61_spill,
         operation_trace_debug_block,
         transcript_seed_byte,
-    })
-}
-
-const C61_ROOT_MANIFEST_SCHEMA: &str = "C6WRM1-v1";
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ProductionC61RootManifest {
-    schema: String,
-    statement_digest: String,
-    protocol_digest: String,
-    model_digest: String,
-    params_digest: String,
-    producer_record_sha256: String,
-    commitments: Vec<ProductionC61RootEntry>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ProductionC61RootEntry {
-    cohort_id: u32,
-    root: String,
-}
-
-struct ProductionC61RootInputs {
-    statement_digest: [u8; 32],
-    cache_descriptors: volta_pcs::C6CacheStateDescriptors,
-    commitments: Vec<volta_pcs::C6WrapperCommitment>,
-    manifest_sha256: String,
-    producer_record_sha256: [u8; 32],
-}
-
-fn decode_hex32(label: &str, value: &str) -> Result<[u8; 32], String> {
-    if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err(format!("{label} must be exactly 32 lowercase hexadecimal bytes"));
-    }
-    if value.bytes().any(|byte| byte.is_ascii_uppercase()) {
-        return Err(format!("{label} must use canonical lowercase hexadecimal"));
-    }
-    let mut decoded = [0u8; 32];
-    for (index, output) in decoded.iter_mut().enumerate() {
-        *output = u8::from_str_radix(&value[2 * index..2 * index + 2], 16)
-            .map_err(|_| format!("{label} is not hexadecimal"))?;
-    }
-    if decoded == [0; 32] {
-        return Err(format!("{label} must be nonzero"));
-    }
-    Ok(decoded)
-}
-
-fn load_production_c61_roots(path: &Path) -> Result<ProductionC61RootInputs, String> {
-    let bytes = fs::read(path).map_err(|error| {
-        format!("read production C6.1 root manifest {}: {error}", path.display())
-    })?;
-    let manifest: ProductionC61RootManifest = serde_json::from_slice(&bytes)
-        .map_err(|error| format!("decode production C6.1 root manifest: {error}"))?;
-    if manifest.schema != C61_ROOT_MANIFEST_SCHEMA {
-        return Err(format!(
-            "production C6.1 root manifest schema is {}, expected {C61_ROOT_MANIFEST_SCHEMA}",
-            manifest.schema
-        ));
-    }
-    let statement_digest = decode_hex32("statement_digest", &manifest.statement_digest)?;
-    let profile = volta_pcs::C6PersistentCacheStaticProfile {
-        protocol_digest: decode_hex32("protocol_digest", &manifest.protocol_digest)?,
-        model_digest: decode_hex32("model_digest", &manifest.model_digest)?,
-        params_digest: decode_hex32("params_digest", &manifest.params_digest)?,
-        wrapper_profile_digest: volta_pcs::c6_wrapper_profile_digest(),
-    };
-    let cache_descriptors =
-        volta_pcs::C6CacheStateDescriptors::from_persistent_profile(&profile)
-            .map_err(|error| format!("production C6.1 cache descriptors: {error}"))?;
-    let specs = volta_pcs::production_c6_wrapper_specs();
-    if manifest.commitments.len() != specs.len()
-        || manifest
-            .commitments
-            .iter()
-            .zip(specs)
-            .any(|(entry, spec)| entry.cohort_id != spec.cohort_id)
-    {
-        return Err("production C6.1 roots are not in the frozen cohort order".to_owned());
-    }
-    let commitments = manifest
-        .commitments
-        .iter()
-        .zip(specs)
-        .map(|(entry, spec)| {
-            let root = decode_hex32("commitment root", &entry.root)?;
-            if matches!(
-                spec.cohort_id,
-                volta_pcs::C6_PREDECESSOR_CACHE_COHORT_ID | volta_pcs::C6_SUCCESSOR_CACHE_COHORT_ID
-            ) {
-                volta_pcs::C6WrapperCommitment::from_cache_root(
-                    statement_digest,
-                    spec,
-                    root,
-                    &cache_descriptors,
-                )
-            } else {
-                volta_pcs::C6WrapperCommitment::from_root(statement_digest, spec, root)
-            }
-            .map_err(|error| error.to_string())
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(ProductionC61RootInputs {
-        statement_digest,
-        cache_descriptors,
-        commitments,
-        manifest_sha256: sha256(path)?,
-        producer_record_sha256: decode_hex32(
-            "producer_record_sha256",
-            &manifest.producer_record_sha256,
-        )?,
     })
 }
 
@@ -821,7 +681,6 @@ struct RuntimeInstanceBundle {
 }
 
 struct CompiledResidualContext {
-    installed: C6InstalledOperationPlan,
     installed_plan_memory: C6InstalledOperationPlanMemoryCensus,
     install_seconds: f64,
     provider_compile_seconds: f64,
@@ -849,9 +708,6 @@ fn run(args: &Args) -> Result<Record, String> {
         (sha, ignored, false)
     };
 
-    let production_c61_roots =
-        args.production_c61_roots.as_deref().map(load_production_c61_roots).transpose()?;
-    let _production_c61_spill = args.production_c61_spill.as_deref();
     let operation_trace_enabled = args.operation_trace || args.compiled_residual;
     let workload = workload(&args.weights)?;
     let chunks = [ChunkRef { band: &workload.band, seq: &workload.sequence }];
@@ -908,18 +764,6 @@ fn run(args: &Args) -> Result<Record, String> {
         ));
     }
 
-    let provider_fixed_roots = production_c61_roots
-        .as_ref()
-        .map(|roots| {
-            volta_pcs::fix_production_c6_wrapper_commitments(
-                roots.statement_digest,
-                &roots.cache_descriptors,
-                &roots.commitments,
-                &mut prover_tx,
-            )
-            .map_err(|error| format!("fix provider production C6.1 roots: {error}"))
-        })
-        .transpose()?;
     let mut prover_doms = Doms::new(layer_dom_base(255));
     let challenge = prover_tx.challenge_fp2();
     let product_mask_domain = prover_doms.take(1);
@@ -1077,26 +921,6 @@ fn run(args: &Args) -> Result<Record, String> {
     )
     .ok_or_else(|| "C6 census model verifier rejected".to_owned())?;
     reconcile_transcript_ledger(&model_transcript_prefix, &mut verifier_tx)?;
-    let verifier_fixed_roots = production_c61_roots
-        .as_ref()
-        .map(|roots| {
-            volta_pcs::fix_production_c6_wrapper_commitments(
-                roots.statement_digest,
-                &roots.cache_descriptors,
-                &roots.commitments,
-                &mut verifier_tx,
-            )
-            .map_err(|error| format!("fix verifier production C6.1 roots: {error}"))
-        })
-        .transpose()?;
-    if provider_fixed_roots.as_ref().zip(verifier_fixed_roots.as_ref()).is_some_and(
-        |(provider, verifier)| {
-            provider.statement_digest() != verifier.statement_digest()
-                || provider.binding_digest() != verifier.binding_digest()
-        },
-    ) {
-        return Err("production C6.1 fixed roots differ across roles".to_owned());
-    }
     let verifier_model_schedule = verifier
         .schedule_audit()
         .ok_or_else(|| "missing verifier model schedule audit".to_owned())?;
@@ -1571,7 +1395,6 @@ fn run(args: &Args) -> Result<Record, String> {
                     return Err("C6 provider/verifier compiled linear residuals differ".to_owned());
                 }
                 compiled_residual_context = Some(CompiledResidualContext {
-                    installed,
                     installed_plan_memory,
                     install_seconds,
                     provider_compile_seconds,

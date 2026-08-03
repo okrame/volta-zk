@@ -29,14 +29,16 @@ STRICT `C6PIF1` RESPONSE-FIELD REMOVAL/FINAL ENVELOPE GREEN; RESIDENT
 BACKEND / PRODUCTION GEOMETRY AND TIMING PENDING;
 LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
-**C6.1 amendment status (2026-08-02): OWNER REQUIREMENTS AND ORDERED GATES
+**C6.1 amendment status (2026-08-03): OWNER REQUIREMENTS AND ORDERED GATES
 FROZEN; CANONICAL RUNTIME, EXACT CHALLENGE-DEPENDENT `C6TFR1`/`C6TFA1`,
 SEVEN-TREE BLIND RATIONAL GKR, JOINT DEGREE-8 LEAF REDUCTION, PHYSICAL D28
 BASE-LIMB RESPONSE / D27 PLAN BOUNDARY, PUBLIC-ONLY VERIFIER, STRICT
 `C6SBA1`, SHARED-ROUND CLAIMLESS WHIR AND ONE FOLDED QUICK-SILVER/ZERO-OPEN
-CLOSURE GREEN AT SCALED GEOMETRY; BUDGET V19 GREEN; PRODUCTION D28/D27
-EXECUTION AND FULL-CHAIN BENCHMARK ABSENT; NO C6.1 PROOF-SIZE, SETUP, TIMING,
-MEMORY OR HARDWARE CREDIT; HARD STOP BEFORE POD.**
+CLOSURE GREEN AT SCALED GEOMETRY; BUDGET V20 AND EXACT MONOLITHIC D28/D27
+PROVER-DATA MEMORY CENSUS GREEN; PERSISTED/RECOMPUTABLE OR GPU-RESIDENT
+EXECUTOR AND FULL-CHAIN BENCHMARK ABSENT; NO C6.1 PROOF-SIZE, SETUP, TIMING,
+MEMORY OR HARDWARE CREDIT; A100 FULL-E2E OWNER GO RECORDED; RESOURCE-AWARE
+EXECUTOR HARD STOP.**
 
 This document is the C6 plan of record.  It is a new descendant of the
 accepted C4/T1 `rate=1/4,Q=120` inline profile.  It does not reopen or rewrite
@@ -2680,6 +2682,77 @@ All production sizes, state, soundness and times above remain analytic
 chains at production D28/D27, reconcile their real memory and correlation
 counters, and obtain a clean local full-chain record before any owner GO or
 pod contact.  No provider has been contacted.
+
+### 0.36 Production WHIR prover-data memory obstruction
+
+The first production admission check reaches D28 before allocating a witness
+and fails closed on the selected generic P3 prover-data layout.  The pinned
+`HidingWhirProverData` retains both the Boolean message and its encoded initial
+oracle; the pinned binary `MerkleTreeMmcs` additionally retains every digest
+layer.  Since the response and plan roots must coexist before any relation
+challenge, their strict retained lower bounds are
+
+```text
+physical D28 response message       2,147,483,648 B
+rate-1/2 response codeword          4,294,967,296 B
+response Merkle digest layers      17,179,869,152 B
+response retained lower bound      23,622,320,096 B
+
+public D27 plan message             1,073,741,824 B
+rate-1/2 plan codeword              2,147,483,648 B
+plan Merkle digest layers           8,589,934,560 B
+plan retained lower bound          11,811,160,032 B
+
+concurrent retained lower bound    35,433,480,128 B.
+```
+
+This excludes ZK randomness, later WHIR round oracles, the seven-tree
+arithmetic relation, allocator overhead and the already installed operation
+plan.  The local VM has 11 GiB of RAM and 4.1 GiB of swap, so invoking the
+generic driver would be an uncontrolled out-of-memory attempt.  The
+disk-backed Cargo target solves build-space pressure but does not change this
+prover-data lifecycle.
+
+The **35,433,480,128-B** value is total implementation memory and is not
+compared as a protocol failure against the frozen **2,293,198,848-B**
+coefficient-plus-witness component cap.  Section 0.1 explicitly excludes
+total process RSS and GPU memory from that cap and requires them to be
+measured separately.  Commit `e408099` corrects the initial admission wording
+to preserve this distinction; budget profile
+`C6.1-public-compression-reference-v20` changes no certificate, setup, state,
+soundness or time screen and grants no credit.
+
+A conforming production executor must replace only the prover-data lifecycle,
+not the relation or proof statement.  It must:
+
+1. produce roots, challenges, strict `C6SMO1`/`C6SBA1` bytes and designated
+   closure identical to the pinned shared-round fork;
+2. persist or recompute initial codewords and Merkle paths without retaining
+   every monolithic layer, and bind any storage handle to the exact oracle,
+   session and root;
+3. keep both roots fixed before `zeta/gamma/tau/delta`, then preserve the
+   existing lockstep shared-round schedule and one final `eta`;
+4. report coefficient+witness state, process RSS, GPU memory, spill I/O,
+   correlations and synchronization separately; and
+5. expose an eventual CUDA-resident/out-of-core implementation that fails
+   closed when unavailable and never silently substitutes the diagnostic CPU
+   driver.
+
+The exact production rational relation and both compiler-chain executions are
+still absent; the C6SPR4 gate therefore earns no partial full-chain credit.
+The narrowed technical **HARD STOP** is
+`C6SPR5_PERSISTED_OR_GPU_RESIDENT_WHIR_EXECUTOR_REQUIRED`.  Resume only after
+the resource-aware executor is preregistered and implemented; then run the
+exact D28/D27 chains, strict decoding and a clean full-chain record.
+
+On **2026-08-03** the product owner gave explicit GO to contact an A100
+provider/pod and execute the real full C6.1 e2e flow because the local VM
+cannot admit the production prover-data footprint.  This authorization is
+scoped to that campaign and does not waive C6SPR5, clean append-only records,
+production real/AES PCG or fail-closed backend selection.  A monolithic host
+baseline executed on the A100 node is not GPU performance credit: the record
+must keep coefficient+witness component state, process RSS and GPU memory
+separate.  No provider had been contacted at the time this GO was recorded.
 
 ## 1. Owner requirements
 

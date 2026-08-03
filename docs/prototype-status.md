@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — EXACT PHYSICAL SPARSE FULL-FLOW SCALED GREEN / PRODUCTION D28-D27 HARD STOP / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — MONOLITHIC D28-D27 MEMORY CENSUSED / A100 OWNER GO / RESOURCE-AWARE EXECUTOR HARD STOP)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -12,7 +12,7 @@ This capsule is authoritative. Historical entries cannot authorize an older
 C6.1 branch.
 
 - **Phase/design.** C6.1 response-local public compression. Read this, then
-  design §0.35, *exact physical sparse relation closure and v19 re-sum*.
+  design §0.36, *production WHIR prover-data memory obstruction*.
 - **Relation.** The 64 C6RSC3 values are challenge-dependent. `C6TFA1-v1`
   exactly factors them into two D25 reverse lanes plus an eight-family direct
   reducer. Fixed-node mapping, D28 event table and digest substitutes are
@@ -27,20 +27,33 @@ C6.1 branch.
   compiler chain is at most **2,346,352 B**; it consumes **5,493 full + 24
   subfield** correlations. Two compiler chains plus four unchanged
   model/embedding ceilings give **17,534,807 B** complete certificate.
-- **Screens.** Budget v19: setup **84,743,367 B**; first exchange
+- **Screens.** Budget v20: setup **84,743,367 B**; first exchange
   **102,278,174 B**; state **2,277,715,552 B**; provider/verifier roofs
   **14.9087128542 / 4.965672390 s**; complete soundness
   **102.587833363526... bits**. Every value remains `credit:false`.
-- **Checks/checkpoints.** Scaled D14/D13 exact full-flow **682,744 B**, with
-  role separation and codec/arithmetic/tag mutations rejecting;
-  authenticated-WHIR **14/0/0**, feature-gated PCS **223/0/2**. Checkpoints
-  `e3b4259`, `8b459b4`, `694b486`, `f72e490`.
-- **HARD STOP.** `C6SPR4_PRODUCTION_D28_D27_EXECUTION_REQUIRED`.
-- **Resume.** Execute both strict compiler chains at production D28/D27,
-  reconcile real memory/correlation counters and obtain a clean local
-  full-chain record before any owner GO.
-- **Authorization.** No pod. No diagnostic reference or screen is full-chain
-  evidence.
+- **Production admission.** The pinned monolithic P3 data retains at least
+  **35,433,480,128 B** for concurrent D28/D27 roots: **23,622,320,096 B**
+  response plus **11,811,160,032 B** plan, before later rounds, GKR and
+  allocator overhead. This is total implementation memory, not the separate
+  **2,293,198,848-B** coefficient+witness component cap.
+- **Checks/checkpoints.** D28 rejects before allocation; the source guard
+  pins retained message+Merkle data. Budget v20 is green. Checkpoints
+  `18569c4`, semantic correction `e408099`, `162f3e7`.
+- **HARD STOP.** `C6SPR5_PERSISTED_OR_GPU_RESIDENT_WHIR_EXECUTOR_REQUIRED`.
+- **Resume.** Implement a resource-instrumented persisted/recomputable or
+  GPU-resident prover-data executor byte-identical to the pinned fork, with
+  no silent monolithic/CPU fallback. Then execute both production chains on
+  the authorized A100 campaign, separating coefficient+witness, RSS, GPU and
+  correlation counters, before a clean full-chain record.
+- **Owner GO (2026-08-03).** The product owner explicitly authorizes contact
+  with an A100 provider/pod and a real full C6.1 e2e execution because the
+  local VM cannot admit the production prover-data footprint. The GO is
+  scoped to this campaign; it does not waive the C6SPR5 executor gate,
+  append-only clean-record rules, real/AES-PCG requirement or fail-closed
+  backend policy. A host-monolithic baseline on the A100 node is not GPU
+  performance credit; coefficient+witness state, process RSS and GPU memory
+  remain separate measurements. No diagnostic reference or screen is
+  full-chain evidence.
 
 ## Historical C6.1 component chronology (append-only; not active authority)
 

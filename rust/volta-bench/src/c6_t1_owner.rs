@@ -11,6 +11,8 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+#[cfg(feature = "c6-trace")]
+use volta_accel::{Backend, BackendKind};
 use volta_gpt2::{
     argmax, band_model_witness, decode_step, forward_model, forward_model_tokens, load_model,
     BandModelWitness, Gpt2Model, KvCache, ModelWitness,
@@ -23,11 +25,14 @@ use volta_mac::{
 };
 #[cfg(feature = "c6-trace")]
 use volta_pcs::{
-    layout_gpt2_embed_c3, layout_gpt2_weights_c3, BlockClaim, C6PersistentCacheStateWitness,
+    commit_resident, free_resident_matrix, layout_gpt2_embed_c3, layout_gpt2_weights_c3,
+    open_multi_zk_resident, verify_multi_open, BlockClaim, C6HiddenUBundleWitness,
+    C6HiddenUFamilyWitness, C6PersistentCacheStateWitness, Commitment, MultiOpenProof, C3_EMBED,
+    C3_WEIGHTS,
 };
 #[cfg(feature = "c6-trace")]
 use volta_proto::{
-    build_c6_t1_production_response_owner, C6ProductionPairedPcgAttempt,
+    build_c6_t1_production_response_owner, cattn_permuted, C6ProductionPairedPcgAttempt,
     C6T1ProductionResponseOwner,
 };
 
@@ -94,6 +99,78 @@ pub struct C6T1NativeClaimOwner {
     primary_embedding_targets: Vec<ProverAuthed>,
     primary_model_keys: Vec<VerifierKey>,
     primary_embedding_keys: Vec<VerifierKey>,
+}
+
+/// Prover-private randomness fixed independently of transcript challenges and
+/// the verifier MAC secrets.  Commitment padding seeds are setup-owned;
+/// opening-mask seeds are response-fresh and role-separated.
+#[cfg(feature = "c6-trace")]
+#[derive(Clone, Copy)]
+pub struct C6T1HiddenUEntropy {
+    pub model_pad_seed: [u8; 32],
+    pub embedding_pad_seed: [u8; 32],
+    pub model_mask_seed: [u8; 32],
+    pub embedding_mask_seed: [u8; 32],
+}
+
+/// Exact retained legacy openings and the hidden-u witnesses derived from
+/// those same proof objects.  The enclosing response owner remains present,
+/// so no caller can attach a detached 96/6 schedule after this boundary.
+#[cfg(feature = "c6-trace")]
+pub struct C6T1HiddenUOwner {
+    response: C6T1ProductionOwnerExport,
+    model_commitment: Commitment,
+    embedding_commitment: Commitment,
+    model_opening: MultiOpenProof,
+    embedding_opening: MultiOpenProof,
+    hidden_bundle: C6HiddenUBundleWitness,
+}
+
+#[cfg(feature = "c6-trace")]
+impl C6T1HiddenUOwner {
+    pub fn response(&self) -> &C6T1ProductionOwnerExport {
+        &self.response
+    }
+
+    pub fn model_commitment(&self) -> &Commitment {
+        &self.model_commitment
+    }
+
+    pub fn embedding_commitment(&self) -> &Commitment {
+        &self.embedding_commitment
+    }
+
+    pub fn model_opening(&self) -> &MultiOpenProof {
+        &self.model_opening
+    }
+
+    pub fn embedding_opening(&self) -> &MultiOpenProof {
+        &self.embedding_opening
+    }
+
+    pub fn hidden_bundle(&self) -> &C6HiddenUBundleWitness {
+        &self.hidden_bundle
+    }
+
+    pub fn into_parts(
+        self,
+    ) -> (
+        C6T1ProductionOwnerExport,
+        Commitment,
+        Commitment,
+        MultiOpenProof,
+        MultiOpenProof,
+        C6HiddenUBundleWitness,
+    ) {
+        (
+            self.response,
+            self.model_commitment,
+            self.embedding_commitment,
+            self.model_opening,
+            self.embedding_opening,
+            self.hidden_bundle,
+        )
+    }
 }
 
 #[cfg(feature = "c6-trace")]
@@ -239,6 +316,179 @@ pub fn execute_c6_t1_production_owner_export(
         native_claims,
         predecessor_cache,
         successor_cache,
+    })
+}
+
+/// Extend the exact response owner with both retained C3 multi-openings and
+/// the hidden-u bundle derived from those proof objects.  Both openings run
+/// on the already-live primary real-PCG tape; the verifier mirror consumes
+/// the corresponding primary context before this owner is released.
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+pub fn attach_c6_t1_hidden_u_owner(
+    response: C6T1ProductionOwnerExport,
+    attempt: &mut C6ProductionPairedPcgAttempt,
+    backend: &mut Backend,
+    entropy: C6T1HiddenUEntropy,
+    provider_transcript: &mut Transcript,
+    verifier_transcript: &mut Transcript,
+) -> Result<C6T1HiddenUOwner, String> {
+    let seeds = [
+        entropy.model_pad_seed,
+        entropy.embedding_pad_seed,
+        entropy.model_mask_seed,
+        entropy.embedding_mask_seed,
+    ];
+    if backend.kind() != BackendKind::CudaResident
+        || seeds.iter().any(|seed| *seed == [0; 32])
+        || (0..seeds.len()).any(|left| seeds[left + 1..].contains(&seeds[left]))
+    {
+        return Err(
+            "C6SPR12 hidden-u owner requires CUDA-resident execution and four separated nonzero seeds"
+                .to_owned(),
+        );
+    }
+    if !attempt.prover_streams_array_mut()[0].uses_pooled_pcg() {
+        return Err("C6SPR12 hidden-u owner forbids mock PCG state".to_owned());
+    }
+
+    let model_layout = layout_gpt2_weights_c3();
+    let mut model_coefficients = Vec::new();
+    model_coefficients
+        .try_reserve_exact(model_layout.total_len)
+        .map_err(|_| "C6SPR12 model coefficient allocation failed".to_owned())?;
+    model_coefficients.resize(model_layout.total_len, 0i16);
+    for layer in 0..volta_gpt2::L {
+        let weights = &response.workload().model().layers[layer].0;
+        let c_attn = cattn_permuted(&weights.c_attn);
+        model_layout.place_layer(
+            &mut model_coefficients,
+            layer,
+            [&c_attn, &weights.attn_proj, &weights.ffn_up, &weights.ffn_down],
+        );
+    }
+    let model_claims = response
+        .native_claims()
+        .model_claims()
+        .iter()
+        .cloned()
+        .zip(response.native_claims().primary_model_targets().iter().copied())
+        .collect::<Vec<_>>();
+    let (model_commitment, model_matrix) =
+        commit_resident(&model_coefficients, &C3_WEIGHTS, entropy.model_pad_seed, backend)
+            .map_err(|error| format!("C6SPR12 resident model commitment: {error}"))?;
+    drop(model_coefficients);
+    let mut model_domains =
+        volta_proto::logup::Doms::new(volta_proto::block_proof::layer_dom_base(242));
+    let model_domain_s = model_domains.take(1);
+    let model_domain_zb = model_domains.take(1);
+    let model_opening_result = open_multi_zk_resident(
+        &model_matrix,
+        &model_claims,
+        &mut attempt.prover_streams_array_mut()[0],
+        model_domain_s,
+        model_domain_zb,
+        entropy.model_mask_seed,
+        provider_transcript,
+        backend,
+    );
+    let model_cleanup = free_resident_matrix(model_matrix, backend);
+    let (model_opening, _) =
+        model_opening_result.map_err(|error| format!("C6SPR12 resident model opening: {error}"))?;
+    model_cleanup.map_err(|error| format!("C6SPR12 resident model cleanup: {error:?}"))?;
+
+    let embedding_layout = layout_gpt2_embed_c3();
+    let embedding_coefficients = embedding_layout
+        .place(&[&response.workload().model().wte, &response.workload().model().wpe]);
+    let embedding_claims = response
+        .native_claims()
+        .embedding_claims()
+        .iter()
+        .cloned()
+        .zip(response.native_claims().primary_embedding_targets().iter().copied())
+        .collect::<Vec<_>>();
+    let (embedding_commitment, embedding_matrix) =
+        commit_resident(&embedding_coefficients, &C3_EMBED, entropy.embedding_pad_seed, backend)
+            .map_err(|error| format!("C6SPR12 resident embedding commitment: {error}"))?;
+    drop(embedding_coefficients);
+    let mut embedding_domains =
+        volta_proto::logup::Doms::new(volta_proto::block_proof::layer_dom_base(253));
+    let embedding_domain_s = embedding_domains.take(1);
+    let embedding_domain_zb = embedding_domains.take(1);
+    let embedding_opening_result = open_multi_zk_resident(
+        &embedding_matrix,
+        &embedding_claims,
+        &mut attempt.prover_streams_array_mut()[0],
+        embedding_domain_s,
+        embedding_domain_zb,
+        entropy.embedding_mask_seed,
+        provider_transcript,
+        backend,
+    );
+    let embedding_cleanup = free_resident_matrix(embedding_matrix, backend);
+    let (embedding_opening, _) = embedding_opening_result
+        .map_err(|error| format!("C6SPR12 resident embedding opening: {error}"))?;
+    embedding_cleanup.map_err(|error| format!("C6SPR12 resident embedding cleanup: {error:?}"))?;
+
+    let model_verifier_claims = response
+        .native_claims()
+        .model_claims()
+        .iter()
+        .cloned()
+        .zip(response.native_claims().primary_model_keys().iter().copied())
+        .collect::<Vec<_>>();
+    let embedding_verifier_claims = response
+        .native_claims()
+        .embedding_claims()
+        .iter()
+        .cloned()
+        .zip(response.native_claims().primary_embedding_keys().iter().copied())
+        .collect::<Vec<_>>();
+    let verifier_context = &mut attempt.verifier_contexts_array_mut()[0];
+    if !verify_multi_open(
+        &model_commitment.root,
+        &C3_WEIGHTS,
+        &model_verifier_claims,
+        &model_opening,
+        verifier_context,
+        model_domain_s,
+        model_domain_zb,
+        verifier_transcript,
+    ) || !verify_multi_open(
+        &embedding_commitment.root,
+        &C3_EMBED,
+        &embedding_verifier_claims,
+        &embedding_opening,
+        verifier_context,
+        embedding_domain_s,
+        embedding_domain_zb,
+        verifier_transcript,
+    ) {
+        return Err("C6SPR12 retained hidden-u multi-opening verification failed".to_owned());
+    }
+
+    let model_hidden = C6HiddenUFamilyWitness::from_retained_multi_open(
+        volta_pcs::C6HiddenULayout::production_weights(),
+        response.native_claims().model_claims(),
+        &model_opening,
+    )
+    .map_err(|error| error.to_string())?;
+    let embedding_hidden = C6HiddenUFamilyWitness::from_retained_multi_open(
+        volta_pcs::C6HiddenULayout::production_embed(),
+        response.native_claims().embedding_claims(),
+        &embedding_opening,
+    )
+    .map_err(|error| error.to_string())?;
+    let hidden_bundle = C6HiddenUBundleWitness::production(model_hidden, embedding_hidden)
+        .map_err(|error| error.to_string())?;
+
+    Ok(C6T1HiddenUOwner {
+        response,
+        model_commitment,
+        embedding_commitment,
+        model_opening,
+        embedding_opening,
+        hidden_bundle,
     })
 }
 

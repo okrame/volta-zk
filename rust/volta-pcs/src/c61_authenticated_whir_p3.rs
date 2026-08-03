@@ -743,6 +743,147 @@ pub struct C61ProductionCommittedChainExecution {
     pub report: C61ProductionCommittedChainReport,
 }
 
+/// Linear provider state after the canonical claimless-WHIR body is fixed
+/// and before its 16-byte authenticated tail is emitted. The state is not
+/// clonable or serializable; an ordinary or joint closure must consume it.
+pub struct C61ProductionCommittedChainProverBody {
+    statement: C61NativeProverChainStatement,
+    id: C61NativeChainId,
+    num_variables: usize,
+    claim_count: usize,
+    tagless_payload: Vec<u8>,
+    tagless_digest: [u8; 32],
+    claim_weights: Vec<Fp2>,
+    prepared: crate::c61_authenticated_whir::C61AuthenticatedWhirPreparedMask,
+    finish_input: C61AuthenticatedWhirProverFinishInput,
+    transcript: Transcript,
+    provider_interaction: C61WhirInteractionStats,
+    strict_payload_max_bytes: usize,
+    spill: C61PersistedMmcsMetrics,
+}
+
+impl C61ProductionCommittedChainProverBody {
+    pub fn statement(&self) -> &C61NativeProverChainStatement {
+        &self.statement
+    }
+
+    pub fn id(&self) -> C61NativeChainId {
+        self.id
+    }
+
+    pub fn claim_weights(&self) -> &[Fp2] {
+        &self.claim_weights
+    }
+
+    pub fn tagless_payload(&self) -> &[u8] {
+        &self.tagless_payload
+    }
+
+    pub fn tagless_digest(&self) -> [u8; 32] {
+        self.tagless_digest
+    }
+
+    pub fn finish_ordinary(mut self) -> Result<C61ProductionCommittedChainExecution, String> {
+        let closure = finish_c61_authenticated_whir_base(
+            self.prepared,
+            self.finish_input,
+            &mut self.transcript,
+        )
+        .map_err(|error| error.to_string())?;
+        let mut payload = self.tagless_payload;
+        payload.extend_from_slice(&closure.proof.encode());
+        let proof = C61ProductionCommittedChainProof::decode(&payload, self.statement.public())?;
+        let report = C61ProductionCommittedChainReport {
+            id: self.id,
+            num_variables: self.num_variables,
+            claim_count: self.claim_count,
+            strict_payload_bytes: payload.len(),
+            strict_payload_blake3: *blake3::hash(&payload).as_bytes(),
+            strict_payload_max_bytes: self.strict_payload_max_bytes,
+            pooled_pcg: true,
+            persisted_executor: true,
+            cuda_resident_admission: true,
+            gpu_performance_credit: false,
+            provider_interaction: self.provider_interaction,
+            provider_transcript_bytes: self.transcript.total_bytes(),
+            provider_ledger: self.transcript.ledger().clone(),
+            spill: self.spill,
+        };
+        Ok(C61ProductionCommittedChainExecution { statement: self.statement, proof, report })
+    }
+}
+
+/// Linear verifier state after replaying and accepting the canonical tagless
+/// body. It carries no target plaintext and consumes the verifier PCG only
+/// when an ordinary or joint authenticated tail is checked.
+pub struct C61ProductionCommittedChainVerifierBody {
+    id: C61NativeChainId,
+    num_variables: usize,
+    claim_count: usize,
+    tagless_payload_len: usize,
+    tagless_digest: [u8; 32],
+    claim_weights: Vec<Fp2>,
+    aggregate_key: VerifierKey,
+    affine: C61AuthenticatedWhirAffineClaim,
+    base_case: BaseCaseClaimlessClosure<C61P3Fp2>,
+    mask_range: C61AuthenticatedWhirMaskRange,
+    transcript: Transcript,
+    verifier_interaction: C61WhirInteractionStats,
+}
+
+impl C61ProductionCommittedChainVerifierBody {
+    pub fn id(&self) -> C61NativeChainId {
+        self.id
+    }
+
+    pub fn claim_weights(&self) -> &[Fp2] {
+        &self.claim_weights
+    }
+
+    pub fn tagless_digest(&self) -> [u8; 32] {
+        self.tagless_digest
+    }
+
+    pub fn finish_ordinary(
+        mut self,
+        tail: &[u8],
+        context: &mut VerifierCtx,
+    ) -> Result<C61ProductionCommittedChainVerification, String> {
+        if !context.uses_pooled_pcg() {
+            return Err("C6SPR13 production verifier tail forbids mock PCG state".to_owned());
+        }
+        let base_proof =
+            C61AuthenticatedWhirBaseProof::decode(tail).map_err(|error| error.to_string())?;
+        let final_key = self.affine.derive_verifier_key(self.aggregate_key, context.delta);
+        verify_c61_authenticated_whir_base(
+            C61AuthenticatedWhirVerifierInput {
+                id: self.id,
+                mask_range: self.mask_range,
+                combined: c61_volta_fp2_from_p3(self.base_case.combined),
+                shifted_masked_claim: c61_volta_fp2_from_p3(self.base_case.shifted_masked_claim),
+                gamma: c61_volta_fp2_from_p3(self.base_case.gamma),
+                target: final_key,
+            },
+            base_proof,
+            context,
+            &mut self.transcript,
+        )
+        .map_err(|error| error.to_string())?;
+        Ok(C61ProductionCommittedChainVerification {
+            id: self.id,
+            num_variables: self.num_variables,
+            claim_count: self.claim_count,
+            strict_payload_bytes: self
+                .tagless_payload_len
+                .checked_add(C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES)
+                .ok_or_else(|| "C6SPR13 native-chain payload length overflows".to_owned())?,
+            verifier_interaction: self.verifier_interaction,
+            verifier_transcript_bytes: self.transcript.total_bytes(),
+            verifier_ledger: self.transcript.ledger().clone(),
+        })
+    }
+}
+
 #[derive(Debug)]
 pub struct C61ProductionCommittedFourChainExecution {
     pub chains: [C61ProductionCommittedChainExecution; 4],
@@ -3234,6 +3375,38 @@ pub fn prove_c61_authenticated_whir_p3_production_committed_chain_persisted_cuda
     id: C61NativeChainId,
     mask_range: C61AuthenticatedWhirMaskRange,
 ) -> Result<C61ProductionCommittedChainExecution, String> {
+    prepare_c61_authenticated_whir_p3_production_committed_chain_persisted_cuda_in_attempt(
+        coefficients,
+        claims,
+        targets,
+        parameter_digest,
+        spill_root,
+        admission,
+        backend,
+        correlations,
+        verifier_seed,
+        id,
+        mask_range,
+    )?
+    .finish_ordinary()
+}
+
+/// Stop the same production chain after its canonical claimless body and
+/// batching weights are fixed but before the authenticated tail is emitted.
+#[allow(clippy::too_many_arguments)]
+pub fn prepare_c61_authenticated_whir_p3_production_committed_chain_persisted_cuda_in_attempt(
+    coefficients: Vec<Goldilocks>,
+    claims: &[crate::batch::BlockClaim],
+    targets: Vec<ProverAuthed>,
+    parameter_digest: [u8; 32],
+    spill_root: &Path,
+    admission: C61ProductionPersistedResourceAdmission,
+    backend: &mut Backend,
+    correlations: &mut CorrelationStream,
+    verifier_seed: [u8; 32],
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<C61ProductionCommittedChainProverBody, String> {
     let num_variables = match id.component {
         C61NativeComponent::Model => usize::from(C61_MODEL_POLYNOMIAL_LOG2),
         C61NativeComponent::Embedding => usize::from(C61_EMBEDDING_POLYNOMIAL_LOG2),
@@ -3380,48 +3553,32 @@ pub fn prove_c61_authenticated_whir_p3_production_committed_chain_persisted_cuda
 
     let aggregate_target = aggregate_prover_targets(statement.targets(), &output.claim_weights)?;
     let final_target = affine_from_p3(output.target).authenticate_prover(aggregate_target);
-    let closure = finish_c61_authenticated_whir_base(
-        prepared,
-        C61AuthenticatedWhirProverFinishInput {
-            combined: c61_volta_fp2_from_p3(output.base_case.combined),
-            shifted_masked_claim: c61_volta_fp2_from_p3(output.base_case.shifted_masked_claim),
-            gamma: c61_volta_fp2_from_p3(output.base_case.gamma),
-            target: final_target,
-        },
-        &mut transcript,
-    )
-    .map_err(|error| error.to_string())?;
-    let payload = encode_c61_authenticated_p3_artifact_inner(
-        num_variables,
-        &commitment,
-        &output.proof,
-        closure.proof,
-        true,
-    )
-    .map_err(|error| error.to_string())?;
-    if payload.len() != placeholder_payload.len() {
-        return Err("C6SPR11 production ZeroOpen changed the C6AWP1 length".to_owned());
-    }
-    let proof = C61ProductionCommittedChainProof::decode(&payload, statement.public())?;
+    let claim_weights = output.claim_weights.iter().copied().map(c61_volta_fp2_from_p3).collect();
+    let finish_input = C61AuthenticatedWhirProverFinishInput {
+        combined: c61_volta_fp2_from_p3(output.base_case.combined),
+        shifted_masked_claim: c61_volta_fp2_from_p3(output.base_case.shifted_masked_claim),
+        gamma: c61_volta_fp2_from_p3(output.base_case.gamma),
+        target: final_target,
+    };
+    let tagless_payload = placeholder_payload[..whir_payload_bytes].to_vec();
+    let tagless_digest = *blake3::hash(&tagless_payload).as_bytes();
     let strict_payload_max_bytes =
         c61_authenticated_structural_budget_inner(num_variables, true)?.strict_chain_bytes;
-    let report = C61ProductionCommittedChainReport {
+    Ok(C61ProductionCommittedChainProverBody {
+        statement,
         id,
         num_variables,
         claim_count: points.len(),
-        strict_payload_bytes: payload.len(),
-        strict_payload_blake3: *blake3::hash(&payload).as_bytes(),
-        strict_payload_max_bytes,
-        pooled_pcg: true,
-        persisted_executor: true,
-        cuda_resident_admission: true,
-        gpu_performance_credit: false,
+        tagless_payload,
+        tagless_digest,
+        claim_weights,
+        prepared,
+        finish_input,
+        transcript,
         provider_interaction,
-        provider_transcript_bytes: transcript.total_bytes(),
-        provider_ledger: transcript.ledger().clone(),
+        strict_payload_max_bytes,
         spill: mmcs.metrics(),
-    };
-    Ok(C61ProductionCommittedChainExecution { statement, proof, report })
+    })
 }
 
 /// Verify one decoded production model/embedding C6AWP1 chain using only the
@@ -3435,20 +3592,43 @@ pub fn verify_c61_authenticated_whir_p3_production_committed_chain_in_attempt(
     verifier_seed: [u8; 32],
     mask_range: C61AuthenticatedWhirMaskRange,
 ) -> Result<C61ProductionCommittedChainVerification, String> {
+    let tail_start = proof
+        .payload()
+        .len()
+        .checked_sub(C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES)
+        .ok_or_else(|| "C6SPR13 production native chain is shorter than its tail".to_owned())?;
+    prepare_c61_authenticated_whir_p3_production_committed_chain_verifier_body(
+        statement,
+        &proof.payload()[..tail_start],
+        verifier_seed,
+        mask_range,
+    )?
+    .finish_ordinary(&proof.payload()[tail_start..], context)
+}
+
+/// Replay and accept a canonical production body without consuming its
+/// authenticated tail or the verifier's PCG allocation.
+pub fn prepare_c61_authenticated_whir_p3_production_committed_chain_verifier_body(
+    statement: &C61NativeVerifierChainStatement,
+    tagless_payload: &[u8],
+    verifier_seed: [u8; 32],
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<C61ProductionCommittedChainVerifierBody, String> {
     let public = statement.public();
     let validated =
         C61NativeVerifierChainStatement::new(public.clone(), statement.target_keys().to_vec())
             .map_err(|error| error.to_string())?;
-    if &validated != statement || !context.uses_pooled_pcg() {
-        return Err("C6SPR11 production verifier requires canonical statement and real pooled PCG"
-            .to_owned());
+    if &validated != statement {
+        return Err("C6SPR13 production verifier body requires a canonical statement".to_owned());
     }
-    C61ProductionCommittedChainProof::decode(proof.payload(), public)?;
+    let mut placeholder_payload = tagless_payload.to_vec();
+    placeholder_payload.extend_from_slice(&[0u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES]);
+    C61ProductionCommittedChainProof::decode(&placeholder_payload, public)?;
     let openings = c61_model_embedding_openings(public)?;
     let num_variables = usize::from(openings.commitment.polynomial_domain_log2);
     let points = c61_model_embedding_points(public)?;
-    let (commitment, native_proof, base_proof) =
-        decode_c61_authenticated_p3_artifact_inner(proof.payload(), num_variables, true)
+    let (commitment, native_proof, _) =
+        decode_c61_authenticated_p3_artifact_inner(&placeholder_payload, num_variables, true)
             .map_err(|error| error.to_string())?;
 
     let mut transcript = Transcript::new(verifier_seed);
@@ -3463,39 +3643,25 @@ pub fn verify_c61_authenticated_whir_p3_production_committed_chain_in_attempt(
     }))
     .map_err(|_| "C6SPR11 production committed-chain verifier panicked".to_owned())?
     .map_err(|error| format!("C6SPR11 production committed-chain verification failed: {error}"))?;
-    let whir_payload_bytes =
-        proof.payload().len().checked_sub(C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES).ok_or_else(
-            || "C6SPR11 production C6AWP1 payload is shorter than its tag".to_owned(),
-        )?;
     let verifier_interaction =
-        challenger.finish(whir_payload_bytes).map_err(|error| error.to_string())?;
+        challenger.finish(tagless_payload.len()).map_err(|error| error.to_string())?;
     drop(challenger);
 
     let aggregate_key = aggregate_verifier_targets(statement.target_keys(), &result.claim_weights)?;
-    let final_key = affine_from_p3(result.target).derive_verifier_key(aggregate_key, context.delta);
-    verify_c61_authenticated_whir_base(
-        C61AuthenticatedWhirVerifierInput {
-            id: public.id(),
-            mask_range,
-            combined: c61_volta_fp2_from_p3(result.base_case.combined),
-            shifted_masked_claim: c61_volta_fp2_from_p3(result.base_case.shifted_masked_claim),
-            gamma: c61_volta_fp2_from_p3(result.base_case.gamma),
-            target: final_key,
-        },
-        base_proof,
-        context,
-        &mut transcript,
-    )
-    .map_err(|error| error.to_string())?;
-
-    Ok(C61ProductionCommittedChainVerification {
+    let claim_weights = result.claim_weights.iter().copied().map(c61_volta_fp2_from_p3).collect();
+    Ok(C61ProductionCommittedChainVerifierBody {
         id: public.id(),
         num_variables,
         claim_count: points.len(),
-        strict_payload_bytes: proof.payload().len(),
+        tagless_payload_len: tagless_payload.len(),
+        tagless_digest: *blake3::hash(tagless_payload).as_bytes(),
+        claim_weights,
+        aggregate_key,
+        affine: affine_from_p3(result.target),
+        base_case: result.base_case,
+        mask_range,
+        transcript,
         verifier_interaction,
-        verifier_transcript_bytes: transcript.total_bytes(),
-        verifier_ledger: transcript.ledger().clone(),
     })
 }
 

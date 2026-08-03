@@ -18,8 +18,9 @@ This capsule is authoritative; read design §0.49 next.
   record is PCS **219/0/1**, proto **154/0/1**. Generic trace targets are
   **41/0/0 + 5/0/0** including the strict `C6NTO1` codec; the exact
   102-target response differential, codec round trip and sealed residual gate
-  are **1/0/0**. CUDA targets compile, but no production response, GPU timing,
-  full-chain or hardware credit exists.
+  are **1/0/0**. Native typestate/schedule gates are **15/0/0 + 2/0/0**.
+  CUDA targets compile, but no production response, GPU timing, full-chain or
+  hardware credit exists.
 - **Screens.** v23 remains `credit:false`: certificate **17,536,735 B**,
   setup **84,743,367 B**, state **2,277,715,552 B**, provider/verifier
   **14.9087128542 / 4.965672390 s**, soundness **102.587833363526... bits**.
@@ -28,11 +29,12 @@ This capsule is authoritative; read design §0.49 next.
   model-agnostic, challenge-dependent, wire-neutral `C6NBR1/C6NTO1` bridge
   with small commits on `main`. Local construction may proceed. HARD STOP
   remains before exact-runner admission or pod contact.
-- **Resume conditions.** Implement pausable native chains and the post-body
-  challenge schedule, then the joint tape-1 compiler functional and role
-  verification; re-sum bytes, setup, correlations, soundness, state and time
-  and run the complete local gates. No fixed `96/6`, clear target, mock PCG,
-  CPU fallback or provider-derived verifier key is admissible.
+- **Resume conditions.** Implement the generic joint tape-1 compiler
+  functional and source-fold role differential, then the `C6NBR1/C6AWP2`
+  closure and strict outer decoder; re-sum bytes, setup, correlations,
+  soundness, state and time and run the complete local gates. No fixed `96/6`,
+  clear target, mock PCG, CPU fallback or provider-derived verifier key is
+  admissible.
 
 - **2026-08-03 — C6SPR10 exact terminal-functional relation closes locally.**
   The compiler now proves the exact challenge-dependent equality between the
@@ -114,6 +116,21 @@ This capsule is authoritative; read design §0.49 next.
   the complete production-geometry response/residual gate is **1/0/0**. Its
   CPU wall remains diagnostic without timing credit. v23 and the no-pod hard
   stop are unchanged; pausable native typestates are next.
+
+- **2026-08-03 — Native bodies become pausable before `zeta`.** Production
+  model/embed proving now exposes a linear, non-clonable state after the
+  canonical claimless-WHIR body and ordered `alpha` weights are fixed but
+  before its 16-B authenticated tail. The verifier independently replays the
+  same tagless body without consuming its PCG allocation; the legacy path is
+  exactly the consuming `finish_ordinary` transition. A model-independent
+  schedule builder accepts arbitrary `C6NTO1` cohorts, rejects missing,
+  reordered or mismatched bodies, binds typed-statement and tagless-body
+  digests, and exposes one fresh `zeta` only after all bodies are fixed. These
+  derived bindings add zero provider wire. The complete authenticated-WHIR
+  suite is **15/0/0** and the generic schedule suite **2/0/0**; dual-feature
+  compilation is green. This is an executable local seam, not a production
+  proof or timing credit. v23 and the no-pod hard stop remain unchanged; the
+  next construction is the generic compiler adjoint/source fold.
 
 - **2026-08-03 — C6SPR8 closed; production wrapper lifecycle reaches the next
   ordered hard stop.** Checkpoint `c81a4ff` binds both ordered manifest tapes

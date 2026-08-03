@@ -14,6 +14,7 @@ pub mod c61_authenticated_whir;
 pub mod c61_authenticated_whir_p3;
 #[cfg(feature = "c61-p3-authenticated-reference")]
 mod c61_interactive_driver;
+pub mod c61_joint_native_bridge;
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub mod c61_persisted_mmcs;
 pub mod c61_public_compression;
@@ -57,6 +58,10 @@ pub use c61_authenticated_whir::{
     C61_AUTHENTICATED_WHIR_CHAINS, C61_AUTHENTICATED_WHIR_MASKS_PER_TAPE,
     C61_AUTHENTICATED_WHIR_NET_PROVIDER_BYTES, C61_AUTHENTICATED_WHIR_REMOVED_EVALUATION_BYTES,
     C61_AUTHENTICATED_WHIR_TAPES, C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES,
+};
+pub use c61_joint_native_bridge::{
+    C61JointNativeBodiesFixed, C61JointNativeBodyBinding, C61JointNativeBodyScheduleBuilder,
+    C61JointNativeChallenge,
 };
 pub use c61_public_compression::{
     build_c61_scaled_arithmetic_frame, c61_eq_weight, c61_fp2_vector_root,

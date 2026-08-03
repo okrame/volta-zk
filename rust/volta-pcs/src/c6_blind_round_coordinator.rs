@@ -1,28 +1,170 @@
 #![allow(dead_code)]
 
+use crate::c6_hidden_u::{C6HiddenUPostCommit, C6HiddenUPrequery, C6SealedHiddenUBundle};
 use crate::c6_hidden_u_sumcheck_blind::{
-    C6BlindHiddenUProverRoundState, C6BlindHiddenUVerifierRoundState,
+    assemble_c6_blind_hidden_u_prover_stepwise, begin_c6_blind_hidden_u_stepwise,
+    prepare_c6_blind_hidden_u_prover_round_state, C6BlindHiddenUPendingClaimsProver,
+    C6BlindHiddenUProverRoundState, C6BlindHiddenUSumcheckProof, C6BlindHiddenUVerifierRoundState,
 };
 use crate::c6_persistent_cache_blind::{
+    assemble_c6_persistent_cache_production_proof, begin_c6_persistent_cache_production,
+    finish_c6_persistent_cache_production_prover_repetition, C6PersistentCacheBlindProof,
+    C6PersistentCachePendingClaimsProver, C6PersistentCacheProductionMetrics,
     C6PersistentCacheProductionPreparedProver, C6PersistentCacheProductionVerifierRoundState,
-    C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS, C6_PERSISTENT_CACHE_BLIND_ROUND_BYTES,
+    C6PersistentCacheSourceBootstrapFrame, C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS,
+    C6_PERSISTENT_CACHE_BLIND_ROUND_BYTES,
 };
 use crate::c6_residual_sumcheck_blind::{
-    C6BlindResidualProverRoundState, C6BlindResidualVerifierRoundState,
+    assemble_c6_blind_residual_prover_stepwise, begin_c6_blind_residual_prover_stepwise,
+    prepare_c6_blind_residual_prover_round_state_fused, C6BlindResidualDirectTerminalOutputs,
+    C6BlindResidualFusedCompilerContext, C6BlindResidualPendingClaimsProver,
+    C6BlindResidualPendingTransferFrame, C6BlindResidualProverRoundState, C6BlindResidualStatement,
+    C6BlindResidualSumcheckProof, C6BlindResidualVerifierRoundState,
 };
 use crate::c6_wrapper_pcs::{
     C6FixedWrapperCommitments, C6WrapperRoundCoordinator, C6WrapperRoundMessageReceipt,
     C6WrapperRoundPoint, C6_CACHE_ROUND_PARTICIPANT_ID, C6_DELTA_RESIDUAL_ACTIVATION_ROUND,
     C6_DELTA_RESIDUAL_ROUND_PARTICIPANT_ID, C6_HIDDEN_U_ROUND_PARTICIPANT_ID,
-    C6_HIDDEN_U_WEIGHTS_ACTIVATION_ROUND, C6_WRAPPER_RANDOM_POINT_LEN,
+    C6_HIDDEN_U_WEIGHTS_ACTIVATION_ROUND, C6_WRAPPER_RANDOM_POINT_LEN, C6_WRAPPER_REPETITIONS,
 };
 use volta_field::Fp2;
 use volta_mac::{CorrelationStream, Transcript, VerifierCtx};
+use volta_proto::{C6ResidualFusedCoefficientArena, C6ResidualFusedWitnessView};
 
 const TAPES: usize = 2;
 
 fn text_error(error: impl std::fmt::Display) -> String {
     error.to_string()
+}
+
+pub(crate) struct C6ProductionBlindProverOutput {
+    pub(crate) residual_proof: C6BlindResidualSumcheckProof,
+    pub(crate) residual_frame: C6BlindResidualPendingTransferFrame,
+    pub(crate) residual_pending: C6BlindResidualPendingClaimsProver,
+    pub(crate) residual_terminal_outputs: C6BlindResidualDirectTerminalOutputs,
+    pub(crate) hidden_proof: C6BlindHiddenUSumcheckProof,
+    pub(crate) hidden_pending: C6BlindHiddenUPendingClaimsProver,
+    pub(crate) cache_proof: C6PersistentCacheBlindProof,
+    pub(crate) cache_source_frame: C6PersistentCacheSourceBootstrapFrame,
+    pub(crate) cache_pending: C6PersistentCachePendingClaimsProver,
+    pub(crate) cache_metrics: C6PersistentCacheProductionMetrics,
+}
+
+/// Complete prover-side join for the three real blind participants.  Cache
+/// preparation remains a callback because its relation roots and point are
+/// drawn from this same transcript immediately before each repetition.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prove_c6_production_blind_components<'a, F>(
+    fixed: &C6FixedWrapperCommitments,
+    cache_statement_digest: [u8; 32],
+    statements: &[C6BlindResidualStatement],
+    residual_compiler: C6BlindResidualFusedCompilerContext<'a>,
+    residual_witness: C6ResidualFusedWitnessView<'a>,
+    residual_arena: &'a C6ResidualFusedCoefficientArena,
+    hidden: &C6SealedHiddenUBundle,
+    hidden_prequery: &C6HiddenUPrequery,
+    hidden_postcommit: &C6HiddenUPostCommit,
+    streams: &mut [CorrelationStream; TAPES],
+    transcript: &mut Transcript,
+    mut prepare_cache: F,
+) -> Result<C6ProductionBlindProverOutput, String>
+where
+    F: FnMut(
+        u8,
+        &mut [CorrelationStream; TAPES],
+        &mut Transcript,
+    ) -> Result<C6PersistentCacheProductionPreparedProver<'a>, String>,
+{
+    validate_production_streams(streams)?;
+    begin_c6_persistent_cache_production(cache_statement_digest, transcript).map_err(text_error)?;
+    begin_c6_blind_residual_prover_stepwise(statements, residual_arena, transcript)
+        .map_err(text_error)?;
+    let hidden_statement =
+        begin_c6_blind_hidden_u_stepwise(hidden, hidden_prequery, hidden_postcommit, transcript)
+            .map_err(text_error)?;
+    let hidden_layouts = hidden.validate_prequery_binding(hidden_prequery).map_err(text_error)?;
+
+    let mut cache_finished = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
+    let mut residual_finished = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
+    let mut hidden_finished = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
+    for repetition in 0..C6_WRAPPER_REPETITIONS as u8 {
+        let mut cache = prepare_cache(repetition, streams, transcript)?;
+        let mut residual = prepare_c6_blind_residual_prover_round_state_fused(
+            &statements[usize::from(repetition)],
+            residual_compiler,
+            residual_witness,
+            residual_arena,
+            None,
+        )
+        .map_err(text_error)?;
+        let mut hidden_state = prepare_c6_blind_hidden_u_prover_round_state(
+            hidden,
+            hidden_prequery,
+            hidden_postcommit,
+            repetition,
+        )
+        .map_err(text_error)?;
+        let (point, cache_corrections) = drive_c6_production_blind_prover_rounds(
+            fixed,
+            &mut cache,
+            &mut residual,
+            &mut hidden_state,
+            streams,
+            transcript,
+        )?;
+        cache_finished.push(
+            finish_c6_persistent_cache_production_prover_repetition(
+                cache,
+                &point,
+                streams,
+                transcript,
+                cache_corrections,
+            )
+            .map_err(text_error)?,
+        );
+        residual_finished.push(residual.finish(streams, transcript).map_err(text_error)?);
+        hidden_finished.push(hidden_state.finish(streams, transcript).map_err(text_error)?);
+    }
+
+    let (residual_proof, residual_frame, residual_pending, terminal_outputs) =
+        assemble_c6_blind_residual_prover_stepwise(
+            statements,
+            residual_compiler,
+            residual_arena,
+            residual_finished,
+            transcript,
+        )
+        .map_err(text_error)?;
+    let residual_terminal_outputs = terminal_outputs
+        .ok_or_else(|| "C6 exact blind join omitted direct terminal outputs".to_owned())?;
+    let (hidden_proof, hidden_pending) = assemble_c6_blind_hidden_u_prover_stepwise(
+        hidden_statement,
+        &hidden_layouts,
+        hidden_finished,
+    )
+    .map_err(text_error)?;
+    let (cache_proof, cache_source_frame, cache_pending, cache_metrics) =
+        assemble_c6_persistent_cache_production_proof(cache_statement_digest, cache_finished)
+            .map_err(text_error)?;
+    Ok(C6ProductionBlindProverOutput {
+        residual_proof,
+        residual_frame,
+        residual_pending,
+        residual_terminal_outputs,
+        hidden_proof,
+        hidden_pending,
+        cache_proof,
+        cache_source_frame,
+        cache_pending,
+        cache_metrics,
+    })
+}
+
+fn validate_production_streams(streams: &[CorrelationStream; TAPES]) -> Result<(), String> {
+    if streams.iter().any(|stream| !stream.uses_pooled_pcg()) {
+        return Err("C6 exact blind join requires paired pooled PCG streams".to_owned());
+    }
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -225,6 +367,18 @@ fn validate_live_rounds(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn exact_join_rejects_mock_streams_before_protocol_work() {
+        let streams = [CorrelationStream::new([0x41; 32]), CorrelationStream::new([0x42; 32])];
+        assert_eq!(
+            validate_production_streams(&streams).unwrap_err(),
+            "C6 exact blind join requires paired pooled PCG streams"
+        );
+        assert!(streams.iter().all(|stream| stream.counters.sub_corrs == 0
+            && stream.counters.full_corrs == 0
+            && stream.counters.domains == 0));
+    }
 
     #[test]
     fn production_schedule_and_receipt_order_are_exact() {

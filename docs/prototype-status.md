@@ -18,7 +18,7 @@ This capsule is authoritative; read design §0.49 next.
   record is PCS **219/0/1**, proto **154/0/1**. Generic trace targets are
   **41/0/0 + 5/0/0** including the strict `C6NTO1` codec; the exact
   102-target response differential, codec round trip and sealed residual gate
-  are **1/0/0**. Native typestate/schedule gates are **15/0/0 + 2/0/0**.
+  are **1/0/0**. Native typestate/schedule gates are **16/0/0 + 2/0/0**.
   The exact joint functional gate is **1/0/0** and proto trace is
   **180/0/1**. The generic 32-B joint MAC closure is **2/0/0** and its exact
   source-correction split is **1/0/0**. CUDA targets compile, but no production
@@ -31,8 +31,8 @@ This capsule is authoritative; read design §0.49 next.
   model-agnostic, challenge-dependent, wire-neutral `C6NBR1/C6NTO1` bridge
   with small commits on `main`. Local construction may proceed. HARD STOP
   remains before exact-runner admission or pod contact.
-- **Resume conditions.** Integrate `C6NBR1` into the wire-neutral `C6AWP2`
-  bodies and strict outer decoder, then re-sum bytes,
+- **Resume conditions.** Complete the role-separated `C6AWP2` cohort
+  orchestration and strict `C6CPX3/C6PA2` outer decoder, then re-sum bytes,
   setup, correlations, soundness, state and time and run the complete local
   gates. No fixed `96/6`, clear target, mock PCG, CPU fallback or
   provider-derived verifier key is admissible.
@@ -172,6 +172,18 @@ This capsule is authoritative; read design §0.49 next.
   mirror pass **1/0/0**; the generic joint closure remains **2/0/0**. No byte,
   soundness, time or full-chain credit changes. `C6AWP2`/outer integration and
   the Lean theorem remain required before exact-runner admission.
+
+- **2026-08-03 — C6AWP2 secondary body codec closes locally.** Secondary
+  model/embed bodies now use a distinct semantic header while retaining the
+  byte-identical tagless WHIR body and fixed payload length. The first carrier
+  is exactly the 16-B compiler correction, the second the 16-B joint tag, and
+  every later generic-cohort carrier is canonical zero. A public-statement-only
+  verifier replay no longer accepts or manufactures the absent tape-1 target
+  keys; ordinary C6AWP1 still requires them. Header/version/length, carrier
+  role, reserved-tail and noncanonical-field mutations reject. The complete
+  authenticated P3 module is **16/0/0**. This is body/codec evidence, not an
+  accepted outer proof; v23 and all credits remain unchanged. Cohort
+  orchestration plus `C6CPX3/C6PA2` are next under the no-pod hard stop.
 
 - **2026-08-03 — C6SPR8 closed; production wrapper lifecycle reaches the next
   ordered hard stop.** Checkpoint `c81a4ff` binds both ordered manifest tapes

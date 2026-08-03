@@ -51,6 +51,7 @@ use crate::c61_authenticated_whir::{
     verify_c61_authenticated_whir_base, verify_c61_authenticated_whir_base_with_zero_rows_residual,
     C61AuthenticatedWhirAffineClaim, C61AuthenticatedWhirBaseProof, C61AuthenticatedWhirMaskRange,
     C61AuthenticatedWhirProverFinishInput, C61AuthenticatedWhirVerifierInput,
+    C61JointNativeBridgeFrame, C61JointNativeProverTerm, C61JointNativeVerifierTerm,
     C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES,
 };
 use crate::c61_interactive_driver::{
@@ -91,6 +92,8 @@ pub const C61_AUTHENTICATED_P3_REVISION: &str =
     "66e290615de1858f2f2f6a804158064c406cda1c+c61-claimless-affine-multi-v2";
 pub const C61_AUTHENTICATED_P3_MAGIC: [u8; 8] = *b"C6AWP1\0\0";
 pub const C61_AUTHENTICATED_P3_VERSION: u16 = 1;
+pub const C61_JOINT_AUTHENTICATED_P3_MAGIC: [u8; 8] = *b"C6AWP2\0\0";
+pub const C61_JOINT_AUTHENTICATED_P3_VERSION: u16 = 2;
 pub const C61_AUTHENTICATED_P3_HEADER_BYTES: usize = 8 + 2 + 1 + 1 + 4;
 pub const C61_SHARED_MULTI_ORACLE_MAGIC: [u8; 8] = *b"C6SMO1\0\0";
 pub const C61_SHARED_MULTI_ORACLE_VERSION: u16 = 1;
@@ -718,6 +721,149 @@ impl C61ProductionCommittedChainProof {
     }
 }
 
+/// The fixed semantic use of one 16-byte secondary-chain tail in C6AWP2.
+/// Carrier assignment is supplied by the ordered generic cohort profile.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum C61JointNativeTailRole {
+    Correction,
+    ZeroOpenTag,
+    Reserved,
+}
+
+pub fn c61_joint_native_carrier_tail(
+    frame: C61JointNativeBridgeFrame,
+    cohort_index: usize,
+) -> (C61JointNativeTailRole, [u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES]) {
+    let encoded = frame.encode();
+    match cohort_index {
+        0 => {
+            let mut tail = [0u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES];
+            tail.copy_from_slice(&encoded[..C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES]);
+            (C61JointNativeTailRole::Correction, tail)
+        }
+        1 => {
+            let mut tail = [0u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES];
+            tail.copy_from_slice(&encoded[C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES..]);
+            (C61JointNativeTailRole::ZeroOpenTag, tail)
+        }
+        _ => (C61JointNativeTailRole::Reserved, [0u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES]),
+    }
+}
+
+/// A strict C6AWP2 secondary chain. Its WHIR body is byte-for-byte the C6AWP1
+/// body under a new semantic header; its tail is accepted only as one part of
+/// the outer joint relation and is never an ordinary per-chain proof.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C61ProductionJointCommittedChainProof {
+    payload: Vec<u8>,
+    tail_role: C61JointNativeTailRole,
+}
+
+impl C61ProductionJointCommittedChainProof {
+    pub fn payload(&self) -> &[u8] {
+        &self.payload
+    }
+
+    pub fn tagless_payload(&self) -> &[u8] {
+        &self.payload[..self.payload.len() - C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES]
+    }
+
+    pub fn tail(&self) -> &[u8] {
+        &self.payload[self.payload.len() - C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES..]
+    }
+
+    pub fn tail_role(&self) -> C61JointNativeTailRole {
+        self.tail_role
+    }
+
+    pub fn decode(
+        payload: &[u8],
+        public: &C61TypedNativeChainPublicStatement,
+        tail_role: C61JointNativeTailRole,
+    ) -> Result<Self, String> {
+        if public.id().repetition != 1 {
+            return Err("C6AWP2 requires a complete secondary native chain".to_owned());
+        }
+        let mut ordinary = c61_validate_joint_payload_shape(payload, tail_role)?;
+        let tail_start = ordinary.len() - C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES;
+        ordinary[tail_start..].fill(0);
+        C61ProductionCommittedChainProof::decode(&ordinary, public)?;
+        Ok(Self { payload: payload.to_vec(), tail_role })
+    }
+
+    pub fn from_parts(
+        tagless_payload: &[u8],
+        tail: &[u8],
+        public: &C61TypedNativeChainPublicStatement,
+        tail_role: C61JointNativeTailRole,
+    ) -> Result<Self, String> {
+        if tail.len() != C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES {
+            return Err("C6AWP2 tail has noncanonical length".to_owned());
+        }
+        let mut payload = tagless_payload.to_vec();
+        payload.extend_from_slice(tail);
+        Self::decode(&payload, public, tail_role)
+    }
+}
+
+fn c61_validate_joint_payload_shape(
+    payload: &[u8],
+    tail_role: C61JointNativeTailRole,
+) -> Result<Vec<u8>, String> {
+    if payload.len()
+        < C61_AUTHENTICATED_P3_HEADER_BYTES + C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES
+    {
+        return Err("C6AWP2 requires a complete secondary native chain".to_owned());
+    }
+    let tail_start = payload.len() - C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES;
+    let tail = &payload[tail_start..];
+    C61AuthenticatedWhirBaseProof::decode(tail).map_err(|error| error.to_string())?;
+    if tail_role == C61JointNativeTailRole::Reserved && tail.iter().any(|byte| *byte != 0) {
+        return Err("C6AWP2 reserved secondary tail is nonzero".to_owned());
+    }
+    c61_awp1_payload_from_joint(payload)
+}
+
+fn c61_joint_tagless_from_awp1(tagless: &[u8]) -> Result<Vec<u8>, String> {
+    if tagless.len() < C61_AUTHENTICATED_P3_HEADER_BYTES
+        || tagless[..8] != C61_AUTHENTICATED_P3_MAGIC
+        || u16::from_le_bytes(tagless[8..10].try_into().expect("fixed C6AWP1 version"))
+            != C61_AUTHENTICATED_P3_VERSION
+    {
+        return Err("C6AWP2 source is not a canonical C6AWP1 tagless body".to_owned());
+    }
+    let body_len = u32::from_le_bytes(tagless[12..16].try_into().expect("fixed C6AWP1 length"));
+    if body_len as usize
+        != tagless.len() - C61_AUTHENTICATED_P3_HEADER_BYTES
+            + C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES
+    {
+        return Err("C6AWP2 source body length is inconsistent".to_owned());
+    }
+    let mut joint = tagless.to_vec();
+    joint[..8].copy_from_slice(&C61_JOINT_AUTHENTICATED_P3_MAGIC);
+    joint[8..10].copy_from_slice(&C61_JOINT_AUTHENTICATED_P3_VERSION.to_le_bytes());
+    Ok(joint)
+}
+
+fn c61_awp1_payload_from_joint(payload: &[u8]) -> Result<Vec<u8>, String> {
+    if payload.len()
+        < C61_AUTHENTICATED_P3_HEADER_BYTES + C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES
+        || payload[..8] != C61_JOINT_AUTHENTICATED_P3_MAGIC
+        || u16::from_le_bytes(payload[8..10].try_into().expect("fixed C6AWP2 version"))
+            != C61_JOINT_AUTHENTICATED_P3_VERSION
+    {
+        return Err("C6AWP2 header mismatch".to_owned());
+    }
+    let body_len = u32::from_le_bytes(payload[12..16].try_into().expect("fixed C6AWP2 length"));
+    if body_len as usize != payload.len() - C61_AUTHENTICATED_P3_HEADER_BYTES {
+        return Err("C6AWP2 body length mismatch".to_owned());
+    }
+    let mut ordinary = payload.to_vec();
+    ordinary[..8].copy_from_slice(&C61_AUTHENTICATED_P3_MAGIC);
+    ordinary[8..10].copy_from_slice(&C61_AUTHENTICATED_P3_VERSION.to_le_bytes());
+    Ok(ordinary)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C61ProductionCommittedChainReport {
     pub id: C61NativeChainId,
@@ -755,6 +901,7 @@ pub struct C61ProductionCommittedChainProverBody {
     tagless_digest: [u8; 32],
     claim_weights: Vec<Fp2>,
     prepared: crate::c61_authenticated_whir::C61AuthenticatedWhirPreparedMask,
+    affine: C61AuthenticatedWhirAffineClaim,
     finish_input: C61AuthenticatedWhirProverFinishInput,
     transcript: Transcript,
     provider_interaction: C61WhirInteractionStats,
@@ -781,6 +928,33 @@ impl C61ProductionCommittedChainProverBody {
 
     pub fn tagless_digest(&self) -> [u8; 32] {
         self.tagless_digest
+    }
+
+    pub fn joint_tagless_payload(&self) -> Result<Vec<u8>, String> {
+        if self.id.repetition != 1 {
+            return Err("C6AWP2 tagless body requires a secondary chain".to_owned());
+        }
+        c61_joint_tagless_from_awp1(&self.tagless_payload)
+    }
+
+    pub fn joint_tagless_digest(&self) -> Result<[u8; 32], String> {
+        Ok(*blake3::hash(&self.joint_tagless_payload()?).as_bytes())
+    }
+
+    /// Consume a secondary body into the model-independent joint relation.
+    /// The returned term contains no profile-specific target census or name.
+    pub fn into_joint_term(self, cohort_weight: Fp2) -> Result<C61JointNativeProverTerm, String> {
+        if self.id.repetition != 1 {
+            return Err("C6NBR1 joint prover admits only secondary native bodies".to_owned());
+        }
+        Ok(C61JointNativeProverTerm {
+            prepared: self.prepared,
+            combined: self.finish_input.combined,
+            shifted_masked_claim: self.finish_input.shifted_masked_claim,
+            gamma: self.finish_input.gamma,
+            affine: self.affine,
+            cohort_weight,
+        })
     }
 
     pub fn finish_ordinary(mut self) -> Result<C61ProductionCommittedChainExecution, String> {
@@ -823,7 +997,7 @@ pub struct C61ProductionCommittedChainVerifierBody {
     tagless_payload_len: usize,
     tagless_digest: [u8; 32],
     claim_weights: Vec<Fp2>,
-    aggregate_key: VerifierKey,
+    aggregate_key: Option<VerifierKey>,
     affine: C61AuthenticatedWhirAffineClaim,
     base_case: BaseCaseClaimlessClosure<C61P3Fp2>,
     mask_range: C61AuthenticatedWhirMaskRange,
@@ -844,6 +1018,41 @@ impl C61ProductionCommittedChainVerifierBody {
         self.tagless_digest
     }
 
+    /// Consume a secondary verifier body without target keys. The native mask
+    /// key is expanded from verifier-owned pooled PCG state exactly once.
+    pub fn into_joint_term(
+        self,
+        cohort_weight: Fp2,
+        context: &mut VerifierCtx,
+    ) -> Result<C61JointNativeVerifierTerm, String> {
+        if self.id.repetition != 1 {
+            return Err("C6NBR1 joint verifier admits only secondary native bodies".to_owned());
+        }
+        if self.aggregate_key.is_some() {
+            return Err("C6NBR1 joint verifier body unexpectedly contains target keys".to_owned());
+        }
+        if !context.uses_pooled_pcg() {
+            return Err("C6NBR1 production verifier forbids mock PCG state".to_owned());
+        }
+        let mask_domain = self
+            .mask_range
+            .correlation_domain(self.id)
+            .map_err(|error| error.to_string())?;
+        let mask_key = context
+            .expand_full_verifier_keys(mask_domain, 1)
+            .into_iter()
+            .next()
+            .ok_or_else(|| "C6NBR1 missing verifier mask key".to_owned())?;
+        Ok(C61JointNativeVerifierTerm {
+            mask_key,
+            combined: c61_volta_fp2_from_p3(self.base_case.combined),
+            shifted_masked_claim: c61_volta_fp2_from_p3(self.base_case.shifted_masked_claim),
+            gamma: c61_volta_fp2_from_p3(self.base_case.gamma),
+            affine: self.affine,
+            cohort_weight,
+        })
+    }
+
     pub fn finish_ordinary(
         mut self,
         tail: &[u8],
@@ -854,7 +1063,10 @@ impl C61ProductionCommittedChainVerifierBody {
         }
         let base_proof =
             C61AuthenticatedWhirBaseProof::decode(tail).map_err(|error| error.to_string())?;
-        let final_key = self.affine.derive_verifier_key(self.aggregate_key, context.delta);
+        let aggregate_key = self.aggregate_key.ok_or_else(|| {
+            "C6SPR13 ordinary verifier body is missing authenticated target keys".to_owned()
+        })?;
+        let final_key = self.affine.derive_verifier_key(aggregate_key, context.delta);
         verify_c61_authenticated_whir_base(
             C61AuthenticatedWhirVerifierInput {
                 id: self.id,
@@ -3552,7 +3764,8 @@ pub fn prepare_c61_authenticated_whir_p3_production_committed_chain_persisted_cu
     drop(challenger);
 
     let aggregate_target = aggregate_prover_targets(statement.targets(), &output.claim_weights)?;
-    let final_target = affine_from_p3(output.target).authenticate_prover(aggregate_target);
+    let affine = affine_from_p3(output.target);
+    let final_target = affine.authenticate_prover(aggregate_target);
     let claim_weights = output.claim_weights.iter().copied().map(c61_volta_fp2_from_p3).collect();
     let finish_input = C61AuthenticatedWhirProverFinishInput {
         combined: c61_volta_fp2_from_p3(output.base_case.combined),
@@ -3573,6 +3786,7 @@ pub fn prepare_c61_authenticated_whir_p3_production_committed_chain_persisted_cu
         tagless_digest,
         claim_weights,
         prepared,
+        affine,
         finish_input,
         transcript,
         provider_interaction,
@@ -3621,6 +3835,28 @@ pub fn prepare_c61_authenticated_whir_p3_production_committed_chain_verifier_bod
     if &validated != statement {
         return Err("C6SPR13 production verifier body requires a canonical statement".to_owned());
     }
+    let mut body = prepare_c61_authenticated_whir_p3_production_committed_chain_public_verifier_body(
+        public,
+        tagless_payload,
+        verifier_seed,
+        mask_range,
+    )?;
+    body.aggregate_key = Some(aggregate_verifier_targets(
+        statement.target_keys(),
+        &body.claim_weights.iter().copied().map(c61_p3_fp2_from_volta).collect::<Vec<_>>(),
+    )?);
+    Ok(body)
+}
+
+/// Replay a canonical model/embedding body from its typed public statement
+/// alone. This is the only admitted verifier constructor for a secondary
+/// joint cohort: it cannot receive, reconstruct or synthesize target keys.
+pub fn prepare_c61_authenticated_whir_p3_production_committed_chain_public_verifier_body(
+    public: &C61TypedNativeChainPublicStatement,
+    tagless_payload: &[u8],
+    verifier_seed: [u8; 32],
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<C61ProductionCommittedChainVerifierBody, String> {
     let mut placeholder_payload = tagless_payload.to_vec();
     placeholder_payload.extend_from_slice(&[0u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES]);
     C61ProductionCommittedChainProof::decode(&placeholder_payload, public)?;
@@ -3647,7 +3883,6 @@ pub fn prepare_c61_authenticated_whir_p3_production_committed_chain_verifier_bod
         challenger.finish(tagless_payload.len()).map_err(|error| error.to_string())?;
     drop(challenger);
 
-    let aggregate_key = aggregate_verifier_targets(statement.target_keys(), &result.claim_weights)?;
     let claim_weights = result.claim_weights.iter().copied().map(c61_volta_fp2_from_p3).collect();
     Ok(C61ProductionCommittedChainVerifierBody {
         id: public.id(),
@@ -3656,13 +3891,39 @@ pub fn prepare_c61_authenticated_whir_p3_production_committed_chain_verifier_bod
         tagless_payload_len: tagless_payload.len(),
         tagless_digest: *blake3::hash(tagless_payload).as_bytes(),
         claim_weights,
-        aggregate_key,
+        aggregate_key: None,
         affine: affine_from_p3(result.target),
         base_case: result.base_case,
         mask_range,
         transcript,
         verifier_interaction,
     })
+}
+
+/// C6AWP2 counterpart of the public-only verifier constructor. The semantic
+/// header is checked before it is translated to the byte-identical WHIR-v1
+/// parser; the retained digest continues to bind the original C6AWP2 bytes.
+pub fn prepare_c61_authenticated_whir_p3_production_joint_chain_public_verifier_body(
+    public: &C61TypedNativeChainPublicStatement,
+    joint_tagless_payload: &[u8],
+    verifier_seed: [u8; 32],
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<C61ProductionCommittedChainVerifierBody, String> {
+    if public.id().repetition != 1 {
+        return Err("C6AWP2 verifier requires a secondary native statement".to_owned());
+    }
+    let mut complete = joint_tagless_payload.to_vec();
+    complete.extend_from_slice(&[0u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES]);
+    let ordinary = c61_awp1_payload_from_joint(&complete)?;
+    let ordinary_tagless = &ordinary[..ordinary.len() - C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES];
+    let mut body = prepare_c61_authenticated_whir_p3_production_committed_chain_public_verifier_body(
+        public,
+        ordinary_tagless,
+        verifier_seed,
+        mask_range,
+    )?;
+    body.tagless_digest = *blake3::hash(joint_tagless_payload).as_bytes();
+    Ok(body)
 }
 
 fn c61_shared_statement_digest(
@@ -6949,6 +7210,81 @@ mod tests {
         excessive_frontier[first_multiproof_count..first_multiproof_count + 4]
             .copy_from_slice(&u32::MAX.to_le_bytes());
         assert!(decode_c61_authenticated_p3_artifact_inner(&excessive_frontier, 14, false).is_err());
+    }
+
+    #[test]
+    fn joint_awp2_header_preserves_the_exact_tagless_whir_body() {
+        let (fixture, _, _, _, _, _) = mutation_fixture();
+        let tail_start = fixture.artifact.payload.len() - C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES;
+        let ordinary_tagless = &fixture.artifact.payload[..tail_start];
+        let joint_tagless = c61_joint_tagless_from_awp1(ordinary_tagless).unwrap();
+        assert_eq!(joint_tagless.len(), ordinary_tagless.len());
+        assert_eq!(joint_tagless[..8], C61_JOINT_AUTHENTICATED_P3_MAGIC);
+        assert_eq!(
+            u16::from_le_bytes(joint_tagless[8..10].try_into().unwrap()),
+            C61_JOINT_AUTHENTICATED_P3_VERSION,
+        );
+        assert_eq!(joint_tagless[10..], ordinary_tagless[10..]);
+
+        let mut joint_payload = joint_tagless.clone();
+        joint_payload.extend_from_slice(&[0u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES]);
+        assert!(c61_validate_joint_payload_shape(
+            &joint_payload,
+            C61JointNativeTailRole::Correction,
+        )
+        .is_ok());
+        assert!(c61_validate_joint_payload_shape(
+            &joint_payload,
+            C61JointNativeTailRole::ZeroOpenTag,
+        )
+        .is_ok());
+        let ordinary_payload = c61_awp1_payload_from_joint(&joint_payload).unwrap();
+        let (_, _, tail) =
+            decode_c61_authenticated_p3_artifact_inner(&ordinary_payload, 14, false).unwrap();
+        assert_eq!(tail.encode(), [0u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES]);
+
+        let mut bad_magic = joint_payload.clone();
+        bad_magic[0] ^= 1;
+        assert!(c61_awp1_payload_from_joint(&bad_magic).is_err());
+        let mut bad_version = joint_payload.clone();
+        bad_version[8] ^= 1;
+        assert!(c61_awp1_payload_from_joint(&bad_version).is_err());
+        let mut bad_length = joint_payload;
+        bad_length[12] ^= 1;
+        assert!(c61_awp1_payload_from_joint(&bad_length).is_err());
+        assert!(c61_joint_tagless_from_awp1(&joint_tagless).is_err());
+
+        let mut nonzero_reserved = joint_tagless.clone();
+        nonzero_reserved.extend_from_slice(&[0u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES]);
+        let last = nonzero_reserved.len() - 1;
+        nonzero_reserved[last] = 1;
+        assert!(c61_validate_joint_payload_shape(
+            &nonzero_reserved,
+            C61JointNativeTailRole::Reserved,
+        )
+        .is_err());
+        let tail_start = nonzero_reserved.len() - C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES;
+        nonzero_reserved[tail_start..tail_start + 8].copy_from_slice(&P.to_le_bytes());
+        assert!(c61_validate_joint_payload_shape(
+            &nonzero_reserved,
+            C61JointNativeTailRole::Correction,
+        )
+        .is_err());
+
+        let mut frame_bytes = [0u8; 32];
+        frame_bytes[..8].copy_from_slice(&17u64.to_le_bytes());
+        frame_bytes[8..16].copy_from_slice(&19u64.to_le_bytes());
+        frame_bytes[16..24].copy_from_slice(&23u64.to_le_bytes());
+        frame_bytes[24..].copy_from_slice(&29u64.to_le_bytes());
+        let frame = C61JointNativeBridgeFrame::decode(&frame_bytes).unwrap();
+        let (role0, tail0) = c61_joint_native_carrier_tail(frame, 0);
+        let (role1, tail1) = c61_joint_native_carrier_tail(frame, 1);
+        let (role2, tail2) = c61_joint_native_carrier_tail(frame, 2);
+        assert_eq!(role0, C61JointNativeTailRole::Correction);
+        assert_eq!(role1, C61JointNativeTailRole::ZeroOpenTag);
+        assert_eq!(role2, C61JointNativeTailRole::Reserved);
+        assert_eq!([tail0, tail1].concat(), frame_bytes);
+        assert_eq!(tail2, [0u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES]);
     }
 
     #[test]

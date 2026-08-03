@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — C6SPR13 EXACT TWO-TAPE NATIVE TARGET RELATION HARD STOP / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — C6SPR13 GENERIC JOINT BRIDGE AUTHORIZED / LOCAL CONSTRUCTION / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,146 +8,29 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §0.48 next.
+This capsule is authoritative; read design §0.49 next.
 
-- **Phase/relation.** C6.1 response-local public compression. The 64 C6RSC3
-  values are challenge-dependent and exactly factor through two D25 reverse
-  lanes plus the eight-family reducer. They are now bound by two exact
-  challenge-dependent plan-fold openings in the existing shared compiler
-  WHIR; fixed-node, event-table and digest substitutes remain forbidden.
-- **Completed evidence.** `C6SPX1-v1` provides create-new root/session-bound
-  spills, random-access openings and serialized response/plan commits. Scaled
-  D14/D13 resident/persisted roots, proofs, bytes, transcripts, correlations
-  and closure match; production selection requires A100, 64-GiB available
-  host, 128-GiB spill and pooled real PCG. Direct terminal prover export is
-  checkpoint `c5703b9`. Checkpoints `d546d6c`, `75e2909` and `b6bc544`
-  respectively materialize all six roots from same-attempt owners, retain the
-  exact 96/6 hidden PCS owners, and map canonical T1 K/V slabs into genesis and
-  successor cache states. `c81a4ff` adds the fail-closed two-tape production
-  allocation token: both manifest tape IDs, exact paired ranges, response
-  authorization, AES/TerminalOne pools, distinct Deltas, source witness and
-  residual-leaf provenance are one indivisible lifecycle. No production run or
-  credit exists. Checkpoints `a3cd567` and `ca99ab3` add the fail-closed CUDA
-  production cohort constructor and stream the exact six same-attempt live
-  cohorts one at a time into create-new persisted coefficient/oracle owners;
-  CPU rejects before allocation or I/O and all six roots are fixed before
-  transcript challenge draws. Checkpoints `21fe48a` and `e045f20` add the
-  create-new CUDA fold owner and the assembled production two-chain prover:
-  no resident codeword/tree is built, every fold is session/root/descriptor
-  bound, both complete chains precede query draws, and coefficient, opening,
-  file, fsync, staging and CUDA-transfer counters are explicit.
-- **Screens.** Certificate **17,536,735 B**, setup **84,743,367 B**, state
-  **2,277,715,552 B**, provider/verifier **14.9087128542 / 4.965672390 s** and
-  soundness **102.587833363526... bits** remain `credit:false`.
-- **Authorized construction gate.** On 2026-08-03 the product owner explicitly
-  authorized resuming `C6SPR9_PRODUCTION_WRAPPER_PCS_BACKEND_REQUIRED` through
-  the persisted/CUDA construction with small commits on `main`. The initial
-  six-root resident obstruction and its **188,810,788,864-B (175.84375-GiB)**
-  executable lower bound are now retired by the persisted/CUDA selector and
-  two-chain prover. Local ordinary/trace checks and **15/15** wrapper tests are
-  green; CUDA test targets compile and the registered scaled fold differential
-  becomes mandatory under `VOLTA_REQUIRE_CUDA=1`. This is implementation
-  evidence only: no hardware execution or production admission exists yet.
-- **Construction.** The persisted wrapper backend now derives the six roots and
-  both packed PCS fold chains from exact live owners without retaining
-  duplicate codewords or all resident cohorts. The production 24-round
-  streaming `C6PC2` compiler is locally implemented. The exact runner must
-  still join wrapper, compiler and real/AES-PCG allocation and report RSS,
-  GPU, spill, I/O and synchronization separately. No pod may be contacted
-  before those local gates are green.
-- **Exact terminal relation checkpoint.** Checkpoints `061a829`, `925b995`,
-  `6038c3e`, `0ea9774` and `7cab8f1` expose the exact C6RSC3 terminal outputs,
-  verify the blind coordinator without compiler replay, retain one same-attempt
-  PCG stream across both compiler chains, and bind the beta-folded 64 outputs
-  to the direct eight-family reducer plus two challenge-dependent plan folds.
-  The latter are four additional base-limb openings in the same D28 response
-  WHIR, not fixed DAG nodes.  `C6CPX2-v2` carries the four exact physical
-  plan-fold targets and adds 180 B of strict framing per compiler chain; v23
-  therefore counts 19 ordered openings and **360 B** of certificate framing.
-  Focused authenticated compiler tests are **14/0/0**; the post-integration
-  ordinary workspace is green at **volta-pcs 219/0/1** and **volta-proto
-  154/0/1**.  The scaled persisted proof remains byte-identical to resident.
-  This is exact local relation evidence only, not production or full-chain
-  credit.
-- **Production C6PC2 checkpoint.** Checkpoints `ca4a38e`, `16d6e58`,
-  `ed7f950`, `b864d85`, `2580cd1`, `84c7341`, `04a8c69` and `0ef6b13`
-  install semantic cache owners, the factorized per-layer compiler, the
-  streamed first round, authenticated 24-round prover/verifier typestates,
-  strict pre-point C6PS1 fold ownership, canonical post-point append folds
-  and terminal assembly. The construction never materializes D24: its
-  post-first-challenge prover state is 1 GiB of coefficient+witness tables
-  and the verifier retains 512 MiB of coefficients. The strict assembly is
-  executable at exactly **3,506 B + 304 B / 104 correlations per tape / 64
-  pending claims**; local C6PC2 tests are **11/0/0** and `cuda,c6-trace` test
-  targets compile. This is local implementation evidence, not a full-chain,
-  timing, memory or hardware record.
-- **Global blind join checkpoint.** Checkpoints `77487e5`, `fbc9066`,
-  `2e2161f` and `098e652` place the actual C6RSC3/C6HUB2 blind messages behind
-  step-wise states, join C6PC2/C6RSC3/C6HUB2 at exact offsets `0/1/3`, and
-  assemble both repetitions only after the shared 24-round schedule. Focused
-  C6RSC3 is **9/0/1**, C6HUB2 is **4/0/0**, the coordinator schedule test is
-  green and `cuda,c6-trace` test targets compile. No production response has
-  executed.
-- **Persisted C6LNK2 checkpoint.** The
-  `C6SPR9_C6LNK2_PERSISTED_PROVER_REQUIRED` hard stop is retired locally at
-  checkpoints `3affe99`, `c5fb4b1`, `fab7780`, `683878b` and `9bc61a5`.
-  All 72 relations per repetition now have statement/session/root/repetition/
-  cohort/slot/round-bound create-new owners. Predecessors are released only
-  after the successor coefficient file and 256-B manifest are durable. The
-  scaled two-repetition differential is byte-, transcript-, correlation- and
-  terminal-identical to resident C6LNK2; its exact owner counters are
-  **566,528 B read / 112,384 B coefficient write / 258,048 B manifest /
-  1,744 create + 1,744 durable delete / 3,904 fsync / 35,584-B peak live
-  spill / zero terminal spill**. Production accepts only CUDA-resident
-  monomial evaluation/binds, rejects CPU/hybrid before effects, and alone
-  seals `authenticated_link` before the persisted/CUDA PCS. Focused C6LNK2
-  is **10/0/0**, owner lifecycle **5/0/0**, and `cuda,c6-trace` targets compile.
-  The registered CUDA arithmetic differential is not executed on this VM;
-  none of these facts is hardware, timing, memory or full-response credit.
-- **Owner-restated closure gates.** The 2026-08-03 product-owner reminder
-  preserves the stricter original C6.1 success targets where they dominate
-  the later design envelope: every subsequent provider certificate must be
-  **<22 MB** and the A100 inline prover must be **<15 s** (12--15 s target).
-  The preregistered Q=121 soundness contingency remains active. Therefore the
-  later 35-MB/20-s envelope is insufficient by itself to close C6.1; the
-  final record and comparison column must report both and pass the stricter
-  owner-restated limits.
-- **C6SPR11 local boundary.** Checkpoints `e30e3e5`, `a7e6cee`, `ede35a3`,
-  `165caa9` and `15f2f80` add compact C6SBA1/GKR decoding, a 309,192-B
-  compiler profile, role-separated C6CPX2 verification, strict six-chain
-  C6PA1+C6RSC4 assembly and a sequential four-chain production driver.  The
-  profile plus the retained 5,320,386-B extraction map is **5,629,578 B < 8
-  MB**.  Scaled role verification is byte/transcript/correlation identical;
-  production execution and GPU credit remain absent.
-- **C6SPR12 exact T1 owner boundary.** Checkpoints `0164074`, `fcf7c31`,
-  `2867e4b`, `52e8f82` and `1674cd4` export the frozen response without
-  replay, retain the exact 96/6 native claims and primary verifier keys,
-  retain and verify both hidden-u MultiOpen owners on the live production
-  tape, and create session-bound sparse D28/D27 native coefficient owners
-  from the same workload. The logical coefficient files are private
-  ephemeral spill, not setup or certificate bytes. Ordinary, CUDA and
-  authenticated-reference checks compile; focused owner lifecycle and
-  pre-effect rejection tests are green. This closes the missing owner export
-  only; it creates no production, memory, timing, wire or hardware credit.
-- **Active hard stop.**
-  `C6SPR13_EXACT_TWO_TAPE_NATIVE_TARGET_RELATION_REQUIRED`: each of the four
-  model/embed `C6AWP1` chains requires its 96/6 private opening targets under
-  both independent correlation tapes. The exact T1 response exports only the
-  primary `ProverAuthed` values and verifier keys. `C6HUB2` authenticates one
-  terminal hidden-u value per family/tape/repetition; its remaining pending
-  slots are public zero and do not authenticate the individual native opening
-  targets. Reusing the primary tags on tape 1, making the targets public, or
-  deriving verifier keys from a provider-held Delta is forbidden. Resume
-  requires either an exact pre-root two-tape same-plaintext owner for all 102
-  targets with its response-claim link, or an exact challenge-dependent
-  authenticated aggregate bridge inside the existing wrapper/compiler
-  relation. The statement, challenge order, role separation, wire, correlation,
-  soundness, state and time accounting must be explicit before runner work.
-  No pod contact is authorized.
-- **Owner GO.** The 2026-08-03 A100 full-e2e authorization remains valid after
-  this local gate, but pod contact remains deferred until the local backend,
-  C6PC2 and complete runner are green. It waives none of the clean-record,
-  real/AES-PCG, fail-closed or no-dummy requirements.
+- **Milestone.** C6.1/C6SPR13 generic joint native-target bridge. C6SPR9--12
+  are locally closed: persisted/CUDA C6LNK2, compact role verifier, six-chain
+  assembly and the no-replay T1 response/MultiOpen/coefficient owners exist.
+- **Evidence versus credit.** Focused C6LNK2 is **10/0/0**, owner lifecycle
+  **5/0/0**, authenticated compiler **14/0/0**; the last ordinary workspace
+  record is PCS **219/0/1**, proto **154/0/1**. CUDA targets compile, but no
+  production response, GPU timing, full-chain or hardware credit exists.
+- **Screens.** v23 remains `credit:false`: certificate **17,536,735 B**,
+  setup **84,743,367 B**, state **2,277,715,552 B**, provider/verifier
+  **14.9087128542 / 4.965672390 s**, soundness **102.587833363526... bits**.
+  Original owner gates `<22 MB` and `<15 s` remain controlling.
+- **Authorization and hard stop.** On 2026-08-03 the owner authorized the
+  model-agnostic, challenge-dependent, wire-neutral `C6NBR1/C6NTO1` bridge
+  with small commits on `main`. Local construction may proceed. HARD STOP
+  remains before exact-runner admission or pod contact.
+- **Resume conditions.** Prove a scaled differential from generic typed
+  cohorts to exact canonical response nodes; implement the post-native
+  challenge schedule, joint tape-1 compiler functional, strict decoder and
+  role verification; then re-sum bytes, setup, correlations, soundness, state
+  and time and run the complete local gates. No fixed `96/6`, clear target,
+  mock PCG, CPU fallback or provider-derived verifier key is admissible.
 
 - **2026-08-03 — C6SPR10 exact terminal-functional relation closes locally.**
   The compiler now proves the exact challenge-dependent equality between the
@@ -188,6 +71,20 @@ This capsule is authoritative; read design §0.48 next.
   registered byte, setup, state, soundness and analytic-time screen remain
   unchanged with `credit:false`; no pod was contacted and the comparison table
   is not updated.
+
+- **2026-08-03 — C6SPR13 generic joint bridge authorized.** The product owner
+  selects the challenge-dependent `C6NBR1/C6NTO1` route and requires the
+  relation to abstract over future LLM profiles rather than encode GPT-2's
+  `96/6` census. The frozen GPT-2 profile remains the first concrete instance.
+  Canonical typed cohorts supply arbitrary positive target counts, claim-layout
+  digests and exact output-node ordinals; one post-native cohort challenge
+  folds them into the existing compiler adjoint relation under tape 1. Two
+  existing 16-B secondary-chain tails are reassigned to the two canonical
+  8-B `Fp` correction limbs and one 16-B joint ZeroOpen tag, so v23 wire is
+  projected unchanged. This is preregistration, not byte or soundness credit.
+  Local implementation is authorized with small commits; exact-runner and pod
+  contact remain stopped until the scaled differential, codec, role verifier
+  and full v24 re-sum are green.
 
 - **2026-08-03 — C6SPR8 closed; production wrapper lifecycle reaches the next
   ordered hard stop.** Checkpoint `c81a4ff` binds both ordered manifest tapes
@@ -1117,6 +1014,17 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-08-03 — C6SPR13 changes the native/compiler statement.** The owner
+  authorizes a generic joint bridge instead of duplicating one authentication
+  per response target. This is a deliberate protocol deviation: secondary
+  native chains cease to be independently closable and are accepted only
+  through one post-body `zeta` batch, an exact compiler adjoint functional and
+  one joint ZeroOpen. The projected 32-B tail reuse and 1,088-B GPT-2 setup map
+  are not credit. Before the bridge can enter the exact runner, additive Lean
+  theorem `C6NBR1JointBridgeSound` must kernel-check without a new axiom and
+  the v24 soundness expression must charge the cohort-batching degree and
+  reconcile the removed individual secondary ZeroOpen events.
 
 - **2026-08-03 — C6SPR6 reaches the live-wrapper-root boundary before pod.**
   The existing T1 census runner can retain the installed plan, canonical

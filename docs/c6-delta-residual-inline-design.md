@@ -3303,6 +3303,134 @@ is authorized at this stop. Profile v23 remains **17,536,735 B** per
 certificate, **84,743,367 B** setup and **102,280,102 B** setup plus first,
 all `credit:false`.
 
+### 0.49 C6NBR1 generic joint native-target bridge preregistration
+
+The owner selects the post-challenge bridge permitted by §0.48 and requires
+the construction to remain usable by future LLM profiles. The protocol
+therefore MUST NOT contain GPT-2 tensor names, the constants 96 or 6, or a
+model-specific target switch. GPT-2 is only the first profile instance.
+
+#### 0.49.1 Generic target profile
+
+`C6NTO1-v1` is a response-independent setup artifact over an ordered list of
+at least two nonempty native target cohorts. Each cohort record binds a stable
+cohort id, native chain slot, polynomial dimension, first target ordinal,
+target count and a 32-B claim-layout digest. Each ordered target record binds
+its cohort-local claim ordinal to the exact canonical authenticated-value DAG
+node which emitted that response claim. Duplicate cohort ids, chain slots,
+claim ordinals or canonical nodes reject. Counts are profile data; no protocol
+constant fixes them.
+
+The strict codec is:
+
+```text
+header                                                     144 B
+cohort records                              cohort_count *  48 B
+target records                               target_count *   8 B
+canonical BLAKE3 trailer                                     32 B
+```
+
+The 144-B header binds magic/version/flags/header and total lengths, topology
+digest, source-schedule digest, model-profile digest, both counts, payload
+length and a zero reserved word. A cohort record contains the fields above
+and its 32-B claim-layout digest. A target record contains two `u32` values:
+canonical node and cohort-local claim ordinal. The GPT-2 instance has two
+cohorts and 102 targets, hence exactly **1,088 B**. Together with the current
+309,192-B compiler profile and 5,320,386-B extraction map it occupies
+**5,630,666 B < 8,000,000 B**; the fixed 8-MB setup allocation and total setup
+screen therefore do not change. Other profiles must independently satisfy the
+same allocation gate.
+
+The map is generated only from the same prover/verifier operation traces which
+produce the installed topology. Both roles must resolve the exact exported
+claim tokens to identical canonical nodes and identical cohort order. Merely
+finding equal plaintexts, mapping to fixed terminal roots, or accepting an
+unreachable/dead trace node is forbidden.
+
+#### 0.49.2 Challenge schedule and exact relation
+
+All native and compiler commitment roots are fixed first. For every cohort
+`c`, the secondary native chain then produces its tagless claimless-WHIR body
+and deterministically derives its ordered claim weights `alpha[c,i]`. The
+global transcript appends the typed public statement and canonical tagless
+body digest for every secondary cohort in `C6NTO1` order, then samples one
+fresh `zeta`. No target bridge correction, compiler relation message or
+native closing tag may precede `zeta`.
+
+The generic injection is
+
+```text
+S = sum_c zeta^c * sum_i alpha[c,i] * value(node[c,i]).
+```
+
+The exact installed compiler adjoint receives this sparse seed in addition to
+its existing terminal seed. Linearity permits one combined D25 recurrence;
+the source gather and every nonlinear ancestor remain constrained by the
+existing C6SPR relation and certified ProductClosure set. The provider derives
+the matching tape-1 authenticated source fold from the already consumed paired
+source witness. The verifier streams the same canonical source coefficients
+over its tape-1 keys. No fresh correlation, clear target evaluation, provider
+Delta or digest-as-proof is introduced.
+
+#### 0.49.3 Wire-neutral joint closure
+
+The four GPT-2 native chain payloads retain their exact lengths. Primary-tape
+chains retain their ordinary 16-B ZeroOpen tails. The first two secondary
+cohort tails become the strict `C6NBR1-v1` 32-B bridge frame:
+
+```text
+aggregate correction c0                         one canonical Fp / 8 B
+aggregate correction c1                         one canonical Fp / 8 B
+joint ZeroOpen tag                              one canonical Fp2 / 16 B
+```
+
+The two correction limbs re-center one already-consumed full-field source
+fold to `S`; they are separately canonical 8-B `Fp` corrections. The joint
+tag closes the `zeta`-weighted sum of all secondary native base residuals
+against the compiler-derived tape-1 key. Secondary cohort tails after the two
+carriers, if a future profile has more than two cohorts, remain fixed-length
+canonical reserved fields bound by the outer statement; they cannot add a
+second bridge or weaken the one joint closure. Profiles with fewer than two
+cohorts are not admitted by v1.
+
+`C6AWP2`, `C6CPX3` and the outer `C6PA2` are new semantic versions even when
+their lengths equal v1/v2 predecessors. The decoder must first validate every
+typed/tagless native body and derive all `alpha`, then derive `zeta`, verify
+the compiler functional and corrected source key, and only then accept the
+joint ZeroOpen. A secondary chain is never independently acceptable.
+
+#### 0.49.4 Gates and current credit
+
+Implementation order is mandatory:
+
+1. scaled prover/verifier target-token export and canonical-node differential
+   for variable cohort counts;
+2. strict `C6NTO1` codec, mutation suite and setup-allocation accounting;
+3. pausable native prover/verifier typestates through tagless WHIR bodies;
+4. generic adjoint injection and tape-1 source-fold differential;
+5. `C6NBR1/C6AWP2/C6CPX3/C6PA2` codec and role-separated joint closure;
+6. exact v24 byte, correlation, soundness, state and time re-sum; and
+7. complete local exact-runner gates before any pod contact.
+
+The soundness re-sum must explicitly charge the degree-`cohort_count-1`
+`zeta` batching event and reconcile the removed individual secondary
+ZeroOpen events with the single joint event. The time screen must account for
+target-seed construction and any additional adjoint/source pass; it may not
+assume fusion without executable evidence. Until all seven local construction
+steps and the re-sum are green, v23 remains unchanged with `credit:false` and
+the HARD STOP before exact-runner admission and pod contact remains active.
+
+Because this amendment changes the protocol statement, Rust acceptance also
+requires an additive Lean theorem, provisionally
+`C6NBR1JointBridgeSound`. It must show that, after all cohort bodies are fixed,
+acceptance of the compiler functional and joint ZeroOpen binds every secondary
+native cohort except for the explicitly charged degree-`cohort_count-1`
+`zeta` collision, the joint ZeroOpen event and the already named native/compiler
+events. It may use the existing MAC linearity, ZeroOpen and compiler-relation
+theorems but may introduce no trusted axiom. Until that theorem kernel-checks,
+the Rust bridge is differential/codec evidence only and cannot enter the exact
+runner.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

@@ -22,20 +22,20 @@ This capsule is authoritative; read design §0.49 next.
   The exact joint functional gate is **1/0/0** and proto trace is
   **180/0/1**. The generic 32-B joint MAC closure is **2/0/0** and its exact
   source-correction split and installed-plan verifier recompilation are each
-  **1/0/0**; C6PA2/CPX3 codecs are **2/0/0**. CUDA targets compile, but no
-  production response, GPU timing, full-chain or hardware credit exists.
+  **1/0/0**; C6PA2/CPX3 codecs are **2/0/0**. MAC default is **29/0 + 5/0**;
+  no production response, GPU timing, full-chain or hardware credit exists.
 - **Screens.** v23 certificate remains `credit:false` at **17,536,735 B**.
   The exact-plan fallback projects setup **148,738,118 B** and setup+first
   **166,274,853 B**; state **2,277,715,552 B**, provider/verifier
   **14.9087128542 / 4.965672390 s** and soundness are still old screens.
-- **Authorization and hard stop.** On 2026-08-03 the owner authorized the
-  model-agnostic, challenge-dependent, wire-neutral `C6NBR1/C6NTO1` bridge
-  with small commits on `main`. Local construction may proceed. HARD STOP
-  remains before exact-runner admission or pod contact.
-- **Resume conditions.** Implement strict challenge-ordered `C6PA2` with
-  locally installed-plan functional verification, then v24 re-sums, Lean and
-  complete local gates. No fixed `96/6`, clear target, mock PCG, CPU fallback
-  or provider-derived verifier key is admissible.
+- **Authorization and hard stop.** The generic bridge is authorized, but
+  `C6NBR1_SECONDARY_CORRECTION_RELATION_REQUIRED` is now terminal. No exact
+  runner or pod contact is authorized.
+- **Resume conditions.** Bind the post-`alpha,zeta` compiler coefficients to
+  the authenticated tape-1 correction column, or provide an equivalent
+  verifier-derived pre-root owner, without linear wire. Then strict C6PA2,
+  Lean, v24 and complete local gates remain. Provider corrections/keys,
+  clear targets, mock PCG and CPU fallback are inadmissible.
 
 - **2026-08-03 — C6SPR10 exact terminal-functional relation closes locally.**
   The compiler now proves the exact challenge-dependent equality between the
@@ -241,6 +241,22 @@ This capsule is authoritative; read design §0.49 next.
   **17/0/0**. This is a local scaled seam, not outer C6PA2 acceptance or
   verifier-time credit. The strict nested decoder, tape-1 source-key fold,
   Lean theorem and v24 re-sum remain required; no pod contact is authorized.
+
+- **2026-08-03 — Tape-1 correction ownership reaches a new hard stop.** The
+  retained plan lets both roles compile identical post-`alpha,zeta` source
+  coefficients, and consumed full-field verifier keys are now replayable
+  counter-neutrally **1/0/0**. The exact T1 audit nevertheless proves that the
+  secondary verifier follower owns only raw base keys: tape-1 source
+  corrections are provider-local and never cross the response transcript.
+  Therefore it cannot independently check the 16-B C6NBR1 correction. Letting
+  the provider choose that difference makes the plaintext equality vacuous;
+  importing `C6PairedSourceWitness` into verification breaks role separation.
+  New hard stop is `C6NBR1_SECONDARY_CORRECTION_RELATION_REQUIRED`. Resume
+  requires either a verifier-derived pre-root correction owner with no linear
+  wire, or an authenticated postchallenge inner product between the existing
+  paired-residual tape-1 correction column and compiled coefficients, joined
+  to C6CPX3/C6NBR1. Strict C6PA2, Lean, v24, runner and pod remain stopped;
+  all credits remain false.
 
 - **2026-08-03 — C6SPR8 closed; production wrapper lifecycle reaches the next
   ordered hard stop.** Checkpoint `c81a4ff` binds both ordered manifest tapes

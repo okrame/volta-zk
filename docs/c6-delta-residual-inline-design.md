@@ -3469,6 +3469,52 @@ or role-local source folding differs. This generic fallback is parameterized
 only by `C6NTO1` and the installed plan and contains no GPT-2 cohort census or
 tensor switch.
 
+### 0.50 Secondary correction ownership audit and hard stop
+
+The installed-plan amendment closes functional recompilation but exposes a
+different role boundary. The secondary verifier follower mirrors the accepted
+source schedule and consumes the independent raw base-key tape. It does not
+receive the secondary source corrections: those are computed inside the
+provider follower from the common private plaintext and its independent masks.
+Only the primary response corrections cross the existing response transcript,
+and they cannot be reused under tape 1.
+
+Consequently the verifier can now replay every consumed tape-1 raw full-field
+key counter-neutrally, but it cannot independently derive
+
+```text
+c_1 = sum_s compiled_coefficient[s] * secondary_correction[s].
+```
+
+The current 16-B C6NBR1 carrier is provider supplied. Removing the equality
+check against an independently authenticated `c_1` is unsound: after seeing
+the native and raw compiler folds, the provider can choose their difference,
+making the residual plaintext zero without proving that the compiler fold
+evaluates the same response values. The final ZeroOpen then checks only the
+resulting tag equation. Reading corrections from `C6PairedSourceWitness` on
+the verifier path would expose provider state and is not role separation.
+
+The new **HARD STOP** is
+`C6NBR1_SECONDARY_CORRECTION_RELATION_REQUIRED`. Resume requires exactly one
+of:
+
+1. a pre-root two-role correction owner whose tape-1 corrections are derived
+   by the verifier from transcript-visible response data and are already
+   bound to the same private plaintexts, without linear certificate growth;
+   or
+2. an authenticated inner-product relation which consumes the existing
+   paired-residual tape-1 correction column and the post-`alpha,zeta` compiled
+   coefficients, proves the 16-B aggregate correction, and is joined to
+   C6CPX3/C6NBR1 without a provider key, clear source value or digest-as-proof.
+
+Any second route must state its commitment/opening ownership, challenge order,
+soundness event and exact wire/time/state delta before implementation. It may
+reuse an existing committed residual oracle only if the exact column and
+opening relation are already authenticated; unused vector padding is not a
+commitment. The strict C6PA2 decoder, Lean theorem, v24 re-sum, exact runner
+and pod remain stopped. Counter-neutral full-key replay is local evidence only
+and does not retire this obstruction.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

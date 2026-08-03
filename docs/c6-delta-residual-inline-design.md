@@ -2796,6 +2796,38 @@ until the strict codec, scaled byte-identity differential, resource counters
 and fail-closed production selector are implemented and green.  Only then may
 the authorized A100 campaign execute the exact D28/D27 chains.
 
+### 0.38 `C6SPX1-v1` implementation closure and runner boundary
+
+The persisted MMCS is now implemented behind the authenticated P3 feature.
+The pinned Merkle fork adds only three immutable post-construction views; all
+hashing, compression, pruning and verifier code remains upstream.  Each spill
+is create-new, session/lane/ordinal/root-bound, length checked and `fsync`ed.
+Openings use random-access reads for only requested rows and frontier digests.
+A shared commit gate spans both lanes, so response and plan resident trees do
+not coexist even when their WHIR provers advance on separate lockstep threads.
+
+At scaled D14/D13, the resident and persisted paths have identical roots,
+opened rows, pruned frontiers, strict `C6SMO1` BLAKE3, provider bytes,
+transcript counters, correlations and final designated closure.  Header
+mutation rejects before payload reads.  The production selector requires an
+A100, at least 64 GiB available host memory, at least 128 GiB available spill,
+an explicit persisted-backend admission and pooled real PCG for both roles.
+It has no resident fallback and continues to report zero GPU performance
+credit.  Duplicate full response/plan check polynomials were removed; their
+committed messages provide the same LSB/MSB adapter check before ownership is
+moved into the prover threads.
+
+This closes `C6SPR5_PERSISTED_OR_GPU_RESIDENT_WHIR_EXECUTOR_REQUIRED` as an
+executor component gate only.  No production geometry was allocated and no
+A100 result exists.  The new **HARD STOP** is
+`C6SPR6_EXACT_PRODUCTION_CHAIN_RUNNER_REQUIRED`: construct the real C6RSC3
+fused terminal outputs and leaf points from the installed T1 witness, bind
+the exact production relation, execute both independently separated compiler
+chains through `C6SPX1-v1`, and persist a clean append-only record with
+coefficient+witness, RSS, GPU, spill, correlation and synchronization
+counters.  Scaled points, dummy roots and monolithic fallback remain
+inadmissible.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

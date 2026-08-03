@@ -39,17 +39,24 @@ C6.1 branch.
 - **Checks/checkpoints.** D28 rejects before allocation; the source guard
   pins retained message+Merkle data. Budget v20 is green. Checkpoints
   `18569c4`, semantic correction `e408099`, `162f3e7`.
-- **Executor preregistration.** Design §0.37 fixes `C6SPX1-v1`: a
-  session/root/ordinal-bound persisted MMCS whose openings read only requested
-  rows and Merkle-frontier digests, while the unchanged pinned MMCS remains
-  the verifier.  Response and plan resident trees may not coexist.  This is
-  design only and grants no credit.
-- **HARD STOP.** `C6SPR5_PERSISTED_OR_GPU_RESIDENT_WHIR_EXECUTOR_REQUIRED`.
-- **Resume.** Implement the strict spill codec, scaled byte-identity
-  differential, resource counters and fail-closed production selector. Then
-  execute both production chains on the authorized A100 campaign, separating
-  coefficient+witness, RSS, GPU and correlation counters, before a clean
-  full-chain record.
+- **Persisted executor.** `C6SPX1-v1` is implemented: strict create-new
+  session/lane/ordinal/root-bound spills, random-access row/frontier opening,
+  one `fsync` per oracle and a shared response/plan commit gate.  The pinned
+  resident MMCS remains the verifier.  Scaled D14/D13 resident/persisted roots,
+  pruned proofs, strict `C6SMO1` hash/bytes, transcripts, correlations and
+  designated closure are identical; header mutation fails closed.  The
+  production selector requires A100, 64-GiB available host, 128-GiB available
+  spill and pooled real PCG, with no resident fallback.  Targeted tests are
+  green; no production allocation or credit occurred.  Checkpoints
+  `bbec4b4`, `e9dfc8e`, `14e7c36`, `8023c17`, `5210992`, `6277687`,
+  `fad88a0`.
+- **HARD STOP.** `C6SPR6_EXACT_PRODUCTION_CHAIN_RUNNER_REQUIRED`.
+- **Resume.** Build the clean runner that derives the real fused C6RSC3
+  terminal outputs/leaf points from T1, binds the exact production relation
+  and executes both independently separated compiler chains through
+  `C6SPX1-v1`.  The A100 record must separate coefficient+witness, RSS, GPU,
+  spill, correlation and synchronization counters; scaled or dummy inputs are
+  forbidden.
 - **Owner GO (2026-08-03).** The product owner explicitly authorizes contact
   with an A100 provider/pod and a real full C6.1 e2e execution because the
   local VM cannot admit the production prover-data footprint. The GO is

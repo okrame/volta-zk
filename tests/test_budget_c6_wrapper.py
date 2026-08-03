@@ -72,6 +72,17 @@ def test_selected_profile_and_collision_safe_wire_maximum() -> None:
     ]
     assert capacity["initial_encoded_symbols"] == 5_721_030_656
     assert capacity["coefficient_symbols"] == 358_612_992
+    assert capacity["resident_reference"] == {
+        "retained_codeword_copies": 2,
+        "lower_bound_bytes": 188_810_788_864,
+        "excluded_from_lower_bound": [
+            "merkle_outer_caches",
+            "input_witnesses_and_masks",
+            "allocator_overhead",
+            "fold_trees",
+        ],
+        "production_backend_credit": False,
+    }
     assert chain["opened_symbols"] == 15_904
     assert chain["outer_siblings"] == 52_576
     assert chain["inner_siblings"] == 0

@@ -621,6 +621,16 @@ def build_report() -> dict[str, Any]:
     initial_encoded_bytes = initial_encoded_symbols * FP2_BYTES
     coefficient_bytes = coefficient_symbols * FP2_BYTES
     fold_bytes = fold_symbols * FP2_BYTES
+    # The current reference owner keeps all six `C6CommittedWrapperCohort`s
+    # live.  Each owner retains its coefficients and codewords, while
+    # `CohortTreeV4::build_flat` receives a clone of every codeword.  This is
+    # an implementation lower bound: it deliberately excludes the Merkle
+    # outer caches, input witnesses/masks, allocator overhead and fold trees.
+    resident_reference_retained_codeword_copies = 2
+    resident_reference_lower_bound_bytes = (
+        coefficient_bytes
+        + resident_reference_retained_codeword_copies * initial_encoded_bytes
+    )
 
     with localcontext() as context:
         context.prec = 60
@@ -698,6 +708,19 @@ def build_report() -> dict[str, Any]:
             "largest_cohort_encoded_bytes": max(
                 cohort.encoded_symbols * FP2_BYTES for cohort in COHORTS
             ),
+            "resident_reference": {
+                "retained_codeword_copies": (
+                    resident_reference_retained_codeword_copies
+                ),
+                "lower_bound_bytes": resident_reference_lower_bound_bytes,
+                "excluded_from_lower_bound": [
+                    "merkle_outer_caches",
+                    "input_witnesses_and_masks",
+                    "allocator_overhead",
+                    "fold_trees",
+                ],
+                "production_backend_credit": False,
+            },
         },
         "wire": {
             "one_chain": section,
@@ -1142,6 +1165,7 @@ def build_report() -> dict[str, Any]:
     assert initial_encoded_symbols == 5_721_030_656
     assert coefficient_symbols == 358_612_992
     assert fold_symbols == 536_870_896
+    assert resident_reference_lower_bound_bytes == 188_810_788_864
     assert report["soundness"]["all_events_meet_literal_128_bits"] is True
     assert Decimal(report["soundness"]["q121_complete_candidate_bits"]) > Decimal(
         "78.80929487391641"

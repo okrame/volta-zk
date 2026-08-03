@@ -2828,6 +2828,46 @@ coefficient+witness, RSS, GPU, spill, correlation and synchronization
 counters.  Scaled points, dummy roots and monolithic fallback remain
 inadmissible.
 
+### 0.39 Live production wrapper-root binding obstruction
+
+Resuming C6SPR6 exposed an earlier same-attempt dependency that a chain
+runner cannot replace with a root file.  The fused direct C6RSC3 relation is
+released only after the six ordered production wrapper roots are fixed.  In
+particular, the Δ-residual cohort commits the response's paired source MAC
+witness.  That witness is generated from the fresh real-PCG scopes of the
+same T1 response; a valid root from another attempt, even under the correct
+cohort profile and statement framing, need not commit the witness consumed by
+the fused prover.
+
+The repository has strict production cohort/root constructors and the T1
+census path already retains the installed plan, canonical runtime and paired
+source witness.  It does not have their production bridge.  A source audit
+finds no non-test caller that materializes all six `C6WrapperSlotWitness`
+cohorts from those live T1 objects before the ProductClosure and ZeroBatch
+challenges.  Existing production-root constructors accept opaque roots, as a
+verifier must, and therefore cannot establish this missing provider-side
+ownership.  The standalone direct terminal prover seam is exported at
+`c5703b9`, but invoking it with external, dummy or unrelated roots would prove
+a different statement.
+
+The attempted external-root admission was reverted at `15f6cfc`.  No pod was
+contacted and `C6SPX1-v1` remains unchanged and green.  The new **HARD STOP**
+is `C6SPR7_LIVE_WRAPPER_ROOT_BINDING_REQUIRED`.  Resume requires one of:
+
+1. a same-attempt production materializer that derives all six wrapper
+   cohorts from the exact live T1 slot owners and fixes their roots before
+   the retained challenges; or
+2. an equivalent verified committed-artifact handoff that binds the exact
+   paired-witness digest, real/AES-PCG connection scopes, response identity,
+   wrapper profile and roots, and whose openings are the ones consumed by the
+   continuing C6RSC3/link statement.
+
+Only after this token exists may the runner release the direct alpha and
+postclaim points, obtain the 64 terminal outputs from the fused prover and
+execute both independently separated C6SPX1 compiler chains.  The existing
+owner A100 GO remains valid for that later clean runner.  It does not
+authorize bypassing this local ownership gate.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

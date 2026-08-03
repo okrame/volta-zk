@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — MONOLITHIC D28-D27 MEMORY CENSUSED / A100 OWNER GO / RESOURCE-AWARE EXECUTOR HARD STOP)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — PERSISTED D28-D27 EXECUTOR GREEN / A100 OWNER GO / LIVE-WRAPPER-ROOT HARD STOP)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,64 +8,34 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative. Historical entries cannot authorize an older
-C6.1 branch.
+This capsule is authoritative; read design §0.39 next.
 
-- **Phase/design.** C6.1 response-local public compression. Read this, then
-  design §0.36, *production WHIR prover-data memory obstruction*.
-- **Relation.** The 64 C6RSC3 values are challenge-dependent. `C6TFA1-v1`
-  exactly factors them into two D25 reverse lanes plus an eight-family direct
-  reducer. Fixed-node mapping, D28 event table and digest substitutes are
-  forbidden.
-- **Construction.** One physical D28 `c0||c1` response and one public D27
-  plan root are fixed before `zeta/gamma/tau/delta`. Seven blind fraction
-  trees reduce fourteen claims through one degree-8 joint proof to 12
-  response plus 3 plan openings. The public-only verifier has no private
-  relation vectors. Exactly 531 products and 179 zero rows share one
-  QuickSilver proof and the existing compiler ZeroOpen.
-- **Wire/correlations.** `C6SBA1` is **88,220 B/tape**. One production
-  compiler chain is at most **2,346,352 B**; it consumes **5,493 full + 24
-  subfield** correlations. Two compiler chains plus four unchanged
-  model/embedding ceilings give **17,534,807 B** complete certificate.
-- **Screens.** Budget v20: setup **84,743,367 B**; first exchange
-  **102,278,174 B**; state **2,277,715,552 B**; provider/verifier roofs
-  **14.9087128542 / 4.965672390 s**; complete soundness
-  **102.587833363526... bits**. Every value remains `credit:false`.
-- **Production admission.** The pinned monolithic P3 data retains at least
-  **35,433,480,128 B** for concurrent D28/D27 roots: **23,622,320,096 B**
-  response plus **11,811,160,032 B** plan, before later rounds, GKR and
-  allocator overhead. This is total implementation memory, not the separate
-  **2,293,198,848-B** coefficient+witness component cap.
-- **Checks/checkpoints.** D28 rejects before allocation; the source guard
-  pins retained message+Merkle data. Budget v20 is green. Checkpoints
-  `18569c4`, semantic correction `e408099`, `162f3e7`.
-- **Persisted executor.** `C6SPX1-v1` is implemented: strict create-new
-  session/lane/ordinal/root-bound spills, random-access row/frontier opening,
-  one `fsync` per oracle and a shared response/plan commit gate.  The pinned
-  resident MMCS remains the verifier.  Scaled D14/D13 resident/persisted roots,
-  pruned proofs, strict `C6SMO1` hash/bytes, transcripts, correlations and
-  designated closure are identical; header mutation fails closed.  The
-  production selector requires A100, 64-GiB available host, 128-GiB available
-  spill and pooled real PCG, with no resident fallback.  Targeted tests are
-  green; no production allocation or credit occurred.  Checkpoints
-  `bbec4b4`, `e9dfc8e`, `14e7c36`, `8023c17`, `5210992`, `6277687`,
-  `fad88a0`.
-- **HARD STOP.** `C6SPR6_EXACT_PRODUCTION_CHAIN_RUNNER_REQUIRED`.
-- **Resume.** Build the clean runner that derives the real fused C6RSC3
-  terminal outputs/leaf points from T1, binds the exact production relation
-  and executes both independently separated compiler chains through
-  `C6SPX1-v1`.  The A100 record must separate coefficient+witness, RSS, GPU,
-  spill, correlation and synchronization counters; scaled or dummy inputs are
-  forbidden.
-- **Owner GO (2026-08-03).** The product owner explicitly authorizes contact
-  with an A100 provider/pod and a real full C6.1 e2e execution because the
-  local VM cannot admit the production prover-data footprint. The GO is
-  scoped to this campaign; it does not waive the C6SPR5 executor gate,
-  append-only clean-record rules, real/AES-PCG requirement or fail-closed
-  backend policy. A host-monolithic baseline on the A100 node is not GPU
-  performance credit; coefficient+witness state, process RSS and GPU memory
-  remain separate measurements. No diagnostic reference or screen is
-  full-chain evidence.
+- **Phase/relation.** C6.1 response-local public compression. The 64 C6RSC3
+  values are challenge-dependent and exactly factor through two D25 reverse
+  lanes plus the eight-family reducer. Fixed-node, event-table and digest
+  substitutes remain forbidden.
+- **Completed evidence.** `C6SPX1-v1` provides create-new root/session-bound
+  spills, random-access openings and serialized response/plan commits. Scaled
+  D14/D13 resident/persisted roots, proofs, bytes, transcripts, correlations
+  and closure match; production selection requires A100, 64-GiB available
+  host, 128-GiB spill and pooled real PCG. Direct terminal prover export is
+  checkpoint `c5703b9`; no production run or credit exists.
+- **Screens.** Certificate **17,534,807 B**, setup **84,743,367 B**, state
+  **2,277,715,552 B**, provider/verifier **14.9087128542 / 4.965672390 s** and
+  soundness **102.587833363526... bits** remain `credit:false`.
+- **HARD STOP.** `C6SPR7_LIVE_WRAPPER_ROOT_BINDING_REQUIRED`. The T1 runner
+  obtains its fresh paired source witness from the response PCG, but no
+  non-test adapter materializes the six production wrapper commitments from
+  those exact live slots before retained challenges. External roots can bind
+  a different witness and are inadmissible; that attempted path was reverted
+  by `15f6cfc`. No pod was contacted.
+- **Resume.** In one attempt, bind the six real roots to the exact paired
+  witness/PCG scope before `chi`, then derive direct points and terminal
+  outputs and execute both separated C6SPX1 chains. Record component state,
+  RSS, GPU, spill, correlations and sync separately.
+- **Owner GO.** The 2026-08-03 A100 full-e2e authorization remains valid after
+  this local gate; it waives none of the clean-record, real/AES-PCG,
+  fail-closed or no-dummy requirements.
 
 ## Historical C6.1 component chronology (append-only; not active authority)
 
@@ -976,6 +946,29 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-08-03 — C6SPR6 reaches the live-wrapper-root boundary before pod.**
+  The existing T1 census runner can retain the installed plan, canonical
+  runtime and paired source witness needed by the fused direct C6RSC3 prover.
+  The direct terminal prover/output types are now exported at checkpoint
+  `c5703b9`.  An attempted typed external-root handoff was then rejected and
+  reverted at `15f6cfc`: the Δ-residual wrapper root commits the fresh paired
+  MAC witness, so a structurally valid root list can still belong to another
+  PCG scope or response.
+
+  Source audit found production cohort constructors and verifier-side root
+  reconstruction, but every live `commit_c6_wrapper_cohort` call outside its
+  defining module is test-only.  No non-test adapter materializes all six
+  production slot witnesses from the exact T1 response before the retained
+  ProductClosure/ZeroBatch challenges.  Consequently external roots, dummy
+  roots, or a root digest asserted without the same-attempt witness opening
+  would prove a different statement.  The new hard stop is
+  `C6SPR7_LIVE_WRAPPER_ROOT_BINDING_REQUIRED`.  Resume requires a same-attempt
+  six-cohort materializer (or equivalent verified committed-artifact handoff)
+  bound to the exact paired witness and real/AES-PCG scope before `chi`, after
+  which the already planned direct-point/C6RSC3/C6SPX1 runner may continue.
+  The owner A100 GO remains valid, but no pod was contacted and no production
+  allocation, timing, memory, wire or hardware credit was earned.
 
 - **2026-08-02 — C6SPR1's uncommitted `mu` is challenge-adaptive;
   C6SPR2 binds it.**  The scaled verifier derived the node-aligned Scale

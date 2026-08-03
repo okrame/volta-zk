@@ -2314,6 +2314,32 @@ impl VerifierCtx {
         self.trace_fullfield_keys(dom, keys)
     }
 
+    /// Re-read an already consumed full-field base-key source without
+    /// advancing the PCG cursor, counters or schedule.  The exact C6.1 joint
+    /// compiler fold uses this only after the response has fixed the source
+    /// schedule; it is not a second correlation draw.
+    pub fn replay_consumed_full_keys(&mut self, dom: u64, n: usize) -> Vec<Fp2> {
+        let drawn = self.ledger.consumed.get(&(dom | FULL_BIT_SHADOW)).copied();
+        assert_eq!(
+            drawn,
+            Some(n as u64),
+            "full-key replay must match the consumed source at {dom:#x}"
+        );
+        match &mut self.backend {
+            VerifierBackend::Mock { seed, .. } => {
+                let mut xs = FpStream::domain_separated(*seed, dom | FULL_BIT);
+                let mut ms = FpStream::domain_separated(*seed, dom | FULL_BIT | TAG_BIT);
+                (0..n).map(|_| ms.next_fp2() + self.delta * xs.next_fp2()).collect()
+            }
+            VerifierBackend::Pooled(pooled) => pooled.replay_full_keys(dom, n),
+        }
+    }
+
+    pub fn replay_consumed_full_verifier_keys(&mut self, dom: u64, n: usize) -> Vec<VerifierKey> {
+        let keys = self.replay_consumed_full_keys(dom, n);
+        self.trace_fullfield_keys(dom, keys)
+    }
+
     /// Apply canonical full-field corrections while preserving each direct
     /// source token. Corrections are source metadata, not DAG operations.
     pub fn correct_full_verifier_keys(
@@ -2661,6 +2687,7 @@ struct PooledVerifier {
     next_sub: usize,
     next_full: usize,
     sub_domains: HashMap<u64, (usize, usize)>,
+    full_domains: HashMap<u64, (usize, usize)>,
     hasher: blake3::Hasher,
 }
 
@@ -2673,6 +2700,7 @@ impl PooledVerifier {
             next_sub: 0,
             next_full: 0,
             sub_domains: HashMap::new(),
+            full_domains: HashMap::new(),
             hasher,
         }
     }
@@ -2706,7 +2734,17 @@ impl PooledVerifier {
         self.assert_full_capacity(n);
         let off = self.next_full;
         self.next_full += n;
+        let previous = self.full_domains.insert(dom, (off, n));
+        assert!(previous.is_none(), "pooled verifier full domain {dom:#x} allocated twice");
         record_alloc(&mut self.hasher, b"full", dom, off, n);
+        self.full_keys[off..off + n].to_vec()
+    }
+
+    fn replay_full_keys(&self, dom: u64, n: usize) -> Vec<Fp2> {
+        let Some((off, drawn)) = self.full_domains.get(&dom).copied() else {
+            panic!("pooled full-key replay before source allocation at {dom:#x}");
+        };
+        assert_eq!(drawn, n, "pooled full-key replay length mismatch at {dom:#x}");
         self.full_keys[off..off + n].to_vec()
     }
 
@@ -3120,6 +3158,30 @@ mod tests {
             ),
             before_replay,
         );
+    }
+
+    #[test]
+    fn consumed_full_key_replay_is_exact_and_counter_neutral() {
+        let delta = Fp2::new(Fp::new(0x381), Fp::new(0x382));
+        let params = volta_pcg::PhaseAParams::tiny_for_test(10);
+        let pool = volta_pcg::expand_phase_a([0x38; 32], delta, 0, 5, params);
+        let mut verifier = VerifierCtx::from_pcg_pool(delta, pool.verifier);
+        verifier.enable_schedule_audit().unwrap();
+        let keys = verifier.expand_full_keys(0x3800, 5);
+        let counters = verifier.counters;
+        let schedule = verifier.schedule_audit().unwrap();
+        let allocation = verifier.allocation_digest_hex();
+        assert_eq!(verifier.replay_consumed_full_keys(0x3800, 5), keys);
+        assert_eq!(verifier.replay_consumed_full_keys(0x3800, 5), keys);
+        assert_eq!(verifier.counters, counters);
+        assert_eq!(verifier.schedule_audit().unwrap(), schedule);
+        assert_eq!(verifier.allocation_digest_hex(), allocation);
+
+        let mut mock = VerifierCtx::new([0x39; 32], delta);
+        let mock_keys = mock.expand_full_keys(0x3900, 3);
+        let mock_counters = mock.counters;
+        assert_eq!(mock.replay_consumed_full_keys(0x3900, 3), mock_keys);
+        assert_eq!(mock.counters, mock_counters);
     }
 
     #[test]

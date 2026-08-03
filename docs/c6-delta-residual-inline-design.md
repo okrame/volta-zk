@@ -3251,6 +3251,58 @@ resource accounting.  The export must preserve the frozen golden forward and
 fallback.  Only after its local negative/codec gates are green may the
 authorized A100 run occur.  No pod was contacted.
 
+### 0.48 Exact T1 owner closure and two-tape native-target hard stop
+
+The missing exact T1 ownership boundary is now implemented without replay.
+One library owner retains the frozen workload and response, converts the exact
+ordered 96 weight and six embedding claims to native block claims, and retains
+their primary prover authentications and verifier keys. The same response path
+also retains the two production hidden-u MultiOpen proofs, verifies them with
+the primary verifier role and derives the existing hidden-u witness bundle.
+Session-bound create-new sparse D28 model and D27 embedding coefficient owners
+are written directly from that workload, with canonical content digests and
+strict manifest/reload validation. Their logical file lengths are
+**2,147,483,648 B** and **1,073,741,824 B** respectively; these files are
+private ephemeral spill and do not change setup or certificate bytes.
+
+The next complete-runner call exposes an independent authentication boundary.
+Each model/embed `C6AWP1` production chain consumes an ordered target vector
+for each of the two independent residual tapes: 96 model values and six
+embedding values per tape. The exact response supplies only the primary
+`ProverAuthed` values and matching primary verifier keys. The secondary source
+follower proves same source scheduling and supplies the second source witness
+coordinate, but it does not emit secondary tags or verifier keys for these 102
+response evaluations.
+
+`C6HUB2` cannot fill this gap. At its terminal it authenticates exactly one
+folded `U(r)` value per family, tape and repetition. Its fixed pending layout
+has one live terminal entry and public-zero padding; it is not an
+authentication of each model/embed opening target. Likewise C6LNK2's 72
+registered relations per repetition do not name these 102 target nodes. A
+provider-side replay of the raw trace could compute secondary tags, but the
+verifier would have no independently derived secondary keys unless new
+corrections or a new authenticated relation crossed the role boundary.
+
+The new **HARD STOP** is
+`C6SPR13_EXACT_TWO_TAPE_NATIVE_TARGET_RELATION_REQUIRED`. An admissible unblock
+must be one of:
+
+1. an exact pre-root two-tape same-plaintext owner for all 102 ordered private
+   targets, with a proved typed link to the response claims; or
+2. an exact post-challenge bridge which batches the 96/6 primary response
+   authentications with each native chain challenge and proves the same
+   aggregate under tape 1 through the existing wrapper/compiler statement.
+
+Either route must preserve verifier role separation and the indivisible
+real/AES-PCG attempt, define the statement and challenge schedule, and re-sum
+all wire, correlations, soundness, state and time before it may feed the four
+native chains. Reusing primary tags under the independent Delta, constructing
+verifier keys from provider state, treating the private targets as public, or
+adding untyped corrections is forbidden. No runner, pod or full-chain credit
+is authorized at this stop. Profile v23 remains **17,536,735 B** per
+certificate, **84,743,367 B** setup and **102,280,102 B** setup plus first,
+all `credit:false`.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

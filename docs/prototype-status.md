@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — C6SPR12 EXACT T1 OWNER EXPORT HARD STOP / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — C6SPR13 EXACT TWO-TAPE NATIVE TARGET RELATION HARD STOP / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §0.47 next.
+This capsule is authoritative; read design §0.48 next.
 
 - **Phase/relation.** C6.1 response-local public compression. The 64 C6RSC3
   values are challenge-dependent and exactly factor through two D25 reverse
@@ -119,16 +119,31 @@ This capsule is authoritative; read design §0.47 next.
   profile plus the retained 5,320,386-B extraction map is **5,629,578 B < 8
   MB**.  Scaled role verification is byte/transcript/correlation identical;
   production execution and GPU credit remain absent.
+- **C6SPR12 exact T1 owner boundary.** Checkpoints `0164074`, `fcf7c31`,
+  `2867e4b`, `52e8f82` and `1674cd4` export the frozen response without
+  replay, retain the exact 96/6 native claims and primary verifier keys,
+  retain and verify both hidden-u MultiOpen owners on the live production
+  tape, and create session-bound sparse D28/D27 native coefficient owners
+  from the same workload. The logical coefficient files are private
+  ephemeral spill, not setup or certificate bytes. Ordinary, CUDA and
+  authenticated-reference checks compile; focused owner lifecycle and
+  pre-effect rejection tests are green. This closes the missing owner export
+  only; it creates no production, memory, timing, wire or hardware credit.
 - **Active hard stop.**
-  `C6SPR12_EXACT_T1_OWNER_EXPORT_REQUIRED`: the only exact T=100/Q=50 builder
-  is the diagnostic `c6_t1_census_record`; it uses mock streams and explicitly
-  drops its model proof, 96/6 output claims and workload.  It exports neither
-  the retained MultiOpen hidden-u owner nor the installed witness/runtime
-  bundle under the indivisible real/AES-PCG attempt.  Resume requires one
-  no-replay library owner export feeding the same typed objects to six roots,
-  the global blind join, all six native chains and role-separated verification.
-  A component-only or reconstructed runner is forbidden. No pod contact is
-  authorized.
+  `C6SPR13_EXACT_TWO_TAPE_NATIVE_TARGET_RELATION_REQUIRED`: each of the four
+  model/embed `C6AWP1` chains requires its 96/6 private opening targets under
+  both independent correlation tapes. The exact T1 response exports only the
+  primary `ProverAuthed` values and verifier keys. `C6HUB2` authenticates one
+  terminal hidden-u value per family/tape/repetition; its remaining pending
+  slots are public zero and do not authenticate the individual native opening
+  targets. Reusing the primary tags on tape 1, making the targets public, or
+  deriving verifier keys from a provider-held Delta is forbidden. Resume
+  requires either an exact pre-root two-tape same-plaintext owner for all 102
+  targets with its response-claim link, or an exact challenge-dependent
+  authenticated aggregate bridge inside the existing wrapper/compiler
+  relation. The statement, challenge order, role separation, wire, correlation,
+  soundness, state and time accounting must be explicit before runner work.
+  No pod contact is authorized.
 - **Owner GO.** The 2026-08-03 A100 full-e2e authorization remains valid after
   this local gate, but pod contact remains deferred until the local backend,
   C6PC2 and complete runner are green. It waives none of the clean-record,
@@ -160,6 +175,19 @@ This capsule is authoritative; read design §0.47 next.
   PCG and cannot feed the real same-attempt runner. The final ordinary
   workspace validation is green at **volta-pcs 219/0/1** and **volta-proto
   154/0/1**. New hard stop is C6SPR12; no pod was contacted.
+
+- **2026-08-03 — C6SPR12 exact response owners close; the second native tape
+  is not bound.** The frozen T1 response, its exact primary 96/6 claim/key
+  census, both retained hidden-u MultiOpen proofs and sparse create-new D28/D27
+  coefficient owners now share one no-replay library owner path. The next
+  assembly audit proves that the secondary source follower does not export
+  secondary tags/keys for those 102 private target evaluations, while C6HUB2
+  closes only its terminal hidden-u claims and C6LNK2 has no registered target
+  slots for them. Supplying public targets or cross-tape tag reuse would prove
+  a different statement. New hard stop is C6SPR13. Profile v23 and every
+  registered byte, setup, state, soundness and analytic-time screen remain
+  unchanged with `credit:false`; no pod was contacted and the comparison table
+  is not updated.
 
 - **2026-08-03 — C6SPR8 closed; production wrapper lifecycle reaches the next
   ordered hard stop.** Checkpoint `c81a4ff` binds both ordered manifest tapes

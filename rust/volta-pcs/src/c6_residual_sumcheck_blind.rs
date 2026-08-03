@@ -4739,6 +4739,10 @@ mod tests {
         assert_eq!(census.product_closures, 673);
         assert_eq!(census.product_triples, 14_653);
         assert_eq!(census.zero_roots, 5_590);
+        assert_eq!(census.native_target_cohorts, 2);
+        assert_eq!(census.native_targets, 102);
+        assert_eq!(fixture.native_target_profile().cohorts.len(), 2);
+        assert_eq!(fixture.native_target_profile().target_count(), 102);
 
         let arena = C6ResidualFusedCoefficientArena::new(fixture.manifest());
         let residual_prover_start = std::time::Instant::now();

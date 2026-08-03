@@ -15,8 +15,10 @@ This capsule is authoritative; read design §0.49 next.
   assembly and the no-replay T1 response/MultiOpen/coefficient owners exist.
 - **Evidence versus credit.** Focused C6LNK2 is **10/0/0**, owner lifecycle
   **5/0/0**, authenticated compiler **14/0/0**; the last ordinary workspace
-  record is PCS **219/0/1**, proto **154/0/1**. CUDA targets compile, but no
-  production response, GPU timing, full-chain or hardware credit exists.
+  record is PCS **219/0/1**, proto **154/0/1**. Generic trace targets are
+  **38/0/0 + 5/0/0**; the exact 102-target response differential and sealed
+  residual gate are **1/0/0**. CUDA targets compile, but no production
+  response, GPU timing, full-chain or hardware credit exists.
 - **Screens.** v23 remains `credit:false`: certificate **17,536,735 B**,
   setup **84,743,367 B**, state **2,277,715,552 B**, provider/verifier
   **14.9087128542 / 4.965672390 s**, soundness **102.587833363526... bits**.
@@ -25,12 +27,12 @@ This capsule is authoritative; read design §0.49 next.
   model-agnostic, challenge-dependent, wire-neutral `C6NBR1/C6NTO1` bridge
   with small commits on `main`. Local construction may proceed. HARD STOP
   remains before exact-runner admission or pod contact.
-- **Resume conditions.** Prove a scaled differential from generic typed
-  cohorts to exact canonical response nodes; implement the post-native
-  challenge schedule, joint tape-1 compiler functional, strict decoder and
-  role verification; then re-sum bytes, setup, correlations, soundness, state
-  and time and run the complete local gates. No fixed `96/6`, clear target,
-  mock PCG, CPU fallback or provider-derived verifier key is admissible.
+- **Resume conditions.** Implement the strict generic `C6NTO1` codec, then
+  the post-native challenge schedule, joint tape-1 compiler functional,
+  pausable native chains and role verification; re-sum bytes, setup,
+  correlations, soundness, state and time and run the complete local gates.
+  No fixed `96/6`, clear target, mock PCG, CPU fallback or provider-derived
+  verifier key is admissible.
 
 - **2026-08-03 — C6SPR10 exact terminal-functional relation closes locally.**
   The compiler now proves the exact challenge-dependent equality between the
@@ -85,6 +87,20 @@ This capsule is authoritative; read design §0.49 next.
   Local implementation is authorized with small commits; exact-runner and pod
   contact remain stopped until the scaled differential, codec, role verifier
   and full v24 re-sum are green.
+
+- **2026-08-03 — C6SPR13 exact native-target differential closes.** The
+  generic trace compiler now retains arbitrary typed target cohorts as exact
+  canonical DAG nodes without reclassifying them as ProductClosure or zero
+  terminals. A separate GPT-2 profile adapter binds the semantic
+  phase/layer/matrix and embedding order while the core contains no `96/6`
+  constants or tensor switch. The complete `T=4,Q=2` response exports all
+  **102** live claim/key tokens; prover and verifier independently produce
+  identical two-cohort canonical maps, and the production-geometry sealed
+  residual gate passes **1/0/0** with its historical **6,900-B** residual
+  proof body. Its **876.059862-s** CPU debug wall is diagnostic only and earns
+  no time, full-chain, production or hardware credit. Generic trace suites
+  remain green at **38/0/0 + 5/0/0**. v23 and the no-pod hard stop are
+  unchanged; the next ordered construction is the strict `C6NTO1` codec.
 
 - **2026-08-03 — C6SPR8 closed; production wrapper lifecycle reaches the next
   ordered hard stop.** Checkpoint `c81a4ff` binds both ordered manifest tapes

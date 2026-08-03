@@ -13,11 +13,12 @@ use volta_gpt2::{
 };
 use volta_mac::{
     begin_c6_prover_trace, begin_c6_runtime_instance_capture, begin_c6_verifier_trace,
-    compile_c6_operation_trace_for_role, derive_c6_runtime_instance_from_trace_diagnostic,
-    finish_c6_prover_trace, finish_c6_verifier_trace, C6DecodedInstanceExtractionPlan,
+    compile_c6_operation_trace_for_role_with_target_profile,
+    derive_c6_runtime_instance_from_trace_diagnostic, finish_c6_prover_trace,
+    finish_c6_verifier_trace, C6CanonicalTargetProfile, C6DecodedInstanceExtractionPlan,
     C6InstalledOperationPlan, C6InstanceExtractionRole, C6RuntimeInstanceValues,
-    C6TraceSourceManifest, CorrScheduleAudit, CorrScheduleRole, CorrelationStream, Transcript,
-    VerifierCtx,
+    C6TraceSourceManifest, C6TraceTargetCohort, C6TraceTargetProfile, C6TraceToken,
+    CorrScheduleAudit, CorrScheduleRole, CorrelationStream, Transcript, VerifierCtx,
 };
 
 use crate::block_proof::layer_dom_base;
@@ -55,6 +56,12 @@ const RESPONSE_LEAF_LOG2: u8 = 20;
 const RESPONSE_AUXILIARY_LOG2: u8 = 15;
 const RESPONSE_PRODUCTION_LEAF_LOG2: u8 = 23;
 const RESPONSE_PRODUCTION_AUXILIARY_LOG2: u8 = 15;
+const C6_GPT2_MODEL_TARGET_COHORT: u32 = 1;
+const C6_GPT2_EMBED_TARGET_COHORT: u32 = 2;
+const C6_GPT2_MODEL_CHAIN_SLOT: u16 = 1;
+const C6_GPT2_EMBED_CHAIN_SLOT: u16 = 2;
+const C6_GPT2_MODEL_POLYNOMIAL_LOG2: u8 = 28;
+const C6_GPT2_EMBED_POLYNOMIAL_LOG2: u8 = 27;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct C6ResponseResidualCensus {
@@ -66,6 +73,8 @@ pub struct C6ResponseResidualCensus {
     pub product_closures: u32,
     pub product_triples: u64,
     pub zero_roots: u32,
+    pub native_target_cohorts: u32,
+    pub native_targets: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -92,6 +101,7 @@ pub struct C6ResponseResidualFixture {
     provider_transcript: Transcript,
     verifier_transcript: Transcript,
     cache_fold_target_frame: Vec<u8>,
+    native_target_profile: C6CanonicalTargetProfile,
     closure_memory: C6InstalledClosureEvaluationMemoryCensus,
     census: C6ResponseResidualCensus,
     timing: C6ResponseResidualTiming,
@@ -527,6 +537,10 @@ impl C6ResponseResidualFixture {
         &self.cache_fold_target_frame
     }
 
+    pub fn native_target_profile(&self) -> &C6CanonicalTargetProfile {
+        &self.native_target_profile
+    }
+
     pub fn provider_inputs(
         &mut self,
     ) -> Result<C6ResponseResidualProviderInputs<'_>, C6ResidualError> {
@@ -595,6 +609,87 @@ pub fn build_c6_response_residual_fixture_production_geometry(
         RESPONSE_PRODUCTION_LEAF_LOG2,
         RESPONSE_PRODUCTION_AUXILIARY_LOG2,
     )
+}
+
+/// GPT-2 is an adapter into the generic native-target bridge, not part of the
+/// bridge statement. A future model supplies the same typed cohort metadata
+/// and exact trace tokens with its own response-independent layout digest.
+fn c6_gpt2_native_target_profile(
+    weight_targets: impl IntoIterator<Item = (usize, C6TraceToken)>,
+    embed_targets: impl IntoIterator<Item = (usize, C6TraceToken)>,
+) -> Result<C6TraceTargetProfile, C6ResidualError> {
+    let weight_targets = weight_targets.into_iter().collect::<Vec<_>>();
+    let embed_targets = embed_targets.into_iter().collect::<Vec<_>>();
+    if weight_targets.len() != 8 * L || embed_targets.len() != 6 {
+        return Err(C6ResidualError::new(
+            "C6 GPT-2 native-target adapter received a noncanonical claim census",
+        ));
+    }
+
+    let mut weight_layout =
+        blake3::Hasher::new_derive_key("volta-zk/c6.1/gpt2-native-model-target-layout/v1");
+    weight_layout.update(&(L as u32).to_le_bytes());
+    weight_layout.update(&2u32.to_le_bytes());
+    for (ordinal, (point_arity, _)) in weight_targets.iter().enumerate() {
+        let phase = ordinal / (4 * L);
+        let within_phase = ordinal % (4 * L);
+        let layer = within_phase / 4;
+        let matrix = within_phase % 4;
+        weight_layout.update(&(phase as u32).to_le_bytes());
+        weight_layout.update(&(layer as u32).to_le_bytes());
+        weight_layout.update(&(matrix as u32).to_le_bytes());
+        weight_layout.update(
+            &u32::try_from(*point_arity)
+                .map_err(|_| C6ResidualError::new("C6 GPT-2 weight point arity exceeds u32"))?
+                .to_le_bytes(),
+        );
+    }
+    let weight_layout_digest = *weight_layout.finalize().as_bytes();
+
+    let mut embed_layout =
+        blake3::Hasher::new_derive_key("volta-zk/c6.1/gpt2-native-embed-target-layout/v1");
+    embed_layout.update(&2u32.to_le_bytes());
+    for (ordinal, (point_arity, _)) in embed_targets.iter().enumerate() {
+        let phase = ordinal / 3;
+        let commitment = ordinal % 3;
+        embed_layout.update(&(phase as u32).to_le_bytes());
+        embed_layout.update(&(commitment as u32).to_le_bytes());
+        embed_layout.update(
+            &u32::try_from(*point_arity)
+                .map_err(|_| C6ResidualError::new("C6 GPT-2 embed point arity exceeds u32"))?
+                .to_le_bytes(),
+        );
+    }
+    let embed_layout_digest = *embed_layout.finalize().as_bytes();
+
+    let mut profile =
+        blake3::Hasher::new_derive_key("volta-zk/c6.1/gpt2-native-target-inference-profile/v1");
+    profile.update(&(L as u32).to_le_bytes());
+    profile.update(&(D as u32).to_le_bytes());
+    profile.update(&(H as u32).to_le_bytes());
+    profile.update(&weight_layout_digest);
+    profile.update(&embed_layout_digest);
+    let inference_profile_digest = *profile.finalize().as_bytes();
+
+    Ok(C6TraceTargetProfile {
+        inference_profile_digest,
+        cohorts: vec![
+            C6TraceTargetCohort {
+                cohort_id: C6_GPT2_MODEL_TARGET_COHORT,
+                chain_slot: C6_GPT2_MODEL_CHAIN_SLOT,
+                polynomial_log2: C6_GPT2_MODEL_POLYNOMIAL_LOG2,
+                claim_layout_digest: weight_layout_digest,
+                targets: weight_targets.into_iter().map(|(_, token)| token).collect(),
+            },
+            C6TraceTargetCohort {
+                cohort_id: C6_GPT2_EMBED_TARGET_COHORT,
+                chain_slot: C6_GPT2_EMBED_CHAIN_SLOT,
+                polynomial_log2: C6_GPT2_EMBED_POLYNOMIAL_LOG2,
+                claim_layout_digest: embed_layout_digest,
+                targets: embed_targets.into_iter().map(|(_, token)| token).collect(),
+            },
+        ],
+    })
 }
 
 fn build_c6_response_residual_fixture_with_geometry(
@@ -681,6 +776,16 @@ fn build_c6_response_residual_fixture_with_geometry(
     grand_residual_roots.record_operation_trace_ownership().map_err(trace_error)?;
     let zero_challenge = prover_tx.challenge_fp2();
     let prover_operation_trace = finish_c6_prover_trace().map_err(trace_error)?;
+    let prover_target_profile = c6_gpt2_native_target_profile(
+        prover_out
+            .weight_claims
+            .iter()
+            .map(|claim| (claim.point.len(), claim.value.c6_trace_token())),
+        prover_out
+            .embed_claims
+            .iter()
+            .map(|claim| (claim.point.len(), claim.value.c6_trace_token())),
+    )?;
 
     prover_follower.sync_primary(&primary_stream, &mut secondary_stream).map_err(trace_error)?;
     let primary_schedule = primary_stream
@@ -722,12 +827,14 @@ fn build_c6_response_residual_fixture_with_geometry(
         product_mask_sources,
     )
     .map_err(trace_error)?;
-    let prover_compiled = compile_c6_operation_trace_for_role(
-        &prover_operation_trace,
-        &source_manifest,
-        C6InstanceExtractionRole::Prover,
-    )
-    .map_err(trace_error)?;
+    let (prover_compiled, prover_native_targets) =
+        compile_c6_operation_trace_for_role_with_target_profile(
+            &prover_operation_trace,
+            &source_manifest,
+            C6InstanceExtractionRole::Prover,
+            &prover_target_profile,
+        )
+        .map_err(trace_error)?;
     let provider_extraction = prover_compiled
         .instance_extraction
         .decode(prover_compiled.plan.topology)
@@ -839,12 +946,18 @@ fn build_c6_response_residual_fixture_with_geometry(
         return Err(C6ResidualError::new("C6 response zero challenge differs across roles"));
     }
     let verifier_operation_trace = finish_c6_verifier_trace().map_err(trace_error)?;
-    let verifier_compiled = compile_c6_operation_trace_for_role(
-        &verifier_operation_trace,
-        &source_manifest,
-        C6InstanceExtractionRole::Verifier,
-    )
-    .map_err(trace_error)?;
+    let verifier_target_profile = c6_gpt2_native_target_profile(
+        verifier_out.weight_keys.iter().map(|(point, key)| (point.len(), key.c6_trace_token())),
+        verifier_out.embed_keys.iter().map(|(point, key)| (point.len(), key.c6_trace_token())),
+    )?;
+    let (verifier_compiled, verifier_native_targets) =
+        compile_c6_operation_trace_for_role_with_target_profile(
+            &verifier_operation_trace,
+            &source_manifest,
+            C6InstanceExtractionRole::Verifier,
+            &verifier_target_profile,
+        )
+        .map_err(trace_error)?;
     let verifier_extraction = verifier_compiled
         .instance_extraction
         .decode(verifier_compiled.plan.topology)
@@ -883,6 +996,9 @@ fn build_c6_response_residual_fixture_with_geometry(
         || prover_compiled.plan.identity != verifier_compiled.plan.identity
         || prover_compiled.plan.topology != verifier_compiled.plan.topology
         || prover_compiled.plan.instance != verifier_compiled.plan.instance
+        || prover_native_targets != verifier_native_targets
+        || prover_native_targets.cohorts.len() != 2
+        || prover_native_targets.target_count() != 8 * L + 6
         || provider_linear.linear_form_digest() != verifier_linear.linear_form_digest()
         || prover_metrics.source_groups != (2 * 2 * L) as u64
         || prover_metrics.corrected_targets != 576
@@ -939,6 +1055,7 @@ fn build_c6_response_residual_fixture_with_geometry(
         provider_transcript: prover_tx,
         verifier_transcript: verifier_tx,
         cache_fold_target_frame,
+        native_target_profile: prover_native_targets,
         closure_memory,
         census: C6ResponseResidualCensus {
             source_groups: prover_metrics.source_groups,
@@ -949,6 +1066,9 @@ fn build_c6_response_residual_fixture_with_geometry(
             product_closures: topology.product_closure_count,
             product_triples: topology.product_triple_count,
             zero_roots: topology.zero_root_count,
+            native_target_cohorts: 2,
+            native_targets: u32::try_from(8 * L + 6)
+                .map_err(|_| C6ResidualError::new("C6 native target census exceeds u32"))?,
         },
         timing: C6ResponseResidualTiming {
             provider_response_and_residual_ns,

@@ -13,10 +13,10 @@ c6-trace = ["volta-mac/c6-trace"]
 volta-accel = { workspace = true }
 volta-field = { workspace = true }
 volta-mac = { workspace = true }
+volta-pcg = { workspace = true }
 volta-gpt2 = { workspace = true }
 rayon = { workspace = true }
 blake3 = { workspace = true }
 
 [dev-dependencies]
 rand = { workspace = true }
-volta-pcg = { workspace = true }

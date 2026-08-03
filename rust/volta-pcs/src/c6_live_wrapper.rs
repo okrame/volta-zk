@@ -235,6 +235,7 @@ impl<'a> C6LiveWrapperSources<'a> {
             && (self.cache_layout != C6PersistentCacheLayout::production()
                 || self.hidden_weights.layout() != C6HiddenULayout::production_weights()
                 || self.hidden_embed.layout() != C6HiddenULayout::production_embed()
+                || self.residual_leaf.production_allocation_binding_digest().is_none()
                 || !self.residual_manifest.is_production_geometry()
                 || *specs != production_c6_wrapper_specs())
         {

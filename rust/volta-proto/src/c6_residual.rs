@@ -27,6 +27,7 @@ use crate::c6_census::{
 };
 use crate::c6_source::C6PairedSourceWitness;
 use crate::prod_check::{prod_batch_verify, ProdProof};
+use crate::C6ProductionPairedSourceWitness;
 use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -64,6 +65,8 @@ const PAIRED_COMPILED_COEFFICIENT_DOMAIN: &[u8] = b"volta-zk/c6/paired-compiled-
 const PAIRED_COEFFICIENT_STREAM_DOMAINS: [u64; 2] =
     [0xC6_52_45_53_49_44_01, 0xC6_52_45_53_49_44_02];
 const PAIRED_LEAF_WRAPPER_DOMAIN: &str = "volta-zk/c6/paired-residual-leaf-wrapper/v1";
+const PRODUCTION_PAIRED_LEAF_BINDING_DOMAIN: &str =
+    "volta-zk/c6/production-paired-residual-leaf/v1";
 const PAIRED_CLOSURE_WRAPPER_DOMAIN: &str = "volta-zk/c6/paired-residual-closure-wrapper/v1";
 const PAIRED_INSTALLED_CLOSURE_WRAPPER_DOMAIN: &str =
     "volta-zk/c6/paired-installed-residual-closure-wrapper/v1";
@@ -4238,6 +4241,7 @@ impl C6ResidualLeafColumn {
 pub struct C6PairedResidualLeafWitness {
     source_schedule_digest: C6ResidualDigest,
     paired_source_digest: C6ResidualDigest,
+    production_allocation_binding_digest: Option<C6ResidualDigest>,
     source_count: u32,
     product_mask_count: u32,
     columns: [Vec<Fp2>; C6_RESIDUAL_LEAF_ALIGNED_SLOTS as usize],
@@ -4251,6 +4255,10 @@ impl C6PairedResidualLeafWitness {
 
     pub fn paired_source_digest(&self) -> C6ResidualDigest {
         self.paired_source_digest
+    }
+
+    pub fn production_allocation_binding_digest(&self) -> Option<C6ResidualDigest> {
+        self.production_allocation_binding_digest
     }
 
     pub fn source_count(&self) -> u32 {
@@ -10514,11 +10522,29 @@ impl C6CompiledLinearResidual {
         Ok(C6PairedResidualLeafWitness {
             source_schedule_digest: self.topology.source_schedule_digest,
             paired_source_digest: sources.pair_digest(),
+            production_allocation_binding_digest: None,
             source_count: self.topology.source_count,
             product_mask_count,
             columns,
             witness_digest: *hasher.finalize().as_bytes(),
         })
+    }
+
+    /// Production-only descendant: preserve the exact source-column
+    /// construction while binding it to the dual-tape allocation token.
+    pub fn build_production_paired_residual_leaf_witness(
+        &self,
+        sources: &C6ProductionPairedSourceWitness,
+        schedule: &CorrScheduleAudit,
+    ) -> C6ResidualResult<C6PairedResidualLeafWitness> {
+        let mut leaf = self.build_paired_residual_leaf_witness(sources.source(), schedule)?;
+        let allocation_binding_digest = sources.allocation_binding_digest();
+        let mut hasher = blake3::Hasher::new_derive_key(PRODUCTION_PAIRED_LEAF_BINDING_DOMAIN);
+        hasher.update(&leaf.witness_digest);
+        hasher.update(&allocation_binding_digest);
+        leaf.witness_digest = *hasher.finalize().as_bytes();
+        leaf.production_allocation_binding_digest = Some(allocation_binding_digest);
+        Ok(leaf)
     }
 
     /// Evaluate the installed response DAG on both authenticated source
@@ -12096,6 +12122,7 @@ mod tests {
         C6PairedResidualLeafWitness {
             source_schedule_digest,
             paired_source_digest: [0xA1; 32],
+            production_allocation_binding_digest: None,
             source_count: primary.sources.len() as u32,
             product_mask_count,
             columns,
@@ -13803,7 +13830,18 @@ mod tests {
         assert_eq!(leaf_witness.live_elements(), 35);
         assert_eq!(leaf_witness.source_schedule_digest(), [0x6A; 32]);
         assert_eq!(leaf_witness.paired_source_digest(), paired.pair_digest());
+        assert_eq!(leaf_witness.production_allocation_binding_digest(), None);
         assert_ne!(leaf_witness.witness_digest(), [0; 32]);
+        let production_source =
+            C6ProductionPairedSourceWitness::from_reference(paired.clone(), [0xA7; 32]);
+        let production_leaf = compiled
+            .build_production_paired_residual_leaf_witness(&production_source, &schedule)
+            .unwrap();
+        assert_eq!(production_leaf.production_allocation_binding_digest(), Some([0xA7; 32]));
+        assert_ne!(production_leaf.witness_digest(), leaf_witness.witness_digest());
+        for column in C6ResidualLeafColumn::ALL {
+            assert_eq!(production_leaf.column(column), leaf_witness.column(column));
+        }
         assert!(leaf_witness.materialize_padded_columns(2).is_err());
         let padded = leaf_witness.materialize_padded_columns(3).unwrap();
         assert!(padded.iter().all(|column| column.len() == 8));

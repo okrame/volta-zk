@@ -30,6 +30,7 @@ pub const C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES: usize = 16;
 pub const C61_AUTHENTICATED_WHIR_NET_PROVIDER_BYTES: isize =
     C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES as isize
         - C61_AUTHENTICATED_WHIR_REMOVED_EVALUATION_BYTES as isize;
+pub const C61_JOINT_NATIVE_BRIDGE_FRAME_BYTES: usize = 32;
 
 /// Two fixed high domain bits below the three MAC-reserved bits.  The
 /// remaining fields are injectively packed as
@@ -149,6 +150,165 @@ impl C61AuthenticatedWhirBaseProof {
     pub fn tag(self) -> Fp2 {
         self.zero_open_tag
     }
+}
+
+/// Wire-neutral replacement for two secondary 16-byte tails. The correction
+/// is one canonical Fp2 encoded as two 8-byte Fp limbs; the final Fp2 is the
+/// single joint ZeroOpen tag.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C61JointNativeBridgeFrame {
+    correction: Fp2,
+    zero_open_tag: Fp2,
+}
+
+impl C61JointNativeBridgeFrame {
+    pub fn encode(self) -> [u8; C61_JOINT_NATIVE_BRIDGE_FRAME_BYTES] {
+        let mut bytes = [0u8; C61_JOINT_NATIVE_BRIDGE_FRAME_BYTES];
+        bytes[..8].copy_from_slice(&self.correction.c0.value().to_le_bytes());
+        bytes[8..16].copy_from_slice(&self.correction.c1.value().to_le_bytes());
+        bytes[16..24].copy_from_slice(&self.zero_open_tag.c0.value().to_le_bytes());
+        bytes[24..].copy_from_slice(&self.zero_open_tag.c1.value().to_le_bytes());
+        bytes
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self> {
+        if bytes.len() != C61_JOINT_NATIVE_BRIDGE_FRAME_BYTES {
+            return Err(C61AuthenticatedWhirError::new(
+                "C6NBR1 joint bridge frame has noncanonical length",
+            ));
+        }
+        let mut limbs = [0u64; 4];
+        for (index, limb) in limbs.iter_mut().enumerate() {
+            let mut encoded = [0u8; 8];
+            encoded.copy_from_slice(&bytes[index * 8..(index + 1) * 8]);
+            *limb = u64::from_le_bytes(encoded);
+            if *limb >= P {
+                return Err(C61AuthenticatedWhirError::new(
+                    "C6NBR1 joint bridge frame contains a noncanonical field element",
+                ));
+            }
+        }
+        Ok(Self {
+            correction: Fp2::new(Fp::new(limbs[0]), Fp::new(limbs[1])),
+            zero_open_tag: Fp2::new(Fp::new(limbs[2]), Fp::new(limbs[3])),
+        })
+    }
+
+    pub fn correction(self) -> Fp2 {
+        self.correction
+    }
+
+    pub fn tag(self) -> Fp2 {
+        self.zero_open_tag
+    }
+}
+
+pub struct C61JointNativeProverTerm {
+    pub prepared: C61AuthenticatedWhirPreparedMask,
+    pub combined: Fp2,
+    pub shifted_masked_claim: Fp2,
+    pub gamma: Fp2,
+    pub affine: C61AuthenticatedWhirAffineClaim,
+    pub cohort_weight: Fp2,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C61JointNativeVerifierTerm {
+    pub mask_key: VerifierKey,
+    pub combined: Fp2,
+    pub shifted_masked_claim: Fp2,
+    pub gamma: Fp2,
+    pub affine: C61AuthenticatedWhirAffineClaim,
+    pub cohort_weight: Fp2,
+}
+
+fn c61_joint_native_normalization(
+    combined: Fp2,
+    shifted_masked_claim: Fp2,
+    gamma: Fp2,
+    affine: C61AuthenticatedWhirAffineClaim,
+) -> Result<(Fp2, Fp2)> {
+    let target_coefficient = gamma * affine.coefficient;
+    if target_coefficient == Fp2::ZERO {
+        return Err(C61AuthenticatedWhirError::new("C6NBR1 native target coefficient is zero"));
+    }
+    let inverse = target_coefficient.inv();
+    let public = (combined - shifted_masked_claim - gamma * affine.constant) * inverse;
+    Ok((public, inverse))
+}
+
+/// Consume every fixed secondary body and close their zeta-weighted,
+/// normalized base relation against the compiler-derived tape-1 source fold.
+/// No fresh correlation is drawn: the already consumed native masks provide
+/// the joint tag entropy.
+pub fn finish_c61_joint_native_bridge(
+    terms: Vec<C61JointNativeProverTerm>,
+    compiler_fold: ProverAuthed,
+    transcript: &mut Transcript,
+) -> Result<C61JointNativeBridgeFrame> {
+    if terms.len() < 2 {
+        return Err(C61AuthenticatedWhirError::new(
+            "C6NBR1 joint bridge requires at least two native bodies",
+        ));
+    }
+    let mut native_fold = ProverAuthed::ZERO;
+    for term in terms {
+        let (public, inverse) = c61_joint_native_normalization(
+            term.combined,
+            term.shifted_masked_claim,
+            term.gamma,
+            term.affine,
+        )?;
+        let normalized = ProverAuthed::from_public(public)
+            .add(term.prepared.authenticated.scale(inverse))
+            .scale(term.cohort_weight);
+        native_fold = native_fold.add(normalized);
+    }
+    let correction = compiler_fold.x - native_fold.x;
+    transcript.append("c6_joint_native_corrections", 16);
+    let residual = native_fold.add(ProverAuthed::from_public(correction)).sub(compiler_fold);
+    if residual.x != Fp2::ZERO {
+        return Err(C61AuthenticatedWhirError::new("C6NBR1 corrected joint residual is nonzero"));
+    }
+    Ok(C61JointNativeBridgeFrame {
+        correction,
+        zero_open_tag: zero_open_prover(&residual, transcript),
+    })
+}
+
+pub fn verify_c61_joint_native_bridge(
+    terms: &[C61JointNativeVerifierTerm],
+    compiler_fold: VerifierKey,
+    delta: Fp2,
+    frame: C61JointNativeBridgeFrame,
+    transcript: &mut Transcript,
+) -> Result<()> {
+    if terms.len() < 2 {
+        return Err(C61AuthenticatedWhirError::new(
+            "C6NBR1 joint verifier requires at least two native bodies",
+        ));
+    }
+    let mut native_fold = VerifierKey::ZERO;
+    for term in terms {
+        let (public, inverse) = c61_joint_native_normalization(
+            term.combined,
+            term.shifted_masked_claim,
+            term.gamma,
+            term.affine,
+        )?;
+        let normalized = VerifierKey::from_public(public, delta)
+            .add(term.mask_key.scale(inverse))
+            .scale(term.cohort_weight);
+        native_fold = native_fold.add(normalized);
+    }
+    transcript.append("c6_joint_native_corrections", 16);
+    let residual =
+        native_fold.add(VerifierKey::from_public(frame.correction, delta)).sub(compiler_fold);
+    transcript.append("zero_open_tag", C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES as u64);
+    if !zero_open_verify(residual, frame.zero_open_tag) {
+        return Err(C61AuthenticatedWhirError::new("C6NBR1 joint native ZeroOpen failed"));
+    }
+    Ok(())
 }
 
 /// Provider output for the patched WHIR base case.  Only
@@ -518,6 +678,160 @@ mod tests {
             slot: 17,
             range_start: 1_000 + tape as u32 * 100,
         }
+    }
+
+    #[test]
+    fn joint_native_bridge_closes_generic_weighted_functionals_in_32_bytes() {
+        let delta = f(1_101);
+        let gamma = [f(1_103), f(1_109)];
+        let affine = [
+            C61AuthenticatedWhirAffineClaim { coefficient: f(1_113), constant: f(1_117) },
+            C61AuthenticatedWhirAffineClaim { coefficient: f(1_121), constant: f(1_123) },
+        ];
+        let weights = [Fp2::ONE, f(1_127)];
+        let ids = [
+            C61NativeChainId { component: C61NativeComponent::Model, repetition: 1 },
+            C61NativeChainId { component: C61NativeComponent::Embedding, repetition: 1 },
+        ];
+        let ranges = [range(0), range(1)];
+        let mut prover_correlations = CorrelationStream::new(PCG_SEEDS[1]);
+        let mut prepared = Vec::new();
+        let mut target_auth = Vec::new();
+        let mut target_keys = Vec::new();
+        let mut combined = [Fp2::ZERO; 2];
+        let mut shifted = [Fp2::ZERO; 2];
+
+        for index in 0..2 {
+            let mask = prepare_c61_authenticated_whir_mask(
+                ids[index],
+                ranges[index],
+                &mut prover_correlations,
+            )
+            .unwrap();
+            let (authenticated, key) =
+                target(f(1_201 + index as u64), f(1_301 + index as u64), delta);
+            let masked_claim = f(1_401 + index as u64);
+            shifted[index] = mask.shifted_masked_claim(masked_claim);
+            combined[index] = shifted[index]
+                + gamma[index] * affine[index].evaluate(authenticated.x)
+                - mask.value();
+            prepared.push(mask);
+            target_auth.push(authenticated);
+            target_keys.push(key);
+        }
+
+        let compiler_fold = target_auth[0].scale(weights[0]).add(target_auth[1].scale(weights[1]));
+        let compiler_key = target_keys[0].scale(weights[0]).add(target_keys[1].scale(weights[1]));
+        let prover_terms: Vec<_> = prepared
+            .into_iter()
+            .enumerate()
+            .map(|(index, prepared)| C61JointNativeProverTerm {
+                prepared,
+                combined: combined[index],
+                shifted_masked_claim: shifted[index],
+                gamma: gamma[index],
+                affine: affine[index],
+                cohort_weight: weights[index],
+            })
+            .collect();
+        let mut verifier_context = VerifierCtx::new(PCG_SEEDS[1], delta);
+        let verifier_terms: Vec<_> = (0..2)
+            .map(|index| {
+                let domain = ranges[index].correlation_domain(ids[index]).unwrap();
+                let mask_key = verifier_context.expand_full_verifier_keys(domain, 1)[0];
+                C61JointNativeVerifierTerm {
+                    mask_key,
+                    combined: combined[index],
+                    shifted_masked_claim: shifted[index],
+                    gamma: gamma[index],
+                    affine: affine[index],
+                    cohort_weight: weights[index],
+                }
+            })
+            .collect();
+        let mut prover_transcript = Transcript::new([0xD1; 32]);
+        let frame =
+            finish_c61_joint_native_bridge(prover_terms, compiler_fold, &mut prover_transcript)
+                .unwrap();
+        let encoded = frame.encode();
+        assert_eq!(encoded.len(), C61_JOINT_NATIVE_BRIDGE_FRAME_BYTES);
+        let decoded = C61JointNativeBridgeFrame::decode(&encoded).unwrap();
+        let mut verifier_transcript = Transcript::new([0xD1; 32]);
+        verify_c61_joint_native_bridge(
+            &verifier_terms,
+            compiler_key,
+            delta,
+            decoded,
+            &mut verifier_transcript,
+        )
+        .unwrap();
+        assert_eq!(prover_transcript.ledger(), verifier_transcript.ledger());
+
+        let mut changed_correction = decoded;
+        changed_correction.correction = changed_correction.correction + Fp2::ONE;
+        assert!(verify_c61_joint_native_bridge(
+            &verifier_terms,
+            compiler_key,
+            delta,
+            changed_correction,
+            &mut Transcript::new([0xD1; 32]),
+        )
+        .is_err());
+        let mut changed_tag = decoded;
+        changed_tag.zero_open_tag = changed_tag.zero_open_tag + Fp2::ONE;
+        assert!(verify_c61_joint_native_bridge(
+            &verifier_terms,
+            compiler_key,
+            delta,
+            changed_tag,
+            &mut Transcript::new([0xD1; 32]),
+        )
+        .is_err());
+
+        let mut wrong_order = verifier_terms.clone();
+        wrong_order.swap(0, 1);
+        wrong_order[0].cohort_weight = weights[0];
+        wrong_order[1].cohort_weight = weights[1];
+        assert!(verify_c61_joint_native_bridge(
+            &wrong_order,
+            compiler_key,
+            delta,
+            decoded,
+            &mut Transcript::new([0xD1; 32]),
+        )
+        .is_err());
+
+        let mut noncanonical = encoded;
+        noncanonical[..8].copy_from_slice(&P.to_le_bytes());
+        assert!(C61JointNativeBridgeFrame::decode(&noncanonical).is_err());
+    }
+
+    #[test]
+    fn joint_native_bridge_rejects_degenerate_shapes() {
+        assert!(verify_c61_joint_native_bridge(
+            &[],
+            VerifierKey::ZERO,
+            f(1_501),
+            C61JointNativeBridgeFrame { correction: Fp2::ZERO, zero_open_tag: Fp2::ZERO },
+            &mut Transcript::new([0xD2; 32]),
+        )
+        .is_err());
+        let term = C61JointNativeVerifierTerm {
+            mask_key: VerifierKey::ZERO,
+            combined: Fp2::ZERO,
+            shifted_masked_claim: Fp2::ZERO,
+            gamma: Fp2::ZERO,
+            affine: C61AuthenticatedWhirAffineClaim::identity(),
+            cohort_weight: Fp2::ONE,
+        };
+        assert!(verify_c61_joint_native_bridge(
+            &[term, term],
+            VerifierKey::ZERO,
+            f(1_503),
+            C61JointNativeBridgeFrame { correction: Fp2::ZERO, zero_open_tag: Fp2::ZERO },
+            &mut Transcript::new([0xD3; 32]),
+        )
+        .is_err());
     }
 
     #[test]

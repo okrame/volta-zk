@@ -49,15 +49,17 @@ pub use batch::{
 };
 pub use c61_authenticated_whir::{
     finish_c61_authenticated_whir_base, finish_c61_authenticated_whir_base_with_zero_rows,
-    prepare_c61_authenticated_whir_mask, prove_c61_authenticated_whir_base,
-    verify_c61_authenticated_whir_base, verify_c61_authenticated_whir_base_with_zero_rows,
+    finish_c61_joint_native_bridge, prepare_c61_authenticated_whir_mask,
+    prove_c61_authenticated_whir_base, verify_c61_authenticated_whir_base,
+    verify_c61_authenticated_whir_base_with_zero_rows, verify_c61_joint_native_bridge,
     C61AuthenticatedWhirAffineClaim, C61AuthenticatedWhirBaseProof, C61AuthenticatedWhirError,
     C61AuthenticatedWhirMaskRange, C61AuthenticatedWhirPreparedMask,
     C61AuthenticatedWhirProverClosure, C61AuthenticatedWhirProverFinishInput,
-    C61AuthenticatedWhirProverInput, C61AuthenticatedWhirVerifierInput,
-    C61_AUTHENTICATED_WHIR_CHAINS, C61_AUTHENTICATED_WHIR_MASKS_PER_TAPE,
-    C61_AUTHENTICATED_WHIR_NET_PROVIDER_BYTES, C61_AUTHENTICATED_WHIR_REMOVED_EVALUATION_BYTES,
-    C61_AUTHENTICATED_WHIR_TAPES, C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES,
+    C61AuthenticatedWhirProverInput, C61AuthenticatedWhirVerifierInput, C61JointNativeBridgeFrame,
+    C61JointNativeProverTerm, C61JointNativeVerifierTerm, C61_AUTHENTICATED_WHIR_CHAINS,
+    C61_AUTHENTICATED_WHIR_MASKS_PER_TAPE, C61_AUTHENTICATED_WHIR_NET_PROVIDER_BYTES,
+    C61_AUTHENTICATED_WHIR_REMOVED_EVALUATION_BYTES, C61_AUTHENTICATED_WHIR_TAPES,
+    C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES, C61_JOINT_NATIVE_BRIDGE_FRAME_BYTES,
 };
 pub use c61_joint_native_bridge::{
     C61JointNativeBodiesFixed, C61JointNativeBodyBinding, C61JointNativeBodyScheduleBuilder,

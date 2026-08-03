@@ -20,8 +20,9 @@ This capsule is authoritative; read design §0.49 next.
   102-target response differential, codec round trip and sealed residual gate
   are **1/0/0**. Native typestate/schedule gates are **15/0/0 + 2/0/0**.
   The exact joint functional gate is **1/0/0** and proto trace is
-  **180/0/1**. CUDA targets compile, but no production response, GPU timing,
-  full-chain or hardware credit exists.
+  **180/0/1**. The generic 32-B joint MAC closure is **2/0/0**. CUDA targets
+  compile, but no production response, GPU timing, full-chain or hardware
+  credit exists.
 - **Screens.** v23 remains `credit:false`: certificate **17,536,735 B**,
   setup **84,743,367 B**, state **2,277,715,552 B**, provider/verifier
   **14.9087128542 / 4.965672390 s**, soundness **102.587833363526... bits**.
@@ -30,8 +31,8 @@ This capsule is authoritative; read design §0.49 next.
   model-agnostic, challenge-dependent, wire-neutral `C6NBR1/C6NTO1` bridge
   with small commits on `main`. Local construction may proceed. HARD STOP
   remains before exact-runner admission or pod contact.
-- **Resume conditions.** Implement the wire-neutral `C6NBR1/C6AWP2` joint
-  correction/ZeroOpen closure and strict outer decoder, then re-sum bytes,
+- **Resume conditions.** Integrate `C6NBR1` into the wire-neutral `C6AWP2`
+  bodies and strict outer decoder, then re-sum bytes,
   setup, correlations, soundness, state and time and run the complete local
   gates. No fixed `96/6`, clear target, mock PCG, CPU fallback or
   provider-derived verifier key is admissible.
@@ -147,6 +148,19 @@ This capsule is authoritative; read design §0.49 next.
   wire; its extra coefficient residency and passes await the mandatory v24
   re-sum. v23 and the no-pod hard stop remain unchanged. The next construction
   is the 32-B joint correction/ZeroOpen tail and strict outer decoder.
+
+- **2026-08-03 — Generic C6NBR1 algebraic closure closes locally.** A
+  model-independent seam now consumes an arbitrary ordered set of at least
+  two prepared secondary native bodies, normalizes each public affine WHIR
+  base relation to its hidden target functional, applies the post-body cohort
+  weights and checks the result against the compiler tape-1 fold. The provider
+  emits exactly one canonical 16-B `Fp2` correction plus one 16-B joint
+  ZeroOpen tag; the verifier reconstructs mask keys from its own Delta-facing
+  state and never receives a target plaintext or provider key. Codec,
+  honest-role, order, correction, tag, noncanonical-limb and degenerate-shape
+  gates are **2/0/0**. This is low-level differential evidence only: v23 and
+  all credits remain unchanged. `C6AWP2` body integration and the strict
+  outer decoder are next; the exact-runner/pod hard stop remains active.
 
 - **2026-08-03 — C6SPR8 closed; production wrapper lifecycle reaches the next
   ordered hard stop.** Checkpoint `c81a4ff` binds both ordered manifest tapes

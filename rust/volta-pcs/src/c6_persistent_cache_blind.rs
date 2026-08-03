@@ -70,6 +70,8 @@ const SOURCE_BOOTSTRAP_APPEND_LABEL: &str = "c6_persistent_cache_source_bootstra
 const HEADER_AND_STATEMENT_BYTES: u64 = 48;
 const REPETITION_PREFIX_BYTES: u64 = 33;
 const ROUND_BYTES: u64 = 64;
+#[cfg(feature = "c6-trace")]
+pub(crate) const C6_PERSISTENT_CACHE_BLIND_ROUND_BYTES: u64 = ROUND_BYTES;
 const TERMINAL_BYTES: u64 = 128;
 const FP2_BYTES: u64 = 16;
 const SOURCE_BOOTSTRAP_HEADER_BYTES: u64 = 48;
@@ -1425,6 +1427,14 @@ pub(crate) struct C6PersistentCacheProductionProverRoundState<'a> {
 
 #[cfg(feature = "c6-trace")]
 impl<'a> C6PersistentCacheProductionProverRoundState<'a> {
+    pub(crate) fn repetition(&self) -> u8 {
+        self.repetition
+    }
+
+    pub(crate) fn round_index(&self) -> usize {
+        self.round
+    }
+
     pub(crate) fn new(
         repetition: u8,
         current: [ProverAuthed; C6_PERSISTENT_CACHE_BLIND_TAPES],
@@ -1584,6 +1594,14 @@ pub(crate) struct C6PersistentCacheProductionVerifierRoundState<'a> {
 
 #[cfg(feature = "c6-trace")]
 impl<'a> C6PersistentCacheProductionVerifierRoundState<'a> {
+    pub(crate) fn repetition(&self) -> u8 {
+        self.repetition
+    }
+
+    pub(crate) fn round_index(&self) -> usize {
+        self.round
+    }
+
     pub(crate) fn new(
         repetition: u8,
         current: [VerifierKey; C6_PERSISTENT_CACHE_BLIND_TAPES],

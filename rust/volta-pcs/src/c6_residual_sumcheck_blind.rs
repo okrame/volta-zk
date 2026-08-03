@@ -2070,6 +2070,11 @@ pub(crate) fn prepare_c6_blind_residual_prover_round_state_fused<'a>(
 }
 
 impl C6BlindResidualProverRoundState<'_> {
+    #[allow(dead_code)]
+    pub(crate) fn repetition(&self) -> u8 {
+        self.statement.repetition()
+    }
+
     pub(crate) fn round_index(&self) -> usize {
         self.arithmetic.round_index()
     }
@@ -2822,6 +2827,11 @@ pub(crate) fn prepare_c6_blind_residual_verifier_round_state<'a>(
 }
 
 impl C6BlindResidualVerifierRoundState<'_> {
+    #[allow(dead_code)]
+    pub(crate) fn repetition(&self) -> u8 {
+        self.statement.repetition()
+    }
+
     pub(crate) fn round_index(&self) -> usize {
         self.global_round
     }

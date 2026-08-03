@@ -451,6 +451,11 @@ pub(crate) fn prepare_c6_blind_hidden_u_prover_round_state(
 }
 
 impl C6BlindHiddenUProverRoundState {
+    #[allow(dead_code)]
+    pub(crate) fn repetition(&self) -> u8 {
+        self.repetition
+    }
+
     pub(crate) fn round_index(&self) -> usize {
         self.arithmetic.round_index()
     }
@@ -687,6 +692,11 @@ pub(crate) fn prepare_c6_blind_hidden_u_verifier_round_state(
 }
 
 impl C6BlindHiddenUVerifierRoundState {
+    #[allow(dead_code)]
+    pub(crate) fn repetition(&self) -> u8 {
+        self.repetition
+    }
+
     pub(crate) fn round_index(&self) -> usize {
         self.global_round
     }

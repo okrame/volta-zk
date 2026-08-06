@@ -420,6 +420,17 @@ vector-RLC bounds from being mistaken for implementation bounds.
 #print axioms VoltaZk.c61_terminal_functional_complete_error_lt_two_pow_neg_119
 #print axioms VoltaZk.c61_terminal_functional_complete_error_meets_literal_79_bits
 #print axioms VoltaZk.c61_terminal_functional_seventeen_error_lt_two_pow_neg_115
+
+-- C6NBR2 authenticated correction functional (additive).
+#print axioms VoltaZk.c6_nbr2_selector_identity
+#print axioms VoltaZk.c6_nbr2_zero_padding_identity
+#print axioms VoltaZk.c6_nbr2_round_degree_le_two
+#print axioms VoltaZk.c6_nbr2_terminal_slot_weight_identity
+#print axioms VoltaZk.c6_nbr2_link_root_census
+#print axioms VoltaZk.c6_nbr2_packed_authenticated_output_link_sound
+#print axioms VoltaZk.c6_nbr2_two_repetition_numerator
+#print axioms VoltaZk.c6_nbr2_two_repetition_numerator_lt_2_pow_16
+#print axioms VoltaZk.C6NBR1JointBridgeSound
 #print axioms VoltaZk.x4d_accepted_settlement_implies_each_m9_or_bad
 #print axioms VoltaZk.x4d_settlement_error_is_v4
 #print axioms VoltaZk.x4d_settlement_error_expanded

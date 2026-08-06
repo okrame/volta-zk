@@ -789,6 +789,140 @@ impl DelayedTerm {
     }
 }
 
+/// C6NBR2 replacement for the ordinary residual slot-6 equality term.
+///
+/// `values` is the committed tape-1 correction column restricted to its
+/// lower (non-ZK) D23 half. `weights` is
+/// `rho * eq(target_x, ·) + gamma * A(·)`. Keeping the two factors separate
+/// is load-bearing: their product has individual degree two in each source
+/// variable. The leading and trailing virtual rounds implement `(1-y)` and
+/// `(1-z)` without materializing another oracle.
+#[derive(Clone)]
+struct C6Nbr2CombinedDelayedTerm {
+    values: Vec<Fp2>,
+    weights: Vec<Fp2>,
+    leading_virtual_rounds: usize,
+    trailing_virtual_rounds: usize,
+    virtual_factor: Fp2,
+}
+
+impl C6Nbr2CombinedDelayedTerm {
+    fn new(
+        rho: Fp2,
+        gamma: Fp2,
+        values: &[Fp2],
+        target_point: &[Fp2],
+        functional: &[Fp2],
+        correction: Fp2,
+        global_rounds: usize,
+    ) -> Result<Self> {
+        if values.is_empty()
+            || !values.len().is_power_of_two()
+            || target_point.len() != values.len().ilog2() as usize + 1
+            || target_point.last() != Some(&Fp2::ZERO)
+            || functional.len() > values.len()
+            || global_rounds != target_point.len() + 1
+        {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "C6NBR2 combined residual term geometry mismatch",
+            ));
+        }
+        let source_point = &target_point[..target_point.len() - 1];
+        let mut padded_functional = functional.to_vec();
+        padded_functional.resize(values.len(), Fp2::ZERO);
+        let actual_correction = values
+            .iter()
+            .zip(&padded_functional)
+            .fold(Fp2::ZERO, |sum, (&value, &coefficient)| sum + value * coefficient);
+        if actual_correction != correction {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "C6NBR2 correction differs from committed residual slot 6",
+            ));
+        }
+        let equality = eq_vec(source_point);
+        let weights = equality
+            .into_iter()
+            .zip(padded_functional)
+            .map(|(equality, coefficient)| rho * equality + gamma * coefficient)
+            .collect();
+        Ok(Self {
+            values: values.to_vec(),
+            weights,
+            leading_virtual_rounds: 1,
+            trailing_virtual_rounds: 1,
+            virtual_factor: Fp2::ONE,
+        })
+    }
+
+    fn active_sum(&self) -> Fp2 {
+        self.values
+            .iter()
+            .zip(&self.weights)
+            .fold(Fp2::ZERO, |sum, (&value, &weight)| sum + value * weight)
+            * self.virtual_factor
+    }
+
+    fn round_values(&self) -> Result<(Fp2, Fp2)> {
+        if self.values.len() != self.weights.len() || self.values.is_empty() {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "invalid C6NBR2 combined residual term state",
+            ));
+        }
+        if self.leading_virtual_rounds > 0 {
+            let at_zero = self.active_sum();
+            return Ok((at_zero, Fp2::ZERO - at_zero));
+        }
+        if self.values.len() > 1 {
+            let mut at_zero = Fp2::ZERO;
+            let mut at_two = Fp2::ZERO;
+            for (values, weights) in self.values.chunks_exact(2).zip(self.weights.chunks_exact(2)) {
+                at_zero += values[0] * weights[0];
+                at_two +=
+                    (values[1] + values[1] - values[0]) * (weights[1] + weights[1] - weights[0]);
+            }
+            return Ok((at_zero * self.virtual_factor, at_two * self.virtual_factor));
+        }
+        if self.trailing_virtual_rounds > 0 {
+            let at_zero = self.active_sum();
+            return Ok((at_zero, Fp2::ZERO - at_zero));
+        }
+        Err(C6AuthenticatedOutputLinkError::new(
+            "C6NBR2 combined residual term has no active round",
+        ))
+    }
+
+    fn bind(&mut self, challenge: Fp2) -> Result<()> {
+        if self.leading_virtual_rounds > 0 {
+            self.virtual_factor = self.virtual_factor * (Fp2::ONE - challenge);
+            self.leading_virtual_rounds -= 1;
+        } else if self.values.len() > 1 {
+            fold_low(&mut self.values, challenge);
+            fold_low(&mut self.weights, challenge);
+        } else if self.trailing_virtual_rounds > 0 {
+            self.virtual_factor = self.virtual_factor * (Fp2::ONE - challenge);
+            self.trailing_virtual_rounds -= 1;
+        } else {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "C6NBR2 combined residual term is already terminal",
+            ));
+        }
+        Ok(())
+    }
+
+    fn terminal(&self) -> Result<Fp2> {
+        if self.leading_virtual_rounds != 0
+            || self.trailing_virtual_rounds != 0
+            || self.values.len() != 1
+            || self.weights.len() != 1
+        {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "invalid C6NBR2 combined residual terminal state",
+            ));
+        }
+        Ok(self.values[0] * self.weights[0] * self.virtual_factor)
+    }
+}
+
 /// Coefficient-domain form used by the persisted production link.  It never
 /// reconstructs the Boolean evaluation table or an equality vector.  The
 /// resident `Vec` here is the scaled differential state; production replaces
@@ -3121,6 +3255,75 @@ mod tests {
             persisted.bind(challenge);
         }
         assert_eq!(persisted.terminal().unwrap(), resident.terminal().unwrap());
+    }
+
+    #[test]
+    fn nbr2_combined_term_preserves_degree_two_rounds_and_exact_terminal() {
+        let source_rounds = 4usize;
+        let values = table(source_rounds, 41_000);
+        let functional = (0..13).map(|index| symbol(42_000 + index)).collect::<Vec<_>>();
+        let mut padded_functional = functional.clone();
+        padded_functional.resize(values.len(), Fp2::ZERO);
+        let correction = values
+            .iter()
+            .zip(&padded_functional)
+            .fold(Fp2::ZERO, |sum, (&value, &coefficient)| sum + value * coefficient);
+        let source_target =
+            (0..source_rounds).map(|index| symbol(43_000 + index as u64)).collect::<Vec<_>>();
+        let mut target_point = source_target.clone();
+        target_point.push(Fp2::ZERO);
+        let rho = symbol(44_000);
+        let gamma = symbol(44_001);
+        let mut term = C6Nbr2CombinedDelayedTerm::new(
+            rho,
+            gamma,
+            &values,
+            &target_point,
+            &functional,
+            correction,
+            source_rounds + 2,
+        )
+        .unwrap();
+        let initial =
+            rho * evaluate_multilinear_table(&values, &source_target).unwrap() + gamma * correction;
+        assert_eq!(term.active_sum(), initial);
+
+        let challenges =
+            (0..source_rounds + 2).map(|round| symbol(45_000 + round as u64)).collect::<Vec<_>>();
+        let mut running = initial;
+        for challenge in &challenges {
+            let (at_zero, at_two) = term.round_values().unwrap();
+            let at_one = running - at_zero;
+            let weights = lagrange3(*challenge);
+            running = at_zero * weights[0] + at_one * weights[1] + at_two * weights[2];
+            term.bind(*challenge).unwrap();
+            assert_eq!(term.active_sum(), running);
+        }
+        assert_eq!(term.terminal().unwrap(), running);
+
+        let source_point = &challenges[1..1 + source_rounds];
+        let value_at_point = evaluate_multilinear_table(&values, source_point).unwrap();
+        let functional_at_point =
+            evaluate_multilinear_table(&padded_functional, source_point).unwrap();
+        let equality_at_point = eq_points(source_point, &source_target);
+        let selector = (Fp2::ONE - challenges[0]) * (Fp2::ONE - challenges[source_rounds + 1]);
+        assert_eq!(
+            running,
+            selector * value_at_point * (rho * equality_at_point + gamma * functional_at_point)
+        );
+
+        let mut wrong_correction = correction;
+        wrong_correction += Fp2::ONE;
+        assert!(C6Nbr2CombinedDelayedTerm::new(
+            rho,
+            gamma,
+            &values,
+            &target_point,
+            &functional,
+            wrong_correction,
+            source_rounds + 2,
+        )
+        .is_err());
     }
 
     #[test]

@@ -22,6 +22,7 @@ use volta_mac::{
     zero_open_prover, zero_open_verify, CorrelationStream, ProverAuthed, Transcript, VerifierCtx,
     VerifierKey, RESERVED_DOMAIN_BITS,
 };
+use volta_proto::c6_residual::evaluate_c6_nbr2_coefficient_prefix_at_two_points;
 use volta_proto::mle::{eq_points, eq_vec, fold_low, lagrange3};
 
 use crate::c6_hidden_u::C6HiddenUFamily;
@@ -68,6 +69,7 @@ const LINK_PREFIX_LABEL: &str = "c6_authenticated_output_link_prefix";
 const LINK_ROUND_LABEL: &str = "c6_authenticated_output_link_round_corrections";
 const LINK_AGGREGATES_LABEL: &str = "c6_authenticated_output_link_aggregates";
 const LINK_DIGEST_LABEL: &str = "c6_authenticated_output_link_digest";
+const LINK_NBR2_BOUND_LABEL: &str = "c6_nbr2_correction_functional_bound";
 const LINK_HEADER_BYTES: u64 = 16;
 const LINK_REPETITION_PREFIX_BYTES: u64 = 33;
 const LINK_ROUND_BYTES: u64 = 64;
@@ -75,6 +77,12 @@ const LINK_AGGREGATE_BYTES: u64 = 96;
 const LINK_TERMINAL_TAG_BYTES: u64 = 64;
 const LINK_DIGEST_BYTES: u64 = 32;
 const LINK_CORRELATION_BASE: u64 = 0x0C64_0000_0000_0000;
+const C6_NBR2_STATEMENT_CONTEXT: &str = "volta-zk/c6/nbr2-correction-functional-statement/v1";
+const C6_NBR2_SCHEDULE_CONTEXT: &str = "volta-zk/c6/nbr2-link-schedule/v1";
+const C6_NBR2_CORRECTION_SLOT: u16 = 6;
+
+pub const C6_NBR2_AUTHENTICATED_OUTPUT_LINK_RELATIONS: usize =
+    C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_RELATIONS + 1;
 
 type Result<T> = std::result::Result<T, C6AuthenticatedOutputLinkError>;
 
@@ -99,6 +107,175 @@ impl From<C6WrapperPcsError> for C6AuthenticatedOutputLinkError {
     fn from(value: C6WrapperPcsError) -> Self {
         Self(format!("C6 wrapper PCS: {value}"))
     }
+}
+
+/// Typed, response-local C6NBR2 statement. The coefficient prefix is public
+/// verifier state derived from the installed compiler and never crosses the
+/// certificate wire.
+pub struct C6Nbr2CorrectionFunctional<'a> {
+    outer_statement_digest: C6WrapperDigest,
+    wrapper_statement_digest: C6WrapperDigest,
+    fixed_roots_digest: C6WrapperDigest,
+    residual_manifest_digest: C6WrapperDigest,
+    residual_view_digest: C6WrapperDigest,
+    paired_source_digest: C6WrapperDigest,
+    source_schedule_digest: C6WrapperDigest,
+    native_profile_digest: C6WrapperDigest,
+    functional_digest: C6WrapperDigest,
+    coefficient_vector_digest: C6WrapperDigest,
+    source_count: u32,
+    source_log2: u8,
+    correction: Fp2,
+    coefficients: &'a [Fp2],
+    digest: C6WrapperDigest,
+}
+
+impl fmt::Debug for C6Nbr2CorrectionFunctional<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("C6Nbr2CorrectionFunctional")
+            .field("outer_statement_digest", &self.outer_statement_digest)
+            .field("wrapper_statement_digest", &self.wrapper_statement_digest)
+            .field("fixed_roots_digest", &self.fixed_roots_digest)
+            .field("residual_manifest_digest", &self.residual_manifest_digest)
+            .field("residual_view_digest", &self.residual_view_digest)
+            .field("paired_source_digest", &self.paired_source_digest)
+            .field("source_schedule_digest", &self.source_schedule_digest)
+            .field("native_profile_digest", &self.native_profile_digest)
+            .field("functional_digest", &self.functional_digest)
+            .field("coefficient_vector_digest", &self.coefficient_vector_digest)
+            .field("source_count", &self.source_count)
+            .field("source_log2", &self.source_log2)
+            .field("correction", &self.correction)
+            .field("digest", &self.digest)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<'a> C6Nbr2CorrectionFunctional<'a> {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        fixed: &C6FixedWrapperCommitments,
+        outer_statement_digest: C6WrapperDigest,
+        residual_manifest_digest: C6WrapperDigest,
+        residual_view_digest: C6WrapperDigest,
+        paired_source_digest: C6WrapperDigest,
+        source_schedule_digest: C6WrapperDigest,
+        native_profile_digest: C6WrapperDigest,
+        functional_digest: C6WrapperDigest,
+        coefficients: &'a [Fp2],
+        correction: Fp2,
+    ) -> Result<Self> {
+        let source_count = u32::try_from(coefficients.len())
+            .map_err(|_| C6AuthenticatedOutputLinkError::new("C6NBR2 source count exceeds u32"))?;
+        let coefficient_vector_digest = c6_nbr2_coefficient_vector_digest(coefficients);
+        let source_log2 = fixed
+            .commitments()
+            .iter()
+            .find(|commitment| commitment.spec.cohort_id == C6_DELTA_RESIDUAL_COHORT_ID)
+            .map(|commitment| commitment.spec.payload_log2)
+            .ok_or_else(|| {
+                C6AuthenticatedOutputLinkError::new("C6NBR2 residual commitment is missing")
+            })?;
+        let mut statement = Self {
+            outer_statement_digest,
+            wrapper_statement_digest: fixed.statement_digest(),
+            fixed_roots_digest: fixed.binding_digest(),
+            residual_manifest_digest,
+            residual_view_digest,
+            paired_source_digest,
+            source_schedule_digest,
+            native_profile_digest,
+            functional_digest,
+            coefficient_vector_digest,
+            source_count,
+            source_log2,
+            correction,
+            coefficients,
+            digest: [0; 32],
+        };
+        if [
+            statement.outer_statement_digest,
+            statement.wrapper_statement_digest,
+            statement.fixed_roots_digest,
+            statement.residual_manifest_digest,
+            statement.residual_view_digest,
+            statement.paired_source_digest,
+            statement.source_schedule_digest,
+            statement.native_profile_digest,
+            statement.functional_digest,
+        ]
+        .contains(&[0; 32])
+            || statement.source_count == 0
+        {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "C6NBR2 statement contains an empty binding",
+            ));
+        }
+        statement.digest = c6_nbr2_statement_digest(&statement);
+        Ok(statement)
+    }
+
+    pub fn digest(&self) -> C6WrapperDigest {
+        self.digest
+    }
+
+    pub fn correction(&self) -> Fp2 {
+        self.correction
+    }
+
+    pub fn coefficients(&self) -> &[Fp2] {
+        self.coefficients
+    }
+
+    fn validate_for_link(&self, fixed: &C6FixedWrapperCommitments, rounds: usize) -> Result<()> {
+        let capacity = 1usize.checked_shl(u32::from(self.source_log2)).unwrap_or_default();
+        if self.wrapper_statement_digest != fixed.statement_digest()
+            || self.fixed_roots_digest != fixed.binding_digest()
+            || self.coefficients.len() != self.source_count as usize
+            || self.coefficients.len() > capacity
+            || rounds != usize::from(self.source_log2) + 2
+            || self.digest != c6_nbr2_statement_digest(self)
+        {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "C6NBR2 statement differs from the authenticated link",
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn c6_nbr2_statement_digest(statement: &C6Nbr2CorrectionFunctional<'_>) -> C6WrapperDigest {
+    let mut hasher = blake3::Hasher::new_derive_key(C6_NBR2_STATEMENT_CONTEXT);
+    for digest in [
+        statement.outer_statement_digest,
+        statement.wrapper_statement_digest,
+        statement.fixed_roots_digest,
+        statement.residual_manifest_digest,
+        statement.residual_view_digest,
+        statement.paired_source_digest,
+        statement.source_schedule_digest,
+        statement.native_profile_digest,
+        statement.functional_digest,
+        statement.coefficient_vector_digest,
+    ] {
+        hasher.update(&digest);
+    }
+    hasher.update(&C6_DELTA_RESIDUAL_COHORT_ID.to_le_bytes());
+    hasher.update(&C6_NBR2_CORRECTION_SLOT.to_le_bytes());
+    hasher.update(&[1, statement.source_log2]);
+    hasher.update(&statement.source_count.to_le_bytes());
+    hash_fp2(&mut hasher, statement.correction);
+    *hasher.finalize().as_bytes()
+}
+
+fn c6_nbr2_coefficient_vector_digest(coefficients: &[Fp2]) -> C6WrapperDigest {
+    let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c6/nbr2-coefficient-vector/v1");
+    hasher.update(&(coefficients.len() as u64).to_le_bytes());
+    for &coefficient in coefficients {
+        hash_fp2(&mut hasher, coefficient);
+    }
+    *hasher.finalize().as_bytes()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -791,8 +968,8 @@ impl DelayedTerm {
 
 /// C6NBR2 replacement for the ordinary residual slot-6 equality term.
 ///
-/// `values` is the committed tape-1 correction column restricted to its
-/// lower (non-ZK) D23 half. `weights` is
+/// `values` is the complete committed tape-1 correction column: its lower
+/// D23 source half and independent upper ZK half. `weights` is
 /// `rho * eq(target_x, ·) + gamma * A(·)`. Keeping the two factors separate
 /// is load-bearing: their product has individual degree two in each source
 /// variable. The leading and trailing virtual rounds implement `(1-y)` and
@@ -800,6 +977,7 @@ impl DelayedTerm {
 #[derive(Clone)]
 struct C6Nbr2CombinedDelayedTerm {
     values: Vec<Fp2>,
+    zk_values: Vec<Fp2>,
     weights: Vec<Fp2>,
     leading_virtual_rounds: usize,
     trailing_virtual_rounds: usize,
@@ -816,11 +994,11 @@ impl C6Nbr2CombinedDelayedTerm {
         correction: Fp2,
         global_rounds: usize,
     ) -> Result<Self> {
-        if values.is_empty()
+        if values.len() < 2
             || !values.len().is_power_of_two()
-            || target_point.len() != values.len().ilog2() as usize + 1
+            || target_point.len() != values.len().ilog2() as usize
             || target_point.last() != Some(&Fp2::ZERO)
-            || functional.len() > values.len()
+            || functional.len() > values.len() / 2
             || global_rounds != target_point.len() + 1
         {
             return Err(C6AuthenticatedOutputLinkError::new(
@@ -828,6 +1006,7 @@ impl C6Nbr2CombinedDelayedTerm {
             ));
         }
         let source_point = &target_point[..target_point.len() - 1];
+        let (values, zk_values) = values.split_at(values.len() / 2);
         let mut padded_functional = functional.to_vec();
         padded_functional.resize(values.len(), Fp2::ZERO);
         let actual_correction = values
@@ -847,6 +1026,7 @@ impl C6Nbr2CombinedDelayedTerm {
             .collect();
         Ok(Self {
             values: values.to_vec(),
+            zk_values: zk_values.to_vec(),
             weights,
             leading_virtual_rounds: 1,
             trailing_virtual_rounds: 1,
@@ -863,7 +1043,10 @@ impl C6Nbr2CombinedDelayedTerm {
     }
 
     fn round_values(&self) -> Result<(Fp2, Fp2)> {
-        if self.values.len() != self.weights.len() || self.values.is_empty() {
+        if self.values.len() != self.weights.len()
+            || self.values.len() != self.zk_values.len()
+            || self.values.is_empty()
+        {
             return Err(C6AuthenticatedOutputLinkError::new(
                 "invalid C6NBR2 combined residual term state",
             ));
@@ -883,8 +1066,9 @@ impl C6Nbr2CombinedDelayedTerm {
             return Ok((at_zero * self.virtual_factor, at_two * self.virtual_factor));
         }
         if self.trailing_virtual_rounds > 0 {
-            let at_zero = self.active_sum();
-            return Ok((at_zero, Fp2::ZERO - at_zero));
+            let at_zero = self.values[0] * self.weights[0] * self.virtual_factor;
+            let value_at_two = self.zk_values[0] + self.zk_values[0] - self.values[0];
+            return Ok((at_zero, Fp2::ZERO - value_at_two * self.weights[0] * self.virtual_factor));
         }
         Err(C6AuthenticatedOutputLinkError::new(
             "C6NBR2 combined residual term has no active round",
@@ -897,8 +1081,11 @@ impl C6Nbr2CombinedDelayedTerm {
             self.leading_virtual_rounds -= 1;
         } else if self.values.len() > 1 {
             fold_low(&mut self.values, challenge);
+            fold_low(&mut self.zk_values, challenge);
             fold_low(&mut self.weights, challenge);
         } else if self.trailing_virtual_rounds > 0 {
+            self.values[0] = self.values[0] + (self.zk_values[0] - self.values[0]) * challenge;
+            self.zk_values[0] = self.values[0];
             self.virtual_factor = self.virtual_factor * (Fp2::ONE - challenge);
             self.trailing_virtual_rounds -= 1;
         } else {
@@ -913,6 +1100,7 @@ impl C6Nbr2CombinedDelayedTerm {
         if self.leading_virtual_rounds != 0
             || self.trailing_virtual_rounds != 0
             || self.values.len() != 1
+            || self.zk_values.len() != 1
             || self.weights.len() != 1
         {
             return Err(C6AuthenticatedOutputLinkError::new(
@@ -920,6 +1108,44 @@ impl C6Nbr2CombinedDelayedTerm {
             ));
         }
         Ok(self.values[0] * self.weights[0] * self.virtual_factor)
+    }
+}
+
+enum C6ReferenceDelayedTerm {
+    Equality(DelayedTerm),
+    Nbr2(C6Nbr2CombinedDelayedTerm),
+}
+
+impl C6ReferenceDelayedTerm {
+    fn active_sum(&self) -> Fp2 {
+        match self {
+            Self::Equality(term) => term.active_sum(),
+            Self::Nbr2(term) => term.active_sum(),
+        }
+    }
+
+    fn round_values(&self) -> Result<(Fp2, Fp2)> {
+        match self {
+            Self::Equality(term) => term.round_values(),
+            Self::Nbr2(term) => term.round_values(),
+        }
+    }
+
+    fn bind(&mut self, challenge: Fp2) -> Result<()> {
+        match self {
+            Self::Equality(term) => {
+                term.bind(challenge);
+                Ok(())
+            }
+            Self::Nbr2(term) => term.bind(challenge),
+        }
+    }
+
+    fn terminal(&self) -> Result<Fp2> {
+        match self {
+            Self::Equality(term) => term.terminal(),
+            Self::Nbr2(term) => term.terminal(),
+        }
     }
 }
 
@@ -1841,6 +2067,7 @@ fn prepare_c6_authenticated_output_link_persisted(
             &round_output.point,
             None,
             Some(aggregates),
+            None,
         )?;
         if aggregates != recomputed_aggregates
             || round_output.final_claims.iter().any(|claim| {
@@ -1984,6 +2211,7 @@ fn prepare_c6_authenticated_output_link_persisted_cuda(
             &round_output.point,
             None,
             Some(aggregates),
+            None,
         )?;
         if aggregates != recomputed_aggregates
             || round_output.final_claims.iter().any(|claim| {
@@ -2026,14 +2254,69 @@ pub fn prove_c6_authenticated_output_link_reference(
     C6BoundSlotRegistryProver,
     C6AuthenticatedOutputLinkMetrics,
 )> {
+    prove_c6_authenticated_output_link_reference_inner(
+        fixed,
+        cohorts,
+        pending,
+        polynomials,
+        None,
+        streams,
+        transcript,
+    )
+}
+
+/// C6NBR2 scaled/reference prover. It adds one public correction claim while
+/// preserving the exact C6LNK2 proof grammar and wrapper PCS opening census.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_c6_authenticated_output_link_reference_nbr2(
+    fixed: &C6FixedWrapperCommitments,
+    cohorts: &[C6CommittedWrapperCohort],
+    pending: C6PendingSlotRegistryProver,
+    polynomials: &[C6LinkSlotPolynomial<'_>],
+    nbr2: &C6Nbr2CorrectionFunctional<'_>,
+    streams: &mut [CorrelationStream; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
+    transcript: &mut Transcript,
+) -> Result<(
+    C6AuthenticatedOutputLinkProof,
+    C6BoundSlotRegistryProver,
+    C6AuthenticatedOutputLinkMetrics,
+)> {
+    prove_c6_authenticated_output_link_reference_inner(
+        fixed,
+        cohorts,
+        pending,
+        polynomials,
+        Some(nbr2),
+        streams,
+        transcript,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_c6_authenticated_output_link_reference_inner(
+    fixed: &C6FixedWrapperCommitments,
+    cohorts: &[C6CommittedWrapperCohort],
+    pending: C6PendingSlotRegistryProver,
+    polynomials: &[C6LinkSlotPolynomial<'_>],
+    nbr2: Option<&C6Nbr2CorrectionFunctional<'_>>,
+    streams: &mut [CorrelationStream; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
+    transcript: &mut Transcript,
+) -> Result<(
+    C6AuthenticatedOutputLinkProof,
+    C6BoundSlotRegistryProver,
+    C6AuthenticatedOutputLinkMetrics,
+)> {
     refuse_production_reference(fixed)?;
     let (relations, rounds, _) = link_geometry(fixed)?;
+    if let Some(nbr2) = nbr2 {
+        nbr2.validate_for_link(fixed, rounds)?;
+    }
     validate_prover_registry(fixed, &pending)?;
     validate_prover_cohorts(fixed, cohorts)?;
     let polynomial_registry = validate_polynomials(fixed, polynomials)?;
     let mut schedule_digests = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
     for repetition in 0..C6_WRAPPER_REPETITIONS {
-        schedule_digests.push(schedule_digest(
+        let schedule = schedule_digest(
             fixed,
             repetition as u8,
             &pending
@@ -2043,12 +2326,19 @@ pub fn prove_c6_authenticated_output_link_reference(
                 .map(|entry| &entry.descriptor)
                 .collect::<Vec<_>>(),
             rounds,
-        )?);
+        )?;
+        schedule_digests.push(match nbr2 {
+            Some(nbr2) => c6_nbr2_schedule_digest(schedule, nbr2.digest()),
+            None => schedule,
+        });
     }
     let schedule_digests: [C6WrapperDigest; C6_WRAPPER_REPETITIONS] =
         schedule_digests.try_into().map_err(|_| {
             C6AuthenticatedOutputLinkError::new("C6 link schedule repetition mismatch")
         })?;
+    if nbr2.is_some() {
+        transcript.append(LINK_NBR2_BOUND_LABEL, 0);
+    }
     transcript.append(
         LINK_PREFIX_LABEL,
         LINK_HEADER_BYTES + C6_WRAPPER_REPETITIONS as u64 * LINK_REPETITION_PREFIX_BYTES,
@@ -2062,12 +2352,19 @@ pub fn prove_c6_authenticated_output_link_reference(
         let beta = transcript.challenge_fp2();
         let entries = pending_entries_for_repetition(&pending.entries, repetition as u8);
         let rhos = scalar_power_weights(beta, entries.len());
-        let initial_claims = array::from_fn(|tape| {
+        let gamma = rhos.last().copied().unwrap_or(Fp2::ONE) * beta;
+        let mut initial_claims = array::from_fn(|tape| {
             entries
                 .iter()
                 .zip(&rhos)
                 .fold(ProverAuthed::ZERO, |sum, (entry, rho)| sum.add(entry.auth[tape].scale(*rho)))
         });
+        if let Some(nbr2) = nbr2 {
+            let public = ProverAuthed::from_public(nbr2.correction()).scale(gamma);
+            for claim in &mut initial_claims {
+                *claim = claim.add(public);
+            }
+        }
         let mut terms = Vec::with_capacity(entries.len());
         for (entry, rho) in entries.iter().zip(&rhos) {
             let polynomial = polynomial_registry
@@ -2085,7 +2382,25 @@ pub fn prove_c6_authenticated_output_link_reference(
                     "C6 link polynomial does not match pending old-point value",
                 ));
             }
-            terms.push(DelayedTerm::new(*rho, polynomial, &entry.descriptor.target_point, rounds)?);
+            if nbr2.is_some_and(|_| is_nbr2_correction_slot(&entry.descriptor)) {
+                let nbr2 = nbr2.expect("checked C6NBR2 statement");
+                terms.push(C6ReferenceDelayedTerm::Nbr2(C6Nbr2CombinedDelayedTerm::new(
+                    *rho,
+                    gamma,
+                    polynomial,
+                    &entry.descriptor.target_point,
+                    nbr2.coefficients(),
+                    nbr2.correction(),
+                    rounds,
+                )?));
+            } else {
+                terms.push(C6ReferenceDelayedTerm::Equality(DelayedTerm::new(
+                    *rho,
+                    polynomial,
+                    &entry.descriptor.target_point,
+                    rounds,
+                )?));
+            }
         }
         if terms.iter().fold(Fp2::ZERO, |sum, term| sum + term.active_sum()) != initial_claims[0].x
         {
@@ -2108,6 +2423,7 @@ pub fn prove_c6_authenticated_output_link_reference(
             &round_output.point,
             Some(&polynomial_registry),
             None,
+            nbr2_terminal_weight(nbr2, gamma, &round_output.point)?,
         )?;
         let aggregate_sum = aggregates.iter().copied().fold(Fp2::ZERO, |sum, value| sum + value);
         if round_output.final_claims.iter().any(|claim| claim.x != aggregate_sum) {
@@ -2159,7 +2475,7 @@ pub fn prove_c6_authenticated_output_link_reference(
         .checked_sub(pcs_bytes)
         .ok_or_else(|| C6AuthenticatedOutputLinkError::new("C6 link overhead underflow"))?;
     let metrics = C6AuthenticatedOutputLinkMetrics {
-        relations_per_repetition: relations as u64,
+        relations_per_repetition: (relations + usize::from(nbr2.is_some())) as u64,
         rounds_per_repetition: rounds as u64,
         full_correlations_per_tape: (C6_WRAPPER_REPETITIONS * 2 * rounds) as u64,
         link_overhead_bytes,
@@ -2322,7 +2638,26 @@ pub fn verify_c6_authenticated_output_link_reference(
     transcript: &mut Transcript,
 ) -> Result<C6BoundSlotRegistryVerifier> {
     refuse_production_reference(fixed)?;
-    verify_c6_authenticated_output_link_inner(fixed, pending, proof, contexts, transcript)
+    verify_c6_authenticated_output_link_inner(fixed, pending, proof, None, contexts, transcript)
+}
+
+pub fn verify_c6_authenticated_output_link_reference_nbr2(
+    fixed: &C6FixedWrapperCommitments,
+    pending: C6PendingSlotRegistryVerifier,
+    proof: &C6AuthenticatedOutputLinkProof,
+    nbr2: &C6Nbr2CorrectionFunctional<'_>,
+    contexts: &mut [VerifierCtx; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
+    transcript: &mut Transcript,
+) -> Result<C6BoundSlotRegistryVerifier> {
+    refuse_production_reference(fixed)?;
+    verify_c6_authenticated_output_link_inner(
+        fixed,
+        pending,
+        proof,
+        Some(nbr2),
+        contexts,
+        transcript,
+    )
 }
 
 /// Production verifier for a link proof whose packed PCS was created from
@@ -2340,22 +2675,49 @@ pub fn verify_c6_authenticated_output_link_production(
             "C6 production link verifier requires production-fixed roots",
         ));
     }
-    verify_c6_authenticated_output_link_inner(fixed, pending, proof, contexts, transcript)
+    verify_c6_authenticated_output_link_inner(fixed, pending, proof, None, contexts, transcript)
+}
+
+pub fn verify_c6_authenticated_output_link_production_nbr2(
+    fixed: &C6FixedWrapperCommitments,
+    pending: C6PendingSlotRegistryVerifier,
+    proof: &C6AuthenticatedOutputLinkProof,
+    nbr2: &C6Nbr2CorrectionFunctional<'_>,
+    contexts: &mut [VerifierCtx; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
+    transcript: &mut Transcript,
+) -> Result<C6BoundSlotRegistryVerifier> {
+    if !fixed.is_production_profile() {
+        return Err(C6AuthenticatedOutputLinkError::new(
+            "C6 production link verifier requires production-fixed roots",
+        ));
+    }
+    verify_c6_authenticated_output_link_inner(
+        fixed,
+        pending,
+        proof,
+        Some(nbr2),
+        contexts,
+        transcript,
+    )
 }
 
 fn verify_c6_authenticated_output_link_inner(
     fixed: &C6FixedWrapperCommitments,
     pending: C6PendingSlotRegistryVerifier,
     proof: &C6AuthenticatedOutputLinkProof,
+    nbr2: Option<&C6Nbr2CorrectionFunctional<'_>>,
     contexts: &mut [VerifierCtx; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
     transcript: &mut Transcript,
 ) -> Result<C6BoundSlotRegistryVerifier> {
     let (relations, rounds, cohorts) = link_geometry(fixed)?;
+    if let Some(nbr2) = nbr2 {
+        nbr2.validate_for_link(fixed, rounds)?;
+    }
     validate_verifier_registry(fixed, &pending)?;
     validate_proof_shape(proof, relations, rounds, cohorts)?;
     let mut expected_schedule_digests = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
     for repetition in 0..C6_WRAPPER_REPETITIONS {
-        expected_schedule_digests.push(schedule_digest(
+        let schedule = schedule_digest(
             fixed,
             repetition as u8,
             &pending
@@ -2365,7 +2727,11 @@ fn verify_c6_authenticated_output_link_inner(
                 .map(|entry| &entry.descriptor)
                 .collect::<Vec<_>>(),
             rounds,
-        )?);
+        )?;
+        expected_schedule_digests.push(match nbr2 {
+            Some(nbr2) => c6_nbr2_schedule_digest(schedule, nbr2.digest()),
+            None => schedule,
+        });
     }
     let expected_schedule_digests: [C6WrapperDigest; C6_WRAPPER_REPETITIONS] =
         expected_schedule_digests.try_into().map_err(|_| {
@@ -2379,25 +2745,36 @@ fn verify_c6_authenticated_output_link_inner(
     {
         return Err(C6AuthenticatedOutputLinkError::new("C6 link schedule digest mismatch"));
     }
+    if nbr2.is_some() {
+        transcript.append(LINK_NBR2_BOUND_LABEL, 0);
+    }
     transcript.append(
         LINK_PREFIX_LABEL,
         LINK_HEADER_BYTES + C6_WRAPPER_REPETITIONS as u64 * LINK_REPETITION_PREFIX_BYTES,
     );
     let mut final_keys =
         [[VerifierKey::ZERO; C6_AUTHENTICATED_OUTPUT_LINK_TAPES]; C6_WRAPPER_REPETITIONS];
-    let mut assembled_claims = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
+    let mut reductions = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
     for (repetition, (repetition_proof, final_key_slot)) in
         proof.repetitions.iter().zip(&mut final_keys).enumerate()
     {
         let beta = transcript.challenge_fp2();
         let entries = pending_verifier_entries_for_repetition(&pending.entries, repetition as u8);
         let rhos = scalar_power_weights(beta, entries.len());
-        let initial_keys = array::from_fn(|tape| {
+        let gamma = rhos.last().copied().unwrap_or(Fp2::ONE) * beta;
+        let mut initial_keys = array::from_fn(|tape| {
             entries
                 .iter()
                 .zip(&rhos)
                 .fold(VerifierKey::ZERO, |sum, (entry, rho)| sum.add(entry.keys[tape].scale(*rho)))
         });
+        if let Some(nbr2) = nbr2 {
+            for tape in 0..C6_AUTHENTICATED_OUTPUT_LINK_TAPES {
+                initial_keys[tape] = initial_keys[tape].add(
+                    VerifierKey::from_public(nbr2.correction(), contexts[tape].delta).scale(gamma),
+                );
+            }
+        }
         let (point, keys) = verify_dual_tape_rounds(
             initial_keys,
             repetition as u8,
@@ -2408,18 +2785,43 @@ fn verify_c6_authenticated_output_link_inner(
         )?;
         ensure_nonzero_fresh_zk_coordinate(&point)?;
         let descriptors = entries.iter().map(|entry| &entry.descriptor).collect::<Vec<_>>();
+        transcript.append(LINK_AGGREGATES_LABEL, LINK_AGGREGATE_BYTES);
+        reductions.push((descriptors, rhos, point, gamma));
+        *final_key_slot = keys;
+    }
+    let nbr2_evaluations = match nbr2 {
+        Some(nbr2) => {
+            let points = [&reductions[0].2[1..rounds - 1], &reductions[1].2[1..rounds - 1]];
+            Some(
+                evaluate_c6_nbr2_coefficient_prefix_at_two_points(nbr2.coefficients(), points)
+                    .map_err(|error| {
+                        C6AuthenticatedOutputLinkError::new(format!(
+                            "C6NBR2 verifier functional evaluation: {error}"
+                        ))
+                    })?,
+            )
+        }
+        None => None,
+    };
+    let mut assembled_claims = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
+    for (repetition, (descriptors, rhos, point, gamma)) in reductions.iter().enumerate() {
+        let nbr2_weight = nbr2_evaluations.map(|evaluations| {
+            *gamma
+                * (Fp2::ONE - point[0])
+                * (Fp2::ONE - point[point.len() - 1])
+                * evaluations[repetition]
+        });
         let (claims, _) = assemble_new_point_claims(
             fixed,
             repetition as u8,
-            &descriptors,
-            &rhos,
-            &point,
+            descriptors,
+            rhos,
+            point,
             None,
-            Some(repetition_proof.aggregates),
+            Some(proof.repetitions[repetition].aggregates),
+            nbr2_weight,
         )?;
-        transcript.append(LINK_AGGREGATES_LABEL, LINK_AGGREGATE_BYTES);
         assembled_claims.push(claims);
-        *final_key_slot = keys;
     }
     let assembled = seal_authenticated_link_c6_wrapper_claims(fixed, assembled_claims)?;
     verify_c6_wrapper_pcs_assembled(
@@ -2624,7 +3026,7 @@ fn scalar_power_weights(beta: Fp2, count: usize) -> Vec<Fp2> {
 }
 
 fn prove_dual_tape_rounds(
-    mut terms: Vec<DelayedTerm>,
+    mut terms: Vec<C6ReferenceDelayedTerm>,
     mut claims: [ProverAuthed; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
     repetition: u8,
     streams: &mut [CorrelationStream; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
@@ -2662,7 +3064,7 @@ fn prove_dual_tape_rounds(
                 .add(auth_two[tape].scale(weights[2]));
         }
         for term in &mut terms {
-            term.bind(challenge);
+            term.bind(challenge)?;
         }
         point.push(challenge);
         corrections.push(round_corrections);
@@ -2878,6 +3280,7 @@ fn assemble_new_point_claims<D: DescriptorView>(
     point: &[Fp2],
     polynomial_registry: Option<&BTreeMap<SlotKey, &[Fp2]>>,
     supplied_aggregates: Option<[Fp2; C6_AUTHENTICATED_OUTPUT_LINK_COHORTS]>,
+    nbr2_residual_slot_weight: Option<Fp2>,
 ) -> Result<(Vec<C6WrapperOpeningClaim>, [Fp2; C6_AUTHENTICATED_OUTPUT_LINK_COHORTS])> {
     if entries.len() != rhos.len() {
         return Err(C6AuthenticatedOutputLinkError::new("C6 link entry/weight census mismatch"));
@@ -2894,6 +3297,17 @@ fn assemble_new_point_claims<D: DescriptorView>(
             point[..leading].iter().fold(Fp2::ONE, |product, z| product * (Fp2::ONE - *z));
         let weight = *rho * eq_points(&point[leading..], &descriptor.target_point) * virtual_factor;
         weights.insert(descriptor.key(), weight);
+    }
+    if let Some(addition) = nbr2_residual_slot_weight {
+        let key = SlotKey {
+            repetition,
+            cohort_id: C6_DELTA_RESIDUAL_COHORT_ID,
+            slot: C6_NBR2_CORRECTION_SLOT,
+        };
+        let weight = weights.get_mut(&key).ok_or_else(|| {
+            C6AuthenticatedOutputLinkError::new("missing C6NBR2 residual slot-6 weight")
+        })?;
+        *weight += addition;
     }
     let mut computed_aggregates = [Fp2::ZERO; C6_AUTHENTICATED_OUTPUT_LINK_COHORTS];
     let mut claims = Vec::with_capacity(fixed.commitments().len());
@@ -3074,6 +3488,50 @@ fn schedule_digest(
         }
     }
     Ok(*hasher.finalize().as_bytes())
+}
+
+fn c6_nbr2_schedule_digest(
+    base_schedule_digest: C6WrapperDigest,
+    nbr2_statement_digest: C6WrapperDigest,
+) -> C6WrapperDigest {
+    let mut hasher = blake3::Hasher::new_derive_key(C6_NBR2_SCHEDULE_CONTEXT);
+    hasher.update(&base_schedule_digest);
+    hasher.update(&nbr2_statement_digest);
+    hasher.update(&(C6_NBR2_AUTHENTICATED_OUTPUT_LINK_RELATIONS as u16).to_le_bytes());
+    *hasher.finalize().as_bytes()
+}
+
+fn is_nbr2_correction_slot(descriptor: &C6PendingSlotDescriptor) -> bool {
+    descriptor.cohort_id == C6_DELTA_RESIDUAL_COHORT_ID
+        && descriptor.slot == C6_NBR2_CORRECTION_SLOT
+}
+
+fn nbr2_terminal_weight(
+    nbr2: Option<&C6Nbr2CorrectionFunctional<'_>>,
+    gamma: Fp2,
+    point: &[Fp2],
+) -> Result<Option<Fp2>> {
+    let Some(nbr2) = nbr2 else {
+        return Ok(None);
+    };
+    if point.len() < 3 {
+        return Err(C6AuthenticatedOutputLinkError::new("C6NBR2 terminal point is too short"));
+    }
+    let source_point = &point[1..point.len() - 1];
+    let capacity = 1usize.checked_shl(source_point.len() as u32).unwrap_or_default();
+    if nbr2.coefficients().len() > capacity {
+        return Err(C6AuthenticatedOutputLinkError::new(
+            "C6NBR2 functional exceeds terminal source domain",
+        ));
+    }
+    let mut coefficients = nbr2.coefficients().to_vec();
+    coefficients.resize(capacity, Fp2::ZERO);
+    let functional = evaluate_multilinear_table(&coefficients, source_point).map_err(|error| {
+        C6AuthenticatedOutputLinkError::new(format!(
+            "C6NBR2 terminal functional evaluation: {error:?}"
+        ))
+    })?;
+    Ok(Some(gamma * (Fp2::ONE - point[0]) * (Fp2::ONE - point[point.len() - 1]) * functional))
 }
 
 fn proof_digest(prefix: &[u8]) -> C6WrapperDigest {
@@ -3261,6 +3719,9 @@ mod tests {
     fn nbr2_combined_term_preserves_degree_two_rounds_and_exact_terminal() {
         let source_rounds = 4usize;
         let values = table(source_rounds, 41_000);
+        let zk_values = table(source_rounds, 41_500);
+        let mut committed_values = values.clone();
+        committed_values.extend_from_slice(&zk_values);
         let functional = (0..13).map(|index| symbol(42_000 + index)).collect::<Vec<_>>();
         let mut padded_functional = functional.clone();
         padded_functional.resize(values.len(), Fp2::ZERO);
@@ -3277,7 +3738,7 @@ mod tests {
         let mut term = C6Nbr2CombinedDelayedTerm::new(
             rho,
             gamma,
-            &values,
+            &committed_values,
             &target_point,
             &functional,
             correction,
@@ -3302,7 +3763,9 @@ mod tests {
         assert_eq!(term.terminal().unwrap(), running);
 
         let source_point = &challenges[1..1 + source_rounds];
-        let value_at_point = evaluate_multilinear_table(&values, source_point).unwrap();
+        let mut full_point = source_point.to_vec();
+        full_point.push(challenges[source_rounds + 1]);
+        let value_at_point = evaluate_multilinear_table(&committed_values, &full_point).unwrap();
         let functional_at_point =
             evaluate_multilinear_table(&padded_functional, source_point).unwrap();
         let equality_at_point = eq_points(source_point, &source_target);
@@ -3317,7 +3780,7 @@ mod tests {
         assert!(C6Nbr2CombinedDelayedTerm::new(
             rho,
             gamma,
-            &values,
+            &committed_values,
             &target_point,
             &functional,
             wrong_correction,
@@ -4439,11 +4902,51 @@ mod tests {
         prover_ledger: BTreeMap<&'static str, u64>,
         prover_total: u64,
         prover_link_counter_delta: [u64; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
+        nbr2: Option<Nbr2Fixture>,
+    }
+
+    struct Nbr2Fixture {
+        coefficients: Vec<Fp2>,
+        correction: Fp2,
+    }
+
+    impl Nbr2Fixture {
+        fn statement<'a>(
+            &'a self,
+            fixed: &C6FixedWrapperCommitments,
+        ) -> C6Nbr2CorrectionFunctional<'a> {
+            C6Nbr2CorrectionFunctional::new(
+                fixed,
+                [0x91; 32],
+                [0x92; 32],
+                [0x93; 32],
+                [0x94; 32],
+                [0x95; 32],
+                [0x96; 32],
+                [0x97; 32],
+                &self.coefficients,
+                self.correction,
+            )
+            .unwrap()
+        }
     }
 
     fn prove_integrated_fixture() -> IntegratedFixture {
         let inputs = scaled_inputs();
-        prove_integrated_fixture_with(inputs, |inputs, streams, transcript| {
+        prove_integrated_fixture_with(inputs, false, |inputs, streams, transcript| {
+            prove_c6_blind_residual_sumchecks_reference(
+                &inputs.statements,
+                &inputs.witnesses,
+                streams,
+                transcript,
+            )
+            .unwrap()
+        })
+    }
+
+    fn prove_nbr2_integrated_fixture() -> IntegratedFixture {
+        let inputs = scaled_inputs();
+        prove_integrated_fixture_with(inputs, true, |inputs, streams, transcript| {
             prove_c6_blind_residual_sumchecks_reference(
                 &inputs.statements,
                 &inputs.witnesses,
@@ -4466,18 +4969,19 @@ mod tests {
             fused.relation(),
         );
         let arena = C6ResidualFusedCoefficientArena::new(fused.manifest());
-        let integrated = prove_integrated_fixture_with(inputs, |inputs, streams, transcript| {
-            prove_c6_blind_residual_sumchecks_fused_scaled(
-                &inputs.statements,
-                &inputs.witnesses,
-                compiler,
-                fused.witness_view().unwrap(),
-                &arena,
-                streams,
-                transcript,
-            )
-            .unwrap()
-        });
+        let integrated =
+            prove_integrated_fixture_with(inputs, false, |inputs, streams, transcript| {
+                prove_c6_blind_residual_sumchecks_fused_scaled(
+                    &inputs.statements,
+                    &inputs.witnesses,
+                    compiler,
+                    fused.witness_view().unwrap(),
+                    &arena,
+                    streams,
+                    transcript,
+                )
+                .unwrap()
+            });
         assert_eq!(arena.active_repetition(), None);
         assert_eq!(arena.active_elements(), 0);
         assert!(!arena.is_faulted());
@@ -4486,6 +4990,7 @@ mod tests {
 
     fn prove_integrated_fixture_with(
         inputs: ScaledInputs,
+        with_nbr2: bool,
         prove_residual: impl FnOnce(
             &ScaledInputs,
             &mut [CorrelationStream; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
@@ -4530,16 +5035,39 @@ mod tests {
         builder.absorb_persistent_cache(&cache_pending).unwrap();
         let pending = builder.finish().unwrap();
         let old_values = pending.entries.iter().map(|entry| entry.auth[0].x).collect::<Vec<_>>();
+        let nbr2 = with_nbr2.then(|| {
+            let residual = &inputs.tables[&(C6_DELTA_RESIDUAL_COHORT_ID, C6_NBR2_CORRECTION_SLOT)];
+            let lower = &residual[..residual.len() / 2];
+            let coefficients = (0..lower.len() - 3)
+                .map(|index| symbol(880_000 + index as u64))
+                .collect::<Vec<_>>();
+            let correction = lower
+                .iter()
+                .zip(&coefficients)
+                .fold(Fp2::ZERO, |sum, (&value, &coefficient)| sum + value * coefficient);
+            Nbr2Fixture { coefficients, correction }
+        });
         let before: [u64; C6_AUTHENTICATED_OUTPUT_LINK_TAPES] =
             array::from_fn(|tape| streams[tape].counters.full_corrs);
-        let (proof, bound, metrics) = prove_c6_authenticated_output_link_reference(
-            &fixed,
-            &inputs.cohorts,
-            pending,
-            &polynomial_views(&inputs),
-            &mut streams,
-            &mut transcript,
-        )
+        let (proof, bound, metrics) = match &nbr2 {
+            Some(nbr2) => prove_c6_authenticated_output_link_reference_nbr2(
+                &fixed,
+                &inputs.cohorts,
+                pending,
+                &polynomial_views(&inputs),
+                &nbr2.statement(&fixed),
+                &mut streams,
+                &mut transcript,
+            ),
+            None => prove_c6_authenticated_output_link_reference(
+                &fixed,
+                &inputs.cohorts,
+                pending,
+                &polynomial_views(&inputs),
+                &mut streams,
+                &mut transcript,
+            ),
+        }
         .unwrap();
         assert_eq!(bound.len(), 2 * C6_WRAPPER_ACTIVE_SLOTS);
         let prover_link_counter_delta =
@@ -4580,6 +5108,7 @@ mod tests {
             prover_ledger: transcript.ledger().clone(),
             prover_total: transcript.total_bytes(),
             prover_link_counter_delta,
+            nbr2,
         }
     }
 
@@ -4882,6 +5411,108 @@ mod tests {
         // 64 B each, and the packed link contributes the final four tags.
         assert_eq!(transcript.bytes_for("zero_open_tag"), 256);
         assert_eq!(transcript.bytes_for(LINK_DIGEST_LABEL), 32);
+    }
+
+    #[test]
+    fn nbr2_fuses_the_exact_correction_without_wire_or_correlation_growth() {
+        let baseline = prove_integrated_fixture();
+        let fixture = prove_nbr2_integrated_fixture();
+        assert_eq!(fixture.encoded.len(), baseline.encoded.len());
+        assert_eq!(fixture.metrics.combined_proof_bytes, baseline.metrics.combined_proof_bytes);
+        assert_eq!(fixture.metrics.link_overhead_bytes, baseline.metrics.link_overhead_bytes);
+        assert_eq!(fixture.metrics.relations_per_repetition, 73);
+        assert_eq!(fixture.prover_link_counter_delta, baseline.prover_link_counter_delta);
+        assert_eq!(fixture.prover_total, baseline.prover_total);
+        assert_eq!(fixture.prover_ledger.get(LINK_NBR2_BOUND_LABEL), Some(&0));
+
+        let (fixed, pending, mut contexts, mut transcript, _) = verifier_prefix(&fixture);
+        let nbr2 = fixture.nbr2.as_ref().unwrap().statement(&fixed);
+        let bound = verify_c6_authenticated_output_link_reference_nbr2(
+            &fixed,
+            pending,
+            &fixture.proof,
+            &nbr2,
+            &mut contexts,
+            &mut transcript,
+        )
+        .unwrap();
+        assert_eq!(bound.len(), 2 * C6_WRAPPER_ACTIVE_SLOTS);
+        assert_eq!(transcript.total_bytes(), fixture.prover_total);
+
+        let (fixed, pending, mut contexts, mut transcript, _) = verifier_prefix(&fixture);
+        assert!(verify_c6_authenticated_output_link_reference(
+            &fixed,
+            pending,
+            &fixture.proof,
+            &mut contexts,
+            &mut transcript,
+        )
+        .is_err());
+
+        let mut changed_coefficients = fixture.nbr2.as_ref().unwrap().coefficients.clone();
+        changed_coefficients[0] += Fp2::ONE;
+        let (fixed, pending, mut contexts, mut transcript, _) = verifier_prefix(&fixture);
+        let changed = C6Nbr2CorrectionFunctional::new(
+            &fixed,
+            [0x91; 32],
+            [0x92; 32],
+            [0x93; 32],
+            [0x94; 32],
+            [0x95; 32],
+            [0x96; 32],
+            [0x97; 32],
+            &changed_coefficients,
+            fixture.nbr2.as_ref().unwrap().correction,
+        )
+        .unwrap();
+        assert!(verify_c6_authenticated_output_link_reference_nbr2(
+            &fixed,
+            pending,
+            &fixture.proof,
+            &changed,
+            &mut contexts,
+            &mut transcript,
+        )
+        .is_err());
+
+        let (fixed, pending, mut contexts, mut transcript, _) = verifier_prefix(&fixture);
+        let original = fixture.nbr2.as_ref().unwrap();
+        let changed_correction = C6Nbr2CorrectionFunctional::new(
+            &fixed,
+            [0x91; 32],
+            [0x92; 32],
+            [0x93; 32],
+            [0x94; 32],
+            [0x95; 32],
+            [0x96; 32],
+            [0x97; 32],
+            &original.coefficients,
+            original.correction + Fp2::ONE,
+        )
+        .unwrap();
+        assert!(verify_c6_authenticated_output_link_reference_nbr2(
+            &fixed,
+            pending,
+            &fixture.proof,
+            &changed_correction,
+            &mut contexts,
+            &mut transcript,
+        )
+        .is_err());
+
+        let mut changed_round = fixture.proof.clone();
+        changed_round.repetitions[1].corrections[2][0][0] += Fp2::ONE;
+        let (fixed, pending, mut contexts, mut transcript, _) = verifier_prefix(&fixture);
+        let nbr2 = fixture.nbr2.as_ref().unwrap().statement(&fixed);
+        assert!(verify_c6_authenticated_output_link_reference_nbr2(
+            &fixed,
+            pending,
+            &changed_round,
+            &nbr2,
+            &mut contexts,
+            &mut transcript,
+        )
+        .is_err());
     }
 
     #[cfg(feature = "c6-trace")]

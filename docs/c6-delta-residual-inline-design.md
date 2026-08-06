@@ -3748,9 +3748,9 @@ PCG, CPU/hybrid provider fallback and non-create-new storage still fail before
 production effects.
 
 Focused coordinator checks are **3/0/0**. The feature-complete benchmark crate
-compiles with `cuda,c6-trace,c61-p3-authenticated-reference`. The ordinary full
-workspace is green, including PCS **226/0/1**, proto **156/0/1** and bench
-**32/0/0**. Budget profile
+compiles with `cuda,c6-trace,c61-p3-authenticated-reference`; the matching PCS
+suite is **273/0/2 + 5/0/0**. The ordinary full workspace is green, including
+PCS **226/0/1**, proto **156/0/1** and bench **32/0/0**. Budget profile
 `C6.1-public-compression-reference-v27-nbr2-exact-runner-local` preserves the
 v26 screens exactly: **17,536,735 B** certificate, **148,738,118 B** setup,
 **166,274,853 B** setup plus first certificate, **2,277,715,552 B** state,

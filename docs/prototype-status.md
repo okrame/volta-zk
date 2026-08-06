@@ -17,9 +17,9 @@ This capsule is authoritative; read design §0.54 next.
   primary C6AWP1 proofs while retaining secondary bodies. The public runner
   sequences exact C6PA2 assembly, C6NBR2 receipt, joint tail and outer-statement
   cross-binding without replay. Focused coordinator checks are **3/0/0**;
-  ordinary workspace is green, including PCS **226/0/1**, proto **156/0/1**
-  and bench **32/0/0**. CUDA feature compilation is green, but no CUDA runtime,
-  full-chain, timing, memory or hardware credit exists.
+  feature-complete PCS is **273/0/2 + 5/0/0**, and ordinary workspace is green,
+  including PCS **226/0/1**, proto **156/0/1** and bench **32/0/0**. No
+  production CUDA runtime, full-chain, timing, memory or hardware credit exists.
 - **Screens.** v27 preserves certificate **17,536,735 B**, setup
   **148,738,118 B**, setup+first **166,274,853 B**, state **2,277,715,552 B**
   and soundness **102.5878332989 bits/cert**. Provider/verifier screens are
@@ -44,7 +44,8 @@ This capsule is authoritative; read design §0.54 next.
   secondary proof or replay constructor is admitted. Focused coordinator
   tests are **3/0/0** and the ordinary workspace is green, including PCS
   **226/0/1**, proto **156/0/1** and bench **32/0/0**. v27 preserves all v26
-  byte, setup, state, soundness and time screens with `credit:false`. CUDA
+  byte, setup, state, soundness and time screens with `credit:false`. The
+  feature-complete PCS suite is **273/0/2 + 5/0/0**. Production CUDA
   runtime/full-chain evidence remains absent; no pod was contacted.
 
 - **2026-08-06 — C6NBR2 relation, Lean and strict C6PA2 close locally.** The

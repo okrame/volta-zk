@@ -130,6 +130,38 @@ pub struct C6Nbr2CorrectionFunctional<'a> {
     digest: C6WrapperDigest,
 }
 
+/// Unforgeable local typestate emitted only after an amended C6LNK2 proof is
+/// complete. It carries no wire bytes; C6PA2 uses it to prevent the native
+/// joint ZeroOpen tail from being finalized before both link repetitions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6Nbr2ProvedLink {
+    statement_digest: C6WrapperDigest,
+}
+
+/// Verifier-side companion emitted only after the packed PCS and all link
+/// terminal MAC checks accept.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6Nbr2VerifiedLink {
+    statement_digest: C6WrapperDigest,
+}
+
+impl C6Nbr2ProvedLink {
+    pub fn statement_digest(self) -> C6WrapperDigest {
+        self.statement_digest
+    }
+}
+
+impl C6Nbr2VerifiedLink {
+    pub fn statement_digest(self) -> C6WrapperDigest {
+        self.statement_digest
+    }
+
+    #[cfg(all(test, feature = "c61-p3-authenticated-reference"))]
+    pub(crate) fn for_test(statement_digest: C6WrapperDigest) -> Self {
+        Self { statement_digest }
+    }
+}
+
 impl fmt::Debug for C6Nbr2CorrectionFunctional<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
@@ -2667,6 +2699,34 @@ pub fn prove_c6_authenticated_output_link_reference_nbr2(
     )
 }
 
+/// Typestate-preserving reference wrapper used by the strict C6PA2 flow.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_c6_authenticated_output_link_reference_nbr2_strict(
+    fixed: &C6FixedWrapperCommitments,
+    cohorts: &[C6CommittedWrapperCohort],
+    pending: C6PendingSlotRegistryProver,
+    polynomials: &[C6LinkSlotPolynomial<'_>],
+    nbr2: &C6Nbr2CorrectionFunctional<'_>,
+    streams: &mut [CorrelationStream; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
+    transcript: &mut Transcript,
+) -> Result<(
+    C6AuthenticatedOutputLinkProof,
+    C6BoundSlotRegistryProver,
+    C6AuthenticatedOutputLinkMetrics,
+    C6Nbr2ProvedLink,
+)> {
+    let (proof, bound, metrics) = prove_c6_authenticated_output_link_reference_nbr2(
+        fixed,
+        cohorts,
+        pending,
+        polynomials,
+        nbr2,
+        streams,
+        transcript,
+    )?;
+    Ok((proof, bound, metrics, C6Nbr2ProvedLink { statement_digest: nbr2.digest() }))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn prove_c6_authenticated_output_link_reference_inner(
     fixed: &C6FixedWrapperCommitments,
@@ -2928,6 +2988,39 @@ pub fn prove_c6_authenticated_output_link_persisted_cuda_nbr2(
     )
 }
 
+/// Production typestate wrapper. The receipt is local-only and therefore
+/// does not change the C6LNK2 codec or certificate byte census.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_c6_authenticated_output_link_persisted_cuda_nbr2_strict(
+    fixed: &C6FixedWrapperCommitments,
+    cohorts: &[C6PersistedWrapperCohort],
+    pending: C6PendingSlotRegistryProver,
+    nbr2: &C6Nbr2CorrectionFunctional<'_>,
+    streams: &mut [CorrelationStream; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
+    backend: &mut Backend,
+    spill_root: impl AsRef<Path>,
+    session_digest: C6WrapperDigest,
+    transcript: &mut Transcript,
+) -> Result<(
+    C6AuthenticatedOutputLinkProof,
+    C6BoundSlotRegistryProver,
+    C6ProductionAuthenticatedOutputLinkMetrics,
+    C6Nbr2ProvedLink,
+)> {
+    let (proof, bound, metrics) = prove_c6_authenticated_output_link_persisted_cuda_nbr2(
+        fixed,
+        cohorts,
+        pending,
+        nbr2,
+        streams,
+        backend,
+        spill_root,
+        session_digest,
+        transcript,
+    )?;
+    Ok((proof, bound, metrics, C6Nbr2ProvedLink { statement_digest: nbr2.digest() }))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn prove_c6_authenticated_output_link_persisted_cuda_inner(
     fixed: &C6FixedWrapperCommitments,
@@ -3097,6 +3190,20 @@ pub fn verify_c6_authenticated_output_link_reference_nbr2(
     )
 }
 
+pub fn verify_c6_authenticated_output_link_reference_nbr2_strict(
+    fixed: &C6FixedWrapperCommitments,
+    pending: C6PendingSlotRegistryVerifier,
+    proof: &C6AuthenticatedOutputLinkProof,
+    nbr2: &C6Nbr2CorrectionFunctional<'_>,
+    contexts: &mut [VerifierCtx; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
+    transcript: &mut Transcript,
+) -> Result<(C6BoundSlotRegistryVerifier, C6Nbr2VerifiedLink)> {
+    let bound = verify_c6_authenticated_output_link_reference_nbr2(
+        fixed, pending, proof, nbr2, contexts, transcript,
+    )?;
+    Ok((bound, C6Nbr2VerifiedLink { statement_digest: nbr2.digest() }))
+}
+
 /// Production verifier for a link proof whose packed PCS was created from
 /// the persisted/CUDA owners. Verification remains witness-free and uses the
 /// same strict proof grammar and transcript as the scaled reference path.
@@ -3136,6 +3243,20 @@ pub fn verify_c6_authenticated_output_link_production_nbr2(
         contexts,
         transcript,
     )
+}
+
+pub fn verify_c6_authenticated_output_link_production_nbr2_strict(
+    fixed: &C6FixedWrapperCommitments,
+    pending: C6PendingSlotRegistryVerifier,
+    proof: &C6AuthenticatedOutputLinkProof,
+    nbr2: &C6Nbr2CorrectionFunctional<'_>,
+    contexts: &mut [VerifierCtx; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
+    transcript: &mut Transcript,
+) -> Result<(C6BoundSlotRegistryVerifier, C6Nbr2VerifiedLink)> {
+    let bound = verify_c6_authenticated_output_link_production_nbr2(
+        fixed, pending, proof, nbr2, contexts, transcript,
+    )?;
+    Ok((bound, C6Nbr2VerifiedLink { statement_digest: nbr2.digest() }))
 }
 
 fn verify_c6_authenticated_output_link_inner(
@@ -5945,7 +6066,7 @@ mod tests {
 
         let (fixed, pending, mut contexts, mut transcript, _) = verifier_prefix(&fixture);
         let nbr2 = fixture.nbr2.as_ref().unwrap().statement(&fixed);
-        let bound = verify_c6_authenticated_output_link_reference_nbr2(
+        let (bound, receipt) = verify_c6_authenticated_output_link_reference_nbr2_strict(
             &fixed,
             pending,
             &fixture.proof,
@@ -5955,6 +6076,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(bound.len(), 2 * C6_WRAPPER_ACTIVE_SLOTS);
+        assert_eq!(receipt.statement_digest(), nbr2.digest());
         assert_eq!(transcript.total_bytes(), fixture.prover_total);
 
         let (fixed, pending, mut contexts, mut transcript, _) = verifier_prefix(&fixture);

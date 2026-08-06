@@ -212,6 +212,14 @@ pub struct C61JointNativeProverTerm {
     pub cohort_weight: Fp2,
 }
 
+/// Native bridge state after the public correction is fixed but before the
+/// joint ZeroOpen tag is emitted. Kept crate-private so only the strict C6PA2
+/// orchestration can pair it with a completed C6NBR2 link receipt.
+pub(crate) struct C61JointNativeProverBridgePending {
+    correction: Fp2,
+    residual: ProverAuthed,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct C61JointNativeVerifierTerm {
     pub mask_key: VerifierKey,
@@ -220,6 +228,11 @@ pub struct C61JointNativeVerifierTerm {
     pub gamma: Fp2,
     pub affine: C61AuthenticatedWhirAffineClaim,
     pub cohort_weight: Fp2,
+}
+
+pub(crate) struct C61JointNativeVerifierBridgePending {
+    residual: VerifierKey,
+    zero_open_tag: Fp2,
 }
 
 fn c61_joint_native_normalization(
@@ -247,6 +260,21 @@ pub fn finish_c61_joint_native_bridge(
     compiler_correction: Fp2,
     transcript: &mut Transcript,
 ) -> Result<C61JointNativeBridgeFrame> {
+    prepare_c61_joint_native_bridge_prover(
+        terms,
+        compiler_base_fold,
+        compiler_correction,
+        transcript,
+    )?
+    .finish(transcript)
+}
+
+pub(crate) fn prepare_c61_joint_native_bridge_prover(
+    terms: Vec<C61JointNativeProverTerm>,
+    compiler_base_fold: ProverAuthed,
+    compiler_correction: Fp2,
+    transcript: &mut Transcript,
+) -> Result<C61JointNativeProverBridgePending> {
     if terms.len() < 2 {
         return Err(C61AuthenticatedWhirError::new(
             "C6NBR1 joint bridge requires at least two native bodies",
@@ -266,16 +294,21 @@ pub fn finish_c61_joint_native_bridge(
         native_fold = native_fold.add(normalized);
     }
     transcript.append("c6_joint_native_corrections", 16);
-    let residual = native_fold
-        .sub(compiler_base_fold)
-        .sub(ProverAuthed::from_public(compiler_correction));
+    let residual =
+        native_fold.sub(compiler_base_fold).sub(ProverAuthed::from_public(compiler_correction));
     if residual.x != Fp2::ZERO {
         return Err(C61AuthenticatedWhirError::new("C6NBR1 corrected joint residual is nonzero"));
     }
-    Ok(C61JointNativeBridgeFrame {
-        correction: compiler_correction,
-        zero_open_tag: zero_open_prover(&residual, transcript),
-    })
+    Ok(C61JointNativeProverBridgePending { correction: compiler_correction, residual })
+}
+
+impl C61JointNativeProverBridgePending {
+    pub(crate) fn finish(self, transcript: &mut Transcript) -> Result<C61JointNativeBridgeFrame> {
+        Ok(C61JointNativeBridgeFrame {
+            correction: self.correction,
+            zero_open_tag: zero_open_prover(&self.residual, transcript),
+        })
+    }
 }
 
 pub fn verify_c61_joint_native_bridge(
@@ -286,6 +319,25 @@ pub fn verify_c61_joint_native_bridge(
     frame: C61JointNativeBridgeFrame,
     transcript: &mut Transcript,
 ) -> Result<()> {
+    prepare_c61_joint_native_bridge_verifier(
+        terms,
+        compiler_base_fold,
+        expected_compiler_correction,
+        delta,
+        frame,
+        transcript,
+    )?
+    .finish(transcript)
+}
+
+pub(crate) fn prepare_c61_joint_native_bridge_verifier(
+    terms: &[C61JointNativeVerifierTerm],
+    compiler_base_fold: VerifierKey,
+    expected_compiler_correction: Fp2,
+    delta: Fp2,
+    frame: C61JointNativeBridgeFrame,
+    transcript: &mut Transcript,
+) -> Result<C61JointNativeVerifierBridgePending> {
     if terms.len() < 2 {
         return Err(C61AuthenticatedWhirError::new(
             "C6NBR1 joint verifier requires at least two native bodies",
@@ -310,14 +362,19 @@ pub fn verify_c61_joint_native_bridge(
         native_fold = native_fold.add(normalized);
     }
     transcript.append("c6_joint_native_corrections", 16);
-    let residual = native_fold
-        .sub(compiler_base_fold)
-        .sub(VerifierKey::from_public(frame.correction, delta));
-    transcript.append("zero_open_tag", C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES as u64);
-    if !zero_open_verify(residual, frame.zero_open_tag) {
-        return Err(C61AuthenticatedWhirError::new("C6NBR1 joint native ZeroOpen failed"));
+    let residual =
+        native_fold.sub(compiler_base_fold).sub(VerifierKey::from_public(frame.correction, delta));
+    Ok(C61JointNativeVerifierBridgePending { residual, zero_open_tag: frame.zero_open_tag })
+}
+
+impl C61JointNativeVerifierBridgePending {
+    pub(crate) fn finish(self, transcript: &mut Transcript) -> Result<()> {
+        transcript.append("zero_open_tag", C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES as u64);
+        if !zero_open_verify(self.residual, self.zero_open_tag) {
+            return Err(C61AuthenticatedWhirError::new("C6NBR1 joint native ZeroOpen failed"));
+        }
+        Ok(())
     }
-    Ok(())
 }
 
 /// Provider output for the patched WHIR base case.  Only

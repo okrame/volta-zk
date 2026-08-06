@@ -48,11 +48,13 @@ use volta_proto::c6::{
 use crate::c61_authenticated_whir::{
     finish_c61_authenticated_whir_base, finish_c61_authenticated_whir_base_with_zero_rows,
     finish_c61_joint_native_bridge, prepare_c61_authenticated_whir_mask,
+    prepare_c61_joint_native_bridge_prover, prepare_c61_joint_native_bridge_verifier,
     simulate_c61_authenticated_whir_base_view, verify_c61_authenticated_whir_base,
     verify_c61_authenticated_whir_base_with_zero_rows_residual, verify_c61_joint_native_bridge,
     C61AuthenticatedWhirAffineClaim, C61AuthenticatedWhirBaseProof, C61AuthenticatedWhirMaskRange,
     C61AuthenticatedWhirProverFinishInput, C61AuthenticatedWhirVerifierInput,
-    C61JointNativeBridgeFrame, C61JointNativeProverTerm, C61JointNativeVerifierTerm,
+    C61JointNativeBridgeFrame, C61JointNativeProverBridgePending, C61JointNativeProverTerm,
+    C61JointNativeVerifierBridgePending, C61JointNativeVerifierTerm,
     C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES,
 };
 use crate::c61_interactive_driver::{
@@ -89,7 +91,7 @@ use crate::c61_whir_reference::{
     C61_WHIRA1_MASK_LOG_INV_RATE, C61_WHIRA1_MULTIPROOF_COUNT_BYTES,
     C61_WHIRA1_STARTING_LOG_INV_RATE,
 };
-use crate::C61_NATIVE_CHAIN_MAX_BYTES;
+use crate::{C6Nbr2ProvedLink, C6Nbr2VerifiedLink, C61_NATIVE_CHAIN_MAX_BYTES};
 
 pub const C61_AUTHENTICATED_P3_SECURITY_BITS: usize = 75;
 pub const C61_AUTHENTICATED_P3_REVISION: &str =
@@ -1190,6 +1192,18 @@ pub struct C61ProductionJointNativeProverBodiesFixed {
     transcript: Transcript,
 }
 
+/// C6PA2 prover state after the 16-byte correction is fixed and before the
+/// final joint ZeroOpen tail is created. Only a completed C6NBR2 link receipt
+/// can advance it.
+pub struct C61ProductionJointNativeProverLinkPending {
+    statements: Vec<C61TypedNativeChainPublicStatement>,
+    joint_tagless_payloads: Vec<Vec<u8>>,
+    challenge: C61JointNativeChallenge,
+    transcript: Transcript,
+    bridge: C61JointNativeProverBridgePending,
+    nbr2_statement_digest: [u8; 32],
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C61ProductionJointNativeProverExecution {
     pub proofs: Vec<C61ProductionJointCommittedChainProof>,
@@ -1202,6 +1216,12 @@ pub struct C61ProductionJointNativeProverExecution {
 impl C61ProductionJointNativeProverBodiesFixed {
     pub fn challenge(&self) -> &C61JointNativeChallenge {
         &self.challenge
+    }
+
+    /// Ordered post-body weights for compiling the exact generic functional
+    /// before the correction and link statement are fixed.
+    pub fn claim_weights(&self) -> Vec<&[Fp2]> {
+        self.bodies.iter().map(|body| body.claim_weights.as_slice()).collect()
     }
 
     pub fn finish(
@@ -1228,6 +1248,76 @@ impl C61ProductionJointNativeProverBodiesFixed {
             .joint_tagless_payloads
             .iter()
             .zip(&statements)
+            .enumerate()
+            .map(|(index, (tagless, public))| {
+                let (role, tail) = c61_joint_native_carrier_tail(frame, index);
+                C61ProductionJointCommittedChainProof::from_parts(tagless, &tail, public, role)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(C61ProductionJointNativeProverExecution {
+            proofs,
+            frame,
+            challenge: self.challenge,
+            transcript_bytes: self.transcript.total_bytes(),
+            transcript_ledger: self.transcript.ledger().clone(),
+        })
+    }
+
+    /// Pause the native tail after fixing its correction. The returned state
+    /// contains no serializable proof yet and cannot emit the joint tag until
+    /// the amended output link has completed.
+    pub fn prepare_nbr2_link(
+        mut self,
+        compiler_base_fold: ProverAuthed,
+        compiler_correction: Fp2,
+        nbr2_statement_digest: [u8; 32],
+    ) -> Result<C61ProductionJointNativeProverLinkPending, String> {
+        if nbr2_statement_digest == [0; 32] {
+            return Err("C6PA2 C6NBR2 statement digest is zero".to_owned());
+        }
+        let statements =
+            self.bodies.iter().map(|body| body.statement.public().clone()).collect::<Vec<_>>();
+        let terms = self
+            .bodies
+            .into_iter()
+            .zip(self.challenge.cohort_weights.iter().copied())
+            .map(|(body, weight)| body.into_joint_term(weight))
+            .collect::<Result<Vec<_>, _>>()?;
+        let bridge = prepare_c61_joint_native_bridge_prover(
+            terms,
+            compiler_base_fold,
+            compiler_correction,
+            &mut self.transcript,
+        )
+        .map_err(|error| error.to_string())?;
+        Ok(C61ProductionJointNativeProverLinkPending {
+            statements,
+            joint_tagless_payloads: self.joint_tagless_payloads,
+            challenge: self.challenge,
+            transcript: self.transcript,
+            bridge,
+            nbr2_statement_digest,
+        })
+    }
+}
+
+impl C61ProductionJointNativeProverLinkPending {
+    pub fn challenge(&self) -> &C61JointNativeChallenge {
+        &self.challenge
+    }
+
+    pub fn finish_after_nbr2_link(
+        mut self,
+        receipt: C6Nbr2ProvedLink,
+    ) -> Result<C61ProductionJointNativeProverExecution, String> {
+        if receipt.statement_digest() != self.nbr2_statement_digest {
+            return Err("C6PA2 prover received a different C6NBR2 link receipt".to_owned());
+        }
+        let frame = self.bridge.finish(&mut self.transcript).map_err(|error| error.to_string())?;
+        let proofs = self
+            .joint_tagless_payloads
+            .iter()
+            .zip(&self.statements)
             .enumerate()
             .map(|(index, (tagless, public))| {
                 let (role, tail) = c61_joint_native_carrier_tail(frame, index);
@@ -1288,6 +1378,16 @@ pub struct C61ProductionJointNativeVerifierBodiesFixed {
     transcript: Transcript,
 }
 
+/// Verifier state after independent compiler/correction reconstruction. The
+/// stored tag is decoded but deliberately unchecked until C6LNK2 accepts.
+pub struct C61ProductionJointNativeVerifierLinkPending {
+    cohort_count: usize,
+    challenge: C61JointNativeChallenge,
+    transcript: Transcript,
+    bridge: C61JointNativeVerifierBridgePending,
+    nbr2_statement_digest: [u8; 32],
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C61ProductionJointNativeVerification {
     pub cohort_count: usize,
@@ -1306,6 +1406,13 @@ impl C61ProductionJointNativeVerifierBodiesFixed {
     /// compile the joint functional against a partial native schedule.
     pub fn claim_weights(&self) -> Vec<&[Fp2]> {
         self.bodies.iter().map(|body| body.claim_weights.as_slice()).collect()
+    }
+
+    /// Provider-carried correction parsed from the first two reassigned
+    /// tails. It is only a pending public claim here; C6NBR2 must authenticate
+    /// it before [`Self::prepare_nbr2_link`] can be finalized.
+    pub fn pending_correction(&self) -> Fp2 {
+        self.frame.correction()
     }
 
     pub fn finish(
@@ -1331,6 +1438,62 @@ impl C61ProductionJointNativeVerifierBodiesFixed {
         .map_err(|error| error.to_string())?;
         Ok(C61ProductionJointNativeVerification {
             cohort_count: terms.len(),
+            challenge: self.challenge,
+            transcript_bytes: self.transcript.total_bytes(),
+            transcript_ledger: self.transcript.ledger().clone(),
+        })
+    }
+
+    pub fn prepare_nbr2_link(
+        mut self,
+        compiler_base_key: VerifierKey,
+        expected_compiler_correction: Fp2,
+        nbr2_statement_digest: [u8; 32],
+        context: &mut VerifierCtx,
+    ) -> Result<C61ProductionJointNativeVerifierLinkPending, String> {
+        if nbr2_statement_digest == [0; 32] {
+            return Err("C6PA2 C6NBR2 statement digest is zero".to_owned());
+        }
+        let terms = self
+            .bodies
+            .into_iter()
+            .zip(self.challenge.cohort_weights.iter().copied())
+            .map(|(body, weight)| body.into_joint_term(weight, context))
+            .collect::<Result<Vec<_>, _>>()?;
+        let bridge = prepare_c61_joint_native_bridge_verifier(
+            &terms,
+            compiler_base_key,
+            expected_compiler_correction,
+            context.delta,
+            self.frame,
+            &mut self.transcript,
+        )
+        .map_err(|error| error.to_string())?;
+        Ok(C61ProductionJointNativeVerifierLinkPending {
+            cohort_count: terms.len(),
+            challenge: self.challenge,
+            transcript: self.transcript,
+            bridge,
+            nbr2_statement_digest,
+        })
+    }
+}
+
+impl C61ProductionJointNativeVerifierLinkPending {
+    pub fn challenge(&self) -> &C61JointNativeChallenge {
+        &self.challenge
+    }
+
+    pub fn finish_after_nbr2_link(
+        mut self,
+        receipt: C6Nbr2VerifiedLink,
+    ) -> Result<C61ProductionJointNativeVerification, String> {
+        if receipt.statement_digest() != self.nbr2_statement_digest {
+            return Err("C6PA2 verifier received a different C6NBR2 link receipt".to_owned());
+        }
+        self.bridge.finish(&mut self.transcript).map_err(|error| error.to_string())?;
+        Ok(C61ProductionJointNativeVerification {
+            cohort_count: self.cohort_count,
             challenge: self.challenge,
             transcript_bytes: self.transcript.total_bytes(),
             transcript_ledger: self.transcript.ledger().clone(),
@@ -7813,8 +7976,21 @@ mod tests {
             [0; 32],
         )
         .is_err());
-        let verified =
-            fixed.finish(compiler_base_key, compiler_correction, &mut verifier_context).unwrap();
+        let nbr2_statement_digest = [0xE1; 32];
+        assert_eq!(fixed.pending_correction(), compiler_correction);
+        let pending = fixed
+            .prepare_nbr2_link(
+                compiler_base_key,
+                compiler_correction,
+                nbr2_statement_digest,
+                &mut verifier_context,
+            )
+            .unwrap();
+        assert_eq!(pending.transcript.ledger().get("c6_joint_native_corrections"), Some(&16));
+        assert_eq!(pending.transcript.ledger().get("zero_open_tag"), None);
+        let verified = pending
+            .finish_after_nbr2_link(C6Nbr2VerifiedLink::for_test(nbr2_statement_digest))
+            .unwrap();
         assert_eq!(verified.cohort_count, 2);
         assert_eq!(verified.challenge, challenge);
         assert_eq!(verified.transcript_bytes, 32);

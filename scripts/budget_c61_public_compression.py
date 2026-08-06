@@ -747,7 +747,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v25-nbr2-verifier-gate",
+        "profile": "C6.1-public-compression-reference-v26-nbr2-local-closure",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
@@ -765,9 +765,11 @@ def build_report() -> dict[str, Any]:
             "EXACT_SPARSE_RELATION_TO_PHYSICAL_SHARED_WHIR_GREEN__"
             "PRODUCTION_D28_D27_MONOLITHIC_MEMORY_CENSUSED__"
             "PRODUCTION_NATIVE_AND_COMPACT_WIRE_BOUNDARIES_GREEN__"
-            "EXACT_T1_OWNER_EXPORT_REQUIRED__"
-            "C6NBR2_JOINT_CORRECTION_INNER_PRODUCT_DESIGN_SCREEN_GREEN__"
+            "EXACT_RESPONSE_OWNERS_GREEN__"
+            "C6NBR2_JOINT_CORRECTION_INNER_PRODUCT_IMPLEMENTED__"
             "C6NBR2_VERIFIER_MARGINAL_GATE_GREEN__"
+            "C6NBR2_LEAN_AND_STRICT_C6PA2_TYPESTATE_GREEN__"
+            "C6NBR2_CUDA_RUNTIME_DIFFERENTIAL_REQUIRED__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
@@ -832,7 +834,7 @@ def build_report() -> dict[str, Any]:
             "credit": False,
         },
         "selected_native_candidate": {
-            "name": "C6PA1-native-HVZK-plus-C6RSC4-v5",
+            "name": "C6PA2-native-HVZK-plus-C6RSC4-v5-C6NBR2",
             "status": (
                 "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
                 "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
@@ -849,9 +851,25 @@ def build_report() -> dict[str, Any]:
                 "SHARED_ROUND_CLAIMLESS_BACKEND_GREEN__"
                 "EXACT_SPARSE_RELATION_TO_PHYSICAL_SHARED_WHIR_GREEN__"
                 "PRODUCTION_D28_D27_MONOLITHIC_MEMORY_CENSUSED__"
-                "PRODUCTION_NATIVE_COMPONENTS_AND_WIRE_VERIFIER_REQUIRED__"
+                "PRODUCTION_NATIVE_AND_COMPACT_WIRE_BOUNDARIES_GREEN__"
+                "C6NBR2_FUSED_LINK_LEAN_STRICT_C6PA2_LOCAL_GREEN__"
+                "CUDA_RUNTIME_AND_FULL_CHAIN_REQUIRED__"
                 "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
+            "c6nbr2_local_closure": {
+                "typed_statement": True,
+                "scaled_reference_relation": True,
+                "persisted_cuda_seam_compiles": True,
+                "cuda_runtime_differential": False,
+                "wire_growth_bytes": 0,
+                "new_commitment_roots": 0,
+                "new_openings": 0,
+                "new_correlations": 0,
+                "lean_kernel_checked": True,
+                "strict_c6pa2_link_receipt_typestate": True,
+                "full_chain_credit": False,
+                "hardware_credit": False,
+            },
             "statement": (
                 "one response conditioned on an already accepted predecessor head"
             ),

@@ -3678,6 +3678,51 @@ not a full verifier measurement.
 existing C6LNK2 repetitions with unchanged round corrections, wrapper PCS
 claims and wire length. Pod/A100 remains forbidden.
 
+### 0.53 C6NBR2 fused relation, Lean and strict C6PA2 checkpoint
+
+The exact §0.51.2 relation is implemented without a dedicated oracle. In each
+repetition the old residual slot-6 equality term is replaced by
+
+```text
+Dbar(x,z) * (rho * eq(target_x,x) + beta^73 * Atilde(x)) * (1-y) * (1-z).
+```
+
+The complete committed D24 owner is load-bearing: discarding its independent
+upper ZK half after the Boolean initial sum would produce the wrong terminal
+at non-Boolean `z`. Production therefore converts that already allocated owner
+from monomial coefficients to Boolean evaluations in place. One D23 public
+weight owner is filled by a CUDA affine-equality kernel from the unpadded
+compiler prefix, folded create-new one repetition at a time, and released.
+No full D23 weight table is created on host. The existing packed PCS opening,
+25 round corrections, four terminal tags, codec bytes and correlation census
+are unchanged.
+
+`C6NBR2CorrectionFunctional.lean` proves the selector and registered zero-
+padding identities, individual degree at most two, the common-point slot-6
+weight identity, the actual `73 + 3*25 + 2 = 150` root census and
+`150^2 = 22,500 < 2^16`. `C6NBR1JointBridgeSound` keeps native, compiler,
+link and joint-ZeroOpen failure events explicit. `lake build` and the axiom
+audit are green with no premise beyond the repository's existing standard
+logical/PCS/backend contracts.
+
+Strict C6PA2 now splits native closure into correction-fixed and tag-pending
+states. The provider cannot emit, and the verifier cannot accept, the joint
+ZeroOpen tail without a local receipt produced by the matching C6NBR2 link.
+The receipt is typestate only and contributes zero wire bytes. Focused tests
+are C6LNK2 **12/0/0**, native bridge **9/0/0**, and feature-complete strict
+joint role **1/0/0**. The combined CUDA/native/trace feature set compiles.
+The CUDA differential is compiled but was not executed on this non-GPU VM, so
+it earns no runtime, timing, memory or hardware credit.
+
+Budget profile `C6.1-public-compression-reference-v26-nbr2-local-closure`
+re-sums the unchanged **17,536,735-B** certificate, **148,738,118-B** setup,
+**166,274,853-B** setup plus first certificate, **2,277,715,552-B** state,
+**102.5878332989-bit** per-certificate soundness and
+**14.9179595454 / 4.978261758-s** provider/verifier screens. All remain
+`credit:false`. The next gate is `C6NBR2_EXACT_RUNNER_LOCAL_ASSEMBLY_REQUIRED`:
+assemble the same-attempt exact C6PA2/C6NBR2 flow and complete the full local
+workspace gates. Pod/A100 remains forbidden until a later owner GO.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — C6NBR2 VERIFIER GATE GREEN / FUSED LINK NEXT / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — C6NBR2 LOCAL RELATION/LEAN/C6PA2 GREEN / EXACT RUNNER NEXT / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,30 +8,46 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §0.52 next.
+This capsule is authoritative; read design §0.53 next.
 
-- **Milestone.** C6.1/C6NBR2 local authenticated correction inner product.
-  The exact tape-1 correction is committed as paired-residual slot 6; no
-  dedicated correction oracle is required.
-- **Evidence versus credit.** Source/commitment ownership and the joint
-  73-claim/25-round relation are traced. After one recorded miss, the bounded
-  four-thread ARM evaluator is green at **11.701783-ms median / 12.589368-ms
-  p95 / 13.751330-ms max**, with the same result digest. Prefix differential
-  tests are **2/0/0**. No protocol, Lean, full-chain or hardware credit exists.
+- **Milestone.** C6.1/C6NBR2 local closure and exact-runner preparation. The
+  tape-1 correction reuses committed paired-residual slot 6; no correction
+  oracle, root, opening, correlation or wire field is added.
+- **Evidence versus credit.** The 73-claim/25-round relation is green on the
+  scaled path and implemented in persisted/CUDA form. Lean proves selector,
+  padding, degree-two, terminal-weight, 150-root and joint-bridge statements.
+  Strict C6PA2 pauses the native tag until a matching link receipt. Focused
+  checks are link **12/0/0**, native bridge **9/0/0**, strict joint role
+  **1/0/0**. CUDA compiles but its runtime differential is unexecuted; no
+  full-chain, timing, memory or hardware credit exists.
 - **Screens.** Certificate **17,536,735 B**, setup **148,738,118 B**,
   setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
   **102.5878332989 bits/cert**. Added wire/commitment-root/opening/correlation
   is zero. Provider/verifier screens are **14.9179595454 / 4.978261758 s**,
   leaving **0.0820404546 / 0.021738242 s**, all `credit:false`.
-- **Authorization and hard stop.** The owner authorizes local C6NBR2
-  implementation with small checkpoints. Pod/A100 remains unauthorized. The
-  verifier gate is closed; pod/A100 remains unauthorized. Active gate:
-  `C6NBR2_FUSED_LINK_RELATION_REQUIRED`.
-- **Resume conditions.** Fuse the public correction claim and degree-two term
-  into both C6LNK2 repetitions without codec growth; preserve the measured
-  evaluator, then additive Lean, strict C6PA2 and full local validation.
-  Provider keys/corrections, clear targets, linear wire and a second PCS
-  opening remain forbidden.
+- **Authorization and hard stop.** Local implementation with small checkpoints
+  remains authorized; pod/A100 remains unauthorized. Active gate:
+  `C6NBR2_EXACT_RUNNER_LOCAL_ASSEMBLY_REQUIRED`.
+- **Resume conditions.** Assemble the same-attempt exact C6PA2/C6NBR2 runner,
+  rerun the v26 re-sum and complete all local workspace gates. Then stop for
+  owner authorization before any A100 runtime/full-chain run. Provider keys,
+  clear targets, linear wire and a second PCS opening remain forbidden.
+
+- **2026-08-06 — C6NBR2 relation, Lean and strict C6PA2 close locally.** The
+  exact correction replaces residual slot 6's equality term in both C6LNK2
+  repetitions at ordinal `beta^73`; proof bytes, openings and correlations are
+  unchanged. Production uses one D23 resident public-weight owner and converts
+  the already committed D24 residual owner to Boolean evaluations in place;
+  no full table is materialized on host. Additive Lean kernel-checks the
+  selector/padding identity, individual degree two, terminal slot weight,
+  `73 + 3*25 + 2 = 150`, `150^2 = 22,500 < 2^16`, and joint bridge. C6PA2 now
+  consumes an unforgeable matching link receipt before checking the native
+  ZeroOpen tag. v26 preserves **17,536,735-B** certificate,
+  **148,738,118-B** setup, **166,274,853-B** first exchange,
+  **2,277,715,552-B** state, **102.5878332989-bit** soundness and
+  **14.9179595454 / 4.978261758-s** provider/verifier screens, all
+  `credit:false`. CUDA feature compilation is green; runtime is pending and no
+  pod was contacted.
 
 - **2026-08-06 — C6NBR2 batching exponent aligned with deployed C6LNK2.**
   Code inspection establishes that the frozen 72-slot link weights canonical

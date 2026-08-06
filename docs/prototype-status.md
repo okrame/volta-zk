@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — C6NBR2 LOCAL IMPLEMENTATION AUTHORIZED / VERIFIER MARGINAL GATE / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — C6NBR2 VERIFIER GATE GREEN / FUSED LINK NEXT / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,33 +8,40 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §0.51 next.
+This capsule is authoritative; read design §0.52 next.
 
-- **Milestone.** C6.1/C6NBR2 authenticated correction inner-product study.
-  The exact tape-1 correction is already committed as paired-residual slot 6;
-  no dedicated correction oracle is required.
+- **Milestone.** C6.1/C6NBR2 local authenticated correction inner product.
+  The exact tape-1 correction is committed as paired-residual slot 6; no
+  dedicated correction oracle is required.
 - **Evidence versus credit.** Source/commitment ownership and the joint
-  73-claim/25-round relation are mechanically traced. The v24 executable
-  design screen passes. The first exact four-thread ARM evaluator run is
-  **14.868583-ms median / 46.509755-ms p95**, so the marginal gate misses.
-  Last protocol records remain C6LNK2 **10/0/0**, owner **5/0/0**, compiler
-  **14/0/0**, PCS **219/0/1**, proto **154/0/1**. No protocol, Lean,
-  full-chain, timing, memory or hardware credit was added.
+  73-claim/25-round relation are traced. After one recorded miss, the bounded
+  four-thread ARM evaluator is green at **11.701783-ms median / 12.589368-ms
+  p95 / 13.751330-ms max**, with the same result digest. Prefix differential
+  tests are **2/0/0**. No protocol, Lean, full-chain or hardware credit exists.
 - **Screens.** Certificate **17,536,735 B**, setup **148,738,118 B**,
   setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
   **102.5878332989 bits/cert**. Added wire/commitment-root/opening/correlation
-  is zero.
-  Provider roof is **14.9179595454 s** (`credit:false`). The old verifier roof
-  **4.965672390 s** leaves an unmeasured **0.034327610 s** marginal gate.
+  is zero. Provider/verifier screens are **14.9179595454 / 4.978261758 s**,
+  leaving **0.0820404546 / 0.021738242 s**, all `credit:false`.
 - **Authorization and hard stop.** The owner authorizes local C6NBR2
   implementation with small checkpoints. Pod/A100 remains unauthorized. The
-  first terminal gate is `C6NBR2_VERIFIER_MARGINAL_GATE`.
-- **Resume conditions.** Before changing C6LNK2, implement and measure the
-  exact four-thread two-point coefficient evaluator below **34.327610-ms
-  p95**. Bounded evaluator-only scheduling/allocation tuning is allowed; no
-  protocol edit is. Then proceed through fused relation, additive Lean,
-  strict C6PA2 and full local validation. Provider keys/corrections, clear
-  targets, linear wire and a second PCS opening remain forbidden.
+  verifier gate is closed; pod/A100 remains unauthorized. Active gate:
+  `C6NBR2_FUSED_LINK_RELATION_REQUIRED`.
+- **Resume conditions.** Fuse the public correction claim and degree-two term
+  into both C6LNK2 repetitions without codec growth; preserve the measured
+  evaluator, then additive Lean, strict C6PA2 and full local validation.
+  Provider keys/corrections, clear targets, linear wire and a second PCS
+  opening remain forbidden.
+
+- **2026-08-06 — Bounded C6NBR2 evaluator closes the verifier marginal
+  gate.** Clean `751296c`, exact `4,975,525`-coefficient prefix, two D23
+  points, four ARM threads and 21 samples give **11.701783-ms median**,
+  **12.589368-ms p95** and **13.751330-ms max**, below **34.327610 ms**. The
+  redesign precomputes point weights and uses 16 stable partitions; the
+  result digest is identical to the failed run. v25 projects the complete
+  verifier at **4.978261758 s**, leaving **21.738242 ms**, with no full-chain
+  credit. C6LNK2 fusion is now authorized locally; no pod contacted. Record:
+  `benchmarks/results/c6nbr2-verifier-2026-08-06-751296c.json`.
 
 - **2026-08-06 — First C6NBR2 verifier run misses p95 on the local ARM VM.**
   Clean `5cc7970`, four Rayon threads, exact `4,975,525`-coefficient prefix,

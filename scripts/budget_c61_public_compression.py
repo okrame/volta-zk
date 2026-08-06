@@ -94,6 +94,7 @@ C61_NBR2_TWO_REPETITION_TRAFFIC_BYTES = (
 C61_NBR2_TWO_REPETITION_FP2_MULS = (
     2 * 4 * C61_NBR2_COEFFICIENT_ELEMENTS
 )
+C61_NBR2_FOUR_THREAD_VERIFIER_P95_SECONDS = Decimal("0.012589368")
 
 # Exact existing setup components.
 C6_PAIRED_PCG_BYTES = 2 * 38_371_465
@@ -721,13 +722,17 @@ def build_report() -> dict[str, Any]:
             nbr2_arithmetic_seconds,
         ) * C61_NATIVE_INTEGRATION_FACTOR
         native_provider_roof_seconds += nbr2_provider_roof_seconds
-        native_verifier_roof_seconds = (
+        native_verifier_base_roof_seconds = (
             T1_FOUR_THREAD_VERIFIER_ACCOUNTED_SECONDS
             + Decimal(2 * C61_NATIVE_CHAINS_PER_COMPONENT)
             * C61_VERIFIER_PER_NATIVE_CHAIN_SECONDS
             + Decimal(C61_NATIVE_CHAINS_PER_COMPONENT)
             * C61_VERIFIER_PER_COMPILER_CHAIN_SECONDS
             + C61_VERIFIER_PUBLIC_ARITHMETIC_SECONDS
+        )
+        native_verifier_roof_seconds = (
+            native_verifier_base_roof_seconds
+            + C61_NBR2_FOUR_THREAD_VERIFIER_P95_SECONDS
         )
 
     compiler_families = {
@@ -742,7 +747,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v24-nbr2-design",
+        "profile": "C6.1-public-compression-reference-v25-nbr2-verifier-gate",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
@@ -762,7 +767,7 @@ def build_report() -> dict[str, Any]:
             "PRODUCTION_NATIVE_AND_COMPACT_WIRE_BOUNDARIES_GREEN__"
             "EXACT_T1_OWNER_EXPORT_REQUIRED__"
             "C6NBR2_JOINT_CORRECTION_INNER_PRODUCT_DESIGN_SCREEN_GREEN__"
-            "C6NBR2_VERIFIER_MARGINAL_MEASUREMENT_REQUIRED__"
+            "C6NBR2_VERIFIER_MARGINAL_GATE_GREEN__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
@@ -1391,18 +1396,21 @@ def build_report() -> dict[str, Any]:
                 "public_arithmetic_seconds": str(
                     C61_VERIFIER_PUBLIC_ARITHMETIC_SECONDS
                 ),
-                "base_projected_total_seconds": str(native_verifier_roof_seconds),
+                "base_projected_total_seconds": str(native_verifier_base_roof_seconds),
                 "projected_total_seconds": str(native_verifier_roof_seconds),
                 "strict_gate_seconds": str(C61_VERIFIER_EXCLUSIVE_SECONDS),
-                "maximum_c6nbr2_marginal_seconds": str(
+                "headroom_seconds": str(
                     C61_VERIFIER_EXCLUSIVE_SECONDS - native_verifier_roof_seconds
                 ),
                 "c6nbr2_local_coefficient_evaluations": 2,
                 "c6nbr2_source_prefix_bytes_per_evaluation": (
                     C61_NBR2_SOURCE_PREFIX_BYTES
                 ),
-                "screen_pass": False,
-                "status": "FOUR_THREAD_STREAMING_EVALUATION_MEASUREMENT_REQUIRED",
+                "c6nbr2_measured_p95_seconds": str(
+                    C61_NBR2_FOUR_THREAD_VERIFIER_P95_SECONDS
+                ),
+                "screen_pass": native_verifier_roof_seconds < C61_VERIFIER_EXCLUSIVE_SECONDS,
+                "status": "FOUR_THREAD_STREAMING_EVALUATION_P95_GATE_GREEN",
                 "credit": False,
             },
             "verifier_memory_screen": {
@@ -2025,7 +2033,9 @@ def build_report() -> dict[str, Any]:
     )
     assert native_compiler_pcs_transform_bytes == 21_474_836_480
     assert Decimal("14.91") < native_provider_roof_seconds < Decimal("14.92")
-    assert native_verifier_roof_seconds == Decimal("4.965672390")
+    assert native_verifier_base_roof_seconds == Decimal("4.965672390")
+    assert native_verifier_roof_seconds == Decimal("4.978261758")
+    assert C61_VERIFIER_EXCLUSIVE_SECONDS - native_verifier_roof_seconds == Decimal("0.021738242")
     assert C61_VERIFIER_ADDITIONAL_MEMORY_ALLOCATION_BYTES == 512_000_000
     assert native_projected_certificate_bytes < C61_CERTIFICATE_EXCLUSIVE_BYTES
     assert projected_setup_bytes < C61_SETUP_EXCLUSIVE_BYTES

@@ -3653,6 +3653,26 @@ target. If it misses, stop and redesign rather than spend the `<5 s` gate.
 Strict C6PA2, the additive Lean files and full local gates follow only after
 that measurement. Pod/A100 work remains forbidden.
 
+### 0.52 C6NBR2 verifier marginal implementation checkpoint
+
+The exact evaluator now precomputes both points' equality weights and scans
+the unpadded `4,975,525`-coefficient prefix once. Sixteen fixed Rayon
+partitions replace the first implementation's approximately 1,200 tasks; no
+padding table or second coefficient copy is allocated. Scaled differentials
+against two independent zero-padded folds pass, including malformed geometry.
+
+The clean four-thread AArch64 run at `751296c` records **11.701783-ms median,
+12.589368-ms p95 and 13.751330-ms maximum** over 21 samples. The stable result
+digest matches the earlier noisy run. v25 charges the p95 to the old
+4.965672390-s verifier screen, producing **4.978261758 s < 5 s** with
+**21.738242 ms** remaining. This is component evidence with `credit:false`,
+not a full verifier measurement.
+
+`C6NBR2_VERIFIER_MARGINAL_GATE` is closed. The next hard stop is
+`C6NBR2_FUSED_LINK_RELATION_REQUIRED`: implement the §0.51.2 term inside both
+existing C6LNK2 repetitions with unchanged round corrections, wrapper PCS
+claims and wire length. Pod/A100 remains forbidden.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

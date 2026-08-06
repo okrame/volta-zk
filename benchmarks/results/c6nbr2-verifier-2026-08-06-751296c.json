@@ -1,0 +1,47 @@
+{
+  "profile": "C6NBR2-verifier-two-point-v1",
+  "git_sha": "751296cfc976925f919854a50c7a6d18634af60e",
+  "git_dirty": false,
+  "credit": false,
+  "source_count": 4975525,
+  "padded_dimension": 23,
+  "padded_elements": 8388608,
+  "coefficient_bytes_read_per_evaluation": 79608400,
+  "points": 2,
+  "machine": {
+    "architecture": "aarch64",
+    "available_parallelism": 4,
+    "rayon_threads": 4
+  },
+  "timing": {
+    "samples_seconds": [
+      0.012465077,
+      0.011589532,
+      0.011971783,
+      0.011597032,
+      0.01202295,
+      0.011617241,
+      0.011805158,
+      0.011622324,
+      0.011599366,
+      0.012589368,
+      0.011620532,
+      0.011614241,
+      0.011775033,
+      0.011701783,
+      0.011711241,
+      0.011804408,
+      0.011587616,
+      0.011583324,
+      0.01375133,
+      0.011563866,
+      0.011839533
+    ],
+    "median_seconds": 0.011701783,
+    "p95_seconds": 0.012589368,
+    "maximum_seconds": 0.01375133,
+    "gate_seconds": 0.03432761,
+    "p95_pass": true
+  },
+  "result_digest": "ff0da9b4e20b2ae93e4e7f28fd1721bd397e5ecf62d360c0575fecf0635d9a34"
+}

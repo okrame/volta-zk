@@ -1087,4 +1087,48 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn exact_nbr2_runner_keeps_receipt_and_outer_binding_in_order() {
+        let source = include_str!("c6_blind_round_coordinator.rs");
+        let prover = source
+            .split("pub fn finish_c6_production_blind_with_persisted_nbr2_link(")
+            .nth(1)
+            .unwrap()
+            .split("fn finish_c6_production_blind_with_persisted_link_inner(")
+            .next()
+            .unwrap();
+        assert!(
+            prover.find("finish_c6_production_blind_with_persisted_link_inner(").unwrap()
+                < prover.find("native.finish_after_nbr2_link(receipt)").unwrap()
+        );
+        let assembly = source
+            .split("pub fn assemble_c6_exact_production_nbr2_certificate(")
+            .nth(1)
+            .unwrap()
+            .split("fn finish_c6_production_blind_with_persisted_link_inner(")
+            .next()
+            .unwrap();
+        assert!(assembly.contains("assemble_c61_production_joint_public_argument_from_executions"));
+        assert!(assembly.contains("!= outer_statement_digest"));
+        let verifier = source
+            .split("pub fn verify_c6_exact_production_nbr2_certificate(")
+            .nth(1)
+            .unwrap()
+            .split("fn verify_c6_exact_production_blind_pending(")
+            .next()
+            .unwrap();
+        assert!(
+            verifier
+                .find("statement_digest()\n        != nbr2.outer_statement_digest()")
+                .unwrap()
+                < verifier.find("verify_c6_exact_production_blind_pending(").unwrap()
+        );
+        assert!(
+            verifier
+                .find("verify_c6_authenticated_output_link_production_nbr2_strict(")
+                .unwrap()
+                < verifier.find("native.finish_after_nbr2_link(receipt)").unwrap()
+        );
+    }
 }

@@ -1843,6 +1843,24 @@ pub struct C61ProductionCommittedFourChainExecution {
     pub peak_loaded_coefficient_bytes: u64,
 }
 
+struct C61ProductionCommittedFourChainBodies {
+    bodies: [C61ProductionCommittedChainProverBody; 4],
+    model_coefficient_digest: [u8; 32],
+    embedding_coefficient_digest: [u8; 32],
+    peak_loaded_coefficient_bytes: u64,
+}
+
+/// Exact C6PA2 split of the four production model/embed chains. The primary
+/// chains are complete C6AWP1 proofs; both secondary bodies remain linear and
+/// are jointly challenge-bound before either reassigned tail can be emitted.
+pub struct C61ProductionJointCommittedFourChainPrepared {
+    pub primary: [C61ProductionCommittedChainExecution; 2],
+    pub joint: C61ProductionJointNativeProverBodiesFixed,
+    pub model_coefficient_digest: [u8; 32],
+    pub embedding_coefficient_digest: [u8; 32],
+    pub peak_loaded_coefficient_bytes: u64,
+}
+
 const C61_COEFFICIENT_OWNER_MAGIC: [u8; 8] = *b"C6PCO1\0\0";
 const C61_COEFFICIENT_OWNER_VERSION: u32 = 1;
 const C61_COEFFICIENT_OWNER_MANIFEST_BYTES: usize = 128;
@@ -2210,7 +2228,7 @@ pub fn create_c61_production_coefficient_owner(
 /// digest guarantees both repetitions use the same exact polynomial.
 #[allow(clippy::too_many_arguments)]
 pub fn prove_c61_authenticated_whir_p3_production_four_committed_chains_in_attempt(
-    mut load_coefficients: impl FnMut(C61NativeComponent, u8) -> Result<Vec<Goldilocks>, String>,
+    load_coefficients: impl FnMut(C61NativeComponent, u8) -> Result<Vec<Goldilocks>, String>,
     expected_model_coefficient_digest: [u8; 32],
     expected_embedding_coefficient_digest: [u8; 32],
     model_claims: [&[crate::batch::BlockClaim]; 2],
@@ -2224,6 +2242,105 @@ pub fn prove_c61_authenticated_whir_p3_production_four_committed_chains_in_attem
     verifier_seeds: [[u8; 32]; 4],
     mask_ranges: [C61AuthenticatedWhirMaskRange; 4],
 ) -> Result<C61ProductionCommittedFourChainExecution, String> {
+    let prepared = prepare_c61_authenticated_whir_p3_production_four_committed_chain_bodies(
+        load_coefficients,
+        expected_model_coefficient_digest,
+        expected_embedding_coefficient_digest,
+        model_claims,
+        embedding_claims,
+        model_targets,
+        embedding_targets,
+        spill_root,
+        admission,
+        backend,
+        correlations,
+        verifier_seeds,
+        mask_ranges,
+    )?;
+    let chains = prepared
+        .bodies
+        .into_iter()
+        .map(C61ProductionCommittedChainProverBody::finish_ordinary)
+        .collect::<Result<Vec<_>, _>>()?
+        .try_into()
+        .map_err(|_| "C6SPR11 four-chain execution census mismatch".to_owned())?;
+    Ok(C61ProductionCommittedFourChainExecution {
+        chains,
+        model_coefficient_digest: prepared.model_coefficient_digest,
+        embedding_coefficient_digest: prepared.embedding_coefficient_digest,
+        peak_loaded_coefficient_bytes: prepared.peak_loaded_coefficient_bytes,
+    })
+}
+
+/// Prepare the exact C6PA2 split without replaying a coefficient owner or
+/// native claim. Primary repetitions close as C6AWP1; secondary repetitions
+/// enter the generic post-body challenge schedule and remain linear until the
+/// later C6NBR2 receipt.
+#[allow(clippy::too_many_arguments)]
+pub fn prepare_c61_authenticated_whir_p3_production_joint_four_chains_in_attempt(
+    load_coefficients: impl FnMut(C61NativeComponent, u8) -> Result<Vec<Goldilocks>, String>,
+    expected_model_coefficient_digest: [u8; 32],
+    expected_embedding_coefficient_digest: [u8; 32],
+    model_claims: [&[crate::batch::BlockClaim]; 2],
+    embedding_claims: [&[crate::batch::BlockClaim]; 2],
+    model_targets: [Vec<ProverAuthed>; 2],
+    embedding_targets: [Vec<ProverAuthed>; 2],
+    profile: &C6CanonicalTargetProfile,
+    joint_transcript: Transcript,
+    spill_root: &Path,
+    admission: C61ProductionPersistedResourceAdmission,
+    backend: &mut Backend,
+    correlations: &mut [CorrelationStream; 2],
+    verifier_seeds: [[u8; 32]; 4],
+    mask_ranges: [C61AuthenticatedWhirMaskRange; 4],
+) -> Result<C61ProductionJointCommittedFourChainPrepared, String> {
+    let prepared = prepare_c61_authenticated_whir_p3_production_four_committed_chain_bodies(
+        load_coefficients,
+        expected_model_coefficient_digest,
+        expected_embedding_coefficient_digest,
+        model_claims,
+        embedding_claims,
+        model_targets,
+        embedding_targets,
+        spill_root,
+        admission,
+        backend,
+        correlations,
+        verifier_seeds,
+        mask_ranges,
+    )?;
+    let [model_primary, model_secondary, embedding_primary, embedding_secondary] = prepared.bodies;
+    let primary = [model_primary.finish_ordinary()?, embedding_primary.finish_ordinary()?];
+    let joint = prepare_c61_production_joint_native_prover_bodies(
+        profile,
+        vec![model_secondary, embedding_secondary],
+        joint_transcript,
+    )?;
+    Ok(C61ProductionJointCommittedFourChainPrepared {
+        primary,
+        joint,
+        model_coefficient_digest: prepared.model_coefficient_digest,
+        embedding_coefficient_digest: prepared.embedding_coefficient_digest,
+        peak_loaded_coefficient_bytes: prepared.peak_loaded_coefficient_bytes,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prepare_c61_authenticated_whir_p3_production_four_committed_chain_bodies(
+    mut load_coefficients: impl FnMut(C61NativeComponent, u8) -> Result<Vec<Goldilocks>, String>,
+    expected_model_coefficient_digest: [u8; 32],
+    expected_embedding_coefficient_digest: [u8; 32],
+    model_claims: [&[crate::batch::BlockClaim]; 2],
+    embedding_claims: [&[crate::batch::BlockClaim]; 2],
+    model_targets: [Vec<ProverAuthed>; 2],
+    embedding_targets: [Vec<ProverAuthed>; 2],
+    spill_root: &Path,
+    admission: C61ProductionPersistedResourceAdmission,
+    backend: &mut Backend,
+    correlations: &mut [CorrelationStream; 2],
+    verifier_seeds: [[u8; 32]; 4],
+    mask_ranges: [C61AuthenticatedWhirMaskRange; 4],
+) -> Result<C61ProductionCommittedFourChainBodies, String> {
     if expected_model_coefficient_digest == [0; 32]
         || expected_embedding_coefficient_digest == [0; 32]
         || backend.kind() != BackendKind::CudaResident
@@ -2256,7 +2373,7 @@ pub fn prove_c61_authenticated_whir_p3_production_four_committed_chains_in_attem
     }
     let mut model_targets = model_targets.into_iter();
     let mut embedding_targets = embedding_targets.into_iter();
-    let mut executions = Vec::with_capacity(4);
+    let mut bodies = Vec::with_capacity(4);
     let mut peak_loaded_coefficient_bytes = 0u64;
     for (ordinal, (component, repetition)) in schedule.into_iter().enumerate() {
         let coefficients = load_coefficients(component, repetition)?;
@@ -2291,8 +2408,8 @@ pub fn prove_c61_authenticated_whir_p3_production_four_committed_chains_in_attem
         };
         let id = C61NativeChainId { component, repetition };
         let child = spill_root.join(format!("{:?}-{repetition}", component).to_ascii_lowercase());
-        executions.push(
-            prove_c61_authenticated_whir_p3_production_committed_chain_persisted_cuda_in_attempt(
+        bodies.push(
+            prepare_c61_authenticated_whir_p3_production_committed_chain_persisted_cuda_in_attempt(
                 coefficients,
                 claims,
                 targets,
@@ -2307,11 +2424,10 @@ pub fn prove_c61_authenticated_whir_p3_production_four_committed_chains_in_attem
             )?,
         );
     }
-    let chains = executions
-        .try_into()
-        .map_err(|_| "C6SPR11 four-chain execution census mismatch".to_owned())?;
-    Ok(C61ProductionCommittedFourChainExecution {
-        chains,
+    let bodies =
+        bodies.try_into().map_err(|_| "C6SPR11 four-chain body census mismatch".to_owned())?;
+    Ok(C61ProductionCommittedFourChainBodies {
+        bodies,
         model_coefficient_digest: expected_model_coefficient_digest,
         embedding_coefficient_digest: expected_embedding_coefficient_digest,
         peak_loaded_coefficient_bytes,
@@ -7782,6 +7898,48 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("preflight failed before source load"));
+        assert!(!loaded.get());
+
+        let joint_error =
+            prepare_c61_authenticated_whir_p3_production_joint_four_chains_in_attempt(
+                |_, _| {
+                    loaded.set(true);
+                    Ok(Vec::new())
+                },
+                [1; 32],
+                [2; 32],
+                claims,
+                claims,
+                [Vec::new(), Vec::new()],
+                [Vec::new(), Vec::new()],
+                &C6CanonicalTargetProfile {
+                    inference_profile_digest: [3; 32],
+                    topology_digest: [4; 32],
+                    source_schedule_digest: [5; 32],
+                    cohorts: Vec::new(),
+                },
+                Transcript::new([0xB5; 32]),
+                Path::new("/definitely/not/a/c61/attempt"),
+                C61ProductionPersistedResourceAdmission {
+                    available_host_bytes: C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_HOST_BYTES,
+                    available_spill_bytes: C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES,
+                    gpu_total_bytes: 80 * 1024 * 1024 * 1024,
+                    a100_present: true,
+                    allow_persisted_executor: true,
+                },
+                &mut backend,
+                &mut correlations,
+                [[0xB1; 32], [0xB2; 32], [0xB3; 32], [0xB4; 32]],
+                [
+                    C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 41, range_start: 140_000 },
+                    C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 42, range_start: 141_000 },
+                    C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 43, range_start: 142_000 },
+                    C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 44, range_start: 143_000 },
+                ],
+            )
+            .err()
+            .expect("joint four-chain preflight must reject CPU/mock state");
+        assert!(joint_error.contains("preflight failed before source load"));
         assert!(!loaded.get());
     }
 

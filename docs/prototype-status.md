@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — C6NBR2 STUDY GREEN / IMPLEMENTATION OWNER GO REQUIRED / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — C6NBR2 LOCAL IMPLEMENTATION AUTHORIZED / VERIFIER MARGINAL GATE / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -24,13 +24,22 @@ This capsule is authoritative; read design §0.51 next.
   is zero.
   Provider roof is **14.9179595454 s** (`credit:false`). The old verifier roof
   **4.965672390 s** leaves an unmeasured **0.034327610 s** marginal gate.
-- **Authorization and hard stop.** Study only; implementation and pod/A100
-  remain unauthorized. Hard stop:
-  `C6NBR2_IMPLEMENTATION_OWNER_GO_REQUIRED`.
-- **Resume conditions.** Owner GO for the exact fused C6LNK2 construction;
-  retain the four-thread two-point coefficient-evaluation gate, additive Lean
-  plan, strict C6PA2 and full local validation. Provider keys/corrections,
-  clear targets, linear wire and a second PCS opening remain forbidden.
+- **Authorization and hard stop.** The owner authorizes local C6NBR2
+  implementation with small checkpoints. Pod/A100 remains unauthorized. The
+  first terminal gate is `C6NBR2_VERIFIER_MARGINAL_GATE`.
+- **Resume conditions.** Before changing C6LNK2, implement and measure the
+  exact four-thread two-point coefficient evaluator below **34.327610 ms**;
+  then proceed through fused relation, additive Lean, strict C6PA2 and full
+  local validation. Provider keys/corrections, clear targets, linear wire and
+  a second PCS opening remain forbidden.
+
+- **2026-08-06 — Owner GO for verifier-first C6NBR2 implementation.** Local
+  construction is authorized with small main checkpoints. The verifier
+  marginal is promoted from a later admission condition to the first hard
+  gate: no C6LNK2 protocol edit may land unless the exact two-point D23
+  coefficient evaluator fits **34.327610 ms** on the registered four-thread
+  local verifier target. This GO does not authorize pod/A100 contact or relax
+  any wire, setup, soundness, state, provider or verifier gate.
 
 - **2026-08-06 — C6NBR2 design study finds the no-new-oracle route.** The
   paired residual already commits tape-1 corrections in slot 6. One public
@@ -1197,6 +1206,12 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-08-06 — C6NBR2 implementation GO is verifier-first.** The owner
+  authorizes local construction and small main checkpoints, but no pod/A100.
+  The exact two-point D23 evaluator must first fit the remaining
+  **34.327610-ms** four-thread verifier allocation. A miss is a hard stop and
+  requires redesign before any fused C6LNK2 protocol change.
 
 - **2026-08-06 — C6NBR2 reuses the committed correction slot and changes
   C6LNK2's relation, not its wire.** The owner authorizes study only. The

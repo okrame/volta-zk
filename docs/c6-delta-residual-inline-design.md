@@ -3644,12 +3644,14 @@ four-thread streaming evaluator must demonstrate this marginal bound or the
 design must find a same-statement evaluation reuse. No proof-size, setup,
 timing, memory, full-chain or hardware credit follows from this study.
 
-The study retires the need for a dedicated correction oracle, but implementation
-remains unauthorized. The new hard stop is
-`C6NBR2_IMPLEMENTATION_OWNER_GO_REQUIRED`: resume requires owner GO for the
-exact fused construction, with the verifier marginal gate explicitly retained.
-Strict C6PA2, the additive Lean files, full local gates and any pod/A100 work
-remain forbidden until their later recorded authorizations.
+The study retires the need for a dedicated correction oracle. The owner now
+authorizes local implementation with small checkpoints, but makes verifier
+time the first terminal gate: `C6NBR2_VERIFIER_MARGINAL_GATE`. Before any
+C6LNK2 protocol edit, an exact four-thread two-point evaluator over the D23
+coefficient owner must fit 34.327610 ms on the registered local verifier
+target. If it misses, stop and redesign rather than spend the `<5 s` gate.
+Strict C6PA2, the additive Lean files and full local gates follow only after
+that measurement. Pod/A100 work remains forbidden.
 
 ## 1. Owner requirements
 

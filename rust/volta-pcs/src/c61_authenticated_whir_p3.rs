@@ -70,8 +70,9 @@ use crate::c61_persisted_mmcs::{
     C61MmcsResourceMetrics, C61PersistedMmcs, C61PersistedMmcsMetrics,
 };
 use crate::c61_public_compression::{
-    C61ArithmeticFrame, C61NativeChainId, C61NativeComponent, C61PublicArgument,
-    C61_ARITHMETIC_FRAME_BYTES, C61_NATIVE_CHAIN_COUNT, C61_PUBLIC_ARGUMENT_OUTER_FRAMING_BYTES,
+    C61ArithmeticFrame, C61JointPublicArgument, C61NativeChainId, C61NativeComponent,
+    C61PublicArgument, C61_ARITHMETIC_FRAME_BYTES, C61_NATIVE_CHAIN_COUNT,
+    C61_PUBLIC_ARGUMENT_OUTER_FRAMING_BYTES,
 };
 use crate::c61_shared_round_challenger::c61_shared_round_pair;
 use crate::c61_terminal_functional::{
@@ -765,6 +766,236 @@ pub fn decode_c61_production_public_argument(
         };
         if compiler.terminal_claims != arithmetic.terminal_claims {
             return Err("C6SPR11 C6RSC4 terminal values differ from compiler statements".to_owned());
+        }
+    }
+    Ok((argument, artifacts, arithmetic))
+}
+
+/// Exact C6PA2 component kinds. Primary model/embed chains retain C6AWP1;
+/// secondary chains use C6AWP2 and compiler chains use C6CPX3. Keeping this
+/// separate from the historical C6PA1 enum prevents semantic-version
+/// confusion even though every replacement is wire-neutral.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum C61ProductionJointNativeChainProof {
+    CommittedPrimary(C61ProductionCommittedChainProof),
+    CommittedSecondary(C61ProductionJointCommittedChainProof),
+    Compiler(C61ProductionJointCompilerChainProof),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C61ProductionJointNativeChainArtifact {
+    id: C61NativeChainId,
+    proof: C61ProductionJointNativeChainProof,
+}
+
+impl C61ProductionJointNativeChainArtifact {
+    pub fn committed_primary(
+        id: C61NativeChainId,
+        proof: C61ProductionCommittedChainProof,
+    ) -> Result<Self, String> {
+        if id.component == C61NativeComponent::Compiler || id.repetition != 0 {
+            return Err("C6PA2 primary artifact has a non-primary identity".to_owned());
+        }
+        Ok(Self { id, proof: C61ProductionJointNativeChainProof::CommittedPrimary(proof) })
+    }
+
+    pub fn committed_secondary(
+        id: C61NativeChainId,
+        proof: C61ProductionJointCommittedChainProof,
+    ) -> Result<Self, String> {
+        if id.component == C61NativeComponent::Compiler || id.repetition != 1 {
+            return Err("C6PA2 secondary artifact has a non-secondary identity".to_owned());
+        }
+        Ok(Self { id, proof: C61ProductionJointNativeChainProof::CommittedSecondary(proof) })
+    }
+
+    pub fn compiler(
+        id: C61NativeChainId,
+        proof: C61ProductionJointCompilerChainProof,
+    ) -> Result<Self, String> {
+        if id.component != C61NativeComponent::Compiler || id.repetition >= 2 {
+            return Err("C6PA2 compiler artifact has a non-compiler identity".to_owned());
+        }
+        Ok(Self { id, proof: C61ProductionJointNativeChainProof::Compiler(proof) })
+    }
+
+    pub fn id(&self) -> C61NativeChainId {
+        self.id
+    }
+
+    fn payload(&self) -> Result<Vec<u8>, String> {
+        match &self.proof {
+            C61ProductionJointNativeChainProof::CommittedPrimary(proof) => {
+                Ok(proof.payload.clone())
+            }
+            C61ProductionJointNativeChainProof::CommittedSecondary(proof) => {
+                Ok(proof.payload.clone())
+            }
+            C61ProductionJointNativeChainProof::Compiler(proof) => proof.encode(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C61ProductionJointPublicArgumentAssembly {
+    argument: C61JointPublicArgument,
+    encoded: Vec<u8>,
+    native_payload_bytes: [usize; C61_NATIVE_CHAIN_COUNT],
+}
+
+impl C61ProductionJointPublicArgumentAssembly {
+    pub fn argument(&self) -> &C61JointPublicArgument {
+        &self.argument
+    }
+
+    pub fn encoded(&self) -> &[u8] {
+        &self.encoded
+    }
+
+    pub fn native_payload_bytes(&self) -> [usize; C61_NATIVE_CHAIN_COUNT] {
+        self.native_payload_bytes
+    }
+}
+
+fn c61_joint_tail_role_for_component(
+    profile: &C6CanonicalTargetProfile,
+    component: C61NativeComponent,
+) -> Result<C61JointNativeTailRole, String> {
+    let mut matches = profile
+        .cohorts
+        .iter()
+        .enumerate()
+        .filter(|(_, cohort)| cohort.chain_slot == component as u16);
+    let (index, _) = matches
+        .next()
+        .ok_or_else(|| "C6PA2 target profile omits a secondary native component".to_owned())?;
+    if matches.next().is_some() {
+        return Err("C6PA2 target profile duplicates a secondary native component".to_owned());
+    }
+    Ok(match index {
+        0 => C61JointNativeTailRole::Correction,
+        1 => C61JointNativeTailRole::ZeroOpenTag,
+        _ => C61JointNativeTailRole::Reserved,
+    })
+}
+
+/// Assemble the exact ordered production C6PA2 object. The generic target
+/// profile, rather than a GPT-2 claim census, assigns the secondary carrier
+/// roles. C6PA1 components are rejected even where their byte lengths match.
+pub fn assemble_c61_production_joint_public_argument(
+    statement_digest: [u8; 32],
+    profile: &C6CanonicalTargetProfile,
+    chains: [C61ProductionJointNativeChainArtifact; C61_NATIVE_CHAIN_COUNT],
+    arithmetic: C61ArithmeticFrame,
+) -> Result<C61ProductionJointPublicArgumentAssembly, String> {
+    if statement_digest == [0; 32] || arithmetic.statement_digest != statement_digest {
+        return Err("C6PA2/C6RSC4 statement digest mismatch".to_owned());
+    }
+    let arithmetic = arithmetic.encode();
+    let mut payloads: [Vec<u8>; C61_NATIVE_CHAIN_COUNT] = std::array::from_fn(|_| Vec::new());
+    for (index, (expected, artifact)) in
+        C61NativeChainId::ordered().into_iter().zip(chains).enumerate()
+    {
+        if artifact.id != expected {
+            return Err("C6PA2 native chains are not in canonical order".to_owned());
+        }
+        match (&artifact.proof, expected.component, expected.repetition) {
+            (C61ProductionJointNativeChainProof::CommittedPrimary(_), component, 0)
+                if component != C61NativeComponent::Compiler => {}
+            (C61ProductionJointNativeChainProof::CommittedSecondary(proof), component, 1)
+                if component != C61NativeComponent::Compiler
+                    && proof.tail_role()
+                        == c61_joint_tail_role_for_component(profile, component)? => {}
+            (C61ProductionJointNativeChainProof::Compiler(_), C61NativeComponent::Compiler, _) => {}
+            _ => {
+                return Err("C6PA2 native chain semantic version or carrier role differs".to_owned())
+            }
+        }
+        payloads[index] = artifact.payload()?;
+    }
+    let native_payload_bytes = std::array::from_fn(|index| payloads[index].len());
+    let argument = C61JointPublicArgument::new(statement_digest, payloads, arithmetic)
+        .map_err(|error| error.to_string())?;
+    let encoded = argument.encode().map_err(|error| error.to_string())?;
+    let decoded = C61JointPublicArgument::decode(&encoded).map_err(|error| error.to_string())?;
+    if decoded != argument {
+        return Err("decoded C6PA2 differs from its exact assembly".to_owned());
+    }
+    Ok(C61ProductionJointPublicArgumentAssembly { argument, encoded, native_payload_bytes })
+}
+
+/// Decode all C6PA2 children under their typed statements and the two
+/// statement-resident C6CPX3 bindings. Parsing remains distinct from native,
+/// compiler, C6NBR2 and joint-ZeroOpen acceptance.
+#[allow(clippy::type_complexity)]
+pub fn decode_c61_production_joint_public_argument(
+    bytes: &[u8],
+    public: &[C61TypedNativeChainPublicStatement; C61_NATIVE_CHAIN_COUNT],
+    profile: &C6CanonicalTargetProfile,
+    body_schedule_digest: [u8; 32],
+    functional_digest: [u8; 32],
+) -> Result<
+    (
+        C61JointPublicArgument,
+        [C61ProductionJointNativeChainArtifact; C61_NATIVE_CHAIN_COUNT],
+        C61ArithmeticFrame,
+    ),
+    String,
+> {
+    if body_schedule_digest == [0; 32] || functional_digest == [0; 32] {
+        return Err("C6PA2 compiler statement binding is empty".to_owned());
+    }
+    let argument = C61JointPublicArgument::decode(bytes).map_err(|error| error.to_string())?;
+    let mut artifacts = Vec::with_capacity(C61_NATIVE_CHAIN_COUNT);
+    for (index, id) in C61NativeChainId::ordered().into_iter().enumerate() {
+        if public[index].id() != id {
+            return Err("C6PA2 typed native statements are not in canonical order".to_owned());
+        }
+        let rebuilt = C61TypedNativeChainPublicStatement::new(id, public[index].relation().clone())
+            .map_err(|error| error.to_string())?;
+        if rebuilt != public[index] {
+            return Err("C6PA2 typed native statement is noncanonical".to_owned());
+        }
+        let payload = &argument.native_chains()[index];
+        let artifact = match (id.component, id.repetition) {
+            (C61NativeComponent::Compiler, _) => C61ProductionJointNativeChainArtifact::compiler(
+                id,
+                C61ProductionJointCompilerChainProof::decode(
+                    payload,
+                    body_schedule_digest,
+                    functional_digest,
+                )?,
+            )?,
+            (_, 0) => C61ProductionJointNativeChainArtifact::committed_primary(
+                id,
+                C61ProductionCommittedChainProof::decode(payload, &public[index])?,
+            )?,
+            (component, 1) => {
+                let role = c61_joint_tail_role_for_component(profile, component)?;
+                C61ProductionJointNativeChainArtifact::committed_secondary(
+                    id,
+                    C61ProductionJointCommittedChainProof::decode(payload, &public[index], role)?,
+                )?
+            }
+            _ => return Err("C6PA2 native identity is outside the six-chain profile".to_owned()),
+        };
+        artifacts.push(artifact);
+    }
+    let artifacts: [C61ProductionJointNativeChainArtifact; C61_NATIVE_CHAIN_COUNT] = artifacts
+        .try_into()
+        .map_err(|_| "decoded C6PA2 native-chain census mismatch".to_owned())?;
+    let arithmetic =
+        C61ArithmeticFrame::decode(argument.arithmetic()).map_err(|error| error.to_string())?;
+    if arithmetic.statement_digest != argument.statement_digest() {
+        return Err("decoded C6RSC4 differs from C6PA2 statement".to_owned());
+    }
+    for statement in &public[4..] {
+        let compiler = match statement.relation() {
+            C61TypedNativeRelationStatement::Compiler(statement) => statement,
+            _ => return Err("C6PA2 final native statements are not compiler relations".to_owned()),
+        };
+        if compiler.terminal_claims != arithmetic.terminal_claims {
+            return Err("C6PA2 terminal values differ from compiler statements".to_owned());
         }
     }
     Ok((argument, artifacts, arithmetic))
@@ -7176,6 +7407,131 @@ mod tests {
         wrong_frame.statement_digest[0] ^= 1;
         assert!(assemble_c61_production_public_argument(statement_digest, chains, wrong_frame,)
             .is_err());
+    }
+
+    #[test]
+    fn joint_public_argument_assembles_only_profile_assigned_c6pa2_children() {
+        let statement_digest = [0x71; 32];
+        let topology = volta_proto::c6_residual::build_c6_residual_direct_fused_scaled_fixture()
+            .unwrap()
+            .operation_plan()
+            .topology();
+        let profile = C6CanonicalTargetProfile {
+            inference_profile_digest: [0x72; 32],
+            topology_digest: topology.topology_digest,
+            source_schedule_digest: topology.source_schedule_digest,
+            cohorts: vec![
+                volta_mac::C6CanonicalTargetCohort {
+                    cohort_id: 7,
+                    chain_slot: C61NativeComponent::Model as u16,
+                    polynomial_log2: 12,
+                    claim_layout_digest: [0x73; 32],
+                    canonical_nodes: vec![topology.canonical_node_count - 2],
+                },
+                volta_mac::C6CanonicalTargetCohort {
+                    cohort_id: 9,
+                    chain_slot: C61NativeComponent::Embedding as u16,
+                    polynomial_log2: 11,
+                    claim_layout_digest: [0x74; 32],
+                    canonical_nodes: vec![topology.canonical_node_count - 1],
+                },
+            ],
+        };
+        let primary = |marker| C61ProductionCommittedChainProof { payload: vec![marker; 17] };
+        let secondary = |marker, tail_role| C61ProductionJointCommittedChainProof {
+            payload: vec![marker; 17],
+            tail_role,
+        };
+        let compiler = |marker| {
+            C61ProductionJointCompilerChainProof::new(
+                C61ProductionCompilerChainProof {
+                    terminal_binding_digest: [marker; 32],
+                    plan_folds: [Fp2::ZERO; 2],
+                    physical_plan_fold_values: [Fp2::ZERO; C61_EXACT_PLAN_FOLD_PHYSICAL_OPENINGS],
+                    arithmetic_payload: vec![marker; 19],
+                    shared_payload: vec![marker.wrapping_add(1); 23],
+                },
+                [0x75; 32],
+                [0x76; 32],
+            )
+            .unwrap()
+        };
+        let chains = [
+            C61ProductionJointNativeChainArtifact::committed_primary(
+                C61NativeChainId { component: C61NativeComponent::Model, repetition: 0 },
+                primary(1),
+            )
+            .unwrap(),
+            C61ProductionJointNativeChainArtifact::committed_secondary(
+                C61NativeChainId { component: C61NativeComponent::Model, repetition: 1 },
+                secondary(2, C61JointNativeTailRole::Correction),
+            )
+            .unwrap(),
+            C61ProductionJointNativeChainArtifact::committed_primary(
+                C61NativeChainId { component: C61NativeComponent::Embedding, repetition: 0 },
+                primary(3),
+            )
+            .unwrap(),
+            C61ProductionJointNativeChainArtifact::committed_secondary(
+                C61NativeChainId { component: C61NativeComponent::Embedding, repetition: 1 },
+                secondary(4, C61JointNativeTailRole::ZeroOpenTag),
+            )
+            .unwrap(),
+            C61ProductionJointNativeChainArtifact::compiler(
+                C61NativeChainId { component: C61NativeComponent::Compiler, repetition: 0 },
+                compiler(5),
+            )
+            .unwrap(),
+            C61ProductionJointNativeChainArtifact::compiler(
+                C61NativeChainId { component: C61NativeComponent::Compiler, repetition: 1 },
+                compiler(6),
+            )
+            .unwrap(),
+        ];
+        let arithmetic = C61ArithmeticFrame {
+            statement_digest,
+            challenge_digest: [0x77; 32],
+            adjoint_root: [0x78; 32],
+            terminal_claims: [Fp2::ZERO; 64],
+            runtime_evaluations: [Fp2::ZERO; 2],
+            source_boundary: Fp2::ZERO,
+        };
+        let assembly = assemble_c61_production_joint_public_argument(
+            statement_digest,
+            &profile,
+            chains.clone(),
+            arithmetic,
+        )
+        .unwrap();
+        assert_eq!(
+            assembly.encoded().len(),
+            C61_PUBLIC_ARGUMENT_OUTER_FRAMING_BYTES
+                + C61_ARITHMETIC_FRAME_BYTES
+                + assembly.native_payload_bytes().into_iter().sum::<usize>()
+        );
+        assert_eq!(
+            C61JointPublicArgument::decode(assembly.encoded()).unwrap(),
+            *assembly.argument()
+        );
+
+        let mut wrong_role = chains;
+        wrong_role[1] = C61ProductionJointNativeChainArtifact::committed_secondary(
+            C61NativeChainId { component: C61NativeComponent::Model, repetition: 1 },
+            secondary(2, C61JointNativeTailRole::ZeroOpenTag),
+        )
+        .unwrap();
+        assert!(assemble_c61_production_joint_public_argument(
+            statement_digest,
+            &profile,
+            wrong_role,
+            C61ArithmeticFrame::decode(assembly.argument().arithmetic()).unwrap(),
+        )
+        .is_err());
+        assert!(C61ProductionJointNativeChainArtifact::committed_primary(
+            C61NativeChainId { component: C61NativeComponent::Model, repetition: 1 },
+            primary(9),
+        )
+        .is_err());
     }
 
     #[test]

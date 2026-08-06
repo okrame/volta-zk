@@ -3788,6 +3788,38 @@ exchange `<172 MB`, state within the frozen 4x limit, per-certificate and
 17-certificate soundness, 17 accepted slots plus four retry/abort slots, and
 all production backend and lifecycle checks.
 
+### 0.56 A100 preflight and campaign-harness hard stop
+
+The authorized endpoint passes the physical preflight with one
+A100-SXM4-80GB, 128 detected logical CPUs, approximately 2 TB RAM and ample
+local and network storage. No proof execution occurred. A source-level call
+graph audit found that the §0.54 exact functions are exported but have no call
+site outside their own ordering test. In particular there is no create-new
+full-chain binary, strict disk codec for the complete blind-plus-C6PA2
+certificate, verifier replay from that exact artifact, run-of-record schema or
+fail-closed resource census. Running a component test would therefore not be
+the authorized campaign and cannot earn credit.
+
+The active hard stop is `C6NBR2_A100_CAMPAIGN_HARNESS_REQUIRED`. Before further
+pod execution, a local campaign boundary must:
+
+1. consume the exact T1 owner, global blind coordinator, persisted/CUDA
+   C6NBR2 link, receipt-gated native bodies, both compiler chains and C6RSC4
+   once under one paired real/AES-PCG attempt;
+2. encode every complete certificate component in one strict canonical
+   create-new artifact and decode it without retained prover objects;
+3. verify that exact decoded artifact under independently reconstructed client
+   state, with no witness, provider key, mock PCG or re-proving;
+4. record clean-source identity, backend fail-closed checks, correlation and
+   lifecycle closure, wire bytes, RSS, device memory, spill/I/O/fsync, transfer,
+   kernel/synchronization and raw provider/verifier timing samples; and
+5. provide local codec/mutation/negative tests and a fail-closed record
+   validator.
+
+The §0.55 owner GO remains valid after these local gates pass. Its verifier
+policy is unchanged: only verifier time has `4T` and diagnostic `maxT(N)`
+measurements; provider time has one A100 full-chain `<15 s` gate.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

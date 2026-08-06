@@ -8,15 +8,14 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §0.55 next.
+This capsule is authoritative; read design §0.56 next.
 
-- **Milestone.** C6.1/C6NBR2 exact runner closed locally. The tape-1 correction
-  reuses committed paired-residual slot 6; added wire, roots, openings and
-  correlations remain zero.
-- **Evidence versus credit.** A shared persisted/CUDA four-chain preparer closes
-  primary C6AWP1 proofs while retaining secondary bodies. The public runner
-  sequences exact C6PA2 assembly, C6NBR2 receipt, joint tail and outer-statement
-  cross-binding without replay. Focused coordinator checks are **3/0/0**;
+- **Milestone.** C6.1/C6NBR2 exact protocol join is closed locally; the A100
+  campaign harness is not. The tape-1 correction reuses paired-residual slot 6
+  with zero added wire, roots, openings or correlations.
+- **Evidence versus credit.** The persisted/CUDA preparer and public runner
+  sequence C6PA2, C6NBR2 receipt, joint tail and cross-binding without replay.
+  Focused coordinator checks are **3/0/0**;
   feature-complete PCS is **273/0/2 + 5/0/0**, and ordinary workspace is green,
   including PCS **226/0/1**, proto **156/0/1** and bench **32/0/0**. No
   production CUDA runtime, full-chain, timing, memory or hardware credit exists.
@@ -25,13 +24,14 @@ This capsule is authoritative; read design §0.55 next.
   and soundness **102.5878332989 bits/cert**. Provider/verifier screens are
   **14.9179595454 / 4.978261758 s**, leaving only **0.0820404546 /
   0.021738242 s**; all are `credit:false`.
-- **Authorization and active gate.** The owner authorizes one create-new clean
-  real/AES-PCG exact full-chain A100 campaign with CUDA fail-closed and an
-  append-only artifact. Active gate: `C6NBR2_A100_EXACT_CAMPAIGN`.
-- **Measurement policy.** Verify the same exact artifact first with exactly
-  four CPU threads: `<5 s` is the official gate and `5--6 s` is reported only
-  as tolerance/failure context. Also measure all detected logical threads as
-  `maxT(N)` diagnostic evidence; it cannot replace or relax the 4T gate. Gate
+- **Authorization and active gate.** Owner GO for one create-new clean A100
+  campaign remains valid. The A100/128-CPU pod passes preflight, but source
+  audit found no full-chain binary, complete artifact or disk verifier. Gate:
+  `C6NBR2_A100_CAMPAIGN_HARNESS_REQUIRED`; no further pod work before its local
+  codec, mutation, backend and create-new gates pass.
+- **Measurement policy.** For verifier time only, measure the same artifact at
+  `4T` (`<5 s` gate; `5--6 s` failure context) and `maxT(N)` (diagnostic only).
+  Gate
   provider `<15 s`, wire `<22 MB`, and every frozen setup, state, soundness and
   session limit. Only an eligible record may update the comparison and close
   C6.1.
@@ -43,6 +43,16 @@ This capsule is authoritative; read design §0.55 next.
   `5--6 s` retained only as tolerance/failure context; `maxT(N)` uses the
   pod's detected logical-thread count and is diagnostic only. No comparison
   update or C6.1 success claim is permitted unless every original gate passes.
+
+- **2026-08-06 — A100 preflight exposes the missing campaign boundary.** The
+  authorized endpoint passes the hardware screen: A100-SXM4-80GB, 128 logical
+  CPUs, about 2 TB RAM and ample storage. Source audit then stopped before any
+  proof: the exact join functions have no production call site, no full-chain
+  create-new binary, no strict complete-certificate disk artifact and no
+  verifier replay from that artifact. Component APIs or tests cannot earn
+  full-chain credit. The new local gate is
+  `C6NBR2_A100_CAMPAIGN_HARNESS_REQUIRED`; the existing owner GO remains valid
+  once the harness, codec, mutations and fail-closed backend checks are green.
 
 - **2026-08-06 — Exact C6PA2/C6NBR2 runner closes locally.** The production
   four-chain loader now shares one body preparer: model0/embed0 close normally,

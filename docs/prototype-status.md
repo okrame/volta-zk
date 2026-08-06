@@ -15,9 +15,11 @@ This capsule is authoritative; read design §0.51 next.
   no dedicated correction oracle is required.
 - **Evidence versus credit.** Source/commitment ownership and the joint
   73-claim/25-round relation are mechanically traced. The v24 executable
-  design screen passes. Last implementation records remain C6LNK2 **10/0/0**,
-  owner **5/0/0**, compiler **14/0/0**, PCS **219/0/1**, proto **154/0/1**.
-  No protocol, Lean, full-chain, timing, memory or hardware credit was added.
+  design screen passes. The first exact four-thread ARM evaluator run is
+  **14.868583-ms median / 46.509755-ms p95**, so the marginal gate misses.
+  Last protocol records remain C6LNK2 **10/0/0**, owner **5/0/0**, compiler
+  **14/0/0**, PCS **219/0/1**, proto **154/0/1**. No protocol, Lean,
+  full-chain, timing, memory or hardware credit was added.
 - **Screens.** Certificate **17,536,735 B**, setup **148,738,118 B**,
   setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
   **102.5878332989 bits/cert**. Added wire/commitment-root/opening/correlation
@@ -28,10 +30,22 @@ This capsule is authoritative; read design §0.51 next.
   implementation with small checkpoints. Pod/A100 remains unauthorized. The
   first terminal gate is `C6NBR2_VERIFIER_MARGINAL_GATE`.
 - **Resume conditions.** Before changing C6LNK2, implement and measure the
-  exact four-thread two-point coefficient evaluator below **34.327610 ms**;
-  then proceed through fused relation, additive Lean, strict C6PA2 and full
-  local validation. Provider keys/corrections, clear targets, linear wire and
-  a second PCS opening remain forbidden.
+  exact four-thread two-point coefficient evaluator below **34.327610-ms
+  p95**. Bounded evaluator-only scheduling/allocation tuning is allowed; no
+  protocol edit is. Then proceed through fused relation, additive Lean,
+  strict C6PA2 and full local validation. Provider keys/corrections, clear
+  targets, linear wire and a second PCS opening remain forbidden.
+
+- **2026-08-06 — First C6NBR2 verifier run misses p95 on the local ARM VM.**
+  Clean `5cc7970`, four Rayon threads, exact `4,975,525`-coefficient prefix,
+  two D23 points and 21 samples produce **14.868583-ms median** but
+  **46.509755-ms p95 / 47.494258-ms max**, above the **34.327610-ms** gate.
+  The result digest is stable and both prefix differential tests pass. This
+  earns no verifier credit and blocks C6LNK2 edits. The outliers follow a
+  ~12--16-ms steady cluster; one bounded evaluator-only redesign may
+  precompute point weights and replace ~1,200 Rayon tasks by a fixed small
+  partition census before a new create-only run. Record:
+  `benchmarks/results/c6nbr2-verifier-2026-08-06-5cc7970.json`.
 
 - **2026-08-06 — Owner GO for verifier-first C6NBR2 implementation.** Local
   construction is authorized with small main checkpoints. The verifier

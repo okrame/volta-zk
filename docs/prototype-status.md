@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — C6SPR13 GENERIC JOINT BRIDGE AUTHORIZED / LOCAL CONSTRUCTION / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — C6NBR2 STUDY GREEN / IMPLEMENTATION OWNER GO REQUIRED / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,34 +8,45 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §0.49 next.
+This capsule is authoritative; read design §0.51 next.
 
-- **Milestone.** C6.1/C6SPR13 generic joint native-target bridge. C6SPR9--12
-  are locally closed: persisted/CUDA C6LNK2, compact role verifier, six-chain
-  assembly and the no-replay T1 response/MultiOpen/coefficient owners exist.
-- **Evidence versus credit.** Focused C6LNK2 is **10/0/0**, owner lifecycle
-  **5/0/0**, authenticated compiler **14/0/0**; the last ordinary workspace
-  record is PCS **219/0/1**, proto **154/0/1**. Generic trace targets are
-  **41/0/0 + 5/0/0** including the strict `C6NTO1` codec; the exact
-  102-target response differential, codec round trip and sealed residual gate
-  are **1/0/0**. Native typestate/schedule gates are **17/0/0 + 2/0/0**.
-  The exact joint functional gate is **1/0/0** and proto trace is
-  **180/0/1**. The generic 32-B joint MAC closure is **2/0/0** and its exact
-  source-correction split and installed-plan verifier recompilation are each
-  **1/0/0**; C6PA2/CPX3 codecs are **2/0/0**. MAC default is **29/0 + 5/0**;
-  no production response, GPU timing, full-chain or hardware credit exists.
-- **Screens.** v23 certificate remains `credit:false` at **17,536,735 B**.
-  The exact-plan fallback projects setup **148,738,118 B** and setup+first
-  **166,274,853 B**; state **2,277,715,552 B**, provider/verifier
-  **14.9087128542 / 4.965672390 s** and soundness are still old screens.
-- **Authorization and hard stop.** The generic bridge is authorized, but
-  `C6NBR1_SECONDARY_CORRECTION_RELATION_REQUIRED` is now terminal. No exact
-  runner or pod contact is authorized.
-- **Resume conditions.** Bind the post-`alpha,zeta` compiler coefficients to
-  the authenticated tape-1 correction column, or provide an equivalent
-  verifier-derived pre-root owner, without linear wire. Then strict C6PA2,
-  Lean, v24 and complete local gates remain. Provider corrections/keys,
-  clear targets, mock PCG and CPU fallback are inadmissible.
+- **Milestone.** C6.1/C6NBR2 authenticated correction inner-product study.
+  The exact tape-1 correction is already committed as paired-residual slot 6;
+  no dedicated correction oracle is required.
+- **Evidence versus credit.** Source/commitment ownership and the joint
+  73-claim/25-round relation are mechanically traced. The v24 executable
+  design screen passes. Last implementation records remain C6LNK2 **10/0/0**,
+  owner **5/0/0**, compiler **14/0/0**, PCS **219/0/1**, proto **154/0/1**.
+  No protocol, Lean, full-chain, timing, memory or hardware credit was added.
+- **Screens.** Certificate **17,536,735 B**, setup **148,738,118 B**,
+  setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
+  **102.5878332989 bits/cert**. Added wire/commitment-root/opening/correlation
+  is zero.
+  Provider roof is **14.9179595454 s** (`credit:false`). The old verifier roof
+  **4.965672390 s** leaves an unmeasured **0.034327610 s** marginal gate.
+- **Authorization and hard stop.** Study only; implementation and pod/A100
+  remain unauthorized. Hard stop:
+  `C6NBR2_IMPLEMENTATION_OWNER_GO_REQUIRED`.
+- **Resume conditions.** Owner GO for the exact fused C6LNK2 construction;
+  retain the four-thread two-point coefficient-evaluation gate, additive Lean
+  plan, strict C6PA2 and full local validation. Provider keys/corrections,
+  clear targets, linear wire and a second PCS opening remain forbidden.
+
+- **2026-08-06 — C6NBR2 design study finds the no-new-oracle route.** The
+  paired residual already commits tape-1 corrections in slot 6. One public
+  Fp2 correction claim is fused into both existing C6LNK2 repetitions; its
+  degree-two product term terminates by increasing only the verifier-owned
+  slot-6 weight at the already authenticated common point. Thus the exact
+  screen adds zero wire, commitment roots, openings and correlations. The actual census
+  is 73 claims and 25 rounds, or 150 roots/repetition, still below the frozen
+  256-root allocation. Profile v24 retains the exact client plan and reports
+  **17,536,735-B** certificate, **148,738,118-B** setup,
+  **166,274,853-B** setup+first, **2,277,715,552-B** controlling state,
+  **102.5878332989 / 98.5003704577-bit** one/17-certificate soundness and a
+  **14.9179595454-s** provider roof, all `credit:false`. The four-thread
+  verifier must still fit two local coefficient-MLE evaluations inside
+  **34.327610 ms**. The study was authorized, implementation was not; no pod
+  was contacted.
 
 - **2026-08-03 — C6SPR10 exact terminal-functional relation closes locally.**
   The compiler now proves the exact challenge-dependent equality between the
@@ -1186,6 +1197,19 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-08-06 — C6NBR2 reuses the committed correction slot and changes
+  C6LNK2's relation, not its wire.** The owner authorizes study only. The
+  exact tape-1 correction column is already residual cohort slot 6, so the
+  selected design jointly batches one public correction claim with the 72
+  slot claims and adds its degree-two public-coefficient product to the same
+  25 rounds. The terminal changes only the verifier-owned weight of slot 6;
+  no commitment, opening, provider key, clear target or linear wire is added.
+  This exposes a historical formal-census deviation: the additive C6LNK2 Lean
+  specialization records 64 claims while the production registry has 72.
+  C6NBR2 must use a new 73-claim specialization (150 roots/repetition) and
+  cannot inherit the stale constant. Implementation remains unauthorized;
+  the four-thread verifier marginal must fit 34.327610 ms.
 
 - **2026-08-03 — C6SPR13 changes the native/compiler statement.** The owner
   authorizes a generic joint bridge instead of duplicating one authentication

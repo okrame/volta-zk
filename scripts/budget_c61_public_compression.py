@@ -71,6 +71,30 @@ C61_VERIFIER_EXCLUSIVE_SECONDS = Decimal("5")
 C61_PUBLIC_ARGUMENT_ALLOCATION_BYTES = 12_000_000
 C61_CLIENT_PUBLIC_PARAMETER_ALLOCATION_BYTES = 8_000_000
 
+# C6NBR2 design screen.  The generic correction functional is folded into
+# the existing two-repetition C6LNK2 schedule.  It adds one public claim but
+# no slot, round, opening, frame or correlation.  GPT-2 is only the first
+# profile instance; other profiles substitute their own cohort count.
+C61_NBR2_NATIVE_TARGET_COHORTS = 2
+C61_NBR2_LINK_SLOT_CLAIMS = 72
+C61_NBR2_LINK_RELATIONS = C61_NBR2_LINK_SLOT_CLAIMS + 1
+C61_NBR2_LINK_ROUNDS = 25
+C61_NBR2_LINK_ROOTS_PER_REPETITION = (
+    C61_NBR2_LINK_RELATIONS + 3 * C61_NBR2_LINK_ROUNDS + 2
+)
+C61_NBR2_COEFFICIENT_LOG2 = 23
+C61_NBR2_COEFFICIENT_ELEMENTS = 2**C61_NBR2_COEFFICIENT_LOG2
+C61_NBR2_COEFFICIENT_OWNER_BYTES = C61_NBR2_COEFFICIENT_ELEMENTS * c6.FP2_BYTES
+C61_NBR2_SOURCE_PREFIX_BYTES = 4_975_525 * c6.FP2_BYTES
+# Per repetition: one padded-owner write, less than two full-owner reads and
+# less than one full-owner successor write across all folds.
+C61_NBR2_TWO_REPETITION_TRAFFIC_BYTES = (
+    2 * 4 * C61_NBR2_COEFFICIENT_OWNER_BYTES
+)
+C61_NBR2_TWO_REPETITION_FP2_MULS = (
+    2 * 4 * C61_NBR2_COEFFICIENT_ELEMENTS
+)
+
 # Exact existing setup components.
 C6_PAIRED_PCG_BYTES = 2 * 38_371_465
 C6_SETUP_MANIFEST_BYTES = 437
@@ -470,6 +494,7 @@ def build_report() -> dict[str, Any]:
     )
     projected_setup_bytes = (
         setup_without_client_plan_and_parameters
+        + C6_CANONICAL_PLAN_BYTES
         + C61_CLIENT_PUBLIC_PARAMETER_ALLOCATION_BYTES
     )
     projected_first_response_bytes = (
@@ -568,6 +593,15 @@ def build_report() -> dict[str, Any]:
         + native_backend_error
         + existing_wrapper_error
     )
+    # C6NBR1 replaces the secondary native tails by one post-body cohort RLC
+    # and one joint ZeroOpen.  This conservative screen does not subtract the
+    # old per-chain tails, so it cannot undercharge the amendment.  C6NBR2's
+    # 150-root repetition remains inside C6LNK2's frozen 256-root allocation.
+    joint_native_bridge_error = Fraction(
+        (C61_NBR2_NATIVE_TARGET_COHORTS - 1) + 1,
+        c6.FP2_CARDINALITY,
+    )
+    candidate_complete_error += joint_native_bridge_error
     candidate_session_error = 17 * candidate_complete_error
 
     # Claim privacy is separate from soundness.  Every code-switch round has
@@ -674,6 +708,19 @@ def build_report() -> dict[str, Any]:
             + native_model_roof_seconds
             + native_compiler_roof_seconds
         )
+        nbr2_memory_seconds = (
+            Decimal(C61_NBR2_TWO_REPETITION_TRAFFIC_BYTES)
+            / c6.P7_STREAM_BYTES_PER_SECOND
+        )
+        nbr2_arithmetic_seconds = (
+            Decimal(C61_NBR2_TWO_REPETITION_FP2_MULS)
+            / c6.P7_FP2_MULS_PER_SECOND
+        )
+        nbr2_provider_roof_seconds = max(
+            nbr2_memory_seconds,
+            nbr2_arithmetic_seconds,
+        ) * C61_NATIVE_INTEGRATION_FACTOR
+        native_provider_roof_seconds += nbr2_provider_roof_seconds
         native_verifier_roof_seconds = (
             T1_FOUR_THREAD_VERIFIER_ACCOUNTED_SECONDS
             + Decimal(2 * C61_NATIVE_CHAINS_PER_COMPONENT)
@@ -695,7 +742,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v23",
+        "profile": "C6.1-public-compression-reference-v24-nbr2-design",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
@@ -714,6 +761,8 @@ def build_report() -> dict[str, Any]:
             "PRODUCTION_D28_D27_MONOLITHIC_MEMORY_CENSUSED__"
             "PRODUCTION_NATIVE_AND_COMPACT_WIRE_BOUNDARIES_GREEN__"
             "EXACT_T1_OWNER_EXPORT_REQUIRED__"
+            "C6NBR2_JOINT_CORRECTION_INNER_PRODUCT_DESIGN_SCREEN_GREEN__"
+            "C6NBR2_VERIFIER_MARGINAL_MEASUREMENT_REQUIRED__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
         "credit": {
@@ -1203,6 +1252,13 @@ def build_report() -> dict[str, Any]:
                 "headroom_bytes": (
                     C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES - provider_state_bytes
                 ),
+                "c6nbr2_scheduled_after_compiler_peak": True,
+                "c6nbr2_one_repetition_coefficient_owner_bytes": (
+                    C61_NBR2_COEFFICIENT_OWNER_BYTES
+                ),
+                "c6nbr2_unpadded_source_prefix_bytes": (
+                    C61_NBR2_SOURCE_PREFIX_BYTES
+                ),
                 "screen_pass": (
                     provider_state_bytes <= C61_EPHEMERAL_PROVIDER_STATE_MAX_BYTES
                     and C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_BYTES
@@ -1252,6 +1308,17 @@ def build_report() -> dict[str, Any]:
                     native_backend_error
                 ),
                 "retained_c6_wrapper": _error_report(existing_wrapper_error),
+                "joint_native_bridge_conservative_addition": _error_report(
+                    joint_native_bridge_error
+                ),
+                "c6nbr2_link_relations": C61_NBR2_LINK_RELATIONS,
+                "c6nbr2_link_roots_per_repetition": (
+                    C61_NBR2_LINK_ROOTS_PER_REPETITION
+                ),
+                "c6nbr2_covered_by_existing_256_root_allocation": (
+                    C61_NBR2_LINK_ROOTS_PER_REPETITION
+                    <= c6.LINEAR_LINK_ROOT_BOUND_PER_REPETITION
+                ),
                 "complete_per_certificate": _error_report(
                     candidate_complete_error
                 ),
@@ -1288,6 +1355,17 @@ def build_report() -> dict[str, Any]:
                     native_compiler_pcs_seconds
                 ),
                 "compiler_roof_seconds": str(native_compiler_roof_seconds),
+                "c6nbr2_two_repetition_traffic_bytes": (
+                    C61_NBR2_TWO_REPETITION_TRAFFIC_BYTES
+                ),
+                "c6nbr2_two_repetition_fp2_muls": (
+                    C61_NBR2_TWO_REPETITION_FP2_MULS
+                ),
+                "c6nbr2_memory_seconds": str(nbr2_memory_seconds),
+                "c6nbr2_arithmetic_seconds": str(nbr2_arithmetic_seconds),
+                "c6nbr2_marginal_roof_seconds": str(
+                    nbr2_provider_roof_seconds
+                ),
                 "projected_total_seconds": str(native_provider_roof_seconds),
                 "strict_gate_seconds": str(C61_PROVIDER_EXCLUSIVE_SECONDS),
                 "headroom_seconds": str(
@@ -1313,14 +1391,18 @@ def build_report() -> dict[str, Any]:
                 "public_arithmetic_seconds": str(
                     C61_VERIFIER_PUBLIC_ARITHMETIC_SECONDS
                 ),
+                "base_projected_total_seconds": str(native_verifier_roof_seconds),
                 "projected_total_seconds": str(native_verifier_roof_seconds),
                 "strict_gate_seconds": str(C61_VERIFIER_EXCLUSIVE_SECONDS),
-                "headroom_seconds": str(
+                "maximum_c6nbr2_marginal_seconds": str(
                     C61_VERIFIER_EXCLUSIVE_SECONDS - native_verifier_roof_seconds
                 ),
-                "screen_pass": (
-                    native_verifier_roof_seconds < C61_VERIFIER_EXCLUSIVE_SECONDS
+                "c6nbr2_local_coefficient_evaluations": 2,
+                "c6nbr2_source_prefix_bytes_per_evaluation": (
+                    C61_NBR2_SOURCE_PREFIX_BYTES
                 ),
+                "screen_pass": False,
+                "status": "FOUR_THREAD_STREAMING_EVALUATION_MEASUREMENT_REQUIRED",
                 "credit": False,
             },
             "verifier_memory_screen": {
@@ -1605,7 +1687,9 @@ def build_report() -> dict[str, Any]:
                 "canonical_plan": C6_CANONICAL_PLAN_BYTES,
                 "verifier_instance_map": C6_VERIFIER_INSTANCE_MAP_BYTES,
             },
-            "compiler_plan_removed_from_client_bytes": C6_CANONICAL_PLAN_BYTES,
+            "compiler_plan_retained_for_exact_joint_functional_bytes": (
+                C6_CANONICAL_PLAN_BYTES
+            ),
             "verifier_instance_map_retained_inside_parameter_allocation_bytes": (
                 C6_VERIFIER_INSTANCE_MAP_BYTES
             ),
@@ -1638,8 +1722,8 @@ def build_report() -> dict[str, Any]:
             ),
             "allocation_screen_pass": projected_setup_bytes <= C61_SETUP_MAX_BYTES,
             "contingency": (
-                "plan removal and retained-map canonicalization require the "
-                "two-sketch runtime seam; no setup credit before full Rust integration"
+                "the exact joint functional retains the canonical plan; no setup "
+                "credit before full Rust integration"
             ),
             "credit": False,
         },
@@ -1760,9 +1844,9 @@ def build_report() -> dict[str, Any]:
     assert active_projected_certificate_bytes == 18_842_103
     assert C61_CERTIFICATE_MAX_BYTES - active_projected_certificate_bytes == 3_157_896
     assert absorb_wrapper_fixed_remainder_bytes == 2_962_637
-    assert projected_setup_bytes == 84_743_367
-    assert C61_SETUP_MAX_BYTES - projected_setup_bytes == 65_256_632
-    assert projected_first_response_bytes == 103_585_470
+    assert projected_setup_bytes == 148_738_118
+    assert C61_SETUP_MAX_BYTES - projected_setup_bytes == 1_261_881
+    assert projected_first_response_bytes == 167_580_221
     assert sum(compiler_families.values()) == c6.RESIDUAL_COEFFICIENT_WRITES_PER_REPETITION
     assert c6.RESIDUAL_COEFFICIENT_WRITES_TOTAL == 225_997_412
     assert c6.RESIDUAL_ATOMIC_OUTPUTS_TOTAL == 94_868_704
@@ -1847,7 +1931,14 @@ def build_report() -> dict[str, Any]:
     assert C61_SHARED_MULTI_ORACLE_D14_TRANSCRIPT_BYTES == 682_652
     assert native_projected_certificate_bytes == 17_536_735
     assert C61_CERTIFICATE_MAX_BYTES - native_projected_certificate_bytes == 4_463_264
-    assert native_projected_first_response_bytes == 102_280_102
+    assert native_projected_first_response_bytes == 166_274_853
+    assert C61_NBR2_LINK_RELATIONS == 73
+    assert C61_NBR2_LINK_ROOTS_PER_REPETITION == 150
+    assert C61_NBR2_LINK_ROOTS_PER_REPETITION <= c6.LINEAR_LINK_ROOT_BOUND_PER_REPETITION
+    assert C61_NBR2_COEFFICIENT_OWNER_BYTES == 134_217_728
+    assert C61_NBR2_SOURCE_PREFIX_BYTES == 79_608_400
+    assert C61_NBR2_TWO_REPETITION_TRAFFIC_BYTES == 1_073_741_824
+    assert C61_NBR2_TWO_REPETITION_FP2_MULS == 67_108_864
     assert provider_state_elements == 142_357_222
     assert provider_state_bytes == 2_277_715_552
     assert C61_SPARSE_RATIONAL_PHYSICAL_RESPONSE_BASE_ELEMENTS == 268_435_456
@@ -1933,7 +2024,7 @@ def build_report() -> dict[str, Any]:
         == 27_569_408
     )
     assert native_compiler_pcs_transform_bytes == 21_474_836_480
-    assert Decimal("14.90") < native_provider_roof_seconds < Decimal("14.91")
+    assert Decimal("14.91") < native_provider_roof_seconds < Decimal("14.92")
     assert native_verifier_roof_seconds == Decimal("4.965672390")
     assert C61_VERIFIER_ADDITIONAL_MEMORY_ALLOCATION_BYTES == 512_000_000
     assert native_projected_certificate_bytes < C61_CERTIFICATE_EXCLUSIVE_BYTES

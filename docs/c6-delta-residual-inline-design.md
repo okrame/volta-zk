@@ -3515,6 +3515,142 @@ commitment. The strict C6PA2 decoder, Lean theorem, v24 re-sum, exact runner
 and pod remain stopped. Counter-neutral full-key replay is local evidence only
 and does not retire this obstruction.
 
+### 0.51 C6NBR2 authenticated correction inner-product study
+
+The owner authorizes design study, not protocol implementation. The study
+finds the favorable branch: the tape-1 correction is already exactly
+`C6PairedResidualLeafColumn::Coordinate1Correction`, slot 6 of the committed
+`C6_DELTA_RESIDUAL_COHORT_ID`. `materialize_padded_columns` commits its
+canonical source prefix, zero padding and independent upper ZK half before
+the native-body challenges. No correction oracle, root or opening is added.
+
+#### 0.51.1 Typed statement and exact polynomial
+
+`C6NBR2CorrectionFunctionalStatement-v1` is model-agnostic. It binds the C6PA2
+statement/session, fixed wrapper-root digest, residual manifest/view/paired-
+source digests, source-schedule digest, cohort id, slot 6, coordinate 1,
+`source_count`, D23 padding rule, installed-plan/topology/instance/extraction
+identities, `C6NTO1` profile digest, every ordered tagless native-body digest,
+`alpha`, `zeta` and the resulting `C6CompiledNativeTargetFunctional` digest.
+GPT-2 target counts do not occur in the type or relation.
+
+Let `D` be the length-`source_count` tape-1 correction prefix, zero-padded to
+`2^23`, and let `A` be the identically padded post-`alpha,zeta` compiler
+coefficient vector. The committed residual polynomial has 24 variables:
+`Dbar(x,0)=MLE(D)(x)` and `Dbar(x,1)` is its independent ZK twin. At the
+25-variable C6LNK2 point `(y,x,z)`, with `|x|=23`, define
+
+```text
+H_A(y,x,z) = (1-y) * (1-z) * Atilde(x) * Dbar(x,z).
+```
+
+Its Boolean sum is exactly `sum_s A[s]*D[s]`: `y=1` selects away the one
+leading virtual round, `z=1` selects away the mask half, and the registered
+zero padding contributes nothing. This proves the existing 16-B Fp2
+`C6NBR1` correction; no source value, target, provider key or Delta appears.
+
+#### 0.51.2 Joint C6LNK2 reduction and ownership
+
+For repetition `t`, the existing 72 fixed slot claims remain in canonical
+order. After the correction `c1` is fixed, the existing fresh `beta_t` also
+batches one public claim at ordinal 72:
+
+```text
+claim_t = sum_(j=0..71) beta_t^j * q[t,j] + beta_t^72 * c1
+G_t     = G_existing_t + beta_t^72 * H_A.
+```
+
+`c1` enters both VOLE tapes through the ordinary public authenticated value;
+it consumes no correlation. `G_t` is still individual degree at most two, so
+the same 25 endpoint pairs, corrections and challenges suffice. At the common
+point, only the verifier-owned reduction weight of residual slot 6 changes:
+
+```text
+w6 += beta_t^72 * (1-y_t) * (1-z_t) * Atilde(x_t).
+```
+
+C6LNK2 owns the blind round messages and terminal authenticated claims. The
+existing paired wrapper PCS owns the opening of slot 6 at that point. The
+installed-plan compiler is evaluated locally by each role and owns
+`Atilde(x_t)`; it is never accepted from a provider digest. The C6NBR1 paused
+native typestate owns the correction before the link and the joint ZeroOpen
+tag after the link. A separate sumcheck followed by an old wrapper point is
+forbidden because its claim would be fixed after the challenges.
+
+#### 0.51.3 Mandatory challenge order
+
+1. Fix residual, cache, native and compiler roots and all typed setup/profile
+   identities.
+2. Fix every tagless native body, derive its ordered `alpha`, append all body
+   digests, and sample `zeta`.
+3. Both roles compile the same `A`; the provider fixes canonical `c1` before
+   either C6LNK2 `beta`. The decoder pauses the C6NBR1 tail after its 16-B
+   correction and cannot inspect or accept its tag yet.
+4. For each repetition, sample `beta_t`, run the amended 73-claim/25-round
+   C6LNK2 reduction, then verify the unchanged wrapper PCS opening.
+5. Only after both bound openings accept may the decoder consume the joint
+   C6NBR1 ZeroOpen tag and close C6CPX3/C6PA2.
+
+Reordering `c1` after `beta`, reusing a pre-`c1` point, accepting a supplied
+`Atilde(x)`, or opening only the uncommitted source prefix rejects.
+
+#### 0.51.4 Lean plan
+
+Add `C6NBR2CorrectionFunctional.lean`; do not mutate frozen M1--M11 modules.
+It must prove the selector/padding identity, the degree-two round bound, and
+the terminal slot-weight identity. Then specialize
+`folding_different_point_batch_sound` through a v2 companion of
+`c6_packed_authenticated_output_link_sound` at the actual production census:
+72 slot claims plus one correction claim, 25 rounds, hence
+`73 + 3*25 + 2 = 150` roots per repetition. The historical additive C6LNK2
+file records 64 claims; C6NBR2 must not inherit that stale census. Two
+independent repetitions contribute `150^2 = 22,500 < 2^16`, so the existing
+256-root linear/link allocation remains conservative. Finally
+`C6NBR1JointBridgeSound` composes this binding with
+`c6_delta_residual_decompose`, the compiler relation and the single joint
+ZeroOpen. `#print axioms` may introduce no premise beyond the existing
+explicit PCS/ROM/backend contracts.
+
+#### 0.51.5 v24 design re-sum and remaining admission gate
+
+The executable screen is
+`scripts/budget_c61_public_compression.py` profile
+`C6.1-public-compression-reference-v24-nbr2-design`:
+
+| item | v24 design screen |
+|---|---:|
+| certificate / strict headroom | `17,536,735 B / 4,463,264 B` |
+| setup / setup+first | `148,738,118 B / 166,274,853 B` |
+| new provider wire, commitment roots, openings, correlations | `0 / 0 / 0 / 0` |
+| controlling provider state | `2,277,715,552 B` |
+| one scheduled D23 coefficient owner | `134,217,728 B` |
+| soundness, one / 17 certificates | `102.5878332989 / 98.5003704577 bits` |
+| C6NBR2 A100 marginal / total analytic roof | `0.0092466912 / 14.9179595454 s` |
+| provider analytic headroom | `0.0820404546 s` |
+| old four-thread verifier roof / remaining margin | `4.965672390 / 0.034327610 s` |
+
+The coefficient owner is created one repetition at a time only after the D28
+compiler peak has been released, so it does not raise the controlling state
+peak. The provider charge conservatively covers `1,073,741,824 B` of added
+coefficient traffic and `67,108,864` Fp2 multiplications at the registered P7
+rates. The soundness screen conservatively adds the two-cohort `zeta` event
+and joint ZeroOpen without subtracting historical native tails; C6NBR2 itself
+fits the retained C6LNK2 allocation.
+
+The verifier result is deliberately not green: it must evaluate the D23
+coefficient MLE at two independently sampled points, and the old analytic
+allocation leaves only 34.327610 ms. Before protocol implementation, a narrow
+four-thread streaming evaluator must demonstrate this marginal bound or the
+design must find a same-statement evaluation reuse. No proof-size, setup,
+timing, memory, full-chain or hardware credit follows from this study.
+
+The study retires the need for a dedicated correction oracle, but implementation
+remains unauthorized. The new hard stop is
+`C6NBR2_IMPLEMENTATION_OWNER_GO_REQUIRED`: resume requires owner GO for the
+exact fused construction, with the verifier marginal gate explicitly retained.
+Strict C6PA2, the additive Lean files, full local gates and any pod/A100 work
+remain forbidden until their later recorded authorizations.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

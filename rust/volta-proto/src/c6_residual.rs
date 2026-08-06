@@ -10236,6 +10236,63 @@ pub struct C6CompiledNativeTargetFunctional {
     functional_digest: C6ResidualDigest,
 }
 
+const C6_NBR2_EVALUATION_LOW_BITS: usize = 12;
+
+fn c6_nbr2_equality_weights(point: &[Fp2]) -> Vec<Fp2> {
+    let mut weights = Vec::with_capacity(1usize << point.len());
+    weights.push(Fp2::ONE);
+    for &coordinate in point {
+        let prior = weights.len();
+        for index in 0..prior {
+            let weight = weights[index];
+            weights[index] = weight * (Fp2::ONE - coordinate);
+            weights.push(weight * coordinate);
+        }
+    }
+    weights
+}
+
+/// Evaluate one zero-padded public coefficient prefix at two independently
+/// sampled D23 points in one parallel scan.  C6NBR2 uses this verifier-owned
+/// value to amend the already authenticated residual-slot weight; neither
+/// coefficients nor evaluations are accepted from the provider.
+pub fn evaluate_c6_nbr2_coefficient_prefix_at_two_points(
+    coefficients: &[Fp2],
+    points: [&[Fp2]; 2],
+) -> Result<[Fp2; 2], C6ResidualError> {
+    let dimension = points[0].len();
+    let capacity = 1usize.checked_shl(dimension as u32).unwrap_or_default();
+    if dimension == 0
+        || points[1].len() != dimension
+        || coefficients.len() > capacity
+        || dimension > C6_RESIDUAL_SLOT_LOG2 as usize
+    {
+        return Err(C6ResidualError::new("C6NBR2 coefficient-prefix evaluation geometry differs"));
+    }
+    let low_bits = C6_NBR2_EVALUATION_LOW_BITS.min(dimension);
+    let low_len = 1usize << low_bits;
+    let low = [
+        c6_nbr2_equality_weights(&points[0][..low_bits]),
+        c6_nbr2_equality_weights(&points[1][..low_bits]),
+    ];
+    let high = [
+        c6_nbr2_equality_weights(&points[0][low_bits..]),
+        c6_nbr2_equality_weights(&points[1][low_bits..]),
+    ];
+    Ok(coefficients
+        .par_chunks(low_len)
+        .enumerate()
+        .map(|(high_index, chunk)| {
+            let mut partial = [Fp2::ZERO; 2];
+            for (low_index, &coefficient) in chunk.iter().enumerate() {
+                partial[0] += coefficient * low[0][low_index];
+                partial[1] += coefficient * low[1][low_index];
+            }
+            [partial[0] * high[0][high_index], partial[1] * high[1][high_index]]
+        })
+        .reduce(|| [Fp2::ZERO; 2], |left, right| [left[0] + right[0], left[1] + right[1]]))
+}
+
 impl fmt::Debug for C6CompiledNativeTargetFunctional {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("C6CompiledNativeTargetFunctional")
@@ -10385,6 +10442,13 @@ impl C6CompiledNativeTargetFunctional {
 
     pub fn public_plaintext(&self) -> Fp2 {
         self.public_plaintext
+    }
+
+    pub fn evaluate_coefficients_at_two_points(
+        &self,
+        points: [&[Fp2]; 2],
+    ) -> Result<[Fp2; 2], C6ResidualError> {
+        evaluate_c6_nbr2_coefficient_prefix_at_two_points(&self.leaf_coefficients, points)
     }
 
     pub fn fold_prover_coordinate(
@@ -15613,6 +15677,54 @@ mod tests {
             &profile,
             &weights[..1],
             &cohort_weights,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn nbr2_two_point_prefix_evaluator_matches_zero_padded_folds() {
+        let dimension = 8usize;
+        let coefficients = (0..173)
+            .map(|index| Fp2::new(Fp::new(3 * index as u64 + 1), Fp::new(5 * index as u64 + 2)))
+            .collect::<Vec<_>>();
+        let points = [
+            (0..dimension).map(|index| fp2(11 + index as u64)).collect::<Vec<_>>(),
+            (0..dimension).map(|index| fp2(31 + 2 * index as u64)).collect::<Vec<_>>(),
+        ];
+        let actual = evaluate_c6_nbr2_coefficient_prefix_at_two_points(
+            &coefficients,
+            [&points[0], &points[1]],
+        )
+        .unwrap();
+        let expected = std::array::from_fn(|point_index| {
+            let mut padded = vec![Fp2::ZERO; 1usize << dimension];
+            padded[..coefficients.len()].copy_from_slice(&coefficients);
+            for &challenge in &points[point_index] {
+                let half = padded.len() / 2;
+                for index in 0..half {
+                    let left = padded[2 * index];
+                    padded[index] = left + challenge * (padded[2 * index + 1] - left);
+                }
+                padded.truncate(half);
+            }
+            padded[0]
+        });
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn nbr2_two_point_prefix_evaluator_rejects_wrong_geometry() {
+        let coefficients = vec![Fp2::ONE; 9];
+        let point3 = vec![Fp2::ONE; 3];
+        let point2 = vec![Fp2::ONE; 2];
+        assert!(evaluate_c6_nbr2_coefficient_prefix_at_two_points(
+            &coefficients,
+            [&point3, &point3],
+        )
+        .is_err());
+        assert!(evaluate_c6_nbr2_coefficient_prefix_at_two_points(
+            &coefficients[..8],
+            [&point3, &point2],
         )
         .is_err());
     }

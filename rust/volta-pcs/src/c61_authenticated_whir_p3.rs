@@ -70,9 +70,9 @@ use crate::c61_persisted_mmcs::{
     C61MmcsResourceMetrics, C61PersistedMmcs, C61PersistedMmcsMetrics,
 };
 use crate::c61_public_compression::{
-    C61ArithmeticFrame, C61JointPublicArgument, C61NativeChainId, C61NativeComponent,
-    C61PublicArgument, C61_ARITHMETIC_FRAME_BYTES, C61_NATIVE_CHAIN_COUNT,
-    C61_PUBLIC_ARGUMENT_OUTER_FRAMING_BYTES,
+    c61_joint_public_statement_digest, C61ArithmeticFrame, C61JointPublicArgument,
+    C61NativeChainId, C61NativeComponent, C61PublicArgument, C61_ARITHMETIC_FRAME_BYTES,
+    C61_NATIVE_CHAIN_COUNT, C61_PUBLIC_ARGUMENT_OUTER_FRAMING_BYTES,
 };
 use crate::c61_shared_round_challenger::c61_shared_round_pair;
 use crate::c61_terminal_functional::{
@@ -922,6 +922,112 @@ pub fn assemble_c61_production_joint_public_argument(
         return Err("decoded C6PA2 differs from its exact assembly".to_owned());
     }
     Ok(C61ProductionJointPublicArgumentAssembly { argument, encoded, native_payload_bytes })
+}
+
+/// Consume the actual production executions into one canonical C6PA2 wire
+/// object. The statement digest is derived here from the base statement,
+/// installed C6NTO1 artifact, post-body schedule and compiler functional;
+/// callers cannot attach those executions to an arbitrary outer digest.
+#[allow(clippy::too_many_arguments)]
+pub fn assemble_c61_production_joint_public_argument_from_executions(
+    base_statement_digest: [u8; 32],
+    native_profile_digest: [u8; 32],
+    functional_digest: [u8; 32],
+    profile: &C6CanonicalTargetProfile,
+    primary: [C61ProductionCommittedChainExecution; 2],
+    secondary: C61ProductionJointNativeProverExecution,
+    compiler: [C61ProductionCompilerChainExecution; 2],
+    arithmetic: C61ArithmeticFrame,
+) -> Result<C61ProductionJointPublicArgumentAssembly, String> {
+    let schedule_digest = secondary.challenge.schedule_digest;
+    if secondary.proofs.len() != profile.cohorts.len() {
+        return Err("C6PA2 secondary proof/profile census mismatch".to_owned());
+    }
+    if functional_digest == [0; 32] {
+        return Err("C6PA2 compiler functional binding is zero".to_owned());
+    }
+    let statement_digest = c61_joint_public_statement_digest(
+        base_statement_digest,
+        native_profile_digest,
+        schedule_digest,
+        functional_digest,
+    )
+    .map_err(|error| error.to_string())?;
+    if arithmetic.statement_digest != statement_digest {
+        return Err("C6PA2 execution assembly received a different C6RSC4 statement".to_owned());
+    }
+
+    let [model_primary, embedding_primary] = primary;
+    let expected_primary = [
+        C61NativeChainId { component: C61NativeComponent::Model, repetition: 0 },
+        C61NativeChainId { component: C61NativeComponent::Embedding, repetition: 0 },
+    ];
+    if [model_primary.report.id, embedding_primary.report.id] != expected_primary {
+        return Err("C6PA2 primary executions are not model0/embed0".to_owned());
+    }
+
+    let mut model_secondary = None;
+    let mut embedding_secondary = None;
+    for (index, (cohort, proof)) in profile.cohorts.iter().zip(secondary.proofs).enumerate() {
+        if proof.tail_role() != c61_joint_native_carrier_tail(secondary.frame, index).0 {
+            return Err("C6PA2 secondary execution carrier role differs from its cohort".to_owned());
+        }
+        match cohort.chain_slot {
+            slot if slot == C61NativeComponent::Model as u16 && model_secondary.is_none() => {
+                model_secondary = Some(proof)
+            }
+            slot if slot == C61NativeComponent::Embedding as u16
+                && embedding_secondary.is_none() =>
+            {
+                embedding_secondary = Some(proof)
+            }
+            _ => {
+                return Err(
+                    "C6PA2 secondary execution has an unsupported or duplicate slot".to_owned()
+                )
+            }
+        }
+    }
+    let model_secondary = model_secondary
+        .ok_or_else(|| "C6PA2 secondary execution omits the model cohort".to_owned())?;
+    let embedding_secondary = embedding_secondary
+        .ok_or_else(|| "C6PA2 secondary execution omits the embedding cohort".to_owned())?;
+    let [compiler0, compiler1] = compiler;
+    let chains = [
+        C61ProductionJointNativeChainArtifact::committed_primary(
+            expected_primary[0],
+            model_primary.proof,
+        )?,
+        C61ProductionJointNativeChainArtifact::committed_secondary(
+            C61NativeChainId { component: C61NativeComponent::Model, repetition: 1 },
+            model_secondary,
+        )?,
+        C61ProductionJointNativeChainArtifact::committed_primary(
+            expected_primary[1],
+            embedding_primary.proof,
+        )?,
+        C61ProductionJointNativeChainArtifact::committed_secondary(
+            C61NativeChainId { component: C61NativeComponent::Embedding, repetition: 1 },
+            embedding_secondary,
+        )?,
+        C61ProductionJointNativeChainArtifact::compiler(
+            C61NativeChainId { component: C61NativeComponent::Compiler, repetition: 0 },
+            C61ProductionJointCompilerChainProof::new(
+                compiler0.proof,
+                schedule_digest,
+                functional_digest,
+            )?,
+        )?,
+        C61ProductionJointNativeChainArtifact::compiler(
+            C61NativeChainId { component: C61NativeComponent::Compiler, repetition: 1 },
+            C61ProductionJointCompilerChainProof::new(
+                compiler1.proof,
+                schedule_digest,
+                functional_digest,
+            )?,
+        )?,
+    ];
+    assemble_c61_production_joint_public_argument(statement_digest, profile, chains, arithmetic)
 }
 
 /// Decode all C6PA2 children under their typed statements and the two

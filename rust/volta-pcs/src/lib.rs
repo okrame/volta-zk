@@ -122,6 +122,7 @@ pub use c61_terminal_functional::{
 };
 pub use c6_authenticated_output_link::{
     prove_c6_authenticated_output_link_persisted_cuda,
+    prove_c6_authenticated_output_link_persisted_cuda_nbr2,
     prove_c6_authenticated_output_link_reference,
     prove_c6_authenticated_output_link_reference_nbr2,
     verify_c6_authenticated_output_link_production,

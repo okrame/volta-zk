@@ -9,7 +9,7 @@ use std::io::{BufWriter, Write};
 use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
 
-use volta_accel::{Backend, BackendKind, DeviceBuffer, Fp2Repr};
+use volta_accel::{Backend, BackendKind, DeviceBuffer, DeviceSlice, Fp2Repr};
 use volta_field::{Fp, Fp2, P};
 
 use crate::c6_wrapper_pcs::{
@@ -284,6 +284,7 @@ impl C6PersistedCoefficientSlotReader {
                 coefficient_path: None,
                 manifest_path: None,
                 live_bytes: 0,
+                boolean_evaluations: false,
             },
             metrics,
         ))
@@ -721,6 +722,7 @@ pub(crate) struct C6CudaPersistedLinkFoldOwner {
     coefficient_path: Option<PathBuf>,
     manifest_path: Option<PathBuf>,
     live_bytes: u64,
+    boolean_evaluations: bool,
 }
 
 impl C6CudaPersistedLinkFoldOwner {
@@ -732,13 +734,106 @@ impl C6CudaPersistedLinkFoldOwner {
         self.coefficient_len
     }
 
+    pub(crate) fn into_boolean_evaluations(
+        mut self,
+        backend: &mut Backend,
+        metrics: &mut C6PersistedLinkFoldMetrics,
+    ) -> Result<Self> {
+        if self.boolean_evaluations || backend.kind() != BackendKind::CudaResident {
+            return Err(C6WrapperPcsError::external_message(
+                "C6 CUDA link owner representation mismatch",
+            ));
+        }
+        backend.fp2_mobius_inverse_inplace_device(&self.device).map_err(|error| {
+            C6WrapperPcsError::external("invert C6 CUDA coefficient Mobius transform", error)
+        })?;
+        metrics.cuda_kernel_calls = metrics
+            .cuda_kernel_calls
+            .checked_add(u64::from(self.coefficient_len.ilog2()))
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA kernel overflow"))?;
+        let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c6/link-boolean-evaluations/v1");
+        hasher.update(&self.state_digest);
+        hasher.update(&(self.coefficient_len as u64).to_le_bytes());
+        self.state_digest = *hasher.finalize().as_bytes();
+        self.boolean_evaluations = true;
+        Ok(self)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn open_public_evaluation_device_owner(
+        backend: &mut Backend,
+        spill_root: &Path,
+        statement_digest: C6WrapperDigest,
+        session_digest: C6WrapperDigest,
+        source_digest: C6WrapperDigest,
+        repetition: u8,
+        cohort_id: u32,
+        slot: u16,
+        target_digest: C6WrapperDigest,
+        device: DeviceBuffer<Fp2Repr>,
+        metrics: &mut C6PersistedLinkFoldMetrics,
+    ) -> Result<Self> {
+        if backend.kind() != BackendKind::CudaResident
+            || [statement_digest, session_digest, source_digest, target_digest].contains(&[0; 32])
+            || device.is_empty()
+            || !device.len().is_power_of_two()
+        {
+            let _ = backend.free_device(device);
+            return Err(C6WrapperPcsError::external_message(
+                "C6 CUDA public evaluation device owner binding mismatch",
+            ));
+        }
+        let coefficient_len = device.len();
+        let directory = spill_root
+            .join(format!("nbr2-weight-repetition-{repetition}-cohort-{cohort_id}-slot-{slot}"));
+        if let Err(error) = fs::create_dir(&directory) {
+            let _ = backend.free_device(device);
+            return Err(C6WrapperPcsError::external("create C6NBR2 public fold directory", error));
+        }
+        if let Err(error) = File::open(spill_root).and_then(|root| root.sync_all()) {
+            let _ = backend.free_device(device);
+            return Err(C6WrapperPcsError::external("fsync C6NBR2 public fold root", error));
+        }
+        metrics.directories_created = metrics
+            .directories_created
+            .checked_add(1)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA directory overflow"))?;
+        metrics.fsync_count = metrics
+            .fsync_count
+            .checked_add(1)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA fsync overflow"))?;
+        let binding = C6PersistedLinkFoldBinding {
+            statement_digest,
+            session_digest,
+            root: source_digest,
+            repetition,
+            cohort_id,
+            slot,
+            round: 0,
+            target_digest,
+        };
+        let state_digest = link_fold_source_digest(&binding, coefficient_len)?;
+        Ok(Self {
+            binding,
+            coefficient_len,
+            state_digest,
+            directory,
+            device,
+            coefficient_path: None,
+            manifest_path: None,
+            live_bytes: 0,
+            boolean_evaluations: true,
+        })
+    }
+
     pub(crate) fn round_endpoints(
         &self,
         backend: &mut Backend,
         suffix_point: &[Fp2],
         metrics: &mut C6PersistedLinkFoldMetrics,
     ) -> Result<(Fp2, Fp2)> {
-        if backend.kind() != BackendKind::CudaResident
+        if self.boolean_evaluations
+            || backend.kind() != BackendKind::CudaResident
             || self.coefficient_len
                 != 2usize.checked_shl(suffix_point.len() as u32).unwrap_or_default()
         {
@@ -775,6 +870,109 @@ impl C6CudaPersistedLinkFoldOwner {
             .checked_add(32)
             .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA D2H metric overflow"))?;
         Ok((at_zero, at_two))
+    }
+
+    pub(crate) fn boolean_lower_product_round(
+        &self,
+        weights: &Self,
+        backend: &mut Backend,
+        metrics: &mut C6PersistedLinkFoldMetrics,
+    ) -> Result<(Fp2, Fp2)> {
+        if backend.kind() != BackendKind::CudaResident
+            || !self.boolean_evaluations
+            || !weights.boolean_evaluations
+            || self.coefficient_len != 2 * weights.coefficient_len
+            || weights.coefficient_len < 2
+        {
+            return Err(C6WrapperPcsError::external_message(
+                "C6NBR2 CUDA product-round geometry mismatch",
+            ));
+        }
+        let values =
+            DeviceSlice::new(&self.device, 0, weights.coefficient_len).map_err(|error| {
+                C6WrapperPcsError::external("slice C6NBR2 CUDA residual evaluations", error)
+            })?;
+        let weights =
+            DeviceSlice::new(&weights.device, 0, weights.coefficient_len).map_err(|error| {
+                C6WrapperPcsError::external("slice C6NBR2 CUDA public weights", error)
+            })?;
+        let endpoints = backend
+            .fp2_product_round_device(values, weights)
+            .map_err(|error| C6WrapperPcsError::external("C6NBR2 CUDA product round", error))?;
+        metrics.cuda_kernel_calls = metrics
+            .cuda_kernel_calls
+            .checked_add(1)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA kernel overflow"))?;
+        metrics.cuda_d2h_bytes = metrics
+            .cuda_d2h_bytes
+            .checked_add(32)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA D2H overflow"))?;
+        Ok((endpoints[0], endpoints[1]))
+    }
+
+    pub(crate) fn boolean_lower_dot(
+        &self,
+        weights: &Self,
+        backend: &mut Backend,
+        metrics: &mut C6PersistedLinkFoldMetrics,
+    ) -> Result<Fp2> {
+        if backend.kind() != BackendKind::CudaResident
+            || !self.boolean_evaluations
+            || !weights.boolean_evaluations
+            || self.coefficient_len != 2 * weights.coefficient_len
+        {
+            return Err(C6WrapperPcsError::external_message(
+                "C6NBR2 CUDA initial dot geometry mismatch",
+            ));
+        }
+        let values =
+            DeviceSlice::new(&self.device, 0, weights.coefficient_len).map_err(|error| {
+                C6WrapperPcsError::external("slice C6NBR2 CUDA residual evaluations", error)
+            })?;
+        let weights =
+            DeviceSlice::new(&weights.device, 0, weights.coefficient_len).map_err(|error| {
+                C6WrapperPcsError::external("slice C6NBR2 CUDA public weights", error)
+            })?;
+        let value = backend
+            .fp2_dot_device(values, weights)
+            .map_err(|error| C6WrapperPcsError::external("C6NBR2 CUDA initial dot", error))?;
+        metrics.cuda_kernel_calls = metrics
+            .cuda_kernel_calls
+            .checked_add(1)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA kernel overflow"))?;
+        metrics.cuda_d2h_bytes = metrics
+            .cuda_d2h_bytes
+            .checked_add(16)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA D2H overflow"))?;
+        Ok(value)
+    }
+
+    pub(crate) fn boolean_z_endpoints(
+        &self,
+        weights: &Self,
+        backend: &mut Backend,
+        metrics: &mut C6PersistedLinkFoldMetrics,
+    ) -> Result<(Fp2, Fp2)> {
+        if !self.boolean_evaluations
+            || !weights.boolean_evaluations
+            || self.coefficient_len != 2
+            || weights.coefficient_len != 1
+        {
+            return Err(C6WrapperPcsError::external_message(
+                "C6NBR2 CUDA terminal-z geometry mismatch",
+            ));
+        }
+        let values = backend
+            .download_device(&self.device, 0, 2)
+            .map_err(|error| C6WrapperPcsError::external("read C6NBR2 CUDA z endpoints", error))?;
+        let weight = weights.terminal(backend, metrics)?;
+        metrics.cuda_d2h_bytes = metrics
+            .cuda_d2h_bytes
+            .checked_add(32)
+            .ok_or_else(|| C6WrapperPcsError::external_message("C6 CUDA D2H overflow"))?;
+        let at_zero = Fp2::from(values[0]) * weight;
+        let at_two = (Fp2::from(values[1]) + Fp2::from(values[1]) - Fp2::from(values[0])) * weight;
+        Ok((at_zero, Fp2::ZERO - at_two))
     }
 
     pub(crate) fn advance_virtual_create_new(
@@ -852,13 +1050,45 @@ impl C6CudaPersistedLinkFoldOwner {
     }
 
     pub(crate) fn bind_create_new(
-        mut self,
+        self,
         backend: &mut Backend,
         challenge: Fp2,
         next_round: u16,
         metrics: &mut C6PersistedLinkFoldMetrics,
     ) -> Result<Self> {
-        if backend.kind() != BackendKind::CudaResident
+        self.bind_create_new_inner(backend, challenge, next_round, None, metrics)
+    }
+
+    pub(crate) fn bind_boolean_rows_create_new(
+        self,
+        backend: &mut Backend,
+        challenge: Fp2,
+        next_round: u16,
+        rows: usize,
+        metrics: &mut C6PersistedLinkFoldMetrics,
+    ) -> Result<Self> {
+        self.bind_create_new_inner(backend, challenge, next_round, Some(rows), metrics)
+    }
+
+    fn bind_create_new_inner(
+        mut self,
+        backend: &mut Backend,
+        challenge: Fp2,
+        next_round: u16,
+        boolean_rows: Option<usize>,
+        metrics: &mut C6PersistedLinkFoldMetrics,
+    ) -> Result<Self> {
+        let representation_matches = match boolean_rows {
+            Some(rows) => {
+                self.boolean_evaluations
+                    && rows > 0
+                    && self.coefficient_len % rows == 0
+                    && (self.coefficient_len / rows).is_power_of_two()
+            }
+            None => !self.boolean_evaluations,
+        };
+        if !representation_matches
+            || backend.kind() != BackendKind::CudaResident
             || self.coefficient_len < 2
             || !self.coefficient_len.is_power_of_two()
             || next_round != self.binding.round.checked_add(1).unwrap_or_default()
@@ -867,9 +1097,17 @@ impl C6CudaPersistedLinkFoldOwner {
                 "C6 CUDA link successor geometry mismatch",
             ));
         }
-        let successor = backend
-            .fp2_monomial_bind_device(&self.device, challenge)
-            .map_err(|error| C6WrapperPcsError::external("bind C6 CUDA coefficients", error))?;
+        let successor = match boolean_rows {
+            Some(rows) => backend.fp2_fold_rows_device(
+                &self.device,
+                0,
+                rows,
+                self.coefficient_len / rows,
+                challenge,
+            ),
+            None => backend.fp2_monomial_bind_device(&self.device, challenge),
+        }
+        .map_err(|error| C6WrapperPcsError::external("bind C6 CUDA coefficients", error))?;
         let next_len = self.coefficient_len / 2;
         if successor.len() != next_len {
             let _ = backend.free_device(successor);
@@ -967,6 +1205,7 @@ impl C6CudaPersistedLinkFoldOwner {
             coefficient_path: Some(coefficient_path),
             manifest_path: Some(manifest_path),
             live_bytes: successor_live_bytes,
+            boolean_evaluations: self.boolean_evaluations,
         })
     }
 

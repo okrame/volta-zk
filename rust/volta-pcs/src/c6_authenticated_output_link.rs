@@ -16,7 +16,7 @@ use std::fmt;
 use std::fs::{self, File};
 use std::path::Path;
 
-use volta_accel::{Backend, BackendKind};
+use volta_accel::{Backend, BackendKind, Fp2Repr};
 use volta_field::{Fp, Fp2, P};
 use volta_mac::{
     zero_open_prover, zero_open_verify, CorrelationStream, ProverAuthed, Transcript, VerifierCtx,
@@ -1280,6 +1280,274 @@ struct C6CudaPersistedCoefficientDelayedTerm {
     global_round: u16,
 }
 
+struct C6CudaNbr2CombinedDelayedTerm {
+    initial_value: Fp2,
+    values: Option<C6CudaPersistedLinkFoldOwner>,
+    weights: Option<C6CudaPersistedLinkFoldOwner>,
+    leading_virtual_rounds: usize,
+    trailing_virtual_rounds: usize,
+    virtual_factor: Fp2,
+    global_round: u16,
+}
+
+impl C6CudaNbr2CombinedDelayedTerm {
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        rho: Fp2,
+        gamma: Fp2,
+        claimed_value: Fp2,
+        descriptor: &C6PendingSlotDescriptor,
+        source: &C6PersistedCoefficientSlotReader,
+        nbr2: &C6Nbr2CorrectionFunctional<'_>,
+        backend: &mut Backend,
+        spill_root: &Path,
+        global_rounds: usize,
+        metrics: &mut C6PersistedLinkFoldMetrics,
+    ) -> Result<Self> {
+        if !is_nbr2_correction_slot(descriptor)
+            || descriptor.target_point.last() != Some(&Fp2::ZERO)
+            || source.coefficient_len()
+                != 1usize.checked_shl(descriptor.target_point.len() as u32).unwrap_or_default()
+            || global_rounds != descriptor.target_point.len() + 1
+        {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "C6NBR2 CUDA combined-term geometry mismatch",
+            ));
+        }
+        let (statement_digest, session_digest, root) = source.binding();
+        if statement_digest != descriptor.wrapper_statement_digest {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "C6NBR2 CUDA residual statement mismatch",
+            ));
+        }
+        let target_digest = c6_nbr2_persisted_term_digest(descriptor, rho, gamma, nbr2.digest());
+        let (values, initial_metrics) = source.open_cuda_link_fold_owner(
+            backend,
+            spill_root,
+            descriptor.repetition,
+            descriptor.cohort_id,
+            descriptor.slot,
+            target_digest,
+        )?;
+        if values.binding().root != root {
+            return Err(C6AuthenticatedOutputLinkError::new("C6NBR2 CUDA residual root mismatch"));
+        }
+        metrics.absorb_nonlive(initial_metrics)?;
+        let values = values.into_boolean_evaluations(backend, metrics)?;
+        let source_point = &descriptor.target_point[..descriptor.target_point.len() - 1];
+        let weight_len = 1usize.checked_shl(source_point.len() as u32).unwrap_or_default();
+        if nbr2.coefficients().len() > weight_len {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "C6NBR2 CUDA functional exceeds residual source domain",
+            ));
+        }
+        let public_weights = backend.alloc_device::<Fp2Repr>(weight_len).map_err(|error| {
+            C6AuthenticatedOutputLinkError::new(format!(
+                "allocate C6NBR2 CUDA public weights: {error}"
+            ))
+        })?;
+        let mut start = 0usize;
+        while start < nbr2.coefficients().len() {
+            let count = (nbr2.coefficients().len() - start).min(16 * 1024);
+            let raw = nbr2.coefficients()[start..start + count]
+                .iter()
+                .copied()
+                .map(Fp2Repr::from)
+                .collect::<Vec<_>>();
+            if let Err(error) = backend.upload_device(&public_weights, start, &raw) {
+                let _ = backend.free_device(public_weights);
+                return Err(C6AuthenticatedOutputLinkError::new(format!(
+                    "upload C6NBR2 CUDA public coefficients: {error}"
+                )));
+            }
+            metrics.cuda_h2d_bytes = metrics
+                .cuda_h2d_bytes
+                .checked_add((count * 16) as u64)
+                .ok_or_else(|| C6AuthenticatedOutputLinkError::new("C6NBR2 H2D overflow"))?;
+            start += count;
+        }
+        if let Err(error) = backend.fp2_affine_eq_weights_inplace_device(
+            &public_weights,
+            nbr2.coefficients().len(),
+            source_point,
+            rho,
+            gamma,
+        ) {
+            let _ = backend.free_device(public_weights);
+            return Err(C6AuthenticatedOutputLinkError::new(format!(
+                "build C6NBR2 CUDA affine equality weights: {error}"
+            )));
+        }
+        metrics.cuda_kernel_calls = metrics
+            .cuda_kernel_calls
+            .checked_add(1)
+            .ok_or_else(|| C6AuthenticatedOutputLinkError::new("C6NBR2 kernel overflow"))?;
+        metrics.cuda_h2d_bytes = metrics
+            .cuda_h2d_bytes
+            .checked_add((source_point.len() * 16) as u64)
+            .ok_or_else(|| C6AuthenticatedOutputLinkError::new("C6NBR2 H2D overflow"))?;
+        let weights = C6CudaPersistedLinkFoldOwner::open_public_evaluation_device_owner(
+            backend,
+            spill_root,
+            statement_digest,
+            session_digest,
+            nbr2.digest(),
+            descriptor.repetition,
+            descriptor.cohort_id,
+            descriptor.slot,
+            target_digest,
+            public_weights,
+            metrics,
+        )?;
+        let initial_value = rho * claimed_value + gamma * nbr2.correction();
+        if values.boolean_lower_dot(&weights, backend, metrics)? != initial_value {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "C6NBR2 CUDA correction differs from residual slot 6",
+            ));
+        }
+        Ok(Self {
+            initial_value,
+            values: Some(values),
+            weights: Some(weights),
+            leading_virtual_rounds: 1,
+            trailing_virtual_rounds: 1,
+            virtual_factor: Fp2::ONE,
+            global_round: 0,
+        })
+    }
+
+    fn initial_value(&self) -> Fp2 {
+        self.initial_value
+    }
+
+    fn round_values(
+        &self,
+        backend: &mut Backend,
+        metrics: &mut C6PersistedLinkFoldMetrics,
+    ) -> Result<(Fp2, Fp2)> {
+        let values = self.values()?;
+        let weights = self.weights()?;
+        if values.binding().round != self.global_round
+            || weights.binding().round != self.global_round
+        {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "C6NBR2 CUDA combined-term round mismatch",
+            ));
+        }
+        if self.leading_virtual_rounds > 0 {
+            let at_zero = self.initial_value * self.virtual_factor;
+            return Ok((at_zero, Fp2::ZERO - at_zero));
+        }
+        let endpoints = if weights.coefficient_len() > 1 {
+            values.boolean_lower_product_round(weights, backend, metrics)?
+        } else if self.trailing_virtual_rounds > 0 {
+            values.boolean_z_endpoints(weights, backend, metrics)?
+        } else {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "C6NBR2 CUDA combined term has no active round",
+            ));
+        };
+        Ok((endpoints.0 * self.virtual_factor, endpoints.1 * self.virtual_factor))
+    }
+
+    fn bind(
+        &mut self,
+        backend: &mut Backend,
+        challenge: Fp2,
+        metrics: &mut C6PersistedLinkFoldMetrics,
+    ) -> Result<()> {
+        let next_round = self
+            .global_round
+            .checked_add(1)
+            .ok_or_else(|| C6AuthenticatedOutputLinkError::new("C6NBR2 CUDA round overflow"))?;
+        let values = self.values.take().ok_or_else(|| {
+            C6AuthenticatedOutputLinkError::new("C6NBR2 CUDA residual owner consumed")
+        })?;
+        let weights = self.weights.take().ok_or_else(|| {
+            C6AuthenticatedOutputLinkError::new("C6NBR2 CUDA public owner consumed")
+        })?;
+        let (values, weights) = if self.leading_virtual_rounds > 0 {
+            self.virtual_factor = self.virtual_factor * (Fp2::ONE - challenge);
+            self.leading_virtual_rounds -= 1;
+            (
+                values.advance_virtual_create_new(challenge, next_round, metrics)?,
+                weights.advance_virtual_create_new(challenge, next_round, metrics)?,
+            )
+        } else if weights.coefficient_len() > 1 {
+            (
+                values.bind_boolean_rows_create_new(backend, challenge, next_round, 2, metrics)?,
+                weights.bind_boolean_rows_create_new(backend, challenge, next_round, 1, metrics)?,
+            )
+        } else if self.trailing_virtual_rounds > 0 {
+            self.virtual_factor = self.virtual_factor * (Fp2::ONE - challenge);
+            self.trailing_virtual_rounds -= 1;
+            (
+                values.bind_boolean_rows_create_new(backend, challenge, next_round, 1, metrics)?,
+                weights.advance_virtual_create_new(challenge, next_round, metrics)?,
+            )
+        } else {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "C6NBR2 CUDA combined term is already terminal",
+            ));
+        };
+        self.values = Some(values);
+        self.weights = Some(weights);
+        self.global_round = next_round;
+        Ok(())
+    }
+
+    fn terminal(
+        &self,
+        backend: &mut Backend,
+        metrics: &mut C6PersistedLinkFoldMetrics,
+    ) -> Result<Fp2> {
+        let values = self.values()?;
+        let weights = self.weights()?;
+        if self.leading_virtual_rounds != 0
+            || self.trailing_virtual_rounds != 0
+            || values.coefficient_len() != 1
+            || weights.coefficient_len() != 1
+            || values.binding().round != self.global_round
+            || weights.binding().round != self.global_round
+        {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "invalid C6NBR2 CUDA combined terminal state",
+            ));
+        }
+        Ok(values.terminal(backend, metrics)?
+            * weights.terminal(backend, metrics)?
+            * self.virtual_factor)
+    }
+
+    fn release(
+        mut self,
+        backend: &mut Backend,
+        metrics: &mut C6PersistedLinkFoldMetrics,
+    ) -> Result<()> {
+        self.values
+            .take()
+            .ok_or_else(|| C6AuthenticatedOutputLinkError::new("C6NBR2 CUDA residual missing"))?
+            .release(backend, metrics)?;
+        self.weights
+            .take()
+            .ok_or_else(|| C6AuthenticatedOutputLinkError::new("C6NBR2 CUDA weights missing"))?
+            .release(backend, metrics)?;
+        Ok(())
+    }
+
+    fn values(&self) -> Result<&C6CudaPersistedLinkFoldOwner> {
+        self.values.as_ref().ok_or_else(|| {
+            C6AuthenticatedOutputLinkError::new("C6NBR2 CUDA residual owner missing")
+        })
+    }
+
+    fn weights(&self) -> Result<&C6CudaPersistedLinkFoldOwner> {
+        self.weights
+            .as_ref()
+            .ok_or_else(|| C6AuthenticatedOutputLinkError::new("C6NBR2 CUDA public owner missing"))
+    }
+}
+
 impl C6CudaPersistedCoefficientDelayedTerm {
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -1435,6 +1703,65 @@ impl C6CudaPersistedCoefficientDelayedTerm {
         self.owner
             .as_ref()
             .ok_or_else(|| C6AuthenticatedOutputLinkError::new("C6 CUDA link owner missing"))
+    }
+}
+
+enum C6CudaPersistedDelayedTerm {
+    Equality(C6CudaPersistedCoefficientDelayedTerm),
+    Nbr2(C6CudaNbr2CombinedDelayedTerm),
+}
+
+impl C6CudaPersistedDelayedTerm {
+    fn initial_value(&self) -> Fp2 {
+        match self {
+            Self::Equality(term) => term.initial_value(),
+            Self::Nbr2(term) => term.initial_value(),
+        }
+    }
+
+    fn round_values(
+        &self,
+        backend: &mut Backend,
+        metrics: &mut C6PersistedLinkFoldMetrics,
+    ) -> Result<(Fp2, Fp2)> {
+        match self {
+            Self::Equality(term) => term.round_values(backend, metrics),
+            Self::Nbr2(term) => term.round_values(backend, metrics),
+        }
+    }
+
+    fn bind(
+        &mut self,
+        backend: &mut Backend,
+        challenge: Fp2,
+        metrics: &mut C6PersistedLinkFoldMetrics,
+    ) -> Result<()> {
+        match self {
+            Self::Equality(term) => term.bind(backend, challenge, metrics),
+            Self::Nbr2(term) => term.bind(backend, challenge, metrics),
+        }
+    }
+
+    fn terminal(
+        &self,
+        backend: &mut Backend,
+        metrics: &mut C6PersistedLinkFoldMetrics,
+    ) -> Result<Fp2> {
+        match self {
+            Self::Equality(term) => term.terminal(backend, metrics),
+            Self::Nbr2(term) => term.terminal(backend, metrics),
+        }
+    }
+
+    fn release(
+        self,
+        backend: &mut Backend,
+        metrics: &mut C6PersistedLinkFoldMetrics,
+    ) -> Result<()> {
+        match self {
+            Self::Equality(term) => term.release(backend, metrics),
+            Self::Nbr2(term) => term.release(backend, metrics),
+        }
     }
 }
 
@@ -1609,6 +1936,19 @@ fn persisted_link_term_digest(
         hash_fp2(&mut hasher, *coordinate);
     }
     hash_fp2(&mut hasher, coefficient);
+    *hasher.finalize().as_bytes()
+}
+
+fn c6_nbr2_persisted_term_digest(
+    descriptor: &C6PendingSlotDescriptor,
+    rho: Fp2,
+    gamma: Fp2,
+    nbr2_statement_digest: C6WrapperDigest,
+) -> C6WrapperDigest {
+    let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c6/nbr2-persisted-term/v1");
+    hasher.update(&persisted_link_term_digest(descriptor, rho));
+    hasher.update(&nbr2_statement_digest);
+    hash_fp2(&mut hasher, gamma);
     *hasher.finalize().as_bytes()
 }
 
@@ -2102,6 +2442,7 @@ fn prepare_c6_authenticated_output_link_persisted_cuda(
     fixed: &C6FixedWrapperCommitments,
     cohorts: &[C6PersistedWrapperCohort],
     pending: &C6PendingSlotRegistryProver,
+    nbr2: Option<&C6Nbr2CorrectionFunctional<'_>>,
     streams: &mut [CorrelationStream; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
     transcript: &mut Transcript,
     spill_root: &Path,
@@ -2116,6 +2457,9 @@ fn prepare_c6_authenticated_output_link_persisted_cuda(
             "C6 CUDA persisted link backend/relation census mismatch",
         ));
     }
+    if let Some(nbr2) = nbr2 {
+        nbr2.validate_for_link(fixed, rounds)?;
+    }
     validate_prover_registry(fixed, pending)?;
     validate_persisted_prover_cohorts(fixed, cohorts, session_digest)?;
     let readers = cohorts
@@ -2124,7 +2468,7 @@ fn prepare_c6_authenticated_output_link_persisted_cuda(
         .collect::<std::result::Result<Vec<_>, _>>()?;
     let mut schedule_digests = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
     for repetition in 0..C6_WRAPPER_REPETITIONS {
-        schedule_digests.push(schedule_digest(
+        let schedule = schedule_digest(
             fixed,
             repetition as u8,
             &pending
@@ -2134,7 +2478,14 @@ fn prepare_c6_authenticated_output_link_persisted_cuda(
                 .map(|entry| &entry.descriptor)
                 .collect::<Vec<_>>(),
             rounds,
-        )?);
+        )?;
+        schedule_digests.push(match nbr2 {
+            Some(nbr2) => c6_nbr2_schedule_digest(schedule, nbr2.digest()),
+            None => schedule,
+        });
+    }
+    if nbr2.is_some() {
+        transcript.append(LINK_NBR2_BOUND_LABEL, 0);
     }
     transcript.append(
         LINK_PREFIX_LABEL,
@@ -2149,12 +2500,19 @@ fn prepare_c6_authenticated_output_link_persisted_cuda(
         let beta = transcript.challenge_fp2();
         let entries = pending_entries_for_repetition(&pending.entries, repetition as u8);
         let rhos = scalar_power_weights(beta, entries.len());
-        let initial_claims = array::from_fn(|tape| {
+        let gamma = rhos.last().copied().unwrap_or(Fp2::ONE) * beta;
+        let mut initial_claims = array::from_fn(|tape| {
             entries
                 .iter()
                 .zip(&rhos)
                 .fold(ProverAuthed::ZERO, |sum, (entry, rho)| sum.add(entry.auth[tape].scale(*rho)))
         });
+        if let Some(nbr2) = nbr2 {
+            let public = ProverAuthed::from_public(nbr2.correction()).scale(gamma);
+            for claim in &mut initial_claims {
+                *claim = claim.add(public);
+            }
+        }
         let mut terms = Vec::with_capacity(entries.len());
         for (entry, rho) in entries.iter().zip(&rhos) {
             let cohort_index = fixed
@@ -2164,16 +2522,33 @@ fn prepare_c6_authenticated_output_link_persisted_cuda(
                 .ok_or_else(|| {
                     C6AuthenticatedOutputLinkError::new("missing C6 CUDA persisted link cohort")
                 })?;
-            terms.push(C6CudaPersistedCoefficientDelayedTerm::new(
-                *rho,
-                entry.auth[0].x,
-                &entry.descriptor,
-                &readers[cohort_index],
-                backend,
-                spill_root,
-                rounds,
-                &mut metrics,
-            )?);
+            if nbr2.is_some_and(|_| is_nbr2_correction_slot(&entry.descriptor)) {
+                terms.push(C6CudaPersistedDelayedTerm::Nbr2(C6CudaNbr2CombinedDelayedTerm::new(
+                    *rho,
+                    gamma,
+                    entry.auth[0].x,
+                    &entry.descriptor,
+                    &readers[cohort_index],
+                    nbr2.expect("checked C6NBR2 statement"),
+                    backend,
+                    spill_root,
+                    rounds,
+                    &mut metrics,
+                )?));
+            } else {
+                terms.push(C6CudaPersistedDelayedTerm::Equality(
+                    C6CudaPersistedCoefficientDelayedTerm::new(
+                        *rho,
+                        entry.auth[0].x,
+                        &entry.descriptor,
+                        &readers[cohort_index],
+                        backend,
+                        spill_root,
+                        rounds,
+                        &mut metrics,
+                    )?,
+                ));
+            }
         }
         let initial_sum = terms.iter().fold(Fp2::ZERO, |sum, term| sum + term.initial_value());
         if initial_sum != initial_claims[0].x {
@@ -2211,7 +2586,7 @@ fn prepare_c6_authenticated_output_link_persisted_cuda(
             &round_output.point,
             None,
             Some(aggregates),
-            None,
+            nbr2_terminal_weight(nbr2, gamma, &round_output.point)?,
         )?;
         if aggregates != recomputed_aggregates
             || round_output.final_claims.iter().any(|claim| {
@@ -2509,6 +2884,66 @@ pub fn prove_c6_authenticated_output_link_persisted_cuda(
     C6BoundSlotRegistryProver,
     C6ProductionAuthenticatedOutputLinkMetrics,
 )> {
+    prove_c6_authenticated_output_link_persisted_cuda_inner(
+        fixed,
+        cohorts,
+        pending,
+        None,
+        streams,
+        backend,
+        spill_root,
+        session_digest,
+        transcript,
+    )
+}
+
+/// Production C6NBR2 prover. The additional correction relation reuses the
+/// exact C6LNK2 wire grammar and the committed residual slot-6 opening.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_c6_authenticated_output_link_persisted_cuda_nbr2(
+    fixed: &C6FixedWrapperCommitments,
+    cohorts: &[C6PersistedWrapperCohort],
+    pending: C6PendingSlotRegistryProver,
+    nbr2: &C6Nbr2CorrectionFunctional<'_>,
+    streams: &mut [CorrelationStream; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
+    backend: &mut Backend,
+    spill_root: impl AsRef<Path>,
+    session_digest: C6WrapperDigest,
+    transcript: &mut Transcript,
+) -> Result<(
+    C6AuthenticatedOutputLinkProof,
+    C6BoundSlotRegistryProver,
+    C6ProductionAuthenticatedOutputLinkMetrics,
+)> {
+    prove_c6_authenticated_output_link_persisted_cuda_inner(
+        fixed,
+        cohorts,
+        pending,
+        Some(nbr2),
+        streams,
+        backend,
+        spill_root,
+        session_digest,
+        transcript,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_c6_authenticated_output_link_persisted_cuda_inner(
+    fixed: &C6FixedWrapperCommitments,
+    cohorts: &[C6PersistedWrapperCohort],
+    pending: C6PendingSlotRegistryProver,
+    nbr2: Option<&C6Nbr2CorrectionFunctional<'_>>,
+    streams: &mut [CorrelationStream; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
+    backend: &mut Backend,
+    spill_root: impl AsRef<Path>,
+    session_digest: C6WrapperDigest,
+    transcript: &mut Transcript,
+) -> Result<(
+    C6AuthenticatedOutputLinkProof,
+    C6BoundSlotRegistryProver,
+    C6ProductionAuthenticatedOutputLinkMetrics,
+)> {
     if backend.kind() != BackendKind::CudaResident {
         return Err(C6AuthenticatedOutputLinkError::new(
             "C6 production persisted link requires cuda-resident backend",
@@ -2543,6 +2978,7 @@ pub fn prove_c6_authenticated_output_link_persisted_cuda(
         fixed,
         cohorts,
         &pending,
+        nbr2,
         streams,
         transcript,
         &link_spill_root,
@@ -2594,7 +3030,8 @@ pub fn prove_c6_authenticated_output_link_persisted_cuda(
         C6AuthenticatedOutputLinkError::new("C6 production link overhead underflow")
     })?;
     let link = C6AuthenticatedOutputLinkMetrics {
-        relations_per_repetition: C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_RELATIONS as u64,
+        relations_per_repetition: (C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_RELATIONS
+            + usize::from(nbr2.is_some())) as u64,
         rounds_per_repetition: C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_ROUNDS as u64,
         full_correlations_per_tape: C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_CORRELATIONS_PER_TAPE,
         link_overhead_bytes,
@@ -3143,7 +3580,7 @@ fn prove_persisted_dual_tape_rounds(
 
 #[allow(clippy::too_many_arguments)]
 fn prove_cuda_persisted_dual_tape_rounds(
-    mut terms: Vec<C6CudaPersistedCoefficientDelayedTerm>,
+    mut terms: Vec<C6CudaPersistedDelayedTerm>,
     mut claims: [ProverAuthed; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
     repetition: u8,
     streams: &mut [CorrelationStream; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
@@ -3899,7 +4336,7 @@ mod tests {
         let evaluations = table(5, 29_500);
         let slots = (0..usize::from(spec.slot_count))
             .map(|slot| C6WrapperSlotWitness::Auxiliary {
-                evaluations: if slot == 0 {
+                evaluations: if slot == 0 || slot == usize::from(C6_NBR2_CORRECTION_SLOT) {
                     evaluations.clone()
                 } else {
                     table(5, 30_000 + slot as u64 * 100)
@@ -3964,6 +4401,87 @@ mod tests {
         assert_eq!(metrics.cuda_h2d_bytes, 1_632);
         assert_eq!(metrics.cuda_d2h_bytes, 672);
         assert_eq!(metrics.cuda_kernel_calls, 35);
+
+        let nbr2_spill_root = root.join("nbr2-link");
+        std::fs::create_dir(&nbr2_spill_root).unwrap();
+        let mut nbr2_target = (0..4).map(|index| symbol(32_500 + index)).collect::<Vec<_>>();
+        nbr2_target.push(Fp2::ZERO);
+        let nbr2_descriptor = C6PendingSlotDescriptor {
+            wrapper_statement_digest: statement_digest,
+            fixed_roots_digest: [0x73; 32],
+            source_statement_digest: [0x74; 32],
+            repetition: 0,
+            cohort_id: C6_DELTA_RESIDUAL_COHORT_ID,
+            slot: C6_NBR2_CORRECTION_SLOT,
+            target_point: nbr2_target.clone(),
+        };
+        let functional = (0..13).map(|index| symbol(33_000 + index as u64)).collect::<Vec<_>>();
+        let correction = evaluations[..16]
+            .iter()
+            .zip(&functional)
+            .fold(Fp2::ZERO, |sum, (&value, &coefficient)| sum + value * coefficient);
+        let mut nbr2 = C6Nbr2CorrectionFunctional {
+            outer_statement_digest: [0x81; 32],
+            wrapper_statement_digest: statement_digest,
+            fixed_roots_digest: [0x73; 32],
+            residual_manifest_digest: [0x82; 32],
+            residual_view_digest: [0x83; 32],
+            paired_source_digest: [0x84; 32],
+            source_schedule_digest: [0x85; 32],
+            native_profile_digest: [0x86; 32],
+            functional_digest: [0x87; 32],
+            coefficient_vector_digest: c6_nbr2_coefficient_vector_digest(&functional),
+            source_count: functional.len() as u32,
+            source_log2: 4,
+            correction,
+            coefficients: &functional,
+            digest: [0; 32],
+        };
+        nbr2.digest = c6_nbr2_statement_digest(&nbr2);
+        let rho = symbol(34_000);
+        let gamma = symbol(34_001);
+        let nbr2_claimed = evaluate_multilinear_table(&evaluations, &nbr2_target).unwrap();
+        let mut resident_nbr2 = C6Nbr2CombinedDelayedTerm::new(
+            rho,
+            gamma,
+            &evaluations,
+            &nbr2_target,
+            &functional,
+            correction,
+            6,
+        )
+        .unwrap();
+        let mut nbr2_metrics = C6PersistedLinkFoldMetrics::default();
+        let mut cuda_nbr2 = C6CudaNbr2CombinedDelayedTerm::new(
+            rho,
+            gamma,
+            nbr2_claimed,
+            &nbr2_descriptor,
+            &source,
+            &nbr2,
+            &mut backend,
+            &nbr2_spill_root,
+            6,
+            &mut nbr2_metrics,
+        )
+        .unwrap();
+        assert_eq!(cuda_nbr2.initial_value(), resident_nbr2.active_sum());
+        for round in 0..6 {
+            assert_eq!(
+                cuda_nbr2.round_values(&mut backend, &mut nbr2_metrics).unwrap(),
+                resident_nbr2.round_values().unwrap(),
+                "C6NBR2 round {round}",
+            );
+            let challenge = symbol(35_000 + round as u64);
+            resident_nbr2.bind(challenge).unwrap();
+            cuda_nbr2.bind(&mut backend, challenge, &mut nbr2_metrics).unwrap();
+        }
+        assert_eq!(
+            cuda_nbr2.terminal(&mut backend, &mut nbr2_metrics).unwrap(),
+            resident_nbr2.terminal().unwrap(),
+        );
+        cuda_nbr2.release(&mut backend, &mut nbr2_metrics).unwrap();
+        assert_eq!(nbr2_metrics.current_live_spill_bytes, 0);
         drop(source);
         drop(persisted);
         std::fs::remove_dir_all(root).unwrap();

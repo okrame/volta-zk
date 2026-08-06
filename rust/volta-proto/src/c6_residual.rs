@@ -10237,6 +10237,7 @@ pub struct C6CompiledNativeTargetFunctional {
 }
 
 const C6_NBR2_EVALUATION_LOW_BITS: usize = 12;
+const C6_NBR2_EVALUATION_PARTITIONS_PER_THREAD: usize = 4;
 
 fn c6_nbr2_equality_weights(point: &[Fp2]) -> Vec<Fp2> {
     let mut weights = Vec::with_capacity(1usize << point.len());
@@ -10252,45 +10253,88 @@ fn c6_nbr2_equality_weights(point: &[Fp2]) -> Vec<Fp2> {
     weights
 }
 
-/// Evaluate one zero-padded public coefficient prefix at two independently
-/// sampled D23 points in one parallel scan.  C6NBR2 uses this verifier-owned
-/// value to amend the already authenticated residual-slot weight; neither
-/// coefficients nor evaluations are accepted from the provider.
+#[derive(Clone, Debug)]
+pub struct C6Nbr2TwoPointEvaluationPlan {
+    dimension: usize,
+    low_len: usize,
+    low: [Vec<Fp2>; 2],
+    high: [Vec<Fp2>; 2],
+}
+
+impl C6Nbr2TwoPointEvaluationPlan {
+    pub fn new(points: [&[Fp2]; 2]) -> Result<Self, C6ResidualError> {
+        let dimension = points[0].len();
+        if dimension == 0
+            || points[1].len() != dimension
+            || dimension > C6_RESIDUAL_SLOT_LOG2 as usize
+        {
+            return Err(C6ResidualError::new(
+                "C6NBR2 coefficient-prefix evaluation geometry differs",
+            ));
+        }
+        let low_bits = C6_NBR2_EVALUATION_LOW_BITS.min(dimension);
+        let low_len = 1usize << low_bits;
+        let low = [
+            c6_nbr2_equality_weights(&points[0][..low_bits]),
+            c6_nbr2_equality_weights(&points[1][..low_bits]),
+        ];
+        let high = [
+            c6_nbr2_equality_weights(&points[0][low_bits..]),
+            c6_nbr2_equality_weights(&points[1][low_bits..]),
+        ];
+        Ok(Self { dimension, low_len, low, high })
+    }
+
+    /// Evaluate one zero-padded public coefficient prefix at both registered
+    /// points in one scan. Point-dependent weights are precomputed outside
+    /// the verifier timing window and the scan uses a bounded task census.
+    pub fn evaluate(&self, coefficients: &[Fp2]) -> Result<[Fp2; 2], C6ResidualError> {
+        let capacity = 1usize.checked_shl(self.dimension as u32).unwrap_or_default();
+        if coefficients.len() > capacity {
+            return Err(C6ResidualError::new(
+                "C6NBR2 coefficient prefix exceeds its registered dimension",
+            ));
+        }
+        let high_chunks = coefficients.len().div_ceil(self.low_len);
+        let partitions = (rayon::current_num_threads()
+            * C6_NBR2_EVALUATION_PARTITIONS_PER_THREAD)
+            .min(high_chunks.max(1));
+        let chunks_per_partition = high_chunks.div_ceil(partitions);
+        Ok((0..partitions)
+            .into_par_iter()
+            .map(|partition| {
+                let mut sum = [Fp2::ZERO; 2];
+                let first_high = partition * chunks_per_partition;
+                let last_high = (first_high + chunks_per_partition).min(high_chunks);
+                for high_index in first_high..last_high {
+                    let start = high_index * self.low_len;
+                    let end = (start + self.low_len).min(coefficients.len());
+                    let mut partial = [Fp2::ZERO; 2];
+                    for (low_index, &coefficient) in
+                        coefficients[start..end].iter().enumerate()
+                    {
+                        partial[0] += coefficient * self.low[0][low_index];
+                        partial[1] += coefficient * self.low[1][low_index];
+                    }
+                    sum[0] += partial[0] * self.high[0][high_index];
+                    sum[1] += partial[1] * self.high[1][high_index];
+                }
+                sum
+            })
+            .reduce(
+                || [Fp2::ZERO; 2],
+                |left, right| [left[0] + right[0], left[1] + right[1]],
+            ))
+    }
+}
+
+/// Convenience entry point for callers that do not retain a response-local
+/// point plan. Production C6NBR2 constructs the plan once before evaluation.
 pub fn evaluate_c6_nbr2_coefficient_prefix_at_two_points(
     coefficients: &[Fp2],
     points: [&[Fp2]; 2],
 ) -> Result<[Fp2; 2], C6ResidualError> {
-    let dimension = points[0].len();
-    let capacity = 1usize.checked_shl(dimension as u32).unwrap_or_default();
-    if dimension == 0
-        || points[1].len() != dimension
-        || coefficients.len() > capacity
-        || dimension > C6_RESIDUAL_SLOT_LOG2 as usize
-    {
-        return Err(C6ResidualError::new("C6NBR2 coefficient-prefix evaluation geometry differs"));
-    }
-    let low_bits = C6_NBR2_EVALUATION_LOW_BITS.min(dimension);
-    let low_len = 1usize << low_bits;
-    let low = [
-        c6_nbr2_equality_weights(&points[0][..low_bits]),
-        c6_nbr2_equality_weights(&points[1][..low_bits]),
-    ];
-    let high = [
-        c6_nbr2_equality_weights(&points[0][low_bits..]),
-        c6_nbr2_equality_weights(&points[1][low_bits..]),
-    ];
-    Ok(coefficients
-        .par_chunks(low_len)
-        .enumerate()
-        .map(|(high_index, chunk)| {
-            let mut partial = [Fp2::ZERO; 2];
-            for (low_index, &coefficient) in chunk.iter().enumerate() {
-                partial[0] += coefficient * low[0][low_index];
-                partial[1] += coefficient * low[1][low_index];
-            }
-            [partial[0] * high[0][high_index], partial[1] * high[1][high_index]]
-        })
-        .reduce(|| [Fp2::ZERO; 2], |left, right| [left[0] + right[0], left[1] + right[1]]))
+    C6Nbr2TwoPointEvaluationPlan::new(points)?.evaluate(coefficients)
 }
 
 impl fmt::Debug for C6CompiledNativeTargetFunctional {

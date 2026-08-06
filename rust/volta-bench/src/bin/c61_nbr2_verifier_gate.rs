@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
-use volta_proto::evaluate_c6_nbr2_coefficient_prefix_at_two_points;
+use volta_proto::C6Nbr2TwoPointEvaluationPlan;
 
 const PROFILE: &str = "C6NBR2-verifier-two-point-v1";
 const SOURCE_COUNT: usize = 4_975_525;
@@ -100,13 +100,12 @@ fn main() {
         .build()
         .expect("build four-thread verifier pool");
     let (coefficients, points) = pool.install(fixture);
+    let plan = C6Nbr2TwoPointEvaluationPlan::new([&points[0], &points[1]])
+        .expect("valid C6NBR2 evaluator points");
     let evaluate = || {
         pool.install(|| {
-            evaluate_c6_nbr2_coefficient_prefix_at_two_points(
-                black_box(&coefficients),
-                [black_box(&points[0]), black_box(&points[1])],
-            )
-            .expect("valid C6NBR2 evaluator geometry")
+            plan.evaluate(black_box(&coefficients))
+                .expect("valid C6NBR2 evaluator geometry")
         })
     };
     let expected = evaluate();

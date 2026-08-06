@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — EXACT C6PA2/C6NBR2 RUNNER LOCAL GREEN / A100 OWNER GO REQUIRED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — A100 EXACT CAMPAIGN OWNER GO)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §0.54 next.
+This capsule is authoritative; read design §0.55 next.
 
 - **Milestone.** C6.1/C6NBR2 exact runner closed locally. The tape-1 correction
   reuses committed paired-residual slot 6; added wire, roots, openings and
@@ -25,13 +25,24 @@ This capsule is authoritative; read design §0.54 next.
   and soundness **102.5878332989 bits/cert**. Provider/verifier screens are
   **14.9179595454 / 4.978261758 s**, leaving only **0.0820404546 /
   0.021738242 s**; all are `credit:false`.
-- **Authorization and hard stop.** Local preparation is complete. Pod/A100
-  remains unauthorized. Active gate: `C6NBR2_A100_RUNTIME_OWNER_GO_REQUIRED`.
-- **Resume conditions.** Obtain explicit owner GO, then run one clean real/AES
-  PCG exact full-chain campaign on A100 with CUDA fail-closed, verify the exact
-  artifact on four CPU threads, and gate on `<15 s` provider, `<5 s` verifier,
-  `<22 MB` wire and all frozen setup/state/soundness/session limits. Only an
-  eligible record may update `docs/gpt2-comparison-WIP.md` and close C6.1.
+- **Authorization and active gate.** The owner authorizes one create-new clean
+  real/AES-PCG exact full-chain A100 campaign with CUDA fail-closed and an
+  append-only artifact. Active gate: `C6NBR2_A100_EXACT_CAMPAIGN`.
+- **Measurement policy.** Verify the same exact artifact first with exactly
+  four CPU threads: `<5 s` is the official gate and `5--6 s` is reported only
+  as tolerance/failure context. Also measure all detected logical threads as
+  `maxT(N)` diagnostic evidence; it cannot replace or relax the 4T gate. Gate
+  provider `<15 s`, wire `<22 MB`, and every frozen setup, state, soundness and
+  session limit. Only an eligible record may update the comparison and close
+  C6.1.
+
+- **2026-08-06 — Owner GO for one exact A100 campaign.** One create-new
+  C6PA2/C6NBR2 full-chain run is authorized on the supplied A100 endpoint with
+  real/AES PCG, CUDA fail-closed and append-only raw output. The verifier must
+  consume that exact artifact twice: `4T` is the official `<5 s` gate, with
+  `5--6 s` retained only as tolerance/failure context; `maxT(N)` uses the
+  pod's detected logical-thread count and is diagnostic only. No comparison
+  update or C6.1 success claim is permitted unless every original gate passes.
 
 - **2026-08-06 — Exact C6PA2/C6NBR2 runner closes locally.** The production
   four-chain loader now shares one body preparer: model0/embed0 close normally,

@@ -3765,6 +3765,29 @@ full-chain campaign, four-thread verification of that exact artifact, and an
 eligible append-only record satisfying every original C6.1 gate. Only then may
 `docs/gpt2-comparison-WIP.md` be updated and C6.1 closed.
 
+### 0.55 Exact A100 campaign authorization and verifier policy
+
+The owner authorizes one create-new exact C6PA2/C6NBR2 full-chain campaign on
+the supplied A100 endpoint. The run must use the production real/AES PCG,
+CUDA-resident fail-closed provider paths and an append-only raw artifact from a
+clean source commit. It may not substitute tests, component timings, analytic
+screens, mock PCG or CPU/hybrid provider fallback for full-chain credit.
+
+The verifier consumes the exact recorded artifact in two separately labelled
+runs. `4T` fixes exactly four CPU threads and remains the official `<5 s`
+C6.1 gate; an observation in `[5 s, 6 s]` is recorded only as tolerance and is
+still a gate failure. `maxT(N)` fixes all logical threads detected on the pod
+and is diagnostic evidence of machine potential only. The record binds `N`,
+both thread policies, raw samples and the artifact digest. Neither run may
+re-prove, regenerate or alter the certificate.
+
+The active gate is `C6NBR2_A100_EXACT_CAMPAIGN`. The comparison table may be
+updated only if the same append-only record satisfies provider `<15 s`, 4T
+verifier `<5 s`, certificate `<22 MB`, setup `<150 MB`, setup plus first
+exchange `<172 MB`, state within the frozen 4x limit, per-certificate and
+17-certificate soundness, 17 accepted slots plus four retry/abort slots, and
+all production backend and lifecycle checks.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

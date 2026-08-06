@@ -4,8 +4,11 @@ use std::path::Path;
 
 #[cfg(feature = "c61-p3-authenticated-reference")]
 use crate::c61_authenticated_whir_p3::{
+    assemble_c61_production_joint_public_argument_from_executions,
+    C61ProductionCommittedChainExecution, C61ProductionCompilerChainExecution,
     C61ProductionJointNativeProverExecution, C61ProductionJointNativeProverLinkPending,
     C61ProductionJointNativeVerification, C61ProductionJointNativeVerifierLinkPending,
+    C61ProductionJointPublicArgumentAssembly,
 };
 #[cfg(feature = "c61-p3-authenticated-reference")]
 use crate::c6_authenticated_output_link::verify_c6_authenticated_output_link_production_nbr2_strict;
@@ -76,7 +79,7 @@ fn text_error(error: impl std::fmt::Display) -> String {
     error.to_string()
 }
 
-pub(crate) struct C6ProductionBlindProverOutput {
+pub struct C6ProductionBlindProverOutput {
     pub(crate) residual_proof: C6BlindResidualSumcheckProof,
     pub(crate) residual_frame: C6BlindResidualPendingTransferFrame,
     pub(crate) residual_pending: C6BlindResidualPendingClaimsProver,
@@ -105,9 +108,11 @@ pub(crate) struct C6ExactProductionProverProof {
 /// Same-attempt C6PA2/C6NBR2 output. The native proof cannot be emitted until
 /// the embedded global link has authenticated the exact correction claim.
 #[cfg(feature = "c61-p3-authenticated-reference")]
-pub(crate) struct C6ExactProductionNbr2ProverProof {
+pub struct C6ExactProductionNbr2ProverProof {
     pub(crate) blind: C6ExactProductionProverProof,
     pub(crate) joint_native: C61ProductionJointNativeProverExecution,
+    nbr2_statement_digest: [u8; 32],
+    outer_statement_digest: [u8; 32],
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -116,9 +121,40 @@ pub(crate) struct C6ExactProductionVerifierOutput {
 }
 
 #[cfg(feature = "c61-p3-authenticated-reference")]
-pub(crate) struct C6ExactProductionNbr2VerifierOutput {
-    pub(crate) blind: C6ExactProductionVerifierOutput,
-    pub(crate) joint_native: C61ProductionJointNativeVerification,
+pub struct C6ExactProductionNbr2VerifierOutput {
+    blind: C6ExactProductionVerifierOutput,
+    joint_native: C61ProductionJointNativeVerification,
+}
+
+#[cfg(feature = "c61-p3-authenticated-reference")]
+impl C6ExactProductionNbr2VerifierOutput {
+    pub fn bound_slots(&self) -> u64 {
+        self.blind.bound_slots
+    }
+
+    pub fn joint_native(&self) -> &C61ProductionJointNativeVerification {
+        &self.joint_native
+    }
+}
+
+/// Final provider-owned exact certificate components. `public_argument` is
+/// the strict C6PA2 object; `blind` contains the global blind proofs and the
+/// same C6LNK2 proof whose local receipt released its secondary native tail.
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub struct C6ExactProductionNbr2Certificate {
+    blind: C6ExactProductionProverProof,
+    public_argument: C61ProductionJointPublicArgumentAssembly,
+}
+
+#[cfg(feature = "c61-p3-authenticated-reference")]
+impl C6ExactProductionNbr2Certificate {
+    pub fn public_argument(&self) -> &C61ProductionJointPublicArgumentAssembly {
+        &self.public_argument
+    }
+
+    pub fn encoded_public_argument(&self) -> &[u8] {
+        self.public_argument.encoded()
+    }
 }
 
 /// Consume all opaque pending values exactly once into the production
@@ -155,7 +191,7 @@ pub(crate) fn finish_c6_production_blind_with_persisted_link(
 /// C6PA2 native typestate; both consume the same statement digest receipt.
 #[cfg(feature = "c61-p3-authenticated-reference")]
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn finish_c6_production_blind_with_persisted_nbr2_link(
+pub fn finish_c6_production_blind_with_persisted_nbr2_link(
     roots: &C6PersistedLiveWrapperRootBinding,
     blind: C6ProductionBlindProverOutput,
     nbr2: &C6Nbr2CorrectionFunctional<'_>,
@@ -179,7 +215,44 @@ pub(crate) fn finish_c6_production_blind_with_persisted_nbr2_link(
     let receipt = receipt
         .ok_or_else(|| "C6 exact NBR2 runner omitted its authenticated-link receipt".to_owned())?;
     let joint_native = native.finish_after_nbr2_link(receipt)?;
-    Ok(C6ExactProductionNbr2ProverProof { blind, joint_native })
+    Ok(C6ExactProductionNbr2ProverProof {
+        blind,
+        joint_native,
+        nbr2_statement_digest: nbr2.digest(),
+        outer_statement_digest: nbr2.outer_statement_digest(),
+    })
+}
+
+/// Consume all remaining same-attempt provider owners into the exact C6PA2
+/// plus global-blind certificate boundary. This function accepts no detached
+/// secondary proof: that proof must come from the receipt-gated output above.
+#[cfg(feature = "c61-p3-authenticated-reference")]
+#[allow(clippy::too_many_arguments)]
+pub fn assemble_c6_exact_production_nbr2_certificate(
+    base_statement_digest: [u8; 32],
+    native_profile_digest: [u8; 32],
+    functional_digest: [u8; 32],
+    profile: &volta_mac::C6CanonicalTargetProfile,
+    primary: [C61ProductionCommittedChainExecution; 2],
+    compiler: [C61ProductionCompilerChainExecution; 2],
+    arithmetic: crate::c61_public_compression::C61ArithmeticFrame,
+    proof: C6ExactProductionNbr2ProverProof,
+) -> Result<C6ExactProductionNbr2Certificate, String> {
+    let outer_statement_digest = proof.outer_statement_digest;
+    let public_argument = assemble_c61_production_joint_public_argument_from_executions(
+        base_statement_digest,
+        native_profile_digest,
+        functional_digest,
+        profile,
+        primary,
+        proof.joint_native,
+        compiler,
+        arithmetic,
+    )?;
+    if public_argument.argument().statement_digest() != outer_statement_digest {
+        return Err("exact C6PA2 statement differs from the proved C6NBR2 outer binding".to_owned());
+    }
+    Ok(C6ExactProductionNbr2Certificate { blind: proof.blind, public_argument })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -261,7 +334,7 @@ fn finish_c6_production_blind_with_persisted_link_inner(
 /// preparation remains a callback because its relation roots and point are
 /// drawn from this same transcript immediately before each repetition.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn prove_c6_production_blind_components<'a>(
+pub fn prove_c6_production_blind_components<'a>(
     fixed: &C6FixedWrapperCommitments,
     cache_statement_digest: [u8; 32],
     cache_snapshot: &C6CacheFoldTraceSnapshot,
@@ -461,7 +534,7 @@ pub(crate) fn verify_c6_exact_production_proof(
 /// the exact C6NBR2 statement and returns its local-only receipt.
 #[cfg(feature = "c61-p3-authenticated-reference")]
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn verify_c6_exact_production_nbr2_proof(
+pub fn verify_c6_exact_production_nbr2_proof(
     roots: &C6PersistedLiveWrapperRootBinding,
     cache_statement_digest: [u8; 32],
     cache_snapshot: &C6CacheFoldTraceSnapshot,
@@ -481,6 +554,11 @@ pub(crate) fn verify_c6_exact_production_nbr2_proof(
     contexts: &mut [VerifierCtx; TAPES],
     transcript: &mut Transcript,
 ) -> Result<C6ExactProductionNbr2VerifierOutput, String> {
+    if proof.outer_statement_digest != nbr2.outer_statement_digest()
+        || proof.nbr2_statement_digest != nbr2.digest()
+    {
+        return Err("exact prover output differs from the verifier C6NBR2 binding".to_owned());
+    }
     let pending = verify_c6_exact_production_blind_pending(
         roots,
         cache_statement_digest,
@@ -503,6 +581,68 @@ pub(crate) fn verify_c6_exact_production_nbr2_proof(
         roots.fixed(),
         pending,
         &proof.blind.authenticated_link,
+        nbr2,
+        contexts,
+        transcript,
+    )
+    .map_err(text_error)?;
+    let blind = c6_exact_bound_slot_output(bound.len())?;
+    let joint_native = native.finish_after_nbr2_link(receipt)?;
+    Ok(C6ExactProductionNbr2VerifierOutput { blind, joint_native })
+}
+
+/// Verify the global blind/C6NBR2 portion of a decoded exact certificate.
+/// C6PA2 decoding and native-body/compiler preparation intentionally occur
+/// first and supply the linear `native` state consumed here.
+#[cfg(feature = "c61-p3-authenticated-reference")]
+#[allow(clippy::too_many_arguments)]
+pub fn verify_c6_exact_production_nbr2_certificate(
+    roots: &C6PersistedLiveWrapperRootBinding,
+    cache_statement_digest: [u8; 32],
+    cache_snapshot: &C6CacheFoldTraceSnapshot,
+    cache_targets: &C6CacheFoldPairedVerifierTargets,
+    cache_fixed_targets: &C6CacheFoldTargetFixedCorrections,
+    old_len: u16,
+    new_len: u16,
+    append_base_keys: &[Vec<[volta_mac::VerifierKey; TAPES]>; 2],
+    statements: &[C6BlindResidualStatement],
+    hidden_layouts: &[C6HiddenULayout],
+    hidden_q_cols: &[Vec<Vec<Fp2>>],
+    hidden_prequery: &C6HiddenUPrequery,
+    hidden_postcommit: &C6HiddenUPostCommit,
+    certificate: &C6ExactProductionNbr2Certificate,
+    nbr2: &C6Nbr2CorrectionFunctional<'_>,
+    native: C61ProductionJointNativeVerifierLinkPending,
+    contexts: &mut [VerifierCtx; TAPES],
+    transcript: &mut Transcript,
+) -> Result<C6ExactProductionNbr2VerifierOutput, String> {
+    if certificate.public_argument.argument().statement_digest()
+        != nbr2.outer_statement_digest()
+    {
+        return Err("decoded C6PA2 statement differs from the verifier C6NBR2 binding".to_owned());
+    }
+    let pending = verify_c6_exact_production_blind_pending(
+        roots,
+        cache_statement_digest,
+        cache_snapshot,
+        cache_targets,
+        cache_fixed_targets,
+        old_len,
+        new_len,
+        append_base_keys,
+        statements,
+        hidden_layouts,
+        hidden_q_cols,
+        hidden_prequery,
+        hidden_postcommit,
+        &certificate.blind,
+        contexts,
+        transcript,
+    )?;
+    let (bound, receipt) = verify_c6_authenticated_output_link_production_nbr2_strict(
+        roots.fixed(),
+        pending,
+        &certificate.blind.authenticated_link,
         nbr2,
         contexts,
         transcript,

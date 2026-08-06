@@ -823,6 +823,14 @@ impl C61ProductionJointNativeChainArtifact {
         self.id
     }
 
+    pub fn proof(&self) -> &C61ProductionJointNativeChainProof {
+        &self.proof
+    }
+
+    pub fn into_proof(self) -> C61ProductionJointNativeChainProof {
+        self.proof
+    }
+
     fn payload(&self) -> Result<Vec<u8>, String> {
         match &self.proof {
             C61ProductionJointNativeChainProof::CommittedPrimary(proof) => {

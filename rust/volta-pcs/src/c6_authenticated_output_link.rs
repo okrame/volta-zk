@@ -252,6 +252,10 @@ impl<'a> C6Nbr2CorrectionFunctional<'a> {
         self.digest
     }
 
+    pub fn outer_statement_digest(&self) -> C6WrapperDigest {
+        self.outer_statement_digest
+    }
+
     pub fn correction(&self) -> Fp2 {
         self.correction
     }

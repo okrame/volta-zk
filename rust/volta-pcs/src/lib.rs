@@ -25,7 +25,7 @@ pub mod c61_terminal_functional;
 pub mod c61_whir_reference;
 pub mod c6_authenticated_output_link;
 #[cfg(feature = "c6-trace")]
-mod c6_blind_round_coordinator;
+pub mod c6_blind_round_coordinator;
 pub mod c6_hidden_u;
 pub mod c6_hidden_u_sumcheck;
 pub mod c6_hidden_u_sumcheck_blind;

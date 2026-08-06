@@ -18,10 +18,11 @@ This report deliberately has two different verdict scopes:
   four challenge-dependent terminal-fold response targets, three public plan
   targets and one QuickSilver/ZeroOpen closure to the shared
   Dn/D(n-1) WHIR flow.  The selected monolithic P3 prover-data memory is
-  censused exactly at D28/D27 and the persisted/CUDA compiler executor is
-  locally implemented.  Production model/embedding chains, a role-separated
-  wire verifier and the full-chain benchmark remain absent, so this is not
-  final proof or timing credit.
+  censused exactly at D28/D27.  Persisted/CUDA model, embedding and compiler
+  executors, the role-separated wire verifier and the receipt-gated exact
+  C6PA2/C6NBR2 runner boundary are locally implemented.  CUDA execution and
+  the full-chain benchmark remain absent, so this is not final proof or
+  timing credit.
 
 No projected ceiling or analytic roofline is proof-size, setup, prover-time,
 verifier-time or hardware credit.  The implemented PCS codec receives only
@@ -747,7 +748,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v26-nbr2-local-closure",
+        "profile": "C6.1-public-compression-reference-v27-nbr2-exact-runner-local",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
@@ -769,6 +770,7 @@ def build_report() -> dict[str, Any]:
             "C6NBR2_JOINT_CORRECTION_INNER_PRODUCT_IMPLEMENTED__"
             "C6NBR2_VERIFIER_MARGINAL_GATE_GREEN__"
             "C6NBR2_LEAN_AND_STRICT_C6PA2_TYPESTATE_GREEN__"
+            "C6NBR2_EXACT_RUNNER_LOCAL_ASSEMBLY_GREEN__"
             "C6NBR2_CUDA_RUNTIME_DIFFERENTIAL_REQUIRED__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
@@ -853,6 +855,7 @@ def build_report() -> dict[str, Any]:
                 "PRODUCTION_D28_D27_MONOLITHIC_MEMORY_CENSUSED__"
                 "PRODUCTION_NATIVE_AND_COMPACT_WIRE_BOUNDARIES_GREEN__"
                 "C6NBR2_FUSED_LINK_LEAN_STRICT_C6PA2_LOCAL_GREEN__"
+                "C6NBR2_EXACT_RUNNER_LOCAL_ASSEMBLY_GREEN__"
                 "CUDA_RUNTIME_AND_FULL_CHAIN_REQUIRED__"
                 "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
@@ -867,6 +870,10 @@ def build_report() -> dict[str, Any]:
                 "new_correlations": 0,
                 "lean_kernel_checked": True,
                 "strict_c6pa2_link_receipt_typestate": True,
+                "exact_same_attempt_runner_boundary": True,
+                "exact_c6pa2_execution_assembler": True,
+                "strict_outer_statement_cross_binding": True,
+                "ordinary_workspace_green": True,
                 "full_chain_credit": False,
                 "hardware_credit": False,
             },

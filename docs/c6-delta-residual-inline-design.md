@@ -3723,6 +3723,48 @@ re-sums the unchanged **17,536,735-B** certificate, **148,738,118-B** setup,
 assemble the same-attempt exact C6PA2/C6NBR2 flow and complete the full local
 workspace gates. Pod/A100 remains forbidden until a later owner GO.
 
+### 0.54 Exact C6PA2/C6NBR2 runner local checkpoint
+
+The exact production boundary is now assembled without a second native pass.
+One shared persisted/CUDA four-chain preparer performs the existing preflight,
+durable coefficient reload and claim-bound WHIR body construction. It closes
+model0 and embed0 as ordinary C6AWP1 chains, but moves model1 and embed1 as
+linear bodies into the generic C6NTO1 post-body schedule. Their correction and
+joint ZeroOpen tails therefore do not exist before `zeta` and cannot be
+serialized before the matching strict C6NBR2 receipt.
+
+The exact global coordinator has distinct legacy and C6NBR2 paths. The amended
+path consumes the three blind pending registries, proves the 73-claim C6LNK2
+relation, receives a local-only digest-bound receipt, and only then releases
+the native joint tail. Its verifier mirrors the same order. A final production
+assembler consumes the two primary executions, the receipt-gated secondary
+execution, both compiler executions and C6RSC4. It derives C6PA2's statement
+digest from the base statement, installed C6NTO1 artifact digest, post-body
+schedule digest and exact compiler-functional digest; both prover assembly and
+verifier entry cross-check that digest against C6NBR2. No API accepts a
+detached secondary proof, caller-authored tail, provider key or clear target.
+The runner API is visible to the feature-complete campaign crate, while mock
+PCG, CPU/hybrid provider fallback and non-create-new storage still fail before
+production effects.
+
+Focused coordinator checks are **3/0/0**. The feature-complete benchmark crate
+compiles with `cuda,c6-trace,c61-p3-authenticated-reference`. The ordinary full
+workspace is green, including PCS **226/0/1**, proto **156/0/1** and bench
+**32/0/0**. Budget profile
+`C6.1-public-compression-reference-v27-nbr2-exact-runner-local` preserves the
+v26 screens exactly: **17,536,735 B** certificate, **148,738,118 B** setup,
+**166,274,853 B** setup plus first certificate, **2,277,715,552 B** state,
+**102.5878332989 bits/cert**, and **14.9179595454 / 4.978261758 s** provider /
+verifier. All remain `credit:false`; in particular the verifier has only
+**21.738242 ms** analytic margin and may not receive a relaxed gate.
+
+Local construction is complete. The active hard stop is
+`C6NBR2_A100_RUNTIME_OWNER_GO_REQUIRED`. No pod was contacted. Resume requires
+an explicit owner GO followed by one clean real/AES-PCG, CUDA-fail-closed exact
+full-chain campaign, four-thread verification of that exact artifact, and an
+eligible append-only record satisfying every original C6.1 gate. Only then may
+`docs/gpt2-comparison-WIP.md` be updated and C6.1 closed.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

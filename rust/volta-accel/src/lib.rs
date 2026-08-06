@@ -6608,6 +6608,57 @@ impl Backend {
         Err(AccelError::FeatureDisabled)
     }
 
+    /// Replace a resident coefficient prefix by
+    /// `rho * eq(point, i) + gamma * coefficient[i]` over the complete
+    /// Boolean domain. Entries beyond `source_count` are treated as zero, so
+    /// the caller does not have to initialize padded device storage.
+    pub fn fp2_affine_eq_weights_inplace_device(
+        &mut self,
+        values: &DeviceBuffer<Fp2Repr>,
+        source_count: usize,
+        point: &[Fp2],
+        rho: Fp2,
+        gamma: Fp2,
+    ) -> Result<(), AccelError> {
+        let expected = 1usize
+            .checked_shl(point.len() as u32)
+            .ok_or(AccelError::InvalidInput("affine equality dimension overflow"))?;
+        if self.kind != BackendKind::CudaResident
+            || point.is_empty()
+            || values.len() != expected
+            || source_count > values.len()
+        {
+            return Err(AccelError::InvalidInput(
+                "resident affine equality weights require CUDA matching geometry",
+            ));
+        }
+        self.validate_buffer(values)?;
+        let encoded_point = point.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>();
+        let point = self.upload_new_device(&encoded_point)?;
+        #[cfg(feature = "cuda")]
+        let result = self
+            .cuda
+            .as_mut()
+            .expect("CUDA kind without context")
+            .fp2_affine_eq_weights_inplace_device(
+                values.id,
+                values.len(),
+                source_count,
+                point.id,
+                0,
+                point.len(),
+                rho.into(),
+                gamma.into(),
+            );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        let free_result = self.free_device(point);
+        match (result, free_result) {
+            (Ok(()), Ok(())) => Ok(()),
+            (Err(error), _) | (Ok(()), Err(error)) => Err(error),
+        }
+    }
+
     pub fn hash_fp_tree_device(
         &mut self,
         matrix: &DeviceBuffer<u64>,
@@ -9481,6 +9532,41 @@ mod cuda_tests {
         }
         assert_eq!(got_mobius_inverse, expected_mobius_inverse);
         gpu.free_device(mobius_inverse).unwrap();
+        let affine_weights = gpu
+            .clone_fp2_device(DeviceSlice::new(&da, 0, av.len()).unwrap())
+            .unwrap();
+        let rho = Fp2::new(Fp::new(101), Fp::new(103));
+        let gamma = Fp2::new(Fp::new(107), Fp::new(109));
+        gpu.fp2_affine_eq_weights_inplace_device(
+            &affine_weights,
+            5,
+            &monomial_point,
+            rho,
+            gamma,
+        )
+        .unwrap();
+        let got_affine = gpu
+            .download_device(&affine_weights, 0, av.len())
+            .unwrap()
+            .into_iter()
+            .map(Fp2::from)
+            .collect::<Vec<_>>();
+        for (index, &got) in got_affine.iter().enumerate() {
+            let equality = monomial_point.iter().enumerate().fold(
+                Fp2::ONE,
+                |weight, (bit, &coordinate)| {
+                    weight
+                        * if index & (1 << bit) == 0 {
+                            Fp2::ONE - coordinate
+                        } else {
+                            coordinate
+                        }
+                },
+            );
+            let coefficient = if index < 5 { av[index] } else { Fp2::ZERO };
+            assert_eq!(got, rho * equality + gamma * coefficient);
+        }
+        gpu.free_device(affine_weights).unwrap();
         let folded_a = gpu.fp2_fold_rows_device(&da, 0, 1, av.len(), challenge).unwrap();
         let got_fold: Vec<Fp2> = gpu
             .download_device(&folded_a, 0, av.len() / 2)

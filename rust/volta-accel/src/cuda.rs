@@ -938,6 +938,17 @@ type PcsCombineRowsDevice = unsafe extern "C" fn(
 type Fp2AddInplaceDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize) -> c_int;
 type Fp2MobiusInverseInplaceDevice = unsafe extern "C" fn(*mut c_void, u64, usize, usize) -> c_int;
+type Fp2AffineEqWeightsInplaceDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    usize,
+    u64,
+    usize,
+    usize,
+    Fp2Repr,
+    Fp2Repr,
+) -> c_int;
 type HashTreeDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, usize, usize, u64, usize) -> c_int;
 type MerklePathsDevice =
@@ -1079,6 +1090,7 @@ struct Api {
     pcs_combine_rows_device: PcsCombineRowsDevice,
     fp2_add_inplace_device: Fp2AddInplaceDevice,
     fp2_mobius_inverse_inplace_device: Fp2MobiusInverseInplaceDevice,
+    fp2_affine_eq_weights_inplace_device: Fp2AffineEqWeightsInplaceDevice,
     hash_fp_tree_device: HashTreeDevice,
     hash_fp2_tree_device: HashTreeDevice,
     merkle_paths_device: MerklePathsDevice,
@@ -1413,6 +1425,9 @@ impl CudaContext {
             },
             fp2_mobius_inverse_inplace_device: unsafe {
                 load_symbol(handle, b"volta_cuda_fp2_mobius_inverse_inplace_device\0")?
+            },
+            fp2_affine_eq_weights_inplace_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fp2_affine_eq_weights_inplace_device\0")?
             },
             hash_fp_tree_device: unsafe {
                 load_symbol(handle, b"volta_cuda_hash_fp_tree_device\0")?
@@ -4527,6 +4542,34 @@ impl CudaContext {
         // SAFETY: Backend validates the resident id, typed region, and power-of-two geometry.
         self.check(unsafe {
             (self.api.fp2_mobius_inverse_inplace_device)(self.raw, values, values_offset, len)
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn fp2_affine_eq_weights_inplace_device(
+        &mut self,
+        values: u64,
+        len: usize,
+        source_count: usize,
+        point: u64,
+        point_offset: usize,
+        point_len: usize,
+        rho: Fp2Repr,
+        gamma: Fp2Repr,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates resident ids, typed regions, and equality geometry.
+        self.check(unsafe {
+            (self.api.fp2_affine_eq_weights_inplace_device)(
+                self.raw,
+                values,
+                len,
+                source_count,
+                point,
+                point_offset,
+                point_len,
+                rho,
+                gamma,
+            )
         })
     }
 

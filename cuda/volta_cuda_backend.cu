@@ -2886,6 +2886,23 @@ __global__ void fp2_mobius_inverse_stage_kernel(Fp2* values,size_t pairs,size_t 
     values[low+stride]=fp2_add(values[low+stride],values[low]);
 }
 
+__global__ void fp2_affine_eq_weights_kernel(
+    Fp2* values,size_t n,size_t source_count,const Fp2* point,size_t point_len,
+    Fp2 rho,Fp2 gamma){
+    const size_t i=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(i>=n)return;
+    Fp2 equality{1,0};
+    for(size_t bit=0;bit<point_len;++bit){
+        const Fp2 coordinate=point[bit];
+        const Fp2 factor=((i>>bit)&1)
+            ? coordinate
+            : fp2_sub(Fp2{1,0},coordinate);
+        equality=fp2_mul(equality,factor);
+    }
+    const Fp2 coefficient=i<source_count?values[i]:Fp2{0,0};
+    values[i]=fp2_add(fp2_mul(rho,equality),fp2_mul(gamma,coefficient));
+}
+
 __global__ void pcs_combine_rows_kernel(
     const int16_t* weights, const uint64_t* pads, const Fp2* coeffs, Fp2* out,
     size_t rows, size_t cols, size_t pad, size_t combinations) {
@@ -7022,6 +7039,23 @@ extern "C" int volta_cuda_fp2_mobius_inverse_inplace_device(
         CUDA_OR_RETURN(c,cudaPeekAtLastError());
     }
     if(mark_timing(c,2))return -1;
+    return finish_timing(c,OP_PCS_ROWS,0,0);
+}
+
+extern "C" int volta_cuda_fp2_affine_eq_weights_inplace_device(
+    void* raw,uint64_t values_id,size_t n,size_t source_count,
+    uint64_t point_id,size_t point_offset,size_t point_len,Fp2 rho,Fp2 gamma){
+    Context* c=static_cast<Context*>(raw);
+    if(!c||!n||(n&(n-1))||!point_len||point_len>=8*sizeof(size_t)||
+       n!=(static_cast<size_t>(1)<<point_len)||source_count>n)
+        return fail_message(c,"invalid resident Fp2 affine equality weights");
+    void *values=nullptr,*point=nullptr;
+    if(resident_region(c,values_id,0,n*sizeof(Fp2),&values)||
+       resident_region(c,point_id,point_offset*sizeof(Fp2),point_len*sizeof(Fp2),&point))return -1;
+    if(begin_timing(c))return -1;if(mark_timing(c,1))return -1;
+    fp2_affine_eq_weights_kernel<<<(n+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+        static_cast<Fp2*>(values),n,source_count,static_cast<const Fp2*>(point),point_len,rho,gamma);
+    CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
     return finish_timing(c,OP_PCS_ROWS,0,0);
 }
 

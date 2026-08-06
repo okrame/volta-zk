@@ -2,10 +2,19 @@
 
 use std::path::Path;
 
+#[cfg(feature = "c61-p3-authenticated-reference")]
+use crate::c61_authenticated_whir_p3::{
+    C61ProductionJointNativeProverExecution, C61ProductionJointNativeProverLinkPending,
+    C61ProductionJointNativeVerification, C61ProductionJointNativeVerifierLinkPending,
+};
+#[cfg(feature = "c61-p3-authenticated-reference")]
+use crate::c6_authenticated_output_link::verify_c6_authenticated_output_link_production_nbr2_strict;
 use crate::c6_authenticated_output_link::{
     prove_c6_authenticated_output_link_persisted_cuda,
+    prove_c6_authenticated_output_link_persisted_cuda_nbr2_strict,
     verify_c6_authenticated_output_link_production, C6AuthenticatedOutputLinkProof,
-    C6PendingSlotRegistryProverBuilder, C6PendingSlotRegistryVerifierBuilder,
+    C6Nbr2CorrectionFunctional, C6Nbr2ProvedLink, C6PendingSlotRegistryProverBuilder,
+    C6PendingSlotRegistryVerifier, C6PendingSlotRegistryVerifierBuilder,
     C6ProductionAuthenticatedOutputLinkMetrics,
 };
 use crate::c6_hidden_u::{
@@ -93,9 +102,23 @@ pub(crate) struct C6ExactProductionProverProof {
     pub(crate) authenticated_link_metrics: C6ProductionAuthenticatedOutputLinkMetrics,
 }
 
+/// Same-attempt C6PA2/C6NBR2 output. The native proof cannot be emitted until
+/// the embedded global link has authenticated the exact correction claim.
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub(crate) struct C6ExactProductionNbr2ProverProof {
+    pub(crate) blind: C6ExactProductionProverProof,
+    pub(crate) joint_native: C61ProductionJointNativeProverExecution,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct C6ExactProductionVerifierOutput {
     pub(crate) bound_slots: u64,
+}
+
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub(crate) struct C6ExactProductionNbr2VerifierOutput {
+    pub(crate) blind: C6ExactProductionVerifierOutput,
+    pub(crate) joint_native: C61ProductionJointNativeVerification,
 }
 
 /// Consume all opaque pending values exactly once into the production
@@ -111,6 +134,65 @@ pub(crate) fn finish_c6_production_blind_with_persisted_link(
     session_digest: [u8; 32],
     transcript: &mut Transcript,
 ) -> Result<C6ExactProductionProverProof, String> {
+    let (proof, receipt) = finish_c6_production_blind_with_persisted_link_inner(
+        roots,
+        blind,
+        None,
+        streams,
+        backend,
+        spill_root,
+        session_digest,
+        transcript,
+    )?;
+    if receipt.is_some() {
+        return Err("C6 exact legacy runner unexpectedly produced a C6NBR2 receipt".to_owned());
+    }
+    Ok(proof)
+}
+
+/// Complete the amended global link and only then release the native joint
+/// ZeroOpen tail. This is the sole production join between C6NBR2 and the
+/// C6PA2 native typestate; both consume the same statement digest receipt.
+#[cfg(feature = "c61-p3-authenticated-reference")]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn finish_c6_production_blind_with_persisted_nbr2_link(
+    roots: &C6PersistedLiveWrapperRootBinding,
+    blind: C6ProductionBlindProverOutput,
+    nbr2: &C6Nbr2CorrectionFunctional<'_>,
+    native: C61ProductionJointNativeProverLinkPending,
+    streams: &mut [CorrelationStream; TAPES],
+    backend: &mut Backend,
+    spill_root: &Path,
+    session_digest: [u8; 32],
+    transcript: &mut Transcript,
+) -> Result<C6ExactProductionNbr2ProverProof, String> {
+    let (blind, receipt) = finish_c6_production_blind_with_persisted_link_inner(
+        roots,
+        blind,
+        Some(nbr2),
+        streams,
+        backend,
+        spill_root,
+        session_digest,
+        transcript,
+    )?;
+    let receipt = receipt
+        .ok_or_else(|| "C6 exact NBR2 runner omitted its authenticated-link receipt".to_owned())?;
+    let joint_native = native.finish_after_nbr2_link(receipt)?;
+    Ok(C6ExactProductionNbr2ProverProof { blind, joint_native })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finish_c6_production_blind_with_persisted_link_inner(
+    roots: &C6PersistedLiveWrapperRootBinding,
+    blind: C6ProductionBlindProverOutput,
+    nbr2: Option<&C6Nbr2CorrectionFunctional<'_>>,
+    streams: &mut [CorrelationStream; TAPES],
+    backend: &mut Backend,
+    spill_root: &Path,
+    session_digest: [u8; 32],
+    transcript: &mut Transcript,
+) -> Result<(C6ExactProductionProverProof, Option<C6Nbr2ProvedLink>), String> {
     validate_production_streams(streams)?;
     if roots.session_digest() != session_digest {
         return Err("C6 exact runner root/session mismatch".to_owned());
@@ -123,33 +205,56 @@ pub(crate) fn finish_c6_production_blind_with_persisted_link(
     pending.absorb_hidden_u(&blind.hidden_pending).map_err(text_error)?;
     pending.absorb_persistent_cache(&blind.cache_pending).map_err(text_error)?;
     let pending = pending.finish().map_err(text_error)?;
-    let (authenticated_link, bound, authenticated_link_metrics) =
-        prove_c6_authenticated_output_link_persisted_cuda(
-            roots.fixed(),
-            roots.cohorts(),
-            pending,
-            streams,
-            backend,
-            spill_root,
-            session_digest,
-            transcript,
-        )
-        .map_err(text_error)?;
+    let (authenticated_link, bound, authenticated_link_metrics, receipt) = match nbr2 {
+        Some(nbr2) => {
+            let (proof, bound, metrics, receipt) =
+                prove_c6_authenticated_output_link_persisted_cuda_nbr2_strict(
+                    roots.fixed(),
+                    roots.cohorts(),
+                    pending,
+                    nbr2,
+                    streams,
+                    backend,
+                    spill_root,
+                    session_digest,
+                    transcript,
+                )
+                .map_err(text_error)?;
+            (proof, bound, metrics, Some(receipt))
+        }
+        None => {
+            let (proof, bound, metrics) = prove_c6_authenticated_output_link_persisted_cuda(
+                roots.fixed(),
+                roots.cohorts(),
+                pending,
+                streams,
+                backend,
+                spill_root,
+                session_digest,
+                transcript,
+            )
+            .map_err(text_error)?;
+            (proof, bound, metrics, None)
+        }
+    };
     if bound.len() != 2 * crate::c6_wrapper_pcs::C6_WRAPPER_ACTIVE_SLOTS {
         return Err("C6 exact runner bound-slot census mismatch".to_owned());
     }
-    Ok(C6ExactProductionProverProof {
-        residual_proof: blind.residual_proof,
-        residual_frame: blind.residual_frame,
-        residual_terminal_outputs: blind.residual_terminal_outputs,
-        residual_terminal_fold,
-        hidden_proof: blind.hidden_proof,
-        cache_proof: blind.cache_proof,
-        cache_source_frame: blind.cache_source_frame,
-        cache_metrics: blind.cache_metrics,
-        authenticated_link,
-        authenticated_link_metrics,
-    })
+    Ok((
+        C6ExactProductionProverProof {
+            residual_proof: blind.residual_proof,
+            residual_frame: blind.residual_frame,
+            residual_terminal_outputs: blind.residual_terminal_outputs,
+            residual_terminal_fold,
+            hidden_proof: blind.hidden_proof,
+            cache_proof: blind.cache_proof,
+            cache_source_frame: blind.cache_source_frame,
+            cache_metrics: blind.cache_metrics,
+            authenticated_link,
+            authenticated_link_metrics,
+        },
+        receipt,
+    ))
 }
 
 /// Complete prover-side join for the three real blind participants.  Cache
@@ -322,6 +427,111 @@ pub(crate) fn verify_c6_exact_production_proof(
     contexts: &mut [VerifierCtx; TAPES],
     transcript: &mut Transcript,
 ) -> Result<C6ExactProductionVerifierOutput, String> {
+    let pending = verify_c6_exact_production_blind_pending(
+        roots,
+        cache_statement_digest,
+        cache_snapshot,
+        cache_targets,
+        cache_fixed_targets,
+        old_len,
+        new_len,
+        append_base_keys,
+        statements,
+        hidden_layouts,
+        hidden_q_cols,
+        hidden_prequery,
+        hidden_postcommit,
+        proof,
+        contexts,
+        transcript,
+    )?;
+    let bound = verify_c6_authenticated_output_link_production(
+        roots.fixed(),
+        pending,
+        &proof.authenticated_link,
+        contexts,
+        transcript,
+    )
+    .map_err(text_error)?;
+    c6_exact_bound_slot_output(bound.len())
+}
+
+/// Witness-free verifier join for the exact amended flow. The native
+/// ZeroOpen tag remains pending until the same decoded C6LNK2 proof verifies
+/// the exact C6NBR2 statement and returns its local-only receipt.
+#[cfg(feature = "c61-p3-authenticated-reference")]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn verify_c6_exact_production_nbr2_proof(
+    roots: &C6PersistedLiveWrapperRootBinding,
+    cache_statement_digest: [u8; 32],
+    cache_snapshot: &C6CacheFoldTraceSnapshot,
+    cache_targets: &C6CacheFoldPairedVerifierTargets,
+    cache_fixed_targets: &C6CacheFoldTargetFixedCorrections,
+    old_len: u16,
+    new_len: u16,
+    append_base_keys: &[Vec<[volta_mac::VerifierKey; TAPES]>; 2],
+    statements: &[C6BlindResidualStatement],
+    hidden_layouts: &[C6HiddenULayout],
+    hidden_q_cols: &[Vec<Vec<Fp2>>],
+    hidden_prequery: &C6HiddenUPrequery,
+    hidden_postcommit: &C6HiddenUPostCommit,
+    proof: &C6ExactProductionNbr2ProverProof,
+    nbr2: &C6Nbr2CorrectionFunctional<'_>,
+    native: C61ProductionJointNativeVerifierLinkPending,
+    contexts: &mut [VerifierCtx; TAPES],
+    transcript: &mut Transcript,
+) -> Result<C6ExactProductionNbr2VerifierOutput, String> {
+    let pending = verify_c6_exact_production_blind_pending(
+        roots,
+        cache_statement_digest,
+        cache_snapshot,
+        cache_targets,
+        cache_fixed_targets,
+        old_len,
+        new_len,
+        append_base_keys,
+        statements,
+        hidden_layouts,
+        hidden_q_cols,
+        hidden_prequery,
+        hidden_postcommit,
+        &proof.blind,
+        contexts,
+        transcript,
+    )?;
+    let (bound, receipt) = verify_c6_authenticated_output_link_production_nbr2_strict(
+        roots.fixed(),
+        pending,
+        &proof.blind.authenticated_link,
+        nbr2,
+        contexts,
+        transcript,
+    )
+    .map_err(text_error)?;
+    let blind = c6_exact_bound_slot_output(bound.len())?;
+    let joint_native = native.finish_after_nbr2_link(receipt)?;
+    Ok(C6ExactProductionNbr2VerifierOutput { blind, joint_native })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_c6_exact_production_blind_pending(
+    roots: &C6PersistedLiveWrapperRootBinding,
+    cache_statement_digest: [u8; 32],
+    cache_snapshot: &C6CacheFoldTraceSnapshot,
+    cache_targets: &C6CacheFoldPairedVerifierTargets,
+    cache_fixed_targets: &C6CacheFoldTargetFixedCorrections,
+    old_len: u16,
+    new_len: u16,
+    append_base_keys: &[Vec<[volta_mac::VerifierKey; TAPES]>; 2],
+    statements: &[C6BlindResidualStatement],
+    hidden_layouts: &[C6HiddenULayout],
+    hidden_q_cols: &[Vec<Vec<Fp2>>],
+    hidden_prequery: &C6HiddenUPrequery,
+    hidden_postcommit: &C6HiddenUPostCommit,
+    proof: &C6ExactProductionProverProof,
+    contexts: &mut [VerifierCtx; TAPES],
+    transcript: &mut Transcript,
+) -> Result<C6PendingSlotRegistryVerifier, String> {
     validate_production_contexts(contexts)?;
     begin_c6_persistent_cache_production(cache_statement_digest, transcript).map_err(text_error)?;
     begin_c6_blind_residual_verifier_stepwise(
@@ -451,16 +661,13 @@ pub(crate) fn verify_c6_exact_production_proof(
     pending.absorb_residual(&residual_pending).map_err(text_error)?;
     pending.absorb_hidden_u(&hidden_pending).map_err(text_error)?;
     pending.absorb_persistent_cache(&cache_pending).map_err(text_error)?;
-    let pending = pending.finish().map_err(text_error)?;
-    let bound = verify_c6_authenticated_output_link_production(
-        roots.fixed(),
-        pending,
-        &proof.authenticated_link,
-        contexts,
-        transcript,
-    )
-    .map_err(text_error)?;
-    let bound_slots = bound.len() as u64;
+    pending.finish().map_err(text_error)
+}
+
+fn c6_exact_bound_slot_output(
+    bound_slots: usize,
+) -> Result<C6ExactProductionVerifierOutput, String> {
+    let bound_slots = bound_slots as u64;
     if bound_slots != 2 * crate::c6_wrapper_pcs::C6_WRAPPER_ACTIVE_SLOTS as u64 {
         return Err("C6 exact verifier bound-slot census mismatch".to_owned());
     }

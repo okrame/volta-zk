@@ -3556,8 +3556,8 @@ order. After the correction `c1` is fixed, the existing fresh `beta_t` also
 batches one public claim at ordinal 72:
 
 ```text
-claim_t = sum_(j=0..71) beta_t^j * q[t,j] + beta_t^72 * c1
-G_t     = G_existing_t + beta_t^72 * H_A.
+claim_t = sum_(j=0..71) beta_t^(j+1) * q[t,j] + beta_t^73 * c1
+G_t     = G_existing_t + beta_t^73 * H_A.
 ```
 
 `c1` enters both VOLE tapes through the ordinary public authenticated value;
@@ -3566,8 +3566,13 @@ the same 25 endpoint pairs, corrections and challenges suffice. At the common
 point, only the verifier-owned reduction weight of residual slot 6 changes:
 
 ```text
-w6 += beta_t^72 * (1-y_t) * (1-z_t) * Atilde(x_t).
+w6 += beta_t^73 * (1-y_t) * (1-z_t) * Atilde(x_t).
 ```
+
+The exponents deliberately preserve the deployed C6LNK2 convention:
+`scalar_power_weights` starts at `beta`, not at one.  Renumbering the original
+72 slots to start at `beta^0` would change the historical relation; C6NBR2 is
+therefore the next power, `beta^73`.
 
 C6LNK2 owns the blind round messages and terminal authenticated claims. The
 existing paired wrapper PCS owns the opening of slot 6 at that point. The

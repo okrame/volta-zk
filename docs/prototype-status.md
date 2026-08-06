@@ -33,6 +33,13 @@ This capsule is authoritative; read design §0.52 next.
   Provider keys/corrections, clear targets, linear wire and a second PCS
   opening remain forbidden.
 
+- **2026-08-06 — C6NBR2 batching exponent aligned with deployed C6LNK2.**
+  Code inspection establishes that the frozen 72-slot link weights canonical
+  slot `j` by `beta^(j+1)`, not `beta^j`. The additive correction relation is
+  therefore the next power `beta^73`; changing the old slots would prove a
+  different relation. This is a specification correction only and changes no
+  byte, root, soundness, time or state screen.
+
 - **2026-08-06 — Bounded C6NBR2 evaluator closes the verifier marginal
   gate.** Clean `751296c`, exact `4,975,525`-coefficient prefix, two D23
   points, four ARM threads and 21 samples give **11.701783-ms median**,

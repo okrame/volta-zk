@@ -2877,6 +2877,15 @@ __global__ void fp2_add_inplace_kernel(Fp2* target,const Fp2* add,size_t n){
     if(i<n)target[i]=fp2_add(target[i],add[i]);
 }
 
+__global__ void fp2_mobius_inverse_stage_kernel(Fp2* values,size_t pairs,size_t stride){
+    const size_t i=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(i>=pairs)return;
+    const size_t block=i/stride;
+    const size_t offset=i-block*stride;
+    const size_t low=block*(2*stride)+offset;
+    values[low+stride]=fp2_add(values[low+stride],values[low]);
+}
+
 __global__ void pcs_combine_rows_kernel(
     const int16_t* weights, const uint64_t* pads, const Fp2* coeffs, Fp2* out,
     size_t rows, size_t cols, size_t pad, size_t combinations) {
@@ -6995,6 +7004,24 @@ extern "C" int volta_cuda_fp2_add_inplace_device(
     fp2_add_inplace_kernel<<<(n+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
         static_cast<Fp2*>(target),static_cast<const Fp2*>(add),n);
     CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
+    return finish_timing(c,OP_PCS_ROWS,0,0);
+}
+
+extern "C" int volta_cuda_fp2_mobius_inverse_inplace_device(
+    void* raw,uint64_t values_id,size_t values_offset,size_t n){
+    Context* c=static_cast<Context*>(raw);
+    if(!c||!n||(n&(n-1)))return fail_message(c,"invalid resident Fp2 Mobius inverse");
+    void *values=nullptr;
+    if(resident_region(c,values_id,values_offset*sizeof(Fp2),n*sizeof(Fp2),&values))return -1;
+    if(begin_timing(c))return -1;if(mark_timing(c,1))return -1;
+    Fp2* typed=static_cast<Fp2*>(values);
+    for(size_t stride=1;stride<n;stride<<=1){
+        const size_t pairs=n/2;
+        fp2_mobius_inverse_stage_kernel<<<(pairs+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+            typed,pairs,stride);
+        CUDA_OR_RETURN(c,cudaPeekAtLastError());
+    }
+    if(mark_timing(c,2))return -1;
     return finish_timing(c,OP_PCS_ROWS,0,0);
 }
 

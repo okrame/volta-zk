@@ -937,6 +937,7 @@ type PcsCombineRowsDevice = unsafe extern "C" fn(
 ) -> c_int;
 type Fp2AddInplaceDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize) -> c_int;
+type Fp2MobiusInverseInplaceDevice = unsafe extern "C" fn(*mut c_void, u64, usize, usize) -> c_int;
 type HashTreeDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, usize, usize, u64, usize) -> c_int;
 type MerklePathsDevice =
@@ -1077,6 +1078,7 @@ struct Api {
     pcs_messages_device: PcsMessagesDevice,
     pcs_combine_rows_device: PcsCombineRowsDevice,
     fp2_add_inplace_device: Fp2AddInplaceDevice,
+    fp2_mobius_inverse_inplace_device: Fp2MobiusInverseInplaceDevice,
     hash_fp_tree_device: HashTreeDevice,
     hash_fp2_tree_device: HashTreeDevice,
     merkle_paths_device: MerklePathsDevice,
@@ -1408,6 +1410,9 @@ impl CudaContext {
             },
             fp2_add_inplace_device: unsafe {
                 load_symbol(handle, b"volta_cuda_fp2_add_inplace_device\0")?
+            },
+            fp2_mobius_inverse_inplace_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fp2_mobius_inverse_inplace_device\0")?
             },
             hash_fp_tree_device: unsafe {
                 load_symbol(handle, b"volta_cuda_hash_fp_tree_device\0")?
@@ -4510,6 +4515,18 @@ impl CudaContext {
         // SAFETY: Backend validates all resident ids and typed regions.
         self.check(unsafe {
             (self.api.fp2_add_inplace_device)(self.raw, target, target_offset, add, add_offset, len)
+        })
+    }
+
+    pub(super) fn fp2_mobius_inverse_inplace_device(
+        &mut self,
+        values: u64,
+        values_offset: usize,
+        len: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates the resident id, typed region, and power-of-two geometry.
+        self.check(unsafe {
+            (self.api.fp2_mobius_inverse_inplace_device)(self.raw, values, values_offset, len)
         })
     }
 

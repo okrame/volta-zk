@@ -6579,6 +6579,35 @@ impl Backend {
         Err(AccelError::FeatureDisabled)
     }
 
+    /// Convert one resident LSB-first multilinear monomial table into its
+    /// Boolean-hypercube evaluations in place. Production callers use this
+    /// to reuse an already allocated committed coefficient owner; there is no
+    /// host arithmetic or second full-domain allocation.
+    pub fn fp2_mobius_inverse_inplace_device(
+        &mut self,
+        values: &DeviceBuffer<Fp2Repr>,
+    ) -> Result<(), AccelError> {
+        if self.kind != BackendKind::CudaResident
+            || values.is_empty()
+            || !values.len().is_power_of_two()
+        {
+            return Err(AccelError::InvalidInput(
+                "resident Mobius inverse requires CUDA power-of-two storage",
+            ));
+        }
+        self.validate_buffer(values)?;
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .expect("CUDA kind without context")
+                .fp2_mobius_inverse_inplace_device(values.id, 0, values.len());
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
     pub fn hash_fp_tree_device(
         &mut self,
         matrix: &DeviceBuffer<u64>,
@@ -9430,6 +9459,28 @@ mod cuda_tests {
             av.chunks_exact(2).map(|pair| pair[0] + challenge * pair[1]).collect::<Vec<_>>()
         );
         gpu.free_device(monomial_bound).unwrap();
+        let mobius_inverse = gpu
+            .clone_fp2_device(DeviceSlice::new(&da, 0, av.len()).unwrap())
+            .unwrap();
+        gpu.fp2_mobius_inverse_inplace_device(&mobius_inverse).unwrap();
+        let got_mobius_inverse = gpu
+            .download_device(&mobius_inverse, 0, av.len())
+            .unwrap()
+            .into_iter()
+            .map(Fp2::from)
+            .collect::<Vec<_>>();
+        let mut expected_mobius_inverse = av.clone();
+        for bit in 0..av.len().ilog2() {
+            let stride = 1usize << bit;
+            for chunk in expected_mobius_inverse.chunks_exact_mut(2 * stride) {
+                let (low, high) = chunk.split_at_mut(stride);
+                for (upper, lower) in high.iter_mut().zip(low) {
+                    *upper += *lower;
+                }
+            }
+        }
+        assert_eq!(got_mobius_inverse, expected_mobius_inverse);
+        gpu.free_device(mobius_inverse).unwrap();
         let folded_a = gpu.fp2_fold_rows_device(&da, 0, 1, av.len(), challenge).unwrap();
         let got_fold: Vec<Fp2> = gpu
             .download_device(&folded_a, 0, av.len() / 2)

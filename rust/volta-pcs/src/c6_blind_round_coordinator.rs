@@ -142,6 +142,80 @@ pub struct C6ExactProductionNbr2ProverProof {
     outer_statement_digest: [u8; 32],
 }
 
+/// Canonical public inputs fixed by the global blind relation before the two
+/// persisted compiler chains are started.  This is a read-only projection of
+/// linear prover typestate: it contains no witness table, MAC share or key.
+#[cfg(feature = "c61-p3-authenticated-reference")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ExactTerminalCompilerInputs {
+    relation_challenges_digest: [u8; 32],
+    leaf_points: [Vec<Fp2>; 2],
+    auxiliary_points: [Vec<Fp2>; 2],
+    terminal_functionals: [Fp2; volta_proto::C6_RESIDUAL_TERMINAL_FUNCTIONALS],
+    output_beta: Fp2,
+    relation_root: [u8; 32],
+    functional_fold: Fp2,
+}
+
+#[cfg(feature = "c61-p3-authenticated-reference")]
+impl C6ExactTerminalCompilerInputs {
+    pub fn relation_challenges_digest(&self) -> [u8; 32] {
+        self.relation_challenges_digest
+    }
+
+    pub fn leaf_points(&self) -> [&[Fp2]; 2] {
+        [&self.leaf_points[0], &self.leaf_points[1]]
+    }
+
+    pub fn auxiliary_points(&self) -> [&[Fp2]; 2] {
+        [&self.auxiliary_points[0], &self.auxiliary_points[1]]
+    }
+
+    pub fn terminal_functionals(&self) -> &[Fp2; volta_proto::C6_RESIDUAL_TERMINAL_FUNCTIONALS] {
+        &self.terminal_functionals
+    }
+
+    pub fn output_beta(&self) -> Fp2 {
+        self.output_beta
+    }
+
+    pub fn relation_root(&self) -> [u8; 32] {
+        self.relation_root
+    }
+
+    pub fn functional_fold(&self) -> Fp2 {
+        self.functional_fold
+    }
+}
+
+#[cfg(feature = "c61-p3-authenticated-reference")]
+impl C6ExactProductionNbr2ProverProof {
+    pub fn terminal_compiler_inputs(&self) -> Result<C6ExactTerminalCompilerInputs, String> {
+        let outputs = &self.blind.residual_terminal_outputs;
+        if outputs.relation_challenges_digest() == [0; 32]
+            || outputs.digest() == [0; 32]
+            || self.blind.residual_terminal_fold.terminal_outputs_digest() != outputs.digest()
+        {
+            return Err("C6 exact compiler inputs have a noncanonical terminal binding".to_owned());
+        }
+        Ok(C6ExactTerminalCompilerInputs {
+            relation_challenges_digest: outputs.relation_challenges_digest(),
+            leaf_points: [
+                outputs.leaf_point(0).map_err(text_error)?.to_vec(),
+                outputs.leaf_point(1).map_err(text_error)?.to_vec(),
+            ],
+            auxiliary_points: [
+                outputs.auxiliary_point(0).map_err(text_error)?.to_vec(),
+                outputs.auxiliary_point(1).map_err(text_error)?.to_vec(),
+            ],
+            terminal_functionals: *outputs.terminal_functionals(),
+            output_beta: self.blind.residual_terminal_fold.beta(),
+            relation_root: outputs.digest(),
+            functional_fold: self.blind.residual_terminal_fold.functional_fold(),
+        })
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct C6ExactProductionVerifierOutput {
     pub(crate) bound_slots: u64,

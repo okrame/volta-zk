@@ -83,8 +83,10 @@ use crate::c61_terminal_functional::{
     authenticate_c61_sparse_response_targets_verifier,
     build_c61_production_model_embedding_public_statement, C61NativeCommitmentDescriptor,
     C61NativeProverChainStatement, C61NativeVerifierChainStatement,
-    C61SparseRationalBlindArithmeticProof, C61TypedNativeChainPublicStatement,
-    C61TypedNativeRelationStatement, C61_EMBEDDING_POLYNOMIAL_LOG2, C61_MODEL_POLYNOMIAL_LOG2,
+    C61SparseRationalBlindArithmeticProof, C61SparseRationalCompilerOracles,
+    C61TerminalFunctionalCompilerBinding, C61TerminalFunctionalCompilerStatement,
+    C61TypedNativeChainPublicStatement, C61TypedNativeRelationStatement,
+    C61_EMBEDDING_POLYNOMIAL_LOG2, C61_MODEL_POLYNOMIAL_LOG2,
 };
 use crate::c61_whir_reference::{
     c61_max_pruned_binary_siblings, c61_p3_fp2_from_volta, c61_reference_mmcs,
@@ -600,8 +602,21 @@ impl C61ProductionJointCompilerChainProof {
 }
 
 pub struct C61ProductionCompilerChainExecution {
+    public: Option<C61TypedNativeChainPublicStatement>,
     pub proof: C61ProductionCompilerChainProof,
     pub report: C61AuthenticatedP3SharedMultiOracleDiagnostic,
+}
+
+impl C61ProductionCompilerChainExecution {
+    /// Production executions always retain their exact typed public
+    /// statement. Scaled diagnostics deliberately have no production
+    /// statement because their D14/D13 commitments cannot be reinterpreted
+    /// as the registered D28/D27 relation.
+    pub fn public(&self) -> Result<&C61TypedNativeChainPublicStatement, String> {
+        self.public.as_ref().ok_or_else(|| {
+            "scaled compiler execution has no production public statement".to_owned()
+        })
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -979,6 +994,31 @@ pub fn assemble_c61_production_joint_public_argument_from_executions(
     .map_err(|error| error.to_string())?;
     if arithmetic.statement_digest != statement_digest {
         return Err("C6PA2 execution assembly received a different C6RSC4 statement".to_owned());
+    }
+
+    for (repetition, execution) in compiler.iter().enumerate() {
+        let public = execution.public()?;
+        let expected = C61NativeChainId {
+            component: C61NativeComponent::Compiler,
+            repetition: repetition as u8,
+        };
+        let compiler_statement = match public.relation() {
+            C61TypedNativeRelationStatement::Compiler(statement) if public.id() == expected => {
+                statement.as_ref()
+            }
+            _ => return Err("C6PA2 compiler execution has a noncanonical typed role".to_owned()),
+        };
+        if compiler_statement.terminal_claims != arithmetic.terminal_claims
+            || compiler_statement.relation_challenges_digest != arithmetic.challenge_digest
+            || compiler_statement.relation_root != arithmetic.adjoint_root
+            || compiler_statement.functional_fold != arithmetic.source_boundary
+        {
+            return Err("C6PA2 compiler statement differs from the exact C6RSC4 relation"
+                .to_owned());
+        }
+    }
+    if compiler[0].public()?.relation() != compiler[1].public()?.relation() {
+        return Err("C6PA2 compiler repetitions prove different public relations".to_owned());
     }
 
     let [model_primary, embedding_primary] = primary;
@@ -5476,6 +5516,7 @@ struct C61SparseCompilerPhysicalFixture<'a> {
     packed: volta_proto::c6_residual::C6SparseRationalPackedOracleReference,
     output_beta: Fp2,
     terminal_binding: C61ExactTerminalFoldBinding,
+    terminal_relation_root: Option<[u8; 32]>,
     production: bool,
 }
 
@@ -5660,6 +5701,59 @@ impl C61SparseCompilerPhysicalFixture<'_> {
     }
 }
 
+fn c61_production_compiler_public_statement(
+    fixture: &C61SparseCompilerPhysicalFixture<'_>,
+    id: C61NativeChainId,
+    response_root: [u8; 32],
+    plan_root: [u8; 32],
+) -> Result<C61TypedNativeChainPublicStatement, String> {
+    if !fixture.production || id.component != C61NativeComponent::Compiler || id.repetition >= 2 {
+        return Err("C6SPR11 compiler statement builder requires one production chain".to_owned());
+    }
+    let terminal_relation_root = fixture
+        .terminal_relation_root
+        .ok_or_else(|| "C6SPR11 compiler statement omitted the exact C6TFR1 root".to_owned())?;
+    let response = C61NativeCommitmentDescriptor {
+        parameter_digest: c61_authenticated_p3_parameter_digest(28)?,
+        commitment_root: response_root,
+        polynomial_domain_log2: 28,
+    };
+    let plan = C61NativeCommitmentDescriptor {
+        parameter_digest: c61_authenticated_p3_parameter_digest(27)?,
+        commitment_root: plan_root,
+        polynomial_domain_log2: 27,
+    };
+    let binding = C61TerminalFunctionalCompilerBinding {
+        operation_plan_digest: fixture.operation_plan().artifact_digest(),
+        operation_topology_digest: fixture.operation_plan().topology().topology_digest,
+        terminal_metadata_digest: fixture.terminal_metadata.digest(),
+        extraction_map_digest: fixture.extraction().census().map_digest,
+        runtime_root: fixture.runtime().instance_identity().instance_digest,
+        residual_manifest_digest: fixture.relation().manifest().digest(),
+        residual_public_claims_digest: fixture.relation().claims().digest(),
+        relation_challenges_digest: fixture.relation().digest(),
+        sparse_oracles: C61SparseRationalCompilerOracles::new(response, plan)
+            .map_err(|error| error.to_string())?,
+        leaf_points: fixture.terminal_binding.leaf_points.clone(),
+        auxiliary_points: fixture.terminal_binding.auxiliary_points.clone(),
+        terminal_claims: fixture.terminal_binding.terminal_functionals,
+        output_beta: fixture.output_beta,
+        relation_root: terminal_relation_root,
+    };
+    let relation =
+        C61TerminalFunctionalCompilerStatement::new(binding).map_err(|error| error.to_string())?;
+    if relation.functional_fold != fixture.terminal_binding.functional_fold {
+        return Err(
+            "C6SPR11 compiler statement fold differs from the exact terminal owner".to_owned()
+        );
+    }
+    C61TypedNativeChainPublicStatement::new(
+        id,
+        C61TypedNativeRelationStatement::Compiler(Box::new(relation)),
+    )
+    .map_err(|error| error.to_string())
+}
+
 fn c61_exact_plan_fold_physical_openings(
     fixture: &C61SparseCompilerPhysicalFixture<'_>,
     response_num_variables: usize,
@@ -5837,6 +5931,7 @@ fn c61_sparse_compiler_physical_fixture(
         packed,
         output_beta,
         terminal_binding,
+        terminal_relation_root: None,
         production: false,
     })
 }
@@ -5852,6 +5947,7 @@ fn c61_sparse_compiler_production_fixture<'a>(
     auxiliary_points: [&[Fp2]; 2],
     terminal_functionals: [Fp2; 64],
     output_beta: Fp2,
+    terminal_relation_root: [u8; 32],
 ) -> Result<C61SparseCompilerPhysicalFixture<'a>, String> {
     use volta_proto::c6_residual::{
         compile_c6_residual_folded_terminal_adjoint_lane_reference,
@@ -5860,6 +5956,9 @@ fn c61_sparse_compiler_production_fixture<'a>(
 
     if !relation.manifest().is_production_geometry() {
         return Err("C6SPR5 production fixture requires the frozen C6RLM1 geometry".to_owned());
+    }
+    if terminal_relation_root == [0; 32] {
+        return Err("C6SPR5 production fixture requires the exact C6TFR1 root".to_owned());
     }
     let lanes: [volta_proto::c6_residual::C6ResidualFoldedTerminalAdjointLaneReference; 2] = (0
         ..2usize)
@@ -5910,6 +6009,7 @@ fn c61_sparse_compiler_production_fixture<'a>(
         packed,
         output_beta,
         terminal_binding,
+        terminal_relation_root: Some(terminal_relation_root),
         production: true,
     })
 }
@@ -5934,6 +6034,7 @@ pub fn run_c61_authenticated_whir_p3_production_monolithic_baseline(
     auxiliary_points: [&[Fp2]; 2],
     terminal_functionals: [Fp2; 64],
     output_beta: Fp2,
+    terminal_relation_root: [u8; 32],
     admission: C61ProductionMonolithicResourceAdmission,
     mut correlations: CorrelationStream,
     mut context: VerifierCtx,
@@ -5974,6 +6075,7 @@ pub fn run_c61_authenticated_whir_p3_production_monolithic_baseline(
         auxiliary_points,
         terminal_functionals,
         output_beta,
+        terminal_relation_root,
     )?;
     run_c61_authenticated_whir_p3_shared_multi_oracle_materialized(
         &fixture,
@@ -6002,6 +6104,7 @@ pub fn run_c61_authenticated_whir_p3_production_persisted(
     auxiliary_points: [&[Fp2]; 2],
     terminal_functionals: [Fp2; 64],
     output_beta: Fp2,
+    terminal_relation_root: [u8; 32],
     spill_root: &Path,
     admission: C61ProductionPersistedResourceAdmission,
     mut correlations: CorrelationStream,
@@ -6020,6 +6123,7 @@ pub fn run_c61_authenticated_whir_p3_production_persisted(
         auxiliary_points,
         terminal_functionals,
         output_beta,
+        terminal_relation_root,
         spill_root,
         admission,
         &mut correlations,
@@ -6043,6 +6147,7 @@ pub fn run_c61_authenticated_whir_p3_production_persisted_in_attempt(
     auxiliary_points: [&[Fp2]; 2],
     terminal_functionals: [Fp2; 64],
     output_beta: Fp2,
+    terminal_relation_root: [u8; 32],
     spill_root: &Path,
     admission: C61ProductionPersistedResourceAdmission,
     correlations: &mut CorrelationStream,
@@ -6061,6 +6166,7 @@ pub fn run_c61_authenticated_whir_p3_production_persisted_in_attempt(
         auxiliary_points,
         terminal_functionals,
         output_beta,
+        terminal_relation_root,
         spill_root,
         admission,
         correlations,
@@ -6085,6 +6191,7 @@ pub fn run_c61_authenticated_whir_p3_production_persisted_execution_in_attempt(
     auxiliary_points: [&[Fp2]; 2],
     terminal_functionals: [Fp2; 64],
     output_beta: Fp2,
+    terminal_relation_root: [u8; 32],
     spill_root: &Path,
     admission: C61ProductionPersistedResourceAdmission,
     correlations: &mut CorrelationStream,
@@ -6109,6 +6216,7 @@ pub fn run_c61_authenticated_whir_p3_production_persisted_execution_in_attempt(
         auxiliary_points,
         terminal_functionals,
         output_beta,
+        terminal_relation_root,
     )?;
     let mut session_hasher = blake3::Hasher::new_derive_key("volta-zk/c6.1/c6spx1-session/v1");
     session_hasher.update(&verifier_seed);
@@ -6145,6 +6253,7 @@ pub fn run_c61_authenticated_whir_p3_production_compiler_private_entropy_in_atte
     auxiliary_points: [&[Fp2]; 2],
     terminal_functionals: [Fp2; 64],
     output_beta: Fp2,
+    terminal_relation_root: [u8; 32],
     provider_session_binding: C61ProviderSessionBinding,
     spill_root: &Path,
     admission: C61ProductionPersistedResourceAdmission,
@@ -6165,6 +6274,7 @@ pub fn run_c61_authenticated_whir_p3_production_compiler_private_entropy_in_atte
         auxiliary_points,
         terminal_functionals,
         output_beta,
+        terminal_relation_root,
     )?;
     let mut session_hasher =
         blake3::Hasher::new_derive_key("volta-zk/c6.1/c6ict2-compiler-session/v1");
@@ -7491,6 +7601,16 @@ where
     };
     let proof_bytes = proof.encode()?;
     let proof = C61ProductionCompilerChainProof::decode(&proof_bytes)?;
+    let public = if fixture.production {
+        Some(c61_production_compiler_public_statement(
+            fixture,
+            id,
+            response_commitment.roots()[0],
+            plan_commitment.roots()[0],
+        )?)
+    } else {
+        None
+    };
     if provider_transcript.is_interactive() {
         provider_transcript.finish_interactive(&proof_bytes)?;
     }
@@ -7553,7 +7673,7 @@ where
 
     if verifier_context.is_none() {
         let report = build_report(C61WhirInteractionStats::default(), false, false, false)?;
-        return Ok(C61ProductionCompilerChainExecution { proof, report });
+        return Ok(C61ProductionCompilerChainExecution { public, proof, report });
     }
     let context = verifier_context
         .take()
@@ -7779,7 +7899,7 @@ where
         joint_tag_mutation_rejected,
         role_separated_compact_verifier_checked,
     )?;
-    Ok(C61ProductionCompilerChainExecution { proof, report })
+    Ok(C61ProductionCompilerChainExecution { public, proof, report })
 }
 
 /// Execute the target-plaintext-free designated-verifier view simulator and
@@ -8636,6 +8756,7 @@ mod tests {
                 [&[Fp2::ZERO; 2], &[Fp2::ZERO; 2]],
                 [Fp2::ZERO; 64],
                 Fp2::new(Fp::new(191), Fp::new(17)),
+                [0xC1; 32],
                 admission,
                 CorrelationStream::new([0xD3; 32]),
                 VerifierCtx::new([0xD3; 32], delta),
@@ -8671,6 +8792,7 @@ mod tests {
                 [&[Fp2::ZERO; 2], &[Fp2::ZERO; 2]],
                 [Fp2::ZERO; 64],
                 Fp2::new(Fp::new(191), Fp::new(17)),
+                [0xC1; 32],
                 Path::new("/tmp/volta-c61-persisted-admission-unused"),
                 admission,
                 CorrelationStream::new([0xD3; 32]),

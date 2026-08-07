@@ -7,6 +7,7 @@ pub mod block_proof;
 pub(crate) mod boundary_thinning;
 pub mod c6;
 pub mod c61_certificate;
+pub mod c61_public_instance;
 #[cfg(feature = "c6-trace")]
 pub mod c6_cache_fold;
 pub mod c6_census;
@@ -59,6 +60,9 @@ pub use c6::{
 pub use c61_certificate::{
     C61CertificateError, C61FinalCertificateEnvelope, C61_CERTIFICATE_STRICT_MAX_BYTES,
     C61_PUBLIC_ARGUMENT_ABSOLUTE_MAX_BYTES, C61_RETAINED_NON_PCS_RESPONSE_BYTES,
+};
+pub use c61_public_instance::{
+    C61PublicInstanceError, C61PublicWorkloadInstance,
 };
 pub use c6_census::{
     audit_c6_t1_source_census, c6_t1_trace_source_manifest, C6CensusDigest, C6CensusError,

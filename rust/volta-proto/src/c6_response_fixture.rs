@@ -50,6 +50,7 @@ use crate::model_proof::{
     C6GrandResidualProverRoots, C6GrandResidualVerifierRoots, ChunkPub, ChunkRef, ModelOut,
     ModelOutV, ModelProof, PrivateChunkPub,
 };
+use crate::model_proof_codec::{decode_model_proof_canonical, encode_model_proof_canonical};
 use crate::prod_check::{prod_batch_prover, prod_batch_verify, ProdProof};
 
 const RESPONSE_T: usize = 4;
@@ -606,6 +607,13 @@ pub fn build_c6_t1_production_response_owner(
     {
         return Err("C6SPR12 exact provider claim/closure census changed".to_owned());
     }
+    // Cross the same byte boundary used by the disk campaign before the
+    // verifier sees the proof. The provider-side object is consumed here;
+    // verification below receives a freshly reconstructed value.
+    let model_proof = decode_model_proof_canonical(
+        &encode_model_proof_canonical(&model_proof).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
     let paired_sources =
         attempt.seal_sources(coordinates, &source_schedule, source_schedule.digest)?;
     let mut next_source = 0u64;
@@ -1122,6 +1130,10 @@ fn build_c6_response_residual_fixture_with_geometry(
         .release_relation_seed(&provider_operation_plan, [0x74; 32])?;
     let provider_response_and_residual_ns = u64::try_from(provider_start.elapsed().as_nanos())
         .map_err(|_| C6ResidualError::new("C6 provider diagnostic wall exceeds u64 ns"))?;
+
+    let proof =
+        decode_model_proof_canonical(&encode_model_proof_canonical(&proof).map_err(trace_error)?)
+            .map_err(trace_error)?;
 
     let verifier_start = Instant::now();
     let mut primary_verifier = VerifierCtx::new(primary_seed, deltas[0]);

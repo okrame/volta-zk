@@ -23,6 +23,7 @@ pub mod hadamard;
 pub mod logup;
 pub mod mle;
 pub mod model_proof;
+pub mod model_proof_codec;
 pub(crate) mod private_argmax;
 pub mod prod_check;
 pub mod schedule;
@@ -168,6 +169,9 @@ pub use model_proof::{
 pub use model_proof::{
     prove_response_private_logits_c6_cache_inline, verify_response_private_logits_c6_cache_inline,
     C6GrandResidualProverRoots, C6GrandResidualVerifierRoots,
+};
+pub use model_proof_codec::{
+    decode_model_proof_canonical, encode_model_proof_canonical, ModelProofCodecError,
 };
 pub use prod_check::{prod_batch_prover, prod_batch_verify, ProdProof};
 pub use schedule::{

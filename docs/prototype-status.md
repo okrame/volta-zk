@@ -8,14 +8,15 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §0.60 next.
+This capsule is authoritative; read design §§0.60--0.61 next.
 
 - **Milestone/evidence.** C6.1/C6NBR3 source binding is closed locally.
   Checkpoints `92b5000`, `e3c080a`, and `17dcea7` add linear full-chain owners,
   an exact **148,738,118-B** authenticated setup bundle and separate pre-response
   wrapper versus post-native C6PA2 statement identities. Campaign/setup checks
-  are **4/0/0 + 1/0/0**. No production CUDA/full-chain/timing/memory/hardware
-  credit exists.
+  are **4/0/0 + 1/0/0**. C6ICT2 also replaces predictable production hiding
+  seeds with provider-private OS entropy; its source guard is **1/0/0**. No
+  production CUDA/full-chain/timing/memory/hardware credit exists.
 - **Screens.** Certificate **17,536,735 B**, setup **148,738,118 B**,
   setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
   **102.5878332989 bits/cert**, and provider/verifier **14.9179595454 /
@@ -62,6 +63,17 @@ This capsule is authoritative; read design §0.60 next.
   the `<15 s` inline path and changes no provider-to-client certificate/setup
   allocation. A parallel read-only Fiat--Shamir feasibility audit is also
   authorized, but cannot alter C6ICT2 or claim credit. No pod contact yet.
+
+- **2026-08-07 — Predictable production hiding seeds removed.** C6ICT2 audit
+  found fixed public RNG seeds in all model/embed and compiler hiding-WHIR
+  production lanes. The fork requires unpredictable masking randomness;
+  otherwise the verifier can strip the masks. Each production lane now uses
+  an independent provider-private Linux `OsRng` seed, consumed only in memory.
+  It is absent from certificate, statement, client challenge tape and replay;
+  entropy failure aborts and burns the reserved attempt. Deterministic seeds
+  remain diagnostic-only. The focused source guard is **1/0/0**. This is a
+  privacy-source repair, not production-dimension or timing credit; C6ICT2 and
+  the no-pod gate remain active.
 
 - **2026-08-07 — C6NBR3 combined source binding closes locally.** The two
   prover-private NBR2 digest inputs are replaced by the existing combined

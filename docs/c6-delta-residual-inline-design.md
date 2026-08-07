@@ -3979,6 +3979,27 @@ source guards pass may work resume on the complete producer, disk verifier and
 record validator. A separately delegated Fiat--Shamir study is read-only and
 does not relax this gate or authorize pod contact.
 
+### 0.61 Provider-private hiding entropy repair
+
+The C6ICT2 source audit found a second production security defect before pod
+admission. The persisted/CUDA model and embedding prover seeded hiding WHIR
+from public component/repetition constants, while both compiler lanes used
+fixed public seeds. The fork requires an unpredictable cryptographic stream:
+a verifier that knows the masking stream can remove the hiding masks.
+
+Production model, embedding and compiler lanes now seed their `StdRng` from
+independent Linux `OsRng` reads. The seed is provider-private, consumed in
+memory, absent from the statement, certificate, challenge tape and replay,
+and has no checkpoint. An entropy-source failure aborts before proof output;
+the already authorized burn-on-interruption policy consumes the attempt.
+Deterministic seeds remain only in non-production diagnostics. A source guard
+checks that each production lane reaches the OS-entropy helper and that the
+model/embed production region contains no `seed_from_u64`.
+
+This repair earns privacy-source evidence only. It changes no setup or wire
+bytes and gives no production-dimension, timing, memory or hardware credit.
+The active gate remains `C6ICT2_PRODUCTION_PRIVATE_ENTROPY_DRIVER`.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

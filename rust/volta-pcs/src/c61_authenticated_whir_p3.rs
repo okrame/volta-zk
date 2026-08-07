@@ -31,6 +31,8 @@ use p3_whir_c61::pcs::zk::{
     MaskOpeningPair, ZkParameters, ZkRoundProof, ZkWhirConfig, ZkWhirProof,
 };
 use p3_whir_c61::{ClaimlessAffineClaim, ClaimlessZkSumcheckData};
+use rand::rngs::OsRng;
+use rand::RngCore as Rand08RngCore;
 use rand_010::rngs::StdRng;
 use rand_010::{RngExt, SeedableRng};
 use volta_accel::{Backend, BackendKind};
@@ -92,6 +94,19 @@ use crate::c61_whir_reference::{
     C61_WHIRA1_MASK_LOG_INV_RATE, C61_WHIRA1_MULTIPROOF_COUNT_BYTES,
     C61_WHIRA1_STARTING_LOG_INV_RATE,
 };
+
+/// Fresh provider-private randomness for one production hiding-WHIR lane.
+///
+/// The returned seed is consumed immediately by the CSPRNG and is never part
+/// of the statement, certificate, verifier challenge tape or replay state.
+/// Production attempts are burn-on-interruption, so no RNG checkpoint exists.
+fn c61_production_private_zk_rng() -> Result<StdRng, String> {
+    let mut seed = [0u8; 32];
+    OsRng
+        .try_fill_bytes(&mut seed)
+        .map_err(|error| format!("C6ICT2 provider entropy unavailable: {error}"))?;
+    Ok(StdRng::from_seed(seed))
+}
 use crate::{C6Nbr2ProvedLink, C6Nbr2VerifiedLink, C61_NATIVE_CHAIN_MAX_BYTES};
 
 pub const C61_AUTHENTICATED_P3_SECURITY_BITS: usize = 75;
@@ -4669,10 +4684,7 @@ pub fn prepare_c61_authenticated_whir_p3_production_committed_chain_persisted_cu
     let config = c61_authenticated_config::<C61InteractiveChallenger<'_>>(num_variables)?;
     let dft = Radix2DFTSmallBatch::default();
     let prover = HidingWhirProver::new(&config, &dft, &mmcs);
-    let rng_seed = 0xC6_6110u64
-        .wrapping_add((id.component as u64) << 8)
-        .wrapping_add(u64::from(id.repetition));
-    let mut rng = StdRng::seed_from_u64(rng_seed);
+    let mut rng = c61_production_private_zk_rng()?;
     let (commitment, data) = prover.commit(witness, &mut challenger, &mut rng);
     if commitment.num_roots() != 1 {
         return Err("C6SPR11 production committed chain has a noncanonical root cap".to_owned());
@@ -6445,8 +6457,11 @@ where
     let plan_dft = Radix2DFTSmallBatch::default();
     let response_prover = HidingWhirProver::new(&response_config, &response_dft, &response_mmcs);
     let plan_prover = HidingWhirProver::new(&plan_config, &plan_dft, &plan_mmcs);
-    let mut response_rng = StdRng::seed_from_u64(0xC6_5202);
-    let mut plan_rng = StdRng::seed_from_u64(0xC6_5203);
+    let (mut response_rng, mut plan_rng) = if fixture.production {
+        (c61_production_private_zk_rng()?, c61_production_private_zk_rng()?)
+    } else {
+        (StdRng::seed_from_u64(0xC6_5202), StdRng::seed_from_u64(0xC6_5203))
+    };
     let (response_commitment, response_data) =
         response_prover.commit(response_witness, &mut response_challenger, &mut response_rng);
     let (plan_commitment, plan_data) =
@@ -8207,6 +8222,43 @@ mod tests {
         assert!(provider.contains("C61PrivateEntropyProverChallenger"));
         assert!(!provider.contains("verifier_seed"));
         assert!(!provider.contains("checkpoint"));
+    }
+
+    #[test]
+    fn production_hiding_rng_is_provider_private_and_not_reproducible() {
+        let source = include_str!("c61_authenticated_whir_p3.rs");
+        let helper = source
+            .split("fn c61_production_private_zk_rng()")
+            .nth(1)
+            .unwrap()
+            .split("const C61_AUTHENTICATED_P3_MAGIC")
+            .next()
+            .unwrap();
+        assert!(helper.contains("OsRng"));
+        assert!(helper.contains("try_fill_bytes"));
+        assert!(!helper.contains("seed_from_u64"));
+
+        let native = source
+            .split(
+                "pub fn prepare_c61_authenticated_whir_p3_production_committed_chain_persisted_cuda_in_attempt(",
+            )
+            .nth(1)
+            .unwrap()
+            .split("pub fn verify_c61_authenticated_whir_p3_production_committed_chain_in_attempt(")
+            .next()
+            .unwrap();
+        assert!(native.contains("c61_production_private_zk_rng()?"));
+        assert!(!native.contains("seed_from_u64"));
+
+        let compiler = source
+            .split("fn run_c61_authenticated_whir_p3_shared_multi_oracle_with_provider_mmcs<")
+            .nth(1)
+            .unwrap()
+            .split("pub fn run_c61_private_entropy_driver_diagnostic(")
+            .next()
+            .unwrap();
+        assert!(compiler.contains("if fixture.production"));
+        assert_eq!(compiler.matches("c61_production_private_zk_rng()?").count(), 2);
     }
 
     fn mutation_fixture() -> (

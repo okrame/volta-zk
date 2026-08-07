@@ -413,6 +413,19 @@ pub(crate) fn begin_c6_blind_hidden_u_stepwise(
     Ok(statement_digest)
 }
 
+pub fn c6_blind_hidden_u_statement_digest(
+    layouts: &[C6HiddenULayout],
+    prequery: &C6HiddenUPrequery,
+    postcommit: &C6HiddenUPostCommit,
+) -> Result<C6HiddenUDigest> {
+    validate_protocol_layouts(layouts)?;
+    if postcommit.prequery_digest != prequery.digest() {
+        return Err(C6BlindHiddenUError::new("C6HUB2 prequery mismatch"));
+    }
+    postcommit.validate(layouts).map_err(hidden_error)?;
+    statement_digest(layouts, prequery, postcommit)
+}
+
 pub(crate) fn prepare_c6_blind_hidden_u_prover_round_state(
     sealed: &C6SealedHiddenUBundle,
     prequery: &C6HiddenUPrequery,

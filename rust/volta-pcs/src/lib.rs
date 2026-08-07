@@ -160,8 +160,9 @@ pub use c6_hidden_u_sumcheck::{
     C6HiddenUSumcheckProof, C6HiddenUSumcheckRepetition, C6HiddenUVerifierRoundState,
 };
 pub use c6_hidden_u_sumcheck_blind::{
-    blind_hidden_u_sumcheck_encoded_len, production_c6_blind_hidden_u_sumcheck_encoded_len,
-    prove_c6_blind_hidden_u_sumchecks_reference, verify_c6_blind_hidden_u_sumchecks,
+    blind_hidden_u_sumcheck_encoded_len, c6_blind_hidden_u_statement_digest,
+    production_c6_blind_hidden_u_sumcheck_encoded_len, prove_c6_blind_hidden_u_sumchecks_reference,
+    verify_c6_blind_hidden_u_sumchecks,
     C6BlindHiddenUError, C6BlindHiddenUPendingClaimsProver, C6BlindHiddenUPendingClaimsVerifier,
     C6BlindHiddenUSumcheckProof, C6_BLIND_HIDDEN_U_FAMILIES, C6_BLIND_HIDDEN_U_MAGIC,
     C6_BLIND_HIDDEN_U_PRODUCTION_BYTES, C6_BLIND_HIDDEN_U_PRODUCTION_FULL_CORRELATIONS_PER_TAPE,

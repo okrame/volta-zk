@@ -8,7 +8,9 @@
 
 use std::fmt;
 
-use crate::{C6FinalCertificate, C6ResponseProofEnvelope, C6RetainedResponseProof};
+use crate::{
+    C6FinalCertificate, C6ResponseProofEnvelope, C6RetainedResponseProof, C6WrapperCommitments,
+};
 
 pub const C61_RETAINED_NON_PCS_RESPONSE_BYTES: u64 = 2_921_744;
 pub const C61_PUBLIC_ARGUMENT_ABSOLUTE_MAX_BYTES: u64 = 15_157_896;
@@ -40,6 +42,73 @@ type Result<T> = std::result::Result<T, C61CertificateError>;
 pub struct C61FinalCertificateEnvelope {
     certificate: C6FinalCertificate,
     proof_envelope: C6ResponseProofEnvelope,
+}
+
+/// Wire-neutral interpretation of the historical C6 cache/wrapper fields.
+/// The two cache roots already live in the transition heads. The four
+/// remaining production cohort roots occupy four legacy wrapper-root slots,
+/// leaving the final 32-byte slot for the combined live-source binding.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C61WrapperWireBinding {
+    pub statement_digest: [u8; 32],
+    pub roots: [[u8; 32]; 6],
+    pub source_binding_digest: [u8; 32],
+}
+
+impl C61WrapperWireBinding {
+    pub fn new(
+        statement_digest: [u8; 32],
+        roots: [[u8; 32]; 6],
+        source_binding_digest: [u8; 32],
+    ) -> Result<Self> {
+        let binding = Self { statement_digest, roots, source_binding_digest };
+        if binding.statement_digest == [0; 32]
+            || binding.source_binding_digest == [0; 32]
+            || binding.roots.contains(&[0; 32])
+        {
+            return Err(C61CertificateError::new(
+                "C6.1 wrapper wire binding contains a zero digest",
+            ));
+        }
+        Ok(binding)
+    }
+
+    pub fn from_certificate(certificate: &C6FinalCertificate) -> Result<Self> {
+        Self::from_parts(
+            certificate.old_head.cache_root,
+            certificate.new_head.cache_root,
+            certificate.wrapper,
+        )
+    }
+
+    pub fn from_parts(
+        old_cache_root: [u8; 32],
+        new_cache_root: [u8; 32],
+        wrapper: C6WrapperCommitments,
+    ) -> Result<Self> {
+        Self::new(
+            wrapper.prequery_statement_digest,
+            [
+                old_cache_root,
+                new_cache_root,
+                wrapper.correction_roots[0],
+                wrapper.weights_u_root,
+                wrapper.embed_u_root,
+                wrapper.correction_roots[1],
+            ],
+            wrapper.cache_witness_root,
+        )
+    }
+
+    pub fn wrapper_commitments(self) -> C6WrapperCommitments {
+        C6WrapperCommitments {
+            prequery_statement_digest: self.statement_digest,
+            correction_roots: [self.roots[2], self.roots[5]],
+            weights_u_root: self.roots[3],
+            embed_u_root: self.roots[4],
+            cache_witness_root: self.source_binding_digest,
+        }
+    }
 }
 
 impl C61FinalCertificateEnvelope {
@@ -105,7 +174,41 @@ impl C61FinalCertificateEnvelope {
         &self.proof_envelope
     }
 
+    pub fn wrapper_binding(&self) -> Result<C61WrapperWireBinding> {
+        C61WrapperWireBinding::from_certificate(&self.certificate)
+    }
+
     pub fn encode(&self) -> Result<Vec<u8>> {
         self.certificate.encode().map_err(|error| C61CertificateError::new(error.to_string()))
+    }
+}
+
+#[cfg(test)]
+mod wrapper_wire_tests {
+    use super::*;
+
+    fn digest(value: u8) -> [u8; 32] {
+        [value; 32]
+    }
+
+    #[test]
+    fn wrapper_wire_binding_round_trips_all_six_roots_and_source_binding() {
+        let roots = [digest(1), digest(2), digest(3), digest(4), digest(5), digest(6)];
+        let binding = C61WrapperWireBinding::new(digest(7), roots, digest(8)).unwrap();
+        assert_eq!(
+            C61WrapperWireBinding::from_parts(roots[0], roots[1], binding.wrapper_commitments())
+                .unwrap(),
+            binding
+        );
+    }
+
+    #[test]
+    fn wrapper_wire_binding_rejects_zero_statement_source_or_root() {
+        let roots = [digest(1), digest(2), digest(3), digest(4), digest(5), digest(6)];
+        assert!(C61WrapperWireBinding::new([0; 32], roots, digest(8)).is_err());
+        assert!(C61WrapperWireBinding::new(digest(7), roots, [0; 32]).is_err());
+        let mut missing = roots;
+        missing[5] = [0; 32];
+        assert!(C61WrapperWireBinding::new(digest(7), missing, digest(8)).is_err());
     }
 }

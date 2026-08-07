@@ -622,7 +622,7 @@ pub fn build_c6_response_residual_fixture_production_geometry(
 /// GPT-2 is an adapter into the generic native-target bridge, not part of the
 /// bridge statement. A future model supplies the same typed cohort metadata
 /// and exact trace tokens with its own response-independent layout digest.
-fn c6_gpt2_native_target_profile(
+pub fn c6_gpt2_native_target_profile(
     weight_targets: impl IntoIterator<Item = (usize, C6TraceToken)>,
     embed_targets: impl IntoIterator<Item = (usize, C6TraceToken)>,
 ) -> Result<C6TraceTargetProfile, C6ResidualError> {

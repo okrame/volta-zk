@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use volta_field::{Fp, Fp2};
+use volta_gpt2::Gpt2VerifierModel;
 use volta_gpt2::{
     band_model_witness, forward_model, forward_model_tokens, generate, load_model, KvCache, D, H, L,
 };
@@ -26,7 +27,8 @@ use crate::block_proof::layer_dom_base;
 use crate::c6_cache_fold::{
     begin_c6_cache_fold_trace, C6CacheFoldKind, C6CacheFoldParty, C6CacheFoldTargetCorrectionFrame,
     C6CacheFoldTargetFixedCorrections, C6CacheFoldTargetInlineProver,
-    C6CacheFoldTargetInlineVerifier, C6CacheFoldTargetPublicSchedule,
+    C6CacheFoldTargetInlineVerifier, C6CacheFoldTargetPublicCorrectionFrame,
+    C6CacheFoldTargetPublicSchedule, C6CacheFoldTraceSnapshot,
     C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES,
 };
 use crate::c6_census::{C6_T1_TOTAL_PRODUCT_TRIPLES, C6_T1_ZERO_CLOSURES};
@@ -51,6 +53,7 @@ use crate::model_proof::{
     C6GrandResidualVerifierRoots, ChunkPub, ChunkRef, ModelOut, ModelOutV, ModelProof,
     PrivateChunkPub,
 };
+use crate::model_proof_codec::C6RetainedResponseProof;
 use crate::model_proof_codec::{decode_model_proof_canonical, encode_model_proof_canonical};
 use crate::prod_check::{prod_batch_prover, prod_batch_verify, ProdProof};
 
@@ -142,6 +145,55 @@ pub struct C6T1InstalledRoleOwner {
     operation_plan: C6InstalledOperationPlan,
     extraction: C6DecodedInstanceExtractionPlan,
     runtime: C6RuntimeInstanceValues,
+}
+
+/// Verifier-only replay of the retained T1 response from canonical disk
+/// bytes. It contains no model witness, provider authentication tag or
+/// provider correlation stream and continues the caller-owned verifier
+/// contexts/transcript into the residual/compiler stages.
+pub struct C6T1ProductionResponseVerifierReplay {
+    output: ModelOutV,
+    zero_roots: C6GrandResidualVerifierRoots,
+    source_schedule: CorrScheduleAudit,
+    source_manifest: C6TraceSourceManifest,
+    installed: C6T1InstalledRoleOwner,
+    cache_snapshot: C6CacheFoldTraceSnapshot,
+    cache_target_fixed: C6CacheFoldTargetFixedCorrections,
+    cache_metrics: crate::c6_cache_fold::C6CacheFoldOnlineLayerMetrics,
+}
+
+impl C6T1ProductionResponseVerifierReplay {
+    pub fn output(&self) -> &ModelOutV {
+        &self.output
+    }
+
+    pub fn zero_roots(&self) -> &C6GrandResidualVerifierRoots {
+        &self.zero_roots
+    }
+
+    pub fn source_schedule(&self) -> &CorrScheduleAudit {
+        &self.source_schedule
+    }
+
+    pub fn source_manifest(&self) -> &C6TraceSourceManifest {
+        &self.source_manifest
+    }
+
+    pub fn installed(&self) -> &C6T1InstalledRoleOwner {
+        &self.installed
+    }
+
+    pub fn cache_snapshot(&self) -> &C6CacheFoldTraceSnapshot {
+        &self.cache_snapshot
+    }
+
+    pub fn cache_target_fixed(&self) -> &C6CacheFoldTargetFixedCorrections {
+        &self.cache_target_fixed
+    }
+
+    pub fn cache_metrics(&self) -> crate::c6_cache_fold::C6CacheFoldOnlineLayerMetrics {
+        self.cache_metrics
+    }
 }
 
 impl C6T1InstalledRoleOwner {
@@ -473,6 +525,137 @@ pub fn prepare_c6_t1_production_residual_owner(
         closure,
         auxiliary,
         closure_memory,
+    })
+}
+
+/// Re-run only the designated-verifier half of the frozen T1 response from
+/// canonical client inputs. The correction frame is decoded before its
+/// omitted runtime identity is reconstructed and bound by the live trace.
+#[allow(clippy::too_many_arguments)]
+pub fn replay_c6_t1_production_response_verifier(
+    model: &Gpt2VerifierModel,
+    sequence: &[u32],
+    statement_digest: [u8; 32],
+    installed_plan: C6InstalledOperationPlan,
+    extraction: C6DecodedInstanceExtractionPlan,
+    cache_target_frame_bytes: &[u8],
+    retained: &C6RetainedResponseProof,
+    contexts: &mut [VerifierCtx; 2],
+    transcript: &mut Transcript,
+) -> Result<C6T1ProductionResponseVerifierReplay, String> {
+    if statement_digest == [0; 32]
+        || sequence.len() != 150
+        || extraction.role() != C6InstanceExtractionRole::Verifier
+        || extraction.topology_digest() != installed_plan.topology().topology_digest
+        || contexts.iter().any(|context| !context.uses_pooled_pcg())
+    {
+        return Err("C6.1 disk verifier T1 response profile/PCG mismatch".to_owned());
+    }
+    let public_schedule = C6CacheFoldTargetPublicSchedule::new(
+        (0..2 * L)
+            .flat_map(|_| {
+                std::iter::repeat_n(C6CacheFoldKind::ValueColumns, H)
+                    .chain(std::iter::repeat_n(C6CacheFoldKind::KeyRows, H))
+            })
+            .collect(),
+    )
+    .map_err(|error| error.to_string())?;
+    let cache_target_frame =
+        C6CacheFoldTargetPublicCorrectionFrame::decode(statement_digest, cache_target_frame_bytes)
+            .map_err(|error| error.to_string())?;
+    let deltas = [contexts[0].delta, contexts[1].delta];
+    let [primary, secondary] = contexts;
+    begin_c6_verifier_trace().map_err(|error| error.to_string())?;
+    primary.enable_c6_operation_trace().map_err(|error| error.to_string())?;
+    primary.enable_schedule_audit().map_err(|error| error.to_string())?;
+    let runtime_capture =
+        begin_c6_runtime_instance_capture(&extraction).map_err(|error| error.to_string())?;
+    let mut follower =
+        C6SourceScheduleVerifierFollower::start(secondary).map_err(|error| error.to_string())?;
+    let public = [PrivateChunkPub { q: 50, seq: sequence }];
+    let mut target_cursor = C6CacheFoldTargetInlineVerifier::start_decoded_public(
+        &cache_target_frame,
+        public_schedule,
+        deltas,
+        transcript,
+    )
+    .map_err(|error| error.to_string())?;
+    let cache_trace =
+        begin_c6_cache_fold_trace(C6CacheFoldParty::Verifier).map_err(|error| error.to_string())?;
+    let (output, product_keys, zero_roots, cache_metrics) =
+        verify_response_private_logits_c6_cache_inline_from_profile(
+            model,
+            100,
+            &public,
+            &retained.model,
+            primary,
+            secondary,
+            &mut follower,
+            &mut target_cursor,
+            transcript,
+        )
+        .ok_or_else(|| "C6.1 disk verifier retained response rejected".to_owned())?;
+    let cache_snapshot = cache_trace.finish().map_err(|error| error.to_string())?;
+    let cache_target_fixed = target_cursor
+        .finish_before_successor_root_with_identity(cache_snapshot.identity, transcript)
+        .map_err(|error| error.to_string())?;
+    let mut doms = Doms::new(layer_dom_base(255));
+    let product_challenge = transcript.challenge_fp2();
+    let product_mask_domain = doms.take(1);
+    if !prod_batch_verify(
+        &product_keys,
+        primary.expand_product_mask_verifier_key(product_mask_domain, product_keys.len()),
+        primary.delta,
+        product_challenge,
+        &retained.product,
+    ) {
+        return Err("C6.1 disk verifier ProductClosure batch rejected".to_owned());
+    }
+    if product_keys.len() as u64 != C6_T1_TOTAL_PRODUCT_TRIPLES
+        || zero_roots.len() as u64 != C6_T1_ZERO_CLOSURES
+        || output.weight_keys.len() != 96
+        || output.embed_keys.len() != 6
+    {
+        return Err("C6.1 disk verifier response census changed".to_owned());
+    }
+    zero_roots.record_operation_trace_ownership().map_err(|error| error.to_string())?;
+    let _operation_trace = finish_c6_verifier_trace().map_err(|error| error.to_string())?;
+    let runtime = runtime_capture
+        .finish_installed(&installed_plan, &extraction)
+        .map_err(|error| error.to_string())?;
+    follower.sync_primary(primary, secondary).map_err(|error| error.to_string())?;
+    let source_schedule = primary
+        .schedule_audit()
+        .filter(|schedule| secondary.schedule_audit() == Some(schedule.clone()))
+        .ok_or_else(|| "C6.1 disk verifier source schedules differ/are absent".to_owned())?;
+    let mut next_source = 0u64;
+    let mut product_mask_sources = Vec::new();
+    for draw in &source_schedule.draws {
+        if draw.role == CorrScheduleRole::ProductMask {
+            product_mask_sources.push(
+                u32::try_from(next_source)
+                    .map_err(|_| "C6.1 disk verifier product-mask source exceeds u32")?,
+            );
+        }
+        next_source = next_source
+            .checked_add(draw.count)
+            .ok_or_else(|| "C6.1 disk verifier source census overflows".to_owned())?;
+    }
+    let source_manifest = C6TraceSourceManifest::new(
+        u32::try_from(next_source).map_err(|_| "C6.1 disk verifier source manifest exceeds u32")?,
+        source_schedule.digest,
+        product_mask_sources,
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(C6T1ProductionResponseVerifierReplay {
+        output,
+        zero_roots,
+        source_schedule,
+        source_manifest,
+        installed: C6T1InstalledRoleOwner { operation_plan: installed_plan, extraction, runtime },
+        cache_snapshot,
+        cache_target_fixed,
+        cache_metrics,
     })
 }
 

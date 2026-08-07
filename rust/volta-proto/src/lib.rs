@@ -144,10 +144,11 @@ pub use c6_response_envelope::{
 pub use c6_response_fixture::{
     build_c6_response_residual_fixture, build_c6_response_residual_fixture_production_geometry,
     build_c6_t1_production_response_owner, c6_gpt2_native_target_profile,
-    prepare_c6_t1_production_residual_owner, C6ResponseResidualCensus, C6ResponseResidualFixture,
-    C6ResponseResidualProviderInputs, C6ResponseResidualTiming, C6ResponseResidualVerifierInputs,
-    C6T1InstalledRoleOwner, C6T1ProductionResidualBoundOwner, C6T1ProductionResidualOwner,
-    C6T1ProductionResponseOwner,
+    prepare_c6_t1_production_residual_owner, replay_c6_t1_production_response_verifier,
+    C6ResponseResidualCensus, C6ResponseResidualFixture, C6ResponseResidualProviderInputs,
+    C6ResponseResidualTiming, C6ResponseResidualVerifierInputs, C6T1InstalledRoleOwner,
+    C6T1ProductionResidualBoundOwner, C6T1ProductionResidualOwner, C6T1ProductionResponseOwner,
+    C6T1ProductionResponseVerifierReplay,
 };
 pub use c6_source::{
     replay_c6_source_coordinate, C6PairedSourceWitness, C6SourceCoordinate, C6SourceDigest,

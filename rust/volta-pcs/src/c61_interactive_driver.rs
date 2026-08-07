@@ -23,7 +23,9 @@ use p3_goldilocks::Goldilocks;
 use p3_multilinear_util::point::Point;
 use p3_symmetric::MerkleCap;
 use volta_field::P;
-use volta_mac::Transcript;
+use volta_mac::{
+    Transcript, TranscriptChallengeChannel, TranscriptChallengeRequest, TranscriptChallengeResponse,
+};
 use volta_proto::c6::{C6ClientAttempt, C6ClientState, C6Digest, C6_MAC_COORDINATES};
 
 use crate::c61_whir_reference::{
@@ -49,12 +51,14 @@ const C61_DURABLE_RECORD_FINISH: u8 = 3;
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum C61ChallengeKind {
     Fp,
+    Fp2,
     Query { bits: u8 },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum C61ChallengeValue {
     Fp(u64),
+    Fp2([u64; 2]),
     Query(u32),
 }
 
@@ -67,17 +71,19 @@ struct C61ChallengeRecord {
 
 impl C61ChallengeRecord {
     fn encode_body(&self) -> ReferenceResult<Vec<u8>> {
-        let (kind, bits, value) = match (&self.kind, &self.value) {
-            (C61ChallengeKind::Fp, C61ChallengeValue::Fp(value)) => (0u8, 0u8, *value),
+        let (kind, bits, value, extension) = match (&self.kind, &self.value) {
+            (C61ChallengeKind::Fp, C61ChallengeValue::Fp(value)) => (0u8, 0u8, *value, None),
+            (C61ChallengeKind::Fp2, C61ChallengeValue::Fp2([c0, c1])) => (2u8, 0u8, *c0, Some(*c1)),
             (C61ChallengeKind::Query { bits }, C61ChallengeValue::Query(value)) => {
-                (1u8, *bits, u64::from(*value))
+                (1u8, *bits, u64::from(*value), None)
             }
             _ => return Err(C61WhirReferenceError::new("C6ICT1 challenge tag mismatch")),
         };
         if self.provider_move.len() > C61_INTERACTIVE_CHECKPOINT_MAX_MOVE_BYTES {
             return Err(C61WhirReferenceError::new("C6ICT1 provider move exceeds cap"));
         }
-        let mut bytes = Vec::with_capacity(16 + self.provider_move.len());
+        let mut bytes =
+            Vec::with_capacity(16 + extension.map_or(0, |_| 8) + self.provider_move.len());
         bytes.push(kind);
         bytes.push(bits);
         bytes.extend_from_slice(&0u16.to_le_bytes());
@@ -87,6 +93,9 @@ impl C61ChallengeRecord {
                 .to_le_bytes(),
         );
         bytes.extend_from_slice(&value.to_le_bytes());
+        if let Some(extension) = extension {
+            bytes.extend_from_slice(&extension.to_le_bytes());
+        }
         bytes.extend_from_slice(&self.provider_move);
         Ok(bytes)
     }
@@ -114,6 +123,13 @@ impl C61ChallengeRecord {
                         .map_err(|_| C61WhirReferenceError::new("C6ICT1 query exceeds u32"))?,
                 ),
             ),
+            2 if bits == 0 && raw_value < P => {
+                let c1 = reader.u64()?;
+                if c1 >= P {
+                    return Err(C61WhirReferenceError::new("C6ICT2 noncanonical Fp2 challenge"));
+                }
+                (C61ChallengeKind::Fp2, C61ChallengeValue::Fp2([raw_value, c1]))
+            }
             _ => return Err(C61WhirReferenceError::new("C6ICT1 noncanonical challenge")),
         };
         let provider_move = reader.take(move_len)?.to_vec();
@@ -190,11 +206,14 @@ impl C61InteractiveCheckpoint {
         let mut records = Vec::with_capacity(count);
         for _ in 0..count {
             let start = reader.offset;
-            let _kind = reader.u8()?;
+            let kind = reader.u8()?;
             let _bits = reader.u8()?;
             let _reserved = reader.u16()?;
             let move_len = reader.u32()?;
             let _value = reader.u64()?;
+            if kind == 2 {
+                let _extension_value = reader.u64()?;
+            }
             reader.take(move_len)?;
             records.push(C61ChallengeRecord::decode_body(&bytes[start..reader.offset])?);
         }
@@ -740,6 +759,7 @@ pub(crate) struct C61PrivateEntropyBrokerOutput {
 
 enum C61BrokerResponse {
     Fp(u64),
+    Fp2([u64; 2]),
     Query(u32),
     Ack,
 }
@@ -747,6 +767,7 @@ enum C61BrokerResponse {
 enum C61BrokerRequest {
     Challenge {
         provider_move: Vec<u8>,
+        semantic_bytes: usize,
         kind: C61ChallengeKind,
         response: mpsc::SyncSender<ReferenceResult<C61BrokerResponse>>,
     },
@@ -768,6 +789,81 @@ enum C61BrokerRequest {
 #[derive(Clone)]
 struct C61ProviderEndpoint {
     sender: mpsc::SyncSender<C61BrokerRequest>,
+}
+
+/// Seedless exact-move endpoint for production protocol code that uses the
+/// generic VOLTA transcript rather than the P3 challenger interface.
+pub(crate) struct C61PrivateEntropyEndpoint {
+    endpoint: C61ProviderEndpoint,
+}
+
+impl TranscriptChallengeChannel for C61PrivateEntropyEndpoint {
+    fn challenge(
+        &mut self,
+        provider_move: Vec<u8>,
+        provider_semantic_bytes: usize,
+        request: TranscriptChallengeRequest,
+    ) -> Result<TranscriptChallengeResponse, String> {
+        let kind = match request {
+            TranscriptChallengeRequest::Fp => C61ChallengeKind::Fp,
+            TranscriptChallengeRequest::Fp2 => C61ChallengeKind::Fp2,
+            TranscriptChallengeRequest::Bits(bits) if (1..=32).contains(&bits) => {
+                C61ChallengeKind::Query { bits }
+            }
+            TranscriptChallengeRequest::Bits(_) => {
+                return Err("C6ICT2 transcript query width exceeds u32".to_owned())
+            }
+        };
+        let (response_sender, response_receiver) = mpsc::sync_channel(0);
+        self.endpoint
+            .sender
+            .send(C61BrokerRequest::Challenge {
+                provider_move,
+                semantic_bytes: provider_semantic_bytes,
+                kind,
+                response: response_sender,
+            })
+            .map_err(|_| "C6ICT2 verifier broker disconnected".to_owned())?;
+        let response = response_receiver
+            .recv()
+            .map_err(|_| "C6ICT2 verifier response disconnected".to_owned())?
+            .map_err(|error| error.to_string())?;
+        match response {
+            C61BrokerResponse::Fp(value) => Ok(TranscriptChallengeResponse::Fp(value)),
+            C61BrokerResponse::Fp2(value) => Ok(TranscriptChallengeResponse::Fp2(value)),
+            C61BrokerResponse::Query(value) => {
+                Ok(TranscriptChallengeResponse::Bits(u64::from(value)))
+            }
+            C61BrokerResponse::Ack => Err("C6ICT2 transcript received an ACK challenge".to_owned()),
+        }
+    }
+
+    fn finish(
+        &mut self,
+        _pending_provider_move: Vec<u8>,
+        payload_bytes: usize,
+        payload_blake3: [u8; 32],
+        semantic_bytes: usize,
+    ) -> Result<(), String> {
+        let (response_sender, response_receiver) = mpsc::sync_channel(0);
+        self.endpoint
+            .sender
+            .send(C61BrokerRequest::Finish {
+                payload_bytes,
+                payload_blake3,
+                semantic_bytes,
+                response: response_sender,
+            })
+            .map_err(|_| "C6ICT2 verifier broker disconnected at finish".to_owned())?;
+        match response_receiver
+            .recv()
+            .map_err(|_| "C6ICT2 verifier finish response disconnected".to_owned())?
+            .map_err(|error| error.to_string())?
+        {
+            C61BrokerResponse::Ack => Ok(()),
+            _ => Err("C6ICT2 transcript finish response is not an ACK".to_owned()),
+        }
+    }
 }
 
 struct C61ProviderState {
@@ -836,7 +932,12 @@ impl C61PrivateEntropyProverChallenger {
         let (response_sender, response_receiver) = mpsc::sync_channel(0);
         endpoint
             .sender
-            .send(C61BrokerRequest::Challenge { provider_move, kind, response: response_sender })
+            .send(C61BrokerRequest::Challenge {
+                semantic_bytes: provider_move.len(),
+                provider_move,
+                kind,
+                response: response_sender,
+            })
             .map_err(|_| C61WhirReferenceError::new("C6ICT1 verifier broker disconnected"))?;
         let result = response_receiver
             .recv()
@@ -993,6 +1094,10 @@ impl FieldChallenger<Goldilocks> for C61PrivateEntropyProverChallenger {}
 fn derive_challenge(transcript: &mut Transcript, kind: &C61ChallengeKind) -> C61ChallengeValue {
     match kind {
         C61ChallengeKind::Fp => C61ChallengeValue::Fp(transcript.challenge_fp().value()),
+        C61ChallengeKind::Fp2 => {
+            let value = transcript.challenge_fp2();
+            C61ChallengeValue::Fp2([value.c0.value(), value.c1.value()])
+        }
         C61ChallengeKind::Query { bits } => {
             C61ChallengeValue::Query(transcript.challenge_bits(*bits) as u32)
         }
@@ -1021,7 +1126,7 @@ fn broker_loop(
 
     while let Ok(request) = receiver.recv() {
         match request {
-            C61BrokerRequest::Challenge { provider_move, kind, response } => {
+            C61BrokerRequest::Challenge { provider_move, semantic_bytes, kind, response } => {
                 if durable_resume.as_ref().is_some_and(|resume| {
                     resume
                         .mask_events
@@ -1037,12 +1142,12 @@ fn broker_loop(
                 if !provider_move.is_empty() {
                     transcript.append(
                         C61_PRIVATE_MESSAGE_LABEL,
-                        u64::try_from(provider_move.len()).map_err(|_| {
-                            C61WhirReferenceError::new("C6ICT1 provider move exceeds u64")
+                        u64::try_from(semantic_bytes).map_err(|_| {
+                            C61WhirReferenceError::new("C6ICT2 semantic move exceeds u64")
                         })?,
                     );
                     interaction.provider_messages += 1;
-                    interaction.provider_semantic_bytes += provider_move.len() as u64;
+                    interaction.provider_semantic_bytes += semantic_bytes as u64;
                 }
                 let value = derive_challenge(&mut transcript, &kind);
                 let record = C61ChallengeRecord { provider_move, kind, value };
@@ -1072,6 +1177,10 @@ fn broker_loop(
                         interaction.client_fp_challenges += 1;
                         C61_WHIRA1_FP_BYTES as u64
                     }
+                    C61ChallengeKind::Fp2 => {
+                        interaction.client_fp_challenges += 2;
+                        16
+                    }
                     C61ChallengeKind::Query { .. } => {
                         interaction.client_query_challenges += 1;
                         4
@@ -1079,6 +1188,7 @@ fn broker_loop(
                 };
                 let broker_response = match record.value {
                     C61ChallengeValue::Fp(value) => C61BrokerResponse::Fp(value),
+                    C61ChallengeValue::Fp2(value) => C61BrokerResponse::Fp2(value),
                     C61ChallengeValue::Query(value) => C61BrokerResponse::Query(value),
                 };
                 records.push(record);
@@ -1153,12 +1263,17 @@ fn broker_loop(
                     let _ = response.send(Err(error.clone()));
                     return Err(error);
                 }
-                if semantic_bytes != interaction.provider_semantic_bytes as usize
-                    || semantic_bytes > payload_bytes
-                {
+                let observed_semantic = interaction.provider_semantic_bytes as usize;
+                if semantic_bytes < observed_semantic || semantic_bytes > payload_bytes {
                     let error = C61WhirReferenceError::new("C6ICT1 semantic-byte census mismatch");
                     let _ = response.send(Err(error.clone()));
                     return Err(error);
+                }
+                let terminal_semantic = semantic_bytes - observed_semantic;
+                if terminal_semantic > 0 {
+                    transcript.append(C61_PRIVATE_MESSAGE_LABEL, terminal_semantic as u64);
+                    interaction.provider_messages += 1;
+                    interaction.provider_semantic_bytes = semantic_bytes as u64;
                 }
                 let residual = payload_bytes - semantic_bytes;
                 if residual > 0 {
@@ -1234,6 +1349,21 @@ pub(crate) fn spawn_c61_private_entropy_broker(
     let challenger = C61PrivateEntropyProverChallenger::new(endpoint, num_variables);
     let handle = thread::spawn(move || broker_loop(receiver, verifier_seed, checkpoint, None));
     Ok((challenger, handle))
+}
+
+pub(crate) fn spawn_c61_private_entropy_transcript_broker(
+    verifier_seed: [u8; 32],
+    num_variables: usize,
+    context_digest: [u8; 32],
+) -> ReferenceResult<(
+    C61PrivateEntropyEndpoint,
+    JoinHandle<ReferenceResult<C61PrivateEntropyBrokerOutput>>,
+)> {
+    let checkpoint = C61InteractiveCheckpoint::empty(num_variables, context_digest)?;
+    let (sender, receiver) = mpsc::sync_channel(0);
+    let endpoint = C61ProviderEndpoint { sender };
+    let handle = thread::spawn(move || broker_loop(receiver, verifier_seed, checkpoint, None));
+    Ok((C61PrivateEntropyEndpoint { endpoint }, handle))
 }
 
 pub(crate) fn spawn_c61_durable_private_entropy_broker(
@@ -1346,6 +1476,10 @@ impl C61PrivateEntropyReplayChallenger {
                 state.interaction.client_fp_challenges += 1;
                 C61_WHIRA1_FP_BYTES as u64
             }
+            C61ChallengeKind::Fp2 => {
+                state.interaction.client_fp_challenges += 2;
+                16
+            }
             C61ChallengeKind::Query { .. } => {
                 state.interaction.client_query_challenges += 1;
                 4
@@ -1439,5 +1573,40 @@ impl FieldChallenger<Goldilocks> for C61PrivateEntropyReplayChallenger {}
 impl fmt::Debug for C61PrivateEntropyProverChallenger {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("C61PrivateEntropyProverChallenger(endpoint-only)")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use volta_field::{Fp, Fp2};
+
+    use super::*;
+
+    #[test]
+    fn transcript_broker_carries_exact_fp_fp2_and_bit_challenges() {
+        let context_digest = [0xC2; 32];
+        let (endpoint, handle) =
+            spawn_c61_private_entropy_transcript_broker([0x71; 32], 28, context_digest).unwrap();
+        let mut transcript = Transcript::new_interactive(Box::new(endpoint));
+        transcript.append_message("first", &[1, 2, 3, 4]);
+        assert_ne!(transcript.challenge_fp(), Fp::ZERO);
+        transcript.append_message("second", &[5; 16]);
+        assert_ne!(transcript.challenge_fp2(), Fp2::ZERO);
+        transcript.append_message_digest("third", 4096, [0xA5; 32]);
+        assert!(transcript.challenge_bits(20) < (1 << 20));
+        transcript.append("terminal", 32);
+        let payload = vec![0x5A; 8192];
+        transcript.finish_interactive(&payload).unwrap();
+
+        let output = handle.join().unwrap().unwrap();
+        assert_eq!(output.tape.challenge_count(), 3);
+        assert_eq!(output.interaction.client_fp_challenges, 3);
+        assert_eq!(output.interaction.client_query_challenges, 1);
+        assert_eq!(output.interaction.provider_semantic_bytes, 4148);
+        assert_eq!(output.interaction.provider_payload_bytes, payload.len() as u64);
+        assert_eq!(output.transcript_bytes, payload.len() as u64);
+        let encoded = output.tape.checkpoint_bytes(3).unwrap();
+        let decoded = C61InteractiveCheckpoint::decode(&encoded).unwrap();
+        assert_eq!(decoded, output.tape.checkpoint);
     }
 }

@@ -116,7 +116,7 @@ struct C61InteractiveState<'a> {
     #[allow(dead_code)]
     public_point_num_variables: usize,
     public_base_observations_to_skip: usize,
-    pending_provider_bytes: u64,
+    pending_provider_move: Vec<u8>,
     stats: C61WhirInteractionStats,
 }
 
@@ -167,7 +167,7 @@ impl<'a> C61InteractiveChallenger<'a> {
                 } else {
                     0
                 },
-                pending_provider_bytes: 0,
+                pending_provider_move: Vec::new(),
                 stats: C61WhirInteractionStats::default(),
             })),
         }
@@ -211,12 +211,12 @@ impl<'a> C61InteractiveChallenger<'a> {
     }
 
     fn flush_pending(state: &mut C61InteractiveState<'_>) {
-        if state.pending_provider_bytes == 0 {
+        if state.pending_provider_move.is_empty() {
             return;
         }
-        state.transcript.append(C61_NATIVE_MESSAGE_LABEL, state.pending_provider_bytes);
+        let provider_move = std::mem::take(&mut state.pending_provider_move);
+        state.transcript.append_message(C61_NATIVE_MESSAGE_LABEL, &provider_move);
         state.stats.provider_messages += 1;
-        state.pending_provider_bytes = 0;
     }
 
     pub(crate) fn finish(&self, payload_bytes: usize) -> ReferenceResult<C61WhirInteractionStats> {
@@ -259,7 +259,7 @@ impl<'a> C61InteractiveChallenger<'a> {
 }
 
 impl CanObserve<Goldilocks> for C61InteractiveChallenger<'_> {
-    fn observe(&mut self, _value: Goldilocks) {
+    fn observe(&mut self, value: Goldilocks) {
         let mut state = self.state.lock().expect("C6WIR1 challenger mutex poisoned");
         if state.initial_root_seen && state.public_base_observations_to_skip > 0 {
             state.public_base_observations_to_skip -= 1;
@@ -268,7 +268,7 @@ impl CanObserve<Goldilocks> for C61InteractiveChallenger<'_> {
             }
             return;
         }
-        state.pending_provider_bytes += C61_WHIRA1_FP_BYTES as u64;
+        state.pending_provider_move.extend_from_slice(&value.as_canonical_u64().to_le_bytes());
         state.stats.provider_semantic_bytes += C61_WHIRA1_FP_BYTES as u64;
     }
 }
@@ -278,7 +278,7 @@ impl CanObserve<C61Commitment> for C61InteractiveChallenger<'_> {
         let mut state = self.state.lock().expect("C6WIR1 challenger mutex poisoned");
         assert_eq!(value.num_roots(), 1, "C6WIR1 requires cap height zero");
         state.initial_root_seen = true;
-        state.pending_provider_bytes += C61_WHIRA1_DIGEST_BYTES as u64;
+        state.pending_provider_move.extend_from_slice(&value.roots()[0]);
         state.stats.provider_semantic_bytes += C61_WHIRA1_DIGEST_BYTES as u64;
     }
 }

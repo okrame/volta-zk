@@ -14,7 +14,7 @@ use p3_challenger::{
     CanObserve, CanSample, CanSampleBits, CanSampleUniformBits, FieldChallenger,
     GrindingChallenger, ResamplingError,
 };
-use p3_field::PrimeCharacteristicRing;
+use p3_field::{PrimeCharacteristicRing, PrimeField64};
 use p3_goldilocks::Goldilocks;
 use p3_multilinear_util::point::Point;
 use volta_field::Fp2;
@@ -40,7 +40,7 @@ struct SharedState<'a> {
     public_statement_bound: [bool; 2],
     public_statement_digest: Option<[u8; 32]>,
     pre_statement_transaction_complete: bool,
-    pending_provider_bytes: u64,
+    pending_provider_move: Vec<u8>,
     stats: C61WhirInteractionStats,
     generations: [u64; 2],
     arrived: [bool; 2],
@@ -84,7 +84,7 @@ pub(crate) fn c61_shared_round_pair(
             public_statement_bound: [false; 2],
             public_statement_digest: None,
             pre_statement_transaction_complete: false,
-            pending_provider_bytes: 0,
+            pending_provider_move: Vec::new(),
             stats: C61WhirInteractionStats::default(),
             generations: [0; 2],
             arrived: [false; 2],
@@ -262,10 +262,10 @@ impl C61SharedRoundCoordinator<'_> {
 }
 
 fn flush_pending(state: &mut SharedState<'_>) {
-    if state.pending_provider_bytes != 0 {
-        state.transcript.append(SHARED_MESSAGE_LABEL, state.pending_provider_bytes);
+    if !state.pending_provider_move.is_empty() {
+        let provider_move = std::mem::take(&mut state.pending_provider_move);
+        state.transcript.append_message(SHARED_MESSAGE_LABEL, &provider_move);
         state.stats.provider_messages += 1;
-        state.pending_provider_bytes = 0;
     }
 }
 
@@ -343,9 +343,9 @@ fn release_lanes(state: &mut SharedState<'_>, lanes: &[usize]) {
 }
 
 impl CanObserve<Goldilocks> for C61SharedRoundChallenger<'_> {
-    fn observe(&mut self, _value: Goldilocks) {
+    fn observe(&mut self, value: Goldilocks) {
         let mut state = self.lock();
-        state.pending_provider_bytes += C61_WHIRA1_FP_BYTES as u64;
+        state.pending_provider_move.extend_from_slice(&value.as_canonical_u64().to_le_bytes());
         state.stats.provider_semantic_bytes += C61_WHIRA1_FP_BYTES as u64;
     }
 }
@@ -355,7 +355,7 @@ impl CanObserve<C61Commitment> for C61SharedRoundChallenger<'_> {
         assert_eq!(value.num_roots(), 1, "C6SPR2 requires cap height zero");
         let mut state = self.lock();
         state.initial_root_seen[self.lane] = true;
-        state.pending_provider_bytes += C61_WHIRA1_DIGEST_BYTES as u64;
+        state.pending_provider_move.extend_from_slice(&value.roots()[0]);
         state.stats.provider_semantic_bytes += C61_WHIRA1_DIGEST_BYTES as u64;
     }
 }

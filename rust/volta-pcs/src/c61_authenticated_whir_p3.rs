@@ -63,7 +63,8 @@ use crate::c61_interactive_driver::{
     create_c61_durable_checkpoint_prefix, open_c61_durable_checkpoint,
     spawn_c61_durable_private_entropy_broker, spawn_c61_private_entropy_broker, C61DurableJournal,
     C61InteractiveCheckpoint, C61InteractiveTape, C61PrivateEntropyBrokerOutput,
-    C61PrivateEntropyProverChallenger, C61PrivateEntropyReplayChallenger,
+    C61PrivateEntropyEndpoint, C61PrivateEntropyProverChallenger,
+    C61PrivateEntropyReplayChallenger,
 };
 use crate::c61_joint_native_bridge::{
     C61JointNativeBodyBinding, C61JointNativeBodyScheduleBuilder, C61JointNativeChallenge,
@@ -1340,6 +1341,48 @@ pub struct C61ProductionCommittedChainExecution {
     pub report: C61ProductionCommittedChainReport,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C61ProviderSessionBinding([u8; 32]);
+
+impl C61ProviderSessionBinding {
+    pub fn from_reserved_attempt(
+        attempt: C6ClientAttempt,
+        id: C61NativeChainId,
+        mask_range: C61AuthenticatedWhirMaskRange,
+    ) -> Result<Self, String> {
+        attempt.correlation_ranges.validate().map_err(|error| error.to_string())?;
+        attempt.workload.validate().map_err(|error| error.to_string())?;
+        if attempt.setup_manifest_digest == [0; 32]
+            || attempt.nonce == [0; 32]
+            || attempt.old_head_digest == [0; 32]
+            || id.repetition >= 2
+        {
+            return Err("C6ICT2 provider session binding is noncanonical".to_owned());
+        }
+        let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c6.1/provider-session/v1");
+        hasher.update(&attempt.slot.to_le_bytes());
+        hasher.update(&attempt.nonce);
+        hasher.update(&attempt.setup_manifest_digest);
+        hasher.update(&attempt.old_head_digest);
+        hasher.update(&attempt.predecessor_certificate_digest);
+        for range in attempt.correlation_ranges.coordinates {
+            hasher.update(&range.stage.to_le_bytes());
+            hasher.update(&range.start.to_le_bytes());
+            hasher.update(&range.count.to_le_bytes());
+        }
+        hasher.update(&attempt.workload.digest());
+        hasher.update(&(id.component as u16).to_le_bytes());
+        hasher.update(&[id.repetition, mask_range.stage]);
+        hasher.update(&mask_range.slot.to_le_bytes());
+        hasher.update(&mask_range.range_start.to_le_bytes());
+        Ok(Self(*hasher.finalize().as_bytes()))
+    }
+
+    fn digest(self) -> [u8; 32] {
+        self.0
+    }
+}
+
 /// Linear provider state after the canonical claimless-WHIR body is fixed
 /// and before its 16-byte authenticated tail is emitted. The state is not
 /// clonable or serializable; an ordinary or joint closure must consume it.
@@ -1394,9 +1437,15 @@ impl C61ProductionCommittedChainProverBody {
 
     /// Consume a secondary body into the model-independent joint relation.
     /// The returned term contains no profile-specific target census or name.
-    pub fn into_joint_term(self, cohort_weight: Fp2) -> Result<C61JointNativeProverTerm, String> {
+    pub fn into_joint_term(
+        mut self,
+        cohort_weight: Fp2,
+    ) -> Result<C61JointNativeProverTerm, String> {
         if self.id.repetition != 1 {
             return Err("C6NBR1 joint prover admits only secondary native bodies".to_owned());
+        }
+        if self.transcript.is_interactive() {
+            self.transcript.finish_interactive(&self.tagless_payload)?;
         }
         Ok(C61JointNativeProverTerm {
             prepared: self.prepared,
@@ -1417,6 +1466,9 @@ impl C61ProductionCommittedChainProverBody {
         .map_err(|error| error.to_string())?;
         let mut payload = self.tagless_payload;
         payload.extend_from_slice(&closure.proof.encode());
+        if self.transcript.is_interactive() {
+            self.transcript.finish_interactive(&payload)?;
+        }
         let proof = C61ProductionCommittedChainProof::decode(&payload, self.statement.public())?;
         let report = C61ProductionCommittedChainReport {
             id: self.id,
@@ -4603,6 +4655,70 @@ pub fn prepare_c61_authenticated_whir_p3_production_committed_chain_persisted_cu
     id: C61NativeChainId,
     mask_range: C61AuthenticatedWhirMaskRange,
 ) -> Result<C61ProductionCommittedChainProverBody, String> {
+    prepare_c61_authenticated_whir_p3_production_committed_chain_with_transcript(
+        coefficients,
+        claims,
+        targets,
+        parameter_digest,
+        spill_root,
+        admission,
+        backend,
+        correlations,
+        Transcript::new(verifier_seed),
+        verifier_seed,
+        id,
+        mask_range,
+    )
+}
+
+/// Provider-only C6ICT2 entry. The opaque endpoint owns transport but no
+/// verifier seed, replay checkpoint, verifier transcript, key or Delta.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prepare_c61_authenticated_whir_p3_production_committed_chain_private_entropy(
+    coefficients: Vec<Goldilocks>,
+    claims: &[crate::batch::BlockClaim],
+    targets: Vec<ProverAuthed>,
+    parameter_digest: [u8; 32],
+    provider_session_binding: C61ProviderSessionBinding,
+    spill_root: &Path,
+    admission: C61ProductionPersistedResourceAdmission,
+    backend: &mut Backend,
+    correlations: &mut CorrelationStream,
+    endpoint: C61PrivateEntropyEndpoint,
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<C61ProductionCommittedChainProverBody, String> {
+    prepare_c61_authenticated_whir_p3_production_committed_chain_with_transcript(
+        coefficients,
+        claims,
+        targets,
+        parameter_digest,
+        spill_root,
+        admission,
+        backend,
+        correlations,
+        Transcript::new_interactive(Box::new(endpoint)),
+        provider_session_binding.digest(),
+        id,
+        mask_range,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prepare_c61_authenticated_whir_p3_production_committed_chain_with_transcript(
+    coefficients: Vec<Goldilocks>,
+    claims: &[crate::batch::BlockClaim],
+    targets: Vec<ProverAuthed>,
+    parameter_digest: [u8; 32],
+    spill_root: &Path,
+    admission: C61ProductionPersistedResourceAdmission,
+    backend: &mut Backend,
+    correlations: &mut CorrelationStream,
+    mut transcript: Transcript,
+    provider_session_binding: [u8; 32],
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<C61ProductionCommittedChainProverBody, String> {
     let num_variables = match id.component {
         C61NativeComponent::Model => usize::from(C61_MODEL_POLYNOMIAL_LOG2),
         C61NativeComponent::Embedding => usize::from(C61_EMBEDDING_POLYNOMIAL_LOG2),
@@ -4660,7 +4776,7 @@ pub fn prepare_c61_authenticated_whir_p3_production_committed_chain_persisted_cu
 
     let mut session_hasher =
         blake3::Hasher::new_derive_key("volta-zk/c6.1/committed-chain-c6spx1-session/v1");
-    session_hasher.update(&verifier_seed);
+    session_hasher.update(&provider_session_binding);
     session_hasher.update(&parameter_digest);
     session_hasher.update(&(id.component as u16).to_le_bytes());
     session_hasher.update(&[id.repetition, mask_range.stage]);
@@ -4679,7 +4795,6 @@ pub fn prepare_c61_authenticated_whir_p3_production_committed_chain_persisted_cu
         lane,
     )?;
     let witness = Poly::new(coefficients);
-    let mut transcript = Transcript::new(verifier_seed);
     let mut challenger = C61InteractiveChallenger::new_claimless(&mut transcript, num_variables);
     let config = c61_authenticated_config::<C61InteractiveChallenger<'_>>(num_variables)?;
     let dft = Radix2DFTSmallBatch::default();
@@ -8204,7 +8319,7 @@ mod tests {
             .split("struct C61ProviderEndpoint")
             .nth(1)
             .unwrap()
-            .split("struct C61ProviderState")
+            .split("/// Seedless exact-move endpoint")
             .next()
             .unwrap();
         assert!(endpoint.contains("SyncSender<C61BrokerRequest>"));
@@ -8259,6 +8374,44 @@ mod tests {
             .unwrap();
         assert!(compiler.contains("if fixture.production"));
         assert_eq!(compiler.matches("c61_production_private_zk_rng()?").count(), 2);
+    }
+
+    #[test]
+    fn production_private_entropy_api_exposes_only_typed_provider_inputs() {
+        let source = include_str!("c61_authenticated_whir_p3.rs");
+        let signature = source
+            .split(
+                "fn prepare_c61_authenticated_whir_p3_production_committed_chain_private_entropy(",
+            )
+            .nth(1)
+            .unwrap()
+            .split(") -> Result<C61ProductionCommittedChainProverBody, String>")
+            .next()
+            .unwrap();
+        assert!(signature.contains("C61ProviderSessionBinding"));
+        assert!(signature.contains("C61PrivateEntropyEndpoint"));
+        assert!(!signature.contains("verifier_seed"));
+        assert!(!signature.contains("checkpoint"));
+        assert!(!signature.contains("VerifierCtx"));
+        assert!(!signature.contains("VerifierKey"));
+        assert!(!signature.contains("Delta"));
+        assert!(!signature.contains("Transcript"));
+
+        let driver = include_str!("c61_interactive_driver.rs");
+        let endpoint = driver
+            .split("struct C61PrivateEntropyEndpoint")
+            .nth(1)
+            .unwrap()
+            .split("impl TranscriptChallengeChannel")
+            .next()
+            .unwrap();
+        assert!(endpoint.contains("C61ProviderEndpoint"));
+        assert!(!endpoint.contains("verifier_seed"));
+        assert!(!endpoint.contains("checkpoint"));
+        assert!(!endpoint.contains("VerifierCtx"));
+        assert!(!endpoint.contains("VerifierKey"));
+        assert!(!endpoint.contains("Delta"));
+        assert!(!endpoint.contains("Transcript"));
     }
 
     fn mutation_fixture() -> (

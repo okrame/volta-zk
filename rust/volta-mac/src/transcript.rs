@@ -31,8 +31,19 @@ pub trait TranscriptChallengeChannel: Send {
     fn challenge(
         &mut self,
         provider_move: Vec<u8>,
+        provider_semantic_bytes: usize,
         request: TranscriptChallengeRequest,
     ) -> Result<TranscriptChallengeResponse, String>;
+
+    fn finish(
+        &mut self,
+        _pending_provider_move: Vec<u8>,
+        _payload_bytes: usize,
+        _payload_blake3: [u8; 32],
+        _semantic_bytes: usize,
+    ) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 enum TranscriptChallenges {
@@ -45,6 +56,7 @@ pub struct Transcript {
     bytes: BTreeMap<&'static str, u64>,
     n_messages: u64,
     pending_provider_move: Vec<u8>,
+    pending_semantic_bytes: usize,
     unbound_provider_bytes: u64,
     interactive_error: Option<String>,
 }
@@ -57,6 +69,7 @@ impl Transcript {
             bytes: BTreeMap::new(),
             n_messages: 0,
             pending_provider_move: Vec::new(),
+            pending_semantic_bytes: 0,
             unbound_provider_bytes: 0,
             interactive_error: None,
         }
@@ -69,6 +82,7 @@ impl Transcript {
             bytes: BTreeMap::new(),
             n_messages: 0,
             pending_provider_move: Vec::new(),
+            pending_semantic_bytes: 0,
             unbound_provider_bytes: 0,
             interactive_error: None,
         }
@@ -93,6 +107,7 @@ impl Transcript {
     pub fn append_message(&mut self, label: &'static str, message: &[u8]) {
         self.account(label, message.len() as u64);
         if matches!(self.challenges, TranscriptChallenges::Interactive(_)) {
+            self.pending_semantic_bytes = self.pending_semantic_bytes.saturating_add(message.len());
             let label_len = u16::try_from(label.len()).expect("transcript label exceeds u16");
             self.pending_provider_move.extend_from_slice(&label_len.to_le_bytes());
             self.pending_provider_move.extend_from_slice(label.as_bytes());
@@ -111,6 +126,9 @@ impl Transcript {
     ) {
         self.account(label, logical_bytes);
         if matches!(self.challenges, TranscriptChallenges::Interactive(_)) {
+            self.pending_semantic_bytes = self
+                .pending_semantic_bytes
+                .saturating_add(usize::try_from(logical_bytes).unwrap_or(usize::MAX));
             let label_len = u16::try_from(label.len()).expect("transcript label exceeds u16");
             self.pending_provider_move.extend_from_slice(&label_len.to_le_bytes());
             self.pending_provider_move.extend_from_slice(label.as_bytes());
@@ -145,7 +163,8 @@ impl Transcript {
             });
         }
         let provider_move = std::mem::take(&mut self.pending_provider_move);
-        Some(match channel.challenge(provider_move, request) {
+        let provider_semantic_bytes = std::mem::take(&mut self.pending_semantic_bytes);
+        Some(match channel.challenge(provider_move, provider_semantic_bytes, request) {
             Ok(response) => response,
             Err(error) => {
                 self.interactive_error = Some(error);
@@ -222,6 +241,31 @@ impl Transcript {
         self.interactive_error.as_deref()
     }
 
+    pub fn is_interactive(&self) -> bool {
+        matches!(self.challenges, TranscriptChallenges::Interactive(_))
+    }
+
+    /// Seal one complete strict provider artifact and terminate its seedless
+    /// challenge channel. Length-only terminal framing is permitted here
+    /// because the complete canonical payload digest binds it.
+    pub fn finish_interactive(&mut self, payload: &[u8]) -> Result<(), String> {
+        if let Some(error) = &self.interactive_error {
+            return Err(error.clone());
+        }
+        let semantic_bytes = usize::try_from(self.total_bytes())
+            .map_err(|_| "interactive transcript byte count exceeds usize".to_owned())?;
+        let pending_provider_move = std::mem::take(&mut self.pending_provider_move);
+        let TranscriptChallenges::Interactive(channel) = &mut self.challenges else {
+            return Err("cannot finish a private seeded transcript as interactive".to_owned());
+        };
+        channel.finish(
+            pending_provider_move,
+            payload.len(),
+            *blake3::hash(payload).as_bytes(),
+            semantic_bytes,
+        )
+    }
+
     pub fn bytes_for(&self, label: &str) -> u64 {
         self.bytes.get(label).copied().unwrap_or(0)
     }
@@ -249,6 +293,7 @@ mod tests {
         fn challenge(
             &mut self,
             provider_move: Vec<u8>,
+            _provider_semantic_bytes: usize,
             request: TranscriptChallengeRequest,
         ) -> Result<TranscriptChallengeResponse, String> {
             self.moves.lock().unwrap().push((provider_move, request));

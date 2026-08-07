@@ -3950,6 +3950,35 @@ This finding changes no provider-to-client certificate or setup byte screen,
 but no soundness, full-chain or timing credit is available. The §0.55 A100 GO
 remains dormant and the pod must not be contacted.
 
+### 0.60 C6ICT2 production authorization and crash policy
+
+The owner authorizes extending the seedless C6ICT1 broker boundary to every
+persisted/CUDA model, embedding and compiler chain. C6ICT2 keeps verifier
+entropy and challenge-tape state exclusively on the verifier side; a provider
+endpoint receives only the next typed challenge after emitting the exact
+preceding protocol move. Production source guards must reject any provider
+API containing a verifier seed, checkpoint, verifier transcript, key or
+`Delta`.
+
+The production policy is burn-on-interruption rather than mid-proof resume.
+The complete paired slot/ranges are durably reserved before provider exposure.
+If either endpoint, process or connection fails before a complete accepted
+artifact exists, the attempt remains burned and retry uses a fresh slot. This
+is already permitted by the frozen four-slot abort reserve and avoids placing
+thousands of challenge-record fsyncs on the inline `<15 s` path.
+
+After a successful six-chain interaction, the verifier persists one canonical
+create-new challenge tape bound to the setup, reservation, typed statements,
+provider-move digests and final certificate digest. The disk verifier consumes
+that tape and the strict certificate without regenerating a proof. The tape is
+client-private state, not setup or provider-to-client certificate wire.
+
+The active gate is `C6ICT2_PRODUCTION_PRIVATE_ENTROPY_DRIVER`. Only after its
+production-dimension parity, seed/move/tape mutations, burn lifecycle and
+source guards pass may work resume on the complete producer, disk verifier and
+record validator. A separately delegated Fiat--Shamir study is read-only and
+does not relax this gate or authorize pod contact.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §0.59 next.
+This capsule is authoritative; read design §0.60 next.
 
 - **Milestone/evidence.** C6.1/C6NBR3 source binding is closed locally.
   Checkpoints `92b5000`, `e3c080a`, and `17dcea7` add linear full-chain owners,
@@ -20,15 +20,16 @@ This capsule is authoritative; read design §0.59 next.
   setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
   **102.5878332989 bits/cert**, and provider/verifier **14.9179595454 /
   4.978261758 s** remain `credit:false`.
-- **Hard stop.** `C6NBR3_PRODUCTION_PRIVATE_ENTROPY_DRIVER_REQUIRED`.
+- **Active gate.** `C6ICT2_PRODUCTION_PRIVATE_ENTROPY_DRIVER`.
   Production D27/D28 native and compiler entry points receive future
   `verifier_seed` values inside provider calls. The seedless, durable broker
-  exists only for the D14 in-memory diagnostic. Persisting those seeds would
-  replay an honest run but would violate the interactive no-grinding boundary.
-- **Authorization/resume.** No pod contact. Resume requires an owner-approved
-  production broker for all six persisted/CUDA chains, provider APIs and source
-  guards with no verifier seed/checkpoint, client-owned durable challenge tapes,
-  then the complete producer, disk verifier, validator and local negative gates.
+  exists only for the D14 in-memory diagnostic. The owner authorizes extending
+  it to all six persisted/CUDA chains with private verifier entropy.
+- **Authorization/resume.** C6ICT2 uses burn-on-interruption: the durable slot
+  is reserved first, any incomplete interaction burns it, and only a completed
+  client-private challenge tape is persisted and certificate-bound. No pod
+  contact until provider APIs/source guards, disk verifier, validator and local
+  negative/backend gates are green.
 - **Measurement policy.** Only verifier time has official `4T <5 s` and
   diagnostic `maxT(N)`; provider has one full-chain A100 `<15 s` gate.
 
@@ -48,6 +49,19 @@ This capsule is authoritative; read design §0.59 next.
   `C6NBR3_PRODUCTION_PRIVATE_ENTROPY_DRIVER_REQUIRED`. Resume requires a
   production seedless broker and durable client challenge tape for all six
   chains before the remaining harness work or pod contact.
+
+- **2026-08-07 — Owner authorizes C6ICT2 production construction.** The D14
+  seedless broker may be generalized to all six persisted/CUDA native and
+  compiler chains. The provider endpoint must never receive verifier entropy,
+  checkpoint state, keys or `Delta`; each challenge is released only after its
+  typed provider move. Production deliberately does not resume a partial
+  proof: the paired slot/ranges are durably reserved before exposure and any
+  interruption burns the attempt. After successful interaction, the exact
+  client-private challenge tape is persisted create-new and bound to the final
+  certificate for independent disk replay. This avoids per-challenge fsync in
+  the `<15 s` inline path and changes no provider-to-client certificate/setup
+  allocation. A parallel read-only Fiat--Shamir feasibility audit is also
+  authorized, but cannot alter C6ICT2 or claim credit. No pod contact yet.
 
 - **2026-08-07 — C6NBR3 combined source binding closes locally.** The two
   prover-private NBR2 digest inputs are replaced by the existing combined

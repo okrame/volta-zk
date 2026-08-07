@@ -4027,6 +4027,49 @@ the remaining C6.1 wrapper/cache/hidden-linear protocols noninteractive.
 C6ICT2 therefore continues unchanged; `C6FS1` has no implementation or gate
 credit and cannot authorize pod contact.
 
+### 0.63 Global response transcript obstruction
+
+The post-C6ICT2 campaign audit finds one additional interactive boundary
+outside the six persisted/CUDA native/compiler chains. The enclosing T1
+response owner receives separate mutable provider and verifier `Transcript`
+objects, runs the complete provider response first, and replays the verifier
+after canonical proof encoding. A privately seeded provider transcript would
+therefore expose all future response challenges before their preceding moves.
+
+The existing seedless `TranscriptChallengeChannel` is not a safe drop-in.
+Production response paths still contain length-only `Transcript::append`
+events before challenge draws, including cache-target corrections and model
+arithmetic corrections. Interactive mode intentionally retains these as
+`unbound_provider_bytes` and refuses the next challenge. Treating a length as
+the move would let a provider choose its canonical value after challenge
+release; the final payload digest cannot repair that earlier scheduling
+violation.
+
+The current C6ICT2 bundle has exactly seven tapes: two model, two embedding,
+two compiler and the joint post-body challenge. It contains neither verifier
+entropy nor replay records for the global response transcript. Adding an
+eighth private tape, or an equivalent separately typed response tape, changes
+the authorized replay grammar even though it need not change provider-to-client
+certificate or setup bytes.
+
+The active hard stop is `C6ICT3_GLOBAL_RESPONSE_TRANSCRIPT_REQUIRED`. Resume
+requires explicit owner GO for all of the following:
+
+1. replace every live pre-challenge response append by an exact canonical move
+   or a canonical length-plus-digest move whose bytes are independently
+   reconstructed by the strict verifier;
+2. expose only a seedless provider endpoint and release each fresh response
+   challenge after that move;
+3. persist one attempt-, statement-, provider-move- and certificate-bound
+   client-private response tape under the existing burn-on-interruption rule;
+4. replay the complete response verifier from strict certificate/setup data and
+   the private tape, with seed, move, order, payload and truncation mutations;
+5. add source guards and fresh client-state, challenge-traffic, I/O, prover and
+   four-thread verifier accounting before any A100 contact.
+
+No setup, wire, soundness, timing, memory, full-chain or hardware credit is
+earned by this audit. The prior one-campaign owner GO remains dormant.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

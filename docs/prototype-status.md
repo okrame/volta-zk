@@ -8,34 +8,49 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.62 next.
+This capsule is authoritative; read design §§0.60--0.63 next.
 
-- **Milestone/evidence.** C6.1/C6NBR3 source binding is closed locally.
-  Checkpoints `92b5000`, `e3c080a`, and `17dcea7` add linear full-chain owners,
-  an exact **148,738,118-B** authenticated setup bundle and separate pre-response
-  wrapper versus post-native C6PA2 statement identities. Campaign/setup checks
-  are **4/0/0 + 1/0/0**. C6ICT2 also replaces predictable production hiding
-  seeds with provider-private OS entropy; its source guard is **1/0/0**. No
-  production CUDA/full-chain/timing/memory/hardware credit exists.
+- **Milestone/evidence.** C6.1/C6NBR3 source binding and the six C6ICT2
+  persisted/CUDA lanes are closed locally. Checkpoints through `2df0265` also
+  retain exact compiler inputs and bind the single output challenge to the
+  canonical public frame. No production CUDA/full-chain/timing/memory/hardware
+  credit exists.
 - **Screens.** Certificate **17,536,735 B**, setup **148,738,118 B**,
   setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
   **102.5878332989 bits/cert**, and provider/verifier **14.9179595454 /
   4.978261758 s** remain `credit:false`.
-- **Active gate.** `C6ICT2_PRODUCTION_PRIVATE_ENTROPY_DRIVER`.
-  Production D27/D28 native and compiler entry points receive future
-  `verifier_seed` values inside provider calls. The seedless, durable broker
-  exists only for the D14 in-memory diagnostic. The owner authorizes extending
-  it to all six persisted/CUDA chains with private verifier entropy.
-- **Authorization/resume.** C6ICT2 uses burn-on-interruption: the durable slot
-  is reserved first, any incomplete interaction burns it, and only a completed
-  client-private challenge tape is persisted and certificate-bound. No pod
-  contact until provider APIs/source guards, disk verifier, validator and local
-  negative/backend gates are green.
+- **Hard stop.** `C6ICT3_GLOBAL_RESPONSE_TRANSCRIPT_REQUIRED`. The global T1
+  response still runs a complete seeded prover transcript before verifier
+  replay; 40 candidate length-only append sites include live pre-challenge
+  moves. The seedless channel rejects these moves, so C6ICT2's seven tapes do
+  not make the whole proof interactive.
+- **Authorization/resume.** No pod contact. Owner GO is required for an exact
+  canonical-move migration and one client-private response tape, followed by
+  transcript parity/mutations, disk verifier, validator and local
+  negative/backend gates. Burn-on-interruption remains mandatory.
 - **Measurement policy.** Only verifier time has official `4T <5 s` and
   diagnostic `maxT(N)`; provider has one full-chain A100 `<15 s` gate.
 - **Fiat--Shamir.** Read-only audit: production substitution is NO-GO;
   `C6FS1` may later exist only as a shadow diagnostic after new ROM
   soundness/privacy proofs. It does not change C6ICT2 or pod authorization.
+
+- **2026-08-07 — Global response transcript stops the campaign locally.** The
+  six persisted/CUDA native/compiler lanes and their joint bridge are seedless,
+  but the enclosing T1 response is not. Its production owner accepts separate
+  prover/verifier `Transcript` objects, completes the provider response first,
+  and only then replays verification. Supplying a private seeded provider
+  transcript exposes every future response challenge. Supplying the existing
+  interactive channel fails closed instead: live response code still uses
+  length-only `append` moves before challenges, and `Transcript` deliberately
+  rejects those as unbound provider bytes. The current seven-lane tape bundle
+  covers model0/1, embed0/1, compiler0/1 and joint zeta, not this response
+  transcript. New hard stop: `C6ICT3_GLOBAL_RESPONSE_TRANSCRIPT_REQUIRED`.
+  Resume requires owner GO to canonically bind every live response move before
+  challenge release and persist a certificate/attempt-bound client-private
+  response tape (or an exactly equivalent construction), then prove parity,
+  mutations, burn lifecycle, disk replay and fresh time/state/I/O accounting.
+  This is expected to change neither setup nor certificate bytes, but no such
+  credit is claimed and no pod was contacted.
 
 - **2026-08-07 — Production private-entropy audit stops before A100.** The
   campaign boundary now owns one exact setup manifest: client parameters are

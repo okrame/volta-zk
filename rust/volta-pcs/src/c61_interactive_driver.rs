@@ -957,6 +957,20 @@ impl C61InteractiveTapeBundle {
         self.validate_contexts(certificate_digest, expected_contexts)
     }
 
+    pub fn validate_attempt(
+        &self,
+        attempt: C6ClientAttempt,
+        certificate_digest: [u8; 32],
+    ) -> Result<(), String> {
+        if self.attempt_digest != c61_interactive_attempt_digest(attempt)?
+            || self.certificate_digest != certificate_digest
+            || certificate_digest == [0; 32]
+        {
+            return Err("C6ICT2 tape bundle attempt/certificate binding mismatch".to_owned());
+        }
+        Ok(())
+    }
+
     pub fn tapes(&self) -> &[C61InteractiveTape; C61_INTERACTIVE_TAPE_LANES] {
         &self.tapes
     }

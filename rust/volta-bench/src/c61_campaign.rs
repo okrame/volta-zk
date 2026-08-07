@@ -19,17 +19,22 @@ use volta_mac::{
     C6InstanceExtractionArtifact, C6InstanceExtractionRole, C6NativeTargetProfileArtifact,
     C6OperationPlanArtifact, C6TraceSourceManifest,
 };
-use volta_pcs::C61JointPublicArgument;
+use volta_pcs::{C61InteractiveTapeBundle, C61JointPublicArgument};
 use volta_proto::{
     C61FinalCertificateEnvelope, C61PublicWorkloadInstance, C6BoundProductionVerifierReplay,
-    C6SetupManifest, C61_VERIFIER_REPLAY_STATE_BYTES,
+    C6ClientAttempt, C6SetupManifest, C61_VERIFIER_REPLAY_STATE_BYTES,
 };
 
-const CAMPAIGN_ARTIFACT_PROFILE: &str = "C6.1-C6PA2-C6NBR3-campaign-v2";
+const CAMPAIGN_ARTIFACT_PROFILE: &str = "C6.1-C6PA2-C6NBR3-C6ICT2-campaign-v3";
 const CAMPAIGN_BACKEND: &str = "cuda-resident";
 const CAMPAIGN_PCG: &str = "real-aes128-mmo";
-const CAMPAIGN_FILE_NAMES: [&str; 4] =
-    ["certificate.bin", "verifier-replay.bin", "setup-manifest.bin", "public-instance.bin"];
+const CAMPAIGN_FILE_NAMES: [&str; 5] = [
+    "certificate.bin",
+    "verifier-replay.bin",
+    "challenge-tapes.bin",
+    "setup-manifest.bin",
+    "public-instance.bin",
+];
 const CAMPAIGN_CLIENT_PARAMETERS_MAGIC: &[u8; 8] = b"C61CP2\0\0";
 const CAMPAIGN_CLIENT_PARAMETERS_VERSION: u16 = 2;
 const CAMPAIGN_CLIENT_PARAMETER_COMPONENTS: usize = 5;
@@ -93,6 +98,7 @@ struct CampaignArtifactRecord {
 pub struct C61CampaignArtifact {
     pub certificate: C61FinalCertificateEnvelope,
     pub verifier_replay: C6BoundProductionVerifierReplay,
+    pub challenge_tapes: C61InteractiveTapeBundle,
     pub setup_manifest: C6SetupManifest,
     pub verifier_model: Gpt2VerifierModel,
     pub source_manifest: C6TraceSourceManifest,
@@ -116,6 +122,7 @@ struct DecodedCampaignClientParameters {
 struct CampaignPayloads {
     certificate: Vec<u8>,
     verifier_replay: Vec<u8>,
+    challenge_tapes: Vec<u8>,
     setup_manifest: Vec<u8>,
     public_instance: Vec<u8>,
 }
@@ -481,6 +488,7 @@ fn validate_source_commit(commit: &str) -> Result<(), String> {
 fn validate_campaign_bindings(
     certificate: &C61FinalCertificateEnvelope,
     verifier_replay: &C6BoundProductionVerifierReplay,
+    challenge_tapes: &C61InteractiveTapeBundle,
     setup_manifest: &C6SetupManifest,
     public_instance: &C61PublicWorkloadInstance,
 ) -> Result<C61JointPublicArgument, String> {
@@ -490,6 +498,16 @@ fn validate_campaign_bindings(
     let public_argument = C61JointPublicArgument::decode(certificate.public_argument())
         .map_err(|error| error.to_string())?;
     let wrapper = certificate.wrapper_binding().map_err(|error| error.to_string())?;
+    let attempt = C6ClientAttempt {
+        slot: inner.slot,
+        nonce: inner.nonce,
+        setup_manifest_digest: inner.setup_manifest_digest,
+        old_head_digest: inner.old_head.digest(),
+        predecessor_certificate_digest: inner.predecessor_certificate_digest,
+        correlation_ranges: inner.correlation_ranges,
+        workload: inner.workload,
+    };
+    challenge_tapes.validate_attempt(attempt, certificate_digest)?;
     if verifier_replay.certificate_digest() != certificate_digest
         || verifier_replay.setup_manifest_digest() != setup_manifest_digest
         || setup_manifest_digest != inner.setup_manifest_digest
@@ -523,6 +541,7 @@ fn decode_campaign_payloads(payloads: &CampaignPayloads) -> Result<C61CampaignAr
         .map_err(|error| error.to_string())?;
     let verifier_replay =
         C6BoundProductionVerifierReplay::decode_client_state(&payloads.verifier_replay)?;
+    let challenge_tapes = C61InteractiveTapeBundle::decode(&payloads.challenge_tapes)?;
     let setup_manifest =
         C6SetupManifest::decode(&payloads.setup_manifest).map_err(|error| error.to_string())?;
     if setup_manifest.first_exchange_bytes().map_err(|error| error.to_string())?
@@ -537,6 +556,7 @@ fn decode_campaign_payloads(payloads: &CampaignPayloads) -> Result<C61CampaignAr
     let public_argument = validate_campaign_bindings(
         &certificate,
         &verifier_replay,
+        &challenge_tapes,
         &setup_manifest,
         &public_instance,
     )?;
@@ -545,6 +565,7 @@ fn decode_campaign_payloads(payloads: &CampaignPayloads) -> Result<C61CampaignAr
             .map_err(|_| "C6.1 certificate length exceeds u64")?,
         certificate,
         verifier_replay,
+        challenge_tapes,
         setup_manifest,
         verifier_model: client_parameters.verifier_model,
         source_manifest: client_parameters.source_manifest,
@@ -561,6 +582,7 @@ fn campaign_rows(payloads: &CampaignPayloads) -> Result<Vec<CampaignFileRow>, St
     let payloads = [
         &payloads.certificate,
         &payloads.verifier_replay,
+        &payloads.challenge_tapes,
         &payloads.setup_manifest,
         &payloads.public_instance,
     ];
@@ -574,7 +596,7 @@ fn campaign_rows(payloads: &CampaignPayloads) -> Result<Vec<CampaignFileRow>, St
                 bytes: u64::try_from(bytes.len())
                     .map_err(|_| "C6.1 campaign file length exceeds u64")?,
                 blake3: hex_digest(*blake3::hash(bytes).as_bytes()),
-                confidential: index == 1,
+                confidential: index == 1 || index == 2,
             })
         })
         .collect()
@@ -607,13 +629,18 @@ fn create_campaign_directory(
     for (index, bytes) in [
         &payloads.certificate,
         &payloads.verifier_replay,
+        &payloads.challenge_tapes,
         &payloads.setup_manifest,
         &payloads.public_instance,
     ]
     .into_iter()
     .enumerate()
     {
-        create_file_synced(&root.join(CAMPAIGN_FILE_NAMES[index]), bytes, index == 1)?;
+        create_file_synced(
+            &root.join(CAMPAIGN_FILE_NAMES[index]),
+            bytes,
+            index == 1 || index == 2,
+        )?;
     }
     // The manifest is the completion marker and is deliberately durable last.
     create_file_synced(&root.join("manifest.json"), &manifest, false)?;
@@ -630,16 +657,23 @@ pub fn create_c61_campaign_artifact(
     root: &Path,
     certificate: &C61FinalCertificateEnvelope,
     verifier_replay: &C6BoundProductionVerifierReplay,
+    challenge_tapes: &C61InteractiveTapeBundle,
     setup_manifest: &C6SetupManifest,
     public_instance: &C61PublicWorkloadInstance,
     source_git_commit: &str,
 ) -> Result<(), String> {
     validate_source_commit(source_git_commit)?;
-    let public_argument =
-        validate_campaign_bindings(certificate, verifier_replay, setup_manifest, public_instance)?;
+    let public_argument = validate_campaign_bindings(
+        certificate,
+        verifier_replay,
+        challenge_tapes,
+        setup_manifest,
+        public_instance,
+    )?;
     let payloads = CampaignPayloads {
         certificate: certificate.encode().map_err(|error| error.to_string())?,
         verifier_replay: verifier_replay.encode_client_state()?,
+        challenge_tapes: challenge_tapes.encode()?,
         setup_manifest: setup_manifest.encode().map_err(|error| error.to_string())?,
         public_instance: public_instance.encode().map_err(|error| error.to_string())?,
     };
@@ -647,7 +681,7 @@ pub fn create_c61_campaign_artifact(
     decode_campaign_payloads(&payloads)?;
     let inner = certificate.certificate();
     let record = CampaignArtifactRecord {
-        schema: 2,
+        schema: 3,
         profile: CAMPAIGN_ARTIFACT_PROFILE.to_owned(),
         source_git_commit: source_git_commit.to_owned(),
         git_dirty: false,
@@ -696,14 +730,16 @@ fn validate_campaign_directory_census(root: &Path) -> Result<(), String> {
             return Err(format!("C6.1 campaign {name} is not a physical file"));
         }
     }
-    if fs::metadata(root.join("verifier-replay.bin"))
-        .map_err(|error| format!("stat C6.1 verifier replay: {error}"))?
-        .permissions()
-        .mode()
-        & 0o077
-        != 0
-    {
-        return Err("C6.1 verifier replay is accessible by group/other".to_owned());
+    for name in ["verifier-replay.bin", "challenge-tapes.bin"] {
+        if fs::metadata(root.join(name))
+            .map_err(|error| format!("stat C6.1 private replay {name}: {error}"))?
+            .permissions()
+            .mode()
+            & 0o077
+            != 0
+        {
+            return Err(format!("C6.1 private replay {name} is accessible by group/other"));
+        }
     }
     Ok(())
 }
@@ -734,22 +770,23 @@ pub fn load_c61_campaign_artifact(root: &Path) -> Result<C61CampaignArtifact, St
         return Err("C6.1 campaign manifest is not canonical compact JSON".to_owned());
     }
     validate_source_commit(&record.source_git_commit)?;
-    if record.schema != 2
+    if record.schema != 3
         || record.profile != CAMPAIGN_ARTIFACT_PROFILE
         || record.git_dirty
         || record.backend != CAMPAIGN_BACKEND
         || record.pcg != CAMPAIGN_PCG
         || record.files.len() != CAMPAIGN_FILE_NAMES.len()
         || record.files.iter().map(|row| row.name.as_str()).ne(CAMPAIGN_FILE_NAMES)
-        || record.files.iter().map(|row| row.confidential).ne([false, true, false, false])
+        || record.files.iter().map(|row| row.confidential).ne([false, true, true, false, false])
     {
         return Err("C6.1 campaign manifest profile/backend/PCG/file census mismatch".to_owned());
     }
     let payloads = CampaignPayloads {
         certificate: load_campaign_file(root, &record.files[0])?,
         verifier_replay: load_campaign_file(root, &record.files[1])?,
-        setup_manifest: load_campaign_file(root, &record.files[2])?,
-        public_instance: load_campaign_file(root, &record.files[3])?,
+        challenge_tapes: load_campaign_file(root, &record.files[2])?,
+        setup_manifest: load_campaign_file(root, &record.files[3])?,
+        public_instance: load_campaign_file(root, &record.files[4])?,
     };
     let mut artifact = decode_campaign_payloads(&payloads)?;
     let inner = artifact.certificate.certificate();
@@ -788,6 +825,7 @@ mod campaign_artifact_tests {
         CampaignPayloads {
             certificate: b"certificate".to_vec(),
             verifier_replay: b"private replay".to_vec(),
+            challenge_tapes: b"private challenge tapes".to_vec(),
             setup_manifest: b"setup".to_vec(),
             public_instance: b"instance".to_vec(),
         }
@@ -795,7 +833,7 @@ mod campaign_artifact_tests {
 
     fn dummy_record(payloads: &CampaignPayloads) -> CampaignArtifactRecord {
         CampaignArtifactRecord {
-            schema: 2,
+            schema: 3,
             profile: CAMPAIGN_ARTIFACT_PROFILE.to_owned(),
             source_git_commit: "0123456789abcdef0123456789abcdef01234567".to_owned(),
             git_dirty: false,
@@ -846,6 +884,7 @@ mod campaign_artifact_tests {
         create_campaign_directory(&root, &record, &payloads).unwrap();
         validate_campaign_directory_census(&root).unwrap();
         assert_eq!(fs::read(root.join("verifier-replay.bin")).unwrap(), payloads.verifier_replay);
+        assert_eq!(fs::read(root.join("challenge-tapes.bin")).unwrap(), payloads.challenge_tapes);
         assert!(create_campaign_directory(&root, &record, &payloads).is_err());
         fs::remove_dir_all(root).unwrap();
     }
@@ -865,6 +904,12 @@ mod campaign_artifact_tests {
             .unwrap();
         assert!(validate_campaign_directory_census(&root).is_err());
         fs::set_permissions(root.join("verifier-replay.bin"), fs::Permissions::from_mode(0o600))
+            .unwrap();
+
+        fs::set_permissions(root.join("challenge-tapes.bin"), fs::Permissions::from_mode(0o644))
+            .unwrap();
+        assert!(validate_campaign_directory_census(&root).is_err());
+        fs::set_permissions(root.join("challenge-tapes.bin"), fs::Permissions::from_mode(0o600))
             .unwrap();
 
         fs::remove_file(root.join("setup-manifest.bin")).unwrap();

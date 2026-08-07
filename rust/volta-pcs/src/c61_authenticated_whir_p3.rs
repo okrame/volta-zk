@@ -1348,6 +1348,84 @@ pub struct C61ProviderSessionBinding {
     mask_range: C61AuthenticatedWhirMaskRange,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C61ProviderJointSessionBinding {
+    digest: [u8; 32],
+    profile_digest: [u8; 32],
+}
+
+fn c61_canonical_target_profile_digest(
+    profile: &C6CanonicalTargetProfile,
+) -> Result<[u8; 32], String> {
+    C61JointNativeBodyScheduleBuilder::new(profile)?;
+    let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c6.1/canonical-target-profile/v1");
+    hasher.update(&profile.inference_profile_digest);
+    hasher.update(&profile.topology_digest);
+    hasher.update(&profile.source_schedule_digest);
+    hasher.update(
+        &u32::try_from(profile.cohorts.len())
+            .map_err(|_| "C6ICT2 target cohort census exceeds u32".to_owned())?
+            .to_le_bytes(),
+    );
+    for cohort in &profile.cohorts {
+        hasher.update(&cohort.cohort_id.to_le_bytes());
+        hasher.update(&cohort.chain_slot.to_le_bytes());
+        hasher.update(&[cohort.polynomial_log2]);
+        hasher.update(&cohort.claim_layout_digest);
+        hasher.update(
+            &u32::try_from(cohort.canonical_nodes.len())
+                .map_err(|_| "C6ICT2 target-node census exceeds u32".to_owned())?
+                .to_le_bytes(),
+        );
+        for node in &cohort.canonical_nodes {
+            hasher.update(&node.to_le_bytes());
+        }
+    }
+    Ok(*hasher.finalize().as_bytes())
+}
+
+impl C61ProviderJointSessionBinding {
+    pub fn from_reserved_attempt(
+        attempt: C6ClientAttempt,
+        profile: &C6CanonicalTargetProfile,
+    ) -> Result<Self, String> {
+        attempt.correlation_ranges.validate().map_err(|error| error.to_string())?;
+        attempt.workload.validate().map_err(|error| error.to_string())?;
+        if attempt.setup_manifest_digest == [0; 32]
+            || attempt.nonce == [0; 32]
+            || attempt.old_head_digest == [0; 32]
+        {
+            return Err("C6ICT2 joint provider session binding is noncanonical".to_owned());
+        }
+        let profile_digest = c61_canonical_target_profile_digest(profile)?;
+        let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c6.1/provider-joint-session/v1");
+        hasher.update(&attempt.slot.to_le_bytes());
+        hasher.update(&attempt.nonce);
+        hasher.update(&attempt.setup_manifest_digest);
+        hasher.update(&attempt.old_head_digest);
+        hasher.update(&attempt.predecessor_certificate_digest);
+        for range in attempt.correlation_ranges.coordinates {
+            hasher.update(&range.stage.to_le_bytes());
+            hasher.update(&range.start.to_le_bytes());
+            hasher.update(&range.count.to_le_bytes());
+        }
+        hasher.update(&attempt.workload.digest());
+        hasher.update(&profile_digest);
+        Ok(Self { digest: *hasher.finalize().as_bytes(), profile_digest })
+    }
+
+    fn validate_for(self, profile: &C6CanonicalTargetProfile) -> Result<(), String> {
+        if self.profile_digest != c61_canonical_target_profile_digest(profile)? {
+            return Err("C6ICT2 joint provider binding uses another target profile".to_owned());
+        }
+        Ok(())
+    }
+
+    fn digest(self) -> [u8; 32] {
+        self.digest
+    }
+}
+
 impl C61ProviderSessionBinding {
     pub fn from_reserved_attempt(
         attempt: C6ClientAttempt,
@@ -1513,6 +1591,7 @@ pub struct C61ProductionCommittedChainVerifierBody {
     num_variables: usize,
     claim_count: usize,
     tagless_payload_len: usize,
+    tagless_payload: Vec<u8>,
     tagless_digest: [u8; 32],
     claim_weights: Vec<Fp2>,
     aggregate_key: Option<VerifierKey>,
@@ -1539,7 +1618,7 @@ impl C61ProductionCommittedChainVerifierBody {
     /// Consume a secondary verifier body without target keys. The native mask
     /// key is expanded from verifier-owned pooled PCG state exactly once.
     pub fn into_joint_term(
-        self,
+        mut self,
         cohort_weight: Fp2,
         context: &mut VerifierCtx,
     ) -> Result<C61JointNativeVerifierTerm, String> {
@@ -1551,6 +1630,9 @@ impl C61ProductionCommittedChainVerifierBody {
         }
         if !context.uses_pooled_pcg() {
             return Err("C6NBR1 production verifier forbids mock PCG state".to_owned());
+        }
+        if self.transcript.is_interactive() {
+            self.transcript.finish_interactive(&self.tagless_payload)?;
         }
         let mask_domain =
             self.mask_range.correlation_domain(self.id).map_err(|error| error.to_string())?;
@@ -1597,6 +1679,11 @@ impl C61ProductionCommittedChainVerifierBody {
             &mut self.transcript,
         )
         .map_err(|error| error.to_string())?;
+        if self.transcript.is_interactive() {
+            let mut payload = self.tagless_payload;
+            payload.extend_from_slice(tail);
+            self.transcript.finish_interactive(&payload)?;
+        }
         Ok(C61ProductionCommittedChainVerification {
             id: self.id,
             num_variables: self.num_variables,
@@ -1681,6 +1768,9 @@ impl C61ProductionJointNativeProverBodiesFixed {
                 C61ProductionJointCommittedChainProof::from_parts(tagless, &tail, public, role)
             })
             .collect::<Result<Vec<_>, _>>()?;
+        if self.transcript.is_interactive() {
+            self.transcript.finish_interactive(&c61_joint_native_tape_payload(&proofs)?)?;
+        }
         Ok(C61ProductionJointNativeProverExecution {
             proofs,
             frame,
@@ -1751,6 +1841,9 @@ impl C61ProductionJointNativeProverLinkPending {
                 C61ProductionJointCommittedChainProof::from_parts(tagless, &tail, public, role)
             })
             .collect::<Result<Vec<_>, _>>()?;
+        if self.transcript.is_interactive() {
+            self.transcript.finish_interactive(&c61_joint_native_tape_payload(&proofs)?)?;
+        }
         Ok(C61ProductionJointNativeProverExecution {
             proofs,
             frame,
@@ -1798,17 +1891,54 @@ pub fn prepare_c61_production_joint_native_prover_bodies(
     })
 }
 
+pub(crate) fn prepare_c61_production_joint_native_prover_bodies_private_entropy(
+    profile: &C6CanonicalTargetProfile,
+    bodies: Vec<C61ProductionCommittedChainProverBody>,
+    provider_session_binding: C61ProviderJointSessionBinding,
+    endpoint: C61PrivateEntropyEndpoint,
+) -> Result<C61ProductionJointNativeProverBodiesFixed, String> {
+    provider_session_binding.validate_for(profile)?;
+    prepare_c61_production_joint_native_prover_bodies(
+        profile,
+        bodies,
+        Transcript::new_interactive(Box::new(endpoint)),
+    )
+}
+
 pub struct C61ProductionJointNativeVerifierBodiesFixed {
     bodies: Vec<C61ProductionCommittedChainVerifierBody>,
     frame: C61JointNativeBridgeFrame,
+    joint_payload: Vec<u8>,
     challenge: C61JointNativeChallenge,
     transcript: Transcript,
+}
+
+fn c61_joint_native_tape_payload(
+    proofs: &[C61ProductionJointCommittedChainProof],
+) -> Result<Vec<u8>, String> {
+    let mut payload = Vec::new();
+    payload.extend_from_slice(b"C6IJNT2\0");
+    payload.extend_from_slice(
+        &u32::try_from(proofs.len())
+            .map_err(|_| "C6ICT2 joint proof census exceeds u32".to_owned())?
+            .to_le_bytes(),
+    );
+    for proof in proofs {
+        payload.extend_from_slice(
+            &u32::try_from(proof.payload().len())
+                .map_err(|_| "C6ICT2 joint proof length exceeds u32".to_owned())?
+                .to_le_bytes(),
+        );
+        payload.extend_from_slice(proof.payload());
+    }
+    Ok(payload)
 }
 
 /// Verifier state after independent compiler/correction reconstruction. The
 /// stored tag is decoded but deliberately unchecked until C6LNK2 accepts.
 pub struct C61ProductionJointNativeVerifierLinkPending {
     cohort_count: usize,
+    joint_payload: Vec<u8>,
     challenge: C61JointNativeChallenge,
     transcript: Transcript,
     bridge: C61JointNativeVerifierBridgePending,
@@ -1863,6 +1993,9 @@ impl C61ProductionJointNativeVerifierBodiesFixed {
             &mut self.transcript,
         )
         .map_err(|error| error.to_string())?;
+        if self.transcript.is_interactive() {
+            self.transcript.finish_interactive(&self.joint_payload)?;
+        }
         Ok(C61ProductionJointNativeVerification {
             cohort_count: terms.len(),
             challenge: self.challenge,
@@ -1898,6 +2031,7 @@ impl C61ProductionJointNativeVerifierBodiesFixed {
         .map_err(|error| error.to_string())?;
         Ok(C61ProductionJointNativeVerifierLinkPending {
             cohort_count: terms.len(),
+            joint_payload: self.joint_payload,
             challenge: self.challenge,
             transcript: self.transcript,
             bridge,
@@ -1919,6 +2053,9 @@ impl C61ProductionJointNativeVerifierLinkPending {
             return Err("C6PA2 verifier received a different C6NBR2 link receipt".to_owned());
         }
         self.bridge.finish(&mut self.transcript).map_err(|error| error.to_string())?;
+        if self.transcript.is_interactive() {
+            self.transcript.finish_interactive(&self.joint_payload)?;
+        }
         Ok(C61ProductionJointNativeVerification {
             cohort_count: self.cohort_count,
             challenge: self.challenge,
@@ -1970,18 +2107,37 @@ pub fn prepare_c61_production_joint_native_verifier_bodies(
     proofs: &[C61ProductionJointCommittedChainProof],
     verifier_seeds: &[[u8; 32]],
     mask_ranges: &[C61AuthenticatedWhirMaskRange],
+    transcript: Transcript,
+) -> Result<C61ProductionJointNativeVerifierBodiesFixed, String> {
+    prepare_c61_production_joint_native_verifier_bodies_with_transcripts(
+        profile,
+        public,
+        proofs,
+        verifier_seeds.iter().copied().map(Transcript::new).collect(),
+        mask_ranges,
+        transcript,
+    )
+}
+
+fn prepare_c61_production_joint_native_verifier_bodies_with_transcripts(
+    profile: &C6CanonicalTargetProfile,
+    public: &[C61TypedNativeChainPublicStatement],
+    proofs: &[C61ProductionJointCommittedChainProof],
+    transcripts: Vec<Transcript>,
+    mask_ranges: &[C61AuthenticatedWhirMaskRange],
     mut transcript: Transcript,
 ) -> Result<C61ProductionJointNativeVerifierBodiesFixed, String> {
     let count = profile.cohorts.len();
     if public.len() != count
         || proofs.len() != count
-        || verifier_seeds.len() != count
+        || transcripts.len() != count
         || mask_ranges.len() != count
     {
         return Err("C6NBR1 verifier body/profile census mismatch".to_owned());
     }
     let mut schedule = C61JointNativeBodyScheduleBuilder::new(profile)?;
     let mut bodies = Vec::with_capacity(count);
+    let mut transcripts = transcripts.into_iter();
     let mut frame_bytes = [0u8; 32];
     for index in 0..count {
         let cohort = &profile.cohorts[index];
@@ -2006,10 +2162,10 @@ pub fn prepare_c61_production_joint_native_verifier_bodies(
             frame_bytes[start..start + C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES]
                 .copy_from_slice(proof.tail());
         }
-        let body = prepare_c61_authenticated_whir_p3_production_joint_chain_public_verifier_body(
+        let body = prepare_c61_authenticated_whir_p3_production_joint_chain_public_verifier_body_with_transcript(
             &public[index],
             proof.tagless_payload(),
-            verifier_seeds[index],
+            transcripts.next().expect("C6ICT2 verifier transcript census"),
             mask_ranges[index],
         )?;
         if usize::from(cohort.polynomial_log2) != body.num_variables {
@@ -2027,8 +2183,67 @@ pub fn prepare_c61_production_joint_native_verifier_bodies(
     }
     let frame =
         C61JointNativeBridgeFrame::decode(&frame_bytes).map_err(|error| error.to_string())?;
+    let joint_payload = c61_joint_native_tape_payload(proofs)?;
     let challenge = schedule.finish()?.draw_zeta(&mut transcript);
-    Ok(C61ProductionJointNativeVerifierBodiesFixed { bodies, frame, challenge, transcript })
+    Ok(C61ProductionJointNativeVerifierBodiesFixed {
+        bodies,
+        frame,
+        joint_payload,
+        challenge,
+        transcript,
+    })
+}
+
+pub(crate) fn prepare_c61_production_joint_native_verifier_bodies_private_entropy(
+    profile: &C6CanonicalTargetProfile,
+    public: &[C61TypedNativeChainPublicStatement],
+    proofs: &[C61ProductionJointCommittedChainProof],
+    tapes: Vec<C61InteractiveTape>,
+    provider_session_bindings: &[C61ProviderSessionBinding],
+    mask_ranges: &[C61AuthenticatedWhirMaskRange],
+    joint_tape: C61InteractiveTape,
+    joint_provider_session_binding: C61ProviderJointSessionBinding,
+) -> Result<C61ProductionJointNativeVerifierBodiesFixed, String> {
+    if public.len() != tapes.len()
+        || public.len() != provider_session_bindings.len()
+        || public.len() != mask_ranges.len()
+    {
+        return Err("C6ICT2 joint verifier private-lane census mismatch".to_owned());
+    }
+    let mut transcripts = Vec::with_capacity(tapes.len());
+    for (((public, tape), binding), mask_range) in
+        public.iter().zip(tapes).zip(provider_session_bindings).zip(mask_ranges)
+    {
+        binding.validate_for(public.id(), *mask_range)?;
+        let endpoint = C61PrivateEntropyTranscriptReplayEndpoint::new(
+            tape,
+            usize::from(match public.relation() {
+                C61TypedNativeRelationStatement::Model(statement)
+                | C61TypedNativeRelationStatement::Embedding(statement) => {
+                    statement.commitment.polynomial_domain_log2
+                }
+                _ => return Err("C6ICT2 joint verifier received a compiler lane".to_owned()),
+            }),
+            binding.digest(),
+        )
+        .map_err(|error| error.to_string())?;
+        transcripts.push(Transcript::new_interactive(Box::new(endpoint)));
+    }
+    joint_provider_session_binding.validate_for(profile)?;
+    let joint_endpoint = C61PrivateEntropyTranscriptReplayEndpoint::new(
+        joint_tape,
+        0,
+        joint_provider_session_binding.digest(),
+    )
+    .map_err(|error| error.to_string())?;
+    prepare_c61_production_joint_native_verifier_bodies_with_transcripts(
+        profile,
+        public,
+        proofs,
+        transcripts,
+        mask_ranges,
+        Transcript::new_interactive(Box::new(joint_endpoint)),
+    )
 }
 
 #[derive(Debug)]
@@ -2523,6 +2738,76 @@ pub fn prepare_c61_authenticated_whir_p3_production_joint_four_chains_in_attempt
     })
 }
 
+/// Provider-only C6ICT2 four-chain boundary. All five challenge transports
+/// (four WHIR lanes plus the post-body joint bridge) are opaque endpoints;
+/// verifier seeds, replay tapes and checkpoints cannot enter this call.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prepare_c61_authenticated_whir_p3_production_joint_four_chains_private_entropy_in_attempt(
+    load_coefficients: impl FnMut(C61NativeComponent, u8) -> Result<Vec<Goldilocks>, String>,
+    expected_model_coefficient_digest: [u8; 32],
+    expected_embedding_coefficient_digest: [u8; 32],
+    model_claims: [&[crate::batch::BlockClaim]; 2],
+    embedding_claims: [&[crate::batch::BlockClaim]; 2],
+    model_targets: [Vec<ProverAuthed>; 2],
+    embedding_targets: [Vec<ProverAuthed>; 2],
+    profile: &C6CanonicalTargetProfile,
+    provider_session_bindings: [C61ProviderSessionBinding; 4],
+    endpoints: [C61PrivateEntropyEndpoint; 4],
+    joint_provider_session_binding: C61ProviderJointSessionBinding,
+    joint_endpoint: C61PrivateEntropyEndpoint,
+    spill_root: &Path,
+    admission: C61ProductionPersistedResourceAdmission,
+    backend: &mut Backend,
+    correlations: &mut [CorrelationStream; 2],
+    mask_ranges: [C61AuthenticatedWhirMaskRange; 4],
+) -> Result<C61ProductionJointCommittedFourChainPrepared, String> {
+    let schedule = [
+        C61NativeChainId { component: C61NativeComponent::Model, repetition: 0 },
+        C61NativeChainId { component: C61NativeComponent::Model, repetition: 1 },
+        C61NativeChainId { component: C61NativeComponent::Embedding, repetition: 0 },
+        C61NativeChainId { component: C61NativeComponent::Embedding, repetition: 1 },
+    ];
+    for ((binding, id), mask_range) in
+        provider_session_bindings.iter().zip(schedule).zip(mask_ranges)
+    {
+        binding.validate_for(id, mask_range)?;
+    }
+    joint_provider_session_binding.validate_for(profile)?;
+    let transcripts = endpoints.map(|endpoint| Transcript::new_interactive(Box::new(endpoint)));
+    let binding_digests = provider_session_bindings.map(C61ProviderSessionBinding::digest);
+    let prepared = prepare_c61_authenticated_whir_p3_production_four_committed_chain_bodies(
+        load_coefficients,
+        expected_model_coefficient_digest,
+        expected_embedding_coefficient_digest,
+        model_claims,
+        embedding_claims,
+        model_targets,
+        embedding_targets,
+        spill_root,
+        admission,
+        backend,
+        correlations,
+        transcripts,
+        binding_digests,
+        mask_ranges,
+    )?;
+    let [model_primary, model_secondary, embedding_primary, embedding_secondary] = prepared.bodies;
+    let primary = [model_primary.finish_ordinary()?, embedding_primary.finish_ordinary()?];
+    let joint = prepare_c61_production_joint_native_prover_bodies_private_entropy(
+        profile,
+        vec![model_secondary, embedding_secondary],
+        joint_provider_session_binding,
+        joint_endpoint,
+    )?;
+    Ok(C61ProductionJointCommittedFourChainPrepared {
+        primary,
+        joint,
+        model_coefficient_digest: prepared.model_coefficient_digest,
+        embedding_coefficient_digest: prepared.embedding_coefficient_digest,
+        peak_loaded_coefficient_bytes: prepared.peak_loaded_coefficient_bytes,
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 fn prepare_c61_authenticated_whir_p3_production_four_committed_chain_bodies(
     mut load_coefficients: impl FnMut(C61NativeComponent, u8) -> Result<Vec<Goldilocks>, String>,
@@ -2609,24 +2894,20 @@ fn prepare_c61_authenticated_whir_p3_production_four_committed_chain_bodies(
         };
         let id = C61NativeChainId { component, repetition };
         let child = spill_root.join(format!("{:?}-{repetition}", component).to_ascii_lowercase());
-        bodies.push(
-            prepare_c61_authenticated_whir_p3_production_committed_chain_with_transcript(
-                coefficients,
-                claims,
-                targets,
-                parameter_digest,
-                &child,
-                admission,
-                backend,
-                &mut correlations[usize::from(repetition)],
-                transcripts.next().expect("four C6ICT2 chain transcripts"),
-                provider_session_bindings
-                    .next()
-                    .expect("four C6ICT2 provider session bindings"),
-                id,
-                mask_ranges[ordinal],
-            )?,
-        );
+        bodies.push(prepare_c61_authenticated_whir_p3_production_committed_chain_with_transcript(
+            coefficients,
+            claims,
+            targets,
+            parameter_digest,
+            &child,
+            admission,
+            backend,
+            &mut correlations[usize::from(repetition)],
+            transcripts.next().expect("four C6ICT2 chain transcripts"),
+            provider_session_bindings.next().expect("four C6ICT2 provider session bindings"),
+            id,
+            mask_ranges[ordinal],
+        )?);
     }
     let bodies =
         bodies.try_into().map_err(|_| "C6SPR11 four-chain body census mismatch".to_owned())?;
@@ -4940,6 +5221,55 @@ pub fn verify_c61_authenticated_whir_p3_production_committed_chain_in_attempt(
     .finish_ordinary(&proof.payload()[tail_start..], context)
 }
 
+pub(crate) fn verify_c61_authenticated_whir_p3_production_committed_chain_private_entropy_in_attempt(
+    statement: &C61NativeVerifierChainStatement,
+    proof: &C61ProductionCommittedChainProof,
+    context: &mut VerifierCtx,
+    tape: C61InteractiveTape,
+    provider_session_binding: C61ProviderSessionBinding,
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<C61ProductionCommittedChainVerification, String> {
+    let validated = C61NativeVerifierChainStatement::new(
+        statement.public().clone(),
+        statement.target_keys().to_vec(),
+    )
+    .map_err(|error| error.to_string())?;
+    if &validated != statement {
+        return Err("C6ICT2 production verifier requires a canonical statement".to_owned());
+    }
+    let id = statement.public().id();
+    provider_session_binding.validate_for(id, mask_range)?;
+    let tail_start = proof
+        .payload()
+        .len()
+        .checked_sub(C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES)
+        .ok_or_else(|| "C6ICT2 production native chain is shorter than its tail".to_owned())?;
+    let endpoint = C61PrivateEntropyTranscriptReplayEndpoint::new(
+        tape,
+        match id.component {
+            C61NativeComponent::Model => usize::from(C61_MODEL_POLYNOMIAL_LOG2),
+            C61NativeComponent::Embedding => usize::from(C61_EMBEDDING_POLYNOMIAL_LOG2),
+            C61NativeComponent::Compiler => {
+                return Err("C6ICT2 committed verifier rejects compiler chains".to_owned())
+            }
+        },
+        provider_session_binding.digest(),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut body =
+        prepare_c61_authenticated_whir_p3_production_committed_chain_public_verifier_body_with_transcript(
+            statement.public(),
+            &proof.payload()[..tail_start],
+            Transcript::new_interactive(Box::new(endpoint)),
+            mask_range,
+        )?;
+    body.aggregate_key = Some(aggregate_verifier_targets(
+        statement.target_keys(),
+        &body.claim_weights.iter().copied().map(c61_p3_fp2_from_volta).collect::<Vec<_>>(),
+    )?);
+    body.finish_ordinary(&proof.payload()[tail_start..], context)
+}
+
 /// Replay and accept a canonical production body without consuming its
 /// authenticated tail or the verifier's PCG allocation.
 pub fn prepare_c61_authenticated_whir_p3_production_committed_chain_verifier_body(
@@ -4978,6 +5308,20 @@ pub fn prepare_c61_authenticated_whir_p3_production_committed_chain_public_verif
     verifier_seed: [u8; 32],
     mask_range: C61AuthenticatedWhirMaskRange,
 ) -> Result<C61ProductionCommittedChainVerifierBody, String> {
+    prepare_c61_authenticated_whir_p3_production_committed_chain_public_verifier_body_with_transcript(
+        public,
+        tagless_payload,
+        Transcript::new(verifier_seed),
+        mask_range,
+    )
+}
+
+fn prepare_c61_authenticated_whir_p3_production_committed_chain_public_verifier_body_with_transcript(
+    public: &C61TypedNativeChainPublicStatement,
+    tagless_payload: &[u8],
+    mut transcript: Transcript,
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<C61ProductionCommittedChainVerifierBody, String> {
     let mut placeholder_payload = tagless_payload.to_vec();
     placeholder_payload.extend_from_slice(&[0u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES]);
     C61ProductionCommittedChainProof::decode(&placeholder_payload, public)?;
@@ -4988,7 +5332,6 @@ pub fn prepare_c61_authenticated_whir_p3_production_committed_chain_public_verif
         decode_c61_authenticated_p3_artifact_inner(&placeholder_payload, num_variables, true)
             .map_err(|error| error.to_string())?;
 
-    let mut transcript = Transcript::new(verifier_seed);
     let mut challenger = C61InteractiveChallenger::new_claimless(&mut transcript, num_variables);
     let config = c61_authenticated_config::<C61InteractiveChallenger<'_>>(num_variables)?;
     let mmcs = c61_reference_mmcs();
@@ -5010,6 +5353,7 @@ pub fn prepare_c61_authenticated_whir_p3_production_committed_chain_public_verif
         num_variables,
         claim_count: points.len(),
         tagless_payload_len: tagless_payload.len(),
+        tagless_payload: tagless_payload.to_vec(),
         tagless_digest: *blake3::hash(tagless_payload).as_bytes(),
         claim_weights,
         aggregate_key: None,
@@ -5030,6 +5374,20 @@ pub fn prepare_c61_authenticated_whir_p3_production_joint_chain_public_verifier_
     verifier_seed: [u8; 32],
     mask_range: C61AuthenticatedWhirMaskRange,
 ) -> Result<C61ProductionCommittedChainVerifierBody, String> {
+    prepare_c61_authenticated_whir_p3_production_joint_chain_public_verifier_body_with_transcript(
+        public,
+        joint_tagless_payload,
+        Transcript::new(verifier_seed),
+        mask_range,
+    )
+}
+
+fn prepare_c61_authenticated_whir_p3_production_joint_chain_public_verifier_body_with_transcript(
+    public: &C61TypedNativeChainPublicStatement,
+    joint_tagless_payload: &[u8],
+    transcript: Transcript,
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<C61ProductionCommittedChainVerifierBody, String> {
     if public.id().repetition != 1 {
         return Err("C6AWP2 verifier requires a secondary native statement".to_owned());
     }
@@ -5038,12 +5396,13 @@ pub fn prepare_c61_authenticated_whir_p3_production_joint_chain_public_verifier_
     let ordinary = c61_awp1_payload_from_joint(&complete)?;
     let ordinary_tagless = &ordinary[..ordinary.len() - C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES];
     let mut body =
-        prepare_c61_authenticated_whir_p3_production_committed_chain_public_verifier_body(
+        prepare_c61_authenticated_whir_p3_production_committed_chain_public_verifier_body_with_transcript(
             public,
             ordinary_tagless,
-            verifier_seed,
+            transcript,
             mask_range,
         )?;
+    body.tagless_payload = joint_tagless_payload.to_vec();
     body.tagless_digest = *blake3::hash(joint_tagless_payload).as_bytes();
     Ok(body)
 }
@@ -8708,6 +9067,28 @@ mod tests {
         assert!(!compiler_signature.contains("Delta"));
         assert!(!compiler_signature.contains("Transcript"));
 
+        let four_chain_signature = source
+            .split(
+                "fn prepare_c61_authenticated_whir_p3_production_joint_four_chains_private_entropy_in_attempt(",
+            )
+            .nth(1)
+            .unwrap()
+            .split(
+                ") -> Result<C61ProductionJointCommittedFourChainPrepared, String>",
+            )
+            .next()
+            .unwrap();
+        assert!(four_chain_signature.contains("[C61ProviderSessionBinding; 4]"));
+        assert!(four_chain_signature.contains("[C61PrivateEntropyEndpoint; 4]"));
+        assert!(four_chain_signature.contains("C61ProviderJointSessionBinding"));
+        assert!(four_chain_signature.contains("joint_endpoint: C61PrivateEntropyEndpoint"));
+        assert!(!four_chain_signature.contains("verifier_seed"));
+        assert!(!four_chain_signature.contains("checkpoint"));
+        assert!(!four_chain_signature.contains("VerifierCtx"));
+        assert!(!four_chain_signature.contains("VerifierKey"));
+        assert!(!four_chain_signature.contains("Delta"));
+        assert!(!four_chain_signature.contains("Transcript"));
+
         let driver = include_str!("c61_interactive_driver.rs");
         let endpoint = driver
             .split("struct C61PrivateEntropyEndpoint")
@@ -9099,6 +9480,7 @@ mod tests {
                 num_variables: 12 - index,
                 claim_count: 1,
                 tagless_payload_len: 0,
+                tagless_payload: Vec::new(),
                 tagless_digest: [0xD9 + index as u8; 32],
                 claim_weights: vec![Fp2::ONE],
                 aggregate_key: None,
@@ -9136,6 +9518,7 @@ mod tests {
         let fixed = C61ProductionJointNativeVerifierBodiesFixed {
             bodies: verifier_bodies,
             frame,
+            joint_payload: Vec::new(),
             challenge: challenge.clone(),
             transcript,
         };

@@ -721,6 +721,8 @@ pub(crate) struct C61InteractiveTape {
     checkpoint: C61InteractiveCheckpoint,
     final_payload_bytes: usize,
     final_payload_blake3: [u8; 32],
+    final_semantic_bytes: usize,
+    final_pending_provider_move: Vec<u8>,
 }
 
 impl C61InteractiveTape {
@@ -777,6 +779,7 @@ enum C61BrokerRequest {
         response: mpsc::SyncSender<ReferenceResult<C61BrokerResponse>>,
     },
     Finish {
+        pending_provider_move: Vec<u8>,
         payload_bytes: usize,
         payload_blake3: [u8; 32],
         semantic_bytes: usize,
@@ -840,7 +843,7 @@ impl TranscriptChallengeChannel for C61PrivateEntropyEndpoint {
 
     fn finish(
         &mut self,
-        _pending_provider_move: Vec<u8>,
+        pending_provider_move: Vec<u8>,
         payload_bytes: usize,
         payload_blake3: [u8; 32],
         semantic_bytes: usize,
@@ -849,6 +852,7 @@ impl TranscriptChallengeChannel for C61PrivateEntropyEndpoint {
         self.endpoint
             .sender
             .send(C61BrokerRequest::Finish {
+                pending_provider_move,
                 payload_bytes,
                 payload_blake3,
                 semantic_bytes,
@@ -1009,6 +1013,7 @@ impl C61PrivateEntropyProverChallenger {
         endpoint
             .sender
             .send(C61BrokerRequest::Finish {
+                pending_provider_move: Vec::new(),
                 payload_bytes: payload.len(),
                 payload_blake3: *blake3::hash(payload).as_bytes(),
                 semantic_bytes,
@@ -1241,6 +1246,7 @@ fn broker_loop(
                     .map_err(|_| C61WhirReferenceError::new("C6ICT1 provider dropped mask ACK"))?;
             }
             C61BrokerRequest::Finish {
+                pending_provider_move,
                 payload_bytes,
                 payload_blake3,
                 semantic_bytes,
@@ -1289,6 +1295,8 @@ fn broker_loop(
                     },
                     final_payload_bytes: payload_bytes,
                     final_payload_blake3: payload_blake3,
+                    final_semantic_bytes: semantic_bytes,
+                    final_pending_provider_move: pending_provider_move,
                 };
                 if let Some(resume) = &durable_resume {
                     if let Some((expected_count, expected_bytes, expected_digest)) =
@@ -1364,6 +1372,102 @@ pub(crate) fn spawn_c61_private_entropy_transcript_broker(
     let endpoint = C61ProviderEndpoint { sender };
     let handle = thread::spawn(move || broker_loop(receiver, verifier_seed, checkpoint, None));
     Ok((C61PrivateEntropyEndpoint { endpoint }, handle))
+}
+
+/// Seedless verifier endpoint for the generic VOLTA transcript. It releases
+/// only the values already recorded by the client-owned tape and checks every
+/// canonical provider move, challenge kind, terminal move and payload seal.
+pub(crate) struct C61PrivateEntropyTranscriptReplayEndpoint {
+    tape: C61InteractiveTape,
+    next_record: usize,
+    semantic_bytes: usize,
+    finished: bool,
+}
+
+impl C61PrivateEntropyTranscriptReplayEndpoint {
+    pub(crate) fn new(
+        tape: C61InteractiveTape,
+        num_variables: usize,
+        context_digest: [u8; 32],
+    ) -> ReferenceResult<Self> {
+        if tape.checkpoint.num_variables as usize != num_variables
+            || tape.checkpoint.context_digest != context_digest
+        {
+            return Err(C61WhirReferenceError::new(
+                "C6ICT2 transcript replay tape context mismatch",
+            ));
+        }
+        Ok(Self { tape, next_record: 0, semantic_bytes: 0, finished: false })
+    }
+
+    fn request_kind(request: TranscriptChallengeRequest) -> Result<C61ChallengeKind, String> {
+        match request {
+            TranscriptChallengeRequest::Fp => Ok(C61ChallengeKind::Fp),
+            TranscriptChallengeRequest::Fp2 => Ok(C61ChallengeKind::Fp2),
+            TranscriptChallengeRequest::Bits(bits) if (1..=32).contains(&bits) => {
+                Ok(C61ChallengeKind::Query { bits })
+            }
+            TranscriptChallengeRequest::Bits(_) => {
+                Err("C6ICT2 transcript replay query width exceeds u32".to_owned())
+            }
+        }
+    }
+}
+
+impl TranscriptChallengeChannel for C61PrivateEntropyTranscriptReplayEndpoint {
+    fn challenge(
+        &mut self,
+        provider_move: Vec<u8>,
+        provider_semantic_bytes: usize,
+        request: TranscriptChallengeRequest,
+    ) -> Result<TranscriptChallengeResponse, String> {
+        if self.finished {
+            return Err("C6ICT2 transcript replay challenged after finish".to_owned());
+        }
+        let expected_kind = Self::request_kind(request)?;
+        let record = self
+            .tape
+            .checkpoint
+            .records
+            .get(self.next_record)
+            .ok_or_else(|| "C6ICT2 transcript replay exhausted challenge tape".to_owned())?;
+        if record.provider_move != provider_move || record.kind != expected_kind {
+            return Err("C6ICT2 transcript replay provider move or kind diverged".to_owned());
+        }
+        self.semantic_bytes = self
+            .semantic_bytes
+            .checked_add(provider_semantic_bytes)
+            .ok_or_else(|| "C6ICT2 transcript replay semantic-byte count overflows".to_owned())?;
+        self.next_record += 1;
+        match record.value {
+            C61ChallengeValue::Fp(value) => Ok(TranscriptChallengeResponse::Fp(value)),
+            C61ChallengeValue::Fp2(value) => Ok(TranscriptChallengeResponse::Fp2(value)),
+            C61ChallengeValue::Query(value) => {
+                Ok(TranscriptChallengeResponse::Bits(u64::from(value)))
+            }
+        }
+    }
+
+    fn finish(
+        &mut self,
+        pending_provider_move: Vec<u8>,
+        payload_bytes: usize,
+        payload_blake3: [u8; 32],
+        semantic_bytes: usize,
+    ) -> Result<(), String> {
+        if self.finished
+            || self.next_record != self.tape.checkpoint.records.len()
+            || pending_provider_move != self.tape.final_pending_provider_move
+            || payload_bytes != self.tape.final_payload_bytes
+            || payload_blake3 != self.tape.final_payload_blake3
+            || semantic_bytes != self.tape.final_semantic_bytes
+            || self.semantic_bytes > semantic_bytes
+        {
+            return Err("C6ICT2 transcript replay final seal diverged".to_owned());
+        }
+        self.finished = true;
+        Ok(())
+    }
 }
 
 pub(crate) fn spawn_c61_durable_private_entropy_broker(
@@ -1608,5 +1712,28 @@ mod tests {
         let encoded = output.tape.checkpoint_bytes(3).unwrap();
         let decoded = C61InteractiveCheckpoint::decode(&encoded).unwrap();
         assert_eq!(decoded, output.tape.checkpoint);
+
+        let replay =
+            C61PrivateEntropyTranscriptReplayEndpoint::new(output.tape.clone(), 28, context_digest)
+                .unwrap();
+        let mut replay_transcript = Transcript::new_interactive(Box::new(replay));
+        replay_transcript.append_message("first", &[1, 2, 3, 4]);
+        assert_ne!(replay_transcript.challenge_fp(), Fp::ZERO);
+        replay_transcript.append_message("second", &[5; 16]);
+        assert_ne!(replay_transcript.challenge_fp2(), Fp2::ZERO);
+        replay_transcript.append_message_digest("third", 4096, [0xA5; 32]);
+        assert!(replay_transcript.challenge_bits(20) < (1 << 20));
+        replay_transcript.append("terminal", 32);
+        replay_transcript.finish_interactive(&payload).unwrap();
+
+        let changed =
+            C61PrivateEntropyTranscriptReplayEndpoint::new(output.tape, 28, context_digest)
+                .unwrap();
+        let mut changed_transcript = Transcript::new_interactive(Box::new(changed));
+        changed_transcript.append_message("first", &[1, 2, 3, 5]);
+        assert_eq!(changed_transcript.challenge_fp(), Fp::ONE);
+        assert!(changed_transcript
+            .interactive_error()
+            .is_some_and(|error| error.contains("provider move or kind diverged")));
     }
 }

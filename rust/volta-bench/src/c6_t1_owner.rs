@@ -317,6 +317,27 @@ impl C6T1ProductionOwnerExport {
     pub fn successor_cache(&self) -> &C6PersistentCacheStateWitness {
         &self.successor_cache
     }
+
+    /// Move the one-response owners into the downstream full-chain runner.
+    /// No field is cloneable here: the exact response, its native claims and
+    /// both cache states continue along one linear ownership path.
+    pub fn into_parts(
+        self,
+    ) -> (
+        C6T1WorkloadOwner,
+        C6T1ProductionResponseOwner,
+        C6T1NativeClaimOwner,
+        C6PersistentCacheStateWitness,
+        C6PersistentCacheStateWitness,
+    ) {
+        (
+            self.workload,
+            self.response,
+            self.native_claims,
+            self.predecessor_cache,
+            self.successor_cache,
+        )
+    }
 }
 
 /// Consume the frozen workload owner into the production response lifecycle.

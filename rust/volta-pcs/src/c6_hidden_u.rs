@@ -811,6 +811,23 @@ impl C6HiddenUBundleWitness {
         Self::new(vec![weights, embed])
     }
 
+    /// Borrow the canonical production pair while the same bundle remains
+    /// available for sealing. This is intentionally a pair rather than a
+    /// slice so downstream code cannot silently accept another family census.
+    pub fn production_families(
+        &self,
+    ) -> C6HiddenUResult<(&C6HiddenUFamilyWitness, &C6HiddenUFamilyWitness)> {
+        let [weights, embed] = self.families.as_slice() else {
+            return Err(C6HiddenUError::new("C6 hidden-u production family census mismatch"));
+        };
+        if weights.layout != C6HiddenULayout::production_weights()
+            || embed.layout != C6HiddenULayout::production_embed()
+        {
+            return Err(C6HiddenUError::new("C6 hidden-u production family order mismatch"));
+        }
+        Ok((weights, embed))
+    }
+
     /// Seal wrapper roots and all `ip_g` values before post-commit
     /// challenges become available.
     pub fn seal(

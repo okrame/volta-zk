@@ -47,7 +47,7 @@ use crate::c6_persistent_cache_blind::{
 use crate::c6_residual_sumcheck_blind::{
     assemble_c6_blind_residual_prover_stepwise, assemble_c6_blind_residual_verifier_stepwise,
     begin_c6_blind_residual_prover_stepwise, begin_c6_blind_residual_verifier_stepwise,
-    finish_c6_blind_residual_verifier_round_state_direct,
+    finish_c6_blind_residual_verifier_round_state_direct_claims,
     prepare_c6_blind_residual_prover_round_state_fused,
     prepare_c6_blind_residual_verifier_round_state, C6BlindResidualDirectTerminalFold,
     C6BlindResidualDirectTerminalOutputs, C6BlindResidualFusedCompilerContext,
@@ -103,6 +103,31 @@ pub(crate) struct C6ExactProductionProverProof {
     pub(crate) cache_metrics: C6PersistentCacheProductionMetrics,
     pub(crate) authenticated_link: C6AuthenticatedOutputLinkProof,
     pub(crate) authenticated_link_metrics: C6ProductionAuthenticatedOutputLinkMetrics,
+}
+
+#[derive(Clone, Copy)]
+struct C6ExactProductionVerifierProof<'a> {
+    residual_proof: &'a C6BlindResidualSumcheckProof,
+    residual_frame: &'a C6BlindResidualPendingTransferFrame,
+    terminal_functionals: &'a [Fp2; volta_proto::C6_RESIDUAL_TERMINAL_FUNCTIONALS],
+    expected_terminal_fold: Option<C6BlindResidualDirectTerminalFold>,
+    hidden_proof: &'a C6BlindHiddenUSumcheckProof,
+    cache_proof: &'a C6PersistentCacheBlindProof,
+    cache_source_frame: &'a C6PersistentCacheSourceBootstrapFrame,
+}
+
+impl<'a> C6ExactProductionVerifierProof<'a> {
+    fn from_local(proof: &'a C6ExactProductionProverProof) -> Self {
+        Self {
+            residual_proof: &proof.residual_proof,
+            residual_frame: &proof.residual_frame,
+            terminal_functionals: proof.residual_terminal_outputs.terminal_functionals(),
+            expected_terminal_fold: Some(proof.residual_terminal_fold),
+            hidden_proof: &proof.hidden_proof,
+            cache_proof: &proof.cache_proof,
+            cache_source_frame: &proof.cache_source_frame,
+        }
+    }
 }
 
 /// Same-attempt C6PA2/C6NBR2 output. The native proof cannot be emitted until
@@ -514,7 +539,7 @@ pub(crate) fn verify_c6_exact_production_proof(
         hidden_q_cols,
         hidden_prequery,
         hidden_postcommit,
-        proof,
+        C6ExactProductionVerifierProof::from_local(proof),
         contexts,
         transcript,
     )?;
@@ -573,7 +598,7 @@ pub fn verify_c6_exact_production_nbr2_proof(
         hidden_q_cols,
         hidden_prequery,
         hidden_postcommit,
-        &proof.blind,
+        C6ExactProductionVerifierProof::from_local(&proof.blind),
         contexts,
         transcript,
     )?;
@@ -635,7 +660,7 @@ pub fn verify_c6_exact_production_nbr2_certificate(
         hidden_q_cols,
         hidden_prequery,
         hidden_postcommit,
-        &certificate.blind,
+        C6ExactProductionVerifierProof::from_local(&certificate.blind),
         contexts,
         transcript,
     )?;
@@ -668,7 +693,7 @@ fn verify_c6_exact_production_blind_pending(
     hidden_q_cols: &[Vec<Vec<Fp2>>],
     hidden_prequery: &C6HiddenUPrequery,
     hidden_postcommit: &C6HiddenUPostCommit,
-    proof: &C6ExactProductionProverProof,
+    proof: C6ExactProductionVerifierProof<'_>,
     contexts: &mut [VerifierCtx; TAPES],
     transcript: &mut Transcript,
 ) -> Result<C6PendingSlotRegistryVerifier, String> {
@@ -676,8 +701,8 @@ fn verify_c6_exact_production_blind_pending(
     begin_c6_persistent_cache_production(cache_statement_digest, transcript).map_err(text_error)?;
     begin_c6_blind_residual_verifier_stepwise(
         statements,
-        &proof.residual_proof,
-        &proof.residual_frame,
+        proof.residual_proof,
+        proof.residual_frame,
         contexts,
         transcript,
     )
@@ -687,7 +712,7 @@ fn verify_c6_exact_production_blind_pending(
         hidden_q_cols,
         hidden_prequery,
         hidden_postcommit,
-        &proof.hidden_proof,
+        proof.hidden_proof,
         transcript,
     )
     .map_err(text_error)?;
@@ -707,7 +732,7 @@ fn verify_c6_exact_production_blind_pending(
             &scalar_batch,
             cache_targets,
             cache_fixed_targets,
-            &proof.cache_source_frame,
+            proof.cache_source_frame,
             transcript,
         )
         .map_err(text_error)?;
@@ -727,7 +752,7 @@ fn verify_c6_exact_production_blind_pending(
             &compiler,
             append_base_keys,
             fixed_fold,
-            &proof.cache_source_frame,
+            proof.cache_source_frame,
             [contexts[0].delta, contexts[1].delta],
             transcript,
         )
@@ -763,17 +788,17 @@ fn verify_c6_exact_production_blind_pending(
             finish_c6_persistent_cache_production_verifier_repetition(
                 cache,
                 &point,
-                &proof.cache_proof,
+                proof.cache_proof,
                 contexts,
                 transcript,
             )
             .map_err(text_error)?,
         );
         residual_finished.push(
-            finish_c6_blind_residual_verifier_round_state_direct(
+            finish_c6_blind_residual_verifier_round_state_direct_claims(
                 residual,
-                &proof.residual_frame,
-                &proof.residual_terminal_outputs,
+                proof.residual_frame,
+                proof.terminal_functionals,
                 contexts,
                 transcript,
             )
@@ -791,9 +816,16 @@ fn verify_c6_exact_production_blind_pending(
     let hidden_pending =
         assemble_c6_blind_hidden_u_verifier_stepwise(hidden_finished).map_err(text_error)?;
     let output_beta = transcript.challenge_fp2();
-    let expected_terminal_fold =
-        proof.residual_terminal_outputs.clone().bind_output_beta(output_beta);
-    if expected_terminal_fold != proof.residual_terminal_fold {
+    let functional_fold = proof
+        .terminal_functionals
+        .iter()
+        .fold((Fp2::ZERO, Fp2::ONE), |(sum, power), value| {
+            (sum + power * *value, power * output_beta)
+        })
+        .0;
+    if proof.expected_terminal_fold.is_some_and(|expected| {
+        expected.beta() != output_beta || expected.functional_fold() != functional_fold
+    }) {
         return Err("C6 exact verifier terminal output-fold mismatch".to_owned());
     }
     let mut pending =

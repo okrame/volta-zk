@@ -3201,6 +3201,7 @@ pub(crate) fn finish_c6_blind_residual_verifier_round_state_fused(
 /// terminal corrections that precede the independent output challenge; the
 /// enclosing C6RSC4 proof is responsible for attesting their compiler fold.
 #[cfg(feature = "c6-trace")]
+#[allow(dead_code)]
 pub(crate) fn finish_c6_blind_residual_verifier_round_state_direct(
     state: C6BlindResidualVerifierRoundState<'_>,
     pending_frame: &C6BlindResidualPendingTransferFrame,
@@ -3216,6 +3217,58 @@ pub(crate) fn finish_c6_blind_residual_verifier_round_state_direct(
     })?;
     state.finish(corrections, contexts, transcript, |statement, leaf_point, auxiliary_point| {
         direct.terminal_scalars_for(statement, leaf_point, auxiliary_point)
+    })
+}
+
+/// Disk-verifier counterpart of the direct terminal finish.  The strict
+/// C6PA2/C6RSC4 decoder supplies the exact ordered 64 functional values; the
+/// sumcheck state supplies its own repetition and challenge-derived points.
+/// No points or terminal values are added to the blind-proof wire.
+#[cfg(feature = "c6-trace")]
+pub(crate) fn finish_c6_blind_residual_verifier_round_state_direct_claims(
+    state: C6BlindResidualVerifierRoundState<'_>,
+    pending_frame: &C6BlindResidualPendingTransferFrame,
+    terminal_functionals: &[Fp2; C6_RESIDUAL_TERMINAL_FUNCTIONALS],
+    contexts: &mut [VerifierCtx; MAC_TAPES],
+    transcript: &mut Transcript,
+) -> Result<Vec<C6BlindResidualPendingClaimVerifier>> {
+    let repetition = state.repetition();
+    let frame_start = usize::from(repetition) * C6_RESIDUAL_TABLES_PER_REPETITION;
+    let frame_end = frame_start + C6_RESIDUAL_TABLES_PER_REPETITION;
+    let corrections = pending_frame.corrections.get(frame_start..frame_end).ok_or_else(|| {
+        C6BlindResidualError::new("C6RSC3 coordinated verifier pending slice is absent")
+    })?;
+    state.finish(corrections, contexts, transcript, |statement, _, _| {
+        terminal_scalars_from_direct_claims(statement, terminal_functionals)
+    })
+}
+
+#[cfg(feature = "c6-trace")]
+fn terminal_scalars_from_direct_claims(
+    statement: &C6BlindResidualStatement,
+    terminal_functionals: &[Fp2; C6_RESIDUAL_TERMINAL_FUNCTIONALS],
+) -> Result<C6BlindResidualTerminalScalars> {
+    let repetition = usize::from(statement.repetition());
+    if repetition >= C6_RESIDUAL_SUMCHECK_REPETITIONS {
+        return Err(C6BlindResidualError::new(
+            "C6RSC3-v4 direct terminal claim repetition is out of range",
+        ));
+    }
+    let start = repetition * C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION;
+    let values = &terminal_functionals
+        [start..start + C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION];
+    let leaf_end = C6_RESIDUAL_LEAF_TABLES_PER_REPETITION;
+    let auxiliary_end = leaf_end + C6_RESIDUAL_AUXILIARY_TABLES_PER_REPETITION;
+    Ok(C6BlindResidualTerminalScalars {
+        leaf_linear: values[..leaf_end].try_into().map_err(|_| {
+            C6BlindResidualError::new("C6RSC3-v4 leaf terminal claim census mismatch")
+        })?,
+        auxiliary_linear: values[leaf_end..auxiliary_end].try_into().map_err(|_| {
+            C6BlindResidualError::new("C6RSC3-v4 auxiliary terminal claim census mismatch")
+        })?,
+        auxiliary_quadratic: values[auxiliary_end..].try_into().map_err(|_| {
+            C6BlindResidualError::new("C6RSC3-v4 product terminal claim census mismatch")
+        })?,
     })
 }
 
@@ -3265,6 +3318,26 @@ pub(crate) fn verify_c6_blind_residual_sumchecks_direct(
         |statement, leaf_point, auxiliary_point| {
             direct.terminal_scalars_for(statement, leaf_point, auxiliary_point)
         },
+    )
+}
+
+#[cfg(feature = "c6-trace")]
+#[allow(dead_code)]
+fn verify_c6_blind_residual_sumchecks_direct_claims(
+    statements: &[C6BlindResidualStatement],
+    proof: &C6BlindResidualSumcheckProof,
+    pending_frame: &C6BlindResidualPendingTransferFrame,
+    terminal_functionals: &[Fp2; C6_RESIDUAL_TERMINAL_FUNCTIONALS],
+    contexts: &mut [VerifierCtx; MAC_TAPES],
+    transcript: &mut Transcript,
+) -> Result<C6BlindResidualPendingClaimsVerifier> {
+    verify_c6_blind_residual_sumchecks_inner(
+        statements,
+        proof,
+        pending_frame,
+        contexts,
+        transcript,
+        |statement, _, _| terminal_scalars_from_direct_claims(statement, terminal_functionals),
     )
 }
 
@@ -4656,6 +4729,26 @@ mod tests {
         .unwrap();
         assert_eq!(direct_transcript.challenge_fp2(), output_beta);
 
+        let mut claim_contexts = verifier_contexts();
+        let mut claim_transcript = Transcript::new(CHALLENGE_SEED);
+        verify_c6_blind_residual_sumchecks_direct_claims(
+            &statements,
+            &proof,
+            &frame,
+            terminal_outputs.terminal_functionals(),
+            &mut claim_contexts,
+            &mut claim_transcript,
+        )
+        .unwrap();
+        assert!(claim_contexts
+            .iter()
+            .zip(&direct_contexts)
+            .all(|(claims, direct)| {
+                claims.delta == direct.delta && claims.counters == direct.counters
+            }));
+        assert_eq!(claim_transcript.ledger(), direct_transcript.ledger());
+        assert_eq!(claim_transcript.challenge_fp2(), output_beta);
+
         let mut changed_outputs = terminal_outputs.clone();
         changed_outputs.terminal_functionals[0] += Fp2::ONE;
         changed_outputs.digest = direct_terminal_outputs_digest(&changed_outputs);
@@ -4668,6 +4761,19 @@ mod tests {
             &changed_outputs,
             &mut changed_contexts,
             &mut changed_transcript,
+        )
+        .is_err());
+        let mut changed_claims = *terminal_outputs.terminal_functionals();
+        changed_claims[0] += Fp2::ONE;
+        let mut changed_claim_contexts = verifier_contexts();
+        let mut changed_claim_transcript = Transcript::new(CHALLENGE_SEED);
+        assert!(verify_c6_blind_residual_sumchecks_direct_claims(
+            &statements,
+            &proof,
+            &frame,
+            &changed_claims,
+            &mut changed_claim_contexts,
+            &mut changed_claim_transcript,
         )
         .is_err());
         let terminal_output_digest = terminal_outputs.digest();

@@ -871,6 +871,43 @@ pub struct C6SetupManifest {
 }
 
 impl C6SetupManifest {
+    /// Construct the frozen production profile from typed identities and the
+    /// exact client-received parameter bundle. All capacities, credits and
+    /// first-exchange charges are fixed here rather than caller supplied.
+    pub fn production(
+        protocol_digest: C6Digest,
+        model_digest: C6Digest,
+        params_digest: C6Digest,
+        connection_id: C6Digest,
+        tape_ids: [C6Digest; C6_MAC_COORDINATES],
+        client_parameters: Vec<u8>,
+    ) -> C6Result<Self> {
+        let manifest = Self {
+            version: C6_CERTIFICATE_VERSION,
+            ligero_queries: C6_LIGERO_QUERIES,
+            protocol_digest,
+            model_digest,
+            params_digest,
+            connection_id,
+            max_context: C6_MAX_CONTEXT,
+            acceptance_credits: C6_ACCEPTANCE_CREDITS,
+            abort_retry_credits: C6_ABORT_RETRY_CREDITS,
+            mac_tapes: tape_ids.map(|tape_id| C6MacTapeManifest {
+                tape_id,
+                raw_capacity: C6_TERMINAL_ONE_RAW_CAPACITY,
+                baseline_raw_correlations: C6_BASELINE_RAW_CORRELATIONS,
+                first_exchange_bytes: C6_FASE_D_SETUP_BYTES,
+            }),
+            client_parameters_digest: hash_parts(
+                b"volta-zk/c6/client-parameters/v2",
+                &[&client_parameters],
+            ),
+            client_parameters,
+        };
+        manifest.validate()?;
+        Ok(manifest)
+    }
+
     fn encode_unchecked(&self) -> Vec<u8> {
         let mut out = Encoder::with_capacity(320 + self.client_parameters.len());
         out.raw(SETUP_MAGIC);
@@ -2299,6 +2336,16 @@ mod tests {
     #[test]
     fn setup_manifest_is_canonical_and_counts_every_client_byte() {
         let manifest = setup_manifest(digest(19));
+        let constructed = C6SetupManifest::production(
+            manifest.protocol_digest,
+            manifest.model_digest,
+            manifest.params_digest,
+            manifest.connection_id,
+            [manifest.mac_tapes[0].tape_id, manifest.mac_tapes[1].tape_id],
+            manifest.client_parameters.clone(),
+        )
+        .unwrap();
+        assert_eq!(constructed, manifest);
         let bytes = manifest.encode().unwrap();
         assert_eq!(bytes.len(), 437);
         assert_eq!(

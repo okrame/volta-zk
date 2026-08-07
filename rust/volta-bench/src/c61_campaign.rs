@@ -22,14 +22,24 @@ use volta_mac::{
 use volta_pcs::C61JointPublicArgument;
 use volta_proto::{
     C61FinalCertificateEnvelope, C61PublicWorkloadInstance, C6BoundProductionVerifierReplay,
-    C61_VERIFIER_REPLAY_STATE_BYTES,
+    C6SetupManifest, C61_VERIFIER_REPLAY_STATE_BYTES,
 };
 
-const CAMPAIGN_ARTIFACT_PROFILE: &str = "C6.1-C6PA2-C6NBR2-campaign-v1";
+const CAMPAIGN_ARTIFACT_PROFILE: &str = "C6.1-C6PA2-C6NBR3-campaign-v2";
 const CAMPAIGN_BACKEND: &str = "cuda-resident";
 const CAMPAIGN_PCG: &str = "real-aes128-mmo";
 const CAMPAIGN_FILE_NAMES: [&str; 4] =
-    ["certificate.bin", "verifier-replay.bin", "verifier-model.bin", "public-instance.bin"];
+    ["certificate.bin", "verifier-replay.bin", "setup-manifest.bin", "public-instance.bin"];
+const CAMPAIGN_CLIENT_PARAMETERS_MAGIC: &[u8; 8] = b"C61CP2\0\0";
+const CAMPAIGN_CLIENT_PARAMETERS_VERSION: u16 = 2;
+const CAMPAIGN_CLIENT_PARAMETER_COMPONENTS: usize = 5;
+const C61_CANONICAL_OPERATION_PLAN_BYTES: usize = 63_994_751;
+const C61_CLIENT_PARAMETER_ALLOCATION_BYTES: usize = 8_000_000;
+const C6_SETUP_BASE_CLIENT_PARAMETER_BYTES: usize = 128;
+pub const C61_CAMPAIGN_CLIENT_PARAMETERS_BYTES: usize = C61_CANONICAL_OPERATION_PLAN_BYTES
+    + C61_CLIENT_PARAMETER_ALLOCATION_BYTES
+    + C6_SETUP_BASE_CLIENT_PARAMETER_BYTES;
+pub const C61_CAMPAIGN_SETUP_BYTES: u64 = 148_738_118;
 const VERIFIER_MODEL_SETUP_MAX_BYTES: usize = 1_000_000;
 const PUBLIC_INSTANCE_MAX_BYTES: usize = 128 + 4 * 1_024;
 
@@ -82,17 +92,30 @@ struct CampaignArtifactRecord {
 pub struct C61CampaignArtifact {
     pub certificate: C61FinalCertificateEnvelope,
     pub verifier_replay: C6BoundProductionVerifierReplay,
+    pub setup_manifest: C6SetupManifest,
     pub verifier_model: Gpt2VerifierModel,
+    pub source_manifest: C6TraceSourceManifest,
+    pub verifier_plan: C6InstalledOperationPlan,
+    pub verifier_extraction: C6DecodedInstanceExtractionPlan,
+    pub native_profile: C6CanonicalTargetProfile,
     pub public_instance: C61PublicWorkloadInstance,
     pub public_argument: C61JointPublicArgument,
     pub source_git_commit: String,
     pub wire_bytes: u64,
 }
 
+struct DecodedCampaignClientParameters {
+    verifier_model: Gpt2VerifierModel,
+    source_manifest: C6TraceSourceManifest,
+    verifier_plan: C6InstalledOperationPlan,
+    verifier_extraction: C6DecodedInstanceExtractionPlan,
+    native_profile: C6CanonicalTargetProfile,
+}
+
 struct CampaignPayloads {
     certificate: Vec<u8>,
     verifier_replay: Vec<u8>,
-    verifier_model: Vec<u8>,
+    setup_manifest: Vec<u8>,
     public_instance: Vec<u8>,
 }
 
@@ -103,6 +126,9 @@ pub struct C61CampaignInstalledSetup {
     pub provider_extraction: C6DecodedInstanceExtractionPlan,
     pub verifier_extraction: C6DecodedInstanceExtractionPlan,
     pub native_profile: C6CanonicalTargetProfile,
+    pub operation_plan_artifact: C6OperationPlanArtifact,
+    pub verifier_extraction_artifact: C6InstanceExtractionArtifact,
+    pub native_profile_artifact: C6NativeTargetProfileArtifact,
     pub plan_bytes: u64,
     pub extraction_bytes: u64,
     pub native_profile_bytes: u64,
@@ -174,20 +200,24 @@ pub fn load_c61_campaign_installed_setup(root: &Path) -> Result<C61CampaignInsta
     if topology.topology_digest != parse_hex_32(&record.topology_digest, "topology digest")? {
         return Err("C6.1 setup topology differs from its manifest".to_owned());
     }
-    let provider_extraction =
+    let provider_extraction_artifact =
         C6InstanceExtractionArtifact::parse(prover_extraction_bytes, topology)
-            .and_then(|artifact| artifact.decode(topology))
-            .map_err(|error| format!("decode C6.1 provider extraction: {error}"))?;
-    let verifier_extraction =
+            .map_err(|error| format!("parse C6.1 provider extraction: {error}"))?;
+    let provider_extraction = provider_extraction_artifact
+        .decode(topology)
+        .map_err(|error| format!("decode C6.1 provider extraction: {error}"))?;
+    let verifier_extraction_artifact =
         C6InstanceExtractionArtifact::parse(verifier_extraction_bytes, topology)
-            .and_then(|artifact| artifact.decode(topology))
-            .map_err(|error| format!("decode C6.1 verifier extraction: {error}"))?;
+            .map_err(|error| format!("parse C6.1 verifier extraction: {error}"))?;
+    let verifier_extraction = verifier_extraction_artifact
+        .decode(topology)
+        .map_err(|error| format!("decode C6.1 verifier extraction: {error}"))?;
     if provider_extraction.role() != C6InstanceExtractionRole::Prover
         || verifier_extraction.role() != C6InstanceExtractionRole::Verifier
     {
         return Err("C6.1 setup extraction roles differ".to_owned());
     }
-    let (_, native_profile) =
+    let (native_profile_artifact, native_profile) =
         C6NativeTargetProfileArtifact::decode(&native_profile_bytes, topology)
             .map_err(|error| format!("decode C6.1 native-target profile: {error}"))?;
     if *blake3::hash(&native_profile_bytes).as_bytes()
@@ -208,6 +238,7 @@ pub fn load_c61_campaign_installed_setup(root: &Path) -> Result<C61CampaignInsta
         .install(&source_manifest)
         .map_err(|error| format!("install C6.1 provider plan: {error}"))?;
     let verifier_plan = plan
+        .clone()
         .install(&source_manifest)
         .map_err(|error| format!("install C6.1 verifier plan: {error}"))?;
     Ok(C61CampaignInstalledSetup {
@@ -217,9 +248,214 @@ pub fn load_c61_campaign_installed_setup(root: &Path) -> Result<C61CampaignInsta
         provider_extraction,
         verifier_extraction,
         native_profile,
+        operation_plan_artifact: plan,
+        verifier_extraction_artifact,
+        native_profile_artifact,
         plan_bytes: plan_len,
         extraction_bytes: extraction_len,
         native_profile_bytes: native_len,
+    })
+}
+
+fn encode_source_manifest(manifest: &C6TraceSourceManifest) -> Result<Vec<u8>, String> {
+    let count = u32::try_from(manifest.product_mask_sources.len())
+        .map_err(|_| "C6.1 source-mask census exceeds u32".to_owned())?;
+    let mut bytes = Vec::with_capacity(40 + manifest.product_mask_sources.len() * 4);
+    bytes.extend_from_slice(&manifest.source_count.to_le_bytes());
+    bytes.extend_from_slice(&manifest.source_schedule_digest);
+    bytes.extend_from_slice(&count.to_le_bytes());
+    for source in &manifest.product_mask_sources {
+        bytes.extend_from_slice(&source.to_le_bytes());
+    }
+    Ok(bytes)
+}
+
+fn decode_source_manifest(bytes: &[u8]) -> Result<C6TraceSourceManifest, String> {
+    if bytes.len() < 40 || (bytes.len() - 40) % 4 != 0 {
+        return Err("C6.1 client source-manifest length mismatch".to_owned());
+    }
+    let source_count = u32::from_le_bytes(bytes[0..4].try_into().expect("fixed width"));
+    let mut source_schedule_digest = [0; 32];
+    source_schedule_digest.copy_from_slice(&bytes[4..36]);
+    let count = usize::try_from(u32::from_le_bytes(bytes[36..40].try_into().expect("fixed width")))
+        .expect("u32 fits usize");
+    if bytes.len() != 40 + count * 4 {
+        return Err("C6.1 client source-manifest census mismatch".to_owned());
+    }
+    let product_mask_sources = bytes[40..]
+        .chunks_exact(4)
+        .map(|chunk| u32::from_le_bytes(chunk.try_into().expect("fixed width")))
+        .collect();
+    let manifest =
+        C6TraceSourceManifest::new(source_count, source_schedule_digest, product_mask_sources)
+            .map_err(|error| error.to_string())?;
+    if encode_source_manifest(&manifest)? != bytes {
+        return Err("C6.1 client source-manifest is noncanonical".to_owned());
+    }
+    Ok(manifest)
+}
+
+/// Pack every response-independent verifier object into the exact setup
+/// allocation. The provider extraction map is deliberately absent.
+pub fn encode_c61_campaign_client_parameters(
+    installed: &C61CampaignInstalledSetup,
+    verifier_model: &Gpt2VerifierModel,
+) -> Result<Vec<u8>, String> {
+    if installed.operation_plan_artifact.len() != C61_CANONICAL_OPERATION_PLAN_BYTES {
+        return Err("C6.1 campaign operation-plan byte census mismatch".to_owned());
+    }
+    let source_manifest = encode_source_manifest(&installed.source_manifest)?;
+    let verifier_model =
+        encode_verifier_model_canonical(verifier_model).map_err(|error| error.to_string())?;
+    if verifier_model.len() > VERIFIER_MODEL_SETUP_MAX_BYTES {
+        return Err("C6.1 verifier model exceeds its setup allocation".to_owned());
+    }
+    let components: [&[u8]; CAMPAIGN_CLIENT_PARAMETER_COMPONENTS] = [
+        &source_manifest,
+        installed.operation_plan_artifact.as_bytes(),
+        installed.verifier_extraction_artifact.as_bytes(),
+        installed.native_profile_artifact.as_bytes(),
+        &verifier_model,
+    ];
+    let header_bytes = CAMPAIGN_CLIENT_PARAMETERS_MAGIC.len()
+        + 4
+        + CAMPAIGN_CLIENT_PARAMETER_COMPONENTS * (8 + 32);
+    let used = components.iter().try_fold(header_bytes, |total, component| {
+        total
+            .checked_add(component.len())
+            .ok_or_else(|| "C6.1 client-parameter length overflows".to_owned())
+    })?;
+    if used > C61_CAMPAIGN_CLIENT_PARAMETERS_BYTES {
+        return Err("C6.1 client parameters exceed the frozen setup allocation".to_owned());
+    }
+    let mut bytes = Vec::with_capacity(C61_CAMPAIGN_CLIENT_PARAMETERS_BYTES);
+    bytes.extend_from_slice(CAMPAIGN_CLIENT_PARAMETERS_MAGIC);
+    bytes.extend_from_slice(&CAMPAIGN_CLIENT_PARAMETERS_VERSION.to_le_bytes());
+    bytes.extend_from_slice(&0u16.to_le_bytes());
+    for component in &components {
+        bytes.extend_from_slice(
+            &u64::try_from(component.len())
+                .map_err(|_| "C6.1 client-parameter component exceeds u64".to_owned())?
+                .to_le_bytes(),
+        );
+    }
+    for component in &components {
+        bytes.extend_from_slice(blake3::hash(component).as_bytes());
+    }
+    for component in components {
+        bytes.extend_from_slice(component);
+    }
+    bytes.resize(C61_CAMPAIGN_CLIENT_PARAMETERS_BYTES, 0);
+    Ok(bytes)
+}
+
+/// Build the exact client setup object consumed by both the real/AES PCG
+/// reservation and the later disk verifier.
+#[allow(clippy::too_many_arguments)]
+pub fn build_c61_campaign_setup_manifest(
+    installed: &C61CampaignInstalledSetup,
+    verifier_model: &Gpt2VerifierModel,
+    protocol_digest: [u8; 32],
+    model_digest: [u8; 32],
+    params_digest: [u8; 32],
+    connection_id: [u8; 32],
+    tape_ids: [[u8; 32]; 2],
+) -> Result<C6SetupManifest, String> {
+    let client_parameters = encode_c61_campaign_client_parameters(installed, verifier_model)?;
+    let setup = C6SetupManifest::production(
+        protocol_digest,
+        model_digest,
+        params_digest,
+        connection_id,
+        tape_ids,
+        client_parameters,
+    )
+    .map_err(|error| error.to_string())?;
+    if setup.first_exchange_bytes().map_err(|error| error.to_string())? != C61_CAMPAIGN_SETUP_BYTES
+    {
+        return Err("C6.1 constructed setup byte census mismatch".to_owned());
+    }
+    Ok(setup)
+}
+
+fn decode_c61_campaign_client_parameters(
+    bytes: &[u8],
+) -> Result<DecodedCampaignClientParameters, String> {
+    let header_bytes = CAMPAIGN_CLIENT_PARAMETERS_MAGIC.len()
+        + 4
+        + CAMPAIGN_CLIENT_PARAMETER_COMPONENTS * (8 + 32);
+    if bytes.len() != C61_CAMPAIGN_CLIENT_PARAMETERS_BYTES
+        || bytes.get(..8) != Some(CAMPAIGN_CLIENT_PARAMETERS_MAGIC)
+        || u16::from_le_bytes(bytes[8..10].try_into().expect("fixed width"))
+            != CAMPAIGN_CLIENT_PARAMETERS_VERSION
+        || bytes[10..12] != [0, 0]
+    {
+        return Err("C6.1 client-parameter header/profile mismatch".to_owned());
+    }
+    let mut lengths = [0usize; CAMPAIGN_CLIENT_PARAMETER_COMPONENTS];
+    let mut cursor = 12;
+    for length in &mut lengths {
+        *length = usize::try_from(u64::from_le_bytes(
+            bytes[cursor..cursor + 8].try_into().expect("fixed width"),
+        ))
+        .map_err(|_| "C6.1 client-parameter component exceeds usize".to_owned())?;
+        cursor += 8;
+    }
+    if lengths[1] != C61_CANONICAL_OPERATION_PLAN_BYTES
+        || lengths[4] > VERIFIER_MODEL_SETUP_MAX_BYTES
+    {
+        return Err("C6.1 client-parameter component census mismatch".to_owned());
+    }
+    let digest_start = cursor;
+    cursor = header_bytes;
+    let mut components = Vec::with_capacity(CAMPAIGN_CLIENT_PARAMETER_COMPONENTS);
+    for (index, length) in lengths.into_iter().enumerate() {
+        let end = cursor
+            .checked_add(length)
+            .ok_or_else(|| "C6.1 client-parameter offset overflows".to_owned())?;
+        let component = bytes
+            .get(cursor..end)
+            .ok_or_else(|| "truncated C6.1 client-parameter component".to_owned())?;
+        let claimed = &bytes[digest_start + index * 32..digest_start + (index + 1) * 32];
+        if blake3::hash(component).as_bytes() != claimed {
+            return Err("C6.1 client-parameter component digest mismatch".to_owned());
+        }
+        components.push(component);
+        cursor = end;
+    }
+    if bytes[cursor..].iter().any(|byte| *byte != 0) {
+        return Err("C6.1 client-parameter padding is nonzero".to_owned());
+    }
+
+    let source_manifest = decode_source_manifest(components[0])?;
+    let operation_plan = C6OperationPlanArtifact::parse(components[1].to_vec(), &source_manifest)
+        .map_err(|error| format!("decode C6.1 client operation plan: {error}"))?;
+    let topology = operation_plan
+        .decode(&source_manifest)
+        .map_err(|error| format!("inspect C6.1 client operation plan: {error}"))?
+        .topology;
+    let verifier_extraction_artifact =
+        C6InstanceExtractionArtifact::parse(components[2].to_vec(), topology)
+            .map_err(|error| format!("parse C6.1 client verifier extraction: {error}"))?;
+    let verifier_extraction = verifier_extraction_artifact
+        .decode(topology)
+        .map_err(|error| format!("decode C6.1 client verifier extraction: {error}"))?;
+    if verifier_extraction.role() != C6InstanceExtractionRole::Verifier {
+        return Err("C6.1 client setup contains a non-verifier extraction map".to_owned());
+    }
+    let (_, native_profile) = C6NativeTargetProfileArtifact::decode(components[3], topology)
+        .map_err(|error| format!("decode C6.1 client native-target profile: {error}"))?;
+    let verifier_model =
+        decode_verifier_model_canonical(components[4]).map_err(|error| error.to_string())?;
+    let verifier_plan = operation_plan
+        .install(&source_manifest)
+        .map_err(|error| format!("install C6.1 client verifier plan: {error}"))?;
+    Ok(DecodedCampaignClientParameters {
+        verifier_model,
+        source_manifest,
+        verifier_plan,
+        verifier_extraction,
+        native_profile,
     })
 }
 
@@ -244,14 +480,21 @@ fn validate_source_commit(commit: &str) -> Result<(), String> {
 fn validate_campaign_bindings(
     certificate: &C61FinalCertificateEnvelope,
     verifier_replay: &C6BoundProductionVerifierReplay,
+    setup_manifest: &C6SetupManifest,
     public_instance: &C61PublicWorkloadInstance,
 ) -> Result<C61JointPublicArgument, String> {
     let inner = certificate.certificate();
     let certificate_digest = inner.digest().map_err(|error| error.to_string())?;
+    let setup_manifest_digest = setup_manifest.digest().map_err(|error| error.to_string())?;
     let public_argument = C61JointPublicArgument::decode(certificate.public_argument())
         .map_err(|error| error.to_string())?;
     if verifier_replay.certificate_digest() != certificate_digest
-        || verifier_replay.setup_manifest_digest() != inner.setup_manifest_digest
+        || verifier_replay.setup_manifest_digest() != setup_manifest_digest
+        || setup_manifest_digest != inner.setup_manifest_digest
+        || setup_manifest.protocol_digest != inner.protocol_digest
+        || setup_manifest.model_digest != inner.model_digest
+        || setup_manifest.params_digest != inner.params_digest
+        || setup_manifest.connection_id != inner.connection_id
         || verifier_replay.statement_digest() != public_instance.statement_digest
         || public_argument.statement_digest() != public_instance.statement_digest
         || inner.model_digest != public_instance.model_family_digest
@@ -270,7 +513,6 @@ fn validate_campaign_bindings(
 
 fn decode_campaign_payloads(payloads: &CampaignPayloads) -> Result<C61CampaignArtifact, String> {
     if payloads.verifier_replay.len() != C61_VERIFIER_REPLAY_STATE_BYTES
-        || payloads.verifier_model.len() > VERIFIER_MODEL_SETUP_MAX_BYTES
         || payloads.public_instance.len() > PUBLIC_INSTANCE_MAX_BYTES
     {
         return Err("C6.1 campaign private/setup/public-local artifact size mismatch".to_owned());
@@ -279,18 +521,34 @@ fn decode_campaign_payloads(payloads: &CampaignPayloads) -> Result<C61CampaignAr
         .map_err(|error| error.to_string())?;
     let verifier_replay =
         C6BoundProductionVerifierReplay::decode_client_state(&payloads.verifier_replay)?;
-    let verifier_model = decode_verifier_model_canonical(&payloads.verifier_model)
-        .map_err(|error| error.to_string())?;
+    let setup_manifest =
+        C6SetupManifest::decode(&payloads.setup_manifest).map_err(|error| error.to_string())?;
+    if setup_manifest.first_exchange_bytes().map_err(|error| error.to_string())?
+        != C61_CAMPAIGN_SETUP_BYTES
+    {
+        return Err("C6.1 campaign setup byte census mismatch".to_owned());
+    }
+    let client_parameters =
+        decode_c61_campaign_client_parameters(&setup_manifest.client_parameters)?;
     let public_instance = C61PublicWorkloadInstance::decode(&payloads.public_instance)
         .map_err(|error| error.to_string())?;
-    let public_argument =
-        validate_campaign_bindings(&certificate, &verifier_replay, &public_instance)?;
+    let public_argument = validate_campaign_bindings(
+        &certificate,
+        &verifier_replay,
+        &setup_manifest,
+        &public_instance,
+    )?;
     Ok(C61CampaignArtifact {
         wire_bytes: u64::try_from(payloads.certificate.len())
             .map_err(|_| "C6.1 certificate length exceeds u64")?,
         certificate,
         verifier_replay,
-        verifier_model,
+        setup_manifest,
+        verifier_model: client_parameters.verifier_model,
+        source_manifest: client_parameters.source_manifest,
+        verifier_plan: client_parameters.verifier_plan,
+        verifier_extraction: client_parameters.verifier_extraction,
+        native_profile: client_parameters.native_profile,
         public_instance,
         public_argument,
         source_git_commit: String::new(),
@@ -301,7 +559,7 @@ fn campaign_rows(payloads: &CampaignPayloads) -> Result<Vec<CampaignFileRow>, St
     let payloads = [
         &payloads.certificate,
         &payloads.verifier_replay,
-        &payloads.verifier_model,
+        &payloads.setup_manifest,
         &payloads.public_instance,
     ];
     CAMPAIGN_FILE_NAMES
@@ -347,7 +605,7 @@ fn create_campaign_directory(
     for (index, bytes) in [
         &payloads.certificate,
         &payloads.verifier_replay,
-        &payloads.verifier_model,
+        &payloads.setup_manifest,
         &payloads.public_instance,
     ]
     .into_iter()
@@ -364,30 +622,29 @@ fn create_campaign_directory(
 
 /// Persist one complete provider output plus the exact client replay inputs.
 /// Only `certificate.bin` is provider-to-client wire. The replay and public
-/// instance are client-private/local; the verifier model belongs to setup.
+/// instance are client-private/local; the complete manifest belongs to setup.
 #[allow(clippy::too_many_arguments)]
 pub fn create_c61_campaign_artifact(
     root: &Path,
     certificate: &C61FinalCertificateEnvelope,
     verifier_replay: &C6BoundProductionVerifierReplay,
-    verifier_model: &Gpt2VerifierModel,
+    setup_manifest: &C6SetupManifest,
     public_instance: &C61PublicWorkloadInstance,
     source_git_commit: &str,
 ) -> Result<(), String> {
     validate_source_commit(source_git_commit)?;
-    validate_campaign_bindings(certificate, verifier_replay, public_instance)?;
+    validate_campaign_bindings(certificate, verifier_replay, setup_manifest, public_instance)?;
     let payloads = CampaignPayloads {
         certificate: certificate.encode().map_err(|error| error.to_string())?,
         verifier_replay: verifier_replay.encode_client_state()?,
-        verifier_model: encode_verifier_model_canonical(verifier_model)
-            .map_err(|error| error.to_string())?,
+        setup_manifest: setup_manifest.encode().map_err(|error| error.to_string())?,
         public_instance: public_instance.encode().map_err(|error| error.to_string())?,
     };
     // Exercise the same strict decode path before creating any filesystem state.
     decode_campaign_payloads(&payloads)?;
     let inner = certificate.certificate();
     let record = CampaignArtifactRecord {
-        schema: 1,
+        schema: 2,
         profile: CAMPAIGN_ARTIFACT_PROFILE.to_owned(),
         source_git_commit: source_git_commit.to_owned(),
         git_dirty: false,
@@ -473,7 +730,7 @@ pub fn load_c61_campaign_artifact(root: &Path) -> Result<C61CampaignArtifact, St
         return Err("C6.1 campaign manifest is not canonical compact JSON".to_owned());
     }
     validate_source_commit(&record.source_git_commit)?;
-    if record.schema != 1
+    if record.schema != 2
         || record.profile != CAMPAIGN_ARTIFACT_PROFILE
         || record.git_dirty
         || record.backend != CAMPAIGN_BACKEND
@@ -487,7 +744,7 @@ pub fn load_c61_campaign_artifact(root: &Path) -> Result<C61CampaignArtifact, St
     let payloads = CampaignPayloads {
         certificate: load_campaign_file(root, &record.files[0])?,
         verifier_replay: load_campaign_file(root, &record.files[1])?,
-        verifier_model: load_campaign_file(root, &record.files[2])?,
+        setup_manifest: load_campaign_file(root, &record.files[2])?,
         public_instance: load_campaign_file(root, &record.files[3])?,
     };
     let mut artifact = decode_campaign_payloads(&payloads)?;
@@ -525,14 +782,14 @@ mod campaign_artifact_tests {
         CampaignPayloads {
             certificate: b"certificate".to_vec(),
             verifier_replay: b"private replay".to_vec(),
-            verifier_model: b"model".to_vec(),
+            setup_manifest: b"setup".to_vec(),
             public_instance: b"instance".to_vec(),
         }
     }
 
     fn dummy_record(payloads: &CampaignPayloads) -> CampaignArtifactRecord {
         CampaignArtifactRecord {
-            schema: 1,
+            schema: 2,
             profile: CAMPAIGN_ARTIFACT_PROFILE.to_owned(),
             source_git_commit: "0123456789abcdef0123456789abcdef01234567".to_owned(),
             git_dirty: false,
@@ -544,6 +801,34 @@ mod campaign_artifact_tests {
             wire_bytes: payloads.certificate.len() as u64,
             files: campaign_rows(payloads).unwrap(),
         }
+    }
+
+    #[test]
+    fn setup_allocation_and_source_manifest_codec_are_exact() {
+        assert_eq!(C61_CAMPAIGN_CLIENT_PARAMETERS_BYTES, 71_994_879);
+        let setup = C6SetupManifest::production(
+            [1; 32],
+            [2; 32],
+            [3; 32],
+            [4; 32],
+            [[5; 32], [6; 32]],
+            vec![7],
+        )
+        .unwrap();
+        let setup_framing = setup.encode().unwrap().len() - 1;
+        assert_eq!(setup_framing, 309);
+        assert_eq!(
+            setup.paired_pcg_setup_bytes().unwrap()
+                + u64::try_from(setup_framing + C61_CAMPAIGN_CLIENT_PARAMETERS_BYTES).unwrap(),
+            C61_CAMPAIGN_SETUP_BYTES,
+        );
+
+        let manifest = C6TraceSourceManifest::new(17, [8; 32], vec![1, 5, 16]).unwrap();
+        let encoded = encode_source_manifest(&manifest).unwrap();
+        assert_eq!(decode_source_manifest(&encoded).unwrap(), manifest);
+        let mut reordered = encoded;
+        reordered[40..44].copy_from_slice(&5u32.to_le_bytes());
+        assert!(decode_source_manifest(&reordered).is_err());
     }
 
     #[test]
@@ -575,8 +860,8 @@ mod campaign_artifact_tests {
         fs::set_permissions(root.join("verifier-replay.bin"), fs::Permissions::from_mode(0o600))
             .unwrap();
 
-        fs::remove_file(root.join("verifier-model.bin")).unwrap();
-        std::os::unix::fs::symlink("certificate.bin", root.join("verifier-model.bin")).unwrap();
+        fs::remove_file(root.join("setup-manifest.bin")).unwrap();
+        std::os::unix::fs::symlink("certificate.bin", root.join("setup-manifest.bin")).unwrap();
         assert!(validate_campaign_directory_census(&root).is_err());
         fs::remove_dir_all(root).unwrap();
     }

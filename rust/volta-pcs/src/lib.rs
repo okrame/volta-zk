@@ -15,7 +15,9 @@ pub mod c61_authenticated_whir_p3;
 #[cfg(feature = "c61-p3-authenticated-reference")]
 mod c61_interactive_driver;
 #[cfg(feature = "c61-p3-authenticated-reference")]
-pub use c61_interactive_driver::C61InteractiveTape;
+pub use c61_interactive_driver::{
+    C61InteractiveTape, C61InteractiveTapeBundle, C61_INTERACTIVE_TAPE_LANES,
+};
 pub mod c61_joint_native_bridge;
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub mod c61_persisted_mmcs;

@@ -46,6 +46,16 @@ const C61_INTERACTIVE_TAPE_VERSION: u16 = 2;
 const C61_INTERACTIVE_TAPE_HEADER_BYTES: usize = 104;
 const C61_INTERACTIVE_TAPE_DIGEST_BYTES: usize = 32;
 const C61_INTERACTIVE_TAPE_MAX_BYTES: usize = 2_100_000;
+pub const C61_INTERACTIVE_TAPE_LANES: usize = 7;
+const C61_INTERACTIVE_BUNDLE_MAGIC: [u8; 8] = *b"C6ICB2\0\0";
+const C61_INTERACTIVE_BUNDLE_VERSION: u16 = 1;
+const C61_INTERACTIVE_BUNDLE_HEADER_BYTES: usize = 80;
+const C61_INTERACTIVE_BUNDLE_LANE_HEADER_BYTES: usize = 36;
+const C61_INTERACTIVE_BUNDLE_DIGEST_BYTES: usize = 32;
+const C61_INTERACTIVE_BUNDLE_MAX_BYTES: usize = C61_INTERACTIVE_BUNDLE_HEADER_BYTES
+    + C61_INTERACTIVE_TAPE_LANES
+        * (C61_INTERACTIVE_BUNDLE_LANE_HEADER_BYTES + C61_INTERACTIVE_TAPE_MAX_BYTES)
+    + C61_INTERACTIVE_BUNDLE_DIGEST_BYTES;
 const C61_DURABLE_JOURNAL_MAGIC: [u8; 8] = *b"C6ICJ1\0\0";
 const C61_DURABLE_JOURNAL_VERSION: u16 = 1;
 const C61_DURABLE_JOURNAL_MAX_MASK_EVENTS: usize = 16;
@@ -861,6 +871,204 @@ impl C61InteractiveTape {
 
     pub(crate) fn checkpoint_bytes(&self, count: usize) -> ReferenceResult<Vec<u8>> {
         self.checkpoint(count)?.encode()
+    }
+}
+
+fn c61_interactive_attempt_digest(attempt: C6ClientAttempt) -> Result<[u8; 32], String> {
+    attempt.correlation_ranges.validate().map_err(|error| error.to_string())?;
+    attempt.workload.validate().map_err(|error| error.to_string())?;
+    if attempt.setup_manifest_digest == [0; 32]
+        || attempt.nonce == [0; 32]
+        || attempt.old_head_digest == [0; 32]
+    {
+        return Err("C6ICT2 tape bundle attempt is noncanonical".to_owned());
+    }
+    let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c6.1/interactive-attempt/v1");
+    hasher.update(&attempt.slot.to_le_bytes());
+    hasher.update(&attempt.nonce);
+    hasher.update(&attempt.setup_manifest_digest);
+    hasher.update(&attempt.old_head_digest);
+    hasher.update(&attempt.predecessor_certificate_digest);
+    for range in attempt.correlation_ranges.coordinates {
+        hasher.update(&range.stage.to_le_bytes());
+        hasher.update(&range.start.to_le_bytes());
+        hasher.update(&range.count.to_le_bytes());
+    }
+    hasher.update(&attempt.workload.digest());
+    Ok(*hasher.finalize().as_bytes())
+}
+
+/// Canonical verifier-private replay object for the six production chains
+/// and the independent post-body joint bridge. It is certificate-bound but
+/// never sent by the provider or counted as response-independent setup.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C61InteractiveTapeBundle {
+    attempt_digest: [u8; 32],
+    certificate_digest: [u8; 32],
+    tapes: [C61InteractiveTape; C61_INTERACTIVE_TAPE_LANES],
+}
+
+impl C61InteractiveTapeBundle {
+    pub fn from_completed_attempt(
+        attempt: C6ClientAttempt,
+        certificate_digest: [u8; 32],
+        tapes: [C61InteractiveTape; C61_INTERACTIVE_TAPE_LANES],
+        expected_contexts: [[u8; 32]; C61_INTERACTIVE_TAPE_LANES],
+    ) -> Result<Self, String> {
+        let bundle = Self {
+            attempt_digest: c61_interactive_attempt_digest(attempt)?,
+            certificate_digest,
+            tapes,
+        };
+        bundle.validate_contexts(certificate_digest, expected_contexts)?;
+        Ok(bundle)
+    }
+
+    fn validate_contexts(
+        &self,
+        certificate_digest: [u8; 32],
+        expected_contexts: [[u8; 32]; C61_INTERACTIVE_TAPE_LANES],
+    ) -> Result<(), String> {
+        if certificate_digest == [0; 32]
+            || self.certificate_digest != certificate_digest
+            || expected_contexts.iter().any(|digest| *digest == [0; 32])
+        {
+            return Err("C6ICT2 tape bundle binding is empty or mismatched".to_owned());
+        }
+        for index in 0..C61_INTERACTIVE_TAPE_LANES {
+            if self.tapes[index].context_digest() != expected_contexts[index]
+                || expected_contexts[..index].contains(&expected_contexts[index])
+            {
+                return Err("C6ICT2 tape lane is moved, duplicated or misbound".to_owned());
+            }
+        }
+        Ok(())
+    }
+
+    pub fn validate_for(
+        &self,
+        attempt: C6ClientAttempt,
+        certificate_digest: [u8; 32],
+        expected_contexts: [[u8; 32]; C61_INTERACTIVE_TAPE_LANES],
+    ) -> Result<(), String> {
+        if self.attempt_digest != c61_interactive_attempt_digest(attempt)? {
+            return Err("C6ICT2 tape bundle belongs to another reserved attempt".to_owned());
+        }
+        self.validate_contexts(certificate_digest, expected_contexts)
+    }
+
+    pub fn tapes(&self) -> &[C61InteractiveTape; C61_INTERACTIVE_TAPE_LANES] {
+        &self.tapes
+    }
+
+    pub fn into_tapes(self) -> [C61InteractiveTape; C61_INTERACTIVE_TAPE_LANES] {
+        self.tapes
+    }
+
+    pub fn certificate_digest(&self) -> [u8; 32] {
+        self.certificate_digest
+    }
+
+    pub fn encoded_len(&self) -> usize {
+        C61_INTERACTIVE_BUNDLE_HEADER_BYTES
+            + C61_INTERACTIVE_BUNDLE_LANE_HEADER_BYTES * C61_INTERACTIVE_TAPE_LANES
+            + self.tapes.iter().map(C61InteractiveTape::encoded_len).sum::<usize>()
+            + C61_INTERACTIVE_BUNDLE_DIGEST_BYTES
+    }
+
+    pub fn encode(&self) -> Result<Vec<u8>, String> {
+        let encoded_len = self.encoded_len();
+        if encoded_len > C61_INTERACTIVE_BUNDLE_MAX_BYTES {
+            return Err("C6ICT2 tape bundle exceeds private-state cap".to_owned());
+        }
+        let encoded_tapes =
+            self.tapes.iter().map(C61InteractiveTape::encode).collect::<Result<Vec<_>, _>>()?;
+        let mut bytes = Vec::with_capacity(encoded_len);
+        bytes.extend_from_slice(&C61_INTERACTIVE_BUNDLE_MAGIC);
+        bytes.extend_from_slice(&C61_INTERACTIVE_BUNDLE_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&(C61_INTERACTIVE_TAPE_LANES as u16).to_le_bytes());
+        bytes.extend_from_slice(&self.attempt_digest);
+        bytes.extend_from_slice(&self.certificate_digest);
+        bytes.extend_from_slice(
+            &u32::try_from(encoded_len)
+                .map_err(|_| "C6ICT2 tape bundle length exceeds u32".to_owned())?
+                .to_le_bytes(),
+        );
+        debug_assert_eq!(bytes.len(), C61_INTERACTIVE_BUNDLE_HEADER_BYTES);
+        for (tape, encoded) in self.tapes.iter().zip(&encoded_tapes) {
+            bytes.extend_from_slice(&tape.context_digest());
+            bytes.extend_from_slice(
+                &u32::try_from(encoded.len())
+                    .map_err(|_| "C6ICT2 tape lane length exceeds u32".to_owned())?
+                    .to_le_bytes(),
+            );
+        }
+        for encoded in encoded_tapes {
+            bytes.extend_from_slice(&encoded);
+        }
+        let digest = blake3::hash(&bytes);
+        bytes.extend_from_slice(digest.as_bytes());
+        if bytes.len() != encoded_len {
+            return Err("C6ICT2 tape bundle byte census diverged".to_owned());
+        }
+        Ok(bytes)
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, String> {
+        let minimum = C61_INTERACTIVE_BUNDLE_HEADER_BYTES
+            + C61_INTERACTIVE_BUNDLE_LANE_HEADER_BYTES * C61_INTERACTIVE_TAPE_LANES
+            + C61_INTERACTIVE_BUNDLE_DIGEST_BYTES;
+        if bytes.len() < minimum
+            || bytes.len() > C61_INTERACTIVE_BUNDLE_MAX_BYTES
+            || bytes[..8] != C61_INTERACTIVE_BUNDLE_MAGIC
+            || u16::from_le_bytes(bytes[8..10].try_into().expect("fixed bundle version"))
+                != C61_INTERACTIVE_BUNDLE_VERSION
+            || u16::from_le_bytes(bytes[10..12].try_into().expect("fixed bundle census"))
+                != C61_INTERACTIVE_TAPE_LANES as u16
+            || u32::from_le_bytes(bytes[76..80].try_into().expect("fixed bundle length")) as usize
+                != bytes.len()
+        {
+            return Err("C6ICT2 tape bundle header/version/length mismatch".to_owned());
+        }
+        let digest_offset = bytes.len() - C61_INTERACTIVE_BUNDLE_DIGEST_BYTES;
+        if blake3::hash(&bytes[..digest_offset]).as_bytes() != &bytes[digest_offset..] {
+            return Err("C6ICT2 tape bundle digest mismatch".to_owned());
+        }
+        let attempt_digest = bytes[12..44].try_into().expect("fixed bundle attempt");
+        let certificate_digest = bytes[44..76].try_into().expect("fixed bundle certificate");
+        let mut contexts = [[0u8; 32]; C61_INTERACTIVE_TAPE_LANES];
+        let mut lengths = [0usize; C61_INTERACTIVE_TAPE_LANES];
+        let mut offset = C61_INTERACTIVE_BUNDLE_HEADER_BYTES;
+        for index in 0..C61_INTERACTIVE_TAPE_LANES {
+            contexts[index].copy_from_slice(&bytes[offset..offset + 32]);
+            lengths[index] = u32::from_le_bytes(
+                bytes[offset + 32..offset + 36].try_into().expect("fixed lane length"),
+            ) as usize;
+            offset += C61_INTERACTIVE_BUNDLE_LANE_HEADER_BYTES;
+        }
+        let mut tapes = Vec::with_capacity(C61_INTERACTIVE_TAPE_LANES);
+        for index in 0..C61_INTERACTIVE_TAPE_LANES {
+            let end = offset
+                .checked_add(lengths[index])
+                .filter(|end| *end <= digest_offset)
+                .ok_or_else(|| "truncated C6ICT2 tape bundle lane".to_owned())?;
+            let tape = C61InteractiveTape::decode(&bytes[offset..end])?;
+            if tape.context_digest() != contexts[index] {
+                return Err("C6ICT2 tape bundle repeats a different lane context".to_owned());
+            }
+            tapes.push(tape);
+            offset = end;
+        }
+        if offset != digest_offset || certificate_digest == [0; 32] {
+            return Err("C6ICT2 tape bundle lane census mismatch".to_owned());
+        }
+        let tapes =
+            tapes.try_into().map_err(|_| "C6ICT2 tape bundle lane count mismatch".to_owned())?;
+        let bundle = Self { attempt_digest, certificate_digest, tapes };
+        if bundle.encode()? != bytes {
+            return Err("noncanonical C6ICT2 tape bundle".to_owned());
+        }
+        Ok(bundle)
     }
 }
 
@@ -1863,5 +2071,40 @@ mod tests {
         assert!(changed_transcript
             .interactive_error()
             .is_some_and(|error| error.contains("provider move or kind diverged")));
+    }
+
+    #[test]
+    fn seven_lane_bundle_is_canonical_certificate_bound_and_ordered() {
+        let contexts: [[u8; 32]; C61_INTERACTIVE_TAPE_LANES] =
+            std::array::from_fn(|index| [0x30 + index as u8; 32]);
+        let mut tapes = Vec::with_capacity(C61_INTERACTIVE_TAPE_LANES);
+        for (index, context) in contexts.iter().copied().enumerate() {
+            let (endpoint, handle) =
+                spawn_c61_private_entropy_transcript_broker([0x70 + index as u8; 32], 0, context)
+                    .unwrap();
+            let mut transcript = Transcript::new_interactive(Box::new(endpoint));
+            transcript.append_message("lane", &[index as u8]);
+            let _ = transcript.challenge_fp2();
+            transcript.finish_interactive(&[0xA0 + index as u8; 64]).unwrap();
+            tapes.push(handle.join().unwrap().unwrap().tape);
+        }
+        let tapes: [C61InteractiveTape; C61_INTERACTIVE_TAPE_LANES] = tapes.try_into().unwrap();
+        let certificate_digest = [0xC6; 32];
+        let bundle =
+            C61InteractiveTapeBundle { attempt_digest: [0xA7; 32], certificate_digest, tapes };
+        bundle.validate_contexts(certificate_digest, contexts).unwrap();
+        let encoded = bundle.encode().unwrap();
+        assert_eq!(encoded.len(), bundle.encoded_len());
+        assert_eq!(C61InteractiveTapeBundle::decode(&encoded).unwrap(), bundle);
+
+        let mut moved = bundle.clone();
+        moved.tapes.swap(0, 1);
+        assert!(moved.validate_contexts(certificate_digest, contexts).is_err());
+        assert!(bundle.validate_contexts([0xC7; 32], contexts).is_err());
+
+        let mut corrupted = encoded.clone();
+        corrupted[44] ^= 1;
+        assert!(C61InteractiveTapeBundle::decode(&corrupted).is_err());
+        assert!(C61InteractiveTapeBundle::decode(&encoded[..encoded.len() - 1]).is_err());
     }
 }

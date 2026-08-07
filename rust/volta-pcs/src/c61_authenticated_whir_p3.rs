@@ -1342,7 +1342,11 @@ pub struct C61ProductionCommittedChainExecution {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct C61ProviderSessionBinding([u8; 32]);
+pub struct C61ProviderSessionBinding {
+    digest: [u8; 32],
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+}
 
 impl C61ProviderSessionBinding {
     pub fn from_reserved_attempt(
@@ -1375,11 +1379,22 @@ impl C61ProviderSessionBinding {
         hasher.update(&[id.repetition, mask_range.stage]);
         hasher.update(&mask_range.slot.to_le_bytes());
         hasher.update(&mask_range.range_start.to_le_bytes());
-        Ok(Self(*hasher.finalize().as_bytes()))
+        Ok(Self { digest: *hasher.finalize().as_bytes(), id, mask_range })
     }
 
     fn digest(self) -> [u8; 32] {
-        self.0
+        self.digest
+    }
+
+    fn validate_for(
+        self,
+        id: C61NativeChainId,
+        mask_range: C61AuthenticatedWhirMaskRange,
+    ) -> Result<(), String> {
+        if self.id != id || self.mask_range != mask_range {
+            return Err("C6ICT2 provider session binding is assigned to another chain".to_owned());
+        }
+        Ok(())
     }
 }
 
@@ -2435,6 +2450,7 @@ pub fn prove_c61_authenticated_whir_p3_production_four_committed_chains_in_attem
         admission,
         backend,
         correlations,
+        verifier_seeds.map(Transcript::new),
         verifier_seeds,
         mask_ranges,
     )?;
@@ -2487,6 +2503,7 @@ pub fn prepare_c61_authenticated_whir_p3_production_joint_four_chains_in_attempt
         admission,
         backend,
         correlations,
+        verifier_seeds.map(Transcript::new),
         verifier_seeds,
         mask_ranges,
     )?;
@@ -2519,7 +2536,8 @@ fn prepare_c61_authenticated_whir_p3_production_four_committed_chain_bodies(
     admission: C61ProductionPersistedResourceAdmission,
     backend: &mut Backend,
     correlations: &mut [CorrelationStream; 2],
-    verifier_seeds: [[u8; 32]; 4],
+    transcripts: [Transcript; 4],
+    provider_session_bindings: [[u8; 32]; 4],
     mask_ranges: [C61AuthenticatedWhirMaskRange; 4],
 ) -> Result<C61ProductionCommittedFourChainBodies, String> {
     if expected_model_coefficient_digest == [0; 32]
@@ -2554,6 +2572,8 @@ fn prepare_c61_authenticated_whir_p3_production_four_committed_chain_bodies(
     }
     let mut model_targets = model_targets.into_iter();
     let mut embedding_targets = embedding_targets.into_iter();
+    let mut transcripts = transcripts.into_iter();
+    let mut provider_session_bindings = provider_session_bindings.into_iter();
     let mut bodies = Vec::with_capacity(4);
     let mut peak_loaded_coefficient_bytes = 0u64;
     for (ordinal, (component, repetition)) in schedule.into_iter().enumerate() {
@@ -2590,7 +2610,7 @@ fn prepare_c61_authenticated_whir_p3_production_four_committed_chain_bodies(
         let id = C61NativeChainId { component, repetition };
         let child = spill_root.join(format!("{:?}-{repetition}", component).to_ascii_lowercase());
         bodies.push(
-            prepare_c61_authenticated_whir_p3_production_committed_chain_persisted_cuda_in_attempt(
+            prepare_c61_authenticated_whir_p3_production_committed_chain_with_transcript(
                 coefficients,
                 claims,
                 targets,
@@ -2599,7 +2619,10 @@ fn prepare_c61_authenticated_whir_p3_production_four_committed_chain_bodies(
                 admission,
                 backend,
                 &mut correlations[usize::from(repetition)],
-                verifier_seeds[ordinal],
+                transcripts.next().expect("four C6ICT2 chain transcripts"),
+                provider_session_bindings
+                    .next()
+                    .expect("four C6ICT2 provider session bindings"),
                 id,
                 mask_ranges[ordinal],
             )?,
@@ -4688,6 +4711,7 @@ pub(crate) fn prepare_c61_authenticated_whir_p3_production_committed_chain_priva
     id: C61NativeChainId,
     mask_range: C61AuthenticatedWhirMaskRange,
 ) -> Result<C61ProductionCommittedChainProverBody, String> {
+    provider_session_binding.validate_for(id, mask_range)?;
     prepare_c61_authenticated_whir_p3_production_committed_chain_with_transcript(
         coefficients,
         claims,
@@ -5771,6 +5795,7 @@ pub(crate) fn run_c61_authenticated_whir_p3_production_compiler_private_entropy_
     mask_range: C61AuthenticatedWhirMaskRange,
 ) -> Result<C61ProductionCompilerChainExecution, String> {
     validate_c61_production_compiler_persisted_admission(admission, correlations, None, id)?;
+    provider_session_binding.validate_for(id, mask_range)?;
     let fixture = c61_sparse_compiler_production_fixture(
         operation_plan,
         terminal_metadata,
@@ -6549,6 +6574,7 @@ pub(crate) fn verify_c61_authenticated_whir_p3_production_compiler_private_entro
     id: C61NativeChainId,
     mask_range: C61AuthenticatedWhirMaskRange,
 ) -> Result<C61ProductionCompilerChainVerification, String> {
+    provider_session_binding.validate_for(id, mask_range)?;
     let endpoint =
         C61PrivateEntropyTranscriptReplayEndpoint::new(tape, 28, provider_session_binding.digest())
             .map_err(|error| error.to_string())?;

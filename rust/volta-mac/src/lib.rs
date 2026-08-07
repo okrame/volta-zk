@@ -61,4 +61,6 @@ pub use open::{
     fresh_zero_mask, zero_batch_exchange, zero_batch_prover, zero_batch_verify, zero_mask_key,
     zero_open_prover, zero_open_verify,
 };
-pub use transcript::Transcript;
+pub use transcript::{
+    Transcript, TranscriptChallengeChannel, TranscriptChallengeRequest, TranscriptChallengeResponse,
+};

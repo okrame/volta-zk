@@ -4000,6 +4000,33 @@ This repair earns privacy-source evidence only. It changes no setup or wire
 bytes and gives no production-dimension, timing, memory or hardware credit.
 The active gate remains `C6ICT2_PRODUCTION_PRIVATE_ENTROPY_DRIVER`.
 
+### 0.62 Fiat--Shamir feasibility disposition
+
+The delegated read-only audit gives **NO-GO** to replacing C6ICT2 in the
+production campaign and **GO only to a future shadow diagnostic `C6FS1`**.
+The current transcript and both P3 adapters account lengths but do not absorb
+canonical move bytes; the compiler also requires deterministic two-lane event
+ordering. A correct transform needs versioned chain/lane domains, the complete
+public attempt/statement context, canonical event codecs and unbiased field
+sampling. Claimless WHIR additionally lacks the public evaluation normally
+bound by the fork's Fiat--Shamir domain, so the WHIR-to-MAC/ZeroOpen
+composition needs a new ROM soundness and privacy proof.
+
+Grinding is the quantitative blocker. Even the optimistic bound
+`epsilon_FS <= q_RO * epsilon_interactive` leaves only about `2^23.778`
+online oracle queries before the current per-certificate gate fails:
+`q_RO=2^20` gives about **82.588 bits/cert**, while `q_RO=2^24` gives
+**78.588 bits/cert** and fails. The four abort slots do not bound provider
+hash trials within one attempt. PoW/VDF is outside the registered protocol
+and incompatible with the approximately 82-ms prover screen margin.
+
+If the proof obligations are later closed, the transform is expected to be
+wire/setup neutral, but BLAKE3 squeeze overhead must still be measured against
+the 4T verifier margin. Converting only the six native chains would not make
+the remaining C6.1 wrapper/cache/hidden-linear protocols noninteractive.
+C6ICT2 therefore continues unchanged; `C6FS1` has no implementation or gate
+credit and cannot authorize pod contact.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

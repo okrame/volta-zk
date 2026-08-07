@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.61 next.
+This capsule is authoritative; read design §§0.60--0.62 next.
 
 - **Milestone/evidence.** C6.1/C6NBR3 source binding is closed locally.
   Checkpoints `92b5000`, `e3c080a`, and `17dcea7` add linear full-chain owners,
@@ -33,6 +33,9 @@ This capsule is authoritative; read design §§0.60--0.61 next.
   negative/backend gates are green.
 - **Measurement policy.** Only verifier time has official `4T <5 s` and
   diagnostic `maxT(N)`; provider has one full-chain A100 `<15 s` gate.
+- **Fiat--Shamir.** Read-only audit: production substitution is NO-GO;
+  `C6FS1` may later exist only as a shadow diagnostic after new ROM
+  soundness/privacy proofs. It does not change C6ICT2 or pod authorization.
 
 - **2026-08-07 — Production private-entropy audit stops before A100.** The
   campaign boundary now owns one exact setup manifest: client parameters are
@@ -74,6 +77,17 @@ This capsule is authoritative; read design §§0.60--0.61 next.
   remain diagnostic-only. The focused source guard is **1/0/0**. This is a
   privacy-source repair, not production-dimension or timing credit; C6ICT2 and
   the no-pod gate remain active.
+
+- **2026-08-07 — Fiat--Shamir production substitution is NO-GO.** The
+  delegated read-only audit found that the current transcripts bind lengths,
+  not canonical message bytes; claimless WHIR also needs a new ROM proof for
+  its MAC/ZeroOpen composition. Even the optimistic loss
+  `epsilon_FS <= q_RO * epsilon_interactive` permits only about `2^23.778`
+  online hash trials before the per-certificate soundness gate fails. Four
+  retry slots do not limit grinding inside one attempt, and PoW/VDF does not
+  fit the registered protocol or prover margin. A future `C6FS1` may be a
+  shadow diagnostic only. C6ICT2 remains the production path and no pod credit
+  or authorization changes.
 
 - **2026-08-07 — C6NBR3 combined source binding closes locally.** The two
   prover-private NBR2 digest inputs are replaced by the existing combined

@@ -8,28 +8,40 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §0.57 next.
+This capsule is authoritative; read design §0.58 next.
 
-- **Milestone/evidence.** C6.1/C6NBR2 exact join remains closed locally. Strict
+- **Milestone/evidence.** C6.1/C6NBR3 source-binding amendment is closed
+  locally through `16aa6f5`. Strict
   create-new campaign artifact, redacted verifier profile, private replay,
   public instance, retained-response replay and unbound-then-trace-bound C6FT1
-  decoding are implemented through `3988afb`; focused new checks are **3/0/0 +
-  4/0/0**. No production CUDA/full-chain/timing/memory/hardware credit exists.
+  decoding are implemented; focused campaign/C6FT1/NBR checks are **3/0/0 +
+  4/0/0 + 1/0/0**. Lean source-binding collision dichotomy is axiom-free. No
+  production CUDA/full-chain/timing/memory/hardware credit exists.
 - **Screens.** Certificate **17,536,735 B**, setup **148,738,118 B**,
   setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
   **102.5878332989 bits/cert**, and provider/verifier **14.9179595454 /
   4.978261758 s** remain `credit:false`.
-- **Hard stop.** `C6NBR2_DISK_VERIFIER_PRIVATE_DIGEST_OBSTRUCTED`: the NBR2
-  statement requires prover-only residual-view and paired-source digests.
-  A disk verifier cannot reconstruct them, and accepting supplied values is
-  digest-as-proof. No pod contact is permitted.
-- **Authorization/resume.** Existing one-campaign owner GO remains valid after
-  an owner-approved exact binding repair, statement/Lean audit, zero-wire
-  re-sum, disk-verifier negative tests and full local gates. Candidate: carry
-  the already derived combined source-binding digest in an existing 32-B
-  envelope allocation, with no certificate growth.
+- **Active gate.** `C6NBR3_DISK_VERIFIER_AND_FULL_CHAIN_HARNESS_REQUIRED`.
+  The six roots and combined source binding have one exact zero-growth wire
+  map, but complete producer call site, disk verifier, record validator and
+  local negative/backend gates are still required. No pod contact is permitted.
+- **Authorization/resume.** The source-binding amendment and continued local
+  harness work are owner-approved. Existing one-campaign A100 GO becomes
+  usable only after the complete local campaign audit is green.
 - **Measurement policy.** Only verifier time has official `4T <5 s` and
   diagnostic `maxT(N)`; provider has one full-chain A100 `<15 s` gate.
+
+- **2026-08-07 — C6NBR3 combined source binding closes locally.** The two
+  prover-private NBR2 digest inputs are replaced by the existing combined
+  live-source binding under a versioned transcript domain. The frozen field
+  map carries cache roots in `old_head/new_head`, four non-cache roots in four
+  legacy wrapper slots, and the combined binding in the remaining 32-B slot.
+  Mutation of that binding rejects. Lean proves equal preimages or an explicit
+  hash collision with no axioms. Budget v28 preserves **17,536,735-B** wire,
+  **148,738,118-B** setup, **166,274,853-B** first exchange,
+  **2,277,715,552-B** state, **102.5878332989-bit** soundness and
+  **14.9179595454 / 4.978261758-s** screens, all `credit:false`. New gate:
+  `C6NBR3_DISK_VERIFIER_AND_FULL_CHAIN_HARNESS_REQUIRED`; no pod contacted.
 
 - **2026-08-06 — Disk-verifier audit exposes prover-private NBR2 binding.**
   Checkpoints `e49ebce`, `93ca29b` and `3988afb` add a strict create-new

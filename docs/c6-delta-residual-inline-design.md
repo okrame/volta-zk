@@ -3858,6 +3858,50 @@ strict mutation tests, and a fresh byte/soundness/time/state re-sum. The pod
 must not be contacted before those local gates and the complete disk verifier
 are green. The §0.55 one-campaign GO otherwise remains valid.
 
+### 0.58 C6NBR3 combined source-binding amendment
+
+The owner authorizes and the local implementation closes the favorable
+wire-neutral repair. The exact outer mapping is:
+
+```text
+old_head.cache_root                 predecessor-cache root
+new_head.cache_root                 successor-cache root
+wrapper.correction_roots[0]         paired-residual root
+wrapper.weights_u_root              hidden-weights root
+wrapper.embed_u_root                hidden-embed root
+wrapper.correction_roots[1]         residual-auxiliary root
+wrapper.cache_witness_root           combined source-binding digest
+wrapper.prequery_statement_digest   wrapper statement digest
+```
+
+`C61WrapperWireBinding` is the sole producer/verifier interpretation of this
+map and rejects every zero member. No existing root or relation is displaced.
+The NBR statement transcript domain advances to
+`v2-source-binding`: `residual_view_digest` and `paired_source_digest` are no
+longer verifier inputs; their already computed `source_binding_digest` is.
+That digest commits statement, cache profile and lengths, residual manifest
+and view, paired source, both hidden witnesses, mask-seed commitment and fixed
+roots. A changed source binding rejects the integrated NBR relation while
+wire, openings, commitments and correlations remain identical.
+
+Lean models the exact source-binding preimage and proves that equal combined
+digests imply equal full preimages or an explicit hash collision. The theorem
+and `C6NBR1JointBridgeSound` have no axioms. The collision branch uses the
+existing domain-separated BLAKE3 binding assumption; it adds no rational
+statistical event. Budget profile
+`C6.1-public-compression-reference-v28-nbr3-source-binding` retains exactly
+**17,536,735 B** certificate, **148,738,118 B** setup, **166,274,853 B**
+setup plus first, **2,277,715,552 B** state, **102.5878332989 bits/cert** and
+**14.9179595454 / 4.978261758 s** provider/verifier screens, all
+`credit:false`.
+
+The private-digest obstruction is closed. The active gate is
+`C6NBR3_DISK_VERIFIER_AND_FULL_CHAIN_HARNESS_REQUIRED`: finish the exact
+producer call site, reconstruct and verify the same strict artifact without
+provider objects, add the fail-closed record/resource validator and pass all
+local backend/mutation gates. Pod contact remains forbidden until that gate is
+closed; the §0.55 one-campaign GO remains valid afterward.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

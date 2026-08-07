@@ -151,6 +151,46 @@ theorem c6_nbr2_two_repetition_numerator_lt_2_pow_16 :
   rw [c6_nbr2_two_repetition_numerator]
   norm_num
 
+/-! ## Wire-neutral combined source binding -/
+
+/-- Exact preimage committed by the existing live-source binding. C6NBR3
+places only its digest in the frozen outer frame; the two prover-private
+members are never supplied independently to the disk verifier. -/
+structure C6Nbr3SourceBindingPreimage (D : Type*) where
+  statement : D
+  cacheProfile : D
+  oldLength : Nat
+  newLength : Nat
+  residualManifest : D
+  residualView : D
+  pairedSource : D
+  hiddenWeights : D
+  hiddenEmbed : D
+  maskSeedCommitment : D
+  fixedRoots : D
+  deriving DecidableEq
+
+def c6Nbr3SourceBindingCollision
+    {D : Type*}
+    (compress : C6Nbr3SourceBindingPreimage D → D)
+    (left right : C6Nbr3SourceBindingPreimage D) : Prop :=
+  compress left = compress right ∧ left ≠ right
+
+/-- Equal combined digests either bind every constituent, including the
+private residual-view and paired-source digests, or exhibit an explicit hash
+collision. The Rust statement charges the latter to its existing BLAKE3
+binding assumption rather than accepting either private digest as input. -/
+theorem c6_nbr3_equal_source_binding_or_collision
+    {D : Type*}
+    (compress : C6Nbr3SourceBindingPreimage D → D)
+    (left right : C6Nbr3SourceBindingPreimage D)
+    (hequal : compress left = compress right) :
+    left = right ∨ c6Nbr3SourceBindingCollision compress left right := by
+  classical
+  by_cases hpreimage : left = right
+  · exact Or.inl hpreimage
+  · exact Or.inr ⟨hequal, hpreimage⟩
+
 /-! ## Joint compiler/native/link closure -/
 
 /-- Logical composition boundary for the C6NBR1/C6NBR2 joint bridge.  The

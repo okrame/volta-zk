@@ -748,7 +748,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v27-nbr2-exact-runner-local",
+        "profile": "C6.1-public-compression-reference-v28-nbr3-source-binding",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
@@ -771,6 +771,7 @@ def build_report() -> dict[str, Any]:
             "C6NBR2_VERIFIER_MARGINAL_GATE_GREEN__"
             "C6NBR2_LEAN_AND_STRICT_C6PA2_TYPESTATE_GREEN__"
             "C6NBR2_EXACT_RUNNER_LOCAL_ASSEMBLY_GREEN__"
+            "C6NBR3_COMBINED_SOURCE_BINDING_WIRE_NEUTRAL__"
             "C6NBR2_CUDA_RUNTIME_DIFFERENTIAL_REQUIRED__"
             "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
         ),
@@ -836,7 +837,7 @@ def build_report() -> dict[str, Any]:
             "credit": False,
         },
         "selected_native_candidate": {
-            "name": "C6PA2-native-HVZK-plus-C6RSC4-v5-C6NBR2",
+            "name": "C6PA2-native-HVZK-plus-C6RSC4-v6-C6NBR3",
             "status": (
                 "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
                 "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
@@ -856,6 +857,7 @@ def build_report() -> dict[str, Any]:
                 "PRODUCTION_NATIVE_AND_COMPACT_WIRE_BOUNDARIES_GREEN__"
                 "C6NBR2_FUSED_LINK_LEAN_STRICT_C6PA2_LOCAL_GREEN__"
                 "C6NBR2_EXACT_RUNNER_LOCAL_ASSEMBLY_GREEN__"
+                "C6NBR3_COMBINED_SOURCE_BINDING_WIRE_NEUTRAL__"
                 "CUDA_RUNTIME_AND_FULL_CHAIN_REQUIRED__"
                 "NO_FULL_CHAIN_OR_BENCHMARK_CREDIT"
             ),
@@ -865,6 +867,10 @@ def build_report() -> dict[str, Any]:
                 "persisted_cuda_seam_compiles": True,
                 "cuda_runtime_differential": False,
                 "wire_growth_bytes": 0,
+                "source_binding_wire_field_bytes": 32,
+                "source_binding_reuses_existing_outer_field": True,
+                "prover_private_digest_inputs_removed": 2,
+                "combined_source_binding_digest": True,
                 "new_commitment_roots": 0,
                 "new_openings": 0,
                 "new_correlations": 0,
@@ -873,6 +879,7 @@ def build_report() -> dict[str, Any]:
                 "exact_same_attempt_runner_boundary": True,
                 "exact_c6pa2_execution_assembler": True,
                 "strict_outer_statement_cross_binding": True,
+                "lean_source_binding_collision_dichotomy": True,
                 "ordinary_workspace_green": True,
                 "full_chain_credit": False,
                 "hardware_credit": False,
@@ -1341,6 +1348,12 @@ def build_report() -> dict[str, Any]:
                 "joint_native_bridge_conservative_addition": _error_report(
                     joint_native_bridge_error
                 ),
+                "combined_source_binding": {
+                    "primitive": "BLAKE3-domain-separated-live-source-binding-v1",
+                    "existing_computational_binding_assumption": True,
+                    "new_statistical_failure_event": False,
+                    "wire_growth_bytes": 0,
+                },
                 "c6nbr2_link_relations": C61_NBR2_LINK_RELATIONS,
                 "c6nbr2_link_roots_per_repetition": (
                     C61_NBR2_LINK_ROOTS_PER_REPETITION

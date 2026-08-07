@@ -10,6 +10,10 @@ use std::{array, fmt};
 
 use volta_field::{Fp, Fp2, P};
 use volta_mac::Transcript;
+use volta_proto::{
+    C6ResidualDirectAlphaPoints, C6ResidualDirectPostClaimPoints,
+    C6ResidualRelationManifest,
+};
 
 pub const C61_PUBLIC_ARGUMENT_MAGIC: [u8; 8] = *b"C6PA1\0\0\0";
 pub const C61_PUBLIC_ARGUMENT_VERSION: u16 = 1;
@@ -277,6 +281,24 @@ impl C61EqualityChallenges {
         update_challenge_family(hasher, b"terminal", &self.terminal);
         update_challenge_family(hasher, b"atomic", &self.atomic);
     }
+}
+
+/// Reuse the single C6PA2 equality challenge family as the exact C6RSC3-v4
+/// residual schedule. This is the zero-wire bridge: no second challenge set
+/// or independently supplied point can enter the production relation.
+pub fn c61_residual_direct_points(
+    manifest: &C6ResidualRelationManifest,
+    equality: &C61EqualityChallenges,
+) -> Result<(C6ResidualDirectAlphaPoints, C6ResidualDirectPostClaimPoints)> {
+    let alpha = std::array::from_fn(|stream| equality.alpha[stream].to_vec());
+    let terminal = std::array::from_fn(|stream| equality.terminal[stream].to_vec());
+    let atomic = std::array::from_fn(|stream| equality.atomic[stream].to_vec());
+    Ok((
+        C6ResidualDirectAlphaPoints::new(manifest, alpha)
+            .map_err(|error| C61PublicCompressionError::new(error.to_string()))?,
+        C6ResidualDirectPostClaimPoints::new(manifest, terminal, atomic)
+            .map_err(|error| C61PublicCompressionError::new(error.to_string()))?,
+    ))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

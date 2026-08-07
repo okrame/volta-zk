@@ -143,6 +143,135 @@ pub struct Gpt2Model {
     pub lnf_bias: Vec<i16>,
 }
 
+/// Client-side parameters needed by the response verifier.
+///
+/// Committed layer/embedding matrices are deliberately absent: C6.1 binds
+/// their openings through the public argument. Keeping a `Gpt2Model` here
+/// would silently turn the 238-MB provider weight blob into client setup.
+pub struct Gpt2VerifierModel {
+    model: Gpt2Model,
+}
+
+impl Gpt2VerifierModel {
+    pub fn from_model(model: &Gpt2Model) -> Result<Self, String> {
+        model.validate_layout()?;
+        let layers = model
+            .layers
+            .iter()
+            .map(|(weights, biases)| {
+                (
+                    LayerWeights {
+                        c_attn: Vec::new(),
+                        attn_proj: Vec::new(),
+                        ffn_up: Vec::new(),
+                        ffn_down: Vec::new(),
+                        ln1_gain: weights.ln1_gain.clone(),
+                        ln1_bias: weights.ln1_bias.clone(),
+                        ln2_gain: weights.ln2_gain.clone(),
+                        ln2_bias: weights.ln2_bias.clone(),
+                    },
+                    biases.clone(),
+                )
+            })
+            .collect();
+        let profile = Self {
+            model: Gpt2Model {
+                config: model.config.clone(),
+                p: model.p.clone(),
+                luts: model.luts.clone(),
+                layers,
+                wte: Vec::new(),
+                lm_head: None,
+                wpe: Vec::new(),
+                lnf_gain: model.lnf_gain.clone(),
+                lnf_bias: model.lnf_bias.clone(),
+            },
+        };
+        profile.validate_layout()?;
+        Ok(profile)
+    }
+
+    pub fn validate_layout(&self) -> Result<(), String> {
+        let model = &self.model;
+        model.config.validate().map_err(|error| error.to_string())?;
+        let c = &model.config;
+        if model.layers.len() != c.n_layers
+            || model.p.shift_attn_proj.len() != c.n_layers
+            || model.p.shift_ffn_down.len() != c.n_layers
+            || model.p.f_res.len() != c.n_layers
+            || model.p.seam_shifts.len() != c.n_layers - 1
+            || model.p.tokens.len() > c.max_positions
+            || model.lnf_gain.len() != c.d_model
+            || model.lnf_bias.len() != c.d_model
+            || nonlinear_table_config(model.luts.params) != c.nonlinear_tables
+            || [
+                model.luts.exp.len(),
+                model.luts.gelu.len(),
+                model.luts.ln_rsqrt.len(),
+                model.luts.softmax_recip.len(),
+            ]
+            .into_iter()
+            .any(|len| len != 1 << 16)
+        {
+            return Err("verifier model parameter shape mismatch".to_owned());
+        }
+        if c.binding != ConfigBinding::LegacyImplicit
+            || !c.is_legacy_gpt2_geometry()
+            || c.embedding_shift != model.p.shift_embed
+            || c.final_norm_shift != model.p.lut.shift_ln_norm
+            || model.luts.params != model.p.lut
+            || !model.wte.is_empty()
+            || model.lm_head.is_some()
+            || !model.wpe.is_empty()
+        {
+            return Err("verifier model binding/schedule mismatch".to_owned());
+        }
+        for layer in 0..c.n_layers {
+            let expected = LayerShiftSchedule {
+                residual_fraction_bits: model.p.f_res[layer],
+                layer_norm: model.p.lut.shift_ln_norm,
+                qkv: model.p.lut.shift_qkv,
+                scores: model.p.lut.shift_scores,
+                softmax_norm: model.p.lut.shift_softmax_norm,
+                av: model.p.lut.shift_av,
+                attention_out: model.p.shift_attn_proj[layer],
+                ffn_up: model.p.lut.shift_ffn_up,
+                ffn_down: model.p.shift_ffn_down[layer],
+                residual_seam: model.p.seam_shifts.get(layer).copied().unwrap_or(0),
+                ..LayerShiftSchedule::default()
+            };
+            if c.layer_shifts[layer] != expected {
+                return Err(format!("verifier layer {layer} shift schedule mismatch"));
+            }
+            let (weights, biases) = &model.layers[layer];
+            if !weights.c_attn.is_empty()
+                || !weights.attn_proj.is_empty()
+                || !weights.ffn_up.is_empty()
+                || !weights.ffn_down.is_empty()
+                || [
+                    weights.ln1_gain.len(),
+                    weights.ln1_bias.len(),
+                    weights.ln2_gain.len(),
+                    weights.ln2_bias.len(),
+                    biases.attn_proj.len(),
+                    biases.ffn_down.len(),
+                ]
+                .into_iter()
+                .any(|len| len != c.d_model)
+                || biases.c_attn.len() != c.qkv_dim()
+                || biases.ffn_up.len() != c.d_ff
+            {
+                return Err(format!("verifier layer {layer} public parameter shape mismatch"));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn schedule_model(&self) -> &Gpt2Model {
+        &self.model
+    }
+}
+
 impl Gpt2Model {
     /// Shape-only preflight.  This runs before witness/backend allocation and
     /// prevents a prover-supplied ragged artifact from selecting geometry.
@@ -711,6 +840,48 @@ mod tests {
             assert_eq!(sum_i16(&wit.layers[l].ffn_block_out), ffn_sums[l], "ffn_block_out l={l}");
             assert_eq!(sum_i16(&wit.layers[l].row_shift), row_shift_sums[l], "row_shift l={l}");
         }
+    }
+
+    #[test]
+    fn verifier_profile_excludes_committed_matrices_and_validates_public_parameters() {
+        let dir = weights_dir();
+        if !dir.join("gpt2s-q.bin").exists() {
+            eprintln!("skipping verifier profile check: frozen artifact not present");
+            return;
+        }
+        let model = load_model(&dir).unwrap();
+        let mut profile = Gpt2VerifierModel::from_model(&model).unwrap();
+        let redacted = profile.schedule_model();
+        assert!(redacted.wte.is_empty() && redacted.wpe.is_empty());
+        assert!(redacted.layers.iter().all(|(weights, _)| {
+            weights.c_attn.is_empty()
+                && weights.attn_proj.is_empty()
+                && weights.ffn_up.is_empty()
+                && weights.ffn_down.is_empty()
+        }));
+        let public_i16 = redacted.luts.exp.len()
+            + redacted.luts.gelu.len()
+            + redacted.luts.ln_rsqrt.len()
+            + redacted.luts.softmax_recip.len()
+            + redacted.lnf_gain.len()
+            + redacted.lnf_bias.len()
+            + redacted
+                .layers
+                .iter()
+                .map(|(weights, biases)| {
+                    weights.ln1_gain.len()
+                        + weights.ln1_bias.len()
+                        + weights.ln2_gain.len()
+                        + weights.ln2_bias.len()
+                        + biases.c_attn.len()
+                        + biases.attn_proj.len()
+                        + biases.ffn_up.len()
+                        + biases.ffn_down.len()
+                })
+                .sum::<usize>();
+        assert!(2 * public_i16 < 1_000_000);
+        profile.model.layers[0].0.c_attn.push(1);
+        assert!(profile.validate_layout().is_err());
     }
 
     #[test]

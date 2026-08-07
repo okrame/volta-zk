@@ -33,8 +33,8 @@ pub use layer::{
 pub use luts::{build_luts, LutParams, Luts};
 pub use model::{
     forward_model, forward_model_tokens, forward_model_tokens_with_backend,
-    forward_model_with_backend, load_model, synthetic_model, Gpt2Model, ModelWitness, L, NPOS,
-    VOCAB,
+    forward_model_with_backend, load_model, synthetic_model, Gpt2Model, Gpt2VerifierModel,
+    ModelWitness, P5Params, L, NPOS, VOCAB,
 };
 pub use resident::{
     band_model_witness_resident, forward_model_tokens_resident, upload_resident_model,

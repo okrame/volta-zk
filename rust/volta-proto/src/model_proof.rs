@@ -94,9 +94,9 @@ use volta_accel::{
 };
 use volta_field::{Fp, Fp2};
 use volta_gpt2::{
-    BandModelWitness, ConfigBinding, Gpt2Model, LayerI16Field, ModelWeightField, ModelWitness,
-    ResidentBandModelWitness, ResidentGpt2Model, ResidentLayerView, ResidentModelWitness, D, H, L,
-    NPOS, VOCAB,
+    BandModelWitness, ConfigBinding, Gpt2Model, Gpt2VerifierModel, LayerI16Field, Luts,
+    ModelConfig, ModelWeightField, ModelWitness, P5Params, ResidentBandModelWitness,
+    ResidentGpt2Model, ResidentLayerView, ResidentModelWitness, D, H, L, NPOS, VOCAB,
 };
 use volta_mac::{
     CorrCounters, CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey,
@@ -417,15 +417,15 @@ pub struct ModelOutV {
 
 /// The model's expected table-content set, from PUBLIC parameters (per-layer
 /// shift overrides, seam shifts, embed shift). Both parties derive it.
-pub fn model_content_keys(model: &Gpt2Model) -> BTreeSet<TableKey> {
+fn model_content_keys_from(p: &P5Params, luts: &Luts) -> BTreeSet<TableKey> {
     let mut keys = BTreeSet::new();
     for l in 0..L {
-        let mut luts_l = model.luts.clone();
-        luts_l.params.shift_attn_proj = model.p.shift_attn_proj[l];
-        luts_l.params.shift_ffn_down = model.p.shift_ffn_down[l];
+        let mut luts_l = luts.clone();
+        luts_l.params.shift_attn_proj = p.shift_attn_proj[l];
+        luts_l.params.shift_ffn_down = p.shift_ffn_down[l];
         layer_content_keys(&luts_l, &mut keys);
     }
-    for &shift in &model.p.seam_shifts[..L - 1] {
+    for &shift in &p.seam_shifts[..L - 1] {
         if shift > 0 {
             let (k, k1) = range_keys(shift);
             keys.insert(k);
@@ -434,12 +434,16 @@ pub fn model_content_keys(model: &Gpt2Model) -> BTreeSet<TableKey> {
             }
         }
     }
-    let (ke, ke1) = range_keys(model.p.shift_embed as u32);
+    let (ke, ke1) = range_keys(p.shift_embed as u32);
     keys.insert(ke);
     if let Some(k1) = ke1 {
         keys.insert(k1);
     }
     keys
+}
+
+pub fn model_content_keys(model: &Gpt2Model) -> BTreeSet<TableKey> {
+    model_content_keys_from(&model.p, &model.luts)
 }
 
 struct ResidentEmbedP1 {
@@ -4236,8 +4240,46 @@ fn private_argmax_public_layout(
     Some((phases, public_tokens))
 }
 
+#[derive(Clone, Copy)]
+struct Gpt2VerifierView<'a> {
+    schedule_model: &'a Gpt2Model,
+    config: &'a ModelConfig,
+    p: &'a P5Params,
+    luts: &'a Luts,
+    lnf_gain: &'a [i16],
+    lnf_bias: &'a [i16],
+    layout_valid: bool,
+}
+
+impl<'a> Gpt2VerifierView<'a> {
+    fn full(model: &'a Gpt2Model) -> Self {
+        Self {
+            schedule_model: model,
+            config: &model.config,
+            p: &model.p,
+            luts: &model.luts,
+            lnf_gain: &model.lnf_gain,
+            lnf_bias: &model.lnf_bias,
+            layout_valid: model.validate_layout().is_ok(),
+        }
+    }
+
+    fn slim(model: &'a Gpt2VerifierModel) -> Self {
+        let schedule_model = model.schedule_model();
+        Self {
+            schedule_model,
+            config: &schedule_model.config,
+            p: &schedule_model.p,
+            luts: &schedule_model.luts,
+            lnf_gain: &schedule_model.lnf_gain,
+            lnf_bias: &schedule_model.lnf_bias,
+            layout_valid: model.validate_layout().is_ok(),
+        }
+    }
+}
+
 fn preflight_verify_response_public(
-    model: &Gpt2Model,
+    model: &Gpt2VerifierView<'_>,
     t: usize,
     logits: &[i64],
     chunks: &[ChunkPub<'_>],
@@ -4257,8 +4299,7 @@ fn preflight_verify_response_public(
         || t > model.p.tokens.len()
         || model.config.binding != ConfigBinding::LegacyImplicit
         || !model.config.is_legacy_gpt2_geometry()
-        || model.validate_layout().is_err()
-        || model.layers.len() != L
+        || !model.layout_valid
         || (!private_logits && logits.len() != VOCAB)
         || (private_logits && (!logits.is_empty() || chunks.is_empty()))
         || chunks.len() > MAX_RESPONSE_CHUNKS
@@ -4341,7 +4382,7 @@ fn preflight_verify_response_public(
     // `TableBankV::finalize` expands keys incrementally. Validate its entire
     // public shape here so a later table mismatch cannot leave a half-used
     // verifier context.
-    let mut expected_tables = model_content_keys(model);
+    let mut expected_tables = model_content_keys_from(model.p, model.luts);
     if private_logits {
         expected_tables.insert(TableKey::Range(16));
     }
@@ -4368,8 +4409,9 @@ pub fn verify_response(
     vc: &mut VerifierCtx,
     tx: &mut Transcript,
 ) -> Option<(ModelOutV, ProdKeyTriples, Vec<VerifierKey>)> {
+    let model = Gpt2VerifierView::full(model);
     let mut cache_mode = ResponseVerifierCacheMode::Legacy(std::marker::PhantomData);
-    verify_response_impl(model, t, logits, chunks, proof, vc, tx, false, &mut cache_mode)
+    verify_response_impl(&model, t, logits, chunks, proof, vc, tx, false, &mut cache_mode)
 }
 
 pub fn verify_response_private_logits(
@@ -4380,16 +4422,75 @@ pub fn verify_response_private_logits(
     vc: &mut VerifierCtx,
     tx: &mut Transcript,
 ) -> Option<(ModelOutV, ProdKeyTriples, Vec<VerifierKey>)> {
+    let model = Gpt2VerifierView::full(model);
     let views: Vec<ChunkPub<'_>> =
         chunks.iter().map(|chunk| ChunkPub { q: chunk.q, logits: &[], seq: chunk.seq }).collect();
     let mut cache_mode = ResponseVerifierCacheMode::Legacy(std::marker::PhantomData);
-    verify_response_impl(model, t, &[], &views, proof, vc, tx, true, &mut cache_mode)
+    verify_response_impl(&model, t, &[], &views, proof, vc, tx, true, &mut cache_mode)
 }
 
 #[cfg(feature = "c6-trace")]
 #[allow(clippy::too_many_arguments, dead_code)]
 pub(crate) fn verify_response_c6_cache_inline(
     model: &Gpt2Model,
+    t: usize,
+    logits: &[i64],
+    chunks: &[ChunkPub],
+    proof: &ModelProof,
+    vc: &mut VerifierCtx,
+    secondary: &mut VerifierCtx,
+    schedule_follower: &mut C6SourceScheduleVerifierFollower,
+    target_cursor: &mut C6CacheFoldTargetInlineVerifier<'_>,
+    tx: &mut Transcript,
+) -> Option<(ModelOutV, ProdKeyTriples, C6GrandResidualVerifierRoots, C6CacheFoldOnlineLayerMetrics)>
+{
+    verify_response_c6_cache_inline_view(
+        Gpt2VerifierView::full(model),
+        t,
+        logits,
+        chunks,
+        proof,
+        vc,
+        secondary,
+        schedule_follower,
+        target_cursor,
+        tx,
+    )
+}
+
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments, dead_code)]
+pub(crate) fn verify_response_c6_cache_inline_from_profile(
+    model: &Gpt2VerifierModel,
+    t: usize,
+    logits: &[i64],
+    chunks: &[ChunkPub],
+    proof: &ModelProof,
+    vc: &mut VerifierCtx,
+    secondary: &mut VerifierCtx,
+    schedule_follower: &mut C6SourceScheduleVerifierFollower,
+    target_cursor: &mut C6CacheFoldTargetInlineVerifier<'_>,
+    tx: &mut Transcript,
+) -> Option<(ModelOutV, ProdKeyTriples, C6GrandResidualVerifierRoots, C6CacheFoldOnlineLayerMetrics)>
+{
+    verify_response_c6_cache_inline_view(
+        Gpt2VerifierView::slim(model),
+        t,
+        logits,
+        chunks,
+        proof,
+        vc,
+        secondary,
+        schedule_follower,
+        target_cursor,
+        tx,
+    )
+}
+
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+fn verify_response_c6_cache_inline_view(
+    model: Gpt2VerifierView<'_>,
     t: usize,
     logits: &[i64],
     chunks: &[ChunkPub],
@@ -4411,7 +4512,7 @@ pub(crate) fn verify_response_c6_cache_inline(
         metrics: C6CacheFoldOnlineLayerMetrics::default(),
     };
     let (out, prod, zero) =
-        verify_response_impl(model, t, logits, chunks, proof, vc, tx, false, &mut cache_mode)?;
+        verify_response_impl(&model, t, logits, chunks, proof, vc, tx, false, &mut cache_mode)?;
     let ResponseVerifierCacheMode::C6 { metrics, .. } = cache_mode else {
         unreachable!("C6 response verifier mode changed during execution")
     };
@@ -4435,6 +4536,62 @@ pub fn verify_response_private_logits_c6_cache_inline(
     tx: &mut Transcript,
 ) -> Option<(ModelOutV, ProdKeyTriples, C6GrandResidualVerifierRoots, C6CacheFoldOnlineLayerMetrics)>
 {
+    verify_response_private_logits_c6_cache_inline_view(
+        Gpt2VerifierView::full(model),
+        t,
+        chunks,
+        proof,
+        vc,
+        secondary,
+        schedule_follower,
+        target_cursor,
+        tx,
+    )
+}
+
+/// C6.1 disk-verifier entry point. The client profile contains no committed
+/// layer, embedding or output-head matrices.
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+pub fn verify_response_private_logits_c6_cache_inline_from_profile(
+    model: &Gpt2VerifierModel,
+    t: usize,
+    chunks: &[PrivateChunkPub<'_>],
+    proof: &ModelProof,
+    vc: &mut VerifierCtx,
+    secondary: &mut VerifierCtx,
+    schedule_follower: &mut C6SourceScheduleVerifierFollower,
+    target_cursor: &mut C6CacheFoldTargetInlineVerifier<'_>,
+    tx: &mut Transcript,
+) -> Option<(ModelOutV, ProdKeyTriples, C6GrandResidualVerifierRoots, C6CacheFoldOnlineLayerMetrics)>
+{
+    verify_response_private_logits_c6_cache_inline_view(
+        Gpt2VerifierView::slim(model),
+        t,
+        chunks,
+        proof,
+        vc,
+        secondary,
+        schedule_follower,
+        target_cursor,
+        tx,
+    )
+}
+
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+fn verify_response_private_logits_c6_cache_inline_view(
+    model: Gpt2VerifierView<'_>,
+    t: usize,
+    chunks: &[PrivateChunkPub<'_>],
+    proof: &ModelProof,
+    vc: &mut VerifierCtx,
+    secondary: &mut VerifierCtx,
+    schedule_follower: &mut C6SourceScheduleVerifierFollower,
+    target_cursor: &mut C6CacheFoldTargetInlineVerifier<'_>,
+    tx: &mut Transcript,
+) -> Option<(ModelOutV, ProdKeyTriples, C6GrandResidualVerifierRoots, C6CacheFoldOnlineLayerMetrics)>
+{
     if chunks.len() != 1 {
         return None;
     }
@@ -4447,7 +4604,7 @@ pub fn verify_response_private_logits_c6_cache_inline(
         metrics: C6CacheFoldOnlineLayerMetrics::default(),
     };
     let (out, prod, zero) =
-        verify_response_impl(model, t, &[], &views, proof, vc, tx, true, &mut cache_mode)?;
+        verify_response_impl(&model, t, &[], &views, proof, vc, tx, true, &mut cache_mode)?;
     let ResponseVerifierCacheMode::C6 { metrics, .. } = cache_mode else {
         unreachable!("C6 private-logit verifier mode changed during execution")
     };
@@ -4456,7 +4613,7 @@ pub fn verify_response_private_logits_c6_cache_inline(
 
 #[allow(clippy::too_many_arguments)]
 fn verify_response_impl(
-    model: &Gpt2Model,
+    model: &Gpt2VerifierView<'_>,
     t: usize,
     logits: &[i64],
     chunks: &[ChunkPub],
@@ -4670,7 +4827,7 @@ fn verify_response_impl(
     // End of phase 1: expand the per-content multiplicity keys against the
     // PUBLIC expected content set, draw the shared αs, then register the
     // already validated response manifest.
-    let mut expected = model_content_keys(model);
+    let mut expected = model_content_keys_from(model.p, model.luts);
     if private_logits {
         expected.insert(TableKey::Range(16));
     }
@@ -4704,7 +4861,7 @@ fn verify_response_impl(
         proof.seams.iter().map(|seam| seam.as_ref().map(|seam| &seam.inst)).collect();
     let scheduled = match cache_mode {
         ResponseVerifierCacheMode::Legacy(_) => verify_layers_thinned_scheduled(
-            model,
+            model.schedule_model,
             &proof.layers,
             &seam_instances,
             layer_v1s,
@@ -4719,7 +4876,7 @@ fn verify_response_impl(
         ResponseVerifierCacheMode::C6 { secondary, schedule_follower, target_cursor, metrics } => {
             let c6_prefixes: Vec<Vec<C6KvPrefixSource>> = (0..L).map(|_| Vec::new()).collect();
             let (scheduled, phase_metrics) = verify_layers_thinned_scheduled_c6(
-                model,
+                model.schedule_model,
                 &proof.layers,
                 &seam_instances,
                 layer_v1s,
@@ -4784,8 +4941,8 @@ fn verify_response_impl(
     verify_ln_chain(
         t_ln,
         s_ln,
-        &model.lnf_gain,
-        &model.lnf_bias,
+        model.lnf_gain,
+        model.lnf_bias,
         &row_keys,
         &lvk_f,
         &proof.final_ln.ln,
@@ -4900,7 +5057,7 @@ fn verify_response_impl(
                 cp.seams.iter().map(|seam| seam.as_ref().map(|seam| &seam.inst)).collect();
             let scheduled = match cache_mode {
                 ResponseVerifierCacheMode::Legacy(_) => verify_layers_thinned_scheduled(
-                    model,
+                    model.schedule_model,
                     &cp.layers,
                     &seam_instances,
                     v1c.layer_v1s,
@@ -4932,7 +5089,7 @@ fn verify_response_impl(
                         })
                         .collect::<Vec<_>>();
                     let (scheduled, phase_metrics) = verify_layers_thinned_scheduled_c6(
-                        model,
+                        model.schedule_model,
                         &cp.layers,
                         &seam_instances,
                         v1c.layer_v1s,
@@ -4983,8 +5140,8 @@ fn verify_response_impl(
             verify_ln_chain(
                 q,
                 s_lnf,
-                &model.lnf_gain,
-                &model.lnf_bias,
+                model.lnf_gain,
+                model.lnf_bias,
                 &band_boundary_keys[L - 1].1,
                 &v1c.fin_lvk,
                 &cp.fin_ln,

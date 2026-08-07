@@ -46,9 +46,10 @@ use crate::c6_source::{
 use crate::logup::Doms;
 use crate::model_proof::{
     prove_response_c6_cache_inline, prove_response_private_logits_c6_cache_inline,
-    verify_response_c6_cache_inline, verify_response_private_logits_c6_cache_inline,
-    C6GrandResidualProverRoots, C6GrandResidualVerifierRoots, ChunkPub, ChunkRef, ModelOut,
-    ModelOutV, ModelProof, PrivateChunkPub,
+    verify_response_c6_cache_inline_from_profile,
+    verify_response_private_logits_c6_cache_inline_from_profile, C6GrandResidualProverRoots,
+    C6GrandResidualVerifierRoots, ChunkPub, ChunkRef, ModelOut, ModelOutV, ModelProof,
+    PrivateChunkPub,
 };
 use crate::model_proof_codec::{decode_model_proof_canonical, encode_model_proof_canonical};
 use crate::prod_check::{prod_batch_prover, prod_batch_verify, ProdProof};
@@ -635,6 +636,7 @@ pub fn build_c6_t1_production_response_owner(
         product_mask_sources,
     )
     .map_err(|error| error.to_string())?;
+    let verifier_model = volta_gpt2::Gpt2VerifierModel::from_model(model)?;
 
     let (
         verifier_output,
@@ -667,8 +669,8 @@ pub fn build_c6_t1_production_response_owner(
         let cache_trace = begin_c6_cache_fold_trace(C6CacheFoldParty::Verifier)
             .map_err(|error| error.to_string())?;
         let (output, product_keys, zero_roots, metrics) =
-            verify_response_private_logits_c6_cache_inline(
-                model,
+            verify_response_private_logits_c6_cache_inline_from_profile(
+                &verifier_model,
                 prefill.t,
                 &public,
                 &model_proof,
@@ -1134,6 +1136,7 @@ fn build_c6_response_residual_fixture_with_geometry(
     let proof =
         decode_model_proof_canonical(&encode_model_proof_canonical(&proof).map_err(trace_error)?)
             .map_err(trace_error)?;
+    let verifier_model = volta_gpt2::Gpt2VerifierModel::from_model(&model).map_err(trace_error)?;
 
     let verifier_start = Instant::now();
     let mut primary_verifier = VerifierCtx::new(primary_seed, deltas[0]);
@@ -1154,8 +1157,8 @@ fn build_c6_response_residual_fixture_with_geometry(
     let verifier_trace_guard =
         begin_c6_cache_fold_trace(C6CacheFoldParty::Verifier).map_err(trace_error)?;
     let (verifier_out, product_keys, verifier_residual_roots, verifier_metrics) =
-        verify_response_c6_cache_inline(
-            &model,
+        verify_response_c6_cache_inline_from_profile(
+            &verifier_model,
             RESPONSE_T,
             &prefill.logits,
             &chunks_v,

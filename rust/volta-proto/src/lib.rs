@@ -171,7 +171,8 @@ pub use model_proof::{
 #[cfg(feature = "c6-trace")]
 pub use model_proof::{
     prove_response_private_logits_c6_cache_inline, verify_response_private_logits_c6_cache_inline,
-    C6GrandResidualProverRoots, C6GrandResidualVerifierRoots,
+    verify_response_private_logits_c6_cache_inline_from_profile, C6GrandResidualProverRoots,
+    C6GrandResidualVerifierRoots,
 };
 pub use model_proof_codec::{
     decode_model_proof_canonical, encode_model_proof_canonical, ModelProofCodecError,

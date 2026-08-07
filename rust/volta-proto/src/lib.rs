@@ -92,7 +92,9 @@ pub use c6_residual::{
     C6ResidualAtomicRelationStatement, C6ResidualAtomicReplaySummary,
     C6ResidualAtomicWeightSchedule, C6ResidualAuxiliaryLane, C6ResidualAuxiliaryWitnessCensus,
     C6ResidualBaseShareContext, C6ResidualBuilder, C6ResidualCensus, C6ResidualClaimsBoundContext,
-    C6ResidualClosureWitnessCensus, C6ResidualDigest, C6ResidualEqualityAffineRangeSum,
+    C6ResidualClosureWitnessCensus, C6ResidualDigest, C6ResidualDirectAlphaPoints,
+    C6ResidualDirectEqualityPoints, C6ResidualDirectPostClaimPoints,
+    C6ResidualDirectScheduleDimensions, C6ResidualEqualityAffineRangeSum,
     C6ResidualError, C6ResidualFoldedTerminalAdjointReference,
     C6ResidualFoldedTerminalDirectReduction, C6ResidualFusedCoefficientAllocationTracker,
     C6ResidualFusedCoefficientArena, C6ResidualFusedCoefficientFamily,
@@ -127,9 +129,10 @@ pub use c6_response_envelope::{
 pub use c6_response_fixture::{
     build_c6_response_residual_fixture, build_c6_response_residual_fixture_production_geometry,
     build_c6_t1_production_response_owner, c6_gpt2_native_target_profile,
-    C6ResponseResidualCensus, C6ResponseResidualFixture,
+    prepare_c6_t1_production_residual_owner, C6ResponseResidualCensus, C6ResponseResidualFixture,
     C6ResponseResidualProviderInputs, C6ResponseResidualTiming, C6ResponseResidualVerifierInputs,
-    C6T1InstalledRoleOwner, C6T1ProductionResponseOwner,
+    C6T1InstalledRoleOwner, C6T1ProductionResidualBoundOwner, C6T1ProductionResidualOwner,
+    C6T1ProductionResponseOwner,
 };
 pub use c6_source::{
     replay_c6_source_coordinate, C6PairedSourceWitness, C6SourceCoordinate, C6SourceDigest,

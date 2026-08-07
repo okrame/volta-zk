@@ -34,9 +34,10 @@ use crate::c6_production_pcg::{C6ProductionPairedPcgAttempt, C6ProductionPairedS
 use crate::c6_residual::{
     C6CompiledLinearResidual, C6CompiledNativeTargetFunctional,
     C6InstalledClosureEvaluationMemoryCensus, C6PairedResidualAuxiliaryWitness,
-    C6PairedResidualClosureWitness, C6PairedResidualLeafWitness, C6ResidualError,
-    C6ResidualFusedWitnessView, C6ResidualRelationChallenges, C6ResidualRelationManifest,
-    C6ResidualRelationRootBound, C6ResidualRetainedChallenges, C6_RESIDUAL_TRACE_FIXTURE_LOCK,
+    C6PairedResidualClosureWitness, C6PairedResidualLeafWitness, C6ResidualDirectAlphaPoints,
+    C6ResidualDirectPostClaimPoints, C6ResidualError, C6ResidualFusedWitnessView,
+    C6ResidualRelationChallenges, C6ResidualRelationManifest, C6ResidualRelationRootBound,
+    C6ResidualRetainedChallenges, C6_RESIDUAL_TRACE_FIXTURE_LOCK,
 };
 use crate::c6_source::{
     C6PairedSourceWitness, C6SourceCoordinate, C6SourceScheduleProverFollower,
@@ -155,6 +156,132 @@ impl C6T1InstalledRoleOwner {
     }
 }
 
+/// Production response continuation before the six wrapper roots are fixed.
+/// The zero challenge is drawn in lockstep from the already-live response
+/// transcripts; callers cannot inject it or rebuild the residual witness from
+/// a detached runtime.  Direct-MLE points remain unavailable until a PCS root
+/// token is supplied to [`Self::bind_direct_relation`].
+pub struct C6T1ProductionResidualOwner {
+    response: C6T1ProductionResponseOwner,
+    manifest: C6ResidualRelationManifest,
+    retained: C6ResidualRetainedChallenges,
+    provider_linear: C6CompiledLinearResidual,
+    verifier_linear: C6CompiledLinearResidual,
+    leaf: C6PairedResidualLeafWitness,
+    closure: C6PairedResidualClosureWitness,
+    auxiliary: C6PairedResidualAuxiliaryWitness,
+    closure_memory: C6InstalledClosureEvaluationMemoryCensus,
+}
+
+/// Same owners after the fixed-root token and both ordered direct-MLE
+/// challenge families have closed the response-dependent relation.
+pub struct C6T1ProductionResidualBoundOwner {
+    response: C6T1ProductionResponseOwner,
+    provider_linear: C6CompiledLinearResidual,
+    verifier_linear: C6CompiledLinearResidual,
+    relation: C6ResidualRelationChallenges,
+    leaf: C6PairedResidualLeafWitness,
+    closure: C6PairedResidualClosureWitness,
+    auxiliary: C6PairedResidualAuxiliaryWitness,
+    closure_memory: C6InstalledClosureEvaluationMemoryCensus,
+}
+
+impl C6T1ProductionResidualOwner {
+    pub fn response(&self) -> &C6T1ProductionResponseOwner {
+        &self.response
+    }
+
+    pub fn manifest(&self) -> &C6ResidualRelationManifest {
+        &self.manifest
+    }
+
+    pub fn leaf(&self) -> &C6PairedResidualLeafWitness {
+        &self.leaf
+    }
+
+    pub fn closure(&self) -> &C6PairedResidualClosureWitness {
+        &self.closure
+    }
+
+    pub fn auxiliary(&self) -> &C6PairedResidualAuxiliaryWitness {
+        &self.auxiliary
+    }
+
+    pub fn closure_memory_census(&self) -> C6InstalledClosureEvaluationMemoryCensus {
+        self.closure_memory
+    }
+
+    pub fn bind_direct_relation(
+        self,
+        root: C6ResidualRelationRootBound,
+        alpha: C6ResidualDirectAlphaPoints,
+        postclaim: C6ResidualDirectPostClaimPoints,
+    ) -> Result<C6T1ProductionResidualBoundOwner, C6ResidualError> {
+        if root.manifest() != &self.manifest {
+            return Err(C6ResidualError::new(
+                "C6 production residual root token differs from its same-pass manifest",
+            ));
+        }
+        let relation = root
+            .release_direct_alpha_points(self.retained, alpha)?
+            .commit_public_claims_from_live(
+                self.response.provider().operation_plan(),
+                &self.provider_linear,
+                &self.leaf,
+                &self.auxiliary,
+            )?
+            .release_direct_postclaim_points(
+                self.response.provider().operation_plan(),
+                postclaim,
+            )?;
+        relation.validate_installed_operation_plan(self.response.verifier().operation_plan())?;
+        Ok(C6T1ProductionResidualBoundOwner {
+            response: self.response,
+            provider_linear: self.provider_linear,
+            verifier_linear: self.verifier_linear,
+            relation,
+            leaf: self.leaf,
+            closure: self.closure,
+            auxiliary: self.auxiliary,
+            closure_memory: self.closure_memory,
+        })
+    }
+}
+
+impl C6T1ProductionResidualBoundOwner {
+    pub fn response(&self) -> &C6T1ProductionResponseOwner {
+        &self.response
+    }
+
+    pub fn provider_linear(&self) -> &C6CompiledLinearResidual {
+        &self.provider_linear
+    }
+
+    pub fn verifier_linear(&self) -> &C6CompiledLinearResidual {
+        &self.verifier_linear
+    }
+
+    pub fn relation(&self) -> &C6ResidualRelationChallenges {
+        &self.relation
+    }
+
+    pub fn leaf(&self) -> &C6PairedResidualLeafWitness {
+        &self.leaf
+    }
+
+    pub fn closure(&self) -> &C6PairedResidualClosureWitness {
+        &self.closure
+    }
+
+    pub fn auxiliary(&self) -> &C6PairedResidualAuxiliaryWitness {
+        &self.auxiliary
+    }
+
+    pub fn closure_memory_census(&self) -> C6InstalledClosureEvaluationMemoryCensus {
+        self.closure_memory
+    }
+}
+
 /// Exact response owners exported before any public-compression chain is
 /// constructed. Nothing in this object is clonable or reconstructed from a
 /// digest: model claims, verifier keys, paired source witness, installed
@@ -244,6 +371,102 @@ impl C6T1ProductionResponseOwner {
     pub fn verifier_cache_metrics(&self) -> crate::c6_cache_fold::C6CacheFoldOnlineLayerMetrics {
         self.verifier_cache_metrics
     }
+}
+
+/// Consume the same-pass T1 response into the production-capacity residual
+/// witness before wrapper-root commitment.  The only new challenge is drawn
+/// from both continued transcripts and must agree; no seed or zero-root
+/// weight can be supplied by the provider-facing caller.
+pub fn prepare_c6_t1_production_residual_owner(
+    response: C6T1ProductionResponseOwner,
+    provider_transcript: &mut Transcript,
+    verifier_transcript: &mut Transcript,
+) -> Result<C6T1ProductionResidualOwner, C6ResidualError> {
+    if provider_transcript.ledger() != verifier_transcript.ledger()
+        || provider_transcript.total_bytes() != verifier_transcript.total_bytes()
+    {
+        return Err(C6ResidualError::new(
+            "C6 production residual continuation transcripts already differ",
+        ));
+    }
+    let provider_zero_challenge = provider_transcript.challenge_fp2();
+    let verifier_zero_challenge = verifier_transcript.challenge_fp2();
+    if provider_zero_challenge != verifier_zero_challenge {
+        return Err(C6ResidualError::new(
+            "C6 production residual zero challenge differs across roles",
+        ));
+    }
+
+    let manifest = C6ResidualRelationManifest::new_with_geometry(
+        response.provider().operation_plan(),
+        response.provider().extraction(),
+        response.provider().runtime(),
+        RESPONSE_PRODUCTION_LEAF_LOG2,
+        RESPONSE_PRODUCTION_AUXILIARY_LOG2,
+        true,
+    )?;
+    let verifier_manifest = C6ResidualRelationManifest::new_with_geometry(
+        response.verifier().operation_plan(),
+        response.verifier().extraction(),
+        response.verifier().runtime(),
+        RESPONSE_PRODUCTION_LEAF_LOG2,
+        RESPONSE_PRODUCTION_AUXILIARY_LOG2,
+        true,
+    )?;
+    if verifier_manifest != manifest {
+        return Err(C6ResidualError::new(
+            "C6 production residual manifests differ across installed roles",
+        ));
+    }
+    let product_challenges =
+        vec![response.product_challenge(); response.provider().operation_plan().products().len()];
+    let retained =
+        C6ResidualRetainedChallenges::new(&manifest, product_challenges, provider_zero_challenge)?;
+    let zero_weights =
+        retained.zero_weights(response.provider().operation_plan().zero_roots().len());
+    let provider_linear = C6CompiledLinearResidual::compile(
+        response.provider().operation_plan(),
+        response.provider().extraction(),
+        response.provider().runtime(),
+        &zero_weights,
+    )?;
+    let verifier_linear = C6CompiledLinearResidual::compile(
+        response.verifier().operation_plan(),
+        response.verifier().extraction(),
+        response.verifier().runtime(),
+        &zero_weights,
+    )?;
+    if provider_linear.linear_form_digest() != verifier_linear.linear_form_digest() {
+        return Err(C6ResidualError::new(
+            "C6 production residual linear forms differ across installed roles",
+        ));
+    }
+    let leaf = provider_linear.build_production_paired_residual_leaf_witness(
+        response.paired_sources(),
+        response.source_schedule(),
+    )?;
+    let closure_evaluation = provider_linear.evaluate_installed_paired_closure(
+        response.provider().operation_plan(),
+        response.provider().extraction(),
+        response.provider().runtime(),
+        response.paired_sources().source(),
+        response.source_schedule(),
+    )?;
+    let closure_memory = closure_evaluation.memory_census();
+    let closure = closure_evaluation.into_closure();
+    let auxiliary = closure.transpose_auxiliary_lanes()?;
+    C6ResidualFusedWitnessView::new(&manifest, &leaf, &closure, &auxiliary)?;
+    Ok(C6T1ProductionResidualOwner {
+        response,
+        manifest,
+        retained,
+        provider_linear,
+        verifier_linear,
+        leaf,
+        closure,
+        auxiliary,
+        closure_memory,
+    })
 }
 
 /// Execute the frozen private-logit response once under the already allocated

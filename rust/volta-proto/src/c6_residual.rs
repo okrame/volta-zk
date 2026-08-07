@@ -2112,6 +2112,17 @@ impl C6ResidualRelationChallenges {
         self.digest
     }
 
+    /// Validate the complete relation against an independently installed
+    /// operation plan. Production role joins use this before releasing a
+    /// verifier/compiler owner; it does not require materialized witness
+    /// tables or expose private schedule fields.
+    pub fn validate_installed_operation_plan(
+        &self,
+        operation_plan: &C6InstalledOperationPlan,
+    ) -> C6ResidualResult<()> {
+        self.validate(operation_plan)
+    }
+
     /// Validate the response-dependent relation state against the compact
     /// verifier setup boundary.  This checks every internal schedule and the
     /// terminal projection without requiring the 64-MB installed operation

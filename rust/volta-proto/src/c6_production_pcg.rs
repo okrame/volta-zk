@@ -134,6 +134,14 @@ impl C6BoundProductionVerifierReplay {
     pub fn certificate_digest(&self) -> [u8; 32] {
         self.certificate_digest
     }
+
+    pub fn setup_manifest_digest(&self) -> [u8; 32] {
+        self.owner.setup_manifest_digest
+    }
+
+    pub fn statement_digest(&self) -> [u8; 32] {
+        self.owner.statement_digest
+    }
 }
 
 struct ReplayWriter(Vec<u8>);

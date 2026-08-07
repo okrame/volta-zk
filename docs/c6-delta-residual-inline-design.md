@@ -3820,6 +3820,44 @@ The §0.55 owner GO remains valid after these local gates pass. Its verifier
 policy is unchanged: only verifier time has `4T` and diagnostic `maxT(N)`
 measurements; provider time has one A100 full-chain `<15 s` gate.
 
+### 0.57 Disk-verifier private-digest obstruction
+
+The first campaign-boundary checkpoints add canonical create-new persistence,
+a client-private replay of the two verifier key pools, a redacted verifier
+model, a model-independent public workload instance and a verifier-only replay
+of the retained model/ProductClosure response. C6FT1 now has a strict public
+decoder which fixes its statement and corrections before the response trace,
+then binds the runtime identity independently reconstructed by that trace. It
+adds no wire identity copy. Focused campaign and C6FT1 checks are `3/0/0` and
+`4/0/0`; the feature build is green.
+
+Continuing the disk verifier exposes a statement preimage which the local
+same-attempt verifier had hidden. `C6Nbr2CorrectionFunctional::new` requires
+both `residual_view_digest` and `paired_source_digest`. They are calculated
+from prover-only residual/source witnesses and retained by the provider
+live-root typestate. Neither digest is derivable from the six commitment roots
+or the replay key pools, and neither is encoded in the certificate. Allowing a
+disk verifier to accept provider-supplied values would be digest-as-proof;
+reconstructing the provider witness would violate role separation.
+
+The active hard stop is `C6NBR2_DISK_VERIFIER_PRIVATE_DIGEST_OBSTRUCTED`. A
+favorable wire-neutral repair appears available but is not yet authorized:
+`C6PersistedLiveWrapperRootBinding` already computes one
+`source_binding_digest` over the residual-view digest, paired-source digest,
+fixed roots, cache/profile binding and mask-seed commitment. The historical C6
+outer frame also appears to retain one 32-byte wrapper field after mapping the
+two cache roots through `old_head/new_head` and the four non-cache production
+cohort roots. An exact amendment could bind the combined source digest in that
+existing allocation and replace the two verifier-inaccessible NBR2 statement
+inputs with it, preserving certificate length.
+
+Before implementation, the owner must approve that amendment. Resume then
+requires an exact field map proving no existing relation is displaced, a
+typed-statement and challenge-order audit, additive Lean/hash-binding audit,
+strict mutation tests, and a fresh byte/soundness/time/state re-sum. The pod
+must not be contacted before those local gates and the complete disk verifier
+are green. The §0.55 one-campaign GO otherwise remains valid.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

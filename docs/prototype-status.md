@@ -8,33 +8,42 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §0.56 next.
+This capsule is authoritative; read design §0.57 next.
 
-- **Milestone.** C6.1/C6NBR2 exact protocol join is closed locally; the A100
-  campaign harness is not. The tape-1 correction reuses paired-residual slot 6
-  with zero added wire, roots, openings or correlations.
-- **Evidence versus credit.** The persisted/CUDA preparer and public runner
-  sequence C6PA2, C6NBR2 receipt, joint tail and cross-binding without replay.
-  Focused coordinator checks are **3/0/0**;
-  feature-complete PCS is **273/0/2 + 5/0/0**, and ordinary workspace is green,
-  including PCS **226/0/1**, proto **156/0/1** and bench **32/0/0**. No
-  production CUDA runtime, full-chain, timing, memory or hardware credit exists.
-- **Screens.** v27 preserves certificate **17,536,735 B**, setup
-  **148,738,118 B**, setup+first **166,274,853 B**, state **2,277,715,552 B**
-  and soundness **102.5878332989 bits/cert**. Provider/verifier screens are
-  **14.9179595454 / 4.978261758 s**, leaving only **0.0820404546 /
-  0.021738242 s**; all are `credit:false`.
-- **Authorization and active gate.** Owner GO for one create-new clean A100
-  campaign remains valid. The A100/128-CPU pod passes preflight, but source
-  audit found no full-chain binary, complete artifact or disk verifier. Gate:
-  `C6NBR2_A100_CAMPAIGN_HARNESS_REQUIRED`; no further pod work before its local
-  codec, mutation, backend and create-new gates pass.
-- **Measurement policy.** For verifier time only, measure the same artifact at
-  `4T` (`<5 s` gate; `5--6 s` failure context) and `maxT(N)` (diagnostic only).
-  Gate
-  provider `<15 s`, wire `<22 MB`, and every frozen setup, state, soundness and
-  session limit. Only an eligible record may update the comparison and close
-  C6.1.
+- **Milestone/evidence.** C6.1/C6NBR2 exact join remains closed locally. Strict
+  create-new campaign artifact, redacted verifier profile, private replay,
+  public instance, retained-response replay and unbound-then-trace-bound C6FT1
+  decoding are implemented through `3988afb`; focused new checks are **3/0/0 +
+  4/0/0**. No production CUDA/full-chain/timing/memory/hardware credit exists.
+- **Screens.** Certificate **17,536,735 B**, setup **148,738,118 B**,
+  setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
+  **102.5878332989 bits/cert**, and provider/verifier **14.9179595454 /
+  4.978261758 s** remain `credit:false`.
+- **Hard stop.** `C6NBR2_DISK_VERIFIER_PRIVATE_DIGEST_OBSTRUCTED`: the NBR2
+  statement requires prover-only residual-view and paired-source digests.
+  A disk verifier cannot reconstruct them, and accepting supplied values is
+  digest-as-proof. No pod contact is permitted.
+- **Authorization/resume.** Existing one-campaign owner GO remains valid after
+  an owner-approved exact binding repair, statement/Lean audit, zero-wire
+  re-sum, disk-verifier negative tests and full local gates. Candidate: carry
+  the already derived combined source-binding digest in an existing 32-B
+  envelope allocation, with no certificate growth.
+- **Measurement policy.** Only verifier time has official `4T <5 s` and
+  diagnostic `maxT(N)`; provider has one full-chain A100 `<15 s` gate.
+
+- **2026-08-06 — Disk-verifier audit exposes prover-private NBR2 binding.**
+  Checkpoints `e49ebce`, `93ca29b` and `3988afb` add a strict create-new
+  campaign directory, exact client replay codecs and verifier-only retained
+  response replay. The next verifier stage cannot construct the current
+  `C6Nbr2CorrectionFunctional`: its `residual_view_digest` and
+  `paired_source_digest` are held only by the provider live-root typestate and
+  are neither derivable from the six roots nor encoded for the client.
+  Supplying them as unauthenticated metadata would be digest-as-proof. The
+  live-root materializer already computes one `source_binding_digest` over
+  both values and the fixed roots; mapping it into an existing 32-B outer
+  allocation appears wire-neutral but changes the typed statement and needs
+  owner approval plus Lean/byte/soundness audit. New hard stop:
+  `C6NBR2_DISK_VERIFIER_PRIVATE_DIGEST_OBSTRUCTED`. No pod contacted.
 
 - **2026-08-06 — Owner GO for one exact A100 campaign.** One create-new
   C6PA2/C6NBR2 full-chain run is authorized on the supplied A100 endpoint with

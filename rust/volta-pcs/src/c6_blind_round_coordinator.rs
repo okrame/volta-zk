@@ -69,7 +69,7 @@ use volta_proto::c6_cache_fold::{
 };
 use volta_proto::{C6ResidualFusedCoefficientArena, C6ResidualFusedWitnessView};
 
-use crate::c6_live_wrapper::C6PersistedLiveWrapperRootBinding;
+use crate::c6_live_wrapper::{C6PersistedLiveWrapperRootBinding, C6VerifierLiveWrapperRootBinding};
 use crate::c6_wrapper_persisted::C6PersistedCacheSemanticReader;
 use volta_accel::Backend;
 
@@ -483,7 +483,7 @@ pub fn prove_c6_production_blind_components<'a>(
 /// replay or fixed-DAG-node substitute is admitted here.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn verify_c6_exact_production_proof(
-    roots: &C6PersistedLiveWrapperRootBinding,
+    roots: &C6VerifierLiveWrapperRootBinding,
     cache_statement_digest: [u8; 32],
     cache_snapshot: &C6CacheFoldTraceSnapshot,
     cache_targets: &C6CacheFoldPairedVerifierTargets,
@@ -535,7 +535,7 @@ pub(crate) fn verify_c6_exact_production_proof(
 #[cfg(feature = "c61-p3-authenticated-reference")]
 #[allow(clippy::too_many_arguments)]
 pub fn verify_c6_exact_production_nbr2_proof(
-    roots: &C6PersistedLiveWrapperRootBinding,
+    roots: &C6VerifierLiveWrapperRootBinding,
     cache_statement_digest: [u8; 32],
     cache_snapshot: &C6CacheFoldTraceSnapshot,
     cache_targets: &C6CacheFoldPairedVerifierTargets,
@@ -597,7 +597,7 @@ pub fn verify_c6_exact_production_nbr2_proof(
 #[cfg(feature = "c61-p3-authenticated-reference")]
 #[allow(clippy::too_many_arguments)]
 pub fn verify_c6_exact_production_nbr2_certificate(
-    roots: &C6PersistedLiveWrapperRootBinding,
+    roots: &C6VerifierLiveWrapperRootBinding,
     cache_statement_digest: [u8; 32],
     cache_snapshot: &C6CacheFoldTraceSnapshot,
     cache_targets: &C6CacheFoldPairedVerifierTargets,
@@ -655,7 +655,7 @@ pub fn verify_c6_exact_production_nbr2_certificate(
 
 #[allow(clippy::too_many_arguments)]
 fn verify_c6_exact_production_blind_pending(
-    roots: &C6PersistedLiveWrapperRootBinding,
+    roots: &C6VerifierLiveWrapperRootBinding,
     cache_statement_digest: [u8; 32],
     cache_snapshot: &C6CacheFoldTraceSnapshot,
     cache_targets: &C6CacheFoldPairedVerifierTargets,

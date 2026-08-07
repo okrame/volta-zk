@@ -25,9 +25,10 @@ use crate::c6_wrapper_pcs::{
     bind_production_c6_residual_relation_roots, commit_c6_cache_state_cohort,
     commit_c6_wrapper_cohort, fix_production_c6_wrapper_commitments, production_c6_wrapper_specs,
     C6CacheStateDescriptors, C6CommittedWrapperCohort, C6FixedWrapperCommitments,
-    C6WrapperCohortSpec, C6WrapperDigest, C6WrapperOracleKind, C6WrapperSlotWitness,
-    C6_DELTA_RESIDUAL_COHORT_ID, C6_HIDDEN_U_EMBED_COHORT_ID, C6_HIDDEN_U_WEIGHTS_COHORT_ID,
-    C6_PREDECESSOR_CACHE_COHORT_ID, C6_SUCCESSOR_CACHE_COHORT_ID, C6_WRAPPER_AUXILIARY_COHORT_ID,
+    C6WrapperCohortSpec, C6WrapperCommitment, C6WrapperDigest, C6WrapperOracleKind,
+    C6WrapperSlotWitness, C6_DELTA_RESIDUAL_COHORT_ID, C6_HIDDEN_U_EMBED_COHORT_ID,
+    C6_HIDDEN_U_WEIGHTS_COHORT_ID, C6_PREDECESSOR_CACHE_COHORT_ID, C6_SUCCESSOR_CACHE_COHORT_ID,
+    C6_WRAPPER_AUXILIARY_COHORT_ID,
 };
 use crate::c6_wrapper_persisted::{
     commit_production_c6_wrapper_cohort_cuda, C6PersistedWrapperCohort, C6PersistedWrapperMetrics,
@@ -284,6 +285,61 @@ pub struct C6PersistedLiveWrapperRootBinding {
     session_digest: C6WrapperDigest,
     commit_metrics: X4bCudaCommitMetricsV4,
     persisted_metrics: C6PersistedWrapperMetrics,
+}
+
+/// Client-side counterpart reconstructed only from the six received roots
+/// and installed static cache profile.  It contains no persisted cohort,
+/// witness digest, provider key or opening source.
+pub struct C6VerifierLiveWrapperRootBinding {
+    fixed: C6FixedWrapperCommitments,
+}
+
+impl C6VerifierLiveWrapperRootBinding {
+    pub fn fixed(&self) -> &C6FixedWrapperCommitments {
+        &self.fixed
+    }
+
+    pub fn bind_residual_relation(
+        &self,
+        manifest: C6ResidualRelationManifest,
+    ) -> Result<C6ResidualRelationRootBound> {
+        bind_production_c6_residual_relation_roots(&self.fixed, manifest)
+            .map_err(|error| C6LiveWrapperError::new(error.to_string()))
+    }
+}
+
+/// Reconstruct and transcript-fix the production verifier root token from
+/// certificate data.  All verifier configurations are derived from the
+/// frozen cohort specs and installed cache descriptors; the wire carries only
+/// the six ordered 32-byte roots.
+pub fn install_production_c6_live_wrapper_roots_verifier(
+    statement_digest: C6WrapperDigest,
+    cache_profile: &C6PersistentCacheStaticProfile,
+    roots: [C6WrapperDigest; 6],
+    transcript: &mut Transcript,
+) -> Result<C6VerifierLiveWrapperRootBinding> {
+    cache_profile.validate().map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+    let cache_descriptors = C6CacheStateDescriptors::from_persistent_profile(cache_profile)
+        .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+    let specs = production_c6_wrapper_specs();
+    let mut commitments = Vec::with_capacity(specs.len());
+    for (index, (spec, root)) in specs.into_iter().zip(roots).enumerate() {
+        let commitment = if index < 2 {
+            C6WrapperCommitment::from_cache_root(statement_digest, spec, root, &cache_descriptors)
+        } else {
+            C6WrapperCommitment::from_root(statement_digest, spec, root)
+        }
+        .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+        commitments.push(commitment);
+    }
+    let fixed = fix_production_c6_wrapper_commitments(
+        statement_digest,
+        &cache_descriptors,
+        &commitments,
+        transcript,
+    )
+    .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+    Ok(C6VerifierLiveWrapperRootBinding { fixed })
 }
 
 impl C6PersistedLiveWrapperRootBinding {
@@ -839,7 +895,7 @@ mod tests {
     use super::*;
     use crate::c6_hidden_u::C6HiddenUFamilyWitness;
     use crate::c6_persistent_cache::{C6CacheCell, C6CacheSlotKind};
-    use crate::c6_wrapper_pcs::fix_test_c6_wrapper_commitments;
+    use crate::c6_wrapper_pcs::{c6_wrapper_profile_digest, fix_test_c6_wrapper_commitments};
     use crate::ligero::LigeroParams;
     use volta_field::Fp;
     use volta_proto::build_c6_residual_fused_scaled_fixture;
@@ -879,6 +935,49 @@ mod tests {
             vector_capacity,
             vector_stride: 8,
         }
+    }
+
+    #[test]
+    fn production_verifier_roots_reconstruct_only_the_fixed_public_token() {
+        let profile = C6PersistentCacheStaticProfile {
+            protocol_digest: [0x11; 32],
+            model_digest: [0x22; 32],
+            params_digest: [0x33; 32],
+            wrapper_profile_digest: c6_wrapper_profile_digest(),
+        };
+        let roots = std::array::from_fn(|index| [0x40 + index as u8; 32]);
+        let mut provider_transcript = Transcript::new([0x51; 32]);
+        let provider = install_production_c6_live_wrapper_roots_verifier(
+            [0x61; 32],
+            &profile,
+            roots,
+            &mut provider_transcript,
+        )
+        .unwrap();
+        let mut verifier_transcript = Transcript::new([0x51; 32]);
+        let verifier = install_production_c6_live_wrapper_roots_verifier(
+            [0x61; 32],
+            &profile,
+            roots,
+            &mut verifier_transcript,
+        )
+        .unwrap();
+        assert_eq!(provider.fixed().binding_digest(), verifier.fixed().binding_digest());
+        assert_eq!(provider.fixed().commitments().len(), 6);
+        assert_eq!(provider_transcript.ledger(), verifier_transcript.ledger());
+        assert_eq!(provider_transcript.bytes_for("c6_wrapper_initial_roots"), 6 * 32);
+
+        let mut rejected_transcript = Transcript::new([0x51; 32]);
+        let mut zero_root = roots;
+        zero_root[4] = [0; 32];
+        assert!(install_production_c6_live_wrapper_roots_verifier(
+            [0x61; 32],
+            &profile,
+            zero_root,
+            &mut rejected_transcript,
+        )
+        .is_err());
+        assert_eq!(rejected_transcript.total_bytes(), 0);
     }
 
     #[test]

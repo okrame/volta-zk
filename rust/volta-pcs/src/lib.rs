@@ -169,9 +169,11 @@ pub use c6_hidden_u_sumcheck_blind::{
     C6_BLIND_HIDDEN_U_TAPES, C6_BLIND_HIDDEN_U_VERSION,
 };
 pub use c6_live_wrapper::{
+    install_production_c6_live_wrapper_roots_verifier,
     materialize_production_c6_live_wrapper_roots,
     materialize_production_c6_live_wrapper_roots_cuda, C6LiveWrapperError, C6LiveWrapperMaskSeed,
     C6LiveWrapperRootBinding, C6LiveWrapperSources, C6PersistedLiveWrapperRootBinding,
+    C6VerifierLiveWrapperRootBinding,
 };
 pub use c6_persistent_cache::{
     c6_cache_source_map_digest, derive_c6_persistent_cache_source_plan,

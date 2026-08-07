@@ -35,9 +35,9 @@ use std::sync::{Arc, Mutex};
 use volta_field::{Fp, Fp2, FpStream};
 use volta_mac::{
     C6CanonicalTargetProfile, C6DecodedInstanceExtractionPlan, C6InstalledOperationKind,
-    C6InstalledOperationPlan, C6OperationPlanInstanceIdentity, C6OperationPlanTerminalMetadata,
-    C6OperationPlanTopologyIdentity, C6RuntimeInstanceValues, CorrScheduleAudit, CorrScheduleKind,
-    CorrScheduleRole, ProverAuthed, Transcript, VerifierKey,
+    C6InstalledOperationPlan, C6NativeTargetProfileArtifact, C6OperationPlanInstanceIdentity,
+    C6OperationPlanTerminalMetadata, C6OperationPlanTopologyIdentity, C6RuntimeInstanceValues,
+    CorrScheduleAudit, CorrScheduleKind, CorrScheduleRole, ProverAuthed, Transcript, VerifierKey,
 };
 
 #[cfg(feature = "c6-trace")]
@@ -4371,6 +4371,7 @@ pub struct C6InstalledClosureEvaluationMemoryCensus {
     pub node_value_heap_bytes: u64,
     pub free_slot_heap_bytes: u64,
     pub closure_value_heap_bytes: u64,
+    pub native_target_heap_bytes: u64,
     pub peak_working_heap_bytes: u64,
     pub dense_paired_node_baseline_bytes: u64,
 }
@@ -4382,7 +4383,36 @@ pub struct C6InstalledClosureEvaluationMemoryCensus {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6InstalledPairedClosureEvaluation {
     closure: C6PairedResidualClosureWitness,
+    native_targets: Option<C6PairedNativeTargetValues>,
     memory_census: C6InstalledClosureEvaluationMemoryCensus,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6PairedNativeTargetValues {
+    inference_profile_digest: C6ResidualDigest,
+    cohorts: Vec<Vec<[ProverAuthed; 2]>>,
+}
+
+impl C6PairedNativeTargetValues {
+    pub fn inference_profile_digest(&self) -> C6ResidualDigest {
+        self.inference_profile_digest
+    }
+
+    pub fn cohorts(&self) -> &[Vec<[ProverAuthed; 2]>] {
+        &self.cohorts
+    }
+
+    pub fn coordinate_targets(&self, coordinate: u8) -> C6ResidualResult<Vec<Vec<ProverAuthed>>> {
+        let coordinate = usize::from(coordinate);
+        if coordinate >= 2 {
+            return Err(C6ResidualError::new("C6 native target coordinate is out of range"));
+        }
+        Ok(self
+            .cohorts
+            .iter()
+            .map(|cohort| cohort.iter().map(|values| values[coordinate]).collect())
+            .collect())
+    }
 }
 
 impl C6InstalledPairedClosureEvaluation {
@@ -4392,6 +4422,21 @@ impl C6InstalledPairedClosureEvaluation {
 
     pub fn into_closure(self) -> C6PairedResidualClosureWitness {
         self.closure
+    }
+
+    pub fn native_targets(&self) -> Option<&C6PairedNativeTargetValues> {
+        self.native_targets.as_ref()
+    }
+
+    pub fn into_closure_and_native_targets(
+        self,
+    ) -> C6ResidualResult<(C6PairedResidualClosureWitness, C6PairedNativeTargetValues)> {
+        Ok((
+            self.closure,
+            self.native_targets.ok_or_else(|| {
+                C6ResidualError::new("C6 installed evaluation omitted native targets")
+            })?,
+        ))
     }
 
     pub fn memory_census(&self) -> C6InstalledClosureEvaluationMemoryCensus {
@@ -11089,7 +11134,47 @@ impl C6CompiledLinearResidual {
                 "C6 installed closure inputs differ from the compiled response identity",
             ));
         }
-        evaluate_installed_paired_closure(operation_plan, extraction, runtime, sources, schedule)
+        evaluate_installed_paired_closure(
+            operation_plan,
+            extraction,
+            runtime,
+            sources,
+            schedule,
+            None,
+        )
+    }
+
+    pub fn evaluate_installed_paired_closure_with_native_targets(
+        &self,
+        operation_plan: &C6InstalledOperationPlan,
+        extraction: &C6DecodedInstanceExtractionPlan,
+        runtime: &C6RuntimeInstanceValues,
+        sources: &C6PairedSourceWitness,
+        schedule: &CorrScheduleAudit,
+        profile: &C6CanonicalTargetProfile,
+    ) -> C6ResidualResult<C6InstalledPairedClosureEvaluation> {
+        self.validate_paired_source_schedule(sources, schedule)?;
+        runtime
+            .validate_extraction_binding(extraction)
+            .map_err(|error| C6ResidualError::new(error.to_string()))?;
+        if self.operation_plan_artifact_digest != operation_plan.artifact_digest()
+            || self.topology != operation_plan.topology()
+            || self.instance != runtime.instance_identity()
+            || extraction.topology_digest() != self.topology.topology_digest
+            || runtime.role() != extraction.role()
+        {
+            return Err(C6ResidualError::new(
+                "C6 installed native-target inputs differ from the compiled response identity",
+            ));
+        }
+        evaluate_installed_paired_closure(
+            operation_plan,
+            extraction,
+            runtime,
+            sources,
+            schedule,
+            Some(profile),
+        )
     }
 
     /// Production-shape provider fold over both source coordinates in the
@@ -11679,6 +11764,7 @@ fn evaluate_installed_paired_closure(
     runtime: &C6RuntimeInstanceValues,
     sources: &C6PairedSourceWitness,
     schedule: &CorrScheduleAudit,
+    native_profile: Option<&C6CanonicalTargetProfile>,
 ) -> C6ResidualResult<C6InstalledPairedClosureEvaluation> {
     let topology = operation_plan.topology();
     let canonical_nodes = usize::try_from(topology.canonical_node_count)
@@ -11756,6 +11842,33 @@ fn evaluate_installed_paired_closure(
             topology.public_input_count,
             topology.scalar_input_count,
         )));
+    }
+    let mut native_target_nodes = Vec::new();
+    if let Some(profile) = native_profile {
+        C6NativeTargetProfileArtifact::encode(profile, topology)
+            .map_err(|error| C6ResidualError::new(error.to_string()))?;
+        let mut seen = BTreeSet::new();
+        for cohort in &profile.cohorts {
+            if cohort.canonical_nodes.is_empty() {
+                return Err(C6ResidualError::new("C6 installed native-target cohort is empty"));
+            }
+            let mut cohort_nodes = Vec::with_capacity(cohort.canonical_nodes.len());
+            for &node in &cohort.canonical_nodes {
+                if node >= topology.canonical_node_count || !seen.insert(node) {
+                    return Err(C6ResidualError::new(
+                        "C6 installed native-target node is invalid or duplicated",
+                    ));
+                }
+                increment_installed_node_use(
+                    &mut use_counts,
+                    node,
+                    topology.canonical_node_count,
+                    "C6 installed native target",
+                )?;
+                cohort_nodes.push(node);
+            }
+            native_target_nodes.push(cohort_nodes);
+        }
     }
     let canonical_limit = topology.canonical_node_count;
     let mut product_triples = 0u64;
@@ -11932,6 +12045,38 @@ fn evaluate_installed_paired_closure(
             &mut active_values,
         )?;
     }
+    let native_targets = if let Some(profile) = native_profile {
+        let mut cohorts = Vec::with_capacity(native_target_nodes.len());
+        for cohort_nodes in native_target_nodes {
+            let mut cohort = Vec::with_capacity(cohort_nodes.len());
+            for node in cohort_nodes {
+                let value = installed_node_value(node, &node_slots, &node_values)?;
+                if value.x[0] != value.x[1] {
+                    return Err(C6ResidualError::new(
+                        "C6 installed native-target plaintext differs across coordinates",
+                    ));
+                }
+                cohort.push([
+                    ProverAuthed::new(value.x[0], value.m[0]),
+                    ProverAuthed::new(value.x[1], value.m[1]),
+                ]);
+                release_installed_node_use(
+                    node,
+                    &mut use_counts,
+                    &mut node_slots,
+                    &mut free_slots,
+                    &mut active_values,
+                )?;
+            }
+            cohorts.push(cohort);
+        }
+        Some(C6PairedNativeTargetValues {
+            inference_profile_digest: profile.inference_profile_digest,
+            cohorts,
+        })
+    } else {
+        None
+    };
     values.resize(live_values, Fp2::ZERO);
     if active_values != 0
         || use_counts.iter().any(|&count| count != 0)
@@ -11963,6 +12108,22 @@ fn evaluate_installed_paired_closure(
         capacity_bytes(free_slots.capacity(), std::mem::size_of::<u32>(), "C6 free-slot arena")?;
     let closure_value_heap_bytes =
         capacity_bytes(values.capacity(), std::mem::size_of::<Fp2>(), "C6 closure value")?;
+    let native_target_heap_bytes = native_targets.as_ref().map_or(Ok(0u64), |targets| {
+        let outer = capacity_bytes(
+            targets.cohorts.capacity(),
+            std::mem::size_of::<Vec<[ProverAuthed; 2]>>(),
+            "C6 native-target cohort",
+        )?;
+        targets.cohorts.iter().try_fold(outer, |total, cohort| {
+            capacity_bytes(
+                cohort.capacity(),
+                std::mem::size_of::<[ProverAuthed; 2]>(),
+                "C6 native-target value",
+            )?
+            .checked_add(total)
+            .ok_or_else(|| C6ResidualError::new("C6 native-target heap bytes overflow"))
+        })
+    })?;
     let peak_working_heap_bytes = [
         reference_count_heap_bytes,
         node_slot_heap_bytes,
@@ -11970,6 +12131,7 @@ fn evaluate_installed_paired_closure(
         node_value_heap_bytes,
         free_slot_heap_bytes,
         closure_value_heap_bytes,
+        native_target_heap_bytes,
     ]
     .into_iter()
     .try_fold(0u64, |total, bytes| {
@@ -11990,6 +12152,7 @@ fn evaluate_installed_paired_closure(
         node_value_heap_bytes,
         free_slot_heap_bytes,
         closure_value_heap_bytes,
+        native_target_heap_bytes,
         peak_working_heap_bytes,
         dense_paired_node_baseline_bytes,
     };
@@ -12020,7 +12183,7 @@ fn evaluate_installed_paired_closure(
         values,
         witness_digest: *hasher.finalize().as_bytes(),
     };
-    Ok(C6InstalledPairedClosureEvaluation { closure, memory_census })
+    Ok(C6InstalledPairedClosureEvaluation { closure, native_targets, memory_census })
 }
 
 fn try_zeroed_fp2_vec(length: usize, label: &str) -> C6ResidualResult<Vec<Fp2>> {
@@ -14495,13 +14658,48 @@ mod tests {
             C6CompiledLinearResidual::compile(&installed, &extraction, &runtime, &zero_weights)
                 .unwrap();
         let leaf = compiled.build_paired_residual_leaf_witness(&paired, &schedule).unwrap();
-        let evaluation = compiled
-            .evaluate_installed_paired_closure(
+        let target_triple = installed.products()[0].triples()[0];
+        let target_profile = C6CanonicalTargetProfile {
+            inference_profile_digest: [0x81; 32],
+            topology_digest: installed.topology().topology_digest,
+            source_schedule_digest: installed.topology().source_schedule_digest,
+            cohorts: vec![
+                volta_mac::C6CanonicalTargetCohort {
+                    cohort_id: 1,
+                    chain_slot: 1,
+                    polynomial_log2: 12,
+                    claim_layout_digest: [0x82; 32],
+                    canonical_nodes: vec![target_triple[0]],
+                },
+                volta_mac::C6CanonicalTargetCohort {
+                    cohort_id: 2,
+                    chain_slot: 2,
+                    polynomial_log2: 11,
+                    claim_layout_digest: [0x83; 32],
+                    canonical_nodes: vec![target_triple[1], target_triple[2]],
+                },
+            ],
+        };
+        let mut duplicated_target_profile = target_profile.clone();
+        duplicated_target_profile.cohorts[1].canonical_nodes[0] = target_triple[0];
+        assert!(compiled
+            .evaluate_installed_paired_closure_with_native_targets(
                 &installed,
                 &extraction,
                 &runtime,
                 &paired,
                 &schedule,
+                &duplicated_target_profile,
+            )
+            .is_err());
+        let evaluation = compiled
+            .evaluate_installed_paired_closure_with_native_targets(
+                &installed,
+                &extraction,
+                &runtime,
+                &paired,
+                &schedule,
+                &target_profile,
             )
             .unwrap();
         let closure = evaluation.closure();
@@ -14520,6 +14718,16 @@ mod tests {
         let a = sources[1].map(C6SourceWitness::prover_value);
         let b = sources[2].map(C6SourceWitness::prover_value);
         let c = sources[3].map(C6SourceWitness::prover_value);
+        let native_targets = evaluation.native_targets().unwrap();
+        assert_eq!(native_targets.inference_profile_digest(), [0x81; 32]);
+        assert_eq!(
+            native_targets.coordinate_targets(0).unwrap(),
+            vec![vec![a[0]], vec![b[0], c[0]]]
+        );
+        assert_eq!(
+            native_targets.coordinate_targets(1).unwrap(),
+            vec![vec![a[1]], vec![b[1], c[1]]]
+        );
         let triples = [[a, b, c], [b, a, c]];
         let mut expected = Vec::new();
         for triple in triples {
@@ -14559,6 +14767,7 @@ mod tests {
             memory.canonical_nodes * std::mem::size_of::<C6PairedInstalledNodeValue>() as u64
         );
         assert!(memory.peak_working_heap_bytes > memory.closure_value_heap_bytes);
+        assert!(memory.native_target_heap_bytes > 0);
 
         let auxiliary = closure.transpose_auxiliary_lanes().unwrap();
         let manifest = C6ResidualRelationManifest::new_with_geometry(

@@ -20,8 +20,8 @@ use volta_gpt2::{
 
 #[cfg(feature = "c6-trace")]
 use volta_mac::{
-    C6DecodedInstanceExtractionPlan, C6InstalledOperationPlan, ProverAuthed, Transcript,
-    VerifierKey,
+    C6CanonicalTargetProfile, C6DecodedInstanceExtractionPlan, C6InstalledOperationPlan,
+    ProverAuthed, Transcript, VerifierKey,
 };
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_pcs::c61_authenticated_whir_p3::{
@@ -39,8 +39,8 @@ use volta_pcs::{
 };
 #[cfg(feature = "c6-trace")]
 use volta_proto::{
-    build_c6_t1_production_response_owner, cattn_permuted, C6ProductionPairedPcgAttempt,
-    C6T1ProductionResponseOwner,
+    build_c6_t1_production_response_owner, cattn_permuted, C6PairedNativeTargetValues,
+    C6ProductionPairedPcgAttempt, C6T1ProductionResponseOwner,
 };
 
 #[cfg(feature = "c6-trace")]
@@ -293,6 +293,54 @@ impl C6T1NativeClaimOwner {
 
     pub fn primary_embedding_keys(&self) -> &[VerifierKey] {
         &self.primary_embedding_keys
+    }
+
+    #[cfg(feature = "c61-p3-authenticated-reference")]
+    pub fn production_paired_targets(
+        &self,
+        profile: &C6CanonicalTargetProfile,
+        paired: &C6PairedNativeTargetValues,
+    ) -> Result<([Vec<ProverAuthed>; 2], [Vec<ProverAuthed>; 2]), String> {
+        if paired.inference_profile_digest() != profile.inference_profile_digest
+            || paired.cohorts().len() != profile.cohorts.len()
+        {
+            return Err("C6ICT2 native target owner/profile binding differs".to_owned());
+        }
+        let coordinates = [
+            paired.coordinate_targets(0).map_err(|error| error.to_string())?,
+            paired.coordinate_targets(1).map_err(|error| error.to_string())?,
+        ];
+        let mut model = None;
+        let mut embedding = None;
+        for (index, cohort) in profile.cohorts.iter().enumerate() {
+            match cohort.chain_slot {
+                slot if slot == C61NativeComponent::Model as u16 && model.is_none() => {
+                    model = Some(index)
+                }
+                slot if slot == C61NativeComponent::Embedding as u16 && embedding.is_none() => {
+                    embedding = Some(index)
+                }
+                _ => {
+                    return Err("C6ICT2 native target profile has an unsupported cohort".to_owned())
+                }
+            }
+        }
+        let model = model.ok_or_else(|| "C6ICT2 native target profile omits model".to_owned())?;
+        let embedding =
+            embedding.ok_or_else(|| "C6ICT2 native target profile omits embedding".to_owned())?;
+        if coordinates[0][model] != self.primary_model_targets
+            || coordinates[0][embedding] != self.primary_embedding_targets
+            || coordinates[0][model].len() != 96
+            || coordinates[0][embedding].len() != 6
+        {
+            return Err(
+                "C6ICT2 paired target coordinate zero differs from the live response".to_owned()
+            );
+        }
+        Ok((
+            [coordinates[0][model].clone(), coordinates[1][model].clone()],
+            [coordinates[0][embedding].clone(), coordinates[1][embedding].clone()],
+        ))
     }
 }
 

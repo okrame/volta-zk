@@ -35,11 +35,11 @@ use crate::c6_census::{C6_T1_TOTAL_PRODUCT_TRIPLES, C6_T1_ZERO_CLOSURES};
 use crate::c6_production_pcg::{C6ProductionPairedPcgAttempt, C6ProductionPairedSourceWitness};
 use crate::c6_residual::{
     C6CompiledLinearResidual, C6CompiledNativeTargetFunctional,
-    C6InstalledClosureEvaluationMemoryCensus, C6PairedResidualAuxiliaryWitness,
-    C6PairedResidualClosureWitness, C6PairedResidualLeafWitness, C6ResidualDirectAlphaPoints,
-    C6ResidualDirectPostClaimPoints, C6ResidualError, C6ResidualFusedWitnessView,
-    C6ResidualRelationChallenges, C6ResidualRelationManifest, C6ResidualRelationRootBound,
-    C6ResidualRetainedChallenges, C6_RESIDUAL_TRACE_FIXTURE_LOCK,
+    C6InstalledClosureEvaluationMemoryCensus, C6PairedNativeTargetValues,
+    C6PairedResidualAuxiliaryWitness, C6PairedResidualClosureWitness, C6PairedResidualLeafWitness,
+    C6ResidualDirectAlphaPoints, C6ResidualDirectPostClaimPoints, C6ResidualError,
+    C6ResidualFusedWitnessView, C6ResidualRelationChallenges, C6ResidualRelationManifest,
+    C6ResidualRelationRootBound, C6ResidualRetainedChallenges, C6_RESIDUAL_TRACE_FIXTURE_LOCK,
 };
 use crate::c6_source::{
     C6PairedSourceWitness, C6SourceCoordinate, C6SourceScheduleProverFollower,
@@ -224,6 +224,7 @@ pub struct C6T1ProductionResidualOwner {
     leaf: C6PairedResidualLeafWitness,
     closure: C6PairedResidualClosureWitness,
     auxiliary: C6PairedResidualAuxiliaryWitness,
+    native_targets: C6PairedNativeTargetValues,
     closure_memory: C6InstalledClosureEvaluationMemoryCensus,
 }
 
@@ -237,6 +238,7 @@ pub struct C6T1ProductionResidualBoundOwner {
     leaf: C6PairedResidualLeafWitness,
     closure: C6PairedResidualClosureWitness,
     auxiliary: C6PairedResidualAuxiliaryWitness,
+    native_targets: C6PairedNativeTargetValues,
     closure_memory: C6InstalledClosureEvaluationMemoryCensus,
 }
 
@@ -297,6 +299,7 @@ impl C6T1ProductionResidualOwner {
             leaf: self.leaf,
             closure: self.closure,
             auxiliary: self.auxiliary,
+            native_targets: self.native_targets,
             closure_memory: self.closure_memory,
         })
     }
@@ -329,6 +332,10 @@ impl C6T1ProductionResidualBoundOwner {
 
     pub fn auxiliary(&self) -> &C6PairedResidualAuxiliaryWitness {
         &self.auxiliary
+    }
+
+    pub fn native_targets(&self) -> &C6PairedNativeTargetValues {
+        &self.native_targets
     }
 
     pub fn closure_memory_census(&self) -> C6InstalledClosureEvaluationMemoryCensus {
@@ -438,6 +445,7 @@ impl C6T1ProductionResponseOwner {
 /// weight can be supplied by the provider-facing caller.
 pub fn prepare_c6_t1_production_residual_owner(
     response: C6T1ProductionResponseOwner,
+    native_profile: &C6CanonicalTargetProfile,
     provider_transcript: &mut Transcript,
     verifier_transcript: &mut Transcript,
 ) -> Result<C6T1ProductionResidualOwner, C6ResidualError> {
@@ -504,15 +512,17 @@ pub fn prepare_c6_t1_production_residual_owner(
         response.paired_sources(),
         response.source_schedule(),
     )?;
-    let closure_evaluation = provider_linear.evaluate_installed_paired_closure(
-        response.provider().operation_plan(),
-        response.provider().extraction(),
-        response.provider().runtime(),
-        response.paired_sources().source(),
-        response.source_schedule(),
-    )?;
+    let closure_evaluation = provider_linear
+        .evaluate_installed_paired_closure_with_native_targets(
+            response.provider().operation_plan(),
+            response.provider().extraction(),
+            response.provider().runtime(),
+            response.paired_sources().source(),
+            response.source_schedule(),
+            native_profile,
+        )?;
     let closure_memory = closure_evaluation.memory_census();
-    let closure = closure_evaluation.into_closure();
+    let (closure, native_targets) = closure_evaluation.into_closure_and_native_targets()?;
     let auxiliary = closure.transpose_auxiliary_lanes()?;
     C6ResidualFusedWitnessView::new(&manifest, &leaf, &closure, &auxiliary)?;
     Ok(C6T1ProductionResidualOwner {
@@ -524,6 +534,7 @@ pub fn prepare_c6_t1_production_residual_owner(
         leaf,
         closure,
         auxiliary,
+        native_targets,
         closure_memory,
     })
 }

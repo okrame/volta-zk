@@ -3902,6 +3902,54 @@ provider objects, add the fail-closed record/resource validator and pass all
 local backend/mutation gates. Pod contact remains forbidden until that gate is
 closed; the §0.55 one-campaign GO remains valid afterward.
 
+### 0.59 Production private-entropy driver hard stop
+
+The campaign/setup continuation closes three local seams before attempting a
+pod run. Linear owners now move the exact response and hidden-u families into
+one downstream path. `setup-manifest.bin` canonically contains the source
+manifest, **63,994,751-B** operation plan, verifier-only extraction map,
+native-target profile and redacted verifier model inside exactly
+**71,994,879 B** of client parameters. Its encoded size is **71,995,188 B**;
+with the paired PCG exchange the setup is exactly **148,738,118 B**. Certificate,
+private replay and setup must share protocol/model/params/connection and setup
+digest. The pre-response wrapper statement is distinct from, and may not be
+equated to, the post-native C6PA2 outer statement.
+
+The subsequent source audit exposes a security obstruction. The exact
+persisted/CUDA four-chain preparer accepts `verifier_seeds: [[u8; 32]; 4]`
+inside the provider-side call. Each persisted compiler executor likewise
+accepts a complete `verifier_seed` and a mutable verifier context while the
+proof is generated. These APIs can reproduce an honest transcript, but they
+make all future interactive challenges available before the corresponding
+provider messages and therefore cannot instantiate the registered
+no-grinding honest-verifier protocol.
+
+The seedless `C6ICT1` endpoint, verifier broker, replay-to-frontier codec and
+durable fsync journal do enforce the intended boundary, but only for the D14
+in-memory diagnostic. They are not connected to the persisted MMCS/CUDA
+D27/D28 model/embedding chains or either D28/D27 compiler chain. A campaign
+file containing the six seeds would repair replay only, not soundness, and is
+forbidden.
+
+The active hard stop is
+`C6NBR3_PRODUCTION_PRIVATE_ENTROPY_DRIVER_REQUIRED`. Resume requires:
+
+1. a generic production broker usable by persisted/CUDA model, embedding and
+   compiler provers, with provider endpoint types that contain no verifier
+   seed, checkpoint, verifier transcript, key or `Delta`;
+2. six client-owned challenge tapes/journals bound to the current durable
+   attempt, typed chain statement, mask frontier and exact provider moves;
+3. proof-byte and verifier-result parity against the existing strict codecs,
+   plus source guards and seed/checkpoint/move mutation tests at production
+   dimensions where feasible;
+4. integration into the one-attempt producer and disk verifier, including
+   actual variable client-to-provider challenge traffic and retry/burn rules;
+5. a fresh time/state/I/O/fsync re-sum before A100 admission.
+
+This finding changes no provider-to-client certificate or setup byte screen,
+but no soundness, full-chain or timing credit is available. The §0.55 A100 GO
+remains dormant and the pod must not be contacted.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

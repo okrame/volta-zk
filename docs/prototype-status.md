@@ -8,28 +8,46 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §0.58 next.
+This capsule is authoritative; read design §0.59 next.
 
-- **Milestone/evidence.** C6.1/C6NBR3 source-binding amendment is closed
-  locally through `16aa6f5`. Strict
-  create-new campaign artifact, redacted verifier profile, private replay,
-  public instance, retained-response replay and unbound-then-trace-bound C6FT1
-  decoding are implemented; focused campaign/C6FT1/NBR checks are **3/0/0 +
-  4/0/0 + 1/0/0**. Lean source-binding collision dichotomy is axiom-free. No
-  production CUDA/full-chain/timing/memory/hardware credit exists.
+- **Milestone/evidence.** C6.1/C6NBR3 source binding is closed locally.
+  Checkpoints `92b5000`, `e3c080a`, and `17dcea7` add linear full-chain owners,
+  an exact **148,738,118-B** authenticated setup bundle and separate pre-response
+  wrapper versus post-native C6PA2 statement identities. Campaign/setup checks
+  are **4/0/0 + 1/0/0**. No production CUDA/full-chain/timing/memory/hardware
+  credit exists.
 - **Screens.** Certificate **17,536,735 B**, setup **148,738,118 B**,
   setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
   **102.5878332989 bits/cert**, and provider/verifier **14.9179595454 /
   4.978261758 s** remain `credit:false`.
-- **Active gate.** `C6NBR3_DISK_VERIFIER_AND_FULL_CHAIN_HARNESS_REQUIRED`.
-  The six roots and combined source binding have one exact zero-growth wire
-  map, but complete producer call site, disk verifier, record validator and
-  local negative/backend gates are still required. No pod contact is permitted.
-- **Authorization/resume.** The source-binding amendment and continued local
-  harness work are owner-approved. Existing one-campaign A100 GO becomes
-  usable only after the complete local campaign audit is green.
+- **Hard stop.** `C6NBR3_PRODUCTION_PRIVATE_ENTROPY_DRIVER_REQUIRED`.
+  Production D27/D28 native and compiler entry points receive future
+  `verifier_seed` values inside provider calls. The seedless, durable broker
+  exists only for the D14 in-memory diagnostic. Persisting those seeds would
+  replay an honest run but would violate the interactive no-grinding boundary.
+- **Authorization/resume.** No pod contact. Resume requires an owner-approved
+  production broker for all six persisted/CUDA chains, provider APIs and source
+  guards with no verifier seed/checkpoint, client-owned durable challenge tapes,
+  then the complete producer, disk verifier, validator and local negative gates.
 - **Measurement policy.** Only verifier time has official `4T <5 s` and
   diagnostic `maxT(N)`; provider has one full-chain A100 `<15 s` gate.
+
+- **2026-08-07 — Production private-entropy audit stops before A100.** The
+  campaign boundary now owns one exact setup manifest: client parameters are
+  **71,994,879 B**, its canonical encoding is **71,995,188 B**, and paired PCG
+  plus manifest is exactly **148,738,118 B**. The disk artifact binds that
+  manifest to certificate/replay and carries only the verifier extraction map;
+  setup identities and base/outer statements are cross-checked without a
+  circular equality. Source audit then finds that the production four-chain
+  preparer accepts four future `verifier_seed` values and the persisted
+  compiler executor accepts two more while running provider and verifier in
+  one call. `C6ICT1` keeps entropy behind a seedless broker only in the D14
+  diagnostic; it has no persisted D27/D28 or compiler call site. Giving the
+  existing production APIs all seeds upfront would permit grinding and cannot
+  earn interactive soundness/full-chain credit. New hard stop:
+  `C6NBR3_PRODUCTION_PRIVATE_ENTROPY_DRIVER_REQUIRED`. Resume requires a
+  production seedless broker and durable client challenge tape for all six
+  chains before the remaining harness work or pod contact.
 
 - **2026-08-07 — C6NBR3 combined source binding closes locally.** The two
   prover-private NBR2 digest inputs are replaced by the existing combined

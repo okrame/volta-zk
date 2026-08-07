@@ -1242,6 +1242,68 @@ pub fn build_c61_scaled_arithmetic_frame(
     })
 }
 
+/// Build the wire-neutral C6RSC4-v5 frame from the exact production
+/// challenge typestate. The legacy field names retain the fixed codec width:
+/// `adjoint_root` is the C6TFR1 terminal relation root and
+/// `source_boundary` is its post-beta functional fold.
+pub fn build_c61_production_arithmetic_frame(
+    ready: &C61ReadyPublicProof,
+    outer_statement_digest: [u8; 32],
+    canonical_runtime: &[Fp2],
+    functional_fold: Fp2,
+) -> Result<C61ArithmeticFrame> {
+    if outer_statement_digest == [0; 32] {
+        return Err(C61PublicCompressionError::new(
+            "C6RSC4-v5 outer statement digest is zero",
+        ));
+    }
+    let expected_fold = ready
+        .terminal_claims
+        .iter()
+        .fold((Fp2::ZERO, Fp2::ONE), |(sum, power), claim| {
+            (sum + power * *claim, power * ready.challenges.output_beta)
+        })
+        .0;
+    if expected_fold != functional_fold {
+        return Err(C61PublicCompressionError::new(
+            "C6RSC4-v5 functional fold differs from the fixed terminal claims",
+        ));
+    }
+    Ok(C61ArithmeticFrame {
+        statement_digest: outer_statement_digest,
+        challenge_digest: ready.challenges.digest(ready.statement_digest()),
+        adjoint_root: ready.adjoint_root,
+        terminal_claims: ready.terminal_claims,
+        runtime_evaluations: try_array_from_fn(|index| {
+            c61_mle_eval_prefix(canonical_runtime, &ready.challenges.runtime_points[index])
+        })?,
+        source_boundary: functional_fold,
+    })
+}
+
+/// Reconstruct every public C6RSC4-v5 field before invoking the native and
+/// compiler verifiers. This is a semantic check, not merely a strict-codec
+/// round trip.
+pub fn verify_c61_production_arithmetic_frame(
+    ready: &C61ReadyPublicProof,
+    outer_statement_digest: [u8; 32],
+    canonical_runtime: &[Fp2],
+    frame: &C61ArithmeticFrame,
+) -> Result<()> {
+    let expected = build_c61_production_arithmetic_frame(
+        ready,
+        outer_statement_digest,
+        canonical_runtime,
+        frame.source_boundary,
+    )?;
+    if &expected != frame {
+        return Err(C61PublicCompressionError::new(
+            "C6RSC4-v5 differs from the reconstructed production typestate",
+        ));
+    }
+    Ok(())
+}
+
 fn index(value: u32) -> Result<usize> {
     usize::try_from(value).map_err(|_| C61PublicCompressionError::new("C6.1 index exceeds usize"))
 }
@@ -1652,6 +1714,51 @@ mod tests {
         plan.verify_adjoint_recurrence(&runtime, &output, &adjoint).unwrap();
         adjoint[0] += Fp2::ONE;
         assert!(plan.verify_adjoint_recurrence(&runtime, &output, &adjoint).is_err());
+    }
+
+    #[test]
+    fn production_v5_frame_reconstructs_every_public_field() {
+        let (ready, _, _, runtime, _) = ready_fixture([0x9A; 32]);
+        let functional_fold = ready
+            .terminal_claims()
+            .iter()
+            .fold((Fp2::ZERO, Fp2::ONE), |(sum, power), claim| {
+                (sum + power * *claim, power * ready.challenges().output_beta)
+            })
+            .0;
+        let outer_statement_digest = [0x9B; 32];
+        let frame = build_c61_production_arithmetic_frame(
+            &ready,
+            outer_statement_digest,
+            &runtime,
+            functional_fold,
+        )
+        .unwrap();
+        verify_c61_production_arithmetic_frame(
+            &ready,
+            outer_statement_digest,
+            &runtime,
+            &frame,
+        )
+        .unwrap();
+        assert_eq!(frame.encode().len(), C61_ARITHMETIC_FRAME_BYTES);
+
+        let mut changed = frame.clone();
+        changed.runtime_evaluations[0] += Fp2::ONE;
+        assert!(verify_c61_production_arithmetic_frame(
+            &ready,
+            outer_statement_digest,
+            &runtime,
+            &changed,
+        )
+        .is_err());
+        assert!(build_c61_production_arithmetic_frame(
+            &ready,
+            outer_statement_digest,
+            &runtime,
+            functional_fold + Fp2::ONE,
+        )
+        .is_err());
     }
 
     #[test]

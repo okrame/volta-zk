@@ -11,6 +11,8 @@ use crate::c61_authenticated_whir_p3::{
     C61ProductionJointPublicArgumentAssembly,
 };
 #[cfg(feature = "c61-p3-authenticated-reference")]
+use crate::c61_public_compression::C61OutputChallengeDrawn;
+#[cfg(feature = "c61-p3-authenticated-reference")]
 use crate::c6_authenticated_output_link::verify_c6_authenticated_output_link_production_nbr2_strict;
 use crate::c6_authenticated_output_link::{
     prove_c6_authenticated_output_link_persisted_cuda,
@@ -362,6 +364,7 @@ pub(crate) fn finish_c6_production_blind_with_persisted_link(
         roots,
         blind,
         None,
+        None,
         streams,
         backend,
         spill_root,
@@ -383,6 +386,7 @@ pub fn finish_c6_production_blind_with_persisted_nbr2_link(
     roots: &C6PersistedLiveWrapperRootBinding,
     blind: C6ProductionBlindProverOutput,
     nbr2: &C6Nbr2CorrectionFunctional<'_>,
+    public_output: &C61OutputChallengeDrawn,
     native: C61ProductionJointNativeProverLinkPending,
     streams: &mut [CorrelationStream; TAPES],
     backend: &mut Backend,
@@ -390,10 +394,14 @@ pub fn finish_c6_production_blind_with_persisted_nbr2_link(
     session_digest: [u8; 32],
     transcript: &mut Transcript,
 ) -> Result<C6ExactProductionNbr2ProverProof, String> {
+    if public_output.terminal_claims() != blind.residual_terminal_outputs.terminal_functionals() {
+        return Err("C6 exact public typestate differs from the fixed C6RSC3 outputs".to_owned());
+    }
     let (blind, receipt) = finish_c6_production_blind_with_persisted_link_inner(
         roots,
         blind,
         Some(nbr2),
+        Some(public_output.output_beta()),
         streams,
         backend,
         spill_root,
@@ -464,6 +472,7 @@ fn finish_c6_production_blind_with_persisted_link_inner(
     roots: &C6PersistedLiveWrapperRootBinding,
     blind: C6ProductionBlindProverOutput,
     nbr2: Option<&C6Nbr2CorrectionFunctional<'_>>,
+    fixed_output_beta: Option<Fp2>,
     streams: &mut [CorrelationStream; TAPES],
     backend: &mut Backend,
     spill_root: &Path,
@@ -474,7 +483,7 @@ fn finish_c6_production_blind_with_persisted_link_inner(
     if roots.session_digest() != session_digest {
         return Err("C6 exact runner root/session mismatch".to_owned());
     }
-    let output_beta = transcript.challenge_fp2();
+    let output_beta = fixed_output_beta.unwrap_or_else(|| transcript.challenge_fp2());
     let residual_terminal_fold =
         blind.residual_terminal_outputs.clone().bind_output_beta(output_beta);
     let mut pending = C6PendingSlotRegistryProverBuilder::new(roots.fixed()).map_err(text_error)?;

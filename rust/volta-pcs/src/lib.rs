@@ -72,10 +72,11 @@ pub use c61_joint_native_bridge::{
     C61JointNativeChallenge,
 };
 pub use c61_public_compression::{
-    build_c61_scaled_arithmetic_frame, c61_eq_weight, c61_fp2_vector_root,
+    build_c61_production_arithmetic_frame, build_c61_scaled_arithmetic_frame, c61_eq_weight,
+    c61_fp2_vector_root,
     c61_joint_public_statement_digest,
     c61_mle_eval_fold_reference, c61_mle_eval_prefix, c61_residual_direct_points,
-    verify_c61_scaled_public_argument,
+    verify_c61_production_arithmetic_frame, verify_c61_scaled_public_argument,
     C61AdjointFixed, C61ArithmeticFrame, C61CorrelationRangeBinding, C61EqualityChallenges,
     C61EqualityDrawn, C61LinearOp, C61NativeBackendVerifier, C61NativeChainId, C61NativeComponent,
     C61JointPublicArgument, C61OutputChallengeDrawn, C61PublicArgument,

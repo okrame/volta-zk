@@ -1009,7 +1009,6 @@ pub fn assemble_c61_production_joint_public_argument_from_executions(
             _ => return Err("C6PA2 compiler execution has a noncanonical typed role".to_owned()),
         };
         if compiler_statement.terminal_claims != arithmetic.terminal_claims
-            || compiler_statement.relation_challenges_digest != arithmetic.challenge_digest
             || compiler_statement.relation_root != arithmetic.adjoint_root
             || compiler_statement.functional_fold != arithmetic.source_boundary
         {

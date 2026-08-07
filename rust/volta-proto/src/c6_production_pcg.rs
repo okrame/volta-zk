@@ -5,6 +5,7 @@ use crate::{
     C6PairedSourceWitness, C6SetupManifest, C6SlotReservation, C6SourceCoordinate,
     C6_BASELINE_RAW_CORRELATIONS, C6_MAC_COORDINATES,
 };
+use volta_field::{Fp, Fp2, P};
 use volta_mac::{ConnectionCorrelationScope, CorrScheduleAudit, CorrelationStream, VerifierCtx};
 use volta_pcg::{
     CorrelationAllocation, CorrelationDomain, GgmPrg, ProductionFaseDConnection,
@@ -12,6 +13,17 @@ use volta_pcg::{
 };
 
 const SOURCE_BINDING_DOMAIN: &str = "volta-zk/c6/production-paired-source/v1";
+const REPLAY_MAGIC: &[u8] = b"C6VRP1\0\0";
+const REPLAY_VERSION: u16 = 1;
+pub const C61_PRODUCTION_SUB_CORRELATIONS: usize = 4_793_614;
+pub const C61_PRODUCTION_FULL_CORRELATIONS: usize = 221_039;
+pub const C61_VERIFIER_REPLAY_STATE_BYTES: usize = 8
+    + 4
+    + 7 * 32
+    + 2 * 16
+    + 8
+    + 2 * (C61_PRODUCTION_SUB_CORRELATIONS + C61_PRODUCTION_FULL_CORRELATIONS) * 16
+    + 32;
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -104,6 +116,223 @@ impl C6BoundProductionVerifierReplay {
             ),
         ])
     }
+
+    /// Canonical client-private state. These verifier keys are never part of
+    /// setup traffic or the provider-to-client certificate.
+    pub fn encode_client_state(&self) -> Result<Vec<u8>> {
+        encode_bound_replay(self)
+    }
+
+    pub fn decode_client_state(bytes: &[u8]) -> Result<Self> {
+        decode_bound_replay(
+            bytes,
+            C61_PRODUCTION_SUB_CORRELATIONS,
+            C61_PRODUCTION_FULL_CORRELATIONS,
+        )
+    }
+
+    pub fn certificate_digest(&self) -> [u8; 32] {
+        self.certificate_digest
+    }
+}
+
+struct ReplayWriter(Vec<u8>);
+
+impl ReplayWriter {
+    fn u16(&mut self, value: u16) {
+        self.0.extend_from_slice(&value.to_le_bytes());
+    }
+
+    fn u32(&mut self, value: u32) {
+        self.0.extend_from_slice(&value.to_le_bytes());
+    }
+
+    fn fp2(&mut self, value: Fp2) {
+        self.0.extend_from_slice(&value.c0.value().to_le_bytes());
+        self.0.extend_from_slice(&value.c1.value().to_le_bytes());
+    }
+}
+
+struct ReplayReader<'a> {
+    bytes: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> ReplayReader<'a> {
+    fn take(&mut self, len: usize) -> Result<&'a [u8]> {
+        let end = self
+            .offset
+            .checked_add(len)
+            .ok_or_else(|| "C6 verifier replay offset overflows".to_owned())?;
+        let value = self
+            .bytes
+            .get(self.offset..end)
+            .ok_or_else(|| "truncated C6 verifier replay state".to_owned())?;
+        self.offset = end;
+        Ok(value)
+    }
+
+    fn u16(&mut self) -> Result<u16> {
+        Ok(u16::from_le_bytes(self.take(2)?.try_into().expect("fixed width")))
+    }
+
+    fn u32(&mut self) -> Result<u32> {
+        Ok(u32::from_le_bytes(self.take(4)?.try_into().expect("fixed width")))
+    }
+
+    fn digest(&mut self) -> Result<[u8; 32]> {
+        Ok(self.take(32)?.try_into().expect("fixed digest width"))
+    }
+
+    fn fp2(&mut self) -> Result<Fp2> {
+        let c0 = u64::from_le_bytes(self.take(8)?.try_into().expect("fixed width"));
+        let c1 = u64::from_le_bytes(self.take(8)?.try_into().expect("fixed width"));
+        if c0 >= P || c1 >= P {
+            return Err("noncanonical C6 verifier replay field element".to_owned());
+        }
+        Ok(Fp2::new(Fp::new(c0), Fp::new(c1)))
+    }
+}
+
+fn validate_bound_replay(replay: &C6BoundProductionVerifierReplay) -> Result<(usize, usize)> {
+    let required = [
+        replay.owner.setup_manifest_digest,
+        replay.owner.reservation_digest,
+        replay.owner.source_allocation_binding_digest,
+        replay.owner.statement_digest,
+        replay.certificate_digest,
+        replay.owner.scope.connection_id,
+        replay.owner.scope.response_nonce,
+    ];
+    if required.iter().any(|digest| *digest == [0; 32])
+        || replay.owner.deltas[0] == replay.owner.deltas[1]
+    {
+        return Err("invalid C6 verifier replay binding".to_owned());
+    }
+    let sub = replay.owner.pools[0].sub_keys.len();
+    let full = replay.owner.pools[0].full_keys.len();
+    let production_geometry =
+        (sub, full) == (C61_PRODUCTION_SUB_CORRELATIONS, C61_PRODUCTION_FULL_CORRELATIONS);
+    let raw = sub
+        .checked_add(
+            full.checked_mul(2)
+                .ok_or_else(|| "C6 verifier replay full-correlation count overflows".to_owned())?,
+        )
+        .ok_or_else(|| "C6 verifier replay raw count overflows".to_owned())?;
+    if replay.owner.pools[1].sub_keys.len() != sub
+        || replay.owner.pools[1].full_keys.len() != full
+        || (production_geometry && raw != C6_BASELINE_RAW_CORRELATIONS as usize)
+    {
+        return Err("invalid C6 verifier replay pool geometry".to_owned());
+    }
+    Ok((sub, full))
+}
+
+fn encode_bound_replay(replay: &C6BoundProductionVerifierReplay) -> Result<Vec<u8>> {
+    let (sub, full) = validate_bound_replay(replay)?;
+    let mut out = ReplayWriter(REPLAY_MAGIC.to_vec());
+    out.u16(REPLAY_VERSION);
+    out.u16(0);
+    for digest in [
+        replay.owner.setup_manifest_digest,
+        replay.owner.reservation_digest,
+        replay.owner.source_allocation_binding_digest,
+        replay.owner.statement_digest,
+        replay.certificate_digest,
+        replay.owner.scope.connection_id,
+        replay.owner.scope.response_nonce,
+    ] {
+        out.0.extend_from_slice(&digest);
+    }
+    for delta in replay.owner.deltas {
+        out.fp2(delta);
+    }
+    out.u32(u32::try_from(sub).map_err(|_| "C6 verifier replay sub count exceeds u32")?);
+    out.u32(u32::try_from(full).map_err(|_| "C6 verifier replay full count exceeds u32")?);
+    for pool in &replay.owner.pools {
+        for key in pool.sub_keys.iter().chain(&pool.full_keys) {
+            out.fp2(*key);
+        }
+    }
+    let digest = blake3::hash(&out.0);
+    out.0.extend_from_slice(digest.as_bytes());
+    Ok(out.0)
+}
+
+fn decode_bound_replay(
+    bytes: &[u8],
+    expected_sub: usize,
+    expected_full: usize,
+) -> Result<C6BoundProductionVerifierReplay> {
+    let keys = expected_sub
+        .checked_add(expected_full)
+        .and_then(|per_tape| per_tape.checked_mul(C6_MAC_COORDINATES))
+        .ok_or_else(|| "C6 verifier replay key census overflows".to_owned())?;
+    let expected_len = REPLAY_MAGIC
+        .len()
+        .checked_add(4 + 7 * 32 + 2 * 16 + 8 + 32)
+        .and_then(|fixed| fixed.checked_add(keys.checked_mul(16)?))
+        .ok_or_else(|| "C6 verifier replay byte census overflows".to_owned())?;
+    if bytes.len() != expected_len {
+        return Err("C6 verifier replay byte census mismatch".to_owned());
+    }
+    let (body, claimed_digest) = bytes.split_at(bytes.len() - 32);
+    if blake3::hash(body).as_bytes() != claimed_digest {
+        return Err("C6 verifier replay digest mismatch".to_owned());
+    }
+    let mut input = ReplayReader { bytes: body, offset: 0 };
+    if input.take(REPLAY_MAGIC.len())? != REPLAY_MAGIC
+        || input.u16()? != REPLAY_VERSION
+        || input.u16()? != 0
+    {
+        return Err("C6 verifier replay header/version/reserved mismatch".to_owned());
+    }
+    let setup_manifest_digest = input.digest()?;
+    let reservation_digest = input.digest()?;
+    let source_allocation_binding_digest = input.digest()?;
+    let statement_digest = input.digest()?;
+    let certificate_digest = input.digest()?;
+    let connection_id = input.digest()?;
+    let response_nonce = input.digest()?;
+    let deltas = [input.fp2()?, input.fp2()?];
+    let sub = usize::try_from(input.u32()?).expect("u32 fits usize");
+    let full = usize::try_from(input.u32()?).expect("u32 fits usize");
+    if (sub, full) != (expected_sub, expected_full) {
+        return Err("C6 verifier replay encoded geometry mismatch".to_owned());
+    }
+    let mut pools = Vec::with_capacity(C6_MAC_COORDINATES);
+    for _ in 0..C6_MAC_COORDINATES {
+        let mut sub_keys = Vec::with_capacity(sub);
+        let mut full_keys = Vec::with_capacity(full);
+        for _ in 0..sub {
+            sub_keys.push(input.fp2()?);
+        }
+        for _ in 0..full {
+            full_keys.push(input.fp2()?);
+        }
+        pools.push(VerifierPcgPool { sub_keys, full_keys });
+    }
+    if input.offset != body.len() {
+        return Err("trailing C6 verifier replay bytes".to_owned());
+    }
+    if connection_id == [0; 32] || response_nonce == [0; 32] {
+        return Err("zero C6 verifier replay connection scope".to_owned());
+    }
+    let owner = C6ProductionVerifierReplayOwner {
+        setup_manifest_digest,
+        reservation_digest,
+        source_allocation_binding_digest,
+        statement_digest,
+        pools: pools.try_into().map_err(|_| "C6 verifier replay tape census mismatch")?,
+        deltas,
+        scope: ConnectionCorrelationScope::new(connection_id, response_nonce),
+    };
+    let replay = C6BoundProductionVerifierReplay { owner, certificate_digest };
+    validate_bound_replay(&replay)?;
+    if encode_bound_replay(&replay)? != bytes {
+        return Err("noncanonical C6 verifier replay state".to_owned());
+    }
+    Ok(replay)
 }
 
 /// Paired source witness whose tape identities and ranges were fixed by the
@@ -160,7 +389,9 @@ impl C6ProductionPairedPcgAttempt {
                     .and_then(|full| sub.checked_add(full))
             })
             .ok_or_else(|| "C6 paired PCG raw count overflows".to_owned())?;
-        if raw_count != C6_BASELINE_RAW_CORRELATIONS
+        if (sub_correlations, full_correlations)
+            != (C61_PRODUCTION_SUB_CORRELATIONS, C61_PRODUCTION_FULL_CORRELATIONS)
+            || raw_count != C6_BASELINE_RAW_CORRELATIONS
             || reservation.correlation_ranges.raw_count().map_err(|error| error.to_string())?
                 != raw_count
         {
@@ -492,5 +723,29 @@ mod tests {
         assert_eq!(first[0].delta, second[0].delta);
         assert_eq!(first[1].delta, second[1].delta);
         assert!(replay.fresh_contexts([0x32; 32]).is_err());
+    }
+
+    #[test]
+    fn verifier_replay_client_state_codec_is_strict_and_certificate_bound() {
+        assert_eq!(C61_VERIFIER_REPLAY_STATE_BYTES, 160_469_204);
+        let digest = [0x31; 32];
+        let replay = replay_owner().bind_certificate(digest).unwrap();
+        let bytes = replay.encode_client_state().unwrap();
+        let decoded = decode_bound_replay(&bytes, 1, 1).unwrap();
+        assert_eq!(decoded.certificate_digest(), digest);
+        assert!(decoded.fresh_contexts(digest).is_ok());
+        assert!(C6BoundProductionVerifierReplay::decode_client_state(&bytes).is_err());
+
+        let mut corrupted = bytes.clone();
+        corrupted[20] ^= 1;
+        assert!(decode_bound_replay(&corrupted, 1, 1).is_err());
+
+        let mut noncanonical = bytes;
+        let first_delta = REPLAY_MAGIC.len() + 4 + 7 * 32;
+        noncanonical[first_delta..first_delta + 8].copy_from_slice(&P.to_le_bytes());
+        let body_len = noncanonical.len() - 32;
+        let digest = *blake3::hash(&noncanonical[..body_len]).as_bytes();
+        noncanonical[body_len..].copy_from_slice(&digest);
+        assert!(decode_bound_replay(&noncanonical, 1, 1).is_err());
     }
 }

@@ -77,6 +77,8 @@ pub use c6_census::{
 pub use c6_production_pcg::{
     C6BoundProductionVerifierReplay, C6ProductionPairedPcgAttempt,
     C6ProductionPairedSourceWitness, C6ProductionVerifierReplayOwner,
+    C61_PRODUCTION_FULL_CORRELATIONS, C61_PRODUCTION_SUB_CORRELATIONS,
+    C61_VERIFIER_REPLAY_STATE_BYTES,
 };
 #[cfg(feature = "c6-trace")]
 pub use c6_residual::{

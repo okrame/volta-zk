@@ -23,6 +23,9 @@ use std::fmt;
 use volta_field::{Fp, Fp2, P};
 
 const MAGIC: &[u8] = b"VC6MRP1\0";
+const RETAINED_MAGIC: &[u8] = b"C6RRP1\0\0";
+const RETAINED_VERSION: u16 = 1;
+pub const C6_RETAINED_RESPONSE_BYTES: usize = 2_921_744;
 const MAX_COLLECTION_ITEMS: usize = 1_000_000;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -52,6 +55,10 @@ impl Writer {
     }
 
     fn u32(&mut self, value: u32) {
+        self.0.extend_from_slice(&value.to_le_bytes());
+    }
+
+    fn u16(&mut self, value: u16) {
         self.0.extend_from_slice(&value.to_le_bytes());
     }
 
@@ -98,6 +105,10 @@ impl<'a> Reader<'a> {
 
     fn u32(&mut self) -> Result<u32> {
         Ok(u32::from_le_bytes(self.take(4)?.try_into().expect("fixed width")))
+    }
+
+    fn u16(&mut self) -> Result<u16> {
+        Ok(u16::from_le_bytes(self.take(2)?.try_into().expect("fixed width")))
     }
 
     fn u64(&mut self) -> Result<u64> {
@@ -388,6 +399,97 @@ pub fn decode_model_proof_canonical(bytes: &[u8]) -> Result<ModelProof> {
     Ok(proof)
 }
 
+/// Complete retained non-PCS response proof consumed before C6PA2/C6PIF1.
+/// The product challenge and mask domain are transcript-derived and therefore
+/// are not duplicated as provider-selected bytes.
+#[derive(Debug, PartialEq, Eq)]
+pub struct C6RetainedResponseProof {
+    pub model: ModelProof,
+    pub product: ProdProof,
+}
+
+impl C6RetainedResponseProof {
+    pub fn encode(&self) -> Result<Vec<u8>> {
+        Self::encode_parts(&self.model, &self.product)
+    }
+
+    pub fn encode_parts(model_proof: &ModelProof, product: &ProdProof) -> Result<Vec<u8>> {
+        let model = encode_model_proof_canonical(model_proof)?;
+        let model_len = u32::try_from(model.len())
+            .map_err(|_| ModelProofCodecError::new("retained model proof exceeds u32"))?;
+        let mut out = Writer(RETAINED_MAGIC.to_vec());
+        out.u16(RETAINED_VERSION);
+        out.u16(0);
+        out.u32(model_len);
+        out.0.extend_from_slice(blake3::hash(&model).as_bytes());
+        out.0.extend_from_slice(&model);
+        product.write(&mut out)?;
+        let padding = C6_RETAINED_RESPONSE_BYTES
+            .checked_sub(out.0.len())
+            .and_then(|remaining| remaining.checked_sub(32))
+            .ok_or_else(|| {
+                ModelProofCodecError::new("retained response exceeds its frozen allocation")
+            })?;
+        out.0.resize(out.0.len() + padding, 0);
+        let digest = blake3::hash(&out.0);
+        out.0.extend_from_slice(digest.as_bytes());
+        Ok(out.0)
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self> {
+        let (proof, consumed) = Self::decode_prefix(bytes)?;
+        if consumed != bytes.len() {
+            return Err(ModelProofCodecError::new("trailing retained-response bytes"));
+        }
+        Ok(proof)
+    }
+
+    /// Decode one self-framed retained response at the start of a larger
+    /// certificate payload and return its exact canonical prefix length.
+    pub fn decode_prefix(bytes: &[u8]) -> Result<(Self, usize)> {
+        let frame = bytes
+            .get(..C6_RETAINED_RESPONSE_BYTES)
+            .ok_or_else(|| ModelProofCodecError::new("truncated retained-response allocation"))?;
+        let mut input = Reader { bytes: frame, offset: 0 };
+        if input.take(RETAINED_MAGIC.len())? != RETAINED_MAGIC
+            || input.u16()? != RETAINED_VERSION
+            || input.u16()? != 0
+        {
+            return Err(ModelProofCodecError::new(
+                "retained-response header/version/reserved mismatch",
+            ));
+        }
+        let model_len = usize::try_from(input.u32()?).expect("u32 fits usize");
+        let expected_model_digest: [u8; 32] =
+            input.take(32)?.try_into().expect("fixed retained model digest width");
+        let model_bytes = input.take(model_len)?;
+        if *blake3::hash(model_bytes).as_bytes() != expected_model_digest {
+            return Err(ModelProofCodecError::new("retained model-proof digest mismatch"));
+        }
+        let model = decode_model_proof_canonical(model_bytes)?;
+        let product = ProdProof::read(&mut input)?;
+        let padding_len = C6_RETAINED_RESPONSE_BYTES
+            .checked_sub(input.offset)
+            .and_then(|remaining| remaining.checked_sub(32))
+            .ok_or_else(|| ModelProofCodecError::new("retained-response framing overflows"))?;
+        if input.take(padding_len)?.iter().any(|byte| *byte != 0) {
+            return Err(ModelProofCodecError::new("nonzero retained-response padding"));
+        }
+        let body_end = input.offset;
+        let expected_digest: [u8; 32] =
+            input.take(32)?.try_into().expect("fixed retained-response digest width");
+        if *blake3::hash(&frame[..body_end]).as_bytes() != expected_digest {
+            return Err(ModelProofCodecError::new("retained-response digest mismatch"));
+        }
+        let proof = Self { model, product };
+        let consumed = input.offset;
+        if proof.encode()? != frame[..consumed] {
+            return Err(ModelProofCodecError::new("noncanonical retained-response encoding"));
+        }
+        Ok((proof, consumed))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -512,7 +614,7 @@ mod tests {
         }
     }
 
-    fn proof() -> ModelProof {
+    pub(super) fn proof() -> ModelProof {
         ModelProof {
             layers: vec![layer()],
             seams: vec![Some(SeamProof { inst: instance() })],
@@ -578,4 +680,46 @@ mod tests {
         let mut field = Reader { bytes: &noncanonical, offset: 0 };
         assert!(field.fp2().is_err());
     }
+
+    #[test]
+    fn retained_response_codec_is_strict_and_prefix_decodable() {
+        let retained = C6RetainedResponseProof {
+            model: proof(),
+            product: ProdProof { m0: Fp2::ONE, m1: Fp2::ZERO },
+        };
+        let bytes = retained.encode().unwrap();
+        assert_eq!(C6RetainedResponseProof::decode(&bytes).unwrap(), retained);
+
+        let mut followed = bytes.clone();
+        followed.extend_from_slice(b"C6PA2");
+        let (decoded, consumed) = C6RetainedResponseProof::decode_prefix(&followed).unwrap();
+        assert_eq!(decoded, retained);
+        assert_eq!(consumed, bytes.len());
+        assert!(C6RetainedResponseProof::decode(&followed).is_err());
+
+        let mut mutation = bytes.clone();
+        let model_start = RETAINED_MAGIC.len() + 2 + 2 + 4 + 32;
+        mutation[model_start] ^= 1;
+        assert!(C6RetainedResponseProof::decode(&mutation).is_err());
+        let model_len = usize::try_from(u32::from_le_bytes(
+            bytes[12..16].try_into().expect("fixed retained model length"),
+        ))
+        .unwrap();
+        let padding_start = model_start + model_len + 32;
+        let mut nonzero_padding = bytes.clone();
+        nonzero_padding[padding_start] = 1;
+        assert!(C6RetainedResponseProof::decode(&nonzero_padding).is_err());
+        assert!(C6RetainedResponseProof::decode(&bytes[..bytes.len() - 1]).is_err());
+        assert!(C6RetainedResponseProof::decode(b"wrong").is_err());
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn retained_response_test_bytes() -> Vec<u8> {
+    C6RetainedResponseProof {
+        model: tests::proof(),
+        product: ProdProof { m0: Fp2::ONE, m1: Fp2::ZERO },
+    }
+    .encode()
+    .unwrap()
 }

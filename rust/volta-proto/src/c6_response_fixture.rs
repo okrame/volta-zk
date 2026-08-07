@@ -325,6 +325,11 @@ impl C6T1ProductionResponseOwner {
         &self.product_proof
     }
 
+    pub fn encoded_retained_response(&self) -> Result<Vec<u8>, String> {
+        crate::C6RetainedResponseProof::encode_parts(&self.model_proof, &self.product_proof)
+            .map_err(|error| error.to_string())
+    }
+
     pub fn product_challenge(&self) -> Fp2 {
         self.product_challenge
     }

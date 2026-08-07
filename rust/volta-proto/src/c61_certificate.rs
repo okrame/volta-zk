@@ -8,7 +8,7 @@
 
 use std::fmt;
 
-use crate::{C6FinalCertificate, C6ResponseProofEnvelope};
+use crate::{C6FinalCertificate, C6ResponseProofEnvelope, C6RetainedResponseProof};
 
 pub const C61_RETAINED_NON_PCS_RESPONSE_BYTES: u64 = 2_921_744;
 pub const C61_PUBLIC_ARGUMENT_ABSOLUTE_MAX_BYTES: u64 = 15_157_896;
@@ -55,6 +55,11 @@ impl C61FinalCertificateEnvelope {
             .map_err(|error| C61CertificateError::new(error.to_string()))?;
         let retained_prefix = usize::try_from(C61_RETAINED_NON_PCS_RESPONSE_BYTES)
             .map_err(|_| C61CertificateError::new("C6.1 retained prefix exceeds usize"))?;
+        if retained_prefix != crate::C6_RETAINED_RESPONSE_BYTES {
+            return Err(C61CertificateError::new(
+                "C6.1 retained allocation differs from its canonical codec",
+            ));
+        }
         if encoded_len > C61_CERTIFICATE_STRICT_MAX_BYTES
             || certificate.retained_transcript.len() <= retained_prefix
         {
@@ -62,6 +67,8 @@ impl C61FinalCertificateEnvelope {
                 "C6.1 certificate cap or retained/public partition mismatch",
             ));
         }
+        C6RetainedResponseProof::decode(&certificate.retained_transcript[..retained_prefix])
+            .map_err(|error| C61CertificateError::new(error.to_string()))?;
         let public_argument_len = certificate.retained_transcript.len() - retained_prefix;
         if public_argument_len as u64 > C61_PUBLIC_ARGUMENT_ABSOLUTE_MAX_BYTES {
             return Err(C61CertificateError::new(

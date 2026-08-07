@@ -41,6 +41,11 @@ const C61_INTERACTIVE_CHECKPOINT_HEADER_BYTES: usize = 8 + 2 + 1 + 1 + 4 + 32;
 const C61_INTERACTIVE_CHECKPOINT_MAX_BYTES: usize = 1_000_000;
 const C61_INTERACTIVE_CHECKPOINT_MAX_RECORDS: usize = 100_000;
 const C61_INTERACTIVE_CHECKPOINT_MAX_MOVE_BYTES: usize = 1_000_000;
+const C61_INTERACTIVE_TAPE_MAGIC: [u8; 8] = *b"C6ICT2\0\0";
+const C61_INTERACTIVE_TAPE_VERSION: u16 = 2;
+const C61_INTERACTIVE_TAPE_HEADER_BYTES: usize = 104;
+const C61_INTERACTIVE_TAPE_DIGEST_BYTES: usize = 32;
+const C61_INTERACTIVE_TAPE_MAX_BYTES: usize = 2_100_000;
 const C61_DURABLE_JOURNAL_MAGIC: [u8; 8] = *b"C6ICJ1\0\0";
 const C61_DURABLE_JOURNAL_VERSION: u16 = 1;
 const C61_DURABLE_JOURNAL_MAX_MASK_EVENTS: usize = 16;
@@ -717,7 +722,7 @@ pub(crate) fn open_c61_durable_checkpoint(
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct C61InteractiveTape {
+pub struct C61InteractiveTape {
     checkpoint: C61InteractiveCheckpoint,
     final_payload_bytes: usize,
     final_payload_blake3: [u8; 32],
@@ -726,8 +731,121 @@ pub(crate) struct C61InteractiveTape {
 }
 
 impl C61InteractiveTape {
-    pub(crate) fn challenge_count(&self) -> usize {
+    pub fn challenge_count(&self) -> usize {
         self.checkpoint.records.len()
+    }
+
+    pub fn context_digest(&self) -> [u8; 32] {
+        self.checkpoint.context_digest
+    }
+
+    pub fn encoded_len(&self) -> usize {
+        C61_INTERACTIVE_TAPE_HEADER_BYTES
+            + self.checkpoint.encode().map_or(0, |bytes| bytes.len())
+            + self.final_pending_provider_move.len()
+            + C61_INTERACTIVE_TAPE_DIGEST_BYTES
+    }
+
+    pub fn encode(&self) -> Result<Vec<u8>, String> {
+        let checkpoint = self.checkpoint.encode().map_err(|error| error.to_string())?;
+        if self.final_payload_bytes == 0
+            || self.final_semantic_bytes > self.final_payload_bytes
+            || self.final_pending_provider_move.len() > C61_INTERACTIVE_CHECKPOINT_MAX_MOVE_BYTES
+        {
+            return Err("C6ICT2 tape final seal is noncanonical".to_owned());
+        }
+        let encoded_len = C61_INTERACTIVE_TAPE_HEADER_BYTES
+            .checked_add(checkpoint.len())
+            .and_then(|value| value.checked_add(self.final_pending_provider_move.len()))
+            .and_then(|value| value.checked_add(C61_INTERACTIVE_TAPE_DIGEST_BYTES))
+            .ok_or_else(|| "C6ICT2 tape length overflows".to_owned())?;
+        if encoded_len > C61_INTERACTIVE_TAPE_MAX_BYTES {
+            return Err("C6ICT2 tape exceeds private-state cap".to_owned());
+        }
+        let mut bytes = Vec::with_capacity(encoded_len);
+        bytes.extend_from_slice(&C61_INTERACTIVE_TAPE_MAGIC);
+        bytes.extend_from_slice(&C61_INTERACTIVE_TAPE_VERSION.to_le_bytes());
+        bytes.push(self.checkpoint.num_variables);
+        bytes.push(0);
+        bytes.extend_from_slice(&self.checkpoint.context_digest);
+        bytes.extend_from_slice(&(self.challenge_count() as u32).to_le_bytes());
+        bytes.extend_from_slice(&(checkpoint.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&(self.final_payload_bytes as u64).to_le_bytes());
+        bytes.extend_from_slice(&self.final_payload_blake3);
+        bytes.extend_from_slice(&(self.final_semantic_bytes as u64).to_le_bytes());
+        bytes.extend_from_slice(&(self.final_pending_provider_move.len() as u32).to_le_bytes());
+        debug_assert_eq!(bytes.len(), C61_INTERACTIVE_TAPE_HEADER_BYTES);
+        bytes.extend_from_slice(&checkpoint);
+        bytes.extend_from_slice(&self.final_pending_provider_move);
+        let digest = blake3::hash(&bytes);
+        bytes.extend_from_slice(digest.as_bytes());
+        Ok(bytes)
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, String> {
+        if bytes.len() < C61_INTERACTIVE_TAPE_HEADER_BYTES + C61_INTERACTIVE_TAPE_DIGEST_BYTES
+            || bytes.len() > C61_INTERACTIVE_TAPE_MAX_BYTES
+            || bytes[..8] != C61_INTERACTIVE_TAPE_MAGIC
+            || u16::from_le_bytes(bytes[8..10].try_into().expect("fixed C6ICT2 version"))
+                != C61_INTERACTIVE_TAPE_VERSION
+            || bytes[11] != 0
+        {
+            return Err("C6ICT2 tape header/version/length mismatch".to_owned());
+        }
+        let digest_offset = bytes.len() - C61_INTERACTIVE_TAPE_DIGEST_BYTES;
+        if blake3::hash(&bytes[..digest_offset]).as_bytes() != &bytes[digest_offset..] {
+            return Err("C6ICT2 tape digest mismatch".to_owned());
+        }
+        let num_variables = bytes[10];
+        let context_digest: [u8; 32] = bytes[12..44].try_into().expect("fixed C6ICT2 context");
+        let challenge_count =
+            u32::from_le_bytes(bytes[44..48].try_into().expect("fixed C6ICT2 count")) as usize;
+        let checkpoint_len =
+            u32::from_le_bytes(bytes[48..52].try_into().expect("fixed C6ICT2 checkpoint length"))
+                as usize;
+        let final_payload_bytes = usize::try_from(u64::from_le_bytes(
+            bytes[52..60].try_into().expect("fixed C6ICT2 payload length"),
+        ))
+        .map_err(|_| "C6ICT2 payload length exceeds usize".to_owned())?;
+        let final_payload_blake3 = bytes[60..92].try_into().expect("fixed C6ICT2 payload digest");
+        let final_semantic_bytes = usize::try_from(u64::from_le_bytes(
+            bytes[92..100].try_into().expect("fixed C6ICT2 semantic length"),
+        ))
+        .map_err(|_| "C6ICT2 semantic length exceeds usize".to_owned())?;
+        let pending_len =
+            u32::from_le_bytes(bytes[100..104].try_into().expect("fixed C6ICT2 pending length"))
+                as usize;
+        let pending_offset = C61_INTERACTIVE_TAPE_HEADER_BYTES
+            .checked_add(checkpoint_len)
+            .ok_or_else(|| "C6ICT2 checkpoint end overflows".to_owned())?;
+        if pending_len > C61_INTERACTIVE_CHECKPOINT_MAX_MOVE_BYTES
+            || pending_offset.checked_add(pending_len) != Some(digest_offset)
+            || final_payload_bytes == 0
+            || final_semantic_bytes > final_payload_bytes
+        {
+            return Err("C6ICT2 tape body census mismatch".to_owned());
+        }
+        let checkpoint = C61InteractiveCheckpoint::decode(
+            &bytes[C61_INTERACTIVE_TAPE_HEADER_BYTES..pending_offset],
+        )
+        .map_err(|error| error.to_string())?;
+        if checkpoint.num_variables != num_variables
+            || checkpoint.context_digest != context_digest
+            || checkpoint.records.len() != challenge_count
+        {
+            return Err("C6ICT2 tape repeats a different checkpoint binding".to_owned());
+        }
+        let tape = Self {
+            checkpoint,
+            final_payload_bytes,
+            final_payload_blake3,
+            final_semantic_bytes,
+            final_pending_provider_move: bytes[pending_offset..digest_offset].to_vec(),
+        };
+        if tape.encode()? != bytes {
+            return Err("noncanonical C6ICT2 tape".to_owned());
+        }
+        Ok(tape)
     }
 
     pub(crate) fn checkpoint(&self, count: usize) -> ReferenceResult<C61InteractiveCheckpoint> {
@@ -1712,6 +1830,16 @@ mod tests {
         let encoded = output.tape.checkpoint_bytes(3).unwrap();
         let decoded = C61InteractiveCheckpoint::decode(&encoded).unwrap();
         assert_eq!(decoded, output.tape.checkpoint);
+        let tape_bytes = output.tape.encode().unwrap();
+        assert_eq!(tape_bytes.len(), output.tape.encoded_len());
+        assert_eq!(C61InteractiveTape::decode(&tape_bytes).unwrap(), output.tape);
+        let mut changed_tape_bytes = tape_bytes.clone();
+        changed_tape_bytes[12] ^= 1;
+        assert!(C61InteractiveTape::decode(&changed_tape_bytes).is_err());
+        let mut changed_tape_digest = tape_bytes.clone();
+        *changed_tape_digest.last_mut().unwrap() ^= 1;
+        assert!(C61InteractiveTape::decode(&changed_tape_digest).is_err());
+        assert!(C61InteractiveTape::decode(&tape_bytes[..tape_bytes.len() - 1]).is_err());
 
         let replay =
             C61PrivateEntropyTranscriptReplayEndpoint::new(output.tape.clone(), 28, context_digest)

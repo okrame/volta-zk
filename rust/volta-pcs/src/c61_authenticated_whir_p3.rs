@@ -1421,7 +1421,7 @@ impl C61ProviderJointSessionBinding {
         Ok(())
     }
 
-    fn digest(self) -> [u8; 32] {
+    pub fn context_digest(self) -> [u8; 32] {
         self.digest
     }
 }
@@ -1460,7 +1460,7 @@ impl C61ProviderSessionBinding {
         Ok(Self { digest: *hasher.finalize().as_bytes(), id, mask_range })
     }
 
-    fn digest(self) -> [u8; 32] {
+    pub fn context_digest(self) -> [u8; 32] {
         self.digest
     }
 
@@ -1891,7 +1891,7 @@ pub fn prepare_c61_production_joint_native_prover_bodies(
     })
 }
 
-pub(crate) fn prepare_c61_production_joint_native_prover_bodies_private_entropy(
+pub fn prepare_c61_production_joint_native_prover_bodies_private_entropy(
     profile: &C6CanonicalTargetProfile,
     bodies: Vec<C61ProductionCommittedChainProverBody>,
     provider_session_binding: C61ProviderJointSessionBinding,
@@ -2194,7 +2194,7 @@ fn prepare_c61_production_joint_native_verifier_bodies_with_transcripts(
     })
 }
 
-pub(crate) fn prepare_c61_production_joint_native_verifier_bodies_private_entropy(
+pub fn prepare_c61_production_joint_native_verifier_bodies_private_entropy(
     profile: &C6CanonicalTargetProfile,
     public: &[C61TypedNativeChainPublicStatement],
     proofs: &[C61ProductionJointCommittedChainProof],
@@ -2224,7 +2224,7 @@ pub(crate) fn prepare_c61_production_joint_native_verifier_bodies_private_entrop
                 }
                 _ => return Err("C6ICT2 joint verifier received a compiler lane".to_owned()),
             }),
-            binding.digest(),
+            binding.context_digest(),
         )
         .map_err(|error| error.to_string())?;
         transcripts.push(Transcript::new_interactive(Box::new(endpoint)));
@@ -2233,7 +2233,7 @@ pub(crate) fn prepare_c61_production_joint_native_verifier_bodies_private_entrop
     let joint_endpoint = C61PrivateEntropyTranscriptReplayEndpoint::new(
         joint_tape,
         0,
-        joint_provider_session_binding.digest(),
+        joint_provider_session_binding.context_digest(),
     )
     .map_err(|error| error.to_string())?;
     prepare_c61_production_joint_native_verifier_bodies_with_transcripts(
@@ -2742,7 +2742,7 @@ pub fn prepare_c61_authenticated_whir_p3_production_joint_four_chains_in_attempt
 /// (four WHIR lanes plus the post-body joint bridge) are opaque endpoints;
 /// verifier seeds, replay tapes and checkpoints cannot enter this call.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn prepare_c61_authenticated_whir_p3_production_joint_four_chains_private_entropy_in_attempt(
+pub fn prepare_c61_authenticated_whir_p3_production_joint_four_chains_private_entropy_in_attempt(
     load_coefficients: impl FnMut(C61NativeComponent, u8) -> Result<Vec<Goldilocks>, String>,
     expected_model_coefficient_digest: [u8; 32],
     expected_embedding_coefficient_digest: [u8; 32],
@@ -2774,7 +2774,7 @@ pub(crate) fn prepare_c61_authenticated_whir_p3_production_joint_four_chains_pri
     }
     joint_provider_session_binding.validate_for(profile)?;
     let transcripts = endpoints.map(|endpoint| Transcript::new_interactive(Box::new(endpoint)));
-    let binding_digests = provider_session_bindings.map(C61ProviderSessionBinding::digest);
+    let binding_digests = provider_session_bindings.map(C61ProviderSessionBinding::context_digest);
     let prepared = prepare_c61_authenticated_whir_p3_production_four_committed_chain_bodies(
         load_coefficients,
         expected_model_coefficient_digest,
@@ -4978,7 +4978,7 @@ pub fn prepare_c61_authenticated_whir_p3_production_committed_chain_persisted_cu
 /// Provider-only C6ICT2 entry. The opaque endpoint owns transport but no
 /// verifier seed, replay checkpoint, verifier transcript, key or Delta.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn prepare_c61_authenticated_whir_p3_production_committed_chain_private_entropy(
+pub fn prepare_c61_authenticated_whir_p3_production_committed_chain_private_entropy(
     coefficients: Vec<Goldilocks>,
     claims: &[crate::batch::BlockClaim],
     targets: Vec<ProverAuthed>,
@@ -5003,7 +5003,7 @@ pub(crate) fn prepare_c61_authenticated_whir_p3_production_committed_chain_priva
         backend,
         correlations,
         Transcript::new_interactive(Box::new(endpoint)),
-        provider_session_binding.digest(),
+        provider_session_binding.context_digest(),
         id,
         mask_range,
     )
@@ -5221,7 +5221,7 @@ pub fn verify_c61_authenticated_whir_p3_production_committed_chain_in_attempt(
     .finish_ordinary(&proof.payload()[tail_start..], context)
 }
 
-pub(crate) fn verify_c61_authenticated_whir_p3_production_committed_chain_private_entropy_in_attempt(
+pub fn verify_c61_authenticated_whir_p3_production_committed_chain_private_entropy_in_attempt(
     statement: &C61NativeVerifierChainStatement,
     proof: &C61ProductionCommittedChainProof,
     context: &mut VerifierCtx,
@@ -5253,7 +5253,7 @@ pub(crate) fn verify_c61_authenticated_whir_p3_production_committed_chain_privat
                 return Err("C6ICT2 committed verifier rejects compiler chains".to_owned())
             }
         },
-        provider_session_binding.digest(),
+        provider_session_binding.context_digest(),
     )
     .map_err(|error| error.to_string())?;
     let mut body =
@@ -6135,7 +6135,7 @@ pub fn run_c61_authenticated_whir_p3_production_persisted_execution_in_attempt(
 /// Provider-only persisted compiler entry. The endpoint and public durable
 /// binding expose no verifier seed, checkpoint, transcript, key or Delta.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn run_c61_authenticated_whir_p3_production_compiler_private_entropy_in_attempt(
+pub fn run_c61_authenticated_whir_p3_production_compiler_private_entropy_in_attempt(
     operation_plan: &C6InstalledOperationPlan,
     terminal_metadata: C6OperationPlanTerminalMetadata,
     extraction: &volta_mac::C6DecodedInstanceExtractionPlan,
@@ -6168,7 +6168,7 @@ pub(crate) fn run_c61_authenticated_whir_p3_production_compiler_private_entropy_
     )?;
     let mut session_hasher =
         blake3::Hasher::new_derive_key("volta-zk/c6.1/c6ict2-compiler-session/v1");
-    session_hasher.update(&provider_session_binding.digest());
+    session_hasher.update(&provider_session_binding.context_digest());
     session_hasher.update(&operation_plan.artifact_digest());
     session_hasher.update(&(id.component as u16).to_le_bytes());
     session_hasher.update(&[id.repetition, mask_range.stage]);
@@ -6921,7 +6921,7 @@ fn verify_c61_authenticated_whir_p3_production_compiler_chain_with_transcript(
 /// Disk-verifier replay for one seedless compiler chain. The tape is
 /// client-private and bound to the public durable attempt before verification.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn verify_c61_authenticated_whir_p3_production_compiler_private_entropy_in_attempt(
+pub fn verify_c61_authenticated_whir_p3_production_compiler_private_entropy_in_attempt(
     profile: &C61CompilerVerifierProfile,
     extraction_map_setup_bytes: u64,
     public: &C61TypedNativeChainPublicStatement,
@@ -6934,9 +6934,12 @@ pub(crate) fn verify_c61_authenticated_whir_p3_production_compiler_private_entro
     mask_range: C61AuthenticatedWhirMaskRange,
 ) -> Result<C61ProductionCompilerChainVerification, String> {
     provider_session_binding.validate_for(id, mask_range)?;
-    let endpoint =
-        C61PrivateEntropyTranscriptReplayEndpoint::new(tape, 28, provider_session_binding.digest())
-            .map_err(|error| error.to_string())?;
+    let endpoint = C61PrivateEntropyTranscriptReplayEndpoint::new(
+        tape,
+        28,
+        provider_session_binding.context_digest(),
+    )
+    .map_err(|error| error.to_string())?;
     verify_c61_authenticated_whir_p3_production_compiler_chain_with_transcript(
         profile,
         extraction_map_setup_bytes,
@@ -9142,7 +9145,7 @@ mod tests {
             c61_reference_mmcs(),
         )
         .unwrap();
-        let broker = broker_handle.join().unwrap().unwrap();
+        let broker = broker_handle.finish_output().unwrap();
         assert!(broker.tape.challenge_count() > 100);
 
         let ((response_commitment, _), (plan_commitment, _), _) =

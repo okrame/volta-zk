@@ -1122,7 +1122,7 @@ struct C61ProviderEndpoint {
 
 /// Seedless exact-move endpoint for production protocol code that uses the
 /// generic VOLTA transcript rather than the P3 challenger interface.
-pub(crate) struct C61PrivateEntropyEndpoint {
+pub struct C61PrivateEntropyEndpoint {
     endpoint: C61ProviderEndpoint,
 }
 
@@ -1685,19 +1685,32 @@ pub(crate) fn spawn_c61_private_entropy_broker(
     Ok((challenger, handle))
 }
 
-pub(crate) fn spawn_c61_private_entropy_transcript_broker(
+pub struct C61PrivateEntropyBrokerHandle {
+    handle: JoinHandle<ReferenceResult<C61PrivateEntropyBrokerOutput>>,
+}
+
+impl C61PrivateEntropyBrokerHandle {
+    pub(crate) fn finish_output(self) -> ReferenceResult<C61PrivateEntropyBrokerOutput> {
+        self.handle
+            .join()
+            .map_err(|_| C61WhirReferenceError::new("C6ICT2 verifier broker panicked"))?
+    }
+
+    pub fn finish(self) -> Result<C61InteractiveTape, String> {
+        self.finish_output().map(|output| output.tape).map_err(|error| error.to_string())
+    }
+}
+
+pub fn spawn_c61_private_entropy_transcript_broker(
     verifier_seed: [u8; 32],
     num_variables: usize,
     context_digest: [u8; 32],
-) -> ReferenceResult<(
-    C61PrivateEntropyEndpoint,
-    JoinHandle<ReferenceResult<C61PrivateEntropyBrokerOutput>>,
-)> {
+) -> ReferenceResult<(C61PrivateEntropyEndpoint, C61PrivateEntropyBrokerHandle)> {
     let checkpoint = C61InteractiveCheckpoint::empty(num_variables, context_digest)?;
     let (sender, receiver) = mpsc::sync_channel(0);
     let endpoint = C61ProviderEndpoint { sender };
     let handle = thread::spawn(move || broker_loop(receiver, verifier_seed, checkpoint, None));
-    Ok((C61PrivateEntropyEndpoint { endpoint }, handle))
+    Ok((C61PrivateEntropyEndpoint { endpoint }, C61PrivateEntropyBrokerHandle { handle }))
 }
 
 /// Seedless verifier endpoint for the generic VOLTA transcript. It releases
@@ -2028,7 +2041,7 @@ mod tests {
         let payload = vec![0x5A; 8192];
         transcript.finish_interactive(&payload).unwrap();
 
-        let output = handle.join().unwrap().unwrap();
+        let output = handle.finish_output().unwrap();
         assert_eq!(output.tape.challenge_count(), 3);
         assert_eq!(output.interaction.client_fp_challenges, 3);
         assert_eq!(output.interaction.client_query_challenges, 1);
@@ -2086,7 +2099,7 @@ mod tests {
             transcript.append_message("lane", &[index as u8]);
             let _ = transcript.challenge_fp2();
             transcript.finish_interactive(&[0xA0 + index as u8; 64]).unwrap();
-            tapes.push(handle.join().unwrap().unwrap().tape);
+            tapes.push(handle.finish().unwrap());
         }
         let tapes: [C61InteractiveTape; C61_INTERACTIVE_TAPE_LANES] = tapes.try_into().unwrap();
         let certificate_digest = [0xC6; 32];

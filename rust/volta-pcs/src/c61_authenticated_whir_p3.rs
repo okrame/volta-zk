@@ -64,7 +64,7 @@ use crate::c61_interactive_driver::{
     spawn_c61_durable_private_entropy_broker, spawn_c61_private_entropy_broker, C61DurableJournal,
     C61InteractiveCheckpoint, C61InteractiveTape, C61PrivateEntropyBrokerOutput,
     C61PrivateEntropyEndpoint, C61PrivateEntropyProverChallenger,
-    C61PrivateEntropyReplayChallenger,
+    C61PrivateEntropyReplayChallenger, C61PrivateEntropyTranscriptReplayEndpoint,
 };
 use crate::c61_joint_native_bridge::{
     C61JointNativeBodyBinding, C61JointNativeBodyScheduleBuilder, C61JointNativeChallenge,
@@ -5710,29 +5710,12 @@ pub fn run_c61_authenticated_whir_p3_production_persisted_execution_in_attempt(
     id: C61NativeChainId,
     mask_range: C61AuthenticatedWhirMaskRange,
 ) -> Result<C61ProductionCompilerChainExecution, String> {
-    if !admission.allow_persisted_executor
-        || !admission.a100_present
-        || admission.gpu_total_bytes == 0
-        || admission.available_host_bytes < C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_HOST_BYTES
-        || admission.available_spill_bytes < C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES
-    {
-        return Err(format!(
-            "C6SPR5 persisted A100 admission failed: available_host={} B, minimum_host={} B, available_spill={} B, minimum_spill={} B, gpu={} B, a100={}, owner_persisted={}",
-            admission.available_host_bytes,
-            C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_HOST_BYTES,
-            admission.available_spill_bytes,
-            C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES,
-            admission.gpu_total_bytes,
-            admission.a100_present,
-            admission.allow_persisted_executor,
-        ));
-    }
-    if id.component != C61NativeComponent::Compiler {
-        return Err("C6SPR5 persisted runner admits only compiler chains".to_owned());
-    }
-    if !correlations.uses_pooled_pcg() || !context.uses_pooled_pcg() {
-        return Err("C6SPR5 persisted runner forbids mock PCG state".to_owned());
-    }
+    validate_c61_production_compiler_persisted_admission(
+        admission,
+        correlations,
+        Some(context),
+        id,
+    )?;
     let fixture = c61_sparse_compiler_production_fixture(
         operation_plan,
         terminal_metadata,
@@ -5752,6 +5735,123 @@ pub fn run_c61_authenticated_whir_p3_production_persisted_execution_in_attempt(
     session_hasher.update(&mask_range.slot.to_le_bytes());
     session_hasher.update(&mask_range.range_start.to_le_bytes());
     let session_digest = *session_hasher.finalize().as_bytes();
+    run_c61_authenticated_whir_p3_production_persisted_with_transcript(
+        &fixture,
+        spill_root,
+        admission,
+        correlations,
+        Some(context),
+        Some(verifier_seed),
+        Transcript::new(verifier_seed),
+        session_digest,
+        id,
+        mask_range,
+    )
+}
+
+/// Provider-only persisted compiler entry. The endpoint and public durable
+/// binding expose no verifier seed, checkpoint, transcript, key or Delta.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn run_c61_authenticated_whir_p3_production_compiler_private_entropy_in_attempt(
+    operation_plan: &C6InstalledOperationPlan,
+    terminal_metadata: C6OperationPlanTerminalMetadata,
+    extraction: &volta_mac::C6DecodedInstanceExtractionPlan,
+    runtime: &volta_mac::C6RuntimeInstanceValues,
+    relation: &volta_proto::c6_residual::C6ResidualRelationChallenges,
+    leaf_points: [&[Fp2]; 2],
+    auxiliary_points: [&[Fp2]; 2],
+    terminal_functionals: [Fp2; 64],
+    output_beta: Fp2,
+    provider_session_binding: C61ProviderSessionBinding,
+    spill_root: &Path,
+    admission: C61ProductionPersistedResourceAdmission,
+    correlations: &mut CorrelationStream,
+    endpoint: C61PrivateEntropyEndpoint,
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<C61ProductionCompilerChainExecution, String> {
+    validate_c61_production_compiler_persisted_admission(admission, correlations, None, id)?;
+    let fixture = c61_sparse_compiler_production_fixture(
+        operation_plan,
+        terminal_metadata,
+        extraction,
+        runtime,
+        relation,
+        leaf_points,
+        auxiliary_points,
+        terminal_functionals,
+        output_beta,
+    )?;
+    let mut session_hasher =
+        blake3::Hasher::new_derive_key("volta-zk/c6.1/c6ict2-compiler-session/v1");
+    session_hasher.update(&provider_session_binding.digest());
+    session_hasher.update(&operation_plan.artifact_digest());
+    session_hasher.update(&(id.component as u16).to_le_bytes());
+    session_hasher.update(&[id.repetition, mask_range.stage]);
+    session_hasher.update(&mask_range.slot.to_le_bytes());
+    session_hasher.update(&mask_range.range_start.to_le_bytes());
+    let session_digest = *session_hasher.finalize().as_bytes();
+    run_c61_authenticated_whir_p3_production_persisted_with_transcript(
+        &fixture,
+        spill_root,
+        admission,
+        correlations,
+        None,
+        None,
+        Transcript::new_interactive(Box::new(endpoint)),
+        session_digest,
+        id,
+        mask_range,
+    )
+}
+
+fn validate_c61_production_compiler_persisted_admission(
+    admission: C61ProductionPersistedResourceAdmission,
+    correlations: &CorrelationStream,
+    verifier_context: Option<&VerifierCtx>,
+    id: C61NativeChainId,
+) -> Result<(), String> {
+    if !admission.allow_persisted_executor
+        || !admission.a100_present
+        || admission.gpu_total_bytes == 0
+        || admission.available_host_bytes < C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_HOST_BYTES
+        || admission.available_spill_bytes < C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES
+    {
+        return Err(format!(
+            "C6SPR5 persisted A100 admission failed: available_host={} B, minimum_host={} B, available_spill={} B, minimum_spill={} B, gpu={} B, a100={}, owner_persisted={}",
+            admission.available_host_bytes,
+            C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_HOST_BYTES,
+            admission.available_spill_bytes,
+            C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES,
+            admission.gpu_total_bytes,
+            admission.a100_present,
+            admission.allow_persisted_executor,
+        ));
+    }
+    if id.component != C61NativeComponent::Compiler || id.repetition >= 2 {
+        return Err("C6SPR5 persisted runner admits only compiler chains".to_owned());
+    }
+    if !correlations.uses_pooled_pcg()
+        || verifier_context.is_some_and(|context| !context.uses_pooled_pcg())
+    {
+        return Err("C6SPR5 persisted runner forbids mock PCG state".to_owned());
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_c61_authenticated_whir_p3_production_persisted_with_transcript(
+    fixture: &C61SparseCompilerPhysicalFixture<'_>,
+    spill_root: &Path,
+    admission: C61ProductionPersistedResourceAdmission,
+    correlations: &mut CorrelationStream,
+    verifier_context: Option<&mut VerifierCtx>,
+    verifier_seed: Option<[u8; 32]>,
+    provider_transcript: Transcript,
+    session_digest: [u8; 32],
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<C61ProductionCompilerChainExecution, String> {
     let commit_gate = Arc::new(Mutex::new(()));
     let response_mmcs = C61PersistedMmcs::new_with_commit_gate(
         c61_reference_mmcs(),
@@ -5767,12 +5867,13 @@ pub fn run_c61_authenticated_whir_p3_production_persisted_execution_in_attempt(
         *b"planlane",
         commit_gate,
     )?;
-    let execution = run_c61_authenticated_whir_p3_shared_multi_oracle_with_provider_mmcs(
-        &fixture,
+    let execution = run_c61_authenticated_whir_p3_shared_multi_oracle_with_provider_transcript(
+        fixture,
         28,
         correlations,
-        context,
+        verifier_context,
         verifier_seed,
+        provider_transcript,
         id,
         mask_range,
         admission.available_host_bytes,
@@ -6063,6 +6164,37 @@ fn verify_c61_authenticated_whir_p3_compiler_chain_compact(
     compact_profile_setup_bytes: u64,
     client_setup_allocation_bytes: u64,
 ) -> Result<C61ProductionCompilerChainVerification, String> {
+    verify_c61_authenticated_whir_p3_compiler_chain_compact_with_transcript(
+        fixture,
+        expected_response_root,
+        expected_plan_root,
+        response_num_variables,
+        proof,
+        context,
+        Transcript::new(verifier_seed),
+        id,
+        mask_range,
+        compact_profile_digest,
+        compact_profile_setup_bytes,
+        client_setup_allocation_bytes,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_c61_authenticated_whir_p3_compiler_chain_compact_with_transcript(
+    fixture: &C61SparseCompilerVerifierFixture<'_>,
+    expected_response_root: [u8; 32],
+    expected_plan_root: [u8; 32],
+    response_num_variables: usize,
+    proof: &C61ProductionCompilerChainProof,
+    context: &mut VerifierCtx,
+    mut transcript: Transcript,
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+    compact_profile_digest: [u8; 32],
+    compact_profile_setup_bytes: u64,
+    client_setup_allocation_bytes: u64,
+) -> Result<C61ProductionCompilerChainVerification, String> {
     if id.component != C61NativeComponent::Compiler || id.repetition >= 2 {
         return Err("C6SPR11 compact verifier requires one canonical compiler chain".to_owned());
     }
@@ -6101,7 +6233,6 @@ fn verify_c61_authenticated_whir_p3_compiler_chain_compact(
         );
     }
 
-    let mut transcript = Transcript::new(verifier_seed);
     let (mut response_challenger, mut plan_challenger, coordinator) =
         c61_shared_round_pair(&mut transcript, [response_num_variables, plan_num_variables]);
     let response_config = c61_authenticated_config::<
@@ -6264,6 +6395,9 @@ fn verify_c61_authenticated_whir_p3_compiler_chain_compact(
         &mut transcript,
     )
     .map_err(|error| error.to_string())?;
+    if transcript.is_interactive() {
+        transcript.finish_interactive(&proof.encode()?)?;
+    }
     Ok(C61ProductionCompilerChainVerification {
         id,
         response_num_variables,
@@ -6293,6 +6427,31 @@ pub fn verify_c61_authenticated_whir_p3_production_compiler_chain_in_attempt(
     proof_bytes: &[u8],
     context: &mut VerifierCtx,
     verifier_seed: [u8; 32],
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<C61ProductionCompilerChainVerification, String> {
+    verify_c61_authenticated_whir_p3_production_compiler_chain_with_transcript(
+        profile,
+        extraction_map_setup_bytes,
+        public,
+        relation_challenges,
+        proof_bytes,
+        context,
+        Transcript::new(verifier_seed),
+        id,
+        mask_range,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_c61_authenticated_whir_p3_production_compiler_chain_with_transcript(
+    profile: &C61CompilerVerifierProfile,
+    extraction_map_setup_bytes: u64,
+    public: &C61TypedNativeChainPublicStatement,
+    relation_challenges: &volta_proto::c6_residual::C6ResidualRelationChallenges,
+    proof_bytes: &[u8],
+    context: &mut VerifierCtx,
+    transcript: Transcript,
     id: C61NativeChainId,
     mask_range: C61AuthenticatedWhirMaskRange,
 ) -> Result<C61ProductionCompilerChainVerification, String> {
@@ -6359,19 +6518,50 @@ pub fn verify_c61_authenticated_whir_p3_production_compiler_chain_in_attempt(
         plan_digest: compiler.sparse_oracles.plan.commitment_root,
         terminal_binding,
     };
-    verify_c61_authenticated_whir_p3_compiler_chain_compact(
+    verify_c61_authenticated_whir_p3_compiler_chain_compact_with_transcript(
         &fixture,
         compiler.sparse_oracles.response.commitment_root,
         compiler.sparse_oracles.plan.commitment_root,
         28,
         &proof,
         context,
-        verifier_seed,
+        transcript,
         id,
         mask_range,
         profile.digest,
         profile.encoded_setup_bytes,
         client_setup_allocation_bytes,
+    )
+}
+
+/// Disk-verifier replay for one seedless compiler chain. The tape is
+/// client-private and bound to the public durable attempt before verification.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn verify_c61_authenticated_whir_p3_production_compiler_private_entropy_in_attempt(
+    profile: &C61CompilerVerifierProfile,
+    extraction_map_setup_bytes: u64,
+    public: &C61TypedNativeChainPublicStatement,
+    relation_challenges: &volta_proto::c6_residual::C6ResidualRelationChallenges,
+    proof_bytes: &[u8],
+    context: &mut VerifierCtx,
+    tape: C61InteractiveTape,
+    provider_session_binding: C61ProviderSessionBinding,
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<C61ProductionCompilerChainVerification, String> {
+    let endpoint =
+        C61PrivateEntropyTranscriptReplayEndpoint::new(tape, 28, provider_session_binding.digest())
+            .map_err(|error| error.to_string())?;
+    verify_c61_authenticated_whir_p3_production_compiler_chain_with_transcript(
+        profile,
+        extraction_map_setup_bytes,
+        public,
+        relation_challenges,
+        proof_bytes,
+        context,
+        Transcript::new_interactive(Box::new(endpoint)),
+        id,
+        mask_range,
     )
 }
 
@@ -6511,6 +6701,49 @@ where
     RM::ProverData<DenseMatrix<Goldilocks>>: Send,
     PM::ProverData<DenseMatrix<Goldilocks>>: Send,
 {
+    run_c61_authenticated_whir_p3_shared_multi_oracle_with_provider_transcript(
+        fixture,
+        response_num_variables,
+        correlations,
+        Some(context),
+        Some(verifier_seed),
+        Transcript::new(verifier_seed),
+        id,
+        mask_range,
+        admitted_available_host_bytes,
+        admitted_available_spill_bytes,
+        response_mmcs,
+        plan_mmcs,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_c61_authenticated_whir_p3_shared_multi_oracle_with_provider_transcript<RM, PM>(
+    fixture: &C61SparseCompilerPhysicalFixture<'_>,
+    response_num_variables: usize,
+    correlations: &mut CorrelationStream,
+    mut verifier_context: Option<&mut VerifierCtx>,
+    verifier_seed: Option<[u8; 32]>,
+    mut provider_transcript: Transcript,
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+    admitted_available_host_bytes: u64,
+    admitted_available_spill_bytes: u64,
+    response_mmcs: RM,
+    plan_mmcs: PM,
+) -> Result<C61ProductionCompilerChainExecution, String>
+where
+    RM: Mmcs<Goldilocks, Commitment = C61Commitment, MultiProof = C61MultiProof>
+        + C61MmcsResourceMetrics
+        + Send
+        + Sync,
+    PM: Mmcs<Goldilocks, Commitment = C61Commitment, MultiProof = C61MultiProof>
+        + C61MmcsResourceMetrics
+        + Send
+        + Sync,
+    RM::ProverData<DenseMatrix<Goldilocks>>: Send,
+    PM::ProverData<DenseMatrix<Goldilocks>>: Send,
+{
     let verifier_fixture = fixture.verifier_fixture()?;
     let native_response_num_variables = usize::from(fixture.packed.physical_response_domain_log2());
     let native_plan_num_variables = usize::from(fixture.packed.plan_domain_log2());
@@ -6549,14 +6782,13 @@ where
         .collect::<Vec<_>>();
     plan_coefficients.resize(1usize << plan_num_variables, Goldilocks::ZERO);
     let plan_witness = Poly::new(plan_coefficients);
-    let pooled_pcg = correlations.uses_pooled_pcg() && context.uses_pooled_pcg();
+    let pooled_pcg = correlations.uses_pooled_pcg()
+        && verifier_context.as_ref().is_none_or(|context| context.uses_pooled_pcg());
     if fixture.production && !pooled_pcg {
         return Err("C6SPR5 production executor requires real pooled PCG correlations".to_owned());
     }
-    let delta = context.delta;
     let mut provider_doms = volta_proto::logup::Doms::new(50_000);
 
-    let mut provider_transcript = Transcript::new(verifier_seed);
     let (mut response_challenger, mut plan_challenger, provider_coordinator) =
         c61_shared_round_pair(
             &mut provider_transcript,
@@ -6589,22 +6821,25 @@ where
             transcript,
         )
     })?;
-    let arithmetic_payload_mutation_rejected = {
-        let mut changed_payload = provider_phase.arithmetic_payload.clone();
-        let changed_index = changed_payload.len() / 2;
-        changed_payload[changed_index] ^= 1;
-        let mut changed_context = VerifierCtx::new([0xD3; 32], delta);
-        let mut changed_doms = volta_proto::logup::Doms::new(50_000);
-        let mut changed_transcript = Transcript::new(verifier_seed);
-        verify_c61_sparse_compiler_relation_phase(
-            &verifier_fixture,
-            &changed_payload,
-            &mut changed_context,
-            &mut changed_doms,
-            &mut changed_transcript,
-        )
-        .is_err()
-    };
+    let arithmetic_payload_mutation_rejected =
+        if let (Some(context), Some(verifier_seed)) = (verifier_context.as_ref(), verifier_seed) {
+            let mut changed_payload = provider_phase.arithmetic_payload.clone();
+            let changed_index = changed_payload.len() / 2;
+            changed_payload[changed_index] ^= 1;
+            let mut changed_context = VerifierCtx::new([0xD3; 32], context.delta);
+            let mut changed_doms = volta_proto::logup::Doms::new(50_000);
+            let mut changed_transcript = Transcript::new(verifier_seed);
+            verify_c61_sparse_compiler_relation_phase(
+                &verifier_fixture,
+                &changed_payload,
+                &mut changed_context,
+                &mut changed_doms,
+                &mut changed_transcript,
+            )
+            .is_err()
+        } else {
+            false
+        };
     let mut response_points: Vec<_> = provider_phase
         .physical_points
         .response()
@@ -6844,6 +7079,101 @@ where
         .all(rejects)
     };
 
+    let strict_response = c61_authenticated_structural_budget_inner(response_num_variables, false)?
+        .strict_chain_bytes;
+    let strict_plan =
+        c61_authenticated_structural_budget_inner(plan_num_variables, false)?.strict_chain_bytes;
+    let response_spill = response_mmcs.c61_persisted_metrics();
+    let plan_spill = plan_mmcs.c61_persisted_metrics();
+    let persisted_executor = response_spill.is_some() && plan_spill.is_some();
+    let physical_plan_fold_values: [Fp2; C61_EXACT_PLAN_FOLD_PHYSICAL_OPENINGS] = response_values
+        [C61_SPARSE_ARITHMETIC_PHYSICAL_RESPONSE_OPENINGS..]
+        .try_into()
+        .map_err(|_| "C6CPX2 physical plan-fold target census mismatch".to_owned())?;
+    fixture.terminal_binding.validate_physical_plan_fold_values(
+        fixture.packed.base_domain_log2(),
+        &physical_plan_fold_values,
+    )?;
+    let proof = C61ProductionCompilerChainProof {
+        terminal_binding_digest: fixture.terminal_binding.digest,
+        plan_folds: fixture.terminal_binding.plan_folds,
+        physical_plan_fold_values,
+        arithmetic_payload: provider_phase.arithmetic_payload.clone(),
+        shared_payload: artifact.payload.clone(),
+    };
+    let proof_bytes = proof.encode()?;
+    let proof = C61ProductionCompilerChainProof::decode(&proof_bytes)?;
+    if provider_transcript.is_interactive() {
+        provider_transcript.finish_interactive(&proof_bytes)?;
+    }
+
+    let build_report = |verifier_interaction: C61WhirInteractionStats,
+                        postproof_batching_challenge_identical: bool,
+                        joint_tag_mutation_rejected: bool,
+                        role_separated_compact_verifier_checked: bool|
+     -> Result<C61AuthenticatedP3SharedMultiOracleDiagnostic, String> {
+        Ok(C61AuthenticatedP3SharedMultiOracleDiagnostic {
+            production_geometry: fixture.production,
+            monolithic_host_baseline: fixture.production && !persisted_executor,
+            persisted_executor,
+            gpu_performance_credit: false,
+            admitted_available_host_bytes,
+            admitted_available_spill_bytes,
+            monolithic_retained_lower_bound_bytes: if fixture.production {
+                c61_production_monolithic_memory_census()?.concurrent_retained_lower_bound_bytes
+            } else {
+                0
+            },
+            pooled_pcg,
+            response_num_variables,
+            plan_num_variables,
+            response_claim_count,
+            plan_claim_count: provider_phase.plan_values.len(),
+            strict_payload_bytes: artifact.payload.len(),
+            strict_payload_blake3: *blake3::hash(&artifact.payload).as_bytes(),
+            strict_payload_max_bytes: C61_SHARED_MULTI_ORACLE_HEADER_BYTES
+                + strict_response
+                + strict_plan,
+            arithmetic_payload_bytes: provider_phase.arithmetic_payload.len(),
+            total_provider_payload_bytes: provider_phase
+                .arithmetic_payload
+                .len()
+                .checked_add(artifact.payload.len())
+                .ok_or_else(|| "C6SPR3 complete provider byte count overflow".to_owned())?,
+            response_target_correction_bytes: provider_transcript
+                .bytes_for("c6_sparse_response_target_corrections"),
+            arithmetic_product_triples: provider_phase.product_triples,
+            folded_zero_rows: provider_phase.zero_rows.len(),
+            provider_transcript_bytes: provider_transcript.total_bytes(),
+            provider_interaction,
+            verifier_interaction,
+            native_challenges_shared: response_output.claim_weights
+                [..plan_output.claim_weights.len()]
+                == plan_output.claim_weights,
+            postproof_batching_challenge_identical,
+            plan_reserved_tag_is_zero: true,
+            codec_mutations_rejected,
+            arithmetic_payload_mutation_rejected,
+            joint_tag_mutation_rejected,
+            role_separated_compact_verifier_checked,
+            subfield_correlations: correlations.counters.sub_corrs,
+            full_correlations: correlations.counters.full_corrs,
+            response_spill: response_spill.unwrap_or_default(),
+            plan_spill: plan_spill.unwrap_or_default(),
+        })
+    };
+
+    if verifier_context.is_none() {
+        let report = build_report(C61WhirInteractionStats::default(), false, false, false)?;
+        return Ok(C61ProductionCompilerChainExecution { proof, report });
+    }
+    let context = verifier_context
+        .take()
+        .ok_or_else(|| "C6ICT2 compiler verifier context disappeared".to_owned())?;
+    let verifier_seed = verifier_seed
+        .ok_or_else(|| "C6ICT2 compiler verifier seed/context pairing mismatch".to_owned())?;
+    let delta = context.delta;
+
     let ((response_commitment, response_proof), (plan_commitment, plan_proof), joint_tag) =
         decode_c61_shared_multi_oracle_artifact(
             &artifact,
@@ -7009,29 +7339,6 @@ where
         return Err("C6SMO1 provider/verifier statement digest mismatch".to_owned());
     }
 
-    let strict_response = c61_authenticated_structural_budget_inner(response_num_variables, false)?
-        .strict_chain_bytes;
-    let strict_plan =
-        c61_authenticated_structural_budget_inner(plan_num_variables, false)?.strict_chain_bytes;
-    let response_spill = response_mmcs.c61_persisted_metrics();
-    let plan_spill = plan_mmcs.c61_persisted_metrics();
-    let persisted_executor = response_spill.is_some() && plan_spill.is_some();
-    let physical_plan_fold_values: [Fp2; C61_EXACT_PLAN_FOLD_PHYSICAL_OPENINGS] = response_values
-        [C61_SPARSE_ARITHMETIC_PHYSICAL_RESPONSE_OPENINGS..]
-        .try_into()
-        .map_err(|_| "C6CPX2 physical plan-fold target census mismatch".to_owned())?;
-    fixture.terminal_binding.validate_physical_plan_fold_values(
-        fixture.packed.base_domain_log2(),
-        &physical_plan_fold_values,
-    )?;
-    let proof = C61ProductionCompilerChainProof {
-        terminal_binding_digest: fixture.terminal_binding.digest,
-        plan_folds: fixture.terminal_binding.plan_folds,
-        physical_plan_fold_values,
-        arithmetic_payload: provider_phase.arithmetic_payload.clone(),
-        shared_payload: artifact.payload.clone(),
-    };
-    let proof = C61ProductionCompilerChainProof::decode(&proof.encode()?)?;
     let role_separated_compact_verifier_checked = if fixture.production {
         false
     } else {
@@ -7078,54 +7385,12 @@ where
         }
         true
     };
-    let report = C61AuthenticatedP3SharedMultiOracleDiagnostic {
-        production_geometry: fixture.production,
-        monolithic_host_baseline: fixture.production && !persisted_executor,
-        persisted_executor,
-        gpu_performance_credit: false,
-        admitted_available_host_bytes,
-        admitted_available_spill_bytes,
-        monolithic_retained_lower_bound_bytes: if fixture.production {
-            c61_production_monolithic_memory_census()?.concurrent_retained_lower_bound_bytes
-        } else {
-            0
-        },
-        pooled_pcg,
-        response_num_variables,
-        plan_num_variables,
-        response_claim_count,
-        plan_claim_count: provider_phase.plan_values.len(),
-        strict_payload_bytes: artifact.payload.len(),
-        strict_payload_blake3: *blake3::hash(&artifact.payload).as_bytes(),
-        strict_payload_max_bytes: C61_SHARED_MULTI_ORACLE_HEADER_BYTES
-            + strict_response
-            + strict_plan,
-        arithmetic_payload_bytes: provider_phase.arithmetic_payload.len(),
-        total_provider_payload_bytes: provider_phase
-            .arithmetic_payload
-            .len()
-            .checked_add(artifact.payload.len())
-            .ok_or_else(|| "C6SPR3 complete provider byte count overflow".to_owned())?,
-        response_target_correction_bytes: provider_transcript
-            .bytes_for("c6_sparse_response_target_corrections"),
-        arithmetic_product_triples: provider_phase.product_triples,
-        folded_zero_rows: provider_phase.zero_rows.len(),
-        provider_transcript_bytes: provider_transcript.total_bytes(),
-        provider_interaction,
+    let report = build_report(
         verifier_interaction,
-        native_challenges_shared: response_output.claim_weights[..plan_output.claim_weights.len()]
-            == plan_output.claim_weights,
-        postproof_batching_challenge_identical: provider_eta == verifier_eta,
-        plan_reserved_tag_is_zero: true,
-        codec_mutations_rejected,
-        arithmetic_payload_mutation_rejected,
+        provider_eta == verifier_eta,
         joint_tag_mutation_rejected,
         role_separated_compact_verifier_checked,
-        subfield_correlations: correlations.counters.sub_corrs,
-        full_correlations: correlations.counters.full_corrs,
-        response_spill: response_spill.unwrap_or_default(),
-        plan_spill: plan_spill.unwrap_or_default(),
-    };
+    )?;
     Ok(C61ProductionCompilerChainExecution { proof, report })
 }
 
@@ -8368,7 +8633,7 @@ mod tests {
         assert!(!native.contains("seed_from_u64"));
 
         let compiler = source
-            .split("fn run_c61_authenticated_whir_p3_shared_multi_oracle_with_provider_mmcs<")
+            .split("fn run_c61_authenticated_whir_p3_shared_multi_oracle_with_provider_transcript<")
             .nth(1)
             .unwrap()
             .split("pub fn run_c61_private_entropy_driver_diagnostic(")
@@ -8399,6 +8664,24 @@ mod tests {
         assert!(!signature.contains("Delta"));
         assert!(!signature.contains("Transcript"));
 
+        let compiler_signature = source
+            .split(
+                "fn run_c61_authenticated_whir_p3_production_compiler_private_entropy_in_attempt(",
+            )
+            .nth(1)
+            .unwrap()
+            .split(") -> Result<C61ProductionCompilerChainExecution, String>")
+            .next()
+            .unwrap();
+        assert!(compiler_signature.contains("C61ProviderSessionBinding"));
+        assert!(compiler_signature.contains("C61PrivateEntropyEndpoint"));
+        assert!(!compiler_signature.contains("verifier_seed"));
+        assert!(!compiler_signature.contains("checkpoint"));
+        assert!(!compiler_signature.contains("VerifierCtx"));
+        assert!(!compiler_signature.contains("VerifierKey"));
+        assert!(!compiler_signature.contains("Delta"));
+        assert!(!compiler_signature.contains("Transcript"));
+
         let driver = include_str!("c61_interactive_driver.rs");
         let endpoint = driver
             .split("struct C61PrivateEntropyEndpoint")
@@ -8414,6 +8697,92 @@ mod tests {
         assert!(!endpoint.contains("VerifierKey"));
         assert!(!endpoint.contains("Delta"));
         assert!(!endpoint.contains("Transcript"));
+    }
+
+    #[test]
+    #[ignore = "C6ICT2 D14/D13 release differential; run on the admitted high-memory host"]
+    fn compiler_private_entropy_scaled_provider_and_disk_replay_match_exactly() {
+        let response_num_variables = 14;
+        let verifier_seed = [0xC2; 32];
+        let pcg_seed = [0xD3; 32];
+        let delta = Fp2::new(Fp::new(P - 83), Fp::new(0xC6_5202));
+        let context_digest = [0xA7; 32];
+        let fixture = c61_sparse_compiler_physical_fixture().unwrap();
+        let verifier_fixture = fixture.verifier_fixture().unwrap();
+        let id = C61NativeChainId { component: C61NativeComponent::Compiler, repetition: 0 };
+        let mask_range =
+            C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 29, range_start: 120_000 };
+        let (endpoint, broker_handle) =
+            crate::c61_interactive_driver::spawn_c61_private_entropy_transcript_broker(
+                verifier_seed,
+                response_num_variables,
+                context_digest,
+            )
+            .unwrap();
+        let mut correlations = CorrelationStream::new(pcg_seed);
+        let execution = run_c61_authenticated_whir_p3_shared_multi_oracle_with_provider_transcript(
+            &fixture,
+            response_num_variables,
+            &mut correlations,
+            None,
+            None,
+            Transcript::new_interactive(Box::new(endpoint)),
+            id,
+            mask_range,
+            0,
+            0,
+            c61_reference_mmcs(),
+            c61_reference_mmcs(),
+        )
+        .unwrap();
+        let broker = broker_handle.join().unwrap().unwrap();
+        assert!(broker.tape.challenge_count() > 100);
+
+        let ((response_commitment, _), (plan_commitment, _), _) =
+            decode_c61_shared_multi_oracle_artifact(
+                &C61SharedMultiOracleArtifact { payload: execution.proof.shared_payload.clone() },
+                response_num_variables,
+                response_num_variables - 1,
+            )
+            .unwrap();
+        let compact_fixture = C61SparseCompilerVerifierFixture {
+            operation_plan_digest: verifier_fixture.operation_plan_digest,
+            topology: verifier_fixture.topology,
+            terminal_metadata: verifier_fixture.terminal_metadata,
+            relation_challenges: verifier_fixture.relation_challenges,
+            output_beta: verifier_fixture.output_beta,
+            base_domain_log2: verifier_fixture.base_domain_log2,
+            response_digest: response_commitment.roots()[0],
+            plan_digest: plan_commitment.roots()[0],
+            terminal_binding: verifier_fixture.terminal_binding.clone(),
+        };
+        let replay = C61PrivateEntropyTranscriptReplayEndpoint::new(
+            broker.tape.clone(),
+            response_num_variables,
+            context_digest,
+        )
+        .unwrap();
+        let mut context = VerifierCtx::new(pcg_seed, delta);
+        let verification = verify_c61_authenticated_whir_p3_compiler_chain_compact_with_transcript(
+            &compact_fixture,
+            response_commitment.roots()[0],
+            plan_commitment.roots()[0],
+            response_num_variables,
+            &execution.proof,
+            &mut context,
+            Transcript::new_interactive(Box::new(replay)),
+            id,
+            mask_range,
+            [0; 32],
+            0,
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            execution.report.provider_transcript_bytes,
+            verification.verifier_transcript_bytes
+        );
+        assert_eq!(execution.report.provider_interaction, verification.verifier_interaction);
     }
 
     fn mutation_fixture() -> (

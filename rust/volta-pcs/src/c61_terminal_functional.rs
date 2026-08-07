@@ -169,10 +169,6 @@ pub fn authenticate_c61_sparse_response_targets_prover(
     stream
         .record_c6_subfield_corrections(domain, &corrections)
         .map_err(C61TerminalFunctionalStatementError::new)?;
-    tx.append(
-        "c6_sparse_response_target_corrections",
-        C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTION_BYTES,
-    );
     let extension_generator = Fp2::new(Fp::ZERO, Fp::ONE);
     let targets = std::array::from_fn(|index| {
         correlations[2 * index].authenticate(values[index].c0).embed().add(
@@ -188,6 +184,7 @@ pub fn authenticate_c61_sparse_response_targets_prover(
                 "C6SPR3 response-target correction census differs from 24",
             )
         })?)?;
+    tx.append_message("c6_sparse_response_target_corrections", &proof.encode());
     Ok((proof, targets))
 }
 
@@ -200,10 +197,7 @@ pub fn authenticate_c61_sparse_response_targets_verifier(
     let domain = doms.take(1);
     let base_keys =
         ctx.expand_sub_verifier_keys(domain, C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTIONS);
-    tx.append(
-        "c6_sparse_response_target_corrections",
-        C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTION_BYTES,
-    );
+    tx.append_message("c6_sparse_response_target_corrections", &proof.encode());
     let extension_generator = Fp2::new(Fp::ZERO, Fp::ONE);
     Ok(std::array::from_fn(|index| {
         let c0 = base_keys[2 * index].with_same_c6_trace(

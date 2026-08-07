@@ -116,6 +116,23 @@ impl Transcript {
         }
     }
 
+    pub fn append_fps(&mut self, label: &'static str, values: &[Fp]) {
+        let mut bytes = Vec::with_capacity(values.len() * 8);
+        for value in values {
+            bytes.extend_from_slice(&value.value().to_le_bytes());
+        }
+        self.append_message(label, &bytes);
+    }
+
+    pub fn append_fp2s(&mut self, label: &'static str, values: &[Fp2]) {
+        let mut bytes = Vec::with_capacity(values.len() * 16);
+        for value in values {
+            bytes.extend_from_slice(&value.c0.value().to_le_bytes());
+            bytes.extend_from_slice(&value.c1.value().to_le_bytes());
+        }
+        self.append_message(label, &bytes);
+    }
+
     /// Bind a large canonical provider message by length and BLAKE3 digest.
     /// The verifier replay recomputes the digest from the strict proof bytes.
     pub fn append_message_digest(

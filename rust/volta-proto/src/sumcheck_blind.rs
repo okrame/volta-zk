@@ -256,8 +256,9 @@ pub fn blind_prove_batch(
             round_masks
                 .record_c6_fullfield_plaintexts(index, round, &[g0, g2])
                 .expect("C6 batched sumcheck correction schedule");
-            state.round_corrs.push([g0 - masks[0].x, g2 - masks[1].x]);
-            tx.append("blind_round_corrections", 32);
+            let corrections = [g0 - masks[0].x, g2 - masks[1].x];
+            tx.append_fp2s("blind_round_corrections", &corrections);
+            state.round_corrs.push(corrections);
             messages.push((index, masks[0].authenticate(g0), masks[1].authenticate(g2)));
         }
 
@@ -783,8 +784,9 @@ pub fn blind_prove_resident_batch(
             round_masks
                 .record_c6_fullfield_plaintexts(index, round, &[g0, g2])
                 .expect("C6 resident batched sumcheck correction schedule");
-            state.round_corrs.push([g0 - masks[0].x, g2 - masks[1].x]);
-            tx.append("blind_round_corrections", 32);
+            let corrections = [g0 - masks[0].x, g2 - masks[1].x];
+            tx.append_fp2s("blind_round_corrections", &corrections);
+            state.round_corrs.push(corrections);
             messages.push((index, masks[0].authenticate(g0), masks[1].authenticate(g2)));
         }
 
@@ -965,8 +967,9 @@ pub(crate) fn blind_prove_resident_labeled(
         stream
             .record_c6_fullfield_plaintexts(domain, &[g0, g2])
             .expect("C6 resident sumcheck correction schedule");
-        round_corrs.push([g0 - masks[0].x, g2 - masks[1].x]);
-        tx.append(round_label, 32);
+        let corrections = [g0 - masks[0].x, g2 - masks[1].x];
+        tx.append_fp2s(round_label, &corrections);
+        round_corrs.push(corrections);
         let g0_a = masks[0].authenticate(g0);
         let g2_a = masks[1].authenticate(g2);
         let g1_a = claim.sub(g0_a);
@@ -1086,7 +1089,7 @@ pub(crate) fn blind_prove_with_finals_labeled(
             .record_c6_fullfield_plaintexts(domain, &[g0, g2])
             .expect("C6 sumcheck correction schedule");
         let corrs = [g0 - masks[0].x, g2 - masks[1].x];
-        tx.append(round_label, 32);
+        tx.append_fp2s(round_label, &corrs);
         round_corrs.push(corrs);
         let g0_a = masks[0].authenticate(g0);
         let g2_a = masks[1].authenticate(g2);
@@ -1120,6 +1123,7 @@ pub fn blind_verify(
     let mut point = Vec::with_capacity(n_vars);
     let mut k_claim = k_claim0;
     for (round, corrs) in proof.round_corrs.iter().enumerate() {
+        tx.append_fp2s("blind_round_corrections", corrs);
         let k_masks = ctx.expand_full_verifier_keys(mask_dom_base + round as u64, 2);
         let k_g0 = k_masks[0].with_same_c6_trace(k_masks[0].k + ctx.delta * corrs[0]);
         let k_g2 = k_masks[1].with_same_c6_trace(k_masks[1].k + ctx.delta * corrs[1]);

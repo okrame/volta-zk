@@ -232,7 +232,7 @@ impl C61SharedRoundCoordinator<'_> {
         Ok(state.transcript.challenge_fp2())
     }
 
-    pub(crate) fn finish(&self, payload_bytes: usize) -> Result<C61WhirInteractionStats, String> {
+    pub(crate) fn finish(&self, payload: &[u8]) -> Result<C61WhirInteractionStats, String> {
         let mut state = self
             .shared
             .state
@@ -246,14 +246,18 @@ impl C61SharedRoundCoordinator<'_> {
             return Err("C6SPR2 shared challenger finished off the common boundary".to_owned());
         }
         flush_pending(&mut state);
-        let payload_bytes = u64::try_from(payload_bytes)
+        let payload_bytes = u64::try_from(payload.len())
             .map_err(|_| "C6SPR2 shared payload length exceeds u64".to_owned())?;
         if state.stats.provider_semantic_bytes > payload_bytes {
             return Err("C6SPR2 shared semantic bytes exceed strict payload".to_owned());
         }
         let residual = payload_bytes - state.stats.provider_semantic_bytes;
         if residual != 0 {
-            state.transcript.append(SHARED_FINAL_PAYLOAD_LABEL, residual);
+            state.transcript.append_message_digest(
+                SHARED_FINAL_PAYLOAD_LABEL,
+                residual,
+                *blake3::hash(payload).as_bytes(),
+            );
             state.stats.provider_messages += 1;
         }
         state.stats.provider_payload_bytes = payload_bytes;
@@ -426,7 +430,7 @@ mod tests {
         response.finish_lane().unwrap();
         plan.finish_lane().unwrap();
         assert_ne!(coordinator.sample_postproof_fp2().unwrap(), Fp2::ZERO);
-        let stats = coordinator.finish(80).unwrap();
+        let stats = coordinator.finish(&[0u8; 80]).unwrap();
         assert_eq!(stats.provider_semantic_bytes, 80);
         assert_eq!(stats.provider_payload_bytes, 80);
         assert_eq!(stats.client_fp_challenges, 3);
@@ -483,7 +487,7 @@ mod tests {
         assert_ne!(tail, Goldilocks::ZERO);
         response.finish_lane().unwrap();
         assert_ne!(coordinator.sample_postproof_fp2().unwrap(), Fp2::ZERO);
-        let stats = coordinator.finish(64).unwrap();
+        let stats = coordinator.finish(&[0u8; 64]).unwrap();
         assert_eq!(stats.client_fp_challenges, 5);
         assert_eq!(stats.client_query_challenges, 1);
     }

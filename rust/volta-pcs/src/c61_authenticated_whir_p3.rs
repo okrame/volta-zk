@@ -6034,7 +6034,7 @@ fn verify_c61_sparse_compiler_relation_phase(
     let chi = transcript.challenge_fp2();
     let product_domain = doms.take(1);
     let product_key = context.expand_product_mask_verifier_key(product_domain, product_triples);
-    transcript.append("prod_check_m0_m1", 32);
+    transcript.append_fp2s("prod_check_m0_m1", &[product_proof.m0, product_proof.m1]);
     if !prod_batch_verify(&products, product_key, context.delta, chi, &product_proof) {
         return Err("C6SPR3 global QuickSilver product verification failed".to_owned());
     }
@@ -6220,7 +6220,7 @@ fn verify_c61_authenticated_whir_p3_compiler_chain_compact(
         .len()
         .checked_sub(C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES)
         .ok_or_else(|| "C6SPR11 shared payload is shorter than its joint tag".to_owned())?;
-    let verifier_interaction = coordinator.finish(whir_payload_bytes)?;
+    let verifier_interaction = coordinator.finish(&proof.shared_payload[..whir_payload_bytes])?;
     drop(coordinator);
 
     let delta = context.delta;
@@ -6746,7 +6746,8 @@ where
         .len()
         .checked_sub(C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES)
         .ok_or_else(|| "C6SMO1 payload is shorter than its joint tag".to_owned())?;
-    let provider_interaction = provider_coordinator.finish(whir_payload_bytes)?;
+    let provider_interaction =
+        provider_coordinator.finish(&placeholder_artifact.payload[..whir_payload_bytes])?;
     drop(provider_coordinator);
 
     let response_affine = affine_from_p3(response_output.target);
@@ -6940,7 +6941,8 @@ where
         .map_err(|_| "C6SMO1 plan verifier panicked")?
         .map_err(|error| format!("C6SMO1 plan verification failed: {error}"))?;
     let verifier_eta = verifier_coordinator.sample_postproof_fp2()?;
-    let verifier_interaction = verifier_coordinator.finish(whir_payload_bytes)?;
+    let verifier_interaction =
+        verifier_coordinator.finish(&artifact.payload[..whir_payload_bytes])?;
     drop(verifier_coordinator);
 
     let mut response_keys = verifier_phase.response_keys.to_vec();

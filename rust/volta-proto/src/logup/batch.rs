@@ -536,7 +536,7 @@ impl BatchBlindState {
             .record_c6_fullfield_plaintexts(draw.range, draw.row, &[p, q])
             .expect("C6 scheduled LogUp-root correction schedule");
         self.root_corrs = [p - masks[0].x, q - masks[1].x];
-        tx.append("logup_root_corrections", 32);
+        tx.append_fp2s("logup_root_corrections", &self.root_corrs);
         self.roots = (masks[0].authenticate(p), masks[1].authenticate(q));
         self.cp = self.roots.0;
         self.cq = self.roots.1;
@@ -577,8 +577,9 @@ impl BatchBlindState {
         correlations
             .record_c6_fullfield_plaintexts(draw.range, draw.row, &h)
             .expect("C6 scheduled LogUp-round correction schedule");
-        self.rounds_cur.push([h[0] - masks[0].x, h[1] - masks[1].x]);
-        tx.append("logup_round_corrections", 32);
+        let corrections = [h[0] - masks[0].x, h[1] - masks[1].x];
+        tx.append_fp2s("logup_round_corrections", &corrections);
+        self.rounds_cur.push(corrections);
         self.pending_round2 = Some(PendingRound2 {
             h0: masks[0].authenticate(h[0]),
             h2: masks[1].authenticate(h[1]),
@@ -625,8 +626,9 @@ impl BatchBlindState {
         correlations
             .record_c6_fullfield_plaintexts(draw.range, draw.row, &g)
             .expect("C6 scheduled LogUp auxiliary-round correction schedule");
-        self.rounds3_cur.push([g[0] - masks[0].x, g[1] - masks[1].x, g[2] - masks[2].x]);
-        tx.append("logup_aux_round_corrections", 48);
+        let corrections = [g[0] - masks[0].x, g[1] - masks[1].x, g[2] - masks[2].x];
+        tx.append_fp2s("logup_aux_round_corrections", &corrections);
+        self.rounds3_cur.push(corrections);
         self.pending_round3 = Some(PendingRound3 {
             values: [
                 masks[0].authenticate(g[0]),
@@ -685,7 +687,7 @@ impl BatchBlindState {
             splits[2] - masks[2].x,
             splits[3] - masks[3].x,
         ];
-        tx.append("logup_split_corrections", 64);
+        tx.append_fp2s("logup_split_corrections", &split_corrs);
         let p0 = masks[0].authenticate(splits[0]);
         let p1 = masks[1].authenticate(splits[1]);
         let q0 = masks[2].authenticate(splits[2]);
@@ -697,7 +699,7 @@ impl BatchBlindState {
             .record_c6_fullfield_plaintexts(draw.range, draw.row, &zx)
             .expect("C6 scheduled LogUp-product correction schedule");
         let z_corrs = [zx[0] - zmasks[0].x, zx[1] - zmasks[1].x, zx[2] - zmasks[2].x];
-        tx.append("logup_prod_corrections", 48);
+        tx.append_fp2s("logup_prod_corrections", &z_corrs);
         let z = [
             zmasks[0].authenticate(zx[0]),
             zmasks[1].authenticate(zx[1]),
@@ -722,7 +724,6 @@ impl BatchBlindState {
                     columns.iter().flat_map(|column| column.iter().copied()),
                 )
                 .expect("C6 scheduled LogUp-column correction schedule");
-            tx.append("logup_col_corrections", 32 * columns.len() as u64);
             let mut authenticated = Vec::with_capacity(columns.len());
             for (index, column) in columns.iter().enumerate() {
                 self.col_corrs
@@ -732,6 +733,8 @@ impl BatchBlindState {
                     cmasks[2 * index + 1].authenticate(column[1]),
                 ]);
             }
+            let corrections = self.col_corrs.iter().flatten().copied().collect::<Vec<_>>();
+            tx.append_fp2s("logup_col_corrections", &corrections);
             for final_claim in finals {
                 let column = authenticated
                     .get(final_claim.col)
@@ -1452,7 +1455,7 @@ impl<'a> BatchVerifyState<'a> {
         );
         self.cp = self.roots.0;
         self.cq = self.roots.1;
-        tx.append("logup_root_corrections", 32);
+        tx.append_fp2s("logup_root_corrections", &self.proof.root_corrs);
         Ok(())
     }
 
@@ -1498,7 +1501,7 @@ impl<'a> BatchVerifyState<'a> {
                 ],
                 point,
             });
-            tx.append("logup_aux_round_corrections", 48);
+            tx.append_fp2s("logup_aux_round_corrections", corrs);
         } else {
             let corrs = self.proof.layers[layer]
                 .round_corrs
@@ -1511,7 +1514,7 @@ impl<'a> BatchVerifyState<'a> {
                 h2: keys[1].with_same_c6_trace(keys[1].k + self.delta * corrs[1]),
                 point,
             });
-            tx.append("logup_round_corrections", 32);
+            tx.append_fp2s("logup_round_corrections", corrs);
         }
         Ok(leaf)
     }
@@ -1571,7 +1574,7 @@ impl<'a> BatchVerifyState<'a> {
             split_masks[3]
                 .with_same_c6_trace(split_masks[3].k + self.delta * proof_layer.split_corrs[3]),
         ];
-        tx.append("logup_split_corrections", 64);
+        tx.append_fp2s("logup_split_corrections", &proof_layer.split_corrs);
         let draw = self.corr.take(CorrelationScope::LogupProduct)?;
         let product_masks = correlations.expand(draw.range, draw.row);
         let products = [
@@ -1582,7 +1585,7 @@ impl<'a> BatchVerifyState<'a> {
             product_masks[2]
                 .with_same_c6_trace(product_masks[2].k + self.delta * proof_layer.z_corrs[2]),
         ];
-        tx.append("logup_prod_corrections", 48);
+        tx.append_fp2s("logup_prod_corrections", &proof_layer.z_corrs);
         kprod.push((splits[0], splits[3], products[0]));
         kprod.push((splits[1], splits[2], products[1]));
         kprod.push((splits[2], splits[3], products[2]));
@@ -1595,7 +1598,8 @@ impl<'a> BatchVerifyState<'a> {
             let aux = self.proof.aux.as_ref().ok_or(LogupBatchError::InvalidProof(self.site))?;
             let draw = self.corr.take(CorrelationScope::LogupAuxColumn)?;
             let column_masks = correlations.expand(draw.range, draw.row);
-            tx.append("logup_col_corrections", 32 * aux.col_corrs.len() as u64);
+            let corrections = aux.col_corrs.iter().flatten().copied().collect::<Vec<_>>();
+            tx.append_fp2s("logup_col_corrections", &corrections);
             let columns: Vec<[VerifierKey; 2]> = aux
                 .col_corrs
                 .iter()

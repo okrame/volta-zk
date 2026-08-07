@@ -43,7 +43,7 @@ pub fn prod_batch_prover(
         m0 += w * (a.m * b.m);
         m1 += w * (a.x * b.m + b.x * a.m - c.m);
     }
-    tx.append("prod_check_m0_m1", 32);
+    tx.append_fp2s("prod_check_m0_m1", &[m0, m1]);
     ProdProof { m0, m1 }
 }
 

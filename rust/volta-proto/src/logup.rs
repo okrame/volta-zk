@@ -1932,7 +1932,7 @@ impl Sink for BlindSink<'_> {
             .record_c6_fullfield_plaintexts(dom, &[p, q])
             .expect("C6 LogUp-root correction schedule");
         self.root_corrs = [p - masks[0].x, q - masks[1].x];
-        self.tx.append("logup_root_corrections", 32);
+        self.tx.append_fp2s("logup_root_corrections", &self.root_corrs);
         self.roots = (masks[0].authenticate(p), masks[1].authenticate(q));
         self.cp = self.roots.0;
         self.cq = self.roots.1;
@@ -1953,8 +1953,9 @@ impl Sink for BlindSink<'_> {
         self.stream
             .record_c6_fullfield_plaintexts(dom, &h)
             .expect("C6 LogUp-round correction schedule");
-        self.rounds_cur.push([h[0] - masks[0].x, h[1] - masks[1].x]);
-        self.tx.append("logup_round_corrections", 32);
+        let corrections = [h[0] - masks[0].x, h[1] - masks[1].x];
+        self.tx.append_fp2s("logup_round_corrections", &corrections);
+        self.rounds_cur.push(corrections);
         let h0 = masks[0].authenticate(h[0]);
         let h2 = masks[1].authenticate(h[1]);
         let r = self.tx.challenge_fp2();
@@ -1978,7 +1979,7 @@ impl Sink for BlindSink<'_> {
             .expect("C6 LogUp-split correction schedule");
         let split_corrs =
             [s[0] - masks[0].x, s[1] - masks[1].x, s[2] - masks[2].x, s[3] - masks[3].x];
-        self.tx.append("logup_split_corrections", 64);
+        self.tx.append_fp2s("logup_split_corrections", &split_corrs);
         let p0 = masks[0].authenticate(s[0]);
         let p1 = masks[1].authenticate(s[1]);
         let q0 = masks[2].authenticate(s[2]);
@@ -1991,7 +1992,7 @@ impl Sink for BlindSink<'_> {
             .record_c6_fullfield_plaintexts(zdom, &zx)
             .expect("C6 LogUp-product correction schedule");
         let z_corrs = [zx[0] - zmasks[0].x, zx[1] - zmasks[1].x, zx[2] - zmasks[2].x];
-        self.tx.append("logup_prod_corrections", 48);
+        self.tx.append_fp2s("logup_prod_corrections", &z_corrs);
         let z: Vec<ProverAuthed> =
             zx.iter().zip(&zmasks).map(|(&x, mask)| mask.authenticate(x)).collect();
         self.prod.push((p0, q1, z[0]));
@@ -2032,8 +2033,9 @@ impl Sink for BlindSink<'_> {
         self.stream
             .record_c6_fullfield_plaintexts(dom, &g)
             .expect("C6 LogUp auxiliary-round correction schedule");
-        self.rounds3_cur.push([g[0] - masks[0].x, g[1] - masks[1].x, g[2] - masks[2].x]);
-        self.tx.append("logup_aux_round_corrections", 48);
+        let corrections = [g[0] - masks[0].x, g[1] - masks[1].x, g[2] - masks[2].x];
+        self.tx.append_fp2s("logup_aux_round_corrections", &corrections);
+        self.rounds3_cur.push(corrections);
         let ga: Vec<ProverAuthed> =
             g.iter().zip(&masks).map(|(&x, mask)| mask.authenticate(x)).collect();
         let r = self.tx.challenge_fp2();
@@ -2056,7 +2058,7 @@ impl Sink for BlindSink<'_> {
             .expect("C6 LogUp auxiliary-split correction schedule");
         let split_corrs =
             [s[0] - masks[0].x, s[1] - masks[1].x, s[2] - masks[2].x, s[3] - masks[3].x];
-        self.tx.append("logup_split_corrections", 64);
+        self.tx.append_fp2s("logup_split_corrections", &split_corrs);
         let p0 = masks[0].authenticate(s[0]);
         let p1 = masks[1].authenticate(s[1]);
         let q0 = masks[2].authenticate(s[2]);
@@ -2068,7 +2070,7 @@ impl Sink for BlindSink<'_> {
             .record_c6_fullfield_plaintexts(zdom, &zx)
             .expect("C6 LogUp auxiliary-product correction schedule");
         let z_corrs = [zx[0] - zmasks[0].x, zx[1] - zmasks[1].x, zx[2] - zmasks[2].x];
-        self.tx.append("logup_prod_corrections", 48);
+        self.tx.append_fp2s("logup_prod_corrections", &z_corrs);
         let z: Vec<ProverAuthed> =
             zx.iter().zip(&zmasks).map(|(&x, mask)| mask.authenticate(x)).collect();
         self.prod.push((p0, q1, z[0]));
@@ -2083,12 +2085,13 @@ impl Sink for BlindSink<'_> {
                 cols.iter().flat_map(|column| column.iter().copied()),
             )
             .expect("C6 LogUp column correction schedule");
-        self.tx.append("logup_col_corrections", 32 * cols.len() as u64);
         let mut cols_a = Vec::with_capacity(cols.len());
         for (ci, c) in cols.iter().enumerate() {
             self.col_corrs.push([c[0] - cmasks[2 * ci].x, c[1] - cmasks[2 * ci + 1].x]);
             cols_a.push([cmasks[2 * ci].authenticate(c[0]), cmasks[2 * ci + 1].authenticate(c[1])]);
         }
+        let corrections = self.col_corrs.iter().flatten().copied().collect::<Vec<_>>();
+        self.tx.append_fp2s("logup_col_corrections", &corrections);
         // Extended layer-end relation:
         // claim = c_l·(λ(z₁+z₂) + z₃) + Σ_k eq_r·(w0·ṽ0 + w1·ṽ1).
         let mut row = z[0]
@@ -2329,7 +2332,7 @@ pub fn blind_verify_frac_tree(
     }
     let kroots = {
         let ks = ctx.correct_full_verifier_keys(doms.take(1), &proof.root_corrs);
-        tx.append("logup_root_corrections", 32);
+        tx.append_fp2s("logup_root_corrections", &proof.root_corrs);
         (ks[0], ks[1])
     };
     let mut kcp = kroots.0;
@@ -2346,7 +2349,7 @@ pub fn blind_verify_frac_tree(
         let mut rprime = Vec::with_capacity(l);
         for (j, corrs) in layer.round_corrs.iter().enumerate() {
             let kms = ctx.correct_full_verifier_keys(doms.take(1), corrs);
-            tx.append("logup_round_corrections", 32);
+            tx.append_fp2s("logup_round_corrections", corrs);
             let kh0 = kms[0];
             let kh2 = kms[1];
             let ptj = point[j];
@@ -2364,9 +2367,9 @@ pub fn blind_verify_frac_tree(
             rprime.push(r);
         }
         let ksp = ctx.correct_full_verifier_keys(doms.take(1), &layer.split_corrs);
-        tx.append("logup_split_corrections", 64);
+        tx.append_fp2s("logup_split_corrections", &layer.split_corrs);
         let kz = ctx.correct_full_verifier_keys(doms.take(1), &layer.z_corrs);
-        tx.append("logup_prod_corrections", 48);
+        tx.append_fp2s("logup_prod_corrections", &layer.z_corrs);
         kprod.push((ksp[0], ksp[3], kz[0]));
         kprod.push((ksp[1], ksp[2], kz[1]));
         kprod.push((ksp[2], ksp[3], kz[2]));
@@ -2409,7 +2412,7 @@ pub fn blind_verify_frac_tree_aux(
     }
     let kroots = {
         let ks = ctx.correct_full_verifier_keys(doms.take(1), &proof.root_corrs);
-        tx.append("logup_root_corrections", 32);
+        tx.append_fp2s("logup_root_corrections", &proof.root_corrs);
         (ks[0], ks[1])
     };
     let mut kcp = kroots.0;
@@ -2434,7 +2437,7 @@ pub fn blind_verify_frac_tree_aux(
             }
             for (j, corrs) in aux.rounds3.iter().enumerate() {
                 let kg = ctx.correct_full_verifier_keys(doms.take(1), corrs);
-                tx.append("logup_aux_round_corrections", 48);
+                tx.append_fp2s("logup_aux_round_corrections", corrs);
                 let r = tx.challenge_fp2();
                 let kg1 = kclaim.sub(kg[0]);
                 let w = lagrange4(r);
@@ -2454,7 +2457,7 @@ pub fn blind_verify_frac_tree_aux(
             }
             for (j, corrs) in layer.round_corrs.iter().enumerate() {
                 let kms = ctx.correct_full_verifier_keys(doms.take(1), corrs);
-                tx.append("logup_round_corrections", 32);
+                tx.append_fp2s("logup_round_corrections", corrs);
                 let kh0 = kms[0];
                 let kh2 = kms[1];
                 let ptj = point[j];
@@ -2473,9 +2476,9 @@ pub fn blind_verify_frac_tree_aux(
             }
         }
         let ksp = ctx.correct_full_verifier_keys(doms.take(1), &layer.split_corrs);
-        tx.append("logup_split_corrections", 64);
+        tx.append_fp2s("logup_split_corrections", &layer.split_corrs);
         let kz = ctx.correct_full_verifier_keys(doms.take(1), &layer.z_corrs);
-        tx.append("logup_prod_corrections", 48);
+        tx.append_fp2s("logup_prod_corrections", &layer.z_corrs);
         kprod.push((ksp[0], ksp[3], kz[0]));
         kprod.push((ksp[1], ksp[2], kz[1]));
         kprod.push((ksp[2], ksp[3], kz[2]));
@@ -2483,7 +2486,8 @@ pub fn blind_verify_frac_tree_aux(
         let t;
         if leaf {
             let kcs = ctx.expand_full_verifier_keys(doms.take(1), 2 * n_cols);
-            tx.append("logup_col_corrections", 32 * n_cols as u64);
+            let corrections = aux.col_corrs.iter().flatten().copied().collect::<Vec<_>>();
+            tx.append_fp2s("logup_col_corrections", &corrections);
             let kcols: Vec<[VerifierKey; 2]> = (0..n_cols)
                 .map(|ci| {
                     [

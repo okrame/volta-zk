@@ -810,8 +810,9 @@ pub fn prove_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
         stream
             .record_c6_fullfield_plaintexts(domain, &sent)
             .map_err(|error| C6ResidualError::new(error.to_string()))?;
-        round_corrections.push(std::array::from_fn(|index| sent[index] - masks[index].x));
-        tx.append("c6_sparse_joint_round_corrections", 16 * C6_SPARSE_JOINT_SENT_VALUES as u64);
+        let corrections = std::array::from_fn(|index| sent[index] - masks[index].x);
+        tx.append_fp2s("c6_sparse_joint_round_corrections", &corrections);
+        round_corrections.push(corrections);
         let authenticated_sent: [ProverAuthed; C6_SPARSE_JOINT_SENT_VALUES] = masks
             .into_iter()
             .zip(sent)
@@ -838,7 +839,7 @@ pub fn prove_c6_residual_sparse_rational_joint_leaf_blind_rounds_reference(
     let points = packed.opening_points(&point)?;
     let expected_response = packed.evaluate_response_openings(&points)?;
     let clear_plan_values = packed.evaluate_plan_openings(&points)?;
-    tx.append("c6_sparse_joint_plan_values", 16 * C6_SPARSE_PLAN_OPENINGS as u64);
+    tx.append_fp2s("c6_sparse_joint_plan_values", &clear_plan_values);
     let injection = crate::mle::eval_mle(&relation.combined_injection, &point);
     let linearization = terminal_linearization(
         operation_plan,
@@ -972,7 +973,7 @@ fn verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_with_topology(
             .correct_full_verifier_keys(doms.take(1), corrections)
             .try_into()
             .map_err(|_| C6ResidualError::new("C6SPR3 authenticated key census mismatch"))?;
-        tx.append("c6_sparse_joint_round_corrections", 16 * C6_SPARSE_JOINT_SENT_VALUES as u64);
+        tx.append_fp2s("c6_sparse_joint_round_corrections", corrections);
         let authenticated_evaluations: [VerifierKey; C6_SPARSE_JOINT_DEGREE + 1] =
             std::array::from_fn(|index| match index {
                 0 => authenticated_sent[0],
@@ -988,7 +989,7 @@ fn verify_c6_residual_sparse_rational_joint_leaf_blind_rounds_with_topology(
             });
         point.push(challenge);
     }
-    tx.append("c6_sparse_joint_plan_values", 16 * C6_SPARSE_PLAN_OPENINGS as u64);
+    tx.append_fp2s("c6_sparse_joint_plan_values", &proof.clear_plan_values);
     let sparse_challenges = public_relation.sparse_challenges();
     let injection = evaluate_c6_residual_folded_terminal_injection_sparse(
         terminal_metadata,
@@ -1058,7 +1059,7 @@ pub fn finish_c6_residual_sparse_rational_joint_leaf_blind_prover(
         .record_c6_fullfield_plaintexts(domain, &[product_value])
         .map_err(|error| C6ResidualError::new(error.to_string()))?;
     let product_correction = product_value - product_mask.x;
-    tx.append("c6_sparse_joint_product_correction", 16);
+    tx.append_fp2s("c6_sparse_joint_product_correction", &[product_correction]);
     let product = product_mask.authenticate(product_value);
     products.push((lambda, mu, product));
 
@@ -1102,7 +1103,7 @@ pub fn finish_c6_residual_sparse_rational_joint_leaf_blind_verifier(
     let lambda = response_keys[0].add(response_keys[1].scale(terminal.lane_batch));
     let mu = response_keys[2];
     let product = ctx.correct_full_verifier_key(doms.take(1), proof.product_correction);
-    tx.append("c6_sparse_joint_product_correction", 16);
+    tx.append_fp2s("c6_sparse_joint_product_correction", &[proof.product_correction]);
     products.push((lambda, mu, product));
 
     for (target, clear) in plan_keys.iter().zip(terminal.clear_plan_values) {

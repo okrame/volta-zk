@@ -1499,8 +1499,9 @@ pub fn prove_c6_residual_sparse_rational_gkr_blind_reference(
         stream
             .record_c6_fullfield_plaintexts(inverse_domain, &[inverse])
             .map_err(|error| C6ResidualError::new(error.to_string()))?;
-        root_inverse_corrections.push(inverse - inverse_mask.x);
-        tx.append("c6_sparse_root_inverse_correction", 16);
+        let inverse_correction = inverse - inverse_mask.x;
+        tx.append_fp2s("c6_sparse_root_inverse_correction", &[inverse_correction]);
+        root_inverse_corrections.push(inverse_correction);
         let inverse = inverse_mask.authenticate(inverse);
         products.push((roots.1, inverse, ProverAuthed::from_public(Fp2::ONE)));
         let ratio_value = roots.0.x * inverse.x;
@@ -1513,8 +1514,9 @@ pub fn prove_c6_residual_sparse_rational_gkr_blind_reference(
         stream
             .record_c6_fullfield_plaintexts(ratio_domain, &[ratio_value])
             .map_err(|error| C6ResidualError::new(error.to_string()))?;
-        root_ratio_corrections.push(ratio_value - ratio_mask.x);
-        tx.append("c6_sparse_root_ratio_correction", 16);
+        let ratio_correction = ratio_value - ratio_mask.x;
+        tx.append_fp2s("c6_sparse_root_ratio_correction", &[ratio_correction]);
+        root_ratio_corrections.push(ratio_correction);
         let ratio = ratio_mask.authenticate(ratio_value);
         products.push((roots.0, inverse, ratio));
         root_ratios.push(ratio);
@@ -1635,11 +1637,14 @@ fn verify_c6_residual_sparse_rational_gkr_blind_with_depths(
         };
         let inverse =
             ctx.correct_full_verifier_key(doms.take(1), proof.root_inverse_corrections[index]);
-        tx.append("c6_sparse_root_inverse_correction", 16);
+        tx.append_fp2s(
+            "c6_sparse_root_inverse_correction",
+            &[proof.root_inverse_corrections[index]],
+        );
         products.push((roots.1, inverse, VerifierKey::from_public(Fp2::ONE, ctx.delta)));
         let ratio =
             ctx.correct_full_verifier_key(doms.take(1), proof.root_ratio_corrections[index]);
-        tx.append("c6_sparse_root_ratio_correction", 16);
+        tx.append_fp2s("c6_sparse_root_ratio_correction", &[proof.root_ratio_corrections[index]]);
         products.push((roots.0, inverse, ratio));
         root_ratios.push(ratio);
         claims.push(C6SparseRationalBlindLeafKey { point, numerator, denominator });

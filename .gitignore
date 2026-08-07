@@ -26,6 +26,8 @@ lean/.lake/
 !.env.example
 rust/target/
 /target/
+.c61-cargo-target/
+.c61-tmp/
 
 # large weight artifacts (reproducible via scripts/export_gpt2.py)
 benchmarks/weights/model.safetensors

@@ -6,7 +6,7 @@
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::env;
-use std::fs::OpenOptions;
+use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -17,20 +17,21 @@ use volta_bench::c6_t1_owner::{
 use volta_field::{Fp, Fp2};
 use volta_mac::{
     begin_c6_prover_trace, begin_c6_runtime_instance_capture_diagnostic, begin_c6_verifier_trace,
-    compile_c6_operation_trace_for_role, finish_c6_prover_trace, finish_c6_verifier_trace,
-    fresh_zero_mask, normalize_c6_operation_trace_debug_block, zero_batch_prover,
-    zero_batch_verify, zero_mask_key, C6DecodedInstanceExtractionPlan,
-    C6InstalledOperationPlanMemoryCensus, C6InstanceExtractionRole, C6RuntimeInstanceValues,
+    compile_c6_operation_trace_for_role_with_target_profile, finish_c6_prover_trace,
+    finish_c6_verifier_trace, fresh_zero_mask,
+    normalize_c6_operation_trace_debug_block, zero_batch_prover, zero_batch_verify, zero_mask_key,
+    C6DecodedInstanceExtractionPlan, C6InstalledOperationPlanMemoryCensus,
+    C6InstanceExtractionRole, C6NativeTargetProfileArtifact, C6RuntimeInstanceValues,
     CorrelationStream, Transcript, VerifierCtx,
 };
 use volta_proto::logup::Doms;
 use volta_proto::{
-    audit_c6_t1_source_census, c6_t1_trace_source_manifest, layer_dom_base, prod_batch_prover,
-    prod_batch_verify, prove_response_private_logits, replay_c6_source_coordinate,
-    replay_c6_subfield_coordinate, verify_response_private_logits, C6CompiledLinearResidual,
-    C6CompiledLinearResidualMemoryCensus, C6PairedSourceWitness, C6PairedSubfieldWitness,
-    C6SourceCoordinate, C6T1CensusInput, ChunkRef, PrivateChunkPub, C6_PAIRED_PCG_SETUP_BYTES,
-    C6_SETUP_CAP_BYTES, C6_T1_COMPLETE_ALLOCATION_SCHEDULE_DIGEST_HEX,
+    audit_c6_t1_source_census, c6_gpt2_native_target_profile, c6_t1_trace_source_manifest,
+    layer_dom_base, prod_batch_prover, prod_batch_verify, prove_response_private_logits,
+    replay_c6_source_coordinate, replay_c6_subfield_coordinate, verify_response_private_logits,
+    C6CompiledLinearResidual, C6CompiledLinearResidualMemoryCensus, C6PairedSourceWitness,
+    C6PairedSubfieldWitness, C6SourceCoordinate, C6T1CensusInput, ChunkRef, PrivateChunkPub,
+    C6_PAIRED_PCG_SETUP_BYTES, C6_SETUP_CAP_BYTES, C6_T1_COMPLETE_ALLOCATION_SCHEDULE_DIGEST_HEX,
     C6_T1_CORRECTION_SCHEDULE_DIGEST_HEX, C6_T1_FINAL_PRODUCT_TRIPLES, C6_T1_FULL_CORRECTION_BYTES,
     C6_T1_MODEL_ALLOCATION_SCHEDULE_DIGEST_HEX, C6_T1_MODEL_LOCAL_PRODUCT_CLOSURES,
     C6_T1_MODEL_LOCAL_PRODUCT_TRIPLES, C6_T1_MODEL_PRODUCT_MESSAGE_BYTES,
@@ -48,6 +49,7 @@ struct Args {
     operation_trace: bool,
     compiled_residual: bool,
     operation_trace_debug_block: Option<u64>,
+    setup_dir: Option<PathBuf>,
     transcript_seed_byte: u8,
 }
 
@@ -60,6 +62,7 @@ fn args() -> Result<Args, String> {
     let mut operation_trace = false;
     let mut compiled_residual = false;
     let mut operation_trace_debug_block = None;
+    let mut setup_dir = None;
     let mut transcript_seed_byte = 0x18;
     let mut values = env::args().skip(1);
     while let Some(argument) = values.next() {
@@ -92,6 +95,11 @@ fn args() -> Result<Args, String> {
                         })?,
                 );
             }
+            "--setup-dir" => {
+                setup_dir = Some(PathBuf::from(
+                    values.next().ok_or_else(|| "--setup-dir requires a path".to_owned())?,
+                ));
+            }
             "--transcript-seed-byte" => {
                 transcript_seed_byte = values
                     .next()
@@ -121,6 +129,14 @@ fn args() -> Result<Args, String> {
     if operation_trace_debug_block.is_some() && !diagnostic {
         return Err("--operation-trace-debug-block is diagnostic-only".to_owned());
     }
+    if setup_dir.is_some()
+        && (diagnostic || !operation_trace || operation_trace_debug_block.is_some())
+    {
+        return Err(
+            "--setup-dir requires clean record mode with --operation-trace and no debug block"
+                .to_owned(),
+        );
+    }
     Ok(Args {
         weights,
         output,
@@ -130,12 +146,93 @@ fn args() -> Result<Args, String> {
         operation_trace,
         compiled_residual,
         operation_trace_debug_block,
+        setup_dir,
         transcript_seed_byte,
     })
 }
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+#[derive(Serialize)]
+struct C6T1SetupFileRow {
+    name: &'static str,
+    bytes: u64,
+    blake3: String,
+}
+
+#[derive(Serialize)]
+struct C6T1SetupRecord {
+    schema: u64,
+    profile: &'static str,
+    source_count: u32,
+    source_schedule_digest: String,
+    product_mask_sources: Vec<u32>,
+    topology_digest: String,
+    native_profile_digest: String,
+    files: Vec<C6T1SetupFileRow>,
+}
+
+fn write_create_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map_err(|error| format!("create {}: {error}", path.display()))?;
+    file.write_all(bytes).map_err(|error| format!("write {}: {error}", path.display()))?;
+    file.sync_all().map_err(|error| format!("fsync {}: {error}", path.display()))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_c6_t1_setup_record(
+    root: &Path,
+    source_count: u32,
+    source_schedule_digest: [u8; 32],
+    product_mask_sources: &[u32],
+    topology_digest: [u8; 32],
+    native_profile_digest: [u8; 32],
+    plan: &[u8],
+    prover_extraction: &[u8],
+    verifier_extraction: &[u8],
+    native_profile: &[u8],
+) -> Result<(), String> {
+    fs::create_dir(root)
+        .map_err(|error| format!("create setup dir {}: {error}", root.display()))?;
+    let payloads = [
+        ("operation-plan.bin", plan),
+        ("prover-extraction.bin", prover_extraction),
+        ("verifier-extraction.bin", verifier_extraction),
+        ("native-target-profile.bin", native_profile),
+    ];
+    let mut files = Vec::with_capacity(payloads.len());
+    for (name, bytes) in payloads {
+        write_create_new(&root.join(name), bytes)?;
+        files.push(C6T1SetupFileRow {
+            name,
+            bytes: u64::try_from(bytes.len())
+                .map_err(|_| format!("setup file {name} length exceeds u64"))?,
+            blake3: hex(blake3::hash(bytes).as_bytes()),
+        });
+    }
+    let record = C6T1SetupRecord {
+        schema: 1,
+        profile: "C6.1-T1-installed-setup-v1",
+        source_count,
+        source_schedule_digest: hex(&source_schedule_digest),
+        product_mask_sources: product_mask_sources.to_vec(),
+        topology_digest: hex(&topology_digest),
+        native_profile_digest: hex(&native_profile_digest),
+        files,
+    };
+    let manifest = serde_json::to_vec_pretty(&record)
+        .map_err(|error| format!("encode C6 T1 setup manifest: {error}"))?;
+    write_create_new(&root.join("manifest.json"), &manifest)?;
+    OpenOptions::new()
+        .read(true)
+        .open(root)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| format!("fsync setup dir {}: {error}", root.display()))
 }
 
 fn git_sha_and_tracked_clean() -> Result<(String, Vec<String>), String> {
@@ -716,6 +813,7 @@ fn run(args: &Args) -> Result<Record, String> {
         None
     };
     let mut prover_runtime_bundle = None;
+    let mut prover_native_targets = None;
     let (prover_plan, prover_artifact, prover_instance_extraction, prover_runtime_instance) =
         match (raw_prover_trace, prover_runtime_instance_capture) {
             (Some(trace), Some(runtime_capture)) => {
@@ -733,14 +831,28 @@ fn run(args: &Args) -> Result<Record, String> {
                         (Some(plan), None, None, None)
                     }
                     None => {
-                        let compiled = compile_c6_operation_trace_for_role(
-                            &trace,
-                            manifest,
-                            C6InstanceExtractionRole::Prover,
+                        let target_profile = c6_gpt2_native_target_profile(
+                            output
+                                .weight_claims
+                                .iter()
+                                .map(|claim| (claim.point.len(), claim.value.c6_trace_token())),
+                            output
+                                .embed_claims
+                                .iter()
+                                .map(|claim| (claim.point.len(), claim.value.c6_trace_token())),
                         )
-                        .map_err(|error| {
-                            format!("C6 prover operation-plan compilation: {error}")
-                        })?;
+                        .map_err(|error| format!("C6 prover native-target profile: {error}"))?;
+                        let (compiled, native_targets) =
+                            compile_c6_operation_trace_for_role_with_target_profile(
+                                &trace,
+                                manifest,
+                                C6InstanceExtractionRole::Prover,
+                                &target_profile,
+                            )
+                            .map_err(|error| {
+                                format!("C6 prover operation-plan compilation: {error}")
+                            })?;
+                        prover_native_targets = Some(native_targets);
                         let decoded = compiled
                             .artifact
                             .decode(manifest)
@@ -815,7 +927,7 @@ fn run(args: &Args) -> Result<Record, String> {
     } else {
         None
     };
-    let (_, kprod, kzero) = verify_response_private_logits(
+    let (verifier_output, kprod, kzero) = verify_response_private_logits(
         workload.model(),
         workload.prefill().t,
         &public,
@@ -894,6 +1006,7 @@ fn run(args: &Args) -> Result<Record, String> {
     }
 
     let mut verifier_runtime_bundle = None;
+    let mut verifier_native_targets = None;
     let mut compiled_residual_context = None;
     let mut operation_trace = match (
         prover_plan,
@@ -935,12 +1048,28 @@ fn run(args: &Args) -> Result<Record, String> {
                     (plan, None, None, None)
                 }
                 None => {
-                    let compiled = compile_c6_operation_trace_for_role(
-                        &verifier_trace,
-                        &accepted_manifest,
-                        C6InstanceExtractionRole::Verifier,
+                    let target_profile = c6_gpt2_native_target_profile(
+                        verifier_output
+                            .weight_keys
+                            .iter()
+                            .map(|(point, key)| (point.len(), key.c6_trace_token())),
+                        verifier_output
+                            .embed_keys
+                            .iter()
+                            .map(|(point, key)| (point.len(), key.c6_trace_token())),
                     )
-                    .map_err(|error| format!("C6 verifier operation-plan compilation: {error}"))?;
+                    .map_err(|error| format!("C6 verifier native-target profile: {error}"))?;
+                    let (compiled, native_targets) =
+                        compile_c6_operation_trace_for_role_with_target_profile(
+                            &verifier_trace,
+                            &accepted_manifest,
+                            C6InstanceExtractionRole::Verifier,
+                            &target_profile,
+                        )
+                        .map_err(|error| {
+                            format!("C6 verifier operation-plan compilation: {error}")
+                        })?;
+                    verifier_native_targets = Some(native_targets);
                     let decoded = compiled
                         .artifact
                         .decode(&accepted_manifest)
@@ -1244,6 +1373,49 @@ fn run(args: &Args) -> Result<Record, String> {
                     );
                 }
             };
+            if args.operation_trace_debug_block.is_none() {
+                let prover_targets = prover_native_targets.as_ref().ok_or_else(|| {
+                    "C6 setup export lacks the prover native-target profile".to_owned()
+                })?;
+                let verifier_targets = verifier_native_targets.as_ref().ok_or_else(|| {
+                    "C6 setup export lacks the verifier native-target profile".to_owned()
+                })?;
+                if prover_targets != verifier_targets {
+                    return Err("C6 prover/verifier native-target profiles differ".to_owned());
+                }
+                let native_artifact =
+                    C6NativeTargetProfileArtifact::encode(prover_targets, topology)
+                        .map_err(|error| format!("encode C6 native-target setup: {error}"))?;
+                let (_, decoded_targets) =
+                    C6NativeTargetProfileArtifact::decode(native_artifact.as_bytes(), topology)
+                        .map_err(|error| format!("decode C6 native-target setup: {error}"))?;
+                if &decoded_targets != verifier_targets {
+                    return Err("C6 decoded native-target setup differs".to_owned());
+                }
+                if let Some(root) = &args.setup_dir {
+                    let plan = prover_artifact
+                        .as_ref()
+                        .ok_or_else(|| "C6 setup export lacks its plan artifact".to_owned())?;
+                    let prover_extraction = prover_instance_extraction
+                        .as_ref()
+                        .ok_or_else(|| "C6 setup export lacks prover extraction".to_owned())?;
+                    let verifier_extraction = verifier_instance_extraction
+                        .as_ref()
+                        .ok_or_else(|| "C6 setup export lacks verifier extraction".to_owned())?;
+                    write_c6_t1_setup_record(
+                        root,
+                        accepted_manifest.source_count,
+                        accepted_manifest.source_schedule_digest,
+                        &accepted_manifest.product_mask_sources,
+                        topology.topology_digest,
+                        *blake3::hash(native_artifact.as_bytes()).as_bytes(),
+                        plan.as_bytes(),
+                        prover_extraction.as_bytes(),
+                        verifier_extraction.as_bytes(),
+                        native_artifact.as_bytes(),
+                    )?;
+                }
+            }
             if args.compiled_residual {
                 let artifact = prover_artifact
                     .as_ref()

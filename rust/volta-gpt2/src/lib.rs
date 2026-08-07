@@ -13,6 +13,7 @@ pub mod layer;
 pub mod luts;
 pub mod model;
 pub mod resident;
+pub mod verifier_model_codec;
 
 pub use band::{band_model_witness, BandModelWitness};
 pub use config::{
@@ -41,4 +42,7 @@ pub use resident::{
     LayerI16Field, LayerI64Field, LayerWeightField, ModelWeightField, ResidentBandLayerWitness,
     ResidentBandModelWitness, ResidentGpt2Model, ResidentLayerView, ResidentLayerWitness,
     ResidentModelWitness,
+};
+pub use verifier_model_codec::{
+    decode_verifier_model_canonical, encode_verifier_model_canonical, VerifierModelCodecError,
 };

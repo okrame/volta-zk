@@ -270,6 +270,30 @@ impl Gpt2VerifierModel {
     pub fn schedule_model(&self) -> &Gpt2Model {
         &self.model
     }
+
+    pub(crate) fn from_redacted_parts(
+        p: P5Params,
+        luts: Luts,
+        layers: Vec<(LayerWeights, GemmBiases)>,
+        lnf_gain: Vec<i16>,
+        lnf_bias: Vec<i16>,
+    ) -> Result<Self, String> {
+        let profile = Self {
+            model: Gpt2Model {
+                config: legacy_model_config(&p),
+                p,
+                luts,
+                layers,
+                wte: Vec::new(),
+                lm_head: None,
+                wpe: Vec::new(),
+                lnf_gain,
+                lnf_bias,
+            },
+        };
+        profile.validate_layout()?;
+        Ok(profile)
+    }
 }
 
 impl Gpt2Model {

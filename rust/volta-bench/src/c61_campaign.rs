@@ -84,6 +84,7 @@ struct CampaignArtifactRecord {
     pcg: String,
     certificate_digest: String,
     setup_manifest_digest: String,
+    outer_statement_digest: String,
     statement_digest: String,
     wire_bytes: u64,
     files: Vec<CampaignFileRow>,
@@ -488,6 +489,7 @@ fn validate_campaign_bindings(
     let setup_manifest_digest = setup_manifest.digest().map_err(|error| error.to_string())?;
     let public_argument = C61JointPublicArgument::decode(certificate.public_argument())
         .map_err(|error| error.to_string())?;
+    let wrapper = certificate.wrapper_binding().map_err(|error| error.to_string())?;
     if verifier_replay.certificate_digest() != certificate_digest
         || verifier_replay.setup_manifest_digest() != setup_manifest_digest
         || setup_manifest_digest != inner.setup_manifest_digest
@@ -496,7 +498,7 @@ fn validate_campaign_bindings(
         || setup_manifest.params_digest != inner.params_digest
         || setup_manifest.connection_id != inner.connection_id
         || verifier_replay.statement_digest() != public_instance.statement_digest
-        || public_argument.statement_digest() != public_instance.statement_digest
+        || wrapper.statement_digest != public_instance.statement_digest
         || inner.model_digest != public_instance.model_family_digest
         || inner.workload.old_context != public_instance.old_context
         || inner.workload.prompt_tokens != public_instance.prompt_tokens
@@ -633,7 +635,8 @@ pub fn create_c61_campaign_artifact(
     source_git_commit: &str,
 ) -> Result<(), String> {
     validate_source_commit(source_git_commit)?;
-    validate_campaign_bindings(certificate, verifier_replay, setup_manifest, public_instance)?;
+    let public_argument =
+        validate_campaign_bindings(certificate, verifier_replay, setup_manifest, public_instance)?;
     let payloads = CampaignPayloads {
         certificate: certificate.encode().map_err(|error| error.to_string())?,
         verifier_replay: verifier_replay.encode_client_state()?,
@@ -652,6 +655,7 @@ pub fn create_c61_campaign_artifact(
         pcg: CAMPAIGN_PCG.to_owned(),
         certificate_digest: hex_digest(inner.digest().map_err(|error| error.to_string())?),
         setup_manifest_digest: hex_digest(inner.setup_manifest_digest),
+        outer_statement_digest: hex_digest(public_argument.statement_digest()),
         statement_digest: hex_digest(public_instance.statement_digest),
         wire_bytes: u64::try_from(payloads.certificate.len())
             .map_err(|_| "C6.1 certificate length exceeds u64")?,
@@ -754,6 +758,8 @@ pub fn load_c61_campaign_artifact(root: &Path) -> Result<C61CampaignArtifact, St
             != inner.digest().map_err(|error| error.to_string())?
         || parse_hex_32(&record.setup_manifest_digest, "campaign setup digest")?
             != inner.setup_manifest_digest
+        || parse_hex_32(&record.outer_statement_digest, "campaign outer statement digest")?
+            != artifact.public_argument.statement_digest()
         || parse_hex_32(&record.statement_digest, "campaign statement digest")?
             != artifact.public_instance.statement_digest
     {
@@ -797,6 +803,7 @@ mod campaign_artifact_tests {
             pcg: CAMPAIGN_PCG.to_owned(),
             certificate_digest: "11".repeat(32),
             setup_manifest_digest: "22".repeat(32),
+            outer_statement_digest: "23".repeat(32),
             statement_digest: "33".repeat(32),
             wire_bytes: payloads.certificate.len() as u64,
             files: campaign_rows(payloads).unwrap(),

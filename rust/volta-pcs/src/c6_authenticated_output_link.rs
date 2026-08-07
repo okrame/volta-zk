@@ -77,7 +77,8 @@ const LINK_AGGREGATE_BYTES: u64 = 96;
 const LINK_TERMINAL_TAG_BYTES: u64 = 64;
 const LINK_DIGEST_BYTES: u64 = 32;
 const LINK_CORRELATION_BASE: u64 = 0x0C64_0000_0000_0000;
-const C6_NBR2_STATEMENT_CONTEXT: &str = "volta-zk/c6/nbr2-correction-functional-statement/v1";
+const C6_NBR2_STATEMENT_CONTEXT: &str =
+    "volta-zk/c6/nbr2-correction-functional-statement/v2-source-binding";
 const C6_NBR2_SCHEDULE_CONTEXT: &str = "volta-zk/c6/nbr2-link-schedule/v1";
 const C6_NBR2_CORRECTION_SLOT: u16 = 6;
 
@@ -117,8 +118,7 @@ pub struct C6Nbr2CorrectionFunctional<'a> {
     wrapper_statement_digest: C6WrapperDigest,
     fixed_roots_digest: C6WrapperDigest,
     residual_manifest_digest: C6WrapperDigest,
-    residual_view_digest: C6WrapperDigest,
-    paired_source_digest: C6WrapperDigest,
+    source_binding_digest: C6WrapperDigest,
     source_schedule_digest: C6WrapperDigest,
     native_profile_digest: C6WrapperDigest,
     functional_digest: C6WrapperDigest,
@@ -170,8 +170,7 @@ impl fmt::Debug for C6Nbr2CorrectionFunctional<'_> {
             .field("wrapper_statement_digest", &self.wrapper_statement_digest)
             .field("fixed_roots_digest", &self.fixed_roots_digest)
             .field("residual_manifest_digest", &self.residual_manifest_digest)
-            .field("residual_view_digest", &self.residual_view_digest)
-            .field("paired_source_digest", &self.paired_source_digest)
+            .field("source_binding_digest", &self.source_binding_digest)
             .field("source_schedule_digest", &self.source_schedule_digest)
             .field("native_profile_digest", &self.native_profile_digest)
             .field("functional_digest", &self.functional_digest)
@@ -190,8 +189,7 @@ impl<'a> C6Nbr2CorrectionFunctional<'a> {
         fixed: &C6FixedWrapperCommitments,
         outer_statement_digest: C6WrapperDigest,
         residual_manifest_digest: C6WrapperDigest,
-        residual_view_digest: C6WrapperDigest,
-        paired_source_digest: C6WrapperDigest,
+        source_binding_digest: C6WrapperDigest,
         source_schedule_digest: C6WrapperDigest,
         native_profile_digest: C6WrapperDigest,
         functional_digest: C6WrapperDigest,
@@ -214,8 +212,7 @@ impl<'a> C6Nbr2CorrectionFunctional<'a> {
             wrapper_statement_digest: fixed.statement_digest(),
             fixed_roots_digest: fixed.binding_digest(),
             residual_manifest_digest,
-            residual_view_digest,
-            paired_source_digest,
+            source_binding_digest,
             source_schedule_digest,
             native_profile_digest,
             functional_digest,
@@ -231,8 +228,7 @@ impl<'a> C6Nbr2CorrectionFunctional<'a> {
             statement.wrapper_statement_digest,
             statement.fixed_roots_digest,
             statement.residual_manifest_digest,
-            statement.residual_view_digest,
-            statement.paired_source_digest,
+            statement.source_binding_digest,
             statement.source_schedule_digest,
             statement.native_profile_digest,
             statement.functional_digest,
@@ -254,6 +250,10 @@ impl<'a> C6Nbr2CorrectionFunctional<'a> {
 
     pub fn outer_statement_digest(&self) -> C6WrapperDigest {
         self.outer_statement_digest
+    }
+
+    pub fn source_binding_digest(&self) -> C6WrapperDigest {
+        self.source_binding_digest
     }
 
     pub fn correction(&self) -> Fp2 {
@@ -288,8 +288,7 @@ fn c6_nbr2_statement_digest(statement: &C6Nbr2CorrectionFunctional<'_>) -> C6Wra
         statement.wrapper_statement_digest,
         statement.fixed_roots_digest,
         statement.residual_manifest_digest,
-        statement.residual_view_digest,
-        statement.paired_source_digest,
+        statement.source_binding_digest,
         statement.source_schedule_digest,
         statement.native_profile_digest,
         statement.functional_digest,
@@ -4550,8 +4549,7 @@ mod tests {
             wrapper_statement_digest: statement_digest,
             fixed_roots_digest: [0x73; 32],
             residual_manifest_digest: [0x82; 32],
-            residual_view_digest: [0x83; 32],
-            paired_source_digest: [0x84; 32],
+            source_binding_digest: [0x83; 32],
             source_schedule_digest: [0x85; 32],
             native_profile_digest: [0x86; 32],
             functional_digest: [0x87; 32],
@@ -5563,7 +5561,6 @@ mod tests {
                 [0x91; 32],
                 [0x92; 32],
                 [0x93; 32],
-                [0x94; 32],
                 [0x95; 32],
                 [0x96; 32],
                 [0x97; 32],
@@ -6101,7 +6098,6 @@ mod tests {
             [0x91; 32],
             [0x92; 32],
             [0x93; 32],
-            [0x94; 32],
             [0x95; 32],
             [0x96; 32],
             [0x97; 32],
@@ -6126,7 +6122,6 @@ mod tests {
             [0x91; 32],
             [0x92; 32],
             [0x93; 32],
-            [0x94; 32],
             [0x95; 32],
             [0x96; 32],
             [0x97; 32],
@@ -6139,6 +6134,29 @@ mod tests {
             pending,
             &fixture.proof,
             &changed_correction,
+            &mut contexts,
+            &mut transcript,
+        )
+        .is_err());
+
+        let (fixed, pending, mut contexts, mut transcript, _) = verifier_prefix(&fixture);
+        let changed_source_binding = C6Nbr2CorrectionFunctional::new(
+            &fixed,
+            [0x91; 32],
+            [0x92; 32],
+            [0xA3; 32],
+            [0x95; 32],
+            [0x96; 32],
+            [0x97; 32],
+            &original.coefficients,
+            original.correction,
+        )
+        .unwrap();
+        assert!(verify_c6_authenticated_output_link_reference_nbr2(
+            &fixed,
+            pending,
+            &fixture.proof,
+            &changed_source_binding,
             &mut contexts,
             &mut transcript,
         )

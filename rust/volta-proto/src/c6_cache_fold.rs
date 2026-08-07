@@ -467,7 +467,8 @@ impl C6CacheFoldTargetInlineProver {
 /// it after the correction message and before sampling the ProductClosure
 /// challenge.
 pub struct C6CacheFoldTargetInlineVerifier<'a> {
-    frame: &'a C6CacheFoldTargetCorrectionFrame,
+    corrections: &'a [[Fp2; C6_CACHE_FOLD_TARGET_TAPES]],
+    decoded_identity: Option<C6CacheFoldTraceIdentity>,
     schedule: C6CacheFoldTargetPublicSchedule,
     expected_identity: Option<C6CacheFoldTraceIdentity>,
     deltas: [Fp2; C6_CACHE_FOLD_TARGET_TAPES],
@@ -488,7 +489,14 @@ impl<'a> C6CacheFoldTargetInlineVerifier<'a> {
             return Err(C6CacheFoldTraceError::new("C6FT1 MAC tapes are not independent"));
         }
         let identity = schedule.identity;
-        Self::start_inner(frame, schedule.public_schedule(), Some(identity), deltas, transcript)
+        Self::start_inner(
+            &frame.corrections,
+            Some(frame.identity),
+            schedule.public_schedule(),
+            Some(identity),
+            deltas,
+            transcript,
+        )
     }
 
     pub fn start_public(
@@ -503,11 +511,36 @@ impl<'a> C6CacheFoldTargetInlineVerifier<'a> {
         if deltas[0] == deltas[1] {
             return Err(C6CacheFoldTraceError::new("C6FT1 MAC tapes are not independent"));
         }
-        Self::start_inner(frame, schedule, None, deltas, transcript)
+        Self::start_inner(
+            &frame.corrections,
+            Some(frame.identity),
+            schedule,
+            None,
+            deltas,
+            transcript,
+        )
+    }
+
+    pub fn start_decoded_public(
+        frame: &'a C6CacheFoldTargetPublicCorrectionFrame,
+        schedule: C6CacheFoldTargetPublicSchedule,
+        deltas: [Fp2; C6_CACHE_FOLD_TARGET_TAPES],
+        transcript: &mut Transcript,
+    ) -> Result<Self, C6CacheFoldTraceError> {
+        if schedule.kinds.len() != frame.corrections.len() {
+            return Err(C6CacheFoldTraceError::new(
+                "C6FT1 decoded-public verifier schedule mismatch",
+            ));
+        }
+        if deltas[0] == deltas[1] {
+            return Err(C6CacheFoldTraceError::new("C6FT1 MAC tapes are not independent"));
+        }
+        Self::start_inner(&frame.corrections, None, schedule, None, deltas, transcript)
     }
 
     fn start_inner(
-        frame: &'a C6CacheFoldTargetCorrectionFrame,
+        corrections: &'a [[Fp2; C6_CACHE_FOLD_TARGET_TAPES]],
+        decoded_identity: Option<C6CacheFoldTraceIdentity>,
         schedule: C6CacheFoldTargetPublicSchedule,
         expected_identity: Option<C6CacheFoldTraceIdentity>,
         deltas: [Fp2; C6_CACHE_FOLD_TARGET_TAPES],
@@ -515,7 +548,7 @@ impl<'a> C6CacheFoldTargetInlineVerifier<'a> {
     ) -> Result<Self, C6CacheFoldTraceError> {
         validate_target_count(schedule.kinds.len())?;
         transcript.append(C6_CACHE_FOLD_TARGET_HEADER_LABEL, C6_CACHE_FOLD_TARGET_HEADER_BYTES);
-        Ok(Self { frame, schedule, expected_identity, deltas, next: 0 })
+        Ok(Self { corrections, decoded_identity, schedule, expected_identity, deltas, next: 0 })
     }
 
     pub fn correct_next_before_product(
@@ -527,7 +560,7 @@ impl<'a> C6CacheFoldTargetInlineVerifier<'a> {
         if self.schedule.kinds.get(self.next).copied() != Some(kind) {
             return Err(C6CacheFoldTraceError::new("C6FT1 inline verifier target order mismatch"));
         }
-        let correction = self.frame.corrections[self.next];
+        let correction = self.corrections[self.next];
         self.next += 1;
         transcript.append(C6_CACHE_FOLD_TARGET_SLOT_LABEL, C6_CACHE_FOLD_TARGET_SLOT_BYTES);
         Ok(std::array::from_fn(|tape| {
@@ -557,13 +590,13 @@ impl<'a> C6CacheFoldTargetInlineVerifier<'a> {
                 "C6FT1 inline verifier did not exhaust live targets",
             ));
         }
-        charge_target_padding(self.frame.corrections.len(), transcript);
+        charge_target_padding(self.corrections.len(), transcript);
         validate_online_runtime_identity(
             identity,
             self.expected_identity,
             self.schedule.kinds.len(),
         )?;
-        if identity != self.frame.identity {
+        if self.decoded_identity.is_some_and(|decoded| identity != decoded) {
             return Err(C6CacheFoldTraceError::new(
                 "C6FT1 verifier runtime identity differs from decoded frame binding",
             ));
@@ -571,7 +604,7 @@ impl<'a> C6CacheFoldTargetInlineVerifier<'a> {
         Ok(C6CacheFoldTargetFixedCorrections {
             identity,
             kinds: self.schedule.kinds,
-            corrections: self.frame.corrections.clone(),
+            corrections: self.corrections.to_vec(),
         })
     }
 }
@@ -585,6 +618,35 @@ pub struct C6CacheFoldTargetCorrectionFrame {
     statement_digest: [u8; 32],
     identity: C6CacheFoldTraceIdentity,
     corrections: Vec<[Fp2; C6_CACHE_FOLD_TARGET_TAPES]>,
+}
+
+/// Strict disk-decoded C6FT1 bytes before the verifier has replayed the
+/// response trace that independently reconstructs the omitted runtime
+/// identity. The wire frame intentionally carries no copy of that identity.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6CacheFoldTargetPublicCorrectionFrame {
+    statement_digest: [u8; 32],
+    corrections: Vec<[Fp2; C6_CACHE_FOLD_TARGET_TAPES]>,
+}
+
+impl C6CacheFoldTargetPublicCorrectionFrame {
+    pub fn decode(
+        expected_statement_digest: [u8; 32],
+        bytes: &[u8],
+    ) -> Result<Self, C6CacheFoldTraceError> {
+        Ok(Self {
+            statement_digest: expected_statement_digest,
+            corrections: decode_target_corrections(expected_statement_digest, bytes)?,
+        })
+    }
+
+    pub fn statement_digest(&self) -> [u8; 32] {
+        self.statement_digest
+    }
+
+    pub fn live_count(&self) -> usize {
+        self.corrections.len()
+    }
 }
 
 impl C6CacheFoldTargetCorrectionFrame {
@@ -651,36 +713,14 @@ impl C6CacheFoldTargetCorrectionFrame {
         expected_identity: C6CacheFoldTraceIdentity,
         bytes: &[u8],
     ) -> Result<Self, C6CacheFoldTraceError> {
-        validate_statement_digest(expected_statement_digest)?;
-        if bytes.len() as u64 != C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES {
-            return Err(C6CacheFoldTraceError::new("C6FT1 encoded length mismatch"));
-        }
-        let mut cursor = C6CacheFoldTargetDecodeCursor::new(bytes);
-        if cursor.take(8)? != C6_CACHE_FOLD_TARGET_MAGIC
-            || cursor.u16()? != C6_CACHE_FOLD_TARGET_VERSION
-            || cursor.u8()? as usize != C6_CACHE_FOLD_TARGET_TAPES
-            || cursor.u8()? != 2
-        {
-            return Err(C6CacheFoldTraceError::new("C6FT1 header census mismatch"));
-        }
-        let live_count = usize::from(cursor.u16()?);
-        if usize::from(cursor.u16()?) != C6_CACHE_FOLD_MAX_RECORDS {
-            return Err(C6CacheFoldTraceError::new("C6FT1 capacity mismatch"));
-        }
-        validate_target_count(live_count)?;
+        let corrections = decode_target_corrections(expected_statement_digest, bytes)?;
+        let live_count = corrections.len();
         validate_target_identity(expected_identity, live_count)?;
-        let statement_digest = cursor.digest()?;
-        if statement_digest != expected_statement_digest {
-            return Err(C6CacheFoldTraceError::new("C6FT1 statement digest mismatch"));
-        }
-        let mut corrections = Vec::with_capacity(live_count);
-        for _ in 0..live_count {
-            corrections.push([cursor.fp2()?, cursor.fp2()?]);
-        }
-        if cursor.remaining().iter().any(|&byte| byte != 0) {
-            return Err(C6CacheFoldTraceError::new("C6FT1 nonzero inactive tail"));
-        }
-        Ok(Self { statement_digest, identity: expected_identity, corrections })
+        Ok(Self {
+            statement_digest: expected_statement_digest,
+            identity: expected_identity,
+            corrections,
+        })
     }
 
     /// Start the provider-side target-ordered stream.  Each `next` call
@@ -909,6 +949,40 @@ fn validate_target_count(count: usize) -> Result<(), C6CacheFoldTraceError> {
 fn encode_target_fp2(bytes: &mut Vec<u8>, value: Fp2) {
     bytes.extend_from_slice(&value.c0.value().to_le_bytes());
     bytes.extend_from_slice(&value.c1.value().to_le_bytes());
+}
+
+fn decode_target_corrections(
+    expected_statement_digest: [u8; 32],
+    bytes: &[u8],
+) -> Result<Vec<[Fp2; C6_CACHE_FOLD_TARGET_TAPES]>, C6CacheFoldTraceError> {
+    validate_statement_digest(expected_statement_digest)?;
+    if bytes.len() as u64 != C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES {
+        return Err(C6CacheFoldTraceError::new("C6FT1 encoded length mismatch"));
+    }
+    let mut cursor = C6CacheFoldTargetDecodeCursor::new(bytes);
+    if cursor.take(8)? != C6_CACHE_FOLD_TARGET_MAGIC
+        || cursor.u16()? != C6_CACHE_FOLD_TARGET_VERSION
+        || cursor.u8()? as usize != C6_CACHE_FOLD_TARGET_TAPES
+        || cursor.u8()? != 2
+    {
+        return Err(C6CacheFoldTraceError::new("C6FT1 header census mismatch"));
+    }
+    let live_count = usize::from(cursor.u16()?);
+    if usize::from(cursor.u16()?) != C6_CACHE_FOLD_MAX_RECORDS {
+        return Err(C6CacheFoldTraceError::new("C6FT1 capacity mismatch"));
+    }
+    validate_target_count(live_count)?;
+    if cursor.digest()? != expected_statement_digest {
+        return Err(C6CacheFoldTraceError::new("C6FT1 statement digest mismatch"));
+    }
+    let mut corrections = Vec::with_capacity(live_count);
+    for _ in 0..live_count {
+        corrections.push([cursor.fp2()?, cursor.fp2()?]);
+    }
+    if cursor.remaining().iter().any(|&byte| byte != 0) {
+        return Err(C6CacheFoldTraceError::new("C6FT1 nonzero inactive tail"));
+    }
+    Ok(corrections)
 }
 
 struct C6CacheFoldTargetDecodeCursor<'a> {
@@ -3106,6 +3180,13 @@ mod tests {
             .unwrap();
         assert_eq!(fixed.identity(), prover.identity);
         assert_eq!(prover_tx.total_bytes(), C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES);
+        let disk_frame = C6CacheFoldTargetPublicCorrectionFrame::decode(
+            statement_digest,
+            &frame.encode().unwrap(),
+        )
+        .unwrap();
+        assert_eq!(disk_frame.statement_digest(), statement_digest);
+        assert_eq!(disk_frame.live_count(), prover.terms().count());
 
         let verifier_terms = verifier.terms().collect::<Vec<_>>();
         let run_verifier = |identity: C6CacheFoldTraceIdentity| {
@@ -3128,6 +3209,26 @@ mod tests {
         assert!(accepted.is_ok());
         assert_eq!(accepted_tx.total_bytes(), C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES);
         assert_eq!(accepted_tx.ledger(), prover_tx.ledger());
+
+        let mut disk_tx = Transcript::new([0xBB; 32]);
+        let mut disk = C6CacheFoldTargetInlineVerifier::start_decoded_public(
+            &disk_frame,
+            public_schedule.clone(),
+            deltas,
+            &mut disk_tx,
+        )
+        .unwrap();
+        for &(kind, base) in &verifier_terms {
+            disk.correct_next_before_product(kind, base, &mut disk_tx).unwrap();
+            let _ = disk_tx.challenge_fp2();
+        }
+        assert_eq!(
+            disk.finish_before_successor_root_with_identity(prover.identity, &mut disk_tx)
+                .unwrap()
+                .identity(),
+            prover.identity
+        );
+        assert_eq!(disk_tx.ledger(), prover_tx.ledger());
 
         let mut wrong = prover.identity;
         wrong.instance_digest[0] ^= 1;

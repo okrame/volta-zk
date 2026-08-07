@@ -74,7 +74,10 @@ pub use c6_census::{
     C6_T1_SOURCE_SCHEDULE_DIGEST_HEX, C6_T1_SUB_CORRECTION_BYTES, C6_T1_TOTAL_PRODUCT_CLOSURES,
     C6_T1_TOTAL_PRODUCT_TRIPLES, C6_T1_ZERO_CLOSURES,
 };
-pub use c6_production_pcg::{C6ProductionPairedPcgAttempt, C6ProductionPairedSourceWitness};
+pub use c6_production_pcg::{
+    C6BoundProductionVerifierReplay, C6ProductionPairedPcgAttempt,
+    C6ProductionPairedSourceWitness, C6ProductionVerifierReplayOwner,
+};
 #[cfg(feature = "c6-trace")]
 pub use c6_residual::{
     build_c6_residual_direct_fused_scaled_fixture, build_c6_residual_fused_scaled_fixture,

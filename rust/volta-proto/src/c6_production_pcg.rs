@@ -8,7 +8,7 @@ use crate::{
 use volta_mac::{ConnectionCorrelationScope, CorrScheduleAudit, CorrelationStream, VerifierCtx};
 use volta_pcg::{
     CorrelationAllocation, CorrelationDomain, GgmPrg, ProductionFaseDConnection,
-    ResponseAuthorizationStore,
+    ResponseAuthorizationStore, VerifierPcgPool,
 };
 
 const SOURCE_BINDING_DOMAIN: &str = "volta-zk/c6/production-paired-source/v1";
@@ -26,8 +26,84 @@ pub struct C6ProductionPairedPcgAttempt {
     allocations: [CorrelationAllocation; C6_MAC_COORDINATES],
     prover: [CorrelationStream; C6_MAC_COORDINATES],
     verifier: [VerifierCtx; C6_MAC_COORDINATES],
+    verifier_replay_pools: Option<[VerifierPcgPool; C6_MAC_COORDINATES]>,
+    verifier_deltas: [volta_field::Fp2; C6_MAC_COORDINATES],
+    verifier_scope: ConnectionCorrelationScope,
     connections: [ProductionFaseDConnection; C6_MAC_COORDINATES],
     source_sealed: bool,
+    source_allocation_binding_digest: Option<[u8; 32]>,
+}
+
+/// Client-only seed for idempotent verification of one exact certificate.
+///
+/// The contained key pools are never exposed. Fresh contexts may be derived
+/// repeatedly only after the owner is bound to a nonzero certificate digest;
+/// this supports the required 4T and maxT(N) measurements without allocating
+/// a second provider correlation range or regenerating a proof.
+pub struct C6ProductionVerifierReplayOwner {
+    setup_manifest_digest: [u8; 32],
+    reservation_digest: [u8; 32],
+    source_allocation_binding_digest: [u8; 32],
+    statement_digest: [u8; 32],
+    pools: [VerifierPcgPool; C6_MAC_COORDINATES],
+    deltas: [volta_field::Fp2; C6_MAC_COORDINATES],
+    scope: ConnectionCorrelationScope,
+}
+
+pub struct C6BoundProductionVerifierReplay {
+    owner: C6ProductionVerifierReplayOwner,
+    certificate_digest: [u8; 32],
+}
+
+impl C6ProductionVerifierReplayOwner {
+    pub fn statement_digest(&self) -> [u8; 32] {
+        self.statement_digest
+    }
+
+    pub fn setup_manifest_digest(&self) -> [u8; 32] {
+        self.setup_manifest_digest
+    }
+
+    pub fn reservation_digest(&self) -> [u8; 32] {
+        self.reservation_digest
+    }
+
+    pub fn source_allocation_binding_digest(&self) -> [u8; 32] {
+        self.source_allocation_binding_digest
+    }
+
+    pub fn bind_certificate(
+        self,
+        certificate_digest: [u8; 32],
+    ) -> Result<C6BoundProductionVerifierReplay> {
+        if certificate_digest == [0; 32] {
+            return Err("C6 verifier replay cannot bind a zero certificate digest".to_owned());
+        }
+        Ok(C6BoundProductionVerifierReplay { owner: self, certificate_digest })
+    }
+}
+
+impl C6BoundProductionVerifierReplay {
+    pub fn fresh_contexts(
+        &self,
+        certificate_digest: [u8; 32],
+    ) -> Result<[VerifierCtx; C6_MAC_COORDINATES]> {
+        if certificate_digest != self.certificate_digest {
+            return Err("C6 verifier replay requested a different certificate".to_owned());
+        }
+        Ok([
+            VerifierCtx::from_pcg_pool_connection(
+                self.owner.deltas[0],
+                self.owner.pools[0].clone(),
+                self.owner.scope,
+            ),
+            VerifierCtx::from_pcg_pool_connection(
+                self.owner.deltas[1],
+                self.owner.pools[1].clone(),
+                self.owner.scope,
+            ),
+        ])
+    }
 }
 
 /// Paired source witness whose tape identities and ranges were fixed by the
@@ -153,6 +229,8 @@ impl C6ProductionPairedPcgAttempt {
             return Err("C6 production PCG tapes reuse one verifier Delta".to_owned());
         }
         let scope = ConnectionCorrelationScope::new(setup.connection_id, reservation.nonce);
+        let verifier_replay_pools = [first.verifier.clone(), second.verifier.clone()];
+        let verifier_deltas = [first.verifier_delta, second.verifier_delta];
         let prover = [
             CorrelationStream::from_pcg_pool_connection(first.prover, scope),
             CorrelationStream::from_pcg_pool_connection(second.prover, scope),
@@ -169,8 +247,12 @@ impl C6ProductionPairedPcgAttempt {
             allocations,
             prover,
             verifier,
+            verifier_replay_pools: Some(verifier_replay_pools),
+            verifier_deltas,
+            verifier_scope: scope,
             connections,
             source_sealed: false,
+            source_allocation_binding_digest: None,
         })
     }
 
@@ -182,9 +264,7 @@ impl C6ProductionPairedPcgAttempt {
     /// Borrow both production prover tapes as the canonical paired owner.
     /// Complete-response drivers use this instead of constructing a second
     /// stream array or replaying one coordinate from a diagnostic seed.
-    pub fn prover_streams_array_mut(
-        &mut self,
-    ) -> &mut [CorrelationStream; C6_MAC_COORDINATES] {
+    pub fn prover_streams_array_mut(&mut self) -> &mut [CorrelationStream; C6_MAC_COORDINATES] {
         &mut self.prover
     }
 
@@ -229,12 +309,41 @@ impl C6ProductionPairedPcgAttempt {
             source.pair_digest(),
         );
         self.source_sealed = true;
+        self.source_allocation_binding_digest = Some(allocation_binding_digest);
         Ok(C6ProductionPairedSourceWitness { source, allocation_binding_digest })
     }
 
+    /// Transfer the verifier-only replay seed after the source allocation is
+    /// sealed. The provider response cannot obtain raw verifier keys from it.
+    pub fn take_verifier_replay_owner(
+        &mut self,
+        statement_digest: [u8; 32],
+    ) -> Result<C6ProductionVerifierReplayOwner> {
+        if statement_digest == [0; 32] || !self.source_sealed {
+            return Err("C6 verifier replay owner requested before statement/source binding".into());
+        }
+        let pools = self
+            .verifier_replay_pools
+            .take()
+            .ok_or_else(|| "C6 verifier replay owner already transferred".to_owned())?;
+        Ok(C6ProductionVerifierReplayOwner {
+            setup_manifest_digest: self.setup_manifest_digest,
+            reservation_digest: self.reservation_digest,
+            source_allocation_binding_digest: self
+                .source_allocation_binding_digest
+                .ok_or_else(|| "C6 verifier replay source binding is absent".to_owned())?,
+            statement_digest,
+            pools,
+            deltas: self.verifier_deltas,
+            scope: self.verifier_scope,
+        })
+    }
+
     pub fn finish_success(mut self) -> Result<()> {
-        if !self.source_sealed {
-            return Err("C6 production paired attempt has no sealed source witness".to_owned());
+        if !self.source_sealed || self.verifier_replay_pools.is_some() {
+            return Err(
+                "C6 production paired attempt lacks sealed source/replay transfer".to_owned()
+            );
         }
         for connection in &mut self.connections {
             connection.connection.finish_response_success().map_err(|error| error.to_string())?;
@@ -299,6 +408,7 @@ fn allocation_binding_digest(
 mod tests {
     use super::*;
     use crate::{C6CorrelationRange, C6PairedCorrelationRanges, C6Workload};
+    use volta_field::{Fp, Fp2};
 
     fn allocation(stage: u32, start: u64, count: u64) -> CorrelationAllocation {
         CorrelationAllocation {
@@ -334,6 +444,27 @@ mod tests {
         }
     }
 
+    fn replay_owner() -> C6ProductionVerifierReplayOwner {
+        C6ProductionVerifierReplayOwner {
+            setup_manifest_digest: [0x21; 32],
+            reservation_digest: [0x22; 32],
+            source_allocation_binding_digest: [0x23; 32],
+            statement_digest: [0x24; 32],
+            pools: [
+                VerifierPcgPool {
+                    sub_keys: vec![Fp2::new(Fp::new(1), Fp::new(2))],
+                    full_keys: vec![Fp2::new(Fp::new(3), Fp::new(4))],
+                },
+                VerifierPcgPool {
+                    sub_keys: vec![Fp2::new(Fp::new(5), Fp::new(6))],
+                    full_keys: vec![Fp2::new(Fp::new(7), Fp::new(8))],
+                },
+            ],
+            deltas: [Fp2::new(Fp::new(9), Fp::new(10)), Fp2::new(Fp::new(11), Fp::new(12))],
+            scope: ConnectionCorrelationScope::new([0x25; 32], [0x26; 32]),
+        }
+    }
+
     #[test]
     fn exact_paired_allocations_match_both_client_ranges() {
         let reservation = reservation();
@@ -348,5 +479,18 @@ mod tests {
         let mut wrong_count = allocations;
         wrong_count[0].count -= 1;
         assert!(validate_allocations(reservation, &wrong_count).is_err());
+    }
+
+    #[test]
+    fn verifier_replay_is_idempotent_only_for_the_bound_certificate() {
+        assert!(replay_owner().bind_certificate([0; 32]).is_err());
+        let digest = [0x31; 32];
+        let replay = replay_owner().bind_certificate(digest).unwrap();
+        let first = replay.fresh_contexts(digest).unwrap();
+        let second = replay.fresh_contexts(digest).unwrap();
+        assert!(first.iter().chain(&second).all(VerifierCtx::uses_pooled_pcg));
+        assert_eq!(first[0].delta, second[0].delta);
+        assert_eq!(first[1].delta, second[1].delta);
+        assert!(replay.fresh_contexts([0x32; 32]).is_err());
     }
 }

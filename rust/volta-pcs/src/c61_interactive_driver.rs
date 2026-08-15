@@ -1204,6 +1204,19 @@ enum C61BrokerRequest {
         semantic_bytes: usize,
         response: mpsc::SyncSender<ReferenceResult<C61BrokerResponse>>,
     },
+    ReplayChallenge {
+        provider_move: Vec<u8>,
+        semantic_bytes: usize,
+        kind: C61ChallengeKind,
+        response: mpsc::SyncSender<ReferenceResult<C61BrokerResponse>>,
+    },
+    ReplayFinish {
+        pending_provider_move: Vec<u8>,
+        payload_bytes: usize,
+        payload_blake3: [u8; 32],
+        semantic_bytes: usize,
+        response: mpsc::SyncSender<ReferenceResult<C61BrokerResponse>>,
+    },
 }
 
 /// The only object crossing into the provider role.  Its fields contain no
@@ -1285,6 +1298,85 @@ impl TranscriptChallengeChannel for C61PrivateEntropyEndpoint {
         {
             C61BrokerResponse::Ack => Ok(()),
             _ => Err("C6ICT2 transcript finish response is not an ACK".to_owned()),
+        }
+    }
+}
+
+/// Client-side live mirror for a duplex response transcript. It contains no
+/// entropy or checkpoint and can release only a challenge the broker already
+/// released to the provider after the same canonical move.
+pub struct C61PrivateEntropyLiveReplayEndpoint {
+    endpoint: C61ProviderEndpoint,
+}
+
+impl TranscriptChallengeChannel for C61PrivateEntropyLiveReplayEndpoint {
+    fn challenge(
+        &mut self,
+        provider_move: Vec<u8>,
+        provider_semantic_bytes: usize,
+        request: TranscriptChallengeRequest,
+    ) -> Result<TranscriptChallengeResponse, String> {
+        let kind = match request {
+            TranscriptChallengeRequest::Fp => C61ChallengeKind::Fp,
+            TranscriptChallengeRequest::Fp2 => C61ChallengeKind::Fp2,
+            TranscriptChallengeRequest::Bits(bits) if (1..=32).contains(&bits) => {
+                C61ChallengeKind::Query { bits }
+            }
+            TranscriptChallengeRequest::Bits(_) => {
+                return Err("C6ICT3 live replay query width exceeds u32".to_owned())
+            }
+        };
+        let (response_sender, response_receiver) = mpsc::sync_channel(0);
+        self.endpoint
+            .sender
+            .send(C61BrokerRequest::ReplayChallenge {
+                provider_move,
+                semantic_bytes: provider_semantic_bytes,
+                kind,
+                response: response_sender,
+            })
+            .map_err(|_| "C6ICT3 duplex broker disconnected".to_owned())?;
+        let response = response_receiver
+            .recv()
+            .map_err(|_| "C6ICT3 duplex replay response disconnected".to_owned())?
+            .map_err(|error| error.to_string())?;
+        match response {
+            C61BrokerResponse::Fp(value) => Ok(TranscriptChallengeResponse::Fp(value)),
+            C61BrokerResponse::Fp2(value) => Ok(TranscriptChallengeResponse::Fp2(value)),
+            C61BrokerResponse::Query(value) => {
+                Ok(TranscriptChallengeResponse::Bits(u64::from(value)))
+            }
+            C61BrokerResponse::Ack => {
+                Err("C6ICT3 live replay received an ACK challenge".to_owned())
+            }
+        }
+    }
+
+    fn finish(
+        &mut self,
+        pending_provider_move: Vec<u8>,
+        payload_bytes: usize,
+        payload_blake3: [u8; 32],
+        semantic_bytes: usize,
+    ) -> Result<(), String> {
+        let (response_sender, response_receiver) = mpsc::sync_channel(0);
+        self.endpoint
+            .sender
+            .send(C61BrokerRequest::ReplayFinish {
+                pending_provider_move,
+                payload_bytes,
+                payload_blake3,
+                semantic_bytes,
+                response: response_sender,
+            })
+            .map_err(|_| "C6ICT3 duplex broker disconnected at replay finish".to_owned())?;
+        match response_receiver
+            .recv()
+            .map_err(|_| "C6ICT3 duplex replay finish disconnected".to_owned())?
+            .map_err(|error| error.to_string())?
+        {
+            C61BrokerResponse::Ack => Ok(()),
+            _ => Err("C6ICT3 live replay finish response is not an ACK".to_owned()),
         }
     }
 }
@@ -1533,6 +1625,7 @@ fn broker_loop(
     verifier_seed: [u8; 32],
     checkpoint: C61InteractiveCheckpoint,
     mut durable: Option<C61DurableJournal>,
+    require_live_replay: bool,
 ) -> ReferenceResult<C61PrivateEntropyBrokerOutput> {
     let durable_resume = durable.as_ref().map(C61DurableJournal::resume);
     if durable_resume.as_ref().is_some_and(|resume| resume.checkpoint != checkpoint) {
@@ -1547,10 +1640,20 @@ fn broker_loop(
     let mut replayed_mask_events = 0usize;
     let mut mask_frontier = 0u32;
     let mut mask_events = Vec::new();
+    let mut live_replay_cursor = 0usize;
+    let mut live_replay_semantic_bytes = 0usize;
+    let mut pending_duplex_output = None;
 
     while let Ok(request) = receiver.recv() {
         match request {
             C61BrokerRequest::Challenge { provider_move, semantic_bytes, kind, response } => {
+                if pending_duplex_output.is_some() {
+                    let error = C61WhirReferenceError::new(
+                        "C6ICT3 provider challenged after its final seal",
+                    );
+                    let _ = response.send(Err(error.clone()));
+                    return Err(error);
+                }
                 if durable_resume.as_ref().is_some_and(|resume| {
                     resume
                         .mask_events
@@ -1622,6 +1725,46 @@ fn broker_loop(
                     ));
                 }
             }
+            C61BrokerRequest::ReplayChallenge { provider_move, semantic_bytes, kind, response } => {
+                let result = if !require_live_replay {
+                    Err(C61WhirReferenceError::new(
+                        "C6ICT3 live replay used on a provider-only broker",
+                    ))
+                } else if let Some(record) = records.get(live_replay_cursor) {
+                    if record.provider_move != provider_move || record.kind != kind {
+                        Err(C61WhirReferenceError::new(
+                            "C6ICT3 live replay provider move or kind diverged",
+                        ))
+                    } else {
+                        live_replay_semantic_bytes = live_replay_semantic_bytes
+                            .checked_add(semantic_bytes)
+                            .ok_or_else(|| {
+                                C61WhirReferenceError::new(
+                                    "C6ICT3 live replay semantic-byte count overflows",
+                                )
+                            })?;
+                        live_replay_cursor += 1;
+                        Ok(match record.value {
+                            C61ChallengeValue::Fp(value) => C61BrokerResponse::Fp(value),
+                            C61ChallengeValue::Fp2(value) => C61BrokerResponse::Fp2(value),
+                            C61ChallengeValue::Query(value) => C61BrokerResponse::Query(value),
+                        })
+                    }
+                } else {
+                    Err(C61WhirReferenceError::new(
+                        "C6ICT3 live replay advanced beyond the provider frontier",
+                    ))
+                };
+                match result {
+                    Ok(value) => response.send(Ok(value)).map_err(|_| {
+                        C61WhirReferenceError::new("C6ICT3 live replay dropped its response")
+                    })?,
+                    Err(error) => {
+                        let _ = response.send(Err(error.clone()));
+                        return Err(error);
+                    }
+                }
+            }
             C61BrokerRequest::MaskFrontier { frontier, provider_move_digest, response } => {
                 if frontier <= mask_frontier {
                     let error =
@@ -1671,9 +1814,23 @@ fn broker_loop(
                 semantic_bytes,
                 response,
             } => {
+                if pending_duplex_output.is_some() {
+                    let error = C61WhirReferenceError::new(
+                        "C6ICT3 provider supplied more than one final seal",
+                    );
+                    let _ = response.send(Err(error.clone()));
+                    return Err(error);
+                }
                 if records.len() < checkpoint.records.len() {
                     let error = C61WhirReferenceError::new(
                         "C6ICT1 provider finished before the replay frontier",
+                    );
+                    let _ = response.send(Err(error.clone()));
+                    return Err(error);
+                }
+                if require_live_replay && live_replay_cursor != records.len() {
+                    let error = C61WhirReferenceError::new(
+                        "C6ICT3 provider finished before live replay reached its frontier",
                     );
                     let _ = response.send(Err(error.clone()));
                     return Err(error);
@@ -1710,7 +1867,7 @@ fn broker_loop(
                     checkpoint: C61InteractiveCheckpoint {
                         num_variables: checkpoint.num_variables,
                         context_digest: checkpoint.context_digest,
-                        records,
+                        records: std::mem::take(&mut records),
                     },
                     final_payload_bytes: payload_bytes,
                     final_payload_blake3: payload_blake3,
@@ -1740,16 +1897,59 @@ fn broker_loop(
                 response
                     .send(Ok(C61BrokerResponse::Ack))
                     .map_err(|_| C61WhirReferenceError::new("C6ICT1 finish ACK disconnected"))?;
-                return Ok(C61PrivateEntropyBrokerOutput {
+                let output = C61PrivateEntropyBrokerOutput {
                     tape,
-                    interaction,
+                    interaction: std::mem::take(&mut interaction),
                     transcript_bytes: transcript.total_bytes(),
                     ledger: transcript.ledger().clone(),
                     replayed_challenges,
                     replayed_mask_events,
                     mask_frontier,
-                    mask_events,
+                    mask_events: std::mem::take(&mut mask_events),
                     durable_record_count: durable.as_ref().map_or(0, |journal| journal.sequence),
+                };
+                if require_live_replay {
+                    pending_duplex_output = Some(output);
+                } else {
+                    return Ok(output);
+                }
+            }
+            C61BrokerRequest::ReplayFinish {
+                pending_provider_move,
+                payload_bytes,
+                payload_blake3,
+                semantic_bytes,
+                response,
+            } => {
+                let result = pending_duplex_output.as_ref().ok_or_else(|| {
+                    C61WhirReferenceError::new(
+                        "C6ICT3 live replay finished before the provider final seal",
+                    )
+                });
+                let result = result.and_then(|output| {
+                    let tape = &output.tape;
+                    if !require_live_replay
+                        || live_replay_cursor != tape.challenge_count()
+                        || pending_provider_move != tape.final_pending_provider_move
+                        || payload_bytes != tape.final_payload_bytes
+                        || payload_blake3 != tape.final_payload_blake3
+                        || semantic_bytes != tape.final_semantic_bytes
+                        || live_replay_semantic_bytes > semantic_bytes
+                    {
+                        Err(C61WhirReferenceError::new("C6ICT3 live replay final seal diverged"))
+                    } else {
+                        Ok(())
+                    }
+                });
+                if let Err(error) = result {
+                    let _ = response.send(Err(error.clone()));
+                    return Err(error);
+                }
+                response.send(Ok(C61BrokerResponse::Ack)).map_err(|_| {
+                    C61WhirReferenceError::new("C6ICT3 live replay final ACK disconnected")
+                })?;
+                return pending_duplex_output.take().ok_or_else(|| {
+                    C61WhirReferenceError::new("C6ICT3 duplex output disappeared after validation")
                 });
             }
         }
@@ -1774,7 +1974,8 @@ pub(crate) fn spawn_c61_private_entropy_broker(
     let (sender, receiver) = mpsc::sync_channel(0);
     let endpoint = C61ProviderEndpoint { sender };
     let challenger = C61PrivateEntropyProverChallenger::new(endpoint, num_variables);
-    let handle = thread::spawn(move || broker_loop(receiver, verifier_seed, checkpoint, None));
+    let handle =
+        thread::spawn(move || broker_loop(receiver, verifier_seed, checkpoint, None, false));
     Ok((challenger, handle))
 }
 
@@ -1802,8 +2003,34 @@ pub fn spawn_c61_private_entropy_transcript_broker(
     let checkpoint = C61InteractiveCheckpoint::empty(num_variables, context_digest)?;
     let (sender, receiver) = mpsc::sync_channel(0);
     let endpoint = C61ProviderEndpoint { sender };
-    let handle = thread::spawn(move || broker_loop(receiver, verifier_seed, checkpoint, None));
+    let handle =
+        thread::spawn(move || broker_loop(receiver, verifier_seed, checkpoint, None, false));
     Ok((C61PrivateEntropyEndpoint { endpoint }, C61PrivateEntropyBrokerHandle { handle }))
+}
+
+/// Start one client-owned response channel with separate seedless provider
+/// and live-replay endpoints. The replay endpoint can observe only records
+/// already released to the provider and both roles must seal the same payload.
+pub fn spawn_c61_private_entropy_duplex_transcript_broker(
+    verifier_seed: [u8; 32],
+    num_variables: usize,
+    context_digest: [u8; 32],
+) -> ReferenceResult<(
+    C61PrivateEntropyEndpoint,
+    C61PrivateEntropyLiveReplayEndpoint,
+    C61PrivateEntropyBrokerHandle,
+)> {
+    let checkpoint = C61InteractiveCheckpoint::empty(num_variables, context_digest)?;
+    let (sender, receiver) = mpsc::sync_channel(0);
+    let provider = C61ProviderEndpoint { sender: sender.clone() };
+    let replay = C61ProviderEndpoint { sender };
+    let handle =
+        thread::spawn(move || broker_loop(receiver, verifier_seed, checkpoint, None, true));
+    Ok((
+        C61PrivateEntropyEndpoint { endpoint: provider },
+        C61PrivateEntropyLiveReplayEndpoint { endpoint: replay },
+        C61PrivateEntropyBrokerHandle { handle },
+    ))
 }
 
 /// Seedless verifier endpoint for the generic VOLTA transcript. It releases
@@ -1920,8 +2147,9 @@ pub(crate) fn spawn_c61_durable_private_entropy_broker(
     let (sender, receiver) = mpsc::sync_channel(0);
     let endpoint = C61ProviderEndpoint { sender };
     let challenger = C61PrivateEntropyProverChallenger::new(endpoint, num_variables);
-    let handle =
-        thread::spawn(move || broker_loop(receiver, verifier_seed, checkpoint, Some(journal)));
+    let handle = thread::spawn(move || {
+        broker_loop(receiver, verifier_seed, checkpoint, Some(journal), false)
+    });
     Ok((challenger, handle))
 }
 
@@ -2174,6 +2402,72 @@ mod tests {
         assert!(changed_transcript
             .interactive_error()
             .is_some_and(|error| error.contains("provider move or kind diverged")));
+    }
+
+    #[test]
+    fn duplex_transcript_releases_only_past_challenges_and_seals_both_roles() {
+        let context = [0xD3; 32];
+        let (provider, replay, handle) =
+            spawn_c61_private_entropy_duplex_transcript_broker([0x91; 32], 0, context).unwrap();
+        let mut provider_tx = Transcript::new_interactive(Box::new(provider));
+        let mut replay_tx = Transcript::new_interactive(Box::new(replay));
+
+        provider_tx.append_message("round-0", &[1, 2, 3]);
+        let first = provider_tx.challenge_fp2();
+        replay_tx.append_message("round-0", &[1, 2, 3]);
+        assert_eq!(replay_tx.challenge_fp2(), first);
+        provider_tx.append_message_digest("round-1", 4096, [0xA5; 32]);
+        let second = provider_tx.challenge_fp();
+        replay_tx.append_message_digest("round-1", 4096, [0xA5; 32]);
+        assert_eq!(replay_tx.challenge_fp(), second);
+
+        let payload = [0xC6; 8192];
+        provider_tx.finish_interactive(&payload).unwrap();
+        replay_tx.finish_interactive(&payload).unwrap();
+        let tape = handle.finish().unwrap();
+        assert_eq!(tape.challenge_count(), 2);
+
+        let mut disk_tx = tape.replay_transcript(0, context).unwrap();
+        disk_tx.append_message("round-0", &[1, 2, 3]);
+        assert_eq!(disk_tx.challenge_fp2(), first);
+        disk_tx.append_message_digest("round-1", 4096, [0xA5; 32]);
+        assert_eq!(disk_tx.challenge_fp(), second);
+        disk_tx.finish_interactive(&payload).unwrap();
+    }
+
+    #[test]
+    fn duplex_transcript_rejects_frontier_move_and_payload_mutations() {
+        let context = [0xD4; 32];
+        let (provider, replay, handle) =
+            spawn_c61_private_entropy_duplex_transcript_broker([0x92; 32], 0, context).unwrap();
+        let mut provider_tx = Transcript::new_interactive(Box::new(provider));
+        let mut replay_tx = Transcript::new_interactive(Box::new(replay));
+        provider_tx.append_message("round", &[7]);
+        let _ = provider_tx.challenge_fp2();
+        replay_tx.append_message("round", &[8]);
+        assert_eq!(replay_tx.challenge_fp2(), Fp2::ONE);
+        assert!(replay_tx.interactive_error().is_some());
+        assert!(handle.finish().is_err());
+
+        let (provider, replay, handle) =
+            spawn_c61_private_entropy_duplex_transcript_broker([0x93; 32], 0, context).unwrap();
+        let mut provider_tx = Transcript::new_interactive(Box::new(provider));
+        let mut replay_tx = Transcript::new_interactive(Box::new(replay));
+        provider_tx.append_message("round", &[9]);
+        let challenge = provider_tx.challenge_fp();
+        replay_tx.append_message("round", &[9]);
+        assert_eq!(replay_tx.challenge_fp(), challenge);
+        provider_tx.finish_interactive(&[0x11; 64]).unwrap();
+        assert!(replay_tx.finish_interactive(&[0x12; 64]).is_err());
+        assert!(handle.finish().is_err());
+
+        let (provider, _replay, handle) =
+            spawn_c61_private_entropy_duplex_transcript_broker([0x94; 32], 0, context).unwrap();
+        let mut provider_tx = Transcript::new_interactive(Box::new(provider));
+        provider_tx.append_message("round", &[10]);
+        let _ = provider_tx.challenge_fp();
+        assert!(provider_tx.finish_interactive(&[0x13; 64]).is_err());
+        assert!(handle.finish().is_err());
     }
 
     #[test]

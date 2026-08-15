@@ -8,14 +8,15 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.65 next.
+This capsule is authoritative; read design §§0.60--0.67 next.
 
 - **Milestone/evidence.** C6.1/C6NBR3 and the six C6ICT2 persisted/CUDA lanes
   are closed locally. C6ICT3 now gives the complete scaled response an exact
   canonical prover/verifier transcript: proto **192/0/1**, MAC **32/0/0 +
-  5/0/0**, release check green. Its versioned private bundle now separates
-  seven native tapes from one response tape (**2/0/0**). No production
-  CUDA/full-chain/timing/memory or hardware credit exists.
+  5/0/0**, release check green. Its private bundle separates seven native
+  tapes from one response tape; a duplex broker releases only challenges at
+  the proved frontier and requires an identical final seal (**4/0/0**). No
+  production CUDA/full-chain/timing/memory or hardware credit exists.
 - **Screens.** Certificate **17,536,735 B**, setup **148,738,118 B**,
   setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
   **102.5878332989 bits/cert**, and provider/verifier **14.9179595454 /
@@ -34,6 +35,16 @@ This capsule is authoritative; read design §§0.60--0.65 next.
 - **Fiat--Shamir.** Read-only audit: production substitution is NO-GO;
   `C6FS1` may later exist only as a shadow diagnostic after new ROM
   soundness/privacy proofs. It does not change C6ICT2 or pod authorization.
+
+- **2026-08-15 — A duplex response broker closes the entropy primitive.**
+  Separate seedless provider and live-replay endpoints share a client-owned
+  broker. Replay cannot pass the provider frontier, and both roles must bind
+  the same pending move, payload digest and semantic length before the private
+  tape is returned. Focused endpoint/bundle tests are **4/0/0**, including
+  frontier, move and payload mutations. This prevents future challenge
+  disclosure but is not production-call-site evidence: provider-only response
+  execution, disk replay and campaign guards remain required, so the hard stop
+  and all `credit:false` values are unchanged.
 
 - **2026-08-15 — The private replay grammar gains a typed response tape.**
   Bundle v2 preserves the seven ordered C6ICT2 lanes and adds one distinct

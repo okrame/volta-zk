@@ -4132,6 +4132,23 @@ active hard stop remains `C6ICT3_RESPONSE_TAPE_AND_DISK_REPLAY_REQUIRED` until
 those call sites, final payload sealing, mutations and campaign guards are
 green.
 
+### 0.67 C6ICT3 duplex challenge frontier
+
+Response proving and verification alternate across one global transcript, so
+a final tape alone cannot safely drive the live verifier. The client-owned
+broker therefore exposes two entropy-free endpoints. The provider obtains a
+challenge only after submitting its canonical move; live replay obtains only
+the already-issued value after reproducing the same move and challenge kind.
+It cannot advance beyond the provider frontier.
+
+At completion, the provider seals the pending move, payload digest and
+semantic length. The broker withholds the private tape until replay supplies
+the identical seal. Focused endpoint/bundle tests are **4/0/0**, including
+frontier, move and payload mutations. This closes only the transport
+primitive: the monolithic production response still needs provider-only
+execution, strict disk replay and campaign integration. Consequently the
+active hard stop, accounting and all benchmark credits remain unchanged.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

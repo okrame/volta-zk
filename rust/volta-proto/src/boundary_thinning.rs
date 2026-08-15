@@ -120,7 +120,7 @@ fn prove_matrix_eval_value(
     cx.stream
         .record_c6_fullfield_plaintexts(domain, &[value])
         .expect("C6 q-bridge correction schedule");
-    cx.tx.append("t1_q_bridge_correction", 16);
+    cx.tx.append_fp2s("t1_q_bridge_correction", &[correction]);
     (correction, BoundaryClaimP { point: point.to_vec(), value: mask.authenticate(value) })
 }
 
@@ -131,7 +131,7 @@ pub(crate) fn verify_matrix_eval_claim(
 ) -> BoundaryClaimK {
     let domain = cx.doms.take(1);
     let key = cx.ctx.correct_full_verifier_key(domain, correction);
-    cx.tx.append("t1_q_bridge_correction", 16);
+    cx.tx.append_fp2s("t1_q_bridge_correction", &[correction]);
     BoundaryClaimK { point: point.to_vec(), key }
 }
 
@@ -151,7 +151,7 @@ pub(crate) fn prove_eq_reduction_i16(
 
     // Zero-byte marker models the interactive boundary: the two prior
     // authenticated claims and the public site identity are fixed now.
-    cx.tx.append("t1_eq_claim_pair", 0);
+    cx.tx.append_message("t1_eq_claim_pair", &[]);
     let beta = cx.tx.challenge_fp2();
     let claim0 = first.value.add(second.value.scale(beta));
 
@@ -184,7 +184,7 @@ pub(crate) fn prove_eq_reduction_i16(
     cx.stream
         .record_c6_fullfield_plaintexts(doms.terminal, &[tensor_final])
         .expect("C6 equality-reducer terminal correction schedule");
-    cx.tx.append("t1_eq_terminal_correction", 16);
+    cx.tx.append_fp2s("t1_eq_terminal_correction", &[terminal_corr]);
     let terminal = terminal_mask.authenticate(tensor_final);
     let close = terminal.scale(coefficient_final).sub(final_claim);
     debug_assert_eq!(
@@ -295,7 +295,7 @@ pub(crate) fn prove_eq_reduction_resident(
         return Err(AccelError::InvalidInput("T1 resident reducer claim geometry mismatch"));
     }
 
-    cx.tx.append("t1_eq_claim_pair", 0);
+    cx.tx.append_message("t1_eq_claim_pair", &[]);
     let beta = cx.tx.challenge_fp2();
     let claim0 = first.value.add(second.value.scale(beta));
     let doms = EqReductionDoms::alloc_p(cx, n_vars);
@@ -330,7 +330,7 @@ pub(crate) fn prove_eq_reduction_resident(
     cx.stream
         .record_c6_fullfield_plaintexts(doms.terminal, &[tensor_final])
         .expect("C6 resident equality-reducer terminal correction schedule");
-    cx.tx.append("t1_eq_terminal_correction", 16);
+    cx.tx.append_fp2s("t1_eq_terminal_correction", &[terminal_corr]);
     let terminal = terminal_mask.authenticate(tensor_final);
     cx.zero.push(terminal.scale(coefficient_final).sub(final_claim));
     debug_assert_eq!(
@@ -352,7 +352,7 @@ pub(crate) fn verify_eq_reduction(
     if first.point.len() != n_vars || second.point.len() != n_vars {
         return None;
     }
-    cx.tx.append("t1_eq_claim_pair", 0);
+    cx.tx.append_message("t1_eq_claim_pair", &[]);
     let beta = cx.tx.challenge_fp2();
     let claim0 = first.key.add(second.key.scale(beta));
     let doms = EqReductionDoms::alloc_v(cx, n_vars);

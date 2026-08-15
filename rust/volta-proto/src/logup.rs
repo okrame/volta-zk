@@ -2541,7 +2541,7 @@ fn cross_prover(
     stream.record_c6_fullfield_plaintexts(dom, &zx).expect("C6 LogUp cross correction schedule");
     let cross_corrs =
         [zx[0] - masks[0].x, zx[1] - masks[1].x, zx[2] - masks[2].x, zx[3] - masks[3].x];
-    tx.append("logup_cross_corrections", 64);
+    tx.append_fp2s("logup_cross_corrections", &cross_corrs);
     let za = masks[0].authenticate(zx[0]);
     let zb = masks[1].authenticate(zx[1]);
     let inv_f = masks[2].authenticate(zx[2]);
@@ -3092,8 +3092,9 @@ fn finish_table_side_prove(
         stream
             .record_c6_fullfield_plaintexts(dom, &zx)
             .expect("C6 LogUp aggregate correction schedule");
-        agg_corrs.push([zx[0] - masks[0].x, zx[1] - masks[1].x, zx[2] - masks[2].x]);
-        tx.append("logup_aggregate_corrections", 48);
+        let corrections = [zx[0] - masks[0].x, zx[1] - masks[1].x, zx[2] - masks[2].x];
+        agg_corrs.push(corrections);
+        tx.append_fp2s("logup_aggregate_corrections", &corrections);
         let z1 = masks[0].authenticate(zx[0]);
         let z2 = masks[1].authenticate(zx[1]);
         let z3 = masks[2].authenticate(zx[2]);

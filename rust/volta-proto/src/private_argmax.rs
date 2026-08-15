@@ -549,14 +549,14 @@ fn authenticate_scalar(
     cx.stream
         .record_c6_fullfield_plaintexts(domain, &[value])
         .expect("C6 private-argmax scalar correction schedule");
-    cx.tx.append(label, 16);
+    cx.tx.append_fp2s(label, &[correction]);
     (correction, correlation.authenticate(value))
 }
 
 fn verify_scalar(correction: Fp2, cx: &mut BlockCtxV<'_>, label: &'static str) -> VerifierKey {
     let domain = cx.doms.take(1);
     let key = cx.ctx.correct_full_verifier_key(domain, correction);
-    cx.tx.append(label, 16);
+    cx.tx.append_fp2s(label, &[correction]);
     key
 }
 

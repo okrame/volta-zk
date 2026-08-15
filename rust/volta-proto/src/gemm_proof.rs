@@ -144,7 +144,7 @@ pub fn auth_phase_at(
             .expect("C6 GEMM y-correction schedule");
         corr_y.extend(row_corrections);
     }
-    tx.append("auth_corrections", 8 * (corr_x.len() + corr_y.len()) as u64);
+    tx.append_fp_value_slices_digest("auth_corrections", &[&corr_x, &corr_y]);
     (corr_x, corr_y)
 }
 
@@ -404,7 +404,7 @@ pub fn prove_gemm_blind_committed_at(
     stream
         .record_c6_fullfield_plaintexts(dom_w_claim, &[b_final])
         .expect("C6 committed-W correction schedule");
-    tx.append("w_claim_correction", 16);
+    tx.append_fp2s("w_claim_correction", &[corr_w]);
     let b_auth = fc.authenticate(b_final);
     debug_assert_eq!(claim_n.x, x_val * b_final, "honest final claim mismatch");
     let mask = stream.draw_product_mask(doms.prod_mask, 1);
@@ -724,7 +724,7 @@ pub fn prove_gemm_committed_chained(
     stream
         .record_c6_fullfield_plaintexts(doms.x_claim, &[x_val])
         .expect("C6 chained GEMM x-claim correction schedule");
-    tx.append("x_claim_correction", 16);
+    tx.append_fp2s("x_claim_correction", &[corr_x]);
     let x_auth = fx.authenticate(x_val);
     // Committed-W leg, identical to `prove_gemm_blind_committed`.
     let fw = stream.draw_fulls(doms.w_claim, 1)[0];
@@ -732,7 +732,7 @@ pub fn prove_gemm_committed_chained(
     stream
         .record_c6_fullfield_plaintexts(doms.w_claim, &[b_final])
         .expect("C6 chained GEMM w-claim correction schedule");
-    tx.append("w_claim_correction", 16);
+    tx.append_fp2s("w_claim_correction", &[corr_w]);
     let b_auth = fw.authenticate(b_final);
     debug_assert_eq!(claim_n.x, x_val * b_final, "honest final claim mismatch");
     let mask = stream.draw_product_mask(doms.prod_mask, 1);
@@ -862,14 +862,14 @@ pub fn prove_gemm_committed_chained_resident(
     stream
         .record_c6_fullfield_plaintexts(doms.x_claim, &[x_val])
         .expect("C6 resident GEMM x-claim correction schedule");
-    tx.append("x_claim_correction", 16);
+    tx.append_fp2s("x_claim_correction", &[corr_x]);
     let x_auth = fx.authenticate(x_val);
     let fw = stream.draw_fulls(doms.w_claim, 1)[0];
     let corr_w = b_final - fw.x;
     stream
         .record_c6_fullfield_plaintexts(doms.w_claim, &[b_final])
         .expect("C6 resident GEMM w-claim correction schedule");
-    tx.append("w_claim_correction", 16);
+    tx.append_fp2s("w_claim_correction", &[corr_w]);
     let b_auth = fw.authenticate(b_final);
     debug_assert_eq!(claim_n.x, x_val * b_final, "honest final claim mismatch");
     let mask = stream.draw_product_mask(doms.prod_mask, 1);
@@ -1040,7 +1040,7 @@ pub(crate) fn finalize_gemm_act_chained(
     stream
         .record_c6_fullfield_plaintexts(doms.x_claim, &[rounds.x_final])
         .expect("C6 activation GEMM x-claim correction schedule");
-    tx.append("x_claim_correction", 16);
+    tx.append_fp2s("x_claim_correction", &[corr_x]);
     let x_auth = x_mask.authenticate(rounds.x_final);
     debug_assert_eq!(
         rounds.claim.x,

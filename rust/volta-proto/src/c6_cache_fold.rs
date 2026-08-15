@@ -384,7 +384,7 @@ impl C6CacheFoldTargetInlineProver {
         transcript: &mut Transcript,
     ) -> Result<Self, C6CacheFoldTraceError> {
         validate_target_count(schedule.kinds.len())?;
-        transcript.append(C6_CACHE_FOLD_TARGET_HEADER_LABEL, C6_CACHE_FOLD_TARGET_HEADER_BYTES);
+        append_target_header(statement_digest, schedule.kinds.len(), transcript)?;
         Ok(Self {
             statement_digest,
             corrections: Vec::with_capacity(schedule.kinds.len()),
@@ -409,8 +409,9 @@ impl C6CacheFoldTargetInlineProver {
                 "C6FT1 inline prover tapes disagree on plaintext",
             ));
         }
-        self.corrections.push([target[0].x - base_mask[0], target[1].x - base_mask[1]]);
-        transcript.append(C6_CACHE_FOLD_TARGET_SLOT_LABEL, C6_CACHE_FOLD_TARGET_SLOT_BYTES);
+        let correction = [target[0].x - base_mask[0], target[1].x - base_mask[1]];
+        self.corrections.push(correction);
+        transcript.append_fp2s(C6_CACHE_FOLD_TARGET_SLOT_LABEL, &correction);
         Ok(target)
     }
 
@@ -490,6 +491,7 @@ impl<'a> C6CacheFoldTargetInlineVerifier<'a> {
         }
         let identity = schedule.identity;
         Self::start_inner(
+            frame.statement_digest,
             &frame.corrections,
             Some(frame.identity),
             schedule.public_schedule(),
@@ -512,6 +514,7 @@ impl<'a> C6CacheFoldTargetInlineVerifier<'a> {
             return Err(C6CacheFoldTraceError::new("C6FT1 MAC tapes are not independent"));
         }
         Self::start_inner(
+            frame.statement_digest,
             &frame.corrections,
             Some(frame.identity),
             schedule,
@@ -535,10 +538,19 @@ impl<'a> C6CacheFoldTargetInlineVerifier<'a> {
         if deltas[0] == deltas[1] {
             return Err(C6CacheFoldTraceError::new("C6FT1 MAC tapes are not independent"));
         }
-        Self::start_inner(&frame.corrections, None, schedule, None, deltas, transcript)
+        Self::start_inner(
+            frame.statement_digest,
+            &frame.corrections,
+            None,
+            schedule,
+            None,
+            deltas,
+            transcript,
+        )
     }
 
     fn start_inner(
+        statement_digest: [u8; 32],
         corrections: &'a [[Fp2; C6_CACHE_FOLD_TARGET_TAPES]],
         decoded_identity: Option<C6CacheFoldTraceIdentity>,
         schedule: C6CacheFoldTargetPublicSchedule,
@@ -547,7 +559,7 @@ impl<'a> C6CacheFoldTargetInlineVerifier<'a> {
         transcript: &mut Transcript,
     ) -> Result<Self, C6CacheFoldTraceError> {
         validate_target_count(schedule.kinds.len())?;
-        transcript.append(C6_CACHE_FOLD_TARGET_HEADER_LABEL, C6_CACHE_FOLD_TARGET_HEADER_BYTES);
+        append_target_header(statement_digest, schedule.kinds.len(), transcript)?;
         Ok(Self { corrections, decoded_identity, schedule, expected_identity, deltas, next: 0 })
     }
 
@@ -562,7 +574,7 @@ impl<'a> C6CacheFoldTargetInlineVerifier<'a> {
         }
         let correction = self.corrections[self.next];
         self.next += 1;
-        transcript.append(C6_CACHE_FOLD_TARGET_SLOT_LABEL, C6_CACHE_FOLD_TARGET_SLOT_BYTES);
+        transcript.append_fp2s(C6_CACHE_FOLD_TARGET_SLOT_LABEL, &correction);
         Ok(std::array::from_fn(|tape| {
             base[tape].with_same_c6_trace(base[tape].k + self.deltas[tape] * correction[tape])
         }))
@@ -738,7 +750,7 @@ impl C6CacheFoldTargetCorrectionFrame {
                 "C6FT1 frame is not the canonical prover target correction",
             ));
         }
-        transcript.append(C6_CACHE_FOLD_TARGET_HEADER_LABEL, C6_CACHE_FOLD_TARGET_HEADER_BYTES);
+        append_target_header(self.statement_digest, self.corrections.len(), transcript)?;
         Ok(C6CacheFoldTargetProverStream { frame: self, targets, next: 0 })
     }
 
@@ -759,7 +771,7 @@ impl C6CacheFoldTargetCorrectionFrame {
         if deltas[0] == deltas[1] {
             return Err(C6CacheFoldTraceError::new("C6FT1 MAC tapes are not independent"));
         }
-        transcript.append(C6_CACHE_FOLD_TARGET_HEADER_LABEL, C6_CACHE_FOLD_TARGET_HEADER_BYTES);
+        append_target_header(self.statement_digest, self.corrections.len(), transcript)?;
         Ok(C6CacheFoldTargetVerifierStream { frame: self, base_targets, deltas, next: 0 })
     }
 }
@@ -812,7 +824,10 @@ impl<'a> C6CacheFoldTargetProverStream<'a> {
             self.targets.terms.get(self.next).copied().ok_or_else(|| {
                 C6CacheFoldTraceError::new("C6FT1 prover target stream exhausted")
             })?;
-        transcript.append(C6_CACHE_FOLD_TARGET_SLOT_LABEL, C6_CACHE_FOLD_TARGET_SLOT_BYTES);
+        transcript.append_fp2s(
+            C6_CACHE_FOLD_TARGET_SLOT_LABEL,
+            &self.frame.corrections[self.next],
+        );
         self.next += 1;
         Ok(term)
     }
@@ -849,7 +864,7 @@ impl<'a> C6CacheFoldTargetVerifierStream<'a> {
                 C6CacheFoldTraceError::new("C6FT1 verifier target stream exhausted")
             })?;
         let correction = self.frame.corrections[self.next];
-        transcript.append(C6_CACHE_FOLD_TARGET_SLOT_LABEL, C6_CACHE_FOLD_TARGET_SLOT_BYTES);
+        transcript.append_fp2s(C6_CACHE_FOLD_TARGET_SLOT_LABEL, &correction);
         self.next += 1;
         Ok((
             kind,
@@ -896,11 +911,35 @@ fn finish_target_stream<T: Copy>(
 fn charge_target_padding(live_count: usize, transcript: &mut Transcript) {
     let padding_slots = C6_CACHE_FOLD_MAX_RECORDS - live_count;
     if padding_slots != 0 {
-        transcript.append(
+        transcript.append_zero_message(
             C6_CACHE_FOLD_TARGET_PADDING_LABEL,
             padding_slots as u64 * C6_CACHE_FOLD_TARGET_SLOT_BYTES,
         );
     }
+}
+
+fn append_target_header(
+    statement_digest: [u8; 32],
+    live_count: usize,
+    transcript: &mut Transcript,
+) -> Result<(), C6CacheFoldTraceError> {
+    validate_statement_digest(statement_digest)?;
+    validate_target_count(live_count)?;
+    let live_count = u16::try_from(live_count)
+        .map_err(|_| C6CacheFoldTraceError::new("C6FT1 live count exceeds u16"))?;
+    let capacity = u16::try_from(C6_CACHE_FOLD_MAX_RECORDS)
+        .map_err(|_| C6CacheFoldTraceError::new("C6FT1 capacity exceeds u16"))?;
+    let mut header = Vec::with_capacity(C6_CACHE_FOLD_TARGET_HEADER_BYTES as usize);
+    header.extend_from_slice(&C6_CACHE_FOLD_TARGET_MAGIC);
+    header.extend_from_slice(&C6_CACHE_FOLD_TARGET_VERSION.to_le_bytes());
+    header.push(C6_CACHE_FOLD_TARGET_TAPES as u8);
+    header.push(2);
+    header.extend_from_slice(&live_count.to_le_bytes());
+    header.extend_from_slice(&capacity.to_le_bytes());
+    header.extend_from_slice(&statement_digest);
+    debug_assert_eq!(header.len(), C6_CACHE_FOLD_TARGET_HEADER_BYTES as usize);
+    transcript.append_message(C6_CACHE_FOLD_TARGET_HEADER_LABEL, &header);
+    Ok(())
 }
 
 fn validate_statement_digest(statement_digest: [u8; 32]) -> Result<(), C6CacheFoldTraceError> {

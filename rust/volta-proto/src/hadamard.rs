@@ -119,8 +119,9 @@ pub fn hadamard_prove(
         stream
             .record_c6_fullfield_plaintexts(domain, &[g0, g2, g3])
             .expect("C6 Hadamard-round correction schedule");
-        round_corrs.push([g0 - masks[0].x, g2 - masks[1].x, g3 - masks[2].x]);
-        tx.append("hadamard_round_corrections", 48);
+        let corrections = [g0 - masks[0].x, g2 - masks[1].x, g3 - masks[2].x];
+        round_corrs.push(corrections);
+        tx.append_fp2s("hadamard_round_corrections", &corrections);
         let g0_a = masks[0].authenticate(g0);
         let g2_a = masks[1].authenticate(g2);
         let g3_a = masks[2].authenticate(g3);
@@ -155,7 +156,7 @@ pub fn hadamard_prove(
     stream
         .record_c6_fullfield_plaintexts(doms.z, &[zx])
         .expect("C6 Hadamard product correction schedule");
-    tx.append("hadamard_claim_corrections", 48);
+    tx.append_fp2s("hadamard_claim_corrections", &[e_corr, r_corr, z_corr]);
     let e_a = fe.authenticate(e_final);
     let r_a = fr.authenticate(r_final);
     let z_a = fz.authenticate(zx);
@@ -235,8 +236,9 @@ pub fn hadamard_prove_resident(
         stream
             .record_c6_fullfield_plaintexts(domain, &[g0, g2, g3])
             .expect("C6 resident Hadamard-round correction schedule");
-        round_corrs.push([g0 - masks[0].x, g2 - masks[1].x, g3 - masks[2].x]);
-        tx.append("hadamard_round_corrections", 48);
+        let corrections = [g0 - masks[0].x, g2 - masks[1].x, g3 - masks[2].x];
+        round_corrs.push(corrections);
+        tx.append_fp2s("hadamard_round_corrections", &corrections);
         let g0_a = masks[0].authenticate(g0);
         let g2_a = masks[1].authenticate(g2);
         let g3_a = masks[2].authenticate(g3);
@@ -309,7 +311,7 @@ pub fn hadamard_prove_resident(
     stream
         .record_c6_fullfield_plaintexts(doms.z, &[product])
         .expect("C6 resident Hadamard product correction schedule");
-    tx.append("hadamard_claim_corrections", 48);
+    tx.append_fp2s("hadamard_claim_corrections", &[e_corr, r_corr, z_corr]);
     let e_auth = fe.authenticate(e_final);
     let r_auth = fr.authenticate(r_final);
     let z_auth = fz.authenticate(product);

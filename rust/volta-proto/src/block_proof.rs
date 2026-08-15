@@ -1230,7 +1230,7 @@ pub(crate) fn auth_matrix_rows_p(
             .expect("C6 matrix-row correction schedule");
         corr.extend(row_corrections);
     }
-    tx.append("auth_corrections", 8 * corr.len() as u64);
+    tx.append_fp_values_digest("auth_corrections", &corr);
     corr
 }
 
@@ -1524,7 +1524,7 @@ pub(crate) fn auth_fp_vec_p(
     let masks = stream.draw_sub_masks(dom, vals.len());
     let corr: Vec<u64> = vals.iter().zip(&masks).map(|(&v, &r)| (v - r).value()).collect();
     stream.record_c6_subfield_corrections(dom, &corr).expect("C6 field-vector correction schedule");
-    tx.append("auth_corrections", 8 * corr.len() as u64);
+    tx.append_fp_values_digest("auth_corrections", &corr);
     corr
 }
 
@@ -1562,7 +1562,7 @@ pub(crate) fn auth_device_vector_p<T: ResidentBaseElement>(
     stream
         .record_c6_subfield_corrections(dom, &corr)
         .expect("C6 resident-vector correction schedule");
-    tx.append("auth_corrections", 8 * corr.len() as u64);
+    tx.append_fp_values_digest("auth_corrections", &corr);
     Ok(corr)
 }
 
@@ -1640,7 +1640,7 @@ pub(crate) fn auth_matrix_rows_resident_p<T: ResidentBaseElement>(
             .record_c6_subfield_corrections(base_dom + row as u64, &corr[first..first + cols])
             .expect("C6 resident-matrix correction schedule");
     }
-    tx.append("auth_corrections", 8 * corr.len() as u64);
+    tx.append_fp_values_digest("auth_corrections", &corr);
     Ok(corr)
 }
 
@@ -6232,7 +6232,7 @@ fn prove_attn_block_impl(
         av_split_corrs[h] = av_vals[h] - masks_av[h].x;
         av_auth.push(masks_av[h].authenticate(av_vals[h]));
     }
-    cx.tx.append("head_split_corrections", 16 * H as u64);
+    cx.tx.append_fp2s("head_split_corrections", &av_split_corrs);
     let mut row = ProverAuthed::ZERO.sub(acc_av_claim);
     for h in 0..H {
         row = row.add(av_auth[h].scale(eqh_av[h]));
@@ -6409,7 +6409,7 @@ fn prove_attn_block_impl(
     cx.stream
         .record_c6_fullfield_plaintexts(dom_cw, &[w_eval])
         .expect("C6 causal-wire correction schedule");
-    cx.tx.append("causal_w_correction", 16);
+    cx.tx.append_fp2s("causal_w_correction", &[causal_w_corr]);
     let w_auth = fc.authenticate(w_eval);
     // No debug_assert here: this row is exactly where a causal violation
     // must land (cheating-prover emulation in the tests).
@@ -6458,7 +6458,7 @@ fn prove_attn_block_impl(
     cx.stream
         .record_c6_fullfield_plaintexts(dom_rs, &[rs_val])
         .expect("C6 rowsum correction schedule");
-    cx.tx.append("rowsum_correction", 16);
+    cx.tx.append_fp2s("rowsum_correction", &[rowsum_corr]);
     let rs_auth = fr.authenticate(rs_val);
     let den_open = open_fp_vec_p(cx.stream, dom_denoms, &denoms_fp, &rho);
     let two_sb = Fp2::from_base(Fp::new(1u64 << sb));
@@ -6507,7 +6507,10 @@ fn prove_attn_block_impl(
         cx.stream
             .record_c6_fullfield_plaintexts(dom_rs2, &[rs2_val])
             .expect("C6 ismax rowsum correction schedule");
-        cx.tx.append("ismax_rowsum_correction", 16);
+        cx.tx.append_fp2s(
+            "ismax_rowsum_correction",
+            &[ismax_rowsum_corr.expect("set immediately above")],
+        );
         let rs2_auth = fr2.authenticate(rs2_val);
         let eq_rho2 = eq_vec(&rho2);
         cx.ctr_other.fp2_mults += 1u64 << (qb + HEAD_BITS);
@@ -6620,7 +6623,7 @@ fn prove_attn_block_impl(
         sc_split_corrs[h] = sc_vals[h] - masks_sc[h].x;
         sc_auth.push(masks_sc[h].authenticate(sc_vals[h]));
     }
-    cx.tx.append("head_split_corrections", 16 * H as u64);
+    cx.tx.append_fp2s("head_split_corrections", &sc_split_corrs);
     let mut row = ProverAuthed::ZERO.sub(acc_sc_true);
     for h in 0..H {
         row = row.add(sc_auth[h].scale(eqh_sc[h]));
@@ -7139,7 +7142,7 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
             av_split_corrs[head] = av_values[head] - split_av_masks[head].x;
             av_auth.push(split_av_masks[head].authenticate(av_values[head]));
         }
-        cx.tx.append("head_split_corrections", 16 * H as u64);
+        cx.tx.append_fp2s("head_split_corrections", &av_split_corrs);
         let mut split_row = ProverAuthed::ZERO.sub(av_claim);
         for head in 0..H {
             split_row = split_row.add(av_auth[head].scale(eq_head_av[head]));
@@ -7366,7 +7369,7 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
         cx.stream
             .record_c6_fullfield_plaintexts(causal_wire_dom, &[w_value])
             .expect("C6 resident causal-wire correction schedule");
-        cx.tx.append("causal_w_correction", 16);
+        cx.tx.append_fp2s("causal_w_correction", &[causal_w_corr]);
         let causal_w_auth = causal_mask.authenticate(w_value);
         cx.zero.push(causal_w_auth.scale(mask_value).sub(causal_claim));
         aux_sn.push(LeafAuxClaim { col: 1, point: causal_point, value: causal_w_auth });
@@ -7440,7 +7443,7 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
         cx.stream
             .record_c6_fullfield_plaintexts(rowsum_dom, &[rowsum_value])
             .expect("C6 resident rowsum correction schedule");
-        cx.tx.append("rowsum_correction", 16);
+        cx.tx.append_fp2s("rowsum_correction", &[rowsum_corr]);
         let rowsum_auth = rowsum_mask.authenticate(rowsum_value);
         let denom_open = open_fp_vec_resident_p(
             cx.stream,
@@ -7511,7 +7514,10 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
             cx.stream
                 .record_c6_fullfield_plaintexts(rowmax_sum_dom, &[rowmax_sum])
                 .expect("C6 resident ismax rowsum correction schedule");
-            cx.tx.append("ismax_rowsum_correction", 16);
+            cx.tx.append_fp2s(
+                "ismax_rowsum_correction",
+                &[ismax_rowsum_corr.expect("set immediately above")],
+            );
             let rowmax_sum_auth = rowmax_sum_mask.authenticate(rowmax_sum);
             let eq_rho2 = eq_vec(&rho2);
             cx.ctr_other.fp2_mults += 1u64 << (qb + HEAD_BITS);
@@ -7657,7 +7663,7 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
             sc_split_corrs[head] = score_values[head] - split_scores_masks[head].x;
             score_auth.push(split_scores_masks[head].authenticate(score_values[head]));
         }
-        cx.tx.append("head_split_corrections", 16 * H as u64);
+        cx.tx.append_fp2s("head_split_corrections", &sc_split_corrs);
         let mut score_split_row = ProverAuthed::ZERO.sub(true_score_claim);
         for head in 0..H {
             score_split_row = score_split_row.add(score_auth[head].scale(eq_head_scores[head]));

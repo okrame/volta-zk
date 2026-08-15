@@ -133,6 +133,51 @@ impl Transcript {
         self.append_message(label, &bytes);
     }
 
+    /// Bind canonical base-field wire values without materializing a second
+    /// copy of a potentially large correction vector. The exact byte length
+    /// remains in the accounting ledger while the interactive move carries a
+    /// collision-resistant digest that the strict verifier recomputes.
+    pub fn append_fp_values_digest(&mut self, label: &'static str, values: &[u64]) {
+        self.append_fp_value_slices_digest(label, &[values]);
+    }
+
+    pub fn append_fp_value_slices_digest(&mut self, label: &'static str, slices: &[&[u64]]) {
+        assert!(
+            slices.iter().flat_map(|values| values.iter()).all(|value| *value < P),
+            "noncanonical transcript Fp value"
+        );
+        let mut hasher = blake3::Hasher::new();
+        let mut value_count = 0u64;
+        for values in slices {
+            value_count = value_count
+                .checked_add(values.len() as u64)
+                .expect("transcript Fp value count overflow");
+            for value in *values {
+                hasher.update(&value.to_le_bytes());
+            }
+        }
+        self.append_message_digest(
+            label,
+            value_count.checked_mul(8).expect("transcript Fp byte count overflow"),
+            *hasher.finalize().as_bytes(),
+        );
+    }
+
+    /// Bind canonical zero padding by length and digest. Padding is public and
+    /// independently reconstructible, so carrying the full zero string in a
+    /// private challenge tape would add state without adding security.
+    pub fn append_zero_message(&mut self, label: &'static str, logical_bytes: u64) {
+        let mut hasher = blake3::Hasher::new();
+        let zeroes = [0u8; 4096];
+        let mut remaining = logical_bytes;
+        while remaining != 0 {
+            let take = remaining.min(zeroes.len() as u64) as usize;
+            hasher.update(&zeroes[..take]);
+            remaining -= take as u64;
+        }
+        self.append_message_digest(label, logical_bytes, *hasher.finalize().as_bytes());
+    }
+
     /// Bind a large canonical provider message by length and BLAKE3 digest.
     /// The verifier replay recomputes the digest from the strict proof bytes.
     pub fn append_message_digest(

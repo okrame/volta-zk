@@ -4149,6 +4149,24 @@ primitive: the monolithic production response still needs provider-only
 execution, strict disk replay and campaign integration. Consequently the
 active hard stop, accounting and all benchmark credits remain unchanged.
 
+### 0.68 C6ICT3 provider capability boundary
+
+The production response prover now has a separate typed entry point. It owns
+only the model/witness adapter, installed prover plan and extraction, two
+pooled-PCG streams, and a transcript endpoint. Its signature cannot receive
+the paired attempt, verifier contexts, Δ, verifier seeds or a verifier
+transcript. Before returning, the retained response proof is encoded and
+decoded canonically; source coordinates remain private to the client-side
+coordinator that seals the allocation.
+
+The coordinator feeds those canonical bytes to the existing strict verifier
+replay, then checks the derived challenge/domain, source schedule and manifest,
+runtime identity, cache corrections and transcript parity before restoring the
+unchanged downstream owner. A source-capability guard is **1/0/0** and the
+dual-feature bench check is green. This is an API/process seam, not yet a
+campaign transcript: duplex wiring, persisted tape consumption and mutations
+remain required under `C6ICT3_RESPONSE_TAPE_AND_DISK_REPLAY_REQUIRED`.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

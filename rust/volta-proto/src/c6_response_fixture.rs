@@ -154,6 +154,8 @@ pub struct C6T1InstalledRoleOwner {
 pub struct C6T1ProductionResponseVerifierReplay {
     output: ModelOutV,
     zero_roots: C6GrandResidualVerifierRoots,
+    product_challenge: Fp2,
+    product_mask_domain: u64,
     source_schedule: CorrScheduleAudit,
     source_manifest: C6TraceSourceManifest,
     installed: C6T1InstalledRoleOwner,
@@ -169,6 +171,14 @@ impl C6T1ProductionResponseVerifierReplay {
 
     pub fn zero_roots(&self) -> &C6GrandResidualVerifierRoots {
         &self.zero_roots
+    }
+
+    pub fn product_challenge(&self) -> Fp2 {
+        self.product_challenge
+    }
+
+    pub fn product_mask_domain(&self) -> u64 {
+        self.product_mask_domain
     }
 
     pub fn source_schedule(&self) -> &CorrScheduleAudit {
@@ -193,6 +203,51 @@ impl C6T1ProductionResponseVerifierReplay {
 
     pub fn cache_metrics(&self) -> crate::c6_cache_fold::C6CacheFoldOnlineLayerMetrics {
         self.cache_metrics
+    }
+}
+
+/// Provider-only response result awaiting client source sealing and verifier
+/// replay. Its constructor accepts no verifier context, Delta, seed or paired
+/// attempt owner; the retained proof has already crossed its canonical byte
+/// boundary.
+pub struct C6T1ProductionResponseProviderPending {
+    retained: C6RetainedResponseProof,
+    prover_output: ModelOut,
+    prover_zero_roots: C6GrandResidualProverRoots,
+    product_challenge: Fp2,
+    product_mask_domain: u64,
+    source_schedule: CorrScheduleAudit,
+    source_manifest: C6TraceSourceManifest,
+    source_coordinates: [C6SourceCoordinate; 2],
+    installed: C6T1InstalledRoleOwner,
+    cache_target_frame: C6CacheFoldTargetCorrectionFrame,
+    cache_target_fixed: C6CacheFoldTargetFixedCorrections,
+    cache_metrics: crate::c6_cache_fold::C6CacheFoldOnlineLayerMetrics,
+}
+
+impl C6T1ProductionResponseProviderPending {
+    pub fn retained(&self) -> &C6RetainedResponseProof {
+        &self.retained
+    }
+
+    pub fn encoded_retained_response(&self) -> Result<Vec<u8>, String> {
+        self.retained.encode().map_err(|error| error.to_string())
+    }
+
+    pub fn cache_target_frame_bytes(&self) -> Result<Vec<u8>, String> {
+        self.cache_target_frame.encode().map_err(|error| error.to_string())
+    }
+
+    pub fn source_schedule(&self) -> &CorrScheduleAudit {
+        &self.source_schedule
+    }
+
+    pub fn source_manifest(&self) -> &C6TraceSourceManifest {
+        &self.source_manifest
+    }
+
+    pub fn installed(&self) -> &C6T1InstalledRoleOwner {
+        &self.installed
     }
 }
 
@@ -613,10 +668,7 @@ pub fn replay_c6_t1_production_response_verifier(
     let mut doms = Doms::new(layer_dom_base(255));
     let product_challenge = transcript.challenge_fp2();
     let product_mask_domain = doms.take(1);
-    transcript.append_fp2s(
-        "prod_check_m0_m1",
-        &[retained.product.m0, retained.product.m1],
-    );
+    transcript.append_fp2s("prod_check_m0_m1", &[retained.product.m0, retained.product.m1]);
     if !prod_batch_verify(
         &product_keys,
         primary.expand_product_mask_verifier_key(product_mask_domain, product_keys.len()),
@@ -665,6 +717,8 @@ pub fn replay_c6_t1_production_response_verifier(
     Ok(C6T1ProductionResponseVerifierReplay {
         output,
         zero_roots,
+        product_challenge,
+        product_mask_domain,
         source_schedule,
         source_manifest,
         installed: C6T1InstalledRoleOwner { operation_plan: installed_plan, extraction, runtime },
@@ -674,35 +728,30 @@ pub fn replay_c6_t1_production_response_verifier(
     })
 }
 
-/// Execute the frozen private-logit response once under the already allocated
-/// production tapes and return every owner needed by the residual/compiler
-/// continuation. This entry point cannot accept mock streams, diagnostic
-/// runtime extraction, or caller-supplied claims.
+/// Execute only the provider half of the frozen private-logit response. The
+/// type boundary deliberately excludes verifier contexts, Delta, verifier
+/// entropy and the paired-attempt owner.
 #[allow(clippy::too_many_arguments)]
-pub fn build_c6_t1_production_response_owner(
+pub fn prove_c6_t1_production_response_provider(
     model: &volta_gpt2::Gpt2Model,
     prefill: &volta_gpt2::ModelWitness,
     decode: &volta_gpt2::BandModelWitness,
     sequence: &[u32],
     statement_digest: [u8; 32],
-    installed_plans: [C6InstalledOperationPlan; 2],
-    extraction_maps: [C6DecodedInstanceExtractionPlan; 2],
-    attempt: &mut C6ProductionPairedPcgAttempt,
+    installed_plan: C6InstalledOperationPlan,
+    extraction: C6DecodedInstanceExtractionPlan,
+    streams: &mut [CorrelationStream; 2],
     provider_transcript: &mut Transcript,
-    verifier_transcript: &mut Transcript,
-) -> Result<C6T1ProductionResponseOwner, String> {
+) -> Result<C6T1ProductionResponseProviderPending, String> {
     if statement_digest == [0; 32]
         || prefill.t != 100
         || decode.t0 != 100
         || decode.q != 50
         || sequence.len() != 150
-        || extraction_maps[0].role() != C6InstanceExtractionRole::Prover
-        || extraction_maps[1].role() != C6InstanceExtractionRole::Verifier
-        || extraction_maps[0].topology_digest() != installed_plans[0].topology().topology_digest
-        || extraction_maps[1].topology_digest() != installed_plans[1].topology().topology_digest
-        || installed_plans[0].topology() != installed_plans[1].topology()
+        || extraction.role() != C6InstanceExtractionRole::Prover
+        || extraction.topology_digest() != installed_plan.topology().topology_digest
     {
-        return Err("C6SPR12 installed T1 response profile mismatch".to_owned());
+        return Err("C6ICT3 provider T1 response profile mismatch".to_owned());
     }
     let public_schedule = C6CacheFoldTargetPublicSchedule::new(
         (0..2 * L)
@@ -730,16 +779,15 @@ pub fn build_c6_t1_production_response_owner(
         coordinates,
         provider_runtime,
     ) = {
-        let streams = attempt.prover_streams_array_mut();
         if streams.iter().any(|stream| !stream.uses_pooled_pcg()) {
-            return Err("C6SPR12 production response received mock prover tapes".to_owned());
+            return Err("C6ICT3 provider response received mock prover tapes".to_owned());
         }
         let [primary, secondary] = streams;
         begin_c6_prover_trace().map_err(|error| error.to_string())?;
         primary.enable_c6_operation_trace().map_err(|error| error.to_string())?;
         primary.enable_c6_source_witness_collection().map_err(|error| error.to_string())?;
-        let runtime_capture = begin_c6_runtime_instance_capture(&extraction_maps[0])
-            .map_err(|error| error.to_string())?;
+        let runtime_capture =
+            begin_c6_runtime_instance_capture(&extraction).map_err(|error| error.to_string())?;
         let mut follower =
             C6SourceScheduleProverFollower::start(secondary).map_err(|error| error.to_string())?;
         let mut target_builder = C6CacheFoldTargetInlineProver::start_public(
@@ -773,7 +821,7 @@ pub fn build_c6_t1_production_response_owner(
         zero_roots.record_operation_trace_ownership().map_err(|error| error.to_string())?;
         let _operation_trace = finish_c6_prover_trace().map_err(|error| error.to_string())?;
         let runtime = runtime_capture
-            .finish_installed(&installed_plans[0], &extraction_maps[0])
+            .finish_installed(&installed_plan, &extraction)
             .map_err(|error| error.to_string())?;
         follower.sync_primary(primary, secondary).map_err(|error| error.to_string())?;
         let schedule = primary
@@ -811,15 +859,13 @@ pub fn build_c6_t1_production_response_owner(
     {
         return Err("C6SPR12 exact provider claim/closure census changed".to_owned());
     }
-    // Cross the same byte boundary used by the disk campaign before the
-    // verifier sees the proof. The provider-side object is consumed here;
-    // verification below receives a freshly reconstructed value.
-    let model_proof = decode_model_proof_canonical(
-        &encode_model_proof_canonical(&model_proof).map_err(|error| error.to_string())?,
+    // Cross the exact byte boundary consumed by both live and disk replay.
+    // No in-memory provider proof object survives this point.
+    let retained = C6RetainedResponseProof::decode(
+        &C6RetainedResponseProof::encode_parts(&model_proof, &product_proof)
+            .map_err(|error| error.to_string())?,
     )
     .map_err(|error| error.to_string())?;
-    let paired_sources =
-        attempt.seal_sources(coordinates, &source_schedule, source_schedule.digest)?;
     let mut next_source = 0u64;
     let mut product_mask_sources = Vec::new();
     for draw in &source_schedule.draws {
@@ -839,91 +885,96 @@ pub fn build_c6_t1_production_response_owner(
         product_mask_sources,
     )
     .map_err(|error| error.to_string())?;
-    let verifier_model = volta_gpt2::Gpt2VerifierModel::from_model(model)?;
+    Ok(C6T1ProductionResponseProviderPending {
+        retained,
+        prover_output,
+        prover_zero_roots,
+        product_challenge,
+        product_mask_domain,
+        source_schedule,
+        source_manifest,
+        source_coordinates: coordinates,
+        installed: C6T1InstalledRoleOwner {
+            operation_plan: installed_plan,
+            extraction,
+            runtime: provider_runtime,
+        },
+        cache_target_frame,
+        cache_target_fixed,
+        cache_metrics: provider_cache_metrics,
+    })
+}
 
-    let (
-        verifier_output,
-        verifier_zero_roots,
-        verifier_cache_metrics,
-        verifier_runtime,
-        verifier_target_fixed,
-    ) = {
-        let contexts = attempt.verifier_contexts_array_mut();
-        if contexts.iter().any(|context| !context.uses_pooled_pcg()) {
-            return Err("C6SPR12 production response received mock verifier tapes".to_owned());
-        }
-        let deltas = [contexts[0].delta, contexts[1].delta];
-        let [primary, secondary] = contexts;
-        begin_c6_verifier_trace().map_err(|error| error.to_string())?;
-        primary.enable_c6_operation_trace().map_err(|error| error.to_string())?;
-        primary.enable_schedule_audit().map_err(|error| error.to_string())?;
-        let runtime_capture = begin_c6_runtime_instance_capture(&extraction_maps[1])
-            .map_err(|error| error.to_string())?;
-        let mut follower = C6SourceScheduleVerifierFollower::start(secondary)
-            .map_err(|error| error.to_string())?;
-        let public = [PrivateChunkPub { q: decode.q, seq: sequence }];
-        let mut target_cursor = C6CacheFoldTargetInlineVerifier::start_public(
-            &cache_target_frame,
-            public_schedule,
-            deltas,
-            verifier_transcript,
-        )
-        .map_err(|error| error.to_string())?;
-        let cache_trace = begin_c6_cache_fold_trace(C6CacheFoldParty::Verifier)
-            .map_err(|error| error.to_string())?;
-        let (output, product_keys, zero_roots, metrics) =
-            verify_response_private_logits_c6_cache_inline_from_profile(
-                &verifier_model,
-                prefill.t,
-                &public,
-                &model_proof,
-                primary,
-                secondary,
-                &mut follower,
-                &mut target_cursor,
-                verifier_transcript,
-            )
-            .ok_or_else(|| "C6SPR12 exact private-logit response rejected".to_owned())?;
-        let cache_trace = cache_trace.finish().map_err(|error| error.to_string())?;
-        let target_fixed = target_cursor
-            .finish_before_successor_root_with_identity(cache_trace.identity, verifier_transcript)
-            .map_err(|error| error.to_string())?;
-        let mut doms = Doms::new(layer_dom_base(255));
-        let verifier_product_challenge = verifier_transcript.challenge_fp2();
-        verifier_transcript.append_fp2s(
-            "prod_check_m0_m1",
-            &[product_proof.m0, product_proof.m1],
-        );
-        if product_challenge != verifier_product_challenge
-            || product_mask_domain != doms.take(1)
-            || !prod_batch_verify(
-                &product_keys,
-                primary.expand_product_mask_verifier_key(product_mask_domain, product_keys.len()),
-                primary.delta,
-                product_challenge,
-                &product_proof,
-            )
-        {
-            return Err("C6SPR12 exact ProductClosure batch rejected".to_owned());
-        }
-        zero_roots.record_operation_trace_ownership().map_err(|error| error.to_string())?;
-        let _operation_trace = finish_c6_verifier_trace().map_err(|error| error.to_string())?;
-        let runtime = runtime_capture
-            .finish_installed(&installed_plans[1], &extraction_maps[1])
-            .map_err(|error| error.to_string())?;
-        follower.sync_primary(primary, secondary).map_err(|error| error.to_string())?;
-        if primary.schedule_audit() != Some(source_schedule.clone())
-            || secondary.schedule_audit() != Some(source_schedule.clone())
-        {
-            return Err("C6SPR12 provider/verifier source schedules differ".to_owned());
-        }
-        (output, zero_roots, metrics, runtime, target_fixed)
-    };
-    let provider_binding = provider_transcript.canonical_binding_digest();
-    let verifier_binding = verifier_transcript.canonical_binding_digest();
-    let provider_binding = provider_binding
+/// Coordinate the provider-only response with client source sealing and the
+/// strict verifier replay. This compatibility owner keeps the downstream C6.1
+/// ownership graph unchanged while enforcing the new process-facing boundary.
+#[allow(clippy::too_many_arguments)]
+pub fn build_c6_t1_production_response_owner(
+    model: &volta_gpt2::Gpt2Model,
+    prefill: &volta_gpt2::ModelWitness,
+    decode: &volta_gpt2::BandModelWitness,
+    sequence: &[u32],
+    statement_digest: [u8; 32],
+    installed_plans: [C6InstalledOperationPlan; 2],
+    extraction_maps: [C6DecodedInstanceExtractionPlan; 2],
+    attempt: &mut C6ProductionPairedPcgAttempt,
+    provider_transcript: &mut Transcript,
+    verifier_transcript: &mut Transcript,
+) -> Result<C6T1ProductionResponseOwner, String> {
+    let [provider_plan, verifier_plan] = installed_plans;
+    let [provider_extraction, verifier_extraction] = extraction_maps;
+    if provider_plan.topology() != verifier_plan.topology()
+        || verifier_extraction.role() != C6InstanceExtractionRole::Verifier
+        || verifier_extraction.topology_digest() != verifier_plan.topology().topology_digest
+    {
+        return Err("C6ICT3 provider/verifier installed topology mismatch".to_owned());
+    }
+    let C6T1ProductionResponseProviderPending {
+        retained,
+        prover_output,
+        prover_zero_roots,
+        product_challenge,
+        product_mask_domain,
+        source_schedule,
+        source_manifest,
+        source_coordinates,
+        installed: provider,
+        cache_target_frame,
+        cache_target_fixed,
+        cache_metrics: provider_cache_metrics,
+    } = prove_c6_t1_production_response_provider(
+        model,
+        prefill,
+        decode,
+        sequence,
+        statement_digest,
+        provider_plan,
+        provider_extraction,
+        attempt.prover_streams_array_mut(),
+        provider_transcript,
+    )?;
+    let paired_sources =
+        attempt.seal_sources(source_coordinates, &source_schedule, source_schedule.digest)?;
+    let cache_target_frame_bytes =
+        cache_target_frame.encode().map_err(|error| error.to_string())?;
+    let verifier_model = volta_gpt2::Gpt2VerifierModel::from_model(model)?;
+    let verifier = replay_c6_t1_production_response_verifier(
+        &verifier_model,
+        sequence,
+        statement_digest,
+        verifier_plan,
+        verifier_extraction,
+        &cache_target_frame_bytes,
+        &retained,
+        attempt.verifier_contexts_array_mut(),
+        verifier_transcript,
+    )?;
+
+    let provider_binding = provider_transcript
+        .canonical_binding_digest()
         .map_err(|error| format!("C6ICT3 provider transcript is noncanonical: {error}"))?;
-    let verifier_binding = verifier_binding
+    let verifier_binding = verifier_transcript
+        .canonical_binding_digest()
         .map_err(|error| format!("C6ICT3 verifier transcript is noncanonical: {error}"))?;
     if provider_binding != verifier_binding {
         #[cfg(debug_assertions)]
@@ -936,19 +987,34 @@ pub fn build_c6_t1_production_response_owner(
         #[cfg(not(debug_assertions))]
         return Err("C6ICT3 production transcript binding differs across roles".to_owned());
     }
-    if verifier_output.weight_keys.len() != 96
-        || verifier_output.embed_keys.len() != 6
-        || verifier_zero_roots.len() != prover_zero_roots.len()
-        || verifier_target_fixed != cache_target_fixed
-        || verifier_runtime.instance_identity() != provider_runtime.instance_identity()
+    if verifier.output.weight_keys.len() != 96
+        || verifier.output.embed_keys.len() != 6
+        || verifier.zero_roots.len() != prover_zero_roots.len()
+        || verifier.product_challenge != product_challenge
+        || verifier.product_mask_domain != product_mask_domain
+        || verifier.cache_target_fixed != cache_target_fixed
+        || verifier.installed.runtime.instance_identity() != provider.runtime.instance_identity()
+        || verifier.source_schedule != source_schedule
+        || verifier.source_manifest != source_manifest
         || provider_transcript.ledger() != verifier_transcript.ledger()
         || provider_transcript.total_bytes() != verifier_transcript.total_bytes()
     {
-        return Err("C6SPR12 same-pass role owner differential failed".to_owned());
+        return Err("C6ICT3 split response owner differential failed".to_owned());
     }
 
-    let [provider_plan, verifier_plan] = installed_plans;
-    let [provider_extraction, verifier_extraction] = extraction_maps;
+    let C6RetainedResponseProof { model: model_proof, product: product_proof } = retained;
+    let C6T1ProductionResponseVerifierReplay {
+        output: verifier_output,
+        zero_roots: verifier_zero_roots,
+        product_challenge: _,
+        product_mask_domain: _,
+        source_schedule: _,
+        source_manifest: _,
+        installed: verifier,
+        cache_snapshot: _,
+        cache_target_fixed: _,
+        cache_metrics: verifier_cache_metrics,
+    } = verifier;
     Ok(C6T1ProductionResponseOwner {
         model_proof,
         prover_output,
@@ -961,16 +1027,8 @@ pub fn build_c6_t1_production_response_owner(
         paired_sources,
         source_schedule,
         source_manifest,
-        provider: C6T1InstalledRoleOwner {
-            operation_plan: provider_plan,
-            extraction: provider_extraction,
-            runtime: provider_runtime,
-        },
-        verifier: C6T1InstalledRoleOwner {
-            operation_plan: verifier_plan,
-            extraction: verifier_extraction,
-            runtime: verifier_runtime,
-        },
+        provider,
+        verifier,
         cache_target_frame,
         cache_target_fixed,
         provider_cache_metrics,
@@ -1604,9 +1662,7 @@ fn build_c6_response_residual_fixture_with_geometry(
                 .unwrap_or_else(|| "binding digests differ after equal debug events".to_owned())
         )));
         #[cfg(not(debug_assertions))]
-        return Err(C6ResidualError::new(
-            "C6ICT3 scaled transcript binding differs across roles",
-        ));
+        return Err(C6ResidualError::new("C6ICT3 scaled transcript binding differs across roles"));
     }
     if primary_verifier.schedule_audit() != Some(primary_schedule)
         || secondary_stream.schedule_audit() != secondary_verifier.schedule_audit()
@@ -1680,6 +1736,28 @@ fn trace_error(error: impl std::fmt::Display) -> C6ResidualError {
 #[cfg(test)]
 mod transcript_tests {
     use super::*;
+
+    #[test]
+    fn provider_entry_point_excludes_verifier_capabilities() {
+        let source = include_str!("c6_response_fixture.rs");
+        let signature = source
+            .split_once("pub fn prove_c6_t1_production_response_provider(")
+            .unwrap()
+            .1
+            .split_once('{')
+            .unwrap()
+            .0;
+        assert!(signature.contains("streams: &mut [CorrelationStream; 2]"));
+        for forbidden in [
+            "C6ProductionPairedPcgAttempt",
+            "VerifierCtx",
+            "verifier_transcript",
+            "verifier_seed",
+            "delta",
+        ] {
+            assert!(!signature.contains(forbidden), "provider signature contains {forbidden}");
+        }
+    }
 
     #[test]
     fn complete_response_has_exact_canonical_transcript_parity() {

@@ -15,16 +15,18 @@ This capsule is authoritative; read design §§0.60--0.67 next.
   canonical prover/verifier transcript: proto **192/0/1**, MAC **32/0/0 +
   5/0/0**, release check green. Its private bundle separates seven native
   tapes from one response tape; a duplex broker releases only challenges at
-  the proved frontier and requires an identical final seal (**4/0/0**). No
+  the proved frontier and requires an identical final seal (**4/0/0**). A
+  provider-only response seam excludes verifier capabilities (**1/0/0**). No
   production CUDA/full-chain/timing/memory or hardware credit exists.
 - **Screens.** Certificate **17,536,735 B**, setup **148,738,118 B**,
   setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
   **102.5878332989 bits/cert**, and provider/verifier **14.9179595454 /
   4.978261758 s** remain `credit:false`.
 - **Active gate.** `C6ICT3_RESPONSE_TAPE_AND_DISK_REPLAY_REQUIRED`. Canonical
-  move parity is closed, but the global response still uses a seeded monolithic
-  builder. It needs a seedless provider endpoint, private eighth tape, strict
-  disk replay, mutations and campaign lifecycle integration.
+  move parity and the provider API boundary are closed, but the campaign still
+  injects seeded transcripts and does not retain/replay the eighth tape. It
+  needs duplex call-site wiring, strict disk replay, mutations and lifecycle
+  integration.
 - **Authorization.** Owner GO permits exact canonical response moves, a
   seedless provider endpoint and one attempt/statement/certificate-bound
   client-private response tape. Burn-on-interruption remains mandatory. No pod
@@ -35,6 +37,17 @@ This capsule is authoritative; read design §§0.60--0.67 next.
 - **Fiat--Shamir.** Read-only audit: production substitution is NO-GO;
   `C6FS1` may later exist only as a shadow diagnostic after new ROM
   soundness/privacy proofs. It does not change C6ICT2 or pod authorization.
+
+- **2026-08-15 — Production response execution gains a provider-only seam.**
+  The prover entry point now accepts only the GPT-2 witness adapter, installed
+  prover plan/extraction, two pooled-PCG streams and one transcript endpoint.
+  Its type excludes the paired attempt, verifier contexts, Δ and seeds; the
+  retained proof crosses canonical bytes before client source sealing. The
+  coordinator now invokes the existing strict verifier replay and compares
+  challenge, domain, schedule, manifest, runtime, corrections and transcript.
+  The source-capability guard is **1/0/0** and the dual-feature bench check is
+  green. Campaign duplex wiring and disk replay remain absent, so the hard stop
+  and all credits are unchanged.
 
 - **2026-08-15 — A duplex response broker closes the entropy primitive.**
   Separate seedless provider and live-replay endpoints share a client-owned

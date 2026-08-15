@@ -4070,6 +4070,28 @@ requires explicit owner GO for all of the following:
 No setup, wire, soundness, timing, memory, full-chain or hardware credit is
 earned by this audit. The prior one-campaign owner GO remains dormant.
 
+### 0.64 C6ICT3 production authorization
+
+The owner authorizes the exact global-response repair specified by §0.63.
+Every provider move that precedes a challenge must use a canonical value
+encoding, or a canonical length-plus-digest encoding that the strict verifier
+reconstructs from authenticated proof data. The provider endpoint remains
+seedless and receives only the next typed challenge after the preceding move.
+
+One response tape may extend the verifier-private replay grammar. It must bind
+the reserved attempt, base statement, ordered provider moves, complete strict
+response payload and final certificate. It is neither setup nor
+provider-to-client certificate wire. Partial interaction is never resumed:
+failure burns the reserved slot and retry starts with fresh verifier entropy.
+
+C6ICT3 must preserve exact seeded/interactive proof and verifier parity, reject
+seed, move, order, payload and truncation mutations, and add source guards that
+exclude verifier entropy from provider APIs. Campaign production and disk
+verification may resume only after those gates pass. Before A100 admission,
+re-sum client-private state, variable challenge traffic, I/O, provider time and
+official four-thread verifier time. No original C6.1 gate is relaxed, and no
+pod contact or benchmark credit follows from this authorization alone.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.63 next.
+This capsule is authoritative; read design §§0.60--0.64 next.
 
 - **Milestone/evidence.** C6.1/C6NBR3 source binding and the six C6ICT2
   persisted/CUDA lanes are closed locally. Checkpoints through `2df0265` also
@@ -19,20 +19,32 @@ This capsule is authoritative; read design §§0.60--0.63 next.
   setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
   **102.5878332989 bits/cert**, and provider/verifier **14.9179595454 /
   4.978261758 s** remain `credit:false`.
-- **Hard stop.** `C6ICT3_GLOBAL_RESPONSE_TRANSCRIPT_REQUIRED`. The global T1
+- **Active gate.** `C6ICT3_GLOBAL_RESPONSE_PRIVATE_ENTROPY_DRIVER`. The global T1
   response still runs a complete seeded prover transcript before verifier
   replay; 40 candidate length-only append sites include live pre-challenge
   moves. The seedless channel rejects these moves, so C6ICT2's seven tapes do
   not make the whole proof interactive.
-- **Authorization/resume.** No pod contact. Owner GO is required for an exact
-  canonical-move migration and one client-private response tape, followed by
-  transcript parity/mutations, disk verifier, validator and local
-  negative/backend gates. Burn-on-interruption remains mandatory.
+- **Authorization.** Owner GO permits exact canonical response moves, a
+  seedless provider endpoint and one attempt/statement/certificate-bound
+  client-private response tape. Burn-on-interruption remains mandatory. No pod
+  contact before parity/mutations, disk verifier, validator, source/backend
+  guards and fresh accounting are green.
 - **Measurement policy.** Only verifier time has official `4T <5 s` and
   diagnostic `maxT(N)`; provider has one full-chain A100 `<15 s` gate.
 - **Fiat--Shamir.** Read-only audit: production substitution is NO-GO;
   `C6FS1` may later exist only as a shadow diagnostic after new ROM
   soundness/privacy proofs. It does not change C6ICT2 or pod authorization.
+
+- **2026-08-15 — Owner authorizes C6ICT3 construction.** The global T1
+  response may migrate every live pre-challenge move to a canonical value or
+  independently replayable length-plus-digest encoding. The provider receives
+  only a seedless endpoint; one client-private response tape is bound to the
+  reserved attempt, typed statement, provider moves and final certificate.
+  The existing burn-on-interruption policy applies. This authorization permits
+  replay-grammar and campaign integration changes, parity and mutation tests,
+  disk verification, source/backend guards and fresh state/traffic/I/O/time
+  accounting. It does not permit setup or certificate growth, relax any
+  original C6.1 gate, grant benchmark credit or authorize pod contact.
 
 - **2026-08-07 — Global response transcript stops the campaign locally.** The
   six persisted/CUDA native/compiler lanes and their joint bridge are seedless,

@@ -55,6 +55,32 @@ pub struct C61WrapperWireBinding {
     pub source_binding_digest: [u8; 32],
 }
 
+/// Strict digest of the retained response prefix only. It cannot be formed
+/// from the later C6PA2 suffix or an arbitrary byte string.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C61RetainedResponseBinding {
+    digest: [u8; 32],
+}
+
+impl C61RetainedResponseBinding {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        if bytes.len() != C61_RETAINED_NON_PCS_RESPONSE_BYTES as usize {
+            return Err(C61CertificateError::new(
+                "C6.1 retained response prefix has the wrong length",
+            ));
+        }
+        C6RetainedResponseProof::decode(bytes)
+            .map_err(|error| C61CertificateError::new(error.to_string()))?;
+        let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c61/retained-response-prefix/v1");
+        hasher.update(bytes);
+        Ok(Self { digest: *hasher.finalize().as_bytes() })
+    }
+
+    pub fn digest(self) -> [u8; 32] {
+        self.digest
+    }
+}
+
 impl C61WrapperWireBinding {
     pub fn new(
         statement_digest: [u8; 32],
@@ -111,8 +137,7 @@ impl C61WrapperWireBinding {
     }
 
     pub fn digest(self) -> [u8; 32] {
-        let mut hasher =
-            blake3::Hasher::new_derive_key("volta-zk/c61/wrapper-wire-binding/v1");
+        let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c61/wrapper-wire-binding/v1");
         hasher.update(&self.statement_digest);
         for root in self.roots {
             hasher.update(&root);
@@ -178,10 +203,14 @@ impl C61FinalCertificateEnvelope {
     }
 
     pub fn retained_response_digest(&self) -> [u8; 32] {
-        let mut hasher =
-            blake3::Hasher::new_derive_key("volta-zk/c61/retained-response-prefix/v1");
-        hasher.update(self.retained_response());
-        *hasher.finalize().as_bytes()
+        C61RetainedResponseBinding::from_bytes(self.retained_response())
+            .expect("validated C6.1 envelope has a strict retained response")
+            .digest()
+    }
+
+    pub fn retained_response_binding(&self) -> C61RetainedResponseBinding {
+        C61RetainedResponseBinding::from_bytes(self.retained_response())
+            .expect("validated C6.1 envelope has a strict retained response")
     }
 
     pub fn public_argument(&self) -> &[u8] {

@@ -1007,6 +1007,7 @@ impl C61InteractiveTape {
     }
 }
 
+#[cfg(feature = "c6-trace")]
 fn decode_exact_transcript_message<'a>(
     bytes: &'a [u8],
     expected_label: &str,

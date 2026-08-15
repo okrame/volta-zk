@@ -9,10 +9,11 @@
 use std::{array, fmt};
 
 use volta_field::{Fp, Fp2, P};
-use volta_mac::Transcript;
+use volta_mac::{C6InstalledOperationPlan, C6OperationPlanInstanceIdentity, Transcript};
 use volta_proto::{
+    C61RetainedResponseBinding, C6CacheHead, C6ClientAttempt, C6ProposedCacheHead,
     C6ResidualDirectAlphaPoints, C6ResidualDirectPostClaimPoints, C6ResidualProductClaimCoordinate,
-    C6ResidualRelationManifest,
+    C6ResidualRelationManifest, C6SetupManifest,
 };
 #[cfg(feature = "c6-trace")]
 use volta_proto::{
@@ -141,59 +142,104 @@ impl C61CorrelationRangeBinding {
     }
 }
 
-/// Provider-global and response-local bindings required in every C6.1
-/// public argument.  No designated-verifier secret has a representable
-/// field in this structure.  Digests already carried by the retained C6
-/// certificate are re-bound here but are not counted as duplicate wire.
+/// Pre-response statement used by the retained response and its private tape.
+/// Every field exists before response execution.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct C61StatementBinding {
-    pub protocol_digest: [u8; 32],
-    pub model_digest: [u8; 32],
-    pub quantization_digest: [u8; 32],
-    pub plan_digest: [u8; 32],
-    pub parameter_digest: [u8; 32],
-    pub setup_manifest_digest: [u8; 32],
-    pub connection_id: [u8; 32],
-    pub workload_digest: [u8; 32],
-    pub public_io_digest: [u8; 32],
-    pub retained_transcript_digest: [u8; 32],
-    pub retained_wrapper_digest: [u8; 32],
-    pub model_root: [u8; 32],
-    pub embedding_root: [u8; 32],
-    pub compiler_source_root: [u8; 32],
-    pub runtime_root: [u8; 32],
-    pub predecessor_certificate: [u8; 32],
-    pub old_head: [u8; 32],
-    pub new_head: [u8; 32],
-    pub nonce: [u8; 32],
-    pub epoch: u64,
-    pub slot: u64,
-    pub correlation_ranges: [C61CorrelationRangeBinding; C61_MAC_COORDINATES],
+pub struct C61ResponseStatementBinding {
+    protocol_digest: [u8; 32],
+    model_digest: [u8; 32],
+    quantization_digest: [u8; 32],
+    plan_digest: [u8; 32],
+    topology_digest: [u8; 32],
+    parameter_digest: [u8; 32],
+    setup_manifest_digest: [u8; 32],
+    connection_id: [u8; 32],
+    workload_preimage_digest: [u8; 32],
+    predecessor_certificate: [u8; 32],
+    old_head_digest: [u8; 32],
+    proposed_head_digest: [u8; 32],
+    nonce: [u8; 32],
+    epoch: u64,
+    slot: u64,
+    correlation_ranges: [C61CorrelationRangeBinding; C61_MAC_COORDINATES],
 }
 
-impl C61StatementBinding {
+impl C61ResponseStatementBinding {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        setup: &C6SetupManifest,
+        quantization_digest: [u8; 32],
+        plan: &C6InstalledOperationPlan,
+        attempt: C6ClientAttempt,
+        old_head: C6CacheHead,
+        proposed_head: C6ProposedCacheHead,
+        workload_preimage_digest: [u8; 32],
+    ) -> Result<Self> {
+        setup.validate().map_err(|error| C61PublicCompressionError::new(error.to_string()))?;
+        old_head.validate().map_err(|error| C61PublicCompressionError::new(error.to_string()))?;
+        attempt
+            .workload
+            .validate()
+            .map_err(|error| C61PublicCompressionError::new(error.to_string()))?;
+        attempt
+            .correlation_ranges
+            .validate()
+            .map_err(|error| C61PublicCompressionError::new(error.to_string()))?;
+        let setup_manifest_digest =
+            setup.digest().map_err(|error| C61PublicCompressionError::new(error.to_string()))?;
+        let ranges =
+            attempt.correlation_ranges.coordinates.map(|range| C61CorrelationRangeBinding {
+                stage: range.stage,
+                start: range.start,
+                count: range.count,
+            });
+        let binding = Self {
+            protocol_digest: setup.protocol_digest,
+            model_digest: setup.model_digest,
+            quantization_digest,
+            plan_digest: plan.artifact_digest(),
+            topology_digest: plan.topology().topology_digest,
+            parameter_digest: setup.params_digest,
+            setup_manifest_digest,
+            connection_id: setup.connection_id,
+            workload_preimage_digest,
+            predecessor_certificate: attempt.predecessor_certificate_digest,
+            old_head_digest: old_head.digest(),
+            proposed_head_digest: proposed_head.digest(),
+            nonce: attempt.nonce,
+            epoch: proposed_head.epoch(),
+            slot: u64::from(attempt.slot),
+            correlation_ranges: ranges,
+        };
+        if attempt.setup_manifest_digest != binding.setup_manifest_digest
+            || attempt.old_head_digest != binding.old_head_digest
+            || attempt.workload.old_context != old_head.cache_len
+            || attempt.workload.new_context != proposed_head.cache_len()
+            || old_head.epoch.checked_add(1) != Some(proposed_head.epoch())
+        {
+            return Err(C61PublicCompressionError::new(
+                "C6ICT4 response statement differs from setup/attempt/head",
+            ));
+        }
+        binding.validate()?;
+        Ok(binding)
+    }
+
     pub fn digest(&self) -> [u8; 32] {
-        let mut hasher = blake3::Hasher::new();
-        hasher.update(b"volta/c6.1/statement/v1");
+        let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c61/response-statement/v1");
         for digest in [
             self.protocol_digest,
             self.model_digest,
             self.quantization_digest,
             self.plan_digest,
+            self.topology_digest,
             self.parameter_digest,
             self.setup_manifest_digest,
             self.connection_id,
-            self.workload_digest,
-            self.public_io_digest,
-            self.retained_transcript_digest,
-            self.retained_wrapper_digest,
-            self.model_root,
-            self.embedding_root,
-            self.compiler_source_root,
-            self.runtime_root,
+            self.workload_preimage_digest,
             self.predecessor_certificate,
-            self.old_head,
-            self.new_head,
+            self.old_head_digest,
+            self.proposed_head_digest,
             self.nonce,
         ] {
             hasher.update(&digest);
@@ -215,19 +261,13 @@ impl C61StatementBinding {
             self.model_digest,
             self.quantization_digest,
             self.plan_digest,
+            self.topology_digest,
             self.parameter_digest,
             self.setup_manifest_digest,
             self.connection_id,
-            self.workload_digest,
-            self.public_io_digest,
-            self.retained_transcript_digest,
-            self.retained_wrapper_digest,
-            self.model_root,
-            self.embedding_root,
-            self.compiler_source_root,
-            self.runtime_root,
-            self.old_head,
-            self.new_head,
+            self.workload_preimage_digest,
+            self.old_head_digest,
+            self.proposed_head_digest,
             self.nonce,
         ];
         if required_nonzero.contains(&[0; 32]) {
@@ -240,7 +280,7 @@ impl C61StatementBinding {
                 "C6.1 predecessor/epoch binding is invalid",
             ));
         }
-        if self.old_head == self.new_head {
+        if self.old_head_digest == self.proposed_head_digest {
             return Err(C61PublicCompressionError::new(
                 "C6.1 statement does not advance its cache head",
             ));
@@ -251,6 +291,87 @@ impl C61StatementBinding {
         if self.correlation_ranges[0].count != self.correlation_ranges[1].count {
             return Err(C61PublicCompressionError::new(
                 "C6.1 paired correlation ranges have unequal counts",
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Post-response C6PA2 statement. Wrapper roots are not hashed here: they are
+/// fixed under this digest and joined by the root typestate before alpha,
+/// avoiding a statement/root self-reference.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C61StatementBinding {
+    response: C61ResponseStatementBinding,
+    retained_response_digest: [u8; 32],
+    runtime_instance_digest: [u8; 32],
+    public_output_digest: [u8; 32],
+    compiler_plan_digest: [u8; 32],
+    compiler_source_root: [u8; 32],
+    compiler_runtime_root: [u8; 32],
+}
+
+impl C61StatementBinding {
+    pub fn bind_response_prefix(
+        response: C61ResponseStatementBinding,
+        retained_response: C61RetainedResponseBinding,
+        runtime: C6OperationPlanInstanceIdentity,
+        public_output_digest: [u8; 32],
+        compiler_plan_digest: [u8; 32],
+        compiler_source_root: [u8; 32],
+        compiler_runtime_root: [u8; 32],
+    ) -> Result<Self> {
+        if runtime.topology_digest != response.topology_digest
+            || runtime.instance_digest == [0; 32]
+            || public_output_digest == [0; 32]
+        {
+            return Err(C61PublicCompressionError::new(
+                "C6ICT4 C6PA2 runtime/output binding differs from the response statement",
+            ));
+        }
+        let binding = Self {
+            response,
+            retained_response_digest: retained_response.digest(),
+            runtime_instance_digest: runtime.instance_digest,
+            public_output_digest,
+            compiler_plan_digest,
+            compiler_source_root,
+            compiler_runtime_root,
+        };
+        binding.validate()?;
+        Ok(binding)
+    }
+
+    pub fn response_statement_digest(&self) -> [u8; 32] {
+        self.response.digest()
+    }
+
+    pub fn digest(&self) -> [u8; 32] {
+        let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c61/public-statement/v2");
+        hasher.update(&self.response.digest());
+        hasher.update(&self.retained_response_digest);
+        hasher.update(&self.runtime_instance_digest);
+        hasher.update(&self.public_output_digest);
+        hasher.update(&self.compiler_plan_digest);
+        hasher.update(&self.compiler_source_root);
+        hasher.update(&self.compiler_runtime_root);
+        *hasher.finalize().as_bytes()
+    }
+
+    fn validate(&self) -> Result<()> {
+        self.response.validate()?;
+        if [
+            self.retained_response_digest,
+            self.runtime_instance_digest,
+            self.public_output_digest,
+            self.compiler_plan_digest,
+            self.compiler_source_root,
+            self.compiler_runtime_root,
+        ]
+        .contains(&[0; 32])
+        {
+            return Err(C61PublicCompressionError::new(
+                "C6ICT4 C6PA2 statement contains a zero binding digest",
             ));
         }
         Ok(())
@@ -492,12 +613,10 @@ pub fn bind_c61_production_residual_relation(
     provider_transcript: &mut Transcript,
     verifier_transcript: &mut Transcript,
 ) -> Result<C61ProductionResidualRelationBound> {
-    let provider_prefix = provider_transcript
-        .canonical_binding_digest()
-        .map_err(C61PublicCompressionError::new)?;
-    let verifier_prefix = verifier_transcript
-        .canonical_binding_digest()
-        .map_err(C61PublicCompressionError::new)?;
+    let provider_prefix =
+        provider_transcript.canonical_binding_digest().map_err(C61PublicCompressionError::new)?;
+    let verifier_prefix =
+        verifier_transcript.canonical_binding_digest().map_err(C61PublicCompressionError::new)?;
     if root.wrapper_statement_digest() != binding.digest()
         || provider_prefix != verifier_prefix
         || provider_transcript.ledger() != verifier_transcript.ledger()
@@ -510,8 +629,7 @@ pub fn bind_c61_production_residual_relation(
     let manifest = residual.manifest().clone();
     let provider_alpha =
         C61RootsFixed::new(binding.clone())?.draw_alpha_challenges(provider_transcript);
-    let verifier_alpha =
-        C61RootsFixed::new(binding)?.draw_alpha_challenges(verifier_transcript);
+    let verifier_alpha = C61RootsFixed::new(binding)?.draw_alpha_challenges(verifier_transcript);
     if provider_transcript.interactive_error().is_some()
         || verifier_transcript.interactive_error().is_some()
         || provider_alpha.alpha() != verifier_alpha.alpha()
@@ -525,10 +643,10 @@ pub fn bind_c61_production_residual_relation(
         .bind_direct_alpha(root, direct_alpha)
         .map_err(|error| C61PublicCompressionError::new(error.to_string()))?;
     let coordinate_one = claims.coordinate_one().clone();
-    let provider_equality = provider_alpha
-        .bind_product_claim_coordinate_one(&coordinate_one, provider_transcript)?;
-    let verifier_equality = verifier_alpha
-        .bind_product_claim_coordinate_one(&coordinate_one, verifier_transcript)?;
+    let provider_equality =
+        provider_alpha.bind_product_claim_coordinate_one(&coordinate_one, provider_transcript)?;
+    let verifier_equality =
+        verifier_alpha.bind_product_claim_coordinate_one(&coordinate_one, verifier_transcript)?;
     if provider_transcript.interactive_error().is_some()
         || verifier_transcript.interactive_error().is_some()
         || provider_equality.equality() != verifier_equality.equality()
@@ -538,10 +656,7 @@ pub fn bind_c61_production_residual_relation(
         ));
     }
     let equality = provider_equality.equality();
-    let postclaim = C61PostClaimChallenges {
-        terminal: equality.terminal,
-        atomic: equality.atomic,
-    };
+    let postclaim = C61PostClaimChallenges { terminal: equality.terminal, atomic: equality.atomic };
     let direct_postclaim = c61_residual_direct_postclaim_points(&manifest, &postclaim)?;
     let residual = claims
         .bind_direct_postclaim(direct_postclaim)
@@ -589,9 +704,7 @@ pub fn bind_c61_disk_residual_relation(
     let manifest = residual.manifest().clone();
     let alpha = C61RootsFixed::new(binding)?.draw_alpha_challenges(transcript);
     if transcript.interactive_error().is_some() {
-        return Err(C61PublicCompressionError::new(
-            "C6ICT4 disk alpha replay failed",
-        ));
+        return Err(C61PublicCompressionError::new("C6ICT4 disk alpha replay failed"));
     }
     let direct_alpha = c61_residual_direct_alpha_points(&manifest, alpha.alpha())?;
     let claims = residual
@@ -1391,7 +1504,7 @@ pub fn verify_c61_scaled_public_argument<B: C61NativeBackendVerifier>(
             "C6PA1 statement digest differs from interactive typestate",
         ));
     }
-    if plan.digest() != ready.binding.plan_digest {
+    if plan.digest() != ready.binding.compiler_plan_digest {
         return Err(C61PublicCompressionError::new(
             "C6PA1 sparse plan digest differs from statement",
         ));
@@ -1403,7 +1516,7 @@ pub fn verify_c61_scaled_public_argument<B: C61NativeBackendVerifier>(
         ));
     }
     let runtime_root = c61_fp2_vector_root(b"runtime", runtime);
-    if runtime_root != ready.binding.runtime_root {
+    if runtime_root != ready.binding.compiler_runtime_root {
         return Err(C61PublicCompressionError::new("C6PA1 runtime root differs from statement"));
     }
     let frame = C61ArithmeticFrame::decode(&argument.arithmetic)?;
@@ -1461,9 +1574,9 @@ pub fn build_c61_scaled_arithmetic_frame(
     sources: &[Fp2],
     runtime: &[Fp2],
 ) -> Result<C61ArithmeticFrame> {
-    if plan.digest() != ready.binding.plan_digest
+    if plan.digest() != ready.binding.compiler_plan_digest
         || c61_fp2_vector_root(b"compiler-source", sources) != ready.binding.compiler_source_root
-        || c61_fp2_vector_root(b"runtime", runtime) != ready.binding.runtime_root
+        || c61_fp2_vector_root(b"runtime", runtime) != ready.binding.compiler_runtime_root
     {
         return Err(C61PublicCompressionError::new("C6RSC4 prover plan/runtime binding mismatch"));
     }
@@ -1505,9 +1618,7 @@ pub fn build_c61_production_arithmetic_frame(
     functional_fold: Fp2,
 ) -> Result<C61ArithmeticFrame> {
     if outer_statement_digest == [0; 32] {
-        return Err(C61PublicCompressionError::new(
-            "C6RSC4-v5 outer statement digest is zero",
-        ));
+        return Err(C61PublicCompressionError::new("C6RSC4-v5 outer statement digest is zero"));
     }
     let expected_fold = ready
         .terminal_claims
@@ -1829,32 +1940,120 @@ mod tests {
 
     fn binding(plan: &C61SparsePlan, sources: &[Fp2], runtime: &[Fp2]) -> C61StatementBinding {
         C61StatementBinding {
-            protocol_digest: [1; 32],
-            model_digest: [2; 32],
-            quantization_digest: [3; 32],
-            plan_digest: plan.digest(),
-            parameter_digest: [5; 32],
-            setup_manifest_digest: [6; 32],
-            connection_id: [7; 32],
-            workload_digest: [8; 32],
-            public_io_digest: [9; 32],
-            retained_transcript_digest: [10; 32],
-            retained_wrapper_digest: [11; 32],
-            model_root: [12; 32],
-            embedding_root: [13; 32],
+            response: C61ResponseStatementBinding {
+                protocol_digest: [1; 32],
+                model_digest: [2; 32],
+                quantization_digest: [3; 32],
+                plan_digest: plan.digest(),
+                topology_digest: [4; 32],
+                parameter_digest: [5; 32],
+                setup_manifest_digest: [6; 32],
+                connection_id: [7; 32],
+                workload_preimage_digest: c61_fp2_vector_root(b"compiler-source", sources),
+                predecessor_certificate: [14; 32],
+                old_head_digest: [15; 32],
+                proposed_head_digest: [16; 32],
+                nonce: [17; 32],
+                epoch: 4,
+                slot: 2,
+                correlation_ranges: [
+                    C61CorrelationRangeBinding { stage: 41, start: 100, count: 50 },
+                    C61CorrelationRangeBinding { stage: 42, start: 200, count: 50 },
+                ],
+            },
+            retained_response_digest: [10; 32],
+            runtime_instance_digest: c61_fp2_vector_root(b"runtime", runtime),
+            public_output_digest: [9; 32],
+            compiler_plan_digest: plan.digest(),
             compiler_source_root: c61_fp2_vector_root(b"compiler-source", sources),
-            runtime_root: c61_fp2_vector_root(b"runtime", runtime),
-            predecessor_certificate: [14; 32],
-            old_head: [15; 32],
-            new_head: [16; 32],
-            nonce: [17; 32],
-            epoch: 4,
-            slot: 2,
-            correlation_ranges: [
-                C61CorrelationRangeBinding { stage: 41, start: 100, count: 50 },
-                C61CorrelationRangeBinding { stage: 42, start: 200, count: 50 },
-            ],
+            compiler_runtime_root: c61_fp2_vector_root(b"runtime", runtime),
         }
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn response_statement_constructor_binds_typed_pre_response_objects() {
+        use volta_proto::{C6CorrelationRange, C6PairedCorrelationRanges, C6Workload};
+
+        let residual = volta_proto::build_c6_residual_direct_fused_scaled_fixture().unwrap();
+        let setup = C6SetupManifest::production(
+            [0x11; 32],
+            [0x12; 32],
+            [0x13; 32],
+            [0x14; 32],
+            [[0x15; 32], [0x16; 32]],
+            vec![0x17],
+        )
+        .unwrap();
+        let workload =
+            C6Workload { old_context: 0, prompt_tokens: 100, decode_tokens: 50, new_context: 150 };
+        let old_head = C6CacheHead {
+            epoch: 0,
+            cache_len: 0,
+            cache_root: [0x18; 32],
+            producer_transition_digest: [0; 32],
+        };
+        let proposed_head = C6ProposedCacheHead::successor(old_head, workload, [0x19; 32]).unwrap();
+        let attempt = C6ClientAttempt {
+            slot: 3,
+            nonce: [0x1a; 32],
+            setup_manifest_digest: setup.digest().unwrap(),
+            old_head_digest: old_head.digest(),
+            predecessor_certificate_digest: [0; 32],
+            correlation_ranges: C6PairedCorrelationRanges {
+                coordinates: [
+                    C6CorrelationRange { stage: 1, start: 100, count: 50 },
+                    C6CorrelationRange { stage: 1, start: 200, count: 50 },
+                ],
+            },
+            workload,
+        };
+        let statement = C61ResponseStatementBinding::new(
+            &setup,
+            [0x1b; 32],
+            residual.operation_plan(),
+            attempt,
+            old_head,
+            proposed_head,
+            [0x1c; 32],
+        )
+        .unwrap();
+        assert_ne!(statement.digest(), [0; 32]);
+
+        let mut wrong_attempt = attempt;
+        wrong_attempt.old_head_digest = [0x1d; 32];
+        assert!(C61ResponseStatementBinding::new(
+            &setup,
+            [0x1b; 32],
+            residual.operation_plan(),
+            wrong_attempt,
+            old_head,
+            proposed_head,
+            [0x1c; 32],
+        )
+        .is_err());
+        assert!(C61ResponseStatementBinding::new(
+            &setup,
+            [0; 32],
+            residual.operation_plan(),
+            attempt,
+            old_head,
+            proposed_head,
+            [0x1c; 32],
+        )
+        .is_err());
+        let mut wrong_ranges = attempt;
+        wrong_ranges.correlation_ranges.coordinates[1].stage = 2;
+        assert!(C61ResponseStatementBinding::new(
+            &setup,
+            [0x1b; 32],
+            residual.operation_plan(),
+            wrong_ranges,
+            old_head,
+            proposed_head,
+            [0x1c; 32],
+        )
+        .is_err());
     }
 
     fn ready_from_binding(
@@ -1937,19 +2136,15 @@ mod tests {
         let statement = binding(&plan, &sources, &runtime);
         let (provider, verifier, broker) =
             crate::c61_interactive_driver::spawn_c61_private_entropy_duplex_transcript_broker(
-                [0xD4; 32],
-                0,
-                [0xD5; 32],
+                [0xD4; 32], 0, [0xD5; 32],
             )
             .unwrap();
         let mut provider_tx = Transcript::new_interactive(Box::new(provider));
         let mut verifier_tx = Transcript::new_interactive(Box::new(verifier));
-        let provider_alpha = C61RootsFixed::new(statement.clone())
-            .unwrap()
-            .draw_alpha_challenges(&mut provider_tx);
-        let verifier_alpha = C61RootsFixed::new(statement)
-            .unwrap()
-            .draw_alpha_challenges(&mut verifier_tx);
+        let provider_alpha =
+            C61RootsFixed::new(statement.clone()).unwrap().draw_alpha_challenges(&mut provider_tx);
+        let verifier_alpha =
+            C61RootsFixed::new(statement).unwrap().draw_alpha_challenges(&mut verifier_tx);
         assert_eq!(provider_alpha.alpha(), verifier_alpha.alpha());
 
         provider_alpha
@@ -2069,13 +2264,8 @@ mod tests {
             functional_fold,
         )
         .unwrap();
-        verify_c61_production_arithmetic_frame(
-            &ready,
-            outer_statement_digest,
-            &runtime,
-            &frame,
-        )
-        .unwrap();
+        verify_c61_production_arithmetic_frame(&ready, outer_statement_digest, &runtime, &frame)
+            .unwrap();
         assert_eq!(frame.encode().len(), C61_ARITHMETIC_FRAME_BYTES);
 
         let mut changed = frame.clone();
@@ -2351,44 +2541,44 @@ mod tests {
         let base = binding(&plan, &sources, &runtime);
         let mut mutations = Vec::new();
         let mut changed = base.clone();
-        changed.nonce = [21; 32];
+        changed.response.nonce = [21; 32];
         mutations.push(changed);
         let mut changed = base.clone();
-        changed.slot += 1;
+        changed.response.slot += 1;
         mutations.push(changed);
         let mut changed = base.clone();
-        changed.correlation_ranges[0].start += 1;
+        changed.response.correlation_ranges[0].start += 1;
         mutations.push(changed);
         let mut changed = base.clone();
-        changed.correlation_ranges[0].count += 1;
-        changed.correlation_ranges[1].count += 1;
+        changed.response.correlation_ranges[0].count += 1;
+        changed.response.correlation_ranges[1].count += 1;
         mutations.push(changed);
         let mut changed = base.clone();
-        changed.old_head = [22; 32];
+        changed.response.old_head_digest = [22; 32];
         mutations.push(changed);
         let mut changed = base.clone();
-        changed.new_head = [23; 32];
+        changed.response.proposed_head_digest = [23; 32];
         mutations.push(changed);
         let mut changed = base.clone();
-        changed.predecessor_certificate = [24; 32];
+        changed.response.predecessor_certificate = [24; 32];
         mutations.push(changed);
         let mut changed = base.clone();
-        changed.workload_digest = [25; 32];
+        changed.response.workload_preimage_digest = [25; 32];
         mutations.push(changed);
         let mut changed = base.clone();
-        changed.public_io_digest = [26; 32];
+        changed.public_output_digest = [26; 32];
         mutations.push(changed);
         let mut changed = base.clone();
-        changed.retained_transcript_digest = [27; 32];
+        changed.retained_response_digest = [27; 32];
         mutations.push(changed);
         let mut changed = base.clone();
-        changed.retained_wrapper_digest = [28; 32];
+        changed.runtime_instance_digest = [28; 32];
         mutations.push(changed);
         let mut changed = base.clone();
-        changed.connection_id = [29; 32];
+        changed.response.connection_id = [29; 32];
         mutations.push(changed);
         let mut changed = base;
-        changed.epoch += 1;
+        changed.response.epoch += 1;
         mutations.push(changed);
 
         for changed_binding in mutations {
@@ -2411,10 +2601,10 @@ mod tests {
     fn genesis_predecessor_exception_is_narrow() {
         let (plan, sources, runtime) = scaled_fixture();
         let mut first = binding(&plan, &sources, &runtime);
-        first.epoch = 1;
-        first.predecessor_certificate = [0; 32];
+        first.response.epoch = 1;
+        first.response.predecessor_certificate = [0; 32];
         assert!(C61RootsFixed::new(first.clone()).is_ok());
-        first.epoch = 2;
+        first.response.epoch = 2;
         assert!(C61RootsFixed::new(first).is_err());
     }
 

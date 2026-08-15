@@ -8,30 +8,26 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.78 next.
+This capsule is authoritative; read design §§0.60--0.79 next.
 
-- **Milestone/evidence.** C6NBR3 and the six C6ICT2 persisted/CUDA lanes are
-  closed locally. C6ICT3 has exact scaled response parity (proto **192/0/1**,
-  MAC **32/0/0 + 5/0/0**), a frontier-safe duplex broker (**4/0/0**), a
-  provider-only seam (**1/0/0**), campaign-owned entropy, its response call
-  site and strict disk-prefix replay (**3/0/0**). Retained coordinate 0 and
-  the typed coordinate-1 codec are green (**1/0/0 + 1/0/0**). Alpha is now
-  separated from post-claim challenges, the duplex broker rejects a changed
-  coordinate (**2/0/0**), and strict tape extraction is green (**1/0/0**). No
-  production, full-chain or hardware credit exists.
-- **Hard stop.** `C6ICT4_DISK_REPLAY_STATEMENT_REQUIRED`. The exact live
-  typestate and extractor exist, but the campaign call site is absent; disk
-  relation construction now compiles but is not campaign-invoked or compared
-  full-chain. Statement v2 needs the two-stage response/C6PA2 binding; only
-  proposed-head and prefix/root digest types exist. Pod contact remains
-  premature.
-- **Authorization/resume.** Owner GO authorizes C6ICT4: recover coordinate 0
-  from the strict retained response; persist the exact 673-pair coordinate-1
-  move before terminal/atomic challenges; bind a versioned noncircular base
-  statement to pre-challenge objects; then add differential/mutation evidence
-  and fresh byte/state/traffic/time/soundness accounting. Keep model-specific
-  geometry behind typed manifests. Use small main checkpoints. No pod until
-  the complete local suite and campaign guards are green.
+- **Milestone/evidence.** C6NBR3 and C6ICT2/C6ICT3 remain closed locally.
+  C6ICT4 now captures both ProductClosure coordinates, enforces the
+  alpha/coordinate/post-claim frontier and reconstructs the verifier-only
+  residual relation. Statement v2 is two-stage and noncircular: typed setup,
+  attempt, workload, old/proposed heads precede the response; the later C6PA2
+  statement binds the strict response prefix and runtime/compiler outputs.
+  Setup-owned plan and quantization identities cannot be caller supplied.
+  Public-instance v2 and campaign schema v5 are strict. Focused PCS is
+  **16/0/0**, campaign **8/0/0**, public-instance **1/0/0**. No production,
+  full-chain, timing or hardware credit exists.
+- **Hard stop.** `C6ICT4_CAMPAIGN_FULL_CHAIN_REQUIRED`. Production campaign
+  does not yet invoke the live residual bridge, persist its coordinate move,
+  reconstruct the same disk relation or compare the resulting C6PA2 argument.
+- **Authorization/resume.** Owner GO permits those exact live/disk call sites,
+  differential and mutation guards, then fresh byte/private-state/traffic,
+  soundness and time accounting. Keep model geometry manifest-typed and use
+  small main checkpoints. No pod until complete local suite and campaign
+  guards are green.
 - **Screens.** Certificate **17,536,735 B**, setup **148,738,118 B**,
   setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
   **102.5878332989 bits/cert**, provider/verifier **14.9179595454 /
@@ -39,6 +35,21 @@ This capsule is authoritative; read design §§0.60--0.78 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-15 — Statement v2 closes without a root cycle or wire growth.**
+  The pre-response digest is constructed from typed setup, reservation,
+  workload and old/proposed heads. Campaign code derives the installed-plan
+  and quantization identities from the authenticated setup bundle rather than
+  accepting caller digests. The post-response C6PA2 digest binds that first
+  digest, the strictly decoded retained prefix, public output and exact
+  runtime/compiler identities. Wrapper roots are fixed under the C6PA2 digest
+  and joined by typestate before alpha; they are not hashed into the digest
+  that parameterizes them. Public-instance v2 records both digests and grows
+  only the client-local artifact by **32 B**; campaign schema v5 names both
+  explicitly. PCS is **16/0/0**, campaign **8/0/0**, public-instance
+  **1/0/0**, and ordinary/feature library checks are green. Production call
+  sites and full-chain parity remain absent, so all quantitative and hardware
+  credits are unchanged.
 
 - **2026-08-15 — Coordinate 1 precedes every dependent challenge.** C6PA2
   equality sampling is split into 46 alpha elements and 188 terminal/atomic

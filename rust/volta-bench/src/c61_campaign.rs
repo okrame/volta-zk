@@ -25,7 +25,7 @@ use volta_mac::{
 use volta_pcs::{
     c61_response_transcript_context_digest, spawn_c61_private_entropy_duplex_transcript_broker,
     C61InteractiveTape, C61InteractiveTapeBundle, C61JointPublicArgument,
-    C61PrivateEntropyBrokerHandle,
+    C61PrivateEntropyBrokerHandle, C61ResponseStatementBinding,
 };
 #[cfg(feature = "c6-trace")]
 use volta_proto::{
@@ -33,8 +33,9 @@ use volta_proto::{
     C6RetainedResponseProof, C6T1ProductionResponseVerifierReplay,
 };
 use volta_proto::{
-    C61FinalCertificateEnvelope, C61PublicWorkloadInstance, C6BoundProductionVerifierReplay,
-    C6ClientAttempt, C6SetupManifest, C61_VERIFIER_REPLAY_STATE_BYTES,
+    C61FinalCertificateEnvelope, C61PublicWorkloadInstance, C61PublicWorkloadPreimage,
+    C6BoundProductionVerifierReplay, C6CacheHead, C6ClientAttempt, C6ProposedCacheHead,
+    C6SetupManifest, C61_VERIFIER_REPLAY_STATE_BYTES,
 };
 
 #[cfg(feature = "c6-trace")]
@@ -42,7 +43,7 @@ use crate::c6_t1_owner::{
     execute_c6_t1_production_owner_export, C6T1ProductionOwnerExport, C6T1WorkloadOwner,
 };
 
-const CAMPAIGN_ARTIFACT_PROFILE: &str = "C6.1-C6PA2-C6NBR3-C6ICT3-campaign-v4";
+const CAMPAIGN_ARTIFACT_PROFILE: &str = "C6.1-C6PA2-C6NBR3-C6ICT4-campaign-v5";
 const CAMPAIGN_BACKEND: &str = "cuda-resident";
 const CAMPAIGN_PCG: &str = "real-aes128-mmo";
 const CAMPAIGN_FILE_NAMES: [&str; 5] = [
@@ -52,9 +53,9 @@ const CAMPAIGN_FILE_NAMES: [&str; 5] = [
     "setup-manifest.bin",
     "public-instance.bin",
 ];
-const CAMPAIGN_CLIENT_PARAMETERS_MAGIC: &[u8; 8] = b"C61CP2\0\0";
-const CAMPAIGN_CLIENT_PARAMETERS_VERSION: u16 = 2;
-const CAMPAIGN_CLIENT_PARAMETER_COMPONENTS: usize = 5;
+const CAMPAIGN_CLIENT_PARAMETERS_MAGIC: &[u8; 8] = b"C61CP3\0\0";
+const CAMPAIGN_CLIENT_PARAMETERS_VERSION: u16 = 3;
+const CAMPAIGN_CLIENT_PARAMETER_COMPONENTS: usize = 6;
 const C61_CANONICAL_OPERATION_PLAN_BYTES: usize = 63_994_751;
 const C61_CLIENT_PARAMETER_ALLOCATION_BYTES: usize = 8_000_000;
 const C6_SETUP_BASE_CLIENT_PARAMETER_BYTES: usize = 128;
@@ -63,7 +64,7 @@ pub const C61_CAMPAIGN_CLIENT_PARAMETERS_BYTES: usize = C61_CANONICAL_OPERATION_
     + C6_SETUP_BASE_CLIENT_PARAMETER_BYTES;
 pub const C61_CAMPAIGN_SETUP_BYTES: u64 = 148_738_118;
 const VERIFIER_MODEL_SETUP_MAX_BYTES: usize = 1_000_000;
-const PUBLIC_INSTANCE_MAX_BYTES: usize = 128 + 4 * 1_024;
+const PUBLIC_INSTANCE_MAX_BYTES: usize = 160 + 4 * 1_024;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -106,8 +107,8 @@ struct CampaignArtifactRecord {
     pcg: String,
     certificate_digest: String,
     setup_manifest_digest: String,
-    outer_statement_digest: String,
-    statement_digest: String,
+    public_argument_statement_digest: String,
+    response_statement_digest: String,
     wire_bytes: u64,
     files: Vec<CampaignFileRow>,
 }
@@ -122,6 +123,7 @@ pub struct C61CampaignArtifact {
     pub verifier_plan: C6InstalledOperationPlan,
     pub verifier_extraction: C6DecodedInstanceExtractionPlan,
     pub native_profile: C6CanonicalTargetProfile,
+    pub quantization_digest: [u8; 32],
     pub public_instance: C61PublicWorkloadInstance,
     pub public_argument: C61JointPublicArgument,
     pub source_git_commit: String,
@@ -134,6 +136,7 @@ struct DecodedCampaignClientParameters {
     verifier_plan: C6InstalledOperationPlan,
     verifier_extraction: C6DecodedInstanceExtractionPlan,
     native_profile: C6CanonicalTargetProfile,
+    quantization_digest: [u8; 32],
 }
 
 struct CampaignPayloads {
@@ -170,12 +173,15 @@ pub struct C61CampaignResponseTranscriptSession {
 }
 
 impl C61CampaignResponseTranscriptSession {
-    pub fn start(attempt: C6ClientAttempt, statement_digest: [u8; 32]) -> Result<Self, String> {
+    pub fn start(
+        attempt: C6ClientAttempt,
+        statement: &C61ResponseStatementBinding,
+    ) -> Result<Self, String> {
         let mut verifier_seed = [0u8; 32];
         OsRng
             .try_fill_bytes(&mut verifier_seed)
             .map_err(|error| format!("C6ICT3 response verifier entropy unavailable: {error}"))?;
-        Self::start_with_seed(attempt, statement_digest, verifier_seed)
+        Self::start_with_seed(attempt, statement.digest(), verifier_seed)
     }
 
     fn start_with_seed(
@@ -240,7 +246,7 @@ impl C61CampaignResponseTranscriptSession {
 #[allow(clippy::too_many_arguments)]
 pub fn execute_c61_campaign_response_owner(
     workload: C6T1WorkloadOwner,
-    statement_digest: [u8; 32],
+    statement: &C61ResponseStatementBinding,
     installed_plans: [C6InstalledOperationPlan; 2],
     extraction_maps: [C6DecodedInstanceExtractionPlan; 2],
     attempt: &mut C6ProductionPairedPcgAttempt,
@@ -249,7 +255,7 @@ pub fn execute_c61_campaign_response_owner(
     let (provider, verifier) = session.transcripts();
     execute_c6_t1_production_owner_export(
         workload,
-        statement_digest,
+        statement.digest(),
         installed_plans,
         extraction_maps,
         attempt,
@@ -313,21 +319,23 @@ pub fn replay_c61_campaign_response_verifier(
     };
     challenge_tapes.validate_attempt(attempt, certificate_digest)?;
     if verifier_replay.certificate_digest() != certificate_digest
-        || verifier_replay.statement_digest() != public_instance.statement_digest
-        || public_instance.public_tokens.len() != 150
+        || verifier_replay.statement_digest() != public_instance.response_statement_digest()
+        || public_instance.public_tokens().len() != 150
     {
         return Err("C6ICT3 disk response binding/profile mismatch".to_owned());
     }
-    let context_digest =
-        c61_response_transcript_context_digest(attempt, public_instance.statement_digest)?;
+    let context_digest = c61_response_transcript_context_digest(
+        attempt,
+        public_instance.response_statement_digest(),
+    )?;
     let mut transcript = challenge_tapes.response_tape().replay_transcript(0, context_digest)?;
     let retained = C6RetainedResponseProof::decode(certificate.retained_response())
         .map_err(|error| error.to_string())?;
     let mut contexts = verifier_replay.fresh_contexts(certificate_digest)?;
     let response = replay_c6_t1_production_response_verifier(
         verifier_model,
-        &public_instance.public_tokens,
-        public_instance.statement_digest,
+        public_instance.public_tokens(),
+        public_instance.response_statement_digest(),
         verifier_plan,
         verifier_extraction,
         certificate.proof_envelope().cache_fold_targets(),
@@ -507,8 +515,11 @@ fn decode_source_manifest(bytes: &[u8]) -> Result<C6TraceSourceManifest, String>
 pub fn encode_c61_campaign_client_parameters(
     installed: &C61CampaignInstalledSetup,
     verifier_model: &Gpt2VerifierModel,
+    quantization_digest: [u8; 32],
 ) -> Result<Vec<u8>, String> {
-    if installed.operation_plan_artifact.len() != C61_CANONICAL_OPERATION_PLAN_BYTES {
+    if installed.operation_plan_artifact.len() != C61_CANONICAL_OPERATION_PLAN_BYTES
+        || quantization_digest == [0; 32]
+    {
         return Err("C6.1 campaign operation-plan byte census mismatch".to_owned());
     }
     let source_manifest = encode_source_manifest(&installed.source_manifest)?;
@@ -523,6 +534,7 @@ pub fn encode_c61_campaign_client_parameters(
         installed.verifier_extraction_artifact.as_bytes(),
         installed.native_profile_artifact.as_bytes(),
         &verifier_model,
+        &quantization_digest,
     ];
     let header_bytes = CAMPAIGN_CLIENT_PARAMETERS_MAGIC.len()
         + 4
@@ -562,13 +574,15 @@ pub fn encode_c61_campaign_client_parameters(
 pub fn build_c61_campaign_setup_manifest(
     installed: &C61CampaignInstalledSetup,
     verifier_model: &Gpt2VerifierModel,
+    quantization_digest: [u8; 32],
     protocol_digest: [u8; 32],
     model_digest: [u8; 32],
     params_digest: [u8; 32],
     connection_id: [u8; 32],
     tape_ids: [[u8; 32]; 2],
 ) -> Result<C6SetupManifest, String> {
-    let client_parameters = encode_c61_campaign_client_parameters(installed, verifier_model)?;
+    let client_parameters =
+        encode_c61_campaign_client_parameters(installed, verifier_model, quantization_digest)?;
     let setup = C6SetupManifest::production(
         protocol_digest,
         model_digest,
@@ -585,9 +599,9 @@ pub fn build_c61_campaign_setup_manifest(
     Ok(setup)
 }
 
-fn decode_c61_campaign_client_parameters(
+fn c61_campaign_client_parameter_components(
     bytes: &[u8],
-) -> Result<DecodedCampaignClientParameters, String> {
+) -> Result<[&[u8]; CAMPAIGN_CLIENT_PARAMETER_COMPONENTS], String> {
     let header_bytes = CAMPAIGN_CLIENT_PARAMETERS_MAGIC.len()
         + 4
         + CAMPAIGN_CLIENT_PARAMETER_COMPONENTS * (8 + 32);
@@ -610,12 +624,13 @@ fn decode_c61_campaign_client_parameters(
     }
     if lengths[1] != C61_CANONICAL_OPERATION_PLAN_BYTES
         || lengths[4] > VERIFIER_MODEL_SETUP_MAX_BYTES
+        || lengths[5] != 32
     {
         return Err("C6.1 client-parameter component census mismatch".to_owned());
     }
     let digest_start = cursor;
     cursor = header_bytes;
-    let mut components = Vec::with_capacity(CAMPAIGN_CLIENT_PARAMETER_COMPONENTS);
+    let mut components = [&[][..]; CAMPAIGN_CLIENT_PARAMETER_COMPONENTS];
     for (index, length) in lengths.into_iter().enumerate() {
         let end = cursor
             .checked_add(length)
@@ -627,12 +642,55 @@ fn decode_c61_campaign_client_parameters(
         if blake3::hash(component).as_bytes() != claimed {
             return Err("C6.1 client-parameter component digest mismatch".to_owned());
         }
-        components.push(component);
+        components[index] = component;
         cursor = end;
     }
     if bytes[cursor..].iter().any(|byte| *byte != 0) {
         return Err("C6.1 client-parameter padding is nonzero".to_owned());
     }
+    Ok(components)
+}
+
+/// Construct the pre-response statement only from identities already fixed
+/// by setup, reservation and the typed public workload. In particular the
+/// quantization and plan digests are not caller-authored values.
+#[allow(clippy::too_many_arguments)]
+pub fn build_c61_campaign_response_statement(
+    setup: &C6SetupManifest,
+    plan: &C6InstalledOperationPlan,
+    attempt: C6ClientAttempt,
+    old_head: C6CacheHead,
+    proposed_head: C6ProposedCacheHead,
+    workload: &C61PublicWorkloadPreimage,
+) -> Result<C61ResponseStatementBinding, String> {
+    setup.validate().map_err(|error| error.to_string())?;
+    let components = c61_campaign_client_parameter_components(&setup.client_parameters)?;
+    if *blake3::hash(components[1]).as_bytes() != plan.artifact_digest()
+        || workload.model_family_digest() != setup.model_digest
+        || workload.workload() != attempt.workload
+    {
+        return Err(
+            "C6ICT4 response statement plan/model/workload differs from installed setup".to_owned()
+        );
+    }
+    let quantization_digest: [u8; 32] =
+        components[5].try_into().expect("validated C6.1 quantization digest length");
+    C61ResponseStatementBinding::new(
+        setup,
+        quantization_digest,
+        plan,
+        attempt,
+        old_head,
+        proposed_head,
+        workload.digest(),
+    )
+    .map_err(|error| error.to_string())
+}
+
+fn decode_c61_campaign_client_parameters(
+    bytes: &[u8],
+) -> Result<DecodedCampaignClientParameters, String> {
+    let components = c61_campaign_client_parameter_components(bytes)?;
 
     let source_manifest = decode_source_manifest(components[0])?;
     let operation_plan = C6OperationPlanArtifact::parse(components[1].to_vec(), &source_manifest)
@@ -654,6 +712,11 @@ fn decode_c61_campaign_client_parameters(
         .map_err(|error| format!("decode C6.1 client native-target profile: {error}"))?;
     let verifier_model =
         decode_verifier_model_canonical(components[4]).map_err(|error| error.to_string())?;
+    let quantization_digest: [u8; 32] =
+        components[5].try_into().expect("validated C6.1 quantization digest length");
+    if quantization_digest == [0; 32] {
+        return Err("C6.1 client setup contains a zero quantization digest".to_owned());
+    }
     let verifier_plan = operation_plan
         .install(&source_manifest)
         .map_err(|error| format!("install C6.1 client verifier plan: {error}"))?;
@@ -663,6 +726,7 @@ fn decode_c61_campaign_client_parameters(
         verifier_plan,
         verifier_extraction,
         native_profile,
+        quantization_digest,
     })
 }
 
@@ -707,8 +771,10 @@ fn validate_campaign_bindings(
         workload: inner.workload,
     };
     challenge_tapes.validate_attempt(attempt, certificate_digest)?;
-    let expected_response_context =
-        c61_response_transcript_context_digest(attempt, public_instance.statement_digest)?;
+    let expected_response_context = c61_response_transcript_context_digest(
+        attempt,
+        public_instance.response_statement_digest(),
+    )?;
     if verifier_replay.certificate_digest() != certificate_digest
         || verifier_replay.setup_manifest_digest() != setup_manifest_digest
         || setup_manifest_digest != inner.setup_manifest_digest
@@ -716,13 +782,11 @@ fn validate_campaign_bindings(
         || setup_manifest.model_digest != inner.model_digest
         || setup_manifest.params_digest != inner.params_digest
         || setup_manifest.connection_id != inner.connection_id
-        || verifier_replay.statement_digest() != public_instance.statement_digest
-        || wrapper.statement_digest != public_instance.statement_digest
-        || inner.model_digest != public_instance.model_family_digest
-        || inner.workload.old_context != public_instance.old_context
-        || inner.workload.prompt_tokens != public_instance.prompt_tokens
-        || inner.workload.decode_tokens != public_instance.decode_tokens
-        || inner.workload.new_context != public_instance.new_context
+        || verifier_replay.statement_digest() != public_instance.response_statement_digest()
+        || wrapper.statement_digest != public_instance.public_argument_statement_digest()
+        || public_argument.statement_digest() != public_instance.public_argument_statement_digest()
+        || inner.model_digest != public_instance.model_family_digest()
+        || inner.workload != public_instance.workload()
         || challenge_tapes.response_tape().context_digest() != expected_response_context
     {
         return Err(
@@ -774,6 +838,7 @@ fn decode_campaign_payloads(payloads: &CampaignPayloads) -> Result<C61CampaignAr
         verifier_plan: client_parameters.verifier_plan,
         verifier_extraction: client_parameters.verifier_extraction,
         native_profile: client_parameters.native_profile,
+        quantization_digest: client_parameters.quantization_digest,
         public_instance,
         public_argument,
         source_git_commit: String::new(),
@@ -883,7 +948,7 @@ pub fn create_c61_campaign_artifact(
     decode_campaign_payloads(&payloads)?;
     let inner = certificate.certificate();
     let record = CampaignArtifactRecord {
-        schema: 4,
+        schema: 5,
         profile: CAMPAIGN_ARTIFACT_PROFILE.to_owned(),
         source_git_commit: source_git_commit.to_owned(),
         git_dirty: false,
@@ -891,8 +956,8 @@ pub fn create_c61_campaign_artifact(
         pcg: CAMPAIGN_PCG.to_owned(),
         certificate_digest: hex_digest(inner.digest().map_err(|error| error.to_string())?),
         setup_manifest_digest: hex_digest(inner.setup_manifest_digest),
-        outer_statement_digest: hex_digest(public_argument.statement_digest()),
-        statement_digest: hex_digest(public_instance.statement_digest),
+        public_argument_statement_digest: hex_digest(public_argument.statement_digest()),
+        response_statement_digest: hex_digest(public_instance.response_statement_digest()),
         wire_bytes: u64::try_from(payloads.certificate.len())
             .map_err(|_| "C6.1 certificate length exceeds u64")?,
         files: campaign_rows(&payloads)?,
@@ -972,7 +1037,7 @@ pub fn load_c61_campaign_artifact(root: &Path) -> Result<C61CampaignArtifact, St
         return Err("C6.1 campaign manifest is not canonical compact JSON".to_owned());
     }
     validate_source_commit(&record.source_git_commit)?;
-    if record.schema != 4
+    if record.schema != 5
         || record.profile != CAMPAIGN_ARTIFACT_PROFILE
         || record.git_dirty
         || record.backend != CAMPAIGN_BACKEND
@@ -997,10 +1062,12 @@ pub fn load_c61_campaign_artifact(root: &Path) -> Result<C61CampaignArtifact, St
             != inner.digest().map_err(|error| error.to_string())?
         || parse_hex_32(&record.setup_manifest_digest, "campaign setup digest")?
             != inner.setup_manifest_digest
-        || parse_hex_32(&record.outer_statement_digest, "campaign outer statement digest")?
-            != artifact.public_argument.statement_digest()
-        || parse_hex_32(&record.statement_digest, "campaign statement digest")?
-            != artifact.public_instance.statement_digest
+        || parse_hex_32(
+            &record.public_argument_statement_digest,
+            "campaign public-argument statement digest",
+        )? != artifact.public_argument.statement_digest()
+        || parse_hex_32(&record.response_statement_digest, "campaign response statement digest")?
+            != artifact.public_instance.response_statement_digest()
     {
         return Err("C6.1 campaign manifest binding differs from decoded objects".to_owned());
     }
@@ -1038,7 +1105,7 @@ mod campaign_artifact_tests {
 
     fn dummy_record(payloads: &CampaignPayloads) -> CampaignArtifactRecord {
         CampaignArtifactRecord {
-            schema: 4,
+            schema: 5,
             profile: CAMPAIGN_ARTIFACT_PROFILE.to_owned(),
             source_git_commit: "0123456789abcdef0123456789abcdef01234567".to_owned(),
             git_dirty: false,
@@ -1046,8 +1113,8 @@ mod campaign_artifact_tests {
             pcg: CAMPAIGN_PCG.to_owned(),
             certificate_digest: "11".repeat(32),
             setup_manifest_digest: "22".repeat(32),
-            outer_statement_digest: "23".repeat(32),
-            statement_digest: "33".repeat(32),
+            public_argument_statement_digest: "23".repeat(32),
+            response_statement_digest: "33".repeat(32),
             wire_bytes: payloads.certificate.len() as u64,
             files: campaign_rows(payloads).unwrap(),
         }
@@ -1111,7 +1178,7 @@ mod campaign_artifact_tests {
 
         let source = include_str!("c61_campaign.rs");
         let public_start = source
-            .split_once("pub fn start(attempt: C6ClientAttempt")
+            .split_once("pub fn start(")
             .unwrap()
             .1
             .split_once("fn start_with_seed")
@@ -1169,6 +1236,32 @@ mod campaign_artifact_tests {
         ] {
             assert!(!body.contains(forbidden), "campaign response call site contains {forbidden}");
         }
+    }
+
+    #[test]
+    fn response_statement_builder_derives_plan_quantization_and_workload() {
+        let source = include_str!("c61_campaign.rs");
+        let body = source
+            .split_once("pub fn build_c61_campaign_response_statement(")
+            .unwrap()
+            .1
+            .split_once("fn decode_c61_campaign_client_parameters(")
+            .unwrap()
+            .0;
+        for required in [
+            "setup.client_parameters",
+            "plan.artifact_digest()",
+            "components[5]",
+            "workload.model_family_digest()",
+            "workload.workload() != attempt.workload",
+            "workload.digest()",
+        ] {
+            assert!(body.contains(required), "response statement omits {required}");
+        }
+        let signature = body.split_once(") -> Result").unwrap().0;
+        assert!(!signature.contains("quantization_digest"));
+        assert!(!signature.contains("plan_digest"));
+        assert!(!signature.contains("workload_digest"));
     }
 
     #[test]

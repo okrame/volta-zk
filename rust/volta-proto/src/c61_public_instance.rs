@@ -6,19 +6,25 @@
 
 use std::fmt;
 
-const MAGIC: &[u8] = b"C61PI1\0\0";
-const VERSION: u16 = 1;
+use crate::C6Workload;
+
+const MAGIC: &[u8] = b"C61PI2\0\0";
+const VERSION: u16 = 2;
 const MAX_CONTEXT: usize = 1_024;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C61PublicWorkloadInstance {
-    pub statement_digest: [u8; 32],
-    pub model_family_digest: [u8; 32],
-    pub old_context: u32,
-    pub prompt_tokens: u32,
-    pub decode_tokens: u32,
-    pub new_context: u32,
-    pub public_tokens: Vec<u32>,
+    response_statement_digest: [u8; 32],
+    public_argument_statement_digest: [u8; 32],
+    preimage: C61PublicWorkloadPreimage,
+}
+
+/// Client-known workload fields before either statement digest is fixed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C61PublicWorkloadPreimage {
+    model_family_digest: [u8; 32],
+    workload: C6Workload,
+    public_tokens: Vec<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -40,43 +46,127 @@ impl std::error::Error for C61PublicInstanceError {}
 
 type Result<T> = std::result::Result<T, C61PublicInstanceError>;
 
-impl C61PublicWorkloadInstance {
-    pub fn validate(&self) -> Result<()> {
-        let expected_new = self
-            .old_context
-            .checked_add(self.prompt_tokens)
-            .and_then(|value| value.checked_add(self.decode_tokens))
-            .ok_or_else(|| C61PublicInstanceError::new("C6.1 public workload overflows"))?;
-        if self.statement_digest == [0; 32]
-            || self.model_family_digest == [0; 32]
-            || expected_new != self.new_context
-            || self.new_context as usize > MAX_CONTEXT
-            || self.public_tokens.len() != self.new_context as usize
+impl C61PublicWorkloadPreimage {
+    pub fn new(
+        model_family_digest: [u8; 32],
+        workload: C6Workload,
+        public_tokens: Vec<u32>,
+    ) -> Result<Self> {
+        workload.validate().map_err(|error| C61PublicInstanceError::new(error.to_string()))?;
+        if model_family_digest == [0; 32]
+            || workload.new_context as usize > MAX_CONTEXT
+            || public_tokens.len() != workload.new_context as usize
         {
             return Err(C61PublicInstanceError::new("invalid C6.1 public workload instance"));
+        }
+        Ok(Self { model_family_digest, workload, public_tokens })
+    }
+
+    pub fn digest(&self) -> [u8; 32] {
+        let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c61/public-workload-preimage/v1");
+        hasher.update(&self.model_family_digest);
+        for value in [
+            self.workload.old_context,
+            self.workload.prompt_tokens,
+            self.workload.decode_tokens,
+            self.workload.new_context,
+            self.public_tokens.len() as u32,
+        ] {
+            hasher.update(&value.to_le_bytes());
+        }
+        for token in &self.public_tokens {
+            hasher.update(&token.to_le_bytes());
+        }
+        *hasher.finalize().as_bytes()
+    }
+
+    pub fn model_family_digest(&self) -> [u8; 32] {
+        self.model_family_digest
+    }
+
+    pub fn workload(&self) -> C6Workload {
+        self.workload
+    }
+
+    pub fn public_tokens(&self) -> &[u32] {
+        &self.public_tokens
+    }
+
+    pub fn bind_statements(
+        self,
+        response_statement_digest: [u8; 32],
+        public_argument_statement_digest: [u8; 32],
+    ) -> Result<C61PublicWorkloadInstance> {
+        let instance = C61PublicWorkloadInstance {
+            response_statement_digest,
+            public_argument_statement_digest,
+            preimage: self,
+        };
+        instance.validate()?;
+        Ok(instance)
+    }
+}
+
+impl C61PublicWorkloadInstance {
+    pub fn validate(&self) -> Result<()> {
+        C61PublicWorkloadPreimage::new(
+            self.preimage.model_family_digest,
+            self.preimage.workload,
+            self.preimage.public_tokens.clone(),
+        )?;
+        if self.response_statement_digest == [0; 32]
+            || self.public_argument_statement_digest == [0; 32]
+            || self.response_statement_digest == self.public_argument_statement_digest
+        {
+            return Err(C61PublicInstanceError::new("invalid C6.1 statement split"));
         }
         Ok(())
     }
 
+    pub fn response_statement_digest(&self) -> [u8; 32] {
+        self.response_statement_digest
+    }
+
+    pub fn public_argument_statement_digest(&self) -> [u8; 32] {
+        self.public_argument_statement_digest
+    }
+
+    pub fn model_family_digest(&self) -> [u8; 32] {
+        self.preimage.model_family_digest
+    }
+
+    pub fn workload(&self) -> C6Workload {
+        self.preimage.workload
+    }
+
+    pub fn public_tokens(&self) -> &[u32] {
+        &self.preimage.public_tokens
+    }
+
+    pub fn preimage_digest(&self) -> [u8; 32] {
+        self.preimage.digest()
+    }
+
     pub fn encode(&self) -> Result<Vec<u8>> {
         self.validate()?;
-        let mut bytes = Vec::with_capacity(96 + 4 * self.public_tokens.len());
+        let mut bytes = Vec::with_capacity(160 + 4 * self.preimage.public_tokens.len());
         bytes.extend_from_slice(MAGIC);
         bytes.extend_from_slice(&VERSION.to_le_bytes());
         bytes.extend_from_slice(&0u16.to_le_bytes());
-        bytes.extend_from_slice(&self.statement_digest);
-        bytes.extend_from_slice(&self.model_family_digest);
+        bytes.extend_from_slice(&self.response_statement_digest);
+        bytes.extend_from_slice(&self.public_argument_statement_digest);
+        bytes.extend_from_slice(&self.preimage.model_family_digest);
         for value in [
-            self.old_context,
-            self.prompt_tokens,
-            self.decode_tokens,
-            self.new_context,
-            u32::try_from(self.public_tokens.len())
+            self.preimage.workload.old_context,
+            self.preimage.workload.prompt_tokens,
+            self.preimage.workload.decode_tokens,
+            self.preimage.workload.new_context,
+            u32::try_from(self.preimage.public_tokens.len())
                 .map_err(|_| C61PublicInstanceError::new("public token count exceeds u32"))?,
         ] {
             bytes.extend_from_slice(&value.to_le_bytes());
         }
-        for token in &self.public_tokens {
+        for token in &self.preimage.public_tokens {
             bytes.extend_from_slice(&token.to_le_bytes());
         }
         let digest = blake3::hash(&bytes);
@@ -85,7 +175,7 @@ impl C61PublicWorkloadInstance {
     }
 
     pub fn decode(bytes: &[u8]) -> Result<Self> {
-        const FIXED_WITHOUT_TOKENS: usize = 8 + 2 + 2 + 2 * 32 + 5 * 4 + 32;
+        const FIXED_WITHOUT_TOKENS: usize = 8 + 2 + 2 + 3 * 32 + 5 * 4 + 32;
         if bytes.len() < FIXED_WITHOUT_TOKENS {
             return Err(C61PublicInstanceError::new("truncated C6.1 public instance"));
         }
@@ -105,7 +195,8 @@ impl C61PublicWorkloadInstance {
             offset += 32;
             value
         };
-        let statement_digest = digest();
+        let response_statement_digest = digest();
+        let public_argument_statement_digest = digest();
         let model_family_digest = digest();
         let mut u32_value = || {
             let value =
@@ -139,15 +230,13 @@ impl C61PublicWorkloadInstance {
         if offset != body.len() {
             return Err(C61PublicInstanceError::new("trailing C6.1 public instance bytes"));
         }
-        let instance = Self {
-            statement_digest,
+        let preimage = C61PublicWorkloadPreimage::new(
             model_family_digest,
-            old_context,
-            prompt_tokens,
-            decode_tokens,
-            new_context,
+            C6Workload { old_context, prompt_tokens, decode_tokens, new_context },
             public_tokens,
-        };
+        )?;
+        let instance = preimage
+            .bind_statements(response_statement_digest, public_argument_statement_digest)?;
         instance.validate()?;
         if instance.encode()? != bytes {
             return Err(C61PublicInstanceError::new("noncanonical C6.1 public instance encoding"));
@@ -161,15 +250,14 @@ mod tests {
     use super::*;
 
     fn instance() -> C61PublicWorkloadInstance {
-        C61PublicWorkloadInstance {
-            statement_digest: [0x31; 32],
-            model_family_digest: [0x32; 32],
-            old_context: 0,
-            prompt_tokens: 100,
-            decode_tokens: 50,
-            new_context: 150,
-            public_tokens: (0..150).collect(),
-        }
+        C61PublicWorkloadPreimage::new(
+            [0x32; 32],
+            C6Workload { old_context: 0, prompt_tokens: 100, decode_tokens: 50, new_context: 150 },
+            (0..150).collect(),
+        )
+        .unwrap()
+        .bind_statements([0x31; 32], [0x33; 32])
+        .unwrap()
     }
 
     #[test]
@@ -183,8 +271,27 @@ mod tests {
         assert!(C61PublicWorkloadInstance::decode(&mutation).is_err());
         assert!(C61PublicWorkloadInstance::decode(&bytes[..bytes.len() - 1]).is_err());
 
-        let mut wrong_geometry = instance;
-        wrong_geometry.new_context += 1;
-        assert!(wrong_geometry.encode().is_err());
+        assert!(C61PublicWorkloadPreimage::new(
+            [0x32; 32],
+            C6Workload { old_context: 0, prompt_tokens: 100, decode_tokens: 50, new_context: 151 },
+            (0..150).collect(),
+        )
+        .is_err());
+        assert!(instance.preimage.clone().bind_statements([0x31; 32], [0x31; 32]).is_err());
+
+        let maximum = C61PublicWorkloadPreimage::new(
+            [0x41; 32],
+            C6Workload {
+                old_context: 0,
+                prompt_tokens: 1_024,
+                decode_tokens: 0,
+                new_context: 1_024,
+            },
+            (0..1_024).collect(),
+        )
+        .unwrap()
+        .bind_statements([0x42; 32], [0x43; 32])
+        .unwrap();
+        assert_eq!(maximum.encode().unwrap().len(), 160 + 4 * 1_024);
     }
 }

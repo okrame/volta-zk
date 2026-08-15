@@ -59,12 +59,13 @@ pub use c6::{
     C6_STRICT_RESPONSE_MAX_BYTES, C6_TERMINAL_ONE_RAW_CAPACITY,
 };
 pub use c61_certificate::{
-    C61CertificateError, C61FinalCertificateEnvelope, C61WrapperWireBinding,
+    C61CertificateError, C61FinalCertificateEnvelope, C61RetainedResponseBinding,
+    C61WrapperWireBinding,
     C61_CERTIFICATE_STRICT_MAX_BYTES, C61_PUBLIC_ARGUMENT_ABSOLUTE_MAX_BYTES,
     C61_RETAINED_NON_PCS_RESPONSE_BYTES,
 };
 pub use c61_public_instance::{
-    C61PublicInstanceError, C61PublicWorkloadInstance,
+    C61PublicInstanceError, C61PublicWorkloadInstance, C61PublicWorkloadPreimage,
 };
 pub use c6_census::{
     audit_c6_t1_source_census, c6_t1_trace_source_manifest, C6CensusDigest, C6CensusError,

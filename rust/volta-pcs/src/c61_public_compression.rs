@@ -16,8 +16,8 @@ use volta_proto::{
 };
 #[cfg(feature = "c6-trace")]
 use volta_proto::{
-    C6ResidualRelationRootBound, C6T1ProductionResidualBoundOwner,
-    C6T1ProductionResidualOwner,
+    C6PairedDeltaResidual, C6ResidualRelationRootBound, C6T1DiskResidualBoundOwner,
+    C6T1DiskResidualOwner, C6T1ProductionResidualBoundOwner, C6T1ProductionResidualOwner,
 };
 
 pub const C61_PUBLIC_ARGUMENT_MAGIC: [u8; 8] = *b"C6PA1\0\0\0";
@@ -547,6 +547,71 @@ pub fn bind_c61_production_residual_relation(
         .bind_direct_postclaim(direct_postclaim)
         .map_err(|error| C61PublicCompressionError::new(error.to_string()))?;
     Ok(C61ProductionResidualRelationBound { equality: provider_equality, residual })
+}
+
+/// Disk-only counterpart of [`C61ProductionResidualRelationBound`]. All
+/// public claims come from the retained response, decoded certificate and
+/// client-private response tape.
+#[cfg(feature = "c6-trace")]
+pub struct C61DiskResidualRelationBound {
+    equality: C61EqualityDrawn,
+    residual: C6T1DiskResidualBoundOwner,
+}
+
+#[cfg(feature = "c6-trace")]
+impl C61DiskResidualRelationBound {
+    pub fn equality(&self) -> &C61EqualityChallenges {
+        self.equality.equality()
+    }
+
+    pub fn into_parts(self) -> (C61EqualityDrawn, C6T1DiskResidualBoundOwner) {
+        (self.equality, self.residual)
+    }
+}
+
+/// Reconstruct the exact residual relation from the verifier replay owner.
+/// The coordinate is a decoded client-private tape value, not caller-authored
+/// cleartext, and is consumed before post-claim points are available.
+#[cfg(feature = "c6-trace")]
+pub fn bind_c61_disk_residual_relation(
+    binding: C61StatementBinding,
+    residual: C6T1DiskResidualOwner,
+    root: C6ResidualRelationRootBound,
+    coordinate_one: C6ResidualProductClaimCoordinate,
+    public_residual: C6PairedDeltaResidual,
+    transcript: &mut Transcript,
+) -> Result<C61DiskResidualRelationBound> {
+    if root.wrapper_statement_digest() != binding.digest() {
+        return Err(C61PublicCompressionError::new(
+            "C6ICT4 disk root statement differs from C6PA2",
+        ));
+    }
+    let manifest = residual.manifest().clone();
+    let alpha = C61RootsFixed::new(binding)?.draw_alpha_challenges(transcript);
+    if transcript.interactive_error().is_some() {
+        return Err(C61PublicCompressionError::new(
+            "C6ICT4 disk alpha replay failed",
+        ));
+    }
+    let direct_alpha = c61_residual_direct_alpha_points(&manifest, alpha.alpha())?;
+    let claims = residual
+        .bind_direct_alpha(root, direct_alpha, coordinate_one.clone(), public_residual)
+        .map_err(|error| C61PublicCompressionError::new(error.to_string()))?;
+    let equality = alpha.bind_product_claim_coordinate_one(&coordinate_one, transcript)?;
+    if transcript.interactive_error().is_some() {
+        return Err(C61PublicCompressionError::new(
+            "C6ICT4 disk coordinate-1/post-claim replay failed",
+        ));
+    }
+    let postclaim = C61PostClaimChallenges {
+        terminal: equality.equality().terminal,
+        atomic: equality.equality().atomic,
+    };
+    let direct_postclaim = c61_residual_direct_postclaim_points(&manifest, &postclaim)?;
+    let residual = claims
+        .bind_direct_postclaim(direct_postclaim)
+        .map_err(|error| C61PublicCompressionError::new(error.to_string()))?;
+    Ok(C61DiskResidualRelationBound { equality, residual })
 }
 
 #[derive(Clone, Debug)]

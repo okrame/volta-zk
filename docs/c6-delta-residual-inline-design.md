@@ -4360,6 +4360,24 @@ truncated and noncanonical payload mutations (**1/0/0**). Production traffic
 and private-state values remain uncredited until the campaign call site emits
 the production 673-pair move and the complete disk verifier consumes it.
 
+### 0.77 C6ICT4 verifier-only residual reconstruction
+
+After strict response replay, the disk owner draws the residual zero
+challenge from the replay endpoint and rebuilds the production manifest and
+linear form from the installed verifier plan, extraction map and captured
+runtime identity. Alpha then binds a public-claims frame made only from:
+
+- coordinate 0's ordered messages extracted from the retained proof;
+- coordinate 1's typed private-tape move; and
+- the four `C6PairedDeltaResidual` scalars decoded from the certificate.
+
+The resulting claims release the same terminal/atomic points and validate
+against the installed operation plan. No provider witness, tag, source vector
+or correlation stream is representable. A scaled join differential is
+**1/0/0** and the proto/PCS feature builds are green. This closes the typed
+construction, not its production call site or full-chain parity; statement v2
+must also remove the response-prefix self-reference before campaign use.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

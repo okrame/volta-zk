@@ -148,9 +148,11 @@ pub use c6_response_envelope::{
 pub use c6_response_fixture::{
     build_c6_response_residual_fixture, build_c6_response_residual_fixture_production_geometry,
     build_c6_t1_production_response_owner, c6_gpt2_native_target_profile,
-    prepare_c6_t1_production_residual_owner, prove_c6_t1_production_response_provider,
+    prepare_c6_t1_disk_residual_owner, prepare_c6_t1_production_residual_owner,
+    prove_c6_t1_production_response_provider,
     replay_c6_t1_production_response_verifier, C6ResponseResidualCensus, C6ResponseResidualFixture,
     C6ResponseResidualProviderInputs, C6ResponseResidualTiming, C6ResponseResidualVerifierInputs,
+    C6T1DiskResidualBoundOwner, C6T1DiskResidualClaimsOwner, C6T1DiskResidualOwner,
     C6T1InstalledRoleOwner, C6T1ProductionResidualBoundOwner, C6T1ProductionResidualClaimsOwner,
     C6T1ProductionResidualOwner, C6T1ProductionResponseOwner,
     C6T1ProductionResponseProviderPending, C6T1ProductionResponseVerifierReplay,

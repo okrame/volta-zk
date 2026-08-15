@@ -21,8 +21,8 @@ This capsule is authoritative; read design §§0.60--0.74 next.
   production, full-chain or hardware credit exists.
 - **Hard stop.** `C6ICT4_DISK_REPLAY_STATEMENT_REQUIRED`. The exact live
   typestate and extractor exist, but the campaign call site is absent; disk
-  verification still cannot construct the complete relation, and statement
-  v2 is absent. Pod contact would therefore be premature.
+  relation construction now compiles but is not campaign-invoked or compared
+  full-chain, and statement v2 is absent. Pod contact remains premature.
 - **Authorization/resume.** Owner GO authorizes C6ICT4: recover coordinate 0
   from the strict retained response; persist the exact 673-pair coordinate-1
   move before terminal/atomic challenges; bind a versioned noncircular base
@@ -59,6 +59,17 @@ This capsule is authoritative; read design §§0.60--0.74 next.
   **1/0/0**. This is disk grammar evidence only: campaign production has not
   emitted the move and the disk residual relation is not yet constructed, so
   no traffic, private-state, certificate or timing credit changes.
+
+- **2026-08-15 — Disk residual public claims are reconstructible.** A
+  verifier-only owner continues the strict response tape through the zero
+  challenge, recompiles the installed linear form, joins retained coordinate
+  0 with tape coordinate 1 and the certificate's four residual scalars, then
+  releases terminal/atomic points. It has no provider witness, tag or stream.
+  A scaled differential proves the joined 673-entry shape against the live
+  public-claims constructor (**1/0/0**), and proto/PCS feature builds are
+  green. The production campaign call site, full-chain differential and
+  noncircular statement v2 remain, so no proof, timing or hardware credit is
+  claimed.
 
 - **2026-08-15 — Retained ProductClosure messages become an exact replay
   output.** The central prover and verifier `ProductClosure` calls now capture

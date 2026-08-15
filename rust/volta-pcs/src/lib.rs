@@ -74,7 +74,8 @@ pub use c61_joint_native_bridge::{
 };
 #[cfg(feature = "c6-trace")]
 pub use c61_public_compression::{
-    bind_c61_production_residual_relation, C61ProductionResidualRelationBound,
+    bind_c61_disk_residual_relation, bind_c61_production_residual_relation,
+    C61DiskResidualRelationBound, C61ProductionResidualRelationBound,
 };
 pub use c61_public_compression::{
     build_c61_production_arithmetic_frame, build_c61_scaled_arithmetic_frame, c61_eq_weight,

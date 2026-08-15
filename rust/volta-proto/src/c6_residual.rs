@@ -1840,6 +1840,10 @@ impl C6ResidualProductClaimCoordinate {
         self.coordinate
     }
 
+    pub fn manifest_digest(&self) -> C6ResidualDigest {
+        self.manifest_digest
+    }
+
     pub fn messages(&self) -> &[[Fp2; 2]] {
         &self.messages
     }

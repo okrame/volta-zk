@@ -31,6 +31,7 @@ use crate::c6_cache_fold::{
     C6CacheFoldTargetPublicSchedule, C6CacheFoldTraceSnapshot,
     C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES,
 };
+use crate::c6::C6PairedDeltaResidual;
 use crate::c6_census::{C6_T1_TOTAL_PRODUCT_TRIPLES, C6_T1_ZERO_CLOSURES};
 use crate::c6_production_pcg::{C6ProductionPairedPcgAttempt, C6ProductionPairedSourceWitness};
 use crate::c6_residual::{
@@ -39,8 +40,8 @@ use crate::c6_residual::{
     C6PairedResidualAuxiliaryWitness, C6PairedResidualClosureWitness, C6PairedResidualLeafWitness,
     C6ResidualClaimsBoundContext, C6ResidualDirectAlphaPoints, C6ResidualDirectPostClaimPoints,
     C6ResidualError, C6ResidualFusedWitnessView, C6ResidualProductClaimCoordinate,
-    C6ResidualRelationChallenges, C6ResidualRelationManifest, C6ResidualRelationRootBound,
-    C6ResidualRetainedChallenges, C6_RESIDUAL_TRACE_FIXTURE_LOCK,
+    C6ResidualProductPublicClaim, C6ResidualRelationChallenges, C6ResidualRelationManifest,
+    C6ResidualRelationRootBound, C6ResidualRetainedChallenges, C6_RESIDUAL_TRACE_FIXTURE_LOCK,
 };
 use crate::c6_source::{
     C6PairedSourceWitness, C6SourceCoordinate, C6SourceScheduleProverFollower,
@@ -209,6 +210,132 @@ impl C6T1ProductionResponseVerifierReplay {
 
     pub fn cache_metrics(&self) -> crate::c6_cache_fold::C6CacheFoldOnlineLayerMetrics {
         self.cache_metrics
+    }
+}
+
+/// Disk-only continuation of the retained response through the zero
+/// challenge and installed residual linear form. It owns no provider witness,
+/// tag or correlation stream.
+pub struct C6T1DiskResidualOwner {
+    response: C6T1ProductionResponseVerifierReplay,
+    manifest: C6ResidualRelationManifest,
+    retained: C6ResidualRetainedChallenges,
+    verifier_linear: C6CompiledLinearResidual,
+}
+
+/// Disk verifier after alpha and the complete two-coordinate public-claims
+/// frame are bound, but before terminal/atomic points are released.
+pub struct C6T1DiskResidualClaimsOwner {
+    response: C6T1ProductionResponseVerifierReplay,
+    verifier_linear: C6CompiledLinearResidual,
+    claims: C6ResidualClaimsBoundContext,
+}
+
+/// Disk verifier after the exact direct residual relation is complete.
+pub struct C6T1DiskResidualBoundOwner {
+    response: C6T1ProductionResponseVerifierReplay,
+    verifier_linear: C6CompiledLinearResidual,
+    relation: C6ResidualRelationChallenges,
+}
+
+impl C6T1DiskResidualOwner {
+    pub fn manifest(&self) -> &C6ResidualRelationManifest {
+        &self.manifest
+    }
+
+    pub fn response(&self) -> &C6T1ProductionResponseVerifierReplay {
+        &self.response
+    }
+
+    pub fn bind_direct_alpha(
+        self,
+        root: C6ResidualRelationRootBound,
+        alpha: C6ResidualDirectAlphaPoints,
+        coordinate_one: C6ResidualProductClaimCoordinate,
+        residual: C6PairedDeltaResidual,
+    ) -> Result<C6T1DiskResidualClaimsOwner, C6ResidualError> {
+        if root.manifest() != &self.manifest
+            || coordinate_one.coordinate() != 1
+            || coordinate_one.manifest_digest() != self.manifest.digest()
+        {
+            return Err(C6ResidualError::new(
+                "C6ICT4 disk residual root/coordinate differs from its manifest",
+            ));
+        }
+        let products = assemble_c6_disk_product_public_claims(
+            &self.manifest,
+            self.response.product_messages(),
+            &coordinate_one,
+        )?;
+        let claims = root
+            .release_direct_alpha_points(self.retained, alpha)?
+            .commit_public_claims(
+                self.verifier_linear.linear_form_digest(),
+                products,
+                residual,
+            )?;
+        Ok(C6T1DiskResidualClaimsOwner {
+            response: self.response,
+            verifier_linear: self.verifier_linear,
+            claims,
+        })
+    }
+}
+
+fn assemble_c6_disk_product_public_claims(
+    manifest: &C6ResidualRelationManifest,
+    coordinate_zero_messages: &[[Fp2; 2]],
+    coordinate_one: &C6ResidualProductClaimCoordinate,
+) -> Result<Vec<C6ResidualProductPublicClaim>, C6ResidualError> {
+    if coordinate_one.coordinate() != 1 || coordinate_one.manifest_digest() != manifest.digest() {
+        return Err(C6ResidualError::new(
+            "C6ICT4 disk public claims use another coordinate/manifest",
+        ));
+    }
+    let coordinate_zero =
+        C6ResidualProductClaimCoordinate::new(manifest, 0, coordinate_zero_messages.to_vec())?;
+    Ok(coordinate_zero
+        .messages()
+        .iter()
+        .copied()
+        .zip(coordinate_one.messages().iter().copied())
+        .map(|(zero, one)| C6ResidualProductPublicClaim { messages: [zero, one] })
+        .collect())
+}
+
+impl C6T1DiskResidualClaimsOwner {
+    pub fn claims_digest(&self) -> [u8; 32] {
+        self.claims.claims().digest()
+    }
+
+    pub fn bind_direct_postclaim(
+        self,
+        postclaim: C6ResidualDirectPostClaimPoints,
+    ) -> Result<C6T1DiskResidualBoundOwner, C6ResidualError> {
+        let relation = self.claims.release_direct_postclaim_points(
+            self.response.installed().operation_plan(),
+            postclaim,
+        )?;
+        relation.validate_installed_operation_plan(self.response.installed().operation_plan())?;
+        Ok(C6T1DiskResidualBoundOwner {
+            response: self.response,
+            verifier_linear: self.verifier_linear,
+            relation,
+        })
+    }
+}
+
+impl C6T1DiskResidualBoundOwner {
+    pub fn response(&self) -> &C6T1ProductionResponseVerifierReplay {
+        &self.response
+    }
+
+    pub fn verifier_linear(&self) -> &C6CompiledLinearResidual {
+        &self.verifier_linear
+    }
+
+    pub fn relation(&self) -> &C6ResidualRelationChallenges {
+        &self.relation
     }
 }
 
@@ -657,6 +784,49 @@ pub fn prepare_c6_t1_production_residual_owner(
         native_targets,
         closure_memory,
     })
+}
+
+/// Continue a strict disk response replay into the same installed residual
+/// manifest and zero-challenge schedule as the live provider. The challenge
+/// comes only from the response-tape replay endpoint.
+pub fn prepare_c6_t1_disk_residual_owner(
+    response: C6T1ProductionResponseVerifierReplay,
+    transcript: &mut Transcript,
+) -> Result<C6T1DiskResidualOwner, C6ResidualError> {
+    if !transcript.is_interactive() {
+        return Err(C6ResidualError::new(
+            "C6ICT4 disk residual requires the client-private replay transcript",
+        ));
+    }
+    let zero_challenge = transcript.challenge_fp2();
+    if let Some(error) = transcript.interactive_error() {
+        return Err(C6ResidualError::new(format!(
+            "C6ICT4 disk zero-challenge replay failed: {error}"
+        )));
+    }
+    let manifest = C6ResidualRelationManifest::new_with_geometry(
+        response.installed().operation_plan(),
+        response.installed().extraction(),
+        response.installed().runtime(),
+        RESPONSE_PRODUCTION_LEAF_LOG2,
+        RESPONSE_PRODUCTION_AUXILIARY_LOG2,
+        true,
+    )?;
+    let product_challenges = vec![
+        response.product_challenge();
+        response.installed().operation_plan().products().len()
+    ];
+    let retained =
+        C6ResidualRetainedChallenges::new(&manifest, product_challenges, zero_challenge)?;
+    let zero_weights =
+        retained.zero_weights(response.installed().operation_plan().zero_roots().len());
+    let verifier_linear = C6CompiledLinearResidual::compile(
+        response.installed().operation_plan(),
+        response.installed().extraction(),
+        response.installed().runtime(),
+        &zero_weights,
+    )?;
+    Ok(C6T1DiskResidualOwner { response, manifest, retained, verifier_linear })
 }
 
 /// Re-run only the designated-verifier half of the frozen T1 response from
@@ -1837,6 +2007,33 @@ mod transcript_tests {
         ] {
             assert!(!signature.contains(forbidden), "provider signature contains {forbidden}");
         }
+    }
+
+    #[test]
+    fn disk_product_claim_join_matches_the_live_claim_frame() {
+        let fixture = crate::build_c6_residual_direct_fused_scaled_fixture().unwrap();
+        let coordinate_zero =
+            fixture.relation().claims().product_coordinate(fixture.manifest(), 0).unwrap();
+        let coordinate_one =
+            fixture.relation().claims().product_coordinate(fixture.manifest(), 1).unwrap();
+        assert_eq!(
+            assemble_c6_disk_product_public_claims(
+                fixture.manifest(),
+                coordinate_zero.messages(),
+                &coordinate_one,
+            )
+            .unwrap(),
+            fixture.relation().claims().products()
+        );
+
+        let wrong_coordinate =
+            fixture.relation().claims().product_coordinate(fixture.manifest(), 0).unwrap();
+        assert!(assemble_c6_disk_product_public_claims(
+            fixture.manifest(),
+            coordinate_zero.messages(),
+            &wrong_coordinate,
+        )
+        .is_err());
     }
 
     #[test]

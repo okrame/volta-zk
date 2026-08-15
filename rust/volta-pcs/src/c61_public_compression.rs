@@ -9,17 +9,24 @@
 use std::{array, fmt};
 
 use volta_field::{Fp, Fp2, P};
-use volta_mac::{C6InstalledOperationPlan, C6OperationPlanInstanceIdentity, Transcript};
+#[cfg(feature = "c61-p3-authenticated-reference")]
+use volta_mac::{C6CanonicalTargetProfile, C6NativeTargetProfileArtifact};
+use volta_mac::{C6InstalledOperationPlan, Transcript};
+#[cfg(feature = "c61-p3-authenticated-reference")]
+use volta_proto::{C61PublicWorkloadPreimage, C61RetainedResponseBinding};
 use volta_proto::{
-    C61RetainedResponseBinding, C6CacheHead, C6ClientAttempt, C6ProposedCacheHead,
-    C6ResidualDirectAlphaPoints, C6ResidualDirectPostClaimPoints, C6ResidualProductClaimCoordinate,
-    C6ResidualRelationManifest, C6SetupManifest,
+    C6CacheHead, C6ClientAttempt, C6ProposedCacheHead, C6ResidualDirectAlphaPoints,
+    C6ResidualDirectPostClaimPoints, C6ResidualProductClaimCoordinate, C6ResidualRelationManifest,
+    C6SetupManifest,
 };
 #[cfg(feature = "c6-trace")]
 use volta_proto::{
     C6PairedDeltaResidual, C6ResidualRelationRootBound, C6T1DiskResidualBoundOwner,
     C6T1DiskResidualOwner, C6T1ProductionResidualBoundOwner, C6T1ProductionResidualOwner,
 };
+
+#[cfg(feature = "c61-p3-authenticated-reference")]
+use crate::c61_authenticated_whir_p3::C61CompilerVerifierProfile;
 
 pub const C61_PUBLIC_ARGUMENT_MAGIC: [u8; 8] = *b"C6PA1\0\0\0";
 pub const C61_PUBLIC_ARGUMENT_VERSION: u16 = 1;
@@ -307,37 +314,103 @@ pub struct C61StatementBinding {
     retained_response_digest: [u8; 32],
     runtime_instance_digest: [u8; 32],
     public_output_digest: [u8; 32],
-    compiler_plan_digest: [u8; 32],
-    compiler_source_root: [u8; 32],
-    compiler_runtime_root: [u8; 32],
+    compiler: C61CompilerBaseBinding,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
+enum C61CompilerBaseBinding {
+    Scaled {
+        plan_digest: [u8; 32],
+        source_root: [u8; 32],
+        runtime_root: [u8; 32],
+    },
+    Production {
+        residual_manifest_digest: [u8; 32],
+        native_profile_digest: [u8; 32],
+        compiler_profile_digest: [u8; 32],
+    },
+}
+
+impl C61CompilerBaseBinding {
+    fn digest(&self) -> [u8; 32] {
+        let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c61/compiler-base-binding/v1");
+        match self {
+            Self::Scaled { plan_digest, source_root, runtime_root } => {
+                hasher.update(b"scaled");
+                hasher.update(plan_digest);
+                hasher.update(source_root);
+                hasher.update(runtime_root);
+            }
+            Self::Production {
+                residual_manifest_digest,
+                native_profile_digest,
+                compiler_profile_digest,
+            } => {
+                hasher.update(b"production");
+                hasher.update(residual_manifest_digest);
+                hasher.update(native_profile_digest);
+                hasher.update(compiler_profile_digest);
+            }
+        }
+        *hasher.finalize().as_bytes()
+    }
+
+    fn validate(&self) -> Result<()> {
+        let values = match self {
+            Self::Scaled { plan_digest, source_root, runtime_root } => {
+                [*plan_digest, *source_root, *runtime_root]
+            }
+            Self::Production {
+                residual_manifest_digest,
+                native_profile_digest,
+                compiler_profile_digest,
+            } => [*residual_manifest_digest, *native_profile_digest, *compiler_profile_digest],
+        };
+        if values.contains(&[0; 32]) {
+            return Err(C61PublicCompressionError::new(
+                "C6ICT4 compiler-base binding contains a zero digest",
+            ));
+        }
+        Ok(())
+    }
 }
 
 impl C61StatementBinding {
-    pub fn bind_response_prefix(
+    #[cfg(feature = "c61-p3-authenticated-reference")]
+    pub fn bind_production_response_prefix(
         response: C61ResponseStatementBinding,
         retained_response: C61RetainedResponseBinding,
-        runtime: C6OperationPlanInstanceIdentity,
-        public_output_digest: [u8; 32],
-        compiler_plan_digest: [u8; 32],
-        compiler_source_root: [u8; 32],
-        compiler_runtime_root: [u8; 32],
+        public_workload: &C61PublicWorkloadPreimage,
+        residual_manifest: &C6ResidualRelationManifest,
+        native_profile: &C6CanonicalTargetProfile,
+        compiler_profile: &C61CompilerVerifierProfile,
     ) -> Result<Self> {
-        if runtime.topology_digest != response.topology_digest
+        let runtime = residual_manifest.instance();
+        let native_profile_artifact =
+            C6NativeTargetProfileArtifact::encode(native_profile, residual_manifest.topology())
+                .map_err(|error| C61PublicCompressionError::new(error.to_string()))?;
+        if public_workload.digest() != response.workload_preimage_digest
+            || runtime.topology_digest != response.topology_digest
             || runtime.instance_digest == [0; 32]
-            || public_output_digest == [0; 32]
+            || residual_manifest.topology().topology_digest != response.topology_digest
+            || compiler_profile.operation_plan_digest() != response.plan_digest
+            || compiler_profile.topology().topology_digest != response.topology_digest
         {
             return Err(C61PublicCompressionError::new(
-                "C6ICT4 wrapper-base runtime/output binding differs from the response statement",
+                "C6ICT4 wrapper-base typed identities differ from the response statement",
             ));
         }
         let binding = Self {
             response,
             retained_response_digest: retained_response.digest(),
             runtime_instance_digest: runtime.instance_digest,
-            public_output_digest,
-            compiler_plan_digest,
-            compiler_source_root,
-            compiler_runtime_root,
+            public_output_digest: public_workload.public_output_digest(),
+            compiler: C61CompilerBaseBinding::Production {
+                residual_manifest_digest: residual_manifest.digest(),
+                native_profile_digest: *blake3::hash(native_profile_artifact.as_bytes()).as_bytes(),
+                compiler_profile_digest: compiler_profile.digest(),
+            },
         };
         binding.validate()?;
         Ok(binding)
@@ -347,36 +420,42 @@ impl C61StatementBinding {
         self.response.digest()
     }
 
+    pub fn public_output_digest(&self) -> [u8; 32] {
+        self.public_output_digest
+    }
+
     pub fn digest(&self) -> [u8; 32] {
-        let mut hasher =
-            blake3::Hasher::new_derive_key("volta-zk/c61/wrapper-base-statement/v2");
+        let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c61/wrapper-base-statement/v3");
         hasher.update(&self.response.digest());
         hasher.update(&self.retained_response_digest);
         hasher.update(&self.runtime_instance_digest);
         hasher.update(&self.public_output_digest);
-        hasher.update(&self.compiler_plan_digest);
-        hasher.update(&self.compiler_source_root);
-        hasher.update(&self.compiler_runtime_root);
+        hasher.update(&self.compiler.digest());
         *hasher.finalize().as_bytes()
     }
 
     fn validate(&self) -> Result<()> {
         self.response.validate()?;
-        if [
-            self.retained_response_digest,
-            self.runtime_instance_digest,
-            self.public_output_digest,
-            self.compiler_plan_digest,
-            self.compiler_source_root,
-            self.compiler_runtime_root,
-        ]
-        .contains(&[0; 32])
+        if [self.retained_response_digest, self.runtime_instance_digest, self.public_output_digest]
+            .contains(&[0; 32])
         {
             return Err(C61PublicCompressionError::new(
                 "C6ICT4 wrapper-base statement contains a zero binding digest",
             ));
         }
+        self.compiler.validate()?;
         Ok(())
+    }
+
+    fn scaled_compiler_binding(&self) -> Result<([u8; 32], [u8; 32], [u8; 32])> {
+        match self.compiler {
+            C61CompilerBaseBinding::Scaled { plan_digest, source_root, runtime_root } => {
+                Ok((plan_digest, source_root, runtime_root))
+            }
+            C61CompilerBaseBinding::Production { .. } => Err(C61PublicCompressionError::new(
+                "scaled compiler requested a production wrapper-base binding",
+            )),
+        }
     }
 }
 
@@ -1501,24 +1580,26 @@ pub fn verify_c61_scaled_public_argument<B: C61NativeBackendVerifier>(
     transcript: &mut Transcript,
 ) -> Result<C61ArithmeticFrame> {
     let statement_digest = ready.statement_digest();
+    let (compiler_plan_digest, compiler_source_root, compiler_runtime_root) =
+        ready.binding.scaled_compiler_binding()?;
     if argument.statement_digest != statement_digest {
         return Err(C61PublicCompressionError::new(
             "C6PA1 statement digest differs from interactive typestate",
         ));
     }
-    if plan.digest() != ready.binding.compiler_plan_digest {
+    if plan.digest() != compiler_plan_digest {
         return Err(C61PublicCompressionError::new(
             "C6PA1 sparse plan digest differs from statement",
         ));
     }
     let source_root = c61_fp2_vector_root(b"compiler-source", sources);
-    if source_root != ready.binding.compiler_source_root {
+    if source_root != compiler_source_root {
         return Err(C61PublicCompressionError::new(
             "C6PA1 compiler source root differs from statement",
         ));
     }
     let runtime_root = c61_fp2_vector_root(b"runtime", runtime);
-    if runtime_root != ready.binding.compiler_runtime_root {
+    if runtime_root != compiler_runtime_root {
         return Err(C61PublicCompressionError::new("C6PA1 runtime root differs from statement"));
     }
     let frame = C61ArithmeticFrame::decode(&argument.arithmetic)?;
@@ -1576,9 +1657,11 @@ pub fn build_c61_scaled_arithmetic_frame(
     sources: &[Fp2],
     runtime: &[Fp2],
 ) -> Result<C61ArithmeticFrame> {
-    if plan.digest() != ready.binding.compiler_plan_digest
-        || c61_fp2_vector_root(b"compiler-source", sources) != ready.binding.compiler_source_root
-        || c61_fp2_vector_root(b"runtime", runtime) != ready.binding.compiler_runtime_root
+    let (compiler_plan_digest, compiler_source_root, compiler_runtime_root) =
+        ready.binding.scaled_compiler_binding()?;
+    if plan.digest() != compiler_plan_digest
+        || c61_fp2_vector_root(b"compiler-source", sources) != compiler_source_root
+        || c61_fp2_vector_root(b"runtime", runtime) != compiler_runtime_root
     {
         return Err(C61PublicCompressionError::new("C6RSC4 prover plan/runtime binding mismatch"));
     }
@@ -1966,9 +2049,11 @@ mod tests {
             retained_response_digest: [10; 32],
             runtime_instance_digest: c61_fp2_vector_root(b"runtime", runtime),
             public_output_digest: [9; 32],
-            compiler_plan_digest: plan.digest(),
-            compiler_source_root: c61_fp2_vector_root(b"compiler-source", sources),
-            compiler_runtime_root: c61_fp2_vector_root(b"runtime", runtime),
+            compiler: C61CompilerBaseBinding::Scaled {
+                plan_digest: plan.digest(),
+                source_root: c61_fp2_vector_root(b"compiler-source", sources),
+                runtime_root: c61_fp2_vector_root(b"runtime", runtime),
+            },
         }
     }
 

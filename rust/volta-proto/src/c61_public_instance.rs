@@ -80,6 +80,12 @@ impl C61PublicWorkloadPreimage {
         *hasher.finalize().as_bytes()
     }
 
+    pub fn public_output_digest(&self) -> [u8; 32] {
+        let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c61/public-output/v1");
+        hasher.update(&self.digest());
+        *hasher.finalize().as_bytes()
+    }
+
     pub fn model_family_digest(&self) -> [u8; 32] {
         self.model_family_digest
     }
@@ -145,6 +151,10 @@ impl C61PublicWorkloadInstance {
 
     pub fn preimage_digest(&self) -> [u8; 32] {
         self.preimage.digest()
+    }
+
+    pub fn preimage(&self) -> &C61PublicWorkloadPreimage {
+        &self.preimage
     }
 
     pub fn encode(&self) -> Result<Vec<u8>> {
@@ -263,6 +273,7 @@ mod tests {
     #[test]
     fn public_instance_codec_is_strict_and_model_independent() {
         let instance = instance();
+        assert_ne!(instance.preimage.public_output_digest(), instance.preimage.digest());
         let bytes = instance.encode().unwrap();
         assert_eq!(C61PublicWorkloadInstance::decode(&bytes).unwrap(), instance);
 

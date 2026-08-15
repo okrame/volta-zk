@@ -4451,6 +4451,26 @@ This closes persistence only: neither compiler chain nor the residual bridge
 has yet been invoked by the complete campaign runner, so no full-chain,
 timing, byte, soundness or hardware credit changes.
 
+### 0.81 C6ICT4 typed wrapper-base construction
+
+The wrapper-base domain advances to v3 and no longer reuses the scaled seam's
+caller-supplied plan/source/runtime digests. Its production compiler binding
+is derived from the exact residual manifest and runtime instance, canonical
+native-target artifact and persisted compiler-verifier profile. The public
+output digest is a separate domain over the typed client-known workload/token
+preimage. All identities are cross-checked against the pre-response statement
+before the base can parameterize wrapper roots.
+
+Campaign code provides one live builder from the same response owner and one
+disk builder from the strict retained certificate prefix. Both invoke the
+same typed constructor; neither API admits a digest-valued compiler, runtime
+or public-output input. The disk builder additionally requires the locally
+reconstructed response statement to equal public-instance v2. The source/API
+guard brings campaign to **10/0/0**; public-instance remains **1/0/0** and the
+scaled PCS family **13/0/0**. No certificate or setup bytes change. Root
+materialization, complete live/disk relation parity and quantitative credit
+remain open under `C6ICT4_CAMPAIGN_FULL_CHAIN_REQUIRED`.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

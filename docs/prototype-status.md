@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.80 next.
+This capsule is authoritative; read design §§0.60--0.81 next.
 
 - **Milestone/evidence.** C6NBR3 and C6ICT2/C6ICT3 remain closed locally.
   C6ICT4 now captures both ProductClosure coordinates, enforces the
@@ -20,7 +20,7 @@ This capsule is authoritative; read design §§0.60--0.80 next.
   Setup-owned plan and quantization identities cannot be caller supplied.
   Public-instance v2, campaign schema v6 and client setup `C61CP4` are strict;
   the compiler-verifier profile now has an exact persisted codec. Focused PCS is
-  **16/0/0**, campaign **9/0/0**, public-instance **1/0/0**. No production,
+  **16/0/0**, campaign **10/0/0**, public-instance **1/0/0**. No production,
   full-chain, timing or hardware credit exists.
 - **Hard stop.** `C6ICT4_CAMPAIGN_FULL_CHAIN_REQUIRED`. Production campaign
   does not yet invoke the live residual bridge, persist its coordinate move,
@@ -37,6 +37,18 @@ This capsule is authoritative; read design §§0.60--0.80 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-15 — Wrapper base is constructed from typed live/disk inputs.**
+  The v3 base replaces the scaled seam's opaque plan/source/runtime inputs
+  with the exact residual manifest and runtime instance, canonical native-
+  target artifact and persisted compiler profile. Its public-output digest is
+  derived from the client-known workload/token preimage. Live construction
+  consumes the same response owner's strict prefix; disk construction uses
+  only the decoded certificate prefix and reconstructed public instance. Both
+  share one constructor and reject cross-object identity drift; their API
+  guard makes campaign **10/0/0**, while public-instance is **1/0/0** and the
+  scaled PCS family **13/0/0**. Wire/setup totals and all credits are unchanged;
+  wrapper materialization and full-chain live/disk parity remain open.
 
 - **2026-08-15 — Compiler verifier state becomes an exact setup artifact.**
   `C61CVP1` canonically encodes the compact compiler profile and its terminal

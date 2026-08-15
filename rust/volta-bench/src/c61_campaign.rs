@@ -26,12 +26,13 @@ use volta_pcs::c61_authenticated_whir_p3::C61CompilerVerifierProfile;
 use volta_pcs::{
     c61_response_transcript_context_digest, spawn_c61_private_entropy_duplex_transcript_broker,
     C61InteractiveTape, C61InteractiveTapeBundle, C61JointPublicArgument,
-    C61PrivateEntropyBrokerHandle, C61ResponseStatementBinding,
+    C61PrivateEntropyBrokerHandle, C61ResponseStatementBinding, C61StatementBinding,
 };
 #[cfg(feature = "c6-trace")]
 use volta_proto::{
     replay_c6_t1_production_response_verifier, C6ProductionPairedPcgAttempt,
-    C6RetainedResponseProof, C6T1ProductionResponseVerifierReplay,
+    C6RetainedResponseProof, C6T1DiskResidualOwner, C6T1ProductionResidualOwner,
+    C6T1ProductionResponseVerifierReplay,
 };
 use volta_proto::{
     C61FinalCertificateEnvelope, C61PublicWorkloadInstance, C61PublicWorkloadPreimage,
@@ -267,6 +268,56 @@ pub fn execute_c61_campaign_response_owner(
         provider,
         verifier,
     )
+}
+
+/// Derive the post-response wrapper base from the same live response and
+/// setup-owned compiler identities that will be consumed by the residual
+/// relation. No digest-valued production input is accepted.
+#[cfg(feature = "c6-trace")]
+pub fn build_c61_campaign_live_wrapper_statement(
+    response_statement: C61ResponseStatementBinding,
+    workload: &C61PublicWorkloadPreimage,
+    residual: &C6T1ProductionResidualOwner,
+    native_profile: &C6CanonicalTargetProfile,
+    compiler_profile: &C61CompilerVerifierProfile,
+) -> Result<C61StatementBinding, String> {
+    let retained = residual.response().encoded_retained_response()?;
+    let retained = volta_proto::C61RetainedResponseBinding::from_bytes(&retained)
+        .map_err(|error| error.to_string())?;
+    C61StatementBinding::bind_production_response_prefix(
+        response_statement,
+        retained,
+        workload,
+        residual.manifest(),
+        native_profile,
+        compiler_profile,
+    )
+    .map_err(|error| error.to_string())
+}
+
+/// Reconstruct the identical wrapper base after strict disk response replay.
+/// The retained-prefix binding comes only from the decoded certificate.
+#[cfg(feature = "c6-trace")]
+pub fn build_c61_campaign_disk_wrapper_statement(
+    response_statement: C61ResponseStatementBinding,
+    certificate: &C61FinalCertificateEnvelope,
+    public_instance: &C61PublicWorkloadInstance,
+    residual: &C6T1DiskResidualOwner,
+    native_profile: &C6CanonicalTargetProfile,
+    compiler_profile: &C61CompilerVerifierProfile,
+) -> Result<C61StatementBinding, String> {
+    if response_statement.digest() != public_instance.response_statement_digest() {
+        return Err("C6ICT4 disk response statement differs from the public instance".to_owned());
+    }
+    C61StatementBinding::bind_production_response_prefix(
+        response_statement,
+        certificate.retained_response_binding(),
+        public_instance.preimage(),
+        residual.manifest(),
+        native_profile,
+        compiler_profile,
+    )
+    .map_err(|error| error.to_string())
 }
 
 /// Response-verifier state reconstructed only from decoded campaign inputs.
@@ -1326,6 +1377,43 @@ mod campaign_artifact_tests {
         assert!(!signature.contains("quantization_digest"));
         assert!(!signature.contains("plan_digest"));
         assert!(!signature.contains("workload_digest"));
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn wrapper_statement_builders_share_only_typed_setup_and_response_objects() {
+        let source = include_str!("c61_campaign.rs");
+        let live = source
+            .split_once("pub fn build_c61_campaign_live_wrapper_statement(")
+            .unwrap()
+            .1
+            .split_once("/// Reconstruct the identical wrapper base")
+            .unwrap()
+            .0;
+        let disk = source
+            .split_once("pub fn build_c61_campaign_disk_wrapper_statement(")
+            .unwrap()
+            .1
+            .split_once("/// Response-verifier state")
+            .unwrap()
+            .0;
+        for body in [live, disk] {
+            for required in [
+                "C61StatementBinding::bind_production_response_prefix(",
+                "native_profile",
+                "compiler_profile",
+                "residual.manifest()",
+            ] {
+                assert!(body.contains(required), "wrapper statement omits {required}");
+            }
+            let signature = body.split_once(") -> Result").unwrap().0;
+            for forbidden in ["public_output_digest", "compiler_plan_digest", "runtime_root"] {
+                assert!(!signature.contains(forbidden), "wrapper signature admits {forbidden}");
+            }
+        }
+        assert!(live.contains("encoded_retained_response()"));
+        assert!(disk.contains("certificate.retained_response_binding()"));
+        assert!(disk.contains("public_instance.preimage()"));
     }
 
     #[test]

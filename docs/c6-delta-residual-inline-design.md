@@ -4493,6 +4493,45 @@ the independent disk continuation remain unconnected. No root or production
 execution occurred locally, so byte, traffic, state, timing, soundness and
 hardware credits remain unchanged.
 
+### 0.83 C6ICT4 hidden-u prequery frontier obstruction
+
+Full-chain wiring exposes a causal cycle in the retained Ligero seam. The
+production opening currently returns `MultiOpenProof` only after drawing its
+ZeroBatch `chi` and all Q=121 column queries. The hidden-u witness is then
+derived from that returned proof; all-six wrapper materialization requires the
+witness; and `C6HiddenUBundleWitness::seal` requires the resulting hidden-u
+roots. Consequently the first representable `C6HiddenUPrequery` occurs after
+the challenges that it is required to precede. This violates the commit-before-
+query obligation in Section D and the prequery ordering fixed by `C6HUB2`.
+Hashing the finished proof or accepting caller-supplied roots would not prove
+the registered relation.
+
+The same source audit finds that the retained resident opening and the global
+blind residual/cache/hidden/link continuation still contain length-only
+transcript events before later challenges. The C6ICT3 seedless broker rejects
+such a continuation by design. Finally, campaign schema v6 has no typed
+create-new replay owner for the hidden prequery/postcommit and retained-opening
+evidence, so an independent disk verifier cannot reconstruct this frontier.
+
+The new **HARD STOP** is
+`C6ICT4_HIDDEN_U_PREQUERY_FRONTIER_OBSTRUCTED`. Resume requires an explicit
+owner choice between:
+
+1. a staged two-family production Ligero continuation which fixes both
+   families through their proximity challenges and hidden vectors, persists
+   the two hidden roots and seals the exact prequery before either `chi` or
+   query family, then releases and verifies those fresh challenges; or
+2. a broader replacement relation which removes the retained Ligero/hidden-u
+   dependency and proves the same native claims and designated link.
+
+The narrow staged route must use linear typestates, canonical value/digest
+moves independently reconstructed by the verifier, a strict client-private
+replay codec, live/disk parity and order/value/truncation mutations. It must
+also re-sum all provider-to-client traffic, private state, soundness and both
+timing gates; moving old proof bytes outside the certificate is not a wire
+credit. The current full-chain authorization does not select this challenge-
+schedule change. No production run or pod contact is permitted.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

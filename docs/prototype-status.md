@@ -8,28 +8,25 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.82 next.
+This capsule is authoritative; read design §§0.60--0.83 next.
 
 - **Milestone/evidence.** C6NBR3 and C6ICT2/C6ICT3 remain closed locally.
-  C6ICT4 now captures both ProductClosure coordinates, enforces the
-  alpha/coordinate/post-claim frontier and reconstructs the verifier-only
-  residual relation. Statement v2 has three noncircular domains: typed setup,
-  attempt, workload and heads precede the response; a post-response base binds
-  its strict prefix and fixes wrapper roots; the final C6PA2 outer is derived
-  only after native compilation.
-  Setup-owned plan and quantization identities cannot be caller supplied.
-  Public-instance v2, campaign schema v6 and client setup `C61CP4` are strict;
-  the compiler-verifier profile now has an exact persisted codec. Focused PCS is
-  **16/0/0**, campaign **11/0/0**, public-instance **1/0/0**. No production,
-  full-chain, timing or hardware credit exists.
-- **Hard stop.** `C6ICT4_CAMPAIGN_FULL_CHAIN_REQUIRED`. The live root/residual
-  coordinator exists, but no complete runner yet seals hidden-u, proves the
-  blind/native/compiler chain, reconstructs disk parity or compares C6PA2.
-- **Authorization/resume.** Owner GO permits those exact live/disk call sites,
-  differential and mutation guards, then fresh byte/private-state/traffic,
-  soundness and time accounting. Keep model geometry manifest-typed and use
-  small main checkpoints. No pod until complete local suite and campaign
-  guards are green.
+  C6ICT4 captures both ProductClosure coordinates, has three noncircular
+  statement domains, persists the compiler profile and reaches the live
+  six-root/residual coordinator. Focused PCS is **16/0/0**, campaign
+  **11/0/0**, public-instance **1/0/0**; feature compilation is green. No
+  production, full-chain, timing or hardware credit exists.
+- **Hard stop.** `C6ICT4_HIDDEN_U_PREQUERY_FRONTIER_OBSTRUCTED`. The monolithic
+  retained Ligero opening returns the hidden witness only after `chi` and 121
+  queries, but the exact prequery requires its roots before those challenges.
+  The downstream blind path also retains length-only pre-challenge events and
+  campaign v6 has no hidden replay owner.
+- **Authorization/resume.** Current GO stops at this newly exposed schedule
+  change. Resume needs an explicit owner choice: staged two-family Ligero with
+  both hidden roots/prequery fixed before either query family, or a broader
+  replacement relation. Either route needs canonical seedless moves, strict
+  private replay, live/disk parity, mutations and fresh traffic/state,
+  soundness and timing accounting. No pod beforehand.
 - **Screens.** Certificate **17,536,735 B**, setup **148,738,118 B**,
   setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
   **102.5878332989 bits/cert**, provider/verifier **14.9179595454 /
@@ -37,6 +34,17 @@ This capsule is authoritative; read design §§0.60--0.82 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-15 — Hidden-u prequery scheduling reaches a hard stop.** The
+  retained resident opening exposes its proof only after ZeroBatch `chi` and
+  all Q=121 queries; only then can current code derive the hidden witness,
+  materialize its roots and seal the prequery. This reverses the registered
+  commit-before-query order. The same audit finds length-only events in the
+  seedless global-blind continuation and no persisted hidden replay owner in
+  campaign v6. Caller roots, a post-query digest or proof bytes moved outside
+  the certificate are inadmissible repairs. Design §0.83 records the exact
+  staged and replacement choices. No code path was promoted, no pod was
+  contacted and all screens/credits remain unchanged.
 
 - **2026-08-15 — Live persisted roots now precede the residual bridge.** A
   campaign coordinator derives cache profile and session identity, generates

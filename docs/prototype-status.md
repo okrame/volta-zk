@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.74 next.
+This capsule is authoritative; read design §§0.60--0.78 next.
 
 - **Milestone/evidence.** C6NBR3 and the six C6ICT2 persisted/CUDA lanes are
   closed locally. C6ICT3 has exact scaled response parity (proto **192/0/1**,
@@ -22,7 +22,9 @@ This capsule is authoritative; read design §§0.60--0.74 next.
 - **Hard stop.** `C6ICT4_DISK_REPLAY_STATEMENT_REQUIRED`. The exact live
   typestate and extractor exist, but the campaign call site is absent; disk
   relation construction now compiles but is not campaign-invoked or compared
-  full-chain, and statement v2 is absent. Pod contact remains premature.
+  full-chain. Statement v2 needs the two-stage response/C6PA2 binding; only
+  proposed-head and prefix/root digest types exist. Pod contact remains
+  premature.
 - **Authorization/resume.** Owner GO authorizes C6ICT4: recover coordinate 0
   from the strict retained response; persist the exact 673-pair coordinate-1
   move before terminal/atomic challenges; bind a versioned noncircular base
@@ -70,6 +72,16 @@ This capsule is authoritative; read design §§0.60--0.74 next.
   green. The production campaign call site, full-chain differential and
   noncircular statement v2 remain, so no proof, timing or hardware credit is
   claimed.
+
+- **2026-08-15 — Statement self-reference is split without wire growth.** A
+  source audit proves one digest cannot both parameterize the retained response
+  and later commit that response. C6ICT4 therefore uses a pre-response digest,
+  followed by the C6PA2 v2 digest over that first digest, the completed prefix
+  and fixed roots. The first typed primitives are green: a proposed successor
+  head excludes `producer_transition_digest` yet must match the final head
+  (**1/0/0**), while wrapper/prefix digests are domain separated. The public
+  instance/campaign schema and production constructor still need this split;
+  no wire or benchmark credit changes.
 
 - **2026-08-15 — Retained ProductClosure messages become an exact replay
   output.** The central prover and verifier `ProductClosure` calls now capture

@@ -4378,6 +4378,28 @@ or correlation stream is representable. A scaled join differential is
 construction, not its production call site or full-chain parity; statement v2
 must also remove the response-prefix self-reference before campaign use.
 
+### 0.78 C6ICT4 two-stage noncircular statement
+
+One digest cannot safely serve both as an input to response construction and
+as a commitment to the retained response bytes produced by that construction.
+C6ICT4 therefore fixes two domain-separated statements without adding
+certificate wire:
+
+1. a pre-response statement binds setup, attempt/workload, full old head and
+   proposed successor `(epoch, cache_len, cache_root)`;
+2. after the strict response prefix and six wrapper roots exist, C6PA2
+   statement v2 binds the first digest, exact retained-prefix digest, fixed
+   wrapper binding, installed plan/runtime identities and the same state and
+   attempt fields.
+
+The client-local public-instance schema records both digests; the existing
+32-byte wrapper statement slot records only the second. A new typed proposed
+head excludes the not-yet-defined producer transition and later requires all
+three proposed fields plus a nonzero final producer digest (**1/0/0**).
+Retained-prefix and wrapper-wire digests have independent domains. The codec,
+campaign constructor and mutation guards remain required before this design
+has production credit.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

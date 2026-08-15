@@ -47,7 +47,8 @@ pub use block_proof::{
 pub use c6::{
     C6CacheHead, C6ClientAttempt, C6ClientState, C6ClientStore, C6CorrelationRange,
     C6DeltaResidual, C6Digest, C6Error, C6FinalCertificate, C6MacTapeManifest,
-    C6PairedCorrelationRanges, C6PairedDeltaResidual, C6SetupManifest, C6SlotHandle,
+    C6PairedCorrelationRanges, C6PairedDeltaResidual, C6ProposedCacheHead, C6SetupManifest,
+    C6SlotHandle,
     C6SlotReservation, C6SlotStatus, C6SlotStore, C6Workload, C6WrapperCommitments,
     C6_ABORT_RETRY_CREDITS, C6_ACCEPTANCE_CREDITS, C6_BASELINE_RAW_CORRELATIONS,
     C6_CERTIFICATE_NEW_PAYLOAD_FRAMING_BYTES, C6_CERTIFICATE_VERSION, C6_CLIENT_STATE_VERSION,

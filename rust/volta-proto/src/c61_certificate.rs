@@ -109,6 +109,17 @@ impl C61WrapperWireBinding {
             cache_witness_root: self.source_binding_digest,
         }
     }
+
+    pub fn digest(self) -> [u8; 32] {
+        let mut hasher =
+            blake3::Hasher::new_derive_key("volta-zk/c61/wrapper-wire-binding/v1");
+        hasher.update(&self.statement_digest);
+        for root in self.roots {
+            hasher.update(&root);
+        }
+        hasher.update(&self.source_binding_digest);
+        *hasher.finalize().as_bytes()
+    }
 }
 
 impl C61FinalCertificateEnvelope {
@@ -164,6 +175,13 @@ impl C61FinalCertificateEnvelope {
 
     pub fn retained_response(&self) -> &[u8] {
         &self.certificate.retained_transcript[..C61_RETAINED_NON_PCS_RESPONSE_BYTES as usize]
+    }
+
+    pub fn retained_response_digest(&self) -> [u8; 32] {
+        let mut hasher =
+            blake3::Hasher::new_derive_key("volta-zk/c61/retained-response-prefix/v1");
+        hasher.update(self.retained_response());
+        *hasher.finalize().as_bytes()
     }
 
     pub fn public_argument(&self) -> &[u8] {

@@ -283,6 +283,65 @@ impl C6CacheHead {
     }
 }
 
+/// Successor-head preimage available before the final transition statement
+/// exists. It deliberately has no producer-transition field.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6ProposedCacheHead {
+    epoch: u64,
+    cache_len: u32,
+    cache_root: C6Digest,
+}
+
+impl C6ProposedCacheHead {
+    pub fn successor(
+        old_head: C6CacheHead,
+        workload: C6Workload,
+        cache_root: C6Digest,
+    ) -> C6Result<Self> {
+        old_head.validate()?;
+        workload.validate()?;
+        let epoch = old_head
+            .epoch
+            .checked_add(1)
+            .ok_or_else(|| C6Error::new("C6 proposed successor epoch overflows"))?;
+        if workload.old_context != old_head.cache_len
+            || workload.new_context > C6_MAX_CONTEXT
+            || !is_nonzero(&cache_root)
+            || cache_root == old_head.cache_root
+        {
+            return Err(C6Error::new("invalid C6 proposed successor head"));
+        }
+        Ok(Self { epoch, cache_len: workload.new_context, cache_root })
+    }
+
+    pub fn epoch(self) -> u64 {
+        self.epoch
+    }
+
+    pub fn cache_len(self) -> u32 {
+        self.cache_len
+    }
+
+    pub fn cache_root(self) -> C6Digest {
+        self.cache_root
+    }
+
+    pub fn digest(self) -> C6Digest {
+        let mut encoded = Encoder::with_capacity(44);
+        encoded.u64(self.epoch);
+        encoded.u32(self.cache_len);
+        encoded.digest(&self.cache_root);
+        hash_parts(b"volta-zk/c6/proposed-cache-head/v1", &[&encoded.finish()])
+    }
+
+    pub fn matches_final(self, head: C6CacheHead) -> bool {
+        head.epoch == self.epoch
+            && head.cache_len == self.cache_len
+            && head.cache_root == self.cache_root
+            && head.producer_transition_digest != [0; 32]
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct C6CorrelationRange {
     pub stage: u32,
@@ -2180,6 +2239,36 @@ mod tests {
             old_context: state.head.cache_len,
             new_context: state.head.cache_len + 1,
         }
+    }
+
+    #[test]
+    fn proposed_head_excludes_and_then_matches_the_final_transition_digest() {
+        let old = C6CacheHead {
+            epoch: 3,
+            cache_len: 100,
+            cache_root: digest(0x41),
+            producer_transition_digest: digest(0x42),
+        };
+        let workload = C6Workload {
+            prompt_tokens: 25,
+            decode_tokens: 25,
+            old_context: 100,
+            new_context: 150,
+        };
+        let proposed = C6ProposedCacheHead::successor(old, workload, digest(0x43)).unwrap();
+        let final_head = C6CacheHead {
+            epoch: proposed.epoch(),
+            cache_len: proposed.cache_len(),
+            cache_root: proposed.cache_root(),
+            producer_transition_digest: digest(0x44),
+        };
+        assert!(proposed.matches_final(final_head));
+        assert_ne!(proposed.digest(), final_head.digest());
+
+        let mut missing_transition = final_head;
+        missing_transition.producer_transition_digest = [0; 32];
+        assert!(!proposed.matches_final(missing_transition));
+        assert!(C6ProposedCacheHead::successor(old, workload, old.cache_root).is_err());
     }
 
     fn response_proof_envelope(link_len: usize) -> Vec<u8> {

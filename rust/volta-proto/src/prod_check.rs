@@ -43,6 +43,9 @@ pub fn prod_batch_prover(
         m0 += w * (a.m * b.m);
         m1 += w * (a.x * b.m + b.x * a.m - c.m);
     }
+    #[cfg(feature = "c6-trace")]
+    volta_mac::record_c6_product_closure_message([m0, m1])
+        .unwrap_or_else(|error| panic!("C6 ProductClosure message trace HARD STOP: {error}"));
     tx.append_fp2s("prod_check_m0_m1", &[m0, m1]);
     ProdProof { m0, m1 }
 }
@@ -70,6 +73,9 @@ pub fn prod_batch_verify(
         w = w * chi;
         acc += w * (ka.k * kb.k - delta * kc.k);
     }
+    #[cfg(feature = "c6-trace")]
+    volta_mac::record_c6_product_closure_message([proof.m0, proof.m1])
+        .unwrap_or_else(|error| panic!("C6 verifier ProductClosure message HARD STOP: {error}"));
     acc == proof.m0 + proof.m1 * delta
 }
 

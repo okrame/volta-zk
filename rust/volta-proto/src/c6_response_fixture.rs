@@ -16,11 +16,11 @@ use volta_mac::{
     begin_c6_prover_trace, begin_c6_runtime_instance_capture, begin_c6_verifier_trace,
     compile_c6_operation_trace_for_role_with_target_profile,
     derive_c6_runtime_instance_from_trace_diagnostic, finish_c6_prover_trace,
-    finish_c6_verifier_trace, C6CanonicalTargetProfile, C6DecodedInstanceExtractionPlan,
-    C6InstalledOperationPlan, C6InstanceExtractionRole, C6NativeTargetProfileArtifact,
-    C6RuntimeInstanceValues, C6TraceSourceManifest, C6TraceTargetCohort, C6TraceTargetProfile,
-    C6TraceToken, CorrScheduleAudit, CorrScheduleRole, CorrelationStream, ProverAuthed, Transcript,
-    VerifierCtx, VerifierKey,
+    finish_c6_verifier_trace, take_c6_product_closure_messages, C6CanonicalTargetProfile,
+    C6DecodedInstanceExtractionPlan, C6InstalledOperationPlan, C6InstanceExtractionRole,
+    C6NativeTargetProfileArtifact, C6RuntimeInstanceValues, C6TraceSourceManifest,
+    C6TraceTargetCohort, C6TraceTargetProfile, C6TraceToken, CorrScheduleAudit, CorrScheduleRole,
+    CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey,
 };
 
 use crate::block_proof::layer_dom_base;
@@ -156,6 +156,7 @@ pub struct C6T1ProductionResponseVerifierReplay {
     zero_roots: C6GrandResidualVerifierRoots,
     product_challenge: Fp2,
     product_mask_domain: u64,
+    product_messages: Vec<[Fp2; 2]>,
     source_schedule: CorrScheduleAudit,
     source_manifest: C6TraceSourceManifest,
     installed: C6T1InstalledRoleOwner,
@@ -179,6 +180,10 @@ impl C6T1ProductionResponseVerifierReplay {
 
     pub fn product_mask_domain(&self) -> u64 {
         self.product_mask_domain
+    }
+
+    pub fn product_messages(&self) -> &[[Fp2; 2]] {
+        &self.product_messages
     }
 
     pub fn source_schedule(&self) -> &CorrScheduleAudit {
@@ -216,6 +221,7 @@ pub struct C6T1ProductionResponseProviderPending {
     prover_zero_roots: C6GrandResidualProverRoots,
     product_challenge: Fp2,
     product_mask_domain: u64,
+    product_messages: Vec<[Fp2; 2]>,
     source_schedule: CorrScheduleAudit,
     source_manifest: C6TraceSourceManifest,
     source_coordinates: [C6SourceCoordinate; 2],
@@ -409,6 +415,7 @@ pub struct C6T1ProductionResponseOwner {
     product_proof: ProdProof,
     product_challenge: Fp2,
     product_mask_domain: u64,
+    product_messages: Vec<[Fp2; 2]>,
     prover_zero_roots: C6GrandResidualProverRoots,
     verifier_zero_roots: C6GrandResidualVerifierRoots,
     paired_sources: C6ProductionPairedSourceWitness,
@@ -450,6 +457,10 @@ impl C6T1ProductionResponseOwner {
 
     pub fn product_mask_domain(&self) -> u64 {
         self.product_mask_domain
+    }
+
+    pub fn product_messages(&self) -> &[[Fp2; 2]] {
+        &self.product_messages
     }
 
     pub fn paired_sources(&self) -> &C6ProductionPairedSourceWitness {
@@ -686,6 +697,7 @@ pub fn replay_c6_t1_production_response_verifier(
         return Err("C6.1 disk verifier response census changed".to_owned());
     }
     zero_roots.record_operation_trace_ownership().map_err(|error| error.to_string())?;
+    let product_messages = take_c6_product_closure_messages().map_err(|error| error.to_string())?;
     let _operation_trace = finish_c6_verifier_trace().map_err(|error| error.to_string())?;
     let runtime = runtime_capture
         .finish_installed(&installed_plan, &extraction)
@@ -714,11 +726,15 @@ pub fn replay_c6_t1_production_response_verifier(
         product_mask_sources,
     )
     .map_err(|error| error.to_string())?;
+    if product_messages.len() as u64 != crate::C6_T1_TOTAL_PRODUCT_CLOSURES {
+        return Err("C6.1 disk verifier ProductClosure message census changed".to_owned());
+    }
     Ok(C6T1ProductionResponseVerifierReplay {
         output,
         zero_roots,
         product_challenge,
         product_mask_domain,
+        product_messages,
         source_schedule,
         source_manifest,
         installed: C6T1InstalledRoleOwner { operation_plan: installed_plan, extraction, runtime },
@@ -773,6 +789,7 @@ pub fn prove_c6_t1_production_response_provider(
         product_proof,
         product_challenge,
         product_mask_domain,
+        product_messages,
         cache_target_frame,
         cache_target_fixed,
         source_schedule,
@@ -819,6 +836,8 @@ pub fn prove_c6_t1_production_response_provider(
         let product_mask = primary.draw_product_mask(product_domain, products.len());
         let product_proof = prod_batch_prover(&products, chi, product_mask, provider_transcript);
         zero_roots.record_operation_trace_ownership().map_err(|error| error.to_string())?;
+        let product_messages =
+            take_c6_product_closure_messages().map_err(|error| error.to_string())?;
         let _operation_trace = finish_c6_prover_trace().map_err(|error| error.to_string())?;
         let runtime = runtime_capture
             .finish_installed(&installed_plan, &extraction)
@@ -845,6 +864,7 @@ pub fn prove_c6_t1_production_response_provider(
             product_proof,
             chi,
             product_domain,
+            product_messages,
             target_frame,
             target_fixed,
             schedule,
@@ -853,6 +873,7 @@ pub fn prove_c6_t1_production_response_provider(
         )
     };
     if products.len() as u64 != C6_T1_TOTAL_PRODUCT_TRIPLES
+        || product_messages.len() as u64 != crate::C6_T1_TOTAL_PRODUCT_CLOSURES
         || prover_zero_roots.len() as u64 != C6_T1_ZERO_CLOSURES
         || prover_output.weight_claims.len() != 96
         || prover_output.embed_claims.len() != 6
@@ -891,6 +912,7 @@ pub fn prove_c6_t1_production_response_provider(
         prover_zero_roots,
         product_challenge,
         product_mask_domain,
+        product_messages,
         source_schedule,
         source_manifest,
         source_coordinates: coordinates,
@@ -935,6 +957,7 @@ pub fn build_c6_t1_production_response_owner(
         prover_zero_roots,
         product_challenge,
         product_mask_domain,
+        product_messages: provider_product_messages,
         source_schedule,
         source_manifest,
         source_coordinates,
@@ -992,6 +1015,7 @@ pub fn build_c6_t1_production_response_owner(
         || verifier.zero_roots.len() != prover_zero_roots.len()
         || verifier.product_challenge != product_challenge
         || verifier.product_mask_domain != product_mask_domain
+        || verifier.product_messages != provider_product_messages
         || verifier.cache_target_fixed != cache_target_fixed
         || verifier.installed.runtime.instance_identity() != provider.runtime.instance_identity()
         || verifier.source_schedule != source_schedule
@@ -1008,6 +1032,7 @@ pub fn build_c6_t1_production_response_owner(
         zero_roots: verifier_zero_roots,
         product_challenge: _,
         product_mask_domain: _,
+        product_messages,
         source_schedule: _,
         source_manifest: _,
         installed: verifier,
@@ -1022,6 +1047,7 @@ pub fn build_c6_t1_production_response_owner(
         product_proof,
         product_challenge,
         product_mask_domain,
+        product_messages,
         prover_zero_roots,
         verifier_zero_roots,
         paired_sources,

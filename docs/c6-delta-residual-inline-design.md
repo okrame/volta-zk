@@ -4282,6 +4282,23 @@ fresh byte, state, traffic, soundness and time re-sum. No pod contact is
 permitted before the resulting complete disk verifier and campaign guards are
 green.
 
+### 0.73 Retained coordinate-0 ProductClosure capture
+
+Every central prover/verifier `ProductClosure` now records its exact public
+`(M0,M1)` next to the existing topology trace. The response owner drains this
+ordered message stream before closing the trace, requires the production T1
+census of 673 pairs and compares provider with verifier replay. The stream is
+not part of `C6ProverTraceSnapshot` or the operation-plan normalizer, so plan,
+setup and certificate encodings are unchanged.
+
+The strict disk response replay exposes the same ordered pairs derived from
+the retained proof. A focused test proves order, one-shot drain and separation
+from plan state (**1/0/0**); ordinary and `c6-trace` proto checks compile. This
+is typed coordinate-0 extraction evidence, not a production-dimension run.
+Coordinate 1, its private-tape move and statement v2 remain required under
+`C6ICT3_DISK_RELATION_STATEMENT_OBSTRUCTED`; no accounting or benchmark credit
+changes.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

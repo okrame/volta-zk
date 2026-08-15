@@ -1849,6 +1849,10 @@ struct C6TraceRuntime {
     nodes: Vec<C6TraceNode>,
     zero_roots: Vec<C6TraceToken>,
     products: Vec<C6TraceProductClosure>,
+    /// Canonical `(M0,M1)` messages observed at ProductClosure verification
+    /// sites. They are response wire, not operation-plan topology, and are
+    /// drained separately by the response owner.
+    product_messages: Vec<[Fp2; 2]>,
 }
 
 #[cfg(feature = "c6-trace")]
@@ -1928,6 +1932,7 @@ fn begin_c6_trace(party: C6TraceParty) -> Result<(), C6TraceError> {
         runtime.nodes.clear();
         runtime.zero_roots.clear();
         runtime.products.clear();
+        runtime.product_messages.clear();
         Ok(())
     })
 }
@@ -1946,6 +1951,7 @@ fn finish_c6_trace(expected_party: C6TraceParty) -> Result<C6ProverTraceSnapshot
         runtime.party = None;
         runtime.owner_thread = None;
         runtime.namespace = 0;
+        runtime.product_messages.clear();
         Ok(C6ProverTraceSnapshot {
             namespace,
             source_count: runtime.source_count,
@@ -4629,9 +4635,76 @@ pub fn record_c6_product_closure(
     }
 }
 
+/// Record the exact public ProductClosure message adjacent to the closure
+/// trace call. This does not enter the installed operation-plan artifact;
+/// the response owner drains it to bind the retained proof to the residual
+/// public-claims frame.
+#[doc(hidden)]
+pub fn record_c6_product_closure_message(message: [Fp2; 2]) -> Result<(), C6TraceError> {
+    #[cfg(feature = "c6-trace")]
+    {
+        return with_runtime(|runtime| {
+            if runtime.party.is_none() {
+                return Ok(());
+            }
+            if runtime.owner_thread != Some(std::thread::current().id()) {
+                // The adjacent topology recorder already rejects a tracked
+                // closure on the wrong owner thread and ignores unrelated
+                // untracked harness work. Mirror that latter case here.
+                return Ok(());
+            }
+            runtime.product_messages.push(message);
+            Ok(())
+        });
+    }
+    #[cfg(not(feature = "c6-trace"))]
+    {
+        let _ = message;
+        Ok(())
+    }
+}
+
+/// Drain the ordered public ProductClosure messages while the matching trace
+/// is still active. A response owner checks the exact census before it closes
+/// the operation trace.
+#[doc(hidden)]
+pub fn take_c6_product_closure_messages() -> Result<Vec<[Fp2; 2]>, C6TraceError> {
+    #[cfg(feature = "c6-trace")]
+    {
+        return with_runtime(|runtime| {
+            if runtime.party.is_none() || runtime.owner_thread != Some(std::thread::current().id())
+            {
+                return Err(C6TraceError::new(
+                    "C6 ProductClosure messages drained by the wrong or inactive owner",
+                ));
+            }
+            Ok(std::mem::take(&mut runtime.product_messages))
+        });
+    }
+    #[cfg(not(feature = "c6-trace"))]
+    {
+        Err(C6TraceError::new("C6 ProductClosure message capture requires the c6-trace feature"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn response_product_messages_are_ordered_drained_and_not_plan_state() {
+        let _trace_guard = crate::C6_OPERATION_TRACE_TEST_LOCK.lock().unwrap();
+        begin_c6_prover_trace().unwrap();
+        let first = [Fp2::ONE, Fp2::ZERO];
+        let second = [Fp2::ZERO, Fp2::ONE];
+        record_c6_product_closure_message(first).unwrap();
+        record_c6_product_closure_message(second).unwrap();
+        assert_eq!(take_c6_product_closure_messages().unwrap(), vec![first, second]);
+        assert!(take_c6_product_closure_messages().unwrap().is_empty());
+        let snapshot = finish_c6_prover_trace().unwrap();
+        assert!(snapshot.products.is_empty());
+    }
 
     #[cfg(feature = "c6-trace")]
     const TEST_NAMESPACE: u32 = 7;

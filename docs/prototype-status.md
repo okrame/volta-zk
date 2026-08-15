@@ -8,18 +8,19 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.72 next.
+This capsule is authoritative; read design §§0.60--0.73 next.
 
 - **Milestone/evidence.** C6NBR3 and the six C6ICT2 persisted/CUDA lanes are
   closed locally. C6ICT3 has exact scaled response parity (proto **192/0/1**,
   MAC **32/0/0 + 5/0/0**), a frontier-safe duplex broker (**4/0/0**), a
   provider-only seam (**1/0/0**), an OS-seeded campaign session, its response
-  call site and strict disk-prefix replay (**3/0/0**). No production,
-  full-chain or hardware credit exists.
+  call site and strict disk-prefix replay (**3/0/0**). A response-only trace
+  now captures ordered coordinate-0 ProductClosure messages (**1/0/0**). No
+  production, full-chain or hardware credit exists.
 - **Hard stop.** `C6ICT3_DISK_RELATION_STATEMENT_OBSTRUCTED`. Disk replay
-  reconstructs the response but not the residual public-claims frame:
-  coordinate 1's 673 masked `ProductClosure` pairs (**21,536 B**) exist only
-  in provider witness state. Production also has no typed
+  reconstructs the response but not the complete residual public-claims
+  frame: coordinate 1's 673 masked `ProductClosure` pairs (**21,536 B**)
+  exist only in provider witness state. Production also has no typed
   `C61StatementBinding`/`C61RootsFixed` call site; binding its current field
   names to final retained, wrapper or full successor-head digests would be
   circular. A provider digest is not a substitute.
@@ -36,6 +37,17 @@ This capsule is authoritative; read design §§0.60--0.72 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-15 — Retained ProductClosure messages become an exact replay
+  output.** The central prover and verifier `ProductClosure` calls now capture
+  their canonical `(M0,M1)` beside the already installed topology. The capture
+  is drained separately, so it cannot alter the operation-plan artifact.
+  Provider and strict verifier response owners require exactly 673 ordered
+  pairs and reject any differential. The focused ordering/drain test is
+  **1/0/0**; ordinary and `c6-trace` proto checks are green. This closes only
+  coordinate 0: no complete response was rerun, coordinate 1 and the
+  noncircular base statement remain absent, and the hard stop and all credits
+  are unchanged.
 
 - **2026-08-15 — Disk relation and base-statement audit reaches a hard
   stop.** The strict replay now supplies the installed verifier plan,

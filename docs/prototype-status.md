@@ -16,12 +16,13 @@ This capsule is authoritative; read design §§0.60--0.74 next.
   provider-only seam (**1/0/0**), campaign-owned entropy, its response call
   site and strict disk-prefix replay (**3/0/0**). Retained coordinate 0 and
   the typed coordinate-1 codec are green (**1/0/0 + 1/0/0**). Alpha is now
-  separated from post-claim challenges and the duplex broker rejects a changed
-  coordinate (**2/0/0**). No production, full-chain or hardware credit exists.
+  separated from post-claim challenges, the duplex broker rejects a changed
+  coordinate (**2/0/0**), and strict tape extraction is green (**1/0/0**). No
+  production, full-chain or hardware credit exists.
 - **Hard stop.** `C6ICT4_DISK_REPLAY_STATEMENT_REQUIRED`. The exact live
-  typestate exists, but its campaign call site and tape extractor do not;
-  disk verification still cannot construct the complete relation, and
-  statement v2 is absent. Pod contact would therefore be premature.
+  typestate and extractor exist, but the campaign call site is absent; disk
+  verification still cannot construct the complete relation, and statement
+  v2 is absent. Pod contact would therefore be premature.
 - **Authorization/resume.** Owner GO authorizes C6ICT4: recover coordinate 0
   from the strict retained response; persist the exact 673-pair coordinate-1
   move before terminal/atomic challenges; bind a versioned noncircular base
@@ -48,6 +49,16 @@ This capsule is authoritative; read design §§0.60--0.74 next.
   use canonical exact-message transcript events. Feature and ordinary builds
   are green. Campaign wiring, disk extraction/relation and statement v2 remain;
   no byte, time, soundness or hardware credit changes.
+
+- **2026-08-15 — Private tape exposes one exact coordinate-1 frontier.** The
+  response-tape decoder now accepts exactly one standalone canonical message
+  after the 46 alpha challenges and before all 188 terminal/atomic challenges.
+  It derives the payload length from the relation manifest and returns a typed
+  coordinate; missing, duplicate, concatenated, shifted, truncated or
+  noncanonical encodings fail closed. The focused extraction/mutation test is
+  **1/0/0**. This is disk grammar evidence only: campaign production has not
+  emitted the move and the disk residual relation is not yet constructed, so
+  no traffic, private-state, certificate or timing credit changes.
 
 - **2026-08-15 — Retained ProductClosure messages become an exact replay
   output.** The central prover and verifier `ProductClosure` calls now capture

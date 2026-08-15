@@ -4345,6 +4345,21 @@ terminal claims and adjoint root also use exact canonical message events, not
 length-only transcript entries. No wire size changes; the coordinate payload
 still awaits the campaign call site, private-tape extractor and disk relation.
 
+### 0.76 C6ICT4 strict private-tape extraction
+
+The response tape exposes coordinate 1 only when one complete canonical
+message record occurs at the exact frontier fixed by §0.75. Its payload length
+is `ProductClosure-count * 2 * sizeof(Fp2)` from the typed relation manifest.
+The preceding 46 records must be the exact statement-digest event followed by
+alpha challenges; the current record and following 187 records must be the
+188 post-claim `Fp2` challenges with no additional moves. No byte scan,
+concatenated-event parser or provider digest is admitted.
+
+The focused test recovers the typed scaled coordinate and rejects duplicate,
+truncated and noncanonical payload mutations (**1/0/0**). Production traffic
+and private-state values remain uncredited until the campaign call site emits
+the production 673-pair move and the complete disk verifier consumes it.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

@@ -27,6 +27,11 @@ use volta_mac::{
     Transcript, TranscriptChallengeChannel, TranscriptChallengeRequest, TranscriptChallengeResponse,
 };
 use volta_proto::c6::{C6ClientAttempt, C6ClientState, C6Digest, C6_MAC_COORDINATES};
+#[cfg(feature = "c6-trace")]
+use volta_proto::{
+    C6ResidualProductClaimCoordinate, C6ResidualRelationManifest,
+    C6_RESIDUAL_PRODUCT_CLAIMS_COORDINATE_ONE_LABEL,
+};
 
 use crate::c61_whir_reference::{
     C61Commitment, C61P3Fp2, C61WhirInteractionStats, C61WhirReferenceError, ReferenceResult,
@@ -794,6 +799,73 @@ impl C61InteractiveTape {
         self.checkpoint.context_digest
     }
 
+    /// Recover the sole residual-only ProductClosure coordinate from the
+    /// exact alpha/message/post-claim frontier. The move must occupy one
+    /// complete challenge record; concatenated, duplicated or shifted events
+    /// are rejected rather than heuristically scanned.
+    #[cfg(feature = "c6-trace")]
+    pub fn c6_residual_product_claim_coordinate_one(
+        &self,
+        manifest: &C6ResidualRelationManifest,
+    ) -> Result<C6ResidualProductClaimCoordinate, String> {
+        const STATEMENT_LABEL: &str = "c61.statement_digest_fixed";
+        let alpha_count = crate::c61_public_compression::C61_ALPHA_STREAMS
+            * crate::c61_public_compression::C61_ALPHA_POINT_DIMENSION;
+        let postclaim_count = crate::c61_public_compression::C61_EQUALITY_CHALLENGE_ELEMENTS
+            - alpha_count;
+        let payload_len = usize::try_from(manifest.topology().product_closure_count)
+            .ok()
+            .and_then(|count| count.checked_mul(32))
+            .ok_or_else(|| "C6ICT4 coordinate-1 payload length overflows".to_owned())?;
+        let matches = self
+            .checkpoint
+            .records
+            .iter()
+            .enumerate()
+            .filter_map(|(index, record)| {
+                decode_exact_transcript_message(
+                    &record.provider_move,
+                    C6_RESIDUAL_PRODUCT_CLAIMS_COORDINATE_ONE_LABEL,
+                    payload_len,
+                )
+                .map(|payload| (index, payload))
+            })
+            .collect::<Vec<_>>();
+        let [(index, payload)] = matches.as_slice() else {
+            return Err("C6ICT4 response tape has a missing/duplicate coordinate-1 move".to_owned());
+        };
+        let alpha_start = index
+            .checked_sub(alpha_count)
+            .ok_or_else(|| "C6ICT4 coordinate-1 move precedes its alpha family".to_owned())?;
+        let alpha = &self.checkpoint.records[alpha_start..*index];
+        if alpha.len() != alpha_count
+            || !matches!(alpha[0].kind, C61ChallengeKind::Fp2)
+            || decode_exact_transcript_message(&alpha[0].provider_move, STATEMENT_LABEL, 32)
+                .is_none()
+            || alpha[1..].iter().any(|record| {
+                record.kind != C61ChallengeKind::Fp2 || !record.provider_move.is_empty()
+            })
+        {
+            return Err("C6ICT4 alpha frontier is not canonical".to_owned());
+        }
+        let postclaim_end = index
+            .checked_add(postclaim_count)
+            .ok_or_else(|| "C6ICT4 post-claim frontier overflows".to_owned())?;
+        let postclaim = self
+            .checkpoint
+            .records
+            .get(*index..postclaim_end)
+            .ok_or_else(|| "C6ICT4 response tape truncates the post-claim family".to_owned())?;
+        if postclaim.len() != postclaim_count
+            || postclaim.iter().any(|record| record.kind != C61ChallengeKind::Fp2)
+            || postclaim[1..].iter().any(|record| !record.provider_move.is_empty())
+        {
+            return Err("C6ICT4 post-claim frontier is not canonical".to_owned());
+        }
+        C6ResidualProductClaimCoordinate::decode_payload(manifest, 1, payload)
+            .map_err(|error| error.to_string())
+    }
+
     pub fn encoded_len(&self) -> usize {
         C61_INTERACTIVE_TAPE_HEADER_BYTES
             + self.checkpoint.encode().map_or(0, |bytes| bytes.len())
@@ -933,6 +1005,28 @@ impl C61InteractiveTape {
         .map_err(|error| error.to_string())?;
         Ok(Transcript::new_interactive(Box::new(endpoint)))
     }
+}
+
+fn decode_exact_transcript_message<'a>(
+    bytes: &'a [u8],
+    expected_label: &str,
+    expected_payload_len: usize,
+) -> Option<&'a [u8]> {
+    let label_len = usize::from(u16::from_le_bytes(bytes.get(..2)?.try_into().ok()?));
+    let label_end = 2usize.checked_add(label_len)?;
+    let length_end = label_end.checked_add(8)?;
+    if bytes.get(2..label_end)? != expected_label.as_bytes() {
+        return None;
+    }
+    let payload_len = usize::try_from(u64::from_le_bytes(
+        bytes.get(label_end..length_end)?.try_into().ok()?,
+    ))
+    .ok()?;
+    if payload_len != expected_payload_len {
+        return None;
+    }
+    let payload_end = length_end.checked_add(payload_len)?;
+    (payload_end == bytes.len()).then(|| &bytes[length_end..payload_end])
 }
 
 fn c61_interactive_attempt_digest(attempt: C6ClientAttempt) -> Result<[u8; 32], String> {
@@ -2589,5 +2683,71 @@ mod tests {
         corrupted[44] ^= 1;
         assert!(C61InteractiveTapeBundle::decode(&corrupted).is_err());
         assert!(C61InteractiveTapeBundle::decode(&encoded[..encoded.len() - 1]).is_err());
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn response_tape_extracts_one_exact_product_claim_frontier() {
+        let fixture = volta_proto::build_c6_residual_direct_fused_scaled_fixture().unwrap();
+        let coordinate =
+            fixture.relation().claims().product_coordinate(fixture.manifest(), 1).unwrap();
+        let context = [0xE4; 32];
+        let (provider, replay, handle) =
+            spawn_c61_private_entropy_duplex_transcript_broker([0xE5; 32], 0, context).unwrap();
+        let mut provider_tx = Transcript::new_interactive(Box::new(provider));
+        let mut replay_tx = Transcript::new_interactive(Box::new(replay));
+        for transcript in [&mut provider_tx, &mut replay_tx] {
+            transcript.append_message("c61.statement_digest_fixed", &[0xE6; 32]);
+            for _ in 0..crate::c61_public_compression::C61_ALPHA_STREAMS
+                * crate::c61_public_compression::C61_ALPHA_POINT_DIMENSION
+            {
+                let _ = transcript.challenge_fp2();
+            }
+        }
+        let postclaim_count = crate::c61_public_compression::C61_EQUALITY_CHALLENGE_ELEMENTS
+            - crate::c61_public_compression::C61_ALPHA_STREAMS
+                * crate::c61_public_compression::C61_ALPHA_POINT_DIMENSION;
+        for transcript in [&mut provider_tx, &mut replay_tx] {
+            coordinate.append_coordinate_one(transcript).unwrap();
+            for _ in 0..postclaim_count {
+                let _ = transcript.challenge_fp2();
+            }
+        }
+        let payload = [0xE7; 64];
+        provider_tx.finish_interactive(&payload).unwrap();
+        replay_tx.finish_interactive(&payload).unwrap();
+        drop(provider_tx);
+        drop(replay_tx);
+        let tape = handle.finish().unwrap();
+        assert_eq!(
+            tape.c6_residual_product_claim_coordinate_one(fixture.manifest()).unwrap(),
+            coordinate
+        );
+
+        let coordinate_record = crate::c61_public_compression::C61_ALPHA_STREAMS
+            * crate::c61_public_compression::C61_ALPHA_POINT_DIMENSION;
+        let mut duplicated = tape.clone();
+        let duplicate = duplicated.checkpoint.records[coordinate_record].clone();
+        duplicated.checkpoint.records.insert(coordinate_record + 1, duplicate);
+        assert!(duplicated
+            .c6_residual_product_claim_coordinate_one(fixture.manifest())
+            .is_err());
+
+        let mut truncated = tape.clone();
+        truncated.checkpoint.records[coordinate_record].provider_move.pop();
+        assert!(truncated
+            .c6_residual_product_claim_coordinate_one(fixture.manifest())
+            .is_err());
+
+        let mut noncanonical = tape;
+        let payload_offset = 2
+            + C6_RESIDUAL_PRODUCT_CLAIMS_COORDINATE_ONE_LABEL.len()
+            + std::mem::size_of::<u64>();
+        noncanonical.checkpoint.records[coordinate_record].provider_move
+            [payload_offset..payload_offset + 8]
+            .copy_from_slice(&P.to_le_bytes());
+        assert!(noncanonical
+            .c6_residual_product_claim_coordinate_one(fixture.manifest())
+            .is_err());
     }
 }

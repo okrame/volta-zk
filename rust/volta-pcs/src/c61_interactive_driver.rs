@@ -741,9 +741,53 @@ pub struct C61InteractiveTape {
     final_pending_provider_move: Vec<u8>,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct C61InteractiveTrafficCensus {
+    pub tape_count: u32,
+    pub challenge_count: u64,
+    pub client_challenge_payload_bytes: u64,
+    pub canonical_provider_move_bytes: u64,
+    pub private_state_bytes: u64,
+}
+
 impl C61InteractiveTape {
     pub fn challenge_count(&self) -> usize {
         self.checkpoint.records.len()
+    }
+
+    pub fn traffic_census(&self) -> C61InteractiveTrafficCensus {
+        let client_challenge_payload_bytes = self
+            .checkpoint
+            .records
+            .iter()
+            .map(|record| match record.kind {
+                C61ChallengeKind::Fp => 8,
+                C61ChallengeKind::Fp2 => 16,
+                C61ChallengeKind::Query { .. } => 4,
+            })
+            .sum();
+        let canonical_provider_move_bytes = self
+            .checkpoint
+            .records
+            .iter()
+            .map(|record| record.provider_move.len() as u64)
+            .sum::<u64>()
+            + self.final_pending_provider_move.len() as u64;
+        C61InteractiveTrafficCensus {
+            tape_count: 1,
+            challenge_count: self.challenge_count() as u64,
+            client_challenge_payload_bytes,
+            canonical_provider_move_bytes,
+            private_state_bytes: self.encoded_len() as u64,
+        }
+    }
+
+    pub fn final_payload_bytes(&self) -> usize {
+        self.final_payload_bytes
+    }
+
+    pub fn final_semantic_bytes(&self) -> usize {
+        self.final_semantic_bytes
     }
 
     pub fn context_digest(&self) -> [u8; 32] {
@@ -1039,6 +1083,19 @@ impl C61InteractiveTapeBundle {
 
     pub fn response_tape(&self) -> &C61InteractiveTape {
         &self.response_tape
+    }
+
+    pub fn traffic_census(&self) -> C61InteractiveTrafficCensus {
+        let mut census = C61InteractiveTrafficCensus::default();
+        for tape in self.tapes.iter().chain(std::iter::once(&self.response_tape)) {
+            let tape = tape.traffic_census();
+            census.tape_count += tape.tape_count;
+            census.challenge_count += tape.challenge_count;
+            census.client_challenge_payload_bytes += tape.client_challenge_payload_bytes;
+            census.canonical_provider_move_bytes += tape.canonical_provider_move_bytes;
+        }
+        census.private_state_bytes = self.encoded_len() as u64;
+        census
     }
 
     pub fn into_tapes(
@@ -2426,6 +2483,14 @@ mod tests {
         replay_tx.finish_interactive(&payload).unwrap();
         let tape = handle.finish().unwrap();
         assert_eq!(tape.challenge_count(), 2);
+        let traffic = tape.traffic_census();
+        assert_eq!(traffic.tape_count, 1);
+        assert_eq!(traffic.challenge_count, 2);
+        assert_eq!(traffic.client_challenge_payload_bytes, 24);
+        assert!(traffic.canonical_provider_move_bytes > 0);
+        assert_eq!(traffic.private_state_bytes, tape.encoded_len() as u64);
+        assert_eq!(tape.final_payload_bytes(), payload.len());
+        assert_eq!(tape.final_semantic_bytes(), provider_tx.total_bytes() as usize);
 
         let mut disk_tx = tape.replay_transcript(0, context).unwrap();
         disk_tx.append_message("round-0", &[1, 2, 3]);
@@ -2504,6 +2569,11 @@ mod tests {
         bundle.validate_contexts(certificate_digest, contexts, response_context).unwrap();
         let encoded = bundle.encode().unwrap();
         assert_eq!(encoded.len(), bundle.encoded_len());
+        let traffic = bundle.traffic_census();
+        assert_eq!(traffic.tape_count, 8);
+        assert_eq!(traffic.challenge_count, 8);
+        assert_eq!(traffic.client_challenge_payload_bytes, 128);
+        assert_eq!(traffic.private_state_bytes, encoded.len() as u64);
         assert_eq!(C61InteractiveTapeBundle::decode(&encoded).unwrap(), bundle);
 
         let mut moved = bundle.clone();

@@ -7,6 +7,7 @@
 
 pub mod c6_t1_live_sources;
 pub mod c6_t1_owner;
+#[cfg(feature = "c61-p3-authenticated-reference")]
 pub mod c61_campaign;
 pub mod crypto_build_identity;
 pub mod logits_pack;

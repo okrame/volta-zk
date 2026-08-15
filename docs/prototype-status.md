@@ -16,8 +16,9 @@ This capsule is authoritative; read design §§0.60--0.67 next.
   5/0/0**, release check green. Its private bundle separates seven native
   tapes from one response tape; a duplex broker releases only challenges at
   the proved frontier and requires an identical final seal (**4/0/0**). A
-  provider-only response seam excludes verifier capabilities (**1/0/0**). No
-  production CUDA/full-chain/timing/memory or hardware credit exists.
+  provider-only seam excludes verifier capabilities (**1/0/0**), and an
+  OS-seeded campaign session seals the disk tape (**1/0/0**). No production
+  CUDA/full-chain/timing/memory or hardware credit exists.
 - **Screens.** Certificate **17,536,735 B**, setup **148,738,118 B**,
   setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
   **102.5878332989 bits/cert**, and provider/verifier **14.9179595454 /
@@ -37,6 +38,15 @@ This capsule is authoritative; read design §§0.60--0.67 next.
 - **Fiat--Shamir.** Read-only audit: production substitution is NO-GO;
   `C6FS1` may later exist only as a shadow diagnostic after new ROM
   soundness/privacy proofs. It does not change C6ICT2 or pod authorization.
+
+- **2026-08-15 — The campaign owns response entropy and exact traffic
+  census.** An `OsRng`-seeded client session creates the duplex broker, exposes
+  only two endpoint-backed transcripts and seals both roles against the exact
+  final certificate encoding. The returned tape replays from disk and reports
+  challenge count/bytes, canonical move bytes and private-state bytes without
+  estimates. PCS remains **4/0/0** and the focused campaign session is
+  **1/0/0**. The exact runner does not yet consume this session, so no
+  production traffic value, campaign credit or hard-stop change is claimed.
 
 - **2026-08-15 — Production response execution gains a provider-only seam.**
   The prover entry point now accepts only the GPT-2 witness adapter, installed

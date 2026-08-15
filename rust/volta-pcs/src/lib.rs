@@ -18,8 +18,8 @@ mod c61_interactive_driver;
 pub use c61_interactive_driver::{
     c61_response_transcript_context_digest, spawn_c61_private_entropy_duplex_transcript_broker,
     spawn_c61_private_entropy_transcript_broker, C61InteractiveTape, C61InteractiveTapeBundle,
-    C61PrivateEntropyBrokerHandle, C61PrivateEntropyEndpoint, C61PrivateEntropyLiveReplayEndpoint,
-    C61_INTERACTIVE_TAPE_LANES,
+    C61InteractiveTrafficCensus, C61PrivateEntropyBrokerHandle, C61PrivateEntropyEndpoint,
+    C61PrivateEntropyLiveReplayEndpoint, C61_INTERACTIVE_TAPE_LANES,
 };
 pub mod c61_joint_native_bridge;
 #[cfg(feature = "c61-p3-authenticated-reference")]

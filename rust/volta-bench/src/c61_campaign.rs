@@ -5,6 +5,7 @@
 //! extraction maps and C6NTO1 bytes are the setup objects already counted by
 //! the C6.1 budget.
 
+use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fs::{self, File, OpenOptions};
@@ -17,9 +18,13 @@ use volta_gpt2::{
 use volta_mac::{
     C6CanonicalTargetProfile, C6DecodedInstanceExtractionPlan, C6InstalledOperationPlan,
     C6InstanceExtractionArtifact, C6InstanceExtractionRole, C6NativeTargetProfileArtifact,
-    C6OperationPlanArtifact, C6TraceSourceManifest,
+    C6OperationPlanArtifact, C6TraceSourceManifest, Transcript,
 };
-use volta_pcs::{C61InteractiveTapeBundle, C61JointPublicArgument};
+use volta_pcs::{
+    c61_response_transcript_context_digest, spawn_c61_private_entropy_duplex_transcript_broker,
+    C61InteractiveTape, C61InteractiveTapeBundle, C61JointPublicArgument,
+    C61PrivateEntropyBrokerHandle,
+};
 use volta_proto::{
     C61FinalCertificateEnvelope, C61PublicWorkloadInstance, C6BoundProductionVerifierReplay,
     C6ClientAttempt, C6SetupManifest, C61_VERIFIER_REPLAY_STATE_BYTES,
@@ -140,6 +145,80 @@ pub struct C61CampaignInstalledSetup {
     pub plan_bytes: u64,
     pub extraction_bytes: u64,
     pub native_profile_bytes: u64,
+}
+
+/// Client-owned global response transcript for one reserved attempt. The
+/// provider and live verifier receive endpoint-backed transcripts only; the
+/// entropy seed and broker handle never cross this boundary.
+pub struct C61CampaignResponseTranscriptSession {
+    context_digest: [u8; 32],
+    provider: Transcript,
+    verifier: Transcript,
+    broker: C61PrivateEntropyBrokerHandle,
+}
+
+impl C61CampaignResponseTranscriptSession {
+    pub fn start(attempt: C6ClientAttempt, statement_digest: [u8; 32]) -> Result<Self, String> {
+        let mut verifier_seed = [0u8; 32];
+        OsRng
+            .try_fill_bytes(&mut verifier_seed)
+            .map_err(|error| format!("C6ICT3 response verifier entropy unavailable: {error}"))?;
+        Self::start_with_seed(attempt, statement_digest, verifier_seed)
+    }
+
+    fn start_with_seed(
+        attempt: C6ClientAttempt,
+        statement_digest: [u8; 32],
+        verifier_seed: [u8; 32],
+    ) -> Result<Self, String> {
+        if verifier_seed == [0; 32] {
+            return Err("C6ICT3 response verifier entropy is zero".to_owned());
+        }
+        let context_digest = c61_response_transcript_context_digest(attempt, statement_digest)?;
+        let (provider, verifier, broker) =
+            spawn_c61_private_entropy_duplex_transcript_broker(verifier_seed, 0, context_digest)
+                .map_err(|error| error.to_string())?;
+        Ok(Self {
+            context_digest,
+            provider: Transcript::new_interactive(Box::new(provider)),
+            verifier: Transcript::new_interactive(Box::new(verifier)),
+            broker,
+        })
+    }
+
+    pub fn transcripts(&mut self) -> (&mut Transcript, &mut Transcript) {
+        (&mut self.provider, &mut self.verifier)
+    }
+
+    pub fn context_digest(&self) -> [u8; 32] {
+        self.context_digest
+    }
+
+    pub fn finish_certificate(
+        self,
+        certificate: &C61FinalCertificateEnvelope,
+    ) -> Result<C61InteractiveTape, String> {
+        let payload = certificate.encode().map_err(|error| error.to_string())?;
+        self.finish_payload(&payload)
+    }
+
+    fn finish_payload(mut self, payload: &[u8]) -> Result<C61InteractiveTape, String> {
+        if payload.is_empty() {
+            return Err("C6ICT3 response final payload is empty".to_owned());
+        }
+        let provider_result = self.provider.finish_interactive(payload);
+        let verifier_result = if provider_result.is_ok() {
+            self.verifier.finish_interactive(payload)
+        } else {
+            Ok(())
+        };
+        drop(self.provider);
+        drop(self.verifier);
+        let broker_result = self.broker.finish();
+        provider_result?;
+        verifier_result?;
+        broker_result
+    }
 }
 
 fn parse_hex_32(value: &str, label: &str) -> Result<[u8; 32], String> {
@@ -810,6 +889,8 @@ pub fn load_c61_campaign_artifact(root: &Path) -> Result<C61CampaignArtifact, St
 mod campaign_artifact_tests {
     use super::*;
     use std::sync::atomic::{AtomicU64, Ordering};
+    use volta_field::{Fp, Fp2};
+    use volta_proto::{C6CorrelationRange, C6PairedCorrelationRanges, C6Workload};
 
     static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
 
@@ -846,6 +927,74 @@ mod campaign_artifact_tests {
             wire_bytes: payloads.certificate.len() as u64,
             files: campaign_rows(payloads).unwrap(),
         }
+    }
+
+    fn response_attempt() -> C6ClientAttempt {
+        C6ClientAttempt {
+            slot: 3,
+            nonce: [0x21; 32],
+            setup_manifest_digest: [0x22; 32],
+            old_head_digest: [0x23; 32],
+            predecessor_certificate_digest: [0; 32],
+            correlation_ranges: C6PairedCorrelationRanges {
+                coordinates: [
+                    C6CorrelationRange { stage: 1, start: 17, count: 19 },
+                    C6CorrelationRange { stage: 1, start: 23, count: 19 },
+                ],
+            },
+            workload: C6Workload {
+                prompt_tokens: 100,
+                decode_tokens: 50,
+                old_context: 0,
+                new_context: 150,
+            },
+        }
+    }
+
+    #[test]
+    fn response_session_keeps_entropy_client_side_and_yields_disk_tape() {
+        let attempt = response_attempt();
+        let statement = [0x24; 32];
+        let expected_context = c61_response_transcript_context_digest(attempt, statement).unwrap();
+        let mut session =
+            C61CampaignResponseTranscriptSession::start_with_seed(attempt, statement, [0x25; 32])
+                .unwrap();
+        assert_eq!(session.context_digest(), expected_context);
+        let (provider, verifier) = session.transcripts();
+        provider.append_message("response-round-0", &[1, 2, 3]);
+        let first = provider.challenge_fp2();
+        verifier.append_message("response-round-0", &[1, 2, 3]);
+        assert_eq!(verifier.challenge_fp2(), first);
+        provider.append_message("response-round-1", &[4, 5]);
+        let second = provider.challenge_fp();
+        verifier.append_message("response-round-1", &[4, 5]);
+        assert_eq!(verifier.challenge_fp(), second);
+
+        let payload = [0x26; 4096];
+        let tape = session.finish_payload(&payload).unwrap();
+        let traffic = tape.traffic_census();
+        assert_eq!(traffic.challenge_count, 2);
+        assert_eq!(traffic.client_challenge_payload_bytes, 24);
+        let mut replay = tape.replay_transcript(0, expected_context).unwrap();
+        replay.append_message("response-round-0", &[1, 2, 3]);
+        assert_eq!(replay.challenge_fp2(), first);
+        replay.append_message("response-round-1", &[4, 5]);
+        assert_eq!(replay.challenge_fp(), second);
+        replay.finish_interactive(&payload).unwrap();
+        assert!(tape.replay_transcript(0, [0x27; 32]).is_err());
+        assert_ne!(first, Fp2::ZERO);
+        assert_ne!(second, Fp::ZERO);
+
+        let source = include_str!("c61_campaign.rs");
+        let public_start = source
+            .split_once("pub fn start(attempt: C6ClientAttempt")
+            .unwrap()
+            .1
+            .split_once("fn start_with_seed")
+            .unwrap()
+            .0;
+        assert!(public_start.contains("OsRng"));
+        assert!(!public_start.contains("verifier_seed:"));
     }
 
     #[test]

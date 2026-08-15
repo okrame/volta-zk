@@ -4167,6 +4167,22 @@ dual-feature bench check is green. This is an API/process seam, not yet a
 campaign transcript: duplex wiring, persisted tape consumption and mutations
 remain required under `C6ICT3_RESPONSE_TAPE_AND_DISK_REPLAY_REQUIRED`.
 
+### 0.69 C6ICT3 campaign-owned response session
+
+The campaign boundary now creates response entropy directly from `OsRng` and
+retains the broker handle. It exposes only the seedless provider and
+live-replay transcripts, then requires both to seal the exact canonical final
+certificate encoding before releasing the client-private tape. A focused
+session test proves subsequent disk replay and context rejection (**1/0/0**);
+the broker/bundle suite remains **4/0/0**.
+
+Each tape and bundle now derives challenge count, client challenge payload,
+canonical provider-move bytes and encoded private-state bytes from decoded
+records. These counters will feed the production re-sum; they do not yet have
+production values. The exact runner still lacks a call site for this session,
+and the complete disk verifier is absent. The active hard stop and all credits
+therefore remain unchanged.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

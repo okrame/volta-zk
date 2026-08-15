@@ -4183,6 +4183,24 @@ production values. The exact runner still lacks a call site for this session,
 and the complete disk verifier is absent. The active hard stop and all credits
 therefore remain unchanged.
 
+### 0.70 C6ICT3 strict disk response prefix
+
+Campaign schema/profile v4 now requires the C6ICT3 bundle and checks its
+response context against the decoded attempt and public statement. The disk
+response entry accepts only the strict certificate, verifier-only replay
+state, challenge bundle, redacted verifier model, public tokens and installed
+client setup. It derives fresh verifier contexts, decodes the retained proof
+and cache-target frame from certificate bytes, and replays the eighth tape.
+The reconstructed source manifest must equal setup.
+
+Replay intentionally stops at the response prefix and returns its contexts
+and transcript alive: the same global transcript must continue through the
+blind coordinator before both roles seal the final certificate. Session and
+disk-entry source guards are **2/0/0** and dual-feature compilation is green.
+No production artifact has exercised the entry, and the remaining certificate
+verifier is not assembled; call-site, mutation and lifecycle gates therefore
+remain under `C6ICT3_RESPONSE_TAPE_AND_DISK_REPLAY_REQUIRED`.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

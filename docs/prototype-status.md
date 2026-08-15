@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.67 next.
+This capsule is authoritative; read design §§0.60--0.70 next.
 
 - **Milestone/evidence.** C6.1/C6NBR3 and the six C6ICT2 persisted/CUDA lanes
   are closed locally. C6ICT3 now gives the complete scaled response an exact
@@ -16,18 +16,18 @@ This capsule is authoritative; read design §§0.60--0.67 next.
   5/0/0**, release check green. Its private bundle separates seven native
   tapes from one response tape; a duplex broker releases only challenges at
   the proved frontier and requires an identical final seal (**4/0/0**). A
-  provider-only seam excludes verifier capabilities (**1/0/0**), and an
-  OS-seeded campaign session seals the disk tape (**1/0/0**). No production
-  CUDA/full-chain/timing/memory or hardware credit exists.
+  provider-only seam excludes verifier capabilities (**1/0/0**); the OS-seeded
+  session and strict disk-response entry are **2/0/0**. No production,
+  full-chain or hardware credit exists.
 - **Screens.** Certificate **17,536,735 B**, setup **148,738,118 B**,
   setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
   **102.5878332989 bits/cert**, and provider/verifier **14.9179595454 /
   4.978261758 s** remain `credit:false`.
 - **Active gate.** `C6ICT3_RESPONSE_TAPE_AND_DISK_REPLAY_REQUIRED`. Canonical
-  move parity and the provider API boundary are closed, but the campaign still
-  injects seeded transcripts and does not retain/replay the eighth tape. It
-  needs duplex call-site wiring, strict disk replay, mutations and lifecycle
-  integration.
+  parity, provider boundary and response-prefix replay are closed, but the
+  exact runner still does not consume the session and the downstream disk
+  verifier is absent. It needs call-site wiring, mutations, lifecycle guards
+  and fresh accounting.
 - **Authorization.** Owner GO permits exact canonical response moves, a
   seedless provider endpoint and one attempt/statement/certificate-bound
   client-private response tape. Burn-on-interruption remains mandatory. No pod
@@ -38,6 +38,17 @@ This capsule is authoritative; read design §§0.60--0.67 next.
 - **Fiat--Shamir.** Read-only audit: production substitution is NO-GO;
   `C6FS1` may later exist only as a shadow diagnostic after new ROM
   soundness/privacy proofs. It does not change C6ICT2 or pod authorization.
+
+- **2026-08-15 — Campaign schema v4 consumes the response tape from disk.**
+  The loader now requires the C6ICT3 profile and attempt/statement-derived
+  response context. A strict response entry derives fresh verifier contexts
+  from client-private replay state, decodes the retained proof and cache-target
+  frame from the certificate, replays only through the eighth tape, and checks
+  the setup source manifest. It returns live verifier contexts/transcript for
+  the downstream blind proof; no seeded transcript, witness or provider stream
+  is accepted. Session plus disk-entry guards are **2/0/0** and dual-feature
+  compilation is green. No complete artifact was executed; downstream disk
+  verification and producer call-site wiring remain, so the hard stop stands.
 
 - **2026-08-15 — The campaign owns response entropy and exact traffic
   census.** An `OsRng`-seeded client session creates the duplex broker, exposes

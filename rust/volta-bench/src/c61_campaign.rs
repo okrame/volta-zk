@@ -11,10 +11,12 @@ use std::collections::BTreeSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use volta_gpt2::{
     decode_verifier_model_canonical, encode_verifier_model_canonical, Gpt2VerifierModel,
 };
+#[cfg(feature = "c6-trace")]
+use volta_mac::VerifierCtx;
 use volta_mac::{
     C6CanonicalTargetProfile, C6DecodedInstanceExtractionPlan, C6InstalledOperationPlan,
     C6InstanceExtractionArtifact, C6InstanceExtractionRole, C6NativeTargetProfileArtifact,
@@ -25,12 +27,17 @@ use volta_pcs::{
     C61InteractiveTape, C61InteractiveTapeBundle, C61JointPublicArgument,
     C61PrivateEntropyBrokerHandle,
 };
+#[cfg(feature = "c6-trace")]
+use volta_proto::{
+    replay_c6_t1_production_response_verifier, C6RetainedResponseProof,
+    C6T1ProductionResponseVerifierReplay,
+};
 use volta_proto::{
     C61FinalCertificateEnvelope, C61PublicWorkloadInstance, C6BoundProductionVerifierReplay,
     C6ClientAttempt, C6SetupManifest, C61_VERIFIER_REPLAY_STATE_BYTES,
 };
 
-const CAMPAIGN_ARTIFACT_PROFILE: &str = "C6.1-C6PA2-C6NBR3-C6ICT2-campaign-v3";
+const CAMPAIGN_ARTIFACT_PROFILE: &str = "C6.1-C6PA2-C6NBR3-C6ICT3-campaign-v4";
 const CAMPAIGN_BACKEND: &str = "cuda-resident";
 const CAMPAIGN_PCG: &str = "real-aes128-mmo";
 const CAMPAIGN_FILE_NAMES: [&str; 5] = [
@@ -219,6 +226,89 @@ impl C61CampaignResponseTranscriptSession {
         verifier_result?;
         broker_result
     }
+}
+
+/// Response-verifier state reconstructed only from decoded campaign inputs.
+/// The live contexts and transcript continue into the global blind verifier;
+/// final tape sealing occurs only after the complete certificate is checked.
+#[cfg(feature = "c6-trace")]
+pub struct C61CampaignResponseVerifierReplay {
+    response: C6T1ProductionResponseVerifierReplay,
+    contexts: [VerifierCtx; 2],
+    transcript: Transcript,
+}
+
+#[cfg(feature = "c6-trace")]
+impl C61CampaignResponseVerifierReplay {
+    pub fn response(&self) -> &C6T1ProductionResponseVerifierReplay {
+        &self.response
+    }
+
+    pub fn contexts_and_transcript(&mut self) -> (&mut [VerifierCtx; 2], &mut Transcript) {
+        (&mut self.contexts, &mut self.transcript)
+    }
+
+    pub fn into_parts(
+        self,
+    ) -> (C6T1ProductionResponseVerifierReplay, [VerifierCtx; 2], Transcript) {
+        (self.response, self.contexts, self.transcript)
+    }
+}
+
+/// Replay the exact response prefix without retained provider state. The
+/// caller moves the one installed verifier plan/extraction out of the loaded
+/// campaign artifact; no setup-sized clone or witness reconstruction occurs.
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+pub fn replay_c61_campaign_response_verifier(
+    certificate: &C61FinalCertificateEnvelope,
+    verifier_replay: &C6BoundProductionVerifierReplay,
+    challenge_tapes: &C61InteractiveTapeBundle,
+    verifier_model: &Gpt2VerifierModel,
+    public_instance: &C61PublicWorkloadInstance,
+    expected_source_manifest: &C6TraceSourceManifest,
+    verifier_plan: C6InstalledOperationPlan,
+    verifier_extraction: C6DecodedInstanceExtractionPlan,
+) -> Result<C61CampaignResponseVerifierReplay, String> {
+    let inner = certificate.certificate();
+    let certificate_digest = inner.digest().map_err(|error| error.to_string())?;
+    let attempt = C6ClientAttempt {
+        slot: inner.slot,
+        nonce: inner.nonce,
+        setup_manifest_digest: inner.setup_manifest_digest,
+        old_head_digest: inner.old_head.digest(),
+        predecessor_certificate_digest: inner.predecessor_certificate_digest,
+        correlation_ranges: inner.correlation_ranges,
+        workload: inner.workload,
+    };
+    challenge_tapes.validate_attempt(attempt, certificate_digest)?;
+    if verifier_replay.certificate_digest() != certificate_digest
+        || verifier_replay.statement_digest() != public_instance.statement_digest
+        || public_instance.public_tokens.len() != 150
+    {
+        return Err("C6ICT3 disk response binding/profile mismatch".to_owned());
+    }
+    let context_digest =
+        c61_response_transcript_context_digest(attempt, public_instance.statement_digest)?;
+    let mut transcript = challenge_tapes.response_tape().replay_transcript(0, context_digest)?;
+    let retained = C6RetainedResponseProof::decode(certificate.retained_response())
+        .map_err(|error| error.to_string())?;
+    let mut contexts = verifier_replay.fresh_contexts(certificate_digest)?;
+    let response = replay_c6_t1_production_response_verifier(
+        verifier_model,
+        &public_instance.public_tokens,
+        public_instance.statement_digest,
+        verifier_plan,
+        verifier_extraction,
+        certificate.proof_envelope().cache_fold_targets(),
+        &retained,
+        &mut contexts,
+        &mut transcript,
+    )?;
+    if response.source_manifest() != expected_source_manifest {
+        return Err("C6ICT3 disk response source manifest differs from setup".to_owned());
+    }
+    Ok(C61CampaignResponseVerifierReplay { response, contexts, transcript })
 }
 
 fn parse_hex_32(value: &str, label: &str) -> Result<[u8; 32], String> {
@@ -587,6 +677,8 @@ fn validate_campaign_bindings(
         workload: inner.workload,
     };
     challenge_tapes.validate_attempt(attempt, certificate_digest)?;
+    let expected_response_context =
+        c61_response_transcript_context_digest(attempt, public_instance.statement_digest)?;
     if verifier_replay.certificate_digest() != certificate_digest
         || verifier_replay.setup_manifest_digest() != setup_manifest_digest
         || setup_manifest_digest != inner.setup_manifest_digest
@@ -601,6 +693,7 @@ fn validate_campaign_bindings(
         || inner.workload.prompt_tokens != public_instance.prompt_tokens
         || inner.workload.decode_tokens != public_instance.decode_tokens
         || inner.workload.new_context != public_instance.new_context
+        || challenge_tapes.response_tape().context_digest() != expected_response_context
     {
         return Err(
             "C6.1 campaign objects do not share one certificate/setup/statement/workload binding"
@@ -760,7 +853,7 @@ pub fn create_c61_campaign_artifact(
     decode_campaign_payloads(&payloads)?;
     let inner = certificate.certificate();
     let record = CampaignArtifactRecord {
-        schema: 3,
+        schema: 4,
         profile: CAMPAIGN_ARTIFACT_PROFILE.to_owned(),
         source_git_commit: source_git_commit.to_owned(),
         git_dirty: false,
@@ -849,7 +942,7 @@ pub fn load_c61_campaign_artifact(root: &Path) -> Result<C61CampaignArtifact, St
         return Err("C6.1 campaign manifest is not canonical compact JSON".to_owned());
     }
     validate_source_commit(&record.source_git_commit)?;
-    if record.schema != 3
+    if record.schema != 4
         || record.profile != CAMPAIGN_ARTIFACT_PROFILE
         || record.git_dirty
         || record.backend != CAMPAIGN_BACKEND
@@ -888,6 +981,7 @@ pub fn load_c61_campaign_artifact(root: &Path) -> Result<C61CampaignArtifact, St
 #[cfg(test)]
 mod campaign_artifact_tests {
     use super::*;
+    use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
     use volta_field::{Fp, Fp2};
     use volta_proto::{C6CorrelationRange, C6PairedCorrelationRanges, C6Workload};
@@ -914,7 +1008,7 @@ mod campaign_artifact_tests {
 
     fn dummy_record(payloads: &CampaignPayloads) -> CampaignArtifactRecord {
         CampaignArtifactRecord {
-            schema: 3,
+            schema: 4,
             profile: CAMPAIGN_ARTIFACT_PROFILE.to_owned(),
             source_git_commit: "0123456789abcdef0123456789abcdef01234567".to_owned(),
             git_dirty: false,
@@ -995,6 +1089,33 @@ mod campaign_artifact_tests {
             .0;
         assert!(public_start.contains("OsRng"));
         assert!(!public_start.contains("verifier_seed:"));
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn disk_response_replay_uses_only_tape_certificate_and_client_state() {
+        let source = include_str!("c61_campaign.rs");
+        let body = source
+            .split_once("pub fn replay_c61_campaign_response_verifier(")
+            .unwrap()
+            .1
+            .split_once("fn parse_hex_32")
+            .unwrap()
+            .0;
+        for required in [
+            "validate_attempt",
+            "response_tape().replay_transcript",
+            "C6RetainedResponseProof::decode",
+            "fresh_contexts",
+            "replay_c6_t1_production_response_verifier",
+        ] {
+            assert!(body.contains(required), "disk response replay omits {required}");
+        }
+        for forbidden in
+            ["Transcript::new(", "Gpt2Model", "ModelWitness", "CorrelationStream", "provider_seed"]
+        {
+            assert!(!body.contains(forbidden), "disk response replay contains {forbidden}");
+        }
     }
 
     #[test]

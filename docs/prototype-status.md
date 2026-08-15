@@ -8,22 +8,21 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.64 next.
+This capsule is authoritative; read design §§0.60--0.65 next.
 
-- **Milestone/evidence.** C6.1/C6NBR3 source binding and the six C6ICT2
-  persisted/CUDA lanes are closed locally. Checkpoints through `2df0265` also
-  retain exact compiler inputs and bind the single output challenge to the
-  canonical public frame. No production CUDA/full-chain/timing/memory/hardware
-  credit exists.
+- **Milestone/evidence.** C6.1/C6NBR3 and the six C6ICT2 persisted/CUDA lanes
+  are closed locally. C6ICT3 now gives the complete scaled response an exact
+  canonical prover/verifier transcript: proto **192/0/1**, MAC **32/0/0 +
+  5/0/0**, release check green. No production CUDA/full-chain/timing/memory or
+  hardware credit exists.
 - **Screens.** Certificate **17,536,735 B**, setup **148,738,118 B**,
   setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
   **102.5878332989 bits/cert**, and provider/verifier **14.9179595454 /
   4.978261758 s** remain `credit:false`.
-- **Active gate.** `C6ICT3_GLOBAL_RESPONSE_PRIVATE_ENTROPY_DRIVER`. The global T1
-  response still runs a complete seeded prover transcript before verifier
-  replay; 40 candidate length-only append sites include live pre-challenge
-  moves. The seedless channel rejects these moves, so C6ICT2's seven tapes do
-  not make the whole proof interactive.
+- **Active gate.** `C6ICT3_RESPONSE_TAPE_AND_DISK_REPLAY_REQUIRED`. Canonical
+  move parity is closed, but the global response still uses a seeded monolithic
+  builder. It needs a seedless provider endpoint, private eighth tape, strict
+  disk replay, mutations and campaign lifecycle integration.
 - **Authorization.** Owner GO permits exact canonical response moves, a
   seedless provider endpoint and one attempt/statement/certificate-bound
   client-private response tape. Burn-on-interruption remains mandatory. No pod
@@ -34,6 +33,20 @@ This capsule is authoritative; read design §§0.60--0.64 next.
 - **Fiat--Shamir.** Read-only audit: production substitution is NO-GO;
   `C6FS1` may later exist only as a shadow diagnostic after new ROM
   soundness/privacy proofs. It does not change C6ICT2 or pod authorization.
+
+- **2026-08-15 — Exact global response transcript parity closes locally.**
+  Every live response correction is now a canonical value move or a
+  verifier-reconstructible length-plus-BLAKE3-digest move; challenge requests
+  are also order-bound. A complete scaled GPT-2 response produces the same
+  canonical digest on both roles, with first-divergence diagnostics guarding
+  value and order. MAC is **32/0/0 + 5/0/0**, proto+c6-trace is **192/0/1**,
+  and release compilation is green. This fixes the scheduling prerequisite;
+  it does not yet supply private entropy. The builder remains seeded and
+  monolithic, so the new hard stop is
+  `C6ICT3_RESPONSE_TAPE_AND_DISK_REPLAY_REQUIRED`: add the bound response tape,
+  seedless provider execution, strict disk replay, mutations, burn/backend
+  guards and fresh accounting before pod contact. No codec or certificate
+  field changed and no benchmark credit is claimed.
 
 - **2026-08-15 — Owner authorizes C6ICT3 construction.** The global T1
   response may migrate every live pre-challenge move to a canonical value or

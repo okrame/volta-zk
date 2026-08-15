@@ -4684,7 +4684,7 @@ fn verify_response_impl(
         if proof.embed.out_corr.len() != t * D {
             return None;
         }
-        let out_keys = auth_matrix_rows_v(cx.ctx, dom_out, &proof.embed.out_corr, t, D);
+        let out_keys = auth_matrix_rows_v(cx.ctx, cx.tx, dom_out, &proof.embed.out_corr, t, D);
         (cx.doms, out_keys)
     };
     let t_ln = 2usize;
@@ -4698,10 +4698,12 @@ fn verify_response_impl(
             return None;
         }
         let dom_out_f = cx.doms.take(t_ln as u64);
-        let out_keys_f = auth_matrix_rows_v(cx.ctx, dom_out_f, &proof.final_ln.out_corr, t_ln, D);
+        let out_keys_f =
+            auth_matrix_rows_v(cx.ctx, cx.tx, dom_out_f, &proof.final_ln.out_corr, t_ln, D);
         let lvk = expand_ln_vecs_k(&mut cx, &proof.final_ln.ln_vec_corrs);
         let dom_row = cx.doms.take(t_ln as u64);
-        let row_keys = auth_matrix_rows_v(cx.ctx, dom_row, &proof.final_ln.row_corr, t_ln, D);
+        let row_keys =
+            auth_matrix_rows_v(cx.ctx, cx.tx, dom_row, &proof.final_ln.row_corr, t_ln, D);
         (cx.doms, out_keys_f, lvk, row_keys)
     };
     // ---- decode chunks, phase 1 mirror --------------------------------------
@@ -4754,7 +4756,8 @@ fn verify_response_impl(
                 if cp.embed.out_corr.len() != q * D {
                     return None;
                 }
-                let out_keys = auth_matrix_rows_v(cx.ctx, dom_out, &cp.embed.out_corr, q, D);
+                let out_keys =
+                    auth_matrix_rows_v(cx.ctx, cx.tx, dom_out, &cp.embed.out_corr, q, D);
                 (cx.doms, out_keys)
             };
             let (fin_doms, fin_out_keys, fin_lvk) = {
@@ -4765,7 +4768,8 @@ fn verify_response_impl(
                     return None;
                 }
                 let dom_out_f = cx.doms.take(q as u64);
-                let out_keys_f = auth_matrix_rows_v(cx.ctx, dom_out_f, &cp.fin_out_corr, q, D);
+                let out_keys_f =
+                    auth_matrix_rows_v(cx.ctx, cx.tx, dom_out_f, &cp.fin_out_corr, q, D);
                 let lvk = expand_ln_vecs_k(&mut cx, &cp.fin_ln_vec_corrs);
                 (cx.doms, out_keys_f, lvk)
             };
@@ -4819,7 +4823,12 @@ fn verify_response_impl(
     let private_layout = private_logits
         .then(|| private_argmax_public_layout(t, chunks).expect("private preflight fixed layout"));
     let argmax_prepared = if let Some((phases, _)) = &private_layout {
-        Some(prepare_private_argmax_verifier(proof.private_argmax.as_ref()?, phases.len(), vc)?)
+        Some(prepare_private_argmax_verifier(
+            proof.private_argmax.as_ref()?,
+            phases.len(),
+            vc,
+            tx,
+        )?)
     } else {
         None
     };
@@ -4982,6 +4991,7 @@ fn verify_response_impl(
         open_matrix_k(&out_keys_f, t_ln, D, &pt_fin)
     };
     let dom_wv = cx.doms.take(1);
+    cx.tx.append_fp2s("logits_wte_correction", &[proof.logits.wte_corr]);
     let k_wte = cx.ctx.correct_full_verifier_key(dom_wv, proof.logits.wte_corr);
     cx.kprod.push((k_fin, k_wte, k_claim_n));
     let mut pt_wte = r_l;
@@ -4997,12 +5007,14 @@ fn verify_response_impl(
     let r_i = &embed_acc_point[d_cb..];
     let eq_i = eq_vec(r_i);
     let dom_p = cx.doms.take(1);
+    cx.tx.append_fp2s("selection_p_correction", &[proof.selection.p_corr]);
     let k_p = cx.ctx.correct_full_verifier_key(dom_p, proof.selection.p_corr);
     let k_claim0 = embed_acc_key.sub(k_p);
     let dom_sel = cx.doms.take(16);
     let (rho_z, k_sel_n) = blind_verify(16, k_claim0, &proof.selection.sc, cx.ctx, dom_sel, cx.tx)?;
     let s_eval = sel_s_eval(&model.p.tokens[..t], &eq_i, &rho_z);
     let dom_wv2 = cx.doms.take(1);
+    cx.tx.append_fp2s("selection_wte_correction", &[proof.selection.wte_corr]);
     let k_wte2 = cx.ctx.correct_full_verifier_key(dom_wv2, proof.selection.wte_corr);
     cx.kzero.push(k_wte2.scale(s_eval).sub(k_sel_n));
     let mut pt_wte2 = r_d.to_vec();
@@ -5014,6 +5026,7 @@ fn verify_response_impl(
         blind_verify(10, k_p, &proof.selection.sc_wpe, cx.ctx, dom_wpe_sc, cx.tx)?;
     let g_eval = masked_eq_eval(&eq_i, 0, t, &rho_w);
     let dom_wpe = cx.doms.take(1);
+    cx.tx.append_fp2s("selection_wpe_correction", &[proof.selection.wpe_corr]);
     let k_wpe = cx.ctx.correct_full_verifier_key(dom_wpe, proof.selection.wpe_corr);
     cx.kzero.push(k_wpe.scale(g_eval).sub(k_wpe_n));
     let mut wpe_pt = r_d.to_vec();
@@ -5190,6 +5203,7 @@ fn verify_response_impl(
                 open_matrix_k(&v1c.fin_out_keys, q, D, &pt_fin)
             };
             let dom_wv = cx.doms.take(1);
+            cx.tx.append_fp2s("logits_wte_correction", &[cp.logits.wte_corr]);
             let k_wte = cx.ctx.correct_full_verifier_key(dom_wv, cp.logits.wte_corr);
             cx.kprod.push((k_fin, k_wte, k_claim_n));
             let mut pt_wte = r_l;
@@ -5205,6 +5219,7 @@ fn verify_response_impl(
             let eq_i = eq_vec(r_i);
             let band_tokens = &ch.seq[t0..t0 + q];
             let dom_p = cx.doms.take(1);
+            cx.tx.append_fp2s("selection_p_correction", &[cp.selection.p_corr]);
             let k_p = cx.ctx.correct_full_verifier_key(dom_p, cp.selection.p_corr);
             let k_claim0 = embed_acc_key_c.sub(k_p);
             let dom_sel = cx.doms.take(16);
@@ -5212,6 +5227,7 @@ fn verify_response_impl(
                 blind_verify(16, k_claim0, &cp.selection.sc, cx.ctx, dom_sel, cx.tx)?;
             let s_eval = sel_s_eval(band_tokens, &eq_i, &rho_z);
             let dom_wv2 = cx.doms.take(1);
+            cx.tx.append_fp2s("selection_wte_correction", &[cp.selection.wte_corr]);
             let k_wte2 = cx.ctx.correct_full_verifier_key(dom_wv2, cp.selection.wte_corr);
             cx.kzero.push(k_wte2.scale(s_eval).sub(k_sel_n));
             let mut pt_wte2 = r_d.to_vec();
@@ -5222,6 +5238,7 @@ fn verify_response_impl(
                 blind_verify(10, k_p, &cp.selection.sc_wpe, cx.ctx, dom_wpe_sc, cx.tx)?;
             let g_eval = masked_eq_eval(&eq_i, t0, q, &rho_w);
             let dom_wpe = cx.doms.take(1);
+            cx.tx.append_fp2s("selection_wpe_correction", &[cp.selection.wpe_corr]);
             let k_wpe = cx.ctx.correct_full_verifier_key(dom_wpe, cp.selection.wpe_corr);
             cx.kzero.push(k_wpe.scale(g_eval).sub(k_wpe_n));
             let mut wpe_pt = r_d.to_vec();

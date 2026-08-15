@@ -942,8 +942,7 @@ pub fn verify_x3_ops(
         return None;
     }
     let trace_dom = layer_dom_base(X3_TRACE_SECTION);
-    let trace_keys = keys_fp_vec_v(ctx, trace_dom, &proof.trace_corr);
-    tx.append("auth_corrections", 8 * proof.trace_corr.len() as u64);
+    let trace_keys = keys_fp_vec_v(ctx, tx, trace_dom, &proof.trace_corr);
     let beta = tx.challenge_fp2();
     let weights = power_weights(beta, trace.len());
     let trace_key = open_weighted_k(&trace_keys, &weights);

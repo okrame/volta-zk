@@ -10,7 +10,8 @@ use crate::block_proof::{BlockCtxP, BlockCtxV};
 use crate::mle::eval_mle;
 use crate::mle::{eq_points, eq_vec};
 use crate::sumcheck_blind::{
-    blind_prove_resident_labeled, blind_prove_with_finals_labeled, blind_verify, BlindSumcheckProof,
+    blind_prove_resident_labeled, blind_prove_with_finals_labeled, blind_verify_labeled,
+    BlindSumcheckProof,
 };
 use crate::thaler::pad_bits;
 use volta_accel::{AccelError, Backend, DeviceBuffer, DeviceSlice, Fp2Repr, MatrixFoldAxis};
@@ -356,8 +357,16 @@ pub(crate) fn verify_eq_reduction(
     let beta = cx.tx.challenge_fp2();
     let claim0 = first.key.add(second.key.scale(beta));
     let doms = EqReductionDoms::alloc_v(cx, n_vars);
-    let (point, final_key) =
-        blind_verify(n_vars, claim0, &proof.sumcheck, cx.ctx, doms.rounds, cx.tx)?;
+    let (point, final_key) = blind_verify_labeled(
+        n_vars,
+        claim0,
+        &proof.sumcheck,
+        cx.ctx,
+        doms.rounds,
+        cx.tx,
+        "t1_eq_round_corrections",
+    )?;
+    cx.tx.append_fp2s("t1_eq_terminal_correction", &[proof.terminal_corr]);
     let terminal_key = cx.ctx.correct_full_verifier_key(doms.terminal, proof.terminal_corr);
     let coefficient = eq_points(&first.point, &point) + beta * eq_points(&second.point, &point);
     cx.kzero.push(terminal_key.scale(coefficient).sub(final_key));

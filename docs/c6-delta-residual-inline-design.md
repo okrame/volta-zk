@@ -4092,6 +4092,31 @@ re-sum client-private state, variable challenge traffic, I/O, provider time and
 official four-thread verifier time. No original C6.1 gate is relaxed, and no
 pod contact or benchmark credit follows from this authorization alone.
 
+### 0.65 C6ICT3 canonical response parity checkpoint
+
+The response transcript now has one mechanically checked event grammar. Small
+moves carry their canonical field bytes; large correction arrays carry their
+logical byte length and a BLAKE3 digest over canonical little-endian field
+encodings. Zero-byte public markers are explicit messages, and every typed
+challenge request is included in the ordered binding. A legacy length-only
+append makes the binding unavailable and is rejected before an interactive
+challenge.
+
+The complete scaled GPT-2 response reconstructs the same ordered event digest
+on prover and verifier. This matters because equal final verifier output would
+not detect a correction chosen after its challenge. The test instead reports
+the first differing label/value digest. Proto+c6-trace is **192/0/1**, MAC is
+**32/0/0 + 5/0/0**, and release compilation is green.
+
+This checkpoint does not yet hide response challenges: the production owner
+still runs a seeded prover to completion before verifier replay. The active
+hard stop is `C6ICT3_RESPONSE_TAPE_AND_DISK_REPLAY_REQUIRED`. Resume requires
+the authorized seedless provider endpoint and eighth client-private tape,
+attempt/statement/move/payload/certificate binding, strict disk replay,
+seed/move/order/payload/truncation mutations, burn and backend guards, and a
+fresh state/traffic/I/O/time re-sum. No pod contact or benchmark credit is
+authorized by transcript parity alone.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

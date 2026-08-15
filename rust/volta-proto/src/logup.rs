@@ -2562,9 +2562,11 @@ fn cross_verifier(
     cross_corrs: &[Fp2; 4],
     ctx: &mut VerifierCtx,
     doms: &mut Doms,
+    tx: &mut Transcript,
     kprod: &mut ProdKeyTriples,
     kzero: &mut Vec<VerifierKey>,
 ) {
+    tx.append_fp2s("logup_cross_corrections", cross_corrs);
     let kz = ctx.correct_full_verifier_keys(doms.take(1), cross_corrs);
     // Mirror the prover's two distinct public-value constructions exactly.
     // Canonical tracing preserves declared DAG sharing and therefore must
@@ -3140,6 +3142,7 @@ pub fn table_side_verify(
 
     let (mut kpr, mut kqr) = ksites[0];
     for (&(kps, kqs), corrs) in ksites[1..].iter().zip(&proof.agg_corrs) {
+        tx.append_fp2s("logup_aggregate_corrections", corrs);
         let kz = ctx.correct_full_verifier_keys(doms.take(1), corrs);
         kprod.push((kpr, kqs, kz[0]));
         kprod.push((kps, kqr, kz[1]));
@@ -3147,7 +3150,7 @@ pub fn table_side_verify(
         kpr = kz[0].add(kz[1]);
         kqr = kz[2];
     }
-    cross_verifier((kpr, kqr), kroots_t, &proof.cross_corrs, ctx, doms, kprod, kzero);
+    cross_verifier((kpr, kqr), kroots_t, &proof.cross_corrs, ctx, doms, tx, kprod, kzero);
 
     Some(OpenKey { point: pt_t, key: VerifierKey::ZERO.sub(kcp_t) })
 }
@@ -3244,7 +3247,7 @@ pub fn blind_logup_verify(
     };
     kzero.push(kcq_t.sub(VerifierKey::from_public(t_eval, ctx.delta)));
 
-    cross_verifier(kroots_f, kroots_t, &proof.cross_corrs, ctx, doms, kprod, kzero);
+    cross_verifier(kroots_f, kroots_t, &proof.cross_corrs, ctx, doms, tx, kprod, kzero);
 
     let f_key = OpenKey { point: pt_f, key: VerifierKey::from_public(alpha, ctx.delta).sub(kcq_f) };
     let m_key = OpenKey { point: pt_t, key: VerifierKey::ZERO.sub(kcp_t) };

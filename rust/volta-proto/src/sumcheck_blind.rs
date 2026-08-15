@@ -360,6 +360,7 @@ pub fn blind_verify_batch(
             debug_assert_eq!(domain, ranges[index].domain(round));
             let masks = round_keys.expand(index, round);
             let corrs = state.proof.round_corrs[round];
+            tx.append_fp2s("blind_round_corrections", &corrs);
             messages.push((
                 index,
                 masks[0].with_same_c6_trace(masks[0].k + delta * corrs[0]),
@@ -1117,13 +1118,35 @@ pub fn blind_verify(
     mask_dom_base: u64,
     tx: &mut Transcript,
 ) -> Option<(Vec<Fp2>, VerifierKey)> {
+    blind_verify_labeled(
+        n_vars,
+        k_claim0,
+        proof,
+        ctx,
+        mask_dom_base,
+        tx,
+        "blind_round_corrections",
+    )
+}
+
+/// Verifier mirror for a prover using a relation-specific canonical round
+/// label. The label is transcript domain separation, not proof payload.
+pub(crate) fn blind_verify_labeled(
+    n_vars: usize,
+    k_claim0: VerifierKey,
+    proof: &BlindSumcheckProof,
+    ctx: &mut VerifierCtx,
+    mask_dom_base: u64,
+    tx: &mut Transcript,
+    round_label: &'static str,
+) -> Option<(Vec<Fp2>, VerifierKey)> {
     if proof.round_corrs.len() != n_vars {
         return None;
     }
     let mut point = Vec::with_capacity(n_vars);
     let mut k_claim = k_claim0;
     for (round, corrs) in proof.round_corrs.iter().enumerate() {
-        tx.append_fp2s("blind_round_corrections", corrs);
+        tx.append_fp2s(round_label, corrs);
         let k_masks = ctx.expand_full_verifier_keys(mask_dom_base + round as u64, 2);
         let k_g0 = k_masks[0].with_same_c6_trace(k_masks[0].k + ctx.delta * corrs[0]);
         let k_g2 = k_masks[1].with_same_c6_trace(k_masks[1].k + ctx.delta * corrs[1]);

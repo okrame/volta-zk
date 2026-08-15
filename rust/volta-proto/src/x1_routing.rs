@@ -570,11 +570,11 @@ fn prepare_layer_v(
     }
     let mut empty = TableBankV::empty();
     let mut cx = BlockCtxV::new(ctx, tx, X1_SECTION_BASE + layer as u8, &mut empty);
-    let score_keys = keys_fp_vec_v(cx.ctx, cx.doms.take(1), &proof.score_corr);
-    let theta_keys = keys_fp_vec_v(cx.ctx, cx.doms.take(1), &proof.theta_corr);
-    let denom_keys = keys_fp_vec_v(cx.ctx, cx.doms.take(1), &proof.denom_corr);
-    let recip_in_keys = keys_fp_vec_v(cx.ctx, cx.doms.take(1), &proof.recip_in_corr);
-    let recips_keys = keys_fp_vec_v(cx.ctx, cx.doms.take(1), &proof.recips_corr);
+    let score_keys = keys_fp_vec_v(cx.ctx, cx.tx, cx.doms.take(1), &proof.score_corr);
+    let theta_keys = keys_fp_vec_v(cx.ctx, cx.tx, cx.doms.take(1), &proof.theta_corr);
+    let denom_keys = keys_fp_vec_v(cx.ctx, cx.tx, cx.doms.take(1), &proof.denom_corr);
+    let recip_in_keys = keys_fp_vec_v(cx.ctx, cx.tx, cx.doms.take(1), &proof.recip_in_corr);
+    let recips_keys = keys_fp_vec_v(cx.ctx, cx.tx, cx.doms.take(1), &proof.recips_corr);
     Some(PreparedV {
         doms: cx.doms,
         score_keys,

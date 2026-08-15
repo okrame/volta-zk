@@ -55,6 +55,10 @@ pub struct Transcript {
     challenges: TranscriptChallenges,
     bytes: BTreeMap<&'static str, u64>,
     n_messages: u64,
+    canonical_moves: blake3::Hasher,
+    noncanonical_events: u64,
+    #[cfg(debug_assertions)]
+    canonical_event_debug: Vec<(&'static str, [u8; 32])>,
     pending_provider_move: Vec<u8>,
     pending_semantic_bytes: usize,
     unbound_provider_bytes: u64,
@@ -68,6 +72,12 @@ impl Transcript {
             challenges: TranscriptChallenges::Private(FpStream::domain_separated(seed, u64::MAX)),
             bytes: BTreeMap::new(),
             n_messages: 0,
+            canonical_moves: blake3::Hasher::new_derive_key(
+                "volta-zk/transcript/canonical-moves/v1",
+            ),
+            noncanonical_events: 0,
+            #[cfg(debug_assertions)]
+            canonical_event_debug: Vec::new(),
             pending_provider_move: Vec::new(),
             pending_semantic_bytes: 0,
             unbound_provider_bytes: 0,
@@ -81,6 +91,12 @@ impl Transcript {
             challenges: TranscriptChallenges::Interactive(channel),
             bytes: BTreeMap::new(),
             n_messages: 0,
+            canonical_moves: blake3::Hasher::new_derive_key(
+                "volta-zk/transcript/canonical-moves/v1",
+            ),
+            noncanonical_events: 0,
+            #[cfg(debug_assertions)]
+            canonical_event_debug: Vec::new(),
             pending_provider_move: Vec::new(),
             pending_semantic_bytes: 0,
             unbound_provider_bytes: 0,
@@ -96,6 +112,7 @@ impl Transcript {
     /// Charge `n` bytes of prover→verifier message under `label`.
     pub fn append(&mut self, label: &'static str, n: u64) {
         self.account(label, n);
+        self.noncanonical_events = self.noncanonical_events.saturating_add(1);
         if matches!(self.challenges, TranscriptChallenges::Interactive(_)) {
             self.unbound_provider_bytes = self.unbound_provider_bytes.saturating_add(n);
         }
@@ -106,13 +123,19 @@ impl Transcript {
     /// retain the historical accounting behavior.
     pub fn append_message(&mut self, label: &'static str, message: &[u8]) {
         self.account(label, message.len() as u64);
+        let label_len = u16::try_from(label.len()).expect("transcript label exceeds u16");
+        let mut event = Vec::with_capacity(2 + label.len() + 8 + message.len());
+        event.extend_from_slice(&label_len.to_le_bytes());
+        event.extend_from_slice(label.as_bytes());
+        event.extend_from_slice(&(message.len() as u64).to_le_bytes());
+        event.extend_from_slice(message);
+        self.canonical_moves.update(&[1]);
+        self.canonical_moves.update(&event);
+        #[cfg(debug_assertions)]
+        self.canonical_event_debug.push((label, *blake3::hash(&event).as_bytes()));
         if matches!(self.challenges, TranscriptChallenges::Interactive(_)) {
             self.pending_semantic_bytes = self.pending_semantic_bytes.saturating_add(message.len());
-            let label_len = u16::try_from(label.len()).expect("transcript label exceeds u16");
-            self.pending_provider_move.extend_from_slice(&label_len.to_le_bytes());
-            self.pending_provider_move.extend_from_slice(label.as_bytes());
-            self.pending_provider_move.extend_from_slice(&(message.len() as u64).to_le_bytes());
-            self.pending_provider_move.extend_from_slice(message);
+            self.pending_provider_move.extend_from_slice(&event);
         }
     }
 
@@ -187,16 +210,40 @@ impl Transcript {
         digest: [u8; 32],
     ) {
         self.account(label, logical_bytes);
+        let label_len = u16::try_from(label.len()).expect("transcript label exceeds u16");
+        let mut event = Vec::with_capacity(2 + label.len() + 8 + digest.len());
+        event.extend_from_slice(&label_len.to_le_bytes());
+        event.extend_from_slice(label.as_bytes());
+        event.extend_from_slice(&logical_bytes.to_le_bytes());
+        event.extend_from_slice(&digest);
+        self.canonical_moves.update(&[2]);
+        self.canonical_moves.update(&event);
+        #[cfg(debug_assertions)]
+        self.canonical_event_debug.push((label, *blake3::hash(&event).as_bytes()));
         if matches!(self.challenges, TranscriptChallenges::Interactive(_)) {
             self.pending_semantic_bytes = self
                 .pending_semantic_bytes
                 .saturating_add(usize::try_from(logical_bytes).unwrap_or(usize::MAX));
-            let label_len = u16::try_from(label.len()).expect("transcript label exceeds u16");
-            self.pending_provider_move.extend_from_slice(&label_len.to_le_bytes());
-            self.pending_provider_move.extend_from_slice(label.as_bytes());
-            self.pending_provider_move.extend_from_slice(&logical_bytes.to_le_bytes());
-            self.pending_provider_move.extend_from_slice(&digest);
+            self.pending_provider_move.extend_from_slice(&event);
         }
+    }
+
+    fn record_challenge_request(&mut self, request: TranscriptChallengeRequest) {
+        self.canonical_moves.update(&[3]);
+        let (_label, request_bytes): (&'static str, &[u8]) = match request {
+            TranscriptChallengeRequest::Fp => ("challenge_fp", &[1]),
+            TranscriptChallengeRequest::Fp2 => ("challenge_fp2", &[2]),
+            TranscriptChallengeRequest::Bits(width) => {
+                self.canonical_moves.update(&[3, width]);
+                #[cfg(debug_assertions)]
+                self.canonical_event_debug
+                    .push(("challenge_bits", *blake3::hash(&[3, width]).as_bytes()));
+                return;
+            }
+        };
+        self.canonical_moves.update(request_bytes);
+        #[cfg(debug_assertions)]
+        self.canonical_event_debug.push((_label, *blake3::hash(request_bytes).as_bytes()));
     }
 
     fn interactive_challenge(
@@ -213,10 +260,10 @@ impl Transcript {
                 TranscriptChallengeRequest::Bits(_) => TranscriptChallengeResponse::Bits(0),
             });
         }
-        if self.unbound_provider_bytes != 0 {
+        if self.unbound_provider_bytes != 0 || self.noncanonical_events != 0 {
             self.interactive_error = Some(format!(
-                "interactive challenge follows {} unbound provider bytes",
-                self.unbound_provider_bytes
+                "interactive challenge follows {} unbound provider bytes in {} noncanonical events",
+                self.unbound_provider_bytes, self.noncanonical_events
             ));
             return Some(match request {
                 TranscriptChallengeRequest::Fp => TranscriptChallengeResponse::Fp(1),
@@ -242,6 +289,7 @@ impl Transcript {
     /// Fresh verifier challenge in `E` (only sound after the prover's
     /// corresponding message has been appended — callers keep that order).
     pub fn challenge_fp2(&mut self) -> Fp2 {
+        self.record_challenge_request(TranscriptChallengeRequest::Fp2);
         match self.interactive_challenge(TranscriptChallengeRequest::Fp2) {
             Some(TranscriptChallengeResponse::Fp2([a, b])) if a < P && b < P => {
                 Fp2::new(Fp::new(a), Fp::new(b))
@@ -264,6 +312,7 @@ impl Transcript {
     /// with [`Self::challenge_fp2`], callers must first append the prover
     /// message on which the challenge depends.
     pub fn challenge_fp(&mut self) -> Fp {
+        self.record_challenge_request(TranscriptChallengeRequest::Fp);
         match self.interactive_challenge(TranscriptChallengeRequest::Fp) {
             Some(TranscriptChallengeResponse::Fp(value)) if value < P => Fp::new(value),
             Some(_) => {
@@ -281,6 +330,7 @@ impl Transcript {
     /// Fresh exact-bit verifier challenge for a power-of-two query domain.
     pub fn challenge_bits(&mut self, width: u8) -> u64 {
         assert!((1..=64).contains(&width), "transcript bit width must be in 1..=64");
+        self.record_challenge_request(TranscriptChallengeRequest::Bits(width));
         match self.interactive_challenge(TranscriptChallengeRequest::Bits(width)) {
             Some(TranscriptChallengeResponse::Bits(value))
                 if width == 64 || value < (1u64 << width) =>
@@ -305,6 +355,39 @@ impl Transcript {
 
     pub fn is_interactive(&self) -> bool {
         matches!(self.challenges, TranscriptChallenges::Interactive(_))
+    }
+
+    /// Exact canonical provider-move and challenge-order identity. Seeded
+    /// prover/verifier executions use this as a deterministic parity check;
+    /// any legacy length-only event makes the identity unavailable.
+    pub fn canonical_binding_digest(&self) -> Result<[u8; 32], String> {
+        if self.noncanonical_events != 0 {
+            return Err(format!(
+                "transcript contains {} noncanonical length-only events",
+                self.noncanonical_events
+            ));
+        }
+        Ok(*self.canonical_moves.clone().finalize().as_bytes())
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn debug_first_canonical_divergence(&self, other: &Self) -> Option<String> {
+        let shared = self.canonical_event_debug.len().min(other.canonical_event_debug.len());
+        for index in 0..shared {
+            if self.canonical_event_debug[index] != other.canonical_event_debug[index] {
+                return Some(format!(
+                    "event {index}: provider {:?}, verifier {:?}",
+                    self.canonical_event_debug[index], other.canonical_event_debug[index]
+                ));
+            }
+        }
+        (self.canonical_event_debug.len() != other.canonical_event_debug.len()).then(|| {
+            format!(
+                "event census: provider {}, verifier {}",
+                self.canonical_event_debug.len(),
+                other.canonical_event_debug.len()
+            )
+        })
     }
 
     /// Seal one complete strict provider artifact and terminate its seedless
@@ -397,5 +480,38 @@ mod tests {
         assert_eq!(transcript.challenge_fp(), Fp::ONE);
         assert!(transcript.interactive_error().unwrap().contains("unbound provider bytes"));
         assert!(moves.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn canonical_binding_is_order_and_value_exact() {
+        let mut first = Transcript::new([0x31; 32]);
+        first.append_fp2s("correction", &[Fp2::new(Fp::new(7), Fp::new(9))]);
+        let _ = first.challenge_fp2();
+        first.append_message_digest("large", 4096, [0xA5; 32]);
+        let _ = first.challenge_bits(12);
+
+        let mut same = Transcript::new([0x31; 32]);
+        same.append_fp2s("correction", &[Fp2::new(Fp::new(7), Fp::new(9))]);
+        let _ = same.challenge_fp2();
+        same.append_message_digest("large", 4096, [0xA5; 32]);
+        let _ = same.challenge_bits(12);
+        assert_eq!(
+            first.canonical_binding_digest().unwrap(),
+            same.canonical_binding_digest().unwrap()
+        );
+
+        let mut changed = Transcript::new([0x31; 32]);
+        changed.append_fp2s("correction", &[Fp2::new(Fp::new(7), Fp::new(10))]);
+        let _ = changed.challenge_fp2();
+        changed.append_message_digest("large", 4096, [0xA5; 32]);
+        let _ = changed.challenge_bits(12);
+        assert_ne!(
+            first.canonical_binding_digest().unwrap(),
+            changed.canonical_binding_digest().unwrap()
+        );
+
+        let mut legacy = Transcript::new([0x31; 32]);
+        legacy.append("zero_length_marker", 0);
+        assert!(legacy.canonical_binding_digest().is_err());
     }
 }

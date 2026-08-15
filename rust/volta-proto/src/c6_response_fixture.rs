@@ -613,6 +613,10 @@ pub fn replay_c6_t1_production_response_verifier(
     let mut doms = Doms::new(layer_dom_base(255));
     let product_challenge = transcript.challenge_fp2();
     let product_mask_domain = doms.take(1);
+    transcript.append_fp2s(
+        "prod_check_m0_m1",
+        &[retained.product.m0, retained.product.m1],
+    );
     if !prod_batch_verify(
         &product_keys,
         primary.expand_product_mask_verifier_key(product_mask_domain, product_keys.len()),
@@ -885,7 +889,12 @@ pub fn build_c6_t1_production_response_owner(
             .finish_before_successor_root_with_identity(cache_trace.identity, verifier_transcript)
             .map_err(|error| error.to_string())?;
         let mut doms = Doms::new(layer_dom_base(255));
-        if product_challenge != verifier_transcript.challenge_fp2()
+        let verifier_product_challenge = verifier_transcript.challenge_fp2();
+        verifier_transcript.append_fp2s(
+            "prod_check_m0_m1",
+            &[product_proof.m0, product_proof.m1],
+        );
+        if product_challenge != verifier_product_challenge
             || product_mask_domain != doms.take(1)
             || !prod_batch_verify(
                 &product_keys,
@@ -910,6 +919,23 @@ pub fn build_c6_t1_production_response_owner(
         }
         (output, zero_roots, metrics, runtime, target_fixed)
     };
+    let provider_binding = provider_transcript.canonical_binding_digest();
+    let verifier_binding = verifier_transcript.canonical_binding_digest();
+    let provider_binding = provider_binding
+        .map_err(|error| format!("C6ICT3 provider transcript is noncanonical: {error}"))?;
+    let verifier_binding = verifier_binding
+        .map_err(|error| format!("C6ICT3 verifier transcript is noncanonical: {error}"))?;
+    if provider_binding != verifier_binding {
+        #[cfg(debug_assertions)]
+        return Err(format!(
+            "C6ICT3 production transcript divergence: {}",
+            provider_transcript
+                .debug_first_canonical_divergence(verifier_transcript)
+                .unwrap_or_else(|| "binding digests differ after equal debug events".to_owned())
+        ));
+        #[cfg(not(debug_assertions))]
+        return Err("C6ICT3 production transcript binding differs across roles".to_owned());
+    }
     if verifier_output.weight_keys.len() != 96
         || verifier_output.embed_keys.len() != 6
         || verifier_zero_roots.len() != prover_zero_roots.len()
@@ -1374,7 +1400,9 @@ fn build_c6_response_residual_fixture_with_geometry(
         .finish_before_successor_root_with_identity(verifier_trace.identity, &mut verifier_tx)
         .map_err(trace_error)?;
     let mut product_doms_v = Doms::new(layer_dom_base(255));
-    if chi != verifier_tx.challenge_fp2()
+    let verifier_chi = verifier_tx.challenge_fp2();
+    verifier_tx.append_fp2s("prod_check_m0_m1", &[product_proof.m0, product_proof.m1]);
+    if chi != verifier_chi
         || product_domain != product_doms_v.take(1)
         || !prod_batch_verify(
             &product_keys,
@@ -1559,6 +1587,27 @@ fn build_c6_response_residual_fixture_with_geometry(
     verifier_follower
         .sync_primary(&primary_verifier, &mut secondary_verifier)
         .map_err(trace_error)?;
+    let prover_binding = prover_tx.canonical_binding_digest();
+    let verifier_binding = verifier_tx.canonical_binding_digest();
+    let prover_binding = prover_binding.map_err(|error| {
+        C6ResidualError::new(format!("C6ICT3 provider transcript is noncanonical: {error}"))
+    })?;
+    let verifier_binding = verifier_binding.map_err(|error| {
+        C6ResidualError::new(format!("C6ICT3 verifier transcript is noncanonical: {error}"))
+    })?;
+    if prover_binding != verifier_binding {
+        #[cfg(debug_assertions)]
+        return Err(C6ResidualError::new(format!(
+            "C6ICT3 scaled transcript divergence: {}",
+            prover_tx
+                .debug_first_canonical_divergence(&verifier_tx)
+                .unwrap_or_else(|| "binding digests differ after equal debug events".to_owned())
+        )));
+        #[cfg(not(debug_assertions))]
+        return Err(C6ResidualError::new(
+            "C6ICT3 scaled transcript binding differs across roles",
+        ));
+    }
     if primary_verifier.schedule_audit() != Some(primary_schedule)
         || secondary_stream.schedule_audit() != secondary_verifier.schedule_audit()
         || primary_stream.counters != primary_verifier.counters
@@ -1626,4 +1675,15 @@ fn build_c6_response_residual_fixture_with_geometry(
 
 fn trace_error(error: impl std::fmt::Display) -> C6ResidualError {
     C6ResidualError::new(error.to_string())
+}
+
+#[cfg(test)]
+mod transcript_tests {
+    use super::*;
+
+    #[test]
+    fn complete_response_has_exact_canonical_transcript_parity() {
+        let fixture = build_c6_response_residual_fixture().unwrap();
+        assert!(fixture.is_some(), "registered GPT-2 weights are required for C6ICT3");
+    }
 }

@@ -345,7 +345,12 @@ fn auth_values_v(
     {
         return None;
     }
-    Some(corrections.iter().map(|corr| keys_fp_vec_v(cx.ctx, cx.doms.take(1), corr)).collect())
+    Some(
+        corrections
+            .iter()
+            .map(|corr| keys_fp_vec_v(cx.ctx, cx.tx, cx.doms.take(1), corr))
+            .collect(),
+    )
 }
 
 fn open_auth_p(

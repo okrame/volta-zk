@@ -745,7 +745,7 @@ impl TableBankV {
                 return None;
             }
             let dom = doms.take(1);
-            keys.insert(key, keys_fp_vec_v(ctx, dom, &p.mult_corr));
+            keys.insert(key, keys_fp_vec_v(ctx, tx, dom, &p.mult_corr));
         }
         let mut alphas = BTreeMap::new();
         for &key in expected {
@@ -1457,12 +1457,14 @@ pub(crate) fn open_matrix_weighted_rows_resident_p<T: ResidentMatrixElement>(
 /// matrix (each domain is one-time — the cache serves every later opening).
 pub(crate) fn auth_matrix_rows_v(
     ctx: &mut VerifierCtx,
+    tx: &mut Transcript,
     base_dom: u64,
     corr: &[u64],
     rows: usize,
     cols: usize,
 ) -> Vec<VerifierKey> {
     assert_eq!(corr.len(), rows * cols);
+    tx.append_fp_values_digest("auth_corrections", corr);
     let mut keys = Vec::with_capacity(rows * cols);
     for row in 0..rows {
         let kr = auth_verifier(ctx, base_dom + row as u64, &corr[row * cols..(row + 1) * cols]);
@@ -1690,7 +1692,13 @@ pub(crate) fn open_fp_vec_resident_p<T: ResidentMatrixElement>(
     Ok(stream.authenticate_subfield_linear(dom, &eq, value, tag))
 }
 
-pub(crate) fn keys_fp_vec_v(ctx: &mut VerifierCtx, dom: u64, corr: &[u64]) -> Vec<VerifierKey> {
+pub(crate) fn keys_fp_vec_v(
+    ctx: &mut VerifierCtx,
+    tx: &mut Transcript,
+    dom: u64,
+    corr: &[u64],
+) -> Vec<VerifierKey> {
+    tx.append_fp_values_digest("auth_corrections", corr);
     auth_verifier(ctx, dom, corr)
 }
 
@@ -2932,13 +2940,13 @@ pub(crate) struct LnVecsK {
 
 pub(crate) fn expand_ln_vecs_k(cx: &mut BlockCtxV, corrs: &[Vec<u64>; 4]) -> LnVecsK {
     let dom_mean = cx.doms.take(1);
-    let mean_keys = keys_fp_vec_v(cx.ctx, dom_mean, &corrs[0]);
+    let mean_keys = keys_fp_vec_v(cx.ctx, cx.tx, dom_mean, &corrs[0]);
     let dom_var = cx.doms.take(1);
-    let _var_keys = keys_fp_vec_v(cx.ctx, dom_var, &corrs[1]);
+    let _var_keys = keys_fp_vec_v(cx.ctx, cx.tx, dom_var, &corrs[1]);
     let dom_rin = cx.doms.take(1);
-    let rin_keys = keys_fp_vec_v(cx.ctx, dom_rin, &corrs[2]);
+    let rin_keys = keys_fp_vec_v(cx.ctx, cx.tx, dom_rin, &corrs[2]);
     let dom_rout = cx.doms.take(1);
-    let rout_keys = keys_fp_vec_v(cx.ctx, dom_rout, &corrs[3]);
+    let rout_keys = keys_fp_vec_v(cx.ctx, cx.tx, dom_rout, &corrs[3]);
     LnVecsK { mean_keys, rin_keys, rout_keys }
 }
 
@@ -8010,16 +8018,16 @@ pub(crate) fn verify_attn_phase1(
     }
     let lvk1 = expand_ln_vecs_k(cx, &proof.ln_vec_corrs);
     let dom_denoms = cx.doms.take(1);
-    let denoms_keys = keys_fp_vec_v(cx.ctx, dom_denoms, &proof.denoms_corr);
+    let denoms_keys = keys_fp_vec_v(cx.ctx, cx.tx, dom_denoms, &proof.denoms_corr);
     let dom_rin_row = cx.doms.take(1);
-    let rin_row_keys = keys_fp_vec_v(cx.ctx, dom_rin_row, &proof.recip_in_corr);
+    let rin_row_keys = keys_fp_vec_v(cx.ctx, cx.tx, dom_rin_row, &proof.recip_in_corr);
     let dom_recips = cx.doms.take(1);
-    let recips_keys = keys_fp_vec_v(cx.ctx, dom_recips, &proof.recips_corr);
+    let recips_keys = keys_fp_vec_v(cx.ctx, cx.tx, dom_recips, &proof.recips_corr);
     let dom_above = cx.doms.take(1);
-    let above_keys = keys_fp_vec_v(cx.ctx, dom_above, &proof.above_corr);
+    let above_keys = keys_fp_vec_v(cx.ctx, cx.tx, dom_above, &proof.above_corr);
     let rowshift_keys = proof.row_shift_corr.as_ref().map(|corr| {
         let dom = cx.doms.take(1);
-        keys_fp_vec_v(cx.ctx, dom, corr)
+        keys_fp_vec_v(cx.ctx, cx.tx, dom, corr)
     });
     Some(AttnV1 { lvk1, denoms_keys, rin_row_keys, recips_keys, above_keys, rowshift_keys })
 }
@@ -8293,6 +8301,7 @@ fn verify_attn_block_impl(
     // ---- 4: av head split ------------------------------------------------------
     let eqh_av = eq_vec(&pt_av[6..d_cb]);
     let dom_split_av = cx.doms.take(1);
+    cx.tx.append_fp2s("head_split_corrections", &proof.av_split_corrs);
     let av_keys = cx.ctx.correct_full_verifier_keys(dom_split_av, &proof.av_split_corrs);
     let mut krow = VerifierKey::ZERO.sub(k_acc_av);
     for h in 0..H {
@@ -8417,6 +8426,7 @@ fn verify_attn_block_impl(
         return None; // negligible-probability event; redraw/panic acceptable
     }
     let dom_cw = cx.doms.take(1);
+    cx.tx.append_fp2s("causal_w_correction", &[proof.causal_w_corr]);
     let k_w_causal = cx.ctx.correct_full_verifier_key(dom_cw, proof.causal_w_corr);
     cx.kzero.push(k_w_causal.scale(m_eval).sub(k_causal_n));
     aux_sn.push((1, r_c.clone(), k_w_causal));
@@ -8447,6 +8457,7 @@ fn verify_attn_block_impl(
     let mut half_pt = vec![half_scalar; sb];
     half_pt.extend_from_slice(&rho);
     let dom_rs = cx.doms.take(1);
+    cx.tx.append_fp2s("rowsum_correction", &[proof.rowsum_corr]);
     let k_rs = cx.ctx.correct_full_verifier_key(dom_rs, proof.rowsum_corr);
     let den_k = open_fp_vec_k(&denoms_keys, &rho);
     let two_sb = Fp2::from_base(Fp::new(1u64 << sb));
@@ -8473,7 +8484,9 @@ fn verify_attn_block_impl(
         let mut half_pt2 = vec![half_scalar; sb];
         half_pt2.extend_from_slice(&rho2);
         let dom_rs2 = cx.doms.take(1);
-        let k_rs2 = cx.ctx.correct_full_verifier_key(dom_rs2, proof.ismax_rowsum_corr?);
+        let ismax_rowsum_corr = proof.ismax_rowsum_corr?;
+        cx.tx.append_fp2s("ismax_rowsum_correction", &[ismax_rowsum_corr]);
+        let k_rs2 = cx.ctx.correct_full_verifier_key(dom_rs2, ismax_rowsum_corr);
         let eq_rho2 = eq_vec(&rho2);
         let mut realmask = Fp2::ZERO;
         for h in 0..H {
@@ -8540,6 +8553,7 @@ fn verify_attn_block_impl(
     // ---- 13: scores head split ---------------------------------------------------
     let eqh_sc = eq_vec(&pt_sc[sb + qb..]);
     let dom_split_sc = cx.doms.take(1);
+    cx.tx.append_fp2s("head_split_corrections", &proof.sc_split_corrs);
     let sc_keys = cx.ctx.correct_full_verifier_keys(dom_split_sc, &proof.sc_split_corrs);
     let mut krow = VerifierKey::ZERO.sub(k_acc_sc_true);
     for h in 0..H {
@@ -9656,27 +9670,31 @@ fn verify_layer_phase1_band_thinned_impl(
     let dom_xin = cx.doms.take(t as u64);
     let xin_keys = match entry_alias_keys {
         Some(keys) => keys.to_vec(),
-        None if layer == 0 => auth_matrix_rows_v(cx.ctx, dom_xin, &proof.xin_corr, t, D),
+        None if layer == 0 => {
+            auth_matrix_rows_v(cx.ctx, cx.tx, dom_xin, &proof.xin_corr, t, D)
+        }
         None => Vec::new(),
     };
     let dom_k = cx.doms.take(t as u64);
     let k_keys = if reserve_kv_only {
+        cx.tx.append_fp_values_digest("auth_corrections", &proof.k_corr);
         cx.ctx.reserve_sub_key_rows(dom_k, t, D);
         Vec::new()
     } else {
-        auth_matrix_rows_v(cx.ctx, dom_k, &proof.k_corr, t, D)
+        auth_matrix_rows_v(cx.ctx, cx.tx, dom_k, &proof.k_corr, t, D)
     };
     let dom_v = cx.doms.take(t as u64);
     let v_keys = if reserve_kv_only {
+        cx.tx.append_fp_values_digest("auth_corrections", &proof.v_corr);
         cx.ctx.reserve_sub_key_rows(dom_v, t, D);
         Vec::new()
     } else {
-        auth_matrix_rows_v(cx.ctx, dom_v, &proof.v_corr, t, D)
+        auth_matrix_rows_v(cx.ctx, cx.tx, dom_v, &proof.v_corr, t, D)
     };
     let _dom_abo = cx.doms.take(t as u64);
     let dom_fbo = cx.doms.take(t as u64);
     let fbo_keys = if group_pos == 3 {
-        auth_matrix_rows_v(cx.ctx, dom_fbo, &proof.fbo_corr, t, D)
+        auth_matrix_rows_v(cx.ctx, cx.tx, dom_fbo, &proof.fbo_corr, t, D)
     } else {
         Vec::new()
     };
@@ -9727,16 +9745,16 @@ fn verify_layer_phase1_band_aliased(
     let dom_xin = cx.doms.take(t as u64);
     let xin_keys = match xin_alias_keys {
         Some(keys) => keys.to_vec(),
-        None => auth_matrix_rows_v(cx.ctx, dom_xin, &proof.xin_corr, t, D),
+        None => auth_matrix_rows_v(cx.ctx, cx.tx, dom_xin, &proof.xin_corr, t, D),
     };
     let dom_k = cx.doms.take(t as u64);
-    let k_keys = auth_matrix_rows_v(cx.ctx, dom_k, &proof.k_corr, t, D);
+    let k_keys = auth_matrix_rows_v(cx.ctx, cx.tx, dom_k, &proof.k_corr, t, D);
     let dom_v = cx.doms.take(t as u64);
-    let v_keys = auth_matrix_rows_v(cx.ctx, dom_v, &proof.v_corr, t, D);
+    let v_keys = auth_matrix_rows_v(cx.ctx, cx.tx, dom_v, &proof.v_corr, t, D);
     let dom_abo = cx.doms.take(t as u64);
-    let abo_keys = auth_matrix_rows_v(cx.ctx, dom_abo, &proof.abo_corr, t, D);
+    let abo_keys = auth_matrix_rows_v(cx.ctx, cx.tx, dom_abo, &proof.abo_corr, t, D);
     let dom_fbo = cx.doms.take(t as u64);
-    let fbo_keys = auth_matrix_rows_v(cx.ctx, dom_fbo, &proof.fbo_corr, t, D);
+    let fbo_keys = auth_matrix_rows_v(cx.ctx, cx.tx, dom_fbo, &proof.fbo_corr, t, D);
 
     let lvk2 = expand_ln_vecs_k(cx, &proof.ffn.ln_vec_corrs);
     let attn = verify_attn_phase1(sh, luts, &proof.attn, cx)?;
@@ -11981,7 +11999,7 @@ mod tests {
             let mut cx = BlockCtxV::new(&mut primary_verifier, &mut verifier_tx, 0, &mut pre_bank);
             let dom_xin_v = cx.doms.take(T as u64);
             assert_eq!(dom_xin_v, dom_xin);
-            let xin_keys = auth_matrix_rows_v(cx.ctx, dom_xin_v, &xin_corr, T, D);
+            let xin_keys = auth_matrix_rows_v(cx.ctx, cx.tx, dom_xin_v, &xin_corr, T, D);
             let dom_k_v = cx.doms.take(T as u64);
             assert_eq!(dom_k_v, dom_k);
             cx.ctx.reserve_sub_key_rows(dom_k_v, T, D);
@@ -11990,7 +12008,7 @@ mod tests {
             cx.ctx.reserve_sub_key_rows(dom_v_v, T, D);
             let dom_abo_v = cx.doms.take(T as u64);
             assert_eq!(dom_abo_v, dom_abo);
-            let abo_keys = auth_matrix_rows_v(cx.ctx, dom_abo_v, &abo_corr, T, D);
+            let abo_keys = auth_matrix_rows_v(cx.ctx, cx.tx, dom_abo_v, &abo_corr, T, D);
             let attn_v1 = verify_attn_phase1(BandShape::square(T), luts, &attention_proof, &mut cx)
                 .expect("C6 attention phase 1 verifies");
             (cx.doms, xin_keys, abo_keys, attn_v1)

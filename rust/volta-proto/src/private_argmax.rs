@@ -465,6 +465,7 @@ pub(crate) fn prepare_private_argmax_verifier(
     proof: &PrivateArgmaxProof,
     phase_count: usize,
     ctx: &mut VerifierCtx,
+    tx: &mut Transcript,
 ) -> Option<PrivateArgmaxPreparedV> {
     if proof.selected_row_corr.len() != ARGMAX_ROWS
         || proof.phase_claim_corrs.len() != phase_count
@@ -479,7 +480,7 @@ pub(crate) fn prepare_private_argmax_verifier(
     }
     let mut doms = Doms::new(layer_dom_base(ARGMAX_SECTION));
     let selected_row_dom = doms.take(1);
-    let selected_row_keys = keys_fp_vec_v(ctx, selected_row_dom, &proof.selected_row_corr);
+    let selected_row_keys = keys_fp_vec_v(ctx, tx, selected_row_dom, &proof.selected_row_corr);
     Some(PrivateArgmaxPreparedV { doms, selected_row_keys })
 }
 

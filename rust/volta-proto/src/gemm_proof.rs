@@ -496,6 +496,7 @@ pub fn verify_gemm_blind_committed_at(
     let k_mask = ctx.expand_product_mask_verifier_key(doms.prod_mask, 1);
     let chi = tx.challenge_fp2();
     let keys = [(k_x, k_b, k_claim_n)];
+    tx.append_fp2s("prod_check_m0_m1", &[proof.prod.m0, proof.prod.m1]);
     if !prod_batch_verify(&keys, k_mask, ctx.delta, chi, &proof.prod) {
         return None;
     }
@@ -574,6 +575,7 @@ pub fn verify_gemm_blind_at(
     let k_mask = ctx.expand_product_mask_verifier_key(doms.prod_mask, 1);
     let chi = tx.challenge_fp2();
     let keys = [(k_x, VerifierKey::from_public(b_final, ctx.delta), k_claim_n)];
+    tx.append_fp2s("prod_check_m0_m1", &[proof.prod.m0, proof.prod.m1]);
     prod_batch_verify(&keys, k_mask, ctx.delta, chi, &proof.prod)
 }
 
@@ -917,11 +919,14 @@ pub fn verify_gemm_committed_chained(
         blind_verify(pad_bits(k), k_claim0, &proof.sumcheck, ctx, doms.round_masks, tx)?;
 
     // Both final legs: keys from fresh correlations + corrections.
+    tx.append_fp2s("x_claim_correction", &[x_corr]);
     let k_x = ctx.correct_full_verifier_key(doms.x_claim, x_corr);
+    tx.append_fp2s("w_claim_correction", &[corr_w]);
     let k_w = ctx.correct_full_verifier_key(doms.w_claim, corr_w);
 
     let k_mask = ctx.expand_product_mask_verifier_key(doms.prod_mask, 1);
     let chi = tx.challenge_fp2();
+    tx.append_fp2s("prod_check_m0_m1", &[proof.prod.m0, proof.prod.m1]);
     if !prod_batch_verify(&[(k_x, k_w, k_claim_n)], k_mask, ctx.delta, chi, &proof.prod) {
         return None;
     }
@@ -1183,9 +1188,11 @@ pub(crate) fn finalize_verify_gemm_act_chained(
     ctx: &mut VerifierCtx,
     tx: &mut Transcript,
 ) -> Option<(WireKey, Vec<Fp2>)> {
+    tx.append_fp2s("x_claim_correction", &[x_corr]);
     let k_x = ctx.correct_full_verifier_key(doms.x_claim, x_corr);
     let k_mask = ctx.expand_product_mask_verifier_key(doms.prod_mask, 1);
     let chi = tx.challenge_fp2();
+    tx.append_fp2s("prod_check_m0_m1", &[proof.prod.m0, proof.prod.m1]);
     if !prod_batch_verify(&[(k_x, k_b, rounds.claim)], k_mask, ctx.delta, chi, &proof.prod) {
         return None;
     }

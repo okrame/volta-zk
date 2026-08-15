@@ -119,7 +119,8 @@ pub use c6_residual::{
     C6Nbr2TwoPointEvaluationPlan, C6ResidualFusedFoldedCoefficients,
     C6ResidualFusedTerminalCoefficients, C6ResidualFusedWitnessView, C6ResidualLeafColumn,
     C6ResidualPlan, C6ResidualPostCommit,
-    C6ResidualPostRootChallenges, C6ResidualProductPublicClaim, C6ResidualPublicClaimsFrame,
+    C6ResidualPostRootChallenges,
+    C6ResidualProductClaimCoordinate, C6ResidualProductPublicClaim, C6ResidualPublicClaimsFrame,
     C6ResidualRelationChallenges, C6ResidualRelationManifest, C6ResidualRelationReferenceWitness,
     C6ResidualRelationRootBound, C6ResidualRetainedChallenges, C6ResidualTerminalFormKind,
     C6ResidualTerminalFunctionalRelation, C6ResidualTerminalWeightSchedule, C6SourceWitness,
@@ -129,9 +130,10 @@ pub use c6_residual::{
     C6_RESIDUAL_FUSED_MAX_COEFFICIENT_STATE_BYTES,
     C6_RESIDUAL_FUSED_MAX_COEFFICIENT_STATE_ELEMENTS, C6_RESIDUAL_MAC_COORDINATES,
     C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS, C6_RESIDUAL_PROOF_REPETITIONS,
-    C6_RESIDUAL_RELATION_LEAF_TABLES, C6_RESIDUAL_RELATION_PROTOCOL_DIRECT_MLE,
-    C6_RESIDUAL_TERMINAL_FORM_KINDS, C6_RESIDUAL_TERMINAL_FUNCTIONALS,
-    C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION, C6_RESIDUAL_TERMINAL_FUNCTIONAL_DOMAIN_LOG2,
+    C6_RESIDUAL_PRODUCT_CLAIMS_COORDINATE_ONE_LABEL, C6_RESIDUAL_RELATION_LEAF_TABLES,
+    C6_RESIDUAL_RELATION_PROTOCOL_DIRECT_MLE, C6_RESIDUAL_TERMINAL_FORM_KINDS,
+    C6_RESIDUAL_TERMINAL_FUNCTIONALS, C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION,
+    C6_RESIDUAL_TERMINAL_FUNCTIONAL_DOMAIN_LOG2,
 };
 pub use c6_response_envelope::{
     C6ResponseProofEnvelope, C6ResponseProofEnvelopeError,
@@ -149,9 +151,9 @@ pub use c6_response_fixture::{
     prepare_c6_t1_production_residual_owner, prove_c6_t1_production_response_provider,
     replay_c6_t1_production_response_verifier, C6ResponseResidualCensus, C6ResponseResidualFixture,
     C6ResponseResidualProviderInputs, C6ResponseResidualTiming, C6ResponseResidualVerifierInputs,
-    C6T1InstalledRoleOwner, C6T1ProductionResidualBoundOwner, C6T1ProductionResidualOwner,
-    C6T1ProductionResponseOwner, C6T1ProductionResponseProviderPending,
-    C6T1ProductionResponseVerifierReplay,
+    C6T1InstalledRoleOwner, C6T1ProductionResidualBoundOwner, C6T1ProductionResidualClaimsOwner,
+    C6T1ProductionResidualOwner, C6T1ProductionResponseOwner,
+    C6T1ProductionResponseProviderPending, C6T1ProductionResponseVerifierReplay,
 };
 pub use c6_source::{
     replay_c6_source_coordinate, C6PairedSourceWitness, C6SourceCoordinate, C6SourceDigest,

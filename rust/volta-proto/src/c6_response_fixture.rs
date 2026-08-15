@@ -37,9 +37,10 @@ use crate::c6_residual::{
     C6CompiledLinearResidual, C6CompiledNativeTargetFunctional,
     C6InstalledClosureEvaluationMemoryCensus, C6PairedNativeTargetValues,
     C6PairedResidualAuxiliaryWitness, C6PairedResidualClosureWitness, C6PairedResidualLeafWitness,
-    C6ResidualDirectAlphaPoints, C6ResidualDirectPostClaimPoints, C6ResidualError,
-    C6ResidualFusedWitnessView, C6ResidualRelationChallenges, C6ResidualRelationManifest,
-    C6ResidualRelationRootBound, C6ResidualRetainedChallenges, C6_RESIDUAL_TRACE_FIXTURE_LOCK,
+    C6ResidualClaimsBoundContext, C6ResidualDirectAlphaPoints, C6ResidualDirectPostClaimPoints,
+    C6ResidualError, C6ResidualFusedWitnessView, C6ResidualProductClaimCoordinate,
+    C6ResidualRelationChallenges, C6ResidualRelationManifest, C6ResidualRelationRootBound,
+    C6ResidualRetainedChallenges, C6_RESIDUAL_TRACE_FIXTURE_LOCK,
 };
 use crate::c6_source::{
     C6PairedSourceWitness, C6SourceCoordinate, C6SourceScheduleProverFollower,
@@ -275,13 +276,28 @@ impl C6T1InstalledRoleOwner {
 /// The zero challenge is drawn in lockstep from the already-live response
 /// transcripts; callers cannot inject it or rebuild the residual witness from
 /// a detached runtime.  Direct-MLE points remain unavailable until a PCS root
-/// token is supplied to [`Self::bind_direct_relation`].
+/// token is supplied to [`Self::bind_direct_alpha`].
 pub struct C6T1ProductionResidualOwner {
     response: C6T1ProductionResponseOwner,
     manifest: C6ResidualRelationManifest,
     retained: C6ResidualRetainedChallenges,
     provider_linear: C6CompiledLinearResidual,
     verifier_linear: C6CompiledLinearResidual,
+    leaf: C6PairedResidualLeafWitness,
+    closure: C6PairedResidualClosureWitness,
+    auxiliary: C6PairedResidualAuxiliaryWitness,
+    native_targets: C6PairedNativeTargetValues,
+    closure_memory: C6InstalledClosureEvaluationMemoryCensus,
+}
+
+/// Same owners after roots and alpha are fixed and the exact public claims
+/// have been compiled, but before any terminal/atomic point is released.
+pub struct C6T1ProductionResidualClaimsOwner {
+    response: C6T1ProductionResponseOwner,
+    provider_linear: C6CompiledLinearResidual,
+    verifier_linear: C6CompiledLinearResidual,
+    claims: C6ResidualClaimsBoundContext,
+    coordinate_one: C6ResidualProductClaimCoordinate,
     leaf: C6PairedResidualLeafWitness,
     closure: C6PairedResidualClosureWitness,
     auxiliary: C6PairedResidualAuxiliaryWitness,
@@ -328,29 +344,67 @@ impl C6T1ProductionResidualOwner {
         self.closure_memory
     }
 
-    pub fn bind_direct_relation(
+    pub fn bind_direct_alpha(
         self,
         root: C6ResidualRelationRootBound,
         alpha: C6ResidualDirectAlphaPoints,
-        postclaim: C6ResidualDirectPostClaimPoints,
-    ) -> Result<C6T1ProductionResidualBoundOwner, C6ResidualError> {
+    ) -> Result<C6T1ProductionResidualClaimsOwner, C6ResidualError> {
         if root.manifest() != &self.manifest {
             return Err(C6ResidualError::new(
                 "C6 production residual root token differs from its same-pass manifest",
             ));
         }
-        let relation = root
+        let claims = root
             .release_direct_alpha_points(self.retained, alpha)?
             .commit_public_claims_from_live(
                 self.response.provider().operation_plan(),
                 &self.provider_linear,
                 &self.leaf,
                 &self.auxiliary,
-            )?
-            .release_direct_postclaim_points(
-                self.response.provider().operation_plan(),
-                postclaim,
             )?;
+        let coordinate_zero = claims.claims().product_coordinate(&self.manifest, 0)?;
+        if coordinate_zero.messages() != self.response.product_messages() {
+            return Err(C6ResidualError::new(
+                "C6 production residual coordinate zero differs from retained ProductClosure messages",
+            ));
+        }
+        let coordinate_one = claims.claims().product_coordinate(&self.manifest, 1)?;
+        Ok(C6T1ProductionResidualClaimsOwner {
+            response: self.response,
+            provider_linear: self.provider_linear,
+            verifier_linear: self.verifier_linear,
+            claims,
+            coordinate_one,
+            leaf: self.leaf,
+            closure: self.closure,
+            auxiliary: self.auxiliary,
+            native_targets: self.native_targets,
+            closure_memory: self.closure_memory,
+        })
+    }
+}
+
+impl C6T1ProductionResidualClaimsOwner {
+    pub fn response(&self) -> &C6T1ProductionResponseOwner {
+        &self.response
+    }
+
+    pub fn coordinate_one(&self) -> &C6ResidualProductClaimCoordinate {
+        &self.coordinate_one
+    }
+
+    pub fn claims_digest(&self) -> [u8; 32] {
+        self.claims.claims().digest()
+    }
+
+    pub fn bind_direct_postclaim(
+        self,
+        postclaim: C6ResidualDirectPostClaimPoints,
+    ) -> Result<C6T1ProductionResidualBoundOwner, C6ResidualError> {
+        let relation = self.claims.release_direct_postclaim_points(
+            self.response.provider().operation_plan(),
+            postclaim,
+        )?;
         relation.validate_installed_operation_plan(self.response.verifier().operation_plan())?;
         Ok(C6T1ProductionResidualBoundOwner {
             response: self.response,

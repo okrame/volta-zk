@@ -32,7 +32,7 @@ use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::sync::{Arc, Mutex};
-use volta_field::{Fp, Fp2, FpStream};
+use volta_field::{Fp, Fp2, FpStream, P};
 use volta_mac::{
     C6CanonicalTargetProfile, C6DecodedInstanceExtractionPlan, C6InstalledOperationKind,
     C6InstalledOperationPlan, C6NativeTargetProfileArtifact, C6OperationPlanInstanceIdentity,
@@ -54,6 +54,11 @@ pub use sparse_rational_gkr::*;
 pub(crate) static C6_RESIDUAL_TRACE_FIXTURE_LOCK: Mutex<()> = Mutex::new(());
 
 pub type C6ResidualDigest = [u8; 32];
+
+/// Standalone response-tape move carrying the residual-only MAC coordinate.
+/// The coordinate-0 messages are recovered from the retained response.
+pub const C6_RESIDUAL_PRODUCT_CLAIMS_COORDINATE_ONE_LABEL: &str =
+    "c61.residual.product-claims.coordinate-1";
 
 const CENSUS_DOMAIN: &[u8] = b"volta-zk/c6/residual-census/v1";
 const PROGRAM_DOMAIN: &[u8] = b"volta-zk/c6/residual-program/v1";
@@ -1762,6 +1767,116 @@ pub struct C6ResidualProductPublicClaim {
     pub messages: [[Fp2; 2]; 2],
 }
 
+/// One installed-order MAC coordinate of the public ProductClosure frame.
+/// The manifest is retained in the typed value even though the canonical
+/// transcript payload is only the exact `(M0,M1)` field sequence.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualProductClaimCoordinate {
+    manifest_digest: C6ResidualDigest,
+    coordinate: u8,
+    messages: Vec<[Fp2; 2]>,
+    digest: C6ResidualDigest,
+}
+
+impl C6ResidualProductClaimCoordinate {
+    pub fn new(
+        manifest: &C6ResidualRelationManifest,
+        coordinate: u8,
+        messages: Vec<[Fp2; 2]>,
+    ) -> C6ResidualResult<Self> {
+        if usize::from(coordinate) >= C6_RESIDUAL_MAC_COORDINATES as usize
+            || messages.len() != manifest.topology.product_closure_count as usize
+        {
+            return Err(C6ResidualError::new(
+                "C6 residual ProductClosure coordinate has an invalid index/census",
+            ));
+        }
+        let mut value =
+            Self { manifest_digest: manifest.digest, coordinate, messages, digest: [0; 32] };
+        value.digest = product_claim_coordinate_digest(&value);
+        Ok(value)
+    }
+
+    pub fn decode_payload(
+        manifest: &C6ResidualRelationManifest,
+        coordinate: u8,
+        bytes: &[u8],
+    ) -> C6ResidualResult<Self> {
+        let count = manifest.topology.product_closure_count as usize;
+        if bytes.len() != count * 2 * 16 {
+            return Err(C6ResidualError::new(
+                "C6 residual ProductClosure coordinate payload has the wrong length",
+            ));
+        }
+        let mut messages = Vec::with_capacity(count);
+        for pair in bytes.chunks_exact(32) {
+            let decode = |offset: usize| -> C6ResidualResult<Fp2> {
+                let c0 =
+                    u64::from_le_bytes(pair[offset..offset + 8].try_into().expect("fixed Fp limb"));
+                let c1 = u64::from_le_bytes(
+                    pair[offset + 8..offset + 16].try_into().expect("fixed Fp limb"),
+                );
+                if c0 >= P || c1 >= P {
+                    return Err(C6ResidualError::new(
+                        "noncanonical field element in C6 residual ProductClosure move",
+                    ));
+                }
+                Ok(Fp2::new(Fp::new(c0), Fp::new(c1)))
+            };
+            messages.push([decode(0)?, decode(16)?]);
+        }
+        Self::new(manifest, coordinate, messages)
+    }
+
+    pub fn coordinate(&self) -> u8 {
+        self.coordinate
+    }
+
+    pub fn messages(&self) -> &[[Fp2; 2]] {
+        &self.messages
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+
+    pub fn payload_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(self.messages.len() * 2 * 16);
+        for message in &self.messages {
+            for value in message {
+                bytes.extend_from_slice(&value.c0.value().to_le_bytes());
+                bytes.extend_from_slice(&value.c1.value().to_le_bytes());
+            }
+        }
+        bytes
+    }
+
+    pub fn append_coordinate_one(&self, transcript: &mut Transcript) -> C6ResidualResult<()> {
+        if self.coordinate != 1 {
+            return Err(C6ResidualError::new("C6 residual response move is not coordinate one"));
+        }
+        let values =
+            self.messages.iter().flat_map(|message| message.iter().copied()).collect::<Vec<_>>();
+        transcript.append_fp2s(C6_RESIDUAL_PRODUCT_CLAIMS_COORDINATE_ONE_LABEL, &values);
+        Ok(())
+    }
+}
+
+fn product_claim_coordinate_digest(
+    coordinate: &C6ResidualProductClaimCoordinate,
+) -> C6ResidualDigest {
+    let mut hasher =
+        blake3::Hasher::new_derive_key("volta-zk/c6/residual-product-claim-coordinate/v1");
+    hasher.update(&coordinate.manifest_digest);
+    hasher.update(&[coordinate.coordinate]);
+    hasher.update(&(coordinate.messages.len() as u64).to_le_bytes());
+    for message in &coordinate.messages {
+        hash_fp2(&mut hasher, message[0]);
+        hash_fp2(&mut hasher, message[1]);
+    }
+    *hasher.finalize().as_bytes()
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6ResidualPublicClaimsFrame {
     manifest_digest: C6ResidualDigest,
@@ -1788,6 +1903,29 @@ impl C6ResidualPublicClaimsFrame {
 
     pub fn digest(&self) -> C6ResidualDigest {
         self.digest
+    }
+
+    pub fn product_coordinate(
+        &self,
+        manifest: &C6ResidualRelationManifest,
+        coordinate: u8,
+    ) -> C6ResidualResult<C6ResidualProductClaimCoordinate> {
+        if self.manifest_digest != manifest.digest {
+            return Err(C6ResidualError::new(
+                "C6 residual public claims use another relation manifest",
+            ));
+        }
+        let index = usize::from(coordinate);
+        let messages = self
+            .products
+            .iter()
+            .map(|claim| {
+                claim.messages.get(index).copied().ok_or_else(|| {
+                    C6ResidualError::new("C6 residual ProductClosure coordinate is out of range")
+                })
+            })
+            .collect::<C6ResidualResult<Vec<_>>>()?;
+        C6ResidualProductClaimCoordinate::new(manifest, coordinate, messages)
     }
 }
 
@@ -15332,6 +15470,37 @@ mod tests {
         assert!(legacy_claims
             .release_direct_postclaim_points(fixture.operation_plan(), postclaim_points)
             .is_err());
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn product_claim_coordinate_codec_binds_manifest_order_and_canonical_fields() {
+        let fixture = build_c6_residual_direct_fused_scaled_fixture().unwrap();
+        let coordinate =
+            fixture.relation().claims().product_coordinate(fixture.manifest(), 1).unwrap();
+        assert_eq!(coordinate.coordinate(), 1);
+        assert_eq!(coordinate.messages().len(), 1);
+        let payload = coordinate.payload_bytes();
+        assert_eq!(payload.len(), 32);
+        assert_eq!(
+            C6ResidualProductClaimCoordinate::decode_payload(fixture.manifest(), 1, &payload)
+                .unwrap(),
+            coordinate
+        );
+
+        let mut transcript = Transcript::new([0xA7; 32]);
+        coordinate.append_coordinate_one(&mut transcript).unwrap();
+        assert_eq!(transcript.total_bytes(), 32);
+
+        let mut noncanonical = payload;
+        noncanonical[..8].copy_from_slice(&P.to_le_bytes());
+        assert!(C6ResidualProductClaimCoordinate::decode_payload(
+            fixture.manifest(),
+            1,
+            &noncanonical,
+        )
+        .is_err());
+        assert!(fixture.relation().claims().product_coordinate(fixture.manifest(), 2).is_err());
     }
 
     #[cfg(feature = "c6-trace")]

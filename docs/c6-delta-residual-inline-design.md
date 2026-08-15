@@ -4299,6 +4299,32 @@ Coordinate 1, its private-tape move and statement v2 remain required under
 `C6ICT3_DISK_RELATION_STATEMENT_OBSTRUCTED`; no accounting or benchmark credit
 changes.
 
+### 0.74 C6ICT4 exact disk-relation bridge authorization
+
+The owner authorizes the narrow, certificate-neutral bridge required to close
+the disk verifier before any A100 run. In installed manifest order it MUST:
+
+1. recover coordinate 0 from the strict retained response and compare it with
+   the provider's compiled public-claims frame;
+2. append coordinate 1's 673 `(M0,M1)` pairs as one typed, canonical
+   client-private response-tape move after alpha and before every
+   terminal/atomic challenge;
+3. reconstruct the same complete public-claims frame from disk and bind the
+   residual relation without provider witness state;
+4. replace the test-only base binding with statement v2 over pre-challenge
+   objects only: retained prefix, fixed wrapper statement/roots, full old head
+   and a proposed successor `(epoch, cache_len, cache_root)` that excludes the
+   final producer transition digest; and
+5. add differential and mutation guards plus fresh byte, private-state,
+   traffic, time and soundness accounting.
+
+The 21,536-byte coordinate payload and canonical transcript framing count as
+interactive provider-to-client traffic and private tape state, not certificate
+wire. Model geometry remains manifest-typed so the bridge is not GPT-2-only.
+All original C6.1 gates remain unchanged. Construction uses small main
+checkpoints; production/full-chain/hardware credit and pod contact remain
+forbidden until the complete local suite and campaign guards are green.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

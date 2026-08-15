@@ -8,28 +8,27 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.73 next.
+This capsule is authoritative; read design §§0.60--0.74 next.
 
 - **Milestone/evidence.** C6NBR3 and the six C6ICT2 persisted/CUDA lanes are
   closed locally. C6ICT3 has exact scaled response parity (proto **192/0/1**,
   MAC **32/0/0 + 5/0/0**), a frontier-safe duplex broker (**4/0/0**), a
-  provider-only seam (**1/0/0**), an OS-seeded campaign session, its response
-  call site and strict disk-prefix replay (**3/0/0**). A response-only trace
-  now captures ordered coordinate-0 ProductClosure messages (**1/0/0**). No
+  provider-only seam (**1/0/0**), campaign-owned entropy, its response call
+  site and strict disk-prefix replay (**3/0/0**). Retained coordinate 0 is
+  exact (**1/0/0**); the typed coordinate-1 codec is green (**1/0/0**). No
   production, full-chain or hardware credit exists.
-- **Hard stop.** `C6ICT3_DISK_RELATION_STATEMENT_OBSTRUCTED`. Disk replay
-  reconstructs the response but not the complete residual public-claims
-  frame: coordinate 1's 673 masked `ProductClosure` pairs (**21,536 B**)
-  exist only in provider witness state. Production also has no typed
-  `C61StatementBinding`/`C61RootsFixed` call site; binding its current field
-  names to final retained, wrapper or full successor-head digests would be
-  circular. A provider digest is not a substitute.
-- **Resume condition.** Owner GO must choose an exact bridge. Recommended:
-  extract coordinate 0 in installed order from the strict retained proof,
-  persist the exact coordinate-1 move in the client-private response tape,
-  and define a versioned noncircular base statement over the retained prefix,
-  fixed wrapper roots and proposed successor head. Then add Lean/differential
-  evidence, mutations and fresh byte/state/traffic/time/soundness accounting.
+- **Hard stop.** `C6ICT4_LOCAL_CONSTRUCTION_REQUIRED`. The old disk-relation
+  obstruction is understood but not yet closed: coordinate 1 is not in the
+  private response tape, alpha is not separated from post-claim challenges,
+  disk verification cannot construct the complete relation, and statement v2
+  is absent. Pod contact would therefore be premature.
+- **Authorization/resume.** Owner GO authorizes C6ICT4: recover coordinate 0
+  from the strict retained response; persist the exact 673-pair coordinate-1
+  move before terminal/atomic challenges; bind a versioned noncircular base
+  statement to pre-challenge objects; then add differential/mutation evidence
+  and fresh byte/state/traffic/time/soundness accounting. Keep model-specific
+  geometry behind typed manifests. Use small main checkpoints. No pod until
+  the complete local suite and campaign guards are green.
 - **Screens.** Certificate **17,536,735 B**, setup **148,738,118 B**,
   setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
   **102.5878332989 bits/cert**, provider/verifier **14.9179595454 /

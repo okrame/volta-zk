@@ -43,7 +43,7 @@ use crate::c6_t1_owner::{
     execute_c6_t1_production_owner_export, C6T1ProductionOwnerExport, C6T1WorkloadOwner,
 };
 
-const CAMPAIGN_ARTIFACT_PROFILE: &str = "C6.1-C6PA2-C6NBR3-C6ICT4-campaign-v5";
+const CAMPAIGN_ARTIFACT_PROFILE: &str = "C6.1-C6PA2-C6NBR3-C6ICT4-campaign-v6";
 const CAMPAIGN_BACKEND: &str = "cuda-resident";
 const CAMPAIGN_PCG: &str = "real-aes128-mmo";
 const CAMPAIGN_FILE_NAMES: [&str; 5] = [
@@ -107,6 +107,7 @@ struct CampaignArtifactRecord {
     pcg: String,
     certificate_digest: String,
     setup_manifest_digest: String,
+    wrapper_statement_digest: String,
     public_argument_statement_digest: String,
     response_statement_digest: String,
     wire_bytes: u64,
@@ -748,6 +749,22 @@ fn validate_source_commit(commit: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_campaign_statement_domains(
+    response: [u8; 32],
+    wrapper_base: [u8; 32],
+    final_outer: [u8; 32],
+) -> Result<(), String> {
+    if [response, wrapper_base, final_outer].contains(&[0; 32])
+        || response == wrapper_base
+        || response == final_outer
+        || wrapper_base == final_outer
+    {
+        return Err("C6.1 response, wrapper-base and final-outer statements are not distinct"
+            .to_owned());
+    }
+    Ok(())
+}
+
 fn validate_campaign_bindings(
     certificate: &C61FinalCertificateEnvelope,
     verifier_replay: &C6BoundProductionVerifierReplay,
@@ -761,6 +778,11 @@ fn validate_campaign_bindings(
     let public_argument = C61JointPublicArgument::decode(certificate.public_argument())
         .map_err(|error| error.to_string())?;
     let wrapper = certificate.wrapper_binding().map_err(|error| error.to_string())?;
+    validate_campaign_statement_domains(
+        public_instance.response_statement_digest(),
+        wrapper.statement_digest,
+        public_argument.statement_digest(),
+    )?;
     let attempt = C6ClientAttempt {
         slot: inner.slot,
         nonce: inner.nonce,
@@ -783,7 +805,6 @@ fn validate_campaign_bindings(
         || setup_manifest.params_digest != inner.params_digest
         || setup_manifest.connection_id != inner.connection_id
         || verifier_replay.statement_digest() != public_instance.response_statement_digest()
-        || wrapper.statement_digest != public_instance.public_argument_statement_digest()
         || public_argument.statement_digest() != public_instance.public_argument_statement_digest()
         || inner.model_digest != public_instance.model_family_digest()
         || inner.workload != public_instance.workload()
@@ -948,7 +969,7 @@ pub fn create_c61_campaign_artifact(
     decode_campaign_payloads(&payloads)?;
     let inner = certificate.certificate();
     let record = CampaignArtifactRecord {
-        schema: 5,
+        schema: 6,
         profile: CAMPAIGN_ARTIFACT_PROFILE.to_owned(),
         source_git_commit: source_git_commit.to_owned(),
         git_dirty: false,
@@ -956,6 +977,9 @@ pub fn create_c61_campaign_artifact(
         pcg: CAMPAIGN_PCG.to_owned(),
         certificate_digest: hex_digest(inner.digest().map_err(|error| error.to_string())?),
         setup_manifest_digest: hex_digest(inner.setup_manifest_digest),
+        wrapper_statement_digest: hex_digest(
+            certificate.wrapper_binding().map_err(|error| error.to_string())?.statement_digest,
+        ),
         public_argument_statement_digest: hex_digest(public_argument.statement_digest()),
         response_statement_digest: hex_digest(public_instance.response_statement_digest()),
         wire_bytes: u64::try_from(payloads.certificate.len())
@@ -1037,7 +1061,7 @@ pub fn load_c61_campaign_artifact(root: &Path) -> Result<C61CampaignArtifact, St
         return Err("C6.1 campaign manifest is not canonical compact JSON".to_owned());
     }
     validate_source_commit(&record.source_git_commit)?;
-    if record.schema != 5
+    if record.schema != 6
         || record.profile != CAMPAIGN_ARTIFACT_PROFILE
         || record.git_dirty
         || record.backend != CAMPAIGN_BACKEND
@@ -1062,6 +1086,14 @@ pub fn load_c61_campaign_artifact(root: &Path) -> Result<C61CampaignArtifact, St
             != inner.digest().map_err(|error| error.to_string())?
         || parse_hex_32(&record.setup_manifest_digest, "campaign setup digest")?
             != inner.setup_manifest_digest
+        || parse_hex_32(
+            &record.wrapper_statement_digest,
+            "campaign wrapper-base statement digest",
+        )? != artifact
+            .certificate
+            .wrapper_binding()
+            .map_err(|error| error.to_string())?
+            .statement_digest
         || parse_hex_32(
             &record.public_argument_statement_digest,
             "campaign public-argument statement digest",
@@ -1105,7 +1137,7 @@ mod campaign_artifact_tests {
 
     fn dummy_record(payloads: &CampaignPayloads) -> CampaignArtifactRecord {
         CampaignArtifactRecord {
-            schema: 5,
+            schema: 6,
             profile: CAMPAIGN_ARTIFACT_PROFILE.to_owned(),
             source_git_commit: "0123456789abcdef0123456789abcdef01234567".to_owned(),
             git_dirty: false,
@@ -1113,6 +1145,7 @@ mod campaign_artifact_tests {
             pcg: CAMPAIGN_PCG.to_owned(),
             certificate_digest: "11".repeat(32),
             setup_manifest_digest: "22".repeat(32),
+            wrapper_statement_digest: "24".repeat(32),
             public_argument_statement_digest: "23".repeat(32),
             response_statement_digest: "33".repeat(32),
             wire_bytes: payloads.certificate.len() as u64,
@@ -1140,6 +1173,20 @@ mod campaign_artifact_tests {
                 new_context: 150,
             },
         }
+    }
+
+    #[test]
+    fn campaign_statement_domains_are_pairwise_distinct() {
+        let response = [0x21; 32];
+        let wrapper_base = [0x22; 32];
+        let final_outer = [0x23; 32];
+        validate_campaign_statement_domains(response, wrapper_base, final_outer).unwrap();
+        assert!(validate_campaign_statement_domains(response, response, final_outer).is_err());
+        assert!(validate_campaign_statement_domains(response, wrapper_base, response).is_err());
+        assert!(
+            validate_campaign_statement_domains(response, wrapper_base, wrapper_base).is_err()
+        );
+        assert!(validate_campaign_statement_domains([0; 32], wrapper_base, final_outer).is_err());
     }
 
     #[test]

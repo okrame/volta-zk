@@ -297,9 +297,10 @@ impl C61ResponseStatementBinding {
     }
 }
 
-/// Post-response C6PA2 statement. Wrapper roots are not hashed here: they are
-/// fixed under this digest and joined by the root typestate before alpha,
-/// avoiding a statement/root self-reference.
+/// Post-response wrapper-base statement. Wrapper roots are not hashed here:
+/// they are fixed under this digest and joined by the root typestate before
+/// alpha, avoiding a statement/root self-reference. The final C6PA2 outer
+/// statement is derived later from this base and the compiled native relation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C61StatementBinding {
     response: C61ResponseStatementBinding,
@@ -326,7 +327,7 @@ impl C61StatementBinding {
             || public_output_digest == [0; 32]
         {
             return Err(C61PublicCompressionError::new(
-                "C6ICT4 C6PA2 runtime/output binding differs from the response statement",
+                "C6ICT4 wrapper-base runtime/output binding differs from the response statement",
             ));
         }
         let binding = Self {
@@ -347,7 +348,8 @@ impl C61StatementBinding {
     }
 
     pub fn digest(&self) -> [u8; 32] {
-        let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c61/public-statement/v2");
+        let mut hasher =
+            blake3::Hasher::new_derive_key("volta-zk/c61/wrapper-base-statement/v2");
         hasher.update(&self.response.digest());
         hasher.update(&self.retained_response_digest);
         hasher.update(&self.runtime_instance_digest);
@@ -371,7 +373,7 @@ impl C61StatementBinding {
         .contains(&[0; 32])
         {
             return Err(C61PublicCompressionError::new(
-                "C6ICT4 C6PA2 statement contains a zero binding digest",
+                "C6ICT4 wrapper-base statement contains a zero binding digest",
             ));
         }
         Ok(())

@@ -13,12 +13,13 @@ This capsule is authoritative; read design §§0.60--0.79 next.
 - **Milestone/evidence.** C6NBR3 and C6ICT2/C6ICT3 remain closed locally.
   C6ICT4 now captures both ProductClosure coordinates, enforces the
   alpha/coordinate/post-claim frontier and reconstructs the verifier-only
-  residual relation. Statement v2 is two-stage and noncircular: typed setup,
-  attempt, workload, old/proposed heads precede the response; the later C6PA2
-  statement binds the strict response prefix and runtime/compiler outputs.
+  residual relation. Statement v2 has three noncircular domains: typed setup,
+  attempt, workload and heads precede the response; a post-response base binds
+  its strict prefix and fixes wrapper roots; the final C6PA2 outer is derived
+  only after native compilation.
   Setup-owned plan and quantization identities cannot be caller supplied.
-  Public-instance v2 and campaign schema v5 are strict. Focused PCS is
-  **16/0/0**, campaign **8/0/0**, public-instance **1/0/0**. No production,
+  Public-instance v2 and campaign schema v6 are strict. Focused PCS is
+  **16/0/0**, campaign **9/0/0**, public-instance **1/0/0**. No production,
   full-chain, timing or hardware credit exists.
 - **Hard stop.** `C6ICT4_CAMPAIGN_FULL_CHAIN_REQUIRED`. Production campaign
   does not yet invoke the live residual bridge, persist its coordinate move,
@@ -35,6 +36,19 @@ This capsule is authoritative; read design §§0.60--0.79 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-15 — Wrapper base and final outer are separated fail-closed.**
+  Exact-runner audit found three protocol domains, not two interchangeable
+  digests. The response statement precedes execution; the wrapper-base
+  statement binds the retained prefix and fixes the six roots before alpha;
+  the final C6PA2 outer is derived later from that base plus native profile,
+  schedule and compiled-functional digests. `C61StatementBinding` now uses an
+  explicit wrapper-base hash domain. Public-instance v2 still stores response
+  plus final outer, while the existing certificate wrapper slot stores the
+  base; certificate bytes do not grow. Campaign schema v6 records all three
+  and rejects zero or equal domains (**9/0/0**). This corrects the prior v5
+  record; full-chain parity and every quantitative/hardware credit remain
+  open.
 
 - **2026-08-15 — Statement v2 closes without a root cycle or wire growth.**
   The pre-response digest is constructed from typed setup, reservation,

@@ -4332,7 +4332,7 @@ elements, the typed coordinate-1 message, then 188 terminal/atomic `Fp2`
 elements. The same-pass residual owner is consumed while deriving coordinate
 1, and coordinate 0 is compared against the retained response first. A
 production coordinator requires the residual root's wrapper-statement digest
-to equal the C6PA2 statement digest and requires identical canonical prefix
+to equal the wrapper-base statement digest and requires identical canonical prefix
 digests on both live roles.
 
 This remains an interactive designated-verifier protocol: post-claim
@@ -4378,37 +4378,40 @@ or correlation stream is representable. A scaled join differential is
 construction, not its production call site or full-chain parity; statement v2
 must also remove the response-prefix self-reference before campaign use.
 
-### 0.78 C6ICT4 two-stage noncircular statement
+### 0.78 C6ICT4 three-domain noncircular statement
 
 One digest cannot safely serve both as an input to response construction and
 as a commitment to the retained response bytes produced by that construction.
-C6ICT4 therefore fixes two domain-separated statements without adding
-certificate wire:
+C6ICT4 uses three domain-separated statements without adding certificate
+wire:
 
 1. a pre-response statement binds setup, attempt/workload, full old head and
    proposed successor `(epoch, cache_len, cache_root)`;
-2. after the strict response prefix exists, C6PA2 statement v2 binds the first
-   digest, exact retained-prefix digest, public output and installed
-   plan/runtime identities. The six wrapper roots are then fixed under that
-   C6PA2 digest and joined by the root typestate before alpha; hashing them
-   into the digest that parameterizes them would be self-referential.
+2. after the strict response prefix exists, a wrapper-base statement binds the
+   first digest, exact retained-prefix digest, public output and installed
+   plan/runtime identities. The six wrapper roots are fixed under this base
+   and joined by the root typestate before alpha;
+3. after native compilation, the final C6PA2 outer statement is derived from
+   the wrapper base, native profile, post-body schedule and compiled functional
+   digests. It is the statement carried by the joint public argument. Hashing
+   roots into the base that parameterizes them would be self-referential.
 
-The client-local public-instance schema records both digests; the existing
-32-byte wrapper statement slot records only the second, so certificate wire
-does not grow. The local instance grows by 32 bytes. A new typed proposed head
-excludes the not-yet-defined producer transition and later requires all three
-proposed fields plus a nonzero final producer digest (**1/0/0**). Retained-
-prefix and wrapper-wire digests have independent domains. The codec, campaign
-constructor and mutation guards remain required before this design has
-production credit.
+The client-local public instance records the response and final-outer digests;
+the existing 32-byte certificate wrapper slot records the wrapper base. Thus
+all three are available to disk verification without wire growth, while the
+local instance grows by 32 bytes. A typed proposed head excludes the
+not-yet-defined producer transition and later requires all three proposed
+fields plus a nonzero final producer digest (**1/0/0**). Retained-prefix and
+wrapper-wire digests have independent domains. Full-chain construction and
+mutation guards remain required before this design has production credit.
 
 ### 0.79 C6ICT4 typed statement checkpoint
 
 The public-instance codec is now v2 and records the distinct response and
-C6PA2 statement digests. Its maximum 1,024-token encoding grows by exactly
-32 client-local bytes; neither digest adds certificate framing because the
-existing wrapper statement field carries C6PA2 and the response digest is
-reconstructed locally.
+final C6PA2 outer statement digests. Its maximum 1,024-token encoding grows by
+exactly 32 client-local bytes. The existing certificate wrapper statement
+field carries the distinct wrapper base, and the response digest is
+reconstructed locally, so no certificate framing is added.
 
 The response statement constructor accepts typed setup, reservation,
 workload, old head and proposed head. Its campaign entry derives the plan
@@ -4416,12 +4419,14 @@ artifact and quantization identities from the authenticated setup component
 table, and rejects a model/workload mismatch; those digests are not production
 API inputs. The post-response constructor accepts only a strictly decoded
 retained-prefix binding plus typed runtime identity and compiler/public-output
-bindings. Wrapper roots remain a subsequent typestate join under that digest,
-as required by §0.78.
+bindings. Wrapper roots remain a subsequent typestate join under that base
+digest, as required by §0.78. The final outer digest is derived only after the
+native compiler relation and schedule are fixed.
 
 Public-instance, statement and campaign guards are **1/0/0 + 16/0/0 +
-8/0/0**. Campaign artifact schema v5 names both statement digests explicitly.
-This closes the noncircular statement shape only. The active hard stop is
+9/0/0**. Campaign artifact schema v6 names response, wrapper-base and final-
+outer statement digests explicitly. This closes the noncircular statement
+shape only. The active hard stop is
 `C6ICT4_CAMPAIGN_FULL_CHAIN_REQUIRED`: invoke the live bridge, persist and
 replay the coordinate-1 move, rebuild the same disk relation, compare the
 complete C6PA2 argument, then rerun all accounting and mutation gates before

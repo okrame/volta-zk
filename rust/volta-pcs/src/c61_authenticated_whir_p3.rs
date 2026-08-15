@@ -250,6 +250,9 @@ pub const C61_JOINT_COMPILER_PROOF_VERSION: u16 = 3;
 const C61_PRODUCTION_COMPILER_PROOF_HEADER_BYTES: usize = 148;
 const C61_PRODUCTION_COMPILER_PROOF_DIGEST_BYTES: usize = 32;
 pub const C61_COMPILER_VERIFIER_SETUP_CAP_BYTES: u64 = 8_000_000;
+const C61_COMPILER_VERIFIER_PROFILE_MAGIC: &[u8; 8] = b"C61CVP1\0";
+const C61_COMPILER_VERIFIER_PROFILE_VERSION: u16 = 1;
+const C61_COMPILER_VERIFIER_PROFILE_HEADER_BYTES: usize = 148;
 
 /// Response-independent compiler verifier state retained by the client.
 /// It deliberately contains neither the installed operation plan nor the
@@ -273,11 +276,6 @@ impl C61CompilerVerifierProfile {
         let base_domain_log2 =
             volta_proto::c6_residual::c6_sparse_rational_base_domain_log2_compact(topology)
                 .map_err(|error| error.to_string())?;
-        if base_domain_log2 != 25 {
-            return Err(
-                "C6SPR11 production compiler profile must use the canonical D25 base".to_owned()
-            );
-        }
         let response_parameter_digest = c61_authenticated_p3_parameter_digest(28)?;
         let plan_parameter_digest = c61_authenticated_p3_parameter_digest(27)?;
         // Strict persisted bytes: the canonical terminal projection plus the
@@ -338,6 +336,69 @@ impl C61CompilerVerifierProfile {
         self.digest
     }
 
+    pub fn encode(&self) -> Result<Vec<u8>, String> {
+        self.validate()?;
+        let terminal = self.terminal_metadata.encode().map_err(|error| error.to_string())?;
+        let capacity = C61_COMPILER_VERIFIER_PROFILE_HEADER_BYTES
+            .checked_add(terminal.len())
+            .ok_or_else(|| "C6SPR11 compiler profile length overflows".to_owned())?;
+        if u64::try_from(capacity).ok() != Some(self.encoded_setup_bytes) {
+            return Err("C6SPR11 compiler profile encoded census differs".to_owned());
+        }
+        let mut bytes = Vec::with_capacity(capacity);
+        bytes.extend_from_slice(C61_COMPILER_VERIFIER_PROFILE_MAGIC);
+        bytes.extend_from_slice(&C61_COMPILER_VERIFIER_PROFILE_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&0u16.to_le_bytes());
+        bytes.extend_from_slice(&self.operation_plan_digest);
+        bytes.extend_from_slice(&self.topology.topology_digest);
+        bytes.extend_from_slice(&self.response_parameter_digest);
+        bytes.extend_from_slice(&self.plan_parameter_digest);
+        bytes.push(self.base_domain_log2);
+        bytes.extend_from_slice(&[0; 7]);
+        debug_assert_eq!(bytes.len(), C61_COMPILER_VERIFIER_PROFILE_HEADER_BYTES);
+        bytes.extend_from_slice(&terminal);
+        Ok(bytes)
+    }
+
+    pub fn decode(
+        bytes: &[u8],
+        expected_topology: C6OperationPlanTopologyIdentity,
+        source_manifest: &C6TraceSourceManifest,
+    ) -> Result<Self, String> {
+        if bytes.len() < C61_COMPILER_VERIFIER_PROFILE_HEADER_BYTES
+            || bytes.get(..8) != Some(C61_COMPILER_VERIFIER_PROFILE_MAGIC)
+            || u16::from_le_bytes(bytes[8..10].try_into().expect("fixed width"))
+                != C61_COMPILER_VERIFIER_PROFILE_VERSION
+            || bytes[10..12] != [0, 0]
+            || bytes[141..148] != [0; 7]
+        {
+            return Err("C6SPR11 compiler profile header is noncanonical".to_owned());
+        }
+        let operation_plan_digest: [u8; 32] = bytes[12..44].try_into().expect("fixed width");
+        let topology_digest: [u8; 32] = bytes[44..76].try_into().expect("fixed width");
+        let response_parameter_digest: [u8; 32] = bytes[76..108].try_into().expect("fixed width");
+        let plan_parameter_digest: [u8; 32] = bytes[108..140].try_into().expect("fixed width");
+        if topology_digest != expected_topology.topology_digest {
+            return Err("C6SPR11 compiler profile topology differs".to_owned());
+        }
+        let terminal_metadata = C6OperationPlanTerminalMetadata::decode(
+            &bytes[C61_COMPILER_VERIFIER_PROFILE_HEADER_BYTES..],
+            operation_plan_digest,
+            expected_topology,
+            source_manifest,
+        )
+        .map_err(|error| error.to_string())?;
+        let profile = Self::new(terminal_metadata)?;
+        if profile.base_domain_log2 != bytes[140]
+            || profile.response_parameter_digest != response_parameter_digest
+            || profile.plan_parameter_digest != plan_parameter_digest
+            || profile.encode()? != bytes
+        {
+            return Err("C6SPR11 compiler profile fields or encoding differ".to_owned());
+        }
+        Ok(profile)
+    }
+
     fn recompute_digest(&self) -> [u8; 32] {
         let mut hasher =
             blake3::Hasher::new_derive_key("volta-zk/c6.1/compiler-verifier-profile/v1");
@@ -355,7 +416,11 @@ impl C61CompilerVerifierProfile {
         if self.operation_plan_digest == [0; 32]
             || self.operation_plan_digest != self.terminal_metadata.operation_plan_artifact_digest()
             || self.topology != self.terminal_metadata.topology()
-            || self.base_domain_log2 != 25
+            || self.base_domain_log2
+                != volta_proto::c6_residual::c6_sparse_rational_base_domain_log2_compact(
+                    self.topology,
+                )
+                .map_err(|error| error.to_string())?
             || self.response_parameter_digest != c61_authenticated_p3_parameter_digest(28)?
             || self.plan_parameter_digest != c61_authenticated_p3_parameter_digest(27)?
             || self.encoded_setup_bytes > C61_COMPILER_VERIFIER_SETUP_CAP_BYTES
@@ -1012,8 +1077,9 @@ pub fn assemble_c61_production_joint_public_argument_from_executions(
             || compiler_statement.relation_root != arithmetic.adjoint_root
             || compiler_statement.functional_fold != arithmetic.source_boundary
         {
-            return Err("C6PA2 compiler statement differs from the exact C6RSC4 relation"
-                .to_owned());
+            return Err(
+                "C6PA2 compiler statement differs from the exact C6RSC4 relation".to_owned()
+            );
         }
     }
     if compiler[0].public()?.relation() != compiler[1].public()?.relation() {
@@ -6966,6 +7032,7 @@ fn verify_c61_authenticated_whir_p3_production_compiler_chain_with_transcript(
     if compiler.operation_plan_digest != profile.operation_plan_digest
         || compiler.operation_topology_digest != profile.topology.topology_digest
         || compiler.terminal_metadata_digest != profile.terminal_metadata.digest()
+        || profile.base_domain_log2 != 25
         || compiler.relation_challenges_digest != relation_challenges.digest()
         || compiler.sparse_oracles.response.polynomial_domain_log2 != 28
         || compiler.sparse_oracles.plan.polynomial_domain_log2 != 27
@@ -8723,6 +8790,39 @@ mod tests {
         assert!(error.contains("persisted/recomputable or GPU-resident executor"));
         assert!(error.contains("35433480128 B"));
         assert!(!error.contains("provider-state gate"));
+    }
+
+    #[test]
+    fn compiler_verifier_profile_codec_round_trips_and_rejects_mutations() {
+        use volta_proto::c6_residual::build_c6_residual_direct_fused_scaled_fixture;
+
+        let direct = build_c6_residual_direct_fused_scaled_fixture().unwrap();
+        let topology = direct.operation_plan().topology();
+        let source_manifest = C6TraceSourceManifest::new(
+            topology.source_count,
+            topology.source_schedule_digest,
+            direct.manifest().product_mask_sources().to_vec(),
+        )
+        .unwrap();
+        let terminal = C6OperationPlanTerminalMetadata::from_installed(
+            direct.operation_plan(),
+            &source_manifest,
+        )
+        .unwrap();
+        let profile = C61CompilerVerifierProfile::new(terminal).unwrap();
+        let encoded = profile.encode().unwrap();
+        assert_eq!(
+            C61CompilerVerifierProfile::decode(&encoded, topology, &source_manifest).unwrap(),
+            profile
+        );
+        assert_eq!(encoded.len() as u64, profile.encoded_setup_bytes());
+        for index in [0, 8, 10, 44, 76, 108, 140, 147, encoded.len() - 1] {
+            let mut changed = encoded.clone();
+            changed[index] ^= 1;
+            assert!(
+                C61CompilerVerifierProfile::decode(&changed, topology, &source_manifest).is_err()
+            );
+        }
     }
 
     #[test]

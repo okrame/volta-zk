@@ -22,6 +22,7 @@ use volta_mac::{
     C6InstanceExtractionArtifact, C6InstanceExtractionRole, C6NativeTargetProfileArtifact,
     C6OperationPlanArtifact, C6TraceSourceManifest, Transcript,
 };
+use volta_pcs::c61_authenticated_whir_p3::C61CompilerVerifierProfile;
 use volta_pcs::{
     c61_response_transcript_context_digest, spawn_c61_private_entropy_duplex_transcript_broker,
     C61InteractiveTape, C61InteractiveTapeBundle, C61JointPublicArgument,
@@ -53,9 +54,9 @@ const CAMPAIGN_FILE_NAMES: [&str; 5] = [
     "setup-manifest.bin",
     "public-instance.bin",
 ];
-const CAMPAIGN_CLIENT_PARAMETERS_MAGIC: &[u8; 8] = b"C61CP3\0\0";
-const CAMPAIGN_CLIENT_PARAMETERS_VERSION: u16 = 3;
-const CAMPAIGN_CLIENT_PARAMETER_COMPONENTS: usize = 6;
+const CAMPAIGN_CLIENT_PARAMETERS_MAGIC: &[u8; 8] = b"C61CP4\0\0";
+const CAMPAIGN_CLIENT_PARAMETERS_VERSION: u16 = 4;
+const CAMPAIGN_CLIENT_PARAMETER_COMPONENTS: usize = 7;
 const C61_CANONICAL_OPERATION_PLAN_BYTES: usize = 63_994_751;
 const C61_CLIENT_PARAMETER_ALLOCATION_BYTES: usize = 8_000_000;
 const C6_SETUP_BASE_CLIENT_PARAMETER_BYTES: usize = 128;
@@ -124,6 +125,7 @@ pub struct C61CampaignArtifact {
     pub verifier_plan: C6InstalledOperationPlan,
     pub verifier_extraction: C6DecodedInstanceExtractionPlan,
     pub native_profile: C6CanonicalTargetProfile,
+    pub compiler_profile: C61CompilerVerifierProfile,
     pub quantization_digest: [u8; 32],
     pub public_instance: C61PublicWorkloadInstance,
     pub public_argument: C61JointPublicArgument,
@@ -137,6 +139,7 @@ struct DecodedCampaignClientParameters {
     verifier_plan: C6InstalledOperationPlan,
     verifier_extraction: C6DecodedInstanceExtractionPlan,
     native_profile: C6CanonicalTargetProfile,
+    compiler_profile: C61CompilerVerifierProfile,
     quantization_digest: [u8; 32],
 }
 
@@ -155,6 +158,7 @@ pub struct C61CampaignInstalledSetup {
     pub provider_extraction: C6DecodedInstanceExtractionPlan,
     pub verifier_extraction: C6DecodedInstanceExtractionPlan,
     pub native_profile: C6CanonicalTargetProfile,
+    pub compiler_profile: C61CompilerVerifierProfile,
     pub operation_plan_artifact: C6OperationPlanArtifact,
     pub verifier_extraction_artifact: C6InstanceExtractionArtifact,
     pub native_profile_artifact: C6NativeTargetProfileArtifact,
@@ -457,6 +461,12 @@ pub fn load_c61_campaign_installed_setup(root: &Path) -> Result<C61CampaignInsta
         .clone()
         .install(&source_manifest)
         .map_err(|error| format!("install C6.1 verifier plan: {error}"))?;
+    let terminal_metadata = volta_mac::C6OperationPlanTerminalMetadata::from_installed(
+        &verifier_plan,
+        &source_manifest,
+    )
+    .map_err(|error| format!("build C6.1 compiler verifier metadata: {error}"))?;
+    let compiler_profile = C61CompilerVerifierProfile::new(terminal_metadata)?;
     Ok(C61CampaignInstalledSetup {
         source_manifest,
         provider_plan,
@@ -464,6 +474,7 @@ pub fn load_c61_campaign_installed_setup(root: &Path) -> Result<C61CampaignInsta
         provider_extraction,
         verifier_extraction,
         native_profile,
+        compiler_profile,
         operation_plan_artifact: plan,
         verifier_extraction_artifact,
         native_profile_artifact,
@@ -529,6 +540,7 @@ pub fn encode_c61_campaign_client_parameters(
     if verifier_model.len() > VERIFIER_MODEL_SETUP_MAX_BYTES {
         return Err("C6.1 verifier model exceeds its setup allocation".to_owned());
     }
+    let compiler_profile = installed.compiler_profile.encode()?;
     let components: [&[u8]; CAMPAIGN_CLIENT_PARAMETER_COMPONENTS] = [
         &source_manifest,
         installed.operation_plan_artifact.as_bytes(),
@@ -536,6 +548,7 @@ pub fn encode_c61_campaign_client_parameters(
         installed.native_profile_artifact.as_bytes(),
         &verifier_model,
         &quantization_digest,
+        &compiler_profile,
     ];
     let header_bytes = CAMPAIGN_CLIENT_PARAMETERS_MAGIC.len()
         + 4
@@ -721,12 +734,18 @@ fn decode_c61_campaign_client_parameters(
     let verifier_plan = operation_plan
         .install(&source_manifest)
         .map_err(|error| format!("install C6.1 client verifier plan: {error}"))?;
+    let compiler_profile = C61CompilerVerifierProfile::decode(
+        components[6],
+        verifier_plan.topology(),
+        &source_manifest,
+    )?;
     Ok(DecodedCampaignClientParameters {
         verifier_model,
         source_manifest,
         verifier_plan,
         verifier_extraction,
         native_profile,
+        compiler_profile,
         quantization_digest,
     })
 }
@@ -759,8 +778,9 @@ fn validate_campaign_statement_domains(
         || response == final_outer
         || wrapper_base == final_outer
     {
-        return Err("C6.1 response, wrapper-base and final-outer statements are not distinct"
-            .to_owned());
+        return Err(
+            "C6.1 response, wrapper-base and final-outer statements are not distinct".to_owned()
+        );
     }
     Ok(())
 }
@@ -859,6 +879,7 @@ fn decode_campaign_payloads(payloads: &CampaignPayloads) -> Result<C61CampaignAr
         verifier_plan: client_parameters.verifier_plan,
         verifier_extraction: client_parameters.verifier_extraction,
         native_profile: client_parameters.native_profile,
+        compiler_profile: client_parameters.compiler_profile,
         quantization_digest: client_parameters.quantization_digest,
         public_instance,
         public_argument,
@@ -1086,14 +1107,12 @@ pub fn load_c61_campaign_artifact(root: &Path) -> Result<C61CampaignArtifact, St
             != inner.digest().map_err(|error| error.to_string())?
         || parse_hex_32(&record.setup_manifest_digest, "campaign setup digest")?
             != inner.setup_manifest_digest
-        || parse_hex_32(
-            &record.wrapper_statement_digest,
-            "campaign wrapper-base statement digest",
-        )? != artifact
-            .certificate
-            .wrapper_binding()
-            .map_err(|error| error.to_string())?
-            .statement_digest
+        || parse_hex_32(&record.wrapper_statement_digest, "campaign wrapper-base statement digest")?
+            != artifact
+                .certificate
+                .wrapper_binding()
+                .map_err(|error| error.to_string())?
+                .statement_digest
         || parse_hex_32(
             &record.public_argument_statement_digest,
             "campaign public-argument statement digest",
@@ -1183,9 +1202,7 @@ mod campaign_artifact_tests {
         validate_campaign_statement_domains(response, wrapper_base, final_outer).unwrap();
         assert!(validate_campaign_statement_domains(response, response, final_outer).is_err());
         assert!(validate_campaign_statement_domains(response, wrapper_base, response).is_err());
-        assert!(
-            validate_campaign_statement_domains(response, wrapper_base, wrapper_base).is_err()
-        );
+        assert!(validate_campaign_statement_domains(response, wrapper_base, wrapper_base).is_err());
         assert!(validate_campaign_statement_domains([0; 32], wrapper_base, final_outer).is_err());
     }
 

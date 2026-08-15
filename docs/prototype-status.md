@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.79 next.
+This capsule is authoritative; read design §§0.60--0.80 next.
 
 - **Milestone/evidence.** C6NBR3 and C6ICT2/C6ICT3 remain closed locally.
   C6ICT4 now captures both ProductClosure coordinates, enforces the
@@ -18,7 +18,8 @@ This capsule is authoritative; read design §§0.60--0.79 next.
   its strict prefix and fixes wrapper roots; the final C6PA2 outer is derived
   only after native compilation.
   Setup-owned plan and quantization identities cannot be caller supplied.
-  Public-instance v2 and campaign schema v6 are strict. Focused PCS is
+  Public-instance v2, campaign schema v6 and client setup `C61CP4` are strict;
+  the compiler-verifier profile now has an exact persisted codec. Focused PCS is
   **16/0/0**, campaign **9/0/0**, public-instance **1/0/0**. No production,
   full-chain, timing or hardware credit exists.
 - **Hard stop.** `C6ICT4_CAMPAIGN_FULL_CHAIN_REQUIRED`. Production campaign
@@ -36,6 +37,17 @@ This capsule is authoritative; read design §§0.60--0.79 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-15 — Compiler verifier state becomes an exact setup artifact.**
+  `C61CVP1` canonically encodes the compact compiler profile and its terminal
+  metadata, then rederives every identity on decode; header, field and payload
+  mutations reject (**1/0/0**). Campaign client parameters advance to
+  `C61CP4` with the profile as component seven, derived from the installed
+  verifier plan and source manifest. It stays inside the fixed
+  **71,994,879-B** client-parameter allocation, so setup and first exchange do
+  not grow. Campaign is **9/0/0**. This is setup persistence, not a compiler-
+  chain, full-chain, timing or hardware result; the active hard stop and all
+  credits are unchanged.
 
 - **2026-08-15 — Wrapper base and final outer are separated fail-closed.**
   Exact-runner audit found three protocol domains, not two interchangeable

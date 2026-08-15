@@ -4432,6 +4432,25 @@ replay the coordinate-1 move, rebuild the same disk relation, compare the
 complete C6PA2 argument, then rerun all accounting and mutation gates before
 pod admission.
 
+### 0.80 C6ICT4 persisted compiler-verifier setup
+
+The compact compiler-verifier profile is now a strict setup artifact rather
+than an analytic byte count. `C61CVP1` encodes its operation-plan and topology
+identities, D28/D27 parameter digests, compact-base dimension and the canonical
+terminal-metadata artifact; decoding rederives every field and rejects
+noncanonical bytes. The production verifier separately requires the frozen
+D25 compact base.
+
+Campaign client parameters advance fail-closed to `C61CP4` and place this
+profile after quantization as component seven. It is derived from the
+installed verifier plan and source manifest, then decoded independently from
+the authenticated setup bundle. The outer client-parameter allocation remains
+exactly **71,994,879 B**, so setup and first-exchange bytes do not grow. The
+profile codec/mutation guard is **1/0/0** and campaign remains **9/0/0**.
+This closes persistence only: neither compiler chain nor the residual bridge
+has yet been invoked by the complete campaign runner, so no full-chain,
+timing, byte, soundness or hardware credit changes.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

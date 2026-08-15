@@ -4117,6 +4117,21 @@ seed/move/order/payload/truncation mutations, burn and backend guards, and a
 fresh state/traffic/I/O/time re-sum. No pod contact or benchmark credit is
 authorized by transcript parity alone.
 
+### 0.66 C6ICT3 typed response-tape grammar
+
+The verifier-private bundle now has eight typed positions: the seven existing
+C6ICT2 native/joint lanes remain unchanged and a distinct final lane owns the
+global response transcript. The response context is model-independent and
+binds the reserved attempt plus typed statement; the enclosing bundle adds the
+certificate binding. Encoding rejects a zero, duplicate, moved or missing
+context, and replay exposes only a seedless `Transcript`.
+
+This changes client-private state only. It does not yet prove that the response
+producer uses the endpoint or that the disk verifier consumes the tape. The
+active hard stop remains `C6ICT3_RESPONSE_TAPE_AND_DISK_REPLAY_REQUIRED` until
+those call sites, final payload sealing, mutations and campaign guards are
+green.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

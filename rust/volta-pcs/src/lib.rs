@@ -16,9 +16,9 @@ pub mod c61_authenticated_whir_p3;
 mod c61_interactive_driver;
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub use c61_interactive_driver::{
-    spawn_c61_private_entropy_transcript_broker, C61InteractiveTape,
-    C61InteractiveTapeBundle, C61PrivateEntropyBrokerHandle, C61PrivateEntropyEndpoint,
-    C61_INTERACTIVE_TAPE_LANES,
+    c61_response_transcript_context_digest, spawn_c61_private_entropy_transcript_broker,
+    C61InteractiveTape, C61InteractiveTapeBundle, C61PrivateEntropyBrokerHandle,
+    C61PrivateEntropyEndpoint, C61_INTERACTIVE_TAPE_LANES,
 };
 pub mod c61_joint_native_bridge;
 #[cfg(feature = "c61-p3-authenticated-reference")]

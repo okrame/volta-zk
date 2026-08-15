@@ -13,8 +13,9 @@ This capsule is authoritative; read design §§0.60--0.65 next.
 - **Milestone/evidence.** C6.1/C6NBR3 and the six C6ICT2 persisted/CUDA lanes
   are closed locally. C6ICT3 now gives the complete scaled response an exact
   canonical prover/verifier transcript: proto **192/0/1**, MAC **32/0/0 +
-  5/0/0**, release check green. No production CUDA/full-chain/timing/memory or
-  hardware credit exists.
+  5/0/0**, release check green. Its versioned private bundle now separates
+  seven native tapes from one response tape (**2/0/0**). No production
+  CUDA/full-chain/timing/memory or hardware credit exists.
 - **Screens.** Certificate **17,536,735 B**, setup **148,738,118 B**,
   setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
   **102.5878332989 bits/cert**, and provider/verifier **14.9179595454 /
@@ -33,6 +34,15 @@ This capsule is authoritative; read design §§0.60--0.65 next.
 - **Fiat--Shamir.** Read-only audit: production substitution is NO-GO;
   `C6FS1` may later exist only as a shadow diagnostic after new ROM
   soundness/privacy proofs. It does not change C6ICT2 or pod authorization.
+
+- **2026-08-15 — The private replay grammar gains a typed response tape.**
+  Bundle v2 preserves the seven ordered C6ICT2 lanes and adds one distinct
+  global-response lane. Its context binds the reserved attempt and statement;
+  the bundle binds the final certificate, rejects zero/duplicate/moved
+  contexts and remains verifier-private. Codec/replay tests are **2/0/0**.
+  This is grammar evidence only: the response producer is not yet connected
+  to the seedless endpoint, so the active hard stop is unchanged and no wire,
+  setup, timing or soundness credit is claimed.
 
 - **2026-08-15 — Exact global response transcript parity closes locally.**
   Every live response correction is now a canonical value move or a

@@ -7,7 +7,7 @@ license.workspace = true
 [features]
 default = []
 cuda = ["volta-accel/cuda", "volta-gpt2/cuda", "volta-proto/cuda", "volta-pcs/cuda"]
-c6-trace = ["volta-mac/c6-trace", "volta-proto/c6-trace"]
+c6-trace = ["volta-mac/c6-trace", "volta-proto/c6-trace", "volta-pcs/c6-trace"]
 c61-p3-authenticated-reference = ["volta-pcs/c61-p3-authenticated-reference"]
 
 [dependencies]

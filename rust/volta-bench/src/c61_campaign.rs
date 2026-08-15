@@ -12,6 +12,8 @@ use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::Path;
+#[cfg(feature = "c6-trace")]
+use volta_accel::Backend;
 use volta_gpt2::{
     decode_verifier_model_canonical, encode_verifier_model_canonical, Gpt2VerifierModel,
 };
@@ -23,10 +25,21 @@ use volta_mac::{
     C6OperationPlanArtifact, C6TraceSourceManifest, Transcript,
 };
 use volta_pcs::c61_authenticated_whir_p3::C61CompilerVerifierProfile;
+#[cfg(feature = "c6-trace")]
+use volta_pcs::C61ProductionResidualRelationBound;
 use volta_pcs::{
-    c61_response_transcript_context_digest, spawn_c61_private_entropy_duplex_transcript_broker,
-    C61InteractiveTape, C61InteractiveTapeBundle, C61JointPublicArgument,
-    C61PrivateEntropyBrokerHandle, C61ResponseStatementBinding, C61StatementBinding,
+    c61_response_transcript_context_digest, c6_wrapper_profile_digest,
+    install_production_c6_live_wrapper_roots_verifier,
+    materialize_production_c6_live_wrapper_roots_cuda,
+    spawn_c61_private_entropy_duplex_transcript_broker, C61InteractiveTape,
+    C61InteractiveTapeBundle, C61JointPublicArgument, C61PrivateEntropyBrokerHandle,
+    C61ResponseStatementBinding, C61StatementBinding,
+};
+#[cfg(feature = "c6-trace")]
+use volta_pcs::{
+    C6HiddenUBundleWitness, C6LiveWrapperMaskSeed, C6LiveWrapperSources,
+    C6PersistedLiveWrapperRootBinding, C6PersistentCacheStateWitness,
+    C6PersistentCacheStaticProfile, C6VerifierLiveWrapperRootBinding,
 };
 #[cfg(feature = "c6-trace")]
 use volta_proto::{
@@ -318,6 +331,110 @@ pub fn build_c61_campaign_disk_wrapper_statement(
         compiler_profile,
     )
     .map_err(|error| error.to_string())
+}
+
+/// Linear live owner after the six persisted roots and exact residual
+/// relation have been fixed on both response transcripts.
+#[cfg(feature = "c6-trace")]
+pub struct C61CampaignLiveResidualRooted {
+    pub provider_roots: C6PersistedLiveWrapperRootBinding,
+    pub verifier_roots: C6VerifierLiveWrapperRootBinding,
+    pub relation: C61ProductionResidualRelationBound,
+    pub session_digest: [u8; 32],
+}
+
+/// Commit the six exact wrapper cohorts, install the same roots on the live
+/// verifier and consume the production residual owner through coordinate 1.
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+pub fn bind_c61_campaign_live_residual_roots(
+    setup: &C6SetupManifest,
+    statement: C61StatementBinding,
+    workload: &C61PublicWorkloadPreimage,
+    predecessor: C6PersistentCacheStateWitness,
+    successor: C6PersistentCacheStateWitness,
+    hidden: &C6HiddenUBundleWitness,
+    residual: C6T1ProductionResidualOwner,
+    backend: &mut Backend,
+    spill_root: &Path,
+    response_session: &mut C61CampaignResponseTranscriptSession,
+) -> Result<C61CampaignLiveResidualRooted, String> {
+    setup.validate().map_err(|error| error.to_string())?;
+    if statement.public_output_digest() != workload.public_output_digest() {
+        return Err("C6ICT4 rooted residual workload differs from wrapper base".to_owned());
+    }
+    let cache_profile = C6PersistentCacheStaticProfile {
+        protocol_digest: setup.protocol_digest,
+        model_digest: setup.model_digest,
+        params_digest: setup.params_digest,
+        wrapper_profile_digest: c6_wrapper_profile_digest(),
+    };
+    cache_profile.validate().map_err(|error| error.to_string())?;
+    let (weights, embedding) = hidden.production_families().map_err(|error| error.to_string())?;
+    let old_len = u16::try_from(workload.workload().old_context)
+        .map_err(|_| "C6ICT4 old cache length exceeds u16")?;
+    let new_len = u16::try_from(workload.workload().new_context)
+        .map_err(|_| "C6ICT4 new cache length exceeds u16")?;
+    let sources = C6LiveWrapperSources::production(
+        statement.digest(),
+        &cache_profile,
+        predecessor,
+        successor,
+        old_len,
+        new_len,
+        weights,
+        embedding,
+        residual.manifest(),
+        residual.leaf(),
+        residual.closure(),
+        residual.auxiliary(),
+    )
+    .map_err(|error| error.to_string())?;
+    let mask_seed = C6LiveWrapperMaskSeed::random();
+    let mut session_hasher =
+        blake3::Hasher::new_derive_key("volta-zk/c61/campaign-wrapper-session/v1");
+    session_hasher.update(&statement.response_statement_digest());
+    session_hasher.update(&statement.digest());
+    session_hasher.update(&mask_seed.commitment());
+    let session_digest = *session_hasher.finalize().as_bytes();
+    let (provider_transcript, verifier_transcript) = response_session.transcripts();
+    let provider_roots = materialize_production_c6_live_wrapper_roots_cuda(
+        sources,
+        mask_seed,
+        backend,
+        spill_root,
+        session_digest,
+        provider_transcript,
+    )
+    .map_err(|error| error.to_string())?;
+    let root_values: Vec<[u8; 32]> =
+        provider_roots.fixed().commitments().iter().map(|item| item.root).collect();
+    let roots: [[u8; 32]; 6] =
+        root_values.try_into().map_err(|_| "C6ICT4 persisted wrapper root census differs")?;
+    let verifier_roots = install_production_c6_live_wrapper_roots_verifier(
+        statement.digest(),
+        &cache_profile,
+        roots,
+        verifier_transcript,
+    )
+    .map_err(|error| error.to_string())?;
+    let root = provider_roots
+        .bind_residual_relation(
+            residual.manifest().clone(),
+            residual.leaf(),
+            residual.closure(),
+            residual.auxiliary(),
+        )
+        .map_err(|error| error.to_string())?;
+    let relation = volta_pcs::bind_c61_production_residual_relation(
+        statement,
+        residual,
+        root,
+        provider_transcript,
+        verifier_transcript,
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(C61CampaignLiveResidualRooted { provider_roots, verifier_roots, relation, session_digest })
 }
 
 /// Response-verifier state reconstructed only from decoded campaign inputs.
@@ -1414,6 +1531,44 @@ mod campaign_artifact_tests {
         assert!(live.contains("encoded_retained_response()"));
         assert!(disk.contains("certificate.retained_response_binding()"));
         assert!(disk.contains("public_instance.preimage()"));
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn live_residual_roots_are_fixed_on_both_roles_before_alpha() {
+        let source = include_str!("c61_campaign.rs");
+        let body = source
+            .split_once("pub fn bind_c61_campaign_live_residual_roots(")
+            .unwrap()
+            .1
+            .split_once("/// Response-verifier state")
+            .unwrap()
+            .0;
+        let materialize = body.find("materialize_production_c6_live_wrapper_roots_cuda(").unwrap();
+        let install = body.find("install_production_c6_live_wrapper_roots_verifier(").unwrap();
+        let root_bind = body.find(".bind_residual_relation(").unwrap();
+        let relation = body.find("bind_c61_production_residual_relation(").unwrap();
+        assert!(materialize < install && install < root_bind && root_bind < relation);
+        for required in [
+            "C6LiveWrapperMaskSeed::random()",
+            "response_session.transcripts()",
+            "residual.manifest()",
+            "residual.leaf()",
+            "residual.closure()",
+            "residual.auxiliary()",
+        ] {
+            assert!(body.contains(required), "live residual root join omits {required}");
+        }
+        let signature = body.split_once(") -> Result").unwrap().0;
+        for forbidden in [
+            "roots:",
+            "mask_seed:",
+            "session_digest:",
+            "provider_transcript:",
+            "verifier_transcript:",
+        ] {
+            assert!(!signature.contains(forbidden), "live residual signature admits {forbidden}");
+        }
     }
 
     #[test]

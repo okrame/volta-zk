@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.81 next.
+This capsule is authoritative; read design §§0.60--0.82 next.
 
 - **Milestone/evidence.** C6NBR3 and C6ICT2/C6ICT3 remain closed locally.
   C6ICT4 now captures both ProductClosure coordinates, enforces the
@@ -20,11 +20,11 @@ This capsule is authoritative; read design §§0.60--0.81 next.
   Setup-owned plan and quantization identities cannot be caller supplied.
   Public-instance v2, campaign schema v6 and client setup `C61CP4` are strict;
   the compiler-verifier profile now has an exact persisted codec. Focused PCS is
-  **16/0/0**, campaign **10/0/0**, public-instance **1/0/0**. No production,
+  **16/0/0**, campaign **11/0/0**, public-instance **1/0/0**. No production,
   full-chain, timing or hardware credit exists.
-- **Hard stop.** `C6ICT4_CAMPAIGN_FULL_CHAIN_REQUIRED`. Production campaign
-  does not yet invoke the live residual bridge, persist its coordinate move,
-  reconstruct the same disk relation or compare the resulting C6PA2 argument.
+- **Hard stop.** `C6ICT4_CAMPAIGN_FULL_CHAIN_REQUIRED`. The live root/residual
+  coordinator exists, but no complete runner yet seals hidden-u, proves the
+  blind/native/compiler chain, reconstructs disk parity or compares C6PA2.
 - **Authorization/resume.** Owner GO permits those exact live/disk call sites,
   differential and mutation guards, then fresh byte/private-state/traffic,
   soundness and time accounting. Keep model geometry manifest-typed and use
@@ -37,6 +37,17 @@ This capsule is authoritative; read design §§0.60--0.81 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-15 — Live persisted roots now precede the residual bridge.** A
+  campaign coordinator derives cache profile and session identity, generates
+  private mask entropy, commits the six exact cohorts through CUDA/persisted
+  storage, installs their roots on the live verifier, then binds the same
+  residual manifest/witness owners and consumes coordinate 1. Its API cannot
+  accept detached roots, masks, session digests or transcripts; ordering guard
+  is **1/0/0**, campaign **11/0/0**, and the feature library check is green.
+  No production execution occurred. Hidden-u sealing, blind/native/compiler
+  proofs, final certificate and independent disk parity remain, so all
+  quantitative and hardware credits are unchanged.
 
 - **2026-08-15 — Wrapper base is constructed from typed live/disk inputs.**
   The v3 base replaces the scaled seam's opaque plan/source/runtime inputs

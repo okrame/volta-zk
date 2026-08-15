@@ -4471,6 +4471,28 @@ scaled PCS family **13/0/0**. No certificate or setup bytes change. Root
 materialization, complete live/disk relation parity and quantitative credit
 remain open under `C6ICT4_CAMPAIGN_FULL_CHAIN_REQUIRED`.
 
+### 0.82 C6ICT4 live persisted-root/residual coordinator
+
+One campaign coordinator now moves the predecessor/successor cache states,
+borrows the exact hidden-u and residual witnesses, generates provider-private
+wrapper-mask entropy and materializes all six production cohorts through the
+CUDA/persisted backend. Its session identity is derived from response/base
+statements plus the mask commitment; roots, mask seed, session digest and raw
+transcripts are not caller inputs.
+
+The same six roots are installed on the live verifier transcript before either
+role receives alpha. Only then does the provider fixed-root token bind the
+same residual manifest/leaf/closure/auxiliary owners and consume the C6ICT4
+coordinate-1 bridge. Cache-profile fields are derived from the authenticated
+setup and frozen wrapper profile. The ordering/API source guard is **1/0/0**,
+bringing campaign to **11/0/0**; feature library check is green.
+
+This is a concrete linear call site but not yet the complete runner: hidden-u
+sealing, global blind proof, native/compiler chains, certificate assembly and
+the independent disk continuation remain unconnected. No root or production
+execution occurred locally, so byte, traffic, state, timing, soundness and
+hardware credits remain unchanged.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

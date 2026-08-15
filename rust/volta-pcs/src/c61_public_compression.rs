@@ -11,8 +11,13 @@ use std::{array, fmt};
 use volta_field::{Fp, Fp2, P};
 use volta_mac::Transcript;
 use volta_proto::{
-    C6ResidualDirectAlphaPoints, C6ResidualDirectPostClaimPoints,
+    C6ResidualDirectAlphaPoints, C6ResidualDirectPostClaimPoints, C6ResidualProductClaimCoordinate,
     C6ResidualRelationManifest,
+};
+#[cfg(feature = "c6-trace")]
+use volta_proto::{
+    C6ResidualRelationRootBound, C6T1ProductionResidualBoundOwner,
+    C6T1ProductionResidualOwner,
 };
 
 pub const C61_PUBLIC_ARGUMENT_MAGIC: [u8; 8] = *b"C6PA1\0\0\0";
@@ -57,10 +62,6 @@ pub const C61_ARITHMETIC_FRAME_BYTES: usize =
 pub const C61_PUBLIC_ARGUMENT_V1_STRICT_MAX_BYTES: usize = C61_PUBLIC_ARGUMENT_OUTER_FRAMING_BYTES
     + C61_NATIVE_CHAIN_COUNT * C61_NATIVE_CHAIN_MAX_BYTES
     + C61_ARITHMETIC_FRAME_BYTES;
-
-const STATEMENT_DIGEST_TRANSCRIPT_BYTES: u64 = 32;
-const TERMINAL_TRANSCRIPT_BYTES: u64 = (C61_TERMINAL_CLAIMS * 16) as u64;
-const ADJOINT_ROOT_TRANSCRIPT_BYTES: u64 = 32;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C61PublicCompressionError(String);
@@ -257,6 +258,40 @@ impl C61StatementBinding {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C61AlphaChallenges {
+    pub alpha: [[Fp2; C61_ALPHA_POINT_DIMENSION]; C61_ALPHA_STREAMS],
+}
+
+impl C61AlphaChallenges {
+    fn draw(transcript: &mut Transcript) -> Self {
+        Self { alpha: array::from_fn(|_| array::from_fn(|_| transcript.challenge_fp2())) }
+    }
+
+    pub fn element_count(&self) -> usize {
+        C61_ALPHA_STREAMS * C61_ALPHA_POINT_DIMENSION
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C61PostClaimChallenges {
+    pub terminal: [[Fp2; C61_TERMINAL_POINT_DIMENSION]; C61_TERMINAL_STREAMS],
+    pub atomic: [[Fp2; C61_ATOMIC_POINT_DIMENSION]; C61_ATOMIC_STREAMS],
+}
+
+impl C61PostClaimChallenges {
+    fn draw(transcript: &mut Transcript) -> Self {
+        Self {
+            terminal: array::from_fn(|_| array::from_fn(|_| transcript.challenge_fp2())),
+            atomic: array::from_fn(|_| array::from_fn(|_| transcript.challenge_fp2())),
+        }
+    }
+
+    pub fn element_count(&self) -> usize {
+        C61_EQUALITY_CHALLENGE_ELEMENTS - C61_ALPHA_STREAMS * C61_ALPHA_POINT_DIMENSION
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C61EqualityChallenges {
     pub alpha: [[Fp2; C61_ALPHA_POINT_DIMENSION]; C61_ALPHA_STREAMS],
     pub terminal: [[Fp2; C61_TERMINAL_POINT_DIMENSION]; C61_TERMINAL_STREAMS],
@@ -264,12 +299,8 @@ pub struct C61EqualityChallenges {
 }
 
 impl C61EqualityChallenges {
-    fn draw(transcript: &mut Transcript) -> Self {
-        Self {
-            alpha: array::from_fn(|_| array::from_fn(|_| transcript.challenge_fp2())),
-            terminal: array::from_fn(|_| array::from_fn(|_| transcript.challenge_fp2())),
-            atomic: array::from_fn(|_| array::from_fn(|_| transcript.challenge_fp2())),
-        }
+    fn from_parts(alpha: C61AlphaChallenges, postclaim: C61PostClaimChallenges) -> Self {
+        Self { alpha: alpha.alpha, terminal: postclaim.terminal, atomic: postclaim.atomic }
     }
 
     pub fn element_count(&self) -> usize {
@@ -299,6 +330,25 @@ pub fn c61_residual_direct_points(
         C6ResidualDirectPostClaimPoints::new(manifest, terminal, atomic)
             .map_err(|error| C61PublicCompressionError::new(error.to_string()))?,
     ))
+}
+
+pub fn c61_residual_direct_alpha_points(
+    manifest: &C6ResidualRelationManifest,
+    alpha: &C61AlphaChallenges,
+) -> Result<C6ResidualDirectAlphaPoints> {
+    let points = std::array::from_fn(|stream| alpha.alpha[stream].to_vec());
+    C6ResidualDirectAlphaPoints::new(manifest, points)
+        .map_err(|error| C61PublicCompressionError::new(error.to_string()))
+}
+
+pub fn c61_residual_direct_postclaim_points(
+    manifest: &C6ResidualRelationManifest,
+    postclaim: &C61PostClaimChallenges,
+) -> Result<C6ResidualDirectPostClaimPoints> {
+    let terminal = std::array::from_fn(|stream| postclaim.terminal[stream].to_vec());
+    let atomic = std::array::from_fn(|stream| postclaim.atomic[stream].to_vec());
+    C6ResidualDirectPostClaimPoints::new(manifest, terminal, atomic)
+        .map_err(|error| C61PublicCompressionError::new(error.to_string()))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -332,12 +382,59 @@ impl C61RootsFixed {
         Ok(Self { binding })
     }
 
-    pub fn draw_equality_challenges(self, transcript: &mut Transcript) -> C61EqualityDrawn {
-        transcript.append("c61.statement_digest_fixed", STATEMENT_DIGEST_TRANSCRIPT_BYTES);
+    pub fn draw_alpha_challenges(self, transcript: &mut Transcript) -> C61AlphaDrawn {
+        transcript.append_message("c61.statement_digest_fixed", &self.binding.digest());
+        C61AlphaDrawn { binding: self.binding, alpha: C61AlphaChallenges::draw(transcript) }
+    }
+
+    #[cfg(test)]
+    fn draw_equality_challenges_for_test(self, transcript: &mut Transcript) -> C61EqualityDrawn {
+        let alpha = self.draw_alpha_challenges(transcript);
+        alpha.draw_postclaim_without_product_claim_for_test(transcript)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct C61AlphaDrawn {
+    #[cfg_attr(not(feature = "c6-trace"), allow(dead_code))]
+    binding: C61StatementBinding,
+    alpha: C61AlphaChallenges,
+}
+
+impl C61AlphaDrawn {
+    pub fn alpha(&self) -> &C61AlphaChallenges {
+        &self.alpha
+    }
+
+    #[cfg_attr(not(feature = "c6-trace"), allow(dead_code))]
+    pub(crate) fn bind_product_claim_coordinate_one(
+        self,
+        coordinate_one: &C6ResidualProductClaimCoordinate,
+        transcript: &mut Transcript,
+    ) -> Result<C61EqualityDrawn> {
+        coordinate_one
+            .append_coordinate_one(transcript)
+            .map_err(|error| C61PublicCompressionError::new(error.to_string()))?;
+        Ok(self.draw_postclaim(transcript))
+    }
+
+    #[cfg_attr(not(feature = "c6-trace"), allow(dead_code))]
+    fn draw_postclaim(self, transcript: &mut Transcript) -> C61EqualityDrawn {
         C61EqualityDrawn {
             binding: self.binding,
-            equality: C61EqualityChallenges::draw(transcript),
+            equality: C61EqualityChallenges::from_parts(
+                self.alpha,
+                C61PostClaimChallenges::draw(transcript),
+            ),
         }
+    }
+
+    #[cfg(test)]
+    fn draw_postclaim_without_product_claim_for_test(
+        self,
+        transcript: &mut Transcript,
+    ) -> C61EqualityDrawn {
+        self.draw_postclaim(transcript)
     }
 }
 
@@ -357,9 +454,99 @@ impl C61EqualityDrawn {
         terminal_claims: [Fp2; C61_TERMINAL_CLAIMS],
         transcript: &mut Transcript,
     ) -> C61TerminalClaimsFixed {
-        transcript.append("c61.terminal_claims", TERMINAL_TRANSCRIPT_BYTES);
+        transcript.append_fp2s("c61.terminal_claims", &terminal_claims);
         C61TerminalClaimsFixed { binding: self.binding, equality: self.equality, terminal_claims }
     }
+}
+
+/// The exact production residual relation after one shared alpha family, the
+/// typed coordinate-1 provider move and one shared post-claim family. The
+/// provider-only claims owner is consumed, so the coordinate cannot be
+/// replaced between transcript binding and relation compilation.
+#[cfg(feature = "c6-trace")]
+pub struct C61ProductionResidualRelationBound {
+    equality: C61EqualityDrawn,
+    residual: C6T1ProductionResidualBoundOwner,
+}
+
+#[cfg(feature = "c6-trace")]
+impl C61ProductionResidualRelationBound {
+    pub fn equality(&self) -> &C61EqualityChallenges {
+        self.equality.equality()
+    }
+
+    pub fn into_parts(self) -> (C61EqualityDrawn, C6T1ProductionResidualBoundOwner) {
+        (self.equality, self.residual)
+    }
+}
+
+/// Join the public-compression challenge typestate to the same-pass residual
+/// owner. Alpha is released first; only then can the owner compile and emit
+/// coordinate 1. Terminal and atomic points are released after both live
+/// roles submit that exact canonical move.
+#[cfg(feature = "c6-trace")]
+pub fn bind_c61_production_residual_relation(
+    binding: C61StatementBinding,
+    residual: C6T1ProductionResidualOwner,
+    root: C6ResidualRelationRootBound,
+    provider_transcript: &mut Transcript,
+    verifier_transcript: &mut Transcript,
+) -> Result<C61ProductionResidualRelationBound> {
+    let provider_prefix = provider_transcript
+        .canonical_binding_digest()
+        .map_err(C61PublicCompressionError::new)?;
+    let verifier_prefix = verifier_transcript
+        .canonical_binding_digest()
+        .map_err(C61PublicCompressionError::new)?;
+    if root.wrapper_statement_digest() != binding.digest()
+        || provider_prefix != verifier_prefix
+        || provider_transcript.ledger() != verifier_transcript.ledger()
+        || provider_transcript.total_bytes() != verifier_transcript.total_bytes()
+    {
+        return Err(C61PublicCompressionError::new(
+            "C6ICT4 root statement or continuation transcripts differ",
+        ));
+    }
+    let manifest = residual.manifest().clone();
+    let provider_alpha =
+        C61RootsFixed::new(binding.clone())?.draw_alpha_challenges(provider_transcript);
+    let verifier_alpha =
+        C61RootsFixed::new(binding)?.draw_alpha_challenges(verifier_transcript);
+    if provider_transcript.interactive_error().is_some()
+        || verifier_transcript.interactive_error().is_some()
+        || provider_alpha.alpha() != verifier_alpha.alpha()
+    {
+        return Err(C61PublicCompressionError::new(
+            "C6ICT4 alpha challenge exchange failed or diverged",
+        ));
+    }
+    let direct_alpha = c61_residual_direct_alpha_points(&manifest, provider_alpha.alpha())?;
+    let claims = residual
+        .bind_direct_alpha(root, direct_alpha)
+        .map_err(|error| C61PublicCompressionError::new(error.to_string()))?;
+    let coordinate_one = claims.coordinate_one().clone();
+    let provider_equality = provider_alpha
+        .bind_product_claim_coordinate_one(&coordinate_one, provider_transcript)?;
+    let verifier_equality = verifier_alpha
+        .bind_product_claim_coordinate_one(&coordinate_one, verifier_transcript)?;
+    if provider_transcript.interactive_error().is_some()
+        || verifier_transcript.interactive_error().is_some()
+        || provider_equality.equality() != verifier_equality.equality()
+    {
+        return Err(C61PublicCompressionError::new(
+            "C6ICT4 coordinate-1/post-claim exchange failed or diverged",
+        ));
+    }
+    let equality = provider_equality.equality();
+    let postclaim = C61PostClaimChallenges {
+        terminal: equality.terminal,
+        atomic: equality.atomic,
+    };
+    let direct_postclaim = c61_residual_direct_postclaim_points(&manifest, &postclaim)?;
+    let residual = claims
+        .bind_direct_postclaim(direct_postclaim)
+        .map_err(|error| C61PublicCompressionError::new(error.to_string()))?;
+    Ok(C61ProductionResidualRelationBound { equality: provider_equality, residual })
 }
 
 #[derive(Clone, Debug)]
@@ -405,7 +592,7 @@ impl C61OutputChallengeDrawn {
         if adjoint_root == [0; 32] {
             return Err(C61PublicCompressionError::new("zero C6.1 adjoint root"));
         }
-        transcript.append("c61.adjoint_root", ADJOINT_ROOT_TRANSCRIPT_BYTES);
+        transcript.append_message("c61.adjoint_root", &adjoint_root);
         Ok(C61AdjointFixed {
             binding: self.binding,
             equality: self.equality,
@@ -1616,7 +1803,7 @@ mod tests {
         let terminal_claims = plan.terminal_claims(&values).unwrap();
         let mut transcript = Transcript::new(challenge_seed);
         let equality =
-            C61RootsFixed::new(binding).unwrap().draw_equality_challenges(&mut transcript);
+            C61RootsFixed::new(binding).unwrap().draw_equality_challenges_for_test(&mut transcript);
         assert_eq!(equality.equality().element_count(), 234);
         let output = equality
             .fix_terminal_claims(terminal_claims, &mut transcript)
@@ -1629,6 +1816,89 @@ mod tests {
             .unwrap()
             .draw_runtime_challenges(&mut transcript);
         (ready, transcript)
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn product_claim_move_separates_alpha_from_postclaim_challenges() {
+        let residual = volta_proto::build_c6_residual_direct_fused_scaled_fixture().unwrap();
+        let coordinate_one =
+            residual.relation().claims().product_coordinate(residual.manifest(), 1).unwrap();
+        let mut changed_messages = coordinate_one.messages().to_vec();
+        changed_messages[0][0] += Fp2::ONE;
+        let changed_coordinate =
+            C6ResidualProductClaimCoordinate::new(residual.manifest(), 1, changed_messages)
+                .unwrap();
+        let (plan, sources, runtime) = scaled_fixture();
+        let statement = binding(&plan, &sources, &runtime);
+
+        let mut first_tx = Transcript::new([0xC4; 32]);
+        let first_alpha =
+            C61RootsFixed::new(statement.clone()).unwrap().draw_alpha_challenges(&mut first_tx);
+        let mut second_tx = Transcript::new([0xC4; 32]);
+        let second_alpha =
+            C61RootsFixed::new(statement).unwrap().draw_alpha_challenges(&mut second_tx);
+        assert_eq!(first_alpha.alpha(), second_alpha.alpha());
+        assert_eq!(first_alpha.alpha().element_count(), 46);
+
+        let first =
+            first_alpha.bind_product_claim_coordinate_one(&coordinate_one, &mut first_tx).unwrap();
+        let changed = second_alpha
+            .bind_product_claim_coordinate_one(&changed_coordinate, &mut second_tx)
+            .unwrap();
+        assert_eq!(first.equality().alpha, changed.equality().alpha);
+        assert_eq!(first.equality().terminal, changed.equality().terminal);
+        assert_eq!(first.equality().atomic, changed.equality().atomic);
+        assert_eq!(first.equality().element_count(), 234);
+        assert_eq!(first_tx.total_bytes(), 32 + 32);
+        assert_ne!(
+            first_tx.canonical_binding_digest().unwrap(),
+            second_tx.canonical_binding_digest().unwrap()
+        );
+    }
+
+    #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+    #[test]
+    fn duplex_replay_rejects_changed_product_claim_before_postclaim_release() {
+        let residual = volta_proto::build_c6_residual_direct_fused_scaled_fixture().unwrap();
+        let coordinate_one =
+            residual.relation().claims().product_coordinate(residual.manifest(), 1).unwrap();
+        let mut changed_messages = coordinate_one.messages().to_vec();
+        changed_messages[0][1] += Fp2::ONE;
+        let changed_coordinate =
+            C6ResidualProductClaimCoordinate::new(residual.manifest(), 1, changed_messages)
+                .unwrap();
+        let (plan, sources, runtime) = scaled_fixture();
+        let statement = binding(&plan, &sources, &runtime);
+        let (provider, verifier, broker) =
+            crate::c61_interactive_driver::spawn_c61_private_entropy_duplex_transcript_broker(
+                [0xD4; 32],
+                0,
+                [0xD5; 32],
+            )
+            .unwrap();
+        let mut provider_tx = Transcript::new_interactive(Box::new(provider));
+        let mut verifier_tx = Transcript::new_interactive(Box::new(verifier));
+        let provider_alpha = C61RootsFixed::new(statement.clone())
+            .unwrap()
+            .draw_alpha_challenges(&mut provider_tx);
+        let verifier_alpha = C61RootsFixed::new(statement)
+            .unwrap()
+            .draw_alpha_challenges(&mut verifier_tx);
+        assert_eq!(provider_alpha.alpha(), verifier_alpha.alpha());
+
+        provider_alpha
+            .bind_product_claim_coordinate_one(&coordinate_one, &mut provider_tx)
+            .unwrap();
+        verifier_alpha
+            .bind_product_claim_coordinate_one(&changed_coordinate, &mut verifier_tx)
+            .unwrap();
+        assert!(verifier_tx
+            .interactive_error()
+            .is_some_and(|error| error.contains("provider move or kind diverged")));
+        drop(provider_tx);
+        drop(verifier_tx);
+        assert!(broker.finish().is_err());
     }
 
     fn ready_fixture(

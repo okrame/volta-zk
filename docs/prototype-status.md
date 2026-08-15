@@ -14,14 +14,14 @@ This capsule is authoritative; read design §§0.60--0.74 next.
   closed locally. C6ICT3 has exact scaled response parity (proto **192/0/1**,
   MAC **32/0/0 + 5/0/0**), a frontier-safe duplex broker (**4/0/0**), a
   provider-only seam (**1/0/0**), campaign-owned entropy, its response call
-  site and strict disk-prefix replay (**3/0/0**). Retained coordinate 0 is
-  exact (**1/0/0**); the typed coordinate-1 codec is green (**1/0/0**). No
-  production, full-chain or hardware credit exists.
-- **Hard stop.** `C6ICT4_LOCAL_CONSTRUCTION_REQUIRED`. The old disk-relation
-  obstruction is understood but not yet closed: coordinate 1 is not in the
-  private response tape, alpha is not separated from post-claim challenges,
-  disk verification cannot construct the complete relation, and statement v2
-  is absent. Pod contact would therefore be premature.
+  site and strict disk-prefix replay (**3/0/0**). Retained coordinate 0 and
+  the typed coordinate-1 codec are green (**1/0/0 + 1/0/0**). Alpha is now
+  separated from post-claim challenges and the duplex broker rejects a changed
+  coordinate (**2/0/0**). No production, full-chain or hardware credit exists.
+- **Hard stop.** `C6ICT4_DISK_REPLAY_STATEMENT_REQUIRED`. The exact live
+  typestate exists, but its campaign call site and tape extractor do not;
+  disk verification still cannot construct the complete relation, and
+  statement v2 is absent. Pod contact would therefore be premature.
 - **Authorization/resume.** Owner GO authorizes C6ICT4: recover coordinate 0
   from the strict retained response; persist the exact 673-pair coordinate-1
   move before terminal/atomic challenges; bind a versioned noncircular base
@@ -36,6 +36,18 @@ This capsule is authoritative; read design §§0.60--0.74 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-15 — Coordinate 1 precedes every dependent challenge.** C6PA2
+  equality sampling is split into 46 alpha elements and 188 terminal/atomic
+  elements. The same-pass residual owner compiles its exact coordinate-1 move
+  only after alpha, submits it through both live endpoints and is consumed
+  before post-claim points are released. The verifier challenge stays fresh
+  and message-independent, as required for the interactive DV protocol; the
+  duplex frontier binds order and exact bytes. Focused split/digest and changed
+  replay guards are **2/0/0**. Statement, terminal claims and adjoint root now
+  use canonical exact-message transcript events. Feature and ordinary builds
+  are green. Campaign wiring, disk extraction/relation and statement v2 remain;
+  no byte, time, soundness or hardware credit changes.
 
 - **2026-08-15 — Retained ProductClosure messages become an exact replay
   output.** The central prover and verifier `ProductClosure` calls now capture

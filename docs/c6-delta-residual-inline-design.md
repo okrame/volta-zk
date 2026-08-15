@@ -4325,6 +4325,26 @@ All original C6.1 gates remain unchanged. Construction uses small main
 checkpoints; production/full-chain/hardware credit and pod contact remain
 forbidden until the complete local suite and campaign guards are green.
 
+### 0.75 C6ICT4 alpha/claim/post-claim frontier
+
+The equality family is now a strict typestate sequence: 46 alpha `Fp2`
+elements, the typed coordinate-1 message, then 188 terminal/atomic `Fp2`
+elements. The same-pass residual owner is consumed while deriving coordinate
+1, and coordinate 0 is compared against the retained response first. A
+production coordinator requires the residual root's wrapper-statement digest
+to equal the C6PA2 statement digest and requires identical canonical prefix
+digests on both live roles.
+
+This remains an interactive designated-verifier protocol: post-claim
+challenges are fresh random values and need not change when the same verifier
+seed is replayed against a different message. Security comes from releasing
+them only after the broker has compared the exact ordered provider move. The
+duplex negative test changes one coordinate-1 field and rejects at that
+frontier (**2/0/0** including the split/digest test). Statement digest,
+terminal claims and adjoint root also use exact canonical message events, not
+length-only transcript entries. No wire size changes; the coordinate payload
+still awaits the campaign call site, private-tape extractor and disk relation.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

@@ -1439,6 +1439,14 @@ impl C6ResidualRelationRootBound {
         &self.manifest
     }
 
+    pub fn wrapper_statement_digest(&self) -> C6ResidualDigest {
+        self.wrapper_statement_digest
+    }
+
+    pub fn fixed_roots_digest(&self) -> C6ResidualDigest {
+        self.fixed_roots_digest
+    }
+
     pub fn digest(&self) -> C6ResidualDigest {
         self.digest
     }

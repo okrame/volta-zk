@@ -72,15 +72,21 @@ pub use c61_joint_native_bridge::{
     C61JointNativeBodiesFixed, C61JointNativeBodyBinding, C61JointNativeBodyScheduleBuilder,
     C61JointNativeChallenge,
 };
+#[cfg(feature = "c6-trace")]
+pub use c61_public_compression::{
+    bind_c61_production_residual_relation, C61ProductionResidualRelationBound,
+};
 pub use c61_public_compression::{
     build_c61_production_arithmetic_frame, build_c61_scaled_arithmetic_frame, c61_eq_weight,
     c61_fp2_vector_root,
     c61_joint_public_statement_digest,
-    c61_mle_eval_fold_reference, c61_mle_eval_prefix, c61_residual_direct_points,
+    c61_mle_eval_fold_reference, c61_mle_eval_prefix, c61_residual_direct_alpha_points,
+    c61_residual_direct_points, c61_residual_direct_postclaim_points,
     verify_c61_production_arithmetic_frame, verify_c61_scaled_public_argument,
-    C61AdjointFixed, C61ArithmeticFrame, C61CorrelationRangeBinding, C61EqualityChallenges,
-    C61EqualityDrawn, C61LinearOp, C61NativeBackendVerifier, C61NativeChainId, C61NativeComponent,
-    C61JointPublicArgument, C61OutputChallengeDrawn, C61PublicArgument,
+    C61AdjointFixed, C61AlphaChallenges, C61AlphaDrawn, C61ArithmeticFrame,
+    C61CorrelationRangeBinding, C61EqualityChallenges, C61EqualityDrawn, C61LinearOp,
+    C61NativeBackendVerifier, C61NativeChainId, C61NativeComponent, C61JointPublicArgument,
+    C61OutputChallengeDrawn, C61PostClaimChallenges, C61PublicArgument,
     C61PublicCompressionError, C61ReadyChallenges,
     C61ReadyPublicProof, C61RootsFixed, C61SparsePlan, C61StatementBinding, C61TerminalClaimsFixed,
     C61_ALPHA_POINT_DIMENSION, C61_ALPHA_STREAMS, C61_ARITHMETIC_AND_OUTER_FRAMING_MAX_BYTES,

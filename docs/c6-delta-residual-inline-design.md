@@ -4532,6 +4532,34 @@ timing gates; moving old proof bytes outside the certificate is not a wire
 credit. The current full-chain authorization does not select this challenge-
 schedule change. No production run or pod contact is permitted.
 
+### 0.84 C6ICT4 retained-Ligero traffic disposition
+
+The staged route cannot preserve the old proof traffic. Its exact Q=121
+weight/embed PCS payload is
+
+```text
+26,036,160 + 216,968 + 64 + 1,632 + 32 + 32 = 26,254,888 B.
+```
+
+Adding it to the current **17,536,735-B** certificate screen would send
+**43,791,623 B**, exceeding the strict **21,999,999-B** cap by
+**21,791,624 B**. Sending those bytes before the final envelope or retaining
+them only in client-private state does not change provider-to-client traffic
+and cannot receive wire credit. Thus a staged raw Ligero replay is analytic
+**NO-GO** under the original C6.1 gate.
+
+An admissible continuation must instead either prove that the existing four
+native model/embed chains plus C6NBR2 already replace the same 102 ordered
+claim relations, allowing the legacy Ligero/C6HUB2 participant and its link
+slots to be removed or canonically zeroed under a new typed statement; or add
+the complete old Ligero relation as compressed C6PA2 public work without raw
+proof traffic. The former is the recommended design study because C6.1
+already budgets replacement of the complete old PCS, while the latter adds a
+large unpriced prover/verifier relation. Neither equivalence is currently
+proved. Owner authorization is required before changing the 72-slot link,
+hidden codec, challenge schedule or soundness composition. The active hard
+stop is unchanged and no pod contact is permitted.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

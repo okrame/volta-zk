@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.83 next.
+This capsule is authoritative; read design §§0.60--0.84 next.
 
 - **Milestone/evidence.** C6NBR3 and C6ICT2/C6ICT3 remain closed locally.
   C6ICT4 captures both ProductClosure coordinates, has three noncircular
@@ -22,10 +22,10 @@ This capsule is authoritative; read design §§0.60--0.83 next.
   The downstream blind path also retains length-only pre-challenge events and
   campaign v6 has no hidden replay owner.
 - **Authorization/resume.** Current GO stops at this newly exposed schedule
-  change. Resume needs an explicit owner choice: staged two-family Ligero with
-  both hidden roots/prequery fixed before either query family, or a broader
-  replacement relation. Either route needs canonical seedless moves, strict
-  private replay, live/disk parity, mutations and fresh traffic/state,
+  change. Raw staged Ligero is traffic NO-GO. Resume needs owner authorization
+  to study a typed native/C6NBR2 substitution for the legacy hidden-u link
+  (recommended), or a compressed public proof of the complete old relation.
+  Either route needs live/disk parity, mutations and fresh traffic/state,
   soundness and timing accounting. No pod beforehand.
 - **Screens.** Certificate **17,536,735 B**, setup **148,738,118 B**,
   setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
@@ -34,6 +34,17 @@ This capsule is authoritative; read design §§0.60--0.83 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-15 — Raw staged Ligero is excluded by the wire gate.** The exact
+  old Q=121 PCS traffic is **26,254,888 B**. Added to the current
+  **17,536,735-B** certificate screen it totals **43,791,623 B**, exceeding
+  the strict cap by **21,791,624 B**; moving it before the envelope or into
+  private client state earns no credit. Design §0.84 therefore recommends a
+  typed proof that the four native chains plus C6NBR2 replace the same 102
+  claim relations, followed by removal or canonical zeroing of the obsolete
+  hidden-u link slots. Compressing the complete legacy relation inside C6PA2
+  is the broader alternative. Neither is authorized or proved; the hard stop,
+  screens and credits remain unchanged.
 
 - **2026-08-15 — Hidden-u prequery scheduling reaches a hard stop.** The
   retained resident opening exposes its proof only after ZeroBatch `chi` and

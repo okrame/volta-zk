@@ -8,35 +8,69 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.71 next.
+This capsule is authoritative; read design §§0.60--0.72 next.
 
-- **Milestone/evidence.** C6.1/C6NBR3 and the six C6ICT2 persisted/CUDA lanes
-  are closed locally. C6ICT3 now gives the complete scaled response an exact
-  canonical prover/verifier transcript: proto **192/0/1**, MAC **32/0/0 +
-  5/0/0**, release check green. Its private bundle separates seven native
-  tapes from one response tape; a duplex broker releases only challenges at
-  the proved frontier and requires an identical final seal (**4/0/0**). A
-  provider-only seam excludes verifier capabilities (**1/0/0**); the OS-seeded
-  session, campaign call site and strict disk-response entry are **3/0/0**. No
-  production, full-chain or hardware credit exists.
+- **Milestone/evidence.** C6NBR3 and the six C6ICT2 persisted/CUDA lanes are
+  closed locally. C6ICT3 has exact scaled response parity (proto **192/0/1**,
+  MAC **32/0/0 + 5/0/0**), a frontier-safe duplex broker (**4/0/0**), a
+  provider-only seam (**1/0/0**), an OS-seeded campaign session, its response
+  call site and strict disk-prefix replay (**3/0/0**). No production,
+  full-chain or hardware credit exists.
+- **Hard stop.** `C6ICT3_DISK_RELATION_STATEMENT_OBSTRUCTED`. Disk replay
+  reconstructs the response but not the residual public-claims frame:
+  coordinate 1's 673 masked `ProductClosure` pairs (**21,536 B**) exist only
+  in provider witness state. Production also has no typed
+  `C61StatementBinding`/`C61RootsFixed` call site; binding its current field
+  names to final retained, wrapper or full successor-head digests would be
+  circular. A provider digest is not a substitute.
+- **Resume condition.** Owner GO must choose an exact bridge. Recommended:
+  extract coordinate 0 in installed order from the strict retained proof,
+  persist the exact coordinate-1 move in the client-private response tape,
+  and define a versioned noncircular base statement over the retained prefix,
+  fixed wrapper roots and proposed successor head. Then add Lean/differential
+  evidence, mutations and fresh byte/state/traffic/time/soundness accounting.
 - **Screens.** Certificate **17,536,735 B**, setup **148,738,118 B**,
   setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
-  **102.5878332989 bits/cert**, and provider/verifier **14.9179595454 /
+  **102.5878332989 bits/cert**, provider/verifier **14.9179595454 /
   4.978261758 s** remain `credit:false`.
-- **Active gate.** `C6ICT3_RESPONSE_TAPE_AND_DISK_REPLAY_REQUIRED`. Canonical
-  parity, provider boundary and campaign-owned response execution are closed,
-  but the downstream exact producer and complete disk verifier are absent. It
-  needs owner-graph wiring, mutations, lifecycle guards and fresh accounting.
-- **Authorization.** Owner GO permits exact canonical response moves, a
-  seedless provider endpoint and one attempt/statement/certificate-bound
-  client-private response tape. Burn-on-interruption remains mandatory. No pod
-  contact before parity/mutations, disk verifier, validator, source/backend
-  guards and fresh accounting are green.
-- **Measurement policy.** Only verifier time has official `4T <5 s` and
-  diagnostic `maxT(N)`; provider has one full-chain A100 `<15 s` gate.
-- **Fiat--Shamir.** Read-only audit: production substitution is NO-GO;
-  `C6FS1` may later exist only as a shadow diagnostic after new ROM
-  soundness/privacy proofs. It does not change C6ICT2 or pod authorization.
+- **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
+  `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
+  production NO-GO.
+
+- **2026-08-15 — Disk relation and base-statement audit reaches a hard
+  stop.** The strict replay now supplies the installed verifier plan,
+  extraction, runtime, response roots, cache frame, live contexts and global
+  transcript. The next residual typestate cannot be constructed from them.
+  `commit_public_claims_from_live` alone creates the 673-entry
+  `C6ResidualPublicClaimsFrame`, and it requires provider-only leaf and
+  auxiliary witnesses. Each entry has two `Fp2` messages per MAC coordinate:
+  **43,072 B** total. Coordinate 0's **21,536 B** already occur in the strict
+  retained response but lack an installed-order extractor; coordinate 1's
+  **21,536 B** are computed only in the live provider owner and are neither
+  encoded nor persisted. The certificate carries the four residual scalars,
+  not these product claims.
+
+  A second source audit finds `C61StatementBinding` constructed only by scaled
+  tests and no production call to `C61RootsFixed`. This is not mechanical
+  wiring: the C6.1 public argument is itself a suffix of the final retained
+  transcript, the blind proof depends on its challenges, and the full
+  successor head contains the resulting transition digest. Mapping the base
+  statement to any of those final digests would therefore be self-referential.
+  Caller-authored replacements would permit statement substitution.
+
+  The recommended wire-neutral-certificate repair is a typed bridge that
+  reuses coordinate 0, records the exact coordinate-1 move in the existing
+  client-private response tape, and advances the statement domain to bind only
+  pre-challenge objects: the strict retained-response prefix, fixed wrapper
+  statement/roots, old head and a domain-separated proposed-head digest that
+  excludes `producer_transition_digest`. It also needs an exact field table
+  for quantization, plan, parameters, runtime, public I/O and ranges. This is
+  expected to add **21,536 B plus canonical framing** to interactive
+  provider-to-client traffic and private tape state, but zero certificate
+  bytes; no such credit is claimed before implementation and re-sum. An
+  oracle/proof for the missing claims is the broader alternative. Either path
+  changes the typed statement/replay grammar and requires explicit owner GO,
+  Lean/hash-binding review, parity and mutation tests. No pod was contacted.
 
 - **2026-08-15 — Campaign session reaches the exact response executor.** A
   typed call site now moves the canonical T1 workload through the

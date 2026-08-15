@@ -4219,6 +4219,69 @@ the response prefix. Consequently
 `C6ICT3_RESPONSE_TAPE_AND_DISK_REPLAY_REQUIRED` remains active and no pod,
 wire, timing, memory, soundness or full-chain credit is claimed.
 
+### 0.72 Disk residual relation and base-statement obstruction
+
+The strict response replay closes the prefix but exposes two downstream
+preimages that the local same-process runner had supplied implicitly.
+
+First, `C6ResidualRelationChallenges` cannot be reconstructed from the disk
+artifact. Its public-claims frame contains 673 `ProductClosure` entries, each
+with `(M0,M1)` in both MAC coordinates. The sole production constructor,
+`commit_public_claims_from_live`, reads provider-only leaf and auxiliary
+witnesses. Coordinate 0's 673 pairs (**21,536 B**) already occur in the
+canonical retained response but have no installed-order extraction API.
+Coordinate 1's independent 673 pairs (another **21,536 B**) exist only inside
+the provider residual owner. They are absent from the certificate and the
+client-private tape. The four `C6PairedDeltaResidual` scalars do not determine
+these 2,692 `Fp2` values, and a provider-supplied digest would be digest-as-
+proof.
+
+Second, production never constructs `C61StatementBinding`; `C61RootsFixed`
+is reached only by scaled tests. The missing map cannot use similarly named
+final-certificate fields without creating a cycle:
+
+```text
+base statement -> equality challenges -> residual/blind proof
+               -> C6PA2 retained suffix -> final retained/proof digests
+               -> transition digest -> successor producer digest.
+```
+
+The base statement must therefore bind pre-challenge facts rather than the
+final retained blob, final blind-proof digest or full successor-head digest.
+Its exact v2 field table must also distinguish the frozen quantization
+identity, installed plan artifact, model parameters, runtime instance and
+public I/O; no caller-authored nonzero digest is acceptable.
+
+The narrow recommended construction is:
+
+1. extract the coordinate-0 pairs from the strict retained proof in the
+   installed `ProductClosure` order and cross-check the exact 673 census;
+2. append the coordinate-1 pairs as one typed canonical provider move before
+   their dependent challenge frontier, retain them in the already authorized
+   client-private response tape, and replay them without provider state;
+3. advance the statement domain and bind the strict retained-response prefix,
+   fixed wrapper statement/roots, full old-head digest and a domain-separated
+   proposed successor `(epoch, cache_len, cache_root)` digest which excludes
+   the not-yet-defined `producer_transition_digest`; and
+4. let the final C6 transition statement bind the completed public argument,
+   blind proof and producer digest as it does today.
+
+This keeps certificate bytes unchanged. It is expected to add **21,536 B plus
+canonical event framing** to both provider-to-client interactive traffic and
+client-private tape state. That cost is constant for the installed compiler
+profile, not cache-history or response-count linear, but it has no gate credit
+until measured and included in setup+first and subsequent-certificate totals.
+A dedicated authenticated oracle/proof for the missing pairs is the broader
+alternative.
+
+The active hard stop is `C6ICT3_DISK_RELATION_STATEMENT_OBSTRUCTED`. Resume
+requires explicit owner approval of one exact construction, followed by the
+typed statement/codec, challenge-order proof, Lean/hash-binding plan,
+provider/verifier differential, move/order/value/truncation mutations and a
+fresh byte, state, traffic, soundness and time re-sum. No pod contact is
+permitted before the resulting complete disk verifier and campaign guards are
+green.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

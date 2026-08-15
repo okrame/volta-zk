@@ -4201,6 +4201,24 @@ No production artifact has exercised the entry, and the remaining certificate
 verifier is not assembled; call-site, mutation and lifecycle gates therefore
 remain under `C6ICT3_RESPONSE_TAPE_AND_DISK_REPLAY_REQUIRED`.
 
+### 0.71 C6ICT3 campaign response call site
+
+The campaign coordinator now moves the canonical T1 workload through its own
+duplex response session. The typed call site accepts the reserved paired-PCG
+attempt and the session, but no caller-supplied transcript, verifier seed or
+broker handle. It borrows the seedless provider and live-replay endpoints only
+for the existing exact response owner, leaving entropy ownership at the client
+boundary and preserving the downstream linear response object.
+
+This is deliberately a narrow edge rather than a second response runner: it
+reuses the canonical response implementation and therefore cannot drift in
+proof bytes or challenge order. The campaign guard suite is **3/0/0** and the
+ordinary `c6-trace` build is green. The full residual, native, compiler and
+blind owner graph still lacks a campaign entry, and disk replay still stops at
+the response prefix. Consequently
+`C6ICT3_RESPONSE_TAPE_AND_DISK_REPLAY_REQUIRED` remains active and no pod,
+wire, timing, memory, soundness or full-chain credit is claimed.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

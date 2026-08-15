@@ -29,12 +29,17 @@ use volta_pcs::{
 };
 #[cfg(feature = "c6-trace")]
 use volta_proto::{
-    replay_c6_t1_production_response_verifier, C6RetainedResponseProof,
-    C6T1ProductionResponseVerifierReplay,
+    replay_c6_t1_production_response_verifier, C6ProductionPairedPcgAttempt,
+    C6RetainedResponseProof, C6T1ProductionResponseVerifierReplay,
 };
 use volta_proto::{
     C61FinalCertificateEnvelope, C61PublicWorkloadInstance, C6BoundProductionVerifierReplay,
     C6ClientAttempt, C6SetupManifest, C61_VERIFIER_REPLAY_STATE_BYTES,
+};
+
+#[cfg(feature = "c6-trace")]
+use crate::c6_t1_owner::{
+    execute_c6_t1_production_owner_export, C6T1ProductionOwnerExport, C6T1WorkloadOwner,
 };
 
 const CAMPAIGN_ARTIFACT_PROFILE: &str = "C6.1-C6PA2-C6NBR3-C6ICT3-campaign-v4";
@@ -226,6 +231,31 @@ impl C61CampaignResponseTranscriptSession {
         verifier_result?;
         broker_result
     }
+}
+
+/// Consume the canonical T1 workload through the campaign-owned duplex
+/// response session. The response executor receives only the two endpoint
+/// transcripts; verifier entropy and the broker remain private to `session`.
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+pub fn execute_c61_campaign_response_owner(
+    workload: C6T1WorkloadOwner,
+    statement_digest: [u8; 32],
+    installed_plans: [C6InstalledOperationPlan; 2],
+    extraction_maps: [C6DecodedInstanceExtractionPlan; 2],
+    attempt: &mut C6ProductionPairedPcgAttempt,
+    session: &mut C61CampaignResponseTranscriptSession,
+) -> Result<C6T1ProductionOwnerExport, String> {
+    let (provider, verifier) = session.transcripts();
+    execute_c6_t1_production_owner_export(
+        workload,
+        statement_digest,
+        installed_plans,
+        extraction_maps,
+        attempt,
+        provider,
+        verifier,
+    )
 }
 
 /// Response-verifier state reconstructed only from decoded campaign inputs.
@@ -1115,6 +1145,29 @@ mod campaign_artifact_tests {
             ["Transcript::new(", "Gpt2Model", "ModelWitness", "CorrelationStream", "provider_seed"]
         {
             assert!(!body.contains(forbidden), "disk response replay contains {forbidden}");
+        }
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn campaign_response_call_site_keeps_entropy_in_the_session() {
+        let source = include_str!("c61_campaign.rs");
+        let body = source
+            .split_once("pub fn execute_c61_campaign_response_owner(")
+            .unwrap()
+            .1
+            .split_once("/// Response-verifier state")
+            .unwrap()
+            .0;
+        assert!(body.contains("session.transcripts()"));
+        assert!(body.contains("execute_c6_t1_production_owner_export("));
+        for forbidden in [
+            "verifier_seed",
+            "Transcript::new(",
+            "spawn_c61_private_entropy",
+            "C61PrivateEntropyBrokerHandle",
+        ] {
+            assert!(!body.contains(forbidden), "campaign response call site contains {forbidden}");
         }
     }
 

@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.70 next.
+This capsule is authoritative; read design §§0.60--0.71 next.
 
 - **Milestone/evidence.** C6.1/C6NBR3 and the six C6ICT2 persisted/CUDA lanes
   are closed locally. C6ICT3 now gives the complete scaled response an exact
@@ -17,17 +17,16 @@ This capsule is authoritative; read design §§0.60--0.70 next.
   tapes from one response tape; a duplex broker releases only challenges at
   the proved frontier and requires an identical final seal (**4/0/0**). A
   provider-only seam excludes verifier capabilities (**1/0/0**); the OS-seeded
-  session and strict disk-response entry are **2/0/0**. No production,
-  full-chain or hardware credit exists.
+  session, campaign call site and strict disk-response entry are **3/0/0**. No
+  production, full-chain or hardware credit exists.
 - **Screens.** Certificate **17,536,735 B**, setup **148,738,118 B**,
   setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
   **102.5878332989 bits/cert**, and provider/verifier **14.9179595454 /
   4.978261758 s** remain `credit:false`.
 - **Active gate.** `C6ICT3_RESPONSE_TAPE_AND_DISK_REPLAY_REQUIRED`. Canonical
-  parity, provider boundary and response-prefix replay are closed, but the
-  exact runner still does not consume the session and the downstream disk
-  verifier is absent. It needs call-site wiring, mutations, lifecycle guards
-  and fresh accounting.
+  parity, provider boundary and campaign-owned response execution are closed,
+  but the downstream exact producer and complete disk verifier are absent. It
+  needs owner-graph wiring, mutations, lifecycle guards and fresh accounting.
 - **Authorization.** Owner GO permits exact canonical response moves, a
   seedless provider endpoint and one attempt/statement/certificate-bound
   client-private response tape. Burn-on-interruption remains mandatory. No pod
@@ -38,6 +37,16 @@ This capsule is authoritative; read design §§0.60--0.70 next.
 - **Fiat--Shamir.** Read-only audit: production substitution is NO-GO;
   `C6FS1` may later exist only as a shadow diagnostic after new ROM
   soundness/privacy proofs. It does not change C6ICT2 or pod authorization.
+
+- **2026-08-15 — Campaign session reaches the exact response executor.** A
+  typed call site now moves the canonical T1 workload through the
+  campaign-owned duplex session. Its signature accepts neither response
+  transcript nor verifier seed; the underlying owner receives only the two
+  endpoint borrows while the broker remains client-private. Campaign guards
+  are **3/0/0** and ordinary `c6-trace` compilation is green. This closes the
+  response-prefix producer edge only: the residual/native/compiler/blind
+  owner graph and complete disk verifier remain unassembled, so the hard stop
+  and all credits are unchanged.
 
 - **2026-08-15 — Campaign schema v4 consumes the response tape from disk.**
   The loader now requires the C6ICT3 profile and attempt/statement-derived

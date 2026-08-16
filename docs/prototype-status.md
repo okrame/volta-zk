@@ -19,7 +19,8 @@ This capsule is authoritative; read design §§0.60--1.00 next.
   or second witness path. The response now retains its exact cache trace,
   paired targets and compact consumed-domain plan; persisted append replay
   reads the successor cache and reuses tags/masks without advancing counters.
-  Its focused guards are **3/0/0** and the full feature check is green. Budget
+  Independent verifier replay derives the same plan and replays only keys;
+  detached verifier arrays are rejected. Focused guards are **3/0/0**. Budget
   v29 and Lean **3,267 jobs/nine audits** remain green screens.
 - **Resume.** Close the exact prover call graph, disk semantic verifier,
   mutations, workspace and campaign preflight in small checkpoints. Pod only
@@ -31,6 +32,17 @@ This capsule is authoritative; read design §§0.60--1.00 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-16 — Independent cache append-key replay lands.** The disk/live
+  verifier now derives the compact layer/K/V source-domain plan during its own
+  retained-response execution and the live differential requires exact
+  equality with the provider plan. A verifier-only materializer replays the
+  existing two-tape source keys without plaintext, masks, tags or new
+  correlations and proves counter/schedule neutrality. Both native verifier
+  joins accept only this typed, non-serializable owner. The existing focused
+  ownership/join guards remain **3/0/0** and the complete feature check is
+  green. Full call-graph assembly and disk proof verification remain open; no
+  pod or credit.
 
 - **2026-08-16 — Exact cache append replay ownership lands.** The response
   owner now retains its provider cache trace, paired authenticated fold targets

@@ -144,6 +144,7 @@ enum ThinnedVerifierCacheMode<'prefix, 'keys, 'state, 'frame> {
         schedule_follower: &'state mut C6SourceScheduleVerifierFollower,
         target_cursor: &'state mut C6CacheFoldTargetInlineVerifier<'frame>,
         metrics: C6CacheFoldOnlineLayerMetrics,
+        append_source_layers: Vec<C6CacheFoldAppendSourceLayer>,
     },
 }
 
@@ -1359,13 +1360,14 @@ pub(crate) fn verify_layers_thinned_scheduled_c6(
     target_cursor: &mut C6CacheFoldTargetInlineVerifier<'_>,
     tx: &mut Transcript,
     bank: &mut TableBankV,
-) -> Option<(ThinnedScheduledV, C6CacheFoldOnlineLayerMetrics)> {
+) -> Option<(ThinnedScheduledV, C6CacheFoldOnlineLayerMetrics, Vec<C6CacheFoldAppendSourceLayer>)> {
     let mut cache_mode = ThinnedVerifierCacheMode::C6 {
         prefixes,
         secondary,
         schedule_follower,
         target_cursor,
         metrics: C6CacheFoldOnlineLayerMetrics::default(),
+        append_source_layers: Vec::with_capacity(L),
     };
     let scheduled = verify_layers_thinned_scheduled_impl(
         model,
@@ -1379,10 +1381,10 @@ pub(crate) fn verify_layers_thinned_scheduled_c6(
         bank,
         &mut cache_mode,
     )?;
-    let ThinnedVerifierCacheMode::C6 { metrics, .. } = cache_mode else {
+    let ThinnedVerifierCacheMode::C6 { metrics, append_source_layers, .. } = cache_mode else {
         unreachable!("C6 scheduled verifier mode changed during execution")
     };
-    Some((scheduled, metrics))
+    Some((scheduled, metrics, append_source_layers))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1598,6 +1600,7 @@ fn verify_layers_thinned_scheduled_impl(
                     schedule_follower,
                     target_cursor,
                     metrics,
+                    append_source_layers,
                 } => {
                     if !state.k_keys.is_empty() || !state.v_keys.is_empty() {
                         return None;
@@ -1621,6 +1624,12 @@ fn verify_layers_thinned_scheduled_impl(
                         .collect::<Vec<_>>();
                     value_sources
                         .push(C6CacheFoldDirectSourceSegment { base_domain: state.dom_v, rows: t });
+                    let append_source_layer = C6CacheFoldAppendSourceLayer::new(
+                        layer as u16,
+                        key_sources.clone(),
+                        value_sources.clone(),
+                    )
+                    .ok()?;
                     let mut online = C6CacheFoldOnlineLayerVerifier::new(
                         layer as u16,
                         key_sources,
@@ -1642,6 +1651,7 @@ fn verify_layers_thinned_scheduled_impl(
                         Some(&model.layers[layer].1),
                     )?;
                     add_c6_online_metrics(metrics, online.metrics());
+                    append_source_layers.push(append_source_layer);
                     result
                 }
             };

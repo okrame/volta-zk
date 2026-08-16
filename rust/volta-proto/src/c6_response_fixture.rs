@@ -24,6 +24,7 @@ use volta_mac::{
 };
 
 use crate::block_proof::layer_dom_base;
+use crate::c6::C6PairedDeltaResidual;
 use crate::c6_cache_fold::{
     begin_c6_cache_fold_trace, C6CacheFoldAppendSourcePlan, C6CacheFoldKind, C6CacheFoldParty,
     C6CacheFoldTargetCorrectionFrame, C6CacheFoldTargetFixedCorrections,
@@ -31,7 +32,6 @@ use crate::c6_cache_fold::{
     C6CacheFoldTargetPublicCorrectionFrame, C6CacheFoldTargetPublicSchedule,
     C6CacheFoldTraceSnapshot, C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES,
 };
-use crate::c6::C6PairedDeltaResidual;
 use crate::c6_census::{C6_T1_TOTAL_PRODUCT_TRIPLES, C6_T1_ZERO_CLOSURES};
 use crate::c6_production_pcg::{C6ProductionPairedPcgAttempt, C6ProductionPairedSourceWitness};
 use crate::c6_residual::{
@@ -164,6 +164,7 @@ pub struct C6T1ProductionResponseVerifierReplay {
     installed: C6T1InstalledRoleOwner,
     cache_snapshot: C6CacheFoldTraceSnapshot,
     cache_target_fixed: C6CacheFoldTargetFixedCorrections,
+    cache_append_sources: C6CacheFoldAppendSourcePlan,
     cache_metrics: crate::c6_cache_fold::C6CacheFoldOnlineLayerMetrics,
 }
 
@@ -206,6 +207,10 @@ impl C6T1ProductionResponseVerifierReplay {
 
     pub fn cache_target_fixed(&self) -> &C6CacheFoldTargetFixedCorrections {
         &self.cache_target_fixed
+    }
+
+    pub fn cache_append_sources(&self) -> &C6CacheFoldAppendSourcePlan {
+        &self.cache_append_sources
     }
 
     pub fn cache_metrics(&self) -> crate::c6_cache_fold::C6CacheFoldOnlineLayerMetrics {
@@ -267,13 +272,11 @@ impl C6T1DiskResidualOwner {
             self.response.product_messages(),
             &coordinate_one,
         )?;
-        let claims = root
-            .release_direct_alpha_points(self.retained, alpha)?
-            .commit_public_claims(
-                self.verifier_linear.linear_form_digest(),
-                products,
-                residual,
-            )?;
+        let claims = root.release_direct_alpha_points(self.retained, alpha)?.commit_public_claims(
+            self.verifier_linear.linear_form_digest(),
+            products,
+            residual,
+        )?;
         Ok(C6T1DiskResidualClaimsOwner {
             response: self.response,
             verifier_linear: self.verifier_linear,
@@ -830,10 +833,8 @@ pub fn prepare_c6_t1_disk_residual_owner(
         RESPONSE_PRODUCTION_AUXILIARY_LOG2,
         true,
     )?;
-    let product_challenges = vec![
-        response.product_challenge();
-        response.installed().operation_plan().products().len()
-    ];
+    let product_challenges =
+        vec![response.product_challenge(); response.installed().operation_plan().products().len()];
     let retained =
         C6ResidualRetainedChallenges::new(&manifest, product_challenges, zero_challenge)?;
     let zero_weights =
@@ -901,7 +902,7 @@ pub fn replay_c6_t1_production_response_verifier(
     .map_err(|error| error.to_string())?;
     let cache_trace =
         begin_c6_cache_fold_trace(C6CacheFoldParty::Verifier).map_err(|error| error.to_string())?;
-    let (output, product_keys, zero_roots, cache_metrics) =
+    let (output, product_keys, zero_roots, cache_metrics, cache_append_sources) =
         verify_response_private_logits_c6_cache_inline_from_profile(
             model,
             100,
@@ -982,6 +983,7 @@ pub fn replay_c6_t1_production_response_verifier(
         installed: C6T1InstalledRoleOwner { operation_plan: installed_plan, extraction, runtime },
         cache_snapshot,
         cache_target_fixed,
+        cache_append_sources,
         cache_metrics,
     })
 }
@@ -1293,11 +1295,13 @@ pub fn build_c6_t1_production_response_owner(
         installed: verifier,
         cache_target_fixed: _,
         cache_snapshot: verifier_cache_snapshot,
+        cache_append_sources: verifier_cache_append_sources,
         cache_metrics: verifier_cache_metrics,
     } = verifier;
     if verifier_cache_snapshot.identity != cache_snapshot.identity
         || verifier_cache_snapshot.records != cache_snapshot.records
         || verifier_cache_snapshot.factors != cache_snapshot.factors
+        || verifier_cache_append_sources != cache_append_sources
     {
         return Err("C6ICT5 provider/verifier cache trace schedule diverged".to_owned());
     }
@@ -1729,20 +1733,25 @@ fn build_c6_response_residual_fixture_with_geometry(
     .map_err(trace_error)?;
     let verifier_trace_guard =
         begin_c6_cache_fold_trace(C6CacheFoldParty::Verifier).map_err(trace_error)?;
-    let (verifier_out, product_keys, verifier_residual_roots, verifier_metrics) =
-        verify_response_c6_cache_inline_from_profile(
-            &verifier_model,
-            RESPONSE_T,
-            &prefill.logits,
-            &chunks_v,
-            &proof,
-            &mut primary_verifier,
-            &mut secondary_verifier,
-            &mut verifier_follower,
-            &mut target_cursor,
-            &mut verifier_tx,
-        )
-        .ok_or_else(|| C6ResidualError::new("C6 response-wide model proof did not verify"))?;
+    let (
+        verifier_out,
+        product_keys,
+        verifier_residual_roots,
+        verifier_metrics,
+        _verifier_append_sources,
+    ) = verify_response_c6_cache_inline_from_profile(
+        &verifier_model,
+        RESPONSE_T,
+        &prefill.logits,
+        &chunks_v,
+        &proof,
+        &mut primary_verifier,
+        &mut secondary_verifier,
+        &mut verifier_follower,
+        &mut target_cursor,
+        &mut verifier_tx,
+    )
+    .ok_or_else(|| C6ResidualError::new("C6 response-wide model proof did not verify"))?;
     let verifier_trace = verifier_trace_guard.finish().map_err(trace_error)?;
     let verifier_fixed = target_cursor
         .finish_before_successor_root_with_identity(verifier_trace.identity, &mut verifier_tx)

@@ -5024,6 +5024,25 @@ CUDA/trace/authenticated-reference feature check is green. Exact call-graph
 assembly, disk semantic verification, mutations and record preflight remain
 open, with no benchmark or pod credit.
 
+### 1.01 C6ICT5 verifier cache append replay checkpoint
+
+The retained-response verifier now constructs its own canonical per-layer K/V
+source-domain plan from the verifier execution. The live differential requires
+that plan to equal the provider plan, while the disk continuation retains only
+the independently derived verifier plan.
+
+A verifier-only materializer replays both MAC-coordinate key vectors for the
+exact appended rows. It requires real pooled PCG, distinct Deltas, canonical
+layer/row coverage and unchanged counters and public schedules. It owns no
+plaintext, provider tag, mask, seed or Delta and has no codec. Both native
+blind-verifier entry points accept this typed owner rather than detached key
+arrays. Thus cache append binding adds no wire or correlation consumption.
+
+The augmented response and native-join guards remain green and the complete
+feature check passes. This closes append-source ownership on both roles, not
+the exact campaign call graph, decoded native/compiler verification or record
+preflight; no benchmark or pod credit is promoted.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

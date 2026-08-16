@@ -90,6 +90,18 @@ pub struct C61NativeCacheAppendOwner {
     semantic_bytes_read: u64,
 }
 
+/// Verifier-only replay of the same appended source coordinates. It carries
+/// keys but no plaintext, provider tag, mask or Delta and is never serialized.
+pub struct C61NativeCacheAppendVerifierOwner {
+    base_keys: [Vec<[volta_mac::VerifierKey; TAPES]>; 2],
+}
+
+impl C61NativeCacheAppendVerifierOwner {
+    pub fn source_cells(&self) -> usize {
+        self.base_keys[0].len() + self.base_keys[1].len()
+    }
+}
+
 impl C61NativeCacheAppendOwner {
     pub fn source_cells(&self) -> usize {
         self.sources[0].len() + self.sources[1].len()
@@ -205,6 +217,65 @@ pub fn materialize_c61_native_cache_append_owner(
         return Err("C6.1 cache append replay changed census or correlation state".to_owned());
     }
     Ok(C61NativeCacheAppendOwner { sources, masks, semantic_bytes_read })
+}
+
+/// Reconstruct the verifier keys for the exact append-domain map emitted by
+/// the independent response replay. No provider map or wire field is used.
+pub fn materialize_c61_native_cache_append_verifier_owner(
+    plan: &C6CacheFoldAppendSourcePlan,
+    old_len: u16,
+    new_len: u16,
+    contexts: &mut [VerifierCtx; TAPES],
+) -> Result<C61NativeCacheAppendVerifierOwner, String> {
+    if old_len >= new_len
+        || new_len > crate::c6_persistent_cache::C6_PERSISTENT_CACHE_CAPACITY_TOKENS
+        || plan.layers().len()
+            != usize::from(crate::c6_persistent_cache::C6_PERSISTENT_CACHE_LAYERS)
+        || contexts.iter().any(|context| !context.uses_pooled_pcg())
+        || contexts[0].delta == contexts[1].delta
+    {
+        return Err("C6.1 verifier cache append owner geometry/backend mismatch".to_owned());
+    }
+    let before_counters = [contexts[0].counters, contexts[1].counters];
+    let before_schedules = [contexts[0].schedule_audit(), contexts[1].schedule_audit()];
+    let append_rows = usize::from(new_len - old_len);
+    let width = usize::from(crate::c6_persistent_cache::C6_PERSISTENT_CACHE_WIDTH);
+    let per_kind = append_rows
+        .checked_mul(width)
+        .and_then(|count| count.checked_mul(plan.layers().len()))
+        .ok_or_else(|| "C6.1 verifier cache append census overflows".to_owned())?;
+    let mut base_keys: [Vec<[volta_mac::VerifierKey; TAPES]>; 2] =
+        std::array::from_fn(|_| Vec::with_capacity(per_kind));
+    for (layer_ordinal, layer) in plan.layers().iter().enumerate() {
+        if usize::from(layer.model_layer()) != layer_ordinal
+            || layer.row_count().map_err(text_error)? != usize::from(new_len)
+        {
+            return Err(
+                "C6.1 verifier cache append plan does not cover the exact response".to_owned()
+            );
+        }
+        for (kv, kind) in
+            [C6CacheFoldKind::KeyRows, C6CacheFoldKind::ValueColumns].into_iter().enumerate()
+        {
+            for row in usize::from(old_len)..usize::from(new_len) {
+                let domain = layer.source_domain(kind, row).map_err(text_error)?;
+                let keys = [
+                    contexts[0].replay_consumed_sub_verifier_keys(domain, width),
+                    contexts[1].replay_consumed_sub_verifier_keys(domain, width),
+                ];
+                for channel in 0..width {
+                    base_keys[kv].push([keys[0][channel], keys[1][channel]]);
+                }
+            }
+        }
+    }
+    if base_keys.iter().any(|values| values.len() != per_kind)
+        || [contexts[0].counters, contexts[1].counters] != before_counters
+        || [contexts[0].schedule_audit(), contexts[1].schedule_audit()] != before_schedules
+    {
+        return Err("C6.1 verifier cache append replay changed census or state".to_owned());
+    }
+    Ok(C61NativeCacheAppendVerifierOwner { base_keys })
 }
 
 fn text_error(error: impl std::fmt::Display) -> String {
@@ -1356,7 +1427,7 @@ pub fn verify_c61_native_exact_production_nbr2_proof(
     cache_fixed_targets: &C6CacheFoldTargetFixedCorrections,
     old_len: u16,
     new_len: u16,
-    append_base_keys: &[Vec<[volta_mac::VerifierKey; TAPES]>; 2],
+    append: &C61NativeCacheAppendVerifierOwner,
     statements: &[C6BlindResidualStatement],
     proof: &C61NativeExactProductionNbr2ProverProof,
     nbr2: &C6Nbr2CorrectionFunctional<'_>,
@@ -1377,7 +1448,7 @@ pub fn verify_c61_native_exact_production_nbr2_proof(
         cache_fixed_targets,
         old_len,
         new_len,
-        append_base_keys,
+        &append.base_keys,
         statements,
         C61NativeExactProductionVerifierProof::from_local(&proof.blind),
         contexts,
@@ -1530,7 +1601,7 @@ pub fn verify_c61_native_decoded_exact_production_nbr2_certificate(
     cache_fixed_targets: &C6CacheFoldTargetFixedCorrections,
     old_len: u16,
     new_len: u16,
-    append_base_keys: &[Vec<[volta_mac::VerifierKey; TAPES]>; 2],
+    append: &C61NativeCacheAppendVerifierOwner,
     statements: &[C6BlindResidualStatement],
     proof: &C61NativeDecodedExactProductionBlindProof,
     public_argument_statement_digest: [u8; 32],
@@ -1551,7 +1622,7 @@ pub fn verify_c61_native_decoded_exact_production_nbr2_certificate(
         cache_fixed_targets,
         old_len,
         new_len,
-        append_base_keys,
+        &append.base_keys,
         statements,
         proof.verifier_view(terminal_functionals),
         contexts,
@@ -2389,6 +2460,17 @@ mod tests {
         ] {
             assert!(append_materializer.contains(required));
         }
+        let verifier_append_materializer = source
+            .split("pub fn materialize_c61_native_cache_append_verifier_owner(")
+            .nth(1)
+            .unwrap()
+            .split("fn text_error(")
+            .next()
+            .unwrap();
+        for required in ["replay_consumed_sub_verifier_keys", "before_counters", "before_schedules"]
+        {
+            assert!(verifier_append_materializer.contains(required));
+        }
 
         let prover = source
             .split("pub fn finish_c61_native_production_blind_with_persisted_nbr2_link(")
@@ -2421,6 +2503,8 @@ mod tests {
             .next()
             .unwrap();
         assert!(production_verifier.contains("verify_c61_native_production_blind_pending("));
+        assert!(production_verifier.contains("append: &C61NativeCacheAppendVerifierOwner"));
+        assert!(production_verifier.contains("&append.base_keys"));
         assert!(production_verifier.contains("c61_native_exact_bound_slot_output(bound.len())"));
         assert!(
             production_verifier

@@ -2084,6 +2084,13 @@ impl VerifierCtx {
         matches!(&self.backend, VerifierBackend::Pooled(_))
     }
 
+    /// Immutable logical consumption census. Counter-neutral verifier
+    /// replays use this to prove that no second correlation allocation was
+    /// opened while reconstructing a post-challenge aggregate.
+    pub fn counters(&self) -> CorrCounters {
+        self.counters
+    }
+
     /// Enable canonical source-token assignment for one independently
     /// recorded verifier trace. The verifier must not have consumed a draw.
     pub fn enable_c6_operation_trace(&mut self) -> Result<(), &'static str> {

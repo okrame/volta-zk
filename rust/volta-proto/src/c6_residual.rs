@@ -37,7 +37,8 @@ use volta_mac::{
     C6CanonicalTargetProfile, C6DecodedInstanceExtractionPlan, C6InstalledOperationKind,
     C6InstalledOperationPlan, C6NativeTargetProfileArtifact, C6OperationPlanInstanceIdentity,
     C6OperationPlanTerminalMetadata, C6OperationPlanTopologyIdentity, C6RuntimeInstanceValues,
-    CorrScheduleAudit, CorrScheduleKind, CorrScheduleRole, ProverAuthed, Transcript, VerifierKey,
+    CorrScheduleAudit, CorrScheduleKind, CorrScheduleRole, ProverAuthed, Transcript, VerifierCtx,
+    VerifierKey,
 };
 
 #[cfg(feature = "c6-trace")]
@@ -10817,6 +10818,91 @@ impl C6CompiledNativeTargetFunctional {
         })
     }
 
+    /// Reconstruct the raw source-key side of the C6NBR2 bridge from the
+    /// verifier's already consumed response allocation. Replays are
+    /// counter- and schedule-neutral; the functional is fixed only after the
+    /// joint native challenge, so an earlier response-time aggregate would be
+    /// unsound.
+    pub fn replay_verifier_base_coordinate(
+        &self,
+        coordinate: u8,
+        schedule: &CorrScheduleAudit,
+        context: &mut VerifierCtx,
+    ) -> C6ResidualResult<C6NativeTargetVerifierFold> {
+        if coordinate >= 2
+            || !context.uses_pooled_pcg()
+            || !schedule.is_canonical()
+            || schedule.digest != self.topology.source_schedule_digest
+        {
+            return Err(C6ResidualError::new(
+                "C6NBR2 verifier source-key replay binding differs",
+            ));
+        }
+        let counters_before = context.counters();
+        let schedule_before = context.schedule_audit();
+        if schedule_before.as_ref() != Some(schedule) {
+            return Err(C6ResidualError::new(
+                "C6NBR2 verifier context did not consume the exact source schedule",
+            ));
+        }
+
+        let mut source = 0usize;
+        let mut key = VerifierKey::from_public(self.public_plaintext, context.delta);
+        for draw in &schedule.draws {
+            let count = usize::try_from(draw.count)
+                .map_err(|_| C6ResidualError::new("C6NBR2 source draw exceeds usize"))?;
+            let end = source
+                .checked_add(count)
+                .ok_or_else(|| C6ResidualError::new("C6NBR2 source cursor overflows"))?;
+            let coefficients = self.leaf_coefficients.get(source..end).ok_or_else(|| {
+                C6ResidualError::new("C6NBR2 source schedule exceeds the compiled functional")
+            })?;
+            if draw.role == CorrScheduleRole::ProductMask
+                && coefficients.iter().any(|coefficient| *coefficient != Fp2::ZERO)
+            {
+                return Err(C6ResidualError::new(
+                    "C6NBR2 ProductMask acquired a native functional coefficient",
+                ));
+            }
+            let keys = match draw.kind {
+                CorrScheduleKind::Subfield => {
+                    if draw.role != CorrScheduleRole::DirectCorrection {
+                        return Err(C6ResidualError::new(
+                            "C6NBR2 subfield source has a non-direct role",
+                        ));
+                    }
+                    context.replay_consumed_sub_verifier_keys(draw.domain, count)
+                }
+                CorrScheduleKind::FullField => {
+                    context.replay_consumed_full_verifier_keys(draw.domain, count)
+                }
+            };
+            if keys.len() != count {
+                return Err(C6ResidualError::new(
+                    "C6NBR2 verifier source-key replay census differs",
+                ));
+            }
+            for (source_key, &coefficient) in keys.into_iter().zip(coefficients) {
+                key = key.add(source_key.scale(coefficient));
+            }
+            source = end;
+        }
+        if source != self.leaf_coefficients.len()
+            || u64::try_from(source).ok() != Some(u64::from(self.topology.source_count))
+            || context.counters() != counters_before
+            || context.schedule_audit() != schedule_before
+        {
+            return Err(C6ResidualError::new(
+                "C6NBR2 verifier source replay changed allocation state or census",
+            ));
+        }
+        Ok(C6NativeTargetVerifierFold {
+            functional_digest: self.functional_digest,
+            coordinate,
+            key,
+        })
+    }
+
     #[doc(hidden)]
     pub fn fold_verifier_coordinate_from_sources_diagnostic(
         &self,
@@ -12963,8 +13049,6 @@ mod tests {
         CorrScheduleAudit,
         C6PairedSourceWitness,
     ) {
-        let source_schedule_digest = [0x6A; 32];
-
         let mut primary_stream = CorrelationStream::new([0xD0; 32]);
         primary_stream.enable_c6_source_witness_collection().unwrap();
         let sub = primary_stream.draw_subs(0x90, 1);
@@ -12973,6 +13057,7 @@ mod tests {
         primary_stream.record_c6_fullfield_plaintexts(0x100, &[fp2(3), fp2(4), fp2(12)]).unwrap();
         let _mask = primary_stream.draw_product_mask(0x200, 2);
         let schedule = primary_stream.schedule_audit().unwrap();
+        let source_schedule_digest = schedule.digest;
         let primary = C6SourceCoordinate::new(
             primary_stream.finish_c6_subfield_witness_collection().unwrap(),
             primary_stream.finish_c6_fullfield_witness_collection().unwrap(),
@@ -16245,5 +16330,32 @@ mod tests {
                 .add(VerifierKey::from_public(verifier_bridge.correction, delta)),
             verifier_corrected.key,
         );
+
+        let params = volta_pcg::PhaseAParams::tiny_for_test(1 + 2 * 4);
+        let pool = volta_pcg::expand_phase_a([0xD9; 32], delta, 1, 4, params);
+        let mut context = VerifierCtx::from_pcg_pool(delta, pool.verifier);
+        context.enable_schedule_audit().unwrap();
+        let _ = context.expand_sub_verifier_keys(0x90, 1);
+        let _ = context.expand_full_verifier_keys(0x100, 3);
+        let _ = context.expand_product_mask_verifier_key(0x200, 2);
+        assert_eq!(context.schedule_audit().as_ref(), Some(&schedule));
+        let counters = context.counters();
+        let replayed = schedule
+            .draws
+            .iter()
+            .flat_map(|draw| match draw.kind {
+                CorrScheduleKind::Subfield => context
+                    .replay_consumed_sub_verifier_keys(draw.domain, draw.count as usize),
+                CorrScheduleKind::FullField => context
+                    .replay_consumed_full_verifier_keys(draw.domain, draw.count as usize),
+            })
+            .collect::<Vec<_>>();
+        let expected = compiled
+            .fold_verifier_coordinate(1, delta, |source| Ok(replayed[source as usize]))
+            .unwrap();
+        let actual = compiled.replay_verifier_base_coordinate(1, &schedule, &mut context).unwrap();
+        assert_eq!(actual, expected);
+        assert_eq!(context.counters(), counters);
+        assert_eq!(context.schedule_audit().as_ref(), Some(&schedule));
     }
 }

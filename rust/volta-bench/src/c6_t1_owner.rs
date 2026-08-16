@@ -133,20 +133,21 @@ pub struct C6T1HiddenUOwner {
     hidden_bundle: C6HiddenUBundleWitness,
 }
 
-/// Hidden-u response owner plus the two durable native coefficient sources.
+/// Linear response owner plus the two durable native coefficient sources.
 /// The D28/D27 files are derived directly from the same model allocation and
 /// are the only coefficient loader admitted by the exact four-chain runner.
+/// No retained Ligero opening or hidden-u witness is constructed on this path.
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 pub struct C6T1PersistedNativeOwner {
-    hidden: C6T1HiddenUOwner,
+    response: C6T1ProductionOwnerExport,
     model_coefficients: C61ProductionCoefficientOwner,
     embedding_coefficients: C61ProductionCoefficientOwner,
 }
 
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 impl C6T1PersistedNativeOwner {
-    pub fn hidden(&self) -> &C6T1HiddenUOwner {
-        &self.hidden
+    pub fn response(&self) -> &C6T1ProductionOwnerExport {
+        &self.response
     }
 
     pub fn model_coefficients(&self) -> &C61ProductionCoefficientOwner {
@@ -159,8 +160,12 @@ impl C6T1PersistedNativeOwner {
 
     pub fn into_parts(
         self,
-    ) -> (C6T1HiddenUOwner, C61ProductionCoefficientOwner, C61ProductionCoefficientOwner) {
-        (self.hidden, self.model_coefficients, self.embedding_coefficients)
+    ) -> (
+        C6T1ProductionOwnerExport,
+        C61ProductionCoefficientOwner,
+        C61ProductionCoefficientOwner,
+    ) {
+        (self.response, self.model_coefficients, self.embedding_coefficients)
     }
 }
 
@@ -605,14 +610,14 @@ pub fn attach_c6_t1_hidden_u_owner(
 /// canonical zero padding consumed by both native repetitions.
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 pub fn persist_c6_t1_native_coefficient_owners(
-    hidden: C6T1HiddenUOwner,
+    response: C6T1ProductionOwnerExport,
     root: &Path,
     session_digest: [u8; 32],
 ) -> Result<C6T1PersistedNativeOwner, String> {
     if session_digest == [0; 32] || !root.is_dir() {
         return Err("C6SPR12 native coefficient root/session preflight failed".to_owned());
     }
-    let model = hidden.response().workload().model();
+    let model = response.workload().model();
     let model_layout = layout_gpt2_weights_c3();
     let c_attn =
         model.layers.iter().map(|layer| cattn_permuted(&layer.0.c_attn)).collect::<Vec<_>>();
@@ -658,7 +663,7 @@ pub fn persist_c6_t1_native_coefficient_owners(
     )?;
     drop(embedding_placements);
 
-    Ok(C6T1PersistedNativeOwner { hidden, model_coefficients, embedding_coefficients })
+    Ok(C6T1PersistedNativeOwner { response, model_coefficients, embedding_coefficients })
 }
 
 /// Load, validate and execute the exact frozen T1 witness generator once.
@@ -746,4 +751,34 @@ fn parse_golden_tokens(bytes: &[u8]) -> Result<Vec<u32>, String> {
             u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap())
         })
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn native_persistence_source_guard_bypasses_hidden_u_owner() {
+        let source = include_str!("c6_t1_owner.rs");
+        let owner = source
+            .split("pub struct C6T1PersistedNativeOwner")
+            .nth(1)
+            .unwrap()
+            .split("impl C6T1PersistedNativeOwner")
+            .next()
+            .unwrap();
+        assert!(owner.contains("response: C6T1ProductionOwnerExport"));
+        assert!(!owner.contains("C6T1HiddenUOwner"));
+
+        let persistence = source
+            .split("pub fn persist_c6_t1_native_coefficient_owners")
+            .nth(1)
+            .unwrap()
+            .split("/// Load, validate and execute")
+            .next()
+            .unwrap();
+        assert!(persistence.contains("response: C6T1ProductionOwnerExport"));
+        assert!(persistence.contains("response.workload().model()"));
+        assert!(!persistence.contains("C6T1HiddenUOwner"));
+        assert!(!persistence.contains("hidden_bundle"));
+        assert!(!persistence.contains("attach_c6_t1_hidden_u_owner"));
+    }
 }

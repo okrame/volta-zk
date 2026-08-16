@@ -5109,6 +5109,29 @@ C6NBR2/link, compiler chains and exact certificate still need one linear
 campaign call graph; disk semantic verification and mutations remain open.
 No benchmark or pod credit is promoted.
 
+### 1.05 C6ICT5 exact native provider-suffix checkpoint
+
+The provider suffix is now one linear campaign function. From the native blind
+owner it fixes the exact terminal/compiler typestate. From the post-body
+functional owner it constructs C6NBR2 with the installed coefficient prefix,
+tape-1 correction, four-root/source/schedule bindings and derived C6PA2 outer
+statement, then pauses the joint native tail under that statement digest.
+
+Both compiler lanes consume their own typed binding, opaque endpoint and mask
+range, but the same response-owned plan/extraction/runtime, bound residual
+relation, terminal values, points, beta and C6TFR1 root. Their spill paths are
+create-new and lane-separated. C6RSC4 is built from the canonical runtime and
+terminal functional fold. Only after the persisted 56+1 link returns its
+C6NBR2 receipt is the native ZeroOpen tail released; C6PA2/C61PIF2 assembly is
+last. No digest, coefficient, correction, terminal, root or cache-target frame
+is a caller input.
+
+The compiler challenge transport now owns bindings, endpoints and mask ranges
+as one typed object. The focused order/input guard is **1/0/0** and complete
+bench feature compilation is green. The exact four-chain invocation and
+top-level response-to-seal call site remain open, as do disk semantic
+verification, mutations and record preflight. No pod or credit.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

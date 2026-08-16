@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--1.04 next.
+This capsule is authoritative; read design §§0.60--1.05 next.
 
 - **Milestone/evidence.** C6ICT5 study is complete: four WHIR chains bind the
   response-owned 96+6 claims and C6NBR2 binds their tape-1 functional;
@@ -61,6 +61,16 @@ This capsule is authoritative; read design §§0.60--1.04 next.
   paired PCG streams. Its API admits none of those intermediate objects. The
   focused ownership guard is **1/0/0**. Terminal/native/compiler/link assembly
   and disk verification remain open; no pod or credit.
+
+- **2026-08-16 — Exact native provider suffix lands.** One linear campaign
+  function now fixes the blind terminal typestate, constructs C6NBR2 from the
+  compiled tape-1 owner, pauses the joint native tail, runs both independently
+  bound compiler chains on the same terminal relation, builds C6RSC4 from the
+  response runtime, authenticates the 56+1 link, releases the native tail and
+  assembles only C6PA2/C61PIF2. Compiler bindings, endpoints and mask ranges
+  are one typed owner. The focused order/input guard is **1/0/0** and feature
+  compilation is green. Four-chain invocation, top-level runner and disk
+  semantic verification remain open; no pod or credit.
 
 - **2026-08-16 — Independent cache append-key replay lands.** The disk/live
   verifier now derives the compact layer/K/V source-domain plan during its own

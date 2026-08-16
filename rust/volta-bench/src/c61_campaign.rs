@@ -27,28 +27,33 @@ use volta_mac::{
 use volta_pcs::c61_authenticated_whir_p3::C61CompilerVerifierProfile;
 #[cfg(feature = "c61-p3-authenticated-reference")]
 use volta_pcs::c61_authenticated_whir_p3::{
-    C61ProductionJointNativeProverBodiesFixed, C61ProviderJointSessionBinding,
+    run_c61_authenticated_whir_p3_production_compiler_private_entropy_in_attempt,
+    C61ProductionCommittedChainExecution, C61ProductionJointNativeProverBodiesFixed,
+    C61ProductionPersistedResourceAdmission, C61ProviderJointSessionBinding,
     C61ProviderSessionBinding,
 };
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_pcs::c6_blind_round_coordinator::{
-    materialize_c61_native_cache_append_owner, prove_c61_native_production_blind_components,
-    C61NativeExactProductionNbr2Certificate, C61NativeProductionBlindProverOutput,
+    assemble_c61_native_exact_production_nbr2_certificate,
+    finish_c61_native_production_blind_with_persisted_nbr2_link,
+    materialize_c61_native_cache_append_owner, prepare_c61_native_terminal_compiler,
+    prove_c61_native_production_blind_components, C61NativeExactProductionNbr2Certificate,
+    C61NativeProductionBlindProverOutput,
 };
 #[cfg(feature = "c6-trace")]
 use volta_pcs::C61ProductionResidualRelationBound;
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+use volta_pcs::{
+    build_c61_production_arithmetic_frame, prepare_c6_blind_residual_statement_fused,
+    C6BlindResidualFusedCompilerContext, C6BlindResidualStatement, C6Nbr2CorrectionFunctional,
+};
 use volta_pcs::{
     c61_response_transcript_context_digest, c6_wrapper_profile_digest,
     install_production_c61_native_live_wrapper_roots_verifier,
     materialize_production_c61_native_live_wrapper_roots_cuda,
-    spawn_c61_private_entropy_duplex_transcript_broker, C61InteractiveTape,
+    spawn_c61_private_entropy_duplex_transcript_broker, C61EqualityDrawn, C61InteractiveTape,
     C61InteractiveTapeBundle, C61JointPublicArgument, C61PrivateEntropyBrokerHandle,
     C61ResponseStatementBinding, C61StatementBinding,
-};
-#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
-use volta_pcs::{
-    prepare_c6_blind_residual_statement_fused, C6BlindResidualFusedCompilerContext,
-    C6BlindResidualStatement,
 };
 #[cfg(feature = "c61-p3-authenticated-reference")]
 use volta_pcs::{
@@ -288,13 +293,25 @@ impl C61CampaignResponseTranscriptSession {
 /// native chains plus their post-body joint challenge. Verifier entropy and
 /// broker handles remain in [`C61CampaignNativeTranscriptSession`].
 #[cfg(feature = "c61-p3-authenticated-reference")]
-pub struct C61CampaignNativeTranscriptEndpoints {
+pub struct C61CampaignFourChainTranscriptEndpoints {
     pub four_chain_bindings: [C61ProviderSessionBinding; 4],
     pub four_chain_endpoints: [C61PrivateEntropyEndpoint; 4],
+    pub four_chain_mask_ranges: [C61AuthenticatedWhirMaskRange; 4],
     pub joint_binding: C61ProviderJointSessionBinding,
     pub joint_endpoint: C61PrivateEntropyEndpoint,
+}
+
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub struct C61CampaignCompilerTranscriptEndpoints {
     pub compiler_bindings: [C61ProviderSessionBinding; 2],
     pub compiler_endpoints: [C61PrivateEntropyEndpoint; 2],
+    pub compiler_mask_ranges: [C61AuthenticatedWhirMaskRange; 2],
+}
+
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub struct C61CampaignNativeTranscriptEndpoints {
+    pub four_chain: C61CampaignFourChainTranscriptEndpoints,
+    pub compiler: C61CampaignCompilerTranscriptEndpoints,
 }
 
 /// Client-owned challenge transport for exactly four model/embed lanes, one
@@ -390,12 +407,23 @@ impl C61CampaignNativeTranscriptSession {
             brokers.try_into().map_err(|_| "C6ICT5 native broker census differs".to_owned())?;
         Ok((
             C61CampaignNativeTranscriptEndpoints {
-                four_chain_bindings: [bindings[0], bindings[1], bindings[2], bindings[3]],
-                four_chain_endpoints: [model0, model1, embed0, embed1],
-                joint_binding,
-                joint_endpoint: joint,
-                compiler_bindings: [bindings[4], bindings[5]],
-                compiler_endpoints: [compiler0, compiler1],
+                four_chain: C61CampaignFourChainTranscriptEndpoints {
+                    four_chain_bindings: [bindings[0], bindings[1], bindings[2], bindings[3]],
+                    four_chain_endpoints: [model0, model1, embed0, embed1],
+                    four_chain_mask_ranges: [
+                        mask_ranges[0],
+                        mask_ranges[1],
+                        mask_ranges[2],
+                        mask_ranges[3],
+                    ],
+                    joint_binding,
+                    joint_endpoint: joint,
+                },
+                compiler: C61CampaignCompilerTranscriptEndpoints {
+                    compiler_bindings: [bindings[4], bindings[5]],
+                    compiler_endpoints: [compiler0, compiler1],
+                    compiler_mask_ranges: [mask_ranges[4], mask_ranges[5]],
+                },
             },
             Self { contexts, brokers },
         ))
@@ -723,6 +751,162 @@ pub fn prepare_c61_campaign_native_functional(
         body_schedule_digest,
         outer_statement_digest,
     })
+}
+
+/// Complete the native/compiler/C6NBR2 provider suffix under one exact
+/// response attempt. Every digest, coefficient, correction, terminal value
+/// and compiler relation is derived from preceding typed owners.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+#[allow(clippy::too_many_arguments)]
+pub fn finish_c61_campaign_native_proof(
+    roots: &C61CampaignLiveRoots,
+    residual: &C6T1ProductionResidualBoundOwner,
+    blind: C61CampaignNativeBlindOwner,
+    equality: C61EqualityDrawn,
+    functional: C61CampaignNativeFunctionalOwner,
+    primary: [C61ProductionCommittedChainExecution; 2],
+    profile: &C6CanonicalTargetProfile,
+    compiler_profile: &C61CompilerVerifierProfile,
+    compiler_endpoints: C61CampaignCompilerTranscriptEndpoints,
+    admission: C61ProductionPersistedResourceAdmission,
+    attempt: &mut C6ProductionPairedPcgAttempt,
+    backend: &mut Backend,
+    spill_root: &Path,
+    transcript: &mut Transcript,
+) -> Result<C61NativeExactProductionNbr2Certificate, String> {
+    let (blind, statements) = blind.into_parts();
+    let terminal = prepare_c61_native_terminal_compiler(&blind, equality, transcript)?;
+    let (
+        functional,
+        joint,
+        bridge,
+        native_profile_digest,
+        body_schedule_digest,
+        outer_statement_digest,
+    ) = functional.into_parts();
+    if joint.challenge().schedule_digest != body_schedule_digest
+        || bridge.functional_digest != functional.functional_digest()
+    {
+        return Err("C6ICT5 native suffix functional schedule differs".to_owned());
+    }
+    let response = residual.response();
+    let nbr2 = C6Nbr2CorrectionFunctional::new(
+        roots.provider_roots.fixed(),
+        outer_statement_digest,
+        residual.relation().manifest().digest(),
+        roots.provider_roots.source_binding_digest(),
+        response.source_schedule().digest,
+        native_profile_digest,
+        functional.functional_digest(),
+        functional.leaf_coefficients(),
+        bridge.correction,
+    )
+    .map_err(|error| error.to_string())?;
+    let native = joint.prepare_nbr2_link(bridge.base_value, bridge.correction, nbr2.digest())?;
+
+    let C61CampaignCompilerTranscriptEndpoints {
+        compiler_bindings,
+        compiler_endpoints,
+        compiler_mask_ranges,
+    } = compiler_endpoints;
+    let compiler_roots = [spill_root.join("compiler0"), spill_root.join("compiler1")];
+    let link_root = spill_root.join("native-link");
+    for path in compiler_roots.iter().chain(std::iter::once(&link_root)) {
+        fs::create_dir(path).map_err(|error| format!("create C6ICT5 spill lane: {error}"))?;
+    }
+    let inputs = terminal.inputs();
+    if inputs.relation_challenges_digest() != residual.relation().digest()
+        || compiler_profile.operation_plan_digest()
+            != response.provider().operation_plan().artifact_digest()
+    {
+        return Err("C6ICT5 compiler setup/relation differs from terminal owner".to_owned());
+    }
+    let ids = C61NativeChainId::ordered();
+    let compiler = {
+        let (stream0, stream1) = attempt.prover_streams_mut();
+        let [binding0, binding1] = compiler_bindings;
+        let [endpoint0, endpoint1] = compiler_endpoints;
+        let [range0, range1] = compiler_mask_ranges;
+        [
+            run_c61_authenticated_whir_p3_production_compiler_private_entropy_in_attempt(
+                response.provider().operation_plan(),
+                compiler_profile.terminal_metadata().clone(),
+                response.provider().extraction(),
+                response.provider().runtime(),
+                residual.relation(),
+                inputs.leaf_points(),
+                inputs.auxiliary_points(),
+                *inputs.terminal_functionals(),
+                inputs.output_beta(),
+                inputs.relation_root(),
+                binding0,
+                &compiler_roots[0],
+                admission,
+                stream0,
+                endpoint0,
+                ids[4],
+                range0,
+            )?,
+            run_c61_authenticated_whir_p3_production_compiler_private_entropy_in_attempt(
+                response.provider().operation_plan(),
+                compiler_profile.terminal_metadata().clone(),
+                response.provider().extraction(),
+                response.provider().runtime(),
+                residual.relation(),
+                inputs.leaf_points(),
+                inputs.auxiliary_points(),
+                *inputs.terminal_functionals(),
+                inputs.output_beta(),
+                inputs.relation_root(),
+                binding1,
+                &compiler_roots[1],
+                admission,
+                stream1,
+                endpoint1,
+                ids[5],
+                range1,
+            )?,
+        ]
+    };
+    let canonical_runtime = response
+        .provider()
+        .runtime()
+        .canonical_runtime_values(response.provider().extraction())
+        .map_err(|error| error.to_string())?;
+    let arithmetic = build_c61_production_arithmetic_frame(
+        terminal.ready(),
+        outer_statement_digest,
+        &canonical_runtime,
+        inputs.functional_fold(),
+    )
+    .map_err(|error| error.to_string())?;
+    let proof = finish_c61_native_production_blind_with_persisted_nbr2_link(
+        &roots.provider_roots,
+        blind,
+        &nbr2,
+        &terminal,
+        native,
+        attempt.prover_streams_array_mut(),
+        backend,
+        &link_root,
+        roots.session_digest,
+        transcript,
+    )?;
+    let cache_fold_target_frame =
+        response.cache_target_frame().encode().map_err(|error| error.to_string())?;
+    assemble_c61_native_exact_production_nbr2_certificate(
+        roots.provider_roots.fixed().statement_digest(),
+        native_profile_digest,
+        functional.functional_digest(),
+        profile,
+        primary,
+        compiler,
+        arithmetic,
+        &statements,
+        &cache_fold_target_frame,
+        roots.provider_roots.fixed(),
+        proof,
+    )
 }
 
 /// Exact native provider output after the response, four-root wrapper,
@@ -1946,10 +2130,9 @@ mod campaign_artifact_tests {
             C61CampaignNativeTranscriptSession::start_with_seeds(attempt, &profile, ranges, seeds)
                 .unwrap();
         let C61CampaignNativeTranscriptEndpoints {
-            four_chain_endpoints,
-            joint_endpoint,
-            compiler_endpoints,
-            ..
+            four_chain:
+                C61CampaignFourChainTranscriptEndpoints { four_chain_endpoints, joint_endpoint, .. },
+            compiler: C61CampaignCompilerTranscriptEndpoints { compiler_endpoints, .. },
         } = endpoints;
         let mut native_endpoints = Vec::from(four_chain_endpoints);
         native_endpoints.extend(compiler_endpoints);
@@ -2232,6 +2415,56 @@ mod campaign_artifact_tests {
             "residual_witness:",
         ] {
             assert!(!signature.contains(forbidden), "native blind admits {forbidden}");
+        }
+    }
+
+    #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+    #[test]
+    fn native_suffix_orders_terminal_compiler_nbr2_link_and_exact_assembly() {
+        let source = include_str!("c61_campaign.rs");
+        let body = source
+            .split_once("pub fn finish_c61_campaign_native_proof(")
+            .unwrap()
+            .1
+            .split_once("/// Exact native provider output")
+            .unwrap()
+            .0;
+        let terminal = body.find("prepare_c61_native_terminal_compiler(").unwrap();
+        let nbr2 = body.find("C6Nbr2CorrectionFunctional::new(").unwrap();
+        let native = body.find("joint.prepare_nbr2_link(").unwrap();
+        let compiler = body
+            .find("run_c61_authenticated_whir_p3_production_compiler_private_entropy_in_attempt(")
+            .unwrap();
+        let arithmetic = body.find("build_c61_production_arithmetic_frame(").unwrap();
+        let link =
+            body.find("finish_c61_native_production_blind_with_persisted_nbr2_link(").unwrap();
+        let assembly = body.find("assemble_c61_native_exact_production_nbr2_certificate(").unwrap();
+        assert!(terminal < nbr2 && nbr2 < native && native < compiler);
+        assert!(compiler < arithmetic && arithmetic < link && link < assembly);
+        for required in [
+            "functional.leaf_coefficients()",
+            "bridge.correction",
+            "bridge.base_value",
+            "inputs.terminal_functionals()",
+            "inputs.relation_root()",
+            "canonical_runtime_values(",
+            "attempt.prover_streams_mut()",
+            "attempt.prover_streams_array_mut()",
+            "response.cache_target_frame().encode()",
+        ] {
+            assert!(body.contains(required), "native suffix omits {required}");
+        }
+        let signature = body.split_once(") -> Result").unwrap().0;
+        for forbidden in [
+            "coefficients:",
+            "correction:",
+            "terminal_functionals:",
+            "relation_root:",
+            "functional_digest:",
+            "outer_statement_digest:",
+            "cache_fold_target_frame:",
+        ] {
+            assert!(!signature.contains(forbidden), "native suffix admits {forbidden}");
         }
     }
 

@@ -8,28 +8,27 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--1.09 next.
+This capsule is authoritative; read design §§0.60--1.11 next.
 
-- **Milestone/evidence.** C6ICT5 study is complete: four WHIR chains bind the
-  response-owned 96+6 claims and C6NBR2 binds their tape-1 functional;
-  C6HUB2 is obsolete. Focused PCS/campaign/public-instance checks remain
-  **16/0/0 + 13/0/0 + 1/0/0**. No full-chain, timing or hardware credit exists.
-- **Active gate.** `C6ICT5_NATIVE_HIDDEN_U_ELIMINATION_IMPLEMENTATION` under
-  owner GO: four cohorts/56 slots, 57 relations and no hidden field, adapter
-  or second witness path. The response now retains its exact cache trace,
-  paired targets and compact consumed-domain plan; persisted append replay
-  reads the successor cache and reuses tags/masks without advancing counters.
-  Independent verifier replay derives the same plan and replays only keys;
-  detached verifier arrays are rejected. One native terminal typestate now
-  fixes the exact 64 outputs, beta, C6TFR1 root and runtime challenges before
-  C6NBR2. Focused guards are **3/0/0**. Budget v29 and Lean **3,267 jobs/nine
-  audits** remain green screens. D28/D27/four-chain ownership is typed; the
-  two three-mask ranges derive only from the durable reservation. The exact
-  response-to-seal runner is closed; disk replay now retains paired cache
-  keys and the exact terminal challenge typestate.
-- **Resume.** Close disk semantic verification, mutations, workspace and
-  campaign preflight in small checkpoints. Pod only after every local gate is
-  green.
+- **Hard stop.** Disk assembly reached
+  `C6ICT5_SECONDARY_RESPONSE_VALUE_BINDING_OBSTRUCTED`. Primary WHIR verifies
+  response-owned keys; secondary WHIR plus the joint ZeroOpen verifies the
+  compiler functional. The statement requires the same ordered points but
+  explicitly permits independent commitment roots, and the secondary
+  verifier carries no response target keys. There is no proved equality
+  between primary and secondary values. Honest shared coefficient ownership
+  is construction evidence, not malicious-provider soundness.
+- **Completed evidence.** Exact response-to-seal, disk cache/terminal
+  typestates and counter-neutral raw source-key replay are green component
+  seams. Focused distinct-root and native-bridge checks are **1/0/0 +
+  1/0/0**; the complete bench feature check is green. Budget v29 and Lean
+  **3,267 jobs/nine audits** remain screens only; no full-chain, timing or
+  hardware credit exists.
+- **Authorization.** Stop; no pod. Current implementation GO does not permit
+  substituting an unproved relation.
+- **Resume.** Requires owner GO for a typed joint relation binding the same
+  96+6 response keys and compiler functional after fixed bodies, plus exact
+  challenge order, Lean proof, mutations and byte/soundness/time re-sum.
 - **Screens.** Study-only certificate **17,079,931 B**, setup
   **148,738,118 B**, setup+first **165,818,049 B**, state
   **2,277,715,552 B**, soundness **102.5878333013 bits/cert** and
@@ -37,6 +36,21 @@ This capsule is authoritative; read design §§0.60--1.09 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-16 — Secondary response-value binding hard stop.** Full disk
+  assembly exposed a missing malicious-provider relation. Primary model/embed
+  chains receive the replay-owned 96+6 verifier keys, but secondary joint
+  bodies are required to have no target keys and are checked only against the
+  compiled tape-1 functional. Paired statements bind identical ordered points
+  and dimensions while deliberately accepting different commitment roots.
+  A provider can therefore use response-consistent polynomials in the primary
+  chains and compiler-consistent polynomials in the secondary chains without
+  proving their values equal. The honest one-owner construction does not
+  close this verifier edge. The incomplete disk verifier was removed; exact
+  counter-neutral source-key replay remains green. Section 1.11 records the
+  obstruction and a candidate wire-neutral joint RLC. Owner authorization,
+  typed statement/challenge design, Lean, mutations and all quantitative
+  re-sums are required before implementation. No pod or credit.
 
 - **2026-08-16 — Disk terminal and cache ownership lands.** Independent
   response replay now retains both cache-target key coordinates and checks

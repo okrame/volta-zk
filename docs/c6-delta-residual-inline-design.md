@@ -5253,6 +5253,58 @@ nested proof must subsequently verify. Focused cache and ordering guards are
 **1/0/0 + 1/0/0** and feature compilation is green. Complete disk assembly,
 mutations and record preflight remain open; no pod or credit.
 
+### 1.11 C6ICT5 secondary response-value binding hard stop
+
+Strict disk assembly reached a missing relation and stopped before leaving an
+accepting verifier path. The gap is not a codec or ownership problem:
+
+1. `validate_same_response_claim_statement` requires primary and secondary
+   statements to share parameter digest, dimension and ordered points, but it
+   intentionally permits independent commitment roots. The focused test
+   accepts roots `0x31…` and `0x32…`.
+2. An ordinary primary verifier installs the replay-owned target-key aggregate
+   and therefore proves `primary values = response values`.
+3. A secondary `C61ProductionCommittedChainVerifierBody` explicitly rejects
+   an installed aggregate key. Its normalized authenticated value enters the
+   joint ZeroOpen only against the compiler-derived tape-1 source fold, proving
+   `secondary values = compiler values`.
+4. No verifier relation proves `primary values = secondary values`. The live
+   coefficient owner constructs them honestly from one file, but provider
+   construction typestate is not a soundness argument against a malicious
+   provider.
+
+Consequently the two accepted equalities cannot be composed into
+`response values = compiler values`. The §0.86.1 equivalence claim and the
+additive Lean refinement are only conditional seam evidence until this
+executable premise is supplied. Removing C6HUB2 under the current relation
+would accept a missing equality.
+
+The preferred continuation is a wire-neutral joint response/compiler RLC.
+After both secondary bodies, their ordered claim weights, `zeta`, the
+replay-owned response keys and the compiler functional are fixed, draw a fresh
+independent `eta` and authenticate
+
+```text
+(N - R) + eta * (N - C) = 0
+```
+
+where `N` is the weighted secondary opening, `R` is the identical weighted
+fold of the 96+6 response targets on tape 1, and `C` is the compiler source
+functional including its independently derived correction. The existing
+joint carrier may be reused only if one typed prover/verifier statement proves
+this exact equation; no clear target, provider key, duplicated vector, second
+witness path or digest-as-proof is admissible. A dedicated negative test must
+use distinct primary/secondary commitments and divergent values.
+
+This candidate still requires owner authorization and, before implementation:
+exact ownership and challenge order, a Lean composition theorem, collision
+degree/soundness accounting, interactive-tape and byte re-sum, correlation and
+slot census, and provider/verifier time screens. An extra challenge is not
+certificate wire but must be counted in interactive traffic and replay state.
+The active hard stop is
+`C6ICT5_SECONDARY_RESPONSE_VALUE_BINDING_OBSTRUCTED`. No pod contact or
+benchmark credit is permitted.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

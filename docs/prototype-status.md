@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--1.08 next.
+This capsule is authoritative; read design §§0.60--1.09 next.
 
 - **Milestone/evidence.** C6ICT5 study is complete: four WHIR chains bind the
   response-owned 96+6 claims and C6NBR2 binds their tape-1 functional;
@@ -24,10 +24,11 @@ This capsule is authoritative; read design §§0.60--1.08 next.
   fixes the exact 64 outputs, beta, C6TFR1 root and runtime challenges before
   C6NBR2. Focused guards are **3/0/0**. Budget v29 and Lean **3,267 jobs/nine
   audits** remain green screens. D28/D27/four-chain ownership is typed; the
-  two three-mask ranges derive only from the durable reservation.
-- **Resume.** Close the exact prover call graph, disk semantic verifier,
-  mutations, workspace and campaign preflight in small checkpoints. Pod only
-  after every local gate is green.
+  two three-mask ranges derive only from the durable reservation. The exact
+  response-to-seal runner is closed.
+- **Resume.** Close disk semantic verification, mutations, workspace and
+  campaign preflight in small checkpoints. Pod only after every local gate is
+  green.
 - **Screens.** Study-only certificate **17,079,931 B**, setup
   **148,738,118 B**, setup+first **165,818,049 B**, state
   **2,277,715,552 B**, soundness **102.5878333013 bits/cert** and
@@ -35,6 +36,15 @@ This capsule is authoritative; read design §§0.60--1.08 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-16 — Exact live response-to-seal runner lands.** One function now
+  consumes the installed setup, T1 workload, public attempt, real paired PCG,
+  CUDA backend and empty create-new run root through response, residual,
+  roots, four WHIR chains, blind proof, C6NBR2/compiler/link and native seal.
+  It then closes all eight private challenge tapes, binds verifier replay and
+  marks PCG success last. The focused order/input guard is **1/0/0** and
+  feature compilation is green. Disk semantic verification remains open; no
+  pod or credit.
 
 - **2026-08-16 — Canonical native mask allocation lands.** The campaign now
   derives one three-mask range per MAC tape from the durable attempt and uses

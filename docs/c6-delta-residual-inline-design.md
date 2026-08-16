@@ -5197,6 +5197,39 @@ The seven-lane ownership test is **1/0/0**. This changes no correlation census,
 wire/setup byte, challenge order or soundness term. The top-level runner, disk
 semantic verification and mutations remain open. No pod or credit.
 
+### 1.09 C6ICT5 exact live response-to-seal checkpoint
+
+One campaign function now owns the complete live provider call graph. It
+accepts only the validated setup, installed response-independent objects, the
+canonical T1 workload owner and matching public preimage, client heads, one
+reserved real paired-PCG attempt, the persisted/CUDA admission, CUDA backend
+and an existing empty run directory. The public attempt is reconstructed from
+the PCG reservation; no caller supplies a parallel attempt or any challenge
+owner.
+
+The runner derives the response statement and duplex response session,
+executes the response once, transfers the verifier replay seed, creates the
+seven native challenge lanes, and persists D28/D27 under their derived
+coefficient session. It then consumes the same response into the residual,
+four live roots and bound equality typestate; runs the exact four native
+chains; compiles the post-body tape-1 functional; produces the hidden-free
+blind proof; and completes terminal/compiler/C6NBR2/link assembly before
+native certificate sealing.
+
+Only after strict certificate round-trip does it close the response tape and
+all seven native tapes, bind the client-private verifier replay to that
+certificate digest, and call `finish_success` on the real PCG attempt. Any
+earlier error drops the attempt through the existing fail-closed burn path.
+The run directory must be empty and receives separate create-new coefficient,
+wrapper and proof lanes. The runner signature admits no response statement,
+mask range, claim, target, coefficient, equality, blind, functional or proof
+object.
+
+The focused order/input guard is **1/0/0**, and the complete bench feature
+check is green. No wire/setup byte, challenge, correlation or soundness term
+changes. Disk semantic verification, mutations and campaign record preflight
+remain open. No pod or credit.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

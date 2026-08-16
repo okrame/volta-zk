@@ -75,9 +75,10 @@ use volta_pcs::{
 use volta_proto::c6_residual::{C6CompiledNativeTargetFunctional, C6NativeTargetProverBridgeFold};
 #[cfg(feature = "c6-trace")]
 use volta_proto::{
-    replay_c6_t1_production_response_verifier, C6ProductionPairedPcgAttempt,
-    C6RetainedResponseProof, C6T1DiskResidualOwner, C6T1ProductionResidualBoundOwner,
-    C6T1ProductionResidualOwner, C6T1ProductionResponseVerifierReplay,
+    prepare_c6_t1_production_residual_owner, replay_c6_t1_production_response_verifier,
+    C6ProductionPairedPcgAttempt, C6RetainedResponseProof, C6T1DiskResidualOwner,
+    C6T1ProductionResidualBoundOwner, C6T1ProductionResidualOwner,
+    C6T1ProductionResponseVerifierReplay,
 };
 use volta_proto::{
     C61NativeFinalCertificate, C61NativeWrapperCommitments, C61PublicWorkloadInstance,
@@ -90,8 +91,8 @@ use volta_proto::{C6ResidualFusedCoefficientArena, C6ResidualFusedWitnessView};
 
 #[cfg(feature = "c6-trace")]
 use crate::c6_t1_owner::{
-    execute_c6_t1_production_owner_export, C6T1NativeClaimOwner, C6T1ProductionOwnerExport,
-    C6T1WorkloadOwner,
+    execute_c6_t1_production_owner_export, persist_c6_t1_native_coefficient_owners,
+    C6T1NativeClaimOwner, C6T1ProductionOwnerExport, C6T1WorkloadOwner,
 };
 
 const CAMPAIGN_ARTIFACT_PROFILE: &str = "C6.1-C6PA2-C6NBR3-C6ICT5-native-campaign-v7";
@@ -1179,6 +1180,221 @@ pub fn seal_c61_campaign_native_output(
         return Err("C6ICT5 native seal strict round trip differs from live owners".to_owned());
     }
     Ok(C61CampaignSealedNativeOutput { certificate, public_instance })
+}
+
+/// Complete live provider result plus the client-private state required for
+/// independent disk verification. Only `certificate` is provider wire.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub struct C61CampaignLiveProductionOutput {
+    pub certificate: C61NativeFinalCertificate,
+    pub public_instance: C61PublicWorkloadInstance,
+    pub verifier_replay: C6BoundProductionVerifierReplay,
+    pub challenge_tapes: C61InteractiveTapeBundle,
+}
+
+/// Execute one exact C6.1 response from the reserved real-PCG attempt through
+/// native C6PA2 sealing. Every intermediate response, residual, cache,
+/// coefficient, transcript and proof owner moves along one call graph.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+#[allow(clippy::too_many_arguments)]
+pub fn run_c61_campaign_live_production(
+    setup: &C6SetupManifest,
+    installed: C61CampaignInstalledSetup,
+    workload_owner: C6T1WorkloadOwner,
+    public_workload: C61PublicWorkloadPreimage,
+    old_head: C6CacheHead,
+    proposed_head: C6ProposedCacheHead,
+    mut attempt: C6ProductionPairedPcgAttempt,
+    admission: C61ProductionPersistedResourceAdmission,
+    backend: &mut Backend,
+    run_root: &Path,
+) -> Result<C61CampaignLiveProductionOutput, String> {
+    setup.validate().map_err(|error| error.to_string())?;
+    if !run_root.is_dir()
+        || fs::read_dir(run_root)
+            .map_err(|error| format!("read C6ICT5 live run root: {error}"))?
+            .next()
+            .is_some()
+    {
+        return Err("C6ICT5 live run root must be an existing empty directory".to_owned());
+    }
+    let reservation = attempt.reservation();
+    let public_attempt = C6ClientAttempt {
+        slot: reservation.slot,
+        nonce: reservation.nonce,
+        setup_manifest_digest: reservation.setup_manifest_digest,
+        old_head_digest: reservation.old_head_digest,
+        predecessor_certificate_digest: reservation.predecessor_certificate_digest,
+        correlation_ranges: reservation.correlation_ranges,
+        workload: reservation.workload,
+    };
+    if reservation.connection_id != setup.connection_id
+        || public_workload.workload() != public_attempt.workload
+        || public_workload.public_tokens() != workload_owner.sequence()
+    {
+        return Err("C6ICT5 live setup/attempt/workload owners differ".to_owned());
+    }
+    let C61CampaignInstalledSetup {
+        source_manifest: _,
+        provider_plan,
+        verifier_plan,
+        provider_extraction,
+        verifier_extraction,
+        native_profile,
+        compiler_profile,
+        operation_plan_artifact: _,
+        verifier_extraction_artifact: _,
+        native_profile_artifact,
+        plan_bytes: _,
+        extraction_bytes: _,
+        native_profile_bytes: _,
+    } = installed;
+    let response_statement = build_c61_campaign_response_statement(
+        setup,
+        &provider_plan,
+        public_attempt,
+        old_head,
+        proposed_head,
+        &public_workload,
+    )?;
+    let mut response_session =
+        C61CampaignResponseTranscriptSession::start(public_attempt, &response_statement)?;
+    let response = execute_c61_campaign_response_owner(
+        workload_owner,
+        &response_statement,
+        [provider_plan, verifier_plan],
+        [provider_extraction, verifier_extraction],
+        &mut attempt,
+        &mut response_session,
+    )?;
+    let replay_owner = attempt.take_verifier_replay_owner(response_statement.digest())?;
+    let (native_endpoints, native_session) =
+        C61CampaignNativeTranscriptSession::start(public_attempt, &native_profile)?;
+
+    let coefficient_root = run_root.join("coefficients");
+    let wrapper_root = run_root.join("wrapper");
+    let proof_root = run_root.join("proof");
+    for path in [&coefficient_root, &wrapper_root, &proof_root] {
+        fs::create_dir(path).map_err(|error| format!("create C6ICT5 run lane: {error}"))?;
+    }
+    let persisted = persist_c6_t1_native_coefficient_owners(
+        response,
+        &coefficient_root,
+        native_endpoints.four_chain.coefficient_session(),
+    )?;
+    let (response, model_coefficients, embedding_coefficients) = persisted.into_parts();
+    let (returned_workload, response, native_claims, predecessor, successor) =
+        response.into_parts();
+    if returned_workload.sequence() != public_workload.public_tokens() {
+        return Err("C6ICT5 persisted response workload changed".to_owned());
+    }
+    drop(returned_workload);
+    let residual = {
+        let (provider, verifier) = response_session.transcripts();
+        prepare_c6_t1_production_residual_owner(
+            response,
+            &native_profile,
+            provider,
+            verifier,
+        )
+        .map_err(|error| error.to_string())?
+    };
+    let wrapper_statement = build_c61_campaign_live_wrapper_statement(
+        response_statement.clone(),
+        &public_workload,
+        &residual,
+        &native_profile,
+        &compiler_profile,
+    )?;
+    let rooted = bind_c61_campaign_live_residual_roots(
+        setup,
+        wrapper_statement,
+        &public_workload,
+        predecessor,
+        successor,
+        residual,
+        backend,
+        &wrapper_root,
+        &mut response_session,
+    )?;
+    let (roots, relation) = rooted.into_parts();
+    let (equality, residual) = relation.into_parts();
+    let C61CampaignNativeTranscriptEndpoints { four_chain, compiler } = native_endpoints;
+    let four_chain = prepare_c61_campaign_native_four_chains(
+        native_claims,
+        &residual,
+        model_coefficients,
+        embedding_coefficients,
+        &native_profile,
+        four_chain,
+        admission,
+        &mut attempt,
+        backend,
+        &proof_root,
+    )?;
+    let functional = prepare_c61_campaign_native_functional(
+        &roots,
+        &residual,
+        &native_profile,
+        &native_profile_artifact,
+        four_chain,
+    )?;
+    let blind = {
+        let (provider, _) = response_session.transcripts();
+        prove_c61_campaign_native_blind(
+            &roots,
+            &residual,
+            &public_workload,
+            &mut attempt,
+            provider,
+        )?
+    };
+    let exact = {
+        let (provider, _) = response_session.transcripts();
+        finish_c61_campaign_native_proof(
+            &roots,
+            &residual,
+            blind,
+            equality,
+            functional,
+            &native_profile,
+            &compiler_profile,
+            compiler,
+            admission,
+            &mut attempt,
+            backend,
+            &proof_root,
+            provider,
+        )?
+    };
+    let sealed = seal_c61_campaign_native_output(
+        setup,
+        public_attempt,
+        old_head,
+        proposed_head,
+        &response_statement,
+        public_workload,
+        &roots,
+        &residual,
+        exact,
+    )?;
+    let certificate_digest = sealed.certificate.digest().map_err(|error| error.to_string())?;
+    let response_context = response_session.context_digest();
+    let response_tape = response_session.finish_certificate(&sealed.certificate)?;
+    let challenge_tapes = native_session.finish(
+        public_attempt,
+        certificate_digest,
+        response_tape,
+        response_context,
+    )?;
+    let verifier_replay = replay_owner.bind_certificate(certificate_digest)?;
+    attempt.finish_success()?;
+    Ok(C61CampaignLiveProductionOutput {
+        certificate: sealed.certificate,
+        public_instance: sealed.public_instance,
+        verifier_replay,
+        challenge_tapes,
+    })
 }
 
 /// Commit the four exact wrapper cohorts, install the same roots on the live
@@ -2662,6 +2878,73 @@ mod campaign_artifact_tests {
             "cache_fold_target_frame:",
         ] {
             assert!(!signature.contains(forbidden), "native suffix admits {forbidden}");
+        }
+    }
+
+    #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+    #[test]
+    fn live_runner_has_one_exact_response_to_seal_owner_path() {
+        let source = include_str!("c61_campaign.rs");
+        let body = source
+            .split_once("pub fn run_c61_campaign_live_production(")
+            .unwrap()
+            .1
+            .split_once("/// Commit the four exact wrapper cohorts")
+            .unwrap()
+            .0;
+        let ordered = [
+            "build_c61_campaign_response_statement(",
+            "C61CampaignResponseTranscriptSession::start(",
+            "execute_c61_campaign_response_owner(",
+            "take_verifier_replay_owner(",
+            "C61CampaignNativeTranscriptSession::start(",
+            "persist_c6_t1_native_coefficient_owners(",
+            "prepare_c6_t1_production_residual_owner(",
+            "build_c61_campaign_live_wrapper_statement(",
+            "bind_c61_campaign_live_residual_roots(",
+            "prepare_c61_campaign_native_four_chains(",
+            "prepare_c61_campaign_native_functional(",
+            "prove_c61_campaign_native_blind(",
+            "finish_c61_campaign_native_proof(",
+            "seal_c61_campaign_native_output(",
+            "response_session.finish_certificate(",
+            "native_session.finish(",
+            "replay_owner.bind_certificate(",
+            "attempt.finish_success(",
+        ];
+        let mut previous = 0;
+        for required in ordered {
+            let offset = body
+                .find(required)
+                .unwrap_or_else(|| panic!("live runner omits {required}"));
+            assert!(offset >= previous, "live runner reorders {required}");
+            previous = offset;
+        }
+        for required in [
+            "public_workload.public_tokens() != workload_owner.sequence()",
+            "native_endpoints.four_chain.coefficient_session()",
+            "let (equality, residual) = relation.into_parts()",
+            "let C61CampaignNativeTranscriptEndpoints { four_chain, compiler }",
+            "run_root.join(\"coefficients\")",
+            "run_root.join(\"wrapper\")",
+            "run_root.join(\"proof\")",
+        ] {
+            assert!(body.contains(required), "live runner omits ownership gate {required}");
+        }
+        let signature = body.split_once(") -> Result").unwrap().0;
+        for forbidden in [
+            "response_statement:",
+            "mask_ranges:",
+            "native_endpoints:",
+            "native_claims:",
+            "model_coefficients:",
+            "embedding_coefficients:",
+            "equality:",
+            "blind:",
+            "functional:",
+            "exact:",
+        ] {
+            assert!(!signature.contains(forbidden), "live runner admits detached {forbidden}");
         }
     }
 

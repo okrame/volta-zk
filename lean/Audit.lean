@@ -431,6 +431,17 @@ vector-RLC bounds from being mistaken for implementation bounds.
 #print axioms VoltaZk.c6_nbr2_two_repetition_numerator
 #print axioms VoltaZk.c6_nbr2_two_repetition_numerator_lt_2_pow_16
 #print axioms VoltaZk.C6NBR1JointBridgeSound
+
+-- C6ICT5 native hidden-u deletion (additive; no hidden bad event).
+#print axioms VoltaZk.c61_four_native_chains_refine_ordered_response
+#print axioms VoltaZk.c61_ordered_native_claim_census
+#print axioms VoltaZk.c61_ict5_link_relation_census
+#print axioms VoltaZk.c61_ict5_link_root_census
+#print axioms VoltaZk.c61_ict5_two_repetition_numerator
+#print axioms VoltaZk.c61_ict5_two_repetition_numerator_lt_2_pow_15
+#print axioms VoltaZk.c61_ict5_packed_authenticated_output_link_sound
+#print axioms VoltaZk.c61_ict5_equal_source_binding_or_collision
+#print axioms VoltaZk.c61_ict5_native_hidden_free_composition
 #print axioms VoltaZk.x4d_accepted_settlement_implies_each_m9_or_bad
 #print axioms VoltaZk.x4d_settlement_error_is_v4
 #print axioms VoltaZk.x4d_settlement_error_expanded

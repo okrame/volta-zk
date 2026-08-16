@@ -4926,6 +4926,32 @@ proof, timing or hardware run. Additive Lean, exact live-to-disk campaign
 assembly, mutations, full workspace and campaign preflight remain mandatory;
 pod contact remains forbidden.
 
+### 0.97 C6ICT5 additive Lean checkpoint
+
+`C6NativeHiddenUElimination.lean` is additive and leaves M1--M11 unchanged.
+It defines one response-owned schedule with typed `Fin 96` model and `Fin 6`
+embedding indices and proves that both repetitions of both native components
+refine exactly its global points and plaintexts. The proof boundary cannot
+express a second repetition schedule or a hidden claim.
+
+The native link theorem instantiates the existing authenticated
+different-point reduction at **56 active slots**, **57 relations** and **25
+rounds**. Separate arithmetic theorems establish **134 roots/repetition** and
+`134^2 = 17,956 < 2^15`. A new source-binding preimage contains exactly the
+statement, cache profile and lengths, residual manifest/view, paired source,
+mask-seed commitment and four-root binding; equality is either exact preimage
+equality or a named hash collision.
+
+The final composition chains four-WHIR acceptance, ordered-claim refinement,
+the compiled functional, C6NBR2/MAC binding, transcript-ordered link, BLAKE3
+source binding and joint ZeroOpen. Commitment binding, WHIR soundness,
+MAC/C6NBR2 soundness, transcript order, BLAKE3 binding and ZeroOpen soundness
+are explicit theorem hypotheses, not global axioms. There is no hidden-u bad
+event. `lake build` completes **3,267 jobs**; all nine new `#print axioms`
+targets add nothing beyond `propext`, `Classical.choice` and `Quot.sound`, and
+the refinement/composition targets use none. This is formal seam evidence,
+not a complete runner or benchmark credit; pod contact remains forbidden.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

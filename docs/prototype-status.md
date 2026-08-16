@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.96 next.
+This capsule is authoritative; read design §§0.60--0.97 next.
 
 - **Milestone/evidence.** C6ICT5 study is complete: one response owner supplies
   the ordered 96+6 claims; four WHIR chains bind their exact global points and
@@ -25,10 +25,10 @@ This capsule is authoritative; read design §§0.60--0.96 next.
   its focused PCS/owner guards are **2/0/0 + 1/0/0**. The distinct four-root
   PCS profile/coordinator guard is **1/0/0**; the hidden-free live/verifier
   source guard is **1/0/0**. Link/join and blind/envelope/outer/campaign are
-  **1+1+1+2+3+11** green tests. Budget v29 self-checks exact wire, 57/134
-  census, 458 correlations/tape and soundness; all remain screens only.
-- **Resume.** Close additive Lean, exact live-to-disk runner, mutations, full
-  workspace and campaign preflight in small checkpoints.
+  **1+1+1+2+3+11** green tests. Budget v29 self-checks wire/soundness; Lean
+  builds **3,267 jobs** and audits nine new targets. All remain screens only.
+- **Resume.** Close exact live-to-disk runner, mutations, full workspace and
+  campaign preflight in small checkpoints.
   Pod admission follows only after those local gates are green.
 - **Screens.** Study-only certificate **17,079,931 B**, setup
   **148,738,118 B**, setup+first **165,818,049 B**, state
@@ -37,6 +37,15 @@ This capsule is authoritative; read design §§0.60--0.96 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-16 — C6ICT5 additive Lean boundary lands.**
+  `C6NativeHiddenUElimination.lean` types one ordered 96+6 schedule shared by
+  four native chains, proves the **57/134/17,956** link census and instantiates
+  the authenticated different-point reduction. Its composition takes
+  commitment, WHIR, MAC/C6NBR2, transcript, BLAKE3 and joint-ZeroOpen security
+  as explicit hypotheses and has no hidden-u event. `lake build` is **3,267
+  jobs**; nine audit targets add no assumptions beyond the existing kernel
+  set. Exact runner, mutations, workspace and preflight remain open; no pod.
 
 - **2026-08-16 — C6ICT5 executable re-sum lands.** Budget profile v29 derives
   the four-cohort **56-slot**, **57-relation**, **134-root/repetition** census,

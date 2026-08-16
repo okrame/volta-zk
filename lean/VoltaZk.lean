@@ -34,3 +34,4 @@ import VoltaZk.C6PersistentCachePCS
 import VoltaZk.C61PublicCompression
 import VoltaZk.C61TerminalFunctional
 import VoltaZk.C6NBR2CorrectionFunctional
+import VoltaZk.C6NativeHiddenUElimination

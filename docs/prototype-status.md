@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.88 next.
+This capsule is authoritative; read design §§0.60--0.89 next.
 
 - **Milestone/evidence.** C6ICT5 study is complete: one response owner supplies
   the ordered 96+6 claims; four WHIR chains bind their exact global points and
@@ -22,7 +22,8 @@ This capsule is authoritative; read design §§0.60--0.88 next.
   no hidden owner, participant, source-binding field or codec component. No
   compatibility adapter, inactive branch or second witness path is allowed.
   The shared claim schedule/direct coefficient-owner checkpoint is complete;
-  its focused PCS/owner guards are **2/0/0 + 1/0/0**.
+  its focused PCS/owner guards are **2/0/0 + 1/0/0**. The distinct four-root
+  PCS profile/coordinator guard is **1/0/0**.
 - **Resume.** Implement in small checkpoints, then close additive Lean,
   mutations, executable budgets, full workspace and exact campaign preflight.
   Pod admission follows only after those local gates are green.
@@ -33,6 +34,16 @@ This capsule is authoritative; read design §§0.60--0.88 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-16 — Closed four-root PCS profile lands.** The new fixed-root
+  typestate accepts exactly predecessor cache, successor cache, residual and
+  auxiliary cohorts: **56 slots**, domains D28/D28/D27/D19 and strict codec
+  **1,714,123 B/chain**. Its distinct coordinator type exposes only cache and
+  residual participants; it has no hidden-u field or historical constructor.
+  Cross-profile root fixing rejects and the focused geometry/codec/schedule
+  guard is **1/0/0**. Historical six-cohort tests remain green. This is not yet
+  the live source, 56+1 link or final codec and earns no quantitative credit;
+  pod contact stays forbidden.
 
 - **2026-08-16 — One response-owned native claim schedule lands.** Direct
   D28/D27 persistence now consumes `C6T1ProductionOwnerExport` without

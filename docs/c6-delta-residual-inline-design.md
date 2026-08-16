@@ -4754,6 +4754,25 @@ soundness, timing, full-chain or hardware credit. The active next gate remains
 four-cohort/56-slot wrapper and 57-relation C6NBR2 link without adapting the
 historical six-cohort C6 path. No pod contact is permitted.
 
+### 0.89 C6ICT5 closed four-root PCS checkpoint
+
+The packed PCS now has a distinct C6.1 fixed-root typestate for exactly
+predecessor cache, successor cache, residual and auxiliary cohorts. It rejects
+the historical six-root list rather than adapting it. The exact profile has
+**56 slots**, D28/D28/D27/D19 encoded domains and a materialized strict codec
+of **1,714,123 B per chain** (**3,428,246 B** for two).
+
+`C61NativeWrapperRoundCoordinator` is a separate production type with cache
+and residual participants only. It has no hidden-u activation field and
+cannot be built from historical roots; the legacy coordinator reciprocally
+rejects C6.1 roots. The focused root/profile/codec/schedule guard is
+**1/0/0**, while the prior historical roofline guard remains green.
+
+This checkpoint fixes the PCS geometry only. Live source materialization,
+the dynamic four-aggregate C6LNK2 grammar, exact 56+1 C6NBR2 sealing and the
+outer C6.1 codec remain open. No byte, soundness, timing or hardware credit is
+promoted, and pod contact remains forbidden.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

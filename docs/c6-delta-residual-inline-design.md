@@ -4732,6 +4732,28 @@ Lean build, focused mutations, full workspace and exact campaign preflight
 are green.  The active gate is
 `C6ICT5_NATIVE_HIDDEN_U_ELIMINATION_IMPLEMENTATION`.
 
+### 0.88 C6ICT5 shared native schedule implementation checkpoint
+
+The first deletion checkpoint is implemented. Direct D28/D27 coefficient
+persistence consumes `C6T1ProductionOwnerExport`; it neither requires nor
+constructs `C6T1HiddenUOwner`. One `C61ProductionResponseClaimSchedule`
+validates and domain-separates the exact ordered model-96/embed-6 global
+points, and all four native chain bodies borrow that single object. There is
+no second-repetition schedule input.
+
+The secondary native execution retains its typed statements. Production
+assembly and strict C6PA2 decode require model0/model1 and embed0/embed1 to
+share parameter digest, polynomial dimension and ordered points; independent
+commitment roots remain allowed. Wrong order, census, alignment or paired
+statement rejects. Focused schedule/statement checks are **2/0/0**, the owner
+anti-hidden source guard is **1/0/0**, and the feature crate check is green.
+
+This closes only the response-claim ownership edge. It grants no byte,
+soundness, timing, full-chain or hardware credit. The active next gate remains
+`C6ICT5_NATIVE_HIDDEN_U_ELIMINATION_IMPLEMENTATION`: implement the closed
+four-cohort/56-slot wrapper and 57-relation C6NBR2 link without adapting the
+historical six-cohort C6 path. No pod contact is permitted.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

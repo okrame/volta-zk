@@ -86,7 +86,8 @@ use crate::c61_terminal_functional::{
     C61SparseRationalBlindArithmeticProof, C61SparseRationalCompilerOracles,
     C61TerminalFunctionalCompilerBinding, C61TerminalFunctionalCompilerStatement,
     C61TypedNativeChainPublicStatement, C61TypedNativeRelationStatement,
-    C61_EMBEDDING_POLYNOMIAL_LOG2, C61_MODEL_POLYNOMIAL_LOG2,
+    C61_EMBEDDING_OPENING_TARGETS, C61_EMBEDDING_POLYNOMIAL_LOG2,
+    C61_MODEL_OPENING_TARGETS, C61_MODEL_POLYNOMIAL_LOG2,
 };
 use crate::c61_whir_reference::{
     c61_max_pruned_binary_siblings, c61_p3_fp2_from_volta, c61_reference_mmcs,
@@ -983,6 +984,33 @@ fn c61_joint_tail_role_for_component(
     })
 }
 
+fn validate_same_response_claim_statement(
+    primary: &C61TypedNativeChainPublicStatement,
+    secondary: &C61TypedNativeChainPublicStatement,
+    component: C61NativeComponent,
+) -> Result<(), String> {
+    if primary.id()
+        != (C61NativeChainId { component, repetition: 0 })
+        || secondary.id()
+            != (C61NativeChainId { component, repetition: 1 })
+    {
+        return Err("C6ICT5 paired native statements have the wrong roles".to_owned());
+    }
+    let primary = c61_model_embedding_openings(primary)?;
+    let secondary = c61_model_embedding_openings(secondary)?;
+    if primary.commitment.parameter_digest != secondary.commitment.parameter_digest
+        || primary.commitment.polynomial_domain_log2
+            != secondary.commitment.polynomial_domain_log2
+        || primary.ordered_points != secondary.ordered_points
+    {
+        return Err(
+            "C6ICT5 native repetitions do not share one ordered response claim schedule"
+                .to_owned(),
+        );
+    }
+    Ok(())
+}
+
 /// Assemble the exact ordered production C6PA2 object. The generic target
 /// profile, rather than a GPT-2 claim census, assigns the secondary carrier
 /// roles. C6PA1 components are rejected even where their byte lengths match.
@@ -1044,7 +1072,9 @@ pub fn assemble_c61_production_joint_public_argument_from_executions(
     arithmetic: C61ArithmeticFrame,
 ) -> Result<C61ProductionJointPublicArgumentAssembly, String> {
     let schedule_digest = secondary.challenge.schedule_digest;
-    if secondary.proofs.len() != profile.cohorts.len() {
+    if secondary.proofs.len() != profile.cohorts.len()
+        || secondary.statements.len() != profile.cohorts.len()
+    {
         return Err("C6PA2 secondary proof/profile census mismatch".to_owned());
     }
     if functional_digest == [0; 32] {
@@ -1097,18 +1127,24 @@ pub fn assemble_c61_production_joint_public_argument_from_executions(
 
     let mut model_secondary = None;
     let mut embedding_secondary = None;
-    for (index, (cohort, proof)) in profile.cohorts.iter().zip(secondary.proofs).enumerate() {
+    for (index, ((cohort, proof), statement)) in profile
+        .cohorts
+        .iter()
+        .zip(secondary.proofs)
+        .zip(secondary.statements)
+        .enumerate()
+    {
         if proof.tail_role() != c61_joint_native_carrier_tail(secondary.frame, index).0 {
             return Err("C6PA2 secondary execution carrier role differs from its cohort".to_owned());
         }
         match cohort.chain_slot {
             slot if slot == C61NativeComponent::Model as u16 && model_secondary.is_none() => {
-                model_secondary = Some(proof)
+                model_secondary = Some((proof, statement))
             }
             slot if slot == C61NativeComponent::Embedding as u16
                 && embedding_secondary.is_none() =>
             {
-                embedding_secondary = Some(proof)
+                embedding_secondary = Some((proof, statement))
             }
             _ => {
                 return Err(
@@ -1117,10 +1153,20 @@ pub fn assemble_c61_production_joint_public_argument_from_executions(
             }
         }
     }
-    let model_secondary = model_secondary
+    let (model_secondary, model_secondary_statement) = model_secondary
         .ok_or_else(|| "C6PA2 secondary execution omits the model cohort".to_owned())?;
-    let embedding_secondary = embedding_secondary
+    let (embedding_secondary, embedding_secondary_statement) = embedding_secondary
         .ok_or_else(|| "C6PA2 secondary execution omits the embedding cohort".to_owned())?;
+    validate_same_response_claim_statement(
+        model_primary.statement.public(),
+        &model_secondary_statement,
+        C61NativeComponent::Model,
+    )?;
+    validate_same_response_claim_statement(
+        embedding_primary.statement.public(),
+        &embedding_secondary_statement,
+        C61NativeComponent::Embedding,
+    )?;
     let [compiler0, compiler1] = compiler;
     let chains = [
         C61ProductionJointNativeChainArtifact::committed_primary(
@@ -1181,6 +1227,16 @@ pub fn decode_c61_production_joint_public_argument(
         return Err("C6PA2 compiler statement binding is empty".to_owned());
     }
     let argument = C61JointPublicArgument::decode(bytes).map_err(|error| error.to_string())?;
+    validate_same_response_claim_statement(
+        &public[0],
+        &public[1],
+        C61NativeComponent::Model,
+    )?;
+    validate_same_response_claim_statement(
+        &public[2],
+        &public[3],
+        C61NativeComponent::Embedding,
+    )?;
     let mut artifacts = Vec::with_capacity(C61_NATIVE_CHAIN_COUNT);
     for (index, id) in C61NativeChainId::ordered().into_iter().enumerate() {
         if public[index].id() != id {
@@ -1826,6 +1882,7 @@ pub struct C61ProductionJointNativeProverLinkPending {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C61ProductionJointNativeProverExecution {
     pub proofs: Vec<C61ProductionJointCommittedChainProof>,
+    pub statements: Vec<C61TypedNativeChainPublicStatement>,
     pub frame: C61JointNativeBridgeFrame,
     pub challenge: C61JointNativeChallenge,
     pub transcript_bytes: u64,
@@ -1878,6 +1935,7 @@ impl C61ProductionJointNativeProverBodiesFixed {
         }
         Ok(C61ProductionJointNativeProverExecution {
             proofs,
+            statements,
             frame,
             challenge: self.challenge,
             transcript_bytes: self.transcript.total_bytes(),
@@ -1951,6 +2009,7 @@ impl C61ProductionJointNativeProverLinkPending {
         }
         Ok(C61ProductionJointNativeProverExecution {
             proofs,
+            statements: self.statements,
             frame,
             challenge: self.challenge,
             transcript_bytes: self.transcript.total_bytes(),
@@ -2356,6 +2415,7 @@ pub struct C61ProductionCommittedFourChainExecution {
     pub chains: [C61ProductionCommittedChainExecution; 4],
     pub model_coefficient_digest: [u8; 32],
     pub embedding_coefficient_digest: [u8; 32],
+    pub claim_schedule_digest: [u8; 32],
     pub peak_loaded_coefficient_bytes: u64,
 }
 
@@ -2363,7 +2423,133 @@ struct C61ProductionCommittedFourChainBodies {
     bodies: [C61ProductionCommittedChainProverBody; 4],
     model_coefficient_digest: [u8; 32],
     embedding_coefficient_digest: [u8; 32],
+    claim_schedule_digest: [u8; 32],
     peak_loaded_coefficient_bytes: u64,
+}
+
+/// One response-owned ordered claim schedule shared by both independent
+/// native repetitions.  There is no API for supplying a second schedule.
+#[derive(Clone, Copy, Debug)]
+pub struct C61ProductionResponseClaimSchedule<'a> {
+    model: &'a [crate::batch::BlockClaim],
+    embedding: &'a [crate::batch::BlockClaim],
+    digest: [u8; 32],
+}
+
+impl<'a> C61ProductionResponseClaimSchedule<'a> {
+    pub fn new(
+        model: &'a [crate::batch::BlockClaim],
+        embedding: &'a [crate::batch::BlockClaim],
+    ) -> Result<Self, String> {
+        validate_response_claim_component(
+            C61NativeComponent::Model,
+            C61_MODEL_POLYNOMIAL_LOG2,
+            C61_MODEL_OPENING_TARGETS,
+            model,
+        )?;
+        validate_response_claim_component(
+            C61NativeComponent::Embedding,
+            C61_EMBEDDING_POLYNOMIAL_LOG2,
+            C61_EMBEDDING_OPENING_TARGETS,
+            embedding,
+        )?;
+        let mut hasher = blake3::Hasher::new_derive_key(
+            "volta-zk/c6.1/production-response-claim-schedule/v1",
+        );
+        for (component, dimension, claims) in [
+            (C61NativeComponent::Model, C61_MODEL_POLYNOMIAL_LOG2, model),
+            (
+                C61NativeComponent::Embedding,
+                C61_EMBEDDING_POLYNOMIAL_LOG2,
+                embedding,
+            ),
+        ] {
+            hasher.update(&(component as u16).to_le_bytes());
+            hasher.update(&[dimension]);
+            hasher.update(&(claims.len() as u32).to_le_bytes());
+            for (ordinal, claim) in claims.iter().enumerate() {
+                hasher.update(&(ordinal as u32).to_le_bytes());
+                let point = checked_claim_global_point(claim, dimension)?;
+                hasher.update(&(point.len() as u32).to_le_bytes());
+                for value in point {
+                    hasher.update(&value.c0.value().to_le_bytes());
+                    hasher.update(&value.c1.value().to_le_bytes());
+                }
+            }
+        }
+        let digest = *hasher.finalize().as_bytes();
+        if digest == [0; 32] {
+            return Err("C6ICT5 response claim schedule digest is zero".to_owned());
+        }
+        Ok(Self { model, embedding, digest })
+    }
+
+    pub fn model(self) -> &'a [crate::batch::BlockClaim] {
+        self.model
+    }
+
+    pub fn embedding(self) -> &'a [crate::batch::BlockClaim] {
+        self.embedding
+    }
+
+    pub fn digest(self) -> [u8; 32] {
+        self.digest
+    }
+
+    fn claims(self, component: C61NativeComponent) -> Result<&'a [crate::batch::BlockClaim], String> {
+        match component {
+            C61NativeComponent::Model => Ok(self.model),
+            C61NativeComponent::Embedding => Ok(self.embedding),
+            C61NativeComponent::Compiler => {
+                Err("C6ICT5 response claim schedule rejects compiler chains".to_owned())
+            }
+        }
+    }
+}
+
+fn validate_response_claim_component(
+    component: C61NativeComponent,
+    dimension: u8,
+    expected: usize,
+    claims: &[crate::batch::BlockClaim],
+) -> Result<(), String> {
+    if component == C61NativeComponent::Compiler || claims.len() != expected {
+        return Err("C6ICT5 response claim schedule has the wrong component/census".to_owned());
+    }
+    for claim in claims {
+        checked_claim_global_point(claim, dimension)?;
+    }
+    Ok(())
+}
+
+fn checked_claim_global_point(
+    claim: &crate::batch::BlockClaim,
+    dimension: u8,
+) -> Result<Vec<Fp2>, String> {
+    let dimension = usize::from(dimension);
+    let block_variables = claim.point.len();
+    if dimension >= usize::BITS as usize || block_variables > dimension {
+        return Err("C6ICT5 response claim exceeds its native dimension".to_owned());
+    }
+    let block_len = 1usize
+        .checked_shl(block_variables as u32)
+        .ok_or_else(|| "C6ICT5 response claim block length overflows".to_owned())?;
+    let domain_len = 1usize << dimension;
+    if claim.offset % block_len != 0
+        || claim.offset.checked_add(block_len).is_none_or(|end| end > domain_len)
+    {
+        return Err("C6ICT5 response claim is unaligned or outside its native domain".to_owned());
+    }
+    let block_index = claim.offset >> block_variables;
+    let mut point = claim.point.clone();
+    point.extend((0..dimension - block_variables).map(|bit| {
+        if (block_index >> bit) & 1 == 1 {
+            Fp2::ONE
+        } else {
+            Fp2::ZERO
+        }
+    }));
+    Ok(point)
 }
 
 /// Exact C6PA2 split of the four production model/embed chains. The primary
@@ -2374,6 +2560,7 @@ pub struct C61ProductionJointCommittedFourChainPrepared {
     pub joint: C61ProductionJointNativeProverBodiesFixed,
     pub model_coefficient_digest: [u8; 32],
     pub embedding_coefficient_digest: [u8; 32],
+    pub claim_schedule_digest: [u8; 32],
     pub peak_loaded_coefficient_bytes: u64,
 }
 
@@ -2747,8 +2934,7 @@ pub fn prove_c61_authenticated_whir_p3_production_four_committed_chains_in_attem
     load_coefficients: impl FnMut(C61NativeComponent, u8) -> Result<Vec<Goldilocks>, String>,
     expected_model_coefficient_digest: [u8; 32],
     expected_embedding_coefficient_digest: [u8; 32],
-    model_claims: [&[crate::batch::BlockClaim]; 2],
-    embedding_claims: [&[crate::batch::BlockClaim]; 2],
+    claim_schedule: C61ProductionResponseClaimSchedule<'_>,
     model_targets: [Vec<ProverAuthed>; 2],
     embedding_targets: [Vec<ProverAuthed>; 2],
     spill_root: &Path,
@@ -2762,8 +2948,7 @@ pub fn prove_c61_authenticated_whir_p3_production_four_committed_chains_in_attem
         load_coefficients,
         expected_model_coefficient_digest,
         expected_embedding_coefficient_digest,
-        model_claims,
-        embedding_claims,
+        claim_schedule,
         model_targets,
         embedding_targets,
         spill_root,
@@ -2785,6 +2970,7 @@ pub fn prove_c61_authenticated_whir_p3_production_four_committed_chains_in_attem
         chains,
         model_coefficient_digest: prepared.model_coefficient_digest,
         embedding_coefficient_digest: prepared.embedding_coefficient_digest,
+        claim_schedule_digest: prepared.claim_schedule_digest,
         peak_loaded_coefficient_bytes: prepared.peak_loaded_coefficient_bytes,
     })
 }
@@ -2798,8 +2984,7 @@ pub fn prepare_c61_authenticated_whir_p3_production_joint_four_chains_in_attempt
     load_coefficients: impl FnMut(C61NativeComponent, u8) -> Result<Vec<Goldilocks>, String>,
     expected_model_coefficient_digest: [u8; 32],
     expected_embedding_coefficient_digest: [u8; 32],
-    model_claims: [&[crate::batch::BlockClaim]; 2],
-    embedding_claims: [&[crate::batch::BlockClaim]; 2],
+    claim_schedule: C61ProductionResponseClaimSchedule<'_>,
     model_targets: [Vec<ProverAuthed>; 2],
     embedding_targets: [Vec<ProverAuthed>; 2],
     profile: &C6CanonicalTargetProfile,
@@ -2815,8 +3000,7 @@ pub fn prepare_c61_authenticated_whir_p3_production_joint_four_chains_in_attempt
         load_coefficients,
         expected_model_coefficient_digest,
         expected_embedding_coefficient_digest,
-        model_claims,
-        embedding_claims,
+        claim_schedule,
         model_targets,
         embedding_targets,
         spill_root,
@@ -2839,6 +3023,7 @@ pub fn prepare_c61_authenticated_whir_p3_production_joint_four_chains_in_attempt
         joint,
         model_coefficient_digest: prepared.model_coefficient_digest,
         embedding_coefficient_digest: prepared.embedding_coefficient_digest,
+        claim_schedule_digest: prepared.claim_schedule_digest,
         peak_loaded_coefficient_bytes: prepared.peak_loaded_coefficient_bytes,
     })
 }
@@ -2851,8 +3036,7 @@ pub fn prepare_c61_authenticated_whir_p3_production_joint_four_chains_private_en
     load_coefficients: impl FnMut(C61NativeComponent, u8) -> Result<Vec<Goldilocks>, String>,
     expected_model_coefficient_digest: [u8; 32],
     expected_embedding_coefficient_digest: [u8; 32],
-    model_claims: [&[crate::batch::BlockClaim]; 2],
-    embedding_claims: [&[crate::batch::BlockClaim]; 2],
+    claim_schedule: C61ProductionResponseClaimSchedule<'_>,
     model_targets: [Vec<ProverAuthed>; 2],
     embedding_targets: [Vec<ProverAuthed>; 2],
     profile: &C6CanonicalTargetProfile,
@@ -2884,8 +3068,7 @@ pub fn prepare_c61_authenticated_whir_p3_production_joint_four_chains_private_en
         load_coefficients,
         expected_model_coefficient_digest,
         expected_embedding_coefficient_digest,
-        model_claims,
-        embedding_claims,
+        claim_schedule,
         model_targets,
         embedding_targets,
         spill_root,
@@ -2909,6 +3092,7 @@ pub fn prepare_c61_authenticated_whir_p3_production_joint_four_chains_private_en
         joint,
         model_coefficient_digest: prepared.model_coefficient_digest,
         embedding_coefficient_digest: prepared.embedding_coefficient_digest,
+        claim_schedule_digest: prepared.claim_schedule_digest,
         peak_loaded_coefficient_bytes: prepared.peak_loaded_coefficient_bytes,
     })
 }
@@ -2918,8 +3102,7 @@ fn prepare_c61_authenticated_whir_p3_production_four_committed_chain_bodies(
     mut load_coefficients: impl FnMut(C61NativeComponent, u8) -> Result<Vec<Goldilocks>, String>,
     expected_model_coefficient_digest: [u8; 32],
     expected_embedding_coefficient_digest: [u8; 32],
-    model_claims: [&[crate::batch::BlockClaim]; 2],
-    embedding_claims: [&[crate::batch::BlockClaim]; 2],
+    claim_schedule: C61ProductionResponseClaimSchedule<'_>,
     model_targets: [Vec<ProverAuthed>; 2],
     embedding_targets: [Vec<ProverAuthed>; 2],
     spill_root: &Path,
@@ -2939,8 +3122,8 @@ fn prepare_c61_authenticated_whir_p3_production_four_committed_chain_bodies(
         || admission.available_host_bytes < C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_HOST_BYTES
         || admission.available_spill_bytes < C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES
         || correlations.iter().any(|stream| !stream.uses_pooled_pcg())
-        || model_claims.iter().any(|claims| claims.len() != 96)
-        || embedding_claims.iter().any(|claims| claims.len() != 6)
+        || claim_schedule.model().len() != C61_MODEL_OPENING_TARGETS
+        || claim_schedule.embedding().len() != C61_EMBEDDING_OPENING_TARGETS
         || model_targets.iter().any(|targets| targets.len() != 96)
         || embedding_targets.iter().any(|targets| targets.len() != 6)
         || !spill_root.is_dir()
@@ -2984,14 +3167,12 @@ fn prepare_c61_authenticated_whir_p3_production_four_committed_chain_bodies(
                 .checked_mul(std::mem::size_of::<Goldilocks>() as u64)
                 .ok_or_else(|| "C6SPR11 coefficient byte census overflows".to_owned())?,
         );
-        let (claims, targets, parameter_digest) = match component {
+        let (targets, parameter_digest) = match component {
             C61NativeComponent::Model => (
-                model_claims[usize::from(repetition)],
                 model_targets.next().expect("two model target owners"),
                 c61_authenticated_p3_parameter_digest(28)?,
             ),
             C61NativeComponent::Embedding => (
-                embedding_claims[usize::from(repetition)],
                 embedding_targets.next().expect("two embedding target owners"),
                 c61_authenticated_p3_parameter_digest(27)?,
             ),
@@ -3001,7 +3182,7 @@ fn prepare_c61_authenticated_whir_p3_production_four_committed_chain_bodies(
         let child = spill_root.join(format!("{:?}-{repetition}", component).to_ascii_lowercase());
         bodies.push(prepare_c61_authenticated_whir_p3_production_committed_chain_with_transcript(
             coefficients,
-            claims,
+            claim_schedule.claims(component)?,
             targets,
             parameter_digest,
             &child,
@@ -3020,6 +3201,7 @@ fn prepare_c61_authenticated_whir_p3_production_four_committed_chain_bodies(
         bodies,
         model_coefficient_digest: expected_model_coefficient_digest,
         embedding_coefficient_digest: expected_embedding_coefficient_digest,
+        claim_schedule_digest: claim_schedule.digest(),
         peak_loaded_coefficient_bytes,
     })
 }
@@ -8985,7 +9167,20 @@ mod tests {
         let mut backend = Backend::cpu();
         let mut correlations =
             [CorrelationStream::new([0xA1; 32]), CorrelationStream::new([0xA2; 32])];
-        let claims: [&[crate::batch::BlockClaim]; 2] = [&[], &[]];
+        let model_claims = (0..C61_MODEL_OPENING_TARGETS)
+            .map(|index| crate::batch::BlockClaim {
+                offset: index * 2,
+                point: vec![Fp2::from_base(Fp::new(index as u64 + 1))],
+            })
+            .collect::<Vec<_>>();
+        let embedding_claims = (0..C61_EMBEDDING_OPENING_TARGETS)
+            .map(|index| crate::batch::BlockClaim {
+                offset: index * 2,
+                point: vec![Fp2::from_base(Fp::new(index as u64 + 101))],
+            })
+            .collect::<Vec<_>>();
+        let claims =
+            C61ProductionResponseClaimSchedule::new(&model_claims, &embedding_claims).unwrap();
         let loaded = std::cell::Cell::new(false);
         let error = prove_c61_authenticated_whir_p3_production_four_committed_chains_in_attempt(
             |_, _| {
@@ -8994,7 +9189,6 @@ mod tests {
             },
             [1; 32],
             [2; 32],
-            claims,
             claims,
             [Vec::new(), Vec::new()],
             [Vec::new(), Vec::new()],
@@ -9029,7 +9223,6 @@ mod tests {
                 [1; 32],
                 [2; 32],
                 claims,
-                claims,
                 [Vec::new(), Vec::new()],
                 [Vec::new(), Vec::new()],
                 &C6CanonicalTargetProfile {
@@ -9061,6 +9254,92 @@ mod tests {
             .expect("joint four-chain preflight must reject CPU/mock state");
         assert!(joint_error.contains("preflight failed before source load"));
         assert!(!loaded.get());
+    }
+
+    #[test]
+    fn response_claim_schedule_binds_exact_order_census_and_alignment() {
+        let model_claims = (0..C61_MODEL_OPENING_TARGETS)
+            .map(|index| crate::batch::BlockClaim {
+                offset: index * 2,
+                point: vec![Fp2::from_base(Fp::new(index as u64 + 1))],
+            })
+            .collect::<Vec<_>>();
+        let embedding_claims = (0..C61_EMBEDDING_OPENING_TARGETS)
+            .map(|index| crate::batch::BlockClaim {
+                offset: index * 2,
+                point: vec![Fp2::from_base(Fp::new(index as u64 + 101))],
+            })
+            .collect::<Vec<_>>();
+        let schedule =
+            C61ProductionResponseClaimSchedule::new(&model_claims, &embedding_claims).unwrap();
+        assert_ne!(schedule.digest(), [0; 32]);
+
+        let mut reordered = model_claims.clone();
+        reordered.swap(0, 1);
+        let reordered_schedule =
+            C61ProductionResponseClaimSchedule::new(&reordered, &embedding_claims).unwrap();
+        assert_ne!(schedule.digest(), reordered_schedule.digest());
+        assert!(C61ProductionResponseClaimSchedule::new(
+            &model_claims[..C61_MODEL_OPENING_TARGETS - 1],
+            &embedding_claims,
+        )
+        .is_err());
+
+        let mut unaligned = model_claims.clone();
+        unaligned[0].point.push(Fp2::ONE);
+        unaligned[0].offset = 2;
+        assert!(C61ProductionResponseClaimSchedule::new(&unaligned, &embedding_claims).is_err());
+    }
+
+    #[test]
+    fn paired_native_statements_must_bind_the_same_response_claims() {
+        let model_claims = (0..C61_MODEL_OPENING_TARGETS)
+            .map(|index| crate::batch::BlockClaim {
+                offset: index * 2,
+                point: vec![Fp2::from_base(Fp::new(index as u64 + 1))],
+            })
+            .collect::<Vec<_>>();
+        let descriptor = |root| C61NativeCommitmentDescriptor {
+            parameter_digest: c61_authenticated_p3_parameter_digest(
+                usize::from(C61_MODEL_POLYNOMIAL_LOG2),
+            )
+            .unwrap(),
+            commitment_root: root,
+            polynomial_domain_log2: C61_MODEL_POLYNOMIAL_LOG2,
+        };
+        let primary = build_c61_production_model_embedding_public_statement(
+            C61NativeChainId { component: C61NativeComponent::Model, repetition: 0 },
+            descriptor([0x31; 32]),
+            &model_claims,
+        )
+        .unwrap();
+        let secondary = build_c61_production_model_embedding_public_statement(
+            C61NativeChainId { component: C61NativeComponent::Model, repetition: 1 },
+            descriptor([0x32; 32]),
+            &model_claims,
+        )
+        .unwrap();
+        validate_same_response_claim_statement(
+            &primary,
+            &secondary,
+            C61NativeComponent::Model,
+        )
+        .unwrap();
+
+        let mut reordered = model_claims.clone();
+        reordered.swap(0, 1);
+        let mismatched = build_c61_production_model_embedding_public_statement(
+            C61NativeChainId { component: C61NativeComponent::Model, repetition: 1 },
+            descriptor([0x32; 32]),
+            &reordered,
+        )
+        .unwrap();
+        assert!(validate_same_response_claim_statement(
+            &primary,
+            &mismatched,
+            C61NativeComponent::Model,
+        )
+        .is_err());
     }
 
     #[test]

@@ -8,28 +8,22 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.99 next.
+This capsule is authoritative; read design §§0.60--1.00 next.
 
-- **Milestone/evidence.** C6ICT5 study is complete: one response owner supplies
-  the ordered 96+6 claims; four WHIR chains bind their exact global points and
-  paired plaintexts; C6NBR2 binds the compiled tape-1 functional. C6HUB2 owns
-  only obsolete Ligero-internal vectors. Existing focused checks remain PCS
-  **16/0/0**, campaign **13/0/0**, public-instance **1/0/0**; the exact claim
-  bridge and NBR2 reruns are **1/0/0 + 3/0/0**. No production, full-chain,
-  timing or hardware credit exists.
+- **Milestone/evidence.** C6ICT5 study is complete: four WHIR chains bind the
+  response-owned 96+6 claims and C6NBR2 binds their tape-1 functional;
+  C6HUB2 is obsolete. Focused PCS/campaign/public-instance checks remain
+  **16/0/0 + 13/0/0 + 1/0/0**. No full-chain, timing or hardware credit exists.
 - **Active gate.** `C6ICT5_NATIVE_HIDDEN_U_ELIMINATION_IMPLEMENTATION` under
-  owner GO in §0.87: one four-cohort/56-slot profile, 57 C6NBR2 relations and
-  no hidden owner, participant, source-binding field or codec component. No
-  compatibility adapter, inactive branch or second witness path is allowed.
-  The shared claim schedule/direct coefficient-owner checkpoint is complete;
-  its focused PCS/owner guards are **2/0/0 + 1/0/0**. The distinct four-root
-  PCS profile/coordinator guard is **1/0/0**; the hidden-free live/verifier
-  source guard is **1/0/0**. Link/join and blind/envelope/outer/campaign are
-  **1+1+1+2+3+13** green tests. Budget v29 self-checks wire/soundness; Lean
-  builds **3,267 jobs** and audits nine new targets. All remain screens only.
-- **Resume.** Close exact live-to-disk runner, mutations, full workspace and
-  campaign preflight in small checkpoints.
-  Pod admission follows only after those local gates are green.
+  owner GO: four cohorts/56 slots, 57 relations and no hidden field, adapter
+  or second witness path. The response now retains its exact cache trace,
+  paired targets and compact consumed-domain plan; persisted append replay
+  reads the successor cache and reuses tags/masks without advancing counters.
+  Its focused guards are **3/0/0** and the full feature check is green. Budget
+  v29 and Lean **3,267 jobs/nine audits** remain green screens.
+- **Resume.** Close the exact prover call graph, disk semantic verifier,
+  mutations, workspace and campaign preflight in small checkpoints. Pod only
+  after every local gate is green.
 - **Screens.** Study-only certificate **17,079,931 B**, setup
   **148,738,118 B**, setup+first **165,818,049 B**, state
   **2,277,715,552 B**, soundness **102.5878333013 bits/cert** and
@@ -37,6 +31,17 @@ This capsule is authoritative; read design §§0.60--0.99 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-16 — Exact cache append replay ownership lands.** The response
+  owner now retains its provider cache trace, paired authenticated fold targets
+  and a compact per-layer map of the K/V source domains consumed by that same
+  execution. The persisted materializer reads the exact appended plaintexts
+  from the committed successor cache, replays their existing tags and masks,
+  and rejects row, layer, base-field, backend, census, counter or schedule
+  drift. The native blind prover accepts only this typed non-serializable owner,
+  not detached source/mask arrays. Focused guards are **3/0/0** and the complete
+  feature check is green. The complete call graph and disk verifier remain
+  open; no pod or credit.
 
 - **2026-08-16 — Native challenge bundle owner lands.** One linear campaign
   session now owns seven distinct client-private entropy seeds and broker

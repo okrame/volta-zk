@@ -351,6 +351,7 @@ pub struct C6CacheFoldTargetInlineProver {
     schedule: C6CacheFoldTargetPublicSchedule,
     expected_identity: Option<C6CacheFoldTraceIdentity>,
     corrections: Vec<[Fp2; C6_CACHE_FOLD_TARGET_TAPES]>,
+    targets: Vec<(C6CacheFoldKind, [ProverAuthed; C6_CACHE_FOLD_TARGET_TAPES])>,
 }
 
 impl C6CacheFoldTargetInlineProver {
@@ -388,6 +389,7 @@ impl C6CacheFoldTargetInlineProver {
         Ok(Self {
             statement_digest,
             corrections: Vec::with_capacity(schedule.kinds.len()),
+            targets: Vec::with_capacity(schedule.kinds.len()),
             schedule,
             expected_identity,
         })
@@ -411,6 +413,7 @@ impl C6CacheFoldTargetInlineProver {
         }
         let correction = [target[0].x - base_mask[0], target[1].x - base_mask[1]];
         self.corrections.push(correction);
+        self.targets.push((kind, target));
         transcript.append_fp2s(C6_CACHE_FOLD_TARGET_SLOT_LABEL, &correction);
         Ok(target)
     }
@@ -460,6 +463,67 @@ impl C6CacheFoldTargetInlineProver {
             corrections: self.corrections,
         };
         Ok((frame, fixed))
+    }
+
+    /// Production continuation which retains the exact paired authenticated
+    /// targets already accepted online. No target can be attached after the
+    /// correction frame or runtime identity is fixed.
+    pub fn finish_before_successor_root_with_owner(
+        self,
+        identity: C6CacheFoldTraceIdentity,
+        transcript: &mut Transcript,
+    ) -> Result<
+        (C6CacheFoldTargetCorrectionFrame, C6CacheFoldTargetProverOwner),
+        C6CacheFoldTraceError,
+    > {
+        if self.corrections.len() != self.schedule.kinds.len()
+            || self.targets.len() != self.schedule.kinds.len()
+            || self
+                .targets
+                .iter()
+                .zip(&self.schedule.kinds)
+                .any(|((kind, _), expected)| kind != expected)
+        {
+            return Err(C6CacheFoldTraceError::new(
+                "C6FT1 inline prover did not exhaust ordered live targets",
+            ));
+        }
+        charge_target_padding(self.corrections.len(), transcript);
+        validate_online_runtime_identity(
+            identity,
+            self.expected_identity,
+            self.schedule.kinds.len(),
+        )?;
+        let frame = C6CacheFoldTargetCorrectionFrame {
+            statement_digest: self.statement_digest,
+            identity,
+            corrections: self.corrections.clone(),
+        };
+        let fixed = C6CacheFoldTargetFixedCorrections {
+            identity,
+            kinds: self.schedule.kinds,
+            corrections: self.corrections,
+        };
+        let targets = C6CacheFoldPairedProverTargets { identity, terms: self.targets };
+        Ok((frame, C6CacheFoldTargetProverOwner { targets, fixed }))
+    }
+}
+
+/// Linear provider owner retained from the response-local C6FT1 stream and
+/// consumed by the later persistent-cache blind proof.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6CacheFoldTargetProverOwner {
+    targets: C6CacheFoldPairedProverTargets,
+    fixed: C6CacheFoldTargetFixedCorrections,
+}
+
+impl C6CacheFoldTargetProverOwner {
+    pub fn targets(&self) -> &C6CacheFoldPairedProverTargets {
+        &self.targets
+    }
+
+    pub fn fixed(&self) -> &C6CacheFoldTargetFixedCorrections {
+        &self.fixed
     }
 }
 
@@ -1257,6 +1321,94 @@ const C6_CACHE_FOLD_SOURCE_COLUMNS: usize = C6_CACHE_HEADS * C6_CACHE_HEAD_WIDTH
 pub struct C6CacheFoldDirectSourceSegment {
     pub base_domain: u64,
     pub rows: usize,
+}
+
+/// Compact response-owned map from cache layers to the already consumed
+/// row-authentication domains. It contains no plaintext, tag, key or Delta.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6CacheFoldAppendSourceLayer {
+    model_layer: u16,
+    key_segments: Vec<C6CacheFoldDirectSourceSegment>,
+    value_segments: Vec<C6CacheFoldDirectSourceSegment>,
+}
+
+impl C6CacheFoldAppendSourceLayer {
+    pub fn new(
+        model_layer: u16,
+        key_segments: Vec<C6CacheFoldDirectSourceSegment>,
+        value_segments: Vec<C6CacheFoldDirectSourceSegment>,
+    ) -> Result<Self, C6CacheFoldTraceError> {
+        validate_online_layer_segments(model_layer, &key_segments, &value_segments)?;
+        Ok(Self { model_layer, key_segments, value_segments })
+    }
+
+    pub fn model_layer(&self) -> u16 {
+        self.model_layer
+    }
+
+    pub fn segments(&self, kind: C6CacheFoldKind) -> &[C6CacheFoldDirectSourceSegment] {
+        match kind {
+            C6CacheFoldKind::KeyRows => &self.key_segments,
+            C6CacheFoldKind::ValueColumns => &self.value_segments,
+        }
+    }
+
+    pub fn row_count(&self) -> Result<usize, C6CacheFoldTraceError> {
+        let key_rows = source_segment_rows(&self.key_segments)?;
+        let value_rows = source_segment_rows(&self.value_segments)?;
+        if key_rows != value_rows {
+            return Err(C6CacheFoldTraceError::new(
+                "C6 cache append source layer has unequal K/V row counts",
+            ));
+        }
+        Ok(key_rows)
+    }
+
+    pub fn source_domain(
+        &self,
+        kind: C6CacheFoldKind,
+        row: usize,
+    ) -> Result<u64, C6CacheFoldTraceError> {
+        let mut first_row = 0usize;
+        for segment in self.segments(kind) {
+            let end = first_row.checked_add(segment.rows).ok_or_else(|| {
+                C6CacheFoldTraceError::new("C6 cache append source row range overflows")
+            })?;
+            if row < end {
+                return checked_source_domain(segment.base_domain, row - first_row);
+            }
+            first_row = end;
+        }
+        Err(C6CacheFoldTraceError::new("C6 cache append source row is outside the response"))
+    }
+}
+
+/// Canonically ordered append-source plan for one completed response. Later
+/// cache proving may replay these consumed domains but cannot allocate new
+/// response correlations.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6CacheFoldAppendSourcePlan {
+    layers: Vec<C6CacheFoldAppendSourceLayer>,
+}
+
+impl C6CacheFoldAppendSourcePlan {
+    pub fn new(layers: Vec<C6CacheFoldAppendSourceLayer>) -> Result<Self, C6CacheFoldTraceError> {
+        if layers.len() != usize::from(C6_CACHE_MODEL_LAYERS)
+            || layers
+                .iter()
+                .enumerate()
+                .any(|(index, layer)| usize::from(layer.model_layer) != index)
+        {
+            return Err(C6CacheFoldTraceError::new(
+                "C6 cache append source plan has a noncanonical layer census",
+            ));
+        }
+        Ok(Self { layers })
+    }
+
+    pub fn layers(&self) -> &[C6CacheFoldAppendSourceLayer] {
+        &self.layers
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -4002,6 +4154,57 @@ mod tests {
         let mut bad_identity = capture(true);
         bad_identity.identity.instance_digest[0] ^= 1;
         assert!(compile_c6_cache_fold_scalar_batch(&bad_identity, scalar_root).is_err());
+    }
+
+    #[test]
+    fn append_source_plan_maps_exact_segment_rows_and_rejects_drift() {
+        let layers = (0..C6_CACHE_MODEL_LAYERS)
+            .map(|layer| {
+                C6CacheFoldAppendSourceLayer::new(
+                    layer,
+                    vec![
+                        C6CacheFoldDirectSourceSegment {
+                            base_domain: 0x1000 + u64::from(layer) * 0x100,
+                            rows: 2,
+                        },
+                        C6CacheFoldDirectSourceSegment {
+                            base_domain: 0x2000 + u64::from(layer) * 0x100,
+                            rows: 3,
+                        },
+                    ],
+                    vec![
+                        C6CacheFoldDirectSourceSegment {
+                            base_domain: 0x3000 + u64::from(layer) * 0x100,
+                            rows: 2,
+                        },
+                        C6CacheFoldDirectSourceSegment {
+                            base_domain: 0x4000 + u64::from(layer) * 0x100,
+                            rows: 3,
+                        },
+                    ],
+                )
+                .unwrap()
+            })
+            .collect::<Vec<_>>();
+        let plan = C6CacheFoldAppendSourcePlan::new(layers.clone()).unwrap();
+        assert_eq!(plan.layers()[7].row_count().unwrap(), 5);
+        assert_eq!(
+            plan.layers()[7].source_domain(C6CacheFoldKind::KeyRows, 1).unwrap(),
+            0x1000 + 7 * 0x100 + 1
+        );
+        assert_eq!(
+            plan.layers()[7].source_domain(C6CacheFoldKind::KeyRows, 2).unwrap(),
+            0x2000 + 7 * 0x100
+        );
+        assert_eq!(
+            plan.layers()[7].source_domain(C6CacheFoldKind::ValueColumns, 4).unwrap(),
+            0x4000 + 7 * 0x100 + 2
+        );
+        assert!(plan.layers()[7].source_domain(C6CacheFoldKind::KeyRows, 5).is_err());
+        assert!(C6CacheFoldAppendSourcePlan::new(layers[..11].to_vec()).is_err());
+        let mut reordered = layers;
+        reordered.swap(0, 1);
+        assert!(C6CacheFoldAppendSourcePlan::new(reordered).is_err());
     }
 
     #[test]

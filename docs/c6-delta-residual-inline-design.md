@@ -5000,6 +5000,30 @@ strict disk semantic continuation, mutations and record harness remain
 mandatory before local preflight or pod admission. No benchmark credit is
 promoted.
 
+### 1.00 C6ICT5 exact cache append replay checkpoint
+
+The production response owner now retains three inseparable cache artifacts
+from its original execution: the provider trace snapshot, the exact paired
+authenticated fold targets, and a compact layer/K/V map of the direct-source
+domains already consumed. The map contains no plaintext, tag, mask, key or
+Delta and is independent of the model's token values.
+
+After the successor cache is durably committed, one provider-only
+materializer reads exactly layers × appended rows × active width from that
+semantic cache. It maps every cell back to its original response domain,
+replays the already-consumed subfield mask and lazily expanded tag, and
+reconstructs the trace-bearing authenticated cell. It requires real pooled
+PCG and proves counter and public-schedule neutrality before returning. Layer
+order, row coverage, base-field embedding and source census fail closed.
+
+The C6.1 blind prover now accepts this non-serializable typed owner instead of
+detached append-source and mask arrays. This creates no correlation, proof
+field or wire byte and introduces no second witness path. Focused source-map,
+response-ownership and native-join guards are **3/0/0**; the complete
+CUDA/trace/authenticated-reference feature check is green. Exact call-graph
+assembly, disk semantic verification, mutations and record preflight remain
+open, with no benchmark or pod credit.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

@@ -47,8 +47,9 @@ use crate::block_proof::{
 };
 #[cfg(feature = "c6-trace")]
 use crate::c6_cache_fold::{
-    C6CacheFoldDirectSourceSegment, C6CacheFoldOnlineLayerMetrics, C6CacheFoldOnlineLayerProver,
-    C6CacheFoldOnlineLayerVerifier, C6CacheFoldTargetInlineProver, C6CacheFoldTargetInlineVerifier,
+    C6CacheFoldAppendSourceLayer, C6CacheFoldDirectSourceSegment, C6CacheFoldOnlineLayerMetrics,
+    C6CacheFoldOnlineLayerProver, C6CacheFoldOnlineLayerVerifier, C6CacheFoldTargetInlineProver,
+    C6CacheFoldTargetInlineVerifier,
 };
 #[cfg(feature = "c6-trace")]
 use crate::c6_source::{C6SourceScheduleProverFollower, C6SourceScheduleVerifierFollower};
@@ -127,6 +128,7 @@ enum ThinnedProverCacheMode<'a, 'b> {
         schedule_follower: &'a mut C6SourceScheduleProverFollower,
         target_builder: &'b mut C6CacheFoldTargetInlineProver,
         metrics: C6CacheFoldOnlineLayerMetrics,
+        append_source_layers: Vec<C6CacheFoldAppendSourceLayer>,
     },
 }
 
@@ -663,12 +665,16 @@ pub(crate) fn prove_layers_thinned_scheduled_c6(
     tx: &mut Transcript,
     bank: &mut TableBankP,
     backend: Option<&mut Backend>,
-) -> Result<(ThinnedScheduledP, C6CacheFoldOnlineLayerMetrics), FfnScheduleError> {
+) -> Result<
+    (ThinnedScheduledP, C6CacheFoldOnlineLayerMetrics, Vec<C6CacheFoldAppendSourceLayer>),
+    FfnScheduleError,
+> {
     let mut cache_mode = ThinnedProverCacheMode::C6 {
         secondary,
         schedule_follower,
         target_builder,
         metrics: C6CacheFoldOnlineLayerMetrics::default(),
+        append_source_layers: Vec::with_capacity(L),
     };
     let scheduled = prove_layers_thinned_scheduled_impl(
         model,
@@ -683,10 +689,10 @@ pub(crate) fn prove_layers_thinned_scheduled_c6(
         backend,
         &mut cache_mode,
     )?;
-    let ThinnedProverCacheMode::C6 { metrics, .. } = cache_mode else {
+    let ThinnedProverCacheMode::C6 { metrics, append_source_layers, .. } = cache_mode else {
         unreachable!("C6 scheduled provider mode changed during execution")
     };
-    Ok((scheduled, metrics))
+    Ok((scheduled, metrics, append_source_layers))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -928,24 +934,31 @@ fn prove_layers_thinned_scheduled_impl(
                     schedule_follower,
                     target_builder,
                     metrics,
+                    append_source_layers,
                 } => {
                     schedule_follower.sync_primary(cx.stream, secondary).map_err(|_| {
                         FfnScheduleError::Public("C6 provider secondary schedule prefix diverged")
                     })?;
-                    let key_sources = k_segments
+                    let key_sources: Vec<C6CacheFoldDirectSourceSegment> = k_segments
                         .iter()
                         .map(|segment| C6CacheFoldDirectSourceSegment {
                             base_domain: segment.dom,
                             rows: segment.rows,
                         })
                         .collect();
-                    let value_sources = v_segments
+                    let value_sources: Vec<C6CacheFoldDirectSourceSegment> = v_segments
                         .iter()
                         .map(|segment| C6CacheFoldDirectSourceSegment {
                             base_domain: segment.dom,
                             rows: segment.rows,
                         })
                         .collect();
+                    let append_source_layer = C6CacheFoldAppendSourceLayer::new(
+                        layer as u16,
+                        key_sources.clone(),
+                        value_sources.clone(),
+                    )
+                    .map_err(|_| FfnScheduleError::Public("invalid C6 append source plan"))?;
                     let mut online = C6CacheFoldOnlineLayerProver::new(
                         layer as u16,
                         key_sources,
@@ -967,6 +980,7 @@ fn prove_layers_thinned_scheduled_impl(
                         Some(&model.layers[layer].1),
                     );
                     add_c6_online_metrics(metrics, online.metrics());
+                    append_source_layers.push(append_source_layer);
                     result
                 }
             };

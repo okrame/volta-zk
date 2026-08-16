@@ -25,11 +25,11 @@ use volta_mac::{
 
 use crate::block_proof::layer_dom_base;
 use crate::c6_cache_fold::{
-    begin_c6_cache_fold_trace, C6CacheFoldKind, C6CacheFoldParty, C6CacheFoldTargetCorrectionFrame,
-    C6CacheFoldTargetFixedCorrections, C6CacheFoldTargetInlineProver,
-    C6CacheFoldTargetInlineVerifier, C6CacheFoldTargetPublicCorrectionFrame,
-    C6CacheFoldTargetPublicSchedule, C6CacheFoldTraceSnapshot,
-    C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES,
+    begin_c6_cache_fold_trace, C6CacheFoldAppendSourcePlan, C6CacheFoldKind, C6CacheFoldParty,
+    C6CacheFoldTargetCorrectionFrame, C6CacheFoldTargetFixedCorrections,
+    C6CacheFoldTargetInlineProver, C6CacheFoldTargetInlineVerifier, C6CacheFoldTargetProverOwner,
+    C6CacheFoldTargetPublicCorrectionFrame, C6CacheFoldTargetPublicSchedule,
+    C6CacheFoldTraceSnapshot, C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES,
 };
 use crate::c6::C6PairedDeltaResidual;
 use crate::c6_census::{C6_T1_TOTAL_PRODUCT_TRIPLES, C6_T1_ZERO_CLOSURES};
@@ -356,6 +356,9 @@ pub struct C6T1ProductionResponseProviderPending {
     installed: C6T1InstalledRoleOwner,
     cache_target_frame: C6CacheFoldTargetCorrectionFrame,
     cache_target_fixed: C6CacheFoldTargetFixedCorrections,
+    cache_snapshot: C6CacheFoldTraceSnapshot,
+    cache_target_owner: C6CacheFoldTargetProverOwner,
+    cache_append_sources: C6CacheFoldAppendSourcePlan,
     cache_metrics: crate::c6_cache_fold::C6CacheFoldOnlineLayerMetrics,
 }
 
@@ -606,6 +609,9 @@ pub struct C6T1ProductionResponseOwner {
     verifier: C6T1InstalledRoleOwner,
     cache_target_frame: C6CacheFoldTargetCorrectionFrame,
     cache_target_fixed: C6CacheFoldTargetFixedCorrections,
+    cache_snapshot: C6CacheFoldTraceSnapshot,
+    cache_target_owner: C6CacheFoldTargetProverOwner,
+    cache_append_sources: C6CacheFoldAppendSourcePlan,
     provider_cache_metrics: crate::c6_cache_fold::C6CacheFoldOnlineLayerMetrics,
     verifier_cache_metrics: crate::c6_cache_fold::C6CacheFoldOnlineLayerMetrics,
 }
@@ -670,6 +676,18 @@ impl C6T1ProductionResponseOwner {
 
     pub fn cache_target_fixed(&self) -> &C6CacheFoldTargetFixedCorrections {
         &self.cache_target_fixed
+    }
+
+    pub fn cache_snapshot(&self) -> &C6CacheFoldTraceSnapshot {
+        &self.cache_snapshot
+    }
+
+    pub fn cache_target_owner(&self) -> &C6CacheFoldTargetProverOwner {
+        &self.cache_target_owner
+    }
+
+    pub fn cache_append_sources(&self) -> &C6CacheFoldAppendSourcePlan {
+        &self.cache_append_sources
     }
 
     pub fn zero_root_count(&self) -> usize {
@@ -1016,6 +1034,9 @@ pub fn prove_c6_t1_production_response_provider(
         product_messages,
         cache_target_frame,
         cache_target_fixed,
+        cache_snapshot,
+        cache_target_owner,
+        cache_append_sources,
         source_schedule,
         coordinates,
         provider_runtime,
@@ -1039,7 +1060,7 @@ pub fn prove_c6_t1_production_response_provider(
         .map_err(|error| error.to_string())?;
         let cache_trace = begin_c6_cache_fold_trace(C6CacheFoldParty::Prover)
             .map_err(|error| error.to_string())?;
-        let (proof, output, products, zero_roots, metrics) =
+        let (proof, output, products, zero_roots, metrics, append_sources) =
             prove_response_private_logits_c6_cache_inline(
                 model,
                 prefill,
@@ -1050,10 +1071,11 @@ pub fn prove_c6_t1_production_response_provider(
                 &mut target_builder,
                 provider_transcript,
             );
-        let cache_trace = cache_trace.finish().map_err(|error| error.to_string())?;
-        let (target_frame, target_fixed) = target_builder
-            .finish_before_successor_root_with_identity(cache_trace.identity, provider_transcript)
+        let cache_snapshot = cache_trace.finish().map_err(|error| error.to_string())?;
+        let (target_frame, target_owner) = target_builder
+            .finish_before_successor_root_with_owner(cache_snapshot.identity, provider_transcript)
             .map_err(|error| error.to_string())?;
+        let target_fixed = target_owner.fixed().clone();
         let mut doms = Doms::new(layer_dom_base(255));
         let chi = provider_transcript.challenge_fp2();
         let product_domain = doms.take(1);
@@ -1091,6 +1113,9 @@ pub fn prove_c6_t1_production_response_provider(
             product_messages,
             target_frame,
             target_fixed,
+            cache_snapshot,
+            target_owner,
+            append_sources,
             schedule,
             [primary_coordinate, secondary_coordinate],
             runtime,
@@ -1147,6 +1172,9 @@ pub fn prove_c6_t1_production_response_provider(
         },
         cache_target_frame,
         cache_target_fixed,
+        cache_snapshot,
+        cache_target_owner,
+        cache_append_sources,
         cache_metrics: provider_cache_metrics,
     })
 }
@@ -1188,6 +1216,9 @@ pub fn build_c6_t1_production_response_owner(
         installed: provider,
         cache_target_frame,
         cache_target_fixed,
+        cache_snapshot,
+        cache_target_owner,
+        cache_append_sources,
         cache_metrics: provider_cache_metrics,
     } = prove_c6_t1_production_response_provider(
         model,
@@ -1260,10 +1291,16 @@ pub fn build_c6_t1_production_response_owner(
         source_schedule: _,
         source_manifest: _,
         installed: verifier,
-        cache_snapshot: _,
         cache_target_fixed: _,
+        cache_snapshot: verifier_cache_snapshot,
         cache_metrics: verifier_cache_metrics,
     } = verifier;
+    if verifier_cache_snapshot.identity != cache_snapshot.identity
+        || verifier_cache_snapshot.records != cache_snapshot.records
+        || verifier_cache_snapshot.factors != cache_snapshot.factors
+    {
+        return Err("C6ICT5 provider/verifier cache trace schedule diverged".to_owned());
+    }
     Ok(C6T1ProductionResponseOwner {
         model_proof,
         prover_output,
@@ -1281,6 +1318,9 @@ pub fn build_c6_t1_production_response_owner(
         verifier,
         cache_target_frame,
         cache_target_fixed,
+        cache_snapshot,
+        cache_target_owner,
+        cache_append_sources,
         provider_cache_metrics,
         verifier_cache_metrics,
     })
@@ -1526,7 +1566,7 @@ fn build_c6_response_residual_fixture_with_geometry(
     .map_err(trace_error)?;
     let prover_trace_guard =
         begin_c6_cache_fold_trace(C6CacheFoldParty::Prover).map_err(trace_error)?;
-    let (proof, prover_out, products, grand_residual_roots, prover_metrics) =
+    let (proof, prover_out, products, grand_residual_roots, prover_metrics, _append_sources) =
         prove_response_c6_cache_inline(
             &model,
             &prefill,
@@ -2007,6 +2047,27 @@ mod transcript_tests {
         ] {
             assert!(!signature.contains(forbidden), "provider signature contains {forbidden}");
         }
+    }
+
+    #[test]
+    fn production_response_retains_exact_cache_replay_owners() {
+        let source = include_str!("c6_response_fixture.rs");
+        let provider = source
+            .split_once("pub fn prove_c6_t1_production_response_provider(")
+            .unwrap()
+            .1
+            .split_once("/// Coordinate the provider-only response")
+            .unwrap()
+            .0;
+        for required in [
+            "finish_before_successor_root_with_owner",
+            "cache_snapshot",
+            "cache_target_owner",
+            "cache_append_sources",
+        ] {
+            assert!(provider.contains(required));
+        }
+        assert!(!provider.contains("finish_before_successor_root_with_identity("));
     }
 
     #[test]

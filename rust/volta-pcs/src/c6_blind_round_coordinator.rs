@@ -69,8 +69,9 @@ use crate::c6_wrapper_pcs::{
 use volta_field::Fp2;
 use volta_mac::{CorrelationStream, ProverAuthed, Transcript, VerifierCtx};
 use volta_proto::c6_cache_fold::{
-    compile_c6_cache_fold_scalar_batch, C6CacheFoldPairedProverTargets,
-    C6CacheFoldPairedVerifierTargets, C6CacheFoldTargetFixedCorrections, C6CacheFoldTraceSnapshot,
+    compile_c6_cache_fold_scalar_batch, C6CacheFoldAppendSourcePlan, C6CacheFoldKind,
+    C6CacheFoldPairedProverTargets, C6CacheFoldPairedVerifierTargets,
+    C6CacheFoldTargetFixedCorrections, C6CacheFoldTraceSnapshot,
 };
 use volta_proto::{C61NativeResponseProofEnvelope, C6ResponseProofEnvelope};
 use volta_proto::{C6ResidualFusedCoefficientArena, C6ResidualFusedWitnessView};
@@ -80,6 +81,131 @@ use crate::c6_wrapper_persisted::C6PersistedCacheSemanticReader;
 use volta_accel::Backend;
 
 const TAPES: usize = 2;
+
+/// Provider-only replay of the already consumed response cache sources. The
+/// owner contains no fresh correlation and is never serialized.
+pub struct C61NativeCacheAppendOwner {
+    sources: [Vec<[ProverAuthed; TAPES]>; 2],
+    masks: [Vec<[Fp2; TAPES]>; 2],
+    semantic_bytes_read: u64,
+}
+
+impl C61NativeCacheAppendOwner {
+    pub fn source_cells(&self) -> usize {
+        self.sources[0].len() + self.sources[1].len()
+    }
+
+    pub fn semantic_bytes_read(&self) -> u64 {
+        self.semantic_bytes_read
+    }
+}
+
+/// Recover the exact K/V append cells from the committed successor cache and
+/// attach their original response-tape tags and masks. Replays are required
+/// to leave correlation counters and the public schedule unchanged.
+pub fn materialize_c61_native_cache_append_owner(
+    plan: &C6CacheFoldAppendSourcePlan,
+    successor: &C6PersistedCacheSemanticReader,
+    old_len: u16,
+    new_len: u16,
+    streams: &mut [CorrelationStream; TAPES],
+) -> Result<C61NativeCacheAppendOwner, String> {
+    if old_len >= new_len
+        || new_len > crate::c6_persistent_cache::C6_PERSISTENT_CACHE_CAPACITY_TOKENS
+        || plan.layers().len()
+            != usize::from(crate::c6_persistent_cache::C6_PERSISTENT_CACHE_LAYERS)
+        || successor.payload_len()
+            != crate::c6_persistent_cache::C6_PERSISTENT_CACHE_SLOT_CAPACITY as usize
+        || streams.iter().any(|stream| !stream.uses_pooled_pcg())
+    {
+        return Err("C6.1 cache append owner geometry/backend mismatch".to_owned());
+    }
+    let before_counters = [streams[0].counters, streams[1].counters];
+    let before_schedules = [streams[0].schedule_audit(), streams[1].schedule_audit()];
+    let append_rows = usize::from(new_len - old_len);
+    let width = usize::from(crate::c6_persistent_cache::C6_PERSISTENT_CACHE_WIDTH);
+    let padded_width = usize::from(crate::c6_persistent_cache::C6_PERSISTENT_CACHE_PADDED_WIDTH);
+    let layer_len = usize::from(crate::c6_persistent_cache::C6_PERSISTENT_CACHE_CAPACITY_TOKENS)
+        .checked_mul(padded_width)
+        .ok_or_else(|| "C6.1 cache append layer length overflows".to_owned())?;
+    let per_kind = append_rows
+        .checked_mul(width)
+        .and_then(|count| count.checked_mul(plan.layers().len()))
+        .ok_or_else(|| "C6.1 cache append source census overflows".to_owned())?;
+    let mut sources: [Vec<[ProverAuthed; TAPES]>; 2] =
+        std::array::from_fn(|_| Vec::with_capacity(per_kind));
+    let mut masks: [Vec<[Fp2; TAPES]>; 2] = std::array::from_fn(|_| Vec::with_capacity(per_kind));
+    let mut semantic_bytes_read = 0u64;
+
+    for (layer_ordinal, layer) in plan.layers().iter().enumerate() {
+        if usize::from(layer.model_layer()) != layer_ordinal
+            || layer.row_count().map_err(text_error)? != usize::from(new_len)
+        {
+            return Err(
+                "C6.1 cache append source plan does not cover the exact response".to_owned()
+            );
+        }
+        for (kv, kind) in
+            [C6CacheFoldKind::KeyRows, C6CacheFoldKind::ValueColumns].into_iter().enumerate()
+        {
+            let start = layer_ordinal
+                .checked_mul(layer_len)
+                .and_then(|base| {
+                    usize::from(old_len)
+                        .checked_mul(padded_width)
+                        .and_then(|offset| base.checked_add(offset))
+                })
+                .ok_or_else(|| "C6.1 cache append semantic offset overflows".to_owned())?;
+            let count = append_rows
+                .checked_mul(padded_width)
+                .ok_or_else(|| "C6.1 cache append semantic range overflows".to_owned())?;
+            let (values, bytes_read) =
+                successor.read_slot_range(kv as u8, start, count).map_err(text_error)?;
+            semantic_bytes_read = semantic_bytes_read
+                .checked_add(bytes_read)
+                .ok_or_else(|| "C6.1 cache append semantic byte count overflows".to_owned())?;
+            for row_offset in 0..append_rows {
+                let row = usize::from(old_len) + row_offset;
+                let domain = layer.source_domain(kind, row).map_err(text_error)?;
+                let replayed_masks = [
+                    streams[0].replay_consumed_sub_masks(domain, width),
+                    streams[1].replay_consumed_sub_masks(domain, width),
+                ];
+                let tags = [
+                    streams[0].draw_sub_tags(domain, width),
+                    streams[1].draw_sub_tags(domain, width),
+                ];
+                for channel in 0..width {
+                    let value = values[row_offset * padded_width + channel];
+                    if value.c1 != volta_field::Fp::ZERO {
+                        return Err("C6.1 cache append source is not a base-field value".to_owned());
+                    }
+                    let authenticated = std::array::from_fn(|tape| {
+                        streams[tape].authenticate_subfield_sparse_linear(
+                            domain,
+                            width,
+                            &[(channel, Fp2::ONE)],
+                            value,
+                            tags[tape][channel],
+                        )
+                    });
+                    sources[kv].push(authenticated);
+                    masks[kv].push(std::array::from_fn(|tape| {
+                        Fp2::from_base(replayed_masks[tape][channel])
+                    }));
+                }
+            }
+        }
+    }
+    if sources.iter().any(|values| values.len() != per_kind)
+        || masks.iter().any(|values| values.len() != per_kind)
+        || [streams[0].counters, streams[1].counters] != before_counters
+        || [streams[0].schedule_audit(), streams[1].schedule_audit()] != before_schedules
+    {
+        return Err("C6.1 cache append replay changed census or correlation state".to_owned());
+    }
+    Ok(C61NativeCacheAppendOwner { sources, masks, semantic_bytes_read })
+}
 
 fn text_error(error: impl std::fmt::Display) -> String {
     error.to_string()
@@ -996,8 +1122,7 @@ pub fn prove_c61_native_production_blind_components<'a>(
     successor_cache: &C6PersistedCacheSemanticReader,
     old_len: u16,
     new_len: u16,
-    append_sources: &[Vec<[ProverAuthed; TAPES]>; 2],
-    append_masks: &[Vec<[Fp2; TAPES]>; 2],
+    append: &C61NativeCacheAppendOwner,
     statements: &[C6BlindResidualStatement],
     residual_compiler: C6BlindResidualFusedCompilerContext<'a>,
     residual_witness: C6ResidualFusedWitnessView<'a>,
@@ -1044,8 +1169,8 @@ pub fn prove_c61_native_production_blind_components<'a>(
                 &compiler,
                 predecessor_cache,
                 successor_cache,
-                append_sources,
-                append_masks,
+                &append.sources,
+                &append.masks,
                 fixed_fold,
                 transcript,
             )
@@ -2241,6 +2366,29 @@ mod tests {
             .unwrap();
         assert!(blind_prover.contains("drive_c61_native_blind_prover_rounds("));
         assert!(blind_prover.contains("C61NativeProductionBlindProverOutput"));
+        assert!(blind_prover.contains("append: &C61NativeCacheAppendOwner"));
+        assert!(blind_prover.contains("&append.sources"));
+        assert!(blind_prover.contains("&append.masks"));
+        assert!(!blind_prover.contains("append_sources:"));
+        assert!(!blind_prover.contains("append_masks:"));
+
+        let append_materializer = source
+            .split("pub fn materialize_c61_native_cache_append_owner(")
+            .nth(1)
+            .unwrap()
+            .split("fn text_error(")
+            .next()
+            .unwrap();
+        for required in [
+            "read_slot_range",
+            "replay_consumed_sub_masks",
+            "draw_sub_tags",
+            "authenticate_subfield_sparse_linear",
+            "before_counters",
+            "before_schedules",
+        ] {
+            assert!(append_materializer.contains(required));
+        }
 
         let prover = source
             .split("pub fn finish_c61_native_production_blind_with_persisted_nbr2_link(")

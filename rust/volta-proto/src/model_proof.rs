@@ -62,7 +62,8 @@ use crate::block_proof::{
 use crate::block_proof::{verify_layer_phase1_band_thinned_c6, C6KvPrefixSource};
 #[cfg(feature = "c6-trace")]
 use crate::c6_cache_fold::{
-    C6CacheFoldOnlineLayerMetrics, C6CacheFoldTargetInlineProver, C6CacheFoldTargetInlineVerifier,
+    C6CacheFoldAppendSourceLayer, C6CacheFoldAppendSourcePlan, C6CacheFoldOnlineLayerMetrics,
+    C6CacheFoldTargetInlineProver, C6CacheFoldTargetInlineVerifier,
 };
 #[cfg(feature = "c6-trace")]
 use crate::c6_source::{C6SourceScheduleProverFollower, C6SourceScheduleVerifierFollower};
@@ -177,6 +178,7 @@ enum ResponseProverCacheMode<'a, 'frame> {
         schedule_follower: &'a mut C6SourceScheduleProverFollower,
         target_builder: &'frame mut C6CacheFoldTargetInlineProver,
         metrics: C6CacheFoldOnlineLayerMetrics,
+        append_source_layers: Vec<C6CacheFoldAppendSourceLayer>,
     },
 }
 
@@ -2731,21 +2733,36 @@ pub(crate) fn prove_response_c6_cache_inline(
     schedule_follower: &mut C6SourceScheduleProverFollower,
     target_builder: &mut C6CacheFoldTargetInlineProver,
     tx: &mut Transcript,
-) -> (ModelProof, ModelOut, ProdTriples, C6GrandResidualProverRoots, C6CacheFoldOnlineLayerMetrics)
-{
+) -> (
+    ModelProof,
+    ModelOut,
+    ProdTriples,
+    C6GrandResidualProverRoots,
+    C6CacheFoldOnlineLayerMetrics,
+    C6CacheFoldAppendSourcePlan,
+) {
     assert_eq!(chunks.len(), 1, "C6 v1 requires one stacked decode phase");
     let mut cache_mode = ResponseProverCacheMode::C6 {
         secondary,
         schedule_follower,
         target_builder,
         metrics: C6CacheFoldOnlineLayerMetrics::default(),
+        append_source_layers: Vec::with_capacity(L),
     };
     let (proof, out, prod, zero) =
         prove_response_impl(model, wit, chunks, stream, tx, None, false, true, &mut cache_mode);
-    let ResponseProverCacheMode::C6 { metrics, .. } = cache_mode else {
+    let ResponseProverCacheMode::C6 { metrics, append_source_layers, .. } = cache_mode else {
         unreachable!("C6 response provider mode changed during execution")
     };
-    (proof, out, prod, C6GrandResidualProverRoots::new(zero), metrics)
+    (
+        proof,
+        out,
+        prod,
+        C6GrandResidualProverRoots::new(zero),
+        metrics,
+        C6CacheFoldAppendSourcePlan::new(append_source_layers)
+            .expect("C6 response append source plan must be canonical"),
+    )
 }
 
 /// Production C6 response entry point. It combines the exact private-logit
@@ -2763,21 +2780,36 @@ pub fn prove_response_private_logits_c6_cache_inline(
     schedule_follower: &mut C6SourceScheduleProverFollower,
     target_builder: &mut C6CacheFoldTargetInlineProver,
     tx: &mut Transcript,
-) -> (ModelProof, ModelOut, ProdTriples, C6GrandResidualProverRoots, C6CacheFoldOnlineLayerMetrics)
-{
+) -> (
+    ModelProof,
+    ModelOut,
+    ProdTriples,
+    C6GrandResidualProverRoots,
+    C6CacheFoldOnlineLayerMetrics,
+    C6CacheFoldAppendSourcePlan,
+) {
     assert_eq!(chunks.len(), 1, "C6 v1 requires one stacked decode phase");
     let mut cache_mode = ResponseProverCacheMode::C6 {
         secondary,
         schedule_follower,
         target_builder,
         metrics: C6CacheFoldOnlineLayerMetrics::default(),
+        append_source_layers: Vec::with_capacity(L),
     };
     let (proof, out, prod, zero) =
         prove_response_impl(model, wit, chunks, stream, tx, None, true, true, &mut cache_mode);
-    let ResponseProverCacheMode::C6 { metrics, .. } = cache_mode else {
+    let ResponseProverCacheMode::C6 { metrics, append_source_layers, .. } = cache_mode else {
         unreachable!("C6 private-logit provider mode changed during execution")
     };
-    (proof, out, prod, C6GrandResidualProverRoots::new(zero), metrics)
+    (
+        proof,
+        out,
+        prod,
+        C6GrandResidualProverRoots::new(zero),
+        metrics,
+        C6CacheFoldAppendSourcePlan::new(append_source_layers)
+            .expect("C6 private-logit append source plan must be canonical"),
+    )
 }
 
 /// Historical C3b control arm retained solely for the preregistered T1/C3b
@@ -3247,8 +3279,9 @@ fn prove_response_impl(
                 schedule_follower,
                 target_builder,
                 metrics,
+                append_source_layers,
             } => {
-                let (scheduled, phase_metrics) = prove_layers_thinned_scheduled_c6(
+                let (scheduled, phase_metrics, phase_sources) = prove_layers_thinned_scheduled_c6(
                     model,
                     &wit.layers,
                     layer_p1s,
@@ -3265,6 +3298,7 @@ fn prove_response_impl(
                 )
                 .unwrap_or_else(|error| panic!("invalid C6 prefill FFN schedule: {error}"));
                 add_c6_response_metrics(metrics, phase_metrics);
+                *append_source_layers = phase_sources;
                 scheduled
             }
         };
@@ -3670,24 +3704,27 @@ fn prove_response_impl(
                     schedule_follower,
                     target_builder,
                     metrics,
+                    append_source_layers,
                 } => {
-                    let (scheduled, phase_metrics) = prove_layers_thinned_scheduled_c6(
-                        model,
-                        &bw.layers,
-                        p1c.layer_p1s,
-                        &prefixes,
-                        &gelu_manifest[c + 1],
-                        sb_id,
-                        stream,
-                        secondary,
-                        schedule_follower,
-                        target_builder,
-                        tx,
-                        &mut bank,
-                        backend.as_deref_mut(),
-                    )
-                    .unwrap_or_else(|error| panic!("invalid C6 decode FFN schedule: {error}"));
+                    let (scheduled, phase_metrics, phase_sources) =
+                        prove_layers_thinned_scheduled_c6(
+                            model,
+                            &bw.layers,
+                            p1c.layer_p1s,
+                            &prefixes,
+                            &gelu_manifest[c + 1],
+                            sb_id,
+                            stream,
+                            secondary,
+                            schedule_follower,
+                            target_builder,
+                            tx,
+                            &mut bank,
+                            backend.as_deref_mut(),
+                        )
+                        .unwrap_or_else(|error| panic!("invalid C6 decode FFN schedule: {error}"));
                     add_c6_response_metrics(metrics, phase_metrics);
+                    *append_source_layers = phase_sources;
                     scheduled
                 }
             };
@@ -5443,7 +5480,7 @@ mod tests {
         )
         .unwrap();
         let prover_trace_guard = begin_c6_cache_fold_trace(C6CacheFoldParty::Prover).unwrap();
-        let (proof, prover_out, products, grand_residual_roots, prover_metrics) =
+        let (proof, prover_out, products, grand_residual_roots, prover_metrics, append_sources) =
             prove_response_private_logits_c6_cache_inline(
                 &model,
                 &prefill,
@@ -5454,6 +5491,10 @@ mod tests {
                 &mut target_builder,
                 &mut prover_tx,
             );
+        assert!(append_sources
+            .layers()
+            .iter()
+            .all(|layer| layer.row_count().unwrap() == t + q));
         let prover_trace = prover_trace_guard.finish().unwrap();
         let (target_frame, prover_fixed) = target_builder
             .finish_before_successor_root_with_identity(prover_trace.identity, &mut prover_tx)

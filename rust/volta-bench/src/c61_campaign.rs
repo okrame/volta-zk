@@ -63,7 +63,7 @@ use volta_pcs::{
 use volta_pcs::{
     spawn_c61_private_entropy_transcript_broker, C61AuthenticatedWhirMaskRange, C61NativeChainId,
     C61PrivateEntropyEndpoint, C61_EMBEDDING_POLYNOMIAL_LOG2, C61_INTERACTIVE_TAPE_LANES,
-    C61_MODEL_POLYNOMIAL_LOG2,
+    C61_MODEL_POLYNOMIAL_LOG2, C61_AUTHENTICATED_WHIR_MASKS_PER_TAPE,
 };
 #[cfg(feature = "c6-trace")]
 use volta_pcs::{
@@ -341,7 +341,6 @@ impl C61CampaignNativeTranscriptSession {
     pub fn start(
         attempt: C6ClientAttempt,
         profile: &C6CanonicalTargetProfile,
-        mask_ranges: [C61AuthenticatedWhirMaskRange; 6],
     ) -> Result<(C61CampaignNativeTranscriptEndpoints, Self), String> {
         let mut verifier_seeds = [[0u8; 32]; C61_INTERACTIVE_TAPE_LANES];
         for index in 0..C61_INTERACTIVE_TAPE_LANES {
@@ -354,13 +353,12 @@ impl C61CampaignNativeTranscriptSession {
                 return Err("C6ICT5 native verifier entropy is zero or duplicated".to_owned());
             }
         }
-        Self::start_with_seeds(attempt, profile, mask_ranges, verifier_seeds)
+        Self::start_with_seeds(attempt, profile, verifier_seeds)
     }
 
     fn start_with_seeds(
         attempt: C6ClientAttempt,
         profile: &C6CanonicalTargetProfile,
-        mask_ranges: [C61AuthenticatedWhirMaskRange; 6],
         verifier_seeds: [[u8; 32]; C61_INTERACTIVE_TAPE_LANES],
     ) -> Result<(C61CampaignNativeTranscriptEndpoints, Self), String> {
         if verifier_seeds.contains(&[0; 32])
@@ -369,6 +367,7 @@ impl C61CampaignNativeTranscriptSession {
         {
             return Err("C6ICT5 native verifier entropy is zero or duplicated".to_owned());
         }
+        let mask_ranges = c61_campaign_native_mask_ranges(attempt)?;
         let ids = C61NativeChainId::ordered();
         let bindings: [C61ProviderSessionBinding; 6] = (0..6)
             .map(|index| {
@@ -470,6 +469,36 @@ impl C61CampaignNativeTranscriptSession {
             expected_response_context,
         )
     }
+}
+
+/// Derive the sole legal three-mask subrange on each MAC tape directly from
+/// the durable reservation. Model, embedding and compiler consume ordinals
+/// 0, 1 and 2 of that same range; callers cannot assign per-chain ranges.
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub fn c61_campaign_native_mask_ranges(
+    attempt: C6ClientAttempt,
+) -> Result<[C61AuthenticatedWhirMaskRange; 6], String> {
+    attempt.correlation_ranges.validate().map_err(|error| error.to_string())?;
+    let slot = u16::try_from(attempt.slot)
+        .map_err(|_| "C6ICT5 native mask slot exceeds u16".to_owned())?;
+    let mut per_tape = Vec::with_capacity(2);
+    for range in attempt.correlation_ranges.coordinates {
+        let stage = u8::try_from(range.stage)
+            .map_err(|_| "C6ICT5 native mask stage exceeds u8".to_owned())?;
+        let range_start = u32::try_from(range.start)
+            .map_err(|_| "C6ICT5 native mask range start exceeds u32".to_owned())?;
+        if range.count < C61_AUTHENTICATED_WHIR_MASKS_PER_TAPE as u64
+            || range_start
+                .checked_add(C61_AUTHENTICATED_WHIR_MASKS_PER_TAPE as u32)
+                .is_none()
+        {
+            return Err("C6ICT5 native mask range is too short or overflows".to_owned());
+        }
+        per_tape.push(C61AuthenticatedWhirMaskRange { stage, slot, range_start });
+    }
+    let [tape0, tape1]: [_; 2] =
+        per_tape.try_into().map_err(|_| "C6ICT5 native mask tape census differs".to_owned())?;
+    Ok([tape0, tape1, tape0, tape1, tape0, tape1])
 }
 
 /// Consume the canonical T1 workload through the campaign-owned duplex
@@ -2244,15 +2273,15 @@ mod campaign_artifact_tests {
                 },
             ],
         };
-        let ranges = std::array::from_fn(|index| C61AuthenticatedWhirMaskRange {
-            stage: 7,
-            slot: u16::try_from(attempt.slot).unwrap(),
-            range_start: 100 + 3 * index as u32,
-        });
+        let ranges = c61_campaign_native_mask_ranges(attempt).unwrap();
+        assert_eq!(ranges[0], ranges[2]);
+        assert_eq!(ranges[0], ranges[4]);
+        assert_eq!(ranges[1], ranges[3]);
+        assert_eq!(ranges[1], ranges[5]);
+        assert_ne!(ranges[0], ranges[1]);
         let seeds = std::array::from_fn(|index| [0x40 + index as u8; 32]);
         let (endpoints, session) =
-            C61CampaignNativeTranscriptSession::start_with_seeds(attempt, &profile, ranges, seeds)
-                .unwrap();
+            C61CampaignNativeTranscriptSession::start_with_seeds(attempt, &profile, seeds).unwrap();
         let C61CampaignNativeTranscriptEndpoints {
             four_chain:
                 C61CampaignFourChainTranscriptEndpoints { four_chain_endpoints, joint_endpoint, .. },

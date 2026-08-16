@@ -5177,6 +5177,26 @@ wire/setup byte, challenge, correlation or soundness term changes. The
 top-level response-to-seal runner, disk semantic verification and mutations
 remain open. No pod or credit.
 
+### 1.08 C6ICT5 canonical native mask-range checkpoint
+
+The native transcript session no longer accepts six caller-selected mask
+ranges. It derives exactly one `C61AuthenticatedWhirMaskRange` from each of
+the two durable attempt correlation ranges and expands them in chain order as
+`[tape0,tape1,tape0,tape1,tape0,tape1]`. Model, embedding and compiler thus
+consume the fixed component ordinals 0, 1 and 2 of the same three-mask range
+on their respective MAC tape.
+
+The derivation validates the paired reservation, converts stage, slot and
+range start without truncation, and rejects a range shorter than three or a
+32-bit end overflow. Attempt nonce, slot, workload and reserved ranges remain
+inside each provider-session binding, while component and repetition remain
+inside the correlation domain. No provider-facing API can substitute a new
+mask offset after reservation.
+
+The seven-lane ownership test is **1/0/0**. This changes no correlation census,
+wire/setup byte, challenge order or soundness term. The top-level runner, disk
+semantic verification and mutations remain open. No pod or credit.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

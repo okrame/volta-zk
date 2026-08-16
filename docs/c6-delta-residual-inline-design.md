@@ -5043,6 +5043,27 @@ feature check passes. This closes append-source ownership on both roles, not
 the exact campaign call graph, decoded native/compiler verification or record
 preflight; no benchmark or pod credit is promoted.
 
+### 1.02 C6ICT5 exact terminal/compiler typestate checkpoint
+
+The native blind output now has one linear public-compression continuation.
+It takes the exact 64 C6RSC3 terminal functionals and their two leaf/auxiliary
+point pairs directly from the fused prover, fixes those values before drawing
+`beta`, and defines the C6TFR1 relation root as that same output owner's
+canonical digest. It fixes this root before releasing runtime challenges.
+Callers cannot provide a terminal value, point, root or functional fold.
+
+The continuation retains the resulting arithmetic typestate and a read-only
+compiler-input projection. The C6.1 C6NBR2/link join accepts only this typed
+owner, not a detached `C61OutputChallengeDrawn`, and rechecks both the 64
+values and relation root against the blind owner before consuming it. The
+focused native ownership guard and complete bench feature check are green.
+
+This closes the terminal-to-compiler challenge order only. Compilation of the
+joint native functional, construction of its exact tape-1 bridge, both
+compiler chains and complete certificate assembly remain to be connected in
+the campaign. No byte, timing, full-chain or hardware credit is promoted and
+pod contact remains forbidden.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

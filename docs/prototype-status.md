@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--1.00 next.
+This capsule is authoritative; read design §§0.60--1.02 next.
 
 - **Milestone/evidence.** C6ICT5 study is complete: four WHIR chains bind the
   response-owned 96+6 claims and C6NBR2 binds their tape-1 functional;
@@ -20,8 +20,10 @@ This capsule is authoritative; read design §§0.60--1.00 next.
   paired targets and compact consumed-domain plan; persisted append replay
   reads the successor cache and reuses tags/masks without advancing counters.
   Independent verifier replay derives the same plan and replays only keys;
-  detached verifier arrays are rejected. Focused guards are **3/0/0**. Budget
-  v29 and Lean **3,267 jobs/nine audits** remain green screens.
+  detached verifier arrays are rejected. One native terminal typestate now
+  fixes the exact 64 outputs, beta, C6TFR1 root and runtime challenges before
+  C6NBR2. Focused guards are **3/0/0**. Budget v29 and Lean **3,267 jobs/nine
+  audits** remain green screens.
 - **Resume.** Close the exact prover call graph, disk semantic verifier,
   mutations, workspace and campaign preflight in small checkpoints. Pod only
   after every local gate is green.
@@ -32,6 +34,15 @@ This capsule is authoritative; read design §§0.60--1.00 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-16 — Exact terminal/compiler typestate lands.** The native blind
+  output alone supplies the 64 C6RSC3 values, both leaf/auxiliary point pairs
+  and their canonical C6TFR1 root. One linear continuation fixes those values,
+  draws beta, fixes that root and only then releases runtime challenges. The
+  native C6NBR2/link join now accepts this continuation rather than a detached
+  output-challenge object. The focused native ownership guard and complete
+  bench feature check are green. Compiler/NBR2 construction and the full call
+  graph remain open; no pod or credit.
 
 - **2026-08-16 — Independent cache append-key replay lands.** The disk/live
   verifier now derives the compact layer/K/V source-domain plan during its own

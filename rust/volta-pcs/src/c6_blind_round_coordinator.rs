@@ -11,7 +11,9 @@ use crate::c61_authenticated_whir_p3::{
     C61ProductionJointPublicArgumentAssembly,
 };
 #[cfg(feature = "c61-p3-authenticated-reference")]
-use crate::c61_public_compression::C61OutputChallengeDrawn;
+use crate::c61_public_compression::{
+    C61EqualityDrawn, C61OutputChallengeDrawn, C61ReadyPublicProof,
+};
 #[cfg(feature = "c61-p3-authenticated-reference")]
 use crate::c6_authenticated_output_link::verify_c6_authenticated_output_link_production_nbr2_strict;
 use crate::c6_authenticated_output_link::{
@@ -307,6 +309,27 @@ pub struct C61NativeProductionBlindProverOutput {
     pub(crate) cache_metrics: C6PersistentCacheProductionMetrics,
 }
 
+/// Linear public-compression continuation derived from the exact native blind
+/// output. Compiler inputs, arithmetic typestate and the later C6NBR2 join
+/// therefore cannot be assembled from detached terminal claims.
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub struct C61NativeTerminalCompilerPrepared {
+    public_output: C61OutputChallengeDrawn,
+    ready: C61ReadyPublicProof,
+    inputs: C6ExactTerminalCompilerInputs,
+}
+
+#[cfg(feature = "c61-p3-authenticated-reference")]
+impl C61NativeTerminalCompilerPrepared {
+    pub fn ready(&self) -> &C61ReadyPublicProof {
+        &self.ready
+    }
+
+    pub fn inputs(&self) -> &C6ExactTerminalCompilerInputs {
+        &self.inputs
+    }
+}
+
 pub(crate) struct C61NativeExactProductionProverProof {
     pub(crate) residual_proof: C6BlindResidualSumcheckProof,
     pub(crate) residual_frame: C6BlindResidualPendingTransferFrame,
@@ -445,6 +468,59 @@ impl C6ExactTerminalCompilerInputs {
 }
 
 #[cfg(feature = "c61-p3-authenticated-reference")]
+fn terminal_compiler_inputs(
+    outputs: &C6BlindResidualDirectTerminalOutputs,
+    output_beta: Fp2,
+) -> Result<C6ExactTerminalCompilerInputs, String> {
+    if outputs.relation_challenges_digest() == [0; 32] || outputs.digest() == [0; 32] {
+        return Err("C6.1 compiler inputs have a noncanonical terminal binding".to_owned());
+    }
+    let terminal_functionals = *outputs.terminal_functionals();
+    Ok(C6ExactTerminalCompilerInputs {
+        relation_challenges_digest: outputs.relation_challenges_digest(),
+        leaf_points: [
+            outputs.leaf_point(0).map_err(text_error)?.to_vec(),
+            outputs.leaf_point(1).map_err(text_error)?.to_vec(),
+        ],
+        auxiliary_points: [
+            outputs.auxiliary_point(0).map_err(text_error)?.to_vec(),
+            outputs.auxiliary_point(1).map_err(text_error)?.to_vec(),
+        ],
+        terminal_functionals,
+        output_beta,
+        relation_root: outputs.digest(),
+        functional_fold: crate::fold_terminal_claims(&terminal_functionals, output_beta),
+    })
+}
+
+/// Fix the exact 64 C6RSC3 outputs, draw beta, bind their canonical C6TFR1
+/// root and only then release runtime challenges. No caller supplies a root,
+/// point, terminal value or fold.
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub fn prepare_c61_native_terminal_compiler(
+    blind: &C61NativeProductionBlindProverOutput,
+    equality: C61EqualityDrawn,
+    transcript: &mut Transcript,
+) -> Result<C61NativeTerminalCompilerPrepared, String> {
+    let outputs = &blind.residual_terminal_outputs;
+    let public_output = equality
+        .fix_terminal_claims(*outputs.terminal_functionals(), transcript)
+        .draw_output_challenge(transcript);
+    let inputs = terminal_compiler_inputs(outputs, public_output.output_beta())?;
+    let ready = public_output
+        .clone()
+        .fix_adjoint_root(inputs.relation_root(), transcript)
+        .map_err(text_error)?
+        .draw_runtime_challenges(transcript);
+    if ready.terminal_claims() != inputs.terminal_functionals()
+        || ready.adjoint_root() != inputs.relation_root()
+    {
+        return Err("C6.1 compiler typestate differs from exact blind outputs".to_owned());
+    }
+    Ok(C61NativeTerminalCompilerPrepared { public_output, ready, inputs })
+}
+
+#[cfg(feature = "c61-p3-authenticated-reference")]
 impl C6ExactProductionNbr2ProverProof {
     pub fn terminal_compiler_inputs(&self) -> Result<C6ExactTerminalCompilerInputs, String> {
         let outputs = &self.blind.residual_terminal_outputs;
@@ -476,29 +552,12 @@ impl C6ExactProductionNbr2ProverProof {
 impl C61NativeExactProductionNbr2ProverProof {
     pub fn terminal_compiler_inputs(&self) -> Result<C6ExactTerminalCompilerInputs, String> {
         let outputs = &self.blind.residual_terminal_outputs;
-        if outputs.relation_challenges_digest() == [0; 32]
-            || outputs.digest() == [0; 32]
-            || self.blind.residual_terminal_fold.terminal_outputs_digest() != outputs.digest()
-        {
+        if self.blind.residual_terminal_fold.terminal_outputs_digest() != outputs.digest() {
             return Err(
                 "C6.1 native compiler inputs have a noncanonical terminal binding".to_owned()
             );
         }
-        Ok(C6ExactTerminalCompilerInputs {
-            relation_challenges_digest: outputs.relation_challenges_digest(),
-            leaf_points: [
-                outputs.leaf_point(0).map_err(text_error)?.to_vec(),
-                outputs.leaf_point(1).map_err(text_error)?.to_vec(),
-            ],
-            auxiliary_points: [
-                outputs.auxiliary_point(0).map_err(text_error)?.to_vec(),
-                outputs.auxiliary_point(1).map_err(text_error)?.to_vec(),
-            ],
-            terminal_functionals: *outputs.terminal_functionals(),
-            output_beta: self.blind.residual_terminal_fold.beta(),
-            relation_root: outputs.digest(),
-            functional_fold: self.blind.residual_terminal_fold.functional_fold(),
-        })
+        terminal_compiler_inputs(outputs, self.blind.residual_terminal_fold.beta())
     }
 }
 
@@ -801,7 +860,7 @@ pub fn finish_c61_native_production_blind_with_persisted_nbr2_link(
     roots: &C6PersistedLiveWrapperRootBinding,
     blind: C61NativeProductionBlindProverOutput,
     nbr2: &C6Nbr2CorrectionFunctional<'_>,
-    public_output: &C61OutputChallengeDrawn,
+    terminal: &C61NativeTerminalCompilerPrepared,
     native: C61ProductionJointNativeProverLinkPending,
     streams: &mut [CorrelationStream; TAPES],
     backend: &mut Backend,
@@ -813,11 +872,16 @@ pub fn finish_c61_native_production_blind_with_persisted_nbr2_link(
     if roots.session_digest() != session_digest {
         return Err("C6.1 native exact runner root/session mismatch".to_owned());
     }
-    if public_output.terminal_claims() != blind.residual_terminal_outputs.terminal_functionals() {
+    if terminal.public_output.terminal_claims()
+        != blind.residual_terminal_outputs.terminal_functionals()
+        || terminal.inputs.relation_root() != blind.residual_terminal_outputs.digest()
+    {
         return Err("C6.1 native public typestate differs from residual outputs".to_owned());
     }
-    let residual_terminal_fold =
-        blind.residual_terminal_outputs.clone().bind_output_beta(public_output.output_beta());
+    let residual_terminal_fold = blind
+        .residual_terminal_outputs
+        .clone()
+        .bind_output_beta(terminal.public_output.output_beta());
     let mut pending =
         C61NativePendingSlotRegistryProverBuilder::new(roots.fixed()).map_err(text_error)?;
     pending.absorb_residual(&blind.residual_pending).map_err(text_error)?;
@@ -2443,6 +2507,25 @@ mod tests {
         assert!(!blind_prover.contains("append_sources:"));
         assert!(!blind_prover.contains("append_masks:"));
 
+        let terminal = source
+            .split("pub fn prepare_c61_native_terminal_compiler(")
+            .nth(1)
+            .unwrap()
+            .split("impl C6ExactProductionNbr2ProverProof")
+            .next()
+            .unwrap();
+        assert!(
+            terminal.find(".fix_terminal_claims(").unwrap()
+                < terminal.find(".draw_output_challenge(").unwrap()
+        );
+        assert!(
+            terminal.find(".fix_adjoint_root(").unwrap()
+                < terminal.find(".draw_runtime_challenges(").unwrap()
+        );
+        for forbidden in ["terminal_claims:", "relation_root:", "functional_fold:"] {
+            assert!(!terminal.contains(forbidden));
+        }
+
         let append_materializer = source
             .split("pub fn materialize_c61_native_cache_append_owner(")
             .nth(1)
@@ -2479,6 +2562,8 @@ mod tests {
             .split("/// Consume all remaining same-attempt")
             .next()
             .unwrap();
+        assert!(prover.contains("terminal: &C61NativeTerminalCompilerPrepared"));
+        assert!(!prover.contains("public_output: &C61OutputChallengeDrawn"));
         assert!(prover.contains("C61NativePendingSlotRegistryProverBuilder::new"));
         assert!(prover.contains("2 * C61_NATIVE_WRAPPER_ACTIVE_SLOTS"));
         assert!(

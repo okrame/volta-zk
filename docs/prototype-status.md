@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.84 next.
+This capsule is authoritative; read design §§0.60--0.85 next.
 
 - **Milestone/evidence.** C6NBR3 and C6ICT2/C6ICT3 remain closed locally.
   C6ICT4 captures both ProductClosure coordinates, has three noncircular
@@ -16,17 +16,16 @@ This capsule is authoritative; read design §§0.60--0.84 next.
   six-root/residual coordinator. Focused PCS is **16/0/0**, campaign
   **11/0/0**, public-instance **1/0/0**; feature compilation is green. No
   production, full-chain, timing or hardware credit exists.
-- **Hard stop.** `C6ICT4_HIDDEN_U_PREQUERY_FRONTIER_OBSTRUCTED`. The monolithic
-  retained Ligero opening returns the hidden witness only after `chi` and 121
-  queries, but the exact prequery requires its roots before those challenges.
-  The downstream blind path also retains length-only pre-challenge events and
-  campaign v6 has no hidden replay owner.
-- **Authorization/resume.** Current GO stops at this newly exposed schedule
-  change. Raw staged Ligero is traffic NO-GO. Resume needs owner authorization
-  to study a typed native/C6NBR2 substitution for the legacy hidden-u link
-  (recommended), or a compressed public proof of the complete old relation.
-  Either route needs live/disk parity, mutations and fresh traffic/state,
-  soundness and timing accounting. No pod beforehand.
+- **Hard stop.**
+  `C6ICT5_NATIVE_HIDDEN_U_ELIMINATION_EQUIVALENCE_REQUIRED`. Raw staged Ligero
+  is traffic NO-GO. No hidden branch or link slot may change until the four
+  native chains and C6NBR2 are proved to cover the same ordered 96+6 claims,
+  values and designated bindings.
+- **Authorization/resume.** Owner authorizes the bounded C6ICT5 elimination
+  study in §0.85: typed owner/statement map, exact equivalence obligations,
+  removal or explicitly inactive state, slot/codec/Lean transition and fresh
+  byte/correlation/soundness/time screens. No compatibility scaffolding,
+  duplicate witness path, implementation, pod or benchmark credit.
 - **Screens.** Certificate **17,536,735 B**, setup **148,738,118 B**,
   setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
   **102.5878332989 bits/cert**, provider/verifier **14.9179595454 /
@@ -34,6 +33,16 @@ This capsule is authoritative; read design §§0.60--0.84 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-16 — Owner authorizes C6ICT5 elimination study.**
+  `C6ICT5_NATIVE_HIDDEN_U_ELIMINATION_STUDY` must prove that the four native
+  WHIR chains attest the same ordered 96+6 response claims, C6NBR2 binds those
+  values to tape 1, and Ligero/C6HUB2 plus their link slots can be deleted or
+  made explicitly inactive without a missing relation. The study must update
+  typed statements, ownership, codecs, Lean obligations, slot census and all
+  quantitative screens; it may not add compatibility scaffolding or another
+  witness/protocol path. This grants study only, not implementation or pod
+  contact. The active gate is the exact equivalence requirement in §0.85.
 
 - **2026-08-15 — Raw staged Ligero is excluded by the wire gate.** The exact
   old Q=121 PCS traffic is **26,254,888 B**. Added to the current

@@ -4560,6 +4560,33 @@ proved. Owner authorization is required before changing the 72-slot link,
 hidden codec, challenge schedule or soundness composition. The active hard
 stop is unchanged and no pod contact is permitted.
 
+### 0.85 C6ICT5 native hidden-u elimination study authorization
+
+The owner authorizes `C6ICT5_NATIVE_HIDDEN_U_ELIMINATION_STUDY`. This is a
+bounded equivalence-and-subtraction study, not implementation authority. It
+must establish all four facts before any legacy branch or link slot changes:
+
+1. the four production model/embed WHIR chains attest the exact same ordered
+   96+6 response claims, commitment domains and values previously targeted by
+   the retained Ligero opening;
+2. C6NBR2 binds those exact values to the tape-1 corrections while preserving
+   the tape-0 response authentications and the final designated relation;
+3. Ligero/C6HUB2 can be removed, or represented as explicitly inactive typed
+   state, without accepting a missing root, caller target, synthetic claim or
+   digest-as-proof; and
+4. the authenticated-link slot census, codecs and soundness composition can be
+   reduced consistently without introducing another unproved relation.
+
+The study must prefer deletion over compatibility scaffolding and may not add
+a second witness pass, adapter-only production path, duplicated statement,
+temporary wire field or dormant protocol branch. Its deliverables are the
+typed statement/owner map, exact equivalence obligations, slot transition,
+Lean impact and byte/correlation/soundness/time re-sum. Any missing equality is
+a hard stop. No pod, production mutation or quantitative credit is authorized.
+
+The active study gate is
+`C6ICT5_NATIVE_HIDDEN_U_ELIMINATION_EQUIVALENCE_REQUIRED`.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

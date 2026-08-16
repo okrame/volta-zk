@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.89 next.
+This capsule is authoritative; read design §§0.60--0.90 next.
 
 - **Milestone/evidence.** C6ICT5 study is complete: one response owner supplies
   the ordered 96+6 claims; four WHIR chains bind their exact global points and
@@ -23,7 +23,8 @@ This capsule is authoritative; read design §§0.60--0.89 next.
   compatibility adapter, inactive branch or second witness path is allowed.
   The shared claim schedule/direct coefficient-owner checkpoint is complete;
   its focused PCS/owner guards are **2/0/0 + 1/0/0**. The distinct four-root
-  PCS profile/coordinator guard is **1/0/0**.
+  PCS profile/coordinator guard is **1/0/0**; the hidden-free live/verifier
+  source guard is **1/0/0**.
 - **Resume.** Implement in small checkpoints, then close additive Lean,
   mutations, executable budgets, full workspace and exact campaign preflight.
   Pod admission follows only after those local gates are green.
@@ -34,6 +35,15 @@ This capsule is authoritative; read design §§0.60--0.89 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-16 — Hidden-free live root path lands.** A new production source
+  type owns only predecessor/successor cache and residual/auxiliary witnesses.
+  Its CUDA materializer creates four persisted cohorts, fixes them under the
+  C6.1 typestate and hashes a new source-binding preimage with no hidden-u
+  position. The verifier API accepts exactly four roots. The new anti-hidden
+  source/installer guard and historical six-root guard are **1/0/0 + 1/0/0**;
+  the PCS feature check is green. C6LNK2 56+1, coordinator wiring and codecs
+  remain open, so there is no full-chain, byte, timing or hardware credit.
 
 - **2026-08-16 — Closed four-root PCS profile lands.** The new fixed-root
   typestate accepts exactly predecessor cache, successor cache, residual and

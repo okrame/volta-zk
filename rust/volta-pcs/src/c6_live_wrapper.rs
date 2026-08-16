@@ -23,11 +23,13 @@ use crate::c6_persistent_cache::{
 };
 use crate::c6_wrapper_pcs::{
     bind_production_c6_residual_relation_roots, commit_c6_cache_state_cohort,
-    commit_c6_wrapper_cohort, fix_production_c6_wrapper_commitments, production_c6_wrapper_specs,
-    C6CacheStateDescriptors, C6CommittedWrapperCohort, C6FixedWrapperCommitments,
-    C6WrapperCohortSpec, C6WrapperCommitment, C6WrapperDigest, C6WrapperOracleKind,
-    C6WrapperSlotWitness, C6_DELTA_RESIDUAL_COHORT_ID, C6_HIDDEN_U_EMBED_COHORT_ID,
-    C6_HIDDEN_U_WEIGHTS_COHORT_ID, C6_PREDECESSOR_CACHE_COHORT_ID, C6_SUCCESSOR_CACHE_COHORT_ID,
+    commit_c6_wrapper_cohort, fix_production_c61_native_wrapper_commitments,
+    fix_production_c6_wrapper_commitments, production_c61_native_wrapper_specs,
+    production_c6_wrapper_specs, C6CacheStateDescriptors, C6CommittedWrapperCohort,
+    C6FixedWrapperCommitments, C6WrapperCohortSpec, C6WrapperCommitment, C6WrapperDigest,
+    C6WrapperOracleKind, C6WrapperSlotWitness, C6_DELTA_RESIDUAL_COHORT_ID,
+    C6_HIDDEN_U_EMBED_COHORT_ID, C6_HIDDEN_U_WEIGHTS_COHORT_ID,
+    C6_PREDECESSOR_CACHE_COHORT_ID, C6_SUCCESSOR_CACHE_COHORT_ID,
     C6_WRAPPER_AUXILIARY_COHORT_ID,
 };
 use crate::c6_wrapper_persisted::{
@@ -36,6 +38,8 @@ use crate::c6_wrapper_persisted::{
 use crate::x4::cuda_v4::X4bCudaCommitMetricsV4;
 
 const LIVE_SOURCE_BINDING_DOMAIN: &str = "volta-zk/c6/live-wrapper-source-binding/v1";
+const C61_NATIVE_LIVE_SOURCE_BINDING_DOMAIN: &str =
+    "volta-zk/c6.1/native-live-wrapper-source-binding/v1";
 const MASK_SEED_COMMITMENT_DOMAIN: &str = "volta-zk/c6/live-wrapper-mask-seed/v1";
 
 type Result<T> = std::result::Result<T, C6LiveWrapperError>;
@@ -260,6 +264,106 @@ impl<'a> C6LiveWrapperSources<'a> {
     }
 }
 
+/// Exact C6.1 production owners. Hidden-u has no field, constructor argument
+/// or digest position in this type.
+pub struct C61NativeLiveWrapperSources<'a> {
+    statement_digest: C6WrapperDigest,
+    cache_binding_digest: C6WrapperDigest,
+    cache_layout: C6PersistentCacheLayout,
+    cache_descriptors: C6CacheStateDescriptors,
+    predecessor: C6PersistentCacheStateWitness,
+    successor: C6PersistentCacheStateWitness,
+    old_len: u16,
+    new_len: u16,
+    residual_manifest: &'a C6ResidualRelationManifest,
+    residual_leaf: &'a C6PairedResidualLeafWitness,
+    residual_closure: &'a C6PairedResidualClosureWitness,
+    residual_auxiliary: &'a C6PairedResidualAuxiliaryWitness,
+}
+
+impl<'a> C61NativeLiveWrapperSources<'a> {
+    #[allow(clippy::too_many_arguments)]
+    pub fn production(
+        statement_digest: C6WrapperDigest,
+        cache_profile: &C6PersistentCacheStaticProfile,
+        predecessor: C6PersistentCacheStateWitness,
+        successor: C6PersistentCacheStateWitness,
+        old_len: u16,
+        new_len: u16,
+        residual_manifest: &'a C6ResidualRelationManifest,
+        residual_leaf: &'a C6PairedResidualLeafWitness,
+        residual_closure: &'a C6PairedResidualClosureWitness,
+        residual_auxiliary: &'a C6PairedResidualAuxiliaryWitness,
+    ) -> Result<Self> {
+        cache_profile.validate().map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+        let cache_binding_digest =
+            cache_profile.digest().map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+        let cache_descriptors = C6CacheStateDescriptors::from_persistent_profile(cache_profile)
+            .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+        let sources = Self {
+            statement_digest,
+            cache_binding_digest,
+            cache_layout: C6PersistentCacheLayout::production(),
+            cache_descriptors,
+            predecessor,
+            successor,
+            old_len,
+            new_len,
+            residual_manifest,
+            residual_leaf,
+            residual_closure,
+            residual_auxiliary,
+        };
+        sources.validate()?;
+        Ok(sources)
+    }
+
+    fn validate(&self) -> Result<C6ResidualFusedWitnessView<'_>> {
+        let specs = production_c61_native_wrapper_specs();
+        if self.statement_digest == [0; 32] || self.cache_binding_digest == [0; 32] {
+            return Err(C6LiveWrapperError::new(
+                "zero C6.1 native live-wrapper statement/cache binding",
+            ));
+        }
+        self.predecessor
+            .validate_canonical(self.cache_layout, self.old_len)
+            .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+        self.successor
+            .validate_canonical(self.cache_layout, self.new_len)
+            .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+        if self.old_len > self.new_len {
+            return Err(C6LiveWrapperError::new("C6.1 native cache length regressed"));
+        }
+        let cache_entries = self
+            .cache_layout
+            .padded_entries()
+            .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+        if self.cache_layout != C6PersistentCacheLayout::production()
+            || cache_entries != checked_pow2(specs[0].payload_log2)?
+            || self.residual_manifest.leaf_log2() != specs[2].payload_log2
+            || self
+                .residual_manifest
+                .auxiliary_log2()
+                .checked_add(1)
+                .ok_or_else(|| C6LiveWrapperError::new("C6.1 auxiliary wrapper log overflows"))?
+                != specs[3].payload_log2
+            || self.residual_leaf.production_allocation_binding_digest().is_none()
+            || !self.residual_manifest.is_production_geometry()
+        {
+            return Err(C6LiveWrapperError::new(
+                "C6.1 native live-wrapper production source/profile mismatch",
+            ));
+        }
+        C6ResidualFusedWitnessView::new(
+            self.residual_manifest,
+            self.residual_leaf,
+            self.residual_closure,
+            self.residual_auxiliary,
+        )
+        .map_err(|error| C6LiveWrapperError::new(error.to_string()))
+    }
+}
+
 /// Six committed cohorts plus the transcript-fixed token that proves they
 /// came from one validated live-source materialization.
 pub struct C6LiveWrapperRootBinding {
@@ -333,6 +437,38 @@ pub fn install_production_c6_live_wrapper_roots_verifier(
         commitments.push(commitment);
     }
     let fixed = fix_production_c6_wrapper_commitments(
+        statement_digest,
+        &cache_descriptors,
+        &commitments,
+        transcript,
+    )
+    .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+    Ok(C6VerifierLiveWrapperRootBinding { fixed })
+}
+
+/// Install only the four ordered C6.1 native roots. Historical six-root
+/// certificates cannot be represented by this API.
+pub fn install_production_c61_native_live_wrapper_roots_verifier(
+    statement_digest: C6WrapperDigest,
+    cache_profile: &C6PersistentCacheStaticProfile,
+    roots: [C6WrapperDigest; 4],
+    transcript: &mut Transcript,
+) -> Result<C6VerifierLiveWrapperRootBinding> {
+    cache_profile.validate().map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+    let cache_descriptors = C6CacheStateDescriptors::from_persistent_profile(cache_profile)
+        .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+    let specs = production_c61_native_wrapper_specs();
+    let mut commitments = Vec::with_capacity(specs.len());
+    for (index, (spec, root)) in specs.into_iter().zip(roots).enumerate() {
+        let commitment = if index < 2 {
+            C6WrapperCommitment::from_cache_root(statement_digest, spec, root, &cache_descriptors)
+        } else {
+            C6WrapperCommitment::from_root(statement_digest, spec, root)
+        }
+        .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+        commitments.push(commitment);
+    }
+    let fixed = fix_production_c61_native_wrapper_commitments(
         statement_digest,
         &cache_descriptors,
         &commitments,
@@ -676,6 +812,181 @@ pub fn materialize_production_c6_live_wrapper_roots_cuda(
     })
 }
 
+/// Commit the exact four C6.1 native cohorts. This production path has no
+/// hidden-u owner, root, slot group or source-binding input.
+#[allow(clippy::too_many_arguments)]
+pub fn materialize_production_c61_native_live_wrapper_roots_cuda(
+    sources: C61NativeLiveWrapperSources<'_>,
+    mask_seed: C6LiveWrapperMaskSeed,
+    backend: &mut Backend,
+    spill_root: impl AsRef<Path>,
+    session_digest: C6WrapperDigest,
+    transcript: &mut Transcript,
+) -> Result<C6PersistedLiveWrapperRootBinding> {
+    if backend.kind() == BackendKind::Cpu {
+        return Err(C6LiveWrapperError::new(
+            "C6.1 native production live-wrapper refuses CPU backend",
+        ));
+    }
+    if session_digest == [0; 32] {
+        return Err(C6LiveWrapperError::new(
+            "C6.1 native persisted live-wrapper session mismatch",
+        ));
+    }
+    let specs = production_c61_native_wrapper_specs();
+    let residual_view_digest = sources.validate()?.digest();
+    let residual_manifest_digest = sources.residual_manifest.digest();
+    let paired_source_digest = sources.residual_leaf.paired_source_digest();
+    let statement_digest = sources.statement_digest;
+    let cache_binding_digest = sources.cache_binding_digest;
+    let cache_descriptors = sources.cache_descriptors.clone();
+    let old_len = sources.old_len;
+    let new_len = sources.new_len;
+    let mask_seed_commitment = mask_seed.commitment();
+    let mut cohorts = Vec::with_capacity(specs.len());
+    let mut commit_metrics = X4bCudaCommitMetricsV4::default();
+    let mut persisted_metrics = C6PersistedWrapperMetrics::default();
+    let mut commit_group = |index: usize, slots: Vec<C6WrapperSlotWitness>| -> Result<()> {
+        if slots.len() != usize::from(specs[index].slot_count) {
+            return Err(C6LiveWrapperError::new(format!(
+                "C6.1 native persisted cohort {index} slot census mismatch"
+            )));
+        }
+        let descriptors = (index < 2).then_some(&cache_descriptors);
+        let (cohort, metrics) = commit_production_c6_wrapper_cohort_cuda(
+            backend,
+            statement_digest,
+            specs[index],
+            slots,
+            descriptors,
+            spill_root.as_ref(),
+            session_digest,
+            index as u64,
+        )
+        .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+        commit_metrics
+            .include(&metrics)
+            .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+        persisted_metrics
+            .include(cohort.metrics())
+            .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+        cohorts.push(cohort);
+        Ok(())
+    };
+
+    for (index, state) in [sources.predecessor, sources.successor].into_iter().enumerate() {
+        let slots = state
+            .slots
+            .into_iter()
+            .enumerate()
+            .map(|(slot, witness)| C6WrapperSlotWitness::Witness {
+                witness,
+                zk_mask: wrapper_mask_table(
+                    &mask_seed,
+                    specs[index].cohort_id,
+                    slot as u16,
+                    checked_pow2(specs[index].payload_log2).expect("validated C6.1 spec"),
+                ),
+            })
+            .collect();
+        commit_group(index, slots)?;
+    }
+
+    let mut residual_slots = sources
+        .residual_leaf
+        .materialize_padded_columns(u32::from(specs[2].payload_log2))
+        .map_err(|error| C6LiveWrapperError::new(error.to_string()))?
+        .into_iter()
+        .enumerate()
+        .map(|(slot, witness)| C6WrapperSlotWitness::Witness {
+            witness,
+            zk_mask: wrapper_mask_table(
+                &mask_seed,
+                specs[2].cohort_id,
+                slot as u16,
+                checked_pow2(specs[2].payload_log2).expect("validated C6.1 spec"),
+            ),
+        })
+        .collect::<Vec<_>>();
+    residual_slots.push(C6WrapperSlotWitness::Witness {
+        witness: sources
+            .residual_closure
+            .materialize_padded(u32::from(specs[2].payload_log2))
+            .map_err(|error| C6LiveWrapperError::new(error.to_string()))?,
+        zk_mask: wrapper_mask_table(
+            &mask_seed,
+            specs[2].cohort_id,
+            7,
+            checked_pow2(specs[2].payload_log2).expect("validated C6.1 spec"),
+        ),
+    });
+    commit_group(2, residual_slots)?;
+
+    let semantic = sources
+        .residual_auxiliary
+        .materialize_semantic_halves_at_log2(sources.residual_manifest.auxiliary_log2())
+        .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+    let semantic_len = checked_pow2(sources.residual_manifest.auxiliary_log2())?;
+    let encoded_semantic_len = semantic_len
+        .checked_mul(2)
+        .ok_or_else(|| C6LiveWrapperError::new("C6.1 auxiliary encoded length overflow"))?;
+    let mut auxiliary_slots = semantic
+        .into_iter()
+        .enumerate()
+        .map(|(slot, lower)| {
+            let mut evaluations = Vec::with_capacity(encoded_semantic_len);
+            evaluations.extend(lower);
+            evaluations.extend(wrapper_mask_table(
+                &mask_seed,
+                specs[3].cohort_id,
+                slot as u16,
+                semantic_len,
+            ));
+            C6WrapperSlotWitness::Auxiliary { evaluations }
+        })
+        .collect::<Vec<_>>();
+    let auxiliary_len = checked_pow2(specs[3].payload_log2)?;
+    auxiliary_slots.extend(
+        (16..specs[3].slot_count).map(|_| C6WrapperSlotWitness::Auxiliary {
+            evaluations: vec![Fp2::ZERO; auxiliary_len],
+        }),
+    );
+    commit_group(3, auxiliary_slots)?;
+    drop(commit_group);
+
+    let commitments = cohorts.iter().map(|cohort| cohort.commitment().clone()).collect::<Vec<_>>();
+    let fixed = fix_production_c61_native_wrapper_commitments(
+        statement_digest,
+        &cache_descriptors,
+        &commitments,
+        transcript,
+    )
+    .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+    let source_binding_digest = c61_native_live_source_binding_digest(
+        statement_digest,
+        cache_binding_digest,
+        old_len,
+        new_len,
+        residual_manifest_digest,
+        residual_view_digest,
+        paired_source_digest,
+        mask_seed_commitment,
+        fixed.binding_digest(),
+    );
+    Ok(C6PersistedLiveWrapperRootBinding {
+        cohorts,
+        fixed,
+        source_binding_digest,
+        paired_source_digest,
+        residual_manifest_digest,
+        residual_view_digest,
+        mask_seed_commitment,
+        session_digest,
+        commit_metrics,
+        persisted_metrics,
+    })
+}
+
 struct MaterializedLiveWrapperCohorts {
     statement_digest: C6WrapperDigest,
     cache_binding_digest: C6WrapperDigest,
@@ -890,6 +1201,31 @@ fn live_source_binding_digest(
     *hasher.finalize().as_bytes()
 }
 
+#[allow(clippy::too_many_arguments)]
+fn c61_native_live_source_binding_digest(
+    statement_digest: C6WrapperDigest,
+    cache_binding_digest: C6WrapperDigest,
+    old_len: u16,
+    new_len: u16,
+    residual_manifest_digest: C6WrapperDigest,
+    residual_view_digest: C6WrapperDigest,
+    paired_source_digest: C6WrapperDigest,
+    mask_seed_commitment: C6WrapperDigest,
+    fixed_roots_digest: C6WrapperDigest,
+) -> C6WrapperDigest {
+    let mut hasher = blake3::Hasher::new_derive_key(C61_NATIVE_LIVE_SOURCE_BINDING_DOMAIN);
+    hasher.update(&statement_digest);
+    hasher.update(&cache_binding_digest);
+    hasher.update(&old_len.to_le_bytes());
+    hasher.update(&new_len.to_le_bytes());
+    hasher.update(&residual_manifest_digest);
+    hasher.update(&residual_view_digest);
+    hasher.update(&paired_source_digest);
+    hasher.update(&mask_seed_commitment);
+    hasher.update(&fixed_roots_digest);
+    *hasher.finalize().as_bytes()
+}
+
 #[cfg(all(test, feature = "c6-trace"))]
 mod tests {
     use super::*;
@@ -978,6 +1314,51 @@ mod tests {
         )
         .is_err());
         assert_eq!(rejected_transcript.total_bytes(), 0);
+    }
+
+    #[test]
+    fn c61_native_verifier_installs_four_roots_and_source_path_has_no_hidden_owner() {
+        let profile = C6PersistentCacheStaticProfile {
+            protocol_digest: [0x11; 32],
+            model_digest: [0x22; 32],
+            params_digest: [0x33; 32],
+            wrapper_profile_digest: c6_wrapper_profile_digest(),
+        };
+        let roots = std::array::from_fn(|index| [0x70 + index as u8; 32]);
+        let mut transcript = Transcript::new([0x81; 32]);
+        let binding = install_production_c61_native_live_wrapper_roots_verifier(
+            [0x91; 32],
+            &profile,
+            roots,
+            &mut transcript,
+        )
+        .unwrap();
+        assert_eq!(binding.fixed().commitments().len(), 4);
+        assert!(binding.fixed().is_c61_native_profile());
+        assert_eq!(transcript.bytes_for("c6_wrapper_initial_roots"), 4 * 32);
+
+        let source = include_str!("c6_live_wrapper.rs");
+        let owner = source
+            .split("pub struct C61NativeLiveWrapperSources")
+            .nth(1)
+            .unwrap()
+            .split("/// Six committed cohorts")
+            .next()
+            .unwrap();
+        let materializer = source
+            .split("pub fn materialize_production_c61_native_live_wrapper_roots_cuda")
+            .nth(1)
+            .unwrap()
+            .split("struct MaterializedLiveWrapperCohorts")
+            .next()
+            .unwrap();
+        for native_path in [owner, materializer] {
+            assert!(!native_path.contains("C6HiddenU"));
+            assert!(!native_path.contains("hidden_weights"));
+            assert!(!native_path.contains("hidden_embed"));
+            assert!(!native_path.contains("hidden_witness_digests"));
+            assert!(!native_path.contains("production_c6_wrapper_specs"));
+        }
     }
 
     #[test]

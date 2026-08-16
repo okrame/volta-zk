@@ -4773,6 +4773,26 @@ the dynamic four-aggregate C6LNK2 grammar, exact 56+1 C6NBR2 sealing and the
 outer C6.1 codec remain open. No byte, soundness, timing or hardware credit is
 promoted, and pod contact remains forbidden.
 
+### 0.90 C6ICT5 hidden-free live-root checkpoint
+
+`C61NativeLiveWrapperSources` owns only predecessor/successor cache state and
+the residual leaf, closure and auxiliary witnesses. Its production
+constructor has no hidden-u argument. The CUDA materializer emits exactly the
+four registered persisted cohorts and fixes them with the C6.1 typestate; its
+domain-separated source binding has no placeholder or digest position for a
+removed witness. The verifier counterpart accepts `[root; 4]` and cannot
+decode a historical six-root list through this API.
+
+A source guard rejects reintroduction of `C6HiddenU`, hidden witness fields or
+the historical profile into the C6.1 owner/materializer region. The focused
+native install/source guard is **1/0/0**, the historical six-root install guard
+remains **1/0/0**, and the PCS feature check is green.
+
+No production root was materialized locally and no hardware credit is taken.
+The next gate is the dynamic four-aggregate C6LNK2 proof grammar and exact
+56-slot plus one C6NBR2 relation, followed by coordinator/campaign wiring. No
+pod contact is permitted.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

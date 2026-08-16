@@ -8,13 +8,13 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.98 next.
+This capsule is authoritative; read design §§0.60--0.99 next.
 
 - **Milestone/evidence.** C6ICT5 study is complete: one response owner supplies
   the ordered 96+6 claims; four WHIR chains bind their exact global points and
   paired plaintexts; C6NBR2 binds the compiled tape-1 functional. C6HUB2 owns
   only obsolete Ligero-internal vectors. Existing focused checks remain PCS
-  **16/0/0**, campaign **11/0/0**, public-instance **1/0/0**; the exact claim
+  **16/0/0**, campaign **13/0/0**, public-instance **1/0/0**; the exact claim
   bridge and NBR2 reruns are **1/0/0 + 3/0/0**. No production, full-chain,
   timing or hardware credit exists.
 - **Active gate.** `C6ICT5_NATIVE_HIDDEN_U_ELIMINATION_IMPLEMENTATION` under
@@ -25,7 +25,7 @@ This capsule is authoritative; read design §§0.60--0.98 next.
   its focused PCS/owner guards are **2/0/0 + 1/0/0**. The distinct four-root
   PCS profile/coordinator guard is **1/0/0**; the hidden-free live/verifier
   source guard is **1/0/0**. Link/join and blind/envelope/outer/campaign are
-  **1+1+1+2+3+12** green tests. Budget v29 self-checks wire/soundness; Lean
+  **1+1+1+2+3+13** green tests. Budget v29 self-checks wire/soundness; Lean
   builds **3,267 jobs** and audits nine new targets. All remain screens only.
 - **Resume.** Close exact live-to-disk runner, mutations, full workspace and
   campaign preflight in small checkpoints.
@@ -37,6 +37,17 @@ This capsule is authoritative; read design §§0.60--0.98 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-16 — Native challenge bundle owner lands.** One linear campaign
+  session now owns seven distinct client-private entropy seeds and broker
+  handles for model0/1, embed0/1, compiler0/1 and the joint bridge. Provider
+  code receives only typed same-attempt bindings and opaque endpoints. Seal
+  joins those exact seven completed tapes with the response tape into the
+  certificate-bound eight-tape bundle; zero/duplicate entropy, context drift,
+  lane movement and wrong attempt fail closed. The exercised broker/bundle
+  guard raises campaign to **13/0/0** and the full feature check is green.
+  The prover call graph, disk semantic verifier and record harness remain
+  open; no credit or pod.
 
 - **2026-08-16 — Native campaign sealing seam lands.** One typed function now
   consumes the live four-root owner, bound residual owner and receipt-gated

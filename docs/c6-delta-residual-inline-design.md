@@ -4977,6 +4977,29 @@ strict disk semantic verification, challenge-bundle finalization and measured
 record harness remain mandatory; no quantitative or hardware credit is
 promoted and pod contact remains forbidden.
 
+### 0.99 C6ICT5 native challenge-bundle checkpoint
+
+The campaign now owns one linear seven-lane native transcript session in
+addition to the separate duplex response session. It samples seven distinct
+nonzero verifier-private seeds and retains every broker handle. The provider
+receives only six same-attempt chain bindings and opaque endpoints for
+model0/1, embed0/1 and compiler0/1, plus the profile-bound joint binding and
+endpoint; no seed, replay tape, checkpoint, verifier key or Delta crosses that
+boundary.
+
+Lane order is fixed as the four model/embed chains, two compiler chains and
+the joint bridge, with dimensions D28/D28/D27/D27/D28/D28/0. After all proof
+owners finish their exact payloads, the session consumes the seven brokers and
+joins their tapes with the independently completed response tape under the
+reserved attempt and final certificate digest. The exercised test uses the
+real synchronous brokers, challenges and payload seals and raises campaign to
+**13/0/0**; the complete feature check is green.
+
+This closes challenge-bundle ownership only. The exact provider call graph,
+strict disk semantic continuation, mutations and record harness remain
+mandatory before local preflight or pod admission. No benchmark credit is
+promoted.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

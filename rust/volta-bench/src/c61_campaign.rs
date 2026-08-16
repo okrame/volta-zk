@@ -25,6 +25,10 @@ use volta_mac::{
     C6OperationPlanArtifact, C6TraceSourceManifest, Transcript,
 };
 use volta_pcs::c61_authenticated_whir_p3::C61CompilerVerifierProfile;
+#[cfg(feature = "c61-p3-authenticated-reference")]
+use volta_pcs::c61_authenticated_whir_p3::{
+    C61ProviderJointSessionBinding, C61ProviderSessionBinding,
+};
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_pcs::c6_blind_round_coordinator::C61NativeExactProductionNbr2Certificate;
 #[cfg(feature = "c6-trace")]
@@ -36,6 +40,12 @@ use volta_pcs::{
     spawn_c61_private_entropy_duplex_transcript_broker, C61InteractiveTape,
     C61InteractiveTapeBundle, C61JointPublicArgument, C61PrivateEntropyBrokerHandle,
     C61ResponseStatementBinding, C61StatementBinding,
+};
+#[cfg(feature = "c61-p3-authenticated-reference")]
+use volta_pcs::{
+    spawn_c61_private_entropy_transcript_broker, C61AuthenticatedWhirMaskRange, C61NativeChainId,
+    C61PrivateEntropyEndpoint, C61_EMBEDDING_POLYNOMIAL_LOG2, C61_INTERACTIVE_TAPE_LANES,
+    C61_MODEL_POLYNOMIAL_LOG2,
 };
 #[cfg(feature = "c6-trace")]
 use volta_pcs::{
@@ -258,6 +268,148 @@ impl C61CampaignResponseTranscriptSession {
         provider_result?;
         verifier_result?;
         broker_result
+    }
+}
+
+/// Provider-visible endpoints and durable attempt bindings for the six
+/// native chains plus their post-body joint challenge. Verifier entropy and
+/// broker handles remain in [`C61CampaignNativeTranscriptSession`].
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub struct C61CampaignNativeTranscriptEndpoints {
+    pub four_chain_bindings: [C61ProviderSessionBinding; 4],
+    pub four_chain_endpoints: [C61PrivateEntropyEndpoint; 4],
+    pub joint_binding: C61ProviderJointSessionBinding,
+    pub joint_endpoint: C61PrivateEntropyEndpoint,
+    pub compiler_bindings: [C61ProviderSessionBinding; 2],
+    pub compiler_endpoints: [C61PrivateEntropyEndpoint; 2],
+}
+
+/// Client-owned challenge transport for exactly four model/embed lanes, one
+/// joint lane and two compiler lanes. It is linear: all provider endpoints
+/// are moved out at start and all seven broker handles are consumed at seal.
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub struct C61CampaignNativeTranscriptSession {
+    contexts: [[u8; 32]; C61_INTERACTIVE_TAPE_LANES],
+    brokers: [C61PrivateEntropyBrokerHandle; C61_INTERACTIVE_TAPE_LANES],
+}
+
+#[cfg(feature = "c61-p3-authenticated-reference")]
+impl C61CampaignNativeTranscriptSession {
+    pub fn start(
+        attempt: C6ClientAttempt,
+        profile: &C6CanonicalTargetProfile,
+        mask_ranges: [C61AuthenticatedWhirMaskRange; 6],
+    ) -> Result<(C61CampaignNativeTranscriptEndpoints, Self), String> {
+        let mut verifier_seeds = [[0u8; 32]; C61_INTERACTIVE_TAPE_LANES];
+        for index in 0..C61_INTERACTIVE_TAPE_LANES {
+            OsRng
+                .try_fill_bytes(&mut verifier_seeds[index])
+                .map_err(|error| format!("C6ICT5 native verifier entropy unavailable: {error}"))?;
+            if verifier_seeds[index] == [0; 32]
+                || verifier_seeds[..index].contains(&verifier_seeds[index])
+            {
+                return Err("C6ICT5 native verifier entropy is zero or duplicated".to_owned());
+            }
+        }
+        Self::start_with_seeds(attempt, profile, mask_ranges, verifier_seeds)
+    }
+
+    fn start_with_seeds(
+        attempt: C6ClientAttempt,
+        profile: &C6CanonicalTargetProfile,
+        mask_ranges: [C61AuthenticatedWhirMaskRange; 6],
+        verifier_seeds: [[u8; 32]; C61_INTERACTIVE_TAPE_LANES],
+    ) -> Result<(C61CampaignNativeTranscriptEndpoints, Self), String> {
+        if verifier_seeds.contains(&[0; 32])
+            || (0..verifier_seeds.len())
+                .any(|index| verifier_seeds[..index].contains(&verifier_seeds[index]))
+        {
+            return Err("C6ICT5 native verifier entropy is zero or duplicated".to_owned());
+        }
+        let ids = C61NativeChainId::ordered();
+        let bindings: [C61ProviderSessionBinding; 6] = (0..6)
+            .map(|index| {
+                C61ProviderSessionBinding::from_reserved_attempt(
+                    attempt,
+                    ids[index],
+                    mask_ranges[index],
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?
+            .try_into()
+            .map_err(|_| "C6ICT5 native binding census differs".to_owned())?;
+        let joint_binding =
+            C61ProviderJointSessionBinding::from_reserved_attempt(attempt, profile)?;
+        let mut contexts = [[0u8; 32]; C61_INTERACTIVE_TAPE_LANES];
+        for index in 0..6 {
+            contexts[index] = bindings[index].context_digest();
+        }
+        contexts[6] = joint_binding.context_digest();
+        if contexts.contains(&[0; 32])
+            || (0..contexts.len()).any(|index| contexts[..index].contains(&contexts[index]))
+        {
+            return Err("C6ICT5 native transcript context is zero or duplicated".to_owned());
+        }
+        let dimensions = [
+            usize::from(C61_MODEL_POLYNOMIAL_LOG2),
+            usize::from(C61_MODEL_POLYNOMIAL_LOG2),
+            usize::from(C61_EMBEDDING_POLYNOMIAL_LOG2),
+            usize::from(C61_EMBEDDING_POLYNOMIAL_LOG2),
+            28,
+            28,
+            0,
+        ];
+        let mut endpoints = Vec::with_capacity(C61_INTERACTIVE_TAPE_LANES);
+        let mut brokers = Vec::with_capacity(C61_INTERACTIVE_TAPE_LANES);
+        for index in 0..C61_INTERACTIVE_TAPE_LANES {
+            let (endpoint, broker) = spawn_c61_private_entropy_transcript_broker(
+                verifier_seeds[index],
+                dimensions[index],
+                contexts[index],
+            )
+            .map_err(|error| error.to_string())?;
+            endpoints.push(endpoint);
+            brokers.push(broker);
+        }
+        let [model0, model1, embed0, embed1, compiler0, compiler1, joint] =
+            endpoints.try_into().map_err(|_| "C6ICT5 native endpoint census differs".to_owned())?;
+        let brokers =
+            brokers.try_into().map_err(|_| "C6ICT5 native broker census differs".to_owned())?;
+        Ok((
+            C61CampaignNativeTranscriptEndpoints {
+                four_chain_bindings: [bindings[0], bindings[1], bindings[2], bindings[3]],
+                four_chain_endpoints: [model0, model1, embed0, embed1],
+                joint_binding,
+                joint_endpoint: joint,
+                compiler_bindings: [bindings[4], bindings[5]],
+                compiler_endpoints: [compiler0, compiler1],
+            },
+            Self { contexts, brokers },
+        ))
+    }
+
+    pub fn finish(
+        self,
+        attempt: C6ClientAttempt,
+        certificate_digest: [u8; 32],
+        response_tape: C61InteractiveTape,
+        expected_response_context: [u8; 32],
+    ) -> Result<C61InteractiveTapeBundle, String> {
+        let tapes = self
+            .brokers
+            .into_iter()
+            .map(C61PrivateEntropyBrokerHandle::finish)
+            .collect::<Result<Vec<_>, _>>()?
+            .try_into()
+            .map_err(|_| "C6ICT5 native tape census differs".to_owned())?;
+        C61InteractiveTapeBundle::from_completed_attempt(
+            attempt,
+            certificate_digest,
+            tapes,
+            response_tape,
+            self.contexts,
+            expected_response_context,
+        )
     }
 }
 
@@ -1530,6 +1682,88 @@ mod campaign_artifact_tests {
             .0;
         assert!(public_start.contains("OsRng"));
         assert!(!public_start.contains("verifier_seed:"));
+    }
+
+    #[cfg(feature = "c61-p3-authenticated-reference")]
+    #[test]
+    fn native_session_owns_exactly_seven_bound_challenge_lanes() {
+        let attempt = response_attempt();
+        let profile = C6CanonicalTargetProfile {
+            inference_profile_digest: [0x31; 32],
+            topology_digest: [0x32; 32],
+            source_schedule_digest: [0x33; 32],
+            cohorts: vec![
+                volta_mac::C6CanonicalTargetCohort {
+                    cohort_id: 1,
+                    chain_slot: 1,
+                    polynomial_log2: C61_MODEL_POLYNOMIAL_LOG2,
+                    claim_layout_digest: [0x34; 32],
+                    canonical_nodes: vec![1; 96],
+                },
+                volta_mac::C6CanonicalTargetCohort {
+                    cohort_id: 2,
+                    chain_slot: 2,
+                    polynomial_log2: C61_EMBEDDING_POLYNOMIAL_LOG2,
+                    claim_layout_digest: [0x35; 32],
+                    canonical_nodes: vec![2; 6],
+                },
+            ],
+        };
+        let ranges = std::array::from_fn(|index| C61AuthenticatedWhirMaskRange {
+            stage: 7,
+            slot: u16::try_from(attempt.slot).unwrap(),
+            range_start: 100 + 3 * index as u32,
+        });
+        let seeds = std::array::from_fn(|index| [0x40 + index as u8; 32]);
+        let (endpoints, session) =
+            C61CampaignNativeTranscriptSession::start_with_seeds(attempt, &profile, ranges, seeds)
+                .unwrap();
+        let C61CampaignNativeTranscriptEndpoints {
+            four_chain_endpoints,
+            joint_endpoint,
+            compiler_endpoints,
+            ..
+        } = endpoints;
+        let mut native_endpoints = Vec::from(four_chain_endpoints);
+        native_endpoints.extend(compiler_endpoints);
+        native_endpoints.push(joint_endpoint);
+        for (index, endpoint) in native_endpoints.into_iter().enumerate() {
+            let mut transcript = Transcript::new_interactive(Box::new(endpoint));
+            transcript.append_message("native-lane", &[index as u8]);
+            let _ = transcript.challenge_fp2();
+            transcript.finish_interactive(&[0x60 + index as u8; 64]).unwrap();
+        }
+
+        let response_context = [0x70; 32];
+        let (response_endpoint, response_broker) =
+            spawn_c61_private_entropy_transcript_broker([0x71; 32], 0, response_context).unwrap();
+        let mut response_transcript = Transcript::new_interactive(Box::new(response_endpoint));
+        response_transcript.append_message("response", &[0x72]);
+        let _ = response_transcript.challenge_fp2();
+        response_transcript.finish_interactive(&[0x73; 64]).unwrap();
+        let response_tape = response_broker.finish().unwrap();
+
+        let certificate_digest = [0x74; 32];
+        let bundle =
+            session.finish(attempt, certificate_digest, response_tape, response_context).unwrap();
+        assert_eq!(bundle.traffic_census().tape_count, 8);
+        bundle.validate_attempt(attempt, certificate_digest).unwrap();
+        assert_eq!(
+            bundle.tapes()[0].context_digest(),
+            C61ProviderSessionBinding::from_reserved_attempt(
+                attempt,
+                C61NativeChainId::ordered()[0],
+                ranges[0],
+            )
+            .unwrap()
+            .context_digest()
+        );
+        assert_eq!(
+            bundle.tapes()[6].context_digest(),
+            C61ProviderJointSessionBinding::from_reserved_attempt(attempt, &profile)
+                .unwrap()
+                .context_digest()
+        );
     }
 
     #[cfg(feature = "c6-trace")]

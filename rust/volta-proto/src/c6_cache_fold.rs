@@ -30,7 +30,7 @@ pub const C6_CACHE_FOLD_TARGET_SLOT_BYTES: u64 = 32;
 pub const C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES: u64 = C6_CACHE_FOLD_TARGET_HEADER_BYTES
     + C6_CACHE_FOLD_MAX_RECORDS as u64 * C6_CACHE_FOLD_TARGET_SLOT_BYTES;
 
-const C6_CACHE_HEADS: usize = 12;
+pub(crate) const C6_CACHE_HEADS: usize = 12;
 const C6_CACHE_HEAD_WIDTH: usize = 64;
 const C6_CACHE_MODEL_LAYERS: u16 = 12;
 const C6_CACHE_DECODE_SECTION_BASE: u16 = 16;
@@ -231,6 +231,29 @@ impl C6CacheFoldPairedVerifierTargets {
 
     pub fn terms(&self) -> impl Iterator<Item = (C6CacheFoldKind, [VerifierKey; 2])> + '_ {
         self.terms.iter().copied()
+    }
+
+    pub(crate) fn from_online_replay(
+        snapshot: &C6CacheFoldTraceSnapshot,
+        terms: Vec<(C6CacheFoldKind, [VerifierKey; 2])>,
+    ) -> Result<Self, C6CacheFoldTraceError> {
+        if snapshot.party != C6CacheFoldParty::Verifier
+            || snapshot.records.len() != terms.len()
+            || snapshot.targets.len() != terms.len()
+            || snapshot
+                .records
+                .iter()
+                .zip(&snapshot.targets)
+                .zip(&terms)
+                .any(|((record, target), (kind, keys))| {
+                    record.kind != *kind || target.verifier() != Some(keys[0])
+                })
+        {
+            return Err(C6CacheFoldTraceError::new(
+                "C6 online paired verifier targets differ from the replay trace",
+            ));
+        }
+        Ok(Self { identity: snapshot.identity, terms })
     }
 }
 

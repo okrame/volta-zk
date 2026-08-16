@@ -47,9 +47,10 @@ use crate::block_proof::{
 };
 #[cfg(feature = "c6-trace")]
 use crate::c6_cache_fold::{
-    C6CacheFoldAppendSourceLayer, C6CacheFoldDirectSourceSegment, C6CacheFoldOnlineLayerMetrics,
-    C6CacheFoldOnlineLayerProver, C6CacheFoldOnlineLayerVerifier, C6CacheFoldTargetInlineProver,
-    C6CacheFoldTargetInlineVerifier,
+    C6CacheFoldAppendSourceLayer, C6CacheFoldDirectSourceSegment, C6CacheFoldKind,
+    C6CacheFoldOnlineLayerMetrics, C6CacheFoldOnlineLayerProver,
+    C6CacheFoldOnlineLayerVerifier, C6CacheFoldTargetInlineProver,
+    C6CacheFoldTargetInlineVerifier, C6_CACHE_HEADS,
 };
 #[cfg(feature = "c6-trace")]
 use crate::c6_source::{C6SourceScheduleProverFollower, C6SourceScheduleVerifierFollower};
@@ -145,6 +146,7 @@ enum ThinnedVerifierCacheMode<'prefix, 'keys, 'state, 'frame> {
         target_cursor: &'state mut C6CacheFoldTargetInlineVerifier<'frame>,
         metrics: C6CacheFoldOnlineLayerMetrics,
         append_source_layers: Vec<C6CacheFoldAppendSourceLayer>,
+        paired_targets: Vec<(C6CacheFoldKind, [VerifierKey; 2])>,
     },
 }
 
@@ -1360,7 +1362,12 @@ pub(crate) fn verify_layers_thinned_scheduled_c6(
     target_cursor: &mut C6CacheFoldTargetInlineVerifier<'_>,
     tx: &mut Transcript,
     bank: &mut TableBankV,
-) -> Option<(ThinnedScheduledV, C6CacheFoldOnlineLayerMetrics, Vec<C6CacheFoldAppendSourceLayer>)> {
+) -> Option<(
+    ThinnedScheduledV,
+    C6CacheFoldOnlineLayerMetrics,
+    Vec<C6CacheFoldAppendSourceLayer>,
+    Vec<(C6CacheFoldKind, [VerifierKey; 2])>,
+)> {
     let mut cache_mode = ThinnedVerifierCacheMode::C6 {
         prefixes,
         secondary,
@@ -1368,6 +1375,7 @@ pub(crate) fn verify_layers_thinned_scheduled_c6(
         target_cursor,
         metrics: C6CacheFoldOnlineLayerMetrics::default(),
         append_source_layers: Vec::with_capacity(L),
+        paired_targets: Vec::with_capacity(2 * C6_CACHE_HEADS * L),
     };
     let scheduled = verify_layers_thinned_scheduled_impl(
         model,
@@ -1381,10 +1389,15 @@ pub(crate) fn verify_layers_thinned_scheduled_c6(
         bank,
         &mut cache_mode,
     )?;
-    let ThinnedVerifierCacheMode::C6 { metrics, append_source_layers, .. } = cache_mode else {
+    let ThinnedVerifierCacheMode::C6 {
+        metrics,
+        append_source_layers,
+        paired_targets,
+        ..
+    } = cache_mode else {
         unreachable!("C6 scheduled verifier mode changed during execution")
     };
-    Some((scheduled, metrics, append_source_layers))
+    Some((scheduled, metrics, append_source_layers, paired_targets))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1594,14 +1607,15 @@ fn verify_layers_thinned_scheduled_impl(
                     )?
                 }
                 #[cfg(feature = "c6-trace")]
-                ThinnedVerifierCacheMode::C6 {
-                    prefixes,
-                    secondary,
-                    schedule_follower,
-                    target_cursor,
-                    metrics,
-                    append_source_layers,
-                } => {
+                    ThinnedVerifierCacheMode::C6 {
+                        prefixes,
+                        secondary,
+                        schedule_follower,
+                        target_cursor,
+                        metrics,
+                        append_source_layers,
+                        paired_targets,
+                    } => {
                     if !state.k_keys.is_empty() || !state.v_keys.is_empty() {
                         return None;
                     }
@@ -1651,6 +1665,7 @@ fn verify_layers_thinned_scheduled_impl(
                         Some(&model.layers[layer].1),
                     )?;
                     add_c6_online_metrics(metrics, online.metrics());
+                    paired_targets.extend(online.paired_targets().iter().copied());
                     append_source_layers.push(append_source_layer);
                     result
                 }

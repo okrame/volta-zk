@@ -62,8 +62,9 @@ use crate::block_proof::{
 use crate::block_proof::{verify_layer_phase1_band_thinned_c6, C6KvPrefixSource};
 #[cfg(feature = "c6-trace")]
 use crate::c6_cache_fold::{
-    C6CacheFoldAppendSourceLayer, C6CacheFoldAppendSourcePlan, C6CacheFoldOnlineLayerMetrics,
-    C6CacheFoldTargetInlineProver, C6CacheFoldTargetInlineVerifier,
+    C6CacheFoldAppendSourceLayer, C6CacheFoldAppendSourcePlan, C6CacheFoldKind,
+    C6CacheFoldOnlineLayerMetrics, C6CacheFoldTargetInlineProver,
+    C6CacheFoldTargetInlineVerifier,
 };
 #[cfg(feature = "c6-trace")]
 use crate::c6_source::{C6SourceScheduleProverFollower, C6SourceScheduleVerifierFollower};
@@ -192,6 +193,7 @@ enum ResponseVerifierCacheMode<'a, 'frame> {
         target_cursor: &'a mut C6CacheFoldTargetInlineVerifier<'frame>,
         metrics: C6CacheFoldOnlineLayerMetrics,
         append_source_layers: Vec<C6CacheFoldAppendSourceLayer>,
+        paired_targets: Vec<(C6CacheFoldKind, [VerifierKey; 2])>,
     },
 }
 
@@ -4486,6 +4488,7 @@ pub(crate) fn verify_response_c6_cache_inline(
     C6GrandResidualVerifierRoots,
     C6CacheFoldOnlineLayerMetrics,
     C6CacheFoldAppendSourcePlan,
+    Vec<(C6CacheFoldKind, [VerifierKey; 2])>,
 )> {
     verify_response_c6_cache_inline_view(
         Gpt2VerifierView::full(model),
@@ -4520,6 +4523,7 @@ pub(crate) fn verify_response_c6_cache_inline_from_profile(
     C6GrandResidualVerifierRoots,
     C6CacheFoldOnlineLayerMetrics,
     C6CacheFoldAppendSourcePlan,
+    Vec<(C6CacheFoldKind, [VerifierKey; 2])>,
 )> {
     verify_response_c6_cache_inline_view(
         Gpt2VerifierView::slim(model),
@@ -4554,6 +4558,7 @@ fn verify_response_c6_cache_inline_view(
     C6GrandResidualVerifierRoots,
     C6CacheFoldOnlineLayerMetrics,
     C6CacheFoldAppendSourcePlan,
+    Vec<(C6CacheFoldKind, [VerifierKey; 2])>,
 )> {
     if chunks.len() != 1 {
         return None;
@@ -4564,10 +4569,16 @@ fn verify_response_c6_cache_inline_view(
         target_cursor,
         metrics: C6CacheFoldOnlineLayerMetrics::default(),
         append_source_layers: Vec::with_capacity(L),
+        paired_targets: Vec::with_capacity(4 * crate::c6_cache_fold::C6_CACHE_HEADS * L),
     };
     let (out, prod, zero) =
         verify_response_impl(&model, t, logits, chunks, proof, vc, tx, false, &mut cache_mode)?;
-    let ResponseVerifierCacheMode::C6 { metrics, append_source_layers, .. } = cache_mode else {
+    let ResponseVerifierCacheMode::C6 {
+        metrics,
+        append_source_layers,
+        paired_targets,
+        ..
+    } = cache_mode else {
         unreachable!("C6 response verifier mode changed during execution")
     };
     Some((
@@ -4576,6 +4587,7 @@ fn verify_response_c6_cache_inline_view(
         C6GrandResidualVerifierRoots::new(zero),
         metrics,
         C6CacheFoldAppendSourcePlan::new(append_source_layers).ok()?,
+        paired_targets,
     ))
 }
 
@@ -4600,6 +4612,7 @@ pub fn verify_response_private_logits_c6_cache_inline(
     C6GrandResidualVerifierRoots,
     C6CacheFoldOnlineLayerMetrics,
     C6CacheFoldAppendSourcePlan,
+    Vec<(C6CacheFoldKind, [VerifierKey; 2])>,
 )> {
     verify_response_private_logits_c6_cache_inline_view(
         Gpt2VerifierView::full(model),
@@ -4634,6 +4647,7 @@ pub fn verify_response_private_logits_c6_cache_inline_from_profile(
     C6GrandResidualVerifierRoots,
     C6CacheFoldOnlineLayerMetrics,
     C6CacheFoldAppendSourcePlan,
+    Vec<(C6CacheFoldKind, [VerifierKey; 2])>,
 )> {
     verify_response_private_logits_c6_cache_inline_view(
         Gpt2VerifierView::slim(model),
@@ -4666,6 +4680,7 @@ fn verify_response_private_logits_c6_cache_inline_view(
     C6GrandResidualVerifierRoots,
     C6CacheFoldOnlineLayerMetrics,
     C6CacheFoldAppendSourcePlan,
+    Vec<(C6CacheFoldKind, [VerifierKey; 2])>,
 )> {
     if chunks.len() != 1 {
         return None;
@@ -4678,10 +4693,16 @@ fn verify_response_private_logits_c6_cache_inline_view(
         target_cursor,
         metrics: C6CacheFoldOnlineLayerMetrics::default(),
         append_source_layers: Vec::with_capacity(L),
+        paired_targets: Vec::with_capacity(4 * crate::c6_cache_fold::C6_CACHE_HEADS * L),
     };
     let (out, prod, zero) =
         verify_response_impl(&model, t, &[], &views, proof, vc, tx, true, &mut cache_mode)?;
-    let ResponseVerifierCacheMode::C6 { metrics, append_source_layers, .. } = cache_mode else {
+    let ResponseVerifierCacheMode::C6 {
+        metrics,
+        append_source_layers,
+        paired_targets,
+        ..
+    } = cache_mode else {
         unreachable!("C6 private-logit verifier mode changed during execution")
     };
     Some((
@@ -4690,6 +4711,7 @@ fn verify_response_private_logits_c6_cache_inline_view(
         C6GrandResidualVerifierRoots::new(zero),
         metrics,
         C6CacheFoldAppendSourcePlan::new(append_source_layers).ok()?,
+        paired_targets,
     ))
 }
 
@@ -4964,9 +4986,11 @@ fn verify_response_impl(
             target_cursor,
             metrics,
             append_source_layers,
+            paired_targets,
         } => {
             let c6_prefixes: Vec<Vec<C6KvPrefixSource>> = (0..L).map(|_| Vec::new()).collect();
-            let (scheduled, phase_metrics, phase_sources) = verify_layers_thinned_scheduled_c6(
+            let (scheduled, phase_metrics, phase_sources, phase_targets) =
+                verify_layers_thinned_scheduled_c6(
                 model.schedule_model,
                 &proof.layers,
                 &seam_instances,
@@ -4980,9 +5004,10 @@ fn verify_response_impl(
                 target_cursor,
                 tx,
                 &mut bank,
-            )?;
+                )?;
             add_c6_response_metrics(metrics, phase_metrics);
             *append_source_layers = phase_sources;
+            paired_targets.extend(phase_targets);
             scheduled
         }
     };
@@ -5171,6 +5196,7 @@ fn verify_response_impl(
                     target_cursor,
                     metrics,
                     append_source_layers,
+                    paired_targets,
                 } => {
                     let c6_prefixes = kv_sources
                         .iter()
@@ -5185,7 +5211,7 @@ fn verify_response_impl(
                                 .collect::<Vec<_>>()
                         })
                         .collect::<Vec<_>>();
-                    let (scheduled, phase_metrics, phase_sources) =
+                    let (scheduled, phase_metrics, phase_sources, phase_targets) =
                         verify_layers_thinned_scheduled_c6(
                             model.schedule_model,
                             &cp.layers,
@@ -5203,6 +5229,7 @@ fn verify_response_impl(
                         )?;
                     add_c6_response_metrics(metrics, phase_metrics);
                     *append_source_layers = phase_sources;
+                    paired_targets.extend(phase_targets);
                     scheduled
                 }
             };
@@ -5654,6 +5681,7 @@ mod tests {
             verifier_residual_roots,
             verifier_metrics,
             verifier_append_sources,
+            verifier_cache_targets,
         ) = verify_response_private_logits_c6_cache_inline(
             &model,
             t,
@@ -5666,6 +5694,10 @@ mod tests {
             &mut verifier_tx,
         )
         .expect("C6 response-wide cache proof verifies");
+        assert_eq!(
+            verifier_cache_targets.len(),
+            4 * crate::c6_cache_fold::C6_CACHE_HEADS * L
+        );
         assert_eq!(append_sources, verifier_append_sources);
         let verifier_trace = verifier_trace_guard.finish().unwrap();
         let verifier_fixed = target_cursor

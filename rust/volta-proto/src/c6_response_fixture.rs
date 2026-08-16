@@ -27,6 +27,7 @@ use crate::block_proof::layer_dom_base;
 use crate::c6::C6PairedDeltaResidual;
 use crate::c6_cache_fold::{
     begin_c6_cache_fold_trace, C6CacheFoldAppendSourcePlan, C6CacheFoldKind, C6CacheFoldParty,
+    C6CacheFoldPairedVerifierTargets,
     C6CacheFoldTargetCorrectionFrame, C6CacheFoldTargetFixedCorrections,
     C6CacheFoldTargetInlineProver, C6CacheFoldTargetInlineVerifier, C6CacheFoldTargetProverOwner,
     C6CacheFoldTargetPublicCorrectionFrame, C6CacheFoldTargetPublicSchedule,
@@ -163,6 +164,7 @@ pub struct C6T1ProductionResponseVerifierReplay {
     source_manifest: C6TraceSourceManifest,
     installed: C6T1InstalledRoleOwner,
     cache_snapshot: C6CacheFoldTraceSnapshot,
+    cache_targets: C6CacheFoldPairedVerifierTargets,
     cache_target_fixed: C6CacheFoldTargetFixedCorrections,
     cache_append_sources: C6CacheFoldAppendSourcePlan,
     cache_metrics: crate::c6_cache_fold::C6CacheFoldOnlineLayerMetrics,
@@ -203,6 +205,10 @@ impl C6T1ProductionResponseVerifierReplay {
 
     pub fn cache_snapshot(&self) -> &C6CacheFoldTraceSnapshot {
         &self.cache_snapshot
+    }
+
+    pub fn cache_targets(&self) -> &C6CacheFoldPairedVerifierTargets {
+        &self.cache_targets
     }
 
     pub fn cache_target_fixed(&self) -> &C6CacheFoldTargetFixedCorrections {
@@ -902,7 +908,14 @@ pub fn replay_c6_t1_production_response_verifier(
     .map_err(|error| error.to_string())?;
     let cache_trace =
         begin_c6_cache_fold_trace(C6CacheFoldParty::Verifier).map_err(|error| error.to_string())?;
-    let (output, product_keys, zero_roots, cache_metrics, cache_append_sources) =
+    let (
+        output,
+        product_keys,
+        zero_roots,
+        cache_metrics,
+        cache_append_sources,
+        cache_target_terms,
+    ) =
         verify_response_private_logits_c6_cache_inline_from_profile(
             model,
             100,
@@ -916,6 +929,11 @@ pub fn replay_c6_t1_production_response_verifier(
         )
         .ok_or_else(|| "C6.1 disk verifier retained response rejected".to_owned())?;
     let cache_snapshot = cache_trace.finish().map_err(|error| error.to_string())?;
+    let cache_targets = C6CacheFoldPairedVerifierTargets::from_online_replay(
+        &cache_snapshot,
+        cache_target_terms,
+    )
+    .map_err(|error| error.to_string())?;
     let cache_target_fixed = target_cursor
         .finish_before_successor_root_with_identity(cache_snapshot.identity, transcript)
         .map_err(|error| error.to_string())?;
@@ -982,6 +1000,7 @@ pub fn replay_c6_t1_production_response_verifier(
         source_manifest,
         installed: C6T1InstalledRoleOwner { operation_plan: installed_plan, extraction, runtime },
         cache_snapshot,
+        cache_targets,
         cache_target_fixed,
         cache_append_sources,
         cache_metrics,
@@ -1295,6 +1314,7 @@ pub fn build_c6_t1_production_response_owner(
         installed: verifier,
         cache_target_fixed: _,
         cache_snapshot: verifier_cache_snapshot,
+        cache_targets: _,
         cache_append_sources: verifier_cache_append_sources,
         cache_metrics: verifier_cache_metrics,
     } = verifier;
@@ -1739,6 +1759,7 @@ fn build_c6_response_residual_fixture_with_geometry(
         verifier_residual_roots,
         verifier_metrics,
         _verifier_append_sources,
+        _verifier_cache_targets,
     ) = verify_response_c6_cache_inline_from_profile(
         &verifier_model,
         RESPONSE_T,

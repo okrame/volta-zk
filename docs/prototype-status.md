@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--1.03 next.
+This capsule is authoritative; read design §§0.60--1.04 next.
 
 - **Milestone/evidence.** C6ICT5 study is complete: four WHIR chains bind the
   response-owned 96+6 claims and C6NBR2 binds their tape-1 functional;
@@ -52,6 +52,15 @@ This capsule is authoritative; read design §§0.60--1.03 next.
   outer statement; no coefficient, weight, correction, fold or digest is a
   caller input. The focused ownership guard is **1/0/0**. C6NBR2/compiler/link
   consumption and full assembly remain open; no pod or credit.
+
+- **2026-08-16 — Exact native blind campaign prefix lands.** One campaign
+  entry opens the predecessor/successor semantic caches from the same four
+  persisted cohorts, reconstructs append authentications from the retained
+  response, builds both fused residual statements/witness/arena from the bound
+  relation, and invokes the hidden-free blind coordinator on the original
+  paired PCG streams. Its API admits none of those intermediate objects. The
+  focused ownership guard is **1/0/0**. Terminal/native/compiler/link assembly
+  and disk verification remain open; no pod or credit.
 
 - **2026-08-16 — Independent cache append-key replay lands.** The disk/live
   verifier now derives the compact layer/K/V source-domain plan during its own

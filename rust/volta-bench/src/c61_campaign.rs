@@ -31,7 +31,10 @@ use volta_pcs::c61_authenticated_whir_p3::{
     C61ProviderSessionBinding,
 };
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
-use volta_pcs::c6_blind_round_coordinator::C61NativeExactProductionNbr2Certificate;
+use volta_pcs::c6_blind_round_coordinator::{
+    materialize_c61_native_cache_append_owner, prove_c61_native_production_blind_components,
+    C61NativeExactProductionNbr2Certificate, C61NativeProductionBlindProverOutput,
+};
 #[cfg(feature = "c6-trace")]
 use volta_pcs::C61ProductionResidualRelationBound;
 use volta_pcs::{
@@ -41,6 +44,11 @@ use volta_pcs::{
     spawn_c61_private_entropy_duplex_transcript_broker, C61InteractiveTape,
     C61InteractiveTapeBundle, C61JointPublicArgument, C61PrivateEntropyBrokerHandle,
     C61ResponseStatementBinding, C61StatementBinding,
+};
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+use volta_pcs::{
+    prepare_c6_blind_residual_statement_fused, C6BlindResidualFusedCompilerContext,
+    C6BlindResidualStatement,
 };
 #[cfg(feature = "c61-p3-authenticated-reference")]
 use volta_pcs::{
@@ -68,6 +76,8 @@ use volta_proto::{
     C6ProposedCacheHead, C6SetupManifest, C61_NATIVE_CERTIFICATE_VERSION,
     C61_NATIVE_WRAPPER_QUERIES, C61_VERIFIER_REPLAY_STATE_BYTES,
 };
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+use volta_proto::{C6ResidualFusedCoefficientArena, C6ResidualFusedWitnessView};
 
 #[cfg(feature = "c6-trace")]
 use crate::c6_t1_owner::{
@@ -522,6 +532,95 @@ impl C61CampaignLiveResidualRooted {
             self.relation,
         )
     }
+}
+
+/// Exact global blind result plus the two statements needed by its strict
+/// codec. Both are produced from one residual owner and four-root session.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub struct C61CampaignNativeBlindOwner {
+    blind: C61NativeProductionBlindProverOutput,
+    statements: [C6BlindResidualStatement; 2],
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+impl C61CampaignNativeBlindOwner {
+    pub fn into_parts(
+        self,
+    ) -> (C61NativeProductionBlindProverOutput, [C6BlindResidualStatement; 2]) {
+        (self.blind, self.statements)
+    }
+}
+
+/// Execute the hidden-free residual/cache blind prefix from the exact
+/// response, relation and persisted cache cohorts. Cache readers, append
+/// authentications, statements and fused witness state are not caller inputs.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub fn prove_c61_campaign_native_blind(
+    roots: &C61CampaignLiveRoots,
+    residual: &C6T1ProductionResidualBoundOwner,
+    workload: &C61PublicWorkloadPreimage,
+    attempt: &mut C6ProductionPairedPcgAttempt,
+    transcript: &mut Transcript,
+) -> Result<C61CampaignNativeBlindOwner, String> {
+    let cohorts = roots.provider_roots.cohorts();
+    if cohorts.len() != 4 || roots.provider_roots.session_digest() != roots.session_digest {
+        return Err("C6ICT5 native blind root/session census differs".to_owned());
+    }
+    let predecessor = cohorts[0].open_semantic_cache().map_err(|error| error.to_string())?;
+    let successor = cohorts[1].open_semantic_cache().map_err(|error| error.to_string())?;
+    let old_len = u16::try_from(workload.workload().old_context)
+        .map_err(|_| "C6ICT5 native blind old cache length exceeds u16")?;
+    let new_len = u16::try_from(workload.workload().new_context)
+        .map_err(|_| "C6ICT5 native blind new cache length exceeds u16")?;
+    let response = residual.response();
+    let streams = attempt.prover_streams_array_mut();
+    let append = materialize_c61_native_cache_append_owner(
+        response.cache_append_sources(),
+        &successor,
+        old_len,
+        new_len,
+        streams,
+    )?;
+    let compiler = C6BlindResidualFusedCompilerContext::new(
+        response.provider().operation_plan(),
+        response.provider().extraction(),
+        response.provider().runtime(),
+        residual.provider_linear(),
+        residual.relation(),
+    );
+    let witness = C6ResidualFusedWitnessView::new(
+        residual.relation().manifest(),
+        residual.leaf(),
+        residual.closure(),
+        residual.auxiliary(),
+    )
+    .map_err(|error| error.to_string())?;
+    let arena = C6ResidualFusedCoefficientArena::new(residual.relation().manifest());
+    let statements: [C6BlindResidualStatement; 2] = (0..2u8)
+        .map(|repetition| prepare_c6_blind_residual_statement_fused(compiler, repetition))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?
+        .try_into()
+        .map_err(|_| "C6ICT5 native blind statement census differs".to_owned())?;
+    let blind = prove_c61_native_production_blind_components(
+        roots.provider_roots.fixed(),
+        roots.provider_roots.fixed().statement_digest(),
+        response.cache_snapshot(),
+        response.cache_target_owner().targets(),
+        response.cache_target_owner().fixed(),
+        &predecessor,
+        &successor,
+        old_len,
+        new_len,
+        &append,
+        &statements,
+        compiler,
+        witness,
+        &arena,
+        streams,
+        transcript,
+    )?;
+    Ok(C61CampaignNativeBlindOwner { blind, statements })
 }
 
 /// Provider-only joint functional derived after every secondary native body
@@ -2094,6 +2193,46 @@ mod campaign_artifact_tests {
             assert!(!signature.contains(forbidden), "native functional admits {forbidden}");
         }
         assert!(body.contains("fold_prover_bridge_coordinate(") && body.contains("1,"));
+    }
+
+    #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+    #[test]
+    fn native_blind_uses_only_exact_persisted_cache_and_residual_owners() {
+        let source = include_str!("c61_campaign.rs");
+        let body = source
+            .split_once("pub fn prove_c61_campaign_native_blind(")
+            .unwrap()
+            .1
+            .split_once("/// Provider-only joint functional")
+            .unwrap()
+            .0;
+        for required in [
+            "cohorts[0].open_semantic_cache()",
+            "cohorts[1].open_semantic_cache()",
+            "materialize_c61_native_cache_append_owner(",
+            "response.cache_append_sources()",
+            "response.cache_target_owner().targets()",
+            "response.cache_target_owner().fixed()",
+            "C6BlindResidualFusedCompilerContext::new(",
+            "C6ResidualFusedWitnessView::new(",
+            "prepare_c6_blind_residual_statement_fused(",
+            "prove_c61_native_production_blind_components(",
+            "attempt.prover_streams_array_mut()",
+        ] {
+            assert!(body.contains(required), "native blind omits {required}");
+        }
+        let signature = body.split_once(") -> Result").unwrap().0;
+        for forbidden in [
+            "predecessor:",
+            "successor:",
+            "append:",
+            "cache_targets:",
+            "statements:",
+            "residual_compiler:",
+            "residual_witness:",
+        ] {
+            assert!(!signature.contains(forbidden), "native blind admits {forbidden}");
+        }
     }
 
     #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]

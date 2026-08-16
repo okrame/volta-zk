@@ -5087,6 +5087,28 @@ tail, compiler chains, arithmetic frame and final exact assembly remains
 open. No quantitative or hardware credit is promoted; pod contact remains
 forbidden.
 
+### 1.04 C6ICT5 exact native blind campaign-prefix checkpoint
+
+The campaign now has one hidden-free blind-prefix entry. It opens the
+predecessor and successor semantic-cache readers only from cohort positions
+zero and one of the same four-root persisted owner. From the retained response
+it reconstructs the exact append authentication owner and consumes the
+original paired real-PCG streams without advancing them during replay.
+
+The same entry constructs the fused residual compiler from the installed
+provider plan/extraction/runtime, bound linear form and relation; constructs
+the witness view from that relation's leaf/closure/auxiliary owners; allocates
+the single fused coefficient arena; and derives both strict residual
+statements. It then invokes the native residual/cache coordinator. Its API
+accepts no cache reader, append array, target vector, residual statement,
+compiler, witness or arena.
+
+The focused campaign ownership guard is **1/0/0**. This closes the exact blind
+prefix only. The terminal typestate, four native bodies, compiled functional,
+C6NBR2/link, compiler chains and exact certificate still need one linear
+campaign call graph; disk semantic verification and mutations remain open.
+No benchmark or pod credit is promoted.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

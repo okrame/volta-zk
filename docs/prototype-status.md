@@ -8,31 +8,42 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.85 next.
+This capsule is authoritative; read design §§0.60--0.86 next.
 
-- **Milestone/evidence.** C6NBR3 and C6ICT2/C6ICT3 remain closed locally.
-  C6ICT4 captures both ProductClosure coordinates, has three noncircular
-  statement domains, persists the compiler profile and reaches the live
-  six-root/residual coordinator. Focused PCS is **16/0/0**, campaign
-  **11/0/0**, public-instance **1/0/0**; feature compilation is green. No
-  production, full-chain, timing or hardware credit exists.
+- **Milestone/evidence.** C6ICT5 study is complete: one response owner supplies
+  the ordered 96+6 claims; four WHIR chains bind their exact global points and
+  paired plaintexts; C6NBR2 binds the compiled tape-1 functional. C6HUB2 owns
+  only obsolete Ligero-internal vectors. Existing focused checks remain PCS
+  **16/0/0**, campaign **11/0/0**, public-instance **1/0/0**; the exact claim
+  bridge and NBR2 reruns are **1/0/0 + 3/0/0**. No production, full-chain,
+  timing or hardware credit exists.
 - **Hard stop.**
-  `C6ICT5_NATIVE_HIDDEN_U_ELIMINATION_EQUIVALENCE_REQUIRED`. Raw staged Ligero
-  is traffic NO-GO. No hidden branch or link slot may change until the four
-  native chains and C6NBR2 are proved to cover the same ordered 96+6 claims,
-  values and designated bindings.
-- **Authorization/resume.** Owner authorizes the bounded C6ICT5 elimination
-  study in §0.85: typed owner/statement map, exact equivalence obligations,
-  removal or explicitly inactive state, slot/codec/Lean transition and fresh
-  byte/correlation/soundness/time screens. No compatibility scaffolding,
-  duplicate witness path, implementation, pod or benchmark credit.
-- **Screens.** Certificate **17,536,735 B**, setup **148,738,118 B**,
-  setup+first **166,274,853 B**, state **2,277,715,552 B**, soundness
-  **102.5878332989 bits/cert**, provider/verifier **14.9179595454 /
-  4.978261758 s** remain `credit:false`.
+  `C6ICT5_NATIVE_HIDDEN_U_ELIMINATION_IMPLEMENTATION_OWNER_GO_REQUIRED`.
+  Study §0.86 selects deletion: one four-cohort/56-slot profile, 57 C6NBR2
+  relations and no hidden owner, participant, source-binding field or codec
+  component. No compatibility adapter or inactive branch is allowed.
+- **Resume.** Explicit owner GO is required for the §0.86 implementation,
+  additive Lean proof, mutation suite and fresh executable budgets. Pod
+  admission follows only after all local/full-chain preflight gates are green.
+- **Screens.** Study-only certificate **17,079,931 B**, setup
+  **148,738,118 B**, setup+first **165,818,049 B**, state
+  **2,277,715,552 B**, soundness **102.5878333013 bits/cert** and
+  provider/verifier **14.9179595454 / 4.978261758 s** are `credit:false`.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-16 — C6ICT5 study selects native hidden-u deletion.** Source and
+  statement audit proves the four model/embed WHIR chains use the exact
+  ordered response-owned 96+6 claims and values, while C6NBR2 binds their
+  compiled functional to residual tape 1. C6HUB2 proves only vectors internal
+  to the removed Ligero opening. Section 0.86 therefore specifies a closed
+  four-cohort/56-slot profile, 57-relation/134-root link, hidden-free source
+  binding and six-component envelope; historical C6 is not adapted into the
+  C6.1 decoder. Mechanical screens give **17,079,931 B** certificate,
+  **165,818,049 B** setup+first, **102.5878333013 bits/cert** and 458 wrapper
+  correlations/tape, all `credit:false`. Focused claim-bridge/NBR2 reruns are
+  **1/0/0 + 3/0/0**. Implementation and pod contact await explicit owner GO.
 
 - **2026-08-16 — Owner authorizes C6ICT5 elimination study.**
   `C6ICT5_NATIVE_HIDDEN_U_ELIMINATION_STUDY` must prove that the four native

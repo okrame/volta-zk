@@ -4587,6 +4587,130 @@ a hard stop. No pod, production mutation or quantitative credit is authorized.
 The active study gate is
 `C6ICT5_NATIVE_HIDDEN_U_ELIMINATION_EQUIVALENCE_REQUIRED`.
 
+### 0.86 C6ICT5 native hidden-u elimination study disposition
+
+The study closes **GO for deletion**, not for canonical-zero compatibility.
+No fifth response-value relation is carried by C6HUB2: it authenticates only
+the `u_c/u_g` vectors internal to the retained Ligero opening.  Once that
+opening is absent, keeping C6HUB2 would retain an orphan protocol branch.
+
+#### 0.86.1 Exact claim and value map
+
+`C6T1NativeClaimOwner::from_response` is the sole ordered owner of the 96
+model and six embedding `BlockClaim`s and their response-produced
+authentications/keys.  Both the old C3 opening and the native D28/D27 owners
+use `layout_gpt2_weights_c3` / `layout_gpt2_embed_c3`, the same tensor values,
+row strides and offsets, with canonical zero padding to the native
+power-of-two domain.  `build_c61_production_model_embedding_public_statement`
+maps each claim to exactly `BlockClaim::global_point`; chain preparation
+evaluates that committed polynomial and rejects unless every evaluation
+equals the response target plaintext.
+
+`evaluate_installed_paired_closure` independently requires equal plaintext in
+both paired coordinates.  Thus model0/model1 and embed0/embed1 use the same
+ordered 96+6 values, with independent MAC coordinates and WHIR randomness.
+The current four-chain API still accepts two same-length claim slices; the
+implementation MUST replace that length-only boundary by one typed ordered
+claim schedule, borrowed by both repetitions and bound into both public
+statement digests.  A reordered or component-swapped schedule must be
+unrepresentable, not detected by an optional adapter.
+
+After all four native bodies are fixed, `zeta` determines the exact per-claim
+weights. `C6CompiledNativeTargetFunctional` maps all 102 targets through the
+installed reverse DAG to the tape-1 source coefficients.  C6NBR2 then proves
+that coefficient inner product against the already committed residual
+coordinate-1 correction in residual slot 6, while the response owner retains
+the coordinate-0 authentications.  Its digest binds profile, schedule,
+functional, coefficient vector, residual/source/fixed-root and outer
+statements; the joint ZeroOpen is receipt-gated.  It accepts no clear target,
+provider key, caller coefficient or detached correction.
+
+#### 0.86.2 Required typed subtraction
+
+The C6.1 production path MUST use one new closed profile, with no legacy
+adapter or dual-mode decoder:
+
+```text
+cohorts: predecessor-cache(8), successor-cache(8), residual(8), auxiliary(32)
+active PCS/link slots per repetition: 56
+C6NBR2 public correction claim:       +1 (not a slot)
+link relations / rounds:              57 / 25
+roots per repetition:                 57 + 3*25 + 2 = 134
+two-repetition numerator:             134^2 = 17,956 < 2^15
+```
+
+The new live-source type owns cache and residual inputs only.  Its
+domain-separated source-binding preimage must delete both hidden-witness
+digests and bind the new four-root profile.  The round coordinator has only
+cache and residual participants; pending registries require exactly the 56
+remaining slots.  `absorb_hidden_u`, hidden materialization and the legacy
+Ligero owner are unreachable from the C6.1 production owner graph.
+
+The strict wire grammar advances to a six-component C6.1 envelope with no
+`HiddenU` kind.  The C6.1 outer wrapper binding carries old/new cache roots in
+their heads plus residual root, auxiliary root and the combined source
+binding; the two historical hidden-root fields are deleted.  Historical C6
+codecs may remain frozen for old records, but the C6.1 decoder must reject
+them rather than adapt them.  Direct native coefficient persistence must
+consume the linear response owner, not `C6T1HiddenUOwner`; this removes the
+current construction dependency without adding a second witness pass.
+
+#### 0.86.3 Mechanical re-sum
+
+At Q=86, deleting the D21/D19 cohorts changes one packed PCS chain from
+**1,939,733 B** to **1,714,123 B**.  Across two repetitions the exact
+subtractions are:
+
+| subtraction | bytes |
+|---|---:|
+| packed wrapper PCS | 451,220 |
+| C6HUB2 payload | 5,416 |
+| removed envelope component header | 40 |
+| 56-slot link metadata versus 72 slots | 64 |
+| two removed outer hidden roots | 64 |
+| **total** | **456,804** |
+
+The study screen is therefore **17,079,931 B** per certificate,
+**3,463,555 B** for strict `pi_final`, **148,738,118 B** setup and
+**165,818,049 B** setup plus first certificate.  Certificate headroom is
+**4,920,068 B** below the strict 21,999,999-B maximum.  The controlling
+provider-state screen remains conservatively **2,277,715,552 B**.
+
+The wrapper PCS/link event improves from 130.4330497420 to
+**131.1581899008 bits**.  The complete conservative screen becomes
+**102.5878333013 bits/certificate** and **98.5003704600 bits** for the
+17-certificate union.  C6NBR2's 17,956 numerator replaces the former
+hidden/link `2^16` allocation; no new event is introduced.  Registered
+wrapper full correlations fall from 622 to **458 per tape**, leaving
+**38,658** under the historical reserve.  Setup capacity, 17 accepts and four
+burned abort slots are unchanged.
+
+Provider/verifier screens remain conservatively **14.9179595454 s** and
+**4.978261758 s** (`credit:false`).  Deletion performs less work, but no time
+credit is taken before the exact A100/4T full-chain measurement; in
+particular the official verifier gate remains `<5 s`.
+
+#### 0.86.4 Additive proof and implementation gate
+
+Implementation must add, without editing frozen M1--M11, a
+`C6NativeHiddenUElimination.lean` companion proving the ordered native-claim
+refinement, the 57/134/17,956 census and composition of WHIR acceptance,
+C6NBR2 and joint ZeroOpen without a hidden-u bad event.  Commitment binding,
+MAC/WHIR soundness, transcript order and BLAKE3 collision resistance remain
+explicit assumptions; `#print axioms` may add none.
+
+Mandatory negative tests change one claim/order/component/repetition,
+coefficient placement or padding, paired plaintext, compiled weight,
+correction, root/profile/source binding and each codec field.  They also prove
+that C6.1 cannot construct or decode a Ligero/C6HUB2 participant.  Only after
+typed owner, four-cohort roots, 56+1 link, Lean, codec, budget and full local
+workspace gates are green may pod admission resume.
+
+The equivalence study is complete.  The active hard stop is
+`C6ICT5_NATIVE_HIDDEN_U_ELIMINATION_IMPLEMENTATION_OWNER_GO_REQUIRED`.
+No implementation, pod contact or benchmark credit is authorized by this
+disposition.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

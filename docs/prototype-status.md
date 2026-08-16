@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.97 next.
+This capsule is authoritative; read design §§0.60--0.98 next.
 
 - **Milestone/evidence.** C6ICT5 study is complete: one response owner supplies
   the ordered 96+6 claims; four WHIR chains bind their exact global points and
@@ -25,7 +25,7 @@ This capsule is authoritative; read design §§0.60--0.97 next.
   its focused PCS/owner guards are **2/0/0 + 1/0/0**. The distinct four-root
   PCS profile/coordinator guard is **1/0/0**; the hidden-free live/verifier
   source guard is **1/0/0**. Link/join and blind/envelope/outer/campaign are
-  **1+1+1+2+3+11** green tests. Budget v29 self-checks wire/soundness; Lean
+  **1+1+1+2+3+12** green tests. Budget v29 self-checks wire/soundness; Lean
   builds **3,267 jobs** and audits nine new targets. All remain screens only.
 - **Resume.** Close exact live-to-disk runner, mutations, full workspace and
   campaign preflight in small checkpoints.
@@ -37,6 +37,15 @@ This capsule is authoritative; read design §§0.60--0.97 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-16 — Native campaign sealing seam lands.** One typed function now
+  consumes the live four-root owner, bound residual owner and receipt-gated
+  exact C6PA2/C6NBR2 assembly to derive retained response/public bytes,
+  residual scalars, source binding and all wrapper roots. It seals and strictly
+  decodes `C61NativeFinalCertificate` and binds the public instance; no
+  detached byte/digest input or historical C6 type is admitted. Campaign is
+  **12/0/0** and the complete feature check is green. Full prover call graph,
+  disk semantic verification and record harness remain open; no credit/pod.
 
 - **2026-08-16 — C6ICT5 additive Lean boundary lands.**
   `C6NativeHiddenUElimination.lean` types one ordered 96+6 schedule shared by

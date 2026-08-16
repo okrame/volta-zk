@@ -25,6 +25,8 @@ use volta_mac::{
     C6OperationPlanArtifact, C6TraceSourceManifest, Transcript,
 };
 use volta_pcs::c61_authenticated_whir_p3::C61CompilerVerifierProfile;
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+use volta_pcs::c6_blind_round_coordinator::C61NativeExactProductionNbr2Certificate;
 #[cfg(feature = "c6-trace")]
 use volta_pcs::C61ProductionResidualRelationBound;
 use volta_pcs::{
@@ -44,13 +46,14 @@ use volta_pcs::{
 #[cfg(feature = "c6-trace")]
 use volta_proto::{
     replay_c6_t1_production_response_verifier, C6ProductionPairedPcgAttempt,
-    C6RetainedResponseProof, C6T1DiskResidualOwner, C6T1ProductionResidualOwner,
-    C6T1ProductionResponseVerifierReplay,
+    C6RetainedResponseProof, C6T1DiskResidualOwner, C6T1ProductionResidualBoundOwner,
+    C6T1ProductionResidualOwner, C6T1ProductionResponseVerifierReplay,
 };
 use volta_proto::{
-    C61NativeFinalCertificate, C61PublicWorkloadInstance, C61PublicWorkloadPreimage,
-    C6BoundProductionVerifierReplay, C6CacheHead, C6ClientAttempt, C6ProposedCacheHead,
-    C6SetupManifest, C61_VERIFIER_REPLAY_STATE_BYTES,
+    C61NativeFinalCertificate, C61NativeWrapperCommitments, C61PublicWorkloadInstance,
+    C61PublicWorkloadPreimage, C6BoundProductionVerifierReplay, C6CacheHead, C6ClientAttempt,
+    C6ProposedCacheHead, C6SetupManifest, C61_NATIVE_CERTIFICATE_VERSION,
+    C61_NATIVE_WRAPPER_QUERIES, C61_VERIFIER_REPLAY_STATE_BYTES,
 };
 
 #[cfg(feature = "c6-trace")]
@@ -341,6 +344,125 @@ pub struct C61CampaignLiveResidualRooted {
     pub verifier_roots: C6VerifierLiveWrapperRootBinding,
     pub relation: C61ProductionResidualRelationBound,
     pub session_digest: [u8; 32],
+}
+
+/// Exact native provider output after the response, four-root wrapper,
+/// C6NBR2 receipt and C6PA2 assembly have all been consumed once.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub struct C61CampaignSealedNativeOutput {
+    pub certificate: C61NativeFinalCertificate,
+    pub public_instance: C61PublicWorkloadInstance,
+}
+
+/// Seal the strict native certificate directly from the live residual owner
+/// and receipt-gated exact assembly. No caller supplies retained bytes,
+/// public-argument bytes, residual scalars, wrapper roots or source binding.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+#[allow(clippy::too_many_arguments)]
+pub fn seal_c61_campaign_native_output(
+    setup: &C6SetupManifest,
+    attempt: C6ClientAttempt,
+    old_head: C6CacheHead,
+    proposed_head: C6ProposedCacheHead,
+    response_statement: &C61ResponseStatementBinding,
+    workload: C61PublicWorkloadPreimage,
+    rooted: &C61CampaignLiveResidualRooted,
+    residual: &C6T1ProductionResidualBoundOwner,
+    exact: C61NativeExactProductionNbr2Certificate,
+) -> Result<C61CampaignSealedNativeOutput, String> {
+    setup.validate().map_err(|error| error.to_string())?;
+    old_head.validate().map_err(|error| error.to_string())?;
+    let setup_digest = setup.digest().map_err(|error| error.to_string())?;
+    let fixed = rooted.provider_roots.fixed();
+    let commitments = fixed.commitments();
+    if commitments.len() != 4
+        || rooted.verifier_roots.fixed().statement_digest() != fixed.statement_digest()
+        || rooted.verifier_roots.fixed().binding_digest() != fixed.binding_digest()
+        || rooted
+            .verifier_roots
+            .fixed()
+            .commitments()
+            .iter()
+            .map(|commitment| commitment.root)
+            .ne(commitments.iter().map(|commitment| commitment.root))
+        || setup_digest != attempt.setup_manifest_digest
+        || old_head.digest() != attempt.old_head_digest
+        || workload.workload() != attempt.workload
+        || response_statement.digest() == fixed.statement_digest()
+    {
+        return Err("C6ICT5 native seal input binding mismatch".to_owned());
+    }
+    let roots: [[u8; 32]; 4] = commitments
+        .iter()
+        .map(|commitment| commitment.root)
+        .collect::<Vec<_>>()
+        .try_into()
+        .map_err(|_| "C6ICT5 native seal root census differs")?;
+    if old_head.cache_root != roots[0] || proposed_head.cache_root() != roots[1] {
+        return Err("C6ICT5 native seal cache roots differ from the transition heads".to_owned());
+    }
+
+    let public_argument_statement_digest = exact.public_argument().argument().statement_digest();
+    validate_campaign_statement_domains(
+        response_statement.digest(),
+        fixed.statement_digest(),
+        public_argument_statement_digest,
+    )?;
+    let public_instance = workload
+        .bind_statements(response_statement.digest(), public_argument_statement_digest)
+        .map_err(|error| error.to_string())?;
+    let retained_response = residual.response().encoded_retained_response()?;
+    let mut retained_transcript =
+        Vec::with_capacity(retained_response.len() + exact.encoded_public_argument().len());
+    retained_transcript.extend_from_slice(&retained_response);
+    retained_transcript.extend_from_slice(exact.encoded_public_argument());
+    let relation = residual.relation();
+    let mut certificate = C61NativeFinalCertificate {
+        version: C61_NATIVE_CERTIFICATE_VERSION,
+        wrapper_queries: C61_NATIVE_WRAPPER_QUERIES,
+        protocol_digest: setup.protocol_digest,
+        model_digest: setup.model_digest,
+        params_digest: setup.params_digest,
+        setup_manifest_digest: setup_digest,
+        connection_id: setup.connection_id,
+        nonce: attempt.nonce,
+        slot: attempt.slot,
+        correlation_ranges: attempt.correlation_ranges,
+        predecessor_certificate_digest: attempt.predecessor_certificate_digest,
+        old_head,
+        new_head: C6CacheHead {
+            epoch: proposed_head.epoch(),
+            cache_len: proposed_head.cache_len(),
+            cache_root: proposed_head.cache_root(),
+            producer_transition_digest: [0; 32],
+        },
+        workload: attempt.workload,
+        public_output_digest: public_instance.preimage().public_output_digest(),
+        wrapper: C61NativeWrapperCommitments {
+            statement_digest: fixed.statement_digest(),
+            residual_root: roots[2],
+            auxiliary_root: roots[3],
+            source_binding_digest: rooted.provider_roots.source_binding_digest(),
+        },
+        residual: relation.claims().residual(),
+        retained_transcript_digest: [0; 32],
+        proof_envelope_digest: [0; 32],
+        transition_statement_digest: [0; 32],
+        retained_transcript,
+        proof_envelope: exact.encoded_proof_envelope().to_vec(),
+    }
+    .seal()
+    .map_err(|error| error.to_string())?;
+    let encoded = certificate.encode().map_err(|error| error.to_string())?;
+    certificate = C61NativeFinalCertificate::decode(&encoded).map_err(|error| error.to_string())?;
+    if !proposed_head.matches_final(certificate.new_head)
+        || certificate.wrapper_roots() != roots
+        || certificate.public_argument() != exact.encoded_public_argument()
+        || certificate.proof_envelope != exact.encoded_proof_envelope()
+    {
+        return Err("C6ICT5 native seal strict round trip differs from live owners".to_owned());
+    }
+    Ok(C61CampaignSealedNativeOutput { certificate, public_instance })
 }
 
 /// Commit the four exact wrapper cohorts, install the same roots on the live
@@ -1570,6 +1692,50 @@ mod campaign_artifact_tests {
             "install_production_c6_live_wrapper_roots_verifier(",
         ] {
             assert!(!body.contains(forbidden), "native campaign body retains {forbidden}");
+        }
+    }
+
+    #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+    #[test]
+    fn native_seal_consumes_only_exact_live_owners_and_round_trips() {
+        let source = include_str!("c61_campaign.rs");
+        let body = source
+            .split_once("pub fn seal_c61_campaign_native_output(")
+            .unwrap()
+            .1
+            .split_once("/// Commit the four exact wrapper cohorts")
+            .unwrap()
+            .0;
+        let signature = body.split_once(") -> Result").unwrap().0;
+        for required in [
+            "C61CampaignLiveResidualRooted",
+            "C6T1ProductionResidualBoundOwner",
+            "C61NativeExactProductionNbr2Certificate",
+        ] {
+            assert!(signature.contains(required), "native seal omits typed owner {required}");
+        }
+        for forbidden in [
+            "retained_transcript: Vec",
+            "proof_envelope: Vec",
+            "public_argument: Vec",
+            "residual: C6PairedDeltaResidual",
+            "source_binding_digest: [u8; 32]",
+        ] {
+            assert!(!signature.contains(forbidden), "native seal admits detached {forbidden}");
+        }
+        for required in [
+            "residual.response().encoded_retained_response()",
+            "exact.encoded_public_argument()",
+            "exact.encoded_proof_envelope()",
+            "relation.claims().residual()",
+            "rooted.provider_roots.source_binding_digest()",
+            ".seal()",
+            "C61NativeFinalCertificate::decode(&encoded)",
+        ] {
+            assert!(body.contains(required), "native seal omits {required}");
+        }
+        for forbidden in ["C6FinalCertificate", "C6ResponseProofEnvelope", "HiddenU"] {
+            assert!(!body.contains(forbidden), "native seal retains {forbidden}");
         }
     }
 

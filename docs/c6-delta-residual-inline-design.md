@@ -4952,6 +4952,31 @@ targets add nothing beyond `propext`, `Classical.choice` and `Quot.sound`, and
 the refinement/composition targets use none. This is formal seam evidence,
 not a complete runner or benchmark credit; pod contact remains forbidden.
 
+### 0.98 C6ICT5 native campaign sealing checkpoint
+
+The campaign now has one typed sealing boundary for the final native object.
+It accepts the live four-root owner, the same bound residual owner and the
+receipt-gated `C61NativeExactProductionNbr2Certificate`; it accepts no
+retained-response bytes, proof-envelope bytes, residual scalars, roots or
+source-binding digest from a caller. The retained response is encoded from the
+live owner, C6PA2 and `C61PIF2` come from the exact assembly, the residual comes
+from its bound public claims, and all four roots plus source binding come from
+the persisted live-root owner.
+
+The boundary cross-checks setup, attempt, old/proposed heads, workload, live
+provider/verifier root bindings and the three distinct statement domains. It
+then seals `C61NativeFinalCertificate`, strictly decodes its canonical bytes,
+checks the resulting head and all derived payloads, and binds the local public
+workload instance to the response and C6PA2 statements. Historical
+`C6FinalCertificate`, `C6PIF1` and hidden-u types are not inputs.
+
+The source/ordering guard raises the campaign suite to **12/0/0** and the
+complete CUDA/trace/authenticated-reference feature check is green. This
+closes only final object construction. The one-attempt prover call graph,
+strict disk semantic verification, challenge-bundle finalization and measured
+record harness remain mandatory; no quantitative or hardware credit is
+promoted and pod contact remains forbidden.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

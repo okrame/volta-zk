@@ -26,7 +26,7 @@ use volta_mac::{
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_pcs::c61_authenticated_whir_p3::{
     create_c61_production_coefficient_owner, C61ProductionCoefficientOwner,
-    C61SignedCoefficientPlacement,
+    C61ProductionCoefficientSessionBinding, C61SignedCoefficientPlacement,
 };
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_pcs::c61_public_compression::C61NativeComponent;
@@ -612,9 +612,10 @@ pub fn attach_c6_t1_hidden_u_owner(
 pub fn persist_c6_t1_native_coefficient_owners(
     response: C6T1ProductionOwnerExport,
     root: &Path,
-    session_digest: [u8; 32],
+    session: C61ProductionCoefficientSessionBinding,
 ) -> Result<C6T1PersistedNativeOwner, String> {
-    if session_digest == [0; 32] || !root.is_dir() {
+    let session_digest = session.context_digest();
+    if !root.is_dir() {
         return Err("C6SPR12 native coefficient root/session preflight failed".to_owned());
     }
     let model = response.workload().model();
@@ -776,6 +777,8 @@ mod tests {
             .next()
             .unwrap();
         assert!(persistence.contains("response: C6T1ProductionOwnerExport"));
+        assert!(persistence.contains("session: C61ProductionCoefficientSessionBinding"));
+        assert!(!persistence.contains("session_digest: [u8; 32]"));
         assert!(persistence.contains("response.workload().model()"));
         assert!(!persistence.contains("C6T1HiddenUOwner"));
         assert!(!persistence.contains("hidden_bundle"));

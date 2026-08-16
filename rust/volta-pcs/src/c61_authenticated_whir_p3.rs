@@ -1509,6 +1509,15 @@ pub struct C61ProviderSessionBinding {
     mask_range: C61AuthenticatedWhirMaskRange,
 }
 
+/// Typed session identity shared by the two durable D28/D27 coefficient
+/// owners. It is derived only from the four ordered response-chain bindings,
+/// so coefficient artifacts cannot be attached to an unrelated attempt by a
+/// caller-chosen digest.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C61ProductionCoefficientSessionBinding {
+    digest: [u8; 32],
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct C61ProviderJointSessionBinding {
     digest: [u8; 32],
@@ -1634,6 +1643,33 @@ impl C61ProviderSessionBinding {
             return Err("C6ICT2 provider session binding is assigned to another chain".to_owned());
         }
         Ok(())
+    }
+}
+
+impl C61ProductionCoefficientSessionBinding {
+    pub fn from_four_chain_bindings(
+        bindings: [C61ProviderSessionBinding; 4],
+        mask_ranges: [C61AuthenticatedWhirMaskRange; 4],
+    ) -> Result<Self, String> {
+        let ids = C61NativeChainId::ordered();
+        for index in 0..4 {
+            bindings[index].validate_for(ids[index], mask_ranges[index])?;
+        }
+        let digests = bindings.map(C61ProviderSessionBinding::context_digest);
+        if digests.contains(&[0; 32])
+            || (0..digests.len()).any(|index| digests[..index].contains(&digests[index]))
+        {
+            return Err("C6ICT5 coefficient session bindings are zero or duplicated".to_owned());
+        }
+        let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c6.1/coefficient-session/v1");
+        for digest in digests {
+            hasher.update(&digest);
+        }
+        Ok(Self { digest: *hasher.finalize().as_bytes() })
+    }
+
+    pub fn context_digest(self) -> [u8; 32] {
+        self.digest
     }
 }
 

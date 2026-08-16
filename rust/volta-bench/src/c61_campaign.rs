@@ -28,9 +28,9 @@ use volta_pcs::c61_authenticated_whir_p3::C61CompilerVerifierProfile;
 #[cfg(feature = "c61-p3-authenticated-reference")]
 use volta_pcs::c61_authenticated_whir_p3::{
     run_c61_authenticated_whir_p3_production_compiler_private_entropy_in_attempt,
-    C61ProductionCommittedChainExecution, C61ProductionJointNativeProverBodiesFixed,
-    C61ProductionPersistedResourceAdmission, C61ProviderJointSessionBinding,
-    C61ProviderSessionBinding,
+    C61ProductionCoefficientSessionBinding, C61ProductionCommittedChainExecution,
+    C61ProductionJointNativeProverBodiesFixed, C61ProductionPersistedResourceAdmission,
+    C61ProviderJointSessionBinding, C61ProviderSessionBinding,
 };
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_pcs::c6_blind_round_coordinator::{
@@ -299,6 +299,14 @@ pub struct C61CampaignFourChainTranscriptEndpoints {
     pub four_chain_mask_ranges: [C61AuthenticatedWhirMaskRange; 4],
     pub joint_binding: C61ProviderJointSessionBinding,
     pub joint_endpoint: C61PrivateEntropyEndpoint,
+    coefficient_session: C61ProductionCoefficientSessionBinding,
+}
+
+#[cfg(feature = "c61-p3-authenticated-reference")]
+impl C61CampaignFourChainTranscriptEndpoints {
+    pub fn coefficient_session(&self) -> C61ProductionCoefficientSessionBinding {
+        self.coefficient_session
+    }
 }
 
 #[cfg(feature = "c61-p3-authenticated-reference")]
@@ -370,6 +378,10 @@ impl C61CampaignNativeTranscriptSession {
             .map_err(|_| "C6ICT5 native binding census differs".to_owned())?;
         let joint_binding =
             C61ProviderJointSessionBinding::from_reserved_attempt(attempt, profile)?;
+        let coefficient_session = C61ProductionCoefficientSessionBinding::from_four_chain_bindings(
+            [bindings[0], bindings[1], bindings[2], bindings[3]],
+            [mask_ranges[0], mask_ranges[1], mask_ranges[2], mask_ranges[3]],
+        )?;
         let mut contexts = [[0u8; 32]; C61_INTERACTIVE_TAPE_LANES];
         for index in 0..6 {
             contexts[index] = bindings[index].context_digest();
@@ -418,6 +430,7 @@ impl C61CampaignNativeTranscriptSession {
                     ],
                     joint_binding,
                     joint_endpoint: joint,
+                    coefficient_session,
                 },
                 compiler: C61CampaignCompilerTranscriptEndpoints {
                     compiler_bindings: [bindings[4], bindings[5]],

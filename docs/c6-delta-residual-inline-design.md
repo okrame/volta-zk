@@ -5132,6 +5132,26 @@ bench feature compilation is green. The exact four-chain invocation and
 top-level response-to-seal call site remain open, as do disk semantic
 verification, mutations and record preflight. No pod or credit.
 
+### 1.06 C6ICT5 native coefficient-session checkpoint
+
+The persisted D28/D27 coefficient artifacts no longer accept an untyped
+session digest at the exact T1 boundary. The four ordered model/embed
+`C61ProviderSessionBinding` values—already derived from the reserved attempt,
+workload, chain identities and mask ranges—are hashed under the dedicated
+`volta-zk/c6.1/coefficient-session/v1` domain into one non-serializable typed
+owner. Zero, duplicate, reordered or range-mismatched chain bindings reject.
+
+The native transcript session constructs this owner alongside its opaque
+endpoints. Exact coefficient persistence consumes the owner and writes the
+same derived digest into both create-new manifests; the response owner remains
+linear. A caller can no longer label the response's coefficients with an
+arbitrary attempt identity. This changes no statement, wire byte, setup byte,
+challenge order, correlation count or soundness term.
+
+Focused persistence and seven-lane transcript-session tests are
+**1/0/0 + 1/0/0**. Exact four-chain invocation, the top-level runner, disk
+semantic verification and mutations remain open. No pod or credit.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

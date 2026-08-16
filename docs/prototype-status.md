@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--1.05 next.
+This capsule is authoritative; read design §§0.60--1.06 next.
 
 - **Milestone/evidence.** C6ICT5 study is complete: four WHIR chains bind the
   response-owned 96+6 claims and C6NBR2 binds their tape-1 functional;
@@ -23,7 +23,8 @@ This capsule is authoritative; read design §§0.60--1.05 next.
   detached verifier arrays are rejected. One native terminal typestate now
   fixes the exact 64 outputs, beta, C6TFR1 root and runtime challenges before
   C6NBR2. Focused guards are **3/0/0**. Budget v29 and Lean **3,267 jobs/nine
-  audits** remain green screens.
+  audits** remain green screens. D28/D27 coefficient files now accept only a
+  session owner derived from the four ordered attempt bindings.
 - **Resume.** Close the exact prover call graph, disk semantic verifier,
   mutations, workspace and campaign preflight in small checkpoints. Pod only
   after every local gate is green.
@@ -34,6 +35,13 @@ This capsule is authoritative; read design §§0.60--1.05 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-16 — Native coefficient session binding lands.** The four ordered
+  model/embed attempt bindings now derive one typed coefficient-session owner.
+  Exact D28/D27 persistence accepts that owner rather than a caller-supplied
+  digest, and both durable manifests inherit it. Focused persistence and
+  seven-lane session tests are **1/0/0 + 1/0/0**. Four-chain invocation and
+  the top-level runner remain open; no pod or credit.
 
 - **2026-08-16 — Exact terminal/compiler typestate lands.** The native blind
   output alone supplies the 64 C6RSC3 values, both leaf/auxiliary point pairs

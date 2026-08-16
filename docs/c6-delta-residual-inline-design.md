@@ -4903,6 +4903,29 @@ outputs, replayed disk-versus-live, and covered by additive Lean, executable
 budgets and full-workspace gates. No quantitative or hardware credit is
 promoted; pod contact remains forbidden.
 
+### 0.96 C6ICT5 executable budget checkpoint
+
+Budget profile v29 derives the deletion result from the implemented
+four-cohort constants instead of copying the study totals. It checks **56**
+active slots, **57** C6NBR2 relations, **134** roots per repetition,
+`134^2 = 17,956`, the exact **3,431,752-B** native PCS/link codec, six-component
+**3,462,762-B** envelope and **3,463,555-B** final proof maximum. The five
+typed removals sum to **456,804 B**.
+
+The executable result is **17,079,931 B** per certificate, **148,738,118 B**
+setup and **165,818,049 B** setup plus first certificate. It independently
+recomputes **131.1581899008 bits** for the wrapper/link event,
+**102.5878333013 bits/certificate**, **98.5003704600 bits** for the informative
+17-certificate union, and **458** wrapper correlations/tape with **38,658**
+headroom. Provider state and conservative time screens remain
+**2,277,715,552 B**, **14.9179595454 s** and **4.978261758 s**.
+
+The report self-checks these identities and emits canonical JSON. Every value
+is still `credit:false`: this is an executable analytic re-sum, not a complete
+proof, timing or hardware run. Additive Lean, exact live-to-disk campaign
+assembly, mutations, full workspace and campaign preflight remain mandatory;
+pod contact remains forbidden.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

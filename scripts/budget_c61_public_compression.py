@@ -97,6 +97,42 @@ C61_NBR2_TWO_REPETITION_FP2_MULS = (
 )
 C61_NBR2_FOUR_THREAD_VERIFIER_P95_SECONDS = Decimal("0.012589368")
 
+# C6ICT5 native hidden-u deletion. These values are tied to the closed
+# four-cohort typestate and C61PIF2/C61 certificate codecs, not an allocation.
+C61_ICT5_WRAPPER_ACTIVE_SLOTS = 56
+C61_ICT5_LINK_RELATIONS = C61_ICT5_WRAPPER_ACTIVE_SLOTS + 1
+C61_ICT5_LINK_ROUNDS = 25
+C61_ICT5_LINK_ROOTS_PER_REPETITION = (
+    C61_ICT5_LINK_RELATIONS + 3 * C61_ICT5_LINK_ROUNDS + 2
+)
+C61_ICT5_TWO_REPETITION_NUMERATOR = C61_ICT5_LINK_ROOTS_PER_REPETITION**2
+C61_ICT5_ONE_CHAIN_PCS_BYTES = 1_714_123
+C61_ICT5_TWO_CHAIN_PCS_BYTES = 2 * C61_ICT5_ONE_CHAIN_PCS_BYTES
+C61_ICT5_LINK_OVERHEAD_BYTES = 3_506
+C61_ICT5_COMBINED_PCS_LINK_BYTES = (
+    C61_ICT5_TWO_CHAIN_PCS_BYTES + C61_ICT5_LINK_OVERHEAD_BYTES
+)
+C61_ICT5_ENVELOPE_COMPONENTS = 6
+C61_ICT5_ENVELOPE_FRAMING_BYTES = 284
+C61_ICT5_ENVELOPE_MAX_BYTES = 3_462_762
+C61_ICT5_CERTIFICATE_FRAMING_BYTES = 793
+C61_ICT5_PI_FINAL_MAX_BYTES = (
+    C61_ICT5_CERTIFICATE_FRAMING_BYTES + C61_ICT5_ENVELOPE_MAX_BYTES
+)
+C61_ICT5_WRAPPER_PCS_SUBTRACTION_BYTES = 451_220
+C61_ICT5_HIDDEN_PAYLOAD_SUBTRACTION_BYTES = 5_416
+C61_ICT5_COMPONENT_HEADER_SUBTRACTION_BYTES = 40
+C61_ICT5_LINK_METADATA_SUBTRACTION_BYTES = 64
+C61_ICT5_OUTER_ROOT_SUBTRACTION_BYTES = 64
+C61_ICT5_TOTAL_SUBTRACTION_BYTES = (
+    C61_ICT5_WRAPPER_PCS_SUBTRACTION_BYTES
+    + C61_ICT5_HIDDEN_PAYLOAD_SUBTRACTION_BYTES
+    + C61_ICT5_COMPONENT_HEADER_SUBTRACTION_BYTES
+    + C61_ICT5_LINK_METADATA_SUBTRACTION_BYTES
+    + C61_ICT5_OUTER_ROOT_SUBTRACTION_BYTES
+)
+C61_ICT5_WRAPPER_FULL_CORRELATIONS_PER_TAPE = 458
+
 # Exact existing setup components.
 C6_PAIRED_PCG_BYTES = 2 * 38_371_465
 C6_SETUP_MANIFEST_BYTES = 437
@@ -351,6 +387,10 @@ C61_NATIVE_CLAIMLESS_D14_BLAKE3 = (
 # the raw-tape or paired-PCG setup allocation.
 C6_REGISTERED_WRAPPER_FULL_CORRELATIONS_PER_TAPE = 622
 C6_FULL_CORRELATION_RESERVE_PER_TAPE = 39_116
+C61_ICT5_WRAPPER_CORRELATION_HEADROOM_PER_TAPE = (
+    C6_FULL_CORRELATION_RESERVE_PER_TAPE
+    - C61_ICT5_WRAPPER_FULL_CORRELATIONS_PER_TAPE
+)
 # Model and embedding retain one WHIR mask each.  The compiler count below
 # includes its WHIR mask together with every arithmetic correlation.
 C61_NONCOMPILER_AUTHENTICATED_TARGET_MASKS_PER_TAPE = 2
@@ -606,6 +646,23 @@ def build_report() -> dict[str, Any]:
     candidate_complete_error += joint_native_bridge_error
     candidate_session_error = 17 * candidate_complete_error
 
+    c61ict5_pcs_one_repetition_error = (
+        Fraction(C61_ICT5_WRAPPER_ACTIVE_SLOTS) * Fraction(9, 16) ** c6.SELECTED_QUERY_COUNT
+        + Fraction(
+            C61_ICT5_WRAPPER_ACTIVE_SLOTS
+            * ((2**c6.MAX_WEIGHT_ORACLE_LOG2 - 1) + (2**c6.MAX_AUX_ORACLE_LOG2 - 1)),
+            c6.FP2_CARDINALITY,
+        )
+    )
+    c61ict5_wrapper_error = (
+        c61ict5_pcs_one_repetition_error**c6.PCS_REPETITIONS
+        + Fraction(C61_ICT5_TWO_REPETITION_NUMERATOR, c6.FP2_CARDINALITY**2)
+    )
+    c61ict5_complete_error = (
+        candidate_complete_error - existing_wrapper_error + c61ict5_wrapper_error
+    )
+    c61ict5_session_error = 17 * c61ict5_complete_error
+
     # Claim privacy is separate from soundness.  Every code-switch round has
     # one OOD challenge and one fresh pad slot, so the only statistical
     # deviation in the pinned HVZK hybrid is rho=0: one event per round over
@@ -656,6 +713,13 @@ def build_report() -> dict[str, Any]:
     native_projected_first_response_bytes = (
         projected_setup_bytes + native_projected_certificate_bytes
     )
+    c61ict5_fixed_remainder_bytes = (
+        active_fixed_remainder_bytes - C61_ICT5_TOTAL_SUBTRACTION_BYTES
+    )
+    c61ict5_certificate_bytes = (
+        c61ict5_fixed_remainder_bytes + exact_native_public_argument_ceiling_bytes
+    )
+    c61ict5_first_exchange_bytes = projected_setup_bytes + c61ict5_certificate_bytes
 
     # Production scheduling commits and releases the lane/boundary inputs
     # before the largest rational-GKR workspace.  The conservative peak is
@@ -748,7 +812,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "profile": "C6.1-public-compression-reference-v28-nbr3-source-binding",
+        "profile": "C6.1-public-compression-reference-v29-ict5-native-hidden-u-deletion",
         "verdict": (
             "C6AWP1_PRIVATE_ENTROPY_REPLAY_DRIVER_GREEN__"
             "DURABLE_CHECKPOINT_ALLOCATOR_GREEN__ORDERED_96_6_MULTI_OPEN_GREEN__"
@@ -1725,6 +1789,71 @@ def build_report() -> dict[str, Any]:
                 "credit": False,
             },
         },
+        "c6ict5_native_hidden_u_elimination": {
+            "status": "IMPLEMENTED_LOCAL_COMPONENTS__FULL_CHAIN_AND_HARDWARE_CREDIT_FALSE",
+            "profile": {
+                "cohorts": [
+                    "predecessor-cache",
+                    "successor-cache",
+                    "residual",
+                    "auxiliary",
+                ],
+                "active_slots_per_repetition": C61_ICT5_WRAPPER_ACTIVE_SLOTS,
+                "c6nbr2_relations": C61_ICT5_LINK_RELATIONS,
+                "rounds": C61_ICT5_LINK_ROUNDS,
+                "roots_per_repetition": C61_ICT5_LINK_ROOTS_PER_REPETITION,
+                "two_repetition_numerator": C61_ICT5_TWO_REPETITION_NUMERATOR,
+                "hidden_owner_or_codec_component": False,
+            },
+            "codec": {
+                "one_pcs_chain_bytes": C61_ICT5_ONE_CHAIN_PCS_BYTES,
+                "two_pcs_chain_bytes": C61_ICT5_TWO_CHAIN_PCS_BYTES,
+                "link_overhead_bytes": C61_ICT5_LINK_OVERHEAD_BYTES,
+                "combined_pcs_link_bytes": C61_ICT5_COMBINED_PCS_LINK_BYTES,
+                "envelope_components": C61_ICT5_ENVELOPE_COMPONENTS,
+                "envelope_framing_bytes": C61_ICT5_ENVELOPE_FRAMING_BYTES,
+                "envelope_max_bytes": C61_ICT5_ENVELOPE_MAX_BYTES,
+                "certificate_framing_bytes": C61_ICT5_CERTIFICATE_FRAMING_BYTES,
+                "pi_final_max_bytes": C61_ICT5_PI_FINAL_MAX_BYTES,
+            },
+            "wire": {
+                "subtractions": {
+                    "packed_wrapper_pcs": C61_ICT5_WRAPPER_PCS_SUBTRACTION_BYTES,
+                    "removed_hidden_payload": C61_ICT5_HIDDEN_PAYLOAD_SUBTRACTION_BYTES,
+                    "removed_component_header": C61_ICT5_COMPONENT_HEADER_SUBTRACTION_BYTES,
+                    "reduced_link_metadata": C61_ICT5_LINK_METADATA_SUBTRACTION_BYTES,
+                    "removed_outer_roots": C61_ICT5_OUTER_ROOT_SUBTRACTION_BYTES,
+                    "total": C61_ICT5_TOTAL_SUBTRACTION_BYTES,
+                },
+                "fixed_remainder_bytes": c61ict5_fixed_remainder_bytes,
+                "native_public_argument_bytes": exact_native_public_argument_ceiling_bytes,
+                "certificate_bytes": c61ict5_certificate_bytes,
+                "strict_certificate_max_bytes": C61_CERTIFICATE_MAX_BYTES,
+                "certificate_headroom_bytes": C61_CERTIFICATE_MAX_BYTES
+                - c61ict5_certificate_bytes,
+                "setup_bytes": projected_setup_bytes,
+                "setup_plus_first_certificate_bytes": c61ict5_first_exchange_bytes,
+                "screen_pass": c61ict5_certificate_bytes <= C61_CERTIFICATE_MAX_BYTES
+                and projected_setup_bytes <= C61_SETUP_MAX_BYTES,
+            },
+            "soundness": {
+                "wrapper_pcs_and_57_relation_link": _error_report(c61ict5_wrapper_error),
+                "complete_per_certificate": _error_report(c61ict5_complete_error),
+                "informative_17_certificate_union": _error_report(c61ict5_session_error),
+                "screen_pass": c6.soundness_bits(c61ict5_complete_error)
+                >= Decimal("78.80929487391641"),
+            },
+            "correlations": {
+                "wrapper_full_per_tape": C61_ICT5_WRAPPER_FULL_CORRELATIONS_PER_TAPE,
+                "historical_reserve_per_tape": C6_FULL_CORRELATION_RESERVE_PER_TAPE,
+                "headroom_per_tape": C61_ICT5_WRAPPER_CORRELATION_HEADROOM_PER_TAPE,
+                "seventeen_accepts_plus_four_burns_unchanged": True,
+            },
+            "provider_state_bytes": provider_state_bytes,
+            "provider_time_screen_seconds": str(native_provider_roof_seconds),
+            "verifier_four_thread_screen_seconds": str(native_verifier_roof_seconds),
+            "credit": False,
+        },
         "setup_screen": {
             "existing_setup_bytes": C6_EXISTING_SETUP_BYTES,
             "existing_components": {
@@ -1978,6 +2107,29 @@ def build_report() -> dict[str, Any]:
     assert native_projected_certificate_bytes == 17_536_735
     assert C61_CERTIFICATE_MAX_BYTES - native_projected_certificate_bytes == 4_463_264
     assert native_projected_first_response_bytes == 166_274_853
+    assert C61_ICT5_WRAPPER_ACTIVE_SLOTS == 56
+    assert C61_ICT5_LINK_RELATIONS == 57
+    assert C61_ICT5_LINK_ROOTS_PER_REPETITION == 134
+    assert C61_ICT5_TWO_REPETITION_NUMERATOR == 17_956
+    assert C61_ICT5_TWO_CHAIN_PCS_BYTES == 3_428_246
+    assert C61_ICT5_COMBINED_PCS_LINK_BYTES == 3_431_752
+    assert C61_ICT5_ENVELOPE_MAX_BYTES == 3_462_762
+    assert C61_ICT5_PI_FINAL_MAX_BYTES == 3_463_555
+    assert C61_ICT5_TOTAL_SUBTRACTION_BYTES == 456_804
+    assert c61ict5_fixed_remainder_bytes == 6_385_299
+    assert c61ict5_certificate_bytes == 17_079_931
+    assert C61_CERTIFICATE_MAX_BYTES - c61ict5_certificate_bytes == 4_920_068
+    assert c61ict5_first_exchange_bytes == 165_818_049
+    assert C61_ICT5_WRAPPER_CORRELATION_HEADROOM_PER_TAPE == 38_658
+    assert str(c6.soundness_bits(c61ict5_wrapper_error)).startswith(
+        "131.1581899007"
+    )
+    assert Decimal("102.5878333012") < c6.soundness_bits(
+        c61ict5_complete_error
+    ) < Decimal("102.5878333014")
+    assert Decimal("98.5003704599") < c6.soundness_bits(
+        c61ict5_session_error
+    ) < Decimal("98.5003704601")
     assert C61_NBR2_LINK_RELATIONS == 73
     assert C61_NBR2_LINK_ROOTS_PER_REPETITION == 150
     assert C61_NBR2_LINK_ROOTS_PER_REPETITION <= c6.LINEAR_LINK_ROOT_BOUND_PER_REPETITION
@@ -2104,6 +2256,7 @@ def main() -> None:
     operations = report["verifier_operation_decomposition"]
     provider = report["provider_time_screen"]
     native = report["selected_native_candidate"]
+    ict5 = report["c6ict5_native_hidden_u_elimination"]
     print(f"C6.1 reference profile:       {report['profile']}")
     print(f"verdict:                     {report['verdict']}")
     print(f"current certificate:         {certificate['bytes']:,} B")
@@ -2172,6 +2325,16 @@ def main() -> None:
     print(
         "ephemeral provider state:    "
         f"{native['ephemeral_provider_state_screen']['bytes']:,} B"
+    )
+    print("-- C6ICT5 native hidden-u deletion --")
+    print(f"certificate:                 {ict5['wire']['certificate_bytes']:,} B")
+    print(
+        "setup plus first:            "
+        f"{ict5['wire']['setup_plus_first_certificate_bytes']:,} B"
+    )
+    print(
+        "soundness:                  "
+        f"{Decimal(ict5['soundness']['complete_per_certificate']['bits']):.10f} bits/cert"
     )
     print("all candidate values above:  screen only; credit=False")
 

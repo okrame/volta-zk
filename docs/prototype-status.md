@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.95 next.
+This capsule is authoritative; read design §§0.60--0.96 next.
 
 - **Milestone/evidence.** C6ICT5 study is complete: one response owner supplies
   the ordered 96+6 claims; four WHIR chains bind their exact global points and
@@ -24,11 +24,11 @@ This capsule is authoritative; read design §§0.60--0.95 next.
   The shared claim schedule/direct coefficient-owner checkpoint is complete;
   its focused PCS/owner guards are **2/0/0 + 1/0/0**. The distinct four-root
   PCS profile/coordinator guard is **1/0/0**; the hidden-free live/verifier
-  source guard is **1/0/0**. The dynamic 56+1 link codec and receipt-gated
-  native join guards are **1/0/0 + 1/0/0**. Blind/envelope/outer/campaign
-  checks are **1/0/0 + 2/0/0 + 3/0/0 + 11/0/0**.
-- **Resume.** Implement in small checkpoints, then close additive Lean,
-  mutations, executable budgets, full workspace and exact campaign preflight.
+  source guard is **1/0/0**. Link/join and blind/envelope/outer/campaign are
+  **1+1+1+2+3+11** green tests. Budget v29 self-checks exact wire, 57/134
+  census, 458 correlations/tape and soundness; all remain screens only.
+- **Resume.** Close additive Lean, exact live-to-disk runner, mutations, full
+  workspace and campaign preflight in small checkpoints.
   Pod admission follows only after those local gates are green.
 - **Screens.** Study-only certificate **17,079,931 B**, setup
   **148,738,118 B**, setup+first **165,818,049 B**, state
@@ -37,6 +37,15 @@ This capsule is authoritative; read design §§0.60--0.95 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-16 — C6ICT5 executable re-sum lands.** Budget profile v29 derives
+  the four-cohort **56-slot**, **57-relation**, **134-root/repetition** census,
+  **17,956** two-repetition numerator, **458** correlations/tape and exact
+  hidden-free codecs. It reproduces certificate **17,079,931 B**, setup
+  **148,738,118 B**, first exchange **165,818,049 B** and soundness
+  **102.5878333013 bits/cert** (**98.5003704600** for 17). Self-check and JSON
+  emission are green. These are executable screens with `credit:false`; Lean,
+  exact live/disk runner, workspace and preflight remain open. No pod contact.
 
 - **2026-08-16 — Campaign moves exclusively to native C6.1.** Campaign v7
   decodes the native outer/`C61PIF2`, commits and installs exactly four roots,

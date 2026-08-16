@@ -4816,6 +4816,28 @@ the native two-participant coordinator, its verifier replay, then the strict
 six-component outer codec and campaign wiring. No quantitative or hardware
 credit is promoted; no pod contact is permitted.
 
+### 0.92 C6ICT5 native blind production/replay checkpoint
+
+The C6.1 blind producer and verifier use only the distinct native
+two-participant coordinator. Cache contributes in all 24 rounds; residual
+contributes in the final 23 after its registered round-one activation. The
+same transcript releases each challenge only after all expected message-byte
+receipts are fixed. Unknown participants, wrong round census and participant
+drift fail closed.
+
+Production assembles residual and cache pending claims directly into the
+56-slot native registry. Verifier replay reconstructs the same round points,
+checks the direct 64-functional fold, builds the same registry and requires
+the 57th C6NBR2 relation before releasing the native ZeroOpen tail. Its API
+has no hidden layout, q-column, prequery, postcommit, proof or pending input;
+it cannot call the historical blind replay.
+
+The focused schedule/source/receipt guard is **1/0/0** and the PCS feature
+check is green. The next implementation boundary is the strict six-component
+C6.1 proof envelope and four-root outer wrapper, followed by campaign wiring.
+No quantitative, timing, full-chain or hardware credit is promoted, and pod
+contact remains forbidden.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

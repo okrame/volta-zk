@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.91 next.
+This capsule is authoritative; read design §§0.60--0.92 next.
 
 - **Milestone/evidence.** C6ICT5 study is complete: one response owner supplies
   the ordered 96+6 claims; four WHIR chains bind their exact global points and
@@ -25,7 +25,8 @@ This capsule is authoritative; read design §§0.60--0.91 next.
   its focused PCS/owner guards are **2/0/0 + 1/0/0**. The distinct four-root
   PCS profile/coordinator guard is **1/0/0**; the hidden-free live/verifier
   source guard is **1/0/0**. The dynamic 56+1 link codec and receipt-gated
-  native join guards are **1/0/0 + 1/0/0**.
+  native join guards are **1/0/0 + 1/0/0**. Native blind production/replay is
+  **1/0/0**.
 - **Resume.** Implement in small checkpoints, then close additive Lean,
   mutations, executable budgets, full workspace and exact campaign preflight.
   Pod admission follows only after those local gates are green.
@@ -36,6 +37,17 @@ This capsule is authoritative; read design §§0.60--0.91 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-16 — Native blind production and replay land.** The C6.1 prover
+  and verifier share the two-participant 24-round coordinator: cache is active
+  throughout and residual activates at round one for 23 rounds. Both build
+  only the native residual/cache pending registry; the verifier checks the
+  same output fold, 56-slot profile and mandatory C6NBR2 receipt before
+  releasing the native tail. Wrong schedule, hidden participant and old blind
+  replay are rejected by the focused **1/0/0** guard; the feature check is
+  green. The strict six-component codec and campaign wiring remain open, so
+  no quantitative, full-chain or hardware credit is promoted and pod contact
+  remains forbidden.
 
 - **2026-08-16 — C6.1 56+1 authenticated link lands.** C6LNK2 aggregates are
   now census-bound by fixed-root typestate: historical C6 remains 72/6 while

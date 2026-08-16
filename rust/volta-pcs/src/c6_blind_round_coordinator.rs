@@ -17,8 +17,8 @@ use crate::c6_authenticated_output_link::verify_c6_authenticated_output_link_pro
 use crate::c6_authenticated_output_link::{
     prove_c6_authenticated_output_link_persisted_cuda,
     prove_c6_authenticated_output_link_persisted_cuda_nbr2_strict,
-    verify_c6_authenticated_output_link_production, C6AuthenticatedOutputLinkProof,
-    C61NativePendingSlotRegistryProverBuilder, C61NativePendingSlotRegistryVerifierBuilder,
+    verify_c6_authenticated_output_link_production, C61NativePendingSlotRegistryProverBuilder,
+    C61NativePendingSlotRegistryVerifierBuilder, C6AuthenticatedOutputLinkProof,
     C6Nbr2CorrectionFunctional, C6Nbr2ProvedLink, C6PendingSlotRegistryProverBuilder,
     C6PendingSlotRegistryVerifier, C6PendingSlotRegistryVerifierBuilder,
     C6ProductionAuthenticatedOutputLinkMetrics,
@@ -29,10 +29,9 @@ use crate::c6_hidden_u::{
 use crate::c6_hidden_u_sumcheck_blind::{
     assemble_c6_blind_hidden_u_prover_stepwise, assemble_c6_blind_hidden_u_verifier_stepwise,
     begin_c6_blind_hidden_u_stepwise, begin_c6_blind_hidden_u_verifier_stepwise,
-    c6_blind_hidden_u_statement_digest,
-    prepare_c6_blind_hidden_u_prover_round_state, prepare_c6_blind_hidden_u_verifier_round_state,
-    C6BlindHiddenUPendingClaimsProver, C6BlindHiddenUProverRoundState, C6BlindHiddenUSumcheckProof,
-    C6BlindHiddenUVerifierRoundState,
+    c6_blind_hidden_u_statement_digest, prepare_c6_blind_hidden_u_prover_round_state,
+    prepare_c6_blind_hidden_u_verifier_round_state, C6BlindHiddenUPendingClaimsProver,
+    C6BlindHiddenUProverRoundState, C6BlindHiddenUSumcheckProof, C6BlindHiddenUVerifierRoundState,
 };
 use crate::c6_persistent_cache_blind::{
     assemble_c6_persistent_cache_production_proof,
@@ -44,10 +43,10 @@ use crate::c6_persistent_cache_blind::{
     fix_c6_persistent_cache_production_fold_verifier,
     prepare_c6_persistent_cache_production_verifier, C6PersistentCacheBlindProof,
     C6PersistentCachePendingClaimsProver, C6PersistentCachePendingClaimsVerifier,
-    C6PersistentCacheProductionMetrics,
-    C6PersistentCacheProductionPreparedProver, C6PersistentCacheProductionRelationCompiler,
-    C6PersistentCacheProductionVerifierRoundState, C6PersistentCacheSourceBootstrapFrame,
-    C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS, C6_PERSISTENT_CACHE_BLIND_ROUND_BYTES,
+    C6PersistentCacheProductionMetrics, C6PersistentCacheProductionPreparedProver,
+    C6PersistentCacheProductionRelationCompiler, C6PersistentCacheProductionVerifierRoundState,
+    C6PersistentCacheSourceBootstrapFrame, C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS,
+    C6_PERSISTENT_CACHE_BLIND_ROUND_BYTES,
 };
 use crate::c6_residual_sumcheck_blind::{
     assemble_c6_blind_residual_prover_stepwise, assemble_c6_blind_residual_verifier_stepwise,
@@ -57,16 +56,15 @@ use crate::c6_residual_sumcheck_blind::{
     prepare_c6_blind_residual_verifier_round_state, C6BlindResidualDirectTerminalFold,
     C6BlindResidualDirectTerminalOutputs, C6BlindResidualFusedCompilerContext,
     C6BlindResidualPendingClaimsProver, C6BlindResidualPendingClaimsVerifier,
-    C6BlindResidualPendingTransferFrame,
-    C6BlindResidualProverRoundState, C6BlindResidualStatement, C6BlindResidualSumcheckProof,
-    C6BlindResidualVerifierRoundState,
+    C6BlindResidualPendingTransferFrame, C6BlindResidualProverRoundState, C6BlindResidualStatement,
+    C6BlindResidualSumcheckProof, C6BlindResidualVerifierRoundState,
 };
 use crate::c6_wrapper_pcs::{
-    C6FixedWrapperCommitments, C6WrapperRoundCoordinator, C6WrapperRoundMessageReceipt,
-    C6WrapperRoundPoint, C61_NATIVE_WRAPPER_ACTIVE_SLOTS, C6_CACHE_ROUND_PARTICIPANT_ID,
-    C6_DELTA_RESIDUAL_ACTIVATION_ROUND, C6_DELTA_RESIDUAL_ROUND_PARTICIPANT_ID,
-    C6_HIDDEN_U_ROUND_PARTICIPANT_ID, C6_HIDDEN_U_WEIGHTS_ACTIVATION_ROUND,
-    C6_WRAPPER_RANDOM_POINT_LEN, C6_WRAPPER_REPETITIONS,
+    C61NativeWrapperRoundCoordinator, C6FixedWrapperCommitments, C6WrapperRoundCoordinator,
+    C6WrapperRoundMessageReceipt, C6WrapperRoundPoint, C61_NATIVE_WRAPPER_ACTIVE_SLOTS,
+    C6_CACHE_ROUND_PARTICIPANT_ID, C6_DELTA_RESIDUAL_ACTIVATION_ROUND,
+    C6_DELTA_RESIDUAL_ROUND_PARTICIPANT_ID, C6_HIDDEN_U_ROUND_PARTICIPANT_ID,
+    C6_HIDDEN_U_WEIGHTS_ACTIVATION_ROUND, C6_WRAPPER_RANDOM_POINT_LEN, C6_WRAPPER_REPETITIONS,
 };
 use volta_field::Fp2;
 use volta_mac::{CorrelationStream, ProverAuthed, Transcript, VerifierCtx};
@@ -74,8 +72,8 @@ use volta_proto::c6_cache_fold::{
     compile_c6_cache_fold_scalar_batch, C6CacheFoldPairedProverTargets,
     C6CacheFoldPairedVerifierTargets, C6CacheFoldTargetFixedCorrections, C6CacheFoldTraceSnapshot,
 };
-use volta_proto::{C6ResidualFusedCoefficientArena, C6ResidualFusedWitnessView};
 use volta_proto::C6ResponseProofEnvelope;
+use volta_proto::{C6ResidualFusedCoefficientArena, C6ResidualFusedWitnessView};
 
 use crate::c6_live_wrapper::{C6PersistedLiveWrapperRootBinding, C6VerifierLiveWrapperRootBinding};
 use crate::c6_wrapper_persisted::C6PersistedCacheSemanticReader;
@@ -164,6 +162,29 @@ impl<'a> C6ExactProductionVerifierProof<'a> {
             terminal_functionals: proof.residual_terminal_outputs.terminal_functionals(),
             expected_terminal_fold: Some(proof.residual_terminal_fold),
             hidden_proof: &proof.hidden_proof,
+            cache_proof: &proof.cache_proof,
+            cache_source_frame: &proof.cache_source_frame,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct C61NativeExactProductionVerifierProof<'a> {
+    residual_proof: &'a C6BlindResidualSumcheckProof,
+    residual_frame: &'a C6BlindResidualPendingTransferFrame,
+    terminal_functionals: &'a [Fp2; volta_proto::C6_RESIDUAL_TERMINAL_FUNCTIONALS],
+    expected_terminal_fold: Option<C6BlindResidualDirectTerminalFold>,
+    cache_proof: &'a C6PersistentCacheBlindProof,
+    cache_source_frame: &'a C6PersistentCacheSourceBootstrapFrame,
+}
+
+impl<'a> C61NativeExactProductionVerifierProof<'a> {
+    fn from_local(proof: &'a C61NativeExactProductionProverProof) -> Self {
+        Self {
+            residual_proof: &proof.residual_proof,
+            residual_frame: &proof.residual_frame,
+            terminal_functionals: proof.residual_terminal_outputs.terminal_functionals(),
+            expected_terminal_fold: Some(proof.residual_terminal_fold),
             cache_proof: &proof.cache_proof,
             cache_source_frame: &proof.cache_source_frame,
         }
@@ -478,10 +499,8 @@ pub fn finish_c61_native_production_blind_with_persisted_nbr2_link(
     if public_output.terminal_claims() != blind.residual_terminal_outputs.terminal_functionals() {
         return Err("C6.1 native public typestate differs from residual outputs".to_owned());
     }
-    let residual_terminal_fold = blind
-        .residual_terminal_outputs
-        .clone()
-        .bind_output_beta(public_output.output_beta());
+    let residual_terminal_fold =
+        blind.residual_terminal_outputs.clone().bind_output_beta(public_output.output_beta());
     let mut pending =
         C61NativePendingSlotRegistryProverBuilder::new(roots.fixed()).map_err(text_error)?;
     pending.absorb_residual(&blind.residual_pending).map_err(text_error)?;
@@ -793,6 +812,127 @@ pub fn prove_c6_production_blind_components<'a>(
     })
 }
 
+/// Produce the C6.1 blind components under the two-participant native
+/// coordinator. Hidden-u is absent rather than represented by an empty proof.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_c61_native_production_blind_components<'a>(
+    fixed: &C6FixedWrapperCommitments,
+    cache_statement_digest: [u8; 32],
+    cache_snapshot: &C6CacheFoldTraceSnapshot,
+    cache_targets: &C6CacheFoldPairedProverTargets,
+    cache_fixed_targets: &C6CacheFoldTargetFixedCorrections,
+    predecessor_cache: &C6PersistedCacheSemanticReader,
+    successor_cache: &C6PersistedCacheSemanticReader,
+    old_len: u16,
+    new_len: u16,
+    append_sources: &[Vec<[ProverAuthed; TAPES]>; 2],
+    append_masks: &[Vec<[Fp2; TAPES]>; 2],
+    statements: &[C6BlindResidualStatement],
+    residual_compiler: C6BlindResidualFusedCompilerContext<'a>,
+    residual_witness: C6ResidualFusedWitnessView<'a>,
+    residual_arena: &'a C6ResidualFusedCoefficientArena,
+    streams: &mut [CorrelationStream; TAPES],
+    transcript: &mut Transcript,
+) -> Result<C61NativeProductionBlindProverOutput, String> {
+    validate_production_streams(streams)?;
+    begin_c6_persistent_cache_production(cache_statement_digest, transcript).map_err(text_error)?;
+    begin_c6_blind_residual_prover_stepwise(statements, residual_arena, transcript)
+        .map_err(text_error)?;
+
+    let mut cache_finished = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
+    let mut residual_finished = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
+    for repetition in 0..C6_WRAPPER_REPETITIONS as u8 {
+        let (relation_roots, kv_root) =
+            draw_c6_persistent_cache_production_roots(repetition, transcript)
+                .map_err(text_error)?;
+        let scalar_batch = compile_c6_cache_fold_scalar_batch(cache_snapshot, relation_roots[2])
+            .map_err(text_error)?;
+        let fixed_fold = fix_c6_persistent_cache_production_fold_prover(
+            repetition,
+            cache_statement_digest,
+            &scalar_batch,
+            cache_targets,
+            cache_fixed_targets,
+            transcript,
+        )
+        .map_err(text_error)?;
+        let relation_point = fixed_fold.draw_relation_point(transcript);
+        let compiler = C6PersistentCacheProductionRelationCompiler::new(
+            repetition,
+            cache_statement_digest,
+            old_len,
+            new_len,
+            relation_point,
+            relation_roots,
+            kv_root,
+            scalar_batch,
+        )
+        .map_err(text_error)?;
+        let mut cache =
+            crate::c6_persistent_cache_blind::prepare_c6_persistent_cache_production_prover(
+                &compiler,
+                predecessor_cache,
+                successor_cache,
+                append_sources,
+                append_masks,
+                fixed_fold,
+                transcript,
+            )
+            .map_err(text_error)?;
+        let mut residual = prepare_c6_blind_residual_prover_round_state_fused(
+            &statements[usize::from(repetition)],
+            residual_compiler,
+            residual_witness,
+            residual_arena,
+            None,
+        )
+        .map_err(text_error)?;
+        let (point, cache_corrections) = drive_c61_native_blind_prover_rounds(
+            fixed,
+            &mut cache,
+            &mut residual,
+            streams,
+            transcript,
+        )?;
+        cache_finished.push(
+            finish_c6_persistent_cache_production_prover_repetition(
+                cache,
+                &point,
+                streams,
+                transcript,
+                cache_corrections,
+            )
+            .map_err(text_error)?,
+        );
+        residual_finished.push(residual.finish(streams, transcript).map_err(text_error)?);
+    }
+
+    let (residual_proof, residual_frame, residual_pending, terminal_outputs) =
+        assemble_c6_blind_residual_prover_stepwise(
+            statements,
+            residual_compiler,
+            residual_arena,
+            residual_finished,
+            transcript,
+        )
+        .map_err(text_error)?;
+    let residual_terminal_outputs = terminal_outputs
+        .ok_or_else(|| "C6.1 native blind join omitted direct terminal outputs".to_owned())?;
+    let (cache_proof, cache_source_frame, cache_pending, cache_metrics) =
+        assemble_c6_persistent_cache_production_proof(cache_statement_digest, cache_finished)
+            .map_err(text_error)?;
+    Ok(C61NativeProductionBlindProverOutput {
+        residual_proof,
+        residual_frame,
+        residual_pending,
+        residual_terminal_outputs,
+        cache_proof,
+        cache_source_frame,
+        cache_pending,
+        cache_metrics,
+    })
+}
+
 /// Witness-free mirror of the complete blind coordinator and production
 /// C6LNK2 verifier.  The residual terminal values come from the strict proof
 /// object fixed before the next transcript challenge; no verifier compiler
@@ -907,6 +1047,60 @@ pub fn verify_c6_exact_production_nbr2_proof(
     Ok(C6ExactProductionNbr2VerifierOutput { blind, joint_native })
 }
 
+/// Verify the C6.1-native global blind proof and mandatory C6NBR2 link.  The
+/// verifier replays only residual and cache participants under the four-root
+/// profile; there is no hidden-u proof input or compatibility path.
+#[cfg(feature = "c61-p3-authenticated-reference")]
+#[allow(clippy::too_many_arguments)]
+pub fn verify_c61_native_exact_production_nbr2_proof(
+    roots: &C6VerifierLiveWrapperRootBinding,
+    cache_statement_digest: [u8; 32],
+    cache_snapshot: &C6CacheFoldTraceSnapshot,
+    cache_targets: &C6CacheFoldPairedVerifierTargets,
+    cache_fixed_targets: &C6CacheFoldTargetFixedCorrections,
+    old_len: u16,
+    new_len: u16,
+    append_base_keys: &[Vec<[volta_mac::VerifierKey; TAPES]>; 2],
+    statements: &[C6BlindResidualStatement],
+    proof: &C61NativeExactProductionNbr2ProverProof,
+    nbr2: &C6Nbr2CorrectionFunctional<'_>,
+    native: C61ProductionJointNativeVerifierLinkPending,
+    contexts: &mut [VerifierCtx; TAPES],
+    transcript: &mut Transcript,
+) -> Result<C6ExactProductionNbr2VerifierOutput, String> {
+    if proof.outer_statement_digest != nbr2.outer_statement_digest()
+        || proof.nbr2_statement_digest != nbr2.digest()
+    {
+        return Err("C6.1 native prover output differs from the verifier C6NBR2 binding".to_owned());
+    }
+    let pending = verify_c61_native_production_blind_pending(
+        roots,
+        cache_statement_digest,
+        cache_snapshot,
+        cache_targets,
+        cache_fixed_targets,
+        old_len,
+        new_len,
+        append_base_keys,
+        statements,
+        C61NativeExactProductionVerifierProof::from_local(&proof.blind),
+        contexts,
+        transcript,
+    )?;
+    let (bound, receipt) = verify_c6_authenticated_output_link_production_nbr2_strict(
+        roots.fixed(),
+        pending,
+        &proof.blind.authenticated_link,
+        nbr2,
+        contexts,
+        transcript,
+    )
+    .map_err(text_error)?;
+    let blind = c61_native_exact_bound_slot_output(bound.len())?;
+    let joint_native = native.finish_after_nbr2_link(receipt)?;
+    Ok(C6ExactProductionNbr2VerifierOutput { blind, joint_native })
+}
+
 /// Verify the global blind/C6NBR2 portion of a decoded exact certificate.
 /// C6PA2 decoding and native-body/compiler preparation intentionally occur
 /// first and supply the linear `native` state consumed here.
@@ -932,9 +1126,7 @@ pub fn verify_c6_exact_production_nbr2_certificate(
     contexts: &mut [VerifierCtx; TAPES],
     transcript: &mut Transcript,
 ) -> Result<C6ExactProductionNbr2VerifierOutput, String> {
-    if certificate.public_argument.argument().statement_digest()
-        != nbr2.outer_statement_digest()
-    {
+    if certificate.public_argument.argument().statement_digest() != nbr2.outer_statement_digest() {
         return Err("decoded C6PA2 statement differs from the verifier C6NBR2 binding".to_owned());
     }
     let pending = verify_c6_exact_production_blind_pending(
@@ -1189,12 +1381,148 @@ fn verify_c6_exact_production_blind_pending(
     pending.finish().map_err(text_error)
 }
 
+#[allow(clippy::too_many_arguments)]
+fn verify_c61_native_production_blind_pending(
+    roots: &C6VerifierLiveWrapperRootBinding,
+    cache_statement_digest: [u8; 32],
+    cache_snapshot: &C6CacheFoldTraceSnapshot,
+    cache_targets: &C6CacheFoldPairedVerifierTargets,
+    cache_fixed_targets: &C6CacheFoldTargetFixedCorrections,
+    old_len: u16,
+    new_len: u16,
+    append_base_keys: &[Vec<[volta_mac::VerifierKey; TAPES]>; 2],
+    statements: &[C6BlindResidualStatement],
+    proof: C61NativeExactProductionVerifierProof<'_>,
+    contexts: &mut [VerifierCtx; TAPES],
+    transcript: &mut Transcript,
+) -> Result<C6PendingSlotRegistryVerifier, String> {
+    validate_production_contexts(contexts)?;
+    begin_c6_persistent_cache_production(cache_statement_digest, transcript).map_err(text_error)?;
+    begin_c6_blind_residual_verifier_stepwise(
+        statements,
+        proof.residual_proof,
+        proof.residual_frame,
+        contexts,
+        transcript,
+    )
+    .map_err(text_error)?;
+
+    let mut cache_finished = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
+    let mut residual_finished = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
+    for repetition in 0..C6_WRAPPER_REPETITIONS as u8 {
+        let (relation_roots, kv_root) =
+            draw_c6_persistent_cache_production_roots(repetition, transcript)
+                .map_err(text_error)?;
+        let scalar_batch = compile_c6_cache_fold_scalar_batch(cache_snapshot, relation_roots[2])
+            .map_err(text_error)?;
+        let fixed_fold = fix_c6_persistent_cache_production_fold_verifier(
+            repetition,
+            cache_statement_digest,
+            &scalar_batch,
+            cache_targets,
+            cache_fixed_targets,
+            proof.cache_source_frame,
+            transcript,
+        )
+        .map_err(text_error)?;
+        let relation_point = fixed_fold.draw_relation_point(transcript);
+        let compiler = C6PersistentCacheProductionRelationCompiler::new(
+            repetition,
+            cache_statement_digest,
+            old_len,
+            new_len,
+            relation_point,
+            relation_roots,
+            kv_root,
+            scalar_batch,
+        )
+        .map_err(text_error)?;
+        let mut cache = prepare_c6_persistent_cache_production_verifier(
+            &compiler,
+            append_base_keys,
+            fixed_fold,
+            proof.cache_source_frame,
+            [contexts[0].delta, contexts[1].delta],
+            transcript,
+        )
+        .map_err(text_error)?;
+        let mut residual = prepare_c6_blind_residual_verifier_round_state(
+            &statements[usize::from(repetition)],
+            proof.residual_proof,
+        )
+        .map_err(text_error)?;
+        let cache_corrections = proof
+            .cache_proof
+            .production_round_corrections(usize::from(repetition))
+            .map_err(text_error)?;
+        let point = drive_c61_native_blind_verifier_rounds(
+            roots.fixed(),
+            &mut cache,
+            cache_corrections,
+            &mut residual,
+            contexts,
+            transcript,
+        )?;
+        cache_finished.push(
+            finish_c6_persistent_cache_production_verifier_repetition(
+                cache,
+                &point,
+                proof.cache_proof,
+                contexts,
+                transcript,
+            )
+            .map_err(text_error)?,
+        );
+        residual_finished.push(
+            finish_c6_blind_residual_verifier_round_state_direct_claims(
+                residual,
+                proof.residual_frame,
+                proof.terminal_functionals,
+                contexts,
+                transcript,
+            )
+            .map_err(text_error)?,
+        );
+    }
+
+    let (cache_pending, _) =
+        assemble_c6_persistent_cache_production_verifier_pending(cache_finished)
+            .map_err(text_error)?;
+    let residual_pending =
+        assemble_c6_blind_residual_verifier_stepwise(residual_finished, transcript)
+            .map_err(text_error)?;
+    let output_beta = transcript.challenge_fp2();
+    let functional_fold = proof
+        .terminal_functionals
+        .iter()
+        .fold((Fp2::ZERO, Fp2::ONE), |(sum, power), value| {
+            (sum + power * *value, power * output_beta)
+        })
+        .0;
+    if proof.expected_terminal_fold.is_some_and(|expected| {
+        expected.beta() != output_beta || expected.functional_fold() != functional_fold
+    }) {
+        return Err("C6.1 native verifier terminal output-fold mismatch".to_owned());
+    }
+    finish_c61_native_pending_registry_verifier(roots.fixed(), &residual_pending, &cache_pending)
+}
+
 fn c6_exact_bound_slot_output(
     bound_slots: usize,
 ) -> Result<C6ExactProductionVerifierOutput, String> {
     let bound_slots = bound_slots as u64;
     if bound_slots != 2 * crate::c6_wrapper_pcs::C6_WRAPPER_ACTIVE_SLOTS as u64 {
         return Err("C6 exact verifier bound-slot census mismatch".to_owned());
+    }
+    Ok(C6ExactProductionVerifierOutput { bound_slots })
+}
+
+fn c61_native_exact_bound_slot_output(
+    bound_slots: usize,
+) -> Result<C6ExactProductionVerifierOutput, String> {
+    let bound_slots = bound_slots as u64;
+    if bound_slots != 2 * C61_NATIVE_WRAPPER_ACTIVE_SLOTS as u64 {
+        return Err("C6.1 native verifier bound-slot census mismatch".to_owned());
     }
     Ok(C6ExactProductionVerifierOutput { bound_slots })
 }
@@ -1273,6 +1601,146 @@ fn receipts(
             Ok(C6WrapperRoundMessageReceipt { participant_id, message_bytes })
         })
         .collect()
+}
+
+fn c61_native_receipts(
+    ids: &[u32],
+    residual_bytes: Option<u64>,
+) -> Result<Vec<C6WrapperRoundMessageReceipt>, String> {
+    ids.iter()
+        .map(|&participant_id| {
+            let message_bytes = match participant_id {
+                C6_CACHE_ROUND_PARTICIPANT_ID => C6_PERSISTENT_CACHE_BLIND_ROUND_BYTES,
+                C6_DELTA_RESIDUAL_ROUND_PARTICIPANT_ID => residual_bytes
+                    .ok_or_else(|| "missing active C6.1 residual message".to_owned())?,
+                _ => return Err("unknown C6.1 native blind-round participant".to_owned()),
+            };
+            Ok(C6WrapperRoundMessageReceipt { participant_id, message_bytes })
+        })
+        .collect()
+}
+
+fn validate_c61_native_schedule(
+    repetition: u8,
+    cache_repetition: u8,
+    cache_round: usize,
+    residual_repetition: u8,
+    residual_round: usize,
+    residual_rounds: usize,
+) -> Result<(), String> {
+    if cache_repetition != repetition
+        || residual_repetition != repetition
+        || cache_round != 0
+        || residual_round != 0
+        || residual_rounds != C6_WRAPPER_RANDOM_POINT_LEN - C6_DELTA_RESIDUAL_ACTIVATION_ROUND
+    {
+        return Err("C6.1 native blind coordinator participant schedule mismatch".to_owned());
+    }
+    Ok(())
+}
+
+pub(crate) fn drive_c61_native_blind_prover_rounds(
+    fixed: &C6FixedWrapperCommitments,
+    cache: &mut C6PersistentCacheProductionPreparedProver<'_>,
+    residual: &mut C6BlindResidualProverRoundState<'_>,
+    streams: &mut [CorrelationStream; TAPES],
+    transcript: &mut Transcript,
+) -> Result<(C6WrapperRoundPoint, Vec<[[Fp2; 2]; TAPES]>), String> {
+    let repetition = cache.round_state.repetition();
+    validate_c61_native_schedule(
+        repetition,
+        repetition,
+        cache.round_state.round_index(),
+        residual.repetition(),
+        residual.round_index(),
+        residual.round_count(),
+    )?;
+    let mut coordinator =
+        C61NativeWrapperRoundCoordinator::new(fixed, repetition).map_err(text_error)?;
+    let mut cache_corrections = Vec::with_capacity(C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS);
+    while coordinator.round_index() < C6_WRAPPER_RANDOM_POINT_LEN {
+        let global_round = coordinator.round_index();
+        if cache.round_state.round_index() != global_round
+            || (global_round >= C6_DELTA_RESIDUAL_ACTIVATION_ROUND
+                && residual.round_index() != global_round - C6_DELTA_RESIDUAL_ACTIVATION_ROUND)
+        {
+            return Err("C6.1 native blind prover participant round drift".to_owned());
+        }
+        let cache_message = cache.round_state.fix_next_round(streams).map_err(text_error)?;
+        let residual_message = if global_round >= C6_DELTA_RESIDUAL_ACTIVATION_ROUND {
+            Some(residual.fix_next_round(streams).map_err(text_error)?)
+        } else {
+            None
+        };
+        let ids = coordinator.expected_participant_ids().map_err(text_error)?;
+        let receipts =
+            c61_native_receipts(&ids, residual_message.map(|message| message.message_bytes))?;
+        let challenge = coordinator
+            .fix_messages_and_release_challenge(&receipts, transcript)
+            .map_err(text_error)?;
+        cache.round_state.bind_challenge(challenge).map_err(text_error)?;
+        if residual_message.is_some() {
+            residual.bind_challenge(challenge).map_err(text_error)?;
+        }
+        coordinator.confirm_participants_bound(&ids).map_err(text_error)?;
+        cache_corrections.push(cache_message);
+    }
+    let point = coordinator.finish().map_err(text_error)?;
+    if cache_corrections.len() != C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS {
+        return Err("C6.1 native prover cache round census mismatch".to_owned());
+    }
+    Ok((point, cache_corrections))
+}
+
+pub(crate) fn drive_c61_native_blind_verifier_rounds(
+    fixed: &C6FixedWrapperCommitments,
+    cache: &mut C6PersistentCacheProductionVerifierRoundState<'_>,
+    cache_corrections: &[[[Fp2; 2]; TAPES]],
+    residual: &mut C6BlindResidualVerifierRoundState<'_>,
+    contexts: &mut [VerifierCtx; TAPES],
+    transcript: &mut Transcript,
+) -> Result<C6WrapperRoundPoint, String> {
+    let repetition = cache.repetition();
+    validate_c61_native_schedule(
+        repetition,
+        repetition,
+        cache.round_index(),
+        residual.repetition(),
+        residual.round_index(),
+        residual.round_count(),
+    )?;
+    if cache_corrections.len() != C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS {
+        return Err("C6.1 native verifier cache round census mismatch".to_owned());
+    }
+    let mut coordinator =
+        C61NativeWrapperRoundCoordinator::new(fixed, repetition).map_err(text_error)?;
+    while coordinator.round_index() < C6_WRAPPER_RANDOM_POINT_LEN {
+        let global_round = coordinator.round_index();
+        if cache.round_index() != global_round
+            || (global_round >= C6_DELTA_RESIDUAL_ACTIVATION_ROUND
+                && residual.round_index() != global_round - C6_DELTA_RESIDUAL_ACTIVATION_ROUND)
+        {
+            return Err("C6.1 native blind verifier participant round drift".to_owned());
+        }
+        cache.check_next_round(cache_corrections[global_round], contexts).map_err(text_error)?;
+        let residual_message = if global_round >= C6_DELTA_RESIDUAL_ACTIVATION_ROUND {
+            Some(residual.check_next_round(contexts).map_err(text_error)?)
+        } else {
+            None
+        };
+        let ids = coordinator.expected_participant_ids().map_err(text_error)?;
+        let receipts =
+            c61_native_receipts(&ids, residual_message.map(|message| message.message_bytes))?;
+        let challenge = coordinator
+            .fix_messages_and_release_challenge(&receipts, transcript)
+            .map_err(text_error)?;
+        cache.bind_challenge(challenge).map_err(text_error)?;
+        if residual_message.is_some() {
+            residual.bind_challenge(challenge).map_err(text_error)?;
+        }
+        coordinator.confirm_participants_bound(&ids).map_err(text_error)?;
+    }
+    coordinator.finish().map_err(text_error)
 }
 
 /// Drive one prover repetition through the sole production 24-round challenge
@@ -1520,15 +1988,11 @@ mod tests {
             .next()
             .unwrap();
         assert!(
-            verifier
-                .find("statement_digest()\n        != nbr2.outer_statement_digest()")
-                .unwrap()
+            verifier.find("statement_digest() != nbr2.outer_statement_digest()").unwrap()
                 < verifier.find("verify_c6_exact_production_blind_pending(").unwrap()
         );
         assert!(
-            verifier
-                .find("verify_c6_authenticated_output_link_production_nbr2_strict(")
-                .unwrap()
+            verifier.find("verify_c6_authenticated_output_link_production_nbr2_strict(").unwrap()
                 < verifier.find("native.finish_after_nbr2_link(receipt)").unwrap()
         );
     }
@@ -1536,6 +2000,25 @@ mod tests {
     #[test]
     fn c61_native_join_has_no_hidden_owner_and_receipt_gates_native_tail() {
         let source = include_str!("c6_blind_round_coordinator.rs");
+        validate_c61_native_schedule(1, 1, 0, 1, 0, 23).unwrap();
+        assert!(validate_c61_native_schedule(1, 1, 0, 1, 0, 22).is_err());
+        assert!(c61_native_receipts(
+            &[C6_CACHE_ROUND_PARTICIPANT_ID, C6_DELTA_RESIDUAL_ROUND_PARTICIPANT_ID,],
+            Some(96),
+        )
+        .is_ok());
+        assert!(c61_native_receipts(&[C6_HIDDEN_U_ROUND_PARTICIPANT_ID], Some(96)).is_err());
+
+        let blind_prover = source
+            .split("pub fn prove_c61_native_production_blind_components<'a>(")
+            .nth(1)
+            .unwrap()
+            .split("/// Witness-free mirror")
+            .next()
+            .unwrap();
+        assert!(blind_prover.contains("drive_c61_native_blind_prover_rounds("));
+        assert!(blind_prover.contains("C61NativeProductionBlindProverOutput"));
+
         let prover = source
             .split("pub fn finish_c61_native_production_blind_with_persisted_nbr2_link(")
             .nth(1)
@@ -1546,9 +2029,7 @@ mod tests {
         assert!(prover.contains("C61NativePendingSlotRegistryProverBuilder::new"));
         assert!(prover.contains("2 * C61_NATIVE_WRAPPER_ACTIVE_SLOTS"));
         assert!(
-            prover
-                .find("prove_c6_authenticated_output_link_persisted_cuda_nbr2_strict(")
-                .unwrap()
+            prover.find("prove_c6_authenticated_output_link_persisted_cuda_nbr2_strict(").unwrap()
                 < prover.find("native.finish_after_nbr2_link(receipt)").unwrap()
         );
         for forbidden in [
@@ -1559,6 +2040,38 @@ mod tests {
             "C6PendingSlotRegistryProverBuilder::new",
         ] {
             assert!(!prover.contains(forbidden));
+        }
+
+        let production_verifier = source
+            .split("pub fn verify_c61_native_exact_production_nbr2_proof(")
+            .nth(1)
+            .unwrap()
+            .split("/// Verify the global blind")
+            .next()
+            .unwrap();
+        assert!(production_verifier.contains("verify_c61_native_production_blind_pending("));
+        assert!(production_verifier.contains("c61_native_exact_bound_slot_output(bound.len())"));
+        assert!(
+            production_verifier
+                .find("verify_c6_authenticated_output_link_production_nbr2_strict(")
+                .unwrap()
+                < production_verifier.find("native.finish_after_nbr2_link(receipt)").unwrap()
+        );
+        for forbidden in ["C6HiddenU", "hidden_", "verify_c6_exact_production_blind_pending("] {
+            assert!(!production_verifier.contains(forbidden));
+        }
+
+        let blind_verifier = source
+            .split("fn verify_c61_native_production_blind_pending(")
+            .nth(1)
+            .unwrap()
+            .split("fn c6_exact_bound_slot_output(")
+            .next()
+            .unwrap();
+        assert!(blind_verifier.contains("drive_c61_native_blind_verifier_rounds("));
+        assert!(blind_verifier.contains("finish_c61_native_pending_registry_verifier("));
+        for forbidden in ["C6HiddenU", "hidden_", "absorb_hidden_u"] {
+            assert!(!blind_verifier.contains(forbidden));
         }
 
         let verifier = source

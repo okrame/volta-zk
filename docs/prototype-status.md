@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.93 next.
+This capsule is authoritative; read design §§0.60--0.94 next.
 
 - **Milestone/evidence.** C6ICT5 study is complete: one response owner supplies
   the ordered 96+6 claims; four WHIR chains bind their exact global points and
@@ -25,8 +25,8 @@ This capsule is authoritative; read design §§0.60--0.93 next.
   its focused PCS/owner guards are **2/0/0 + 1/0/0**. The distinct four-root
   PCS profile/coordinator guard is **1/0/0**; the hidden-free live/verifier
   source guard is **1/0/0**. The dynamic 56+1 link codec and receipt-gated
-  native join guards are **1/0/0 + 1/0/0**. Native blind replay and the
-  six-component envelope are **1/0/0 + 2/0/0**.
+  native join guards are **1/0/0 + 1/0/0**. Blind replay, envelope and outer
+  checks are **1/0/0 + 2/0/0 + 2/0/0**.
 - **Resume.** Implement in small checkpoints, then close additive Lean,
   mutations, executable budgets, full workspace and exact campaign preflight.
   Pod admission follows only after those local gates are green.
@@ -37,6 +37,14 @@ This capsule is authoritative; read design §§0.60--0.93 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-16 — Native C6.1 certificate boundary lands.** A distinct outer
+  schema carries cache roots in the two heads plus residual/auxiliary roots
+  and one source binding. Its fixed framing is **793 B** and strict
+  `pi_final` maximum **3,463,555 B**. Native assembly/decoding uses only
+  `C61PIF2`; old magic, missing roots and payload mutations reject
+  (**2/0/0**, plus coordinator guard **1/0/0**). Campaign migration and
+  deletion of its prior C6-envelope adapter remain open; no credit or pod.
 
 - **2026-08-16 — Hidden-free C6.1 proof envelope lands.** `C61PIF2` is a
   distinct six-component grammar with no extension slot. Its exact maximum is

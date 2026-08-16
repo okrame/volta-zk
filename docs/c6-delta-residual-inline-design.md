@@ -4858,6 +4858,29 @@ heads, residual and auxiliary roots, and one combined source binding; only
 then may the production assembly and disk decoder move to `C61PIF2`. No byte,
 timing, full-chain or hardware credit is promoted and pod contact is forbidden.
 
+### 0.94 C6ICT5 native certificate-boundary checkpoint
+
+The native C6.1 outer is a separate canonical certificate schema, not a view
+or reinterpretation of C6. Its fixed wrapper stores statement, residual root,
+auxiliary root and combined source binding; predecessor/successor cache roots
+remain in their transition heads. The resulting fixed framing is **793 B**,
+exactly 64 B below the historical six-root framing, and the strict
+`pi_final` maximum is **3,463,555 B**.
+
+Certificate magic, payload hashes, transition statement and final-certificate
+digest are C6.1-domain-separated. Version 1 fixes native Q=86. Decode checks
+the 22-MB cap, canonical Goldilocks fields, 17+4-compatible correlation
+ranges, predecessor/head/workload transition, retained/public partition,
+four nonzero roots, source binding, `C61PIF2`, payload digests and exact head
+statement. Old magic, a missing root and a changed proof payload reject in
+the focused **2/0/0** test.
+
+The native same-attempt assembler and disk proof decoder now consume six
+components and have no hidden-u input. Their source/receipt guard remains
+**1/0/0**. The next boundary migrates campaign artifacts to this native type
+and deletes the prior C6.1-over-C6 adapter before any quantitative credit or
+pod admission.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

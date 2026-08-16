@@ -667,6 +667,41 @@ impl C61ProductionJointCompilerChainProof {
     }
 }
 
+/// Recover the two commitment identities carried by a strict C6CPX3 payload
+/// before its terminal statement is available. The schedule and functional
+/// digests are intentionally not read from the payload: the disk verifier
+/// derives them from the four native bodies and installed compiler.
+pub fn decode_c61_production_compiler_commitment_descriptors(
+    id: C61NativeChainId,
+    payload: &[u8],
+) -> Result<[C61NativeCommitmentDescriptor; 2], String> {
+    if id.component != C61NativeComponent::Compiler || id.repetition >= 2 {
+        return Err("C6CPX3 commitment predecode requires a compiler chain".to_owned());
+    }
+    let joint = C61ProductionJointCompilerChainProof::decode(payload, [1; 32], [2; 32])?;
+    let artifact = C61SharedMultiOracleArtifact {
+        payload: joint.inner().shared_payload().to_vec(),
+    };
+    let ((response, _), (plan, _), _) =
+        decode_c61_shared_multi_oracle_artifact(&artifact, 28, 27)
+            .map_err(|error| error.to_string())?;
+    if response.num_roots() != 1 || plan.num_roots() != 1 {
+        return Err("C6CPX3 commitment predecode has a noncanonical root cap".to_owned());
+    }
+    Ok([
+        C61NativeCommitmentDescriptor {
+            parameter_digest: c61_authenticated_p3_parameter_digest(28)?,
+            commitment_root: response.roots()[0],
+            polynomial_domain_log2: 28,
+        },
+        C61NativeCommitmentDescriptor {
+            parameter_digest: c61_authenticated_p3_parameter_digest(27)?,
+            commitment_root: plan.roots()[0],
+            polynomial_domain_log2: 27,
+        },
+    ])
+}
+
 pub struct C61ProductionCompilerChainExecution {
     public: Option<C61TypedNativeChainPublicStatement>,
     pub proof: C61ProductionCompilerChainProof,
@@ -1475,6 +1510,52 @@ fn c61_awp1_payload_from_joint(payload: &[u8]) -> Result<Vec<u8>, String> {
     ordinary[..8].copy_from_slice(&C61_AUTHENTICATED_P3_MAGIC);
     ordinary[8..10].copy_from_slice(&C61_AUTHENTICATED_P3_VERSION.to_le_bytes());
     Ok(ordinary)
+}
+
+/// Recover the commitment identity carried by one strict model/embedding
+/// chain before its response-owned opening statement has been rebuilt. This
+/// is the disk decoder's non-circular entry: it parses only the commitment
+/// already inside C6AWP1/C6AWP2, while the later typed decode still checks the
+/// complete proof against the independently replayed 96+6 claim schedule.
+pub fn decode_c61_production_native_commitment_descriptor(
+    id: C61NativeChainId,
+    payload: &[u8],
+) -> Result<C61NativeCommitmentDescriptor, String> {
+    let num_variables = match id.component {
+        C61NativeComponent::Model => usize::from(C61_MODEL_POLYNOMIAL_LOG2),
+        C61NativeComponent::Embedding => usize::from(C61_EMBEDDING_POLYNOMIAL_LOG2),
+        C61NativeComponent::Compiler => {
+            return Err("C6PA2 commitment predecode rejects compiler chains".to_owned())
+        }
+    };
+    if id.repetition >= 2 {
+        return Err("C6PA2 commitment predecode repetition is out of range".to_owned());
+    }
+    let ordinary = if id.repetition == 0 {
+        payload.to_vec()
+    } else {
+        c61_awp1_payload_from_joint(payload)?
+    };
+    let (commitment, proof, base_proof) =
+        decode_c61_authenticated_p3_artifact_inner(&ordinary, num_variables, true)
+            .map_err(|error| error.to_string())?;
+    let canonical = encode_c61_authenticated_p3_artifact_inner(
+        num_variables,
+        &commitment,
+        &proof,
+        base_proof,
+        true,
+    )
+    .map_err(|error| error.to_string())?;
+    if canonical != ordinary || commitment.num_roots() != 1 {
+        return Err("C6PA2 commitment predecode is noncanonical".to_owned());
+    }
+    Ok(C61NativeCommitmentDescriptor {
+        parameter_digest: c61_authenticated_p3_parameter_digest(num_variables)?,
+        commitment_root: commitment.roots()[0],
+        polynomial_domain_log2: u8::try_from(num_variables)
+            .map_err(|_| "C6PA2 commitment dimension exceeds u8")?,
+    })
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

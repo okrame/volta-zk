@@ -5230,6 +5230,29 @@ check is green. No wire/setup byte, challenge, correlation or soundness term
 changes. Disk semantic verification, mutations and campaign record preflight
 remain open. No pod or credit.
 
+### 1.10 C6ICT5 disk terminal/cache ownership checkpoint
+
+The independent retained-response replay now exports the exact paired cache
+target keys produced online on both MAC coordinates. Their ordered kind and
+primary-key projection must equal the separately captured verifier trace;
+the later blind verifier therefore accepts no detached cache-target array.
+
+The disk blind path is split at the authenticated link. Its first phase
+verifies the residual/cache rounds and derives both repetitions' leaf and
+auxiliary points from those completed round states. Only then does it append
+the 64 C6RSC4 claims, draw beta, derive and bind the canonical C6TFR1 root,
+and draw runtime challenges. The decoded arithmetic frame is checked against
+that typestate and the verifier's canonical runtime before compiler or C6NBR2
+can proceed.
+
+C6AWP1/C6AWP2 and C6CPX3 expose narrow canonical commitment predecoders to
+break statement-construction circularity. They grant no acceptance: the four
+response statements still come from the replay-owned 96+6 keys, compiler
+statements come only from the linear blind continuation, and every complete
+nested proof must subsequently verify. Focused cache and ordering guards are
+**1/0/0 + 1/0/0** and feature compilation is green. Complete disk assembly,
+mutations and record preflight remain open; no pod or credit.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

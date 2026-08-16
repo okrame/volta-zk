@@ -37,10 +37,17 @@ use volta_pcs::{
     C6HiddenUFamilyWitness, C6PersistentCacheStateWitness, Commitment, MultiOpenProof, C3_EMBED,
     C3_WEIGHTS,
 };
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+use volta_pcs::{
+    build_c61_production_model_embedding_public_statement, C61NativeChainId,
+    C61NativeCommitmentDescriptor, C61NativeVerifierChainStatement,
+    C61_EMBEDDING_POLYNOMIAL_LOG2, C61_MODEL_POLYNOMIAL_LOG2,
+};
 #[cfg(feature = "c6-trace")]
 use volta_proto::{
     build_c6_t1_production_response_owner, cattn_permuted, C6PairedNativeTargetValues,
     C6ProductionPairedPcgAttempt, C6T1ProductionResponseOwner,
+    C6T1ProductionResponseVerifierReplay,
 };
 
 #[cfg(feature = "c6-trace")]
@@ -106,6 +113,17 @@ pub struct C6T1NativeClaimOwner {
     primary_embedding_targets: Vec<ProverAuthed>,
     primary_model_keys: Vec<VerifierKey>,
     primary_embedding_keys: Vec<VerifierKey>,
+}
+
+/// Verifier-only counterpart rebuilt from the strict retained-response replay.
+/// The replay already exposes the global C3 points, so this owner neither
+/// reconstructs a provider block schedule nor accepts detached keys.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub struct C6T1NativeVerifierClaimOwner {
+    model_claims: Vec<BlockClaim>,
+    embedding_claims: Vec<BlockClaim>,
+    model_keys: Vec<VerifierKey>,
+    embedding_keys: Vec<VerifierKey>,
 }
 
 /// Prover-private randomness fixed independently of transcript challenges and
@@ -346,6 +364,58 @@ impl C6T1NativeClaimOwner {
             [coordinates[0][model].clone(), coordinates[1][model].clone()],
             [coordinates[0][embedding].clone(), coordinates[1][embedding].clone()],
         ))
+    }
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+impl C6T1NativeVerifierClaimOwner {
+    pub fn from_disk_response(
+        response: &C6T1ProductionResponseVerifierReplay,
+    ) -> Result<Self, String> {
+        let output = response.output();
+        if output.weight_keys.len() != 96
+            || output.embed_keys.len() != 6
+            || output.weight_keys.iter().any(|(point, _)| {
+                point.len() != usize::from(C61_MODEL_POLYNOMIAL_LOG2)
+            })
+            || output.embed_keys.iter().any(|(point, _)| {
+                point.len() != usize::from(C61_EMBEDDING_POLYNOMIAL_LOG2)
+            })
+        {
+            return Err("C6ICT5 disk native claim owner has the wrong 96+6 geometry".to_owned());
+        }
+        Ok(Self {
+            model_claims: output
+                .weight_keys
+                .iter()
+                .map(|(point, _)| BlockClaim { offset: 0, point: point.clone() })
+                .collect(),
+            embedding_claims: output
+                .embed_keys
+                .iter()
+                .map(|(point, _)| BlockClaim { offset: 0, point: point.clone() })
+                .collect(),
+            model_keys: output.weight_keys.iter().map(|(_, key)| *key).collect(),
+            embedding_keys: output.embed_keys.iter().map(|(_, key)| *key).collect(),
+        })
+    }
+
+    pub fn statement(
+        &self,
+        id: C61NativeChainId,
+        commitment: C61NativeCommitmentDescriptor,
+    ) -> Result<C61NativeVerifierChainStatement, String> {
+        let (claims, keys) = match id.component {
+            C61NativeComponent::Model => (&self.model_claims, &self.model_keys),
+            C61NativeComponent::Embedding => (&self.embedding_claims, &self.embedding_keys),
+            C61NativeComponent::Compiler => {
+                return Err("C6ICT5 disk claim owner rejects compiler chains".to_owned())
+            }
+        };
+        let public = build_c61_production_model_embedding_public_statement(id, commitment, claims)
+            .map_err(|error| error.to_string())?;
+        C61NativeVerifierChainStatement::new(public, keys.clone())
+            .map_err(|error| error.to_string())
     }
 }
 

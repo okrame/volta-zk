@@ -25,7 +25,8 @@ This capsule is authoritative; read design §§0.60--1.09 next.
   C6NBR2. Focused guards are **3/0/0**. Budget v29 and Lean **3,267 jobs/nine
   audits** remain green screens. D28/D27/four-chain ownership is typed; the
   two three-mask ranges derive only from the durable reservation. The exact
-  response-to-seal runner is closed.
+  response-to-seal runner is closed; disk replay now retains paired cache
+  keys and the exact terminal challenge typestate.
 - **Resume.** Close disk semantic verification, mutations, workspace and
   campaign preflight in small checkpoints. Pod only after every local gate is
   green.
@@ -36,6 +37,15 @@ This capsule is authoritative; read design §§0.60--1.09 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-16 — Disk terminal and cache ownership lands.** Independent
+  response replay now retains both cache-target key coordinates and checks
+  them against its trace. The strict blind decoder derives leaf/auxiliary
+  points from verified rounds, then replays terminal claims, beta, the C6TFR1
+  root and runtime challenges in provider order. Model/embed and compiler
+  commitment descriptors are canonical predecodes only; full typed proof
+  verification remains mandatory. Focused cache and ordering guards are
+  **1/0/0 + 1/0/0**. Complete disk assembly remains open; no pod or credit.
 
 - **2026-08-16 — Exact live response-to-seal runner lands.** One function now
   consumes the installed setup, T1 workload, public attempt, real paired PCG,

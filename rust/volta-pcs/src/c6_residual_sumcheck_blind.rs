@@ -1139,6 +1139,55 @@ impl C6BlindResidualDirectTerminalOutputs {
         Ok(outputs)
     }
 
+    pub(crate) fn from_verifier_claims(
+        statements: &[C6BlindResidualStatement],
+        relation: &C6ResidualRelationChallenges,
+        leaf_points: [Vec<Fp2>; C6_RESIDUAL_SUMCHECK_REPETITIONS],
+        auxiliary_points: [Vec<Fp2>; C6_RESIDUAL_SUMCHECK_REPETITIONS],
+        terminal_functionals: [Fp2; C6_RESIDUAL_TERMINAL_FUNCTIONALS],
+    ) -> Result<Self> {
+        if relation.protocol_version() != C6_RESIDUAL_RELATION_PROTOCOL_DIRECT_MLE
+            || statements.len() != C6_RESIDUAL_SUMCHECK_REPETITIONS
+        {
+            return Err(C6BlindResidualError::new(
+                "C6RSC3-v4 verifier terminal outputs require the direct-MLE relation",
+            ));
+        }
+        let statement_digests = statements
+            .iter()
+            .enumerate()
+            .map(|(repetition, statement)| {
+                if usize::from(statement.repetition()) != repetition
+                    || statement.leaf_rounds() != leaf_points[repetition].len()
+                    || statement.auxiliary_rounds() != auxiliary_points[repetition].len()
+                    || !leaf_points[repetition].ends_with(&auxiliary_points[repetition])
+                {
+                    return Err(C6BlindResidualError::new(
+                        "C6RSC3-v4 verifier terminal point geometry differs",
+                    ));
+                }
+                Ok(statement.digest())
+            })
+            .collect::<Result<Vec<_>>>()?
+            .try_into()
+            .map_err(|_| C6BlindResidualError::new("C6RSC3-v4 statement census mismatch"))?;
+        let mut outputs = Self {
+            relation_challenges_digest: relation.digest(),
+            statement_digests,
+            leaf_points,
+            auxiliary_points,
+            terminal_functionals,
+            digest: [0; 32],
+        };
+        outputs.digest = direct_terminal_outputs_digest(&outputs);
+        if outputs.digest == [0; 32] {
+            return Err(C6BlindResidualError::new(
+                "C6RSC3-v4 verifier terminal-output digest is zero",
+            ));
+        }
+        Ok(outputs)
+    }
+
     pub fn relation_challenges_digest(&self) -> [u8; 32] {
         self.relation_challenges_digest
     }
@@ -2924,6 +2973,20 @@ impl C6BlindResidualVerifierRoundState<'_> {
 
     pub(crate) fn round_count(&self) -> usize {
         self.statement.leaf_rounds()
+    }
+
+    pub(crate) fn terminal_points(&self) -> Result<(Vec<Fp2>, Vec<Fp2>)> {
+        if self.pending.is_some() || self.global_round != self.round_count() {
+            return Err(C6BlindResidualError::new(
+                "C6RSC3 terminal points require a completed verifier repetition",
+            ));
+        }
+        let auxiliary_start = self
+            .points
+            .len()
+            .checked_sub(self.statement.auxiliary_rounds())
+            .ok_or_else(|| C6BlindResidualError::new("C6RSC3 auxiliary point underflows"))?;
+        Ok((self.points.clone(), self.points[auxiliary_start..].to_vec()))
     }
 
     pub(crate) fn check_next_round(

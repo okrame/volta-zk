@@ -711,6 +711,75 @@ pub fn decode_c61_native_exact_production_blind_envelope(
     })
 }
 
+/// Disk-only continuation after the blind residual/cache proof has been
+/// checked and the exact terminal/compiler challenge order has been replayed.
+/// The pending link remains linear and cannot be released without C6NBR2.
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub struct C61NativeDecodedBlindVerifierPending {
+    pending: C6PendingSlotRegistryVerifier,
+    ready: C61ReadyPublicProof,
+    inputs: C6ExactTerminalCompilerInputs,
+}
+
+#[cfg(feature = "c61-p3-authenticated-reference")]
+impl C61NativeDecodedBlindVerifierPending {
+    pub fn ready(&self) -> &C61ReadyPublicProof {
+        &self.ready
+    }
+
+    pub fn inputs(&self) -> &C6ExactTerminalCompilerInputs {
+        &self.inputs
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn compiler_public_statement(
+        &self,
+        operation_plan: &volta_mac::C6InstalledOperationPlan,
+        terminal_metadata: &volta_mac::C6OperationPlanTerminalMetadata,
+        extraction: &volta_mac::C6DecodedInstanceExtractionPlan,
+        runtime: &volta_mac::C6RuntimeInstanceValues,
+        relation: &volta_proto::c6_residual::C6ResidualRelationChallenges,
+        commitments: [crate::C61NativeCommitmentDescriptor; 2],
+        id: crate::C61NativeChainId,
+    ) -> Result<crate::C61TypedNativeChainPublicStatement, String> {
+        if id.component != crate::C61NativeComponent::Compiler || id.repetition >= 2 {
+            return Err("C6ICT5 disk compiler statement has a noncanonical role".to_owned());
+        }
+        let leaf = self.inputs.leaf_points();
+        let auxiliary = self.inputs.auxiliary_points();
+        let binding = crate::C61TerminalFunctionalCompilerBinding {
+            operation_plan_digest: operation_plan.artifact_digest(),
+            operation_topology_digest: operation_plan.topology().topology_digest,
+            terminal_metadata_digest: terminal_metadata.digest(),
+            extraction_map_digest: extraction.census().map_digest,
+            runtime_root: runtime.instance_identity().instance_digest,
+            residual_manifest_digest: relation.manifest().digest(),
+            residual_public_claims_digest: relation.claims().digest(),
+            relation_challenges_digest: relation.digest(),
+            sparse_oracles: crate::C61SparseRationalCompilerOracles::new(
+                commitments[0],
+                commitments[1],
+            )
+            .map_err(text_error)?,
+            leaf_points: [leaf[0].to_vec(), leaf[1].to_vec()],
+            auxiliary_points: [auxiliary[0].to_vec(), auxiliary[1].to_vec()],
+            terminal_claims: *self.inputs.terminal_functionals(),
+            output_beta: self.inputs.output_beta(),
+            relation_root: self.inputs.relation_root(),
+        };
+        let compiler = crate::C61TerminalFunctionalCompilerStatement::new(binding)
+            .map_err(text_error)?;
+        if compiler.functional_fold != self.inputs.functional_fold() {
+            return Err("C6ICT5 disk compiler statement terminal fold differs".to_owned());
+        }
+        crate::C61TypedNativeChainPublicStatement::new(
+            id,
+            crate::C61TypedNativeRelationStatement::Compiler(Box::new(compiler)),
+        )
+        .map_err(text_error)
+    }
+}
+
 impl C6DecodedExactProductionBlindProof {
     pub fn cache_fold_target_frame(&self) -> &[u8] {
         &self.cache_fold_target_frame
@@ -1654,10 +1723,12 @@ pub fn verify_c6_decoded_exact_production_nbr2_certificate(
     Ok(C6ExactProductionNbr2VerifierOutput { blind, joint_native })
 }
 
-/// Disk verifier for the strict C61PIF2 global blind/C6NBR2 boundary.
+/// Replay the strict disk blind prefix and then reproduce the provider's
+/// terminal order: claims, beta, C6TFR1 root, and runtime challenges. The
+/// compiler/link verifier receives only this continuation.
 #[cfg(feature = "c61-p3-authenticated-reference")]
 #[allow(clippy::too_many_arguments)]
-pub fn verify_c61_native_decoded_exact_production_nbr2_certificate(
+pub fn prepare_c61_native_decoded_blind_verifier(
     roots: &C6VerifierLiveWrapperRootBinding,
     cache_statement_digest: [u8; 32],
     cache_snapshot: &C6CacheFoldTraceSnapshot,
@@ -1668,17 +1739,15 @@ pub fn verify_c61_native_decoded_exact_production_nbr2_certificate(
     append: &C61NativeCacheAppendVerifierOwner,
     statements: &[C6BlindResidualStatement],
     proof: &C61NativeDecodedExactProductionBlindProof,
-    public_argument_statement_digest: [u8; 32],
-    terminal_functionals: &[Fp2; volta_proto::C6_RESIDUAL_TERMINAL_FUNCTIONALS],
-    nbr2: &C6Nbr2CorrectionFunctional<'_>,
-    native: C61ProductionJointNativeVerifierLinkPending,
+    relation: &volta_proto::c6_residual::C6ResidualRelationChallenges,
+    equality: C61EqualityDrawn,
+    arithmetic: &crate::c61_public_compression::C61ArithmeticFrame,
+    canonical_runtime: &[Fp2],
     contexts: &mut [VerifierCtx; TAPES],
     transcript: &mut Transcript,
-) -> Result<C6ExactProductionNbr2VerifierOutput, String> {
-    if public_argument_statement_digest != nbr2.outer_statement_digest() {
-        return Err("decoded native C6PA2 statement differs from the C6NBR2 binding".to_owned());
-    }
-    let pending = verify_c61_native_production_blind_pending(
+) -> Result<C61NativeDecodedBlindVerifierPending, String> {
+    let (pending, leaf_points, auxiliary_points) =
+        verify_c61_native_production_blind_pending_with_terminal_points(
         roots,
         cache_statement_digest,
         cache_snapshot,
@@ -1688,13 +1757,61 @@ pub fn verify_c61_native_decoded_exact_production_nbr2_certificate(
         new_len,
         &append.base_keys,
         statements,
-        proof.verifier_view(terminal_functionals),
+        proof.verifier_view(&arithmetic.terminal_claims),
         contexts,
         transcript,
     )?;
+    let outputs = C6BlindResidualDirectTerminalOutputs::from_verifier_claims(
+        statements,
+        relation,
+        leaf_points,
+        auxiliary_points,
+        arithmetic.terminal_claims,
+    )
+    .map_err(text_error)?;
+    let public_output = equality
+        .fix_terminal_claims(arithmetic.terminal_claims, transcript)
+        .draw_output_challenge(transcript);
+    let inputs = terminal_compiler_inputs(&outputs, public_output.output_beta())?;
+    let ready = public_output
+        .fix_adjoint_root(inputs.relation_root(), transcript)
+        .map_err(text_error)?
+        .draw_runtime_challenges(transcript);
+    crate::verify_c61_production_arithmetic_frame(
+        &ready,
+        arithmetic.statement_digest,
+        canonical_runtime,
+        arithmetic,
+    )
+    .map_err(text_error)?;
+    if inputs.relation_challenges_digest() != relation.digest()
+        || inputs.functional_fold() != arithmetic.source_boundary
+    {
+        return Err("decoded C6RSC4 differs from the replayed terminal relation".to_owned());
+    }
+    Ok(C61NativeDecodedBlindVerifierPending { pending, ready, inputs })
+}
+
+/// Consume the exact disk blind continuation only after compiler/native
+/// verification has prepared the matching C6NBR2-gated joint tail.
+#[cfg(feature = "c61-p3-authenticated-reference")]
+#[allow(clippy::too_many_arguments)]
+pub fn finish_c61_native_decoded_nbr2_verifier(
+    roots: &C6VerifierLiveWrapperRootBinding,
+    blind: C61NativeDecodedBlindVerifierPending,
+    proof: &C61NativeDecodedExactProductionBlindProof,
+    public_argument_statement_digest: [u8; 32],
+    nbr2: &C6Nbr2CorrectionFunctional<'_>,
+    native: C61ProductionJointNativeVerifierLinkPending,
+    contexts: &mut [VerifierCtx; TAPES],
+    transcript: &mut Transcript,
+) -> Result<C6ExactProductionNbr2VerifierOutput, String> {
+    if public_argument_statement_digest != nbr2.outer_statement_digest() {
+        return Err("decoded native C6PA2 statement differs from the C6NBR2 binding".to_owned());
+    }
     let (bound, receipt) = verify_c6_authenticated_output_link_production_nbr2_strict(
         roots.fixed(),
-        pending,
+        blind.pending,
         &proof.authenticated_link,
         nbr2,
         contexts,
@@ -1865,7 +1982,7 @@ fn verify_c6_exact_production_blind_pending(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn verify_c61_native_production_blind_pending(
+fn verify_c61_native_production_blind_pending_with_terminal_points(
     roots: &C6VerifierLiveWrapperRootBinding,
     cache_statement_digest: [u8; 32],
     cache_snapshot: &C6CacheFoldTraceSnapshot,
@@ -1878,7 +1995,14 @@ fn verify_c61_native_production_blind_pending(
     proof: C61NativeExactProductionVerifierProof<'_>,
     contexts: &mut [VerifierCtx; TAPES],
     transcript: &mut Transcript,
-) -> Result<C6PendingSlotRegistryVerifier, String> {
+) -> Result<
+    (
+        C6PendingSlotRegistryVerifier,
+        [Vec<Fp2>; C6_WRAPPER_REPETITIONS],
+        [Vec<Fp2>; C6_WRAPPER_REPETITIONS],
+    ),
+    String,
+> {
     validate_production_contexts(contexts)?;
     begin_c6_persistent_cache_production(cache_statement_digest, transcript).map_err(text_error)?;
     begin_c6_blind_residual_verifier_stepwise(
@@ -1892,6 +2016,8 @@ fn verify_c61_native_production_blind_pending(
 
     let mut cache_finished = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
     let mut residual_finished = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
+    let mut leaf_points = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
+    let mut auxiliary_points = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
     for repetition in 0..C6_WRAPPER_REPETITIONS as u8 {
         let (relation_roots, kv_root) =
             draw_c6_persistent_cache_production_roots(repetition, transcript)
@@ -1946,6 +2072,9 @@ fn verify_c61_native_production_blind_pending(
             contexts,
             transcript,
         )?;
+        let (leaf_point, auxiliary_point) = residual.terminal_points().map_err(text_error)?;
+        leaf_points.push(leaf_point);
+        auxiliary_points.push(auxiliary_point);
         cache_finished.push(
             finish_c6_persistent_cache_production_verifier_repetition(
                 cache,
@@ -1974,6 +2103,48 @@ fn verify_c61_native_production_blind_pending(
     let residual_pending =
         assemble_c6_blind_residual_verifier_stepwise(residual_finished, transcript)
             .map_err(text_error)?;
+    let pending =
+        finish_c61_native_pending_registry_verifier(roots.fixed(), &residual_pending, &cache_pending)?;
+    Ok((
+        pending,
+        leaf_points
+            .try_into()
+            .map_err(|_| "C6.1 native verifier leaf-point census differs")?,
+        auxiliary_points
+            .try_into()
+            .map_err(|_| "C6.1 native verifier auxiliary-point census differs")?,
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_c61_native_production_blind_pending(
+    roots: &C6VerifierLiveWrapperRootBinding,
+    cache_statement_digest: [u8; 32],
+    cache_snapshot: &C6CacheFoldTraceSnapshot,
+    cache_targets: &C6CacheFoldPairedVerifierTargets,
+    cache_fixed_targets: &C6CacheFoldTargetFixedCorrections,
+    old_len: u16,
+    new_len: u16,
+    append_base_keys: &[Vec<[volta_mac::VerifierKey; TAPES]>; 2],
+    statements: &[C6BlindResidualStatement],
+    proof: C61NativeExactProductionVerifierProof<'_>,
+    contexts: &mut [VerifierCtx; TAPES],
+    transcript: &mut Transcript,
+) -> Result<C6PendingSlotRegistryVerifier, String> {
+    let (pending, _, _) = verify_c61_native_production_blind_pending_with_terminal_points(
+        roots,
+        cache_statement_digest,
+        cache_snapshot,
+        cache_targets,
+        cache_fixed_targets,
+        old_len,
+        new_len,
+        append_base_keys,
+        statements,
+        proof,
+        contexts,
+        transcript,
+    )?;
     let output_beta = transcript.challenge_fp2();
     let functional_fold = proof
         .terminal_functionals
@@ -1987,7 +2158,7 @@ fn verify_c61_native_production_blind_pending(
     }) {
         return Err("C6.1 native verifier terminal output-fold mismatch".to_owned());
     }
-    finish_c61_native_pending_registry_verifier(roots.fixed(), &residual_pending, &cache_pending)
+    Ok(pending)
 }
 
 fn c6_exact_bound_slot_output(
@@ -2602,17 +2773,34 @@ mod tests {
         }
 
         let blind_verifier = source
-            .split("fn verify_c61_native_production_blind_pending(")
+            .split("fn verify_c61_native_production_blind_pending_with_terminal_points(")
             .nth(1)
             .unwrap()
-            .split("fn c6_exact_bound_slot_output(")
+            .split("fn verify_c61_native_production_blind_pending(")
             .next()
             .unwrap();
         assert!(blind_verifier.contains("drive_c61_native_blind_verifier_rounds("));
         assert!(blind_verifier.contains("finish_c61_native_pending_registry_verifier("));
+        assert!(blind_verifier.contains("residual.terminal_points()"));
         for forbidden in ["C6HiddenU", "hidden_", "absorb_hidden_u"] {
             assert!(!blind_verifier.contains(forbidden));
         }
+
+        let disk_terminal = source
+            .split("pub fn prepare_c61_native_decoded_blind_verifier(")
+            .nth(1)
+            .unwrap()
+            .split("pub fn finish_c61_native_decoded_nbr2_verifier(")
+            .next()
+            .unwrap();
+        let blind = disk_terminal
+            .find("verify_c61_native_production_blind_pending_with_terminal_points(")
+            .unwrap();
+        let claims = disk_terminal.find(".fix_terminal_claims(").unwrap();
+        let beta = disk_terminal.find(".draw_output_challenge(").unwrap();
+        let root = disk_terminal.find(".fix_adjoint_root(").unwrap();
+        let runtime = disk_terminal.find(".draw_runtime_challenges(").unwrap();
+        assert!(blind < claims && claims < beta && beta < root && root < runtime);
 
         let assembly = source
             .split("pub fn assemble_c61_native_exact_production_nbr2_certificate(")

@@ -27,7 +27,8 @@ use volta_mac::{
 use volta_pcs::c61_authenticated_whir_p3::C61CompilerVerifierProfile;
 #[cfg(feature = "c61-p3-authenticated-reference")]
 use volta_pcs::c61_authenticated_whir_p3::{
-    C61ProviderJointSessionBinding, C61ProviderSessionBinding,
+    C61ProductionJointNativeProverBodiesFixed, C61ProviderJointSessionBinding,
+    C61ProviderSessionBinding,
 };
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_pcs::c6_blind_round_coordinator::C61NativeExactProductionNbr2Certificate;
@@ -53,6 +54,8 @@ use volta_pcs::{
     C6PersistentCacheStateWitness, C6PersistentCacheStaticProfile,
     C6VerifierLiveWrapperRootBinding,
 };
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+use volta_proto::c6_residual::{C6CompiledNativeTargetFunctional, C6NativeTargetProverBridgeFold};
 #[cfg(feature = "c6-trace")]
 use volta_proto::{
     replay_c6_t1_production_response_verifier, C6ProductionPairedPcgAttempt,
@@ -519,6 +522,108 @@ impl C61CampaignLiveResidualRooted {
             self.relation,
         )
     }
+}
+
+/// Provider-only joint functional derived after every secondary native body
+/// is fixed. The contained correction is the tape-1 source correction fold,
+/// not a difference chosen from native target aggregates.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub struct C61CampaignNativeFunctionalOwner {
+    functional: C6CompiledNativeTargetFunctional,
+    joint: C61ProductionJointNativeProverBodiesFixed,
+    bridge: C6NativeTargetProverBridgeFold,
+    native_profile_digest: [u8; 32],
+    body_schedule_digest: [u8; 32],
+    outer_statement_digest: [u8; 32],
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+impl C61CampaignNativeFunctionalOwner {
+    pub fn into_parts(
+        self,
+    ) -> (
+        C6CompiledNativeTargetFunctional,
+        C61ProductionJointNativeProverBodiesFixed,
+        C6NativeTargetProverBridgeFold,
+        [u8; 32],
+        [u8; 32],
+        [u8; 32],
+    ) {
+        (
+            self.functional,
+            self.joint,
+            self.bridge,
+            self.native_profile_digest,
+            self.body_schedule_digest,
+            self.outer_statement_digest,
+        )
+    }
+}
+
+/// Compile the exact post-body 96+6 functional and its tape-1 bridge from the
+/// same installed response owner. No coefficient, correction, digest or
+/// authenticated base fold is accepted from the caller.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub fn prepare_c61_campaign_native_functional(
+    roots: &C61CampaignLiveRoots,
+    residual: &C6T1ProductionResidualBoundOwner,
+    profile: &C6CanonicalTargetProfile,
+    profile_artifact: &C6NativeTargetProfileArtifact,
+    joint: C61ProductionJointNativeProverBodiesFixed,
+) -> Result<C61CampaignNativeFunctionalOwner, String> {
+    let response = residual.response();
+    let operation_plan = response.provider().operation_plan();
+    let (_, decoded_profile) = C6NativeTargetProfileArtifact::decode(
+        profile_artifact.as_bytes(),
+        operation_plan.topology(),
+    )
+    .map_err(|error| error.to_string())?;
+    if &decoded_profile != profile
+        || profile.source_schedule_digest != response.source_schedule().digest
+        || roots.provider_roots.fixed().statement_digest()
+            != roots.verifier_roots.fixed().statement_digest()
+    {
+        return Err("C6ICT5 native functional setup/response/root binding differs".to_owned());
+    }
+    let claim_weights =
+        joint.claim_weights().into_iter().map(<[volta_field::Fp2]>::to_vec).collect::<Vec<_>>();
+    let challenge = joint.challenge();
+    let functional = C6CompiledNativeTargetFunctional::compile(
+        operation_plan,
+        response.provider().extraction(),
+        response.provider().runtime(),
+        profile,
+        &claim_weights,
+        &challenge.cohort_weights,
+    )
+    .map_err(|error| error.to_string())?;
+    let bridge = functional
+        .fold_prover_bridge_coordinate(
+            response.paired_sources().source(),
+            response.source_schedule(),
+            1,
+        )
+        .map_err(|error| error.to_string())?;
+    if bridge.coordinate != 1 || bridge.functional_digest != functional.functional_digest() {
+        return Err("C6ICT5 native functional tape-1 bridge differs".to_owned());
+    }
+    let native_profile_digest = *blake3::hash(profile_artifact.as_bytes()).as_bytes();
+    let body_schedule_digest = challenge.schedule_digest;
+    let outer_statement_digest = volta_pcs::c61_joint_public_statement_digest(
+        roots.provider_roots.fixed().statement_digest(),
+        native_profile_digest,
+        body_schedule_digest,
+        functional.functional_digest(),
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(C61CampaignNativeFunctionalOwner {
+        functional,
+        joint,
+        bridge,
+        native_profile_digest,
+        body_schedule_digest,
+        outer_statement_digest,
+    })
 }
 
 /// Exact native provider output after the response, four-root wrapper,
@@ -1950,6 +2055,45 @@ mod campaign_artifact_tests {
         ] {
             assert!(!body.contains(forbidden), "native campaign body retains {forbidden}");
         }
+    }
+
+    #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+    #[test]
+    fn native_functional_comes_only_from_fixed_bodies_and_response_tape_one() {
+        let source = include_str!("c61_campaign.rs");
+        let body = source
+            .split_once("pub fn prepare_c61_campaign_native_functional(")
+            .unwrap()
+            .1
+            .split_once("/// Exact native provider output")
+            .unwrap()
+            .0;
+        for required in [
+            "joint.claim_weights()",
+            "joint.challenge()",
+            "C6CompiledNativeTargetFunctional::compile(",
+            "response.provider().operation_plan()",
+            "response.provider().extraction()",
+            "response.provider().runtime()",
+            "response.paired_sources().source()",
+            "response.source_schedule()",
+            ".fold_prover_bridge_coordinate(",
+            "c61_joint_public_statement_digest(",
+        ] {
+            assert!(body.contains(required), "native functional omits {required}");
+        }
+        let signature = body.split_once(") -> Result").unwrap().0;
+        for forbidden in [
+            "claim_weights:",
+            "cohort_weights:",
+            "coefficients:",
+            "correction:",
+            "functional_digest:",
+            "outer_statement_digest:",
+        ] {
+            assert!(!signature.contains(forbidden), "native functional admits {forbidden}");
+        }
+        assert!(body.contains("fold_prover_bridge_coordinate(") && body.contains("1,"));
     }
 
     #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]

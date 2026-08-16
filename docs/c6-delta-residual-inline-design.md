@@ -5064,6 +5064,29 @@ compiler chains and complete certificate assembly remain to be connected in
 the campaign. No byte, timing, full-chain or hardware credit is promoted and
 pod contact remains forbidden.
 
+### 1.03 C6ICT5 exact post-body native functional checkpoint
+
+One provider-only owner now consumes the fixed secondary model/embed body
+state and reads its exact claim weights, `zeta` cohort weights and schedule
+digest. It independently decodes the installed C6NTO1 artifact against the
+same response operation-plan topology, then compiles
+`C6CompiledNativeTargetFunctional` from the response-owned plan, extraction
+and runtime. No caller supplies weights, coefficients or a functional digest.
+
+The owner folds that functional over coordinate one of the same paired source
+witness and canonical response schedule. It retains the resulting
+authenticated base value and linear correction, rejecting any coordinate or
+functional-digest mismatch. The C6NTO1 artifact digest and final C6PA2 outer
+statement are derived in the same constructor from the fixed wrapper base,
+body schedule and compiled functional. The focused campaign ownership guard
+is **1/0/0**.
+
+This closes exact provider ownership of the C6NBR2 ingredients, not their
+consumption. Constructing the typed C6NBR2 statement, receipt-gated native
+tail, compiler chains, arithmetic frame and final exact assembly remains
+open. No quantitative or hardware credit is promoted; pod contact remains
+forbidden.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

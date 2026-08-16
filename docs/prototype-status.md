@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.94 next.
+This capsule is authoritative; read design §§0.60--0.95 next.
 
 - **Milestone/evidence.** C6ICT5 study is complete: one response owner supplies
   the ordered 96+6 claims; four WHIR chains bind their exact global points and
@@ -25,8 +25,8 @@ This capsule is authoritative; read design §§0.60--0.94 next.
   its focused PCS/owner guards are **2/0/0 + 1/0/0**. The distinct four-root
   PCS profile/coordinator guard is **1/0/0**; the hidden-free live/verifier
   source guard is **1/0/0**. The dynamic 56+1 link codec and receipt-gated
-  native join guards are **1/0/0 + 1/0/0**. Blind replay, envelope and outer
-  checks are **1/0/0 + 2/0/0 + 2/0/0**.
+  native join guards are **1/0/0 + 1/0/0**. Blind/envelope/outer/campaign
+  checks are **1/0/0 + 2/0/0 + 3/0/0 + 11/0/0**.
 - **Resume.** Implement in small checkpoints, then close additive Lean,
   mutations, executable budgets, full workspace and exact campaign preflight.
   Pod admission follows only after those local gates are green.
@@ -37,6 +37,13 @@ This capsule is authoritative; read design §§0.60--0.94 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-16 — Campaign moves exclusively to native C6.1.** Campaign v7
+  decodes the native outer/`C61PIF2`, commits and installs exactly four roots,
+  and has no hidden-u owner or six-root constructor. The prior C6.1-over-C6
+  adapter and its tests are deleted; frozen C6 remains separate. Campaign is
+  **11/0/0**, native outer anti-adapter is **3/0/0**, and feature check is
+  green. Full-chain construction, Lean and budgets remain open; no pod/credit.
 
 - **2026-08-16 — Native C6.1 certificate boundary lands.** A distinct outer
   schema carries cache roots in the two heads plus residual/auxiliary roots

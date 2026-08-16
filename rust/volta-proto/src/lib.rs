@@ -60,8 +60,8 @@ pub use c6::{
     C6_STRICT_RESPONSE_MAX_BYTES, C6_TERMINAL_ONE_RAW_CAPACITY,
 };
 pub use c61_certificate::{
-    C61CertificateError, C61FinalCertificateEnvelope, C61NativeFinalCertificate,
-    C61NativeWrapperCommitments, C61RetainedResponseBinding, C61WrapperWireBinding,
+    C61CertificateError, C61NativeFinalCertificate, C61NativeWrapperCommitments,
+    C61RetainedResponseBinding,
     C61_NATIVE_CERTIFICATE_FRAMING_BYTES, C61_NATIVE_CERTIFICATE_VERSION,
     C61_NATIVE_STRICT_PI_FINAL_MAX_BYTES, C61_NATIVE_WRAPPER_QUERIES,
     C61_CERTIFICATE_STRICT_MAX_BYTES, C61_PUBLIC_ARGUMENT_ABSOLUTE_MAX_BYTES,

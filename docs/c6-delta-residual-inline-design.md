@@ -4881,6 +4881,28 @@ components and have no hidden-u input. Their source/receipt guard remains
 and deletes the prior C6.1-over-C6 adapter before any quantitative credit or
 pod admission.
 
+### 0.95 C6ICT5 native campaign and adapter-deletion checkpoint
+
+Campaign schema v7 owns `C61NativeFinalCertificate` directly. Disk load and
+response replay decode `C61PIF2`; record digests, attempts, setup identities,
+heads, workload and public statement are checked against that native object.
+The old C6.1 wrapper around `C6FinalCertificate` and its six-root wire binding
+are deleted rather than retained as an adapter or alternate decoder.
+
+Live campaign construction now accepts predecessor/successor cache and the
+residual owner only. It constructs `C61NativeLiveWrapperSources`, materializes
+four persisted cohorts, installs exactly four verifier roots, binds the same
+residual relation and then continues the shared transcript. Its signature and
+body contain no hidden bundle, production-family extraction or historical
+six-root materializer/installer. Campaign tests are **11/0/0**, native outer
+anti-adapter tests are **3/0/0**, and the feature library check is green.
+
+This closes the production owner/codec graph subtraction but not the complete
+runner: the native certificate must still be assembled from the exact live
+outputs, replayed disk-versus-live, and covered by additive Lean, executable
+budgets and full-workspace gates. No quantitative or hardware credit is
+promoted; pod contact remains forbidden.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

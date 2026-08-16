@@ -29,17 +29,17 @@ use volta_pcs::c61_authenticated_whir_p3::C61CompilerVerifierProfile;
 use volta_pcs::C61ProductionResidualRelationBound;
 use volta_pcs::{
     c61_response_transcript_context_digest, c6_wrapper_profile_digest,
-    install_production_c6_live_wrapper_roots_verifier,
-    materialize_production_c6_live_wrapper_roots_cuda,
+    install_production_c61_native_live_wrapper_roots_verifier,
+    materialize_production_c61_native_live_wrapper_roots_cuda,
     spawn_c61_private_entropy_duplex_transcript_broker, C61InteractiveTape,
     C61InteractiveTapeBundle, C61JointPublicArgument, C61PrivateEntropyBrokerHandle,
     C61ResponseStatementBinding, C61StatementBinding,
 };
 #[cfg(feature = "c6-trace")]
 use volta_pcs::{
-    C6HiddenUBundleWitness, C6LiveWrapperMaskSeed, C6LiveWrapperSources,
-    C6PersistedLiveWrapperRootBinding, C6PersistentCacheStateWitness,
-    C6PersistentCacheStaticProfile, C6VerifierLiveWrapperRootBinding,
+    C61NativeLiveWrapperSources, C6LiveWrapperMaskSeed, C6PersistedLiveWrapperRootBinding,
+    C6PersistentCacheStateWitness, C6PersistentCacheStaticProfile,
+    C6VerifierLiveWrapperRootBinding,
 };
 #[cfg(feature = "c6-trace")]
 use volta_proto::{
@@ -48,7 +48,7 @@ use volta_proto::{
     C6T1ProductionResponseVerifierReplay,
 };
 use volta_proto::{
-    C61FinalCertificateEnvelope, C61PublicWorkloadInstance, C61PublicWorkloadPreimage,
+    C61NativeFinalCertificate, C61PublicWorkloadInstance, C61PublicWorkloadPreimage,
     C6BoundProductionVerifierReplay, C6CacheHead, C6ClientAttempt, C6ProposedCacheHead,
     C6SetupManifest, C61_VERIFIER_REPLAY_STATE_BYTES,
 };
@@ -58,7 +58,7 @@ use crate::c6_t1_owner::{
     execute_c6_t1_production_owner_export, C6T1ProductionOwnerExport, C6T1WorkloadOwner,
 };
 
-const CAMPAIGN_ARTIFACT_PROFILE: &str = "C6.1-C6PA2-C6NBR3-C6ICT4-campaign-v6";
+const CAMPAIGN_ARTIFACT_PROFILE: &str = "C6.1-C6PA2-C6NBR3-C6ICT5-native-campaign-v7";
 const CAMPAIGN_BACKEND: &str = "cuda-resident";
 const CAMPAIGN_PCG: &str = "real-aes128-mmo";
 const CAMPAIGN_FILE_NAMES: [&str; 5] = [
@@ -130,7 +130,7 @@ struct CampaignArtifactRecord {
 }
 
 pub struct C61CampaignArtifact {
-    pub certificate: C61FinalCertificateEnvelope,
+    pub certificate: C61NativeFinalCertificate,
     pub verifier_replay: C6BoundProductionVerifierReplay,
     pub challenge_tapes: C61InteractiveTapeBundle,
     pub setup_manifest: C6SetupManifest,
@@ -233,7 +233,7 @@ impl C61CampaignResponseTranscriptSession {
 
     pub fn finish_certificate(
         self,
-        certificate: &C61FinalCertificateEnvelope,
+        certificate: &C61NativeFinalCertificate,
     ) -> Result<C61InteractiveTape, String> {
         let payload = certificate.encode().map_err(|error| error.to_string())?;
         self.finish_payload(&payload)
@@ -313,7 +313,7 @@ pub fn build_c61_campaign_live_wrapper_statement(
 #[cfg(feature = "c6-trace")]
 pub fn build_c61_campaign_disk_wrapper_statement(
     response_statement: C61ResponseStatementBinding,
-    certificate: &C61FinalCertificateEnvelope,
+    certificate: &C61NativeFinalCertificate,
     public_instance: &C61PublicWorkloadInstance,
     residual: &C6T1DiskResidualOwner,
     native_profile: &C6CanonicalTargetProfile,
@@ -333,7 +333,7 @@ pub fn build_c61_campaign_disk_wrapper_statement(
     .map_err(|error| error.to_string())
 }
 
-/// Linear live owner after the six persisted roots and exact residual
+/// Linear live owner after the four persisted roots and exact residual
 /// relation have been fixed on both response transcripts.
 #[cfg(feature = "c6-trace")]
 pub struct C61CampaignLiveResidualRooted {
@@ -343,7 +343,7 @@ pub struct C61CampaignLiveResidualRooted {
     pub session_digest: [u8; 32],
 }
 
-/// Commit the six exact wrapper cohorts, install the same roots on the live
+/// Commit the four exact wrapper cohorts, install the same roots on the live
 /// verifier and consume the production residual owner through coordinate 1.
 #[cfg(feature = "c6-trace")]
 #[allow(clippy::too_many_arguments)]
@@ -353,7 +353,6 @@ pub fn bind_c61_campaign_live_residual_roots(
     workload: &C61PublicWorkloadPreimage,
     predecessor: C6PersistentCacheStateWitness,
     successor: C6PersistentCacheStateWitness,
-    hidden: &C6HiddenUBundleWitness,
     residual: C6T1ProductionResidualOwner,
     backend: &mut Backend,
     spill_root: &Path,
@@ -370,20 +369,17 @@ pub fn bind_c61_campaign_live_residual_roots(
         wrapper_profile_digest: c6_wrapper_profile_digest(),
     };
     cache_profile.validate().map_err(|error| error.to_string())?;
-    let (weights, embedding) = hidden.production_families().map_err(|error| error.to_string())?;
     let old_len = u16::try_from(workload.workload().old_context)
         .map_err(|_| "C6ICT4 old cache length exceeds u16")?;
     let new_len = u16::try_from(workload.workload().new_context)
         .map_err(|_| "C6ICT4 new cache length exceeds u16")?;
-    let sources = C6LiveWrapperSources::production(
+    let sources = C61NativeLiveWrapperSources::production(
         statement.digest(),
         &cache_profile,
         predecessor,
         successor,
         old_len,
         new_len,
-        weights,
-        embedding,
         residual.manifest(),
         residual.leaf(),
         residual.closure(),
@@ -398,7 +394,7 @@ pub fn bind_c61_campaign_live_residual_roots(
     session_hasher.update(&mask_seed.commitment());
     let session_digest = *session_hasher.finalize().as_bytes();
     let (provider_transcript, verifier_transcript) = response_session.transcripts();
-    let provider_roots = materialize_production_c6_live_wrapper_roots_cuda(
+    let provider_roots = materialize_production_c61_native_live_wrapper_roots_cuda(
         sources,
         mask_seed,
         backend,
@@ -409,9 +405,9 @@ pub fn bind_c61_campaign_live_residual_roots(
     .map_err(|error| error.to_string())?;
     let root_values: Vec<[u8; 32]> =
         provider_roots.fixed().commitments().iter().map(|item| item.root).collect();
-    let roots: [[u8; 32]; 6] =
+    let roots: [[u8; 32]; 4] =
         root_values.try_into().map_err(|_| "C6ICT4 persisted wrapper root census differs")?;
-    let verifier_roots = install_production_c6_live_wrapper_roots_verifier(
+    let verifier_roots = install_production_c61_native_live_wrapper_roots_verifier(
         statement.digest(),
         &cache_profile,
         roots,
@@ -470,7 +466,7 @@ impl C61CampaignResponseVerifierReplay {
 #[cfg(feature = "c6-trace")]
 #[allow(clippy::too_many_arguments)]
 pub fn replay_c61_campaign_response_verifier(
-    certificate: &C61FinalCertificateEnvelope,
+    certificate: &C61NativeFinalCertificate,
     verifier_replay: &C6BoundProductionVerifierReplay,
     challenge_tapes: &C61InteractiveTapeBundle,
     verifier_model: &Gpt2VerifierModel,
@@ -479,7 +475,7 @@ pub fn replay_c61_campaign_response_verifier(
     verifier_plan: C6InstalledOperationPlan,
     verifier_extraction: C6DecodedInstanceExtractionPlan,
 ) -> Result<C61CampaignResponseVerifierReplay, String> {
-    let inner = certificate.certificate();
+    let inner = certificate;
     let certificate_digest = inner.digest().map_err(|error| error.to_string())?;
     let attempt = C6ClientAttempt {
         slot: inner.slot,
@@ -511,7 +507,7 @@ pub fn replay_c61_campaign_response_verifier(
         public_instance.response_statement_digest(),
         verifier_plan,
         verifier_extraction,
-        certificate.proof_envelope().cache_fold_targets(),
+        certificate.decoded_proof_envelope().cache_fold_targets(),
         &retained,
         &mut contexts,
         &mut transcript,
@@ -954,18 +950,18 @@ fn validate_campaign_statement_domains(
 }
 
 fn validate_campaign_bindings(
-    certificate: &C61FinalCertificateEnvelope,
+    certificate: &C61NativeFinalCertificate,
     verifier_replay: &C6BoundProductionVerifierReplay,
     challenge_tapes: &C61InteractiveTapeBundle,
     setup_manifest: &C6SetupManifest,
     public_instance: &C61PublicWorkloadInstance,
 ) -> Result<C61JointPublicArgument, String> {
-    let inner = certificate.certificate();
+    let inner = certificate;
     let certificate_digest = inner.digest().map_err(|error| error.to_string())?;
     let setup_manifest_digest = setup_manifest.digest().map_err(|error| error.to_string())?;
     let public_argument = C61JointPublicArgument::decode(certificate.public_argument())
         .map_err(|error| error.to_string())?;
-    let wrapper = certificate.wrapper_binding().map_err(|error| error.to_string())?;
+    let wrapper = certificate.wrapper;
     validate_campaign_statement_domains(
         public_instance.response_statement_digest(),
         wrapper.statement_digest,
@@ -1012,7 +1008,7 @@ fn decode_campaign_payloads(payloads: &CampaignPayloads) -> Result<C61CampaignAr
     {
         return Err("C6.1 campaign private/setup/public-local artifact size mismatch".to_owned());
     }
-    let certificate = C61FinalCertificateEnvelope::decode(&payloads.certificate)
+    let certificate = C61NativeFinalCertificate::decode(&payloads.certificate)
         .map_err(|error| error.to_string())?;
     let verifier_replay =
         C6BoundProductionVerifierReplay::decode_client_state(&payloads.verifier_replay)?;
@@ -1132,7 +1128,7 @@ fn create_campaign_directory(
 #[allow(clippy::too_many_arguments)]
 pub fn create_c61_campaign_artifact(
     root: &Path,
-    certificate: &C61FinalCertificateEnvelope,
+    certificate: &C61NativeFinalCertificate,
     verifier_replay: &C6BoundProductionVerifierReplay,
     challenge_tapes: &C61InteractiveTapeBundle,
     setup_manifest: &C6SetupManifest,
@@ -1156,9 +1152,9 @@ pub fn create_c61_campaign_artifact(
     };
     // Exercise the same strict decode path before creating any filesystem state.
     decode_campaign_payloads(&payloads)?;
-    let inner = certificate.certificate();
+    let inner = certificate;
     let record = CampaignArtifactRecord {
-        schema: 6,
+        schema: 7,
         profile: CAMPAIGN_ARTIFACT_PROFILE.to_owned(),
         source_git_commit: source_git_commit.to_owned(),
         git_dirty: false,
@@ -1166,9 +1162,7 @@ pub fn create_c61_campaign_artifact(
         pcg: CAMPAIGN_PCG.to_owned(),
         certificate_digest: hex_digest(inner.digest().map_err(|error| error.to_string())?),
         setup_manifest_digest: hex_digest(inner.setup_manifest_digest),
-        wrapper_statement_digest: hex_digest(
-            certificate.wrapper_binding().map_err(|error| error.to_string())?.statement_digest,
-        ),
+        wrapper_statement_digest: hex_digest(certificate.wrapper.statement_digest),
         public_argument_statement_digest: hex_digest(public_argument.statement_digest()),
         response_statement_digest: hex_digest(public_instance.response_statement_digest()),
         wire_bytes: u64::try_from(payloads.certificate.len())
@@ -1250,7 +1244,7 @@ pub fn load_c61_campaign_artifact(root: &Path) -> Result<C61CampaignArtifact, St
         return Err("C6.1 campaign manifest is not canonical compact JSON".to_owned());
     }
     validate_source_commit(&record.source_git_commit)?;
-    if record.schema != 6
+    if record.schema != 7
         || record.profile != CAMPAIGN_ARTIFACT_PROFILE
         || record.git_dirty
         || record.backend != CAMPAIGN_BACKEND
@@ -1269,18 +1263,14 @@ pub fn load_c61_campaign_artifact(root: &Path) -> Result<C61CampaignArtifact, St
         public_instance: load_campaign_file(root, &record.files[4])?,
     };
     let mut artifact = decode_campaign_payloads(&payloads)?;
-    let inner = artifact.certificate.certificate();
+    let inner = &artifact.certificate;
     if record.wire_bytes != artifact.wire_bytes
         || parse_hex_32(&record.certificate_digest, "campaign certificate digest")?
             != inner.digest().map_err(|error| error.to_string())?
         || parse_hex_32(&record.setup_manifest_digest, "campaign setup digest")?
             != inner.setup_manifest_digest
         || parse_hex_32(&record.wrapper_statement_digest, "campaign wrapper-base statement digest")?
-            != artifact
-                .certificate
-                .wrapper_binding()
-                .map_err(|error| error.to_string())?
-                .statement_digest
+            != artifact.certificate.wrapper.statement_digest
         || parse_hex_32(
             &record.public_argument_statement_digest,
             "campaign public-argument statement digest",
@@ -1324,7 +1314,7 @@ mod campaign_artifact_tests {
 
     fn dummy_record(payloads: &CampaignPayloads) -> CampaignArtifactRecord {
         CampaignArtifactRecord {
-            schema: 6,
+            schema: 7,
             profile: CAMPAIGN_ARTIFACT_PROFILE.to_owned(),
             source_git_commit: "0123456789abcdef0123456789abcdef01234567".to_owned(),
             git_dirty: false,
@@ -1544,8 +1534,10 @@ mod campaign_artifact_tests {
             .split_once("/// Response-verifier state")
             .unwrap()
             .0;
-        let materialize = body.find("materialize_production_c6_live_wrapper_roots_cuda(").unwrap();
-        let install = body.find("install_production_c6_live_wrapper_roots_verifier(").unwrap();
+        let materialize =
+            body.find("materialize_production_c61_native_live_wrapper_roots_cuda(").unwrap();
+        let install =
+            body.find("install_production_c61_native_live_wrapper_roots_verifier(").unwrap();
         let root_bind = body.find(".bind_residual_relation(").unwrap();
         let relation = body.find("bind_c61_production_residual_relation(").unwrap();
         assert!(materialize < install && install < root_bind && root_bind < relation);
@@ -1568,6 +1560,16 @@ mod campaign_artifact_tests {
             "verifier_transcript:",
         ] {
             assert!(!signature.contains(forbidden), "live residual signature admits {forbidden}");
+        }
+        for forbidden in [
+            "C6HiddenU",
+            "hidden:",
+            "production_families(",
+            "C6LiveWrapperSources",
+            "materialize_production_c6_live_wrapper_roots_cuda(",
+            "install_production_c6_live_wrapper_roots_verifier(",
+        ] {
+            assert!(!body.contains(forbidden), "native campaign body retains {forbidden}");
         }
     }
 

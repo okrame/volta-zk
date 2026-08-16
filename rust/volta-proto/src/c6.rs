@@ -2196,10 +2196,6 @@ impl C6SlotHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::c61_certificate::{
-        C61FinalCertificateEnvelope, C61_CERTIFICATE_STRICT_MAX_BYTES,
-        C61_PUBLIC_ARGUMENT_ABSOLUTE_MAX_BYTES, C61_RETAINED_NON_PCS_RESPONSE_BYTES,
-    };
     use crate::c6_response_envelope::{
         C6ResponseProofEnvelope, C6_RESPONSE_AUTHENTICATED_LINK_MAX_BYTES,
         C6_RESPONSE_CACHE_BLIND_MAX_BYTES, C6_RESPONSE_CACHE_FOLD_TARGET_BYTES,
@@ -2629,90 +2625,6 @@ mod tests {
             vec![0x57; C6_RESPONSE_AUTHENTICATED_LINK_MAX_BYTES as usize + 1],
         )
         .is_err());
-    }
-
-    #[test]
-    fn c61_partition_preserves_857_byte_framing_and_strict_22mb_cap() {
-        fn install_retained(certificate: &mut C6FinalCertificate, public_bytes: usize) {
-            certificate.retained_transcript =
-                crate::model_proof_codec::retained_response_test_bytes();
-            certificate
-                .retained_transcript
-                .resize(certificate.retained_transcript.len() + public_bytes, 0xa5);
-            certificate.retained_transcript_digest = hash_parts(
-                b"volta-zk/c6/retained-transcript/v1",
-                &[&certificate.retained_transcript],
-            );
-            let statement = certificate.compute_transition_statement_digest();
-            certificate.transition_statement_digest = statement;
-            certificate.new_head.producer_transition_digest = statement;
-        }
-
-        let state = genesis(digest(48));
-        let retained_len = usize::try_from(
-            C61_RETAINED_NON_PCS_RESPONSE_BYTES + C61_PUBLIC_ARGUMENT_ABSOLUTE_MAX_BYTES,
-        )
-        .unwrap();
-        let mut max_certificate =
-            certificate(state, 0, digest(49), paired_ranges(0), retained_len, 1);
-        max_certificate.wrapper_proof = maximum_response_proof_envelope();
-        max_certificate.wrapper_proof_digest =
-            hash_parts(b"volta-zk/c6/wrapper-proof/v1", &[&max_certificate.wrapper_proof]);
-        install_retained(&mut max_certificate, C61_PUBLIC_ARGUMENT_ABSOLUTE_MAX_BYTES as usize);
-
-        let envelope = C61FinalCertificateEnvelope::from_c6_certificate(max_certificate).unwrap();
-        assert_eq!(envelope.retained_response().len() as u64, C61_RETAINED_NON_PCS_RESPONSE_BYTES);
-        assert_eq!(envelope.public_argument().len() as u64, C61_PUBLIC_ARGUMENT_ABSOLUTE_MAX_BYTES);
-        assert_eq!(envelope.encode().unwrap().len() as u64, C61_CERTIFICATE_STRICT_MAX_BYTES);
-        assert_eq!(C61_CERTIFICATE_STRICT_MAX_BYTES, 21_999_999);
-        assert_eq!(
-            envelope.encode().unwrap().len() as u64
-                - envelope.certificate().retained_transcript.len() as u64
-                - envelope.certificate().wrapper_proof.len() as u64,
-            C6_CERTIFICATE_NEW_PAYLOAD_FRAMING_BYTES
-        );
-
-        let mut malformed_retained = envelope.certificate().clone();
-        malformed_retained.retained_transcript[0] ^= 1;
-        malformed_retained.retained_transcript_digest = hash_parts(
-            b"volta-zk/c6/retained-transcript/v1",
-            &[&malformed_retained.retained_transcript],
-        );
-        let statement = malformed_retained.compute_transition_statement_digest();
-        malformed_retained.transition_statement_digest = statement;
-        malformed_retained.new_head.producer_transition_digest = statement;
-        assert!(malformed_retained.validate().is_ok());
-        assert!(C61FinalCertificateEnvelope::from_c6_certificate(malformed_retained).is_err());
-
-        let mut missing_public = certificate(
-            genesis(digest(50)),
-            0,
-            digest(51),
-            paired_ranges(0),
-            C61_RETAINED_NON_PCS_RESPONSE_BYTES as usize,
-            1,
-        );
-        install_retained(&mut missing_public, 0);
-        assert!(missing_public.validate().is_ok());
-        assert!(C61FinalCertificateEnvelope::from_c6_certificate(missing_public).is_err());
-
-        let mut oversized_public = certificate(
-            genesis(digest(52)),
-            0,
-            digest(53),
-            paired_ranges(0),
-            usize::try_from(
-                C61_RETAINED_NON_PCS_RESPONSE_BYTES + C61_PUBLIC_ARGUMENT_ABSOLUTE_MAX_BYTES + 1,
-            )
-            .unwrap(),
-            1,
-        );
-        install_retained(
-            &mut oversized_public,
-            C61_PUBLIC_ARGUMENT_ABSOLUTE_MAX_BYTES as usize + 1,
-        );
-        assert!(oversized_public.validate().is_ok());
-        assert!(C61FinalCertificateEnvelope::from_c6_certificate(oversized_public).is_err());
     }
 
     #[test]

@@ -498,6 +498,29 @@ pub struct C61CampaignLiveResidualRooted {
     pub session_digest: [u8; 32],
 }
 
+/// Root-only continuation retained after the response-dependent relation is
+/// consumed by the exact prover. It cannot carry or recreate residual claims.
+#[cfg(feature = "c6-trace")]
+pub struct C61CampaignLiveRoots {
+    pub provider_roots: C6PersistedLiveWrapperRootBinding,
+    pub verifier_roots: C6VerifierLiveWrapperRootBinding,
+    pub session_digest: [u8; 32],
+}
+
+#[cfg(feature = "c6-trace")]
+impl C61CampaignLiveResidualRooted {
+    pub fn into_parts(self) -> (C61CampaignLiveRoots, C61ProductionResidualRelationBound) {
+        (
+            C61CampaignLiveRoots {
+                provider_roots: self.provider_roots,
+                verifier_roots: self.verifier_roots,
+                session_digest: self.session_digest,
+            },
+            self.relation,
+        )
+    }
+}
+
 /// Exact native provider output after the response, four-root wrapper,
 /// C6NBR2 receipt and C6PA2 assembly have all been consumed once.
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
@@ -518,19 +541,19 @@ pub fn seal_c61_campaign_native_output(
     proposed_head: C6ProposedCacheHead,
     response_statement: &C61ResponseStatementBinding,
     workload: C61PublicWorkloadPreimage,
-    rooted: &C61CampaignLiveResidualRooted,
+    roots: &C61CampaignLiveRoots,
     residual: &C6T1ProductionResidualBoundOwner,
     exact: C61NativeExactProductionNbr2Certificate,
 ) -> Result<C61CampaignSealedNativeOutput, String> {
     setup.validate().map_err(|error| error.to_string())?;
     old_head.validate().map_err(|error| error.to_string())?;
     let setup_digest = setup.digest().map_err(|error| error.to_string())?;
-    let fixed = rooted.provider_roots.fixed();
+    let fixed = roots.provider_roots.fixed();
     let commitments = fixed.commitments();
     if commitments.len() != 4
-        || rooted.verifier_roots.fixed().statement_digest() != fixed.statement_digest()
-        || rooted.verifier_roots.fixed().binding_digest() != fixed.binding_digest()
-        || rooted
+        || roots.verifier_roots.fixed().statement_digest() != fixed.statement_digest()
+        || roots.verifier_roots.fixed().binding_digest() != fixed.binding_digest()
+        || roots
             .verifier_roots
             .fixed()
             .commitments()
@@ -544,13 +567,13 @@ pub fn seal_c61_campaign_native_output(
     {
         return Err("C6ICT5 native seal input binding mismatch".to_owned());
     }
-    let roots: [[u8; 32]; 4] = commitments
+    let wrapper_roots: [[u8; 32]; 4] = commitments
         .iter()
         .map(|commitment| commitment.root)
         .collect::<Vec<_>>()
         .try_into()
         .map_err(|_| "C6ICT5 native seal root census differs")?;
-    if old_head.cache_root != roots[0] || proposed_head.cache_root() != roots[1] {
+    if old_head.cache_root != wrapper_roots[0] || proposed_head.cache_root() != wrapper_roots[1] {
         return Err("C6ICT5 native seal cache roots differ from the transition heads".to_owned());
     }
 
@@ -592,9 +615,9 @@ pub fn seal_c61_campaign_native_output(
         public_output_digest: public_instance.preimage().public_output_digest(),
         wrapper: C61NativeWrapperCommitments {
             statement_digest: fixed.statement_digest(),
-            residual_root: roots[2],
-            auxiliary_root: roots[3],
-            source_binding_digest: rooted.provider_roots.source_binding_digest(),
+            residual_root: wrapper_roots[2],
+            auxiliary_root: wrapper_roots[3],
+            source_binding_digest: roots.provider_roots.source_binding_digest(),
         },
         residual: relation.claims().residual(),
         retained_transcript_digest: [0; 32],
@@ -608,7 +631,7 @@ pub fn seal_c61_campaign_native_output(
     let encoded = certificate.encode().map_err(|error| error.to_string())?;
     certificate = C61NativeFinalCertificate::decode(&encoded).map_err(|error| error.to_string())?;
     if !proposed_head.matches_final(certificate.new_head)
-        || certificate.wrapper_roots() != roots
+        || certificate.wrapper_roots() != wrapper_roots
         || certificate.public_argument() != exact.encoded_public_argument()
         || certificate.proof_envelope != exact.encoded_proof_envelope()
     {
@@ -1942,7 +1965,7 @@ mod campaign_artifact_tests {
             .0;
         let signature = body.split_once(") -> Result").unwrap().0;
         for required in [
-            "C61CampaignLiveResidualRooted",
+            "C61CampaignLiveRoots",
             "C6T1ProductionResidualBoundOwner",
             "C61NativeExactProductionNbr2Certificate",
         ] {
@@ -1962,7 +1985,7 @@ mod campaign_artifact_tests {
             "exact.encoded_public_argument()",
             "exact.encoded_proof_envelope()",
             "relation.claims().residual()",
-            "rooted.provider_roots.source_binding_digest()",
+            "roots.provider_roots.source_binding_digest()",
             ".seal()",
             "C61NativeFinalCertificate::decode(&encoded)",
         ] {

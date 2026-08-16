@@ -5152,6 +5152,31 @@ Focused persistence and seven-lane transcript-session tests are
 **1/0/0 + 1/0/0**. Exact four-chain invocation, the top-level runner, disk
 semantic verification and mutations remain open. No pod or credit.
 
+### 1.07 C6ICT5 exact native four-chain checkpoint
+
+The four model/embed chains now have one campaign join. Its only value-bearing
+inputs are the linear native-claim owner retained from the response, the bound
+residual owner, the two persisted coefficient owners and the typed transcript
+endpoint owner. The shared 96+6 claim schedule is rebuilt from the response
+owner; both coordinate target vectors are selected from the residual's paired
+native targets and coordinate zero must equal that same response. Both
+coefficient manifests must carry the endpoint-derived session binding before
+either file is loaded.
+
+The join consumes the original paired production PCG streams and all five
+private-entropy endpoints (four bodies plus the post-body joint lane). It
+admits no detached claim, target, coefficient vector, verifier seed, joint
+challenge or session digest. Primary proofs and fixed secondary bodies leave
+as one linear owner; functional compilation consumes that owner and carries
+the primary proofs through to final C6PA2 assembly, preventing a caller from
+mixing halves from separate executions.
+
+Focused four-chain, functional and provider-suffix ownership/order checks are
+**3/0/0**, and the complete bench feature check is green. No protocol field,
+wire/setup byte, challenge, correlation or soundness term changes. The
+top-level response-to-seal runner, disk semantic verification and mutations
+remain open. No pod or credit.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--1.06 next.
+This capsule is authoritative; read design §§0.60--1.07 next.
 
 - **Milestone/evidence.** C6ICT5 study is complete: four WHIR chains bind the
   response-owned 96+6 claims and C6NBR2 binds their tape-1 functional;
@@ -23,8 +23,8 @@ This capsule is authoritative; read design §§0.60--1.06 next.
   detached verifier arrays are rejected. One native terminal typestate now
   fixes the exact 64 outputs, beta, C6TFR1 root and runtime challenges before
   C6NBR2. Focused guards are **3/0/0**. Budget v29 and Lean **3,267 jobs/nine
-  audits** remain green screens. D28/D27 coefficient files now accept only a
-  session owner derived from the four ordered attempt bindings.
+  audits** remain green screens. D28/D27 persistence and the four-chain runner
+  now consume only typed session/response owners.
 - **Resume.** Close the exact prover call graph, disk semantic verifier,
   mutations, workspace and campaign preflight in small checkpoints. Pod only
   after every local gate is green.
@@ -35,6 +35,15 @@ This capsule is authoritative; read design §§0.60--1.06 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-16 — Exact native four-chain invocation lands.** One campaign
+  join derives the shared 96+6 claim schedule and both paired target vectors
+  from the same response/residual owners, validates the typed D28/D27 session,
+  and consumes the four private endpoints and original paired PCG streams.
+  Primary and secondary outputs remain one linear owner through functional
+  compilation and final assembly. Focused ownership/order checks are
+  **3/0/0** and feature compilation is green. The top-level runner remains
+  open; no pod or credit.
 
 - **2026-08-16 — Native coefficient session binding lands.** The four ordered
   model/embed attempt bindings now derive one typed coefficient-session owner.

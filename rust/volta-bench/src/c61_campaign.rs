@@ -27,11 +27,15 @@ use volta_mac::{
 use volta_pcs::c61_authenticated_whir_p3::C61CompilerVerifierProfile;
 #[cfg(feature = "c61-p3-authenticated-reference")]
 use volta_pcs::c61_authenticated_whir_p3::{
+    prepare_c61_authenticated_whir_p3_production_joint_four_chains_private_entropy_in_attempt,
     run_c61_authenticated_whir_p3_production_compiler_private_entropy_in_attempt,
-    C61ProductionCoefficientSessionBinding, C61ProductionCommittedChainExecution,
-    C61ProductionJointNativeProverBodiesFixed, C61ProductionPersistedResourceAdmission,
+    C61ProductionCoefficientOwner, C61ProductionCoefficientSessionBinding,
+    C61ProductionCommittedChainExecution, C61ProductionJointNativeProverBodiesFixed,
+    C61ProductionPersistedResourceAdmission, C61ProductionResponseClaimSchedule,
     C61ProviderJointSessionBinding, C61ProviderSessionBinding,
 };
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+use volta_pcs::c61_public_compression::C61NativeComponent;
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_pcs::c6_blind_round_coordinator::{
     assemble_c61_native_exact_production_nbr2_certificate,
@@ -86,7 +90,8 @@ use volta_proto::{C6ResidualFusedCoefficientArena, C6ResidualFusedWitnessView};
 
 #[cfg(feature = "c6-trace")]
 use crate::c6_t1_owner::{
-    execute_c6_t1_production_owner_export, C6T1ProductionOwnerExport, C6T1WorkloadOwner,
+    execute_c6_t1_production_owner_export, C6T1NativeClaimOwner, C6T1ProductionOwnerExport,
+    C6T1WorkloadOwner,
 };
 
 const CAMPAIGN_ARTIFACT_PROFILE: &str = "C6.1-C6PA2-C6NBR3-C6ICT5-native-campaign-v7";
@@ -664,11 +669,113 @@ pub fn prove_c61_campaign_native_blind(
     Ok(C61CampaignNativeBlindOwner { blind, statements })
 }
 
+/// Exact response-owned four-chain output. Primary and secondary executions
+/// remain together until the joint functional consumes this owner.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub struct C61CampaignNativeFourChainOwner {
+    primary: [C61ProductionCommittedChainExecution; 2],
+    joint: C61ProductionJointNativeProverBodiesFixed,
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+impl C61CampaignNativeFourChainOwner {
+    fn into_parts(
+        self,
+    ) -> (
+        [C61ProductionCommittedChainExecution; 2],
+        C61ProductionJointNativeProverBodiesFixed,
+    ) {
+        (self.primary, self.joint)
+    }
+}
+
+/// Run the four exact model/embed chains from the same response-owned claim
+/// schedule, paired residual targets and session-bound coefficient files.
+/// No detached claim, target, coefficient vector, seed or transcript enters.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+#[allow(clippy::too_many_arguments)]
+pub fn prepare_c61_campaign_native_four_chains(
+    native_claims: C6T1NativeClaimOwner,
+    residual: &C6T1ProductionResidualBoundOwner,
+    model_coefficients: C61ProductionCoefficientOwner,
+    embedding_coefficients: C61ProductionCoefficientOwner,
+    profile: &C6CanonicalTargetProfile,
+    endpoints: C61CampaignFourChainTranscriptEndpoints,
+    admission: C61ProductionPersistedResourceAdmission,
+    attempt: &mut C6ProductionPairedPcgAttempt,
+    backend: &mut Backend,
+    spill_root: &Path,
+) -> Result<C61CampaignNativeFourChainOwner, String> {
+    let expected_session = endpoints.coefficient_session().context_digest();
+    if model_coefficients.component() != C61NativeComponent::Model
+        || embedding_coefficients.component() != C61NativeComponent::Embedding
+        || model_coefficients.session_digest() != expected_session
+        || embedding_coefficients.session_digest() != expected_session
+    {
+        return Err("C6ICT5 coefficient owner/session binding differs".to_owned());
+    }
+    let claim_schedule = C61ProductionResponseClaimSchedule::new(
+        native_claims.model_claims(),
+        native_claims.embedding_claims(),
+    )?;
+    let claim_schedule_digest = claim_schedule.digest();
+    let (model_targets, embedding_targets) =
+        native_claims.production_paired_targets(profile, residual.native_targets())?;
+    let model_coefficient_digest = model_coefficients.coefficient_digest();
+    let embedding_coefficient_digest = embedding_coefficients.coefficient_digest();
+    let C61CampaignFourChainTranscriptEndpoints {
+        four_chain_bindings,
+        four_chain_endpoints,
+        four_chain_mask_ranges,
+        joint_binding,
+        joint_endpoint,
+        coefficient_session: _,
+    } = endpoints;
+    let chain_root = spill_root.join("four-chain");
+    fs::create_dir(&chain_root)
+        .map_err(|error| format!("create C6ICT5 four-chain spill root: {error}"))?;
+    let prepared =
+        prepare_c61_authenticated_whir_p3_production_joint_four_chains_private_entropy_in_attempt(
+            move |component, repetition| match component {
+                C61NativeComponent::Model => model_coefficients.load_for(component, repetition),
+                C61NativeComponent::Embedding => {
+                    embedding_coefficients.load_for(component, repetition)
+                }
+                C61NativeComponent::Compiler => {
+                    Err("C6ICT5 four-chain loader rejects compiler coefficients".to_owned())
+                }
+            },
+            model_coefficient_digest,
+            embedding_coefficient_digest,
+            claim_schedule,
+            model_targets,
+            embedding_targets,
+            profile,
+            four_chain_bindings,
+            four_chain_endpoints,
+            joint_binding,
+            joint_endpoint,
+            &chain_root,
+            admission,
+            backend,
+            attempt.prover_streams_array_mut(),
+            four_chain_mask_ranges,
+        )?;
+    if prepared.model_coefficient_digest != model_coefficient_digest
+        || prepared.embedding_coefficient_digest != embedding_coefficient_digest
+        || prepared.claim_schedule_digest != claim_schedule_digest
+    {
+        return Err("C6ICT5 four-chain output differs from its exact owners".to_owned());
+    }
+    Ok(C61CampaignNativeFourChainOwner { primary: prepared.primary, joint: prepared.joint })
+}
+
 /// Provider-only joint functional derived after every secondary native body
 /// is fixed. The contained correction is the tape-1 source correction fold,
 /// not a difference chosen from native target aggregates.
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 pub struct C61CampaignNativeFunctionalOwner {
+    primary: [C61ProductionCommittedChainExecution; 2],
     functional: C6CompiledNativeTargetFunctional,
     joint: C61ProductionJointNativeProverBodiesFixed,
     bridge: C6NativeTargetProverBridgeFold,
@@ -682,6 +789,7 @@ impl C61CampaignNativeFunctionalOwner {
     pub fn into_parts(
         self,
     ) -> (
+        [C61ProductionCommittedChainExecution; 2],
         C6CompiledNativeTargetFunctional,
         C61ProductionJointNativeProverBodiesFixed,
         C6NativeTargetProverBridgeFold,
@@ -690,6 +798,7 @@ impl C61CampaignNativeFunctionalOwner {
         [u8; 32],
     ) {
         (
+            self.primary,
             self.functional,
             self.joint,
             self.bridge,
@@ -709,8 +818,9 @@ pub fn prepare_c61_campaign_native_functional(
     residual: &C6T1ProductionResidualBoundOwner,
     profile: &C6CanonicalTargetProfile,
     profile_artifact: &C6NativeTargetProfileArtifact,
-    joint: C61ProductionJointNativeProverBodiesFixed,
+    four_chain: C61CampaignNativeFourChainOwner,
 ) -> Result<C61CampaignNativeFunctionalOwner, String> {
+    let (primary, joint) = four_chain.into_parts();
     let response = residual.response();
     let operation_plan = response.provider().operation_plan();
     let (_, decoded_profile) = C6NativeTargetProfileArtifact::decode(
@@ -757,6 +867,7 @@ pub fn prepare_c61_campaign_native_functional(
     )
     .map_err(|error| error.to_string())?;
     Ok(C61CampaignNativeFunctionalOwner {
+        primary,
         functional,
         joint,
         bridge,
@@ -777,7 +888,6 @@ pub fn finish_c61_campaign_native_proof(
     blind: C61CampaignNativeBlindOwner,
     equality: C61EqualityDrawn,
     functional: C61CampaignNativeFunctionalOwner,
-    primary: [C61ProductionCommittedChainExecution; 2],
     profile: &C6CanonicalTargetProfile,
     compiler_profile: &C61CompilerVerifierProfile,
     compiler_endpoints: C61CampaignCompilerTranscriptEndpoints,
@@ -790,6 +900,7 @@ pub fn finish_c61_campaign_native_proof(
     let (blind, statements) = blind.into_parts();
     let terminal = prepare_c61_native_terminal_compiler(&blind, equality, transcript)?;
     let (
+        primary,
         functional,
         joint,
         bridge,
@@ -2354,6 +2465,47 @@ mod campaign_artifact_tests {
 
     #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
     #[test]
+    fn native_four_chains_use_only_response_targets_and_session_bound_coefficients() {
+        let source = include_str!("c61_campaign.rs");
+        let body = source
+            .split_once("pub fn prepare_c61_campaign_native_four_chains(")
+            .unwrap()
+            .1
+            .split_once("/// Provider-only joint functional")
+            .unwrap()
+            .0;
+        for required in [
+            "endpoints.coefficient_session()",
+            "model_coefficients.session_digest()",
+            "embedding_coefficients.session_digest()",
+            "C61ProductionResponseClaimSchedule::new(",
+            "native_claims.model_claims()",
+            "native_claims.embedding_claims()",
+            "native_claims.production_paired_targets(profile, residual.native_targets())",
+            "model_coefficients.load_for(component, repetition)",
+            "embedding_coefficients.load_for(component, repetition)",
+            "prepare_c61_authenticated_whir_p3_production_joint_four_chains_private_entropy_in_attempt(",
+            "attempt.prover_streams_array_mut()",
+        ] {
+            assert!(body.contains(required), "native four-chain join omits {required}");
+        }
+        let signature = body.split_once(") -> Result").unwrap().0;
+        for forbidden in [
+            "model_claims:",
+            "embedding_claims:",
+            "model_targets:",
+            "embedding_targets:",
+            "coefficients: Vec",
+            "session_digest:",
+            "verifier_seed:",
+            "joint_challenge:",
+        ] {
+            assert!(!signature.contains(forbidden), "native four-chain join admits {forbidden}");
+        }
+    }
+
+    #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+    #[test]
     fn native_functional_comes_only_from_fixed_bodies_and_response_tape_one() {
         let source = include_str!("c61_campaign.rs");
         let body = source
@@ -2378,7 +2530,9 @@ mod campaign_artifact_tests {
             assert!(body.contains(required), "native functional omits {required}");
         }
         let signature = body.split_once(") -> Result").unwrap().0;
+        assert!(signature.contains("four_chain: C61CampaignNativeFourChainOwner"));
         for forbidden in [
+            "joint: C61ProductionJointNativeProverBodiesFixed",
             "claim_weights:",
             "cohort_weights:",
             "coefficients:",
@@ -2468,6 +2622,7 @@ mod campaign_artifact_tests {
             assert!(body.contains(required), "native suffix omits {required}");
         }
         let signature = body.split_once(") -> Result").unwrap().0;
+        assert!(!signature.contains("primary: [C61ProductionCommittedChainExecution"));
         for forbidden in [
             "coefficients:",
             "correction:",

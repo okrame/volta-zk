@@ -4711,6 +4711,27 @@ The equivalence study is complete.  The active hard stop is
 No implementation, pod contact or benchmark credit is authorized by this
 disposition.
 
+### 0.87 C6ICT5 native hidden-u elimination implementation authorization
+
+The owner authorizes implementation of the deletion profile specified in
+§0.86, with small checkpoints on `main`.  The authorization covers the one
+typed 96+6 claim schedule shared by both native repetitions, direct native
+coefficient persistence from the linear response owner, the four-cohort
+wrapper and 56+1 C6NBR2 link, hidden-free source binding, strict C6.1 codec,
+additive Lean module, executable budgets and live/disk mutation guards.
+
+Historical C6/Ligero code may remain only for frozen records and tests.  It
+must not be reachable through the C6.1 production constructor or decoder;
+no adapter, empty hidden component, canonical hidden root, second witness
+pass or dual-mode production branch is authorized.  Existing setup, wire,
+soundness, memory, 17+4 slot, `<15 s` A100 and official `4T <5 s` gates remain
+unchanged.
+
+Pod contact and benchmark credit remain forbidden until the implementation,
+Lean build, focused mutations, full workspace and exact campaign preflight
+are green.  The active gate is
+`C6ICT5_NATIVE_HIDDEN_U_ELIMINATION_IMPLEMENTATION`.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

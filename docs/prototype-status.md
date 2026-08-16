@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.86 next.
+This capsule is authoritative; read design §§0.60--0.87 next.
 
 - **Milestone/evidence.** C6ICT5 study is complete: one response owner supplies
   the ordered 96+6 claims; four WHIR chains bind their exact global points and
@@ -17,14 +17,13 @@ This capsule is authoritative; read design §§0.60--0.86 next.
   **16/0/0**, campaign **11/0/0**, public-instance **1/0/0**; the exact claim
   bridge and NBR2 reruns are **1/0/0 + 3/0/0**. No production, full-chain,
   timing or hardware credit exists.
-- **Hard stop.**
-  `C6ICT5_NATIVE_HIDDEN_U_ELIMINATION_IMPLEMENTATION_OWNER_GO_REQUIRED`.
-  Study §0.86 selects deletion: one four-cohort/56-slot profile, 57 C6NBR2
-  relations and no hidden owner, participant, source-binding field or codec
-  component. No compatibility adapter or inactive branch is allowed.
-- **Resume.** Explicit owner GO is required for the §0.86 implementation,
-  additive Lean proof, mutation suite and fresh executable budgets. Pod
-  admission follows only after all local/full-chain preflight gates are green.
+- **Active gate.** `C6ICT5_NATIVE_HIDDEN_U_ELIMINATION_IMPLEMENTATION` under
+  owner GO in §0.87: one four-cohort/56-slot profile, 57 C6NBR2 relations and
+  no hidden owner, participant, source-binding field or codec component. No
+  compatibility adapter, inactive branch or second witness path is allowed.
+- **Resume.** Implement in small checkpoints, then close additive Lean,
+  mutations, executable budgets, full workspace and exact campaign preflight.
+  Pod admission follows only after those local gates are green.
 - **Screens.** Study-only certificate **17,079,931 B**, setup
   **148,738,118 B**, setup+first **165,818,049 B**, state
   **2,277,715,552 B**, soundness **102.5878333013 bits/cert** and
@@ -32,6 +31,14 @@ This capsule is authoritative; read design §§0.60--0.86 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-16 — Owner authorizes C6ICT5 deletion implementation.** Section
+  0.87 authorizes the exact §0.86 native hidden-free construction with small
+  checkpoints on `main`: shared typed 96+6 schedule, direct coefficient owner,
+  four wrapper cohorts, 56+1 link, hidden-free source binding and codec,
+  additive Lean, budgets and live/disk guards. Historical Ligero/C6HUB2 stays
+  unreachable from C6.1 production and decoding. No pod or benchmark credit
+  is authorized before the complete local preflight is green.
 
 - **2026-08-16 — C6ICT5 study selects native hidden-u deletion.** Source and
   statement audit proves the four model/embed WHIR chains use the exact

@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.90 next.
+This capsule is authoritative; read design §§0.60--0.91 next.
 
 - **Milestone/evidence.** C6ICT5 study is complete: one response owner supplies
   the ordered 96+6 claims; four WHIR chains bind their exact global points and
@@ -24,7 +24,8 @@ This capsule is authoritative; read design §§0.60--0.90 next.
   The shared claim schedule/direct coefficient-owner checkpoint is complete;
   its focused PCS/owner guards are **2/0/0 + 1/0/0**. The distinct four-root
   PCS profile/coordinator guard is **1/0/0**; the hidden-free live/verifier
-  source guard is **1/0/0**.
+  source guard is **1/0/0**. The dynamic 56+1 link codec and receipt-gated
+  native join guards are **1/0/0 + 1/0/0**.
 - **Resume.** Implement in small checkpoints, then close additive Lean,
   mutations, executable budgets, full workspace and exact campaign preflight.
   Pod admission follows only after those local gates are green.
@@ -35,6 +36,16 @@ This capsule is authoritative; read design §§0.60--0.90 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-16 — C6.1 56+1 authenticated link lands.** C6LNK2 aggregates are
+  now census-bound by fixed-root typestate: historical C6 remains 72/6 while
+  C6.1 is **56 slots/four aggregates**, with mandatory C6NBR2 relation 57 and
+  exact **3,431,752-B** combined PCS/link codec. Dedicated native registry
+  builders expose only residual and cache absorption. The prover join admits
+  no hidden owner and releases the secondary native tail only after the C6NBR2
+  receipt. New codec/join guards are **1/0/0 + 1/0/0**; historical strict-codec
+  and NBR2 guards remain green. Blind component production, final codec and
+  campaign wiring remain open; no benchmark credit or pod contact.
 
 - **2026-08-16 — Hidden-free live root path lands.** A new production source
   type owns only predecessor/successor cache and residual/auxiliary witnesses.

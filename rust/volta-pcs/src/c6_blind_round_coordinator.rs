@@ -18,6 +18,7 @@ use crate::c6_authenticated_output_link::{
     prove_c6_authenticated_output_link_persisted_cuda,
     prove_c6_authenticated_output_link_persisted_cuda_nbr2_strict,
     verify_c6_authenticated_output_link_production, C6AuthenticatedOutputLinkProof,
+    C61NativePendingSlotRegistryProverBuilder, C61NativePendingSlotRegistryVerifierBuilder,
     C6Nbr2CorrectionFunctional, C6Nbr2ProvedLink, C6PendingSlotRegistryProverBuilder,
     C6PendingSlotRegistryVerifier, C6PendingSlotRegistryVerifierBuilder,
     C6ProductionAuthenticatedOutputLinkMetrics,
@@ -42,7 +43,8 @@ use crate::c6_persistent_cache_blind::{
     fix_c6_persistent_cache_production_fold_prover,
     fix_c6_persistent_cache_production_fold_verifier,
     prepare_c6_persistent_cache_production_verifier, C6PersistentCacheBlindProof,
-    C6PersistentCachePendingClaimsProver, C6PersistentCacheProductionMetrics,
+    C6PersistentCachePendingClaimsProver, C6PersistentCachePendingClaimsVerifier,
+    C6PersistentCacheProductionMetrics,
     C6PersistentCacheProductionPreparedProver, C6PersistentCacheProductionRelationCompiler,
     C6PersistentCacheProductionVerifierRoundState, C6PersistentCacheSourceBootstrapFrame,
     C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS, C6_PERSISTENT_CACHE_BLIND_ROUND_BYTES,
@@ -54,15 +56,17 @@ use crate::c6_residual_sumcheck_blind::{
     prepare_c6_blind_residual_prover_round_state_fused,
     prepare_c6_blind_residual_verifier_round_state, C6BlindResidualDirectTerminalFold,
     C6BlindResidualDirectTerminalOutputs, C6BlindResidualFusedCompilerContext,
-    C6BlindResidualPendingClaimsProver, C6BlindResidualPendingTransferFrame,
+    C6BlindResidualPendingClaimsProver, C6BlindResidualPendingClaimsVerifier,
+    C6BlindResidualPendingTransferFrame,
     C6BlindResidualProverRoundState, C6BlindResidualStatement, C6BlindResidualSumcheckProof,
     C6BlindResidualVerifierRoundState,
 };
 use crate::c6_wrapper_pcs::{
     C6FixedWrapperCommitments, C6WrapperRoundCoordinator, C6WrapperRoundMessageReceipt,
-    C6WrapperRoundPoint, C6_CACHE_ROUND_PARTICIPANT_ID, C6_DELTA_RESIDUAL_ACTIVATION_ROUND,
-    C6_DELTA_RESIDUAL_ROUND_PARTICIPANT_ID, C6_HIDDEN_U_ROUND_PARTICIPANT_ID,
-    C6_HIDDEN_U_WEIGHTS_ACTIVATION_ROUND, C6_WRAPPER_RANDOM_POINT_LEN, C6_WRAPPER_REPETITIONS,
+    C6WrapperRoundPoint, C61_NATIVE_WRAPPER_ACTIVE_SLOTS, C6_CACHE_ROUND_PARTICIPANT_ID,
+    C6_DELTA_RESIDUAL_ACTIVATION_ROUND, C6_DELTA_RESIDUAL_ROUND_PARTICIPANT_ID,
+    C6_HIDDEN_U_ROUND_PARTICIPANT_ID, C6_HIDDEN_U_WEIGHTS_ACTIVATION_ROUND,
+    C6_WRAPPER_RANDOM_POINT_LEN, C6_WRAPPER_REPETITIONS,
 };
 use volta_field::Fp2;
 use volta_mac::{CorrelationStream, ProverAuthed, Transcript, VerifierCtx};
@@ -94,6 +98,38 @@ pub struct C6ProductionBlindProverOutput {
     pub(crate) cache_source_frame: C6PersistentCacheSourceBootstrapFrame,
     pub(crate) cache_pending: C6PersistentCachePendingClaimsProver,
     pub(crate) cache_metrics: C6PersistentCacheProductionMetrics,
+}
+
+/// C6.1 native blind output. Hidden-u is absent from its ownership graph.
+pub struct C61NativeProductionBlindProverOutput {
+    pub(crate) residual_proof: C6BlindResidualSumcheckProof,
+    pub(crate) residual_frame: C6BlindResidualPendingTransferFrame,
+    pub(crate) residual_pending: C6BlindResidualPendingClaimsProver,
+    pub(crate) residual_terminal_outputs: C6BlindResidualDirectTerminalOutputs,
+    pub(crate) cache_proof: C6PersistentCacheBlindProof,
+    pub(crate) cache_source_frame: C6PersistentCacheSourceBootstrapFrame,
+    pub(crate) cache_pending: C6PersistentCachePendingClaimsProver,
+    pub(crate) cache_metrics: C6PersistentCacheProductionMetrics,
+}
+
+pub(crate) struct C61NativeExactProductionProverProof {
+    pub(crate) residual_proof: C6BlindResidualSumcheckProof,
+    pub(crate) residual_frame: C6BlindResidualPendingTransferFrame,
+    pub(crate) residual_terminal_outputs: C6BlindResidualDirectTerminalOutputs,
+    pub(crate) residual_terminal_fold: C6BlindResidualDirectTerminalFold,
+    pub(crate) cache_proof: C6PersistentCacheBlindProof,
+    pub(crate) cache_source_frame: C6PersistentCacheSourceBootstrapFrame,
+    pub(crate) cache_metrics: C6PersistentCacheProductionMetrics,
+    pub(crate) authenticated_link: C6AuthenticatedOutputLinkProof,
+    pub(crate) authenticated_link_metrics: C6ProductionAuthenticatedOutputLinkMetrics,
+}
+
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub struct C61NativeExactProductionNbr2ProverProof {
+    pub(crate) blind: C61NativeExactProductionProverProof,
+    pub(crate) joint_native: C61ProductionJointNativeProverExecution,
+    nbr2_statement_digest: [u8; 32],
+    outer_statement_digest: [u8; 32],
 }
 
 pub(crate) struct C6ExactProductionProverProof {
@@ -413,6 +449,73 @@ pub fn finish_c6_production_blind_with_persisted_nbr2_link(
     let joint_native = native.finish_after_nbr2_link(receipt)?;
     Ok(C6ExactProductionNbr2ProverProof {
         blind,
+        joint_native,
+        nbr2_statement_digest: nbr2.digest(),
+        outer_statement_digest: nbr2.outer_statement_digest(),
+    })
+}
+
+/// C6.1-native join: only residual and cache pending owners enter the 56-slot
+/// registry, and C6NBR2 is mandatory before the joint native tail is released.
+#[cfg(feature = "c61-p3-authenticated-reference")]
+#[allow(clippy::too_many_arguments)]
+pub fn finish_c61_native_production_blind_with_persisted_nbr2_link(
+    roots: &C6PersistedLiveWrapperRootBinding,
+    blind: C61NativeProductionBlindProverOutput,
+    nbr2: &C6Nbr2CorrectionFunctional<'_>,
+    public_output: &C61OutputChallengeDrawn,
+    native: C61ProductionJointNativeProverLinkPending,
+    streams: &mut [CorrelationStream; TAPES],
+    backend: &mut Backend,
+    spill_root: &Path,
+    session_digest: [u8; 32],
+    transcript: &mut Transcript,
+) -> Result<C61NativeExactProductionNbr2ProverProof, String> {
+    validate_production_streams(streams)?;
+    if roots.session_digest() != session_digest {
+        return Err("C6.1 native exact runner root/session mismatch".to_owned());
+    }
+    if public_output.terminal_claims() != blind.residual_terminal_outputs.terminal_functionals() {
+        return Err("C6.1 native public typestate differs from residual outputs".to_owned());
+    }
+    let residual_terminal_fold = blind
+        .residual_terminal_outputs
+        .clone()
+        .bind_output_beta(public_output.output_beta());
+    let mut pending =
+        C61NativePendingSlotRegistryProverBuilder::new(roots.fixed()).map_err(text_error)?;
+    pending.absorb_residual(&blind.residual_pending).map_err(text_error)?;
+    pending.absorb_persistent_cache(&blind.cache_pending).map_err(text_error)?;
+    let pending = pending.finish().map_err(text_error)?;
+    let (authenticated_link, bound, authenticated_link_metrics, receipt) =
+        prove_c6_authenticated_output_link_persisted_cuda_nbr2_strict(
+            roots.fixed(),
+            roots.cohorts(),
+            pending,
+            nbr2,
+            streams,
+            backend,
+            spill_root,
+            session_digest,
+            transcript,
+        )
+        .map_err(text_error)?;
+    if bound.len() != 2 * C61_NATIVE_WRAPPER_ACTIVE_SLOTS {
+        return Err("C6.1 native exact runner bound-slot census mismatch".to_owned());
+    }
+    let joint_native = native.finish_after_nbr2_link(receipt)?;
+    Ok(C61NativeExactProductionNbr2ProverProof {
+        blind: C61NativeExactProductionProverProof {
+            residual_proof: blind.residual_proof,
+            residual_frame: blind.residual_frame,
+            residual_terminal_outputs: blind.residual_terminal_outputs,
+            residual_terminal_fold,
+            cache_proof: blind.cache_proof,
+            cache_source_frame: blind.cache_source_frame,
+            cache_metrics: blind.cache_metrics,
+            authenticated_link,
+            authenticated_link_metrics,
+        },
         joint_native,
         nbr2_statement_digest: nbr2.digest(),
         outer_statement_digest: nbr2.outer_statement_digest(),
@@ -1096,6 +1199,18 @@ fn c6_exact_bound_slot_output(
     Ok(C6ExactProductionVerifierOutput { bound_slots })
 }
 
+fn finish_c61_native_pending_registry_verifier(
+    fixed: &C6FixedWrapperCommitments,
+    residual: &C6BlindResidualPendingClaimsVerifier,
+    cache: &C6PersistentCachePendingClaimsVerifier,
+) -> Result<C6PendingSlotRegistryVerifier, String> {
+    let mut pending =
+        C61NativePendingSlotRegistryVerifierBuilder::new(fixed).map_err(text_error)?;
+    pending.absorb_residual(residual).map_err(text_error)?;
+    pending.absorb_persistent_cache(cache).map_err(text_error)?;
+    pending.finish().map_err(text_error)
+}
+
 fn validate_production_streams(streams: &[CorrelationStream; TAPES]) -> Result<(), String> {
     if streams.iter().any(|stream| !stream.uses_pooled_pcg()) {
         return Err("C6 exact blind join requires paired pooled PCG streams".to_owned());
@@ -1416,5 +1531,45 @@ mod tests {
                 .unwrap()
                 < verifier.find("native.finish_after_nbr2_link(receipt)").unwrap()
         );
+    }
+
+    #[test]
+    fn c61_native_join_has_no_hidden_owner_and_receipt_gates_native_tail() {
+        let source = include_str!("c6_blind_round_coordinator.rs");
+        let prover = source
+            .split("pub fn finish_c61_native_production_blind_with_persisted_nbr2_link(")
+            .nth(1)
+            .unwrap()
+            .split("/// Consume all remaining same-attempt")
+            .next()
+            .unwrap();
+        assert!(prover.contains("C61NativePendingSlotRegistryProverBuilder::new"));
+        assert!(prover.contains("2 * C61_NATIVE_WRAPPER_ACTIVE_SLOTS"));
+        assert!(
+            prover
+                .find("prove_c6_authenticated_output_link_persisted_cuda_nbr2_strict(")
+                .unwrap()
+                < prover.find("native.finish_after_nbr2_link(receipt)").unwrap()
+        );
+        for forbidden in [
+            "C6HiddenU",
+            "hidden_pending",
+            "hidden_proof",
+            "absorb_hidden_u",
+            "C6PendingSlotRegistryProverBuilder::new",
+        ] {
+            assert!(!prover.contains(forbidden));
+        }
+
+        let verifier = source
+            .split("fn finish_c61_native_pending_registry_verifier(")
+            .nth(1)
+            .unwrap()
+            .split("fn validate_production_streams")
+            .next()
+            .unwrap();
+        assert!(verifier.contains("C61NativePendingSlotRegistryVerifierBuilder::new"));
+        assert!(!verifier.contains("absorb_hidden_u"));
+        assert!(!verifier.contains("C6HiddenU"));
     }
 }

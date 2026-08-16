@@ -4793,6 +4793,29 @@ The next gate is the dynamic four-aggregate C6LNK2 proof grammar and exact
 56-slot plus one C6NBR2 relation, followed by coordinator/campaign wiring. No
 pod contact is permitted.
 
+### 0.91 C6ICT5 56+1 authenticated-link checkpoint
+
+C6LNK2 now derives its relation and aggregate census from the fixed-root
+typestate. Historical C6 remains six cohorts/72 slots. The C6.1 profile is four
+cohorts/56 slots, and mandatory C6NBR2 raises the proved relation census to
+**57** without adding wire. Its per-repetition aggregate vector has four
+`Fp2` elements, so the exact metadata subtraction is **64 B** across two
+repetitions. The combined two-chain PCS/link codec is **3,431,752 B**, of which
+**3,506 B** is link overhead.
+
+Dedicated C6.1 prover/verifier registry builders expose only residual and
+cache absorption and reject historical roots. The native prover join consumes
+those 56 opaque pending values, requires C6NBR2, checks **112** bound slots and
+releases the secondary native ZeroOpen tail only after its typed receipt. It
+has no hidden witness, proof or pending field. Focused codec/registry and join
+source guards are **1/0/0 + 1/0/0**; historical strict codec and NBR2 tests
+remain green.
+
+The remaining gate is production of the residual+cache blind components under
+the native two-participant coordinator, its verifier replay, then the strict
+six-component outer codec and campaign wiring. No quantitative or hardware
+credit is promoted; no pod contact is permitted.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

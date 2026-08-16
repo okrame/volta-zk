@@ -4838,6 +4838,26 @@ C6.1 proof envelope and four-root outer wrapper, followed by campaign wiring.
 No quantitative, timing, full-chain or hardware credit is promoted, and pod
 contact remains forbidden.
 
+### 0.93 C6ICT5 hidden-free proof-envelope checkpoint
+
+The strict C6.1 proof grammar is now `C61PIF2`, version 2, with exactly six
+ordered components: residual sumcheck, residual pending corrections, cache
+source bootstrap, cache blind proof, cache fold targets and authenticated
+output link. It has no generic extension component and no seventh position.
+The native link is exact-size **3,431,752 B**; total envelope overhead is
+**284 B** and the exact maximum is **3,462,762 B**.
+
+The codec uses C6.1-specific component and envelope hash domains. Its decoder
+rejects historical magic/version/census, reordered kinds, nonzero reserved
+bits, wrong exact lengths, every component digest or payload mutation, outer
+digest mutation and trailing bytes. Focused codec mutations are **2/0/0**.
+
+This checkpoint does not reuse the historical C6 outer schema. The next
+boundary is a native four-root certificate outer with two cache roots in the
+heads, residual and auxiliary roots, and one combined source binding; only
+then may the production assembly and disk decoder move to `C61PIF2`. No byte,
+timing, full-chain or hardware credit is promoted and pod contact is forbidden.
+
 ## 1. Owner requirements
 
 C6 MUST satisfy all of the following.

@@ -8,6 +8,7 @@ pub(crate) mod boundary_thinning;
 pub mod c6;
 pub mod c61_certificate;
 pub mod c61_public_instance;
+pub mod c61_response_envelope;
 #[cfg(feature = "c6-trace")]
 pub mod c6_cache_fold;
 pub mod c6_census;
@@ -66,6 +67,16 @@ pub use c61_certificate::{
 };
 pub use c61_public_instance::{
     C61PublicInstanceError, C61PublicWorkloadInstance, C61PublicWorkloadPreimage,
+};
+pub use c61_response_envelope::{
+    C61NativeResponseProofEnvelope, C61NativeResponseProofEnvelopeError,
+    C61_NATIVE_RESPONSE_AUTHENTICATED_LINK_BYTES, C61_NATIVE_RESPONSE_CACHE_BLIND_MAX_BYTES,
+    C61_NATIVE_RESPONSE_CACHE_FOLD_TARGET_BYTES, C61_NATIVE_RESPONSE_CACHE_SOURCE_BYTES,
+    C61_NATIVE_RESPONSE_PROOF_COMPONENTS, C61_NATIVE_RESPONSE_PROOF_ENVELOPE_MAGIC,
+    C61_NATIVE_RESPONSE_PROOF_ENVELOPE_MAX_BYTES,
+    C61_NATIVE_RESPONSE_PROOF_ENVELOPE_OVERHEAD_BYTES,
+    C61_NATIVE_RESPONSE_PROOF_ENVELOPE_VERSION, C61_NATIVE_RESPONSE_RESIDUAL_PENDING_BYTES,
+    C61_NATIVE_RESPONSE_RESIDUAL_SUMCHECK_MAX_BYTES,
 };
 pub use c6_census::{
     audit_c6_t1_source_census, c6_t1_trace_source_manifest, C6CensusDigest, C6CensusError,

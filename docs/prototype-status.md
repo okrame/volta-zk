@@ -8,7 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--0.92 next.
+This capsule is authoritative; read design §§0.60--0.93 next.
 
 - **Milestone/evidence.** C6ICT5 study is complete: one response owner supplies
   the ordered 96+6 claims; four WHIR chains bind their exact global points and
@@ -25,8 +25,8 @@ This capsule is authoritative; read design §§0.60--0.92 next.
   its focused PCS/owner guards are **2/0/0 + 1/0/0**. The distinct four-root
   PCS profile/coordinator guard is **1/0/0**; the hidden-free live/verifier
   source guard is **1/0/0**. The dynamic 56+1 link codec and receipt-gated
-  native join guards are **1/0/0 + 1/0/0**. Native blind production/replay is
-  **1/0/0**.
+  native join guards are **1/0/0 + 1/0/0**. Native blind replay and the
+  six-component envelope are **1/0/0 + 2/0/0**.
 - **Resume.** Implement in small checkpoints, then close additive Lean,
   mutations, executable budgets, full workspace and exact campaign preflight.
   Pod admission follows only after those local gates are green.
@@ -37,6 +37,14 @@ This capsule is authoritative; read design §§0.60--0.92 next.
 - **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
   `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
   production NO-GO.
+
+- **2026-08-16 — Hidden-free C6.1 proof envelope lands.** `C61PIF2` is a
+  distinct six-component grammar with no extension slot. Its exact maximum is
+  **3,462,762 B**, including the **3,431,752-B** native 56+1 link. Separate
+  magic, version and hash domains make historical `C6PIF1` fail closed;
+  component header, length, digest, payload and outer-digest mutations reject
+  (**2/0/0**). The four-root certificate outer and campaign remain open; no
+  quantitative or hardware credit is promoted and pod contact stays forbidden.
 
 - **2026-08-16 — Native blind production and replay land.** The C6.1 prover
   and verifier share the two-participant 24-round coordinator: cache is active

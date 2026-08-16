@@ -10840,9 +10840,12 @@ impl C6CompiledNativeTargetFunctional {
         }
         let counters_before = context.counters();
         let schedule_before = context.schedule_audit();
-        if schedule_before.as_ref() != Some(schedule) {
+        if schedule_before
+            .as_ref()
+            .is_none_or(|consumed| consumed.draws.get(..schedule.draws.len()) != Some(&schedule.draws))
+        {
             return Err(C6ResidualError::new(
-                "C6NBR2 verifier context did not consume the exact source schedule",
+                "C6NBR2 verifier context lacks the exact response-schedule prefix",
             ));
         }
 

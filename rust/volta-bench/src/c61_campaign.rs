@@ -2277,6 +2277,57 @@ impl C62CampaignCachePrecommitOwner {
 /// The roots come from the same workload allocation that the response will
 /// later consume.  This removes the circular proposed-root input.
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub fn validate_c62_campaign_cache_precommit_inputs<W: Into<C62CampaignWorkloadOwner>>(
+    setup: &C6SetupManifest,
+    workload_owner: W,
+    public_workload: &C61PublicWorkloadPreimage,
+    run_root: &Path,
+) -> Result<C62CampaignWorkloadOwner, String> {
+    let workload_owner = workload_owner.into();
+    let workload = public_workload.workload();
+    if !run_root.is_dir() {
+        return Err("C6.2 cache precommit run root is not a directory".to_owned());
+    }
+    if fs::read_dir(run_root)
+        .map_err(|error| format!("read C6.2 precommit run root: {error}"))?
+        .next()
+        .is_some()
+    {
+        return Err("C6.2 cache precommit run root is not empty".to_owned());
+    }
+    if public_workload.model_family_digest() != setup.model_digest {
+        return Err("C6.2 cache precommit model digest mismatch".to_owned());
+    }
+    if public_workload.public_tokens() != workload_owner.sequence() {
+        return Err("C6.2 cache precommit public token sequence mismatch".to_owned());
+    }
+    if workload.decode_tokens != 50 {
+        return Err("C6.2 cache precommit decode count mismatch".to_owned());
+    }
+    if workload.old_context as usize != workload_owner.old_context() {
+        return Err("C6.2 cache precommit old context mismatch".to_owned());
+    }
+    if c62_cache_precommit_expected_new_context(workload) != Some(workload.new_context) {
+        return Err("C6.2 cache precommit new context mismatch".to_owned());
+    }
+    if workload.old_context == 0 && workload.prompt_tokens != 100 {
+        return Err("C6.2 cache precommit genesis prompt count mismatch".to_owned());
+    }
+    if workload.old_context != 0 && workload.prompt_tokens != 0 {
+        return Err("C6.2 cache precommit continuation prompt count mismatch".to_owned());
+    }
+    Ok(workload_owner)
+}
+
+fn c62_cache_precommit_expected_new_context(workload: volta_proto::C6Workload) -> Option<u32> {
+    if workload.old_context == 0 {
+        workload.prompt_tokens.checked_add(workload.decode_tokens)
+    } else {
+        workload.old_context.checked_add(workload.decode_tokens)
+    }
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 fn prepare_c62_campaign_cache_precommit_inner(
     setup: &C6SetupManifest,
     workload_owner: C62CampaignWorkloadOwner,
@@ -2286,22 +2337,13 @@ fn prepare_c62_campaign_cache_precommit_inner(
     run_root: &Path,
 ) -> Result<C62CampaignCachePrecommitOwner, String> {
     setup.validate().map_err(|error| error.to_string())?;
+    let workload_owner = validate_c62_campaign_cache_precommit_inputs(
+        setup,
+        workload_owner,
+        &public_workload,
+        run_root,
+    )?;
     let workload = public_workload.workload();
-    if !run_root.is_dir()
-        || fs::read_dir(run_root)
-            .map_err(|error| format!("read C6.2 precommit run root: {error}"))?
-            .next()
-            .is_some()
-        || public_workload.model_family_digest() != setup.model_digest
-        || public_workload.public_tokens() != workload_owner.sequence()
-        || workload.decode_tokens != 50
-        || workload.old_context as usize != workload_owner.old_context()
-        || workload.new_context != workload.old_context + 50
-        || (workload.old_context == 0 && workload.prompt_tokens != 100)
-        || (workload.old_context != 0 && workload.prompt_tokens != 0)
-    {
-        return Err("C6.2 cache precommit setup, workload, or root mismatch".to_owned());
-    }
     let wrapper_root = run_root.join("wrapper");
     fs::create_dir(&wrapper_root)
         .map_err(|error| format!("create C6.2 precommit wrapper lane: {error}"))?;
@@ -4966,6 +5008,28 @@ mod campaign_artifact_tests {
                 new_context: 150,
             },
         }
+    }
+
+    #[test]
+    fn c62_cache_precommit_context_growth_handles_genesis_and_continuation() {
+        assert_eq!(
+            c62_cache_precommit_expected_new_context(C6Workload {
+                prompt_tokens: 100,
+                decode_tokens: 50,
+                old_context: 0,
+                new_context: 150,
+            }),
+            Some(150)
+        );
+        assert_eq!(
+            c62_cache_precommit_expected_new_context(C6Workload {
+                prompt_tokens: 0,
+                decode_tokens: 50,
+                old_context: 150,
+                new_context: 200,
+            }),
+            Some(200)
+        );
     }
 
     #[test]

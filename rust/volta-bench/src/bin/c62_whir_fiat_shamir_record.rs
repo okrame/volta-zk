@@ -38,7 +38,8 @@ mod enabled {
         build_c62_campaign_setup_manifest, create_c62_campaign_artifact,
         load_c62_campaign_artifact, load_c62_campaign_installed_setup,
         prepare_c62_campaign_cache_precommit, prepare_c62_campaign_continuation_cache_precommit,
-        run_c62_campaign_live_production, verify_c62_campaign_e2e, verify_c62_loaded_campaign_e2e,
+        run_c62_campaign_live_production, validate_c62_campaign_cache_precommit_inputs,
+        verify_c62_campaign_e2e, verify_c62_loaded_campaign_e2e,
         C61CampaignInstalledSetup, C62CampaignArtifact, C62CampaignLiveProductionOutput,
         C62_CAMPAIGN_SETUP_MAX_BYTES,
     };
@@ -837,6 +838,22 @@ mod enabled {
             return Err("C6.2 session setup or correlation capacity exceeds its gate".to_owned());
         }
 
+        let first_run_root = run_root.join("certificate-00");
+        fs::create_dir(&first_run_root)
+            .map_err(|error| format!("create {}: {error}", first_run_root.display()))?;
+        let first_public = C61PublicWorkloadPreimage::new(
+            model_digest,
+            C6Workload { prompt_tokens: 100, decode_tokens: 50, old_context: 0, new_context: 150 },
+            genesis_owner.sequence().to_vec(),
+        )
+        .map_err(|error| error.to_string())?;
+        let genesis_owner = validate_c62_campaign_cache_precommit_inputs(
+            &setup,
+            genesis_owner,
+            &first_public,
+            &first_run_root,
+        )?;
+
         let slot_store =
             C6SlotStore::open(state_root.join("slots")).map_err(|error| error.to_string())?;
         let mut backend =
@@ -854,15 +871,6 @@ mod enabled {
             allow_persisted_executor: true,
         };
 
-        let first_run_root = run_root.join("certificate-00");
-        fs::create_dir(&first_run_root)
-            .map_err(|error| format!("create {}: {error}", first_run_root.display()))?;
-        let first_public = C61PublicWorkloadPreimage::new(
-            model_digest,
-            C6Workload { prompt_tokens: 100, decode_tokens: 50, old_context: 0, new_context: 150 },
-            genesis_owner.sequence().to_vec(),
-        )
-        .map_err(|error| error.to_string())?;
         let first_installed =
             load_c62_campaign_installed_setup(&setup_dir.join(c62_setup_profile_name(0)?))?;
         backend
@@ -1818,6 +1826,53 @@ mod enabled {
     #[cfg(test)]
     mod tests {
         use super::*;
+
+        #[test]
+        #[ignore = "requires generated production weights and setup paths"]
+        fn production_first_cache_precommit_inputs_match() {
+            let weights = PathBuf::from(std::env::var("C62_DIAG_WEIGHTS").unwrap());
+            let setup_dir = PathBuf::from(std::env::var("C62_DIAG_SETUP").unwrap());
+            let run_root = PathBuf::from(std::env::var("C62_DIAG_RUN_ROOT").unwrap());
+            fs::create_dir(&run_root).unwrap();
+            let installed_profiles = load_c62_installed_setups(&setup_dir).unwrap();
+            let workload_owner = build_c6_t1_workload_owner(&weights).unwrap();
+            let verifier_model = Gpt2VerifierModel::from_model(workload_owner.model()).unwrap();
+            let model_digest = hash_file_set(
+                "volta-zk/c6.2/model-file-set/v1",
+                &weights,
+                &MODEL_FILES,
+            )
+            .unwrap();
+            let setup = build_c62_campaign_setup_manifest(
+                std::array::from_fn(|index| &installed_profiles[index]),
+                &verifier_model,
+                quantization_digest().unwrap(),
+                protocol_digest(),
+                model_digest,
+                hash_c62_setup_profiles(&setup_dir).unwrap(),
+                [0x71; 32],
+                [[0x72; 32], [0x73; 32]],
+            )
+            .unwrap();
+            let public = C61PublicWorkloadPreimage::new(
+                model_digest,
+                C6Workload {
+                    prompt_tokens: 100,
+                    decode_tokens: 50,
+                    old_context: 0,
+                    new_context: 150,
+                },
+                workload_owner.sequence().to_vec(),
+            )
+            .unwrap();
+            validate_c62_campaign_cache_precommit_inputs(
+                &setup,
+                workload_owner,
+                &public,
+                &run_root,
+            )
+            .unwrap();
+        }
 
         #[test]
         fn record_profile_keeps_tolerance_and_capacity_separate_from_credit() {

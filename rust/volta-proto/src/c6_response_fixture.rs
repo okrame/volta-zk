@@ -1316,10 +1316,17 @@ fn prove_c6_production_response_provider(
     }
     // Cross the exact byte boundary consumed by both live and disk replay.
     // No in-memory provider proof object survives this point.
-    let retained = C6RetainedResponseProof::decode(
-        &C6RetainedResponseProof::encode_parts(&model_proof, &product_proof)
-            .map_err(|error| error.to_string())?,
-    )
+    let retained = if model.p.lut.softmax_row_shift {
+        C6RetainedResponseProof::decode_c62(
+            &C6RetainedResponseProof::encode_c62_parts(&model_proof, &product_proof)
+                .map_err(|error| error.to_string())?,
+        )
+    } else {
+        C6RetainedResponseProof::decode(
+            &C6RetainedResponseProof::encode_parts(&model_proof, &product_proof)
+                .map_err(|error| error.to_string())?,
+        )
+    }
     .map_err(|error| error.to_string())?;
     let mut next_source = 0u64;
     let mut product_mask_sources = Vec::new();
@@ -2372,6 +2379,27 @@ mod transcript_tests {
         .concat();
         assert!(!source.contains(&stale_prover));
         assert!(!source.contains(&stale_verifier));
+    }
+
+    #[test]
+    fn retained_response_boundary_selects_the_c62_codec() {
+        let source = include_str!("c6_response_fixture.rs");
+        let provider = source
+            .split_once("fn prove_c6_production_response_provider(")
+            .unwrap()
+            .1
+            .split_once("/// Execute the provider half of the genesis")
+            .unwrap()
+            .0;
+        for required in [
+            "model.p.lut.softmax_row_shift",
+            "C6RetainedResponseProof::encode_c62_parts",
+            "C6RetainedResponseProof::decode_c62",
+            "C6RetainedResponseProof::encode_parts",
+            "C6RetainedResponseProof::decode(",
+        ] {
+            assert!(provider.contains(required), "provider boundary lacks {required}");
+        }
     }
 
     #[test]

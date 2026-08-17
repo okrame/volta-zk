@@ -633,3 +633,18 @@ the complete closure count, while installed-plan decoding continues to bind
 and validate all **29,620** triples. This is an accounting-level repair. It
 does not change the proof, operation plan, setup, transcript, correlation
 schedule, certificate format, byte gates, or protocol statement.
+
+## 0.30 C6.2 retained-response codec selection
+
+r06 passed the repaired census and reached the live-to-disk response byte
+boundary. That shared boundary still called the historical C6.1 retained
+codec, which correctly rejects model proofs carrying C62SRE1 extensions. The
+C6.2 codec and strict extension checks already exist and are used by later
+C6.2 wrapper and certificate framing.
+
+At this earlier byte boundary, a model with the registered stable-softmax row
+shift must use `encode_c62_parts` followed by `decode_c62`. A historical model
+without that relation continues to use `encode_parts` followed by `decode`.
+There is no error fallback between codecs. This makes the boundary use the
+already-registered framing and changes no proof payload, allocation, setup,
+correlation schedule, certificate format or gate.

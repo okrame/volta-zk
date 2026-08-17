@@ -10,15 +10,14 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Status and authorization.** C6.2 is `C62_R06_READY`. Standing owner GO
+- **Status and authorization.** C6.2 is `C62_R07_READY`. Standing owner GO
   authorizes one fresh replacement on new setup, work and session paths. r01
   through r05 remain immutable; no selective retry is allowed.
-- **Failure and repair.** r05 exposed **28,948** triples in the final live
-  product batch versus **29,620** across all **673** installed closures. The
-  **672** difference is the preceding 672 one-triple closures. Provider and
-  disk-verifier checks now compare the final batch with the final installed
-  closure, while full installed-plan validation remains unchanged. The repair
-  changes no proof, setup, transcript, correlations, parameters or bytes.
+- **Failure and repair.** r06 passed the final-closure repair, then the shared
+  live-to-disk boundary called the historical C6.1 codec and rejected the
+  mandatory C62SRE1 extensions. Stable-softmax models now select the existing
+  strict C6.2 encoder/decoder; historical models retain the old codec. There
+  is no fallback and no proof, setup, correlation, parameter or byte change.
 - **Checks.** The focused source guard passes and the `volta-proto` c6-trace
   build is clean. Corrected challenge/correlation censuses, 82.5878332608799
   soundness bits, production-PCG 4/4, runner 3/3 and same-pod CUDA 39/39 remain
@@ -29,9 +28,9 @@ This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 - **No product result.** No certificate has been sealed. No A100 prover time,
   consumer-CPU verifier time, proof size, session, or hardware gate receives
   credit. The comparison table remains unchanged.
-- **Resume.** Commit and export the narrow census repair, rebuild only the
+- **Resume.** Commit and export the narrow codec selection, rebuild only the
   registered-feature record binary, copy and verify the deterministic setup,
-  then launch fresh r06 through measurement, preflight, proof, mutation and
+  then launch fresh r07 through measurement, preflight, proof, mutation and
   checksums. Do not repeat tests or setup generation.
 
 - **2026-08-17 — r03 passes the Fiat--Shamir repair and fails closed at the
@@ -70,6 +69,18 @@ This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
   correlation or byte. Both r05 authorizations are burned, no artifact was
   sealed, and no product value receives credit. Raw evidence is
   `benchmarks/results/c62-a100-session-failure-2026-08-17-c1c5e0e-r05.json`.
+
+- **2026-08-17 — r06 passes the census repair and exposes a stale codec call.**
+  r06 passed setup measurement, A100 preflight, the corrected Fiat--Shamir
+  bound and the corrected final-closure census. At the live-to-disk response
+  boundary it then called the historical C6.1 codec, which correctly rejected
+  the mandatory C62SRE1 extensions. Both authorizations are burned; no
+  artifact was sealed and no product value receives credit. The strict repair
+  selects the already-defined C6.2 encoder and decoder when the installed
+  model uses stable-softmax row shifting, while preserving the historical
+  codec otherwise. It adds no fallback and changes no registered proof bytes.
+  Raw evidence is
+  `benchmarks/results/c62-a100-session-failure-2026-08-17-2969683-r06.json`.
 
 - **2026-08-17 — Corrected bounded genesis replay passes; r03 authorized.**
   Clean pod checkpoint `e9300f82fb40104349f31380d9ccc4e2341c0358`

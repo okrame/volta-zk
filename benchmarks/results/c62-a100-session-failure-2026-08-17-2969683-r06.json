@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "milestone": "C6.2 replacement r06 RunPod A100 E2E attempt",
+  "date": "2026-08-17",
+  "run_id": "2969683b79029bf64e83506744085a416d1b22a7-r06",
+  "source_git_sha": "2969683b79029bf64e83506744085a416d1b22a7",
+  "source_git_dirty": false,
+  "authorization": {
+    "owner_go": true,
+    "standing_create_new_go": true,
+    "selective_retry_performed": false
+  },
+  "runner": {
+    "started_utc": "2026-08-17T22:29:05.981388501Z",
+    "failed_utc": "2026-08-17T22:40:31.565780462Z",
+    "exit_code": 1,
+    "failed_stage": "first certificate retained-response byte boundary before artifact sealing",
+    "error": "C62SRE1 extensions require the C6.2 retained-response codec",
+    "production_session_started": true,
+    "certificates_sealed": 0,
+    "both_response_authorizations_burned": true
+  },
+  "setup": {
+    "profiles_reused": 17,
+    "setup_tree_sha256": "e731144f5658cf86de8dff7315752e3eb21c0f6557ff11507fdd92ec705e8be8",
+    "setup_bytes": 101197448,
+    "pass": true,
+    "credit": false
+  },
+  "preflight": {
+    "record_sha256": "109796f362b834d99d4ab9d28b613e60089d846dfb8b04b06d527fa05f6dbc7f",
+    "available_spill_bytes": 199026159616,
+    "cuda_backend_initialized": true,
+    "a100_present": true,
+    "pass": true,
+    "credit": false
+  },
+  "failure_records": {
+    "session_json_sha256": "90a1db3f33cf11c350b218b73005992a28db40a26d8cde95299d38bb99e36059",
+    "setup_measurement_json_sha256": "71f13406d09101f031d0048ad20f5f15ac93d336308b42be03ce63af7cb5a366",
+    "runner_log_sha256": "706f1fcb1b9d84a89f849eea31623092614225c6f871d246c33316268ba73a95",
+    "exit_file_sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "client_state_sha256": "1b668e4af0e8b8731ba2ef95939dcf9942d1a5101d3dfc3a9340aa76d33d5b54",
+    "slot_state_sha256": "ab04738cec42236693aa2580c78a389c5ab085c64932bedc62aa164a640f948e",
+    "burned_authorization_sha256": [
+      "bea6225bd4140571909692e4326f0fb8ec60c9c5b9965ba253100ecae3328db8",
+      "57b69ea46b50039169435363706eafdc7b4a25d25ba0efcc4b84432b4a90d725"
+    ],
+    "temporary_wrapper_spill_bytes": 78383153576,
+    "wrapper_metadata_sha256": [
+      "72975053d967c82bdb2ecc71a0fc7e62e2a62352ce4223ad0398d2b76eab112c",
+      "4644c77fa0cdf8519d76e6d2947eb7c62d2f28920af208d0e2b2bec928ef57b9",
+      "66bad39f692fbd7b05665498b3763844741ba1d449da2f5b5137616c7acf8b6b",
+      "ea5b2b362cf75ea13fcc6c8b6535903abe789a8af2a91a27a1d24982376307b8"
+    ],
+    "artifact_files": 0
+  },
+  "diagnosis": {
+    "product_census_repair_passed": true,
+    "cause": "the shared live-to-disk byte boundary always selected the historical C6.1 retained-response codec even when the model carried mandatory C62SRE1 extensions",
+    "strict_fix": "select encode_c62_parts/decode_c62 when the installed model has stable-softmax row shifting; retain encode_parts/decode for the historical model",
+    "fallback_added": false,
+    "protocol_bytes_changed": false
+  },
+  "measured_product_values": null,
+  "credit": false,
+  "disposition": "FAIL CLOSED BEFORE FIRST CERTIFICATE; R06 PATHS IMMUTABLE; USE THE ALREADY-REGISTERED C6.2 CODEC AT THE LIVE BYTE BOUNDARY; FRESH REPLACEMENT REQUIRED"
+}

@@ -384,7 +384,7 @@ The accepted correlation-capacity distribution is `1, 2, 5, 9`.
 The distribution follows genesis, continuation-256, continuation-512, and
 continuation-1024 order. The four burns add four continuation-256
 reservations.
-The exact session use is `47,356,708` raw correlations per tape.
+The exact session use is `49,383,784` raw correlations per tape.
 The terminal capacity is `110,918,718` raw correlations per tape.
 
 Each certificate is written to a new artifact directory.
@@ -591,3 +591,21 @@ correlations and public C62FS1 challenges, then requires a valid canonical
 binding. It performs no production PCG allocation and changes no protocol
 parameter. A fresh r03 may start under standing owner GO only after this
 diagnostic identifies and the code fixes the cause. r02 paths remain burned.
+
+## 0.28 Exact challenge census and bound correction
+
+The mock-correlation compiler ran the complete fixed model-proof schedule for
+the four registered capacity classes with a counting challenge channel. The
+exact per-role counts are **94,864** for genesis, **81,875** for
+continuation-256, **84,107** for continuation-512, and **86,435** for
+continuation-1024. Prover and verifier counts match in every class. A separate
+bounded C62FS1 genesis run reproduces r02 and reports
+`challenge census exceeds its proof bound`.
+
+The old **65,536** bound was therefore stale. The fail-closed bound is
+corrected to **131,072**, with **1,048,576** worst-case random-oracle limb
+queries. This does not add or remove a challenge, proof round, proof byte,
+correlation, relation, query parameter, or certificate field: it admits the
+already-fixed **94,864**-challenge maximum and makes the security calculation
+cover it. The exact budget remains above the binding soundness gate. A fresh
+r03 still requires one bounded genesis replay on the pod before production.

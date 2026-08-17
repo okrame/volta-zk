@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "milestone": "C6.2 exact Fiat-Shamir challenge census repair",
+  "date": "2026-08-17",
+  "diagnostic_source_git_sha": "6350601d0c063f07ae16f1407a639cbe572bada4",
+  "production_parent_git_sha": "e2d0e9ee4e820ba45d262d56d56d9968322ad1b4",
+  "method": "complete fixed model-proof schedule with mock correlations and matched counting challenge channels",
+  "threads": 8,
+  "profiles": {
+    "genesis": {
+      "old_context": 0,
+      "challenges_per_role": 94864,
+      "log_sha256": "13c0923fc5002da7c39f1b7b8719a1cfc6dd2ffa9c6d4a9d2bb2fc5de57d0662"
+    },
+    "continuation_256": {
+      "old_context": 150,
+      "challenges_per_role": 81875,
+      "log_sha256": "fbd22c13c6a48f5a8934a7980e17c5fb33e68fc0ee6e3772c0504856e6b8fed4"
+    },
+    "continuation_512": {
+      "old_context": 250,
+      "challenges_per_role": 84107,
+      "log_sha256": "e49ed58ee3a0e1d890007eae94fc9dd4bb849a71094a95b8676001dfc92ab943"
+    },
+    "continuation_1024": {
+      "old_context": 500,
+      "challenges_per_role": 86435,
+      "log_sha256": "0292df0dba8b3079c40a10cc3cbf56c4c2869cb50ae92cb05e6ca82bbc09ea1c"
+    }
+  },
+  "bounded_reproduction": {
+    "old_bound": 65536,
+    "exit_code": 101,
+    "error": "C62FS1 challenge census exceeds its proof bound",
+    "log_sha256": "42c41e4ff1ca6e9876ad34dea1c378612daee2c9a429fc78649dee7ab9ce651b"
+  },
+  "corrected_bound": {
+    "max_challenges": 131072,
+    "max_rejection_draws_per_limb": 4,
+    "field_limbs": 2,
+    "max_random_oracle_queries": 1048576
+  },
+  "protocol_schedule_changed": false,
+  "proof_bytes_changed": false,
+  "correlations_changed": false,
+  "credit": false
+}

@@ -57,7 +57,7 @@ struct C62FiatShamirState {
     challenge_index: u64,
 }
 
-pub const C62_FIAT_SHAMIR_MAX_CHALLENGES: u64 = 65_536;
+pub const C62_FIAT_SHAMIR_MAX_CHALLENGES: u64 = 131_072;
 pub const C62_FIAT_SHAMIR_MAX_REJECTION_DRAWS_PER_LIMB: u32 = 4;
 pub const C62_FIAT_SHAMIR_MAX_RANDOM_ORACLE_QUERIES: u64 =
     C62_FIAT_SHAMIR_MAX_CHALLENGES * 2 * C62_FIAT_SHAMIR_MAX_REJECTION_DRAWS_PER_LIMB as u64;
@@ -766,7 +766,7 @@ mod tests {
 
     #[test]
     fn c62_fiat_shamir_enforces_the_registered_query_bound() {
-        assert_eq!(C62_FIAT_SHAMIR_MAX_RANDOM_ORACLE_QUERIES, 524_288);
+        assert_eq!(C62_FIAT_SHAMIR_MAX_RANDOM_ORACLE_QUERIES, 1_048_576);
         let mut transcript = Transcript::new_fiat_shamir([0xB2; 32]).unwrap();
         let TranscriptChallenges::FiatShamir(state) = &mut transcript.challenges else {
             unreachable!();

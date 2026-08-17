@@ -11,25 +11,49 @@ record; no external plan is authoritative.
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
 - **Status and authorization.** C6.2 is
-  `C62_R02_CAUSAL_CHALLENGE_FAIL_DIAGNOSING` at clean pod source `e2d0e9e`.
-  Standing owner GO authorizes a fresh create-new replacement after repair.
-- **Failure.** r02 passed all exact setup and A100 preflight guards and passed
-  the former correlation-underflow point. The first proof then exited 101 at
-  `causal mask MLE vanished`; no artifact was sealed and both authorizations
-  are burned. The leading cause is a prior fail-closed transcript state, not
-  the repaired correlation pool. One mock-correlation exact genesis
-  Fiat--Shamir census will distinguish that from a negligible zero event.
-- **Checks.** Exact four-class counters, production-PCG 4/4, runner 3/3 and
-  same-pod CUDA 39/39 remain valid. The diagnostic code compiles in release.
+  `C62_R02_CHALLENGE_BOUND_FIXED_AWAITING_REPLAY` over pod source `e2d0e9e`.
+  Standing owner GO authorizes fresh r03 after the narrow replay passes.
+- **Failure and repair.** r02 passed the former correlation-underflow point,
+  then exited 101 before sealing an artifact. Exact bounded replay proves the
+  causal zero was the fallback after the stale 65,536 challenge cap. Complete
+  prover/verifier counts are 94,864 genesis, 81,875 continuation-256, 84,107
+  continuation-512 and 86,435 continuation-1024. The cap is corrected to
+  131,072; the fixed proof schedule, bytes, correlations and relation do not
+  change.
+- **Checks.** All four mock challenge and correlation censuses match both
+  roles. The corrected budget is 82.5878332608799 bits/certificate and passes.
+  Production-PCG 4/4, runner 3/3 and same-pod CUDA 39/39 remain valid.
 - **Preserved local evidence.** `C62JVR1`, `C62FS1`, `C62SGE1`, strict codecs,
   17 setup profiles, 17-accept plus 4-burn order, full Rust checks, golden
   checks, and the 3,270-job Lean build remain local evidence only.
 - **No product result.** No certificate was sealed. No A100 prover time,
   consumer-CPU verifier time, proof size, session, or hardware gate receives
   credit. The comparison table remains unchanged.
-- **Resume.** Run only the exact genesis Fiat--Shamir diagnostic with mock
-  correlations. Record and fix its cause without changing protocol parameters,
-  then use fresh r03 paths under standing GO.
+- **Resume.** Run one bounded mock genesis replay with the corrected cap. If
+  green, build the changed crates only and launch production on fresh r03
+  paths using the verified r02 setup copy.
+
+- **2026-08-17 — Exact four-class challenge census confirms a stale safety
+  bound; corrected budget passes.** The complete fixed model-proof schedule
+  uses **94,864** Fiat--Shamir challenges for genesis, **81,875** for
+  continuation-256, **84,107** for continuation-512 and **86,435** for
+  continuation-1024. Independent prover and verifier counts match. A bounded
+  genesis replay exactly reproduces r02 with
+  `C62FS1 challenge census exceeds its proof bound`.
+
+  The fail-closed bound is corrected from **65,536** to **131,072**, and the
+  worst-case random-oracle limb-query allowance from **524,288** to
+  **1,048,576**. This is a bound correction around the existing schedule: it
+  changes no proof challenge, round, byte, correlation, relation, certificate
+  field or query parameter. The exact soundness budget remains
+  **82.5878332608799 bits/certificate**, above the binding
+  **78.80929487391641-bit** gate. The same budget now also contains the
+  corrected **49,383,784** raw session correlations per tape.
+
+  Raw census evidence is
+  `benchmarks/results/c62-challenge-census-2026-08-17-6350601.json`. Before
+  r03, run only one corrected bounded genesis replay; full suites and all 17
+  setup profiles are not repeated.
 
 - **2026-08-17 — r02 passes the correlation repair and fails closed on the
   first proof's causal challenge.** r02 reused a hash-verified copy of the 17

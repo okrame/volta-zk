@@ -8,7 +8,11 @@ use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use volta_field::{Fp, Fp2};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
+use volta_field::{Fp, Fp2, FpStream};
 use volta_gpt2::{
     band_model_witness, forward_model, forward_model_tokens, generate, load_model,
     Gpt2VerifierModel, KvCache, H, L,
@@ -17,7 +21,9 @@ use volta_mac::{
     begin_c6_prover_trace, begin_c6_verifier_trace,
     compile_c6_operation_trace_for_role_with_target_profile, finish_c6_prover_trace,
     finish_c6_verifier_trace, C6InstanceExtractionRole, C6NativeTargetProfileArtifact,
-    C6TraceSourceManifest, CorrScheduleRole, CorrelationStream, Transcript, VerifierCtx,
+    C6TraceSourceManifest, CorrScheduleRole, CorrelationStream, Transcript,
+    TranscriptChallengeChannel, TranscriptChallengeRequest, TranscriptChallengeResponse,
+    VerifierCtx,
 };
 use volta_proto::c6_cache_fold::{
     begin_c6_cache_fold_trace, C6CacheFoldKind, C6CacheFoldParty, C6CacheFoldTargetInlineProver,
@@ -43,6 +49,45 @@ const PROFILE_CONTEXTS: [usize; 17] =
     [0, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900];
 const PLAN_MAX_BYTES: usize = 63_994_751;
 
+struct CountingChallengeChannel {
+    stream: FpStream,
+    count: Arc<AtomicU64>,
+}
+
+impl CountingChallengeChannel {
+    fn new(seed: [u8; 32], count: Arc<AtomicU64>) -> Self {
+        Self { stream: FpStream::from_seed(seed), count }
+    }
+}
+
+impl TranscriptChallengeChannel for CountingChallengeChannel {
+    fn challenge(
+        &mut self,
+        _provider_move: Vec<u8>,
+        _provider_semantic_bytes: usize,
+        request: TranscriptChallengeRequest,
+    ) -> Result<TranscriptChallengeResponse, String> {
+        self.count.fetch_add(1, Ordering::Relaxed);
+        Ok(match request {
+            TranscriptChallengeRequest::Fp => {
+                TranscriptChallengeResponse::Fp(self.stream.next_fp().value())
+            }
+            TranscriptChallengeRequest::Fp2 => {
+                let value = self.stream.next_fp2();
+                TranscriptChallengeResponse::Fp2([value.c0.value(), value.c1.value()])
+            }
+            TranscriptChallengeRequest::Bits(width) => {
+                let value = self.stream.next_fp().value();
+                TranscriptChallengeResponse::Bits(if width == 64 {
+                    value
+                } else {
+                    value & ((1u64 << width) - 1)
+                })
+            }
+        })
+    }
+}
+
 #[derive(Serialize)]
 struct FileRow {
     name: &'static str,
@@ -66,11 +111,13 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-fn parse_args() -> Result<(PathBuf, PathBuf, bool, bool, Option<usize>, Option<usize>), String> {
+fn parse_args(
+) -> Result<(PathBuf, PathBuf, bool, bool, bool, Option<usize>, Option<usize>), String> {
     let mut weights = None;
     let mut setup_root = None;
     let mut discover_topology = false;
     let mut fiat_shamir_census = false;
+    let mut unbounded_challenge_census = false;
     let mut resume_from = None;
     let mut stop_after = None;
     let mut values = std::env::args().skip(1);
@@ -88,6 +135,7 @@ fn parse_args() -> Result<(PathBuf, PathBuf, bool, bool, Option<usize>, Option<u
             }
             "--discover-topology" => discover_topology = true,
             "--fiat-shamir-census" => fiat_shamir_census = true,
+            "--unbounded-challenge-census" => unbounded_challenge_census = true,
             "--resume-from" => {
                 resume_from = Some(
                     values
@@ -114,6 +162,7 @@ fn parse_args() -> Result<(PathBuf, PathBuf, bool, bool, Option<usize>, Option<u
         setup_root.ok_or_else(|| "--setup-root is required".to_owned())?,
         discover_topology,
         fiat_shamir_census,
+        unbounded_challenge_census,
         resume_from,
         stop_after,
     ))
@@ -213,6 +262,7 @@ fn compile_profile(
     output: &Path,
     discover_topology: bool,
     fiat_shamir_census: bool,
+    unbounded_challenge_census: bool,
 ) -> Result<(), String> {
     let statement_digest = [0xA1; 32];
     let transcript_seed = [0xA2; 32];
@@ -237,8 +287,18 @@ fn compile_profile(
     let mut secondary = CorrelationStream::new(secondary_seed);
     let mut follower =
         C6SourceScheduleProverFollower::start(&mut secondary).map_err(|error| error.to_string())?;
+    if fiat_shamir_census && unbounded_challenge_census {
+        return Err("Fiat-Shamir and unbounded challenge censuses are mutually exclusive".into());
+    }
+    let prover_challenge_count = Arc::new(AtomicU64::new(0));
+    let verifier_challenge_count = Arc::new(AtomicU64::new(0));
     let mut prover_tx = if fiat_shamir_census {
         Transcript::new_fiat_shamir(transcript_seed)?
+    } else if unbounded_challenge_census {
+        Transcript::new_interactive(Box::new(CountingChallengeChannel::new(
+            transcript_seed,
+            Arc::clone(&prover_challenge_count),
+        )))
     } else {
         Transcript::new(transcript_seed)
     };
@@ -344,6 +404,11 @@ fn compile_profile(
         .map_err(|error| error.to_string())?;
     let mut verifier_tx = if fiat_shamir_census {
         Transcript::new_fiat_shamir(transcript_seed)?
+    } else if unbounded_challenge_census {
+        Transcript::new_interactive(Box::new(CountingChallengeChannel::new(
+            transcript_seed,
+            Arc::clone(&verifier_challenge_count),
+        )))
     } else {
         Transcript::new(transcript_seed)
     };
@@ -498,6 +563,16 @@ fn compile_profile(
         prover_tx.canonical_binding_digest()?;
         verifier_tx.canonical_binding_digest()?;
     }
+    if unbounded_challenge_census {
+        let prover_count = prover_challenge_count.load(Ordering::Relaxed);
+        let verifier_count = verifier_challenge_count.load(Ordering::Relaxed);
+        if prover_count != verifier_count {
+            return Err(format!(
+                "challenge census differs across roles: prover {prover_count}, verifier {verifier_count}"
+            ));
+        }
+        eprintln!("C62_CHALLENGE_CENSUS context={old_context} challenges={prover_count}");
+    }
     let native_artifact = C6NativeTargetProfileArtifact::encode(&prover_native, topology)
         .map_err(|error| error.to_string())?;
     let (_, decoded_native) = C6NativeTargetProfileArtifact::decode(
@@ -524,6 +599,7 @@ fn compile_profiles_in_fresh_processes(
     setup_root: &Path,
     discover_topology: bool,
     fiat_shamir_census: bool,
+    unbounded_challenge_census: bool,
     start_index: usize,
     stop_index: usize,
 ) -> Result<(), String> {
@@ -546,6 +622,9 @@ fn compile_profiles_in_fresh_processes(
         if fiat_shamir_census {
             command.arg("--fiat-shamir-census");
         }
+        if unbounded_challenge_census {
+            command.arg("--unbounded-challenge-census");
+        }
         let status = command
             .status()
             .map_err(|error| format!("start setup worker for context {context}: {error}"))?;
@@ -557,8 +636,15 @@ fn compile_profiles_in_fresh_processes(
 }
 
 fn run() -> Result<(), String> {
-    let (weights, setup_root, discover_topology, fiat_shamir_census, resume_from, stop_after) =
-        parse_args()?;
+    let (
+        weights,
+        setup_root,
+        discover_topology,
+        fiat_shamir_census,
+        unbounded_challenge_census,
+        resume_from,
+        stop_after,
+    ) = parse_args()?;
     let start_index = match resume_from {
         None => 0,
         Some(context) => PROFILE_CONTEXTS
@@ -582,6 +668,7 @@ fn run() -> Result<(), String> {
             &setup_root,
             discover_topology,
             fiat_shamir_census,
+            unbounded_challenge_census,
             start_index,
             stop_index,
         );
@@ -663,6 +750,7 @@ fn run() -> Result<(), String> {
             &setup_root.join(&name),
             discover_topology,
             fiat_shamir_census,
+            unbounded_challenge_census,
         )?;
         eprintln!("completed setup profile {name}");
     }

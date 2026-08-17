@@ -35,14 +35,14 @@ theorem c62_state_restoration_requires_every_component
       hypotheses.nbr2 ∧ hypotheses.blindLink ∧ hypotheses.zeroOpen := by
   exact hall
 
-def C62FiatShamirMaxChallenges : Nat := 65_536
+def C62FiatShamirMaxChallenges : Nat := 131_072
 def C62FiatShamirMaxRejectionDrawsPerLimb : Nat := 4
 def C62FiatShamirFieldLimbs : Nat := 2
 
 theorem c62_random_oracle_query_cap :
     C62FiatShamirMaxChallenges *
       C62FiatShamirMaxRejectionDrawsPerLimb *
-      C62FiatShamirFieldLimbs = 524_288 := by
+      C62FiatShamirFieldLimbs = 1_048_576 := by
   decide
 
 structure C62CompositionAcceptance where

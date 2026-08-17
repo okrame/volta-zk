@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 WHIR FIAT--SHAMIR — OWNER GO / DESIGN ACTIVE / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 WHIR FIAT--SHAMIR — C62_POD_READY / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,26 +10,96 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Active milestone.** C6.2 targets one Fiat--Shamir proof with a designated
-  VOLE-MAC verifier. Local implementation and preflight are authorized. Pod
-  contact is not authorized. No terminal stop is active.
-- **Required relation.** `C62JVR1` proves `secondary=response` and
-  `secondary=compiler` with one authenticated equation. `C62FS1` derives all
-  public challenges. `C62SGE1` proves the total unsigned softmax gap.
-- **Completed evidence.** Rust implements the relation, transcript, strict
-  codecs, four-profile setup bundle, disk verifier, response abort, and exact
-  17-accept plus 4-burn session runner. Additive Lean and `Audit.lean` pass in
-  a complete 3,270-job build.
-- **Current checks.** Focused Fiat--Shamir, divergent-value, codec, gap,
-  ownership, profile, abort, and runner-order checks are green. Exact session
-  use is 47,356,708 raw correlations per tape. Setup compression is still a
-  local measurement. No byte, time, session, or hardware credit exists.
-- **Gates.** The analytic setup cap is 141,882,261 B. Setup plus the strict
-  certificate ceiling is 157,500,000 B. The five-percent tolerance applies
-  only to product gates. Soundness and invariants remain exact.
-- **Resume conditions.** Complete the four local setup profiles. Measure the
-  exact bundle. Pass mutations, the Rust workspace, golden checks, and local
-  preflight. Then record `C62_POD_READY` with exact pod-only commands.
+- **Status and hard stop.** C6.2 is `C62_POD_READY`; the local
+  hardware-neutral package is complete. Do not contact or run a pod until
+  explicit owner GO. No terminal implementation stop is active.
+- **Relation.** `C62JVR1` binds secondary values to both response and compiler.
+  `C62FS1` derives every public challenge. `C62SGE1` proves the unsigned
+  softmax gap.
+- **Completed evidence.** Rust includes strict codecs, 17 exact setup profiles
+  in four capacity classes, disk verification, response abort, and the exact
+  17-accept plus 4-burn runner. Lean and `Audit.lean` pass 3,270 jobs.
+- **Checks.** The complete Rust workspace, golden checks, 55 feature tests,
+  three CUDA-package tests, local mutations, budget, and runner syntax pass.
+  Exact session use is 47,356,708 raw correlations per tape.
+- **Local measurement.** Client parameters are 24,454,209 B. Setup is
+  101,197,448 B. Setup plus the strict certificate ceiling is 123,197,447 B,
+  below 157,500,000 B.
+- **Credit.** All local values remain `credit:false`. There is no A100, CUDA,
+  proof-size, timing, production-session, or hardware credit.
+- **Resume.** After explicit owner GO, use the create-new commands below once.
+  The pod script starts with A100/CUDA preflight, then setup, proof session,
+  disk verification, and mutations. Selective retry remains forbidden.
+
+- **2026-08-17 — C6.2 local package reaches `C62_POD_READY`; HARD STOP before
+  pod.** Source checkpoint `126dbe3f245a72b2a1659917cdcbad5b8cf690ac`
+  completes `C62JVR1`, `C62FS1`, `C62SGE1`, strict certificate and response
+  codecs, the production runner, and the create-new pod script. The complete
+  Rust workspace and golden checks pass; `volta-bench` passes **55/55** with
+  `c6-trace,c61-p3-authenticated-reference`, and the C6.2 CUDA-package target
+  passes **3/3**. The recorded complete Lean build remains **3,270 jobs**.
+  Local mutation checks pass; production artifact mutation remains the final
+  pod-script stage because it consumes the newly created certificate.
+
+  The 17 exact `C62SP1` directories cover contexts **0, 150, 200, 250, ...,
+  900** and are grouped into four capacity classes. Strict resume verified the
+  existing prefix before completing the suffix. The repeated dead tmux panes
+  were Linux out-of-memory kills: one profile used about **9.6--11.1 GiB**,
+  while temporary Rust targets occupied most of the 5.9-GiB `/tmp` filesystem.
+  Only those temporary targets were removed. The generator now launches one
+  fresh child per context, preserving strict prefix checks while releasing
+  memory between profiles. Its parent-path rejection check is green.
+
+  Clean local record
+  `benchmarks/results/c62-setup-local-2026-08-17-126dbe3.json`, SHA-256
+  `505104f2ddcd4ba89d1fbb18ee01c1e4f0e94f3d56f6ea990b4464b0be5842df`,
+  binds **17 profiles / 85 files** and setup-tree SHA-256
+  `9990a3dbbeaf30405e3cabdbd947d9e03003a6fca50ebe361783d52c6e036821`.
+  It measures client parameters **24,454,209 B <= 65,139,022 B**, setup
+  **101,197,448 B <= 141,882,261 B**, and setup plus the strict
+  **21,999,999-B** certificate ceiling **123,197,447 B <= 157,500,000 B**.
+  Budget source SHA-256 is
+  `7892e2696549e778ed9edf95e1f839efe9088bf8d7e7a85d34fad346b739385b`;
+  it reports **83.5878332608799 bits/certificate**, 17 accepts, four burns,
+  and **47,356,708** raw correlations per tape. Runner SHA-256 is
+  `951fd69a2d970c0405b7d1bdf61581c8faf6959bd7de333b9b2e1685ad252f40`.
+  All values remain `credit:false`; no pod was contacted.
+
+  After a separate explicit owner GO, place the exact source checkpoint and
+  generated weights on a new eligible RunPod A100 instance. Fill the current
+  machine metadata once, then run exactly:
+
+  ```sh
+  cd "$HOME/volta-zk"
+  test "$(git rev-parse HEAD)" = "126dbe3f245a72b2a1659917cdcbad5b8cf690ac"
+  test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+  export VOLTA_CLOUD_PROVIDER='RunPod'
+  export VOLTA_CLOUD_INSTANCE_ID='REPLACE_WITH_CURRENT_POD_ID_OR_HOSTNAME'
+  export VOLTA_CLOUD_REGION='REPLACE_WITH_CURRENT_REGION'
+  export VOLTA_CLOUD_IMAGE='REPLACE_WITH_CURRENT_IMAGE'
+  export VOLTA_CLOUD_DRIVER_VERSION='REPLACE_WITH_NVIDIA_DRIVER_VERSION'
+  export VOLTA_CLOUD_CUDA_VERSION='REPLACE_WITH_CUDA_VERSION'
+  export VOLTA_CLOUD_GPU_SKU='NVIDIA A100-SXM4-80GB'
+  export VOLTA_CLOUD_CPU_MODEL='REPLACE_WITH_CURRENT_CPU_MODEL'
+  export VOLTA_CLOUD_RAM_GIB='REPLACE_WITH_CURRENT_RAM_GIB'
+  export VOLTA_CLOUD_VCPUS='REPLACE_WITH_CURRENT_VCPUS'
+  export CUDA_VISIBLE_DEVICES='0'
+
+  C62_SHA='126dbe3f245a72b2a1659917cdcbad5b8cf690ac'
+  test ! -e "$HOME/c62-work-$C62_SHA"
+  test ! -e "$HOME/c62-setup-$C62_SHA"
+  test ! -e "$HOME/c62-session-$C62_SHA"
+  mkdir "$HOME/c62-work-$C62_SHA"
+  scripts/run_c62_pod_e2e.sh \
+    "$HOME/volta-zk/benchmarks/weights" \
+    "$HOME/c62-setup-$C62_SHA" \
+    "$HOME/c62-work-$C62_SHA" \
+    "$HOME/c62-session-$C62_SHA"
+  ```
+
+  The script must run once with new setup and session paths. Any failure is
+  retained and reported; a retry requires separate authorization.
 
 - **2026-08-16 — C6.2 exact local session and setup topology land.** `C62MP1`
   binds four strict setup profiles for genesis and continuation capacities

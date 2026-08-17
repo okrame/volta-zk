@@ -435,7 +435,7 @@ parameter and does not authorize selective retry of the failed attempt.
 
 ## 0.19 CUDA exactness repair and renewed pod readiness
 
-Clean checkpoint `3d70c5bd5b06a97bedd0d40d230e1de0f7b5edcd`
+Clean repair checkpoint `3d70c5bd5b06a97bedd0d40d230e1de0f7b5edcd`
 closes both first-attempt failures. The attention CUDA kernel was correct, but
 its bit-exact test supplied invalid zero softmax weights. The fixture now
 derives the required rounded weights and residuals. The affine Fp2 CUDA FFI
@@ -453,3 +453,10 @@ The owner explicitly authorizes one new fresh E2E run. It must use the exact
 create-new command and roots recorded in the active ledger capsule. The failed
 `126dbe3` roots remain burned. A failed new session is terminal and requires
 another explicit owner GO; selective retry remains forbidden.
+
+The pod upload authorization covers only the three repaired source files. A
+clean side checkpoint `ec1607d655d7beac5684c8cdde76673fb1429a5a` therefore
+applies exactly those files to the original `126dbe3` pod-ready parent. It has
+the same protocol and executable sources as `3d70c5b`; only the local
+incident/docs ancestry is absent. The registered production command uses this
+side checkpoint in a separate clean pod worktree.

@@ -11,7 +11,8 @@ record; no external plan is authoritative.
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
 - **Status and authorization.** C6.2 is `C62_POD_READY_AFTER_CUDA_REPAIR` at
-  clean source `3d70c5b`. The owner explicitly authorizes exactly one fresh
+  clean pod-source checkpoint `ec1607d`. The owner explicitly authorizes one
+  fresh
   RunPod A100 E2E run. The failed `126dbe3` paths remain burned; no selective
   retry is authorized.
 - **Repair evidence.** The attention test now builds a valid rounded softmax
@@ -27,7 +28,7 @@ This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
   A100 prover time, consumer-CPU verifier time, proof size, session, or
   hardware gate receives credit. The comparison table has no C6.2 column.
 - **Resume.** Run the exact create-new command below once on pod
-  `3474df32eb35`, using new roots keyed by `3d70c5b`. Preserve any failure and
+  `3474df32eb35`, using new roots keyed by `ec1607d`. Preserve any failure and
   stop; another attempt requires a separate owner GO.
 
 - **2026-08-17 — C6.2 CUDA repair passes locally and on A100; one fresh E2E
@@ -47,12 +48,16 @@ This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
   The owner explicitly authorized exactly one new create-new RunPod A100 E2E
   run after this repair. The old `126dbe3` work/setup/session roots are burned
-  and must not be reused. On pod `3474df32eb35`, install a clean snapshot of
-  the source checkpoint and verified generated weights, then run exactly:
+  and must not be reused. The upload guard allowed only the three explicitly
+  authorized repaired files, so an equivalent clean side checkpoint
+  `ec1607d655d7beac5684c8cdde76673fb1429a5a` was created from the original
+  `126dbe3` pod-ready parent. Its code tree differs from `3d70c5b` only by the
+  already recorded incident/docs ancestry. On pod `3474df32eb35`, use its
+  separate clean worktree and verified generated weights, then run exactly:
 
   ```sh
-  cd "$HOME/volta-zk-3d70c5b"
-  test "$(git rev-parse HEAD)" = "3d70c5bd5b06a97bedd0d40d230e1de0f7b5edcd"
+  cd "$HOME/volta-zk-ec1607d"
+  test "$(git rev-parse HEAD)" = "ec1607d655d7beac5684c8cdde76673fb1429a5a"
   test -z "$(git status --porcelain=v1 --untracked-files=all)"
 
   export VOLTA_CLOUD_PROVIDER='RunPod'
@@ -67,13 +72,13 @@ This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
   export VOLTA_CLOUD_VCPUS='128'
   export CUDA_VISIBLE_DEVICES='0'
 
-  C62_SHA='3d70c5bd5b06a97bedd0d40d230e1de0f7b5edcd'
+  C62_SHA='ec1607d655d7beac5684c8cdde76673fb1429a5a'
   test ! -e "$HOME/c62-work-$C62_SHA"
   test ! -e "$HOME/c62-setup-$C62_SHA"
   test ! -e "$HOME/c62-session-$C62_SHA"
   mkdir "$HOME/c62-work-$C62_SHA"
   scripts/run_c62_pod_e2e.sh \
-    "$HOME/volta-zk-3d70c5b/benchmarks/weights" \
+    "$HOME/volta-zk-ec1607d/benchmarks/weights" \
     "$HOME/c62-setup-$C62_SHA" \
     "$HOME/c62-work-$C62_SHA" \
     "$HOME/c62-session-$C62_SHA"

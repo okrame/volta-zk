@@ -11,29 +11,43 @@ record; no external plan is authoritative.
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
 - **Status and authorization.** C6.2 is
-  `C62_R01_SPILL_PREFLIGHT_FAIL_R02_READY` at clean pod source `e2d0e9e`.
-  Standing owner GO authorizes fresh create-new replacement `r02`.
-- **Failure and repair.** Clean pod source `27a0f1d` completed all 17 setup
-  profiles and preflight, then stopped during the first real proof with
-  `pooled sub correlation underflow`; exit was 101. Both authorizations are
-  burned and no certificate was sealed. Exact mock prover/verifier schedules
-  show every C6.2 class was short by 98,600 sub correlations. Full counts were
-  also stale. The four corrected `(sub, full)` profiles are `(4,892,214,
-  226,917)`, `(1,795,150, 197,762)`, `(1,795,150, 202,562)`, and `(1,795,150,
-  207,554)`. Setup generation now fails on any future census drift.
-- **Checks.** Exact four-class counters match both roles. The corrected
-  genesis setup check passes, production-PCG tests pass 4/4, and runner tests
-  pass 3/3. The optimized runner retains these and unchanged same-pod CUDA
-  39/39, but still rebuilds CUDA and regenerates all 17 guarded profiles.
+  `C62_R02_CAUSAL_CHALLENGE_FAIL_DIAGNOSING` at clean pod source `e2d0e9e`.
+  Standing owner GO authorizes a fresh create-new replacement after repair.
+- **Failure.** r02 passed all exact setup and A100 preflight guards and passed
+  the former correlation-underflow point. The first proof then exited 101 at
+  `causal mask MLE vanished`; no artifact was sealed and both authorizations
+  are burned. The leading cause is a prior fail-closed transcript state, not
+  the repaired correlation pool. One mock-correlation exact genesis
+  Fiat--Shamir census will distinguish that from a negligible zero event.
+- **Checks.** Exact four-class counters, production-PCG 4/4, runner 3/3 and
+  same-pod CUDA 39/39 remain valid. The diagnostic code compiles in release.
 - **Preserved local evidence.** `C62JVR1`, `C62FS1`, `C62SGE1`, strict codecs,
   17 setup profiles, 17-accept plus 4-burn order, full Rust checks, golden
   checks, and the 3,270-job Lean build remain local evidence only.
 - **No product result.** No certificate was sealed. No A100 prover time,
   consumer-CPU verifier time, proof size, session, or hardware gate receives
   credit. The comparison table remains unchanged.
-- **Resume.** Copy the validated deterministic r01 setup bundle to a new r02
-  setup path, verify it, then run measurement, preflight, prove, mutation and
-  checksums on new r02 work/session paths.
+- **Resume.** Run only the exact genesis Fiat--Shamir diagnostic with mock
+  correlations. Record and fix its cause without changing protocol parameters,
+  then use fresh r03 paths under standing GO.
+
+- **2026-08-17 — r02 passes the correlation repair and fails closed on the
+  first proof's causal challenge.** r02 reused a hash-verified copy of the 17
+  guarded setup profiles, measured setup **101,197,448 B**, and passed A100
+  preflight with **200,724,262,912 B** spill available. It progressed beyond
+  the earlier 74-GiB correlation-underflow point. The first certificate then
+  exited **101** at `causal mask MLE vanished at r`; no artifact or session
+  JSON was created, mutation did not start, and both authorizations are
+  burned. Log SHA-256 is
+  `1cd5f121530e83d59df4afe8e43da86e31d98eae76dd761d1130da623d24f4be`.
+
+  The zero is exactly consistent with the transcript's fixed fail-closed
+  challenge, but the old panic hid the prior transcript error. A diagnostic
+  mode now runs one exact genesis proof with mock correlations and public
+  Fiat--Shamir challenges; it changes no proof relation or parameter. The
+  append-only incident record is
+  `benchmarks/results/c62-a100-session-failure-2026-08-17-e2d0e9e-r02.json`.
+  Standing GO permits a fresh r03 only after the cause is confirmed and fixed.
 
 - **2026-08-17 — Replacement `r01` passes all 17 census guards, then fails
   spill-space preflight; `r02` ready.** Every setup profile matched exact

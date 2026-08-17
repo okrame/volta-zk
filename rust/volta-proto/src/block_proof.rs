@@ -7222,7 +7222,11 @@ fn prove_attn_block_impl(
         cx.tx,
     );
     let m_eval = eval_mle_counted(&m_tab, &r_c, &mut cx.ctr_other);
-    assert!(m_eval != Fp2::ZERO, "causal mask MLE vanished at r (negligible; redraw)");
+    assert!(
+        m_eval != Fp2::ZERO,
+        "causal mask MLE vanished at r; transcript error: {:?}",
+        cx.tx.interactive_error()
+    );
     let eq_rc = eq_vec(&r_c);
     cx.ctr_other.fp2_mults += 1 << nr;
     cx.ctr_other.base_mults += wires.w_rect.len() as u64;
@@ -8275,6 +8279,10 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
             (Err(error), _) | (_, Err(error)) => return Err(error),
         };
         if mask_value == Fp2::ZERO {
+            eprintln!(
+                "causal mask MLE vanished at resident challenge; transcript error: {:?}",
+                cx.tx.interactive_error()
+            );
             return Err(AccelError::InvalidInput("causal mask MLE vanished at challenge"));
         }
         cx.ctr_other.fp2_mults += (rect_entries - 1) as u64;

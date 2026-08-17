@@ -574,3 +574,20 @@ authorizes r02. The deterministic, fully guarded r01 setup is copied to a new
 r02 path and verified, avoiding a third generation pass. Measurement,
 preflight, complete proving, mutation and checksums still execute normally on
 new r02 work/session paths.
+
+## 0.27 r02 causal-challenge disposition
+
+r02 passed setup measurement and A100 preflight, then passed the earlier
+correlation-underflow point. The first certificate proof stopped before
+artifact sealing at `causal mask MLE vanished at r`. Exit was 101, both
+authorizations are burned, and no proof-size, timing, verifier, session or
+comparison-table credit exists.
+
+The padded causal selector evaluates to zero when every sumcheck coordinate
+is the transcript's fixed fail-closed fallback value. The old panic did not
+show whether an earlier canonical-transcript error caused that state. One
+diagnostic setup mode therefore runs the exact genesis model proof with mock
+correlations and public C62FS1 challenges, then requires a valid canonical
+binding. It performs no production PCG allocation and changes no protocol
+parameter. A fresh r03 may start under standing owner GO only after this
+diagnostic identifies and the code fixes the cause. r02 paths remain burned.

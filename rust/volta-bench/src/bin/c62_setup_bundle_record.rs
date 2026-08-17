@@ -66,10 +66,11 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-fn parse_args() -> Result<(PathBuf, PathBuf, bool, Option<usize>, Option<usize>), String> {
+fn parse_args() -> Result<(PathBuf, PathBuf, bool, bool, Option<usize>, Option<usize>), String> {
     let mut weights = None;
     let mut setup_root = None;
     let mut discover_topology = false;
+    let mut fiat_shamir_census = false;
     let mut resume_from = None;
     let mut stop_after = None;
     let mut values = std::env::args().skip(1);
@@ -86,6 +87,7 @@ fn parse_args() -> Result<(PathBuf, PathBuf, bool, Option<usize>, Option<usize>)
                 ));
             }
             "--discover-topology" => discover_topology = true,
+            "--fiat-shamir-census" => fiat_shamir_census = true,
             "--resume-from" => {
                 resume_from = Some(
                     values
@@ -111,6 +113,7 @@ fn parse_args() -> Result<(PathBuf, PathBuf, bool, Option<usize>, Option<usize>)
         weights.ok_or_else(|| "--weights is required".to_owned())?,
         setup_root.ok_or_else(|| "--setup-root is required".to_owned())?,
         discover_topology,
+        fiat_shamir_census,
         resume_from,
         stop_after,
     ))
@@ -209,6 +212,7 @@ fn compile_profile(
     old_context: usize,
     output: &Path,
     discover_topology: bool,
+    fiat_shamir_census: bool,
 ) -> Result<(), String> {
     let statement_digest = [0xA1; 32];
     let transcript_seed = [0xA2; 32];
@@ -233,7 +237,11 @@ fn compile_profile(
     let mut secondary = CorrelationStream::new(secondary_seed);
     let mut follower =
         C6SourceScheduleProverFollower::start(&mut secondary).map_err(|error| error.to_string())?;
-    let mut prover_tx = Transcript::new(transcript_seed);
+    let mut prover_tx = if fiat_shamir_census {
+        Transcript::new_fiat_shamir(transcript_seed)?
+    } else {
+        Transcript::new(transcript_seed)
+    };
     let mut builder = C6CacheFoldTargetInlineProver::start_public(
         statement_digest,
         schedule.clone(),
@@ -334,7 +342,11 @@ fn compile_profile(
     let mut secondary_v = VerifierCtx::new(secondary_seed, deltas[1]);
     let mut verifier_follower = C6SourceScheduleVerifierFollower::start(&mut secondary_v)
         .map_err(|error| error.to_string())?;
-    let mut verifier_tx = Transcript::new(transcript_seed);
+    let mut verifier_tx = if fiat_shamir_census {
+        Transcript::new_fiat_shamir(transcript_seed)?
+    } else {
+        Transcript::new(transcript_seed)
+    };
     let mut cursor =
         C6CacheFoldTargetInlineVerifier::start_public(&frame, schedule, deltas, &mut verifier_tx)
             .map_err(|error| error.to_string())?;
@@ -482,6 +494,10 @@ fn compile_profile(
             "setup profile {old_context} has different transcript ledgers across roles"
         ));
     }
+    if fiat_shamir_census {
+        prover_tx.canonical_binding_digest()?;
+        verifier_tx.canonical_binding_digest()?;
+    }
     let native_artifact = C6NativeTargetProfileArtifact::encode(&prover_native, topology)
         .map_err(|error| error.to_string())?;
     let (_, decoded_native) = C6NativeTargetProfileArtifact::decode(
@@ -507,6 +523,7 @@ fn compile_profiles_in_fresh_processes(
     weights: &Path,
     setup_root: &Path,
     discover_topology: bool,
+    fiat_shamir_census: bool,
     start_index: usize,
     stop_index: usize,
 ) -> Result<(), String> {
@@ -526,6 +543,9 @@ fn compile_profiles_in_fresh_processes(
         if discover_topology {
             command.arg("--discover-topology");
         }
+        if fiat_shamir_census {
+            command.arg("--fiat-shamir-census");
+        }
         let status = command
             .status()
             .map_err(|error| format!("start setup worker for context {context}: {error}"))?;
@@ -537,7 +557,8 @@ fn compile_profiles_in_fresh_processes(
 }
 
 fn run() -> Result<(), String> {
-    let (weights, setup_root, discover_topology, resume_from, stop_after) = parse_args()?;
+    let (weights, setup_root, discover_topology, fiat_shamir_census, resume_from, stop_after) =
+        parse_args()?;
     let start_index = match resume_from {
         None => 0,
         Some(context) => PROFILE_CONTEXTS
@@ -560,6 +581,7 @@ fn run() -> Result<(), String> {
             &weights,
             &setup_root,
             discover_topology,
+            fiat_shamir_census,
             start_index,
             stop_index,
         );
@@ -640,6 +662,7 @@ fn run() -> Result<(), String> {
             old_context,
             &setup_root.join(&name),
             discover_topology,
+            fiat_shamir_census,
         )?;
         eprintln!("completed setup profile {name}");
     }

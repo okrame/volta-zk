@@ -10,9 +10,10 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Status and authorization.** C6.2 is
-  `C62_R03_READY` at clean pod source `e9300f8`. Standing owner GO authorizes
-  one fresh r03 on new setup, work and session paths.
+- **Status and authorization.** C6.2 is diagnosing the fail-closed r03 census
+  mismatch at clean pod source `e9300f8`. Standing owner GO authorizes only a
+  fresh replacement on new setup, work and session paths after the mismatch is
+  reported exactly; r03 cannot be reused.
 - **Failure and repair.** r02 passed the former correlation-underflow point,
   then exited 101 before sealing an artifact. Exact bounded replay proves the
   causal zero was the fallback after the stale 65,536 challenge cap. Complete
@@ -27,12 +28,26 @@ This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 - **Preserved local evidence.** `C62JVR1`, `C62FS1`, `C62SGE1`, strict codecs,
   17 setup profiles, 17-accept plus 4-burn order, full Rust checks, golden
   checks, and the 3,270-job Lean build remain local evidence only.
-- **No product result.** No certificate was sealed. No A100 prover time,
+- **No product result.** r03 passed the corrected challenge bound but failed
+  the next exact provider census check. No certificate was sealed. No A100 prover time,
   consumer-CPU verifier time, proof size, session, or hardware gate receives
   credit. The comparison table remains unchanged.
-- **Resume.** Copy and verify the deterministic r02 setup into a fresh r03
-  setup root, then run measurement, preflight, prove, mutation and checksums
-  on fresh r03 work/session roots. Do not repeat tests or setup generation.
+- **Resume.** Preserve r03 and report actual versus installed claim/closure
+  counts without weakening the equality. Diagnose with the narrowest path,
+  then launch only a create-new replacement. Do not repeat full tests or setup
+  generation.
+
+- **2026-08-17 — r03 passes the Fiat--Shamir repair and fails closed at the
+  next exact census gate.** Clean pod source `e9300f8` reused the verified
+  17-profile setup, measured **101,197,448 B**, and passed A100 preflight. The
+  first proof passed the former 65,536-challenge failure and produced the exact
+  **78,383,153,576 B** wrapper spill, then stopped at `C6SPR12 exact provider
+  claim/closure census changed`. Both response authorizations are burned. No
+  artifact was sealed and no timing, byte, session, verifier or hardware gate
+  receives credit. Raw evidence is
+  `benchmarks/results/c62-a100-session-failure-2026-08-17-e9300f8-r03.json`.
+  r03 is immutable; standing GO permits a fresh replacement only after the
+  actual and installed counts are exposed and the strict equality is retained.
 
 - **2026-08-17 — Corrected bounded genesis replay passes; r03 authorized.**
   Clean pod checkpoint `e9300f82fb40104349f31380d9ccc4e2341c0358`

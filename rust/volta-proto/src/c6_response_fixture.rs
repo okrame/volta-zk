@@ -1289,7 +1289,17 @@ fn prove_c6_production_response_provider(
         || prover_output.weight_claims.len() != 96
         || prover_output.embed_claims.len() != 6
     {
-        return Err("C6SPR12 exact provider claim/closure census changed".to_owned());
+        return Err(format!(
+            "C6SPR12 exact provider claim/closure census changed: actual triples={} closures={} zero_roots={} weight_claims={} embed_claims={}; installed triples={} closures={} zero_roots={}",
+            products.len(),
+            product_messages.len(),
+            prover_zero_roots.len(),
+            prover_output.weight_claims.len(),
+            prover_output.embed_claims.len(),
+            installed_plan.topology().product_triple_count,
+            installed_plan.topology().product_closure_count,
+            installed_plan.topology().zero_root_count,
+        ));
     }
     // Cross the exact byte boundary consumed by both live and disk replay.
     // No in-memory provider proof object survives this point.

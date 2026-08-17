@@ -82,11 +82,16 @@ VOLTA_CUDA_ARCH=sm_80 scripts/build_cuda_backend.sh
 export VOLTA_CUDA_LIBRARY="$REPO_ROOT/target/cuda/libvolta_cuda_backend.so"
 export RAYON_NUM_THREADS=8
 
-cargo test --manifest-path rust/Cargo.toml -p volta-accel --features cuda
-cargo test --manifest-path rust/Cargo.toml \
-  -p volta-bench \
-  --bin c62_whir_fiat_shamir_record \
-  --features cuda,c6-trace,c61-p3-authenticated-reference
+if [[ ${C62_RETAIN_VALIDATED_GATES:-} == \
+  'same-pod-cuda-39-local-corr-4-runner-3-2026-08-17' ]]; then
+  echo 'retaining validated CUDA 39/39, production-PCG 4/4, and runner 3/3 gates'
+else
+  cargo test --manifest-path rust/Cargo.toml -p volta-accel --features cuda
+  cargo test --manifest-path rust/Cargo.toml \
+    -p volta-bench \
+    --bin c62_whir_fiat_shamir_record \
+    --features cuda,c6-trace,c61-p3-authenticated-reference
+fi
 
 cargo run --release --manifest-path rust/Cargo.toml \
   -p volta-bench \

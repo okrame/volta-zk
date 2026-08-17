@@ -495,3 +495,31 @@ The fix changes no protocol or quantitative parameter.
 Clean pod checkpoint `27a0f1d11da301a581eae6833076ac85abf2fe80`
 contains only the two repaired runner/campaign files over `ec1607d`. The owner
 authorizes one fresh E2E run using the exact new paths in the active ledger.
+
+## 0.22 Third A100 attempt disposition and correlation-census repair
+
+The third one-run GO was consumed by clean pod source
+`27a0f1d11da301a581eae6833076ac85abf2fe80`. All 17 setup profiles and the
+A100 preflight passed. The first real proof then failed before artifact
+sealing with `pooled sub correlation underflow`; exit was 101. Both connection
+authorizations are burned. No retry, product timing, proof-size result,
+consumer verification, mutation result, or comparison-table credit exists.
+
+The cause is an exact profile error, not a CUDA or cache-precommit failure.
+Every C6.2 profile allocated 98,600 too few sub correlations. Exact mock
+prover and verifier schedules give these `(sub, full)` profiles:
+
+- genesis: `(4,892,214, 226,917)`;
+- continuation-256: `(1,795,150, 197,762)`;
+- continuation-512: `(1,795,150, 202,562)`;
+- continuation-1024: `(1,795,150, 207,554)`.
+
+The corrected 17-accept session total is 49,383,784 raw correlations per tape,
+within the unchanged 110,918,718 terminal capacity. Setup generation now
+compares its live prover and verifier counters with the production constants,
+so this mismatch fails before any PCG allocation. Local production-PCG tests
+pass 4/4, runner tests pass 3/3, and the corrected genesis setup census passes.
+
+The failed roots are immutable. A fresh provider session requires a clean
+repair checkpoint, narrow pod census/readiness checks, new create-new paths,
+an updated ledger, and another explicit owner GO.

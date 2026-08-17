@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 WHIR FIAT--SHAMIR — CACHE PRECOMMIT FIX PASS / ONE FRESH RUN AUTHORIZED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 WHIR FIAT--SHAMIR — THIRD SESSION FAIL-CLOSED / CORRELATION CENSUS FIX LOCAL / NO RUN AUTHORIZED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,21 +11,54 @@ record; no external plan is authoritative.
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
 - **Status and authorization.** C6.2 is
-  `C62_POD_READY_AFTER_CACHE_PRECOMMIT_FIX` at clean pod source `27a0f1d`.
-  The owner authorizes exactly one new fresh RunPod A100 E2E run.
-- **Repair evidence.** The failed guard incorrectly required genesis context
-  50 instead of prompt 100 plus decode 50 = 150. Genesis and continuation now
-  use their exact context rules. Local checks pass 56/56 library, 3/3 runner,
-  and 1/1 real production-input validation. The same focused validation passes
-  1/1 on the pod. Existing unchanged A100 CUDA evidence remains 39/39.
+  `C62_CORRELATION_CENSUS_FIX_LOCAL_PASS`. The third one-run GO is consumed.
+  No new provider run or retry is authorized.
+- **Failure and repair.** Clean pod source `27a0f1d` completed all 17 setup
+  profiles and preflight, then stopped during the first real proof with
+  `pooled sub correlation underflow`; exit was 101. Both authorizations are
+  burned and no certificate was sealed. Exact mock prover/verifier schedules
+  show every C6.2 class was short by 98,600 sub correlations. Full counts were
+  also stale. The four corrected `(sub, full)` profiles are `(4,892,214,
+  226,917)`, `(1,795,150, 197,762)`, `(1,795,150, 202,562)`, and `(1,795,150,
+  207,554)`. Setup generation now fails on any future census drift.
+- **Checks.** Exact four-class counters match both roles. The corrected
+  genesis setup check passes, production-PCG tests pass 4/4, and runner tests
+  pass 3/3 with one explicit production-input test ignored.
 - **Preserved local evidence.** `C62JVR1`, `C62FS1`, `C62SGE1`, strict codecs,
   17 setup profiles, 17-accept plus 4-burn order, full Rust checks, golden
   checks, and the 3,270-job Lean build remain local evidence only.
 - **No product result.** No certificate was sealed. No A100 prover time,
   consumer-CPU verifier time, proof size, session, or hardware gate receives
   credit. The comparison table remains unchanged.
-- **Resume.** Run the exact create-new command below once with roots keyed by
-  `27a0f1d`. Preserve any failure and stop. The earlier roots remain burned.
+- **Resume.** Preserve the `27a0f1d` roots. Create a clean repair checkpoint,
+  run the narrow pod census/readiness checks, record new create-new paths, and
+  obtain another explicit owner GO before any fresh E2E session.
+
+- **2026-08-17 — Third authorized C6.2 A100 run fails closed on a stale
+  correlation census; exact local fix passes; no retry.** Clean pod source
+  `27a0f1d11da301a581eae6833076ac85abf2fe80` generated all **17** profiles,
+  measured setup **101,197,448 B**, and passed A100 preflight. The first real
+  proof then panicked with `pooled sub correlation underflow` before sealing a
+  certificate. Exit was **101**; both response authorizations are burned and
+  mutation did not start. Log SHA-256 is
+  `b9a36e9cc303572dfddd74063268cb52b3c74ea791827e07d00e15e990ac01d5`.
+  The append-only record is
+  `benchmarks/results/c62-a100-session-failure-2026-08-17-27a0f1d.json`.
+
+  Exact mock schedules on both roles measured genesis `(4,892,214, 226,917)`,
+  continuation-256 `(1,795,150, 197,762)`, continuation-512 `(1,795,150,
+  202,562)`, and continuation-1024 `(1,795,150, 207,554)` sub/full counts. The
+  old profiles under-allocated every sub pool by **98,600**. Constants and the
+  session raw total are corrected to **49,383,784**, and setup generation now
+  rejects any profile whose live schedule counters differ. Corrected local
+  evidence is **4/4** production-PCG tests, **3/3** runner tests, and one exact
+  genesis setup census pass. No protocol relation or security parameter
+  changed.
+
+  No product measurement exists and `docs/gpt2-comparison-WIP.md` remains
+  unchanged. The one-run GO is consumed; no retry was attempted. Resume needs
+  a clean repair checkpoint, narrow pod census/readiness checks, new paths,
+  ledger update, and another explicit owner GO.
 
 - **2026-08-17 — Cache-precommit root cause fixed; one fresh E2E run
   authorized.** The failed combined guard was split into exact fail-closed

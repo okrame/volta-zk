@@ -1,0 +1,105 @@
+{
+  "schema": 1,
+  "milestone": "C6.2 third authorized RunPod A100 E2E attempt",
+  "date": "2026-08-17",
+  "source_git_sha": "27a0f1d11da301a581eae6833076ac85abf2fe80",
+  "source_git_dirty": false,
+  "runner_sha256": "951fd69a2d970c0405b7d1bdf61581c8faf6959bd7de333b9b2e1685ad252f40",
+  "weights_manifest_sha256": "ded18858510473e795bcaba40ea1b48972aa56498b2ac978f77338d38bea0c6f",
+  "weights_manifest_pass": true,
+  "authorization": {
+    "owner_go": true,
+    "fresh_run_limit": 1,
+    "attempts_started": 1,
+    "selective_retry_authorized": false,
+    "selective_retry_performed": false
+  },
+  "pod": {
+    "provider": "RunPod",
+    "instance_id": "3474df32eb35",
+    "os": "Ubuntu 24.04.3 LTS",
+    "gpu_name": "NVIDIA A100-SXM4-80GB",
+    "gpu_uuid": "GPU-9887433e-1b65-69bc-7cfa-ffa18a6a614b",
+    "gpu_total_mib": 81920,
+    "driver_version": "580.126.16",
+    "cuda_version": "12.8",
+    "cpu_model": "AMD EPYC 7742 64-Core Processor",
+    "logical_cpus": 128,
+    "ram_gib": 2003
+  },
+  "runner": {
+    "detached_pid": 15308,
+    "started_utc": "2026-08-17T17:56:28.732395861Z",
+    "failed_utc": "2026-08-17T18:43:09.042289229Z",
+    "exit_code": 101,
+    "failed_stage": "first certificate real correlation consumption before artifact sealing",
+    "error": "pooled sub correlation underflow",
+    "panic_source": "volta-mac/src/corr.rs:2623",
+    "production_session_started": true,
+    "certificates_sealed": 0,
+    "mutation_stage_started": false,
+    "both_response_authorizations_burned": true
+  },
+  "setup": {
+    "profiles_completed": 17,
+    "client_parameter_bytes": 24454209,
+    "client_parameter_cap_bytes": 65139022,
+    "setup_bytes": 101197448,
+    "setup_cap_bytes": 141882261,
+    "setup_plus_certificate_ceiling_bytes": 123197447,
+    "setup_plus_first_tolerance_bytes": 157500000,
+    "pass": true,
+    "credit": false
+  },
+  "preflight": {
+    "record_sha256": "06d835cf86d0f690d43b9bb6daa99bd49b280eb8a936bbe655fcdae8dbc369ac",
+    "cuda_backend_initialized": true,
+    "a100_present": true,
+    "host_admission_pass": true,
+    "spill_admission_pass": true,
+    "capacity_acceptance_slots": 17,
+    "capacity_abort_slots": 4,
+    "capacity_reconciled_against_stale_profile": true,
+    "pass": true,
+    "credit": false
+  },
+  "failure_records": {
+    "session_json_present": false,
+    "setup_measurement_json_sha256": "71f13406d09101f031d0048ad20f5f15ac93d336308b42be03ce63af7cb5a366",
+    "runner_log_bytes": 24202,
+    "runner_log_sha256": "b9a36e9cc303572dfddd74063268cb52b3c74ea791827e07d00e15e990ac01d5",
+    "burned_authorization_markers": 2
+  },
+  "root_cause": {
+    "genesis_allocated_sub_correlations": 4793614,
+    "genesis_required_sub_correlations": 4892214,
+    "genesis_sub_shortfall": 98600,
+    "genesis_allocated_full_correlations": 221615,
+    "genesis_required_full_correlations": 226917,
+    "genesis_full_shortfall": 5302,
+    "corrected_profiles": {
+      "genesis": { "sub": 4892214, "full": 226917, "raw": 5346048 },
+      "continuation_256": { "sub": 1795150, "full": 197762, "raw": 2190674 },
+      "continuation_512": { "sub": 1795150, "full": 202562, "raw": 2200274 },
+      "continuation_1024": { "sub": 1795150, "full": 207554, "raw": 2210258 }
+    },
+    "corrected_session_raw_correlations_per_tape": 49383784,
+    "diagnostic_method": "exact mock prover and verifier schedule counters for all four C6.2 context classes"
+  },
+  "measured_product_values": {
+    "provider_prover": null,
+    "consumer_cpu_verifier": null,
+    "certificate_bytes": null,
+    "first_exchange_bytes": null
+  },
+  "credit": {
+    "a100_preflight": false,
+    "proof_size": false,
+    "provider_time": false,
+    "verifier_time": false,
+    "production_session": false,
+    "hardware_gate": false,
+    "comparison_table": false
+  },
+  "disposition": "FAIL CLOSED BEFORE FIRST CERTIFICATE; BOTH AUTHORIZATIONS BURNED; NO RETRY; CORRELATION PROFILE HARD STOP"
+}

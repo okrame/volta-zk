@@ -33,6 +33,10 @@ use volta_proto::{
     c6_gpt2_native_target_profile, layer_dom_base, prod_batch_prover, prod_batch_verify,
     prove_response_private_logits_c6_cache_inline,
     verify_response_private_logits_c6_cache_inline_from_profile, ChunkRef, PrivateChunkPub,
+    C62_CONTINUATION_1024_FULL_CORRELATIONS, C62_CONTINUATION_1024_SUB_CORRELATIONS,
+    C62_CONTINUATION_256_FULL_CORRELATIONS, C62_CONTINUATION_256_SUB_CORRELATIONS,
+    C62_CONTINUATION_512_FULL_CORRELATIONS, C62_CONTINUATION_512_SUB_CORRELATIONS,
+    C62_GENESIS_FULL_CORRELATIONS, C62_GENESIS_SUB_CORRELATIONS,
 };
 
 const PROFILE_CONTEXTS: [usize; 17] =
@@ -176,6 +180,25 @@ fn expected_topology(old_context: usize) -> (u32, u32, u32, u32, u32, u64, u32) 
         500..=900 if old_context % 50 == 0 => {
             (2_002_704, 7_128_872, 2_093, 2_622_875, 673, 27_649, 10_252)
         }
+        _ => unreachable!("profile table is fixed"),
+    }
+}
+
+fn expected_correlations(old_context: usize) -> (u64, u64) {
+    match old_context {
+        0 => (C62_GENESIS_SUB_CORRELATIONS as u64, C62_GENESIS_FULL_CORRELATIONS as u64),
+        150 | 200 => (
+            C62_CONTINUATION_256_SUB_CORRELATIONS as u64,
+            C62_CONTINUATION_256_FULL_CORRELATIONS as u64,
+        ),
+        250..=450 if old_context % 50 == 0 => (
+            C62_CONTINUATION_512_SUB_CORRELATIONS as u64,
+            C62_CONTINUATION_512_FULL_CORRELATIONS as u64,
+        ),
+        500..=900 if old_context % 50 == 0 => (
+            C62_CONTINUATION_1024_SUB_CORRELATIONS as u64,
+            C62_CONTINUATION_1024_FULL_CORRELATIONS as u64,
+        ),
         _ => unreachable!("profile table is fixed"),
     }
 }
@@ -392,6 +415,21 @@ fn compile_profile(
         topology.product_triple_count,
         topology.zero_root_count,
     );
+    eprintln!(
+        "C62_CORRELATIONS context={old_context} primary=({}, {}) secondary=({}, {})",
+        primary.counters.sub_corrs,
+        primary.counters.full_corrs,
+        secondary.counters.sub_corrs,
+        secondary.counters.full_corrs,
+    );
+    let expected_correlations = expected_correlations(old_context);
+    if (primary.counters.sub_corrs, primary.counters.full_corrs) != expected_correlations
+        || (secondary.counters.sub_corrs, secondary.counters.full_corrs) != expected_correlations
+    {
+        return Err(format!(
+            "setup profile {old_context} correlation census changed: expected {expected_correlations:?}"
+        ));
+    }
     if topology.version != 2 {
         return Err(format!(
             "setup profile {old_context} has operation-plan version {}",

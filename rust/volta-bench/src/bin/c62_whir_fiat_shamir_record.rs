@@ -1885,7 +1885,7 @@ mod enabled {
             assert_eq!(C6_ACCEPTANCE_CREDITS, 17);
             assert_eq!(C6_ABORT_RETRY_CREDITS, 4);
             let used = C62_SESSION_RAW_CORRELATIONS;
-            assert_eq!(used, 47_356_708);
+            assert_eq!(used, 49_383_784);
             assert!(used <= C6_TERMINAL_ONE_RAW_CAPACITY);
 
             let source = include_str!("c62_whir_fiat_shamir_record.rs");

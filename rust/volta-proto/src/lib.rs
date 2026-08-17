@@ -227,7 +227,7 @@ pub use model_proof::{
 };
 pub use model_proof_codec::{
     decode_model_proof_canonical, encode_model_proof_canonical, C6RetainedResponseProof,
-    ModelProofCodecError, C6_RETAINED_RESPONSE_BYTES,
+    ModelProofCodecError, C62_RETAINED_RESPONSE_BYTES, C6_RETAINED_RESPONSE_BYTES,
 };
 pub use prod_check::{prod_batch_prover, prod_batch_verify, ProdProof};
 pub use schedule::{

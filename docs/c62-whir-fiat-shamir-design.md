@@ -648,3 +648,26 @@ without that relation continues to use `encode_parts` followed by `decode`.
 There is no error fallback between codecs. This makes the boundary use the
 already-registered framing and changes no proof payload, allocation, setup,
 correlation schedule, certificate format or gate.
+
+## 0.31 C6.2-only retained-response frame
+
+r07 passed strict codec selection and reached the complete C62SRE1 response.
+The encoder then failed closed because C6.2 had inherited the historical
+**2,921,744-byte** fixed frame even though its versioned codec adds the
+mandatory C62SRE1 trailer. The earlier analytic budget counted the old frame
+and was not complete evidence for the new codec.
+
+C6.2 therefore uses a separate fixed **4,500,000-byte** response frame.
+Historical C6 and C6.1 keep the original frame byte-for-byte. The C6.2
+certificate maximum remains **21,999,999 bytes**, and the corrected complete
+component ceiling is **17,195,995 bytes**. With the already measured immutable
+setup bundle, setup plus this ceiling is **118,393,443 bytes**, below the
+**150,000,000-byte** target. The frame remains canonical, zero padded,
+digest-bound and strict on truncation, trailing bytes and C62SRE1 census.
+
+This is a codec allocation repair. It changes no proof relation, query count,
+soundness term, setup content, correlation schedule, model parameter or
+certificate maximum. r07 is immutable. Standing create-new GO permits r08 on
+new roots after the two focused codec/certificate checks and the narrow
+registered-feature binary rebuild; no full suite or setup regeneration is
+required.

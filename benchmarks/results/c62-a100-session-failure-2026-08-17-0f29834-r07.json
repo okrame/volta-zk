@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "milestone": "C6.2 replacement r07 RunPod A100 E2E attempt",
+  "date": "2026-08-17",
+  "run_id": "0f29834230f95a41f4ded863be8f0985de23b7bc-r07",
+  "source_git_sha": "0f29834230f95a41f4ded863be8f0985de23b7bc",
+  "source_git_dirty": false,
+  "authorization": {
+    "owner_go": true,
+    "standing_create_new_go": true,
+    "selective_retry_performed": false
+  },
+  "runner": {
+    "started_utc": "2026-08-17T22:48:04.213951924Z",
+    "failed_utc": "2026-08-17T22:59:39.159498840Z",
+    "exit_code": 1,
+    "failed_stage": "first certificate C6.2 retained-response framing before artifact sealing",
+    "error": "C6.2 retained response exceeds its frozen allocation",
+    "production_session_started": true,
+    "certificates_sealed": 0,
+    "both_response_authorizations_burned": true
+  },
+  "setup": {
+    "profiles_reused": 17,
+    "setup_tree_sha256": "e731144f5658cf86de8dff7315752e3eb21c0f6557ff11507fdd92ec705e8be8",
+    "setup_bytes": 101197448,
+    "pass": true,
+    "credit": false
+  },
+  "preflight": {
+    "record_sha256": "c04be74eb68b71d21c4fb91eb8c2ab426650af85661eadd30996b06f2f319205",
+    "available_spill_bytes": 198828617728,
+    "cuda_backend_initialized": true,
+    "a100_present": true,
+    "pass": true,
+    "credit": false
+  },
+  "failure_records": {
+    "session_json_sha256": "c4037101214b3d9a801ae60705a9b2885e63bf47ab3480a3c1348ef1fe6f6ce8",
+    "setup_measurement_json_sha256": "71f13406d09101f031d0048ad20f5f15ac93d336308b42be03ce63af7cb5a366",
+    "runner_log_sha256": "9de01b037fe7a696ea2a4a09087569809133cc3fed203509fe77aee89f3c0924",
+    "exit_file_sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "client_state_sha256": "7f48eb2a80b0c2037a509ca0ad4dad18353eaa6d0c5fe68e7d0dd5595e20780a",
+    "slot_state_sha256": "0b8a959bb63f58abeab2e8e58dddd5fee4c2b731397529a0732b041ba4ce2c97",
+    "burned_authorization_sha256": [
+      "5e647b4e5e22646cd920cfa734d0f3bf56d7f0608aa6469dcefb3b513eda5e9c",
+      "2c30bf89a6e032b52971209495ba817a402535616305515c297bac90703209df"
+    ],
+    "temporary_wrapper_spill_bytes": 78383153576,
+    "wrapper_metadata_sha256": [
+      "ee652f5f5a0e123cccadeefae2d2664685aed7534faa52ce35baf84afaff3dcf",
+      "b124daf7d059fef50a965894ede6826a3c27084d944d6bb7dd151d47c9ed6739",
+      "f774a5812854fde376f650cdf6fe540da112ab61b6589c29b1348ebf176103fe",
+      "2aaf9cb8f68298563e0e14efd37f3b6c785de663d8cfca64f247106cdc272eb8"
+    ],
+    "artifact_files": 0
+  },
+  "diagnosis": {
+    "strict_c62_codec_selection_passed": true,
+    "cause": "the C6.2 codec appended the mandatory C62SRE1 trailer but reused the smaller historical C6/C6.1 fixed response allocation",
+    "strict_fix": "give C6.2 its own fixed 4500000-byte response frame while leaving the historical 2921744-byte frame unchanged",
+    "fallback_added": false,
+    "proof_relation_changed": false,
+    "cryptographic_parameters_changed": false,
+    "certificate_strict_max_bytes_changed": false
+  },
+  "measured_product_values": null,
+  "credit": false,
+  "disposition": "FAIL CLOSED BEFORE FIRST CERTIFICATE; R07 PATHS IMMUTABLE; CORRECT THE C6.2-ONLY RESPONSE FRAME AND USE A FRESH REPLACEMENT"
+}

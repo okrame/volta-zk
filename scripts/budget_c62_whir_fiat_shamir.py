@@ -36,6 +36,9 @@ C62_SETUP_BYTES = (
     + C62_CLIENT_PARAMETER_BYTES
     + C62_SETUP_MANIFEST_FRAMING_BYTES
 )
+# Exact byte count of the immutable 17-profile production bundle already
+# measured on the pod. C62_SETUP_BYTES remains the independent codec cap.
+C62_REGISTERED_SETUP_BYTES = 101_197_448
 
 C62_MODEL_CHAIN_MAX_BYTES = 1_172_652
 C62_EMBEDDING_CHAIN_MAX_BYTES = 1_085_464
@@ -50,7 +53,7 @@ C62_PUBLIC_ARGUMENT_MAX_BYTES = (
     + C62_ARITHMETIC_FRAME_BYTES
 )
 
-C62_RETAINED_NON_PCS_RESPONSE_BYTES = 2_921_744
+C62_RETAINED_NON_PCS_RESPONSE_BYTES = 4_500_000
 C62_CERTIFICATE_FRAMING_BYTES = 793
 C62_ENVELOPE_COMPONENTS = 7
 C62_ENVELOPE_FRAMING_BYTES = 324
@@ -79,7 +82,7 @@ C62_CERTIFICATE_CODEC_CEILING_BYTES = (
     + C62_PROOF_ENVELOPE_MAX_BYTES
 )
 C62_SETUP_PLUS_FIRST_CODEC_CEILING_BYTES = (
-    C62_SETUP_BYTES + C62_CERTIFICATE_CODEC_CEILING_BYTES
+    C62_REGISTERED_SETUP_BYTES + C62_CERTIFICATE_CODEC_CEILING_BYTES
 )
 
 C62_MAX_CHALLENGES = 131_072
@@ -200,6 +203,7 @@ def build_report() -> dict[str, Any]:
         },
         "setup": {
             "paired_pcg_bytes": c61.C6_PAIRED_PCG_BYTES,
+            "registered_setup_bytes": C62_REGISTERED_SETUP_BYTES,
             "compressed_client_parameter_payload_bytes": (
                 C62_COMPRESSED_CLIENT_PARAMETER_PAYLOAD_BYTES
             ),
@@ -261,10 +265,10 @@ def build_report() -> dict[str, Any]:
     assert C62_PUBLIC_ARGUMENT_MAX_BYTES == 9_210_864
     assert C62_PROOF_ENVELOPE_MAX_BYTES == 3_484_338
     assert C62_PI_FINAL_MAX_BYTES == 3_485_131
-    assert C62_CERTIFICATE_CODEC_CEILING_BYTES == 15_617_739
+    assert C62_CERTIFICATE_CODEC_CEILING_BYTES == 17_195_995
     assert C62_SETUP_BYTES == 141_882_261
-    assert C62_SETUP_PLUS_FIRST_CODEC_CEILING_BYTES == 157_500_000
-    assert report["gates"]["setup_plus_first"]["terminal_pass"]
+    assert C62_SETUP_PLUS_FIRST_CODEC_CEILING_BYTES == 118_393_443
+    assert report["gates"]["setup_plus_first"]["target_pass"]
     assert report["gates"]["certificate"]["target_pass"]
     assert report["gates"]["pi_final"]["target_pass"]
     assert report["soundness"]["gate_pass"]

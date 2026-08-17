@@ -10,16 +10,18 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Status and authorization.** C6.2 is `C62_R07_READY`. Standing owner GO
+- **Status and authorization.** C6.2 is `C62_R08_READY`. Standing owner GO
   authorizes one fresh replacement on new setup, work and session paths. r01
-  through r05 remain immutable; no selective retry is allowed.
-- **Failure and repair.** r06 passed the final-closure repair, then the shared
-  live-to-disk boundary called the historical C6.1 codec and rejected the
-  mandatory C62SRE1 extensions. Stable-softmax models now select the existing
-  strict C6.2 encoder/decoder; historical models retain the old codec. There
-  is no fallback and no proof, setup, correlation, parameter or byte change.
-- **Checks.** The focused source guard passes and the `volta-proto` c6-trace
-  build is clean. Corrected challenge/correlation censuses, 82.5878332608799
+  through r07 remain immutable; no selective retry is allowed.
+- **Failure and repair.** r07 passed strict codec selection, then failed before
+  sealing because its mandatory C62SRE1 trailer reused the smaller historical
+  response frame. C6.2 now has a separate **4,500,000-B** fixed frame; the
+  historical **2,921,744-B** frame is unchanged. The certificate maximum
+  remains **21,999,999 B**. No proof relation, cryptographic parameter, setup,
+  correlation schedule or fallback changes.
+- **Checks.** Both focused strict codec/certificate round trips pass. The
+  corrected component ceiling is **17,195,995 B** and registered setup plus
+  that ceiling is **118,393,443 B**. Corrected censuses, **82.5878332608799**
   soundness bits, production-PCG 4/4, runner 3/3 and same-pod CUDA 39/39 remain
   valid; full suites are not repeated.
 - **Preserved local evidence.** `C62JVR1`, `C62FS1`, `C62SGE1`, strict codecs,
@@ -28,10 +30,21 @@ This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 - **No product result.** No certificate has been sealed. No A100 prover time,
   consumer-CPU verifier time, proof size, session, or hardware gate receives
   credit. The comparison table remains unchanged.
-- **Resume.** Commit and export the narrow codec selection, rebuild only the
-  registered-feature record binary, copy and verify the deterministic setup,
-  then launch fresh r07 through measurement, preflight, proof, mutation and
+- **Resume.** Commit and export the C6.2-only frame repair, rebuild only the
+  registered-feature record binary, hash-copy the deterministic setup, then
+  launch fresh r08 through measurement, preflight, all 17 proofs, mutation and
   checksums. Do not repeat tests or setup generation.
+
+- **2026-08-17 — r07 exposes a C6.2-only response-frame accounting error.**
+  Clean pod source `0f29834` passed setup measurement, A100 preflight, the
+  corrected Fiat--Shamir bound, final-closure census and strict codec
+  selection. Its first proof produced the exact **78,383,153,576-B** wrapper
+  spill, then the mandatory C62SRE1 trailer exceeded the inherited
+  **2,921,744-B** historical response frame. Both authorizations are burned;
+  no artifact was sealed and no product value receives credit. C6.2 now uses
+  a distinct fixed **4,500,000-B** frame. Historical C6/C6.1 bytes and the
+  **21,999,999-B** certificate maximum remain unchanged. Raw evidence is
+  `benchmarks/results/c62-a100-session-failure-2026-08-17-0f29834-r07.json`.
 
 - **2026-08-17 — r03 passes the Fiat--Shamir repair and fails closed at the
   next exact census gate.** Clean pod source `e9300f8` reused the verified

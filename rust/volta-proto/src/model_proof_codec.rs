@@ -29,6 +29,10 @@ const RETAINED_VERSION: u16 = 1;
 const C62_RETAINED_MAGIC: &[u8] = b"C62RRP1\0";
 const C62_RETAINED_VERSION: u16 = 1;
 pub const C6_RETAINED_RESPONSE_BYTES: usize = 2_921_744;
+/// C6.2 carries the strict C62SRE1 trailer in addition to the historical
+/// model-proof grammar. Keep its allocation separate so historical C6/C6.1
+/// certificates remain byte-for-byte unchanged.
+pub const C62_RETAINED_RESPONSE_BYTES: usize = 4_500_000;
 const MAX_COLLECTION_ITEMS: usize = 1_000_000;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -504,11 +508,15 @@ impl C6RetainedResponseProof {
         for extension in extensions {
             extension.write(&mut out)?;
         }
-        let padding = C6_RETAINED_RESPONSE_BYTES
+        let padding = C62_RETAINED_RESPONSE_BYTES
             .checked_sub(out.0.len())
             .and_then(|remaining| remaining.checked_sub(32))
             .ok_or_else(|| {
-                ModelProofCodecError::new("C6.2 retained response exceeds its frozen allocation")
+                ModelProofCodecError::new(format!(
+                    "C6.2 retained response requires {} bytes before padding and digest; allocation is {} bytes",
+                    out.0.len(),
+                    C62_RETAINED_RESPONSE_BYTES,
+                ))
             })?;
         out.0.resize(out.0.len() + padding, 0);
         let digest = blake3::hash(&out.0);
@@ -518,9 +526,9 @@ impl C6RetainedResponseProof {
 
     pub fn decode_c62(bytes: &[u8]) -> Result<Self> {
         let frame = bytes
-            .get(..C6_RETAINED_RESPONSE_BYTES)
+            .get(..C62_RETAINED_RESPONSE_BYTES)
             .ok_or_else(|| ModelProofCodecError::new("truncated C6.2 retained response"))?;
-        if bytes.len() != C6_RETAINED_RESPONSE_BYTES {
+        if bytes.len() != C62_RETAINED_RESPONSE_BYTES {
             return Err(ModelProofCodecError::new("trailing C6.2 retained-response bytes"));
         }
         let mut input = Reader { bytes: frame, offset: 0 };
@@ -555,7 +563,7 @@ impl C6RetainedResponseProof {
             extensions.push(extension);
         }
         install_c62_extensions(&mut model, extensions)?;
-        let padding_len = C6_RETAINED_RESPONSE_BYTES
+        let padding_len = C62_RETAINED_RESPONSE_BYTES
             .checked_sub(input.offset)
             .and_then(|remaining| remaining.checked_sub(32))
             .ok_or_else(|| ModelProofCodecError::new("C6.2 retained framing overflows"))?;

@@ -1,6 +1,6 @@
 # C6.2 WHIR Fiat--Shamir Design
 
-Status: **OWNER GO / DESIGN AND LOCAL IMPLEMENTATION AUTHORIZED / NO POD**
+Status: **A100 PREFLIGHT CUDA BIT-EXACT FAIL / NO SESSION / NO RETRY**
 
 This document is the active design for C6.2. It has precedence over the
 interactive C6.1 sections in `c6-delta-residual-inline-design.md`. Frozen C6
@@ -413,3 +413,22 @@ does not claim that hardware check.
 `C62_POD_READY` is valid only after all local checks pass.
 That ledger entry must give exact create-new pod commands.
 No pod contact is permitted before that entry.
+
+## 0.18 First A100 attempt disposition
+
+The owner authorized one fresh execution of the recorded command on
+2026-08-17. Clean source `126dbe3` and hash-verified generated weights were
+installed on one NVIDIA A100-SXM4-80GB with CUDA 12.8. The runner built the
+`sm_80` backend and then failed its mandatory `volta-accel` gate at **37
+passed / 2 failed**.
+
+The attention proof-wire and protocol field-algebra CUDA results differed
+from their CPU references. The fail-closed runner stopped before setup
+generation. No setup or session root was created, and no certificate,
+provider time, verifier time, byte result, or product gate receives credit.
+No retry was performed.
+
+Resume requires code-level root-cause fixes for both exactness failures,
+complete local and A100 exactness checks at a new clean checkpoint, a ledger
+update, and a new explicit owner GO. This disposition changes no protocol
+parameter and does not authorize selective retry of the failed attempt.

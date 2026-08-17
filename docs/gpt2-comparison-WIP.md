@@ -1,5 +1,13 @@
 # GPT-2 real-weight — confronto CPU, A100, Ligero inline e storico X4
 
+> **C6.2 first real A100 E2E attempt — PRE-SESSION FAIL (2026-08-17).** The
+> single authorized run used clean source `126dbe3` on one
+> A100-SXM4-80GB. The mandatory CUDA gate passed 37 tests and failed two
+> bit-exact CPU/GPU checks. It stopped before setup generation. No retry was
+> performed. No certificate or production artifact exists, so there is no
+> valid C6.2 provider, prover, consumer-verifier, byte, or session value to add
+> to the main comparison table.
+
 > **Stato 2026-07-28 — documento WIP tracciato.** X4/X4d resta storico e
 > sospeso. C4 ha completato un pair A100 same-build pulito a `e99a1e5`:
 > l'anchor Ligero inline `rate=1/4,Q=120` passa tutti i gate; il candidato
@@ -23,6 +31,29 @@ il limite vincolante **1,30x**. Inoltre il rerun G1 appaiato è rosso perché
 La terza e la quarta colonna sono il pair C4 sullo stesso checkpoint, host,
 GPU, quota CPU e binary. Tutti i valori vengono dai due record raw validati e
 dal selettore paired, non da proiezioni.
+
+## C6.2 admission result
+
+| Field | First authorized C6.2 attempt |
+| --- | ---: |
+| Source | `126dbe3`, clean |
+| Provider hardware | NVIDIA A100-SXM4-80GB, 81,920 MiB, CUDA 12.8 |
+| Mandatory CUDA gate | **37 passed / 2 failed — FAIL** |
+| Setup generation | not started |
+| Production session | not started |
+| A100 prover value | not measured |
+| Consumer CPU verifier value | not measured |
+| Certificate and first exchange | not measured |
+| Retry | none; forbidden for this attempt |
+| Comparison credit | **none** |
+
+The failure is a CPU/GPU exactness mismatch in the attention proof wires and
+protocol field algebra. Adding a C6.2 column with local estimates would mix a
+failed hardware gate with measured product results, so the main table remains
+unchanged. The append-only incident record is
+`benchmarks/results/c62-a100-preflight-failure-2026-08-17-126dbe3.json`,
+SHA-256
+`9190621281ce5cb5b2c37d4b30bc945692405170fdc6203e58c3f3e4268f0d6e`.
 
 | Voce | CPU locale (4 thread) | A100 RunPod (8 worker Rayon) | C4 anchor A100 `1/4,Q=120` | C4 rate-8 A100 `1/8,Q=97` | A100 RunPod X4d.1 (8 response + 27 settlement worker) |
 | --- | ---: | ---: | ---: | ---: | ---: |

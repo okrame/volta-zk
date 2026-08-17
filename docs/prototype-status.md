@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 WHIR FIAT--SHAMIR — C62_POD_READY / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 WHIR FIAT--SHAMIR — A100 PREFLIGHT FAIL / NO SESSION / NO RETRY)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,26 +10,48 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Status and hard stop.** C6.2 is `C62_POD_READY`; the local
-  hardware-neutral package is complete. Do not contact or run a pod until
-  explicit owner GO. No terminal implementation stop is active.
-- **Relation.** `C62JVR1` binds secondary values to both response and compiler.
-  `C62FS1` derives every public challenge. `C62SGE1` proves the unsigned
-  softmax gap.
-- **Completed evidence.** Rust includes strict codecs, 17 exact setup profiles
-  in four capacity classes, disk verification, response abort, and the exact
-  17-accept plus 4-burn runner. Lean and `Audit.lean` pass 3,270 jobs.
-- **Checks.** The complete Rust workspace, golden checks, 55 feature tests,
-  three CUDA-package tests, local mutations, budget, and runner syntax pass.
-  Exact session use is 47,356,708 raw correlations per tape.
-- **Local measurement.** Client parameters are 24,454,209 B. Setup is
-  101,197,448 B. Setup plus the strict certificate ceiling is 123,197,447 B,
-  below 157,500,000 B.
-- **Credit.** All local values remain `credit:false`. There is no A100, CUDA,
-  proof-size, timing, production-session, or hardware credit.
-- **Resume.** After explicit owner GO, use the create-new commands below once.
-  The pod script starts with A100/CUDA preflight, then setup, proof session,
-  disk verification, and mutations. Selective retry remains forbidden.
+- **Status and hard stop.** C6.2 is
+  `C62_A100_PREFLIGHT_CUDA_BIT_EXACT_FAIL`. The one-run owner GO is consumed.
+  Do not retry or start another pod session.
+- **Failure evidence.** Clean source `126dbe3` ran on one A100-SXM4-80GB with
+  CUDA 12.8. The mandatory `volta-accel` gate passed 37 tests and failed two:
+  attention proof wires and protocol field algebra differed from CPU values.
+  The runner stopped before setup generation.
+- **Preserved local evidence.** `C62JVR1`, `C62FS1`, `C62SGE1`, strict codecs,
+  17 setup profiles, 17-accept plus 4-burn order, full Rust checks, golden
+  checks, and the 3,270-job Lean build remain local evidence only.
+- **No product result.** No setup or session directory exists. No certificate,
+  A100 prover time, consumer-CPU verifier time, proof size, session, or
+  hardware gate receives credit. The comparison table has no C6.2 column.
+- **Resume.** Requires a root-cause fix for both CUDA mismatches, complete
+  local and A100 exactness checks, a new clean checkpoint, ledger update, and
+  a new explicit owner GO. Selective retry of this attempt is forbidden.
+
+- **2026-08-17 — First C6.2 A100 E2E attempt fails closed before setup; no
+  retry.** The owner authorized one fresh run of the recorded
+  `C62_POD_READY` command. A minimal clean snapshot of
+  `126dbe3f245a72b2a1659917cdcbad5b8cf690ac` and the hash-verified generated
+  weights were installed on fresh RunPod instance `3474df32eb35`. Hardware
+  was one **NVIDIA A100-SXM4-80GB / 81,920 MiB**, driver **580.126.16**, CUDA
+  **12.8**, **2,003 GiB** RAM, and **128** logical AMD EPYC 7742 CPUs.
+
+  The detached runner built the `sm_80` CUDA backend, then stopped at its
+  mandatory first CUDA unit gate: **37 passed / 2 failed / 0 ignored**. In
+  `resident_attention_proof_wires_are_bit_exact`, GPU `[1]` differed from CPU
+  `[0]`. In `resident_protocol_field_algebra_is_bit_exact`, GPU
+  `Fp2(18446744069241587107,18446744069357865451)` differed from CPU
+  `Fp2(18446744069247403215,18446744069359648871)`. Runner-log SHA-256 is
+  `2abe67844c04068d7ca97a86a06ece473e582a287fb869877db133f9c6a05d53`.
+
+  Setup generation never started. The setup and session roots were never
+  created; the work root is empty. Therefore no certificate, proof bytes,
+  A100 prover wall, four-thread verifier wall, consumer-CPU verification, or
+  product gate was measured. No retry was attempted. Append-only incident
+  record `benchmarks/results/c62-a100-preflight-failure-2026-08-17-126dbe3.json`
+  has SHA-256
+  `9190621281ce5cb5b2c37d4b30bc945692405170fdc6203e58c3f3e4268f0d6e`.
+  The hard stop requires a code-level CUDA exactness fix and new owner GO; no
+  protocol parameter change or performance interpretation is permitted.
 
 - **2026-08-17 — C6.2 local package reaches `C62_POD_READY`; HARD STOP before
   pod.** Source checkpoint `126dbe3f245a72b2a1659917cdcbad5b8cf690ac`

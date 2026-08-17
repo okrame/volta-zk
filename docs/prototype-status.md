@@ -11,8 +11,9 @@ record; no external plan is authoritative.
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
 - **Status and authorization.** C6.2 is
-  `C62_POD_READY_CORRELATION_CENSUS_FIX` at clean source `d4fbae5`. The owner
-  authorizes exactly one new fresh optimized RunPod A100 E2E run.
+  `C62_POD_READY_CORRELATION_CENSUS_FIX` at clean pod source `e2d0e9e`
+  (equivalent local checkpoint `d4fbae5`). The owner authorizes exactly one
+  new fresh optimized RunPod A100 E2E run.
 - **Failure and repair.** Clean pod source `27a0f1d` completed all 17 setup
   profiles and preflight, then stopped during the first real proof with
   `pooled sub correlation underflow`; exit was 101. Both authorizations are
@@ -31,13 +32,13 @@ This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 - **No product result.** No certificate was sealed. No A100 prover time,
   consumer-CPU verifier time, proof size, session, or hardware gate receives
   credit. The comparison table remains unchanged.
-- **Resume.** Run the exact create-new command below once at `d4fbae5`; retain
+- **Resume.** Run the exact create-new command below once at `e2d0e9e`; retain
   any failure and stop. All earlier paths remain burned.
 
 - **2026-08-17 — Owner authorizes one optimized fresh run after exact
   correlation repair.** Clean source
-  `d4fbae5de106dbcc822284b68c5e8d98d2e2ca5b` contains the exact census fix and
-  a fail-closed optimized runner switch. It retains same-pod CUDA **39/39** and
+  `e2d0e9ee4e820ba45d262d56d56d9968322ad1b4` contains exactly the four-file
+  census/runner repair from local checkpoint `d4fbae5`. It retains same-pod CUDA **39/39** and
   corrected local production-PCG **4/4** plus runner **3/3** evidence instead
   of repeating those suites. It still rebuilds the CUDA library, creates all
   **17** fresh setup profiles, enforces live correlation census equality on
@@ -47,8 +48,8 @@ This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
   The owner explicitly authorizes exactly one new fresh E2E run. Use:
 
   ```sh
-  cd "$HOME/volta-zk-d4fbae5"
-  test "$(git rev-parse HEAD)" = "d4fbae5de106dbcc822284b68c5e8d98d2e2ca5b"
+  cd "$HOME/volta-zk-corrfix"
+  test "$(git rev-parse HEAD)" = "e2d0e9ee4e820ba45d262d56d56d9968322ad1b4"
   test -z "$(git status --porcelain=v1 --untracked-files=all)"
   export VOLTA_CLOUD_PROVIDER='RunPod'
   export VOLTA_CLOUD_INSTANCE_ID='3474df32eb35'
@@ -62,13 +63,13 @@ This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
   export VOLTA_CLOUD_VCPUS='128'
   export CUDA_VISIBLE_DEVICES='0'
   export C62_RETAIN_VALIDATED_GATES='same-pod-cuda-39-local-corr-4-runner-3-2026-08-17'
-  C62_SHA='d4fbae5de106dbcc822284b68c5e8d98d2e2ca5b'
+  C62_SHA='e2d0e9ee4e820ba45d262d56d56d9968322ad1b4'
   test ! -e "$HOME/c62-work-$C62_SHA"
   test ! -e "$HOME/c62-setup-$C62_SHA"
   test ! -e "$HOME/c62-session-$C62_SHA"
   mkdir "$HOME/c62-work-$C62_SHA"
   scripts/run_c62_pod_e2e.sh \
-    "$HOME/volta-zk-d4fbae5/benchmarks/weights" \
+    "$HOME/volta-zk-corrfix/benchmarks/weights" \
     "$HOME/c62-setup-$C62_SHA" \
     "$HOME/c62-work-$C62_SHA" \
     "$HOME/c62-session-$C62_SHA"

@@ -527,7 +527,8 @@ an updated ledger, and another explicit owner GO.
 ## 0.23 Optimized renewed authorization
 
 The owner explicitly authorizes one fresh run at clean checkpoint
-`d4fbae5de106dbcc822284b68c5e8d98d2e2ca5b`. The optimized runner retains the
+`e2d0e9ee4e820ba45d262d56d56d9968322ad1b4`, the clean pod-side equivalent of
+local checkpoint `d4fbae5de106dbcc822284b68c5e8d98d2e2ca5b`. The optimized runner retains the
 unchanged same-pod CUDA 39/39 result and the post-fix local production-PCG 4/4
 and runner 3/3 results. This avoids repeating test suites, but it does not skip
 any measured E2E stage: CUDA is rebuilt, all 17 setup profiles are created

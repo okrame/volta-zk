@@ -537,3 +537,14 @@ complete proving, mutation, and checksums all run normally.
 
 The run must use the create-new paths and exact command in the active ledger.
 Any failure consumes this authorization and is terminal for that session.
+
+## 0.24 Optimized launch guard disposition
+
+The authorized optimized command exited 2 at the source-clean guard before
+setup, preflight, PCG allocation, or response authorization. A cache reuse
+copy created the unexpected nested path `benchmarks/weights/weights`. It was
+removed and clean pod checkpoint `e2d0e9e` is restored. The failed work path
+and log are preserved; no product or component credit was produced.
+
+The one-run GO is consumed. A replacement launch needs new create-new paths,
+an updated ledger, and another explicit owner GO.

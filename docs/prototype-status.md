@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 WHIR FIAT--SHAMIR — CORRELATION CENSUS FIX / ONE OPTIMIZED FRESH RUN AUTHORIZED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 WHIR FIAT--SHAMIR — OPTIMIZED LAUNCH GUARD FAIL / NO SESSION / NO RUN AUTHORIZED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,9 +11,8 @@ record; no external plan is authoritative.
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
 - **Status and authorization.** C6.2 is
-  `C62_POD_READY_CORRELATION_CENSUS_FIX` at clean pod source `e2d0e9e`
-  (equivalent local checkpoint `d4fbae5`). The owner authorizes exactly one
-  new fresh optimized RunPod A100 E2E run.
+  `C62_OPTIMIZED_LAUNCH_GUARD_FAIL` at clean pod source `e2d0e9e`. The
+  one-run GO is consumed; no replacement launch is authorized.
 - **Failure and repair.** Clean pod source `27a0f1d` completed all 17 setup
   profiles and preflight, then stopped during the first real proof with
   `pooled sub correlation underflow`; exit was 101. Both authorizations are
@@ -32,8 +31,21 @@ This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 - **No product result.** No certificate was sealed. No A100 prover time,
   consumer-CPU verifier time, proof size, session, or hardware gate receives
   credit. The comparison table remains unchanged.
-- **Resume.** Run the exact create-new command below once at `e2d0e9e`; retain
-  any failure and stop. All earlier paths remain burned.
+- **Resume.** Preserve the failed work path and log. Record new create-new
+  paths and obtain explicit owner GO for one replacement launch.
+
+- **2026-08-17 — Optimized launch stops at the source-clean guard; no E2E
+  session started.** The recorded command at clean checkpoint `e2d0e9e` found
+  an accidental nested `benchmarks/weights/weights` cache copy and exited **2**
+  before setup creation, preflight, PCG allocation, or response authorization.
+  No setup/session path, certificate, correlation use, or product measurement
+  exists. The **46-B** log SHA-256 is
+  `547c695636efb359a6680066cfdc4631eec13ccd2b4147a30ec28e3998876e75`.
+  The accidental nested copy was removed and the source checkpoint is clean;
+  the failed work path and log remain preserved.
+
+  The one-run GO is consumed and no retry was attempted. A replacement launch
+  requires new create-new paths, a ledger update, and explicit owner GO.
 
 - **2026-08-17 — Owner authorizes one optimized fresh run after exact
   correlation repair.** Clean source

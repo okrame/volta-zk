@@ -523,3 +523,16 @@ pass 4/4, runner tests pass 3/3, and the corrected genesis setup census passes.
 The failed roots are immutable. A fresh provider session requires a clean
 repair checkpoint, narrow pod census/readiness checks, new create-new paths,
 an updated ledger, and another explicit owner GO.
+
+## 0.23 Optimized renewed authorization
+
+The owner explicitly authorizes one fresh run at clean checkpoint
+`d4fbae5de106dbcc822284b68c5e8d98d2e2ca5b`. The optimized runner retains the
+unchanged same-pod CUDA 39/39 result and the post-fix local production-PCG 4/4
+and runner 3/3 results. This avoids repeating test suites, but it does not skip
+any measured E2E stage: CUDA is rebuilt, all 17 setup profiles are created
+fresh with the new exact census guard, and setup measurement, preflight,
+complete proving, mutation, and checksums all run normally.
+
+The run must use the create-new paths and exact command in the active ledger.
+Any failure consumes this authorization and is terminal for that session.

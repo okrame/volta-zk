@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 WHIR FIAT--SHAMIR — THIRD SESSION FAIL-CLOSED / CORRELATION CENSUS FIX LOCAL / NO RUN AUTHORIZED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 WHIR FIAT--SHAMIR — CORRELATION CENSUS FIX / ONE OPTIMIZED FRESH RUN AUTHORIZED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,8 +11,8 @@ record; no external plan is authoritative.
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
 - **Status and authorization.** C6.2 is
-  `C62_CORRELATION_CENSUS_FIX_LOCAL_PASS`. The third one-run GO is consumed.
-  No new provider run or retry is authorized.
+  `C62_POD_READY_CORRELATION_CENSUS_FIX` at clean source `d4fbae5`. The owner
+  authorizes exactly one new fresh optimized RunPod A100 E2E run.
 - **Failure and repair.** Clean pod source `27a0f1d` completed all 17 setup
   profiles and preflight, then stopped during the first real proof with
   `pooled sub correlation underflow`; exit was 101. Both authorizations are
@@ -23,16 +23,58 @@ This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
   207,554)`. Setup generation now fails on any future census drift.
 - **Checks.** Exact four-class counters match both roles. The corrected
   genesis setup check passes, production-PCG tests pass 4/4, and runner tests
-  pass 3/3 with one explicit production-input test ignored.
+  pass 3/3. The optimized runner retains these and unchanged same-pod CUDA
+  39/39, but still rebuilds CUDA and regenerates all 17 guarded profiles.
 - **Preserved local evidence.** `C62JVR1`, `C62FS1`, `C62SGE1`, strict codecs,
   17 setup profiles, 17-accept plus 4-burn order, full Rust checks, golden
   checks, and the 3,270-job Lean build remain local evidence only.
 - **No product result.** No certificate was sealed. No A100 prover time,
   consumer-CPU verifier time, proof size, session, or hardware gate receives
   credit. The comparison table remains unchanged.
-- **Resume.** Preserve the `27a0f1d` roots. Create a clean repair checkpoint,
-  run the narrow pod census/readiness checks, record new create-new paths, and
-  obtain another explicit owner GO before any fresh E2E session.
+- **Resume.** Run the exact create-new command below once at `d4fbae5`; retain
+  any failure and stop. All earlier paths remain burned.
+
+- **2026-08-17 — Owner authorizes one optimized fresh run after exact
+  correlation repair.** Clean source
+  `d4fbae5de106dbcc822284b68c5e8d98d2e2ca5b` contains the exact census fix and
+  a fail-closed optimized runner switch. It retains same-pod CUDA **39/39** and
+  corrected local production-PCG **4/4** plus runner **3/3** evidence instead
+  of repeating those suites. It still rebuilds the CUDA library, creates all
+  **17** fresh setup profiles, enforces live correlation census equality on
+  both roles, and runs setup measurement, A100 preflight, the complete proof
+  session, mutations, and checksums.
+
+  The owner explicitly authorizes exactly one new fresh E2E run. Use:
+
+  ```sh
+  cd "$HOME/volta-zk-d4fbae5"
+  test "$(git rev-parse HEAD)" = "d4fbae5de106dbcc822284b68c5e8d98d2e2ca5b"
+  test -z "$(git status --porcelain=v1 --untracked-files=all)"
+  export VOLTA_CLOUD_PROVIDER='RunPod'
+  export VOLTA_CLOUD_INSTANCE_ID='3474df32eb35'
+  export VOLTA_CLOUD_REGION='not-exposed-by-pod'
+  export VOLTA_CLOUD_IMAGE='Ubuntu 24.04.3 LTS / RunPod CUDA 12.8'
+  export VOLTA_CLOUD_DRIVER_VERSION='580.126.16'
+  export VOLTA_CLOUD_CUDA_VERSION='12.8'
+  export VOLTA_CLOUD_GPU_SKU='NVIDIA A100-SXM4-80GB'
+  export VOLTA_CLOUD_CPU_MODEL='AMD EPYC 7742 64-Core Processor'
+  export VOLTA_CLOUD_RAM_GIB='2003'
+  export VOLTA_CLOUD_VCPUS='128'
+  export CUDA_VISIBLE_DEVICES='0'
+  export C62_RETAIN_VALIDATED_GATES='same-pod-cuda-39-local-corr-4-runner-3-2026-08-17'
+  C62_SHA='d4fbae5de106dbcc822284b68c5e8d98d2e2ca5b'
+  test ! -e "$HOME/c62-work-$C62_SHA"
+  test ! -e "$HOME/c62-setup-$C62_SHA"
+  test ! -e "$HOME/c62-session-$C62_SHA"
+  mkdir "$HOME/c62-work-$C62_SHA"
+  scripts/run_c62_pod_e2e.sh \
+    "$HOME/volta-zk-d4fbae5/benchmarks/weights" \
+    "$HOME/c62-setup-$C62_SHA" \
+    "$HOME/c62-work-$C62_SHA" \
+    "$HOME/c62-session-$C62_SHA"
+  ```
+
+  Any failure is retained and reported. No retry is implied.
 
 - **2026-08-17 — Third authorized C6.2 A100 run fails closed on a stale
   correlation census; exact local fix passes; no retry.** Clean pod source

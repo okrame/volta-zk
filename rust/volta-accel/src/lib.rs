@@ -18,7 +18,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 36;
+pub const CUDA_ABI_VERSION: u32 = 37;
 pub const OPERATION_COUNT: usize = 7;
 pub const DEFERRED_TIMING_CAPACITY: usize = 512;
 
@@ -10080,7 +10080,7 @@ mod cuda_tests {
         let mut exp_outputs = vec![2i16; heads * per_head];
         let mut denoms = vec![0i64; heads * query_rows];
         let mut recips = vec![0i16; heads * query_rows];
-        let softmax_weights = vec![0i16; heads * per_head];
+        let mut softmax_weights = vec![0i16; heads * per_head];
         for h in 0..heads {
             for i in 0..query_rows {
                 let start = h * per_head + i * (i + 1) / 2;
@@ -10111,6 +10111,17 @@ mod cuda_tests {
         }
         for (index, &denom) in denoms.iter().enumerate() {
             recips[index] = recip_lut[(denom >> recip_den_shift) as usize];
+        }
+        for h in 0..heads {
+            for i in 0..query_rows {
+                let start = h * per_head + i * (i + 1) / 2;
+                let recip = i64::from(recips[h * query_rows + i]);
+                for j in 0..=i {
+                    let packed = start + j;
+                    softmax_weights[packed] =
+                        ((i64::from(exp_outputs[packed]) * recip + 8) >> shift_norm) as i16;
+                }
+            }
         }
         let mut qkv_acc = vec![0i64; query_rows * 3 * d];
         for i in 0..query_rows {
@@ -10209,8 +10220,9 @@ mod cuda_tests {
                             gap = i64::from(row_shifts[h * query_rows + i]) - score_value;
                             score_rem = scores_acc[packed] + 8 - (raw_score << 4);
                             exp_value = 2;
-                            weight = 0;
-                            norm_rem = 14;
+                            weight = i64::from(softmax_weights[packed]);
+                            norm_rem = exp_value * i64::from(recips[h * query_rows + i]) + 8
+                                - (weight << shift_norm);
                             is_max = i64::from(
                                 gap == 0
                                     && (0..j).all(|prior| {

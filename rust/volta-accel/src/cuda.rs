@@ -948,8 +948,10 @@ type Fp2AffineEqWeightsInplaceDevice = unsafe extern "C" fn(
     u64,
     usize,
     usize,
-    Fp2Repr,
-    Fp2Repr,
+    u64,
+    u64,
+    u64,
+    u64,
 ) -> c_int;
 type HashTreeDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, usize, usize, u64, usize) -> c_int;
@@ -4573,8 +4575,10 @@ impl CudaContext {
                 point,
                 point_offset,
                 point_len,
-                rho,
-                gamma,
+                rho.c0,
+                rho.c1,
+                gamma.c0,
+                gamma.c1,
             )
         })
     }

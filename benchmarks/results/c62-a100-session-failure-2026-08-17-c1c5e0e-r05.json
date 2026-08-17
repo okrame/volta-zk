@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "milestone": "C6.2 replacement r05 RunPod A100 E2E attempt",
+  "date": "2026-08-17",
+  "run_id": "c1c5e0e357dc9af11b21fda748d6285c74dafc6a-r05",
+  "source_git_sha": "c1c5e0e357dc9af11b21fda748d6285c74dafc6a",
+  "source_git_dirty": false,
+  "authorization": {
+    "owner_go": true,
+    "standing_create_new_go": true,
+    "selective_retry_performed": false
+  },
+  "runner": {
+    "started_utc": "2026-08-17T22:09:17.992069826Z",
+    "failed_utc": "2026-08-17T22:20:42.979478137Z",
+    "exit_code": 1,
+    "failed_stage": "first certificate proof after wrapper spill and before artifact sealing",
+    "error": "C6SPR12 exact provider claim/closure census changed: actual triples=28948 closures=673 zero_roots=10909 weight_claims=96 embed_claims=6; installed triples=29620 closures=673 zero_roots=10909",
+    "production_session_started": true,
+    "certificates_sealed": 0,
+    "both_response_authorizations_burned": true
+  },
+  "setup": {
+    "profiles_reused": 17,
+    "setup_tree_sha256": "e731144f5658cf86de8dff7315752e3eb21c0f6557ff11507fdd92ec705e8be8",
+    "setup_bytes": 101197448,
+    "pass": true,
+    "credit": false
+  },
+  "preflight": {
+    "record_sha256": "b561df5a6313a9590a4d903ddb3eb0e8b9c4a150911ffcd4b0236034b7a59e7f",
+    "available_spill_bytes": 199223709696,
+    "cuda_backend_initialized": true,
+    "a100_present": true,
+    "pass": true,
+    "credit": false
+  },
+  "failure_records": {
+    "session_json_sha256": "14ead2575054883a14053f881266fedacfa76ee57599bf80c28133a94022db10",
+    "setup_measurement_json_sha256": "71f13406d09101f031d0048ad20f5f15ac93d336308b42be03ce63af7cb5a366",
+    "runner_log_sha256": "fe44b84af6dfd6403a3a531ef29614e426108681c583a41220a92b54888b5783",
+    "exit_file_sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "client_state_sha256": "ba2b61548b7043d46bfb2af200b7105baa8a19c16324b6079d52dcc5bcbaaa93",
+    "slot_state_sha256": "97bc1756d4403e516d8293b54137cc4c111cd2a04a5b34715649859787ae6aef",
+    "burned_authorization_sha256": [
+      "db6311c66d62dec3e93888cd1deb0af3f87c3a981a1bf72d10d7bfab6fdda331",
+      "613cbc1174e68f6a6009e6185d3580b70f4ccf2ece2273b276297047b54f53dd"
+    ],
+    "temporary_wrapper_spill_bytes": 78383153576,
+    "wrapper_metadata_sha256": [
+      "ec826640c146630a31945152d7f6ebda1728eb112cf779f06b3e089e67e00561",
+      "27c89a34edcb6320dd50a936406f78c3cf62f759c53fbec0ac5abcdd0db849a8",
+      "c4ba13d1e9f543ed16f34610b1aa5f921022ef3ce4997bc4c4339cdcaa98e462",
+      "10e59be4787b8c6408edc3a763ef692805401ddaa63e8e0cb57697bfe97c497d"
+    ],
+    "artifact_files": 0
+  },
+  "diagnosis": {
+    "actual_final_batch_product_triples": 28948,
+    "installed_total_product_triples": 29620,
+    "installed_product_closures": 673,
+    "difference": 672,
+    "identity": "29620 = 28948 final batch triples + 672 earlier one-triple closures",
+    "cause": "the live check compared the final batch length with the installed all-closure total",
+    "strict_fix": "compare the final live batch with the final installed closure and keep the separately checked full closure and total topology census"
+  },
+  "measured_product_values": null,
+  "credit": false,
+  "disposition": "FAIL CLOSED BEFORE FIRST CERTIFICATE; R05 PATHS IMMUTABLE; FIX THE CENSUS LEVEL WITHOUT CHANGING THE PROOF OR INSTALLED TOPOLOGY; FRESH REPLACEMENT REQUIRED"
+}

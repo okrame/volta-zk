@@ -987,7 +987,13 @@ fn replay_c6_production_response_verifier(
     ) {
         return Err("C6.1 disk verifier ProductClosure batch rejected".to_owned());
     }
-    if product_keys.len() as u64 != installed_plan.topology().product_triple_count
+    let installed_final_product_triples = installed_plan
+        .products()
+        .last()
+        .ok_or_else(|| "C6.2 disk verifier installed product closures are empty".to_owned())?
+        .triples()
+        .len();
+    if product_keys.len() != installed_final_product_triples
         || zero_roots.len() as u32 != installed_plan.topology().zero_root_count
         || output.weight_keys.len() != 96
         || output.embed_keys.len() != 6
@@ -1024,7 +1030,7 @@ fn replay_c6_production_response_verifier(
         product_mask_sources,
     )
     .map_err(|error| error.to_string())?;
-    if product_messages.len() as u32 != installed_plan.topology().product_closure_count {
+    if product_messages.len() != installed_plan.products().len() {
         return Err("C6.2 disk verifier ProductClosure message census changed".to_owned());
     }
     Ok(C6T1ProductionResponseVerifierReplay {
@@ -1283,21 +1289,28 @@ fn prove_c6_production_response_provider(
             runtime,
         )
     };
-    if products.len() as u64 != installed_plan.topology().product_triple_count
-        || product_messages.len() as u32 != installed_plan.topology().product_closure_count
+    let installed_final_product_triples = installed_plan
+        .products()
+        .last()
+        .ok_or_else(|| "C6SPR12 installed product closures are empty".to_owned())?
+        .triples()
+        .len();
+    if products.len() != installed_final_product_triples
+        || product_messages.len() != installed_plan.products().len()
         || prover_zero_roots.len() as u32 != installed_plan.topology().zero_root_count
         || prover_output.weight_claims.len() != 96
         || prover_output.embed_claims.len() != 6
     {
         return Err(format!(
-            "C6SPR12 exact provider claim/closure census changed: actual triples={} closures={} zero_roots={} weight_claims={} embed_claims={}; installed triples={} closures={} zero_roots={}",
+            "C6SPR12 exact provider claim/closure census changed: actual final_triples={} closures={} zero_roots={} weight_claims={} embed_claims={}; installed final_triples={} total_triples={} closures={} zero_roots={}",
             products.len(),
             product_messages.len(),
             prover_zero_roots.len(),
             prover_output.weight_claims.len(),
             prover_output.embed_claims.len(),
+            installed_final_product_triples,
             installed_plan.topology().product_triple_count,
-            installed_plan.topology().product_closure_count,
+            installed_plan.products().len(),
             installed_plan.topology().zero_root_count,
         ));
     }
@@ -2340,6 +2353,25 @@ mod transcript_tests {
         ] {
             assert!(!signature.contains(forbidden), "provider signature contains {forbidden}");
         }
+    }
+
+    #[test]
+    fn live_product_census_uses_the_final_installed_closure() {
+        let source = include_str!("c6_response_fixture.rs");
+        assert_eq!(source.matches("installed_final_product_triples").count(), 6);
+        assert_eq!(source.matches(".products()\n        .last()").count(), 2);
+        let stale_prover = [
+            "products.len() as u64 != installed_plan.topology()",
+            ".product_triple_count",
+        ]
+        .concat();
+        let stale_verifier = [
+            "product_keys.len() as u64 != installed_plan.topology()",
+            ".product_triple_count",
+        ]
+        .concat();
+        assert!(!source.contains(&stale_prover));
+        assert!(!source.contains(&stale_verifier));
     }
 
     #[test]

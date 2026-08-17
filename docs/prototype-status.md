@@ -10,32 +10,29 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Status and authorization.** C6.2 is diagnosing the fail-closed r03 census
-  mismatch at clean pod source `e9300f8`. Standing owner GO authorizes only a
-  fresh replacement on new setup, work and session paths after the mismatch is
-  reported exactly; r03 cannot be reused.
-- **Failure and repair.** r02 passed the former correlation-underflow point,
-  then exited 101 before sealing an artifact. Exact bounded replay proves the
-  causal zero was the fallback after the stale 65,536 challenge cap. Complete
-  prover/verifier counts are 94,864 genesis, 81,875 continuation-256, 84,107
-  continuation-512 and 86,435 continuation-1024. The cap is corrected to
-  131,072; the fixed proof schedule, bytes, correlations and relation do not
-  change.
-- **Checks.** All four mock challenge and correlation censuses match both
-  roles. The corrected bounded genesis replay passes. The budget is
-  82.5878332608799 bits/certificate. Production-PCG 4/4, runner 3/3 and
-  same-pod CUDA 39/39 remain valid.
+- **Status and authorization.** C6.2 is `C62_R06_READY`. Standing owner GO
+  authorizes one fresh replacement on new setup, work and session paths. r01
+  through r05 remain immutable; no selective retry is allowed.
+- **Failure and repair.** r05 exposed **28,948** triples in the final live
+  product batch versus **29,620** across all **673** installed closures. The
+  **672** difference is the preceding 672 one-triple closures. Provider and
+  disk-verifier checks now compare the final batch with the final installed
+  closure, while full installed-plan validation remains unchanged. The repair
+  changes no proof, setup, transcript, correlations, parameters or bytes.
+- **Checks.** The focused source guard passes and the `volta-proto` c6-trace
+  build is clean. Corrected challenge/correlation censuses, 82.5878332608799
+  soundness bits, production-PCG 4/4, runner 3/3 and same-pod CUDA 39/39 remain
+  valid; full suites are not repeated.
 - **Preserved local evidence.** `C62JVR1`, `C62FS1`, `C62SGE1`, strict codecs,
   17 setup profiles, 17-accept plus 4-burn order, full Rust checks, golden
   checks, and the 3,270-job Lean build remain local evidence only.
-- **No product result.** r03 passed the corrected challenge bound but failed
-  the next exact provider census check. No certificate was sealed. No A100 prover time,
+- **No product result.** No certificate has been sealed. No A100 prover time,
   consumer-CPU verifier time, proof size, session, or hardware gate receives
   credit. The comparison table remains unchanged.
-- **Resume.** Preserve r03 and report actual versus installed claim/closure
-  counts without weakening the equality. Diagnose with the narrowest path,
-  then launch only a create-new replacement. Do not repeat full tests or setup
-  generation.
+- **Resume.** Commit and export the narrow census repair, rebuild only the
+  registered-feature record binary, copy and verify the deterministic setup,
+  then launch fresh r06 through measurement, preflight, proof, mutation and
+  checksums. Do not repeat tests or setup generation.
 
 - **2026-08-17 — r03 passes the Fiat--Shamir repair and fails closed at the
   next exact census gate.** Clean pod source `e9300f8` reused the verified
@@ -59,6 +56,20 @@ This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
   `benchmarks/results/c62-a100-presession-failure-2026-08-17-c1c5e0e-r04.json`.
   Rebuild only that binary with the registered features and use fresh r05
   paths; do not repeat tests or setup generation.
+
+- **2026-08-17 — r05 identifies a final-batch versus all-closures accounting
+  bug.** The registered-feature binary passed preflight and reproduced the
+  first proof through its exact **78,383,153,576 B** spill. The strict census
+  reported **28,948** triples in the live final batch versus **29,620** across
+  the complete installed plan, with **673** closures and all other counts
+  equal. The **672** difference is exactly the preceding 672 one-triple
+  closures: `29,620 = 28,948 + 672`. The check compared two different census
+  levels. The strict repair compares the final live batch with the final
+  installed closure; the complete installed topology total and every closure
+  remain checked elsewhere. It changes no proof, setup, parameter,
+  correlation or byte. Both r05 authorizations are burned, no artifact was
+  sealed, and no product value receives credit. Raw evidence is
+  `benchmarks/results/c62-a100-session-failure-2026-08-17-c1c5e0e-r05.json`.
 
 - **2026-08-17 — Corrected bounded genesis replay passes; r03 authorized.**
   Clean pod checkpoint `e9300f82fb40104349f31380d9ccc4e2341c0358`

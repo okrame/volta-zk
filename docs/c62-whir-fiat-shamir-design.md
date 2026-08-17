@@ -614,3 +614,22 @@ The bounded replay passed at clean pod checkpoint `e9300f8`. Both roles used
 the exact genesis correlation census and registered topology, and C62FS1
 completed without an error. Standing owner GO now authorizes fresh r03 paths
 with a verified copy of the existing deterministic 17-profile setup.
+
+## 0.29 Exact ProductClosure census level
+
+r03 passed the corrected Fiat--Shamir bound and then stopped at the next
+strict provider census check. r04 stopped before preflight because a narrow
+diagnostic rebuild omitted the registered production features; it consumed no
+authorization. The corrected r05 feature build exposed the exact values:
+**28,948** triples in the final live product batch, **29,620** triples across
+the complete installed plan, and **673** installed closures. All closure,
+zero-root and 96/6 native-claim counts match.
+
+The installed total contains 672 earlier one-triple closures plus the final
+28,948-triple batch. The old live check incorrectly compared that final batch
+with the all-closure total. The provider and disk verifier must instead compare
+the final live batch with the final installed closure. They continue to check
+the complete closure count, while installed-plan decoding continues to bind
+and validate all **29,620** triples. This is an accounting-level repair. It
+does not change the proof, operation plan, setup, transcript, correlation
+schedule, certificate format, byte gates, or protocol statement.

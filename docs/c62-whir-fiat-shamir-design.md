@@ -432,3 +432,24 @@ Resume requires code-level root-cause fixes for both exactness failures,
 complete local and A100 exactness checks at a new clean checkpoint, a ledger
 update, and a new explicit owner GO. This disposition changes no protocol
 parameter and does not authorize selective retry of the failed attempt.
+
+## 0.19 CUDA exactness repair and renewed pod readiness
+
+Clean checkpoint `3d70c5bd5b06a97bedd0d40d230e1de0f7b5edcd`
+closes both first-attempt failures. The attention CUDA kernel was correct, but
+its bit-exact test supplied invalid zero softmax weights. The fixture now
+derives the required rounded weights and residuals. The affine Fp2 CUDA FFI
+passed two 128-bit structs by value, which the x86-64 boundary decoded
+incorrectly. It now passes four explicit `u64` limbs and reconstructs the two
+Fp2 values in C++. The CUDA ABI advances from 36 to 37.
+
+The two focused A100 regressions pass **1/1** each. The complete A100
+`volta-accel --features cuda` gate passes **39/39**. The full local workspace,
+the C6.2 library target (**55/55**), and the runner target (**3/3**) pass. This
+repair changes no statement, relation, protocol parameter, certificate byte,
+correlation count, or security calculation.
+
+The owner explicitly authorizes one new fresh E2E run. It must use the exact
+create-new command and roots recorded in the active ledger capsule. The failed
+`126dbe3` roots remain burned. A failed new session is terminal and requires
+another explicit owner GO; selective retry remains forbidden.

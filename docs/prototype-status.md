@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 WHIR FIAT--SHAMIR — A100 PREFLIGHT FAIL / NO SESSION / NO RETRY)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 WHIR FIAT--SHAMIR — CUDA REPAIR PASS / ONE FRESH RUN AUTHORIZED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,22 +10,76 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Status and hard stop.** C6.2 is
-  `C62_A100_PREFLIGHT_CUDA_BIT_EXACT_FAIL`. The one-run owner GO is consumed.
-  Do not retry or start another pod session.
-- **Failure evidence.** Clean source `126dbe3` ran on one A100-SXM4-80GB with
-  CUDA 12.8. The mandatory `volta-accel` gate passed 37 tests and failed two:
-  attention proof wires and protocol field algebra differed from CPU values.
-  The runner stopped before setup generation.
+- **Status and authorization.** C6.2 is `C62_POD_READY_AFTER_CUDA_REPAIR` at
+  clean source `3d70c5b`. The owner explicitly authorizes exactly one fresh
+  RunPod A100 E2E run. The failed `126dbe3` paths remain burned; no selective
+  retry is authorized.
+- **Repair evidence.** The attention test now builds a valid rounded softmax
+  witness. The Fp2 affine CUDA FFI now passes four explicit `u64` limbs; CUDA
+  ABI is 37. Focused A100 checks pass 1/1 and 1/1, and the full A100 gate
+  passes 39/39. The full local workspace, 55 C6.2 library tests, and 3 runner
+  tests pass. Protocol parameters, wire bytes, and security values are
+  unchanged.
 - **Preserved local evidence.** `C62JVR1`, `C62FS1`, `C62SGE1`, strict codecs,
   17 setup profiles, 17-accept plus 4-burn order, full Rust checks, golden
   checks, and the 3,270-job Lean build remain local evidence only.
 - **No product result.** No setup or session directory exists. No certificate,
   A100 prover time, consumer-CPU verifier time, proof size, session, or
   hardware gate receives credit. The comparison table has no C6.2 column.
-- **Resume.** Requires a root-cause fix for both CUDA mismatches, complete
-  local and A100 exactness checks, a new clean checkpoint, ledger update, and
-  a new explicit owner GO. Selective retry of this attempt is forbidden.
+- **Resume.** Run the exact create-new command below once on pod
+  `3474df32eb35`, using new roots keyed by `3d70c5b`. Preserve any failure and
+  stop; another attempt requires a separate owner GO.
+
+- **2026-08-17 — C6.2 CUDA repair passes locally and on A100; one fresh E2E
+  run authorized.** Clean source
+  `3d70c5bd5b06a97bedd0d40d230e1de0f7b5edcd` fixes both failed preflight
+  checks without changing protocol parameters. The attention fixture now
+  derives the same rounded softmax weights required by the production
+  relation. The Fp2 affine equality FFI passes four explicit 64-bit limbs
+  instead of two by-value 128-bit structs; CUDA ABI is now 37.
+
+  On the authorized A100-SXM4-80GB, each focused regression passes **1/1**
+  and the complete `volta-accel --features cuda` gate passes **39/39**. The
+  local complete workspace passes, followed by **55/55** C6.2 library tests
+  and **3/3** runner tests. The local persistent service exited successfully;
+  peak memory was **7.6 GB**. Existing Lean, setup, budget, codec, and golden
+  evidence is unchanged.
+
+  The owner explicitly authorized exactly one new create-new RunPod A100 E2E
+  run after this repair. The old `126dbe3` work/setup/session roots are burned
+  and must not be reused. On pod `3474df32eb35`, install a clean snapshot of
+  the source checkpoint and verified generated weights, then run exactly:
+
+  ```sh
+  cd "$HOME/volta-zk-3d70c5b"
+  test "$(git rev-parse HEAD)" = "3d70c5bd5b06a97bedd0d40d230e1de0f7b5edcd"
+  test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+  export VOLTA_CLOUD_PROVIDER='RunPod'
+  export VOLTA_CLOUD_INSTANCE_ID='3474df32eb35'
+  export VOLTA_CLOUD_REGION='not-exposed-by-pod'
+  export VOLTA_CLOUD_IMAGE='Ubuntu 24.04.3 LTS / RunPod CUDA 12.8'
+  export VOLTA_CLOUD_DRIVER_VERSION='580.126.16'
+  export VOLTA_CLOUD_CUDA_VERSION='12.8'
+  export VOLTA_CLOUD_GPU_SKU='NVIDIA A100-SXM4-80GB'
+  export VOLTA_CLOUD_CPU_MODEL='AMD EPYC 7742 64-Core Processor'
+  export VOLTA_CLOUD_RAM_GIB='2003'
+  export VOLTA_CLOUD_VCPUS='128'
+  export CUDA_VISIBLE_DEVICES='0'
+
+  C62_SHA='3d70c5bd5b06a97bedd0d40d230e1de0f7b5edcd'
+  test ! -e "$HOME/c62-work-$C62_SHA"
+  test ! -e "$HOME/c62-setup-$C62_SHA"
+  test ! -e "$HOME/c62-session-$C62_SHA"
+  mkdir "$HOME/c62-work-$C62_SHA"
+  scripts/run_c62_pod_e2e.sh \
+    "$HOME/volta-zk-3d70c5b/benchmarks/weights" \
+    "$HOME/c62-setup-$C62_SHA" \
+    "$HOME/c62-work-$C62_SHA" \
+    "$HOME/c62-session-$C62_SHA"
+  ```
+
+  Any failure is retained and reported. No retry is implied by this GO.
 
 - **2026-08-17 — First C6.2 A100 E2E attempt fails closed before setup; no
   retry.** The owner authorized one fresh run of the recorded

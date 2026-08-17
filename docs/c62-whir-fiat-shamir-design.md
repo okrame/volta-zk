@@ -560,3 +560,17 @@ before a new replacement path is used.
 Replacement `r01` keeps clean pod source `e2d0e9e`, fixes only the cache-copy
 layout, retains the validated test gates, and executes every measured E2E
 stage normally.
+
+## 0.26 r01 spill preflight and r02 setup reuse
+
+Replacement r01 regenerated all 17 profiles and every exact correlation guard
+passed. Setup measurement passed. A100 preflight stopped before PCG allocation
+only because local spill availability was 122,538,557,440 B, below 128 GiB.
+
+The 74-GiB temporary wrapper `run/` data from the earlier no-certificate
+failure was removed under owner cleanup authorization; burned state and
+records remain. Local availability is now 200,921,718,784 B. Standing GO
+authorizes r02. The deterministic, fully guarded r01 setup is copied to a new
+r02 path and verified, avoiding a third generation pass. Measurement,
+preflight, complete proving, mutation and checksums still execute normally on
+new r02 work/session paths.

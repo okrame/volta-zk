@@ -11,9 +11,8 @@ record; no external plan is authoritative.
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
 - **Status and authorization.** C6.2 is
-  `C62_OPTIMIZED_REPLACEMENT_READY` at clean pod source `e2d0e9e`. The owner
-  authorizes replacement `r01` and gives standing GO for future fresh
-  create-new replacements until completion.
+  `C62_R01_SPILL_PREFLIGHT_FAIL_R02_READY` at clean pod source `e2d0e9e`.
+  Standing owner GO authorizes fresh create-new replacement `r02`.
 - **Failure and repair.** Clean pod source `27a0f1d` completed all 17 setup
   profiles and preflight, then stopped during the first real proof with
   `pooled sub correlation underflow`; exit was 101. Both authorizations are
@@ -32,9 +31,25 @@ This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 - **No product result.** No certificate was sealed. No A100 prover time,
   consumer-CPU verifier time, proof size, session, or hardware gate receives
   credit. The comparison table remains unchanged.
-- **Resume.** Correct the weight-copy layout and run replacement `r01` below.
-  Preserve every failed path; standing GO permits only new replacement paths,
-  never reuse or selective retry.
+- **Resume.** Copy the validated deterministic r01 setup bundle to a new r02
+  setup path, verify it, then run measurement, preflight, prove, mutation and
+  checksums on new r02 work/session paths.
+
+- **2026-08-17 — Replacement `r01` passes all 17 census guards, then fails
+  spill-space preflight; `r02` ready.** Every setup profile matched exact
+  prover/verifier correlation counts and setup measurement passed. Preflight
+  then failed before PCG allocation because local free spill was
+  **122,538,557,440 B**, below the fixed 128-GiB gate. No authorization,
+  correlation, proof, or mutation started. Preflight SHA-256 is
+  `2bd72c7e4a5515455d4f7126fc303572db46fd6ca4d5e81e3c0372e543e2ceef`.
+
+  The 74-GiB `run/` directory from the earlier no-certificate `27a0f1d`
+  failure contained only temporary wrapper spill files. Under owner cleanup
+  authorization it was removed after its state, records, logs and a
+  best-effort persistent-volume copy were preserved. Local free space is now
+  **200,921,718,784 B**. Standing GO authorizes `r02` with new paths. To avoid
+  repeating 17 deterministic profiles, the fully guarded r01 setup is copied
+  to a new r02 setup path and verified before all measured stages run.
 
 - **2026-08-17 — Replacement `r01` and standing create-new GO authorized.**
   The owner authorizes one replacement launch and explicitly grants future

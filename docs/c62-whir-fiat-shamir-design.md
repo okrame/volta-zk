@@ -460,3 +460,21 @@ applies exactly those files to the original `126dbe3` pod-ready parent. It has
 the same protocol and executable sources as `3d70c5b`; only the local
 incident/docs ancestry is absent. The registered production command uses this
 side checkpoint in a separate clean pod worktree.
+
+## 0.20 Second A100 attempt disposition
+
+The renewed one-run owner GO was consumed on 2026-08-17. Clean pod source
+`ec1607d655d7beac5684c8cdde76673fb1429a5a` passed the complete repaired CUDA
+gate (**39/39**), generated all 17 fresh setup profiles, and passed the full
+hardware and capacity preflight. Exact setup bytes were **101,197,448**.
+
+The real session failed before the first cache wrapper was materialized with
+`C6.2 cache precommit setup, workload, or root mismatch`. No certificate or
+artifact was sealed, so provider time, verifier time, proof bytes, mutation,
+session, hardware, and comparison-table gates are unevaluated and receive no
+credit. No retry was attempted.
+
+Resume requires isolating and fixing the first cache-precommit owner guard,
+focused and complete local/A100 validation, a new clean checkpoint with new
+create-new roots, a ledger update, and another explicit owner GO. Neither
+failed session may be selectively retried.

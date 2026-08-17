@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "milestone": "C6.2 second authorized RunPod A100 E2E attempt",
+  "date": "2026-08-17",
+  "source_git_sha": "ec1607d655d7beac5684c8cdde76673fb1429a5a",
+  "source_git_dirty": false,
+  "equivalent_local_repair_sha": "3d70c5bd5b06a97bedd0d40d230e1de0f7b5edcd",
+  "runner_sha256": "951fd69a2d970c0405b7d1bdf61581c8faf6959bd7de333b9b2e1685ad252f40",
+  "weights_manifest_sha256": "ded18858510473e795bcaba40ea1b48972aa56498b2ac978f77338d38bea0c6f",
+  "weights_manifest_pass": true,
+  "authorization": {
+    "owner_go": true,
+    "fresh_run_limit": 1,
+    "attempts_started": 1,
+    "selective_retry_authorized": false,
+    "selective_retry_performed": false
+  },
+  "pod": {
+    "provider": "RunPod",
+    "instance_id": "3474df32eb35",
+    "os": "Ubuntu 24.04.3 LTS",
+    "gpu_name": "NVIDIA A100-SXM4-80GB",
+    "gpu_uuid": "GPU-9887433e-1b65-69bc-7cfa-ffa18a6a614b",
+    "gpu_total_mib": 81920,
+    "driver_version": "580.126.16",
+    "cuda_version": "12.8",
+    "cpu_model": "AMD EPYC 7742 64-Core Processor",
+    "logical_cpus": 128,
+    "ram_gib": 2003
+  },
+  "repair_checks": {
+    "focused_attention_a100": { "passed": 1, "failed": 0 },
+    "focused_fp2_a100": { "passed": 1, "failed": 0 },
+    "complete_volta_accel_a100": { "passed": 39, "failed": 0, "ignored": 0 },
+    "local_workspace_pass": true,
+    "local_c62_library": { "passed": 55, "failed": 0 },
+    "local_c62_runner": { "passed": 3, "failed": 0 }
+  },
+  "runner": {
+    "detached_pid": 3972,
+    "started_utc": "2026-08-17T16:21:41.919461393Z",
+    "failed_utc": "2026-08-17T17:05:01.946631728Z",
+    "exit_code": 1,
+    "failed_stage": "first certificate cache precommit before wrapper materialization",
+    "error": "C6.2 cache precommit setup, workload, or root mismatch",
+    "production_session_started": true,
+    "certificates_sealed": 0,
+    "mutation_stage_started": false
+  },
+  "setup": {
+    "profiles_completed": 17,
+    "files": 85,
+    "file_payload_bytes": 197278943,
+    "client_parameter_bytes": 24454209,
+    "client_parameter_cap_bytes": 65139022,
+    "setup_bytes": 101197448,
+    "setup_cap_bytes": 141882261,
+    "setup_plus_certificate_ceiling_bytes": 123197447,
+    "setup_plus_first_tolerance_bytes": 157500000,
+    "pass": true,
+    "credit": false
+  },
+  "preflight": {
+    "record_sha256": "2877dffd85a1600b2dd19b90718834e489faa0bc34399a7270a0324e330cf313",
+    "cuda_backend_initialized": true,
+    "a100_present": true,
+    "host_admission_pass": true,
+    "spill_admission_pass": true,
+    "capacity_acceptance_slots": 17,
+    "capacity_abort_slots": 4,
+    "capacity_reconciled": true,
+    "pass": true,
+    "credit": false
+  },
+  "failure_records": {
+    "session_json_sha256": "03fb6de52f8b8bf93c18b794ca4f5f97194652f4455174cf22fc06f48559b86f",
+    "setup_measurement_json_sha256": "71f13406d09101f031d0048ad20f5f15ac93d336308b42be03ce63af7cb5a366",
+    "runner_log_bytes": 29116,
+    "runner_log_sha256": "6ead7b5d74afb066d34706aa9161778a24e6b57f7de115c6212d45f1f2e51ecd"
+  },
+  "measured_product_values": {
+    "provider_prover": null,
+    "consumer_cpu_verifier": null,
+    "certificate_bytes": null,
+    "first_exchange_bytes": null
+  },
+  "credit": {
+    "a100_preflight": false,
+    "proof_size": false,
+    "provider_time": false,
+    "verifier_time": false,
+    "production_session": false,
+    "hardware_gate": false,
+    "comparison_table": false
+  },
+  "disposition": "FAIL CLOSED BEFORE FIRST CERTIFICATE; NO RETRY; CACHE PRECOMMIT OWNER-MISMATCH HARD STOP"
+}

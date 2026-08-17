@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 WHIR FIAT--SHAMIR — CUDA REPAIR PASS / ONE FRESH RUN AUTHORIZED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 WHIR FIAT--SHAMIR — A100 SESSION FAIL BEFORE FIRST CERTIFICATE / NO RETRY)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,26 +10,50 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Status and authorization.** C6.2 is `C62_POD_READY_AFTER_CUDA_REPAIR` at
-  clean pod-source checkpoint `ec1607d`. The owner explicitly authorizes one
-  fresh
-  RunPod A100 E2E run. The failed `126dbe3` paths remain burned; no selective
-  retry is authorized.
-- **Repair evidence.** The attention test now builds a valid rounded softmax
-  witness. The Fp2 affine CUDA FFI now passes four explicit `u64` limbs; CUDA
-  ABI is 37. Focused A100 checks pass 1/1 and 1/1, and the full A100 gate
-  passes 39/39. The full local workspace, 55 C6.2 library tests, and 3 runner
-  tests pass. Protocol parameters, wire bytes, and security values are
-  unchanged.
+- **Status and hard stop.** C6.2 is
+  `C62_A100_CACHE_PRECOMMIT_OWNER_MISMATCH_FAIL`. The renewed one-run owner GO
+  is consumed. Do not retry or start another pod session.
+- **Measured evidence.** Clean source `ec1607d` passed the repaired A100 CUDA
+  gate 39/39, generated all 17 setup profiles, measured setup at 101,197,448
+  bytes, and passed production hardware/capacity preflight. The real session
+  then failed before wrapper materialization with `C6.2 cache precommit setup,
+  workload, or root mismatch`.
 - **Preserved local evidence.** `C62JVR1`, `C62FS1`, `C62SGE1`, strict codecs,
   17 setup profiles, 17-accept plus 4-burn order, full Rust checks, golden
   checks, and the 3,270-job Lean build remain local evidence only.
-- **No product result.** No setup or session directory exists. No certificate,
-  A100 prover time, consumer-CPU verifier time, proof size, session, or
-  hardware gate receives credit. The comparison table has no C6.2 column.
-- **Resume.** Run the exact create-new command below once on pod
-  `3474df32eb35`, using new roots keyed by `ec1607d`. Preserve any failure and
-  stop; another attempt requires a separate owner GO.
+- **No product result.** No certificate was sealed. No A100 prover time,
+  consumer-CPU verifier time, proof size, session, or hardware gate receives
+  credit. The comparison table remains unchanged.
+- **Resume.** Requires a root-cause fix for the first cache-precommit owner
+  guard, focused and full local/A100 checks, a new clean checkpoint and exact
+  create-new paths, ledger update, and another explicit owner GO. The failed
+  `126dbe3` and `ec1607d` roots are burned.
+
+- **2026-08-17 — Renewed C6.2 A100 run passes setup/preflight, then fails
+  closed before the first certificate; no retry.** The owner authorized one
+  fresh run after the CUDA repair. Clean pod source
+  `ec1607d655d7beac5684c8cdde76673fb1429a5a` passed both focused regressions
+  and the complete A100 CUDA gate **39/39**. It generated all **17** fresh
+  setup profiles and measured client parameters **24,454,209 B**, setup
+  **101,197,448 B**, and setup plus certificate ceiling **123,197,447 B**.
+  The production preflight recorded one A100-SXM4-80GB, initialized CUDA, and
+  passed host, spill, and 17-accept plus 4-burn capacity admission.
+
+  The real proving process then stopped before creating the first wrapper or
+  certificate with `C6.2 cache precommit setup, workload, or root mismatch`.
+  Exit code was **1**. No artifact was sealed and the mutation stage did not
+  start. Runner-log SHA-256 is
+  `6ead7b5d74afb066d34706aa9161778a24e6b57f7de115c6212d45f1f2e51ecd`.
+  Append-only incident record
+  `benchmarks/results/c62-a100-session-failure-2026-08-17-ec1607d.json`
+  preserves the exact facts. All setup/preflight values remain diagnostic
+  `credit:false`; no provider/prover, consumer verifier, proof-size, session,
+  or comparison-table credit exists.
+
+  The one-run GO is consumed and no retry was attempted. Both attempted path
+  sets are burned. Resume requires a code-level owner-guard root cause and
+  fix, complete checks, a new clean checkpoint and paths, ledger update, and
+  another explicit owner GO.
 
 - **2026-08-17 — C6.2 CUDA repair passes locally and on A100; one fresh E2E
   run authorized.** Clean source

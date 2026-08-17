@@ -548,3 +548,15 @@ and log are preserved; no product or component credit was produced.
 
 The one-run GO is consumed. A replacement launch needs new create-new paths,
 an updated ledger, and another explicit owner GO.
+
+## 0.25 Standing create-new replacement authorization
+
+The owner authorizes replacement `r01` and gives standing GO for future fresh
+create-new C6.2 replacements until the real E2E and consumer measurement
+complete. This authorization never permits reuse or selective retry of a
+failed path. Each failure remains immutable and must be diagnosed and recorded
+before a new replacement path is used.
+
+Replacement `r01` keeps clean pod source `e2d0e9e`, fixes only the cache-copy
+layout, retains the validated test gates, and executes every measured E2E
+stage normally.

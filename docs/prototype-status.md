@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 WHIR FIAT--SHAMIR — OPTIMIZED LAUNCH GUARD FAIL / NO SESSION / NO RUN AUTHORIZED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 WHIR FIAT--SHAMIR — OPTIMIZED REPLACEMENT AUTHORIZED / STANDING CREATE-NEW GO)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,8 +11,9 @@ record; no external plan is authoritative.
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
 - **Status and authorization.** C6.2 is
-  `C62_OPTIMIZED_LAUNCH_GUARD_FAIL` at clean pod source `e2d0e9e`. The
-  one-run GO is consumed; no replacement launch is authorized.
+  `C62_OPTIMIZED_REPLACEMENT_READY` at clean pod source `e2d0e9e`. The owner
+  authorizes replacement `r01` and gives standing GO for future fresh
+  create-new replacements until completion.
 - **Failure and repair.** Clean pod source `27a0f1d` completed all 17 setup
   profiles and preflight, then stopped during the first real proof with
   `pooled sub correlation underflow`; exit was 101. Both authorizations are
@@ -31,8 +32,21 @@ This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 - **No product result.** No certificate was sealed. No A100 prover time,
   consumer-CPU verifier time, proof size, session, or hardware gate receives
   credit. The comparison table remains unchanged.
-- **Resume.** Preserve the failed work path and log. Record new create-new
-  paths and obtain explicit owner GO for one replacement launch.
+- **Resume.** Correct the weight-copy layout and run replacement `r01` below.
+  Preserve every failed path; standing GO permits only new replacement paths,
+  never reuse or selective retry.
+
+- **2026-08-17 — Replacement `r01` and standing create-new GO authorized.**
+  The owner authorizes one replacement launch and explicitly grants future
+  authorization for any further fresh create-new C6.2 replacement needed to
+  reach completion. Every failed session remains immutable; standing GO does
+  not permit path reuse or selective retry. Clean pod source remains
+  `e2d0e9ee4e820ba45d262d56d56d9968322ad1b4`.
+
+  Replacement `r01` uses the optimized runner and new roots ending `-r01`.
+  The weight cache is copied as directory contents, then verified from the new
+  worktree before launch. All other cloud values and retained-gate token are
+  unchanged from the prior recorded command.
 
 - **2026-08-17 — Optimized launch stops at the source-clean guard; no E2E
   session started.** The recorded command at clean checkpoint `e2d0e9e` found

@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "milestone": "C6.2 corrected Fiat-Shamir bound replay",
+  "date": "2026-08-17",
+  "pod_source_git_sha": "e9300f82fb40104349f31380d9ccc4e2341c0358",
+  "production_parent_git_sha": "e2d0e9ee4e820ba45d262d56d56d9968322ad1b4",
+  "mode": "complete genesis model-proof schedule with mock correlations and bounded C62FS1 transcript",
+  "old_context": 0,
+  "threads": 8,
+  "max_challenges": 131072,
+  "measured_challenges_from_prior_census": 94864,
+  "measured_correlations": {
+    "primary_sub": 4892214,
+    "primary_full": 226917,
+    "secondary_sub": 4892214,
+    "secondary_full": 226917
+  },
+  "topology": {
+    "source_count": 5119131,
+    "canonical_node_count": 17894474,
+    "public_input_count": 2093,
+    "scalar_input_count": 6458502,
+    "product_closure_count": 673,
+    "product_triple_count": 29620,
+    "zero_root_count": 10909
+  },
+  "log_sha256": "f27ea78ea410129ca68d95ba575aade5af091e176e94fd189968d46de8ff0f3c",
+  "exit_code": 0,
+  "pass": true,
+  "production_pcg_used": false,
+  "credit": false
+}

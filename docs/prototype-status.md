@@ -11,8 +11,8 @@ record; no external plan is authoritative.
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
 - **Status and authorization.** C6.2 is
-  `C62_R02_CHALLENGE_BOUND_FIXED_AWAITING_REPLAY` over pod source `e2d0e9e`.
-  Standing owner GO authorizes fresh r03 after the narrow replay passes.
+  `C62_R03_READY` at clean pod source `e9300f8`. Standing owner GO authorizes
+  one fresh r03 on new setup, work and session paths.
 - **Failure and repair.** r02 passed the former correlation-underflow point,
   then exited 101 before sealing an artifact. Exact bounded replay proves the
   causal zero was the fallback after the stale 65,536 challenge cap. Complete
@@ -21,17 +21,33 @@ This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
   131,072; the fixed proof schedule, bytes, correlations and relation do not
   change.
 - **Checks.** All four mock challenge and correlation censuses match both
-  roles. The corrected budget is 82.5878332608799 bits/certificate and passes.
-  Production-PCG 4/4, runner 3/3 and same-pod CUDA 39/39 remain valid.
+  roles. The corrected bounded genesis replay passes. The budget is
+  82.5878332608799 bits/certificate. Production-PCG 4/4, runner 3/3 and
+  same-pod CUDA 39/39 remain valid.
 - **Preserved local evidence.** `C62JVR1`, `C62FS1`, `C62SGE1`, strict codecs,
   17 setup profiles, 17-accept plus 4-burn order, full Rust checks, golden
   checks, and the 3,270-job Lean build remain local evidence only.
 - **No product result.** No certificate was sealed. No A100 prover time,
   consumer-CPU verifier time, proof size, session, or hardware gate receives
   credit. The comparison table remains unchanged.
-- **Resume.** Run one bounded mock genesis replay with the corrected cap. If
-  green, build the changed crates only and launch production on fresh r03
-  paths using the verified r02 setup copy.
+- **Resume.** Copy and verify the deterministic r02 setup into a fresh r03
+  setup root, then run measurement, preflight, prove, mutation and checksums
+  on fresh r03 work/session roots. Do not repeat tests or setup generation.
+
+- **2026-08-17 — Corrected bounded genesis replay passes; r03 authorized.**
+  Clean pod checkpoint `e9300f82fb40104349f31380d9ccc4e2341c0358`
+  contains the approved diagnostic messages and the corrected **131,072**
+  fail-closed bound over production parent `e2d0e9e`. One complete bounded
+  genesis schedule passed with exact correlations `(4,892,214, 226,917)` on
+  both roles and the registered topology. Log SHA-256 is
+  `f27ea78ea410129ca68d95ba575aade5af091e176e94fd189968d46de8ff0f3c`.
+  No real PCG or production authorization was consumed.
+
+  The changed production and setup binaries were rebuilt without repeating
+  CUDA or full tests. Standing owner GO authorizes fresh r03 roots. Its setup
+  is a verified copy of the deterministic r02 17-profile tree; measurement,
+  A100 preflight, full 17-certificate proof, mutation and checksums remain
+  mandatory.
 
 - **2026-08-17 — Exact four-class challenge census confirms a stale safety
   bound; corrected budget passes.** The complete fixed model-proof schedule

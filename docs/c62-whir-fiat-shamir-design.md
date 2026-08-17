@@ -609,3 +609,8 @@ correlation, relation, query parameter, or certificate field: it admits the
 already-fixed **94,864**-challenge maximum and makes the security calculation
 cover it. The exact budget remains above the binding soundness gate. A fresh
 r03 still requires one bounded genesis replay on the pod before production.
+
+The bounded replay passed at clean pod checkpoint `e9300f8`. Both roles used
+the exact genesis correlation census and registered topology, and C62FS1
+completed without an error. Standing owner GO now authorizes fresh r03 paths
+with a verified copy of the existing deterministic 17-profile setup.

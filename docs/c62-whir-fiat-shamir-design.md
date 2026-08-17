@@ -478,3 +478,20 @@ Resume requires isolating and fixing the first cache-precommit owner guard,
 focused and complete local/A100 validation, a new clean checkpoint with new
 create-new roots, a ledger update, and another explicit owner GO. Neither
 failed session may be selectively retried.
+
+## 0.21 Cache-precommit context fix and renewed readiness
+
+The combined precommit guard incorrectly applied continuation growth to
+genesis. Genesis starts at context 0 and adds 100 prompt plus 50 decode tokens,
+so its new context is 150. Continuations add 50 decoded tokens to the old
+context. The guard now uses these separate exact rules and reports each input
+mismatch independently before CUDA or PCG allocation.
+
+The real production-input validation passes locally and on the RunPod using
+the existing validated weights and 17-profile setup. Relevant local tests pass
+56/56 plus 3/3. CUDA code is unchanged and retains the same-pod 39/39 result.
+The fix changes no protocol or quantitative parameter.
+
+Clean pod checkpoint `27a0f1d11da301a581eae6833076ac85abf2fe80`
+contains only the two repaired runner/campaign files over `ec1607d`. The owner
+authorizes one fresh E2E run using the exact new paths in the active ledger.

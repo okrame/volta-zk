@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "milestone": "C6.2 replacement r04 RunPod pre-session attempt",
+  "date": "2026-08-17",
+  "run_id": "c1c5e0e357dc9af11b21fda748d6285c74dafc6a-r04",
+  "source_git_sha": "c1c5e0e357dc9af11b21fda748d6285c74dafc6a",
+  "source_git_dirty": false,
+  "authorization": {
+    "owner_go": true,
+    "standing_create_new_go": true,
+    "selective_retry_performed": false
+  },
+  "runner": {
+    "started_utc": "2026-08-17T22:04:11.326857964Z",
+    "failed_utc": "2026-08-17T22:05:19.729797437Z",
+    "exit_code": 2,
+    "failed_stage": "binary feature guard before preflight",
+    "error": "c62_whir_fiat_shamir_record requires --features cuda,c6-trace,c61-p3-authenticated-reference",
+    "production_session_started": false,
+    "authorizations_created": 0,
+    "certificates_sealed": 0
+  },
+  "setup": {
+    "profiles_reused": 17,
+    "source_and_copy_aggregate_sha256": "e731144f5658cf86de8dff7315752e3eb21c0f6557ff11507fdd92ec705e8be8",
+    "setup_measurement_json_sha256": "71f13406d09101f031d0048ad20f5f15ac93d336308b42be03ce63af7cb5a366"
+  },
+  "failure_records": {
+    "runner_log_sha256": "071974d14e642f53756d9d1128b07cb3192404e105959197c950a81fdd8e29fd",
+    "exit_file_sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3",
+    "state_files": 0,
+    "artifact_files": 0,
+    "temporary_spill_bytes": 0
+  },
+  "measured_product_values": null,
+  "credit": false,
+  "disposition": "PRE-SESSION PACKAGING FAILURE; R04 PATHS IMMUTABLE; REBUILD ONLY THE RECORD BINARY WITH THE REGISTERED FEATURES; FRESH R05 REQUIRED"
+}

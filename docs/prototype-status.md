@@ -49,6 +49,17 @@ This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
   r03 is immutable; standing GO permits a fresh replacement only after the
   actual and installed counts are exposed and the strict equality is retained.
 
+- **2026-08-17 — r04 stops before preflight on a packaging guard.** The clean
+  diagnostic source was committed as pod checkpoint `c1c5e0e`, but the narrow
+  record-binary rebuild omitted the registered `cuda,c6-trace,c61-p3-
+  authenticated-reference` features. The executable exited **2** after setup
+  measurement and before preflight, state creation, PCG allocation or proof.
+  No authorization was consumed and no value receives credit. r04 is not
+  reused. Raw evidence is
+  `benchmarks/results/c62-a100-presession-failure-2026-08-17-c1c5e0e-r04.json`.
+  Rebuild only that binary with the registered features and use fresh r05
+  paths; do not repeat tests or setup generation.
+
 - **2026-08-17 — Corrected bounded genesis replay passes; r03 authorized.**
   Clean pod checkpoint `e9300f82fb40104349f31380d9ccc4e2341c0358`
   contains the approved diagnostic messages and the corrected **131,072**

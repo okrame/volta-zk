@@ -18,7 +18,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 33;
+constexpr uint32_t ABI_VERSION = 36;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -1448,10 +1448,7 @@ __device__ inline int64_t fixed_floor_div(int64_t a, int64_t b) {
     return r < 0 ? q - 1 : q;
 }
 
-/// Frozen quantization semantics: shifts above 16 are two round-half-up
-/// stages (s-16, then 16), and saturation is forbidden rather than clamped.
-__device__ inline int16_t fixed_requant_no_clamp(
-    int64_t acc, uint32_t shift, uint32_t* error) {
+__device__ inline int64_t fixed_requant_rounded(int64_t acc, uint32_t shift) {
     int64_t stage = acc;
     uint32_t final_shift = shift;
     if (shift > 16) {
@@ -1459,10 +1456,27 @@ __device__ inline int16_t fixed_requant_no_clamp(
         stage = (stage + (int64_t{1} << (first - 1))) >> first;
         final_shift = 16;
     }
-    const int64_t rounded =
-        (stage + (int64_t{1} << (final_shift - 1))) >> final_shift;
+    return (stage + (int64_t{1} << (final_shift - 1))) >> final_shift;
+}
+
+/// Frozen quantization semantics for sites whose registered witness does not
+/// saturate.
+__device__ inline int16_t fixed_requant_no_clamp(
+    int64_t acc, uint32_t shift, uint32_t* error) {
+    const int64_t rounded = fixed_requant_rounded(acc, shift);
     if (rounded < INT16_MIN || rounded > INT16_MAX) atomicExch(error, 1u);
     return static_cast<int16_t>(rounded);
+}
+
+/// C62SCR1 score quotient and exact signed-i16 clamp.
+__device__ inline int16_t fixed_score_clamp17(
+    int64_t acc, uint32_t shift, uint32_t* error) {
+    const int64_t rounded = fixed_requant_rounded(acc, shift);
+    if (rounded < -(int64_t{1} << 16) || rounded >= (int64_t{1} << 16)) {
+        atomicExch(error, 1u);
+    }
+    return static_cast<int16_t>(
+        max(int64_t{INT16_MIN}, min(int64_t{INT16_MAX}, rounded)));
 }
 
 __global__ void fixed_embed_kernel(
@@ -1598,7 +1612,25 @@ __global__ void fixed_attention_scores_kernel(
     const size_t per_head = rows * pos0 + rows * (rows + 1) / 2;
     const size_t packed = head * per_head + packed_row_prefix(row, pos0) + col;
     accumulators[packed] = acc;
-    outputs[packed] = fixed_requant_no_clamp(acc, shift, error);
+    outputs[packed] = fixed_score_clamp17(acc, shift, error);
+}
+
+__device__ int16_t softmax_recip_value(
+    int64_t input, const int16_t* frozen_lut, uint32_t den_shift,
+    uint32_t recip_log2, int use_row_shift, uint32_t* error) {
+    const int64_t limit = use_row_shift ? (int64_t{1} << 18) : (int64_t{1} << 16);
+    if (input < 0 || input >= limit) {
+        atomicExch(error, 1u);
+        return frozen_lut[0];
+    }
+    if (input < (int64_t{1} << 16)) {
+        return frozen_lut[static_cast<size_t>(input)];
+    }
+    const uint64_t den_back =
+        (static_cast<uint64_t>(input) << den_shift) + (uint64_t{1} << (den_shift - 1));
+    uint64_t value = ((uint64_t{1} << recip_log2) + den_back / 2) / den_back;
+    if (value > static_cast<uint64_t>(INT16_MAX)) value = INT16_MAX;
+    return static_cast<int16_t>(value);
 }
 
 __global__ void fixed_softmax_kernel(
@@ -1606,7 +1638,7 @@ __global__ void fixed_softmax_kernel(
     int16_t* row_shifts, int16_t* exp_outputs, int64_t* denoms,
     int16_t* recips, int16_t* weights, uint32_t* error, size_t rows,
     size_t pos0, size_t heads, uint32_t recip_den_shift,
-    uint32_t norm_shift, int use_row_shift) {
+    uint32_t recip_log2, uint32_t norm_shift, int use_row_shift) {
     const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
     if (z >= heads * rows) return;
     const size_t row = z % rows;
@@ -1624,20 +1656,27 @@ __global__ void fixed_softmax_kernel(
     row_shifts[head * rows + row] = shift_value;
     int64_t denom = 0;
     for (size_t j = 0; j < width; ++j) {
-        const int32_t shifted = static_cast<int32_t>(scores[start + j]) -
-            static_cast<int32_t>(shift_value);
-        if (shifted < INT16_MIN || shifted > INT16_MAX) atomicExch(error, 1u);
-        const int16_t table_input = static_cast<int16_t>(shifted);
-        const int16_t value = exp_lut[static_cast<uint16_t>(table_input)];
+        const int32_t score = static_cast<int32_t>(scores[start + j]);
+        int16_t value = 0;
+        if (use_row_shift) {
+            const int32_t gap = static_cast<int32_t>(shift_value) - score;
+            if (gap < 0 || gap > UINT16_MAX) {
+                atomicExch(error, 1u);
+            } else if (gap <= -INT16_MIN) {
+                const int16_t table_input = static_cast<int16_t>(-gap);
+                value = exp_lut[static_cast<uint16_t>(table_input)];
+            } else if (exp_lut[static_cast<uint16_t>(INT16_MIN)] != 0) {
+                atomicExch(error, 1u);
+            }
+        } else {
+            value = exp_lut[static_cast<uint16_t>(scores[start + j])];
+        }
         exp_outputs[start + j] = value;
         denom += value;
     }
     int64_t recip_input = denom >> recip_den_shift;
-    if (recip_input < 0 || recip_input >= (int64_t{1} << 16)) {
-        atomicExch(error, 1u);
-        recip_input = 0;
-    }
-    const int16_t recip = recip_lut[recip_input];
+    const int16_t recip = softmax_recip_value(
+        recip_input, recip_lut, recip_den_shift, recip_log2, use_row_shift, error);
     denoms[head * rows + row] = denom;
     recips[head * rows + row] = recip;
     for (size_t j = 0; j < width; ++j) {
@@ -2206,6 +2245,7 @@ struct AttentionProofWiresArgs {
     uint32_t shift_softmax_norm;
     uint32_t shift_qkv;
     uint32_t recip_den_shift;
+    uint32_t recip_log2;
     int exp_pad_input;
     int recip_pad_output;
     int use_row_shift;
@@ -2234,7 +2274,10 @@ __global__ void attention_rect_columns_kernel(
     int64_t norm_rem = half_norm;
     int64_t weight = 0;
     int64_t score_rem = half_scores;
-    int64_t shifted_score = exp_pad_input;
+    int64_t score_value = use_row_shift ? -static_cast<int64_t>(exp_pad_input)
+                                        : static_cast<int64_t>(exp_pad_input);
+    int64_t score_index = score_value + (int64_t{1} << 16);
+    int64_t exp_input = exp_pad_input;
     int64_t exp_value = 0;
     int64_t is_max = 0;
     int64_t full_score = 0;
@@ -2251,12 +2294,20 @@ __global__ void attention_rect_columns_kernel(
             const size_t packed =
                 head * per_head + packed_row_prefix(row, pos0) + col;
             const int64_t score = scores_q[packed];
+            const int64_t raw_score = fixed_requant_rounded(scores_acc[packed], shift_scores);
+            if (raw_score < -(int64_t{1} << 16) || raw_score >= (int64_t{1} << 16) ||
+                score != max(int64_t{INT16_MIN}, min(int64_t{INT16_MAX}, raw_score))) {
+                atomicExch(error, 1u);
+            }
             const int64_t row_shift = use_row_shift ? row_shifts[head * query_rows + row] : 0;
-            shifted_score = score - row_shift;
-            if (shifted_score < INT16_MIN || shifted_score > INT16_MAX)
+            score_value = score;
+            score_index = raw_score + (int64_t{1} << 16);
+            exp_input = use_row_shift ? row_shift - score : score;
+            if ((use_row_shift && (exp_input < 0 || exp_input > UINT16_MAX)) ||
+                (!use_row_shift && (exp_input < INT16_MIN || exp_input > INT16_MAX)))
                 atomicExch(error, 1u);
             score_rem = scores_acc[packed] + half_scores -
-                score * (int64_t{1} << shift_scores);
+                raw_score * (int64_t{1} << shift_scores);
             if (score_rem < 0 || score_rem >= (int64_t{1} << shift_scores))
                 atomicExch(error, 1u);
             if (scores_acc[packed] != full_score) atomicExch(error, 1u);
@@ -2267,7 +2318,7 @@ __global__ void attention_rect_columns_kernel(
                 weight * (int64_t{1} << shift_softmax_norm);
             if (norm_rem < 0 || norm_rem >= (int64_t{1} << shift_softmax_norm))
                 atomicExch(error, 1u);
-            if (use_row_shift && shifted_score == 0) {
+            if (use_row_shift && exp_input == 0) {
                 bool first = true;
                 const size_t start = head * per_head + packed_row_prefix(row, pos0);
                 for (size_t prior = 0; prior < col; ++prior) {
@@ -2289,17 +2340,21 @@ __global__ void attention_rect_columns_kernel(
     rect[z] = static_cast<uint64_t>(norm_rem);
     rect[entries + z] = fp_from_i64_device(weight);
     rect[2 * entries + z] = static_cast<uint64_t>(score_rem);
-    rect[3 * entries + z] = fp_from_i64_device(shifted_score);
-    rect[4 * entries + z] = fp_from_i64_device(exp_value);
-    rect[5 * entries + z] = static_cast<uint64_t>(is_max);
-    rect[6 * entries + z] = fp_from_i64_device(full_score);
+    rect[3 * entries + z] = use_row_shift ? static_cast<uint64_t>(score_index)
+                                          : fp_from_i64_device(score_value);
+    rect[4 * entries + z] = fp_from_i64_device(score_value);
+    rect[5 * entries + z] = use_row_shift ? static_cast<uint64_t>(exp_input)
+                                          : fp_from_i64_device(exp_input);
+    rect[6 * entries + z] = fp_from_i64_device(exp_value);
+    rect[7 * entries + z] = static_cast<uint64_t>(is_max);
+    rect[8 * entries + z] = fp_from_i64_device(full_score);
 }
 
 __global__ void attention_row_columns_kernel(
     const int64_t* denoms, const int16_t* recips, const int16_t* row_shifts,
     const int16_t* recip_lut, uint64_t* rows_out, uint32_t* error,
     size_t query_rows, size_t heads, size_t head_pad, size_t query_pad,
-    size_t seq, size_t pos0, uint32_t recip_den_shift,
+    size_t seq, size_t pos0, uint32_t recip_den_shift, uint32_t recip_log2,
     int16_t recip_pad_output, int use_row_shift,
     const int16_t* scores_q) {
     const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -2311,15 +2366,16 @@ __global__ void attention_row_columns_kernel(
     int64_t recip_input = 0;
     int64_t recip = recip_pad_output;
     int64_t row_shift = 0;
+    bool real = false;
     if (head < heads && row < query_rows) {
+        real = true;
         denom = denoms[head * query_rows + row];
         recip_input = denom >> recip_den_shift;
         recip = recips[head * query_rows + row];
         row_shift = use_row_shift ? row_shifts[head * query_rows + row] : 0;
-        if (recip_input < 0 || recip_input >= (int64_t{1} << 16)) {
-            atomicExch(error, 1u);
-            recip_input = 0;
-        } else if (recip_lut[static_cast<size_t>(recip_input)] != recip) {
+        if (softmax_recip_value(
+                recip_input, recip_lut, recip_den_shift, recip_log2,
+                use_row_shift, error) != recip) {
             atomicExch(error, 1u);
         }
         if (use_row_shift) {
@@ -2341,6 +2397,35 @@ __global__ void attention_row_columns_kernel(
     rows_out[entries + z] = static_cast<uint64_t>(recip_input);
     rows_out[2 * entries + z] = fp_from_i64_device(recip);
     rows_out[3 * entries + z] = fp_from_i64_device(row_shift);
+    const int64_t relation_input = real ? recip_input : 256;
+    const int64_t relation_denom = real ? denom : (int64_t{256} << recip_den_shift);
+    const int64_t relation_quotient = real
+        ? recip
+        : softmax_recip_value(256, recip_lut, recip_den_shift, recip_log2, 1, error);
+    const int64_t denom_low = relation_denom - (relation_input << recip_den_shift);
+    const int64_t divisor =
+        (relation_input << recip_den_shift) + (int64_t{1} << (recip_den_shift - 1));
+    const int64_t rounded_numerator =
+        (int64_t{1} << recip_log2) + divisor / 2;
+    const int64_t product = relation_quotient * divisor;
+    const int64_t remainder = rounded_numerator - product;
+    const int64_t slack = divisor - 1 - remainder;
+    if (denom_low < 0 || denom_low >= (int64_t{1} << recip_den_shift) ||
+        relation_input < 0 || relation_input >= (int64_t{1} << 18) ||
+        relation_quotient < 0 || relation_quotient >= (int64_t{1} << 15) ||
+        remainder < 0 || remainder >= divisor || remainder >= (int64_t{1} << 24) ||
+        slack < 0 || slack >= (int64_t{1} << 24)) {
+        atomicExch(error, 1u);
+    }
+    rows_out[4 * entries + z] = static_cast<uint64_t>(denom_low);
+    rows_out[5 * entries + z] = static_cast<uint64_t>(relation_input & 0xffff);
+    rows_out[6 * entries + z] = static_cast<uint64_t>(relation_input >> 16);
+    rows_out[7 * entries + z] = static_cast<uint64_t>(relation_quotient);
+    rows_out[8 * entries + z] = static_cast<uint64_t>(remainder & 0xffff);
+    rows_out[9 * entries + z] = static_cast<uint64_t>(remainder >> 16);
+    rows_out[10 * entries + z] = static_cast<uint64_t>(slack & 0xffff);
+    rows_out[11 * entries + z] = static_cast<uint64_t>(slack >> 16);
+    rows_out[12 * entries + z] = static_cast<uint64_t>(divisor);
 }
 
 __global__ void attention_qkv_columns_kernel(
@@ -4288,10 +4373,10 @@ extern "C" int volta_cuda_fixed_softmax_device(
     uint64_t recips_id, size_t recips_offset, uint64_t weights_id, size_t weights_offset,
     uint64_t error_id, size_t error_offset, size_t rows, size_t seq,
     size_t pos0, size_t heads, uint32_t recip_den_shift,
-    uint32_t norm_shift, int use_row_shift) {
+    uint32_t recip_log2, uint32_t norm_shift, int use_row_shift) {
     Context* c = static_cast<Context*>(raw);
     if (!c || !rows || !seq || !heads || pos0 + rows > seq || !norm_shift ||
-        norm_shift >= 63 || recip_den_shift >= 63)
+        norm_shift >= 63 || !recip_den_shift || recip_den_shift >= 63 || recip_log2 >= 63)
         return fail_message(c, "invalid resident softmax geometry");
     const size_t packed = heads * (rows * pos0 + rows * (rows + 1) / 2);
     const size_t row_count = heads * rows;
@@ -4315,7 +4400,7 @@ extern "C" int volta_cuda_fixed_softmax_device(
         static_cast<int16_t*>(exp), static_cast<int64_t*>(denoms),
         static_cast<int16_t*>(recips), static_cast<int16_t*>(weights),
         static_cast<uint32_t*>(error), rows, pos0, heads, recip_den_shift,
-        norm_shift, use_row_shift);
+        recip_log2, norm_shift, use_row_shift);
     CUDA_OR_RETURN(c, cudaPeekAtLastError());
     if (mark_timing(c, 2)) return -1;
     return finish_timing(c, OP_GEMM, 0, 0);
@@ -5201,7 +5286,8 @@ extern "C" int volta_cuda_attention_proof_wires_device(
         a->d_pad < a->heads * a->head_dim || (a->d_pad & (a->d_pad - 1)) ||
         !a->shift_scores || a->shift_scores > 16 ||
         !a->shift_softmax_norm || a->shift_softmax_norm > 16 ||
-        !a->shift_qkv || a->shift_qkv > 16 || a->recip_den_shift >= 63 ||
+        !a->shift_qkv || a->shift_qkv > 16 || !a->recip_den_shift ||
+        a->recip_den_shift >= 63 || a->recip_log2 >= 63 ||
         a->exp_pad_input < INT16_MIN || a->exp_pad_input > INT16_MAX ||
         a->recip_pad_output < INT16_MIN || a->recip_pad_output > INT16_MAX ||
         (a->use_row_shift != 0 && a->use_row_shift != 1))
@@ -5252,9 +5338,9 @@ extern "C" int volta_cuda_attention_proof_wires_device(
         resident_region(c, a->error_id, a->error_offset * sizeof(uint32_t),
                         sizeof(uint32_t), &error) ||
         resident_region(c, a->rect_id, a->rect_offset * sizeof(uint64_t),
-                        7 * rect_entries * sizeof(uint64_t), &rect) ||
+                        9 * rect_entries * sizeof(uint64_t), &rect) ||
         resident_region(c, a->rows_id, a->rows_offset * sizeof(uint64_t),
-                        4 * row_entries * sizeof(uint64_t), &row_values) ||
+                        13 * row_entries * sizeof(uint64_t), &row_values) ||
         resident_region(c, a->above_id, a->above_offset * sizeof(uint64_t),
                         above_entries * sizeof(uint64_t), &above) ||
         resident_region(c, a->qkv_id, a->qkv_offset * sizeof(uint64_t),
@@ -5276,7 +5362,8 @@ extern "C" int volta_cuda_attention_proof_wires_device(
         static_cast<const int16_t*>(row_shifts), static_cast<const int16_t*>(recip_lut),
         static_cast<uint64_t*>(row_values), static_cast<uint32_t*>(error),
         a->query_rows, a->heads, a->head_pad, a->query_pad, a->seq, a->pos0,
-        a->recip_den_shift, static_cast<int16_t>(a->recip_pad_output),
+        a->recip_den_shift, a->recip_log2,
+        static_cast<int16_t>(a->recip_pad_output),
         a->use_row_shift, static_cast<const int16_t*>(scores_q));
     attention_qkv_columns_kernel<<<(qkv_entries + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
         static_cast<const int64_t*>(qkv_acc), static_cast<const int16_t*>(q),

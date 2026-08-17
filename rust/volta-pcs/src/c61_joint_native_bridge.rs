@@ -99,6 +99,35 @@ impl C61JointNativeBodiesFixed {
         }
         C61JointNativeChallenge { schedule_digest: self.schedule_digest, zeta, cohort_weights }
     }
+
+    /// C6.2 binds the exact public statement and body digests before it
+    /// derives `zeta`. These are verifier-reconstructible bytes, not wire.
+    pub fn draw_c62_zeta(
+        self,
+        transcript: &mut Transcript,
+    ) -> Result<C61JointNativeChallenge, String> {
+        if !transcript.is_fiat_shamir() {
+            return Err("C62FS1 zeta requires a Fiat--Shamir transcript".to_owned());
+        }
+        transcript.absorb_public_message("c62_joint_schedule_digest", &self.schedule_digest);
+        for binding in &self.bindings {
+            let mut encoded = Vec::with_capacity(74);
+            encoded.extend_from_slice(&binding.cohort_id.to_le_bytes());
+            encoded.extend_from_slice(&binding.chain_slot.to_le_bytes());
+            encoded.extend_from_slice(&binding.claim_count.to_le_bytes());
+            encoded.extend_from_slice(&binding.typed_statement_digest);
+            encoded.extend_from_slice(&binding.tagless_body_digest);
+            transcript.absorb_public_message("c62_joint_native_body_binding", &encoded);
+        }
+        let zeta = transcript.challenge_fp2();
+        let mut weight = Fp2::ONE;
+        let mut cohort_weights = Vec::with_capacity(self.bindings.len());
+        for _ in &self.bindings {
+            cohort_weights.push(weight);
+            weight = weight * zeta;
+        }
+        Ok(C61JointNativeChallenge { schedule_digest: self.schedule_digest, zeta, cohort_weights })
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -191,5 +220,37 @@ mod tests {
         canonical.bind_next(binding(0, 3)).unwrap();
         canonical.bind_next(binding(1, 2)).unwrap();
         assert_ne!(changed_digest, canonical.finish().unwrap().schedule_digest());
+    }
+
+    #[test]
+    fn c62_zeta_is_public_deterministic_and_body_bound() {
+        let profile = profile(&[3, 2]);
+        let run = |changed: bool| {
+            let mut builder = C61JointNativeBodyScheduleBuilder::new(&profile).unwrap();
+            for (index, count) in [3, 2].into_iter().enumerate() {
+                let mut item = binding(index, count);
+                if changed && index == 1 {
+                    item.tagless_body_digest[0] ^= 1;
+                }
+                builder.bind_next(item).unwrap();
+            }
+            let mut transcript = Transcript::new_fiat_shamir([0xA1; 32]).unwrap();
+            let challenge = builder.finish().unwrap().draw_c62_zeta(&mut transcript).unwrap();
+            assert_eq!(transcript.total_bytes(), 0);
+            assert_eq!(transcript.bytes_for("c62_joint_schedule_digest"), 0);
+            challenge
+        };
+        let prover = run(false);
+        let verifier = run(false);
+        let changed = run(true);
+        assert_eq!(prover, verifier);
+        assert_ne!(prover.schedule_digest, changed.schedule_digest);
+        assert_ne!(prover.zeta, changed.zeta);
+
+        let mut private = Transcript::new([0xA1; 32]);
+        let mut builder = C61JointNativeBodyScheduleBuilder::new(&profile).unwrap();
+        builder.bind_next(binding(0, 3)).unwrap();
+        builder.bind_next(binding(1, 2)).unwrap();
+        assert!(builder.finish().unwrap().draw_c62_zeta(&mut private).is_err());
     }
 }

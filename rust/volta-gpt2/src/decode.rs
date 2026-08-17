@@ -9,25 +9,28 @@
 
 use crate::config::ModelConfig;
 use crate::layer::{GemmBiases, LayerWeights};
+use crate::luts::{softmax_exp_from_gap, softmax_recip_from_index, softmax_score_gap};
 use crate::model::{layer_lut_params, Gpt2Model};
 use rayon::prelude::*;
 
 /// Traceless mirror of `layer::requant_into` (round-half-up, double-round
-/// chained semantics for shift > 16, no-clamp assertion).
+/// chained semantics for shift > 16, followed by the frozen i16 clamp).
 #[inline]
-pub fn requant_plain(acc: i64, shift: u32) -> i16 {
+fn requant_plain_rounded(acc: i64, shift: u32) -> i64 {
     let (stage2_in, s2) = if shift <= 16 {
         (acc, shift)
     } else {
         let s1 = shift - 16;
         ((acc + (1i64 << (s1 - 1))) >> s1, 16)
     };
-    let rounded = (stage2_in + (1i64 << (s2 - 1))) >> s2;
-    assert!(
-        (i16::MIN as i64..=i16::MAX as i64).contains(&rounded),
-        "requant saturated in decode (no-clamp deviation violated): acc={acc}, shift={shift}",
-    );
-    rounded as i16
+    (stage2_in + (1i64 << (s2 - 1))) >> s2
+}
+
+#[inline]
+#[track_caller]
+pub fn requant_plain(acc: i64, shift: u32) -> i16 {
+    let rounded = requant_plain_rounded(acc, shift);
+    rounded.clamp(i16::MIN as i64, i16::MAX as i64) as i16
 }
 
 /// One row's LayerNorm (mirror of `layer::layer_norm` at t = 1, traceless).
@@ -180,21 +183,32 @@ pub fn decode_step(m: &Gpt2Model, cache: &mut KvCache, token: u32, pos: usize) -
                 for l2 in 0..head_dim {
                     a += qh[l2] as i64 * kc[j * kv_dim + kv_head * head_dim + l2] as i64;
                 }
-                s_q.push(requant_plain(a, p.shift_scores));
+                let rounded = requant_plain_rounded(a, p.shift_scores);
+                assert!(
+                    !p.softmax_row_shift || (-65_536..65_536).contains(&rounded),
+                    "C62SCR1 score quotient exceeds the signed 17-bit domain at position {pos}, layer {l}, head {h}, key {j}",
+                );
+                s_q.push(rounded.clamp(i16::MIN as i64, i16::MAX as i64) as i16);
             }
             let c: i16 = if p.softmax_row_shift { *s_q.iter().max().unwrap() } else { 0 };
             let mut denom = 0i64;
             let mut e_row = Vec::with_capacity(seq);
             for &s in &s_q {
-                let sp = s as i32 - c as i32;
-                assert!(sp >= i16::MIN as i32, "softmax row spread exceeds exp domain");
-                let e = m.luts.exp[(sp as i16 as u16) as usize];
+                let e = if p.softmax_row_shift {
+                    softmax_exp_from_gap(&m.luts, softmax_score_gap(s, c))
+                } else {
+                    m.luts.exp[usize::from(s as u16)]
+                };
                 e_row.push(e);
                 denom += e as i64;
             }
             let rin = denom >> p.recip_den_shift;
-            assert!(rin < 1 << 16, "softmax_recip input exceeds u16 domain");
-            let rc = m.luts.softmax_recip[rin as usize];
+            let rc = if p.softmax_row_shift {
+                softmax_recip_from_index(&m.luts, rin as u64)
+            } else {
+                assert!(rin < 1 << 16, "softmax_recip input exceeds u16 domain");
+                m.luts.softmax_recip[rin as usize]
+            };
             // w·V over the cache.
             for l2 in 0..head_dim {
                 let mut a = 0i64;

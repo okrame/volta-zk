@@ -1283,6 +1283,7 @@ fn build_resident_forward(
             0,
             H,
             params.recip_den_shift,
+            params.recip_log2,
             params.shift_softmax_norm,
             params.softmax_row_shift,
         )?;

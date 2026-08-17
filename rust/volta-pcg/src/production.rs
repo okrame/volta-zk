@@ -2081,6 +2081,19 @@ impl ConnectionHandle {
     }
 
     pub fn finish_response_success(&mut self) -> Result<ConnectionResponseAudit, PhaseBError> {
+        self.finish_response("RESPONSE_SUCCESS")
+    }
+
+    /// Burn one already-authorized response without terminating the live
+    /// connection. The complete allocated range remains consumed.
+    pub fn finish_response_abort(&mut self) -> Result<ConnectionResponseAudit, PhaseBError> {
+        self.finish_response("RESPONSE_ABORT")
+    }
+
+    fn finish_response(
+        &mut self,
+        record_kind: &'static str,
+    ) -> Result<ConnectionResponseAudit, PhaseBError> {
         self.ensure_active()?;
         let response = match self.active_response.as_ref().cloned() {
             Some(response) => response,
@@ -2090,7 +2103,7 @@ impl ConnectionHandle {
             }
         };
         let record = format!(
-            "RESPONSE_SUCCESS|{}|{}|{}|{}|{}\n",
+            "{record_kind}|{}|{}|{}|{}|{}\n",
             hex32(response.nonce_digest),
             hex32(response.allocation_digest),
             hex32(response.channel_digest),
@@ -3177,6 +3190,42 @@ mod tests {
         );
         assert_eq!(connection.stage_counters().get(&0).unwrap().burned, 70);
         drop(connection);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn response_abort_consumes_range_and_keeps_connection_live() {
+        let (root, connections, authorizations) = lifecycle_stores("response-abort");
+        let binding = connection_binding(0x72, ConnectionStagePlan::TerminalOne);
+        let mut connection = connections.create(binding, None).unwrap();
+        connection.activate([0x73; 32]).unwrap();
+        connection.register_stage_output(0, 32, 0).unwrap();
+
+        let aborted_nonce = [0x74; 32];
+        connection
+            .begin_response(&authorizations, binding.response_binding(aborted_nonce).unwrap())
+            .unwrap();
+        let aborted = connection.allocate(0, 11, domain(binding, aborted_nonce, 0x75)).unwrap();
+        assert_eq!(aborted.start, 0);
+        let audit = connection.finish_response_abort().unwrap();
+        assert_eq!(audit.correlations_consumed, 11);
+        assert_eq!(audit.channel_frames, 0);
+        assert_eq!(connection.state(), ConnectionState::Active);
+
+        let accepted_nonce = [0x76; 32];
+        connection
+            .begin_response(&authorizations, binding.response_binding(accepted_nonce).unwrap())
+            .unwrap();
+        let accepted = connection.allocate(0, 7, domain(binding, accepted_nonce, 0x77)).unwrap();
+        assert_eq!(accepted.start, 11);
+        connection.finish_response_success().unwrap();
+        assert_eq!(connection.completed_responses(), 2);
+        let counters = connection.stage_counters().get(&0).unwrap();
+        assert_eq!(counters.consumed, 18);
+        assert_eq!(counters.available, 14);
+        assert!(counters.reconciled());
+
+        connection.abort(ConnectionAbortReason::ExplicitClose).unwrap();
         std::fs::remove_dir_all(root).unwrap();
     }
 

@@ -17,6 +17,23 @@ const REPLAY_MAGIC: &[u8] = b"C6VRP1\0\0";
 const REPLAY_VERSION: u16 = 1;
 pub const C61_PRODUCTION_SUB_CORRELATIONS: usize = 4_793_614;
 pub const C61_PRODUCTION_FULL_CORRELATIONS: usize = 221_039;
+pub const C62_GENESIS_SUB_CORRELATIONS: usize = C61_PRODUCTION_SUB_CORRELATIONS;
+pub const C62_GENESIS_FULL_CORRELATIONS: usize = 221_615;
+pub const C62_GENESIS_RAW_CORRELATIONS: u64 =
+    C62_GENESIS_SUB_CORRELATIONS as u64 + 2 * C62_GENESIS_FULL_CORRELATIONS as u64;
+pub const C62_CONTINUATION_256_SUB_CORRELATIONS: usize = 1_696_550;
+pub const C62_CONTINUATION_256_FULL_CORRELATIONS: usize = 200_296;
+pub const C62_CONTINUATION_256_RAW_CORRELATIONS: u64 = C62_CONTINUATION_256_SUB_CORRELATIONS as u64
+    + 2 * C62_CONTINUATION_256_FULL_CORRELATIONS as u64;
+pub const C62_CONTINUATION_512_SUB_CORRELATIONS: usize = 1_696_550;
+pub const C62_CONTINUATION_512_FULL_CORRELATIONS: usize = 204_088;
+pub const C62_CONTINUATION_512_RAW_CORRELATIONS: u64 = C62_CONTINUATION_512_SUB_CORRELATIONS as u64
+    + 2 * C62_CONTINUATION_512_FULL_CORRELATIONS as u64;
+pub const C62_CONTINUATION_1024_SUB_CORRELATIONS: usize = 1_696_550;
+pub const C62_CONTINUATION_1024_FULL_CORRELATIONS: usize = 208_024;
+pub const C62_CONTINUATION_1024_RAW_CORRELATIONS: u64 = C62_CONTINUATION_1024_SUB_CORRELATIONS
+    as u64
+    + 2 * C62_CONTINUATION_1024_FULL_CORRELATIONS as u64;
 pub const C61_VERIFIER_REPLAY_STATE_BYTES: usize = 8
     + 4
     + 7 * 32
@@ -24,6 +41,27 @@ pub const C61_VERIFIER_REPLAY_STATE_BYTES: usize = 8
     + 8
     + 2 * (C61_PRODUCTION_SUB_CORRELATIONS + C61_PRODUCTION_FULL_CORRELATIONS) * 16
     + 32;
+
+fn registered_production_geometry(sub: usize, full: usize) -> Option<u64> {
+    match (sub, full) {
+        (C61_PRODUCTION_SUB_CORRELATIONS, C61_PRODUCTION_FULL_CORRELATIONS) => {
+            Some(C6_BASELINE_RAW_CORRELATIONS)
+        }
+        (C62_GENESIS_SUB_CORRELATIONS, C62_GENESIS_FULL_CORRELATIONS) => {
+            Some(C62_GENESIS_RAW_CORRELATIONS)
+        }
+        (C62_CONTINUATION_256_SUB_CORRELATIONS, C62_CONTINUATION_256_FULL_CORRELATIONS) => {
+            Some(C62_CONTINUATION_256_RAW_CORRELATIONS)
+        }
+        (C62_CONTINUATION_512_SUB_CORRELATIONS, C62_CONTINUATION_512_FULL_CORRELATIONS) => {
+            Some(C62_CONTINUATION_512_RAW_CORRELATIONS)
+        }
+        (C62_CONTINUATION_1024_SUB_CORRELATIONS, C62_CONTINUATION_1024_FULL_CORRELATIONS) => {
+            Some(C62_CONTINUATION_1024_RAW_CORRELATIONS)
+        }
+        _ => None,
+    }
+}
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -42,6 +80,7 @@ pub struct C6ProductionPairedPcgAttempt {
     verifier_deltas: [volta_field::Fp2; C6_MAC_COORDINATES],
     verifier_scope: ConnectionCorrelationScope,
     connections: [ProductionFaseDConnection; C6_MAC_COORDINATES],
+    expected_counters: volta_mac::CorrCounters,
     source_sealed: bool,
     source_allocation_binding_digest: Option<[u8; 32]>,
 }
@@ -124,11 +163,18 @@ impl C6BoundProductionVerifierReplay {
     }
 
     pub fn decode_client_state(bytes: &[u8]) -> Result<Self> {
-        decode_bound_replay(
-            bytes,
-            C61_PRODUCTION_SUB_CORRELATIONS,
-            C61_PRODUCTION_FULL_CORRELATIONS,
-        )
+        for (sub, full) in [
+            (C61_PRODUCTION_SUB_CORRELATIONS, C61_PRODUCTION_FULL_CORRELATIONS),
+            (C62_GENESIS_SUB_CORRELATIONS, C62_GENESIS_FULL_CORRELATIONS),
+            (C62_CONTINUATION_256_SUB_CORRELATIONS, C62_CONTINUATION_256_FULL_CORRELATIONS),
+            (C62_CONTINUATION_512_SUB_CORRELATIONS, C62_CONTINUATION_512_FULL_CORRELATIONS),
+            (C62_CONTINUATION_1024_SUB_CORRELATIONS, C62_CONTINUATION_1024_FULL_CORRELATIONS),
+        ] {
+            if let Ok(replay) = decode_bound_replay(bytes, sub, full) {
+                return Ok(replay);
+            }
+        }
+        Err("C6 verifier replay has no registered production geometry".to_owned())
     }
 
     pub fn certificate_digest(&self) -> [u8; 32] {
@@ -219,8 +265,18 @@ fn validate_bound_replay(replay: &C6BoundProductionVerifierReplay) -> Result<(us
     }
     let sub = replay.owner.pools[0].sub_keys.len();
     let full = replay.owner.pools[0].full_keys.len();
-    let production_geometry =
-        (sub, full) == (C61_PRODUCTION_SUB_CORRELATIONS, C61_PRODUCTION_FULL_CORRELATIONS);
+    let production_raw = registered_production_geometry(sub, full)
+        .or_else(|| {
+            // Keep the tiny private codec fixture available to unit tests.  The
+            // public decoder below still accepts registered production profiles
+            // only.
+            #[cfg(test)]
+            if (sub, full) == (1, 1) {
+                return Some(3);
+            }
+            None
+        })
+        .ok_or_else(|| "unregistered C6 verifier replay pool geometry".to_owned())?;
     let raw = sub
         .checked_add(
             full.checked_mul(2)
@@ -229,7 +285,7 @@ fn validate_bound_replay(replay: &C6BoundProductionVerifierReplay) -> Result<(us
         .ok_or_else(|| "C6 verifier replay raw count overflows".to_owned())?;
     if replay.owner.pools[1].sub_keys.len() != sub
         || replay.owner.pools[1].full_keys.len() != full
-        || (production_geometry && raw != C6_BASELINE_RAW_CORRELATIONS as usize)
+        || usize::try_from(production_raw).ok() != Some(raw)
     {
         return Err("invalid C6 verifier replay pool geometry".to_owned());
     }
@@ -397,13 +453,11 @@ impl C6ProductionPairedPcgAttempt {
                     .and_then(|full| sub.checked_add(full))
             })
             .ok_or_else(|| "C6 paired PCG raw count overflows".to_owned())?;
-        if (sub_correlations, full_correlations)
-            != (C61_PRODUCTION_SUB_CORRELATIONS, C61_PRODUCTION_FULL_CORRELATIONS)
-            || raw_count != C6_BASELINE_RAW_CORRELATIONS
+        if registered_production_geometry(sub_correlations, full_correlations) != Some(raw_count)
             || reservation.correlation_ranges.raw_count().map_err(|error| error.to_string())?
                 != raw_count
         {
-            return Err("C6 paired PCG allocation is not the frozen complete range".to_owned());
+            return Err("C6 paired PCG allocation is not a registered complete range".to_owned());
         }
 
         let connection_bindings =
@@ -490,6 +544,13 @@ impl C6ProductionPairedPcgAttempt {
             verifier_deltas,
             verifier_scope: scope,
             connections,
+            expected_counters: volta_mac::CorrCounters {
+                sub_corrs: u64::try_from(sub_correlations)
+                    .map_err(|_| "C6 sub-correlation count exceeds u64".to_owned())?,
+                full_corrs: u64::try_from(full_correlations)
+                    .map_err(|_| "C6 full-correlation count exceeds u64".to_owned())?,
+                domains: 0,
+            },
             source_sealed: false,
             source_allocation_binding_digest: None,
         })
@@ -578,16 +639,54 @@ impl C6ProductionPairedPcgAttempt {
         })
     }
 
-    pub fn finish_success(mut self) -> Result<()> {
+    /// Complete one response and return both live connection owners.
+    ///
+    /// The returned owners can start the next reserved response on the same
+    /// connection.  Dropping them still terminally burns all unused credit.
+    pub fn finish_success(mut self) -> Result<[ProductionFaseDConnection; C6_MAC_COORDINATES]> {
         if !self.source_sealed || self.verifier_replay_pools.is_some() {
             return Err(
                 "C6 production paired attempt lacks sealed source/replay transfer".to_owned()
             );
         }
+        if self.prover.iter().any(|stream| {
+            stream.counters.sub_corrs != self.expected_counters.sub_corrs
+                || stream.counters.full_corrs != self.expected_counters.full_corrs
+        }) || self.verifier.iter().any(|context| {
+            context.counters.sub_corrs != self.expected_counters.sub_corrs
+                || context.counters.full_corrs != self.expected_counters.full_corrs
+        }) {
+            return Err(
+                "C6 production attempt did not consume its exact correlation profile".into()
+            );
+        }
         for connection in &mut self.connections {
             connection.connection.finish_response_success().map_err(|error| error.to_string())?;
         }
-        Ok(())
+        Ok(self.connections)
+    }
+
+    /// Burn one complete allocated response range before any proof work.
+    /// The two live connection owners remain available for the next slot.
+    pub fn finish_abort(mut self) -> Result<[ProductionFaseDConnection; C6_MAC_COORDINATES]> {
+        if self.source_sealed
+            || self.verifier_replay_pools.is_none()
+            || self.prover.iter().any(|stream| stream.counters != Default::default())
+            || self.verifier.iter().any(|context| context.counters != Default::default())
+        {
+            return Err("C6 production abort must precede every proof correlation read".to_owned());
+        }
+        self.verifier_replay_pools.take();
+        let expected_raw =
+            self.reservation.correlation_ranges.raw_count().map_err(|error| error.to_string())?;
+        for connection in &mut self.connections {
+            let audit =
+                connection.connection.finish_response_abort().map_err(|error| error.to_string())?;
+            if audit.correlations_consumed != expected_raw || audit.channel_frames != 0 {
+                return Err("C6 production abort journal census differs".to_owned());
+            }
+        }
+        Ok(self.connections)
     }
 }
 

@@ -23,6 +23,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use volta_field::{Fp, Fp2, P};
 
+use crate::c62_certificate::C62NativeFinalCertificate;
 use crate::c6_response_envelope::{C6ResponseProofEnvelope, C6_RESPONSE_PROOF_ENVELOPE_MAX_BYTES};
 
 pub type C6Digest = [u8; 32];
@@ -535,6 +536,22 @@ impl C6ClientAttempt {
             || certificate.workload != self.workload
         {
             return Err(C6Error::new("C6 certificate does not match the client-reserved attempt"));
+        }
+        Ok(())
+    }
+
+    fn matches_c62_certificate(self, certificate: &C62NativeFinalCertificate) -> C6Result<()> {
+        if certificate.slot != self.slot
+            || certificate.nonce != self.nonce
+            || certificate.setup_manifest_digest != self.setup_manifest_digest
+            || certificate.old_head.digest() != self.old_head_digest
+            || certificate.predecessor_certificate_digest != self.predecessor_certificate_digest
+            || certificate.correlation_ranges != self.correlation_ranges
+            || certificate.workload != self.workload
+        {
+            return Err(C6Error::new(
+                "C6.2 certificate does not match the client-reserved attempt",
+            ));
         }
         Ok(())
     }
@@ -1287,6 +1304,43 @@ impl C6ClientState {
         Ok(next)
     }
 
+    /// Accept one C6.2 certificate through the same durable predecessor and
+    /// reservation state machine as the historical C6 certificate.
+    pub fn accepts_c62(self, certificate: &C62NativeFinalCertificate) -> C6Result<Self> {
+        self.validate()?;
+        certificate.validate().map_err(|error| C6Error::new(error.to_string()))?;
+        let attempt = self
+            .pending_attempt
+            .ok_or_else(|| C6Error::new("C6.2 certificate has no client-reserved attempt"))?;
+        attempt.matches_c62_certificate(certificate)?;
+        if certificate.protocol_digest != self.protocol_digest
+            || certificate.model_digest != self.model_digest
+            || certificate.params_digest != self.params_digest
+            || certificate.setup_manifest_digest != self.setup_manifest_digest
+            || certificate.connection_id != self.connection_id
+            || certificate.old_head != self.head
+            || certificate.predecessor_certificate_digest != self.accepted_certificate_digest
+        {
+            return Err(C6Error::new("C6.2 certificate is not a child of the durable head"));
+        }
+        let next = Self {
+            protocol_digest: self.protocol_digest,
+            model_digest: self.model_digest,
+            params_digest: self.params_digest,
+            setup_manifest_digest: self.setup_manifest_digest,
+            connection_id: self.connection_id,
+            head: certificate.new_head,
+            accepted_certificate_digest: certificate
+                .digest()
+                .map_err(|error| C6Error::new(error.to_string()))?,
+            next_slot: self.next_slot,
+            raw_high_water: self.raw_high_water,
+            pending_attempt: None,
+        };
+        next.validate()?;
+        Ok(next)
+    }
+
     pub fn reserve_attempt(
         self,
         nonce_entropy: C6Digest,
@@ -1567,6 +1621,21 @@ impl C6ClientStore {
         self.accept_with_fault(expected, certificate, AtomicFault::None)
     }
 
+    pub fn accept_c62(
+        &self,
+        expected: C6ClientState,
+        certificate: &C62NativeFinalCertificate,
+    ) -> C6Result<C6ClientState> {
+        let current = self.load()?;
+        if current != expected {
+            return Err(C6Error::new("C6.2 client compare-and-swap predecessor mismatch"));
+        }
+        let next = current.accepts_c62(certificate)?;
+        valid_client_state_transition(current, next)?;
+        atomic_replace_state(&self.path, next, AtomicFault::None)?;
+        Ok(next)
+    }
+
     fn accept_with_fault(
         &self,
         expected: C6ClientState,
@@ -1716,6 +1785,24 @@ impl C6SlotReservation {
             || certificate.workload != self.workload
         {
             return Err(C6Error::new("C6 certificate does not match its durable slot reservation"));
+        }
+        Ok(())
+    }
+
+    fn matches_c62_certificate(self, certificate: &C62NativeFinalCertificate) -> C6Result<()> {
+        certificate.validate().map_err(|error| C6Error::new(error.to_string()))?;
+        if certificate.connection_id != self.connection_id
+            || certificate.setup_manifest_digest != self.setup_manifest_digest
+            || certificate.slot != self.slot
+            || certificate.nonce != self.nonce
+            || certificate.old_head.digest() != self.old_head_digest
+            || certificate.predecessor_certificate_digest != self.predecessor_certificate_digest
+            || certificate.correlation_ranges != self.correlation_ranges
+            || certificate.workload != self.workload
+        {
+            return Err(C6Error::new(
+                "C6.2 certificate does not match its durable slot reservation",
+            ));
         }
         Ok(())
     }
@@ -2104,6 +2191,54 @@ impl C6SlotHandle {
         Ok(digest)
     }
 
+    /// Persist one C6.2 certificate under the same burn-before-use journal.
+    pub fn produce_c62(&mut self, certificate: &C62NativeFinalCertificate) -> C6Result<C6Digest> {
+        self.record.reservation.matches_c62_certificate(certificate)?;
+        let bytes = certificate.encode().map_err(|error| C6Error::new(error.to_string()))?;
+        let digest = certificate.digest().map_err(|error| C6Error::new(error.to_string()))?;
+
+        if matches!(self.record.status, C6SlotStatus::Produced | C6SlotStatus::Accepted) {
+            let stored = self.retransmit_c62()?;
+            if stored != bytes || self.record.produced_certificate_digest != Some(digest) {
+                return Err(C6Error::new(
+                    "alternate C6.2 certificate forbidden for a produced slot",
+                ));
+            }
+            return Ok(digest);
+        }
+        if self.record.status != C6SlotStatus::InFlight {
+            return Err(C6Error::new("C6.2 certificate requires a durable in-flight slot"));
+        }
+
+        let path = certificate_path(&self.journal_path);
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        set_private_mode(&mut options);
+        match options.open(&path) {
+            Ok(mut file) => {
+                file.write_all(&bytes)
+                    .map_err(|error| io_error("cannot write C6.2 certificate", &path, error))?;
+                file.sync_all()
+                    .map_err(|error| io_error("cannot sync C6.2 certificate", &path, error))?;
+                sync_directory(parent_directory(&path))?;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                let stored = fs::read(&path).map_err(|read_error| {
+                    io_error("cannot read existing C6.2 certificate", &path, read_error)
+                })?;
+                if stored != bytes {
+                    self.abort()?;
+                    return Err(C6Error::new(
+                        "alternate bytes found in an in-flight C6.2 certificate slot",
+                    ));
+                }
+            }
+            Err(error) => return Err(io_error("cannot create C6.2 certificate", &path, error)),
+        }
+        self.append_transition(SLOT_TRANSITION_PRODUCED, digest, bytes.len() as u64)?;
+        Ok(digest)
+    }
+
     pub fn retransmit(&self) -> C6Result<Vec<u8>> {
         if !matches!(self.record.status, C6SlotStatus::Produced | C6SlotStatus::Accepted) {
             return Err(C6Error::new("C6 slot has no retransmittable certificate"));
@@ -2120,6 +2255,39 @@ impl C6SlotHandle {
             return Err(C6Error::new("stored C6 certificate digest mismatch"));
         }
         Ok(bytes)
+    }
+
+    pub fn retransmit_c62(&self) -> C6Result<Vec<u8>> {
+        if !matches!(self.record.status, C6SlotStatus::Produced | C6SlotStatus::Accepted) {
+            return Err(C6Error::new("C6.2 slot has no retransmittable certificate"));
+        }
+        let path = certificate_path(&self.journal_path);
+        let bytes = fs::read(&path)
+            .map_err(|error| io_error("cannot read stored C6.2 certificate", &path, error))?;
+        if Some(bytes.len() as u64) != self.record.produced_certificate_len {
+            return Err(C6Error::new("stored C6.2 certificate length mismatch"));
+        }
+        let certificate = C62NativeFinalCertificate::decode(&bytes)
+            .map_err(|error| C6Error::new(error.to_string()))?;
+        self.record.reservation.matches_c62_certificate(&certificate)?;
+        if Some(certificate.digest().map_err(|error| C6Error::new(error.to_string()))?)
+            != self.record.produced_certificate_digest
+        {
+            return Err(C6Error::new("stored C6.2 certificate digest mismatch"));
+        }
+        Ok(bytes)
+    }
+
+    fn validate_stored_certificate(&self, bytes: &[u8]) -> C6Result<C6Digest> {
+        if let Ok(certificate) = C6FinalCertificate::decode(bytes) {
+            self.record.reservation.matches_certificate(&certificate)?;
+            return certificate.digest();
+        }
+        if let Ok(certificate) = C62NativeFinalCertificate::decode(bytes) {
+            self.record.reservation.matches_c62_certificate(&certificate)?;
+            return certificate.digest().map_err(|error| C6Error::new(error.to_string()));
+        }
+        Err(C6Error::new("stored certificate is neither canonical C6 nor canonical C6.2"))
     }
 
     pub fn acknowledge(&mut self, certificate_digest: C6Digest) -> C6Result<()> {
@@ -2157,8 +2325,8 @@ impl C6SlotHandle {
                 }
                 let bytes = fs::read(&path)
                     .map_err(|error| io_error("cannot read orphan C6 certificate", &path, error))?;
-                let certificate = match C6FinalCertificate::decode(&bytes) {
-                    Ok(certificate) => certificate,
+                let certificate_digest = match self.validate_stored_certificate(&bytes) {
+                    Ok(digest) => digest,
                     Err(error) => {
                         self.abort()?;
                         return Err(C6Error::new(format!(
@@ -2166,20 +2334,21 @@ impl C6SlotHandle {
                         )));
                     }
                 };
-                if let Err(error) = self.record.reservation.matches_certificate(&certificate) {
-                    self.abort()?;
-                    return Err(C6Error::new(format!(
-                        "mismatched orphan C6 certificate; slot burned: {error}"
-                    )));
-                }
                 self.append_transition(
                     SLOT_TRANSITION_PRODUCED,
-                    certificate.digest()?,
+                    certificate_digest,
                     bytes.len() as u64,
                 )?;
             }
             C6SlotStatus::Produced | C6SlotStatus::Accepted => {
-                self.retransmit()?;
+                let bytes = fs::read(&path)
+                    .map_err(|error| io_error("cannot read stored C6 certificate", &path, error))?;
+                if Some(bytes.len() as u64) != self.record.produced_certificate_len
+                    || Some(self.validate_stored_certificate(&bytes)?)
+                        != self.record.produced_certificate_digest
+                {
+                    return Err(C6Error::new("stored C6 certificate journal mismatch"));
+                }
             }
             C6SlotStatus::Burned => {
                 if path.exists() {
@@ -2196,6 +2365,14 @@ impl C6SlotHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::c62_certificate::{
+        C62NativeWrapperCommitments, C62_NATIVE_CERTIFICATE_VERSION, C62_NATIVE_WRAPPER_QUERIES,
+    };
+    use crate::c62_response_envelope::{
+        C62ResponseProofEnvelope, C62_RESPONSE_AUTHENTICATED_LINK_BYTES,
+        C62_RESPONSE_CACHE_FOLD_TARGET_BYTES, C62_RESPONSE_CACHE_SOURCE_BYTES,
+        C62_RESPONSE_PRODUCT_COORDINATE_ONE_BYTES, C62_RESPONSE_RESIDUAL_PENDING_BYTES,
+    };
     use crate::c6_response_envelope::{
         C6ResponseProofEnvelope, C6_RESPONSE_AUTHENTICATED_LINK_MAX_BYTES,
         C6_RESPONSE_CACHE_BLIND_MAX_BYTES, C6_RESPONSE_CACHE_FOLD_TARGET_BYTES,
@@ -2245,12 +2422,8 @@ mod tests {
             cache_root: digest(0x41),
             producer_transition_digest: digest(0x42),
         };
-        let workload = C6Workload {
-            prompt_tokens: 25,
-            decode_tokens: 25,
-            old_context: 100,
-            new_context: 150,
-        };
+        let workload =
+            C6Workload { prompt_tokens: 25, decode_tokens: 25, old_context: 100, new_context: 150 };
         let proposed = C6ProposedCacheHead::successor(old, workload, digest(0x43)).unwrap();
         let final_head = C6CacheHead {
             epoch: proposed.epoch(),
@@ -2364,6 +2537,80 @@ mod tests {
         certificate.transition_statement_digest = statement;
         certificate.new_head.producer_transition_digest = statement;
         certificate
+    }
+
+    fn c62_certificate(
+        state: C6ClientState,
+        slot: u32,
+        nonce: C6Digest,
+        correlation_ranges: C6PairedCorrelationRanges,
+    ) -> C62NativeFinalCertificate {
+        let mut retained_transcript =
+            crate::model_proof_codec::retained_response_c62_test_bytes();
+        retained_transcript.push(0xa5);
+        let proof_envelope = C62ResponseProofEnvelope::new(
+            vec![0x51],
+            vec![0x50; C62_RESPONSE_PRODUCT_COORDINATE_ONE_BYTES as usize],
+            vec![0x52; C62_RESPONSE_RESIDUAL_PENDING_BYTES as usize],
+            vec![0x53; C62_RESPONSE_CACHE_SOURCE_BYTES as usize],
+            vec![0x54],
+            vec![0x55; C62_RESPONSE_CACHE_FOLD_TARGET_BYTES as usize],
+            vec![0x56; C62_RESPONSE_AUTHENTICATED_LINK_BYTES as usize],
+        )
+        .unwrap()
+        .encode()
+        .unwrap();
+        let next_workload = workload(state);
+        C62NativeFinalCertificate {
+            version: C62_NATIVE_CERTIFICATE_VERSION,
+            wrapper_queries: C62_NATIVE_WRAPPER_QUERIES,
+            protocol_digest: state.protocol_digest,
+            model_digest: state.model_digest,
+            params_digest: state.params_digest,
+            setup_manifest_digest: state.setup_manifest_digest,
+            connection_id: state.connection_id,
+            nonce,
+            slot,
+            correlation_ranges,
+            predecessor_certificate_digest: state.accepted_certificate_digest,
+            old_head: state.head,
+            new_head: C6CacheHead {
+                epoch: state.head.epoch + 1,
+                cache_len: next_workload.new_context,
+                cache_root: hash_parts(
+                    b"volta-zk/c6.2/test-cache-root",
+                    &[&state.head.cache_root, &slot.to_le_bytes()],
+                ),
+                producer_transition_digest: [0; 32],
+            },
+            workload: next_workload,
+            public_output_digest: digest(8),
+            wrapper: C62NativeWrapperCommitments {
+                statement_digest: digest(9),
+                residual_root: digest(10),
+                auxiliary_root: digest(11),
+                source_binding_digest: digest(12),
+            },
+            residual: C6PairedDeltaResidual {
+                coordinates: [
+                    C6DeltaResidual {
+                        correction_rlc: Fp2::new(Fp::new(7), Fp::new(11)),
+                        public_tag_rlc: Fp2::new(Fp::new(13), Fp::new(17)),
+                    },
+                    C6DeltaResidual {
+                        correction_rlc: Fp2::new(Fp::new(19), Fp::new(23)),
+                        public_tag_rlc: Fp2::new(Fp::new(29), Fp::new(31)),
+                    },
+                ],
+            },
+            retained_transcript_digest: [0; 32],
+            proof_envelope_digest: [0; 32],
+            transition_statement_digest: [0; 32],
+            retained_transcript,
+            proof_envelope,
+        }
+        .seal()
+        .unwrap()
     }
 
     fn reservation(
@@ -2803,6 +3050,41 @@ mod tests {
         assert!(store.reserve(reservation(state, 2, digest(42), paired_ranges(200))).is_err());
         assert!(store.reserve(reservation(state, 2, digest(44), paired_ranges(200))).is_err());
 
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn c62_certificate_uses_the_durable_client_and_slot_lifecycle() {
+        let root = test_directory("c62-slot-lifecycle");
+        fs::create_dir_all(&root).unwrap();
+        let initial = genesis(digest(140));
+        let client_path = root.join("head.state");
+        let client = C6ClientStore::initialize(&client_path, initial).unwrap();
+        let (pending, attempt) =
+            client.reserve_attempt(initial, digest(141), 100, workload(initial)).unwrap();
+        let slots = C6SlotStore::open(root.join("slots")).unwrap();
+        let mut slot = slots
+            .reserve(
+                C6SlotReservation::from_client_attempt(initial.connection_id, attempt).unwrap(),
+            )
+            .unwrap();
+        slot.start().unwrap();
+        let certificate =
+            c62_certificate(initial, attempt.slot, attempt.nonce, attempt.correlation_ranges);
+        let expected = certificate.encode().unwrap();
+        let certificate_digest = slot.produce_c62(&certificate).unwrap();
+        assert_eq!(slot.retransmit_c62().unwrap(), expected);
+        assert_eq!(slot.produce_c62(&certificate).unwrap(), certificate_digest);
+
+        let next = client.accept_c62(pending, &certificate).unwrap();
+        assert_eq!(next.head, certificate.new_head);
+        assert_eq!(next.accepted_certificate_digest, certificate_digest);
+        slot.acknowledge(certificate_digest).unwrap();
+        drop(slot);
+
+        let reopened = slots.open_slot(initial.connection_id, attempt.slot).unwrap();
+        assert_eq!(reopened.status(), C6SlotStatus::Accepted);
+        assert_eq!(reopened.retransmit_c62().unwrap(), expected);
         fs::remove_dir_all(root).unwrap();
     }
 

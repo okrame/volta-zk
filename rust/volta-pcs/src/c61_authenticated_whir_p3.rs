@@ -51,12 +51,15 @@ use crate::c61_authenticated_whir::{
     finish_c61_authenticated_whir_base, finish_c61_authenticated_whir_base_with_zero_rows,
     finish_c61_joint_native_bridge, prepare_c61_authenticated_whir_mask,
     prepare_c61_joint_native_bridge_prover, prepare_c61_joint_native_bridge_verifier,
+    prepare_c62_response_compiler_relation_prover, prepare_c62_response_compiler_relation_verifier,
     simulate_c61_authenticated_whir_base_view, verify_c61_authenticated_whir_base,
     verify_c61_authenticated_whir_base_with_zero_rows_residual, verify_c61_joint_native_bridge,
     C61AuthenticatedWhirAffineClaim, C61AuthenticatedWhirBaseProof, C61AuthenticatedWhirMaskRange,
     C61AuthenticatedWhirProverFinishInput, C61AuthenticatedWhirVerifierInput,
     C61JointNativeBridgeFrame, C61JointNativeProverBridgePending, C61JointNativeProverTerm,
-    C61JointNativeVerifierBridgePending, C61JointNativeVerifierTerm,
+    C61JointNativeVerifierBridgePending, C61JointNativeVerifierTerm, C62ResponseCompilerBinding,
+    C62ResponseCompilerProverPending, C62ResponseCompilerVerifierPending,
+    C62SecondaryResponseProverTerm, C62SecondaryResponseVerifierTerm,
     C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES,
 };
 use crate::c61_interactive_driver::{
@@ -73,9 +76,10 @@ use crate::c61_persisted_mmcs::{
     C61MmcsResourceMetrics, C61PersistedMmcs, C61PersistedMmcsMetrics,
 };
 use crate::c61_public_compression::{
-    c61_joint_public_statement_digest, C61ArithmeticFrame, C61JointPublicArgument,
-    C61NativeChainId, C61NativeComponent, C61PublicArgument, C61_ARITHMETIC_FRAME_BYTES,
-    C61_NATIVE_CHAIN_COUNT, C61_PUBLIC_ARGUMENT_OUTER_FRAMING_BYTES,
+    c61_joint_public_statement_digest, c62_public_statement_digest, C61ArithmeticFrame,
+    C61JointPublicArgument, C61NativeChainId, C61NativeComponent, C61PublicArgument,
+    C62PublicArgument, C61_ARITHMETIC_FRAME_BYTES, C61_NATIVE_CHAIN_COUNT,
+    C61_PUBLIC_ARGUMENT_OUTER_FRAMING_BYTES,
 };
 use crate::c61_shared_round_challenger::c61_shared_round_pair;
 use crate::c61_terminal_functional::{
@@ -86,8 +90,8 @@ use crate::c61_terminal_functional::{
     C61SparseRationalBlindArithmeticProof, C61SparseRationalCompilerOracles,
     C61TerminalFunctionalCompilerBinding, C61TerminalFunctionalCompilerStatement,
     C61TypedNativeChainPublicStatement, C61TypedNativeRelationStatement,
-    C61_EMBEDDING_OPENING_TARGETS, C61_EMBEDDING_POLYNOMIAL_LOG2,
-    C61_MODEL_OPENING_TARGETS, C61_MODEL_POLYNOMIAL_LOG2,
+    C61_EMBEDDING_OPENING_TARGETS, C61_EMBEDDING_POLYNOMIAL_LOG2, C61_MODEL_OPENING_TARGETS,
+    C61_MODEL_POLYNOMIAL_LOG2,
 };
 use crate::c61_whir_reference::{
     c61_max_pruned_binary_siblings, c61_p3_fp2_from_volta, c61_reference_mmcs,
@@ -120,6 +124,8 @@ pub const C61_AUTHENTICATED_P3_MAGIC: [u8; 8] = *b"C6AWP1\0\0";
 pub const C61_AUTHENTICATED_P3_VERSION: u16 = 1;
 pub const C61_JOINT_AUTHENTICATED_P3_MAGIC: [u8; 8] = *b"C6AWP2\0\0";
 pub const C61_JOINT_AUTHENTICATED_P3_VERSION: u16 = 2;
+pub const C62_AUTHENTICATED_P3_MAGIC: [u8; 8] = *b"C62AWP1\0";
+pub const C62_AUTHENTICATED_P3_VERSION: u16 = 1;
 pub const C61_AUTHENTICATED_P3_HEADER_BYTES: usize = 8 + 2 + 1 + 1 + 4;
 pub const C61_SHARED_MULTI_ORACLE_MAGIC: [u8; 8] = *b"C6SMO1\0\0";
 pub const C61_SHARED_MULTI_ORACLE_VERSION: u16 = 1;
@@ -679,12 +685,10 @@ pub fn decode_c61_production_compiler_commitment_descriptors(
         return Err("C6CPX3 commitment predecode requires a compiler chain".to_owned());
     }
     let joint = C61ProductionJointCompilerChainProof::decode(payload, [1; 32], [2; 32])?;
-    let artifact = C61SharedMultiOracleArtifact {
-        payload: joint.inner().shared_payload().to_vec(),
-    };
-    let ((response, _), (plan, _), _) =
-        decode_c61_shared_multi_oracle_artifact(&artifact, 28, 27)
-            .map_err(|error| error.to_string())?;
+    let artifact =
+        C61SharedMultiOracleArtifact { payload: joint.inner().shared_payload().to_vec() };
+    let ((response, _), (plan, _), _) = decode_c61_shared_multi_oracle_artifact(&artifact, 28, 27)
+        .map_err(|error| error.to_string())?;
     if response.num_roots() != 1 || plan.num_roots() != 1 {
         return Err("C6CPX3 commitment predecode has a noncanonical root cap".to_owned());
     }
@@ -997,6 +1001,90 @@ impl C61ProductionJointPublicArgumentAssembly {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum C62ProductionNativeChainProof {
+    CommittedPrimary(C61ProductionCommittedChainProof),
+    CommittedSecondary(C62ProductionCommittedChainProof),
+    Compiler(C61ProductionJointCompilerChainProof),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C62ProductionNativeChainArtifact {
+    id: C61NativeChainId,
+    proof: C62ProductionNativeChainProof,
+}
+
+impl C62ProductionNativeChainArtifact {
+    pub fn committed_primary(
+        id: C61NativeChainId,
+        proof: C61ProductionCommittedChainProof,
+    ) -> Result<Self, String> {
+        if id.component == C61NativeComponent::Compiler || id.repetition != 0 {
+            return Err("C62PA1 primary artifact has a non-primary identity".to_owned());
+        }
+        Ok(Self { id, proof: C62ProductionNativeChainProof::CommittedPrimary(proof) })
+    }
+
+    pub fn committed_secondary(
+        id: C61NativeChainId,
+        proof: C62ProductionCommittedChainProof,
+    ) -> Result<Self, String> {
+        if id.component == C61NativeComponent::Compiler || id.repetition != 1 {
+            return Err("C62PA1 secondary artifact has a non-secondary identity".to_owned());
+        }
+        Ok(Self { id, proof: C62ProductionNativeChainProof::CommittedSecondary(proof) })
+    }
+
+    pub fn compiler(
+        id: C61NativeChainId,
+        proof: C61ProductionJointCompilerChainProof,
+    ) -> Result<Self, String> {
+        if id.component != C61NativeComponent::Compiler || id.repetition >= 2 {
+            return Err("C62PA1 compiler artifact has a non-compiler identity".to_owned());
+        }
+        Ok(Self { id, proof: C62ProductionNativeChainProof::Compiler(proof) })
+    }
+
+    pub fn id(&self) -> C61NativeChainId {
+        self.id
+    }
+
+    pub fn proof(&self) -> &C62ProductionNativeChainProof {
+        &self.proof
+    }
+
+    fn payload(&self) -> Result<Vec<u8>, String> {
+        match &self.proof {
+            C62ProductionNativeChainProof::CommittedPrimary(proof) => Ok(proof.payload().to_vec()),
+            C62ProductionNativeChainProof::CommittedSecondary(proof) => {
+                Ok(proof.payload().to_vec())
+            }
+            C62ProductionNativeChainProof::Compiler(proof) => proof.encode(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C62ProductionPublicArgumentAssembly {
+    argument: C62PublicArgument,
+    encoded: Vec<u8>,
+    native_payload_bytes: [usize; C61_NATIVE_CHAIN_COUNT],
+}
+
+impl C62ProductionPublicArgumentAssembly {
+    pub fn argument(&self) -> &C62PublicArgument {
+        &self.argument
+    }
+
+    pub fn encoded(&self) -> &[u8] {
+        &self.encoded
+    }
+
+    pub fn native_payload_bytes(&self) -> [usize; C61_NATIVE_CHAIN_COUNT] {
+        self.native_payload_bytes
+    }
+}
+
 fn c61_joint_tail_role_for_component(
     profile: &C6CanonicalTargetProfile,
     component: C61NativeComponent,
@@ -1024,23 +1112,19 @@ fn validate_same_response_claim_statement(
     secondary: &C61TypedNativeChainPublicStatement,
     component: C61NativeComponent,
 ) -> Result<(), String> {
-    if primary.id()
-        != (C61NativeChainId { component, repetition: 0 })
-        || secondary.id()
-            != (C61NativeChainId { component, repetition: 1 })
+    if primary.id() != (C61NativeChainId { component, repetition: 0 })
+        || secondary.id() != (C61NativeChainId { component, repetition: 1 })
     {
         return Err("C6ICT5 paired native statements have the wrong roles".to_owned());
     }
     let primary = c61_model_embedding_openings(primary)?;
     let secondary = c61_model_embedding_openings(secondary)?;
     if primary.commitment.parameter_digest != secondary.commitment.parameter_digest
-        || primary.commitment.polynomial_domain_log2
-            != secondary.commitment.polynomial_domain_log2
+        || primary.commitment.polynomial_domain_log2 != secondary.commitment.polynomial_domain_log2
         || primary.ordered_points != secondary.ordered_points
     {
         return Err(
-            "C6ICT5 native repetitions do not share one ordered response claim schedule"
-                .to_owned(),
+            "C6ICT5 native repetitions do not share one ordered response claim schedule".to_owned()
         );
     }
     Ok(())
@@ -1162,12 +1246,8 @@ pub fn assemble_c61_production_joint_public_argument_from_executions(
 
     let mut model_secondary = None;
     let mut embedding_secondary = None;
-    for (index, ((cohort, proof), statement)) in profile
-        .cohorts
-        .iter()
-        .zip(secondary.proofs)
-        .zip(secondary.statements)
-        .enumerate()
+    for (index, ((cohort, proof), statement)) in
+        profile.cohorts.iter().zip(secondary.proofs).zip(secondary.statements).enumerate()
     {
         if proof.tail_role() != c61_joint_native_carrier_tail(secondary.frame, index).0 {
             return Err("C6PA2 secondary execution carrier role differs from its cohort".to_owned());
@@ -1262,16 +1342,8 @@ pub fn decode_c61_production_joint_public_argument(
         return Err("C6PA2 compiler statement binding is empty".to_owned());
     }
     let argument = C61JointPublicArgument::decode(bytes).map_err(|error| error.to_string())?;
-    validate_same_response_claim_statement(
-        &public[0],
-        &public[1],
-        C61NativeComponent::Model,
-    )?;
-    validate_same_response_claim_statement(
-        &public[2],
-        &public[3],
-        C61NativeComponent::Embedding,
-    )?;
+    validate_same_response_claim_statement(&public[0], &public[1], C61NativeComponent::Model)?;
+    validate_same_response_claim_statement(&public[2], &public[3], C61NativeComponent::Embedding)?;
     let mut artifacts = Vec::with_capacity(C61_NATIVE_CHAIN_COUNT);
     for (index, id) in C61NativeChainId::ordered().into_iter().enumerate() {
         if public[index].id() != id {
@@ -1322,6 +1394,257 @@ pub fn decode_c61_production_joint_public_argument(
         };
         if compiler.terminal_claims != arithmetic.terminal_claims {
             return Err("C6PA2 terminal values differ from compiler statements".to_owned());
+        }
+    }
+    Ok((argument, artifacts, arithmetic))
+}
+
+pub fn assemble_c62_production_public_argument(
+    statement_digest: [u8; 32],
+    profile: &C6CanonicalTargetProfile,
+    chains: [C62ProductionNativeChainArtifact; C61_NATIVE_CHAIN_COUNT],
+    arithmetic: C61ArithmeticFrame,
+) -> Result<C62ProductionPublicArgumentAssembly, String> {
+    if statement_digest == [0; 32] || arithmetic.statement_digest != statement_digest {
+        return Err("C62PA1/C6RSC4 statement digest mismatch".to_owned());
+    }
+    let arithmetic = arithmetic.encode();
+    let mut payloads: [Vec<u8>; C61_NATIVE_CHAIN_COUNT] = std::array::from_fn(|_| Vec::new());
+    for (index, (expected, artifact)) in
+        C61NativeChainId::ordered().into_iter().zip(chains).enumerate()
+    {
+        if artifact.id != expected {
+            return Err("C62PA1 native chains are not in canonical order".to_owned());
+        }
+        match (&artifact.proof, expected.component, expected.repetition) {
+            (C62ProductionNativeChainProof::CommittedPrimary(_), component, 0)
+                if component != C61NativeComponent::Compiler => {}
+            (C62ProductionNativeChainProof::CommittedSecondary(proof), component, 1)
+                if component != C61NativeComponent::Compiler
+                    && proof.tail_role()
+                        == c61_joint_tail_role_for_component(profile, component)? => {}
+            (C62ProductionNativeChainProof::Compiler(_), C61NativeComponent::Compiler, _) => {}
+            _ => return Err("C62PA1 native semantic version or carrier role differs".to_owned()),
+        }
+        payloads[index] = artifact.payload()?;
+    }
+    let native_payload_bytes = std::array::from_fn(|index| payloads[index].len());
+    let argument = C62PublicArgument::new(statement_digest, payloads, arithmetic)
+        .map_err(|error| error.to_string())?;
+    let encoded = argument.encode().map_err(|error| error.to_string())?;
+    if C62PublicArgument::decode(&encoded).map_err(|error| error.to_string())? != argument {
+        return Err("decoded C62PA1 differs from its exact assembly".to_owned());
+    }
+    Ok(C62ProductionPublicArgumentAssembly { argument, encoded, native_payload_bytes })
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn assemble_c62_production_public_argument_from_executions(
+    base_statement_digest: [u8; 32],
+    native_profile_digest: [u8; 32],
+    functional_digest: [u8; 32],
+    response_binding_digest: [u8; 32],
+    root_binding_digest: [u8; 32],
+    profile: &C6CanonicalTargetProfile,
+    primary: [C61ProductionCommittedChainExecution; 2],
+    secondary: C62ProductionJointNativeProverExecution,
+    compiler: [C61ProductionCompilerChainExecution; 2],
+    arithmetic: C61ArithmeticFrame,
+) -> Result<C62ProductionPublicArgumentAssembly, String> {
+    let schedule_digest = secondary.challenge.schedule_digest;
+    if secondary.proofs.len() != profile.cohorts.len()
+        || secondary.statements.len() != profile.cohorts.len()
+    {
+        return Err("C62PA1 secondary proof/profile census mismatch".to_owned());
+    }
+    let statement_digest = c62_public_statement_digest(
+        base_statement_digest,
+        native_profile_digest,
+        schedule_digest,
+        functional_digest,
+        response_binding_digest,
+        root_binding_digest,
+    )
+    .map_err(|error| error.to_string())?;
+    if arithmetic.statement_digest != statement_digest {
+        return Err("C62PA1 execution assembly received another C6RSC4 statement".to_owned());
+    }
+    for (repetition, execution) in compiler.iter().enumerate() {
+        let public = execution.public()?;
+        let expected = C61NativeChainId {
+            component: C61NativeComponent::Compiler,
+            repetition: repetition as u8,
+        };
+        let compiler_statement = match public.relation() {
+            C61TypedNativeRelationStatement::Compiler(statement) if public.id() == expected => {
+                statement.as_ref()
+            }
+            _ => return Err("C62PA1 compiler execution has a noncanonical role".to_owned()),
+        };
+        if compiler_statement.terminal_claims != arithmetic.terminal_claims
+            || compiler_statement.relation_root != arithmetic.adjoint_root
+            || compiler_statement.functional_fold != arithmetic.source_boundary
+        {
+            return Err("C62PA1 compiler statement differs from C6RSC4".to_owned());
+        }
+    }
+    if compiler[0].public()?.relation() != compiler[1].public()?.relation() {
+        return Err("C62PA1 compiler repetitions prove different relations".to_owned());
+    }
+
+    let [model_primary, embedding_primary] = primary;
+    let expected_primary = [
+        C61NativeChainId { component: C61NativeComponent::Model, repetition: 0 },
+        C61NativeChainId { component: C61NativeComponent::Embedding, repetition: 0 },
+    ];
+    if [model_primary.report.id, embedding_primary.report.id] != expected_primary {
+        return Err("C62PA1 primary executions are not model0/embed0".to_owned());
+    }
+
+    let mut model_secondary = None;
+    let mut embedding_secondary = None;
+    for (index, ((cohort, proof), statement)) in
+        profile.cohorts.iter().zip(secondary.proofs).zip(secondary.statements).enumerate()
+    {
+        if proof.tail_role() != c61_joint_native_carrier_tail(secondary.frame, index).0 {
+            return Err("C62PA1 secondary carrier role differs from its cohort".to_owned());
+        }
+        match cohort.chain_slot {
+            slot if slot == C61NativeComponent::Model as u16 && model_secondary.is_none() => {
+                model_secondary = Some((proof, statement));
+            }
+            slot if slot == C61NativeComponent::Embedding as u16
+                && embedding_secondary.is_none() =>
+            {
+                embedding_secondary = Some((proof, statement));
+            }
+            _ => return Err("C62PA1 secondary execution has a duplicate slot".to_owned()),
+        }
+    }
+    let (model_secondary, model_secondary_statement) =
+        model_secondary.ok_or_else(|| "C62PA1 omits the model cohort".to_owned())?;
+    let (embedding_secondary, embedding_secondary_statement) =
+        embedding_secondary.ok_or_else(|| "C62PA1 omits the embedding cohort".to_owned())?;
+    validate_same_response_claim_statement(
+        model_primary.statement.public(),
+        &model_secondary_statement,
+        C61NativeComponent::Model,
+    )?;
+    validate_same_response_claim_statement(
+        embedding_primary.statement.public(),
+        &embedding_secondary_statement,
+        C61NativeComponent::Embedding,
+    )?;
+
+    let [compiler0, compiler1] = compiler;
+    let chains = [
+        C62ProductionNativeChainArtifact::committed_primary(
+            expected_primary[0],
+            model_primary.proof,
+        )?,
+        C62ProductionNativeChainArtifact::committed_secondary(
+            C61NativeChainId { component: C61NativeComponent::Model, repetition: 1 },
+            model_secondary,
+        )?,
+        C62ProductionNativeChainArtifact::committed_primary(
+            expected_primary[1],
+            embedding_primary.proof,
+        )?,
+        C62ProductionNativeChainArtifact::committed_secondary(
+            C61NativeChainId { component: C61NativeComponent::Embedding, repetition: 1 },
+            embedding_secondary,
+        )?,
+        C62ProductionNativeChainArtifact::compiler(
+            C61NativeChainId { component: C61NativeComponent::Compiler, repetition: 0 },
+            C61ProductionJointCompilerChainProof::new(
+                compiler0.proof,
+                schedule_digest,
+                functional_digest,
+            )?,
+        )?,
+        C62ProductionNativeChainArtifact::compiler(
+            C61NativeChainId { component: C61NativeComponent::Compiler, repetition: 1 },
+            C61ProductionJointCompilerChainProof::new(
+                compiler1.proof,
+                schedule_digest,
+                functional_digest,
+            )?,
+        )?,
+    ];
+    assemble_c62_production_public_argument(statement_digest, profile, chains, arithmetic)
+}
+
+#[allow(clippy::type_complexity)]
+pub fn decode_c62_production_public_argument(
+    bytes: &[u8],
+    public: &[C61TypedNativeChainPublicStatement; C61_NATIVE_CHAIN_COUNT],
+    profile: &C6CanonicalTargetProfile,
+    body_schedule_digest: [u8; 32],
+    functional_digest: [u8; 32],
+) -> Result<
+    (
+        C62PublicArgument,
+        [C62ProductionNativeChainArtifact; C61_NATIVE_CHAIN_COUNT],
+        C61ArithmeticFrame,
+    ),
+    String,
+> {
+    if body_schedule_digest == [0; 32] || functional_digest == [0; 32] {
+        return Err("C62PA1 compiler statement binding is empty".to_owned());
+    }
+    let argument = C62PublicArgument::decode(bytes).map_err(|error| error.to_string())?;
+    validate_same_response_claim_statement(&public[0], &public[1], C61NativeComponent::Model)?;
+    validate_same_response_claim_statement(&public[2], &public[3], C61NativeComponent::Embedding)?;
+    let mut artifacts = Vec::with_capacity(C61_NATIVE_CHAIN_COUNT);
+    for (index, id) in C61NativeChainId::ordered().into_iter().enumerate() {
+        if public[index].id() != id {
+            return Err("C62PA1 typed statements are not in canonical order".to_owned());
+        }
+        let rebuilt = C61TypedNativeChainPublicStatement::new(id, public[index].relation().clone())
+            .map_err(|error| error.to_string())?;
+        if rebuilt != public[index] {
+            return Err("C62PA1 typed statement is noncanonical".to_owned());
+        }
+        let payload = &argument.native_chains()[index];
+        let artifact = match (id.component, id.repetition) {
+            (C61NativeComponent::Compiler, _) => C62ProductionNativeChainArtifact::compiler(
+                id,
+                C61ProductionJointCompilerChainProof::decode(
+                    payload,
+                    body_schedule_digest,
+                    functional_digest,
+                )?,
+            )?,
+            (_, 0) => C62ProductionNativeChainArtifact::committed_primary(
+                id,
+                C61ProductionCommittedChainProof::decode(payload, &public[index])?,
+            )?,
+            (component, 1) => {
+                let role = c61_joint_tail_role_for_component(profile, component)?;
+                C62ProductionNativeChainArtifact::committed_secondary(
+                    id,
+                    C62ProductionCommittedChainProof::decode(payload, &public[index], role)?,
+                )?
+            }
+            _ => return Err("C62PA1 native identity is outside the six-chain profile".to_owned()),
+        };
+        artifacts.push(artifact);
+    }
+    let artifacts: [C62ProductionNativeChainArtifact; C61_NATIVE_CHAIN_COUNT] = artifacts
+        .try_into()
+        .map_err(|_| "decoded C62PA1 native-chain census mismatch".to_owned())?;
+    let arithmetic =
+        C61ArithmeticFrame::decode(argument.arithmetic()).map_err(|error| error.to_string())?;
+    if arithmetic.statement_digest != argument.statement_digest() {
+        return Err("decoded C6RSC4 differs from C62PA1 statement".to_owned());
+    }
+    for statement in &public[4..] {
+        let compiler = match statement.relation() {
+            C61TypedNativeRelationStatement::Compiler(statement) => statement,
+            _ => return Err("C62PA1 final statements are not compiler relations".to_owned()),
+        };
+        if compiler.terminal_claims != arithmetic.terminal_claims {
+            return Err("C62PA1 terminal values differ from compiler statements".to_owned());
         }
     }
     Ok((argument, artifacts, arithmetic))
@@ -1512,6 +1835,133 @@ fn c61_awp1_payload_from_joint(payload: &[u8]) -> Result<Vec<u8>, String> {
     Ok(ordinary)
 }
 
+/// Strict C6.2 secondary WHIR proof.
+///
+/// The byte width is equal to C6AWP2.
+/// The distinct header prevents cross-version acceptance.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C62ProductionCommittedChainProof {
+    payload: Vec<u8>,
+    tail_role: C61JointNativeTailRole,
+}
+
+impl C62ProductionCommittedChainProof {
+    pub fn payload(&self) -> &[u8] {
+        &self.payload
+    }
+
+    pub fn tagless_payload(&self) -> &[u8] {
+        &self.payload[..self.payload.len() - C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES]
+    }
+
+    pub fn tail(&self) -> &[u8] {
+        &self.payload[self.payload.len() - C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES..]
+    }
+
+    pub fn tail_role(&self) -> C61JointNativeTailRole {
+        self.tail_role
+    }
+
+    pub fn decode(
+        payload: &[u8],
+        public: &C61TypedNativeChainPublicStatement,
+        tail_role: C61JointNativeTailRole,
+    ) -> Result<Self, String> {
+        if public.id().repetition != 1 {
+            return Err("C62AWP1 requires a complete secondary native chain".to_owned());
+        }
+        let mut ordinary = c62_awp1_payload_to_c61(payload, tail_role)?;
+        let tail_start = ordinary.len() - C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES;
+        ordinary[tail_start..].fill(0);
+        C61ProductionCommittedChainProof::decode(&ordinary, public)?;
+        Ok(Self { payload: payload.to_vec(), tail_role })
+    }
+
+    pub fn from_parts(
+        tagless_payload: &[u8],
+        tail: &[u8],
+        public: &C61TypedNativeChainPublicStatement,
+        tail_role: C61JointNativeTailRole,
+    ) -> Result<Self, String> {
+        if tail.len() != C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES {
+            return Err("C62AWP1 tail has noncanonical length".to_owned());
+        }
+        let mut payload = tagless_payload.to_vec();
+        payload.extend_from_slice(tail);
+        Self::decode(&payload, public, tail_role)
+    }
+}
+
+fn c62_tagless_from_c61_awp1(tagless: &[u8]) -> Result<Vec<u8>, String> {
+    if tagless.len() < C61_AUTHENTICATED_P3_HEADER_BYTES
+        || tagless[..8] != C61_AUTHENTICATED_P3_MAGIC
+        || u16::from_le_bytes(tagless[8..10].try_into().expect("fixed C6AWP1 version"))
+            != C61_AUTHENTICATED_P3_VERSION
+    {
+        return Err("C62AWP1 source is not a canonical C6AWP1 tagless body".to_owned());
+    }
+    let body_len = u32::from_le_bytes(tagless[12..16].try_into().expect("fixed C6AWP1 length"));
+    if body_len as usize
+        != tagless.len() - C61_AUTHENTICATED_P3_HEADER_BYTES
+            + C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES
+    {
+        return Err("C62AWP1 source body length is inconsistent".to_owned());
+    }
+    let mut c62 = tagless.to_vec();
+    c62[..8].copy_from_slice(&C62_AUTHENTICATED_P3_MAGIC);
+    c62[8..10].copy_from_slice(&C62_AUTHENTICATED_P3_VERSION.to_le_bytes());
+    Ok(c62)
+}
+
+fn c62_tagless_to_c61_awp1(tagless: &[u8]) -> Result<Vec<u8>, String> {
+    if tagless.len() < C61_AUTHENTICATED_P3_HEADER_BYTES
+        || tagless[..8] != C62_AUTHENTICATED_P3_MAGIC
+        || u16::from_le_bytes(tagless[8..10].try_into().expect("fixed C62AWP1 version"))
+            != C62_AUTHENTICATED_P3_VERSION
+    {
+        return Err("C62AWP1 tagless header mismatch".to_owned());
+    }
+    let body_len = u32::from_le_bytes(tagless[12..16].try_into().expect("fixed C62AWP1 length"));
+    if body_len as usize
+        != tagless.len() - C61_AUTHENTICATED_P3_HEADER_BYTES
+            + C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES
+    {
+        return Err("C62AWP1 tagless body length mismatch".to_owned());
+    }
+    let mut ordinary = tagless.to_vec();
+    ordinary[..8].copy_from_slice(&C61_AUTHENTICATED_P3_MAGIC);
+    ordinary[8..10].copy_from_slice(&C61_AUTHENTICATED_P3_VERSION.to_le_bytes());
+    Ok(ordinary)
+}
+
+fn c62_awp1_payload_to_c61(
+    payload: &[u8],
+    tail_role: C61JointNativeTailRole,
+) -> Result<Vec<u8>, String> {
+    if payload.len()
+        < C61_AUTHENTICATED_P3_HEADER_BYTES + C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES
+        || payload[..8] != C62_AUTHENTICATED_P3_MAGIC
+        || u16::from_le_bytes(payload[8..10].try_into().expect("fixed C62AWP1 version"))
+            != C62_AUTHENTICATED_P3_VERSION
+    {
+        return Err("C62AWP1 header mismatch".to_owned());
+    }
+    let body_len = u32::from_le_bytes(payload[12..16].try_into().expect("fixed C62AWP1 length"));
+    if body_len as usize != payload.len() - C61_AUTHENTICATED_P3_HEADER_BYTES {
+        return Err("C62AWP1 body length mismatch".to_owned());
+    }
+    let tail_start = payload.len() - C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES;
+    let tail = &payload[tail_start..];
+    C61AuthenticatedWhirBaseProof::decode(tail).map_err(|error| error.to_string())?;
+    if tail_role == C61JointNativeTailRole::Reserved && tail.iter().any(|byte| *byte != 0) {
+        return Err("C62AWP1 reserved secondary tail is nonzero".to_owned());
+    }
+    let mut ordinary = payload.to_vec();
+    ordinary[..8].copy_from_slice(&C61_AUTHENTICATED_P3_MAGIC);
+    ordinary[8..10].copy_from_slice(&C61_AUTHENTICATED_P3_VERSION.to_le_bytes());
+    Ok(ordinary)
+}
+
 /// Recover the commitment identity carried by one strict model/embedding
 /// chain before its response-owned opening statement has been rebuilt. This
 /// is the disk decoder's non-circular entry: it parses only the commitment
@@ -1531,11 +1981,8 @@ pub fn decode_c61_production_native_commitment_descriptor(
     if id.repetition >= 2 {
         return Err("C6PA2 commitment predecode repetition is out of range".to_owned());
     }
-    let ordinary = if id.repetition == 0 {
-        payload.to_vec()
-    } else {
-        c61_awp1_payload_from_joint(payload)?
-    };
+    let ordinary =
+        if id.repetition == 0 { payload.to_vec() } else { c61_awp1_payload_from_joint(payload)? };
     let (commitment, proof, base_proof) =
         decode_c61_authenticated_p3_artifact_inner(&ordinary, num_variables, true)
             .map_err(|error| error.to_string())?;
@@ -1555,6 +2002,51 @@ pub fn decode_c61_production_native_commitment_descriptor(
         commitment_root: commitment.roots()[0],
         polynomial_domain_log2: u8::try_from(num_variables)
             .map_err(|_| "C6PA2 commitment dimension exceeds u8")?,
+    })
+}
+
+/// Recover the commitment from C62AWP1 before rebuilding its response-owned
+/// statement. Primary repetitions retain C6AWP1. Secondary repetitions use
+/// the independent C62AWP1 header.
+pub fn decode_c62_production_native_commitment_descriptor(
+    id: C61NativeChainId,
+    payload: &[u8],
+) -> Result<C61NativeCommitmentDescriptor, String> {
+    if id.repetition == 0 {
+        return decode_c61_production_native_commitment_descriptor(id, payload);
+    }
+    let num_variables = match id.component {
+        C61NativeComponent::Model => usize::from(C61_MODEL_POLYNOMIAL_LOG2),
+        C61NativeComponent::Embedding => usize::from(C61_EMBEDDING_POLYNOMIAL_LOG2),
+        C61NativeComponent::Compiler => {
+            return Err("C62PA1 commitment predecode rejects compiler chains".to_owned())
+        }
+    };
+    if id.repetition != 1 || payload.len() < C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES {
+        return Err("C62PA1 commitment predecode repetition or length differs".to_owned());
+    }
+    let mut ordinary = c62_awp1_payload_to_c61(payload, C61JointNativeTailRole::Correction)?;
+    let tail_start = ordinary.len() - C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES;
+    ordinary[tail_start..].fill(0);
+    let (commitment, proof, base_proof) =
+        decode_c61_authenticated_p3_artifact_inner(&ordinary, num_variables, true)
+            .map_err(|error| error.to_string())?;
+    let canonical = encode_c61_authenticated_p3_artifact_inner(
+        num_variables,
+        &commitment,
+        &proof,
+        base_proof,
+        true,
+    )
+    .map_err(|error| error.to_string())?;
+    if canonical != ordinary || commitment.num_roots() != 1 {
+        return Err("C62PA1 commitment predecode is noncanonical".to_owned());
+    }
+    Ok(C61NativeCommitmentDescriptor {
+        parameter_digest: c61_authenticated_p3_parameter_digest(num_variables)?,
+        commitment_root: commitment.roots()[0],
+        polynomial_domain_log2: u8::try_from(num_variables)
+            .map_err(|_| "C62PA1 commitment dimension exceeds u8")?,
     })
 }
 
@@ -1605,6 +2097,29 @@ pub struct C61ProviderJointSessionBinding {
     profile_digest: [u8; 32],
 }
 
+/// Public C6.2 root context before any WHIR commitment exists.
+///
+/// Commitment roots are absorbed as canonical proof moves before their first
+/// challenges. The later joint binding commits all four roots again.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C62FiatShamirPublicContext {
+    digest: [u8; 32],
+    profile_digest: [u8; 32],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C62FiatShamirLaneContext {
+    digest: [u8; 32],
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C62FiatShamirJointContext {
+    digest: [u8; 32],
+    profile_digest: [u8; 32],
+}
+
 fn c61_canonical_target_profile_digest(
     profile: &C6CanonicalTargetProfile,
 ) -> Result<[u8; 32], String> {
@@ -1633,6 +2148,124 @@ fn c61_canonical_target_profile_digest(
         }
     }
     Ok(*hasher.finalize().as_bytes())
+}
+
+impl C62FiatShamirPublicContext {
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_reserved_attempt(
+        attempt: C6ClientAttempt,
+        profile: &C6CanonicalTargetProfile,
+        security_profile_digest: [u8; 32],
+        statement_digests: [[u8; 32]; 3],
+        proposed_successor_head_digest: [u8; 32],
+        source_binding_digest: [u8; 32],
+        lane_census_digest: [u8; 32],
+    ) -> Result<Self, String> {
+        attempt.correlation_ranges.validate().map_err(|error| error.to_string())?;
+        attempt.workload.validate().map_err(|error| error.to_string())?;
+        if attempt.setup_manifest_digest == [0; 32]
+            || attempt.nonce == [0; 32]
+            || attempt.old_head_digest == [0; 32]
+            || security_profile_digest == [0; 32]
+            || statement_digests.contains(&[0; 32])
+            || proposed_successor_head_digest == [0; 32]
+            || source_binding_digest == [0; 32]
+            || lane_census_digest == [0; 32]
+        {
+            return Err("C62FS1 public context contains a zero binding".to_owned());
+        }
+        let profile_digest = c61_canonical_target_profile_digest(profile)?;
+        let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c6.2/fs-public-context/v1");
+        hasher.update(b"C62FS1");
+        hasher.update(&security_profile_digest);
+        hasher.update(&attempt.slot.to_le_bytes());
+        hasher.update(&attempt.nonce);
+        hasher.update(&attempt.setup_manifest_digest);
+        hasher.update(&attempt.old_head_digest);
+        hasher.update(&attempt.predecessor_certificate_digest);
+        for range in attempt.correlation_ranges.coordinates {
+            hasher.update(&range.stage.to_le_bytes());
+            hasher.update(&range.start.to_le_bytes());
+            hasher.update(&range.count.to_le_bytes());
+        }
+        hasher.update(&attempt.workload.digest());
+        for digest in statement_digests {
+            hasher.update(&digest);
+        }
+        hasher.update(&proposed_successor_head_digest);
+        hasher.update(&source_binding_digest);
+        hasher.update(&profile_digest);
+        hasher.update(&lane_census_digest);
+        Ok(Self { digest: *hasher.finalize().as_bytes(), profile_digest })
+    }
+
+    pub fn lane(
+        self,
+        provider_session_binding: C61ProviderSessionBinding,
+        parameter_digest: [u8; 32],
+        id: C61NativeChainId,
+        mask_range: C61AuthenticatedWhirMaskRange,
+    ) -> Result<C62FiatShamirLaneContext, String> {
+        provider_session_binding.validate_for(id, mask_range)?;
+        if parameter_digest == [0; 32] || id.repetition >= 2 {
+            return Err("C62FS1 lane context is noncanonical".to_owned());
+        }
+        let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c6.2/fs-lane-context/v1");
+        hasher.update(&self.digest);
+        hasher.update(&provider_session_binding.context_digest());
+        hasher.update(&parameter_digest);
+        hasher.update(&(id.component as u16).to_le_bytes());
+        hasher.update(&[id.repetition, mask_range.stage]);
+        hasher.update(&mask_range.slot.to_le_bytes());
+        hasher.update(&mask_range.range_start.to_le_bytes());
+        Ok(C62FiatShamirLaneContext { digest: *hasher.finalize().as_bytes(), id, mask_range })
+    }
+
+    pub fn joint(self) -> C62FiatShamirJointContext {
+        let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c6.2/fs-joint-context/v1");
+        hasher.update(&self.digest);
+        hasher.update(&self.profile_digest);
+        C62FiatShamirJointContext {
+            digest: *hasher.finalize().as_bytes(),
+            profile_digest: self.profile_digest,
+        }
+    }
+
+    pub fn digest(self) -> [u8; 32] {
+        self.digest
+    }
+}
+
+impl C62FiatShamirLaneContext {
+    fn validate_for(
+        self,
+        id: C61NativeChainId,
+        mask_range: C61AuthenticatedWhirMaskRange,
+    ) -> Result<(), String> {
+        if self.id != id || self.mask_range != mask_range || self.digest == [0; 32] {
+            return Err("C62FS1 lane context is assigned to another chain".to_owned());
+        }
+        Ok(())
+    }
+
+    pub fn digest(self) -> [u8; 32] {
+        self.digest
+    }
+}
+
+impl C62FiatShamirJointContext {
+    fn validate_for(self, profile: &C6CanonicalTargetProfile) -> Result<(), String> {
+        if self.digest == [0; 32]
+            || self.profile_digest != c61_canonical_target_profile_digest(profile)?
+        {
+            return Err("C62FS1 joint context uses another target profile".to_owned());
+        }
+        Ok(())
+    }
+
+    pub fn digest(self) -> [u8; 32] {
+        self.digest
+    }
 }
 
 impl C61ProviderJointSessionBinding {
@@ -1765,6 +2398,7 @@ pub struct C61ProductionCommittedChainProverBody {
     tagless_payload: Vec<u8>,
     tagless_digest: [u8; 32],
     claim_weights: Vec<Fp2>,
+    aggregate_target: ProverAuthed,
     prepared: crate::c61_authenticated_whir::C61AuthenticatedWhirPreparedMask,
     affine: C61AuthenticatedWhirAffineClaim,
     finish_input: C61AuthenticatedWhirProverFinishInput,
@@ -1806,6 +2440,13 @@ impl C61ProductionCommittedChainProverBody {
         Ok(*blake3::hash(&self.joint_tagless_payload()?).as_bytes())
     }
 
+    pub fn c62_tagless_payload(&self) -> Result<Vec<u8>, String> {
+        if self.id.repetition != 1 || !self.transcript.is_fiat_shamir() {
+            return Err("C62AWP1 requires a secondary Fiat--Shamir body".to_owned());
+        }
+        c62_tagless_from_c61_awp1(&self.tagless_payload)
+    }
+
     /// Consume a secondary body into the model-independent joint relation.
     /// The returned term contains no profile-specific target census or name.
     pub fn into_joint_term(
@@ -1825,6 +2466,29 @@ impl C61ProductionCommittedChainProverBody {
             gamma: self.finish_input.gamma,
             affine: self.affine,
             cohort_weight,
+        })
+    }
+
+    /// C6.2 consumes the same secondary WHIR body together with the one
+    /// response-owned aggregate that was already checked against the opened
+    /// polynomial. No response target vector is retained here.
+    pub fn into_c62_response_term(
+        self,
+        cohort_weight: Fp2,
+    ) -> Result<C62SecondaryResponseProverTerm, String> {
+        if self.id.repetition != 1 || !self.transcript.is_fiat_shamir() {
+            return Err("C62JVR1 prover requires a secondary Fiat--Shamir WHIR body".to_owned());
+        }
+        Ok(C62SecondaryResponseProverTerm {
+            response_target: self.aggregate_target,
+            native: C61JointNativeProverTerm {
+                prepared: self.prepared,
+                combined: self.finish_input.combined,
+                shifted_masked_claim: self.finish_input.shifted_masked_claim,
+                gamma: self.finish_input.gamma,
+                affine: self.affine,
+                cohort_weight,
+            },
         })
     }
 
@@ -1926,6 +2590,42 @@ impl C61ProductionCommittedChainVerifierBody {
             gamma: c61_volta_fp2_from_p3(self.base_case.gamma),
             affine: self.affine,
             cohort_weight,
+        })
+    }
+
+    /// C6.2 verifier counterpart. The response key is installed from strict
+    /// response replay before this body can enter the joint relation.
+    pub fn into_c62_response_term(
+        self,
+        cohort_weight: Fp2,
+        context: &mut VerifierCtx,
+    ) -> Result<C62SecondaryResponseVerifierTerm, String> {
+        if self.id.repetition != 1 || !self.transcript.is_fiat_shamir() {
+            return Err("C62JVR1 verifier requires a secondary Fiat--Shamir WHIR body".to_owned());
+        }
+        let response_target = self.aggregate_key.ok_or_else(|| {
+            "C62JVR1 secondary verifier body is missing its response target key".to_owned()
+        })?;
+        if !context.uses_pooled_pcg() {
+            return Err("C62JVR1 production verifier forbids mock PCG state".to_owned());
+        }
+        let mask_domain =
+            self.mask_range.correlation_domain(self.id).map_err(|error| error.to_string())?;
+        let mask_key = context
+            .expand_full_verifier_keys(mask_domain, 1)
+            .into_iter()
+            .next()
+            .ok_or_else(|| "C62JVR1 missing verifier mask key".to_owned())?;
+        Ok(C62SecondaryResponseVerifierTerm {
+            response_target,
+            native: C61JointNativeVerifierTerm {
+                mask_key,
+                combined: c61_volta_fp2_from_p3(self.base_case.combined),
+                shifted_masked_claim: c61_volta_fp2_from_p3(self.base_case.shifted_masked_claim),
+                gamma: c61_volta_fp2_from_p3(self.base_case.gamma),
+                affine: self.affine,
+                cohort_weight,
+            },
         })
     }
 
@@ -2133,6 +2833,162 @@ impl C61ProductionJointNativeProverLinkPending {
             transcript_ledger: self.transcript.ledger().clone(),
         })
     }
+}
+
+/// C6.2 secondary bodies after every C62AWP1 body and `zeta` are fixed.
+///
+/// This owner has no method that can emit the final ZeroOpen tag directly.
+pub struct C62ProductionJointNativeProverBodiesFixed {
+    bodies: Vec<C61ProductionCommittedChainProverBody>,
+    tagless_payloads: Vec<Vec<u8>>,
+    challenge: C61JointNativeChallenge,
+    transcript: Transcript,
+}
+
+/// C6.2 prover state after `eta` is fixed.
+///
+/// A matching C6NBR2 receipt is required before proof bytes exist.
+pub struct C62ProductionJointNativeProverLinkPending {
+    statements: Vec<C61TypedNativeChainPublicStatement>,
+    tagless_payloads: Vec<Vec<u8>>,
+    challenge: C61JointNativeChallenge,
+    transcript: Transcript,
+    relation: C62ResponseCompilerProverPending,
+    nbr2_statement_digest: [u8; 32],
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C62ProductionJointNativeProverExecution {
+    pub proofs: Vec<C62ProductionCommittedChainProof>,
+    pub statements: Vec<C61TypedNativeChainPublicStatement>,
+    pub frame: C61JointNativeBridgeFrame,
+    pub challenge: C61JointNativeChallenge,
+    pub eta: Fp2,
+    pub transcript_bytes: u64,
+    pub transcript_ledger: BTreeMap<&'static str, u64>,
+}
+
+impl C62ProductionJointNativeProverBodiesFixed {
+    pub fn challenge(&self) -> &C61JointNativeChallenge {
+        &self.challenge
+    }
+
+    pub fn claim_weights(&self) -> Vec<&[Fp2]> {
+        self.bodies.iter().map(|body| body.claim_weights.as_slice()).collect()
+    }
+
+    pub fn prepare_nbr2_link(
+        mut self,
+        compiler_base_fold: ProverAuthed,
+        binding: C62ResponseCompilerBinding,
+    ) -> Result<C62ProductionJointNativeProverLinkPending, String> {
+        if binding.schedule_digest != self.challenge.schedule_digest {
+            return Err("C62JVR1 binding uses another body schedule".to_owned());
+        }
+        let statements =
+            self.bodies.iter().map(|body| body.statement.public().clone()).collect::<Vec<_>>();
+        let terms = self
+            .bodies
+            .into_iter()
+            .zip(self.challenge.cohort_weights.iter().copied())
+            .map(|(body, weight)| body.into_c62_response_term(weight))
+            .collect::<Result<Vec<_>, _>>()?;
+        let relation = prepare_c62_response_compiler_relation_prover(
+            terms,
+            compiler_base_fold,
+            binding,
+            &mut self.transcript,
+        )
+        .map_err(|error| error.to_string())?;
+        Ok(C62ProductionJointNativeProverLinkPending {
+            statements,
+            tagless_payloads: self.tagless_payloads,
+            challenge: self.challenge,
+            transcript: self.transcript,
+            relation,
+            nbr2_statement_digest: binding.nbr2_statement_digest,
+        })
+    }
+}
+
+impl C62ProductionJointNativeProverLinkPending {
+    pub fn challenge(&self) -> &C61JointNativeChallenge {
+        &self.challenge
+    }
+
+    pub fn eta(&self) -> Fp2 {
+        self.relation.eta()
+    }
+
+    pub fn finish_after_nbr2_link(
+        mut self,
+        receipt: C6Nbr2ProvedLink,
+    ) -> Result<C62ProductionJointNativeProverExecution, String> {
+        if receipt.statement_digest() != self.nbr2_statement_digest {
+            return Err("C62JVR1 prover received a different C6NBR2 link receipt".to_owned());
+        }
+        let eta = self.relation.eta();
+        let frame =
+            self.relation.finish(&mut self.transcript).map_err(|error| error.to_string())?;
+        let proofs = self
+            .tagless_payloads
+            .iter()
+            .zip(&self.statements)
+            .enumerate()
+            .map(|(index, (tagless, public))| {
+                let (role, tail) = c61_joint_native_carrier_tail(frame, index);
+                C62ProductionCommittedChainProof::from_parts(tagless, &tail, public, role)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(C62ProductionJointNativeProverExecution {
+            proofs,
+            statements: self.statements,
+            frame,
+            challenge: self.challenge,
+            eta,
+            transcript_bytes: self.transcript.total_bytes(),
+            transcript_ledger: self.transcript.ledger().clone(),
+        })
+    }
+}
+
+pub fn prepare_c62_production_joint_native_prover_bodies(
+    profile: &C6CanonicalTargetProfile,
+    bodies: Vec<C61ProductionCommittedChainProverBody>,
+    context: C62FiatShamirJointContext,
+) -> Result<C62ProductionJointNativeProverBodiesFixed, String> {
+    context.validate_for(profile)?;
+    if bodies.len() != profile.cohorts.len() {
+        return Err("C62JVR1 prover body/profile census mismatch".to_owned());
+    }
+    let mut schedule = C61JointNativeBodyScheduleBuilder::new(profile)?;
+    let mut tagless_payloads = Vec::with_capacity(bodies.len());
+    for (cohort, body) in profile.cohorts.iter().zip(&bodies) {
+        if body.id.repetition != 1
+            || cohort.chain_slot != body.id.component as u16
+            || usize::from(cohort.polynomial_log2) != body.num_variables
+        {
+            return Err("C62JVR1 prover body is in the wrong generic cohort slot".to_owned());
+        }
+        let tagless = body.c62_tagless_payload()?;
+        schedule.bind_next(C61JointNativeBodyBinding {
+            cohort_id: cohort.cohort_id,
+            chain_slot: cohort.chain_slot,
+            claim_count: u32::try_from(body.claim_weights.len())
+                .map_err(|_| "C62JVR1 prover claim census exceeds u32".to_owned())?,
+            typed_statement_digest: body.statement.public().digest(),
+            tagless_body_digest: *blake3::hash(&tagless).as_bytes(),
+        })?;
+        tagless_payloads.push(tagless);
+    }
+    let mut transcript = Transcript::new_fiat_shamir(context.digest())?;
+    let challenge = schedule.finish()?.draw_c62_zeta(&mut transcript)?;
+    Ok(C62ProductionJointNativeProverBodiesFixed {
+        bodies,
+        tagless_payloads,
+        challenge,
+        transcript,
+    })
 }
 
 pub fn prepare_c61_production_joint_native_prover_bodies(
@@ -2346,6 +3202,179 @@ impl C61ProductionJointNativeVerifierLinkPending {
     }
 }
 
+/// C6.2 verifier bodies after strict C62AWP1 replay and `zeta` derivation.
+pub struct C62ProductionJointNativeVerifierBodiesFixed {
+    bodies: Vec<C61ProductionCommittedChainVerifierBody>,
+    frame: C61JointNativeBridgeFrame,
+    challenge: C61JointNativeChallenge,
+    transcript: Transcript,
+}
+
+/// C6.2 verifier state after `eta` is fixed.
+///
+/// The stored ZeroOpen tag is not checked before the matching C6NBR2 receipt.
+pub struct C62ProductionJointNativeVerifierLinkPending {
+    cohort_count: usize,
+    challenge: C61JointNativeChallenge,
+    transcript: Transcript,
+    relation: C62ResponseCompilerVerifierPending,
+    nbr2_statement_digest: [u8; 32],
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C62ProductionJointNativeVerification {
+    pub cohort_count: usize,
+    pub challenge: C61JointNativeChallenge,
+    pub eta: Fp2,
+    pub transcript_bytes: u64,
+    pub transcript_ledger: BTreeMap<&'static str, u64>,
+}
+
+impl C62ProductionJointNativeVerifierBodiesFixed {
+    pub fn challenge(&self) -> &C61JointNativeChallenge {
+        &self.challenge
+    }
+
+    pub fn claim_weights(&self) -> Vec<&[Fp2]> {
+        self.bodies.iter().map(|body| body.claim_weights.as_slice()).collect()
+    }
+
+    pub fn pending_correction(&self) -> Fp2 {
+        self.frame.correction()
+    }
+
+    pub fn prepare_nbr2_link(
+        mut self,
+        compiler_base_key: VerifierKey,
+        binding: C62ResponseCompilerBinding,
+        context: &mut VerifierCtx,
+    ) -> Result<C62ProductionJointNativeVerifierLinkPending, String> {
+        if binding.schedule_digest != self.challenge.schedule_digest {
+            return Err("C62JVR1 verifier binding uses another body schedule".to_owned());
+        }
+        let terms = self
+            .bodies
+            .into_iter()
+            .zip(self.challenge.cohort_weights.iter().copied())
+            .map(|(body, weight)| body.into_c62_response_term(weight, context))
+            .collect::<Result<Vec<_>, _>>()?;
+        let relation = prepare_c62_response_compiler_relation_verifier(
+            &terms,
+            compiler_base_key,
+            binding,
+            context.delta,
+            self.frame,
+            &mut self.transcript,
+        )
+        .map_err(|error| error.to_string())?;
+        Ok(C62ProductionJointNativeVerifierLinkPending {
+            cohort_count: terms.len(),
+            challenge: self.challenge,
+            transcript: self.transcript,
+            relation,
+            nbr2_statement_digest: binding.nbr2_statement_digest,
+        })
+    }
+}
+
+impl C62ProductionJointNativeVerifierLinkPending {
+    pub fn challenge(&self) -> &C61JointNativeChallenge {
+        &self.challenge
+    }
+
+    pub fn eta(&self) -> Fp2 {
+        self.relation.eta()
+    }
+
+    pub fn finish_after_nbr2_link(
+        mut self,
+        receipt: C6Nbr2VerifiedLink,
+    ) -> Result<C62ProductionJointNativeVerification, String> {
+        if receipt.statement_digest() != self.nbr2_statement_digest {
+            return Err("C62JVR1 verifier received a different C6NBR2 link receipt".to_owned());
+        }
+        let eta = self.relation.eta();
+        self.relation.finish(&mut self.transcript).map_err(|error| error.to_string())?;
+        Ok(C62ProductionJointNativeVerification {
+            cohort_count: self.cohort_count,
+            challenge: self.challenge,
+            eta,
+            transcript_bytes: self.transcript.total_bytes(),
+            transcript_ledger: self.transcript.ledger().clone(),
+        })
+    }
+}
+
+pub fn prepare_c62_production_joint_native_verifier_bodies(
+    profile: &C6CanonicalTargetProfile,
+    statements: &[C61NativeVerifierChainStatement],
+    proofs: &[C62ProductionCommittedChainProof],
+    lane_contexts: &[C62FiatShamirLaneContext],
+    mask_ranges: &[C61AuthenticatedWhirMaskRange],
+    joint_context: C62FiatShamirJointContext,
+) -> Result<C62ProductionJointNativeVerifierBodiesFixed, String> {
+    joint_context.validate_for(profile)?;
+    let count = profile.cohorts.len();
+    if statements.len() != count
+        || proofs.len() != count
+        || lane_contexts.len() != count
+        || mask_ranges.len() != count
+    {
+        return Err("C62JVR1 verifier body/profile census mismatch".to_owned());
+    }
+    let mut schedule = C61JointNativeBodyScheduleBuilder::new(profile)?;
+    let mut bodies = Vec::with_capacity(count);
+    let mut frame_bytes = [0u8; 32];
+    for index in 0..count {
+        let cohort = &profile.cohorts[index];
+        let statement = &statements[index];
+        let expected_role = match index {
+            0 => C61JointNativeTailRole::Correction,
+            1 => C61JointNativeTailRole::ZeroOpenTag,
+            _ => C61JointNativeTailRole::Reserved,
+        };
+        let proof = C62ProductionCommittedChainProof::decode(
+            proofs[index].payload(),
+            statement.public(),
+            expected_role,
+        )?;
+        if proof != proofs[index]
+            || statement.public().id().repetition != 1
+            || cohort.chain_slot != statement.public().id().component as u16
+        {
+            return Err("C62JVR1 verifier body is in the wrong generic cohort slot".to_owned());
+        }
+        if index < 2 {
+            let start = index * C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES;
+            frame_bytes[start..start + C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES]
+                .copy_from_slice(proof.tail());
+        }
+        let body = prepare_c62_authenticated_whir_p3_secondary_verifier_body(
+            statement,
+            proof.tagless_payload(),
+            lane_contexts[index],
+            mask_ranges[index],
+        )?;
+        if usize::from(cohort.polynomial_log2) != body.num_variables {
+            return Err("C62JVR1 verifier polynomial dimension mismatch".to_owned());
+        }
+        schedule.bind_next(C61JointNativeBodyBinding {
+            cohort_id: cohort.cohort_id,
+            chain_slot: cohort.chain_slot,
+            claim_count: u32::try_from(body.claim_weights.len())
+                .map_err(|_| "C62JVR1 verifier claim census exceeds u32".to_owned())?,
+            typed_statement_digest: statement.public().digest(),
+            tagless_body_digest: *blake3::hash(proof.tagless_payload()).as_bytes(),
+        })?;
+        bodies.push(body);
+    }
+    let frame =
+        C61JointNativeBridgeFrame::decode(&frame_bytes).map_err(|error| error.to_string())?;
+    let mut transcript = Transcript::new_fiat_shamir(joint_context.digest())?;
+    let challenge = schedule.finish()?.draw_c62_zeta(&mut transcript)?;
+    Ok(C62ProductionJointNativeVerifierBodiesFixed { bodies, frame, challenge, transcript })
+}
+
 /// Recompile and validate the exact generic target functional from verifier
 /// inputs after every secondary native body and `zeta` are fixed.  Retaining
 /// the canonical installed plan in response-independent setup is deliberate:
@@ -2377,6 +3406,35 @@ pub fn verify_c61_joint_native_compiler_functional(
     .map_err(|error| error.to_string())?;
     if functional.functional_digest() != expected_functional_digest {
         return Err("C6PA2 locally compiled functional differs from C6CPX3 binding".to_owned());
+    }
+    Ok(functional)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn verify_c62_joint_native_compiler_functional(
+    fixed: &C62ProductionJointNativeVerifierBodiesFixed,
+    operation_plan: &C6InstalledOperationPlan,
+    extraction: &volta_mac::C6DecodedInstanceExtractionPlan,
+    runtime: &volta_mac::C6RuntimeInstanceValues,
+    profile: &C6CanonicalTargetProfile,
+    expected_schedule_digest: [u8; 32],
+    expected_functional_digest: [u8; 32],
+) -> Result<volta_proto::c6_residual::C6CompiledNativeTargetFunctional, String> {
+    if fixed.challenge.schedule_digest != expected_schedule_digest {
+        return Err("C62JVR1 body schedule differs before compiler verification".to_owned());
+    }
+    let claim_weights = fixed.claim_weights().into_iter().map(<[Fp2]>::to_vec).collect::<Vec<_>>();
+    let functional = volta_proto::c6_residual::C6CompiledNativeTargetFunctional::compile(
+        operation_plan,
+        extraction,
+        runtime,
+        profile,
+        &claim_weights,
+        &fixed.challenge.cohort_weights,
+    )
+    .map_err(|error| error.to_string())?;
+    if functional.functional_digest() != expected_functional_digest {
+        return Err("C62JVR1 locally compiled functional differs from its binding".to_owned());
     }
     Ok(functional)
 }
@@ -2570,16 +3628,11 @@ impl<'a> C61ProductionResponseClaimSchedule<'a> {
             C61_EMBEDDING_OPENING_TARGETS,
             embedding,
         )?;
-        let mut hasher = blake3::Hasher::new_derive_key(
-            "volta-zk/c6.1/production-response-claim-schedule/v1",
-        );
+        let mut hasher =
+            blake3::Hasher::new_derive_key("volta-zk/c6.1/production-response-claim-schedule/v1");
         for (component, dimension, claims) in [
             (C61NativeComponent::Model, C61_MODEL_POLYNOMIAL_LOG2, model),
-            (
-                C61NativeComponent::Embedding,
-                C61_EMBEDDING_POLYNOMIAL_LOG2,
-                embedding,
-            ),
+            (C61NativeComponent::Embedding, C61_EMBEDDING_POLYNOMIAL_LOG2, embedding),
         ] {
             hasher.update(&(component as u16).to_le_bytes());
             hasher.update(&[dimension]);
@@ -2613,7 +3666,10 @@ impl<'a> C61ProductionResponseClaimSchedule<'a> {
         self.digest
     }
 
-    fn claims(self, component: C61NativeComponent) -> Result<&'a [crate::batch::BlockClaim], String> {
+    fn claims(
+        self,
+        component: C61NativeComponent,
+    ) -> Result<&'a [crate::batch::BlockClaim], String> {
         match component {
             C61NativeComponent::Model => Ok(self.model),
             C61NativeComponent::Embedding => Ok(self.embedding),
@@ -2675,6 +3731,16 @@ fn checked_claim_global_point(
 pub struct C61ProductionJointCommittedFourChainPrepared {
     pub primary: [C61ProductionCommittedChainExecution; 2],
     pub joint: C61ProductionJointNativeProverBodiesFixed,
+    pub model_coefficient_digest: [u8; 32],
+    pub embedding_coefficient_digest: [u8; 32],
+    pub claim_schedule_digest: [u8; 32],
+    pub peak_loaded_coefficient_bytes: u64,
+}
+
+/// Exact C62PA1 split under public Fiat--Shamir contexts.
+pub struct C62ProductionJointCommittedFourChainPrepared {
+    pub primary: [C61ProductionCommittedChainExecution; 2],
+    pub joint: C62ProductionJointNativeProverBodiesFixed,
     pub model_coefficient_digest: [u8; 32],
     pub embedding_coefficient_digest: [u8; 32],
     pub claim_schedule_digest: [u8; 32],
@@ -3205,6 +4271,75 @@ pub fn prepare_c61_authenticated_whir_p3_production_joint_four_chains_private_en
         joint_endpoint,
     )?;
     Ok(C61ProductionJointCommittedFourChainPrepared {
+        primary,
+        joint,
+        model_coefficient_digest: prepared.model_coefficient_digest,
+        embedding_coefficient_digest: prepared.embedding_coefficient_digest,
+        claim_schedule_digest: prepared.claim_schedule_digest,
+        peak_loaded_coefficient_bytes: prepared.peak_loaded_coefficient_bytes,
+    })
+}
+
+/// Prepare the four C6.2 model and embedding chains without challenge
+/// transport. Each lane restores its challenge stream from a typed public
+/// context. The secondary bodies enter C62JVR1 before a tail is available.
+#[allow(clippy::too_many_arguments)]
+pub fn prepare_c62_authenticated_whir_p3_production_joint_four_chains_fiat_shamir_in_attempt(
+    load_coefficients: impl FnMut(C61NativeComponent, u8) -> Result<Vec<Goldilocks>, String>,
+    expected_model_coefficient_digest: [u8; 32],
+    expected_embedding_coefficient_digest: [u8; 32],
+    claim_schedule: C61ProductionResponseClaimSchedule<'_>,
+    model_targets: [Vec<ProverAuthed>; 2],
+    embedding_targets: [Vec<ProverAuthed>; 2],
+    profile: &C6CanonicalTargetProfile,
+    lane_contexts: [C62FiatShamirLaneContext; 4],
+    joint_context: C62FiatShamirJointContext,
+    spill_root: &Path,
+    admission: C61ProductionPersistedResourceAdmission,
+    backend: &mut Backend,
+    correlations: &mut [CorrelationStream; 2],
+    mask_ranges: [C61AuthenticatedWhirMaskRange; 4],
+) -> Result<C62ProductionJointCommittedFourChainPrepared, String> {
+    let schedule = [
+        C61NativeChainId { component: C61NativeComponent::Model, repetition: 0 },
+        C61NativeChainId { component: C61NativeComponent::Model, repetition: 1 },
+        C61NativeChainId { component: C61NativeComponent::Embedding, repetition: 0 },
+        C61NativeChainId { component: C61NativeComponent::Embedding, repetition: 1 },
+    ];
+    for index in 0..schedule.len() {
+        lane_contexts[index].validate_for(schedule[index], mask_ranges[index])?;
+    }
+    joint_context.validate_for(profile)?;
+    let transcripts = lane_contexts
+        .into_iter()
+        .map(|context| Transcript::new_fiat_shamir(context.digest()))
+        .collect::<Result<Vec<_>, _>>()?
+        .try_into()
+        .map_err(|_| "C62FS1 four-chain transcript census mismatch".to_owned())?;
+    let context_digests = lane_contexts.map(C62FiatShamirLaneContext::digest);
+    let prepared = prepare_c61_authenticated_whir_p3_production_four_committed_chain_bodies(
+        load_coefficients,
+        expected_model_coefficient_digest,
+        expected_embedding_coefficient_digest,
+        claim_schedule,
+        model_targets,
+        embedding_targets,
+        spill_root,
+        admission,
+        backend,
+        correlations,
+        transcripts,
+        context_digests,
+        mask_ranges,
+    )?;
+    let [model_primary, model_secondary, embedding_primary, embedding_secondary] = prepared.bodies;
+    let primary = [model_primary.finish_ordinary()?, embedding_primary.finish_ordinary()?];
+    let joint = prepare_c62_production_joint_native_prover_bodies(
+        profile,
+        vec![model_secondary, embedding_secondary],
+        joint_context,
+    )?;
+    Ok(C62ProductionJointCommittedFourChainPrepared {
         primary,
         joint,
         model_coefficient_digest: prepared.model_coefficient_digest,
@@ -5413,6 +6548,40 @@ pub fn prepare_c61_authenticated_whir_p3_production_committed_chain_private_entr
     )
 }
 
+/// C6.2 provider entry. The public Fiat--Shamir context replaces the opaque
+/// challenge endpoint. Provider-private WHIR hiding entropy remains fresh OS
+/// entropy inside the common constructor.
+#[allow(clippy::too_many_arguments)]
+pub fn prepare_c62_authenticated_whir_p3_production_committed_chain_fiat_shamir(
+    coefficients: Vec<Goldilocks>,
+    claims: &[crate::batch::BlockClaim],
+    targets: Vec<ProverAuthed>,
+    parameter_digest: [u8; 32],
+    context: C62FiatShamirLaneContext,
+    spill_root: &Path,
+    admission: C61ProductionPersistedResourceAdmission,
+    backend: &mut Backend,
+    correlations: &mut CorrelationStream,
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<C61ProductionCommittedChainProverBody, String> {
+    context.validate_for(id, mask_range)?;
+    prepare_c61_authenticated_whir_p3_production_committed_chain_with_transcript(
+        coefficients,
+        claims,
+        targets,
+        parameter_digest,
+        spill_root,
+        admission,
+        backend,
+        correlations,
+        Transcript::new_fiat_shamir(context.digest())?,
+        context.digest(),
+        id,
+        mask_range,
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 fn prepare_c61_authenticated_whir_p3_production_committed_chain_with_transcript(
     coefficients: Vec<Goldilocks>,
@@ -5504,6 +6673,7 @@ fn prepare_c61_authenticated_whir_p3_production_committed_chain_with_transcript(
         lane,
     )?;
     let witness = Poly::new(coefficients);
+    let c62_fiat_shamir = transcript.is_fiat_shamir();
     let mut challenger = C61InteractiveChallenger::new_claimless(&mut transcript, num_variables);
     let config = c61_authenticated_config::<C61InteractiveChallenger<'_>>(num_variables)?;
     let dft = Radix2DFTSmallBatch::default();
@@ -5564,8 +6734,18 @@ fn prepare_c61_authenticated_whir_p3_production_committed_chain_with_transcript(
         .len()
         .checked_sub(C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES)
         .ok_or_else(|| "C6SPR11 production C6AWP1 payload is shorter than its tag".to_owned())?;
-    let provider_interaction =
-        challenger.finish(whir_payload_bytes).map_err(|error| error.to_string())?;
+    let provider_interaction = if c62_fiat_shamir {
+        let c62_payload;
+        let finalization_payload = if id.repetition == 1 {
+            c62_payload = c62_tagless_from_c61_awp1(&placeholder_payload[..whir_payload_bytes])?;
+            c62_payload.as_slice()
+        } else {
+            &placeholder_payload[..whir_payload_bytes]
+        };
+        challenger.finish_c62(finalization_payload).map_err(|error| error.to_string())?
+    } else {
+        challenger.finish(whir_payload_bytes).map_err(|error| error.to_string())?
+    };
     drop(challenger);
 
     let aggregate_target = aggregate_prover_targets(statement.targets(), &output.claim_weights)?;
@@ -5590,6 +6770,7 @@ fn prepare_c61_authenticated_whir_p3_production_committed_chain_with_transcript(
         tagless_payload,
         tagless_digest,
         claim_weights,
+        aggregate_target,
         prepared,
         affine,
         finish_input,
@@ -5598,6 +6779,81 @@ fn prepare_c61_authenticated_whir_p3_production_committed_chain_with_transcript(
         strict_payload_max_bytes,
         spill: mmcs.metrics(),
     })
+}
+
+/// Replay one C6.2 secondary WHIR body with response-owned verifier keys.
+/// The commitment root can differ from the primary root. The ordered points
+/// and response keys still come from the strict response statement.
+pub fn prepare_c62_authenticated_whir_p3_secondary_verifier_body(
+    statement: &C61NativeVerifierChainStatement,
+    tagless_payload: &[u8],
+    context: C62FiatShamirLaneContext,
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<C61ProductionCommittedChainVerifierBody, String> {
+    if statement.public().id().repetition != 1 {
+        return Err("C62JVR1 verifier requires a secondary native statement".to_owned());
+    }
+    context.validate_for(statement.public().id(), mask_range)?;
+    let validated = C61NativeVerifierChainStatement::new(
+        statement.public().clone(),
+        statement.target_keys().to_vec(),
+    )
+    .map_err(|error| error.to_string())?;
+    if &validated != statement {
+        return Err("C62JVR1 verifier statement is noncanonical".to_owned());
+    }
+    let ordinary_tagless = c62_tagless_to_c61_awp1(tagless_payload)?;
+    let mut body =
+        prepare_c61_authenticated_whir_p3_production_committed_chain_public_verifier_body_with_transcript(
+            statement.public(),
+            &ordinary_tagless,
+            Transcript::new_fiat_shamir(context.digest())?,
+            mask_range,
+        )?;
+    body.aggregate_key = Some(aggregate_verifier_targets(
+        statement.target_keys(),
+        &body.claim_weights.iter().copied().map(c61_p3_fp2_from_volta).collect::<Vec<_>>(),
+    )?);
+    Ok(body)
+}
+
+/// Verify one primary model or embedding chain with C62FS1.
+pub fn verify_c62_authenticated_whir_p3_primary_chain_fiat_shamir_in_attempt(
+    statement: &C61NativeVerifierChainStatement,
+    proof: &C61ProductionCommittedChainProof,
+    context: &mut VerifierCtx,
+    lane_context: C62FiatShamirLaneContext,
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<C61ProductionCommittedChainVerification, String> {
+    let id = statement.public().id();
+    if id.repetition != 0 {
+        return Err("C62FS1 primary verifier requires repetition zero".to_owned());
+    }
+    lane_context.validate_for(id, mask_range)?;
+    let tail_start = proof
+        .payload()
+        .len()
+        .checked_sub(C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES)
+        .ok_or_else(|| "C62FS1 primary chain is shorter than its tail".to_owned())?;
+    let validated = C61NativeVerifierChainStatement::new(
+        statement.public().clone(),
+        statement.target_keys().to_vec(),
+    )
+    .map_err(|error| error.to_string())?;
+    if &validated != statement {
+        return Err("C62FS1 primary verifier statement is noncanonical".to_owned());
+    }
+    let mut body = prepare_c61_authenticated_whir_p3_production_committed_chain_public_verifier_body_with_transcript(
+        statement.public(),
+        &proof.payload()[..tail_start],
+        Transcript::new_fiat_shamir(lane_context.digest())?,
+        mask_range,
+    )?;
+    body.aggregate_key = Some(aggregate_verifier_targets(
+        statement.target_keys(),
+        &body.claim_weights.iter().copied().map(c61_p3_fp2_from_volta).collect::<Vec<_>>(),
+    )?);
+    body.finish_ordinary(&proof.payload()[tail_start..], context)
 }
 
 /// Verify one decoded production model/embedding C6AWP1 chain using only the
@@ -5736,6 +6992,7 @@ fn prepare_c61_authenticated_whir_p3_production_committed_chain_public_verifier_
         decode_c61_authenticated_p3_artifact_inner(&placeholder_payload, num_variables, true)
             .map_err(|error| error.to_string())?;
 
+    let c62_fiat_shamir = transcript.is_fiat_shamir();
     let mut challenger = C61InteractiveChallenger::new_claimless(&mut transcript, num_variables);
     let config = c61_authenticated_config::<C61InteractiveChallenger<'_>>(num_variables)?;
     let mmcs = c61_reference_mmcs();
@@ -5747,8 +7004,18 @@ fn prepare_c61_authenticated_whir_p3_production_committed_chain_public_verifier_
     }))
     .map_err(|_| "C6SPR11 production committed-chain verifier panicked".to_owned())?
     .map_err(|error| format!("C6SPR11 production committed-chain verification failed: {error}"))?;
-    let verifier_interaction =
-        challenger.finish(tagless_payload.len()).map_err(|error| error.to_string())?;
+    let verifier_interaction = if c62_fiat_shamir {
+        let c62_payload;
+        let finalization_payload = if public.id().repetition == 1 {
+            c62_payload = c62_tagless_from_c61_awp1(tagless_payload)?;
+            c62_payload.as_slice()
+        } else {
+            tagless_payload
+        };
+        challenger.finish_c62(finalization_payload).map_err(|error| error.to_string())?
+    } else {
+        challenger.finish(tagless_payload.len()).map_err(|error| error.to_string())?
+    };
     drop(challenger);
 
     let claim_weights = result.claim_weights.iter().copied().map(c61_volta_fp2_from_p3).collect();
@@ -6663,6 +7930,62 @@ pub fn run_c61_authenticated_whir_p3_production_compiler_private_entropy_in_atte
     )
 }
 
+/// Execute one compiler chain with a typed C62FS1 lane context.
+#[allow(clippy::too_many_arguments)]
+pub fn run_c62_authenticated_whir_p3_production_compiler_fiat_shamir_in_attempt(
+    operation_plan: &C6InstalledOperationPlan,
+    terminal_metadata: C6OperationPlanTerminalMetadata,
+    extraction: &volta_mac::C6DecodedInstanceExtractionPlan,
+    runtime: &volta_mac::C6RuntimeInstanceValues,
+    relation: &volta_proto::c6_residual::C6ResidualRelationChallenges,
+    leaf_points: [&[Fp2]; 2],
+    auxiliary_points: [&[Fp2]; 2],
+    terminal_functionals: [Fp2; 64],
+    output_beta: Fp2,
+    terminal_relation_root: [u8; 32],
+    lane_context: C62FiatShamirLaneContext,
+    spill_root: &Path,
+    admission: C61ProductionPersistedResourceAdmission,
+    correlations: &mut CorrelationStream,
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<C61ProductionCompilerChainExecution, String> {
+    validate_c61_production_compiler_persisted_admission(admission, correlations, None, id)?;
+    lane_context.validate_for(id, mask_range)?;
+    let fixture = c61_sparse_compiler_production_fixture(
+        operation_plan,
+        terminal_metadata,
+        extraction,
+        runtime,
+        relation,
+        leaf_points,
+        auxiliary_points,
+        terminal_functionals,
+        output_beta,
+        terminal_relation_root,
+    )?;
+    let mut session_hasher = blake3::Hasher::new_derive_key("volta-zk/c6.2/compiler-session/v1");
+    session_hasher.update(&lane_context.digest());
+    session_hasher.update(&operation_plan.artifact_digest());
+    session_hasher.update(&(id.component as u16).to_le_bytes());
+    session_hasher.update(&[id.repetition, mask_range.stage]);
+    session_hasher.update(&mask_range.slot.to_le_bytes());
+    session_hasher.update(&mask_range.range_start.to_le_bytes());
+    let session_digest = *session_hasher.finalize().as_bytes();
+    run_c61_authenticated_whir_p3_production_persisted_with_transcript(
+        &fixture,
+        spill_root,
+        admission,
+        correlations,
+        None,
+        None,
+        Transcript::new_fiat_shamir(lane_context.digest())?,
+        session_digest,
+        id,
+        mask_range,
+    )
+}
+
 fn validate_c61_production_compiler_persisted_admission(
     admission: C61ProductionPersistedResourceAdmission,
     correlations: &CorrelationStream,
@@ -7255,6 +8578,8 @@ fn verify_c61_authenticated_whir_p3_compiler_chain_compact_with_transcript(
     .map_err(|error| error.to_string())?;
     if transcript.is_interactive() {
         transcript.finish_interactive(&proof.encode()?)?;
+    } else if transcript.is_fiat_shamir() {
+        transcript.canonical_binding_digest()?;
     }
     Ok(C61ProductionCompilerChainVerification {
         id,
@@ -7423,6 +8748,33 @@ pub fn verify_c61_authenticated_whir_p3_production_compiler_private_entropy_in_a
         proof_bytes,
         context,
         Transcript::new_interactive(Box::new(endpoint)),
+        id,
+        mask_range,
+    )
+}
+
+/// Verify one compiler chain from the same C62FS1 lane context.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_c62_authenticated_whir_p3_production_compiler_fiat_shamir_in_attempt(
+    profile: &C61CompilerVerifierProfile,
+    extraction_map_setup_bytes: u64,
+    public: &C61TypedNativeChainPublicStatement,
+    relation_challenges: &volta_proto::c6_residual::C6ResidualRelationChallenges,
+    proof_bytes: &[u8],
+    context: &mut VerifierCtx,
+    lane_context: C62FiatShamirLaneContext,
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+) -> Result<C61ProductionCompilerChainVerification, String> {
+    lane_context.validate_for(id, mask_range)?;
+    verify_c61_authenticated_whir_p3_production_compiler_chain_with_transcript(
+        profile,
+        extraction_map_setup_bytes,
+        public,
+        relation_challenges,
+        proof_bytes,
+        context,
+        Transcript::new_fiat_shamir(lane_context.digest())?,
         id,
         mask_range,
     )
@@ -7978,6 +9330,8 @@ where
     };
     if provider_transcript.is_interactive() {
         provider_transcript.finish_interactive(&proof_bytes)?;
+    } else if provider_transcript.is_fiat_shamir() {
+        provider_transcript.canonical_binding_digest()?;
     }
 
     let build_report = |verifier_interaction: C61WhirInteractionStats,
@@ -9417,9 +10771,9 @@ mod tests {
             })
             .collect::<Vec<_>>();
         let descriptor = |root| C61NativeCommitmentDescriptor {
-            parameter_digest: c61_authenticated_p3_parameter_digest(
-                usize::from(C61_MODEL_POLYNOMIAL_LOG2),
-            )
+            parameter_digest: c61_authenticated_p3_parameter_digest(usize::from(
+                C61_MODEL_POLYNOMIAL_LOG2,
+            ))
             .unwrap(),
             commitment_root: root,
             polynomial_domain_log2: C61_MODEL_POLYNOMIAL_LOG2,
@@ -9436,12 +10790,8 @@ mod tests {
             &model_claims,
         )
         .unwrap();
-        validate_same_response_claim_statement(
-            &primary,
-            &secondary,
-            C61NativeComponent::Model,
-        )
-        .unwrap();
+        validate_same_response_claim_statement(&primary, &secondary, C61NativeComponent::Model)
+            .unwrap();
 
         let mut reordered = model_claims.clone();
         reordered.swap(0, 1);
@@ -10047,6 +11397,106 @@ mod tests {
         assert_eq!(role2, C61JointNativeTailRole::Reserved);
         assert_eq!([tail0, tail1].concat(), frame_bytes);
         assert_eq!(tail2, [0u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES]);
+    }
+
+    #[test]
+    fn c62_awp1_is_wire_neutral_and_cross_version_strict() {
+        let (fixture, _, _, _, _, _) = mutation_fixture();
+        let tail_start =
+            fixture.artifact.payload.len() - C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES;
+        let ordinary_tagless = &fixture.artifact.payload[..tail_start];
+        let c62_tagless = c62_tagless_from_c61_awp1(ordinary_tagless).unwrap();
+        assert_eq!(c62_tagless.len(), ordinary_tagless.len());
+        assert_eq!(c62_tagless[..8], C62_AUTHENTICATED_P3_MAGIC);
+        assert_eq!(
+            u16::from_le_bytes(c62_tagless[8..10].try_into().unwrap()),
+            C62_AUTHENTICATED_P3_VERSION,
+        );
+        assert_eq!(c62_tagless[10..], ordinary_tagless[10..]);
+        assert_eq!(c62_tagless_to_c61_awp1(&c62_tagless).unwrap(), ordinary_tagless);
+
+        let mut c62_payload = c62_tagless.clone();
+        c62_payload.extend_from_slice(&[0u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES]);
+        assert!(c62_awp1_payload_to_c61(&c62_payload, C61JointNativeTailRole::Correction,).is_ok());
+        assert!(
+            c61_validate_joint_payload_shape(&c62_payload, C61JointNativeTailRole::Correction,)
+                .is_err()
+        );
+
+        let mut c61_joint = c61_joint_tagless_from_awp1(ordinary_tagless).unwrap();
+        c61_joint.extend_from_slice(&[0u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES]);
+        assert!(c62_awp1_payload_to_c61(&c61_joint, C61JointNativeTailRole::Correction,).is_err());
+    }
+
+    #[test]
+    fn c62_context_is_attempt_lane_and_profile_bound() {
+        let attempt = C6ClientAttempt {
+            slot: 7,
+            nonce: [0x31; 32],
+            setup_manifest_digest: [0x32; 32],
+            old_head_digest: [0x33; 32],
+            predecessor_certificate_digest: [0x34; 32],
+            correlation_ranges: C6PairedCorrelationRanges {
+                coordinates: [
+                    C6CorrelationRange { stage: 1, start: 100, count: 10 },
+                    C6CorrelationRange { stage: 1, start: 100, count: 10 },
+                ],
+            },
+            workload: C6Workload {
+                prompt_tokens: 2,
+                decode_tokens: 0,
+                old_context: 3,
+                new_context: 5,
+            },
+        };
+        let profile = C6CanonicalTargetProfile {
+            inference_profile_digest: [0x41; 32],
+            topology_digest: [0x42; 32],
+            source_schedule_digest: [0x43; 32],
+            cohorts: vec![
+                volta_mac::C6CanonicalTargetCohort {
+                    cohort_id: 1,
+                    chain_slot: C61NativeComponent::Model as u16,
+                    polynomial_log2: C61_MODEL_POLYNOMIAL_LOG2,
+                    claim_layout_digest: [0x44; 32],
+                    canonical_nodes: vec![1],
+                },
+                volta_mac::C6CanonicalTargetCohort {
+                    cohort_id: 2,
+                    chain_slot: C61NativeComponent::Embedding as u16,
+                    polynomial_log2: C61_EMBEDDING_POLYNOMIAL_LOG2,
+                    claim_layout_digest: [0x45; 32],
+                    canonical_nodes: vec![2],
+                },
+            ],
+        };
+        let context = C62FiatShamirPublicContext::from_reserved_attempt(
+            attempt,
+            &profile,
+            [0x51; 32],
+            [[0x52; 32], [0x53; 32], [0x54; 32]],
+            [0x55; 32],
+            [0x56; 32],
+            [0x57; 32],
+        )
+        .unwrap();
+        let id = C61NativeChainId { component: C61NativeComponent::Model, repetition: 1 };
+        let range = C61AuthenticatedWhirMaskRange { stage: 0x62, slot: 7, range_start: 100 };
+        let provider =
+            C61ProviderSessionBinding::from_reserved_attempt(attempt, id, range).unwrap();
+        let lane = context.lane(provider, [0x58; 32], id, range).unwrap();
+        assert_ne!(lane.digest(), context.digest());
+        assert!(lane
+            .validate_for(
+                C61NativeChainId { component: C61NativeComponent::Embedding, repetition: 1 },
+                range,
+            )
+            .is_err());
+        assert!(context.joint().validate_for(&profile).is_ok());
+
+        let mut changed_profile = profile;
+        changed_profile.source_schedule_digest[0] ^= 1;
+        assert!(context.joint().validate_for(&changed_profile).is_err());
     }
 
     #[test]

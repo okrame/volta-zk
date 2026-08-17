@@ -355,10 +355,7 @@ pub fn hadamard_verify(
             k_g0.scale(w[0]).add(k_g1.scale(w[1])).add(k_g2.scale(w[2])).add(k_g3.scale(w[3]));
         point.push(r);
     }
-    tx.append_fp2s(
-        "hadamard_claim_corrections",
-        &[proof.e_corr, proof.r_corr, proof.z_corr],
-    );
+    tx.append_fp2s("hadamard_claim_corrections", &[proof.e_corr, proof.r_corr, proof.z_corr]);
     let k_e = ctx.correct_full_verifier_key(doms.e_claim, proof.e_corr);
     let k_r = ctx.correct_full_verifier_key(doms.r_claim, proof.r_corr);
     let k_z = ctx.correct_full_verifier_key(doms.z, proof.z_corr);

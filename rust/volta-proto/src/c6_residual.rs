@@ -22,8 +22,7 @@
 use crate::c6::{C6DeltaResidual, C6PairedDeltaResidual};
 use crate::c6_census::{
     C6_RESIDUAL_CLOSURE_FOOTER_ENTRIES, C6_RESIDUAL_LEAF_ALIGNED_SLOTS, C6_RESIDUAL_SLOT_ENTRIES,
-    C6_RESIDUAL_SLOT_LOG2, C6_T1_TOTAL_PRODUCT_CLOSURES, C6_T1_TOTAL_PRODUCT_TRIPLES,
-    C6_T1_ZERO_CLOSURES,
+    C6_RESIDUAL_SLOT_LOG2,
 };
 use crate::c6_source::C6PairedSourceWitness;
 use crate::prod_check::{prod_batch_verify, ProdProof};
@@ -1095,6 +1094,25 @@ pub struct C6ResidualRelationManifest {
     digest: C6ResidualDigest,
 }
 
+fn is_registered_c62_production_topology(topology: C6OperationPlanTopologyIdentity) -> bool {
+    topology.version == 2
+        && matches!(
+        (
+            topology.source_count,
+            topology.canonical_node_count,
+            topology.public_input_count,
+            topology.scalar_input_count,
+            topology.product_closure_count,
+            topology.product_triple_count,
+            topology.zero_root_count,
+        ),
+        (4_976_101, 28_845_631, 1_436, 10_828_852, 673, 22_339, 8_170)
+            | (1_857_717, 6_560_977, 1_436, 2_399_061, 673, 20_620, 7_597)
+            | (1_861_509, 6_578_905, 1_436, 2_407_749, 673, 20_836, 7_669)
+            | (1_865_445, 6_597_601, 1_436, 2_416_845, 673, 21_052, 7_741)
+    )
+}
+
 impl C6ResidualRelationManifest {
     pub fn new(
         operation_plan: &C6InstalledOperationPlan,
@@ -1179,15 +1197,12 @@ impl C6ResidualRelationManifest {
             ));
         }
 
-        let production_geometry = topology.source_count == 4_975_525
-            && topology.product_closure_count == C6_T1_TOTAL_PRODUCT_CLOSURES as u32
-            && topology.product_triple_count == C6_T1_TOTAL_PRODUCT_TRIPLES
-            && topology.zero_root_count == C6_T1_ZERO_CLOSURES as u32
+        let production_geometry = is_registered_c62_production_topology(topology)
             && leaf_log2 == C6_RESIDUAL_SLOT_LOG2 as u8
             && auxiliary_log2 == C6_RESIDUAL_AUXILIARY_SEMANTIC_LOG2 as u8;
         if require_production && !production_geometry {
             return Err(C6ResidualError::new(
-                "C6RLM1 production manifest does not have the frozen T1 geometry",
+                "C6RLM1 production manifest does not have a registered C6.2 geometry",
             ));
         }
 
@@ -10503,8 +10518,7 @@ impl C6Nbr2TwoPointEvaluationPlan {
             ));
         }
         let high_chunks = coefficients.len().div_ceil(self.low_len);
-        let partitions = (rayon::current_num_threads()
-            * C6_NBR2_EVALUATION_PARTITIONS_PER_THREAD)
+        let partitions = (rayon::current_num_threads() * C6_NBR2_EVALUATION_PARTITIONS_PER_THREAD)
             .min(high_chunks.max(1));
         let chunks_per_partition = high_chunks.div_ceil(partitions);
         Ok((0..partitions)
@@ -10517,9 +10531,7 @@ impl C6Nbr2TwoPointEvaluationPlan {
                     let start = high_index * self.low_len;
                     let end = (start + self.low_len).min(coefficients.len());
                     let mut partial = [Fp2::ZERO; 2];
-                    for (low_index, &coefficient) in
-                        coefficients[start..end].iter().enumerate()
-                    {
+                    for (low_index, &coefficient) in coefficients[start..end].iter().enumerate() {
                         partial[0] += coefficient * self.low[0][low_index];
                         partial[1] += coefficient * self.low[1][low_index];
                     }
@@ -10528,10 +10540,7 @@ impl C6Nbr2TwoPointEvaluationPlan {
                 }
                 sum
             })
-            .reduce(
-                || [Fp2::ZERO; 2],
-                |left, right| [left[0] + right[0], left[1] + right[1]],
-            ))
+            .reduce(|| [Fp2::ZERO; 2], |left, right| [left[0] + right[0], left[1] + right[1]]))
     }
 }
 
@@ -10746,18 +10755,15 @@ impl C6CompiledNativeTargetFunctional {
             || sources.schedule_digest() != schedule.digest
             || sources.source_schedule_digest() != self.topology.source_schedule_digest
         {
-            return Err(C6ResidualError::new(
-                "C6NBR1 provider bridge source fold binding differs",
-            ));
+            return Err(C6ResidualError::new("C6NBR1 provider bridge source fold binding differs"));
         }
         let mut cursor = C6PairedSourceCursor::new(sources, schedule);
         let mut base_value = ProverAuthed::from_public(self.public_plaintext);
         let mut correction = Fp2::ZERO;
         for (source, &coefficient) in self.leaf_coefficients.iter().enumerate() {
             let witness = cursor.next(source as u32)?[coordinate_index];
-            base_value = base_value.add(
-                ProverAuthed::new(witness.base_plaintext(), witness.tag()).scale(coefficient),
-            );
+            base_value = base_value
+                .add(ProverAuthed::new(witness.base_plaintext(), witness.tag()).scale(coefficient));
             correction += coefficient * witness.correction();
         }
         cursor.finish(self.topology.source_count)?;
@@ -10834,16 +10840,13 @@ impl C6CompiledNativeTargetFunctional {
             || !schedule.is_canonical()
             || schedule.digest != self.topology.source_schedule_digest
         {
-            return Err(C6ResidualError::new(
-                "C6NBR2 verifier source-key replay binding differs",
-            ));
+            return Err(C6ResidualError::new("C6NBR2 verifier source-key replay binding differs"));
         }
         let counters_before = context.counters();
         let schedule_before = context.schedule_audit();
-        if schedule_before
-            .as_ref()
-            .is_none_or(|consumed| consumed.draws.get(..schedule.draws.len()) != Some(&schedule.draws))
-        {
+        if schedule_before.as_ref().is_none_or(|consumed| {
+            consumed.draws.get(..schedule.draws.len()) != Some(&schedule.draws)
+        }) {
             return Err(C6ResidualError::new(
                 "C6NBR2 verifier context lacks the exact response-schedule prefix",
             ));
@@ -12843,6 +12846,9 @@ impl C6ResidualPlan {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::c6_census::{
+        C6_T1_TOTAL_PRODUCT_CLOSURES, C6_T1_TOTAL_PRODUCT_TRIPLES, C6_T1_ZERO_CLOSURES,
+    };
     #[cfg(feature = "c6-trace")]
     use crate::c6_source::{replay_c6_source_coordinate, C6SourceCoordinate};
     #[cfg(feature = "c6-trace")]
@@ -16347,10 +16353,12 @@ mod tests {
             .draws
             .iter()
             .flat_map(|draw| match draw.kind {
-                CorrScheduleKind::Subfield => context
-                    .replay_consumed_sub_verifier_keys(draw.domain, draw.count as usize),
-                CorrScheduleKind::FullField => context
-                    .replay_consumed_full_verifier_keys(draw.domain, draw.count as usize),
+                CorrScheduleKind::Subfield => {
+                    context.replay_consumed_sub_verifier_keys(draw.domain, draw.count as usize)
+                }
+                CorrScheduleKind::FullField => {
+                    context.replay_consumed_full_verifier_keys(draw.domain, draw.count as usize)
+                }
             })
             .collect::<Vec<_>>();
         let expected = compiled

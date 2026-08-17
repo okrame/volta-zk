@@ -63,8 +63,7 @@ use crate::block_proof::{verify_layer_phase1_band_thinned_c6, C6KvPrefixSource};
 #[cfg(feature = "c6-trace")]
 use crate::c6_cache_fold::{
     C6CacheFoldAppendSourceLayer, C6CacheFoldAppendSourcePlan, C6CacheFoldKind,
-    C6CacheFoldOnlineLayerMetrics, C6CacheFoldTargetInlineProver,
-    C6CacheFoldTargetInlineVerifier,
+    C6CacheFoldOnlineLayerMetrics, C6CacheFoldTargetInlineProver, C6CacheFoldTargetInlineVerifier,
 };
 #[cfg(feature = "c6-trace")]
 use crate::c6_source::{C6SourceScheduleProverFollower, C6SourceScheduleVerifierFollower};
@@ -332,6 +331,16 @@ pub struct ChunkRef<'a> {
     pub band: &'a BandModelWitness,
     /// Full response tokens (prompt ++ generated), len ≥ t0+q.
     pub seq: &'a [u32],
+}
+
+struct C6ContinuationBase<'a> {
+    band: &'a BandModelWitness,
+    full: &'a ModelWitness,
+}
+
+#[derive(Clone, Copy)]
+struct C6ContinuationPublic {
+    base_t0: usize,
 }
 
 /// Device-resident decode chunk plus the public messages that the protocol
@@ -2706,7 +2715,7 @@ pub fn prove_response(
     tx: &mut Transcript,
 ) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
     let mut cache_mode = ResponseProverCacheMode::Legacy(std::marker::PhantomData);
-    prove_response_impl(model, wit, chunks, stream, tx, None, false, true, &mut cache_mode)
+    prove_response_impl(model, wit, chunks, None, stream, tx, None, false, true, &mut cache_mode)
 }
 
 /// C3 response prover. Logits remain prover-private and are replaced on the
@@ -2719,7 +2728,7 @@ pub fn prove_response_private_logits(
     tx: &mut Transcript,
 ) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
     let mut cache_mode = ResponseProverCacheMode::Legacy(std::marker::PhantomData);
-    prove_response_impl(model, wit, chunks, stream, tx, None, true, true, &mut cache_mode)
+    prove_response_impl(model, wit, chunks, None, stream, tx, None, true, true, &mut cache_mode)
 }
 
 /// C6 response-wide CPU entry point.  It leaves the historical proof object
@@ -2753,7 +2762,18 @@ pub(crate) fn prove_response_c6_cache_inline(
         append_source_layers: Vec::with_capacity(L),
     };
     let (proof, out, prod, zero) =
-        prove_response_impl(model, wit, chunks, stream, tx, None, false, true, &mut cache_mode);
+        prove_response_impl(
+            model,
+            wit,
+            chunks,
+            None,
+            stream,
+            tx,
+            None,
+            false,
+            true,
+            &mut cache_mode,
+        );
     let ResponseProverCacheMode::C6 { metrics, append_source_layers, .. } = cache_mode else {
         unreachable!("C6 response provider mode changed during execution")
     };
@@ -2800,7 +2820,18 @@ pub fn prove_response_private_logits_c6_cache_inline(
         append_source_layers: Vec::with_capacity(L),
     };
     let (proof, out, prod, zero) =
-        prove_response_impl(model, wit, chunks, stream, tx, None, true, true, &mut cache_mode);
+        prove_response_impl(
+            model,
+            wit,
+            chunks,
+            None,
+            stream,
+            tx,
+            None,
+            true,
+            true,
+            &mut cache_mode,
+        );
     let ResponseProverCacheMode::C6 { metrics, append_source_layers, .. } = cache_mode else {
         unreachable!("C6 private-logit provider mode changed during execution")
     };
@@ -2812,6 +2843,69 @@ pub fn prove_response_private_logits_c6_cache_inline(
         metrics,
         C6CacheFoldAppendSourcePlan::new(append_source_layers)
             .expect("C6 private-logit append source plan must be canonical"),
+    )
+}
+
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+pub fn prove_response_continuation_private_logits_c6_cache_inline(
+    model: &Gpt2Model,
+    full: &ModelWitness,
+    first: &BandModelWitness,
+    second: &BandModelWitness,
+    sequence: &[u32],
+    stream: &mut CorrelationStream,
+    secondary: &mut CorrelationStream,
+    schedule_follower: &mut C6SourceScheduleProverFollower,
+    target_builder: &mut C6CacheFoldTargetInlineProver,
+    tx: &mut Transcript,
+) -> (
+    ModelProof,
+    ModelOut,
+    ProdTriples,
+    C6GrandResidualProverRoots,
+    C6CacheFoldOnlineLayerMetrics,
+    C6CacheFoldAppendSourcePlan,
+) {
+    assert_eq!(first.q, 26, "C6 continuation first band must contain one overlap row");
+    assert_eq!(second.q, 25, "C6 continuation second band must contain 25 new rows");
+    assert_eq!(second.t0, first.t0 + first.q, "C6 continuation bands must be contiguous");
+    let chunks = [ChunkRef { band: second, seq: sequence }];
+    let mut cache_mode = ResponseProverCacheMode::C6 {
+        secondary,
+        schedule_follower,
+        target_builder,
+        metrics: C6CacheFoldOnlineLayerMetrics::default(),
+        append_source_layers: Vec::with_capacity(L),
+    };
+    let (proof, out, prod, zero) = prove_response_impl(
+        model,
+        full,
+        &chunks,
+        Some(C6ContinuationBase { band: first, full }),
+        stream,
+        tx,
+        None,
+        true,
+        true,
+        &mut cache_mode,
+    );
+    let ResponseProverCacheMode::C6 { metrics, append_source_layers, .. } = cache_mode else {
+        unreachable!("C6 continuation provider mode changed during execution")
+    };
+    let append_source_layers = append_source_layers
+        .into_iter()
+        .map(|layer| layer.suffix_from(first.t0 + 1))
+        .collect::<Result<Vec<_>, _>>()
+        .expect("C6 continuation append suffix must be canonical");
+    (
+        proof,
+        out,
+        prod,
+        C6GrandResidualProverRoots::new(zero),
+        metrics,
+        C6CacheFoldAppendSourcePlan::new(append_source_layers)
+            .expect("C6 continuation append source plan must be canonical"),
     )
 }
 
@@ -2827,7 +2921,7 @@ pub fn prove_response_private_logits_c3b_baseline(
     tx: &mut Transcript,
 ) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
     let mut cache_mode = ResponseProverCacheMode::Legacy(std::marker::PhantomData);
-    prove_response_impl(model, wit, chunks, stream, tx, None, true, false, &mut cache_mode)
+    prove_response_impl(model, wit, chunks, None, stream, tx, None, true, false, &mut cache_mode)
 }
 
 pub fn prove_response_with_backend(
@@ -2844,7 +2938,18 @@ pub fn prove_response_with_backend(
         "host ModelWitness proving is the hybrid gate; resident proving requires a device witness"
     );
     let mut cache_mode = ResponseProverCacheMode::Legacy(std::marker::PhantomData);
-    prove_response_impl(model, wit, chunks, stream, tx, Some(backend), false, true, &mut cache_mode)
+    prove_response_impl(
+        model,
+        wit,
+        chunks,
+        None,
+        stream,
+        tx,
+        Some(backend),
+        false,
+        true,
+        &mut cache_mode,
+    )
 }
 
 pub fn prove_response_private_logits_with_backend(
@@ -2857,7 +2962,18 @@ pub fn prove_response_private_logits_with_backend(
 ) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
     assert_eq!(backend.kind(), BackendKind::CudaHybrid);
     let mut cache_mode = ResponseProverCacheMode::Legacy(std::marker::PhantomData);
-    prove_response_impl(model, wit, chunks, stream, tx, Some(backend), true, true, &mut cache_mode)
+    prove_response_impl(
+        model,
+        wit,
+        chunks,
+        None,
+        stream,
+        tx,
+        Some(backend),
+        true,
+        true,
+        &mut cache_mode,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2865,6 +2981,7 @@ fn prove_response_impl(
     model: &Gpt2Model,
     wit: &ModelWitness,
     chunks: &[ChunkRef],
+    continuation: Option<C6ContinuationBase<'_>>,
     stream: &mut CorrelationStream,
     tx: &mut Transcript,
     mut backend: Option<&mut Backend>,
@@ -2878,15 +2995,41 @@ fn prove_response_impl(
             && model.validate_layout().is_ok(),
         "the frozen proof schedule accepts only the validated legacy GPT-2 profile"
     );
-    let t = wit.t;
+    let continuation = continuation.as_ref();
+    let t = continuation.map_or(wit.t, |base| base.band.q);
+    let base_t0 = continuation.map_or(0, |base| base.band.t0);
+    let base_layers =
+        continuation.map_or(wit.layers.as_slice(), |base| base.band.layers.as_slice());
+    let base_embed_acc =
+        continuation.map_or(wit.embed.acc.as_slice(), |base| base.band.embed_acc.as_slice());
+    let base_embed_out =
+        continuation.map_or(wit.embed.out.as_slice(), |base| base.band.embed_out.as_slice());
+    if let Some(base) = continuation {
+        assert!(
+            base.band.t0 > 0
+                && base.band.t0 + base.band.q <= base.full.t
+                && chunks.len() == 1
+                && chunks[0].band.t0 == base.band.t0 + base.band.q,
+            "C6 continuation bands are not contiguous",
+        );
+    }
     assert!(
         chunks.len() <= MAX_RESPONSE_CHUNKS,
         "at most {MAX_RESPONSE_CHUNKS} decode chunks per response (id space)"
     );
     assert!(!private_logits || !chunks.is_empty(), "C3 private logits require a response chunk");
+    assert!(continuation.is_none() || boundary_thinning, "C6 continuation requires T1 thinning");
     let private_argmax_witness = private_logits.then(|| {
         let mut token_groups = Vec::with_capacity(1 + chunks.len());
-        token_groups.push(vec![chunks[0].seq[t]]);
+        if let Some(base) = continuation {
+            token_groups.push(
+                (0..t)
+                    .map(|row| chunks[0].seq[base.band.t0 + row + 1])
+                    .collect::<Vec<_>>(),
+            );
+        } else {
+            token_groups.push(vec![chunks[0].seq[t]]);
+        }
         for (index, chunk) in chunks.iter().enumerate() {
             let selected = if index + 1 == chunks.len() { chunk.band.q - 1 } else { chunk.band.q };
             token_groups.push(
@@ -2894,7 +3037,10 @@ fn prove_response_impl(
             );
         }
         let mut inputs = Vec::with_capacity(1 + chunks.len());
-        inputs.push(ArgmaxPhaseInput { logits: &wit.logits, tokens: &token_groups[0] });
+        inputs.push(ArgmaxPhaseInput {
+            logits: continuation.map_or(wit.logits.as_slice(), |base| base.band.logits.as_slice()),
+            tokens: &token_groups[0],
+        });
         for (index, chunk) in chunks.iter().enumerate() {
             let rows = token_groups[index + 1].len();
             inputs.push(ArgmaxPhaseInput {
@@ -2944,11 +3090,23 @@ fn prove_response_impl(
     for l in 0..L {
         let luts_l = luts_for(l);
         let mut cx = new_block_ctx!(l as u8);
-        let p1 = if boundary_thinning {
+        let p1 = if let Some(base) = continuation {
+            let entry_alias = (matches!(l, 4 | 8)).then(|| layer_p1s[l - 1].dom_fbo);
+            let prefix_k = [&base.full.layers[l].k[..base_t0 * D]];
+            prove_layer_phase1_band_thinned(
+                l,
+                &base_layers[l],
+                &model.layers[l].0,
+                &luts_l,
+                &prefix_k,
+                entry_alias,
+                &mut cx,
+            )
+        } else if boundary_thinning {
             let entry_alias = (matches!(l, 4 | 8)).then(|| layer_p1s[l - 1].dom_fbo);
             prove_layer_phase1_thinned(
                 l,
-                &wit.layers[l],
+                &base_layers[l],
                 &model.layers[l].0,
                 &luts_l,
                 entry_alias,
@@ -2956,14 +3114,14 @@ fn prove_response_impl(
             )
         } else if l > 0 && model.p.seam_shifts[l - 1] == 0 {
             prove_layer_phase1_reusing_xin(
-                &wit.layers[l],
+                &base_layers[l],
                 &model.layers[l].0,
                 &luts_l,
                 &layer_p1s[l - 1],
                 &mut cx,
             )
         } else {
-            prove_layer_phase1(&wit.layers[l], &model.layers[l].0, &luts_l, &mut cx)
+            prove_layer_phase1(&base_layers[l], &model.layers[l].0, &luts_l, &mut cx)
         };
         layer_p1s.push(p1);
     }
@@ -2975,8 +3133,9 @@ fn prove_response_impl(
             "P5 seam shifts must be ≤16 (no chained seams supported here) — got {shift} at seam {l}"
         );
         if shift > 0 {
-            let acc: Vec<i64> = wit.layers[l].ffn_block_out.iter().map(|&v| v as i64).collect();
-            add_range_mult(&mut bank, &acc, &wit.layers[l + 1].x_in, t, D, shift);
+            let acc: Vec<i64> =
+                base_layers[l].ffn_block_out.iter().map(|&v| v as i64).collect();
+            add_range_mult(&mut bank, &acc, &base_layers[l + 1].x_in, t, D, shift);
         }
     }
     // Embedding: out boundary auth + requant multiplicities.
@@ -2989,23 +3148,36 @@ fn prove_response_impl(
     let (embed_doms, dom_out, out_corr) = {
         let mut cx = new_block_ctx!(220);
         let dom_out = cx.doms.take(t as u64);
-        let out_corr = auth_matrix_rows_p(cx.stream, cx.tx, dom_out, &wit.embed.out, t, D);
-        add_range_mult(cx.bank, &wit.embed.acc, &wit.embed.out, t, D, s_emb);
+        let out_corr = auth_matrix_rows_p(cx.stream, cx.tx, dom_out, base_embed_out, t, D);
+        add_range_mult(cx.bank, base_embed_acc, base_embed_out, t, D, s_emb);
         (cx.doms, dom_out, out_corr)
     };
     // Final LN (t=2 duplicated-row batch — see the P5-DEVIATION note below).
-    let t_ln = 2usize;
-    let rb_ln = 1usize;
+    let t_ln = if continuation.is_some() { t } else { 2 };
+    let rb_ln = pad_bits(t_ln);
     let s_ln = model.p.lut.shift_ln_norm;
-    let out2: Vec<i16> = wit.final_ln.out.iter().chain(wit.final_ln.out.iter()).copied().collect();
-    let acc_ln2: Vec<i64> =
-        wit.final_ln.acc.iter().chain(wit.final_ln.acc.iter()).copied().collect();
-    let last_row: Vec<i16> = wit.layers[L - 1].ffn_block_out[(t - 1) * D..t * D].to_vec();
-    let x2: Vec<i16> = last_row.iter().chain(last_row.iter()).copied().collect();
-    let mean2 = [wit.final_ln.mean, wit.final_ln.mean];
-    let var2 = [wit.final_ln.var, wit.final_ln.var];
-    let rin2 = [wit.final_ln.rsqrt_in, wit.final_ln.rsqrt_in];
-    let rout2 = [wit.final_ln.rsqrt_out, wit.final_ln.rsqrt_out];
+    let (out2, acc_ln2, x2, mean2, var2, rin2, rout2) = if let Some(base) = continuation {
+        (
+            base.band.fin_out.clone(),
+            base.band.fin_acc.clone(),
+            base_layers[L - 1].ffn_block_out.clone(),
+            base.band.fin_mean.clone(),
+            base.band.fin_var.clone(),
+            base.band.fin_rsqrt_in.clone(),
+            base.band.fin_rsqrt_out.clone(),
+        )
+    } else {
+        let last_row = base_layers[L - 1].ffn_block_out[(t - 1) * D..t * D].to_vec();
+        (
+            wit.final_ln.out.iter().chain(wit.final_ln.out.iter()).copied().collect(),
+            wit.final_ln.acc.iter().chain(wit.final_ln.acc.iter()).copied().collect(),
+            last_row.iter().chain(last_row.iter()).copied().collect(),
+            vec![wit.final_ln.mean, wit.final_ln.mean],
+            vec![wit.final_ln.var, wit.final_ln.var],
+            vec![wit.final_ln.rsqrt_in, wit.final_ln.rsqrt_in],
+            vec![wit.final_ln.rsqrt_out, wit.final_ln.rsqrt_out],
+        )
+    };
     let (fl_doms, dom_out_f, out_corr_f, lv_f, ln_vec_corrs_f, dom_row, row_corr) = {
         let mut cx = new_block_ctx!(221);
         let dom_out_f = cx.doms.take(t_ln as u64);
@@ -3042,7 +3214,7 @@ fn prove_response_impl(
     let mut chunk_p1_s: Vec<f64> = Vec::with_capacity(chunks.len());
     let mut chunk_p2_s: Vec<f64> = Vec::with_capacity(chunks.len());
     {
-        let mut t0_expect = t;
+        let mut t0_expect = base_t0 + t;
         for (c, ch) in chunks.iter().enumerate() {
             let c_t0 = std::time::Instant::now();
             let bw = ch.band;
@@ -3055,7 +3227,11 @@ fn prove_response_impl(
                 let luts_l = luts_for(l);
                 // K prefix DATA for the Q·Kᵀ wires recompute: prefill rows +
                 // every earlier chunk's band rows.
-                let mut prefix_k: Vec<&[i16]> = vec![&wit.layers[l].k];
+                let mut prefix_k: Vec<&[i16]> = Vec::with_capacity(2 + c);
+                if let Some(base) = continuation {
+                    prefix_k.push(&base.full.layers[l].k[..base_t0 * D]);
+                }
+                prefix_k.push(&base_layers[l].k);
                 for cc in chunks[..c].iter() {
                     prefix_k.push(&cc.band.layers[l].k);
                 }
@@ -3163,7 +3339,17 @@ fn prove_response_impl(
     // Validate the complete response-wide GELU site set while the table bank
     // is still in phase 1. Finalization authenticates multiplicities and draws
     // shared alphas, so no malformed schedule may be discovered afterwards.
-    let prefill_gelu = if boundary_thinning {
+    let prefill_gelu = if continuation.is_some() {
+        preflight_gelu_plan_thinned(
+            t,
+            base_t0,
+            0,
+            layer_p1s
+                .iter()
+                .enumerate()
+                .map(|(layer, p1)| (layer, p1.doms, model.p.shift_ffn_down[layer])),
+        )
+    } else if boundary_thinning {
         preflight_gelu_plan_thinned(
             t,
             0,
@@ -3185,7 +3371,7 @@ fn prove_response_impl(
         )
     }
     .unwrap_or_else(|error| panic!("invalid public prefill GELU plan: {error}"));
-    preflight_cpu_gelu_sources(&wit.layers, &prefill_gelu)
+    preflight_cpu_gelu_sources(base_layers, &prefill_gelu)
         .unwrap_or_else(|error| panic!("invalid prefill GELU sources: {error}"));
     let mut chunk_gelu = Vec::with_capacity(chunks.len());
     for (chunk_index, (chunk, p1)) in chunks.iter().zip(&chunk_p1s).enumerate() {
@@ -3260,12 +3446,24 @@ fn prove_response_impl(
     // All twelve prefill layers stop after FFN-down, run one GELU cohort,
     // then resume in canonical layer order. The response manifest already
     // includes every later decode cohort under the same TableKey::Gelu.
-    let prefill_prefixes: Vec<Vec<KvPrefixP<'_>>> = (0..L).map(|_| Vec::new()).collect();
+    let prefill_prefixes: Vec<Vec<KvPrefixP<'_>>> = (0..L)
+        .map(|layer| {
+            continuation.map_or_else(Vec::new, |base| {
+                vec![KvPrefixP {
+                    rows: base_t0,
+                    dom_k: 0,
+                    k: &base.full.layers[layer].k[..base_t0 * D],
+                    dom_v: 0,
+                    v: &base.full.layers[layer].v[..base_t0 * D],
+                }]
+            })
+        })
+        .collect();
     let (scheduled_layers, mut seams): (Vec<_>, Vec<Option<SeamProof>>) = if boundary_thinning {
         let scheduled = match cache_mode {
             ResponseProverCacheMode::Legacy(_) => prove_layers_thinned_scheduled(
                 model,
-                &wit.layers,
+                base_layers,
                 layer_p1s,
                 &prefill_prefixes,
                 &gelu_manifest[0],
@@ -3286,7 +3484,7 @@ fn prove_response_impl(
             } => {
                 let (scheduled, phase_metrics, phase_sources) = prove_layers_thinned_scheduled_c6(
                     model,
-                    &wit.layers,
+                    base_layers,
                     layer_p1s,
                     &prefill_prefixes,
                     &gelu_manifest[0],
@@ -3314,7 +3512,7 @@ fn prove_response_impl(
     } else {
         let scheduled = prove_layers_scheduled(
             model,
-            &wit.layers,
+            base_layers,
             layer_p1s,
             &prefill_prefixes,
             &gelu_manifest[0],
@@ -3350,8 +3548,9 @@ fn prove_response_impl(
             let (dom_xin_next, _) = boundary_doms[l + 1];
             let (_, dom_fbo_l) = boundary_doms[l];
             if shift > 0 {
-                let acc: Vec<i64> = wit.layers[l].ffn_block_out.iter().map(|&v| v as i64).collect();
-                let out16 = &wit.layers[l + 1].x_in;
+                let acc: Vec<i64> =
+                    base_layers[l].ffn_block_out.iter().map(|&v| v as i64).collect();
+                let out16 = &base_layers[l + 1].x_in;
                 let site = prove_range_site(&acc, out16, t, D, shift, Vec::new(), &mut cx);
                 let out_open =
                     open_matrix_p(cx.stream, dom_xin_next, out16, t, D, &site.main.point);
@@ -3359,7 +3558,7 @@ fn prove_response_impl(
                 let acc_open = open_matrix_p(
                     cx.stream,
                     dom_fbo_l,
-                    &wit.layers[l].ffn_block_out,
+                    &base_layers[l].ffn_block_out,
                     t,
                     D,
                     site.acc_point(),
@@ -3369,8 +3568,9 @@ fn prove_response_impl(
             } else {
                 let rho: Vec<Fp2> = (0..n_vars_td).map(|_| cx.tx.challenge_fp2()).collect();
                 let a =
-                    open_matrix_p(cx.stream, dom_fbo_l, &wit.layers[l].ffn_block_out, t, D, &rho);
-                let b = open_matrix_p(cx.stream, dom_xin_next, &wit.layers[l + 1].x_in, t, D, &rho);
+                    open_matrix_p(cx.stream, dom_fbo_l, &base_layers[l].ffn_block_out, t, D, &rho);
+                let b =
+                    open_matrix_p(cx.stream, dom_xin_next, &base_layers[l + 1].x_in, t, D, &rho);
                 cx.zero.push(a.sub(b));
                 seams.push(None);
             }
@@ -3384,15 +3584,15 @@ fn prove_response_impl(
 
     // ---- (d) embedding ---------------------------------------------------
     let mut cx = BlockCtxP::with_doms(stream, tx, embed_doms, &mut bank);
-    let site = prove_range_site(&wit.embed.acc, &wit.embed.out, t, D, s_emb, Vec::new(), &mut cx);
-    let out_open = open_matrix_p(cx.stream, dom_out, &wit.embed.out, t, D, &site.main.point);
+    let site = prove_range_site(base_embed_acc, base_embed_out, t, D, s_emb, Vec::new(), &mut cx);
+    let out_open = open_matrix_p(cx.stream, dom_out, base_embed_out, t, D, &site.main.point);
     cx.zero.push(site.main.col_claims[1].value.sub(out_open));
     let embed_acc_point = site.acc_point().to_vec();
     let embed_acc_claim = site.acc_claim;
     let (dom_xin0, _) = boundary_doms[0];
     let rho_e: Vec<Fp2> = (0..n_vars_td).map(|_| cx.tx.challenge_fp2()).collect();
-    let e_open = open_matrix_p(cx.stream, dom_out, &wit.embed.out, t, D, &rho_e);
-    let x0_open = open_matrix_p(cx.stream, dom_xin0, &wit.layers[0].x_in, t, D, &rho_e);
+    let e_open = open_matrix_p(cx.stream, dom_out, base_embed_out, t, D, &rho_e);
+    let x0_open = open_matrix_p(cx.stream, dom_xin0, &base_layers[0].x_in, t, D, &rho_e);
     cx.zero.push(e_open.sub(x0_open));
     let embed = EmbedProof { out_corr, inst: site.main.proof };
     let BlockCtxP { prod: lp, zero: lz, ctr_instances: lci, ctr_other: lco, .. } = cx;
@@ -3408,22 +3608,39 @@ fn prove_response_impl(
     let mut cx = BlockCtxP::with_doms(stream, tx, fl_doms, &mut bank);
     // Bind row 0 of the duplicated x-auth to layer[11].ffn_block_out's real
     // last row (row 1 is an honest duplicate, unbound).
-    let rho_r: Vec<Fp2> = (0..d_cb).map(|_| cx.tx.challenge_fp2()).collect();
+    let rho_r: Vec<Fp2> = (0..d_cb + if continuation.is_some() { rb_ln } else { 0 })
+        .map(|_| cx.tx.challenge_fp2())
+        .collect();
     let mut pt_row0 = rho_r.clone();
-    pt_row0.extend(bit_coords(0, rb_ln));
+    if continuation.is_none() {
+        pt_row0.extend(bit_coords(0, rb_ln));
+    }
     let row_open = open_matrix_p(cx.stream, dom_row, &x2, t_ln, D, &pt_row0);
     let (_, dom_fbo_last) = boundary_doms[L - 1];
     let mut pt_fbo = rho_r;
-    pt_fbo.extend(bit_coords(t - 1, rb_t));
-    let fbo_open =
-        open_matrix_p(cx.stream, dom_fbo_last, &wit.layers[L - 1].ffn_block_out, t, D, &pt_fbo);
+    if continuation.is_none() {
+        pt_fbo.extend(bit_coords(t - 1, rb_t));
+    }
+    let fbo_open = open_matrix_p(
+        cx.stream,
+        dom_fbo_last,
+        &base_layers[L - 1].ffn_block_out,
+        t,
+        D,
+        &pt_fbo,
+    );
     cx.zero.push(row_open.sub(fbo_open));
 
     // Manufactured "wire": a fresh opening of row 0 of the SAME final_ln.out
     // auth (see module docs).
-    let rho_f: Vec<Fp2> = (0..d_cb).map(|_| cx.tx.challenge_fp2()).collect();
+    let rho_f: Vec<Fp2> =
+        (0..d_cb + if continuation.is_some() { rb_ln } else { 0 })
+            .map(|_| cx.tx.challenge_fp2())
+            .collect();
     let mut pt_wire = rho_f.clone();
-    pt_wire.extend(bit_coords(0, rb_ln));
+    if continuation.is_none() {
+        pt_wire.extend(bit_coords(0, rb_ln));
+    }
     let wire_val = open_matrix_p(cx.stream, dom_out_f, &out2, t_ln, D, &pt_wire);
     let wire = WireOut { point: pt_wire, value: wire_val, corr: Fp2::ZERO };
 
@@ -3505,15 +3722,23 @@ fn prove_response_impl(
     };
     cx.ctr_other.base_mults += (VOCAB * D) as u64;
     let mut fin_lift = vec![Fp2::ZERO; 1 << d_cb];
-    let prefill_row_weight = private_phase.map_or(Fp2::ONE, |phase| phase.row_weights[0]);
-    for (j, &x) in wit.final_ln.out.iter().enumerate() {
-        fin_lift[j] = prefill_row_weight.mul_base(Fp::from_i64(x as i64));
+    let base_row_weights = private_phase.map(|phase| phase.row_weights.as_slice());
+    for row in 0..if continuation.is_some() { t } else { 1 } {
+        let row_weight = base_row_weights.map_or(Fp2::ONE, |weights| weights[row]);
+        let source = if continuation.is_some() {
+            &out2[row * D..(row + 1) * D]
+        } else {
+            &wit.final_ln.out
+        };
+        for (j, &x) in source.iter().enumerate() {
+            fin_lift[j] += row_weight.mul_base(Fp::from_i64(x as i64));
+        }
     }
     let dom_lg = cx.doms.take(d_cb as u64);
     let (lg_sc, r_l, lg_claim_n) =
         blind_prove(a_tab.clone(), fin_lift, logits_claim, cx.stream, dom_lg, cx.tx);
     // f̃in(r_l): row-0 opening of the (duplicated) final-LN-out boundary.
-    let fin_open = if private_phase.is_some() {
+    let fin_open = if continuation.is_some() {
         open_matrix_weighted_rows_p(
             cx.stream,
             dom_out_f,
@@ -3521,7 +3746,17 @@ fn prove_response_impl(
             t_ln,
             D,
             &r_l,
-            &[prefill_row_weight, Fp2::ZERO],
+            base_row_weights.expect("continuation private row weights"),
+        )
+    } else if private_phase.is_some() {
+        open_matrix_weighted_rows_p(
+            cx.stream,
+            dom_out_f,
+            &out2,
+            t_ln,
+            D,
+            &r_l,
+            &[base_row_weights.expect("private prefill row weight")[0], Fp2::ZERO],
         )
     } else {
         let mut pt_fin = r_l.clone();
@@ -3560,7 +3795,12 @@ fn prove_response_impl(
     let eq_i = eq_vec(r_i);
     cx.ctr_other.fp2_mults += 1u64 << r_i.len();
     let mut s_tab = vec![Fp2::ZERO; 1 << 16];
-    for (i, &tok) in model.p.tokens[..t].iter().enumerate() {
+    let base_tokens: &[u32] = if continuation.is_some() {
+        &chunks[0].seq[base_t0..base_t0 + t]
+    } else {
+        &model.p.tokens[..t]
+    };
+    for (i, &tok) in base_tokens.iter().enumerate() {
         s_tab[tok as usize] += eq_i[i];
     }
     let eq_d = eq_vec(r_d);
@@ -3578,7 +3818,7 @@ fn prove_response_impl(
     cx.ctr_other.base_mults += (NPOS * D) as u64;
     let mut p_val = Fp2::ZERO;
     for i in 0..t {
-        p_val += eq_i[i] * wpe_folded[i];
+        p_val += eq_i[i] * wpe_folded[base_t0 + i];
     }
     cx.ctr_other.fp2_mults += t as u64;
     let dom_p = cx.doms.take(1);
@@ -3594,7 +3834,7 @@ fn prove_response_impl(
     let (sel_sc, rho_z, sel_claim_n) =
         blind_prove(s_tab, w_tab.clone(), claim0, cx.stream, dom_sel, cx.tx);
     // S̃(ρ_z): public (tokens + eq weights).
-    let s_eval = sel_s_eval(&model.p.tokens[..t], &eq_i, &rho_z);
+    let s_eval = sel_s_eval(base_tokens, &eq_i, &rho_z);
     cx.ctr_other.fp2_mults += 16 * t as u64;
     // Authenticated w̃te(ρ_z, r_d) → second wte claim.
     let wv2 = eval_mle_counted(&w_tab, &rho_z, &mut cx.ctr_other);
@@ -3614,11 +3854,11 @@ fn prove_response_impl(
     // G(w) = [w<t]·eq(r_i, w) public. Resolution: G̃(ρ_w) public × one wpe
     // claim at (r_d ‖ ρ_w).
     let mut g_tab = vec![Fp2::ZERO; 1 << 10];
-    g_tab[..t].copy_from_slice(&eq_i[..t]);
+    g_tab[base_t0..base_t0 + t].copy_from_slice(&eq_i[..t]);
     let dom_wpe_sc = cx.doms.take(10);
     let (wpe_sc, rho_w, wpe_claim_n) =
         blind_prove(g_tab, wpe_folded.clone(), p_auth, cx.stream, dom_wpe_sc, cx.tx);
-    let g_eval = masked_eq_eval(&eq_i, 0, t, &rho_w);
+    let g_eval = masked_eq_eval(&eq_i, base_t0, t, &rho_w);
     cx.ctr_other.fp2_mults += 10 * t as u64;
     let wpe_val = eval_mle_counted(&wpe_folded, &rho_w, &mut cx.ctr_other);
     let dom_wpe = cx.doms.take(1);
@@ -3666,13 +3906,23 @@ fn prove_response_impl(
         // ---- 12 band layers -------------------------------------------------
         let prefixes: Vec<Vec<KvPrefixP<'_>>> = (0..L)
             .map(|l| {
-                let mut v = vec![KvPrefixP {
+                let mut v = Vec::with_capacity(2 + c);
+                if let Some(base) = continuation {
+                    v.push(KvPrefixP {
+                        rows: base_t0,
+                        dom_k: 0,
+                        k: &base.full.layers[l].k[..base_t0 * D],
+                        dom_v: 0,
+                        v: &base.full.layers[l].v[..base_t0 * D],
+                    });
+                }
+                v.push(KvPrefixP {
                     rows: t,
                     dom_k: kv_doms[l][0].0,
-                    k: &wit.layers[l].k,
+                    k: &base_layers[l].k,
                     dom_v: kv_doms[l][0].1,
-                    v: &wit.layers[l].v,
-                }];
+                    v: &base_layers[l].v,
+                });
                 for (cc, chc) in chunks[..c].iter().enumerate() {
                     v.push(KvPrefixP {
                         rows: chc.band.q,
@@ -4280,6 +4530,31 @@ fn private_argmax_public_layout(
     Some((phases, public_tokens))
 }
 
+fn private_argmax_continuation_layout(
+    base_t0: usize,
+    base_rows: usize,
+    chunks: &[ChunkPub<'_>],
+) -> Option<(Vec<Vec<usize>>, Vec<(usize, usize)>)> {
+    let chunk = chunks.first()?;
+    if chunks.len() != 1 || chunk.q != 25 || base_rows != 26 {
+        return None;
+    }
+    let lengths = [base_rows, chunk.q.checked_sub(1)?];
+    let (phases, _) = phase_layout_from_lengths(&lengths)?;
+    let mut public_tokens = Vec::with_capacity(50);
+    for row in 0..base_rows {
+        public_tokens.push((phases[0][row], *chunk.seq.get(base_t0 + row + 1)? as usize));
+    }
+    let chunk_t0 = base_t0.checked_add(base_rows)?;
+    for row in 0..lengths[1] {
+        public_tokens.push((phases[1][row], *chunk.seq.get(chunk_t0 + row + 1)? as usize));
+    }
+    if public_tokens.iter().any(|&(_, token)| token >= VOCAB) {
+        return None;
+    }
+    Some((phases, public_tokens))
+}
+
 #[derive(Clone, Copy)]
 struct Gpt2VerifierView<'a> {
     schedule_model: &'a Gpt2Model,
@@ -4323,6 +4598,7 @@ fn preflight_verify_response_public(
     t: usize,
     logits: &[i64],
     chunks: &[ChunkPub<'_>],
+    continuation: Option<C6ContinuationPublic>,
     proof: &ModelProof,
     private_logits: bool,
 ) -> Option<()> {
@@ -4334,9 +4610,12 @@ fn preflight_verify_response_public(
         model.p.lut.shift_scores,
         model.p.lut.shift_qkv,
     ];
+    let base_t0 = continuation.map_or(0, |profile| profile.base_t0);
+    let base_end = base_t0.checked_add(t)?;
     if t < 2
         || t > NPOS
-        || t > model.p.tokens.len()
+        || base_end > NPOS
+        || (continuation.is_none() && t > model.p.tokens.len())
         || model.config.binding != ConfigBinding::LegacyImplicit
         || !model.config.is_legacy_gpt2_geometry()
         || !model.layout_valid
@@ -4361,23 +4640,28 @@ fn preflight_verify_response_public(
         .zip(model.p.seam_shifts.iter().copied())
         .any(|(seam, shift)| shift > 16 || seam.is_some() != (shift > 0))
         || proof.embed.out_corr.len() != t.checked_mul(D)?
-        || proof.final_ln.out_corr.len() != 2usize.checked_mul(D)?
-        || proof.final_ln.row_corr.len() != 2usize.checked_mul(D)?
-        || proof.final_ln.ln_vec_corrs.iter().any(|corrections| corrections.len() != 2)
+        || proof.final_ln.out_corr.len()
+            != if continuation.is_some() { t.checked_mul(D)? } else { 2usize.checked_mul(D)? }
+        || proof.final_ln.row_corr.len()
+            != if continuation.is_some() { t.checked_mul(D)? } else { 2usize.checked_mul(D)? }
+        || proof.final_ln.ln_vec_corrs.iter().any(|corrections| {
+            corrections.len()
+                != if continuation.is_some() { t.next_power_of_two() } else { 2 }
+        })
     {
         return None;
     }
     for (layer, layer_proof) in proof.layers.iter().enumerate() {
         preflight_layer_proof_shape(
-            BandShape::square(t),
+            continuation.map_or(BandShape::square(t), |_| BandShape { t0: base_t0, q: t }),
             layer_proof,
             model.p.lut.softmax_row_shift,
             layer,
         )?;
     }
 
-    let public_prompt = model.p.tokens.get(..t)?;
-    let mut t0 = t;
+    let public_prompt = continuation.is_none().then(|| model.p.tokens.get(..t)).flatten();
+    let mut t0 = base_end;
     for (chunk, chunk_proof) in chunks.iter().zip(&proof.chunks) {
         let logits_len = chunk.q.checked_mul(VOCAB)?;
         let end = t0.checked_add(chunk.q)?;
@@ -4388,7 +4672,7 @@ fn preflight_verify_response_public(
             || (private_logits && !chunk.logits.is_empty())
             || end > NPOS
             || chunk.seq.len() < end
-            || chunk.seq.get(..t)? != public_prompt
+            || public_prompt.is_some_and(|prompt| chunk.seq.get(..t) != Some(prompt))
             || chunk_proof.layers.len() != L
             || chunk_proof.seams.len() != L - 1
             || chunk_proof
@@ -4416,7 +4700,11 @@ fn preflight_verify_response_public(
     if !private_logits {
         preflight_greedy_tokens(t, logits, chunks)?;
     } else {
-        private_argmax_public_layout(t, chunks)?;
+        if continuation.is_some() {
+            private_argmax_continuation_layout(base_t0, t, chunks)?;
+        } else {
+            private_argmax_public_layout(t, chunks)?;
+        }
     }
 
     // `TableBankV::finalize` expands keys incrementally. Validate its entire
@@ -4451,7 +4739,7 @@ pub fn verify_response(
 ) -> Option<(ModelOutV, ProdKeyTriples, Vec<VerifierKey>)> {
     let model = Gpt2VerifierView::full(model);
     let mut cache_mode = ResponseVerifierCacheMode::Legacy(std::marker::PhantomData);
-    verify_response_impl(&model, t, logits, chunks, proof, vc, tx, false, &mut cache_mode)
+    verify_response_impl(&model, t, logits, chunks, None, proof, vc, tx, false, &mut cache_mode)
 }
 
 pub fn verify_response_private_logits(
@@ -4466,7 +4754,7 @@ pub fn verify_response_private_logits(
     let views: Vec<ChunkPub<'_>> =
         chunks.iter().map(|chunk| ChunkPub { q: chunk.q, logits: &[], seq: chunk.seq }).collect();
     let mut cache_mode = ResponseVerifierCacheMode::Legacy(std::marker::PhantomData);
-    verify_response_impl(&model, t, &[], &views, proof, vc, tx, true, &mut cache_mode)
+    verify_response_impl(&model, t, &[], &views, None, proof, vc, tx, true, &mut cache_mode)
 }
 
 #[cfg(feature = "c6-trace")]
@@ -4572,13 +4860,21 @@ fn verify_response_c6_cache_inline_view(
         paired_targets: Vec::with_capacity(4 * crate::c6_cache_fold::C6_CACHE_HEADS * L),
     };
     let (out, prod, zero) =
-        verify_response_impl(&model, t, logits, chunks, proof, vc, tx, false, &mut cache_mode)?;
-    let ResponseVerifierCacheMode::C6 {
-        metrics,
-        append_source_layers,
-        paired_targets,
-        ..
-    } = cache_mode else {
+        verify_response_impl(
+            &model,
+            t,
+            logits,
+            chunks,
+            None,
+            proof,
+            vc,
+            tx,
+            false,
+            &mut cache_mode,
+        )?;
+    let ResponseVerifierCacheMode::C6 { metrics, append_source_layers, paired_targets, .. } =
+        cache_mode
+    else {
         unreachable!("C6 response verifier mode changed during execution")
     };
     Some((
@@ -4664,6 +4960,68 @@ pub fn verify_response_private_logits_c6_cache_inline_from_profile(
 
 #[cfg(feature = "c6-trace")]
 #[allow(clippy::too_many_arguments)]
+pub fn verify_response_continuation_private_logits_c6_cache_inline_from_profile(
+    model: &Gpt2VerifierModel,
+    base_t0: usize,
+    sequence: &[u32],
+    proof: &ModelProof,
+    vc: &mut VerifierCtx,
+    secondary: &mut VerifierCtx,
+    schedule_follower: &mut C6SourceScheduleVerifierFollower,
+    target_cursor: &mut C6CacheFoldTargetInlineVerifier<'_>,
+    tx: &mut Transcript,
+) -> Option<(
+    ModelOutV,
+    ProdKeyTriples,
+    C6GrandResidualVerifierRoots,
+    C6CacheFoldOnlineLayerMetrics,
+    C6CacheFoldAppendSourcePlan,
+    Vec<(C6CacheFoldKind, [VerifierKey; 2])>,
+)> {
+    let model = Gpt2VerifierView::slim(model);
+    let views = [ChunkPub { q: 25, logits: &[], seq: sequence }];
+    let mut cache_mode = ResponseVerifierCacheMode::C6 {
+        secondary,
+        schedule_follower,
+        target_cursor,
+        metrics: C6CacheFoldOnlineLayerMetrics::default(),
+        append_source_layers: Vec::with_capacity(L),
+        paired_targets: Vec::with_capacity(4 * crate::c6_cache_fold::C6_CACHE_HEADS * L),
+    };
+    let (out, prod, zero) = verify_response_impl(
+        &model,
+        26,
+        &[],
+        &views,
+        Some(C6ContinuationPublic { base_t0 }),
+        proof,
+        vc,
+        tx,
+        true,
+        &mut cache_mode,
+    )?;
+    let ResponseVerifierCacheMode::C6 { metrics, append_source_layers, paired_targets, .. } =
+        cache_mode
+    else {
+        unreachable!("C6 continuation verifier mode changed during execution")
+    };
+    let append_source_layers = append_source_layers
+        .into_iter()
+        .map(|layer| layer.suffix_from(base_t0 + 1))
+        .collect::<Result<Vec<_>, _>>()
+        .ok()?;
+    Some((
+        out,
+        prod,
+        C6GrandResidualVerifierRoots::new(zero),
+        metrics,
+        C6CacheFoldAppendSourcePlan::new(append_source_layers).ok()?,
+        paired_targets,
+    ))
+}
+
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
 fn verify_response_private_logits_c6_cache_inline_view(
     model: Gpt2VerifierView<'_>,
     t: usize,
@@ -4696,13 +5054,21 @@ fn verify_response_private_logits_c6_cache_inline_view(
         paired_targets: Vec::with_capacity(4 * crate::c6_cache_fold::C6_CACHE_HEADS * L),
     };
     let (out, prod, zero) =
-        verify_response_impl(&model, t, &[], &views, proof, vc, tx, true, &mut cache_mode)?;
-    let ResponseVerifierCacheMode::C6 {
-        metrics,
-        append_source_layers,
-        paired_targets,
-        ..
-    } = cache_mode else {
+        verify_response_impl(
+            &model,
+            t,
+            &[],
+            &views,
+            None,
+            proof,
+            vc,
+            tx,
+            true,
+            &mut cache_mode,
+        )?;
+    let ResponseVerifierCacheMode::C6 { metrics, append_source_layers, paired_targets, .. } =
+        cache_mode
+    else {
         unreachable!("C6 private-logit verifier mode changed during execution")
     };
     Some((
@@ -4721,13 +5087,25 @@ fn verify_response_impl(
     t: usize,
     logits: &[i64],
     chunks: &[ChunkPub],
+    continuation: Option<C6ContinuationPublic>,
     proof: &ModelProof,
     vc: &mut VerifierCtx,
     tx: &mut Transcript,
     private_logits: bool,
     cache_mode: &mut ResponseVerifierCacheMode<'_, '_>,
 ) -> Option<(ModelOutV, ProdKeyTriples, Vec<VerifierKey>)> {
-    preflight_verify_response_public(model, t, logits, chunks, proof, private_logits)?;
+    preflight_verify_response_public(
+        model,
+        t,
+        logits,
+        chunks,
+        continuation,
+        proof,
+        private_logits,
+    )?;
+    let base_t0 = continuation.map_or(0, |profile| profile.base_t0);
+    let base_shape =
+        continuation.map_or(BandShape::square(t), |_| BandShape { t0: base_t0, q: t });
     let d_cb = pad_bits(D);
     let rb_t = pad_bits(t);
     let n_vars_td = d_cb + rb_t;
@@ -4759,21 +5137,24 @@ fn verify_response_impl(
         let v1 = match cache_mode {
             ResponseVerifierCacheMode::Legacy(_) => verify_layer_phase1_band_thinned(
                 l,
-                BandShape::square(t),
+                base_shape,
                 &luts_l,
                 &proof.layers[l],
                 entry_alias,
                 &mut cx,
-            )?,
+            ),
             #[cfg(feature = "c6-trace")]
             ResponseVerifierCacheMode::C6 { .. } => verify_layer_phase1_band_thinned_c6(
                 l,
-                BandShape::square(t),
+                base_shape,
                 &luts_l,
                 &proof.layers[l],
                 entry_alias,
                 &mut cx,
-            )?,
+            ),
+        };
+        let Some(v1) = v1 else {
+            return None;
         };
         layer_v1s.push(v1);
     }
@@ -4791,13 +5172,17 @@ fn verify_response_impl(
         let out_keys = auth_matrix_rows_v(cx.ctx, cx.tx, dom_out, &proof.embed.out_corr, t, D);
         (cx.doms, out_keys)
     };
-    let t_ln = 2usize;
-    let rb_ln = 1usize;
+    let t_ln = if continuation.is_some() { t } else { 2 };
+    let rb_ln = pad_bits(t_ln);
     let (fl_doms, out_keys_f, lvk_f, row_keys) = {
         let mut cx = BlockCtxV::new(vc, tx, 221, &mut pre_bank);
         if proof.final_ln.out_corr.len() != t_ln * D
             || proof.final_ln.row_corr.len() != t_ln * D
-            || proof.final_ln.ln_vec_corrs.iter().any(|c| c.len() != t_ln)
+            || proof
+                .final_ln
+                .ln_vec_corrs
+                .iter()
+                .any(|c| c.len() != 1usize << rb_ln)
         {
             return None;
         }
@@ -4821,7 +5206,7 @@ fn verify_response_impl(
     }
     let mut chunk_v1s: Vec<ChunkV1> = Vec::with_capacity(chunks.len());
     {
-        let mut t0 = t;
+        let mut t0 = base_t0 + t;
         for (c, (ch, cp)) in chunks.iter().zip(&proof.chunks).enumerate() {
             let q = ch.q;
             let sh_c = BandShape { t0, q };
@@ -4892,7 +5277,7 @@ fn verify_response_impl(
     // finalization expands multiplicity keys or draws shared alphas.
     let prefill_gelu = preflight_gelu_plan_thinned(
         t,
-        0,
+        base_t0,
         0,
         layer_v1s
             .iter()
@@ -4903,7 +5288,7 @@ fn verify_response_impl(
     preflight_gelu_proofs(&proof.layers, &prefill_gelu).ok()?;
     let mut gelu_manifest = Vec::with_capacity(1 + chunks.len());
     gelu_manifest.push(prefill_gelu);
-    let mut decode_t0 = t;
+    let mut decode_t0 = base_t0 + t;
     for (chunk_index, ((chunk, chunk_proof), v1)) in
         chunks.iter().zip(&proof.chunks).zip(&chunk_v1s).enumerate()
     {
@@ -4923,8 +5308,13 @@ fn verify_response_impl(
         decode_t0 = decode_t0.checked_add(chunk.q)?;
     }
 
-    let private_layout = private_logits
-        .then(|| private_argmax_public_layout(t, chunks).expect("private preflight fixed layout"));
+    let private_layout = private_logits.then(|| {
+        continuation.map_or_else(
+            || private_argmax_public_layout(t, chunks),
+            |profile| private_argmax_continuation_layout(profile.base_t0, t, chunks),
+        )
+        .expect("private preflight fixed layout")
+    });
     let argmax_prepared = if let Some((phases, _)) = &private_layout {
         Some(prepare_private_argmax_verifier(proof.private_argmax.as_ref()?, phases.len(), vc, tx)?)
     } else {
@@ -4988,22 +5378,28 @@ fn verify_response_impl(
             append_source_layers,
             paired_targets,
         } => {
-            let c6_prefixes: Vec<Vec<C6KvPrefixSource>> = (0..L).map(|_| Vec::new()).collect();
+            let c6_prefixes: Vec<Vec<C6KvPrefixSource>> = (0..L)
+                .map(|_| {
+                    continuation.map_or_else(Vec::new, |_| {
+                        vec![C6KvPrefixSource { rows: base_t0, dom_k: 0, dom_v: 0 }]
+                    })
+                })
+                .collect();
             let (scheduled, phase_metrics, phase_sources, phase_targets) =
                 verify_layers_thinned_scheduled_c6(
-                model.schedule_model,
-                &proof.layers,
-                &seam_instances,
-                layer_v1s,
-                &c6_prefixes,
-                &gelu_manifest[0],
-                200,
-                vc,
-                secondary,
-                schedule_follower,
-                target_cursor,
-                tx,
-                &mut bank,
+                    model.schedule_model,
+                    &proof.layers,
+                    &seam_instances,
+                    layer_v1s,
+                    &c6_prefixes,
+                    &gelu_manifest[0],
+                    200,
+                    vc,
+                    secondary,
+                    schedule_follower,
+                    target_cursor,
+                    tx,
+                    &mut bank,
                 )?;
             add_c6_response_metrics(metrics, phase_metrics);
             *append_source_layers = phase_sources;
@@ -5039,18 +5435,28 @@ fn verify_response_impl(
 
     // ---- (e) final LN (mirrors the t=2 duplicated-row fix) -----------------
     let mut cx = BlockCtxV::with_doms(vc, tx, fl_doms, &mut bank);
-    let rho_r: Vec<Fp2> = (0..d_cb).map(|_| cx.tx.challenge_fp2()).collect();
+    let rho_r: Vec<Fp2> = (0..d_cb + if continuation.is_some() { rb_ln } else { 0 })
+        .map(|_| cx.tx.challenge_fp2())
+        .collect();
     let mut pt_row0 = rho_r.clone();
-    pt_row0.extend(bit_coords(0, rb_ln));
+    if continuation.is_none() {
+        pt_row0.extend(bit_coords(0, rb_ln));
+    }
     let row_k = open_matrix_k(&row_keys, t_ln, D, &pt_row0);
     let mut pt_fbo = rho_r;
-    pt_fbo.extend(bit_coords(t - 1, rb_t));
+    if continuation.is_none() {
+        pt_fbo.extend(bit_coords(t - 1, rb_t));
+    }
     let fbo_k = open_matrix_k(&boundary_keys[L - 1].1, t, D, &pt_fbo);
     cx.kzero.push(row_k.sub(fbo_k));
 
-    let rho_f: Vec<Fp2> = (0..d_cb).map(|_| cx.tx.challenge_fp2()).collect();
+    let rho_f: Vec<Fp2> = (0..d_cb + if continuation.is_some() { rb_ln } else { 0 })
+        .map(|_| cx.tx.challenge_fp2())
+        .collect();
     let mut pt_wire = rho_f;
-    pt_wire.extend(bit_coords(0, rb_ln));
+    if continuation.is_none() {
+        pt_wire.extend(bit_coords(0, rb_ln));
+    }
     let wire_key = open_matrix_k(&out_keys_f, t_ln, D, &pt_wire);
     let wk = WireKey { point: pt_wire, key: wire_key };
 
@@ -5092,7 +5498,17 @@ fn verify_response_impl(
     let dom_lg = cx.doms.take(d_cb as u64);
     let (r_l, k_claim_n) = blind_verify(d_cb, logits_key, &proof.logits.sc, cx.ctx, dom_lg, cx.tx)?;
     let k_fin = if let Some(phase) = private_phase {
-        open_matrix_weighted_rows_k(&out_keys_f, t_ln, D, &r_l, &[phase.row_weights[0], Fp2::ZERO])
+        if continuation.is_some() {
+            open_matrix_weighted_rows_k(&out_keys_f, t_ln, D, &r_l, &phase.row_weights)
+        } else {
+            open_matrix_weighted_rows_k(
+                &out_keys_f,
+                t_ln,
+                D,
+                &r_l,
+                &[phase.row_weights[0], Fp2::ZERO],
+            )
+        }
     } else {
         let mut pt_fin = r_l.clone();
         pt_fin.extend(bit_coords(0, rb_ln));
@@ -5120,7 +5536,12 @@ fn verify_response_impl(
     let k_claim0 = embed_acc_key.sub(k_p);
     let dom_sel = cx.doms.take(16);
     let (rho_z, k_sel_n) = blind_verify(16, k_claim0, &proof.selection.sc, cx.ctx, dom_sel, cx.tx)?;
-    let s_eval = sel_s_eval(&model.p.tokens[..t], &eq_i, &rho_z);
+    let base_tokens = if continuation.is_some() {
+        &chunks[0].seq[base_t0..base_t0 + t]
+    } else {
+        &model.p.tokens[..t]
+    };
+    let s_eval = sel_s_eval(base_tokens, &eq_i, &rho_z);
     let dom_wv2 = cx.doms.take(1);
     cx.tx.append_fp2s("selection_wte_correction", &[proof.selection.wte_corr]);
     let k_wte2 = cx.ctx.correct_full_verifier_key(dom_wv2, proof.selection.wte_corr);
@@ -5132,7 +5553,7 @@ fn verify_response_impl(
     let dom_wpe_sc = cx.doms.take(10);
     let (rho_w, k_wpe_n) =
         blind_verify(10, k_p, &proof.selection.sc_wpe, cx.ctx, dom_wpe_sc, cx.tx)?;
-    let g_eval = masked_eq_eval(&eq_i, 0, t, &rho_w);
+    let g_eval = masked_eq_eval(&eq_i, base_t0, t, &rho_w);
     let dom_wpe = cx.doms.take(1);
     cx.tx.append_fp2s("selection_wpe_correction", &[proof.selection.wpe_corr]);
     let k_wpe = cx.ctx.correct_full_verifier_key(dom_wpe, proof.selection.wpe_corr);
@@ -5152,10 +5573,19 @@ fn verify_response_impl(
         kv_keys.push(vec![(bk.0.clone(), bk.1.clone())]);
     }
     #[cfg(feature = "c6-trace")]
-    let mut kv_sources: Vec<Vec<(usize, u64, u64)>> =
-        boundary_kv_sources.iter().map(|&(dom_k, dom_v)| vec![(t, dom_k, dom_v)]).collect();
+    let mut kv_sources: Vec<Vec<(usize, u64, u64)>> = boundary_kv_sources
+        .iter()
+        .map(|&(dom_k, dom_v)| {
+            let mut segments = Vec::with_capacity(2);
+            if continuation.is_some() {
+                segments.push((base_t0, 0, 0));
+            }
+            segments.push((t, dom_k, dom_v));
+            segments
+        })
+        .collect();
     {
-        let mut t0 = t;
+        let mut t0 = base_t0 + t;
         for (c, (ch, (cp, v1c))) in
             chunks.iter().zip(proof.chunks.iter().zip(chunk_v1s.into_iter())).enumerate()
         {
@@ -5476,6 +5906,288 @@ mod tests {
         // phase/chunk and rows, immediately preceding layer) itself.
     }
 
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn c6_continuation_uses_one_overlap_row_and_fifty_new_rows() {
+        use crate::c6_cache_fold::{
+            begin_c6_cache_fold_trace, C6CacheFoldKind, C6CacheFoldParty,
+            C6CacheFoldTargetInlineProver, C6CacheFoldTargetInlineVerifier,
+            C6CacheFoldTargetPublicSchedule,
+        };
+        use crate::c6_source::{
+            C6SourceScheduleProverFollower, C6SourceScheduleVerifierFollower,
+        };
+        use crate::c6_residual::C6_RESIDUAL_TRACE_FIXTURE_LOCK;
+        use volta_mac::{
+            begin_c6_prover_trace, compile_c6_operation_trace_for_role,
+            finish_c6_prover_trace, C6InstanceExtractionRole, C6TraceSourceManifest,
+            CorrScheduleRole,
+        };
+        use volta_gpt2::{
+            band_model_witness, forward_model_tokens, Gpt2VerifierModel, KvCache,
+        };
+
+        let dir = weights_dir();
+        if !dir.join("gpt2s-q.bin").exists() {
+            eprintln!("skipping C6 continuation gate: artifact not present");
+            return;
+        }
+        let _fixture_guard = C6_RESIDUAL_TRACE_FIXTURE_LOCK.lock().unwrap();
+        let model = load_model(&dir).unwrap();
+        let old_len = 500usize;
+        let prompt_len = 100usize;
+        let prompt = forward_model(&model, prompt_len);
+        let kv = prompt
+            .layers
+            .iter()
+            .map(|layer| (layer.k.as_slice(), layer.v.as_slice()))
+            .collect::<Vec<_>>();
+        let mut cache = KvCache::from_prefill(&kv, prompt_len);
+        let (generated, _) = volta_gpt2::generate(
+            &model,
+            &mut cache,
+            &prompt.logits,
+            prompt_len,
+            old_len + 50 - prompt_len,
+        );
+        let mut sequence = model.p.tokens[..prompt_len].to_vec();
+        sequence.extend_from_slice(&generated);
+        let first_full = forward_model_tokens(&model, &sequence[..old_len + 25]);
+        let full = forward_model_tokens(&model, &sequence);
+        let first = band_model_witness(&model, &first_full, old_len - 1);
+        let second = band_model_witness(&model, &full, old_len + 25);
+        assert_eq!(
+            (first.t0, first.q, second.t0, second.q),
+            (old_len - 1, 26, old_len + 25, 25)
+        );
+        let extended_gap_count = [&first, &second]
+            .into_iter()
+            .map(|band| {
+                let causal = band.q * band.t0 + band.q * (band.q + 1) / 2;
+                band.layers
+                    .iter()
+                    .map(|layer| {
+                        (0..H)
+                            .map(|head| {
+                                (0..band.q)
+                                    .map(|row| {
+                                        let width = band.t0 + row + 1;
+                                        let start = head * causal
+                                            + row * band.t0
+                                            + row * (row + 1) / 2;
+                                        layer.scores_q[start..start + width]
+                                            .iter()
+                                            .filter(|&&score| {
+                                                volta_gpt2::softmax_score_gap(
+                                                    score,
+                                                    layer.row_shift[head * band.q + row],
+                                                ) > 1 << 15
+                                            })
+                                            .count()
+                                    })
+                                    .sum::<usize>()
+                            })
+                            .sum::<usize>()
+                    })
+                    .sum::<usize>()
+            })
+            .sum::<usize>();
+        assert!(extended_gap_count > 0, "C62SGE1 lower-tail relation was not exercised");
+
+        let schedule = C6CacheFoldTargetPublicSchedule::new(
+            (0..2 * L)
+                .flat_map(|_| {
+                    std::iter::repeat_n(C6CacheFoldKind::ValueColumns, H)
+                        .chain(std::iter::repeat_n(C6CacheFoldKind::KeyRows, H))
+                })
+                .collect(),
+        )
+        .unwrap();
+        let statement_digest = [0xD1; 32];
+        let transcript_seed = [0xD2; 32];
+        let deltas = [
+            Fp2::new(Fp::new(0xD301), Fp::new(0xD302)),
+            Fp2::new(Fp::new(0xD401), Fp::new(0xD402)),
+        ];
+
+        let mut primary = CorrelationStream::new([0xD5; 32]);
+        begin_c6_prover_trace().unwrap();
+        primary.enable_c6_operation_trace().unwrap();
+        primary.enable_c6_source_witness_collection().unwrap();
+        let mut secondary = CorrelationStream::new([0xD6; 32]);
+        let mut prover_follower = C6SourceScheduleProverFollower::start(&mut secondary).unwrap();
+        let mut prover_tx = Transcript::new(transcript_seed);
+        let mut builder = C6CacheFoldTargetInlineProver::start_public(
+            statement_digest,
+            schedule.clone(),
+            &mut prover_tx,
+        )
+        .unwrap();
+        let prover_trace = begin_c6_cache_fold_trace(C6CacheFoldParty::Prover).unwrap();
+        let (proof, prover_out, products, zero_roots, prover_metrics, append) =
+            prove_response_continuation_private_logits_c6_cache_inline(
+                &model,
+                &full,
+                &first,
+                &second,
+                &sequence,
+                &mut primary,
+                &mut secondary,
+                &mut prover_follower,
+                &mut builder,
+                &mut prover_tx,
+            );
+        let prover_snapshot = prover_trace.finish().unwrap();
+        let (frame, _) = builder
+            .finish_before_successor_root_with_identity(prover_snapshot.identity, &mut prover_tx)
+            .unwrap();
+        assert_eq!(prover_out.weight_claims.len(), 96);
+        assert_eq!(prover_out.embed_claims.len(), 6);
+        assert_eq!(prover_metrics.corrected_targets, 576);
+        assert!(append
+            .layers()
+            .iter()
+            .all(|layer| layer.first_row() == old_len && layer.row_count().unwrap() == 50));
+        assert_eq!(
+            (primary.counters.sub_corrs, primary.counters.full_corrs, primary.counters.domains),
+            (1_696_526, 168_918, 72_934),
+        );
+        let mut product_doms = Doms::new(layer_dom_base(255));
+        let product_challenge = prover_tx.challenge_fp2();
+        let product_domain = product_doms.take(1);
+        let product_mask = primary.draw_product_mask(product_domain, products.len());
+        let product_proof =
+            prod_batch_prover(&products, product_challenge, product_mask, &mut prover_tx);
+        zero_roots.record_operation_trace_ownership().unwrap();
+        let operation_trace = finish_c6_prover_trace().unwrap();
+        prover_follower.sync_primary(&primary, &mut secondary).unwrap();
+        let correlation_schedule = primary.schedule_audit().unwrap();
+        let mut next_source = 0u64;
+        let mut product_mask_sources = Vec::new();
+        for draw in &correlation_schedule.draws {
+            if draw.role == CorrScheduleRole::ProductMask {
+                product_mask_sources.push(u32::try_from(next_source).unwrap());
+            }
+            next_source += draw.count;
+        }
+        let source_manifest = C6TraceSourceManifest::new(
+            u32::try_from(next_source).unwrap(),
+            correlation_schedule.digest,
+            product_mask_sources,
+        )
+        .unwrap();
+        let compiled = compile_c6_operation_trace_for_role(
+            &operation_trace,
+            &source_manifest,
+            C6InstanceExtractionRole::Prover,
+        )
+        .unwrap();
+        let topology = compiled.plan.topology;
+        assert_eq!(
+            (
+                topology.source_count,
+                topology.canonical_node_count,
+                topology.public_input_count,
+                topology.scalar_input_count,
+                topology.product_closure_count,
+                topology.product_triple_count,
+                topology.zero_root_count,
+            ),
+            (1_865_445, 6_597_601, 1_436, 2_416_845, 673, 21_052, 7_741),
+        );
+        assert_eq!(
+            topology.source_schedule_digest,
+            [
+                130, 85, 122, 79, 218, 185, 20, 246, 10, 251, 219, 161, 24, 118, 110,
+                209, 169, 134, 216, 231, 97, 109, 59, 169, 243, 182, 216, 83, 82, 243,
+                184, 206,
+            ],
+        );
+        assert_eq!(
+            topology.topology_digest,
+            [
+                14, 91, 135, 30, 168, 34, 119, 229, 183, 235, 119, 196, 184, 17, 203,
+                108, 35, 185, 177, 244, 254, 119, 20, 49, 18, 47, 27, 2, 193, 150, 139,
+                71,
+            ],
+        );
+
+        let mut primary_v = VerifierCtx::new([0xD5; 32], deltas[0]);
+        primary_v.enable_schedule_audit().unwrap();
+        let mut secondary_v = VerifierCtx::new([0xD6; 32], deltas[1]);
+        let mut verifier_follower =
+            C6SourceScheduleVerifierFollower::start(&mut secondary_v).unwrap();
+        let mut verifier_tx = Transcript::new(transcript_seed);
+        let mut cursor = C6CacheFoldTargetInlineVerifier::start_public(
+            &frame,
+            schedule,
+            deltas,
+            &mut verifier_tx,
+        )
+        .unwrap();
+        let verifier_trace = begin_c6_cache_fold_trace(C6CacheFoldParty::Verifier).unwrap();
+        let verifier_model = Gpt2VerifierModel::from_model(&model).unwrap();
+        let preflight_chunks = [ChunkPub { q: 25, logits: &[], seq: &sequence }];
+        assert_eq!(
+            preflight_verify_response_public(
+                &Gpt2VerifierView::slim(&verifier_model),
+                26,
+                &[],
+                &preflight_chunks,
+                Some(C6ContinuationPublic { base_t0: old_len - 1 }),
+                &proof,
+                true,
+            ),
+            Some(())
+        );
+        let verified = verify_response_continuation_private_logits_c6_cache_inline_from_profile(
+                &verifier_model,
+                old_len - 1,
+                &sequence,
+                &proof,
+                &mut primary_v,
+                &mut secondary_v,
+                &mut verifier_follower,
+                &mut cursor,
+                &mut verifier_tx,
+            );
+        let (verifier_out, product_keys, _, verifier_metrics, _, targets) =
+            verified.unwrap_or_else(|| {
+            panic!(
+                "C6 continuation verifier rejected: {}",
+                prover_tx
+                    .debug_first_canonical_divergence(&verifier_tx)
+                    .unwrap_or_else(|| "equal transcript prefixes".to_owned())
+            )
+            });
+        let verifier_snapshot = verifier_trace.finish().unwrap();
+        cursor
+            .finish_before_successor_root_with_identity(
+                verifier_snapshot.identity,
+                &mut verifier_tx,
+            )
+            .unwrap();
+        assert_eq!(product_challenge, verifier_tx.challenge_fp2());
+        let mut verifier_product_doms = Doms::new(layer_dom_base(255));
+        let verifier_product_domain = verifier_product_doms.take(1);
+        assert_eq!(product_domain, verifier_product_domain);
+        let product_mask_key = primary_v
+            .expand_product_mask_verifier_key(verifier_product_domain, product_keys.len());
+        verifier_tx.append_fp2s("prod_check_m0_m1", &[product_proof.m0, product_proof.m1]);
+        assert!(prod_batch_verify(
+            &product_keys,
+            product_mask_key,
+            primary_v.delta,
+            product_challenge,
+            &product_proof,
+        ));
+        assert_eq!(verifier_out.weight_keys.len(), 96);
+        assert_eq!(verifier_out.embed_keys.len(), 6);
+        assert_eq!(verifier_metrics.corrected_targets, 576);
+        assert_eq!(targets.len(), 576);
+        assert_eq!(verifier_tx.ledger(), prover_tx.ledger());
+    }
+
     /// Production-shaped C6 cache seam: all 12 prefill layers and all 12
     /// stacked-decode layers emit the fixed 576-target C6FT1 stream inline.
     /// The historical zero batch is deliberately not closed here: its
@@ -5694,10 +6406,7 @@ mod tests {
             &mut verifier_tx,
         )
         .expect("C6 response-wide cache proof verifies");
-        assert_eq!(
-            verifier_cache_targets.len(),
-            4 * crate::c6_cache_fold::C6_CACHE_HEADS * L
-        );
+        assert_eq!(verifier_cache_targets.len(), 4 * crate::c6_cache_fold::C6_CACHE_HEADS * L);
         assert_eq!(append_sources, verifier_append_sources);
         let verifier_trace = verifier_trace_guard.finish().unwrap();
         let verifier_fixed = target_cursor

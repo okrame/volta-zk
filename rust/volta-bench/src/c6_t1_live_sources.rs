@@ -110,6 +110,74 @@ pub fn materialize_c6_t1_genesis_cache_states(
     materialize_c6_genesis_cache_states(layout, 100, 50, &layers)
 }
 
+/// Materialize the predecessor and successor cache states for one C6.2
+/// continuation. The full witness contains the accepted prefix and exactly
+/// 50 new rows.
+pub fn materialize_c62_continuation_cache_states(
+    full: &ModelWitness,
+    old_len: u16,
+) -> Result<(C6PersistentCacheStateWitness, C6PersistentCacheStateWitness), String> {
+    let layout = C6PersistentCacheLayout::production();
+    let new_len = old_len
+        .checked_add(50)
+        .ok_or_else(|| "C6.2 continuation cache length overflows".to_owned())?;
+    if old_len < 150
+        || old_len > 900
+        || old_len % 50 != 0
+        || full.t != usize::from(new_len)
+        || full.layers.len() != usize::from(layout.layers)
+    {
+        return Err("C6.2 continuation cache witness geometry differs".to_owned());
+    }
+    let width = usize::from(layout.width);
+    let expected_entries = usize::from(new_len)
+        .checked_mul(width)
+        .ok_or_else(|| "C6.2 continuation cache slab length overflows".to_owned())?;
+    if full.layers.iter().any(|layer| {
+        layer.k.len() != expected_entries || layer.v.len() != expected_entries
+    }) {
+        return Err("C6.2 continuation K/V slab census differs".to_owned());
+    }
+
+    let mut predecessor =
+        C6PersistentCacheStateWitness::zero(layout).map_err(|error| error.to_string())?;
+    let mut successor =
+        C6PersistentCacheStateWitness::zero(layout).map_err(|error| error.to_string())?;
+    for (layer_index, layer) in full.layers.iter().enumerate() {
+        let layer_index = u16::try_from(layer_index)
+            .map_err(|_| "C6.2 continuation layer index overflows".to_owned())?;
+        for (kind, values) in
+            [(C6CacheSlotKind::Key, &layer.k), (C6CacheSlotKind::Value, &layer.v)]
+        {
+            for position in 0..new_len {
+                for channel in 0..layout.width {
+                    let source_index = usize::from(position) * width + usize::from(channel);
+                    let value = Fp2::from_base(Fp::from_i64(i64::from(values[source_index])));
+                    let cell = C6CacheCell {
+                        kind,
+                        layer: layer_index,
+                        position,
+                        channel,
+                    };
+                    successor.set(layout, cell, value).map_err(|error| error.to_string())?;
+                    if position < old_len {
+                        predecessor
+                            .set(layout, cell, value)
+                            .map_err(|error| error.to_string())?;
+                    }
+                }
+            }
+        }
+    }
+    predecessor
+        .validate_canonical(layout, old_len)
+        .map_err(|error| error.to_string())?;
+    successor
+        .validate_canonical(layout, new_len)
+        .map_err(|error| error.to_string())?;
+    Ok((predecessor, successor))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

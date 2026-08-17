@@ -660,6 +660,27 @@ impl<C: OuterNodeSourceV4> PersistedCohortOpeningV4<C> {
         self.outer_cache.root()
     }
 
+    /// Replace only the local ownership binding for an unchanged oracle.
+    ///
+    /// The cache cohorts use setup-installed slot descriptors.  Their
+    /// Merkle configuration is therefore independent of the response
+    /// statement.  C6.2 commits those cohorts before it can construct the
+    /// response statement.  This crate-private transition retains the same
+    /// oracle and outer cache while installing the final statement/session
+    /// binding.
+    pub(crate) fn rebind(
+        self,
+        config: CohortVerifierConfigV4,
+        binding: PersistedOracleBindingV4,
+    ) -> Result<Self, PersistedOracleErrorV4> {
+        if config != self.config || binding.cohort_root != self.root() {
+            return Err(PersistedOracleErrorV4::Invalid(
+                "v4 persisted rebind changes config or root",
+            ));
+        }
+        Self::load(self.oracle.path, config, self.outer_cache, binding, binding)
+    }
+
     pub fn logical_oracle_bytes(&self) -> u64 {
         self.oracle.logical_bytes()
     }

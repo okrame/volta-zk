@@ -100,6 +100,13 @@ pub struct Luts {
 
 const TABLE_LEN: usize = 1 << 16;
 
+/// C62SRE1 input width for the stable-softmax reciprocal relation.
+///
+/// At the registered maximum sequence length of 950, the largest possible
+/// denominator input is `950 * 2^14 >> 6 = 243_200`. It fits in 18 bits.
+pub const C62_SOFTMAX_RECIP_BITS: u32 = 18;
+pub const C62_SOFTMAX_RECIP_LEN: usize = 1 << C62_SOFTMAX_RECIP_BITS;
+
 /// Floor integer square root (u64). Deterministic, no float dependence.
 fn isqrt_u64(x: u64) -> u64 {
     if x == 0 {
@@ -165,6 +172,66 @@ pub fn build_luts(params: LutParams) -> Luts {
     Luts { params, exp, gelu, ln_rsqrt, softmax_recip }
 }
 
+/// Exact unsigned distance from a requantized score to its proved row max.
+/// Both inputs are signed i16 values, so the distance always fits in u16.
+#[inline]
+pub fn softmax_score_gap(score: i16, row_max: i16) -> u16 {
+    u16::try_from(i32::from(row_max) - i32::from(score))
+        .expect("softmax row maximum is smaller than a row score")
+}
+
+/// C62SGE1 totalization of the stable-softmax numerator.
+///
+/// The frozen signed table defines `exp[-gap]` through gap 32768. Its lower
+/// boundary is already zero. Larger gaps have the unique rounded output zero.
+#[inline]
+pub fn softmax_exp_from_gap(luts: &Luts, gap: u16) -> i16 {
+    const SIGNED_GAP_LIMIT: u16 = 1 << 15;
+    if gap <= SIGNED_GAP_LIMIT {
+        let signed = -i32::from(gap);
+        luts.exp[(signed as i16 as u16) as usize]
+    } else {
+        assert_eq!(
+            luts.exp[i16::MIN as u16 as usize],
+            0,
+            "softmax lower exp boundary is not zero",
+        );
+        0
+    }
+}
+
+/// Canonical C62SGE1 table indexed by the unsigned score gap.
+pub fn softmax_gap_exp_table(luts: &Luts) -> Vec<i16> {
+    (0..=u16::MAX).map(|gap| softmax_exp_from_gap(luts, gap)).collect()
+}
+
+/// C62SRE1 total reciprocal value.
+///
+/// The frozen table remains authoritative on its complete 16-bit domain.
+/// Higher inputs use the same integer midpoint and round-half-up rule.
+#[inline]
+pub fn softmax_recip_from_index(luts: &Luts, input: u64) -> i16 {
+    assert!(
+        input < C62_SOFTMAX_RECIP_LEN as u64,
+        "C62 softmax reciprocal input exceeds the 18-bit domain: {input}",
+    );
+    if input < TABLE_LEN as u64 {
+        return luts.softmax_recip[input as usize];
+    }
+    let p = luts.params;
+    assert!(p.recip_den_shift > 0 && p.recip_den_shift < 63);
+    assert!(p.recip_log2 < 63);
+    let den_back = (input << p.recip_den_shift) + (1u64 << (p.recip_den_shift - 1));
+    div_round(1u64 << p.recip_log2, den_back).min(i16::MAX as u64) as i16
+}
+
+/// Canonical C62SRE1 table used by differential tests and analytic tools.
+pub fn softmax_recip_wide_table(luts: &Luts) -> Vec<i16> {
+    (0..C62_SOFTMAX_RECIP_LEN)
+        .map(|input| softmax_recip_from_index(luts, input as u64))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -192,5 +259,36 @@ mod tests {
         assert!(a.ln_rsqrt[0] > 0 && a.ln_rsqrt[0] <= i16::MAX);
         assert!(a.ln_rsqrt[100] >= a.ln_rsqrt[101]);
         assert!(a.softmax_recip[100] >= a.softmax_recip[101]);
+    }
+
+    #[test]
+    fn c62_softmax_recip_preserves_the_frozen_domain_and_extends_it() {
+        let luts = build_luts(LutParams::default());
+        for input in 0..TABLE_LEN {
+            assert_eq!(softmax_recip_from_index(&luts, input as u64), luts.softmax_recip[input]);
+        }
+        assert!(
+            softmax_recip_from_index(&luts, (TABLE_LEN - 1) as u64)
+                >= softmax_recip_from_index(&luts, TABLE_LEN as u64)
+        );
+        assert!(
+            softmax_recip_from_index(&luts, TABLE_LEN as u64)
+                >= softmax_recip_from_index(&luts, (C62_SOFTMAX_RECIP_LEN - 1) as u64)
+        );
+    }
+
+    #[test]
+    fn gap_exp_matches_the_frozen_domain_and_zero_extends_the_lower_tail() {
+        let luts = build_luts(LutParams { softmax_row_shift: true, ..LutParams::default() });
+        for gap in 0u16..=1 << 15 {
+            let signed = -i32::from(gap);
+            assert_eq!(
+                softmax_exp_from_gap(&luts, gap),
+                luts.exp[(signed as i16 as u16) as usize],
+            );
+        }
+        assert_eq!(softmax_exp_from_gap(&luts, (1 << 15) + 1), 0);
+        assert_eq!(softmax_exp_from_gap(&luts, u16::MAX), 0);
+        assert_eq!(softmax_score_gap(-23_431, 9_420), 32_851);
     }
 }

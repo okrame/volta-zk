@@ -1649,19 +1649,16 @@ pub fn prove_c6_wrapper_pcs_persisted_cuda_assembled(
     let commitments = cohorts.iter().map(|cohort| cohort.commitment().clone()).collect::<Vec<_>>();
     let legacy_specs = production_c6_wrapper_specs();
     let native_specs = production_c61_native_wrapper_specs();
-    let production_specs: &[C6WrapperCohortSpec] = if commitments
-        .iter()
-        .map(|commitment| commitment.spec)
-        .eq(legacy_specs)
-    {
-        &legacy_specs
-    } else if commitments.iter().map(|commitment| commitment.spec).eq(native_specs) {
-        &native_specs
-    } else {
-        return Err(C6WrapperPcsError::new(
-            "C6 production persisted PCS rejects an unregistered profile",
-        ));
-    };
+    let production_specs: &[C6WrapperCohortSpec] =
+        if commitments.iter().map(|commitment| commitment.spec).eq(legacy_specs) {
+            &legacy_specs
+        } else if commitments.iter().map(|commitment| commitment.spec).eq(native_specs) {
+            &native_specs
+        } else {
+            return Err(C6WrapperPcsError::new(
+                "C6 production persisted PCS rejects an unregistered profile",
+            ));
+        };
     if session_digest == [0; 32]
         || cohorts.len() != production_specs.len()
         || cohorts.iter().enumerate().any(|(index, cohort)| {
@@ -3334,9 +3331,7 @@ pub fn production_c61_native_wrapper_codec_reference() -> Result<C6WrapperPcsPro
     production_wrapper_codec_reference(&specs)
 }
 
-fn production_wrapper_codec_reference(
-    specs: &[C6WrapperCohortSpec],
-) -> Result<C6WrapperPcsProof> {
+fn production_wrapper_codec_reference(specs: &[C6WrapperCohortSpec]) -> Result<C6WrapperPcsProof> {
     let mut initial_groups = Vec::with_capacity(specs.len());
     for &spec in specs {
         let domain_log2 = spec.encoded_domain_log2()?;
@@ -4633,9 +4628,6 @@ mod tests {
 
         let proof = production_c61_native_wrapper_codec_reference().unwrap();
         assert_eq!(proof.encoded_len().unwrap(), C61_NATIVE_WRAPPER_TWO_CHAIN_BYTES);
-        assert!(proof
-            .chains
-            .iter()
-            .all(|chain| chain.packed_opening.initial_groups.len() == 4));
+        assert!(proof.chains.iter().all(|chain| chain.packed_opening.initial_groups.len() == 4));
     }
 }

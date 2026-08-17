@@ -28,9 +28,8 @@ use crate::c6_wrapper_pcs::{
     production_c6_wrapper_specs, C6CacheStateDescriptors, C6CommittedWrapperCohort,
     C6FixedWrapperCommitments, C6WrapperCohortSpec, C6WrapperCommitment, C6WrapperDigest,
     C6WrapperOracleKind, C6WrapperSlotWitness, C6_DELTA_RESIDUAL_COHORT_ID,
-    C6_HIDDEN_U_EMBED_COHORT_ID, C6_HIDDEN_U_WEIGHTS_COHORT_ID,
-    C6_PREDECESSOR_CACHE_COHORT_ID, C6_SUCCESSOR_CACHE_COHORT_ID,
-    C6_WRAPPER_AUXILIARY_COHORT_ID,
+    C6_HIDDEN_U_EMBED_COHORT_ID, C6_HIDDEN_U_WEIGHTS_COHORT_ID, C6_PREDECESSOR_CACHE_COHORT_ID,
+    C6_SUCCESSOR_CACHE_COHORT_ID, C6_WRAPPER_AUXILIARY_COHORT_ID,
 };
 use crate::c6_wrapper_persisted::{
     commit_production_c6_wrapper_cohort_cuda, C6PersistedWrapperCohort, C6PersistedWrapperMetrics,
@@ -40,6 +39,9 @@ use crate::x4::cuda_v4::X4bCudaCommitMetricsV4;
 const LIVE_SOURCE_BINDING_DOMAIN: &str = "volta-zk/c6/live-wrapper-source-binding/v1";
 const C61_NATIVE_LIVE_SOURCE_BINDING_DOMAIN: &str =
     "volta-zk/c6.1/native-live-wrapper-source-binding/v1";
+const C62_CACHE_PRECOMMIT_STATEMENT_DOMAIN: &str =
+    "volta-zk/c6.2/native-cache-precommit-statement/v1";
+const C62_CACHE_PRECOMMIT_SESSION_DOMAIN: &str = "volta-zk/c6.2/native-cache-precommit-session/v1";
 const MASK_SEED_COMMITMENT_DOMAIN: &str = "volta-zk/c6/live-wrapper-mask-seed/v1";
 
 type Result<T> = std::result::Result<T, C6LiveWrapperError>;
@@ -389,6 +391,38 @@ pub struct C6PersistedLiveWrapperRootBinding {
     session_digest: C6WrapperDigest,
     commit_metrics: X4bCudaCommitMetricsV4,
     persisted_metrics: C6PersistedWrapperMetrics,
+}
+
+/// Provider-owned C6.2 cache roots created before the response statement.
+///
+/// The type retains the persisted opening owners and the private mask seed.
+/// A caller can read the two roots but cannot replace either source.
+pub struct C62PersistedNativeCachePrecommit {
+    cohorts: Vec<C6PersistedWrapperCohort>,
+    cache_binding_digest: C6WrapperDigest,
+    cache_descriptors: C6CacheStateDescriptors,
+    old_len: u16,
+    new_len: u16,
+    mask_seed: C6LiveWrapperMaskSeed,
+    commit_metrics: X4bCudaCommitMetricsV4,
+}
+
+impl C62PersistedNativeCachePrecommit {
+    pub fn roots(&self) -> [C6WrapperDigest; 2] {
+        [self.cohorts[0].commitment().root, self.cohorts[1].commitment().root]
+    }
+
+    pub fn predecessor_root(&self) -> C6WrapperDigest {
+        self.cohorts[0].commitment().root
+    }
+
+    pub fn successor_root(&self) -> C6WrapperDigest {
+        self.cohorts[1].commitment().root
+    }
+
+    pub fn mask_seed_commitment(&self) -> C6WrapperDigest {
+        self.mask_seed.commitment()
+    }
 }
 
 /// Client-side counterpart reconstructed only from the six received roots
@@ -829,9 +863,7 @@ pub fn materialize_production_c61_native_live_wrapper_roots_cuda(
         ));
     }
     if session_digest == [0; 32] {
-        return Err(C6LiveWrapperError::new(
-            "C6.1 native persisted live-wrapper session mismatch",
-        ));
+        return Err(C6LiveWrapperError::new("C6.1 native persisted live-wrapper session mismatch"));
     }
     let specs = production_c61_native_wrapper_specs();
     let residual_view_digest = sources.validate()?.digest();
@@ -967,6 +999,295 @@ pub fn materialize_production_c61_native_live_wrapper_roots_cuda(
         cache_binding_digest,
         old_len,
         new_len,
+        residual_manifest_digest,
+        residual_view_digest,
+        paired_source_digest,
+        mask_seed_commitment,
+        fixed.binding_digest(),
+    );
+    Ok(C6PersistedLiveWrapperRootBinding {
+        cohorts,
+        fixed,
+        source_binding_digest,
+        paired_source_digest,
+        residual_manifest_digest,
+        residual_view_digest,
+        mask_seed_commitment,
+        session_digest,
+        commit_metrics,
+        persisted_metrics,
+    })
+}
+
+/// Commit the two C6.2 cache cohorts before the response statement exists.
+///
+/// Cache descriptors are setup-owned.  The cache Merkle configuration does
+/// not use the response statement.  The returned owner must later be
+/// finalized by `finish_production_c62_native_live_wrapper_roots_cuda`.
+#[allow(clippy::too_many_arguments)]
+pub fn precommit_production_c62_native_cache_roots_cuda(
+    cache_profile: &C6PersistentCacheStaticProfile,
+    predecessor: C6PersistentCacheStateWitness,
+    successor: C6PersistentCacheStateWitness,
+    old_len: u16,
+    new_len: u16,
+    backend: &mut Backend,
+    spill_root: impl AsRef<Path>,
+) -> Result<C62PersistedNativeCachePrecommit> {
+    if backend.kind() != BackendKind::CudaResident {
+        return Err(C6LiveWrapperError::new(
+            "C6.2 native cache precommit requires a CUDA-resident backend",
+        ));
+    }
+    let spill_root = spill_root.as_ref();
+    if !spill_root.is_dir()
+        || std::fs::read_dir(spill_root)
+            .map_err(|error| C6LiveWrapperError::new(format!("read C6.2 cache root: {error}")))?
+            .next()
+            .is_some()
+    {
+        return Err(C6LiveWrapperError::new(
+            "C6.2 native cache precommit requires an empty directory",
+        ));
+    }
+    cache_profile.validate().map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+    let cache_binding_digest =
+        cache_profile.digest().map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+    let cache_descriptors = C6CacheStateDescriptors::from_persistent_profile(cache_profile)
+        .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+    let layout = C6PersistentCacheLayout::production();
+    predecessor
+        .validate_canonical(layout, old_len)
+        .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+    successor
+        .validate_canonical(layout, new_len)
+        .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+    let specs = production_c61_native_wrapper_specs();
+    if old_len > new_len
+        || layout.padded_entries().map_err(|error| C6LiveWrapperError::new(error.to_string()))?
+            != checked_pow2(specs[0].payload_log2)?
+    {
+        return Err(C6LiveWrapperError::new("C6.2 native cache precommit geometry mismatch"));
+    }
+
+    let mask_seed = C6LiveWrapperMaskSeed::random();
+    let mask_seed_commitment = mask_seed.commitment();
+    let mut statement_hasher = blake3::Hasher::new_derive_key(C62_CACHE_PRECOMMIT_STATEMENT_DOMAIN);
+    statement_hasher.update(&cache_binding_digest);
+    statement_hasher.update(&old_len.to_le_bytes());
+    statement_hasher.update(&new_len.to_le_bytes());
+    statement_hasher.update(&mask_seed_commitment);
+    let precommit_statement_digest = *statement_hasher.finalize().as_bytes();
+    let mut session_hasher = blake3::Hasher::new_derive_key(C62_CACHE_PRECOMMIT_SESSION_DOMAIN);
+    session_hasher.update(&precommit_statement_digest);
+    session_hasher.update(&mask_seed_commitment);
+    let precommit_session_digest = *session_hasher.finalize().as_bytes();
+
+    let mut cohorts = Vec::with_capacity(2);
+    let mut commit_metrics = X4bCudaCommitMetricsV4::default();
+    for (index, state) in [predecessor, successor].into_iter().enumerate() {
+        let slots = state
+            .slots
+            .into_iter()
+            .enumerate()
+            .map(|(slot, witness)| C6WrapperSlotWitness::Witness {
+                witness,
+                zk_mask: wrapper_mask_table(
+                    &mask_seed,
+                    specs[index].cohort_id,
+                    slot as u16,
+                    checked_pow2(specs[index].payload_log2).expect("validated C6.2 cache spec"),
+                ),
+            })
+            .collect::<Vec<_>>();
+        let (cohort, metrics) = commit_production_c6_wrapper_cohort_cuda(
+            backend,
+            precommit_statement_digest,
+            specs[index],
+            slots,
+            Some(&cache_descriptors),
+            spill_root,
+            precommit_session_digest,
+            index as u64,
+        )
+        .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+        commit_metrics
+            .include(&metrics)
+            .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+        cohorts.push(cohort);
+    }
+    Ok(C62PersistedNativeCachePrecommit {
+        cohorts,
+        cache_binding_digest,
+        cache_descriptors,
+        old_len,
+        new_len,
+        mask_seed,
+        commit_metrics,
+    })
+}
+
+/// Bind the two cache precommits to the final statement and commit the two
+/// residual cohorts under that same statement.
+#[allow(clippy::too_many_arguments)]
+pub fn finish_production_c62_native_live_wrapper_roots_cuda(
+    precommit: C62PersistedNativeCachePrecommit,
+    statement_digest: C6WrapperDigest,
+    residual_manifest: &C6ResidualRelationManifest,
+    residual_leaf: &C6PairedResidualLeafWitness,
+    residual_closure: &C6PairedResidualClosureWitness,
+    residual_auxiliary: &C6PairedResidualAuxiliaryWitness,
+    backend: &mut Backend,
+    spill_root: impl AsRef<Path>,
+    session_digest: C6WrapperDigest,
+    transcript: &mut Transcript,
+) -> Result<C6PersistedLiveWrapperRootBinding> {
+    if backend.kind() != BackendKind::CudaResident
+        || statement_digest == [0; 32]
+        || session_digest == [0; 32]
+    {
+        return Err(C6LiveWrapperError::new("C6.2 native wrapper final context mismatch"));
+    }
+    let spill_root = spill_root.as_ref();
+    if precommit.cohorts.len() != 2
+        || precommit.cohorts.iter().any(|cohort| cohort.directory().parent() != Some(spill_root))
+    {
+        return Err(C6LiveWrapperError::new("C6.2 cache precommit spill root changed"));
+    }
+    let specs = production_c61_native_wrapper_specs();
+    let view = C6ResidualFusedWitnessView::new(
+        residual_manifest,
+        residual_leaf,
+        residual_closure,
+        residual_auxiliary,
+    )
+    .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+    if residual_manifest.leaf_log2() != specs[2].payload_log2
+        || residual_manifest.auxiliary_log2().checked_add(1) != Some(specs[3].payload_log2)
+        || residual_leaf.production_allocation_binding_digest().is_none()
+        || !residual_manifest.is_production_geometry()
+    {
+        return Err(C6LiveWrapperError::new("C6.2 native residual source geometry mismatch"));
+    }
+    let residual_view_digest = view.digest();
+    let residual_manifest_digest = residual_manifest.digest();
+    let paired_source_digest = residual_leaf.paired_source_digest();
+    let mask_seed_commitment = precommit.mask_seed.commitment();
+    let mut cohorts = Vec::with_capacity(4);
+    let mut persisted_metrics = C6PersistedWrapperMetrics::default();
+    for cohort in precommit.cohorts {
+        let cohort = cohort
+            .rebind_c62_cache_create_new(
+                statement_digest,
+                session_digest,
+                &precommit.cache_descriptors,
+            )
+            .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+        persisted_metrics
+            .include(cohort.metrics())
+            .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+        cohorts.push(cohort);
+    }
+    let mut commit_metrics = precommit.commit_metrics;
+    let mut commit_group = |index: usize, slots: Vec<C6WrapperSlotWitness>| -> Result<()> {
+        if slots.len() != usize::from(specs[index].slot_count) {
+            return Err(C6LiveWrapperError::new(format!(
+                "C6.2 native persisted cohort {index} slot census mismatch"
+            )));
+        }
+        let (cohort, metrics) = commit_production_c6_wrapper_cohort_cuda(
+            backend,
+            statement_digest,
+            specs[index],
+            slots,
+            None,
+            spill_root,
+            session_digest,
+            index as u64,
+        )
+        .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+        commit_metrics
+            .include(&metrics)
+            .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+        persisted_metrics
+            .include(cohort.metrics())
+            .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+        cohorts.push(cohort);
+        Ok(())
+    };
+
+    let mut residual_slots = residual_leaf
+        .materialize_padded_columns(u32::from(specs[2].payload_log2))
+        .map_err(|error| C6LiveWrapperError::new(error.to_string()))?
+        .into_iter()
+        .enumerate()
+        .map(|(slot, witness)| C6WrapperSlotWitness::Witness {
+            witness,
+            zk_mask: wrapper_mask_table(
+                &precommit.mask_seed,
+                specs[2].cohort_id,
+                slot as u16,
+                checked_pow2(specs[2].payload_log2).expect("validated C6.2 residual spec"),
+            ),
+        })
+        .collect::<Vec<_>>();
+    residual_slots.push(C6WrapperSlotWitness::Witness {
+        witness: residual_closure
+            .materialize_padded(u32::from(specs[2].payload_log2))
+            .map_err(|error| C6LiveWrapperError::new(error.to_string()))?,
+        zk_mask: wrapper_mask_table(
+            &precommit.mask_seed,
+            specs[2].cohort_id,
+            7,
+            checked_pow2(specs[2].payload_log2).expect("validated C6.2 residual spec"),
+        ),
+    });
+    commit_group(2, residual_slots)?;
+
+    let semantic = residual_auxiliary
+        .materialize_semantic_halves_at_log2(residual_manifest.auxiliary_log2())
+        .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+    let semantic_len = checked_pow2(residual_manifest.auxiliary_log2())?;
+    let encoded_semantic_len = semantic_len
+        .checked_mul(2)
+        .ok_or_else(|| C6LiveWrapperError::new("C6.2 auxiliary encoded length overflow"))?;
+    let mut auxiliary_slots = semantic
+        .into_iter()
+        .enumerate()
+        .map(|(slot, lower)| {
+            let mut evaluations = Vec::with_capacity(encoded_semantic_len);
+            evaluations.extend(lower);
+            evaluations.extend(wrapper_mask_table(
+                &precommit.mask_seed,
+                specs[3].cohort_id,
+                slot as u16,
+                semantic_len,
+            ));
+            C6WrapperSlotWitness::Auxiliary { evaluations }
+        })
+        .collect::<Vec<_>>();
+    let auxiliary_len = checked_pow2(specs[3].payload_log2)?;
+    auxiliary_slots.extend(
+        (16..specs[3].slot_count).map(|_| C6WrapperSlotWitness::Auxiliary {
+            evaluations: vec![Fp2::ZERO; auxiliary_len],
+        }),
+    );
+    commit_group(3, auxiliary_slots)?;
+    drop(commit_group);
+
+    let commitments = cohorts.iter().map(|cohort| cohort.commitment().clone()).collect::<Vec<_>>();
+    let fixed = fix_production_c61_native_wrapper_commitments(
+        statement_digest,
+        &precommit.cache_descriptors,
+        &commitments,
+        transcript,
+    )
+    .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+    let source_binding_digest = c61_native_live_source_binding_digest(
+        statement_digest,
+        precommit.cache_binding_digest,
+        precommit.old_len,
+        precommit.new_len,
         residual_manifest_digest,
         residual_view_digest,
         paired_source_digest,

@@ -2616,6 +2616,12 @@ impl BlindInstance {
 pub enum TableKey {
     Range(u32),
     Exp,
+    /// C62SGE1 stable-softmax content. The input is the unsigned 16-bit
+    /// distance from a score to its proved row maximum.
+    ExpGap,
+    /// C62SCR1 content. The input is the registered 17-bit score quotient
+    /// shifted by 2^16. The output is its exact signed-i16 clamp.
+    ScoreClamp17,
     Gelu,
     /// X3 content: signed-i16 SiLU at Q10, encoded as the same two-column
     /// content-keyed LogUp relation as GELU.  This is a new table content,

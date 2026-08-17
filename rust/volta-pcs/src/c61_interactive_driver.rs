@@ -811,8 +811,8 @@ impl C61InteractiveTape {
         const STATEMENT_LABEL: &str = "c61.statement_digest_fixed";
         let alpha_count = crate::c61_public_compression::C61_ALPHA_STREAMS
             * crate::c61_public_compression::C61_ALPHA_POINT_DIMENSION;
-        let postclaim_count = crate::c61_public_compression::C61_EQUALITY_CHALLENGE_ELEMENTS
-            - alpha_count;
+        let postclaim_count =
+            crate::c61_public_compression::C61_EQUALITY_CHALLENGE_ELEMENTS - alpha_count;
         let payload_len = usize::try_from(manifest.topology().product_closure_count)
             .ok()
             .and_then(|count| count.checked_mul(32))
@@ -1019,10 +1019,9 @@ fn decode_exact_transcript_message<'a>(
     if bytes.get(2..label_end)? != expected_label.as_bytes() {
         return None;
     }
-    let payload_len = usize::try_from(u64::from_le_bytes(
-        bytes.get(label_end..length_end)?.try_into().ok()?,
-    ))
-    .ok()?;
+    let payload_len =
+        usize::try_from(u64::from_le_bytes(bytes.get(label_end..length_end)?.try_into().ok()?))
+            .ok()?;
     if payload_len != expected_payload_len {
         return None;
     }
@@ -2730,25 +2729,18 @@ mod tests {
         let mut duplicated = tape.clone();
         let duplicate = duplicated.checkpoint.records[coordinate_record].clone();
         duplicated.checkpoint.records.insert(coordinate_record + 1, duplicate);
-        assert!(duplicated
-            .c6_residual_product_claim_coordinate_one(fixture.manifest())
-            .is_err());
+        assert!(duplicated.c6_residual_product_claim_coordinate_one(fixture.manifest()).is_err());
 
         let mut truncated = tape.clone();
         truncated.checkpoint.records[coordinate_record].provider_move.pop();
-        assert!(truncated
-            .c6_residual_product_claim_coordinate_one(fixture.manifest())
-            .is_err());
+        assert!(truncated.c6_residual_product_claim_coordinate_one(fixture.manifest()).is_err());
 
         let mut noncanonical = tape;
-        let payload_offset = 2
-            + C6_RESIDUAL_PRODUCT_CLAIMS_COORDINATE_ONE_LABEL.len()
-            + std::mem::size_of::<u64>();
+        let payload_offset =
+            2 + C6_RESIDUAL_PRODUCT_CLAIMS_COORDINATE_ONE_LABEL.len() + std::mem::size_of::<u64>();
         noncanonical.checkpoint.records[coordinate_record].provider_move
             [payload_offset..payload_offset + 8]
             .copy_from_slice(&P.to_le_bytes());
-        assert!(noncanonical
-            .c6_residual_product_claim_coordinate_one(fixture.manifest())
-            .is_err());
+        assert!(noncanonical.c6_residual_product_claim_coordinate_one(fixture.manifest()).is_err());
     }
 }

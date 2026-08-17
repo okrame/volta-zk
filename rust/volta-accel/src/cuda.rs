@@ -350,6 +350,7 @@ type FixedSoftmaxDevice = unsafe extern "C" fn(
     usize,
     u32,
     u32,
+    u32,
     c_int,
 ) -> c_int;
 type FixedAvDevice = unsafe extern "C" fn(
@@ -608,6 +609,7 @@ struct RawAttentionProofWiresArgs {
     shift_softmax_norm: u32,
     shift_qkv: u32,
     recip_den_shift: u32,
+    recip_log2: u32,
     exp_pad_input: c_int,
     recip_pad_output: c_int,
     use_row_shift: c_int,
@@ -2338,6 +2340,7 @@ impl CudaContext {
         pos0: usize,
         heads: usize,
         recip_den_shift: u32,
+        recip_log2: u32,
         norm_shift: u32,
         use_row_shift: bool,
     ) -> Result<(), AccelError> {
@@ -2368,6 +2371,7 @@ impl CudaContext {
                 pos0,
                 heads,
                 recip_den_shift,
+                recip_log2,
                 norm_shift,
                 i32::from(use_row_shift),
             )
@@ -3218,6 +3222,7 @@ impl CudaContext {
         shift_softmax_norm: u32,
         shift_qkv: u32,
         recip_den_shift: u32,
+        recip_log2: u32,
         exp_pad_input: i16,
         recip_pad_output: i16,
         use_row_shift: bool,
@@ -3272,6 +3277,7 @@ impl CudaContext {
             shift_softmax_norm,
             shift_qkv,
             recip_den_shift,
+            recip_log2,
             exp_pad_input: i32::from(exp_pad_input),
             recip_pad_output: i32::from(recip_pad_output),
             use_row_shift: i32::from(use_row_shift),

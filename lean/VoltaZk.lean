@@ -35,3 +35,8 @@ import VoltaZk.C61PublicCompression
 import VoltaZk.C61TerminalFunctional
 import VoltaZk.C6NBR2CorrectionFunctional
 import VoltaZk.C6NativeHiddenUElimination
+import VoltaZk.C62ResponseCompilerRelation
+import VoltaZk.C62SoftmaxGapRelation
+import VoltaZk.C62SoftmaxReciprocalRelation
+import VoltaZk.C62ScoreClampRelation
+import VoltaZk.C62FiatShamirComposition

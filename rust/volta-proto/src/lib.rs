@@ -9,6 +9,8 @@ pub mod c6;
 pub mod c61_certificate;
 pub mod c61_public_instance;
 pub mod c61_response_envelope;
+pub mod c62_certificate;
+pub mod c62_response_envelope;
 #[cfg(feature = "c6-trace")]
 pub mod c6_cache_fold;
 pub mod c6_census;
@@ -49,8 +51,7 @@ pub use c6::{
     C6CacheHead, C6ClientAttempt, C6ClientState, C6ClientStore, C6CorrelationRange,
     C6DeltaResidual, C6Digest, C6Error, C6FinalCertificate, C6MacTapeManifest,
     C6PairedCorrelationRanges, C6PairedDeltaResidual, C6ProposedCacheHead, C6SetupManifest,
-    C6SlotHandle,
-    C6SlotReservation, C6SlotStatus, C6SlotStore, C6Workload, C6WrapperCommitments,
+    C6SlotHandle, C6SlotReservation, C6SlotStatus, C6SlotStore, C6Workload, C6WrapperCommitments,
     C6_ABORT_RETRY_CREDITS, C6_ACCEPTANCE_CREDITS, C6_BASELINE_RAW_CORRELATIONS,
     C6_CERTIFICATE_NEW_PAYLOAD_FRAMING_BYTES, C6_CERTIFICATE_VERSION, C6_CLIENT_STATE_VERSION,
     C6_FASE_D_SETUP_BYTES, C6_FINAL_PROOF_CAP_BYTES, C6_LIGERO_QUERIES, C6_MAC_COORDINATES,
@@ -61,11 +62,10 @@ pub use c6::{
 };
 pub use c61_certificate::{
     C61CertificateError, C61NativeFinalCertificate, C61NativeWrapperCommitments,
-    C61RetainedResponseBinding,
+    C61RetainedResponseBinding, C61_CERTIFICATE_STRICT_MAX_BYTES,
     C61_NATIVE_CERTIFICATE_FRAMING_BYTES, C61_NATIVE_CERTIFICATE_VERSION,
     C61_NATIVE_STRICT_PI_FINAL_MAX_BYTES, C61_NATIVE_WRAPPER_QUERIES,
-    C61_CERTIFICATE_STRICT_MAX_BYTES, C61_PUBLIC_ARGUMENT_ABSOLUTE_MAX_BYTES,
-    C61_RETAINED_NON_PCS_RESPONSE_BYTES,
+    C61_PUBLIC_ARGUMENT_ABSOLUTE_MAX_BYTES, C61_RETAINED_NON_PCS_RESPONSE_BYTES,
 };
 pub use c61_public_instance::{
     C61PublicInstanceError, C61PublicWorkloadInstance, C61PublicWorkloadPreimage,
@@ -76,9 +76,24 @@ pub use c61_response_envelope::{
     C61_NATIVE_RESPONSE_CACHE_FOLD_TARGET_BYTES, C61_NATIVE_RESPONSE_CACHE_SOURCE_BYTES,
     C61_NATIVE_RESPONSE_PROOF_COMPONENTS, C61_NATIVE_RESPONSE_PROOF_ENVELOPE_MAGIC,
     C61_NATIVE_RESPONSE_PROOF_ENVELOPE_MAX_BYTES,
-    C61_NATIVE_RESPONSE_PROOF_ENVELOPE_OVERHEAD_BYTES,
-    C61_NATIVE_RESPONSE_PROOF_ENVELOPE_VERSION, C61_NATIVE_RESPONSE_RESIDUAL_PENDING_BYTES,
-    C61_NATIVE_RESPONSE_RESIDUAL_SUMCHECK_MAX_BYTES,
+    C61_NATIVE_RESPONSE_PROOF_ENVELOPE_OVERHEAD_BYTES, C61_NATIVE_RESPONSE_PROOF_ENVELOPE_VERSION,
+    C61_NATIVE_RESPONSE_RESIDUAL_PENDING_BYTES, C61_NATIVE_RESPONSE_RESIDUAL_SUMCHECK_MAX_BYTES,
+};
+pub use c62_certificate::{
+    C62CertificateError, C62NativeFinalCertificate, C62NativeWrapperCommitments,
+    C62_CERTIFICATE_STRICT_MAX_BYTES, C62_NATIVE_CERTIFICATE_FRAMING_BYTES,
+    C62_NATIVE_CERTIFICATE_VERSION, C62_NATIVE_STRICT_PI_FINAL_MAX_BYTES,
+    C62_NATIVE_WRAPPER_QUERIES, C62_PUBLIC_ARGUMENT_ABSOLUTE_MAX_BYTES,
+    C62_RETAINED_NON_PCS_RESPONSE_BYTES,
+};
+pub use c62_response_envelope::{
+    C62ResponseProofEnvelope, C62ResponseProofEnvelopeError, C62_RESPONSE_AUTHENTICATED_LINK_BYTES,
+    C62_RESPONSE_CACHE_BLIND_MAX_BYTES, C62_RESPONSE_CACHE_FOLD_TARGET_BYTES,
+    C62_RESPONSE_CACHE_SOURCE_BYTES, C62_RESPONSE_PRODUCT_COORDINATE_ONE_BYTES,
+    C62_RESPONSE_PROOF_COMPONENTS, C62_RESPONSE_PROOF_ENVELOPE_MAGIC,
+    C62_RESPONSE_PROOF_ENVELOPE_MAX_BYTES, C62_RESPONSE_PROOF_ENVELOPE_OVERHEAD_BYTES,
+    C62_RESPONSE_PROOF_ENVELOPE_VERSION, C62_RESPONSE_RESIDUAL_PENDING_BYTES,
+    C62_RESPONSE_RESIDUAL_SUMCHECK_MAX_BYTES,
 };
 pub use c6_census::{
     audit_c6_t1_source_census, c6_t1_trace_source_manifest, C6CensusDigest, C6CensusError,
@@ -95,10 +110,16 @@ pub use c6_census::{
     C6_T1_TOTAL_PRODUCT_TRIPLES, C6_T1_ZERO_CLOSURES,
 };
 pub use c6_production_pcg::{
-    C6BoundProductionVerifierReplay, C6ProductionPairedPcgAttempt,
-    C6ProductionPairedSourceWitness, C6ProductionVerifierReplayOwner,
-    C61_PRODUCTION_FULL_CORRELATIONS, C61_PRODUCTION_SUB_CORRELATIONS,
-    C61_VERIFIER_REPLAY_STATE_BYTES,
+    C6BoundProductionVerifierReplay, C6ProductionPairedPcgAttempt, C6ProductionPairedSourceWitness,
+    C6ProductionVerifierReplayOwner, C61_PRODUCTION_FULL_CORRELATIONS,
+    C61_PRODUCTION_SUB_CORRELATIONS, C61_VERIFIER_REPLAY_STATE_BYTES,
+    C62_CONTINUATION_256_FULL_CORRELATIONS, C62_CONTINUATION_256_RAW_CORRELATIONS,
+    C62_CONTINUATION_256_SUB_CORRELATIONS, C62_CONTINUATION_512_FULL_CORRELATIONS,
+    C62_CONTINUATION_512_RAW_CORRELATIONS, C62_CONTINUATION_512_SUB_CORRELATIONS,
+    C62_CONTINUATION_1024_FULL_CORRELATIONS, C62_CONTINUATION_1024_RAW_CORRELATIONS,
+    C62_CONTINUATION_1024_SUB_CORRELATIONS,
+    C62_GENESIS_FULL_CORRELATIONS,
+    C62_GENESIS_RAW_CORRELATIONS, C62_GENESIS_SUB_CORRELATIONS,
 };
 #[cfg(feature = "c6-trace")]
 pub use c6_residual::{
@@ -115,26 +136,23 @@ pub use c6_residual::{
     replay_c6_residual_atomic_events, C6CommittedResidualProgram, C6CompiledBaseKeyRlc,
     C6CompiledLinearResidual, C6CompiledLinearResidualMemoryCensus, C6CompiledPairedBaseKeyRlc,
     C6CompiledPairedResidualPlan, C6CompiledResidualBinding, C6CompiledResidualPlan,
-    C6CompiledTerminalLinearForm, C6LeafId, C6LeafKind, C6LeafRole,
-    C6PairedNativeTargetValues, C6PairedResidualAuxiliaryWitness,
-    C6PairedResidualClosureWitness, C6PairedResidualLeafWitness,
-    C6ProductPostCommit, C6ResidualAtomicCoefficientEvent, C6ResidualAtomicCoefficientTarget,
-    C6ResidualAtomicEventAuditSink, C6ResidualAtomicEventSink, C6ResidualAtomicFamily,
-    C6ResidualAtomicOutputEvent, C6ResidualAtomicReferenceCompilation,
+    C6CompiledTerminalLinearForm, C6LeafId, C6LeafKind, C6LeafRole, C6Nbr2TwoPointEvaluationPlan,
+    C6PairedNativeTargetValues, C6PairedResidualAuxiliaryWitness, C6PairedResidualClosureWitness,
+    C6PairedResidualLeafWitness, C6ProductPostCommit, C6ResidualAtomicCoefficientEvent,
+    C6ResidualAtomicCoefficientTarget, C6ResidualAtomicEventAuditSink, C6ResidualAtomicEventSink,
+    C6ResidualAtomicFamily, C6ResidualAtomicOutputEvent, C6ResidualAtomicReferenceCompilation,
     C6ResidualAtomicRelationStatement, C6ResidualAtomicReplaySummary,
     C6ResidualAtomicWeightSchedule, C6ResidualAuxiliaryLane, C6ResidualAuxiliaryWitnessCensus,
     C6ResidualBaseShareContext, C6ResidualBuilder, C6ResidualCensus, C6ResidualClaimsBoundContext,
     C6ResidualClosureWitnessCensus, C6ResidualDigest, C6ResidualDirectAlphaPoints,
     C6ResidualDirectEqualityPoints, C6ResidualDirectPostClaimPoints,
-    C6ResidualDirectScheduleDimensions, C6ResidualEqualityAffineRangeSum,
-    C6ResidualError, C6ResidualFoldedTerminalAdjointReference,
-    C6ResidualFoldedTerminalDirectReduction, C6ResidualFusedCoefficientAllocationTracker,
-    C6ResidualFusedCoefficientArena, C6ResidualFusedCoefficientFamily,
-    C6ResidualFusedCoefficientMemoryCensus, C6ResidualFusedFirstRound,
-    C6Nbr2TwoPointEvaluationPlan, C6ResidualFusedFoldedCoefficients,
+    C6ResidualDirectScheduleDimensions, C6ResidualEqualityAffineRangeSum, C6ResidualError,
+    C6ResidualFoldedTerminalAdjointReference, C6ResidualFoldedTerminalDirectReduction,
+    C6ResidualFusedCoefficientAllocationTracker, C6ResidualFusedCoefficientArena,
+    C6ResidualFusedCoefficientFamily, C6ResidualFusedCoefficientMemoryCensus,
+    C6ResidualFusedFirstRound, C6ResidualFusedFoldedCoefficients,
     C6ResidualFusedTerminalCoefficients, C6ResidualFusedWitnessView, C6ResidualLeafColumn,
-    C6ResidualPlan, C6ResidualPostCommit,
-    C6ResidualPostRootChallenges,
+    C6ResidualPlan, C6ResidualPostCommit, C6ResidualPostRootChallenges,
     C6ResidualProductClaimCoordinate, C6ResidualProductPublicClaim, C6ResidualPublicClaimsFrame,
     C6ResidualRelationChallenges, C6ResidualRelationManifest, C6ResidualRelationReferenceWitness,
     C6ResidualRelationRootBound, C6ResidualRetainedChallenges, C6ResidualTerminalFormKind,
@@ -144,8 +162,8 @@ pub use c6_residual::{
     C6_RESIDUAL_AUXILIARY_SEMANTIC_LOG2, C6_RESIDUAL_AUXILIARY_ZERO_LANES,
     C6_RESIDUAL_FUSED_MAX_COEFFICIENT_STATE_BYTES,
     C6_RESIDUAL_FUSED_MAX_COEFFICIENT_STATE_ELEMENTS, C6_RESIDUAL_MAC_COORDINATES,
-    C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS, C6_RESIDUAL_PROOF_REPETITIONS,
-    C6_RESIDUAL_PRODUCT_CLAIMS_COORDINATE_ONE_LABEL, C6_RESIDUAL_RELATION_LEAF_TABLES,
+    C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS, C6_RESIDUAL_PRODUCT_CLAIMS_COORDINATE_ONE_LABEL,
+    C6_RESIDUAL_PROOF_REPETITIONS, C6_RESIDUAL_RELATION_LEAF_TABLES,
     C6_RESIDUAL_RELATION_PROTOCOL_DIRECT_MLE, C6_RESIDUAL_TERMINAL_FORM_KINDS,
     C6_RESIDUAL_TERMINAL_FUNCTIONALS, C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION,
     C6_RESIDUAL_TERMINAL_FUNCTIONAL_DOMAIN_LOG2,
@@ -162,13 +180,17 @@ pub use c6_response_envelope::{
 #[cfg(feature = "c6-trace")]
 pub use c6_response_fixture::{
     build_c6_response_residual_fixture, build_c6_response_residual_fixture_production_geometry,
-    build_c6_t1_production_response_owner, c6_gpt2_native_target_profile,
+    build_c6_t1_production_response_owner, build_c62_continuation_production_response_owner,
+    c6_gpt2_native_target_profile,
     prepare_c6_t1_disk_residual_owner, prepare_c6_t1_production_residual_owner,
     prove_c6_t1_production_response_provider,
-    replay_c6_t1_production_response_verifier, C6ResponseResidualCensus, C6ResponseResidualFixture,
-    C6ResponseResidualProviderInputs, C6ResponseResidualTiming, C6ResponseResidualVerifierInputs,
-    C6T1DiskResidualBoundOwner, C6T1DiskResidualClaimsOwner, C6T1DiskResidualOwner,
-    C6T1InstalledRoleOwner, C6T1ProductionResidualBoundOwner, C6T1ProductionResidualClaimsOwner,
+    prove_c62_continuation_production_response_provider,
+    replay_c6_t1_production_response_verifier,
+    replay_c62_continuation_production_response_verifier,
+    C6ResponseResidualCensus, C6ResponseResidualFixture, C6ResponseResidualProviderInputs,
+    C6ResponseResidualTiming, C6ResponseResidualVerifierInputs, C6T1DiskResidualBoundOwner,
+    C6T1DiskResidualClaimsOwner, C6T1DiskResidualOwner, C6T1InstalledRoleOwner,
+    C6T1ProductionResidualBoundOwner, C6T1ProductionResidualClaimsOwner,
     C6T1ProductionResidualOwner, C6T1ProductionResponseOwner,
     C6T1ProductionResponseProviderPending, C6T1ProductionResponseVerifierReplay,
 };

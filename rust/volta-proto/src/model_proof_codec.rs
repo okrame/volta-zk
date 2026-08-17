@@ -5,7 +5,8 @@
 //! bytes without retaining prover state, witness material, or keys.
 
 use crate::block_proof::{
-    AttnBlockProof, FfnBlockProof, LayerProof, LnChainProof, TableCloseProof,
+    AttnBlockProof, C62SoftmaxRecipProof, FfnBlockProof, LayerProof, LnChainProof,
+    TableCloseProof,
 };
 use crate::boundary_thinning::EqReductionProof;
 use crate::gemm_proof::ChainedGemmProof;
@@ -25,6 +26,8 @@ use volta_field::{Fp, Fp2, P};
 const MAGIC: &[u8] = b"VC6MRP1\0";
 const RETAINED_MAGIC: &[u8] = b"C6RRP1\0\0";
 const RETAINED_VERSION: u16 = 1;
+const C62_RETAINED_MAGIC: &[u8] = b"C62RRP1\0";
+const C62_RETAINED_VERSION: u16 = 1;
 pub const C6_RETAINED_RESPONSE_BYTES: usize = 2_921_744;
 const MAX_COLLECTION_ITEMS: usize = 1_000_000;
 
@@ -246,10 +249,36 @@ macro_rules! wire_struct {
     };
 }
 
+macro_rules! wire_struct_with_none {
+    ($ty:ty { $($field:ident),+ $(,)? } none $extra:ident) => {
+        impl Wire for $ty {
+            fn write(&self, out: &mut Writer) -> Result<()> {
+                $(self.$field.write(out)?;)+
+                Ok(())
+            }
+            fn read(input: &mut Reader<'_>) -> Result<Self> {
+                Ok(Self { $($field: Wire::read(input)?),+, $extra: None })
+            }
+        }
+    };
+}
+
 wire_struct!(BlindSumcheckProof { round_corrs });
 wire_struct!(ProdProof { m0, m1 });
 wire_struct!(ChainedGemmProof { sumcheck, prod });
 wire_struct!(HadamardProof { round_corrs, e_corr, r_corr, z_corr });
+wire_struct!(C62SoftmaxRecipProof {
+    aux_corrs,
+    input_low,
+    input_high,
+    quotient,
+    remainder_low,
+    remainder_high,
+    slack_low,
+    slack_high,
+    product,
+    score_clamp,
+});
 wire_struct!(BlindLayerProof { round_corrs, split_corrs, z_corrs });
 wire_struct!(BlindAuxPart { rounds3, col_corrs });
 wire_struct!(BlindFracProof { root_corrs, layers, aux });
@@ -273,7 +302,7 @@ wire_struct!(FfnBlockProof {
     t1_q_corr,
     t1_abo_reduce,
 });
-wire_struct!(AttnBlockProof {
+wire_struct_with_none!(AttnBlockProof {
     ln_vec_corrs,
     denoms_corr,
     recip_in_corr,
@@ -307,7 +336,7 @@ wire_struct!(AttnBlockProof {
     ln,
     t1_q_corr,
     t1_x_reduce,
-});
+} none c62_recip);
 wire_struct!(LayerProof { xin_corr, k_corr, v_corr, abo_corr, fbo_corr, ffn, attn });
 wire_struct!(SeamProof { inst });
 wire_struct!(EmbedProof { out_corr, inst });
@@ -359,6 +388,8 @@ impl Wire for TableKey {
             Self::Clamp1024 => out.byte(4),
             Self::LnRsqrt => out.byte(5),
             Self::SoftmaxRecip => out.byte(6),
+            Self::ExpGap => out.byte(7),
+            Self::ScoreClamp17 => out.byte(8),
         }
         Ok(())
     }
@@ -371,6 +402,8 @@ impl Wire for TableKey {
             4 => Ok(Self::Clamp1024),
             5 => Ok(Self::LnRsqrt),
             6 => Ok(Self::SoftmaxRecip),
+            7 => Ok(Self::ExpGap),
+            8 => Ok(Self::ScoreClamp17),
             _ => Err(ModelProofCodecError::new("unknown model-proof table key")),
         }
     }
@@ -414,6 +447,11 @@ impl C6RetainedResponseProof {
     }
 
     pub fn encode_parts(model_proof: &ModelProof, product: &ProdProof) -> Result<Vec<u8>> {
+        if c62_extension_count(model_proof) != 0 {
+            return Err(ModelProofCodecError::new(
+                "C62SRE1 extensions require the C6.2 retained-response codec",
+            ));
+        }
         let model = encode_model_proof_canonical(model_proof)?;
         let model_len = u32::try_from(model.len())
             .map_err(|_| ModelProofCodecError::new("retained model proof exceeds u32"))?;
@@ -434,6 +472,108 @@ impl C6RetainedResponseProof {
         let digest = blake3::hash(&out.0);
         out.0.extend_from_slice(digest.as_bytes());
         Ok(out.0)
+    }
+
+    /// Encode the C6.2 response with a distinct frame and a strict C62SRE1
+    /// trailer. The base model-proof bytes retain their historical grammar.
+    pub fn encode_c62(&self) -> Result<Vec<u8>> {
+        Self::encode_c62_parts(&self.model, &self.product)
+    }
+
+    pub fn encode_c62_parts(model_proof: &ModelProof, product: &ProdProof) -> Result<Vec<u8>> {
+        let model = encode_model_proof_canonical(model_proof)?;
+        let model_len = u32::try_from(model.len())
+            .map_err(|_| ModelProofCodecError::new("C6.2 retained model proof exceeds u32"))?;
+        let extensions = c62_extensions(model_proof);
+        if extensions.is_empty() || extensions.iter().any(|extension| extension.is_none()) {
+            return Err(ModelProofCodecError::new(
+                "C6.2 retained response lacks a complete C62SRE1 census",
+            ));
+        }
+        let mut out = Writer(C62_RETAINED_MAGIC.to_vec());
+        out.u16(C62_RETAINED_VERSION);
+        out.u16(0);
+        out.u32(model_len);
+        out.0.extend_from_slice(blake3::hash(&model).as_bytes());
+        out.0.extend_from_slice(&model);
+        product.write(&mut out)?;
+        out.u32(
+            u32::try_from(extensions.len())
+                .map_err(|_| ModelProofCodecError::new("C62SRE1 census exceeds u32"))?,
+        );
+        for extension in extensions {
+            extension.write(&mut out)?;
+        }
+        let padding = C6_RETAINED_RESPONSE_BYTES
+            .checked_sub(out.0.len())
+            .and_then(|remaining| remaining.checked_sub(32))
+            .ok_or_else(|| {
+                ModelProofCodecError::new("C6.2 retained response exceeds its frozen allocation")
+            })?;
+        out.0.resize(out.0.len() + padding, 0);
+        let digest = blake3::hash(&out.0);
+        out.0.extend_from_slice(digest.as_bytes());
+        Ok(out.0)
+    }
+
+    pub fn decode_c62(bytes: &[u8]) -> Result<Self> {
+        let frame = bytes
+            .get(..C6_RETAINED_RESPONSE_BYTES)
+            .ok_or_else(|| ModelProofCodecError::new("truncated C6.2 retained response"))?;
+        if bytes.len() != C6_RETAINED_RESPONSE_BYTES {
+            return Err(ModelProofCodecError::new("trailing C6.2 retained-response bytes"));
+        }
+        let mut input = Reader { bytes: frame, offset: 0 };
+        if input.take(C62_RETAINED_MAGIC.len())? != C62_RETAINED_MAGIC
+            || input.u16()? != C62_RETAINED_VERSION
+            || input.u16()? != 0
+        {
+            return Err(ModelProofCodecError::new(
+                "C6.2 retained-response header, version, or reserved field differs",
+            ));
+        }
+        let model_len = usize::try_from(input.u32()?).expect("u32 fits usize");
+        let expected_model_digest: [u8; 32] =
+            input.take(32)?.try_into().expect("fixed model digest width");
+        let model_bytes = input.take(model_len)?;
+        if *blake3::hash(model_bytes).as_bytes() != expected_model_digest {
+            return Err(ModelProofCodecError::new("C6.2 retained model-proof digest mismatch"));
+        }
+        let mut model = decode_model_proof_canonical(model_bytes)?;
+        let product = ProdProof::read(&mut input)?;
+        let count = usize::try_from(input.u32()?).expect("u32 fits usize");
+        let expected_count = c62_layer_count(&model);
+        if count == 0 || count != expected_count {
+            return Err(ModelProofCodecError::new("C62SRE1 extension census differs"));
+        }
+        let mut extensions = Vec::with_capacity(count);
+        for _ in 0..count {
+            let extension = Option::<C62SoftmaxRecipProof>::read(&mut input)?;
+            if extension.is_none() {
+                return Err(ModelProofCodecError::new("C62SRE1 extension is absent"));
+            }
+            extensions.push(extension);
+        }
+        install_c62_extensions(&mut model, extensions)?;
+        let padding_len = C6_RETAINED_RESPONSE_BYTES
+            .checked_sub(input.offset)
+            .and_then(|remaining| remaining.checked_sub(32))
+            .ok_or_else(|| ModelProofCodecError::new("C6.2 retained framing overflows"))?;
+        if input.take(padding_len)?.iter().any(|byte| *byte != 0) {
+            return Err(ModelProofCodecError::new("nonzero C6.2 retained-response padding"));
+        }
+        let body_end = input.offset;
+        let expected_digest: [u8; 32] =
+            input.take(32)?.try_into().expect("fixed retained digest width");
+        if *blake3::hash(&frame[..body_end]).as_bytes() != expected_digest {
+            return Err(ModelProofCodecError::new("C6.2 retained-response digest mismatch"));
+        }
+        input.finish()?;
+        let proof = Self { model, product };
+        if proof.encode_c62()? != frame {
+            return Err(ModelProofCodecError::new("noncanonical C6.2 retained response"));
+        }
+        Ok(proof)
     }
 
     pub fn decode(bytes: &[u8]) -> Result<Self> {
@@ -490,6 +630,43 @@ impl C6RetainedResponseProof {
     }
 }
 
+fn c62_layer_count(model: &ModelProof) -> usize {
+    model.layers.len() + model.chunks.iter().map(|chunk| chunk.layers.len()).sum::<usize>()
+}
+
+fn c62_extensions(model: &ModelProof) -> Vec<&Option<C62SoftmaxRecipProof>> {
+    model
+        .layers
+        .iter()
+        .chain(model.chunks.iter().flat_map(|chunk| chunk.layers.iter()))
+        .map(|layer| &layer.attn.c62_recip)
+        .collect()
+}
+
+fn c62_extension_count(model: &ModelProof) -> usize {
+    c62_extensions(model).into_iter().filter(|extension| extension.is_some()).count()
+}
+
+fn install_c62_extensions(
+    model: &mut ModelProof,
+    extensions: Vec<Option<C62SoftmaxRecipProof>>,
+) -> Result<()> {
+    if extensions.len() != c62_layer_count(model) {
+        return Err(ModelProofCodecError::new("C62SRE1 install census differs"));
+    }
+    let mut extensions = extensions.into_iter();
+    for layer in &mut model.layers {
+        layer.attn.c62_recip = extensions.next().expect("checked C62SRE1 census");
+    }
+    for chunk in &mut model.chunks {
+        for layer in &mut chunk.layers {
+            layer.attn.c62_recip = extensions.next().expect("checked C62SRE1 census");
+        }
+    }
+    debug_assert!(extensions.next().is_none());
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -523,6 +700,21 @@ mod tests {
             e_corr: Fp2::ONE,
             r_corr: Fp2::ZERO,
             z_corr: Fp2::ONE,
+        }
+    }
+
+    pub(super) fn c62_recip() -> C62SoftmaxRecipProof {
+        C62SoftmaxRecipProof {
+            aux_corrs: [Fp2::ONE; 7],
+            input_low: instance(),
+            input_high: instance(),
+            quotient: instance(),
+            remainder_low: instance(),
+            remainder_high: instance(),
+            slack_low: instance(),
+            slack_high: instance(),
+            product: hadamard(),
+            score_clamp: Some(instance()),
         }
     }
 
@@ -590,6 +782,7 @@ mod tests {
                 rowsum_corr: Fp2::ONE,
                 inst_exp: instance(),
                 inst_recip: instance(),
+                c62_recip: None,
                 inst_sc: instance(),
                 sc_split_corrs: [Fp2::ZERO; 12],
                 gemm_qk: vec![(gemm(), Fp2::ZERO)],
@@ -712,6 +905,25 @@ mod tests {
         assert!(C6RetainedResponseProof::decode(&bytes[..bytes.len() - 1]).is_err());
         assert!(C6RetainedResponseProof::decode(b"wrong").is_err());
     }
+}
+
+#[cfg(test)]
+pub(crate) fn retained_response_c62_test_bytes() -> Vec<u8> {
+    let mut model = tests::proof();
+    for layer in &mut model.layers {
+        layer.attn.c62_recip = Some(tests::c62_recip());
+    }
+    for chunk in &mut model.chunks {
+        for layer in &mut chunk.layers {
+            layer.attn.c62_recip = Some(tests::c62_recip());
+        }
+    }
+    C6RetainedResponseProof {
+        model,
+        product: ProdProof { m0: Fp2::ONE, m1: Fp2::ZERO },
+    }
+    .encode_c62()
+    .unwrap()
 }
 
 #[cfg(test)]

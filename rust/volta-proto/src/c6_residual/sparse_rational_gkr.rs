@@ -606,7 +606,7 @@ fn compile_c6_sparse_rational_packed_oracle_materialized(
         .map_err(|_| C6ResidualError::new("C6SPR2 scalar count exceeds usize"))?;
     let source_count = usize::try_from(topology.source_count)
         .map_err(|_| C6ResidualError::new("C6SPR2 source count exceeds usize"))?;
-    let base_rows = node_count
+    let natural_base_rows = node_count
         .max(
             scalar_count
                 .checked_mul(2)
@@ -620,12 +620,15 @@ fn compile_c6_sparse_rational_packed_oracle_materialized(
         .max(2)
         .checked_next_power_of_two()
         .ok_or_else(|| C6ResidualError::new("C6SPR2 base domain overflows"))?;
+    let registered_production = super::is_registered_c62_production_topology(topology);
+    let base_rows = if require_production && registered_production {
+        1usize << 25
+    } else {
+        natural_base_rows
+    };
     let base_domain_log2 = u8::try_from(base_rows.trailing_zeros())
         .map_err(|_| C6ResidualError::new("C6SPR2 base dimension exceeds u8"))?;
-    let production_geometry = base_domain_log2 == 25
-        && topology.source_count == 4_975_525
-        && topology.canonical_node_count == 28_845_631
-        && topology.scalar_input_count == 10_828_852;
+    let production_geometry = base_domain_log2 == 25 && registered_production;
     if (require_production && !production_geometry)
         || (!require_production && base_domain_log2 >= C6_SPARSE_PACKING_MAX_SCALED_LOG2)
         || operation_plan.operation_kinds().len() != node_count

@@ -49,7 +49,18 @@ pub trait TranscriptChallengeChannel: Send {
 enum TranscriptChallenges {
     Private(FpStream),
     Interactive(Box<dyn TranscriptChallengeChannel>),
+    FiatShamir(C62FiatShamirState),
 }
+
+struct C62FiatShamirState {
+    context_digest: [u8; 32],
+    challenge_index: u64,
+}
+
+pub const C62_FIAT_SHAMIR_MAX_CHALLENGES: u64 = 65_536;
+pub const C62_FIAT_SHAMIR_MAX_REJECTION_DRAWS_PER_LIMB: u32 = 4;
+pub const C62_FIAT_SHAMIR_MAX_RANDOM_ORACLE_QUERIES: u64 =
+    C62_FIAT_SHAMIR_MAX_CHALLENGES * 2 * C62_FIAT_SHAMIR_MAX_REJECTION_DRAWS_PER_LIMB as u64;
 
 pub struct Transcript {
     challenges: TranscriptChallenges,
@@ -104,6 +115,34 @@ impl Transcript {
         }
     }
 
+    /// Construct the public C6.2 Fiat--Shamir transcript. The context digest
+    /// must bind the complete public attempt and the typed lane identity.
+    /// Provider moves remain canonical byte events and no verifier secret is
+    /// used for challenge derivation.
+    pub fn new_fiat_shamir(context_digest: [u8; 32]) -> Result<Transcript, String> {
+        if context_digest == [0; 32] {
+            return Err("C62FS1 context digest is zero".to_owned());
+        }
+        Ok(Transcript {
+            challenges: TranscriptChallenges::FiatShamir(C62FiatShamirState {
+                context_digest,
+                challenge_index: 0,
+            }),
+            bytes: BTreeMap::new(),
+            n_messages: 0,
+            canonical_moves: blake3::Hasher::new_derive_key(
+                "volta-zk/transcript/canonical-moves/v1",
+            ),
+            noncanonical_events: 0,
+            #[cfg(debug_assertions)]
+            canonical_event_debug: Vec::new(),
+            pending_provider_move: Vec::new(),
+            pending_semantic_bytes: 0,
+            unbound_provider_bytes: 0,
+            interactive_error: None,
+        })
+    }
+
     fn account(&mut self, label: &'static str, n: u64) {
         *self.bytes.entry(label).or_insert(0) += n;
         self.n_messages += 1;
@@ -137,6 +176,22 @@ impl Transcript {
             self.pending_semantic_bytes = self.pending_semantic_bytes.saturating_add(message.len());
             self.pending_provider_move.extend_from_slice(&event);
         }
+    }
+
+    /// Bind public bytes that both roles reconstruct independently. These
+    /// bytes affect Fiat--Shamir challenges but do not count as provider wire.
+    pub fn absorb_public_message(&mut self, label: &'static str, message: &[u8]) {
+        self.account(label, 0);
+        let label_len = u16::try_from(label.len()).expect("transcript label exceeds u16");
+        let mut event = Vec::with_capacity(2 + label.len() + 8 + message.len());
+        event.extend_from_slice(&label_len.to_le_bytes());
+        event.extend_from_slice(label.as_bytes());
+        event.extend_from_slice(&(message.len() as u64).to_le_bytes());
+        event.extend_from_slice(message);
+        self.canonical_moves.update(&[5]);
+        self.canonical_moves.update(&event);
+        #[cfg(debug_assertions)]
+        self.canonical_event_debug.push((label, *blake3::hash(&event).as_bytes()));
     }
 
     pub fn append_fps(&mut self, label: &'static str, values: &[Fp]) {
@@ -286,11 +341,157 @@ impl Transcript {
         })
     }
 
+    fn c62_fs_sample_u64(
+        context_digest: [u8; 32],
+        transcript_digest: [u8; 32],
+        challenge_index: u64,
+        request: TranscriptChallengeRequest,
+        limb: u8,
+        retry: u32,
+    ) -> u64 {
+        let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c6.2/fiat-shamir/challenge/v1");
+        hasher.update(&context_digest);
+        hasher.update(&transcript_digest);
+        hasher.update(&challenge_index.to_le_bytes());
+        match request {
+            TranscriptChallengeRequest::Fp => hasher.update(&[1, 0]),
+            TranscriptChallengeRequest::Fp2 => hasher.update(&[2, limb]),
+            TranscriptChallengeRequest::Bits(width) => hasher.update(&[3, width]),
+        };
+        hasher.update(&retry.to_le_bytes());
+        let output = hasher.finalize();
+        u64::from_le_bytes(output.as_bytes()[..8].try_into().expect("eight-byte BLAKE3 prefix"))
+    }
+
+    fn record_c62_fs_response(&mut self, response: TranscriptChallengeResponse) {
+        self.canonical_moves.update(&[4]);
+        let mut encoded = [0u8; 17];
+        let length = match response {
+            TranscriptChallengeResponse::Fp(value) => {
+                encoded[0] = 1;
+                encoded[1..9].copy_from_slice(&value.to_le_bytes());
+                9
+            }
+            TranscriptChallengeResponse::Fp2([c0, c1]) => {
+                encoded[0] = 2;
+                encoded[1..9].copy_from_slice(&c0.to_le_bytes());
+                encoded[9..17].copy_from_slice(&c1.to_le_bytes());
+                17
+            }
+            TranscriptChallengeResponse::Bits(value) => {
+                encoded[0] = 3;
+                encoded[1..9].copy_from_slice(&value.to_le_bytes());
+                9
+            }
+        };
+        self.canonical_moves.update(&encoded[..length]);
+        #[cfg(debug_assertions)]
+        self.canonical_event_debug
+            .push(("c62_fiat_shamir_response", *blake3::hash(&encoded[..length]).as_bytes()));
+    }
+
+    fn c62_fiat_shamir_challenge(
+        &mut self,
+        request: TranscriptChallengeRequest,
+    ) -> Option<TranscriptChallengeResponse> {
+        let TranscriptChallenges::FiatShamir(state) = &mut self.challenges else {
+            return None;
+        };
+        if self.noncanonical_events != 0 {
+            self.interactive_error.get_or_insert_with(|| {
+                format!(
+                    "C62FS1 challenge follows {} noncanonical length-only events",
+                    self.noncanonical_events
+                )
+            });
+            return Some(match request {
+                TranscriptChallengeRequest::Fp => TranscriptChallengeResponse::Fp(1),
+                TranscriptChallengeRequest::Fp2 => TranscriptChallengeResponse::Fp2([1, 0]),
+                TranscriptChallengeRequest::Bits(_) => TranscriptChallengeResponse::Bits(0),
+            });
+        }
+        if self.interactive_error.is_some() {
+            return Some(match request {
+                TranscriptChallengeRequest::Fp => TranscriptChallengeResponse::Fp(1),
+                TranscriptChallengeRequest::Fp2 => TranscriptChallengeResponse::Fp2([1, 0]),
+                TranscriptChallengeRequest::Bits(_) => TranscriptChallengeResponse::Bits(0),
+            });
+        }
+        let transcript_digest = *self.canonical_moves.clone().finalize().as_bytes();
+        let context_digest = state.context_digest;
+        let challenge_index = state.challenge_index;
+        if challenge_index >= C62_FIAT_SHAMIR_MAX_CHALLENGES {
+            self.interactive_error = Some("C62FS1 challenge census exceeds its proof bound".into());
+            return Some(match request {
+                TranscriptChallengeRequest::Fp => TranscriptChallengeResponse::Fp(1),
+                TranscriptChallengeRequest::Fp2 => TranscriptChallengeResponse::Fp2([1, 0]),
+                TranscriptChallengeRequest::Bits(_) => TranscriptChallengeResponse::Bits(0),
+            });
+        }
+        state.challenge_index = match state.challenge_index.checked_add(1) {
+            Some(next) => next,
+            None => {
+                self.interactive_error = Some("C62FS1 challenge index overflow".to_owned());
+                return Some(match request {
+                    TranscriptChallengeRequest::Fp => TranscriptChallengeResponse::Fp(1),
+                    TranscriptChallengeRequest::Fp2 => TranscriptChallengeResponse::Fp2([1, 0]),
+                    TranscriptChallengeRequest::Bits(_) => TranscriptChallengeResponse::Bits(0),
+                });
+            }
+        };
+        let sample_fp = |limb| {
+            (0..C62_FIAT_SHAMIR_MAX_REJECTION_DRAWS_PER_LIMB).find_map(|retry| {
+                let value = Self::c62_fs_sample_u64(
+                    context_digest,
+                    transcript_digest,
+                    challenge_index,
+                    request,
+                    limb,
+                    retry,
+                );
+                (value < P).then_some(value)
+            })
+        };
+        let response = match request {
+            TranscriptChallengeRequest::Fp => {
+                let Some(value) = sample_fp(0) else {
+                    self.interactive_error = Some("C62FS1 Fp rejection sampling exhausted".into());
+                    return Some(TranscriptChallengeResponse::Fp(1));
+                };
+                TranscriptChallengeResponse::Fp(value)
+            }
+            TranscriptChallengeRequest::Fp2 => {
+                let (Some(c0), Some(c1)) = (sample_fp(0), sample_fp(1)) else {
+                    self.interactive_error = Some("C62FS1 Fp2 rejection sampling exhausted".into());
+                    return Some(TranscriptChallengeResponse::Fp2([1, 0]));
+                };
+                TranscriptChallengeResponse::Fp2([c0, c1])
+            }
+            TranscriptChallengeRequest::Bits(width) => {
+                let value = Self::c62_fs_sample_u64(
+                    context_digest,
+                    transcript_digest,
+                    challenge_index,
+                    request,
+                    0,
+                    0,
+                );
+                let value = if width == 64 { value } else { value & ((1u64 << width) - 1) };
+                TranscriptChallengeResponse::Bits(value)
+            }
+        };
+        self.record_c62_fs_response(response);
+        Some(response)
+    }
+
     /// Fresh verifier challenge in `E` (only sound after the prover's
     /// corresponding message has been appended — callers keep that order).
     pub fn challenge_fp2(&mut self) -> Fp2 {
         self.record_challenge_request(TranscriptChallengeRequest::Fp2);
-        match self.interactive_challenge(TranscriptChallengeRequest::Fp2) {
+        match self
+            .c62_fiat_shamir_challenge(TranscriptChallengeRequest::Fp2)
+            .or_else(|| self.interactive_challenge(TranscriptChallengeRequest::Fp2))
+        {
             Some(TranscriptChallengeResponse::Fp2([a, b])) if a < P && b < P => {
                 Fp2::new(Fp::new(a), Fp::new(b))
             }
@@ -301,7 +502,9 @@ impl Transcript {
             }
             None => match &mut self.challenges {
                 TranscriptChallenges::Private(challenges) => challenges.next_fp2(),
-                TranscriptChallenges::Interactive(_) => unreachable!(),
+                TranscriptChallenges::Interactive(_) | TranscriptChallenges::FiatShamir(_) => {
+                    unreachable!()
+                }
             },
         }
     }
@@ -313,7 +516,10 @@ impl Transcript {
     /// message on which the challenge depends.
     pub fn challenge_fp(&mut self) -> Fp {
         self.record_challenge_request(TranscriptChallengeRequest::Fp);
-        match self.interactive_challenge(TranscriptChallengeRequest::Fp) {
+        match self
+            .c62_fiat_shamir_challenge(TranscriptChallengeRequest::Fp)
+            .or_else(|| self.interactive_challenge(TranscriptChallengeRequest::Fp))
+        {
             Some(TranscriptChallengeResponse::Fp(value)) if value < P => Fp::new(value),
             Some(_) => {
                 self.interactive_error
@@ -322,7 +528,9 @@ impl Transcript {
             }
             None => match &mut self.challenges {
                 TranscriptChallenges::Private(challenges) => challenges.next_fp(),
-                TranscriptChallenges::Interactive(_) => unreachable!(),
+                TranscriptChallenges::Interactive(_) | TranscriptChallenges::FiatShamir(_) => {
+                    unreachable!()
+                }
             },
         }
     }
@@ -331,7 +539,10 @@ impl Transcript {
     pub fn challenge_bits(&mut self, width: u8) -> u64 {
         assert!((1..=64).contains(&width), "transcript bit width must be in 1..=64");
         self.record_challenge_request(TranscriptChallengeRequest::Bits(width));
-        match self.interactive_challenge(TranscriptChallengeRequest::Bits(width)) {
+        match self
+            .c62_fiat_shamir_challenge(TranscriptChallengeRequest::Bits(width))
+            .or_else(|| self.interactive_challenge(TranscriptChallengeRequest::Bits(width)))
+        {
             Some(TranscriptChallengeResponse::Bits(value))
                 if width == 64 || value < (1u64 << width) =>
             {
@@ -344,7 +555,9 @@ impl Transcript {
             }
             None => match &mut self.challenges {
                 TranscriptChallenges::Private(challenges) => challenges.next_bits(width),
-                TranscriptChallenges::Interactive(_) => unreachable!(),
+                TranscriptChallenges::Interactive(_) | TranscriptChallenges::FiatShamir(_) => {
+                    unreachable!()
+                }
             },
         }
     }
@@ -357,10 +570,17 @@ impl Transcript {
         matches!(self.challenges, TranscriptChallenges::Interactive(_))
     }
 
+    pub fn is_fiat_shamir(&self) -> bool {
+        matches!(self.challenges, TranscriptChallenges::FiatShamir(_))
+    }
+
     /// Exact canonical provider-move and challenge-order identity. Seeded
     /// prover/verifier executions use this as a deterministic parity check;
     /// any legacy length-only event makes the identity unavailable.
     pub fn canonical_binding_digest(&self) -> Result<[u8; 32], String> {
+        if let Some(error) = &self.interactive_error {
+            return Err(error.clone());
+        }
         if self.noncanonical_events != 0 {
             return Err(format!(
                 "transcript contains {} noncanonical length-only events",
@@ -513,5 +733,46 @@ mod tests {
         let mut legacy = Transcript::new([0x31; 32]);
         legacy.append("zero_length_marker", 0);
         assert!(legacy.canonical_binding_digest().is_err());
+    }
+
+    #[test]
+    fn c62_fiat_shamir_is_public_exact_and_domain_separated() {
+        let run = |context: [u8; 32], message: &[u8]| {
+            let mut transcript = Transcript::new_fiat_shamir(context).unwrap();
+            assert!(transcript.is_fiat_shamir());
+            transcript.append_message("c62_round", message);
+            let fp = transcript.challenge_fp();
+            transcript.append_fp2s("c62_pair", &[Fp2::new(fp, Fp::new(9))]);
+            let fp2 = transcript.challenge_fp2();
+            let bits = transcript.challenge_bits(17);
+            assert!(transcript.interactive_error().is_none());
+            (fp, fp2, bits, transcript.canonical_binding_digest().unwrap())
+        };
+        let first = run([0xA1; 32], &[1, 2, 3]);
+        assert_eq!(first, run([0xA1; 32], &[1, 2, 3]));
+        assert_ne!(first, run([0xA2; 32], &[1, 2, 3]));
+        assert_ne!(first, run([0xA1; 32], &[1, 2, 4]));
+        assert!(first.2 < (1 << 17));
+    }
+
+    #[test]
+    fn c62_fiat_shamir_rejects_length_only_events() {
+        assert!(Transcript::new_fiat_shamir([0; 32]).is_err());
+        let mut transcript = Transcript::new_fiat_shamir([0xB1; 32]).unwrap();
+        transcript.append("legacy", 16);
+        assert_eq!(transcript.challenge_fp2(), Fp2::ONE);
+        assert!(transcript.interactive_error().unwrap().contains("noncanonical length-only"));
+    }
+
+    #[test]
+    fn c62_fiat_shamir_enforces_the_registered_query_bound() {
+        assert_eq!(C62_FIAT_SHAMIR_MAX_RANDOM_ORACLE_QUERIES, 524_288);
+        let mut transcript = Transcript::new_fiat_shamir([0xB2; 32]).unwrap();
+        let TranscriptChallenges::FiatShamir(state) = &mut transcript.challenges else {
+            unreachable!();
+        };
+        state.challenge_index = C62_FIAT_SHAMIR_MAX_CHALLENGES;
+        assert_eq!(transcript.challenge_fp2(), Fp2::ONE);
+        assert!(transcript.interactive_error().unwrap().contains("challenge census exceeds"));
     }
 }

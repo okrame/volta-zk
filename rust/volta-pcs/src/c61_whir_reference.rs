@@ -243,6 +243,41 @@ impl<'a> C61InteractiveChallenger<'a> {
         Ok(state.stats)
     }
 
+    /// C6.2 finalizes the same interaction count and also binds the complete
+    /// tagless payload digest. This final digest is reconstructible by the
+    /// strict verifier and adds no provider bytes.
+    pub(crate) fn finish_c62(&self, payload: &[u8]) -> ReferenceResult<C61WhirInteractionStats> {
+        let mut state = self.state.lock().expect("C6WIR1 challenger mutex poisoned");
+        if !state.transcript.is_fiat_shamir()
+            || !state.public_statement_bound
+            || state.public_base_observations_to_skip != 0
+        {
+            return Err(C61WhirReferenceError::new(
+                "C62FS1 WHIR finalization requires a complete Fiat--Shamir statement",
+            ));
+        }
+        Self::flush_pending(&mut state);
+        let payload_bytes = u64::try_from(payload.len())
+            .map_err(|_| C61WhirReferenceError::new("C62FS1 payload length exceeds u64"))?;
+        if state.stats.provider_semantic_bytes > payload_bytes {
+            return Err(C61WhirReferenceError::new(
+                "C62FS1 observed transcript bytes exceed its strict payload",
+            ));
+        }
+        let residual = payload_bytes - state.stats.provider_semantic_bytes;
+        if residual > 0 {
+            state.transcript.append_message_digest(
+                C61_NATIVE_FINAL_PAYLOAD_LABEL,
+                residual,
+                *blake3::hash(payload).as_bytes(),
+            );
+            state.stats.provider_messages += 1;
+        }
+        state.transcript.canonical_binding_digest().map_err(C61WhirReferenceError::new)?;
+        state.stats.provider_payload_bytes = payload_bytes;
+        Ok(state.stats)
+    }
+
     /// Fail closed when a low-level caller bypasses the adapter without
     /// replaying the verifier-owned opening point after the initial root.
     #[allow(dead_code)]

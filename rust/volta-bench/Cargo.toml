@@ -24,9 +24,25 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 blake3 = { workspace = true }
 rand = { workspace = true }
+zstd = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
+
+[[bin]]
+name = "c6_t1_census_record"
+path = "src/bin/c6_t1_census_record.rs"
+required-features = ["c6-trace"]
+
+[[bin]]
+name = "c62_setup_bundle_record"
+path = "src/bin/c62_setup_bundle_record.rs"
+required-features = ["c6-trace"]
+
+[[bin]]
+name = "c62_setup_bundle_measure"
+path = "src/bin/c62_setup_bundle_measure.rs"
+required-features = ["c6-trace", "c61-p3-authenticated-reference"]
 
 [[bench]]
 name = "p1_mac_epilogue"

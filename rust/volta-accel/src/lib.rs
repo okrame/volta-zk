@@ -18,7 +18,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 33;
+pub const CUDA_ABI_VERSION: u32 = 36;
 pub const OPERATION_COUNT: usize = 7;
 pub const DEFERRED_TIMING_CAPACITY: usize = 512;
 
@@ -753,36 +753,43 @@ impl DeviceAttentionProofWires {
         DeviceSlice::new(&self.rect, 0, 2 * self.rect_entries).expect("valid attention rect layout")
     }
 
-    /// `[scores remainder, row-shifted score]`.
+    /// `[scores remainder, shifted signed-17 raw score quotient]`.
     pub fn scores_columns(&self) -> DeviceSlice<'_, u64> {
         DeviceSlice::new(&self.rect, 2 * self.rect_entries, 2 * self.rect_entries)
             .expect("valid attention rect layout")
     }
 
-    /// `[row-shifted score, exp output, is-max]`.
+    /// `[shifted signed-17 raw score quotient, clamped signed-i16 score]`.
+    pub fn score_clamp_columns(&self) -> DeviceSlice<'_, u64> {
+        DeviceSlice::new(&self.rect, 3 * self.rect_entries, 2 * self.rect_entries)
+            .expect("valid C62SCR1 attention rect layout")
+    }
+
+    /// `[unsigned score gap, exp output, is-max]` for C62SGE1.
     pub fn exp_columns(&self) -> DeviceSlice<'_, u64> {
-        DeviceSlice::new(&self.rect, 3 * self.rect_entries, 3 * self.rect_entries)
+        DeviceSlice::new(&self.rect, 5 * self.rect_entries, 3 * self.rect_entries)
             .expect("valid attention rect layout")
     }
 
     pub fn rect_column(&self, index: usize) -> Result<DeviceSlice<'_, u64>, AccelError> {
-        if index >= 7 {
+        if index >= 9 {
             return Err(AccelError::InvalidInput("attention rect column out of bounds"));
         }
         DeviceSlice::new(&self.rect, index * self.rect_entries, self.rect_entries)
     }
 
     pub fn full_scores(&self) -> DeviceSlice<'_, u64> {
-        self.rect_column(6).expect("valid full-score column")
+        self.rect_column(8).expect("valid full-score column")
     }
 
     pub fn row_entries(&self) -> usize {
         self.row_entries
     }
 
-    /// Row columns: denoms, reciprocal inputs, reciprocals, row shifts.
+    /// Row columns: denoms, reciprocal inputs, reciprocals, row shifts, then
+    /// the nine C62SRE1 arithmetic columns.
     pub fn row_column(&self, index: usize) -> Result<DeviceSlice<'_, u64>, AccelError> {
-        if index >= 4 {
+        if index >= 13 {
             return Err(AccelError::InvalidInput("attention row column out of bounds"));
         }
         DeviceSlice::new(&self.rows, index * self.row_entries, self.row_entries)
@@ -2370,6 +2377,7 @@ impl Backend {
         pos0: usize,
         heads: usize,
         recip_den_shift: u32,
+        recip_log2: u32,
         norm_shift: u32,
         use_row_shift: bool,
     ) -> Result<(), AccelError> {
@@ -2396,7 +2404,9 @@ impl Backend {
             || heads == 0
             || norm_shift == 0
             || norm_shift >= 63
+            || recip_den_shift == 0
             || recip_den_shift >= 63
+            || recip_log2 >= 63
             || pos0.checked_add(rows).filter(|&end| end <= seq).is_none()
         {
             return Err(AccelError::InvalidInput("invalid resident softmax geometry"));
@@ -2427,6 +2437,7 @@ impl Backend {
                 pos0,
                 heads,
                 recip_den_shift,
+                recip_log2,
                 norm_shift,
                 use_row_shift,
             );
@@ -4128,6 +4139,7 @@ impl Backend {
         shift_softmax_norm: u32,
         shift_qkv: u32,
         recip_den_shift: u32,
+        recip_log2: u32,
         exp_pad_input: i16,
         recip_pad_output: i16,
         use_row_shift: bool,
@@ -4144,7 +4156,9 @@ impl Backend {
             || !(1..=16).contains(&shift_scores)
             || !(1..=16).contains(&shift_softmax_norm)
             || !(1..=16).contains(&shift_qkv)
+            || recip_den_shift == 0
             || recip_den_shift >= 63
+            || recip_log2 >= 63
         {
             return Err(AccelError::InvalidInput("invalid resident attention-proof geometry"));
         }
@@ -4186,8 +4200,8 @@ impl Backend {
         let above_entries = checked_product(heads, above_per_head)?;
         let qkv_entries = checked_product(q_pad, checked_product(4, d_pad)?)?;
 
-        let rect = self.alloc_device(checked_product(7, rect_entries)?)?;
-        let row_values = match self.alloc_device(checked_product(4, row_entries)?) {
+        let rect = self.alloc_device(checked_product(9, rect_entries)?)?;
+        let row_values = match self.alloc_device(checked_product(13, row_entries)?) {
             Ok(value) => value,
             Err(error) => {
                 let _ = self.free_device(rect);
@@ -4264,6 +4278,7 @@ impl Backend {
                 shift_softmax_norm,
                 shift_qkv,
                 recip_den_shift,
+                recip_log2,
                 exp_pad_input,
                 recip_pad_output,
                 use_row_shift,
@@ -10064,7 +10079,7 @@ mod cuda_tests {
         let mut row_shifts = vec![0i16; heads * query_rows];
         let mut exp_outputs = vec![2i16; heads * per_head];
         let mut denoms = vec![0i64; heads * query_rows];
-        let recips = vec![3i16; heads * query_rows];
+        let mut recips = vec![0i16; heads * query_rows];
         let softmax_weights = vec![0i16; heads * per_head];
         for h in 0..heads {
             for i in 0..query_rows {
@@ -10085,10 +10100,17 @@ mod cuda_tests {
         }
         // Keep ownership distinct even where the values are simple constants.
         exp_outputs.iter_mut().for_each(|value| *value = 2);
+        let recip_den_shift = 1u32;
+        let recip_log2 = 10u32;
         let mut recip_lut = vec![0i16; 1 << 16];
-        recip_lut[0] = 7;
-        for &denom in &denoms {
-            recip_lut[denom as usize] = 3;
+        for (input, value) in recip_lut.iter_mut().enumerate() {
+            let denominator = ((input as u64) << recip_den_shift)
+                + (1u64 << (recip_den_shift - 1));
+            *value = (((1u64 << recip_log2) + denominator / 2) / denominator)
+                .min(i16::MAX as u64) as i16;
+        }
+        for (index, &denom) in denoms.iter().enumerate() {
+            recips[index] = recip_lut[(denom >> recip_den_shift) as usize];
         }
         let mut qkv_acc = vec![0i64; query_rows * 3 * d];
         for i in 0..query_rows {
@@ -10117,7 +10139,7 @@ mod cuda_tests {
         let d_recip_lut = gpu.upload_new_device(&recip_lut).unwrap();
         let d_qkv_acc = gpu.upload_new_device(&qkv_acc).unwrap();
         let error = gpu.upload_new_device(&[0u32]).unwrap();
-        let exp_pad = i16::MIN;
+        let exp_pad = 7i16;
         let wires = gpu
             .attention_proof_wires_device(
                 DeviceSlice::new(&dq, 0, q.len()).unwrap(),
@@ -10143,7 +10165,8 @@ mod cuda_tests {
                 shift_scores,
                 shift_norm,
                 shift_qkv,
-                0,
+                recip_den_shift,
+                recip_log2,
                 exp_pad,
                 recip_lut[0],
                 true,
@@ -10157,9 +10180,9 @@ mod cuda_tests {
         let rect_entries = head_pad * sp2;
         assert_eq!(wires.rect_entries(), rect_entries);
         let rect = gpu
-            .download_device(wires.rect_column(0).unwrap().buffer(), 0, 7 * rect_entries)
+            .download_device(wires.rect_column(0).unwrap().buffer(), 0, 9 * rect_entries)
             .unwrap();
-        let mut expected = vec![0u64; 7 * rect_entries];
+        let mut expected = vec![0u64; 9 * rect_entries];
         for h in 0..head_pad {
             for i in 0..q_pad {
                 for j in 0..s_pad {
@@ -10167,7 +10190,9 @@ mod cuda_tests {
                     let mut norm_rem = 8i64;
                     let mut weight = 0i64;
                     let mut score_rem = 8i64;
-                    let mut sprime = exp_pad as i64;
+                    let mut score_value = -i64::from(exp_pad);
+                    let mut score_index = score_value + (1 << 16);
+                    let mut gap = i64::from(exp_pad);
                     let mut exp_value = 0i64;
                     let mut is_max = 0i64;
                     let mut full = 0i64;
@@ -10178,14 +10203,16 @@ mod cuda_tests {
                         });
                         if j <= i {
                             let packed = h * per_head + i * (i + 1) / 2 + j;
-                            sprime =
-                                scores_q[packed] as i64 - row_shifts[h * query_rows + i] as i64;
-                            score_rem = scores_acc[packed] + 8 - ((scores_q[packed] as i64) << 4);
+                            let raw_score = (scores_acc[packed] + 8) >> 4;
+                            score_value = i64::from(scores_q[packed]);
+                            score_index = raw_score + (1 << 16);
+                            gap = i64::from(row_shifts[h * query_rows + i]) - score_value;
+                            score_rem = scores_acc[packed] + 8 - (raw_score << 4);
                             exp_value = 2;
                             weight = 0;
                             norm_rem = 14;
                             is_max = i64::from(
-                                sprime == 0
+                                gap == 0
                                     && (0..j).all(|prior| {
                                         let p = h * per_head + i * (i + 1) / 2 + prior;
                                         scores_q[p] != row_shifts[h * query_rows + i]
@@ -10196,10 +10223,12 @@ mod cuda_tests {
                     expected[z] = norm_rem as u64;
                     expected[rect_entries + z] = Fp::from_i64(weight).value();
                     expected[2 * rect_entries + z] = score_rem as u64;
-                    expected[3 * rect_entries + z] = Fp::from_i64(sprime).value();
-                    expected[4 * rect_entries + z] = Fp::from_i64(exp_value).value();
-                    expected[5 * rect_entries + z] = is_max as u64;
-                    expected[6 * rect_entries + z] = Fp::from_i64(full).value();
+                    expected[3 * rect_entries + z] = score_index as u64;
+                    expected[4 * rect_entries + z] = Fp::from_i64(score_value).value();
+                    expected[5 * rect_entries + z] = gap as u64;
+                    expected[6 * rect_entries + z] = Fp::from_i64(exp_value).value();
+                    expected[7 * rect_entries + z] = is_max as u64;
+                    expected[8 * rect_entries + z] = Fp::from_i64(full).value();
                 }
             }
         }
@@ -10213,8 +10242,14 @@ mod cuda_tests {
                 let z = h * q_pad + i;
                 if h < heads && i < query_rows {
                     assert_eq!(Fp::new(row_values[z]), Fp::from_i64(denoms[h * query_rows + i]));
-                    assert_eq!(row_values[row_entries + z], denoms[h * query_rows + i] as u64);
-                    assert_eq!(Fp::new(row_values[2 * row_entries + z]), Fp::from_i64(3));
+                    assert_eq!(
+                        row_values[row_entries + z],
+                        (denoms[h * query_rows + i] >> recip_den_shift) as u64
+                    );
+                    assert_eq!(
+                        Fp::new(row_values[2 * row_entries + z]),
+                        Fp::from_i64(recips[h * query_rows + i] as i64)
+                    );
                     assert_eq!(
                         Fp::new(row_values[3 * row_entries + z]),
                         Fp::from_i64(row_shifts[h * query_rows + i] as i64)
@@ -10222,7 +10257,10 @@ mod cuda_tests {
                 } else {
                     assert_eq!(row_values[z], 0);
                     assert_eq!(row_values[row_entries + z], 0);
-                    assert_eq!(Fp::new(row_values[2 * row_entries + z]), Fp::from_i64(7));
+                    assert_eq!(
+                        Fp::new(row_values[2 * row_entries + z]),
+                        Fp::from_i64(recip_lut[0] as i64)
+                    );
                     assert_eq!(row_values[3 * row_entries + z], 0);
                 }
             }

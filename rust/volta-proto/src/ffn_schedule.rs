@@ -48,9 +48,8 @@ use crate::block_proof::{
 #[cfg(feature = "c6-trace")]
 use crate::c6_cache_fold::{
     C6CacheFoldAppendSourceLayer, C6CacheFoldDirectSourceSegment, C6CacheFoldKind,
-    C6CacheFoldOnlineLayerMetrics, C6CacheFoldOnlineLayerProver,
-    C6CacheFoldOnlineLayerVerifier, C6CacheFoldTargetInlineProver,
-    C6CacheFoldTargetInlineVerifier, C6_CACHE_HEADS,
+    C6CacheFoldOnlineLayerMetrics, C6CacheFoldOnlineLayerProver, C6CacheFoldOnlineLayerVerifier,
+    C6CacheFoldTargetInlineProver, C6CacheFoldTargetInlineVerifier, C6_CACHE_HEADS,
 };
 #[cfg(feature = "c6-trace")]
 use crate::c6_source::{C6SourceScheduleProverFollower, C6SourceScheduleVerifierFollower};
@@ -692,9 +691,10 @@ pub(crate) fn prove_layers_thinned_scheduled_c6(
         backend,
         &mut cache_mode,
     )?;
-    let ThinnedProverCacheMode::C6 { metrics, append_source_layers, .. } = cache_mode else {
+    let ThinnedProverCacheMode::C6 { metrics, mut append_source_layers, .. } = cache_mode else {
         unreachable!("C6 scheduled provider mode changed during execution")
     };
+    append_source_layers.sort_by_key(C6CacheFoldAppendSourceLayer::model_layer);
     Ok((scheduled, metrics, append_source_layers))
 }
 
@@ -962,11 +962,12 @@ fn prove_layers_thinned_scheduled_impl(
                         value_sources.clone(),
                     )
                     .map_err(|_| FfnScheduleError::Public("invalid C6 append source plan"))?;
-                    let mut online = C6CacheFoldOnlineLayerProver::new(
+                    let mut online = C6CacheFoldOnlineLayerProver::new_followed(
                         layer as u16,
                         key_sources,
                         value_sources,
                         secondary,
+                        schedule_follower,
                         target_builder,
                     )
                     .map_err(|_| FfnScheduleError::Public("invalid C6 provider cache source"))?;
@@ -1391,12 +1392,15 @@ pub(crate) fn verify_layers_thinned_scheduled_c6(
     )?;
     let ThinnedVerifierCacheMode::C6 {
         metrics,
-        append_source_layers,
+        mut append_source_layers,
         paired_targets,
         ..
-    } = cache_mode else {
+    } =
+        cache_mode
+    else {
         unreachable!("C6 scheduled verifier mode changed during execution")
     };
+    append_source_layers.sort_by_key(C6CacheFoldAppendSourceLayer::model_layer);
     Some((scheduled, metrics, append_source_layers, paired_targets))
 }
 
@@ -1607,15 +1611,15 @@ fn verify_layers_thinned_scheduled_impl(
                     )?
                 }
                 #[cfg(feature = "c6-trace")]
-                    ThinnedVerifierCacheMode::C6 {
-                        prefixes,
-                        secondary,
-                        schedule_follower,
-                        target_cursor,
-                        metrics,
-                        append_source_layers,
-                        paired_targets,
-                    } => {
+                ThinnedVerifierCacheMode::C6 {
+                    prefixes,
+                    secondary,
+                    schedule_follower,
+                    target_cursor,
+                    metrics,
+                    append_source_layers,
+                    paired_targets,
+                } => {
                     if !state.k_keys.is_empty() || !state.v_keys.is_empty() {
                         return None;
                     }
@@ -1644,11 +1648,12 @@ fn verify_layers_thinned_scheduled_impl(
                         value_sources.clone(),
                     )
                     .ok()?;
-                    let mut online = C6CacheFoldOnlineLayerVerifier::new(
+                    let mut online = C6CacheFoldOnlineLayerVerifier::new_followed(
                         layer as u16,
                         key_sources,
                         value_sources,
                         secondary,
+                        schedule_follower,
                         target_cursor,
                     )
                     .ok()?;

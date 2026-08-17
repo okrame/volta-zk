@@ -32,6 +32,8 @@ pub const C61_PUBLIC_ARGUMENT_MAGIC: [u8; 8] = *b"C6PA1\0\0\0";
 pub const C61_PUBLIC_ARGUMENT_VERSION: u16 = 1;
 pub const C61_JOINT_PUBLIC_ARGUMENT_MAGIC: [u8; 8] = *b"C6PA2\0\0\0";
 pub const C61_JOINT_PUBLIC_ARGUMENT_VERSION: u16 = 2;
+pub const C62_PUBLIC_ARGUMENT_MAGIC: [u8; 8] = *b"C62PA1\0\0";
+pub const C62_PUBLIC_ARGUMENT_VERSION: u16 = 1;
 pub const C61_PUBLIC_ARGUMENT_COMPONENTS: usize = 7;
 pub const C61_NATIVE_COMPONENTS: usize = 3;
 pub const C61_NATIVE_CHAINS_PER_COMPONENT: usize = 2;
@@ -39,6 +41,14 @@ pub const C61_NATIVE_CHAIN_COUNT: usize = C61_NATIVE_COMPONENTS * C61_NATIVE_CHA
 pub const C61_NATIVE_CHAIN_MAX_BYTES: usize = 1_500_000;
 pub const C61_PUBLIC_ARGUMENT_MAX_BYTES: usize = 9_500_000;
 pub const C61_ARITHMETIC_AND_OUTER_FRAMING_MAX_BYTES: usize = 500_000;
+pub const C62_MODEL_CHAIN_MAX_BYTES: usize = 1_172_652;
+pub const C62_EMBEDDING_CHAIN_MAX_BYTES: usize = 1_085_464;
+pub const C62_COMPILER_CHAIN_MAX_BYTES: usize = 2_346_532;
+pub const C62_PUBLIC_ARGUMENT_MAX_BYTES: usize = C61_PUBLIC_ARGUMENT_OUTER_FRAMING_BYTES
+    + 2 * C62_MODEL_CHAIN_MAX_BYTES
+    + 2 * C62_EMBEDDING_CHAIN_MAX_BYTES
+    + 2 * C62_COMPILER_CHAIN_MAX_BYTES
+    + C61_ARITHMETIC_FRAME_BYTES;
 
 pub const C61_ALPHA_STREAMS: usize = 2;
 pub const C61_ALPHA_POINT_DIMENSION: usize = 23;
@@ -1530,6 +1540,150 @@ impl C61JointPublicArgument {
     }
 }
 
+/// Wire-neutral C6.2 public argument.
+///
+/// Its strict semantic version rejects C6PA1 and C6PA2 inputs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C62PublicArgument {
+    statement_digest: [u8; 32],
+    native_chains: [Vec<u8>; C61_NATIVE_CHAIN_COUNT],
+    arithmetic: Vec<u8>,
+}
+
+impl C62PublicArgument {
+    pub fn new(
+        statement_digest: [u8; 32],
+        native_chains: [Vec<u8>; C61_NATIVE_CHAIN_COUNT],
+        arithmetic: Vec<u8>,
+    ) -> Result<Self> {
+        let argument = Self { statement_digest, native_chains, arithmetic };
+        argument.validate()?;
+        Ok(argument)
+    }
+
+    pub fn statement_digest(&self) -> [u8; 32] {
+        self.statement_digest
+    }
+
+    pub fn native_chains(&self) -> &[Vec<u8>; C61_NATIVE_CHAIN_COUNT] {
+        &self.native_chains
+    }
+
+    pub fn arithmetic(&self) -> &[u8] {
+        &self.arithmetic
+    }
+
+    pub fn encoded_len(&self) -> Result<usize> {
+        self.validate()?;
+        C61_PUBLIC_ARGUMENT_OUTER_FRAMING_BYTES
+            .checked_add(self.native_chains.iter().map(Vec::len).sum::<usize>())
+            .and_then(|length| length.checked_add(self.arithmetic.len()))
+            .ok_or_else(|| C61PublicCompressionError::new("C62PA1 length overflows"))
+    }
+
+    pub fn encode(&self) -> Result<Vec<u8>> {
+        let encoded_len = self.encoded_len()?;
+        let mut bytes = Vec::with_capacity(encoded_len);
+        bytes.extend_from_slice(&C62_PUBLIC_ARGUMENT_MAGIC);
+        bytes.extend_from_slice(&C62_PUBLIC_ARGUMENT_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&(C61_PUBLIC_ARGUMENT_COMPONENTS as u16).to_le_bytes());
+        bytes.extend_from_slice(&self.statement_digest);
+        for (id, payload) in C61NativeChainId::ordered().into_iter().zip(&self.native_chains) {
+            encode_c62_component_header(&mut bytes, id.kind_code(), id.repetition, payload)?;
+            bytes.extend_from_slice(payload);
+        }
+        encode_c62_component_header(&mut bytes, 4, 0, &self.arithmetic)?;
+        bytes.extend_from_slice(&self.arithmetic);
+        bytes.extend_from_slice(&domain_digest(b"volta/c6.2/public-argument/v1", &bytes));
+        debug_assert_eq!(bytes.len(), encoded_len);
+        Ok(bytes)
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self> {
+        if bytes.len() > C62_PUBLIC_ARGUMENT_MAX_BYTES {
+            return Err(C61PublicCompressionError::new("C62PA1 public argument exceeds its cap"));
+        }
+        let mut cursor = Cursor::new(bytes);
+        if cursor.take(8)? != C62_PUBLIC_ARGUMENT_MAGIC
+            || cursor.u16()? != C62_PUBLIC_ARGUMENT_VERSION
+            || usize::from(cursor.u16()?) != C61_PUBLIC_ARGUMENT_COMPONENTS
+        {
+            return Err(C61PublicCompressionError::new(
+                "C62PA1 header/version/component census mismatch",
+            ));
+        }
+        let statement_digest = cursor.digest()?;
+        let mut native_chains: [Vec<u8>; C61_NATIVE_CHAIN_COUNT] = array::from_fn(|_| Vec::new());
+        for (index, expected) in C61NativeChainId::ordered().into_iter().enumerate() {
+            let (kind, repetition, payload_len, digest) = decode_component_header(&mut cursor)?;
+            if kind != expected.kind_code()
+                || repetition != expected.repetition
+                || payload_len > c62_native_chain_max_bytes(expected.component)
+            {
+                return Err(C61PublicCompressionError::new(
+                    "C62PA1 native chain role or length mismatch",
+                ));
+            }
+            let payload = cursor.take(payload_len)?;
+            if digest != c62_component_digest(kind, repetition, payload) {
+                return Err(C61PublicCompressionError::new("C62PA1 native chain digest mismatch"));
+            }
+            native_chains[index] = payload.to_vec();
+        }
+        let (kind, repetition, arithmetic_len, arithmetic_digest) =
+            decode_component_header(&mut cursor)?;
+        if kind != 4 || repetition != 0 || arithmetic_len != C61_ARITHMETIC_FRAME_BYTES {
+            return Err(C61PublicCompressionError::new(
+                "C62PA1 arithmetic component header/length mismatch",
+            ));
+        }
+        let arithmetic = cursor.take(arithmetic_len)?.to_vec();
+        if arithmetic_digest != c62_component_digest(kind, repetition, &arithmetic) {
+            return Err(C61PublicCompressionError::new(
+                "C62PA1 arithmetic component digest mismatch",
+            ));
+        }
+        let digest_offset = cursor.position();
+        let digest = cursor.digest()?;
+        cursor.finish()?;
+        if digest != domain_digest(b"volta/c6.2/public-argument/v1", &bytes[..digest_offset]) {
+            return Err(C61PublicCompressionError::new("C62PA1 outer digest mismatch"));
+        }
+        let argument = Self::new(statement_digest, native_chains, arithmetic)?;
+        if argument.encode()?.as_slice() != bytes {
+            return Err(C61PublicCompressionError::new("noncanonical C62PA1 public argument"));
+        }
+        Ok(argument)
+    }
+
+    fn validate(&self) -> Result<()> {
+        if self.statement_digest == [0; 32] {
+            return Err(C61PublicCompressionError::new("C62PA1 has a zero statement digest"));
+        }
+        for (id, chain) in C61NativeChainId::ordered().into_iter().zip(&self.native_chains) {
+            if chain.is_empty() || chain.len() > c62_native_chain_max_bytes(id.component) {
+                return Err(C61PublicCompressionError::new(
+                    "C62PA1 native chain is empty or exceeds its exact cap",
+                ));
+            }
+        }
+        if self.arithmetic.len() != C61_ARITHMETIC_FRAME_BYTES {
+            return Err(C61PublicCompressionError::new(
+                "C62PA1 arithmetic payload length mismatch",
+            ));
+        }
+        C61ArithmeticFrame::decode(&self.arithmetic)?;
+        let encoded = C61_PUBLIC_ARGUMENT_OUTER_FRAMING_BYTES
+            .checked_add(self.native_chains.iter().map(Vec::len).sum::<usize>())
+            .and_then(|length| length.checked_add(self.arithmetic.len()))
+            .ok_or_else(|| C61PublicCompressionError::new("C62PA1 length overflows"))?;
+        if encoded > C62_PUBLIC_ARGUMENT_MAX_BYTES {
+            return Err(C61PublicCompressionError::new("C62PA1 public argument exceeds its cap"));
+        }
+        Ok(())
+    }
+}
+
 pub fn c61_joint_public_statement_digest(
     base_statement_digest: [u8; 32],
     native_target_profile_digest: [u8; 32],
@@ -1551,6 +1705,36 @@ pub fn c61_joint_public_statement_digest(
     hasher.update(&native_target_profile_digest);
     hasher.update(&body_schedule_digest);
     hasher.update(&compiler_functional_digest);
+    Ok(*hasher.finalize().as_bytes())
+}
+
+pub fn c62_public_statement_digest(
+    base_statement_digest: [u8; 32],
+    native_target_profile_digest: [u8; 32],
+    body_schedule_digest: [u8; 32],
+    compiler_functional_digest: [u8; 32],
+    response_binding_digest: [u8; 32],
+    root_binding_digest: [u8; 32],
+) -> Result<[u8; 32]> {
+    if [
+        base_statement_digest,
+        native_target_profile_digest,
+        body_schedule_digest,
+        compiler_functional_digest,
+        response_binding_digest,
+        root_binding_digest,
+    ]
+    .contains(&[0; 32])
+    {
+        return Err(C61PublicCompressionError::new("C62PA1 statement contains a zero digest"));
+    }
+    let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c6.2/public-statement/v1");
+    hasher.update(&base_statement_digest);
+    hasher.update(&native_target_profile_digest);
+    hasher.update(&body_schedule_digest);
+    hasher.update(&compiler_functional_digest);
+    hasher.update(&response_binding_digest);
+    hasher.update(&root_binding_digest);
     Ok(*hasher.finalize().as_bytes())
 }
 
@@ -1814,6 +1998,24 @@ fn component_digest(kind: u16, repetition: u8, payload: &[u8]) -> [u8; 32] {
     *hasher.finalize().as_bytes()
 }
 
+fn c62_component_digest(kind: u16, repetition: u8, payload: &[u8]) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"volta/c6.2/component/v1");
+    hasher.update(&kind.to_le_bytes());
+    hasher.update(&[repetition]);
+    hasher.update(&(payload.len() as u64).to_le_bytes());
+    hasher.update(payload);
+    *hasher.finalize().as_bytes()
+}
+
+fn c62_native_chain_max_bytes(component: C61NativeComponent) -> usize {
+    match component {
+        C61NativeComponent::Model => C62_MODEL_CHAIN_MAX_BYTES,
+        C61NativeComponent::Embedding => C62_EMBEDDING_CHAIN_MAX_BYTES,
+        C61NativeComponent::Compiler => C62_COMPILER_CHAIN_MAX_BYTES,
+    }
+}
+
 fn encode_component_header(
     bytes: &mut Vec<u8>,
     kind: u16,
@@ -1829,6 +2031,24 @@ fn encode_component_header(
             .to_le_bytes(),
     );
     bytes.extend_from_slice(&component_digest(kind, repetition, payload));
+    Ok(())
+}
+
+fn encode_c62_component_header(
+    bytes: &mut Vec<u8>,
+    kind: u16,
+    repetition: u8,
+    payload: &[u8],
+) -> Result<()> {
+    bytes.extend_from_slice(&kind.to_le_bytes());
+    bytes.push(repetition);
+    bytes.push(0);
+    bytes.extend_from_slice(
+        &u32::try_from(payload.len())
+            .map_err(|_| C61PublicCompressionError::new("C62PA1 component exceeds u32"))?
+            .to_le_bytes(),
+    );
+    bytes.extend_from_slice(&c62_component_digest(kind, repetition, payload));
     Ok(())
 }
 
@@ -2440,6 +2660,59 @@ mod tests {
             )
             .unwrap(),
         );
+    }
+
+    #[test]
+    fn c62_pa1_codec_is_wire_neutral_and_cross_version_strict() {
+        let (_, _, _, _, ordinary, _) = honest_fixture([0xC1; 32]);
+        let statement_digest = c62_public_statement_digest(
+            ordinary.statement_digest(),
+            [0xC2; 32],
+            [0xC3; 32],
+            [0xC4; 32],
+            [0xC5; 32],
+            [0xC6; 32],
+        )
+        .unwrap();
+        let c62 = C62PublicArgument::new(
+            statement_digest,
+            ordinary.native_chains().clone(),
+            ordinary.arithmetic().to_vec(),
+        )
+        .unwrap();
+        let encoded = c62.encode().unwrap();
+        assert_eq!(encoded.len(), ordinary.encoded_len().unwrap());
+        assert_eq!(C62_PUBLIC_ARGUMENT_MAX_BYTES, 9_210_864);
+        assert_eq!(C62PublicArgument::decode(&encoded).unwrap(), c62);
+        assert!(C61PublicArgument::decode(&encoded).is_err());
+        assert!(C61JointPublicArgument::decode(&encoded).is_err());
+
+        let joint = C61JointPublicArgument::new(
+            statement_digest,
+            ordinary.native_chains().clone(),
+            ordinary.arithmetic().to_vec(),
+        )
+        .unwrap()
+        .encode()
+        .unwrap();
+        assert!(C62PublicArgument::decode(&joint).is_err());
+        assert!(c62_public_statement_digest([0; 32], [1; 32], [2; 32], [3; 32], [4; 32], [5; 32],)
+            .is_err());
+
+        let exact_chains = C61NativeChainId::ordered()
+            .map(|id| vec![id.kind_code() as u8; c62_native_chain_max_bytes(id.component)]);
+        let exact =
+            C62PublicArgument::new(statement_digest, exact_chains, ordinary.arithmetic().to_vec())
+                .unwrap();
+        assert_eq!(exact.encoded_len().unwrap(), C62_PUBLIC_ARGUMENT_MAX_BYTES);
+        let mut oversized = ordinary.native_chains().clone();
+        oversized[4] = vec![0; C62_COMPILER_CHAIN_MAX_BYTES + 1];
+        assert!(C62PublicArgument::new(
+            statement_digest,
+            oversized,
+            ordinary.arithmetic().to_vec(),
+        )
+        .is_err());
     }
 
     #[test]

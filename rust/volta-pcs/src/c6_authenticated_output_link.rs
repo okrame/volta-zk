@@ -42,9 +42,9 @@ use crate::c6_wrapper_pcs::{
     seal_authenticated_link_c6_wrapper_claims, verify_c6_wrapper_pcs_assembled,
     C6AssembledWrapperClaims, C6CommittedWrapperCohort, C6FixedWrapperCommitments,
     C6ProductionWrapperPcsMetrics, C6WrapperDigest, C6WrapperOpeningClaim, C6WrapperOracleKind,
-    C6WrapperPcsError, C6WrapperPcsProof, C6_DELTA_RESIDUAL_COHORT_ID, C6_HIDDEN_U_EMBED_COHORT_ID,
+    C6WrapperPcsError, C6WrapperPcsProof, C61_NATIVE_WRAPPER_ACTIVE_SLOTS,
+    C61_NATIVE_WRAPPER_TWO_CHAIN_BYTES, C6_DELTA_RESIDUAL_COHORT_ID, C6_HIDDEN_U_EMBED_COHORT_ID,
     C6_HIDDEN_U_WEIGHTS_COHORT_ID, C6_PREDECESSOR_CACHE_COHORT_ID, C6_SUCCESSOR_CACHE_COHORT_ID,
-    C61_NATIVE_WRAPPER_ACTIVE_SLOTS, C61_NATIVE_WRAPPER_TWO_CHAIN_BYTES,
     C6_WRAPPER_ACTIVE_SLOTS, C6_WRAPPER_AUXILIARY_COHORT_ID, C6_WRAPPER_REPETITIONS,
     C6_WRAPPER_TWO_CHAIN_BYTES,
 };
@@ -952,8 +952,7 @@ fn validate_cache_pending_owner(cohort_id: u32, slot: u16, point: &[Fp2]) -> Res
 fn expected_slot_dimensions(fixed: &C6FixedWrapperCommitments) -> Result<BTreeMap<SlotKey, usize>> {
     let (relations, _, cohorts) = link_geometry(fixed)?;
     let (expected_relations, expected_cohorts) = expected_link_census(fixed);
-    if relations != expected_relations || cohorts != expected_cohorts
-    {
+    if relations != expected_relations || cohorts != expected_cohorts {
         return Err(C6AuthenticatedOutputLinkError::new(
             "C6 link requires the exact typed-profile slot census",
         ));
@@ -2584,9 +2583,7 @@ fn prepare_c6_authenticated_output_link_persisted_cuda(
     backend: &mut Backend,
 ) -> Result<C6PersistedLinkPreparation> {
     let (relations, rounds, cohort_count) = link_geometry(fixed)?;
-    if backend.kind() != BackendKind::CudaResident
-        || relations != expected_link_census(fixed).0
-    {
+    if backend.kind() != BackendKind::CudaResident || relations != expected_link_census(fixed).0 {
         return Err(C6AuthenticatedOutputLinkError::new(
             "C6 CUDA persisted link backend/relation census mismatch",
         ));
@@ -3956,9 +3953,7 @@ fn assemble_new_point_claims<D: DescriptorView>(
     if entries.len() != rhos.len() {
         return Err(C6AuthenticatedOutputLinkError::new("C6 link entry/weight census mismatch"));
     }
-    if supplied_aggregates
-        .is_some_and(|aggregates| aggregates.len() != fixed.commitments().len())
-    {
+    if supplied_aggregates.is_some_and(|aggregates| aggregates.len() != fixed.commitments().len()) {
         return Err(C6AuthenticatedOutputLinkError::new(
             "C6 link supplied aggregate census mismatch",
         ));
@@ -4088,19 +4083,14 @@ fn expected_link_census(fixed: &C6FixedWrapperCommitments) -> (usize, usize) {
             C61_NATIVE_AUTHENTICATED_OUTPUT_LINK_COHORTS,
         )
     } else {
-        (
-            C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_RELATIONS,
-            C6_AUTHENTICATED_OUTPUT_LINK_COHORTS,
-        )
+        (C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_RELATIONS, C6_AUTHENTICATED_OUTPUT_LINK_COHORTS)
     }
 }
 
 fn link_aggregate_bytes(cohorts: usize) -> Result<u64> {
     match cohorts {
         C6_AUTHENTICATED_OUTPUT_LINK_COHORTS => Ok(LINK_AGGREGATE_BYTES),
-        C61_NATIVE_AUTHENTICATED_OUTPUT_LINK_COHORTS => {
-            Ok(C61_NATIVE_LINK_AGGREGATE_BYTES)
-        }
+        C61_NATIVE_AUTHENTICATED_OUTPUT_LINK_COHORTS => Ok(C61_NATIVE_LINK_AGGREGATE_BYTES),
         _ => Err(C6AuthenticatedOutputLinkError::new(
             "C6 link aggregate cohort census is unregistered",
         )),
@@ -4135,7 +4125,10 @@ fn validate_proof_shape(
 
 fn expected_link_census_from_geometry(relations: usize, cohorts: usize) -> (usize, usize) {
     match (relations, cohorts) {
-        (C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_RELATIONS, C6_AUTHENTICATED_OUTPUT_LINK_COHORTS)
+        (
+            C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_RELATIONS,
+            C6_AUTHENTICATED_OUTPUT_LINK_COHORTS,
+        )
         | (
             C61_NATIVE_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_RELATIONS,
             C61_NATIVE_AUTHENTICATED_OUTPUT_LINK_COHORTS,
@@ -4418,10 +4411,9 @@ mod tests {
 
     #[test]
     fn c61_native_link_codec_is_exactly_56_plus_one_without_hidden_builder_api() {
-        let cache_descriptors = C6CacheStateDescriptors::from_slots(std::array::from_fn(|index| {
-            [index as u8 + 1; 32]
-        }))
-        .unwrap();
+        let cache_descriptors =
+            C6CacheStateDescriptors::from_slots(std::array::from_fn(|index| [index as u8 + 1; 32]))
+                .unwrap();
         let specs = crate::c6_wrapper_pcs::production_c61_native_wrapper_specs();
         let commitments = specs
             .into_iter()
@@ -4429,13 +4421,8 @@ mod tests {
             .map(|(index, spec)| {
                 let root = [0x41 + index as u8; 32];
                 if index < 2 {
-                    C6WrapperCommitment::from_cache_root(
-                        [0x61; 32],
-                        spec,
-                        root,
-                        &cache_descriptors,
-                    )
-                    .unwrap()
+                    C6WrapperCommitment::from_cache_root([0x61; 32], spec, root, &cache_descriptors)
+                        .unwrap()
                 } else {
                     C6WrapperCommitment::from_root([0x61; 32], spec, root).unwrap()
                 }
@@ -4453,10 +4440,7 @@ mod tests {
         assert_eq!(C61_NATIVE_NBR2_AUTHENTICATED_OUTPUT_LINK_RELATIONS, 57);
         assert!(C6PendingSlotRegistryProverBuilder::new(&fixed).is_err());
         assert!(C6PendingSlotRegistryVerifierBuilder::new(&fixed).is_err());
-        assert!(C61NativePendingSlotRegistryProverBuilder::new(&fixed)
-            .unwrap()
-            .finish()
-            .is_err());
+        assert!(C61NativePendingSlotRegistryProverBuilder::new(&fixed).unwrap().finish().is_err());
         assert!(C61NativePendingSlotRegistryVerifierBuilder::new(&fixed)
             .unwrap()
             .finish()
@@ -4477,10 +4461,8 @@ mod tests {
                 })
                 .collect(),
             wrapper_pcs,
-            terminal_tags: [
-                [Fp2::ZERO; C6_AUTHENTICATED_OUTPUT_LINK_TAPES];
-                C6_WRAPPER_REPETITIONS
-            ],
+            terminal_tags: [[Fp2::ZERO; C6_AUTHENTICATED_OUTPUT_LINK_TAPES];
+                C6_WRAPPER_REPETITIONS],
         };
         let encoded = proof.canonical_bytes(&fixed).unwrap();
         assert_eq!(encoded.len() as u64, C61_NATIVE_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_BYTES);

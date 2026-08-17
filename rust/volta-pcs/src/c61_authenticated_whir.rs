@@ -230,6 +230,191 @@ pub struct C61JointNativeVerifierTerm {
     pub cohort_weight: Fp2,
 }
 
+pub struct C62SecondaryResponseProverTerm {
+    pub native: C61JointNativeProverTerm,
+    pub response_target: ProverAuthed,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C62SecondaryResponseVerifierTerm {
+    pub native: C61JointNativeVerifierTerm,
+    pub response_target: VerifierKey,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C62ResponseCompilerBinding {
+    pub schedule_digest: [u8; 32],
+    pub response_binding_digest: [u8; 32],
+    pub functional_digest: [u8; 32],
+    pub nbr2_statement_digest: [u8; 32],
+    pub root_binding_digest: [u8; 32],
+    pub compiler_correction: Fp2,
+}
+
+impl C62ResponseCompilerBinding {
+    pub fn validate(self) -> Result<()> {
+        if [
+            self.schedule_digest,
+            self.response_binding_digest,
+            self.functional_digest,
+            self.nbr2_statement_digest,
+            self.root_binding_digest,
+        ]
+        .contains(&[0; 32])
+        {
+            return Err(C61AuthenticatedWhirError::new("C62JVR1 contains an empty public binding"));
+        }
+        Ok(())
+    }
+
+    pub fn encode(self) -> [u8; 176] {
+        let mut encoded = [0u8; 176];
+        for (index, digest) in [
+            self.schedule_digest,
+            self.response_binding_digest,
+            self.functional_digest,
+            self.nbr2_statement_digest,
+            self.root_binding_digest,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            encoded[index * 32..(index + 1) * 32].copy_from_slice(&digest);
+        }
+        encoded[160..168].copy_from_slice(&self.compiler_correction.c0.value().to_le_bytes());
+        encoded[168..].copy_from_slice(&self.compiler_correction.c1.value().to_le_bytes());
+        encoded
+    }
+
+    pub fn draw_eta(self, transcript: &mut Transcript) -> Result<Fp2> {
+        self.validate()?;
+        transcript.absorb_public_message("c62_response_compiler_binding", &self.encode());
+        Ok(transcript.challenge_fp2())
+    }
+}
+
+pub struct C62ResponseCompilerProverPending {
+    correction: Fp2,
+    eta: Fp2,
+    residual: ProverAuthed,
+}
+
+pub struct C62ResponseCompilerVerifierPending {
+    eta: Fp2,
+    residual: VerifierKey,
+    zero_open_tag: Fp2,
+}
+
+impl C62ResponseCompilerProverPending {
+    pub fn eta(&self) -> Fp2 {
+        self.eta
+    }
+
+    pub fn finish(self, transcript: &mut Transcript) -> Result<C61JointNativeBridgeFrame> {
+        transcript.append_fp2s("zero_open_tag", &[self.residual.m]);
+        transcript.canonical_binding_digest().map_err(C61AuthenticatedWhirError::new)?;
+        Ok(C61JointNativeBridgeFrame {
+            correction: self.correction,
+            zero_open_tag: self.residual.m,
+        })
+    }
+}
+
+impl C62ResponseCompilerVerifierPending {
+    pub fn eta(&self) -> Fp2 {
+        self.eta
+    }
+
+    pub fn finish(self, transcript: &mut Transcript) -> Result<()> {
+        transcript.append_fp2s("zero_open_tag", &[self.zero_open_tag]);
+        transcript.canonical_binding_digest().map_err(C61AuthenticatedWhirError::new)?;
+        if !zero_open_verify(self.residual, self.zero_open_tag) {
+            return Err(C61AuthenticatedWhirError::new(
+                "C62JVR1 response/compiler ZeroOpen failed",
+            ));
+        }
+        Ok(())
+    }
+}
+
+pub fn prepare_c62_response_compiler_relation_prover(
+    terms: Vec<C62SecondaryResponseProverTerm>,
+    compiler_base_fold: ProverAuthed,
+    binding: C62ResponseCompilerBinding,
+    transcript: &mut Transcript,
+) -> Result<C62ResponseCompilerProverPending> {
+    if terms.len() < 2 || !transcript.is_fiat_shamir() {
+        return Err(C61AuthenticatedWhirError::new(
+            "C62JVR1 prover requires two Fiat--Shamir-bound secondary cohorts",
+        ));
+    }
+    let mut native_fold = ProverAuthed::ZERO;
+    let mut response_fold = ProverAuthed::ZERO;
+    for term in terms {
+        let (public, inverse) = c61_joint_native_normalization(
+            term.native.combined,
+            term.native.shifted_masked_claim,
+            term.native.gamma,
+            term.native.affine,
+        )?;
+        let normalized = ProverAuthed::from_public(public)
+            .add(term.native.prepared.authenticated.scale(inverse))
+            .scale(term.native.cohort_weight);
+        native_fold = native_fold.add(normalized);
+        response_fold = response_fold.add(term.response_target.scale(term.native.cohort_weight));
+    }
+    let eta = binding.draw_eta(transcript)?;
+    let compiler_fold =
+        compiler_base_fold.add(ProverAuthed::from_public(binding.compiler_correction));
+    let residual = native_fold.sub(response_fold).add(native_fold.sub(compiler_fold).scale(eta));
+    if residual.x != Fp2::ZERO {
+        return Err(C61AuthenticatedWhirError::new(
+            "C62JVR1 honest response/compiler residual is nonzero",
+        ));
+    }
+    Ok(C62ResponseCompilerProverPending { correction: binding.compiler_correction, eta, residual })
+}
+
+pub fn prepare_c62_response_compiler_relation_verifier(
+    terms: &[C62SecondaryResponseVerifierTerm],
+    compiler_base_fold: VerifierKey,
+    expected_binding: C62ResponseCompilerBinding,
+    delta: Fp2,
+    frame: C61JointNativeBridgeFrame,
+    transcript: &mut Transcript,
+) -> Result<C62ResponseCompilerVerifierPending> {
+    if terms.len() < 2 || !transcript.is_fiat_shamir() {
+        return Err(C61AuthenticatedWhirError::new(
+            "C62JVR1 verifier requires two Fiat--Shamir-bound secondary cohorts",
+        ));
+    }
+    if frame.correction != expected_binding.compiler_correction {
+        return Err(C61AuthenticatedWhirError::new(
+            "C62JVR1 compiler correction differs from its typed binding",
+        ));
+    }
+    let mut native_fold = VerifierKey::ZERO;
+    let mut response_fold = VerifierKey::ZERO;
+    for term in terms {
+        let (public, inverse) = c61_joint_native_normalization(
+            term.native.combined,
+            term.native.shifted_masked_claim,
+            term.native.gamma,
+            term.native.affine,
+        )?;
+        let normalized = VerifierKey::from_public(public, delta)
+            .add(term.native.mask_key.scale(inverse))
+            .scale(term.native.cohort_weight);
+        native_fold = native_fold.add(normalized);
+        response_fold = response_fold.add(term.response_target.scale(term.native.cohort_weight));
+    }
+    let eta = expected_binding.draw_eta(transcript)?;
+    let compiler_fold = compiler_base_fold
+        .add(VerifierKey::from_public(expected_binding.compiler_correction, delta));
+    let residual = native_fold.sub(response_fold).add(native_fold.sub(compiler_fold).scale(eta));
+    Ok(C62ResponseCompilerVerifierPending { eta, residual, zero_open_tag: frame.zero_open_tag })
+}
+
 pub(crate) struct C61JointNativeVerifierBridgePending {
     residual: VerifierKey,
     zero_open_tag: Fp2,
@@ -911,6 +1096,135 @@ mod tests {
             C61JointNativeBridgeFrame { correction: Fp2::ZERO, zero_open_tag: Fp2::ZERO },
             &mut Transcript::new([0xD3; 32]),
         )
+        .is_err());
+    }
+
+    #[test]
+    fn c62_relation_binds_distinct_secondary_response_and_compiler_values() {
+        let delta = f(1_601);
+        let gamma = [f(1_603), f(1_607)];
+        let affine = [
+            C61AuthenticatedWhirAffineClaim { coefficient: f(1_609), constant: f(1_613) },
+            C61AuthenticatedWhirAffineClaim { coefficient: f(1_617), constant: f(1_619) },
+        ];
+        let weights = [Fp2::ONE, f(1_621)];
+        let ids = [
+            C61NativeChainId { component: C61NativeComponent::Model, repetition: 1 },
+            C61NativeChainId { component: C61NativeComponent::Embedding, repetition: 1 },
+        ];
+        let ranges = [range(0), range(1)];
+        let mut prover_correlations = CorrelationStream::new(PCG_SEEDS[1]);
+        let mut prepared = Vec::new();
+        let mut response_targets = Vec::new();
+        let mut response_keys = Vec::new();
+        let mut combined = [Fp2::ZERO; 2];
+        let mut shifted = [Fp2::ZERO; 2];
+        for index in 0..2 {
+            let mask = prepare_c61_authenticated_whir_mask(
+                ids[index],
+                ranges[index],
+                &mut prover_correlations,
+            )
+            .unwrap();
+            let (response_target, response_key) =
+                target(f(1_701 + index as u64), f(1_801 + index as u64), delta);
+            let masked_claim = f(1_901 + index as u64);
+            shifted[index] = mask.shifted_masked_claim(masked_claim);
+            combined[index] = shifted[index]
+                + gamma[index] * affine[index].evaluate(response_target.x)
+                - mask.value();
+            prepared.push(mask);
+            response_targets.push(response_target);
+            response_keys.push(response_key);
+        }
+        let compiler_fold =
+            response_targets[0].scale(weights[0]).add(response_targets[1].scale(weights[1]));
+        let compiler_key =
+            response_keys[0].scale(weights[0]).add(response_keys[1].scale(weights[1]));
+        let correction = f(1_999);
+        let compiler_base = compiler_fold.sub(ProverAuthed::from_public(correction));
+        let compiler_base_key = compiler_key.sub(VerifierKey::from_public(correction, delta));
+        let prover_terms = prepared
+            .into_iter()
+            .enumerate()
+            .map(|(index, prepared)| C62SecondaryResponseProverTerm {
+                native: C61JointNativeProverTerm {
+                    prepared,
+                    combined: combined[index],
+                    shifted_masked_claim: shifted[index],
+                    gamma: gamma[index],
+                    affine: affine[index],
+                    cohort_weight: weights[index],
+                },
+                response_target: response_targets[index],
+            })
+            .collect();
+        let mut verifier_context = VerifierCtx::new(PCG_SEEDS[1], delta);
+        let verifier_terms: Vec<_> = (0..2)
+            .map(|index| {
+                let domain = ranges[index].correlation_domain(ids[index]).unwrap();
+                C62SecondaryResponseVerifierTerm {
+                    native: C61JointNativeVerifierTerm {
+                        mask_key: verifier_context.expand_full_verifier_keys(domain, 1)[0],
+                        combined: combined[index],
+                        shifted_masked_claim: shifted[index],
+                        gamma: gamma[index],
+                        affine: affine[index],
+                        cohort_weight: weights[index],
+                    },
+                    response_target: response_keys[index],
+                }
+            })
+            .collect();
+        let binding = C62ResponseCompilerBinding {
+            schedule_digest: [0xE1; 32],
+            response_binding_digest: [0xE2; 32],
+            functional_digest: [0xE3; 32],
+            nbr2_statement_digest: [0xE4; 32],
+            root_binding_digest: [0xE5; 32],
+            compiler_correction: correction,
+        };
+        let mut prover_transcript = Transcript::new_fiat_shamir([0xE6; 32]).unwrap();
+        let prover_pending = prepare_c62_response_compiler_relation_prover(
+            prover_terms,
+            compiler_base,
+            binding,
+            &mut prover_transcript,
+        )
+        .unwrap();
+        let prover_eta = prover_pending.eta();
+        let frame = prover_pending.finish(&mut prover_transcript).unwrap();
+        let mut verifier_transcript = Transcript::new_fiat_shamir([0xE6; 32]).unwrap();
+        let verifier_pending = prepare_c62_response_compiler_relation_verifier(
+            &verifier_terms,
+            compiler_base_key,
+            binding,
+            delta,
+            frame,
+            &mut verifier_transcript,
+        )
+        .unwrap();
+        assert_eq!(prover_eta, verifier_pending.eta());
+        verifier_pending.finish(&mut verifier_transcript).unwrap();
+        assert_eq!(
+            prover_transcript.canonical_binding_digest().unwrap(),
+            verifier_transcript.canonical_binding_digest().unwrap(),
+        );
+
+        let mut divergent = verifier_terms.clone();
+        divergent[0].response_target =
+            divergent[0].response_target.add(VerifierKey::from_public(Fp2::ONE, delta));
+        let mut divergent_transcript = Transcript::new_fiat_shamir([0xE6; 32]).unwrap();
+        assert!(prepare_c62_response_compiler_relation_verifier(
+            &divergent,
+            compiler_base_key,
+            binding,
+            delta,
+            frame,
+            &mut divergent_transcript,
+        )
+        .unwrap()
+        .finish(&mut divergent_transcript)
         .is_err());
     }
 

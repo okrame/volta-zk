@@ -13,7 +13,7 @@
 use std::fmt;
 use volta_mac::{
     C6FullfieldWitnessAudit, C6SubfieldWitnessAudit, CorrScheduleAudit, CorrScheduleKind,
-    CorrScheduleRole, CorrelationStream, VerifierCtx,
+    CorrScheduleRole, CorrelationStream, FullCorr, VerifierCtx, VerifierKey,
 };
 
 pub type C6SourceDigest = [u8; 32];
@@ -95,6 +95,54 @@ impl C6SourceScheduleProverFollower {
             C6SourceError::new("C6 primary provider stream lacks its schedule audit")
         })?;
         self.sync_audit(&schedule, secondary)
+    }
+
+    pub fn mirror_next_direct_full(
+        &mut self,
+        primary: &CorrelationStream,
+        secondary: &mut CorrelationStream,
+        domain: u64,
+        count: usize,
+    ) -> Result<Vec<FullCorr>, C6SourceError> {
+        let schedule = primary.schedule_audit().ok_or_else(|| {
+            C6SourceError::new("C6 primary provider stream lacks its schedule audit")
+        })?;
+        if schedule.draws.len() != self.next_draw + 1 {
+            self.poisoned = true;
+            return Err(C6SourceError::new(
+                "C6 aggregate target is not the next primary schedule draw",
+            ));
+        }
+        let draw = &schedule.draws[self.next_draw];
+        if draw.kind != CorrScheduleKind::FullField
+            || draw.role != CorrScheduleRole::DirectCorrection
+            || draw.domain != domain
+            || usize::try_from(draw.count).ok() != Some(count)
+        {
+            self.poisoned = true;
+            return Err(C6SourceError::new(
+                "C6 aggregate target differs from the primary schedule draw",
+            ));
+        }
+        if let Err(error) =
+            validate_follower_prefix(self.next_draw, &schedule, secondary.schedule_audit())
+        {
+            self.poisoned = true;
+            return Err(error);
+        }
+        let correlations = secondary.draw_fulls(domain, count);
+        let mirrored = secondary.schedule_audit().ok_or_else(|| {
+            self.poisoned = true;
+            C6SourceError::new("C6 secondary provider stream lacks its schedule audit")
+        })?;
+        if mirrored != schedule {
+            self.poisoned = true;
+            return Err(C6SourceError::new(
+                "C6 aggregate target schedule differs across provider tapes",
+            ));
+        }
+        self.next_draw = schedule.draws.len();
+        Ok(correlations)
     }
 
     pub fn sync_audit(
@@ -256,6 +304,54 @@ impl C6SourceScheduleVerifierFollower {
             C6SourceError::new("C6 primary verifier stream lacks its schedule audit")
         })?;
         self.sync_audit(&schedule, secondary)
+    }
+
+    pub fn mirror_next_direct_full(
+        &mut self,
+        primary: &VerifierCtx,
+        secondary: &mut VerifierCtx,
+        domain: u64,
+        count: usize,
+    ) -> Result<Vec<VerifierKey>, C6SourceError> {
+        let schedule = primary.schedule_audit().ok_or_else(|| {
+            C6SourceError::new("C6 primary verifier stream lacks its schedule audit")
+        })?;
+        if schedule.draws.len() != self.next_draw + 1 {
+            self.poisoned = true;
+            return Err(C6SourceError::new(
+                "C6 verifier aggregate target is not the next primary schedule draw",
+            ));
+        }
+        let draw = &schedule.draws[self.next_draw];
+        if draw.kind != CorrScheduleKind::FullField
+            || draw.role != CorrScheduleRole::DirectCorrection
+            || draw.domain != domain
+            || usize::try_from(draw.count).ok() != Some(count)
+        {
+            self.poisoned = true;
+            return Err(C6SourceError::new(
+                "C6 verifier aggregate target differs from the primary schedule draw",
+            ));
+        }
+        if let Err(error) =
+            validate_follower_prefix(self.next_draw, &schedule, secondary.schedule_audit())
+        {
+            self.poisoned = true;
+            return Err(error);
+        }
+        let keys = secondary.expand_full_verifier_keys(domain, count);
+        let mirrored = secondary.schedule_audit().ok_or_else(|| {
+            self.poisoned = true;
+            C6SourceError::new("C6 secondary verifier stream lacks its schedule audit")
+        })?;
+        if mirrored != schedule {
+            self.poisoned = true;
+            return Err(C6SourceError::new(
+                "C6 aggregate target schedule differs across verifier tapes",
+            ));
+        }
+        self.next_draw = schedule.draws.len();
+        Ok(keys)
     }
 
     pub fn sync_audit(

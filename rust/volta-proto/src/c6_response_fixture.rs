@@ -26,14 +26,13 @@ use volta_mac::{
 use crate::block_proof::layer_dom_base;
 use crate::c6::C6PairedDeltaResidual;
 use crate::c6_cache_fold::{
-    begin_c6_cache_fold_trace, C6CacheFoldAppendSourcePlan, C6CacheFoldKind, C6CacheFoldParty,
-    C6CacheFoldPairedVerifierTargets,
-    C6CacheFoldTargetCorrectionFrame, C6CacheFoldTargetFixedCorrections,
-    C6CacheFoldTargetInlineProver, C6CacheFoldTargetInlineVerifier, C6CacheFoldTargetProverOwner,
+    begin_c6_cache_fold_trace, C6CacheFoldAppendSourcePlan, C6CacheFoldKind,
+    C6CacheFoldPairedVerifierTargets, C6CacheFoldParty, C6CacheFoldTargetCorrectionFrame,
+    C6CacheFoldTargetFixedCorrections, C6CacheFoldTargetInlineProver,
+    C6CacheFoldTargetInlineVerifier, C6CacheFoldTargetProverOwner,
     C6CacheFoldTargetPublicCorrectionFrame, C6CacheFoldTargetPublicSchedule,
     C6CacheFoldTraceSnapshot, C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES,
 };
-use crate::c6_census::{C6_T1_TOTAL_PRODUCT_TRIPLES, C6_T1_ZERO_CLOSURES};
 use crate::c6_production_pcg::{C6ProductionPairedPcgAttempt, C6ProductionPairedSourceWitness};
 use crate::c6_residual::{
     C6CompiledLinearResidual, C6CompiledNativeTargetFunctional,
@@ -50,8 +49,10 @@ use crate::c6_source::{
 };
 use crate::logup::Doms;
 use crate::model_proof::{
-    prove_response_c6_cache_inline, prove_response_private_logits_c6_cache_inline,
-    verify_response_c6_cache_inline_from_profile,
+    prove_response_c6_cache_inline,
+    prove_response_continuation_private_logits_c6_cache_inline,
+    prove_response_private_logits_c6_cache_inline, verify_response_c6_cache_inline_from_profile,
+    verify_response_continuation_private_logits_c6_cache_inline_from_profile,
     verify_response_private_logits_c6_cache_inline_from_profile, C6GrandResidualProverRoots,
     C6GrandResidualVerifierRoots, ChunkPub, ChunkRef, ModelOut, ModelOutV, ModelProof,
     PrivateChunkPub,
@@ -380,6 +381,10 @@ impl C6T1ProductionResponseProviderPending {
         self.retained.encode().map_err(|error| error.to_string())
     }
 
+    pub fn encoded_c62_retained_response(&self) -> Result<Vec<u8>, String> {
+        self.retained.encode_c62().map_err(|error| error.to_string())
+    }
+
     pub fn cache_target_frame_bytes(&self) -> Result<Vec<u8>, String> {
         self.cache_target_frame.encode().map_err(|error| error.to_string())
     }
@@ -647,6 +652,11 @@ impl C6T1ProductionResponseOwner {
             .map_err(|error| error.to_string())
     }
 
+    pub fn encoded_c62_retained_response(&self) -> Result<Vec<u8>, String> {
+        crate::C6RetainedResponseProof::encode_c62_parts(&self.model_proof, &self.product_proof)
+            .map_err(|error| error.to_string())
+    }
+
     pub fn product_challenge(&self) -> Fp2 {
         self.product_challenge
     }
@@ -815,14 +825,14 @@ pub fn prepare_c6_t1_production_residual_owner(
 
 /// Continue a strict disk response replay into the same installed residual
 /// manifest and zero-challenge schedule as the live provider. The challenge
-/// comes only from the response-tape replay endpoint.
+/// comes from either the C6.1 replay endpoint or the C6.2 Fiat--Shamir state.
 pub fn prepare_c6_t1_disk_residual_owner(
     response: C6T1ProductionResponseVerifierReplay,
     transcript: &mut Transcript,
 ) -> Result<C6T1DiskResidualOwner, C6ResidualError> {
-    if !transcript.is_interactive() {
+    if !transcript.is_interactive() && !transcript.is_fiat_shamir() {
         return Err(C6ResidualError::new(
-            "C6ICT4 disk residual requires the client-private replay transcript",
+            "disk residual requires a C6.1 replay or C6.2 Fiat--Shamir transcript",
         ));
     }
     let zero_challenge = transcript.challenge_fp2();
@@ -854,13 +864,20 @@ pub fn prepare_c6_t1_disk_residual_owner(
     Ok(C6T1DiskResidualOwner { response, manifest, retained, verifier_linear })
 }
 
-/// Re-run only the designated-verifier half of the frozen T1 response from
-/// canonical client inputs. The correction frame is decoded before its
-/// omitted runtime identity is reconstructed and bound by the live trace.
+#[derive(Clone, Copy)]
+enum C6ProductionResponseVerifierProfile {
+    Genesis,
+    Continuation { base_t0: usize },
+}
+
+/// Re-run only the designated-verifier half of one response from canonical
+/// client inputs. The correction frame is decoded before its omitted runtime
+/// identity is reconstructed and bound by the live trace.
 #[allow(clippy::too_many_arguments)]
-pub fn replay_c6_t1_production_response_verifier(
+fn replay_c6_production_response_verifier(
     model: &Gpt2VerifierModel,
     sequence: &[u32],
+    profile: C6ProductionResponseVerifierProfile,
     statement_digest: [u8; 32],
     installed_plan: C6InstalledOperationPlan,
     extraction: C6DecodedInstanceExtractionPlan,
@@ -869,13 +886,25 @@ pub fn replay_c6_t1_production_response_verifier(
     contexts: &mut [VerifierCtx; 2],
     transcript: &mut Transcript,
 ) -> Result<C6T1ProductionResponseVerifierReplay, String> {
+    let valid_profile = match profile {
+        C6ProductionResponseVerifierProfile::Genesis => sequence.len() == 150,
+        C6ProductionResponseVerifierProfile::Continuation { base_t0 } => {
+            let old_len = base_t0.checked_add(1);
+            old_len.is_some_and(|old_len| {
+                old_len >= 150
+                    && old_len <= 900
+                    && old_len % 50 == 0
+                    && sequence.len() == old_len + 50
+            })
+        }
+    };
     if statement_digest == [0; 32]
-        || sequence.len() != 150
+        || !valid_profile
         || extraction.role() != C6InstanceExtractionRole::Verifier
         || extraction.topology_digest() != installed_plan.topology().topology_digest
         || contexts.iter().any(|context| !context.uses_pooled_pcg())
     {
-        return Err("C6.1 disk verifier T1 response profile/PCG mismatch".to_owned());
+        return Err("C6.2 disk verifier response profile/PCG mismatch".to_owned());
     }
     let public_schedule = C6CacheFoldTargetPublicSchedule::new(
         (0..2 * L)
@@ -898,7 +927,6 @@ pub fn replay_c6_t1_production_response_verifier(
         begin_c6_runtime_instance_capture(&extraction).map_err(|error| error.to_string())?;
     let mut follower =
         C6SourceScheduleVerifierFollower::start(secondary).map_err(|error| error.to_string())?;
-    let public = [PrivateChunkPub { q: 50, seq: sequence }];
     let mut target_cursor = C6CacheFoldTargetInlineVerifier::start_decoded_public(
         &cache_target_frame,
         public_schedule,
@@ -908,32 +936,41 @@ pub fn replay_c6_t1_production_response_verifier(
     .map_err(|error| error.to_string())?;
     let cache_trace =
         begin_c6_cache_fold_trace(C6CacheFoldParty::Verifier).map_err(|error| error.to_string())?;
-    let (
-        output,
-        product_keys,
-        zero_roots,
-        cache_metrics,
-        cache_append_sources,
-        cache_target_terms,
-    ) =
-        verify_response_private_logits_c6_cache_inline_from_profile(
-            model,
-            100,
-            &public,
-            &retained.model,
-            primary,
-            secondary,
-            &mut follower,
-            &mut target_cursor,
-            transcript,
-        )
-        .ok_or_else(|| "C6.1 disk verifier retained response rejected".to_owned())?;
+    let (output, product_keys, zero_roots, cache_metrics, cache_append_sources, cache_target_terms) =
+        match profile {
+            C6ProductionResponseVerifierProfile::Genesis => {
+                let public = [PrivateChunkPub { q: 50, seq: sequence }];
+                verify_response_private_logits_c6_cache_inline_from_profile(
+                    model,
+                    100,
+                    &public,
+                    &retained.model,
+                    primary,
+                    secondary,
+                    &mut follower,
+                    &mut target_cursor,
+                    transcript,
+                )
+            }
+            C6ProductionResponseVerifierProfile::Continuation { base_t0 } => {
+                verify_response_continuation_private_logits_c6_cache_inline_from_profile(
+                    model,
+                    base_t0,
+                    sequence,
+                    &retained.model,
+                    primary,
+                    secondary,
+                    &mut follower,
+                    &mut target_cursor,
+                    transcript,
+                )
+            }
+        }
+        .ok_or_else(|| "C6.2 disk verifier retained response rejected".to_owned())?;
     let cache_snapshot = cache_trace.finish().map_err(|error| error.to_string())?;
-    let cache_targets = C6CacheFoldPairedVerifierTargets::from_online_replay(
-        &cache_snapshot,
-        cache_target_terms,
-    )
-    .map_err(|error| error.to_string())?;
+    let cache_targets =
+        C6CacheFoldPairedVerifierTargets::from_online_replay(&cache_snapshot, cache_target_terms)
+            .map_err(|error| error.to_string())?;
     let cache_target_fixed = target_cursor
         .finish_before_successor_root_with_identity(cache_snapshot.identity, transcript)
         .map_err(|error| error.to_string())?;
@@ -950,8 +987,8 @@ pub fn replay_c6_t1_production_response_verifier(
     ) {
         return Err("C6.1 disk verifier ProductClosure batch rejected".to_owned());
     }
-    if product_keys.len() as u64 != C6_T1_TOTAL_PRODUCT_TRIPLES
-        || zero_roots.len() as u64 != C6_T1_ZERO_CLOSURES
+    if product_keys.len() as u64 != installed_plan.topology().product_triple_count
+        || zero_roots.len() as u32 != installed_plan.topology().zero_root_count
         || output.weight_keys.len() != 96
         || output.embed_keys.len() != 6
     {
@@ -987,8 +1024,8 @@ pub fn replay_c6_t1_production_response_verifier(
         product_mask_sources,
     )
     .map_err(|error| error.to_string())?;
-    if product_messages.len() as u64 != crate::C6_T1_TOTAL_PRODUCT_CLOSURES {
-        return Err("C6.1 disk verifier ProductClosure message census changed".to_owned());
+    if product_messages.len() as u32 != installed_plan.topology().product_closure_count {
+        return Err("C6.2 disk verifier ProductClosure message census changed".to_owned());
     }
     Ok(C6T1ProductionResponseVerifierReplay {
         output,
@@ -1007,14 +1044,84 @@ pub fn replay_c6_t1_production_response_verifier(
     })
 }
 
-/// Execute only the provider half of the frozen private-logit response. The
-/// type boundary deliberately excludes verifier contexts, Delta, verifier
-/// entropy and the paired-attempt owner.
+/// Replay the designated-verifier half of the genesis response.
 #[allow(clippy::too_many_arguments)]
-pub fn prove_c6_t1_production_response_provider(
+pub fn replay_c6_t1_production_response_verifier(
+    model: &Gpt2VerifierModel,
+    sequence: &[u32],
+    statement_digest: [u8; 32],
+    installed_plan: C6InstalledOperationPlan,
+    extraction: C6DecodedInstanceExtractionPlan,
+    cache_target_frame_bytes: &[u8],
+    retained: &C6RetainedResponseProof,
+    contexts: &mut [VerifierCtx; 2],
+    transcript: &mut Transcript,
+) -> Result<C6T1ProductionResponseVerifierReplay, String> {
+    replay_c6_production_response_verifier(
+        model,
+        sequence,
+        C6ProductionResponseVerifierProfile::Genesis,
+        statement_digest,
+        installed_plan,
+        extraction,
+        cache_target_frame_bytes,
+        retained,
+        contexts,
+        transcript,
+    )
+}
+
+/// Replay the designated-verifier half of one continuation response.
+#[allow(clippy::too_many_arguments)]
+pub fn replay_c62_continuation_production_response_verifier(
+    model: &Gpt2VerifierModel,
+    sequence: &[u32],
+    old_context: usize,
+    statement_digest: [u8; 32],
+    installed_plan: C6InstalledOperationPlan,
+    extraction: C6DecodedInstanceExtractionPlan,
+    cache_target_frame_bytes: &[u8],
+    retained: &C6RetainedResponseProof,
+    contexts: &mut [VerifierCtx; 2],
+    transcript: &mut Transcript,
+) -> Result<C6T1ProductionResponseVerifierReplay, String> {
+    let base_t0 = old_context
+        .checked_sub(1)
+        .ok_or_else(|| "C6.2 continuation old context is zero".to_owned())?;
+    replay_c6_production_response_verifier(
+        model,
+        sequence,
+        C6ProductionResponseVerifierProfile::Continuation { base_t0 },
+        statement_digest,
+        installed_plan,
+        extraction,
+        cache_target_frame_bytes,
+        retained,
+        contexts,
+        transcript,
+    )
+}
+
+#[derive(Clone, Copy)]
+enum C6ProductionResponseProverProfile<'a> {
+    Genesis {
+        prefill: &'a volta_gpt2::ModelWitness,
+        decode: &'a volta_gpt2::BandModelWitness,
+    },
+    Continuation {
+        full: &'a volta_gpt2::ModelWitness,
+        first: &'a volta_gpt2::BandModelWitness,
+        second: &'a volta_gpt2::BandModelWitness,
+    },
+}
+
+/// Execute only the provider half of one private-logit response. The type
+/// boundary excludes verifier contexts, Delta, verifier entropy and the
+/// paired-attempt owner.
+#[allow(clippy::too_many_arguments)]
+fn prove_c6_production_response_provider(
     model: &volta_gpt2::Gpt2Model,
-    prefill: &volta_gpt2::ModelWitness,
-    decode: &volta_gpt2::BandModelWitness,
+    profile: C6ProductionResponseProverProfile<'_>,
     sequence: &[u32],
     statement_digest: [u8; 32],
     installed_plan: C6InstalledOperationPlan,
@@ -1022,15 +1129,33 @@ pub fn prove_c6_t1_production_response_provider(
     streams: &mut [CorrelationStream; 2],
     provider_transcript: &mut Transcript,
 ) -> Result<C6T1ProductionResponseProviderPending, String> {
+    let valid_profile = match profile {
+        C6ProductionResponseProverProfile::Genesis { prefill, decode } => {
+            prefill.t == 100
+                && decode.t0 == 100
+                && decode.q == 50
+                && sequence.len() == 150
+        }
+        C6ProductionResponseProverProfile::Continuation { full, first, second } => {
+            let old_len = first.t0.checked_add(1);
+            old_len.is_some_and(|old_len| {
+                old_len >= 150
+                    && old_len <= 900
+                    && old_len % 50 == 0
+                    && first.q == 26
+                    && second.t0 == old_len + 25
+                    && second.q == 25
+                    && full.t == old_len + 50
+                    && sequence.len() == full.t
+            })
+        }
+    };
     if statement_digest == [0; 32]
-        || prefill.t != 100
-        || decode.t0 != 100
-        || decode.q != 50
-        || sequence.len() != 150
+        || !valid_profile
         || extraction.role() != C6InstanceExtractionRole::Prover
         || extraction.topology_digest() != installed_plan.topology().topology_digest
     {
-        return Err("C6ICT3 provider T1 response profile mismatch".to_owned());
+        return Err("C6.2 provider response profile mismatch".to_owned());
     }
     let public_schedule = C6CacheFoldTargetPublicSchedule::new(
         (0..2 * L)
@@ -1041,8 +1166,6 @@ pub fn prove_c6_t1_production_response_provider(
             .collect(),
     )
     .map_err(|error| error.to_string())?;
-    let chunks = [ChunkRef { band: decode, seq: sequence }];
-
     let (
         model_proof,
         prover_output,
@@ -1081,17 +1204,35 @@ pub fn prove_c6_t1_production_response_provider(
         .map_err(|error| error.to_string())?;
         let cache_trace = begin_c6_cache_fold_trace(C6CacheFoldParty::Prover)
             .map_err(|error| error.to_string())?;
-        let (proof, output, products, zero_roots, metrics, append_sources) =
-            prove_response_private_logits_c6_cache_inline(
-                model,
-                prefill,
-                &chunks,
-                primary,
-                secondary,
-                &mut follower,
-                &mut target_builder,
-                provider_transcript,
-            );
+        let (proof, output, products, zero_roots, metrics, append_sources) = match profile {
+            C6ProductionResponseProverProfile::Genesis { prefill, decode } => {
+                let chunks = [ChunkRef { band: decode, seq: sequence }];
+                prove_response_private_logits_c6_cache_inline(
+                    model,
+                    prefill,
+                    &chunks,
+                    primary,
+                    secondary,
+                    &mut follower,
+                    &mut target_builder,
+                    provider_transcript,
+                )
+            }
+            C6ProductionResponseProverProfile::Continuation { full, first, second } => {
+                prove_response_continuation_private_logits_c6_cache_inline(
+                    model,
+                    full,
+                    first,
+                    second,
+                    sequence,
+                    primary,
+                    secondary,
+                    &mut follower,
+                    &mut target_builder,
+                    provider_transcript,
+                )
+            }
+        };
         let cache_snapshot = cache_trace.finish().map_err(|error| error.to_string())?;
         let (target_frame, target_owner) = target_builder
             .finish_before_successor_root_with_owner(cache_snapshot.identity, provider_transcript)
@@ -1142,9 +1283,9 @@ pub fn prove_c6_t1_production_response_provider(
             runtime,
         )
     };
-    if products.len() as u64 != C6_T1_TOTAL_PRODUCT_TRIPLES
-        || product_messages.len() as u64 != crate::C6_T1_TOTAL_PRODUCT_CLOSURES
-        || prover_zero_roots.len() as u64 != C6_T1_ZERO_CLOSURES
+    if products.len() as u64 != installed_plan.topology().product_triple_count
+        || product_messages.len() as u32 != installed_plan.topology().product_closure_count
+        || prover_zero_roots.len() as u32 != installed_plan.topology().zero_root_count
         || prover_output.weight_claims.len() != 96
         || prover_output.embed_claims.len() != 6
     {
@@ -1200,14 +1341,65 @@ pub fn prove_c6_t1_production_response_provider(
     })
 }
 
+/// Execute the provider half of the genesis `100+50` response.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_c6_t1_production_response_provider(
+    model: &volta_gpt2::Gpt2Model,
+    prefill: &volta_gpt2::ModelWitness,
+    decode: &volta_gpt2::BandModelWitness,
+    sequence: &[u32],
+    statement_digest: [u8; 32],
+    installed_plan: C6InstalledOperationPlan,
+    extraction: C6DecodedInstanceExtractionPlan,
+    streams: &mut [CorrelationStream; 2],
+    provider_transcript: &mut Transcript,
+) -> Result<C6T1ProductionResponseProviderPending, String> {
+    prove_c6_production_response_provider(
+        model,
+        C6ProductionResponseProverProfile::Genesis { prefill, decode },
+        sequence,
+        statement_digest,
+        installed_plan,
+        extraction,
+        streams,
+        provider_transcript,
+    )
+}
+
+/// Execute the provider half of one `old+50` continuation response.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_c62_continuation_production_response_provider(
+    model: &volta_gpt2::Gpt2Model,
+    full: &volta_gpt2::ModelWitness,
+    first: &volta_gpt2::BandModelWitness,
+    second: &volta_gpt2::BandModelWitness,
+    sequence: &[u32],
+    statement_digest: [u8; 32],
+    installed_plan: C6InstalledOperationPlan,
+    extraction: C6DecodedInstanceExtractionPlan,
+    streams: &mut [CorrelationStream; 2],
+    provider_transcript: &mut Transcript,
+) -> Result<C6T1ProductionResponseProviderPending, String> {
+    prove_c6_production_response_provider(
+        model,
+        C6ProductionResponseProverProfile::Continuation { full, first, second },
+        sequence,
+        statement_digest,
+        installed_plan,
+        extraction,
+        streams,
+        provider_transcript,
+    )
+}
+
 /// Coordinate the provider-only response with client source sealing and the
 /// strict verifier replay. This compatibility owner keeps the downstream C6.1
 /// ownership graph unchanged while enforcing the new process-facing boundary.
 #[allow(clippy::too_many_arguments)]
-pub fn build_c6_t1_production_response_owner(
+fn build_c6_production_response_owner(
     model: &volta_gpt2::Gpt2Model,
-    prefill: &volta_gpt2::ModelWitness,
-    decode: &volta_gpt2::BandModelWitness,
+    prover_profile: C6ProductionResponseProverProfile<'_>,
+    verifier_profile: C6ProductionResponseVerifierProfile,
     sequence: &[u32],
     statement_digest: [u8; 32],
     installed_plans: [C6InstalledOperationPlan; 2],
@@ -1241,10 +1433,9 @@ pub fn build_c6_t1_production_response_owner(
         cache_target_owner,
         cache_append_sources,
         cache_metrics: provider_cache_metrics,
-    } = prove_c6_t1_production_response_provider(
+    } = prove_c6_production_response_provider(
         model,
-        prefill,
-        decode,
+        prover_profile,
         sequence,
         statement_digest,
         provider_plan,
@@ -1257,9 +1448,10 @@ pub fn build_c6_t1_production_response_owner(
     let cache_target_frame_bytes =
         cache_target_frame.encode().map_err(|error| error.to_string())?;
     let verifier_model = volta_gpt2::Gpt2VerifierModel::from_model(model)?;
-    let verifier = replay_c6_t1_production_response_verifier(
+    let verifier = replay_c6_production_response_verifier(
         &verifier_model,
         sequence,
+        verifier_profile,
         statement_digest,
         verifier_plan,
         verifier_extraction,
@@ -1348,6 +1540,67 @@ pub fn build_c6_t1_production_response_owner(
         provider_cache_metrics,
         verifier_cache_metrics,
     })
+}
+
+/// Build the paired provider and designated-verifier owner for genesis.
+#[allow(clippy::too_many_arguments)]
+pub fn build_c6_t1_production_response_owner(
+    model: &volta_gpt2::Gpt2Model,
+    prefill: &volta_gpt2::ModelWitness,
+    decode: &volta_gpt2::BandModelWitness,
+    sequence: &[u32],
+    statement_digest: [u8; 32],
+    installed_plans: [C6InstalledOperationPlan; 2],
+    extraction_maps: [C6DecodedInstanceExtractionPlan; 2],
+    attempt: &mut C6ProductionPairedPcgAttempt,
+    provider_transcript: &mut Transcript,
+    verifier_transcript: &mut Transcript,
+) -> Result<C6T1ProductionResponseOwner, String> {
+    build_c6_production_response_owner(
+        model,
+        C6ProductionResponseProverProfile::Genesis { prefill, decode },
+        C6ProductionResponseVerifierProfile::Genesis,
+        sequence,
+        statement_digest,
+        installed_plans,
+        extraction_maps,
+        attempt,
+        provider_transcript,
+        verifier_transcript,
+    )
+}
+
+/// Build the paired owner for one continuation with 50 new tokens.
+#[allow(clippy::too_many_arguments)]
+pub fn build_c62_continuation_production_response_owner(
+    model: &volta_gpt2::Gpt2Model,
+    full: &volta_gpt2::ModelWitness,
+    first: &volta_gpt2::BandModelWitness,
+    second: &volta_gpt2::BandModelWitness,
+    sequence: &[u32],
+    statement_digest: [u8; 32],
+    installed_plans: [C6InstalledOperationPlan; 2],
+    extraction_maps: [C6DecodedInstanceExtractionPlan; 2],
+    attempt: &mut C6ProductionPairedPcgAttempt,
+    provider_transcript: &mut Transcript,
+    verifier_transcript: &mut Transcript,
+) -> Result<C6T1ProductionResponseOwner, String> {
+    let old_context = first
+        .t0
+        .checked_add(1)
+        .ok_or_else(|| "C6.2 continuation old context overflows".to_owned())?;
+    build_c6_production_response_owner(
+        model,
+        C6ProductionResponseProverProfile::Continuation { full, first, second },
+        C6ProductionResponseVerifierProfile::Continuation { base_t0: old_context - 1 },
+        sequence,
+        statement_digest,
+        installed_plans,
+        extraction_maps,
+        attempt,
+        provider_transcript,
+        verifier_transcript,
+    )
 }
 
 impl C6ResponseResidualFixture {

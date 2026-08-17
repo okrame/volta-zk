@@ -13,8 +13,9 @@ scripts/export_gpt2.py, which is the interface contract):
   * `requant_embed`: embed_out = requant(wte[tok] + wpe[pos], shift_embed)
     (the 13th table, P5 deviation);
   * stable shifted softmax (`p['softmax_row_shift']`): per causal row,
-    c = max(s_row), exp is looked up on (s − c) & 0xFFFF. With the flag off
-    the P4-mirror behavior is byte-identical to the Rust forward.
+    c = max(s_row), and the unsigned gap is g = c - s. For g <= 32768,
+    exp is looked up on -g. Larger gaps return zero. With the flag off the
+    P4-mirror behavior is byte-identical to the Rust forward.
 
 Two pitfalls that numpy gets wrong by default, called out because they are
 silent bit-flips rather than crashes:
@@ -312,6 +313,19 @@ def _requant(acc, shift: int, name: str, mode: str, stats: dict):
     return rounded.astype(np.int16) if isinstance(rounded, np.ndarray) else int(rounded)
 
 
+def _c62_requant_score(acc, shift: int, stats: dict):
+    """C62SCR1 score rounding with the registered signed-17 quotient and
+    the frozen signed-i16 clamp."""
+    rounded = requant_chain(acc, shift)
+    lo, hi = int(np.min(rounded)), int(np.max(rounded))
+    if lo < -(1 << 16) or hi >= (1 << 16):
+        raise SaturationError(
+            f"C62SCR1 score quotient exceeds signed 17 bits: min={lo}, max={hi}"
+        )
+    _stat(stats, "requant_scores", max(abs(lo), abs(hi)), lo < I16_MIN or hi > I16_MAX)
+    return np.clip(rounded, I16_MIN, I16_MAX).astype(np.int16)
+
+
 def _residual_add(a: np.ndarray, b: np.ndarray, mode: str, stats: dict) -> np.ndarray:
     s = a.astype(np.int32) + b.astype(np.int32)
     lo, hi = int(s.min()), int(s.max())
@@ -334,6 +348,24 @@ def _lut_index_checked(idx: int, name: str, mode: str, stats: dict) -> int:
             raise SaturationError(f"{name} exceeds u16 domain: {idx}")
         idx = (1 << 16) - 1
     return idx
+
+
+def _c62_softmax_recip(input_value: int, table: np.ndarray, params, mode: str, stats: dict) -> int:
+    """C62SRE1 reciprocal with exact compatibility on the frozen u16 domain."""
+    sat = input_value < 0 or input_value >= (1 << 18)
+    _stat(stats, "softmax_recip_index", abs(input_value), sat)
+    if sat:
+        if mode == "strict":
+            raise SaturationError(
+                f"softmax_recip_index exceeds C62 18-bit domain: {input_value}"
+            )
+        input_value = max(0, min((1 << 18) - 1, input_value))
+    if input_value < TABLE_LEN:
+        return int(table[input_value])
+    den_back = (input_value << params.recip_den_shift) + (
+        1 << (params.recip_den_shift - 1)
+    )
+    return min(div_round(1 << params.recip_log2, den_back), I16_MAX)
 
 
 # ---------------------------------------------------------------------------
@@ -468,13 +500,25 @@ def forward_layer(
         for i in range(t):
             row_acc = s_full[i, 0:i + 1]
             s_row = np.atleast_1d(
-                _requant(row_acc, pv.shift_scores, "requant_scores", mode, stats)
+                _c62_requant_score(row_acc, pv.shift_scores, stats)
+                if row_shift_on
+                else _requant(row_acc, pv.shift_scores, "requant_scores", mode, stats)
             )
             # Stable shifted softmax (P5): c = row max, exp on (s - c). With
             # c = 0 (flag off) this is byte-identical to the P4 Rust path.
             c = int(s_row.max()) if row_shift_on else 0
             row_shift[head, i] = c
-            e_row = exp_tab[((s_row.astype(np.int64) - c) & 0xFFFF)]
+            if row_shift_on:
+                gap = c - s_row.astype(np.int64)
+                assert np.all((0 <= gap) & (gap <= 0xFFFF))
+                signed_gap = np.minimum(gap, 1 << 15)
+                e_row = exp_tab[(-signed_gap) & 0xFFFF]
+                if np.any(gap > (1 << 15)):
+                    assert int(exp_tab[1 << 15]) == 0
+                    e_row = e_row.copy()
+                    e_row[gap > (1 << 15)] = 0
+            else:
+                e_row = exp_tab[s_row.astype(np.int64) & 0xFFFF]
             _stat(stats, "exp", int(np.max(np.abs(e_row))), False)
 
             scores_acc_list.extend(row_acc.tolist())
@@ -482,10 +526,15 @@ def forward_layer(
             exp_out_list.extend(e_row.tolist())
 
             denom = int(np.sum(e_row.astype(np.int64)))
-            rin = _lut_index_checked(
-                denom >> pv.recip_den_shift, "softmax_recip_index", mode, stats
-            )
-            rc = int(softmax_recip_tab[rin])
+            raw_rin = denom >> pv.recip_den_shift
+            if row_shift_on:
+                rin = raw_rin
+                rc = _c62_softmax_recip(rin, softmax_recip_tab, pv, mode, stats)
+            else:
+                rin = _lut_index_checked(
+                    raw_rin, "softmax_recip_index", mode, stats
+                )
+                rc = int(softmax_recip_tab[rin])
             _stat(stats, "softmax_recip", abs(rc), False)
             denoms[head, i] = denom
             recips[head, i] = rc

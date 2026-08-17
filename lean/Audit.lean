@@ -442,6 +442,35 @@ vector-RLC bounds from being mistaken for implementation bounds.
 #print axioms VoltaZk.c61_ict5_packed_authenticated_output_link_sound
 #print axioms VoltaZk.c61_ict5_equal_source_binding_or_collision
 #print axioms VoltaZk.c61_ict5_native_hidden_free_composition
+
+-- C6.2 joint value relation and Fiat--Shamir composition (additive).
+#print axioms VoltaZk.c62_claim_schedule_census
+#print axioms VoltaZk.c62_same_points_weights_values_force_same_fold
+#print axioms VoltaZk.c62_installed_reverse_dag_uses_same_weights
+#print axioms VoltaZk.c62_joint_value_residual_honest
+#print axioms VoltaZk.c62_two_distinct_eta_force_both_equalities
+#print axioms VoltaZk.c62_distinct_roots_divergent_values_fail_some_eta
+#print axioms VoltaZk.C62JointValueCompositionSound
+#print axioms VoltaZk.c62_score_gap_is_unsigned_u16
+#print axioms VoltaZk.c62_score_gap_reconstructs_score
+#print axioms VoltaZk.c62_zero_gap_iff_score_is_row_max
+#print axioms VoltaZk.c62_gap_exp_matches_frozen_domain
+#print axioms VoltaZk.c62_gap_exp_zero_extends_lower_tail
+#print axioms VoltaZk.c62_gap_relation_proves_exact_row_max
+#print axioms VoltaZk.c62_registered_recip_input_fits_18_bits
+#print axioms VoltaZk.c62_extended_reciprocal_matches_frozen_domain
+#print axioms VoltaZk.c62_recip_relation_remainder_is_strict
+#print axioms VoltaZk.c62_recip_shift_relation_is_exact
+#print axioms VoltaZk.c62_recip_relation_quotient_unique
+#print axioms VoltaZk.c62_score_index_fits_17_bits
+#print axioms VoltaZk.c62_score_clamp_is_identity
+#print axioms VoltaZk.c62_score_clamp_lower
+#print axioms VoltaZk.c62_score_clamp_upper
+#print axioms VoltaZk.c62_measured_score_has_registered_headroom
+#print axioms VoltaZk.c62_state_restoration_requires_every_component
+#print axioms VoltaZk.c62_random_oracle_query_cap
+#print axioms VoltaZk.C62FiatShamirCompositionSound
+#print axioms VoltaZk.c62_seventeen_certificate_union_census
 #print axioms VoltaZk.x4d_accepted_settlement_implies_each_m9_or_bad
 #print axioms VoltaZk.x4d_settlement_error_is_v4
 #print axioms VoltaZk.x4d_settlement_error_expanded

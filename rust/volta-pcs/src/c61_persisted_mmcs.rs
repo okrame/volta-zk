@@ -255,13 +255,7 @@ impl C61PersistedMmcs {
         session_digest: [u8; 32],
         lane: [u8; 8],
     ) -> Result<Self, String> {
-        Self::new_with_commit_gate(
-            inner,
-            directory,
-            session_digest,
-            lane,
-            Arc::new(Mutex::new(())),
-        )
+        Self::new_with_commit_gate(inner, directory, session_digest, lane, Arc::new(Mutex::new(())))
     }
 
     pub fn new_with_commit_gate(

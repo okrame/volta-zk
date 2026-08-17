@@ -30,6 +30,12 @@ use volta_pcs::c61_authenticated_whir_p3::{
 };
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_pcs::c61_public_compression::C61NativeComponent;
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+use volta_pcs::{
+    build_c61_production_model_embedding_public_statement, C61NativeChainId,
+    C61NativeCommitmentDescriptor, C61NativeVerifierChainStatement, C61_EMBEDDING_POLYNOMIAL_LOG2,
+    C61_MODEL_POLYNOMIAL_LOG2,
+};
 #[cfg(feature = "c6-trace")]
 use volta_pcs::{
     commit_resident, free_resident_matrix, layout_gpt2_embed_c3, layout_gpt2_weights_c3,
@@ -37,21 +43,18 @@ use volta_pcs::{
     C6HiddenUFamilyWitness, C6PersistentCacheStateWitness, Commitment, MultiOpenProof, C3_EMBED,
     C3_WEIGHTS,
 };
-#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
-use volta_pcs::{
-    build_c61_production_model_embedding_public_statement, C61NativeChainId,
-    C61NativeCommitmentDescriptor, C61NativeVerifierChainStatement,
-    C61_EMBEDDING_POLYNOMIAL_LOG2, C61_MODEL_POLYNOMIAL_LOG2,
-};
 #[cfg(feature = "c6-trace")]
 use volta_proto::{
-    build_c6_t1_production_response_owner, cattn_permuted, C6PairedNativeTargetValues,
-    C6ProductionPairedPcgAttempt, C6T1ProductionResponseOwner,
+    build_c6_t1_production_response_owner, build_c62_continuation_production_response_owner,
+    cattn_permuted, C6PairedNativeTargetValues, C6ProductionPairedPcgAttempt,
+    C6T1ProductionResponseOwner,
     C6T1ProductionResponseVerifierReplay,
 };
 
 #[cfg(feature = "c6-trace")]
-use crate::c6_t1_live_sources::materialize_c6_t1_genesis_cache_states;
+use crate::c6_t1_live_sources::{
+    materialize_c6_t1_genesis_cache_states, materialize_c62_continuation_cache_states,
+};
 
 pub const C6_T1_PROMPT_TOKENS: usize = 100;
 pub const C6_T1_DECODE_TOKENS: usize = 50;
@@ -89,6 +92,83 @@ impl C6T1WorkloadOwner {
     }
 }
 
+/// Same-allocation owner for one accepted-prefix continuation.
+pub struct C62ContinuationWorkloadOwner {
+    model: Gpt2Model,
+    full: ModelWitness,
+    first: BandModelWitness,
+    second: BandModelWitness,
+    sequence: Vec<u32>,
+    old_context: usize,
+}
+
+impl C62ContinuationWorkloadOwner {
+    pub fn model(&self) -> &Gpt2Model {
+        &self.model
+    }
+
+    pub fn full(&self) -> &ModelWitness {
+        &self.full
+    }
+
+    pub fn first(&self) -> &BandModelWitness {
+        &self.first
+    }
+
+    pub fn second(&self) -> &BandModelWitness {
+        &self.second
+    }
+
+    pub fn sequence(&self) -> &[u32] {
+        &self.sequence
+    }
+
+    pub fn old_context(&self) -> usize {
+        self.old_context
+    }
+}
+
+/// Workload owner admitted by the C6.2 campaign path.
+pub enum C62CampaignWorkloadOwner {
+    Genesis(C6T1WorkloadOwner),
+    Continuation(C62ContinuationWorkloadOwner),
+}
+
+impl From<C6T1WorkloadOwner> for C62CampaignWorkloadOwner {
+    fn from(value: C6T1WorkloadOwner) -> Self {
+        Self::Genesis(value)
+    }
+}
+
+impl From<C62ContinuationWorkloadOwner> for C62CampaignWorkloadOwner {
+    fn from(value: C62ContinuationWorkloadOwner) -> Self {
+        Self::Continuation(value)
+    }
+}
+
+impl C62CampaignWorkloadOwner {
+    pub fn model(&self) -> &Gpt2Model {
+        match self {
+            Self::Genesis(workload) => workload.model(),
+            Self::Continuation(workload) => workload.model(),
+        }
+    }
+
+    pub fn sequence(&self) -> &[u32] {
+        match self {
+            Self::Genesis(workload) => workload.sequence(),
+            Self::Continuation(workload) => workload.sequence(),
+        }
+    }
+
+    pub fn old_context(&self) -> usize {
+        match self {
+            Self::Genesis(_) => 0,
+            Self::Continuation(workload) => workload.old_context(),
+        }
+    }
+}
+
 /// Same-allocation workload, response proof/runtime and exact cache-state
 /// owners. The production runner moves this object forward; no constructor
 /// accepts detached claims, cache slabs, or a second witness pass.
@@ -99,6 +179,15 @@ pub struct C6T1ProductionOwnerExport {
     native_claims: C6T1NativeClaimOwner,
     predecessor_cache: C6PersistentCacheStateWitness,
     successor_cache: C6PersistentCacheStateWitness,
+}
+
+/// C6.2 response owner after its cache states were consumed by the early
+/// cache precommit.  This type cannot carry a second cache source.
+#[cfg(feature = "c6-trace")]
+pub struct C62T1ProductionOwnerExport {
+    workload: C62CampaignWorkloadOwner,
+    response: C6T1ProductionResponseOwner,
+    native_claims: C6T1NativeClaimOwner,
 }
 
 /// Exact ordered model/embedding claim boundary exported from the one T1
@@ -163,6 +252,13 @@ pub struct C6T1PersistedNativeOwner {
 }
 
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub struct C62T1PersistedNativeOwner {
+    response: C62T1ProductionOwnerExport,
+    model_coefficients: C61ProductionCoefficientOwner,
+    embedding_coefficients: C61ProductionCoefficientOwner,
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 impl C6T1PersistedNativeOwner {
     pub fn response(&self) -> &C6T1ProductionOwnerExport {
         &self.response
@@ -178,11 +274,18 @@ impl C6T1PersistedNativeOwner {
 
     pub fn into_parts(
         self,
-    ) -> (
-        C6T1ProductionOwnerExport,
-        C61ProductionCoefficientOwner,
-        C61ProductionCoefficientOwner,
-    ) {
+    ) -> (C6T1ProductionOwnerExport, C61ProductionCoefficientOwner, C61ProductionCoefficientOwner)
+    {
+        (self.response, self.model_coefficients, self.embedding_coefficients)
+    }
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+impl C62T1PersistedNativeOwner {
+    pub fn into_parts(
+        self,
+    ) -> (C62T1ProductionOwnerExport, C61ProductionCoefficientOwner, C61ProductionCoefficientOwner)
+    {
         (self.response, self.model_coefficients, self.embedding_coefficients)
     }
 }
@@ -375,12 +478,14 @@ impl C6T1NativeVerifierClaimOwner {
         let output = response.output();
         if output.weight_keys.len() != 96
             || output.embed_keys.len() != 6
-            || output.weight_keys.iter().any(|(point, _)| {
-                point.len() != usize::from(C61_MODEL_POLYNOMIAL_LOG2)
-            })
-            || output.embed_keys.iter().any(|(point, _)| {
-                point.len() != usize::from(C61_EMBEDDING_POLYNOMIAL_LOG2)
-            })
+            || output
+                .weight_keys
+                .iter()
+                .any(|(point, _)| point.len() != usize::from(C61_MODEL_POLYNOMIAL_LOG2))
+            || output
+                .embed_keys
+                .iter()
+                .any(|(point, _)| point.len() != usize::from(C61_EMBEDDING_POLYNOMIAL_LOG2))
         {
             return Err("C6ICT5 disk native claim owner has the wrong 96+6 geometry".to_owned());
         }
@@ -463,6 +568,42 @@ impl C6T1ProductionOwnerExport {
     }
 }
 
+#[cfg(feature = "c6-trace")]
+impl C62T1ProductionOwnerExport {
+    pub fn workload(&self) -> &C62CampaignWorkloadOwner {
+        &self.workload
+    }
+
+    pub fn native_claims(&self) -> &C6T1NativeClaimOwner {
+        &self.native_claims
+    }
+
+    pub fn into_parts(
+        self,
+    ) -> (C62CampaignWorkloadOwner, C6T1ProductionResponseOwner, C6T1NativeClaimOwner) {
+        (self.workload, self.response, self.native_claims)
+    }
+}
+
+/// Materialize the two genesis cache owners before the C6.2 response starts.
+#[cfg(feature = "c6-trace")]
+pub fn materialize_c62_t1_cache_states(
+    workload: &C62CampaignWorkloadOwner,
+) -> Result<(C6PersistentCacheStateWitness, C6PersistentCacheStateWitness), String> {
+    match workload {
+        C62CampaignWorkloadOwner::Genesis(workload) => {
+            materialize_c6_t1_genesis_cache_states(workload.prefill(), workload.decode())
+        }
+        C62CampaignWorkloadOwner::Continuation(workload) => {
+            materialize_c62_continuation_cache_states(
+                workload.full(),
+                u16::try_from(workload.old_context())
+                    .map_err(|_| "C6.2 old context exceeds u16".to_owned())?,
+            )
+        }
+    }
+}
+
 /// Consume the frozen workload owner into the production response lifecycle.
 /// Cache states are derived from the already-owned K/V slabs before the same
 /// model witness is passed to the real/AES-PCG response constructor.
@@ -499,6 +640,52 @@ pub fn execute_c6_t1_production_owner_export(
         predecessor_cache,
         successor_cache,
     })
+}
+
+/// Consume the frozen workload into the C6.2 response after its exact cache
+/// states were consumed by the typed precommit owner.
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+pub fn execute_c62_t1_production_owner_export(
+    workload: C62CampaignWorkloadOwner,
+    statement_digest: [u8; 32],
+    installed_plans: [C6InstalledOperationPlan; 2],
+    extraction_maps: [C6DecodedInstanceExtractionPlan; 2],
+    attempt: &mut C6ProductionPairedPcgAttempt,
+    provider_transcript: &mut Transcript,
+    verifier_transcript: &mut Transcript,
+) -> Result<C62T1ProductionOwnerExport, String> {
+    let response = match &workload {
+        C62CampaignWorkloadOwner::Genesis(workload) => build_c6_t1_production_response_owner(
+            workload.model(),
+            workload.prefill(),
+            workload.decode(),
+            workload.sequence(),
+            statement_digest,
+            installed_plans,
+            extraction_maps,
+            attempt,
+            provider_transcript,
+            verifier_transcript,
+        )?,
+        C62CampaignWorkloadOwner::Continuation(workload) => {
+            build_c62_continuation_production_response_owner(
+                workload.model(),
+                workload.full(),
+                workload.first(),
+                workload.second(),
+                workload.sequence(),
+                statement_digest,
+                installed_plans,
+                extraction_maps,
+                attempt,
+                provider_transcript,
+                verifier_transcript,
+            )?
+        }
+    };
+    let native_claims = C6T1NativeClaimOwner::from_response(&response)?;
+    Ok(C62T1ProductionOwnerExport { workload, response, native_claims })
 }
 
 /// Extend the exact response owner with both retained C3 multi-openings and
@@ -685,10 +872,32 @@ pub fn persist_c6_t1_native_coefficient_owners(
     session: C61ProductionCoefficientSessionBinding,
 ) -> Result<C6T1PersistedNativeOwner, String> {
     let session_digest = session.context_digest();
+    let (model_coefficients, embedding_coefficients) =
+        persist_c6_t1_native_coefficients(response.workload().model(), root, session_digest)?;
+    Ok(C6T1PersistedNativeOwner { response, model_coefficients, embedding_coefficients })
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub fn persist_c62_t1_native_coefficient_owners(
+    response: C62T1ProductionOwnerExport,
+    root: &Path,
+    session: C61ProductionCoefficientSessionBinding,
+) -> Result<C62T1PersistedNativeOwner, String> {
+    let session_digest = session.context_digest();
+    let (model_coefficients, embedding_coefficients) =
+        persist_c6_t1_native_coefficients(response.workload().model(), root, session_digest)?;
+    Ok(C62T1PersistedNativeOwner { response, model_coefficients, embedding_coefficients })
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+fn persist_c6_t1_native_coefficients(
+    model: &Gpt2Model,
+    root: &Path,
+    session_digest: [u8; 32],
+) -> Result<(C61ProductionCoefficientOwner, C61ProductionCoefficientOwner), String> {
     if !root.is_dir() {
         return Err("C6SPR12 native coefficient root/session preflight failed".to_owned());
     }
-    let model = response.workload().model();
     let model_layout = layout_gpt2_weights_c3();
     let c_attn =
         model.layers.iter().map(|layer| cattn_permuted(&layer.0.c_attn)).collect::<Vec<_>>();
@@ -734,7 +943,7 @@ pub fn persist_c6_t1_native_coefficient_owners(
     )?;
     drop(embedding_placements);
 
-    Ok(C6T1PersistedNativeOwner { response, model_coefficients, embedding_coefficients })
+    Ok((model_coefficients, embedding_coefficients))
 }
 
 /// Load, validate and execute the exact frozen T1 witness generator once.
@@ -773,6 +982,39 @@ pub fn build_c6_t1_workload_owner(weights: &Path) -> Result<C6T1WorkloadOwner, S
         return Err("C6 T1 witness generator changed its frozen geometry".to_owned());
     }
     Ok(C6T1WorkloadOwner { model, prefill, decode, sequence })
+}
+
+/// Load and validate one chained C6.2 continuation witness.
+pub fn build_c62_continuation_workload_owner(
+    weights: &Path,
+    sequence: Vec<u32>,
+    old_context: usize,
+) -> Result<C62ContinuationWorkloadOwner, String> {
+    verify_inputs(weights)?;
+    let model = load_model(weights).map_err(|error| format!("load model: {error}"))?;
+    model.validate_layout()?;
+    if old_context < 150
+        || old_context > 900
+        || old_context % 50 != 0
+        || sequence.len() != old_context + 50
+        || sequence.len() > 1_024
+        || sequence[..C6_T1_PROMPT_TOKENS] != model.p.tokens[..C6_T1_PROMPT_TOKENS]
+    {
+        return Err("C6.2 continuation workload geometry differs".to_owned());
+    }
+    let first_full = forward_model_tokens(&model, &sequence[..old_context + 25]);
+    let full = forward_model_tokens(&model, &sequence);
+    let first = band_model_witness(&model, &first_full, old_context - 1);
+    let second = band_model_witness(&model, &full, old_context + 25);
+    if first.t0 != old_context - 1
+        || first.q != 26
+        || second.t0 != old_context + 25
+        || second.q != 25
+        || full.t != old_context + 50
+    {
+        return Err("C6.2 continuation witness generator changed its geometry".to_owned());
+    }
+    Ok(C62ContinuationWorkloadOwner { model, full, first, second, sequence, old_context })
 }
 
 fn verify_inputs(weights: &Path) -> Result<(), String> {
@@ -843,7 +1085,7 @@ mod tests {
             .split("pub fn persist_c6_t1_native_coefficient_owners")
             .nth(1)
             .unwrap()
-            .split("/// Load, validate and execute")
+            .split("pub fn persist_c62_t1_native_coefficient_owners")
             .next()
             .unwrap();
         assert!(persistence.contains("response: C6T1ProductionOwnerExport"));
@@ -853,5 +1095,18 @@ mod tests {
         assert!(!persistence.contains("C6T1HiddenUOwner"));
         assert!(!persistence.contains("hidden_bundle"));
         assert!(!persistence.contains("attach_c6_t1_hidden_u_owner"));
+
+        let c62_persistence = source
+            .split("pub fn persist_c62_t1_native_coefficient_owners")
+            .nth(1)
+            .unwrap()
+            .split("fn persist_c6_t1_native_coefficients")
+            .next()
+            .unwrap();
+        assert!(c62_persistence.contains("response: C62T1ProductionOwnerExport"));
+        assert!(c62_persistence.contains("session: C61ProductionCoefficientSessionBinding"));
+        assert!(!c62_persistence.contains("session_digest: [u8; 32]"));
+        assert!(c62_persistence.contains("response.workload().model()"));
+        assert!(!c62_persistence.contains("C6T1HiddenUOwner"));
     }
 }

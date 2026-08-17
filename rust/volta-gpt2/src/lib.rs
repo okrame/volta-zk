@@ -31,7 +31,11 @@ pub use layer::{
     synthetic_weights, synthetic_weights_for_config, GemmBiases, LayerWeights, LayerWitness,
     LookupTrace, TableId, D, DFF, DH, H,
 };
-pub use luts::{build_luts, LutParams, Luts};
+pub use luts::{
+    build_luts, softmax_exp_from_gap, softmax_gap_exp_table, softmax_recip_from_index,
+    softmax_recip_wide_table, softmax_score_gap, LutParams, Luts, C62_SOFTMAX_RECIP_BITS,
+    C62_SOFTMAX_RECIP_LEN,
+};
 pub use model::{
     forward_model, forward_model_tokens, forward_model_tokens_with_backend,
     forward_model_with_backend, load_model, synthetic_model, Gpt2Model, Gpt2VerifierModel,

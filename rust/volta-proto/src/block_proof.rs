@@ -257,6 +257,7 @@ pub enum TableBankSiteError {
 pub fn table_len(key: TableKey) -> usize {
     match key {
         TableKey::Range(s) => 1usize << s,
+        TableKey::ScoreClamp17 => 1usize << 17,
         _ => 1usize << 16,
     }
 }
@@ -267,12 +268,35 @@ pub fn table_vals(key: TableKey, luts: &Luts) -> Vec<Fp> {
     match key {
         TableKey::Range(s) => range_table(s),
         TableKey::Exp => pair_table(&luts.exp, true),
+        TableKey::ExpGap => pair_table(&volta_gpt2::softmax_gap_exp_table(luts), false),
+        TableKey::ScoreClamp17 => c62_score_clamp_table(),
         TableKey::Gelu => pair_table(&luts.gelu, true),
         TableKey::Silu => pair_table(&x3_silu_table(), true),
         TableKey::Clamp1024 => pair_table(&x3_clamp_table(), true),
         TableKey::LnRsqrt => pair_table(&luts.ln_rsqrt, false),
         TableKey::SoftmaxRecip => pair_table(&luts.softmax_recip, false),
     }
+}
+
+const C62_SCORE_OFFSET: i64 = 1 << 16;
+const C62_SCORE_INDEX_LIMIT: usize = 1 << 17;
+
+/// C62SCR1 maps one shifted signed-17 quotient to its exact signed-i16
+/// clamp. The 17-bit output packing keeps every table value unique.
+pub(crate) fn c62_score_clamp_table() -> Vec<Fp> {
+    let output_scale = Fp::new(1 << 17);
+    (0..C62_SCORE_INDEX_LIMIT)
+        .map(|index| {
+            let raw = index as i64 - C62_SCORE_OFFSET;
+            let clamped = raw.clamp(i16::MIN as i64, i16::MAX as i64);
+            Fp::new(index as u64) + Fp::from_i64(clamped) * output_scale
+        })
+        .collect()
+}
+
+#[inline]
+fn softmax_exp_key(luts: &Luts) -> TableKey {
+    if luts.params.softmax_row_shift { TableKey::ExpGap } else { TableKey::Exp }
 }
 
 /// X3's fixed Q10 SiLU content.  It deliberately lives next to the other
@@ -1975,8 +1999,9 @@ pub(crate) trait C6AttentionProverCache {
 
     fn push_target_before_product(
         &mut self,
+        primary: &mut CorrelationStream,
         kind: crate::c6_cache_fold::C6CacheFoldKind,
-        target: ProverAuthed,
+        target: Fp2,
         transcript: &mut Transcript,
     ) -> Option<ProverAuthed>;
 
@@ -2114,6 +2139,29 @@ pub(crate) fn cache_fold_rows_p(
     (vals, tags_out, authenticated)
 }
 
+fn cache_fold_rows_values(
+    segs: &[CacheSegP],
+    wr: &[Fp2],
+    c0: usize,
+    w: usize,
+) -> Vec<Fp2> {
+    let mut values = vec![Fp2::ZERO; w];
+    let mut base = 0usize;
+    for segment in segs {
+        for row in 0..segment.rows {
+            let weight = wr[base + row];
+            for column in 0..w {
+                values[column] += weight
+                    * Fp2::from_base(Fp::from_i64(
+                        segment.data[row * D + c0 + column] as i64,
+                    ));
+            }
+        }
+        base += segment.rows;
+    }
+    values
+}
+
 pub(crate) fn cache_fold_rows_k(
     segs: &[CacheSegK],
     wr: &[Fp2],
@@ -2151,6 +2199,27 @@ pub(crate) fn cache_fold_cols_p(
         authenticated.extend(sa);
     }
     (vals, tags, authenticated)
+}
+
+fn cache_fold_cols_values(
+    segs: &[CacheSegP],
+    wc: &[Fp2],
+    c0: usize,
+    w: usize,
+) -> Vec<Fp2> {
+    let mut values = Vec::with_capacity(segs.iter().map(|segment| segment.rows).sum());
+    for segment in segs {
+        for row in 0..segment.rows {
+            let value = (0..w).fold(Fp2::ZERO, |sum, column| {
+                sum + wc[column]
+                    * Fp2::from_base(Fp::from_i64(
+                        segment.data[row * D + c0 + column] as i64,
+                    ))
+            });
+            values.push(value);
+        }
+    }
+    values
 }
 
 pub(crate) fn cache_fold_cols_k(
@@ -5164,10 +5233,12 @@ pub struct AttnWires {
     pub shape: BandShape,
     /// h_pad×q_pad×s_pad, non-causal = exp pad INPUT (least zero-output idx).
     pub scores_rect: Vec<i16>,
-    /// The SHARED scores/exp wire (P5 stable softmax): causal = s − c_row,
-    /// non-causal/pads = the exp pad input. With `softmax_row_shift` off
-    /// (c ≡ 0) this is byte-identical to `scores_rect`.
-    pub sprime_rect: Vec<i16>,
+    /// C62SCR1 shifted signed-17 score quotient.
+    /// The represented raw quotient is `score_index_rect - 2^16`.
+    pub score_index_rect: Vec<i64>,
+    /// The exp input wire. C62SGE1 uses the unsigned gap `c_row - s`, stored
+    /// as a u16 bit pattern. The legacy path stores the signed score.
+    pub exp_input_rect: Vec<i16>,
     /// h_pad×q_pad row table of the per-(head,row) shifts c (pads 0).
     pub row_shift_row: Vec<i16>,
     /// Row-max indicator: 1 at the first causal position with s′ = 0 of each
@@ -5189,13 +5260,127 @@ pub struct AttnWires {
     pub recip_in_row: Vec<i64>,
     /// Pads = softmax_recip[0] (the pad PAIR output — mirrors ln_rsqrt).
     pub recips_row: Vec<i16>,
+    /// C62SRE1 arithmetic reciprocal witness. This is present only for the
+    /// stable-softmax relation. Historical paths retain the frozen LUT.
+    pub c62_recip: Option<C62SoftmaxRecipWires>,
     /// Least exp-LUT index with output 0 (upholds the zero row sums).
     pub exp_pad_u: usize,
+    /// Signed score value used at padded score-requant rows.
+    pub score_pad: i16,
+}
+
+const C62_RECIP_PAD_INPUT: i64 = 256;
+const C62_RECIP_INPUT_BITS: u32 = 18;
+const C62_RECIP_QUOTIENT_BITS: u32 = 15;
+
+pub struct C62SoftmaxRecipWires {
+    denom_low: Vec<i64>,
+    input_low: Vec<i64>,
+    input_high: Vec<i64>,
+    quotient: Vec<i64>,
+    remainder_low: Vec<i64>,
+    remainder_high: Vec<i64>,
+    slack_low: Vec<i64>,
+    slack_high: Vec<i64>,
+    divisor: Vec<i64>,
+}
+
+fn c62_softmax_recip_wires(
+    luts: &Luts,
+    shape: BandShape,
+    denoms: &[i64],
+    inputs: &[i64],
+    quotients: &[i16],
+) -> C62SoftmaxRecipWires {
+    let shift = luts.params.recip_den_shift;
+    assert_eq!(shift, 6, "C62SRE1 requires the registered denominator shift");
+    assert!(luts.params.recip_log2 <= 28, "C62SRE1 reciprocal numerator is too wide");
+    let q_pad = shape.q_pad();
+    let entries = H_PAD * q_pad;
+    assert_eq!(denoms.len(), entries);
+    assert_eq!(inputs.len(), entries);
+    assert_eq!(quotients.len(), entries);
+    let pad_denom = C62_RECIP_PAD_INPUT << shift;
+    let pad_quotient = i64::from(volta_gpt2::softmax_recip_from_index(
+        luts,
+        C62_RECIP_PAD_INPUT as u64,
+    ));
+    assert!(pad_quotient < i64::from(i16::MAX));
+
+    let mut denom_low = Vec::with_capacity(entries);
+    let mut input_low = Vec::with_capacity(entries);
+    let mut input_high = Vec::with_capacity(entries);
+    let mut quotient = Vec::with_capacity(entries);
+    let mut remainder_low = Vec::with_capacity(entries);
+    let mut remainder_high = Vec::with_capacity(entries);
+    let mut slack_low = Vec::with_capacity(entries);
+    let mut slack_high = Vec::with_capacity(entries);
+    let mut divisor = Vec::with_capacity(entries);
+    for index in 0..entries {
+        let head = index / q_pad;
+        let row = index % q_pad;
+        let real = head < H && row < shape.q;
+        let denom = if real { denoms[index] } else { pad_denom };
+        let input = if real { inputs[index] } else { C62_RECIP_PAD_INPUT };
+        let q = if real { i64::from(quotients[index]) } else { pad_quotient };
+        assert!((0..1 << C62_RECIP_INPUT_BITS).contains(&input));
+        assert!((0..1 << C62_RECIP_QUOTIENT_BITS).contains(&q));
+        let low = denom - (input << shift);
+        assert!((0..1 << shift).contains(&low));
+        let d = (input << shift) + (1i64 << (shift - 1));
+        let rounded_numerator = (1i64 << luts.params.recip_log2) + d / 2;
+        let product = q * d;
+        assert!(product <= rounded_numerator, "C62SRE1 quotient is too large");
+        let remainder = rounded_numerator - product;
+        assert!(remainder < d, "C62SRE1 quotient is too small");
+        let slack = d - 1 - remainder;
+        assert!((0..1 << 24).contains(&remainder));
+        assert!((0..1 << 24).contains(&slack));
+        denom_low.push(low);
+        input_low.push(input & 0xffff);
+        input_high.push(input >> 16);
+        quotient.push(q);
+        remainder_low.push(remainder & 0xffff);
+        remainder_high.push(remainder >> 16);
+        slack_low.push(slack & 0xffff);
+        slack_high.push(slack >> 16);
+        divisor.push(d);
+    }
+    C62SoftmaxRecipWires {
+        denom_low,
+        input_low,
+        input_high,
+        quotient,
+        remainder_low,
+        remainder_high,
+        slack_low,
+        slack_high,
+        divisor,
+    }
+}
+
+fn add_c62_softmax_recip_multiplicities(bank: &mut TableBankP, wires: &C62SoftmaxRecipWires) {
+    for (key, values) in [
+        (TableKey::Range(6), wires.denom_low.as_slice()),
+        (TableKey::Range(16), wires.input_low.as_slice()),
+        (TableKey::Range(2), wires.input_high.as_slice()),
+        (TableKey::Range(15), wires.quotient.as_slice()),
+        (TableKey::Range(16), wires.remainder_low.as_slice()),
+        (TableKey::Range(8), wires.remainder_high.as_slice()),
+        (TableKey::Range(16), wires.slack_low.as_slice()),
+        (TableKey::Range(8), wires.slack_high.as_slice()),
+    ] {
+        let mut multiplicities = vec![0u32; table_len(key)];
+        for &value in values {
+            multiplicities[usize::try_from(value).expect("C62SRE1 range value is nonnegative")] += 1;
+        }
+        bank.add_mult(key, &multiplicities);
+    }
 }
 
 impl AttnWires {
-    pub fn exp_pad_in(&self) -> i16 {
-        (self.exp_pad_u as u16) as i16
+    pub fn score_pad_in(&self) -> i16 {
+        self.score_pad
     }
 }
 
@@ -5210,17 +5395,29 @@ pub fn build_attn_wires_band(b: &BandAttnRefs, luts: &Luts) -> AttnWires {
     let (q_pad, s_pad, sp2) = (sh.q_pad(), sh.s_pad(), sh.sp2());
     let caus = sh.caus();
 
-    // Exp pad pair: (pad_in, 0) — asserted to exist (exp underflows to 0).
+    let row_shift_on = luts.params.softmax_row_shift;
+    let exp_table = if row_shift_on {
+        volta_gpt2::softmax_gap_exp_table(luts)
+    } else {
+        luts.exp.clone()
+    };
+    // Exp pad pair: (pad input, 0) — asserted to exist.
     let exp_pad_u = (0..1usize << 16)
-        .find(|&u| luts.exp[u] == 0)
+        .find(|&u| exp_table[u] == 0)
         .expect("exp LUT has no zero output — rectangular padding impossible");
-    let pad_in = (exp_pad_u as u16) as i16;
+    let exp_pad_bits = exp_pad_u as u16 as i16;
+    let score_pad = if row_shift_on {
+        i16::try_from(-(exp_pad_u as i32)).expect("gap-exp padding exceeds signed score domain")
+    } else {
+        exp_pad_bits
+    };
 
-    let mut scores_rect = vec![pad_in; H_PAD * sp2];
-    let mut sprime_rect = vec![pad_in; H_PAD * sp2];
+    let mut scores_rect = vec![score_pad; H_PAD * sp2];
+    let score_pad_index = i64::from(score_pad) + C62_SCORE_OFFSET;
+    let mut score_index_rect = vec![score_pad_index; H_PAD * sp2];
+    let mut exp_input_rect = vec![exp_pad_bits; H_PAD * sp2];
     let mut exp_rect = vec![0i16; H_PAD * sp2];
     let mut w_rect = vec![0i16; H_PAD * sp2];
-    let row_shift_on = luts.params.softmax_row_shift;
     let mut row_shift_row = vec![0i16; H_PAD * q_pad];
     let mut is_max_rect = vec![0i16; H_PAD * sp2];
     for h in 0..H {
@@ -5232,10 +5429,24 @@ pub fn build_attn_wires_band(b: &BandAttnRefs, luts: &Luts) -> AttnWires {
                 let pidx = h * caus + sh.packed_off(i) + j;
                 let y = h * sp2 + i * s_pad + j;
                 scores_rect[y] = b.scores_q[pidx];
-                let sp = b.scores_q[pidx] as i32 - c as i32;
-                assert!(sp >= i16::MIN as i32, "row spread exceeds the exp domain");
-                sprime_rect[y] = sp as i16;
-                if row_shift_on && sp == 0 && !max_marked {
+                let raw_score = round_stage(b.scores_acc[pidx], luts.params.shift_scores);
+                assert!(
+                    (-C62_SCORE_OFFSET..C62_SCORE_OFFSET).contains(&raw_score),
+                    "C62SCR1 score quotient exceeds the signed 17-bit domain",
+                );
+                assert_eq!(
+                    raw_score.clamp(i16::MIN as i64, i16::MAX as i64) as i16,
+                    b.scores_q[pidx],
+                    "C62SCR1 score clamp differs from the witness",
+                );
+                score_index_rect[y] = raw_score + C62_SCORE_OFFSET;
+                let exp_input = if row_shift_on {
+                    volta_gpt2::softmax_score_gap(b.scores_q[pidx], c)
+                } else {
+                    b.scores_q[pidx] as u16
+                };
+                exp_input_rect[y] = exp_input as i16;
+                if row_shift_on && exp_input == 0 && !max_marked {
                     is_max_rect[y] = 1;
                     max_marked = true;
                 }
@@ -5306,21 +5517,26 @@ pub fn build_attn_wires_band(b: &BandAttnRefs, luts: &Luts) -> AttnWires {
         }
         let denom = b.denoms[h * q + i];
         let rin = denom >> luts.params.recip_den_shift;
-        assert!(rin < 1 << 16, "softmax_recip input exceeds u16 domain");
-        assert_eq!(
-            luts.softmax_recip[rin as usize],
-            b.recips[h * q + i],
-            "P4-DEVIATION(recip-in): recips inconsistent with denoms >> shift"
-        );
+        let expected_recip = if row_shift_on {
+            volta_gpt2::softmax_recip_from_index(luts, rin as u64)
+        } else {
+            assert!(rin < 1 << 16, "softmax_recip input exceeds u16 domain");
+            luts.softmax_recip[rin as usize]
+        };
+        assert_eq!(expected_recip, b.recips[h * q + i], "reciprocal differs from denominator");
         denoms_row[idx] = denom;
         recip_in_row[idx] = rin;
         recips_row[idx] = b.recips[h * q + i];
     }
 
+    let c62_recip = row_shift_on.then(|| {
+        c62_softmax_recip_wires(luts, sh, &denoms_row, &recip_in_row, &recips_row)
+    });
     AttnWires {
         shape: sh,
         scores_rect,
-        sprime_rect,
+        score_index_rect,
+        exp_input_rect,
         row_shift_row,
         is_max_rect,
         exp_rect,
@@ -5331,7 +5547,9 @@ pub fn build_attn_wires_band(b: &BandAttnRefs, luts: &Luts) -> AttnWires {
         denoms_row,
         recip_in_row,
         recips_row,
+        c62_recip,
         exp_pad_u,
+        score_pad,
     }
 }
 
@@ -5371,7 +5589,13 @@ pub struct AttnBlockProof {
     pub hadamard: HadamardProof,
     pub rowsum_corr: Fp2,
     pub inst_exp: BlindInstance,
+    /// Historical paths use this as the frozen reciprocal lookup. C62SRE1
+    /// uses it as the denominator-low range proof. This keeps the frozen base
+    /// model-proof grammar unchanged.
     pub inst_recip: BlindInstance,
+    /// C62-only proof data. The base model-proof codec omits this field. The
+    /// versioned C6.2 retained-response trailer carries it.
+    pub c62_recip: Option<C62SoftmaxRecipProof>,
     pub inst_sc: BlindInstance,
     pub sc_split_corrs: [Fp2; H],
     pub gemm_qk: Vec<(ChainedGemmProof, Fp2)>,
@@ -5384,6 +5608,534 @@ pub struct AttnBlockProof {
     pub(crate) t1_q_corr: Option<Fp2>,
     /// T1-only reduction of the residual and LN1 claims on X.
     pub(crate) t1_x_reduce: Option<EqReductionProof>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct C62SoftmaxRecipProof {
+    pub aux_corrs: [Fp2; 7],
+    pub input_low: BlindInstance,
+    pub input_high: BlindInstance,
+    pub quotient: BlindInstance,
+    pub remainder_low: BlindInstance,
+    pub remainder_high: BlindInstance,
+    pub slack_low: BlindInstance,
+    pub slack_high: BlindInstance,
+    pub product: HadamardProof,
+    /// C62SCR1 shifted signed-17 quotient to signed-i16 clamp lookup.
+    pub score_clamp: Option<BlindInstance>,
+}
+
+fn c62_real_row_mask(point: &[Fp2], shape: BandShape) -> Fp2 {
+    assert_eq!(point.len(), shape.qb() + HEAD_BITS);
+    let equality = eq_vec(point);
+    let q_pad = shape.q_pad();
+    let mut value = Fp2::ZERO;
+    for head in 0..H {
+        for row in 0..shape.q {
+            value += equality[head * q_pad + row];
+        }
+    }
+    value
+}
+
+fn c62_relation_pad_values(luts: &Luts) -> (i64, i64, i64) {
+    let shift = luts.params.recip_den_shift;
+    let denominator = C62_RECIP_PAD_INPUT << shift;
+    let quotient = i64::from(volta_gpt2::softmax_recip_from_index(
+        luts,
+        C62_RECIP_PAD_INPUT as u64,
+    ));
+    let core_quotient = i64::from(luts.softmax_recip[0]);
+    (denominator, quotient, core_quotient)
+}
+
+fn c62_eval_i64(values: &[i64], point: &[Fp2]) -> Fp2 {
+    let lifted: Vec<Fp2> = values.iter().map(|&value| Fp2::from_base(Fp::from_i64(value))).collect();
+    eval_mle(&lifted, point)
+}
+
+fn c62_auth_aux_cpu(
+    values: [&[i64]; 7],
+    point: &[Fp2],
+    cx: &mut BlockCtxP,
+) -> ([Fp2; 7], [ProverAuthed; 7]) {
+    let mut corrections = Vec::with_capacity(7);
+    let mut claims = Vec::with_capacity(7);
+    for column in values {
+        let value = c62_eval_i64(column, point);
+        let domain = cx.doms.take(1);
+        let mask = cx.stream.draw_fulls(domain, 1)[0];
+        cx.stream
+            .record_c6_fullfield_plaintexts(domain, &[value])
+            .expect("C62SRE1 auxiliary correction schedule");
+        corrections.push(value - mask.x);
+        claims.push(mask.authenticate(value));
+    }
+    let corrections: [Fp2; 7] = corrections.try_into().expect("fixed C62SRE1 correction count");
+    let claims: [ProverAuthed; 7] = claims.try_into().expect("fixed C62SRE1 claim count");
+    cx.tx.append_fp2s("c62_softmax_recip_aux_corrections", &corrections);
+    (corrections, claims)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_c62_softmax_recip_cpu(
+    shape: BandShape,
+    luts: &Luts,
+    wires: &C62SoftmaxRecipWires,
+    denoms: &[Fp],
+    dom_denoms: u64,
+    inputs: &[Fp],
+    dom_inputs: u64,
+    quotients: &[Fp],
+    dom_quotients: u64,
+    cx: &mut BlockCtxP,
+) -> (BlindInstance, C62SoftmaxRecipProof) {
+    let low_column = fp_col_i64(&wires.denom_low);
+    let low = cx.inst(TableKey::Range(6), &[low_column], &[Some(0)], Vec::new());
+    let point = low.point.clone();
+    let (aux_corrs, claims) = c62_auth_aux_cpu(
+        [
+            &wires.input_low,
+            &wires.input_high,
+            &wires.quotient,
+            &wires.remainder_low,
+            &wires.remainder_high,
+            &wires.slack_low,
+            &wires.slack_high,
+        ],
+        &point,
+        cx,
+    );
+    let keys = [
+        TableKey::Range(16),
+        TableKey::Range(2),
+        TableKey::Range(15),
+        TableKey::Range(16),
+        TableKey::Range(8),
+        TableKey::Range(16),
+        TableKey::Range(8),
+    ];
+    let columns = [
+        &wires.input_low,
+        &wires.input_high,
+        &wires.quotient,
+        &wires.remainder_low,
+        &wires.remainder_high,
+        &wires.slack_low,
+        &wires.slack_high,
+    ];
+    let mut instances = Vec::with_capacity(7);
+    for ((key, column), claim) in keys.into_iter().zip(columns).zip(claims) {
+        instances.push(cx.inst(
+            key,
+            &[fp_col_i64(column)],
+            &[Some(0)],
+            vec![LeafAuxClaim { col: 0, point: point.clone(), value: claim }],
+        ));
+    }
+
+    let real = c62_real_row_mask(&point, shape);
+    let pad = Fp2::ONE - real;
+    let (pad_denom, pad_quotient, core_pad_quotient) = c62_relation_pad_values(luts);
+    let denominator = open_fp_vec_p(cx.stream, dom_denoms, denoms, &point)
+        .add(ProverAuthed::from_public(pad * Fp2::from_base(Fp::from_i64(pad_denom))));
+    let input = open_fp_vec_p(cx.stream, dom_inputs, inputs, &point)
+        .add(ProverAuthed::from_public(
+            pad * Fp2::from_base(Fp::from_i64(C62_RECIP_PAD_INPUT)),
+        ));
+    let quotient = open_fp_vec_p(cx.stream, dom_quotients, quotients, &point).add(
+        ProverAuthed::from_public(
+            pad * Fp2::from_base(Fp::from_i64(pad_quotient - core_pad_quotient)),
+        ),
+    );
+    let input_from_limbs = claims[0].add(claims[1].scale(Fp2::from_base(Fp::new(1 << 16))));
+    let remainder = claims[3].add(claims[4].scale(Fp2::from_base(Fp::new(1 << 16))));
+    let slack = claims[5].add(claims[6].scale(Fp2::from_base(Fp::new(1 << 16))));
+    let shift_scale = Fp2::from_base(Fp::new(1 << luts.params.recip_den_shift));
+    let half_scale = Fp2::from_base(Fp::new(1 << (luts.params.recip_den_shift - 1)));
+    let divisor = input.scale(shift_scale).add(ProverAuthed::from_public(half_scale));
+    cx.zero.push(denominator.sub(input.scale(shift_scale)).sub(low.col_claims[0].value));
+    cx.zero.push(input.sub(input_from_limbs));
+    cx.zero.push(quotient.sub(claims[2]));
+    cx.zero.push(remainder.add(slack).sub(divisor).add(ProverAuthed::from_public(Fp2::ONE)));
+
+    let rounded = ProverAuthed::from_public(Fp2::from_base(Fp::new(
+        1u64 << luts.params.recip_log2,
+    )))
+    .add(input.scale(half_scale))
+    .add(ProverAuthed::from_public(Fp2::from_base(Fp::new(
+        1 << (luts.params.recip_den_shift - 2),
+    ))));
+    let target = rounded.sub(remainder);
+    let q_table: Vec<Fp2> = wires
+        .quotient
+        .iter()
+        .map(|&value| Fp2::from_base(Fp::from_i64(value)))
+        .collect();
+    let d_table: Vec<Fp2> = wires
+        .divisor
+        .iter()
+        .map(|&value| Fp2::from_base(Fp::from_i64(value)))
+        .collect();
+    let domains = HadamardDoms::alloc(&mut cx.doms, point.len());
+    let (product, product_point, q_claim, d_claim) = hadamard_prove(
+        &point,
+        q_table,
+        d_table,
+        target,
+        &domains,
+        cx.stream,
+        cx.tx,
+        &mut cx.prod,
+        &mut cx.zero,
+    );
+    let product_real = c62_real_row_mask(&product_point, shape);
+    let product_pad = Fp2::ONE - product_real;
+    let q_open = open_fp_vec_p(cx.stream, dom_quotients, quotients, &product_point).add(
+        ProverAuthed::from_public(
+            product_pad
+                * Fp2::from_base(Fp::from_i64(pad_quotient - core_pad_quotient)),
+        ),
+    );
+    let input_open = open_fp_vec_p(cx.stream, dom_inputs, inputs, &product_point).add(
+        ProverAuthed::from_public(
+            product_pad * Fp2::from_base(Fp::from_i64(C62_RECIP_PAD_INPUT)),
+        ),
+    );
+    cx.zero.push(q_claim.sub(q_open));
+    cx.zero.push(d_claim.sub(input_open.scale(shift_scale)).sub(ProverAuthed::from_public(half_scale)));
+
+    let mut instances = instances.into_iter();
+    (
+        low.proof,
+        C62SoftmaxRecipProof {
+            aux_corrs,
+            input_low: instances.next().expect("C62 input-low proof").proof,
+            input_high: instances.next().expect("C62 input-high proof").proof,
+            quotient: instances.next().expect("C62 quotient proof").proof,
+            remainder_low: instances.next().expect("C62 remainder-low proof").proof,
+            remainder_high: instances.next().expect("C62 remainder-high proof").proof,
+            slack_low: instances.next().expect("C62 slack-low proof").proof,
+            slack_high: instances.next().expect("C62 slack-high proof").proof,
+            product,
+            score_clamp: None,
+        },
+    )
+}
+
+fn c62_auth_aux_resident(
+    columns: [DeviceSlice<'_, u64>; 7],
+    point: &[Fp2],
+    cx: &mut BlockCtxP,
+) -> Result<([Fp2; 7], [ProverAuthed; 7]), AccelError> {
+    let mut corrections = Vec::with_capacity(7);
+    let mut claims = Vec::with_capacity(7);
+    for column in columns {
+        let value = cx
+            .backend
+            .as_deref_mut()
+            .ok_or(AccelError::InvalidInput("C62SRE1 requires a resident backend"))?
+            .mle_eval_device(column, point)?;
+        let domain = cx.doms.take(1);
+        let mask = cx.stream.draw_fulls(domain, 1)[0];
+        cx.stream
+            .record_c6_fullfield_plaintexts(domain, &[value])
+            .expect("C62SRE1 resident auxiliary correction schedule");
+        corrections.push(value - mask.x);
+        claims.push(mask.authenticate(value));
+    }
+    let corrections: [Fp2; 7] = corrections.try_into().expect("fixed C62SRE1 correction count");
+    let claims: [ProverAuthed; 7] = claims.try_into().expect("fixed C62SRE1 claim count");
+    cx.tx.append_fp2s("c62_softmax_recip_aux_corrections", &corrections);
+    Ok((corrections, claims))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_c62_softmax_recip_resident(
+    shape: BandShape,
+    luts: &Luts,
+    wires: &DeviceAttentionProofWires,
+    dom_denoms: u64,
+    dom_inputs: u64,
+    dom_quotients: u64,
+    cx: &mut BlockCtxP,
+) -> Result<(BlindInstance, C62SoftmaxRecipProof), AccelError> {
+    let entries = wires.row_entries();
+    let low = cx.inst_resident(
+        TableKey::Range(6),
+        wires.row_column(4)?,
+        1,
+        entries,
+        &[Some(0)],
+        Vec::new(),
+    )?;
+    let point = low.point.clone();
+    let columns = [
+        wires.row_column(5)?,
+        wires.row_column(6)?,
+        wires.row_column(7)?,
+        wires.row_column(8)?,
+        wires.row_column(9)?,
+        wires.row_column(10)?,
+        wires.row_column(11)?,
+    ];
+    let (aux_corrs, claims) = c62_auth_aux_resident(columns, &point, cx)?;
+    let keys = [
+        TableKey::Range(16),
+        TableKey::Range(2),
+        TableKey::Range(15),
+        TableKey::Range(16),
+        TableKey::Range(8),
+        TableKey::Range(16),
+        TableKey::Range(8),
+    ];
+    let mut instances = Vec::with_capacity(7);
+    for ((key, column), claim) in keys.into_iter().zip(columns).zip(claims) {
+        instances.push(cx.inst_resident(
+            key,
+            column,
+            1,
+            entries,
+            &[Some(0)],
+            vec![LeafAuxClaim { col: 0, point: point.clone(), value: claim }],
+        )?);
+    }
+
+    let real = c62_real_row_mask(&point, shape);
+    let pad = Fp2::ONE - real;
+    let (pad_denom, pad_quotient, core_pad_quotient) = c62_relation_pad_values(luts);
+    let denominator = open_fp_vec_resident_p(
+        cx.stream,
+        dom_denoms,
+        wires.row_column(0)?,
+        &point,
+        cx.backend.as_deref_mut().expect("C62SRE1 resident backend"),
+    )?
+    .add(ProverAuthed::from_public(pad * Fp2::from_base(Fp::from_i64(pad_denom))));
+    let input = open_fp_vec_resident_p(
+        cx.stream,
+        dom_inputs,
+        wires.row_column(1)?,
+        &point,
+        cx.backend.as_deref_mut().expect("C62SRE1 resident backend"),
+    )?
+    .add(ProverAuthed::from_public(
+        pad * Fp2::from_base(Fp::from_i64(C62_RECIP_PAD_INPUT)),
+    ));
+    let quotient = open_fp_vec_resident_p(
+        cx.stream,
+        dom_quotients,
+        wires.row_column(2)?,
+        &point,
+        cx.backend.as_deref_mut().expect("C62SRE1 resident backend"),
+    )?
+    .add(ProverAuthed::from_public(
+        pad * Fp2::from_base(Fp::from_i64(pad_quotient - core_pad_quotient)),
+    ));
+    let two16 = Fp2::from_base(Fp::new(1 << 16));
+    let input_from_limbs = claims[0].add(claims[1].scale(two16));
+    let remainder = claims[3].add(claims[4].scale(two16));
+    let slack = claims[5].add(claims[6].scale(two16));
+    let shift_scale = Fp2::from_base(Fp::new(1 << luts.params.recip_den_shift));
+    let half_scale = Fp2::from_base(Fp::new(1 << (luts.params.recip_den_shift - 1)));
+    let divisor = input.scale(shift_scale).add(ProverAuthed::from_public(half_scale));
+    cx.zero.push(denominator.sub(input.scale(shift_scale)).sub(low.col_claims[0].value));
+    cx.zero.push(input.sub(input_from_limbs));
+    cx.zero.push(quotient.sub(claims[2]));
+    cx.zero.push(remainder.add(slack).sub(divisor).add(ProverAuthed::from_public(Fp2::ONE)));
+    let rounded = ProverAuthed::from_public(Fp2::from_base(Fp::new(
+        1u64 << luts.params.recip_log2,
+    )))
+    .add(input.scale(half_scale))
+    .add(ProverAuthed::from_public(Fp2::from_base(Fp::new(
+        1 << (luts.params.recip_den_shift - 2),
+    ))));
+    let target = rounded.sub(remainder);
+    let q_factor = cx
+        .backend
+        .as_deref_mut()
+        .expect("C62SRE1 resident backend")
+        .base_to_fp2_broadcast_device(wires.row_column(7)?, 1)?;
+    let d_factor = match cx
+        .backend
+        .as_deref_mut()
+        .expect("C62SRE1 resident backend")
+        .base_to_fp2_broadcast_device(wires.row_column(12)?, 1)
+    {
+        Ok(value) => value,
+        Err(error) => {
+            let _ = cx
+                .backend
+                .as_deref_mut()
+                .expect("C62SRE1 resident backend")
+                .free_device(q_factor);
+            return Err(error);
+        }
+    };
+    let domains = HadamardDoms::alloc(&mut cx.doms, point.len());
+    let (product, product_point, q_claim, d_claim) = hadamard_prove_resident(
+        &point,
+        q_factor,
+        d_factor,
+        target,
+        &domains,
+        cx.stream,
+        cx.tx,
+        &mut cx.prod,
+        &mut cx.zero,
+        cx.backend.as_deref_mut().expect("C62SRE1 resident backend"),
+    )?;
+    let product_real = c62_real_row_mask(&product_point, shape);
+    let product_pad = Fp2::ONE - product_real;
+    let q_open = open_fp_vec_resident_p(
+        cx.stream,
+        dom_quotients,
+        wires.row_column(2)?,
+        &product_point,
+        cx.backend.as_deref_mut().expect("C62SRE1 resident backend"),
+    )?
+    .add(ProverAuthed::from_public(
+        product_pad * Fp2::from_base(Fp::from_i64(pad_quotient - core_pad_quotient)),
+    ));
+    let input_open = open_fp_vec_resident_p(
+        cx.stream,
+        dom_inputs,
+        wires.row_column(1)?,
+        &product_point,
+        cx.backend.as_deref_mut().expect("C62SRE1 resident backend"),
+    )?
+    .add(ProverAuthed::from_public(
+        product_pad * Fp2::from_base(Fp::from_i64(C62_RECIP_PAD_INPUT)),
+    ));
+    cx.zero.push(q_claim.sub(q_open));
+    cx.zero.push(d_claim.sub(input_open.scale(shift_scale)).sub(ProverAuthed::from_public(half_scale)));
+
+    let mut instances = instances.into_iter();
+    Ok((
+        low.proof,
+        C62SoftmaxRecipProof {
+            aux_corrs,
+            input_low: instances.next().expect("C62 input-low proof").proof,
+            input_high: instances.next().expect("C62 input-high proof").proof,
+            quotient: instances.next().expect("C62 quotient proof").proof,
+            remainder_low: instances.next().expect("C62 remainder-low proof").proof,
+            remainder_high: instances.next().expect("C62 remainder-high proof").proof,
+            slack_low: instances.next().expect("C62 slack-low proof").proof,
+            slack_high: instances.next().expect("C62 slack-high proof").proof,
+            product,
+            score_clamp: None,
+        },
+    ))
+}
+
+fn c62_aux_keys(
+    corrections: &[Fp2; 7],
+    cx: &mut BlockCtxV,
+) -> [VerifierKey; 7] {
+    let mut keys = Vec::with_capacity(7);
+    for &correction in corrections {
+        let domain = cx.doms.take(1);
+        keys.push(cx.ctx.correct_full_verifier_key(domain, correction));
+    }
+    cx.tx.append_fp2s("c62_softmax_recip_aux_corrections", corrections);
+    keys.try_into().expect("fixed C62SRE1 verifier-key count")
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_c62_softmax_recip(
+    shape: BandShape,
+    luts: &Luts,
+    base: &BlindInstance,
+    proof: &C62SoftmaxRecipProof,
+    denoms: &[VerifierKey],
+    inputs: &[VerifierKey],
+    quotients: &[VerifierKey],
+    cx: &mut BlockCtxV,
+) -> Option<()> {
+    let bits = shape.qb() + HEAD_BITS;
+    let low = cx.inst(TableKey::Range(6), bits, &[Some(0)], base, &[])?;
+    let point = low.point.clone();
+    let aux_keys = c62_aux_keys(&proof.aux_corrs, cx);
+    let range_proofs = [
+        (TableKey::Range(16), &proof.input_low),
+        (TableKey::Range(2), &proof.input_high),
+        (TableKey::Range(15), &proof.quotient),
+        (TableKey::Range(16), &proof.remainder_low),
+        (TableKey::Range(8), &proof.remainder_high),
+        (TableKey::Range(16), &proof.slack_low),
+        (TableKey::Range(8), &proof.slack_high),
+    ];
+    for ((key, range_proof), aux_key) in range_proofs.into_iter().zip(aux_keys) {
+        cx.inst(
+            key,
+            bits,
+            &[Some(0)],
+            range_proof,
+            &[(0, point.clone(), aux_key)],
+        )?;
+    }
+
+    let real = c62_real_row_mask(&point, shape);
+    let pad = Fp2::ONE - real;
+    let (pad_denom, pad_quotient, core_pad_quotient) = c62_relation_pad_values(luts);
+    let public = |value: Fp2, delta: Fp2| VerifierKey::from_public(value, delta);
+    let denominator = open_fp_vec_k(denoms, &point).add(public(
+        pad * Fp2::from_base(Fp::from_i64(pad_denom)),
+        cx.ctx.delta,
+    ));
+    let input = open_fp_vec_k(inputs, &point).add(public(
+        pad * Fp2::from_base(Fp::from_i64(C62_RECIP_PAD_INPUT)),
+        cx.ctx.delta,
+    ));
+    let quotient = open_fp_vec_k(quotients, &point).add(public(
+        pad * Fp2::from_base(Fp::from_i64(pad_quotient - core_pad_quotient)),
+        cx.ctx.delta,
+    ));
+    let two16 = Fp2::from_base(Fp::new(1 << 16));
+    let input_from_limbs = aux_keys[0].add(aux_keys[1].scale(two16));
+    let remainder = aux_keys[3].add(aux_keys[4].scale(two16));
+    let slack = aux_keys[5].add(aux_keys[6].scale(two16));
+    let shift_scale = Fp2::from_base(Fp::new(1 << luts.params.recip_den_shift));
+    let half_scale = Fp2::from_base(Fp::new(1 << (luts.params.recip_den_shift - 1)));
+    let divisor = input.scale(shift_scale).add(public(half_scale, cx.ctx.delta));
+    cx.kzero.push(denominator.sub(input.scale(shift_scale)).sub(low.col_keys[0].key));
+    cx.kzero.push(input.sub(input_from_limbs));
+    cx.kzero.push(quotient.sub(aux_keys[2]));
+    cx.kzero.push(remainder.add(slack).sub(divisor).add(public(Fp2::ONE, cx.ctx.delta)));
+    let rounded = public(
+        Fp2::from_base(Fp::new(1u64 << luts.params.recip_log2)),
+        cx.ctx.delta,
+    )
+    .add(input.scale(half_scale))
+    .add(public(
+        Fp2::from_base(Fp::new(1 << (luts.params.recip_den_shift - 2))),
+        cx.ctx.delta,
+    ));
+    let target = rounded.sub(remainder);
+    let domains = HadamardDoms::alloc(&mut cx.doms, bits);
+    let (product_point, q_key, d_key) = hadamard_verify(
+        &point,
+        target,
+        &proof.product,
+        &domains,
+        cx.ctx,
+        cx.tx,
+        &mut cx.kprod,
+        &mut cx.kzero,
+    )?;
+    let product_real = c62_real_row_mask(&product_point, shape);
+    let product_pad = Fp2::ONE - product_real;
+    let q_open = open_fp_vec_k(quotients, &product_point).add(public(
+        product_pad * Fp2::from_base(Fp::from_i64(pad_quotient - core_pad_quotient)),
+        cx.ctx.delta,
+    ));
+    let input_open = open_fp_vec_k(inputs, &product_point).add(public(
+        product_pad * Fp2::from_base(Fp::from_i64(C62_RECIP_PAD_INPUT)),
+        cx.ctx.delta,
+    ));
+    cx.kzero.push(q_key.sub(q_open));
+    cx.kzero.push(d_key.sub(input_open.scale(shift_scale)).sub(public(half_scale, cx.ctx.delta)));
+    Some(())
 }
 
 /// Close the two authenticated row-table columns after attention step 11.
@@ -5477,7 +6229,17 @@ pub(crate) fn build_rem_sc_packed(
         for i in 0..sh.q {
             for j in 0..sh.win(i) {
                 let pidx = h * caus + sh.packed_off(i) + j;
-                let r = scores_acc[pidx] + half_sc - ((scores_q[pidx] as i64) << s_sc);
+                let raw = round_stage(scores_acc[pidx], s_sc);
+                assert!(
+                    (-C62_SCORE_OFFSET..C62_SCORE_OFFSET).contains(&raw),
+                    "C62SCR1 score quotient exceeds the signed 17-bit domain",
+                );
+                assert_eq!(
+                    raw.clamp(i16::MIN as i64, i16::MAX as i64) as i16,
+                    scores_q[pidx],
+                    "C62SCR1 score clamp differs from the witness",
+                );
+                let r = scores_acc[pidx] + half_sc - (raw << s_sc);
                 assert!((0..1i64 << s_sc).contains(&r), "scores remainder out of range");
                 rem_sc[h * sp2 + i * s_pad + j] = r;
             }
@@ -5603,9 +6365,17 @@ pub(crate) fn attn_phase1_resident<W: ResidentLayerView>(
     let pos0 = wit.pos0();
     let params = luts.params;
     let rb = pad_bits(t);
+    let exp_table = if params.softmax_row_shift {
+        volta_gpt2::softmax_gap_exp_table(luts)
+    } else {
+        luts.exp.clone()
+    };
     let exp_pad_u = (0..1usize << 16)
-        .find(|&index| luts.exp[index] == 0)
+        .find(|&index| exp_table[index] == 0)
         .ok_or(AccelError::InvalidInput("exp LUT has no zero-output padding pair"))?;
+    if params.softmax_row_shift && exp_pad_u > i16::MAX as usize {
+        return Err(AccelError::InvalidInput("gap-exp padding exceeds the proof ABI"));
+    }
     let backend = cx
         .backend
         .as_deref_mut()
@@ -5635,6 +6405,7 @@ pub(crate) fn attn_phase1_resident<W: ResidentLayerView>(
         params.shift_softmax_norm,
         params.shift_qkv,
         params.recip_den_shift,
+        params.recip_log2,
         exp_pad_u as u16 as i16,
         luts.softmax_recip[0],
         params.softmax_row_shift,
@@ -5668,10 +6439,35 @@ pub(crate) fn attn_phase1_resident<W: ResidentLayerView>(
         let mult_sc =
             backend.histogram_fp_device(wires.rect_column(2)?, 1 << params.shift_scores)?;
         cx.bank.add_mult_resident(TableKey::Range(params.shift_scores), mult_sc, backend)?;
-        let mult_exp = backend.histogram_lut_device(wires.rect_column(3)?, true)?;
-        cx.bank.add_mult_resident(TableKey::Exp, mult_exp, backend)?;
-        let mult_recip = backend.histogram_lut_device(wires.row_column(1)?, false)?;
-        cx.bank.add_mult_resident(TableKey::SoftmaxRecip, mult_recip, backend)?;
+        if params.softmax_row_shift {
+            let mult_clamp =
+                backend.histogram_fp_device(wires.rect_column(3)?, C62_SCORE_INDEX_LIMIT)?;
+            cx.bank.add_mult_resident(TableKey::ScoreClamp17, mult_clamp, backend)?;
+        }
+        let mult_exp = backend.histogram_lut_device(
+            wires.rect_column(5)?,
+            !params.softmax_row_shift,
+        )?;
+        cx.bank.add_mult_resident(softmax_exp_key(luts), mult_exp, backend)?;
+        if params.softmax_row_shift {
+            for (key, column) in [
+                (TableKey::Range(6), 4usize),
+                (TableKey::Range(16), 5),
+                (TableKey::Range(2), 6),
+                (TableKey::Range(15), 7),
+                (TableKey::Range(16), 8),
+                (TableKey::Range(8), 9),
+                (TableKey::Range(16), 10),
+                (TableKey::Range(8), 11),
+            ] {
+                let multiplicities =
+                    backend.histogram_fp_device(wires.row_column(column)?, table_len(key))?;
+                cx.bank.add_mult_resident(key, multiplicities, backend)?;
+            }
+        } else {
+            let mult_recip = backend.histogram_lut_device(wires.row_column(1)?, false)?;
+            cx.bank.add_mult_resident(TableKey::SoftmaxRecip, mult_recip, backend)?;
+        }
         let mult_qkv = backend.histogram_fp_device(wires.qkv_column(0)?, 1 << params.shift_qkv)?;
         cx.bank.add_mult_resident(TableKey::Range(params.shift_qkv), mult_qkv, backend)?;
 
@@ -5837,19 +6633,32 @@ pub(crate) fn attn_phase1_with_wires(
     }
     cx.bank.add_mult(TableKey::Range(p.shift_scores), &mult_sc);
     drop(rem_sc);
-    // exp multiplicities: recount over the rect input column (the SHARED
-    // wire s′ — equals scores_rect when the row shift is off).
+    if p.softmax_row_shift {
+        let mut mult_clamp = vec![0u32; C62_SCORE_INDEX_LIMIT];
+        for &index in &wires.score_index_rect {
+            mult_clamp[usize::try_from(index).expect("C62SCR1 index is nonnegative")] += 1;
+        }
+        cx.bank.add_mult(TableKey::ScoreClamp17, &mult_clamp);
+    }
+    // Exp multiplicities use the unsigned score gap for C62SGE1.
     let mut mult_exp = vec![0u32; 1 << 16];
-    for &s in &wires.sprime_rect {
-        mult_exp[(s as u16) as usize] += 1;
+    for &input in &wires.exp_input_rect {
+        mult_exp[usize::from(input as u16)] += 1;
     }
-    cx.bank.add_mult(TableKey::Exp, &mult_exp);
-    // softmax_recip multiplicities over the row-table domain.
-    let mut mult_recip = vec![0u32; 1 << 16];
-    for &rin in &wires.recip_in_row {
-        mult_recip[rin as usize] += 1;
+    cx.bank.add_mult(softmax_exp_key(luts), &mult_exp);
+    if p.softmax_row_shift {
+        add_c62_softmax_recip_multiplicities(
+            cx.bank,
+            wires.c62_recip.as_ref().expect("stable softmax has C62SRE1 wires"),
+        );
+    } else {
+        // Historical reciprocal multiplicities over the frozen row-table domain.
+        let mut mult_recip = vec![0u32; 1 << 16];
+        for &rin in &wires.recip_in_row {
+            mult_recip[rin as usize] += 1;
+        }
+        cx.bank.add_mult(TableKey::SoftmaxRecip, &mult_recip);
     }
-    cx.bank.add_mult(TableKey::SoftmaxRecip, &mult_recip);
     let (rem_qkv, _) = build_qkv_cols(wit, p.shift_qkv, t_pad);
     let mut mult_qkv = vec![0u32; 1 << p.shift_qkv];
     for &r in &rem_qkv {
@@ -6271,8 +7080,17 @@ fn prove_attn_block_impl(
     let mut wv_timings = Vec::with_capacity(H);
     let mut wv_jobs = Vec::with_capacity(H);
     for h in 0..H {
-        let (bvals, btags, b_authenticated) =
-            cache_fold_cols_p(cx.stream, v_segs, &eq_within, h * DH, DH);
+        let (bvals, btags, b_authenticated) = match &cache_mode {
+            AttentionProverCacheMode::Legacy(_) => {
+                cache_fold_cols_p(cx.stream, v_segs, &eq_within, h * DH, DH)
+            }
+            #[cfg(feature = "c6-trace")]
+            AttentionProverCacheMode::C6(_) => (
+                cache_fold_cols_values(v_segs, &eq_within, h * DH, DH),
+                Vec::new(),
+                Vec::new(),
+            ),
+        };
         let mut b_folded = vec![Fp2::ZERO; s_pad];
         b_folded[..s_len].copy_from_slice(&bvals);
         let x_slice = &wires.w_rect[h * sp2..h * sp2 + t * s_pad];
@@ -6324,23 +7142,26 @@ fn prove_attn_block_impl(
         let mut tag = Fp2::ZERO;
         for row in 0..s_len {
             value += eq_l[row] * bvals[row];
-            tag += eq_l[row] * btags[row];
+            if let Some(&source_tag) = btags.get(row) {
+                tag += eq_l[row] * source_tag;
+            }
         }
-        let mut b_open = b_authenticated
-            .iter()
-            .zip(&eq_l)
-            .fold(ProverAuthed::ZERO, |sum, (&entry, &weight)| sum.add(entry.scale(weight)))
-            .with_same_c6_trace(value, tag);
-        #[cfg(feature = "c6-trace")]
-        if let AttentionProverCacheMode::C6(c6_cache) = &mut cache_mode {
-            b_open = c6_cache
+        let b_open = match &mut cache_mode {
+            AttentionProverCacheMode::Legacy(_) => b_authenticated
+                .iter()
+                .zip(&eq_l)
+                .fold(ProverAuthed::ZERO, |sum, (&entry, &weight)| sum.add(entry.scale(weight)))
+                .with_same_c6_trace(value, tag),
+            #[cfg(feature = "c6-trace")]
+            AttentionProverCacheMode::C6(c6_cache) => c6_cache
                 .push_target_before_product(
+                    cx.stream,
                     crate::c6_cache_fold::C6CacheFoldKind::ValueColumns,
-                    b_open,
+                    value,
                     cx.tx,
                 )
-                .expect("C6 W·V target source/correction must be canonical");
-        }
+                .expect("C6 W·V target source/correction must be canonical"),
+        };
         #[cfg(feature = "c6-trace")]
         crate::c6_cache_fold::record_c6_cache_fold_if_active(
             crate::c6_cache_fold::C6CacheFoldKind::ValueColumns,
@@ -6473,12 +7294,20 @@ fn prove_attn_block_impl(
     cx.zero.push(den_open.sub(rs_auth.scale(two_sb)));
 
     // ---- 10: exp pair instance ----------------------------------------------
-    // Input column = the shared s′ wire. With the row shift on, the row-max
-    // soundness rows run first (P5 ledger 2026-07-06 #8): (a) hadamard with
-    // public claim 0 at fresh τ₂ proves ĩs_max ∘ s̃′ ≡ 0; (b) an is_max
+    // C62SGE1 input is the unsigned gap c − s. The row-max soundness rows run
+    // first: (a) hadamard with public claim 0 proves is_max ∘ gap = 0; (b) an is_max
     // rowsum identity forces Σ_j is_max = 1 on every real row. Their claims
-    // drain into the instance's s′ (col 0) and is_max (col 2) columns.
-    let sc_col = fp_col_i16(&wires.sprime_rect);
+    // drain into the exp input (col 0) and is_max (col 2) columns.
+    let exp_input_col = if p.softmax_row_shift {
+        wires
+            .exp_input_rect
+            .iter()
+            .map(|&bits| Fp::new(u64::from(bits as u16)))
+            .collect::<Vec<_>>()
+    } else {
+        fp_col_i16(&wires.exp_input_rect)
+    };
+    let score_col = fp_col_i16(&wires.scores_rect);
     let exp_col = fp_col_i16(&wires.exp_rect);
     let mut exp_aux = vec![
         LeafAuxClaim { col: 1, point: r_h.clone(), value: e_claim },
@@ -6488,13 +7317,17 @@ fn prove_attn_block_impl(
     let mut ismax_rowsum_corr = None;
     if p.softmax_row_shift {
         let ismax_tab = lift_i16_fp2(&wires.is_max_rect);
-        let sprime_tab = lift_i16_fp2(&wires.sprime_rect);
+        let gap_tab = wires
+            .exp_input_rect
+            .iter()
+            .map(|&bits| Fp2::from_base(Fp::new(u64::from(bits as u16))))
+            .collect();
         let tau2: Vec<Fp2> = (0..nr).map(|_| cx.tx.challenge_fp2()).collect();
         let hd2 = HadamardDoms::alloc(&mut cx.doms, nr);
         let (had2, r_h2, e2_claim, r2_claim) = hadamard_prove(
             &tau2,
             ismax_tab,
-            sprime_tab,
+            gap_tab,
             ProverAuthed::from_public(Fp2::ZERO),
             &hd2,
             cx.stream,
@@ -6535,38 +7368,116 @@ fn prove_attn_block_impl(
     }
     let ismax_col = fp_col_i16(&wires.is_max_rect);
     let (exp_cols, exp_shifts): (Vec<Vec<Fp>>, Vec<Option<u32>>) = if p.softmax_row_shift {
-        (vec![sc_col.clone(), exp_col, ismax_col], vec![Some(0), Some(16), None])
+        (vec![exp_input_col.clone(), exp_col, ismax_col], vec![Some(0), Some(16), None])
     } else {
-        (vec![sc_col.clone(), exp_col], vec![Some(0), Some(16)])
+        (vec![exp_input_col.clone(), exp_col], vec![Some(0), Some(16)])
     };
-    let inst_exp = cx.inst(TableKey::Exp, &exp_cols, &exp_shifts, exp_aux);
+    let inst_exp = cx.inst(softmax_exp_key(luts), &exp_cols, &exp_shifts, exp_aux);
 
-    // ---- 11: softmax_recip pair instance -------------------------------------
-    let inst_recip = cx.inst(
-        TableKey::SoftmaxRecip,
-        &[rin_row_fp.clone(), recips_fp.clone()],
-        &[Some(0), Some(16)],
-        Vec::new(),
-    );
-    close_softmax_recip_cpu(&inst_recip, dom_rin_row, &rin_row_fp, dom_recips, &recips_fp, cx);
+    // ---- 11: reciprocal relation ---------------------------------------------
+    let (inst_recip_proof, mut c62_recip) = if p.softmax_row_shift {
+        let (base, extension) = prove_c62_softmax_recip_cpu(
+            sh,
+            luts,
+            wires.c62_recip.as_ref().expect("stable softmax has C62SRE1 wires"),
+            &denoms_fp,
+            dom_denoms,
+            &rin_row_fp,
+            dom_rin_row,
+            &recips_fp,
+            dom_recips,
+            cx,
+        );
+        (base, Some(extension))
+    } else {
+        let instance = cx.inst(
+            TableKey::SoftmaxRecip,
+            &[rin_row_fp.clone(), recips_fp.clone()],
+            &[Some(0), Some(16)],
+            Vec::new(),
+        );
+        close_softmax_recip_cpu(
+            &instance,
+            dom_rin_row,
+            &rin_row_fp,
+            dom_recips,
+            &recips_fp,
+            cx,
+        );
+        (instance.proof, None)
+    };
 
     // ---- 12: scores range instance + pad-mask correction ---------------------
     let rem_sc_col: Vec<Fp> = rem_sc.iter().map(|&r| Fp::new(r as u64)).collect();
+    let score_at_exp = if p.softmax_row_shift {
+        let exp_eq = eq_vec(&inst_exp.point);
+        let mut row_weights = vec![Fp2::ZERO; H_PAD * q_pad];
+        for h in 0..H {
+            for i in 0..t {
+                for j in 0..sh.win(i) {
+                    row_weights[h * q_pad + i] += exp_eq[h * sp2 + i * s_pad + j];
+                }
+            }
+        }
+        let row_shift_at_exp = open_weighted_p(
+            cx.stream,
+            dom_rowshift.expect("row-shift domain"),
+            &rowshift_fp,
+            &row_weights,
+        );
+        row_shift_at_exp.sub(inst_exp.col_claims[0].value)
+    } else {
+        inst_exp.col_claims[0].value
+    };
+    let (score_relation_col, score_relation_aux, score_clamp) = if p.softmax_row_shift {
+        let score_index_col = fp_col_i64(&wires.score_index_rect);
+        let clamp = cx.inst(
+            TableKey::ScoreClamp17,
+            &[score_index_col.clone(), score_col],
+            &[Some(0), Some(17)],
+            vec![LeafAuxClaim {
+                col: 1,
+                point: inst_exp.point.clone(),
+                value: score_at_exp,
+            }],
+        );
+        let aux = vec![LeafAuxClaim {
+            col: 1,
+            point: clamp.point.clone(),
+            value: clamp.col_claims[0].value,
+        }];
+        (score_index_col, aux, Some(clamp.proof))
+    } else {
+        (
+            score_col,
+            vec![LeafAuxClaim {
+                col: 1,
+                point: inst_exp.point.clone(),
+                value: score_at_exp,
+            }],
+            None,
+        )
+    };
     let inst_sc = cx.inst(
         TableKey::Range(s_sc),
-        &[rem_sc_col, sc_col],
+        &[rem_sc_col, score_relation_col],
         &[Some(0), None],
-        vec![LeafAuxClaim {
-            col: 1,
-            point: inst_exp.point.clone(),
-            value: inst_exp.col_claims[0].value,
-        }],
+        score_relation_aux,
     );
-    let tr_sc = transport_p(&inst_sc, s_sc);
+    if let Some(extension) = c62_recip.as_mut() {
+        extension.score_clamp = score_clamp;
+    } else {
+        debug_assert!(score_clamp.is_none());
+    }
+    let mut tr_sc = transport_p(&inst_sc, s_sc);
+    if p.softmax_row_shift {
+        tr_sc = tr_sc.sub(ProverAuthed::from_public(Fp2::from_base(Fp::new(
+            (C62_SCORE_OFFSET as u64) << s_sc,
+        ))));
+    }
     let pt_sc = inst_sc.point.clone();
-    // The out column is the shared scores_q_rect wire, padded with the exp
-    // pad input; its implied non-causal accumulator is the CONSTANT
-    // c_pad = pad_in·2^s (rem pads at 2^(s−1)). Public correction:
+    // The out column is scores_q, padded with a signed zero-exp score. Its
+    // implied non-causal accumulator is the constant c_pad = pad·2^s.
     //   ãcc_true(pt) = transport(pt) − c_pad·padmask̃(pt) + Ã_above(pt),
     // padmask̃ = 1 − Σ_{causal y} eq(pt, y), Ã_above = the authenticated
     // above-diagonal accumulators (true QKᵀ values on real above-diag cells).
@@ -6581,7 +7492,7 @@ fn prove_attn_block_impl(
         }
     }
     let padmask = Fp2::ONE - caus_sum;
-    let c_pad = Fp2::from_base(Fp::from_i64((wires.exp_pad_in() as i64) << s_sc));
+    let c_pad = Fp2::from_base(Fp::from_i64((wires.score_pad_in() as i64) << s_sc));
     let mut wts = Vec::with_capacity(wires.above_acc.len());
     for h in 0..H {
         for i in 0..t {
@@ -6591,21 +7502,7 @@ fn prove_attn_block_impl(
         }
     }
     let above_open = open_weighted_p(cx.stream, dom_above, &above_fp, &wts);
-    let mut acc_sc_true = tr_sc.sub(ProverAuthed::from_public(c_pad * padmask)).add(above_open);
-    if p.softmax_row_shift {
-        // The out column is s′ = s − c: add back 2^s·⟨gc, c⟩, gc_i = the
-        // causal eq mass of row i (authenticated weighted opening of c).
-        let mut gcw = vec![Fp2::ZERO; H_PAD * q_pad];
-        for h in 0..H {
-            for i in 0..t {
-                for j in 0..sh.win(i) {
-                    gcw[h * q_pad + i] += eq_sc[h * sp2 + i * s_pad + j];
-                }
-            }
-        }
-        let gc_open = open_weighted_p(cx.stream, dom_rowshift.unwrap(), &rowshift_fp, &gcw);
-        acc_sc_true = acc_sc_true.add(gc_open.scale(Fp2::from_base(Fp::new(1u64 << s_sc))));
-    }
+    let acc_sc_true = tr_sc.sub(ProverAuthed::from_public(c_pad * padmask)).add(above_open);
 
     // ---- 13: scores head split ------------------------------------------------
     let eqh_sc = eq_vec(&pt_sc[sb + qb..]);
@@ -6655,8 +7552,17 @@ fn prove_attn_block_impl(
     let mut qk_timings = Vec::with_capacity(H);
     let mut qk_jobs = Vec::with_capacity(H);
     for h in 0..H {
-        let (kvals, ktags, k_authenticated) =
-            cache_fold_rows_p(cx.stream, k_segs, &eq_rj_sc, h * DH, DH);
+        let (kvals, ktags, k_authenticated) = match &cache_mode {
+            AttentionProverCacheMode::Legacy(_) => {
+                cache_fold_rows_p(cx.stream, k_segs, &eq_rj_sc, h * DH, DH)
+            }
+            #[cfg(feature = "c6-trace")]
+            AttentionProverCacheMode::C6(_) => (
+                cache_fold_rows_values(k_segs, &eq_rj_sc, h * DH, DH),
+                Vec::new(),
+                Vec::new(),
+            ),
+        };
         let b_folded = kvals.clone();
         let mut qh = vec![0i16; t * DH];
         for i in 0..t {
@@ -6712,23 +7618,26 @@ fn prove_attn_block_impl(
         let mut tag = Fp2::ZERO;
         for l in 0..DH {
             value += eq_l[l] * kvals[l];
-            tag += eq_l[l] * ktags[l];
+            if let Some(&source_tag) = ktags.get(l) {
+                tag += eq_l[l] * source_tag;
+            }
         }
-        let mut b_open = k_authenticated
-            .iter()
-            .zip(&eq_l)
-            .fold(ProverAuthed::ZERO, |sum, (&entry, &weight)| sum.add(entry.scale(weight)))
-            .with_same_c6_trace(value, tag);
-        #[cfg(feature = "c6-trace")]
-        if let AttentionProverCacheMode::C6(c6_cache) = &mut cache_mode {
-            b_open = c6_cache
+        let b_open = match &mut cache_mode {
+            AttentionProverCacheMode::Legacy(_) => k_authenticated
+                .iter()
+                .zip(&eq_l)
+                .fold(ProverAuthed::ZERO, |sum, (&entry, &weight)| sum.add(entry.scale(weight)))
+                .with_same_c6_trace(value, tag),
+            #[cfg(feature = "c6-trace")]
+            AttentionProverCacheMode::C6(c6_cache) => c6_cache
                 .push_target_before_product(
+                    cx.stream,
                     crate::c6_cache_fold::C6CacheFoldKind::KeyRows,
-                    b_open,
+                    value,
                     cx.tx,
                 )
-                .expect("C6 Q·K target source/correction must be canonical");
-        }
+                .expect("C6 Q·K target source/correction must be canonical"),
+        };
         #[cfg(feature = "c6-trace")]
         crate::c6_cache_fold::record_c6_cache_fold_if_active(
             crate::c6_cache_fold::C6CacheFoldKind::KeyRows,
@@ -6878,7 +7787,8 @@ fn prove_attn_block_impl(
         hadamard: had_proof,
         rowsum_corr,
         inst_exp: inst_exp.proof,
-        inst_recip: inst_recip.proof,
+        inst_recip: inst_recip_proof,
+        c62_recip,
         inst_sc: inst_sc.proof,
         sc_split_corrs,
         gemm_qk,
@@ -7396,7 +8306,7 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
             .backend
             .as_deref_mut()
             .expect("resident attention backend")
-            .base_to_fp2_broadcast_device(p1.wires.rect_column(4)?, 1)?;
+            .base_to_fp2_broadcast_device(p1.wires.rect_column(6)?, 1)?;
         let recip_factor = match cx
             .backend
             .as_deref_mut()
@@ -7443,7 +8353,7 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
             .backend
             .as_deref_mut()
             .expect("resident attention backend")
-            .mle_eval_device(p1.wires.rect_column(4)?, &half_point)?;
+            .mle_eval_device(p1.wires.rect_column(6)?, &half_point)?;
         cx.ctr_other.fp2_mults += (rect_entries - 1) as u64;
         let rowsum_dom = cx.doms.take(1);
         let rowsum_mask = cx.stream.draw_fulls(rowsum_dom, 1)[0];
@@ -7475,12 +8385,12 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
                 .backend
                 .as_deref_mut()
                 .expect("resident attention backend")
-                .base_to_fp2_broadcast_device(p1.wires.rect_column(5)?, 1)?;
-            let sprime = match cx
+                .base_to_fp2_broadcast_device(p1.wires.rect_column(7)?, 1)?;
+            let gap = match cx
                 .backend
                 .as_deref_mut()
                 .expect("resident attention backend")
-                .base_to_fp2_broadcast_device(p1.wires.rect_column(3)?, 1)
+                .base_to_fp2_broadcast_device(p1.wires.rect_column(5)?, 1)
             {
                 Ok(value) => value,
                 Err(error) => {
@@ -7494,10 +8404,10 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
             };
             let tau2: Vec<Fp2> = (0..nr).map(|_| cx.tx.challenge_fp2()).collect();
             let rowmax_doms = HadamardDoms::alloc(&mut cx.doms, nr);
-            let (proof, point, ismax_claim, sprime_claim) = hadamard_prove_resident(
+            let (proof, point, ismax_claim, gap_claim) = hadamard_prove_resident(
                 &tau2,
                 ismax,
-                sprime,
+                gap,
                 ProverAuthed::from_public(Fp2::ZERO),
                 &rowmax_doms,
                 cx.stream,
@@ -7514,7 +8424,7 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
                 .backend
                 .as_deref_mut()
                 .expect("resident attention backend")
-                .mle_eval_device(p1.wires.rect_column(5)?, &half_point2)?;
+                .mle_eval_device(p1.wires.rect_column(7)?, &half_point2)?;
             cx.ctr_other.fp2_mults += (rect_entries - 1) as u64;
             let rowmax_sum_dom = cx.doms.take(1);
             let rowmax_sum_mask = cx.stream.draw_fulls(rowmax_sum_dom, 1)[0];
@@ -7536,7 +8446,7 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
                 }
             }
             cx.zero.push(rowmax_sum_auth.scale(two_sb).sub(ProverAuthed::from_public(real_mask)));
-            exp_aux.push(LeafAuxClaim { col: 0, point: point.clone(), value: sprime_claim });
+            exp_aux.push(LeafAuxClaim { col: 0, point: point.clone(), value: gap_claim });
             exp_aux.push(LeafAuxClaim { col: 2, point, value: ismax_claim });
             exp_aux.push(LeafAuxClaim { col: 2, point: half_point2, value: rowmax_sum_auth });
         }
@@ -7546,7 +8456,7 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
             DeviceSlice::new(exp_all.buffer(), exp_all.offset(), exp_count * rect_entries)?;
         let exp_shifts = [Some(0), Some(16), None];
         let exp_instance = cx.inst_resident(
-            TableKey::Exp,
+            softmax_exp_key(luts),
             exp_view,
             exp_count,
             rect_entries,
@@ -7554,43 +8464,114 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
             exp_aux,
         )?;
 
-        // 11–12: reciprocal and score lookups, including pad/above/rowshift correction.
-        let recip_first = p1.wires.row_column(1)?;
-        let recip_view = DeviceSlice::new(
-            recip_first.buffer(),
-            recip_first.offset(),
-            2 * p1.wires.row_entries(),
-        )?;
-        let recip_instance = cx.inst_resident(
-            TableKey::SoftmaxRecip,
-            recip_view,
-            2,
-            p1.wires.row_entries(),
-            &[Some(0), Some(16)],
-            Vec::new(),
-        )?;
-        close_softmax_recip_resident(
-            &recip_instance,
-            p1.dom_rin_row,
-            p1.wires.row_column(1)?,
-            p1.dom_recips,
-            p1.wires.row_column(2)?,
-            cx,
-        )?;
+        // 11–12: reciprocal relation and score lookup.
+        let (inst_recip_proof, mut c62_recip) = if params.softmax_row_shift {
+            let (base, extension) = prove_c62_softmax_recip_resident(
+                shape,
+                luts,
+                &p1.wires,
+                p1.dom_denoms,
+                p1.dom_rin_row,
+                p1.dom_recips,
+                cx,
+            )?;
+            (base, Some(extension))
+        } else {
+            let recip_first = p1.wires.row_column(1)?;
+            let recip_view = DeviceSlice::new(
+                recip_first.buffer(),
+                recip_first.offset(),
+                2 * p1.wires.row_entries(),
+            )?;
+            let instance = cx.inst_resident(
+                TableKey::SoftmaxRecip,
+                recip_view,
+                2,
+                p1.wires.row_entries(),
+                &[Some(0), Some(16)],
+                Vec::new(),
+            )?;
+            close_softmax_recip_resident(
+                &instance,
+                p1.dom_rin_row,
+                p1.wires.row_column(1)?,
+                p1.dom_recips,
+                p1.wires.row_column(2)?,
+                cx,
+            )?;
+            (instance.proof, None)
+        };
 
+        let score_at_exp = if params.softmax_row_shift {
+            let exp_eq = eq_vec(&exp_instance.point);
+            let mut row_weights = vec![Fp2::ZERO; H_PAD * q_pad];
+            for head in 0..H {
+                for row in 0..t {
+                    for col in 0..shape.win(row) {
+                        row_weights[head * q_pad + row] +=
+                            exp_eq[head * sp2 + row * s_pad + col];
+                    }
+                }
+            }
+            let row_shift_at_exp = open_weighted_resident_p(
+                cx.stream,
+                p1.dom_rowshift.expect("row-shift domain"),
+                p1.wires.row_column(3)?,
+                &row_weights,
+                cx.backend.as_deref_mut().expect("resident attention backend"),
+            )?;
+            row_shift_at_exp.sub(exp_instance.col_claims[0].value)
+        } else {
+            exp_instance.col_claims[0].value
+        };
+        let clamp = if params.softmax_row_shift {
+            Some(cx.inst_resident(
+                TableKey::ScoreClamp17,
+                p1.wires.score_clamp_columns(),
+                2,
+                rect_entries,
+                &[Some(0), Some(17)],
+                vec![LeafAuxClaim {
+                    col: 1,
+                    point: exp_instance.point.clone(),
+                    value: score_at_exp,
+                }],
+            )?)
+        } else {
+            None
+        };
+        let score_aux = if let Some(clamp) = &clamp {
+            vec![LeafAuxClaim {
+                col: 1,
+                point: clamp.point.clone(),
+                value: clamp.col_claims[0].value,
+            }]
+        } else {
+            vec![LeafAuxClaim {
+                col: 1,
+                point: exp_instance.point.clone(),
+                value: score_at_exp,
+            }]
+        };
         let scores_instance = cx.inst_resident(
             TableKey::Range(s_sc),
             p1.wires.scores_columns(),
             2,
             rect_entries,
             &[Some(0), None],
-            vec![LeafAuxClaim {
-                col: 1,
-                point: exp_instance.point.clone(),
-                value: exp_instance.col_claims[0].value,
-            }],
+            score_aux,
         )?;
-        let transported_scores = transport_p(&scores_instance, s_sc);
+        if let Some(extension) = c62_recip.as_mut() {
+            extension.score_clamp = clamp.map(|instance| instance.proof);
+        } else {
+            debug_assert!(clamp.is_none());
+        }
+        let mut transported_scores = transport_p(&scores_instance, s_sc);
+        if params.softmax_row_shift {
+            transported_scores = transported_scores.sub(ProverAuthed::from_public(
+                Fp2::from_base(Fp::new((C62_SCORE_OFFSET as u64) << s_sc)),
+            ));
+        }
         let score_point = scores_instance.point.clone();
         let eq_scores = eq_vec(&score_point);
         cx.ctr_other.fp2_mults += rect_entries as u64;
@@ -7603,11 +8584,20 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
             }
         }
         let pad_mask = Fp2::ONE - causal_mass;
-        let exp_pad = (0..1usize << 16)
-            .find(|&index| luts.exp[index] == 0)
-            .ok_or(AccelError::InvalidInput("exp LUT has no padding input"))?
-            as u16 as i16;
-        let pad_acc = Fp2::from_base(Fp::from_i64((exp_pad as i64) << s_sc));
+        let exp_pad = if params.softmax_row_shift {
+            volta_gpt2::softmax_gap_exp_table(luts)
+                .iter()
+                .position(|&value| value == 0)
+                .and_then(|gap| i16::try_from(-(gap as i32)).ok())
+                .ok_or(AccelError::InvalidInput("gap-exp LUT has no signed padding score"))?
+        } else {
+            luts.exp
+                .iter()
+                .position(|&value| value == 0)
+                .ok_or(AccelError::InvalidInput("exp LUT has no padding input"))?
+                as u16 as i16
+        };
+        let pad_acc = Fp2::from_base(Fp::from_i64((i64::from(exp_pad)) << s_sc));
         let mut above_weights = Vec::with_capacity(H * shape.n_above_head());
         for head in 0..H {
             for row in 0..t {
@@ -7623,28 +8613,8 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
             &above_weights,
             cx.backend.as_deref_mut().expect("resident attention backend"),
         )?;
-        let mut true_score_claim =
+        let true_score_claim =
             transported_scores.sub(ProverAuthed::from_public(pad_acc * pad_mask)).add(above_open);
-        if params.softmax_row_shift {
-            let mut row_weights = vec![Fp2::ZERO; H_PAD * q_pad];
-            for head in 0..H {
-                for row in 0..t {
-                    for col in 0..shape.win(row) {
-                        row_weights[head * q_pad + row] +=
-                            eq_scores[head * sp2 + row * s_pad + col];
-                    }
-                }
-            }
-            let shift_open = open_weighted_resident_p(
-                cx.stream,
-                p1.dom_rowshift.expect("row-shift domain"),
-                p1.wires.row_column(3)?,
-                &row_weights,
-                cx.backend.as_deref_mut().expect("resident attention backend"),
-            )?;
-            true_score_claim =
-                true_score_claim.add(shift_open.scale(Fp2::from_base(Fp::new(1u64 << s_sc))));
-        }
 
         // 13–15: score head split, QK GEMMs, and K/V boundary selectors.
         let eq_head_scores = eq_vec(&score_point[sb + qb..]);
@@ -7935,7 +8905,8 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
                 hadamard,
                 rowsum_corr,
                 inst_exp: exp_instance.proof,
-                inst_recip: recip_instance.proof,
+                inst_recip: inst_recip_proof,
+                c62_recip,
                 inst_sc: scores_instance.proof,
                 sc_split_corrs,
                 gemm_qk,
@@ -8008,6 +8979,9 @@ pub(crate) fn verify_attn_phase1(
     if row_shift_on != proof.row_shift_corr.is_some()
         || row_shift_on != proof.hadamard2.is_some()
         || row_shift_on != proof.ismax_rowsum_corr.is_some()
+        || row_shift_on != proof.c62_recip.is_some()
+        || row_shift_on
+            != proof.c62_recip.as_ref().and_then(|extension| extension.score_clamp.as_ref()).is_some()
     {
         return None;
     }
@@ -8501,20 +9475,82 @@ fn verify_attn_block_impl(
     }
     let exp_shifts: Vec<Option<u32>> =
         if row_shift_on { vec![Some(0), Some(16), None] } else { vec![Some(0), Some(16)] };
-    let vexp = cx.inst(TableKey::Exp, nr, &exp_shifts, &proof.inst_exp, &aux_exp)?;
+    let vexp = cx.inst(softmax_exp_key(luts), nr, &exp_shifts, &proof.inst_exp, &aux_exp)?;
 
-    // ---- 11: softmax_recip instance -----------------------------------------------
-    let vrc =
-        cx.inst(TableKey::SoftmaxRecip, rb + HEAD_BITS, &shifts_pair, &proof.inst_recip, &[])?;
-    close_softmax_recip_verifier(&vrc, &rin_row_keys, &recips_keys, cx);
+    // ---- 11: reciprocal relation ---------------------------------------------------
+    if row_shift_on {
+        verify_c62_softmax_recip(
+            sh,
+            luts,
+            &proof.inst_recip,
+            proof.c62_recip.as_ref()?,
+            &denoms_keys,
+            &rin_row_keys,
+            &recips_keys,
+            cx,
+        )?;
+    } else {
+        let vrc = cx.inst(
+            TableKey::SoftmaxRecip,
+            rb + HEAD_BITS,
+            &shifts_pair,
+            &proof.inst_recip,
+            &[],
+        )?;
+        close_softmax_recip_verifier(&vrc, &rin_row_keys, &recips_keys, cx);
+    }
 
     // ---- 12: scores instance + pad-mask correction -----------------------------
-    let aux_sc = [(1usize, vexp.point.clone(), vexp.col_keys[0].key)];
+    let score_key_at_exp = if row_shift_on {
+        let exp_eq = eq_vec(&vexp.point);
+        let mut row_weights = vec![Fp2::ZERO; H_PAD * q_pad];
+        for h in 0..H {
+            for i in 0..t {
+                for j in 0..sh.win(i) {
+                    row_weights[h * q_pad + i] += exp_eq[h * sp2 + i * s_pad + j];
+                }
+            }
+        }
+        let row_shift_key = open_weighted_k(rowshift_keys.as_ref()?, &row_weights);
+        row_shift_key.sub(vexp.col_keys[0].key)
+    } else {
+        vexp.col_keys[0].key
+    };
+    let clamp = if row_shift_on {
+        Some(cx.inst(
+            TableKey::ScoreClamp17,
+            nr,
+            &[Some(0), Some(17)],
+            proof.c62_recip.as_ref()?.score_clamp.as_ref()?,
+            &[(1usize, vexp.point.clone(), score_key_at_exp)],
+        )?)
+    } else {
+        None
+    };
+    let aux_sc = if let Some(clamp) = &clamp {
+        vec![(1usize, clamp.point.clone(), clamp.col_keys[0].key)]
+    } else {
+        vec![(1usize, vexp.point.clone(), score_key_at_exp)]
+    };
     let vsc = cx.inst(TableKey::Range(s_sc), nr, &shifts_range, &proof.inst_sc, &aux_sc)?;
-    let k_tr_sc = transport_k(&vsc, s_sc, cx.ctx.delta);
+    let mut k_tr_sc = transport_k(&vsc, s_sc, cx.ctx.delta);
+    if row_shift_on {
+        k_tr_sc = k_tr_sc.sub(VerifierKey::from_public(
+            Fp2::from_base(Fp::new((C62_SCORE_OFFSET as u64) << s_sc)),
+            cx.ctx.delta,
+        ));
+    }
     let pt_sc = vsc.point.clone();
-    let exp_pad_u = (0..1usize << 16).find(|&u| luts.exp[u] == 0)?;
-    let pad_in = (exp_pad_u as u16) as i16;
+    let exp_pad_u = if row_shift_on {
+        volta_gpt2::softmax_gap_exp_table(luts).iter().position(|&value| value == 0)?
+    } else {
+        luts.exp.iter().position(|&value| value == 0)?
+    };
+    let pad_in = if row_shift_on {
+        i16::try_from(-(exp_pad_u as i32)).ok()?
+    } else {
+        exp_pad_u as u16 as i16
+    };
     let eq_sc = eq_vec(&pt_sc);
     let mut caus_sum = Fp2::ZERO;
     for h in 0..H {
@@ -8535,20 +9571,8 @@ fn verify_attn_block_impl(
         }
     }
     let above_k = open_weighted_k(&above_keys, &wts);
-    let mut k_acc_sc_true =
+    let k_acc_sc_true =
         k_tr_sc.sub(VerifierKey::from_public(c_pad * padmask, cx.ctx.delta)).add(above_k);
-    if row_shift_on {
-        let mut gcw = vec![Fp2::ZERO; H_PAD * q_pad];
-        for h in 0..H {
-            for i in 0..t {
-                for j in 0..sh.win(i) {
-                    gcw[h * q_pad + i] += eq_sc[h * sp2 + i * s_pad + j];
-                }
-            }
-        }
-        let gc_k = open_weighted_k(rowshift_keys.as_ref()?, &gcw);
-        k_acc_sc_true = k_acc_sc_true.add(gc_k.scale(Fp2::from_base(Fp::new(1u64 << s_sc))));
-    }
 
     // ---- 13: scores head split ---------------------------------------------------
     let eqh_sc = eq_vec(&pt_sc[sb + qb..]);
@@ -9533,8 +10557,15 @@ pub fn layer_content_keys(luts: &Luts, keys: &mut std::collections::BTreeSet<Tab
     }
     keys.insert(TableKey::Gelu);
     keys.insert(TableKey::LnRsqrt);
-    keys.insert(TableKey::Exp);
-    keys.insert(TableKey::SoftmaxRecip);
+    keys.insert(softmax_exp_key(luts));
+    if p.softmax_row_shift {
+        keys.insert(TableKey::ScoreClamp17);
+        for shift in [2, 6, 8, 15, 16] {
+            keys.insert(TableKey::Range(shift));
+        }
+    } else {
+        keys.insert(TableKey::SoftmaxRecip);
+    }
 }
 
 /// Layer verifier phase-1 state (mirror of [`LayerP1`]).
@@ -9670,9 +10701,7 @@ fn verify_layer_phase1_band_thinned_impl(
     let dom_xin = cx.doms.take(t as u64);
     let xin_keys = match entry_alias_keys {
         Some(keys) => keys.to_vec(),
-        None if layer == 0 => {
-            auth_matrix_rows_v(cx.ctx, cx.tx, dom_xin, &proof.xin_corr, t, D)
-        }
+        None if layer == 0 => auth_matrix_rows_v(cx.ctx, cx.tx, dom_xin, &proof.xin_corr, t, D),
         None => Vec::new(),
     };
     let dom_k = cx.doms.take(t as u64);
@@ -10112,10 +11141,10 @@ mod tests {
             .download_device(
                 resident_p1.wires.rect_column(0).unwrap().buffer(),
                 0,
-                7 * rect_entries,
+                9 * rect_entries,
             )
             .unwrap();
-        let mut expected_rect = vec![0u64; 7 * rect_entries];
+        let mut expected_rect = vec![0u64; 9 * rect_entries];
         let rem_sn = build_rem_sn(&expected_wires, luts.params.shift_softmax_norm);
         let rem_sc = build_rem_sc_packed(
             &host_layer.scores_acc,
@@ -10128,11 +11157,14 @@ mod tests {
             expected_rect[rect_entries + index] =
                 Fp::from_i64(expected_wires.w_rect[index] as i64).value();
             expected_rect[2 * rect_entries + index] = rem_sc[index] as u64;
-            expected_rect[3 * rect_entries + index] =
-                Fp::from_i64(expected_wires.sprime_rect[index] as i64).value();
+            expected_rect[3 * rect_entries + index] = expected_wires.score_index_rect[index] as u64;
             expected_rect[4 * rect_entries + index] =
-                Fp::from_i64(expected_wires.exp_rect[index] as i64).value();
+                Fp::from_i64(expected_wires.scores_rect[index] as i64).value();
             expected_rect[5 * rect_entries + index] =
+                u64::from(expected_wires.exp_input_rect[index] as u16);
+            expected_rect[6 * rect_entries + index] =
+                Fp::from_i64(expected_wires.exp_rect[index] as i64).value();
+            expected_rect[7 * rect_entries + index] =
                 Fp::from_i64(expected_wires.is_max_rect[index] as i64).value();
         }
         let sp2 = expected_wires.shape.sp2();
@@ -10142,7 +11174,7 @@ mod tests {
                 for j in 0..tokens.len() {
                     let rect_index = h * sp2 + i * s_pad + j;
                     let source = h * tokens.len() * tokens.len() + i * tokens.len() + j;
-                    expected_rect[6 * rect_entries + rect_index] =
+                    expected_rect[8 * rect_entries + rect_index] =
                         Fp::from_i64(expected_wires.acc_full[source]).value();
                 }
             }
@@ -12560,6 +13592,38 @@ mod tests {
         assert!(run_row_shift_case(94, |_| {}, |_| {}), "honest row-shifted layer rejected");
     }
 
+    #[test]
+    fn c62_score_clamp_table_is_exact_at_all_boundaries() {
+        let table = c62_score_clamp_table();
+        for raw in [-65_536i64, -34_526, -32_769, -32_768, 0, 32_767, 32_768, 65_535] {
+            let index = usize::try_from(raw + C62_SCORE_OFFSET).unwrap();
+            let expected = Fp::new(index as u64)
+                + Fp::from_i64(raw.clamp(i16::MIN as i64, i16::MAX as i64))
+                    * Fp::new(1 << 17);
+            assert_eq!(table[index], expected);
+        }
+    }
+
+    #[test]
+    fn layer_rejects_score_clamp_proof_mutation() {
+        assert!(!run_row_shift_case(
+            98,
+            |_| {},
+            |proof| {
+                proof
+                    .attn
+                    .c62_recip
+                    .as_mut()
+                    .unwrap()
+                    .score_clamp
+                    .as_mut()
+                    .unwrap()
+                    .lookup
+                    .root_corrs[0] += Fp2::ONE;
+            },
+        ));
+    }
+
     /// Negative: moving an is_max marker to a position with s′ ≠ 0 (a lying
     /// row-max) must be rejected by the is_max∘s′ hadamard row.
     ///
@@ -12581,7 +13645,7 @@ mod tests {
                     for y in 0..n {
                         if wires.is_max_rect[y] == 1 {
                             for d in [y.wrapping_sub(1), y + 1] {
-                                if d < n && wires.sprime_rect[d] != 0 {
+                                if d < n && wires.exp_input_rect[d] != 0 {
                                     wires.is_max_rect[y] = 0;
                                     wires.is_max_rect[d] = 1;
                                     return;
@@ -12597,6 +13661,28 @@ mod tests {
         assert!(
             !outcome.unwrap_or(false),
             "lying row max accepted (neither prover assert nor verifier reject fired)"
+        );
+    }
+
+    /// C62SGE1 negative: a gap/score divergence must fail even when the
+    /// changed padded gap still maps to the same zero exp output.
+    #[test]
+    fn layer_rejects_gap_score_divergence() {
+        let outcome = std::panic::catch_unwind(|| {
+            run_row_shift_case(
+                97,
+                |wires| {
+                    let index = wires.exp_input_rect.len() - 1;
+                    assert_eq!(wires.exp_rect[index], 0);
+                    let gap = wires.exp_input_rect[index] as u16;
+                    wires.exp_input_rect[index] = gap.checked_add(1).unwrap() as i16;
+                },
+                |_| {},
+            )
+        });
+        assert!(
+            !outcome.unwrap_or(false),
+            "divergent C62SGE1 gap and score relation was accepted",
         );
     }
 

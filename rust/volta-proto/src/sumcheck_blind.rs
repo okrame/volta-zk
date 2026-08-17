@@ -1118,15 +1118,7 @@ pub fn blind_verify(
     mask_dom_base: u64,
     tx: &mut Transcript,
 ) -> Option<(Vec<Fp2>, VerifierKey)> {
-    blind_verify_labeled(
-        n_vars,
-        k_claim0,
-        proof,
-        ctx,
-        mask_dom_base,
-        tx,
-        "blind_round_corrections",
-    )
+    blind_verify_labeled(n_vars, k_claim0, proof, ctx, mask_dom_base, tx, "blind_round_corrections")
 }
 
 /// Verifier mirror for a prover using a relation-specific canonical round

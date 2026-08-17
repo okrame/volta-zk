@@ -33,6 +33,9 @@ use crate::x4::persisted_v4::{
 const MANIFEST_MAGIC: [u8; 8] = *b"C6WSP1\0\0";
 const MANIFEST_VERSION: u16 = 2;
 const MANIFEST_DOMAIN: &str = "volta-zk/c6/wrapper-persisted-manifest/v2";
+const C62_REBIND_MAGIC: [u8; 8] = *b"C62WBP1\0";
+const C62_REBIND_VERSION: u16 = 1;
+const C62_REBIND_DOMAIN: &str = "volta-zk/c6.2/wrapper-cache-rebind/v1";
 const FOLD_MANIFEST_MAGIC: [u8; 8] = *b"C6WFP1\0\0";
 const FOLD_MANIFEST_VERSION: u16 = 1;
 const FOLD_MANIFEST_DOMAIN: &str = "volta-zk/c6/wrapper-persisted-fold-manifest/v1";
@@ -1437,6 +1440,78 @@ impl C6PersistedWrapperCohort {
         self.metrics
     }
 
+    /// Bind one unchanged cache oracle to the final C6.2 statement.
+    ///
+    /// The first manifest remains as an append-only precommit record.  The
+    /// new record binds that manifest, the root and both ownership contexts.
+    /// No coefficient, oracle or Merkle node is recomputed.
+    pub(crate) fn rebind_c62_cache_create_new(
+        self,
+        statement_digest: C6WrapperDigest,
+        session_digest: C6WrapperDigest,
+        cache_descriptors: &C6CacheStateDescriptors,
+    ) -> Result<Self> {
+        if !matches!(
+            self.commitment.spec.cohort_id,
+            C6_PREDECESSOR_CACHE_COHORT_ID | C6_SUCCESSOR_CACHE_COHORT_ID
+        ) || statement_digest == [0; 32]
+            || session_digest == [0; 32]
+        {
+            return Err(C6WrapperPcsError::external_message(
+                "C6.2 cache rebind received a wrong cohort or context",
+            ));
+        }
+        let next_commitment = C6WrapperCommitment::from_cache_root(
+            statement_digest,
+            self.commitment.spec,
+            self.commitment.root,
+            cache_descriptors,
+        )?;
+        if next_commitment.config != self.commitment.config {
+            return Err(C6WrapperPcsError::external_message(
+                "C6.2 cache rebind changes the Merkle configuration",
+            ));
+        }
+        let original_manifest = fs::read(self.directory.join("manifest.c6wsp1"))
+            .map_err(|error| C6WrapperPcsError::external("read C6.2 cache precommit", error))?;
+        let record = encode_c62_cache_rebind(
+            self.commitment.statement_digest,
+            self.session_digest,
+            statement_digest,
+            session_digest,
+            self.commitment.root,
+            self.commitment.spec.cohort_id,
+            self.oracle_ordinal,
+            *blake3::hash(&original_manifest).as_bytes(),
+        );
+        write_bytes_create_new(&self.directory.join("binding.c62wbp1"), &record)?;
+        File::open(&self.directory)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|error| C6WrapperPcsError::external("fsync C6.2 cache rebind", error))?;
+        let binding =
+            PersistedOracleBindingV4::new(statement_digest, session_digest, self.commitment.root);
+        let opening = self
+            .opening
+            .rebind(next_commitment.config.clone(), binding)
+            .map_err(|error| C6WrapperPcsError::external("load rebound C6.2 cache", error))?;
+        let mut metrics = self.metrics;
+        metrics.files_created = metrics.files_created.checked_add(1).ok_or_else(|| {
+            C6WrapperPcsError::external_message("C6.2 cache file metric overflow")
+        })?;
+        metrics.fsync_count = metrics.fsync_count.checked_add(2).ok_or_else(|| {
+            C6WrapperPcsError::external_message("C6.2 cache fsync metric overflow")
+        })?;
+        Ok(Self {
+            commitment: next_commitment,
+            session_digest,
+            oracle_ordinal: self.oracle_ordinal,
+            directory: self.directory,
+            semantic_cache_path: self.semantic_cache_path,
+            opening,
+            metrics,
+        })
+    }
+
     pub fn open_initial(
         &self,
         query_draws: &[u64],
@@ -2162,6 +2237,36 @@ fn encode_manifest(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn encode_c62_cache_rebind(
+    precommit_statement_digest: C6WrapperDigest,
+    precommit_session_digest: C6WrapperDigest,
+    statement_digest: C6WrapperDigest,
+    session_digest: C6WrapperDigest,
+    root: C6WrapperDigest,
+    cohort_id: u32,
+    oracle_ordinal: u64,
+    original_manifest_digest: C6WrapperDigest,
+) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(248);
+    bytes.extend_from_slice(&C62_REBIND_MAGIC);
+    bytes.extend_from_slice(&C62_REBIND_VERSION.to_le_bytes());
+    bytes.extend_from_slice(&0u16.to_le_bytes());
+    bytes.extend_from_slice(&precommit_statement_digest);
+    bytes.extend_from_slice(&precommit_session_digest);
+    bytes.extend_from_slice(&statement_digest);
+    bytes.extend_from_slice(&session_digest);
+    bytes.extend_from_slice(&root);
+    bytes.extend_from_slice(&cohort_id.to_le_bytes());
+    bytes.extend_from_slice(&oracle_ordinal.to_le_bytes());
+    bytes.extend_from_slice(&original_manifest_digest);
+    let mut hasher = blake3::Hasher::new_derive_key(C62_REBIND_DOMAIN);
+    hasher.update(&bytes);
+    bytes.extend_from_slice(hasher.finalize().as_bytes());
+    debug_assert_eq!(bytes.len(), 248);
+    bytes
+}
+
+#[allow(clippy::too_many_arguments)]
 fn encode_fold_manifest(
     config: &CohortVerifierConfigV4,
     statement_digest: C6WrapperDigest,
@@ -2211,6 +2316,33 @@ fn encode_fold_manifest(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn c62_cache_rebind_record_is_exact_and_context_sensitive() {
+        let record = encode_c62_cache_rebind(
+            [0x11; 32],
+            [0x22; 32],
+            [0x33; 32],
+            [0x44; 32],
+            [0x55; 32],
+            C6_PREDECESSOR_CACHE_COHORT_ID,
+            0,
+            [0x66; 32],
+        );
+        assert_eq!(record.len(), 248);
+        assert_eq!(record[..8], C62_REBIND_MAGIC);
+        let changed_record = encode_c62_cache_rebind(
+            [0x11; 32],
+            [0x22; 32],
+            [0x32; 32],
+            [0x44; 32],
+            [0x55; 32],
+            C6_PREDECESSOR_CACHE_COHORT_ID,
+            0,
+            [0x66; 32],
+        );
+        assert_ne!(record[216..], changed_record[216..]);
+    }
 
     #[test]
     fn link_fold_owner_is_create_new_bound_and_releases_only_durable_predecessors() {

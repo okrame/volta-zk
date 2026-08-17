@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — A100 EXACT CAMPAIGN OWNER GO)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 WHIR FIAT--SHAMIR — OWNER GO / DESIGN ACTIVE / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,34 +8,73 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative; read design §§0.60--1.11 next.
+This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Hard stop.** Disk assembly reached
-  `C6ICT5_SECONDARY_RESPONSE_VALUE_BINDING_OBSTRUCTED`. Primary WHIR verifies
-  response-owned keys; secondary WHIR plus the joint ZeroOpen verifies the
-  compiler functional. The statement requires the same ordered points but
-  explicitly permits independent commitment roots, and the secondary
-  verifier carries no response target keys. There is no proved equality
-  between primary and secondary values. Honest shared coefficient ownership
-  is construction evidence, not malicious-provider soundness.
-- **Completed evidence.** Exact response-to-seal, disk cache/terminal
-  typestates and counter-neutral raw source-key replay are green component
-  seams. Focused distinct-root and native-bridge checks are **1/0/0 +
-  1/0/0**; the complete bench feature check is green. Budget v29 and Lean
-  **3,267 jobs/nine audits** remain screens only; no full-chain, timing or
-  hardware credit exists.
-- **Authorization.** Stop; no pod. Current implementation GO does not permit
-  substituting an unproved relation.
-- **Resume.** Requires owner GO for a typed joint relation binding the same
-  96+6 response keys and compiler functional after fixed bodies, plus exact
-  challenge order, Lean proof, mutations and byte/soundness/time re-sum.
-- **Screens.** Study-only certificate **17,079,931 B**, setup
-  **148,738,118 B**, setup+first **165,818,049 B**, state
-  **2,277,715,552 B**, soundness **102.5878333013 bits/cert** and
-  provider/verifier **14.9179595454 / 4.978261758 s** are `credit:false`.
-- **Policy.** No pod contact. Verifier: official `4T <5 s`, diagnostic
-  `maxT(N)`; provider: one A100 full-chain `<15 s`. Fiat--Shamir remains
-  production NO-GO.
+- **Active milestone.** C6.2 targets one Fiat--Shamir proof with a designated
+  VOLE-MAC verifier. Local implementation and preflight are authorized. Pod
+  contact is not authorized. No terminal stop is active.
+- **Required relation.** `C62JVR1` proves `secondary=response` and
+  `secondary=compiler` with one authenticated equation. `C62FS1` derives all
+  public challenges. `C62SGE1` proves the total unsigned softmax gap.
+- **Completed evidence.** Rust implements the relation, transcript, strict
+  codecs, four-profile setup bundle, disk verifier, response abort, and exact
+  17-accept plus 4-burn session runner. Additive Lean and `Audit.lean` pass in
+  a complete 3,270-job build.
+- **Current checks.** Focused Fiat--Shamir, divergent-value, codec, gap,
+  ownership, profile, abort, and runner-order checks are green. Exact session
+  use is 47,356,708 raw correlations per tape. Setup compression is still a
+  local measurement. No byte, time, session, or hardware credit exists.
+- **Gates.** The analytic setup cap is 141,882,261 B. Setup plus the strict
+  certificate ceiling is 157,500,000 B. The five-percent tolerance applies
+  only to product gates. Soundness and invariants remain exact.
+- **Resume conditions.** Complete the four local setup profiles. Measure the
+  exact bundle. Pass mutations, the Rust workspace, golden checks, and local
+  preflight. Then record `C62_POD_READY` with exact pod-only commands.
+
+- **2026-08-16 — C6.2 exact local session and setup topology land.** `C62MP1`
+  binds four strict setup profiles for genesis and continuation capacities
+  256, 512, and 1,024. The production runner now verifies 17 create-new disk
+  artifacts before client acceptance and consumes four complete aborted
+  reservations after the first acceptance. One pair of live connections uses
+  exactly **47,356,708** raw correlations per tape and ends at context **950**
+  with next slot **21**. Focused profile, state-order, response-abort,
+  Fiat--Shamir, divergent-value, codec, and gap checks are green. The local
+  setup generator and exact measurement remain open. The current setup byte
+  value is analytic with `credit:false`. No pod was contacted.
+
+- **2026-08-16 — C6.2 selects the total softmax gap relation.** The first
+  1,024-row continuation screen stopped at position **495**, layer **4**, head
+  **11**. Its exact score gap was **32,851**, which is **83** above the signed
+  exp-input limit. This input was undefined by the frozen P5 implementation.
+  `C62SGE1` keeps the signed requantized score, proves the unsigned 16-bit gap
+  to the exact row maximum, and uses one gap-exp table. Gaps through 32,768
+  return the frozen exp value. Larger gaps return zero. The frozen lower
+  boundary already returns zero. The relation uses the existing score, row,
+  exp and one-hot maximum openings. It adds no proof column, correction,
+  challenge or wire byte. The CUDA proof workspace adds one internal column.
+  This is a selected design deviation. Rust, CUDA, Python, adversarial tests,
+  additive Lean and local full-chain evidence remain required. No pod was
+  contacted and no numerical credit is promoted.
+
+- **2026-08-16 — C6.2 selects the typed joint value relation.** Source audit
+  selects wire-neutral `C62JVR1`. Each secondary WHIR body retains its one
+  response-target aggregate. Disk replay installs the matching response-key
+  aggregate. After bodies, weights, compiler functional, roots, C6NBR2
+  statement and correction are fixed, `C62FS1` derives `eta` and ZeroOpen
+  proves `(N-R)+eta*(N-C)=0`. The new degree-one term is at most `1/|Fp2|`.
+  The existing 32-byte correction/tag carrier is expected to remain exact.
+  This is a typed design disposition, not implementation or benchmark credit.
+
+- **2026-08-16 — C6.2 WHIR Fiat--Shamir owner GO.** The owner selects a fully
+  non-interactive provider proof and keeps the verifier designated through
+  private VOLE-MAC verification. The new active design is
+  `docs/c62-whir-fiat-shamir-design.md`. It must close the C6.1
+  response/secondary/compiler value relation against a malicious provider,
+  prove the complete Fiat--Shamir composition, and recover at least
+  **8,318,049 B** from setup plus first proof. A five-percent tolerance applies
+  to numerical product gates only. Soundness and protocol invariants remain
+  exact. Work is authorized through local pod-readiness. No pod contact or
+  benchmark credit is authorized.
 
 - **2026-08-16 — Secondary response-value binding hard stop.** Full disk
   assembly exposed a missing malicious-provider relation. Primary model/embed

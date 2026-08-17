@@ -3318,8 +3318,8 @@ fn terminal_scalars_from_direct_claims(
         ));
     }
     let start = repetition * C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION;
-    let values = &terminal_functionals
-        [start..start + C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION];
+    let values =
+        &terminal_functionals[start..start + C6_RESIDUAL_TERMINAL_FUNCTIONALS_PER_REPETITION];
     let leaf_end = C6_RESIDUAL_LEAF_TABLES_PER_REPETITION;
     let auxiliary_end = leaf_end + C6_RESIDUAL_AUXILIARY_TABLES_PER_REPETITION;
     Ok(C6BlindResidualTerminalScalars {
@@ -4803,12 +4803,9 @@ mod tests {
             &mut claim_transcript,
         )
         .unwrap();
-        assert!(claim_contexts
-            .iter()
-            .zip(&direct_contexts)
-            .all(|(claims, direct)| {
-                claims.delta == direct.delta && claims.counters == direct.counters
-            }));
+        assert!(claim_contexts.iter().zip(&direct_contexts).all(|(claims, direct)| {
+            claims.delta == direct.delta && claims.counters == direct.counters
+        }));
         assert_eq!(claim_transcript.ledger(), direct_transcript.ledger());
         assert_eq!(claim_transcript.challenge_fp2(), output_beta);
 

@@ -15,7 +15,10 @@ use crate::config::{
     ActivationKind, AttentionMode, LayerShiftSchedule, ModelConfig, NonlinearTableConfig, NormKind,
 };
 use crate::gemm::gemm_i64_with_backend;
-use crate::luts::{LutParams, Luts};
+use crate::luts::{
+    softmax_exp_from_gap, softmax_recip_from_index, softmax_score_gap, LutParams, Luts,
+    C62_SOFTMAX_RECIP_LEN,
+};
 use std::time::Instant;
 use volta_accel::{AccelError, Backend, BackendKind, Operation};
 
@@ -190,6 +193,35 @@ pub(crate) fn requant_into(tr: &mut LookupTrace, site: &str, acc: i64, shift: u3
     );
     let rem = (stage2_in + half - (rounded << s2)) as usize;
     let y = rounded as i16;
+    tr.push(acc, y, rem);
+    y
+}
+
+/// C62SCR1 score requantization.
+///
+/// The rounding quotient must fit the registered signed 17-bit domain.
+/// The result then uses the frozen signed-i16 clamp from the quantization
+/// specification. The range trace retains the rounding remainder.
+#[inline]
+fn requant_score_into(tr: &mut LookupTrace, acc: i64, shift: u32) -> i16 {
+    let (stage2_in, s2) = if shift <= 16 {
+        (acc, shift)
+    } else {
+        debug_assert_eq!(tr.stage1_shift, shift - 16, "requant_scores");
+        let s1 = shift - 16;
+        let y1 = round_shift(acc, s1);
+        let rem1 = (acc + (1i64 << (s1 - 1)) - (y1 << s1)) as usize;
+        tr.stage1_mult[rem1] += 1;
+        (y1, 16)
+    };
+    let half = 1i64 << (s2 - 1);
+    let rounded = (stage2_in + half) >> s2;
+    assert!(
+        (-65_536..65_536).contains(&rounded),
+        "C62SCR1 score quotient exceeds the signed 17-bit domain: acc={acc}, shift={shift}",
+    );
+    let rem = (stage2_in + half - (rounded << s2)) as usize;
+    let y = rounded.clamp(i16::MIN as i64, i16::MAX as i64) as i16;
     tr.push(acc, y, rem);
     y
 }
@@ -624,7 +656,7 @@ pub fn forward_layer_with_config_backend(
         LookupTrace::new_requant(p.shift_qkv),          // requant_qkv
         LookupTrace::new_requant(p.shift_scores),       // requant_scores
         LookupTrace::new(1 << 16),                      // exp
-        LookupTrace::new(1 << 16),                      // softmax_recip
+        LookupTrace::new(if p.softmax_row_shift { C62_SOFTMAX_RECIP_LEN } else { 1 << 16 }),
         LookupTrace::new_requant(p.shift_softmax_norm), // softmax_norm_requant
         LookupTrace::new_requant(p.shift_av),           // requant_av
         LookupTrace::new_requant(p.shift_attn_proj),    // requant_attn_proj
@@ -708,7 +740,15 @@ pub fn forward_layer_with_config_backend(
             let s_row_start = scores_q.len();
             for j in 0..=i {
                 let acc = s_full[i * t + j];
-                let s = requant_traced(&mut traces, TableId::RequantScores, acc, p.shift_scores);
+                let s = if p.softmax_row_shift {
+                    requant_score_into(
+                        &mut traces[TableId::RequantScores as usize],
+                        acc,
+                        p.shift_scores,
+                    )
+                } else {
+                    requant_traced(&mut traces, TableId::RequantScores, acc, p.shift_scores)
+                };
                 scores_acc.push(acc);
                 scores_q.push(s);
             }
@@ -723,17 +763,25 @@ pub fn forward_layer_with_config_backend(
             // Pass 2: exp lookups + denominator.
             let mut denom: i64 = 0;
             for j in 0..=i {
-                let sp = scores_q[s_row_start + j] as i32 - c as i32;
-                assert!(sp >= i16::MIN as i32, "softmax row spread exceeds the exp table domain");
-                let idx = (sp as i16 as u16) as usize;
-                let e = luts.exp[idx];
-                traces[TableId::Exp as usize].push(sp as i64, e, idx);
+                let score = scores_q[s_row_start + j];
+                let (input, idx, e) = if p.softmax_row_shift {
+                    let gap = softmax_score_gap(score, c);
+                    (i64::from(gap), usize::from(gap), softmax_exp_from_gap(luts, gap))
+                } else {
+                    let idx = usize::from(score as u16);
+                    (i64::from(score), idx, luts.exp[idx])
+                };
+                traces[TableId::Exp as usize].push(input, e, idx);
                 exp_out.push(e);
                 denom += e as i64;
             }
             let rin = denom >> p.recip_den_shift;
-            assert!(rin < 1 << 16, "softmax_recip input exceeds u16 domain: denom={denom}");
-            let rc = luts.softmax_recip[rin as usize];
+            let rc = if p.softmax_row_shift {
+                softmax_recip_from_index(luts, rin as u64)
+            } else {
+                assert!(rin < 1 << 16, "softmax_recip input exceeds u16 domain: denom={denom}");
+                luts.softmax_recip[rin as usize]
+            };
             traces[TableId::SoftmaxRecip as usize].push(rin, rc, rin as usize);
             denoms.push(denom);
             recips.push(rc);

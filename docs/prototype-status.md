@@ -10,19 +10,18 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Status and authorization.** C6.2 is `R09_FAIL / R10_TOPOLOGY_REGISTRY_READY`;
-  design §0.34 is active. r01--r09 are immutable and standing create-new GO
-  remains recorded for r10.
-- **r09 disposition.** Clean `e8040cb` passed the reused **101,197,448-B** setup
-  measurement, A100 preflight, real/AES connection preparation and the former
-  compact-response obstruction. After its first wrapper spill it failed before
-  sealing: `C6RLM1 production manifest does not have a registered C6.2
-  geometry`. Spill was removed; no mutation started.
-- **Diagnosis and repair.** The strict installed setup binds four current
-  topology classes, but the C6RLM1 production whitelist retained four obsolete
-  tuples. r10 replaces only that whitelist with the exact setup-header censuses
-  and adds a four-class regression. Operation plans, setup, relation,
-  transcript, correlations, proof and gates are unchanged.
+- **Status and authorization.** C6.2 is `R10_FAIL / R11_RETAINED_BOUNDARY_READY`;
+  design §0.35 is active. r01--r10 are immutable and standing create-new GO
+  remains recorded for r11.
+- **r10 disposition.** Clean `290b9d0` passed the reused **101,197,448-B** setup
+  measurement, A100 preflight, real/AES preparation, compact encoding and the
+  corrected topology registry. After its first wrapper spill it failed before
+  sealing: `C6.2 retained response prefix has the wrong length`. Spill was
+  removed; no mutation started.
+- **Diagnosis and repair.** The C6.2 binding constructor decoded the C6.2 codec
+  but compared its frame to the historical C6.1 byte constant. r11 selects the
+  existing C6.2 constant and adds one strict boundary regression. No bytes,
+  setup, relation, transcript, correlation, proof or gate changes.
 - **Compact evidence.** `C62RRP2` genesis content remains **3,697,261 B**
   including digest versus the fixed **4,500,000-B** frame (**802,739 B**
   headroom). Strict codec, transcript parity, allocation cap and independent
@@ -33,8 +32,14 @@ This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 - **No product result.** No certificate, timing, proof-size, session or hardware
   gate receives credit; the comparison table remains unchanged.
 - **Resume.** Commit/push the clean narrow repair, fetch it on the active pod,
-  use new r10 roots with the verified setup copy, and run 17 certificates plus
+  use new r11 roots with the verified setup copy, and run 17 certificates plus
   four mutations. On success copy one artifact for the four-thread CPU verifier.
+
+- **2026-08-18 — r10 fails closed on the C6.1/C6.2 retained boundary.** Setup,
+  A100 preflight and the first full wrapper spill passed; the binding
+  constructor then checked the valid C6.2 frame against the C6.1 length. §0.35
+  selects the existing C6.2 constant. Raw evidence is
+  `benchmarks/results/c62-a100-session-failure-2026-08-18-290b9d0-r10.json`.
 
 - **2026-08-18 — r09 fails closed on a stale production-topology whitelist.**
   Setup and A100 preflight passed; the first proof passed the compact-response

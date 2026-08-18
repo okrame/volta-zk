@@ -1,6 +1,6 @@
 # C6.2 WHIR Fiat--Shamir Design
 
-Status: **R10 EXACT TOPOLOGY REGISTRY REPAIR READY / POD ACTIVE**
+Status: **R11 C6.2 RETAINED-BOUNDARY REPAIR READY / POD ACTIVE**
 
 This document is the active design for C6.2. It has precedence over the
 interactive C6.1 sections in `c6-delta-residual-inline-design.md`. Frozen C6
@@ -764,3 +764,17 @@ The r10 repair replaces only that whitelist and adds an exact four-class
 regression. It changes no operation plan, setup byte, transcript, relation,
 correlation, proof or gate. Standing create-new GO authorizes r10 with new
 roots after the narrow registry test and clean checkpoint.
+
+## 0.35 r10 disposition and r11 retained-boundary repair
+
+r10 passed setup, A100 preflight, real/AES connection preparation, compact
+encoding and the corrected topology registry. After the first wrapper spill it
+failed before sealing with `C6.2 retained response prefix has the wrong
+length`; no certificate or mutation exists and the spill was removed.
+
+The C6.2 binding constructor decoded `C62RRP2` but first compared its bytes to
+the historical C6.1 frame constant. r11 changes that single boundary check to
+`C62_RETAINED_NON_PCS_RESPONSE_BYTES` and adds a regression using the strict
+C6.2 test frame. It changes no bytes, setup, relation, transcript, correlation,
+proof or gate. Standing create-new GO authorizes r11 with fresh roots after the
+narrow test and clean checkpoint.

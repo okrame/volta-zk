@@ -556,7 +556,7 @@ impl C61RetainedResponseBinding {
     }
 
     pub fn from_c62_bytes(bytes: &[u8]) -> Result<Self> {
-        if bytes.len() != C61_RETAINED_NON_PCS_RESPONSE_BYTES as usize {
+        if bytes.len() != crate::C62_RETAINED_NON_PCS_RESPONSE_BYTES as usize {
             return Err(C61CertificateError::new(
                 "C6.2 retained response prefix has the wrong length",
             ));
@@ -572,6 +572,14 @@ impl C61RetainedResponseBinding {
 #[cfg(test)]
 mod wrapper_wire_tests {
     use super::*;
+
+    #[test]
+    fn c62_binding_uses_the_c62_retained_response_boundary() {
+        let bytes = crate::model_proof_codec::retained_response_c62_test_bytes();
+        assert_eq!(bytes.len(), crate::C62_RETAINED_NON_PCS_RESPONSE_BYTES as usize);
+        assert_ne!(bytes.len(), C61_RETAINED_NON_PCS_RESPONSE_BYTES as usize);
+        assert!(C61RetainedResponseBinding::from_c62_bytes(&bytes).is_ok());
+    }
 
     fn digest(value: u8) -> [u8; 32] {
         [value; 32]

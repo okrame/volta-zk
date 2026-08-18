@@ -934,6 +934,15 @@ fn replay_c6_production_response_verifier(
         transcript,
     )
     .map_err(|error| error.to_string())?;
+    let compact_subfield_replay = retained.is_c62_compact();
+    if compact_subfield_replay {
+        let compact_subfield_overrides = retained
+            .c62_subfield_digest_overrides()
+            .map_err(|error| error.to_string())?;
+        transcript.install_c62_subfield_digest_overrides(compact_subfield_overrides)?;
+        primary.enable_compact_subfield_replay().map_err(str::to_owned)?;
+        secondary.enable_compact_subfield_replay().map_err(str::to_owned)?;
+    }
     let cache_trace =
         begin_c6_cache_fold_trace(C6CacheFoldParty::Verifier).map_err(|error| error.to_string())?;
     let (output, product_keys, zero_roots, cache_metrics, cache_append_sources, cache_target_terms) =
@@ -967,6 +976,9 @@ fn replay_c6_production_response_verifier(
             }
         }
         .ok_or_else(|| "C6.2 disk verifier retained response rejected".to_owned())?;
+    if compact_subfield_replay {
+        transcript.finish_c62_subfield_digest_overrides()?;
+    }
     let cache_snapshot = cache_trace.finish().map_err(|error| error.to_string())?;
     let cache_targets =
         C6CacheFoldPairedVerifierTargets::from_online_replay(&cache_snapshot, cache_target_terms)
@@ -978,13 +990,16 @@ fn replay_c6_production_response_verifier(
     let product_challenge = transcript.challenge_fp2();
     let product_mask_domain = doms.take(1);
     transcript.append_fp2s("prod_check_m0_m1", &[retained.product.m0, retained.product.m1]);
-    if !prod_batch_verify(
+    let product_mask_key =
+        primary.expand_product_mask_verifier_key(product_mask_domain, product_keys.len());
+    let product_ok = prod_batch_verify(
         &product_keys,
-        primary.expand_product_mask_verifier_key(product_mask_domain, product_keys.len()),
+        product_mask_key,
         primary.delta,
         product_challenge,
         &retained.product,
-    ) {
+    );
+    if !compact_subfield_replay && !product_ok {
         return Err("C6.1 disk verifier ProductClosure batch rejected".to_owned());
     }
     let installed_final_product_triples = installed_plan
@@ -1524,7 +1539,7 @@ fn build_c6_production_response_owner(
         return Err("C6ICT3 split response owner differential failed".to_owned());
     }
 
-    let C6RetainedResponseProof { model: model_proof, product: product_proof } = retained;
+    let C6RetainedResponseProof { model: model_proof, product: product_proof, .. } = retained;
     let C6T1ProductionResponseVerifierReplay {
         output: verifier_output,
         zero_roots: verifier_zero_roots,

@@ -39,6 +39,7 @@ use volta_proto::{
     c62_retained_response_byte_census, c6_gpt2_native_target_profile, layer_dom_base,
     prod_batch_prover, prod_batch_verify, prove_response_private_logits_c6_cache_inline,
     verify_response_private_logits_c6_cache_inline_from_profile, ChunkRef, PrivateChunkPub,
+    C6RetainedResponseProof,
     C62_CONTINUATION_1024_FULL_CORRELATIONS, C62_CONTINUATION_1024_SUB_CORRELATIONS,
     C62_CONTINUATION_256_FULL_CORRELATIONS, C62_CONTINUATION_256_SUB_CORRELATIONS,
     C62_CONTINUATION_512_FULL_CORRELATIONS, C62_CONTINUATION_512_SUB_CORRELATIONS,
@@ -356,21 +357,29 @@ fn compile_profile(
     let product_mask = primary.draw_product_mask(product_domain, products.len());
     let product_proof =
         prod_batch_prover(&products, product_challenge, product_mask, &mut prover_tx);
-    if retained_byte_census {
+    let compact_retained = if retained_byte_census {
         let census = c62_retained_response_byte_census(&proof, &product_proof)
             .map_err(|error| error.to_string())?;
         eprintln!(
-            "C62_RETAINED_BYTE_CENSUS context={old_context} model={} product={} extensions={:?} layer_sections={:?} non_layer_model={} total_before_digest={} framed={}",
+            "C62_RETAINED_BYTE_CENSUS context={old_context} full_model={} compact_model={} product={} extensions={:?} layer_sections={:?} non_layer_model={} subfield_payload={} subfield_vectors={} floor_without_subfield_payload={} total_before_digest={} framed={}",
             census.model_bytes,
+            census.compact_model_bytes,
             census.product_bytes,
             census.extension_bytes,
             census.layer_sections,
             census.non_layer_model_bytes,
+            census.subfield_correction_payload_bytes,
+            census.subfield_correction_vector_count,
+            census.bytes_without_subfield_correction_payload,
             census.bytes_before_padding_and_digest,
             census.bytes_before_padding_and_digest + 32,
         );
-        return Ok(());
-    }
+        let encoded = C6RetainedResponseProof::encode_c62_parts(&proof, &product_proof)
+            .map_err(|error| error.to_string())?;
+        Some(C6RetainedResponseProof::decode_c62(&encoded).map_err(|error| error.to_string())?)
+    } else {
+        None
+    };
     zero_roots.record_operation_trace_ownership().map_err(|error| error.to_string())?;
     let prover_trace = finish_c6_prover_trace().map_err(|error| error.to_string())?;
     follower.sync_primary(&primary, &mut secondary).map_err(|error| error.to_string())?;
@@ -431,18 +440,28 @@ fn compile_profile(
     } else {
         Transcript::new(transcript_seed)
     };
+    if let Some(retained) = &compact_retained {
+        verifier_tx.install_c62_subfield_digest_overrides(
+            retained
+                .c62_subfield_digest_overrides()
+                .map_err(|error| error.to_string())?,
+        )?;
+        primary_v.enable_compact_subfield_replay().map_err(str::to_owned)?;
+        secondary_v.enable_compact_subfield_replay().map_err(str::to_owned)?;
+    }
     let mut cursor =
         C6CacheFoldTargetInlineVerifier::start_public(&frame, schedule, deltas, &mut verifier_tx)
             .map_err(|error| error.to_string())?;
     let verifier_cache_trace =
         begin_c6_cache_fold_trace(C6CacheFoldParty::Verifier).map_err(|error| error.to_string())?;
     let verifier_model = Gpt2VerifierModel::from_model(model).map_err(|error| error.to_string())?;
+    let verifier_proof = compact_retained.as_ref().map_or(&proof, |retained| &retained.model);
     let (verifier_out, product_keys, verifier_zero_roots, _, _, _) = if old_context == 0 {
         verify_response_private_logits_c6_cache_inline_from_profile(
             &verifier_model,
             100,
             &[PrivateChunkPub { q: 50, seq: sequence }],
-            &proof,
+            verifier_proof,
             &mut primary_v,
             &mut secondary_v,
             &mut verifier_follower,
@@ -454,7 +473,7 @@ fn compile_profile(
             &verifier_model,
             old_context - 1,
             sequence,
-            &proof,
+            verifier_proof,
             &mut primary_v,
             &mut secondary_v,
             &mut verifier_follower,
@@ -463,6 +482,9 @@ fn compile_profile(
         )
     }
     .ok_or_else(|| "independent setup verifier rejected the model proof".to_owned())?;
+    if compact_retained.is_some() {
+        verifier_tx.finish_c62_subfield_digest_overrides()?;
+    }
     let verifier_snapshot = verifier_cache_trace.finish().map_err(|error| error.to_string())?;
     let verifier_fixed = cursor
         .finish_before_successor_root_with_identity(verifier_snapshot.identity, &mut verifier_tx)
@@ -473,15 +495,16 @@ fn compile_profile(
     let product_key =
         primary_v.expand_product_mask_verifier_key(verifier_domain, product_keys.len());
     verifier_tx.append_fp2s("prod_check_m0_m1", &[product_proof.m0, product_proof.m1]);
+    let product_ok = prod_batch_verify(
+        &product_keys,
+        product_key,
+        primary_v.delta,
+        product_challenge,
+        &product_proof,
+    );
     if verifier_challenge != product_challenge
         || verifier_domain != product_domain
-        || !prod_batch_verify(
-            &product_keys,
-            product_key,
-            primary_v.delta,
-            product_challenge,
-            &product_proof,
-        )
+        || (compact_retained.is_none() && !product_ok)
     {
         return Err("setup product closure differs across roles".to_owned());
     }
@@ -591,6 +614,10 @@ fn compile_profile(
             ));
         }
         eprintln!("C62_CHALLENGE_CENSUS context={old_context} challenges={prover_count}");
+    }
+    if retained_byte_census {
+        eprintln!("C62_COMPACT_REPLAY context={old_context} status=pass");
+        return Ok(());
     }
     let native_artifact = C6NativeTargetProfileArtifact::encode(&prover_native, topology)
         .map_err(|error| error.to_string())?;

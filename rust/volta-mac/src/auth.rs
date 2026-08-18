@@ -34,10 +34,18 @@ pub fn auth_prover(
 /// Verifier half: keys for a correction batch at `dom`.
 pub fn auth_verifier(ctx: &mut VerifierCtx, dom: u64, corr: &[u64]) -> Vec<VerifierKey> {
     let delta = ctx.delta;
+    let compact = ctx.uses_compact_subfield_replay();
     ctx.expand_sub_verifier_keys(dom, corr.len())
         .into_iter()
         .zip(corr)
-        .map(|(k_r, &c)| k_r.with_same_c6_trace(k_r.k + delta.mul_base(Fp::new(c))))
+        .map(|(k_r, &c)| {
+            if compact {
+                debug_assert_eq!(c, 0, "compact subfield replay requires zero placeholders");
+                k_r
+            } else {
+                k_r.with_same_c6_trace(k_r.k + delta.mul_base(Fp::new(c)))
+            }
+        })
         .collect()
 }
 

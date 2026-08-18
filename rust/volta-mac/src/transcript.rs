@@ -7,7 +7,7 @@
 //! after each prover message; they are NOT Fiat–Shamir hashes and must not be
 //! derivable by the prover from public data alone).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use volta_field::{Fp, Fp2, FpStream, P};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -74,6 +74,8 @@ pub struct Transcript {
     pending_semantic_bytes: usize,
     unbound_provider_bytes: u64,
     interactive_error: Option<String>,
+    c62_subfield_digest_overrides: Option<HashMap<(usize, usize), [u8; 32]>>,
+    c62_subfield_digest_uses: HashSet<(usize, usize)>,
 }
 
 impl Transcript {
@@ -93,6 +95,8 @@ impl Transcript {
             pending_semantic_bytes: 0,
             unbound_provider_bytes: 0,
             interactive_error: None,
+            c62_subfield_digest_overrides: None,
+            c62_subfield_digest_uses: HashSet::new(),
         }
     }
 
@@ -112,6 +116,8 @@ impl Transcript {
             pending_semantic_bytes: 0,
             unbound_provider_bytes: 0,
             interactive_error: None,
+            c62_subfield_digest_overrides: None,
+            c62_subfield_digest_uses: HashSet::new(),
         }
     }
 
@@ -140,7 +146,49 @@ impl Transcript {
             pending_semantic_bytes: 0,
             unbound_provider_bytes: 0,
             interactive_error: None,
+            c62_subfield_digest_overrides: None,
+            c62_subfield_digest_uses: HashSet::new(),
         })
+    }
+
+    /// Install the strict C6.2 compact-response digests for decoded zero
+    /// placeholders. Keys are the stable backing address and logical length
+    /// of each retained `Vec<u64>` in the decoded proof object.
+    pub fn install_c62_subfield_digest_overrides(
+        &mut self,
+        overrides: Vec<(*const u64, usize, [u8; 32])>,
+    ) -> Result<(), String> {
+        if self.c62_subfield_digest_overrides.is_some() || !self.c62_subfield_digest_uses.is_empty() {
+            return Err("C6.2 subfield digest replay is already installed".to_owned());
+        }
+        let mut map = HashMap::with_capacity(overrides.len());
+        for (pointer, len, digest) in overrides {
+            if len == 0
+                || digest == [0; 32]
+                || map.insert((pointer as usize, len), digest).is_some()
+            {
+                return Err("C6.2 subfield digest replay manifest is noncanonical".to_owned());
+            }
+        }
+        if map.is_empty() {
+            return Err("C6.2 subfield digest replay manifest is empty".to_owned());
+        }
+        self.c62_subfield_digest_overrides = Some(map);
+        Ok(())
+    }
+
+    pub fn finish_c62_subfield_digest_overrides(&mut self) -> Result<(), String> {
+        let overrides = self
+            .c62_subfield_digest_overrides
+            .take()
+            .ok_or_else(|| "C6.2 subfield digest replay is absent".to_owned())?;
+        if overrides.len() != self.c62_subfield_digest_uses.len()
+            || overrides.keys().any(|key| !self.c62_subfield_digest_uses.contains(key))
+        {
+            return Err("C6.2 subfield digest replay census differs".to_owned());
+        }
+        self.c62_subfield_digest_uses.clear();
+        Ok(())
     }
 
     fn account(&mut self, label: &'static str, n: u64) {
@@ -220,6 +268,27 @@ impl Transcript {
     }
 
     pub fn append_fp_value_slices_digest(&mut self, label: &'static str, slices: &[&[u64]]) {
+        if let (Some(overrides), [values]) = (&self.c62_subfield_digest_overrides, slices) {
+            let key = (values.as_ptr() as usize, values.len());
+            if let Some(&digest) = overrides.get(&key) {
+                assert!(
+                    values.iter().all(|value| *value == 0),
+                    "C6.2 compact subfield placeholder is nonzero"
+                );
+                assert!(
+                    self.c62_subfield_digest_uses.insert(key),
+                    "C6.2 compact subfield digest was replayed twice"
+                );
+                self.append_message_digest(
+                    label,
+                    (values.len() as u64)
+                        .checked_mul(8)
+                        .expect("transcript Fp byte count overflow"),
+                    digest,
+                );
+                return;
+            }
+        }
         assert!(
             slices.iter().flat_map(|values| values.iter()).all(|value| *value < P),
             "noncanonical transcript Fp value"
@@ -733,6 +802,41 @@ mod tests {
         let mut legacy = Transcript::new([0x31; 32]);
         legacy.append("zero_length_marker", 0);
         assert!(legacy.canonical_binding_digest().is_err());
+    }
+
+    #[test]
+    fn c62_compact_subfield_digest_replays_the_exact_move() {
+        let values = [3u64, 5, 8, 13];
+        let mut canonical_bytes = Vec::new();
+        for value in values {
+            canonical_bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        let digest = *blake3::hash(&canonical_bytes).as_bytes();
+
+        let mut full = Transcript::new_fiat_shamir([0x91; 32]).unwrap();
+        full.append_fp_values_digest("auth_corrections", &values);
+        let full_challenge = full.challenge_fp2();
+        let full_binding = full.canonical_binding_digest().unwrap();
+
+        let placeholders = [0u64; 4];
+        let mut compact = Transcript::new_fiat_shamir([0x91; 32]).unwrap();
+        compact
+            .install_c62_subfield_digest_overrides(vec![
+                (placeholders.as_ptr(), placeholders.len(), digest),
+            ])
+            .unwrap();
+        compact.append_fp_values_digest("auth_corrections", &placeholders);
+        compact.finish_c62_subfield_digest_overrides().unwrap();
+        assert_eq!(compact.challenge_fp2(), full_challenge);
+        assert_eq!(compact.canonical_binding_digest().unwrap(), full_binding);
+
+        let mut missing = Transcript::new_fiat_shamir([0x92; 32]).unwrap();
+        missing
+            .install_c62_subfield_digest_overrides(vec![
+                (placeholders.as_ptr(), placeholders.len(), digest),
+            ])
+            .unwrap();
+        assert!(missing.finish_c62_subfield_digest_overrides().is_err());
     }
 
     #[test]

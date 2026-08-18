@@ -1,6 +1,6 @@
 # C6.2 WHIR Fiat--Shamir Design
 
-Status: **R08 RETAINED-PROOF BYTE OBSTRUCTION / LOCAL REDESIGN / NO POD**
+Status: **R09 COMPACT RETAINED RESPONSE READY / POD PAUSED**
 
 This document is the active design for C6.2. It has precedence over the
 interactive C6.1 sections in `c6-delta-residual-inline-design.md`. Frozen C6
@@ -694,3 +694,48 @@ inputs. It must not omit a correction needed by independent response replay,
 expose a value, or replace the designated verification relation. The exact
 genesis mock codec and a complete locally sealed/decoded certificate must fit
 the binding byte gates before any r09 pod checkpoint or launch.
+
+## 0.33 r09 compact retained-response checkpoint
+
+The C6.2-only `C62RRP2` grammar no longer serializes the raw value of each
+`Vec<u64>` correction already represented by the grand-residual PCS relation.
+It serializes the canonical logical length and a 32-byte BLAKE3 digest instead.
+The strict decoder reconstructs zero placeholders, limits both each collection
+and the cumulative logical correction census, and retains an ordered digest
+manifest. Historical C6/C6.1 codecs are unchanged.
+
+During independent replay, the manifest binds the original correction digest
+and logical byte count at the same transcript move, so the public
+Fiat--Shamir challenges are byte-for-byte identical to the full response. The
+verifier reserves the same one-time correlation schedule and emits the same C6
+source trace. It does not numerically re-apply omitted corrections: their
+authenticated values, ProductClosure operands and response-wide ZeroBatch are
+checked by the already-bound grand-residual PCS relation. The direct response
+ProductClosure call is retained to reproduce its exact trace; only its local
+numeric result is deferred on the compact path. Full-field opening corrections
+remain explicit. Missing, zero, reordered, unused, replayed or mutated digest
+entries fail closed through the manifest, transcript census or outer frame
+digest.
+
+The digest entry is not treated as an algebraic PCS opening. The four wrapper
+roots and source-binding digest are already in the initial `C62FS1` state
+before these moves, and the PCS relation supplies the value binding. The
+compact digest preserves the ordered provider move and its logical length;
+provider attempts to vary that move are ordinary random-oracle queries covered
+by the registered `q_RO` bound, not a new correction commitment assumption.
+
+The exact genesis writer measured **42,115,273 B** under the full model grammar
+and **2,992,409 B** under `C62RRP2`. The removed raw correction payload is
+**39,137,712 B** across **464** vectors. Including the C62SRE1 trailer and
+product, the canonical body is **3,697,229 B**, or **3,697,261 B** with its
+final digest: **802,739 B** below the fixed **4,500,000-B** frame. Independent
+compact replay also matched the production correlation census and complete
+operation-plan/native-target topology for the genesis profile.
+
+The local VM cannot safely replay a high-context full profile: the context-900
+diagnostic exhausted RAM/swap and produced no record. By owner direction this
+is not evidence and was removed. Local readiness is therefore limited to the
+strict codec/transcript/certificate tests and both record-binary checks. The
+first complete 17-profile seal, byte measurement and four mutations move to
+the paused A100 pod. No product gate receives credit until that clean r09 run
+finishes.

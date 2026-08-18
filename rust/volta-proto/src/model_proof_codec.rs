@@ -20,20 +20,23 @@ use crate::model_proof::{
 use crate::private_argmax::{PackedBridgeProof, PrivateArgmaxProof};
 use crate::prod_check::ProdProof;
 use crate::sumcheck_blind::BlindSumcheckProof;
+use std::any::TypeId;
+use std::collections::VecDeque;
 use std::fmt;
 use volta_field::{Fp, Fp2, P};
 
 const MAGIC: &[u8] = b"VC6MRP1\0";
 const RETAINED_MAGIC: &[u8] = b"C6RRP1\0\0";
 const RETAINED_VERSION: u16 = 1;
-const C62_RETAINED_MAGIC: &[u8] = b"C62RRP1\0";
-const C62_RETAINED_VERSION: u16 = 1;
+const C62_RETAINED_MAGIC: &[u8] = b"C62RRP2\0";
+const C62_RETAINED_VERSION: u16 = 2;
 pub const C6_RETAINED_RESPONSE_BYTES: usize = 2_921_744;
 /// C6.2 carries the strict C62SRE1 trailer in addition to the historical
 /// model-proof grammar. Keep its allocation separate so historical C6/C6.1
 /// certificates remain byte-for-byte unchanged.
 pub const C62_RETAINED_RESPONSE_BYTES: usize = 4_500_000;
 const MAX_COLLECTION_ITEMS: usize = 1_000_000;
+const MAX_C62_LOGICAL_SUBFIELD_ITEMS: usize = 10_000_000;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ModelProofCodecError(String);
@@ -54,23 +57,53 @@ impl std::error::Error for ModelProofCodecError {}
 
 type Result<T> = std::result::Result<T, ModelProofCodecError>;
 
-struct Writer(Vec<u8>);
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct C62SubfieldDigest {
+    len: usize,
+    digest: [u8; 32],
+}
+
+struct Writer {
+    bytes: Vec<u8>,
+    thin_subfields: bool,
+    digest_overrides: VecDeque<C62SubfieldDigest>,
+}
 
 impl Writer {
+    fn full(bytes: Vec<u8>) -> Self {
+        Self { bytes, thin_subfields: false, digest_overrides: VecDeque::new() }
+    }
+
+    fn thin(bytes: Vec<u8>, digests: &[C62SubfieldDigest]) -> Self {
+        Self {
+            bytes,
+            thin_subfields: true,
+            digest_overrides: digests.iter().cloned().collect(),
+        }
+    }
+
+    fn finish(self) -> Result<Vec<u8>> {
+        if self.digest_overrides.is_empty() {
+            Ok(self.bytes)
+        } else {
+            Err(ModelProofCodecError::new("unused C6.2 subfield digest override"))
+        }
+    }
+
     fn byte(&mut self, value: u8) {
-        self.0.push(value);
+        self.bytes.push(value);
     }
 
     fn u32(&mut self, value: u32) {
-        self.0.extend_from_slice(&value.to_le_bytes());
+        self.bytes.extend_from_slice(&value.to_le_bytes());
     }
 
     fn u16(&mut self, value: u16) {
-        self.0.extend_from_slice(&value.to_le_bytes());
+        self.bytes.extend_from_slice(&value.to_le_bytes());
     }
 
     fn u64(&mut self, value: u64) {
-        self.0.extend_from_slice(&value.to_le_bytes());
+        self.bytes.extend_from_slice(&value.to_le_bytes());
     }
 
     fn fp2(&mut self, value: Fp2) {
@@ -90,6 +123,9 @@ impl Writer {
 struct Reader<'a> {
     bytes: &'a [u8],
     offset: usize,
+    thin_subfields: bool,
+    subfield_digests: Vec<C62SubfieldDigest>,
+    thin_subfield_items: usize,
 }
 
 impl<'a> Reader<'a> {
@@ -139,7 +175,7 @@ impl<'a> Reader<'a> {
         Ok(len)
     }
 
-    fn finish(self) -> Result<()> {
+    fn finish(&self) -> Result<()> {
         if self.offset == self.bytes.len() {
             Ok(())
         } else {
@@ -173,9 +209,30 @@ impl Wire for Fp2 {
     }
 }
 
-impl<T: Wire> Wire for Vec<T> {
+impl<T: Wire + 'static> Wire for Vec<T> {
     fn write(&self, out: &mut Writer) -> Result<()> {
         out.len(self.len())?;
+        if out.thin_subfields && TypeId::of::<T>() == TypeId::of::<u64>() {
+            let digest = match out.digest_overrides.pop_front() {
+                Some(entry) => {
+                    if entry.len != self.len() {
+                        return Err(ModelProofCodecError::new(
+                            "C6.2 subfield digest override length differs",
+                        ));
+                    }
+                    entry.digest
+                }
+                None => {
+                    let mut canonical = Writer::full(Vec::with_capacity(self.len() * 8));
+                    for value in self {
+                        value.write(&mut canonical)?;
+                    }
+                    *blake3::hash(&canonical.finish()?).as_bytes()
+                }
+            };
+            out.bytes.extend_from_slice(&digest);
+            return Ok(());
+        }
         for value in self {
             value.write(out)?;
         }
@@ -183,6 +240,34 @@ impl<T: Wire> Wire for Vec<T> {
     }
     fn read(input: &mut Reader<'_>) -> Result<Self> {
         let len = input.len()?;
+        if input.thin_subfields && TypeId::of::<T>() == TypeId::of::<u64>() {
+            input.thin_subfield_items = input
+                .thin_subfield_items
+                .checked_add(len)
+                .filter(|items| *items <= MAX_C62_LOGICAL_SUBFIELD_ITEMS)
+                .ok_or_else(|| {
+                    ModelProofCodecError::new(
+                        "C6.2 logical subfield correction census exceeds strict cap",
+                    )
+                })?;
+            let digest: [u8; 32] = input.take(32)?.try_into().expect("fixed digest width");
+            if digest == [0; 32] {
+                return Err(ModelProofCodecError::new("zero C6.2 subfield digest"));
+            }
+            input.subfield_digests.push(C62SubfieldDigest { len, digest });
+            let mut values = Vec::with_capacity(len);
+            for _ in 0..len {
+                let mut zero = Reader {
+                    bytes: &[0; 8],
+                    offset: 0,
+                    thin_subfields: false,
+                    subfield_digests: Vec::new(),
+                    thin_subfield_items: 0,
+                };
+                values.push(T::read(&mut zero)?);
+            }
+            return Ok(values);
+        }
         let mut values = Vec::with_capacity(len);
         for _ in 0..len {
             values.push(T::read(input)?);
@@ -417,14 +502,20 @@ wire_struct!(TableCloseProof { key, mult_corr, side });
 
 /// Encode every verifier-consumed model-proof field in one fixed order.
 pub fn encode_model_proof_canonical(proof: &ModelProof) -> Result<Vec<u8>> {
-    let mut out = Writer(MAGIC.to_vec());
+    let mut out = Writer::full(MAGIC.to_vec());
     proof.write(&mut out)?;
-    Ok(out.0)
+    out.finish()
 }
 
 /// Decode a fresh proof object and reject trailing/noncanonical bytes.
 pub fn decode_model_proof_canonical(bytes: &[u8]) -> Result<ModelProof> {
-    let mut input = Reader { bytes, offset: 0 };
+    let mut input = Reader {
+        bytes,
+        offset: 0,
+        thin_subfields: false,
+        subfield_digests: Vec::new(),
+        thin_subfield_items: 0,
+    };
     if input.take(MAGIC.len())? != MAGIC {
         return Err(ModelProofCodecError::new("wrong model-proof codec magic"));
     }
@@ -443,24 +534,126 @@ pub fn decode_model_proof_canonical(bytes: &[u8]) -> Result<ModelProof> {
 pub struct C6RetainedResponseProof {
     pub model: ModelProof,
     pub product: ProdProof,
+    c62_subfield_digests: Vec<C62SubfieldDigest>,
+}
+
+fn visit_layer_subfield_vecs<'a>(
+    layer: &'a LayerProof,
+    visit: &mut impl FnMut(&'a Vec<u64>),
+) {
+    for values in [
+        &layer.xin_corr,
+        &layer.k_corr,
+        &layer.v_corr,
+        &layer.abo_corr,
+        &layer.fbo_corr,
+    ] {
+        visit(values);
+    }
+    for values in &layer.ffn.ln_vec_corrs {
+        visit(values);
+    }
+    for values in &layer.attn.ln_vec_corrs {
+        visit(values);
+    }
+    for values in [
+        &layer.attn.denoms_corr,
+        &layer.attn.recip_in_corr,
+        &layer.attn.recips_corr,
+        &layer.attn.above_corr,
+    ] {
+        visit(values);
+    }
+    if let Some(values) = &layer.attn.row_shift_corr {
+        visit(values);
+    }
+}
+
+fn visit_model_subfield_vecs<'a>(model: &'a ModelProof, mut visit: impl FnMut(&'a Vec<u64>)) {
+    for layer in &model.layers {
+        visit_layer_subfield_vecs(layer, &mut visit);
+    }
+    visit(&model.embed.out_corr);
+    visit(&model.final_ln.out_corr);
+    visit(&model.final_ln.row_corr);
+    for values in &model.final_ln.ln_vec_corrs {
+        visit(values);
+    }
+    for chunk in &model.chunks {
+        for layer in &chunk.layers {
+            visit_layer_subfield_vecs(layer, &mut visit);
+        }
+        visit(&chunk.embed.out_corr);
+        visit(&chunk.fin_out_corr);
+        for values in &chunk.fin_ln_vec_corrs {
+            visit(values);
+        }
+    }
+    for table in &model.tables {
+        visit(&table.mult_corr);
+    }
+    if let Some(argmax) = &model.private_argmax {
+        visit(&argmax.selected_row_corr);
+    }
+}
+
+fn encode_model_proof_c62_compact(
+    proof: &ModelProof,
+    digests: &[C62SubfieldDigest],
+) -> Result<Vec<u8>> {
+    let mut out = Writer::thin(MAGIC.to_vec(), digests);
+    proof.write(&mut out)?;
+    out.finish()
+}
+
+fn decode_model_proof_c62_compact(
+    bytes: &[u8],
+) -> Result<(ModelProof, Vec<C62SubfieldDigest>)> {
+    let mut input = Reader {
+        bytes,
+        offset: 0,
+        thin_subfields: true,
+        subfield_digests: Vec::new(),
+        thin_subfield_items: 0,
+    };
+    if input.take(MAGIC.len())? != MAGIC {
+        return Err(ModelProofCodecError::new("wrong compact model-proof codec magic"));
+    }
+    let proof = ModelProof::read(&mut input)?;
+    input.finish()?;
+    let digests = input.subfield_digests;
+    if encode_model_proof_c62_compact(&proof, &digests)? != bytes {
+        return Err(ModelProofCodecError::new("noncanonical compact model-proof encoding"));
+    }
+    Ok((proof, digests))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C62RetainedResponseByteCensus {
+    /// Historical full grammar, retained only as a diagnostic comparison.
     pub model_bytes: usize,
+    /// Actual C6.2 compact model-proof grammar.
+    pub compact_model_bytes: usize,
     pub product_bytes: usize,
     pub extension_bytes: Vec<usize>,
     /// Per model layer, including decode chunks: boundary vectors, FFN proof,
     /// and attention proof bytes. Collection prefixes are excluded.
     pub layer_sections: Vec<[usize; 3]>,
     pub non_layer_model_bytes: usize,
+    /// Raw canonical payload occupied by element-wise `Fp` corrections. This
+    /// excludes the four-byte collection prefixes, which remain structural.
+    pub subfield_correction_payload_bytes: usize,
+    pub subfield_correction_vector_count: usize,
+    /// Exact retained-response size if only those payload bytes were removed.
+    /// This is a lower-bound diagnostic, not an admissible codec.
+    pub bytes_without_subfield_correction_payload: usize,
     pub bytes_before_padding_and_digest: usize,
 }
 
 fn wire_bytes<T: Wire>(value: &T) -> Result<usize> {
-    let mut out = Writer(Vec::new());
+    let mut out = Writer::full(Vec::new());
     value.write(&mut out)?;
-    Ok(out.0.len())
+    Ok(out.finish()?.len())
 }
 
 fn c62_layer_byte_sections(layer: &LayerProof) -> Result<[usize; 3]> {
@@ -472,6 +665,84 @@ fn c62_layer_byte_sections(layer: &LayerProof) -> Result<[usize; 3]> {
     Ok([boundary, wire_bytes(&layer.ffn)?, wire_bytes(&layer.attn)?])
 }
 
+fn count_u64_vec(values: &[u64], bytes: &mut usize, vectors: &mut usize) -> Result<()> {
+    *bytes = bytes
+        .checked_add(values.len().checked_mul(8).ok_or_else(|| {
+            ModelProofCodecError::new("C6.2 subfield correction byte census overflows")
+        })?)
+        .ok_or_else(|| ModelProofCodecError::new("C6.2 subfield correction byte census overflows"))?;
+    *vectors = vectors
+        .checked_add(1)
+        .ok_or_else(|| ModelProofCodecError::new("C6.2 subfield correction vector census overflows"))?;
+    Ok(())
+}
+
+fn count_layer_subfield_corrections(
+    layer: &LayerProof,
+    bytes: &mut usize,
+    vectors: &mut usize,
+) -> Result<()> {
+    for values in [
+        &layer.xin_corr,
+        &layer.k_corr,
+        &layer.v_corr,
+        &layer.abo_corr,
+        &layer.fbo_corr,
+    ] {
+        count_u64_vec(values, bytes, vectors)?;
+    }
+    for values in &layer.ffn.ln_vec_corrs {
+        count_u64_vec(values, bytes, vectors)?;
+    }
+    for values in &layer.attn.ln_vec_corrs {
+        count_u64_vec(values, bytes, vectors)?;
+    }
+    for values in [
+        &layer.attn.denoms_corr,
+        &layer.attn.recip_in_corr,
+        &layer.attn.recips_corr,
+        &layer.attn.above_corr,
+    ] {
+        count_u64_vec(values, bytes, vectors)?;
+    }
+    if let Some(values) = &layer.attn.row_shift_corr {
+        count_u64_vec(values, bytes, vectors)?;
+    }
+    Ok(())
+}
+
+fn c62_subfield_correction_census(model: &ModelProof) -> Result<(usize, usize)> {
+    let mut bytes = 0usize;
+    let mut vectors = 0usize;
+    for layer in model
+        .layers
+        .iter()
+        .chain(model.chunks.iter().flat_map(|chunk| chunk.layers.iter()))
+    {
+        count_layer_subfield_corrections(layer, &mut bytes, &mut vectors)?;
+    }
+    count_u64_vec(&model.embed.out_corr, &mut bytes, &mut vectors)?;
+    count_u64_vec(&model.final_ln.out_corr, &mut bytes, &mut vectors)?;
+    count_u64_vec(&model.final_ln.row_corr, &mut bytes, &mut vectors)?;
+    for values in &model.final_ln.ln_vec_corrs {
+        count_u64_vec(values, &mut bytes, &mut vectors)?;
+    }
+    for chunk in &model.chunks {
+        count_u64_vec(&chunk.embed.out_corr, &mut bytes, &mut vectors)?;
+        count_u64_vec(&chunk.fin_out_corr, &mut bytes, &mut vectors)?;
+        for values in &chunk.fin_ln_vec_corrs {
+            count_u64_vec(values, &mut bytes, &mut vectors)?;
+        }
+    }
+    for table in &model.tables {
+        count_u64_vec(&table.mult_corr, &mut bytes, &mut vectors)?;
+    }
+    if let Some(argmax) = &model.private_argmax {
+        count_u64_vec(&argmax.selected_row_corr, &mut bytes, &mut vectors)?;
+    }
+    Ok((bytes, vectors))
+}
+
 /// Measure the exact canonical C6.2 retained-response payload without
 /// applying its fixed frame. This is intentionally the same writer path used
 /// by `encode_c62_parts`, so readiness can reject an oversized proof locally.
@@ -480,20 +751,22 @@ pub fn c62_retained_response_byte_census(
     product: &ProdProof,
 ) -> Result<C62RetainedResponseByteCensus> {
     let model = encode_model_proof_canonical(model_proof)?;
+    let compact_model = encode_model_proof_c62_compact(model_proof, &[])?;
     let extensions = c62_extensions(model_proof);
     if extensions.is_empty() || extensions.iter().any(|extension| extension.is_none()) {
         return Err(ModelProofCodecError::new(
             "C6.2 retained response lacks a complete C62SRE1 census",
         ));
     }
-    let mut product_out = Writer(Vec::new());
+    let mut product_out = Writer::full(Vec::new());
     product.write(&mut product_out)?;
     let mut extension_bytes = Vec::with_capacity(extensions.len());
     for extension in extensions {
-        let mut extension_out = Writer(Vec::new());
+        let mut extension_out = Writer::full(Vec::new());
         extension.write(&mut extension_out)?;
-        extension_bytes.push(extension_out.0.len());
+        extension_bytes.push(extension_out.finish()?.len());
     }
+    let product_bytes = product_out.finish()?.len();
     let layer_sections = model_proof
         .layers
         .iter()
@@ -505,23 +778,71 @@ pub fn c62_retained_response_byte_census(
         .len()
         .checked_sub(layer_payload_bytes)
         .ok_or_else(|| ModelProofCodecError::new("C6.2 layer byte census exceeds model bytes"))?;
+    let (subfield_correction_payload_bytes, subfield_correction_vector_count) =
+        c62_subfield_correction_census(model_proof)?;
     let fixed_header_bytes = C62_RETAINED_MAGIC.len() + 2 + 2 + 4 + 32;
     let bytes_before_padding_and_digest = fixed_header_bytes
-        + model.len()
-        + product_out.0.len()
+        + compact_model.len()
+        + product_bytes
         + 4
         + extension_bytes.iter().sum::<usize>();
+    let full_bytes_before_padding_and_digest = fixed_header_bytes
+        + model.len()
+        + product_bytes
+        + 4
+        + extension_bytes.iter().sum::<usize>();
+    let bytes_without_subfield_correction_payload = full_bytes_before_padding_and_digest
+        .checked_sub(subfield_correction_payload_bytes)
+        .ok_or_else(|| {
+            ModelProofCodecError::new("C6.2 subfield payload exceeds retained response")
+        })?;
     Ok(C62RetainedResponseByteCensus {
         model_bytes: model.len(),
-        product_bytes: product_out.0.len(),
+        compact_model_bytes: compact_model.len(),
+        product_bytes,
         extension_bytes,
         layer_sections,
         non_layer_model_bytes,
+        subfield_correction_payload_bytes,
+        subfield_correction_vector_count,
+        bytes_without_subfield_correction_payload,
         bytes_before_padding_and_digest,
     })
 }
 
 impl C6RetainedResponseProof {
+    pub fn is_c62_compact(&self) -> bool {
+        !self.c62_subfield_digests.is_empty()
+    }
+
+    /// Bind every compact digest to the stable decoded placeholder that will
+    /// be consumed by the response transcript.
+    pub fn c62_subfield_digest_overrides(
+        &self,
+    ) -> Result<Vec<(*const u64, usize, [u8; 32])>> {
+        if self.c62_subfield_digests.is_empty() {
+            return Err(ModelProofCodecError::new("C6.2 compact subfield manifest is absent"));
+        }
+        let mut vectors = Vec::new();
+        visit_model_subfield_vecs(&self.model, |values| vectors.push(values));
+        if vectors.len() != self.c62_subfield_digests.len() {
+            return Err(ModelProofCodecError::new("C6.2 compact subfield census differs"));
+        }
+        vectors
+            .into_iter()
+            .zip(&self.c62_subfield_digests)
+            .filter(|(values, _)| !values.is_empty())
+            .map(|(values, entry)| {
+                if values.len() != entry.len || values.iter().any(|value| *value != 0) {
+                    return Err(ModelProofCodecError::new(
+                        "C6.2 compact subfield placeholder differs",
+                    ));
+                }
+                Ok((values.as_ptr(), values.len(), entry.digest))
+            })
+            .collect()
+    }
+
     pub fn encode(&self) -> Result<Vec<u8>> {
         Self::encode_parts(&self.model, &self.product)
     }
@@ -535,33 +856,45 @@ impl C6RetainedResponseProof {
         let model = encode_model_proof_canonical(model_proof)?;
         let model_len = u32::try_from(model.len())
             .map_err(|_| ModelProofCodecError::new("retained model proof exceeds u32"))?;
-        let mut out = Writer(RETAINED_MAGIC.to_vec());
+        let mut out = Writer::full(RETAINED_MAGIC.to_vec());
         out.u16(RETAINED_VERSION);
         out.u16(0);
         out.u32(model_len);
-        out.0.extend_from_slice(blake3::hash(&model).as_bytes());
-        out.0.extend_from_slice(&model);
+        out.bytes.extend_from_slice(blake3::hash(&model).as_bytes());
+        out.bytes.extend_from_slice(&model);
         product.write(&mut out)?;
         let padding = C6_RETAINED_RESPONSE_BYTES
-            .checked_sub(out.0.len())
+            .checked_sub(out.bytes.len())
             .and_then(|remaining| remaining.checked_sub(32))
             .ok_or_else(|| {
                 ModelProofCodecError::new("retained response exceeds its frozen allocation")
             })?;
-        out.0.resize(out.0.len() + padding, 0);
-        let digest = blake3::hash(&out.0);
-        out.0.extend_from_slice(digest.as_bytes());
-        Ok(out.0)
+        out.bytes.resize(out.bytes.len() + padding, 0);
+        let digest = blake3::hash(&out.bytes);
+        out.bytes.extend_from_slice(digest.as_bytes());
+        out.finish()
     }
 
     /// Encode the C6.2 response with a distinct frame and a strict C62SRE1
     /// trailer. The base model-proof bytes retain their historical grammar.
     pub fn encode_c62(&self) -> Result<Vec<u8>> {
-        Self::encode_c62_parts(&self.model, &self.product)
+        Self::encode_c62_parts_with_digests(
+            &self.model,
+            &self.product,
+            &self.c62_subfield_digests,
+        )
     }
 
     pub fn encode_c62_parts(model_proof: &ModelProof, product: &ProdProof) -> Result<Vec<u8>> {
-        let model = encode_model_proof_canonical(model_proof)?;
+        Self::encode_c62_parts_with_digests(model_proof, product, &[])
+    }
+
+    fn encode_c62_parts_with_digests(
+        model_proof: &ModelProof,
+        product: &ProdProof,
+        digests: &[C62SubfieldDigest],
+    ) -> Result<Vec<u8>> {
+        let model = encode_model_proof_c62_compact(model_proof, digests)?;
         let model_len = u32::try_from(model.len())
             .map_err(|_| ModelProofCodecError::new("C6.2 retained model proof exceeds u32"))?;
         let extensions = c62_extensions(model_proof);
@@ -570,12 +903,12 @@ impl C6RetainedResponseProof {
                 "C6.2 retained response lacks a complete C62SRE1 census",
             ));
         }
-        let mut out = Writer(C62_RETAINED_MAGIC.to_vec());
+        let mut out = Writer::full(C62_RETAINED_MAGIC.to_vec());
         out.u16(C62_RETAINED_VERSION);
         out.u16(0);
         out.u32(model_len);
-        out.0.extend_from_slice(blake3::hash(&model).as_bytes());
-        out.0.extend_from_slice(&model);
+        out.bytes.extend_from_slice(blake3::hash(&model).as_bytes());
+        out.bytes.extend_from_slice(&model);
         product.write(&mut out)?;
         out.u32(
             u32::try_from(extensions.len())
@@ -585,19 +918,19 @@ impl C6RetainedResponseProof {
             extension.write(&mut out)?;
         }
         let padding = C62_RETAINED_RESPONSE_BYTES
-            .checked_sub(out.0.len())
+            .checked_sub(out.bytes.len())
             .and_then(|remaining| remaining.checked_sub(32))
             .ok_or_else(|| {
                 ModelProofCodecError::new(format!(
                     "C6.2 retained response requires {} bytes before padding and digest; allocation is {} bytes",
-                    out.0.len(),
+                    out.bytes.len(),
                     C62_RETAINED_RESPONSE_BYTES,
                 ))
             })?;
-        out.0.resize(out.0.len() + padding, 0);
-        let digest = blake3::hash(&out.0);
-        out.0.extend_from_slice(digest.as_bytes());
-        Ok(out.0)
+        out.bytes.resize(out.bytes.len() + padding, 0);
+        let digest = blake3::hash(&out.bytes);
+        out.bytes.extend_from_slice(digest.as_bytes());
+        out.finish()
     }
 
     pub fn decode_c62(bytes: &[u8]) -> Result<Self> {
@@ -607,7 +940,13 @@ impl C6RetainedResponseProof {
         if bytes.len() != C62_RETAINED_RESPONSE_BYTES {
             return Err(ModelProofCodecError::new("trailing C6.2 retained-response bytes"));
         }
-        let mut input = Reader { bytes: frame, offset: 0 };
+        let mut input = Reader {
+            bytes: frame,
+            offset: 0,
+            thin_subfields: false,
+            subfield_digests: Vec::new(),
+            thin_subfield_items: 0,
+        };
         if input.take(C62_RETAINED_MAGIC.len())? != C62_RETAINED_MAGIC
             || input.u16()? != C62_RETAINED_VERSION
             || input.u16()? != 0
@@ -623,7 +962,7 @@ impl C6RetainedResponseProof {
         if *blake3::hash(model_bytes).as_bytes() != expected_model_digest {
             return Err(ModelProofCodecError::new("C6.2 retained model-proof digest mismatch"));
         }
-        let mut model = decode_model_proof_canonical(model_bytes)?;
+        let (mut model, c62_subfield_digests) = decode_model_proof_c62_compact(model_bytes)?;
         let product = ProdProof::read(&mut input)?;
         let count = usize::try_from(input.u32()?).expect("u32 fits usize");
         let expected_count = c62_layer_count(&model);
@@ -653,7 +992,7 @@ impl C6RetainedResponseProof {
             return Err(ModelProofCodecError::new("C6.2 retained-response digest mismatch"));
         }
         input.finish()?;
-        let proof = Self { model, product };
+        let proof = Self { model, product, c62_subfield_digests };
         if proof.encode_c62()? != frame {
             return Err(ModelProofCodecError::new("noncanonical C6.2 retained response"));
         }
@@ -674,7 +1013,13 @@ impl C6RetainedResponseProof {
         let frame = bytes
             .get(..C6_RETAINED_RESPONSE_BYTES)
             .ok_or_else(|| ModelProofCodecError::new("truncated retained-response allocation"))?;
-        let mut input = Reader { bytes: frame, offset: 0 };
+        let mut input = Reader {
+            bytes: frame,
+            offset: 0,
+            thin_subfields: false,
+            subfield_digests: Vec::new(),
+            thin_subfield_items: 0,
+        };
         if input.take(RETAINED_MAGIC.len())? != RETAINED_MAGIC
             || input.u16()? != RETAINED_VERSION
             || input.u16()? != 0
@@ -705,7 +1050,7 @@ impl C6RetainedResponseProof {
         if *blake3::hash(&frame[..body_end]).as_bytes() != expected_digest {
             return Err(ModelProofCodecError::new("retained-response digest mismatch"));
         }
-        let proof = Self { model, product };
+        let proof = Self { model, product, c62_subfield_digests: Vec::new() };
         let consumed = input.offset;
         if proof.encode()? != frame[..consumed] {
             return Err(ModelProofCodecError::new("noncanonical retained-response encoding"));
@@ -954,8 +1299,25 @@ mod tests {
 
         let mut noncanonical = [0u8; 16];
         noncanonical[..8].copy_from_slice(&P.to_le_bytes());
-        let mut field = Reader { bytes: &noncanonical, offset: 0 };
+        let mut field = Reader {
+            bytes: &noncanonical,
+            offset: 0,
+            thin_subfields: false,
+            subfield_digests: Vec::new(),
+            thin_subfield_items: 0,
+        };
         assert!(field.fp2().is_err());
+
+        let mut compact_vec = Vec::from(1u32.to_le_bytes());
+        compact_vec.extend_from_slice(&[1; 32]);
+        let mut capped = Reader {
+            bytes: &compact_vec,
+            offset: 0,
+            thin_subfields: true,
+            subfield_digests: Vec::new(),
+            thin_subfield_items: MAX_C62_LOGICAL_SUBFIELD_ITEMS,
+        };
+        assert!(Vec::<u64>::read(&mut capped).is_err());
     }
 
     #[test]
@@ -963,6 +1325,7 @@ mod tests {
         let retained = C6RetainedResponseProof {
             model: proof(),
             product: ProdProof { m0: Fp2::ONE, m1: Fp2::ZERO },
+            c62_subfield_digests: Vec::new(),
         };
         let bytes = retained.encode().unwrap();
         assert_eq!(C6RetainedResponseProof::decode(&bytes).unwrap(), retained);
@@ -1010,7 +1373,16 @@ mod tests {
                 + census.non_layer_model_bytes,
             census.model_bytes,
         );
+        assert_ne!(census.compact_model_bytes, census.model_bytes);
         assert!(census.bytes_before_padding_and_digest + 32 <= C62_RETAINED_RESPONSE_BYTES);
+        let bytes = C6RetainedResponseProof::encode_c62_parts(&model, &product).unwrap();
+        let decoded = C6RetainedResponseProof::decode_c62(&bytes).unwrap();
+        assert!(decoded.is_c62_compact());
+        assert!(!decoded.c62_subfield_digest_overrides().unwrap().is_empty());
+        assert_eq!(decoded.encode_c62().unwrap(), bytes);
+        let mut mutation = bytes;
+        mutation[C62_RETAINED_MAGIC.len() + 2 + 2 + 4 + 32 + MAGIC.len() + 4] ^= 1;
+        assert!(C6RetainedResponseProof::decode_c62(&mutation).is_err());
     }
 }
 
@@ -1028,6 +1400,7 @@ pub(crate) fn retained_response_c62_test_bytes() -> Vec<u8> {
     C6RetainedResponseProof {
         model,
         product: ProdProof { m0: Fp2::ONE, m1: Fp2::ZERO },
+        c62_subfield_digests: Vec::new(),
     }
     .encode_c62()
     .unwrap()
@@ -1038,6 +1411,7 @@ pub(crate) fn retained_response_test_bytes() -> Vec<u8> {
     C6RetainedResponseProof {
         model: tests::proof(),
         product: ProdProof { m0: Fp2::ONE, m1: Fp2::ZERO },
+        c62_subfield_digests: Vec::new(),
     }
     .encode()
     .unwrap()

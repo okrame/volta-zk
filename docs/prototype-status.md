@@ -10,30 +10,38 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Status and authorization.** C6.2 is `C62_R08_FAIL / LOCAL BYTE REDESIGN`.
-  r01 through r08 are immutable. Standing create-new GO remains recorded, but
-  no pod launch is admissible until the local resume conditions below pass.
-- **Failure.** Clean A100 r08 passed the **101,197,448-B** setup measurement and
-  hardware preflight, then failed before sealing: its first retained response
-  required **42,820,093 B** before digest versus a **4,500,000-B** frame.
-- **Diagnosis.** Exact local replay reproduces the total: model proof
-  **42,115,273 B**, C62SRE1 extensions **704,736 B**, and product **32 B**. Layer
-  boundary vectors alone are **25,805,280 B**, above the complete
-  **21,999,999-B** certificate gate. Increasing the frame is not an eligible
-  repair. The prior **17,195,995-B** ceiling receives no credit.
+- **Status and authorization.** C6.2 is `R09_LOCAL_CHECKPOINT_READY / POD
+  PAUSED`; design §0.33 is active. r01--r08 remain immutable and standing
+  create-new GO remains recorded.
+- **Repair.** C6.2-only `C62RRP2` replaces PCS-covered raw subfield corrections
+  with strict `(length, BLAKE3 digest)` entries. Replay restores their exact
+  Fiat--Shamir moves and correlation/source schedule while the bound
+  grand-residual PCS checks the hidden corrections and closures. Historical
+  codecs and explicit full-field opening corrections are unchanged.
+- **Measured local component evidence.** Exact genesis compact content is
+  **3,697,261 B** including digest versus the fixed **4,500,000-B** frame
+  (**802,739 B** headroom), down from **42,820,093 B**. Strict compact
+  encode/decode/mutation, transcript parity, cumulative allocation cap,
+  certificate codec and both record binaries pass narrow checks. Production
+  correlation and complete topology parity pass for genesis.
 - **Preserved checks.** The 17 setup profiles, **82.5878332608799** soundness
   bits, production-PCG 4/4, runner 3/3 and same-pod CUDA 39/39 remain component
   evidence only.
-- **Preserved local evidence.** `C62JVR1`, `C62FS1`, `C62SGE1`, strict codecs,
-  17 setup profiles, 17-accept plus 4-burn order, full Rust checks, golden
-  checks, and the 3,270-job Lean build remain local evidence only.
-- **No product result.** No certificate has been sealed. No A100 prover time,
-  consumer-CPU verifier time, proof size, session, or hardware gate receives
-  credit. The comparison table remains unchanged.
-- **Resume.** Define a sound strict codec/relation that does not duplicate the
-  PCS-covered correction payload; exact mock encode/decode and the complete
-  certificate must pass the byte gates locally. Then checkpoint and launch a
-  fresh r09. Do not start or recreate a pod before that checkpoint.
+- **No product result.** VM RAM/swap precludes a safe high-context E2E; its
+  aborted diagnostic was removed. No certificate, timing, byte, session or
+  hardware gate receives credit; the comparison table remains unchanged.
+- **Resume.** Commit and push this clean checkpoint, resume the paused A100 pod,
+  synchronize by Git, and run one fresh essential r09 across all 17 profiles
+  plus four mutations. Stop on any strict failure; otherwise copy one sealed
+  artifact for the independent four-thread CPU verifier.
+
+- **2026-08-18 — r09 compact response is locally checkpoint-ready.** The strict
+  `C62RRP2` genesis body plus digest is **3,697,261 B**, with **802,739 B** of
+  frame headroom. Independent replay preserves Fiat--Shamir, correlation and
+  topology censuses; narrow codec, mutation, certificate and binary checks
+  pass. Owner direction moves the complete 17-profile E2E from the memory-bound
+  VM to the paused A100 pod. This is component evidence only; no run-of-record
+  JSON or comparison value is created locally.
 
 - **2026-08-18 — r08 exposes the full retained-proof byte obstruction.** Clean
   source `91c7c24` passed setup measurement and A100 preflight, then its first

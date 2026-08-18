@@ -1985,6 +1985,7 @@ pub struct VerifierCtx {
     ledger: DomainLedger,
     pub counters: CorrCounters,
     schedule_audit: Option<CorrScheduleRecorder>,
+    compact_subfield_replay: bool,
     #[cfg(feature = "c6-trace")]
     c6_trace_sources_enabled: bool,
     #[cfg(feature = "c6-trace")]
@@ -2003,6 +2004,7 @@ impl VerifierCtx {
             ledger: DomainLedger::default(),
             counters: CorrCounters::default(),
             schedule_audit: None,
+            compact_subfield_replay: false,
             #[cfg(feature = "c6-trace")]
             c6_trace_sources_enabled: false,
             #[cfg(feature = "c6-trace")]
@@ -2028,6 +2030,7 @@ impl VerifierCtx {
             ledger: DomainLedger::default(),
             counters: CorrCounters::default(),
             schedule_audit: None,
+            compact_subfield_replay: false,
             #[cfg(feature = "c6-trace")]
             c6_trace_sources_enabled: false,
             #[cfg(feature = "c6-trace")]
@@ -2046,6 +2049,7 @@ impl VerifierCtx {
             ledger: DomainLedger::default(),
             counters: CorrCounters::default(),
             schedule_audit: None,
+            compact_subfield_replay: false,
             #[cfg(feature = "c6-trace")]
             c6_trace_sources_enabled: false,
             #[cfg(feature = "c6-trace")]
@@ -2068,6 +2072,7 @@ impl VerifierCtx {
             ledger: DomainLedger::default(),
             counters: CorrCounters::default(),
             schedule_audit: None,
+            compact_subfield_replay: false,
             #[cfg(feature = "c6-trace")]
             c6_trace_sources_enabled: false,
             #[cfg(feature = "c6-trace")]
@@ -2082,6 +2087,21 @@ impl VerifierCtx {
     /// True only for verifier keys expanded from a real PCG pool.
     pub fn uses_pooled_pcg(&self) -> bool {
         matches!(&self.backend, VerifierBackend::Pooled(_))
+    }
+
+    /// C6.2 disk replay reserves the exact subfield sources while the grand
+    /// residual PCS supplies their hidden corrections. Numerical response
+    /// closure is then deferred to that relation.
+    pub fn enable_compact_subfield_replay(&mut self) -> Result<(), &'static str> {
+        if self.counters != CorrCounters::default() || self.compact_subfield_replay {
+            return Err("compact subfield replay must start before the first draw");
+        }
+        self.compact_subfield_replay = true;
+        Ok(())
+    }
+
+    pub fn uses_compact_subfield_replay(&self) -> bool {
+        self.compact_subfield_replay
     }
 
     /// Immutable logical consumption census. Counter-neutral verifier

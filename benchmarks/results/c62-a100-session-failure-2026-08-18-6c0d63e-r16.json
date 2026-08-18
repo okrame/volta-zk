@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "milestone": "C6.2 replacement r16 RunPod A100 E2E attempt",
+  "date": "2026-08-18",
+  "run_id": "6c0d63e41b6c56b8f662864fff08cff0caf83eaa-r16",
+  "source_git_sha": "6c0d63e41b6c56b8f662864fff08cff0caf83eaa",
+  "source_git_dirty": false,
+  "authorization": {
+    "standing_create_new_go": true,
+    "selective_retry_performed": false
+  },
+  "runner": {
+    "exit_code": 101,
+    "failed_stage": "first certificate post-source native suffix correlation allocation",
+    "error": "pooled full correlation underflow",
+    "production_session_started": true,
+    "certificates_sealed": 0,
+    "mutations_started": false
+  },
+  "setup": {
+    "profiles_reused": 17,
+    "setup_bytes": 101197448,
+    "pass": true,
+    "credit": false
+  },
+  "preflight": {
+    "available_spill_bytes": 230789857280,
+    "cuda_backend_initialized": true,
+    "a100_present": true,
+    "pass": true,
+    "credit": false
+  },
+  "records": {
+    "setup_measurement_sha256": "71f13406d09101f031d0048ad20f5f15ac93d336308b42be03ce63af7cb5a366",
+    "preflight_sha256": "73bebd7001cbbbede69eba5921afa34cbca7b91e253fcacd654dcfa32d235058",
+    "session_failure_sha256": null,
+    "runner_log_sha256": "bed9f421ed3150e6630175aa07763ce522a5bb30ed96bcfd8cfdbdd9533a95d0",
+    "exit_file_sha256": "39b8dc3fc8b44765c8e6f1adee04c5b465e555ab791cc42d0d9e810d5b64297c",
+    "temporary_spill_removed": true
+  },
+  "hardware": {
+    "provider": "RunPod",
+    "pod_id": "mkp59uj8mtoyao",
+    "gpu": "NVIDIA A100-SXM4-80GB",
+    "gpu_uuid": "GPU-e663e5cb-6203-f55b-3c79-4d044bda261e",
+    "cuda": "12.8",
+    "driver": "580.126.16",
+    "cpu": "AMD EPYC 7742 64-Core Processor"
+  },
+  "diagnosis": {
+    "cause": "the registered allocation reserved only the response schedule and omitted the fixed native suffix",
+    "suffix_sub_correlations_per_tape": 24,
+    "suffix_full_correlations_per_tape": 765,
+    "corrected_session_raw_correlations_per_tape": 49416418,
+    "setup_changed": false,
+    "relation_changed": false,
+    "certificate_bytes_changed": false,
+    "fallback_added": false
+  },
+  "measured_product_values": null,
+  "credit": false,
+  "disposition": "FAIL CLOSED BEFORE FIRST CERTIFICATE; R16 IMMUTABLE; RESERVE THE COMPLETE EXECUTABLE SUFFIX BEFORE CREATE-NEW R17"
+}

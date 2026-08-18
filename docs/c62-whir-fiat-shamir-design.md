@@ -865,3 +865,24 @@ transition, succeed after it, and cannot mutate either sidecar. Allocation,
 correlation census, setup, relation and certificate framing are unchanged.
 Standing create-new GO authorizes r16 after that regression and the feature
 compilation pass.
+
+## 0.41 r16 disposition and r17 complete correlation geometry
+
+r16 passed setup, A100 preflight, the live-target join, the full wrapper spill
+and the post-source lifecycle transition. It then failed closed at the first
+suffix draw because the production allocation still reserved only the compact
+response schedule. No certificate or mutation exists and temporary spill was
+removed.
+
+The executable suffix census is **24 subfield + 765 full-field correlations per
+tape**: compiler chain `24 + 305`, two remaining authenticated-WHIR target
+masks, residual blind `254`, persistent-cache blind `104`, and authenticated
+output link `100`. r17 adds this suffix once to every registered response
+profile. The resulting raw counts are **5,347,602** (genesis), **2,192,228**
+(continuation-256), **2,201,828** (continuation-512), and **2,211,812**
+(continuation-1024); the complete 17-accept plus four-abort session uses
+**49,416,418** raw correlations per tape. Preflight and prove both check the
+suffix formula before allocation or spill. This changes reservation geometry
+only: setup relation, transcript, certificate framing and wire bytes are
+unchanged. Standing create-new GO authorizes r17 with fresh roots after the
+narrow checks and clean checkpoint.

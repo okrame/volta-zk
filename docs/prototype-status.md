@@ -10,17 +10,18 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Status and authorization.** C6.2 is `R15_FAIL / R16_POST_SOURCE_PHASE_READY`;
-  design §0.40 is active. r01--r15 are immutable and standing create-new GO
-  remains recorded for r16.
-- **r15 disposition.** Clean `ea2826c` passed the reused **101,197,448-B**
-  setup, A100 preflight, live-target join and full wrapper spill, then failed
-  on the first native-suffix correlation draw. Spill was removed; no
-  certificate or mutation exists.
-- **Diagnosis and repair.** Closing the response source sidecars also blocked
-  ordinary suffix draws from the same one-time allocation. r16 admits them
-  only at the typed, source-sealed replay transfer; sidecars stay immutable and
-  response provenance ends on both roles. Census and framing are unchanged.
+- **Status and authorization.** C6.2 is `R16_FAIL / R17_FULL_CORRELATION_GEOMETRY_READY`;
+  design §0.41 is active. r01--r16 are immutable and standing create-new GO
+  remains recorded for r17.
+- **r16 disposition.** Clean `6c0d63e` passed the reused **101,197,448-B**
+  setup, A100 preflight, live-target join, full wrapper spill and post-source
+  transition, then exhausted the pool at the first suffix draw. Spill was
+  removed; no certificate or mutation exists.
+- **Diagnosis and repair.** The allocation covered the response schedule but
+  omitted the exact suffix: **24 subfield + 765 full-field** correlations per
+  tape. r17 reserves it for every profile and fail-fast checks its executable
+  census. Session use is **49,416,418** raw correlations per tape. Relation,
+  transcript, setup and framing are unchanged.
 - **Compact evidence.** `C62RRP2` genesis content remains **3,697,261 B**
   including digest versus the fixed **4,500,000-B** frame (**802,739 B**
   headroom). Strict codec, transcript parity, allocation cap and independent
@@ -31,8 +32,13 @@ This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 - **No product result.** No certificate, timing, proof-size, session or hardware
   gate receives credit; the comparison table remains unchanged.
 - **Resume.** Commit/push the clean narrow repair, fetch it on the active pod,
-  use new r16 roots with the verified setup copy, and run 17 certificates plus
+  use new r17 roots with the verified setup copy, and run 17 certificates plus
   four mutations. On success copy one artifact for the four-thread CPU verifier.
+
+- **2026-08-18 — r16 reaches the first unreserved suffix draw.** The lifecycle
+  transition is valid; §0.41 adds the exact executable suffix census to all
+  four production profiles. Raw evidence is
+  `benchmarks/results/c62-a100-session-failure-2026-08-18-6c0d63e-r16.json`.
 
 - **2026-08-18 — r15 reaches the post-response correlation boundary.** Source
   sidecars remain frozen while §0.40 explicitly admits the suffix of the same

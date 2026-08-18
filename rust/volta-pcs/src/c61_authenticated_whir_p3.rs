@@ -118,6 +118,10 @@ fn c61_production_private_zk_rng() -> Result<StdRng, String> {
 use crate::{C6Nbr2ProvedLink, C6Nbr2VerifiedLink, C61_NATIVE_CHAIN_MAX_BYTES};
 
 pub const C61_AUTHENTICATED_P3_SECURITY_BITS: usize = 75;
+/// Exact production compiler-chain correlation census, including its one
+/// authenticated-WHIR target mask.
+pub const C61_PRODUCTION_COMPILER_SUB_CORRELATIONS_PER_TAPE: u64 = 24;
+pub const C61_PRODUCTION_COMPILER_FULL_CORRELATIONS_PER_TAPE: u64 = 305;
 pub const C61_AUTHENTICATED_P3_REVISION: &str =
     "66e290615de1858f2f2f6a804158064c406cda1c+c61-claimless-affine-multi-v2";
 pub const C61_AUTHENTICATED_P3_MAGIC: [u8; 8] = *b"C6AWP1\0\0";
@@ -10115,8 +10119,14 @@ mod tests {
         assert!(report.arithmetic_payload_mutation_rejected);
         assert!(report.joint_tag_mutation_rejected);
         assert!(report.role_separated_compact_verifier_checked);
-        assert_eq!(report.subfield_correlations, 24);
-        assert_eq!(report.full_correlations, 305);
+        assert_eq!(
+            report.subfield_correlations,
+            C61_PRODUCTION_COMPILER_SUB_CORRELATIONS_PER_TAPE
+        );
+        assert_eq!(
+            report.full_correlations,
+            C61_PRODUCTION_COMPILER_FULL_CORRELATIONS_PER_TAPE
+        );
         assert_eq!(report.response_spill, C61PersistedMmcsMetrics::default());
         assert_eq!(report.plan_spill, C61PersistedMmcsMetrics::default());
     }

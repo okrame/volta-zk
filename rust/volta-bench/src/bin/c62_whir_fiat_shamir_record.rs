@@ -54,10 +54,19 @@ mod enabled {
         ConnectionStore, FaseDParams, FaseDStagePlan, GgmPrg, ResponseAuthorizationStore,
     };
     use volta_pcs::c61_authenticated_whir_p3::{
-        C61ProductionPersistedResourceAdmission, C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_HOST_BYTES,
+        C61ProductionPersistedResourceAdmission,
+        C61_PRODUCTION_COMPILER_FULL_CORRELATIONS_PER_TAPE,
+        C61_PRODUCTION_COMPILER_SUB_CORRELATIONS_PER_TAPE,
+        C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_HOST_BYTES,
         C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES,
     };
-    use volta_pcs::C62PublicArgument;
+    use volta_pcs::{
+        C62PublicArgument, C61_AUTHENTICATED_WHIR_MASKS_PER_TAPE,
+        C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_CORRELATIONS_PER_TAPE,
+        C6_RESIDUAL_BLIND_FULL_CORRELATIONS_PER_TAPE,
+    };
+    use volta_pcs::c6_persistent_cache_blind::
+        C6_PERSISTENT_CACHE_BLIND_PRODUCTION_CORRELATIONS_PER_TAPE;
     use volta_proto::{
         C61PublicWorkloadInstance, C61PublicWorkloadPreimage, C62NativeFinalCertificate,
         C62ResponseProofEnvelope, C6ClientState, C6ClientStore, C6ProductionPairedPcgAttempt,
@@ -68,6 +77,7 @@ mod enabled {
         C62_CONTINUATION_256_SUB_CORRELATIONS, C62_CONTINUATION_512_FULL_CORRELATIONS,
         C62_CONTINUATION_512_RAW_CORRELATIONS, C62_CONTINUATION_512_SUB_CORRELATIONS,
         C62_GENESIS_FULL_CORRELATIONS, C62_GENESIS_RAW_CORRELATIONS, C62_GENESIS_SUB_CORRELATIONS,
+        C62_PRODUCTION_SUFFIX_FULL_CORRELATIONS, C62_PRODUCTION_SUFFIX_SUB_CORRELATIONS,
         C62_NATIVE_CERTIFICATE_FRAMING_BYTES, C62_NATIVE_STRICT_PI_FINAL_MAX_BYTES,
         C62_RETAINED_NON_PCS_RESPONSE_BYTES, C6_ABORT_RETRY_CREDITS, C6_ACCEPTANCE_CREDITS,
         C6_TERMINAL_ONE_RAW_CAPACITY,
@@ -119,6 +129,19 @@ mod enabled {
         + 6 * C62_CONTINUATION_256_RAW_CORRELATIONS
         + 5 * C62_CONTINUATION_512_RAW_CORRELATIONS
         + 9 * C62_CONTINUATION_1024_RAW_CORRELATIONS;
+
+    fn c62_suffix_correlation_census_valid() -> bool {
+        let sub = C61_PRODUCTION_COMPILER_SUB_CORRELATIONS_PER_TAPE;
+        let noncompiler_chain_masks =
+            (C61_AUTHENTICATED_WHIR_MASKS_PER_TAPE as u64).saturating_sub(1);
+        let full = C6_RESIDUAL_BLIND_FULL_CORRELATIONS_PER_TAPE
+            + C6_PERSISTENT_CACHE_BLIND_PRODUCTION_CORRELATIONS_PER_TAPE
+            + C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_CORRELATIONS_PER_TAPE
+            + C61_PRODUCTION_COMPILER_FULL_CORRELATIONS_PER_TAPE
+            + noncompiler_chain_masks;
+        sub == C62_PRODUCTION_SUFFIX_SUB_CORRELATIONS as u64
+            && full == C62_PRODUCTION_SUFFIX_FULL_CORRELATIONS as u64
+    }
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     enum Mode {
@@ -634,7 +657,8 @@ mod enabled {
         let backend = Backend::cuda_resident_with_timing(ResidentTimingPolicy::WallOnlyCounters)
             .map_err(|error| format!("initialize CUDA backend: {error}"))?;
         drop(backend);
-        let capacity_reconciled = C62_SESSION_RAW_CORRELATIONS <= C6_TERMINAL_ONE_RAW_CAPACITY;
+        let capacity_reconciled = c62_suffix_correlation_census_valid()
+            && C62_SESSION_RAW_CORRELATIONS <= C6_TERMINAL_ONE_RAW_CAPACITY;
         let pass = hardware.overall_pass
             && setup_bytes <= C62_CAMPAIGN_SETUP_MAX_BYTES
             && capacity_reconciled
@@ -739,6 +763,9 @@ mod enabled {
     }
 
     fn prove(args: &Args) -> Result<(), String> {
+        if !c62_suffix_correlation_census_valid() {
+            return Err("C6.2 suffix correlation census differs from the allocation".to_owned());
+        }
         let source_git_commit = git_sha_clean()?;
         let cloud = cloud_metadata_from_env()
             .ok_or_else(|| "cloud metadata environment is required".to_owned())?;
@@ -1885,7 +1912,8 @@ mod enabled {
             assert_eq!(C6_ACCEPTANCE_CREDITS, 17);
             assert_eq!(C6_ABORT_RETRY_CREDITS, 4);
             let used = C62_SESSION_RAW_CORRELATIONS;
-            assert_eq!(used, 49_383_784);
+            assert_eq!(used, 49_416_418);
+            assert!(c62_suffix_correlation_census_valid());
             assert!(used <= C6_TERMINAL_ONE_RAW_CAPACITY);
 
             let source = include_str!("c62_whir_fiat_shamir_record.rs");

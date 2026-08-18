@@ -10,30 +10,36 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Status and authorization.** C6.2 is `R13_FAIL / R14_CLOSURE_CHALLENGES_READY`;
-  design §0.38 is active. r01--r13 are immutable and standing create-new GO
-  remains recorded for r14.
-- **r13 disposition.** Clean `cfad994` passed the reused **101,197,448-B** setup,
-  A100 preflight, canonical response closure and the first full wrapper spill,
-  then failed at residual public-claims binding. Spill was removed; no
-  certificate or mutation exists.
-- **Diagnosis and repair.** The compiler reused the final response `chi` for
-  every installed `ProductClosure`, while the real transcript derives one per
-  closure. r14 captures the exact ordered challenges with `(M0,M1)` on both
-  roles and feeds them to live and disk residual compilation. It adds no wire,
-  setup, relation, correlation or certificate bytes.
+- **Status and authorization.** C6.2 is `R14_FAIL / R15_LIVE_TARGET_JOIN_READY`;
+  design §0.39 is active. r01--r14 are immutable and standing create-new GO
+  remains recorded for r15.
+- **r14 disposition.** Clean `837334d` passed the reused **101,197,448-B**
+  setup, A100 preflight, per-closure challenge binding and the first full
+  wrapper spill, then failed at the native paired-target join. Spill was
+  removed; no certificate or mutation exists.
+- **Diagnosis and repair.** Tape zero must retain the response authentication;
+  the installed evaluator links its exact plaintext to independently evaluated
+  tape one. r15 checks census plus per-target plaintext equality, returns the
+  live primary target and fails before wrapper spill on any mismatch. This is
+  the existing two-stage target link, with no fresh authentication or new byte.
 - **Compact evidence.** `C62RRP2` genesis content remains **3,697,261 B**
   including digest versus the fixed **4,500,000-B** frame (**802,739 B**
   headroom). Strict codec, transcript parity, allocation cap and independent
   replay checks remain component evidence.
 - **Preserved checks.** The 17 setup profiles, **82.5878332608799** soundness
   bits, production-PCG 4/4, runner 3/3 and same-pod CUDA 39/39 remain component
-  evidence only; the ordered challenge trace test and `volta-proto` check pass.
+  evidence only; challenge and live-primary ownership regressions pass.
 - **No product result.** No certificate, timing, proof-size, session or hardware
   gate receives credit; the comparison table remains unchanged.
 - **Resume.** Commit/push the clean narrow repair, fetch it on the active pod,
-  use new r14 roots with the verified setup copy, and run 17 certificates plus
+  use new r15 roots with the verified setup copy, and run 17 certificates plus
   four mutations. On success copy one artifact for the four-thread CPU verifier.
+
+- **2026-08-18 — r14 reaches the live/evaluated native target boundary.** The
+  response authentication, not its installed replay, owns tape zero. §0.39
+  retains that live target and uses the evaluator only for exact plaintext
+  linking and tape one. Raw evidence is
+  `benchmarks/results/c62-a100-session-failure-2026-08-18-837334d-r14.json`.
 
 - **2026-08-18 — r13 binds the wrong challenge across multiple closures.** The
   first full spill crossed the prior transcript failures, then public-claims

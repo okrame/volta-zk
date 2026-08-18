@@ -490,6 +490,10 @@ impl C6T1ProductionResidualOwner {
         &self.auxiliary
     }
 
+    pub fn native_targets(&self) -> &C6PairedNativeTargetValues {
+        &self.native_targets
+    }
+
     pub fn closure_memory_census(&self) -> C6InstalledClosureEvaluationMemoryCensus {
         self.closure_memory
     }

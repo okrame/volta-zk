@@ -2549,6 +2549,9 @@ pub fn run_c62_campaign_live_production(
         prepare_c6_t1_production_residual_owner(response, &native_profile, provider, verifier)
             .map_err(|error| error.to_string())?
     };
+    // Fail before wrapper spill if the installed target map does not link the
+    // live response plaintexts to the independent second MAC coordinate.
+    drop(native_claims.production_paired_targets(&native_profile, residual.native_targets())?);
     let wrapper_statement = build_c62_campaign_live_wrapper_statement(
         response_statement.clone(),
         &public_workload,

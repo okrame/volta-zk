@@ -825,3 +825,23 @@ residual compilation. Challenges remain transcript-derived and add no wire,
 setup, relation, correlation or certificate bytes. A trace regression covers
 distinct ordered challenges. Standing create-new GO authorizes r14 with fresh
 roots after the narrow checks and clean checkpoint.
+
+## 0.39 r14 disposition and r15 live-primary target join
+
+r14 passed setup, A100 preflight, per-closure challenge binding and the first
+full wrapper spill, then failed before sealing because the native join required
+the installed evaluator's coordinate-zero MAC share to equal the already-live
+response MAC share. No certificate or mutation exists and temporary spill was
+removed.
+
+The two owners have distinct jobs. Tape zero is the authentication already
+emitted and checked by the response; the installed evaluator proves that its
+plaintext is the same target plaintext on both coordinates and supplies the
+independent tape-one authentication. r15 therefore requires exact target
+census and per-target plaintext equality, retains the live tape-zero target,
+and joins it to evaluated tape one. This is the existing C6FT1/C6PS1
+two-stage target link, not fresh reauthentication or a provider-selected
+correction. A duplicate fail-fast join now runs before wrapper spill. Wire,
+setup, relation, correlation and certificate byte counts are unchanged.
+Standing create-new GO authorizes r15 with fresh roots after the focused test
+and feature compilation pass.

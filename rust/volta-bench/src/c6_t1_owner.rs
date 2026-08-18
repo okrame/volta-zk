@@ -454,18 +454,29 @@ impl C6T1NativeClaimOwner {
         let model = model.ok_or_else(|| "C6ICT2 native target profile omits model".to_owned())?;
         let embedding =
             embedding.ok_or_else(|| "C6ICT2 native target profile omits embedding".to_owned())?;
-        if coordinates[0][model] != self.primary_model_targets
-            || coordinates[0][embedding] != self.primary_embedding_targets
-            || coordinates[0][model].len() != 96
+        if coordinates[0][model].len() != 96
             || coordinates[0][embedding].len() != 6
+            || self.primary_model_targets.len() != 96
+            || self.primary_embedding_targets.len() != 6
+            || coordinates[0][model]
+                .iter()
+                .zip(&self.primary_model_targets)
+                .any(|(evaluated, live)| evaluated.x != live.x)
+            || coordinates[0][embedding]
+                .iter()
+                .zip(&self.primary_embedding_targets)
+                .any(|(evaluated, live)| evaluated.x != live.x)
         {
             return Err(
-                "C6ICT2 paired target coordinate zero differs from the live response".to_owned()
+                "C6ICT2 paired target plaintext differs from the live response".to_owned()
             );
         }
+        // Tape zero is the authentication already emitted and checked by the
+        // response.  The installed evaluator links its plaintext to tape one;
+        // it is not a second authority for the response-side MAC share.
         Ok((
-            [coordinates[0][model].clone(), coordinates[1][model].clone()],
-            [coordinates[0][embedding].clone(), coordinates[1][embedding].clone()],
+            [self.primary_model_targets.clone(), coordinates[1][model].clone()],
+            [self.primary_embedding_targets.clone(), coordinates[1][embedding].clone()],
         ))
     }
 }
@@ -1068,6 +1079,23 @@ fn parse_golden_tokens(bytes: &[u8]) -> Result<Vec<u32>, String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn paired_native_targets_retain_live_tape_zero_and_link_plaintexts() {
+        let source = include_str!("c6_t1_owner.rs");
+        let body = source
+            .split_once("pub fn production_paired_targets(")
+            .unwrap()
+            .1
+            .split_once("\n    }\n}")
+            .unwrap()
+            .0;
+        assert!(body.contains("evaluated.x != live.x"));
+        assert!(body.contains("self.primary_model_targets.clone()"));
+        assert!(body.contains("self.primary_embedding_targets.clone()"));
+        assert!(!body.contains("coordinates[0][model].clone()"));
+        assert!(!body.contains("coordinates[0][embedding].clone()"));
+    }
+
     #[test]
     fn native_persistence_source_guard_bypasses_hidden_u_owner() {
         let source = include_str!("c6_t1_owner.rs");

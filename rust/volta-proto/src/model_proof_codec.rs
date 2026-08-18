@@ -445,6 +445,82 @@ pub struct C6RetainedResponseProof {
     pub product: ProdProof,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C62RetainedResponseByteCensus {
+    pub model_bytes: usize,
+    pub product_bytes: usize,
+    pub extension_bytes: Vec<usize>,
+    /// Per model layer, including decode chunks: boundary vectors, FFN proof,
+    /// and attention proof bytes. Collection prefixes are excluded.
+    pub layer_sections: Vec<[usize; 3]>,
+    pub non_layer_model_bytes: usize,
+    pub bytes_before_padding_and_digest: usize,
+}
+
+fn wire_bytes<T: Wire>(value: &T) -> Result<usize> {
+    let mut out = Writer(Vec::new());
+    value.write(&mut out)?;
+    Ok(out.0.len())
+}
+
+fn c62_layer_byte_sections(layer: &LayerProof) -> Result<[usize; 3]> {
+    let boundary = wire_bytes(&layer.xin_corr)?
+        + wire_bytes(&layer.k_corr)?
+        + wire_bytes(&layer.v_corr)?
+        + wire_bytes(&layer.abo_corr)?
+        + wire_bytes(&layer.fbo_corr)?;
+    Ok([boundary, wire_bytes(&layer.ffn)?, wire_bytes(&layer.attn)?])
+}
+
+/// Measure the exact canonical C6.2 retained-response payload without
+/// applying its fixed frame. This is intentionally the same writer path used
+/// by `encode_c62_parts`, so readiness can reject an oversized proof locally.
+pub fn c62_retained_response_byte_census(
+    model_proof: &ModelProof,
+    product: &ProdProof,
+) -> Result<C62RetainedResponseByteCensus> {
+    let model = encode_model_proof_canonical(model_proof)?;
+    let extensions = c62_extensions(model_proof);
+    if extensions.is_empty() || extensions.iter().any(|extension| extension.is_none()) {
+        return Err(ModelProofCodecError::new(
+            "C6.2 retained response lacks a complete C62SRE1 census",
+        ));
+    }
+    let mut product_out = Writer(Vec::new());
+    product.write(&mut product_out)?;
+    let mut extension_bytes = Vec::with_capacity(extensions.len());
+    for extension in extensions {
+        let mut extension_out = Writer(Vec::new());
+        extension.write(&mut extension_out)?;
+        extension_bytes.push(extension_out.0.len());
+    }
+    let layer_sections = model_proof
+        .layers
+        .iter()
+        .chain(model_proof.chunks.iter().flat_map(|chunk| chunk.layers.iter()))
+        .map(c62_layer_byte_sections)
+        .collect::<Result<Vec<_>>>()?;
+    let layer_payload_bytes = layer_sections.iter().flatten().sum::<usize>();
+    let non_layer_model_bytes = model
+        .len()
+        .checked_sub(layer_payload_bytes)
+        .ok_or_else(|| ModelProofCodecError::new("C6.2 layer byte census exceeds model bytes"))?;
+    let fixed_header_bytes = C62_RETAINED_MAGIC.len() + 2 + 2 + 4 + 32;
+    let bytes_before_padding_and_digest = fixed_header_bytes
+        + model.len()
+        + product_out.0.len()
+        + 4
+        + extension_bytes.iter().sum::<usize>();
+    Ok(C62RetainedResponseByteCensus {
+        model_bytes: model.len(),
+        product_bytes: product_out.0.len(),
+        extension_bytes,
+        layer_sections,
+        non_layer_model_bytes,
+        bytes_before_padding_and_digest,
+    })
+}
+
 impl C6RetainedResponseProof {
     pub fn encode(&self) -> Result<Vec<u8>> {
         Self::encode_parts(&self.model, &self.product)
@@ -912,6 +988,29 @@ mod tests {
         assert!(C6RetainedResponseProof::decode(&nonzero_padding).is_err());
         assert!(C6RetainedResponseProof::decode(&bytes[..bytes.len() - 1]).is_err());
         assert!(C6RetainedResponseProof::decode(b"wrong").is_err());
+    }
+
+    #[test]
+    fn c62_byte_census_uses_the_canonical_writer() {
+        let mut model = proof();
+        for layer in &mut model.layers {
+            layer.attn.c62_recip = Some(c62_recip());
+        }
+        for chunk in &mut model.chunks {
+            for layer in &mut chunk.layers {
+                layer.attn.c62_recip = Some(c62_recip());
+            }
+        }
+        let product = ProdProof { m0: Fp2::ONE, m1: Fp2::ZERO };
+        let census = c62_retained_response_byte_census(&model, &product).unwrap();
+        assert_eq!(census.model_bytes, encode_model_proof_canonical(&model).unwrap().len());
+        assert_eq!(census.extension_bytes.len(), 2);
+        assert_eq!(
+            census.layer_sections.iter().flatten().sum::<usize>()
+                + census.non_layer_model_bytes,
+            census.model_bytes,
+        );
+        assert!(census.bytes_before_padding_and_digest + 32 <= C62_RETAINED_RESPONSE_BYTES);
     }
 }
 

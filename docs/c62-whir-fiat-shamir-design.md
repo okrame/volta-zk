@@ -1,6 +1,6 @@
 # C6.2 WHIR Fiat--Shamir Design
 
-Status: **A100 PREFLIGHT CUDA BIT-EXACT FAIL / NO SESSION / NO RETRY**
+Status: **R08 RETAINED-PROOF BYTE OBSTRUCTION / LOCAL REDESIGN / NO POD**
 
 This document is the active design for C6.2. It has precedence over the
 interactive C6.1 sections in `c6-delta-residual-inline-design.md`. Frozen C6
@@ -671,3 +671,26 @@ certificate maximum. r07 is immutable. Standing create-new GO permits r08 on
 new roots after the two focused codec/certificate checks and the narrow
 registered-feature binary rebuild; no full suite or setup regeneration is
 required.
+
+## 0.32 r08 full retained-proof byte obstruction
+
+r08 proved that Section 0.31 corrected an allocation without measuring the
+object being allocated. The strict production encoder requires **42,820,093
+bytes** before padding and its final digest. A deterministic genesis replay
+through the same canonical writer decomposes this into a **42,115,273-byte**
+model proof, **704,736 bytes** of 24 C62SRE1 extensions, a **32-byte** product,
+and framing. Of the model proof, layer-boundary vectors alone occupy
+**25,805,280 bytes**. This is larger than the complete **21,999,999-byte**
+certificate target before adding the public argument or proof envelope.
+
+The former **17,195,995-byte** ceiling incorrectly treated the historical
+`other_non_pcs_bytes = 2,921,744` projection as a complete serializable model
+proof. It is withdrawn. Raising the response frame cannot pass the gate and is
+not authorized. r08 is immutable and has no product credit.
+
+Resume requires a typed redesign that removes duplicate serialization only
+where the existing authenticated PCS relation supplies equivalent verifier
+inputs. It must not omit a correction needed by independent response replay,
+expose a value, or replace the designated verification relation. The exact
+genesis mock codec and a complete locally sealed/decoded certificate must fit
+the binding byte gates before any r09 pod checkpoint or launch.

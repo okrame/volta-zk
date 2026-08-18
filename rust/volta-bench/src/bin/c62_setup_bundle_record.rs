@@ -36,8 +36,8 @@ use volta_proto::model_proof::{
     verify_response_continuation_private_logits_c6_cache_inline_from_profile,
 };
 use volta_proto::{
-    c6_gpt2_native_target_profile, layer_dom_base, prod_batch_prover, prod_batch_verify,
-    prove_response_private_logits_c6_cache_inline,
+    c62_retained_response_byte_census, c6_gpt2_native_target_profile, layer_dom_base,
+    prod_batch_prover, prod_batch_verify, prove_response_private_logits_c6_cache_inline,
     verify_response_private_logits_c6_cache_inline_from_profile, ChunkRef, PrivateChunkPub,
     C62_CONTINUATION_1024_FULL_CORRELATIONS, C62_CONTINUATION_1024_SUB_CORRELATIONS,
     C62_CONTINUATION_256_FULL_CORRELATIONS, C62_CONTINUATION_256_SUB_CORRELATIONS,
@@ -112,12 +112,13 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 fn parse_args(
-) -> Result<(PathBuf, PathBuf, bool, bool, bool, Option<usize>, Option<usize>), String> {
+) -> Result<(PathBuf, PathBuf, bool, bool, bool, bool, Option<usize>, Option<usize>), String> {
     let mut weights = None;
     let mut setup_root = None;
     let mut discover_topology = false;
     let mut fiat_shamir_census = false;
     let mut unbounded_challenge_census = false;
+    let mut retained_byte_census = false;
     let mut resume_from = None;
     let mut stop_after = None;
     let mut values = std::env::args().skip(1);
@@ -136,6 +137,7 @@ fn parse_args(
             "--discover-topology" => discover_topology = true,
             "--fiat-shamir-census" => fiat_shamir_census = true,
             "--unbounded-challenge-census" => unbounded_challenge_census = true,
+            "--retained-byte-census" => retained_byte_census = true,
             "--resume-from" => {
                 resume_from = Some(
                     values
@@ -163,6 +165,7 @@ fn parse_args(
         discover_topology,
         fiat_shamir_census,
         unbounded_challenge_census,
+        retained_byte_census,
         resume_from,
         stop_after,
     ))
@@ -263,6 +266,7 @@ fn compile_profile(
     discover_topology: bool,
     fiat_shamir_census: bool,
     unbounded_challenge_census: bool,
+    retained_byte_census: bool,
 ) -> Result<(), String> {
     let statement_digest = [0xA1; 32];
     let transcript_seed = [0xA2; 32];
@@ -352,6 +356,21 @@ fn compile_profile(
     let product_mask = primary.draw_product_mask(product_domain, products.len());
     let product_proof =
         prod_batch_prover(&products, product_challenge, product_mask, &mut prover_tx);
+    if retained_byte_census {
+        let census = c62_retained_response_byte_census(&proof, &product_proof)
+            .map_err(|error| error.to_string())?;
+        eprintln!(
+            "C62_RETAINED_BYTE_CENSUS context={old_context} model={} product={} extensions={:?} layer_sections={:?} non_layer_model={} total_before_digest={} framed={}",
+            census.model_bytes,
+            census.product_bytes,
+            census.extension_bytes,
+            census.layer_sections,
+            census.non_layer_model_bytes,
+            census.bytes_before_padding_and_digest,
+            census.bytes_before_padding_and_digest + 32,
+        );
+        return Ok(());
+    }
     zero_roots.record_operation_trace_ownership().map_err(|error| error.to_string())?;
     let prover_trace = finish_c6_prover_trace().map_err(|error| error.to_string())?;
     follower.sync_primary(&primary, &mut secondary).map_err(|error| error.to_string())?;
@@ -600,6 +619,7 @@ fn compile_profiles_in_fresh_processes(
     discover_topology: bool,
     fiat_shamir_census: bool,
     unbounded_challenge_census: bool,
+    retained_byte_census: bool,
     start_index: usize,
     stop_index: usize,
 ) -> Result<(), String> {
@@ -625,6 +645,9 @@ fn compile_profiles_in_fresh_processes(
         if unbounded_challenge_census {
             command.arg("--unbounded-challenge-census");
         }
+        if retained_byte_census {
+            command.arg("--retained-byte-census");
+        }
         let status = command
             .status()
             .map_err(|error| format!("start setup worker for context {context}: {error}"))?;
@@ -642,6 +665,7 @@ fn run() -> Result<(), String> {
         discover_topology,
         fiat_shamir_census,
         unbounded_challenge_census,
+        retained_byte_census,
         resume_from,
         stop_after,
     ) = parse_args()?;
@@ -669,6 +693,7 @@ fn run() -> Result<(), String> {
             discover_topology,
             fiat_shamir_census,
             unbounded_challenge_census,
+            retained_byte_census,
             start_index,
             stop_index,
         );
@@ -751,6 +776,7 @@ fn run() -> Result<(), String> {
             discover_topology,
             fiat_shamir_census,
             unbounded_challenge_census,
+            retained_byte_census,
         )?;
         eprintln!("completed setup profile {name}");
     }

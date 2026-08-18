@@ -10,30 +10,40 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Status and authorization.** C6.2 is `C62_R08_READY`. Standing owner GO
-  authorizes one fresh replacement on new setup, work and session paths. r01
-  through r07 remain immutable; no selective retry is allowed.
-- **Failure and repair.** r07 passed strict codec selection, then failed before
-  sealing because its mandatory C62SRE1 trailer reused the smaller historical
-  response frame. C6.2 now has a separate **4,500,000-B** fixed frame; the
-  historical **2,921,744-B** frame is unchanged. The certificate maximum
-  remains **21,999,999 B**. No proof relation, cryptographic parameter, setup,
-  correlation schedule or fallback changes.
-- **Checks.** Both focused strict codec/certificate round trips pass. The
-  corrected component ceiling is **17,195,995 B** and registered setup plus
-  that ceiling is **118,393,443 B**. Corrected censuses, **82.5878332608799**
-  soundness bits, production-PCG 4/4, runner 3/3 and same-pod CUDA 39/39 remain
-  valid; full suites are not repeated.
+- **Status and authorization.** C6.2 is `C62_R08_FAIL / LOCAL BYTE REDESIGN`.
+  r01 through r08 are immutable. Standing create-new GO remains recorded, but
+  no pod launch is admissible until the local resume conditions below pass.
+- **Failure.** Clean A100 r08 passed the **101,197,448-B** setup measurement and
+  hardware preflight, then failed before sealing: its first retained response
+  required **42,820,093 B** before digest versus a **4,500,000-B** frame.
+- **Diagnosis.** Exact local replay reproduces the total: model proof
+  **42,115,273 B**, C62SRE1 extensions **704,736 B**, and product **32 B**. Layer
+  boundary vectors alone are **25,805,280 B**, above the complete
+  **21,999,999-B** certificate gate. Increasing the frame is not an eligible
+  repair. The prior **17,195,995-B** ceiling receives no credit.
+- **Preserved checks.** The 17 setup profiles, **82.5878332608799** soundness
+  bits, production-PCG 4/4, runner 3/3 and same-pod CUDA 39/39 remain component
+  evidence only.
 - **Preserved local evidence.** `C62JVR1`, `C62FS1`, `C62SGE1`, strict codecs,
   17 setup profiles, 17-accept plus 4-burn order, full Rust checks, golden
   checks, and the 3,270-job Lean build remain local evidence only.
 - **No product result.** No certificate has been sealed. No A100 prover time,
   consumer-CPU verifier time, proof size, session, or hardware gate receives
   credit. The comparison table remains unchanged.
-- **Resume.** Commit and export the C6.2-only frame repair, rebuild only the
-  registered-feature record binary, hash-copy the deterministic setup, then
-  launch fresh r08 through measurement, preflight, all 17 proofs, mutation and
-  checksums. Do not repeat tests or setup generation.
+- **Resume.** Define a sound strict codec/relation that does not duplicate the
+  PCS-covered correction payload; exact mock encode/decode and the complete
+  certificate must pass the byte gates locally. Then checkpoint and launch a
+  fresh r09. Do not start or recreate a pod before that checkpoint.
+
+- **2026-08-18 — r08 exposes the full retained-proof byte obstruction.** Clean
+  source `91c7c24` passed setup measurement and A100 preflight, then its first
+  proof required **42,820,093 B** before retained-frame padding and digest.
+  No artifact was sealed and mutation did not start; no product value receives
+  credit. The spill was removed and pod `zcztomwp7r0q6k` was stopped. Local
+  exact census places **42,115,273 B** in the model proof, dominated by
+  **25,805,280 B** of layer-boundary vectors. This exceeds the full certificate
+  gate before the public argument, so a larger frame is forbidden. Raw evidence
+  is `benchmarks/results/c62-a100-session-failure-2026-08-18-91c7c24-r08.json`.
 
 - **2026-08-17 — r07 exposes a C6.2-only response-frame accounting error.**
   Clean pod source `0f29834` passed setup measurement, A100 preflight, the

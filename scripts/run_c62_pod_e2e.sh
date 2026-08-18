@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Run one fresh C6.2 A100 setup, preflight, session, and mutation record.
+# Run one fresh C6.2 A100 preflight, session, and mutation record.
+# Set C62_SETUP_SOURCE to copy a previously generated deterministic setup into
+# the required create-new SETUP_ROOT instead of regenerating all 17 profiles.
 
 set -euo pipefail
 
@@ -41,6 +43,18 @@ fi
 if [[ -e $SETUP_ROOT || -e $SESSION_ROOT ]]; then
   echo "SETUP_ROOT and SESSION_ROOT must be new paths" >&2
   exit 2
+fi
+
+SETUP_SOURCE=${C62_SETUP_SOURCE:-}
+if [[ -n $SETUP_SOURCE ]]; then
+  if [[ $SETUP_SOURCE != /* || ! -d $SETUP_SOURCE ]]; then
+    echo "C62_SETUP_SOURCE must be an absolute existing directory" >&2
+    exit 2
+  fi
+  if [[ $SETUP_SOURCE == "$SETUP_ROOT" ]]; then
+    echo "C62_SETUP_SOURCE and SETUP_ROOT must differ" >&2
+    exit 2
+  fi
 fi
 if [[ $(stat -c %d "$WORK_ROOT") != $(stat -c %d "$(dirname "$SESSION_ROOT")") ]]; then
   echo "WORK_ROOT and SESSION_ROOT must use one filesystem" >&2
@@ -93,15 +107,32 @@ else
     --features cuda,c6-trace,c61-p3-authenticated-reference
 fi
 
-cargo run --release --manifest-path rust/Cargo.toml \
-  -p volta-bench \
-  --bin c62_setup_bundle_record \
-  --features c6-trace \
-  -- \
-  --weights "$WEIGHTS_DIR" \
-  --setup-root "$SETUP_ROOT"
+if [[ -n $SETUP_SOURCE ]]; then
+  mkdir "$SETUP_ROOT"
+  cp -a --reflink=auto "$SETUP_SOURCE/." "$SETUP_ROOT/"
+  diff \
+    <(cd "$SETUP_SOURCE" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) \
+    <(cd "$SETUP_ROOT" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum)
+else
+  cargo run --release --manifest-path rust/Cargo.toml \
+    -p volta-bench \
+    --bin c62_setup_bundle_record \
+    --features c6-trace \
+    -- \
+    --weights "$WEIGHTS_DIR" \
+    --setup-root "$SETUP_ROOT"
+fi
 
 mkdir "$SESSION_ROOT"
+cleanup_spill() {
+  local status=$?
+  if [[ -d $SESSION_ROOT/run ]]; then
+    rm -rf -- "$SESSION_ROOT/run"
+  fi
+  return "$status"
+}
+trap cleanup_spill EXIT
+
 cargo run --release --manifest-path rust/Cargo.toml \
   -p volta-bench \
   --bin c62_setup_bundle_measure \
@@ -145,12 +176,26 @@ cargo run --release --manifest-path rust/Cargo.toml \
   --artifact-root "$SESSION_ROOT/artifacts/certificate-00" \
   --output "$SESSION_ROOT/mutations.json"
 
-sha256sum \
-  "$SESSION_ROOT/setup-measurement.json" \
-  "$SESSION_ROOT/preflight.json" \
-  "$SESSION_ROOT/session.json" \
-  "$SESSION_ROOT/mutations.json" \
-  > "$SESSION_ROOT/checksums.sha256"
+(
+  cd "$SESSION_ROOT"
+  find artifacts/certificate-00 -type f -print0 \
+    | LC_ALL=C sort -z \
+    | xargs -0 sha256sum \
+    > artifact-00-files.sha256
+  tar -cf artifact-00.tar artifacts/certificate-00
+)
+
+(
+  cd "$SESSION_ROOT"
+  sha256sum \
+    setup-measurement.json \
+    preflight.json \
+    session.json \
+    mutations.json \
+    artifact-00-files.sha256 \
+    artifact-00.tar \
+    > checksums.sha256
+)
 
 if [[ -n $(git status --porcelain=v1 --untracked-files=all) ]]; then
   echo "the source tree changed during the C6.2 pod run" >&2

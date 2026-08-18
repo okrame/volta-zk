@@ -1085,3 +1085,8 @@ phase calibration; only then production adapter wiring and one genesis
 `context-000` attempt. Any projected wall above `12.500 s` triggers the
 authorized independent-root folding analysis. Any phase budget violation or
 absolute `15.750 s` wall overrun aborts before another certificate.
+
+The registered first pod command is
+`scripts/check_c62_gpu_native_boundary.sh`. It is non-session and refuses a
+dirty tree or missing CUDA device/toolchain; it builds ABI 39 and runs only the
+narrow kernel, root/opening and full-payload differentials with hard timeouts.

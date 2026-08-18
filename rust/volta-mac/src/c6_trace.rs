@@ -1849,10 +1849,10 @@ struct C6TraceRuntime {
     nodes: Vec<C6TraceNode>,
     zero_roots: Vec<C6TraceToken>,
     products: Vec<C6TraceProductClosure>,
-    /// Canonical `(M0,M1)` messages observed at ProductClosure verification
-    /// sites. They are response wire, not operation-plan topology, and are
-    /// drained separately by the response owner.
-    product_messages: Vec<[Fp2; 2]>,
+    /// Canonical `(chi,(M0,M1))` claims observed at ProductClosure verification
+    /// sites. The messages are response wire while each challenge is derived
+    /// from that site's transcript state; both are drained by the response owner.
+    product_messages: Vec<(Fp2, [Fp2; 2])>,
 }
 
 #[cfg(feature = "c6-trace")]
@@ -4640,7 +4640,10 @@ pub fn record_c6_product_closure(
 /// the response owner drains it to bind the retained proof to the residual
 /// public-claims frame.
 #[doc(hidden)]
-pub fn record_c6_product_closure_message(message: [Fp2; 2]) -> Result<(), C6TraceError> {
+pub fn record_c6_product_closure_message(
+    challenge: Fp2,
+    message: [Fp2; 2],
+) -> Result<(), C6TraceError> {
     #[cfg(feature = "c6-trace")]
     {
         return with_runtime(|runtime| {
@@ -4653,13 +4656,13 @@ pub fn record_c6_product_closure_message(message: [Fp2; 2]) -> Result<(), C6Trac
                 // untracked harness work. Mirror that latter case here.
                 return Ok(());
             }
-            runtime.product_messages.push(message);
+            runtime.product_messages.push((challenge, message));
             Ok(())
         });
     }
     #[cfg(not(feature = "c6-trace"))]
     {
-        let _ = message;
+        let _ = (challenge, message);
         Ok(())
     }
 }
@@ -4668,7 +4671,7 @@ pub fn record_c6_product_closure_message(message: [Fp2; 2]) -> Result<(), C6Trac
 /// is still active. A response owner checks the exact census before it closes
 /// the operation trace.
 #[doc(hidden)]
-pub fn take_c6_product_closure_messages() -> Result<Vec<[Fp2; 2]>, C6TraceError> {
+pub fn take_c6_product_closure_messages() -> Result<Vec<(Fp2, [Fp2; 2])>, C6TraceError> {
     #[cfg(feature = "c6-trace")]
     {
         return with_runtime(|runtime| {
@@ -4698,9 +4701,14 @@ mod tests {
         begin_c6_prover_trace().unwrap();
         let first = [Fp2::ONE, Fp2::ZERO];
         let second = [Fp2::ZERO, Fp2::ONE];
-        record_c6_product_closure_message(first).unwrap();
-        record_c6_product_closure_message(second).unwrap();
-        assert_eq!(take_c6_product_closure_messages().unwrap(), vec![first, second]);
+        let first_challenge = Fp2::ONE;
+        let second_challenge = Fp2::ZERO;
+        record_c6_product_closure_message(first_challenge, first).unwrap();
+        record_c6_product_closure_message(second_challenge, second).unwrap();
+        assert_eq!(
+            take_c6_product_closure_messages().unwrap(),
+            vec![(first_challenge, first), (second_challenge, second)]
+        );
         assert!(take_c6_product_closure_messages().unwrap().is_empty());
         let snapshot = finish_c6_prover_trace().unwrap();
         assert!(snapshot.products.is_empty());

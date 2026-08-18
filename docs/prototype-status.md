@@ -10,29 +10,36 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Status and authorization.** C6.2 is `R12_FAIL / R13_FS_ROOT_BINDING_READY`;
-  design §0.37 is active. r01--r12 are immutable and standing create-new GO
-  remains recorded for r13.
-- **r12 disposition.** Clean `0b954ca` passed the reused **101,197,448-B** setup,
-  A100 preflight, retained framing and topology registry, then repeated the
-  one-event canonical-transcript failure after the first wrapper spill. Spill
-  was removed; no certificate or mutation exists.
-- **Corrected diagnosis and repair.** §0.36 fixed a real later ZeroOpen issue
-  but not this failure. The response transcript owned four exact wrapper roots
-  while recording only their 128-byte length. r13 absorbs the ordered bytes for
-  C62FS1, preserves C6.1 behavior and adds root plus scaled compiler tests.
+- **Status and authorization.** C6.2 is `R13_FAIL / R14_CLOSURE_CHALLENGES_READY`;
+  design §0.38 is active. r01--r13 are immutable and standing create-new GO
+  remains recorded for r14.
+- **r13 disposition.** Clean `cfad994` passed the reused **101,197,448-B** setup,
+  A100 preflight, canonical response closure and the first full wrapper spill,
+  then failed at residual public-claims binding. Spill was removed; no
+  certificate or mutation exists.
+- **Diagnosis and repair.** The compiler reused the final response `chi` for
+  every installed `ProductClosure`, while the real transcript derives one per
+  closure. r14 captures the exact ordered challenges with `(M0,M1)` on both
+  roles and feeds them to live and disk residual compilation. It adds no wire,
+  setup, relation, correlation or certificate bytes.
 - **Compact evidence.** `C62RRP2` genesis content remains **3,697,261 B**
   including digest versus the fixed **4,500,000-B** frame (**802,739 B**
   headroom). Strict codec, transcript parity, allocation cap and independent
   replay checks remain component evidence.
 - **Preserved checks.** The 17 setup profiles, **82.5878332608799** soundness
   bits, production-PCG 4/4, runner 3/3 and same-pod CUDA 39/39 remain component
-  evidence only.
+  evidence only; the ordered challenge trace test and `volta-proto` check pass.
 - **No product result.** No certificate, timing, proof-size, session or hardware
   gate receives credit; the comparison table remains unchanged.
 - **Resume.** Commit/push the clean narrow repair, fetch it on the active pod,
-  use new r13 roots with the verified setup copy, and run 17 certificates plus
+  use new r14 roots with the verified setup copy, and run 17 certificates plus
   four mutations. On success copy one artifact for the four-thread CPU verifier.
+
+- **2026-08-18 — r13 binds the wrong challenge across multiple closures.** The
+  first full spill crossed the prior transcript failures, then public-claims
+  binding exposed reuse of the final `chi`. §0.38 retains each exact ordered
+  closure challenge. Raw evidence is
+  `benchmarks/results/c62-a100-session-failure-2026-08-18-cfad994-r13.json`.
 
 - **2026-08-18 — r12 localizes the canonical event to four wrapper roots.** The
   §0.36 ZeroOpen repair was valid but later than the failure. Response closure

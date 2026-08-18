@@ -808,3 +808,20 @@ and interactive behavior. The error now reports the first noncanonical label,
 and regressions cover both the four-root boundary and a complete scaled
 compiler transcript. No wire bytes, setup, relation, correlation, proof or gate
 changes. Standing create-new GO authorizes r13 with fresh roots.
+
+## 0.38 r13 disposition and r14 per-closure challenge binding
+
+r13 passed setup, A100 preflight, canonical response closure and the first
+full wrapper spill, then failed before sealing because residual coordinate zero
+did not reproduce the retained `ProductClosure` messages. No certificate or
+mutation exists and temporary spill was removed.
+
+The residual compiler supplied the final response `chi` to every installed
+closure. The real transcript derives a distinct `chi` at each closure; the
+single-closure fixtures could not expose this mismatch. r14 captures the exact
+ordered `(chi,M0,M1)` tuple at the existing prover and verifier closure sites,
+checks role equality, and supplies that challenge vector to both live and disk
+residual compilation. Challenges remain transcript-derived and add no wire,
+setup, relation, correlation or certificate bytes. A trace regression covers
+distinct ordered challenges. Standing create-new GO authorizes r14 with fresh
+roots after the narrow checks and clean checkpoint.

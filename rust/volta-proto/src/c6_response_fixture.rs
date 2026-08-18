@@ -160,6 +160,7 @@ pub struct C6T1ProductionResponseVerifierReplay {
     zero_roots: C6GrandResidualVerifierRoots,
     product_challenge: Fp2,
     product_mask_domain: u64,
+    product_challenges: Vec<Fp2>,
     product_messages: Vec<[Fp2; 2]>,
     source_schedule: CorrScheduleAudit,
     source_manifest: C6TraceSourceManifest,
@@ -190,6 +191,10 @@ impl C6T1ProductionResponseVerifierReplay {
 
     pub fn product_messages(&self) -> &[[Fp2; 2]] {
         &self.product_messages
+    }
+
+    pub fn product_challenges(&self) -> &[Fp2] {
+        &self.product_challenges
     }
 
     pub fn source_schedule(&self) -> &CorrScheduleAudit {
@@ -359,6 +364,7 @@ pub struct C6T1ProductionResponseProviderPending {
     prover_zero_roots: C6GrandResidualProverRoots,
     product_challenge: Fp2,
     product_mask_domain: u64,
+    product_challenges: Vec<Fp2>,
     product_messages: Vec<[Fp2; 2]>,
     source_schedule: CorrScheduleAudit,
     source_manifest: C6TraceSourceManifest,
@@ -613,6 +619,7 @@ pub struct C6T1ProductionResponseOwner {
     product_proof: ProdProof,
     product_challenge: Fp2,
     product_mask_domain: u64,
+    product_challenges: Vec<Fp2>,
     product_messages: Vec<[Fp2; 2]>,
     prover_zero_roots: C6GrandResidualProverRoots,
     verifier_zero_roots: C6GrandResidualVerifierRoots,
@@ -667,6 +674,10 @@ impl C6T1ProductionResponseOwner {
 
     pub fn product_messages(&self) -> &[[Fp2; 2]] {
         &self.product_messages
+    }
+
+    pub fn product_challenges(&self) -> &[Fp2] {
+        &self.product_challenges
     }
 
     pub fn paired_sources(&self) -> &C6ProductionPairedSourceWitness {
@@ -769,8 +780,7 @@ pub fn prepare_c6_t1_production_residual_owner(
             "C6 production residual manifests differ across installed roles",
         ));
     }
-    let product_challenges =
-        vec![response.product_challenge(); response.provider().operation_plan().products().len()];
+    let product_challenges = response.product_challenges().to_vec();
     let retained =
         C6ResidualRetainedChallenges::new(&manifest, product_challenges, provider_zero_challenge)?;
     let zero_weights =
@@ -849,8 +859,7 @@ pub fn prepare_c6_t1_disk_residual_owner(
         RESPONSE_PRODUCTION_AUXILIARY_LOG2,
         true,
     )?;
-    let product_challenges =
-        vec![response.product_challenge(); response.installed().operation_plan().products().len()];
+    let product_challenges = response.product_challenges().to_vec();
     let retained =
         C6ResidualRetainedChallenges::new(&manifest, product_challenges, zero_challenge)?;
     let zero_weights =
@@ -1016,7 +1025,9 @@ fn replay_c6_production_response_verifier(
         return Err("C6.1 disk verifier response census changed".to_owned());
     }
     zero_roots.record_operation_trace_ownership().map_err(|error| error.to_string())?;
-    let product_messages = take_c6_product_closure_messages().map_err(|error| error.to_string())?;
+    let product_records = take_c6_product_closure_messages().map_err(|error| error.to_string())?;
+    let (product_challenges, product_messages): (Vec<_>, Vec<_>) =
+        product_records.into_iter().unzip();
     let _operation_trace = finish_c6_verifier_trace().map_err(|error| error.to_string())?;
     let runtime = runtime_capture
         .finish_installed(&installed_plan, &extraction)
@@ -1053,6 +1064,7 @@ fn replay_c6_production_response_verifier(
         zero_roots,
         product_challenge,
         product_mask_domain,
+        product_challenges,
         product_messages,
         source_schedule,
         source_manifest,
@@ -1196,6 +1208,7 @@ fn prove_c6_production_response_provider(
         product_proof,
         product_challenge,
         product_mask_domain,
+        product_challenges,
         product_messages,
         cache_target_frame,
         cache_target_fixed,
@@ -1265,8 +1278,10 @@ fn prove_c6_production_response_provider(
         let product_mask = primary.draw_product_mask(product_domain, products.len());
         let product_proof = prod_batch_prover(&products, chi, product_mask, provider_transcript);
         zero_roots.record_operation_trace_ownership().map_err(|error| error.to_string())?;
-        let product_messages =
+        let product_records =
             take_c6_product_closure_messages().map_err(|error| error.to_string())?;
+        let (product_challenges, product_messages): (Vec<_>, Vec<_>) =
+            product_records.into_iter().unzip();
         let _operation_trace = finish_c6_prover_trace().map_err(|error| error.to_string())?;
         let runtime = runtime_capture
             .finish_installed(&installed_plan, &extraction)
@@ -1293,6 +1308,7 @@ fn prove_c6_production_response_provider(
             product_proof,
             chi,
             product_domain,
+            product_challenges,
             product_messages,
             target_frame,
             target_fixed,
@@ -1368,6 +1384,7 @@ fn prove_c6_production_response_provider(
         prover_zero_roots,
         product_challenge,
         product_mask_domain,
+        product_challenges,
         product_messages,
         source_schedule,
         source_manifest,
@@ -1467,6 +1484,7 @@ fn build_c6_production_response_owner(
         prover_zero_roots,
         product_challenge,
         product_mask_domain,
+        product_challenges: provider_product_challenges,
         product_messages: provider_product_messages,
         source_schedule,
         source_manifest,
@@ -1528,6 +1546,7 @@ fn build_c6_production_response_owner(
         || verifier.zero_roots.len() != prover_zero_roots.len()
         || verifier.product_challenge != product_challenge
         || verifier.product_mask_domain != product_mask_domain
+        || verifier.product_challenges != provider_product_challenges
         || verifier.product_messages != provider_product_messages
         || verifier.cache_target_fixed != cache_target_fixed
         || verifier.installed.runtime.instance_identity() != provider.runtime.instance_identity()
@@ -1545,6 +1564,7 @@ fn build_c6_production_response_owner(
         zero_roots: verifier_zero_roots,
         product_challenge: _,
         product_mask_domain: _,
+        product_challenges,
         product_messages,
         source_schedule: _,
         source_manifest: _,
@@ -1569,6 +1589,7 @@ fn build_c6_production_response_owner(
         product_proof,
         product_challenge,
         product_mask_domain,
+        product_challenges,
         product_messages,
         prover_zero_roots,
         verifier_zero_roots,
@@ -2415,6 +2436,15 @@ mod transcript_tests {
         ] {
             assert!(provider.contains(required), "provider boundary lacks {required}");
         }
+    }
+
+    #[test]
+    fn production_residual_uses_ordered_per_closure_challenges() {
+        let source = include_str!("c6_response_fixture.rs");
+        assert_eq!(source.matches("product_records.into_iter().unzip()").count(), 2);
+        assert!(!source.contains("vec![response.product_challenge()"));
+        assert!(source.contains("verifier.product_challenges != provider_product_challenges"));
+        assert_eq!(source.matches("response.product_challenges().to_vec()").count(), 2);
     }
 
     #[test]

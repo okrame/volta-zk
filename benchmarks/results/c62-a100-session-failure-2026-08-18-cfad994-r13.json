@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "milestone": "C6.2 replacement r13 RunPod A100 E2E attempt",
+  "date": "2026-08-18",
+  "run_id": "cfad9948ce3a149d428f58bcc69b9529b931b292-r13",
+  "source_git_sha": "cfad9948ce3a149d428f58bcc69b9529b931b292",
+  "source_git_dirty": false,
+  "authorization": {
+    "standing_create_new_go": true,
+    "selective_retry_performed": false
+  },
+  "runner": {
+    "exit_code": 1,
+    "failed_stage": "first certificate residual public-claims binding",
+    "error": "C6 production residual coordinate zero differs from retained ProductClosure messages",
+    "production_session_started": true,
+    "certificates_sealed": 0,
+    "mutations_started": false
+  },
+  "setup": {
+    "profiles_reused": 17,
+    "setup_bytes": 101197448,
+    "pass": true,
+    "credit": false
+  },
+  "preflight": {
+    "available_spill_bytes": 234931384320,
+    "cuda_backend_initialized": true,
+    "a100_present": true,
+    "pass": true,
+    "credit": false
+  },
+  "records": {
+    "setup_measurement_sha256": "71f13406d09101f031d0048ad20f5f15ac93d336308b42be03ce63af7cb5a366",
+    "preflight_sha256": "9379570775c432b217e1a1c9ed79136f0e149922cdfee03d76a6018bcee5090b",
+    "runner_log_sha256": "a43651ec34407a4718e7f5ce944ae5b82bee852faa201fa6e760fef8779ecb03",
+    "exit_file_sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "temporary_spill_removed": true
+  },
+  "hardware": {
+    "provider": "RunPod",
+    "pod_id": "mkp59uj8mtoyao",
+    "gpu": "NVIDIA A100-SXM4-80GB",
+    "gpu_uuid": "GPU-e663e5cb-6203-f55b-3c79-4d044bda261e",
+    "cuda": "12.8",
+    "driver": "580.126.16",
+    "cpu": "AMD EPYC 7742 64-Core Processor"
+  },
+  "diagnosis": {
+    "cause": "the residual compiler reused the final response challenge for every ProductClosure instead of the distinct transcript challenge captured at each closure",
+    "setup_changed": false,
+    "relation_changed": false,
+    "certificate_bytes_changed": false,
+    "fallback_added": false
+  },
+  "measured_product_values": null,
+  "credit": false,
+  "disposition": "FAIL CLOSED BEFORE FIRST CERTIFICATE; R13 IMMUTABLE; BIND ORDERED PER-CLOSURE CHALLENGES BEFORE CREATE-NEW R14"
+}

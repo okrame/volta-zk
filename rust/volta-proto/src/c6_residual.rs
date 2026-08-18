@@ -1106,10 +1106,10 @@ fn is_registered_c62_production_topology(topology: C6OperationPlanTopologyIdenti
             topology.product_triple_count,
             topology.zero_root_count,
         ),
-        (4_976_101, 28_845_631, 1_436, 10_828_852, 673, 22_339, 8_170)
-            | (1_857_717, 6_560_977, 1_436, 2_399_061, 673, 20_620, 7_597)
-            | (1_861_509, 6_578_905, 1_436, 2_407_749, 673, 20_836, 7_669)
-            | (1_865_445, 6_597_601, 1_436, 2_416_845, 673, 21_052, 7_741)
+        (5_119_131, 17_894_474, 2_093, 6_458_502, 673, 29_620, 10_909)
+            | (1_992_912, 7_082_024, 2_093, 2_599_883, 673, 27_073, 10_060)
+            | (1_997_712, 7_104_920, 2_093, 2_611_091, 673, 27_361, 10_156)
+            | (2_002_704, 7_128_872, 2_093, 2_622_875, 673, 27_649, 10_252)
     )
 }
 
@@ -12877,6 +12877,35 @@ mod tests {
 
     fn hex_digest(value: C6ResidualDigest) -> String {
         value.iter().map(|byte| format!("{byte:02x}")).collect()
+    }
+
+    #[test]
+    fn c62_production_geometry_registry_matches_the_four_setup_classes() {
+        let classes = [
+            (5_119_131, 17_894_474, 2_093, 6_458_502, 673, 29_620, 10_909),
+            (1_992_912, 7_082_024, 2_093, 2_599_883, 673, 27_073, 10_060),
+            (1_997_712, 7_104_920, 2_093, 2_611_091, 673, 27_361, 10_156),
+            (2_002_704, 7_128_872, 2_093, 2_622_875, 673, 27_649, 10_252),
+        ];
+        for (source, nodes, public, scalars, closures, triples, zero_roots) in classes {
+            let topology = C6OperationPlanTopologyIdentity {
+                version: 2,
+                source_count: source,
+                source_schedule_digest: [1; 32],
+                canonical_node_count: nodes,
+                public_input_count: public,
+                scalar_input_count: scalars,
+                product_closure_count: closures,
+                product_triple_count: triples,
+                zero_root_count: zero_roots,
+                topology_digest: [2; 32],
+            };
+            assert!(is_registered_c62_production_topology(topology));
+            assert!(!is_registered_c62_production_topology(C6OperationPlanTopologyIdentity {
+                source_count: source + 1,
+                ..topology
+            }));
+        }
     }
 
     fn leaf(index: u32, domain: u64, kind: C6LeafKind) -> C6LeafId {

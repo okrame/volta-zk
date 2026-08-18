@@ -10,30 +10,38 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Status and authorization.** C6.2 is `R09_LOCAL_CHECKPOINT_READY / POD
-  PAUSED`; design §0.33 is active. r01--r08 remain immutable and standing
-  create-new GO remains recorded.
-- **Repair.** C6.2-only `C62RRP2` replaces PCS-covered raw subfield corrections
-  with strict `(length, BLAKE3 digest)` entries. Replay restores their exact
-  Fiat--Shamir moves and correlation/source schedule while the bound
-  grand-residual PCS checks the hidden corrections and closures. Historical
-  codecs and explicit full-field opening corrections are unchanged.
-- **Measured local component evidence.** Exact genesis compact content is
-  **3,697,261 B** including digest versus the fixed **4,500,000-B** frame
-  (**802,739 B** headroom), down from **42,820,093 B**. Strict compact
-  encode/decode/mutation, transcript parity, cumulative allocation cap,
-  certificate codec and both record binaries pass narrow checks. Production
-  correlation and complete topology parity pass for genesis.
+- **Status and authorization.** C6.2 is `R09_FAIL / R10_TOPOLOGY_REGISTRY_READY`;
+  design §0.34 is active. r01--r09 are immutable and standing create-new GO
+  remains recorded for r10.
+- **r09 disposition.** Clean `e8040cb` passed the reused **101,197,448-B** setup
+  measurement, A100 preflight, real/AES connection preparation and the former
+  compact-response obstruction. After its first wrapper spill it failed before
+  sealing: `C6RLM1 production manifest does not have a registered C6.2
+  geometry`. Spill was removed; no mutation started.
+- **Diagnosis and repair.** The strict installed setup binds four current
+  topology classes, but the C6RLM1 production whitelist retained four obsolete
+  tuples. r10 replaces only that whitelist with the exact setup-header censuses
+  and adds a four-class regression. Operation plans, setup, relation,
+  transcript, correlations, proof and gates are unchanged.
+- **Compact evidence.** `C62RRP2` genesis content remains **3,697,261 B**
+  including digest versus the fixed **4,500,000-B** frame (**802,739 B**
+  headroom). Strict codec, transcript parity, allocation cap and independent
+  replay checks remain component evidence.
 - **Preserved checks.** The 17 setup profiles, **82.5878332608799** soundness
   bits, production-PCG 4/4, runner 3/3 and same-pod CUDA 39/39 remain component
   evidence only.
-- **No product result.** VM RAM/swap precludes a safe high-context E2E; its
-  aborted diagnostic was removed. No certificate, timing, byte, session or
-  hardware gate receives credit; the comparison table remains unchanged.
-- **Resume.** Commit and push this clean checkpoint, resume the paused A100 pod,
-  synchronize by Git, and run one fresh essential r09 across all 17 profiles
-  plus four mutations. Stop on any strict failure; otherwise copy one sealed
-  artifact for the independent four-thread CPU verifier.
+- **No product result.** No certificate, timing, proof-size, session or hardware
+  gate receives credit; the comparison table remains unchanged.
+- **Resume.** Commit/push the clean narrow repair, fetch it on the active pod,
+  use new r10 roots with the verified setup copy, and run 17 certificates plus
+  four mutations. On success copy one artifact for the four-thread CPU verifier.
+
+- **2026-08-18 — r09 fails closed on a stale production-topology whitelist.**
+  Setup and A100 preflight passed; the first proof passed the compact-response
+  obstruction and completed its wrapper spill, then C6RLM1 rejected the
+  current installed geometry before sealing. Exact setup headers expose four
+  valid classes; §0.34 registers only those censuses. Raw evidence is
+  `benchmarks/results/c62-a100-session-failure-2026-08-18-e8040cb-r09.json`.
 
 - **2026-08-18 — r09 compact response is locally checkpoint-ready.** The strict
   `C62RRP2` genesis body plus digest is **3,697,261 B**, with **802,739 B** of

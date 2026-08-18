@@ -1,6 +1,6 @@
 # C6.2 WHIR Fiat--Shamir Design
 
-Status: **R09 COMPACT RETAINED RESPONSE READY / POD PAUSED**
+Status: **R10 EXACT TOPOLOGY REGISTRY REPAIR READY / POD ACTIVE**
 
 This document is the active design for C6.2. It has precedence over the
 interactive C6.1 sections in `c6-delta-residual-inline-design.md`. Frozen C6
@@ -739,3 +739,28 @@ strict codec/transcript/certificate tests and both record-binary checks. The
 first complete 17-profile seal, byte measurement and four mutations move to
 the paused A100 pod. No product gate receives credit until that clean r09 run
 finishes.
+
+## 0.34 r09 disposition and r10 topology-registry repair
+
+r09 passed the reused **101,197,448-B** setup measurement, A100 preflight,
+real/AES connection preparation and the former retained-response obstruction.
+After materializing and consuming the first wrapper spill it stopped before
+sealing with `C6RLM1 production manifest does not have a registered C6.2
+geometry`. No certificate or mutation exists and no product gate receives
+credit. The spill was removed automatically.
+
+The setup operation-plan headers identify four exact topology classes:
+
+- genesis: `(5,119,131, 17,894,474, 2,093, 6,458,502, 673, 29,620, 10,909)`;
+- continuation-256: `(1,992,912, 7,082,024, 2,093, 2,599,883, 673, 27,073, 10,060)`;
+- continuation-512: `(1,997,712, 7,104,920, 2,093, 2,611,091, 673, 27,361, 10,156)`;
+- continuation-1024: `(2,002,704, 7,128,872, 2,093, 2,622,875, 673, 27,649, 10,252)`.
+
+Tuple order is source, canonical nodes, public inputs, scalar inputs,
+ProductClosures, product triples and zero roots. The production whitelist had
+retained four obsolete pre-repair tuples even though setup generation,
+artifact digests and strict plan decoding already bind the current values.
+The r10 repair replaces only that whitelist and adds an exact four-class
+regression. It changes no operation plan, setup byte, transcript, relation,
+correlation, proof or gate. Standing create-new GO authorizes r10 with new
+roots after the narrow registry test and clean checkpoint.

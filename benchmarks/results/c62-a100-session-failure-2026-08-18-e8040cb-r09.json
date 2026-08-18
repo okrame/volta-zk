@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "milestone": "C6.2 replacement r09 RunPod A100 E2E attempt",
+  "date": "2026-08-18",
+  "run_id": "e8040cb61e139ca61491b9c13d2a0b0405ff50b4-r09",
+  "source_git_sha": "e8040cb61e139ca61491b9c13d2a0b0405ff50b4",
+  "source_git_dirty": false,
+  "authorization": {
+    "standing_create_new_go": true,
+    "selective_retry_performed": false
+  },
+  "runner": {
+    "exit_code": 1,
+    "failed_stage": "first certificate production manifest construction after wrapper spill",
+    "error": "C6RLM1 production manifest does not have a registered C6.2 geometry",
+    "production_session_started": true,
+    "certificates_sealed": 0,
+    "mutations_started": false
+  },
+  "setup": {
+    "profiles_reused": 17,
+    "setup_bytes": 101197448,
+    "pass": true,
+    "credit": false
+  },
+  "preflight": {
+    "available_spill_bytes": 235723505664,
+    "cuda_backend_initialized": true,
+    "a100_present": true,
+    "pass": true,
+    "credit": false
+  },
+  "records": {
+    "setup_measurement_sha256": "71f13406d09101f031d0048ad20f5f15ac93d336308b42be03ce63af7cb5a366",
+    "preflight_sha256": "bf1a153c6c233351014e53e2e373168390c031c69496a7ff0d92a64c8cdb4d75",
+    "session_sha256": "38b16fc31d100644e70a24662c6be4de799ac625e36f71bcf0e4e65c0a0e50dd",
+    "runner_log_sha256": "bed83354e4ba424c12d2b3f9fadb1375d3ee5e4bd8b5e26119ebc5415f358d36",
+    "exit_file_sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "temporary_spill_removed": true
+  },
+  "hardware": {
+    "provider": "RunPod",
+    "pod_id": "mkp59uj8mtoyao",
+    "gpu": "NVIDIA A100-SXM4-80GB",
+    "gpu_uuid": "GPU-e663e5cb-6203-f55b-3c79-4d044bda261e",
+    "cuda": "12.8",
+    "driver": "580.126.16",
+    "cpu": "AMD EPYC 7742 64-Core Processor"
+  },
+  "diagnosis": {
+    "cause": "the C6RLM1 production whitelist retained four obsolete topology censuses while the strict installed setup carries the current four C6.2 topology classes",
+    "setup_changed": false,
+    "relation_changed": false,
+    "fallback_added": false
+  },
+  "measured_product_values": null,
+  "credit": false,
+  "disposition": "FAIL CLOSED BEFORE FIRST CERTIFICATE; R09 IMMUTABLE; REGISTER EXACT INSTALLED TOPOLOGY CLASSES BEFORE CREATE-NEW R10"
+}

@@ -923,3 +923,29 @@ fixed `(24, 765)` suffix. This changes no bytes, correlations, relation,
 transcript or setup content. The r18 authorization was not consumed; standing
 create-new GO authorizes r19 with fresh roots after the narrow checks and clean
 checkpoint.
+
+## 0.44 r19 setup completion and performance-eligibility hard stop
+
+Clean `e107db2` generated all 17 setup profiles without entering setup
+measurement, PCG allocation or a production session. The copied setup contains
+85 files / 197,278,943 bytes and matches its source byte-for-byte; the SHA-256
+of its canonical per-file manifest is
+`9990a3dbbeaf30405e3cabdbd947d9e03003a6fca50ebe361783d52c6e036821`.
+It is retained on the persistent volume for `C62_SETUP_SOURCE`. No attempt,
+certificate, mutation or product metric exists, and standing create-new r19 GO
+is unconsumed. The pod was stopped after removing temporary builds and logs.
+
+The pre-session audit found that every selected committed or compiler WHIR
+chain explicitly sets `gpu_performance_credit=false`. This is consistent with
+r17's roughly 197-GiB persisted spill and tens-of-minutes first-proof path, but
+the session runner would still apply the `<15.750 s` A100-prover wall gate.
+Container disk capacity makes that executor functional; it does not make it a
+performance-eligible A100 prover. Relabeling partial CUDA counters as wall time,
+loosening the gate, or moving 197 GiB into the 117-GiB tmpfs is forbidden.
+
+The active hard stop is
+`C62_GPU_PERFORMANCE_ELIGIBLE_EXECUTOR_REQUIRED`. Resume requires an exact,
+byte-identical GPU-resident or bounded-streaming WHIR executor, a positive typed
+performance-eligibility signal checked before authorization, and the narrow
+CUDA/codec/replay regressions at a clean checkpoint. Only then may r19 reuse the
+saved setup and start its one create-new 17-accept plus four-abort session.

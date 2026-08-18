@@ -10122,6 +10122,30 @@ mod tests {
     }
 
     #[test]
+    fn c62_scaled_compiler_transcript_has_only_canonical_events() {
+        let fixture = c61_sparse_compiler_physical_fixture().unwrap();
+        let mut correlations = CorrelationStream::new([0xD3; 32]);
+        let id = C61NativeChainId { component: C61NativeComponent::Compiler, repetition: 0 };
+        let mask_range =
+            C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 29, range_start: 120_000 };
+        run_c61_authenticated_whir_p3_shared_multi_oracle_with_provider_transcript(
+            &fixture,
+            14,
+            &mut correlations,
+            None,
+            None,
+            Transcript::new_fiat_shamir([0xC6; 32]).unwrap(),
+            id,
+            mask_range,
+            0,
+            0,
+            c61_reference_mmcs(),
+            c61_reference_mmcs(),
+        )
+        .unwrap();
+    }
+
+    #[test]
     fn exact_terminal_fold_and_compiler_frame_reject_mutations() {
         let fixture = c61_sparse_compiler_physical_fixture().unwrap();
         fixture.terminal_binding.validate().unwrap();

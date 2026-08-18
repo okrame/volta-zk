@@ -514,15 +514,20 @@ fn fix_c6_wrapper_commitments_inner(
             ));
         }
     }
-    let root_bytes = commitments
-        .len()
-        .checked_mul(32)
-        .ok_or_else(|| C6WrapperPcsError::new("C6 initial-root bytes overflow"))?;
-    transcript.append(
-        C6_INITIAL_ROOTS_LABEL,
-        u64::try_from(root_bytes)
-            .map_err(|_| C6WrapperPcsError::new("C6 initial-root bytes exceed u64"))?,
-    );
+    if transcript.is_fiat_shamir() {
+        let roots = commitments.iter().flat_map(|commitment| commitment.root).collect::<Vec<_>>();
+        transcript.append_message(C6_INITIAL_ROOTS_LABEL, &roots);
+    } else {
+        let root_bytes = commitments
+            .len()
+            .checked_mul(32)
+            .ok_or_else(|| C6WrapperPcsError::new("C6 initial-root bytes overflow"))?;
+        transcript.append(
+            C6_INITIAL_ROOTS_LABEL,
+            u64::try_from(root_bytes)
+                .map_err(|_| C6WrapperPcsError::new("C6 initial-root bytes exceed u64"))?,
+        );
+    }
     Ok(C6FixedWrapperCommitments {
         statement_digest,
         binding_digest: fixed_roots_digest(statement_digest, commitments),
@@ -4593,6 +4598,17 @@ mod tests {
         .unwrap();
         assert!(fixed.is_c61_native_profile());
         assert!(C6WrapperRoundCoordinator::new(&fixed, 0).is_err());
+
+        let mut fiat_shamir = Transcript::new_fiat_shamir([0x93; 32]).unwrap();
+        fix_production_c61_native_wrapper_commitments(
+            statement(),
+            &cache_descriptors,
+            &commitments,
+            &mut fiat_shamir,
+        )
+        .unwrap();
+        assert_eq!(fiat_shamir.bytes_for(C6_INITIAL_ROOTS_LABEL), 4 * 32);
+        assert!(fiat_shamir.canonical_binding_digest().is_ok());
 
         let mut coordinator = C61NativeWrapperRoundCoordinator::new(&fixed, 0).unwrap();
         while coordinator.round_index() < C6_WRAPPER_RANDOM_POINT_LEN {

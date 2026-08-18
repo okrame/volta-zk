@@ -68,6 +68,7 @@ pub struct Transcript {
     n_messages: u64,
     canonical_moves: blake3::Hasher,
     noncanonical_events: u64,
+    first_noncanonical_label: Option<&'static str>,
     #[cfg(debug_assertions)]
     canonical_event_debug: Vec<(&'static str, [u8; 32])>,
     pending_provider_move: Vec<u8>,
@@ -89,6 +90,7 @@ impl Transcript {
                 "volta-zk/transcript/canonical-moves/v1",
             ),
             noncanonical_events: 0,
+            first_noncanonical_label: None,
             #[cfg(debug_assertions)]
             canonical_event_debug: Vec::new(),
             pending_provider_move: Vec::new(),
@@ -110,6 +112,7 @@ impl Transcript {
                 "volta-zk/transcript/canonical-moves/v1",
             ),
             noncanonical_events: 0,
+            first_noncanonical_label: None,
             #[cfg(debug_assertions)]
             canonical_event_debug: Vec::new(),
             pending_provider_move: Vec::new(),
@@ -140,6 +143,7 @@ impl Transcript {
                 "volta-zk/transcript/canonical-moves/v1",
             ),
             noncanonical_events: 0,
+            first_noncanonical_label: None,
             #[cfg(debug_assertions)]
             canonical_event_debug: Vec::new(),
             pending_provider_move: Vec::new(),
@@ -200,6 +204,7 @@ impl Transcript {
     pub fn append(&mut self, label: &'static str, n: u64) {
         self.account(label, n);
         self.noncanonical_events = self.noncanonical_events.saturating_add(1);
+        self.first_noncanonical_label.get_or_insert(label);
         if matches!(self.challenges, TranscriptChallenges::Interactive(_)) {
             self.unbound_provider_bytes = self.unbound_provider_bytes.saturating_add(n);
         }
@@ -652,8 +657,9 @@ impl Transcript {
         }
         if self.noncanonical_events != 0 {
             return Err(format!(
-                "transcript contains {} noncanonical length-only events",
-                self.noncanonical_events
+                "transcript contains {} noncanonical length-only events; first label {}",
+                self.noncanonical_events,
+                self.first_noncanonical_label.unwrap_or("unknown"),
             ));
         }
         Ok(*self.canonical_moves.clone().finalize().as_bytes())

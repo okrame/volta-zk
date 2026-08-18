@@ -1,6 +1,6 @@
 # C6.2 WHIR Fiat--Shamir Design
 
-Status: **R12 FIAT--SHAMIR ZEROOPEN BINDING REPAIR READY / POD ACTIVE**
+Status: **R13 FIAT--SHAMIR WRAPPER-ROOT BINDING REPAIR READY / POD ACTIVE**
 
 This document is the active design for C6.2. It has precedence over the
 interactive C6.1 sections in `c6-delta-residual-inline-design.md`. Frozen C6
@@ -793,3 +793,18 @@ remain unchanged. A role-parity regression requires equal canonical digests.
 No wire bytes, setup, relation, correlation, proof or gate changes. Standing
 create-new GO authorizes r12 with fresh roots after the narrow test and clean
 checkpoint.
+
+## 0.37 r12 disposition and r13 wrapper-root binding
+
+r12 repeated the one-event canonical-transcript failure after setup, preflight
+and the first wrapper spill. This disproves the §0.36 attribution: the exact
+ZeroOpen binding is valid but occurs later and was not the failing event.
+
+The failure is at response-transcript closure immediately after the four
+wrapper commitments are fixed. The root fixer owns all four ordered 32-byte
+roots but used the historical 128-byte accounting-only event. r13 absorbs the
+exact root bytes for Fiat--Shamir transcripts and preserves historical seeded
+and interactive behavior. The error now reports the first noncanonical label,
+and regressions cover both the four-root boundary and a complete scaled
+compiler transcript. No wire bytes, setup, relation, correlation, proof or gate
+changes. Standing create-new GO authorizes r13 with fresh roots.

@@ -10,18 +10,18 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Status and authorization.** C6.2 is `R16_FAIL / R17_FULL_CORRELATION_GEOMETRY_READY`;
-  design §0.41 is active. r01--r16 are immutable and standing create-new GO
-  remains recorded for r17.
-- **r16 disposition.** Clean `6c0d63e` passed the reused **101,197,448-B**
-  setup, A100 preflight, live-target join, full wrapper spill and post-source
-  transition, then exhausted the pool at the first suffix draw. Spill was
+- **Status and authorization.** C6.2 is `R17_FAIL / R18_CODEC_AND_BOUNDED_SPILL_READY`;
+  design §0.42 is active. r01--r17 are immutable and standing create-new GO
+  remains recorded for r18.
+- **r17 disposition.** Clean `92d01d7` passed the reused **101,197,448-B**
+  setup, A100 preflight, complete wrapper and four native chains, observing
+  about **197 GiB** temporary spill. It then failed before seal when the
+  C6.2-only response-binding site selected the historical codec. Spill was
   removed; no certificate or mutation exists.
-- **Diagnosis and repair.** The allocation covered the response schedule but
-  omitted the exact suffix: **24 subfield + 765 full-field** correlations per
-  tape. r17 reserves it for every profile and fail-fast checks its executable
-  census. Session use is **49,416,418** raw correlations per tape. Relation,
-  transcript, setup and framing are unchanged.
+- **Diagnosis and repair.** r18 selects the strict C6.2 codec at that typed
+  site, records exact spill, requires **208 GiB** free, and removes each
+  certificate's spill only after artifact verification and state acceptance.
+  Relation, transcript contents, correlations, setup and framing are unchanged.
 - **Compact evidence.** `C62RRP2` genesis content remains **3,697,261 B**
   including digest versus the fixed **4,500,000-B** frame (**802,739 B**
   headroom). Strict codec, transcript parity, allocation cap and independent
@@ -32,8 +32,13 @@ This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 - **No product result.** No certificate, timing, proof-size, session or hardware
   gate receives credit; the comparison table remains unchanged.
 - **Resume.** Commit/push the clean narrow repair, fetch it on the active pod,
-  use new r17 roots with the verified setup copy, and run 17 certificates plus
+  use new r18 roots with the verified setup copy, and run 17 certificates plus
   four mutations. On success copy one artifact for the four-thread CPU verifier.
+
+- **2026-08-18 — r17 completes all persisted chains and finds one historical
+  suffix codec call.** §0.42 selects the C6.2 codec and bounds each temporary
+  spill lane. Raw evidence is
+  `benchmarks/results/c62-a100-session-failure-2026-08-18-92d01d7-r17.json`.
 
 - **2026-08-18 — r16 reaches the first unreserved suffix draw.** The lifecycle
   transition is valid; §0.41 adds the exact executable suffix census to all

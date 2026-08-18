@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "milestone": "C6.2 replacement r17 RunPod A100 E2E attempt",
+  "date": "2026-08-18",
+  "run_id": "92d01d7b758a53424eab8194723f37d11a293ed1-r17",
+  "source_git_sha": "92d01d7b758a53424eab8194723f37d11a293ed1",
+  "source_git_dirty": false,
+  "authorization": {
+    "standing_create_new_go": true,
+    "selective_retry_performed": false
+  },
+  "runner": {
+    "exit_code": 1,
+    "failed_stage": "first certificate post-four-chain C62JVR1 response-binding digest",
+    "error": "C62SRE1 extensions require the C6.2 retained-response codec",
+    "production_session_started": true,
+    "certificates_sealed": 0,
+    "mutations_started": false
+  },
+  "setup": {
+    "profiles_reused": 17,
+    "setup_bytes": 101197448,
+    "pass": true,
+    "credit": false
+  },
+  "preflight": {
+    "available_spill_bytes": 228802625536,
+    "cuda_backend_initialized": true,
+    "a100_present": true,
+    "pass": true,
+    "credit": false
+  },
+  "observed_resources": {
+    "persisted_spill_peak_display": "197 GiB by du -sh polling",
+    "spill_components_display": "about 92 GiB wrapper, 103 GiB four-chain, 1.3 GiB coefficients",
+    "process_rss_peak_display": "about 37 GiB by ps polling",
+    "exact_measurement_available": false,
+    "credit": false
+  },
+  "records": {
+    "setup_measurement_sha256": "71f13406d09101f031d0048ad20f5f15ac93d336308b42be03ce63af7cb5a366",
+    "preflight_sha256": "f4f1f330c78532f0436461682162ebd2c22ffe45d54c21e3681e31e4c75dd159",
+    "session_failure_sha256": "90a1db3f33cf11c350b218b73005992a28db40a26d8cde95299d38bb99e36059",
+    "runner_log_sha256": "faaffd14572cc53908828c56688851fe19f1d7ebc493b4ae9607afcaf3ff79e9",
+    "exit_file_sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "temporary_spill_removed": true
+  },
+  "hardware": {
+    "provider": "RunPod",
+    "pod_id": "mkp59uj8mtoyao",
+    "gpu": "NVIDIA A100-SXM4-80GB",
+    "gpu_uuid": "GPU-e663e5cb-6203-f55b-3c79-4d044bda261e",
+    "cuda": "12.8",
+    "driver": "580.126.16",
+    "cpu": "AMD EPYC 7742 64-Core Processor"
+  },
+  "diagnosis": {
+    "cause": "the C6.2-only functional response-binding site used the historical retained-response encoder after all four persisted chains",
+    "repair": "select the C6.2 encoder, require 208 GiB available spill, measure exact per-certificate spill, and remove each verified spill lane",
+    "setup_changed": false,
+    "relation_changed": false,
+    "certificate_bytes_changed": false,
+    "fallback_added": false
+  },
+  "measured_product_values": null,
+  "credit": false,
+  "disposition": "FAIL CLOSED BEFORE FIRST CERTIFICATE; R17 IMMUTABLE; USE THE STRICT C6.2 SUFFIX BINDING AND BOUNDED PER-CERTIFICATE SPILL BEFORE CREATE-NEW R18"
+}

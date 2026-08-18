@@ -886,3 +886,23 @@ suffix formula before allocation or spill. This changes reservation geometry
 only: setup relation, transcript, certificate framing and wire bytes are
 unchanged. Standing create-new GO authorizes r17 with fresh roots after the
 narrow checks and clean checkpoint.
+
+## 0.42 r17 disposition and r18 C6.2 suffix binding boundary
+
+r17 passed setup, A100 preflight, correlation allocation, the complete wrapper
+and all four persisted native chains. It observed about **197 GiB** of live
+temporary spill, then failed closed before sealing because the C62JVR1
+functional's response-binding digest re-encoded the live response with the
+historical C6.1 codec. The strict codec correctly rejected its C62SRE1
+extensions. No certificate or mutation exists; the runner removed all spill.
+
+r18 selects `encoded_c62_retained_response()` at that typed C6.2-only binding
+site, matching both the earlier wrapper binding and the later C62NFC1 seal. It
+also records exact per-certificate persisted bytes, raises the C6.2 preflight
+spill floor to **208 GiB**, and removes each certificate's temporary spill only
+after seal, artifact creation, independent internal verification, acceptance
+and the required abort-slot exercise. Artifact and performance records remain;
+only recomputable oracle files are removed. Relation, transcript contents,
+certificate framing, correlations and setup are unchanged. Standing
+create-new GO authorizes r18 with fresh roots after narrow checks and a clean
+checkpoint.

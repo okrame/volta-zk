@@ -1453,7 +1453,7 @@ pub fn prepare_c62_campaign_native_functional(
     }
     let native_profile_digest = *blake3::hash(profile_artifact.as_bytes()).as_bytes();
     let body_schedule_digest = challenge.schedule_digest;
-    let retained_response = response.encoded_retained_response()?;
+    let retained_response = response.encoded_c62_retained_response()?;
     let response_binding_digest = c62_campaign_response_binding_digest(
         response_statement_digest,
         &retained_response,
@@ -5700,6 +5700,8 @@ mod campaign_artifact_tests {
             previous = offset;
         }
         let signature = functional.split_once(") -> Result").unwrap().0;
+        assert!(functional.contains("response.encoded_c62_retained_response()?"));
+        assert!(!functional.contains("response.encoded_retained_response()?"));
         for forbidden in [
             "claim_weights:",
             "cohort_weights:",

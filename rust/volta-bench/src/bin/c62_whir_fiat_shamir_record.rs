@@ -58,7 +58,6 @@ mod enabled {
         C61_PRODUCTION_COMPILER_FULL_CORRELATIONS_PER_TAPE,
         C61_PRODUCTION_COMPILER_SUB_CORRELATIONS_PER_TAPE,
         C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_HOST_BYTES,
-        C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES,
     };
     use volta_pcs::{
         C62PublicArgument, C61_AUTHENTICATED_WHIR_MASKS_PER_TAPE,
@@ -95,6 +94,10 @@ mod enabled {
     const VERIFIER_TARGET_S: f64 = 5.0;
     const VERIFIER_TOLERANCE_S: f64 = 5.25;
     const VERIFIER_MEMORY_LIMIT_BYTES: u64 = 8_000_000_000;
+    /// r17 measured about 197 GiB of live persisted wrapper/four-chain data.
+    /// Keep one bounded per-certificate spill lane and require useful headroom.
+    const C62_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES: u64 =
+        208 * 1024 * 1024 * 1024;
     const SOUNDNESS_BITS_PER_CERTIFICATE: f64 = 83.587_833_260_880;
     const SOUNDNESS_FLOOR_BITS: f64 = 78.809_294_873_916_41;
     const MODEL_FILES: [&str; 4] =
@@ -458,6 +461,29 @@ mod enabled {
             .ok_or_else(|| "available filesystem bytes overflow".to_owned())
     }
 
+    fn directory_file_bytes(root: &Path) -> Result<u64, String> {
+        let mut pending = vec![root.to_path_buf()];
+        let mut total = 0u64;
+        while let Some(directory) = pending.pop() {
+            for entry in fs::read_dir(&directory)
+                .map_err(|error| format!("read {}: {error}", directory.display()))?
+            {
+                let entry = entry.map_err(|error| format!("read directory entry: {error}"))?;
+                let metadata = entry
+                    .metadata()
+                    .map_err(|error| format!("stat {}: {error}", entry.path().display()))?;
+                if metadata.is_dir() {
+                    pending.push(entry.path());
+                } else if metadata.is_file() {
+                    total = total
+                        .checked_add(metadata.len())
+                        .ok_or_else(|| "persisted spill byte count overflows".to_owned())?;
+                }
+            }
+        }
+        Ok(total)
+    }
+
     #[derive(Debug, Serialize)]
     struct HardwareRecord {
         gpu_name: String,
@@ -467,6 +493,7 @@ mod enabled {
         a100_present: bool,
         available_host_bytes: u64,
         available_spill_bytes: u64,
+        spill_admission_floor_bytes: u64,
         host_admission_pass: bool,
         spill_admission_pass: bool,
         overall_pass: bool,
@@ -512,7 +539,7 @@ mod enabled {
         let host_admission_pass =
             available_host_bytes >= C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_HOST_BYTES;
         let spill_admission_pass =
-            available_spill_bytes >= C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES;
+            available_spill_bytes >= C62_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES;
         Ok(HardwareRecord {
             gpu_name: columns[0].to_owned(),
             gpu_uuid: columns[1].to_owned(),
@@ -521,6 +548,7 @@ mod enabled {
             a100_present,
             available_host_bytes,
             available_spill_bytes,
+            spill_admission_floor_bytes: C62_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES,
             host_admission_pass,
             spill_admission_pass,
             overall_pass: a100_present && host_admission_pass && spill_admission_pass,
@@ -708,6 +736,7 @@ mod enabled {
         provider_complete_wall_s: f64,
         verifier_wall_s: f64,
         verifier_additional_peak_bytes: u64,
+        persisted_spill_bytes: u64,
         certificate_target_pass: bool,
         certificate_tolerance_pass: bool,
         pi_final_target_pass: bool,
@@ -1011,6 +1040,7 @@ mod enabled {
                 admission,
                 &mut backend,
             )?;
+            let persisted_spill_bytes = directory_file_bytes(&run_directory)?;
             let prover_wall_s = prover_started.elapsed().as_secs_f64();
             let backend_record = BackendRecord::from(
                 backend
@@ -1094,6 +1124,7 @@ mod enabled {
                 provider_complete_wall_s,
                 verifier_wall_s,
                 verifier_additional_peak_bytes,
+                persisted_spill_bytes,
                 certificate_target_pass,
                 certificate_tolerance_pass,
                 pi_final_target_pass,
@@ -1161,6 +1192,8 @@ mod enabled {
                     aborted_slots.push(burn_reservation.slot);
                 }
             }
+            fs::remove_dir_all(&run_directory)
+                .map_err(|error| format!("remove {}: {error}", run_directory.display()))?;
         }
 
         let final_state = client_store.load().map_err(|error| error.to_string())?;
@@ -1909,6 +1942,10 @@ mod enabled {
             assert_eq!(PI_FINAL_TOLERANCE_BYTES, 4_725_000);
             assert_eq!(PROVER_TOLERANCE_S, 15.75);
             assert_eq!(VERIFIER_TOLERANCE_S, 5.25);
+            assert_eq!(
+                C62_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES,
+                223_338_299_392
+            );
             assert_eq!(C6_ACCEPTANCE_CREDITS, 17);
             assert_eq!(C6_ABORT_RETRY_CREDITS, 4);
             let used = C62_SESSION_RAW_CORRELATIONS;
@@ -1975,8 +2012,9 @@ mod enabled {
                 session.find("slot.acknowledge(verified.certificate_digest)").unwrap();
             let burn_block = acknowledge + session[acknowledge..].find("if index == 0").unwrap();
             let abort = session.find("connections = burn_owner.finish_abort()").unwrap();
+            let cleanup = session.find("fs::remove_dir_all(&run_directory)").unwrap();
             assert!(load < verify && verify < accept && accept < acknowledge);
-            assert!(acknowledge < burn_block && burn_block < abort);
+            assert!(acknowledge < burn_block && burn_block < abort && abort < cleanup);
             assert!(session.contains("final_state.head.cache_len == 950"));
             assert!(session.contains("final_state.pending_attempt.is_none()"));
         }

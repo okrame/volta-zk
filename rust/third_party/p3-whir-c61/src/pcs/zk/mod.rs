@@ -67,6 +67,8 @@ mod verifier;
 
 pub use base_case::{BaseCaseClaimlessClosure, BaseCaseZkError};
 pub use code_switch::CodeSwitchError;
+#[doc(hidden)]
+pub use committer::c62_provider_cache_split_holds;
 pub use config::{ZkConfigError, ZkParameters, ZkWhirConfig};
 pub use mask::{MaskCodeShape, MaskGroupShape};
 pub use proof::{BaseCaseZkProof, BlindedMask, MaskOpeningPair, ZkRoundProof, ZkWhirProof};

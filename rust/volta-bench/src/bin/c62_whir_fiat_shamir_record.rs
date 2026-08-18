@@ -82,7 +82,7 @@ mod enabled {
         C6_TERMINAL_ONE_RAW_CAPACITY,
     };
 
-    const SCHEMA: u64 = 2;
+    const SCHEMA: u64 = 3;
     const PROFILE: &str = "runpod-a100-c62-whir-fiat-shamir-v1";
     const PROTOCOL_ID: &str = "VOLTA-C6.2-C62JVR1-C62FS1-C62AWP1-C62PA1-C62PIF1-C62NFC1-v1";
     const SETUP_PLUS_FIRST_TARGET_BYTES: u64 = 150_000_000;
@@ -94,6 +94,8 @@ mod enabled {
     const VERIFIER_TARGET_S: f64 = 5.0;
     const VERIFIER_TOLERANCE_S: f64 = 5.25;
     const VERIFIER_MEMORY_LIMIT_BYTES: u64 = 8_000_000_000;
+    const C62_GPU_EXECUTOR_PROFILE: &str = "C6SPR11-persisted-functional-only";
+    const C62_GPU_PERFORMANCE_ELIGIBLE_EXECUTOR: bool = false;
     /// r17 measured about 197 GiB of live persisted wrapper/four-chain data.
     /// Keep one bounded per-certificate spill lane and require useful headroom.
     const C62_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES: u64 =
@@ -652,6 +654,8 @@ mod enabled {
         setup_cap_bytes: u64,
         hardware: HardwareRecord,
         cuda_backend_initialized: bool,
+        gpu_executor_profile: &'static str,
+        gpu_performance_eligible_executor: bool,
         capacity_acceptance_slots: u16,
         capacity_abort_slots: u16,
         capacity_reconciled: bool,
@@ -660,6 +664,12 @@ mod enabled {
     }
 
     fn preflight(args: &Args) -> Result<(), String> {
+        if !C62_GPU_PERFORMANCE_ELIGIBLE_EXECUTOR {
+            return Err(format!(
+                "C62_GPU_PERFORMANCE_ELIGIBLE_EXECUTOR_REQUIRED: {}",
+                C62_GPU_EXECUTOR_PROFILE,
+            ));
+        }
         let source_git_commit = git_sha_clean()?;
         let weights = required_path(&args.weights, "--weights")?;
         let setup_dir = required_path(&args.setup_dir, "--setup-dir")?;
@@ -690,6 +700,7 @@ mod enabled {
         let pass = hardware.overall_pass
             && setup_bytes <= C62_CAMPAIGN_SETUP_MAX_BYTES
             && capacity_reconciled
+            && C62_GPU_PERFORMANCE_ELIGIBLE_EXECUTOR
             && C6_ACCEPTANCE_CREDITS == 17
             && C6_ABORT_RETRY_CREDITS == 4;
         let record = PreflightRecord {
@@ -707,6 +718,8 @@ mod enabled {
             setup_cap_bytes: C62_CAMPAIGN_SETUP_MAX_BYTES,
             hardware,
             cuda_backend_initialized: true,
+            gpu_executor_profile: C62_GPU_EXECUTOR_PROFILE,
+            gpu_performance_eligible_executor: C62_GPU_PERFORMANCE_ELIGIBLE_EXECUTOR,
             capacity_acceptance_slots: C6_ACCEPTANCE_CREDITS,
             capacity_abort_slots: C6_ABORT_RETRY_CREDITS,
             capacity_reconciled,
@@ -792,6 +805,16 @@ mod enabled {
     }
 
     fn prove(args: &Args) -> Result<(), String> {
+        // Keep the stopped r19 setup and every one-time correlation untouched
+        // until the byte-identical bounded-resident executor owns a positive,
+        // typed admission. The currently wired C6SPR11 persisted path is
+        // functional evidence only and cannot satisfy the A100 wall gate.
+        if !C62_GPU_PERFORMANCE_ELIGIBLE_EXECUTOR {
+            return Err(format!(
+                "C62_GPU_PERFORMANCE_ELIGIBLE_EXECUTOR_REQUIRED: {}",
+                C62_GPU_EXECUTOR_PROFILE,
+            ));
+        }
         if !c62_suffix_correlation_census_valid() {
             return Err("C6.2 suffix correlation census differs from the allocation".to_owned());
         }
@@ -1936,12 +1959,14 @@ mod enabled {
 
         #[test]
         fn record_profile_keeps_tolerance_and_capacity_separate_from_credit() {
-            assert_eq!(SCHEMA, 2);
+            assert_eq!(SCHEMA, 3);
             assert_eq!(SETUP_PLUS_FIRST_TOLERANCE_BYTES, 157_500_000);
             assert_eq!(CERTIFICATE_TOLERANCE_BYTES, 23_099_998);
             assert_eq!(PI_FINAL_TOLERANCE_BYTES, 4_725_000);
             assert_eq!(PROVER_TOLERANCE_S, 15.75);
             assert_eq!(VERIFIER_TOLERANCE_S, 5.25);
+            assert_eq!(C62_GPU_EXECUTOR_PROFILE, "C6SPR11-persisted-functional-only");
+            assert!(!C62_GPU_PERFORMANCE_ELIGIBLE_EXECUTOR);
             assert_eq!(
                 C62_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES,
                 223_338_299_392
@@ -1967,6 +1992,22 @@ mod enabled {
             assert!(session.contains("C6_ABORT_RETRY_CREDITS"));
             assert!(!source.contains(concat!("exact_", "acceptance_credits")));
             assert!(!source.contains(concat!("exact_", "abort_credits")));
+        }
+
+        #[test]
+        fn ineligible_executor_stops_before_clean_tree_or_attempt_work() {
+            let source = include_str!("c62_whir_fiat_shamir_record.rs");
+            let preflight = source.split_once("fn preflight(args: &Args)").unwrap().1;
+            let preflight_stop = preflight
+                .find("if !C62_GPU_PERFORMANCE_ELIGIBLE_EXECUTOR")
+                .unwrap();
+            let preflight_clean_tree = preflight.find("git_sha_clean()?").unwrap();
+            let prove = source.split_once("fn prove(args: &Args)").unwrap().1;
+            let stop = prove.find("if !C62_GPU_PERFORMANCE_ELIGIBLE_EXECUTOR").unwrap();
+            let clean_tree = prove.find("git_sha_clean()?").unwrap();
+            let reserve = prove.find(".reserve_attempt(").unwrap();
+            assert!(preflight_stop < preflight_clean_tree);
+            assert!(stop < clean_tree && clean_tree < reserve);
         }
 
         #[test]

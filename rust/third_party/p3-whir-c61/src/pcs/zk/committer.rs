@@ -62,6 +62,63 @@ pub(crate) fn zk_padded_matrix<A: Field>(
     RowMajorMatrix::new(values, width)
 }
 
+/// Diagnostic for C6.2's provider-only fixed-message encoding cache.
+///
+/// This checks the exact active interleaved ZK-WHIR layout, including the DFT:
+///
+/// ```text
+/// Enc(message, randomness) = Enc(message, 0) + Enc(0, randomness).
+/// ```
+///
+/// It also requires a non-zero randomness contribution, so a caller cannot
+/// accidentally validate a cache path that omitted the per-proof mask.  The
+/// function is deliberately narrow: it does not cache roots, challenges,
+/// transcripts, masks, or proof state.
+#[doc(hidden)]
+pub fn c62_provider_cache_split_holds<F, Dft>(
+    message: &[F],
+    randomness: &[F],
+    folding: usize,
+    height: usize,
+    dft: &Dft,
+) -> bool
+where
+    F: TwoAdicField,
+    Dft: TwoAdicSubgroupDft<F>,
+{
+    let zero_message = F::zero_vec(message.len());
+    let zero_randomness = F::zero_vec(randomness.len());
+    let combined = dft.dft_algebra_batch(zk_padded_matrix(
+        message,
+        randomness,
+        folding,
+        height,
+    ));
+    let fixed_base = dft.dft_algebra_batch(zk_padded_matrix(
+        message,
+        &zero_randomness,
+        folding,
+        height,
+    ));
+    let fresh_mask = dft.dft_algebra_batch(zk_padded_matrix(
+        &zero_message,
+        randomness,
+        folding,
+        height,
+    ));
+
+    combined.width == fixed_base.width
+        && combined.width == fresh_mask.width
+        && combined.values.len() == fixed_base.values.len()
+        && combined
+            .values
+            .iter()
+            .zip(&fixed_base.values)
+            .zip(&fresh_mask.values)
+            .all(|((&actual, &base), &mask)| actual == base + mask)
+        && combined.values != fixed_base.values
+}
+
 /// The folded ZK Reed-Solomon code seen through one committed oracle's leaves.
 ///
 /// Folding a leaf row by `eq(., gamma)` produces one position of
@@ -263,4 +320,5 @@ mod tests {
 
         assert_eq!(zk.values, plain);
     }
+
 }

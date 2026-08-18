@@ -28,6 +28,12 @@ This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
   streaming WHIR executor which exposes positive performance eligibility and
   fails before authorization otherwise. Reuse the persistent setup through
   `C62_SETUP_SOURCE`, run narrow checks, then execute one create-new r19 session.
+- **Owner direction.** Provider-only preprocessing of the fixed model/embed
+  base encodings is authorized outside the certificate timer, with build,
+  storage and preload reported separately. A root-preserving WHIR folding
+  study starts automatically only if the byte-identical projection exceeds
+  `12.500 s`. Primary/secondary roots remain independent. The bounded-output
+  `Fp2`-VOLE idea is a separate C5 research construction, not a C6.2 PCG swap.
 
 - **2026-08-18 — r18 setup regeneration separates response and allocation
   censuses.** It stopped before setup/session; §0.43 makes the distinction

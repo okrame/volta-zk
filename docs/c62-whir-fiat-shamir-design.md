@@ -949,3 +949,97 @@ byte-identical GPU-resident or bounded-streaming WHIR executor, a positive typed
 performance-eligibility signal checked before authorization, and the narrow
 CUDA/codec/replay regressions at a clean checkpoint. Only then may r19 reuse the
 saved setup and start its one create-new 17-accept plus four-abort session.
+
+## 0.45 Performance-eligible executor authorization and local decision tree
+
+The owner authorizes a C6.2-specific bounded-resident executor. Historical
+Ligero/X4 code may supply independently tested CUDA primitives only; its
+protocol, transcript, codec and measurements are not C6.2 evidence. The
+executor must reproduce the current `C62FS1`/`C62JVR1` roots, proof bytes,
+96+6 schedule, compiler relation, certificate and verifier replay exactly.
+Primary and secondary roots remain independent; eliminating or interleaving
+them requires a new explicit owner authorization.
+
+The first implementation tier changes lifecycle, not protocol:
+
+1. replace persisted coefficient/oracle/MMCS files with preallocated device
+   arenas and a bounded host staging buffer;
+2. retain compact upper Merkle frontiers and reconstruct query-local lower
+   subtrees after Fiat--Shamir sampling;
+3. execute D28/D27 WHIR lanes sequentially, using fused CUDA folds, NTT,
+   equality-weight, sumcheck, Merkle and gather kernels;
+4. share only algebraically identical base work between repetitions; each
+   repetition retains independent mask randomness, root and transcript;
+5. expose positive performance eligibility only after scaled byte-for-byte
+   differentials and production-geometry resource guards pass.
+
+A provider-only cache may contain the fixed model and embedding base
+encodings. Its key binds the model digest, protocol/parameter digests, field,
+dimensions, encoder version and content digest. Cache construction and preload
+occur before the per-certificate timer and are never transmitted as setup.
+Their wall time, bytes, RSS and VRAM are reported separately. Workload/cache
+states, PCG material, masks, challenges, roots and query-dependent data may not
+enter this cache. A miss or binding mismatch fails before authorization; it
+may not silently rebuild inside or outside the measured attempt.
+
+The registered engineering admission is a conservative projected wall below
+`12.500 s`, leaving `3.250 s` before the terminal gate. If the exact
+root-preserving executor projects above `12.500 s`, a local WHIR folding study
+starts automatically. It may change folding factors only while preserving the
+independent-root relation, soundness floor, communication ceilings and all
+typed transcript bindings. It receives no protocol or timing credit until a
+new proof, codec budget and exact differential exist.
+
+Local work uses scaled C6.2 fixtures plus analytic D28/D27 resource censuses;
+it does not attempt a full VM proof. The eventual pod admission runs a
+non-session geometry calibration first, then at most one genesis
+`context-000` certificate. The measured attempt includes cache precommit, PCG
+allocation, response, proof and seal, as in the current runner; only setup,
+inference and the separately reported provider-cache preload are excluded.
+Phase events record wall/CUDA time, I/O, RSS, VRAM and bytes, and the attempt
+aborts at the first phase budget violation or absolute `15.750 s` deadline.
+Until that executor exists, the production record adapter reports the
+`C6SPR11-persisted-functional-only` profile as ineligible and rejects both
+preflight and prove mode before the clean-tree check; prove therefore cannot
+reach state creation, reservation or PCG use.
+
+The proposed bounded-output `Fp2`-VOLE is deliberately not part of this
+executor decision tree. It is a separately named C5 cryptographic research
+construction governed by `c5-packed16-rate8-design.md` section 5.5.
+
+### 0.45.1 Local seam audit and implementation order
+
+The local audit rejects an MMCS-only optimization. The active fork currently
+materializes `zk_padded_matrix`, runs `dft_batch` into a host
+`RowMajorMatrix`, and only then calls the MMCS. `C61PersistedMmcs` first lets
+the ordinary CPU MMCS construct the complete resident tree and spills it
+afterward. Replacing its files with RAM or a faster filesystem would preserve
+the dominant host DFT/tree construction and cannot become performance
+eligible.
+
+The required narrow fork boundary is a GPU-native claimless-WHIR prover which
+accepts the same message, randomness, configuration and challenger moves but
+returns the existing commitment and proof types. For each independent lane it
+must:
+
+1. form or restore the exact padded coefficients on device;
+2. encode with the Goldilocks/Fp2 DFT convention used by the current fork;
+3. hash the same serialized leaves and binary nodes, retaining only the
+   bounded opening frontier;
+4. execute sumcheck, code switching, fold, gather and query-local subtree
+   reconstruction without a full host matrix;
+5. release the lane arena only after its strict proof bytes are fixed.
+
+The compiler D28/D27 pair remains transcript-coupled. It may alternate device
+work within each shared round, but it may not merge commitments or reorder a
+challenge across the two independent roots. Model and embedding repetitions
+may reuse their fixed cached base encoding; masks, roots, equality weights and
+proof state remain distinct.
+
+Optimization order is fixed to avoid tuning an ineligible path: cached fixed
+base plus fresh mask; reusable twiddle/DFT plans; preallocated arenas; batched
+same-shape slot transforms; fused serialization/leaf hashing and compact
+frontiers; asynchronous pinned-host staging; CUDA graph capture only after
+byte identity. Folding-factor changes are evaluated last and only under the
+`12.500 s` trigger. Every tier first passes a scaled root/proof/transcript
+differential against the current C6.2 fork.

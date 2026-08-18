@@ -1298,6 +1298,32 @@ pub fn verify_c61_whir_reference(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use p3_whir_c61::pcs::zk::c62_provider_cache_split_holds;
+    use rand_010::RngExt;
+
+    #[test]
+    fn c62_provider_cache_preserves_the_exact_zk_encoding() {
+        let mut rng = StdRng::seed_from_u64(0xC6_02);
+        let num_variables = 8;
+        let folding = C61_WHIRA1_INITIAL_FOLD;
+        let randomness_rows = C61_WHIRA1_ELL_ZK;
+        let width = 1 << folding;
+        let height = (1 << C61_WHIRA1_STARTING_LOG_INV_RATE)
+            << (num_variables - folding);
+        let witness = Poly::<Goldilocks>::rand(&mut rng, num_variables);
+        let randomness: Vec<Goldilocks> = (0..randomness_rows * width)
+            .map(|_| rng.random())
+            .collect();
+        let dft = Radix2DFTSmallBatch::default();
+
+        assert!(c62_provider_cache_split_holds(
+            witness.as_slice(),
+            &randomness,
+            folding,
+            height,
+            &dft,
+        ));
+    }
 
     #[test]
     fn selected_d27_d28_profiles_are_exact_and_under_cap() {

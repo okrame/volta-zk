@@ -301,6 +301,80 @@ gate is evaluated. Sections 6, 7 and 9 remain a frozen conditional
 implementation/campaign contract for a future separately preregistered
 revival; they are not entered by this checkpoint.
 
+### 5.5 Bounded-output Fp2-VOLE research branch
+
+The owner identifies the only credible C5 revival direction as a new typed
+silent two-party correlation generator, not a Ligero serialization change and
+not a refactor of the current Goldilocks sVOLE. This research branch does not
+reopen C5 implementation, alter its obstruction record, authorize provider
+work, or enter the active C6.2 critical path.
+
+Its target ideal functionality samples, for every cell,
+
+```text
+u <- {0,...,2^16-1},  b <- {0,1}
+k_u = m_u + Delta*u,  k_b = m_b + Delta*b  in Fp2,
+```
+
+where the prover receives `(u,b,m_u,m_b)`, the verifier receives
+`(k_u,k_b)`, and only the verifier knows the existing connection `Delta`.
+The complete five-inventory call produces 15,552,000 independent pairs with
+exact support, malicious-with-abort security, domain separation, durable
+one-time reservation/consumption/burn and no per-value field lift.
+
+`Exact support` is an ideal-functionality statement: every ideal coordinate
+is uniform on the stated finite set. A deterministic short-seed expansion
+cannot have the same *joint information-theoretic* distribution as
+15,552,000 independent 17-bit samples; its real output must instead be
+computationally indistinguishable from that ideal distribution. If literal
+joint statistical uniformity is required from short seeds, the branch is
+impossible by entropy counting and stops before construction work.
+
+The construction hypothesis is therefore a mixed-domain programmable PCG.
+One correlated-key expansion emits each `u16`, carry bit and both `Fp2` MAC
+shares as a single typed object. Internally it may extract 16 bits and one bit
+from pseudorandom blocks, but it may not instantiate 17 binary VOLEs, serialize
+their corrections, or lift them one by one. A commitment to the expansion
+state plus one batched consistency/sacrifice argument must prove that all
+released objects came from the registered typed expansion. Range and bitness
+then follow from the expansion relation; a random linear MAC check alone is
+insufficient. The missing theorem is a dealerless programmable PCG whose
+correlated keys realize this mixed-domain relation under an externally sampled
+verifier-only `Delta`, with a compressed malicious check that detects invalid
+expansion, tag forgeries and additive attacks without linear communication.
+
+Li--Xing--Yao--Yuan, *Efficient Pseudorandom Correlation Generators for Any
+Finite Field* (ePrint 2025/169), makes this direction plausible: it constructs
+programmable OLE PCGs over arbitrary finite fields and derives two-party
+authenticated Boolean triples with sublinear seed communication. It does not,
+by itself, instantiate the asymmetric VOLTA functionality above or provide its
+concrete 15,552,000-cell serializer and malicious check. Its assumptions,
+programmability interface and exact security model must therefore be mapped,
+not cited as a completed construction.
+
+The research gates are ordered and fail closed:
+
+1. **Functionality/reduction.** Specify both corrupt-party cases, exact ideal
+   distributions, verifier-only `Delta`, abort leakage, forgery probability
+   and reduction to explicit PCG/LPN assumptions.
+2. **Compressed malicious check.** Prove bitness and both MAC equations with
+   global challenge/sacrifice or an authenticated sumcheck. Any unchecked
+   prover-chosen output or per-output correction rejects the candidate.
+3. **Exact byte ledger.** Count correlated-key generation, base setup, seeds,
+   commitments, challenges, sacrifice/check proof, acknowledgements and
+   framing in both directions. The total typed increment must be at most
+   18,273,600 B. Equivalently the complete construction has 9.4 transmitted
+   bits per cell, including every amortized setup and check byte.
+4. **Concrete parameters.** Register at least 128-bit computational security,
+   the statistical/forgery term, estimator inputs, work factor, expansion
+   time, memory and all five inventories before implementation.
+5. **Executable and formal gates.** Only after gates 1--4 pass may a scaled
+   differential and the separately named Lean addendum begin. Rust/CUDA,
+   production pairing and pod work remain later explicit decisions.
+
+The projected 61,292,904-B Packed16 response remains conditional throughout
+this research. Failure of any gate preserves `HARD_STOP_TYPED_PCG_OBSTRUCTION`.
+
 ## 6. Ordered local implementation, not entered
 
 1. Append the selected construction and complete security/cost derivation to

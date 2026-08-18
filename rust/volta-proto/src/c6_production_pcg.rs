@@ -622,6 +622,12 @@ impl C6ProductionPairedPcgAttempt {
         if statement_digest == [0; 32] || !self.source_sealed {
             return Err("C6 verifier replay owner requested before statement/source binding".into());
         }
+        // Source sealing freezes both response sidecars.  Transferring the
+        // replay owner is the typed boundary that admits the remaining
+        // wrapper/compiler correlations from the same one-time allocation.
+        for stream in &mut self.prover {
+            stream.enter_post_c6_source_phase().map_err(str::to_owned)?;
+        }
         let pools = self
             .verifier_replay_pools
             .take()

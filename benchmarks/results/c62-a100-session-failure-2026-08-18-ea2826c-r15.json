@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "milestone": "C6.2 replacement r15 RunPod A100 E2E attempt",
+  "date": "2026-08-18",
+  "run_id": "ea2826ce63f5885ad6b291d1d6f9c8dfa88ee690-r15",
+  "source_git_sha": "ea2826ce63f5885ad6b291d1d6f9c8dfa88ee690",
+  "source_git_dirty": false,
+  "authorization": {
+    "standing_create_new_go": true,
+    "selective_retry_performed": false
+  },
+  "runner": {
+    "exit_code": 101,
+    "failed_stage": "first certificate post-response native suffix correlation draw",
+    "error": "full-field draw after the C6 witness sidecar was closed",
+    "production_session_started": true,
+    "certificates_sealed": 0,
+    "mutations_started": false
+  },
+  "setup": {
+    "profiles_reused": 17,
+    "setup_bytes": 101197448,
+    "pass": true,
+    "credit": false
+  },
+  "preflight": {
+    "available_spill_bytes": 231365259264,
+    "cuda_backend_initialized": true,
+    "a100_present": true,
+    "pass": true,
+    "credit": false
+  },
+  "records": {
+    "setup_measurement_sha256": "71f13406d09101f031d0048ad20f5f15ac93d336308b42be03ce63af7cb5a366",
+    "preflight_sha256": "8ce25b153daffcb15000f1d4ab69ba3443a5d0e828f1c25823744a5c8639f946",
+    "session_failure_sha256": null,
+    "runner_log_sha256": "ba06839c9f8dee612987769f1c7612946a86e342d720a35179123429beea28e1",
+    "exit_file_sha256": "39b8dc3fc8b44765c8e6f1adee04c5b465e555ab791cc42d0d9e810d5b64297c",
+    "temporary_spill_removed": true
+  },
+  "hardware": {
+    "provider": "RunPod",
+    "pod_id": "mkp59uj8mtoyao",
+    "gpu": "NVIDIA A100-SXM4-80GB",
+    "gpu_uuid": "GPU-e663e5cb-6203-f55b-3c79-4d044bda261e",
+    "cuda": "12.8",
+    "driver": "580.126.16",
+    "cpu": "AMD EPYC 7742 64-Core Processor"
+  },
+  "diagnosis": {
+    "cause": "the response source sidecars were correctly immutable, but the connection stream lacked an explicit typed transition admitting ordinary suffix correlations outside that frozen source schedule",
+    "setup_changed": false,
+    "relation_changed": false,
+    "certificate_bytes_changed": false,
+    "fallback_added": false
+  },
+  "measured_product_values": null,
+  "credit": false,
+  "disposition": "FAIL CLOSED BEFORE FIRST CERTIFICATE; R15 IMMUTABLE; ENTER THE POST-SOURCE CORRELATION PHASE ONLY AFTER SOURCE SEALING BEFORE CREATE-NEW R16"
+}

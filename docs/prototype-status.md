@@ -10,30 +10,34 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Status and authorization.** C6.2 is `R14_FAIL / R15_LIVE_TARGET_JOIN_READY`;
-  design §0.39 is active. r01--r14 are immutable and standing create-new GO
-  remains recorded for r15.
-- **r14 disposition.** Clean `837334d` passed the reused **101,197,448-B**
-  setup, A100 preflight, per-closure challenge binding and the first full
-  wrapper spill, then failed at the native paired-target join. Spill was
-  removed; no certificate or mutation exists.
-- **Diagnosis and repair.** Tape zero must retain the response authentication;
-  the installed evaluator links its exact plaintext to independently evaluated
-  tape one. r15 checks census plus per-target plaintext equality, returns the
-  live primary target and fails before wrapper spill on any mismatch. This is
-  the existing two-stage target link, with no fresh authentication or new byte.
+- **Status and authorization.** C6.2 is `R15_FAIL / R16_POST_SOURCE_PHASE_READY`;
+  design §0.40 is active. r01--r15 are immutable and standing create-new GO
+  remains recorded for r16.
+- **r15 disposition.** Clean `ea2826c` passed the reused **101,197,448-B**
+  setup, A100 preflight, live-target join and full wrapper spill, then failed
+  on the first native-suffix correlation draw. Spill was removed; no
+  certificate or mutation exists.
+- **Diagnosis and repair.** Closing the response source sidecars also blocked
+  ordinary suffix draws from the same one-time allocation. r16 admits them
+  only at the typed, source-sealed replay transfer; sidecars stay immutable and
+  response provenance ends on both roles. Census and framing are unchanged.
 - **Compact evidence.** `C62RRP2` genesis content remains **3,697,261 B**
   including digest versus the fixed **4,500,000-B** frame (**802,739 B**
   headroom). Strict codec, transcript parity, allocation cap and independent
   replay checks remain component evidence.
 - **Preserved checks.** The 17 setup profiles, **82.5878332608799** soundness
   bits, production-PCG 4/4, runner 3/3 and same-pod CUDA 39/39 remain component
-  evidence only; challenge and live-primary ownership regressions pass.
+  evidence only; source lifecycle and live-primary regressions pass.
 - **No product result.** No certificate, timing, proof-size, session or hardware
   gate receives credit; the comparison table remains unchanged.
 - **Resume.** Commit/push the clean narrow repair, fetch it on the active pod,
-  use new r15 roots with the verified setup copy, and run 17 certificates plus
+  use new r16 roots with the verified setup copy, and run 17 certificates plus
   four mutations. On success copy one artifact for the four-thread CPU verifier.
+
+- **2026-08-18 — r15 reaches the post-response correlation boundary.** Source
+  sidecars remain frozen while §0.40 explicitly admits the suffix of the same
+  one-time allocation. Raw evidence is
+  `benchmarks/results/c62-a100-session-failure-2026-08-18-ea2826c-r15.json`.
 
 - **2026-08-18 — r14 reaches the live/evaluated native target boundary.** The
   response authentication, not its installed replay, owns tape zero. §0.39

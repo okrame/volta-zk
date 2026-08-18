@@ -1271,6 +1271,7 @@ pub struct CorrelationStream {
     c6_subfield_witness_closed: bool,
     c6_fullfield_witness: Option<C6FullfieldWitnessRecorder>,
     c6_fullfield_witness_closed: bool,
+    c6_source_post_phase: bool,
     #[cfg(feature = "c6-trace")]
     c6_trace_sources_enabled: bool,
     #[cfg(feature = "c6-trace")]
@@ -1290,6 +1291,7 @@ impl CorrelationStream {
             c6_subfield_witness_closed: false,
             c6_fullfield_witness: None,
             c6_fullfield_witness_closed: false,
+            c6_source_post_phase: false,
             #[cfg(feature = "c6-trace")]
             c6_trace_sources_enabled: false,
             #[cfg(feature = "c6-trace")]
@@ -1315,6 +1317,7 @@ impl CorrelationStream {
             c6_subfield_witness_closed: false,
             c6_fullfield_witness: None,
             c6_fullfield_witness_closed: false,
+            c6_source_post_phase: false,
             #[cfg(feature = "c6-trace")]
             c6_trace_sources_enabled: false,
             #[cfg(feature = "c6-trace")]
@@ -1334,6 +1337,7 @@ impl CorrelationStream {
             c6_subfield_witness_closed: false,
             c6_fullfield_witness: None,
             c6_fullfield_witness_closed: false,
+            c6_source_post_phase: false,
             #[cfg(feature = "c6-trace")]
             c6_trace_sources_enabled: false,
             #[cfg(feature = "c6-trace")]
@@ -1356,6 +1360,7 @@ impl CorrelationStream {
             c6_subfield_witness_closed: false,
             c6_fullfield_witness: None,
             c6_fullfield_witness_closed: false,
+            c6_source_post_phase: false,
             #[cfg(feature = "c6-trace")]
             c6_trace_sources_enabled: false,
             #[cfg(feature = "c6-trace")]
@@ -1573,6 +1578,7 @@ impl CorrelationStream {
             || self.c6_subfield_witness_closed
             || self.c6_fullfield_witness.is_some()
             || self.c6_fullfield_witness_closed
+            || self.c6_source_post_phase
         {
             return Err("C6 source witness collection already enabled or closed");
         }
@@ -1698,6 +1704,27 @@ impl CorrelationStream {
         self.c6_fullfield_witness_closed = true;
         witness.finish(&schedule)
     }
+
+    /// Authorize ordinary post-response correlations after both immutable C6
+    /// source sidecars have closed.  This does not reopen either sidecar: all
+    /// later draws remain outside the already-bound response source schedule.
+    pub fn enter_post_c6_source_phase(&mut self) -> Result<(), &'static str> {
+        if !self.c6_subfield_witness_closed
+            || !self.c6_fullfield_witness_closed
+            || self.c6_subfield_witness.is_some()
+            || self.c6_fullfield_witness.is_some()
+            || self.c6_source_post_phase
+        {
+            return Err("post-C6 source phase requires two newly closed source sidecars");
+        }
+        self.c6_source_post_phase = true;
+        #[cfg(feature = "c6-trace")]
+        {
+            self.c6_trace_sources_enabled = false;
+            self.c6_trace_sub_sources.clear();
+        }
+        Ok(())
+    }
     pub fn allocation_digest_hex(&self) -> Option<String> {
         match &self.backend {
             ProverBackend::Mock { allocation, .. } => Some(allocation.digest_hex()),
@@ -1769,7 +1796,7 @@ impl CorrelationStream {
         cols: usize,
     ) -> SubMaskRowsReservation {
         assert!(
-            !self.c6_subfield_witness_closed,
+            !self.c6_subfield_witness_closed || self.c6_source_post_phase,
             "subfield draw after the C6 witness sidecar was closed"
         );
         let total = validate_sub_mask_rows(base_domain, rows, cols);
@@ -1925,7 +1952,7 @@ impl CorrelationStream {
         product_triples: usize,
     ) -> Vec<FullCorr> {
         assert!(
-            !self.c6_fullfield_witness_closed,
+            !self.c6_fullfield_witness_closed || self.c6_source_post_phase,
             "full-field draw after the C6 witness sidecar was closed"
         );
         assert!(dom & RESERVED_DOMAIN_BITS == 0, "reserved correlation domain bits set");
@@ -2124,6 +2151,26 @@ impl VerifierCtx {
             }
             self.c6_trace_sources_enabled = true;
             self.c6_trace_next_source = 0;
+            self.c6_trace_sub_sources.clear();
+            self.c6_trace_full_sources.clear();
+            Ok(())
+        }
+        #[cfg(not(feature = "c6-trace"))]
+        {
+            Err("C6 verifier operation tracing requires the diagnostic c6-trace feature")
+        }
+    }
+
+    /// End response-source provenance after its trace and schedule have been
+    /// materialized. Later verifier keys belong to the wrapper/compiler
+    /// suffix and are deliberately untracked by the response trace.
+    pub fn finish_c6_operation_trace_sources(&mut self) -> Result<(), &'static str> {
+        #[cfg(feature = "c6-trace")]
+        {
+            if !self.c6_trace_sources_enabled || self.schedule_audit.is_none() {
+                return Err("C6 verifier source tracing is not active or audited");
+            }
+            self.c6_trace_sources_enabled = false;
             self.c6_trace_sub_sources.clear();
             self.c6_trace_full_sources.clear();
             Ok(())
@@ -3023,6 +3070,15 @@ mod tests {
             let _ = prover.draw_fulls(40, 1);
         }))
         .is_err());
+        prover.enter_post_c6_source_phase().unwrap();
+        let counters = prover.counters;
+        let _ = prover.draw_sub_masks(40, 1);
+        let _ = prover.draw_fulls(41, 1);
+        assert_eq!(prover.counters.sub_corrs, counters.sub_corrs + 1);
+        assert_eq!(prover.counters.full_corrs, counters.full_corrs + 1);
+        assert!(prover.record_c6_subfield_corrections(40, &[1]).is_err());
+        assert!(prover.record_c6_fullfield_plaintexts(41, &[Fp2::ONE]).is_err());
+        assert!(prover.enter_post_c6_source_phase().is_err());
 
         let mut incomplete = CorrelationStream::new([0xD7; 32]);
         incomplete.enable_c6_source_witness_collection().unwrap();

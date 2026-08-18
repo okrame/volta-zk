@@ -845,3 +845,23 @@ correction. A duplicate fail-fast join now runs before wrapper spill. Wire,
 setup, relation, correlation and certificate byte counts are unchanged.
 Standing create-new GO authorizes r15 with fresh roots after the focused test
 and feature compilation pass.
+
+## 0.40 r15 disposition and r16 post-source correlation phase
+
+r15 passed setup, A100 preflight, the repaired native target join and the full
+wrapper spill, then panicked on the first ordinary full-field draw in the
+native suffix. The response source sidecars were correctly frozen, but their
+closed flag also prohibited later correlations from the same one-time
+connection allocation. No certificate or mutation exists and spill was
+removed.
+
+r16 adds one typed transition at verifier-replay transfer, which is already
+guarded by successful paired-source sealing. It keeps both source sidecars
+immutable and non-reopenable, ends response provenance-token assignment, and
+admits later wrapper/compiler draws outside the frozen response source
+schedule. The disk verifier ends its response provenance at the matching
+trace boundary. A lifecycle regression checks that draws fail before the
+transition, succeed after it, and cannot mutate either sidecar. Allocation,
+correlation census, setup, relation and certificate framing are unchanged.
+Standing create-new GO authorizes r16 after that regression and the feature
+compilation pass.

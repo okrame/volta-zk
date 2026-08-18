@@ -1063,6 +1063,7 @@ fn replay_c6_production_response_verifier(
     if product_messages.len() != installed_plan.products().len() {
         return Err("C6.2 disk verifier ProductClosure message census changed".to_owned());
     }
+    primary.finish_c6_operation_trace_sources().map_err(str::to_owned)?;
     Ok(C6T1ProductionResponseVerifierReplay {
         output,
         zero_roots,

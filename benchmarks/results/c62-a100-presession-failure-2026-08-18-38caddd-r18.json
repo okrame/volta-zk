@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "milestone": "C6.2 replacement r18 RunPod A100 pre-session attempt",
+  "date": "2026-08-18",
+  "run_id": "38caddddee3787e1d4aa6f6836bc474283b00e13-r18",
+  "source_git_sha": "38caddddee3787e1d4aa6f6836bc474283b00e13",
+  "source_git_dirty": false,
+  "runner": {
+    "exit_code": 1,
+    "failed_stage": "setup profile context-000 exact response correlation census",
+    "error": "setup profile 0 correlation census changed: expected (4892238, 227682)",
+    "setup_profiles_written": 0,
+    "production_session_started": false,
+    "authorization_consumed": false
+  },
+  "observed_response_correlations": {
+    "subfield_per_tape": 4892214,
+    "full_field_per_tape": 226917
+  },
+  "records": {
+    "runner_log_sha256": "948e3a0a688dd4d82fd9817105a6e32ccef18d76a0703d68d55e12ab2c74b470",
+    "exit_file_sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "temporary_setup_removed": true
+  },
+  "hardware": {
+    "provider": "RunPod",
+    "pod_id": "mkp59uj8mtoyao",
+    "gpu": "NVIDIA A100-SXM4-80GB",
+    "gpu_uuid": "GPU-e663e5cb-6203-f55b-3c79-4d044bda261e",
+    "container_disk_gb": 320
+  },
+  "diagnosis": {
+    "cause": "setup generation compared a response-only executable census with a response-plus-suffix allocation constant",
+    "repair": "separate response census constants from allocation constants and assert their fixed suffix delta",
+    "protocol_output_changed": false
+  },
+  "credit": false,
+  "disposition": "FAIL CLOSED BEFORE SETUP OR SESSION; R18 IMMUTABLE; USE SPLIT RESPONSE AND ALLOCATION CENSUSES BEFORE CREATE-NEW R19"
+}

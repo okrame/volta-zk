@@ -906,3 +906,20 @@ only recomputable oracle files are removed. Relation, transcript contents,
 certificate framing, correlations and setup are unchanged. Standing
 create-new GO authorizes r18 with fresh roots after narrow checks and a clean
 checkpoint.
+
+## 0.43 r18 pre-session disposition and r19 split correlation censuses
+
+After the container-disk resize removed the reusable setup, r18 rebuilt the
+official setup generator and failed closed on profile zero before emitting any
+setup or starting a production session. The measured response census remained
+`(4,892,214, 226,917)`, while the generator incorrectly compared it with the
+new response-plus-suffix allocation `(4,892,238, 227,682)`.
+
+r19 names the response-only subfield/full-field constants separately for all
+four profiles. Setup generation checks those response constants; production
+allocation and client ranges retain the larger response-plus-suffix constants.
+A regression checks that every allocation equals its response census plus the
+fixed `(24, 765)` suffix. This changes no bytes, correlations, relation,
+transcript or setup content. The r18 authorization was not consumed; standing
+create-new GO authorizes r19 with fresh roots after the narrow checks and clean
+checkpoint.

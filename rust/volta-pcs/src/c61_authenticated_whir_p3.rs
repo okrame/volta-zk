@@ -5590,6 +5590,33 @@ fn prove_diagnostic(
     id: C61NativeChainId,
     mask_range: C61AuthenticatedWhirMaskRange,
 ) -> Result<(C61AuthenticatedP3Fixture, u64), String> {
+    prove_diagnostic_with_cache(
+        witness,
+        point,
+        verifier_seed,
+        prover_rng_seed,
+        pcg_seed,
+        delta,
+        target_tag,
+        id,
+        mask_range,
+        false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_diagnostic_with_cache(
+    witness: Poly<Goldilocks>,
+    point: Point<C61P3Fp2>,
+    verifier_seed: [u8; 32],
+    prover_rng_seed: u64,
+    pcg_seed: [u8; 32],
+    delta: Fp2,
+    target_tag: Fp2,
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+    cached_fixed_base: bool,
+) -> Result<(C61AuthenticatedP3Fixture, u64), String> {
     let num_variables = witness.num_variables();
     if point.num_variables() != num_variables {
         return Err("C6AWH1-P3 witness/point dimension mismatch".to_owned());
@@ -5606,7 +5633,12 @@ fn prove_diagnostic(
     let dft = Radix2DFTSmallBatch::default();
     let prover = HidingWhirProver::new(&config, &dft, &mmcs);
     let mut rng = StdRng::seed_from_u64(prover_rng_seed);
-    let (commitment, data) = prover.commit(witness, &mut challenger, &mut rng);
+    let (commitment, data) = if cached_fixed_base {
+        let fixed_base = prover.c62_fixed_base_encoding(&witness);
+        prover.commit_c62_cached_fixed_base(witness, &fixed_base, &mut challenger, &mut rng)
+    } else {
+        prover.commit(witness, &mut challenger, &mut rng)
+    };
 
     // The low-level fork deliberately has no target-revealing PCS adapter.
     // Reproduce its load-bearing statement order explicitly: root first,
@@ -9992,6 +10024,61 @@ pub fn run_c61_private_entropy_driver_diagnostic(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn c62_cached_fixed_base_is_full_payload_identical() {
+        let num_variables = 14;
+        let witness = Poly::new(
+            (0..(1usize << num_variables))
+                .map(|index| Goldilocks::from_u64((index as u64) * 17 + 3))
+                .collect(),
+        );
+        let point = Point::new(
+            (0..num_variables)
+                .map(|index| C61P3Fp2::from_u64(index as u64 * 19 + 5))
+                .collect(),
+        );
+        let verifier_seed = [0x61; 32];
+        let pcg_seed = [0xA7; 32];
+        let delta = Fp2::new(volta_field::Fp::new(P - 17), volta_field::Fp::new(0x1234_5678));
+        let target_tag = Fp2::new(volta_field::Fp::new(41), volta_field::Fp::new(43));
+        let id = C61NativeChainId { component: C61NativeComponent::Model, repetition: 0 };
+        let mask_range =
+            C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 1, range_start: 40_000 };
+
+        let ordinary = prove_diagnostic_with_cache(
+            witness.clone(),
+            point.clone(),
+            verifier_seed,
+            0xC6_1001,
+            pcg_seed,
+            delta,
+            target_tag,
+            id,
+            mask_range,
+            false,
+        )
+        .unwrap();
+        let cached = prove_diagnostic_with_cache(
+            witness,
+            point,
+            verifier_seed,
+            0xC6_1001,
+            pcg_seed,
+            delta,
+            target_tag,
+            id,
+            mask_range,
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(ordinary.0.artifact.payload, cached.0.artifact.payload);
+        assert_eq!(ordinary.0.provider_interaction, cached.0.provider_interaction);
+        assert_eq!(ordinary.0.provider_ledger, cached.0.provider_ledger);
+        assert_eq!(ordinary.0.provider_transcript_bytes, cached.0.provider_transcript_bytes);
+        assert_eq!(ordinary.1, cached.1);
+    }
 
     #[test]
     fn scaled_claimless_affine_whir_closes_through_designated_mac() {

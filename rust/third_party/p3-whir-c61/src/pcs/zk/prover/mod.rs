@@ -18,6 +18,7 @@ use p3_challenger::{CanObserve, CanSampleUniformBits, FieldChallenger, GrindingC
 use p3_commit::{ExtensionMmcs, Mmcs};
 use p3_dft::TwoAdicSubgroupDft;
 use p3_field::{dot_product, ExtensionField, PackedValue, PrimeCharacteristicRing, TwoAdicField};
+use p3_matrix::dense::DenseMatrix;
 use p3_matrix::Matrix;
 use p3_maybe_rayon::prelude::*;
 use p3_multilinear_util::point::Point;
@@ -89,6 +90,66 @@ where
     /// Bundles the prover dependencies.
     pub fn new(config: &'a ZkWhirConfig<EF, F, Challenger>, dft: &'a Dft, mmcs: &'a MT) -> Self {
         Self { config, dft, mmcs, extension_mmcs: ExtensionMmcs::new(mmcs.clone()) }
+    }
+
+    /// Build the fixed-message half of the exact initial ZK-WHIR encoding.
+    ///
+    /// C6.2 may prepare this value in a provider-only cache. It contains no
+    /// per-proof randomness, commitment, root or transcript state.
+    #[doc(hidden)]
+    pub fn c62_fixed_base_encoding(&self, message: &Poly<F>) -> DenseMatrix<F> {
+        assert_eq!(message.num_variables(), self.config.num_variables);
+        let folding = self.config.round_folding_factor(0);
+        let randomness_len = self.config.oracle_randomness[0] << folding;
+        let height =
+            (1 << (message.num_variables() - folding)) << self.config.starting_log_inv_rate;
+        self.dft
+            .dft_batch(zk_padded_matrix(
+                message.as_slice(),
+                &F::zero_vec(randomness_len),
+                folding,
+                height,
+            ))
+            .to_row_major_matrix()
+    }
+
+    /// Commit through the exact cached-base decomposition used by C6.2.
+    ///
+    /// Fresh randomness is drawn exactly as in [`Self::commit`]. Only its
+    /// zero-message encoding is added to the cached fixed base; the ordinary
+    /// MMCS and challenger then see the resulting byte-identical matrix.
+    #[doc(hidden)]
+    pub fn commit_c62_cached_fixed_base<R: Rng>(
+        &self,
+        message: Poly<F>,
+        fixed_base: &DenseMatrix<F>,
+        challenger: &mut Challenger,
+        rng: &mut R,
+    ) -> (MT::Commitment, HidingWhirProverData<F, EF, MT>) {
+        assert_eq!(message.num_variables(), self.config.num_variables);
+        let folding = self.config.round_folding_factor(0);
+        let randomness: Vec<F> =
+            (0..(self.config.oracle_randomness[0] << folding)).map(|_| rng.random()).collect();
+        let height =
+            (1 << (message.num_variables() - folding)) << self.config.starting_log_inv_rate;
+        let zero_message = F::zero_vec(message.as_slice().len());
+        let mut encoded = self
+            .dft
+            .dft_batch(zk_padded_matrix(
+                &zero_message,
+                &randomness,
+                folding,
+                height,
+            ))
+            .to_row_major_matrix();
+        assert_eq!(encoded.width, fixed_base.width);
+        assert_eq!(encoded.values.len(), fixed_base.values.len());
+        for (value, &base) in encoded.values.iter_mut().zip(&fixed_base.values) {
+            *value += base;
+        }
+        let (commitment, merkle) = self.mmcs.commit_matrix(encoded);
+        challenger.observe(commitment.clone());
+        (commitment, HidingWhirProverData { message, randomness, merkle, _marker: PhantomData })
     }
 
     /// Commits the witness as an interleaved ZK Reed-Solomon codeword.

@@ -16,6 +16,8 @@ This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 - **Completed evidence.** Clean `e107db2` generated all 17 split-census setup
   profiles. The byte-identical persistent copy has 85 files / 197,278,943 B;
   its manifest SHA-256 is `9990a3dbbeaf30405e3cabdbd947d9e03003a6fca50ebe361783d52c6e036821`.
+  The local D14 cached-base full-payload differential and resource census pass
+  without hardware or timing credit.
 - **Hard stop.** The selected WHIR chains explicitly report
   `gpu_performance_credit=false` and retain about 197 GiB of temporary spill.
   They cannot honestly receive the `<15.750 s` A100-prover wall gate. Do not

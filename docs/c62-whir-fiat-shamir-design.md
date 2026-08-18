@@ -982,6 +982,12 @@ states, PCG material, masks, challenges, roots and query-dependent data may not
 enter this cache. A miss or binding mismatch fails before authorization; it
 may not silently rebuild inside or outside the measured attempt.
 
+The local D14 differential now executes both commit paths with identical
+witness, fresh-randomness stream, challenges and PCG state. The cached path
+produces the exact ordinary commitment, complete strict proof payload,
+interaction census, transcript ledger and correlation count. This is
+functional cache evidence only; it gives no production-size or A100 credit.
+
 The registered engineering admission is a conservative projected wall below
 `12.500 s`, leaving `3.250 s` before the terminal gate. If the exact
 root-preserving executor projects above `12.500 s`, a local WHIR folding study

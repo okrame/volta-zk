@@ -1,6 +1,7 @@
 //! Transcript schema and oracle handle for the HVZK sumcheck.
 
 use alloc::vec::Vec;
+use core::marker::PhantomData;
 
 use p3_commit::Mmcs;
 use p3_field::{ExtensionField, Field, HornerIter};
@@ -97,14 +98,14 @@ pub type MaskOracle<EF, M> =
 ///   sampled `eps` scale.
 /// - A named type makes the Construction 6.3 to Construction 9.7 boundary
 ///   explicit.
-pub struct ZkSumcheckHandoff<F, EF, M>
+pub struct ZkSumcheckHandoff<F, EF, M, P = SumcheckProver<F, EF>>
 where
     F: Field,
     EF: ExtensionField<F>,
     M: Mmcs<EF>,
 {
     /// Residual sumcheck prover whose claim is scaled by `eps`.
-    pub residual_prover: SumcheckProver<F, EF>,
+    pub residual_prover: P,
     /// Per-round sumcheck challenges.
     pub randomness: Point<EF>,
     /// Construction 6.3 combining challenge.
@@ -121,6 +122,7 @@ where
     pub mask_randomness: Vec<Vec<EF>>,
     /// The batch's interleaved mask oracle: one commitment, `k` columns.
     pub mask_oracle: MaskOracle<EF, M>,
+    pub(crate) marker: PhantomData<F>,
 }
 
 /// Typed verifier handoff produced by replaying an HVZK sumcheck transcript.

@@ -464,6 +464,7 @@ type MatrixFoldDevice = unsafe extern "C" fn(
 type Fp2DotDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize, *mut Fp2Repr) -> c_int;
 type Fp2ProductRoundDevice = Fp2DotDevice;
+type Fp2ProductRoundPrefixDevice = Fp2ProductRoundDevice;
 type Fp2ProductRoundIntoDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize, u64, usize) -> c_int;
 type Fp2ProductRoundScaledIntoDevice =
@@ -837,6 +838,8 @@ type LogupSuffixEqDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, usize, u64, usize) -> c_int;
 type Fp2FoldRowsDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, usize, usize, Fp2Repr, u64, usize) -> c_int;
+type Fp2FoldPrefixDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, usize, Fp2Repr, u64, usize) -> c_int;
 type LogupEqRowsDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, usize, usize, u64, usize) -> c_int;
 type LogupAuxRoundDevice = unsafe extern "C" fn(
@@ -939,6 +942,23 @@ type PcsCombineRowsDevice = unsafe extern "C" fn(
 ) -> c_int;
 type Fp2AddInplaceDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize) -> c_int;
+type FpAddInplaceDevice = Fp2AddInplaceDevice;
+type FpToFp2Device = Fp2AddInplaceDevice;
+type Fp2ScaleInplaceDevice = unsafe extern "C" fn(*mut c_void, u64, usize, usize, Fp2Repr) -> c_int;
+type C62ZkPadDevice = unsafe extern "C" fn(
+    *mut c_void,
+    c_int,
+    u64,
+    usize,
+    usize,
+    u64,
+    usize,
+    usize,
+    usize,
+    usize,
+    u64,
+    usize,
+) -> c_int;
 type Fp2MobiusInverseInplaceDevice = unsafe extern "C" fn(*mut c_void, u64, usize, usize) -> c_int;
 type Fp2AffineEqWeightsInplaceDevice = unsafe extern "C" fn(
     *mut c_void,
@@ -1031,6 +1051,7 @@ struct Api {
     matrix_fold_device: MatrixFoldDevice,
     fp2_dot_device: Fp2DotDevice,
     fp2_product_round_device: Fp2ProductRoundDevice,
+    fp2_product_round_prefix_device: Fp2ProductRoundPrefixDevice,
     fp2_product_round_into_device: Fp2ProductRoundIntoDevice,
     fp2_product_round_scaled_into_device: Fp2ProductRoundScaledIntoDevice,
     claim_reduce_f_two_into_device: ClaimReduceFTwoIntoDevice,
@@ -1084,6 +1105,7 @@ struct Api {
     fp2_deinterleave_device: Fp2DeinterleaveDevice,
     logup_suffix_eq_device: LogupSuffixEqDevice,
     fp2_fold_rows_device: Fp2FoldRowsDevice,
+    fp2_fold_prefix_device: Fp2FoldPrefixDevice,
     logup_eq_rows_device: LogupEqRowsDevice,
     logup_aux_round_device: LogupAuxRoundDevice,
     logup_aux_round_into_device: LogupAuxRoundIntoDevice,
@@ -1092,7 +1114,11 @@ struct Api {
     hash_fp_columns: HashFpColumns,
     pcs_messages_device: PcsMessagesDevice,
     pcs_combine_rows_device: PcsCombineRowsDevice,
+    fp_add_inplace_device: FpAddInplaceDevice,
     fp2_add_inplace_device: Fp2AddInplaceDevice,
+    fp_to_fp2_device: FpToFp2Device,
+    fp2_scale_inplace_device: Fp2ScaleInplaceDevice,
+    c62_zk_pad_device: C62ZkPadDevice,
     fp2_mobius_inverse_inplace_device: Fp2MobiusInverseInplaceDevice,
     fp2_affine_eq_weights_inplace_device: Fp2AffineEqWeightsInplaceDevice,
     hash_fp_tree_device: HashTreeDevice,
@@ -1273,6 +1299,9 @@ impl CudaContext {
             fp2_product_round_device: unsafe {
                 load_symbol(handle, b"volta_cuda_fp2_product_round_device\0")?
             },
+            fp2_product_round_prefix_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fp2_product_round_prefix_device\0")?
+            },
             fp2_product_round_into_device: unsafe {
                 load_symbol(handle, b"volta_cuda_fp2_product_round_into_device\0")?
             },
@@ -1406,6 +1435,9 @@ impl CudaContext {
             fp2_fold_rows_device: unsafe {
                 load_symbol(handle, b"volta_cuda_fp2_fold_rows_device\0")?
             },
+            fp2_fold_prefix_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fp2_fold_prefix_device\0")?
+            },
             logup_eq_rows_device: unsafe {
                 load_symbol(handle, b"volta_cuda_logup_eq_rows_device\0")?
             },
@@ -1424,9 +1456,17 @@ impl CudaContext {
             pcs_combine_rows_device: unsafe {
                 load_symbol(handle, b"volta_cuda_pcs_combine_rows_device\0")?
             },
+            fp_add_inplace_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fp_add_inplace_device\0")?
+            },
             fp2_add_inplace_device: unsafe {
                 load_symbol(handle, b"volta_cuda_fp2_add_inplace_device\0")?
             },
+            fp_to_fp2_device: unsafe { load_symbol(handle, b"volta_cuda_fp_to_fp2_device\0")? },
+            fp2_scale_inplace_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fp2_scale_inplace_device\0")?
+            },
+            c62_zk_pad_device: unsafe { load_symbol(handle, b"volta_cuda_c62_zk_pad_device\0")? },
             fp2_mobius_inverse_inplace_device: unsafe {
                 load_symbol(handle, b"volta_cuda_fp2_mobius_inverse_inplace_device\0")?
             },
@@ -2756,6 +2796,31 @@ impl CudaContext {
         // the compressed round message and the ABI synchronizes.
         self.check(unsafe {
             (self.api.fp2_product_round_device)(
+                self.raw,
+                a,
+                a_offset,
+                b,
+                b_offset,
+                pairs,
+                output.as_mut_ptr(),
+            )
+        })?;
+        Ok(output.map(Into::into))
+    }
+
+    pub(super) fn fp2_product_round_prefix_device(
+        &mut self,
+        a: u64,
+        a_offset: usize,
+        b: u64,
+        b_offset: usize,
+        pairs: usize,
+    ) -> Result<[Fp2; 2], AccelError> {
+        let mut output = [Fp2Repr::default(); 2];
+        // SAFETY: Backend validates both 2*pairs resident ranges. The prefix
+        // kernel pairs slot z with z+pairs and synchronizes h(0), h(inf).
+        self.check(unsafe {
+            (self.api.fp2_product_round_prefix_device)(
                 self.raw,
                 a,
                 a_offset,
@@ -4246,6 +4311,29 @@ impl CudaContext {
         })
     }
 
+    pub(super) fn fp2_fold_prefix_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        len: usize,
+        r: Fp2,
+        output: u64,
+        output_offset: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates the even input and half-length output.
+        self.check(unsafe {
+            (self.api.fp2_fold_prefix_device)(
+                self.raw,
+                input,
+                input_offset,
+                len,
+                r.into(),
+                output,
+                output_offset,
+            )
+        })
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(super) fn logup_eq_rows_device(
         &mut self,
@@ -4527,6 +4615,55 @@ impl CudaContext {
         })
     }
 
+    pub(super) fn fp_add_inplace_device(
+        &mut self,
+        target: u64,
+        target_offset: usize,
+        add: u64,
+        add_offset: usize,
+        len: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all resident ids and typed regions.
+        self.check(unsafe {
+            (self.api.fp_add_inplace_device)(self.raw, target, target_offset, add, add_offset, len)
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn c62_zk_pad_device(
+        &mut self,
+        fp2: bool,
+        message: u64,
+        message_offset: usize,
+        message_len: usize,
+        randomness: u64,
+        randomness_offset: usize,
+        randomness_len: usize,
+        folding: usize,
+        height: usize,
+        output: u64,
+        output_offset: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates every typed region and the complete
+        // interleaved ZK-WHIR geometry before entering the ABI.
+        self.check(unsafe {
+            (self.api.c62_zk_pad_device)(
+                self.raw,
+                fp2 as c_int,
+                message,
+                message_offset,
+                message_len,
+                randomness,
+                randomness_offset,
+                randomness_len,
+                folding,
+                height,
+                output,
+                output_offset,
+            )
+        })
+    }
+
     pub(super) fn fp2_add_inplace_device(
         &mut self,
         target: u64,
@@ -4538,6 +4675,33 @@ impl CudaContext {
         // SAFETY: Backend validates all resident ids and typed regions.
         self.check(unsafe {
             (self.api.fp2_add_inplace_device)(self.raw, target, target_offset, add, add_offset, len)
+        })
+    }
+
+    pub(super) fn fp_to_fp2_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        output: u64,
+        output_offset: usize,
+        len: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates the base input and Fp2 output regions.
+        self.check(unsafe {
+            (self.api.fp_to_fp2_device)(self.raw, input, input_offset, output, output_offset, len)
+        })
+    }
+
+    pub(super) fn fp2_scale_inplace_device(
+        &mut self,
+        values: u64,
+        values_offset: usize,
+        len: usize,
+        scale: Fp2,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates the resident Fp2 region.
+        self.check(unsafe {
+            (self.api.fp2_scale_inplace_device)(self.raw, values, values_offset, len, scale.into())
         })
     }
 

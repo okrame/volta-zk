@@ -29,4 +29,5 @@ mod zk_prover;
 
 pub use layout::ZkLayout;
 pub use p3_zk_codes::stack_codewords;
+pub use residual::into_zk_sumcheck_claimless_with_residual;
 pub use zk_prover::{ZkPrefixProver, ZkProver, ZkSuffixProver};

@@ -25,6 +25,7 @@ c61-p3-reference = [
 ]
 c61-p3-authenticated-reference = [
     "c61-p3-reference",
+    "dep:p3-sumcheck-c61",
     "dep:p3-whir-c61",
 ]
 
@@ -46,6 +47,7 @@ p3-merkle-tree = { path = "../third_party/p3-merkle-tree-c61", optional = true }
 p3-matrix = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
 p3-multilinear-util = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
 p3-sumcheck = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
+p3-sumcheck-c61 = { path = "../third_party/p3-sumcheck-c61", optional = true }
 p3-symmetric = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
 p3-whir = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c", optional = true }
 p3-whir-c61 = { path = "../third_party/p3-whir-c61", optional = true }

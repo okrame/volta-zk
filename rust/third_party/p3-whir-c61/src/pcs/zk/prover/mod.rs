@@ -13,21 +13,22 @@ use core::mem;
 
 pub use data::HidingWhirProverData;
 use data::ZkRoundData;
-use masks::{fold_limb_chunks, ProverMasks};
+use masks::{ProverMasks, fold_limb_chunks};
 use p3_challenger::{CanObserve, CanSampleUniformBits, FieldChallenger, GrindingChallenger};
 use p3_commit::{ExtensionMmcs, Mmcs};
 use p3_dft::TwoAdicSubgroupDft;
-use p3_field::{dot_product, ExtensionField, PackedValue, PrimeCharacteristicRing, TwoAdicField};
-use p3_matrix::dense::DenseMatrix;
+use p3_field::{ExtensionField, PackedValue, PrimeCharacteristicRing, TwoAdicField, dot_product};
 use p3_matrix::Matrix;
+use p3_matrix::dense::DenseMatrix;
+use p3_matrix::extension::FlatMatrixView;
 use p3_maybe_rayon::prelude::*;
 use p3_multilinear_util::point::Point;
 use p3_multilinear_util::poly::Poly;
 use p3_multilinear_util::split_eq::SplitEq;
 use p3_sumcheck::constraints::statement::SelectStatement;
 use p3_sumcheck::product_polynomial::ProductPolynomial;
-use p3_sumcheck::strategy::{SumcheckProver, VariableOrder};
-use p3_sumcheck::zk::{AffineClaim, ZkSumcheckData};
+use p3_sumcheck::strategy::{ResidualSumcheckProver, SumcheckProver, VariableOrder};
+use p3_sumcheck::zk::{AffineClaim, ZkSumcheckData, into_zk_sumcheck_claimless_with_residual};
 use p3_util::log2_strict_usize;
 use p3_zk_codes::ZkEncodingWithRandomness;
 use rand::distr::{Distribution, StandardUniform};
@@ -39,8 +40,8 @@ use crate::pcs::utils::get_challenge_stir_queries;
 use crate::pcs::zk::base_case::{
     BaseCaseClaimlessClosure, BaseCaseZkConfig, BaseCaseZkProver, MaskGroupWitness,
 };
-use crate::pcs::zk::code_switch::{switch_mask_covector, ZkMaskClaim};
-use crate::pcs::zk::committer::{zk_padded_matrix, FoldedRsCode};
+use crate::pcs::zk::code_switch::{ZkMaskClaim, switch_mask_covector};
+use crate::pcs::zk::committer::{FoldedRsCode, zk_padded_matrix};
 use crate::pcs::zk::config::ZkWhirConfig;
 use crate::pcs::zk::proof::{ZkRoundProof, ZkWhirProof};
 use crate::utils::padded_ood_t1;
@@ -73,6 +74,126 @@ pub struct ClaimlessWhirProverOutput<F: Send + Sync + Clone, EF, MT: Mmcs<F>> {
     pub claim_weights: Vec<EF>,
     pub target: AffineClaim<EF>,
     pub base_case: BaseCaseClaimlessClosure<EF>,
+}
+
+/// Exact encode/commit boundary for a claimless ZK-WHIR prover.
+///
+/// The ordinary implementation below remains the reference path.  A native
+/// implementation may keep padded coefficients, codewords and Merkle prover
+/// data outside host memory, but it must return the very same MMCS associated
+/// types.  In particular this boundary cannot change commitments, openings,
+/// proof codecs or challenger ordering.
+pub trait ZkWhirOracleCommitter<F, EF, MT>
+where
+    F: TwoAdicField,
+    EF: ExtensionField<F>,
+    MT: Mmcs<F>,
+{
+    type Error;
+    type SumcheckState: ResidualSumcheckProver<F, EF, Error = Self::Error>;
+
+    fn initialize_sumcheck(
+        &self,
+        message: &[F],
+        claims: &[(Point<EF>, EF)],
+        coefficients: &[EF],
+        batched_target: EF,
+    ) -> Result<Self::SumcheckState, Self::Error>;
+
+    fn commit_initial(
+        &self,
+        message: &[F],
+        randomness: &[F],
+        folding: usize,
+        height: usize,
+    ) -> Result<(MT::Commitment, MT::ProverData<DenseMatrix<F>>), Self::Error>;
+
+    fn commit_extension(
+        &self,
+        message: &[EF],
+        randomness: &[EF],
+        folding: usize,
+        height: usize,
+    ) -> Result<(MT::Commitment, MT::ProverData<FlatMatrixView<F, EF, DenseMatrix<EF>>>), Self::Error>;
+}
+
+struct ReferenceOracleCommitter<'a, F, EF, Dft, MT> {
+    dft: &'a Dft,
+    mmcs: &'a MT,
+    extension_mmcs: &'a ExtensionMmcs<F, EF, MT>,
+}
+
+impl<F, EF, Dft, MT> ZkWhirOracleCommitter<F, EF, MT>
+    for ReferenceOracleCommitter<'_, F, EF, Dft, MT>
+where
+    F: TwoAdicField,
+    EF: ExtensionField<F>,
+    Dft: TwoAdicSubgroupDft<F>,
+    MT: Mmcs<F>,
+{
+    type Error = core::convert::Infallible;
+    type SumcheckState = SumcheckProver<F, EF>;
+
+    fn initialize_sumcheck(
+        &self,
+        message: &[F],
+        claims: &[(Point<EF>, EF)],
+        coefficients: &[EF],
+        batched_target: EF,
+    ) -> Result<Self::SumcheckState, Self::Error> {
+        let num_variables = log2_strict_usize(message.len());
+        let k_pack = log2_strict_usize(F::Packing::WIDTH);
+        let product = if num_variables >= k_pack {
+            let mut weights = Poly::<EF::ExtensionPacking>::zero(num_variables - k_pack);
+            for ((point, _), &coefficient) in claims.iter().zip(coefficients) {
+                SplitEq::new_packed(point, coefficient)
+                    .accumulate_into_packed(weights.as_mut_slice(), None);
+            }
+            let evals = Poly::new(
+                F::Packing::pack_slice(message)
+                    .par_iter()
+                    .map(|&value| EF::ExtensionPacking::from(value))
+                    .collect(),
+            );
+            ProductPolynomial::new_packed(VariableOrder::Prefix, evals, weights)
+        } else {
+            let mut weights = Poly::<EF>::zero(num_variables);
+            for ((point, _), &coefficient) in claims.iter().zip(coefficients) {
+                SplitEq::new_unpacked(point, coefficient)
+                    .accumulate_into(weights.as_mut_slice(), None);
+            }
+            let evals = Poly::new(message.par_iter().map(|&value| value.into()).collect());
+            ProductPolynomial::new_unpacked(VariableOrder::Prefix, evals, weights)
+        };
+        Ok(SumcheckProver::new(product, batched_target))
+    }
+
+    fn commit_initial(
+        &self,
+        message: &[F],
+        randomness: &[F],
+        folding: usize,
+        height: usize,
+    ) -> Result<(MT::Commitment, MT::ProverData<DenseMatrix<F>>), Self::Error> {
+        let encoded = self
+            .dft
+            .dft_batch(zk_padded_matrix(message, randomness, folding, height))
+            .to_row_major_matrix();
+        Ok(self.mmcs.commit_matrix(encoded))
+    }
+
+    fn commit_extension(
+        &self,
+        message: &[EF],
+        randomness: &[EF],
+        folding: usize,
+        height: usize,
+    ) -> Result<(MT::Commitment, MT::ProverData<FlatMatrixView<F, EF, DenseMatrix<EF>>>), Self::Error>
+    {
+        let padded = zk_padded_matrix(message, randomness, folding, height);
+        let encoded = self.dft.dft_algebra_batch(padded);
+        Ok(self.extension_mmcs.commit_matrix(encoded))
+    }
 }
 
 impl<'a, EF, F, Dft, MT, Challenger> HidingWhirProver<'a, EF, F, Dft, MT, Challenger>
@@ -135,12 +256,7 @@ where
         let zero_message = F::zero_vec(message.as_slice().len());
         let mut encoded = self
             .dft
-            .dft_batch(zk_padded_matrix(
-                &zero_message,
-                &randomness,
-                folding,
-                height,
-            ))
+            .dft_batch(zk_padded_matrix(&zero_message, &randomness, folding, height))
             .to_row_major_matrix();
         assert_eq!(encoded.width, fixed_base.width);
         assert_eq!(encoded.values.len(), fixed_base.values.len());
@@ -173,6 +289,32 @@ where
         (commitment, HidingWhirProverData { message, randomness, merkle, _marker: PhantomData })
     }
 
+    /// Commits the initial oracle through an exact native encode/commit
+    /// boundary.  Randomness and challenger observation remain owned by this
+    /// prover, so an accelerator cannot cache or reorder either one.
+    pub fn commit_with_oracle<R, O>(
+        &self,
+        message: Poly<F>,
+        oracle: &O,
+        challenger: &mut Challenger,
+        rng: &mut R,
+    ) -> Result<(MT::Commitment, HidingWhirProverData<F, EF, MT>), O::Error>
+    where
+        R: Rng,
+        O: ZkWhirOracleCommitter<F, EF, MT>,
+    {
+        assert_eq!(message.num_variables(), self.config.num_variables);
+        let folding = self.config.round_folding_factor(0);
+        let randomness: Vec<F> =
+            (0..(self.config.oracle_randomness[0] << folding)).map(|_| rng.random()).collect();
+        let height =
+            (1 << (message.num_variables() - folding)) << self.config.starting_log_inv_rate;
+        let (commitment, merkle) =
+            oracle.commit_initial(message.as_slice(), &randomness, folding, height)?;
+        challenger.observe(commitment.clone());
+        Ok((commitment, HidingWhirProverData { message, randomness, merkle, _marker: PhantomData }))
+    }
+
     /// Runs the full HVZK opening protocol for evaluation claims
     /// `f(point_i) = eval_i`.
     ///
@@ -187,6 +329,65 @@ where
         challenger: &mut Challenger,
         rng: &mut R,
     ) -> ClaimlessWhirProverOutput<F, EF, MT> {
+        let oracle = ReferenceOracleCommitter {
+            dft: self.dft,
+            mmcs: self.mmcs,
+            extension_mmcs: &self.extension_mmcs,
+        };
+        match self.prove_claimless_with_committer(
+            prover_data,
+            claims,
+            base_claim_shift,
+            &oracle,
+            challenger,
+            rng,
+        ) {
+            Ok(output) => output,
+            Err(error) => match error {},
+        }
+    }
+
+    /// Native-oracle variant of [`Self::prove_claimless`].  Only encoded
+    /// oracle construction crosses this boundary; transcript moves and proof
+    /// assembly stay in the reference prover.
+    #[instrument(skip_all)]
+    pub fn prove_claimless_with_oracle<R, O>(
+        &self,
+        prover_data: HidingWhirProverData<F, EF, MT>,
+        claims: &[(Point<EF>, EF)],
+        base_claim_shift: EF,
+        oracle: &O,
+        challenger: &mut Challenger,
+        rng: &mut R,
+    ) -> Result<ClaimlessWhirProverOutput<F, EF, MT>, O::Error>
+    where
+        R: Rng,
+        O: ZkWhirOracleCommitter<F, EF, MT>,
+    {
+        self.prove_claimless_with_committer(
+            prover_data,
+            claims,
+            base_claim_shift,
+            oracle,
+            challenger,
+            rng,
+        )
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn prove_claimless_with_committer<R, O>(
+        &self,
+        prover_data: HidingWhirProverData<F, EF, MT>,
+        claims: &[(Point<EF>, EF)],
+        base_claim_shift: EF,
+        oracle: &O,
+        challenger: &mut Challenger,
+        rng: &mut R,
+    ) -> Result<ClaimlessWhirProverOutput<F, EF, MT>, O::Error>
+    where
+        R: Rng,
+        O: ZkWhirOracleCommitter<F, EF, MT>,
+    {
         let config = self.config;
         let num_variables = config.num_variables;
         let sumcheck_mask_encoding = config.sumcheck_mask.encoding::<EF>();
@@ -204,40 +405,18 @@ where
             batched_target += *coeff * *eval;
         }
 
-        // Build the weight and evaluation polynomials in SIMD-packed form
-        // whenever the hypercube is large enough, mirroring the non-ZK
-        // sumcheck's packed construction; the eq table is accumulated
-        // per-claim through the split-eq factorization instead of a full
-        // 2^n scalar materialization.
-        let k_pack = log2_strict_usize(F::Packing::WIDTH);
-        let product = if num_variables >= k_pack {
-            let mut weights = Poly::<EF::ExtensionPacking>::zero(num_variables - k_pack);
-            for ((point, _), &coeff) in claims.iter().zip(&coeffs) {
-                SplitEq::new_packed(point, coeff)
-                    .accumulate_into_packed(weights.as_mut_slice(), None);
-            }
-            let evals = Poly::new(
-                F::Packing::pack_slice(prover_data.message.as_slice())
-                    .par_iter()
-                    .map(|&p| EF::ExtensionPacking::from(p))
-                    .collect(),
-            );
-            ProductPolynomial::new_packed(VariableOrder::Prefix, evals, weights)
-        } else {
-            let mut weights = Poly::<EF>::zero(num_variables);
-            for ((point, _), &coeff) in claims.iter().zip(&coeffs) {
-                SplitEq::new_unpacked(point, coeff).accumulate_into(weights.as_mut_slice(), None);
-            }
-            let evals =
-                Poly::new(prover_data.message.as_slice().par_iter().map(|&v| v.into()).collect());
-            ProductPolynomial::new_unpacked(VariableOrder::Prefix, evals, weights)
-        };
-        let sumcheck_prover = SumcheckProver::new(product, batched_target);
+        let sumcheck_prover = oracle.initialize_sumcheck(
+            prover_data.message.as_slice(),
+            claims,
+            &coeffs,
+            batched_target,
+        )?;
 
         // Initial masked sumcheck batch.
         let mut masks = ProverMasks::<F, EF, MT>::new();
         let mut zk_data = ZkSumcheckData::default();
-        let handoff = sumcheck_prover.into_zk_sumcheck_claimless(
+        let handoff = into_zk_sumcheck_claimless_with_residual(
+            sumcheck_prover,
             &mut zk_data,
             &sumcheck_mask_encoding,
             &self.extension_mmcs,
@@ -246,7 +425,7 @@ where
             EF::ZERO,
             challenger,
             rng,
-        );
+        )?;
         let mut affine_target = replay_affine_batch(
             AffineClaim::identity(),
             &zk_data,
@@ -283,7 +462,7 @@ where
             let folding_next = config.round_folding_factor(round + 1);
             let next_randomness_len = config.oracle_randomness[round + 1];
 
-            let message = batch.residual_prover.evals();
+            let message = batch.residual_prover.evals()?;
             let message_len = message.num_evals();
 
             // Commit the folded message into the next interleaved ZK oracle.
@@ -291,10 +470,12 @@ where
                 (0..next_randomness_len << folding_next).map(|_| rng.random()).collect();
             // Interleaved ZK encoding over the extension, base-field DFT.
             let height = config.inv_rate(round) * (1 << (message.num_variables() - folding_next));
-            let padded =
-                zk_padded_matrix(message.as_slice(), &fresh_randomness, folding_next, height);
-            let encoded = self.dft.dft_algebra_batch(padded);
-            let (commitment, merkle) = self.extension_mmcs.commit_matrix(encoded);
+            let (commitment, merkle) = oracle.commit_extension(
+                message.as_slice(),
+                &fresh_randomness,
+                folding_next,
+                height,
+            )?;
             challenger.observe(commitment.clone());
 
             // Commit the code-switch mask (folded randomness || pad).
@@ -450,7 +631,7 @@ where
                 .zip(weight_delta.par_chunks(POW_CHUNK))
                 .map(|(m, w)| dot_product::<EF, _, _>(m.iter().copied(), w.iter().copied()))
                 .sum::<EF>();
-            sumcheck_prover.accumulate_claim(&weight_delta, claim_delta);
+            sumcheck_prover.accumulate_claim(&weight_delta, claim_delta)?;
 
             // Mask side: the fresh mask enters the relation.
             let mask_covector = switch_mask_covector(
@@ -496,7 +677,8 @@ where
             // The mask-claim total rides the batch as its auxiliary constant.
             let aux = masks.aux;
             let mut zk_data = ZkSumcheckData::default();
-            let handoff = sumcheck_prover.into_zk_sumcheck_claimless(
+            let handoff = into_zk_sumcheck_claimless_with_residual(
+                sumcheck_prover,
                 &mut zk_data,
                 &sumcheck_mask_encoding,
                 &self.extension_mmcs,
@@ -505,7 +687,7 @@ where
                 aux,
                 challenger,
                 rng,
-            );
+            )?;
             affine_target =
                 replay_affine_batch(affine_target, &zk_data, handoff.eps, &handoff.randomness);
             batch = masks.record_batch(
@@ -538,8 +720,8 @@ where
         let base_prover =
             BaseCaseZkProver { config: &base_config, extension_mmcs: &self.extension_mmcs };
 
-        let source_message = batch.residual_prover.evals();
-        let source_covector = batch.residual_prover.weights();
+        let source_message = batch.residual_prover.evals()?;
+        let source_covector = batch.residual_prover.weights()?;
         // Slice the flat mask state into the committed groups.
         let mut group_offset = 0;
         let mask_witnesses: Vec<MaskGroupWitness<'_, F, EF, MT>> = masks
@@ -569,12 +751,12 @@ where
             rng,
         );
 
-        ClaimlessWhirProverOutput {
+        Ok(ClaimlessWhirProverOutput {
             proof: ZkWhirProof { sumchecks, sumcheck_mask_commitments, rounds, base_case },
             claim_weights: coeffs,
             target: affine_target,
             base_case: base_case_closure,
-        }
+        })
     }
 
     /// Opens the active oracle at every index in one multiproof and folds

@@ -12,7 +12,7 @@ use rand::Rng;
 
 use super::common::{observe_masks_and_mu_tilde, sample_masks};
 use super::round::{PlainPiece, RoundContext, RoundState, round_poly_to_wire};
-use crate::strategy::SumcheckProver;
+use crate::strategy::{ResidualSumcheckProver, SumcheckProver};
 use crate::zk::{ZkSumcheckData, ZkSumcheckHandoff};
 
 impl<F, EF> SumcheckProver<F, EF>
@@ -122,7 +122,7 @@ where
     #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
     #[tracing::instrument(skip_all)]
     fn into_zk_sumcheck_with_claim_binding<Enc, M, R, Ch>(
-        mut self,
+        self,
         zk_data: &mut ZkSumcheckData<F, EF>,
         encoding: &Enc,
         mmcs: &M,
@@ -140,92 +140,170 @@ where
         R: Rng,
         Ch: FieldChallenger<F> + GrindingChallenger<Witness = F> + CanObserve<M::Commitment>,
     {
-        assert!(F::TWO != F::ZERO, "Lemma 6.4 requires char(F) != 2");
-        assert!(folding_factor >= 1, "sumcheck requires at least one round");
-        assert!(
-            folding_factor <= self.num_variables(),
-            "folding_factor must be <= residual prover arity",
-        );
-
-        let ell_zk = encoding.message_len();
-        assert!(
-            ell_zk >= 3,
-            "mask degree ell_zk - 1 must cover the degree-2 plain piece (ell_zk >= 3)",
-        );
-
-        // Unlike the layout-driven path, this entry receives a scalar claim
-        // directly, so bind it before the masking prelude samples `eps`.
-        //
-        // The bound value is the joint claim, matching the verifier's view.
-        if bind_claim {
-            challenger.observe_algebra_element(self.claimed_sum() + aux_claim);
-        }
-
-        let (masks, mask_randomness, mask_oracle) =
-            sample_masks::<EF, _, _, _, _>(folding_factor, encoding, mmcs, challenger, rng);
-        let mut sum_future_endpoints = observe_masks_and_mu_tilde::<F, EF, _>(
-            &masks,
-            folding_factor,
-            ell_zk,
-            challenger,
+        match into_zk_sumcheck_with_residual(
+            self,
             zk_data,
-        );
-
-        let eps: EF = challenger.sample_algebra_element();
-        let mut rs = Vec::with_capacity(folding_factor);
-        let mut mask_evals_at_gamma = Vec::with_capacity(folding_factor);
-        let pow2: Vec<EF> = EF::TWO.powers().collect_n(folding_factor + 1);
-        let round_ctx = RoundContext { k: folding_factor, ell_zk, pow2: &pow2, eps };
-
-        // Running `aux * 2^{-j}` carry; halved once per round.
-        let half = EF::TWO.inverse();
-        let mut aux_carry = aux_claim;
-
-        for (round_idx, mask) in masks.iter().enumerate() {
-            let j = round_idx + 1;
-            let mask_endpoints = mask[0].double() + mask[1..].iter().copied().sum::<EF>();
-            sum_future_endpoints -= mask_endpoints;
-            aux_carry *= half;
-
-            let (plain_c0, plain_c_inf) = self.round_coefficients();
-            // The aux carry enters only the transmitted constant slot; the
-            // source-side fold below keeps the raw coefficients.
-            let h = round_ctx.assemble(
-                RoundState {
-                    j,
-                    mask,
-                    past_mask_evals: &mask_evals_at_gamma,
-                    future_endpoints: sum_future_endpoints,
-                },
-                PlainPiece { c0: plain_c0 + aux_carry, c_inf: plain_c_inf },
-            );
-            let wire = round_poly_to_wire(&h);
-            challenger.observe_algebra_slice(&wire);
-            zk_data.round_coefficients.push(wire);
-
-            if pow_bits > 0 {
-                zk_data.pow_witnesses.push(challenger.grind(pow_bits));
-            }
-
-            let gamma: EF = challenger.sample_algebra_element();
-            let mask_at_gamma = mask.iter().copied().horner(gamma);
-            mask_evals_at_gamma.push(mask_at_gamma);
-
-            self.fold_round_with_coefficients(plain_c0, plain_c_inf, gamma);
-            rs.push(gamma);
-        }
-
-        self.scale_weights_and_claim(eps);
-
-        ZkSumcheckHandoff {
-            residual_prover: self,
-            randomness: Point::new(rs),
-            eps,
-            mask_messages: masks,
-            mask_randomness,
-            mask_oracle,
+            encoding,
+            mmcs,
+            folding_factor,
+            pow_bits,
+            aux_claim,
+            bind_claim,
+            challenger,
+            rng,
+        ) {
+            Ok(handoff) => handoff,
+            Err(error) => match error {},
         }
     }
+}
+
+/// Run the reviewed HVZK overlay over an exact external residual state.
+///
+/// Only dense product arithmetic crosses this seam. Mask sampling,
+/// commitment observations, wire encoding, grinding and challenge order stay
+/// in this function and therefore remain shared with the reference prover.
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+#[tracing::instrument(skip_all)]
+pub fn into_zk_sumcheck_claimless_with_residual<F, EF, P, Enc, M, R, Ch>(
+    prover: P,
+    zk_data: &mut ZkSumcheckData<F, EF>,
+    encoding: &Enc,
+    mmcs: &M,
+    folding_factor: usize,
+    pow_bits: usize,
+    aux_claim: EF,
+    challenger: &mut Ch,
+    rng: &mut R,
+) -> Result<ZkSumcheckHandoff<F, EF, M, P>, P::Error>
+where
+    F: Field,
+    EF: ExtensionField<F>,
+    P: ResidualSumcheckProver<F, EF>,
+    Enc: ZkEncodingWithRandomness<EF>,
+    Enc::Codeword: Matrix<EF>,
+    M: Mmcs<EF>,
+    R: Rng,
+    Ch: FieldChallenger<F> + GrindingChallenger<Witness = F> + CanObserve<M::Commitment>,
+{
+    into_zk_sumcheck_with_residual(
+        prover,
+        zk_data,
+        encoding,
+        mmcs,
+        folding_factor,
+        pow_bits,
+        aux_claim,
+        false,
+        challenger,
+        rng,
+    )
+}
+
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+fn into_zk_sumcheck_with_residual<F, EF, P, Enc, M, R, Ch>(
+    mut prover: P,
+    zk_data: &mut ZkSumcheckData<F, EF>,
+    encoding: &Enc,
+    mmcs: &M,
+    folding_factor: usize,
+    pow_bits: usize,
+    aux_claim: EF,
+    bind_claim: bool,
+    challenger: &mut Ch,
+    rng: &mut R,
+) -> Result<ZkSumcheckHandoff<F, EF, M, P>, P::Error>
+where
+    F: Field,
+    EF: ExtensionField<F>,
+    P: ResidualSumcheckProver<F, EF>,
+    Enc: ZkEncodingWithRandomness<EF>,
+    Enc::Codeword: Matrix<EF>,
+    M: Mmcs<EF>,
+    R: Rng,
+    Ch: FieldChallenger<F> + GrindingChallenger<Witness = F> + CanObserve<M::Commitment>,
+{
+    assert!(F::TWO != F::ZERO, "Lemma 6.4 requires char(F) != 2");
+    assert!(folding_factor >= 1, "sumcheck requires at least one round");
+    assert!(
+        folding_factor <= prover.num_variables(),
+        "folding_factor must be <= residual prover arity",
+    );
+
+    let ell_zk = encoding.message_len();
+    assert!(
+        ell_zk >= 3,
+        "mask degree ell_zk - 1 must cover the degree-2 plain piece (ell_zk >= 3)",
+    );
+
+    // Unlike the layout-driven path, this entry receives a scalar claim
+    // directly, so bind it before the masking prelude samples `eps`.
+    //
+    // The bound value is the joint claim, matching the verifier's view.
+    if bind_claim {
+        challenger.observe_algebra_element(prover.claimed_sum() + aux_claim);
+    }
+
+    let (masks, mask_randomness, mask_oracle) =
+        sample_masks::<EF, _, _, _, _>(folding_factor, encoding, mmcs, challenger, rng);
+    let mut sum_future_endpoints =
+        observe_masks_and_mu_tilde::<F, EF, _>(&masks, folding_factor, ell_zk, challenger, zk_data);
+
+    let eps: EF = challenger.sample_algebra_element();
+    let mut rs = Vec::with_capacity(folding_factor);
+    let mut mask_evals_at_gamma = Vec::with_capacity(folding_factor);
+    let pow2: Vec<EF> = EF::TWO.powers().collect_n(folding_factor + 1);
+    let round_ctx = RoundContext { k: folding_factor, ell_zk, pow2: &pow2, eps };
+
+    // Running `aux * 2^{-j}` carry; halved once per round.
+    let half = EF::TWO.inverse();
+    let mut aux_carry = aux_claim;
+
+    for (round_idx, mask) in masks.iter().enumerate() {
+        let j = round_idx + 1;
+        let mask_endpoints = mask[0].double() + mask[1..].iter().copied().sum::<EF>();
+        sum_future_endpoints -= mask_endpoints;
+        aux_carry *= half;
+
+        let (plain_c0, plain_c_inf) = prover.round_coefficients()?;
+        // The aux carry enters only the transmitted constant slot; the
+        // source-side fold below keeps the raw coefficients.
+        let h = round_ctx.assemble(
+            RoundState {
+                j,
+                mask,
+                past_mask_evals: &mask_evals_at_gamma,
+                future_endpoints: sum_future_endpoints,
+            },
+            PlainPiece { c0: plain_c0 + aux_carry, c_inf: plain_c_inf },
+        );
+        let wire = round_poly_to_wire(&h);
+        challenger.observe_algebra_slice(&wire);
+        zk_data.round_coefficients.push(wire);
+
+        if pow_bits > 0 {
+            zk_data.pow_witnesses.push(challenger.grind(pow_bits));
+        }
+
+        let gamma: EF = challenger.sample_algebra_element();
+        let mask_at_gamma = mask.iter().copied().horner(gamma);
+        mask_evals_at_gamma.push(mask_at_gamma);
+
+        prover.fold_round_with_coefficients(plain_c0, plain_c_inf, gamma)?;
+        rs.push(gamma);
+    }
+
+    prover.scale_weights_and_claim(eps)?;
+
+    Ok(ZkSumcheckHandoff {
+        residual_prover: prover,
+        randomness: Point::new(rs),
+        eps,
+        mask_messages: masks,
+        mask_randomness,
+        mask_oracle,
+        marker: core::marker::PhantomData,
+    })
 }
 
 #[cfg(test)]

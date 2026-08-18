@@ -18,7 +18,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 37;
+pub const CUDA_ABI_VERSION: u32 = 39;
 pub const OPERATION_COUNT: usize = 7;
 pub const DEFERRED_TIMING_CAPACITY: usize = 512;
 
@@ -3317,6 +3317,39 @@ impl Backend {
         Err(AccelError::FeatureDisabled)
     }
 
+    /// Return `[h(0), h(inf)]` for a prefix-binding product-sumcheck round.
+    /// Slot `i` is paired with `i + len/2`, matching Plonky3's WHIR prefix
+    /// variable order and compressed coefficient convention exactly.
+    pub fn fp2_product_round_prefix_device(
+        &mut self,
+        a: DeviceSlice<'_, Fp2Repr>,
+        b: DeviceSlice<'_, Fp2Repr>,
+    ) -> Result<[Fp2; 2], AccelError> {
+        if a.len() != b.len() || a.len() < 2 || a.len() % 2 != 0 {
+            return Err(AccelError::InvalidInput(
+                "invalid resident prefix product-sumcheck geometry",
+            ));
+        }
+        self.validate_device_slice(a, a.len())?;
+        self.validate_device_slice(b, b.len())?;
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .expect("CUDA kind without context")
+                .fp2_product_round_prefix_device(
+                    a.buffer.id,
+                    a.offset,
+                    b.buffer.id,
+                    b.offset,
+                    a.len / 2,
+                );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
     /// Generate `F = lambda*eq(z0, ·) + lambda^2*eq(z1, ·)` directly into a
     /// resident full-domain buffer. `points_and_scales` is
     /// `[z0, z1, lambda, lambda^2]`; the three scratch buffers are reused by
@@ -6078,6 +6111,43 @@ impl Backend {
         Ok(output)
     }
 
+    /// Bind the prefix (most significant layout) variable of one resident
+    /// Fp2 hypercube. The two faces are the contiguous lower and upper
+    /// halves used by the C6.2 WHIR fork.
+    pub fn fp2_fold_prefix_device(
+        &mut self,
+        input: &DeviceBuffer<Fp2Repr>,
+        input_offset: usize,
+        len: usize,
+        r: Fp2,
+    ) -> Result<DeviceBuffer<Fp2Repr>, AccelError> {
+        self.validate_buffer(input)?;
+        validate_region(input.len, input_offset, len)?;
+        if len < 2 || len % 2 != 0 {
+            return Err(AccelError::InvalidInput("invalid resident prefix-fold geometry"));
+        }
+        let output = self.alloc_device(len / 2)?;
+        #[cfg(feature = "cuda")]
+        let result = self.cuda.as_mut().expect("CUDA kind without context").fp2_fold_prefix_device(
+            input.id,
+            input_offset,
+            len,
+            r,
+            output.id,
+            0,
+        );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = {
+            let _ = r;
+            Err(AccelError::FeatureDisabled)
+        };
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
+    }
+
     /// Bind the first variable of one resident monomial-coefficient table:
     /// `c'[i] = c[2i] + r*c[2i+1]`. This is deliberately distinct from the
     /// evaluation-table interpolation fold used by LogUp.
@@ -6568,6 +6638,133 @@ impl Backend {
         Ok(output)
     }
 
+    pub fn fp_add_inplace_device(
+        &mut self,
+        target: &DeviceBuffer<u64>,
+        target_offset: usize,
+        add: &DeviceBuffer<u64>,
+        add_offset: usize,
+        len: usize,
+    ) -> Result<(), AccelError> {
+        self.validate_buffer(target)?;
+        self.validate_buffer(add)?;
+        validate_region(target.len, target_offset, len)?;
+        validate_region(add.len, add_offset, len)?;
+        #[cfg(feature = "cuda")]
+        {
+            return self.cuda.as_mut().expect("CUDA kind without context").fp_add_inplace_device(
+                target.id,
+                target_offset,
+                add.id,
+                add_offset,
+                len,
+            );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Form the exact prefix-interleaved C6.2 ZK-WHIR coefficient matrix in
+    /// polynomial-major resident layout.  Empty logical inputs use a one-word
+    /// sentinel allocation but contribute no coefficient.
+    pub fn c62_zk_pad_fp_device(
+        &mut self,
+        message: &DeviceBuffer<u64>,
+        message_len: usize,
+        randomness: &DeviceBuffer<u64>,
+        randomness_len: usize,
+        folding: usize,
+        height: usize,
+    ) -> Result<DeviceBuffer<u64>, AccelError> {
+        self.c62_zk_pad_device_impl(
+            message,
+            message_len,
+            randomness,
+            randomness_len,
+            folding,
+            height,
+            false,
+        )
+    }
+
+    /// Extension-field counterpart of [`Self::c62_zk_pad_fp_device`].
+    pub fn c62_zk_pad_fp2_device(
+        &mut self,
+        message: &DeviceBuffer<Fp2Repr>,
+        message_len: usize,
+        randomness: &DeviceBuffer<Fp2Repr>,
+        randomness_len: usize,
+        folding: usize,
+        height: usize,
+    ) -> Result<DeviceBuffer<Fp2Repr>, AccelError> {
+        self.c62_zk_pad_device_impl(
+            message,
+            message_len,
+            randomness,
+            randomness_len,
+            folding,
+            height,
+            true,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn c62_zk_pad_device_impl<T: DeviceElement>(
+        &mut self,
+        message: &DeviceBuffer<T>,
+        message_len: usize,
+        randomness: &DeviceBuffer<T>,
+        randomness_len: usize,
+        folding: usize,
+        height: usize,
+        fp2: bool,
+    ) -> Result<DeviceBuffer<T>, AccelError> {
+        self.validate_buffer(message)?;
+        self.validate_buffer(randomness)?;
+        validate_region(message.len, 0, message_len)?;
+        validate_region(randomness.len, 0, randomness_len)?;
+        let width = 1usize
+            .checked_shl(folding as u32)
+            .ok_or(AccelError::InvalidInput("C6.2 folding width overflows"))?;
+        if width == 0
+            || height < 2
+            || !height.is_power_of_two()
+            || message_len % width != 0
+            || randomness_len % width != 0
+            || message_len / width + randomness_len / width > height
+            || message_len == 0 && randomness_len == 0
+        {
+            return Err(AccelError::InvalidInput("invalid C6.2 ZK padding geometry"));
+        }
+        let output = self.alloc_device(
+            width.checked_mul(height).ok_or(AccelError::InvalidInput("shape overflow"))?,
+        )?;
+        #[cfg(feature = "cuda")]
+        let result = self.cuda.as_mut().expect("CUDA kind without context").c62_zk_pad_device(
+            fp2,
+            message.id,
+            0,
+            message_len,
+            randomness.id,
+            0,
+            randomness_len,
+            folding,
+            height,
+            output.id,
+            0,
+        );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = {
+            let _ = fp2;
+            Err(AccelError::FeatureDisabled)
+        };
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
+    }
+
     pub fn fp2_add_inplace_device(
         &mut self,
         target: &DeviceBuffer<Fp2Repr>,
@@ -6592,6 +6789,58 @@ impl Backend {
         }
         #[cfg(not(feature = "cuda"))]
         Err(AccelError::FeatureDisabled)
+    }
+
+    /// Convert canonical resident base-field elements to Fp2 with zero
+    /// extension coefficient.
+    pub fn fp_to_fp2_device(
+        &mut self,
+        input: &DeviceBuffer<u64>,
+        input_offset: usize,
+        output: &DeviceBuffer<Fp2Repr>,
+        output_offset: usize,
+        len: usize,
+    ) -> Result<(), AccelError> {
+        self.validate_buffer(input)?;
+        self.validate_buffer(output)?;
+        validate_region(input.len, input_offset, len)?;
+        validate_region(output.len, output_offset, len)?;
+        #[cfg(feature = "cuda")]
+        {
+            return self.cuda.as_mut().expect("CUDA kind without context").fp_to_fp2_device(
+                input.id,
+                input_offset,
+                output.id,
+                output_offset,
+                len,
+            );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    pub fn fp2_scale_inplace_device(
+        &mut self,
+        values: &DeviceBuffer<Fp2Repr>,
+        values_offset: usize,
+        len: usize,
+        scale: Fp2,
+    ) -> Result<(), AccelError> {
+        self.validate_buffer(values)?;
+        validate_region(values.len, values_offset, len)?;
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .expect("CUDA kind without context")
+                .fp2_scale_inplace_device(values.id, values_offset, len, scale);
+        }
+        #[cfg(not(feature = "cuda"))]
+        {
+            let _ = scale;
+            Err(AccelError::FeatureDisabled)
+        }
     }
 
     /// Convert one resident LSB-first multilinear monomial table into its
@@ -6666,7 +6915,10 @@ impl Backend {
                 gamma.into(),
             );
         #[cfg(not(feature = "cuda"))]
-        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        let result: Result<(), AccelError> = {
+            let _ = (rho, gamma);
+            Err(AccelError::FeatureDisabled)
+        };
         let free_result = self.free_device(point);
         match (result, free_result) {
             (Ok(()), Ok(())) => Ok(()),
@@ -8202,6 +8454,136 @@ mod cuda_tests {
     }
 
     #[test]
+    fn resident_c62_zk_padding_and_cached_add_are_bit_exact() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
+        let (folding, width, height) = (2usize, 4usize, 16usize);
+        let message_rows = 7usize;
+        let randomness_rows = 3usize;
+        let message = (0..width * message_rows)
+            .map(|index| Fp::new(index as u64 * 37 + 11))
+            .collect::<Vec<_>>();
+        let randomness = (0..width * randomness_rows)
+            .map(|index| Fp::new(index as u64 * 53 + 19))
+            .collect::<Vec<_>>();
+        let message_raw = message.iter().map(|value| value.value()).collect::<Vec<_>>();
+        let randomness_raw = randomness.iter().map(|value| value.value()).collect::<Vec<_>>();
+        let dmessage = gpu.upload_new_device(&message_raw).unwrap();
+        let drandomness = gpu.upload_new_device(&randomness_raw).unwrap();
+        let padded = gpu
+            .c62_zk_pad_fp_device(
+                &dmessage,
+                message.len(),
+                &drandomness,
+                randomness.len(),
+                folding,
+                height,
+            )
+            .unwrap();
+        let got = gpu.download_device(&padded, 0, width * height).unwrap();
+        let mut expected = vec![0u64; width * height];
+        for limb in 0..width {
+            for row in 0..message_rows {
+                expected[limb * height + row] = message[limb * message_rows + row].value();
+            }
+            for row in 0..randomness_rows {
+                expected[limb * height + message_rows + row] =
+                    randomness[limb * randomness_rows + row].value();
+            }
+        }
+        assert_eq!(got, expected);
+
+        let encoded = gpu.ntt_fp_batch_device(&padded, 0, width, height).unwrap();
+        let encoded_host = gpu.download_device(&encoded, 0, width * height).unwrap();
+        for limb in 0..width {
+            let expected_row = cpu_ntt(
+                expected[limb * height..(limb + 1) * height].iter().copied().map(Fp::new).collect(),
+            );
+            assert_eq!(
+                &encoded_host[limb * height..(limb + 1) * height],
+                &expected_row.iter().map(|value| value.value()).collect::<Vec<_>>()
+            );
+        }
+
+        let add = gpu.upload_new_device(&vec![5u64; width * height]).unwrap();
+        gpu.fp_add_inplace_device(&encoded, 0, &add, 0, width * height).unwrap();
+        let added = gpu.download_device(&encoded, 0, width * height).unwrap();
+        assert_eq!(
+            added,
+            encoded_host
+                .iter()
+                .copied()
+                .map(|value| (Fp::new(value) + Fp::new(5)).value())
+                .collect::<Vec<_>>()
+        );
+
+        let sumcheck_len = 16usize;
+        let base_values =
+            (0..sumcheck_len).map(|index| Fp::new(index as u64 * 29 + 7)).collect::<Vec<_>>();
+        let base_raw = base_values.iter().map(|value| value.value()).collect::<Vec<_>>();
+        let dbase = gpu.upload_new_device(&base_raw).unwrap();
+        let devals = gpu.alloc_device::<Fp2Repr>(sumcheck_len).unwrap();
+        gpu.fp_to_fp2_device(&dbase, 0, &devals, 0, sumcheck_len).unwrap();
+        let weights = (0..sumcheck_len)
+            .map(|index| Fp2::new(Fp::new(index as u64 * 31 + 3), Fp::new(index as u64 * 43 + 5)))
+            .collect::<Vec<_>>();
+        let dweights = gpu
+            .upload_new_device(&weights.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>())
+            .unwrap();
+        let [got_c0, got_c_inf] = gpu
+            .fp2_product_round_prefix_device(
+                DeviceSlice::new(&devals, 0, sumcheck_len).unwrap(),
+                DeviceSlice::new(&dweights, 0, sumcheck_len).unwrap(),
+            )
+            .unwrap();
+        let half = sumcheck_len / 2;
+        let mut expected_c0 = Fp2::ZERO;
+        let mut expected_c_inf = Fp2::ZERO;
+        for index in 0..half {
+            let a0 = Fp2::from_base(base_values[index]);
+            let a1 = Fp2::from_base(base_values[index + half]);
+            let b0 = weights[index];
+            let b1 = weights[index + half];
+            expected_c0 += a0 * b0;
+            expected_c_inf += (a1 - a0) * (b1 - b0);
+        }
+        assert_eq!([got_c0, got_c_inf], [expected_c0, expected_c_inf]);
+
+        let challenge = Fp2::new(Fp::new(101), Fp::new(103));
+        let folded_evals = gpu.fp2_fold_prefix_device(&devals, 0, sumcheck_len, challenge).unwrap();
+        let got_folded = gpu.download_device(&folded_evals, 0, half).unwrap();
+        assert_eq!(
+            got_folded.into_iter().map(Fp2::from).collect::<Vec<_>>(),
+            (0..half)
+                .map(|index| {
+                    let a0 = Fp2::from_base(base_values[index]);
+                    let a1 = Fp2::from_base(base_values[index + half]);
+                    a0 + (a1 - a0) * challenge
+                })
+                .collect::<Vec<_>>()
+        );
+        let scale = Fp2::new(Fp::new(107), Fp::new(109));
+        gpu.fp2_scale_inplace_device(&dweights, 0, sumcheck_len, scale).unwrap();
+        assert_eq!(
+            gpu.download_device(&dweights, 0, sumcheck_len)
+                .unwrap()
+                .into_iter()
+                .map(Fp2::from)
+                .collect::<Vec<_>>(),
+            weights.iter().map(|value| *value * scale).collect::<Vec<_>>()
+        );
+
+        gpu.free_device(folded_evals).unwrap();
+        gpu.free_device(dweights).unwrap();
+        gpu.free_device(devals).unwrap();
+        gpu.free_device(dbase).unwrap();
+        gpu.free_device(add).unwrap();
+        gpu.free_device(encoded).unwrap();
+        gpu.free_device(padded).unwrap();
+        gpu.free_device(drandomness).unwrap();
+        gpu.free_device(dmessage).unwrap();
+    }
+
+    #[test]
     fn resident_pcs_ntt_gather_and_merkle_are_bit_exact() {
         let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
         let (rows, cols, pad, code_len) = (5usize, 11usize, 3usize, 16usize);
@@ -9525,9 +9907,8 @@ mod cuda_tests {
             av.chunks_exact(2).map(|pair| pair[0] + challenge * pair[1]).collect::<Vec<_>>()
         );
         gpu.free_device(monomial_bound).unwrap();
-        let mobius_inverse = gpu
-            .clone_fp2_device(DeviceSlice::new(&da, 0, av.len()).unwrap())
-            .unwrap();
+        let mobius_inverse =
+            gpu.clone_fp2_device(DeviceSlice::new(&da, 0, av.len()).unwrap()).unwrap();
         gpu.fp2_mobius_inverse_inplace_device(&mobius_inverse).unwrap();
         let got_mobius_inverse = gpu
             .download_device(&mobius_inverse, 0, av.len())
@@ -9547,19 +9928,12 @@ mod cuda_tests {
         }
         assert_eq!(got_mobius_inverse, expected_mobius_inverse);
         gpu.free_device(mobius_inverse).unwrap();
-        let affine_weights = gpu
-            .clone_fp2_device(DeviceSlice::new(&da, 0, av.len()).unwrap())
-            .unwrap();
+        let affine_weights =
+            gpu.clone_fp2_device(DeviceSlice::new(&da, 0, av.len()).unwrap()).unwrap();
         let rho = Fp2::new(Fp::new(101), Fp::new(103));
         let gamma = Fp2::new(Fp::new(107), Fp::new(109));
-        gpu.fp2_affine_eq_weights_inplace_device(
-            &affine_weights,
-            5,
-            &monomial_point,
-            rho,
-            gamma,
-        )
-        .unwrap();
+        gpu.fp2_affine_eq_weights_inplace_device(&affine_weights, 5, &monomial_point, rho, gamma)
+            .unwrap();
         let got_affine = gpu
             .download_device(&affine_weights, 0, av.len())
             .unwrap()
@@ -9567,17 +9941,11 @@ mod cuda_tests {
             .map(Fp2::from)
             .collect::<Vec<_>>();
         for (index, &got) in got_affine.iter().enumerate() {
-            let equality = monomial_point.iter().enumerate().fold(
-                Fp2::ONE,
-                |weight, (bit, &coordinate)| {
+            let equality =
+                monomial_point.iter().enumerate().fold(Fp2::ONE, |weight, (bit, &coordinate)| {
                     weight
-                        * if index & (1 << bit) == 0 {
-                            Fp2::ONE - coordinate
-                        } else {
-                            coordinate
-                        }
-                },
-            );
+                        * if index & (1 << bit) == 0 { Fp2::ONE - coordinate } else { coordinate }
+                });
             let coefficient = if index < 5 { av[index] } else { Fp2::ZERO };
             assert_eq!(got, rho * equality + gamma * coefficient);
         }
@@ -10104,10 +10472,9 @@ mod cuda_tests {
         let recip_log2 = 10u32;
         let mut recip_lut = vec![0i16; 1 << 16];
         for (input, value) in recip_lut.iter_mut().enumerate() {
-            let denominator = ((input as u64) << recip_den_shift)
-                + (1u64 << (recip_den_shift - 1));
-            *value = (((1u64 << recip_log2) + denominator / 2) / denominator)
-                .min(i16::MAX as u64) as i16;
+            let denominator = ((input as u64) << recip_den_shift) + (1u64 << (recip_den_shift - 1));
+            *value = (((1u64 << recip_log2) + denominator / 2) / denominator).min(i16::MAX as u64)
+                as i16;
         }
         for (index, &denom) in denoms.iter().enumerate() {
             recips[index] = recip_lut[(denom >> recip_den_shift) as usize];

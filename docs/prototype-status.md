@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 R19 SETUP READY — PERFORMANCE-ELIGIBILITY HARD STOP / POD STOPPED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 R19 C62GW1 BOUNDARY STAGED — CUDA DIFFERENTIAL HARD STOP / POD STOPPED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,32 +10,36 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Status and authorization.** C6.2 is `R19_SETUP_READY /
-  C62_GPU_PERFORMANCE_ELIGIBLE_EXECUTOR_REQUIRED`; design §0.44 is active.
-  Standing create-new GO remains unconsumed because no session or PCG started.
-- **Completed evidence.** Clean `e107db2` generated all 17 split-census setup
-  profiles. The byte-identical persistent copy has 85 files / 197,278,943 B;
-  its manifest SHA-256 is `9990a3dbbeaf30405e3cabdbd947d9e03003a6fca50ebe361783d52c6e036821`.
-  The local D14 cached-base full-payload differential and resource census pass
-  without hardware or timing credit.
-- **Hard stop.** The selected WHIR chains explicitly report
-  `gpu_performance_credit=false` and retain about 197 GiB of temporary spill.
-  They cannot honestly receive the `<15.750 s` A100-prover wall gate. Do not
-  start setup measurement, PCG, a production session or mutations with this
-  executor.
+- **Status and authorization.** C6.2 is `R19_C62GW1_LOCAL_BOUNDARY_STAGED /
+  C62_CUDA_EXACT_DIFFERENTIAL_REQUIRED`; design §0.46 is active. Standing
+  create-new GO remains unconsumed because no session or PCG started.
+- **Completed evidence.** The saved 17-profile setup remains bound by manifest
+  SHA-256 `9990a3dbbeaf30405e3cabdbd947d9e03003a6fca50ebe361783d52c6e036821`.
+  The typed GPU-native WHIR seam, provider-only fixed-base cache, bounded binary
+  frontier, resident prefix sumcheck and D28 resource guard compile locally.
+  CPU/cache full-payload identity and local guard tests pass without hardware
+  or timing credit.
+- **Hard stop.** CUDA ABI 39 and its exact root/row/proof/full-payload
+  differentials have not run on an A100. The production runner deliberately
+  remains `C6SPR11-persisted-functional-only`, `gpu_performance_credit=false`.
+  Do not start setup measurement, PCG, a session or mutations.
 - **No product result.** No certificate, timing, proof-size, session or hardware
-  gate receives credit; the comparison table and raw benchmark records remain
-  unchanged. The pod and SSH endpoint are stopped.
-- **Resume.** Preregister and implement an exact byte-identical GPU-resident or
-  streaming WHIR executor which exposes positive performance eligibility and
-  fails before authorization otherwise. Reuse the persistent setup through
-  `C62_SETUP_SOURCE`, run narrow checks, then execute one create-new r19 session.
-- **Owner direction.** Provider-only preprocessing of the fixed model/embed
-  base encodings is authorized outside the certificate timer, with build,
-  storage and preload reported separately. A root-preserving WHIR folding
-  study starts automatically only if the byte-identical projection exceeds
-  `12.500 s`. Primary/secondary roots remain independent. The bounded-output
-  `Fp2`-VOLE idea is a separate C5 research construction, not a C6.2 PCG swap.
+  gate receives credit; comparison and raw run records remain unchanged. No
+  live pod endpoint is registered.
+- **Resume.** From a clean pushed checkpoint, compile ABI 39 on the pod and run
+  the scaled fresh/cache CUDA differentials. Then run D28/D27 geometry and
+  resource calibration. Only after both pass may the production adapter become
+  eligible and attempt one `context-000`; abort at any phase budget breach or
+  absolute `<15.750 s` wall failure.
+- **Owner direction.** Provider cache remains fixed-base only and separately
+  reported. Independent roots are unchanged. If the exact projection exceeds
+  `12.500 s`, start the authorized root-preserving folding study. Bounded-output
+  `Fp2`-VOLE remains separate C5 research.
+
+- **2026-08-18 — C62GW1 local boundary staged without GPU credit.** §0.46 adds
+  the typed resident arithmetic/commitment seam and fail-closed resource
+  admission. Local exact CPU/cache and compile checks pass; A100 differentials,
+  production wiring and all product gates remain pending.
 
 - **2026-08-18 — r18 setup regeneration separates response and allocation
   censuses.** It stopped before setup/session; §0.43 makes the distinction

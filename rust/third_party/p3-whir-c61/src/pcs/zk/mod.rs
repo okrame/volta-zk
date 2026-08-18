@@ -72,7 +72,9 @@ pub use committer::c62_provider_cache_split_holds;
 pub use config::{ZkConfigError, ZkParameters, ZkWhirConfig};
 pub use mask::{MaskCodeShape, MaskGroupShape};
 pub use proof::{BaseCaseZkProof, BlindedMask, MaskOpeningPair, ZkRoundProof, ZkWhirProof};
-pub use prover::{ClaimlessWhirProverOutput, HidingWhirProver, HidingWhirProverData};
+pub use prover::{
+    ClaimlessWhirProverOutput, HidingWhirProver, HidingWhirProverData, ZkWhirOracleCommitter,
+};
 pub use verifier::{ClaimlessWhirVerifierClosure, HidingWhirVerifier, ZkVerifierError};
 
 #[cfg(test)]

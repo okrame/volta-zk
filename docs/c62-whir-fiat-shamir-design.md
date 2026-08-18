@@ -1049,3 +1049,39 @@ frontiers; asynchronous pinned-host staging; CUDA graph capture only after
 byte identity. Folding-factor changes are evaluated last and only under the
 `12.500 s` trigger. Every tier first passes a scaled root/proof/transcript
 differential against the current C6.2 fork.
+
+## 0.46 C62GW1 local GPU-native boundary checkpoint
+
+The staged executor is `C62GW1-bounded-binary-frontier`, CUDA ABI 39. The
+Plonky3 forks now expose typed commitment and residual-sumcheck boundaries;
+mask sampling, transcript observations, PoW, challenges, proof assembly and
+the strict C6.2 codec remain in the reviewed common path. The native side
+implements exact base/Fp2 padding and NTT, resident prefix product-sumcheck,
+fold and scale, binary BLAKE3 tile frontiers, query-local subtree rebuild and
+the existing pruned-multiproof order. It returns the unchanged commitment,
+opening and proof types.
+
+The authorized provider cache contains only `Enc(fixed_base, 0)`. Its key
+binds model, protocol, parameters, field, geometry, encoder version and content
+digest; each online commitment adds a newly encoded mask. Workload state,
+masks, challenges, roots, queries and PCG material remain excluded. The D28
+cache-on resource admission projects a conservative peak of
+`40 GiB + 64 MiB - 32 B` including a 4-GiB reserve, and rejects a 40-GiB
+device. Allocation and geometry error paths release owned device buffers.
+
+Local checks establish only executable seam evidence: the ordinary and cached
+D14 CPU paths produce the same complete strict payload, interaction census,
+transcript ledger and correlation count; the fork and CUDA-feature Rust graph
+compile; the resource/cache/frontier tests pass. This VM has no CUDA compiler
+or device, so neither the ABI nor any kernel, root, opening or full native
+payload has hardware credit. In particular the prefix round is registered as
+`[h(0), h(inf)]`, not the historical adjacent-pair `[h(0), h(2)]` interface.
+
+The production runner therefore remains fail-closed under
+`C6SPR11-persisted-functional-only` and must not be relabelled. Resume order is
+fixed: clean checkpoint; A100 ABI build; scaled base/Fp2 root-row-multiproof
+and fresh/cache full-payload differentials; D28/D27 non-session memory and
+phase calibration; only then production adapter wiring and one genesis
+`context-000` attempt. Any projected wall above `12.500 s` triggers the
+authorized independent-root folding analysis. Any phase budget violation or
+absolute `15.750 s` wall overrun aborts before another certificate.

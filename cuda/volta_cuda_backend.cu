@@ -18,7 +18,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 37;
+constexpr uint32_t ABI_VERSION = 39;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -2088,6 +2088,19 @@ __global__ void fp2_product_round_terms(
     output[z] = ProductRoundAcc{fp2_mul(a0, b0), fp2_mul(a2, b2)};
 }
 
+__global__ void fp2_product_round_prefix_terms(
+    const Fp2* a, const Fp2* b, ProductRoundAcc* output, size_t pairs) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z >= pairs) return;
+    const Fp2 a0 = a[z], a1 = a[z + pairs];
+    const Fp2 b0 = b[z], b1 = b[z + pairs];
+    const Fp2 da = fp2_sub(a1, a0), db = fp2_sub(b1, b0);
+    // Plonky3's prefix sumcheck transports the quadratic leading
+    // coefficient h(inf), not h(2). The shared accumulator field is named
+    // g2 for the historical adjacent-pair API, but carries h(inf) here.
+    output[z] = ProductRoundAcc{fp2_mul(a0, b0), fp2_mul(da, db)};
+}
+
 __global__ void reduce_product_round(
     const ProductRoundAcc* input, ProductRoundAcc* output, size_t n) {
     const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -2852,6 +2865,14 @@ __global__ void fp2_fold_rows(
     output[z] = fp2_add(a, fp2_mul(fp2_sub(src[2 * i + 1], a), r));
 }
 
+__global__ void fp2_fold_prefix(
+    const Fp2* input, Fp2* output, size_t pairs, Fp2 r) {
+    const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (i >= pairs) return;
+    const Fp2 a = input[i];
+    output[i] = fp2_add(a, fp2_mul(fp2_sub(input[i + pairs], a), r));
+}
+
 __global__ void eq_rows_init(Fp2* output, size_t rows) {
     const size_t row = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
     if (row < rows) output[row] = Fp2{1, 0};
@@ -2960,6 +2981,34 @@ __global__ void pcs_messages_kernel(
 __global__ void fp2_add_inplace_kernel(Fp2* target,const Fp2* add,size_t n){
     const size_t i=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
     if(i<n)target[i]=fp2_add(target[i],add[i]);
+}
+
+__global__ void fp_to_fp2_kernel(const uint64_t* input, Fp2* output, size_t n) {
+    const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (i < n) output[i] = Fp2{input[i], 0};
+}
+
+__global__ void fp2_scale_inplace_kernel(Fp2* values, size_t n, Fp2 scale) {
+    const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (i < n) values[i] = fp2_mul(values[i], scale);
+}
+
+__global__ void fp_add_inplace_kernel(uint64_t* target,const uint64_t* add,size_t n){
+    const size_t i=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(i<n)target[i]=fp_add(target[i],add[i]);
+}
+
+template <typename T>
+__global__ void c62_zk_pad_kernel(
+    const T* message,size_t message_rows,const T* randomness,size_t randomness_rows,
+    T* output,size_t width,size_t height){
+    const size_t z=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(z>=width*height)return;
+    const size_t limb=z/height,row=z-limb*height;
+    if(row<message_rows)output[z]=message[limb*message_rows+row];
+    else if(row<message_rows+randomness_rows)
+        output[z]=randomness[limb*randomness_rows+row-message_rows];
+    else output[z]=T{};
 }
 
 __global__ void fp2_mobius_inverse_stage_kernel(Fp2* values,size_t pairs,size_t stride){
@@ -4785,7 +4834,8 @@ extern "C" int volta_cuda_reserve_logup_round_workspace(
 
 int fp2_product_round_resident_impl(
     Context* c, const Fp2* a, const Fp2* b, size_t pairs,
-    Fp2* output, bool output_is_device, bool apply_scale, Fp2 scale) {
+    Fp2* output, bool output_is_device, bool apply_scale, Fp2 scale,
+    bool prefix_binding) {
     size_t workspace_bytes = 0;
     size_t reduced_bytes = 0;
     if (!checked_mul_size(pairs, sizeof(ProductRoundAcc), &workspace_bytes) ||
@@ -4797,8 +4847,13 @@ int fp2_product_round_resident_impl(
     if (mark_timing(c, 1)) return -1;
     ProductRoundAcc* src = buf<ProductRoundAcc>(c, 12);
     ProductRoundAcc* dst = buf<ProductRoundAcc>(c, 13);
-    fp2_product_round_terms<<<(pairs + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
-        a, b, src, pairs);
+    if (prefix_binding) {
+        fp2_product_round_prefix_terms<<<
+            (pairs + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(a, b, src, pairs);
+    } else {
+        fp2_product_round_terms<<<
+            (pairs + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(a, b, src, pairs);
+    }
     size_t len = pairs;
     while (len > 1) {
         const size_t next = (len + 1) / 2;
@@ -4840,7 +4895,26 @@ extern "C" int volta_cuda_fp2_product_round_device(
         resident_region(c, b_id, b_offset_bytes, input_bytes, &b)) return -1;
     return fp2_product_round_resident_impl(
         c, static_cast<const Fp2*>(a), static_cast<const Fp2*>(b),
-        pairs, output, false, false, Fp2{1, 0});
+        pairs, output, false, false, Fp2{1, 0}, false);
+}
+
+extern "C" int volta_cuda_fp2_product_round_prefix_device(
+    void* raw, uint64_t a_id, size_t a_offset,
+    uint64_t b_id, size_t b_offset, size_t pairs, Fp2* output) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !pairs || !output)
+        return fail_message(c, "invalid resident prefix product-round geometry");
+    size_t a_offset_bytes = 0, b_offset_bytes = 0, input_bytes = 0;
+    if (!checked_mul_size(a_offset, sizeof(Fp2), &a_offset_bytes) ||
+        !checked_mul_size(b_offset, sizeof(Fp2), &b_offset_bytes) ||
+        !checked_mul_size(pairs, 2 * sizeof(Fp2), &input_bytes))
+        return fail_message(c, "resident prefix product-round geometry overflows size_t");
+    void *a = nullptr, *b = nullptr;
+    if (resident_region(c, a_id, a_offset_bytes, input_bytes, &a) ||
+        resident_region(c, b_id, b_offset_bytes, input_bytes, &b)) return -1;
+    return fp2_product_round_resident_impl(
+        c, static_cast<const Fp2*>(a), static_cast<const Fp2*>(b),
+        pairs, output, false, false, Fp2{1, 0}, true);
 }
 
 extern "C" int volta_cuda_fp2_product_round_into_device(
@@ -4864,7 +4938,7 @@ extern "C" int volta_cuda_fp2_product_round_into_device(
                         sizeof(ProductRoundAcc), &output)) return -1;
     return fp2_product_round_resident_impl(
         c, static_cast<const Fp2*>(a), static_cast<const Fp2*>(b), pairs,
-        static_cast<Fp2*>(output), true, false, Fp2{1, 0});
+        static_cast<Fp2*>(output), true, false, Fp2{1, 0}, false);
 }
 
 extern "C" int volta_cuda_fp2_product_round_scaled_into_device(
@@ -4889,7 +4963,7 @@ extern "C" int volta_cuda_fp2_product_round_scaled_into_device(
                         sizeof(ProductRoundAcc), &output)) return -1;
     return fp2_product_round_resident_impl(
         c, static_cast<const Fp2*>(a), static_cast<const Fp2*>(b), pairs,
-        static_cast<Fp2*>(output), true, true, scale);
+        static_cast<Fp2*>(output), true, true, scale, false);
 }
 
 extern "C" int volta_cuda_claim_reduce_f_two_into_device(
@@ -6881,6 +6955,28 @@ extern "C" int volta_cuda_fp2_fold_rows_device(
     return finish_timing(c, OP_LOGUP, 0, 0);
 }
 
+extern "C" int volta_cuda_fp2_fold_prefix_device(
+    void* raw, uint64_t input_id, size_t input_offset, size_t len,
+    Fp2 r, uint64_t output_id, size_t output_offset) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || len < 2 || (len & 1))
+        return fail_message(c, "invalid resident prefix-fold geometry");
+    const size_t pairs = len / 2;
+    void *input = nullptr, *output = nullptr;
+    if (resident_region(c, input_id, input_offset * sizeof(Fp2),
+                        len * sizeof(Fp2), &input) ||
+        resident_region(c, output_id, output_offset * sizeof(Fp2),
+                        pairs * sizeof(Fp2), &output))
+        return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    fp2_fold_prefix<<<(pairs + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const Fp2*>(input), static_cast<Fp2*>(output), pairs, r);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_LOGUP, 0, 0);
+}
+
 extern "C" int volta_cuda_logup_eq_rows_device(
     void* raw, uint64_t points_id, size_t points_offset, size_t rows, size_t dims,
     uint64_t output_id, size_t output_offset) {
@@ -7109,6 +7205,78 @@ extern "C" int volta_cuda_fp2_add_inplace_device(
         static_cast<Fp2*>(target),static_cast<const Fp2*>(add),n);
     CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
     return finish_timing(c,OP_PCS_ROWS,0,0);
+}
+
+extern "C" int volta_cuda_fp_to_fp2_device(
+    void* raw,uint64_t input_id,size_t input_offset,uint64_t output_id,size_t output_offset,size_t n){
+    Context* c=static_cast<Context*>(raw);if(!c||!n)return fail_message(c,"invalid resident Fp-to-Fp2 conversion");
+    void *input=nullptr,*output=nullptr;
+    if(resident_region(c,input_id,input_offset*sizeof(uint64_t),n*sizeof(uint64_t),&input)||
+       resident_region(c,output_id,output_offset*sizeof(Fp2),n*sizeof(Fp2),&output))return -1;
+    if(begin_timing(c))return -1;if(mark_timing(c,1))return -1;
+    fp_to_fp2_kernel<<<(n+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+        static_cast<const uint64_t*>(input),static_cast<Fp2*>(output),n);
+    CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
+    return finish_timing(c,OP_PCS_ROWS,0,0);
+}
+
+extern "C" int volta_cuda_fp2_scale_inplace_device(
+    void* raw,uint64_t values_id,size_t values_offset,size_t n,Fp2 scale){
+    Context* c=static_cast<Context*>(raw);if(!c||!n)return fail_message(c,"invalid resident Fp2 scale");
+    void *values=nullptr;
+    if(resident_region(c,values_id,values_offset*sizeof(Fp2),n*sizeof(Fp2),&values))return -1;
+    if(begin_timing(c))return -1;if(mark_timing(c,1))return -1;
+    fp2_scale_inplace_kernel<<<(n+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+        static_cast<Fp2*>(values),n,scale);
+    CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
+    return finish_timing(c,OP_PCS_ROWS,0,0);
+}
+
+extern "C" int volta_cuda_fp_add_inplace_device(
+    void* raw,uint64_t target_id,size_t target_offset,uint64_t add_id,size_t add_offset,size_t n){
+    Context* c=static_cast<Context*>(raw);if(!c||!n)return fail_message(c,"invalid resident Fp add");
+    void *target=nullptr,*add=nullptr;
+    if(resident_region(c,target_id,target_offset*sizeof(uint64_t),n*sizeof(uint64_t),&target)||
+       resident_region(c,add_id,add_offset*sizeof(uint64_t),n*sizeof(uint64_t),&add))return -1;
+    if(begin_timing(c))return -1;if(mark_timing(c,1))return -1;
+    fp_add_inplace_kernel<<<(n+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+        static_cast<uint64_t*>(target),static_cast<const uint64_t*>(add),n);
+    CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
+    return finish_timing(c,OP_PCS_ROWS,0,0);
+}
+
+extern "C" int volta_cuda_c62_zk_pad_device(
+    void* raw,int fp2,uint64_t message_id,size_t message_offset,size_t message_len,
+    uint64_t randomness_id,size_t randomness_offset,size_t randomness_len,
+    size_t folding,size_t height,uint64_t output_id,size_t output_offset){
+    Context* c=static_cast<Context*>(raw);
+    if(!c||(fp2!=0&&fp2!=1)||folding>=8*sizeof(size_t)||height<2||(height&(height-1)))
+        return fail_message(c,"invalid C6.2 ZK padding geometry");
+    const size_t width=static_cast<size_t>(1)<<folding;
+    if(message_len%width||randomness_len%width||
+       message_len/width+randomness_len/width>height||(!message_len&&!randomness_len))
+        return fail_message(c,"invalid C6.2 ZK padding lengths");
+    const size_t elem=fp2?sizeof(Fp2):sizeof(uint64_t);
+    size_t output_len=0,output_bytes=0;
+    if(!checked_mul_size(width,height,&output_len)||
+       !checked_mul_size(output_len,elem,&output_bytes))
+        return fail_message(c,"C6.2 ZK padding output overflows size_t");
+    void *message=nullptr,*randomness=nullptr,*output=nullptr;
+    if(resident_region(c,message_id,message_offset*elem,message_len*elem,&message)||
+       resident_region(c,randomness_id,randomness_offset*elem,randomness_len*elem,&randomness)||
+       resident_region(c,output_id,output_offset*elem,output_bytes,&output))return -1;
+    if(begin_timing(c))return -1;if(mark_timing(c,1))return -1;
+    const size_t blocks=(output_len+BLOCK-1)/BLOCK;
+    if(fp2)c62_zk_pad_kernel<<<blocks,BLOCK,0,c->stream>>>(
+        static_cast<const Fp2*>(message),message_len/width,
+        static_cast<const Fp2*>(randomness),randomness_len/width,
+        static_cast<Fp2*>(output),width,height);
+    else c62_zk_pad_kernel<<<blocks,BLOCK,0,c->stream>>>(
+        static_cast<const uint64_t*>(message),message_len/width,
+        static_cast<const uint64_t*>(randomness),randomness_len/width,
+        static_cast<uint64_t*>(output),width,height);
+    CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
+    return finish_timing(c,OP_PCS_ROWS,0,0,0,0,output_bytes);
 }
 
 extern "C" int volta_cuda_fp2_mobius_inverse_inplace_device(

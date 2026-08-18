@@ -1292,6 +1292,7 @@ dependencies = [
  "p3-merkle-tree 0.6.0",
  "p3-multilinear-util",
  "p3-sumcheck",
+ "p3-sumcheck-c61",
  "p3-symmetric",
  "p3-whir",
  "p3-whir-c61",

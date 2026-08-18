@@ -8,13 +8,14 @@
 //! ```
 
 use alloc::vec::Vec;
+use core::marker::PhantomData;
 use core::mem::take;
 
 use p3_commit::{ExtensionMmcs, Mmcs};
 use p3_field::{ExtensionField, Field, TwoAdicField, dot_product};
 use p3_multilinear_util::point::Point;
 use p3_multilinear_util::poly::Poly;
-use p3_sumcheck::strategy::SumcheckProver;
+use p3_sumcheck::strategy::ResidualSumcheckProver;
 use p3_sumcheck::zk::{ZkSumcheckData, ZkSumcheckHandoff, mask_residual_covectors_from_shape};
 
 use crate::pcs::zk::base_case::MaskProverData;
@@ -76,16 +77,17 @@ where
     ///     claim side  ->  rescale the carried covectors,
     ///                     append the batch's k fresh masks
     /// ```
-    pub(super) fn record_batch(
+    pub(super) fn record_batch<P>(
         &mut self,
         sumchecks: &mut Vec<ZkSumcheckData<F, EF>>,
         mask_commitments: &mut Vec<MT::Commitment>,
-        mut handoff: ZkSumcheckHandoff<F, EF, ExtensionMmcs<F, EF, MT>>,
+        mut handoff: ZkSumcheckHandoff<F, EF, ExtensionMmcs<F, EF, MT>, P>,
         zk_data: &mut ZkSumcheckData<F, EF>,
         ell_zk: usize,
-    ) -> BatchState<F, EF>
+    ) -> BatchState<F, EF, P>
     where
         F: Send + Sync,
+        P: ResidualSumcheckProver<F, EF>,
     {
         let folding = handoff.randomness.num_variables();
         // Proof side: the batch's wire transcript and mask commitment.
@@ -114,6 +116,7 @@ where
         BatchState {
             residual_prover: handoff.residual_prover,
             randomness: handoff.randomness,
+            marker: PhantomData,
         }
     }
 
@@ -134,11 +137,12 @@ where
 }
 
 /// Carried state after one masked sumcheck batch.
-pub(super) struct BatchState<F: Field, EF: ExtensionField<F>> {
+pub(super) struct BatchState<F: Field, EF: ExtensionField<F>, P> {
     /// Residual prover over the folded message with eps-scaled weights.
-    pub(super) residual_prover: SumcheckProver<F, EF>,
+    pub(super) residual_prover: P,
     /// The batch's folding randomness.
     pub(super) randomness: Point<EF>,
+    marker: PhantomData<F>,
 }
 
 /// Folds a limb-major chunked vector by the eq table at `gamma`.

@@ -10025,6 +10025,154 @@ pub fn run_c61_private_entropy_driver_diagnostic(
 mod tests {
     use super::*;
 
+    #[cfg(feature = "cuda")]
+    #[allow(clippy::too_many_arguments)]
+    fn prove_diagnostic_gpu_native(
+        witness: Poly<Goldilocks>,
+        point: Point<C61P3Fp2>,
+        verifier_seed: [u8; 32],
+        prover_rng_seed: u64,
+        pcg_seed: [u8; 32],
+        delta: Fp2,
+        target_tag: Fp2,
+        id: C61NativeChainId,
+        mask_range: C61AuthenticatedWhirMaskRange,
+        cached_fixed_base: bool,
+    ) -> Result<(C61AuthenticatedP3Fixture, u64), String> {
+        use crate::c62_gpu_whir::{
+            goldilocks_digest, C62GpuMmcs, C62GpuResourceGuard, C62GpuWhirCommitter,
+            C62ProviderCacheKey, C62_GPU_WHIR_EXECUTOR_VERSION, C62_GPU_WHIR_FIELD_TAG,
+        };
+
+        let num_variables = witness.num_variables();
+        if point.num_variables() != num_variables {
+            return Err("C62GW1 witness/point dimension mismatch".to_owned());
+        }
+        let evaluation_p3 = witness.eval_base(&point);
+        let evaluation = c61_volta_fp2_from_p3(evaluation_p3);
+        let target = ProverAuthed::new(evaluation, target_tag);
+        let target_key = VerifierKey::new(target_tag + delta * evaluation);
+        let mut transcript = Transcript::new(verifier_seed);
+        let mut challenger =
+            C61InteractiveChallenger::new_claimless(&mut transcript, num_variables);
+        let config = c61_authenticated_config::<C61InteractiveChallenger<'_>>(num_variables)?;
+        let backend = Backend::cuda_resident().map_err(|error| error.to_string())?;
+        let folding = config.round_folding_factor(0);
+        let height = (1usize << (num_variables - folding)) << C61_WHIRA1_STARTING_LOG_INV_RATE;
+        let guard = C62GpuResourceGuard::for_lane(
+            num_variables,
+            folding,
+            height,
+            10,
+            cached_fixed_base,
+            80u64 << 30,
+        )
+        .map_err(|error| error.to_string())?;
+        let mmcs = C62GpuMmcs::new(backend, 10, guard).map_err(|error| error.to_string())?;
+        let oracle = if cached_fixed_base {
+            let cache = mmcs
+                .prepare_fixed_base(
+                    C62ProviderCacheKey {
+                        model_digest: [0x11; 32],
+                        protocol_digest: [0x22; 32],
+                        parameter_digest: [0x33; 32],
+                        content_digest: goldilocks_digest(witness.as_slice()),
+                        field_tag: C62_GPU_WHIR_FIELD_TAG,
+                        encoder_version: C62_GPU_WHIR_EXECUTOR_VERSION,
+                        num_variables: num_variables as u8,
+                        folding: folding as u8,
+                        height: height as u64,
+                    },
+                    witness.as_slice(),
+                )
+                .map_err(|error| error.to_string())?;
+            C62GpuWhirCommitter::provider_cached(mmcs.clone(), cache)
+        } else {
+            C62GpuWhirCommitter::fresh(mmcs.clone())
+        };
+        let dft = Radix2DFTSmallBatch::default();
+        let prover = HidingWhirProver::new(&config, &dft, &mmcs);
+        let mut rng = StdRng::seed_from_u64(prover_rng_seed);
+        let (commitment, data) = prover
+            .commit_with_oracle(witness, &oracle, &mut challenger, &mut rng)
+            .map_err(|error| error.to_string())?;
+        challenger.observe_public_point(&point).map_err(|error| error.to_string())?;
+
+        let mut correlations = CorrelationStream::new(pcg_seed);
+        let prepared = prepare_c61_authenticated_whir_mask(id, mask_range, &mut correlations)
+            .map_err(|error| error.to_string())?;
+        let output = prover
+            .prove_claimless_with_oracle(
+                data,
+                &[(point.clone(), evaluation_p3)],
+                c61_p3_fp2_from_volta(prepared.value()),
+                &oracle,
+                &mut challenger,
+                &mut rng,
+            )
+            .map_err(|error| error.to_string())?;
+        challenger.ensure_public_statement_bound().map_err(|error| error.to_string())?;
+
+        let placeholder_base_proof = C61AuthenticatedWhirBaseProof::decode(
+            &[0u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES],
+        )
+        .map_err(|error| error.to_string())?;
+        let placeholder_payload = encode_c61_authenticated_p3_artifact_inner(
+            num_variables,
+            &commitment,
+            &output.proof,
+            placeholder_base_proof,
+            false,
+        )
+        .map_err(|error| error.to_string())?;
+        let whir_payload_bytes = placeholder_payload
+            .len()
+            .checked_sub(C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES)
+            .ok_or_else(|| "C62GW1 payload is shorter than its ZeroOpen tag".to_owned())?;
+        let provider_interaction =
+            challenger.finish(whir_payload_bytes).map_err(|error| error.to_string())?;
+        drop(challenger);
+
+        let provider_affine = affine_from_p3(output.target);
+        let aggregate_target = aggregate_prover_targets(&[target], &output.claim_weights)?;
+        let final_target = provider_affine.authenticate_prover(aggregate_target);
+        let provider_closure = finish_c61_authenticated_whir_base(
+            prepared,
+            C61AuthenticatedWhirProverFinishInput {
+                combined: c61_volta_fp2_from_p3(output.base_case.combined),
+                shifted_masked_claim: c61_volta_fp2_from_p3(output.base_case.shifted_masked_claim),
+                gamma: c61_volta_fp2_from_p3(output.base_case.gamma),
+                target: final_target,
+            },
+            &mut transcript,
+        )
+        .map_err(|error| error.to_string())?;
+        let payload = encode_c61_authenticated_p3_artifact_inner(
+            num_variables,
+            &commitment,
+            &output.proof,
+            provider_closure.proof,
+            false,
+        )
+        .map_err(|error| error.to_string())?;
+        if payload.len() != placeholder_payload.len() {
+            return Err("C62GW1 ZeroOpen tag changed the strict payload length".to_owned());
+        }
+        Ok((
+            C61AuthenticatedP3Fixture {
+                artifact: C61AuthenticatedP3Artifact { payload },
+                point,
+                target_key,
+                provider_affine,
+                provider_base_case: output.base_case,
+                provider_interaction,
+                provider_transcript_bytes: transcript.total_bytes(),
+                provider_ledger: transcript.ledger().clone(),
+            },
+            correlations.counters.full_corrs,
+        ))
+    }
+
     #[test]
     fn c62_cached_fixed_base_is_full_payload_identical() {
         let num_variables = 14;
@@ -10078,6 +10226,67 @@ mod tests {
         assert_eq!(ordinary.0.provider_ledger, cached.0.provider_ledger);
         assert_eq!(ordinary.0.provider_transcript_bytes, cached.0.provider_transcript_bytes);
         assert_eq!(ordinary.1, cached.1);
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn c62_gpu_native_fresh_and_cached_full_payloads_are_exact() {
+        if let Err(error) = Backend::cuda_resident() {
+            if std::env::var("VOLTA_REQUIRE_CUDA").as_deref() == Ok("1") {
+                panic!("CUDA is required for C62GW1 full differential: {error}");
+            }
+            eprintln!("skipping C62GW1 full differential: {error}");
+            return;
+        }
+        let num_variables = 14;
+        let witness = Poly::new(
+            (0..1usize << num_variables)
+                .map(|index| Goldilocks::from_u64(index as u64 * 17 + 3))
+                .collect(),
+        );
+        let point = Point::new(
+            (0..num_variables).map(|index| C61P3Fp2::from_u64(index as u64 * 19 + 5)).collect(),
+        );
+        let verifier_seed = [0x61; 32];
+        let pcg_seed = [0xA7; 32];
+        let delta = Fp2::new(volta_field::Fp::new(P - 17), volta_field::Fp::new(0x1234_5678));
+        let target_tag = Fp2::new(volta_field::Fp::new(41), volta_field::Fp::new(43));
+        let id = C61NativeChainId { component: C61NativeComponent::Model, repetition: 0 };
+        let mask_range =
+            C61AuthenticatedWhirMaskRange { stage: 0x61, slot: 1, range_start: 40_000 };
+        let reference = prove_diagnostic_with_cache(
+            witness.clone(),
+            point.clone(),
+            verifier_seed,
+            0xC6_1001,
+            pcg_seed,
+            delta,
+            target_tag,
+            id,
+            mask_range,
+            false,
+        )
+        .unwrap();
+        for cached in [false, true] {
+            let native = prove_diagnostic_gpu_native(
+                witness.clone(),
+                point.clone(),
+                verifier_seed,
+                0xC6_1001,
+                pcg_seed,
+                delta,
+                target_tag,
+                id,
+                mask_range,
+                cached,
+            )
+            .unwrap();
+            assert_eq!(reference.0.artifact.payload, native.0.artifact.payload);
+            assert_eq!(reference.0.provider_interaction, native.0.provider_interaction);
+            assert_eq!(reference.0.provider_ledger, native.0.provider_ledger);
+            assert_eq!(reference.0.provider_transcript_bytes, native.0.provider_transcript_bytes);
+            assert_eq!(reference.1, native.1);
+        }
     }
 
     #[test]

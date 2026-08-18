@@ -6,6 +6,8 @@
 //! - `VariableOrder`: tag enum carrying inherent methods that dispatch to either routine.
 //! - `SumcheckProver`: drives rounds over a paired product polynomial.
 
+use core::convert::Infallible;
+
 use p3_challenger::{FieldChallenger, GrindingChallenger};
 use p3_field::{Algebra, ExtensionField, Field, PrimeCharacteristicRing, dot_product};
 use p3_maybe_rayon::prelude::*;
@@ -394,6 +396,80 @@ pub struct SumcheckProver<F: Field, EF: ExtensionField<F>> {
     poly: ProductPolynomial<F, EF>,
     /// Current claimed sum over the remaining unbound variables.
     sum: EF,
+}
+
+/// Exact arithmetic boundary for a residual product-sumcheck state.
+///
+/// The reference implementation is [`SumcheckProver`]. A device-resident
+/// implementation may keep both dense factors outside host memory, but every
+/// transcript-sized scalar and every exported residual polynomial must be
+/// identical to the reference path. The trait deliberately owns no
+/// challenger: transcript ordering remains in the reviewed ZK overlay.
+pub trait ResidualSumcheckProver<F: Field, EF: ExtensionField<F>>: Sized {
+    type Error;
+
+    fn claimed_sum(&self) -> EF;
+    fn num_variables(&self) -> usize;
+    fn evals(&self) -> Result<Poly<EF>, Self::Error>;
+    fn eval(&self, point: &Point<EF>) -> Result<EF, Self::Error>;
+    fn round_coefficients(&self) -> Result<(EF, EF), Self::Error>;
+    fn fold_round_with_coefficients(
+        &mut self,
+        c0: EF,
+        c_inf: EF,
+        gamma: EF,
+    ) -> Result<(), Self::Error>;
+    fn scale_weights_and_claim(&mut self, scale: EF) -> Result<(), Self::Error>;
+    fn weights(&self) -> Result<Poly<EF>, Self::Error>;
+    fn accumulate_claim(&mut self, weights_delta: &[EF], sum_delta: EF) -> Result<(), Self::Error>;
+}
+
+impl<F: Field, EF: ExtensionField<F>> ResidualSumcheckProver<F, EF> for SumcheckProver<F, EF> {
+    type Error = Infallible;
+
+    fn claimed_sum(&self) -> EF {
+        self.claimed_sum()
+    }
+
+    fn num_variables(&self) -> usize {
+        self.num_variables()
+    }
+
+    fn evals(&self) -> Result<Poly<EF>, Self::Error> {
+        Ok(self.evals())
+    }
+
+    fn eval(&self, point: &Point<EF>) -> Result<EF, Self::Error> {
+        Ok(self.eval(point))
+    }
+
+    fn round_coefficients(&self) -> Result<(EF, EF), Self::Error> {
+        Ok(self.round_coefficients())
+    }
+
+    fn fold_round_with_coefficients(
+        &mut self,
+        c0: EF,
+        c_inf: EF,
+        gamma: EF,
+    ) -> Result<(), Self::Error> {
+        self.fold_round_with_coefficients(c0, c_inf, gamma);
+        Ok(())
+    }
+
+    fn scale_weights_and_claim(&mut self, scale: EF) -> Result<(), Self::Error> {
+        self.scale_weights_and_claim(scale);
+        Ok(())
+    }
+
+    fn weights(&self) -> Result<Poly<EF>, Self::Error> {
+        Ok(self.weights())
+    }
+
+    fn accumulate_claim(&mut self, weights_delta: &[EF], sum_delta: EF) -> Result<(), Self::Error> {
+        self.accumulate_claim(weights_delta, sum_delta);
+        Ok(())
+    }
 }
 
 impl<F: Field, EF: ExtensionField<F>> SumcheckProver<F, EF> {

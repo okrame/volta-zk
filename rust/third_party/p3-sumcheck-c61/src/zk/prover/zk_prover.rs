@@ -367,6 +367,7 @@ where
             mask_messages: masks,
             mask_randomness,
             mask_oracle,
+            marker: core::marker::PhantomData,
         }
     }
 }

@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "milestone": "C6.2 replacement r11 RunPod A100 E2E attempt",
+  "date": "2026-08-18",
+  "run_id": "cde6e7b2f5db5e0f44e3eef7c84a94ba478bdec7-r11",
+  "source_git_sha": "cde6e7b2f5db5e0f44e3eef7c84a94ba478bdec7",
+  "source_git_dirty": false,
+  "authorization": {
+    "standing_create_new_go": true,
+    "selective_retry_performed": false
+  },
+  "runner": {
+    "exit_code": 1,
+    "failed_stage": "first certificate compiler-chain transcript closure after wrapper spill",
+    "error": "transcript contains 1 noncanonical length-only events",
+    "production_session_started": true,
+    "certificates_sealed": 0,
+    "mutations_started": false
+  },
+  "setup": {
+    "profiles_reused": 17,
+    "setup_bytes": 101197448,
+    "pass": true,
+    "credit": false
+  },
+  "preflight": {
+    "available_spill_bytes": 235327451136,
+    "cuda_backend_initialized": true,
+    "a100_present": true,
+    "pass": true,
+    "credit": false
+  },
+  "records": {
+    "setup_measurement_sha256": "71f13406d09101f031d0048ad20f5f15ac93d336308b42be03ce63af7cb5a366",
+    "preflight_sha256": "464301a22bea8847b13e9365b3281f261be682013186596030748bd76c355ca8",
+    "runner_log_sha256": "992af381c5246fe866d65dcae84843bfe3166c49150485b87a7a9e0de3b42456",
+    "exit_file_sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "temporary_spill_removed": true
+  },
+  "hardware": {
+    "provider": "RunPod",
+    "pod_id": "mkp59uj8mtoyao",
+    "gpu": "NVIDIA A100-SXM4-80GB",
+    "gpu_uuid": "GPU-e663e5cb-6203-f55b-3c79-4d044bda261e",
+    "cuda": "12.8",
+    "driver": "580.126.16",
+    "cpu": "AMD EPYC 7742 64-Core Processor"
+  },
+  "diagnosis": {
+    "cause": "the shared C6AWH1 terminal ZeroOpen helper charged the known 16-byte tag by length only even when its transcript was a C62FS1 Fiat-Shamir lane",
+    "setup_changed": false,
+    "relation_changed": false,
+    "fallback_added": false
+  },
+  "measured_product_values": null,
+  "credit": false,
+  "disposition": "FAIL CLOSED BEFORE FIRST CERTIFICATE; R11 IMMUTABLE; BIND THE EXACT ZEROOPEN TAG IN FIAT-SHAMIR LANES BEFORE CREATE-NEW R12"
+}

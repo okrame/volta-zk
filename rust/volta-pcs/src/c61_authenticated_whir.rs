@@ -713,8 +713,8 @@ pub fn finish_c61_authenticated_whir_base(
             "C6AWH1 honest WHIR base identity does not close",
         ));
     }
-    let proof =
-        C61AuthenticatedWhirBaseProof { zero_open_tag: zero_open_prover(&residual, transcript) };
+    let zero_open_tag = append_authenticated_whir_zero_open_prover(&residual, transcript);
+    let proof = C61AuthenticatedWhirBaseProof { zero_open_tag };
     Ok(C61AuthenticatedWhirProverClosure {
         shifted_masked_claim: input.shifted_masked_claim,
         proof,
@@ -751,8 +751,8 @@ pub fn finish_c61_authenticated_whir_base_with_zero_rows(
         weight = weight * challenge;
         residual = residual.add(row.scale(weight));
     }
-    let proof =
-        C61AuthenticatedWhirBaseProof { zero_open_tag: zero_open_prover(&residual, transcript) };
+    let zero_open_tag = append_authenticated_whir_zero_open_prover(&residual, transcript);
+    let proof = C61AuthenticatedWhirBaseProof { zero_open_tag };
     Ok(C61AuthenticatedWhirProverClosure {
         shifted_masked_claim: input.shifted_masked_claim,
         proof,
@@ -804,7 +804,7 @@ pub fn verify_c61_authenticated_whir_base(
         .next()
         .ok_or_else(|| C61AuthenticatedWhirError::new("C6AWH1 missing verifier mask key"))?;
     let residual = c61_authenticated_whir_verifier_residual(input, mask_key, context.delta);
-    transcript.append("zero_open_tag", C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES as u64);
+    append_authenticated_whir_zero_open_verifier(proof.zero_open_tag, transcript);
     if !zero_open_verify(residual, proof.zero_open_tag) {
         return Err(C61AuthenticatedWhirError::new("C6AWH1 authenticated target ZeroOpen failed"));
     }
@@ -855,7 +855,7 @@ pub(crate) fn verify_c61_authenticated_whir_base_with_zero_rows_residual(
         weight = weight * challenge;
         residual = residual.add(row.scale(weight));
     }
-    transcript.append("zero_open_tag", C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES as u64);
+    append_authenticated_whir_zero_open_verifier(proof.zero_open_tag, transcript);
     if !zero_open_verify(residual, proof.zero_open_tag) {
         return Err(C61AuthenticatedWhirError::new("C6AWH1 folded arithmetic ZeroOpen failed"));
     }
@@ -893,8 +893,29 @@ pub(crate) fn simulate_c61_authenticated_whir_base_view(
         .next()
         .ok_or_else(|| C61AuthenticatedWhirError::new("C6AWH1 missing simulator mask key"))?;
     let residual = c61_authenticated_whir_verifier_residual(input, mask_key, context.delta);
-    transcript.append("zero_open_tag", C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES as u64);
+    append_authenticated_whir_zero_open_verifier(residual.k, transcript);
     Ok(C61AuthenticatedWhirBaseProof { zero_open_tag: residual.k })
+}
+
+fn append_authenticated_whir_zero_open_prover(
+    residual: &ProverAuthed,
+    transcript: &mut Transcript,
+) -> Fp2 {
+    if transcript.is_fiat_shamir() {
+        debug_assert_eq!(residual.x, Fp2::ZERO, "ZeroOpen on a nonzero claim");
+        transcript.append_fp2s("zero_open_tag", &[residual.m]);
+        residual.m
+    } else {
+        zero_open_prover(residual, transcript)
+    }
+}
+
+fn append_authenticated_whir_zero_open_verifier(tag: Fp2, transcript: &mut Transcript) {
+    if transcript.is_fiat_shamir() {
+        transcript.append_fp2s("zero_open_tag", &[tag]);
+    } else {
+        transcript.append("zero_open_tag", C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES as u64);
+    }
 }
 
 fn component_ordinal(component: C61NativeComponent) -> Result<u32> {
@@ -1238,8 +1259,8 @@ mod tests {
         let combined = masked_claim + gamma * target.x;
         let mut prover_correlations = CorrelationStream::new(PCG_SEEDS[0]);
         let mut verifier_context = VerifierCtx::new(PCG_SEEDS[0], delta);
-        let mut prover_transcript = Transcript::new([0xC3; 32]);
-        let mut verifier_transcript = Transcript::new([0xC3; 32]);
+        let mut prover_transcript = Transcript::new_fiat_shamir([0xC3; 32]).unwrap();
+        let mut verifier_transcript = Transcript::new_fiat_shamir([0xC3; 32]).unwrap();
 
         let closure = prove_c61_authenticated_whir_base(
             C61AuthenticatedWhirProverInput {
@@ -1277,6 +1298,10 @@ mod tests {
         assert_eq!(verifier_context.counters, expected);
         assert_eq!(prover_transcript.total_bytes(), 16);
         assert_eq!(prover_transcript.ledger(), verifier_transcript.ledger());
+        assert_eq!(
+            prover_transcript.canonical_binding_digest().unwrap(),
+            verifier_transcript.canonical_binding_digest().unwrap(),
+        );
     }
 
     #[test]

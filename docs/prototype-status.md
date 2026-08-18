@@ -10,18 +10,17 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Status and authorization.** C6.2 is `R10_FAIL / R11_RETAINED_BOUNDARY_READY`;
-  design §0.35 is active. r01--r10 are immutable and standing create-new GO
-  remains recorded for r11.
-- **r10 disposition.** Clean `290b9d0` passed the reused **101,197,448-B** setup
-  measurement, A100 preflight, real/AES preparation, compact encoding and the
-  corrected topology registry. After its first wrapper spill it failed before
-  sealing: `C6.2 retained response prefix has the wrong length`. Spill was
-  removed; no mutation started.
-- **Diagnosis and repair.** The C6.2 binding constructor decoded the C6.2 codec
-  but compared its frame to the historical C6.1 byte constant. r11 selects the
-  existing C6.2 constant and adds one strict boundary regression. No bytes,
-  setup, relation, transcript, correlation, proof or gate changes.
+- **Status and authorization.** C6.2 is `R11_FAIL / R12_FS_ZEROOPEN_READY`;
+  design §0.36 is active. r01--r11 are immutable and standing create-new GO
+  remains recorded for r12.
+- **r11 disposition.** Clean `cde6e7b` passed the reused **101,197,448-B** setup,
+  A100 preflight, retained framing and topology registry. After its first
+  wrapper spill it failed before sealing: `transcript contains 1 noncanonical
+  length-only events`. Spill was removed; no mutation started.
+- **Diagnosis and repair.** The shared terminal helper charged a known 16-byte
+  ZeroOpen tag by length in a C62FS1 lane. r12 binds the exact `Fp2` tag only
+  for Fiat--Shamir transcripts and adds canonical role parity. Interactive and
+  seeded C6.1 behavior, bytes, setup, relation, correlation and gates remain.
 - **Compact evidence.** `C62RRP2` genesis content remains **3,697,261 B**
   including digest versus the fixed **4,500,000-B** frame (**802,739 B**
   headroom). Strict codec, transcript parity, allocation cap and independent
@@ -32,8 +31,14 @@ This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 - **No product result.** No certificate, timing, proof-size, session or hardware
   gate receives credit; the comparison table remains unchanged.
 - **Resume.** Commit/push the clean narrow repair, fetch it on the active pod,
-  use new r11 roots with the verified setup copy, and run 17 certificates plus
+  use new r12 roots with the verified setup copy, and run 17 certificates plus
   four mutations. On success copy one artifact for the four-thread CPU verifier.
+
+- **2026-08-18 — r11 fails closed on one length-only C62FS1 terminal tag.** The
+  first full wrapper spill passed; canonical closure found that C6AWH1 still
+  accounted its known ZeroOpen tag by length. §0.36 binds that exact `Fp2` in
+  Fiat--Shamir lanes. Raw evidence is
+  `benchmarks/results/c62-a100-session-failure-2026-08-18-cde6e7b-r11.json`.
 
 - **2026-08-18 — r10 fails closed on the C6.1/C6.2 retained boundary.** Setup,
   A100 preflight and the first full wrapper spill passed; the binding

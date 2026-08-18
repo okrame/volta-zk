@@ -1,6 +1,6 @@
 # C6.2 WHIR Fiat--Shamir Design
 
-Status: **R11 C6.2 RETAINED-BOUNDARY REPAIR READY / POD ACTIVE**
+Status: **R12 FIAT--SHAMIR ZEROOPEN BINDING REPAIR READY / POD ACTIVE**
 
 This document is the active design for C6.2. It has precedence over the
 interactive C6.1 sections in `c6-delta-residual-inline-design.md`. Frozen C6
@@ -778,3 +778,18 @@ the historical C6.1 frame constant. r11 changes that single boundary check to
 C6.2 test frame. It changes no bytes, setup, relation, transcript, correlation,
 proof or gate. Standing create-new GO authorizes r11 with fresh roots after the
 narrow test and clean checkpoint.
+
+## 0.36 r11 disposition and r12 terminal-tag binding
+
+r11 passed setup, A100 preflight, retained-response framing and the production
+topology registry, then failed after the first wrapper spill because one
+compiler-chain transcript event was length-only. No certificate or mutation
+exists and temporary spill was removed.
+
+The shared C6AWH1 terminal helper charged its known 16-byte ZeroOpen tag with
+the historical accounting-only API. r12 binds the exact `Fp2` tag whenever the
+transcript is a C62FS1 Fiat--Shamir lane; interactive and seeded C6.1 accounting
+remain unchanged. A role-parity regression requires equal canonical digests.
+No wire bytes, setup, relation, correlation, proof or gate changes. Standing
+create-new GO authorizes r12 with fresh roots after the narrow test and clean
+checkpoint.

@@ -3028,7 +3028,7 @@ __global__ void fp2_affine_eq_weights_kernel(
     Fp2 equality{1,0};
     for(size_t bit=0;bit<point_len;++bit){
         const Fp2 coordinate=point[bit];
-        const Fp2 factor=((i>>bit)&1)
+        const Fp2 factor=((i>>(point_len-1-bit))&1)
             ? coordinate
             : fp2_sub(Fp2{1,0},coordinate);
         equality=fp2_mul(equality,factor);

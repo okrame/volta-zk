@@ -1,6 +1,6 @@
 # C6.2 WHIR Fiat--Shamir Design
 
-Status: **R13 FIAT--SHAMIR WRAPPER-ROOT BINDING REPAIR READY / POD ACTIVE**
+Status: **C62GW1 FIRST A100 BOUNDARY FAIL-CLOSED / LOCAL EXACTNESS REPAIR**
 
 This document is the active design for C6.2. It has precedence over the
 interactive C6.1 sections in `c6-delta-residual-inline-design.md`. Frozen C6
@@ -1090,3 +1090,29 @@ The registered first pod command is
 `scripts/check_c62_gpu_native_boundary.sh`. It is non-session and refuses a
 dirty tree or missing CUDA device/toolchain; it builds ABI 39 and runs only the
 narrow kernel, root/opening and full-payload differentials with hard timeouts.
+
+## 0.47 First A100 boundary disposition and exactness repair
+
+The first clean ABI-39 boundary run on an 80-GiB A100 passed the dedicated
+padding/cache-add test. Its main suite passed four of six tests and stopped on
+the cached initial root and the resident initial sumcheck claim. It did not run
+D28/D27 calibration, setup, PCG, a certificate or a session.
+
+The cached path encoded the fresh randomness with an empty message slice. This
+placed its first row at zero, whereas the reviewed split requires
+`Enc(0_message, randomness)` with randomness beginning after the fixed message
+rows. The repair uses the existing resident zero and strided-copy operations to
+place those rows before the unchanged NTT and cached addition. It does not
+upload or allocate a full zero message.
+
+The resident equality kernel also mapped point coordinate zero to the
+least-significant row bit. P3 dense equality tables use big-endian row order.
+The shared kernel now maps coordinate zero to the most-significant row bit; its
+low-level regression uses the same order. This also repairs the existing
+resident output-link caller rather than adding a WHIR-only workaround.
+
+CUDA ABI 39, cache contents/key, commitment and proof types, transcript,
+relation, codec, bytes and resource admission remain unchanged. Resume requires
+a clean pushed checkpoint, the two focused A100 regressions, and the complete
+registered boundary script. D28/D27 non-session calibration remains forbidden
+until all pass.

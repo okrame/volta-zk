@@ -28,7 +28,7 @@ use volta_accel::{
 use volta_field::Fp2;
 
 use crate::c61_whir_reference::{
-    C61P3Fp2, c61_p3_fp2_from_volta, c61_reference_mmcs, c61_volta_fp2_from_p3,
+    c61_p3_fp2_from_volta, c61_reference_mmcs, c61_volta_fp2_from_p3, C61P3Fp2,
 };
 
 pub const C62_GPU_WHIR_EXECUTOR_PROFILE: &str = "C62GW1-bounded-binary-frontier";
@@ -435,6 +435,54 @@ impl C62GpuMmcs {
         Ok(encoded?)
     }
 
+    fn encode_base_mask(
+        &self,
+        message_len: usize,
+        randomness: &[Goldilocks],
+        folding: usize,
+        height: usize,
+    ) -> Result<DeviceBuffer<u64>, C62GpuWhirError> {
+        let width = 1usize
+            .checked_shl(folding as u32)
+            .ok_or_else(|| C62GpuWhirError::new("C62GW1 mask width overflows"))?;
+        if message_len == 0
+            || randomness.is_empty()
+            || message_len % width != 0
+            || randomness.len() % width != 0
+            || message_len / width + randomness.len() / width > height
+        {
+            return Err(C62GpuWhirError::new("invalid C62GW1 mask geometry"));
+        }
+        let mut backend = self.backend.lock().map_err(|_| C62GpuWhirError::new("CUDA lock"))?;
+        let randomness_device = upload_goldilocks(&mut backend, randomness)?;
+        let padded_len = width
+            .checked_mul(height)
+            .ok_or_else(|| C62GpuWhirError::new("C62GW1 mask padding overflows"))?;
+        let padded = match backend.alloc_device::<u64>(padded_len) {
+            Ok(buffer) => buffer,
+            Err(error) => {
+                let _ = backend.free_device(randomness_device);
+                return Err(error.into());
+            }
+        };
+        let encoded = (|| {
+            backend.zero_device(&padded, 0, padded_len)?;
+            backend.copy_device_rows(
+                DeviceSlice::new(&randomness_device, 0, randomness.len())?,
+                randomness.len() / width,
+                &padded,
+                message_len / width,
+                height,
+                width,
+                randomness.len() / width,
+            )?;
+            backend.ntt_fp_batch_device(&padded, 0, width, height)
+        })();
+        let _ = backend.free_device(padded);
+        let _ = backend.free_device(randomness_device);
+        Ok(encoded?)
+    }
+
     fn commit_resident<M>(
         &self,
         codeword: ResidentCodeword,
@@ -521,7 +569,7 @@ impl C62GpuMmcs {
         {
             return Err(C62GpuWhirError::new("C62GW1 cache/workload geometry mismatch"));
         }
-        let mask = self.encode_base(&[], randomness, folding, height)?;
+        let mask = self.encode_base_mask(message.len(), randomness, folding, height)?;
         let combined = {
             let mut backend = self.backend.lock().map_err(|_| C62GpuWhirError::new("CUDA lock"))?;
             let fixed = cache

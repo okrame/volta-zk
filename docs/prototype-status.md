@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 R19 C62GW1 BOUNDARY STAGED — CUDA DIFFERENTIAL HARD STOP / POD STOPPED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 R19 C62GW1 A100 BOUNDARY FAIL-CLOSED — 4/6; LOCAL REPAIR / NO CALIBRATION OR SESSION)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,31 +10,39 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Status and authorization.** C6.2 is `R19_C62GW1_LOCAL_BOUNDARY_STAGED /
-  C62_CUDA_EXACT_DIFFERENTIAL_REQUIRED`; design §0.46 is active. Standing
-  create-new GO remains unconsumed because no session or PCG started.
+- **Status and authorization.** C6.2 is `R19_C62GW1_A100_BOUNDARY_FAIL /
+  C62_CACHE_OFFSET_AND_EQ_ORDER_REPAIR_LOCAL`; design §0.47 is active. The pod
+  is authorized only for non-session checks. Standing create-new GO remains
+  unconsumed because no session or PCG started.
 - **Completed evidence.** The saved 17-profile setup remains bound by manifest
   SHA-256 `9990a3dbbeaf30405e3cabdbd947d9e03003a6fca50ebe361783d52c6e036821`.
-  The typed GPU-native WHIR seam, provider-only fixed-base cache, bounded binary
-  frontier, resident prefix sumcheck and D28 resource guard compile locally.
-  CPU/cache full-payload identity and local guard tests pass without hardware
-  or timing credit.
-- **Hard stop.** CUDA ABI 39 and its exact root/row/proof/full-payload
-  differentials have not run on an A100. The production runner deliberately
-  remains `C6SPR11-persisted-functional-only`, `gpu_performance_credit=false`.
-  Do not start setup measurement, PCG, a session or mutations.
+  ABI 39 built on an 80-GiB A100. The padding/cache-add gate passed 1/1; the
+  root/opening/full-payload suite passed 4/6, then failed on the cached initial
+  root and resident initial sumcheck. The two exact causes and local repair are
+  recorded in §0.47; local focused checks pass without hardware credit.
+- **Hard stop.** The repair has not run on A100. Do not run D28/D27 calibration,
+  setup measurement, PCG, a session, certificate or mutation. The production
+  runner remains `C6SPR11-persisted-functional-only` with
+  `gpu_performance_credit=false`.
 - **No product result.** No certificate, timing, proof-size, session or hardware
-  gate receives credit; comparison and raw run records remain unchanged. No
-  live pod endpoint is registered.
-- **Resume.** From a clean pushed checkpoint, compile ABI 39 on the pod and run
-  the scaled fresh/cache CUDA differentials. Then run D28/D27 geometry and
-  resource calibration. Only after both pass may the production adapter become
-  eligible and attempt one `context-000`; abort at any phase budget breach or
-  absolute `<15.750 s` wall failure.
+  gate receives credit; comparison and raw run records remain unchanged.
+- **Resume.** Push a clean repair checkpoint, rerun the two focused failures,
+  then the registered boundary script. Only after it passes run D28/D27
+  non-session calibration. Production wiring and one `context-000` remain
+  later and require all prior gates; abort on any budget breach or absolute
+  `<15.750 s` wall failure.
 - **Owner direction.** Provider cache remains fixed-base only and separately
   reported. Independent roots are unchanged. If the exact projection exceeds
   `12.500 s`, start the authorized root-preserving folding study. Bounded-output
   `Fp2`-VOLE remains separate C5 research.
+
+- **2026-08-19 — First C62GW1 A100 boundary fails closed at 4/6.** ABI 39 and
+  the padding/cache-add gate passed. Fresh base, extension, frontier and
+  resource checks passed; the cached initial root differed and the resident
+  initial sumcheck rejected. The cache mask started at row zero instead of
+  after the message, while the shared equality kernel used little-endian bit
+  selection against the big-endian P3 table order. §0.47 records the local
+  repair. No calibration, setup, PCG, certificate or session started.
 
 - **2026-08-18 — C62GW1 local boundary staged without GPU credit.** §0.46 adds
   the typed resident arithmetic/commitment seam and fail-closed resource
@@ -2472,6 +2480,15 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-08-19 — C62GW1 cache split and equality order corrected before
+  calibration.** The local cache proof had established linearity but not the
+  native mask row offset, and the low-level equality test repeated the CUDA
+  kernel's wrong little-endian convention. The repair places the fresh mask
+  after the fixed message using existing resident zero/copy operations and
+  makes the shared kernel follow P3's big-endian dense-table order. ABI,
+  protocol, roots, transcript, codec and byte gates are unchanged. A100 exact
+  rerun is mandatory before any resource or timing calibration.
 
 - **2026-08-06 — C6NBR2 implementation GO is verifier-first.** The owner
   authorizes local construction and small main checkpoints, but no pod/A100.

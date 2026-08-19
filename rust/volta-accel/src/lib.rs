@@ -9941,11 +9941,14 @@ mod cuda_tests {
             .map(Fp2::from)
             .collect::<Vec<_>>();
         for (index, &got) in got_affine.iter().enumerate() {
-            let equality =
-                monomial_point.iter().enumerate().fold(Fp2::ONE, |weight, (bit, &coordinate)| {
+            let equality = monomial_point.iter().enumerate().fold(
+                Fp2::ONE,
+                |weight, (coordinate_index, &coordinate)| {
+                    let bit = monomial_point.len() - 1 - coordinate_index;
                     weight
                         * if index & (1 << bit) == 0 { Fp2::ONE - coordinate } else { coordinate }
-                });
+                },
+            );
             let coefficient = if index < 5 { av[index] } else { Fp2::ZERO };
             assert_eq!(got, rho * equality + gamma * coefficient);
         }

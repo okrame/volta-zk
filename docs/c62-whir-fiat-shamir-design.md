@@ -1,6 +1,6 @@
 # C6.2 WHIR Fiat--Shamir Design
 
-Status: **C62GW2 LOCAL CHECKPOINT READY / ONE A100 CALIBRATION AUTHORIZED**
+Status: **C62GW2 A100 FAIL-FAST / LOCAL SVO ANALYSIS REQUIRED**
 
 This document is the active design for C6.2. It has precedence over the
 interactive C6.1 sections in `c6-delta-residual-inline-design.md`. Frozen C6
@@ -1366,3 +1366,29 @@ timing, records real WHIR serialization and all required counters, reserves
 `3 s` for non-WHIR inline work, and stops after the first atomic lane that makes
 the projection reach `12 s`. Complete WHIR must remain below `9 s` to admit the
 genesis run; otherwise the record directs the next local SVO analysis.
+
+## 0.57 C62GW2 A100 disposition and SVO trigger
+
+Clean `7f973b5` passed the scaled fresh/cached CUDA full-payload differential.
+The registered all-lane run then stopped after seven of eight lanes, exactly at
+its first terminal projection. Partial WHIR wall time was `9.742663280 s`; with
+the fixed `3 s` non-WHIR reserve, the strict incomplete lower bound was
+`12.742663280 s`. This already exceeds the `<12 s` binding gate, while the
+missing second D27 fresh-plan lane prevents any complete-WHIR timing claim.
+
+Provider preload was `18.852973902 s` and is excluded as authorized fixed work.
+Peak VRAM was `39,146,362,732 B`, below the `45,818,576,864-B` guard; high-water
+RSS was `2,277,711,872 B`. Ephemeral encoded lanes ranged from `664,852 B` to
+`736,280 B`. The two D28 cached model lanes used `1.752730811 s` and
+`1.744888393 s`; the two D28 fresh response lanes used `2.048391817 s` and
+`2.059932086 s`; the D27 cached embedding lanes used `0.591341159 s` and
+`0.597534060 s`; the first D27 fresh plan lane used `0.947844954 s`.
+
+The measured kernel profile moves the obstruction beyond equality batching:
+NTT dominates every lane, with resident row construction second on the cached
+model roots; fresh D28 additionally transfers `4,296,117,104 B` per lane. The
+Section 0.56 SVO trigger is therefore active. Resume is local only: integrate
+the pinned initial-round SVO without changing proof messages, verifier
+equations, roots or wire, and rerun scaled exactness/resource checks before any
+new A100 authorization. No setup, PCG, context, genesis proof or certificate is
+authorized by this failure record.

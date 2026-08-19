@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 C62GW2 LOCAL CHECKPOINT READY — ONE A100 CALIBRATION AUTHORIZED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 C62GW2 A100 FAIL-FAST — LOCAL SVO ANALYSIS REQUIRED / NO GENESIS)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,31 +8,39 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-Read `c62-whir-fiat-shamir-design.md` §0.56 next.
+Read `c62-whir-fiat-shamir-design.md` §0.57 next.
 
-- **Status.** C6.2 is `C62GW2_A100_CALIBRATION_READY`; design §0.56 is active on
-  `agent/c62-whir-batched-svo-redesign`. It may run once on a fresh A100; no
-  production session is authorized.
-- **Evidence.** Prior clean A100 runs passed the scaled boundary but measured
-  old two-root floors of `43.471508780 s` total and `28.338291520 s` in claim
-  weights. These are component evidence only.
+- **Status.** C6.2 is `C62GW2_A100_FAIL_FAST_SVO_REQUIRED`; design §0.57 is
+  active on `agent/c62-whir-batched-svo-redesign`. No pod or production session
+  is authorized.
+- **Evidence.** Clean `7f973b5` passed the scaled CUDA full-payload differential.
+  The all-lane runner stopped after 7/8 lanes at `9.742663280 s` WHIR and a
+  strict partial inline lower bound of `12.742663280 s`, above `<12 s`.
 - **Gates.** Complete inline genesis, excluding setup and provider cache, is
   `<12 s` with `<=10 s` target. Setup is `<150 MB`, setup plus first certificate
   `<172 MB`, every certificate `<22 MB`, four-thread CPU verifier `<5 s`, and
   at least 17 certificates.
-- **Local checkpoint.** Exact batched weights and resident code-switch/OOD/
-  covector hooks compile with production features. The exact screen selects
-  D27 `[3,4,2,2,2,8]` at `717,524 B` and D28 `[3,3,2,2,2,2,8]` at `793,240 B`;
-  both reduce FFT work and wire. The full guard is
-  `42 GiB + 688 MiB - 32 B`. Narrow local checks pass; CUDA exactness and timing
-  remain unmeasured.
-- **Hard stop / authorization.** Run only the registered non-session all-lane
-  calibrator. It performs a scaled CUDA differential, warms provider-only
-  state, measures eight WHIR lanes plus serialization, reserves `3 s` for other
-  inline work and fails fast at a `<12 s` projection. Genesis
-  `context-000` is authorized only after a complete WHIR result below `9 s`.
-- **Credit.** No context was used; no product timing, bytes, session or
-  certificate gate has credit.
+- **Resources.** Peak VRAM was `39,146,362,732 B` below the
+  `45,818,576,864-B` guard; RSS high-water was `2,277,711,872 B`. Candidate
+  encoded lanes were `664,852..736,280 B`. Provider preload was excluded.
+- **Hard stop.** The missing eighth lane forbids complete-WHIR timing credit.
+  Section 0.56's SVO trigger is active: resume locally with exact initial-round
+  SVO and unchanged messages, roots, verifier equations and wire. A new pod
+  requires a fresh clean checkpoint and owner GO.
+- **Credit.** No setup, PCG, context, retained proof or certificate was created;
+  no product timing, byte, session or verifier gate has credit.
+
+- **2026-08-19 — C62GW2 A100 calibration fails fast and activates SVO.** Clean
+  `7f973b5` passed the scaled CUDA differential, then measured seven complete
+  ephemeral WHIR lanes before the registered stop: `9.742663280 s` WHIR plus
+  `3 s` reserve gives a strict partial inline lower bound of `12.742663280 s`.
+  Peak VRAM and RSS passed; candidate lane encodings stayed below `736,281 B`.
+  The eighth lane, setup, PCG and genesis never started. NTT now dominates the
+  kernel profile, and fresh D28 transfers `4,296,117,104 B` per lane. §0.57
+  returns to local pinned-SVO work; no pod is authorized. Raw evidence is
+  `benchmarks/results/c62-gw2-a100-calibration-2026-08-19-7f973b5-r1.json`;
+  SHA-256 is
+  `157b1527530db2b2dcce99067c19dfd3416e0fe2afbb0e9a92fd07a253a01fb5`.
 
 - **2026-08-19 — C62GW2 local checkpoint admits one A100 calibration.** The
   exact batched-weight path removes the 96 full-domain equality launches and

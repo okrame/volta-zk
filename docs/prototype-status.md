@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 R19 C62GW1 CALIBRATION R1 RESOURCE MISMATCH — TRIMMED RERUN HARD STOP / NO SESSION)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 R19 C62GW1 CALIBRATION R2 GUARD UNDERCOUNT — WORKSPACE-GUARD RERUN HARD STOP / NO SESSION)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,28 +10,34 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Status.** C6.2 is `R19_C62GW1_CALIBRATION_R1_RESOURCE_MISMATCH /
-  TRIMMED_RERUN_REQUIRED`; design §0.50 is active. Pod authorization remains
-  non-session only; standing create-new GO is unconsumed.
-- **Completed evidence.** Clean `cc0e2e1` passed the complete scaled A100
-  boundary. Calibration r1 at clean `93fe6fb` completed only cached D28: its
-  reported 43.600254174-s two-repetition lower bound has no timing decision.
-- **Correction.** The active initial fold is 1, not the stale fold-8 screen.
-  Exact D28 admission is `26 GiB + 80 MiB - 32 B` with one base cache and
-  `28 GiB + 80 MiB - 32 B` with both 6-GiB provider bases resident. The old
-  40-GiB statement is withdrawn.
-- **Hard stop.** R1 retained inactive preload buffers: measured peak
-  31,138,513,544 B exceeded the 30,148,657,120-B guard by 989,856,424 B.
-  Before rerun, trim that cache, require exactly 6 GiB active and zero inactive
-  bytes, then reject any lane peak above the guard. Do not start setup, PCG, a
-  session, proof, certificate or mutation.
+- **Status.** C6.2 is `R19_C62GW1_CALIBRATION_R2_GUARD_UNDERCOUNT /
+  WORKSPACE_GUARD_RERUN_REQUIRED`; design §0.51 is active. Pod authorization
+  remains non-session only; standing create-new GO is unconsumed.
+- **Completed evidence.** Clean `cc0e2e1` passed the scaled A100 boundary.
+  R1 at `93fe6fb` is an invalid memory run. R2 at clean `b280958` passed the
+  post-preload trim checks, then stopped because actual D28 peak still exceeded
+  the old guard; it emitted no record and has no timing decision.
+- **Correction.** Initial fold is 1. The guard had omitted the two exact
+  product-sum reduction workspaces: 24 B per source element, 6 GiB at D28.
+  Corrected D28 admission is `32 GiB + 80 MiB - 32 B` with one base cache and
+  `34 GiB + 80 MiB - 32 B` with both provider bases. The old 40-GiB statement
+  remains withdrawn.
+- **Hard stop.** Checkpoint this shared guard correction and rerun only the
+  registered calibrator. Reject any actual peak above admission. Do not start
+  setup, PCG, a session, proof, certificate or mutation.
 - **Data and credit.** At owner request the current pod's historical setup and
   old C6.2 data were removed; the historical 17-profile manifest digest remains
   a record only. No timing, proof-size, session or product gate has credit.
-- **Resume.** Checkpoint the trim/assert repair and rerun only the registered
-  calibrator. A resource-valid lower bound above `12.500 s` starts the folding
+- **Resume.** A resource-valid lower bound above `12.500 s` starts the folding
   study; otherwise later rounds remain required. Production wiring and one
   `context-000` remain later gates.
+
+- **2026-08-19 — Calibration r2 exposes the missing reduction workspace.**
+  Clean `b280958` trimmed inactive provider-preload storage and asserted 6 GiB
+  active plus zero inactive bytes. Cached D28 then still exceeded the old guard,
+  so the run stopped without a record or timing verdict. Source accounting
+  identifies two exact reduction buffers totalling 24 B per input element,
+  6 GiB at D28. §0.51 adds them to the shared guard before one new rerun.
 
 - **2026-08-19 — Calibration r1 rejected on memory accounting before timing
   disposition.** Clean `93fe6fb` measured provider preload 19.403972640 s and
@@ -2498,6 +2504,14 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-08-19 — C62GW1 resource admission now counts both product-reduction
+  workspaces.** R2 proved the preload trim was effective but still crossed the
+  old guard. CUDA uses exact largest-round buffers of 32 B per pair and 32 B
+  per half-pair, totalling 24 B per source element: 6 GiB at D28. Charging this
+  shared workspace raises combined-cache D28 admission from
+  `28 GiB + 80 MiB - 32 B` to `34 GiB + 80 MiB - 32 B`. This is memory
+  accounting only; no proof or protocol field changes.
 
 - **2026-08-19 — Calibration r1 is invalid until the provider-preload arena is
   trimmed.** The create-new A100 record kept logically freed preload buffers in

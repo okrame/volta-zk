@@ -12176,7 +12176,7 @@ mod tests {
         .unwrap();
         guard.fixed_cache_bytes = 6u64 << 30;
         guard.validate().unwrap();
-        assert_eq!(guard.checked_peak_bytes().unwrap(), (28u64 << 30) + (80u64 << 20) - 32);
+        assert_eq!(guard.checked_peak_bytes().unwrap(), (34u64 << 30) + (80u64 << 20) - 32);
 
         let mmcs = C62GpuMmcs::new(
             Backend::cuda_resident().expect("C62GW1 calibration requires CUDA"),
@@ -12262,7 +12262,7 @@ mod tests {
             .collect::<Vec<_>>()
             .join(",\n");
         let record = format!(
-            "{{\n  \"schema\": \"volta-c62-gpu-initial-lower-bound-v1\",\n  \"started_utc\": \"{started_utc}\",\n  \"git_sha\": \"{git_sha}\",\n  \"git_dirty\": false,\n  \"executor\": \"{C62_GPU_WHIR_EXECUTOR_PROFILE}\",\n  \"cuda_abi\": {},\n  \"device\": \"NVIDIA A100-SXM4-80GB\",\n  \"credit\": false,\n  \"production_session\": false,\n  \"pcg_started\": false,\n  \"certificate_created\": false,\n  \"folding\": 1,\n  \"provider_cache_bytes\": {},\n  \"resource_guard_peak_bytes\": {},\n  \"cache_precommit\": {{\"wall_ns\":{},\"peak_device_bytes\":{},\"h2d_bytes\":{},\"d2h_bytes\":{}}},\n  \"post_precommit_trim\": {{\"resident_bytes\":{},\"cached_resident_bytes\":{}}},\n  \"lanes\": [\n{lane_json}\n  ],\n  \"two_repetition_projected_lower_bound_ns\": {projected_lower_bound_ns},\n  \"engineering_admission_ns\": {ADMISSION_NS},\n  \"initial_lane_census_complete\": {},\n  \"full_whir_phase_census_complete\": false,\n  \"folding_study_required\": {folding_study_required},\n  \"decision\": \"{}\"\n}}\n",
+            "{{\n  \"schema\": \"volta-c62-gpu-initial-lower-bound-v1\",\n  \"started_utc\": \"{started_utc}\",\n  \"git_sha\": \"{git_sha}\",\n  \"git_dirty\": false,\n  \"executor\": \"{C62_GPU_WHIR_EXECUTOR_PROFILE}\",\n  \"cuda_abi\": {},\n  \"device\": \"NVIDIA A100-SXM4-80GB\",\n  \"credit\": false,\n  \"production_session\": false,\n  \"pcg_started\": false,\n  \"certificate_created\": false,\n  \"folding\": 1,\n  \"provider_cache_bytes\": {},\n  \"resource_guard_peak_bytes\": {},\n  \"cache_precommit\": {{\"wall_ns\":{},\"peak_device_bytes\":{},\"h2d_bytes\":{},\"d2h_bytes\":{}}},\n  \"post_precommit_trim\": {{\"workspace_bytes\":{},\"resident_bytes\":{},\"cached_resident_bytes\":{}}},\n  \"lanes\": [\n{lane_json}\n  ],\n  \"two_repetition_projected_lower_bound_ns\": {projected_lower_bound_ns},\n  \"engineering_admission_ns\": {ADMISSION_NS},\n  \"initial_lane_census_complete\": {},\n  \"full_whir_phase_census_complete\": false,\n  \"folding_study_required\": {folding_study_required},\n  \"decision\": \"{}\"\n}}\n",
             volta_accel::CUDA_ABI_VERSION,
             d28_cache.bytes() + d27_cache.bytes(),
             guard.checked_peak_bytes().unwrap(),
@@ -12270,6 +12270,7 @@ mod tests {
             cache_stats.peak_device_bytes,
             cache_stats.h2d_bytes,
             cache_stats.d2h_bytes,
+            post_precommit_memory.workspace_bytes,
             post_precommit_memory.resident_bytes,
             post_precommit_memory.cached_resident_bytes,
             lanes.len() == 4,

@@ -114,11 +114,12 @@ impl C62GpuResourceGuard {
             })
             .ok_or_else(|| C62GpuWhirError::new("C62GW1 tile bytes overflow"))?;
         let fixed_cache_bytes = if provider_cache { logical_codeword_bytes } else { 0 };
-        // One base upload plus resident Fp2 evaluation/weight factors and one
-        // same-size cached-mask/combination scratch. These peaks are summed
-        // conservatively although commit and sumcheck do not fully overlap.
+        // One base upload, resident Fp2 evaluation/weight factors, the exact
+        // two product-round reduction workspaces (24 B per source element),
+        // and one same-size cached-mask/combination scratch. These peaks are
+        // summed conservatively although commit and sumcheck do not overlap.
         let other_live_bytes = elements
-            .checked_mul(8 + 16 + 16)
+            .checked_mul(8 + 16 + 16 + 24)
             .and_then(|value| value.checked_add(logical_codeword_bytes))
             .ok_or_else(|| C62GpuWhirError::new("C62GW1 live-state bytes overflow"))?;
         let reserve_bytes = 4u64 << 30;
@@ -1416,14 +1417,14 @@ mod tests {
 
         let d28 = C62GpuResourceGuard::for_lane(28, 1, 1 << 28, 20, true, 80u64 << 30)
             .unwrap();
-        assert_eq!(d28.checked_peak_bytes().unwrap(), (26u64 << 30) + (80u64 << 20) - 32);
+        assert_eq!(d28.checked_peak_bytes().unwrap(), (32u64 << 30) + (80u64 << 20) - 32);
         assert!(C62GpuResourceGuard::for_lane(
             28,
             1,
             1 << 28,
             20,
             true,
-            (26u64 << 30) + (80u64 << 20) - 33,
+            (32u64 << 30) + (80u64 << 20) - 33,
         )
         .is_err());
 
@@ -1433,7 +1434,7 @@ mod tests {
         };
         assert_eq!(
             both_provider_bases.checked_peak_bytes().unwrap(),
-            (28u64 << 30) + (80u64 << 20) - 32,
+            (34u64 << 30) + (80u64 << 20) - 32,
         );
         both_provider_bases.validate().unwrap();
     }

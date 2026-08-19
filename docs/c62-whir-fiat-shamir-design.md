@@ -1,6 +1,6 @@
 # C6.2 WHIR Fiat--Shamir Design
 
-Status: **C62GW1 CALIBRATION R1 RESOURCE MISMATCH / TRIMMED RERUN REQUIRED**
+Status: **C62GW1 CALIBRATION R2 GUARD UNDERCOUNT / WORKSPACE-GUARD RERUN REQUIRED**
 
 This document is the active design for C6.2. It has precedence over the
 interactive C6.1 sections in `c6-delta-residual-inline-design.md`. Frozen C6
@@ -1187,3 +1187,22 @@ inactive resident bytes; after every lane it rejects a measured peak above the
 guard. Resume requires a clean checkpoint and one create-new run of the same
 registered script. No protocol, root, cache content, transcript, proof or
 production stage changes.
+
+## 0.51 Calibration r2 and exact product-reduction workspace
+
+Clean `b280958` passed the new post-preload checks: exactly 6 GiB of active
+provider bases and zero inactive resident-arena bytes. The first cached D28
+lane still exceeded the old guard and the assertion stopped before record
+creation or timing disposition.
+
+The remaining undercount is in the shared guard, not the trim. Each initial
+sumcheck round uses two CUDA product-reduction workspaces. At the largest round
+their exact capacities are `pairs * 32 B` and `ceil(pairs/2) * 32 B`, with
+`pairs = 2^(D-1)`: together this is 24 B per source element, exactly 6 GiB at
+D28 and 3 GiB at D27. The shared guard now charges that term explicitly.
+Current D28 checked peak is therefore `32 GiB + 80 MiB - 32 B` with its own
+base cache and `34 GiB + 80 MiB - 32 B` with both provider bases resident.
+
+Resume is one clean create-new run of the unchanged registered script. Its
+actual peak must fit the corrected guard before the measured lower bound can
+trigger folding. R2 created no setup, PCG state, proof, certificate or session.

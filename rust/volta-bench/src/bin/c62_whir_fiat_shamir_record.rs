@@ -1,8 +1,7 @@
 //! C6.2 real-weight production and verifier record adapter.
 //!
-//! Prove mode runs one strict 17-certificate continuation session.  Each
-//! create-new artifact is loaded and verified on four threads before the
-//! client accepts its head and the provider slot receives acknowledgement.
+//! Prove mode runs the owner-authorized genesis only. The create-new artifact
+//! is loaded and verified on four threads before client acknowledgement.
 
 #[cfg(not(all(
     feature = "cuda",
@@ -45,6 +44,7 @@ mod enabled {
     };
     use volta_bench::c6_t1_owner::{
         build_c62_continuation_workload_owner, build_c6_t1_workload_owner,
+        create_c62_provider_fixed_coefficient_owners,
     };
     use volta_bench::{cloud_metadata_from_env, CloudMetadata};
     use volta_gpt2::{forward_model, generate, load_model, Gpt2VerifierModel, KvCache};
@@ -54,13 +54,13 @@ mod enabled {
         ConnectionStore, FaseDParams, FaseDStagePlan, GgmPrg, ResponseAuthorizationStore,
     };
     use volta_pcs::c61_authenticated_whir_p3::{
-        C61ProductionPersistedResourceAdmission,
+        C61ProductionPersistedResourceAdmission, C62ProductionGpuWhir,
         C61_PRODUCTION_COMPILER_FULL_CORRELATIONS_PER_TAPE,
         C61_PRODUCTION_COMPILER_SUB_CORRELATIONS_PER_TAPE,
         C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_HOST_BYTES,
     };
     use volta_pcs::{
-        C62PublicArgument, C61_AUTHENTICATED_WHIR_MASKS_PER_TAPE,
+        C62PublicArgument, C61NativeComponent, C61_AUTHENTICATED_WHIR_MASKS_PER_TAPE,
         C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_CORRELATIONS_PER_TAPE,
         C6_RESIDUAL_BLIND_FULL_CORRELATIONS_PER_TAPE,
     };
@@ -82,20 +82,22 @@ mod enabled {
         C6_TERMINAL_ONE_RAW_CAPACITY,
     };
 
-    const SCHEMA: u64 = 3;
-    const PROFILE: &str = "runpod-a100-c62-whir-fiat-shamir-v1";
-    const PROTOCOL_ID: &str = "VOLTA-C6.2-C62JVR1-C62FS1-C62AWP1-C62PA1-C62PIF1-C62NFC1-v1";
-    const SETUP_PLUS_FIRST_TARGET_BYTES: u64 = 150_000_000;
-    const SETUP_PLUS_FIRST_TOLERANCE_BYTES: u64 = 157_500_000;
-    const CERTIFICATE_TOLERANCE_BYTES: u64 = 23_099_998;
-    const PI_FINAL_TOLERANCE_BYTES: u64 = 4_725_000;
-    const PROVER_TARGET_S: f64 = 15.0;
-    const PROVER_TOLERANCE_S: f64 = 15.75;
+    const SCHEMA: u64 = 4;
+    const PROFILE: &str = "runpod-a100-c62-gw4-genesis-v2";
+    const PROTOCOL_ID: &str = "VOLTA-C6.2-C62JVR1-C62FS1-C62AWP1-C62PA1-C62PIF1-C62NFC1-v2";
+    const SETUP_PLUS_FIRST_TARGET_BYTES: u64 = 172_000_000;
+    const SETUP_PLUS_FIRST_TOLERANCE_BYTES: u64 = SETUP_PLUS_FIRST_TARGET_BYTES;
+    const CERTIFICATE_TOLERANCE_BYTES: u64 = C62_CERTIFICATE_STRICT_MAX_BYTES;
+    const PI_FINAL_TOLERANCE_BYTES: u64 = C62_NATIVE_STRICT_PI_FINAL_MAX_BYTES;
+    const PROVER_TARGET_S: f64 = 12.0;
+    const PROVER_TOLERANCE_S: f64 = PROVER_TARGET_S;
     const VERIFIER_TARGET_S: f64 = 5.0;
-    const VERIFIER_TOLERANCE_S: f64 = 5.25;
+    const VERIFIER_TOLERANCE_S: f64 = VERIFIER_TARGET_S;
     const VERIFIER_MEMORY_LIMIT_BYTES: u64 = 8_000_000_000;
-    const C62_GPU_EXECUTOR_PROFILE: &str = "C6SPR11-persisted-functional-only";
-    const C62_GPU_PERFORMANCE_ELIGIBLE_EXECUTOR: bool = false;
+    const C62_GPU_EXECUTOR_PROFILE: &str =
+        volta_pcs::c62_gpu_whir::C62_GPU_WHIR_EXECUTOR_PROFILE;
+    const C62_GPU_PERFORMANCE_ELIGIBLE_EXECUTOR: bool = true;
+    const C62_RUN_CERTIFICATES: u16 = 1;
     /// r17 measured about 197 GiB of live persisted wrapper/four-chain data.
     /// Keep one bounded per-certificate spill lane and require useful headroom.
     const C62_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES: u64 =
@@ -761,6 +763,7 @@ mod enabled {
         verifier_memory_pass: bool,
         process_io: IoRecord,
         backend: BackendRecord,
+        whir_backend: BackendRecord,
         artifact_root: String,
         pass: bool,
     }
@@ -781,6 +784,12 @@ mod enabled {
         quantization_digest: String,
         setup_wall_s: f64,
         inference_wall_s_excluded: f64,
+        provider_cache_preload_wall_s: f64,
+        provider_cache_bytes: u64,
+        provider_cache_rss_before_bytes: u64,
+        provider_cache_rss_after_bytes: u64,
+        provider_cache_process_io: IoRecord,
+        provider_cache_backend: BackendRecord,
         setup_bytes: u64,
         setup_plus_first_bytes: u64,
         setup_plus_first_target_pass: bool,
@@ -917,6 +926,47 @@ mod enabled {
             return Err("C6.2 session setup or correlation capacity exceeds its gate".to_owned());
         }
 
+        let provider_cache_root = work_root.join("c62gw4-provider-cache");
+        if provider_cache_root.exists() {
+            return Err("C62GW4 provider-cache root must be create-new".to_owned());
+        }
+        let provider_cache_started = Instant::now();
+        let provider_cache_before_io = process_io()?;
+        let provider_cache_rss_before_bytes = current_rss_bytes()?;
+        fs::create_dir(&provider_cache_root)
+            .map_err(|error| format!("create provider cache root: {error}"))?;
+        let (model_coefficients, embedding_coefficients) =
+            create_c62_provider_fixed_coefficient_owners(
+                genesis_owner.model(),
+                &provider_cache_root,
+                random_digest("C62GW4 fixed coefficient owner")?,
+            )?;
+        let model_base = model_coefficients.load_for(C61NativeComponent::Model, 0)?;
+        let embedding_base =
+            embedding_coefficients.load_for(C61NativeComponent::Embedding, 0)?;
+        let mut gpu_backend =
+            Backend::cuda_resident_with_timing(ResidentTimingPolicy::WallOnlyCounters)
+                .map_err(|error| format!("initialize C62GW4 CUDA backend: {error}"))?;
+        gpu_backend
+            .begin_measurement()
+            .map_err(|error| format!("begin provider-cache measurement: {error}"))?;
+        let gpu = C62ProductionGpuWhir::new(
+            gpu_backend,
+            hardware.gpu_total_bytes,
+            model_digest,
+            protocol_digest(),
+            &model_base,
+            &embedding_base,
+        )?;
+        drop(model_base);
+        drop(embedding_base);
+        let provider_cache_backend = BackendRecord::from(gpu.finish_measurement()?);
+        let provider_cache_preload_wall_s = provider_cache_started.elapsed().as_secs_f64();
+        let provider_cache_rss_after_bytes = current_rss_bytes()?;
+        let provider_cache_process_io = io_delta(&provider_cache_before_io, &process_io()?);
+        let provider_cache_bytes = 12u64 << 30;
+        let mut fixed_coefficient_owners = Some((model_coefficients, embedding_coefficients));
+
         let first_run_root = run_root.join("certificate-00");
         fs::create_dir(&first_run_root)
             .map_err(|error| format!("create {}: {error}", first_run_root.display()))?;
@@ -955,6 +1005,7 @@ mod enabled {
         backend
             .begin_measurement()
             .map_err(|error| format!("begin first backend measurement: {error}"))?;
+        gpu.begin_measurement()?;
         let first_before_io = process_io()?;
         let first_started = Instant::now();
         let first_precommit = prepare_c62_campaign_cache_precommit(
@@ -977,7 +1028,7 @@ mod enabled {
         let mut certificates = Vec::with_capacity(usize::from(C6_ACCEPTANCE_CREDITS));
         let mut aborted_slots = Vec::with_capacity(usize::from(C6_ABORT_RETRY_CREDITS));
 
-        for index in 0..C6_ACCEPTANCE_CREDITS {
+        for index in 0..C62_RUN_CERTIFICATES {
             let current = client_store.load().map_err(|error| error.to_string())?;
             let old_context = current.head.cache_len;
             let expected_old = if index == 0 { 0 } else { 100 + 50 * u32::from(index) };
@@ -1016,6 +1067,7 @@ mod enabled {
                 backend
                     .begin_measurement()
                     .map_err(|error| format!("begin backend measurement {index}: {error}"))?;
+                gpu.begin_measurement()?;
                 let before_io = process_io()?;
                 let prover_started = Instant::now();
                 let precommit = prepare_c62_campaign_continuation_cache_precommit(
@@ -1055,13 +1107,19 @@ mod enabled {
                 full_correlations,
             )
             .map_err(|error| format!("allocate accepted paired PCG attempt {index}: {error}"))?;
+            let (model_coefficients, embedding_coefficients) = fixed_coefficient_owners
+                .take()
+                .ok_or_else(|| "C62GW4 genesis-only coefficient owners were reused".to_owned())?;
             let produced = run_c62_campaign_live_production(
                 &setup,
                 installed,
                 precommit,
                 attempt,
+                model_coefficients,
+                embedding_coefficients,
                 admission,
                 &mut backend,
+                &gpu,
             )?;
             let persisted_spill_bytes = directory_file_bytes(&run_directory)?;
             let prover_wall_s = prover_started.elapsed().as_secs_f64();
@@ -1070,6 +1128,7 @@ mod enabled {
                     .finish_measurement()
                     .map_err(|error| format!("finish backend measurement {index}: {error}"))?,
             );
+            let whir_backend_record = BackendRecord::from(gpu.finish_measurement()?);
             let after_io = process_io()?;
             let C62CampaignLiveProductionOutput {
                 certificate,
@@ -1159,11 +1218,12 @@ mod enabled {
                 verifier_memory_pass,
                 process_io: io_delta(&before_io, &after_io),
                 backend: backend_record,
+                whir_backend: whir_backend_record,
                 artifact_root: certificate_directory.display().to_string(),
                 pass,
             });
 
-            if index == 0 {
+            if index == 0 && pass {
                 let burn_workload = C6Workload {
                     prompt_tokens: 0,
                     decode_tokens: 50,
@@ -1238,11 +1298,13 @@ mod enabled {
         let setup_plus_first_tolerance_pass =
             setup_plus_first_bytes <= SETUP_PLUS_FIRST_TOLERANCE_BYTES;
         let soundness_pass = SOUNDNESS_BITS_PER_CERTIFICATE >= SOUNDNESS_FLOOR_BITS;
-        let exact_session = certificates.len() == usize::from(C6_ACCEPTANCE_CREDITS)
+        let expected_raw_correlations = C62_GENESIS_RAW_CORRELATIONS
+            + u64::from(C6_ABORT_RETRY_CREDITS) * C62_CONTINUATION_256_RAW_CORRELATIONS;
+        let exact_session = certificates.len() == usize::from(C62_RUN_CERTIFICATES)
             && aborted_slots.len() == usize::from(C6_ABORT_RETRY_CREDITS)
-            && final_state.head.cache_len == 950
-            && final_state.next_slot == u32::from(C6_ACCEPTANCE_CREDITS + C6_ABORT_RETRY_CREDITS)
-            && final_state.raw_high_water == [C62_SESSION_RAW_CORRELATIONS; 2]
+            && final_state.head.cache_len == 150
+            && final_state.next_slot == u32::from(C62_RUN_CERTIFICATES + C6_ABORT_RETRY_CREDITS)
+            && final_state.raw_high_water == [expected_raw_correlations; 2]
             && final_state.pending_attempt.is_none();
         let pass = exact_session
             && capacity_reconciled
@@ -1252,7 +1314,7 @@ mod enabled {
         let record = SessionRecord {
             schema: SCHEMA,
             profile: PROFILE,
-            mode: "prove-and-verify-session",
+            mode: "prove-and-verify-genesis",
             source_git_commit,
             git_dirty: false,
             cloud,
@@ -1264,22 +1326,28 @@ mod enabled {
             quantization_digest: hex(&quantization_digest),
             setup_wall_s,
             inference_wall_s_excluded,
+            provider_cache_preload_wall_s,
+            provider_cache_bytes,
+            provider_cache_rss_before_bytes,
+            provider_cache_rss_after_bytes,
+            provider_cache_process_io,
+            provider_cache_backend,
             setup_bytes,
             setup_plus_first_bytes,
             setup_plus_first_target_pass,
             setup_plus_first_tolerance_pass,
-            accepted_slots: C6_ACCEPTANCE_CREDITS,
+            accepted_slots: C62_RUN_CERTIFICATES,
             aborted_slots,
             final_context: final_state.head.cache_len,
             final_next_slot: final_state.next_slot,
             raw_correlations_per_tape: final_state.raw_high_water[0],
-            expected_raw_correlations_per_tape: C62_SESSION_RAW_CORRELATIONS,
+            expected_raw_correlations_per_tape: expected_raw_correlations,
             capacity_reconciled,
             soundness_bits_per_certificate: SOUNDNESS_BITS_PER_CERTIFICATE,
             soundness_floor_bits: SOUNDNESS_FLOOR_BITS,
             soundness_pass,
             certificates,
-            session_gate_evaluated: true,
+            session_gate_evaluated: false,
             credit: pass,
             pass,
             artifact_root: artifact_root.display().to_string(),
@@ -1958,15 +2026,16 @@ mod enabled {
         }
 
         #[test]
-        fn record_profile_keeps_tolerance_and_capacity_separate_from_credit() {
-            assert_eq!(SCHEMA, 3);
-            assert_eq!(SETUP_PLUS_FIRST_TOLERANCE_BYTES, 157_500_000);
-            assert_eq!(CERTIFICATE_TOLERANCE_BYTES, 23_099_998);
-            assert_eq!(PI_FINAL_TOLERANCE_BYTES, 4_725_000);
-            assert_eq!(PROVER_TOLERANCE_S, 15.75);
-            assert_eq!(VERIFIER_TOLERANCE_S, 5.25);
-            assert_eq!(C62_GPU_EXECUTOR_PROFILE, "C6SPR11-persisted-functional-only");
-            assert!(!C62_GPU_PERFORMANCE_ELIGIBLE_EXECUTOR);
+        fn record_profile_uses_strict_genesis_gates() {
+            assert_eq!(SCHEMA, 4);
+            assert_eq!(SETUP_PLUS_FIRST_TOLERANCE_BYTES, 172_000_000);
+            assert_eq!(CERTIFICATE_TOLERANCE_BYTES, C62_CERTIFICATE_STRICT_MAX_BYTES);
+            assert_eq!(PI_FINAL_TOLERANCE_BYTES, C62_NATIVE_STRICT_PI_FINAL_MAX_BYTES);
+            assert_eq!(PROVER_TOLERANCE_S, 12.0);
+            assert_eq!(VERIFIER_TOLERANCE_S, 5.0);
+            assert_eq!(C62_GPU_EXECUTOR_PROFILE, "C62GW4-dense-weights-pinned-h2d");
+            assert!(C62_GPU_PERFORMANCE_ELIGIBLE_EXECUTOR);
+            assert_eq!(C62_RUN_CERTIFICATES, 1);
             assert_eq!(
                 C62_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES,
                 223_338_299_392
@@ -1986,28 +2055,22 @@ mod enabled {
                 .split_once("struct RssSampler")
                 .unwrap()
                 .0;
-            assert!(session.contains("session_gate_evaluated: true"));
+            assert!(session.contains("session_gate_evaluated: false"));
             assert!(session.contains("credit: pass"));
-            assert!(session.contains("C6_ACCEPTANCE_CREDITS"));
+            assert!(session.contains("C62_RUN_CERTIFICATES"));
             assert!(session.contains("C6_ABORT_RETRY_CREDITS"));
             assert!(!source.contains(concat!("exact_", "acceptance_credits")));
             assert!(!source.contains(concat!("exact_", "abort_credits")));
         }
 
         #[test]
-        fn ineligible_executor_stops_before_clean_tree_or_attempt_work() {
+        fn eligible_executor_preloads_before_attempt_work() {
             let source = include_str!("c62_whir_fiat_shamir_record.rs");
-            let preflight = source.split_once("fn preflight(args: &Args)").unwrap().1;
-            let preflight_stop = preflight
-                .find("if !C62_GPU_PERFORMANCE_ELIGIBLE_EXECUTOR")
-                .unwrap();
-            let preflight_clean_tree = preflight.find("git_sha_clean()?").unwrap();
             let prove = source.split_once("fn prove(args: &Args)").unwrap().1;
-            let stop = prove.find("if !C62_GPU_PERFORMANCE_ELIGIBLE_EXECUTOR").unwrap();
             let clean_tree = prove.find("git_sha_clean()?").unwrap();
+            let preload = prove.find("C62ProductionGpuWhir::new(").unwrap();
             let reserve = prove.find(".reserve_attempt(").unwrap();
-            assert!(preflight_stop < preflight_clean_tree);
-            assert!(stop < clean_tree && clean_tree < reserve);
+            assert!(clean_tree < preload && preload < reserve);
         }
 
         #[test]
@@ -2056,7 +2119,7 @@ mod enabled {
             let cleanup = session.find("fs::remove_dir_all(&run_directory)").unwrap();
             assert!(load < verify && verify < accept && accept < acknowledge);
             assert!(acknowledge < burn_block && burn_block < abort && abort < cleanup);
-            assert!(session.contains("final_state.head.cache_len == 950"));
+            assert!(session.contains("final_state.head.cache_len == 150"));
             assert!(session.contains("final_state.pending_attempt.is_none()"));
         }
     }

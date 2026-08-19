@@ -31,7 +31,8 @@ use volta_pcs::c61_authenticated_whir::C62ResponseCompilerBinding;
 use volta_pcs::c61_authenticated_whir_p3::C61CompilerVerifierProfile;
 #[cfg(feature = "c61-p3-authenticated-reference")]
 use volta_pcs::c61_authenticated_whir_p3::{
-    c61_authenticated_p3_parameter_digest, decode_c61_production_compiler_commitment_descriptors,
+    c62_authenticated_p3_parameter_digest,
+    decode_c62_production_compiler_commitment_descriptors,
     decode_c62_production_native_commitment_descriptor, decode_c62_production_public_argument,
     prepare_c61_authenticated_whir_p3_production_joint_four_chains_private_entropy_in_attempt,
     prepare_c62_authenticated_whir_p3_production_joint_four_chains_fiat_shamir_in_attempt,
@@ -46,7 +47,7 @@ use volta_pcs::c61_authenticated_whir_p3::{
     C61ProductionResponseClaimSchedule, C61ProviderJointSessionBinding, C61ProviderSessionBinding,
     C62FiatShamirJointContext, C62FiatShamirLaneContext, C62FiatShamirPublicContext,
     C62ProductionCommittedChainProof, C62ProductionJointNativeProverBodiesFixed,
-    C62ProductionNativeChainProof,
+    C62ProductionGpuWhir, C62ProductionNativeChainProof,
 };
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_pcs::c61_public_compression::C61NativeComponent;
@@ -122,8 +123,8 @@ use volta_proto::{C6ResidualFusedCoefficientArena, C6ResidualFusedWitnessView};
 #[cfg(feature = "c6-trace")]
 use crate::c6_t1_owner::{
     execute_c62_t1_production_owner_export, execute_c6_t1_production_owner_export,
-    materialize_c62_t1_cache_states, persist_c62_t1_native_coefficient_owners,
-    persist_c6_t1_native_coefficient_owners, C62CampaignWorkloadOwner,
+    materialize_c62_t1_cache_states, persist_c6_t1_native_coefficient_owners,
+    C62CampaignWorkloadOwner,
     C62T1ProductionOwnerExport, C6T1NativeClaimOwner, C6T1NativeVerifierClaimOwner,
     C6T1ProductionOwnerExport, C6T1WorkloadOwner,
 };
@@ -694,10 +695,10 @@ impl C62CampaignNativeBindings {
         source_binding_digest: [u8; 32],
     ) -> Result<C62CampaignNativeContexts, String> {
         let parameter_digests = [
-            c61_authenticated_p3_parameter_digest(usize::from(C61_MODEL_POLYNOMIAL_LOG2))?,
-            c61_authenticated_p3_parameter_digest(usize::from(C61_MODEL_POLYNOMIAL_LOG2))?,
-            c61_authenticated_p3_parameter_digest(usize::from(C61_EMBEDDING_POLYNOMIAL_LOG2))?,
-            c61_authenticated_p3_parameter_digest(usize::from(C61_EMBEDDING_POLYNOMIAL_LOG2))?,
+            c62_authenticated_p3_parameter_digest(usize::from(C61_MODEL_POLYNOMIAL_LOG2))?,
+            c62_authenticated_p3_parameter_digest(usize::from(C61_MODEL_POLYNOMIAL_LOG2))?,
+            c62_authenticated_p3_parameter_digest(usize::from(C61_EMBEDDING_POLYNOMIAL_LOG2))?,
+            c62_authenticated_p3_parameter_digest(usize::from(C61_EMBEDDING_POLYNOMIAL_LOG2))?,
             compiler_profile.digest(),
             compiler_profile.digest(),
         ];
@@ -1174,6 +1175,7 @@ pub fn prepare_c62_campaign_native_four_chains(
     admission: C61ProductionPersistedResourceAdmission,
     attempt: &mut C6ProductionPairedPcgAttempt,
     backend: &mut Backend,
+    gpu: &C62ProductionGpuWhir,
     spill_root: &Path,
 ) -> Result<C62CampaignNativeFourChainOwner, String> {
     let claim_schedule = C61ProductionResponseClaimSchedule::new(
@@ -1215,6 +1217,7 @@ pub fn prepare_c62_campaign_native_four_chains(
             &chain_root,
             admission,
             backend,
+            gpu,
             attempt.prover_streams_array_mut(),
             [
                 contexts.mask_ranges[0],
@@ -1654,6 +1657,7 @@ pub fn finish_c62_campaign_native_proof(
     admission: C61ProductionPersistedResourceAdmission,
     attempt: &mut C6ProductionPairedPcgAttempt,
     backend: &mut Backend,
+    gpu: &C62ProductionGpuWhir,
     spill_root: &Path,
     transcript: &mut Transcript,
 ) -> Result<C62NativeExactProductionNbr2Certificate, String> {
@@ -1729,6 +1733,7 @@ pub fn finish_c62_campaign_native_proof(
                 contexts.lane_contexts[4],
                 &compiler_roots[0],
                 admission,
+                gpu,
                 stream0,
                 ids[4],
                 contexts.mask_ranges[4],
@@ -1747,6 +1752,7 @@ pub fn finish_c62_campaign_native_proof(
                 contexts.lane_contexts[5],
                 &compiler_roots[1],
                 admission,
+                gpu,
                 stream1,
                 ids[5],
                 contexts.mask_ranges[5],
@@ -2454,8 +2460,11 @@ pub fn run_c62_campaign_live_production(
     installed: C61CampaignInstalledSetup,
     precommit: C62CampaignCachePrecommitOwner,
     mut attempt: C6ProductionPairedPcgAttempt,
+    model_coefficients: C61ProductionCoefficientOwner,
+    embedding_coefficients: C61ProductionCoefficientOwner,
     admission: C61ProductionPersistedResourceAdmission,
     backend: &mut Backend,
+    gpu: &C62ProductionGpuWhir,
 ) -> Result<C62CampaignLiveProductionOutput, String> {
     setup.validate().map_err(|error| error.to_string())?;
     let C62CampaignCachePrecommitOwner {
@@ -2528,17 +2537,8 @@ pub fn run_c62_campaign_live_production(
     let replay_owner = attempt.take_verifier_replay_owner(response_statement.digest())?;
     let native_bindings = C62CampaignNativeBindings::start(public_attempt)?;
 
-    let coefficient_root = run_root.join("coefficients");
     let proof_root = run_root.join("proof");
-    for path in [&coefficient_root, &proof_root] {
-        fs::create_dir(path).map_err(|error| format!("create C6.2 run lane: {error}"))?;
-    }
-    let persisted = persist_c62_t1_native_coefficient_owners(
-        response,
-        &coefficient_root,
-        native_bindings.coefficient_session(),
-    )?;
-    let (response, model_coefficients, embedding_coefficients) = persisted.into_parts();
+    fs::create_dir(&proof_root).map_err(|error| format!("create C6.2 proof lane: {error}"))?;
     let (returned_workload, response, native_claims) = response.into_parts();
     if returned_workload.sequence() != public_workload.public_tokens() {
         return Err("C6.2 persisted response workload changed".to_owned());
@@ -2594,6 +2594,7 @@ pub fn run_c62_campaign_live_production(
         admission,
         &mut attempt,
         backend,
+        gpu,
         &proof_root,
     )?;
     let functional = prepare_c62_campaign_native_functional(
@@ -2628,6 +2629,7 @@ pub fn run_c62_campaign_live_production(
             admission,
             &mut attempt,
             backend,
+            gpu,
             &proof_root,
             provider,
         )?
@@ -3314,7 +3316,7 @@ pub fn verify_c62_campaign_e2e(
         residual.response().installed().extraction(),
         residual.response().installed().runtime(),
         residual.relation(),
-        decode_c61_production_compiler_commitment_descriptors(
+        decode_c62_production_compiler_commitment_descriptors(
             ids[4],
             &raw_argument.native_chains()[4],
         )?,
@@ -3326,7 +3328,7 @@ pub fn verify_c62_campaign_e2e(
         residual.response().installed().extraction(),
         residual.response().installed().runtime(),
         residual.relation(),
-        decode_c61_production_compiler_commitment_descriptors(
+        decode_c62_production_compiler_commitment_descriptors(
             ids[5],
             &raw_argument.native_chains()[5],
         )?,
@@ -3542,7 +3544,11 @@ fn load_campaign_installed_setup(
         &source_manifest,
     )
     .map_err(|error| format!("build C6.1 compiler verifier metadata: {error}"))?;
-    let compiler_profile = C61CompilerVerifierProfile::new(terminal_metadata)?;
+    let compiler_profile = if protocol_label == "C6.2" {
+        C61CompilerVerifierProfile::new_c62(terminal_metadata)?
+    } else {
+        C61CompilerVerifierProfile::new(terminal_metadata)?
+    };
     Ok(C61CampaignInstalledSetup {
         source_manifest,
         provider_plan,
@@ -5628,7 +5634,6 @@ mod campaign_artifact_tests {
             "build_c62_campaign_response_statement(",
             "C62CampaignResponseTranscriptSession::start(",
             "execute_c62_campaign_response_owner(",
-            "persist_c62_t1_native_coefficient_owners(",
             "prepare_c6_t1_production_residual_owner(",
             "build_c62_campaign_live_wrapper_statement(",
             "bind_c62_campaign_live_residual_roots(",
@@ -5648,6 +5653,8 @@ mod campaign_artifact_tests {
         }
         let signature = runner.split_once(") -> Result").unwrap().0;
         assert!(signature.contains("precommit: C62CampaignCachePrecommitOwner"));
+        assert!(signature.contains("model_coefficients: C61ProductionCoefficientOwner"));
+        assert!(signature.contains("gpu: &C62ProductionGpuWhir"));
         for forbidden in [
             "workload_owner:",
             "public_workload:",

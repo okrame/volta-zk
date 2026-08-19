@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 C62GW4 A100 TARGET PASS — OWNER REVIEW / NO GENESIS)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 C62GW4 GENESIS — POD AUTHORIZED / NO FULL SESSION)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,25 +8,38 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-Read `c62-whir-fiat-shamir-design.md` §0.61 next.
+Read `c62-whir-fiat-shamir-design.md` §0.62 next.
 
-- **Status.** C6.2 is `C62GW4_A100_TARGET_PASS_OWNER_REVIEW` on
-  `agent/c62-gw4-rows-h2d`. No further pod run or genesis is authorized without
-  a new owner GO.
+- **Status.** C6.2 is `C62GW4_GENESIS_POD_AUTHORIZED` on
+  `agent/c62-gw4-genesis`. Owner GO covers one clean `context-000` genesis,
+  not a full session or retry.
 - **Evidence.** Clean `8edc302` passed the full-payload CUDA differential and
   all eight serialized lanes: `7.359403833 s` WHIR and `10.359403833 s`
   projected inline. Peak VRAM was `39,146,362,732 B`, RSS high-water
   `4,423,577,600 B`; all lanes had zero debt/no settlement and each fresh lane
-  used one pinned message staging request.
+  used one pinned message staging request. The versioned GPU integration,
+  legacy non-CUDA build, CUDA build, runner source check and shell syntax pass.
 - **Gates.** Complete inline genesis, excluding setup and provider cache, is
   `<12 s`, GW4 target `<=10.5 s`, with WHIR `<7.5 s`. Setup is `<150 MB`, setup plus
   first certificate `<172 MB`, every certificate `<22 MB`, four-thread CPU
   verifier `<5 s`, and at least 17 certificates.
-- **Hard stop.** The sole authorized A100 calibration is complete. Owner review
-  must explicitly authorize any product/genesis run; its independent setup,
-  certificate-byte, 17-certificate and CPU-verifier gates remain unmeasured.
+- **Hard stop.** The pod may execute exactly one clean genesis and stops on any
+  exactness, resource, byte or timing miss. Continuations require a later GO.
 - **Credit.** No setup, PCG, context, retained proof or certificate was created;
   no product timing, byte, session or verifier gate has credit.
+
+- **2026-08-19 — C62GW4 genesis integration admits one pod attempt.** The
+  selected schedules now use a new C6.2 proof/parameter version and the shared
+  provider-only GPU path; historical C6.1 remains buildable. Narrow CUDA and
+  non-CUDA compilation, runner source checks and shell syntax pass. The owner
+  GO now admits exactly one clean `context-000` attempt under §0.62.
+
+- **2026-08-19 — Owner authorizes one C62GW4 genesis integration.** §0.62
+  promotes the calibrated GPU-native boundary into C6.2 under a new
+  proof/parameter version while preserving historical C6.1. One clean
+  `context-000` attempt may measure every current product boundary and, only on
+  pass, run the four registered mutations and seal one artifact. No retry,
+  continuation or 17-certificate session is authorized.
 
 - **2026-08-19 — C62GW4 A100 meets its engineering target.** Clean `8edc302`
   passed the full-payload fresh/cached CUDA differential, then completed all

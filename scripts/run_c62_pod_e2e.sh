@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run one fresh C6.2 A100 preflight, session, and mutation record.
+# Run one fresh C6.2 A100 genesis, CPU verification, and mutation record.
 # Set C62_SETUP_SOURCE to copy a previously generated deterministic setup into
 # the required create-new SETUP_ROOT instead of regenerating all 17 profiles.
 
@@ -92,20 +92,13 @@ if [[ -n $(git status --porcelain=v1 --untracked-files=all) ]]; then
   exit 2
 fi
 
-VOLTA_CUDA_ARCH=sm_80 scripts/build_cuda_backend.sh
+VOLTA_CUDA_ARCH=sm_80 scripts/check_c62_gpu_native_boundary.sh
 export VOLTA_CUDA_LIBRARY="$REPO_ROOT/target/cuda/libvolta_cuda_backend.so"
 export RAYON_NUM_THREADS=8
-
-if [[ ${C62_RETAIN_VALIDATED_GATES:-} == \
-  'same-pod-cuda-39-local-corr-4-runner-3-2026-08-17' ]]; then
-  echo 'retaining validated CUDA 39/39, production-PCG 4/4, and runner 3/3 gates'
-else
-  cargo test --manifest-path rust/Cargo.toml -p volta-accel --features cuda
-  cargo test --manifest-path rust/Cargo.toml \
-    -p volta-bench \
-    --bin c62_whir_fiat_shamir_record \
-    --features cuda,c6-trace,c61-p3-authenticated-reference
-fi
+cargo test --manifest-path rust/Cargo.toml \
+  -p volta-bench \
+  --bin c62_whir_fiat_shamir_record \
+  --features cuda,c6-trace,c61-p3-authenticated-reference
 
 if [[ -n $SETUP_SOURCE ]]; then
   mkdir "$SETUP_ROOT"
@@ -128,6 +121,9 @@ cleanup_spill() {
   local status=$?
   if [[ -d $SESSION_ROOT/run ]]; then
     rm -rf -- "$SESSION_ROOT/run"
+  fi
+  if [[ -d $WORK_ROOT/c62gw4-provider-cache ]]; then
+    rm -rf -- "$WORK_ROOT/c62gw4-provider-cache"
   fi
   return "$status"
 }
@@ -167,6 +163,16 @@ cargo run --release --manifest-path rust/Cargo.toml \
   --state-root "$SESSION_ROOT/state" \
   --output "$SESSION_ROOT/session.json"
 
+CUDA_VISIBLE_DEVICES='' cargo run --release --manifest-path rust/Cargo.toml \
+  -p volta-bench \
+  --bin c62_whir_fiat_shamir_record \
+  --features cuda,c6-trace,c61-p3-authenticated-reference \
+  -- \
+  --mode verify \
+  --artifact-root "$SESSION_ROOT/artifacts/certificate-00" \
+  --threads 4 \
+  --output "$SESSION_ROOT/verifier.json"
+
 cargo run --release --manifest-path rust/Cargo.toml \
   -p volta-bench \
   --bin c62_whir_fiat_shamir_record \
@@ -191,6 +197,7 @@ cargo run --release --manifest-path rust/Cargo.toml \
     setup-measurement.json \
     preflight.json \
     session.json \
+    verifier.json \
     mutations.json \
     artifact-00-files.sha256 \
     artifact-00.tar \

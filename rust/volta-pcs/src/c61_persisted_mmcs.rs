@@ -234,6 +234,10 @@ pub struct C61PersistedMmcs {
 
 pub(crate) trait C61MmcsResourceMetrics {
     fn c61_persisted_metrics(&self) -> Option<C61PersistedMmcsMetrics>;
+
+    fn c61_gpu_performance_credit(&self) -> bool {
+        false
+    }
 }
 
 impl C61MmcsResourceMetrics for C61Mmcs {

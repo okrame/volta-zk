@@ -901,6 +901,15 @@ pub fn persist_c62_t1_native_coefficient_owners(
 }
 
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub fn create_c62_provider_fixed_coefficient_owners(
+    model: &Gpt2Model,
+    root: &Path,
+    session_digest: [u8; 32],
+) -> Result<(C61ProductionCoefficientOwner, C61ProductionCoefficientOwner), String> {
+    persist_c6_t1_native_coefficients(model, root, session_digest)
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 fn persist_c6_t1_native_coefficients(
     model: &Gpt2Model,
     root: &Path,

@@ -1,6 +1,6 @@
 # C6.2 WHIR Fiat--Shamir Design
 
-Status: **C62GW2 A100 FAIL-FAST / LOCAL SVO ANALYSIS REQUIRED**
+Status: **C62GW4 GENESIS POD AUTHORIZED / NO FULL SESSION**
 
 This document is the active design for C6.2. It has precedence over the
 interactive C6.1 sections in `c6-delta-residual-inline-design.md`. Frozen C6
@@ -1525,3 +1525,29 @@ gate receives credit. The cycle is closed at owner review; genesis and any
 further pod run require a new explicit owner GO. Raw evidence is
 `c62-gw4-a100-calibration-2026-08-19-8edc302-r1.json`, SHA-256
 `036eb4d3aac185bc15387d1fc303c7021548e70cf39a30968aed7cb8310f0312`.
+
+## 0.62 C62GW4 genesis integration
+
+The owner GO authorizes promotion of the measured GW4 boundary into the real
+C6.2 path and one clean `context-000` genesis attempt. It does not authorize a
+17-certificate session or a retry. The promotion must use the selected D28
+`[3,3,2,2,2,2,8]` and D27 `[3,4,2,2,2,8]` schedules under a new C6.2 parameter
+and proof version; historical C6.1 configuration and artifacts stay unchanged.
+
+One provider-only GPU owner may preload the fixed model and embedding bases.
+The response and plan messages remain fresh per certificate. All eight roots
+must use the GW4 dense-weight, fused-NTT and single pinned-H2D path, with the
+same independent commitments, Fiat--Shamir order, verifier equations and
+certificate framing measured in §0.61. No online work or settlement may enter
+the cache.
+
+Before pod execution, the scaled full-payload CUDA differential, C6.2 codec
+round trip, production runner checks and current gate constants must pass. The
+single genesis run measures setup, complete provider wall, backend counters,
+I/O, RSS/VRAM, certificate bytes and the independent four-thread verifier.
+Binding admission is setup `<150,000,000 B`, setup plus first certificate
+`<172,000,000 B`, certificate `<22,000,000 B`, provider `<12 s` and verifier
+`<5 s`. Any exactness, resource, byte or timing miss stops before mutation or a
+continuation. A passing genesis may run the four registered negative mutations
+and seal one copyable artifact, but a full session still requires a later
+explicit owner GO.

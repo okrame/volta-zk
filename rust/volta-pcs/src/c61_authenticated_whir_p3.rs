@@ -16,7 +16,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use p3_challenger::{CanObserve, FieldChallenger, GrindingChallenger};
+use p3_challenger::{CanObserve, CanSampleUniformBits, FieldChallenger, GrindingChallenger};
 use p3_commit::Mmcs;
 use p3_dft::Radix2DFTSmallBatch;
 use p3_field::{BasedVectorSpace, PrimeCharacteristicRing, PrimeField64};
@@ -27,15 +27,16 @@ use p3_multilinear_util::poly::Poly;
 use p3_whir_c61::parameters::{FoldingFactor, ProtocolParameters, SecurityAssumption};
 use p3_whir_c61::pcs::proof::{QueryOpenings, SharedProofOpening};
 use p3_whir_c61::pcs::zk::{
-    BaseCaseClaimlessClosure, BaseCaseZkProof, BlindedMask, HidingWhirProver, HidingWhirVerifier,
-    MaskOpeningPair, ZkParameters, ZkRoundProof, ZkWhirConfig, ZkWhirProof,
+    BaseCaseClaimlessClosure, BaseCaseZkProof, BlindedMask, ClaimlessWhirProverOutput,
+    HidingWhirProver, HidingWhirProverData, HidingWhirVerifier, MaskOpeningPair,
+    ZkParameters, ZkRoundProof, ZkWhirConfig, ZkWhirProof,
 };
 use p3_whir_c61::{ClaimlessAffineClaim, ClaimlessZkSumcheckData};
 use rand::rngs::OsRng;
 use rand::RngCore as Rand08RngCore;
 use rand_010::rngs::StdRng;
 use rand_010::{RngExt, SeedableRng};
-use volta_accel::{Backend, BackendKind};
+use volta_accel::{Backend, BackendKind, BackendStats};
 use volta_field::{Fp, Fp2, P};
 use volta_mac::{
     zero_open_verify, C6CanonicalTargetProfile, C6InstalledOperationPlan,
@@ -115,6 +116,166 @@ fn c61_production_private_zk_rng() -> Result<StdRng, String> {
         .map_err(|error| format!("C6ICT2 provider entropy unavailable: {error}"))?;
     Ok(StdRng::from_seed(seed))
 }
+
+struct C61ReferenceWhirExecutor;
+
+trait C61ProductionWhirExecutor<MT, Challenger>
+where
+    MT: Mmcs<Goldilocks, Commitment = C61Commitment>,
+{
+    fn commit(
+        &self,
+        prover: &HidingWhirProver<
+            '_ ,
+            C61P3Fp2,
+            Goldilocks,
+            Radix2DFTSmallBatch<Goldilocks>,
+            MT,
+            Challenger,
+        >,
+        message: Poly<Goldilocks>,
+        challenger: &mut Challenger,
+        rng: &mut StdRng,
+    ) -> Result<
+        (
+            C61Commitment,
+            HidingWhirProverData<Goldilocks, C61P3Fp2, MT>,
+        ),
+        String,
+    >;
+
+    fn prove(
+        &self,
+        prover: &HidingWhirProver<
+            '_,
+            C61P3Fp2,
+            Goldilocks,
+            Radix2DFTSmallBatch<Goldilocks>,
+            MT,
+            Challenger,
+        >,
+        data: HidingWhirProverData<Goldilocks, C61P3Fp2, MT>,
+        claims: &[(Point<C61P3Fp2>, C61P3Fp2)],
+        base_shift: C61P3Fp2,
+        challenger: &mut Challenger,
+        rng: &mut StdRng,
+    ) -> Result<ClaimlessWhirProverOutput<Goldilocks, C61P3Fp2, MT>, String>;
+}
+
+impl<MT, Challenger> C61ProductionWhirExecutor<MT, Challenger> for C61ReferenceWhirExecutor
+where
+    MT: Mmcs<Goldilocks, Commitment = C61Commitment, MultiProof = C61MultiProof> + Clone,
+    Challenger: FieldChallenger<Goldilocks>
+        + GrindingChallenger<Witness = Goldilocks>
+        + CanSampleUniformBits<Goldilocks>
+        + CanObserve<C61Commitment>,
+{
+    fn commit(
+        &self,
+        prover: &HidingWhirProver<
+            '_,
+            C61P3Fp2,
+            Goldilocks,
+            Radix2DFTSmallBatch<Goldilocks>,
+            MT,
+            Challenger,
+        >,
+        message: Poly<Goldilocks>,
+        challenger: &mut Challenger,
+        rng: &mut StdRng,
+    ) -> Result<
+        (C61Commitment, HidingWhirProverData<Goldilocks, C61P3Fp2, MT>),
+        String,
+    > {
+        Ok(prover.commit(message, challenger, rng))
+    }
+
+    fn prove(
+        &self,
+        prover: &HidingWhirProver<
+            '_,
+            C61P3Fp2,
+            Goldilocks,
+            Radix2DFTSmallBatch<Goldilocks>,
+            MT,
+            Challenger,
+        >,
+        data: HidingWhirProverData<Goldilocks, C61P3Fp2, MT>,
+        claims: &[(Point<C61P3Fp2>, C61P3Fp2)],
+        base_shift: C61P3Fp2,
+        challenger: &mut Challenger,
+        rng: &mut StdRng,
+    ) -> Result<ClaimlessWhirProverOutput<Goldilocks, C61P3Fp2, MT>, String> {
+        Ok(prover.prove_claimless(data, claims, base_shift, challenger, rng))
+    }
+}
+
+impl<Challenger>
+    C61ProductionWhirExecutor<crate::c62_gpu_whir::C62GpuMmcs, Challenger>
+    for crate::c62_gpu_whir::C62GpuWhirCommitter
+where
+    Challenger: FieldChallenger<Goldilocks>
+        + GrindingChallenger<Witness = Goldilocks>
+        + CanSampleUniformBits<Goldilocks>
+        + CanObserve<C61Commitment>,
+{
+    fn commit(
+        &self,
+        prover: &HidingWhirProver<
+            '_,
+            C61P3Fp2,
+            Goldilocks,
+            Radix2DFTSmallBatch<Goldilocks>,
+            crate::c62_gpu_whir::C62GpuMmcs,
+            Challenger,
+        >,
+        message: Poly<Goldilocks>,
+        challenger: &mut Challenger,
+        rng: &mut StdRng,
+    ) -> Result<
+        (
+            C61Commitment,
+            HidingWhirProverData<Goldilocks, C61P3Fp2, crate::c62_gpu_whir::C62GpuMmcs>,
+        ),
+        String,
+    > {
+        prover
+            .commit_with_oracle(message, self, challenger, rng)
+            .map_err(|error| error.to_string())
+    }
+
+    fn prove(
+        &self,
+        prover: &HidingWhirProver<
+            '_,
+            C61P3Fp2,
+            Goldilocks,
+            Radix2DFTSmallBatch<Goldilocks>,
+            crate::c62_gpu_whir::C62GpuMmcs,
+            Challenger,
+        >,
+        data: HidingWhirProverData<
+            Goldilocks,
+            C61P3Fp2,
+            crate::c62_gpu_whir::C62GpuMmcs,
+        >,
+        claims: &[(Point<C61P3Fp2>, C61P3Fp2)],
+        base_shift: C61P3Fp2,
+        challenger: &mut Challenger,
+        rng: &mut StdRng,
+    ) -> Result<
+        ClaimlessWhirProverOutput<
+            Goldilocks,
+            C61P3Fp2,
+            crate::c62_gpu_whir::C62GpuMmcs,
+        >,
+        String,
+    > {
+        prover
+            .prove_claimless_with_oracle(data, claims, base_shift, self, challenger, rng)
+            .map_err(|error| error.to_string())
+    }
+}
 use crate::{C6Nbr2ProvedLink, C6Nbr2VerifiedLink, C61_NATIVE_CHAIN_MAX_BYTES};
 
 pub const C61_AUTHENTICATED_P3_SECURITY_BITS: usize = 75;
@@ -129,10 +290,11 @@ pub const C61_AUTHENTICATED_P3_VERSION: u16 = 1;
 pub const C61_JOINT_AUTHENTICATED_P3_MAGIC: [u8; 8] = *b"C6AWP2\0\0";
 pub const C61_JOINT_AUTHENTICATED_P3_VERSION: u16 = 2;
 pub const C62_AUTHENTICATED_P3_MAGIC: [u8; 8] = *b"C62AWP1\0";
-pub const C62_AUTHENTICATED_P3_VERSION: u16 = 1;
+pub const C62_AUTHENTICATED_P3_VERSION: u16 = 2;
 pub const C61_AUTHENTICATED_P3_HEADER_BYTES: usize = 8 + 2 + 1 + 1 + 4;
 pub const C61_SHARED_MULTI_ORACLE_MAGIC: [u8; 8] = *b"C6SMO1\0\0";
 pub const C61_SHARED_MULTI_ORACLE_VERSION: u16 = 1;
+pub const C62_SHARED_MULTI_ORACLE_VERSION: u16 = 2;
 pub const C61_SHARED_MULTI_ORACLE_HEADER_BYTES: usize = 8 + 2 + 1 + 1 + 4;
 pub const C61_SHARED_MULTI_ORACLE_MAX_BYTES: usize = 2_500_000;
 const C61_SPARSE_ARITHMETIC_PHYSICAL_RESPONSE_OPENINGS: usize = 12;
@@ -263,6 +425,7 @@ const C61_PRODUCTION_COMPILER_PROOF_DIGEST_BYTES: usize = 32;
 pub const C61_COMPILER_VERIFIER_SETUP_CAP_BYTES: u64 = 8_000_000;
 const C61_COMPILER_VERIFIER_PROFILE_MAGIC: &[u8; 8] = b"C61CVP1\0";
 const C61_COMPILER_VERIFIER_PROFILE_VERSION: u16 = 1;
+const C62_COMPILER_VERIFIER_PROFILE_VERSION: u16 = 2;
 const C61_COMPILER_VERIFIER_PROFILE_HEADER_BYTES: usize = 148;
 
 /// Response-independent compiler verifier state retained by the client.
@@ -270,6 +433,7 @@ const C61_COMPILER_VERIFIER_PROFILE_HEADER_BYTES: usize = 148;
 /// physical D27 plan oracle.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C61CompilerVerifierProfile {
+    profile_version: u16,
     operation_plan_digest: [u8; 32],
     topology: C6OperationPlanTopologyIdentity,
     terminal_metadata: C6OperationPlanTerminalMetadata,
@@ -282,13 +446,36 @@ pub struct C61CompilerVerifierProfile {
 
 impl C61CompilerVerifierProfile {
     pub fn new(terminal_metadata: C6OperationPlanTerminalMetadata) -> Result<Self, String> {
+        Self::new_with_version(terminal_metadata, C61_COMPILER_VERIFIER_PROFILE_VERSION)
+    }
+
+    pub fn new_c62(terminal_metadata: C6OperationPlanTerminalMetadata) -> Result<Self, String> {
+        Self::new_with_version(terminal_metadata, C62_COMPILER_VERIFIER_PROFILE_VERSION)
+    }
+
+    fn new_with_version(
+        terminal_metadata: C6OperationPlanTerminalMetadata,
+        profile_version: u16,
+    ) -> Result<Self, String> {
         let topology = terminal_metadata.topology();
         let operation_plan_digest = terminal_metadata.operation_plan_artifact_digest();
         let base_domain_log2 =
             volta_proto::c6_residual::c6_sparse_rational_base_domain_log2_compact(topology)
                 .map_err(|error| error.to_string())?;
-        let response_parameter_digest = c61_authenticated_p3_parameter_digest(28)?;
-        let plan_parameter_digest = c61_authenticated_p3_parameter_digest(27)?;
+        let c62 = profile_version == C62_COMPILER_VERIFIER_PROFILE_VERSION;
+        if !c62 && profile_version != C61_COMPILER_VERIFIER_PROFILE_VERSION {
+            return Err("C6SPR11 compiler profile version is unsupported".to_owned());
+        }
+        let response_parameter_digest = if c62 {
+            c62_authenticated_p3_parameter_digest(28)?
+        } else {
+            c61_authenticated_p3_parameter_digest(28)?
+        };
+        let plan_parameter_digest = if c62 {
+            c62_authenticated_p3_parameter_digest(27)?
+        } else {
+            c61_authenticated_p3_parameter_digest(27)?
+        };
         // Strict persisted bytes: the canonical terminal projection plus the
         // fixed profile header/digests.  This excludes the separately counted
         // extraction map but includes every byte owned by this profile.
@@ -301,6 +488,7 @@ impl C61CompilerVerifierProfile {
             return Err("C6SPR11 compact compiler profile exceeds the 8-MB allocation".to_owned());
         }
         let mut profile = Self {
+            profile_version,
             operation_plan_digest,
             topology,
             terminal_metadata,
@@ -317,6 +505,10 @@ impl C61CompilerVerifierProfile {
 
     pub fn operation_plan_digest(&self) -> [u8; 32] {
         self.operation_plan_digest
+    }
+
+    pub fn is_c62(&self) -> bool {
+        self.profile_version == C62_COMPILER_VERIFIER_PROFILE_VERSION
     }
 
     pub fn topology(&self) -> C6OperationPlanTopologyIdentity {
@@ -358,7 +550,7 @@ impl C61CompilerVerifierProfile {
         }
         let mut bytes = Vec::with_capacity(capacity);
         bytes.extend_from_slice(C61_COMPILER_VERIFIER_PROFILE_MAGIC);
-        bytes.extend_from_slice(&C61_COMPILER_VERIFIER_PROFILE_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&self.profile_version.to_le_bytes());
         bytes.extend_from_slice(&0u16.to_le_bytes());
         bytes.extend_from_slice(&self.operation_plan_digest);
         bytes.extend_from_slice(&self.topology.topology_digest);
@@ -376,10 +568,17 @@ impl C61CompilerVerifierProfile {
         expected_topology: C6OperationPlanTopologyIdentity,
         source_manifest: &C6TraceSourceManifest,
     ) -> Result<Self, String> {
+        let profile_version = bytes
+            .get(8..10)
+            .map(|value| u16::from_le_bytes(value.try_into().expect("fixed width")))
+            .unwrap_or_default();
         if bytes.len() < C61_COMPILER_VERIFIER_PROFILE_HEADER_BYTES
             || bytes.get(..8) != Some(C61_COMPILER_VERIFIER_PROFILE_MAGIC)
-            || u16::from_le_bytes(bytes[8..10].try_into().expect("fixed width"))
-                != C61_COMPILER_VERIFIER_PROFILE_VERSION
+            || ![
+                C61_COMPILER_VERIFIER_PROFILE_VERSION,
+                C62_COMPILER_VERIFIER_PROFILE_VERSION,
+            ]
+            .contains(&profile_version)
             || bytes[10..12] != [0, 0]
             || bytes[141..148] != [0; 7]
         {
@@ -399,7 +598,7 @@ impl C61CompilerVerifierProfile {
             source_manifest,
         )
         .map_err(|error| error.to_string())?;
-        let profile = Self::new(terminal_metadata)?;
+        let profile = Self::new_with_version(terminal_metadata, profile_version)?;
         if profile.base_domain_log2 != bytes[140]
             || profile.response_parameter_digest != response_parameter_digest
             || profile.plan_parameter_digest != plan_parameter_digest
@@ -411,8 +610,11 @@ impl C61CompilerVerifierProfile {
     }
 
     fn recompute_digest(&self) -> [u8; 32] {
-        let mut hasher =
-            blake3::Hasher::new_derive_key("volta-zk/c6.1/compiler-verifier-profile/v1");
+        let mut hasher = if self.profile_version == C62_COMPILER_VERIFIER_PROFILE_VERSION {
+            blake3::Hasher::new_derive_key("volta-zk/c6.2/compiler-verifier-profile/v2")
+        } else {
+            blake3::Hasher::new_derive_key("volta-zk/c6.1/compiler-verifier-profile/v1")
+        };
         hasher.update(&self.operation_plan_digest);
         hasher.update(&self.topology.topology_digest);
         hasher.update(&self.terminal_metadata.digest());
@@ -432,8 +634,23 @@ impl C61CompilerVerifierProfile {
                     self.topology,
                 )
                 .map_err(|error| error.to_string())?
-            || self.response_parameter_digest != c61_authenticated_p3_parameter_digest(28)?
-            || self.plan_parameter_digest != c61_authenticated_p3_parameter_digest(27)?
+            || ![
+                C61_COMPILER_VERIFIER_PROFILE_VERSION,
+                C62_COMPILER_VERIFIER_PROFILE_VERSION,
+            ]
+            .contains(&self.profile_version)
+            || self.response_parameter_digest
+                != if self.profile_version == C62_COMPILER_VERIFIER_PROFILE_VERSION {
+                    c62_authenticated_p3_parameter_digest(28)?
+                } else {
+                    c61_authenticated_p3_parameter_digest(28)?
+                }
+            || self.plan_parameter_digest
+                != if self.profile_version == C62_COMPILER_VERIFIER_PROFILE_VERSION {
+                    c62_authenticated_p3_parameter_digest(27)?
+                } else {
+                    c61_authenticated_p3_parameter_digest(27)?
+                }
             || self.encoded_setup_bytes > C61_COMPILER_VERIFIER_SETUP_CAP_BYTES
             || self.digest == [0; 32]
             || self.digest != self.recompute_digest()
@@ -685,25 +902,52 @@ pub fn decode_c61_production_compiler_commitment_descriptors(
     id: C61NativeChainId,
     payload: &[u8],
 ) -> Result<[C61NativeCommitmentDescriptor; 2], String> {
+    decode_c61_production_compiler_commitment_descriptors_inner(id, payload, false)
+}
+
+pub fn decode_c62_production_compiler_commitment_descriptors(
+    id: C61NativeChainId,
+    payload: &[u8],
+) -> Result<[C61NativeCommitmentDescriptor; 2], String> {
+    decode_c61_production_compiler_commitment_descriptors_inner(id, payload, true)
+}
+
+fn decode_c61_production_compiler_commitment_descriptors_inner(
+    id: C61NativeChainId,
+    payload: &[u8],
+    c62: bool,
+) -> Result<[C61NativeCommitmentDescriptor; 2], String> {
     if id.component != C61NativeComponent::Compiler || id.repetition >= 2 {
         return Err("C6CPX3 commitment predecode requires a compiler chain".to_owned());
     }
     let joint = C61ProductionJointCompilerChainProof::decode(payload, [1; 32], [2; 32])?;
     let artifact =
         C61SharedMultiOracleArtifact { payload: joint.inner().shared_payload().to_vec() };
-    let ((response, _), (plan, _), _) = decode_c61_shared_multi_oracle_artifact(&artifact, 28, 27)
-        .map_err(|error| error.to_string())?;
+    let ((response, _), (plan, _), _) = if c62 {
+        decode_c62_shared_multi_oracle_artifact(&artifact, 28, 27)
+    } else {
+        decode_c61_shared_multi_oracle_artifact(&artifact, 28, 27)
+    }
+    .map_err(|error| error.to_string())?;
     if response.num_roots() != 1 || plan.num_roots() != 1 {
         return Err("C6CPX3 commitment predecode has a noncanonical root cap".to_owned());
     }
     Ok([
         C61NativeCommitmentDescriptor {
-            parameter_digest: c61_authenticated_p3_parameter_digest(28)?,
+            parameter_digest: if c62 {
+                c62_authenticated_p3_parameter_digest(28)?
+            } else {
+                c61_authenticated_p3_parameter_digest(28)?
+            },
             commitment_root: response.roots()[0],
             polynomial_domain_log2: 28,
         },
         C61NativeCommitmentDescriptor {
-            parameter_digest: c61_authenticated_p3_parameter_digest(27)?,
+            parameter_digest: if c62 {
+                c62_authenticated_p3_parameter_digest(27)?
+            } else {
+                c61_authenticated_p3_parameter_digest(27)?
+            },
             commitment_root: plan.roots()[0],
             polynomial_domain_log2: 27,
         },
@@ -1677,17 +1921,32 @@ impl C61ProductionCommittedChainProof {
     ) -> Result<Self, String> {
         let openings = c61_model_embedding_openings(public)?;
         let num_variables = usize::from(openings.commitment.polynomial_domain_log2);
-        let (commitment, proof, base_proof) =
+        let c62 = matches!(num_variables, 27 | 28)
+            && openings.commitment.parameter_digest
+                == c62_authenticated_p3_parameter_digest(num_variables)?;
+        let (commitment, proof, base_proof) = if c62 {
+            decode_c62_authenticated_p3_artifact_inner(payload, num_variables)
+        } else {
             decode_c61_authenticated_p3_artifact_inner(payload, num_variables, true)
-                .map_err(|error| error.to_string())?;
+        }
+        .map_err(|error| error.to_string())?;
         c61_validate_committed_chain_root(public, &commitment)?;
-        let canonical = encode_c61_authenticated_p3_artifact_inner(
-            num_variables,
-            &commitment,
-            &proof,
-            base_proof,
-            true,
-        )
+        let canonical = if c62 {
+            encode_c62_authenticated_p3_artifact_inner(
+                num_variables,
+                &commitment,
+                &proof,
+                base_proof,
+            )
+        } else {
+            encode_c61_authenticated_p3_artifact_inner(
+                num_variables,
+                &commitment,
+                &proof,
+                base_proof,
+                true,
+            )
+        }
         .map_err(|error| error.to_string())?;
         if canonical != payload {
             return Err("noncanonical production C6AWP1 chain".to_owned());
@@ -1900,7 +2159,7 @@ fn c62_tagless_from_c61_awp1(tagless: &[u8]) -> Result<Vec<u8>, String> {
     if tagless.len() < C61_AUTHENTICATED_P3_HEADER_BYTES
         || tagless[..8] != C61_AUTHENTICATED_P3_MAGIC
         || u16::from_le_bytes(tagless[8..10].try_into().expect("fixed C6AWP1 version"))
-            != C61_AUTHENTICATED_P3_VERSION
+            != C62_AUTHENTICATED_P3_VERSION
     {
         return Err("C62AWP1 source is not a canonical C6AWP1 tagless body".to_owned());
     }
@@ -1934,7 +2193,7 @@ fn c62_tagless_to_c61_awp1(tagless: &[u8]) -> Result<Vec<u8>, String> {
     }
     let mut ordinary = tagless.to_vec();
     ordinary[..8].copy_from_slice(&C61_AUTHENTICATED_P3_MAGIC);
-    ordinary[8..10].copy_from_slice(&C61_AUTHENTICATED_P3_VERSION.to_le_bytes());
+    ordinary[8..10].copy_from_slice(&C62_AUTHENTICATED_P3_VERSION.to_le_bytes());
     Ok(ordinary)
 }
 
@@ -1962,7 +2221,7 @@ fn c62_awp1_payload_to_c61(
     }
     let mut ordinary = payload.to_vec();
     ordinary[..8].copy_from_slice(&C61_AUTHENTICATED_P3_MAGIC);
-    ordinary[8..10].copy_from_slice(&C61_AUTHENTICATED_P3_VERSION.to_le_bytes());
+    ordinary[8..10].copy_from_slice(&C62_AUTHENTICATED_P3_VERSION.to_le_bytes());
     Ok(ordinary)
 }
 
@@ -2016,9 +2275,6 @@ pub fn decode_c62_production_native_commitment_descriptor(
     id: C61NativeChainId,
     payload: &[u8],
 ) -> Result<C61NativeCommitmentDescriptor, String> {
-    if id.repetition == 0 {
-        return decode_c61_production_native_commitment_descriptor(id, payload);
-    }
     let num_variables = match id.component {
         C61NativeComponent::Model => usize::from(C61_MODEL_POLYNOMIAL_LOG2),
         C61NativeComponent::Embedding => usize::from(C61_EMBEDDING_POLYNOMIAL_LOG2),
@@ -2026,28 +2282,31 @@ pub fn decode_c62_production_native_commitment_descriptor(
             return Err("C62PA1 commitment predecode rejects compiler chains".to_owned())
         }
     };
-    if id.repetition != 1 || payload.len() < C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES {
+    if id.repetition >= 2 || payload.len() < C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES {
         return Err("C62PA1 commitment predecode repetition or length differs".to_owned());
     }
-    let mut ordinary = c62_awp1_payload_to_c61(payload, C61JointNativeTailRole::Correction)?;
+    let mut ordinary = if id.repetition == 0 {
+        payload.to_vec()
+    } else {
+        c62_awp1_payload_to_c61(payload, C61JointNativeTailRole::Correction)?
+    };
     let tail_start = ordinary.len() - C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES;
     ordinary[tail_start..].fill(0);
     let (commitment, proof, base_proof) =
-        decode_c61_authenticated_p3_artifact_inner(&ordinary, num_variables, true)
+        decode_c62_authenticated_p3_artifact_inner(&ordinary, num_variables)
             .map_err(|error| error.to_string())?;
-    let canonical = encode_c61_authenticated_p3_artifact_inner(
+    let canonical = encode_c62_authenticated_p3_artifact_inner(
         num_variables,
         &commitment,
         &proof,
         base_proof,
-        true,
     )
     .map_err(|error| error.to_string())?;
     if canonical != ordinary || commitment.num_roots() != 1 {
         return Err("C62PA1 commitment predecode is noncanonical".to_owned());
     }
     Ok(C61NativeCommitmentDescriptor {
-        parameter_digest: c61_authenticated_p3_parameter_digest(num_variables)?,
+        parameter_digest: c62_authenticated_p3_parameter_digest(num_variables)?,
         commitment_root: commitment.roots()[0],
         polynomial_domain_log2: u8::try_from(num_variables)
             .map_err(|_| "C62PA1 commitment dimension exceeds u8")?,
@@ -2410,6 +2669,7 @@ pub struct C61ProductionCommittedChainProverBody {
     provider_interaction: C61WhirInteractionStats,
     strict_payload_max_bytes: usize,
     spill: C61PersistedMmcsMetrics,
+    gpu_performance_credit: bool,
 }
 
 impl C61ProductionCommittedChainProverBody {
@@ -2517,9 +2777,9 @@ impl C61ProductionCommittedChainProverBody {
             strict_payload_blake3: *blake3::hash(&payload).as_bytes(),
             strict_payload_max_bytes: self.strict_payload_max_bytes,
             pooled_pcg: true,
-            persisted_executor: true,
+            persisted_executor: !self.gpu_performance_credit,
             cuda_resident_admission: true,
-            gpu_performance_credit: false,
+            gpu_performance_credit: self.gpu_performance_credit,
             provider_interaction: self.provider_interaction,
             provider_transcript_bytes: self.transcript.total_bytes(),
             provider_ledger: self.transcript.ledger().clone(),
@@ -4141,6 +4401,7 @@ pub fn prove_c61_authenticated_whir_p3_production_four_committed_chains_in_attem
         spill_root,
         admission,
         backend,
+        None,
         correlations,
         verifier_seeds.map(Transcript::new),
         verifier_seeds,
@@ -4193,6 +4454,7 @@ pub fn prepare_c61_authenticated_whir_p3_production_joint_four_chains_in_attempt
         spill_root,
         admission,
         backend,
+        None,
         correlations,
         verifier_seeds.map(Transcript::new),
         verifier_seeds,
@@ -4261,6 +4523,7 @@ pub fn prepare_c61_authenticated_whir_p3_production_joint_four_chains_private_en
         spill_root,
         admission,
         backend,
+        None,
         correlations,
         transcripts,
         binding_digests,
@@ -4301,6 +4564,7 @@ pub fn prepare_c62_authenticated_whir_p3_production_joint_four_chains_fiat_shami
     spill_root: &Path,
     admission: C61ProductionPersistedResourceAdmission,
     backend: &mut Backend,
+    gpu: &C62ProductionGpuWhir,
     correlations: &mut [CorrelationStream; 2],
     mask_ranges: [C61AuthenticatedWhirMaskRange; 4],
 ) -> Result<C62ProductionJointCommittedFourChainPrepared, String> {
@@ -4331,6 +4595,7 @@ pub fn prepare_c62_authenticated_whir_p3_production_joint_four_chains_fiat_shami
         spill_root,
         admission,
         backend,
+        Some(gpu),
         correlations,
         transcripts,
         context_digests,
@@ -4364,6 +4629,7 @@ fn prepare_c61_authenticated_whir_p3_production_four_committed_chain_bodies(
     spill_root: &Path,
     admission: C61ProductionPersistedResourceAdmission,
     backend: &mut Backend,
+    gpu: Option<&C62ProductionGpuWhir>,
     correlations: &mut [CorrelationStream; 2],
     transcripts: [Transcript; 4],
     provider_session_bindings: [[u8; 32]; 4],
@@ -4423,14 +4689,24 @@ fn prepare_c61_authenticated_whir_p3_production_four_committed_chain_bodies(
                 .checked_mul(std::mem::size_of::<Goldilocks>() as u64)
                 .ok_or_else(|| "C6SPR11 coefficient byte census overflows".to_owned())?,
         );
+        let transcript = transcripts.next().expect("four C6ICT2 chain transcripts");
+        let c62 = transcript.is_fiat_shamir();
         let (targets, parameter_digest) = match component {
             C61NativeComponent::Model => (
                 model_targets.next().expect("two model target owners"),
-                c61_authenticated_p3_parameter_digest(28)?,
+                if c62 {
+                    c62_authenticated_p3_parameter_digest(28)?
+                } else {
+                    c61_authenticated_p3_parameter_digest(28)?
+                },
             ),
             C61NativeComponent::Embedding => (
                 embedding_targets.next().expect("two embedding target owners"),
-                c61_authenticated_p3_parameter_digest(27)?,
+                if c62 {
+                    c62_authenticated_p3_parameter_digest(27)?
+                } else {
+                    c61_authenticated_p3_parameter_digest(27)?
+                },
             ),
             C61NativeComponent::Compiler => unreachable!("compiler absent from schedule"),
         };
@@ -4444,8 +4720,9 @@ fn prepare_c61_authenticated_whir_p3_production_four_committed_chain_bodies(
             &child,
             admission,
             backend,
+            gpu,
             &mut correlations[usize::from(repetition)],
-            transcripts.next().expect("four C6ICT2 chain transcripts"),
+            transcript,
             provider_session_bindings.next().expect("four C6ICT2 provider session bindings"),
             id,
             mask_ranges[ordinal],
@@ -4664,8 +4941,7 @@ where
     .map_err(|error| error.to_string())
 }
 
-#[cfg(all(test, feature = "cuda"))]
-fn c62gw2_calibration_config<Challenger>(
+fn c62_authenticated_config<Challenger>(
     num_variables: usize,
 ) -> Result<ZkWhirConfig<C61P3Fp2, Goldilocks, Challenger>, String>
 where
@@ -4674,7 +4950,7 @@ where
     let schedule = match num_variables {
         27 => vec![3, 4, 2, 2, 2, 8],
         28 => vec![3, 3, 2, 2, 2, 2, 8],
-        _ => return Err("C62GW2 calibration admits only D27/D28".to_owned()),
+        _ => return Err("C62GW4 production admits only D27/D28".to_owned()),
     };
     c61_authenticated_config_with_folding(
         num_variables,
@@ -4749,6 +5025,195 @@ pub fn c61_authenticated_p3_parameter_digest(num_variables: usize) -> Result<[u8
     Ok(*hasher.finalize().as_bytes())
 }
 
+/// C6.2-only profile digest. Historical C6.1 keeps its v1 folding schedule.
+pub fn c62_authenticated_p3_parameter_digest(num_variables: usize) -> Result<[u8; 32], String> {
+    let config = c62_authenticated_config::<C61SizingChallenger>(num_variables)?;
+    let budget = c61_authenticated_structural_budget_for_config(num_variables, &config)?;
+    let mut hasher =
+        blake3::Hasher::new_derive_key("volta-zk/c6.2/authenticated-whir-parameters/v2");
+    hasher.update(C61_AUTHENTICATED_P3_REVISION.as_bytes());
+    hasher.update(&(num_variables as u64).to_le_bytes());
+    hasher.update(&(C61_AUTHENTICATED_P3_SECURITY_BITS as u64).to_le_bytes());
+    hasher.update(&(budget.rounds as u64).to_le_bytes());
+    hasher.update(&(budget.mask_queries as u64).to_le_bytes());
+    hasher.update(&(budget.strict_chain_bytes as u64).to_le_bytes());
+    for round in 0..=config.n_rounds() {
+        hasher.update(&(config.round_folding_factor(round) as u64).to_le_bytes());
+    }
+    hasher.update(&(C61_WHIRA1_STARTING_LOG_INV_RATE as u64).to_le_bytes());
+    hasher.update(&(C61_WHIRA1_MASK_LOG_INV_RATE as u64).to_le_bytes());
+    Ok(*hasher.finalize().as_bytes())
+}
+
+/// Provider-only GW4 owner. Fixed bases and twiddles are prepared before the
+/// certificate timer; every lane still draws fresh masks and keeps its own root.
+pub struct C62ProductionGpuWhir {
+    mmcs: crate::c62_gpu_whir::C62GpuMmcs,
+    model: Arc<crate::c62_gpu_whir::C62ProviderFixedBase>,
+    embedding: Arc<crate::c62_gpu_whir::C62ProviderFixedBase>,
+}
+
+impl C62ProductionGpuWhir {
+    pub fn new(
+        backend: Backend,
+        available_device_bytes: u64,
+        model_digest: [u8; 32],
+        protocol_digest: [u8; 32],
+        model_coefficients: &[Goldilocks],
+        embedding_coefficients: &[Goldilocks],
+    ) -> Result<Self, String> {
+        use crate::c62_gpu_whir::{
+            goldilocks_digest, C62GpuMmcs, C62GpuResourceGuard, C62ProviderCacheKey,
+            C62_GPU_WHIR_DEFAULT_TILE_LOG, C62_GPU_WHIR_EXECUTOR_VERSION,
+            C62_GPU_WHIR_FIELD_TAG,
+        };
+
+        if model_coefficients.len() != 1usize << C61_MODEL_POLYNOMIAL_LOG2
+            || embedding_coefficients.len() != 1usize << C61_EMBEDDING_POLYNOMIAL_LOG2
+        {
+            return Err("C62GW4 provider-cache coefficient geometry mismatch".to_owned());
+        }
+        let d28 = c62_authenticated_config::<C61SizingChallenger>(28)?;
+        let d27 = c62_authenticated_config::<C61SizingChallenger>(27)?;
+        let d28_folding = d28.round_folding_factor(0);
+        let d27_folding = d27.round_folding_factor(0);
+        let d28_height = (1usize << (28 - d28_folding)) << d28.starting_log_inv_rate;
+        let d27_height = (1usize << (27 - d27_folding)) << d27.starting_log_inv_rate;
+        if (d28_folding, d28_height, d27_folding, d27_height)
+            != (3, 1usize << 26, 3, 1usize << 25)
+        {
+            return Err("C62GW4 provider-cache schedule mismatch".to_owned());
+        }
+        let mut guard = C62GpuResourceGuard::for_lane(
+            28,
+            d28_folding,
+            d28_height,
+            C62_GPU_WHIR_DEFAULT_TILE_LOG,
+            C61_MODEL_OPENING_TARGETS,
+            false,
+            available_device_bytes,
+        )
+        .map_err(|error| error.to_string())?;
+        guard.fixed_cache_bytes = 12u64 << 30;
+        guard.validate().map_err(|error| error.to_string())?;
+        let mmcs = C62GpuMmcs::new(backend, C62_GPU_WHIR_DEFAULT_TILE_LOG, guard)
+            .map_err(|error| error.to_string())?;
+        let key = |num_variables: u8,
+                   folding: usize,
+                   height: usize,
+                   parameter_digest: [u8; 32],
+                   coefficients: &[Goldilocks]| C62ProviderCacheKey {
+            model_digest,
+            protocol_digest,
+            parameter_digest,
+            content_digest: goldilocks_digest(coefficients),
+            field_tag: C62_GPU_WHIR_FIELD_TAG,
+            encoder_version: C62_GPU_WHIR_EXECUTOR_VERSION,
+            num_variables,
+            folding: folding as u8,
+            height: height as u64,
+        };
+        let model = mmcs
+            .prepare_fixed_base(
+                key(
+                    28,
+                    d28_folding,
+                    d28_height,
+                    c62_authenticated_p3_parameter_digest(28)?,
+                    model_coefficients,
+                ),
+                model_coefficients,
+            )
+            .map_err(|error| error.to_string())?;
+        let embedding = mmcs
+            .prepare_fixed_base(
+                key(
+                    27,
+                    d27_folding,
+                    d27_height,
+                    c62_authenticated_p3_parameter_digest(27)?,
+                    embedding_coefficients,
+                ),
+                embedding_coefficients,
+            )
+            .map_err(|error| error.to_string())?;
+        if model.bytes() + embedding.bytes() != 12u64 << 30 {
+            return Err("C62GW4 provider-cache byte census mismatch".to_owned());
+        }
+        let mut twiddle_sizes = Vec::new();
+        for config in [&d28, &d27] {
+            let mut remaining = config.num_variables - config.round_folding_factor(0);
+            twiddle_sizes.push((1usize << remaining) << config.starting_log_inv_rate);
+            for round in 0..config.n_rounds() {
+                let folding = config.round_folding_factor(round);
+                let folding_next = config.round_folding_factor(round + 1);
+                twiddle_sizes.push(config.round_parameters[round].domain_size >> folding);
+                twiddle_sizes.push(config.inv_rate(round) * (1usize << (remaining - folding_next)));
+                remaining -= folding_next;
+            }
+        }
+        let backend = mmcs.backend();
+        let mut backend = backend.lock().map_err(|_| "C62GW4 CUDA lock".to_owned())?;
+        backend.warm_ntt_twiddles(&twiddle_sizes).map_err(|error| error.to_string())?;
+        backend.trim_device_cache().map_err(|error| error.to_string())?;
+        drop(backend);
+        Ok(Self { mmcs, model, embedding })
+    }
+
+    pub fn begin_measurement(&self) -> Result<(), String> {
+        self.mmcs
+            .backend()
+            .lock()
+            .map_err(|_| "C62GW4 CUDA lock".to_owned())?
+            .begin_measurement()
+            .map_err(|error| error.to_string())
+    }
+
+    pub fn finish_measurement(&self) -> Result<BackendStats, String> {
+        self.mmcs
+            .backend()
+            .lock()
+            .map_err(|_| "C62GW4 CUDA lock".to_owned())?
+            .finish_measurement()
+            .map_err(|error| error.to_string())
+    }
+
+    fn mmcs(&self) -> crate::c62_gpu_whir::C62GpuMmcs {
+        self.mmcs.clone()
+    }
+
+    fn cached_oracle(
+        &self,
+        component: C61NativeComponent,
+    ) -> Result<crate::c62_gpu_whir::C62GpuWhirCommitter, String> {
+        let cache = match component {
+            C61NativeComponent::Model => Arc::clone(&self.model),
+            C61NativeComponent::Embedding => Arc::clone(&self.embedding),
+            C61NativeComponent::Compiler => {
+                return Err("C62GW4 compiler requires a fresh oracle".to_owned())
+            }
+        };
+        Ok(crate::c62_gpu_whir::C62GpuWhirCommitter::provider_cached(
+            self.mmcs(),
+            cache,
+        ))
+    }
+
+    fn fresh_oracle(&self) -> crate::c62_gpu_whir::C62GpuWhirCommitter {
+        crate::c62_gpu_whir::C62GpuWhirCommitter::fresh(self.mmcs())
+    }
+}
+
+impl C61MmcsResourceMetrics for crate::c62_gpu_whir::C62GpuMmcs {
+    fn c61_persisted_metrics(&self) -> Option<C61PersistedMmcsMetrics> {
+        None
+    }
+
+    fn c61_gpu_performance_credit(&self) -> bool {
+        true
+    }
+}
+
 fn c61_validate_committed_chain_root(
     public: &C61TypedNativeChainPublicStatement,
     commitment: &C61Commitment,
@@ -4760,9 +5225,13 @@ fn c61_validate_committed_chain_root(
         C61NativeComponent::Embedding => usize::from(C61_EMBEDDING_POLYNOMIAL_LOG2),
         C61NativeComponent::Compiler => unreachable!("compiler rejected above"),
     };
+    let c61_parameter_digest = c61_authenticated_p3_parameter_digest(num_variables)?;
+    let c62_parameter_digest = matches!(num_variables, 27 | 28)
+        && openings.commitment.parameter_digest
+            == c62_authenticated_p3_parameter_digest(num_variables)?;
     if num_variables != expected_dimension
-        || openings.commitment.parameter_digest
-            != c61_authenticated_p3_parameter_digest(num_variables)?
+        || (openings.commitment.parameter_digest != c61_parameter_digest
+            && !c62_parameter_digest)
         || commitment.num_roots() != 1
         || commitment.roots()[0] != openings.commitment.commitment_root
     {
@@ -4833,6 +5302,13 @@ fn c61_authenticated_structural_budget_inner(
         return Err("C6AWP1 dimension must be in 4..=28".to_owned());
     }
     let config = c61_authenticated_config::<C61SizingChallenger>(num_variables)?;
+    c61_authenticated_structural_budget_for_config(num_variables, &config)
+}
+
+fn c62_authenticated_structural_budget_inner(
+    num_variables: usize,
+) -> Result<C61AuthenticatedP3StructuralBudget, String> {
+    let config = c62_authenticated_config::<C61SizingChallenger>(num_variables)?;
     c61_authenticated_structural_budget_for_config(num_variables, &config)
 }
 
@@ -5172,6 +5648,31 @@ where
     )
 }
 
+fn encode_c62_authenticated_p3_artifact_inner<MT>(
+    num_variables: usize,
+    commitment: &C61Commitment,
+    proof: &ZkWhirProof<Goldilocks, C61P3Fp2, MT>,
+    base_proof: C61AuthenticatedWhirBaseProof,
+) -> ReferenceResult<Vec<u8>>
+where
+    MT: Mmcs<Goldilocks, Commitment = C61Commitment, MultiProof = C61MultiProof>,
+{
+    let config = c62_authenticated_config::<C61SizingChallenger>(num_variables)
+        .map_err(C61WhirReferenceError::new)?;
+    let budget = c61_authenticated_structural_budget_for_config(num_variables, &config)
+        .map_err(C61WhirReferenceError::new)?;
+    let mut encoded = encode_c61_authenticated_p3_artifact_for_config(
+        num_variables,
+        commitment,
+        proof,
+        base_proof,
+        &config,
+        budget,
+    )?;
+    encoded[8..10].copy_from_slice(&C62_AUTHENTICATED_P3_VERSION.to_le_bytes());
+    Ok(encoded)
+}
+
 fn encode_c61_authenticated_p3_artifact_for_config<MT, Challenger>(
     num_variables: usize,
     commitment: &C61Commitment,
@@ -5359,19 +5860,55 @@ fn decode_c61_authenticated_p3_artifact_inner(
     expected_num_variables: usize,
     production_dimensions_only: bool,
 ) -> ReferenceResult<(C61Commitment, C61AuthenticatedP3Proof, C61AuthenticatedWhirBaseProof)> {
-    if bytes.len() > C61_NATIVE_CHAIN_MAX_BYTES {
-        return Err(C61WhirReferenceError::new("C6AWP1 payload exceeds native-chain cap"));
-    }
     let budget = c61_authenticated_structural_budget_inner(
         expected_num_variables,
         production_dimensions_only,
     )
     .map_err(C61WhirReferenceError::new)?;
+    let config = c61_authenticated_config::<C61SizingChallenger>(expected_num_variables)
+        .map_err(C61WhirReferenceError::new)?;
+    decode_c61_authenticated_p3_artifact_for_config(
+        bytes,
+        expected_num_variables,
+        &config,
+        budget,
+        C61_AUTHENTICATED_P3_VERSION,
+    )
+}
+
+fn decode_c62_authenticated_p3_artifact_inner(
+    bytes: &[u8],
+    expected_num_variables: usize,
+) -> ReferenceResult<(C61Commitment, C61AuthenticatedP3Proof, C61AuthenticatedWhirBaseProof)> {
+    let budget = c62_authenticated_structural_budget_inner(expected_num_variables)
+        .map_err(C61WhirReferenceError::new)?;
+    let config = c62_authenticated_config::<C61SizingChallenger>(expected_num_variables)
+        .map_err(C61WhirReferenceError::new)?;
+    decode_c61_authenticated_p3_artifact_for_config(
+        bytes,
+        expected_num_variables,
+        &config,
+        budget,
+        C62_AUTHENTICATED_P3_VERSION,
+    )
+}
+
+fn decode_c61_authenticated_p3_artifact_for_config<Challenger>(
+    bytes: &[u8],
+    expected_num_variables: usize,
+    config: &ZkWhirConfig<C61P3Fp2, Goldilocks, Challenger>,
+    budget: C61AuthenticatedP3StructuralBudget,
+    wire_version: u16,
+) -> ReferenceResult<(C61Commitment, C61AuthenticatedP3Proof, C61AuthenticatedWhirBaseProof)>
+where
+    Challenger: FieldChallenger<Goldilocks> + GrindingChallenger<Witness = Goldilocks>,
+{
+    if bytes.len() > C61_NATIVE_CHAIN_MAX_BYTES {
+        return Err(C61WhirReferenceError::new("C6AWP1 payload exceeds native-chain cap"));
+    }
     if bytes.len() > budget.strict_chain_bytes {
         return Err(C61WhirReferenceError::new("C6AWP1 payload exceeds its structural cap"));
     }
-    let config = c61_authenticated_config::<C61SizingChallenger>(expected_num_variables)
-        .map_err(C61WhirReferenceError::new)?;
     let batches = config.n_rounds() + 1;
     let groups = config.mask_groups();
     let final_round = config.final_round_config();
@@ -5381,7 +5918,7 @@ fn decode_c61_authenticated_p3_artifact_inner(
     if reader.take(8)? != C61_AUTHENTICATED_P3_MAGIC {
         return Err(C61WhirReferenceError::new("C6AWP1 magic mismatch"));
     }
-    if reader.u16()? != C61_AUTHENTICATED_P3_VERSION {
+    if reader.u16()? != wire_version {
         return Err(C61WhirReferenceError::new("C6AWP1 version mismatch"));
     }
     if reader.u8()? as usize != expected_num_variables {
@@ -5540,14 +6077,22 @@ fn encode_c61_shared_multi_oracle_artifact(
     plan_num_variables: usize,
     response_payload: &[u8],
     plan_payload: &[u8],
+    c62: bool,
 ) -> ReferenceResult<C61SharedMultiOracleArtifact> {
-    let (_, _, _) = decode_c61_authenticated_p3_artifact_inner(
-        response_payload,
-        response_num_variables,
-        false,
-    )?;
-    let (_, _, plan_reserved_tag) =
-        decode_c61_authenticated_p3_artifact_inner(plan_payload, plan_num_variables, false)?;
+    let (_, _, _) = if c62 {
+        decode_c62_authenticated_p3_artifact_inner(response_payload, response_num_variables)
+    } else {
+        decode_c61_authenticated_p3_artifact_inner(
+            response_payload,
+            response_num_variables,
+            false,
+        )
+    }?;
+    let (_, _, plan_reserved_tag) = if c62 {
+        decode_c62_authenticated_p3_artifact_inner(plan_payload, plan_num_variables)
+    } else {
+        decode_c61_authenticated_p3_artifact_inner(plan_payload, plan_num_variables, false)
+    }?;
     if plan_reserved_tag.tag() != Fp2::ZERO {
         return Err(C61WhirReferenceError::new(
             "C6SMO1 plan payload must carry the canonical zero reserved tag",
@@ -5565,7 +6110,11 @@ fn encode_c61_shared_multi_oracle_artifact(
     }
     let mut writer = C61Writer::default();
     writer.bytes.extend_from_slice(&C61_SHARED_MULTI_ORACLE_MAGIC);
-    writer.u16(C61_SHARED_MULTI_ORACLE_VERSION);
+    writer.u16(if c62 {
+        C62_SHARED_MULTI_ORACLE_VERSION
+    } else {
+        C61_SHARED_MULTI_ORACLE_VERSION
+    });
     writer.u8(u8::try_from(response_num_variables)
         .map_err(|_| C61WhirReferenceError::new("C6SMO1 response dimension exceeds u8"))?);
     writer.u8(u8::try_from(plan_num_variables)
@@ -5585,6 +6134,41 @@ fn decode_c61_shared_multi_oracle_artifact(
     (C61Commitment, C61AuthenticatedP3Proof),
     C61AuthenticatedWhirBaseProof,
 )> {
+    decode_shared_multi_oracle_artifact(
+        artifact,
+        expected_response_num_variables,
+        expected_plan_num_variables,
+        false,
+    )
+}
+
+fn decode_c62_shared_multi_oracle_artifact(
+    artifact: &C61SharedMultiOracleArtifact,
+    expected_response_num_variables: usize,
+    expected_plan_num_variables: usize,
+) -> ReferenceResult<(
+    (C61Commitment, C61AuthenticatedP3Proof),
+    (C61Commitment, C61AuthenticatedP3Proof),
+    C61AuthenticatedWhirBaseProof,
+)> {
+    decode_shared_multi_oracle_artifact(
+        artifact,
+        expected_response_num_variables,
+        expected_plan_num_variables,
+        true,
+    )
+}
+
+fn decode_shared_multi_oracle_artifact(
+    artifact: &C61SharedMultiOracleArtifact,
+    expected_response_num_variables: usize,
+    expected_plan_num_variables: usize,
+    c62: bool,
+) -> ReferenceResult<(
+    (C61Commitment, C61AuthenticatedP3Proof),
+    (C61Commitment, C61AuthenticatedP3Proof),
+    C61AuthenticatedWhirBaseProof,
+)> {
     if artifact.payload.len() > C61_SHARED_MULTI_ORACLE_MAX_BYTES {
         return Err(C61WhirReferenceError::new("C6SMO1 payload exceeds compiler-chain cap"));
     }
@@ -5592,7 +6176,13 @@ fn decode_c61_shared_multi_oracle_artifact(
     if reader.take(8)? != C61_SHARED_MULTI_ORACLE_MAGIC {
         return Err(C61WhirReferenceError::new("C6SMO1 magic mismatch"));
     }
-    if reader.u16()? != C61_SHARED_MULTI_ORACLE_VERSION {
+    if reader.u16()?
+        != if c62 {
+            C62_SHARED_MULTI_ORACLE_VERSION
+        } else {
+            C61_SHARED_MULTI_ORACLE_VERSION
+        }
+    {
         return Err(C61WhirReferenceError::new("C6SMO1 version mismatch"));
     }
     if reader.u8()? as usize != expected_response_num_variables {
@@ -5620,18 +6210,30 @@ fn decode_c61_shared_multi_oracle_artifact(
     if plan_payload.is_empty() {
         return Err(C61WhirReferenceError::new("C6SMO1 plan payload is empty"));
     }
-    let (response_commitment, response_proof, joint_tag) =
+    let (response_commitment, response_proof, joint_tag) = if c62 {
+        decode_c62_authenticated_p3_artifact_inner(
+            response_payload,
+            expected_response_num_variables,
+        )
+    } else {
         decode_c61_authenticated_p3_artifact_inner(
             response_payload,
             expected_response_num_variables,
             false,
-        )?;
-    let (plan_commitment, plan_proof, plan_reserved_tag) =
+        )
+    }?;
+    let (plan_commitment, plan_proof, plan_reserved_tag) = if c62 {
+        decode_c62_authenticated_p3_artifact_inner(
+            plan_payload,
+            expected_plan_num_variables,
+        )
+    } else {
         decode_c61_authenticated_p3_artifact_inner(
             plan_payload,
             expected_plan_num_variables,
             false,
-        )?;
+        )
+    }?;
     if plan_reserved_tag.tag() != Fp2::ZERO {
         return Err(C61WhirReferenceError::new("C6SMO1 plan reserved tag is nonzero"));
     }
@@ -6602,6 +7204,7 @@ pub fn prepare_c61_authenticated_whir_p3_production_committed_chain_persisted_cu
         spill_root,
         admission,
         backend,
+        None,
         correlations,
         Transcript::new(verifier_seed),
         verifier_seed,
@@ -6636,6 +7239,7 @@ pub fn prepare_c61_authenticated_whir_p3_production_committed_chain_private_entr
         spill_root,
         admission,
         backend,
+        None,
         correlations,
         Transcript::new_interactive(Box::new(endpoint)),
         provider_session_binding.context_digest(),
@@ -6657,6 +7261,7 @@ pub fn prepare_c62_authenticated_whir_p3_production_committed_chain_fiat_shamir(
     spill_root: &Path,
     admission: C61ProductionPersistedResourceAdmission,
     backend: &mut Backend,
+    gpu: &C62ProductionGpuWhir,
     correlations: &mut CorrelationStream,
     id: C61NativeChainId,
     mask_range: C61AuthenticatedWhirMaskRange,
@@ -6670,6 +7275,7 @@ pub fn prepare_c62_authenticated_whir_p3_production_committed_chain_fiat_shamir(
         spill_root,
         admission,
         backend,
+        Some(gpu),
         correlations,
         Transcript::new_fiat_shamir(context.digest())?,
         context.digest(),
@@ -6687,12 +7293,14 @@ fn prepare_c61_authenticated_whir_p3_production_committed_chain_with_transcript(
     spill_root: &Path,
     admission: C61ProductionPersistedResourceAdmission,
     backend: &mut Backend,
+    gpu: Option<&C62ProductionGpuWhir>,
     correlations: &mut CorrelationStream,
-    mut transcript: Transcript,
+    transcript: Transcript,
     provider_session_binding: [u8; 32],
     id: C61NativeChainId,
     mask_range: C61AuthenticatedWhirMaskRange,
 ) -> Result<C61ProductionCommittedChainProverBody, String> {
+    let c62_fiat_shamir = transcript.is_fiat_shamir();
     let num_variables = match id.component {
         C61NativeComponent::Model => usize::from(C61_MODEL_POLYNOMIAL_LOG2),
         C61NativeComponent::Embedding => usize::from(C61_EMBEDDING_POLYNOMIAL_LOG2),
@@ -6728,7 +7336,12 @@ fn prepare_c61_authenticated_whir_p3_production_committed_chain_with_transcript(
     if !correlations.uses_pooled_pcg() {
         return Err("C6SPR11 production committed-chain prover forbids mock PCG state".to_owned());
     }
-    if parameter_digest != c61_authenticated_p3_parameter_digest(num_variables)?
+    let expected_parameter_digest = if c62_fiat_shamir {
+        c62_authenticated_p3_parameter_digest(num_variables)?
+    } else {
+        c61_authenticated_p3_parameter_digest(num_variables)?
+    };
+    if parameter_digest != expected_parameter_digest
         || coefficients.len() != (1usize << num_variables)
         || claims.len() != expected_claims
         || targets.len() != expected_claims
@@ -6762,20 +7375,81 @@ fn prepare_c61_authenticated_whir_p3_production_committed_chain_with_transcript(
         C61NativeComponent::Embedding => *b"embedpcs",
         C61NativeComponent::Compiler => unreachable!("compiler rejected above"),
     };
+    if let Some(gpu) = gpu {
+        let mmcs = gpu.mmcs();
+        let executor = gpu.cached_oracle(id.component)?;
+        return prepare_c61_authenticated_whir_p3_production_committed_chain_with_executor(
+            coefficients,
+            claims,
+            targets,
+            parameter_digest,
+            correlations,
+            transcript,
+            id,
+            mask_range,
+            num_variables,
+            mmcs,
+            executor,
+            C61PersistedMmcsMetrics::default(),
+            true,
+        );
+    }
     let mmcs = C61PersistedMmcs::new(
         c61_reference_mmcs(),
         spill_root.join("oracle"),
         session_digest,
         lane,
     )?;
-    let witness = Poly::new(coefficients);
+    let spill = mmcs.metrics();
+    prepare_c61_authenticated_whir_p3_production_committed_chain_with_executor(
+        coefficients,
+        claims,
+        targets,
+        parameter_digest,
+        correlations,
+        transcript,
+        id,
+        mask_range,
+        num_variables,
+        mmcs,
+        C61ReferenceWhirExecutor,
+        spill,
+        false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prepare_c61_authenticated_whir_p3_production_committed_chain_with_executor<MT, E>(
+    coefficients: Vec<Goldilocks>,
+    claims: &[crate::batch::BlockClaim],
+    targets: Vec<ProverAuthed>,
+    parameter_digest: [u8; 32],
+    correlations: &mut CorrelationStream,
+    mut transcript: Transcript,
+    id: C61NativeChainId,
+    mask_range: C61AuthenticatedWhirMaskRange,
+    num_variables: usize,
+    mmcs: MT,
+    executor: E,
+    spill: C61PersistedMmcsMetrics,
+    gpu_performance_credit: bool,
+) -> Result<C61ProductionCommittedChainProverBody, String>
+where
+    MT: Mmcs<Goldilocks, Commitment = C61Commitment, MultiProof = C61MultiProof> + Clone,
+    for<'a> E: C61ProductionWhirExecutor<MT, C61InteractiveChallenger<'a>>,
+{
     let c62_fiat_shamir = transcript.is_fiat_shamir();
+    let witness = Poly::new(coefficients);
     let mut challenger = C61InteractiveChallenger::new_claimless(&mut transcript, num_variables);
-    let config = c61_authenticated_config::<C61InteractiveChallenger<'_>>(num_variables)?;
+    let config = if c62_fiat_shamir {
+        c62_authenticated_config::<C61InteractiveChallenger<'_>>(num_variables)?
+    } else {
+        c61_authenticated_config::<C61InteractiveChallenger<'_>>(num_variables)?
+    };
     let dft = Radix2DFTSmallBatch::default();
     let prover = HidingWhirProver::new(&config, &dft, &mmcs);
     let mut rng = c61_production_private_zk_rng()?;
-    let (commitment, data) = prover.commit(witness, &mut challenger, &mut rng);
+    let (commitment, data) = executor.commit(&prover, witness, &mut challenger, &mut rng)?;
     if commitment.num_roots() != 1 {
         return Err("C6SPR11 production committed chain has a noncanonical root cap".to_owned());
     }
@@ -6807,24 +7481,34 @@ fn prepare_c61_authenticated_whir_p3_production_committed_chain_with_transcript(
     challenger.observe_public_points(&points).map_err(|error| error.to_string())?;
     let prepared = prepare_c61_authenticated_whir_mask(id, mask_range, correlations)
         .map_err(|error| error.to_string())?;
-    let output = prover.prove_claimless(
+    let output = executor.prove(
+        &prover,
         data,
         &native_claims,
         c61_p3_fp2_from_volta(prepared.value()),
         &mut challenger,
         &mut rng,
-    );
+    )?;
     challenger.ensure_public_statement_bound().map_err(|error| error.to_string())?;
     let placeholder =
         C61AuthenticatedWhirBaseProof::decode(&[0u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES])
             .map_err(|error| error.to_string())?;
-    let placeholder_payload = encode_c61_authenticated_p3_artifact_inner(
-        num_variables,
-        &commitment,
-        &output.proof,
-        placeholder,
-        true,
-    )
+    let placeholder_payload = if c62_fiat_shamir {
+        encode_c62_authenticated_p3_artifact_inner(
+            num_variables,
+            &commitment,
+            &output.proof,
+            placeholder,
+        )
+    } else {
+        encode_c61_authenticated_p3_artifact_inner(
+            num_variables,
+            &commitment,
+            &output.proof,
+            placeholder,
+            true,
+        )
+    }
     .map_err(|error| error.to_string())?;
     let whir_payload_bytes = placeholder_payload
         .len()
@@ -6856,8 +7540,11 @@ fn prepare_c61_authenticated_whir_p3_production_committed_chain_with_transcript(
     };
     let tagless_payload = placeholder_payload[..whir_payload_bytes].to_vec();
     let tagless_digest = *blake3::hash(&tagless_payload).as_bytes();
-    let strict_payload_max_bytes =
-        c61_authenticated_structural_budget_inner(num_variables, true)?.strict_chain_bytes;
+    let strict_payload_max_bytes = if c62_fiat_shamir {
+        c62_authenticated_structural_budget_inner(num_variables)?.strict_chain_bytes
+    } else {
+        c61_authenticated_structural_budget_inner(num_variables, true)?.strict_chain_bytes
+    };
     Ok(C61ProductionCommittedChainProverBody {
         statement,
         id,
@@ -6873,7 +7560,8 @@ fn prepare_c61_authenticated_whir_p3_production_committed_chain_with_transcript(
         transcript,
         provider_interaction,
         strict_payload_max_bytes,
-        spill: mmcs.metrics(),
+        spill,
+        gpu_performance_credit,
     })
 }
 
@@ -7084,13 +7772,23 @@ fn prepare_c61_authenticated_whir_p3_production_committed_chain_public_verifier_
     let openings = c61_model_embedding_openings(public)?;
     let num_variables = usize::from(openings.commitment.polynomial_domain_log2);
     let points = c61_model_embedding_points(public)?;
-    let (commitment, native_proof, _) =
+    let c62 = matches!(num_variables, 27 | 28)
+        && openings.commitment.parameter_digest
+            == c62_authenticated_p3_parameter_digest(num_variables)?;
+    let (commitment, native_proof, _) = if c62 {
+        decode_c62_authenticated_p3_artifact_inner(&placeholder_payload, num_variables)
+    } else {
         decode_c61_authenticated_p3_artifact_inner(&placeholder_payload, num_variables, true)
-            .map_err(|error| error.to_string())?;
+    }
+    .map_err(|error| error.to_string())?;
 
     let c62_fiat_shamir = transcript.is_fiat_shamir();
     let mut challenger = C61InteractiveChallenger::new_claimless(&mut transcript, num_variables);
-    let config = c61_authenticated_config::<C61InteractiveChallenger<'_>>(num_variables)?;
+    let config = if c62 {
+        c62_authenticated_config::<C61InteractiveChallenger<'_>>(num_variables)?
+    } else {
+        c61_authenticated_config::<C61InteractiveChallenger<'_>>(num_variables)?
+    };
     let mmcs = c61_reference_mmcs();
     challenger.observe(commitment.clone());
     challenger.observe_public_points(&points).map_err(|error| error.to_string())?;
@@ -7433,6 +8131,7 @@ fn c61_production_compiler_public_statement(
     id: C61NativeChainId,
     response_root: [u8; 32],
     plan_root: [u8; 32],
+    c62: bool,
 ) -> Result<C61TypedNativeChainPublicStatement, String> {
     if !fixture.production || id.component != C61NativeComponent::Compiler || id.repetition >= 2 {
         return Err("C6SPR11 compiler statement builder requires one production chain".to_owned());
@@ -7441,12 +8140,20 @@ fn c61_production_compiler_public_statement(
         .terminal_relation_root
         .ok_or_else(|| "C6SPR11 compiler statement omitted the exact C6TFR1 root".to_owned())?;
     let response = C61NativeCommitmentDescriptor {
-        parameter_digest: c61_authenticated_p3_parameter_digest(28)?,
+        parameter_digest: if c62 {
+            c62_authenticated_p3_parameter_digest(28)?
+        } else {
+            c61_authenticated_p3_parameter_digest(28)?
+        },
         commitment_root: response_root,
         polynomial_domain_log2: 28,
     };
     let plan = C61NativeCommitmentDescriptor {
-        parameter_digest: c61_authenticated_p3_parameter_digest(27)?,
+        parameter_digest: if c62 {
+            c62_authenticated_p3_parameter_digest(27)?
+        } else {
+            c61_authenticated_p3_parameter_digest(27)?
+        },
         commitment_root: plan_root,
         polynomial_domain_log2: 27,
     };
@@ -8042,6 +8749,7 @@ pub fn run_c62_authenticated_whir_p3_production_compiler_fiat_shamir_in_attempt(
     lane_context: C62FiatShamirLaneContext,
     spill_root: &Path,
     admission: C61ProductionPersistedResourceAdmission,
+    gpu: &C62ProductionGpuWhir,
     correlations: &mut CorrelationStream,
     id: C61NativeChainId,
     mask_range: C61AuthenticatedWhirMaskRange,
@@ -8060,26 +8768,32 @@ pub fn run_c62_authenticated_whir_p3_production_compiler_fiat_shamir_in_attempt(
         output_beta,
         terminal_relation_root,
     )?;
-    let mut session_hasher = blake3::Hasher::new_derive_key("volta-zk/c6.2/compiler-session/v1");
-    session_hasher.update(&lane_context.digest());
-    session_hasher.update(&operation_plan.artifact_digest());
-    session_hasher.update(&(id.component as u16).to_le_bytes());
-    session_hasher.update(&[id.repetition, mask_range.stage]);
-    session_hasher.update(&mask_range.slot.to_le_bytes());
-    session_hasher.update(&mask_range.range_start.to_le_bytes());
-    let session_digest = *session_hasher.finalize().as_bytes();
-    run_c61_authenticated_whir_p3_production_persisted_with_transcript(
+    if !spill_root.is_dir() {
+        return Err("C62GW4 compiler lane root is absent".to_owned());
+    }
+    let execution = run_c61_authenticated_whir_p3_shared_multi_oracle_with_provider_transcript(
         &fixture,
-        spill_root,
-        admission,
+        28,
         correlations,
         None,
         None,
         Transcript::new_fiat_shamir(lane_context.digest())?,
-        session_digest,
         id,
         mask_range,
-    )
+        admission.available_host_bytes,
+        admission.available_spill_bytes,
+        gpu.mmcs(),
+        gpu.mmcs(),
+        gpu.fresh_oracle(),
+        gpu.fresh_oracle(),
+    )?;
+    if !execution.report.production_geometry
+        || !execution.report.gpu_performance_credit
+        || execution.report.monolithic_host_baseline
+    {
+        return Err("C62GW4 compiler returned a non-GPU production report".to_owned());
+    }
+    Ok(execution)
 }
 
 fn validate_c61_production_compiler_persisted_admission(
@@ -8157,6 +8871,8 @@ fn run_c61_authenticated_whir_p3_production_persisted_with_transcript(
         admission.available_spill_bytes,
         response_mmcs,
         plan_mmcs,
+        C61ReferenceWhirExecutor,
+        C61ReferenceWhirExecutor,
     )?;
     if !execution.report.production_geometry
         || !execution.report.persisted_executor
@@ -8454,6 +9170,7 @@ fn verify_c61_authenticated_whir_p3_compiler_chain_compact(
         compact_profile_digest,
         compact_profile_setup_bytes,
         client_setup_allocation_bytes,
+        false,
     )
 }
 
@@ -8471,6 +9188,7 @@ fn verify_c61_authenticated_whir_p3_compiler_chain_compact_with_transcript(
     compact_profile_digest: [u8; 32],
     compact_profile_setup_bytes: u64,
     client_setup_allocation_bytes: u64,
+    c62: bool,
 ) -> Result<C61ProductionCompilerChainVerification, String> {
     if id.component != C61NativeComponent::Compiler || id.repetition >= 2 {
         return Err("C6SPR11 compact verifier requires one canonical compiler chain".to_owned());
@@ -8493,13 +9211,20 @@ fn verify_c61_authenticated_whir_p3_compiler_chain_compact_with_transcript(
         .checked_sub(1)
         .ok_or_else(|| "C6SPR11 compact plan dimension underflows".to_owned())?;
     let artifact = C61SharedMultiOracleArtifact { payload: proof.shared_payload.clone() };
-    let ((response_commitment, response_proof), (plan_commitment, plan_proof), joint_tag) =
+    let ((response_commitment, response_proof), (plan_commitment, plan_proof), joint_tag) = if c62 {
+        decode_c62_shared_multi_oracle_artifact(
+            &artifact,
+            response_num_variables,
+            plan_num_variables,
+        )
+    } else {
         decode_c61_shared_multi_oracle_artifact(
             &artifact,
             response_num_variables,
             plan_num_variables,
         )
-        .map_err(|error| error.to_string())?;
+    }
+    .map_err(|error| error.to_string())?;
     if response_commitment.num_roots() != 1
         || plan_commitment.num_roots() != 1
         || response_commitment.roots()[0] != expected_response_root
@@ -8512,12 +9237,24 @@ fn verify_c61_authenticated_whir_p3_compiler_chain_compact_with_transcript(
 
     let (mut response_challenger, mut plan_challenger, coordinator) =
         c61_shared_round_pair(&mut transcript, [response_num_variables, plan_num_variables]);
-    let response_config = c61_authenticated_config::<
-        crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
-    >(response_num_variables)?;
-    let plan_config = c61_authenticated_config::<
-        crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
-    >(plan_num_variables)?;
+    let response_config = if c62 {
+        c62_authenticated_config::<
+            crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
+        >(response_num_variables)?
+    } else {
+        c61_authenticated_config::<
+            crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
+        >(response_num_variables)?
+    };
+    let plan_config = if c62 {
+        c62_authenticated_config::<
+            crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
+        >(plan_num_variables)?
+    } else {
+        c61_authenticated_config::<
+            crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
+        >(plan_num_variables)?
+    };
     let response_mmcs = c61_reference_mmcs();
     let plan_mmcs = c61_reference_mmcs();
     response_challenger.observe(response_commitment.clone());
@@ -8811,6 +9548,7 @@ fn verify_c61_authenticated_whir_p3_production_compiler_chain_with_transcript(
         profile.digest,
         profile.encoded_setup_bytes,
         client_setup_allocation_bytes,
+        profile.is_c62(),
     )
 }
 
@@ -9025,11 +9763,13 @@ where
         admitted_available_spill_bytes,
         response_mmcs,
         plan_mmcs,
+        C61ReferenceWhirExecutor,
+        C61ReferenceWhirExecutor,
     )
 }
 
 #[allow(clippy::too_many_arguments)]
-fn run_c61_authenticated_whir_p3_shared_multi_oracle_with_provider_transcript<RM, PM>(
+fn run_c61_authenticated_whir_p3_shared_multi_oracle_with_provider_transcript<RM, PM, RE, PE>(
     fixture: &C61SparseCompilerPhysicalFixture<'_>,
     response_num_variables: usize,
     correlations: &mut CorrelationStream,
@@ -9042,6 +9782,8 @@ fn run_c61_authenticated_whir_p3_shared_multi_oracle_with_provider_transcript<RM
     admitted_available_spill_bytes: u64,
     response_mmcs: RM,
     plan_mmcs: PM,
+    response_executor: RE,
+    plan_executor: PE,
 ) -> Result<C61ProductionCompilerChainExecution, String>
 where
     RM: Mmcs<Goldilocks, Commitment = C61Commitment, MultiProof = C61MultiProof>
@@ -9054,7 +9796,14 @@ where
         + Sync,
     RM::ProverData<DenseMatrix<Goldilocks>>: Send,
     PM::ProverData<DenseMatrix<Goldilocks>>: Send,
+    for<'a> RE:
+        C61ProductionWhirExecutor<RM, crate::c61_shared_round_challenger::C61SharedRoundChallenger<'a>>
+            + Send,
+    for<'a> PE:
+        C61ProductionWhirExecutor<PM, crate::c61_shared_round_challenger::C61SharedRoundChallenger<'a>>
+            + Send,
 {
+    let c62_fiat_shamir = provider_transcript.is_fiat_shamir();
     let verifier_fixture = fixture.verifier_fixture()?;
     let native_response_num_variables = usize::from(fixture.packed.physical_response_domain_log2());
     let native_plan_num_variables = usize::from(fixture.packed.plan_domain_log2());
@@ -9105,12 +9854,24 @@ where
             &mut provider_transcript,
             [response_num_variables, plan_num_variables],
         );
-    let response_config = c61_authenticated_config::<
-        crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
-    >(response_num_variables)?;
-    let plan_config = c61_authenticated_config::<
-        crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
-    >(plan_num_variables)?;
+    let response_config = if c62_fiat_shamir {
+        c62_authenticated_config::<
+            crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
+        >(response_num_variables)?
+    } else {
+        c61_authenticated_config::<
+            crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
+        >(response_num_variables)?
+    };
+    let plan_config = if c62_fiat_shamir {
+        c62_authenticated_config::<
+            crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
+        >(plan_num_variables)?
+    } else {
+        c61_authenticated_config::<
+            crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
+        >(plan_num_variables)?
+    };
     let response_dft = Radix2DFTSmallBatch::default();
     let plan_dft = Radix2DFTSmallBatch::default();
     let response_prover = HidingWhirProver::new(&response_config, &response_dft, &response_mmcs);
@@ -9120,10 +9881,18 @@ where
     } else {
         (StdRng::seed_from_u64(0xC6_5202), StdRng::seed_from_u64(0xC6_5203))
     };
-    let (response_commitment, response_data) =
-        response_prover.commit(response_witness, &mut response_challenger, &mut response_rng);
-    let (plan_commitment, plan_data) =
-        plan_prover.commit(plan_witness, &mut plan_challenger, &mut plan_rng);
+    let (response_commitment, response_data) = response_executor.commit(
+        &response_prover,
+        response_witness,
+        &mut response_challenger,
+        &mut response_rng,
+    )?;
+    let (plan_commitment, plan_data) = plan_executor.commit(
+        &plan_prover,
+        plan_witness,
+        &mut plan_challenger,
+        &mut plan_rng,
+    )?;
     let provider_phase = provider_coordinator.with_pre_statement_transcript(|transcript| {
         prove_c61_sparse_compiler_relation_phase(
             &fixture,
@@ -9237,24 +10006,26 @@ where
 
     let (response_output, plan_output) = thread::scope(|scope| {
         let response_thread = scope.spawn(move || {
-            let output = response_prover.prove_claimless(
+            let output = response_executor.prove(
+                &response_prover,
                 response_data,
                 &response_claims,
                 response_base_shift,
                 &mut response_challenger,
                 &mut response_rng,
             );
-            response_challenger.finish_lane().map(|()| output)
+            response_challenger.finish_lane().and(output)
         });
         let plan_thread = scope.spawn(move || {
-            let output = plan_prover.prove_claimless(
+            let output = plan_executor.prove(
+                &plan_prover,
                 plan_data,
                 &plan_claims,
                 C61P3Fp2::ZERO,
                 &mut plan_challenger,
                 &mut plan_rng,
             );
-            plan_challenger.finish_lane().map(|()| output)
+            plan_challenger.finish_lane().and(output)
         });
         (response_thread.join(), plan_thread.join())
     });
@@ -9264,27 +10035,46 @@ where
     let placeholder =
         C61AuthenticatedWhirBaseProof::decode(&[0u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES])
             .map_err(|error| error.to_string())?;
-    let response_placeholder = encode_c61_authenticated_p3_artifact_inner(
-        response_num_variables,
-        &response_commitment,
-        &response_output.proof,
-        placeholder,
-        false,
-    )
+    let response_placeholder = if c62_fiat_shamir {
+        encode_c62_authenticated_p3_artifact_inner(
+            response_num_variables,
+            &response_commitment,
+            &response_output.proof,
+            placeholder,
+        )
+    } else {
+        encode_c61_authenticated_p3_artifact_inner(
+            response_num_variables,
+            &response_commitment,
+            &response_output.proof,
+            placeholder,
+            false,
+        )
+    }
     .map_err(|error| error.to_string())?;
-    let plan_payload = encode_c61_authenticated_p3_artifact_inner(
-        plan_num_variables,
-        &plan_commitment,
-        &plan_output.proof,
-        placeholder,
-        false,
-    )
+    let plan_payload = if c62_fiat_shamir {
+        encode_c62_authenticated_p3_artifact_inner(
+            plan_num_variables,
+            &plan_commitment,
+            &plan_output.proof,
+            placeholder,
+        )
+    } else {
+        encode_c61_authenticated_p3_artifact_inner(
+            plan_num_variables,
+            &plan_commitment,
+            &plan_output.proof,
+            placeholder,
+            false,
+        )
+    }
     .map_err(|error| error.to_string())?;
     let placeholder_artifact = encode_c61_shared_multi_oracle_artifact(
         response_num_variables,
         plan_num_variables,
         &response_placeholder,
         &plan_payload,
+        c62_fiat_shamir,
     )
     .map_err(|error| error.to_string())?;
     let whir_payload_bytes = placeholder_artifact
@@ -9333,19 +10123,29 @@ where
         &mut provider_transcript,
     )
     .map_err(|error| error.to_string())?;
-    let response_payload = encode_c61_authenticated_p3_artifact_inner(
-        response_num_variables,
-        &response_commitment,
-        &response_output.proof,
-        joint_closure.proof,
-        false,
-    )
+    let response_payload = if c62_fiat_shamir {
+        encode_c62_authenticated_p3_artifact_inner(
+            response_num_variables,
+            &response_commitment,
+            &response_output.proof,
+            joint_closure.proof,
+        )
+    } else {
+        encode_c61_authenticated_p3_artifact_inner(
+            response_num_variables,
+            &response_commitment,
+            &response_output.proof,
+            joint_closure.proof,
+            false,
+        )
+    }
     .map_err(|error| error.to_string())?;
     let artifact = encode_c61_shared_multi_oracle_artifact(
         response_num_variables,
         plan_num_variables,
         &response_payload,
         &plan_payload,
+        c62_fiat_shamir,
     )
     .map_err(|error| error.to_string())?;
     if artifact.payload.len() != placeholder_artifact.payload.len() {
@@ -9353,11 +10153,19 @@ where
     }
     let codec_mutations_rejected = {
         let rejects = |payload: Vec<u8>| {
-            decode_c61_shared_multi_oracle_artifact(
-                &C61SharedMultiOracleArtifact { payload },
-                response_num_variables,
-                plan_num_variables,
-            )
+            if c62_fiat_shamir {
+                decode_c62_shared_multi_oracle_artifact(
+                    &C61SharedMultiOracleArtifact { payload },
+                    response_num_variables,
+                    plan_num_variables,
+                )
+            } else {
+                decode_c61_shared_multi_oracle_artifact(
+                    &C61SharedMultiOracleArtifact { payload },
+                    response_num_variables,
+                    plan_num_variables,
+                )
+            }
             .is_err()
         };
         let mut bad_magic = artifact.payload.clone();
@@ -9390,13 +10198,23 @@ where
         .all(rejects)
     };
 
-    let strict_response = c61_authenticated_structural_budget_inner(response_num_variables, false)?
-        .strict_chain_bytes;
-    let strict_plan =
-        c61_authenticated_structural_budget_inner(plan_num_variables, false)?.strict_chain_bytes;
+    let strict_response = if c62_fiat_shamir {
+        c62_authenticated_structural_budget_inner(response_num_variables)?
+    } else {
+        c61_authenticated_structural_budget_inner(response_num_variables, false)?
+    }
+    .strict_chain_bytes;
+    let strict_plan = if c62_fiat_shamir {
+        c62_authenticated_structural_budget_inner(plan_num_variables)?
+    } else {
+        c61_authenticated_structural_budget_inner(plan_num_variables, false)?
+    }
+    .strict_chain_bytes;
     let response_spill = response_mmcs.c61_persisted_metrics();
     let plan_spill = plan_mmcs.c61_persisted_metrics();
     let persisted_executor = response_spill.is_some() && plan_spill.is_some();
+    let gpu_performance_credit = response_mmcs.c61_gpu_performance_credit()
+        && plan_mmcs.c61_gpu_performance_credit();
     let physical_plan_fold_values: [Fp2; C61_EXACT_PLAN_FOLD_PHYSICAL_OPENINGS] = response_values
         [C61_SPARSE_ARITHMETIC_PHYSICAL_RESPONSE_OPENINGS..]
         .try_into()
@@ -9420,6 +10238,7 @@ where
             id,
             response_commitment.roots()[0],
             plan_commitment.roots()[0],
+            c62_fiat_shamir,
         )?)
     } else {
         None
@@ -9437,9 +10256,10 @@ where
      -> Result<C61AuthenticatedP3SharedMultiOracleDiagnostic, String> {
         Ok(C61AuthenticatedP3SharedMultiOracleDiagnostic {
             production_geometry: fixture.production,
-            monolithic_host_baseline: fixture.production && !persisted_executor,
+            monolithic_host_baseline:
+                fixture.production && !persisted_executor && !gpu_performance_credit,
             persisted_executor,
-            gpu_performance_credit: false,
+            gpu_performance_credit,
             admitted_available_host_bytes,
             admitted_available_spill_bytes,
             monolithic_retained_lower_bound_bytes: if fixture.production {
@@ -9498,11 +10318,19 @@ where
     let delta = context.delta;
 
     let ((response_commitment, response_proof), (plan_commitment, plan_proof), joint_tag) =
-        decode_c61_shared_multi_oracle_artifact(
+        if c62_fiat_shamir {
+            decode_c62_shared_multi_oracle_artifact(
+                &artifact,
+                response_num_variables,
+                plan_num_variables,
+            )
+        } else {
+            decode_c61_shared_multi_oracle_artifact(
             &artifact,
             response_num_variables,
             plan_num_variables,
         )
+        }
         .map_err(|error| error.to_string())?;
     let mut verifier_transcript = Transcript::new(verifier_seed);
     let (mut response_challenger, mut plan_challenger, verifier_coordinator) =
@@ -9510,12 +10338,24 @@ where
             &mut verifier_transcript,
             [response_num_variables, plan_num_variables],
         );
-    let response_config = c61_authenticated_config::<
-        crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
-    >(response_num_variables)?;
-    let plan_config = c61_authenticated_config::<
-        crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
-    >(plan_num_variables)?;
+    let response_config = if c62_fiat_shamir {
+        c62_authenticated_config::<
+            crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
+        >(response_num_variables)?
+    } else {
+        c61_authenticated_config::<
+            crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
+        >(response_num_variables)?
+    };
+    let plan_config = if c62_fiat_shamir {
+        c62_authenticated_config::<
+            crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
+        >(plan_num_variables)?
+    } else {
+        c61_authenticated_config::<
+            crate::c61_shared_round_challenger::C61SharedRoundChallenger<'_>,
+        >(plan_num_variables)?
+    };
     let verifier_response_mmcs = c61_reference_mmcs();
     let verifier_plan_mmcs = c61_reference_mmcs();
     response_challenger.observe(response_commitment.clone());
@@ -10637,6 +11477,8 @@ mod tests {
             0,
             c61_reference_mmcs(),
             c61_reference_mmcs(),
+            C61ReferenceWhirExecutor,
+            C61ReferenceWhirExecutor,
         )
         .unwrap();
     }
@@ -11630,6 +12472,8 @@ mod tests {
             0,
             c61_reference_mmcs(),
             c61_reference_mmcs(),
+            C61ReferenceWhirExecutor,
+            C61ReferenceWhirExecutor,
         )
         .unwrap();
         let broker = broker_handle.finish_output().unwrap();
@@ -11673,6 +12517,7 @@ mod tests {
             [0; 32],
             0,
             0,
+            false,
         )
         .unwrap();
         assert_eq!(
@@ -11924,8 +12769,9 @@ mod tests {
         let (fixture, _, _, _, _, _) = mutation_fixture();
         let tail_start =
             fixture.artifact.payload.len() - C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES;
-        let ordinary_tagless = &fixture.artifact.payload[..tail_start];
-        let c62_tagless = c62_tagless_from_c61_awp1(ordinary_tagless).unwrap();
+        let mut ordinary_tagless = fixture.artifact.payload[..tail_start].to_vec();
+        ordinary_tagless[8..10].copy_from_slice(&C62_AUTHENTICATED_P3_VERSION.to_le_bytes());
+        let c62_tagless = c62_tagless_from_c61_awp1(&ordinary_tagless).unwrap();
         assert_eq!(c62_tagless.len(), ordinary_tagless.len());
         assert_eq!(c62_tagless[..8], C62_AUTHENTICATED_P3_MAGIC);
         assert_eq!(
@@ -11943,7 +12789,7 @@ mod tests {
                 .is_err()
         );
 
-        let mut c61_joint = c61_joint_tagless_from_awp1(ordinary_tagless).unwrap();
+        let mut c61_joint = c61_joint_tagless_from_awp1(&ordinary_tagless).unwrap();
         c61_joint.extend_from_slice(&[0u8; C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES]);
         assert!(c62_awp1_payload_to_c61(&c61_joint, C61JointNativeTailRole::Correction,).is_err());
     }
@@ -12261,7 +13107,7 @@ mod tests {
         use volta_accel::Operation;
 
         let num_variables = message.len().ilog2() as usize;
-        let config = c62gw2_calibration_config::<C61InteractiveChallenger<'_>>(num_variables)?;
+        let config = c62_authenticated_config::<C61InteractiveChallenger<'_>>(num_variables)?;
         let folding = config.round_folding_factor(0);
         if folding != 3 || claim_count == 0 {
             return Err("C62GW2 calibration geometry differs from the selected profile".to_owned());
@@ -12438,8 +13284,8 @@ mod tests {
             .expect("C62_CALIBRATION_STARTED_UTC is required");
         assert!(started_utc.bytes().all(|byte| byte.is_ascii_digit() || b"-:TZ".contains(&byte)));
 
-        let d28_config = c62gw2_calibration_config::<C61SizingChallenger>(28).unwrap();
-        let d27_config = c62gw2_calibration_config::<C61SizingChallenger>(27).unwrap();
+        let d28_config = c62_authenticated_config::<C61SizingChallenger>(28).unwrap();
+        let d27_config = c62_authenticated_config::<C61SizingChallenger>(27).unwrap();
         let d28_folding = d28_config.round_folding_factor(0);
         let d27_folding = d27_config.round_folding_factor(0);
         let d28_height = (1usize << (28 - d28_folding)) << d28_config.starting_log_inv_rate;

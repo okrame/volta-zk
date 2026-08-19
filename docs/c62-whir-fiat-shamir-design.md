@@ -1,6 +1,6 @@
 # C6.2 WHIR Fiat--Shamir Design
 
-Status: **C62GW1 FIRST A100 BOUNDARY FAIL-CLOSED / LOCAL EXACTNESS REPAIR**
+Status: **C62GW1 A100 BOUNDARY PASS / D28-D27 CALIBRATION REQUIRED**
 
 This document is the active design for C6.2. It has precedence over the
 interactive C6.1 sections in `c6-delta-residual-inline-design.md`. Frozen C6
@@ -1116,3 +1116,25 @@ relation, codec, bytes and resource admission remain unchanged. Resume requires
 a clean pushed checkpoint, the two focused A100 regressions, and the complete
 registered boundary script. D28/D27 non-session calibration remains forbidden
 until all pass.
+
+## 0.48 A100 exactness boundary pass and calibration seam
+
+Clean checkpoint `cc0e2e1` passed both formerly failing focused A100 tests.
+The registered boundary script then passed the padding/cache-add test and all
+six root, opening, frontier, resource and complete-payload tests. This closes
+the scaled CUDA exactness boundary for ABI 39. It grants no production-size,
+memory, timing, certificate or session credit.
+
+The source audit finds no production-geometry calibration executable. The
+existing `scripts/budget_c62_gpu_executor.py` is an analytic screen and
+deliberately contains no measured phase times. It cannot be filled from the
+scaled test wall or historical CUDA data.
+
+The next checkpoint must add one fail-closed non-session calibrator for the
+exact current D28/D27 folding geometry. It measures device peak and the
+registered phase walls, creates no setup, PCG state, transcript, proof or
+certificate, and emits no product record. The result must identify cache-on
+and fresh lanes separately. Any geometry mismatch or allocation failure stops
+without a timing decision. A projected wall above `12.500 s` starts the
+authorized independent-root folding study; calibration cannot wire the
+production adapter itself.

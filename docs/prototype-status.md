@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 R19 C62GW1 INITIAL LOWER-BOUND FAIL — FOLDING-INVARIANT FLOOR HARD STOP / NO SESSION)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 R19 C62GW1 FOLDING STUDY FAIL — CLAIM-WEIGHT EXECUTOR REDESIGN HARD STOP / NO SESSION)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,26 +10,37 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Status.** C6.2 is `R19_C62GW1_INITIAL_LOWER_BOUND_FAIL /
-  FOLDING_INVARIANT_FLOOR_REQUIRED`; design §0.54 is active. Pod authorization
-  remains non-session only; standing create-new GO is unconsumed.
+- **Status.** C6.2 is `R19_C62GW1_FOLDING_STUDY_FAIL /
+  CLAIM_WEIGHT_EXECUTOR_REDESIGN_REQUIRED`; design §0.55 is active. Pod work
+  is stopped; the standing create-new production GO remains unconsumed.
 - **Completed evidence.** Clean `cc0e2e1` passed the scaled A100 boundary.
-  R1--R3 are invalid. Clean R4 at `31aba7b` measured the exact 23 non-final
-  rounds. Cached D28 took `21.735754390 s`, peaked at `31,205,625,168 B` below
-  its `36,591,108,064-B` guard, and gives a two-root lower bound of
-  `43.471508780 s`; this validly starts the folding study.
-- **Study.** Initial claim-weight construction for 96 targets does not receive
-  a folding factor and is required independently for each root. §0.54 measures
-  only its device-kernel time; twice that value is an invariant lower bound.
-- **Hard stop.** Checkpoint and run only the registered invariant-floor script.
-  Do not start setup, correlation generation, a session, proof, certificate or
-  mutation.
-- **Data and credit.** At owner request the current pod's historical setup and
-  old C6.2 data were removed; the historical 17-profile manifest digest remains
-  a record only. No timing, proof-size, session or product gate has credit.
-- **Resume.** Above `12.500 s`, folding-factor changes are insufficient and the
-  executor returns to local redesign. Otherwise measure candidates in the
-  registered order. Production and one `context-000` remain later gates.
+  Clean R4 at `31aba7b` measured a resource-valid two-root lower bound of
+  `43.471508780 s` and triggered the folding study.
+- **Folding result.** Clean `d29ad85` isolated D28 initialization for 96
+  targets. One root used `14.169145760 s` of device-kernel time; two independent
+  roots require at least `28.338291520 s`. This exceeds both `12.500 s`
+  engineering admission and the `15.750-s` terminal product threshold.
+- **Decision.** Initial claim-weight construction receives no folding factor.
+  Changing initial or later folding cannot qualify this executor, so no
+  candidate was built. This is an executor obstruction, not a protocol
+  impossibility.
+- **Hard stop.** No more pod or production work. Resume requires a local exact
+  redesign of the 96-target claim-weight construction, scaled CPU/device
+  differentials, a new resource bound, a clean checkpoint and owner GO for a
+  new pod measurement. Do not start setup, correlation generation, session,
+  proof, certificate or mutation.
+- **Data and credit.** Historical pod data remain removed. No context,
+  including `context-000`, was used. No product timing, proof-size, session or
+  certificate gate has credit.
+
+- **2026-08-19 — Folding factors cannot rescue the current executor.** Clean
+  `d29ad85` measured only the D28 96-target initialization that is independent
+  of every folding factor. One root used `14.169145760 s` of device-kernel
+  time; the strict two-root floor is `28.338291520 s`, above both engineering
+  and terminal product thresholds. The decision-first study therefore built
+  no folding candidate. §0.55 returns to local claim-weight executor redesign;
+  no further pod work is authorized. Raw evidence is
+  `benchmarks/results/c62-a100-folding-immutable-floor-2026-08-19-d29ad85-r1.json`.
 
 - **2026-08-19 — Exact r4 lower bound triggers the folding study.** Clean
   `31aba7b` measured exactly 23 non-final rounds. Cached D28 with 96 targets and

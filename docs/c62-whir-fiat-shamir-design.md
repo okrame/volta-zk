@@ -1,6 +1,6 @@
 # C6.2 WHIR Fiat--Shamir Design
 
-Status: **C62GW1 INITIAL LOWER-BOUND FAIL / FOLDING-INVARIANT FLOOR REQUIRED**
+Status: **C62GW1 FOLDING STUDY FAIL / CLAIM-WEIGHT EXECUTOR REDESIGN REQUIRED**
 
 This document is the active design for C6.2. It has precedence over the
 interactive C6.1 sections in `c6-delta-residual-inline-design.md`. Frozen C6
@@ -1268,3 +1268,27 @@ fold, with exact soundness, byte and differential checks before timing credit.
 The script creates one append-only record outside the repository. It creates
 no setup, correlation state, transcript, proof, certificate or session and
 does not consume the standing production authorization.
+
+## 0.55 Folding disposition and executor redesign boundary
+
+Clean `d29ad85` measured the folding-independent D28 initialization for all 96
+model targets. Its wall was `14.722157134 s`; device kernels alone used
+`14.169145760 s`. The strict two-root device-kernel floor is therefore
+`28.338291520 s`. Peak device memory was `17,179,869,184 B`, below the
+`30,148,657,120-B` guard. The raw record SHA-256 is
+`9fa224622ed377e2c0c768acf472d09394c77caabac1fc60ee17dd9fc29da8d6`.
+
+The floor exceeds both the `12.500-s` engineering admission and the
+`15.750-s` terminal product threshold. Initial claim-weight construction
+receives no folding factor, and independent roots require separate coefficient
+bindings. Increasing later folding or initial-plus-later folding cannot rescue
+the current executor. The decision-first study therefore implements no folding
+candidate and grants no protocol, product or session credit.
+
+This is not a proof that the protocol is impossible. The obstruction is the
+current executor's 96 whole-domain claim-weight passes. Resume requires a local
+exact redesign of that construction, preserving the same weighted polynomial
+and independent roots, followed by scaled CPU/device differentials, an updated
+resource bound, a clean checkpoint and explicit owner GO for another pod
+measurement. Until then, no setup, correlation state, context, proof,
+certificate or production session may start.

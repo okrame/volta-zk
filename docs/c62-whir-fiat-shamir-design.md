@@ -1,6 +1,6 @@
 # C6.2 WHIR Fiat--Shamir Design
 
-Status: **C62GW1 A100 BOUNDARY PASS / D28-D27 CALIBRATION REQUIRED**
+Status: **C62GW1 INITIAL LOWER-BOUND CALIBRATOR STAGED / A100 MEASUREMENT REQUIRED**
 
 This document is the active design for C6.2. It has precedence over the
 interactive C6.1 sections in `c6-delta-residual-inline-design.md`. Frozen C6
@@ -1138,3 +1138,30 @@ and fresh lanes separately. Any geometry mismatch or allocation failure stops
 without a timing decision. A projected wall above `12.500 s` starts the
 authorized independent-root folding study; calibration cannot wire the
 production adapter itself.
+
+## 0.49 Exact-fold correction and decision-first A100 calibration
+
+The resource test in §0.46 used a fold-8 candidate. The selected authenticated
+profile actually fixes initial fold 1, starting inverse-rate log 1, and initial
+heights `2^28` and `2^27`. The stale D28
+`40 GiB + 64 MiB - 32 B` statement is withdrawn. With a 4-GiB reserve and
+tile log 20, exact D28 checked peak is `26 GiB + 80 MiB - 32 B` with its own
+fixed base, or `28 GiB + 80 MiB - 32 B` when the D28 and D27 provider bases
+coexist at 6 GiB. The runnable resource check freezes both values.
+
+The first production-size run is the registered non-session script
+`scripts/check_c62_gpu_native_calibration.sh`. It constructs both fixed bases,
+then measures exact initial commit, spread multi-opening and every initial
+sumcheck fold for the four production lane shapes: cached D28 model with 96
+claims, fresh D28 compiler response with 16, cached D27 embedding with 6, and
+fresh D27 compiler plan with 3. Twice their sum is a strict lower bound for the
+two repetitions. The run creates no transcript, proof, PCG state, certificate
+or session and writes one create-new non-credit JSON record.
+
+This is decision-first calibration: after each lane, a measured lower bound
+above `12.500 s` is already sufficient to start the authorized root-preserving
+folding study, so remaining expensive lanes are skipped. A lower completed
+initial census is not an admission pass; later WHIR rounds must then be added
+and measured before production wiring. The current pod has no historical setup
+after the owner-requested cleanup. Independent roots and provider-only cache
+contents remain unchanged.

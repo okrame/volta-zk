@@ -12032,4 +12032,253 @@ mod tests {
         assert!(matches!(result, Err(error) if error.contains("exceeds")));
         assert!(!root.exists());
     }
+
+    #[cfg(feature = "cuda")]
+    struct C62InitialLaneMeasurement {
+        mode: &'static str,
+        num_variables: usize,
+        claim_count: usize,
+        query_count: usize,
+        wall_ns: u64,
+        peak_device_bytes: u64,
+        h2d_bytes: u64,
+        d2h_bytes: u64,
+        multiproof_siblings: usize,
+    }
+
+    #[cfg(feature = "cuda")]
+    fn c62_measure_initial_lane(
+        mmcs: &crate::c62_gpu_whir::C62GpuMmcs,
+        message: &[Goldilocks],
+        claim_count: usize,
+        cache: Option<&Arc<crate::c62_gpu_whir::C62ProviderFixedBase>>,
+    ) -> Result<C62InitialLaneMeasurement, String> {
+        use p3_sumcheck_c61::strategy::ResidualSumcheckProver;
+        use p3_whir_c61::pcs::zk::ZkWhirOracleCommitter;
+
+        let num_variables = message.len().ilog2() as usize;
+        let config = c61_authenticated_config::<C61SizingChallenger>(num_variables)?;
+        let folding = config.round_folding_factor(0);
+        let height =
+            (1usize << (num_variables - folding)) << config.starting_log_inv_rate;
+        if folding != C61_WHIRA1_INITIAL_FOLD
+            || height != 1usize << num_variables
+            || claim_count == 0
+        {
+            return Err("C62GW1 calibration geometry differs from the active profile".to_owned());
+        }
+
+        let randomness = vec![Goldilocks::ONE; config.oracle_randomness[0] << folding];
+        let point = Point::new(vec![C61P3Fp2::ZERO; num_variables]);
+        let claims = vec![(point, C61P3Fp2::ZERO); claim_count];
+        let coefficients = vec![C61P3Fp2::ONE; claim_count];
+        let query_count = config.round_parameters[0].num_queries;
+        let indices = (0..query_count)
+            .map(|index| index * height / query_count)
+            .collect::<Vec<_>>();
+        let oracle = match cache {
+            Some(cache) => crate::c62_gpu_whir::C62GpuWhirCommitter::provider_cached(
+                mmcs.clone(),
+                Arc::clone(cache),
+            ),
+            None => crate::c62_gpu_whir::C62GpuWhirCommitter::fresh(mmcs.clone()),
+        };
+
+        mmcs.backend()
+            .lock()
+            .map_err(|_| "C62GW1 calibration CUDA lock".to_owned())?
+            .begin_measurement()
+            .map_err(|error| error.to_string())?;
+        let (_, data) = oracle
+            .commit_initial(message, &randomness, folding, height)
+            .map_err(|error| error.to_string())?;
+        let (rows, opening) = mmcs.open_multi_batch(&indices, &data);
+        if rows.len() != query_count {
+            return Err("C62GW1 calibration opening census mismatch".to_owned());
+        }
+        let mut sumcheck = oracle
+            .initialize_sumcheck(message, &claims, &coefficients, C61P3Fp2::ZERO)
+            .map_err(|error| error.to_string())?;
+        while sumcheck.num_variables() != 0 {
+            let (c0, c_inf) = sumcheck.round_coefficients().map_err(|error| error.to_string())?;
+            sumcheck
+                .fold_round_with_coefficients(c0, c_inf, C61P3Fp2::ONE)
+                .map_err(|error| error.to_string())?;
+        }
+        if sumcheck.claimed_sum() != C61P3Fp2::ZERO {
+            return Err("C62GW1 calibration sumcheck did not close at zero".to_owned());
+        }
+        let stats = mmcs
+            .backend()
+            .lock()
+            .map_err(|_| "C62GW1 calibration CUDA lock".to_owned())?
+            .finish_measurement()
+            .map_err(|error| error.to_string())?;
+        drop(sumcheck);
+        drop(data);
+
+        Ok(C62InitialLaneMeasurement {
+            mode: if cache.is_some() { "provider_cached" } else { "fresh" },
+            num_variables,
+            claim_count,
+            query_count,
+            wall_ns: stats.measurement_wall_ns,
+            peak_device_bytes: stats.peak_device_bytes,
+            h2d_bytes: stats.h2d_bytes,
+            d2h_bytes: stats.d2h_bytes,
+            multiproof_siblings: opening.sibling_hashes.len(),
+        })
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    #[ignore = "requires an 80-GiB A100 and an explicit append-only output path"]
+    fn c62_a100_initial_lower_bound_calibration() {
+        use std::io::Write;
+
+        use crate::c62_gpu_whir::{
+            goldilocks_digest, C62GpuMmcs, C62GpuResourceGuard, C62ProviderCacheKey,
+            C62_GPU_WHIR_DEFAULT_TILE_LOG, C62_GPU_WHIR_EXECUTOR_PROFILE,
+            C62_GPU_WHIR_EXECUTOR_VERSION, C62_GPU_WHIR_FIELD_TAG,
+        };
+
+        const ADMISSION_NS: u64 = 12_500_000_000;
+        let output = std::env::var("C62_CALIBRATION_RECORD")
+            .expect("C62_CALIBRATION_RECORD is required");
+        let output = Path::new(&output);
+        assert!(output.is_absolute() && !output.exists());
+        let git_sha = std::env::var("C62_CALIBRATION_GIT_SHA")
+            .expect("C62_CALIBRATION_GIT_SHA is required");
+        assert!(git_sha.len() == 40 && git_sha.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        let started_utc = std::env::var("C62_CALIBRATION_STARTED_UTC")
+            .expect("C62_CALIBRATION_STARTED_UTC is required");
+        assert!(started_utc
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || b"-:TZ".contains(&byte)));
+
+        let d28_config = c61_authenticated_config::<C61SizingChallenger>(28).unwrap();
+        let d27_config = c61_authenticated_config::<C61SizingChallenger>(27).unwrap();
+        let d28_folding = d28_config.round_folding_factor(0);
+        let d27_folding = d27_config.round_folding_factor(0);
+        let d28_height = (1usize << (28 - d28_folding)) << d28_config.starting_log_inv_rate;
+        let d27_height = (1usize << (27 - d27_folding)) << d27_config.starting_log_inv_rate;
+        assert_eq!((d28_folding, d28_height), (1, 1usize << 28));
+        assert_eq!((d27_folding, d27_height), (1, 1usize << 27));
+
+        let mut guard = C62GpuResourceGuard::for_lane(
+            28,
+            d28_folding,
+            d28_height,
+            C62_GPU_WHIR_DEFAULT_TILE_LOG,
+            false,
+            80u64 << 30,
+        )
+        .unwrap();
+        guard.fixed_cache_bytes = 6u64 << 30;
+        guard.validate().unwrap();
+        assert_eq!(guard.checked_peak_bytes().unwrap(), (28u64 << 30) + (80u64 << 20) - 32);
+
+        let mmcs = C62GpuMmcs::new(
+            Backend::cuda_resident().expect("C62GW1 calibration requires CUDA"),
+            C62_GPU_WHIR_DEFAULT_TILE_LOG,
+            guard,
+        )
+        .unwrap();
+        let d28_message = vec![Goldilocks::ZERO; 1usize << 28];
+        let d27_message = vec![Goldilocks::ZERO; 1usize << 27];
+        let key = |num_variables: u8, height: usize, message: &[Goldilocks]| {
+            C62ProviderCacheKey {
+                model_digest: [0x11; 32],
+                protocol_digest: [0x22; 32],
+                parameter_digest: [num_variables; 32],
+                content_digest: goldilocks_digest(message),
+                field_tag: C62_GPU_WHIR_FIELD_TAG,
+                encoder_version: C62_GPU_WHIR_EXECUTOR_VERSION,
+                num_variables,
+                folding: 1,
+                height: height as u64,
+            }
+        };
+
+        mmcs.backend().lock().unwrap().begin_measurement().unwrap();
+        let d28_cache = mmcs
+            .prepare_fixed_base(key(28, d28_height, &d28_message), &d28_message)
+            .unwrap();
+        let d27_cache = mmcs
+            .prepare_fixed_base(key(27, d27_height, &d27_message), &d27_message)
+            .unwrap();
+        let cache_stats = mmcs.backend().lock().unwrap().finish_measurement().unwrap();
+        assert_eq!(d28_cache.bytes() + d27_cache.bytes(), 6u64 << 30);
+
+        let mut lanes = Vec::new();
+        for (message, claim_count, cache) in [
+            (&d28_message[..], C61_MODEL_OPENING_TARGETS, Some(&d28_cache)),
+            (&d28_message[..], C61_EXACT_PHYSICAL_RESPONSE_OPENINGS, None),
+            (&d27_message[..], C61_EMBEDDING_OPENING_TARGETS, Some(&d27_cache)),
+            (
+                &d27_message[..],
+                crate::c61_terminal_functional::C61_SPARSE_RATIONAL_PLAN_OPENINGS,
+                None,
+            ),
+        ] {
+            lanes.push(c62_measure_initial_lane(&mmcs, message, claim_count, cache).unwrap());
+            let measured_ns = lanes.iter().map(|lane| lane.wall_ns).sum::<u64>();
+            if measured_ns.saturating_mul(2) > ADMISSION_NS {
+                break;
+            }
+        }
+
+        let projected_lower_bound_ns = lanes
+            .iter()
+            .map(|lane| lane.wall_ns)
+            .sum::<u64>()
+            .saturating_mul(2);
+        let folding_study_required = projected_lower_bound_ns > ADMISSION_NS;
+        let lane_json = lanes
+            .iter()
+            .map(|lane| {
+                format!(
+                    "    {{\"mode\":\"{}\",\"num_variables\":{},\"claim_count\":{},\"query_count\":{},\"wall_ns\":{},\"peak_device_bytes\":{},\"h2d_bytes\":{},\"d2h_bytes\":{},\"multiproof_siblings\":{}}}",
+                    lane.mode,
+                    lane.num_variables,
+                    lane.claim_count,
+                    lane.query_count,
+                    lane.wall_ns,
+                    lane.peak_device_bytes,
+                    lane.h2d_bytes,
+                    lane.d2h_bytes,
+                    lane.multiproof_siblings,
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",\n");
+        let record = format!(
+            "{{\n  \"schema\": \"volta-c62-gpu-initial-lower-bound-v1\",\n  \"started_utc\": \"{started_utc}\",\n  \"git_sha\": \"{git_sha}\",\n  \"git_dirty\": false,\n  \"executor\": \"{C62_GPU_WHIR_EXECUTOR_PROFILE}\",\n  \"cuda_abi\": {},\n  \"device\": \"NVIDIA A100-SXM4-80GB\",\n  \"credit\": false,\n  \"production_session\": false,\n  \"pcg_started\": false,\n  \"certificate_created\": false,\n  \"folding\": 1,\n  \"provider_cache_bytes\": {},\n  \"resource_guard_peak_bytes\": {},\n  \"cache_precommit\": {{\"wall_ns\":{},\"peak_device_bytes\":{},\"h2d_bytes\":{},\"d2h_bytes\":{}}},\n  \"lanes\": [\n{lane_json}\n  ],\n  \"two_repetition_projected_lower_bound_ns\": {projected_lower_bound_ns},\n  \"engineering_admission_ns\": {ADMISSION_NS},\n  \"initial_lane_census_complete\": {},\n  \"full_whir_phase_census_complete\": false,\n  \"folding_study_required\": {folding_study_required},\n  \"decision\": \"{}\"\n}}\n",
+            volta_accel::CUDA_ABI_VERSION,
+            d28_cache.bytes() + d27_cache.bytes(),
+            guard.checked_peak_bytes().unwrap(),
+            cache_stats.measurement_wall_ns,
+            cache_stats.peak_device_bytes,
+            cache_stats.h2d_bytes,
+            cache_stats.d2h_bytes,
+            lanes.len() == 4,
+            if folding_study_required {
+                "folding_required_by_measured_lower_bound"
+            } else {
+                "complete_whir_calibration_still_required"
+            },
+        );
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(output)
+            .unwrap();
+        file.write_all(record.as_bytes()).unwrap();
+        file.sync_all().unwrap();
+        eprintln!(
+            "C62GW1_CALIBRATION: lanes={} lower_bound={:.6}s folding_required={folding_study_required}",
+            lanes.len(),
+            projected_lower_bound_ns as f64 / 1e9,
+        );
+    }
 }

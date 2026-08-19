@@ -1414,9 +1414,28 @@ mod tests {
         assert!(C62GpuResourceGuard { available_device_bytes: 19, ..valid }.validate().is_err());
         assert!(C62GpuResourceGuard { reserve_bytes: 0, ..valid }.validate().is_err());
 
-        let d28 = C62GpuResourceGuard::for_lane(28, 8, 1 << 22, 20, true, 80u64 << 30).unwrap();
-        assert_eq!(d28.checked_peak_bytes().unwrap(), (40u64 << 30) + (64u64 << 20) - 32);
-        assert!(C62GpuResourceGuard::for_lane(28, 8, 1 << 22, 20, true, 40u64 << 30).is_err());
+        let d28 = C62GpuResourceGuard::for_lane(28, 1, 1 << 28, 20, true, 80u64 << 30)
+            .unwrap();
+        assert_eq!(d28.checked_peak_bytes().unwrap(), (26u64 << 30) + (80u64 << 20) - 32);
+        assert!(C62GpuResourceGuard::for_lane(
+            28,
+            1,
+            1 << 28,
+            20,
+            true,
+            (26u64 << 30) + (80u64 << 20) - 33,
+        )
+        .is_err());
+
+        let both_provider_bases = C62GpuResourceGuard {
+            fixed_cache_bytes: 6u64 << 30,
+            ..d28
+        };
+        assert_eq!(
+            both_provider_bases.checked_peak_bytes().unwrap(),
+            (28u64 << 30) + (80u64 << 20) - 32,
+        );
+        both_provider_bases.validate().unwrap();
     }
 
     #[test]

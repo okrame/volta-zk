@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 R19 C62GW1 A100 BOUNDARY PASS — D28/D27 CALIBRATION HARD STOP / NO SESSION)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 R19 C62GW1 INITIAL LOWER-BOUND CALIBRATOR STAGED — A100 MEASUREMENT HARD STOP / NO SESSION)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,31 +10,35 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Status and authorization.** C6.2 is `R19_C62GW1_A100_BOUNDARY_PASS /
-  C62_D28_D27_NONSESSION_CALIBRATION_REQUIRED`; design §0.48 is active. The pod
-  is authorized only for non-session checks. Standing create-new GO remains
-  unconsumed because no session or PCG started.
-- **Completed evidence.** The saved 17-profile setup remains bound by manifest
-  SHA-256 `9990a3dbbeaf30405e3cabdbd947d9e03003a6fca50ebe361783d52c6e036821`.
-  Clean `cc0e2e1` built ABI 39 on an 80-GiB A100. Both focused repairs passed
-  1/1; the registered boundary then passed padding/cache-add 1/1 and exact
-  root/opening/full-payload 6/6. This is scaled hardware exactness only.
-- **Hard stop.** No registered production-geometry calibration executable or
-  measured D28/D27 memory/phase result exists. Do not infer it from scaled
-  tests or the analytic screen. Do not start setup measurement, PCG, a session,
-  certificate or mutation. The production runner remains
-  `C6SPR11-persisted-functional-only`, `gpu_performance_credit=false`.
-- **No product result.** No certificate, timing, proof-size, session or hardware
-  gate receives credit; comparison and raw run records remain unchanged.
-- **Resume.** Add the smallest fail-closed non-session D28/D27 calibration,
-  bind it to the exact current folding geometry, and measure memory plus phase
-  walls on A100. Above `12.500 s`, start folding analysis. Only a passing result
-  permits production wiring and one `context-000`; abort on any phase breach or
-  absolute `<15.750 s` wall failure.
-- **Owner direction.** Provider cache remains fixed-base only and separately
-  reported. Independent roots are unchanged. If the exact projection exceeds
-  `12.500 s`, start the authorized root-preserving folding study. Bounded-output
-  `Fp2`-VOLE remains separate C5 research.
+- **Status.** C6.2 is `R19_C62GW1_INITIAL_LOWER_BOUND_CALIBRATOR_STAGED /
+  A100_MEASUREMENT_REQUIRED`; design §0.49 is active. Pod authorization remains
+  non-session only; standing create-new GO is unconsumed.
+- **Completed evidence.** Clean `cc0e2e1` passed ABI-39 focused checks and the
+  complete scaled A100 boundary. The new registered calibrator compiles locally;
+  its exact resource check passes. No A100 calibration value exists yet.
+- **Correction.** The active initial fold is 1, not the stale fold-8 screen.
+  Exact D28 admission is `26 GiB + 80 MiB - 32 B` with one base cache and
+  `28 GiB + 80 MiB - 32 B` with both 6-GiB provider bases resident. The old
+  40-GiB statement is withdrawn.
+- **Hard stop.** Run only `scripts/check_c62_gpu_native_calibration.sh`. It
+  measures a two-repetition lower bound from exact 96/16/6/3-claim initial
+  lanes and stops as soon as it exceeds `12.500 s`. A lower value is not a
+  pass and requires complete later-round calibration. Do not start setup,
+  PCG, a session, proof, certificate or mutation.
+- **Data and credit.** At owner request the current pod's historical setup and
+  old C6.2 data were removed; the historical 17-profile manifest digest remains
+  a record only. No timing, proof-size, session or product gate has credit.
+- **Resume.** A measured lower bound above `12.500 s` starts the authorized
+  root-preserving folding study. Otherwise complete the remaining WHIR phases.
+  Production wiring and one `context-000` remain later gates.
+
+- **2026-08-19 — Exact-fold initial lower-bound calibration staged.** Source
+  review found that the 40-GiB D28 guard used fold 8 while the selected profile
+  uses fold 1. The corrected checks bind D28/D27 to fold 1 and both provider
+  bases. The create-new non-session calibrator measures cache preload plus the
+  exact initial commit, spread multi-opening and complete initial sumcheck for
+  production claim counts. It projects two repetitions and stops once its
+  measured lower bound alone exceeds 12.500 s. No A100 value exists yet.
 
 - **2026-08-19 — Clean C62GW1 A100 boundary passes after exactness repair.**
   At `cc0e2e1`, both formerly failing focused tests passed 1/1. The registered
@@ -2486,6 +2490,18 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-08-19 — C62GW1 corrects stale fold-8 resource accounting before
+  calibration.** The selected authenticated profile has initial fold 1 and
+  initial heights `2^28`/`2^27`; the earlier D28 `40 GiB + 64 MiB - 32 B`
+  statement was a fold-8 candidate, not active geometry. It is withdrawn.
+  Exact checked D28 peak is `26 GiB + 80 MiB - 32 B` with its own cached base,
+  or `28 GiB + 80 MiB - 32 B` while both 6-GiB provider bases coexist. A
+  decision-first initial-lane lower bound is measured before any complete
+  proof: exceeding 12.500 s is sufficient to require folding; not exceeding it
+  grants no pass and requires the remaining rounds. The owner-requested pod
+  cleanup removed old setup/data; the historical manifest remains provenance,
+  not a current-pod asset.
 
 - **2026-08-19 — C62GW1 cache split and equality order corrected before
   calibration.** The local cache proof had established linearity but not the

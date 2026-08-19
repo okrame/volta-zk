@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 C62GW2 A100 FAIL-FAST — LOCAL SVO ANALYSIS REQUIRED / NO GENESIS)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 C62GW3 LOCAL SVO CHECKPOINT — A100 GO REQUIRED / NO GENESIS)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,27 +8,33 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-Read `c62-whir-fiat-shamir-design.md` §0.57 next.
+Read `c62-whir-fiat-shamir-design.md` §0.58 next.
 
-- **Status.** C6.2 is `C62GW2_A100_FAIL_FAST_SVO_REQUIRED`; design §0.57 is
-  active on `agent/c62-whir-batched-svo-redesign`. No pod or production session
-  is authorized.
-- **Evidence.** Clean `7f973b5` passed the scaled CUDA full-payload differential.
-  The all-lane runner stopped after 7/8 lanes at `9.742663280 s` WHIR and a
-  strict partial inline lower bound of `12.742663280 s`, above `<12 s`.
+- **Status.** C6.2 is `C62GW3_LOCAL_SVO_CHECKPOINT`; design §0.58 is active on
+  `agent/c62-whir-batched-svo-redesign`. No pod or production session is
+  authorized without a new owner GO.
+- **Evidence.** Local exactness proves SVO round/residual equivalence; the CUDA
+  feature boundary compiles. C62GW3 also removes duplicate fresh upload and
+  fuses exact NTT sweeps. These changes have no A100 timing credit yet.
 - **Gates.** Complete inline genesis, excluding setup and provider cache, is
-  `<12 s` with `<=10 s` target. Setup is `<150 MB`, setup plus first certificate
-  `<172 MB`, every certificate `<22 MB`, four-thread CPU verifier `<5 s`, and
-  at least 17 certificates.
-- **Resources.** Peak VRAM was `39,146,362,732 B` below the
-  `45,818,576,864-B` guard; RSS high-water was `2,277,711,872 B`. Candidate
-  encoded lanes were `664,852..736,280 B`. Provider preload was excluded.
-- **Hard stop.** The missing eighth lane forbids complete-WHIR timing credit.
-  Section 0.56's SVO trigger is active: resume locally with exact initial-round
-  SVO and unchanged messages, roots, verifier equations and wire. A new pod
-  requires a fresh clean checkpoint and owner GO.
+  `<12 s`, target `<=10 s`, with WHIR `<7 s`. Setup is `<150 MB`, setup plus
+  first certificate `<172 MB`, every certificate `<22 MB`, four-thread CPU
+  verifier `<5 s`, and at least 17 certificates.
+- **Hard stop.** First run the scaled full-payload CUDA differential, then one
+  non-session eight-lane A100 calibration. It must report zero online debt,
+  no settlement, one fresh upload, real serialization, RSS/VRAM and all lanes.
+  Only a complete `<7 s` WHIR result can authorize genesis.
 - **Credit.** No setup, PCG, context, retained proof or certificate was created;
   no product timing, byte, session or verifier gate has credit.
+
+- **2026-08-19 — C62GW3 local exact-SVO checkpoint staged.** Initial-round
+  batched SVO now emits the same round coefficients and residual weights as the
+  dense relation. Fresh commitment and sumcheck share one online upload, while
+  the exact NTT fuses its bit-reversal prefix and later stage pairs. The runner
+  requires all eight lanes below `7 s`, adds the unchanged `3 s` inline reserve,
+  rejects duplicate H2D and records zero online debt/no settlement. Rust
+  exactness and CUDA-feature compilation pass locally; CUDA roots and A100 time
+  remain unmeasured. Design §0.58 is the only resume path.
 
 - **2026-08-19 — C62GW2 A100 calibration fails fast and activates SVO.** Clean
   `7f973b5` passed the scaled CUDA differential, then measured seven complete

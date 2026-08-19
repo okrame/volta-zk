@@ -18,7 +18,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 41;
+pub const CUDA_ABI_VERSION: u32 = 42;
 pub const OPERATION_COUNT: usize = 7;
 pub const DEFERRED_TIMING_CAPACITY: usize = 512;
 
@@ -7021,6 +7021,95 @@ impl Backend {
         let point_free = self.free_device(point_buffer);
         let factors_free = self.free_device(factors);
         result.and(coefficient_free).and(point_free).and(factors_free)
+    }
+
+    /// Compress a batch of equality openings into the first `folding`
+    /// prefix variables. The returned rows are claim-major and contain only
+    /// transcript-sized SVO state; the full message remains device-resident.
+    pub fn fp2_batched_svo_partials_device(
+        &mut self,
+        message: DeviceSlice<'_, Fp2Repr>,
+        points: &[Fp2],
+        point_len: usize,
+        folding: usize,
+    ) -> Result<Vec<Fp2>, AccelError> {
+        let claim_count = points.len().checked_div(point_len).ok_or(
+            AccelError::InvalidInput("SVO point geometry overflows"),
+        )?;
+        if self.kind != BackendKind::CudaResident
+            || point_len == 0
+            || folding == 0
+            || folding >= point_len
+            || claim_count == 0
+            || claim_count * point_len != points.len()
+            || message.len() != 1usize.checked_shl(point_len as u32).ok_or(
+                AccelError::InvalidInput("SVO message dimension overflows"),
+            )?
+        {
+            return Err(AccelError::InvalidInput("invalid resident batched SVO geometry"));
+        }
+        self.validate_device_slice(message, message.len())?;
+        let residual_len = point_len - folding;
+        let left_count = 1usize << (residual_len / 2);
+        let right_count = 1usize << (residual_len - residual_len / 2);
+        let factor_len = claim_count
+            .checked_mul(left_count.checked_add(right_count).ok_or(
+                AccelError::InvalidInput("SVO factor geometry overflows"),
+            )?)
+            .ok_or(AccelError::InvalidInput("SVO factor geometry overflows"))?;
+        let output_len = claim_count
+            .checked_mul(1usize << folding)
+            .ok_or(AccelError::InvalidInput("SVO output geometry overflows"))?;
+        let factors = self.alloc_device::<Fp2Repr>(factor_len)?;
+        let residual_points = points
+            .chunks_exact(point_len)
+            .flat_map(|point| point[folding..].iter().copied())
+            .map(Fp2Repr::from)
+            .collect::<Vec<_>>();
+        let point_buffer = match self.upload_new_device(&residual_points) {
+            Ok(buffer) => buffer,
+            Err(error) => {
+                let _ = self.free_device(factors);
+                return Err(error);
+            }
+        };
+        let output = match self.alloc_device::<Fp2Repr>(output_len) {
+            Ok(buffer) => buffer,
+            Err(error) => {
+                let _ = self.free_device(point_buffer);
+                let _ = self.free_device(factors);
+                return Err(error);
+            }
+        };
+        #[cfg(feature = "cuda")]
+        let result = self
+            .cuda
+            .as_mut()
+            .expect("CUDA kind without context")
+            .fp2_batched_svo_partials_device(
+                message.buffer.id,
+                message.offset,
+                message.len(),
+                factors.id,
+                point_buffer.id,
+                claim_count,
+                residual_len,
+                folding,
+                output.id,
+            );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        let values = result.and_then(|()| self.download_device(&output, 0, output.len()));
+        let output_free = self.free_device(output);
+        let point_free = self.free_device(point_buffer);
+        let factors_free = self.free_device(factors);
+        let cleanup = output_free.and(point_free).and(factors_free);
+        match (values, cleanup) {
+            (Ok(values), Ok(())) => {
+                Ok(values.into_iter().map(Fp2::from).collect())
+            }
+            (Err(error), _) | (Ok(_), Err(error)) => Err(error),
+        }
     }
 
     /// Assign distinct sparse entries inside a resident Fp2 slice.

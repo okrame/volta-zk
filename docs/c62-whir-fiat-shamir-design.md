@@ -1392,3 +1392,50 @@ the pinned initial-round SVO without changing proof messages, verifier
 equations, roots or wire, and rerun scaled exactness/resource checks before any
 new A100 authorization. No setup, PCG, context, genesis proof or certificate is
 authorized by this failure record.
+
+## 0.58 C62GW3 exact SVO and A100-local execution plan
+
+The active continuation keeps the C6.2 statement, independent roots, proof
+messages, verifier equations and wire unchanged. Its engineering target is now
+complete WHIR `<7 s`, leaving the registered `3 s` for the rest of the inline
+genesis path and therefore targeting `<=10 s`; `<12 s` remains the binding
+product gate. The setup, first-exchange, per-certificate, verifier and
+17-certificate gates in Section 0.56 are unchanged.
+
+The minimum executor change has three parts.
+
+1. The first folding batch uses exact batched SVO. One GPU pass compresses each
+   opening against the non-SVO equality suffix. The reviewed host driver emits
+   the same quadratic round coefficients; only after all initial challenges
+   are known does it fold the source and materialize the exact residual batched
+   equality polynomial. All SVO partials, challenges and residual work are
+   created and consumed inside the timed proof. Nothing enters the provider
+   cache.
+2. A fresh lane uploads its initial message once. The same pointer-bound,
+   device-resident evaluations serve the initial commitment and sumcheck, then
+   are consumed by that proof. The runner rejects a fresh H2D census above one
+   message plus 16 MiB of framing and small protocol inputs. This is transient
+   online working memory, not a response cache and not cross-certificate state.
+3. The exact radix-2 NTT keeps the same Goldilocks twiddles and butterflies but
+   fuses bit reversal with the first ten stages in shared memory, then fuses
+   each pair of remaining stages as one radix-4 global sweep. For a `2^26`
+   transform the analytic global-sweep count falls from 27 to 9; arithmetic,
+   roots and serialization do not change. This is a work screen, not timing
+   credit.
+
+The anti-X4d.1 boundary is explicit. Timing starts before commitment and ends
+after real proof serialization. It includes fresh upload, SVO compression and
+residual materialization, every NTT and Merkle operation, all independent roots
+and all eight model/response/embedding/plan lanes. Each lane must report
+`online_debt_items=0`; the record fixes `deferred_settlement=false`. No pending
+opening, weight, partial or settlement may survive certificate closure, and no
+work is amortized across certificates. A partial lane census cannot pass.
+
+Local Rust checks cover SVO round/residual equivalence and compile the CUDA
+feature boundary. The existing scaled full-payload CUDA differential is the
+mandatory first pod test and catches NTT, fresh-reuse, root, transcript and wire
+divergence. The pod run remains non-session and fail-fast: it creates no setup,
+PCG state, context or retained certificate. Only a complete `<7 s` WHIR result,
+with projected inline `<=10 s`, can request the one `context-000` genesis run.
+Any SVO regression, H2D duplication, nonzero debt, root mismatch, resource
+failure or projection `>=12 s` stops the line.

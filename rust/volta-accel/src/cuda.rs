@@ -989,6 +989,18 @@ type Fp2AffineEqWeightsInplaceDevice = unsafe extern "C" fn(
 ) -> c_int;
 type Fp2BatchedEqWeightsDevice =
     unsafe extern "C" fn(*mut c_void, u64, u64, u64, u64, usize, usize) -> c_int;
+type Fp2BatchedSvoPartialsDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    usize,
+    u64,
+    u64,
+    usize,
+    usize,
+    usize,
+    u64,
+) -> c_int;
 type HashTreeDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, usize, usize, u64, usize) -> c_int;
 type MerklePathsDevice =
@@ -1139,6 +1151,7 @@ struct Api {
     fp2_mobius_inverse_inplace_device: Fp2MobiusInverseInplaceDevice,
     fp2_affine_eq_weights_inplace_device: Fp2AffineEqWeightsInplaceDevice,
     fp2_batched_eq_weights_device: Fp2BatchedEqWeightsDevice,
+    fp2_batched_svo_partials_device: Fp2BatchedSvoPartialsDevice,
     fp2_scatter_device: Fp2ScatterDevice,
     fp2_add_geometric_inplace_device: Fp2AddGeometricInplaceDevice,
     fp2_polynomial_eval_device: Fp2PolynomialEvalDevice,
@@ -1499,6 +1512,9 @@ impl CudaContext {
             },
             fp2_batched_eq_weights_device: unsafe {
                 load_symbol(handle, b"volta_cuda_fp2_batched_eq_weights_device\0")?
+            },
+            fp2_batched_svo_partials_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fp2_batched_svo_partials_device\0")?
             },
             fp2_scatter_device: unsafe {
                 load_symbol(handle, b"volta_cuda_fp2_scatter_device\0")?
@@ -4806,6 +4822,35 @@ impl CudaContext {
                 coefficients,
                 claim_count,
                 point_len,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn fp2_batched_svo_partials_device(
+        &mut self,
+        message_id: u64,
+        message_offset: usize,
+        message_len: usize,
+        factors_id: u64,
+        points_id: u64,
+        claim_count: usize,
+        residual_point_len: usize,
+        folding: usize,
+        output_id: u64,
+    ) -> Result<(), AccelError> {
+        self.check(unsafe {
+            (self.api.fp2_batched_svo_partials_device)(
+                self.raw,
+                message_id,
+                message_offset,
+                message_len,
+                factors_id,
+                points_id,
+                claim_count,
+                residual_point_len,
+                folding,
+                output_id,
             )
         })
     }

@@ -18,7 +18,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 41;
+constexpr uint32_t ABI_VERSION = 42;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -2700,6 +2700,125 @@ __global__ void ntt_stage_fp2_batch(
     values[i1] = fp2_sub(u, v);
 }
 
+// Fuse bit reversal with the first ten radix-2 stages.  Those stages are
+// tile-local after bit reversal, so one shared-memory pass replaces eleven
+// full-device sweeps without changing a butterfly or its twiddle.
+constexpr size_t NTT_FUSED_LOG = 10;
+constexpr size_t NTT_FUSED_SIZE = size_t{1} << NTT_FUSED_LOG;
+constexpr size_t NTT_FUSED_THREADS = 256;
+
+__global__ void ntt_fused_prefix_fp_batch(
+    const uint64_t* input, uint64_t* output, const uint64_t* tw,
+    size_t rows, size_t n, int bits) {
+    __shared__ uint64_t tile[NTT_FUSED_SIZE];
+    const size_t tiles_per_row = n / NTT_FUSED_SIZE;
+    const size_t row = static_cast<size_t>(blockIdx.x) / tiles_per_row;
+    const size_t tile_index = static_cast<size_t>(blockIdx.x) - row * tiles_per_row;
+    if (row >= rows) return;
+    const size_t base = tile_index * NTT_FUSED_SIZE;
+    for (size_t local = threadIdx.x; local < NTT_FUSED_SIZE; local += blockDim.x) {
+        const size_t source = __brevll(base + local) >> (64 - bits);
+        tile[local] = input[row * n + source];
+    }
+    __syncthreads();
+    for (size_t len = 2; len <= NTT_FUSED_SIZE; len <<= 1) {
+        const size_t half = len / 2;
+        for (size_t i = threadIdx.x; i < NTT_FUSED_SIZE / 2; i += blockDim.x) {
+            const size_t group = i / half;
+            const size_t k = i - group * half;
+            const size_t i0 = group * len + k;
+            const size_t i1 = i0 + half;
+            const uint64_t u = tile[i0];
+            const uint64_t v = fp_mul(tile[i1], tw[k * (n / len)]);
+            tile[i0] = fp_add(u, v);
+            tile[i1] = fp_sub(u, v);
+        }
+        __syncthreads();
+    }
+    for (size_t local = threadIdx.x; local < NTT_FUSED_SIZE; local += blockDim.x)
+        output[row * n + base + local] = tile[local];
+}
+
+__global__ void ntt_fused_prefix_fp2_batch(
+    const Fp2* input, Fp2* output, const uint64_t* tw,
+    size_t rows, size_t n, int bits) {
+    __shared__ Fp2 tile[NTT_FUSED_SIZE];
+    const size_t tiles_per_row = n / NTT_FUSED_SIZE;
+    const size_t row = static_cast<size_t>(blockIdx.x) / tiles_per_row;
+    const size_t tile_index = static_cast<size_t>(blockIdx.x) - row * tiles_per_row;
+    if (row >= rows) return;
+    const size_t base = tile_index * NTT_FUSED_SIZE;
+    for (size_t local = threadIdx.x; local < NTT_FUSED_SIZE; local += blockDim.x) {
+        const size_t source = __brevll(base + local) >> (64 - bits);
+        tile[local] = input[row * n + source];
+    }
+    __syncthreads();
+    for (size_t len = 2; len <= NTT_FUSED_SIZE; len <<= 1) {
+        const size_t half = len / 2;
+        for (size_t i = threadIdx.x; i < NTT_FUSED_SIZE / 2; i += blockDim.x) {
+            const size_t group = i / half;
+            const size_t k = i - group * half;
+            const size_t i0 = group * len + k;
+            const size_t i1 = i0 + half;
+            const Fp2 u = tile[i0];
+            const Fp2 v = fp2_mul_base(tile[i1], tw[k * (n / len)]);
+            tile[i0] = fp2_add(u, v);
+            tile[i1] = fp2_sub(u, v);
+        }
+        __syncthreads();
+    }
+    for (size_t local = threadIdx.x; local < NTT_FUSED_SIZE; local += blockDim.x)
+        output[row * n + base + local] = tile[local];
+}
+
+__global__ void ntt_two_stages_fp_batch(
+    uint64_t* values,const uint64_t* tw,size_t rows,size_t n,size_t len){
+    const size_t z=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
+    const size_t per_row=n/4;
+    if(z>=rows*per_row)return;
+    const size_t row=z/per_row;
+    const size_t local=z-row*per_row;
+    const size_t half=len/2;
+    const size_t group=local/half;
+    const size_t k=local-group*half;
+    const size_t i0=row*n+group*(2*len)+k;
+    const size_t i1=i0+half;
+    const size_t i2=i0+len;
+    const size_t i3=i2+half;
+    const uint64_t w1=tw[k*(n/len)];
+    const uint64_t v1=fp_mul(values[i1],w1),v3=fp_mul(values[i3],w1);
+    const uint64_t a0=fp_add(values[i0],v1),a1=fp_sub(values[i0],v1);
+    const uint64_t b0=fp_add(values[i2],v3),b1=fp_sub(values[i2],v3);
+    const uint64_t t0=fp_mul(b0,tw[k*(n/(2*len))]);
+    const uint64_t t1=fp_mul(b1,tw[(half+k)*(n/(2*len))]);
+    values[i0]=fp_add(a0,t0);values[i2]=fp_sub(a0,t0);
+    values[i1]=fp_add(a1,t1);values[i3]=fp_sub(a1,t1);
+}
+
+__global__ void ntt_two_stages_fp2_batch(
+    Fp2* values,const uint64_t* tw,size_t rows,size_t n,size_t len){
+    const size_t z=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
+    const size_t per_row=n/4;
+    if(z>=rows*per_row)return;
+    const size_t row=z/per_row;
+    const size_t local=z-row*per_row;
+    const size_t half=len/2;
+    const size_t group=local/half;
+    const size_t k=local-group*half;
+    const size_t i0=row*n+group*(2*len)+k;
+    const size_t i1=i0+half;
+    const size_t i2=i0+len;
+    const size_t i3=i2+half;
+    const uint64_t w1=tw[k*(n/len)];
+    const Fp2 v1=fp2_mul_base(values[i1],w1),v3=fp2_mul_base(values[i3],w1);
+    const Fp2 a0=fp2_add(values[i0],v1),a1=fp2_sub(values[i0],v1);
+    const Fp2 b0=fp2_add(values[i2],v3),b1=fp2_sub(values[i2],v3);
+    const Fp2 t0=fp2_mul_base(b0,tw[k*(n/(2*len))]);
+    const Fp2 t1=fp2_mul_base(b1,tw[(half+k)*(n/(2*len))]);
+    values[i0]=fp2_add(a0,t0);values[i2]=fp2_sub(a0,t0);
+    values[i1]=fp2_add(a1,t1);values[i3]=fp2_sub(a1,t1);
+}
+
 int ensure_twiddles(Context* c, size_t n, uint64_t* h2d, const uint64_t** output) {
     for (const auto& table : c->ntt_twiddles) {
         if (table.n == n) {
@@ -3080,7 +3199,7 @@ __global__ void fp2_batched_eq_halves_kernel(
     const size_t index=left?local:local-left_count;
     const size_t begin=left?0:left_bits;
     const size_t end=left?left_bits:point_len;
-    Fp2 weight=left?coefficients[claim]:Fp2{1,0};
+    Fp2 weight=left&&coefficients?coefficients[claim]:Fp2{1,0};
     for(size_t bit=begin;bit<end;++bit){
         const Fp2 coordinate=points[claim*point_len+bit];
         const size_t shift=end-1-bit;
@@ -3106,6 +3225,36 @@ __global__ void fp2_batched_eq_combine_kernel(
         acc=fp2_add(acc,fp2_mul(halves[left_index],halves[left_count+right_index]));
     }
     values[i]=acc;
+}
+
+__global__ void fp2_batched_svo_partials_kernel(
+    const Fp2* message,const Fp2* factors,Fp2* output,
+    size_t claim_count,size_t residual_len,size_t folding,
+    size_t left_count,size_t right_count){
+    const size_t width=size_t{1}<<folding;
+    const size_t output_index=static_cast<size_t>(blockIdx.x);
+    if(output_index>=claim_count*width)return;
+    const size_t claim=output_index/width;
+    const size_t prefix=output_index-claim*width;
+    const size_t per_claim=left_count+right_count;
+    const Fp2* halves=factors+claim*per_claim;
+    Fp2 acc{};
+    for(size_t y=threadIdx.x;y<residual_len;y+=blockDim.x){
+        const size_t left_index=y/right_count;
+        const size_t right_index=y-left_index*right_count;
+        const Fp2 weight=fp2_mul(
+            halves[left_index],halves[left_count+right_index]);
+        acc=fp2_add(acc,fp2_mul(message[prefix*residual_len+y],weight));
+    }
+    __shared__ Fp2 sums[BLOCK];
+    sums[threadIdx.x]=acc;
+    __syncthreads();
+    for(size_t span=BLOCK/2;span;span>>=1){
+        if(threadIdx.x<span)sums[threadIdx.x]=fp2_add(
+            sums[threadIdx.x],sums[threadIdx.x+span]);
+        __syncthreads();
+    }
+    if(threadIdx.x==0)output[output_index]=sums[0];
 }
 
 __global__ void fp2_scatter_kernel(
@@ -6741,9 +6890,19 @@ extern "C" int volta_cuda_ntt_fp_batch_device(
        resident_region(c,output_id,output_offset*sizeof(uint64_t),bytes,&output))return -1;
     uint64_t h2d=0;const uint64_t* twiddles=nullptr;if(begin_timing(c))return -1;if(ensure_twiddles(c,n,&h2d,&twiddles))return -1;
     if(mark_timing(c,1))return -1;const int bits=__builtin_ctzll(n);
-    bit_reverse_fp_batch<<<(total+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
-        static_cast<const uint64_t*>(input),static_cast<uint64_t*>(output),rows,n,bits);
-    for(size_t len=2;len<=n;len*=2)ntt_stage_fp_batch<<<(rows*n/2+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+    size_t first_len=2;
+    if(n>=NTT_FUSED_SIZE){
+        ntt_fused_prefix_fp_batch<<<rows*(n/NTT_FUSED_SIZE),NTT_FUSED_THREADS,0,c->stream>>>(
+            static_cast<const uint64_t*>(input),static_cast<uint64_t*>(output),twiddles,rows,n,bits);
+        first_len=2*NTT_FUSED_SIZE;
+    }else{
+        bit_reverse_fp_batch<<<(total+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+            static_cast<const uint64_t*>(input),static_cast<uint64_t*>(output),rows,n,bits);
+    }
+    size_t len=first_len;
+    for(;len<=n/2;len*=4)ntt_two_stages_fp_batch<<<(rows*n/4+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+        static_cast<uint64_t*>(output),twiddles,rows,n,len);
+    if(len<=n)ntt_stage_fp_batch<<<(rows*n/2+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
         static_cast<uint64_t*>(output),twiddles,rows,n,len);
     CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
     return finish_timing(c,OP_PCS_NTT,h2d,0);
@@ -6759,9 +6918,19 @@ extern "C" int volta_cuda_ntt_fp2_batch_device(
        resident_region(c,output_id,output_offset*sizeof(Fp2),bytes,&output))return -1;
     uint64_t h2d=0;const uint64_t* twiddles=nullptr;if(begin_timing(c))return -1;if(ensure_twiddles(c,n,&h2d,&twiddles))return -1;
     if(mark_timing(c,1))return -1;const int bits=__builtin_ctzll(n);
-    bit_reverse_fp2_batch<<<(total+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
-        static_cast<const Fp2*>(input),static_cast<Fp2*>(output),rows,n,bits);
-    for(size_t len=2;len<=n;len*=2)ntt_stage_fp2_batch<<<(rows*n/2+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+    size_t first_len=2;
+    if(n>=NTT_FUSED_SIZE){
+        ntt_fused_prefix_fp2_batch<<<rows*(n/NTT_FUSED_SIZE),NTT_FUSED_THREADS,0,c->stream>>>(
+            static_cast<const Fp2*>(input),static_cast<Fp2*>(output),twiddles,rows,n,bits);
+        first_len=2*NTT_FUSED_SIZE;
+    }else{
+        bit_reverse_fp2_batch<<<(total+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+            static_cast<const Fp2*>(input),static_cast<Fp2*>(output),rows,n,bits);
+    }
+    size_t len=first_len;
+    for(;len<=n/2;len*=4)ntt_two_stages_fp2_batch<<<(rows*n/4+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+        static_cast<Fp2*>(output),twiddles,rows,n,len);
+    if(len<=n)ntt_stage_fp2_batch<<<(rows*n/2+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
         static_cast<Fp2*>(output),twiddles,rows,n,len);
     CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
     return finish_timing(c,OP_PCS_NTT,h2d,0);
@@ -7477,6 +7646,41 @@ extern "C" int volta_cuda_fp2_batched_eq_weights_device(
     fp2_batched_eq_combine_kernel<<<(n+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
         static_cast<Fp2*>(values),static_cast<const Fp2*>(factors),n,claim_count,
         left_count,right_count);
+    CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
+    return finish_timing(c,OP_PCS_ROWS,0,0);
+}
+
+extern "C" int volta_cuda_fp2_batched_svo_partials_device(
+    void* raw,uint64_t message_id,size_t message_offset,size_t message_len,
+    uint64_t factors_id,uint64_t points_id,size_t claim_count,
+    size_t residual_point_len,size_t folding,uint64_t output_id){
+    Context* c=static_cast<Context*>(raw);
+    if(!c||!claim_count||!residual_point_len||!folding||folding>=8*sizeof(size_t)||
+       residual_point_len+folding>=8*sizeof(size_t)||
+       message_len!=(size_t{1}<<(residual_point_len+folding)))
+        return fail_message(c,"invalid resident Fp2 batched SVO geometry");
+    const size_t residual_len=size_t{1}<<residual_point_len;
+    const size_t width=size_t{1}<<folding;
+    const size_t left_bits=residual_point_len/2;
+    const size_t left_count=size_t{1}<<left_bits;
+    const size_t right_count=size_t{1}<<(residual_point_len-left_bits);
+    size_t factor_count=0,point_count=0,output_count=0;
+    if(!checked_mul_size(claim_count,left_count+right_count,&factor_count)||
+       !checked_mul_size(claim_count,residual_point_len,&point_count)||
+       !checked_mul_size(claim_count,width,&output_count))
+        return fail_message(c,"resident Fp2 batched SVO geometry overflows");
+    void *message=nullptr,*factors=nullptr,*points=nullptr,*output=nullptr;
+    if(resident_region(c,message_id,message_offset*sizeof(Fp2),message_len*sizeof(Fp2),&message)||
+       resident_region(c,factors_id,0,factor_count*sizeof(Fp2),&factors)||
+       resident_region(c,points_id,0,point_count*sizeof(Fp2),&points)||
+       resident_region(c,output_id,0,output_count*sizeof(Fp2),&output))return -1;
+    if(begin_timing(c)||mark_timing(c,1))return -1;
+    fp2_batched_eq_halves_kernel<<<(factor_count+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+        static_cast<Fp2*>(factors),static_cast<const Fp2*>(points),nullptr,
+        claim_count,residual_point_len,left_bits,left_count,right_count);
+    fp2_batched_svo_partials_kernel<<<output_count,BLOCK,0,c->stream>>>(
+        static_cast<const Fp2*>(message),static_cast<const Fp2*>(factors),
+        static_cast<Fp2*>(output),claim_count,residual_len,folding,left_count,right_count);
     CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
     return finish_timing(c,OP_PCS_ROWS,0,0);
 }

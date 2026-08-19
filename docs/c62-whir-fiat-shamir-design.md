@@ -1439,3 +1439,34 @@ PCG state, context or retained certificate. Only a complete `<7 s` WHIR result,
 with projected inline `<=10 s`, can request the one `context-000` genesis run.
 Any SVO regression, H2D duplication, nonzero debt, root mismatch, resource
 failure or projection `>=12 s` stops the line.
+
+## 0.59 C62GW3 A100 disposition
+
+Clean `97ccdb3` passed the scaled fresh/cached full-payload CUDA differential.
+The registered calibration then completed all eight serialized lanes in
+`8.835343613 s` WHIR and projected `11.835343613 s` inline after the fixed
+`3 s` reserve. This satisfies the binding `<12 s` screen but misses the `<7 s`
+redesign target, so it does not authorize genesis or any product credit.
+
+The anti-X4d.1 checks passed: every lane closed with zero online debt,
+`deferred_settlement=false`, and fresh H2D stayed within one message plus its
+small protocol inputs. Peak VRAM was `34,300,209,352 B` under the
+`45,818,576,864-B` guard; RSS high-water was `2,281,512,960 B`. No setup, PCG,
+context, retained proof or certificate was created.
+
+The eight lanes used `6.696867206 s` of device kernels and `2.138476407 s` of
+remaining wall time. `pcs_rows` accounts for `3.968810458 s`, NTT for
+`2.024905595 s`, and Merkle work for `0.605490107 s`. The exact fused NTT is no
+longer the first obstruction. Resume locally on only two counted boundaries:
+
+1. reduce the claim-linear `pcs_rows` work for the 96-opening cached lanes
+   without changing points, targets, transcript, roots or wire;
+2. stage each fresh message through pinned or already-produced resident memory,
+   while keeping source construction and transfer inside the complete online
+   accounting.
+
+No further folding search, provider cache expansion or deferred settlement is
+admitted. Another A100 calibration requires an exact scaled differential, a
+clean checkpoint and a new owner GO. Raw evidence is
+`c62-gw3-a100-calibration-2026-08-19-97ccdb3-r1.json`, SHA-256
+`30881afd15b7c2ab23a6dd5a709d496fc13d5813f3572ce8e65e4d05f6372356`.

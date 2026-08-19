@@ -10506,6 +10506,27 @@ mod tests {
     }
 
     #[test]
+    fn c62gw4_measured_dense_rows_screen_clears_one_point_five_seconds() {
+        const GW3_COMPLETE_WHIR_NS: u64 = 8_835_343_613;
+        const GW3_ROWS_NS: u64 = 3_968_810_458;
+        const REQUIRED_SAVING_NS: u64 = 1_500_000_000;
+
+        // Same-A100 GW2 dense-row maxima, doubled per lane class. The missing
+        // second D27 fresh lane conservatively repeats its measured first run.
+        const DENSE_ROWS_UPPER_NS: u64 = 2 * 615_774_780
+            + 2 * 187_574_528
+            + 2 * 70_079_455
+            + 2 * 58_929_216;
+        const ROW_SAVING_NS: u64 = GW3_ROWS_NS - DENSE_ROWS_UPPER_NS;
+        const PROJECTED_WHIR_NS: u64 = GW3_COMPLETE_WHIR_NS - ROW_SAVING_NS;
+
+        assert!(ROW_SAVING_NS >= REQUIRED_SAVING_NS);
+        assert_eq!(ROW_SAVING_NS, 2_104_094_500);
+        assert_eq!(PROJECTED_WHIR_NS, 6_731_249_113);
+        assert!((6_500_000_000..=7_500_000_000).contains(&PROJECTED_WHIR_NS));
+    }
+
+    #[test]
     fn ordered_multi_open_aggregates_authenticated_targets_without_wire_growth() {
         let embedding = run_c61_authenticated_whir_p3_multi_open_diagnostic(14, 6).unwrap();
         let model = run_c61_authenticated_whir_p3_multi_open_diagnostic(14, 96).unwrap();
@@ -12221,6 +12242,12 @@ mod tests {
         rss_bytes: u64,
         rss_high_water_bytes: u64,
         online_debt_items: usize,
+        pinned_host_write_bytes: u64,
+        pinned_allocation_calls: u64,
+        pinned_alloc_requests: u64,
+        pinned_reuse_hits: u64,
+        peak_pinned_bytes: u64,
+        resident_h2d_host_calls: u64,
     }
 
     #[cfg(feature = "cuda")]
@@ -12282,10 +12309,12 @@ mod tests {
             0xC6_2000 + ((num_variables as u64) << 8) + repetition as u64,
         );
         let witness = Poly::new(message);
-        let fresh_initial_h2d_ceiling = (witness.num_evals() as u64)
+        let fresh_initial_message_bytes = (witness.num_evals() as u64)
             .checked_mul(8)
-            .and_then(|bytes| bytes.checked_add(16 << 20))
-            .ok_or_else(|| "C62GW3 fresh H2D ceiling overflows".to_owned())?;
+            .ok_or_else(|| "C62GW4 fresh message bytes overflow".to_owned())?;
+        let fresh_initial_h2d_ceiling = fresh_initial_message_bytes
+            .checked_add(16 << 20)
+            .ok_or_else(|| "C62GW4 fresh H2D ceiling overflows".to_owned())?;
 
         mmcs.backend()
             .lock()
@@ -12334,10 +12363,16 @@ mod tests {
             .map_err(|error| error.to_string())?;
         let online_debt_items = oracle.online_debt_items().map_err(|error| error.to_string())?;
         if online_debt_items != 0 {
-            return Err("C62GW3 lane left online proof debt".to_owned());
+            return Err("C62GW4 lane left online proof debt".to_owned());
         }
         if cache.is_none() && stats.h2d_bytes > fresh_initial_h2d_ceiling {
-            return Err("C62GW3 fresh lane uploaded its initial message more than once".to_owned());
+            return Err("C62GW4 fresh lane uploaded its initial message more than once".to_owned());
+        }
+        if cache.is_none() && stats.pinned_host_write_bytes != fresh_initial_message_bytes {
+            return Err("C62GW4 fresh lane did not stage exactly one pinned message".to_owned());
+        }
+        if cache.is_none() && stats.pinned_alloc_requests != 1 {
+            return Err("C62GW4 fresh lane used more than one pinned staging buffer".to_owned());
         }
         let process_memory = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
         let memory_value = |name: &str| {
@@ -12368,13 +12403,19 @@ mod tests {
             rss_bytes: memory_value("VmRSS:"),
             rss_high_water_bytes: memory_value("VmHWM:"),
             online_debt_items,
+            pinned_host_write_bytes: stats.pinned_host_write_bytes,
+            pinned_allocation_calls: stats.pinned_allocation_calls,
+            pinned_alloc_requests: stats.pinned_alloc_requests,
+            pinned_reuse_hits: stats.pinned_reuse_hits,
+            peak_pinned_bytes: stats.peak_pinned_bytes,
+            resident_h2d_host_calls: stats.resident_h2d_host_calls,
         })
     }
 
     #[cfg(feature = "cuda")]
     #[test]
     #[ignore = "requires an 80-GiB A100 and an explicit append-only output path"]
-    fn c62gw3_a100_all_lane_calibration() {
+    fn c62gw4_a100_all_lane_calibration() {
         use std::io::Write;
 
         use crate::c62_gpu_whir::{
@@ -12383,7 +12424,7 @@ mod tests {
             C62_GPU_WHIR_EXECUTOR_VERSION, C62_GPU_WHIR_FIELD_TAG,
         };
 
-        const TARGET_NS: u64 = 7_000_000_000;
+        const TARGET_NS: u64 = 7_500_000_000;
         const ADMISSION_NS: u64 = 12_000_000_000;
         const NON_WHIR_RESERVE_NS: u64 = 3_000_000_000;
         let output =
@@ -12529,7 +12570,7 @@ mod tests {
             .iter()
             .map(|lane| {
                 format!(
-                    "    {{\"mode\":\"{}\",\"repetition\":{},\"num_variables\":{},\"claim_count\":{},\"query_count\":{},\"sumcheck_rounds\":{},\"folding_schedule\":{:?},\"wall_ns\":{},\"kernel_ns\":{},\"operation_kernel_ns\":{:?},\"peak_device_bytes\":{},\"h2d_bytes\":{},\"d2h_bytes\":{},\"encoded_bytes\":{},\"rss_bytes\":{},\"rss_high_water_bytes\":{},\"online_debt_items\":{}}}",
+                    "    {{\"mode\":\"{}\",\"repetition\":{},\"num_variables\":{},\"claim_count\":{},\"query_count\":{},\"sumcheck_rounds\":{},\"folding_schedule\":{:?},\"wall_ns\":{},\"kernel_ns\":{},\"operation_kernel_ns\":{:?},\"peak_device_bytes\":{},\"h2d_bytes\":{},\"d2h_bytes\":{},\"encoded_bytes\":{},\"rss_bytes\":{},\"rss_high_water_bytes\":{},\"online_debt_items\":{},\"pinned_host_write_bytes\":{},\"pinned_allocation_calls\":{},\"pinned_alloc_requests\":{},\"pinned_reuse_hits\":{},\"peak_pinned_bytes\":{},\"resident_h2d_host_calls\":{}}}",
                     lane.mode,
                     lane.repetition,
                     lane.num_variables,
@@ -12547,12 +12588,18 @@ mod tests {
                     lane.rss_bytes,
                     lane.rss_high_water_bytes,
                     lane.online_debt_items,
+                    lane.pinned_host_write_bytes,
+                    lane.pinned_allocation_calls,
+                    lane.pinned_alloc_requests,
+                    lane.pinned_reuse_hits,
+                    lane.peak_pinned_bytes,
+                    lane.resident_h2d_host_calls,
                 )
             })
             .collect::<Vec<_>>()
             .join(",\n");
         let record = format!(
-            "{{\n  \"schema\": \"volta-c62-gw3-svo-calibration-v1\",\n  \"started_utc\": \"{started_utc}\",\n  \"git_sha\": \"{git_sha}\",\n  \"git_dirty\": false,\n  \"executor\": \"{C62_GPU_WHIR_EXECUTOR_PROFILE}\",\n  \"cuda_abi\": {},\n  \"device\": \"NVIDIA A100-SXM4-80GB\",\n  \"credit\": false,\n  \"production_session\": false,\n  \"pcg_started\": false,\n  \"certificate_created\": false,\n  \"ephemeral_proof_materialized\": true,\n  \"provider_cache_bytes\": {},\n  \"resource_guard_peak_bytes\": {},\n  \"deferred_settlement\": false,\n  \"online_debt_items\": 0,\n  \"cache_precommit\": {{\"wall_ns\":{},\"kernel_ns\":{},\"peak_device_bytes\":{},\"h2d_bytes\":{},\"d2h_bytes\":{}}},\n  \"post_precommit_trim\": {{\"workspace_bytes\":{},\"resident_bytes\":{},\"cached_resident_bytes\":{}}},\n  \"lanes\": [\n{lane_json}\n  ],\n  \"complete_whir_wall_ns\": {projected_lower_bound_ns},\n  \"reserved_non_whir_inline_ns\": {NON_WHIR_RESERVE_NS},\n  \"projected_complete_inline_ns\": {projected_complete_inline_ns},\n  \"whir_target_ns\": {TARGET_NS},\n  \"terminal_admission_ns\": {ADMISSION_NS},\n  \"full_whir_phase_census_complete\": {complete},\n  \"target_pass\": {target_pass},\n  \"decision\": \"{}\"\n}}\n",
+            "{{\n  \"schema\": \"volta-c62-gw4-dense-pinned-calibration-v1\",\n  \"started_utc\": \"{started_utc}\",\n  \"git_sha\": \"{git_sha}\",\n  \"git_dirty\": false,\n  \"executor\": \"{C62_GPU_WHIR_EXECUTOR_PROFILE}\",\n  \"cuda_abi\": {},\n  \"device\": \"NVIDIA A100-SXM4-80GB\",\n  \"credit\": false,\n  \"production_session\": false,\n  \"pcg_started\": false,\n  \"certificate_created\": false,\n  \"ephemeral_proof_materialized\": true,\n  \"initial_reducer\": \"dense_batched_weights\",\n  \"svo_enabled\": false,\n  \"provider_cache_bytes\": {},\n  \"resource_guard_peak_bytes\": {},\n  \"deferred_settlement\": false,\n  \"online_debt_items\": 0,\n  \"cache_precommit\": {{\"wall_ns\":{},\"kernel_ns\":{},\"peak_device_bytes\":{},\"h2d_bytes\":{},\"d2h_bytes\":{}}},\n  \"post_precommit_trim\": {{\"workspace_bytes\":{},\"resident_bytes\":{},\"cached_resident_bytes\":{}}},\n  \"lanes\": [\n{lane_json}\n  ],\n  \"complete_whir_wall_ns\": {projected_lower_bound_ns},\n  \"reserved_non_whir_inline_ns\": {NON_WHIR_RESERVE_NS},\n  \"projected_complete_inline_ns\": {projected_complete_inline_ns},\n  \"whir_target_ns\": {TARGET_NS},\n  \"terminal_admission_ns\": {ADMISSION_NS},\n  \"full_whir_phase_census_complete\": {complete},\n  \"target_pass\": {target_pass},\n  \"decision\": \"{}\"\n}}\n",
             volta_accel::CUDA_ABI_VERSION,
             d28_cache.bytes() + d27_cache.bytes(),
             guard.checked_peak_bytes().unwrap(),
@@ -12565,9 +12612,9 @@ mod tests {
             post_precommit_memory.resident_bytes,
             post_precommit_memory.cached_resident_bytes,
             if target_pass {
-                "genesis_calibration_admitted"
+                "gw4_target_met_owner_review_required"
             } else if complete {
-                "svo_analysis_required"
+                "owner_gate_review_required"
             } else {
                 "fail_fast_terminal_projection"
             },
@@ -12577,7 +12624,7 @@ mod tests {
         file.write_all(record.as_bytes()).unwrap();
         file.sync_all().unwrap();
         eprintln!(
-            "C62GW3_CALIBRATION: lanes={} complete={} whir={:.6}s projected_inline={:.6}s pass={target_pass}",
+            "C62GW4_CALIBRATION: lanes={} complete={} whir={:.6}s projected_inline={:.6}s pass={target_pass}",
             lanes.len(),
             complete,
             projected_lower_bound_ns as f64 / 1e9,

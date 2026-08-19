@@ -1470,3 +1470,35 @@ admitted. Another A100 calibration requires an exact scaled differential, a
 clean checkpoint and a new owner GO. Raw evidence is
 `c62-gw3-a100-calibration-2026-08-19-97ccdb3-r1.json`, SHA-256
 `30881afd15b7c2ab23a6dd5a709d496fc13d5813f3572ce8e65e4d05f6372356`.
+
+## 0.60 C62GW4 single row/H2D cycle
+
+The owner authorizes one local C62GW4 cycle with no folding, parameter,
+transcript, root, verifier, proof-message or wire change. The target range is
+`6.5..7.5 s` complete WHIR and `9.5..10.5 s` projected inline; `<12 s` remains
+the product gate. The owner's option to accept GW3 below `<12 s` is recorded
+but not exercised because the local screen clears its required `1.5 s` saving.
+
+GW3 measured `3.968810458 s` in `pcs_rows`. The same-A100 GW2 dense batched
+reducer used at most `1.864715958 s` after doubling the slower measurement in
+each lane class and conservatively duplicating the sole D27 fresh sample. The
+registered screen therefore credits only `2.104094500 s`, projects
+`6.731249113 s` WHIR, and assigns zero credit to H2D. This comparison is valid
+because GW4 reuses that exact reducer; GW3's fused NTT and schedule are
+unchanged.
+
+The implementation is deliberately small. Initial sumcheck selects the
+existing dense batched equality weights instead of SVO, while retaining GW3's
+single resident fresh-message ownership. Large Goldilocks messages are
+canonicalized into one reusable pinned buffer and enqueued as one H2D copy.
+The pinned allocation/write and copy all remain inside measured wall time; the
+runner records pinned bytes, allocation/reuse counts and peak pinned memory.
+Nothing transcript-dependent enters the provider cache.
+
+The anti-X4d.1 boundary is unchanged: timing starts before commitment, ends
+after real serialization, covers all eight independent lanes, and requires
+zero online debt and no deferred settlement. The scaled full-payload CUDA
+differential exercises both dense reduction and pinned staging before one
+fail-fast A100 calibration. It creates no setup, PCG, context or retained
+certificate. Any exactness, resource, one-upload or pinned-byte failure stops;
+genesis requires a later authority update even if GW4 meets its target.

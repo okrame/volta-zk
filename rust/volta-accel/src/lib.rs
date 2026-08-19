@@ -1470,6 +1470,48 @@ impl Backend {
         Err(AccelError::FeatureDisabled)
     }
 
+    /// Enqueue one typed H2D copy from the reusable pinned-host pool.
+    pub fn upload_pinned_device<T: DeviceElement>(
+        &mut self,
+        source: &PinnedHostBuffer<T>,
+        source_offset: usize,
+        destination: &DeviceBuffer<T>,
+        destination_offset: usize,
+        count: usize,
+    ) -> Result<(), AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        {
+            let _ = (source, source_offset, destination, destination_offset, count);
+            return Err(AccelError::FeatureDisabled);
+        }
+        #[cfg(feature = "cuda")]
+        {
+            self.validate_pinned_buffer(source)?;
+            self.validate_buffer(destination)?;
+            if count == 0 {
+                return Err(AccelError::InvalidInput("empty pinned device upload"));
+            }
+            validate_region(source.len, source_offset, count)?;
+            validate_region(destination.len, destination_offset, count)?;
+            let source_offset_bytes = source_offset
+                .checked_mul(size_of::<T>())
+                .ok_or(AccelError::InvalidInput("pinned source offset overflows"))?;
+            let destination_offset_bytes = destination_offset
+                .checked_mul(size_of::<T>())
+                .ok_or(AccelError::InvalidInput("pinned destination offset overflows"))?;
+            let bytes = count
+                .checked_mul(size_of::<T>())
+                .ok_or(AccelError::InvalidInput("pinned device upload overflows"))?;
+            self.cuda.as_mut().expect("CUDA kind without context").x4c_upload_pinned(
+                source.id,
+                source_offset_bytes,
+                destination.id,
+                destination_offset_bytes,
+                bytes,
+            )
+        }
+    }
+
     /// Explicit device-to-host boundary. Resident proving code must call this
     /// only for protocol messages; tests also use it for differential checks.
     pub fn download_device<T: DeviceElement>(

@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 C62GW3 A100 TARGET MISS — LOCAL ROW/H2D ANALYSIS / NO GENESIS)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 C62GW4 LOCAL ROW/H2D CHECKPOINT — A100 GO REQUIRED / NO GENESIS)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,24 +8,31 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-Read `c62-whir-fiat-shamir-design.md` §0.59 next.
+Read `c62-whir-fiat-shamir-design.md` §0.60 next.
 
-- **Status.** C6.2 is `C62GW3_A100_TARGET_MISS`; design §0.59 is active on
-  `agent/c62-whir-batched-svo-redesign`. The pod is stopped; no new pod or
-  production session is authorized.
-- **Evidence.** Clean `97ccdb3` passed the full-payload CUDA differential and
-  completed all eight lanes in `8.835343613 s` WHIR, projecting
-  `11.835343613 s` inline. Online debt and deferred settlement were zero.
+- **Status.** C6.2 is `C62GW4_LOCAL_ROW_H2D_CHECKPOINT`; design §0.60 is active
+  on `agent/c62-gw4-rows-h2d`. No pod or production session is authorized
+  without a new owner GO.
+- **Evidence.** Same-A100 GW2 dense-row maxima project `2.104094500 s` saved
+  against GW3, yielding `6.731249113 s` WHIR before any H2D credit. Local
+  exactness and CUDA-feature compilation pass; A100 timing is unmeasured.
 - **Gates.** Complete inline genesis, excluding setup and provider cache, is
-  `<12 s`, target `<=10 s`, with WHIR `<7 s`. Setup is `<150 MB`, setup plus
+  `<12 s`, GW4 target `<=10.5 s`, with WHIR `<7.5 s`. Setup is `<150 MB`, setup plus
   first certificate `<172 MB`, every certificate `<22 MB`, four-thread CPU
   verifier `<5 s`, and at least 17 certificates.
-- **Hard stop.** WHIR missed `<7 s`, so genesis remains forbidden despite the
-  `<12 s` projection. Resume locally only on exact `pcs_rows` claim compression
-  and counted fresh-transfer reduction. A new clean checkpoint and owner GO are
-  required before another A100 calibration.
+- **Hard stop.** One clean non-session A100 run must first pass the full-payload
+  differential, then measure all eight lanes, pinned staging, RSS/VRAM, real
+  serialization and zero debt/no settlement. No genesis is authorized.
 - **Credit.** No setup, PCG, context, retained proof or certificate was created;
   no product timing, byte, session or verifier gate has credit.
+
+- **2026-08-19 — Owner opens one C62GW4 row/H2D cycle.** No folding or protocol
+  change is allowed. GW4 reuses the measured-fast dense batched-weight reducer
+  with GW3's fused NTT and one-upload ownership, and stages each large fresh
+  message through the existing pinned pool. A conservative same-A100 screen
+  gives `2.104094500 s` row saving and `6.731249113 s` WHIR without H2D credit,
+  above the required `1.5 s` admission. One future clean A100 calibration may
+  target `6.5..7.5 s` WHIR and `9.5..10.5 s` inline after a new owner GO.
 
 - **2026-08-19 — C62GW3 A100 completes but misses the redesign target.** Clean
   `97ccdb3` passed the scaled full-payload differential, then completed 8/8

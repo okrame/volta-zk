@@ -31,10 +31,11 @@ use crate::c61_whir_reference::{
     c61_p3_fp2_from_volta, c61_reference_mmcs, c61_volta_fp2_from_p3, C61P3Fp2,
 };
 
-pub const C62_GPU_WHIR_EXECUTOR_PROFILE: &str = "C62GW3-svo-fused-ntt";
-pub const C62_GPU_WHIR_EXECUTOR_VERSION: u16 = 3;
+pub const C62_GPU_WHIR_EXECUTOR_PROFILE: &str = "C62GW4-dense-weights-pinned-h2d";
+pub const C62_GPU_WHIR_EXECUTOR_VERSION: u16 = 4;
 pub const C62_GPU_WHIR_DEFAULT_TILE_LOG: usize = 20;
 pub const C62_GPU_WHIR_STAGING_ELEMENTS: usize = 1 << 20;
+const C62_GPU_WHIR_PINNED_MIN_ELEMENTS: usize = 1 << 14;
 pub const C62_GPU_WHIR_FIELD_TAG: [u8; 8] = *b"GL64C621";
 
 pub type C62GpuCommitment = MerkleCap<Goldilocks, [u8; 32]>;
@@ -1633,7 +1634,7 @@ impl ZkWhirOracleCommitter<Goldilocks, C61P3Fp2, C62GpuMmcs> for C62GpuWhirCommi
             .lock()
             .map_err(|_| C62GpuWhirError::new("C62GW3 pending-initial lock"))?
             .take();
-        let (fresh_evals, initial_svo_folding) = if let Some(pending) = pending {
+        let fresh_evals = if let Some(pending) = pending {
             if pending.message_address != message.as_ptr() as usize
                 || pending.message_len != message.len()
                 || pending.folding == 0
@@ -1644,9 +1645,9 @@ impl ZkWhirOracleCommitter<Goldilocks, C61P3Fp2, C62GpuMmcs> for C62GpuWhirCommi
                 }
                 return Err(C62GpuWhirError::new("C62GW3 commit/sumcheck message mismatch"));
             }
-            (pending.fresh_evals, Some(pending.folding))
+            pending.fresh_evals
         } else {
-            (None, None)
+            None
         };
         C62GpuSumcheckState::initialize(
             self.mmcs.backend(),
@@ -1660,7 +1661,7 @@ impl ZkWhirOracleCommitter<Goldilocks, C61P3Fp2, C62GpuMmcs> for C62GpuWhirCommi
                 C62InitialOracleMode::ProviderCached(cache) => Some(Arc::clone(cache)),
             },
             fresh_evals,
-            initial_svo_folding,
+            None,
         )
     }
 
@@ -1849,6 +1850,40 @@ fn upload_goldilocks(
             return Err(error);
         }
         return Ok(buffer);
+    }
+    if backend.kind() == BackendKind::CudaResident
+        && values.len() >= C62_GPU_WHIR_PINNED_MIN_ELEMENTS
+    {
+        let pinned = match backend.alloc_pinned_host::<u64>(values.len()) {
+            Ok(pinned) => pinned,
+            Err(error) => {
+                let _ = backend.free_device(buffer);
+                return Err(error);
+            }
+        };
+        let mut staging = Vec::with_capacity(C62_GPU_WHIR_STAGING_ELEMENTS);
+        for (chunk_index, chunk) in values.chunks(C62_GPU_WHIR_STAGING_ELEMENTS).enumerate() {
+            staging.clear();
+            staging.extend(chunk.iter().map(PrimeField64::as_canonical_u64));
+            if let Err(error) = backend.write_pinned_host(
+                &pinned,
+                chunk_index * C62_GPU_WHIR_STAGING_ELEMENTS,
+                &staging,
+            ) {
+                let _ = backend.free_pinned_host(pinned);
+                let _ = backend.free_device(buffer);
+                return Err(error);
+            }
+        }
+        let upload = backend.upload_pinned_device(&pinned, 0, &buffer, 0, values.len());
+        let free = backend.free_pinned_host(pinned);
+        return match (upload, free) {
+            (Ok(()), Ok(())) => Ok(buffer),
+            (Err(error), _) | (Ok(()), Err(error)) => {
+                let _ = backend.free_device(buffer);
+                Err(error)
+            }
+        };
     }
     for (chunk_index, chunk) in values.chunks(C62_GPU_WHIR_STAGING_ELEMENTS).enumerate() {
         let staging = chunk.iter().map(PrimeField64::as_canonical_u64).collect::<Vec<_>>();

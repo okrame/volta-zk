@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "profile": "c62-local-setup-bundle-measurement-v1",
+  "client_parameter_bytes": 24454378,
+  "client_parameter_cap_bytes": 65139022,
+  "setup_bytes": 101197617,
+  "setup_cap_bytes": 141882261,
+  "certificate_ceiling_bytes": 21999999,
+  "setup_plus_certificate_ceiling_bytes": 123197616,
+  "setup_plus_first_tolerance_bytes": 157500000,
+  "pass": true,
+  "credit": false
+}

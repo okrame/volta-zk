@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 C62GW4 GENESIS — POD AUTHORIZED / NO FULL SESSION)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 C62GW4 GENESIS — TIMING HARD STOP / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,26 +8,35 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-Read `c62-whir-fiat-shamir-design.md` §0.62 next.
+Read `c62-whir-fiat-shamir-design.md` §0.63 next.
 
-- **Status.** C6.2 is `C62GW4_GENESIS_POD_AUTHORIZED` on
-  `agent/c62-gw4-genesis`. Owner GO covers one clean `context-000` genesis,
-  not a full session or retry.
-- **Evidence.** Clean `8edc302` passed the full-payload CUDA differential and
-  all eight serialized lanes: `7.359403833 s` WHIR and `10.359403833 s`
-  projected inline. Peak VRAM was `39,146,362,732 B`, RSS high-water
-  `4,423,577,600 B`; all lanes had zero debt/no settlement and each fresh lane
-  used one pinned message staging request. The versioned GPU integration,
-  legacy non-CUDA build, CUDA build, runner source check and shell syntax pass.
-  A pod-only test compile issue was repaired before any protocol material.
-- **Gates.** Complete inline genesis, excluding setup and provider cache, is
-  `<12 s`, GW4 target `<=10.5 s`, with WHIR `<7.5 s`. Setup is `<150 MB`, setup plus
+- **Status.** C6.2 is `C62GW4_GENESIS_TIMING_HARD_STOP` on
+  `agent/c62-gw4-genesis`; no pod run, retry or continuation is authorized.
+- **Evidence.** Clean `299050d` passed the CUDA boundary and runner checks,
+  generated all 17 setup profiles, measured setup at `101,197,617 B`, and
+  passed the A100 preflight. During the sole genesis, a post-timer wrapper
+  marker plus live pod clock established an inline lower bound of
+  `77.422289502 s`, already above `15.75 s`. Observed maxima were
+  `23,948,939,264 B` RSS and `25,066,209,280 B` VRAM, with zero spill.
+- **Gates.** Complete inline genesis is `<12 s`; setup is `<150 MB`, setup plus
   first certificate `<172 MB`, every certificate `<22 MB`, four-thread CPU
   verifier `<5 s`, and at least 17 certificates.
-- **Hard stop.** The pod may execute exactly one clean genesis and stops on any
-  exactness, resource, byte or timing miss. Continuations require a later GO.
-- **Credit.** No setup, PCG, context, retained proof or certificate was created;
-  no product timing, byte, session or verifier gate has credit.
+- **Hard stop.** The attempt was interrupted without retry, certificate,
+  artifact, verifier or mutations. Two AES connection files exist, but zero
+  slots were reserved. Cleanup removed the partial run and provider cache.
+- **Resume.** Local root-cause work must bind every fresh precommit step to the
+  complete timer and produce a clean exact full-payload screen before a new
+  owner GO. No product timing, byte, session or verifier gate has credit.
+
+- **2026-08-19 — C62GW4 genesis hits the complete-inline timing hard stop.**
+  Clean `299050d` generated all 17 setup profiles (`101,197,617 B`) and passed
+  preflight. The only authorized genesis then exceeded a conservative
+  `77.422289502-s` inline lower bound before producing a certificate, so it was
+  interrupted with no retry, verifier or mutation. RSS/VRAM remained bounded
+  and no spill persisted. §0.63 closes pod authority and returns to local
+  precommit-boundary analysis. Raw records are the three
+  `c62-gw4-genesis-*-2026-08-19-299050d-r1.json` files; the disposition SHA-256
+  is `93903ee770e5b8e729d0643519172488746cd2a3a543a290790a66a299bfb515`.
 
 - **2026-08-19 — Pre-session CUDA test compile repaired without consuming the
   genesis.** The pod stopped before the differential, setup, PCG or context

@@ -1,6 +1,6 @@
 # C6.2 WHIR Fiat--Shamir Design
 
-Status: **C62GW4 GENESIS POD AUTHORIZED / NO FULL SESSION**
+Status: **C62GW4 GENESIS TIMING HARD STOP / NO POD**
 
 This document is the active design for C6.2. It has precedence over the
 interactive C6.1 sections in `c6-delta-residual-inline-design.md`. Frozen C6
@@ -1551,3 +1551,29 @@ Binding admission is setup `<150,000,000 B`, setup plus first certificate
 continuation. A passing genesis may run the four registered negative mutations
 and seal one copyable artifact, but a full session still requires a later
 explicit owner GO.
+
+## 0.63 C62GW4 genesis timing disposition
+
+Clean `299050d` passed the CUDA boundary and runner tests, generated all 17
+setup profiles, measured setup at `101,197,617 B`, and passed the real A100
+preflight. The sole authorized genesis did not reach a certificate. A wrapper
+directory modified after the complete-inline timer began was present at
+`2026-08-19T16:06:13.611756856Z`; the live pod clock at
+`2026-08-19T16:07:31.034046358Z` therefore establishes the conservative
+`77.422289502-s` lower bound. This alone exceeds both `<12 s` and the terminal
+`15.75 s` stop.
+
+The process was interrupted once. The exit cleanup removed the partial run and
+provider cache; no certificate, artifact, CPU verification or mutation exists.
+Two real/AES connection files were opened, but the slot store stayed empty, so
+no accepted attempt was allocated. Maximum observed RSS and VRAM were
+`23,948,939,264 B` and `25,066,209,280 B`; persisted spill was zero.
+
+The `7.359403833-s` GW4 component calibration remains valid only as component
+evidence: its fixed `3-s` reserve did not include the real fresh-precommit
+cost and receives no product credit. C62GW4 pod work is closed. Resume is local
+only: identify that cost without moving fresh work into provider cache, bind a
+phase watchdog to the same complete-inline timer, and pass an exact full-payload
+screen before requesting a new owner GO. The raw disposition is
+`c62-gw4-genesis-timing-hard-stop-2026-08-19-299050d-r1.json`, SHA-256
+`93903ee770e5b8e729d0643519172488746cd2a3a543a290790a66a299bfb515`.

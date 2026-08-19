@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 R19 C62GW1 CALIBRATION R2 GUARD UNDERCOUNT — WORKSPACE-GUARD RERUN HARD STOP / NO SESSION)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 R19 C62GW1 CALIBRATION R3 SCHEDULE OVERMEASURE — EXACT NONFINAL RERUN HARD STOP / NO SESSION)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,27 +10,36 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Status.** C6.2 is `R19_C62GW1_CALIBRATION_R2_GUARD_UNDERCOUNT /
-  WORKSPACE_GUARD_RERUN_REQUIRED`; design §0.51 is active. Pod authorization
+- **Status.** C6.2 is `R19_C62GW1_CALIBRATION_R3_SCHEDULE_OVERMEASURE /
+  EXACT_NONFINAL_RERUN_REQUIRED`; design §0.52 is active. Pod authorization
   remains non-session only; standing create-new GO is unconsumed.
 - **Completed evidence.** Clean `cc0e2e1` passed the scaled A100 boundary.
-  R1 at `93fe6fb` is an invalid memory run. R2 at clean `b280958` passed the
-  post-preload trim checks, then stopped because actual D28 peak still exceeded
-  the old guard; it emitted no record and has no timing decision.
-- **Correction.** Initial fold is 1. The guard had omitted the two exact
-  product-sum reduction workspaces: 24 B per source element, 6 GiB at D28.
-  Corrected D28 admission is `32 GiB + 80 MiB - 32 B` with one base cache and
-  `34 GiB + 80 MiB - 32 B` with both provider bases. The old 40-GiB statement
-  remains withdrawn.
-- **Hard stop.** Checkpoint this shared guard correction and rerun only the
-  registered calibrator. Reject any actual peak above admission. Do not start
-  setup, PCG, a session, proof, certificate or mutation.
+  R1 and R2 are invalid resource runs. Clean R3 at `ca02e2f` fit the corrected
+  `36,591,108,064-B` guard, but measured 28 sumcheck rounds instead of the 23
+  non-final rounds executed by production. Its reported `43.597385326-s`
+  projection has no timing or folding decision.
+- **Correction.** The calibrator now derives its round count from the active
+  configuration and stops with the five final variables untouched. Roots,
+  cache contents, fold 1 and the corrected resource guard are unchanged.
+- **Hard stop.** Checkpoint the exact 23-round schedule and rerun only the
+  registered calibrator. Reject a schedule or peak mismatch. Do not start
+  setup, correlation generation, a session, proof, certificate or mutation.
 - **Data and credit.** At owner request the current pod's historical setup and
   old C6.2 data were removed; the historical 17-profile manifest digest remains
   a record only. No timing, proof-size, session or product gate has credit.
 - **Resume.** A resource-valid lower bound above `12.500 s` starts the folding
   study; otherwise later rounds remain required. Production wiring and one
   `context-000` remain later gates.
+
+- **2026-08-19 — Calibration r3 rejected for five excess terminal rounds.**
+  Clean `ca02e2f` passed trim and resource admission: cached D28 peaked at
+  `31,205,625,168 B` below the `36,591,108,064-B` guard. Its loop nevertheless
+  reduced all 28 variables, while production stops after 23 non-final rounds
+  and leaves five variables to its final case. The reported
+  `43.597385326-s` two-repetition projection is therefore non-credit and has no
+  folding decision. §0.52 binds one new run to the configured non-final count.
+  The disposition is
+  `benchmarks/results/c62-a100-initial-lower-bound-failure-2026-08-19-ca02e2f-r3.json`.
 
 - **2026-08-19 — Calibration r2 exposes the missing reduction workspace.**
   Clean `b280958` trimmed inactive provider-preload storage and asserted 6 GiB

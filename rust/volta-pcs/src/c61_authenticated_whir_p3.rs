@@ -12039,6 +12039,7 @@ mod tests {
         num_variables: usize,
         claim_count: usize,
         query_count: usize,
+        sumcheck_rounds: usize,
         wall_ns: u64,
         peak_device_bytes: u64,
         h2d_bytes: u64,
@@ -12073,6 +12074,7 @@ mod tests {
         let claims = vec![(point, C61P3Fp2::ZERO); claim_count];
         let coefficients = vec![C61P3Fp2::ONE; claim_count];
         let query_count = config.round_parameters[0].num_queries;
+        let sumcheck_rounds = num_variables - config.final_round_config().num_variables;
         let indices = (0..query_count)
             .map(|index| index * height / query_count)
             .collect::<Vec<_>>();
@@ -12099,11 +12101,14 @@ mod tests {
         let mut sumcheck = oracle
             .initialize_sumcheck(message, &claims, &coefficients, C61P3Fp2::ZERO)
             .map_err(|error| error.to_string())?;
-        while sumcheck.num_variables() != 0 {
+        for _ in 0..sumcheck_rounds {
             let (c0, c_inf) = sumcheck.round_coefficients().map_err(|error| error.to_string())?;
             sumcheck
                 .fold_round_with_coefficients(c0, c_inf, C61P3Fp2::ONE)
                 .map_err(|error| error.to_string())?;
+        }
+        if sumcheck.num_variables() != config.final_round_config().num_variables {
+            return Err("C62GW1 calibration sumcheck schedule mismatch".to_owned());
         }
         if sumcheck.claimed_sum() != C61P3Fp2::ZERO {
             return Err("C62GW1 calibration sumcheck did not close at zero".to_owned());
@@ -12122,6 +12127,7 @@ mod tests {
             num_variables,
             claim_count,
             query_count,
+            sumcheck_rounds,
             wall_ns: stats.measurement_wall_ns,
             peak_device_bytes: stats.peak_device_bytes,
             h2d_bytes: stats.h2d_bytes,
@@ -12247,11 +12253,12 @@ mod tests {
             .iter()
             .map(|lane| {
                 format!(
-                    "    {{\"mode\":\"{}\",\"num_variables\":{},\"claim_count\":{},\"query_count\":{},\"wall_ns\":{},\"peak_device_bytes\":{},\"h2d_bytes\":{},\"d2h_bytes\":{},\"multiproof_siblings\":{}}}",
+                    "    {{\"mode\":\"{}\",\"num_variables\":{},\"claim_count\":{},\"query_count\":{},\"sumcheck_rounds\":{},\"wall_ns\":{},\"peak_device_bytes\":{},\"h2d_bytes\":{},\"d2h_bytes\":{},\"multiproof_siblings\":{}}}",
                     lane.mode,
                     lane.num_variables,
                     lane.claim_count,
                     lane.query_count,
+                    lane.sumcheck_rounds,
                     lane.wall_ns,
                     lane.peak_device_bytes,
                     lane.h2d_bytes,

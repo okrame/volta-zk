@@ -1,6 +1,6 @@
 # C6.2 WHIR Fiat--Shamir Design
 
-Status: **C62GW1 CALIBRATION R2 GUARD UNDERCOUNT / WORKSPACE-GUARD RERUN REQUIRED**
+Status: **C62GW1 CALIBRATION R3 SCHEDULE OVERMEASURE / EXACT NONFINAL RERUN REQUIRED**
 
 This document is the active design for C6.2. It has precedence over the
 interactive C6.1 sections in `c6-delta-residual-inline-design.md`. Frozen C6
@@ -1206,3 +1206,26 @@ base cache and `34 GiB + 80 MiB - 32 B` with both provider bases resident.
 Resume is one clean create-new run of the unchanged registered script. Its
 actual peak must fit the corrected guard before the measured lower bound can
 trigger folding. R2 created no setup, PCG state, proof, certificate or session.
+
+## 0.52 Calibration r3 schedule mismatch and exact non-final rerun
+
+Clean `ca02e2f` passed the post-preload checks and the corrected resource
+guard. The cached D28 lane peaked at `31,205,625,168 B`, below its
+`36,591,108,064-B` admission, and reported a two-repetition projection of
+`43.597385326 s`. That projection receives no decision because the calibration
+loop reduced all 28 variables. The production prover performs only the
+configured non-final folds: 23 rounds for this profile, leaving five variables
+to its final case. The non-credit disposition is
+`benchmarks/results/c62-a100-initial-lower-bound-failure-2026-08-19-ca02e2f-r3.json`.
+
+The calibrator now derives the non-final count as the initial variable count
+minus the configured final-case variable count, performs exactly that many
+rounds, and rejects any different remainder. This is the only code change.
+Fold 1, roots, provider-only cache contents, opening geometry, claim counts and
+resource admission remain unchanged.
+
+Resume is one clean create-new run of the registered non-session script. A
+resource-valid two-repetition lower bound above `12.500 s` starts the
+root-preserving folding study; otherwise later WHIR phases remain required.
+No setup, correlation state, transcript, proof, certificate or session may be
+created by this rerun.

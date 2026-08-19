@@ -1502,3 +1502,26 @@ differential exercises both dense reduction and pinned staging before one
 fail-fast A100 calibration. It creates no setup, PCG, context or retained
 certificate. Any exactness, resource, one-upload or pinned-byte failure stops;
 genesis requires a later authority update even if GW4 meets its target.
+
+## 0.61 C62GW4 A100 disposition
+
+Clean `8edc302` passed the full-payload fresh/cached CUDA differential and the
+single authorized eight-lane calibration. Complete WHIR wall time was
+`7.359403833 s`; the unchanged `3 s` reserve projects `10.359403833 s` inline.
+Both the `6.5..7.5 s` WHIR target and `9.5..10.5 s` inline target pass, as does
+the `<12 s` terminal admission screen.
+
+The eight lanes used `4.887398788 s` of device kernels: `pcs_rows`
+`1.873687318 s`, NTT `2.025247798 s`, and Merkle `0.605375271 s`. Peak VRAM was
+`39,146,362,732 B` below the `45,818,576,864-B` guard; RSS high-water was
+`4,423,577,600 B`, peak pinned storage `2,147,483,648 B`, and maximum serialized
+lane size `736,280 B`. Every fresh lane recorded exactly one pinned allocation
+request, one reuse hit and one message-sized pinned write. All lanes recorded
+zero online debt and no deferred settlement.
+
+This is non-session component evidence: no setup, PCG, context, retained proof
+or certificate was created, so no product, byte, 17-certificate or CPU-verifier
+gate receives credit. The cycle is closed at owner review; genesis and any
+further pod run require a new explicit owner GO. Raw evidence is
+`c62-gw4-a100-calibration-2026-08-19-8edc302-r1.json`, SHA-256
+`036eb4d3aac185bc15387d1fc303c7021548e70cf39a30968aed7cb8310f0312`.

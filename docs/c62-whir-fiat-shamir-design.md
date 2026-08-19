@@ -1,6 +1,6 @@
 # C6.2 WHIR Fiat--Shamir Design
 
-Status: **C62GW1 INITIAL LOWER-BOUND CALIBRATOR STAGED / A100 MEASUREMENT REQUIRED**
+Status: **C62GW1 CALIBRATION R1 RESOURCE MISMATCH / TRIMMED RERUN REQUIRED**
 
 This document is the active design for C6.2. It has precedence over the
 interactive C6.1 sections in `c6-delta-residual-inline-design.md`. Frozen C6
@@ -1165,3 +1165,25 @@ initial census is not an admission pass; later WHIR rounds must then be added
 and measured before production wiring. The current pod has no historical setup
 after the owner-requested cleanup. Independent roots and provider-only cache
 contents remain unchanged.
+
+## 0.50 Calibration r1 resource mismatch and narrow repair
+
+Clean `93fe6fb` measured fixed-base preload at `19.403972640 s`. The first
+cached D28 lane with 96 claims measured `21.800127087 s`, which the harness
+reported as a two-repetition lower bound of `43.600254174 s`. That timing does
+not receive a decision: device peak was `31,138,513,544 B`, exceeding the
+exact `30,148,657,120-B` resource guard by `989,856,424 B`.
+
+The fixed-base phase had logically freed its NTT and upload buffers, but the
+resident allocator retained their physical storage for reuse. Provider preload
+is a separately reported pre-attempt phase, so the online calibration boundary
+must physically trim those inactive buffers. R1 is an invalid resource run,
+not a folding verdict. Its non-credit disposition record is
+`benchmarks/results/c62-a100-initial-lower-bound-failure-2026-08-19-93fe6fb-r1.json`.
+
+The only repair is a post-preload device-cache trim. Before the first timed
+lane the calibrator requires exactly 6 GiB of active provider bases and zero
+inactive resident bytes; after every lane it rejects a measured peak above the
+guard. Resume requires a clean checkpoint and one create-new run of the same
+registered script. No protocol, root, cache content, transcript, proof or
+production stage changes.

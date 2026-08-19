@@ -1,0 +1,45 @@
+{
+  "schema": "volta-c62-gpu-initial-lower-bound-v1",
+  "started_utc": "2026-08-19T09:26:26Z",
+  "git_sha": "93fe6fbd68ac956907c1faa785ee1ec9763e9ab4",
+  "git_dirty": false,
+  "executor": "C62GW1-bounded-binary-frontier",
+  "cuda_abi": 39,
+  "device": "NVIDIA A100-SXM4-80GB",
+  "credit": false,
+  "production_session": false,
+  "pcg_started": false,
+  "certificate_created": false,
+  "folding": 1,
+  "provider_cache_bytes": 6442450944,
+  "resource_guard_peak_bytes": 30148657120,
+  "cache_precommit": {
+    "wall_ns": 19403972640,
+    "peak_device_bytes": 13958643720,
+    "h2d_bytes": 4831838224,
+    "d2h_bytes": 0
+  },
+  "lanes": [
+    {
+      "mode": "provider_cached",
+      "num_variables": 28,
+      "claim_count": 96,
+      "query_count": 175,
+      "wall_ns": 21800127087,
+      "peak_device_bytes": 31138513544,
+      "h2d_bytes": 3221272680,
+      "d2h_bytes": 123904,
+      "multiproof_siblings": 3581
+    }
+  ],
+  "two_repetition_projected_lower_bound_ns": 43600254174,
+  "engineering_admission_ns": 12500000000,
+  "initial_lane_census_complete": false,
+  "full_whir_phase_census_complete": false,
+  "reported_folding_study_required": true,
+  "reported_decision": "folding_required_by_measured_lower_bound",
+  "folding_study_required": null,
+  "decision": "invalid_untrimmed_precommit_arena_exceeded_resource_guard",
+  "observed_peak_over_guard_bytes": 989856424,
+  "pod_raw_record_sha256": "9e5f1bbcf0b7043da9321a7b81a79088591ec441740d83f14cfb20c1b1b45701"
+}

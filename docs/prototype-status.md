@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 R19 C62GW1 INITIAL LOWER-BOUND CALIBRATOR STAGED — A100 MEASUREMENT HARD STOP / NO SESSION)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 R19 C62GW1 CALIBRATION R1 RESOURCE MISMATCH — TRIMMED RERUN HARD STOP / NO SESSION)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,27 +10,35 @@ record; no external plan is authoritative.
 
 This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
 
-- **Status.** C6.2 is `R19_C62GW1_INITIAL_LOWER_BOUND_CALIBRATOR_STAGED /
-  A100_MEASUREMENT_REQUIRED`; design §0.49 is active. Pod authorization remains
+- **Status.** C6.2 is `R19_C62GW1_CALIBRATION_R1_RESOURCE_MISMATCH /
+  TRIMMED_RERUN_REQUIRED`; design §0.50 is active. Pod authorization remains
   non-session only; standing create-new GO is unconsumed.
-- **Completed evidence.** Clean `cc0e2e1` passed ABI-39 focused checks and the
-  complete scaled A100 boundary. The new registered calibrator compiles locally;
-  its exact resource check passes. No A100 calibration value exists yet.
+- **Completed evidence.** Clean `cc0e2e1` passed the complete scaled A100
+  boundary. Calibration r1 at clean `93fe6fb` completed only cached D28: its
+  reported 43.600254174-s two-repetition lower bound has no timing decision.
 - **Correction.** The active initial fold is 1, not the stale fold-8 screen.
   Exact D28 admission is `26 GiB + 80 MiB - 32 B` with one base cache and
   `28 GiB + 80 MiB - 32 B` with both 6-GiB provider bases resident. The old
   40-GiB statement is withdrawn.
-- **Hard stop.** Run only `scripts/check_c62_gpu_native_calibration.sh`. It
-  measures a two-repetition lower bound from exact 96/16/6/3-claim initial
-  lanes and stops as soon as it exceeds `12.500 s`. A lower value is not a
-  pass and requires complete later-round calibration. Do not start setup,
-  PCG, a session, proof, certificate or mutation.
+- **Hard stop.** R1 retained inactive preload buffers: measured peak
+  31,138,513,544 B exceeded the 30,148,657,120-B guard by 989,856,424 B.
+  Before rerun, trim that cache, require exactly 6 GiB active and zero inactive
+  bytes, then reject any lane peak above the guard. Do not start setup, PCG, a
+  session, proof, certificate or mutation.
 - **Data and credit.** At owner request the current pod's historical setup and
   old C6.2 data were removed; the historical 17-profile manifest digest remains
   a record only. No timing, proof-size, session or product gate has credit.
-- **Resume.** A measured lower bound above `12.500 s` starts the authorized
-  root-preserving folding study. Otherwise complete the remaining WHIR phases.
-  Production wiring and one `context-000` remain later gates.
+- **Resume.** Checkpoint the trim/assert repair and rerun only the registered
+  calibrator. A resource-valid lower bound above `12.500 s` starts the folding
+  study; otherwise later rounds remain required. Production wiring and one
+  `context-000` remain later gates.
+
+- **2026-08-19 — Calibration r1 rejected on memory accounting before timing
+  disposition.** Clean `93fe6fb` measured provider preload 19.403972640 s and
+  cached D28 21.800127087 s, but the untrimmed resident arena peaked
+  989,856,424 B above its guard. The reported 43.600254174-s lower-bound trigger
+  is invalid. §0.50 requires post-preload trim and exact memory assertions before
+  the create-new rerun. No setup, PCG, proof, certificate or session started.
 
 - **2026-08-19 — Exact-fold initial lower-bound calibration staged.** Source
   review found that the 40-GiB D28 guard used fold 8 while the selected profile
@@ -2490,6 +2498,14 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-08-19 — Calibration r1 is invalid until the provider-preload arena is
+  trimmed.** The create-new A100 record kept logically freed preload buffers in
+  the resident allocator. Cached D28 then peaked 989,856,424 B above the exact
+  guard. Its reported 43.600254174-s lower bound receives no folding decision.
+  The narrow repair trims inactive storage after the separately timed preload,
+  asserts 6 GiB active and zero inactive bytes, and fails any lane whose actual
+  peak exceeds admission. No relation or product behavior changes.
 
 - **2026-08-19 — C62GW1 corrects stale fold-8 resource accounting before
   calibration.** The selected authenticated profile has initial fold 1 and

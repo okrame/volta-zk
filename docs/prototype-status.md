@@ -19,6 +19,7 @@ Read `c62-whir-fiat-shamir-design.md` §0.62 next.
   `4,423,577,600 B`; all lanes had zero debt/no settlement and each fresh lane
   used one pinned message staging request. The versioned GPU integration,
   legacy non-CUDA build, CUDA build, runner source check and shell syntax pass.
+  A pod-only test compile issue was repaired before any protocol material.
 - **Gates.** Complete inline genesis, excluding setup and provider cache, is
   `<12 s`, GW4 target `<=10.5 s`, with WHIR `<7.5 s`. Setup is `<150 MB`, setup plus
   first certificate `<172 MB`, every certificate `<22 MB`, four-thread CPU
@@ -27,6 +28,13 @@ Read `c62-whir-fiat-shamir-design.md` §0.62 next.
   exactness, resource, byte or timing miss. Continuations require a later GO.
 - **Credit.** No setup, PCG, context, retained proof or certificate was created;
   no product timing, byte, session or verifier gate has credit.
+
+- **2026-08-19 — Pre-session CUDA test compile repaired without consuming the
+  genesis.** The pod stopped before the differential, setup, PCG or context
+  because two test-only `Fp2` expressions required absent `Sum`/`MulAssign`
+  traits. Explicit `fold` and multiplication compile under the CUDA test
+  target. The create-new roots remain empty/absent, so the one authorized
+  genesis is not a retry and remains admitted.
 
 - **2026-08-19 — C62GW4 genesis integration admits one pod attempt.** The
   selected schedules now use a new C6.2 proof/parameter version and the shared

@@ -10318,7 +10318,7 @@ mod cuda_tests {
                         weight * if index & (1 << bit) == 0 { Fp2::ONE - z } else { z }
                     })
                 })
-                .sum::<Fp2>();
+                .fold(Fp2::ZERO, |sum, value| sum + value);
             assert_eq!(got, expected);
         }
         gpu.free_device(batched_weights).unwrap();
@@ -10337,7 +10337,7 @@ mod cuda_tests {
                 } else if index == 6 {
                     value += sparse_values[1];
                 }
-                *power *= challenge;
+                *power = *power * challenge;
                 Some(value)
             })
             .collect::<Vec<_>>();

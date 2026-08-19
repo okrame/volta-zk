@@ -1,6 +1,6 @@
 # C6.2 WHIR Fiat--Shamir Design
 
-Status: **C62GW1 CALIBRATION R3 SCHEDULE OVERMEASURE / EXACT NONFINAL RERUN REQUIRED**
+Status: **C62GW1 INITIAL LOWER-BOUND FAIL / FOLDING-INVARIANT FLOOR REQUIRED**
 
 This document is the active design for C6.2. It has precedence over the
 interactive C6.1 sections in `c6-delta-residual-inline-design.md`. Frozen C6
@@ -1229,3 +1229,42 @@ resource-valid two-repetition lower bound above `12.500 s` starts the
 root-preserving folding study; otherwise later WHIR phases remain required.
 No setup, correlation state, transcript, proof, certificate or session may be
 created by this rerun.
+
+## 0.53 Exact r4 lower bound and folding trigger
+
+Clean `31aba7b` ran the registered non-session calibration with exactly 23
+non-final sumcheck rounds and five final variables untouched. The fixed-base
+preload took `19.169216006 s`. After trim, active provider bases were exactly
+`6,442,450,944 B`, the reusable workspace was `1,073,741,824 B`, and inactive
+resident storage was zero.
+
+The first cached D28 lane, with 96 claims and 175 queries, took
+`21.735754390 s` and peaked at `31,205,625,168 B`, below the corrected
+`36,591,108,064-B` guard. The two independent roots therefore have a strict
+initial lower bound of `43.471508780 s`, above the `12.500-s` engineering
+admission. The decision-first script correctly skipped the other three lanes.
+This starts the folding study; it is not product timing or session credit. Raw
+evidence is
+`benchmarks/results/c62-a100-initial-lower-bound-2026-08-19-31aba7b-r4.json`;
+the pod file SHA-256 is
+`3e07d7e2920b8ac94b02f80c359f215be901cc0c9b99fe273ba06a78fe0f2866`.
+
+## 0.54 Folding-invariant initialization floor
+
+The source boundary for initial claim-weight construction accepts only the
+message, claims, coefficients and target. It receives no folding factor or
+round schedule. Each independent root invokes it once with its independently
+bound coefficients. Changing initial or later folding therefore cannot remove
+either invocation or reduce its D28 96-claim kernel work.
+
+Before building any folding candidate, the registered non-session script
+`scripts/check_c62_gpu_native_folding_floor.sh` measures only this initialization
+on the A100. Twice its device-kernel time is a strict folding-invariant lower
+bound; host work and transfers are excluded. If that floor exceeds `12.500 s`,
+folding-factor changes are insufficient and no candidate is implemented. If it
+does not, candidates remain ordered as later-fold-only, then initial-and-later
+fold, with exact soundness, byte and differential checks before timing credit.
+
+The script creates one append-only record outside the repository. It creates
+no setup, correlation state, transcript, proof, certificate or session and
+does not consume the standing production authorization.

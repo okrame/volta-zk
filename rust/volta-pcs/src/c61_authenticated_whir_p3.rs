@@ -12300,4 +12300,102 @@ mod tests {
             projected_lower_bound_ns as f64 / 1e9,
         );
     }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    #[ignore = "requires an 80-GiB A100 and an explicit append-only output path"]
+    fn c62_a100_folding_immutable_floor() {
+        use std::io::Write;
+
+        use p3_sumcheck_c61::strategy::ResidualSumcheckProver;
+        use p3_whir_c61::pcs::zk::ZkWhirOracleCommitter;
+
+        use crate::c62_gpu_whir::{
+            C62GpuMmcs, C62GpuResourceGuard, C62GpuWhirCommitter,
+            C62_GPU_WHIR_DEFAULT_TILE_LOG, C62_GPU_WHIR_EXECUTOR_PROFILE,
+        };
+
+        const ADMISSION_NS: u64 = 12_500_000_000;
+        const NUM_VARIABLES: usize = 28;
+        let output = std::env::var("C62_FOLDING_FLOOR_RECORD")
+            .expect("C62_FOLDING_FLOOR_RECORD is required");
+        let output = Path::new(&output);
+        assert!(output.is_absolute() && !output.exists());
+        let git_sha = std::env::var("C62_FOLDING_FLOOR_GIT_SHA")
+            .expect("C62_FOLDING_FLOOR_GIT_SHA is required");
+        assert!(git_sha.len() == 40 && git_sha.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        let started_utc = std::env::var("C62_FOLDING_FLOOR_STARTED_UTC")
+            .expect("C62_FOLDING_FLOOR_STARTED_UTC is required");
+        assert!(started_utc
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || b"-:TZ".contains(&byte)));
+
+        let config = c61_authenticated_config::<C61SizingChallenger>(NUM_VARIABLES).unwrap();
+        let folding = config.round_folding_factor(0);
+        let height =
+            (1usize << (NUM_VARIABLES - folding)) << config.starting_log_inv_rate;
+        let guard = C62GpuResourceGuard::for_lane(
+            NUM_VARIABLES,
+            folding,
+            height,
+            C62_GPU_WHIR_DEFAULT_TILE_LOG,
+            false,
+            80u64 << 30,
+        )
+        .unwrap();
+        let guard_peak_bytes = guard.checked_peak_bytes().unwrap();
+        let mmcs = C62GpuMmcs::new(
+            Backend::cuda_resident().expect("C62GW1 folding study requires CUDA"),
+            C62_GPU_WHIR_DEFAULT_TILE_LOG,
+            guard,
+        )
+        .unwrap();
+        let oracle = C62GpuWhirCommitter::fresh(mmcs.clone());
+        let message = vec![Goldilocks::ZERO; 1usize << NUM_VARIABLES];
+        let point = Point::new(vec![C61P3Fp2::ZERO; NUM_VARIABLES]);
+        let claims = vec![(point, C61P3Fp2::ZERO); C61_MODEL_OPENING_TARGETS];
+        let coefficients = vec![C61P3Fp2::ONE; C61_MODEL_OPENING_TARGETS];
+
+        mmcs.backend().lock().unwrap().begin_measurement().unwrap();
+        let sumcheck = oracle
+            .initialize_sumcheck(&message, &claims, &coefficients, C61P3Fp2::ZERO)
+            .unwrap();
+        let stats = mmcs.backend().lock().unwrap().finish_measurement().unwrap();
+        assert_eq!(sumcheck.num_variables(), NUM_VARIABLES);
+        assert_eq!(sumcheck.claimed_sum(), C61P3Fp2::ZERO);
+        let kernel_floor_ns = stats.kernel_ns();
+        let two_repetition_kernel_floor_ns = kernel_floor_ns.checked_mul(2).unwrap();
+        assert!(stats.timing_mode.phase_attribution_available());
+        assert!(stats.peak_device_bytes <= guard_peak_bytes);
+
+        let record = format!(
+            "{{\n  \"schema\": \"volta-c62-gpu-folding-immutable-floor-v1\",\n  \"started_utc\": \"{started_utc}\",\n  \"git_sha\": \"{git_sha}\",\n  \"git_dirty\": false,\n  \"executor\": \"{C62_GPU_WHIR_EXECUTOR_PROFILE}\",\n  \"cuda_abi\": {},\n  \"device\": \"NVIDIA A100-SXM4-80GB\",\n  \"credit\": false,\n  \"production_session\": false,\n  \"pcg_started\": false,\n  \"certificate_created\": false,\n  \"num_variables\": {NUM_VARIABLES},\n  \"claim_count\": {},\n  \"folding_independent\": true,\n  \"timing_mode\": \"{}\",\n  \"wall_ns\": {},\n  \"kernel_floor_ns\": {kernel_floor_ns},\n  \"coarse_timing_scopes\": {},\n  \"coarse_timing_ns\": {},\n  \"h2d_bytes\": {},\n  \"d2h_bytes\": {},\n  \"peak_device_bytes\": {},\n  \"resource_guard_peak_bytes\": {guard_peak_bytes},\n  \"two_repetition_kernel_floor_ns\": {two_repetition_kernel_floor_ns},\n  \"engineering_admission_ns\": {ADMISSION_NS},\n  \"folding_factor_rescue_possible\": {},\n  \"decision\": \"{}\"\n}}\n",
+            volta_accel::CUDA_ABI_VERSION,
+            C61_MODEL_OPENING_TARGETS,
+            stats.timing_mode.name(),
+            stats.measurement_wall_ns,
+            stats.coarse_timing_scopes,
+            stats.coarse_timing_ns,
+            stats.h2d_bytes,
+            stats.d2h_bytes,
+            stats.peak_device_bytes,
+            two_repetition_kernel_floor_ns <= ADMISSION_NS,
+            if two_repetition_kernel_floor_ns > ADMISSION_NS {
+                "folding_factor_change_insufficient"
+            } else {
+                "folding_candidate_measurement_required"
+            },
+        );
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(output)
+            .unwrap();
+        file.write_all(record.as_bytes()).unwrap();
+        file.sync_all().unwrap();
+        eprintln!(
+            "C62GW1_FOLDING_FLOOR: two_repetition_kernel_floor={:.6}s",
+            two_repetition_kernel_floor_ns as f64 / 1e9,
+        );
+    }
 }

@@ -115,6 +115,44 @@ where
         folding: usize,
         height: usize,
     ) -> Result<(MT::Commitment, MT::ProverData<FlatMatrixView<F, EF, DenseMatrix<EF>>>), Self::Error>;
+
+    fn commit_extension_from_sumcheck(
+        &self,
+        _state: &Self::SumcheckState,
+        _randomness: &[EF],
+        _folding: usize,
+        _height: usize,
+    ) -> Result<
+        Option<(
+            MT::Commitment,
+            MT::ProverData<FlatMatrixView<F, EF, DenseMatrix<EF>>>,
+        )>,
+        Self::Error,
+    > {
+        Ok(None)
+    }
+
+    fn evaluate_padded_ood_from_sumcheck(
+        &self,
+        _state: &Self::SumcheckState,
+        _point: EF,
+        _suffix: &[EF],
+    ) -> Result<Option<EF>, Self::Error> {
+        Ok(None)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn accumulate_round_claim_from_sumcheck(
+        &self,
+        _state: &mut Self::SumcheckState,
+        _folded_domain_size: usize,
+        _stir_indices: &[usize],
+        _ood_points: &[EF],
+        _ood_coeffs: &[EF],
+        _query_coeffs: &[EF],
+    ) -> Result<bool, Self::Error> {
+        Ok(false)
+    }
 }
 
 struct ReferenceOracleCommitter<'a, F, EF, Dft, MT> {
@@ -462,20 +500,34 @@ where
             let folding_next = config.round_folding_factor(round + 1);
             let next_randomness_len = config.oracle_randomness[round + 1];
 
-            let message = batch.residual_prover.evals()?;
-            let message_len = message.num_evals();
+            let message_len = 1usize << batch.residual_prover.num_variables();
 
             // Commit the folded message into the next interleaved ZK oracle.
             let fresh_randomness: Vec<EF> =
                 (0..next_randomness_len << folding_next).map(|_| rng.random()).collect();
             // Interleaved ZK encoding over the extension, base-field DFT.
-            let height = config.inv_rate(round) * (1 << (message.num_variables() - folding_next));
-            let (commitment, merkle) = oracle.commit_extension(
-                message.as_slice(),
+            let height = config.inv_rate(round) * (message_len >> folding_next);
+            let resident_commit = oracle.commit_extension_from_sumcheck(
+                &batch.residual_prover,
                 &fresh_randomness,
                 folding_next,
                 height,
             )?;
+            let mut host_message = None;
+            let (commitment, merkle) = match resident_commit {
+                Some(committed) => committed,
+                None => {
+                    let message = batch.residual_prover.evals()?;
+                    let committed = oracle.commit_extension(
+                        message.as_slice(),
+                        &fresh_randomness,
+                        folding_next,
+                        height,
+                    )?;
+                    host_message = Some(message);
+                    committed
+                }
+            };
             challenger.observe(commitment.clone());
 
             // Commit the code-switch mask (folded randomness || pad).
@@ -505,7 +557,23 @@ where
                 let rho: EF = challenger.sample_algebra_element();
                 debug_assert!(!rho.is_zero(), "OOD point must be nonzero");
                 debug_assert!(!rho_points.contains(&rho), "OOD points must be pairwise distinct",);
-                let answer = padded_ood_t1(rho, message.as_slice(), &mask_message);
+                let answer = match oracle.evaluate_padded_ood_from_sumcheck(
+                    &batch.residual_prover,
+                    rho,
+                    &mask_message,
+                )? {
+                    Some(answer) => answer,
+                    None => {
+                        if host_message.is_none() {
+                            host_message = Some(batch.residual_prover.evals()?);
+                        }
+                        padded_ood_t1(
+                            rho,
+                            host_message.as_ref().unwrap().as_slice(),
+                            &mask_message,
+                        )
+                    }
+                };
                 challenger.observe_algebra_element(answer);
                 rho_points.push(rho);
                 ood_answers.push(answer);
@@ -574,6 +642,14 @@ where
             // Source side: fold the fresh power constraints into the
             // running sumcheck prover.
             let mut sumcheck_prover = batch.residual_prover;
+            let resident_claim = oracle.accumulate_round_claim_from_sumcheck(
+                &mut sumcheck_prover,
+                round_params.domain_size >> folding,
+                &stir_indexes,
+                &rho_points,
+                ood_coeffs,
+                query_coeffs,
+            )?;
             // Source side: the fresh constraints land as power covectors.
             //
             //     delta[b]    = sum_j c_j rho_j^b  +  sum_q c'_q x_q^b
@@ -581,9 +657,13 @@ where
             // The base-field query covectors fill through the packed
             // SelectStatement kernel; the few extension-field OOD points
             // follow with chunked parallel power runs.
-            let k = log2_strict_usize(message_len);
-            let k_pack = log2_strict_usize(F::Packing::WIDTH);
-            let mut weight_delta = if k >= k_pack {
+            if !resident_claim {
+                if host_message.is_none() {
+                    host_message = Some(sumcheck_prover.evals()?);
+                }
+                let k = log2_strict_usize(message_len);
+                let k_pack = log2_strict_usize(F::Packing::WIDTH);
+                let mut weight_delta = if k >= k_pack {
                 let mut packed_delta =
                     Poly::new(EF::ExtensionPacking::zero_vec(message_len >> k_pack));
                 let mut select = SelectStatement::<F, EF>::initialize(k);
@@ -611,27 +691,30 @@ where
                     }
                 }
                 weight_delta
-            };
-            // Chunked parallel power run: chunk `c` starts at coeff * rho^(c * CHUNK).
-            const POW_CHUNK: usize = 1 << 12;
-            for (&rho, &coeff) in rho_points.iter().zip(ood_coeffs) {
-                weight_delta.par_chunks_mut(POW_CHUNK).enumerate().for_each(
-                    |(chunk_idx, chunk)| {
-                        let mut term = coeff * rho.exp_u64((chunk_idx * POW_CHUNK) as u64);
-                        for dst in chunk {
-                            *dst += term;
-                            term *= rho;
-                        }
-                    },
-                );
+                };
+                // Chunked parallel power run: chunk `c` starts at coeff * rho^(c * CHUNK).
+                const POW_CHUNK: usize = 1 << 12;
+                for (&rho, &coeff) in rho_points.iter().zip(ood_coeffs) {
+                    weight_delta.par_chunks_mut(POW_CHUNK).enumerate().for_each(
+                        |(chunk_idx, chunk)| {
+                            let mut term = coeff * rho.exp_u64((chunk_idx * POW_CHUNK) as u64);
+                            for dst in chunk {
+                                *dst += term;
+                                term *= rho;
+                            }
+                        },
+                    );
+                }
+                let claim_delta = host_message
+                    .as_ref()
+                    .unwrap()
+                    .as_slice()
+                    .par_chunks(POW_CHUNK)
+                    .zip(weight_delta.par_chunks(POW_CHUNK))
+                    .map(|(m, w)| dot_product::<EF, _, _>(m.iter().copied(), w.iter().copied()))
+                    .sum::<EF>();
+                sumcheck_prover.accumulate_claim(&weight_delta, claim_delta)?;
             }
-            let claim_delta = message
-                .as_slice()
-                .par_chunks(POW_CHUNK)
-                .zip(weight_delta.par_chunks(POW_CHUNK))
-                .map(|(m, w)| dot_product::<EF, _, _>(m.iter().copied(), w.iter().copied()))
-                .sum::<EF>();
-            sumcheck_prover.accumulate_claim(&weight_delta, claim_delta)?;
 
             // Mask side: the fresh mask enters the relation.
             let mask_covector = switch_mask_covector(

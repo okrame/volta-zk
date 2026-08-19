@@ -463,6 +463,19 @@ type MatrixFoldDevice = unsafe extern "C" fn(
 ) -> c_int;
 type Fp2DotDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize, *mut Fp2Repr) -> c_int;
+type Fp2ScatterDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    usize,
+    *const u64,
+    *const Fp2Repr,
+    usize,
+) -> c_int;
+type Fp2AddGeometricInplaceDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, usize, u64, u64, u64, u64) -> c_int;
+type Fp2PolynomialEvalDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, usize, u64, u64, *mut Fp2Repr) -> c_int;
 type Fp2ProductRoundDevice = Fp2DotDevice;
 type Fp2ProductRoundPrefixDevice = Fp2ProductRoundDevice;
 type Fp2ProductRoundIntoDevice =
@@ -732,6 +745,7 @@ type X4cArenaReset = unsafe extern "C" fn(*mut c_void, u64, usize, usize, c_int)
 type X4cSessionReusableBoundary = unsafe extern "C" fn(*mut c_void) -> c_int;
 type NttBatchDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, usize, usize, u64, usize) -> c_int;
+type WarmNttTwiddles = unsafe extern "C" fn(*mut c_void, *const usize, usize) -> c_int;
 type LogupTree = unsafe extern "C" fn(
     *mut c_void,
     *const u64,
@@ -973,6 +987,8 @@ type Fp2AffineEqWeightsInplaceDevice = unsafe extern "C" fn(
     u64,
     u64,
 ) -> c_int;
+type Fp2BatchedEqWeightsDevice =
+    unsafe extern "C" fn(*mut c_void, u64, u64, u64, u64, usize, usize) -> c_int;
 type HashTreeDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, usize, usize, u64, usize) -> c_int;
 type MerklePathsDevice =
@@ -1094,6 +1110,7 @@ struct Api {
     x4c_session_reusable_boundary: X4cSessionReusableBoundary,
     ntt_fp_batch_device: NttBatchDevice,
     ntt_fp2_batch_device: NttBatchDevice,
+    warm_ntt_twiddles: WarmNttTwiddles,
     logup_tree: LogupTree,
     logup_tree_device: LogupTreeDevice,
     logup_materialize_leaves_device: LogupMaterializeLeavesDevice,
@@ -1121,6 +1138,10 @@ struct Api {
     c62_zk_pad_device: C62ZkPadDevice,
     fp2_mobius_inverse_inplace_device: Fp2MobiusInverseInplaceDevice,
     fp2_affine_eq_weights_inplace_device: Fp2AffineEqWeightsInplaceDevice,
+    fp2_batched_eq_weights_device: Fp2BatchedEqWeightsDevice,
+    fp2_scatter_device: Fp2ScatterDevice,
+    fp2_add_geometric_inplace_device: Fp2AddGeometricInplaceDevice,
+    fp2_polynomial_eval_device: Fp2PolynomialEvalDevice,
     hash_fp_tree_device: HashTreeDevice,
     hash_fp2_tree_device: HashTreeDevice,
     merkle_paths_device: MerklePathsDevice,
@@ -1410,6 +1431,9 @@ impl CudaContext {
             ntt_fp2_batch_device: unsafe {
                 load_symbol(handle, b"volta_cuda_ntt_fp2_batch_device\0")?
             },
+            warm_ntt_twiddles: unsafe {
+                load_symbol(handle, b"volta_cuda_warm_ntt_twiddles\0")?
+            },
             logup_tree: unsafe { load_symbol(handle, b"volta_cuda_logup_tree\0")? },
             logup_tree_device: unsafe { load_symbol(handle, b"volta_cuda_logup_tree_device\0")? },
             logup_materialize_leaves_device: unsafe {
@@ -1472,6 +1496,18 @@ impl CudaContext {
             },
             fp2_affine_eq_weights_inplace_device: unsafe {
                 load_symbol(handle, b"volta_cuda_fp2_affine_eq_weights_inplace_device\0")?
+            },
+            fp2_batched_eq_weights_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fp2_batched_eq_weights_device\0")?
+            },
+            fp2_scatter_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fp2_scatter_device\0")?
+            },
+            fp2_add_geometric_inplace_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fp2_add_geometric_inplace_device\0")?
+            },
+            fp2_polynomial_eval_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fp2_polynomial_eval_device\0")?
             },
             hash_fp_tree_device: unsafe {
                 load_symbol(handle, b"volta_cuda_hash_fp_tree_device\0")?
@@ -3962,6 +3998,10 @@ impl CudaContext {
         })
     }
 
+    pub(super) fn warm_ntt_twiddles(&mut self, sizes: &[usize]) -> Result<(), AccelError> {
+        self.check(unsafe { (self.api.warm_ntt_twiddles)(self.raw, sizes.as_ptr(), sizes.len()) })
+    }
+
     pub(super) fn logup_tree(
         &mut self,
         leaf_a: &[Fp],
@@ -4745,6 +4785,94 @@ impl CudaContext {
                 gamma.c1,
             )
         })
+    }
+
+    pub(super) fn fp2_batched_eq_weights_device(
+        &mut self,
+        values: u64,
+        factors: u64,
+        points: u64,
+        coefficients: u64,
+        claim_count: usize,
+        point_len: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates every resident region and the derived power-of-two geometry.
+        self.check(unsafe {
+            (self.api.fp2_batched_eq_weights_device)(
+                self.raw,
+                values,
+                factors,
+                points,
+                coefficients,
+                claim_count,
+                point_len,
+            )
+        })
+    }
+
+    pub(super) fn fp2_scatter_device(
+        &mut self,
+        output: u64,
+        output_offset: usize,
+        output_len: usize,
+        indices: &[u64],
+        values: &[Fp2Repr],
+    ) -> Result<(), AccelError> {
+        self.check(unsafe {
+            (self.api.fp2_scatter_device)(
+                self.raw,
+                output,
+                output_offset,
+                output_len,
+                indices.as_ptr(),
+                values.as_ptr(),
+                indices.len(),
+            )
+        })
+    }
+
+    pub(super) fn fp2_add_geometric_inplace_device(
+        &mut self,
+        values: u64,
+        offset: usize,
+        len: usize,
+        point: Fp2Repr,
+        coefficient: Fp2Repr,
+    ) -> Result<(), AccelError> {
+        self.check(unsafe {
+            (self.api.fp2_add_geometric_inplace_device)(
+                self.raw,
+                values,
+                offset,
+                len,
+                point.c0,
+                point.c1,
+                coefficient.c0,
+                coefficient.c1,
+            )
+        })
+    }
+
+    pub(super) fn fp2_polynomial_eval_device(
+        &mut self,
+        values: u64,
+        offset: usize,
+        len: usize,
+        point: Fp2Repr,
+    ) -> Result<Fp2Repr, AccelError> {
+        let mut output = Fp2Repr::default();
+        self.check(unsafe {
+            (self.api.fp2_polynomial_eval_device)(
+                self.raw,
+                values,
+                offset,
+                len,
+                point.c0,
+                point.c1,
+                &mut output,
+            )
+        })?;
+        Ok(output)
     }
 
     #[allow(clippy::too_many_arguments)]

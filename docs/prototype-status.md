@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 R19 C62GW1 FOLDING STUDY FAIL — CLAIM-WEIGHT EXECUTOR REDESIGN HARD STOP / NO SESSION)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 C62GW2 LOCAL CHECKPOINT READY — ONE A100 CALIBRATION AUTHORIZED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,30 +8,53 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-This capsule is authoritative. Read `c62-whir-fiat-shamir-design.md` next.
+Read `c62-whir-fiat-shamir-design.md` §0.56 next.
 
-- **Status.** C6.2 is `R19_C62GW1_FOLDING_STUDY_FAIL /
-  CLAIM_WEIGHT_EXECUTOR_REDESIGN_REQUIRED`; design §0.55 is active. Pod work
-  is stopped; the standing create-new production GO remains unconsumed.
-- **Completed evidence.** Clean `cc0e2e1` passed the scaled A100 boundary.
-  Clean R4 at `31aba7b` measured a resource-valid two-root lower bound of
-  `43.471508780 s` and triggered the folding study.
-- **Folding result.** Clean `d29ad85` isolated D28 initialization for 96
-  targets. One root used `14.169145760 s` of device-kernel time; two independent
-  roots require at least `28.338291520 s`. This exceeds both `12.500 s`
-  engineering admission and the `15.750-s` terminal product threshold.
-- **Decision.** Initial claim-weight construction receives no folding factor.
-  Changing initial or later folding cannot qualify this executor, so no
-  candidate was built. This is an executor obstruction, not a protocol
-  impossibility.
-- **Hard stop.** No more pod or production work. Resume requires a local exact
-  redesign of the 96-target claim-weight construction, scaled CPU/device
-  differentials, a new resource bound, a clean checkpoint and owner GO for a
-  new pod measurement. Do not start setup, correlation generation, session,
-  proof, certificate or mutation.
-- **Data and credit.** Historical pod data remain removed. No context,
-  including `context-000`, was used. No product timing, proof-size, session or
+- **Status.** C6.2 is `C62GW2_A100_CALIBRATION_READY`; design §0.56 is active on
+  `agent/c62-whir-batched-svo-redesign`. It may run once on a fresh A100; no
+  production session is authorized.
+- **Evidence.** Prior clean A100 runs passed the scaled boundary but measured
+  old two-root floors of `43.471508780 s` total and `28.338291520 s` in claim
+  weights. These are component evidence only.
+- **Gates.** Complete inline genesis, excluding setup and provider cache, is
+  `<12 s` with `<=10 s` target. Setup is `<150 MB`, setup plus first certificate
+  `<172 MB`, every certificate `<22 MB`, four-thread CPU verifier `<5 s`, and
+  at least 17 certificates.
+- **Local checkpoint.** Exact batched weights and resident code-switch/OOD/
+  covector hooks compile with production features. The exact screen selects
+  D27 `[3,4,2,2,2,8]` at `717,524 B` and D28 `[3,3,2,2,2,2,8]` at `793,240 B`;
+  both reduce FFT work and wire. The full guard is
+  `42 GiB + 688 MiB - 32 B`. Narrow local checks pass; CUDA exactness and timing
+  remain unmeasured.
+- **Hard stop / authorization.** Run only the registered non-session all-lane
+  calibrator. It performs a scaled CUDA differential, warms provider-only
+  state, measures eight WHIR lanes plus serialization, reserves `3 s` for other
+  inline work and fails fast at a `<12 s` projection. Genesis
+  `context-000` is authorized only after a complete WHIR result below `9 s`.
+- **Credit.** No context was used; no product timing, bytes, session or
   certificate gate has credit.
+
+- **2026-08-19 — C62GW2 local checkpoint admits one A100 calibration.** The
+  exact batched-weight path removes the 96 full-domain equality launches and
+  keeps every code-switch source, OOD evaluation and round covector resident.
+  Provider-only fixed encodings/evaluations and NTT twiddles contain no
+  transcript-dependent value. Exact D27/D28 schedule screens, reference cache
+  identity, production-feature compilation and the `42 GiB + 688 MiB - 32 B`
+  guard pass locally. The registered script builds only the library, runs one
+  scaled CUDA full-payload differential, then one fail-fast eight-lane
+  calibration. No setup, PCG, context, retained proof or certificate is
+  authorized. SVO remains unbuilt until a measured WHIR result reaches `9 s`.
+
+- **2026-08-19 — Owner opens C62GW2 local redesign and replaces product
+  gates.** The complete inline timing boundary includes every genesis proof
+  chain and serialization, but excludes one-time setup and provider-only cache.
+  The new binding gates are setup `<150,000,000 B`, setup plus first certificate
+  `<172,000,000 B`, every certificate `<22,000,000 B`, A100 prover `<12 s`
+  with `<=10 s` target, four-thread CPU verifier `<5 s`, and at least 17
+  accepted certificates. §0.56 selects exact batched claim weights first,
+  existing WHIR schedule search second, and SVO only above the registered
+  projection trigger. One future clean A100 all-lane calibration is authorized;
+  production remains conditional on its pass.
 
 - **2026-08-19 — Folding factors cannot rescue the current executor.** Clean
   `d29ad85` measured only the D28 96-target initialization that is independent

@@ -1,6 +1,6 @@
 # C6.2 WHIR Fiat--Shamir Design
 
-Status: **C62GW1 FOLDING STUDY FAIL / CLAIM-WEIGHT EXECUTOR REDESIGN REQUIRED**
+Status: **C62GW2 LOCAL CHECKPOINT READY / ONE A100 CALIBRATION AUTHORIZED**
 
 This document is the active design for C6.2. It has precedence over the
 interactive C6.1 sections in `c6-delta-residual-inline-design.md`. Frozen C6
@@ -1292,3 +1292,77 @@ and independent roots, followed by scaled CPU/device differentials, an updated
 resource bound, a clean checkpoint and explicit owner GO for another pod
 measurement. Until then, no setup, correlation state, context, proof,
 certificate or production session may start.
+
+## 0.56 C62GW2 batched-weight and folding redesign
+
+The owner replaces the Section 0.1 product allocation for this continuation.
+The complete inline genesis prover includes every proof chain and certificate
+serialization, but excludes one-time setup and provider-only fixed-work cache.
+Its target is `<=10 s` and its binding gate is `<12 s`. Setup is
+`<150,000,000 B`, setup plus the first certificate is `<172,000,000 B`, every
+certificate is `<22,000,000 B`, the four-thread CPU verifier is `<5 s`, and the
+campaign still requires at least 17 accepted certificates. These gates do not
+authorize exchanging more traffic for prover time: a folding candidate must
+also be non-increasing against the selected C6.2 chain and certificate byte
+ceilings.
+
+The redesign is ordered and fail-closed.
+
+1. **Exact batched weights.** Replace the 96 serial whole-domain CUDA passes by
+   one device construction of the same
+   `W(x) = sum_i coefficient[i] * eq(point[i], x)`. Reuse the pinned Plonky3
+   batched/split equality recurrence. The provider-only cache may retain fixed
+   message data, but never a Fiat--Shamir point, coefficient, weight table or
+   proof-dependent value. Fold-in the target dot product only if the returned
+   value remains bit-exact.
+2. **Local executor gates.** Differentially compare the new path with the CPU
+   reference and the old path at scaled dimensions, including nonzero points,
+   coefficients and targets. Recompute peak device storage and all transfers.
+   This phase changes no root, transcript, proof, codec, setup or Lean statement.
+3. **Bounded folding screen.** Use the already-pinned
+   `FoldingFactor::PerRound`; enumerate only registered factors `2..=8` and
+   retain the Pareto frontier for exact soundness, non-increasing wire, prover
+   work, verifier work and device memory. At most one schedule is implemented.
+   A selected schedule receives a new parameter/proof version and fresh setup
+   digests; independent roots remain mandatory.
+4. **SVO trigger.** If the conservative full-chain projection after steps 1--3
+   exceeds `9 s`, integrate the pinned sumcheck SVO for the initial folding
+   rounds and materialize only the exact residual weight polynomial. The proof
+   messages and verifier equations must remain byte-for-byte equivalent. A
+   projective-basis sumcheck, a new PCS and the C5 typed-PCG research branch are
+   outside this milestone. SVO is not built before the A100 measurement: on the
+   exact dense path it can reintroduce claim-linear partial evaluations, so the
+   measured trigger must justify that extra boundary.
+5. **A100 admission.** A clean checkpoint must contain the exact screen, scaled
+   differentials, resource guard and one fail-fast all-lane non-session runner.
+   The owner authorizes one such calibration on a new A100. It must record phase
+   wall/kernel time, H2D/D2H, RSS, VRAM, query/round counts and encoded sizes,
+   and stop as soon as the conservative complete-inline projection reaches
+   `12 s`. It creates no setup, PCG, context, retained proof or certificate; a
+   proof exists only transiently to measure the real serializer. Only a pass
+   authorizes the one genesis `context-000` session.
+
+The local checkpoint implements the minimum executor change. Balanced equality
+half-tables replace the 96 whole-domain passes. Fixed codewords, fixed Fp2
+evaluations and NTT twiddles are provider-only; Fiat--Shamir points,
+coefficients and weights remain per proof. Optional resident hooks keep the
+folded source, OOD evaluation and STIR/OOD covector accumulation on device while
+the reference prover retains its original host fallback. Transcript events,
+roots, verifier equations and certificate framing are unchanged.
+
+The exact screen selects only calibration candidates: D27 uses
+`[3,4,2,2,2,8]`, `717,524 B` per chain and analytic FFT work
+`18,639,737,856`; D28 uses `[3,3,2,2,2,2,8]`, `793,240 B` and
+`39,846,157,312`. Both are below their historical wire and FFT-work baselines.
+No production proof version or setup digest is minted before measurement. The
+conservative D28 all-lane guard with both provider bases is
+`42 GiB + 688 MiB - 32 B`, including the 12-GiB fixed cache, twiddles, round
+covectors and a 4-GiB reserve.
+
+`check_c62_gpu_native_calibration.sh` first runs one scaled full-payload CUDA
+differential, then measures the four genesis lane classes twice: model and
+response at D28, embedding and plan at D27. It warms provider-only state before
+timing, records real WHIR serialization and all required counters, reserves
+`3 s` for non-WHIR inline work, and stops after the first atomic lane that makes
+the projection reach `12 s`. Complete WHIR must remain below `9 s` to admit the
+genesis run; otherwise the record directs the next local SVO analysis.

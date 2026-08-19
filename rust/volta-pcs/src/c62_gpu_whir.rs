@@ -31,8 +31,8 @@ use crate::c61_whir_reference::{
     c61_p3_fp2_from_volta, c61_reference_mmcs, c61_volta_fp2_from_p3, C61P3Fp2,
 };
 
-pub const C62_GPU_WHIR_EXECUTOR_PROFILE: &str = "C62GW1-bounded-binary-frontier";
-pub const C62_GPU_WHIR_EXECUTOR_VERSION: u16 = 1;
+pub const C62_GPU_WHIR_EXECUTOR_PROFILE: &str = "C62GW2-batched-equality-frontier";
+pub const C62_GPU_WHIR_EXECUTOR_VERSION: u16 = 2;
 pub const C62_GPU_WHIR_DEFAULT_TILE_LOG: usize = 20;
 pub const C62_GPU_WHIR_STAGING_ELEMENTS: usize = 1 << 20;
 pub const C62_GPU_WHIR_FIELD_TAG: [u8; 8] = *b"GL64C621";
@@ -67,6 +67,9 @@ impl From<AccelError> for C62GpuWhirError {
 pub struct C62GpuResourceGuard {
     pub logical_codeword_bytes: u64,
     pub tile_workspace_bytes: u64,
+    pub claim_weight_workspace_bytes: u64,
+    pub ntt_twiddle_cache_bytes: u64,
+    pub round_covector_workspace_bytes: u64,
     pub fixed_cache_bytes: u64,
     pub other_live_bytes: u64,
     pub reserve_bytes: u64,
@@ -79,6 +82,7 @@ impl C62GpuResourceGuard {
         folding: usize,
         height: usize,
         tile_log: usize,
+        claim_capacity: usize,
         provider_cache: bool,
         available_device_bytes: u64,
     ) -> Result<Self, C62GpuWhirError> {
@@ -86,6 +90,7 @@ impl C62GpuResourceGuard {
             || folding == 0
             || folding >= num_variables
             || !(10..=22).contains(&tile_log)
+            || claim_capacity == 0
             || height < 2
             || !height.is_power_of_two()
         {
@@ -113,19 +118,45 @@ impl C62GpuResourceGuard {
                     .and_then(|tree| value.checked_add(tree))
             })
             .ok_or_else(|| C62GpuWhirError::new("C62GW1 tile bytes overflow"))?;
-        let fixed_cache_bytes = if provider_cache { logical_codeword_bytes } else { 0 };
+        let claim_weight_workspace_bytes = (claim_capacity as u64)
+            .checked_mul(
+                (1u64 << (num_variables / 2))
+                    .checked_add(1u64 << (num_variables - num_variables / 2))
+                    .ok_or_else(|| C62GpuWhirError::new("C62GW2 claim workspace overflows"))?,
+            )
+            .and_then(|value| value.checked_mul(16))
+            .ok_or_else(|| C62GpuWhirError::new("C62GW2 claim workspace overflows"))?;
+        let ntt_twiddle_cache_bytes = (height as u64)
+            .checked_mul(8)
+            .ok_or_else(|| C62GpuWhirError::new("C62GW2 twiddle cache overflows"))?;
+        let round_covector_workspace_bytes = (height as u64)
+            .checked_mul(32)
+            .ok_or_else(|| C62GpuWhirError::new("C62GW2 round covector workspace overflows"))?;
+        let fixed_cache_bytes = if provider_cache {
+            logical_codeword_bytes
+                .checked_add(elements.checked_mul(16).ok_or_else(|| {
+                    C62GpuWhirError::new("C62GW2 fixed evaluation cache overflows")
+                })?)
+                .ok_or_else(|| C62GpuWhirError::new("C62GW2 fixed cache overflows"))?
+        } else {
+            0
+        };
         // One base upload, resident Fp2 evaluation/weight factors, the exact
         // two product-round reduction workspaces (24 B per source element),
         // and one same-size cached-mask/combination scratch. These peaks are
         // summed conservatively although commit and sumcheck do not overlap.
+        let upload_and_evaluation_bytes = if provider_cache { 0 } else { 8 + 16 };
         let other_live_bytes = elements
-            .checked_mul(8 + 16 + 16 + 24)
+            .checked_mul(upload_and_evaluation_bytes + 16 + 24)
             .and_then(|value| value.checked_add(logical_codeword_bytes))
             .ok_or_else(|| C62GpuWhirError::new("C62GW1 live-state bytes overflow"))?;
         let reserve_bytes = 4u64 << 30;
         let guard = Self {
             logical_codeword_bytes,
             tile_workspace_bytes,
+            claim_weight_workspace_bytes,
+            ntt_twiddle_cache_bytes,
+            round_covector_workspace_bytes,
             fixed_cache_bytes,
             other_live_bytes,
             reserve_bytes,
@@ -138,6 +169,9 @@ impl C62GpuResourceGuard {
     pub fn checked_peak_bytes(self) -> Result<u64, C62GpuWhirError> {
         self.logical_codeword_bytes
             .checked_add(self.tile_workspace_bytes)
+            .and_then(|value| value.checked_add(self.claim_weight_workspace_bytes))
+            .and_then(|value| value.checked_add(self.ntt_twiddle_cache_bytes))
+            .and_then(|value| value.checked_add(self.round_covector_workspace_bytes))
             .and_then(|value| value.checked_add(self.fixed_cache_bytes))
             .and_then(|value| value.checked_add(self.other_live_bytes))
             .and_then(|value| value.checked_add(self.reserve_bytes))
@@ -147,6 +181,9 @@ impl C62GpuResourceGuard {
     pub fn validate(self) -> Result<(), C62GpuWhirError> {
         if self.logical_codeword_bytes == 0
             || self.tile_workspace_bytes == 0
+            || self.claim_weight_workspace_bytes == 0
+            || self.ntt_twiddle_cache_bytes == 0
+            || self.round_covector_workspace_bytes == 0
             || self.reserve_bytes == 0
             || self.available_device_bytes == 0
             || self.checked_peak_bytes()? > self.available_device_bytes
@@ -266,13 +303,18 @@ impl<M> Drop for C62GpuProverData<M> {
 struct FixedBaseOwner {
     backend: Arc<Mutex<Backend>>,
     codeword: Option<DeviceBuffer<u64>>,
+    evals: Option<DeviceBuffer<Fp2Repr>>,
 }
 
 impl Drop for FixedBaseOwner {
     fn drop(&mut self) {
-        let Some(codeword) = self.codeword.take() else { return };
         if let Ok(mut backend) = self.backend.lock() {
-            let _ = backend.free_device(codeword);
+            if let Some(codeword) = self.codeword.take() {
+                let _ = backend.free_device(codeword);
+            }
+            if let Some(evals) = self.evals.take() {
+                let _ = backend.free_device(evals);
+            }
         }
     }
 }
@@ -292,7 +334,8 @@ impl C62ProviderFixedBase {
     }
 
     pub fn bytes(&self) -> u64 {
-        (self.owner.codeword.as_ref().map_or(0, DeviceBuffer::len) * 8) as u64
+        (self.owner.codeword.as_ref().map_or(0, DeviceBuffer::len) * 8
+            + self.owner.evals.as_ref().map_or(0, DeviceBuffer::len) * 16) as u64
     }
 }
 
@@ -343,16 +386,59 @@ impl C62GpuMmcs {
         }
         let width = 1usize << key.folding;
         let codeword = self.encode_base(message, &[], key.folding as usize, key.height as usize)?;
-        if (codeword.len() as u64).saturating_mul(8) > self.guard.fixed_cache_bytes {
+        let evals = {
+            let mut backend = self.backend.lock().map_err(|_| C62GpuWhirError::new("CUDA lock"))?;
+            let base = upload_goldilocks(&mut backend, message)?;
+            let evals = match backend.alloc_device::<Fp2Repr>(message.len()) {
+                Ok(evals) => evals,
+                Err(error) => {
+                    let _ = backend.free_device(base);
+                    let _ = backend.free_device(codeword);
+                    return Err(error.into());
+                }
+            };
+            if let Err(error) = backend.fp_to_fp2_device(&base, 0, &evals, 0, message.len()) {
+                let _ = backend.free_device(evals);
+                let _ = backend.free_device(base);
+                let _ = backend.free_device(codeword);
+                return Err(error.into());
+            }
+            if let Err(error) = backend.free_device(base) {
+                let _ = backend.free_device(evals);
+                let _ = backend.free_device(codeword);
+                return Err(error.into());
+            }
+            evals
+        };
+        let cache_bytes = (codeword.len() as u64)
+            .checked_mul(8)
+            .and_then(|bytes| bytes.checked_add((evals.len() as u64).saturating_mul(16)))
+            .ok_or_else(|| C62GpuWhirError::new("C62GW2 fixed cache bytes overflow"));
+        let cache_bytes = match cache_bytes {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                let mut backend =
+                    self.backend.lock().map_err(|_| C62GpuWhirError::new("CUDA lock"))?;
+                let _ = backend.free_device(codeword);
+                let _ = backend.free_device(evals);
+                return Err(error);
+            }
+        };
+        if cache_bytes > self.guard.fixed_cache_bytes {
             let mut backend = self.backend.lock().map_err(|_| C62GpuWhirError::new("CUDA lock"))?;
             let _ = backend.free_device(codeword);
+            let _ = backend.free_device(evals);
             return Err(C62GpuWhirError::new("C62GW1 fixed cache exceeds its admission"));
         }
         Ok(Arc::new(C62ProviderFixedBase {
             key,
             message_len: message.len(),
             width,
-            owner: FixedBaseOwner { backend: Arc::clone(&self.backend), codeword: Some(codeword) },
+            owner: FixedBaseOwner {
+                backend: Arc::clone(&self.backend),
+                codeword: Some(codeword),
+                evals: Some(evals),
+            },
         }))
     }
 
@@ -434,6 +520,49 @@ impl C62GpuMmcs {
         let _ = backend.free_device(randomness_device);
         let _ = backend.free_device(message_device);
         Ok(encoded?)
+    }
+
+    fn encode_extension_resident(
+        &self,
+        message: &DeviceBuffer<Fp2Repr>,
+        message_len: usize,
+        randomness: &[C61P3Fp2],
+        folding: usize,
+        height: usize,
+    ) -> Result<DeviceBuffer<Fp2Repr>, C62GpuWhirError> {
+        if message.len() != message_len {
+            return Err(C62GpuWhirError::new("C62GW2 resident extension length mismatch"));
+        }
+        let mut backend = self.backend.lock().map_err(|_| C62GpuWhirError::new("CUDA lock"))?;
+        let randomness_device = upload_fp2(&mut backend, randomness)?;
+        let padded = match backend.c62_zk_pad_fp2_device(
+            message,
+            message_len,
+            &randomness_device,
+            randomness.len(),
+            folding,
+            height,
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = backend.free_device(randomness_device);
+                return Err(error.into());
+            }
+        };
+        let width = 1usize << folding;
+        let encoded = backend.ntt_fp2_batch_device(&padded, 0, width, height);
+        let padded_free = backend.free_device(padded);
+        let randomness_free = backend.free_device(randomness_device);
+        match encoded {
+            Err(error) => Err(error.into()),
+            Ok(encoded) => match padded_free.and(randomness_free) {
+                Ok(()) => Ok(encoded),
+                Err(error) => {
+                    let _ = backend.free_device(encoded);
+                    Err(error.into())
+                }
+            },
+        }
     }
 
     fn encode_base_mask(
@@ -566,7 +695,6 @@ impl C62GpuMmcs {
             || cache.width != 1usize << folding
             || cache.key.folding as usize != folding
             || cache.key.height as usize != height
-            || goldilocks_digest(message) != cache.key.content_digest
         {
             return Err(C62GpuWhirError::new("C62GW1 cache/workload geometry mismatch"));
         }
@@ -640,6 +768,26 @@ impl C62GpuMmcs {
         let encoded = self.encode_extension(message, randomness, folding, height)?;
         self.commit_resident(ResidentCodeword::Extension(encoded), width * 2, width, height)
     }
+
+    fn commit_extension_resident(
+        &self,
+        message: &DeviceBuffer<Fp2Repr>,
+        message_len: usize,
+        randomness: &[C61P3Fp2],
+        folding: usize,
+        height: usize,
+    ) -> Result<
+        (
+            C62GpuCommitment,
+            C62GpuProverData<FlatMatrixView<Goldilocks, C61P3Fp2, DenseMatrix<C61P3Fp2>>>,
+        ),
+        C62GpuWhirError,
+    > {
+        let width = 1usize << folding;
+        let encoded =
+            self.encode_extension_resident(message, message_len, randomness, folding, height)?;
+        self.commit_resident(ResidentCodeword::Extension(encoded), width * 2, width, height)
+    }
 }
 
 pub enum C62InitialOracleMode {
@@ -656,9 +804,11 @@ pub struct C62GpuWhirCommitter {
 pub struct C62GpuSumcheckState {
     backend: Arc<Mutex<Backend>>,
     evals: Option<DeviceBuffer<Fp2Repr>>,
+    fixed_evals: Option<Arc<C62ProviderFixedBase>>,
     weights: Option<DeviceBuffer<Fp2Repr>>,
     len: usize,
     sum: C61P3Fp2,
+    round_covector_workspace_bytes: u64,
 }
 
 impl C62GpuSumcheckState {
@@ -668,7 +818,8 @@ impl C62GpuSumcheckState {
         claims: &[(Point<C61P3Fp2>, C61P3Fp2)],
         coefficients: &[C61P3Fp2],
         batched_target: C61P3Fp2,
-        admitted_live_bytes: u64,
+        guard: C62GpuResourceGuard,
+        fixed_evals: Option<Arc<C62ProviderFixedBase>>,
     ) -> Result<Self, C62GpuWhirError> {
         if message.len() < 2
             || !message.len().is_power_of_two()
@@ -680,71 +831,103 @@ impl C62GpuSumcheckState {
         {
             return Err(C62GpuWhirError::new("C62GW1 sumcheck initialization mismatch"));
         }
-        if (message.len() as u64).saturating_mul(40) > admitted_live_bytes {
+        let point_len = claims[0].0.num_variables();
+        let claim_workspace_bytes = (claims.len() as u64)
+            .checked_mul((1u64 << (point_len / 2)) + (1u64 << (point_len - point_len / 2)))
+            .and_then(|value| value.checked_mul(16))
+            .ok_or_else(|| C62GpuWhirError::new("C62GW2 claim workspace overflows"))?;
+        if (message.len() as u64).saturating_mul(40) > guard.other_live_bytes
+            || claim_workspace_bytes > guard.claim_weight_workspace_bytes
+        {
             return Err(C62GpuWhirError::new("C62GW1 sumcheck exceeds its admission"));
         }
         let mut cuda = backend.lock().map_err(|_| C62GpuWhirError::new("CUDA lock"))?;
-        let base = upload_goldilocks(&mut cuda, message)?;
-        let evals = match cuda.alloc_device::<Fp2Repr>(message.len()) {
-            Ok(value) => value,
-            Err(error) => {
+        let evals = if fixed_evals.is_some() {
+            None
+        } else {
+            let base = upload_goldilocks(&mut cuda, message)?;
+            let evals = match cuda.alloc_device::<Fp2Repr>(message.len()) {
+                Ok(value) => value,
+                Err(error) => {
+                    let _ = cuda.free_device(base);
+                    return Err(error.into());
+                }
+            };
+            if let Err(error) = cuda.fp_to_fp2_device(&base, 0, &evals, 0, message.len()) {
+                let _ = cuda.free_device(evals);
                 let _ = cuda.free_device(base);
                 return Err(error.into());
             }
+            if let Err(error) = cuda.free_device(base) {
+                let _ = cuda.free_device(evals);
+                return Err(error.into());
+            }
+            Some(evals)
         };
-        if let Err(error) = cuda.fp_to_fp2_device(&base, 0, &evals, 0, message.len()) {
-            let _ = cuda.free_device(evals);
-            let _ = cuda.free_device(base);
-            return Err(error.into());
-        }
-        cuda.free_device(base)?;
+        let evals_ref = match (&evals, &fixed_evals) {
+            (Some(evals), _) => evals,
+            (None, Some(cache)) => cache
+                .owner
+                .evals
+                .as_ref()
+                .ok_or_else(|| C62GpuWhirError::new("C62GW2 fixed evaluations were released"))?,
+            (None, None) => unreachable!(),
+        };
         let weights = match cuda.alloc_device::<Fp2Repr>(message.len()) {
             Ok(value) => value,
             Err(error) => {
-                let _ = cuda.free_device(evals);
+                if let Some(evals) = evals {
+                    let _ = cuda.free_device(evals);
+                }
                 return Err(error.into());
             }
         };
-        for (index, ((point, _), coefficient)) in claims.iter().zip(coefficients).enumerate() {
-            let point = point.iter().copied().map(c61_volta_fp2_from_p3).collect::<Vec<_>>();
-            let result = cuda.fp2_affine_eq_weights_inplace_device(
-                &weights,
-                if index == 0 { 0 } else { message.len() },
-                &point,
-                c61_volta_fp2_from_p3(*coefficient),
-                if index == 0 { Fp2::ZERO } else { Fp2::ONE },
-            );
-            if let Err(error) = result {
-                let _ = cuda.free_device(weights);
+        let points = claims
+            .iter()
+            .flat_map(|(point, _)| point.iter().copied().map(c61_volta_fp2_from_p3))
+            .collect::<Vec<_>>();
+        let coefficients =
+            coefficients.iter().copied().map(c61_volta_fp2_from_p3).collect::<Vec<_>>();
+        if let Err(error) =
+            cuda.fp2_batched_eq_weights_device(&weights, &points, point_len, &coefficients)
+        {
+            let _ = cuda.free_device(weights);
+            if let Some(evals) = evals {
                 let _ = cuda.free_device(evals);
-                return Err(error.into());
             }
+            return Err(error.into());
         }
         let actual = match (|| {
             cuda.fp2_dot_device(
-                DeviceSlice::new(&evals, 0, message.len())?,
+                DeviceSlice::new(evals_ref, 0, message.len())?,
                 DeviceSlice::new(&weights, 0, message.len())?,
             )
         })() {
             Ok(value) => value,
             Err(error) => {
                 let _ = cuda.free_device(weights);
-                let _ = cuda.free_device(evals);
+                if let Some(evals) = evals {
+                    let _ = cuda.free_device(evals);
+                }
                 return Err(error.into());
             }
         };
         if c61_p3_fp2_from_volta(actual) != batched_target {
             let _ = cuda.free_device(weights);
-            let _ = cuda.free_device(evals);
+            if let Some(evals) = evals {
+                let _ = cuda.free_device(evals);
+            }
             return Err(C62GpuWhirError::new("C62GW1 resident initial sumcheck claim mismatch"));
         }
         drop(cuda);
         Ok(Self {
             backend,
-            evals: Some(evals),
+            evals,
+            fixed_evals,
             weights: Some(weights),
             len: message.len(),
             sum: batched_target,
+            round_covector_workspace_bytes: guard.round_covector_workspace_bytes,
         })
     }
 
@@ -755,6 +938,110 @@ impl C62GpuSumcheckState {
         let mut backend = self.backend.lock().map_err(|_| C62GpuWhirError::new("CUDA lock"))?;
         let values = backend.download_device(buffer, 0, self.len)?;
         Ok(Poly::new(values.into_iter().map(Fp2::from).map(c61_p3_fp2_from_volta).collect()))
+    }
+
+    fn evals_buffer(&self) -> &DeviceBuffer<Fp2Repr> {
+        self.evals.as_ref().unwrap_or_else(|| {
+            self.fixed_evals
+                .as_ref()
+                .and_then(|cache| cache.owner.evals.as_ref())
+                .expect("resident fixed evaluations are live")
+        })
+    }
+
+    fn evaluate_padded_ood(
+        &self,
+        point: C61P3Fp2,
+        suffix: &[C61P3Fp2],
+    ) -> Result<C61P3Fp2, C62GpuWhirError> {
+        let message_eval = {
+            let mut backend = self.backend.lock().map_err(|_| C62GpuWhirError::new("CUDA lock"))?;
+            backend.fp2_polynomial_eval_device(
+                DeviceSlice::new(self.evals_buffer(), 0, self.len)?,
+                c61_volta_fp2_from_p3(point),
+            )?
+        };
+        let suffix_eval = suffix
+            .iter()
+            .rev()
+            .fold(C61P3Fp2::ZERO, |acc, &coefficient| acc * point + coefficient);
+        Ok(c61_p3_fp2_from_volta(message_eval)
+            + suffix_eval * point.exp_u64(self.len as u64))
+    }
+
+    fn accumulate_sparse_round_claim(
+        &mut self,
+        folded_domain_size: usize,
+        stir_indices: &[usize],
+        ood_points: &[C61P3Fp2],
+        ood_coeffs: &[C61P3Fp2],
+        query_coeffs: &[C61P3Fp2],
+    ) -> Result<(), C62GpuWhirError> {
+        if !folded_domain_size.is_power_of_two()
+            || folded_domain_size < self.len
+            || stir_indices.is_empty()
+            || stir_indices.len() != query_coeffs.len()
+            || ood_points.len() != ood_coeffs.len()
+            || (folded_domain_size as u64).saturating_mul(32)
+                > self.round_covector_workspace_bytes
+        {
+            return Err(C62GpuWhirError::new("C62GW2 resident round covector mismatch"));
+        }
+        let query_coeffs =
+            query_coeffs.iter().copied().map(c61_volta_fp2_from_p3).collect::<Vec<_>>();
+        let mut backend = self.backend.lock().map_err(|_| C62GpuWhirError::new("CUDA lock"))?;
+        let sparse = backend.alloc_device::<Fp2Repr>(folded_domain_size)?;
+        if let Err(error) = backend.zero_device(&sparse, 0, folded_domain_size).and_then(|()| {
+            backend.fp2_scatter_device(
+                &sparse,
+                0,
+                folded_domain_size,
+                stir_indices,
+                &query_coeffs,
+            )
+        }) {
+            let _ = backend.free_device(sparse);
+            return Err(error.into());
+        }
+        let delta = match backend.ntt_fp2_batch_device(&sparse, 0, 1, folded_domain_size) {
+            Ok(delta) => delta,
+            Err(error) => {
+                let _ = backend.free_device(sparse);
+                return Err(error.into());
+            }
+        };
+        if let Err(error) = backend.free_device(sparse) {
+            let _ = backend.free_device(delta);
+            return Err(error.into());
+        }
+        let update = (|| {
+            for (&point, &coefficient) in ood_points.iter().zip(ood_coeffs) {
+                backend.fp2_add_geometric_inplace_device(
+                    &delta,
+                    0,
+                    self.len,
+                    c61_volta_fp2_from_p3(point),
+                    c61_volta_fp2_from_p3(coefficient),
+                )?;
+            }
+            let claim_delta = backend.fp2_dot_device(
+                DeviceSlice::new(self.evals_buffer(), 0, self.len)?,
+                DeviceSlice::new(&delta, 0, self.len)?,
+            )?;
+            backend.fp2_add_inplace_device(
+                self.weights.as_ref().expect("resident weights are live"),
+                0,
+                &delta,
+                0,
+                self.len,
+            )?;
+            Ok::<_, AccelError>(claim_delta)
+        })();
+        let cleanup = backend.free_device(delta);
+        let claim_delta = update?;
+        cleanup?;
+        self.sum += c61_p3_fp2_from_volta(claim_delta);
+        Ok(())
     }
 }
 
@@ -783,7 +1070,7 @@ impl ResidualSumcheckProver<Goldilocks, C61P3Fp2> for C62GpuSumcheckState {
     }
 
     fn evals(&self) -> Result<Poly<C61P3Fp2>, Self::Error> {
-        self.download_poly(self.evals.as_ref().expect("resident evals are live"))
+        self.download_poly(self.evals_buffer())
     }
 
     fn eval(&self, point: &Point<C61P3Fp2>) -> Result<C61P3Fp2, Self::Error> {
@@ -793,7 +1080,7 @@ impl ResidualSumcheckProver<Goldilocks, C61P3Fp2> for C62GpuSumcheckState {
         let point = point.iter().copied().map(c61_volta_fp2_from_p3).collect::<Vec<_>>();
         let mut backend = self.backend.lock().map_err(|_| C62GpuWhirError::new("CUDA lock"))?;
         let value = backend.mle_eval_device(
-            DeviceSlice::new(self.evals.as_ref().expect("resident evals are live"), 0, self.len)?,
+            DeviceSlice::new(self.evals_buffer(), 0, self.len)?,
             &point,
         )?;
         Ok(c61_p3_fp2_from_volta(value))
@@ -802,7 +1089,7 @@ impl ResidualSumcheckProver<Goldilocks, C61P3Fp2> for C62GpuSumcheckState {
     fn round_coefficients(&self) -> Result<(C61P3Fp2, C61P3Fp2), Self::Error> {
         let mut backend = self.backend.lock().map_err(|_| C62GpuWhirError::new("CUDA lock"))?;
         let [c0, c2] = backend.fp2_product_round_prefix_device(
-            DeviceSlice::new(self.evals.as_ref().expect("resident evals are live"), 0, self.len)?,
+            DeviceSlice::new(self.evals_buffer(), 0, self.len)?,
             DeviceSlice::new(
                 self.weights.as_ref().expect("resident weights are live"),
                 0,
@@ -819,13 +1106,19 @@ impl ResidualSumcheckProver<Goldilocks, C61P3Fp2> for C62GpuSumcheckState {
         gamma: C61P3Fp2,
     ) -> Result<(), Self::Error> {
         let mut backend = self.backend.lock().map_err(|_| C62GpuWhirError::new("CUDA lock"))?;
-        let old_evals = self.evals.take().expect("resident evals are live");
+        let old_evals = self.evals.take();
         let old_weights = self.weights.take().expect("resident weights are live");
         let r = c61_volta_fp2_from_p3(gamma);
-        let next_evals = match backend.fp2_fold_prefix_device(&old_evals, 0, self.len, r) {
+        let evals_ref = old_evals.as_ref().unwrap_or_else(|| {
+            self.fixed_evals
+                .as_ref()
+                .and_then(|cache| cache.owner.evals.as_ref())
+                .expect("resident fixed evaluations are live")
+        });
+        let next_evals = match backend.fp2_fold_prefix_device(evals_ref, 0, self.len, r) {
             Ok(value) => value,
             Err(error) => {
-                self.evals = Some(old_evals);
+                self.evals = old_evals;
                 self.weights = Some(old_weights);
                 return Err(error.into());
             }
@@ -834,12 +1127,15 @@ impl ResidualSumcheckProver<Goldilocks, C61P3Fp2> for C62GpuSumcheckState {
             Ok(value) => value,
             Err(error) => {
                 let _ = backend.free_device(next_evals);
-                self.evals = Some(old_evals);
+                self.evals = old_evals;
                 self.weights = Some(old_weights);
                 return Err(error.into());
             }
         };
-        let evals_free = backend.free_device(old_evals);
+        let evals_free = match old_evals {
+            Some(evals) => backend.free_device(evals),
+            None => Ok(()),
+        };
         let weights_free = backend.free_device(old_weights);
         if let Err(error) = evals_free.and(weights_free) {
             let _ = backend.free_device(next_evals);
@@ -847,6 +1143,7 @@ impl ResidualSumcheckProver<Goldilocks, C61P3Fp2> for C62GpuSumcheckState {
             return Err(error.into());
         }
         self.evals = Some(next_evals);
+        self.fixed_evals = None;
         self.weights = Some(next_weights);
         self.len /= 2;
         self.sum = c0 * (C61P3Fp2::ONE - gamma)
@@ -923,7 +1220,11 @@ impl ZkWhirOracleCommitter<Goldilocks, C61P3Fp2, C62GpuMmcs> for C62GpuWhirCommi
             claims,
             coefficients,
             batched_target,
-            self.mmcs.guard.other_live_bytes,
+            self.mmcs.guard,
+            match &self.initial {
+                C62InitialOracleMode::Fresh => None,
+                C62InitialOracleMode::ProviderCached(cache) => Some(Arc::clone(cache)),
+            },
         )
     }
 
@@ -958,6 +1259,58 @@ impl ZkWhirOracleCommitter<Goldilocks, C61P3Fp2, C62GpuMmcs> for C62GpuWhirCommi
         Self::Error,
     > {
         self.mmcs.commit_extension_native(message, randomness, folding, height)
+    }
+
+    fn commit_extension_from_sumcheck(
+        &self,
+        state: &Self::SumcheckState,
+        randomness: &[C61P3Fp2],
+        folding: usize,
+        height: usize,
+    ) -> Result<
+        Option<(
+            C62GpuCommitment,
+            C62GpuProverData<FlatMatrixView<Goldilocks, C61P3Fp2, DenseMatrix<C61P3Fp2>>>,
+        )>,
+        Self::Error,
+    > {
+        self.mmcs
+            .commit_extension_resident(
+                state.evals_buffer(),
+                state.len,
+                randomness,
+                folding,
+                height,
+            )
+            .map(Some)
+    }
+
+    fn evaluate_padded_ood_from_sumcheck(
+        &self,
+        state: &Self::SumcheckState,
+        point: C61P3Fp2,
+        suffix: &[C61P3Fp2],
+    ) -> Result<Option<C61P3Fp2>, Self::Error> {
+        state.evaluate_padded_ood(point, suffix).map(Some)
+    }
+
+    fn accumulate_round_claim_from_sumcheck(
+        &self,
+        state: &mut Self::SumcheckState,
+        folded_domain_size: usize,
+        stir_indices: &[usize],
+        ood_points: &[C61P3Fp2],
+        ood_coeffs: &[C61P3Fp2],
+        query_coeffs: &[C61P3Fp2],
+    ) -> Result<bool, Self::Error> {
+        state.accumulate_sparse_round_claim(
+            folded_domain_size,
+            stir_indices,
+            ood_points,
+            ood_coeffs,
+            query_coeffs,
+        )?;
+        Ok(true)
     }
 }
 
@@ -1406,35 +1759,35 @@ mod tests {
         let valid = C62GpuResourceGuard {
             logical_codeword_bytes: 4,
             tile_workspace_bytes: 4,
+            claim_weight_workspace_bytes: 4,
+            ntt_twiddle_cache_bytes: 4,
+            round_covector_workspace_bytes: 4,
             fixed_cache_bytes: 4,
             other_live_bytes: 4,
             reserve_bytes: 4,
-            available_device_bytes: 20,
+            available_device_bytes: 32,
         };
         assert!(valid.validate().is_ok());
-        assert!(C62GpuResourceGuard { available_device_bytes: 19, ..valid }.validate().is_err());
+        assert!(C62GpuResourceGuard { available_device_bytes: 31, ..valid }.validate().is_err());
         assert!(C62GpuResourceGuard { reserve_bytes: 0, ..valid }.validate().is_err());
 
-        let d28 = C62GpuResourceGuard::for_lane(28, 1, 1 << 28, 20, true, 80u64 << 30)
-            .unwrap();
-        assert_eq!(d28.checked_peak_bytes().unwrap(), (32u64 << 30) + (80u64 << 20) - 32);
+        let d28 = C62GpuResourceGuard::for_lane(28, 1, 1 << 28, 20, 96, true, 80u64 << 30).unwrap();
+        assert_eq!(d28.checked_peak_bytes().unwrap(), (40u64 << 30) + (128u64 << 20) - 32);
         assert!(C62GpuResourceGuard::for_lane(
             28,
             1,
             1 << 28,
             20,
+            96,
             true,
-            (32u64 << 30) + (80u64 << 20) - 33,
+            (40u64 << 30) + (128u64 << 20) - 33,
         )
         .is_err());
 
-        let both_provider_bases = C62GpuResourceGuard {
-            fixed_cache_bytes: 6u64 << 30,
-            ..d28
-        };
+        let both_provider_bases = C62GpuResourceGuard { fixed_cache_bytes: 12u64 << 30, ..d28 };
         assert_eq!(
             both_provider_bases.checked_peak_bytes().unwrap(),
-            (34u64 << 30) + (80u64 << 20) - 32,
+            (44u64 << 30) + (128u64 << 20) - 32,
         );
         both_provider_bases.validate().unwrap();
     }
@@ -1512,10 +1865,13 @@ mod tests {
             C62GpuResourceGuard {
                 logical_codeword_bytes: 1 << 40,
                 tile_workspace_bytes: 1 << 40,
+                claim_weight_workspace_bytes: 1 << 40,
+                ntt_twiddle_cache_bytes: 1 << 40,
+                round_covector_workspace_bytes: 1 << 40,
                 fixed_cache_bytes: 1 << 40,
                 other_live_bytes: 1 << 40,
                 reserve_bytes: 1 << 40,
-                available_device_bytes: 5 << 40,
+                available_device_bytes: 8 << 40,
             },
         )
         .map(Some)

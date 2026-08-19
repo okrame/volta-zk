@@ -18,7 +18,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 39;
+constexpr uint32_t ABI_VERSION = 41;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -229,6 +229,11 @@ struct TimingRecord {
     uint64_t measured_ns[3]{};
 };
 
+struct NttTwiddleTable {
+    size_t n = 0;
+    uint64_t* values = nullptr;
+};
+
 constexpr uint64_t RESIDENT_SLOT_MASK = std::numeric_limits<uint32_t>::max();
 constexpr uint32_t RESIDENT_GENERATION_MAX = std::numeric_limits<uint32_t>::max();
 
@@ -241,7 +246,7 @@ struct Context {
     std::vector<PinnedBuffer> pinned;
     std::vector<size_t> inactive_pinned;
     RawStats stats{};
-    size_t twiddle_size = 0;
+    std::vector<NttTwiddleTable> ntt_twiddles;
     size_t x4b_twiddle_size = 0;
     bool x4b_keys_ready = false;
     uint32_t timing_mode = TIMING_CUDA_EVENTS;
@@ -1336,6 +1341,16 @@ __host__ __device__ inline Fp2 fp2_mul(Fp2 a, Fp2 b) {
 
 __host__ __device__ inline Fp2 fp2_mul_base(Fp2 a, uint64_t b) {
     return Fp2{fp_mul(a.c0, b), fp_mul(a.c1, b)};
+}
+
+__device__ inline Fp2 fp2_pow_device(Fp2 base, size_t exponent) {
+    Fp2 acc{1, 0};
+    while (exponent) {
+        if (exponent & 1) acc = fp2_mul(acc, base);
+        base = fp2_mul(base, base);
+        exponent >>= 1;
+    }
+    return acc;
 }
 
 // -------------------------------------------------------------------------
@@ -2685,19 +2700,34 @@ __global__ void ntt_stage_fp2_batch(
     values[i1] = fp2_sub(u, v);
 }
 
-int ensure_twiddles(Context* c, size_t n, uint64_t* h2d) {
-    if (ensure(c, 11, (n / 2) * sizeof(uint64_t))) return -1;
-    if (c->twiddle_size == n) return 0;
+int ensure_twiddles(Context* c, size_t n, uint64_t* h2d, const uint64_t** output) {
+    for (const auto& table : c->ntt_twiddles) {
+        if (table.n == n) {
+            *output = table.values;
+            return 0;
+        }
+    }
     std::vector<uint64_t> tw(n / 2);
     const int bits = __builtin_ctzll(n);
     const uint64_t root = fp_pow(7, (P - 1) >> bits);
     tw[0] = 1;
     for (size_t i = 1; i < n / 2; ++i) tw[i] = fp_mul(tw[i - 1], root);
-    CUDA_OR_RETURN(c, cudaMemcpyAsync(
-        buf<uint64_t>(c, 11), tw.data(), tw.size() * sizeof(uint64_t),
-        cudaMemcpyHostToDevice, c->stream));
-    *h2d += tw.size() * sizeof(uint64_t);
-    c->twiddle_size = n;
+    const size_t bytes = tw.size() * sizeof(uint64_t);
+    uint64_t* values = nullptr;
+    CUDA_OR_RETURN(c, cudaMalloc(&values, bytes));
+    ++c->stats.allocation_calls;
+    c->stats.live_device_bytes += bytes;
+    c->stats.peak_device_bytes = std::max(c->stats.peak_device_bytes, c->stats.live_device_bytes);
+    const cudaError_t copied = cudaMemcpyAsync(
+        values, tw.data(), bytes, cudaMemcpyHostToDevice, c->stream);
+    if (copied != cudaSuccess) {
+        cudaFree(values);
+        c->stats.live_device_bytes -= bytes;
+        return fail(c, "cudaMemcpyAsync(NTT twiddles)", copied);
+    }
+    c->ntt_twiddles.push_back(NttTwiddleTable{n, values});
+    *h2d += bytes;
+    *output = values;
     return 0;
 }
 
@@ -3037,6 +3067,88 @@ __global__ void fp2_affine_eq_weights_kernel(
     values[i]=fp2_add(fp2_mul(rho,equality),fp2_mul(gamma,coefficient));
 }
 
+__global__ void fp2_batched_eq_halves_kernel(
+    Fp2* factors,const Fp2* points,const Fp2* coefficients,
+    size_t claim_count,size_t point_len,size_t left_bits,
+    size_t left_count,size_t right_count){
+    const size_t per_claim=left_count+right_count;
+    const size_t z=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(z>=claim_count*per_claim)return;
+    const size_t claim=z/per_claim;
+    const size_t local=z-claim*per_claim;
+    const bool left=local<left_count;
+    const size_t index=left?local:local-left_count;
+    const size_t begin=left?0:left_bits;
+    const size_t end=left?left_bits:point_len;
+    Fp2 weight=left?coefficients[claim]:Fp2{1,0};
+    for(size_t bit=begin;bit<end;++bit){
+        const Fp2 coordinate=points[claim*point_len+bit];
+        const size_t shift=end-1-bit;
+        const Fp2 factor=((index>>shift)&1)
+            ? coordinate
+            : fp2_sub(Fp2{1,0},coordinate);
+        weight=fp2_mul(weight,factor);
+    }
+    factors[z]=weight;
+}
+
+__global__ void fp2_batched_eq_combine_kernel(
+    Fp2* values,const Fp2* factors,size_t n,size_t claim_count,
+    size_t left_count,size_t right_count){
+    const size_t i=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(i>=n)return;
+    const size_t left_index=i/right_count;
+    const size_t right_index=i-left_index*right_count;
+    const size_t per_claim=left_count+right_count;
+    Fp2 acc{};
+    for(size_t claim=0;claim<claim_count;++claim){
+        const Fp2* halves=factors+claim*per_claim;
+        acc=fp2_add(acc,fp2_mul(halves[left_index],halves[left_count+right_index]));
+    }
+    values[i]=acc;
+}
+
+__global__ void fp2_scatter_kernel(
+    Fp2* output,const uint64_t* indices,const Fp2* values,size_t count){
+    const size_t i=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(i<count)output[indices[i]]=values[i];
+}
+
+__global__ void fp2_add_geometric_kernel(
+    Fp2* values,size_t len,Fp2 point,Fp2 coefficient){
+    __shared__ Fp2 powers[BLOCK];
+    const size_t begin=static_cast<size_t>(blockIdx.x)*BLOCK;
+    if(threadIdx.x==0){
+        Fp2 power=fp2_pow_device(point,begin);
+        for(size_t i=0;i<BLOCK;++i){powers[i]=power;power=fp2_mul(power,point);}
+    }
+    __syncthreads();
+    const size_t i=begin+threadIdx.x;
+    if(i<len)values[i]=fp2_add(values[i],fp2_mul(coefficient,powers[threadIdx.x]));
+}
+
+__global__ void fp2_polynomial_eval_terms_kernel(
+    const Fp2* values,DotAcc* output,size_t len,Fp2 point){
+    __shared__ Fp2 powers[BLOCK];
+    const size_t begin=static_cast<size_t>(blockIdx.x)*BLOCK;
+    if(threadIdx.x==0){
+        Fp2 power=fp2_pow_device(point,begin);
+        for(size_t i=0;i<BLOCK;++i){powers[i]=power;power=fp2_mul(power,point);}
+    }
+    __syncthreads();
+    const size_t i=begin+threadIdx.x;
+    Fp2 value{};
+    if(i<len)value=fp2_mul(values[i],powers[threadIdx.x]);
+    __shared__ Fp2 partial[BLOCK];
+    partial[threadIdx.x]=value;
+    __syncthreads();
+    for(unsigned int width=BLOCK/2;width; width>>=1){
+        if(threadIdx.x<width)partial[threadIdx.x]=fp2_add(partial[threadIdx.x],partial[threadIdx.x+width]);
+        __syncthreads();
+    }
+    if(threadIdx.x==0)output[blockIdx.x].value=partial[0];
+}
+
 __global__ void pcs_combine_rows_kernel(
     const int16_t* weights, const uint64_t* pads, const Fp2* coeffs, Fp2* out,
     size_t rows, size_t cols, size_t pad, size_t combinations) {
@@ -3237,6 +3349,7 @@ extern "C" void volta_cuda_destroy(void* raw) {
     // or events are destroyed.
     if (c->stream) (void)cudaStreamSynchronize(c->stream);
     for (auto& b : c->buffers) if (b.ptr) cudaFree(b.ptr);
+    for (auto& table : c->ntt_twiddles) if (table.values) cudaFree(table.values);
     for (auto& b : c->resident) if (b.ptr) cudaFree(b.ptr);
     for (auto& b : c->pinned) {
         if (b.ready) cudaEventDestroy(b.ready);
@@ -3475,6 +3588,8 @@ extern "C" int volta_cuda_memory_breakdown(
         uint64_t resident = 0;
         uint64_t cached = 0;
         for (const auto& b : c->buffers) workspace += b.capacity;
+        for (const auto& table : c->ntt_twiddles)
+            workspace += (table.n / 2) * sizeof(uint64_t);
         for (const auto& b : c->resident) {
             if (!b.ptr) continue;
             if (b.active) resident += b.capacity;
@@ -5609,9 +5724,9 @@ extern "C" int volta_cuda_ntt_fp(void* raw,const uint64_t* msg,size_t msg_len,si
     Context* c=static_cast<Context*>(raw);if(!c||!msg||!out||n<2||(n&(n-1))||msg_len>n)return -1;
     if(ensure(c,0,n*8)||ensure(c,1,n*8))return -1;std::vector<uint64_t> host(n);std::copy(msg,msg+msg_len,host.begin());
     uint64_t h2d=0;if(begin_timing(c))return -1;CUDA_OR_RETURN(c,cudaMemcpyAsync(buf<uint64_t>(c,0),host.data(),n*8,cudaMemcpyHostToDevice,c->stream));h2d+=n*8;
-    if(ensure_twiddles(c,n,&h2d))return -1;if(mark_timing(c,1))return -1;const int bits=__builtin_ctzll(n);
+    const uint64_t* twiddles=nullptr;if(ensure_twiddles(c,n,&h2d,&twiddles))return -1;if(mark_timing(c,1))return -1;const int bits=__builtin_ctzll(n);
     bit_reverse_fp<<<(n+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(buf<uint64_t>(c,0),buf<uint64_t>(c,1),n,bits);
-    for(size_t len=2;len<=n;len*=2)ntt_stage_fp<<<(n/2+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(buf<uint64_t>(c,1),buf<uint64_t>(c,11),n,len);
+    for(size_t len=2;len<=n;len*=2)ntt_stage_fp<<<(n/2+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(buf<uint64_t>(c,1),twiddles,n,len);
     CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
     CUDA_OR_RETURN(c,cudaMemcpyAsync(out,buf<uint64_t>(c,1),n*8,cudaMemcpyDeviceToHost,c->stream));
     return finish_timing(c,OP_PCS_NTT,h2d,n*8);
@@ -5624,9 +5739,9 @@ extern "C" int volta_cuda_ntt_fp_batch(void* raw,const uint64_t* messages,size_t
     for(size_t row=0;row<rows;++row)std::copy(messages+row*msg_len,messages+(row+1)*msg_len,host.begin()+row*n);
     if(ensure(c,0,bytes)||ensure(c,1,bytes))return -1;uint64_t h2d=0;if(begin_timing(c))return -1;
     CUDA_OR_RETURN(c,cudaMemcpyAsync(buf<uint64_t>(c,0),host.data(),bytes,cudaMemcpyHostToDevice,c->stream));h2d+=bytes;
-    if(ensure_twiddles(c,n,&h2d))return -1;if(mark_timing(c,1))return -1;const int bits=__builtin_ctzll(n);
+    const uint64_t* twiddles=nullptr;if(ensure_twiddles(c,n,&h2d,&twiddles))return -1;if(mark_timing(c,1))return -1;const int bits=__builtin_ctzll(n);
     bit_reverse_fp_batch<<<(total+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(buf<uint64_t>(c,0),buf<uint64_t>(c,1),rows,n,bits);
-    for(size_t len=2;len<=n;len*=2)ntt_stage_fp_batch<<<(rows*n/2+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(buf<uint64_t>(c,1),buf<uint64_t>(c,11),rows,n,len);
+    for(size_t len=2;len<=n;len*=2)ntt_stage_fp_batch<<<(rows*n/2+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(buf<uint64_t>(c,1),twiddles,rows,n,len);
     CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
     CUDA_OR_RETURN(c,cudaMemcpyAsync(out,buf<uint64_t>(c,1),bytes,cudaMemcpyDeviceToHost,c->stream));
     return finish_timing(c,OP_PCS_NTT,h2d,bytes);
@@ -5636,9 +5751,9 @@ extern "C" int volta_cuda_ntt_fp2(void* raw,const Fp2* msg,size_t msg_len,size_t
     Context* c=static_cast<Context*>(raw);if(!c||!msg||!out||n<2||(n&(n-1))||msg_len>n)return -1;
     if(ensure(c,0,n*sizeof(Fp2))||ensure(c,1,n*sizeof(Fp2)))return -1;std::vector<Fp2> host(n);std::copy(msg,msg+msg_len,host.begin());
     uint64_t h2d=0;if(begin_timing(c))return -1;CUDA_OR_RETURN(c,cudaMemcpyAsync(buf<Fp2>(c,0),host.data(),n*sizeof(Fp2),cudaMemcpyHostToDevice,c->stream));h2d+=n*sizeof(Fp2);
-    if(ensure_twiddles(c,n,&h2d))return -1;if(mark_timing(c,1))return -1;const int bits=__builtin_ctzll(n);
+    const uint64_t* twiddles=nullptr;if(ensure_twiddles(c,n,&h2d,&twiddles))return -1;if(mark_timing(c,1))return -1;const int bits=__builtin_ctzll(n);
     bit_reverse_fp2<<<(n+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(buf<Fp2>(c,0),buf<Fp2>(c,1),n,bits);
-    for(size_t len=2;len<=n;len*=2)ntt_stage_fp2<<<(n/2+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(buf<Fp2>(c,1),buf<uint64_t>(c,11),n,len);
+    for(size_t len=2;len<=n;len*=2)ntt_stage_fp2<<<(n/2+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(buf<Fp2>(c,1),twiddles,n,len);
     CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
     CUDA_OR_RETURN(c,cudaMemcpyAsync(out,buf<Fp2>(c,1),n*sizeof(Fp2),cudaMemcpyDeviceToHost,c->stream));
     return finish_timing(c,OP_PCS_NTT,h2d,n*sizeof(Fp2));
@@ -6624,12 +6739,12 @@ extern "C" int volta_cuda_ntt_fp_batch_device(
     void *input=nullptr,*output=nullptr;const size_t total=rows*n,bytes=total*sizeof(uint64_t);
     if(resident_region(c,input_id,input_offset*sizeof(uint64_t),bytes,&input)||
        resident_region(c,output_id,output_offset*sizeof(uint64_t),bytes,&output))return -1;
-    uint64_t h2d=0;if(begin_timing(c))return -1;if(ensure_twiddles(c,n,&h2d))return -1;
+    uint64_t h2d=0;const uint64_t* twiddles=nullptr;if(begin_timing(c))return -1;if(ensure_twiddles(c,n,&h2d,&twiddles))return -1;
     if(mark_timing(c,1))return -1;const int bits=__builtin_ctzll(n);
     bit_reverse_fp_batch<<<(total+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
         static_cast<const uint64_t*>(input),static_cast<uint64_t*>(output),rows,n,bits);
     for(size_t len=2;len<=n;len*=2)ntt_stage_fp_batch<<<(rows*n/2+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
-        static_cast<uint64_t*>(output),buf<uint64_t>(c,11),rows,n,len);
+        static_cast<uint64_t*>(output),twiddles,rows,n,len);
     CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
     return finish_timing(c,OP_PCS_NTT,h2d,0);
 }
@@ -6642,13 +6757,29 @@ extern "C" int volta_cuda_ntt_fp2_batch_device(
     void *input=nullptr,*output=nullptr;const size_t total=rows*n,bytes=total*sizeof(Fp2);
     if(resident_region(c,input_id,input_offset*sizeof(Fp2),bytes,&input)||
        resident_region(c,output_id,output_offset*sizeof(Fp2),bytes,&output))return -1;
-    uint64_t h2d=0;if(begin_timing(c))return -1;if(ensure_twiddles(c,n,&h2d))return -1;
+    uint64_t h2d=0;const uint64_t* twiddles=nullptr;if(begin_timing(c))return -1;if(ensure_twiddles(c,n,&h2d,&twiddles))return -1;
     if(mark_timing(c,1))return -1;const int bits=__builtin_ctzll(n);
     bit_reverse_fp2_batch<<<(total+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
         static_cast<const Fp2*>(input),static_cast<Fp2*>(output),rows,n,bits);
     for(size_t len=2;len<=n;len*=2)ntt_stage_fp2_batch<<<(rows*n/2+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
-        static_cast<Fp2*>(output),buf<uint64_t>(c,11),rows,n,len);
+        static_cast<Fp2*>(output),twiddles,rows,n,len);
     CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
+    return finish_timing(c,OP_PCS_NTT,h2d,0);
+}
+
+extern "C" int volta_cuda_warm_ntt_twiddles(
+    void* raw,const size_t* sizes,size_t count){
+    Context* c=static_cast<Context*>(raw);
+    if(!c||!sizes||!count||count>64)return fail_message(c,"invalid NTT warmup list");
+    for(size_t i=0;i<count;++i)
+        if(sizes[i]<2||(sizes[i]&(sizes[i]-1)))return fail_message(c,"invalid NTT warmup size");
+    uint64_t h2d=0;
+    if(begin_timing(c))return -1;
+    for(size_t i=0;i<count;++i){
+        const uint64_t* unused=nullptr;
+        if(ensure_twiddles(c,sizes[i],&h2d,&unused))return -1;
+    }
+    if(mark_timing(c,1)||mark_timing(c,2))return -1;
     return finish_timing(c,OP_PCS_NTT,h2d,0);
 }
 
@@ -7314,6 +7445,108 @@ extern "C" int volta_cuda_fp2_affine_eq_weights_inplace_device(
         Fp2{rho_c0,rho_c1},Fp2{gamma_c0,gamma_c1});
     CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
     return finish_timing(c,OP_PCS_ROWS,0,0);
+}
+
+extern "C" int volta_cuda_fp2_batched_eq_weights_device(
+    void* raw,uint64_t values_id,uint64_t factors_id,uint64_t points_id,
+    uint64_t coefficients_id,size_t claim_count,size_t point_len){
+    Context* c=static_cast<Context*>(raw);
+    if(!c||!claim_count||!point_len||point_len>=8*sizeof(size_t))
+        return fail_message(c,"invalid resident Fp2 batched equality weights");
+    const size_t n=static_cast<size_t>(1)<<point_len;
+    const size_t left_bits=point_len/2;
+    const size_t right_bits=point_len-left_bits;
+    const size_t left_count=static_cast<size_t>(1)<<left_bits;
+    const size_t right_count=static_cast<size_t>(1)<<right_bits;
+    size_t per_claim=0,factor_count=0,point_count=0;
+    if(!checked_add_size(left_count,right_count,&per_claim)||
+       !checked_mul_size(claim_count,per_claim,&factor_count)||
+       !checked_mul_size(claim_count,point_len,&point_count))
+        return fail_message(c,"resident Fp2 batched equality geometry overflows");
+    void *values=nullptr,*factors=nullptr,*points=nullptr,*coefficients=nullptr;
+    if(resident_region(c,values_id,0,n*sizeof(Fp2),&values)||
+       resident_region(c,factors_id,0,factor_count*sizeof(Fp2),&factors)||
+       resident_region(c,points_id,0,point_count*sizeof(Fp2),&points)||
+       resident_region(c,coefficients_id,0,claim_count*sizeof(Fp2),&coefficients))return -1;
+    if(begin_timing(c))return -1;if(mark_timing(c,1))return -1;
+    fp2_batched_eq_halves_kernel<<<(factor_count+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+        static_cast<Fp2*>(factors),static_cast<const Fp2*>(points),
+        static_cast<const Fp2*>(coefficients),claim_count,point_len,left_bits,
+        left_count,right_count);
+    CUDA_OR_RETURN(c,cudaPeekAtLastError());
+    fp2_batched_eq_combine_kernel<<<(n+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+        static_cast<Fp2*>(values),static_cast<const Fp2*>(factors),n,claim_count,
+        left_count,right_count);
+    CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
+    return finish_timing(c,OP_PCS_ROWS,0,0);
+}
+
+extern "C" int volta_cuda_fp2_scatter_device(
+    void* raw,uint64_t output_id,size_t output_offset,size_t output_len,
+    const uint64_t* indices,const Fp2* values,size_t count){
+    Context* c=static_cast<Context*>(raw);
+    if(!c||!indices||!values||!count)
+        return fail_message(c,"invalid resident Fp2 scatter input");
+    for(size_t i=0;i<count;++i){
+        if(indices[i]>=output_len||values[i].c0>=P||values[i].c1>=P)
+            return fail_message(c,"resident Fp2 scatter input is out of range");
+    }
+    void* output=nullptr;
+    const size_t index_bytes=count*sizeof(uint64_t),value_bytes=count*sizeof(Fp2);
+    if(resident_region(c,output_id,output_offset*sizeof(Fp2),output_len*sizeof(Fp2),&output)||
+       ensure(c,0,index_bytes)||ensure(c,1,value_bytes))return -1;
+    if(begin_timing(c))return -1;
+    CUDA_OR_RETURN(c,cudaMemcpyAsync(buf<uint64_t>(c,0),indices,index_bytes,cudaMemcpyHostToDevice,c->stream));
+    CUDA_OR_RETURN(c,cudaMemcpyAsync(buf<Fp2>(c,1),values,value_bytes,cudaMemcpyHostToDevice,c->stream));
+    if(mark_timing(c,1))return -1;
+    fp2_scatter_kernel<<<(count+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+        static_cast<Fp2*>(output),buf<uint64_t>(c,0),buf<Fp2>(c,1),count);
+    CUDA_OR_RETURN(c,cudaPeekAtLastError());
+    if(mark_timing(c,2))return -1;
+    return finish_timing(c,OP_PCS_ROWS,index_bytes+value_bytes,0);
+}
+
+extern "C" int volta_cuda_fp2_add_geometric_inplace_device(
+    void* raw,uint64_t values_id,size_t values_offset,size_t len,
+    uint64_t point_c0,uint64_t point_c1,uint64_t coefficient_c0,uint64_t coefficient_c1){
+    Context* c=static_cast<Context*>(raw);
+    if(!c||!len||point_c0>=P||point_c1>=P||coefficient_c0>=P||coefficient_c1>=P)
+        return fail_message(c,"invalid resident Fp2 geometric input");
+    void* values=nullptr;
+    if(resident_region(c,values_id,values_offset*sizeof(Fp2),len*sizeof(Fp2),&values))return -1;
+    if(begin_timing(c)||mark_timing(c,1))return -1;
+    fp2_add_geometric_kernel<<<(len+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+        static_cast<Fp2*>(values),len,Fp2{point_c0,point_c1},Fp2{coefficient_c0,coefficient_c1});
+    CUDA_OR_RETURN(c,cudaPeekAtLastError());
+    if(mark_timing(c,2))return -1;
+    return finish_timing(c,OP_PCS_ROWS,0,0);
+}
+
+extern "C" int volta_cuda_fp2_polynomial_eval_device(
+    void* raw,uint64_t values_id,size_t values_offset,size_t len,
+    uint64_t point_c0,uint64_t point_c1,Fp2* output){
+    Context* c=static_cast<Context*>(raw);
+    if(!c||!len||!output||point_c0>=P||point_c1>=P)
+        return fail_message(c,"invalid resident Fp2 polynomial evaluation");
+    void* values=nullptr;
+    const size_t blocks=(len+BLOCK-1)/BLOCK;
+    if(resident_region(c,values_id,values_offset*sizeof(Fp2),len*sizeof(Fp2),&values)||
+       ensure(c,12,blocks*sizeof(DotAcc))||
+       ensure(c,13,std::max(size_t{1},(blocks+1)/2)*sizeof(DotAcc)))return -1;
+    if(begin_timing(c)||mark_timing(c,1))return -1;
+    DotAcc* src=buf<DotAcc>(c,12);DotAcc* dst=buf<DotAcc>(c,13);
+    fp2_polynomial_eval_terms_kernel<<<blocks,BLOCK,0,c->stream>>>(
+        static_cast<const Fp2*>(values),src,len,Fp2{point_c0,point_c1});
+    size_t count=blocks;
+    while(count>1){
+        const size_t next=(count+1)/2;
+        reduce_dot<<<(next+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(src,dst,count);
+        std::swap(src,dst);count=next;
+    }
+    CUDA_OR_RETURN(c,cudaPeekAtLastError());
+    if(mark_timing(c,2))return -1;
+    CUDA_OR_RETURN(c,cudaMemcpyAsync(output,&src[0].value,sizeof(Fp2),cudaMemcpyDeviceToHost,c->stream));
+    return finish_timing(c,OP_PCS_ROWS,0,sizeof(Fp2));
 }
 
 int hash_tree_device_impl(

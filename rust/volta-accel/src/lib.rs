@@ -18,7 +18,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 39;
+pub const CUDA_ABI_VERSION: u32 = 41;
 pub const OPERATION_COUNT: usize = 7;
 pub const DEFERRED_TIMING_CAPACITY: usize = 512;
 
@@ -5510,6 +5510,29 @@ impl Backend {
         Ok(output)
     }
 
+    /// Materialize persistent NTT twiddle tables without encoding an oracle.
+    pub fn warm_ntt_twiddles(&mut self, sizes: &[usize]) -> Result<(), AccelError> {
+        if self.kind != BackendKind::CudaResident || sizes.is_empty() || sizes.len() > 64 {
+            return Err(AccelError::InvalidInput("invalid NTT twiddle warmup list"));
+        }
+        let mut sizes = sizes.to_vec();
+        sizes.sort_unstable();
+        sizes.dedup();
+        if sizes.iter().any(|&size| size < 2 || !size.is_power_of_two()) {
+            return Err(AccelError::InvalidInput("invalid NTT twiddle warmup size"));
+        }
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .expect("CUDA kind without context")
+                .warm_ntt_twiddles(&sizes);
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
     /// Return internal fraction-tree layers in root-to-leaf order.  Each
     /// outer vector has lengths 1,2,...,n/2.
     pub fn logup_tree(
@@ -6923,6 +6946,185 @@ impl Backend {
         match (result, free_result) {
             (Ok(()), Ok(())) => Ok(()),
             (Err(error), _) | (Ok(()), Err(error)) => Err(error),
+        }
+    }
+
+    /// Materialize `sum_i coefficients[i] * eq(points[i], x)` for every
+    /// Boolean-domain row `x`. The device stores one balanced pair of equality
+    /// half-tables per claim, then combines all claims in one output pass.
+    pub fn fp2_batched_eq_weights_device(
+        &mut self,
+        values: &DeviceBuffer<Fp2Repr>,
+        points: &[Fp2],
+        point_len: usize,
+        coefficients: &[Fp2],
+    ) -> Result<(), AccelError> {
+        let claim_count = coefficients.len();
+        let expected = 1usize
+            .checked_shl(point_len as u32)
+            .ok_or(AccelError::InvalidInput("batched equality dimension overflow"))?;
+        let point_count = claim_count
+            .checked_mul(point_len)
+            .ok_or(AccelError::InvalidInput("batched equality point count overflow"))?;
+        if self.kind != BackendKind::CudaResident
+            || point_len == 0
+            || claim_count == 0
+            || points.len() != point_count
+            || values.len() != expected
+        {
+            return Err(AccelError::InvalidInput(
+                "resident batched equality weights require CUDA matching geometry",
+            ));
+        }
+        self.validate_buffer(values)?;
+        let left_count = 1usize << (point_len / 2);
+        let right_count = 1usize << (point_len - point_len / 2);
+        let workspace_len = claim_count
+            .checked_mul(
+                left_count
+                    .checked_add(right_count)
+                    .ok_or(AccelError::InvalidInput("batched equality workspace overflows"))?,
+            )
+            .ok_or(AccelError::InvalidInput("batched equality workspace overflows"))?;
+        let factors = self.alloc_device::<Fp2Repr>(workspace_len)?;
+        let encoded_points = points.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>();
+        let point_buffer = match self.upload_new_device(&encoded_points) {
+            Ok(buffer) => buffer,
+            Err(error) => {
+                let _ = self.free_device(factors);
+                return Err(error);
+            }
+        };
+        let encoded_coefficients =
+            coefficients.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>();
+        let coefficient_buffer = match self.upload_new_device(&encoded_coefficients) {
+            Ok(buffer) => buffer,
+            Err(error) => {
+                let _ = self.free_device(point_buffer);
+                let _ = self.free_device(factors);
+                return Err(error);
+            }
+        };
+        #[cfg(feature = "cuda")]
+        let result =
+            self.cuda.as_mut().expect("CUDA kind without context").fp2_batched_eq_weights_device(
+                values.id,
+                factors.id,
+                point_buffer.id,
+                coefficient_buffer.id,
+                claim_count,
+                point_len,
+            );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        let coefficient_free = self.free_device(coefficient_buffer);
+        let point_free = self.free_device(point_buffer);
+        let factors_free = self.free_device(factors);
+        result.and(coefficient_free).and(point_free).and(factors_free)
+    }
+
+    /// Assign distinct sparse entries inside a resident Fp2 slice.
+    pub fn fp2_scatter_device(
+        &mut self,
+        output: &DeviceBuffer<Fp2Repr>,
+        output_offset: usize,
+        output_len: usize,
+        indices: &[usize],
+        values: &[Fp2],
+    ) -> Result<(), AccelError> {
+        if self.kind != BackendKind::CudaResident
+            || indices.is_empty()
+            || indices.len() != values.len()
+            || indices.iter().any(|&index| index >= output_len)
+        {
+            return Err(AccelError::InvalidInput("invalid resident Fp2 scatter geometry"));
+        }
+        self.validate_buffer(output)?;
+        validate_region(output.len(), output_offset, output_len)?;
+        let mut unique = indices.to_vec();
+        unique.sort_unstable();
+        if unique.windows(2).any(|pair| pair[0] == pair[1]) {
+            return Err(AccelError::InvalidInput("resident Fp2 scatter indices must be distinct"));
+        }
+        #[cfg(feature = "cuda")]
+        {
+            let indices = indices.iter().map(|&index| index as u64).collect::<Vec<_>>();
+            let values = values.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>();
+            return self.cuda.as_mut().expect("CUDA kind without context").fp2_scatter_device(
+                output.id,
+                output_offset,
+                output_len,
+                &indices,
+                &values,
+            );
+        }
+        #[cfg(not(feature = "cuda"))]
+        {
+            let _ = values;
+            Err(AccelError::FeatureDisabled)
+        }
+    }
+
+    /// Add `coefficient * [1, point, ...]` to a resident Fp2 slice.
+    pub fn fp2_add_geometric_inplace_device(
+        &mut self,
+        values: &DeviceBuffer<Fp2Repr>,
+        offset: usize,
+        len: usize,
+        point: Fp2,
+        coefficient: Fp2,
+    ) -> Result<(), AccelError> {
+        if self.kind != BackendKind::CudaResident || len == 0 {
+            return Err(AccelError::InvalidInput("invalid resident Fp2 geometric geometry"));
+        }
+        self.validate_buffer(values)?;
+        validate_region(values.len(), offset, len)?;
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .expect("CUDA kind without context")
+                .fp2_add_geometric_inplace_device(
+                    values.id,
+                    offset,
+                    len,
+                    point.into(),
+                    coefficient.into(),
+                );
+        }
+        #[cfg(not(feature = "cuda"))]
+        {
+            let _ = (point, coefficient);
+            Err(AccelError::FeatureDisabled)
+        }
+    }
+
+    /// Evaluate a resident coefficient vector at one Fp2 point.
+    pub fn fp2_polynomial_eval_device(
+        &mut self,
+        values: DeviceSlice<'_, Fp2Repr>,
+        point: Fp2,
+    ) -> Result<Fp2, AccelError> {
+        if self.kind != BackendKind::CudaResident || values.is_empty() {
+            return Err(AccelError::InvalidInput(
+                "invalid resident Fp2 polynomial evaluation geometry",
+            ));
+        }
+        self.validate_device_slice(values, values.len())?;
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .expect("CUDA kind without context")
+                .fp2_polynomial_eval_device(values.buffer.id, values.offset, values.len, point.into())
+                .map(Fp2::from);
+        }
+        #[cfg(not(feature = "cuda"))]
+        {
+            let _ = point;
+            Err(AccelError::FeatureDisabled)
         }
     }
 
@@ -9953,6 +10155,85 @@ mod cuda_tests {
             assert_eq!(got, rho * equality + gamma * coefficient);
         }
         gpu.free_device(affine_weights).unwrap();
+        let second_point = monomial_point
+            .iter()
+            .enumerate()
+            .map(|(index, _)| Fp2::new(Fp::new(127 + index as u64), Fp::new(149 + index as u64)))
+            .collect::<Vec<_>>();
+        let batched_points =
+            monomial_point.iter().chain(&second_point).copied().collect::<Vec<_>>();
+        let batched_coefficients = [rho, gamma];
+        let batched_weights = gpu.alloc_device::<Fp2Repr>(av.len()).unwrap();
+        gpu.fp2_batched_eq_weights_device(
+            &batched_weights,
+            &batched_points,
+            monomial_point.len(),
+            &batched_coefficients,
+        )
+        .unwrap();
+        let got_batched = gpu
+            .download_device(&batched_weights, 0, av.len())
+            .unwrap()
+            .into_iter()
+            .map(Fp2::from)
+            .collect::<Vec<_>>();
+        for (index, &got) in got_batched.iter().enumerate() {
+            let expected = [monomial_point.as_slice(), second_point.as_slice()]
+                .into_iter()
+                .zip(batched_coefficients)
+                .map(|(point, coefficient)| {
+                    point.iter().enumerate().fold(coefficient, |weight, (coordinate_index, &z)| {
+                        let bit = point.len() - 1 - coordinate_index;
+                        weight * if index & (1 << bit) == 0 { Fp2::ONE - z } else { z }
+                    })
+                })
+                .sum::<Fp2>();
+            assert_eq!(got, expected);
+        }
+        gpu.free_device(batched_weights).unwrap();
+        let sparse = gpu.alloc_device::<Fp2Repr>(av.len()).unwrap();
+        gpu.zero_device(&sparse, 0, sparse.len()).unwrap();
+        let sparse_values = [rho, gamma];
+        gpu.fp2_scatter_device(&sparse, 0, sparse.len(), &[1, 6], &sparse_values)
+            .unwrap();
+        gpu.fp2_add_geometric_inplace_device(&sparse, 0, sparse.len(), challenge, rho)
+            .unwrap();
+        let expected_sparse = (0..av.len())
+            .scan(Fp2::ONE, |power, index| {
+                let mut value = rho * *power;
+                if index == 1 {
+                    value += sparse_values[0];
+                } else if index == 6 {
+                    value += sparse_values[1];
+                }
+                *power *= challenge;
+                Some(value)
+            })
+            .collect::<Vec<_>>();
+        let got_sparse = gpu
+            .download_device(&sparse, 0, sparse.len())
+            .unwrap()
+            .into_iter()
+            .map(Fp2::from)
+            .collect::<Vec<_>>();
+        assert_eq!(got_sparse, expected_sparse);
+        let evaluation_point = Fp2::new(Fp::new(211), Fp::new(223));
+        let expected_evaluation = expected_sparse
+            .iter()
+            .rev()
+            .fold(Fp2::ZERO, |acc, &coefficient| acc * evaluation_point + coefficient);
+        assert_eq!(
+            gpu.fp2_polynomial_eval_device(
+                DeviceSlice::new(&sparse, 0, sparse.len()).unwrap(),
+                evaluation_point,
+            )
+            .unwrap(),
+            expected_evaluation,
+        );
+        assert!(gpu
+            .fp2_scatter_device(&sparse, 0, sparse.len(), &[2, 2], &sparse_values)
+            .is_err());
+        gpu.free_device(sparse).unwrap();
         let folded_a = gpu.fp2_fold_rows_device(&da, 0, 1, av.len(), challenge).unwrap();
         let got_fold: Vec<Fp2> = gpu
             .download_device(&folded_a, 0, av.len() / 2)

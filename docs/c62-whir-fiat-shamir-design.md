@@ -1655,10 +1655,11 @@ not wired for this first run because its per-boundary `/proc`, allocator,
 smaps and NUMA probes would alter the measurement and require three new API
 layers.
 
-One clean single-A100 run requires a later explicit owner GO. Completion of
-both distinct roots is diagnostic success, not a timing pass. If runtime is
-operationally excessive, the predecessor manifest plus the external timeline
-is sufficient to stop manually; no watcher is allowed to advance into PCG.
+The owner granted GO on 2026-08-22 for exactly one clean single-A100 run of
+this diagnostic. Completion of both distinct roots is diagnostic success, not
+a timing pass. If runtime is operationally excessive, the predecessor
+manifest plus the external timeline is sufficient to stop manually; no
+watcher is allowed to advance into PCG and no retry is authorized.
 
 ### Inputs that C6.3 must carry forward
 

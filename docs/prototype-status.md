@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT — ROOT-CAUSE PROBE READY / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT — ONE A100 DIAGNOSTIC AUTHORIZED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,8 +10,8 @@ record; no external plan is authoritative.
 
 Read `c62-whir-fiat-shamir-design.md` §0.64 next.
 
-- **Status.** C6.2 remains a genesis timing hard stop. Local analysis has
-  prepared one cache-precommit-only A100 probe; no pod run is authorized yet.
+- **Status.** C6.2 remains a genesis timing hard stop. The owner authorized
+  exactly one cache-precommit-only run on the new single-A100 pod.
 - **Evidence.** The existing `77.422289502-s` lower bound is before slot/PCG.
   Static census attributes the path to two dense cache roots: `73 GiB`
   durable output, about `105 GiB` writes, `96 GiB` reads, `104/96 GiB`
@@ -24,10 +24,19 @@ Read `c62-whir-fiat-shamir-design.md` §0.64 next.
 - **Hard stop.** No retry, continuation, certificate or product gate is
   admitted. A latent continuation defect—recommitting the predecessor with a
   fresh mask while requiring the prior successor root—is now recorded.
-- **Resume.** One fresh single-A100 diagnostic requires explicit owner GO, a
-  clean checkpoint and existing setup/weights. It runs no regression suite or
-  full proof. The future GPT-2 Authenticated Sketched PCS experiment may use a
-  `30,000,000-B` total proof tolerance; this is not C6.2 byte credit.
+- **Resume.** Commit this authorization, confirm the clean checkpoint and use
+  existing setup/weights for the one diagnostic. No retry, regression suite or
+  full proof is authorized. The future GPT-2 Authenticated Sketched PCS
+  experiment may use a `30,000,000-B` total proof tolerance; this is not C6.2
+  byte credit.
+
+- **2026-08-22 — Owner GO for one C6.2 cache-precommit diagnostic.** The owner
+  supplied the new single-A100 endpoint and authorized immediate execution of
+  exactly the §0.64 probe. The run must use the clean checkpoint, existing
+  setup and weights, create-new output roots and the fail-closed watcher. It
+  ends after the two cache roots and may not enter WHIR lanes, slot/PCG, proof,
+  verifier, mutation, continuation or retry. Results remain `credit:false` and
+  exist only to select the C6.3 bottleneck work.
 
 - **2026-08-22 — C6.2 cache-precommit root-cause probe ready locally.** The
   `77.422289502-s` hard-stop window ends before the first slot or PCG

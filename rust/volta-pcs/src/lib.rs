@@ -16,6 +16,8 @@ pub mod c61_authenticated_whir_p3;
 mod c61_interactive_driver;
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub mod c62_gpu_whir;
+pub mod c63_authenticated_sketch;
+pub mod c63_sparse_h_closure;
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub use c61_interactive_driver::{
     c61_response_transcript_context_digest, spawn_c61_private_entropy_duplex_transcript_broker,
@@ -137,6 +139,25 @@ pub use c61_terminal_functional::{
     C61_SPARSE_RATIONAL_RESPONSE_TARGET_CORRECTION_BYTES,
     C61_SPARSE_RATIONAL_RESPONSE_TARGET_LIMBS, C61_SPARSE_RATIONAL_SEMANTIC_RESPONSE_OPENINGS,
     C61_TERMINAL_FUNCTIONAL_PROOF_REPETITIONS, C61_TERMINAL_FUNCTIONAL_RELATION_LOG2,
+};
+pub use c63_authenticated_sketch::{
+    c63_bolt_correction_cell, c63_bolt_correction_index,
+    c63_bolt_interleaved_coefficient_reference, c63_correction_state_root_reference,
+    c63_correction_tile_root_reference, c63_production_compact_cache_reference_census,
+    C63BoltCorrectionIndex, C63CompactCacheReference, C63CompactCacheReferenceCensus,
+    C63CorrectionRowReference, C63SparseSetupDescriptor, C63SparseSetupReference,
+    C63SparseSketchEdge, C63SparseSketchReference, C63_BOLT_COLUMNS, C63_BOLT_COLUMN_LOG2,
+    C63_BOLT_LDPC_CHECK_DEGREE, C63_BOLT_LDPC_COLUMN_DEGREE, C63_BOLT_LIVE_ROWS_PER_POSITION,
+    C63_BOLT_ROWS, C63_BOLT_ROWS_PER_POSITION, C63_BOLT_ROW_LOG2, C63_BOLT_SKETCH_ROWS,
+    C63_BOLT_SKETCH_ROW_LOG2, C63_SPARSE_SETUP_DESCRIPTOR_BYTES,
+};
+pub use c63_sparse_h_closure::{
+    prove_c63_sparse_h_closure_reference, verify_c63_sparse_h_closure_reference,
+    C63SparseHClosureError, C63SparseHClosureProof, C63SparseHClosureReferenceAudit,
+    C63SparseHClosureStatement, C63_SPARSE_H_PRODUCTION_FRAMED_BYTES,
+    C63_SPARSE_H_PRODUCTION_FRAMING_BYTES,
+    C63_SPARSE_H_PRODUCTION_FULL_CORRELATIONS_PER_TAPE,
+    C63_SPARSE_H_PRODUCTION_ROUNDS, C63_SPARSE_H_PRODUCTION_ROUND_PAYLOAD_BYTES,
 };
 pub use c6_authenticated_output_link::{
     prove_c6_authenticated_output_link_persisted_cuda,

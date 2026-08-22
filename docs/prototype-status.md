@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE — C6.3 READY / NOT OPEN)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — T16 + FINITE-N + SAMPLER + SPARSE-CLOSURE REFERENCES GREEN; ADAPTER/PARTITION/PRIVACY/SOUNDNESS HARD STOPS / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,30 +8,205 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-Read `c62-whir-fiat-shamir-design.md` §0.65 next.
+Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 
-- **Status.** The sole C6.2 cache-precommit diagnostic completed on one A100
-  at clean source `c2bbd6b`; no retry or full proof is authorized. C6.3 is
-  ready to design but is not open.
-- **Evidence.** Exact precommit wall is `275.113308912 s`; predecessor and
-  successor occupy about `141.39 / 133.37 s`. It produced distinct roots,
-  `78,383,153,576 B` durable spill, `103,079,256,064 B` reads and
-  `112,742,957,056 B` writes. Peak RSS is `15,932,391,424 B`; memory capacity
-  is not the observed bottleneck.
-- **Attribution.** One-second file boundaries assign about `25.25 s` (9.18%)
-  to state/masks/transforms, `67.71 s` (24.61%) to dense encoding/writes,
-  `112.11 s` (40.75%) to oracle reread/initial hash and `69.69 s` (25.33%)
-  to outer trees. The earlier 75% CPU-majority hypothesis is refuted.
-- **Consequence.** Keeping GW4 (`7.359403833 s`) and its 3-s reserve leaves
-  only `4.640596167 s` for cache binding: a `59.28x` precommit reduction.
-  Removing the predecessor and successor hash/tree work while retaining the
-  successor front end and dense encoding still projects `54.82 s` and fails.
-- **Hard stop / resume.** No more C6.2 pod work, PCG, certificate, verifier or
-  continuation is admitted. A future C6.3 must bind a setup-owned zero
-  predecessor, promote accepted successors, sketch only live/delta K/V data
-  on GPU, avoid dense masks/codewords and stay below `30,000,000 B`. Repository
-  export to owner-designated pods remains preauthorized; a new experiment GO
-  is still required.
+- **Status.** Autonomous local C6.3 is open. Compact semantics, the D22-by-16
+  correction root, exact-ensemble sampler, one-`rho` pullback and scaled
+  authenticated sparse-`H` closure are green. No pod is open.
+- **Evidence.** C6.2 precommit remains `275.113308912 s`, with about `249.51 s`
+  in dense encoding, persistence, reread and trees. Keeping GW4 plus its 3-s
+  reserve leaves `4.640596167 s` for cache binding. The finite D22 distance
+  screen is now rationally bounded at `>188 bits`; all C6.3 work remains
+  `credit:false`.
+- **Selected construction.** Bolt is adapted inside Hiding-WHIR. Deterministic
+  roots bind `D'` and `A=C^16(H D')`; `A` is physically rooted as D19-by-32.
+  One `Fp2^16` mix yields `w=C(D'*rho)` and `y=A*rho`. Four fresh randomized
+  WHIR cores prove decoded D22/D19 messages sequentially; they never encode
+  `w/y` again. The two secret-MAC equations stay separate; GW4 is unchanged.
+- **Checks.** Complete certificate `<=30,000,000 B`; setup `<150,000,000 B`;
+  setup plus first `<172,000,000 B`; `pi_final <4,500,000 B`; warm A100 prover
+  `<15 s`; four-thread verifier `<5 s` with `<=8,000,000,000 B` additional
+  RSS; soundness `>=78.80929487391641 bits`.
+- **Hard stop / resume.** The 104-bit D22/D19 profile needs a pre-encoded-oracle
+  adapter and a codec supporting 17/16-bit proof-of-work. Paired `q_A`, tensor
+  link, public/designated separation, privacy, reusable GPU ownership,
+  non-grindable public-XOF model and complete soundness remain open. Known
+  whole-core terms optimistically screen at `81.06 bits`; counting only 60
+  WHIR phase events gives `78.008`, while expected proof-of-work gives
+  `78.796`. Neither receives credit.
+  A future pod requires a closed candidate, new endpoint and owner GO; it runs
+  exactly two real responses.
+
+- **2026-08-22 — C6.3 selects a pre-encoded WHIR adapter; sparse-`H` closure
+  reference is green.** Bolt remains inside WHIR. Deterministic roots bind
+  `D'` and `A=C^16(H D')` before one `rho in Fp2^16`; `A` is conceptually
+  D20-by-16 but is rooted in WHIR's first-fold order as D19-by-32, with 256-B
+  leaves. The response constructs `m=D'rho`, `u=Hm`, `w=C(m)` and `y=C(u)`.
+  The intended adapter proves the decoded D22/D19 messages while supplying
+  already encoded `w/y` as initial oracles; sending `w/y` through ordinary
+  WHIR would incorrectly encode them again. Persistent randomized Hiding-WHIR
+  oracles are forbidden: four fresh randomized base-field roots are made per
+  response, while both MAC equations stay separate.
+  The selected 104-bit screen uses D22 rates `[1,2,3,3,4,5,6,7]` with 17 bits
+  of proof-of-work and D19 rates `[1,2,3,4,5,6]` with 16 bits. Two bodies of
+  each size total `4,488,880 B`. At `q_X=4,378`, the counted D22 systematic
+  frontier is `1,943,300 B`. A paired projected query set gives `q_A=243` and
+  a counted `148,164-B` aligned-`A` frontier; independent limb sets give the
+  `q_A=486`, `280,772-B` fallback. The authenticated sparse relation is one
+  22-round degree-two sumcheck: `1,496 B`, 44 full correlations per tape, and
+  error at most `64/|Fp2|`. Paired public bulk is `6,580,344 B`. The projected
+  tail gives a `22,995,717-B` certificate; charging the strict `pi_final` cap
+  instead gives `24,791,207 B`, leaving `5,208,793 B` before outer framing.
+  Query sharing is not required for the ceiling: the independent `q_A<=486`
+  fallback projects `24,923,815 B`, with `5,076,185 B` remaining.
+  Known soundness terms are `81.0623977038 bits` under the inherited `2^20`
+  transcript-query bound only if each core has one 104-bit error event; that
+  whole-core theorem is absent. Unioning only the 60 proof-of-work phase events
+  already gives `78.0076537129 bits`. Separately, adding the `3,997,696`
+  expected grinding trials gives `Q=5,046,272`, above the gate maximum
+  `4,998,635`, and only `78.7956111653 bits`; an expectation is not a bound.
+  Raising to 105 bits is worse in the exact union: expected grinding gives
+  `78.5237216403 bits`, and its monolithic `2^25` cap gives
+  `76.5878519781 bits`. The selected resolution is an independently modeled
+  `H_pow` plus `H_fs`, not a label on one challenger.
+  Screen v9 passes; focused C6.3 Rust tests pass 8/8. The full workspace exits
+  zero with the registered unrelated
+  `native_persistence_source_guard_bypasses_hidden_u_owner` baseline test
+  skipped; that test was separately reproduced as failing on `HEAD`.
+  Every value remains `credit:false`.
+  The current C6.1 codec forbids proof-of-work and lacks the pre-encoded-oracle
+  API. A whole-core error theorem plus two-oracle grinding model, production
+  root/WHIR integration, privacy, partition, complete soundness and A100
+  timing remain hard stops; no pod is authorized.
+
+- **2026-08-22 — Finite D22 distance screen closes without transcendental
+  trust.** The official arXiv v3 TeX source (archive SHA-256
+  `5fbb160a...56a`) confirms YHC Theorem 3.6's exact first-moment formula and
+  ensemble. Rational Taylor comparisons and endpoint witnesses `1/4, 2/5`
+  prove `Pr[d_min <= 0.049*2^22] < 2^-188`; the tighter Decimal value
+  `211.887438339...` is diagnostic only. Screen v6 executes every rational
+  comparison and keeps all protocol gates false. The screen applies only to a
+  uniform permutation of all D26 sockets, repeated edges allowed, with
+  independent uniform labels in nonzero Goldilocks. Exact generation and
+  cryptographic-randomness accounting remain hard stops. Sparse `H` now has
+  exact live work censuses: `88,473,600` multiply-adds at genesis and
+  `29,491,200` for the continuation delta, never the full zero-padded billion
+  operations. This improves confidence but grants no codec, soundness, timing
+  or pod credit.
+
+- **2026-08-22 — Exact first moment bypasses Bolt's hidden LDPC constant.**
+  YHC Theorem 3.6 gives the finite expected weight distribution, so C6.3 need
+  not interpret Theorem 6.2's asymptotic `Theta(n^-7)`. The coefficient bound,
+  the exact binomial-mode inequality, Theorem 5.6's decrease-then-increase
+  shape and a union bound give
+  `E[A_l] <= (16n+1) exp(n phi(l/n,y))`. For `n=2^22`,
+  `L=floor(0.049n)=205,520`, rational witnesses `y=1/4` at `l=1` and `y=2/5`
+  at `l=L` give endpoint exponents `-255.536357631 / -66,623.172724601`
+  bits. Therefore `Pr[d_min <= L] <= 2^-211.887438339` without the hidden
+  constant or threshold. Analytic screen v6 reproduces the result with
+  80-digit Decimal and keeps all gates false. The formula was independently
+  reconstructed from the local AnyDoc Markdown, but a directed MPFR/Arb or
+  proof-assistant check still must cover the transcendental inequalities and
+  the exact setup sampler. This is a strong finite-size candidate, not
+  complete soundness or gate credit; the public/designated and tensor proofs
+  remain hard stops. No pod is authorized.
+
+- **2026-08-22 — T16 typed bridge is green; finite-length LDPC constant remains
+  a hard stop.** AnyDoc converted Yang--Honold--Chen--Zhang--Qiu to
+  `sota/2010-2030-weight-distributions-regular-ldpc.{pdf,md}` (SHA-256
+  `1181752d...81` / `2be6b803...3d`). Its Theorem 6.2 confirms the Bolt setup
+  term as asymptotic `Theta(n^-7)` for degree 16, not an explicit `2^-154`
+  bound at `n=2^22`: the constant and valid-length threshold are absent. An
+  84 / 90 / 96-bit claim would need respectively a finite constant no larger
+  than `2^70 / 2^64 / 2^58`, plus the threshold. The numerical
+  `gamma=0.049` screen therefore remains `credit:false`. The D22-by-16 Rust
+  reference now commits 3,072 response-owned rows and fills the other 1,024
+  rows of each token tile from the setup virtual leaf; this matches the
+  `58,982,400 / 19,660,800-B` genesis/continuation payload census. It also
+  compiles each tape's eight-element post-commit row challenge back to the
+  identical semantic correction functional, returning zero on the other
+  tape. Focused tests pass 4/4 and analytic screen v5 passes. Direct scalar D26
+  Hiding-WHIR is retained only as a control: its current 1,063,480-B body is a
+  75-bit diagnostic profile, accepted-root reuse is absent and it does not
+  satisfy the selected Bolt-inside-WHIR contribution. No gate credit or pod
+  authority is granted.
+
+- **2026-08-22 — Goldilocks distance reopens the C6.3 layout and selects the
+  `t=16` public-bulk screen.** A stdlib Decimal port reproduces Bolt's
+  `q=2^32` root `0.094114390986...`; with Goldilocks it instead obtains
+  `0.049794378834...`. The conservative non-credit value `gamma=0.049` needs
+  3,536 / 3,789 / 4,041 systematic rows at 84 / 90 / 96 spot bits. At 90 bits
+  the prior D19-by-128 fixed-row opening is `4,738,496 B` before framing, so it
+  cannot inhabit the `<4,500,000-B` `pi_final`; post-`rho` scalar leaves are
+  also non-binding under a raw-row Merkle root. The new front-runner permutes
+  the same corrections into D22-by-16 append tiles. Its generic 90-bit opening
+  is `1,707,296 B`; three historical 75-bit D23 Hiding-WHIR body ceilings give
+  a `4,312,160-B` public-bulk screen. C6.3 explicitly proposes that
+  Delta-independent tagless material enter the public argument while
+  common-X, two independent Delta closures and the residual/auxiliary link
+  remain in `pi_final`. Removing only the two cache cohorts, three cache-only
+  components and their `120-B` headers screens the pre-closure tail at
+  `2,703,013 B`, leaving
+  `1,796,986 B`; charging the strict `pi_final` cap projects `22,523,023 B`
+  complete before new public framing, under 30 MB. This separation deviates
+  from historical C6 accounting and receives `credit:false` until a theorem
+  and closed codec count every byte. No pod is authorized.
+
+- **2026-08-22 — C6.3 selects append-aligned Bolt `t=128` and freezes the
+  typed-root reference.** The four semantic columns `K0,K1,V0,V1` are
+  permuted, without changing the witness, into D19 rows and 128 columns. Row
+  bits are channel-low-9 plus all ten position bits; column bits are tape, K/V,
+  layer and channel-high. Thus each new token replaces one D9 virtual tile and
+  the upper tree is only D10. Genesis/continuation carry raw row payloads of
+  `78,643,200 / 26,214,400 B` of row payload without materializing the
+  `536,870,912-B` matrix. Compared with `t=4`, the `W` and sparse-`H` domains
+  shrink 32-fold, while total `H*D` arithmetic does not. One root and one
+  D16-by-128 sketch are shared; the two tape MAC closures remain independent.
+  The Rust reference proves the permutation round trip and rejects value,
+  row-order, padding, birth-epoch and allocation-scope mutations; focused tests
+  pass 3/3. The earlier `23,560,000-B` arithmetic is now explicitly historical:
+  `2.09 MB` was a complete Bolt proof, not one Volta body. This remains
+  `credit:false`; tensor Hiding-WHIR, exact row-distance soundness, codec bytes,
+  privacy and CUDA timing are open hard stops.
+
+- **2026-08-22 — C6.3 selects Bolt precode inside Hiding-WHIR; R1 algebra is
+  green.** The systematic object is now the canonical two-tape correction
+  state `D=X-R`, not clear K/V; child roots bind correction/domain/index/epoch,
+  while dedicated Hiding-WHIR lanes bind and hide `H*D`. A root of the sketch
+  alone is non-binding. The conservative proof retains two repetition-specific
+  transient code switches, systematic spot checks and the sparse `H` relation; WHIR
+  replaces the two proximity layers, not those relations. A verifier-persistent
+  MAC log could remove the code switch, but the two raw genesis correction
+  tapes cost `44,236,800 B` and C6.2 does not persist corrected per-cell keys,
+  so that shortcut is not admitted. The integration seam is the persisted
+  cache PCS/output-link join after pending claims; GW4 and source aggregation
+  remain unchanged. The compact reference now also executes sparse `H`, its
+  incremental update and transposed authenticated functional; focused tests
+  pass 2/2. This is `credit:false`: Goldilocks distance, full binding, complete
+  Fiat-Shamir privacy, codec bytes and CUDA cost remain R1 hard stops.
+
+- **2026-08-22 — C6.3 local design opens; compact semantic reference is
+  green.** The owner relaxed only the first GPT-2 complete-certificate ceiling
+  to `30,000,000 B`, accepted the warm-service prover clock and authorized
+  autonomous DRY design/implementation. Fixed setup, model weights and the
+  provider preload are one-time per identical process/model and may serve
+  several connections; K/V state, sketch head and real/AES PCG remain
+  connection-scoped. The first future record consists of real `0 -> 150` and
+  `150 -> 200` responses in one process: response one records full cold
+  deployment-to-accept plus a separate response prover clock, and response two
+  records the unassisted warm path. It runs neither 17 certificates nor four
+  burns and must set `session_gate_evaluated:false`. The selected design keeps
+  the existing D24 coordinate statement, promotes only verified successors,
+  computes `S_next = S_old + H*delta` from authenticated live K/V values, uses
+  virtual zeros and requires one private response-local consistency closure.
+  Bolt upstream commit `3832e47...d525f2` is not vendored because it lacks
+  Goldilocks, CUDA, hiding, a complete codec and the non-amortized closure. The
+  C63-R0 Rust reference matches the dense scaled layout cell-for-cell, rejects
+  prefix/order/count mutations and freezes production censuses; its focused
+  test passes 1/1. The stdlib budget screen fixes the `4.640596167-s` cache
+  allocation and the `23,560,000-B` Bolt estimate as `credit:false`. R1 must
+  prove systematic-plus-sketch binding, authenticated delta linkage, privacy,
+  exact Goldilocks/Fp2 soundness and codec bytes before any CUDA or pod credit.
 
 - **2026-08-22 — C6.2 cache-precommit diagnostic completes; C6.3 inputs are
   ready.** Clean public checkpoint `c2bbd6b` was published with GitHub-managed

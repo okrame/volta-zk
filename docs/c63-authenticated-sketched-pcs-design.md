@@ -1,6 +1,6 @@
 # C6.3 Authenticated Sketched WHIR Design
 
-Status: **R0 GREEN / R1 T16 + FINITE-N + SAMPLER + SPARSE-CLOSURE REFERENCES GREEN / ADAPTER + PARTITION + PRIVACY + SOUNDNESS HARD STOPS / NO POD / NO GATE CREDIT**
+Status: **R0 GREEN / R1 T16 + FINITE-N + SAMPLER + SPARSE-CLOSURE + HONEST PRE-ENCODED REFERENCES GREEN / VERIFIED INITIAL LINK + PARTITION + PRIVACY + SOUNDNESS HARD STOPS / NO POD / NO GATE CREDIT**
 
 This document is the authority for C6.3. It replaces C6.2 only for new C6.3
 work; C6.2 code, artifacts and dispositions remain immutable evidence. The
@@ -155,8 +155,10 @@ Without paired query sharing, public bulk is `6,712,952 B` and the same strict
 projection is `24,923,815 B`, still leaving `5,076,185 B`.
 
 This remains `credit:false`. The existing codec forbids the required
-proof-of-work, the pre-encoded-oracle API is absent, and the inherited
-`2^20` transcript-query bound omits grinding. Known terms give
+proof-of-work. The cached-base API and an honest D19-by-32 CPU projection are
+now executable, but the verifier-visible link from the accepted `A` root to
+the randomized initial root is absent. The inherited `2^20` transcript-query
+bound also omits grinding. Known terms give
 `81.0623977038 bits` only under an unproved one-error-per-core model. Unioning
 just the 60 proof-of-work phase events gives `78.0076537129 bits` even before
 grinding. Adding only the `3,997,696` expected trials instead gives
@@ -412,6 +414,30 @@ therefore builds four fresh randomized base-field initial roots, one per limb
 core, and links them to deterministic `D'`, `A`, `w` and `y` inside the same
 transcript.
 
+The CPU reference now packs the physical `A` rows as
+`[column][fold_position]`, projects both limbs of `A*rho`, and obtains exactly
+the existing fixed-base encoding of the correspondingly projected decoded
+message. Reusing that fixed base with two independent random tapes produces
+different roots and two valid WHIR proofs. Mutating an authenticated `A` row
+or the honest projection is rejected. This proves the layout and honest
+linearity only; it is not yet a malicious-prover link.
+
+A virtual row `A*rho + mask` alone is insufficient. A dishonest prover could
+choose `mask = C(u)-A*rho+Enc(0,zeta)` and make ordinary WHIR valid for an
+unrelated `A`. The linked adapter must additionally prove, at the same initial
+query positions, that
+
+```text
+randomized_initial_row - project_rho(A_row) = Enc(0,zeta)_row.
+```
+
+The left side is obtained from the fresh randomized-root opening and the
+authenticated `A` opening. A second equation inside the first WHIR round ties
+it to the already tracked initial randomness `zeta`. This needs no new random
+challenge or standalone proof body, but it changes the C6.3 MMCS proof and
+the first-round relation. The historical no-link verifier must remain
+byte-identical.
+
 `H` and the base code act independently on the two Goldilocks limbs of `Fp2`.
 The support of a nonzero extension-field word is the union of its two base
 supports, so the base-code distance transfers; treating the two limbs as one
@@ -476,6 +502,13 @@ not four unrelated codewords. The target-decomposition lemma, paired MMCS and
 resident adapter do not yet exist in the production codec. Base-field row
 challenges are not assumed: one Goldilocks draw has only about 64 bits and
 cannot alone cover the complete soundness target.
+
+The existing `commit_c62_cached_fixed_base` seam already avoids double
+encoding for the honest CPU path. The remaining adapter work is specifically
+the verified initial link above: projected `A` rows enter the same initial
+queries and the row difference is constrained to the encoding of fresh mask
+coefficients. Calling the cached-base seam without that second equation is a
+diagnostic only.
 
 `m` has D22 `Fp2` symbols and `w=C(m)` has D23 symbols at rate `1/2`; `u` has
 D19 `Fp2` symbols and `y=C(u)` has D20. The 104-bit analytic adapter screen
@@ -624,8 +657,10 @@ prove a sub-15-second result. C6.3 also requires:
    do not change or rebenchmark GW4's D27/D28 chains;
 3. **one batched consistency envelope:** use persistent `A=C^16(H D')`, fresh
    `w=C(D'*rho)` and four sequential base-field WHIR cores over decoded D22/D19
-   limb messages with pre-encoded `w/y` initial oracles; independent
-   per-column closures and double encoding are forbidden;
+   limb messages with pre-encoded `w/y` initial oracles; for the `y` cores,
+   authenticate projected `A` rows and constrain the randomized-row difference
+   to `Enc(0,zeta)` inside the first round; independent per-column closures and
+   double encoding are forbidden;
 4. **a compact cache arithmetic backend:** keep the existing authenticated
    round shell and source aggregation, but derive coefficients analytically;
    do not allocate the four D23 coefficient/witness vectors;
@@ -706,6 +741,13 @@ screen then gives `6,712,952 B` public bulk, `23,128,325 B` with the projected
 tail, or `24,923,815 B` under the strict `pi_final` cap. The last case still
 has `5,076,185 B` of headroom before outer framing.
 
+The smallest linked implementation may serialize the two `A` multiproofs
+separately before an outer union driver exists. That deliberately lazier
+fallback costs `296,328 B` for the two counted `A` openings, giving
+`6,728,508 B` public bulk, `23,143,881 B` with the projected tail, or
+`24,939,371 B` under the strict `pi_final` cap. It still leaves `5,060,629 B`
+before outer framing. All three layouts remain analytic and `credit:false`.
+
 The optimistic 104-bit union has `81.0623977038` bits under the inherited
 `2^20` transcript-query bound, but assumes one 104-bit error event per core.
 The current configuration has at least 60 proof-of-work phase events; unioning
@@ -749,7 +791,7 @@ Hiding randomness, typed
 framing and the Volta `H` closure may move the final size in either direction.
 
 The executable screen is `scripts/budget_c63_authenticated_sketch.py` (schema
-v9). Every gate stays `evaluated:false` until a canonical C6.3 codec is produced and
+v10). Every gate stays `evaluated:false` until a canonical C6.3 codec is produced and
 verified. In particular, `pi_final`, exact soundness and complete prover time
 are unknown rather than inferred from the 23.56 MB estimate.
 
@@ -783,6 +825,9 @@ preceding design step; it does not silently relax a statement.
   complete transcript privacy;
 - replace the scaled sparse-`H` verifier's full `m/u` inputs with the terminal
   D22/D19 WHIR openings while preserving its 1,496-B codec and two MAC tapes;
+- replace the honest cached-base check with a projected initial MMCS opening
+  and the first-round mask-only equation; include an attack test where plain
+  WHIR accepts a substituted base and the linked C6.3 verifier rejects it;
 - recompute the complete soundness union for Goldilocks/Fp2;
 - reproduce the green 188-bit rational distance screen independently and bind
   it to the production version of the exact-ensemble D22 setup sampler;
@@ -857,7 +902,8 @@ a raw-K/V Merkle tree or a sketch-only commitment.
   distance bound without changing the query count: **92--98%**.
 - Probability that the production setup sampler, public-XOF term, Fp2 opening
   terms, two-oracle proof-of-work model, privacy and complete transcript union
-  close under the 104-bit profile: **50--65%**.
+  close under the 104-bit profile: **45--60%**. The newly explicit mask-only
+  link is locally implementable but adds one proof and privacy obligation.
 - Probability that eight literal non-amortized Bolt closures reach `<15 s`:
   **below 5%**.
 

@@ -117,6 +117,7 @@ C63_SPARSE_H_CLOSURE_ERROR_NUMERATOR = 64
 C63_MERKLE_MULTIPROOF_COUNT_BYTES = 4
 C63_PAIRED_A_QUERIES = 243
 C63_INDEPENDENT_LIMB_A_QUERIES = 486
+C63_INDEPENDENT_A_PROOFS = 2
 C63_SPARSE_SETUP_DESCRIPTOR_BYTES = 80
 C63_SPARSE_SETUP_SOCKET_LOG2 = 26
 C63_SPARSE_SETUP_SOCKET_COUNT = 1 << C63_SPARSE_SETUP_SOCKET_LOG2
@@ -646,6 +647,16 @@ def build_report() -> dict[str, Any]:
         + 2 * C63_MERKLE_MULTIPROOF_COUNT_BYTES
         + C63_PROFILED_WHIR_BODIES_BYTES
     )
+    t16_independent_separate_public_bulk_screen = (
+        t16_full_opening["opening_bytes_before_framing"]
+        + C63_MERKLE_MULTIPROOF_COUNT_BYTES
+        + C63_INDEPENDENT_A_PROOFS
+        * (
+            t16_encoded_sketch_paired_opening["opening_bytes_before_framing"]
+            + C63_MERKLE_MULTIPROOF_COUNT_BYTES
+        )
+        + C63_PROFILED_WHIR_BODIES_BYTES
+    )
     certificate_at_strict_pi_cap_before_new_public_framing = (
         C62_CERTIFICATE_CODEC_CEILING_BYTES
         - C62_PI_FINAL_MAX_BYTES
@@ -674,6 +685,19 @@ def build_report() -> dict[str, Any]:
         - C62_PI_FINAL_MAX_BYTES
         + projected_pi_final_with_sparse_h
         + t16_independent_limb_public_bulk_screen
+    )
+    independent_separate_certificate_at_strict_pi_cap = (
+        C62_CERTIFICATE_CODEC_CEILING_BYTES
+        - C62_PI_FINAL_MAX_BYTES
+        + PI_FINAL_LIMIT_BYTES
+        - 1
+        + t16_independent_separate_public_bulk_screen
+    )
+    independent_separate_certificate_with_projected_pi = (
+        C62_CERTIFICATE_CODEC_CEILING_BYTES
+        - C62_PI_FINAL_MAX_BYTES
+        + projected_pi_final_with_sparse_h
+        + t16_independent_separate_public_bulk_screen
     )
     legacy_state_entries = SLOTS * PADDED_ENTRIES_PER_SLOT
     compact_state_entries = LIVE_SLOTS * PADDED_ENTRIES_PER_SLOT
@@ -757,7 +781,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "schema": "volta-c63-authenticated-sketch-analytic-screen-v9",
+        "schema": "volta-c63-authenticated-sketch-analytic-screen-v10",
         "credit": False,
         "transfer_to_c63_gates": False,
         "gates": gates,
@@ -965,7 +989,9 @@ def build_report() -> dict[str, Any]:
                         C63_UNMODIFIED_DOUBLE_ENCODED_WHIR_BODIES_BYTES
                     ),
                     "current_c61_codec_forbids_pow": True,
-                    "preencoded_initial_oracle_adapter_missing": True,
+                    "honest_preencoded_cached_base_reference_green": True,
+                    "verifier_linked_projected_adapter_missing": True,
+                    "fresh_mask_encoding_relation_missing": True,
                     "credit": False,
                 },
                 "legacy_profile_soundness_is_below_gate": True,
@@ -1007,6 +1033,7 @@ def build_report() -> dict[str, Any]:
                     - certificate_with_projected_pi_before_outer_framing
                 ),
                 "independent_limb_fallback": {
+                    "deduplicated_union_requires_outer_a_opening_driver": True,
                     "public_bulk_bytes": t16_independent_limb_public_bulk_screen,
                     "certificate_with_projected_pi_bytes": (
                         independent_limb_certificate_with_projected_pi
@@ -1021,6 +1048,30 @@ def build_report() -> dict[str, Any]:
                     "strict_pi_cap_headroom_bytes": (
                         CERTIFICATE_LIMIT_BYTES
                         - independent_limb_certificate_at_strict_pi_cap
+                    ),
+                },
+                "independent_separate_a_proofs_minimal_fallback": {
+                    "a_opening_bytes_with_counts": C63_INDEPENDENT_A_PROOFS
+                    * (
+                        t16_encoded_sketch_paired_opening[
+                            "opening_bytes_before_framing"
+                        ]
+                        + C63_MERKLE_MULTIPROOF_COUNT_BYTES
+                    ),
+                    "public_bulk_bytes": t16_independent_separate_public_bulk_screen,
+                    "certificate_with_projected_pi_bytes": (
+                        independent_separate_certificate_with_projected_pi
+                    ),
+                    "projected_pi_headroom_bytes": (
+                        CERTIFICATE_LIMIT_BYTES
+                        - independent_separate_certificate_with_projected_pi
+                    ),
+                    "certificate_at_strict_pi_cap_bytes": (
+                        independent_separate_certificate_at_strict_pi_cap
+                    ),
+                    "strict_pi_cap_headroom_bytes": (
+                        CERTIFICATE_LIMIT_BYTES
+                        - independent_separate_certificate_at_strict_pi_cap
                     ),
                 },
                 "partition_rule": (
@@ -1203,6 +1254,7 @@ def build_report() -> dict[str, Any]:
     assert C63_D19_WHIR_ROUND_QUERIES[0] == C63_PAIRED_A_QUERIES
     assert t16_profiled_public_bulk_screen == 6_580_344
     assert t16_independent_limb_public_bulk_screen == 6_712_952
+    assert t16_independent_separate_public_bulk_screen == 6_728_508
     assert (
         C62_PI_FINAL_MAX_BYTES
         - C62_CACHE_COHORT_LINK_SAVING_BYTES
@@ -1229,6 +1281,9 @@ def build_report() -> dict[str, Any]:
     assert independent_limb_certificate_with_projected_pi == 23_128_325
     assert independent_limb_certificate_at_strict_pi_cap == 24_923_815
     assert CERTIFICATE_LIMIT_BYTES - independent_limb_certificate_at_strict_pi_cap == 5_076_185
+    assert independent_separate_certificate_with_projected_pi == 23_143_881
+    assert independent_separate_certificate_at_strict_pi_cap == 24_939_371
+    assert CERTIFICATE_LIMIT_BYTES - independent_separate_certificate_at_strict_pi_cap == 5_060_629
     assert setup_with_sparse_descriptor == 101_197_697
     assert setup_plus_max_certificate == 131_197_697
     assert setup_plus_projected_first == 124_193_414

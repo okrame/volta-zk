@@ -135,6 +135,25 @@ where
         params: ProtocolParameters,
         zk: ZkParameters,
     ) -> Result<Self, ZkConfigError> {
+        let query_security_level = params.security_level.saturating_sub(params.pow_bits);
+        Self::new_with_query_security_level(num_variables, params, zk, query_security_level)
+    }
+
+    /// Derives a full HVZK configuration with an explicit proximity-query
+    /// security target for the inner WHIR protocol.
+    ///
+    /// Mask queries still target the full protocol security level because
+    /// their branch has no proof-of-work contribution.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`Self::new`].
+    pub fn new_with_query_security_level(
+        num_variables: usize,
+        params: ProtocolParameters,
+        zk: ZkParameters,
+        query_security_level: usize,
+    ) -> Result<Self, ZkConfigError> {
         if zk.ell_zk < 3 {
             return Err(ZkConfigError::MaskLengthTooSmall { ell_zk: zk.ell_zk });
         }
@@ -147,7 +166,11 @@ where
         let security_level = params.security_level;
         let soundness_type = params.soundness_type;
 
-        let inner = WhirConfig::<EF, F, Challenger>::new(num_variables, params)?;
+        let inner = WhirConfig::<EF, F, Challenger>::new_with_query_security_level(
+            num_variables,
+            params,
+            query_security_level,
+        )?;
         let n_rounds = inner.n_rounds();
 
         // Derive the mask spot-check count t_zk.

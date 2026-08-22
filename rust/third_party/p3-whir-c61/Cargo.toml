@@ -32,3 +32,7 @@ serde = { version = "1.0", default-features = false, features = ["derive", "allo
 spin = "0.12.0"
 thiserror = { version = "2.0", default-features = false }
 tracing = { version = "0.1.44", default-features = false, features = ["attributes"] }
+
+[dev-dependencies]
+p3-blake3 = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c" }
+p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "66e290615de1858f2f2f6a804158064c406cda1c" }

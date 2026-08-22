@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — T16 + FINITE-N + SAMPLER + SPARSE-CLOSURE REFERENCES GREEN; ADAPTER/PARTITION/PRIVACY/SOUNDNESS HARD STOPS / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — T16 + FINITE-N + SAMPLER + SPARSE-CLOSURE + HONEST PRE-ENCODED REFERENCES GREEN; VERIFIED INITIAL LINK/PARTITION/PRIVACY/SOUNDNESS HARD STOPS / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,32 +10,55 @@ record; no external plan is authoritative.
 
 Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 
-- **Status.** Autonomous local C6.3 is open. Compact semantics, the D22-by-16
+- **Status.** Local C6.3 is open. Compact semantics, the D22-by-16
   correction root, exact-ensemble sampler, one-`rho` pullback and scaled
-  authenticated sparse-`H` closure are green. No pod is open.
+  sparse-`H` closure are green. Honest D19-by-32 pre-encoded CPU is green. No
+  pod is open.
 - **Evidence.** C6.2 precommit remains `275.113308912 s`, with about `249.51 s`
   in dense encoding, persistence, reread and trees. Keeping GW4 plus its 3-s
   reserve leaves `4.640596167 s` for cache binding. The finite D22 distance
-  screen is now rationally bounded at `>188 bits`; all C6.3 work remains
+  screen is rationally bounded at `>188 bits`; all C6.3 work remains
   `credit:false`.
 - **Selected construction.** Bolt is adapted inside Hiding-WHIR. Deterministic
   roots bind `D'` and `A=C^16(H D')`; `A` is physically rooted as D19-by-32.
   One `Fp2^16` mix yields `w=C(D'*rho)` and `y=A*rho`. Four fresh randomized
   WHIR cores prove decoded D22/D19 messages sequentially; they never encode
-  `w/y` again. The two secret-MAC equations stay separate; GW4 is unchanged.
+  `w/y` again. MAC equations stay separate; GW4 is unchanged.
 - **Checks.** Complete certificate `<=30,000,000 B`; setup `<150,000,000 B`;
   setup plus first `<172,000,000 B`; `pi_final <4,500,000 B`; warm A100 prover
   `<15 s`; four-thread verifier `<5 s` with `<=8,000,000,000 B` additional
   RSS; soundness `>=78.80929487391641 bits`.
-- **Hard stop / resume.** The 104-bit D22/D19 profile needs a pre-encoded-oracle
-  adapter and a codec supporting 17/16-bit proof-of-work. Paired `q_A`, tensor
-  link, public/designated separation, privacy, reusable GPU ownership,
-  non-grindable public-XOF model and complete soundness remain open. Known
-  whole-core terms optimistically screen at `81.06 bits`; counting only 60
-  WHIR phase events gives `78.008`, while expected proof-of-work gives
-  `78.796`. Neither receives credit.
+- **Hard stop / resume.** The cached-base seam proves honest linearity but not
+  `A*rho=C(u)` against a malicious prover. The projected initial opening must
+  also prove its difference from the randomized row is exactly the encoding
+  of fresh mask coefficients. The new codec must support 17/16-bit PoW.
+  Partition, privacy, GPU ownership, public-XOF and complete soundness remain
+  open; the current `81.06/78.008/78.796-bit` screens receive no credit.
   A future pod requires a closed candidate, new endpoint and owner GO; it runs
   exactly two real responses.
+
+- **2026-08-23 — Honest Bolt-inside-WHIR projection is executable; malicious
+  initial link is isolated.** A new feature-gated CPU reference packs the
+  deterministic encoded sketch as D19-by-32 in `[column][fold]` order. For
+  both Goldilocks limbs it checks `project(A,rho)=C(project(S,rho))` through
+  the existing C6.2 cached-base seam. Two fresh random tapes give different
+  initial roots and two valid claimless WHIR proofs; authenticated-row and
+  projection mutations fail. Focused C6.3 tests pass 9/9. A new backward-
+  compatible configuration constructor independently sets the proximity-query
+  target: executable D22/D19 profiles reproduce the registered 104-bit query,
+  mask and 17/16-bit PoW counts; its legacy-equivalence tests pass 2/2.
+  This is honest-execution evidence only. Plain WHIR still accepts a valid
+  proof over `u` if a malicious prover substitutes a different fixed base and
+  lets an unconstrained mask absorb `C(u)-A*rho`. The minimum repair keeps
+  WHIR's main flow but opens the accepted `A` row beside the fresh randomized
+  row and adds a first-round equation proving their difference is
+  `Enc(0,zeta)`. The simplest two separate `A` multiproofs project a
+  `24,939,371-B` certificate at the strict `pi_final` cap, leaving
+  `5,060,629 B`; schema v10 records this without credit. Codec, attack test,
+  privacy theorem, complete soundness and GPU implementation remain hard
+  stops. The feature-complete workspace has 309 passes and three unrelated
+  C6.2 failures; all three reproduce on a clean `1c6bdb0` clone. No pod is
+  authorized.
 
 - **2026-08-22 — C6.3 selects a pre-encoded WHIR adapter; sparse-`H` closure
   reference is green.** Bolt remains inside WHIR. Deterministic roots bind

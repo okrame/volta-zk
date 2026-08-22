@@ -17,6 +17,8 @@ mod c61_interactive_driver;
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub mod c62_gpu_whir;
 pub mod c63_authenticated_sketch;
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub mod c63_preencoded_whir;
 pub mod c63_sparse_h_closure;
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub use c61_interactive_driver::{

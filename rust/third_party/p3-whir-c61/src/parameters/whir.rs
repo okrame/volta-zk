@@ -216,10 +216,32 @@ where
     /// - A requested rate would grow the Reed-Solomon domain.
     /// - The field is too small to reach the requested security level.
     /// - A derived proof-of-work difficulty exceeds the grinding budget.
-    #[allow(clippy::too_many_lines)]
     pub fn new(
         num_variables: usize,
         whir_parameters: ProtocolParameters,
+    ) -> Result<Self, WhirConfigError> {
+        let query_security_level = whir_parameters
+            .security_level
+            .saturating_sub(whir_parameters.pow_bits);
+        Self::new_with_query_security_level(num_variables, whir_parameters, query_security_level)
+    }
+
+    /// Derive a full protocol configuration with an explicit proximity-query
+    /// security target.
+    ///
+    /// Unlike [`Self::new`], this does not subtract the proof-of-work budget
+    /// from the query target. Proof-of-work derivation and budget validation
+    /// still use [`ProtocolParameters::security_level`] and
+    /// [`ProtocolParameters::pow_bits`].
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`Self::new`].
+    #[allow(clippy::too_many_lines)]
+    pub fn new_with_query_security_level(
+        num_variables: usize,
+        whir_parameters: ProtocolParameters,
+        query_security_level: usize,
     ) -> Result<Self, WhirConfigError> {
         // ---------------------------------------------------------------
         // Phase 1: Validate inputs and set up global constants.
@@ -246,12 +268,6 @@ where
         let folding_schedule = whir_parameters
             .folding_factor
             .compute_folding_schedule(num_variables)?;
-
-        // PoW contributes an independent additive term to security,
-        // so the algebraic protocol only needs to cover the remainder.
-        let protocol_security_level = whir_parameters
-            .security_level
-            .saturating_sub(whir_parameters.pow_bits);
 
         // Number of bits in the extension field; upper-bounds all per-element errors.
         let field_size_bits = EF::bits();
@@ -390,7 +406,7 @@ where
             // Number of STIR proximity queries at the current (old) rate.
             let num_queries = whir_parameters
                 .soundness_type
-                .queries(protocol_security_level, log_inv_rate);
+                .queries(query_security_level, log_inv_rate);
 
             // OOD samples needed at the post-fold (new) rate.
             let ood_samples = whir_parameters
@@ -464,7 +480,7 @@ where
         // Final proximity queries at the last accumulated rate.
         let final_queries = whir_parameters
             .soundness_type
-            .queries(protocol_security_level, log_inv_rate);
+            .queries(query_security_level, log_inv_rate);
 
         // PoW for the final query phase: covers the gap between the
         // target and the query error at the final rate.

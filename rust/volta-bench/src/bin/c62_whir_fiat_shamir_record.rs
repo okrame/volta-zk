@@ -153,6 +153,7 @@ mod enabled {
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     enum Mode {
         Preflight,
+        Precommit,
         Prove,
         Verify,
         Mutate,
@@ -173,7 +174,7 @@ mod enabled {
 
     fn usage() -> ! {
         eprintln!(
-            "usage: c62_whir_fiat_shamir_record --mode preflight|prove|verify|mutate \
+            "usage: c62_whir_fiat_shamir_record --mode preflight|precommit|prove|verify|mutate \
              --output PATH [--weights PATH --setup-dir PATH --work-root PATH] \
              [--run-root PATH --artifact-root PATH --state-root PATH] \
              [--threads N] [--accept]"
@@ -199,6 +200,7 @@ mod enabled {
                 "--mode" => {
                     mode = Some(match value().as_str() {
                         "preflight" => Mode::Preflight,
+                        "precommit" => Mode::Precommit,
                         "prove" => Mode::Prove,
                         "verify" => Mode::Verify,
                         "mutate" => Mode::Mutate,
@@ -731,6 +733,225 @@ mod enabled {
         create_new_json(&args.output, &record)?;
         if !pass {
             return Err("C6.2 preflight failed".to_owned());
+        }
+        Ok(())
+    }
+
+    #[derive(Serialize)]
+    struct PrecommitRecord {
+        schema: u64,
+        profile: &'static str,
+        mode: &'static str,
+        source_git_commit: String,
+        git_dirty: bool,
+        cloud: CloudMetadata,
+        hardware: HardwareRecord,
+        protocol_id: &'static str,
+        protocol_digest: String,
+        model_digest: String,
+        params_digest: String,
+        quantization_digest: String,
+        setup_bytes: u64,
+        old_context: u32,
+        new_context: u32,
+        provider_cache_preload_wall_s: f64,
+        provider_cache_bytes: u64,
+        provider_cache_rss_before_bytes: u64,
+        provider_cache_rss_after_bytes: u64,
+        provider_cache_process_io: IoRecord,
+        provider_cache_backend: BackendRecord,
+        precommit_wall_s: f64,
+        rss_before_bytes: u64,
+        rss_after_bytes: u64,
+        rss_peak_bytes: u64,
+        persisted_spill_bytes: u64,
+        predecessor_root: String,
+        successor_root: String,
+        process_io: IoRecord,
+        precommit_backend: BackendRecord,
+        provider_cache_preloaded: bool,
+        provider_whir_lanes_started: bool,
+        slot_store_opened: bool,
+        pcg_started: bool,
+        proof_started: bool,
+        credit: bool,
+        pass: bool,
+        run_root: String,
+    }
+
+    fn precommit(args: &Args) -> Result<(), String> {
+        let source_git_commit = git_sha_clean()?;
+        let cloud = cloud_metadata_from_env()
+            .ok_or_else(|| "cloud metadata environment is required".to_owned())?;
+        let weights = required_path(&args.weights, "--weights")?;
+        let setup_dir = required_path(&args.setup_dir, "--setup-dir")?;
+        let work_root = required_path(&args.work_root, "--work-root")?;
+        let run_root = required_path(&args.run_root, "--run-root")?;
+        if run_root.exists() {
+            return Err(format!("{} must not exist", run_root.display()));
+        }
+        let hardware = hardware_record(work_root)?;
+        if !hardware.overall_pass {
+            return Err("C6.2 precommit hardware admission failed".to_owned());
+        }
+        fs::create_dir(run_root)
+            .map_err(|error| format!("create {}: {error}", run_root.display()))?;
+        let first_run_root = run_root.join("certificate-00");
+        fs::create_dir(&first_run_root)
+            .map_err(|error| format!("create {}: {error}", first_run_root.display()))?;
+
+        let model_digest = hash_file_set("volta-zk/c6.2/model-file-set/v1", weights, &MODEL_FILES)?;
+        let params_digest = hash_c62_setup_profiles(setup_dir)?;
+        let quantization_digest = quantization_digest()?;
+        let installed_profiles = load_c62_installed_setups(setup_dir)?;
+        let genesis_owner = build_c6_t1_workload_owner(weights)?;
+        let verifier_model = Gpt2VerifierModel::from_model(genesis_owner.model())?;
+        let setup = build_c62_campaign_setup_manifest(
+            std::array::from_fn(|index| &installed_profiles[index]),
+            &verifier_model,
+            quantization_digest,
+            protocol_digest(),
+            model_digest,
+            params_digest,
+            random_digest("C6.2 precommit logical connection")?,
+            [
+                random_digest("C6.2 precommit tape-0 connection")?,
+                random_digest("C6.2 precommit tape-1 connection")?,
+            ],
+        )?;
+        drop(installed_profiles);
+        let setup_bytes = setup.first_exchange_bytes().map_err(|error| error.to_string())?;
+        if setup_bytes > C62_CAMPAIGN_SETUP_MAX_BYTES {
+            return Err("C6.2 precommit setup exceeds its gate".to_owned());
+        }
+
+        let provider_cache_root = work_root.join("c62gw4-provider-cache");
+        if provider_cache_root.exists() {
+            return Err("C62 precommit provider-cache root must be create-new".to_owned());
+        }
+        let provider_cache_started = Instant::now();
+        let provider_cache_before_io = process_io()?;
+        let provider_cache_rss_before_bytes = current_rss_bytes()?;
+        fs::create_dir(&provider_cache_root)
+            .map_err(|error| format!("create provider cache root: {error}"))?;
+        let (model_coefficients, embedding_coefficients) =
+            create_c62_provider_fixed_coefficient_owners(
+                genesis_owner.model(),
+                &provider_cache_root,
+                random_digest("C62 precommit fixed coefficient owner")?,
+            )?;
+        let model_base = model_coefficients.load_for(C61NativeComponent::Model, 0)?;
+        let embedding_base =
+            embedding_coefficients.load_for(C61NativeComponent::Embedding, 0)?;
+        let mut gpu_backend =
+            Backend::cuda_resident_with_timing(ResidentTimingPolicy::WallOnlyCounters)
+                .map_err(|error| format!("initialize C62 precommit CUDA backend: {error}"))?;
+        gpu_backend
+            .begin_measurement()
+            .map_err(|error| format!("begin provider-cache measurement: {error}"))?;
+        let gpu = C62ProductionGpuWhir::new(
+            gpu_backend,
+            hardware.gpu_total_bytes,
+            model_digest,
+            protocol_digest(),
+            &model_base,
+            &embedding_base,
+        )?;
+        drop(model_base);
+        drop(embedding_base);
+        let provider_cache_backend = BackendRecord::from(gpu.finish_measurement()?);
+        let provider_cache_preload_wall_s = provider_cache_started.elapsed().as_secs_f64();
+        let provider_cache_rss_after_bytes = current_rss_bytes()?;
+        let provider_cache_process_io = io_delta(&provider_cache_before_io, &process_io()?);
+        let provider_cache_bytes = 12u64 << 30;
+
+        let public = C61PublicWorkloadPreimage::new(
+            model_digest,
+            C6Workload { prompt_tokens: 100, decode_tokens: 50, old_context: 0, new_context: 150 },
+            genesis_owner.sequence().to_vec(),
+        )
+        .map_err(|error| error.to_string())?;
+        let genesis_owner = validate_c62_campaign_cache_precommit_inputs(
+            &setup,
+            genesis_owner,
+            &public,
+            &first_run_root,
+        )?;
+
+        let mut backend =
+            Backend::cuda_resident_with_timing(ResidentTimingPolicy::WallOnlyCounters)
+                .map_err(|error| format!("initialize precommit CUDA backend: {error}"))?;
+        backend
+            .begin_measurement()
+            .map_err(|error| format!("begin precommit backend measurement: {error}"))?;
+        let before_io = process_io()?;
+        let rss_before_bytes = current_rss_bytes()?;
+        let rss_sampler = RssSampler::start(rss_before_bytes);
+        let started = Instant::now();
+        let precommit = prepare_c62_campaign_cache_precommit(
+            &setup,
+            genesis_owner,
+            public,
+            &mut backend,
+            &first_run_root,
+        )?;
+        let precommit_wall_s = started.elapsed().as_secs_f64();
+        let precommit_backend = BackendRecord::from(
+            backend
+                .finish_measurement()
+                .map_err(|error| format!("finish precommit backend measurement: {error}"))?,
+        );
+        let process_io = io_delta(&before_io, &process_io()?);
+        let rss_peak_bytes = rss_sampler.finish()?;
+        let rss_after_bytes = current_rss_bytes()?;
+        let persisted_spill_bytes = directory_file_bytes(&first_run_root)?;
+        let predecessor_root = precommit.old_head().cache_root;
+        let successor_root = precommit.proposed_head().cache_root();
+        drop(gpu);
+        let pass = predecessor_root != successor_root;
+        let record = PrecommitRecord {
+            schema: SCHEMA,
+            profile: "runpod-a100-c62-cache-precommit-diagnostic-v1",
+            mode: "precommit",
+            source_git_commit,
+            git_dirty: false,
+            cloud,
+            hardware,
+            protocol_id: PROTOCOL_ID,
+            protocol_digest: hex(&protocol_digest()),
+            model_digest: hex(&model_digest),
+            params_digest: hex(&params_digest),
+            quantization_digest: hex(&quantization_digest),
+            setup_bytes,
+            old_context: 0,
+            new_context: 150,
+            provider_cache_preload_wall_s,
+            provider_cache_bytes,
+            provider_cache_rss_before_bytes,
+            provider_cache_rss_after_bytes,
+            provider_cache_process_io,
+            provider_cache_backend,
+            precommit_wall_s,
+            rss_before_bytes,
+            rss_after_bytes,
+            rss_peak_bytes,
+            persisted_spill_bytes,
+            predecessor_root: hex(&predecessor_root),
+            successor_root: hex(&successor_root),
+            process_io,
+            precommit_backend,
+            provider_cache_preloaded: true,
+            provider_whir_lanes_started: false,
+            slot_store_opened: false,
+            pcg_started: false,
+            proof_started: false,
+            credit: false,
+            pass,
+            run_root: run_root.display().to_string(),
+        };
+        create_new_json(&args.output, &record)?;
+        if !pass {
+            return Err("C6.2 precommit roots are equal".to_owned());
         }
         Ok(())
     }
@@ -2074,6 +2295,32 @@ mod enabled {
         }
 
         #[test]
+        fn precommit_mode_stops_before_slot_pcg_whir_and_proof() {
+            let source = include_str!("c62_whir_fiat_shamir_record.rs");
+            let precommit = source
+                .split_once("fn precommit(args: &Args)")
+                .unwrap()
+                .1
+                .split_once("struct SessionCertificateRecord")
+                .unwrap()
+                .0;
+            let preload = precommit.find("C62ProductionGpuWhir::new(").unwrap();
+            let prepare = precommit.find("prepare_c62_campaign_cache_precommit(").unwrap();
+            assert!(preload < prepare);
+            assert!(precommit.contains("prepare_c62_campaign_cache_precommit("));
+            for forbidden in [
+                "C6SlotStore::open(",
+                ".reserve_attempt(",
+                "C6ProductionPairedPcgAttempt::allocate(",
+                "run_c62_campaign_live_production(",
+                "verify_c62_campaign_e2e(",
+                "verify_c62_loaded_campaign_e2e(",
+            ] {
+                assert!(!precommit.contains(forbidden), "precommit mode contains {forbidden}");
+            }
+        }
+
+        #[test]
         fn provider_record_has_no_challenge_transport_or_terminal_stop_label() {
             assert!(provider_challenge_surface_closed());
             let source = include_str!("c62_whir_fiat_shamir_record.rs");
@@ -2128,12 +2375,14 @@ mod enabled {
         let args = parse_args();
         let mode = match args.mode {
             Mode::Preflight => "preflight",
+            Mode::Precommit => "precommit",
             Mode::Prove => "prove",
             Mode::Verify => "verify",
             Mode::Mutate => "mutate",
         };
         let result = match args.mode {
             Mode::Preflight => preflight(&args),
+            Mode::Precommit => precommit(&args),
             Mode::Prove => prove(&args),
             Mode::Verify => verify(&args),
             Mode::Mutate => mutate(&args),

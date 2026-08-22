@@ -1577,3 +1577,106 @@ phase watchdog to the same complete-inline timer, and pass an exact full-payload
 screen before requesting a new owner GO. The raw disposition is
 `c62-gw4-genesis-timing-hard-stop-2026-08-19-299050d-r1.json`, SHA-256
 `93903ee770e5b8e729d0643519172488746cd2a3a543a290790a66a299bfb515`.
+
+## 0.64 Cache-precommit root-cause audit and one-shot probe
+
+The failed genesis reached neither WHIR nor PCG. The complete provider timer
+started immediately before `prepare_c62_campaign_cache_precommit`; slot
+reservation and `C6ProductionPairedPcgAttempt::allocate` occur only after that
+function returns. The stopped record has zero reserved slots. The probability
+that the `77.422289502-s` lower bound belongs almost entirely to this cache
+precommit is assessed at **>=99%**. The probability that the precommit is the
+dominant or co-dominant C6.2 prover bottleneck is assessed at **98%**.
+
+GW4 does not execute this work. GW4 owns the later eight authenticated-WHIR
+lanes and measured `7.359403833 s`; the cache roots use a second backend and
+the legacy persisted X4b wrapper. Replacing only those eight lanes with a new
+PCS would therefore leave this path unchanged.
+
+### Exact static census
+
+Each predecessor or successor root takes eight D24 witness tables, generates
+eight independent D24 mask tables, concatenates witness and mask, applies
+eight CPU D25 multilinear transforms, performs eight rate-eight D25-to-D28
+NTTs, persists the codewords, rereads them, and builds a disk-backed Merkle
+tree. The exact two-root totals are:
+
+| Item | Two-root total |
+|---|---:|
+| durable semantic cache + coefficients + codewords + metadata | `78,383,153,576 B` (about 73 GiB) |
+| peak live files while building the second tree | `91,268,055,252 B` (about 85 GiB) |
+| cumulative writes | `112,742,891,880 B` (about 105 GiB) |
+| cumulative reads | `103,079,214,976 B` (about 96 GiB) |
+| accounted H2D / D2H | `111,669,428,096 / 103,079,215,040 B` |
+| NTT / initial-hash tiles / outer-hash tiles | `16 / 1,024 / 170` |
+| storage durability barriers | `70` |
+| retained upper Merkle cache | `67,108,800 B` |
+
+Before that I/O, two 2-GiB cache states are zero-filled and validated during
+materialization, then validated again by the precommit. This visits
+`536,870,912` cells; every visit currently recomputes checked layout indexing.
+Mask generation produces `268,435,456 Fp2` values. The 16 D25 transforms
+perform about 6.71 billion `Fp2` pair updates, or 13.42 billion base-field
+subtractions, with a conservative 300-GiB lower bound on host-memory traffic.
+Only the successor's K/V tables contain live genesis data: 14 of the 16
+witness slots across both roots are wholly zero, yet all receive a mask,
+transform, rate-eight encoding and tree.
+
+The existing record cannot distinguish validation, masking, transform and
+storage. Their relative share is deliberately left unclaimed. Current
+confidence that CPU scans/masking/transforms account for a majority of the
+first observed 77 seconds is **75%**; confidence that persisted codeword/tree
+work becomes the next blocker even after CPU cleanup is **>99%**.
+
+### Single diagnostic run
+
+Runner mode `precommit` is the only admitted diagnostic. It uses the installed
+17-profile setup, real GPT-2 weights and exact genesis workload. It builds and
+retains the same 12-GiB `C62ProductionGpuWhir` fixed cache as the product path,
+but starts no WHIR lane. It then measures the exact two-root
+`prepare_c62_campaign_cache_precommit`, writes a create-new JSON record with
+wall time, backend counters, process I/O, RSS, durable bytes and both roots,
+and exits before opening a slot store, reserving a slot, allocating PCG,
+constructing a proof or invoking a verifier. The record is always
+`credit:false`.
+
+No setup regeneration, historical GW2--GW4 calibration, workspace suite,
+certificate, mutation or continuation is repeated. The lightweight
+`scripts/watch_c62_precommit.sh` launches the release binary directly and
+samples `/proc/<pid>/io`, RSS/CPU and file sizes under
+`certificate-00/wrapper` once per second into a create-new timeline outside
+the run root. Setting `C62_PRECOMMIT_PERF_DATA` also attaches a 49-Hz `perf`
+call sampler when permitted by the host; failure of that optional sampler does
+not authorize a retry. File transitions identify the useful split:
+semantic cache, coefficient transform gap, coefficient/codeword write, oracle
+reread and initial hash, outer Merkle levels, root and manifest. `perf` call
+sampling may be added if the pod permits it. The heavier `CausalObserverV1` is
+not wired for this first run because its per-boundary `/proc`, allocator,
+smaps and NUMA probes would alter the measurement and require three new API
+layers.
+
+One clean single-A100 run requires a later explicit owner GO. Completion of
+both distinct roots is diagnostic success, not a timing pass. If runtime is
+operationally excessive, the predecessor manifest plus the external timeline
+is sufficient to stop manually; no watcher is allowed to advance into PCG.
+
+### Inputs that C6.3 must carry forward
+
+This section does not open or specify C6.3. It records four constraints for a
+later Authenticated Sketched PCS design:
+
+1. Bolt adaptation must replace or avoid predecessor and successor cache
+   commitment work, and should include the D23 delta-residual cohort; replacing
+   only the eight WHIR lanes cannot solve the provider bottleneck.
+2. Genesis zero structure and the two live K/V slots must remain sparse through
+   commitment rather than expanding 14 empty slots into dense masked D28
+   codewords.
+3. A verified successor owner must be promoted as the next predecessor. The
+   current continuation instead samples a new mask and then demands equality
+   with the old successor root; that equality has negligible probability and
+   is a latent functional defect, not a performance optimization.
+4. For the first GPT-2/single-A100 experiment, total proof-of-inference size
+   may be at most `30,000,000 B`. The analytic Bolt-min estimate near
+   `23.56 MB` is therefore admissible as a design screen, with roughly 6.44 MB
+   of headroom, but has no proof-size or security credit until encoded and
+   verified end to end.

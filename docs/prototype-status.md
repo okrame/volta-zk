@@ -11,7 +11,8 @@ record; no external plan is authoritative.
 Read `c62-whir-fiat-shamir-design.md` §0.64 next.
 
 - **Status.** C6.2 remains a genesis timing hard stop. The owner authorized
-  exactly one cache-precommit-only run on the new single-A100 pod.
+  exactly one cache-precommit-only run on the new single-A100 pod and
+  preauthorized clean source exports to owner-designated pods through GitHub.
 - **Evidence.** The existing `77.422289502-s` lower bound is before slot/PCG.
   Static census attributes the path to two dense cache roots: `73 GiB`
   durable output, about `105 GiB` writes, `96 GiB` reads, `104/96 GiB`
@@ -28,8 +29,19 @@ Read `c62-whir-fiat-shamir-design.md` §0.64 next.
   no saved setup, so one unmeasured deterministic setup regeneration is
   admitted only if its canonical file-manifest SHA-256 equals the registered
   `9990a3db...36821`; otherwise stop. No retry, regression suite or full proof
-  is authorized. The future GPT-2 Authenticated Sketched PCS experiment may
-  use a `30,000,000-B` total proof tolerance; this is not C6.2 byte credit.
+  is authorized. Source sync uses GitHub CLI and matching clean HEADs. The
+  future GPT-2 Authenticated Sketched PCS experiment may use a `30,000,000-B`
+  total proof tolerance; this is not C6.2 byte credit.
+
+- **2026-08-22 — Owner preauthorizes repository exports through GitHub.** For
+  future Volta work on endpoints explicitly supplied by the owner, clean
+  tracked checkpoints may be pushed to the repository origin and cloned or
+  synchronized on the pod through GitHub CLI without another export prompt.
+  This standing authority excludes secrets, credentials, ignored/untracked
+  files and unrelated repositories. Generated model/setup artifacts remain
+  limited to those explicitly required by the active experiment and retain
+  their checksum guards. It does not authorize extra pod runs or broaden the
+  active protocol experiment.
 
 - **2026-08-22 — Empty-pod setup deviation recorded before execution.** The
   authorized endpoint has an empty persistent volume; neither it nor the local

@@ -1665,6 +1665,12 @@ a timing pass. If runtime is operationally excessive, the predecessor
 manifest plus the external timeline is sufficient to stop manually; no
 watcher is allowed to advance into PCG and no retry is authorized.
 
+The owner also preauthorized clean repository export to owner-designated pods
+and selected GitHub CLI as the normal transport. This run pushes the current
+tracked checkpoint to `origin`, clones it through `gh` on the pod, and requires
+equal clean HEADs before compilation. No repository archive, secret,
+credential or ignored file is exported.
+
 ### Inputs that C6.3 must carry forward
 
 This section does not open or specify C6.3. It records four constraints for a

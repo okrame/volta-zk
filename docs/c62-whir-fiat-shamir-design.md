@@ -1640,10 +1640,14 @@ and exits before opening a slot store, reserving a slot, allocating PCG,
 constructing a proof or invoking a verifier. The record is always
 `credit:false`.
 
-No setup regeneration, historical GW2--GW4 calibration, workspace suite,
-certificate, mutation or continuation is repeated. The lightweight
-`scripts/watch_c62_precommit.sh` launches the release binary directly and
-samples `/proc/<pid>/io`, RSS/CPU and file sizes under
+The fresh authorized pod retained no setup. One deterministic 17-profile
+generation is therefore admitted as unmeasured preparation only if its
+canonical per-file manifest SHA-256 matches the registered
+`9990a3dbbeaf30405e3cabdbd947d9e03003a6fca50ebe361783d52c6e036821`;
+a mismatch stops before the probe. No historical GW2--GW4 calibration,
+workspace suite, certificate, mutation or continuation is repeated. The
+lightweight `scripts/watch_c62_precommit.sh` launches the release binary
+directly and samples `/proc/<pid>/io`, RSS/CPU and file sizes under
 `certificate-00/wrapper` once per second into a create-new timeline outside
 the run root. Setting `C62_PRECOMMIT_PERF_DATA` also attaches a 49-Hz `perf`
 call sampler when permitted by the host; failure of that optional sampler does

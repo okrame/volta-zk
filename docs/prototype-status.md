@@ -24,11 +24,22 @@ Read `c62-whir-fiat-shamir-design.md` §0.64 next.
 - **Hard stop.** No retry, continuation, certificate or product gate is
   admitted. A latent continuation defect—recommitting the predecessor with a
   fresh mask while requiring the prior successor root—is now recorded.
-- **Resume.** Commit this authorization, confirm the clean checkpoint and use
-  existing setup/weights for the one diagnostic. No retry, regression suite or
-  full proof is authorized. The future GPT-2 Authenticated Sketched PCS
-  experiment may use a `30,000,000-B` total proof tolerance; this is not C6.2
-  byte credit.
+- **Resume.** Use the clean checkpoint and existing weights. The fresh pod has
+  no saved setup, so one unmeasured deterministic setup regeneration is
+  admitted only if its canonical file-manifest SHA-256 equals the registered
+  `9990a3db...36821`; otherwise stop. No retry, regression suite or full proof
+  is authorized. The future GPT-2 Authenticated Sketched PCS experiment may
+  use a `30,000,000-B` total proof tolerance; this is not C6.2 byte credit.
+
+- **2026-08-22 — Empty-pod setup deviation recorded before execution.** The
+  authorized endpoint has an empty persistent volume; neither it nor the local
+  workspace retains the prior 17-profile setup. Repeating the historical test
+  or calibration suites remains forbidden. One deterministic setup generation
+  is admitted as unmeasured preparation, followed by comparison with the
+  registered canonical per-file manifest SHA-256
+  `9990a3dbbeaf30405e3cabdbd947d9e03003a6fca50ebe361783d52c6e036821`.
+  Equality permits the sole precommit run; mismatch consumes no diagnostic but
+  is a hard stop requiring owner review.
 
 - **2026-08-22 — Owner GO for one C6.2 cache-precommit diagnostic.** The owner
   supplied the new single-A100 endpoint and authorized immediate execution of

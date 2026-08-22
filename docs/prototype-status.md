@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT — ONE A100 DIAGNOSTIC AUTHORIZED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE — C6.3 READY / NOT OPEN)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,30 +8,49 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-Read `c62-whir-fiat-shamir-design.md` §0.64 next.
+Read `c62-whir-fiat-shamir-design.md` §0.65 next.
 
-- **Status.** C6.2 remains a genesis timing hard stop. The owner authorized
-  exactly one cache-precommit-only run on the new single-A100 pod and
-  preauthorized clean source exports to owner-designated pods through GitHub.
-- **Evidence.** The existing `77.422289502-s` lower bound is before slot/PCG.
-  Static census attributes the path to two dense cache roots: `73 GiB`
-  durable output, about `105 GiB` writes, `96 GiB` reads, `104/96 GiB`
-  H2D/D2H, 70 storage barriers, 536,870,912 cell visits and 16 dense D25
-  transforms. GW4's measured `7.359403833 s` is a separate later component.
-- **Probe.** Runner mode `precommit` retains the real 12-GiB fixed GPU cache,
-  executes the exact genesis precommit, records wall/backend/I/O/RSS/spill and
-  exits before lane work, slot creation, PCG, proof or verifier. It is always
-  `credit:false`; CUDA runner tests pass.
-- **Hard stop.** No retry, continuation, certificate or product gate is
-  admitted. A latent continuation defect—recommitting the predecessor with a
-  fresh mask while requiring the prior successor root—is now recorded.
-- **Resume.** Use the clean checkpoint and existing weights. The fresh pod has
-  no saved setup, so one unmeasured deterministic setup regeneration is
-  admitted only if its canonical file-manifest SHA-256 equals the registered
-  `9990a3db...36821`; otherwise stop. No retry, regression suite or full proof
-  is authorized. Source sync uses GitHub CLI and matching clean HEADs. The
-  future GPT-2 Authenticated Sketched PCS experiment may use a `30,000,000-B`
-  total proof tolerance; this is not C6.2 byte credit.
+- **Status.** The sole C6.2 cache-precommit diagnostic completed on one A100
+  at clean source `c2bbd6b`; no retry or full proof is authorized. C6.3 is
+  ready to design but is not open.
+- **Evidence.** Exact precommit wall is `275.113308912 s`; predecessor and
+  successor occupy about `141.39 / 133.37 s`. It produced distinct roots,
+  `78,383,153,576 B` durable spill, `103,079,256,064 B` reads and
+  `112,742,957,056 B` writes. Peak RSS is `15,932,391,424 B`; memory capacity
+  is not the observed bottleneck.
+- **Attribution.** One-second file boundaries assign about `25.25 s` (9.18%)
+  to state/masks/transforms, `67.71 s` (24.61%) to dense encoding/writes,
+  `112.11 s` (40.75%) to oracle reread/initial hash and `69.69 s` (25.33%)
+  to outer trees. The earlier 75% CPU-majority hypothesis is refuted.
+- **Consequence.** Keeping GW4 (`7.359403833 s`) and its 3-s reserve leaves
+  only `4.640596167 s` for cache binding: a `59.28x` precommit reduction.
+  Removing the predecessor and successor hash/tree work while retaining the
+  successor front end and dense encoding still projects `54.82 s` and fails.
+- **Hard stop / resume.** No more C6.2 pod work, PCG, certificate, verifier or
+  continuation is admitted. A future C6.3 must bind a setup-owned zero
+  predecessor, promote accepted successors, sketch only live/delta K/V data
+  on GPU, avoid dense masks/codewords and stay below `30,000,000 B`. Repository
+  export to owner-designated pods remains preauthorized; a new experiment GO
+  is still required.
+
+- **2026-08-22 — C6.2 cache-precommit diagnostic completes; C6.3 inputs are
+  ready.** Clean public checkpoint `c2bbd6b` was published with GitHub-managed
+  authentication and cloned from GitHub over anonymous HTTPS on the pod; pod
+  `gh` required a login even for the public repository, so no scoped local
+  credential was exported. The regenerated 17-profile/85-file setup matched
+  canonical SHA-256 `9990a3db...36821`; parameters remained
+  `df5577db...3a4ee` and setup bytes `101,197,617`. The sole diagnostic then
+  completed in `275.113308912 s`, after a separately measured
+  `36.524311692-s` fixed-cache preload. It persisted exactly
+  `78,383,153,576 B`, moved `111,669,428,096 / 103,079,215,040 B` H2D/D2H,
+  performed 1,212 backend synchronizations, peaked at `15,932,391,424 B` RSS,
+  and ended with distinct roots. Lane, slot, PCG and proof flags are all false;
+  `credit:false`. Measured process I/O differs from the static census by only
+  `41,088 B` read and `65,176 B` written. The raw JSON SHA-256 is
+  `0f5174f716cfd3ecc54c91107dd16ccbab31a56769afc36757ee1a0b034a1289`;
+  the timeline SHA-256 is
+  `57979a270172cb193a44152acb29ec0efd3dd04f46e39b57c094c915d82ec5d5`.
+  No product timing, proof-size or verifier gate receives credit.
 
 - **2026-08-22 — Owner preauthorizes repository exports through GitHub.** For
   future Volta work on endpoints explicitly supplied by the owner, clean

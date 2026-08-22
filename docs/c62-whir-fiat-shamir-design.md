@@ -1,11 +1,11 @@
 # C6.2 WHIR Fiat--Shamir Design
 
-Status: **C62GW4 GENESIS TIMING HARD STOP / NO POD**
+Status: **CACHE PRECOMMIT DIAGNOSTIC COMPLETE / C6.3 READY / NOT OPEN**
 
-This document is the active design for C6.2. It has precedence over the
-interactive C6.1 sections in `c6-delta-residual-inline-design.md`. Frozen C6
-and C6.1 records remain historical evidence. C6.2 cannot use a historical
-acceptance path as a substitute for a proved relation.
+This document records the completed C6.2 line and its measured C6.3 handoff.
+No C6.3 protocol or pod experiment is opened. It has precedence over the
+interactive C6.1 sections in `c6-delta-residual-inline-design.md`; frozen C6
+and C6.1 records remain historical evidence.
 
 ## 0. Authority and objective
 
@@ -1666,10 +1666,12 @@ manifest plus the external timeline is sufficient to stop manually; no
 watcher is allowed to advance into PCG and no retry is authorized.
 
 The owner also preauthorized clean repository export to owner-designated pods
-and selected GitHub CLI as the normal transport. This run pushes the current
-tracked checkpoint to `origin`, clones it through `gh` on the pod, and requires
-equal clean HEADs before compilation. No repository archive, secret,
-credential or ignored file is exported.
+and selected GitHub CLI as the normal transport. Local publication and remote
+SHA verification use GitHub-managed authentication. Pod `gh` 2.45 refuses an
+anonymous public clone; rather than export the local `repo`-scoped credential,
+the pod clones the same public branch over anonymous GitHub HTTPS. Equal clean
+HEADs remain mandatory. No repository archive, secret, credential or ignored
+file is exported.
 
 ### Inputs that C6.3 must carry forward
 
@@ -1691,3 +1693,92 @@ later Authenticated Sketched PCS design:
    `23.56 MB` is therefore admissible as a design screen, with roughly 6.44 MB
    of headroom, but has no proof-size or security credit until encoded and
    verified end to end.
+
+## 0.65 Measured cache-precommit disposition
+
+Clean source `c2bbd6b` completed the sole authorized diagnostic on one
+NVIDIA A100-SXM4-80GB. The pre-run operational manifest check (not a field in
+the raw JSON) found that the deterministic replacement setup matched the
+registered 17-profile/85-file tree SHA-256
+`9990a3dbbeaf30405e3cabdbd947d9e03003a6fca50ebe361783d52c6e036821`.
+The runner retained the fixed 12-GiB GPU cache, produced two distinct cache
+roots and exited zero before WHIR lanes, slot store, PCG, proof or verifier.
+The record remains `credit:false`.
+
+Exact precommit wall was `275.113308912 s`. The one-second timeline gives the
+following intervals; each edge is confined to a window about one second wide,
+and a duration between two edges has a window about two seconds wide
+(midpoint uncertainty about `±1 s`).
+
+| Measured interval | Predecessor | Successor |
+|---|---:|---:|
+| pre-root work plus semantic write | `8.08 s` | `3.03 s` |
+| D25 coefficient transform | `6.06 s` | `8.08 s` |
+| coefficient + D28 codeword generation/write | `34.35 s` | `33.36 s` |
+| 32-GiB oracle reread + initial hash | `56.54 s` | `55.57 s` |
+| outer tree levels through manifest | `36.35 s` | `33.34 s` |
+| complete root | `141.39 s` | `133.37 s` |
+
+The predecessor's first interval includes both states' materialization and
+validation, its masks and its semantic write; the successor interval contains
+only successor masks and its semantic write. The `0.35-s` difference between
+the two sampled roots and exact wall is boundary/epilogue residue. Across both
+roots, those pre-root intervals account for about `11.11 s` (4.04%), D25
+transforms `14.14 s` (5.14%), dense encoding and initial persistence `67.71 s`
+(24.61%), oracle reread/initial hash `112.11 s` (40.75%), and outer tree work
+`69.69 s` (25.33%). The persisted codeword-plus-tree path therefore occupies
+about `249.51 s` (90.69%). The prior 75% probability assigned to a CPU-majority
+explanation is reduced below 1%. As an engineering judgment rather than a
+statistical result, confidence that persisted reread/hash/tree is the largest
+class is above 99.9%. Observed CPU time is about `192.21 s`, or only 0.70
+effective core over the precommit. Low host-CPU occupancy during both
+hash/tree phases and exact physical I/O support this attribution, although
+`WallOnlyCounters` deliberately leaves kernel and transfer durations at zero.
+
+Measured precommit I/O is `103,079,256,064 B` read and `112,742,957,056 B`
+written. These differ from the static census by only `41,088 B` and `65,176 B`
+respectively. Durable spill is exactly `78,383,153,576 B`; H2D/D2H are
+`111,669,428,096 / 103,079,215,040 B`; backend synchronization count is 1,212.
+Peak RSS is `15,932,391,424 B`. A non-credit live `nvidia-smi` observation
+reached about 23.9 GiB while the fixed cache and precommit devices coexisted,
+leaving memory headroom. Host-CPU saturation and memory capacity are not the
+immediate GPT-2 blockers. Dense expansion, transfers, persistence and repeated
+hashing dominate jointly; their GPU-compute/I/O split remains unmeasured.
+
+The fixed provider cache preload took `36.524311692 s` outside the registered
+per-response timer. The process reached the first wrapper after about
+`111.86 s`; therefore a future `<15 s` claim is a warm-service response claim,
+not a cold-start claim. Fixed weights and setup must remain resident and be
+amortized across responses, especially for larger models.
+
+With measured GW4 `7.359403833 s` and its 3-s non-WHIR reserve unchanged, a
+`15-s` total leaves only `4.640596167 s` for cache binding. This requires a
+`59.28x` reduction from measured precommit. Eliminating the predecessor and
+all successor tree work but retaining successor mask/semantic, transform and
+dense encoding still projects about `54.82 s` total. Even retaining only
+successor mask/semantic and transform projects about `21.47 s`. C6.3 therefore
+cannot be a faster Merkle builder or a Bolt wrapper around the existing cache
+path.
+
+The measured requirements for a later Authenticated Sketched PCS are:
+
+1. bind the all-zero genesis predecessor as a setup-owned constant and promote
+   each accepted successor as the next predecessor;
+2. update a compact authenticated sketch directly from the two live K/V tables
+   or the next-token delta, treating the other slots as virtual zeros;
+3. generate hiding/authentication without materializing eight dense masks,
+   D25 coefficients or D28 codewords;
+4. keep the online sketch/commit/open path GPU-resident and remove the
+   codeword-to-disk-to-CPU-to-GPU round trip;
+5. budget all cache binding below `4.64 s` if GW4 stays unchanged, or account
+   for cache and weight openings together under a stricter unified PCS budget;
+6. preserve VOLE-authenticated output values and the experimental
+   `30,000,000-B` complete proof ceiling.
+
+Raw evidence is
+`benchmarks/results/c62-cache-precommit-2026-08-22-c2bbd6b.json`, SHA-256
+`0f5174f716cfd3ecc54c91107dd16ccbab31a56769afc36757ee1a0b034a1289`,
+and `benchmarks/results/c62-cache-precommit-timeline-2026-08-22-c2bbd6b.tsv`,
+SHA-256
+`57979a270172cb193a44152acb29ec0efd3dd04f46e39b57c094c915d82ec5d5`.
+No C6.3 protocol is opened by this disposition.

@@ -22,6 +22,7 @@ pub const C61_AUTHENTICATED_WHIR_MASKS_PER_TAPE: usize = 3;
 pub const C61_AUTHENTICATED_WHIR_TAPES: usize = 2;
 pub const C61_AUTHENTICATED_WHIR_CHAINS: usize =
     C61_AUTHENTICATED_WHIR_MASKS_PER_TAPE * C61_AUTHENTICATED_WHIR_TAPES;
+pub const C63_AUTHENTICATED_WHIR_MASKS_PER_TAPE: usize = 2;
 
 /// The clear Fp2 evaluation removed from upstream and the replacement
 /// designated ZeroOpen tag have the same strict width.
@@ -36,6 +37,7 @@ pub const C61_JOINT_NATIVE_BRIDGE_FRAME_BYTES: usize = 32;
 /// remaining fields are injectively packed as
 /// `stage:8 || slot:16 || range_start:32 || component:2 || repetition:1`.
 const C61_AUTHENTICATED_WHIR_DOMAIN_PREFIX: u64 = 0b01 << 59;
+const C63_AUTHENTICATED_WHIR_DOMAIN_PREFIX: u64 = 0b10 << 59;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C61AuthenticatedWhirError(String);
@@ -108,6 +110,53 @@ impl C61AuthenticatedWhirMaskRange {
         }
         component_ordinal(id.component)?;
         Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum C63AuthenticatedWhirLane {
+    Systematic = 0,
+    Sketch = 1,
+}
+
+/// Two response-local terminal masks on one real-PCG tape. Tape identity is
+/// already part of the enclosing connection scope; the lane occupies the low
+/// domain bit and cannot collide with the C6.1 range prefix.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C63AuthenticatedWhirMaskRange {
+    pub stage: u8,
+    pub slot: u16,
+    pub range_start: u32,
+}
+
+impl C63AuthenticatedWhirMaskRange {
+    pub fn end(self) -> Result<u32> {
+        self.range_start
+            .checked_add(C63_AUTHENTICATED_WHIR_MASKS_PER_TAPE as u32)
+            .ok_or_else(|| C61AuthenticatedWhirError::new("C6.3 WHIR mask range overflows u32"))
+    }
+
+    pub fn mask_ordinal(self, lane: C63AuthenticatedWhirLane) -> Result<u32> {
+        self.end()?;
+        self.range_start
+            .checked_add(lane as u32)
+            .ok_or_else(|| C61AuthenticatedWhirError::new("C6.3 WHIR mask ordinal overflows u32"))
+    }
+
+    pub fn correlation_domain(self, lane: C63AuthenticatedWhirLane) -> Result<u64> {
+        self.end()?;
+        let domain = C63_AUTHENTICATED_WHIR_DOMAIN_PREFIX
+            | (u64::from(self.stage) << 51)
+            | (u64::from(self.slot) << 35)
+            | (u64::from(self.range_start) << 1)
+            | lane as u64;
+        if domain & RESERVED_DOMAIN_BITS != 0 {
+            return Err(C61AuthenticatedWhirError::new(
+                "C6.3 WHIR correlation domain overlaps reserved MAC bits",
+            ));
+        }
+        Ok(domain)
     }
 }
 
@@ -627,6 +676,16 @@ pub struct C61AuthenticatedWhirVerifierInput {
     pub target: VerifierKey,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C63AuthenticatedWhirVerifierInput {
+    pub lane: C63AuthenticatedWhirLane,
+    pub mask_range: C63AuthenticatedWhirMaskRange,
+    pub combined: Fp2,
+    pub shifted_masked_claim: Fp2,
+    pub gamma: Fp2,
+    pub target: VerifierKey,
+}
+
 /// Public affine coordinates for a claim-hidden WHIR replay.  The verifier
 /// carries `coefficient * opening_target + constant` without learning the
 /// opening target itself.
@@ -697,6 +756,27 @@ pub fn prepare_c61_authenticated_whir_mask(
     Ok(C61AuthenticatedWhirPreparedMask {
         value: mask_value,
         authenticated: mask,
+        mask_domain,
+        mask_ordinal,
+    })
+}
+
+pub fn prepare_c63_authenticated_whir_mask(
+    lane: C63AuthenticatedWhirLane,
+    mask_range: C63AuthenticatedWhirMaskRange,
+    correlations: &mut CorrelationStream,
+) -> Result<C61AuthenticatedWhirPreparedMask> {
+    let mask_domain = mask_range.correlation_domain(lane)?;
+    let mask_ordinal = mask_range.mask_ordinal(lane)?;
+    let correlation = correlations
+        .draw_fulls(mask_domain, 1)
+        .into_iter()
+        .next()
+        .ok_or_else(|| C61AuthenticatedWhirError::new("C6.3 WHIR missing full correlation"))?;
+    let mask_value = correlation.x;
+    Ok(C61AuthenticatedWhirPreparedMask {
+        value: mask_value,
+        authenticated: correlation.authenticate(mask_value),
         mask_domain,
         mask_ordinal,
     })
@@ -811,6 +891,31 @@ pub fn verify_c61_authenticated_whir_base(
     Ok(())
 }
 
+pub fn verify_c63_authenticated_whir_base(
+    input: C63AuthenticatedWhirVerifierInput,
+    proof: C61AuthenticatedWhirBaseProof,
+    context: &mut VerifierCtx,
+    transcript: &mut Transcript,
+) -> Result<()> {
+    let mask_domain = input.mask_range.correlation_domain(input.lane)?;
+    let mask_key = context
+        .expand_full_verifier_keys(mask_domain, 1)
+        .into_iter()
+        .next()
+        .ok_or_else(|| C61AuthenticatedWhirError::new("C6.3 WHIR missing verifier mask key"))?;
+    let residual =
+        VerifierKey::from_public(input.combined - input.shifted_masked_claim, context.delta)
+            .sub(input.target.scale(input.gamma))
+            .add(mask_key);
+    append_authenticated_whir_zero_open_verifier(proof.zero_open_tag, transcript);
+    if !zero_open_verify(residual, proof.zero_open_tag) {
+        return Err(C61AuthenticatedWhirError::new(
+            "C6.3 WHIR authenticated target ZeroOpen failed",
+        ));
+    }
+    Ok(())
+}
+
 /// Verifier mirror of
 /// [`finish_c61_authenticated_whir_base_with_zero_rows`].
 pub fn verify_c61_authenticated_whir_base_with_zero_rows(
@@ -897,6 +1002,25 @@ pub(crate) fn simulate_c61_authenticated_whir_base_view(
     Ok(C61AuthenticatedWhirBaseProof { zero_open_tag: residual.k })
 }
 
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub(crate) fn simulate_c63_authenticated_whir_base_view(
+    input: C63AuthenticatedWhirVerifierInput,
+    context: &mut VerifierCtx,
+    transcript: &mut Transcript,
+) -> Result<C61AuthenticatedWhirBaseProof> {
+    let mask_domain = input.mask_range.correlation_domain(input.lane)?;
+    let mask_key =
+        context.expand_full_verifier_keys(mask_domain, 1).into_iter().next().ok_or_else(|| {
+            C61AuthenticatedWhirError::new("C6.3 WHIR missing simulator mask key")
+        })?;
+    let residual =
+        VerifierKey::from_public(input.combined - input.shifted_masked_claim, context.delta)
+            .sub(input.target.scale(input.gamma))
+            .add(mask_key);
+    append_authenticated_whir_zero_open_verifier(residual.k, transcript);
+    Ok(C61AuthenticatedWhirBaseProof { zero_open_tag: residual.k })
+}
+
 fn append_authenticated_whir_zero_open_prover(
     residual: &ProverAuthed,
     transcript: &mut Transcript,
@@ -950,6 +1074,79 @@ mod tests {
             slot: 17,
             range_start: 1_000 + tape as u32 * 100,
         }
+    }
+
+    #[test]
+    fn c63_real_pcg_terminal_range_consumes_two_distinct_masks_per_tape() {
+        let seed = [0xC3; 32];
+        let delta = f(1_201);
+        let range = C63AuthenticatedWhirMaskRange { stage: 0x63, slot: 17, range_start: 2_000 };
+        let mut prover = CorrelationStream::new(seed);
+        let mut verifier = VerifierCtx::new(seed, delta);
+        #[cfg(feature = "c61-p3-authenticated-reference")]
+        let mut simulator = VerifierCtx::new(seed, delta);
+        let transcript_seed = [0xD3; 32];
+        let mut prover_transcript = Transcript::new(transcript_seed);
+        let mut verifier_transcript = Transcript::new(transcript_seed);
+        #[cfg(feature = "c61-p3-authenticated-reference")]
+        let mut simulator_transcript = Transcript::new(transcript_seed);
+        let mut domains = HashSet::new();
+
+        for (ordinal, lane) in
+            [C63AuthenticatedWhirLane::Systematic, C63AuthenticatedWhirLane::Sketch]
+                .into_iter()
+                .enumerate()
+        {
+            let prepared = prepare_c63_authenticated_whir_mask(lane, range, &mut prover).unwrap();
+            assert!(domains.insert(prepared.mask_domain));
+            assert_eq!(prepared.mask_ordinal, range.range_start + ordinal as u32);
+            let target_value = f(1_211 + ordinal as u64);
+            let (target_prover, target_verifier) =
+                target(target_value, f(1_221 + ordinal as u64), delta);
+            let gamma = f(1_231 + ordinal as u64);
+            let masked_claim = f(1_241 + ordinal as u64);
+            let shifted_masked_claim = prepared.shifted_masked_claim(masked_claim);
+            let closure = finish_c61_authenticated_whir_base(
+                prepared,
+                C61AuthenticatedWhirProverFinishInput {
+                    combined: masked_claim + gamma * target_value,
+                    shifted_masked_claim,
+                    gamma,
+                    target: target_prover,
+                },
+                &mut prover_transcript,
+            )
+            .unwrap();
+            let verifier_input = C63AuthenticatedWhirVerifierInput {
+                lane,
+                mask_range: range,
+                combined: masked_claim + gamma * target_value,
+                shifted_masked_claim,
+                gamma,
+                target: target_verifier,
+            };
+            #[cfg(feature = "c61-p3-authenticated-reference")]
+            assert_eq!(
+                simulate_c63_authenticated_whir_base_view(
+                    verifier_input,
+                    &mut simulator,
+                    &mut simulator_transcript,
+                )
+                .unwrap(),
+                closure.proof,
+            );
+            verify_c63_authenticated_whir_base(
+                verifier_input,
+                closure.proof,
+                &mut verifier,
+                &mut verifier_transcript,
+            )
+            .unwrap();
+        }
+        assert_eq!(prover.counters.full_corrs, 2);
+        assert_eq!(verifier.counters.full_corrs, 2);
+        #[cfg(feature = "c61-p3-authenticated-reference")]
+        assert_eq!(simulator.counters.full_corrs, 2);
     }
 
     #[test]

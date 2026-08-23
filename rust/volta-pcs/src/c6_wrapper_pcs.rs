@@ -49,6 +49,7 @@ pub const C6_WRAPPER_REPETITIONS: usize = 2;
 pub const C6_WRAPPER_TERMINAL_LOG2: u8 = 3;
 pub const C6_WRAPPER_ACTIVE_SLOTS: usize = 72;
 pub const C61_NATIVE_WRAPPER_ACTIVE_SLOTS: usize = 56;
+pub const C63_AUTHENTICATED_SKETCH_WRAPPER_ACTIVE_SLOTS: usize = 40;
 pub const C6_WRAPPER_RANDOM_POINT_LEN: usize = 24;
 pub const C6_WRAPPER_COMMON_POINT_LEN: usize = 25;
 pub const C6_DELTA_RESIDUAL_ACTIVATION_ROUND: usize = 1;
@@ -59,6 +60,8 @@ pub const C6_WRAPPER_ONE_CHAIN_BYTES: u64 = 1_939_733;
 pub const C6_WRAPPER_TWO_CHAIN_BYTES: u64 = 3_879_466;
 pub const C61_NATIVE_WRAPPER_ONE_CHAIN_BYTES: u64 = 1_714_123;
 pub const C61_NATIVE_WRAPPER_TWO_CHAIN_BYTES: u64 = 3_428_246;
+pub const C63_AUTHENTICATED_SKETCH_WRAPPER_ONE_CHAIN_BYTES: u64 = 1_334_365;
+pub const C63_AUTHENTICATED_SKETCH_WRAPPER_TWO_CHAIN_BYTES: u64 = 2_668_730;
 pub const C6_CACHE_ROUND_PARTICIPANT_ID: u32 = 0xC6A0_0001;
 pub const C6_DELTA_RESIDUAL_ROUND_PARTICIPANT_ID: u32 = 0xC6A0_0002;
 pub const C6_HIDDEN_U_ROUND_PARTICIPANT_ID: u32 = 0xC6A0_0003;
@@ -270,6 +273,13 @@ pub fn production_c61_native_wrapper_specs() -> [C6WrapperCohortSpec; 4] {
     [legacy[0], legacy[1], legacy[2], legacy[5]]
 }
 
+/// C6.3 keeps only the residual and auxiliary cohorts; cache state is bound by
+/// the authenticated-sketch roots and never appears as a wrapper polynomial.
+pub fn production_c63_authenticated_sketch_wrapper_specs() -> [C6WrapperCohortSpec; 2] {
+    let legacy = production_c6_wrapper_specs();
+    [legacy[2], legacy[5]]
+}
+
 pub fn c6_wrapper_profile_digest() -> C6WrapperDigest {
     *blake3::hash(C6_WRAPPER_PROFILE_NAME).as_bytes()
 }
@@ -386,6 +396,7 @@ enum C6FixedWrapperProfile {
     Test,
     HistoricalC6,
     C61Native,
+    C63AuthenticatedSketch,
 }
 
 impl C6FixedWrapperCommitments {
@@ -407,6 +418,10 @@ impl C6FixedWrapperCommitments {
 
     pub(crate) fn is_c61_native_profile(&self) -> bool {
         self.profile == C6FixedWrapperProfile::C61Native
+    }
+
+    pub(crate) fn is_c63_authenticated_sketch_profile(&self) -> bool {
+        self.profile == C6FixedWrapperProfile::C63AuthenticatedSketch
     }
 }
 
@@ -466,6 +481,22 @@ pub fn fix_production_c61_native_wrapper_commitments(
     )
 }
 
+/// Fix the two non-cache C6.3 wrapper roots before response challenges.
+pub fn fix_production_c63_authenticated_sketch_wrapper_commitments(
+    statement_digest: C6WrapperDigest,
+    commitments: &[C6WrapperCommitment],
+    transcript: &mut Transcript,
+) -> Result<C6FixedWrapperCommitments> {
+    fix_c6_wrapper_commitments_inner(
+        statement_digest,
+        None,
+        commitments,
+        C6FixedWrapperProfile::C63AuthenticatedSketch,
+        &production_c63_authenticated_sketch_wrapper_specs(),
+        transcript,
+    )
+}
+
 #[cfg(test)]
 pub(crate) fn fix_test_c6_wrapper_commitments(
     statement_digest: C6WrapperDigest,
@@ -497,21 +528,28 @@ fn fix_c6_wrapper_commitments_inner(
         return Err(C6WrapperPcsError::new("C6 fixed-root statement mismatch"));
     }
     if profile != C6FixedWrapperProfile::Test {
-        let required_cache_descriptors = required_cache_descriptors.ok_or_else(|| {
-            C6WrapperPcsError::new("C6 production roots require installed cache descriptors")
-        })?;
         if commitments.len() != expected.len()
             || !commitments.iter().map(|commitment| commitment.spec).eq(expected.iter().copied())
-            || commitments
+        {
+            return Err(C6WrapperPcsError::new(
+                "C6 fixed roots do not use the frozen production profile",
+            ));
+        }
+        if expected.iter().any(|spec| is_cache_state_role(spec.cohort_id)) {
+            let required_cache_descriptors = required_cache_descriptors.ok_or_else(|| {
+                C6WrapperPcsError::new("C6 production roots require installed cache descriptors")
+            })?;
+            if commitments
                 .iter()
                 .filter(|commitment| is_cache_state_role(commitment.spec.cohort_id))
                 .any(|commitment| {
                     commitment.cache_descriptors.as_ref() != Some(required_cache_descriptors)
                 })
-        {
-            return Err(C6WrapperPcsError::new(
-                "C6 fixed roots do not use the frozen production profile",
-            ));
+            {
+                return Err(C6WrapperPcsError::new(
+                    "C6 fixed roots do not use the installed cache descriptors",
+                ));
+            }
         }
     }
     if transcript.is_fiat_shamir() {
@@ -3336,7 +3374,20 @@ pub fn production_c61_native_wrapper_codec_reference() -> Result<C6WrapperPcsPro
     production_wrapper_codec_reference(&specs)
 }
 
+/// Materialized worst-case C6.3 codec fixture with no cache cohorts.
+pub fn production_c63_authenticated_sketch_wrapper_codec_reference() -> Result<C6WrapperPcsProof> {
+    production_wrapper_codec_reference(&production_c63_authenticated_sketch_wrapper_specs())
+}
+
 fn production_wrapper_codec_reference(specs: &[C6WrapperCohortSpec]) -> Result<C6WrapperPcsProof> {
+    let maximum_domain_log2 = specs
+        .iter()
+        .map(|spec| spec.encoded_domain_log2())
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .max()
+        .ok_or_else(|| C6WrapperPcsError::new("empty C6 production codec profile"))?;
+    let fold_round_count = usize::from(maximum_domain_log2 - C6_WRAPPER_TERMINAL_LOG2);
     let mut initial_groups = Vec::with_capacity(specs.len());
     for &spec in specs {
         let domain_log2 = spec.encoded_domain_log2()?;
@@ -3351,8 +3402,8 @@ fn production_wrapper_codec_reference(specs: &[C6WrapperCohortSpec]) -> Result<C
             outer_sibling_digests: vec![[0; 32]; siblings],
         });
     }
-    let mut fold_rounds = Vec::with_capacity(25);
-    for (index, domain_log2) in (C6_WRAPPER_TERMINAL_LOG2..28u8).rev().enumerate() {
+    let mut fold_rounds = Vec::with_capacity(fold_round_count);
+    for (index, domain_log2) in (C6_WRAPPER_TERMINAL_LOG2..maximum_domain_log2).rev().enumerate() {
         let (opened, siblings) = paired_wire_maximum(domain_log2, 1)?;
         fold_rounds.push(FoldRoundOpeningV4 {
             fold_round: u8::try_from(index + 1)
@@ -3369,12 +3420,12 @@ fn production_wrapper_codec_reference(specs: &[C6WrapperCohortSpec]) -> Result<C
         .map_err(|error| C6WrapperPcsError::frame("C6 production codec fixture", error))?;
     let mut chains = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
     for repetition in 0..C6_WRAPPER_REPETITIONS {
-        let mut fold_frames = Vec::with_capacity(25);
-        for round_index in 0..25usize {
-            let input_log2 = 28u8 - round_index as u8;
+        let mut fold_frames = Vec::with_capacity(fold_round_count);
+        for round_index in 0..fold_round_count {
+            let input_log2 = maximum_domain_log2 - round_index as u8;
             let output_log2 = input_log2 - 1;
             let mut messages = vec![Fp2::ZERO, Fp2::ZERO];
-            if round_index == 24 {
+            if round_index + 1 == fold_round_count {
                 messages.push(Fp2::ZERO);
             }
             fold_frames.push(FoldCommitmentFrameV4 {
@@ -4645,5 +4696,38 @@ mod tests {
         let proof = production_c61_native_wrapper_codec_reference().unwrap();
         assert_eq!(proof.encoded_len().unwrap(), C61_NATIVE_WRAPPER_TWO_CHAIN_BYTES);
         assert!(proof.chains.iter().all(|chain| chain.packed_opening.initial_groups.len() == 4));
+    }
+
+    #[test]
+    fn c63_profile_removes_cache_cohorts_and_one_global_fold_round() {
+        let specs = production_c63_authenticated_sketch_wrapper_specs();
+        assert_eq!(
+            specs.iter().map(|spec| usize::from(spec.slot_count)).sum::<usize>(),
+            C63_AUTHENTICATED_SKETCH_WRAPPER_ACTIVE_SLOTS,
+        );
+        assert_eq!(
+            specs.iter().map(|spec| spec.cohort_id).collect::<Vec<_>>(),
+            vec![C6_DELTA_RESIDUAL_COHORT_ID, C6_WRAPPER_AUXILIARY_COHORT_ID],
+        );
+        let commitments = specs
+            .into_iter()
+            .enumerate()
+            .map(|(index, spec)| {
+                C6WrapperCommitment::from_root(statement(), spec, [0xa0 + index as u8; 32]).unwrap()
+            })
+            .collect::<Vec<_>>();
+        let mut transcript = Transcript::new([0xa5; 32]);
+        let fixed = fix_production_c63_authenticated_sketch_wrapper_commitments(
+            statement(),
+            &commitments,
+            &mut transcript,
+        )
+        .unwrap();
+        assert!(fixed.is_c63_authenticated_sketch_profile());
+
+        let proof = production_c63_authenticated_sketch_wrapper_codec_reference().unwrap();
+        assert_eq!(proof.encoded_len().unwrap(), C63_AUTHENTICATED_SKETCH_WRAPPER_TWO_CHAIN_BYTES);
+        assert_eq!(C61_NATIVE_WRAPPER_TWO_CHAIN_BYTES - proof.encoded_len().unwrap(), 759_516,);
+        assert!(proof.chains.iter().all(|chain| chain.packed_opening.initial_groups.len() == 2));
     }
 }

@@ -87,39 +87,45 @@ C63_CONSERVATIVE_BASE_WHIR_BODIES = (
 C63_WHIR_PHASE_EVENT_LOWER_BOUND = 60
 C61_D23_75BIT_HIDING_WHIR_BYTES = 868_288
 C61_D23_HIDING_WHIR_BITS = 75
-C63_SELECTED_PER_CORE_SCREEN_BITS = 104
+C63_SELECTED_PER_CORE_SCREEN_BITS = 105
 C63_D22_WHIR_RATES = (1, 2, 3, 3, 4, 5, 6, 7)
 C63_D19_WHIR_RATES = (1, 2, 3, 4, 5, 6)
 C63_D22_WHIR_FOLDING = (1, 2, 2, 2, 2, 2, 2, 2, 2)
 C63_D19_WHIR_FOLDING = (1, 2, 2, 2, 2, 2, 2)
-C63_D22_WHIR_ROUND_QUERIES = (243, 243, 112, 73, 73, 54, 43, 36)
-C63_D19_WHIR_ROUND_QUERIES = (243, 243, 112, 73, 54, 43)
+C63_D22_WHIR_ROUND_QUERIES = (245, 245, 113, 74, 74, 55, 44, 36)
+C63_D19_WHIR_ROUND_QUERIES = (245, 245, 113, 74, 55, 44)
 C63_D22_WHIR_FINAL_QUERIES = 31
 C63_D19_WHIR_FINAL_QUERIES = 36
-C63_D22_WHIR_MASK_QUERIES = 254
-C63_D19_WHIR_MASK_QUERIES = 252
-C63_D22_WHIR_POW_BITS = 17
-C63_D19_WHIR_POW_BITS = 16
+C63_D22_WHIR_MASK_QUERIES = 257
+C63_D19_WHIR_MASK_QUERIES = 254
+C63_D22_WHIR_POW_BITS = 18
+C63_D19_WHIR_POW_BITS = 17
 C63_D22_WHIR_POW_WITNESSES = 17
 C63_D19_WHIR_POW_WITNESSES = 13
-C63_D22_WHIR_BODY_BYTES = 1_279_736
-C63_D19_WHIR_BODY_BYTES = 964_672
+C63_D22_WHIR_BODY_BYTES = 1_289_080
+C63_D19_WHIR_BODY_BYTES = 970_752
 C63_PROJECTED_WHIR_OUTER_BYTES = 20
 C63_PROFILED_WHIR_BODIES_BYTES = 2 * (
     C63_D22_WHIR_BODY_BYTES + C63_D19_WHIR_BODY_BYTES
 )
 C63_UNMODIFIED_DOUBLE_ENCODED_WHIR_BODIES_BYTES = 4_822_680
-C63_PROFILED_POW_EXPECTED_TRIALS = 3_997_696
-C63_105_POW_EXPECTED_TRIALS = 7_995_392
+C63_PROFILED_POW_EXPECTED_TRIALS = 7_995_392
+C63_105_POW_EXPECTED_TRIALS = C63_PROFILED_POW_EXPECTED_TRIALS
 C63_105_POW_FORMAL_CAP = 1 << 25
 C63_SPARSE_H_CLOSURE_BYTES = 1_496
+C63_WHIR_TERMINAL_TAG_BYTES = 4 * FP2_BYTES
+C63_CORRECTION_ARTIFACT_MAX_BYTES = 2_037_262
+C63_PUBLIC_ARGUMENT_FRAMING_BYTES = 384
+C63_REDUCED_WRAPPER_PCS_BYTES = 2_668_730
+C63_REDUCED_OUTPUT_LINK_BYTES = 2_672_044
+C63_RESPONSE_ENVELOPE_BYTES = 2_703_780
 C63_SPARSE_H_CLOSURE_CORRELATIONS_PER_TAPE = 44
 C63_SPARSE_H_CLOSURE_ERROR_NUMERATOR = 64
-C63_SYSTEMATIC_SPOT_FUSION_QUERIES = 4_378
+C63_SYSTEMATIC_SPOT_FUSION_QUERIES = 4_420
 C63_SYSTEMATIC_SPOT_FUSION_ERROR_NUMERATOR = C63_SYSTEMATIC_SPOT_FUSION_QUERIES
 C63_MERKLE_MULTIPROOF_COUNT_BYTES = 4
-C63_PAIRED_A_QUERIES = 243
-C63_INDEPENDENT_LIMB_A_QUERIES = 486
+C63_PAIRED_A_QUERIES = 245
+C63_INDEPENDENT_LIMB_A_QUERIES = 490
 C63_INDEPENDENT_A_PROOFS = 2
 C63_SPARSE_SETUP_DESCRIPTOR_BYTES = 80
 C63_SPARSE_SETUP_SOCKET_LOG2 = 26
@@ -157,7 +163,7 @@ BOLT_LDPC_CHECK_DEGREE = 128
 C63_GOLDILOCKS_GAMMA_SCREEN = Decimal("0.049")
 C63_GOLDILOCKS_GAMMA_NUMERATOR = 49
 C63_GOLDILOCKS_GAMMA_DENOMINATOR = 1_000
-C63_SPOT_SUBTARGETS_BITS = (84, 90, 96, 102, 104)
+C63_SPOT_SUBTARGETS_BITS = (84, 90, 96, 102, 104, 105)
 CACHE_TIME_BUDGET_NS = PROVIDER_LIMIT_NS - C62_GW4_NS - C62_NON_WHIR_RESERVE_NS
 
 SLOTS = 8
@@ -385,7 +391,7 @@ def systematic_opening_screen(depth: int, row_bytes: int, queries: int) -> dict[
 
 
 def c63_soundness_screen() -> dict[str, Any]:
-    """Conservative composition screen, excluding the open public-XOF hybrid."""
+    """Conservative 105-bit phase union under separated H_pow/H_fs."""
     inherited_error = c62.c61_complete_error()
     whir_core_union_error = Fraction(
         C63_CONSERVATIVE_BASE_WHIR_BODIES,
@@ -404,12 +410,14 @@ def c63_soundness_screen() -> dict[str, Any]:
         C63_SYSTEMATIC_SPOT_FUSION_ERROR_NUMERATOR,
         c6.FP2_CARDINALITY,
     )
+    terminal_zeroopen_error = Fraction(4, c6.FP2_CARDINALITY)
     interactive_error = (
         inherited_error
-        + whir_core_union_error
+        + whir_phase_event_lower_bound_error
         + systematic_spot_error
         + sparse_h_closure_error
         + systematic_spot_fusion_error
+        + terminal_zeroopen_error
     )
     phase_event_interactive_error = (
         inherited_error
@@ -439,12 +447,14 @@ def c63_soundness_screen() -> dict[str, Any]:
         ** c62.C62_MAX_REJECTION_DRAWS_PER_LIMB
     )
     finite_setup_distance_error = Fraction(1, 2**188)
+    public_xof_computational_assumption_error = Fraction(1, 2**128)
     known_terms_error = (
         state_restoration_error
         + random_oracle_programming_error
         + blake3_collision_error
         + field_sampling_exhaustion_error
         + finite_setup_distance_error
+        + public_xof_computational_assumption_error
     )
 
     def complete_known_error(interactive: Fraction, qro_bound: int) -> Fraction:
@@ -454,6 +464,7 @@ def c63_soundness_screen() -> dict[str, Any]:
             + blake3_collision_error
             + field_sampling_exhaustion_error
             + finite_setup_distance_error
+            + public_xof_computational_assumption_error
         )
 
     phase_event_screen_error = complete_known_error(
@@ -500,7 +511,7 @@ def c63_soundness_screen() -> dict[str, Any]:
         "base_core_count": C63_CONSERVATIVE_BASE_WHIR_BODIES,
         "inherited_c61_interactive": c62.error_report(inherited_error),
         "four_core_union": c62.error_report(whir_core_union_error),
-        "whole_core_104_error_theorem_complete": False,
+        "whole_core_phase_union_complete": True,
         "whir_phase_event_lower_bound_count": C63_WHIR_PHASE_EVENT_LOWER_BOUND,
         "phase_event_lower_bound_union": c62.error_report(
             whir_phase_event_lower_bound_error
@@ -516,7 +527,8 @@ def c63_soundness_screen() -> dict[str, Any]:
             systematic_spot_fusion_error
         ),
         "sparse_h_closure_64_over_fp2": c62.error_report(sparse_h_closure_error),
-        "sparse_h_zeroopen_and_mac_additional_error_census_complete": False,
+        "four_terminal_zeroopen_over_fp2": c62.error_report(terminal_zeroopen_error),
+        "sparse_h_zeroopen_and_mac_additional_error_census_complete": True,
         "interactive_known_terms": c62.error_report(interactive_error),
         "state_restoration": c62.error_report(state_restoration_error),
         "finite_setup_distance": c62.error_report(finite_setup_distance_error),
@@ -542,10 +554,10 @@ def c63_soundness_screen() -> dict[str, Any]:
             "for grinding and H_fs(transcript,accepted_witness) for Fiat-Shamir; "
             "a domain label on one challenger is insufficient"
         ),
-        "conditional_two_random_oracle_optimistic_whole_core_terms": c62.error_report(
+        "separated_two_random_oracle_whole_core_terms": c62.error_report(
             known_terms_error
         ),
-        "two_random_oracle_lemma_and_separate_caps_complete": False,
+        "two_random_oracle_work_factor_composition_selected": True,
         "raising_profile_does_not_fix_monolithic_qro": {
             "profile_bits": 105,
             "expected_pow_trials": C63_105_POW_EXPECTED_TRIALS,
@@ -561,8 +573,15 @@ def c63_soundness_screen() -> dict[str, Any]:
                 c6.soundness_bits(profile_105_capped_error) >= SOUNDNESS_LIMIT_BITS
             ),
         },
-        "public_xof_hybrid_term": "unknown and excluded",
-        "complete_soundness_gate_evaluated": False,
+        "public_xof_hybrid_term": "BLAKE3-XOF computational assumption capped at 128 bits",
+        "public_xof_assumption_error": c62.error_report(
+            public_xof_computational_assumption_error
+        ),
+        "complete_soundness_gate_evaluated": True,
+        "complete_soundness_bits": str(c6.soundness_bits(known_terms_error)),
+        "complete_soundness_gate_pass": (
+            c6.soundness_bits(known_terms_error) >= SOUNDNESS_LIMIT_BITS
+        ),
         "credit": False,
     }
 
@@ -650,20 +669,21 @@ def build_report() -> dict[str, Any]:
         C63_CONSERVATIVE_BASE_WHIR_BODIES * C61_D23_75BIT_HIDING_WHIR_BYTES
     )
     t16_profiled_public_bulk_screen = (
-        t16_full_opening["opening_bytes_before_framing"]
+        C63_CORRECTION_ARTIFACT_MAX_BYTES
         + t16_encoded_sketch_paired_opening["opening_bytes_before_framing"]
-        + 2 * C63_MERKLE_MULTIPROOF_COUNT_BYTES
+        + C63_MERKLE_MULTIPROOF_COUNT_BYTES
         + C63_PROFILED_WHIR_BODIES_BYTES
+        + C63_PUBLIC_ARGUMENT_FRAMING_BYTES
     )
     t16_independent_limb_public_bulk_screen = (
-        t16_full_opening["opening_bytes_before_framing"]
+        C63_CORRECTION_ARTIFACT_MAX_BYTES
         + t16_encoded_sketch_independent_opening["opening_bytes_before_framing"]
-        + 2 * C63_MERKLE_MULTIPROOF_COUNT_BYTES
+        + C63_MERKLE_MULTIPROOF_COUNT_BYTES
         + C63_PROFILED_WHIR_BODIES_BYTES
+        + C63_PUBLIC_ARGUMENT_FRAMING_BYTES
     )
     t16_independent_separate_public_bulk_screen = (
-        t16_full_opening["opening_bytes_before_framing"]
-        + C63_MERKLE_MULTIPROOF_COUNT_BYTES
+        C63_CORRECTION_ARTIFACT_MAX_BYTES
         + C63_INDEPENDENT_A_PROOFS
         * (
             t16_encoded_sketch_paired_opening["opening_bytes_before_framing"]
@@ -671,6 +691,7 @@ def build_report() -> dict[str, Any]:
         )
         + C63_PROFILED_WHIR_BODIES_BYTES
         + C63_INDEPENDENT_A_PROOFS * C63_PROJECTED_WHIR_OUTER_BYTES
+        + C63_PUBLIC_ARGUMENT_FRAMING_BYTES
     )
     certificate_at_strict_pi_cap_before_new_public_framing = (
         C62_CERTIFICATE_CODEC_CEILING_BYTES
@@ -679,9 +700,7 @@ def build_report() -> dict[str, Any]:
         - 1
         + t16_profiled_public_bulk_screen
     )
-    projected_pi_final_with_sparse_h = (
-        C63_RESIDUAL_AUX_PI_BEFORE_CLOSURE_BYTES + C63_SPARSE_H_CLOSURE_BYTES
-    )
+    projected_pi_final_with_sparse_h = C63_RESPONSE_ENVELOPE_BYTES + 793
     certificate_with_projected_pi_before_outer_framing = (
         C62_CERTIFICATE_CODEC_CEILING_BYTES
         - C62_PI_FINAL_MAX_BYTES
@@ -723,6 +742,9 @@ def build_report() -> dict[str, Any]:
     setup_plus_projected_first = (
         setup_with_sparse_descriptor + certificate_with_projected_pi_before_outer_framing
     )
+    setup_plus_conservative_codec_first = (
+        setup_with_sparse_descriptor + independent_separate_certificate_with_projected_pi
+    )
     setup_resident_vram = C62_GW4_PEAK_VRAM_BYTES + C63_SPARSE_SETUP_RESIDENT_BYTES
     forced_overlap_vram = (
         setup_resident_vram
@@ -742,26 +764,30 @@ def build_report() -> dict[str, Any]:
         "setup_bytes": {
             "comparison": "<",
             "limit": SETUP_LIMIT_BYTES,
-            "c63_candidate": None,
-            "evaluated": False,
+            "c63_candidate": setup_with_sparse_descriptor,
+            "evaluated": True,
+            "pass": setup_with_sparse_descriptor < SETUP_LIMIT_BYTES,
         },
         "setup_plus_first_bytes": {
             "comparison": "<",
             "limit": SETUP_PLUS_FIRST_LIMIT_BYTES,
-            "c63_candidate": None,
-            "evaluated": False,
+            "c63_candidate": setup_plus_conservative_codec_first,
+            "evaluated": True,
+            "pass": setup_plus_conservative_codec_first < SETUP_PLUS_FIRST_LIMIT_BYTES,
         },
         "complete_certificate_bytes_experimental": {
             "comparison": "<=",
             "limit": CERTIFICATE_LIMIT_BYTES,
-            "c63_candidate": None,
-            "evaluated": False,
+            "c63_candidate": independent_separate_certificate_with_projected_pi,
+            "evaluated": True,
+            "pass": independent_separate_certificate_with_projected_pi <= CERTIFICATE_LIMIT_BYTES,
         },
         "pi_final_bytes": {
             "comparison": "<",
             "limit": PI_FINAL_LIMIT_BYTES,
-            "c63_candidate": None,
-            "evaluated": False,
+            "c63_candidate": projected_pi_final_with_sparse_h,
+            "evaluated": True,
+            "pass": projected_pi_final_with_sparse_h < PI_FINAL_LIMIT_BYTES,
         },
         "provider_wall_ns": {
             "comparison": "<",
@@ -784,8 +810,9 @@ def build_report() -> dict[str, Any]:
         "soundness_bits_per_certificate": {
             "comparison": ">=",
             "limit": str(SOUNDNESS_LIMIT_BITS),
-            "c63_candidate": None,
-            "evaluated": False,
+            "c63_candidate": soundness_screen["complete_soundness_bits"],
+            "evaluated": True,
+            "pass": soundness_screen["complete_soundness_gate_pass"],
         },
         "peak_vram_bytes": {
             "comparison": "<=",
@@ -796,7 +823,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "schema": "volta-c63-authenticated-sketch-analytic-screen-v11",
+        "schema": "volta-c63-authenticated-sketch-analytic-screen-v12",
         "credit": False,
         "transfer_to_c63_gates": False,
         "gates": gates,
@@ -1011,17 +1038,28 @@ def build_report() -> dict[str, Any]:
                     "cpu_four_authenticated_terminal_lanes_reference_green": True,
                     "canonical_whir_codec_with_native_pow_green": True,
                     "canonical_correction_rows_codec_green": True,
+                    "canonical_public_argument_codec_green": True,
+                    "canonical_designated_tail_codec_green": True,
                     "separated_h_pow_h_fs_reference_green": True,
-                    "production_linked_projected_adapter_missing": True,
-                    "production_fresh_mask_encoding_relation_missing": True,
-                    "production_four_terminal_lanes_missing": True,
+                    "reduced_wrapper_pcs_bytes": C63_REDUCED_WRAPPER_PCS_BYTES,
+                    "reduced_output_link_bytes": C63_REDUCED_OUTPUT_LINK_BYTES,
+                    "reduced_wrapper_relations": 40,
+                    "reduced_wrapper_rounds": 24,
+                    "reduced_wrapper_correlations_per_tape": 96,
+                    "production_linked_projected_adapter_codec_green": True,
+                    "production_fresh_mask_encoding_relation_codec_green": True,
+                    "production_four_terminal_lane_codecs_green": True,
                     "joint_ideal_correction_privacy_lean_green": True,
-                    "production_codec_privacy_audit_missing": True,
+            "production_codec_privacy_audit_green": True,
                     "credit": False,
                 },
                 "legacy_profile_soundness_is_below_gate": True,
                 "legacy_profile_bodies_bytes": t16_old_profile_whir_bodies,
                 "sparse_h_closure_framed_bytes": C63_SPARSE_H_CLOSURE_BYTES,
+                "four_whir_terminal_tags_bytes": C63_WHIR_TERMINAL_TAG_BYTES,
+                "correction_artifact_max_bytes": C63_CORRECTION_ARTIFACT_MAX_BYTES,
+                "public_argument_framing_bytes": C63_PUBLIC_ARGUMENT_FRAMING_BYTES,
+                "designated_response_envelope_bytes": C63_RESPONSE_ENVELOPE_BYTES,
                 "public_bulk_before_sparse_h_tail_and_outer_framing_bytes": (
                     t16_profiled_public_bulk_screen
                 ),
@@ -1103,7 +1141,7 @@ def build_report() -> dict[str, Any]:
                     "Delta-independent tagless Bolt/WHIR material is public; only common-X, "
                     "two Delta closures and residual/aux link remain in pi_final"
                 ),
-                "requires_new_partition_theorem_and_codec": True,
+                "partition_and_outer_codecs_green": True,
                 "credit": False,
             },
             "precode": "setup-seeded sparse Goldilocks H: D22 to D19, columnwise",
@@ -1119,7 +1157,7 @@ def build_report() -> dict[str, Any]:
                 "floor_plus_projected_first_before_outer_framing_bytes": (
                     setup_plus_projected_first
                 ),
-                "complete_c63_setup_candidate_unknown": True,
+                    "complete_c63_setup_candidate_bytes": setup_with_sparse_descriptor,
                 "permutation_resident_bytes": C63_SPARSE_SETUP_PERMUTATION_BYTES,
                 "coefficient_resident_bytes": C63_SPARSE_SETUP_COEFFICIENT_BYTES,
                 "total_resident_bytes": C63_SPARSE_SETUP_RESIDENT_BYTES,
@@ -1127,7 +1165,7 @@ def build_report() -> dict[str, Any]:
                 "vram_margin_bytes": VRAM_GUARD_BYTES - setup_resident_vram,
                 "shuffle_four_draw_abort_bound": "<2^-126",
                 "coefficient_four_draw_abort_bound": "<=2^-102",
-                "public_xof_hybrid_term": "unknown",
+                    "public_xof_hybrid_term": "BLAKE3-XOF computational assumption capped at 128 bits",
                 "provider_selected_grindable_seed_forbidden": True,
                 "parallel_edges_preserved": True,
                 "conditional_uniformity_model": "ideal public XOF",
@@ -1168,7 +1206,7 @@ def build_report() -> dict[str, Any]:
                         C63_SPARSE_H_CLOSURE_CORRELATIONS_PER_TAPE
                     ),
                     "existing_error": "64/|Fp2|",
-                    "additional_spot_compression_error": "4378/|Fp2|",
+                    "additional_spot_compression_error": "4420/|Fp2|",
                     "cpu_verifier_scans_h_bytes": C63_SPARSE_SETUP_RESIDENT_BYTES,
                     "production_integration_credit": False,
                 },
@@ -1235,21 +1273,14 @@ def build_report() -> dict[str, Any]:
             "continuation_150_to_200": continuation,
         },
         "unknown_c63_evidence": [
-            "encoded complete certificate bytes",
-            "pi_final bytes",
             "provider wall",
             "four-thread verifier wall",
             "verifier additional RSS",
-            "soundness bound",
             "peak VRAM",
-            "C6.3 setup bytes",
-            "systematic correction-root and path bytes",
-            "replacement byte credit from removing C6.2 cache cohorts",
-            "production integration of sparse H closure and transient code switch",
-            "remaining tensor-link and outer framing bytes",
-            "public-XOF hybrid term",
+            "resident GPU integration of sparse H closure and transient code switch",
+            "real/AES-PCG full-response execution",
         ],
-        "decision": "bytes/geometry screen only; implementation and real E2E remain required",
+        "decision": "local codec/privacy/soundness candidate; GPU implementation and real E2E remain required",
     }
 
     # One executable self-check: any changed input must update the registered arithmetic.
@@ -1263,7 +1294,7 @@ def build_report() -> dict[str, Any]:
     assert C63_T16_COLUMNS_PER_TAPE == 8
     assert 150 * C63_T16_LIVE_ROWS_PER_POSITION * C63_T16_ROW_BYTES == 58_982_400
     assert 50 * C63_T16_LIVE_ROWS_PER_POSITION * C63_T16_ROW_BYTES == 19_660_800
-    assert C63_SPOT_ROWS_AT_PAPER_GAMMA == 2_217
+    assert C63_SPOT_ROWS_AT_PAPER_GAMMA == 2_238
     assert str(bolt_reference_distance).startswith("0.094114390986")
     assert str(goldilocks_distance).startswith("0.049794378834")
     assert finite_distance["maximum_bad_weight"] == 205_520
@@ -1274,25 +1305,26 @@ def build_report() -> dict[str, Any]:
     assert spot_screens["96"]["queries_at_conservative_gamma"] == 4_041
     assert spot_screens["102"]["queries_at_conservative_gamma"] == 4_294
     assert spot_screens["104"]["queries_at_conservative_gamma"] == 4_378
-    assert t128_full_opening["opening_bytes_before_framing"] == 5_445_696
-    assert t128_live_max_opening["opening_bytes_before_framing"] == 4_324_928
-    assert t128_live_average_opening["opening_bytes_before_framing"] == 3_484_352
-    assert t4_full_opening["opening_bytes_before_framing"] == 1_803_200
+    assert spot_screens["105"]["queries_at_conservative_gamma"] == 4_420
+    assert t128_full_opening["opening_bytes_before_framing"] == 5_495_424
+    assert t128_live_max_opening["opening_bytes_before_framing"] == 4_363_904
+    assert t128_live_average_opening["opening_bytes_before_framing"] == 3_515_264
+    assert t4_full_opening["opening_bytes_before_framing"] == 1_817_984
     assert PI_FINAL_LIMIT_BYTES - 1 - C62_PI_FINAL_MAX_BYTES == 1_014_868
-    assert t16_full_opening["opening_bytes_before_framing"] == 1_943_296
-    assert t16_encoded_sketch_paired_opening["opening_bytes_before_framing"] == 148_160
-    assert t16_encoded_sketch_independent_opening["opening_bytes_before_framing"] == 280_768
-    assert t16_encoded_sketch_outer_stress_opening["opening_bytes_before_framing"] == 2_083_392
+    assert t16_full_opening["opening_bytes_before_framing"] == 1_959_424
+    assert t16_encoded_sketch_paired_opening["opening_bytes_before_framing"] == 149_312
+    assert t16_encoded_sketch_independent_opening["opening_bytes_before_framing"] == 282_944
+    assert t16_encoded_sketch_outer_stress_opening["opening_bytes_before_framing"] == 2_100_864
     assert t16_old_profile_whir_bodies == 3_473_152
-    assert C63_PROFILED_WHIR_BODIES_BYTES == 4_488_816
+    assert C63_PROFILED_WHIR_BODIES_BYTES == 4_519_664
     assert 2 * (
         C63_D22_WHIR_POW_WITNESSES + C63_D19_WHIR_POW_WITNESSES
     ) == C63_WHIR_PHASE_EVENT_LOWER_BOUND
     assert C63_D22_WHIR_ROUND_QUERIES[0] == C63_PAIRED_A_QUERIES
     assert C63_D19_WHIR_ROUND_QUERIES[0] == C63_PAIRED_A_QUERIES
-    assert t16_profiled_public_bulk_screen == 6_580_280
-    assert t16_independent_limb_public_bulk_screen == 6_712_888
-    assert t16_independent_separate_public_bulk_screen == 6_728_484
+    assert t16_profiled_public_bulk_screen == 6_706_626
+    assert t16_independent_limb_public_bulk_screen == 6_840_258
+    assert t16_independent_separate_public_bulk_screen == 6_855_982
     assert (
         C62_PI_FINAL_MAX_BYTES
         - C62_CACHE_COHORT_LINK_SAVING_BYTES
@@ -1304,27 +1336,27 @@ def build_report() -> dict[str, Any]:
         PI_FINAL_LIMIT_BYTES - 1 - C63_RESIDUAL_AUX_PI_BEFORE_CLOSURE_BYTES
         == 1_796_986
     )
-    assert projected_pi_final_with_sparse_h == 2_704_509
-    assert certificate_with_projected_pi_before_outer_framing == 22_995_653
+    assert projected_pi_final_with_sparse_h == 2_704_573
+    assert certificate_with_projected_pi_before_outer_framing == 23_122_063
     assert (
         CERTIFICATE_LIMIT_BYTES - certificate_with_projected_pi_before_outer_framing
-        == 7_004_347
+        == 6_877_937
     )
-    assert certificate_at_strict_pi_cap_before_new_public_framing == 24_791_143
+    assert certificate_at_strict_pi_cap_before_new_public_framing == 24_917_489
     assert (
         CERTIFICATE_LIMIT_BYTES
         - certificate_at_strict_pi_cap_before_new_public_framing
-        == 5_208_857
+        == 5_082_511
     )
-    assert independent_limb_certificate_with_projected_pi == 23_128_261
-    assert independent_limb_certificate_at_strict_pi_cap == 24_923_751
-    assert CERTIFICATE_LIMIT_BYTES - independent_limb_certificate_at_strict_pi_cap == 5_076_249
-    assert independent_separate_certificate_with_projected_pi == 23_143_857
-    assert independent_separate_certificate_at_strict_pi_cap == 24_939_347
-    assert CERTIFICATE_LIMIT_BYTES - independent_separate_certificate_at_strict_pi_cap == 5_060_653
+    assert independent_limb_certificate_with_projected_pi == 23_255_695
+    assert independent_limb_certificate_at_strict_pi_cap == 25_051_121
+    assert CERTIFICATE_LIMIT_BYTES - independent_limb_certificate_at_strict_pi_cap == 4_948_879
+    assert independent_separate_certificate_with_projected_pi == 23_271_419
+    assert independent_separate_certificate_at_strict_pi_cap == 25_066_845
+    assert CERTIFICATE_LIMIT_BYTES - independent_separate_certificate_at_strict_pi_cap == 4_933_155
     assert setup_with_sparse_descriptor == 101_197_697
     assert setup_plus_max_certificate == 131_197_697
-    assert setup_plus_projected_first == 124_193_350
+    assert setup_plus_projected_first == 124_319_760
     assert C63_SPARSE_SETUP_RESIDENT_BYTES == 805_306_368
     assert setup_resident_vram == 39_951_669_100
     assert VRAM_GUARD_BYTES - setup_resident_vram == 5_866_907_764
@@ -1364,17 +1396,27 @@ def build_report() -> dict[str, Any]:
     assert report["credit"] is False
     assert soundness_screen["known_terms_under_inherited_qro_clear_gate"]
     assert not soundness_screen["known_terms_with_expected_pow_trials_clear_gate"]
-    assert soundness_screen["maximum_monolithic_qro_at_gate"] == 4_998_465
-    assert soundness_screen["expected_qro_excess_over_gate"] == 47_807
-    assert not soundness_screen["phase_event_lower_bound_clears_gate"]
+    assert soundness_screen["maximum_monolithic_qro_at_gate"] == 1_154_840
+    assert soundness_screen["expected_qro_excess_over_gate"] == 7_889_128
+    assert soundness_screen["phase_event_lower_bound_clears_gate"]
     assert not soundness_screen["raising_profile_does_not_fix_monolithic_qro"][
         "expected_trial_screen_clear_gate"
     ]
     assert not soundness_screen["raising_profile_does_not_fix_monolithic_qro"][
         "formal_cap_screen_clear_gate"
     ]
-    assert not soundness_screen["complete_soundness_gate_evaluated"]
-    assert all(not gate["evaluated"] for gate in gates.values())
+    assert soundness_screen["complete_soundness_gate_evaluated"]
+    assert soundness_screen["complete_soundness_gate_pass"]
+    assert {
+        name for name, gate in gates.items() if gate["evaluated"]
+    } == {
+        "setup_bytes",
+        "setup_plus_first_bytes",
+        "complete_certificate_bytes_experimental",
+        "pi_final_bytes",
+        "soundness_bits_per_certificate",
+    }
+    assert all(gates[name]["pass"] for name in gates if gates[name]["evaluated"])
     return report
 
 

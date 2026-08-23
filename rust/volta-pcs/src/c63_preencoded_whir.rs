@@ -43,10 +43,11 @@ pub const C63_ENCODED_SKETCH_PHYSICAL_ROWS: usize = 1 << C63_ENCODED_SKETCH_PHYS
 pub const C63_ENCODED_SKETCH_FOLDED_POSITIONS: usize = 2;
 pub const C63_ENCODED_SKETCH_PHYSICAL_ROW_WIDTH: usize =
     C63_BOLT_COLUMNS * C63_ENCODED_SKETCH_FOLDED_POSITIONS;
-pub const C63_ENCODED_SKETCH_INDEPENDENT_A_QUERIES: usize = 486;
+pub const C63_ENCODED_SKETCH_INDEPENDENT_A_QUERIES: usize = 490;
 pub const C63_WHIR_MAGIC: [u8; 8] = *b"C63WIR1\0";
 pub const C63_WHIR_VERSION: u16 = 1;
-pub const C63_WHIR_SECURITY_BITS: usize = 104;
+pub const C63_WHIR_SECURITY_BITS: usize = 105;
+pub const C63_POW_SEARCH_CAP_PER_PHASE: u64 = 1 << 26;
 const C63_H_POW_CONTEXT: &str = "volta-zk/c63/H_pow/v1";
 
 /// Fiat--Shamir delegates to `inner`; grinding uses an independent keyed hash.
@@ -131,13 +132,13 @@ where
             return F::ZERO;
         }
         let snapshot = self.inner.clone().finalize();
-        let witness = (0..F::ORDER_U64)
+        let witness = (0..C63_POW_SEARCH_CAP_PER_PHASE.min(F::ORDER_U64))
             .into_par_iter()
             .find_any(|&candidate| {
                 c63_pow_accepts(self.role, self.pow_phase, bits, snapshot, candidate)
             })
             .map(|candidate| unsafe { F::from_canonical_unchecked(candidate) })
-            .expect("C6.3 separated PoW witness search exhausted");
+            .expect("C6.3 separated PoW witness search hit its fail-closed cap");
         assert!(self.check_witness(bits, witness));
         witness
     }
@@ -264,8 +265,8 @@ fn decode_c63_fp2_opening(
 
 fn c63_whir_profile(num_variables: usize) -> Result<(usize, Vec<usize>, Vec<usize>), String> {
     match num_variables {
-        22 => Ok((17, vec![1, 2, 3, 3, 4, 5, 6, 7], vec![1, 2, 2, 2, 2, 2, 2, 2, 2])),
-        19 => Ok((16, vec![1, 2, 3, 4, 5, 6], vec![1, 2, 2, 2, 2, 2, 2])),
+        22 => Ok((18, vec![1, 2, 3, 3, 4, 5, 6, 7], vec![1, 2, 2, 2, 2, 2, 2, 2, 2])),
+        19 => Ok((17, vec![1, 2, 3, 4, 5, 6], vec![1, 2, 2, 2, 2, 2, 2])),
         _ => Err("C6.3 WHIR admits only D22 or D19".to_owned()),
     }
 }
@@ -407,7 +408,7 @@ pub fn encode_c63_whir_ordinary_artifact(
     encode_c63_whir_ordinary_artifact_with_config(num_variables, &config, commitment, proof)
 }
 
-fn encode_c63_whir_ordinary_artifact_with_config(
+pub(crate) fn encode_c63_whir_ordinary_artifact_with_config(
     num_variables: usize,
     config: &C63WhirConfig,
     commitment: &C61Commitment,
@@ -597,7 +598,7 @@ pub fn decode_c63_whir_ordinary_artifact(
     decode_c63_whir_ordinary_artifact_with_config(bytes, num_variables, &config)
 }
 
-fn decode_c63_whir_ordinary_artifact_with_config(
+pub(crate) fn decode_c63_whir_ordinary_artifact_with_config(
     bytes: &[u8],
     num_variables: usize,
     config: &C63WhirConfig,
@@ -1161,7 +1162,7 @@ pub(crate) fn encode_c63_whir_projected_artifact(
     encode_c63_whir_projected_artifact_with_config(19, &c63_whir_config(19)?, commitment, proof)
 }
 
-fn encode_c63_whir_projected_artifact_with_config(
+pub(crate) fn encode_c63_whir_projected_artifact_with_config(
     num_variables: usize,
     config: &C63WhirConfig,
     commitment: &C61Commitment,
@@ -1209,7 +1210,7 @@ pub(crate) fn decode_c63_whir_projected_artifact(
     decode_c63_whir_projected_artifact_with_config(bytes, 19, &c63_whir_config(19)?)
 }
 
-fn decode_c63_whir_projected_artifact_with_config(
+pub(crate) fn decode_c63_whir_projected_artifact_with_config(
     bytes: &[u8],
     num_variables: usize,
     config: &C63WhirConfig,
@@ -1438,9 +1439,11 @@ mod tests {
     use super::*;
     use crate::c61_authenticated_whir::{
         finish_c61_authenticated_whir_base, prepare_c61_authenticated_whir_mask,
-        verify_c61_authenticated_whir_base, C61AuthenticatedWhirAffineClaim,
+        prepare_c63_authenticated_whir_mask, verify_c61_authenticated_whir_base,
+        verify_c63_authenticated_whir_base, C61AuthenticatedWhirAffineClaim,
         C61AuthenticatedWhirMaskRange, C61AuthenticatedWhirPreparedMask,
         C61AuthenticatedWhirProverFinishInput, C61AuthenticatedWhirVerifierInput,
+        C63AuthenticatedWhirLane, C63AuthenticatedWhirMaskRange, C63AuthenticatedWhirVerifierInput,
     };
     use crate::c61_public_compression::{C61NativeChainId, C61NativeComponent};
     use crate::c61_whir_reference::{
@@ -1623,8 +1626,8 @@ mod tests {
     #[test]
     fn production_profiles_include_every_registered_pow_witness_and_byte() {
         let cases = [
-            (22, vec![243, 243, 112, 73, 73, 54, 43, 36], 31, 254, 17, 1_279_736),
-            (19, vec![243, 243, 112, 73, 54, 43], 36, 252, 13, 964_672),
+            (22, vec![245, 245, 113, 74, 74, 55, 44, 36], 31, 257, 17, 1_289_080),
+            (19, vec![245, 245, 113, 74, 55, 44], 36, 254, 13, 970_752),
         ];
         for (variables, queries, final_queries, mask_queries, witnesses, bytes) in cases {
             let config = c63_whir_config(variables).unwrap();
@@ -1881,8 +1884,8 @@ mod tests {
         target_tag: Fp2,
         pcg_seed: [u8; 32],
         delta: Fp2,
-        id: C61NativeChainId,
-        mask_range: C61AuthenticatedWhirMaskRange,
+        lane: C63AuthenticatedWhirLane,
+        mask_range: C63AuthenticatedWhirMaskRange,
         transcript_seed: [u8; 32],
     ) -> Result<(), String>
     where
@@ -1921,9 +1924,9 @@ mod tests {
         };
         let mut verifier_context = VerifierCtx::new(pcg_seed, delta);
         let mut verifier_transcript = Transcript::new_fiat_shamir(transcript_seed)?;
-        verify_c61_authenticated_whir_base(
-            C61AuthenticatedWhirVerifierInput {
-                id,
+        verify_c63_authenticated_whir_base(
+            C63AuthenticatedWhirVerifierInput {
+                lane,
                 mask_range,
                 combined: c61_volta_fp2_from_p3(closure.base_case.combined),
                 shifted_masked_claim: c61_volta_fp2_from_p3(closure.base_case.shifted_masked_claim),
@@ -2034,7 +2037,7 @@ mod tests {
     fn preencoded_tensor_matches_normal_encode_and_keeps_fresh_masks() {
         assert_eq!(C63_ENCODED_SKETCH_PHYSICAL_ROWS, 1 << 19);
         assert_eq!(C63_ENCODED_SKETCH_PHYSICAL_ROW_WIDTH, 32);
-        assert_eq!(C63_ENCODED_SKETCH_INDEPENDENT_A_QUERIES, 486);
+        assert_eq!(C63_ENCODED_SKETCH_INDEPENDENT_A_QUERIES, 490);
 
         let dft = Radix2DFTSmallBatch::default();
         let mmcs = c61_reference_mmcs();
@@ -2535,6 +2538,7 @@ mod tests {
             c63_open_correction_rows_reference(profile_digest, 1, &[correction_rows], &spot_rows)
                 .unwrap();
         assert_eq!(opened_root, correction_root);
+        let correction_artifact = correction_opening.encode(1, &spot_rows).unwrap();
         let spots = c63_verify_correction_rows_reference(
             correction_root,
             profile_digest,
@@ -2588,6 +2592,7 @@ mod tests {
         );
 
         let mut m_openings = [Fp2::ZERO; 2];
+        let mut m_artifacts = [Vec::new(), Vec::new()];
         let m_config = config_for::<C63SeparatedSizingChallenger>(INPUT_LOG2);
         let m_prover = HidingWhirProver::new(&m_config, &dft, &base_mmcs);
         for limb in 0..2 {
@@ -2597,12 +2602,12 @@ mod tests {
             let delta = Fp2::new(Fp::new(109 + u64::from(lane)), Fp::new(127 + u64::from(lane)));
             let target_tag =
                 Fp2::new(Fp::new(131 + u64::from(lane)), Fp::new(149 + u64::from(lane)));
-            let id = C61NativeChainId { component: C61NativeComponent::Compiler, repetition: lane };
-            let mask_range =
-                C61AuthenticatedWhirMaskRange { stage: 70 + lane, slot: 0, range_start: 0 };
+            let terminal_lane = C63AuthenticatedWhirLane::Systematic;
+            let mask_range = C63AuthenticatedWhirMaskRange { stage: 70, slot: 0, range_start: 0 };
             let mut correlations = CorrelationStream::new(pcg_seed);
             let prepared =
-                prepare_c61_authenticated_whir_mask(id, mask_range, &mut correlations).unwrap();
+                prepare_c63_authenticated_whir_mask(terminal_lane, mask_range, &mut correlations)
+                    .unwrap();
             let mut prover_challenger = challenger(lane_seed);
             let mut rng = StdRng::seed_from_u64(0xC6_3100 + limb as u64);
             let fixed = m_prover.c62_fixed_base_encoding(&m_limbs[limb]);
@@ -2628,6 +2633,7 @@ mod tests {
                 &output.proof,
             )
             .unwrap();
+            m_artifacts[limb] = encoded.clone();
             let (decoded_root, decoded_proof) =
                 decode_c63_whir_ordinary_artifact_with_config(&encoded, INPUT_LOG2, &m_config)
                     .unwrap();
@@ -2643,7 +2649,7 @@ mod tests {
                 target_tag,
                 pcg_seed,
                 delta,
-                id,
+                terminal_lane,
                 mask_range,
                 [0xC0 + lane; 32],
             )
@@ -2652,6 +2658,7 @@ mod tests {
         }
 
         let mut u_openings = [Fp2::ZERO; 2];
+        let mut u_artifacts = [Vec::new(), Vec::new()];
         for (limb, context) in contexts.into_iter().enumerate() {
             let lane = limb as u8 + 2;
             let lane_seed = [0xA0 + lane; 32];
@@ -2659,15 +2666,12 @@ mod tests {
             let delta = Fp2::new(Fp::new(109 + u64::from(lane)), Fp::new(127 + u64::from(lane)));
             let target_tag =
                 Fp2::new(Fp::new(131 + u64::from(lane)), Fp::new(149 + u64::from(lane)));
-            let id = C61NativeChainId {
-                component: C61NativeComponent::Compiler,
-                repetition: limb as u8,
-            };
-            let mask_range =
-                C61AuthenticatedWhirMaskRange { stage: 70 + lane, slot: 0, range_start: 0 };
+            let terminal_lane = C63AuthenticatedWhirLane::Sketch;
+            let mask_range = C63AuthenticatedWhirMaskRange { stage: 70, slot: 0, range_start: 0 };
             let mut correlations = CorrelationStream::new(pcg_seed);
             let prepared =
-                prepare_c61_authenticated_whir_mask(id, mask_range, &mut correlations).unwrap();
+                prepare_c63_authenticated_whir_mask(terminal_lane, mask_range, &mut correlations)
+                    .unwrap();
             let projected_mmcs = C63ProjectedMmcs::new(context);
             let link = projected_mmcs.link();
             let projected_prover = HidingWhirProver::new(&u_config, &dft, &projected_mmcs);
@@ -2705,6 +2709,7 @@ mod tests {
                 &output.proof,
             )
             .unwrap();
+            u_artifacts[limb] = encoded.clone();
             let (decoded_root, decoded_proof) =
                 decode_c63_whir_projected_artifact_with_config(&encoded, OUTPUT_LOG2, &u_config)
                     .unwrap();
@@ -2727,13 +2732,53 @@ mod tests {
                 target_tag,
                 pcg_seed,
                 delta,
-                id,
+                terminal_lane,
                 mask_range,
                 [0xC0 + lane; 32],
             )
             .unwrap();
             u_openings[limb] = target_value;
         }
+
+        let public_argument = crate::c63_public_argument::C63PublicArgument::new_with_configs(
+            [0xd1; 32],
+            profile_digest,
+            correction_root,
+            a_root.roots()[0],
+            1,
+            1,
+            &spot_rows,
+            correction_artifact,
+            m_artifacts,
+            u_artifacts,
+            INPUT_LOG2,
+            &m_config,
+            OUTPUT_LOG2,
+            &u_config,
+        )
+        .unwrap();
+        let public_bytes = public_argument.encode().unwrap();
+        let decoded_public = crate::c63_public_argument::C63PublicArgument::decode_with_configs(
+            &public_bytes,
+            &spot_rows,
+            INPUT_LOG2,
+            &m_config,
+            OUTPUT_LOG2,
+            &u_config,
+        )
+        .unwrap();
+        assert_eq!(decoded_public, public_argument);
+        let mut public_mutation = public_bytes;
+        public_mutation[180] ^= 1;
+        assert!(crate::c63_public_argument::C63PublicArgument::decode_with_configs(
+            &public_mutation,
+            &spot_rows,
+            INPUT_LOG2,
+            &m_config,
+            OUTPUT_LOG2,
+            &u_config,
+        )
+        .is_err());
 
         let basis = Fp2::new(Fp::ZERO, Fp::ONE);
         let m_opening = m_openings[0] + basis * m_openings[1];

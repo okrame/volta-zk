@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — PRIVACY + MULTIPROOF + FOUR LINKED CODECS + SEPARATED POW REFERENCES GREEN; OUTER CODEC/REAL-PCG/SOUNDNESS/GPU HARD STOPS / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — LOCAL CODEC/PRIVACY/105-BIT SOUNDNESS SCREEN GREEN; RESIDENT GPU OWNER HARD STOP / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,27 +11,42 @@ record; no external plan is authoritative.
 Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 
 - **Status.** Local C6.3 is open; no pod is open. Joint correction privacy and
-  terminal simulation compile in Lean. Rust binds 4,378 correction spots with
-  production-depth multiproofs, links two projected `A -> y` lanes, closes
-  four authenticated WHIR terminals and verifies the sparse relation without
-  full witness tables.
+  terminal simulation compile in Lean. Public, designated and final codecs,
+  production-depth openings, four linked WHIR lanes and the reduced wrapper
+  profile are locally green.
 - **Evidence.** C6.2 precommit remains `275.113308912 s`; about `249.51 s` was
-  dense encoding, persistence, reread and trees. Canonical correction/WHIR
-  codecs round-trip actual scaled proofs, count native 17/16-bit PoW fields
-  and separate `H_pow` from Fiat--Shamir sampling. The finite D22 screen
-  exceeds 188 bits; focused C6.3 tests pass 19/19. All evidence remains
-  `credit:false`.
+  dense encoding, persistence, reread and trees. The conservative 105-bit
+  codec is `23,271,419 B`, `pi_final` is `2,704,573 B`, setup plus first is
+  `124,469,116 B`, and the separated-oracle screen is `78.9485568461 bits`.
+  Real-PCG registers 24 sub plus 703 full correlations per tape. All remain
+  `credit:false`; no A100 timing, RAM or VRAM result exists.
 - **Selected construction.** Bolt stays inside Hiding-WHIR. Roots bind `D'`
   and D19-by-32 `A=C^16(H D')`; one `Fp2^16` mix yields `m/u/w/y`; four fresh
   WHIR cores consume pre-encoded `w/y`. MAC tapes stay separate; GW4 is fixed.
 - **Checks.** Certificate `<=30,000,000 B`; setup `<150,000,000 B`; setup plus
   first `<172,000,000 B`; `pi_final <4,500,000 B`; warm A100 prover `<20 s`;
-  four-thread verifier `<5 s`, additional RSS `<=8,000,000,000 B`; soundness
+  four-thread verifier `<5 s`, RSS `<=8,000,000,000 B`, soundness target
   `>=78.80929487391641 bits`.
-- **Hard stop / resume.** Close one outer codec and real-PCG privacy audit,
-  complete public-XOF/whole-core soundness, then implement one resident GPU
-  owner. A pod requires that closed local candidate, a new endpoint and owner
-  GO; it runs exactly one cold and one immediate warm real response.
+- **Hard stop / resume.** Implement and compile one resident GPU owner without
+  dense host state. A pod then requires a new endpoint and owner GO and runs
+  exactly one cold plus one immediate warm real response.
+
+- **2026-08-23 — C6.3 local certificate and correction-privacy boundary are
+  closed.** The canonical final certificate composes the fixed C6.2 response,
+  inherited public argument, C6.3 sketch public argument and designated tail;
+  both successor child roots are bound. The conservative two-opening profile
+  is exactly `23,271,419 B`, with `2,704,573 B` in `pi_final` and
+  `124,469,116 B` for setup plus first. Four WHIR cores use the selected
+  105-bit profile; the separated `H_pow/H_fs` computational screen is
+  `78.9485568461 bits`. Production geometry is exactly 24 sub plus 703 full
+  correlations per tape, including two distinct terminal masks. The typed
+  designated-view simulator equals the honest terminal proof, so the codec
+  instantiates the Lean statement that the joint correction vector `D=X-R`
+  is uniform when every changed `(cell,version,tape)` receives a fresh mask.
+  Focused C6.3 tests pass 22/22, query-profile tests pass 2/2 and screen schema
+  v12 passes. Evidence is local/synthetic and `credit:false`; the AES-PCG
+  assumption, resident GPU owner and every timing/RAM/VRAM gate still require
+  the real A100 run. No pod is authorized.
 
 - **2026-08-23 — Production-depth openings and fork-specific WHIR codecs are
   locally green.** Canonical Merkle multiproofs now bind sorted unique rows and

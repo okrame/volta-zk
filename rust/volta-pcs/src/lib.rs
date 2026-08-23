@@ -19,6 +19,9 @@ pub mod c62_gpu_whir;
 pub mod c63_authenticated_sketch;
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub mod c63_preencoded_whir;
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub mod c63_public_argument;
+pub mod c63_response_tail;
 pub mod c63_sparse_h_closure;
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub use c61_interactive_driver::{
@@ -63,8 +66,10 @@ pub use batch::{
 pub use c61_authenticated_whir::{
     finish_c61_authenticated_whir_base, finish_c61_authenticated_whir_base_with_zero_rows,
     finish_c61_joint_native_bridge, prepare_c61_authenticated_whir_mask,
+    prepare_c63_authenticated_whir_mask,
     prove_c61_authenticated_whir_base, verify_c61_authenticated_whir_base,
     verify_c61_authenticated_whir_base_with_zero_rows, verify_c61_joint_native_bridge,
+    verify_c63_authenticated_whir_base,
     C61AuthenticatedWhirAffineClaim, C61AuthenticatedWhirBaseProof, C61AuthenticatedWhirError,
     C61AuthenticatedWhirMaskRange, C61AuthenticatedWhirPreparedMask,
     C61AuthenticatedWhirProverClosure, C61AuthenticatedWhirProverFinishInput,
@@ -73,6 +78,8 @@ pub use c61_authenticated_whir::{
     C61_AUTHENTICATED_WHIR_MASKS_PER_TAPE, C61_AUTHENTICATED_WHIR_NET_PROVIDER_BYTES,
     C61_AUTHENTICATED_WHIR_REMOVED_EVALUATION_BYTES, C61_AUTHENTICATED_WHIR_TAPES,
     C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES, C61_JOINT_NATIVE_BRIDGE_FRAME_BYTES,
+    C63AuthenticatedWhirLane, C63AuthenticatedWhirMaskRange,
+    C63AuthenticatedWhirVerifierInput, C63_AUTHENTICATED_WHIR_MASKS_PER_TAPE,
 };
 pub use c61_joint_native_bridge::{
     C61JointNativeBodiesFixed, C61JointNativeBodyBinding, C61JointNativeBodyScheduleBuilder,
@@ -154,6 +161,14 @@ pub use c63_authenticated_sketch::{
     C63_BOLT_LDPC_CHECK_DEGREE, C63_BOLT_LDPC_COLUMN_DEGREE, C63_BOLT_LIVE_ROWS_PER_POSITION,
     C63_BOLT_ROWS, C63_BOLT_ROWS_PER_POSITION, C63_BOLT_ROW_LOG2, C63_BOLT_SKETCH_ROWS,
     C63_BOLT_SKETCH_ROW_LOG2, C63_SPARSE_SETUP_DESCRIPTOR_BYTES,
+};
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub use c63_public_argument::{
+    C63PublicArgument, C63_CORRECTION_OPENING_MAX_BYTES, C63_PUBLIC_ARGUMENT_COMPONENTS,
+    C63_PUBLIC_ARGUMENT_FRAMING_BYTES, C63_PUBLIC_ARGUMENT_MAGIC, C63_PUBLIC_ARGUMENT_VERSION,
+};
+pub use c63_response_tail::{
+    assemble_c63_response_tail, decode_c63_response_tail, C63DecodedResponseTail,
 };
 pub use c63_sparse_h_closure::{
     prove_c63_sparse_h_closure_reference, verify_c63_sparse_h_closure_from_whir_openings_reference,

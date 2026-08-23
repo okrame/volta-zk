@@ -200,6 +200,19 @@ impl C63SparseHClosureProof {
     }
 }
 
+/// Grammar-only production-size fixture; never accepted as cryptographic evidence.
+pub fn c63_sparse_h_closure_production_codec_reference() -> C63SparseHClosureProof {
+    C63SparseHClosureProof {
+        input_log2: C63_SPARSE_H_PRODUCTION_ROUNDS as u8,
+        output_log2: 19,
+        statement_digest: [1; 32],
+        round_corrections: array::from_fn(|_| {
+            vec![[Fp2::ZERO; 2]; C63_SPARSE_H_PRODUCTION_ROUNDS as usize]
+        }),
+        terminal_tags: [Fp2::ZERO; C63_SPARSE_H_TAPES],
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C63SparseHClosureReferenceAudit {
     pub sumcheck_point: Vec<Fp2>,

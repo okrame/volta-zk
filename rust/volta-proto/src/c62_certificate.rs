@@ -55,7 +55,7 @@ impl C62NativeWrapperCommitments {
         [old_cache_root, new_cache_root, self.residual_root, self.auxiliary_root]
     }
 
-    fn validate(self) -> Result<()> {
+    pub(crate) fn validate(self) -> Result<()> {
         if [
             self.statement_digest,
             self.residual_root,
@@ -329,7 +329,7 @@ fn c62_proof_digest(bytes: &[u8]) -> [u8; 32] {
     hash_parts(b"volta-zk/c6.2/proof-envelope/v1", &[bytes])
 }
 
-fn hash_parts(domain: &[u8], parts: &[&[u8]]) -> [u8; 32] {
+pub(crate) fn hash_parts(domain: &[u8], parts: &[&[u8]]) -> [u8; 32] {
     let mut hasher = blake3::Hasher::new();
     hasher.update(&(domain.len() as u64).to_le_bytes());
     hasher.update(domain);
@@ -341,41 +341,41 @@ fn hash_parts(domain: &[u8], parts: &[&[u8]]) -> [u8; 32] {
 }
 
 #[derive(Default)]
-struct Encoder {
+pub(crate) struct Encoder {
     bytes: Vec<u8>,
 }
 
 impl Encoder {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
-    fn raw(&mut self, bytes: &[u8]) {
+    pub(crate) fn raw(&mut self, bytes: &[u8]) {
         self.bytes.extend_from_slice(bytes);
     }
 
-    fn u16(&mut self, value: u16) {
+    pub(crate) fn u16(&mut self, value: u16) {
         self.raw(&value.to_le_bytes());
     }
 
-    fn u32(&mut self, value: u32) {
+    pub(crate) fn u32(&mut self, value: u32) {
         self.raw(&value.to_le_bytes());
     }
 
-    fn u64(&mut self, value: u64) {
+    pub(crate) fn u64(&mut self, value: u64) {
         self.raw(&value.to_le_bytes());
     }
 
-    fn digest(&mut self, value: [u8; 32]) {
+    pub(crate) fn digest(&mut self, value: [u8; 32]) {
         self.raw(&value);
     }
 
-    fn fp2(&mut self, value: Fp2) {
+    pub(crate) fn fp2(&mut self, value: Fp2) {
         self.u64(value.c0.value());
         self.u64(value.c1.value());
     }
 
-    fn paired_ranges(&mut self, ranges: C6PairedCorrelationRanges) {
+    pub(crate) fn paired_ranges(&mut self, ranges: C6PairedCorrelationRanges) {
         for range in ranges.coordinates {
             self.u32(range.stage);
             self.u64(range.start);
@@ -383,7 +383,7 @@ impl Encoder {
         }
     }
 
-    fn cache_head(&mut self, head: C6CacheHead, include_transition: bool) {
+    pub(crate) fn cache_head(&mut self, head: C6CacheHead, include_transition: bool) {
         self.u64(head.epoch);
         self.u32(head.cache_len);
         self.digest(head.cache_root);
@@ -392,41 +392,41 @@ impl Encoder {
         }
     }
 
-    fn workload(&mut self, workload: C6Workload) {
+    pub(crate) fn workload(&mut self, workload: C6Workload) {
         self.u32(workload.prompt_tokens);
         self.u32(workload.decode_tokens);
         self.u32(workload.old_context);
         self.u32(workload.new_context);
     }
 
-    fn paired_residual(&mut self, residual: C6PairedDeltaResidual) {
+    pub(crate) fn paired_residual(&mut self, residual: C6PairedDeltaResidual) {
         for coordinate in residual.coordinates {
             self.fp2(coordinate.correction_rlc);
             self.fp2(coordinate.public_tag_rlc);
         }
     }
 
-    fn blob(&mut self, bytes: &[u8]) {
+    pub(crate) fn blob(&mut self, bytes: &[u8]) {
         self.u64(bytes.len() as u64);
         self.raw(bytes);
     }
 
-    fn finish(self) -> Vec<u8> {
+    pub(crate) fn finish(self) -> Vec<u8> {
         self.bytes
     }
 }
 
-struct Decoder<'a> {
+pub(crate) struct Decoder<'a> {
     bytes: &'a [u8],
     offset: usize,
 }
 
 impl<'a> Decoder<'a> {
-    fn new(bytes: &'a [u8]) -> Self {
+    pub(crate) fn new(bytes: &'a [u8]) -> Self {
         Self { bytes, offset: 0 }
     }
 
-    fn take(&mut self, len: usize) -> Result<&'a [u8]> {
+    pub(crate) fn take(&mut self, len: usize) -> Result<&'a [u8]> {
         let end = self
             .offset
             .checked_add(len)
@@ -439,23 +439,23 @@ impl<'a> Decoder<'a> {
         Ok(bytes)
     }
 
-    fn u16(&mut self) -> Result<u16> {
+    pub(crate) fn u16(&mut self) -> Result<u16> {
         Ok(u16::from_le_bytes(self.take(2)?.try_into().expect("fixed slice")))
     }
 
-    fn u32(&mut self) -> Result<u32> {
+    pub(crate) fn u32(&mut self) -> Result<u32> {
         Ok(u32::from_le_bytes(self.take(4)?.try_into().expect("fixed slice")))
     }
 
-    fn u64(&mut self) -> Result<u64> {
+    pub(crate) fn u64(&mut self) -> Result<u64> {
         Ok(u64::from_le_bytes(self.take(8)?.try_into().expect("fixed slice")))
     }
 
-    fn digest(&mut self) -> Result<[u8; 32]> {
+    pub(crate) fn digest(&mut self) -> Result<[u8; 32]> {
         Ok(self.take(32)?.try_into().expect("fixed slice"))
     }
 
-    fn fp2(&mut self) -> Result<Fp2> {
+    pub(crate) fn fp2(&mut self) -> Result<Fp2> {
         let c0 = self.u64()?;
         let c1 = self.u64()?;
         if c0 >= P || c1 >= P {
@@ -464,14 +464,14 @@ impl<'a> Decoder<'a> {
         Ok(Fp2::new(Fp::new(c0), Fp::new(c1)))
     }
 
-    fn paired_ranges(&mut self) -> Result<C6PairedCorrelationRanges> {
+    pub(crate) fn paired_ranges(&mut self) -> Result<C6PairedCorrelationRanges> {
         let mut next = || -> Result<C6CorrelationRange> {
             Ok(C6CorrelationRange { stage: self.u32()?, start: self.u64()?, count: self.u64()? })
         };
         Ok(C6PairedCorrelationRanges { coordinates: [next()?, next()?] })
     }
 
-    fn cache_head(&mut self) -> Result<C6CacheHead> {
+    pub(crate) fn cache_head(&mut self) -> Result<C6CacheHead> {
         Ok(C6CacheHead {
             epoch: self.u64()?,
             cache_len: self.u32()?,
@@ -480,7 +480,7 @@ impl<'a> Decoder<'a> {
         })
     }
 
-    fn workload(&mut self) -> Result<C6Workload> {
+    pub(crate) fn workload(&mut self) -> Result<C6Workload> {
         Ok(C6Workload {
             prompt_tokens: self.u32()?,
             decode_tokens: self.u32()?,
@@ -489,7 +489,7 @@ impl<'a> Decoder<'a> {
         })
     }
 
-    fn paired_residual(&mut self) -> Result<C6PairedDeltaResidual> {
+    pub(crate) fn paired_residual(&mut self) -> Result<C6PairedDeltaResidual> {
         Ok(C6PairedDeltaResidual { coordinates: [self.delta_residual()?, self.delta_residual()?] })
     }
 
@@ -497,7 +497,7 @@ impl<'a> Decoder<'a> {
         Ok(crate::C6DeltaResidual { correction_rlc: self.fp2()?, public_tag_rlc: self.fp2()? })
     }
 
-    fn blob(&mut self, max_len: usize) -> Result<Vec<u8>> {
+    pub(crate) fn blob(&mut self, max_len: usize) -> Result<Vec<u8>> {
         let len = usize::try_from(self.u64()?)
             .map_err(|_| C62CertificateError::new("C62NFC1 blob exceeds usize"))?;
         if len > max_len {
@@ -506,7 +506,7 @@ impl<'a> Decoder<'a> {
         Ok(self.take(len)?.to_vec())
     }
 
-    fn finish(self) -> Result<()> {
+    pub(crate) fn finish(self) -> Result<()> {
         if self.offset != self.bytes.len() {
             return Err(C62CertificateError::new("trailing bytes in C62NFC1 certificate"));
         }

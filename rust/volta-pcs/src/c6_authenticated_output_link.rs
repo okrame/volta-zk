@@ -43,10 +43,11 @@ use crate::c6_wrapper_pcs::{
     C6AssembledWrapperClaims, C6CommittedWrapperCohort, C6FixedWrapperCommitments,
     C6ProductionWrapperPcsMetrics, C6WrapperDigest, C6WrapperOpeningClaim, C6WrapperOracleKind,
     C6WrapperPcsError, C6WrapperPcsProof, C61_NATIVE_WRAPPER_ACTIVE_SLOTS,
-    C61_NATIVE_WRAPPER_TWO_CHAIN_BYTES, C6_DELTA_RESIDUAL_COHORT_ID, C6_HIDDEN_U_EMBED_COHORT_ID,
-    C6_HIDDEN_U_WEIGHTS_COHORT_ID, C6_PREDECESSOR_CACHE_COHORT_ID, C6_SUCCESSOR_CACHE_COHORT_ID,
-    C6_WRAPPER_ACTIVE_SLOTS, C6_WRAPPER_AUXILIARY_COHORT_ID, C6_WRAPPER_REPETITIONS,
-    C6_WRAPPER_TWO_CHAIN_BYTES,
+    C61_NATIVE_WRAPPER_TWO_CHAIN_BYTES, C63_AUTHENTICATED_SKETCH_WRAPPER_ACTIVE_SLOTS,
+    C63_AUTHENTICATED_SKETCH_WRAPPER_TWO_CHAIN_BYTES, C6_DELTA_RESIDUAL_COHORT_ID,
+    C6_HIDDEN_U_EMBED_COHORT_ID, C6_HIDDEN_U_WEIGHTS_COHORT_ID, C6_PREDECESSOR_CACHE_COHORT_ID,
+    C6_SUCCESSOR_CACHE_COHORT_ID, C6_WRAPPER_ACTIVE_SLOTS, C6_WRAPPER_AUXILIARY_COHORT_ID,
+    C6_WRAPPER_REPETITIONS, C6_WRAPPER_TWO_CHAIN_BYTES,
 };
 use crate::c6_wrapper_persisted::{
     C6CudaPersistedLinkFoldOwner, C6PersistedCoefficientSlotReader, C6PersistedLinkFoldMetrics,
@@ -71,6 +72,15 @@ pub const C61_NATIVE_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_OVERHEAD_BYTES: u64 = 
 pub const C61_NATIVE_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_BYTES: u64 =
     C61_NATIVE_WRAPPER_TWO_CHAIN_BYTES
         + C61_NATIVE_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_OVERHEAD_BYTES;
+pub const C63_AUTHENTICATED_SKETCH_OUTPUT_LINK_COHORTS: usize = 2;
+pub const C63_AUTHENTICATED_SKETCH_OUTPUT_LINK_PRODUCTION_RELATIONS: usize =
+    C63_AUTHENTICATED_SKETCH_WRAPPER_ACTIVE_SLOTS;
+pub const C63_AUTHENTICATED_SKETCH_OUTPUT_LINK_PRODUCTION_ROUNDS: usize = 24;
+pub const C63_AUTHENTICATED_SKETCH_OUTPUT_LINK_PRODUCTION_CORRELATIONS_PER_TAPE: u64 = 96;
+pub const C63_AUTHENTICATED_SKETCH_OUTPUT_LINK_PRODUCTION_OVERHEAD_BYTES: u64 = 3_314;
+pub const C63_AUTHENTICATED_SKETCH_OUTPUT_LINK_PRODUCTION_BYTES: u64 =
+    C63_AUTHENTICATED_SKETCH_WRAPPER_TWO_CHAIN_BYTES
+        + C63_AUTHENTICATED_SKETCH_OUTPUT_LINK_PRODUCTION_OVERHEAD_BYTES;
 
 const LINK_PROOF_CONTEXT: &str = "volta-zk/c6/authenticated-output-link-proof/v2";
 const LINK_SCHEDULE_CONTEXT: &str = "volta-zk/c6/authenticated-output-link-schedule/v2";
@@ -84,6 +94,7 @@ const LINK_REPETITION_PREFIX_BYTES: u64 = 33;
 const LINK_ROUND_BYTES: u64 = 64;
 const LINK_AGGREGATE_BYTES: u64 = 96;
 const C61_NATIVE_LINK_AGGREGATE_BYTES: u64 = 64;
+const C63_AUTHENTICATED_SKETCH_LINK_AGGREGATE_BYTES: u64 = 32;
 const LINK_TERMINAL_TAG_BYTES: u64 = 64;
 const LINK_DIGEST_BYTES: u64 = 32;
 const LINK_CORRELATION_BASE: u64 = 0x0C64_0000_0000_0000;
@@ -547,10 +558,19 @@ pub(crate) struct C61NativePendingSlotRegistryVerifierBuilder {
     inner: C6PendingSlotRegistryVerifierBuilder,
 }
 
+/// C6.3 registry: only residual and auxiliary claims are representable.
+pub(crate) struct C63AuthenticatedSketchPendingSlotRegistryProverBuilder {
+    inner: C6PendingSlotRegistryProverBuilder,
+}
+
+pub(crate) struct C63AuthenticatedSketchPendingSlotRegistryVerifierBuilder {
+    inner: C6PendingSlotRegistryVerifierBuilder,
+}
+
 #[allow(dead_code)]
 impl C6PendingSlotRegistryProverBuilder {
     pub(crate) fn new(fixed: &C6FixedWrapperCommitments) -> Result<Self> {
-        if fixed.is_c61_native_profile() {
+        if fixed.is_c61_native_profile() || fixed.is_c63_authenticated_sketch_profile() {
             return Err(C6AuthenticatedOutputLinkError::new(
                 "C6.1 native roots require the hidden-free registry builder",
             ));
@@ -730,7 +750,7 @@ impl C6PendingSlotRegistryProverBuilder {
 #[allow(dead_code)]
 impl C6PendingSlotRegistryVerifierBuilder {
     pub(crate) fn new(fixed: &C6FixedWrapperCommitments) -> Result<Self> {
-        if fixed.is_c61_native_profile() {
+        if fixed.is_c61_native_profile() || fixed.is_c63_authenticated_sketch_profile() {
             return Err(C6AuthenticatedOutputLinkError::new(
                 "C6.1 native roots require the hidden-free verifier registry builder",
             ));
@@ -921,6 +941,50 @@ impl C61NativePendingSlotRegistryVerifierBuilder {
         pending: &C6PersistentCachePendingClaimsVerifier,
     ) -> Result<()> {
         self.inner.absorb_persistent_cache(pending)
+    }
+
+    pub(crate) fn finish(self) -> Result<C6PendingSlotRegistryVerifier> {
+        self.inner.finish()
+    }
+}
+
+impl C63AuthenticatedSketchPendingSlotRegistryProverBuilder {
+    pub(crate) fn new(fixed: &C6FixedWrapperCommitments) -> Result<Self> {
+        if !fixed.is_c63_authenticated_sketch_profile() {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "C6.3 prover registry requires two-root sketch typestate",
+            ));
+        }
+        Ok(Self { inner: C6PendingSlotRegistryProverBuilder::new_inner(fixed)? })
+    }
+
+    pub(crate) fn absorb_residual(
+        &mut self,
+        pending: &C6BlindResidualPendingClaimsProver,
+    ) -> Result<()> {
+        self.inner.absorb_residual(pending)
+    }
+
+    pub(crate) fn finish(self) -> Result<C6PendingSlotRegistryProver> {
+        self.inner.finish()
+    }
+}
+
+impl C63AuthenticatedSketchPendingSlotRegistryVerifierBuilder {
+    pub(crate) fn new(fixed: &C6FixedWrapperCommitments) -> Result<Self> {
+        if !fixed.is_c63_authenticated_sketch_profile() {
+            return Err(C6AuthenticatedOutputLinkError::new(
+                "C6.3 verifier registry requires two-root sketch typestate",
+            ));
+        }
+        Ok(Self { inner: C6PendingSlotRegistryVerifierBuilder::new_inner(fixed)? })
+    }
+
+    pub(crate) fn absorb_residual(
+        &mut self,
+        pending: &C6BlindResidualPendingClaimsVerifier,
+    ) -> Result<()> {
+        self.inner.absorb_residual(pending)
     }
 
     pub(crate) fn finish(self) -> Result<C6PendingSlotRegistryVerifier> {
@@ -3222,7 +3286,12 @@ fn prove_c6_authenticated_output_link_persisted_cuda_inner(
         C6AuthenticatedOutputLinkError::new("C6 production link overhead underflow")
     })?;
     let base_relations = expected_link_census(fixed).0;
-    let (expected_overhead, expected_combined) = if fixed.is_c61_native_profile() {
+    let (expected_overhead, expected_combined) = if fixed.is_c63_authenticated_sketch_profile() {
+        (
+            C63_AUTHENTICATED_SKETCH_OUTPUT_LINK_PRODUCTION_OVERHEAD_BYTES,
+            C63_AUTHENTICATED_SKETCH_OUTPUT_LINK_PRODUCTION_BYTES,
+        )
+    } else if fixed.is_c61_native_profile() {
         (
             C61_NATIVE_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_OVERHEAD_BYTES,
             C61_NATIVE_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_BYTES,
@@ -3235,8 +3304,16 @@ fn prove_c6_authenticated_output_link_persisted_cuda_inner(
     };
     let link = C6AuthenticatedOutputLinkMetrics {
         relations_per_repetition: (base_relations + usize::from(nbr2.is_some())) as u64,
-        rounds_per_repetition: C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_ROUNDS as u64,
-        full_correlations_per_tape: C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_CORRELATIONS_PER_TAPE,
+        rounds_per_repetition: if fixed.is_c63_authenticated_sketch_profile() {
+            C63_AUTHENTICATED_SKETCH_OUTPUT_LINK_PRODUCTION_ROUNDS as u64
+        } else {
+            C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_ROUNDS as u64
+        },
+        full_correlations_per_tape: if fixed.is_c63_authenticated_sketch_profile() {
+            C63_AUTHENTICATED_SKETCH_OUTPUT_LINK_PRODUCTION_CORRELATIONS_PER_TAPE
+        } else {
+            C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_CORRELATIONS_PER_TAPE
+        },
         link_overhead_bytes,
         combined_proof_bytes,
     };
@@ -4049,8 +4126,15 @@ fn link_geometry(fixed: &C6FixedWrapperCommitments) -> Result<(usize, usize, usi
         (C6_WRAPPER_AUXILIARY_COHORT_ID, C6WrapperOracleKind::Auxiliary, 32),
     ];
     let native = [historical[0], historical[1], historical[2], historical[5]];
+    let c63 = [historical[2], historical[5]];
     let expected: &[(u32, C6WrapperOracleKind, u16)] =
-        if fixed.is_c61_native_profile() { &native } else { &historical };
+        if fixed.is_c63_authenticated_sketch_profile() {
+            &c63
+        } else if fixed.is_c61_native_profile() {
+            &native
+        } else {
+            &historical
+        };
     if commitments.iter().zip(expected.iter().copied()).any(|(commitment, expected)| {
         (commitment.spec.cohort_id, commitment.spec.oracle_kind, commitment.spec.slot_count)
             != expected
@@ -4077,7 +4161,12 @@ fn link_geometry(fixed: &C6FixedWrapperCommitments) -> Result<(usize, usize, usi
 }
 
 fn expected_link_census(fixed: &C6FixedWrapperCommitments) -> (usize, usize) {
-    if fixed.is_c61_native_profile() {
+    if fixed.is_c63_authenticated_sketch_profile() {
+        (
+            C63_AUTHENTICATED_SKETCH_OUTPUT_LINK_PRODUCTION_RELATIONS,
+            C63_AUTHENTICATED_SKETCH_OUTPUT_LINK_COHORTS,
+        )
+    } else if fixed.is_c61_native_profile() {
         (
             C61_NATIVE_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_RELATIONS,
             C61_NATIVE_AUTHENTICATED_OUTPUT_LINK_COHORTS,
@@ -4091,6 +4180,9 @@ fn link_aggregate_bytes(cohorts: usize) -> Result<u64> {
     match cohorts {
         C6_AUTHENTICATED_OUTPUT_LINK_COHORTS => Ok(LINK_AGGREGATE_BYTES),
         C61_NATIVE_AUTHENTICATED_OUTPUT_LINK_COHORTS => Ok(C61_NATIVE_LINK_AGGREGATE_BYTES),
+        C63_AUTHENTICATED_SKETCH_OUTPUT_LINK_COHORTS => {
+            Ok(C63_AUTHENTICATED_SKETCH_LINK_AGGREGATE_BYTES)
+        }
         _ => Err(C6AuthenticatedOutputLinkError::new(
             "C6 link aggregate cohort census is unregistered",
         )),
@@ -4132,6 +4224,10 @@ fn expected_link_census_from_geometry(relations: usize, cohorts: usize) -> (usiz
         | (
             C61_NATIVE_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_RELATIONS,
             C61_NATIVE_AUTHENTICATED_OUTPUT_LINK_COHORTS,
+        )
+        | (
+            C63_AUTHENTICATED_SKETCH_OUTPUT_LINK_PRODUCTION_RELATIONS,
+            C63_AUTHENTICATED_SKETCH_OUTPUT_LINK_COHORTS,
         ) => (relations, cohorts),
         _ => (0, 0),
     }
@@ -4492,6 +4588,91 @@ mod tests {
             assert!(!implementation.contains("absorb_hidden_u"));
             assert!(!implementation.contains("C6BlindHiddenU"));
         }
+    }
+
+    #[test]
+    fn c63_link_codec_has_only_residual_and_auxiliary_cohorts() {
+        let specs = crate::c6_wrapper_pcs::production_c63_authenticated_sketch_wrapper_specs();
+        let commitments = specs
+            .into_iter()
+            .enumerate()
+            .map(|(index, spec)| {
+                C6WrapperCommitment::from_root([0x63; 32], spec, [0xb1 + index as u8; 32]).unwrap()
+            })
+            .collect::<Vec<_>>();
+        let mut transcript = Transcript::new([0xb5; 32]);
+        let fixed =
+            crate::c6_wrapper_pcs::fix_production_c63_authenticated_sketch_wrapper_commitments(
+                [0x63; 32],
+                &commitments,
+                &mut transcript,
+            )
+            .unwrap();
+        assert_eq!(link_geometry(&fixed).unwrap(), (40, 24, 2));
+        assert!(C6PendingSlotRegistryProverBuilder::new(&fixed).is_err());
+        assert!(C6PendingSlotRegistryVerifierBuilder::new(&fixed).is_err());
+        assert!(C63AuthenticatedSketchPendingSlotRegistryProverBuilder::new(&fixed)
+            .unwrap()
+            .finish()
+            .is_err());
+        assert!(C63AuthenticatedSketchPendingSlotRegistryVerifierBuilder::new(&fixed)
+            .unwrap()
+            .finish()
+            .is_err());
+
+        let wrapper_pcs =
+            crate::c6_wrapper_pcs::production_c63_authenticated_sketch_wrapper_codec_reference()
+                .unwrap();
+        let proof = C6AuthenticatedOutputLinkProof {
+            repetitions: (0..C6_WRAPPER_REPETITIONS)
+                .map(|repetition| C6LinkRepetitionProof {
+                    repetition: repetition as u8,
+                    schedule_digest: [0xc1 + repetition as u8; 32],
+                    corrections: vec![[[Fp2::ZERO; 2]; C6_AUTHENTICATED_OUTPUT_LINK_TAPES]; 24],
+                    aggregates: vec![Fp2::ZERO; 2],
+                })
+                .collect(),
+            wrapper_pcs,
+            terminal_tags: [[Fp2::ZERO; C6_AUTHENTICATED_OUTPUT_LINK_TAPES];
+                C6_WRAPPER_REPETITIONS],
+        };
+        let encoded = proof.canonical_bytes(&fixed).unwrap();
+        assert_eq!(encoded.len() as u64, C63_AUTHENTICATED_SKETCH_OUTPUT_LINK_PRODUCTION_BYTES);
+        assert_eq!(C6AuthenticatedOutputLinkProof::decode(&fixed, &encoded).unwrap(), proof);
+        assert_eq!(
+            C61_NATIVE_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_BYTES - encoded.len() as u64,
+            759_708,
+        );
+        let terminal = crate::C61AuthenticatedWhirBaseProof::decode(&[0; 16]).unwrap();
+        let sparse = crate::c63_sparse_h_closure::c63_sparse_h_closure_production_codec_reference();
+        let tail = crate::assemble_c63_response_tail(
+            &fixed,
+            vec![0; volta_proto::C62_RESPONSE_RESIDUAL_SUMCHECK_MAX_BYTES as usize],
+            vec![0; volta_proto::C62_RESPONSE_PRODUCT_COORDINATE_ONE_BYTES as usize],
+            vec![0; volta_proto::C62_RESPONSE_RESIDUAL_PENDING_BYTES as usize],
+            &proof,
+            &sparse,
+            [terminal; 4],
+        )
+        .unwrap();
+        assert_eq!(tail.len() as u64, volta_proto::C63_RESPONSE_PROOF_ENVELOPE_MAX_BYTES);
+        let decoded = crate::decode_c63_response_tail(&fixed, &tail).unwrap();
+        assert_eq!(decoded.authenticated_output_link, proof);
+        assert_eq!(decoded.sparse_h_closure, sparse);
+        let mut bad_tail = tail;
+        bad_tail[200] ^= 1;
+        assert!(crate::decode_c63_response_tail(&fixed, &bad_tail).is_err());
+
+        let source = include_str!("c6_authenticated_output_link.rs");
+        let c63_builders = source
+            .split("impl C63AuthenticatedSketchPendingSlotRegistryProverBuilder")
+            .nth(1)
+            .unwrap()
+            .split("fn hidden_u_cohort_id")
+            .next()
+            .unwrap();
+        assert!(!c63_builders.contains("absorb_hidden_u"));
+        assert!(!c63_builders.contains("absorb_persistent_cache"));
     }
 
     #[test]

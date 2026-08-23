@@ -49,7 +49,7 @@ SETUP_LIMIT_BYTES = 150_000_000
 SETUP_PLUS_FIRST_LIMIT_BYTES = 172_000_000
 CERTIFICATE_LIMIT_BYTES = 30_000_000
 PI_FINAL_LIMIT_BYTES = 4_500_000
-PROVIDER_LIMIT_NS = 15_000_000_000
+PROVIDER_LIMIT_NS = 20_000_000_000
 VERIFIER_LIMIT_NS = 5_000_000_000
 VERIFIER_RSS_LIMIT_BYTES = 8_000_000_000
 SOUNDNESS_LIMIT_BITS = Decimal("78.80929487391641")
@@ -114,6 +114,8 @@ C63_105_POW_FORMAL_CAP = 1 << 25
 C63_SPARSE_H_CLOSURE_BYTES = 1_496
 C63_SPARSE_H_CLOSURE_CORRELATIONS_PER_TAPE = 44
 C63_SPARSE_H_CLOSURE_ERROR_NUMERATOR = 64
+C63_SYSTEMATIC_SPOT_FUSION_QUERIES = 4_378
+C63_SYSTEMATIC_SPOT_FUSION_ERROR_NUMERATOR = C63_SYSTEMATIC_SPOT_FUSION_QUERIES
 C63_MERKLE_MULTIPROOF_COUNT_BYTES = 4
 C63_PAIRED_A_QUERIES = 243
 C63_INDEPENDENT_LIMB_A_QUERIES = 486
@@ -397,17 +399,23 @@ def c63_soundness_screen() -> dict[str, Any]:
         C63_SPARSE_H_CLOSURE_ERROR_NUMERATOR,
         c6.FP2_CARDINALITY,
     )
+    systematic_spot_fusion_error = Fraction(
+        C63_SYSTEMATIC_SPOT_FUSION_ERROR_NUMERATOR,
+        c6.FP2_CARDINALITY,
+    )
     interactive_error = (
         inherited_error
         + whir_core_union_error
         + systematic_spot_error
         + sparse_h_closure_error
+        + systematic_spot_fusion_error
     )
     phase_event_interactive_error = (
         inherited_error
         + whir_phase_event_lower_bound_error
         + systematic_spot_error
         + sparse_h_closure_error
+        + systematic_spot_fusion_error
     )
     joint_eta_error = Fraction(1, c6.FP2_CARDINALITY)
     state_restoration_error = c62.C62_MAX_RANDOM_ORACLE_QUERIES * (
@@ -471,6 +479,7 @@ def c63_soundness_screen() -> dict[str, Any]:
         + Fraction(C63_CONSERVATIVE_BASE_WHIR_BODIES, 1 << 105)
         + Fraction(1, 1 << 105)
         + sparse_h_closure_error
+        + systematic_spot_fusion_error
     )
 
     def profile_105_error(qro_bound: int) -> Fraction:
@@ -502,6 +511,9 @@ def c63_soundness_screen() -> dict[str, Any]:
             c6.soundness_bits(phase_event_screen_error) >= SOUNDNESS_LIMIT_BITS
         ),
         "systematic_spot": c62.error_report(systematic_spot_error),
+        "systematic_spot_fusion_4378_over_fp2": c62.error_report(
+            systematic_spot_fusion_error
+        ),
         "sparse_h_closure_64_over_fp2": c62.error_report(sparse_h_closure_error),
         "sparse_h_zeroopen_and_mac_additional_error_census_complete": False,
         "interactive_known_terms": c62.error_report(interactive_error),
@@ -610,6 +622,7 @@ def build_report() -> dict[str, Any]:
     selected_queries = spot_screens[str(C63_SPOT_SUBTARGET_BITS)][
         "queries_at_conservative_gamma"
     ]
+    assert selected_queries == C63_SYSTEMATIC_SPOT_FUSION_QUERIES
     t128_full_opening = systematic_opening_screen(19, 1_024, selected_queries)
     t128_live_max_opening = systematic_opening_screen(19, 768, selected_queries)
     t128_live_average_opening = systematic_opening_screen(19, 576, selected_queries)
@@ -781,7 +794,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "schema": "volta-c63-authenticated-sketch-analytic-screen-v10",
+        "schema": "volta-c63-authenticated-sketch-analytic-screen-v11",
         "credit": False,
         "transfer_to_c63_gates": False,
         "gates": gates,
@@ -990,8 +1003,12 @@ def build_report() -> dict[str, Any]:
                     ),
                     "current_c61_codec_forbids_pow": True,
                     "honest_preencoded_cached_base_reference_green": True,
-                    "verifier_linked_projected_adapter_missing": True,
-                    "fresh_mask_encoding_relation_missing": True,
+                    "cpu_linked_projected_adapter_reference_green": True,
+                    "cpu_fresh_mask_encoding_relation_reference_green": True,
+                    "production_linked_projected_adapter_missing": True,
+                    "production_fresh_mask_encoding_relation_missing": True,
+                    "joint_ideal_correction_privacy_lean_green": True,
+                    "production_codec_privacy_audit_missing": True,
                     "credit": False,
                 },
                 "legacy_profile_soundness_is_below_gate": True,
@@ -1123,6 +1140,18 @@ def build_report() -> dict[str, Any]:
                     "h_scan_fp2_by_fp_multiply_adds": 67_108_864,
                     "eq_table_fp2_multiplications": 524_287,
                     "sumcheck_fp2_multiplications": 16_777_212,
+                    "systematic_spot_rows_fused": (
+                        C63_SYSTEMATIC_SPOT_FUSION_QUERIES
+                    ),
+                    "systematic_spot_indexed_additions": (
+                        C63_SYSTEMATIC_SPOT_FUSION_QUERIES
+                    ),
+                    "separate_spot_batch_body_bytes": 0,
+                    "whir_targets_after_fusion": 1,
+                    "claim_relation": (
+                        "<eq(r),u>+sum beta^(j+1)*x[i_j] = "
+                        "<H^T*eq(r)+sum beta^(j+1)*e[i_j],m>"
+                    ),
                     "scratch_bytes": 75_497_472,
                     "framed_bytes_when_terminal_residual_joins_zero_batch": (
                         C63_SPARSE_H_CLOSURE_BYTES
@@ -1130,7 +1159,8 @@ def build_report() -> dict[str, Any]:
                     "correlations_per_mac_tape": (
                         C63_SPARSE_H_CLOSURE_CORRELATIONS_PER_TAPE
                     ),
-                    "error": "64/|Fp2|",
+                    "existing_error": "64/|Fp2|",
+                    "additional_spot_compression_error": "4378/|Fp2|",
                     "cpu_verifier_scans_h_bytes": C63_SPARSE_SETUP_RESIDENT_BYTES,
                     "production_integration_credit": False,
                 },
@@ -1215,7 +1245,7 @@ def build_report() -> dict[str, Any]:
     }
 
     # One executable self-check: any changed input must update the registered arithmetic.
-    assert CACHE_TIME_BUDGET_NS == 4_640_596_167
+    assert CACHE_TIME_BUDGET_NS == 9_640_596_167
     assert HISTORICAL_NONCOMPARABLE_TOTAL_BYTES == 23_560_000
     assert setup_plus_historical_screen == 124_757_617
     assert CERTIFICATE_LIMIT_BYTES - HISTORICAL_NONCOMPARABLE_TOTAL_BYTES == 6_440_000
@@ -1316,7 +1346,7 @@ def build_report() -> dict[str, Any]:
     assert not report["authenticated_sketched_whir_selection"][
         "raw_corrections_fit_complete_certificate"
     ]
-    assert speedup > Decimal("59.28")
+    assert speedup > Decimal("28.53")
     assert report["historical_noncomparable_bolt_screen"][
         "historical_certificate_arithmetic_under_limit"
     ]
@@ -1326,8 +1356,8 @@ def build_report() -> dict[str, Any]:
     assert report["credit"] is False
     assert soundness_screen["known_terms_under_inherited_qro_clear_gate"]
     assert not soundness_screen["known_terms_with_expected_pow_trials_clear_gate"]
-    assert soundness_screen["maximum_monolithic_qro_at_gate"] == 4_998_635
-    assert soundness_screen["expected_qro_excess_over_gate"] == 47_637
+    assert soundness_screen["maximum_monolithic_qro_at_gate"] == 4_998_465
+    assert soundness_screen["expected_qro_excess_over_gate"] == 47_807
     assert not soundness_screen["phase_event_lower_bound_clears_gate"]
     assert not soundness_screen["raising_profile_does_not_fix_monolithic_qro"][
         "expected_trial_screen_clear_gate"

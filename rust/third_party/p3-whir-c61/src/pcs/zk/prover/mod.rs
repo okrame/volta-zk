@@ -40,10 +40,13 @@ use crate::pcs::utils::get_challenge_stir_queries;
 use crate::pcs::zk::base_case::{
     BaseCaseClaimlessClosure, BaseCaseZkConfig, BaseCaseZkProver, MaskGroupWitness,
 };
-use crate::pcs::zk::code_switch::{ZkMaskClaim, switch_mask_covector};
+use crate::pcs::zk::code_switch::{
+    ZkMaskClaim, accumulate_randomness_query_covector, switch_mask_covector,
+};
 use crate::pcs::zk::committer::{FoldedRsCode, zk_padded_matrix};
 use crate::pcs::zk::config::ZkWhirConfig;
 use crate::pcs::zk::proof::{ZkRoundProof, ZkWhirProof};
+use crate::pcs::zk::{NoZkWhirInitialOracleLink, ZkWhirInitialOracleLink};
 use crate::utils::padded_ood_t1;
 
 /// HVZK-WHIR prover.
@@ -367,6 +370,7 @@ where
         challenger: &mut Challenger,
         rng: &mut R,
     ) -> ClaimlessWhirProverOutput<F, EF, MT> {
+        let initial_link = NoZkWhirInitialOracleLink;
         let oracle = ReferenceOracleCommitter {
             dft: self.dft,
             mmcs: self.mmcs,
@@ -377,6 +381,46 @@ where
             claims,
             base_claim_shift,
             &oracle,
+            &initial_link,
+            challenger,
+            rng,
+        ) {
+            Ok(output) => output,
+            Err(error) => match error {},
+        }
+    }
+
+    /// Claimless prover with an opt-in verifier-visible decomposition of the
+    /// first randomized oracle.
+    ///
+    /// The ordinary path above passes [`NoZkWhirInitialOracleLink`] and is
+    /// byte-for-byte unchanged.  C6.3 uses this method to bind an externally
+    /// authenticated pre-encoded base without encoding it again.
+    #[instrument(skip_all)]
+    pub fn prove_claimless_with_initial_link<R, L>(
+        &self,
+        prover_data: HidingWhirProverData<F, EF, MT>,
+        claims: &[(Point<EF>, EF)],
+        base_claim_shift: EF,
+        initial_link: &L,
+        challenger: &mut Challenger,
+        rng: &mut R,
+    ) -> ClaimlessWhirProverOutput<F, EF, MT>
+    where
+        R: Rng,
+        L: ZkWhirInitialOracleLink<F, EF, MT>,
+    {
+        let oracle = ReferenceOracleCommitter {
+            dft: self.dft,
+            mmcs: self.mmcs,
+            extension_mmcs: &self.extension_mmcs,
+        };
+        match self.prove_claimless_with_committer(
+            prover_data,
+            claims,
+            base_claim_shift,
+            &oracle,
+            initial_link,
             challenger,
             rng,
         ) {
@@ -402,29 +446,33 @@ where
         R: Rng,
         O: ZkWhirOracleCommitter<F, EF, MT>,
     {
+        let initial_link = NoZkWhirInitialOracleLink;
         self.prove_claimless_with_committer(
             prover_data,
             claims,
             base_claim_shift,
             oracle,
+            &initial_link,
             challenger,
             rng,
         )
     }
 
     #[allow(clippy::too_many_lines)]
-    fn prove_claimless_with_committer<R, O>(
+    fn prove_claimless_with_committer<R, O, L>(
         &self,
         prover_data: HidingWhirProverData<F, EF, MT>,
         claims: &[(Point<EF>, EF)],
         base_claim_shift: EF,
         oracle: &O,
+        initial_link: &L,
         challenger: &mut Challenger,
         rng: &mut R,
     ) -> Result<ClaimlessWhirProverOutput<F, EF, MT>, O::Error>
     where
         R: Rng,
         O: ZkWhirOracleCommitter<F, EF, MT>,
+        L: ZkWhirInitialOracleLink<F, EF, MT>,
     {
         let config = self.config;
         let num_variables = config.num_variables;
@@ -599,6 +647,19 @@ where
             // at the batch randomness; the verifier recomputes the same folds.
             let (openings, folded_values) =
                 self.open_and_fold(&round_data, &stir_indexes, &batch.randomness);
+            let linked_mask_values = (round == 0)
+                .then(|| {
+                    initial_link.folded_mask_values(&openings, &stir_indexes, &batch.randomness)
+                })
+                .flatten();
+            assert_eq!(
+                linked_mask_values.is_some(),
+                round == 0 && initial_link.required(),
+                "initial-oracle link mode and opening disagree",
+            );
+            if let Some(values) = &linked_mask_values {
+                assert_eq!(values.len(), stir_indexes.len());
+            }
             let query_vars: Vec<F> = stir_indexes
                 .iter()
                 .map(|&index| round_params.folded_domain_gen.exp_u64(index as u64))
@@ -614,10 +675,12 @@ where
             // Starting at the first power keeps every fresh constraint
             // independent of the carried claim.
             let combination: EF = challenger.sample_algebra_element();
+            let link_queries = linked_mask_values.as_ref().map_or(0, Vec::len);
             let coeffs: Vec<EF> = combination
                 .shifted_powers(combination)
-                .collect_n(rho_points.len() + query_points.len());
-            let (ood_coeffs, query_coeffs) = coeffs.split_at(rho_points.len());
+                .collect_n(rho_points.len() + query_points.len() + link_queries);
+            let (ood_coeffs, rest) = coeffs.split_at(rho_points.len());
+            let (query_coeffs, link_coeffs) = rest.split_at(query_points.len());
 
             let mask_claim = ZkMaskClaim {
                 base_claim_coeff: EF::ONE,
@@ -630,12 +693,18 @@ where
             //
             // The mask total is read from the running value.
             let carried = batch.residual_prover.claimed_sum() + masks.aux;
-            let joint = mask_claim
+            let mut joint = mask_claim
                 .batched_claim(carried, &ood_answers, &folded_values)
                 .expect("prover-built dimensions always match");
-            let public_offset = mask_claim
+            let mut public_offset = mask_claim
                 .batched_claim(EF::ZERO, &ood_answers, &folded_values)
                 .expect("prover-built dimensions always match");
+            if let Some(values) = &linked_mask_values {
+                let link_value =
+                    dot_product::<EF, _, _>(link_coeffs.iter().copied(), values.iter().copied());
+                joint += link_value;
+                public_offset += link_value;
+            }
             affine_target = affine_target.add_public(public_offset);
             debug_assert_eq!(affine_target.evaluate(batched_target), joint);
 
@@ -717,7 +786,7 @@ where
             }
 
             // Mask side: the fresh mask enters the relation.
-            let mask_covector = switch_mask_covector(
+            let mut mask_covector = switch_mask_covector(
                 message_len,
                 oracle_randomness.len(),
                 pad.len(),
@@ -726,6 +795,15 @@ where
                 &query_points,
                 query_coeffs,
             );
+            if !link_coeffs.is_empty() {
+                accumulate_randomness_query_covector(
+                    &mut mask_covector,
+                    message_len,
+                    oracle_randomness.len(),
+                    &query_points,
+                    link_coeffs,
+                );
+            }
             // The running total must match a full re-evaluation.
             debug_assert_eq!(masks.aux, masks.claims.evaluate(&masks.messages));
             // Cross-check the batched-claim identity:

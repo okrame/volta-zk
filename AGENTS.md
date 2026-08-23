@@ -46,6 +46,12 @@ below it is supporting history, not competing authority.
 
 - Rust is installed through rustup, not the default `PATH`:
   `source ~/.cargo/env`; then use `cd rust && cargo test --workspace`.
+- All local Cargo commands, including standalone third-party manifests, share
+  the canonical `rust/target`. Do not create top-level, per-crate or
+  per-experiment target directories. Set `CARGO_INCREMENTAL=0` for broad
+  checks. After a milestone checkpoint, and before leaving a working session,
+  remove the canonical target and any ignored nested targets; retaining a
+  build cache requires owner approval.
 - Use the narrowest relevant test first; run the full workspace before a
   milestone checkpoint when resources permit.  `rust/.cargo/config.toml`
   pins `target-cpu=native`, so timing results are machine-specific.  Re-measure
@@ -59,7 +65,19 @@ below it is supporting history, not competing authority.
 - Weights and golden artifacts in `benchmarks/weights/` are generated, not
   committed.  Generate them only through the registered export/dump scripts.
 - Lean is frozen unless the protocol statement changes:
-  `export PATH="$HOME/.elan/bin:$PATH"; cd lean && lake build`.
+  `export PATH="$HOME/.elan/bin:$PATH"; cd lean && lake build`. If Lean is
+  opened, remove `lean/.lake` after the checkpoint unless explicitly retained.
+- Before a broad local build, check guest free space and confirm that the host
+  has at least 60 GiB free. Heavy benchmarks and every end-to-end run belong
+  on the owner-provided pod, never on the local VM.
+
+## Research documents
+
+- The owner permanently preauthorizes AnyDoc conversion for relevant PDFs
+  found online. Save each PDF and its same-stem Markdown under
+  `/home/okrame/projects/volta-zk/sota`, read the Markdown rather than the PDF,
+  and never overwrite an existing artifact. No per-PDF confirmation is
+  required under this standing authorization.
 
 ## Non-negotiable protocol conventions
 

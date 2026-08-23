@@ -156,6 +156,31 @@ pub fn switch_mask_covector<EF: Field>(
     covector
 }
 
+/// Adds a second set of in-domain checks that touches only the source
+/// encoding randomness.
+///
+/// C6.3 uses this to prove that the difference between its randomized
+/// initial oracle and the projection of the authenticated `A` rows is the
+/// zero-message codeword `Enc(0, zeta)`.  An empty coefficient slice is the
+/// historical no-link path and is a no-op.
+pub fn accumulate_randomness_query_covector<EF: Field>(
+    covector: &mut [EF],
+    message_len: usize,
+    source_randomness_len: usize,
+    query_points: &[EF],
+    query_coeffs: &[EF],
+) {
+    assert_eq!(query_points.len(), query_coeffs.len());
+    assert!(source_randomness_len <= covector.len());
+    for (&x, &coeff) in query_points.iter().zip(query_coeffs) {
+        let mut term = coeff * x.exp_u64(message_len as u64);
+        for dst in covector.iter_mut().take(source_randomness_len) {
+            *dst += term;
+            term *= x;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     //! Invariant tests for the Construction 9.7 batching algebra.

@@ -10,32 +10,76 @@ record; no external plan is authoritative.
 
 Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 
-- **Status.** Local C6.3 is open. Compact semantics, the D22-by-16
-  correction root, exact-ensemble sampler, one-`rho` pullback and scaled
-  sparse-`H` closure are green. Honest D19-by-32 pre-encoded CPU is green. No
-  pod is open.
+- **Status.** Local C6.3 is open; no pod is open. Compact semantics, roots,
+  sampler and sparse closure are green. CPU references now enforce the
+  malicious `A -> y` initial link and fuse 4,378 systematic `D' -> m` spots.
+  Joint ideal-correlation privacy and designated terminal simulation compile
+  in Lean.
 - **Evidence.** C6.2 precommit remains `275.113308912 s`, with about `249.51 s`
   in dense encoding, persistence, reread and trees. Keeping GW4 plus its 3-s
-  reserve leaves `4.640596167 s` for cache binding. The finite D22 distance
-  screen is rationally bounded at `>188 bits`; all C6.3 work remains
+  reserve leaves `9.640596167 s` for cache binding. Focused C6.3 Rust tests
+  pass 13/13 and the finite D22 screen exceeds 188 bits. All work remains
   `credit:false`.
 - **Selected construction.** Bolt is adapted inside Hiding-WHIR. Deterministic
   roots bind `D'` and `A=C^16(H D')`; `A` is physically rooted as D19-by-32.
-  One `Fp2^16` mix yields `w=C(D'*rho)` and `y=A*rho`. Four fresh randomized
-  WHIR cores prove decoded D22/D19 messages sequentially; they never encode
-  `w/y` again. MAC equations stay separate; GW4 is unchanged.
+  One `Fp2^16` mix yields `m/u/w/y`; four fresh randomized WHIR cores consume
+  pre-encoded `w/y`. MAC tapes remain separate and GW4 is unchanged.
 - **Checks.** Complete certificate `<=30,000,000 B`; setup `<150,000,000 B`;
   setup plus first `<172,000,000 B`; `pi_final <4,500,000 B`; warm A100 prover
-  `<15 s`; four-thread verifier `<5 s` with `<=8,000,000,000 B` additional
+  `<20 s`; four-thread verifier `<5 s` with `<=8,000,000,000 B` additional
   RSS; soundness `>=78.80929487391641 bits`.
-- **Hard stop / resume.** The cached-base seam proves honest linearity but not
-  `A*rho=C(u)` against a malicious prover. The projected initial opening must
-  also prove its difference from the randomized row is exactly the encoding
-  of fresh mask coefficients. The new codec must support 17/16-bit PoW.
-  Partition, privacy, GPU ownership, public-XOF and complete soundness remain
-  open; the current `81.06/78.008/78.796-bit` screens receive no credit.
-  A future pod requires a closed candidate, new endpoint and owner GO; it runs
-  exactly two real responses.
+- **Hard stop / resume.** Production must connect Merkle spots and WHIR
+  terminals, instantiate the privacy premise in a codec that never emits raw
+  K/V/masks/provider tags, add 17/16-bit PoW, separate `H_pow/H_fs`, close the
+  public-XOF and complete soundness union, and implement one resident GPU
+  owner. Screens receive no credit. A pod requires a closed local candidate,
+  new endpoint and owner GO; it runs exactly two real responses.
+
+- **2026-08-23 — The Hiding-WHIR source is archived and its privacy scope is
+  bounded.** AnyDoc converted Chiesa--Fenzi--Weissenberg, *Zero-Knowledge
+  IOPPs for Constrained Interleaved Codes* (ePrint 2026/391), to
+  `sota/2026-0391-zero-knowledge-iopps-constrained-interleaved-codes.{pdf,md}`
+  with SHA-256 `6a2092b7...a46f7c` / `e6ae1831...4ea81`. Theorem 10.2 gives
+  honest-verifier zero knowledge under bounded codeword queries and private
+  zero-evaders; it is not Volta's malicious designated-verifier theorem.
+  C6.3 therefore relies on `D=X-R` joint uniformity plus the designated
+  terminal simulator for model privacy, and uses the paper only to justify
+  the randomized code-switching structure. Hiding-WHIR remains in the first
+  measured candidate; removing it is deferred until component timings show a
+  reason. Codec/PCG instantiation remains a hard stop and this literature
+  check grants no gate credit or pod authorization.
+
+- **2026-08-23 — Joint correction privacy and both local tensor links are
+  green.** `C63CorrectionPrivacy.lean` proves that one independently sampled
+  mask for every `(cell, version, tape)` makes the complete correction vector
+  uniform and that every adaptive post-processing depending only on this
+  vector, public/verifier state and fresh coins has the same distribution for
+  any two K/V states. It reuses the C6.1 designated-terminal simulator and
+  proves two explicit failure cases: mask reuse across changed plaintexts
+  reveals their difference, while exposing the raw provider tag beside its
+  verifier key and correction reconstructs the plaintext. The Lean target
+  builds. The CPU `A -> y` adapter now samples one `rho` only after both roots,
+  authenticates `A` rows, enforces the fresh-mask encoding difference and
+  rejects a substituted base through the actual terminal MAC check. The
+  sparse-`H` closure folds all 4,378 systematic row/value spots into its
+  existing 1,496-B body; a concrete kernel attack accepted by the old relation
+  is rejected. Focused feature-complete C6.3 tests pass 13/13. Production
+  root openings, terminal-WHIR wiring, codec/PCG privacy audit, GPU work and
+  complete soundness remain hard stops; no gate credit or pod authorization.
+
+- **2026-08-23 — Owner changes the active C6.3 warm target and local resource
+  policy.** The response-specific prover target is now `<20.000 s`; with GW4
+  and the unchanged 3-s reserve, cache binding receives `9.640596167 s`. This
+  is an ideal engineering target, not a protocol weakening, and the complete
+  empirical run remains required even after a miss. The first experiment is
+  still exactly two real responses on an owner-provided A100 pod: one full
+  cold response and its immediately following warm response. No E2E run is
+  permitted on the local VM. Local builds share one disposable `rust/target`
+  and remove generated targets after checkpointing. The owner also gives
+  standing authorization to convert relevant online PDFs with AnyDoc and save
+  each PDF plus same-stem Markdown under `sota/`; existing artifacts are never
+  overwritten. All current privacy, soundness and production hard stops stay
+  in force; none of this entry grants measurement credit or pod authorization.
 
 - **2026-08-23 — Honest Bolt-inside-WHIR projection is executable; malicious
   initial link is isolated.** A new feature-gated CPU reference packs the

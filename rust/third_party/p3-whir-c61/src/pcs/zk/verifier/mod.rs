@@ -14,7 +14,7 @@ use alloc::vec::Vec;
 use masks::VerifierMasks;
 use p3_challenger::{CanObserve, CanSampleUniformBits, FieldChallenger, GrindingChallenger};
 use p3_commit::{ExtensionMmcs, Mmcs};
-use p3_field::{ExtensionField, TwoAdicField};
+use p3_field::{ExtensionField, TwoAdicField, dot_product};
 use p3_matrix::Dimensions;
 use p3_multilinear_util::point::Point;
 use p3_multilinear_util::poly::Poly;
@@ -26,10 +26,13 @@ use tracing::instrument;
 use super::base_case::{
     BaseCaseClaimlessClosure, BaseCaseZkConfig, BaseCaseZkError, BaseCaseZkVerifier,
 };
-use super::code_switch::{CodeSwitchError, ZkMaskClaim, switch_mask_covector};
+use super::code_switch::{
+    CodeSwitchError, ZkMaskClaim, accumulate_randomness_query_covector, switch_mask_covector,
+};
 use super::config::ZkWhirConfig;
 use super::constraint::SourceClaim;
 use super::proof::ZkWhirProof;
+use super::{NoZkWhirInitialOracleLink, ZkWhirInitialOracleLink};
 use crate::pcs::proof::QueryOpenings;
 use crate::pcs::utils::get_challenge_stir_queries;
 
@@ -80,6 +83,15 @@ pub enum ZkVerifierError {
     /// A round failed its proof-of-work check.
     #[error("invalid proof-of-work witness in round {round}")]
     InvalidPowWitness { round: usize },
+
+    /// The opt-in initial-oracle link was absent or appeared on the wrong
+    /// proof shape.
+    #[error("initial-oracle link opening is missing")]
+    InitialOracleLinkMissing,
+
+    /// The link must expose one mask value per initial STIR query.
+    #[error("initial-oracle link query count mismatch: expected {expected}, got {actual}")]
+    InitialOracleLinkQueryCountMismatch { expected: usize, actual: usize },
 }
 
 /// The commitment a code-switch round opens against.
@@ -143,6 +155,44 @@ where
         points: &[Point<EF>],
         challenger: &mut Challenger,
     ) -> Result<ClaimlessWhirVerifierClosure<EF>, ZkVerifierError> {
+        self.verify_claimless_inner(
+            proof,
+            commitment,
+            points,
+            &NoZkWhirInitialOracleLink,
+            challenger,
+        )
+    }
+
+    /// Verifies a claimless proof with an opt-in first-oracle decomposition.
+    /// The historical method above keeps using the no-link mode.
+    #[instrument(skip_all)]
+    pub fn verify_claimless_with_initial_link<L>(
+        &self,
+        proof: &ZkWhirProof<F, EF, MT>,
+        commitment: &MT::Commitment,
+        points: &[Point<EF>],
+        initial_link: &L,
+        challenger: &mut Challenger,
+    ) -> Result<ClaimlessWhirVerifierClosure<EF>, ZkVerifierError>
+    where
+        L: ZkWhirInitialOracleLink<F, EF, MT>,
+    {
+        self.verify_claimless_inner(proof, commitment, points, initial_link, challenger)
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn verify_claimless_inner<L>(
+        &self,
+        proof: &ZkWhirProof<F, EF, MT>,
+        commitment: &MT::Commitment,
+        points: &[Point<EF>],
+        initial_link: &L,
+        challenger: &mut Challenger,
+    ) -> Result<ClaimlessWhirVerifierClosure<EF>, ZkVerifierError>
+    where
+        L: ZkWhirInitialOracleLink<F, EF, MT>,
+    {
         let config = self.config;
         let n_rounds = config.n_rounds();
 
@@ -267,6 +317,26 @@ where
                 round,
                 &randomness,
             )?;
+            let linked_mask_values = (round == 0)
+                .then(|| {
+                    initial_link.folded_mask_values(
+                        &round_proof.openings,
+                        &stir_indexes,
+                        &randomness,
+                    )
+                })
+                .flatten();
+            if round == 0 && initial_link.required() && linked_mask_values.is_none() {
+                return Err(ZkVerifierError::InitialOracleLinkMissing);
+            }
+            if let Some(values) = &linked_mask_values {
+                if values.len() != stir_indexes.len() {
+                    return Err(ZkVerifierError::InitialOracleLinkQueryCountMismatch {
+                        expected: stir_indexes.len(),
+                        actual: values.len(),
+                    });
+                }
+            }
             let query_points: Vec<EF> = stir_indexes
                 .iter()
                 .map(|&index| EF::from(round_params.folded_domain_gen.exp_u64(index as u64)))
@@ -274,18 +344,24 @@ where
 
             // Batch the carried claim with the fresh constraints.
             let combination: EF = challenger.sample_algebra_element();
+            let link_queries = linked_mask_values.as_ref().map_or(0, Vec::len);
             let coeffs: Vec<EF> = combination
                 .shifted_powers(combination)
-                .collect_n(rho_points.len() + query_points.len());
-            let (ood_coeffs, query_coeffs) = coeffs.split_at(rho_points.len());
+                .collect_n(rho_points.len() + query_points.len() + link_queries);
+            let (ood_coeffs, rest) = coeffs.split_at(rho_points.len());
+            let (query_coeffs, link_coeffs) = rest.split_at(query_points.len());
 
             let mask_claim = ZkMaskClaim {
                 base_claim_coeff: EF::ONE,
                 ood_coeffs: ood_coeffs.to_vec(),
                 in_domain_coeffs: query_coeffs.to_vec(),
             };
-            let public_offset =
+            let mut public_offset =
                 mask_claim.batched_claim(EF::ZERO, &round_proof.ood_answers, &folded_values)?;
+            if let Some(values) = &linked_mask_values {
+                public_offset +=
+                    dot_product::<EF, _, _>(link_coeffs.iter().copied(), values.iter().copied());
+            }
             target = target.add_public(public_offset);
 
             // Source side: fresh power constraints over the new message.
@@ -298,16 +374,26 @@ where
 
             // Mask side: the fresh code-switch mask enters the relation as
             // its own width-one group.
-            masks.push_switch_mask(
-                switch_mask_covector(
+            let mut mask_covector = switch_mask_covector(
+                1 << num_variables,
+                config.oracle_randomness[round],
+                round_params.ood_samples,
+                &rho_points,
+                ood_coeffs,
+                &query_points,
+                query_coeffs,
+            );
+            if !link_coeffs.is_empty() {
+                accumulate_randomness_query_covector(
+                    &mut mask_covector,
                     1 << num_variables,
                     config.oracle_randomness[round],
-                    round_params.ood_samples,
-                    &rho_points,
-                    ood_coeffs,
                     &query_points,
-                    query_coeffs,
-                ),
+                    link_coeffs,
+                );
+            }
+            masks.push_switch_mask(
+                mask_covector,
                 config.switch_masks[round],
                 mask_commitment.clone(),
             );

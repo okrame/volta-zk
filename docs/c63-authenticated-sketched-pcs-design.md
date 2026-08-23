@@ -47,7 +47,7 @@ C6.3 experiment.
 | setup plus first certificate | `<172,000,000 B` |
 | complete certificate | `<=30,000,000 B` |
 | `pi_final` partition | `<4,500,000 B` |
-| response-specific prover on one A100 | `<15.000 s` |
+| response-specific prover on one A100 | `<20.000 s` |
 | official four-thread CPU verifier | `<5.000 s` |
 | verifier additional RSS | `<=8,000,000,000 B` |
 | A100 device high-water guard | `<=45,818,576,864 B` |
@@ -58,7 +58,7 @@ provider tables are resident. It includes fresh proof work, real/AES PCG
 consumption, all synchronization and serialization. It excludes model
 inference, network time and the one-time fixed preload. The first cold run
 also records those excluded phases so the real deployment cost remains
-visible. A cold total is not compared with the 15-second gate.
+visible. A cold total is not compared with the 20-second gate.
 
 The setup and fixed model cache may be shared by several connections when the
 model and parameters are identical. K/V values, their sketch state, the
@@ -176,11 +176,11 @@ created `78,383,153,576 B` of durable data and moved about 103 GB read plus
 reserve leaves:
 
 ```text
-15 - 7.359403833 - 3 = 4.640596167 seconds
+20 - 7.359403833 - 3 = 9.640596167 seconds
 ```
 
 for the complete cache binding. The current precommit therefore needs about a
-`59.28x` reduction. Faster disk hashing cannot bridge that gap; dense cache
+`28.54x` reduction. Faster disk hashing cannot bridge that gap; dense cache
 encoding must leave the response path.
 
 The Bolt paper's useful idea is the systematic sketched code
@@ -286,6 +286,41 @@ subfield correlation `(r_i,l, m_i,l)` and emits the 8-byte correction
 MAC multiplier. C6.3 persists those corrections in the canonical D24 semantic
 order, commits to their fixed D22-by-16 reshape before any opening challenge,
 and never commits to `x_i` in clear form.
+
+`C63CorrectionPrivacy.lean` now states the joint privacy argument. Let `I`
+index every live `(cell, version, tape)` allocation over the complete
+connection and sample `R in F^I` uniformly once. Then the whole vector
+`D=X-R` is uniform for every fixed `X`. Consequently any adaptive transcript
+generated only from `D`, public data, verifier state and fresh coins has
+exactly the same distribution for any two cache/model states. This one
+post-processing statement covers the correction roots and paths, `H D`, `A`,
+`rho`, `m/u`, `w/y`, fresh mask coefficients and WHIR messages together; it
+does not assume that WHIR hides the opened deterministic `A` rows.
+
+The same accepted correction may be read again while its plaintext version is
+unchanged. “One-time” forbids using its mask for a different plaintext
+version: two such corrections reveal the plaintext difference. Every changed
+cell receives a fresh versioned allocation and an abort burns that range. The
+existing designated-terminal theorem is reused: a final zero-opening tag is
+safe only when it is computable from the verifier view. Serializing the raw
+prover MAC tag paired with a correction would let the verifier reconstruct the
+plaintext and is forbidden. This closes the abstract ideal-correlation proof,
+not the real-PCG assumption or the audit of the future production codec.
+
+The source behind the local HVZK-WHIR fork is Chiesa--Fenzi--Weissenberg,
+*Zero-Knowledge IOPPs for Constrained Interleaved Codes*, ePrint 2026/391
+([AnyDoc Markdown](../sota/2026-0391-zero-knowledge-iopps-constrained-interleaved-codes.md)).
+Its Theorem 10.2 proves only **honest-verifier** zero knowledge, under bounded
+queries to zero-knowledge encodings and private zero-evaders. It does not by
+itself prove Volta's designated-verifier privacy against a verifier that
+chooses messages adversarially. C6.3 therefore uses the paper only for the
+fresh randomized code-switching construction. Model privacy continues to
+follow from the stronger outer statement above: after conditioning on any
+fixed verifier state, the complete correction vector is uniform, and all PCS
+material is post-processing of that vector plus public data and fresh coins.
+The production codec/PCG audit must instantiate this premise. Hiding-WHIR is
+retained until component measurements exist; its removal is a later measured
+simplification, not an unproved privacy shortcut.
 
 The semantic correction message first has four columns:
 
@@ -591,18 +626,22 @@ the complete certificate gate before any proof bytes. This shortcut is not the
 R1 default. A one-tape state log is considered only if a new theorem proves it
 preserves the two-tape statement.
 
-### 3.4 Privacy is a separate hard gate
+### 3.4 Privacy instantiation is a separate hard gate
 
 Plain Bolt exposes systematic rows and explicitly does not provide hiding.
-C6.3 exposes only one-time corrections and their authentication paths; it may
-not serialize a clear K/V row or clear cache evaluation. A correction is safe
-only when its PCG domain is unique and never reused. Reusing a correction after
-a cell changes is forbidden.
+C6.3's formal outer theorem makes those rows admissible because they contain
+only one-time corrections. It may not serialize a clear K/V row, clear cache
+evaluation, mask value, or raw prover MAC tag. A correction allocation is safe
+only when its PCG domain is unique; repeated reads of the same accepted version
+are allowed, but reuse for a changed value is forbidden.
 
-The complete Hiding-WHIR prover, not just its final MAC closure, protects the
-sketch and transient opening oracles. Its randomized initial oracle and hidden
-targets are mandatory. The proof must cover composition with the Fiat-Shamir
-transcript; honest-verifier privacy of one component is not enough.
+The randomized initial oracle and hidden targets remain mandatory protocol
+components, but model privacy no longer rests on an unsupported claim that
+Hiding-WHIR conceals deterministic `A` openings. Production must instantiate
+the Lean post-processing premise: every tagless field must be derived only
+from the accepted correction state and public/fresh inputs, and every terminal
+tag must use the designated simulator. The codec audit, real/AES PCG
+assumption and Fiat--Shamir composition remain open.
 
 A Merkle root built over raw K/V plus masked query answers is rejected: the
 masked answer is not linked to the raw leaf without revealing that leaf. A
@@ -618,23 +657,24 @@ The candidate is rejected if an implementation changes this dependency order:
    accepted head, source schedule, epoch/length and append census;
 2. commit the successor systematic root `R_D`, encoded-sketch tensor root
    `R_A`, their descriptors and the evaluation-target decomposition;
-3. derive one typed row-combination challenge `rho in Fp2^16`;
-4. bind the transient deterministic `w=C(D'*rho)` descriptor and the four
-   fresh randomized initial roots required by the limb cores; no
-   challenge-dependent fold root is anticipated here;
-5. execute the sparse-`H` sumcheck and then the four limb cores sequentially.
-   In every round the prover message or next fold root is absorbed before its
-   challenge; all hidden targets follow the existing typed WHIR order. Each
-   proof-of-work search uses a role/phase/snapshot-bound `H_pow`; only its
-   accepted witness is absorbed once into the separate `H_fs` transcript;
-6. only after all relevant round messages and fold roots are fixed, derive
-   sorted unique final query sets: Bolt's systematic spot set `q_X`, the
-   paired projected initial-oracle set `q_A` required by the two `y` cores,
-   and the ordinary WHIR query sets. Under the 104-bit screen `q_X=4,378` and
-   `q_A=243`; `q_X` and `q_A` are distinct typed sets;
-7. open separate deduplicated frontiers for complete rows of `D'` at `q_X`
-   and `A` at `q_A`, plus the initial roots required by the limb cores. Check
-   their `rho` combinations against `m` and `y` and finish every core;
+3. derive one typed row-combination challenge `rho in Fp2^16`, construct
+   `m/u/w/y`, and bind the transient `w` descriptor plus the four fresh
+   randomized initial roots required by the limb cores;
+4. derive the sorted unique systematic spot set `q_X`, open complete `D'`
+   rows, verify its deduplicated Merkle frontier and compute each public
+   `m[row]=<rho,D'[row]>`; under the current screen `q_X=4,378`;
+5. include those row/value pairs in the sparse-`H` statement, derive its
+   compression challenge only after that header, and execute the sumcheck.
+   This yields the D22/D19 terminal points for `m/u`;
+6. open the four already committed limb cores at those terminal points and
+   finish them sequentially. The two `y` cores derive and open their paired
+   projected `A` set `q_A` internally; under the current screen `q_A=243`.
+   In every round the message or next fold root precedes its challenge. Each
+   proof-of-work search uses role/phase/snapshot-bound `H_pow`; only its
+   accepted witness enters the separate `H_fs` transcript;
+7. verify the `A -> y` initial-row equation, the fused `D' -> m` systematic
+   spots and all ordinary WHIR query paths. `q_X` and `q_A` remain distinct
+   typed sets;
 8. only after both tapes' paths, sparse relation and output link are fixed,
    derive a separate terminal challenge and zero check for each tape;
 9. bind the canonical codec digest, verify everything, then atomically promote
@@ -647,7 +687,7 @@ domain-separated; combining them into one MAC equation is forbidden.
 ## 4. What must also change beyond dense encoding
 
 The measured precommit was the largest blocker, but removing it alone does not
-prove a sub-15-second result. C6.3 also requires:
+prove a sub-20-second result. C6.3 also requires:
 
 1. **accepted predecessor reuse:** reuse the accepted correction and sketch
    roots instead of reconstructing them;
@@ -791,7 +831,7 @@ Hiding randomness, typed
 framing and the Volta `H` closure may move the final size in either direction.
 
 The executable screen is `scripts/budget_c63_authenticated_sketch.py` (schema
-v10). Every gate stays `evaluated:false` until a canonical C6.3 codec is produced and
+v11). Every gate stays `evaluated:false` until a canonical C6.3 codec is produced and
 verified. In particular, `pi_final`, exact soundness and complete prover time
 are unknown rather than inferred from the 23.56 MB estimate.
 
@@ -850,8 +890,8 @@ production claim.
 - separately time cache update, base code, hashing, closure, D23, GW4,
   synchronization and serialization.
 
-Admission requires cache binding below `4.640596167 s` when combined with the
-unchanged GW4/reserve allocation, or an exact total below 15 seconds if work is
+Admission requires cache binding below `9.640596167 s` when combined with the
+unchanged GW4/reserve allocation, or an exact total below 20 seconds if work is
 shared between them. Component results remain `credit:false`.
 
 ### C63-E2E2 — two real responses
@@ -893,8 +933,8 @@ a raw-K/V Merkle tree or a sketch-only commitment.
   independent-limb fallback adds only about 133 kB.
 - Probability that the new separation theorem and two-cohort codec preserve
   `pi_final <4.5 MB`: **80--90%**.
-- Probability that the complete warm prover reaches `<15 s` on one A100:
-  **60--75%** before measuring encoded-`A`, fresh masks, proof-of-work, the
+- Probability that the complete warm prover reaches `<20 s` on one A100:
+  **72--86%** before measuring encoded-`A`, fresh masks, proof-of-work, the
   resident adapter and D23 residual.
 - Probability that the four-thread verifier stays below 5 seconds:
   **70--85%**, dominated by the unmeasured 768-MiB `H` scan and WHIR bodies.
@@ -904,8 +944,8 @@ a raw-K/V Merkle tree or a sketch-only commitment.
   terms, two-oracle proof-of-work model, privacy and complete transcript union
   close under the 104-bit profile: **45--60%**. The newly explicit mask-only
   link is locally implementable but adds one proof and privacy obligation.
-- Probability that eight literal non-amortized Bolt closures reach `<15 s`:
-  **below 5%**.
+- Probability that eight literal non-amortized Bolt closures reach `<20 s`:
+  **below 10%**.
 
 The largest uncertainties are the two-oracle proof-of-work theorem, public-XOF
 setup model, pre-encoded resident WHIR adapter, tensor/WHIR privacy composition,

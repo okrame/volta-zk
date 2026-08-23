@@ -74,6 +74,13 @@ pub struct C63SparseHClosureStatement {
     output_point: Vec<Fp2>,
 }
 
+/// One public systematic row/value pair folded into the sparse-H relation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C63SystematicSpot {
+    pub row: u32,
+    pub value: Fp2,
+}
+
 impl C63SparseHClosureStatement {
     pub fn new(binding_digest: [u8; 32], output_point: Vec<Fp2>) -> Result<Self> {
         if binding_digest == [0; 32] || output_point.is_empty() {
@@ -212,13 +219,41 @@ pub fn prove_c63_sparse_h_closure_reference(
     streams: &mut [CorrelationStream; C63_SPARSE_H_TAPES],
     transcript: &mut Transcript,
 ) -> Result<C63SparseHClosureProof> {
+    prove_c63_sparse_h_closure_with_spots_reference(h, m, u, statement, &[], streams, transcript)
+}
+
+/// Reference prover that folds sorted, unique systematic spots into the same
+/// sparse-H sumcheck without changing its proof body.
+pub fn prove_c63_sparse_h_closure_with_spots_reference(
+    h: &C63SparseSketchReference,
+    m: &[Fp2],
+    u: &[Fp2],
+    statement: &C63SparseHClosureStatement,
+    spots: &[C63SystematicSpot],
+    streams: &mut [CorrelationStream; C63_SPARSE_H_TAPES],
+    transcript: &mut Transcript,
+) -> Result<C63SparseHClosureProof> {
     let (input_log2, output_log2, claim, mut a) = prepare_relation(h, m, u, statement)?;
-    if h.apply(m).map_err(C63SparseHClosureError::new)? != u || inner_product(&a, m)? != claim {
+    validate_systematic_spots(spots, m.len())?;
+    if h.apply(m).map_err(C63SparseHClosureError::new)? != u {
         return Err(C63SparseHClosureError::new("C6.3 sparse-H witness does not satisfy u = H*m"));
     }
-    let statement_digest = reference_statement_digest(statement, input_log2, output_log2, claim);
+    if spots.is_empty() && inner_product(&a, m)? != claim {
+        return Err(C63SparseHClosureError::new("C6.3 sparse-H witness does not satisfy u = H*m"));
+    }
+    let mut claim = claim;
+    let statement_digest =
+        reference_statement_digest(statement, input_log2, output_log2, claim, spots);
     let header = header_bytes(input_log2, output_log2, statement_digest)?;
     transcript.append_message(HEADER_LABEL, &header);
+    if !spots.is_empty() {
+        fuse_systematic_spots(&mut a, &mut claim, spots, transcript.challenge_fp2());
+        if inner_product(&a, m)? != claim {
+            return Err(C63SparseHClosureError::new(
+                "C6.3 sparse-H witness differs from its systematic spots",
+            ));
+        }
+    }
 
     let mut folded_m = m.to_vec();
     let mut current = [ProverAuthed::from_public(claim); C63_SPARSE_H_TAPES];
@@ -294,6 +329,29 @@ pub fn verify_c63_sparse_h_closure_reference(
     contexts: &mut [VerifierCtx; C63_SPARSE_H_TAPES],
     transcript: &mut Transcript,
 ) -> Result<C63SparseHClosureReferenceAudit> {
+    verify_c63_sparse_h_closure_with_spots_reference(
+        h,
+        m,
+        u,
+        statement,
+        &[],
+        proof,
+        contexts,
+        transcript,
+    )
+}
+
+/// Reference verifier for the fused sparse-H/systematic-spot relation.
+pub fn verify_c63_sparse_h_closure_with_spots_reference(
+    h: &C63SparseSketchReference,
+    m: &[Fp2],
+    u: &[Fp2],
+    statement: &C63SparseHClosureStatement,
+    spots: &[C63SystematicSpot],
+    proof: &C63SparseHClosureProof,
+    contexts: &mut [VerifierCtx; C63_SPARSE_H_TAPES],
+    transcript: &mut Transcript,
+) -> Result<C63SparseHClosureReferenceAudit> {
     proof.validate_shape()?;
     if contexts[0].delta == contexts[1].delta {
         return Err(C63SparseHClosureError::new(
@@ -301,7 +359,10 @@ pub fn verify_c63_sparse_h_closure_reference(
         ));
     }
     let (input_log2, output_log2, claim, mut a) = prepare_relation(h, m, u, statement)?;
-    let statement_digest = reference_statement_digest(statement, input_log2, output_log2, claim);
+    validate_systematic_spots(spots, m.len())?;
+    let mut claim = claim;
+    let statement_digest =
+        reference_statement_digest(statement, input_log2, output_log2, claim, spots);
     if proof.input_log2 != input_log2
         || proof.output_log2 != output_log2
         || proof.statement_digest != statement_digest
@@ -309,6 +370,9 @@ pub fn verify_c63_sparse_h_closure_reference(
         return Err(C63SparseHClosureError::new("C6.3 sparse-H proof statement differs"));
     }
     transcript.append_message(HEADER_LABEL, &proof.header_bytes()?);
+    if !spots.is_empty() {
+        fuse_systematic_spots(&mut a, &mut claim, spots, transcript.challenge_fp2());
+    }
 
     let mut folded_m = m.to_vec();
     let mut current: [VerifierKey; C63_SPARSE_H_TAPES] =
@@ -339,6 +403,8 @@ pub fn verify_c63_sparse_h_closure_reference(
     }
 
     transcript.append_fp2s(TERMINAL_LABEL, &proof.terminal_tags);
+    // Reference-only: production must bind this same-point `m` terminal to
+    // the two D22 Hiding-WHIR limb openings instead of receiving `m` here.
     let terminal = a[0] * folded_m[0];
     for tape in 0..C63_SPARSE_H_TAPES {
         let residual = current[tape].sub(VerifierKey::from_public(terminal, contexts[tape].delta));
@@ -399,6 +465,29 @@ fn inner_product(left: &[Fp2], right: &[Fp2]) -> Result<Fp2> {
     Ok(left.iter().zip(right).fold(Fp2::ZERO, |sum, (&lhs, &rhs)| sum + lhs * rhs))
 }
 
+fn validate_systematic_spots(spots: &[C63SystematicSpot], input_len: usize) -> Result<()> {
+    let mut previous = None;
+    for spot in spots {
+        let row = spot.row as usize;
+        if row >= input_len || previous.is_some_and(|old| old >= spot.row) {
+            return Err(C63SparseHClosureError::new(
+                "C6.3 systematic spots are not sorted, unique and in range",
+            ));
+        }
+        previous = Some(spot.row);
+    }
+    Ok(())
+}
+
+fn fuse_systematic_spots(a: &mut [Fp2], claim: &mut Fp2, spots: &[C63SystematicSpot], beta: Fp2) {
+    let mut weight = beta;
+    for spot in spots {
+        a[spot.row as usize] += weight;
+        *claim += weight * spot.value;
+        weight = weight * beta;
+    }
+}
+
 fn product_round(a: &[Fp2], m: &[Fp2]) -> Result<[Fp2; 3]> {
     if a.len() != m.len() || a.len() < 2 || !a.len().is_power_of_two() {
         return Err(C63SparseHClosureError::new("C6.3 sparse-H round geometry differs"));
@@ -421,6 +510,7 @@ fn reference_statement_digest(
     input_log2: u8,
     output_log2: u8,
     claim: Fp2,
+    spots: &[C63SystematicSpot],
 ) -> [u8; 32] {
     let mut hasher = blake3::Hasher::new_derive_key(STATEMENT_DOMAIN);
     hasher.update(&statement.binding_digest);
@@ -431,6 +521,16 @@ fn reference_statement_digest(
     }
     hasher.update(&claim.c0.value().to_le_bytes());
     hasher.update(&claim.c1.value().to_le_bytes());
+    // Preserve the historical zero-spot digest exactly.
+    if !spots.is_empty() {
+        hasher.update(b"volta-zk/c63/systematic-spots/v1");
+        hasher.update(&(spots.len() as u64).to_le_bytes());
+        for spot in spots {
+            hasher.update(&spot.row.to_le_bytes());
+            hasher.update(&spot.value.c0.value().to_le_bytes());
+            hasher.update(&spot.value.c1.value().to_le_bytes());
+        }
+    }
     *hasher.finalize().as_bytes()
 }
 
@@ -605,6 +705,28 @@ mod tests {
         (proof, transcript, correlations)
     }
 
+    fn prove_with_spots(
+        h: &C63SparseSketchReference,
+        m: &[Fp2],
+        u: &[Fp2],
+        statement: &C63SparseHClosureStatement,
+        spots: &[C63SystematicSpot],
+    ) -> Result<(C63SparseHClosureProof, Transcript, [u64; 2])> {
+        let mut streams = TAPE_SEEDS.map(CorrelationStream::new);
+        let mut transcript = Transcript::new(TRANSCRIPT_SEED);
+        let proof = prove_c63_sparse_h_closure_with_spots_reference(
+            h,
+            m,
+            u,
+            statement,
+            spots,
+            &mut streams,
+            &mut transcript,
+        )?;
+        let correlations = array::from_fn(|tape| streams[tape].counters.full_corrs);
+        Ok((proof, transcript, correlations))
+    }
+
     fn verify(
         h: &C63SparseSketchReference,
         m: &[Fp2],
@@ -620,6 +742,28 @@ mod tests {
             m,
             u,
             statement,
+            proof,
+            &mut contexts,
+            &mut transcript,
+        )
+    }
+
+    fn verify_with_spots(
+        h: &C63SparseSketchReference,
+        m: &[Fp2],
+        u: &[Fp2],
+        statement: &C63SparseHClosureStatement,
+        spots: &[C63SystematicSpot],
+        proof: &C63SparseHClosureProof,
+    ) -> Result<C63SparseHClosureReferenceAudit> {
+        let mut contexts = array::from_fn(|tape| VerifierCtx::new(TAPE_SEEDS[tape], DELTAS[tape]));
+        let mut transcript = Transcript::new(TRANSCRIPT_SEED);
+        verify_c63_sparse_h_closure_with_spots_reference(
+            h,
+            m,
+            u,
+            statement,
+            spots,
             proof,
             &mut contexts,
             &mut transcript,
@@ -712,5 +856,73 @@ mod tests {
             &mut transcript,
         )
         .is_err());
+    }
+
+    #[test]
+    fn zero_spots_preserve_the_historical_proof_transcript_and_correlations() {
+        let (h, m, u, statement) = fixture();
+        let (old_proof, old_tx, old_correlations) = prove(&h, &m, &u, &statement);
+        let (new_proof, new_tx, new_correlations) =
+            prove_with_spots(&h, &m, &u, &statement, &[]).unwrap();
+
+        assert_eq!(new_proof, old_proof);
+        assert_eq!(new_proof.encode().unwrap(), old_proof.encode().unwrap());
+        assert_eq!(new_correlations, old_correlations);
+        assert_eq!(new_tx.total_bytes(), old_tx.total_bytes());
+        assert_eq!(new_tx.ledger(), old_tx.ledger());
+        assert_eq!(
+            new_tx.canonical_binding_digest().unwrap(),
+            old_tx.canonical_binding_digest().unwrap()
+        );
+    }
+
+    #[test]
+    fn fused_systematic_spots_pass_honestly_and_fail_closed_on_mutation() {
+        let (h, m, u, statement) = fixture();
+        let spots =
+            [C63SystematicSpot { row: 1, value: m[1] }, C63SystematicSpot { row: 5, value: m[5] }];
+        let (plain, _, plain_correlations) = prove(&h, &m, &u, &statement);
+        let (proof, _, correlations) = prove_with_spots(&h, &m, &u, &statement, &spots).unwrap();
+        assert_eq!(proof.encoded_len().unwrap(), plain.encoded_len().unwrap());
+        assert_eq!(correlations, plain_correlations);
+        verify_with_spots(&h, &m, &u, &statement, &spots, &proof).unwrap();
+
+        let mut changed_value = spots;
+        changed_value[0].value += Fp2::ONE;
+        assert!(verify_with_spots(&h, &m, &u, &statement, &changed_value, &proof).is_err());
+
+        let mut changed_row = spots;
+        changed_row[0].row = 2;
+        assert!(verify_with_spots(&h, &m, &u, &statement, &changed_row, &proof).is_err());
+
+        let reversed = [spots[1], spots[0]];
+        assert!(verify_with_spots(&h, &m, &u, &statement, &reversed, &proof).is_err());
+        assert!(prove_with_spots(&h, &m, &u, &statement, &reversed).is_err());
+
+        let duplicate = [spots[0], C63SystematicSpot { row: spots[0].row, value: m[1] }];
+        assert!(verify_with_spots(&h, &m, &u, &statement, &duplicate, &proof).is_err());
+        assert!(prove_with_spots(&h, &m, &u, &statement, &duplicate).is_err());
+    }
+
+    #[test]
+    fn fused_spot_closes_the_plain_sparse_h_kernel_attack() {
+        let (h, x, u, statement) = fixture();
+        let mut error = vec![Fp2::ZERO; x.len()];
+        error[0] = Fp2::from_base(Fp::new(3));
+        error[4] = Fp2::ZERO - Fp2::ONE;
+        assert_ne!(error, vec![Fp2::ZERO; x.len()]);
+        assert_eq!(h.apply(&error).unwrap(), vec![Fp2::ZERO; u.len()]);
+
+        let m = x.iter().zip(&error).map(|(&value, &delta)| value + delta).collect::<Vec<_>>();
+        assert_eq!(h.apply(&m).unwrap(), u);
+        let (plain, _, _) = prove(&h, &m, &u, &statement);
+        verify(&h, &m, &u, &statement, &plain, TRANSCRIPT_SEED).unwrap();
+
+        let spots = [C63SystematicSpot { row: 0, value: x[0] }];
+        assert!(prove_with_spots(&h, &m, &u, &statement, &spots).is_err());
+        assert!(verify_with_spots(&h, &m, &u, &statement, &spots, &plain).is_err());
+
+        let (honest, _, _) = prove_with_spots(&h, &x, &u, &statement, &spots).unwrap();
+        verify_with_spots(&h, &x, &u, &statement, &spots, &honest).unwrap();
     }
 }

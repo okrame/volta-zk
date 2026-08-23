@@ -65,6 +65,61 @@ mod proof;
 mod prover;
 mod verifier;
 
+use alloc::vec::Vec;
+
+use p3_commit::Mmcs;
+use p3_multilinear_util::point::Point;
+
+use crate::pcs::proof::QueryOpenings;
+
+/// Opt-in first-oracle decomposition used by C6.3.
+///
+/// The ordinary HVZK-WHIR path returns no extra values and is unchanged.  A
+/// projected initial oracle may additionally expose the folded contribution
+/// of its fresh encoding mask.  The first code-switch then proves that this
+/// contribution is exactly `Enc(0, zeta)` rather than an arbitrary word that
+/// could absorb a mismatch in the externally authenticated fixed base.
+pub trait ZkWhirInitialOracleLink<F, EF, MT>
+where
+    F: Send + Sync + Clone,
+    MT: Mmcs<F>,
+{
+    /// Whether absence of the extra first-round values is malformed.
+    fn required(&self) -> bool;
+
+    /// Returns one folded mask value per initial STIR query.
+    fn folded_mask_values(
+        &self,
+        opening: &QueryOpenings<F, EF, MT::MultiProof>,
+        indices: &[usize],
+        randomness: &Point<EF>,
+    ) -> Option<Vec<EF>>;
+}
+
+/// Historical no-link mode.  It preserves the exact original transcript and
+/// proof bytes.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoZkWhirInitialOracleLink;
+
+impl<F, EF, MT> ZkWhirInitialOracleLink<F, EF, MT> for NoZkWhirInitialOracleLink
+where
+    F: Send + Sync + Clone,
+    MT: Mmcs<F>,
+{
+    fn required(&self) -> bool {
+        false
+    }
+
+    fn folded_mask_values(
+        &self,
+        _opening: &QueryOpenings<F, EF, MT::MultiProof>,
+        _indices: &[usize],
+        _randomness: &Point<EF>,
+    ) -> Option<Vec<EF>> {
+        None
+    }
+}
+
 pub use base_case::{BaseCaseClaimlessClosure, BaseCaseZkError};
 pub use code_switch::CodeSwitchError;
 #[doc(hidden)]

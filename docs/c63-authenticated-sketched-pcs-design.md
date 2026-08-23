@@ -933,6 +933,13 @@ reference. This is source evidence only: ABI43 has not been compiled by
 `nvcc`, no device root has been compared, and the response-local Hiding-WHIR
 owner remains the next G1 step after that differential.
 
+The first hardware check is frozen as the single ignored integration test
+`volta-pcs/tests/c63_gpu_owner.rs`. It uses the production D22-to-D19 sampler
+and one full GPT-2 token, then compares every compact correction, every `S`
+and `A` field and both roots with an independently built CPU result. It also
+requires native row, NTT and Merkle counters. A scaled geometry cannot replace
+this test because the ABI is intentionally fixed to the production layout.
+
 ### C63-E2E2 — two real responses
 
 Only after local tests, exact budgets, clean source, artifact checks and a new

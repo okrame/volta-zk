@@ -13,8 +13,8 @@ Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 - **Status.** Local C6.3 is open; no pod is open. Joint correction privacy and
   terminal simulation compile in Lean. Codecs, production-depth openings,
   four linked WHIR lanes and the reduced wrapper are locally green. The ABI43
-  resident state owner compiles at the Rust/CUDA source boundary, but its
-  `.cu` kernels have not been built or run.
+  resident state owner plus production differential harness compile at the
+  Rust/CUDA source boundary, but its `.cu` kernels have not been built or run.
 - **Evidence.** C6.2 precommit remains `275.113308912 s`; about `249.51 s` was
   dense encoding, persistence, reread and trees. The conservative 105-bit
   codec is `23,271,419 B`, `pi_final` is `2,704,573 B`, setup plus first is
@@ -33,6 +33,17 @@ Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
   Build ABI43 with `nvcc`, differentially match compact rows, `S`, `A` and both
   roots to CPU references, then complete G1 and run exactly one cold plus one
   immediate warm real response.
+
+- **2026-08-23 — The ABI43 A100 differential is now one registered test.**
+  `volta-pcs/tests/c63_gpu_owner.rs` constructs the exact D22-to-D19 sampled
+  setup and one complete GPT-2 token on both tapes. Its independent CPU path
+  rebuilds every live/padded correction row, all of `S`, WHIR's 32 D19 NTT
+  batches, `A`, the typed correction root and the encoded-sketch root. The GPU
+  path downloads and compares every `D'`, `S` and `A` field before comparing
+  both roots, and requires PCS-row, NTT and Merkle device counters. The ignored
+  test compiles locally with CUDA features; it intentionally cannot execute
+  without ABI43 and an A100. This removes ad-hoc pod diagnostics but supplies
+  no CUDA correctness, timing or memory credit. No pod is authorized.
 
 - **2026-08-23 — C6.3 resident state source is ready for its first A100
   differential.** ABI43 adds three fixed-geometry device operations: append

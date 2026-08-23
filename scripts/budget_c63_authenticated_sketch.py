@@ -138,7 +138,14 @@ C63_SPARSE_SETUP_RESIDENT_BYTES = (
 C63_FIXED_MODEL_CACHE_BYTES = 12 * (1 << 30)
 # Includes one complete D23 Fp2 lane/codeword and its proof workspace.
 C63_D23_LANE_GUARD_BYTES = 5_529_141_216
-C63_PRE_A_STATE_PROXY_BYTES = 329_307_136
+C63_ACCEPTED_CORRECTION_BYTES = 150 * (6 << 9) * C63_T16_COLUMNS * 8
+C63_PROPOSED_CORRECTION_BYTES = 200 * (6 << 9) * C63_T16_COLUMNS * 8
+C63_ONE_SPARSE_SKETCH_BYTES = C63_T16_COLUMNS * (1 << 19) * 8
+C63_PRE_A_STATE_PROXY_BYTES = (
+    C63_ACCEPTED_CORRECTION_BYTES
+    + C63_PROPOSED_CORRECTION_BYTES
+    + 2 * C63_ONE_SPARSE_SKETCH_BYTES
+)
 C63_ENCODED_SKETCH_DATA_BYTES = (
     (1 << C63_ENCODED_SKETCH_ROW_DEPTH) * C63_ENCODED_SKETCH_ROW_BYTES
 )
@@ -823,7 +830,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "schema": "volta-c63-authenticated-sketch-analytic-screen-v12",
+        "schema": "volta-c63-authenticated-sketch-analytic-screen-v13",
         "credit": False,
         "transfer_to_c63_gates": False,
         "gates": gates,
@@ -1219,6 +1226,9 @@ def build_report() -> dict[str, Any]:
                 "sequential_c63_one_workspace_bytes": sequential_c63_phase_vram,
                 "lane_guard_includes_one_d23_fp2_codeword": True,
                 "pre_a_state_proxy_bytes": C63_PRE_A_STATE_PROXY_BYTES,
+                "one_sparse_sketch_bytes": C63_ONE_SPARSE_SKETCH_BYTES,
+                "accepted_correction_bytes": C63_ACCEPTED_CORRECTION_BYTES,
+                "proposed_correction_bytes": C63_PROPOSED_CORRECTION_BYTES,
                 "one_encoded_sketch_data_bytes": C63_ENCODED_SKETCH_DATA_BYTES,
                 "one_encoded_sketch_merkle_bytes": C63_ENCODED_SKETCH_MERKLE_BYTES,
                 "accepted_plus_proposed_encoded_sketch_bytes": (
@@ -1363,11 +1373,15 @@ def build_report() -> dict[str, Any]:
     assert C63_ENCODED_SKETCH_DATA_BYTES == 134_217_728
     assert C63_ENCODED_SKETCH_MERKLE_BYTES == 33_554_400
     assert C63_ACCEPTED_PROPOSED_ENCODED_SKETCH_BYTES == 335_544_256
-    assert C63_FULL_STATE_PROXY_BYTES == 664_851_392
-    assert forced_overlap_vram == 46_145_661_708
-    assert forced_overlap_vram - VRAM_GUARD_BYTES == 327_084_844
-    assert sequential_gw4_phase_vram == 40_616_520_492
-    assert sequential_c63_phase_vram == 19_884_200_864
+    assert C63_ACCEPTED_CORRECTION_BYTES == 58_982_400
+    assert C63_PROPOSED_CORRECTION_BYTES == 78_643_200
+    assert C63_ONE_SPARSE_SKETCH_BYTES == 67_108_864
+    assert C63_PRE_A_STATE_PROXY_BYTES == 271_843_328
+    assert C63_FULL_STATE_PROXY_BYTES == 607_387_584
+    assert forced_overlap_vram == 46_088_197_900
+    assert forced_overlap_vram - VRAM_GUARD_BYTES == 269_621_036
+    assert sequential_gw4_phase_vram == 40_559_056_684
+    assert sequential_c63_phase_vram == 19_826_737_056
     assert PADDED_ENTRIES_PER_SLOT == 1 << 24
     assert legacy_state_entries == 1 << 27
     assert compact_state_entries == 1 << 25

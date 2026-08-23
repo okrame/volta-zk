@@ -18,6 +18,8 @@ mod c61_interactive_driver;
 pub mod c62_gpu_whir;
 pub mod c63_authenticated_sketch;
 #[cfg(feature = "c61-p3-authenticated-reference")]
+pub mod c63_gpu_owner;
+#[cfg(feature = "c61-p3-authenticated-reference")]
 pub mod c63_preencoded_whir;
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub mod c63_public_argument;
@@ -160,7 +162,13 @@ pub use c63_authenticated_sketch::{
     C63SparseSketchEdge, C63SparseSketchReference, C63_BOLT_COLUMNS, C63_BOLT_COLUMN_LOG2,
     C63_BOLT_LDPC_CHECK_DEGREE, C63_BOLT_LDPC_COLUMN_DEGREE, C63_BOLT_LIVE_ROWS_PER_POSITION,
     C63_BOLT_ROWS, C63_BOLT_ROWS_PER_POSITION, C63_BOLT_ROW_LOG2, C63_BOLT_SKETCH_ROWS,
-    C63_BOLT_SKETCH_ROW_LOG2, C63_SPARSE_SETUP_DESCRIPTOR_BYTES,
+    C63_BOLT_SKETCH_ROW_LOG2, C63_CORRECTION_ROW_FRAME_WORDS,
+    C63_SPARSE_SETUP_DESCRIPTOR_BYTES,
+};
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub use c63_gpu_owner::{
+    C63GpuOwnerError, C63GpuResourceCensus, C63GpuSetupOwner, C63GpuStateOwner,
+    C63GpuTileMetadata,
 };
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub use c63_public_argument::{

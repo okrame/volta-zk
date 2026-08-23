@@ -169,6 +169,27 @@ type Fp2RowDotsDevice = unsafe extern "C" fn(
     usize,
 ) -> c_int;
 type Fp2PowersDevice = unsafe extern "C" fn(*mut c_void, u64, u64, u64, usize, usize) -> c_int;
+type C63AppendCorrectionsDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    usize,
+) -> c_int;
+type C63CorrectionTileFrameDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, u64, usize, usize, usize) -> c_int;
+type C63PadSketchForEncodingDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize) -> c_int;
 type GemmI64 = unsafe extern "C" fn(
     *mut c_void,
     *const i16,
@@ -1057,6 +1078,9 @@ struct Api {
     chacha8_prover_secret_fp2_rows_padded_device: Chacha8ProverSecretFp2RowsPaddedDevice,
     fp2_row_dots_device: Fp2RowDotsDevice,
     fp2_powers_device: Fp2PowersDevice,
+    c63_append_corrections_device: C63AppendCorrectionsDevice,
+    c63_correction_tile_frame_device: C63CorrectionTileFrameDevice,
+    c63_pad_sketch_for_encoding_device: C63PadSketchForEncodingDevice,
     gemm_i64: GemmI64,
     gemm_i64_device: GemmI64Device,
     gemm_requant_auth: GemmRequantAuth,
@@ -1283,6 +1307,15 @@ impl CudaContext {
                 load_symbol(handle, b"volta_cuda_fp2_row_dots_device\0")?
             },
             fp2_powers_device: unsafe { load_symbol(handle, b"volta_cuda_fp2_powers_device\0")? },
+            c63_append_corrections_device: unsafe {
+                load_symbol(handle, b"volta_cuda_c63_append_corrections_device\0")?
+            },
+            c63_correction_tile_frame_device: unsafe {
+                load_symbol(handle, b"volta_cuda_c63_correction_tile_frame_device\0")?
+            },
+            c63_pad_sketch_for_encoding_device: unsafe {
+                load_symbol(handle, b"volta_cuda_c63_pad_sketch_for_encoding_device\0")?
+            },
             gemm_i64: unsafe { load_symbol(handle, b"volta_cuda_gemm_i64\0")? },
             gemm_i64_device: unsafe { load_symbol(handle, b"volta_cuda_gemm_i64_device\0")? },
             gemm_requant_auth: unsafe { load_symbol(handle, b"volta_cuda_gemm_requant_auth\0")? },
@@ -1444,9 +1477,7 @@ impl CudaContext {
             ntt_fp2_batch_device: unsafe {
                 load_symbol(handle, b"volta_cuda_ntt_fp2_batch_device\0")?
             },
-            warm_ntt_twiddles: unsafe {
-                load_symbol(handle, b"volta_cuda_warm_ntt_twiddles\0")?
-            },
+            warm_ntt_twiddles: unsafe { load_symbol(handle, b"volta_cuda_warm_ntt_twiddles\0")? },
             logup_tree: unsafe { load_symbol(handle, b"volta_cuda_logup_tree\0")? },
             logup_tree_device: unsafe { load_symbol(handle, b"volta_cuda_logup_tree_device\0")? },
             logup_materialize_leaves_device: unsafe {
@@ -1516,9 +1547,7 @@ impl CudaContext {
             fp2_batched_svo_partials_device: unsafe {
                 load_symbol(handle, b"volta_cuda_fp2_batched_svo_partials_device\0")?
             },
-            fp2_scatter_device: unsafe {
-                load_symbol(handle, b"volta_cuda_fp2_scatter_device\0")?
-            },
+            fp2_scatter_device: unsafe { load_symbol(handle, b"volta_cuda_fp2_scatter_device\0")? },
             fp2_add_geometric_inplace_device: unsafe {
                 load_symbol(handle, b"volta_cuda_fp2_add_geometric_inplace_device\0")?
             },
@@ -2058,6 +2087,93 @@ impl CudaContext {
                 output_id,
                 output_offset,
                 count,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn c63_append_corrections_device(
+        &mut self,
+        tape0: u64,
+        tape0_offset: usize,
+        tape1: u64,
+        tape1_offset: usize,
+        permutation: u64,
+        permutation_offset: usize,
+        coefficients: u64,
+        coefficients_offset: usize,
+        correction_rows: u64,
+        correction_rows_offset: usize,
+        sketch: u64,
+        sketch_offset: usize,
+        old_len: usize,
+        new_len: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates ownership and every fixed C6.3 region.
+        self.check(unsafe {
+            (self.api.c63_append_corrections_device)(
+                self.raw,
+                tape0,
+                tape0_offset,
+                tape1,
+                tape1_offset,
+                permutation,
+                permutation_offset,
+                coefficients,
+                coefficients_offset,
+                correction_rows,
+                correction_rows_offset,
+                sketch,
+                sketch_offset,
+                old_len,
+                new_len,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn c63_correction_tile_frame_device(
+        &mut self,
+        correction_rows: u64,
+        correction_rows_offset: usize,
+        metadata: u64,
+        metadata_offset: usize,
+        frame: u64,
+        frame_offset: usize,
+        accepted_len: usize,
+        position: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates ownership and every fixed C6.3 region.
+        self.check(unsafe {
+            (self.api.c63_correction_tile_frame_device)(
+                self.raw,
+                correction_rows,
+                correction_rows_offset,
+                metadata,
+                metadata_offset,
+                frame,
+                frame_offset,
+                accepted_len,
+                position,
+            )
+        })
+    }
+
+    pub(super) fn c63_pad_sketch_for_encoding_device(
+        &mut self,
+        sketch: u64,
+        sketch_offset: usize,
+        padded: u64,
+        padded_offset: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates ownership and both fixed C6.3 regions.
+        self.check(unsafe {
+            (self.api.c63_pad_sketch_for_encoding_device)(
+                self.raw,
+                sketch,
+                sketch_offset,
+                padded,
+                padded_offset,
             )
         })
     }

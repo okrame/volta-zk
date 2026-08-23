@@ -18,9 +18,19 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 42;
+pub const CUDA_ABI_VERSION: u32 = 43;
 pub const OPERATION_COUNT: usize = 7;
 pub const DEFERRED_TIMING_CAPACITY: usize = 512;
+
+const C63_LAYERS: usize = 12;
+const C63_WIDTH: usize = 768;
+const C63_COLUMNS: usize = 16;
+const C63_LIVE_ROWS_PER_TOKEN: usize = 3072;
+const C63_ROWS_PER_TOKEN: usize = 4096;
+const C63_SKETCH_ROWS: usize = 1 << 19;
+const C63_SOCKET_COUNT: usize = 1 << 26;
+const C63_ROW_FRAME_WORDS: usize = 27;
+const C63_TILE_METADATA_WORDS: usize = 9;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(usize)]
@@ -1971,6 +1981,142 @@ impl Backend {
             let _ = base;
             Err(AccelError::FeatureDisabled)
         };
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
+    }
+
+    /// Append the two canonical C6.3 correction tapes directly into the
+    /// compact correction matrix and the padded sparse sketch.
+    #[allow(clippy::too_many_arguments)]
+    pub fn c63_append_corrections_device(
+        &mut self,
+        tape0: DeviceSlice<'_, u64>,
+        tape1: DeviceSlice<'_, u64>,
+        permutation: &DeviceBuffer<u32>,
+        coefficients: &DeviceBuffer<u64>,
+        correction_rows: &DeviceBuffer<u64>,
+        sketch: &DeviceBuffer<u64>,
+        old_len: usize,
+        new_len: usize,
+    ) -> Result<(), AccelError> {
+        if old_len >= new_len || new_len > 1024 {
+            return Err(AccelError::InvalidInput("invalid C6.3 append geometry"));
+        }
+        let per_tape = checked_product(
+            checked_product(2 * C63_LAYERS, new_len - old_len)?,
+            C63_WIDTH,
+        )?;
+        if tape0.len() != per_tape
+            || tape1.len() != per_tape
+            || permutation.len() != C63_SOCKET_COUNT
+            || coefficients.len() != C63_SOCKET_COUNT
+            || correction_rows.len()
+                != checked_product(
+                    checked_product(new_len, C63_LIVE_ROWS_PER_TOKEN)?,
+                    C63_COLUMNS,
+                )?
+            || sketch.len() != checked_product(C63_COLUMNS, C63_SKETCH_ROWS)?
+        {
+            return Err(AccelError::InvalidInput("invalid C6.3 resident region length"));
+        }
+        self.validate_device_slice(tape0, per_tape)?;
+        self.validate_device_slice(tape1, per_tape)?;
+        self.validate_buffer(permutation)?;
+        self.validate_buffer(coefficients)?;
+        self.validate_buffer(correction_rows)?;
+        self.validate_buffer(sketch)?;
+        #[cfg(feature = "cuda")]
+        {
+            return self.cuda.as_mut().expect("CUDA kind without context").c63_append_corrections_device(
+                tape0.buffer.id,
+                tape0.offset,
+                tape1.buffer.id,
+                tape1.offset,
+                permutation.id,
+                0,
+                coefficients.id,
+                0,
+                correction_rows.id,
+                0,
+                sketch.id,
+                0,
+                old_len,
+                new_len,
+            );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Materialize one fixed-width correction-tile leaf frame on-device.
+    pub fn c63_correction_tile_frame_device(
+        &mut self,
+        correction_rows: &DeviceBuffer<u64>,
+        metadata: &DeviceBuffer<u64>,
+        accepted_len: usize,
+        position: usize,
+    ) -> Result<DeviceBuffer<u64>, AccelError> {
+        if accepted_len == 0
+            || accepted_len > 1024
+            || position >= accepted_len
+            || correction_rows.len()
+                != checked_product(
+                    checked_product(accepted_len, C63_LIVE_ROWS_PER_TOKEN)?,
+                    C63_COLUMNS,
+                )?
+            || metadata.len() != checked_product(accepted_len, C63_TILE_METADATA_WORDS)?
+        {
+            return Err(AccelError::InvalidInput("invalid C6.3 correction-tile geometry"));
+        }
+        self.validate_buffer(correction_rows)?;
+        self.validate_buffer(metadata)?;
+        let output = self.alloc_device(
+            checked_product(C63_ROW_FRAME_WORDS, C63_ROWS_PER_TOKEN)?,
+        )?;
+        #[cfg(feature = "cuda")]
+        let result = self.cuda.as_mut().expect("CUDA kind without context").c63_correction_tile_frame_device(
+            correction_rows.id,
+            0,
+            metadata.id,
+            0,
+            output.id,
+            0,
+            accepted_len,
+            position,
+        );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
+    }
+
+    /// Split `16 x D19` messages into WHIR's padded `32 x D19` NTT batches.
+    pub fn c63_pad_sketch_for_encoding_device(
+        &mut self,
+        sketch: &DeviceBuffer<u64>,
+    ) -> Result<DeviceBuffer<u64>, AccelError> {
+        let input_elements = checked_product(C63_COLUMNS, C63_SKETCH_ROWS)?;
+        let output_elements = checked_product(2, input_elements)?;
+        if sketch.len() != input_elements {
+            return Err(AccelError::InvalidInput("invalid C6.3 sketch geometry"));
+        }
+        self.validate_buffer(sketch)?;
+        let output = self.alloc_device(output_elements)?;
+        #[cfg(feature = "cuda")]
+        let result = self.cuda.as_mut().expect("CUDA kind without context").c63_pad_sketch_for_encoding_device(
+            sketch.id,
+            0,
+            output.id,
+            0,
+        );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
         if let Err(error) = result {
             let _ = self.free_device(output);
             return Err(error);

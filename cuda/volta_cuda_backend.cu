@@ -18,7 +18,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 42;
+constexpr uint32_t ABI_VERSION = 43;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -1413,6 +1413,101 @@ __global__ void fp2_powers_kernel(Fp2 base, Fp2* output, size_t count) {
         output[i] = current;
         current = fp2_mul(current, base);
     }
+}
+
+constexpr size_t C63_LAYERS = 12;
+constexpr size_t C63_WIDTH = 768;
+constexpr size_t C63_COLUMNS = 16;
+constexpr size_t C63_LIVE_ROWS_PER_TOKEN = 3072;
+constexpr size_t C63_ROWS_PER_TOKEN = 4096;
+constexpr size_t C63_SKETCH_ROWS = size_t{1} << 19;
+constexpr size_t C63_SOCKET_COUNT = size_t{1} << 26;
+constexpr size_t C63_ROW_FRAME_WORDS = 27;
+constexpr size_t C63_TILE_METADATA_WORDS = 9;
+
+__device__ inline void fp_atomic_add(uint64_t* target, uint64_t value) {
+    auto* address = reinterpret_cast<unsigned long long*>(target);
+    unsigned long long observed = *address;
+    while (true) {
+        const unsigned long long expected = observed;
+        observed = atomicCAS(address, expected, fp_add(expected, value));
+        if (observed == expected) return;
+    }
+}
+
+__global__ void c63_append_corrections_kernel(
+    const uint64_t* tape0, const uint64_t* tape1,
+    const uint32_t* permutation, const uint64_t* coefficients,
+    uint64_t* correction_rows, uint64_t* sketch,
+    size_t old_len, size_t delta) {
+    const size_t per_tape = 2 * C63_LAYERS * delta * C63_WIDTH;
+    const size_t total = 2 * per_tape;
+    const size_t first = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    const size_t stride = static_cast<size_t>(gridDim.x) * blockDim.x;
+    for (size_t z = first; z < total; z += stride) {
+        const size_t tape = z / per_tape;
+        size_t local = z - tape * per_tape;
+        const size_t channel = local % C63_WIDTH;
+        local /= C63_WIDTH;
+        const size_t position_delta = local % delta;
+        local /= delta;
+        const size_t layer = local % C63_LAYERS;
+        const size_t kind = local / C63_LAYERS;
+        const size_t position = old_len + position_delta;
+        const size_t row_in_token = (layer >> 1) * 512 + (channel & 511);
+        const size_t source_row = position * C63_ROWS_PER_TOKEN + row_in_token;
+        const size_t compact_row = position * C63_LIVE_ROWS_PER_TOKEN + row_in_token;
+        const size_t column = tape | (kind << 1) | ((layer & 1) << 2) | ((channel >> 9) << 3);
+        const uint64_t value = (tape == 0 ? tape0 : tape1)[z - tape * per_tape];
+        correction_rows[compact_row * C63_COLUMNS + column] = value;
+        if (value == 0) continue;
+        const size_t socket_base = source_row * 16;
+        for (size_t edge = 0; edge < 16; ++edge) {
+            const size_t socket = socket_base + edge;
+            const size_t output = permutation[socket] / 128;
+            fp_atomic_add(sketch + column * C63_SKETCH_ROWS + output,
+                          fp_mul(value, coefficients[socket]));
+        }
+    }
+}
+
+__global__ void c63_correction_tile_frame_kernel(
+    const uint64_t* correction_rows, const uint64_t* metadata,
+    uint64_t* frame, size_t position) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z >= C63_ROW_FRAME_WORDS * C63_ROWS_PER_TOKEN) return;
+    const size_t word = z / C63_ROWS_PER_TOKEN;
+    const size_t local = z - word * C63_ROWS_PER_TOKEN;
+    uint64_t value = 0;
+    if (local < C63_LIVE_ROWS_PER_TOKEN) {
+        if (word == 0) value = UINT64_C(0x0000335243333643);
+        else if (word == 1) {
+            const uint64_t layer_high = local >> 9;
+            const uint64_t channel_low = local & 511;
+            value = uint64_t{3} | (position << 16) | (layer_high << 32) | (channel_low << 40);
+        } else if (word == 2) value = metadata[position * C63_TILE_METADATA_WORDS];
+        else if (word < 11) value = metadata[position * C63_TILE_METADATA_WORDS + word - 2];
+        else value = correction_rows[
+            (position * C63_LIVE_ROWS_PER_TOKEN + local) * C63_COLUMNS + word - 11];
+    } else {
+        if (word == 0) value = UINT64_C(0x0000335A56333643);
+        else if (word == 1) value = 3;
+    }
+    frame[z] = value;
+}
+
+__global__ void c63_pad_sketch_for_encoding_kernel(
+    const uint64_t* sketch, uint64_t* padded) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z >= 2 * C63_COLUMNS * C63_SKETCH_ROWS) return;
+    const size_t component = z / C63_SKETCH_ROWS;
+    const size_t row = z - component * C63_SKETCH_ROWS;
+    const size_t column = component >> 1;
+    const size_t chunk = component & 1;
+    const size_t message_rows = C63_SKETCH_ROWS >> 1;
+    padded[z] = row < message_rows
+        ? sketch[column * C63_SKETCH_ROWS + chunk * message_rows + row]
+        : 0;
 }
 
 // -------------------------------------------------------------------------
@@ -4436,6 +4531,92 @@ extern "C" int volta_cuda_fp2_powers_device(
     CUDA_OR_RETURN(c, cudaGetLastError());
     if (mark_timing(c, 2)) return -1;
     return finish_timing(c, OP_PCS_ROWS, 0, 0, 0, 0, output_bytes);
+}
+
+extern "C" int volta_cuda_c63_append_corrections_device(
+    void* raw,
+    uint64_t tape0_id, size_t tape0_offset,
+    uint64_t tape1_id, size_t tape1_offset,
+    uint64_t permutation_id, size_t permutation_offset,
+    uint64_t coefficients_id, size_t coefficients_offset,
+    uint64_t correction_rows_id, size_t correction_rows_offset,
+    uint64_t sketch_id, size_t sketch_offset,
+    size_t old_len, size_t new_len) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || old_len >= new_len || new_len > 1024)
+        return fail_message(c, "invalid C6.3 append geometry");
+    const size_t delta = new_len - old_len;
+    const size_t per_tape = 2 * C63_LAYERS * delta * C63_WIDTH;
+    void *tape0 = nullptr, *tape1 = nullptr, *permutation = nullptr, *coefficients = nullptr;
+    void *correction_rows = nullptr, *sketch = nullptr;
+    if (resident_region(c, tape0_id, tape0_offset * sizeof(uint64_t), per_tape * sizeof(uint64_t), &tape0) ||
+        resident_region(c, tape1_id, tape1_offset * sizeof(uint64_t), per_tape * sizeof(uint64_t), &tape1) ||
+        resident_region(c, permutation_id, permutation_offset * sizeof(uint32_t), C63_SOCKET_COUNT * sizeof(uint32_t), &permutation) ||
+        resident_region(c, coefficients_id, coefficients_offset * sizeof(uint64_t), C63_SOCKET_COUNT * sizeof(uint64_t), &coefficients) ||
+        resident_region(c, correction_rows_id, correction_rows_offset * sizeof(uint64_t),
+                        new_len * C63_LIVE_ROWS_PER_TOKEN * C63_COLUMNS * sizeof(uint64_t), &correction_rows) ||
+        resident_region(c, sketch_id, sketch_offset * sizeof(uint64_t),
+                        C63_COLUMNS * C63_SKETCH_ROWS * sizeof(uint64_t), &sketch)) return -1;
+    const size_t total = 2 * per_tape;
+    const unsigned int blocks = static_cast<unsigned int>(
+        std::min<size_t>((total + BLOCK - 1) / BLOCK, 65535));
+    if (begin_timing(c) || mark_timing(c, 1)) return -1;
+    c63_append_corrections_kernel<<<blocks, BLOCK, 0, c->stream>>>(
+        static_cast<const uint64_t*>(tape0), static_cast<const uint64_t*>(tape1),
+        static_cast<const uint32_t*>(permutation), static_cast<const uint64_t*>(coefficients),
+        static_cast<uint64_t*>(correction_rows), static_cast<uint64_t*>(sketch), old_len, delta);
+    CUDA_OR_RETURN(c, cudaGetLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_PCS_ROWS, 0, 0, 0, 0,
+                         2 * per_tape * sizeof(uint64_t));
+}
+
+extern "C" int volta_cuda_c63_correction_tile_frame_device(
+    void* raw,
+    uint64_t correction_rows_id, size_t correction_rows_offset,
+    uint64_t metadata_id, size_t metadata_offset,
+    uint64_t frame_id, size_t frame_offset,
+    size_t accepted_len, size_t position) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !accepted_len || accepted_len > 1024 || position >= accepted_len)
+        return fail_message(c, "invalid C6.3 correction-tile frame geometry");
+    void *correction_rows = nullptr, *metadata = nullptr, *frame = nullptr;
+    if (resident_region(c, correction_rows_id, correction_rows_offset * sizeof(uint64_t),
+                        accepted_len * C63_LIVE_ROWS_PER_TOKEN * C63_COLUMNS * sizeof(uint64_t), &correction_rows) ||
+        resident_region(c, metadata_id, metadata_offset * sizeof(uint64_t),
+                        accepted_len * C63_TILE_METADATA_WORDS * sizeof(uint64_t), &metadata) ||
+        resident_region(c, frame_id, frame_offset * sizeof(uint64_t),
+                        C63_ROW_FRAME_WORDS * C63_ROWS_PER_TOKEN * sizeof(uint64_t), &frame)) return -1;
+    const size_t total = C63_ROW_FRAME_WORDS * C63_ROWS_PER_TOKEN;
+    if (begin_timing(c) || mark_timing(c, 1)) return -1;
+    c63_correction_tile_frame_kernel<<<(total + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const uint64_t*>(correction_rows), static_cast<const uint64_t*>(metadata),
+        static_cast<uint64_t*>(frame), position);
+    CUDA_OR_RETURN(c, cudaGetLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_PCS_ROWS, 0, 0, 0, 0, total * sizeof(uint64_t));
+}
+
+extern "C" int volta_cuda_c63_pad_sketch_for_encoding_device(
+    void* raw,
+    uint64_t sketch_id, size_t sketch_offset,
+    uint64_t padded_id, size_t padded_offset) {
+    Context* c = static_cast<Context*>(raw);
+    const size_t elements = 2 * C63_COLUMNS * C63_SKETCH_ROWS;
+    void *sketch = nullptr, *padded = nullptr;
+    if (!c ||
+        resident_region(c, sketch_id, sketch_offset * sizeof(uint64_t),
+                        C63_COLUMNS * C63_SKETCH_ROWS * sizeof(uint64_t), &sketch) ||
+        resident_region(c, padded_id, padded_offset * sizeof(uint64_t),
+                        elements * sizeof(uint64_t), &padded)) return -1;
+    if (sketch_id == padded_id)
+        return fail_message(c, "C6.3 sketch padding must be out of place");
+    if (begin_timing(c) || mark_timing(c, 1)) return -1;
+    c63_pad_sketch_for_encoding_kernel<<<(elements + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const uint64_t*>(sketch), static_cast<uint64_t*>(padded));
+    CUDA_OR_RETURN(c, cudaGetLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_PCS_ROWS, 0, 0, elements * sizeof(uint64_t));
 }
 
 extern "C" int volta_cuda_gemm_i64(

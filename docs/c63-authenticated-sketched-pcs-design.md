@@ -822,17 +822,19 @@ candidates. Treating grinding as Fiat--Shamir queries remains a rejected
 monolithic model and fails the gate. The selected result is a computational
 random-oracle screen, not a standard-model proof or empirical credit.
 
-VRAM requires sequencing, not eviction of `H`. A deliberately conservative
-state screen retains both accepted and proposed `A`: each uses `134,217,728 B`
-of rows plus a `33,554,400-B` full hash tree. Together with the other old/new
-owners the state proxy is `664,851,392 B`. Forced overlap of measured GW4,
+VRAM requires sequencing, not eviction of `H`. The ABI43 owner stores one
+`67,108,864-B` D19-by-16 sparse sketch per state; WHIR then splits each column
+into two zero-padded D19 NTT batches, so a single D20 NTT is explicitly
+forbidden. Accepted and proposed `A` each use `134,217,728 B` of rows plus a
+`33,554,400-B` full hash tree. Exact live correction rows plus both `S` and
+both `A` owners give a `607,387,584-B` state proxy. Forced overlap of measured GW4,
 the 768-MiB sparse map, that state and one complete D23/Fp2 lane guard is
-`46,145,661,708 B`, or `327,084,844 B` above the A100 guard. The lane guard
+`46,088,197,900 B`, or `269,621,036 B` above the A100 guard. The lane guard
 already contains its D23 codeword; it is not counted twice. The normative
 schedule keeps `H` resident, finishes GW4, releases all GW4 transient owners,
 then executes the four base WHIR cores one at a time with one reused
-workspace. Analytic phase proxies are `40,616,520,492 B` for GW4 plus `H`
-plus state and `19,884,200,864 B` for C6.3. These are `credit:false`: the
+workspace. Analytic phase proxies are `40,559,056,684 B` for GW4 plus `H`
+plus state and `19,826,737,056 B` for C6.3. These are `credit:false`: the
 state subtotal is an analytic census and the complete-tree convention
 conservatively retains leaf hashes. An executable tensor/Fp2 guard and A100
 high-water counter must agree. Spilling a codeword to host is forbidden.
@@ -844,7 +846,7 @@ Hiding randomness, typed
 framing and the Volta `H` closure may move the final size in either direction.
 
 The executable screen is `scripts/budget_c63_authenticated_sketch.py` (schema
-v12). Canonical correction-row, four-lane WHIR, public/designated partition and
+v13). Canonical correction-row, four-lane WHIR, public/designated partition and
 final certificate codecs now exist locally. Their exact byte, setup,
 `pi_final` and computational soundness screens are evaluated but remain
 `credit:false`; prover time, verifier time, RAM and VRAM stay unevaluated until
@@ -921,6 +923,16 @@ Admission requires cache binding below `9.640596167 s` when combined with the
 unchanged GW4/reserve allocation, or an exact total below 20 seconds if work is
 shared between them. Component results remain `credit:false`.
 
+The first local G1 boundary now compiles on the Rust side. It owns the D22-by-16
+live correction prefix, D19-by-16 `S`, D19-by-32 `A` and its device Merkle
+tree; a proposal copies its accepted predecessor without mutating it and only
+new D12 tile roots are rebuilt. Setup `H` is uploaded in bounded chunks and
+remains provider-fixed. Correction leaves use the versioned 216-byte `CR3`
+frame so the existing GPU BLAKE3 tree hashes exactly the same bytes as the CPU
+reference. This is source evidence only: ABI43 has not been compiled by
+`nvcc`, no device root has been compared, and the response-local Hiding-WHIR
+owner remains the next G1 step after that differential.
+
 ### C63-E2E2 — two real responses
 
 Only after local tests, exact budgets, clean source, artifact checks and a new
@@ -961,8 +973,8 @@ a raw-K/V Merkle tree or a sketch-only commitment.
 - Probability that the new separation theorem and two-cohort codec preserve
   `pi_final <4.5 MB`: **94--98%**; the exact local maximum is `2,704,573 B`.
 - Probability that the complete warm prover reaches `<20 s` on one A100:
-  **68--82%** before measuring encoded-`A`, fresh masks, 105-bit proof-of-work, the
-  resident adapter and D23 residual.
+  **70--84%** after fixing the interleaved `A` layout but before measuring it,
+  fresh masks, 105-bit proof-of-work, the resident adapter and D23 residual.
 - Probability that the four-thread verifier stays below 5 seconds:
   **70--85%**, dominated by the unmeasured 768-MiB `H` scan and WHIR bodies.
 - Probability that an independent review accepts the finite Goldilocks

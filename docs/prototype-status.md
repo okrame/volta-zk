@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — LOCAL CODEC/PRIVACY/105-BIT SOUNDNESS SCREEN GREEN; RESIDENT GPU OWNER HARD STOP / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — LOCAL CODEC/PRIVACY/105-BIT SOUNDNESS SCREEN GREEN; RESIDENT GPU OWNER SOURCE READY; ABI43 A100 EXECUTION HARD STOP / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,15 +11,17 @@ record; no external plan is authoritative.
 Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 
 - **Status.** Local C6.3 is open; no pod is open. Joint correction privacy and
-  terminal simulation compile in Lean. Public, designated and final codecs,
-  production-depth openings, four linked WHIR lanes and the reduced wrapper
-  profile are locally green.
+  terminal simulation compile in Lean. Codecs, production-depth openings,
+  four linked WHIR lanes and the reduced wrapper are locally green. The ABI43
+  resident state owner compiles at the Rust/CUDA source boundary, but its
+  `.cu` kernels have not been built or run.
 - **Evidence.** C6.2 precommit remains `275.113308912 s`; about `249.51 s` was
   dense encoding, persistence, reread and trees. The conservative 105-bit
   codec is `23,271,419 B`, `pi_final` is `2,704,573 B`, setup plus first is
   `124,469,116 B`, and the separated-oracle screen is `78.9485568461 bits`.
-  Real-PCG registers 24 sub plus 703 full correlations per tape. All remain
-  `credit:false`; no A100 timing, RAM or VRAM result exists.
+  Real-PCG registers 24 sub plus 703 full correlations per tape. Screen v13
+  counts `S` as 64 MiB and old/new resident state as `607,387,584 B`. All
+  remain `credit:false`; no A100 timing, RAM or VRAM result exists.
 - **Selected construction.** Bolt stays inside Hiding-WHIR. Roots bind `D'`
   and D19-by-32 `A=C^16(H D')`; one `Fp2^16` mix yields `m/u/w/y`; four fresh
   WHIR cores consume pre-encoded `w/y`. MAC tapes stay separate; GW4 is fixed.
@@ -27,9 +29,28 @@ Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
   first `<172,000,000 B`; `pi_final <4,500,000 B`; warm A100 prover `<20 s`;
   four-thread verifier `<5 s`, RSS `<=8,000,000,000 B`, soundness target
   `>=78.80929487391641 bits`.
-- **Hard stop / resume.** Implement and compile one resident GPU owner without
-  dense host state. A pod then requires a new endpoint and owner GO and runs
-  exactly one cold plus one immediate warm real response.
+- **Hard stop / resume.** A new A100 endpoint and owner GO are now required.
+  Build ABI43 with `nvcc`, differentially match compact rows, `S`, `A` and both
+  roots to CPU references, then complete G1 and run exactly one cold plus one
+  immediate warm real response.
+
+- **2026-08-23 — C6.3 resident state source is ready for its first A100
+  differential.** ABI43 adds three fixed-geometry device operations: append
+  both canonical correction tapes into the compact D22-by-16 owner while
+  accumulating `S=HD'`; materialize one 216-byte typed leaf frame for each
+  D12 tile; and split `S` into WHIR's 32 padded D19 NTT batches. Catching the
+  layout at review time avoided an incorrect single D20 NTT: WHIR encodes the
+  two contiguous D18 message chunks independently. `S` is therefore only
+  `67,108,864 B`; `A` remains D19-by-32. The owner zeros canonical padding,
+  copies only the accepted live prefix, reuses old tile roots, builds only new
+  tiles, keeps predecessor and proposal separate, and derives both roots
+  without dense host state. The correction leaf is versioned `CR3` and uses
+  one fixed raw BLAKE3 frame shared byte-for-byte by CPU and CUDA. Analytic
+  screen v13 gives `607,387,584 B` for accepted plus proposed state and
+  `5,843,025,824 B` for setup, both states, construction transient and a 4-GiB
+  reserve. Rust ABI/source checks pass and focused C6.3 tests pass 24/24.
+  There is no local `nvcc`; CUDA compilation, root differentials, timings and
+  high-water memory are unexecuted and `credit:false`. No pod is authorized.
 
 - **2026-08-23 — C6.3 local certificate and correction-privacy boundary are
   closed.** The canonical final certificate composes the fixed C6.2 response,

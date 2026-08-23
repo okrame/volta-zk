@@ -25,11 +25,11 @@ pub const C63_BOLT_SKETCH_ROWS: usize = 1 << C63_BOLT_SKETCH_ROW_LOG2;
 pub const C63_BOLT_LDPC_COLUMN_DEGREE: u8 = 16;
 pub const C63_BOLT_LDPC_CHECK_DEGREE: u16 = 128;
 pub const C63_SPARSE_SETUP_DESCRIPTOR_BYTES: usize = 80;
+pub const C63_CORRECTION_ROW_FRAME_WORDS: usize = 27;
 
-const C63_CORRECTION_TREE_MAGIC: [u8; 8] = *b"C63CR2\0\0";
-const C63_CORRECTION_TREE_VERSION: u16 = 2;
-const C63_LIVE_ROW_HASH_CONTEXT: &str = "volta-zk/c63/correction-live-row/v2";
-const C63_VIRTUAL_ROW_HASH_CONTEXT: &str = "volta-zk/c63/correction-virtual-row/v2";
+const C63_CORRECTION_TREE_MAGIC: [u8; 8] = *b"C63CR3\0\0";
+const C63_VIRTUAL_ROW_MAGIC: [u8; 8] = *b"C63VZ3\0\0";
+const C63_CORRECTION_TREE_VERSION: u16 = 3;
 const C63_STATE_ROOT_HASH_CONTEXT: &str = "volta-zk/c63/correction-state-root/v2";
 const C63_CORRECTION_OPENING_MAGIC: [u8; 8] = *b"C63CRM1\0";
 const C63_CORRECTION_OPENING_VERSION: u16 = 1;
@@ -484,20 +484,34 @@ impl C63CorrectionRowReference {
 
     pub fn hash(&self) -> Result<Hash, String> {
         self.validate()?;
-        let mut hasher = blake3::Hasher::new_derive_key(C63_LIVE_ROW_HASH_CONTEXT);
-        hasher.update(&C63_CORRECTION_TREE_MAGIC);
-        hasher.update(&C63_CORRECTION_TREE_VERSION.to_le_bytes());
-        hasher.update(&self.position.to_le_bytes());
-        hasher.update(&[self.layer_high]);
-        hasher.update(&self.channel_low.to_le_bytes());
-        hasher.update(&self.birth_epoch.to_le_bytes());
-        hasher.update(&self.allocation_binding_digest);
-        hasher.update(&self.source_schedule_digest);
-        for correction in self.corrections {
-            hasher.update(&correction.value().to_le_bytes());
-        }
-        Ok(*hasher.finalize().as_bytes())
+        Ok(crate::merkle::hash_leaf(&c63_correction_live_row_frame(self)))
     }
+}
+
+fn c63_correction_live_row_frame(
+    row: &C63CorrectionRowReference,
+) -> [u8; C63_CORRECTION_ROW_FRAME_WORDS * 8] {
+    let mut bytes = [0u8; C63_CORRECTION_ROW_FRAME_WORDS * 8];
+    bytes[..8].copy_from_slice(&C63_CORRECTION_TREE_MAGIC);
+    bytes[8..10].copy_from_slice(&C63_CORRECTION_TREE_VERSION.to_le_bytes());
+    bytes[10..12].copy_from_slice(&row.position.to_le_bytes());
+    bytes[12] = row.layer_high;
+    bytes[13..15].copy_from_slice(&row.channel_low.to_le_bytes());
+    bytes[16..24].copy_from_slice(&row.birth_epoch.to_le_bytes());
+    bytes[24..56].copy_from_slice(&row.allocation_binding_digest);
+    bytes[56..88].copy_from_slice(&row.source_schedule_digest);
+    for (index, correction) in row.corrections.iter().enumerate() {
+        let offset = 88 + index * 8;
+        bytes[offset..offset + 8].copy_from_slice(&correction.value().to_le_bytes());
+    }
+    bytes
+}
+
+fn c63_virtual_correction_row_frame() -> [u8; C63_CORRECTION_ROW_FRAME_WORDS * 8] {
+    let mut bytes = [0u8; C63_CORRECTION_ROW_FRAME_WORDS * 8];
+    bytes[..8].copy_from_slice(&C63_VIRTUAL_ROW_MAGIC);
+    bytes[8..10].copy_from_slice(&C63_CORRECTION_TREE_VERSION.to_le_bytes());
+    bytes
 }
 
 /// Deduplicated openings inside one accepted D12 position tile.
@@ -988,10 +1002,7 @@ fn c63_virtual_correction_tile_root() -> Hash {
 }
 
 fn c63_virtual_correction_row_hash() -> Hash {
-    let mut hasher = blake3::Hasher::new_derive_key(C63_VIRTUAL_ROW_HASH_CONTEXT);
-    hasher.update(&C63_CORRECTION_TREE_MAGIC);
-    hasher.update(&C63_CORRECTION_TREE_VERSION.to_le_bytes());
-    *hasher.finalize().as_bytes()
+    crate::merkle::hash_leaf(&c63_virtual_correction_row_frame())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1531,6 +1542,23 @@ mod tests {
         let schedule = [17; 32];
         let rows_0 = correction_rows(0, 1, allocation_1, schedule);
         let rows_1 = correction_rows(1, 2, allocation_2, schedule);
+        let frame = c63_correction_live_row_frame(&rows_1[513]);
+        assert_eq!(&frame[..8], b"C63CR3\0\0");
+        assert_eq!(u16::from_le_bytes(frame[8..10].try_into().unwrap()), 3);
+        assert_eq!(u16::from_le_bytes(frame[10..12].try_into().unwrap()), 1);
+        assert_eq!(frame[12], 1);
+        assert_eq!(u16::from_le_bytes(frame[13..15].try_into().unwrap()), 1);
+        assert_eq!(frame[15], 0);
+        assert_eq!(u64::from_le_bytes(frame[16..24].try_into().unwrap()), 2);
+        assert_eq!(&frame[24..56], &allocation_2);
+        assert_eq!(&frame[56..88], &schedule);
+        assert_eq!(
+            u64::from_le_bytes(frame[88..96].try_into().unwrap()),
+            rows_1[513].corrections[0].value()
+        );
+        let virtual_frame = c63_virtual_correction_row_frame();
+        assert_eq!(&virtual_frame[..8], b"C63VZ3\0\0");
+        assert!(virtual_frame[10..].iter().all(|&byte| byte == 0));
         let tile_0 = c63_correction_tile_root_reference(&rows_0).unwrap();
         let tile_1 = c63_correction_tile_root_reference(&rows_1).unwrap();
         let zero = c63_correction_state_root_reference(profile, 0, &[]).unwrap();

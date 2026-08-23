@@ -75,7 +75,8 @@ pub(crate) type C61Compress = CompressionFunctionFromHasher<Blake3, 2, 32>;
 pub(crate) type C61Mmcs = MerkleTreeMmcs<Goldilocks, u8, C61FieldHash, C61Compress, 2, 32>;
 pub(crate) type C61Commitment = MerkleCap<Goldilocks, [u8; 32]>;
 pub(crate) type C61MultiProof = PrunedMerklePaths<u8, 32>;
-type C61Proof = ZkWhirProof<Goldilocks, C61P3Fp2, C61Mmcs>;
+pub(crate) type C61Proof = ZkWhirProof<Goldilocks, C61P3Fp2, C61Mmcs>;
+pub(crate) type C61WhirConfig = ZkWhirConfig<C61P3Fp2, Goldilocks, C61SizingChallenger>;
 
 const C61_NATIVE_MESSAGE_LABEL: &str = "c61.native.interactive_message";
 const C61_NATIVE_FINAL_PAYLOAD_LABEL: &str = "c61.native.final_payload";
@@ -476,17 +477,13 @@ fn opening_bytes(
 
 pub fn c61_whir_structural_budget(num_variables: usize) -> Result<C61WhirStructuralBudget, String> {
     let config = c61_whir_selected_config(num_variables)?;
-    if config.params.pow_bits != 0
-        || config.starting_folding_pow_bits != 0
-        || config.final_pow_bits != 0
-        || config.final_folding_pow_bits != 0
-        || config
-            .round_parameters
-            .iter()
-            .any(|round| round.pow_bits != 0 || round.folding_pow_bits != 0)
-    {
-        return Err("C6WIR1 forbids every proof-of-work transcript field".to_owned());
-    }
+    c61_whir_structural_budget_for_config(&config)
+}
+
+pub(crate) fn c61_whir_structural_budget_for_config(
+    config: &C61WhirConfig,
+) -> Result<C61WhirStructuralBudget, String> {
+    let num_variables = config.num_variables;
 
     let mut round_opening_bytes = 0usize;
     let mut rounds_bytes = 0usize;
@@ -496,11 +493,13 @@ pub fn c61_whir_structural_budget(num_variables: usize) -> Result<C61WhirStructu
         let element_bytes = if index == 0 { C61_WHIRA1_FP_BYTES } else { C61_WHIRA1_FP2_BYTES };
         let opening = opening_bytes(leaves, round.num_queries, 1usize << fold, element_bytes)?;
         checked_add(&mut round_opening_bytes, opening)?;
-        // Next-oracle root, switch-mask root, one private OOD answer.  The
-        // no-grinding witness is omitted from C6WIR1 rather than encoding 0.
+        // Next-oracle root, switch-mask root, private OOD answers and optional PoW.
         checked_add(
             &mut rounds_bytes,
-            2 * C61_WHIRA1_DIGEST_BYTES + C61_WHIRA1_FP2_BYTES + opening,
+            2 * C61_WHIRA1_DIGEST_BYTES
+                + round.ood_samples * C61_WHIRA1_FP2_BYTES
+                + usize::from(round.pow_bits > 0) * C61_WHIRA1_FP_BYTES
+                + opening,
         )?;
     }
 
@@ -546,6 +545,10 @@ pub fn c61_whir_structural_budget(num_variables: usize) -> Result<C61WhirStructu
     checked_add(&mut base_case_bytes, final_message_elements * C61_WHIRA1_FP2_BYTES)?;
     checked_add(&mut base_case_bytes, final_randomness_elements * C61_WHIRA1_FP2_BYTES)?;
     checked_add(&mut base_case_bytes, blinded_mask_bytes)?;
+    checked_add(
+        &mut base_case_bytes,
+        usize::from(config.final_pow_bits > 0) * C61_WHIRA1_FP_BYTES,
+    )?;
     checked_add(&mut base_case_bytes, source_opening)?;
     checked_add(&mut base_case_bytes, fresh_main_opening)?;
     checked_add(&mut base_case_bytes, base_mask_opening_bytes)?;
@@ -555,11 +558,22 @@ pub fn c61_whir_structural_budget(num_variables: usize) -> Result<C61WhirStructu
         (0..sumcheck_batches).map(|round| config.round_folding_factor(round)).sum();
     let sumcheck_bytes =
         (sumcheck_batches + sumcheck_rounds * (C61_WHIRA1_ELL_ZK - 1)) * C61_WHIRA1_FP2_BYTES;
+    let sumcheck_pow_witnesses: usize = (0..sumcheck_batches)
+        .map(|batch| {
+            let bits = if batch == 0 {
+                config.starting_folding_pow_bits
+            } else {
+                config.round_parameters[batch - 1].folding_pow_bits
+            };
+            usize::from(bits > 0) * config.round_folding_factor(batch)
+        })
+        .sum();
 
     let mut strict_chain_bytes = C61_WHIRA1_HEADER_BYTES;
     checked_add(&mut strict_chain_bytes, C61_WHIRA1_DIGEST_BYTES)?; // initial root
     checked_add(&mut strict_chain_bytes, C61_WHIRA1_OPENING_POINTS * C61_WHIRA1_FP2_BYTES)?;
     checked_add(&mut strict_chain_bytes, sumcheck_bytes)?;
+    checked_add(&mut strict_chain_bytes, sumcheck_pow_witnesses * C61_WHIRA1_FP_BYTES)?;
     checked_add(&mut strict_chain_bytes, sumcheck_batches * C61_WHIRA1_DIGEST_BYTES)?;
     checked_add(&mut strict_chain_bytes, rounds_bytes)?;
     checked_add(&mut strict_chain_bytes, base_case_bytes)?;
@@ -739,7 +753,7 @@ impl<'a> C61Reader<'a> {
     }
 }
 
-fn encode_fp_opening(
+pub(crate) fn encode_fp_opening(
     writer: &mut C61Writer,
     opening: &SharedProofOpening<Goldilocks, C61MultiProof>,
     queries: usize,
@@ -757,7 +771,7 @@ fn encode_fp_opening(
     writer.multiproof(&opening.proof, c61_max_pruned_binary_siblings(leaves, queries))
 }
 
-fn encode_fp2_opening(
+pub(crate) fn encode_fp2_opening(
     writer: &mut C61Writer,
     opening: &SharedProofOpening<C61P3Fp2, C61MultiProof>,
     queries: usize,
@@ -775,7 +789,7 @@ fn encode_fp2_opening(
     writer.multiproof(&opening.proof, c61_max_pruned_binary_siblings(leaves, queries))
 }
 
-fn decode_fp_opening(
+pub(crate) fn decode_fp_opening(
     reader: &mut C61Reader<'_>,
     queries: usize,
     row_width: usize,
@@ -793,7 +807,7 @@ fn decode_fp_opening(
     Ok(SharedProofOpening { rows, proof })
 }
 
-fn decode_fp2_opening(
+pub(crate) fn decode_fp2_opening(
     reader: &mut C61Reader<'_>,
     queries: usize,
     row_width: usize,
@@ -811,17 +825,17 @@ fn decode_fp2_opening(
     Ok(SharedProofOpening { rows, proof })
 }
 
-fn encode_c61_whir_artifact_inner(
+pub(crate) fn encode_c61_whir_artifact_configured(
+    magic: [u8; 8],
+    version: u16,
     num_variables: usize,
     commitment: &C61Commitment,
     proof: &C61Proof,
-    production_dimensions_only: bool,
+    config: &C61WhirConfig,
 ) -> ReferenceResult<Vec<u8>> {
-    if production_dimensions_only && !matches!(num_variables, 27 | 28) {
-        return Err(C61WhirReferenceError::new("C6WIR1 production encoder admits only D27 or D28"));
+    if config.num_variables != num_variables {
+        return Err(C61WhirReferenceError::new("C6WIR1 configured dimension mismatch"));
     }
-    let config = c61_whir_config::<C61SizingChallenger>(num_variables)
-        .map_err(C61WhirReferenceError::new)?;
     let batches = config.n_rounds() + 1;
     let groups = config.mask_groups();
     let final_round = config.final_round_config();
@@ -841,13 +855,19 @@ fn encode_c61_whir_artifact_inner(
     }
     for (batch, sumcheck) in proof.sumchecks.iter().enumerate() {
         let rounds = config.round_folding_factor(batch);
+        let pow_bits = if batch == 0 {
+            config.starting_folding_pow_bits
+        } else {
+            config.round_parameters[batch - 1].folding_pow_bits
+        };
+        let expected_pow = if pow_bits == 0 { 0 } else { rounds };
         if sumcheck.ell_zk != C61_WHIRA1_ELL_ZK
             || sumcheck.round_coefficients.len() != rounds
             || sumcheck
                 .round_coefficients
                 .iter()
                 .any(|coefficients| coefficients.len() != C61_WHIRA1_ELL_ZK - 1)
-            || !sumcheck.pow_witnesses.is_empty()
+            || sumcheck.pow_witnesses.len() != expected_pow
         {
             return Err(C61WhirReferenceError::new("C6WIR1 sumcheck shape mismatch"));
         }
@@ -856,6 +876,9 @@ fn encode_c61_whir_artifact_inner(
             for coefficient in coefficients {
                 body.fp2(*coefficient);
             }
+        }
+        for witness in &sumcheck.pow_witnesses {
+            body.fp(*witness);
         }
     }
     for root in &proof.sumcheck_mask_commitments {
@@ -873,12 +896,15 @@ fn encode_c61_whir_artifact_inner(
         body.commitment(&round_proof.commitment)?;
         body.commitment(&round_proof.mask_commitment)?;
         if round_proof.ood_answers.len() != round.ood_samples
-            || round_proof.pow_witness != Goldilocks::ZERO
+            || (round.pow_bits == 0 && round_proof.pow_witness != Goldilocks::ZERO)
         {
             return Err(C61WhirReferenceError::new("C6WIR1 round scalar shape mismatch"));
         }
         for answer in &round_proof.ood_answers {
             body.fp2(*answer);
+        }
+        if round.pow_bits > 0 {
+            body.fp(round_proof.pow_witness);
         }
         match (&round_proof.openings, index) {
             (QueryOpenings::Base(opening), 0) => {
@@ -939,8 +965,11 @@ fn encode_c61_whir_artifact_inner(
             }
         }
     }
-    if base.pow_witness != Goldilocks::ZERO {
-        return Err(C61WhirReferenceError::new("C6WIR1 forbids a base-case PoW witness"));
+    if config.final_pow_bits == 0 && base.pow_witness != Goldilocks::ZERO {
+        return Err(C61WhirReferenceError::new("C6WIR1 unexpected base-case PoW witness"));
+    }
+    if config.final_pow_bits > 0 {
+        body.fp(base.pow_witness);
     }
     match &base.source_openings {
         QueryOpenings::Extension(opening) => encode_fp2_opening(
@@ -988,14 +1017,35 @@ fn encode_c61_whir_artifact_inner(
         return Err(C61WhirReferenceError::new("C6WIR1 payload exceeds native-chain cap"));
     }
     let mut writer = C61Writer::default();
-    writer.bytes.extend_from_slice(&C61_WHIRA1_MAGIC);
-    writer.u16(C61_WHIRA1_VERSION);
+    writer.bytes.extend_from_slice(&magic);
+    writer.u16(version);
     writer.u8(u8::try_from(num_variables)
         .map_err(|_| C61WhirReferenceError::new("C6WIR1 dimension exceeds u8"))?);
     writer.u8(0);
     writer.u32(body.bytes.len())?;
     writer.bytes.extend_from_slice(&body.bytes);
     Ok(writer.bytes)
+}
+
+fn encode_c61_whir_artifact_inner(
+    num_variables: usize,
+    commitment: &C61Commitment,
+    proof: &C61Proof,
+    production_dimensions_only: bool,
+) -> ReferenceResult<Vec<u8>> {
+    if production_dimensions_only && !matches!(num_variables, 27 | 28) {
+        return Err(C61WhirReferenceError::new("C6WIR1 production encoder admits only D27 or D28"));
+    }
+    let config = c61_whir_config::<C61SizingChallenger>(num_variables)
+        .map_err(C61WhirReferenceError::new)?;
+    encode_c61_whir_artifact_configured(
+        C61_WHIRA1_MAGIC,
+        C61_WHIRA1_VERSION,
+        num_variables,
+        commitment,
+        proof,
+        &config,
+    )
 }
 
 /// Encode a production D27/D28 chain using the fixed, non-Serde C6WIR1
@@ -1010,29 +1060,29 @@ pub fn encode_c61_whir_artifact(
     encode_c61_whir_artifact_inner(num_variables, commitment, proof, true)
 }
 
-fn decode_c61_whir_artifact_inner(
+pub(crate) fn decode_c61_whir_artifact_configured(
     bytes: &[u8],
+    magic: [u8; 8],
+    version: u16,
     expected_num_variables: usize,
-    production_dimensions_only: bool,
+    config: &C61WhirConfig,
 ) -> ReferenceResult<(C61Commitment, C61Proof)> {
     if bytes.len() > C61_NATIVE_CHAIN_MAX_BYTES {
         return Err(C61WhirReferenceError::new("C6WIR1 payload exceeds native-chain cap"));
     }
-    if production_dimensions_only && !matches!(expected_num_variables, 27 | 28) {
-        return Err(C61WhirReferenceError::new("C6WIR1 production decoder admits only D27 or D28"));
+    if config.num_variables != expected_num_variables {
+        return Err(C61WhirReferenceError::new("C6WIR1 configured dimension mismatch"));
     }
-    let config = c61_whir_config::<C61SizingChallenger>(expected_num_variables)
-        .map_err(C61WhirReferenceError::new)?;
     let batches = config.n_rounds() + 1;
     let groups = config.mask_groups();
     let final_round = config.final_round_config();
     let final_domain = final_round.domain_size >> final_round.folding_factor;
 
     let mut reader = C61Reader::new(bytes);
-    if reader.take(8)? != C61_WHIRA1_MAGIC {
+    if reader.take(8)? != magic {
         return Err(C61WhirReferenceError::new("C6WIR1 magic mismatch"));
     }
-    if reader.u16()? != C61_WHIRA1_VERSION {
+    if reader.u16()? != version {
         return Err(C61WhirReferenceError::new("C6WIR1 version mismatch"));
     }
     if reader.u8()? as usize != expected_num_variables {
@@ -1064,11 +1114,21 @@ fn decode_c61_whir_artifact_inner(
             }
             round_coefficients.push(coefficients);
         }
+        let pow_bits = if batch == 0 {
+            config.starting_folding_pow_bits
+        } else {
+            config.round_parameters[batch - 1].folding_pow_bits
+        };
+        let pow_count = if pow_bits == 0 { 0 } else { rounds };
+        let mut pow_witnesses = Vec::with_capacity(pow_count);
+        for _ in 0..pow_count {
+            pow_witnesses.push(reader.fp()?);
+        }
         sumchecks.push(ZkSumcheckData {
             mu_tilde,
             ell_zk: C61_WHIRA1_ELL_ZK,
             round_coefficients,
-            pow_witnesses: Vec::new(),
+            pow_witnesses,
         });
     }
     let mut sumcheck_mask_commitments = Vec::with_capacity(batches);
@@ -1086,6 +1146,7 @@ fn decode_c61_whir_artifact_inner(
         for _ in 0..round.ood_samples {
             ood_answers.push(reader.fp2()?);
         }
+        let pow_witness = if round.pow_bits > 0 { reader.fp()? } else { Goldilocks::ZERO };
         let openings = if index == 0 {
             QueryOpenings::Base(decode_fp_opening(
                 &mut reader,
@@ -1105,7 +1166,7 @@ fn decode_c61_whir_artifact_inner(
             commitment: round_commitment,
             mask_commitment,
             ood_answers,
-            pow_witness: Goldilocks::ZERO,
+            pow_witness,
             openings,
         });
     }
@@ -1141,6 +1202,7 @@ fn decode_c61_whir_artifact_inner(
             blinded_masks.push(BlindedMask { message, randomness });
         }
     }
+    let pow_witness = if config.final_pow_bits > 0 { reader.fp()? } else { Goldilocks::ZERO };
     let source_openings = QueryOpenings::Extension(decode_fp2_opening(
         &mut reader,
         config.final_queries,
@@ -1175,12 +1237,31 @@ fn decode_c61_whir_artifact_inner(
         blinded_message,
         blinded_randomness,
         blinded_masks,
-        pow_witness: Goldilocks::ZERO,
+        pow_witness,
         source_openings,
         fresh_main_openings,
         mask_openings,
     };
     Ok((commitment, ZkWhirProof { evals, sumchecks, sumcheck_mask_commitments, rounds, base_case }))
+}
+
+fn decode_c61_whir_artifact_inner(
+    bytes: &[u8],
+    expected_num_variables: usize,
+    production_dimensions_only: bool,
+) -> ReferenceResult<(C61Commitment, C61Proof)> {
+    if production_dimensions_only && !matches!(expected_num_variables, 27 | 28) {
+        return Err(C61WhirReferenceError::new("C6WIR1 production decoder admits only D27 or D28"));
+    }
+    let config = c61_whir_config::<C61SizingChallenger>(expected_num_variables)
+        .map_err(C61WhirReferenceError::new)?;
+    decode_c61_whir_artifact_configured(
+        bytes,
+        C61_WHIRA1_MAGIC,
+        C61_WHIRA1_VERSION,
+        expected_num_variables,
+        &config,
+    )
 }
 
 /// Decode a production D27/D28 chain.  Every shape-dependent length is
@@ -1308,12 +1389,10 @@ mod tests {
         let folding = C61_WHIRA1_INITIAL_FOLD;
         let randomness_rows = C61_WHIRA1_ELL_ZK;
         let width = 1 << folding;
-        let height = (1 << C61_WHIRA1_STARTING_LOG_INV_RATE)
-            << (num_variables - folding);
+        let height = (1 << C61_WHIRA1_STARTING_LOG_INV_RATE) << (num_variables - folding);
         let witness = Poly::<Goldilocks>::rand(&mut rng, num_variables);
-        let randomness: Vec<Goldilocks> = (0..randomness_rows * width)
-            .map(|_| rng.random())
-            .collect();
+        let randomness: Vec<Goldilocks> =
+            (0..randomness_rows * width).map(|_| rng.random()).collect();
         let dft = Radix2DFTSmallBatch::default();
 
         assert!(c62_provider_cache_split_holds(

@@ -5,23 +5,36 @@
 //! production adapter, a privacy proof, the systematic `D' -> m` link, or
 //! evidence for paired queries.
 
+use std::marker::PhantomData;
 use std::sync::Arc;
 
-use p3_challenger::{CanObserve, FieldChallenger};
+use p3_challenger::{
+    CanFinalizeDigest, CanObserve, CanSample, CanSampleBits, CanSampleUniformBits, FieldChallenger,
+    GrindingChallenger, ResamplingError,
+};
 use p3_commit::{BatchOpening, BatchOpeningRef, Mmcs};
-use p3_field::PrimeCharacteristicRing;
+use p3_field::{Field, PrimeCharacteristicRing, PrimeField64};
 use p3_goldilocks::Goldilocks;
 use p3_matrix::dense::DenseMatrix;
 use p3_matrix::{Dimensions, Matrix};
 use p3_merkle_tree::MerkleTreeError;
 use p3_multilinear_util::point::Point;
 use p3_multilinear_util::poly::Poly;
-use p3_whir_c61::pcs::proof::QueryOpenings;
-use p3_whir_c61::pcs::zk::ZkWhirInitialOracleLink;
+use p3_sumcheck_c61::zk::ZkSumcheckData;
+use p3_whir_c61::parameters::{FoldingFactor, ProtocolParameters, SecurityAssumption};
+use p3_whir_c61::pcs::proof::{QueryOpenings, SharedProofOpening};
+use p3_whir_c61::pcs::zk::{
+    BaseCaseZkProof, BlindedMask, MaskOpeningPair, ZkParameters, ZkRoundProof, ZkWhirConfig,
+    ZkWhirInitialOracleLink, ZkWhirProof,
+};
+use rayon::prelude::*;
 use volta_field::Fp2;
 
 use crate::c61_whir_reference::{
-    c61_reference_mmcs, c61_volta_fp2_from_p3, C61Commitment, C61Mmcs, C61MultiProof, C61P3Fp2,
+    c61_max_pruned_binary_siblings, c61_reference_mmcs, c61_volta_fp2_from_p3, C61Commitment,
+    C61Mmcs, C61MultiProof, C61P3Fp2, C61Reader, C61SizingChallenger, C61WhirStructuralBudget,
+    C61Writer, C61_WHIRA1_DIGEST_BYTES, C61_WHIRA1_ELL_ZK, C61_WHIRA1_FP2_BYTES,
+    C61_WHIRA1_FP_BYTES, C61_WHIRA1_HEADER_BYTES, C61_WHIRA1_MULTIPROOF_COUNT_BYTES,
 };
 use crate::c63_authenticated_sketch::C63_BOLT_COLUMNS;
 
@@ -31,6 +44,760 @@ pub const C63_ENCODED_SKETCH_FOLDED_POSITIONS: usize = 2;
 pub const C63_ENCODED_SKETCH_PHYSICAL_ROW_WIDTH: usize =
     C63_BOLT_COLUMNS * C63_ENCODED_SKETCH_FOLDED_POSITIONS;
 pub const C63_ENCODED_SKETCH_INDEPENDENT_A_QUERIES: usize = 486;
+pub const C63_WHIR_MAGIC: [u8; 8] = *b"C63WIR1\0";
+pub const C63_WHIR_VERSION: u16 = 1;
+pub const C63_WHIR_SECURITY_BITS: usize = 104;
+const C63_H_POW_CONTEXT: &str = "volta-zk/c63/H_pow/v1";
+
+/// Fiat--Shamir delegates to `inner`; grinding uses an independent keyed hash.
+#[derive(Clone)]
+pub struct C63SeparatedChallenger<F, Inner> {
+    inner: Inner,
+    role: [u8; 16],
+    pow_phase: u64,
+    marker: PhantomData<F>,
+}
+
+impl<F, Inner> C63SeparatedChallenger<F, Inner> {
+    pub fn new(inner: Inner, role: [u8; 16]) -> Result<Self, String> {
+        if role == [0; 16] {
+            return Err("C6.3 separated challenger role is zero".to_owned());
+        }
+        Ok(Self { inner, role, pow_phase: 0, marker: PhantomData })
+    }
+}
+
+impl<T, F, Inner> CanObserve<T> for C63SeparatedChallenger<F, Inner>
+where
+    Inner: CanObserve<T>,
+{
+    fn observe(&mut self, value: T) {
+        self.inner.observe(value);
+    }
+}
+
+impl<T, F, Inner> CanSample<T> for C63SeparatedChallenger<F, Inner>
+where
+    Inner: CanSample<T>,
+{
+    fn sample(&mut self) -> T {
+        self.inner.sample()
+    }
+}
+
+impl<F, Inner> CanSampleBits<usize> for C63SeparatedChallenger<F, Inner>
+where
+    Inner: CanSampleBits<usize>,
+{
+    fn sample_bits(&mut self, bits: usize) -> usize {
+        self.inner.sample_bits(bits)
+    }
+}
+
+impl<F, Inner> CanSampleUniformBits<F> for C63SeparatedChallenger<F, Inner>
+where
+    Inner: CanSampleUniformBits<F>,
+{
+    fn sample_uniform_bits<const RESAMPLE: bool>(
+        &mut self,
+        bits: usize,
+    ) -> Result<usize, ResamplingError> {
+        self.inner.sample_uniform_bits::<RESAMPLE>(bits)
+    }
+}
+
+impl<F, Inner> FieldChallenger<F> for C63SeparatedChallenger<F, Inner>
+where
+    F: Field + Sync,
+    Inner: CanObserve<F> + CanSample<F> + CanSampleBits<usize> + Sync,
+{
+}
+
+impl<F, Inner> GrindingChallenger for C63SeparatedChallenger<F, Inner>
+where
+    F: PrimeField64 + Sync,
+    Inner: CanFinalizeDigest<Digest = [u8; 32]>
+        + CanObserve<F>
+        + CanSample<F>
+        + CanSampleBits<usize>
+        + Clone
+        + Sync,
+{
+    type Witness = F;
+
+    fn grind(&mut self, bits: usize) -> F {
+        assert!(bits < 64 && (1u64 << bits) < F::ORDER_U64);
+        if bits == 0 {
+            return F::ZERO;
+        }
+        let snapshot = self.inner.clone().finalize();
+        let witness = (0..F::ORDER_U64)
+            .into_par_iter()
+            .find_any(|&candidate| {
+                c63_pow_accepts(self.role, self.pow_phase, bits, snapshot, candidate)
+            })
+            .map(|candidate| unsafe { F::from_canonical_unchecked(candidate) })
+            .expect("C6.3 separated PoW witness search exhausted");
+        assert!(self.check_witness(bits, witness));
+        witness
+    }
+
+    fn check_witness(&mut self, bits: usize, witness: F) -> bool {
+        if bits == 0 {
+            return true;
+        }
+        if bits >= 64 || (1u64 << bits) >= F::ORDER_U64 {
+            return false;
+        }
+        let snapshot = self.inner.clone().finalize();
+        if !c63_pow_accepts(self.role, self.pow_phase, bits, snapshot, witness.to_unique_u64()) {
+            return false;
+        }
+        self.inner.observe(witness);
+        self.pow_phase += 1;
+        true
+    }
+}
+
+fn c63_pow_accepts(
+    role: [u8; 16],
+    phase: u64,
+    bits: usize,
+    snapshot: [u8; 32],
+    witness: u64,
+) -> bool {
+    let mut hasher = blake3::Hasher::new_derive_key(C63_H_POW_CONTEXT);
+    hasher.update(&role);
+    hasher.update(&phase.to_le_bytes());
+    hasher.update(&(bits as u64).to_le_bytes());
+    hasher.update(&snapshot);
+    hasher.update(&witness.to_le_bytes());
+    let digest = hasher.finalize();
+    u64::from_le_bytes(digest.as_bytes()[..8].try_into().expect("fixed PoW digest"))
+        & ((1u64 << bits) - 1)
+        == 0
+}
+
+pub type C63SeparatedSizingChallenger = C63SeparatedChallenger<Goldilocks, C61SizingChallenger>;
+pub type C63WhirConfig = ZkWhirConfig<C61P3Fp2, Goldilocks, C63SeparatedSizingChallenger>;
+pub type C63OrdinaryWhirProof = ZkWhirProof<Goldilocks, C61P3Fp2, C61Mmcs>;
+
+fn encode_c63_fp_opening(
+    writer: &mut C61Writer,
+    opening: &SharedProofOpening<Goldilocks, C61MultiProof>,
+    queries: usize,
+    row_width: usize,
+    leaves: usize,
+) -> Result<(), String> {
+    if opening.rows.len() != queries || opening.rows.iter().any(|row| row.len() != row_width) {
+        return Err("C6.3 WHIR base opening shape differs".to_owned());
+    }
+    for row in &opening.rows {
+        for value in row {
+            writer.fp(*value);
+        }
+    }
+    writer
+        .multiproof(&opening.proof, c61_max_pruned_binary_siblings(leaves, queries))
+        .map_err(|error| error.to_string())
+}
+
+fn encode_c63_fp2_opening(
+    writer: &mut C61Writer,
+    opening: &SharedProofOpening<C61P3Fp2, C61MultiProof>,
+    queries: usize,
+    row_width: usize,
+    leaves: usize,
+) -> Result<(), String> {
+    if opening.rows.len() != queries || opening.rows.iter().any(|row| row.len() != row_width) {
+        return Err("C6.3 WHIR extension opening shape differs".to_owned());
+    }
+    for row in &opening.rows {
+        for value in row {
+            writer.fp2(*value);
+        }
+    }
+    writer
+        .multiproof(&opening.proof, c61_max_pruned_binary_siblings(leaves, queries))
+        .map_err(|error| error.to_string())
+}
+
+fn decode_c63_fp_opening(
+    reader: &mut C61Reader<'_>,
+    queries: usize,
+    row_width: usize,
+    leaves: usize,
+) -> Result<SharedProofOpening<Goldilocks, C61MultiProof>, String> {
+    let mut rows = Vec::with_capacity(queries);
+    for _ in 0..queries {
+        let mut row = Vec::with_capacity(row_width);
+        for _ in 0..row_width {
+            row.push(reader.fp().map_err(|error| error.to_string())?);
+        }
+        rows.push(row);
+    }
+    let proof = reader
+        .multiproof(c61_max_pruned_binary_siblings(leaves, queries))
+        .map_err(|error| error.to_string())?;
+    Ok(SharedProofOpening { rows, proof })
+}
+
+fn decode_c63_fp2_opening(
+    reader: &mut C61Reader<'_>,
+    queries: usize,
+    row_width: usize,
+    leaves: usize,
+) -> Result<SharedProofOpening<C61P3Fp2, C61MultiProof>, String> {
+    let mut rows = Vec::with_capacity(queries);
+    for _ in 0..queries {
+        let mut row = Vec::with_capacity(row_width);
+        for _ in 0..row_width {
+            row.push(reader.fp2().map_err(|error| error.to_string())?);
+        }
+        rows.push(row);
+    }
+    let proof = reader
+        .multiproof(c61_max_pruned_binary_siblings(leaves, queries))
+        .map_err(|error| error.to_string())?;
+    Ok(SharedProofOpening { rows, proof })
+}
+
+fn c63_whir_profile(num_variables: usize) -> Result<(usize, Vec<usize>, Vec<usize>), String> {
+    match num_variables {
+        22 => Ok((17, vec![1, 2, 3, 3, 4, 5, 6, 7], vec![1, 2, 2, 2, 2, 2, 2, 2, 2])),
+        19 => Ok((16, vec![1, 2, 3, 4, 5, 6], vec![1, 2, 2, 2, 2, 2, 2])),
+        _ => Err("C6.3 WHIR admits only D22 or D19".to_owned()),
+    }
+}
+
+/// Exact registered D22/D19 Hiding-WHIR configuration, including native PoW.
+pub fn c63_whir_config(num_variables: usize) -> Result<C63WhirConfig, String> {
+    let (pow_bits, rates, folding) = c63_whir_profile(num_variables)?;
+    ZkWhirConfig::new_with_query_security_level(
+        num_variables,
+        ProtocolParameters {
+            security_level: C63_WHIR_SECURITY_BITS,
+            pow_bits,
+            round_log_inv_rates: rates,
+            folding_factor: FoldingFactor::PerRound(folding),
+            soundness_type: SecurityAssumption::JohnsonBound,
+            starting_log_inv_rate: 1,
+        },
+        ZkParameters { ell_zk: 16, mask_log_inv_rate: 1 },
+        C63_WHIR_SECURITY_BITS,
+    )
+    .map_err(|error| format!("C6.3 WHIR configuration failed: {error}"))
+}
+
+pub fn c63_whir_structural_budget(num_variables: usize) -> Result<C61WhirStructuralBudget, String> {
+    let config = c63_whir_config(num_variables)?;
+    c63_whir_structural_budget_for_config(&config)
+}
+
+fn c63_whir_structural_budget_for_config(
+    config: &C63WhirConfig,
+) -> Result<C61WhirStructuralBudget, String> {
+    let num_variables = config.num_variables;
+    let opening_bytes = |leaves: usize, queries: usize, width: usize, element_bytes: usize| {
+        queries
+            .checked_mul(width)
+            .and_then(|count| count.checked_mul(element_bytes))
+            .and_then(|rows| {
+                c61_max_pruned_binary_siblings(leaves, queries)
+                    .checked_mul(C61_WHIRA1_DIGEST_BYTES)
+                    .and_then(|frontier| rows.checked_add(frontier))
+            })
+            .and_then(|bytes| bytes.checked_add(C61_WHIRA1_MULTIPROOF_COUNT_BYTES))
+            .ok_or_else(|| "C6.3 WHIR structural opening count overflows".to_owned())
+    };
+
+    let mut round_opening_bytes = 0usize;
+    let mut rounds_bytes = 0usize;
+    for (index, round) in config.round_parameters.iter().enumerate() {
+        let fold = config.round_folding_factor(index);
+        let opening = opening_bytes(
+            round.domain_size >> fold,
+            round.num_queries,
+            1 << fold,
+            if index == 0 { C61_WHIRA1_FP_BYTES } else { C61_WHIRA1_FP2_BYTES },
+        )?;
+        round_opening_bytes += opening;
+        rounds_bytes += 2 * C61_WHIRA1_DIGEST_BYTES
+            + round.ood_samples * C61_WHIRA1_FP2_BYTES
+            + usize::from(round.pow_bits > 0) * C61_WHIRA1_FP_BYTES
+            + opening;
+    }
+
+    let groups = config.mask_groups();
+    let mut base_mask_opening_bytes = 0usize;
+    let mut blinded_mask_bytes = 0usize;
+    for group in &groups {
+        let one = opening_bytes(
+            group.shape.domain_size,
+            config.mask_queries,
+            group.width,
+            C61_WHIRA1_FP2_BYTES,
+        )?;
+        base_mask_opening_bytes += 2 * one;
+        blinded_mask_bytes += group.width
+            * (group.shape.message_len + group.shape.randomness_len)
+            * C61_WHIRA1_FP2_BYTES;
+    }
+
+    let final_round = config.final_round_config();
+    let final_domain = final_round.domain_size >> final_round.folding_factor;
+    let source_opening = opening_bytes(
+        final_domain,
+        config.final_queries,
+        1 << final_round.folding_factor,
+        C61_WHIRA1_FP2_BYTES,
+    )?;
+    let fresh_main_opening =
+        opening_bytes(final_domain, config.final_queries, 1, C61_WHIRA1_FP2_BYTES)?;
+    let base_case_bytes = (1 + groups.len()) * C61_WHIRA1_DIGEST_BYTES
+        + C61_WHIRA1_FP2_BYTES
+        + (1 << final_round.num_variables) * C61_WHIRA1_FP2_BYTES
+        + config.oracle_randomness[config.n_rounds()] * C61_WHIRA1_FP2_BYTES
+        + blinded_mask_bytes
+        + usize::from(config.final_pow_bits > 0) * C61_WHIRA1_FP_BYTES
+        + source_opening
+        + fresh_main_opening
+        + base_mask_opening_bytes;
+
+    let batches = config.n_rounds() + 1;
+    let sumcheck_rounds: usize = (0..batches).map(|batch| config.round_folding_factor(batch)).sum();
+    let sumcheck_bytes =
+        (batches + sumcheck_rounds * (C61_WHIRA1_ELL_ZK - 1)) * C61_WHIRA1_FP2_BYTES;
+    let sumcheck_pow: usize = (0..batches)
+        .map(|batch| {
+            let bits = if batch == 0 {
+                config.starting_folding_pow_bits
+            } else {
+                config.round_parameters[batch - 1].folding_pow_bits
+            };
+            usize::from(bits > 0) * config.round_folding_factor(batch)
+        })
+        .sum();
+    let strict_chain_bytes = C61_WHIRA1_HEADER_BYTES
+        + C61_WHIRA1_DIGEST_BYTES
+        + sumcheck_bytes
+        + sumcheck_pow * C61_WHIRA1_FP_BYTES
+        + batches * C61_WHIRA1_DIGEST_BYTES
+        + rounds_bytes
+        + base_case_bytes;
+    Ok(C61WhirStructuralBudget {
+        num_variables,
+        rounds: config.n_rounds(),
+        mask_queries: config.mask_queries,
+        round_opening_bytes,
+        base_mask_opening_bytes,
+        blinded_mask_bytes,
+        base_case_bytes,
+        strict_chain_bytes,
+    })
+}
+
+/// Canonical claimless C6.3 WHIR codec. The terminal value stays authenticated.
+pub fn encode_c63_whir_ordinary_artifact(
+    num_variables: usize,
+    commitment: &C61Commitment,
+    proof: &C63OrdinaryWhirProof,
+) -> Result<Vec<u8>, String> {
+    let config = c63_whir_config(num_variables)?;
+    encode_c63_whir_ordinary_artifact_with_config(num_variables, &config, commitment, proof)
+}
+
+fn encode_c63_whir_ordinary_artifact_with_config(
+    num_variables: usize,
+    config: &C63WhirConfig,
+    commitment: &C61Commitment,
+    proof: &C63OrdinaryWhirProof,
+) -> Result<Vec<u8>, String> {
+    if config.num_variables != num_variables {
+        return Err("C6.3 WHIR codec dimension differs".to_owned());
+    }
+    let batches = config.n_rounds() + 1;
+    let groups = config.mask_groups();
+    let final_round = config.final_round_config();
+    let final_domain = final_round.domain_size >> final_round.folding_factor;
+    let mut body = C61Writer::default();
+    body.commitment(commitment).map_err(|error| error.to_string())?;
+
+    if proof.sumchecks.len() != batches || proof.sumcheck_mask_commitments.len() != batches {
+        return Err("C6.3 WHIR sumcheck batch count differs".to_owned());
+    }
+    for (batch, sumcheck) in proof.sumchecks.iter().enumerate() {
+        let rounds = config.round_folding_factor(batch);
+        let pow_count = usize::from(c63_sumcheck_pow_bits(&config, batch) > 0) * rounds;
+        if sumcheck.ell_zk != config.zk.ell_zk
+            || sumcheck.round_coefficients.len() != rounds
+            || sumcheck
+                .round_coefficients
+                .iter()
+                .any(|coefficients| coefficients.len() != config.zk.ell_zk - 1)
+            || sumcheck.pow_witnesses.len() != pow_count
+        {
+            return Err("C6.3 WHIR sumcheck shape differs".to_owned());
+        }
+        body.fp2(sumcheck.mu_tilde);
+        for coefficients in &sumcheck.round_coefficients {
+            for coefficient in coefficients {
+                body.fp2(*coefficient);
+            }
+        }
+        for witness in &sumcheck.pow_witnesses {
+            body.fp(*witness);
+        }
+    }
+    for commitment in &proof.sumcheck_mask_commitments {
+        body.commitment(commitment).map_err(|error| error.to_string())?;
+    }
+
+    if proof.rounds.len() != config.n_rounds() {
+        return Err("C6.3 WHIR round count differs".to_owned());
+    }
+    for (index, (round_proof, round)) in
+        proof.rounds.iter().zip(&config.round_parameters).enumerate()
+    {
+        let fold = config.round_folding_factor(index);
+        let leaves = round.domain_size >> fold;
+        body.commitment(&round_proof.commitment).map_err(|error| error.to_string())?;
+        body.commitment(&round_proof.mask_commitment).map_err(|error| error.to_string())?;
+        if round_proof.ood_answers.len() != round.ood_samples
+            || (round.pow_bits == 0 && round_proof.pow_witness != Goldilocks::ZERO)
+        {
+            return Err("C6.3 WHIR round scalar shape differs".to_owned());
+        }
+        for answer in &round_proof.ood_answers {
+            body.fp2(*answer);
+        }
+        if round.pow_bits > 0 {
+            body.fp(round_proof.pow_witness);
+        }
+        match (&round_proof.openings, index) {
+            (QueryOpenings::Base(opening), 0) => {
+                encode_c63_fp_opening(&mut body, opening, round.num_queries, 1 << fold, leaves)
+            }
+            (QueryOpenings::Extension(opening), index) if index > 0 => {
+                encode_c63_fp2_opening(&mut body, opening, round.num_queries, 1 << fold, leaves)
+            }
+            _ => return Err("C6.3 WHIR round opening field differs".to_owned()),
+        }
+        .map_err(|error| error.to_string())?;
+    }
+
+    let base = &proof.base_case;
+    body.commitment(&base.fresh_main_commitment).map_err(|error| error.to_string())?;
+    if base.fresh_mask_commitments.len() != groups.len() {
+        return Err("C6.3 WHIR fresh-mask root count differs".to_owned());
+    }
+    for commitment in &base.fresh_mask_commitments {
+        body.commitment(commitment).map_err(|error| error.to_string())?;
+    }
+    body.fp2(base.masked_claim);
+    if base.blinded_message.len() != 1 << final_round.num_variables
+        || base.blinded_randomness.len() != config.oracle_randomness[config.n_rounds()]
+    {
+        return Err("C6.3 WHIR base source reveal shape differs".to_owned());
+    }
+    for value in &base.blinded_message {
+        body.fp2(*value);
+    }
+    for value in &base.blinded_randomness {
+        body.fp2(*value);
+    }
+    let flat_masks: usize = groups.iter().map(|group| group.width).sum();
+    if base.blinded_masks.len() != flat_masks {
+        return Err("C6.3 WHIR blinded-mask count differs".to_owned());
+    }
+    let mut mask_index = 0;
+    for group in &groups {
+        for _ in 0..group.width {
+            let mask = &base.blinded_masks[mask_index];
+            mask_index += 1;
+            if mask.message.len() != group.shape.message_len
+                || mask.randomness.len() != group.shape.randomness_len
+            {
+                return Err("C6.3 WHIR blinded-mask shape differs".to_owned());
+            }
+            for value in &mask.message {
+                body.fp2(*value);
+            }
+            for value in &mask.randomness {
+                body.fp2(*value);
+            }
+        }
+    }
+    if config.final_pow_bits == 0 && base.pow_witness != Goldilocks::ZERO {
+        return Err("C6.3 WHIR unexpected base PoW witness".to_owned());
+    }
+    if config.final_pow_bits > 0 {
+        body.fp(base.pow_witness);
+    }
+    match &base.source_openings {
+        QueryOpenings::Extension(opening) => encode_c63_fp2_opening(
+            &mut body,
+            opening,
+            config.final_queries,
+            1 << final_round.folding_factor,
+            final_domain,
+        ),
+        QueryOpenings::Base(_) => return Err("C6.3 WHIR final source field differs".to_owned()),
+    }
+    .map_err(|error| error.to_string())?;
+    encode_c63_fp2_opening(
+        &mut body,
+        &base.fresh_main_openings,
+        config.final_queries,
+        1,
+        final_domain,
+    )
+    .map_err(|error| error.to_string())?;
+    if base.mask_openings.len() != groups.len() {
+        return Err("C6.3 WHIR mask-opening group count differs".to_owned());
+    }
+    for (opening, group) in base.mask_openings.iter().zip(&groups) {
+        encode_c63_fp2_opening(
+            &mut body,
+            &opening.carried,
+            config.mask_queries,
+            group.width,
+            group.shape.domain_size,
+        )
+        .and_then(|_| {
+            encode_c63_fp2_opening(
+                &mut body,
+                &opening.fresh,
+                config.mask_queries,
+                group.width,
+                group.shape.domain_size,
+            )
+        })
+        .map_err(|error| error.to_string())?;
+    }
+
+    let mut artifact = C61Writer::default();
+    artifact.bytes.extend_from_slice(&C63_WHIR_MAGIC);
+    artifact.u16(C63_WHIR_VERSION);
+    artifact.u8(num_variables as u8);
+    artifact.u8(0);
+    artifact.u32(body.bytes.len()).map_err(|error| error.to_string())?;
+    artifact.bytes.extend_from_slice(&body.bytes);
+    if artifact.bytes.len() > c63_whir_structural_budget_for_config(config)?.strict_chain_bytes {
+        return Err("C6.3 WHIR artifact exceeds its structural maximum".to_owned());
+    }
+    Ok(artifact.bytes)
+}
+
+pub fn decode_c63_whir_ordinary_artifact(
+    bytes: &[u8],
+    num_variables: usize,
+) -> Result<(C61Commitment, C63OrdinaryWhirProof), String> {
+    let config = c63_whir_config(num_variables)?;
+    decode_c63_whir_ordinary_artifact_with_config(bytes, num_variables, &config)
+}
+
+fn decode_c63_whir_ordinary_artifact_with_config(
+    bytes: &[u8],
+    num_variables: usize,
+    config: &C63WhirConfig,
+) -> Result<(C61Commitment, C63OrdinaryWhirProof), String> {
+    if config.num_variables != num_variables {
+        return Err("C6.3 WHIR codec dimension differs".to_owned());
+    }
+    if bytes.len() > c63_whir_structural_budget_for_config(config)?.strict_chain_bytes {
+        return Err("C6.3 WHIR artifact exceeds its structural maximum".to_owned());
+    }
+    let groups = config.mask_groups();
+    let final_round = config.final_round_config();
+    let final_domain = final_round.domain_size >> final_round.folding_factor;
+    let mut reader = C61Reader::new(bytes);
+    if reader.take(8).map_err(|error| error.to_string())? != C63_WHIR_MAGIC
+        || reader.u16().map_err(|error| error.to_string())? != C63_WHIR_VERSION
+        || reader.u8().map_err(|error| error.to_string())? as usize != num_variables
+        || reader.u8().map_err(|error| error.to_string())? != 0
+    {
+        return Err("C6.3 WHIR artifact header differs".to_owned());
+    }
+    let body_len = reader.u32().map_err(|error| error.to_string())?;
+    if body_len != bytes.len().saturating_sub(C61_WHIRA1_HEADER_BYTES) {
+        return Err("C6.3 WHIR artifact body length differs".to_owned());
+    }
+    let commitment = reader.commitment().map_err(|error| error.to_string())?;
+    let batches = config.n_rounds() + 1;
+    let mut sumchecks = Vec::with_capacity(batches);
+    for batch in 0..batches {
+        let rounds = config.round_folding_factor(batch);
+        let mu_tilde = reader.fp2().map_err(|error| error.to_string())?;
+        let mut round_coefficients = Vec::with_capacity(rounds);
+        for _ in 0..rounds {
+            let mut coefficients = Vec::with_capacity(config.zk.ell_zk - 1);
+            for _ in 0..config.zk.ell_zk - 1 {
+                coefficients.push(reader.fp2().map_err(|error| error.to_string())?);
+            }
+            round_coefficients.push(coefficients);
+        }
+        let pow_count = usize::from(c63_sumcheck_pow_bits(&config, batch) > 0) * rounds;
+        let mut pow_witnesses = Vec::with_capacity(pow_count);
+        for _ in 0..pow_count {
+            pow_witnesses.push(reader.fp().map_err(|error| error.to_string())?);
+        }
+        sumchecks.push(ZkSumcheckData {
+            mu_tilde,
+            ell_zk: config.zk.ell_zk,
+            round_coefficients,
+            pow_witnesses,
+        });
+    }
+    let mut sumcheck_mask_commitments = Vec::with_capacity(batches);
+    for _ in 0..batches {
+        sumcheck_mask_commitments.push(reader.commitment().map_err(|error| error.to_string())?);
+    }
+    let mut rounds = Vec::with_capacity(config.n_rounds());
+    for (index, round) in config.round_parameters.iter().enumerate() {
+        let fold = config.round_folding_factor(index);
+        let leaves = round.domain_size >> fold;
+        let round_commitment = reader.commitment().map_err(|error| error.to_string())?;
+        let mask_commitment = reader.commitment().map_err(|error| error.to_string())?;
+        let mut ood_answers = Vec::with_capacity(round.ood_samples);
+        for _ in 0..round.ood_samples {
+            ood_answers.push(reader.fp2().map_err(|error| error.to_string())?);
+        }
+        let pow_witness = if round.pow_bits > 0 {
+            reader.fp().map_err(|error| error.to_string())?
+        } else {
+            Goldilocks::ZERO
+        };
+        let openings = if index == 0 {
+            QueryOpenings::Base(decode_c63_fp_opening(
+                &mut reader,
+                round.num_queries,
+                1 << fold,
+                leaves,
+            )?)
+        } else {
+            QueryOpenings::Extension(decode_c63_fp2_opening(
+                &mut reader,
+                round.num_queries,
+                1 << fold,
+                leaves,
+            )?)
+        };
+        rounds.push(ZkRoundProof {
+            commitment: round_commitment,
+            mask_commitment,
+            ood_answers,
+            pow_witness,
+            openings,
+        });
+    }
+
+    let fresh_main_commitment = reader.commitment().map_err(|error| error.to_string())?;
+    let mut fresh_mask_commitments = Vec::with_capacity(groups.len());
+    for _ in 0..groups.len() {
+        fresh_mask_commitments.push(reader.commitment().map_err(|error| error.to_string())?);
+    }
+    let masked_claim = reader.fp2().map_err(|error| error.to_string())?;
+    let mut blinded_message = Vec::with_capacity(1 << final_round.num_variables);
+    for _ in 0..1 << final_round.num_variables {
+        blinded_message.push(reader.fp2().map_err(|error| error.to_string())?);
+    }
+    let randomness = config.oracle_randomness[config.n_rounds()];
+    let mut blinded_randomness = Vec::with_capacity(randomness);
+    for _ in 0..randomness {
+        blinded_randomness.push(reader.fp2().map_err(|error| error.to_string())?);
+    }
+    let mut blinded_masks = Vec::new();
+    for group in &groups {
+        for _ in 0..group.width {
+            let mut message = Vec::with_capacity(group.shape.message_len);
+            for _ in 0..group.shape.message_len {
+                message.push(reader.fp2().map_err(|error| error.to_string())?);
+            }
+            let mut randomness = Vec::with_capacity(group.shape.randomness_len);
+            for _ in 0..group.shape.randomness_len {
+                randomness.push(reader.fp2().map_err(|error| error.to_string())?);
+            }
+            blinded_masks.push(BlindedMask { message, randomness });
+        }
+    }
+    let pow_witness = if config.final_pow_bits > 0 {
+        reader.fp().map_err(|error| error.to_string())?
+    } else {
+        Goldilocks::ZERO
+    };
+    let source_openings = QueryOpenings::Extension(decode_c63_fp2_opening(
+        &mut reader,
+        config.final_queries,
+        1 << final_round.folding_factor,
+        final_domain,
+    )?);
+    let fresh_main_openings =
+        decode_c63_fp2_opening(&mut reader, config.final_queries, 1, final_domain)?;
+    let mut mask_openings = Vec::with_capacity(groups.len());
+    for group in &groups {
+        mask_openings.push(MaskOpeningPair {
+            carried: decode_c63_fp2_opening(
+                &mut reader,
+                config.mask_queries,
+                group.width,
+                group.shape.domain_size,
+            )?,
+            fresh: decode_c63_fp2_opening(
+                &mut reader,
+                config.mask_queries,
+                group.width,
+                group.shape.domain_size,
+            )?,
+        });
+    }
+    reader.finish().map_err(|error| error.to_string())?;
+    Ok((
+        commitment,
+        ZkWhirProof {
+            sumchecks,
+            sumcheck_mask_commitments,
+            rounds,
+            base_case: BaseCaseZkProof {
+                fresh_main_commitment,
+                fresh_mask_commitments,
+                masked_claim,
+                blinded_message,
+                blinded_randomness,
+                blinded_masks,
+                pow_witness,
+                source_openings,
+                fresh_main_openings,
+                mask_openings,
+            },
+        },
+    ))
+}
+
+fn c63_sumcheck_pow_bits(config: &C63WhirConfig, batch: usize) -> usize {
+    if batch == 0 {
+        config.starting_folding_pow_bits
+    } else {
+        config.round_parameters[batch - 1].folding_pow_bits
+    }
+}
+
+fn c63_projected_whir_structural_bytes_for_config(config: &C63WhirConfig) -> Result<usize, String> {
+    let queries = config.round_parameters[0].num_queries;
+    let fold = config.round_folding_factor(0);
+    let leaves = config.round_parameters[0].domain_size >> fold;
+    let a_opening = queries * C63_ENCODED_SKETCH_PHYSICAL_ROW_WIDTH * C61_WHIRA1_FP_BYTES
+        + C61_WHIRA1_MULTIPROOF_COUNT_BYTES
+        + c61_max_pruned_binary_siblings(leaves, queries) * C61_WHIRA1_DIGEST_BYTES;
+    Ok(C61_WHIRA1_HEADER_BYTES
+        + C61_WHIRA1_MULTIPROOF_COUNT_BYTES
+        + c63_whir_structural_budget_for_config(config)?.strict_chain_bytes
+        + a_opening)
+}
+
+fn c63_projected_whir_structural_bytes() -> Result<usize, String> {
+    c63_projected_whir_structural_bytes_for_config(&c63_whir_config(19)?)
+}
 
 type C63InnerProof = <C61Mmcs as Mmcs<Goldilocks>>::Proof;
 type C63AProverData = <C61Mmcs as Mmcs<Goldilocks>>::ProverData<DenseMatrix<Goldilocks>>;
@@ -236,6 +1003,248 @@ impl Mmcs<Goldilocks> for C63ProjectedMmcs {
     }
 }
 
+pub(crate) type C63ProjectedWhirProof = ZkWhirProof<Goldilocks, C61P3Fp2, C63ProjectedMmcs>;
+
+fn strip_c63_opening<T: Clone>(
+    opening: &SharedProofOpening<T, C63ProjectedMultiProof>,
+) -> (SharedProofOpening<T, C61MultiProof>, Option<SharedProofOpening<Goldilocks, C61MultiProof>>) {
+    let linked = opening.proof.1.clone().map(|(rows, proof)| SharedProofOpening { rows, proof });
+    (SharedProofOpening { rows: opening.rows.clone(), proof: opening.proof.0.clone() }, linked)
+}
+
+fn lift_c63_opening<T>(
+    opening: SharedProofOpening<T, C61MultiProof>,
+    linked: Option<SharedProofOpening<Goldilocks, C61MultiProof>>,
+) -> SharedProofOpening<T, C63ProjectedMultiProof> {
+    SharedProofOpening {
+        rows: opening.rows,
+        proof: (opening.proof, linked.map(|opening| (opening.rows, opening.proof))),
+    }
+}
+
+fn strip_c63_projected_proof(
+    proof: &C63ProjectedWhirProof,
+) -> Result<(C63OrdinaryWhirProof, SharedProofOpening<Goldilocks, C61MultiProof>), String> {
+    let mut linked_a = None;
+    let mut rounds = Vec::with_capacity(proof.rounds.len());
+    for (index, round) in proof.rounds.iter().enumerate() {
+        let openings = match (&round.openings, index) {
+            (QueryOpenings::Base(opening), 0) => {
+                let (ordinary, linked) = strip_c63_opening(opening);
+                linked_a = linked;
+                QueryOpenings::Base(ordinary)
+            }
+            (QueryOpenings::Extension(opening), index) if index > 0 => {
+                let (ordinary, linked) = strip_c63_opening(opening);
+                if linked.is_some() {
+                    return Err("C6.3 projected A opening appears after the first round".to_owned());
+                }
+                QueryOpenings::Extension(ordinary)
+            }
+            _ => return Err("C6.3 projected WHIR opening field differs".to_owned()),
+        };
+        rounds.push(ZkRoundProof {
+            commitment: round.commitment.clone(),
+            mask_commitment: round.mask_commitment.clone(),
+            ood_answers: round.ood_answers.clone(),
+            pow_witness: round.pow_witness,
+            openings,
+        });
+    }
+    let linked_a = linked_a.ok_or_else(|| "C6.3 projected A opening is missing".to_owned())?;
+    let base = &proof.base_case;
+    let source_openings = match &base.source_openings {
+        QueryOpenings::Extension(opening) => {
+            let (ordinary, linked) = strip_c63_opening(opening);
+            if linked.is_some() {
+                return Err("C6.3 projected A opening appears in the base source".to_owned());
+            }
+            QueryOpenings::Extension(ordinary)
+        }
+        QueryOpenings::Base(_) => return Err("C6.3 projected base source field differs".to_owned()),
+    };
+    let (fresh_main_openings, fresh_link) = strip_c63_opening(&base.fresh_main_openings);
+    if fresh_link.is_some() {
+        return Err("C6.3 projected A opening appears in the fresh main oracle".to_owned());
+    }
+    let mut mask_openings = Vec::with_capacity(base.mask_openings.len());
+    for opening in &base.mask_openings {
+        let (carried, carried_link) = strip_c63_opening(&opening.carried);
+        let (fresh, fresh_link) = strip_c63_opening(&opening.fresh);
+        if carried_link.is_some() || fresh_link.is_some() {
+            return Err("C6.3 projected A opening appears in a mask oracle".to_owned());
+        }
+        mask_openings.push(MaskOpeningPair { carried, fresh });
+    }
+    Ok((
+        ZkWhirProof {
+            sumchecks: proof.sumchecks.clone(),
+            sumcheck_mask_commitments: proof.sumcheck_mask_commitments.clone(),
+            rounds,
+            base_case: BaseCaseZkProof {
+                fresh_main_commitment: base.fresh_main_commitment.clone(),
+                fresh_mask_commitments: base.fresh_mask_commitments.clone(),
+                masked_claim: base.masked_claim,
+                blinded_message: base.blinded_message.clone(),
+                blinded_randomness: base.blinded_randomness.clone(),
+                blinded_masks: base.blinded_masks.clone(),
+                pow_witness: base.pow_witness,
+                source_openings,
+                fresh_main_openings,
+                mask_openings,
+            },
+        },
+        linked_a,
+    ))
+}
+
+fn lift_c63_projected_proof(
+    proof: C63OrdinaryWhirProof,
+    linked_a: SharedProofOpening<Goldilocks, C61MultiProof>,
+) -> Result<C63ProjectedWhirProof, String> {
+    let mut rounds = Vec::with_capacity(proof.rounds.len());
+    for (index, round) in proof.rounds.into_iter().enumerate() {
+        let openings = match (round.openings, index) {
+            (QueryOpenings::Base(opening), 0) => {
+                QueryOpenings::Base(lift_c63_opening(opening, Some(linked_a.clone())))
+            }
+            (QueryOpenings::Extension(opening), index) if index > 0 => {
+                QueryOpenings::Extension(lift_c63_opening(opening, None))
+            }
+            _ => return Err("C6.3 ordinary WHIR opening field differs".to_owned()),
+        };
+        rounds.push(ZkRoundProof {
+            commitment: round.commitment,
+            mask_commitment: round.mask_commitment,
+            ood_answers: round.ood_answers,
+            pow_witness: round.pow_witness,
+            openings,
+        });
+    }
+    let base = proof.base_case;
+    let source_openings = match base.source_openings {
+        QueryOpenings::Extension(opening) => {
+            QueryOpenings::Extension(lift_c63_opening(opening, None))
+        }
+        QueryOpenings::Base(_) => return Err("C6.3 ordinary base source field differs".to_owned()),
+    };
+    Ok(ZkWhirProof {
+        sumchecks: proof.sumchecks,
+        sumcheck_mask_commitments: proof.sumcheck_mask_commitments,
+        rounds,
+        base_case: BaseCaseZkProof {
+            fresh_main_commitment: base.fresh_main_commitment,
+            fresh_mask_commitments: base.fresh_mask_commitments,
+            masked_claim: base.masked_claim,
+            blinded_message: base.blinded_message,
+            blinded_randomness: base.blinded_randomness,
+            blinded_masks: base.blinded_masks,
+            pow_witness: base.pow_witness,
+            source_openings,
+            fresh_main_openings: lift_c63_opening(base.fresh_main_openings, None),
+            mask_openings: base
+                .mask_openings
+                .into_iter()
+                .map(|opening| MaskOpeningPair {
+                    carried: lift_c63_opening(opening.carried, None),
+                    fresh: lift_c63_opening(opening.fresh, None),
+                })
+                .collect(),
+        },
+    })
+}
+
+pub(crate) fn encode_c63_whir_projected_artifact(
+    commitment: &C61Commitment,
+    proof: &C63ProjectedWhirProof,
+) -> Result<Vec<u8>, String> {
+    encode_c63_whir_projected_artifact_with_config(19, &c63_whir_config(19)?, commitment, proof)
+}
+
+fn encode_c63_whir_projected_artifact_with_config(
+    num_variables: usize,
+    config: &C63WhirConfig,
+    commitment: &C61Commitment,
+    proof: &C63ProjectedWhirProof,
+) -> Result<Vec<u8>, String> {
+    if config.num_variables != num_variables {
+        return Err("C6.3 projected WHIR codec dimension differs".to_owned());
+    }
+    let (ordinary, linked_a) = strip_c63_projected_proof(proof)?;
+    let ordinary = encode_c63_whir_ordinary_artifact_with_config(
+        num_variables,
+        config,
+        commitment,
+        &ordinary,
+    )?;
+    let queries = config.round_parameters[0].num_queries;
+    let fold = config.round_folding_factor(0);
+    let leaves = config.round_parameters[0].domain_size >> fold;
+    let mut body = C61Writer::default();
+    body.u32(ordinary.len()).map_err(|error| error.to_string())?;
+    body.bytes.extend_from_slice(&ordinary);
+    encode_c63_fp_opening(
+        &mut body,
+        &linked_a,
+        queries,
+        C63_ENCODED_SKETCH_PHYSICAL_ROW_WIDTH,
+        leaves,
+    )?;
+    let mut artifact = C61Writer::default();
+    artifact.bytes.extend_from_slice(&C63_WHIR_MAGIC);
+    artifact.u16(C63_WHIR_VERSION);
+    artifact.u8(num_variables as u8);
+    artifact.u8(1);
+    artifact.u32(body.bytes.len()).map_err(|error| error.to_string())?;
+    artifact.bytes.extend_from_slice(&body.bytes);
+    if artifact.bytes.len() > c63_projected_whir_structural_bytes_for_config(config)? {
+        return Err("C6.3 projected WHIR artifact exceeds its structural maximum".to_owned());
+    }
+    Ok(artifact.bytes)
+}
+
+pub(crate) fn decode_c63_whir_projected_artifact(
+    bytes: &[u8],
+) -> Result<(C61Commitment, C63ProjectedWhirProof), String> {
+    decode_c63_whir_projected_artifact_with_config(bytes, 19, &c63_whir_config(19)?)
+}
+
+fn decode_c63_whir_projected_artifact_with_config(
+    bytes: &[u8],
+    num_variables: usize,
+    config: &C63WhirConfig,
+) -> Result<(C61Commitment, C63ProjectedWhirProof), String> {
+    if config.num_variables != num_variables {
+        return Err("C6.3 projected WHIR codec dimension differs".to_owned());
+    }
+    if bytes.len() > c63_projected_whir_structural_bytes_for_config(config)? {
+        return Err("C6.3 projected WHIR artifact exceeds its structural maximum".to_owned());
+    }
+    let mut reader = C61Reader::new(bytes);
+    if reader.take(8).map_err(|error| error.to_string())? != C63_WHIR_MAGIC
+        || reader.u16().map_err(|error| error.to_string())? != C63_WHIR_VERSION
+        || reader.u8().map_err(|error| error.to_string())? as usize != num_variables
+        || reader.u8().map_err(|error| error.to_string())? != 1
+    {
+        return Err("C6.3 projected WHIR artifact header differs".to_owned());
+    }
+    let body_len = reader.u32().map_err(|error| error.to_string())?;
+    if body_len != bytes.len().saturating_sub(C61_WHIRA1_HEADER_BYTES) {
+        return Err("C6.3 projected WHIR artifact body length differs".to_owned());
+    }
+    let ordinary_len = reader.u32().map_err(|error| error.to_string())?;
+    let ordinary = reader.take(ordinary_len).map_err(|error| error.to_string())?;
+    let (commitment, proof) =
+        decode_c63_whir_ordinary_artifact_with_config(ordinary, num_variables, config)?;
+    let queries = config.round_parameters[0].num_queries;
+    let fold = config.round_folding_factor(0);
+    let leaves = config.round_parameters[0].domain_size >> fold;
+    let linked_a =
+        decode_c63_fp_opening(&mut reader, queries, C63_ENCODED_SKETCH_PHYSICAL_ROW_WIDTH, leaves)?;
+    reader.finish().map_err(|error| error.to_string())?;
+    Ok((commitment, lift_c63_projected_proof(proof, linked_a)?))
+}
+
 /// Extracts `randomized_y - project(A,rho,limb)` from the authenticated rows.
 /// WHIR's opt-in first-round equation constrains these values to
 /// `Enc(0,zeta)`; this type does not claim the separate Bolt `D' -> m` link.
@@ -406,16 +1415,21 @@ mod tests {
     use std::panic::{catch_unwind, AssertUnwindSafe};
 
     use p3_blake3::Blake3;
-    use p3_challenger::{CanObserve, FieldChallenger, HashChallenger, SerializingChallenger64};
+    use p3_challenger::{
+        CanObserve, FieldChallenger, GrindingChallenger, HashChallenger, SerializingChallenger64,
+    };
     use p3_commit::Mmcs;
     use p3_dft::Radix2DFTSmallBatch;
     use p3_field::extension::BinomialExtensionField;
-    use p3_field::PrimeCharacteristicRing;
+    use p3_field::{PrimeCharacteristicRing, PrimeField64};
     use p3_goldilocks::Goldilocks;
     use p3_matrix::Dimensions;
     use p3_multilinear_util::point::Point;
     use p3_whir_c61::parameters::{FoldingFactor, ProtocolParameters, SecurityAssumption};
-    use p3_whir_c61::pcs::zk::{HidingWhirProver, HidingWhirVerifier, ZkParameters, ZkWhirConfig};
+    use p3_whir_c61::pcs::zk::{
+        ClaimlessWhirProverOutput, ClaimlessWhirVerifierClosure, HidingWhirProver,
+        HidingWhirVerifier, ZkParameters, ZkWhirConfig,
+    };
     use rand_010::rngs::StdRng;
     use rand_010::SeedableRng;
     use volta_field::{Fp, Fp2};
@@ -425,24 +1439,37 @@ mod tests {
     use crate::c61_authenticated_whir::{
         finish_c61_authenticated_whir_base, prepare_c61_authenticated_whir_mask,
         verify_c61_authenticated_whir_base, C61AuthenticatedWhirAffineClaim,
-        C61AuthenticatedWhirMaskRange, C61AuthenticatedWhirProverFinishInput,
-        C61AuthenticatedWhirVerifierInput,
+        C61AuthenticatedWhirMaskRange, C61AuthenticatedWhirPreparedMask,
+        C61AuthenticatedWhirProverFinishInput, C61AuthenticatedWhirVerifierInput,
     };
     use crate::c61_public_compression::{C61NativeChainId, C61NativeComponent};
     use crate::c61_whir_reference::{
         c61_p3_fp2_from_volta, c61_reference_mmcs, c61_volta_fp2_from_p3, C61P3Fp2,
-        C61SizingChallenger,
+    };
+    use crate::c63_authenticated_sketch::{
+        c63_correction_state_root_reference, c63_correction_tile_root_reference,
+        c63_open_correction_rows_reference, c63_verify_correction_rows_reference,
+        C63CorrectionRowReference, C63SparseSketchEdge, C63SparseSketchReference,
+        C63_BOLT_LIVE_ROWS_PER_POSITION,
+    };
+    use crate::c63_sparse_h_closure::{
+        prove_c63_sparse_h_closure_with_spots_reference,
+        verify_c63_sparse_h_closure_from_whir_openings_reference,
+        verify_c63_sparse_h_closure_with_spots_reference, C63SparseHClosureStatement,
+        C63SystematicSpot,
     };
 
     const TEST_NUM_VARIABLES: usize = 12;
 
-    fn config<Challenger>() -> ZkWhirConfig<C61P3Fp2, Goldilocks, Challenger>
+    fn config_for<Challenger>(
+        num_variables: usize,
+    ) -> ZkWhirConfig<C61P3Fp2, Goldilocks, Challenger>
     where
         Challenger: p3_challenger::FieldChallenger<Goldilocks>
             + p3_challenger::GrindingChallenger<Witness = Goldilocks>,
     {
         ZkWhirConfig::new(
-            TEST_NUM_VARIABLES,
+            num_variables,
             ProtocolParameters {
                 security_level: 32,
                 pow_bits: 0,
@@ -456,11 +1483,322 @@ mod tests {
         .unwrap()
     }
 
-    fn challenger(seed: [u8; 32]) -> C61SizingChallenger {
-        SerializingChallenger64::new(HashChallenger::<u8, Blake3, 32>::new(
+    fn synthetic_commitment(byte: u8) -> C61Commitment {
+        C61Commitment::new(vec![[byte; 32]])
+    }
+
+    fn synthetic_fp_opening(
+        queries: usize,
+        width: usize,
+        leaves: usize,
+    ) -> SharedProofOpening<Goldilocks, C61MultiProof> {
+        SharedProofOpening {
+            rows: vec![vec![Goldilocks::ZERO; width]; queries],
+            proof: C61MultiProof {
+                sibling_hashes: vec![[0x41; 32]; c61_max_pruned_binary_siblings(leaves, queries)],
+            },
+        }
+    }
+
+    fn synthetic_fp2_opening(
+        queries: usize,
+        width: usize,
+        leaves: usize,
+    ) -> SharedProofOpening<C61P3Fp2, C61MultiProof> {
+        SharedProofOpening {
+            rows: vec![vec![C61P3Fp2::ZERO; width]; queries],
+            proof: C61MultiProof {
+                sibling_hashes: vec![[0x42; 32]; c61_max_pruned_binary_siblings(leaves, queries)],
+            },
+        }
+    }
+
+    fn synthetic_production_proof(config: &C63WhirConfig) -> C63OrdinaryWhirProof {
+        let batches = config.n_rounds() + 1;
+        let sumchecks = (0..batches)
+            .map(|batch| {
+                let rounds = config.round_folding_factor(batch);
+                let pow_count = usize::from(c63_sumcheck_pow_bits(config, batch) > 0) * rounds;
+                ZkSumcheckData {
+                    mu_tilde: C61P3Fp2::ZERO,
+                    ell_zk: config.zk.ell_zk,
+                    round_coefficients: vec![vec![C61P3Fp2::ZERO; config.zk.ell_zk - 1]; rounds],
+                    pow_witnesses: vec![Goldilocks::ONE; pow_count],
+                }
+            })
+            .collect();
+        let rounds = config
+            .round_parameters
+            .iter()
+            .enumerate()
+            .map(|(index, round)| {
+                let fold = config.round_folding_factor(index);
+                let leaves = round.domain_size >> fold;
+                ZkRoundProof {
+                    commitment: synthetic_commitment(0x51 + index as u8),
+                    mask_commitment: synthetic_commitment(0x61 + index as u8),
+                    ood_answers: vec![C61P3Fp2::ZERO; round.ood_samples],
+                    pow_witness: if round.pow_bits > 0 {
+                        Goldilocks::ONE
+                    } else {
+                        Goldilocks::ZERO
+                    },
+                    openings: if index == 0 {
+                        QueryOpenings::Base(synthetic_fp_opening(
+                            round.num_queries,
+                            1 << fold,
+                            leaves,
+                        ))
+                    } else {
+                        QueryOpenings::Extension(synthetic_fp2_opening(
+                            round.num_queries,
+                            1 << fold,
+                            leaves,
+                        ))
+                    },
+                }
+            })
+            .collect();
+        let groups = config.mask_groups();
+        let final_round = config.final_round_config();
+        let final_domain = final_round.domain_size >> final_round.folding_factor;
+        let blinded_masks = groups
+            .iter()
+            .flat_map(|group| {
+                (0..group.width).map(|_| BlindedMask {
+                    message: vec![C61P3Fp2::ZERO; group.shape.message_len],
+                    randomness: vec![C61P3Fp2::ZERO; group.shape.randomness_len],
+                })
+            })
+            .collect();
+        let mask_openings = groups
+            .iter()
+            .map(|group| MaskOpeningPair {
+                carried: synthetic_fp2_opening(
+                    config.mask_queries,
+                    group.width,
+                    group.shape.domain_size,
+                ),
+                fresh: synthetic_fp2_opening(
+                    config.mask_queries,
+                    group.width,
+                    group.shape.domain_size,
+                ),
+            })
+            .collect();
+        ZkWhirProof {
+            sumchecks,
+            sumcheck_mask_commitments: (0..batches)
+                .map(|index| synthetic_commitment(0x71 + index as u8))
+                .collect(),
+            rounds,
+            base_case: BaseCaseZkProof {
+                fresh_main_commitment: synthetic_commitment(0x81),
+                fresh_mask_commitments: (0..groups.len())
+                    .map(|index| synthetic_commitment(0x91 + index as u8))
+                    .collect(),
+                masked_claim: C61P3Fp2::ZERO,
+                blinded_message: vec![C61P3Fp2::ZERO; 1 << final_round.num_variables],
+                blinded_randomness: vec![
+                    C61P3Fp2::ZERO;
+                    config.oracle_randomness[config.n_rounds()]
+                ],
+                blinded_masks,
+                pow_witness: if config.final_pow_bits > 0 {
+                    Goldilocks::ONE
+                } else {
+                    Goldilocks::ZERO
+                },
+                source_openings: QueryOpenings::Extension(synthetic_fp2_opening(
+                    config.final_queries,
+                    1 << final_round.folding_factor,
+                    final_domain,
+                )),
+                fresh_main_openings: synthetic_fp2_opening(config.final_queries, 1, final_domain),
+                mask_openings,
+            },
+        }
+    }
+
+    #[test]
+    fn production_profiles_include_every_registered_pow_witness_and_byte() {
+        let cases = [
+            (22, vec![243, 243, 112, 73, 73, 54, 43, 36], 31, 254, 17, 1_279_736),
+            (19, vec![243, 243, 112, 73, 54, 43], 36, 252, 13, 964_672),
+        ];
+        for (variables, queries, final_queries, mask_queries, witnesses, bytes) in cases {
+            let config = c63_whir_config(variables).unwrap();
+            assert_eq!(
+                config.round_parameters.iter().map(|round| round.num_queries).collect::<Vec<_>>(),
+                queries,
+            );
+            assert_eq!(config.final_queries, final_queries);
+            assert_eq!(config.mask_queries, mask_queries);
+            let sumcheck_pow: usize = (0..=config.n_rounds())
+                .map(|batch| {
+                    let bits = if batch == 0 {
+                        config.starting_folding_pow_bits
+                    } else {
+                        config.round_parameters[batch - 1].folding_pow_bits
+                    };
+                    usize::from(bits > 0) * config.round_folding_factor(batch)
+                })
+                .sum();
+            let round_pow =
+                config.round_parameters.iter().filter(|round| round.pow_bits > 0).count();
+            assert_eq!(
+                sumcheck_pow + round_pow + usize::from(config.final_pow_bits > 0),
+                witnesses
+            );
+            assert_eq!(c63_whir_structural_budget(variables).unwrap().strict_chain_bytes, bytes);
+        }
+        assert!(c63_whir_config(20).is_err());
+    }
+
+    #[test]
+    fn production_claimless_codec_counts_pow_and_rejects_bad_framing() {
+        for variables in [22, 19] {
+            let config = c63_whir_config(variables).unwrap();
+            let commitment = synthetic_commitment(0x31);
+            let proof = synthetic_production_proof(&config);
+            let encoded =
+                encode_c63_whir_ordinary_artifact(variables, &commitment, &proof).unwrap();
+            assert_eq!(
+                encoded.len(),
+                c63_whir_structural_budget(variables).unwrap().strict_chain_bytes
+            );
+            let (decoded_commitment, decoded) =
+                decode_c63_whir_ordinary_artifact(&encoded, variables).unwrap();
+            assert_eq!(decoded_commitment, commitment);
+            assert_eq!(
+                encode_c63_whir_ordinary_artifact(variables, &decoded_commitment, &decoded)
+                    .unwrap(),
+                encoded,
+            );
+
+            let mut bad_header = encoded.clone();
+            bad_header[0] ^= 1;
+            assert!(decode_c63_whir_ordinary_artifact(&bad_header, variables).is_err());
+            let mut noncanonical = encoded.clone();
+            noncanonical[48..56].copy_from_slice(&volta_field::P.to_le_bytes());
+            assert!(decode_c63_whir_ordinary_artifact(&noncanonical, variables).is_err());
+            let mut trailing = encoded.clone();
+            trailing.push(0);
+            assert!(decode_c63_whir_ordinary_artifact(&trailing, variables).is_err());
+            assert!(decode_c63_whir_ordinary_artifact(&encoded[..encoded.len() - 1], variables,)
+                .is_err());
+        }
+    }
+
+    #[test]
+    fn production_projected_codec_places_a_opening_once() {
+        let config = c63_whir_config(19).unwrap();
+        let commitment = synthetic_commitment(0x31);
+        let ordinary = synthetic_production_proof(&config);
+        let queries = config.round_parameters[0].num_queries;
+        let linked = synthetic_fp_opening(
+            queries,
+            C63_ENCODED_SKETCH_PHYSICAL_ROW_WIDTH,
+            C63_ENCODED_SKETCH_PHYSICAL_ROWS,
+        );
+        let projected = lift_c63_projected_proof(ordinary, linked.clone()).unwrap();
+        let encoded = encode_c63_whir_projected_artifact(&commitment, &projected).unwrap();
+        assert_eq!(encoded.len(), c63_projected_whir_structural_bytes().unwrap());
+        let (decoded_commitment, decoded) = decode_c63_whir_projected_artifact(&encoded).unwrap();
+        assert_eq!(decoded_commitment, commitment);
+        assert_eq!(
+            encode_c63_whir_projected_artifact(&decoded_commitment, &decoded).unwrap(),
+            encoded,
+        );
+
+        let mut missing = decoded.clone();
+        let QueryOpenings::Base(first) = &mut missing.rounds[0].openings else {
+            panic!("first C6.3 projected round must be base-field");
+        };
+        first.proof.1 = None;
+        assert!(encode_c63_whir_projected_artifact(&commitment, &missing).is_err());
+
+        let (_, mut trailing_link) = decode_c63_whir_projected_artifact(&encoded).unwrap();
+        let QueryOpenings::Extension(second) = &mut trailing_link.rounds[1].openings else {
+            panic!("second C6.3 projected round must be extension-field");
+        };
+        second.proof.1 = Some((linked.rows, linked.proof));
+        assert!(encode_c63_whir_projected_artifact(&commitment, &trailing_link).is_err());
+
+        let mut bad_flag = encoded.clone();
+        bad_flag[11] = 0;
+        assert!(decode_c63_whir_projected_artifact(&bad_flag).is_err());
+        let mut trailing = encoded;
+        trailing.push(0);
+        assert!(decode_c63_whir_projected_artifact(&trailing).is_err());
+    }
+
+    fn config<Challenger>() -> ZkWhirConfig<C61P3Fp2, Goldilocks, Challenger>
+    where
+        Challenger: p3_challenger::FieldChallenger<Goldilocks>
+            + p3_challenger::GrindingChallenger<Witness = Goldilocks>,
+    {
+        config_for(TEST_NUM_VARIABLES)
+    }
+
+    fn challenger(seed: [u8; 32]) -> C63SeparatedSizingChallenger {
+        C63SeparatedChallenger::new(
+            SerializingChallenger64::new(HashChallenger::<u8, Blake3, 32>::new(
+                seed.to_vec(),
+                Blake3 {},
+            )),
+            [0x63; 16],
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn separated_pow_does_not_consume_fiat_shamir_samples() {
+        let seed = [0x51; 32];
+        let observed = Goldilocks::from_u64(0x1234);
+        let mut prover = challenger(seed);
+        let mut verifier = challenger(seed);
+        prover.observe(observed);
+        verifier.observe(observed);
+
+        let witness = prover.grind(10);
+        assert!(verifier.check_witness(10, witness));
+        let first_prover_sample: Goldilocks = prover.sample();
+        let first_verifier_sample: Goldilocks = verifier.sample();
+        assert_eq!(first_prover_sample, first_verifier_sample);
+
+        let mut direct = SerializingChallenger64::new(HashChallenger::<u8, Blake3, 32>::new(
             seed.to_vec(),
             Blake3 {},
-        ))
+        ));
+        direct.observe(observed);
+        direct.observe(witness);
+        let first_direct_sample: Goldilocks = direct.sample();
+        assert_eq!(first_prover_sample, first_direct_sample);
+
+        let snapshot = {
+            let mut transcript = SerializingChallenger64::new(
+                HashChallenger::<u8, Blake3, 32>::new(seed.to_vec(), Blake3 {}),
+            );
+            transcript.observe(observed);
+            transcript.finalize()
+        };
+        let changed_role = (1u8..=u8::MAX)
+            .map(|byte| [byte; 16])
+            .find(|candidate| {
+                !c63_pow_accepts(*candidate, 0, 10, snapshot, witness.to_unique_u64())
+            })
+            .expect("a domain-separated role must reject this 10-bit witness");
+        let mut wrong_role = C63SeparatedChallenger::new(
+            SerializingChallenger64::new(HashChallenger::<u8, Blake3, 32>::new(
+                seed.to_vec(),
+                Blake3 {},
+            )),
+            changed_role,
+        )
+        .unwrap();
+        wrong_role.observe(observed);
+        assert!(!wrong_role.check_witness(10, witness));
     }
 
     fn verify_claimless(
@@ -473,8 +1811,21 @@ mod tests {
         point: &Point<C61P3Fp2>,
         verifier_seed: [u8; 32],
     ) -> bool {
+        replay_claimless(commitment, proof, point, verifier_seed).is_some()
+    }
+
+    fn replay_claimless(
+        commitment: &crate::c61_whir_reference::C61Commitment,
+        proof: &p3_whir_c61::pcs::zk::ZkWhirProof<
+            Goldilocks,
+            BinomialExtensionField<Goldilocks, 2>,
+            crate::c61_whir_reference::C61Mmcs,
+        >,
+        point: &Point<C61P3Fp2>,
+        verifier_seed: [u8; 32],
+    ) -> Option<ClaimlessWhirVerifierClosure<C61P3Fp2>> {
         let mut challenger = challenger(verifier_seed);
-        let config = config::<C61SizingChallenger>();
+        let config = config_for::<C63SeparatedSizingChallenger>(point.num_variables());
         let mmcs = c61_reference_mmcs();
         challenger.observe(commitment.clone());
         challenger.observe_algebra_slice(point.as_slice());
@@ -487,7 +1838,104 @@ mod tests {
                 &mut challenger,
             )
         }))
-        .is_ok_and(|result| result.is_ok())
+        .ok()?
+        .ok()
+    }
+
+    fn replay_bound_projected_claimless(
+        mmcs: &C63ProjectedMmcs,
+        link: &C63EncodedSketchAtoYLink,
+        commitment: &crate::c61_whir_reference::C61Commitment,
+        proof: &p3_whir_c61::pcs::zk::ZkWhirProof<
+            Goldilocks,
+            BinomialExtensionField<Goldilocks, 2>,
+            C63ProjectedMmcs,
+        >,
+        point: &Point<C61P3Fp2>,
+        verifier_seed: [u8; 32],
+    ) -> Option<ClaimlessWhirVerifierClosure<C61P3Fp2>> {
+        let mut challenger = challenger(verifier_seed);
+        let config = config_for::<C63SeparatedSizingChallenger>(point.num_variables());
+        challenger.observe(commitment.clone());
+        challenger.observe_algebra_slice(point.as_slice());
+        let verifier = HidingWhirVerifier::new(&config, mmcs);
+        catch_unwind(AssertUnwindSafe(|| {
+            verifier.verify_claimless_with_initial_link(
+                proof,
+                commitment,
+                std::slice::from_ref(point),
+                link,
+                &mut challenger,
+            )
+        }))
+        .ok()?
+        .ok()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn close_authenticated_lane<MT>(
+        prepared: C61AuthenticatedWhirPreparedMask,
+        output: &ClaimlessWhirProverOutput<Goldilocks, C61P3Fp2, MT>,
+        closure: &ClaimlessWhirVerifierClosure<C61P3Fp2>,
+        target_value: Fp2,
+        target_tag: Fp2,
+        pcg_seed: [u8; 32],
+        delta: Fp2,
+        id: C61NativeChainId,
+        mask_range: C61AuthenticatedWhirMaskRange,
+        transcript_seed: [u8; 32],
+    ) -> Result<(), String>
+    where
+        MT: Mmcs<Goldilocks>,
+    {
+        if output.claim_weights != closure.claim_weights
+            || output.target != closure.target
+            || output.base_case != closure.base_case
+        {
+            return Err("C6.3 WHIR prover/verifier closure differs".to_owned());
+        }
+        let target = ProverAuthed::new(target_value, target_tag);
+        let aggregate_target = target.scale(c61_volta_fp2_from_p3(output.claim_weights[0]));
+        let provider_affine = C61AuthenticatedWhirAffineClaim {
+            coefficient: c61_volta_fp2_from_p3(output.target.coefficient),
+            constant: c61_volta_fp2_from_p3(output.target.constant),
+        };
+        let mut provider_transcript = Transcript::new_fiat_shamir(transcript_seed)?;
+        let provider_closure = finish_c61_authenticated_whir_base(
+            prepared,
+            C61AuthenticatedWhirProverFinishInput {
+                combined: c61_volta_fp2_from_p3(output.base_case.combined),
+                shifted_masked_claim: c61_volta_fp2_from_p3(output.base_case.shifted_masked_claim),
+                gamma: c61_volta_fp2_from_p3(output.base_case.gamma),
+                target: provider_affine.authenticate_prover(aggregate_target),
+            },
+            &mut provider_transcript,
+        )
+        .map_err(|error| error.to_string())?;
+
+        let target_key = VerifierKey::new(target_tag + delta * target_value);
+        let aggregate_key = target_key.scale(c61_volta_fp2_from_p3(closure.claim_weights[0]));
+        let verifier_affine = C61AuthenticatedWhirAffineClaim {
+            coefficient: c61_volta_fp2_from_p3(closure.target.coefficient),
+            constant: c61_volta_fp2_from_p3(closure.target.constant),
+        };
+        let mut verifier_context = VerifierCtx::new(pcg_seed, delta);
+        let mut verifier_transcript = Transcript::new_fiat_shamir(transcript_seed)?;
+        verify_c61_authenticated_whir_base(
+            C61AuthenticatedWhirVerifierInput {
+                id,
+                mask_range,
+                combined: c61_volta_fp2_from_p3(closure.base_case.combined),
+                shifted_masked_claim: c61_volta_fp2_from_p3(closure.base_case.shifted_masked_claim),
+                gamma: c61_volta_fp2_from_p3(closure.base_case.gamma),
+                target: verifier_affine.derive_verifier_key(aggregate_key, delta),
+            },
+            provider_closure.proof,
+            &mut verifier_context,
+            &mut verifier_transcript,
+        )
+        .map_err(|error| error.to_string())?;
+        Ok(())
     }
 
     fn replay_projected_claimless(
@@ -503,7 +1951,7 @@ mod tests {
         verifier_seed: [u8; 32],
     ) -> Option<p3_whir_c61::pcs::zk::ClaimlessWhirVerifierClosure<C61P3Fp2>> {
         let mut challenger = challenger(verifier_seed);
-        let config = config::<C61SizingChallenger>();
+        let config = config::<C63SeparatedSizingChallenger>();
         let (_, contexts) = C63EncodedSketchAtoYContext::sample_pair_after_roots(
             mmcs.context.accepted_d.clone(),
             mmcs.context.accepted_a.clone(),
@@ -590,7 +2038,7 @@ mod tests {
 
         let dft = Radix2DFTSmallBatch::default();
         let mmcs = c61_reference_mmcs();
-        let config = config::<C61SizingChallenger>();
+        let config = config::<C63SeparatedSizingChallenger>();
         let prover = HidingWhirProver::new(&config, &dft, &mmcs);
 
         let columns = (0..C63_BOLT_COLUMNS)
@@ -700,7 +2148,7 @@ mod tests {
     fn encoded_sketch_a_to_y_link_rejects_substituted_fixed_base() {
         let dft = Radix2DFTSmallBatch::default();
         let base_mmcs = c61_reference_mmcs();
-        let config = config::<C61SizingChallenger>();
+        let config = config::<C63SeparatedSizingChallenger>();
         let base_prover = HidingWhirProver::new(&config, &dft, &base_mmcs);
         let columns = (0..C63_BOLT_COLUMNS)
             .map(|column| {
@@ -967,5 +2415,364 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(terminal_error.to_string(), "C6AWH1 authenticated target ZeroOpen failed");
+    }
+
+    #[test]
+    fn four_whir_lanes_feed_the_sparse_h_terminal_without_full_tables() {
+        const INPUT_LOG2: usize = 12;
+        const OUTPUT_LOG2: usize = 10;
+        let input_len = 1usize << INPUT_LOG2;
+        let output_len = 1usize << OUTPUT_LOG2;
+        let edges = (0..input_len as u32)
+            .map(|input| C63SparseSketchEdge {
+                input,
+                socket_ordinal: 0,
+                output: input % output_len as u32,
+                coefficient: Fp::new(1 + u64::from(input % 17)),
+            })
+            .collect::<Vec<_>>();
+        let h = C63SparseSketchReference::new(input_len, output_len, edges.clone()).unwrap();
+
+        let correction_rows = (0..C63_BOLT_LIVE_ROWS_PER_POSITION)
+            .map(|row| C63CorrectionRowReference {
+                position: 0,
+                layer_high: (row >> 9) as u8,
+                channel_low: (row & 0x01ff) as u16,
+                birth_epoch: 1,
+                allocation_binding_digest: [0x31; 32],
+                source_schedule_digest: [0x32; 32],
+                corrections: std::array::from_fn(|column| {
+                    if row & 0x01ff >= 256 && column >= 8 {
+                        Fp::ZERO
+                    } else {
+                        Fp::new(3 + row as u64 * 19 + column as u64 * 23)
+                    }
+                }),
+            })
+            .collect::<Vec<_>>();
+        let d_columns = (0..C63_BOLT_COLUMNS)
+            .map(|column| {
+                Poly::new(
+                    (0..input_len)
+                        .map(|row| {
+                            Goldilocks::from_u64(
+                                correction_rows
+                                    .get(row)
+                                    .map_or(0, |opened| opened.corrections[column].value()),
+                            )
+                        })
+                        .collect(),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let s_columns = d_columns
+            .iter()
+            .map(|column| {
+                let mut output = Goldilocks::zero_vec(output_len);
+                for edge in &edges {
+                    output[edge.output as usize] += column.as_slice()[edge.input as usize]
+                        * Goldilocks::from_u64(edge.coefficient.value());
+                }
+                Poly::new(output)
+            })
+            .collect::<Vec<_>>();
+
+        let dft = Radix2DFTSmallBatch::default();
+        let base_mmcs = c61_reference_mmcs();
+        let u_config = config_for::<C63SeparatedSizingChallenger>(OUTPUT_LOG2);
+        let u_base_prover = HidingWhirProver::new(&u_config, &dft, &base_mmcs);
+        let encoded_s = s_columns
+            .iter()
+            .map(|column| u_base_prover.c62_fixed_base_encoding(column))
+            .collect::<Vec<_>>();
+        let paired_a = c63_pack_encoded_sketch_rows_reference(&encoded_s).unwrap();
+        let profile_digest = [0x33; 32];
+        let correction_tile = c63_correction_tile_root_reference(&correction_rows).unwrap();
+        let correction_root =
+            c63_correction_state_root_reference(profile_digest, 1, &[correction_tile]).unwrap();
+        let d_root = C61Commitment::new(vec![correction_root]);
+        let (a_root, _) = base_mmcs.commit_matrix(paired_a.clone());
+
+        let mut rho_challenger = challenger([0x63; 32]);
+        let (rho, contexts) = C63EncodedSketchAtoYContext::sample_pair_after_roots(
+            d_root,
+            a_root.clone(),
+            paired_a.values.len() / paired_a.width,
+            &mut rho_challenger,
+        )
+        .unwrap();
+        let m_limbs = [
+            c63_project_decoded_sketch_limb_reference(&d_columns, &rho, 0).unwrap(),
+            c63_project_decoded_sketch_limb_reference(&d_columns, &rho, 1).unwrap(),
+        ];
+        let u_limbs = [
+            c63_project_decoded_sketch_limb_reference(&s_columns, &rho, 0).unwrap(),
+            c63_project_decoded_sketch_limb_reference(&s_columns, &rho, 1).unwrap(),
+        ];
+        let combine_coefficients = |left: &Poly<Goldilocks>, right: &Poly<Goldilocks>| {
+            left.as_slice()
+                .iter()
+                .zip(right.as_slice())
+                .map(|(&c0, &c1)| {
+                    Fp2::new(Fp::new(c0.as_canonical_u64()), Fp::new(c1.as_canonical_u64()))
+                })
+                .collect::<Vec<_>>()
+        };
+        let m = combine_coefficients(&m_limbs[0], &m_limbs[1]);
+        let u = combine_coefficients(&u_limbs[0], &u_limbs[1]);
+        assert_eq!(h.apply(&m).unwrap(), u);
+
+        let statement = C63SparseHClosureStatement::new(
+            correction_root,
+            (0..OUTPUT_LOG2)
+                .map(|index| Fp2::new(Fp::new(31 + index as u64), Fp::new(47 + index as u64)))
+                .collect(),
+        )
+        .unwrap();
+        let spot_rows = [19, 701, 3_500];
+        let (opened_root, correction_opening) =
+            c63_open_correction_rows_reference(profile_digest, 1, &[correction_rows], &spot_rows)
+                .unwrap();
+        assert_eq!(opened_root, correction_root);
+        let spots = c63_verify_correction_rows_reference(
+            correction_root,
+            profile_digest,
+            1,
+            1,
+            &spot_rows,
+            &rho,
+            &correction_opening,
+        )
+        .unwrap()
+        .into_iter()
+        .map(|(row, value)| C63SystematicSpot { row, value })
+        .collect::<Vec<_>>();
+        assert!(spots.iter().all(|spot| spot.value == m[spot.row as usize]));
+        let sparse_seeds = [[0x91; 32], [0x92; 32]];
+        let sparse_deltas =
+            [Fp2::new(Fp::new(97), Fp::new(101)), Fp2::new(Fp::new(103), Fp::new(107))];
+        let sparse_transcript_seed = [0x93; 32];
+        let mut sparse_streams = sparse_seeds.map(CorrelationStream::new);
+        let mut sparse_prover_transcript = Transcript::new(sparse_transcript_seed);
+        let sparse_proof = prove_c63_sparse_h_closure_with_spots_reference(
+            &h,
+            &m,
+            &u,
+            &statement,
+            &spots,
+            &mut sparse_streams,
+            &mut sparse_prover_transcript,
+        )
+        .unwrap();
+        let mut compatibility_contexts =
+            std::array::from_fn(|tape| VerifierCtx::new(sparse_seeds[tape], sparse_deltas[tape]));
+        let mut compatibility_transcript = Transcript::new(sparse_transcript_seed);
+        let compatibility = verify_c63_sparse_h_closure_with_spots_reference(
+            &h,
+            &m,
+            &u,
+            &statement,
+            &spots,
+            &sparse_proof,
+            &mut compatibility_contexts,
+            &mut compatibility_transcript,
+        )
+        .unwrap();
+
+        let m_point = Point::new(
+            compatibility.sumcheck_point.iter().rev().copied().map(c61_p3_fp2_from_volta).collect(),
+        );
+        let u_point = Point::new(
+            statement.output_point().iter().rev().copied().map(c61_p3_fp2_from_volta).collect(),
+        );
+
+        let mut m_openings = [Fp2::ZERO; 2];
+        let m_config = config_for::<C63SeparatedSizingChallenger>(INPUT_LOG2);
+        let m_prover = HidingWhirProver::new(&m_config, &dft, &base_mmcs);
+        for limb in 0..2 {
+            let lane = limb as u8;
+            let lane_seed = [0xA0 + lane; 32];
+            let pcg_seed = [0xB0 + lane; 32];
+            let delta = Fp2::new(Fp::new(109 + u64::from(lane)), Fp::new(127 + u64::from(lane)));
+            let target_tag =
+                Fp2::new(Fp::new(131 + u64::from(lane)), Fp::new(149 + u64::from(lane)));
+            let id = C61NativeChainId { component: C61NativeComponent::Compiler, repetition: lane };
+            let mask_range =
+                C61AuthenticatedWhirMaskRange { stage: 70 + lane, slot: 0, range_start: 0 };
+            let mut correlations = CorrelationStream::new(pcg_seed);
+            let prepared =
+                prepare_c61_authenticated_whir_mask(id, mask_range, &mut correlations).unwrap();
+            let mut prover_challenger = challenger(lane_seed);
+            let mut rng = StdRng::seed_from_u64(0xC6_3100 + limb as u64);
+            let fixed = m_prover.c62_fixed_base_encoding(&m_limbs[limb]);
+            let (root, data) = m_prover.commit_c62_cached_fixed_base(
+                m_limbs[limb].clone(),
+                &fixed,
+                &mut prover_challenger,
+                &mut rng,
+            );
+            let evaluation = m_limbs[limb].eval_base(&m_point);
+            prover_challenger.observe_algebra_slice(m_point.as_slice());
+            let output = m_prover.prove_claimless(
+                data,
+                &[(m_point.clone(), evaluation)],
+                c61_p3_fp2_from_volta(prepared.value()),
+                &mut prover_challenger,
+                &mut rng,
+            );
+            let encoded = encode_c63_whir_ordinary_artifact_with_config(
+                INPUT_LOG2,
+                &m_config,
+                &root,
+                &output.proof,
+            )
+            .unwrap();
+            let (decoded_root, decoded_proof) =
+                decode_c63_whir_ordinary_artifact_with_config(&encoded, INPUT_LOG2, &m_config)
+                    .unwrap();
+            assert_eq!(decoded_root, root);
+            let closure =
+                replay_claimless(&decoded_root, &decoded_proof, &m_point, lane_seed).unwrap();
+            let target_value = c61_volta_fp2_from_p3(evaluation);
+            close_authenticated_lane(
+                prepared,
+                &output,
+                &closure,
+                target_value,
+                target_tag,
+                pcg_seed,
+                delta,
+                id,
+                mask_range,
+                [0xC0 + lane; 32],
+            )
+            .unwrap();
+            m_openings[limb] = target_value;
+        }
+
+        let mut u_openings = [Fp2::ZERO; 2];
+        for (limb, context) in contexts.into_iter().enumerate() {
+            let lane = limb as u8 + 2;
+            let lane_seed = [0xA0 + lane; 32];
+            let pcg_seed = [0xB0 + lane; 32];
+            let delta = Fp2::new(Fp::new(109 + u64::from(lane)), Fp::new(127 + u64::from(lane)));
+            let target_tag =
+                Fp2::new(Fp::new(131 + u64::from(lane)), Fp::new(149 + u64::from(lane)));
+            let id = C61NativeChainId {
+                component: C61NativeComponent::Compiler,
+                repetition: limb as u8,
+            };
+            let mask_range =
+                C61AuthenticatedWhirMaskRange { stage: 70 + lane, slot: 0, range_start: 0 };
+            let mut correlations = CorrelationStream::new(pcg_seed);
+            let prepared =
+                prepare_c61_authenticated_whir_mask(id, mask_range, &mut correlations).unwrap();
+            let projected_mmcs = C63ProjectedMmcs::new(context);
+            let link = projected_mmcs.link();
+            let projected_prover = HidingWhirProver::new(&u_config, &dft, &projected_mmcs);
+            let fixed = c63_project_encoded_sketch_limb_reference(&paired_a, &rho, limb).unwrap();
+            c63_check_preencoded_link_reference(
+                &fixed,
+                &u_base_prover.c62_fixed_base_encoding(&u_limbs[limb]),
+            )
+            .unwrap();
+            let (recommitted_a_root, a_data) = base_mmcs.commit_matrix(paired_a.clone());
+            assert_eq!(recommitted_a_root, a_root);
+            let mut prover_challenger = challenger(lane_seed);
+            let mut rng = StdRng::seed_from_u64(0xC6_3100 + lane as u64);
+            let (root, mut data) = projected_prover.commit_c62_cached_fixed_base(
+                u_limbs[limb].clone(),
+                &fixed,
+                &mut prover_challenger,
+                &mut rng,
+            );
+            projected_mmcs.attach_encoded_sketch_a(&mut data.merkle, &a_root, a_data).unwrap();
+            let evaluation = u_limbs[limb].eval_base(&u_point);
+            prover_challenger.observe_algebra_slice(u_point.as_slice());
+            let output = projected_prover.prove_claimless_with_initial_link(
+                data,
+                &[(u_point.clone(), evaluation)],
+                c61_p3_fp2_from_volta(prepared.value()),
+                &link,
+                &mut prover_challenger,
+                &mut rng,
+            );
+            let encoded = encode_c63_whir_projected_artifact_with_config(
+                OUTPUT_LOG2,
+                &u_config,
+                &root,
+                &output.proof,
+            )
+            .unwrap();
+            let (decoded_root, decoded_proof) =
+                decode_c63_whir_projected_artifact_with_config(&encoded, OUTPUT_LOG2, &u_config)
+                    .unwrap();
+            assert_eq!(decoded_root, root);
+            let closure = replay_bound_projected_claimless(
+                &projected_mmcs,
+                &link,
+                &decoded_root,
+                &decoded_proof,
+                &u_point,
+                lane_seed,
+            )
+            .unwrap();
+            let target_value = c61_volta_fp2_from_p3(evaluation);
+            close_authenticated_lane(
+                prepared,
+                &output,
+                &closure,
+                target_value,
+                target_tag,
+                pcg_seed,
+                delta,
+                id,
+                mask_range,
+                [0xC0 + lane; 32],
+            )
+            .unwrap();
+            u_openings[limb] = target_value;
+        }
+
+        let basis = Fp2::new(Fp::ZERO, Fp::ONE);
+        let m_opening = m_openings[0] + basis * m_openings[1];
+        let u_opening = u_openings[0] + basis * u_openings[1];
+        assert_eq!(m_opening, volta_proto::mle::eval_mle(&m, &compatibility.sumcheck_point));
+        assert_eq!(u_opening, volta_proto::mle::eval_mle(&u, statement.output_point()));
+
+        let mut opening_contexts =
+            std::array::from_fn(|tape| VerifierCtx::new(sparse_seeds[tape], sparse_deltas[tape]));
+        let mut opening_transcript = Transcript::new(sparse_transcript_seed);
+        let opening_audit = verify_c63_sparse_h_closure_from_whir_openings_reference(
+            &h,
+            u_opening,
+            &statement,
+            &spots,
+            &sparse_proof,
+            &mut opening_contexts,
+            &mut opening_transcript,
+            |point| {
+                assert_eq!(point, compatibility.sumcheck_point);
+                Ok(m_opening)
+            },
+        )
+        .unwrap();
+        assert_eq!(opening_audit, compatibility);
+
+        let mut bad_contexts =
+            std::array::from_fn(|tape| VerifierCtx::new(sparse_seeds[tape], sparse_deltas[tape]));
+        let mut bad_transcript = Transcript::new(sparse_transcript_seed);
+        assert!(verify_c63_sparse_h_closure_from_whir_openings_reference(
+            &h,
+            u_opening,
+            &statement,
+            &spots,
+            &sparse_proof,
+            &mut bad_contexts,
+            &mut bad_transcript,
+            |_| Ok(m_opening + Fp2::ONE),
+        )
+        .is_err());
     }
 }

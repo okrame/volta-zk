@@ -12,7 +12,7 @@ use crate::c6_persistent_cache::{
     expected_c6_cache_append_cells, C6CacheCell, C6CacheSlotKind, C6CacheSourceValue,
     C6PersistentCacheLayout, C6_PERSISTENT_CACHE_LIVE_SLOTS, C6_PERSISTENT_CACHE_SLOTS,
 };
-use crate::merkle::{Hash, MerkleTree};
+use crate::merkle::{multi_root, Hash, MerkleTree};
 
 pub const C63_BOLT_ROW_LOG2: u8 = 22;
 pub const C63_BOLT_COLUMN_LOG2: u8 = 4;
@@ -31,6 +31,8 @@ const C63_CORRECTION_TREE_VERSION: u16 = 2;
 const C63_LIVE_ROW_HASH_CONTEXT: &str = "volta-zk/c63/correction-live-row/v2";
 const C63_VIRTUAL_ROW_HASH_CONTEXT: &str = "volta-zk/c63/correction-virtual-row/v2";
 const C63_STATE_ROOT_HASH_CONTEXT: &str = "volta-zk/c63/correction-state-root/v2";
+const C63_CORRECTION_OPENING_MAGIC: [u8; 8] = *b"C63CRM1\0";
+const C63_CORRECTION_OPENING_VERSION: u16 = 1;
 const C63_SPARSE_SETUP_MAGIC: [u8; 8] = *b"C63HSM1\0";
 const C63_SPARSE_SETUP_VERSION: u16 = 1;
 const C63_SPARSE_SETUP_FIELD_ID_GOLDILOCKS: u16 = 1;
@@ -498,6 +500,406 @@ impl C63CorrectionRowReference {
     }
 }
 
+/// Deduplicated openings inside one accepted D12 position tile.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C63CorrectionTileOpeningReference {
+    metadata: Option<C63CorrectionTileMetadataReference>,
+    corrections: Vec<[Fp; C63_BOLT_COLUMNS]>,
+    frontier: Vec<Hash>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct C63CorrectionTileMetadataReference {
+    birth_epoch: u64,
+    allocation_binding_digest: Hash,
+    source_schedule_digest: Hash,
+}
+
+/// Two-level D12-inside-D10 multiproof. Virtual rows and tiles carry no payload.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C63CorrectionRowsOpeningReference {
+    tiles: Vec<C63CorrectionTileOpeningReference>,
+    outer_frontier: Vec<Hash>,
+}
+
+impl C63CorrectionRowsOpeningReference {
+    /// Encode only non-derivable data. Query coordinates and virtual zeros are external.
+    pub fn encode(&self, accepted_len: u16, queried_rows: &[u32]) -> Result<Vec<u8>, String> {
+        validate_c63_correction_queries(queried_rows)?;
+        validate_c63_accepted_len(accepted_len)?;
+        let positions = c63_correction_query_positions(queried_rows);
+        let mut tiles = self.tiles.iter();
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&C63_CORRECTION_OPENING_MAGIC);
+        bytes.extend_from_slice(&C63_CORRECTION_OPENING_VERSION.to_le_bytes());
+        for position in
+            positions.into_iter().filter(|&position| position < usize::from(accepted_len))
+        {
+            let tile =
+                tiles.next().ok_or_else(|| "C6.3 correction tile opening is missing".to_owned())?;
+            let live_count = c63_correction_live_query_count(queried_rows, position);
+            match (live_count, tile.metadata) {
+                (0, None) => {}
+                (0, Some(_)) => {
+                    return Err("C6.3 correction tile has unnecessary metadata".to_owned())
+                }
+                (_, None) => return Err("C6.3 correction tile metadata is missing".to_owned()),
+                (_, Some(metadata)) => {
+                    validate_c63_correction_metadata(metadata)?;
+                    bytes.extend_from_slice(&metadata.birth_epoch.to_le_bytes());
+                    bytes.extend_from_slice(&metadata.allocation_binding_digest);
+                    bytes.extend_from_slice(&metadata.source_schedule_digest);
+                }
+            }
+            if tile.corrections.len() != live_count {
+                return Err("C6.3 correction row payload count differs".to_owned());
+            }
+            for row in &tile.corrections {
+                for value in row {
+                    bytes.extend_from_slice(&value.value().to_le_bytes());
+                }
+            }
+            encode_c63_frontier(&mut bytes, &tile.frontier, C63_BOLT_ROWS_PER_POSITION)?;
+        }
+        if tiles.next().is_some() {
+            return Err("C6.3 correction proof has trailing tile openings".to_owned());
+        }
+        encode_c63_frontier(&mut bytes, &self.outer_frontier, 1 << 10)?;
+        Ok(bytes)
+    }
+
+    pub fn decode(bytes: &[u8], accepted_len: u16, queried_rows: &[u32]) -> Result<Self, String> {
+        validate_c63_correction_queries(queried_rows)?;
+        validate_c63_accepted_len(accepted_len)?;
+        let mut cursor = C63CorrectionOpeningCursor::new(bytes);
+        if cursor.take(8)? != C63_CORRECTION_OPENING_MAGIC
+            || cursor.u16()? != C63_CORRECTION_OPENING_VERSION
+        {
+            return Err("C6.3 correction opening header differs".to_owned());
+        }
+        let mut tiles = Vec::new();
+        for position in c63_correction_query_positions(queried_rows)
+            .into_iter()
+            .filter(|&position| position < usize::from(accepted_len))
+        {
+            let live_count = c63_correction_live_query_count(queried_rows, position);
+            let metadata = if live_count == 0 {
+                None
+            } else {
+                let metadata = C63CorrectionTileMetadataReference {
+                    birth_epoch: cursor.u64()?,
+                    allocation_binding_digest: cursor.hash()?,
+                    source_schedule_digest: cursor.hash()?,
+                };
+                validate_c63_correction_metadata(metadata)?;
+                Some(metadata)
+            };
+            let mut corrections = Vec::with_capacity(live_count);
+            for _ in 0..live_count {
+                let mut row = [Fp::ZERO; C63_BOLT_COLUMNS];
+                for value in &mut row {
+                    *value = cursor.fp()?;
+                }
+                corrections.push(row);
+            }
+            let frontier = cursor.frontier(C63_BOLT_ROWS_PER_POSITION)?;
+            tiles.push(C63CorrectionTileOpeningReference { metadata, corrections, frontier });
+        }
+        let outer_frontier = cursor.frontier(1 << 10)?;
+        cursor.finish()?;
+        Ok(Self { tiles, outer_frontier })
+    }
+}
+
+/// Reference prover for the exact production-depth correction tree.
+pub fn c63_open_correction_rows_reference(
+    profile_digest: Hash,
+    epoch: u64,
+    accepted_tiles: &[Vec<C63CorrectionRowReference>],
+    queried_rows: &[u32],
+) -> Result<(Hash, C63CorrectionRowsOpeningReference), String> {
+    validate_c63_correction_queries(queried_rows)?;
+    let tile_roots = accepted_tiles
+        .iter()
+        .enumerate()
+        .map(|(position, rows)| {
+            if rows.first().map(|row| usize::from(row.position)) != Some(position) {
+                return Err("C6.3 accepted correction tile position differs".to_owned());
+            }
+            c63_correction_tile_root_reference(rows)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let state_root = c63_correction_state_root_reference(profile_digest, epoch, &tile_roots)?;
+    let virtual_tile_root = c63_virtual_correction_tile_root();
+    let mut outer_leaves = vec![virtual_tile_root; 1 << 10];
+    outer_leaves[..tile_roots.len()].copy_from_slice(&tile_roots);
+    let outer_tree = MerkleTree::from_leaves(outer_leaves);
+    let positions = queried_rows.iter().map(|row| (*row as usize) >> 12).collect::<Vec<_>>();
+    let mut unique_positions = positions.clone();
+    unique_positions.dedup();
+    let outer_frontier = outer_tree
+        .open_multi(&unique_positions)
+        .ok_or_else(|| "C6.3 correction outer query set is invalid".to_owned())?;
+
+    let mut tiles = Vec::new();
+    for position in unique_positions.iter().copied().filter(|&position| position < tile_roots.len())
+    {
+        let rows = &accepted_tiles[position];
+        let mut leaves =
+            rows.iter().map(C63CorrectionRowReference::hash).collect::<Result<Vec<_>, _>>()?;
+        leaves.resize(C63_BOLT_ROWS_PER_POSITION, c63_virtual_correction_row_hash());
+        let tree = MerkleTree::from_leaves(leaves);
+        let locals = queried_rows
+            .iter()
+            .copied()
+            .filter(|row| (*row as usize) >> 12 == position)
+            .map(|row| (row as usize) & (C63_BOLT_ROWS_PER_POSITION - 1))
+            .collect::<Vec<_>>();
+        let corrections = locals
+            .iter()
+            .copied()
+            .filter(|&local| local < C63_BOLT_LIVE_ROWS_PER_POSITION)
+            .map(|local| rows[local].corrections)
+            .collect::<Vec<_>>();
+        let metadata = (!corrections.is_empty()).then_some(C63CorrectionTileMetadataReference {
+            birth_epoch: rows[0].birth_epoch,
+            allocation_binding_digest: rows[0].allocation_binding_digest,
+            source_schedule_digest: rows[0].source_schedule_digest,
+        });
+        let frontier = tree
+            .open_multi(&locals)
+            .ok_or_else(|| "C6.3 correction tile query set is invalid".to_owned())?;
+        tiles.push(C63CorrectionTileOpeningReference { metadata, corrections, frontier });
+    }
+    Ok((state_root, C63CorrectionRowsOpeningReference { tiles, outer_frontier }))
+}
+
+/// Verify queried correction rows and return the authenticated `m=D'*rho` spots.
+pub fn c63_verify_correction_rows_reference(
+    state_root: Hash,
+    profile_digest: Hash,
+    epoch: u64,
+    accepted_len: u16,
+    queried_rows: &[u32],
+    rho: &[Fp2; C63_BOLT_COLUMNS],
+    proof: &C63CorrectionRowsOpeningReference,
+) -> Result<Vec<(u32, Fp2)>, String> {
+    validate_c63_correction_queries(queried_rows)?;
+    validate_c63_accepted_len(accepted_len)?;
+
+    let unique_positions = c63_correction_query_positions(queried_rows);
+    let mut tile_openings = proof.tiles.iter();
+    let mut tile_roots = Vec::with_capacity(unique_positions.len());
+    let mut spots = Vec::with_capacity(queried_rows.len());
+    for &position in &unique_positions {
+        let rows = queried_rows
+            .iter()
+            .copied()
+            .filter(|row| (*row as usize) >> 12 == position)
+            .collect::<Vec<_>>();
+        if position >= usize::from(accepted_len) {
+            tile_roots.push(c63_virtual_correction_tile_root());
+            spots.extend(rows.into_iter().map(|row| (row, Fp2::ZERO)));
+            continue;
+        }
+
+        let opening = tile_openings
+            .next()
+            .ok_or_else(|| "C6.3 accepted correction tile opening is missing".to_owned())?;
+        let locals = rows
+            .iter()
+            .map(|row| (*row as usize) & (C63_BOLT_ROWS_PER_POSITION - 1))
+            .collect::<Vec<_>>();
+        let live_count =
+            locals.iter().filter(|&&local| local < C63_BOLT_LIVE_ROWS_PER_POSITION).count();
+        if opening.corrections.len() != live_count
+            || (live_count == 0) != opening.metadata.is_none()
+        {
+            return Err("C6.3 correction row payload shape differs".to_owned());
+        }
+        let mut corrections = opening.corrections.iter();
+        let mut leaf_hashes = Vec::with_capacity(locals.len());
+        for (&row_index, &local) in rows.iter().zip(&locals) {
+            if local >= C63_BOLT_LIVE_ROWS_PER_POSITION {
+                leaf_hashes.push(c63_virtual_correction_row_hash());
+                spots.push((row_index, Fp2::ZERO));
+                continue;
+            }
+            let correction = corrections
+                .next()
+                .ok_or_else(|| "C6.3 live correction row opening is missing".to_owned())?;
+            let metadata = opening.metadata.expect("checked live C6.3 metadata");
+            let row = C63CorrectionRowReference {
+                position: position as u16,
+                layer_high: (local >> 9) as u8,
+                channel_low: (local & 0x01ff) as u16,
+                birth_epoch: metadata.birth_epoch,
+                allocation_binding_digest: metadata.allocation_binding_digest,
+                source_schedule_digest: metadata.source_schedule_digest,
+                corrections: *correction,
+            };
+            leaf_hashes.push(row.hash()?);
+            let value = correction
+                .iter()
+                .zip(rho)
+                .fold(Fp2::ZERO, |sum, (&correction, &weight)| sum + weight.mul_base(correction));
+            spots.push((row_index, value));
+        }
+        if corrections.next().is_some() {
+            return Err("C6.3 live correction row opening has trailing payload".to_owned());
+        }
+        tile_roots.push(
+            multi_root(&locals, &leaf_hashes, &opening.frontier, 12)
+                .ok_or_else(|| "C6.3 correction tile multiproof is invalid".to_owned())?,
+        );
+    }
+    if tile_openings.next().is_some() {
+        return Err("C6.3 correction proof has trailing tile openings".to_owned());
+    }
+    let inner_root = multi_root(&unique_positions, &tile_roots, &proof.outer_frontier, 10)
+        .ok_or_else(|| "C6.3 correction outer multiproof is invalid".to_owned())?;
+    let recovered = c63_correction_state_root_from_inner_reference(
+        profile_digest,
+        epoch,
+        accepted_len,
+        inner_root,
+    )?;
+    if recovered != state_root {
+        return Err("C6.3 correction state root differs".to_owned());
+    }
+    Ok(spots)
+}
+
+fn validate_c63_correction_queries(queried_rows: &[u32]) -> Result<(), String> {
+    if queried_rows.is_empty()
+        || queried_rows.windows(2).any(|pair| pair[0] >= pair[1])
+        || queried_rows.last().is_some_and(|&row| row as usize >= C63_BOLT_ROWS)
+    {
+        return Err("C6.3 correction query rows are noncanonical".to_owned());
+    }
+    Ok(())
+}
+
+fn validate_c63_accepted_len(accepted_len: u16) -> Result<(), String> {
+    if accepted_len > C6PersistentCacheLayout::production().capacity_tokens {
+        return Err("C6.3 accepted correction length is invalid".to_owned());
+    }
+    Ok(())
+}
+
+fn c63_correction_query_positions(queried_rows: &[u32]) -> Vec<usize> {
+    let mut positions = queried_rows.iter().map(|row| (*row as usize) >> 12).collect::<Vec<_>>();
+    positions.dedup();
+    positions
+}
+
+fn c63_correction_live_query_count(queried_rows: &[u32], position: usize) -> usize {
+    queried_rows
+        .iter()
+        .filter(|&&row| {
+            (row as usize) >> 12 == position
+                && (row as usize) & (C63_BOLT_ROWS_PER_POSITION - 1)
+                    < C63_BOLT_LIVE_ROWS_PER_POSITION
+        })
+        .count()
+}
+
+fn validate_c63_correction_metadata(
+    metadata: C63CorrectionTileMetadataReference,
+) -> Result<(), String> {
+    if metadata.birth_epoch == 0
+        || metadata.allocation_binding_digest == [0; 32]
+        || metadata.source_schedule_digest == [0; 32]
+    {
+        return Err("C6.3 correction tile metadata is invalid".to_owned());
+    }
+    Ok(())
+}
+
+fn encode_c63_frontier(
+    bytes: &mut Vec<u8>,
+    frontier: &[Hash],
+    maximum: usize,
+) -> Result<(), String> {
+    if frontier.len() > maximum {
+        return Err("C6.3 correction multiproof frontier is too large".to_owned());
+    }
+    bytes.extend_from_slice(
+        &u32::try_from(frontier.len())
+            .map_err(|_| "C6.3 correction frontier count overflows".to_owned())?
+            .to_le_bytes(),
+    );
+    for hash in frontier {
+        bytes.extend_from_slice(hash);
+    }
+    Ok(())
+}
+
+struct C63CorrectionOpeningCursor<'a> {
+    bytes: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> C63CorrectionOpeningCursor<'a> {
+    const fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes, offset: 0 }
+    }
+
+    fn take(&mut self, count: usize) -> Result<&'a [u8], String> {
+        let end = self
+            .offset
+            .checked_add(count)
+            .ok_or_else(|| "C6.3 correction opening cursor overflows".to_owned())?;
+        if end > self.bytes.len() {
+            return Err("C6.3 correction opening is truncated".to_owned());
+        }
+        let result = &self.bytes[self.offset..end];
+        self.offset = end;
+        Ok(result)
+    }
+
+    fn u16(&mut self) -> Result<u16, String> {
+        Ok(u16::from_le_bytes(self.take(2)?.try_into().expect("fixed u16")))
+    }
+
+    fn u32(&mut self) -> Result<usize, String> {
+        Ok(u32::from_le_bytes(self.take(4)?.try_into().expect("fixed u32")) as usize)
+    }
+
+    fn u64(&mut self) -> Result<u64, String> {
+        Ok(u64::from_le_bytes(self.take(8)?.try_into().expect("fixed u64")))
+    }
+
+    fn fp(&mut self) -> Result<Fp, String> {
+        let value = self.u64()?;
+        if value >= volta_field::P {
+            return Err("C6.3 correction opening field element is noncanonical".to_owned());
+        }
+        Ok(Fp::new(value))
+    }
+
+    fn hash(&mut self) -> Result<Hash, String> {
+        Ok(self.take(32)?.try_into().expect("fixed hash"))
+    }
+
+    fn frontier(&mut self, maximum: usize) -> Result<Vec<Hash>, String> {
+        let count = self.u32()?;
+        if count > maximum
+            || count.checked_mul(32).is_none_or(|bytes| bytes > self.bytes.len() - self.offset)
+        {
+            return Err("C6.3 correction multiproof frontier is invalid".to_owned());
+        }
+        (0..count).map(|_| self.hash()).collect()
+    }
+
+    fn finish(self) -> Result<(), String> {
+        if self.offset != self.bytes.len() {
+            return Err("C6.3 correction opening has trailing bytes".to_owned());
+        }
+        Ok(())
+    }
+}
+
 /// Hash one accepted-position tile. Rows must be canonical layer-high/channel-low order.
 pub fn c63_correction_tile_root_reference(
     rows: &[C63CorrectionRowReference],
@@ -549,12 +951,33 @@ pub fn c63_correction_state_root_reference(
     let mut tiles = vec![virtual_root; 1 << 10];
     tiles[..accepted_tile_roots.len()].copy_from_slice(accepted_tile_roots);
     let inner_root = MerkleTree::from_leaves(tiles).root();
+    c63_correction_state_root_from_inner_reference(
+        profile_digest,
+        epoch,
+        accepted_tile_roots.len() as u16,
+        inner_root,
+    )
+}
+
+fn c63_correction_state_root_from_inner_reference(
+    profile_digest: Hash,
+    epoch: u64,
+    accepted_len: u16,
+    inner_root: Hash,
+) -> Result<Hash, String> {
+    if profile_digest == [0; 32]
+        || accepted_len > C6PersistentCacheLayout::production().capacity_tokens
+        || inner_root == [0; 32]
+        || (epoch == 0) != (accepted_len == 0)
+    {
+        return Err("C6.3 correction state metadata is invalid".to_owned());
+    }
     let mut hasher = blake3::Hasher::new_derive_key(C63_STATE_ROOT_HASH_CONTEXT);
     hasher.update(&C63_CORRECTION_TREE_MAGIC);
     hasher.update(&C63_CORRECTION_TREE_VERSION.to_le_bytes());
     hasher.update(&profile_digest);
     hasher.update(&epoch.to_le_bytes());
-    hasher.update(&(accepted_tile_roots.len() as u16).to_le_bytes());
+    hasher.update(&accepted_len.to_le_bytes());
     hasher.update(&inner_root);
     Ok(*hasher.finalize().as_bytes())
 }
@@ -1141,6 +1564,81 @@ mod tests {
         nonzero_padding[256].corrections[8] = Fp::ONE;
         assert!(c63_correction_tile_root_reference(&nonzero_padding).is_err());
         assert!(c63_correction_state_root_reference(profile, 0, &[tile_0]).is_err());
+    }
+
+    #[test]
+    fn correction_multiproof_authenticates_spots_and_virtual_zeros() {
+        let profile = [7; 32];
+        let rows = correction_rows(0, 1, [11; 32], [17; 32]);
+        let queried = [0, 7, 3_071, 3_072, 4_095, 4_096 + 19];
+        let rho: [Fp2; C63_BOLT_COLUMNS] = std::array::from_fn(|column| {
+            Fp2::new(Fp::new(31 + column as u64), Fp::new(71 + 3 * column as u64))
+        });
+        let (root, proof) =
+            c63_open_correction_rows_reference(profile, 1, &[rows.clone()], &queried).unwrap();
+        let spots =
+            c63_verify_correction_rows_reference(root, profile, 1, 1, &queried, &rho, &proof)
+                .unwrap();
+        let encoded = proof.encode(1, &queried).unwrap();
+        let decoded = C63CorrectionRowsOpeningReference::decode(&encoded, 1, &queried).unwrap();
+        assert_eq!(decoded, proof);
+        assert_eq!(spots.len(), queried.len());
+        for (offset, &row_index) in queried.iter().enumerate() {
+            let expected = if row_index < C63_BOLT_LIVE_ROWS_PER_POSITION as u32 {
+                rows[row_index as usize]
+                    .corrections
+                    .iter()
+                    .zip(&rho)
+                    .fold(Fp2::ZERO, |sum, (&correction, &weight)| {
+                        sum + weight.mul_base(correction)
+                    })
+            } else {
+                Fp2::ZERO
+            };
+            assert_eq!(spots[offset], (row_index, expected));
+        }
+
+        let mut bad_row = proof.clone();
+        bad_row.tiles[0].corrections[0][0] += Fp::ONE;
+        assert!(c63_verify_correction_rows_reference(
+            root, profile, 1, 1, &queried, &rho, &bad_row
+        )
+        .is_err());
+        let mut bad_frontier = proof.clone();
+        bad_frontier.tiles[0].frontier[0][0] ^= 1;
+        assert!(c63_verify_correction_rows_reference(
+            root,
+            profile,
+            1,
+            1,
+            &queried,
+            &rho,
+            &bad_frontier,
+        )
+        .is_err());
+        let mut trailing = proof.clone();
+        trailing.tiles.push(trailing.tiles[0].clone());
+        assert!(c63_verify_correction_rows_reference(
+            root, profile, 1, 1, &queried, &rho, &trailing
+        )
+        .is_err());
+        assert!(c63_verify_correction_rows_reference(root, profile, 1, 1, &[0, 0], &rho, &proof,)
+            .is_err());
+        assert!(c63_verify_correction_rows_reference(root, profile, 1, 2, &queried, &rho, &proof)
+            .is_err());
+
+        let mut noncanonical = encoded.clone();
+        noncanonical[82..90].copy_from_slice(&volta_field::P.to_le_bytes());
+        assert!(C63CorrectionRowsOpeningReference::decode(&noncanonical, 1, &queried).is_err());
+        let mut trailing_bytes = encoded.clone();
+        trailing_bytes.push(0);
+        assert!(C63CorrectionRowsOpeningReference::decode(&trailing_bytes, 1, &queried).is_err());
+        assert!(C63CorrectionRowsOpeningReference::decode(
+            &encoded[..encoded.len() - 1],
+            1,
+            &queried,
+        )
+        .is_err());
     }
 
     #[test]

@@ -102,8 +102,9 @@ C63_D22_WHIR_POW_BITS = 17
 C63_D19_WHIR_POW_BITS = 16
 C63_D22_WHIR_POW_WITNESSES = 17
 C63_D19_WHIR_POW_WITNESSES = 13
-C63_D22_WHIR_BODY_BYTES = 1_279_752
-C63_D19_WHIR_BODY_BYTES = 964_688
+C63_D22_WHIR_BODY_BYTES = 1_279_736
+C63_D19_WHIR_BODY_BYTES = 964_672
+C63_PROJECTED_WHIR_OUTER_BYTES = 20
 C63_PROFILED_WHIR_BODIES_BYTES = 2 * (
     C63_D22_WHIR_BODY_BYTES + C63_D19_WHIR_BODY_BYTES
 )
@@ -669,6 +670,7 @@ def build_report() -> dict[str, Any]:
             + C63_MERKLE_MULTIPROOF_COUNT_BYTES
         )
         + C63_PROFILED_WHIR_BODIES_BYTES
+        + C63_INDEPENDENT_A_PROOFS * C63_PROJECTED_WHIR_OUTER_BYTES
     )
     certificate_at_strict_pi_cap_before_new_public_framing = (
         C62_CERTIFICATE_CODEC_CEILING_BYTES
@@ -998,6 +1000,7 @@ def build_report() -> dict[str, Any]:
                     "d19_pow_witnesses": C63_D19_WHIR_POW_WITNESSES,
                     "d19_body_bytes_each": C63_D19_WHIR_BODY_BYTES,
                     "two_d22_plus_two_d19_bytes": C63_PROFILED_WHIR_BODIES_BYTES,
+                    "projected_outer_bytes_each": C63_PROJECTED_WHIR_OUTER_BYTES,
                     "unmodified_double_encoded_d23_d20_fallback_bytes": (
                         C63_UNMODIFIED_DOUBLE_ENCODED_WHIR_BODIES_BYTES
                     ),
@@ -1005,8 +1008,13 @@ def build_report() -> dict[str, Any]:
                     "honest_preencoded_cached_base_reference_green": True,
                     "cpu_linked_projected_adapter_reference_green": True,
                     "cpu_fresh_mask_encoding_relation_reference_green": True,
+                    "cpu_four_authenticated_terminal_lanes_reference_green": True,
+                    "canonical_whir_codec_with_native_pow_green": True,
+                    "canonical_correction_rows_codec_green": True,
+                    "separated_h_pow_h_fs_reference_green": True,
                     "production_linked_projected_adapter_missing": True,
                     "production_fresh_mask_encoding_relation_missing": True,
+                    "production_four_terminal_lanes_missing": True,
                     "joint_ideal_correction_privacy_lean_green": True,
                     "production_codec_privacy_audit_missing": True,
                     "credit": False,
@@ -1276,15 +1284,15 @@ def build_report() -> dict[str, Any]:
     assert t16_encoded_sketch_independent_opening["opening_bytes_before_framing"] == 280_768
     assert t16_encoded_sketch_outer_stress_opening["opening_bytes_before_framing"] == 2_083_392
     assert t16_old_profile_whir_bodies == 3_473_152
-    assert C63_PROFILED_WHIR_BODIES_BYTES == 4_488_880
+    assert C63_PROFILED_WHIR_BODIES_BYTES == 4_488_816
     assert 2 * (
         C63_D22_WHIR_POW_WITNESSES + C63_D19_WHIR_POW_WITNESSES
     ) == C63_WHIR_PHASE_EVENT_LOWER_BOUND
     assert C63_D22_WHIR_ROUND_QUERIES[0] == C63_PAIRED_A_QUERIES
     assert C63_D19_WHIR_ROUND_QUERIES[0] == C63_PAIRED_A_QUERIES
-    assert t16_profiled_public_bulk_screen == 6_580_344
-    assert t16_independent_limb_public_bulk_screen == 6_712_952
-    assert t16_independent_separate_public_bulk_screen == 6_728_508
+    assert t16_profiled_public_bulk_screen == 6_580_280
+    assert t16_independent_limb_public_bulk_screen == 6_712_888
+    assert t16_independent_separate_public_bulk_screen == 6_728_484
     assert (
         C62_PI_FINAL_MAX_BYTES
         - C62_CACHE_COHORT_LINK_SAVING_BYTES
@@ -1297,26 +1305,26 @@ def build_report() -> dict[str, Any]:
         == 1_796_986
     )
     assert projected_pi_final_with_sparse_h == 2_704_509
-    assert certificate_with_projected_pi_before_outer_framing == 22_995_717
+    assert certificate_with_projected_pi_before_outer_framing == 22_995_653
     assert (
         CERTIFICATE_LIMIT_BYTES - certificate_with_projected_pi_before_outer_framing
-        == 7_004_283
+        == 7_004_347
     )
-    assert certificate_at_strict_pi_cap_before_new_public_framing == 24_791_207
+    assert certificate_at_strict_pi_cap_before_new_public_framing == 24_791_143
     assert (
         CERTIFICATE_LIMIT_BYTES
         - certificate_at_strict_pi_cap_before_new_public_framing
-        == 5_208_793
+        == 5_208_857
     )
-    assert independent_limb_certificate_with_projected_pi == 23_128_325
-    assert independent_limb_certificate_at_strict_pi_cap == 24_923_815
-    assert CERTIFICATE_LIMIT_BYTES - independent_limb_certificate_at_strict_pi_cap == 5_076_185
-    assert independent_separate_certificate_with_projected_pi == 23_143_881
-    assert independent_separate_certificate_at_strict_pi_cap == 24_939_371
-    assert CERTIFICATE_LIMIT_BYTES - independent_separate_certificate_at_strict_pi_cap == 5_060_629
+    assert independent_limb_certificate_with_projected_pi == 23_128_261
+    assert independent_limb_certificate_at_strict_pi_cap == 24_923_751
+    assert CERTIFICATE_LIMIT_BYTES - independent_limb_certificate_at_strict_pi_cap == 5_076_249
+    assert independent_separate_certificate_with_projected_pi == 23_143_857
+    assert independent_separate_certificate_at_strict_pi_cap == 24_939_347
+    assert CERTIFICATE_LIMIT_BYTES - independent_separate_certificate_at_strict_pi_cap == 5_060_653
     assert setup_with_sparse_descriptor == 101_197_697
     assert setup_plus_max_certificate == 131_197_697
-    assert setup_plus_projected_first == 124_193_414
+    assert setup_plus_projected_first == 124_193_350
     assert C63_SPARSE_SETUP_RESIDENT_BYTES == 805_306_368
     assert setup_resident_vram == 39_951_669_100
     assert VRAM_GUARD_BYTES - setup_resident_vram == 5_866_907_764

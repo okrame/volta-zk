@@ -145,21 +145,23 @@ pub use c61_terminal_functional::{
 pub use c63_authenticated_sketch::{
     c63_bolt_correction_cell, c63_bolt_correction_index,
     c63_bolt_interleaved_coefficient_reference, c63_correction_state_root_reference,
-    c63_correction_tile_root_reference, c63_production_compact_cache_reference_census,
+    c63_correction_tile_root_reference, c63_open_correction_rows_reference,
+    c63_production_compact_cache_reference_census, c63_verify_correction_rows_reference,
     C63BoltCorrectionIndex, C63CompactCacheReference, C63CompactCacheReferenceCensus,
-    C63CorrectionRowReference, C63SparseSetupDescriptor, C63SparseSetupReference,
+    C63CorrectionRowReference, C63CorrectionRowsOpeningReference,
+    C63CorrectionTileOpeningReference, C63SparseSetupDescriptor, C63SparseSetupReference,
     C63SparseSketchEdge, C63SparseSketchReference, C63_BOLT_COLUMNS, C63_BOLT_COLUMN_LOG2,
     C63_BOLT_LDPC_CHECK_DEGREE, C63_BOLT_LDPC_COLUMN_DEGREE, C63_BOLT_LIVE_ROWS_PER_POSITION,
     C63_BOLT_ROWS, C63_BOLT_ROWS_PER_POSITION, C63_BOLT_ROW_LOG2, C63_BOLT_SKETCH_ROWS,
     C63_BOLT_SKETCH_ROW_LOG2, C63_SPARSE_SETUP_DESCRIPTOR_BYTES,
 };
 pub use c63_sparse_h_closure::{
-    prove_c63_sparse_h_closure_reference, verify_c63_sparse_h_closure_reference,
-    C63SparseHClosureError, C63SparseHClosureProof, C63SparseHClosureReferenceAudit,
-    C63SparseHClosureStatement, C63_SPARSE_H_PRODUCTION_FRAMED_BYTES,
-    C63_SPARSE_H_PRODUCTION_FRAMING_BYTES,
-    C63_SPARSE_H_PRODUCTION_FULL_CORRELATIONS_PER_TAPE,
-    C63_SPARSE_H_PRODUCTION_ROUNDS, C63_SPARSE_H_PRODUCTION_ROUND_PAYLOAD_BYTES,
+    prove_c63_sparse_h_closure_reference, verify_c63_sparse_h_closure_from_whir_openings_reference,
+    verify_c63_sparse_h_closure_reference, C63SparseHClosureError, C63SparseHClosureProof,
+    C63SparseHClosureReferenceAudit, C63SparseHClosureStatement,
+    C63_SPARSE_H_PRODUCTION_FRAMED_BYTES, C63_SPARSE_H_PRODUCTION_FRAMING_BYTES,
+    C63_SPARSE_H_PRODUCTION_FULL_CORRELATIONS_PER_TAPE, C63_SPARSE_H_PRODUCTION_ROUNDS,
+    C63_SPARSE_H_PRODUCTION_ROUND_PAYLOAD_BYTES,
 };
 pub use c6_authenticated_output_link::{
     prove_c6_authenticated_output_link_persisted_cuda,

@@ -1,6 +1,6 @@
 # C6.3 Authenticated Sketched WHIR Design
 
-Status: **R0 GREEN / R1 T16 + FINITE-N + SAMPLER + SPARSE-CLOSURE + HONEST PRE-ENCODED REFERENCES GREEN / VERIFIED INITIAL LINK + PARTITION + PRIVACY + SOUNDNESS HARD STOPS / NO POD / NO GATE CREDIT**
+Status: **R0 GREEN / R1 PRIVACY + CORRECTION MULTIPROOF + FOUR LINKED WHIR CODECS + SEPARATED POW REFERENCE GREEN / OUTER CODEC + REAL-PCG + SOUNDNESS + GPU HARD STOPS / NO POD / NO GATE CREDIT**
 
 This document is the authority for C6.3. It replaces C6.2 only for new C6.3
 work; C6.2 code, artifacts and dispositions remain immutable evidence. The
@@ -11,7 +11,7 @@ from measured scaling rather than assumed here.
 
 The owner opens autonomous local design and implementation of an
 Authenticated Sketched PCS. The objective is a complete response proof below
-15 seconds on one A100 without moving work to another response and without
+20 seconds on one A100 without moving work to another response and without
 weakening the existing designated-verifier statement. The owner accepts a
 complete certificate up to `30,000,000 B` for this experiment.
 
@@ -145,20 +145,19 @@ yet, so neither value receives credit.
 
 The intended adapter proves decoded `m` at D22 and `u` at D19 while supplying
 already encoded `w=C(m)` and `y=C(u)` as initial oracles. Two 104-bit cores of
-each type screen at `4,488,880 B`; ordinary WHIR over D23/D20 would encode
+each type screen at `4,488,816 B`; ordinary WHIR over D23/D20 would encode
 `w/y` again and is only a `4,822,680-B` fallback. Paired public bulk is
-`6,580,344 B`. The `1,496-B` sparse closure enters the designated tail, giving
-a projected `2,704,509-B` `pi_final` and `22,995,717-B` certificate before
+`6,580,280 B`. The `1,496-B` sparse closure enters the designated tail, giving
+a projected `2,704,509-B` `pi_final` and `22,995,653-B` certificate before
 outer framing. Charging the strict `pi_final` cap instead gives
-`24,791,207 B`, leaving `5,208,793 B`.
-Without paired query sharing, public bulk is `6,712,952 B` and the same strict
-projection is `24,923,815 B`, still leaving `5,076,185 B`.
+`24,791,143 B`, leaving `5,208,857 B`.
+Without paired query sharing, public bulk is `6,712,888 B` and the same strict
+projection is `24,923,751 B`, still leaving `5,076,249 B`.
 
-This remains `credit:false`. The existing codec forbids the required
-proof-of-work. The cached-base API and an honest D19-by-32 CPU projection are
-now executable, but the verifier-visible link from the accepted `A` root to
-the randomized initial root is absent. The inherited `2^20` transcript-query
-bound also omits grinding. Known terms give
+This remains `credit:false`. The fork-specific canonical codec now includes
+every required proof-of-work witness and the local projected verifier binds
+the accepted `A` rows to the randomized initial oracle. The inherited `2^20`
+transcript-query bound still omits grinding. Known terms give
 `81.0623977038 bits` only under an unproved one-error-per-core model. Unioning
 just the 60 proof-of-work phase events gives `78.0076537129 bits` even before
 grinding. Adding only the `3,997,696` expected trials instead gives
@@ -549,8 +548,10 @@ diagnostic only.
 D19 `Fp2` symbols and `y=C(u)` has D20. The 104-bit analytic adapter screen
 uses D22 intermediate rates `[1,2,3,3,4,5,6,7]` with at most 17 bits of
 fold proof-of-work, and D19 rates `[1,2,3,4,5,6]` with at most 16 bits. The
-respective body sizes are `1,279,752 B` and `964,688 B`, including native
-proof-of-work witnesses; two limbs of each total `4,488,880 B`. An unmodified
+respective claimless body sizes are `1,279,736 B` and `964,672 B`, including
+native proof-of-work witnesses; two limbs of each total `4,488,816 B`. No
+clear terminal evaluation is serialized. Each projected D19 artifact adds a
+20-byte outer frame plus its authenticated `A` opening. An unmodified
 WHIR call over D23/D20 would double-encode `w/y` and costs `4,822,680 B`; it is
 a safe implementation fallback, not the selected statement. This geometry is
 why `t=16`, rather than the smaller-row `t=4` or earlier `t=128`, is the
@@ -558,8 +559,8 @@ current byte/time front-runner.
 
 | decoded core | round queries | final | mask | PoW witnesses | body |
 |---|---|---:|---:|---:|---:|
-| D22 `m` limb | 243, 243, 112, 73, 73, 54, 43, 36 | 31 | 254 | 17 | 1,279,752 B |
-| D19 `u` limb | 243, 243, 112, 73, 54, 43 | 36 | 252 | 13 | 964,688 B |
+| D22 `m` limb | 243, 243, 112, 73, 73, 54, 43, 36 | 31 | 254 | 17 | 1,279,736 B |
+| D19 `u` limb | 243, 243, 112, 73, 54, 43 | 36 | 252 | 13 | 964,672 B |
 
 The total work of applying `H` across all 16 columns
 is `16 * 2^26 = 1,073,741,824` sparse field multiply-adds only for a fully
@@ -588,13 +589,14 @@ This term does not silently cover any additional ZeroOpen or MAC failure;
 their final C6.3 census is still open. The scaled dual-tape Rust
 prover/verifier and strict codec pass mutation tests.
 
-This closes the algebraic shape, not production integration. The current
-reference verifier receives full `m/u`, scans the 768-MiB expanded `H`, and is
-not connected to the WHIR terminal openings or state roots. A four-thread CPU
+This closes the algebraic shape, not production integration. The scaled
+reference now receives only the four authenticated WHIR terminal openings,
+reconstructs the two Fp2 scalars and feeds them into the sparse relation. Its
+production-dimension verifier will still scan the 768-MiB expanded `H`. A four-thread CPU
 scan is projected at `0.17--0.40 s` from the registered local rate with
-`65--80%` confidence, but must be measured. GPU ownership, privacy and the
-root/WHIR terminal link remain hard stops and receive no timing or protocol
-credit.
+`65--80%` confidence, but must be measured. The complete outer codec,
+real-PCG privacy audit and GPU ownership remain hard stops and receive no
+timing or protocol credit.
 
 The C6.3-specific contribution is the append-aligned 16-column reshape, the
 typed correction-row commitment and batching around Volta's accepted
@@ -765,27 +767,27 @@ MMCS lets its two limbs share `q_A=243` and costs `148,164 B`; two independent
 sets cost `280,772 B` at `q_A=486`. The latter is the fallback if path sharing
 does not survive the executable adapter.
 
-The four D22/D19 bodies add `4,488,880 B`, so paired public bulk is
-`6,580,344 B`. The sparse closure is MAC-dependent and belongs in `pi_final`:
+The four D22/D19 bodies add `4,488,816 B`, so paired public bulk is
+`6,580,280 B`. The sparse closure is MAC-dependent and belongs in `pi_final`:
 `2,703,013 + 1,496 = 2,704,509 B`, leaving `1,795,490 B` under the strict
-partition. Using that projected tail gives a `22,995,717-B` certificate and
-`124,193,414 B` for the measured setup floor plus first certificate. Replacing
-the projected tail with the strict `4,499,999-B` cap gives `24,791,207 B` and
-`5,208,793 B` of certificate headroom. The new outer frame and any tensor-link
+partition. Using that projected tail gives a `22,995,653-B` certificate and
+`124,193,350 B` for the measured setup floor plus first certificate. Replacing
+the projected tail with the strict `4,499,999-B` cap gives `24,791,143 B` and
+`5,208,857 B` of certificate headroom. The complete outer frame and any tensor-link
 message not already in the bodies or closure remain uncounted. A codec and
 separation theorem, not this arithmetic, decide the gates.
 
 Paired queries are an optimization, not a certificate-size dependency. Two
 independent 243-query limb sets have union at most 486; the maximum-frontier
-screen then gives `6,712,952 B` public bulk, `23,128,325 B` with the projected
-tail, or `24,923,815 B` under the strict `pi_final` cap. The last case still
-has `5,076,185 B` of headroom before outer framing.
+screen then gives `6,712,888 B` public bulk, `23,128,261 B` with the projected
+tail, or `24,923,751 B` under the strict `pi_final` cap. The last case still
+has `5,076,249 B` of headroom before outer framing.
 
 The smallest linked implementation may serialize the two `A` multiproofs
 separately before an outer union driver exists. That deliberately lazier
-fallback costs `296,328 B` for the two counted `A` openings, giving
-`6,728,508 B` public bulk, `23,143,881 B` with the projected tail, or
-`24,939,371 B` under the strict `pi_final` cap. It still leaves `5,060,629 B`
+fallback costs `296,328 B` for the two counted `A` openings plus two 20-byte
+projected frames, giving `6,728,484 B` public bulk, `23,143,857 B` with the
+projected tail, or `24,939,347 B` under the strict `pi_final` cap. It still leaves `5,060,653 B`
 before outer framing. All three layouts remain analytic and `credit:false`.
 
 The optimistic 104-bit union has `81.0623977038` bits under the inherited
@@ -806,8 +808,12 @@ keeps 104 bits and requires two
 independent modeled oracles:
 `H_pow(profile, role, phase, snapshot, witness)` for grinding and
 `H_fs(transcript, accepted_witness)` for challenges. A domain label on one
-challenger is insufficient. The unknown public-XOF hybrid remains an
-additional term. No complete soundness number exists yet.
+challenger is insufficient. The Rust reference now implements this separation
+with keyed BLAKE3 for `H_pow`; only a valid witness is absorbed by the ordinary
+Fiat--Shamir challenger. Changed role, transcript, phase or witness rejects,
+and a differential test proves grinding consumes no Fiat--Shamir samples. The
+whole-core theorem, separate query caps and unknown public-XOF hybrid remain
+open. No complete soundness number exists yet.
 
 VRAM requires sequencing, not eviction of `H`. A deliberately conservative
 state screen retains both accepted and proposed `A`: each uses `134,217,728 B`
@@ -831,9 +837,10 @@ Hiding randomness, typed
 framing and the Volta `H` closure may move the final size in either direction.
 
 The executable screen is `scripts/budget_c63_authenticated_sketch.py` (schema
-v11). Every gate stays `evaluated:false` until a canonical C6.3 codec is produced and
-verified. In particular, `pi_final`, exact soundness and complete prover time
-are unknown rather than inferred from the 23.56 MB estimate.
+v11). Canonical correction-row and four-lane WHIR codecs now exist locally,
+but every gate stays `evaluated:false` until one complete outer C6.3 artifact
+is produced and verified. In particular, `pi_final`, exact soundness and
+complete prover time are unknown rather than inferred from the 23.56 MB estimate.
 
 ## 6. Ordered local implementation
 
@@ -878,6 +885,18 @@ preceding design step; it does not silently relax a statement.
 Changing the protocol statement opens additive Lean work. Frozen historical
 M1--M11 files are not edited; C6.3 lemmas must cover the new relation before a
 production claim.
+
+The scaled CPU reference now closes the terminal-opening integration step. It
+executes four real Hiding-WHIR lanes (two D22 `m` limbs and two D19 `u` limbs),
+checks a separate designated terminal MAC for each lane, reconstructs the two
+Fp2 openings and feeds only those scalars into the sparse-`H` verifier. The
+verifier no longer needs either full witness table. The same test uses the
+linked `A -> y` path for both D19 limbs and derives its fused systematic spots
+from verified D12-inside-D10 correction multiproofs. All four actual proofs
+round-trip through strict codecs before verification; the two D19 artifacts
+contain exactly one linked `A` opening each. Production-depth synthetic codecs
+include every registered PoW witness. This remains `credit:false`: the fixture
+is scaled, uses mock correlations, and has no outer C6.3 codec or GPU owner.
 
 ### C63-G1 — GPU component boundary
 

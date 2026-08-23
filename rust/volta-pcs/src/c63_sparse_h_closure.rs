@@ -318,8 +318,9 @@ pub fn prove_c63_sparse_h_closure_with_spots_reference(
     })
 }
 
-/// Scaled verifier mirror.  It keeps both MAC equations separate and uses the
-/// supplied witness tables only to stand in for the future WHIR openings.
+/// Scaled verifier mirror. It keeps both MAC equations separate while using
+/// the supplied witness tables as a compatibility wrapper around the opening
+/// based verifier below.
 pub fn verify_c63_sparse_h_closure_reference(
     h: &C63SparseSketchReference,
     m: &[Fp2],
@@ -352,14 +353,86 @@ pub fn verify_c63_sparse_h_closure_with_spots_reference(
     contexts: &mut [VerifierCtx; C63_SPARSE_H_TAPES],
     transcript: &mut Transcript,
 ) -> Result<C63SparseHClosureReferenceAudit> {
+    let (input_log2, output_log2, claim, mut a) = prepare_relation(h, m, u, statement)?;
+    verify_c63_sparse_h_closure_prepared(
+        input_log2,
+        output_log2,
+        claim,
+        &mut a,
+        statement,
+        spots,
+        proof,
+        contexts,
+        transcript,
+        |point| {
+            let mut folded_m = m.to_vec();
+            for &challenge in point {
+                fold_low(&mut folded_m, challenge);
+            }
+            folded_m.first().copied().ok_or_else(|| {
+                C63SparseHClosureError::new("C6.3 sparse-H empty compatibility opening")
+            })
+        },
+    )
+}
+
+/// Verifier seam used by the complete C6.3 chain.
+///
+/// `u_opening` must be the already verified D19 WHIR opening at
+/// `statement.output_point()`. Once the sumcheck challenges determine the D22
+/// terminal point, `open_m` verifies the matching WHIR opening and returns its
+/// value. No full `m` or `u` witness table crosses this verifier boundary.
+pub fn verify_c63_sparse_h_closure_from_whir_openings_reference<F>(
+    h: &C63SparseSketchReference,
+    u_opening: Fp2,
+    statement: &C63SparseHClosureStatement,
+    spots: &[C63SystematicSpot],
+    proof: &C63SparseHClosureProof,
+    contexts: &mut [VerifierCtx; C63_SPARSE_H_TAPES],
+    transcript: &mut Transcript,
+    open_m: F,
+) -> Result<C63SparseHClosureReferenceAudit>
+where
+    F: FnOnce(&[Fp2]) -> std::result::Result<Fp2, C63SparseHClosureError>,
+{
+    let (input_log2, output_log2, mut a) = prepare_relation_from_output_opening(h, statement)?;
+    verify_c63_sparse_h_closure_prepared(
+        input_log2,
+        output_log2,
+        u_opening,
+        &mut a,
+        statement,
+        spots,
+        proof,
+        contexts,
+        transcript,
+        open_m,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_c63_sparse_h_closure_prepared<F>(
+    input_log2: u8,
+    output_log2: u8,
+    claim: Fp2,
+    a: &mut Vec<Fp2>,
+    statement: &C63SparseHClosureStatement,
+    spots: &[C63SystematicSpot],
+    proof: &C63SparseHClosureProof,
+    contexts: &mut [VerifierCtx; C63_SPARSE_H_TAPES],
+    transcript: &mut Transcript,
+    open_m: F,
+) -> Result<C63SparseHClosureReferenceAudit>
+where
+    F: FnOnce(&[Fp2]) -> std::result::Result<Fp2, C63SparseHClosureError>,
+{
     proof.validate_shape()?;
     if contexts[0].delta == contexts[1].delta {
         return Err(C63SparseHClosureError::new(
             "C6.3 sparse-H MAC tape multipliers are not independent",
         ));
     }
-    let (input_log2, output_log2, claim, mut a) = prepare_relation(h, m, u, statement)?;
-    validate_systematic_spots(spots, m.len())?;
+    validate_systematic_spots(spots, a.len())?;
     let mut claim = claim;
     let statement_digest =
         reference_statement_digest(statement, input_log2, output_log2, claim, spots);
@@ -371,10 +444,9 @@ pub fn verify_c63_sparse_h_closure_with_spots_reference(
     }
     transcript.append_message(HEADER_LABEL, &proof.header_bytes()?);
     if !spots.is_empty() {
-        fuse_systematic_spots(&mut a, &mut claim, spots, transcript.challenge_fp2());
+        fuse_systematic_spots(a, &mut claim, spots, transcript.challenge_fp2());
     }
 
-    let mut folded_m = m.to_vec();
     let mut current: [VerifierKey; C63_SPARSE_H_TAPES] =
         array::from_fn(|tape| VerifierKey::from_public(claim, contexts[tape].delta));
     let mut point = Vec::with_capacity(proof.round_count());
@@ -397,15 +469,13 @@ pub fn verify_c63_sparse_h_closure_with_spots_reference(
                 .add(one.scale(weights[1]))
                 .add(sent[tape][1].scale(weights[2]));
         }
-        fold_low(&mut a, challenge);
-        fold_low(&mut folded_m, challenge);
+        fold_low(a, challenge);
         point.push(challenge);
     }
 
+    let terminal_m = open_m(&point)?;
     transcript.append_fp2s(TERMINAL_LABEL, &proof.terminal_tags);
-    // Reference-only: production must bind this same-point `m` terminal to
-    // the two D22 Hiding-WHIR limb openings instead of receiving `m` here.
-    let terminal = a[0] * folded_m[0];
+    let terminal = a[0] * terminal_m;
     for tape in 0..C63_SPARSE_H_TAPES {
         let residual = current[tape].sub(VerifierKey::from_public(terminal, contexts[tape].delta));
         if !zero_open_verify(residual, proof.terminal_tags[tape]) {
@@ -420,10 +490,22 @@ pub fn verify_c63_sparse_h_closure_with_spots_reference(
     Ok(C63SparseHClosureReferenceAudit {
         sumcheck_point: point,
         terminal_a: a[0],
-        terminal_m: folded_m[0],
+        terminal_m,
         transcript_digest,
         transcript_bytes: transcript.total_bytes(),
     })
+}
+
+fn prepare_relation_from_output_opening(
+    h: &C63SparseSketchReference,
+    statement: &C63SparseHClosureStatement,
+) -> Result<(u8, u8, Vec<Fp2>)> {
+    let output_log2 = u8::try_from(statement.output_point.len())
+        .map_err(|_| C63SparseHClosureError::new("C6.3 sparse-H dimension exceeds u8"))?;
+    let q = eq_vec(&statement.output_point);
+    let a = h.transpose_weights(&q).map_err(C63SparseHClosureError::new)?;
+    let input_log2 = exact_log2(a.len(), "input")?;
+    Ok((input_log2, output_log2, a))
 }
 
 fn prepare_relation(
@@ -770,6 +852,17 @@ mod tests {
         )
     }
 
+    fn opening(table: &[Fp2], point: &[Fp2]) -> Result<Fp2> {
+        if table.len() != 1usize << point.len() {
+            return Err(C63SparseHClosureError::new("test opening geometry differs"));
+        }
+        let mut folded = table.to_vec();
+        for &challenge in point {
+            fold_low(&mut folded, challenge);
+        }
+        Ok(folded[0])
+    }
+
     #[test]
     fn sparse_h_round_trip_and_production_census_are_exact() {
         assert_eq!(
@@ -800,6 +893,22 @@ mod tests {
         assert_eq!(audit.terminal_a, volta_proto::mle::eval_mle(&a, &audit.sumcheck_point));
         assert_eq!(audit.terminal_m, volta_proto::mle::eval_mle(&m, &audit.sumcheck_point));
         assert_eq!(audit.transcript_digest, prover_tx.canonical_binding_digest().unwrap());
+
+        let u_opening = opening(&u, statement.output_point()).unwrap();
+        let mut contexts = array::from_fn(|tape| VerifierCtx::new(TAPE_SEEDS[tape], DELTAS[tape]));
+        let mut transcript = Transcript::new(TRANSCRIPT_SEED);
+        let opening_audit = verify_c63_sparse_h_closure_from_whir_openings_reference(
+            &h,
+            u_opening,
+            &statement,
+            &[],
+            &decoded,
+            &mut contexts,
+            &mut transcript,
+            |point| opening(&m, point),
+        )
+        .unwrap();
+        assert_eq!(opening_audit, audit);
     }
 
     #[test]
@@ -826,6 +935,21 @@ mod tests {
         let mut bad_terminal = proof.clone();
         bad_terminal.terminal_tags[0] += Fp2::ONE;
         assert!(verify(&h, &m, &u, &statement, &bad_terminal, TRANSCRIPT_SEED).is_err());
+
+        let u_opening = opening(&u, statement.output_point()).unwrap();
+        let mut contexts = array::from_fn(|tape| VerifierCtx::new(TAPE_SEEDS[tape], DELTAS[tape]));
+        let mut transcript = Transcript::new(TRANSCRIPT_SEED);
+        assert!(verify_c63_sparse_h_closure_from_whir_openings_reference(
+            &h,
+            u_opening,
+            &statement,
+            &[],
+            &proof,
+            &mut contexts,
+            &mut transcript,
+            |point| Ok(opening(&m, point)? + Fp2::ONE),
+        )
+        .is_err());
     }
 
     #[test]

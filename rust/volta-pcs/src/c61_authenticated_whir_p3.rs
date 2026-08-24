@@ -7466,7 +7466,10 @@ where
     let statement =
         C61NativeProverChainStatement::new(public, targets).map_err(|error| error.to_string())?;
     let points = c61_model_embedding_points(statement.public())?;
-    let evaluations = points.iter().map(|point| data.message.eval_base(point)).collect::<Vec<_>>();
+    let evaluations = points
+        .iter()
+        .map(|point| data.message.host().expect("C6.1 host message").eval_base(point))
+        .collect::<Vec<_>>();
     if evaluations
         .iter()
         .zip(statement.targets())
@@ -9960,16 +9963,22 @@ where
         .iter()
         .zip(provider_phase.response_values)
         .any(|(point, expected)| {
-            c61_volta_fp2_from_p3(response_data.message.eval_base(point)) != expected
+            c61_volta_fp2_from_p3(
+                response_data.message.host().expect("C6.1 host message").eval_base(point),
+            ) != expected
         })
         || response_points[C61_SPARSE_ARITHMETIC_PHYSICAL_RESPONSE_OPENINGS..]
             .iter()
             .zip(&response_values[C61_SPARSE_ARITHMETIC_PHYSICAL_RESPONSE_OPENINGS..])
             .any(|(point, expected)| {
-                c61_volta_fp2_from_p3(response_data.message.eval_base(point)) != *expected
+                c61_volta_fp2_from_p3(
+                    response_data.message.host().expect("C6.1 host message").eval_base(point),
+                ) != *expected
             })
         || plan_points.iter().zip(provider_phase.plan_values).any(|(point, expected)| {
-            c61_volta_fp2_from_p3(plan_data.message.eval_base(point)) != expected
+            c61_volta_fp2_from_p3(
+                plan_data.message.host().expect("C6.1 host message").eval_base(point),
+            ) != expected
         })
     {
         return Err("C6SPR3 Volta-LSB/P3-MSB physical evaluation adapter mismatch".to_owned());
@@ -13485,8 +13494,6 @@ mod tests {
         use std::io::Write;
 
         use p3_sumcheck_c61::strategy::ResidualSumcheckProver;
-        use p3_whir_c61::pcs::zk::ZkWhirOracleCommitter;
-
         use crate::c62_gpu_whir::{
             C62GpuMmcs, C62GpuResourceGuard, C62GpuWhirCommitter,
             C62_GPU_WHIR_DEFAULT_TILE_LOG, C62_GPU_WHIR_EXECUTOR_PROFILE,
@@ -13535,9 +13542,18 @@ mod tests {
         let coefficients = vec![C61P3Fp2::ONE; C61_MODEL_OPENING_TARGETS];
 
         mmcs.backend().lock().unwrap().begin_measurement().unwrap();
-        let sumcheck = oracle
-            .initialize_sumcheck(&message, &claims, &coefficients, C61P3Fp2::ZERO)
-            .unwrap();
+        let sumcheck = <C62GpuWhirCommitter as p3_whir_c61::pcs::zk::ZkWhirOracleCommitter<
+            Goldilocks,
+            C61P3Fp2,
+            C62GpuMmcs,
+        >>::initialize_sumcheck(
+            &oracle,
+            p3_whir_c61::pcs::zk::ZkWhirInitialMessage::Host(&message),
+            &claims,
+            &coefficients,
+            C61P3Fp2::ZERO,
+        )
+        .unwrap();
         let stats = mmcs.backend().lock().unwrap().finish_measurement().unwrap();
         assert_eq!(sumcheck.num_variables(), NUM_VARIABLES);
         assert_eq!(sumcheck.claimed_sum(), C61P3Fp2::ZERO);

@@ -16,6 +16,7 @@ use p3_commit::{BatchOpening, BatchOpeningRef, Mmcs};
 use p3_field::{Field, PrimeCharacteristicRing, PrimeField64};
 use p3_goldilocks::Goldilocks;
 use p3_matrix::dense::DenseMatrix;
+use p3_matrix::extension::FlatMatrixView;
 use p3_matrix::{Dimensions, Matrix};
 use p3_merkle_tree::MerkleTreeError;
 use p3_multilinear_util::point::Point;
@@ -25,7 +26,7 @@ use p3_whir_c61::parameters::{FoldingFactor, ProtocolParameters, SecurityAssumpt
 use p3_whir_c61::pcs::proof::{QueryOpenings, SharedProofOpening};
 use p3_whir_c61::pcs::zk::{
     BaseCaseZkProof, BlindedMask, MaskOpeningPair, ZkParameters, ZkRoundProof, ZkWhirConfig,
-    ZkWhirInitialOracleLink, ZkWhirProof,
+    ZkWhirInitialMessage, ZkWhirInitialOracleLink, ZkWhirOracleCommitter, ZkWhirProof,
 };
 use rayon::prelude::*;
 use volta_field::Fp2;
@@ -36,7 +37,11 @@ use crate::c61_whir_reference::{
     C61Writer, C61_WHIRA1_DIGEST_BYTES, C61_WHIRA1_ELL_ZK, C61_WHIRA1_FP2_BYTES,
     C61_WHIRA1_FP_BYTES, C61_WHIRA1_HEADER_BYTES, C61_WHIRA1_MULTIPROOF_COUNT_BYTES,
 };
+use crate::c62_gpu_whir::{
+    C62GpuMmcs, C62GpuProverData, C62GpuSumcheckState, C62GpuWhirCommitter, C62GpuWhirError,
+};
 use crate::c63_authenticated_sketch::C63_BOLT_COLUMNS;
+use crate::c63_gpu_owner::C63GpuStateOwner;
 
 pub const C63_ENCODED_SKETCH_PHYSICAL_ROW_LOG2: usize = 19;
 pub const C63_ENCODED_SKETCH_PHYSICAL_ROWS: usize = 1 << C63_ENCODED_SKETCH_PHYSICAL_ROW_LOG2;
@@ -1004,6 +1009,267 @@ impl Mmcs<Goldilocks> for C63ProjectedMmcs {
     }
 }
 
+/// GPU-resident counterpart of `C63ProjectedMmcs`. Ordinary WHIR openings
+/// stay on the C6.2 path; only the first linked opening also reads accepted A.
+#[derive(Clone)]
+pub(crate) struct C63ProjectedGpuMmcs {
+    inner: C62GpuMmcs,
+    context: Arc<C63EncodedSketchAtoYContext>,
+}
+
+pub(crate) struct C63ProjectedGpuProverData<M> {
+    inner: C62GpuProverData<M>,
+    encoded_sketch_a: Option<Arc<C63GpuStateOwner>>,
+}
+
+impl C63ProjectedGpuMmcs {
+    pub(crate) fn new(inner: C62GpuMmcs, context: C63EncodedSketchAtoYContext) -> Self {
+        Self { inner, context: Arc::new(context) }
+    }
+
+    pub(crate) fn link(&self) -> C63EncodedSketchAtoYLink {
+        C63EncodedSketchAtoYLink { context: Arc::clone(&self.context) }
+    }
+
+    pub(crate) fn attach_encoded_sketch_a<M>(
+        &self,
+        prover_data: &mut C63ProjectedGpuProverData<M>,
+        state: Arc<C63GpuStateOwner>,
+    ) -> Result<(), String> {
+        let root = C61Commitment::new(vec![state.encoded_sketch_root()]);
+        if root != self.context.accepted_a {
+            return Err("C6.3 resident A root differs from accepted root".to_owned());
+        }
+        if prover_data.encoded_sketch_a.is_some() {
+            return Err("C6.3 resident A owner already attached".to_owned());
+        }
+        prover_data.encoded_sketch_a = Some(state);
+        Ok(())
+    }
+}
+
+impl Mmcs<Goldilocks> for C63ProjectedGpuMmcs {
+    type ProverData<M> = C63ProjectedGpuProverData<M>;
+    type Commitment = C61Commitment;
+    type Proof = C63ProjectedProof;
+    type MultiProof = C63ProjectedMultiProof;
+    type Error = MerkleTreeError;
+
+    fn commit<M: Matrix<Goldilocks>>(
+        &self,
+        inputs: Vec<M>,
+    ) -> (Self::Commitment, Self::ProverData<M>) {
+        let (commitment, inner) = self.inner.commit(inputs);
+        (commitment, C63ProjectedGpuProverData { inner, encoded_sketch_a: None })
+    }
+
+    fn open_batch<M: Matrix<Goldilocks>>(
+        &self,
+        index: usize,
+        prover_data: &Self::ProverData<M>,
+    ) -> BatchOpening<Goldilocks, Self> {
+        let ordinary = self.inner.open_batch(index, &prover_data.inner);
+        let linked = prover_data.encoded_sketch_a.as_ref().map(|state| {
+            let (mut rows, proof) = state
+                .open_encoded_sketch_rows(&[index])
+                .unwrap_or_else(|error| panic!("C6.3 resident A opening failed: {error}"));
+            assert_eq!(rows.len(), 1, "C6.3 resident A batch opening count");
+            (vec![rows.swap_remove(0)], proof.sibling_hashes)
+        });
+        BatchOpening::new(ordinary.opened_values, (ordinary.opening_proof, linked))
+    }
+
+    fn get_matrices<'a, M: Matrix<Goldilocks>>(
+        &self,
+        prover_data: &'a Self::ProverData<M>,
+    ) -> Vec<&'a M> {
+        self.inner.get_matrices(&prover_data.inner)
+    }
+
+    fn verify_batch(
+        &self,
+        commitment: &Self::Commitment,
+        dimensions: &[Dimensions],
+        index: usize,
+        opening: BatchOpeningRef<'_, Goldilocks, Self>,
+    ) -> Result<(), Self::Error> {
+        let (ordinary_proof, linked) = opening.opening_proof;
+        self.inner.verify_batch(
+            commitment,
+            dimensions,
+            index,
+            BatchOpeningRef::new(opening.opened_values, ordinary_proof),
+        )?;
+        if let Some((a_rows, a_proof)) = linked {
+            self.inner.verify_batch(
+                &self.context.accepted_a,
+                std::slice::from_ref(&self.context.dimensions),
+                index,
+                BatchOpeningRef::new(a_rows, a_proof),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn open_multi_batch<M: Matrix<Goldilocks>>(
+        &self,
+        indices: &[usize],
+        prover_data: &Self::ProverData<M>,
+    ) -> (Vec<Vec<Vec<Goldilocks>>>, Self::MultiProof) {
+        let (ordinary_rows, ordinary_proof) =
+            self.inner.open_multi_batch(indices, &prover_data.inner);
+        let linked = prover_data.encoded_sketch_a.as_ref().map(|state| {
+            state
+                .open_encoded_sketch_rows(indices)
+                .unwrap_or_else(|error| panic!("C6.3 resident A opening failed: {error}"))
+        });
+        (ordinary_rows, (ordinary_proof, linked))
+    }
+
+    fn verify_multi_batch<R: AsRef<[Goldilocks]> + PartialEq>(
+        &self,
+        commitment: &Self::Commitment,
+        dimensions: &[Dimensions],
+        indices: &[usize],
+        opened_values: &[Vec<R>],
+        proof: &Self::MultiProof,
+    ) -> Result<(), Self::Error> {
+        self.inner.verify_multi_batch(commitment, dimensions, indices, opened_values, &proof.0)?;
+        if let Some((a_rows, a_proof)) = &proof.1 {
+            let opened_a = a_rows.iter().map(|row| vec![row.as_slice()]).collect::<Vec<_>>();
+            self.inner.verify_multi_batch(
+                &self.context.accepted_a,
+                std::slice::from_ref(&self.context.dimensions),
+                indices,
+                &opened_a,
+                a_proof,
+            )?;
+        }
+        Ok(())
+    }
+}
+
+impl ZkWhirOracleCommitter<Goldilocks, C61P3Fp2, C63ProjectedGpuMmcs>
+    for C62GpuWhirCommitter
+{
+    type Error = C62GpuWhirError;
+    type SumcheckState = C62GpuSumcheckState;
+
+    fn initialize_sumcheck(
+        &self,
+        message: ZkWhirInitialMessage<'_, Goldilocks>,
+        claims: &[(Point<C61P3Fp2>, C61P3Fp2)],
+        coefficients: &[C61P3Fp2],
+        batched_target: C61P3Fp2,
+    ) -> Result<Self::SumcheckState, Self::Error> {
+        <Self as ZkWhirOracleCommitter<Goldilocks, C61P3Fp2, C62GpuMmcs>>::initialize_sumcheck(
+            self,
+            message,
+            claims,
+            coefficients,
+            batched_target,
+        )
+    }
+
+    fn commit_initial(
+        &self,
+        message: ZkWhirInitialMessage<'_, Goldilocks>,
+        randomness: &[Goldilocks],
+        folding: usize,
+        height: usize,
+    ) -> Result<
+        (
+            C61Commitment,
+            C63ProjectedGpuProverData<DenseMatrix<Goldilocks>>,
+        ),
+        Self::Error,
+    > {
+        let (commitment, inner) =
+            <Self as ZkWhirOracleCommitter<Goldilocks, C61P3Fp2, C62GpuMmcs>>::commit_initial(
+                self, message, randomness, folding, height,
+            )?;
+        Ok((commitment, C63ProjectedGpuProverData { inner, encoded_sketch_a: None }))
+    }
+
+    fn commit_extension(
+        &self,
+        message: &[C61P3Fp2],
+        randomness: &[C61P3Fp2],
+        folding: usize,
+        height: usize,
+    ) -> Result<
+        (
+            C61Commitment,
+            C63ProjectedGpuProverData<
+                FlatMatrixView<Goldilocks, C61P3Fp2, DenseMatrix<C61P3Fp2>>,
+            >,
+        ),
+        Self::Error,
+    > {
+        let (commitment, inner) =
+            <Self as ZkWhirOracleCommitter<Goldilocks, C61P3Fp2, C62GpuMmcs>>::commit_extension(
+                self, message, randomness, folding, height,
+            )?;
+        Ok((commitment, C63ProjectedGpuProverData { inner, encoded_sketch_a: None }))
+    }
+
+    fn commit_extension_from_sumcheck(
+        &self,
+        state: &Self::SumcheckState,
+        randomness: &[C61P3Fp2],
+        folding: usize,
+        height: usize,
+    ) -> Result<
+        Option<(
+            C61Commitment,
+            C63ProjectedGpuProverData<
+                FlatMatrixView<Goldilocks, C61P3Fp2, DenseMatrix<C61P3Fp2>>,
+            >,
+        )>,
+        Self::Error,
+    > {
+        <Self as ZkWhirOracleCommitter<Goldilocks, C61P3Fp2, C62GpuMmcs>>::commit_extension_from_sumcheck(
+            self, state, randomness, folding, height,
+        )
+        .map(|result| {
+            result.map(|(commitment, inner)| {
+                (commitment, C63ProjectedGpuProverData { inner, encoded_sketch_a: None })
+            })
+        })
+    }
+
+    fn evaluate_padded_ood_from_sumcheck(
+        &self,
+        state: &Self::SumcheckState,
+        point: C61P3Fp2,
+        suffix: &[C61P3Fp2],
+    ) -> Result<Option<C61P3Fp2>, Self::Error> {
+        <Self as ZkWhirOracleCommitter<Goldilocks, C61P3Fp2, C62GpuMmcs>>::evaluate_padded_ood_from_sumcheck(
+            self, state, point, suffix,
+        )
+    }
+
+    fn accumulate_round_claim_from_sumcheck(
+        &self,
+        state: &mut Self::SumcheckState,
+        folded_domain_size: usize,
+        stir_indices: &[usize],
+        ood_points: &[C61P3Fp2],
+        ood_coeffs: &[C61P3Fp2],
+        query_coeffs: &[C61P3Fp2],
+    ) -> Result<bool, Self::Error> {
+        <Self as ZkWhirOracleCommitter<Goldilocks, C61P3Fp2, C62GpuMmcs>>::accumulate_round_claim_from_sumcheck(
+            self,
+            state,
+            folded_domain_size,
+            stir_indices,
+            ood_points,
+            ood_coeffs,
+            query_coeffs,
+        )
+    }
+}
+
 pub(crate) type C63ProjectedWhirProof = ZkWhirProof<Goldilocks, C61P3Fp2, C63ProjectedMmcs>;
 
 fn strip_c63_opening<T: Clone>(
@@ -1023,9 +1289,16 @@ fn lift_c63_opening<T>(
     }
 }
 
-fn strip_c63_projected_proof(
-    proof: &C63ProjectedWhirProof,
-) -> Result<(C63OrdinaryWhirProof, SharedProofOpening<Goldilocks, C61MultiProof>), String> {
+fn strip_c63_projected_proof<MT>(
+    proof: &ZkWhirProof<Goldilocks, C61P3Fp2, MT>,
+) -> Result<(C63OrdinaryWhirProof, SharedProofOpening<Goldilocks, C61MultiProof>), String>
+where
+    MT: Mmcs<
+        Goldilocks,
+        Commitment = C61Commitment,
+        MultiProof = C63ProjectedMultiProof,
+    >,
+{
     let mut linked_a = None;
     let mut rounds = Vec::with_capacity(proof.rounds.len());
     for (index, round) in proof.rounds.iter().enumerate() {
@@ -1155,19 +1428,33 @@ fn lift_c63_projected_proof(
     })
 }
 
-pub(crate) fn encode_c63_whir_projected_artifact(
+pub(crate) fn encode_c63_whir_projected_artifact<MT>(
     commitment: &C61Commitment,
-    proof: &C63ProjectedWhirProof,
-) -> Result<Vec<u8>, String> {
+    proof: &ZkWhirProof<Goldilocks, C61P3Fp2, MT>,
+) -> Result<Vec<u8>, String>
+where
+    MT: Mmcs<
+        Goldilocks,
+        Commitment = C61Commitment,
+        MultiProof = C63ProjectedMultiProof,
+    >,
+{
     encode_c63_whir_projected_artifact_with_config(19, &c63_whir_config(19)?, commitment, proof)
 }
 
-pub(crate) fn encode_c63_whir_projected_artifact_with_config(
+pub(crate) fn encode_c63_whir_projected_artifact_with_config<MT>(
     num_variables: usize,
     config: &C63WhirConfig,
     commitment: &C61Commitment,
-    proof: &C63ProjectedWhirProof,
-) -> Result<Vec<u8>, String> {
+    proof: &ZkWhirProof<Goldilocks, C61P3Fp2, MT>,
+) -> Result<Vec<u8>, String>
+where
+    MT: Mmcs<
+        Goldilocks,
+        Commitment = C61Commitment,
+        MultiProof = C63ProjectedMultiProof,
+    >,
+{
     if config.num_variables != num_variables {
         return Err("C6.3 projected WHIR codec dimension differs".to_owned());
     }
@@ -1254,9 +1541,10 @@ pub(crate) struct C63EncodedSketchAtoYLink {
     context: Arc<C63EncodedSketchAtoYContext>,
 }
 
-impl<EF> ZkWhirInitialOracleLink<Goldilocks, EF, C63ProjectedMmcs> for C63EncodedSketchAtoYLink
+impl<EF, MT> ZkWhirInitialOracleLink<Goldilocks, EF, MT> for C63EncodedSketchAtoYLink
 where
     EF: p3_field::ExtensionField<Goldilocks>,
+    MT: Mmcs<Goldilocks, MultiProof = C63ProjectedMultiProof>,
 {
     fn required(&self) -> bool {
         true
@@ -1414,6 +1702,10 @@ pub fn c63_check_preencoded_link_reference(
 #[cfg(test)]
 mod tests {
     use std::panic::{catch_unwind, AssertUnwindSafe};
+    #[cfg(feature = "cuda")]
+    use std::sync::Arc;
+    #[cfg(feature = "cuda")]
+    use std::time::Instant;
 
     use p3_blake3::Blake3;
     use p3_challenger::{
@@ -1435,6 +1727,8 @@ mod tests {
     use rand_010::SeedableRng;
     use volta_field::{Fp, Fp2};
     use volta_mac::{CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey};
+    #[cfg(feature = "cuda")]
+    use volta_accel::{Backend, DeviceSlice};
 
     use super::*;
     use crate::c61_authenticated_whir::{
@@ -1455,6 +1749,18 @@ mod tests {
         C63CorrectionRowReference, C63SparseSketchEdge, C63SparseSketchReference,
         C63_BOLT_LIVE_ROWS_PER_POSITION,
     };
+    #[cfg(feature = "cuda")]
+    use crate::c62_gpu_whir::{
+        C62GpuResourceGuard, C62ProviderCacheKey, C62_GPU_WHIR_EXECUTOR_VERSION,
+        C62_GPU_WHIR_FIELD_TAG,
+    };
+    #[cfg(feature = "cuda")]
+    use crate::c63_authenticated_sketch::{
+        C63SparseSetupReference, C63_BOLT_LDPC_CHECK_DEGREE, C63_BOLT_LDPC_COLUMN_DEGREE,
+        C63_BOLT_ROWS, C63_BOLT_SKETCH_ROWS, C63_PRODUCTION_SETUP_SEED,
+    };
+    #[cfg(feature = "cuda")]
+    use crate::c63_gpu_owner::{C63GpuSetupOwner, C63GpuStateOwner, C63GpuTileMetadata};
     use crate::c63_sparse_h_closure::{
         prove_c63_sparse_h_closure_with_spots_reference,
         verify_c63_sparse_h_closure_from_whir_openings_reference,
@@ -2418,6 +2724,187 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(terminal_error.to_string(), "C6AWH1 authenticated target ZeroOpen failed");
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    #[ignore = "requires the production ABI44 CUDA library and one A100"]
+    fn production_resident_projected_lane_verifies_on_cpu() {
+        let total_started = Instant::now();
+        let setup_started = Instant::now();
+        let sparse_setup = C63SparseSetupReference::sample(
+            C63_PRODUCTION_SETUP_SEED,
+            C63_BOLT_ROWS,
+            C63_BOLT_SKETCH_ROWS,
+            C63_BOLT_LDPC_COLUMN_DEGREE,
+            C63_BOLT_LDPC_CHECK_DEGREE,
+        )
+        .unwrap();
+        let backend = Backend::cuda_resident().expect("initialize ABI44 resident CUDA backend");
+        let guard = C62GpuResourceGuard::for_lane(
+            19,
+            1,
+            1 << 19,
+            19,
+            1,
+            true,
+            40u64 << 30,
+        )
+        .unwrap();
+        let base_mmcs = C62GpuMmcs::new(backend, 19, guard).unwrap();
+        let setup = C63GpuSetupOwner::install(&base_mmcs, &sparse_setup).unwrap();
+        let setup_ms = setup_started.elapsed().as_millis();
+
+        let state_started = Instant::now();
+        let backend = base_mmcs.backend();
+        let tapes: [Vec<u64>; 2] = std::array::from_fn(|tape| {
+            (0..2 * 12 * 768)
+                .map(|index| 1 + tape as u64 * 1_000_003 + index as u64 * 17)
+                .collect()
+        });
+        let (tape0, tape1) = {
+            let mut gpu = backend.lock().unwrap();
+            (
+                gpu.upload_new_device(&tapes[0]).unwrap(),
+                gpu.upload_new_device(&tapes[1]).unwrap(),
+            )
+        };
+        let profile_digest = [0x73; 32];
+        let state = Arc::new(
+            C63GpuStateOwner::propose_append(
+                &setup,
+                None,
+                profile_digest,
+                1,
+                DeviceSlice::new(&tape0, 0, tape0.len()).unwrap(),
+                DeviceSlice::new(&tape1, 0, tape1.len()).unwrap(),
+                &[C63GpuTileMetadata {
+                    birth_epoch: 1,
+                    allocation_binding_digest: [0x71; 32],
+                    source_schedule_digest: [0x72; 32],
+                }],
+            )
+            .unwrap(),
+        );
+        {
+            let mut gpu = backend.lock().unwrap();
+            gpu.free_device(tape0).unwrap();
+            gpu.free_device(tape1).unwrap();
+            gpu.begin_measurement().unwrap();
+        }
+        let state_ms = state_started.elapsed().as_millis();
+
+        let verifier_seed = [0x63; 32];
+        let accepted_d = C61Commitment::new(vec![state.correction_root()]);
+        let accepted_a = C61Commitment::new(vec![state.encoded_sketch_root()]);
+        let mut prover_challenger = challenger(verifier_seed);
+        let (rho, [context, _]) = C63EncodedSketchAtoYContext::sample_pair_after_roots(
+            accepted_d,
+            accepted_a,
+            C63_ENCODED_SKETCH_PHYSICAL_ROWS,
+            &mut prover_challenger,
+        )
+        .unwrap();
+        let cpu_context = context.clone();
+
+        let projection_started = Instant::now();
+        let mut projected = state.project_messages(rho).unwrap();
+        let message = projected.take_sketch(0).unwrap();
+        let encoded = projected.take_encoded_sketch(0).unwrap();
+        drop(projected);
+        let key = C62ProviderCacheKey {
+            model_digest: [0x31; 32],
+            protocol_digest: [0x32; 32],
+            parameter_digest: [0x33; 32],
+            content_digest: [0x34; 32],
+            field_tag: C62_GPU_WHIR_FIELD_TAG,
+            encoder_version: C62_GPU_WHIR_EXECUTOR_VERSION,
+            num_variables: 19,
+            folding: 1,
+            height: 1 << 19,
+        };
+        let cache = base_mmcs
+            .prepare_linked_fixed_base_resident(key, message, encoded)
+            .unwrap();
+        let point_values = (0..19)
+            .map(|index| Fp2::new(Fp::new(41 + index as u64), Fp::new(71 + index as u64)))
+            .collect::<Vec<_>>();
+        let evaluation = base_mmcs.evaluate_fixed_base(&cache, &point_values).unwrap();
+        let point = Point::new(
+            point_values.iter().copied().map(c61_p3_fp2_from_volta).collect(),
+        );
+        let projection_ms = projection_started.elapsed().as_millis();
+
+        let config = c63_whir_config(19).unwrap();
+        let projected_mmcs = C63ProjectedGpuMmcs::new(base_mmcs.clone(), context);
+        let link = projected_mmcs.link();
+        let dft = Radix2DFTSmallBatch::default();
+        let prover = HidingWhirProver::new(&config, &dft, &projected_mmcs);
+        let committer = C62GpuWhirCommitter::provider_cached(base_mmcs.clone(), Arc::clone(&cache));
+        let prove_started = Instant::now();
+        let mut rng = StdRng::seed_from_u64(0xC6_3301);
+        let (commitment, mut data) = prover
+            .commit_resident_with_oracle(1 << 19, &committer, &mut prover_challenger, &mut rng)
+            .unwrap();
+        projected_mmcs
+            .attach_encoded_sketch_a(&mut data.merkle, Arc::clone(&state))
+            .unwrap();
+        prover_challenger.observe_algebra_slice(point.as_slice());
+        let output = prover
+            .prove_claimless_with_oracle_and_initial_link(
+                data,
+                &[(point.clone(), c61_p3_fp2_from_volta(evaluation))],
+                C61P3Fp2::ZERO,
+                &committer,
+                &link,
+                &mut prover_challenger,
+                &mut rng,
+            )
+            .unwrap();
+        let prove_ms = prove_started.elapsed().as_millis();
+        let stats = backend.lock().unwrap().finish_measurement().unwrap();
+
+        let artifact =
+            encode_c63_whir_projected_artifact_with_config(19, &config, &commitment, &output.proof)
+                .unwrap();
+        let verify_started = Instant::now();
+        let (decoded_commitment, decoded_proof) =
+            decode_c63_whir_projected_artifact_with_config(&artifact, 19, &config).unwrap();
+        let verifier_mmcs = C63ProjectedMmcs::new(cpu_context);
+        let verifier_link = verifier_mmcs.link();
+        let mut verifier_challenger = challenger(verifier_seed);
+        let (_, replayed_contexts) = C63EncodedSketchAtoYContext::sample_pair_after_roots(
+            verifier_mmcs.context.accepted_d.clone(),
+            verifier_mmcs.context.accepted_a.clone(),
+            C63_ENCODED_SKETCH_PHYSICAL_ROWS,
+            &mut verifier_challenger,
+        )
+        .unwrap();
+        assert!(replayed_contexts[0] == *verifier_mmcs.context);
+        verifier_challenger.observe(decoded_commitment.clone());
+        verifier_challenger.observe_algebra_slice(point.as_slice());
+        let verifier = HidingWhirVerifier::new(&config, &verifier_mmcs);
+        let closure = verifier
+            .verify_claimless_with_initial_link(
+                &decoded_proof,
+                &decoded_commitment,
+                std::slice::from_ref(&point),
+                &verifier_link,
+                &mut verifier_challenger,
+            )
+            .unwrap();
+        let verify_ms = verify_started.elapsed().as_millis();
+        assert_eq!(closure.claim_weights, output.claim_weights);
+        assert_eq!(closure.target, output.target);
+        assert_eq!(closure.base_case, output.base_case);
+        eprintln!(
+            "c63_resident_projected_lane setup_ms={setup_ms} state_ms={state_ms} projection_ms={projection_ms} prove_ms={prove_ms} verify_ms={verify_ms} proof_bytes={} peak_device_bytes={} h2d_bytes={} d2h_bytes={} total_ms={}",
+            artifact.len(),
+            stats.peak_device_bytes,
+            stats.h2d_bytes,
+            stats.d2h_bytes,
+            total_started.elapsed().as_millis(),
+        );
     }
 
     #[test]

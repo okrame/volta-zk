@@ -190,6 +190,19 @@ type C63CorrectionTileFrameDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, u64, usize, usize, usize) -> c_int;
 type C63PadSketchForEncodingDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize) -> c_int;
+type C63ProjectColumnsDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    c_int,
+) -> c_int;
 type GemmI64 = unsafe extern "C" fn(
     *mut c_void,
     *const i16,
@@ -1081,6 +1094,7 @@ struct Api {
     c63_append_corrections_device: C63AppendCorrectionsDevice,
     c63_correction_tile_frame_device: C63CorrectionTileFrameDevice,
     c63_pad_sketch_for_encoding_device: C63PadSketchForEncodingDevice,
+    c63_project_columns_device: C63ProjectColumnsDevice,
     gemm_i64: GemmI64,
     gemm_i64_device: GemmI64Device,
     gemm_requant_auth: GemmRequantAuth,
@@ -1315,6 +1329,9 @@ impl CudaContext {
             },
             c63_pad_sketch_for_encoding_device: unsafe {
                 load_symbol(handle, b"volta_cuda_c63_pad_sketch_for_encoding_device\0")?
+            },
+            c63_project_columns_device: unsafe {
+                load_symbol(handle, b"volta_cuda_c63_project_columns_device\0")?
             },
             gemm_i64: unsafe { load_symbol(handle, b"volta_cuda_gemm_i64\0")? },
             gemm_i64_device: unsafe { load_symbol(handle, b"volta_cuda_gemm_i64_device\0")? },
@@ -2174,6 +2191,38 @@ impl CudaContext {
                 sketch_offset,
                 padded,
                 padded_offset,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn c63_project_columns_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        rho: u64,
+        rho_offset: usize,
+        limb0: u64,
+        limb0_offset: usize,
+        limb1: u64,
+        limb1_offset: usize,
+        accepted_len: usize,
+        kind: i32,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates ownership and exact fixed geometry.
+        self.check(unsafe {
+            (self.api.c63_project_columns_device)(
+                self.raw,
+                input,
+                input_offset,
+                rho,
+                rho_offset,
+                limb0,
+                limb0_offset,
+                limb1,
+                limb1_offset,
+                accepted_len,
+                kind,
             )
         })
     }

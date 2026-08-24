@@ -167,8 +167,8 @@ pub use c63_authenticated_sketch::{
 };
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub use c63_gpu_owner::{
-    C63GpuOwnerError, C63GpuResourceCensus, C63GpuSetupOwner, C63GpuStateOwner,
-    C63GpuTileMetadata,
+    C63GpuOwnerError, C63GpuProjectedMessages, C63GpuResourceCensus, C63GpuSetupOwner,
+    C63GpuStateOwner, C63GpuTileMetadata,
 };
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub use c63_public_argument::{

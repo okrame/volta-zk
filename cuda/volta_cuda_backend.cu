@@ -18,7 +18,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 43;
+constexpr uint32_t ABI_VERSION = 44;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -1508,6 +1508,46 @@ __global__ void c63_pad_sketch_for_encoding_kernel(
     padded[z] = row < message_rows
         ? sketch[column * C63_SKETCH_ROWS + chunk * message_rows + row]
         : 0;
+}
+
+__global__ void c63_project_columns_kernel(
+    const uint64_t* input, const Fp2* rho,
+    uint64_t* limb0, uint64_t* limb1,
+    size_t output_rows, size_t accepted_len, int kind) {
+    const size_t output_row = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (output_row >= output_rows) return;
+    uint64_t acc0 = 0;
+    uint64_t acc1 = 0;
+    if (kind == 0) {
+        const size_t row = output_row;
+        const size_t position = row / C63_ROWS_PER_TOKEN;
+        const size_t local = row - position * C63_ROWS_PER_TOKEN;
+        if (position < accepted_len && local < C63_LIVE_ROWS_PER_TOKEN) {
+            const uint64_t* values = input +
+                (position * C63_LIVE_ROWS_PER_TOKEN + local) * C63_COLUMNS;
+            for (size_t column = 0; column < C63_COLUMNS; ++column) {
+                acc0 = fp_add(acc0, fp_mul(values[column], rho[column].c0));
+                acc1 = fp_add(acc1, fp_mul(values[column], rho[column].c1));
+            }
+        }
+    } else if (kind == 1) {
+        const size_t row = output_row;
+        for (size_t column = 0; column < C63_COLUMNS; ++column) {
+            const uint64_t value = input[column * C63_SKETCH_ROWS + row];
+            acc0 = fp_add(acc0, fp_mul(value, rho[column].c0));
+            acc1 = fp_add(acc1, fp_mul(value, rho[column].c1));
+        }
+    } else {
+        const size_t fold = output_row / C63_SKETCH_ROWS;
+        const size_t row = output_row - fold * C63_SKETCH_ROWS;
+        for (size_t column = 0; column < C63_COLUMNS; ++column) {
+            const uint64_t value = input[(2 * column + fold) * C63_SKETCH_ROWS + row];
+            acc0 = fp_add(acc0, fp_mul(value, rho[column].c0));
+            acc1 = fp_add(acc1, fp_mul(value, rho[column].c1));
+        }
+    }
+    limb0[output_row] = acc0;
+    limb1[output_row] = acc1;
 }
 
 // -------------------------------------------------------------------------
@@ -4617,6 +4657,44 @@ extern "C" int volta_cuda_c63_pad_sketch_for_encoding_device(
     CUDA_OR_RETURN(c, cudaGetLastError());
     if (mark_timing(c, 2)) return -1;
     return finish_timing(c, OP_PCS_ROWS, 0, 0, elements * sizeof(uint64_t));
+}
+
+extern "C" int volta_cuda_c63_project_columns_device(
+    void* raw,
+    uint64_t input_id, size_t input_offset,
+    uint64_t rho_id, size_t rho_offset,
+    uint64_t limb0_id, size_t limb0_offset,
+    uint64_t limb1_id, size_t limb1_offset,
+    size_t accepted_len, int kind) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || kind < 0 || kind > 2 ||
+        (kind == 0 && (!accepted_len || accepted_len > 1024)) ||
+        (kind != 0 && accepted_len != 0))
+        return fail_message(c, "invalid C6.3 projection geometry");
+    const size_t output_rows = kind == 0 ? size_t{1} << 22
+        : (kind == 1 ? C63_SKETCH_ROWS : 2 * C63_SKETCH_ROWS);
+    const size_t input_elements = kind == 0
+        ? accepted_len * C63_LIVE_ROWS_PER_TOKEN * C63_COLUMNS
+        : (kind == 1 ? C63_COLUMNS : 2 * C63_COLUMNS) * C63_SKETCH_ROWS;
+    void *input = nullptr, *rho = nullptr, *limb0 = nullptr, *limb1 = nullptr;
+    if (resident_region(c, input_id, input_offset * sizeof(uint64_t),
+                        input_elements * sizeof(uint64_t), &input) ||
+        resident_region(c, rho_id, rho_offset * sizeof(Fp2),
+                        C63_COLUMNS * sizeof(Fp2), &rho) ||
+        resident_region(c, limb0_id, limb0_offset * sizeof(uint64_t),
+                        output_rows * sizeof(uint64_t), &limb0) ||
+        resident_region(c, limb1_id, limb1_offset * sizeof(uint64_t),
+                        output_rows * sizeof(uint64_t), &limb1)) return -1;
+    if (limb0_id == limb1_id || input_id == limb0_id || input_id == limb1_id)
+        return fail_message(c, "C6.3 projection must be out of place");
+    if (begin_timing(c) || mark_timing(c, 1)) return -1;
+    c63_project_columns_kernel<<<(output_rows + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const uint64_t*>(input), static_cast<const Fp2*>(rho),
+        static_cast<uint64_t*>(limb0), static_cast<uint64_t*>(limb1),
+        output_rows, accepted_len, kind);
+    CUDA_OR_RETURN(c, cudaGetLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_PCS_ROWS, 0, 0, 2 * output_rows * sizeof(uint64_t));
 }
 
 extern "C" int volta_cuda_gemm_i64(

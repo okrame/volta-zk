@@ -2,7 +2,7 @@
 
 use rayon::prelude::*;
 use volta_accel::{Backend, DeviceSlice, Operation};
-use volta_field::Fp;
+use volta_field::{Fp, Fp2};
 use volta_pcs::c62_gpu_whir::{C62GpuMmcs, C62GpuResourceGuard};
 use volta_pcs::merkle::{hash_leaf, Hash, MerkleTree};
 use volta_pcs::ntt::NttPlan;
@@ -156,7 +156,7 @@ fn print_stats(label: &str, stats: &volta_accel::BackendStats) {
 }
 
 #[test]
-#[ignore = "requires the production ABI43 CUDA library and one A100"]
+#[ignore = "requires the production ABI44 CUDA library and one A100"]
 fn production_owner_matches_cpu_for_one_complete_token() {
     let sparse_setup = C63SparseSetupReference::sample(
         C63_PRODUCTION_SETUP_SEED,
@@ -187,7 +187,7 @@ fn production_owner_matches_cpu_for_one_complete_token() {
         c63_correction_state_root_reference(profile_digest, 1, &[tile_root]).unwrap();
     let expected_encoded_root = encoded_root(&expected_encoded);
 
-    let backend = Backend::cuda_resident().expect("initialize ABI43 resident CUDA backend");
+    let backend = Backend::cuda_resident().expect("initialize ABI44 resident CUDA backend");
     let guard = C62GpuResourceGuard::for_lane(19, 1, 1 << 19, 19, 1, false, 40u64 << 30).unwrap();
     let mmcs = C62GpuMmcs::new(backend, 19, guard).unwrap();
     let setup = C63GpuSetupOwner::install(&mmcs, &sparse_setup).unwrap();
@@ -252,6 +252,67 @@ fn production_owner_matches_cpu_for_one_complete_token() {
     assert_eq!(state.encoded_sketch_root(), expected_encoded_root);
     assert_eq!(state.epoch(), 1);
     assert_eq!(state.accepted_len(), 1);
+
+    let rho: [Fp2; C63_BOLT_COLUMNS] = std::array::from_fn(|column| {
+        Fp2::new(Fp::new(11 + column as u64 * 13), Fp::new(17 + column as u64 * 19))
+    });
+    let mut projected = state.project_messages(rho).unwrap();
+    let projected_raw: [[Vec<u64>; 2]; 3] = std::array::from_fn(|family| {
+        std::array::from_fn(|limb| {
+            let buffer = match family {
+                0 => projected.take_systematic(limb).unwrap(),
+                1 => projected.take_sketch(limb).unwrap(),
+                _ => projected.take_encoded_sketch(limb).unwrap(),
+            };
+            let mut gpu = backend.lock().unwrap();
+            let values = gpu.download_device(&buffer, 0, buffer.len()).unwrap();
+            gpu.free_device(buffer).unwrap();
+            values
+        })
+    });
+    drop(projected);
+    for limb in 0..2 {
+        assert!(projected_raw[0][limb]
+            .par_iter()
+            .enumerate()
+            .all(|(row, &got)| {
+                let position = row / C63_BOLT_ROWS_PER_POSITION;
+                let local = row % C63_BOLT_ROWS_PER_POSITION;
+                let expected = if position == 0 && local < C63_BOLT_LIVE_ROWS_PER_POSITION {
+                    (0..C63_BOLT_COLUMNS).fold(Fp::ZERO, |sum, column| {
+                        let coefficient = if limb == 0 { rho[column].c0 } else { rho[column].c1 };
+                        sum + expected_corrections[local * C63_BOLT_COLUMNS + column] * coefficient
+                    })
+                } else {
+                    Fp::ZERO
+                };
+                got == expected.value()
+            }));
+        assert!(projected_raw[1][limb]
+            .par_iter()
+            .enumerate()
+            .all(|(row, &got)| {
+                let expected = (0..C63_BOLT_COLUMNS).fold(Fp::ZERO, |sum, column| {
+                    let coefficient = if limb == 0 { rho[column].c0 } else { rho[column].c1 };
+                    sum + expected_sketch[column * C63_BOLT_SKETCH_ROWS + row] * coefficient
+                });
+                got == expected.value()
+            }));
+        assert!(projected_raw[2][limb]
+            .par_iter()
+            .enumerate()
+            .all(|(output_row, &got)| {
+                let fold = output_row / C63_BOLT_SKETCH_ROWS;
+                let row = output_row % C63_BOLT_SKETCH_ROWS;
+                let expected = (0..C63_BOLT_COLUMNS).fold(Fp::ZERO, |sum, column| {
+                    let coefficient = if limb == 0 { rho[column].c0 } else { rho[column].c1 };
+                    sum + expected_encoded
+                        [(2 * column + fold) * C63_BOLT_SKETCH_ROWS + row]
+                        * coefficient
+                });
+                got == expected.value()
+            }));
+    }
 
     let accepted_resident_bytes =
         backend.lock().unwrap().device_memory_breakdown().unwrap().resident_bytes;

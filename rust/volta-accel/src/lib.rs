@@ -18,7 +18,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 43;
+pub const CUDA_ABI_VERSION: u32 = 44;
 pub const OPERATION_COUNT: usize = 7;
 pub const DEFERRED_TIMING_CAPACITY: usize = 512;
 
@@ -2122,6 +2122,101 @@ impl Backend {
             return Err(error);
         }
         Ok(output)
+    }
+
+    /// Project the sixteen resident C6.3 columns by one post-root Fp2 vector.
+    /// The two base-field limbs remain separate device-owned messages.
+    pub fn c63_project_columns_device(
+        &mut self,
+        input: &DeviceBuffer<u64>,
+        rho: &DeviceBuffer<Fp2Repr>,
+        accepted_len: Option<usize>,
+    ) -> Result<[DeviceBuffer<u64>; 2], AccelError> {
+        let compact_corrections = accepted_len.is_some();
+        let accepted_len = accepted_len.unwrap_or(0);
+        let rows = if compact_corrections { 1usize << 22 } else { C63_SKETCH_ROWS };
+        let input_elements = if compact_corrections {
+            if accepted_len == 0 || accepted_len > 1024 {
+                return Err(AccelError::InvalidInput("invalid C6.3 projection length"));
+            }
+            checked_product(
+                checked_product(accepted_len, C63_LIVE_ROWS_PER_TOKEN)?,
+                C63_COLUMNS,
+            )?
+        } else {
+            checked_product(C63_COLUMNS, C63_SKETCH_ROWS)?
+        };
+        if input.len() != input_elements || rho.len() != C63_COLUMNS {
+            return Err(AccelError::InvalidInput("invalid C6.3 projection buffers"));
+        }
+        self.validate_buffer(input)?;
+        self.validate_buffer(rho)?;
+        let limb0 = self.alloc_device(rows)?;
+        let limb1 = match self.alloc_device(rows) {
+            Ok(output) => output,
+            Err(error) => {
+                let _ = self.free_device(limb0);
+                return Err(error);
+            }
+        };
+        #[cfg(feature = "cuda")]
+        let result = self.cuda.as_mut().expect("CUDA kind without context").c63_project_columns_device(
+            input.id,
+            0,
+            rho.id,
+            0,
+            limb0.id,
+            0,
+            limb1.id,
+            0,
+            accepted_len,
+            if compact_corrections { 0 } else { 1 },
+        );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(limb0);
+            let _ = self.free_device(limb1);
+            return Err(error);
+        }
+        Ok([limb0, limb1])
+    }
+
+    /// Project the accepted D19-by-32 encoded tensor into two resident
+    /// width-two initial codewords, one for each base-field limb.
+    pub fn c63_project_encoded_columns_device(
+        &mut self,
+        encoded: &DeviceBuffer<u64>,
+        rho: &DeviceBuffer<Fp2Repr>,
+    ) -> Result<[DeviceBuffer<u64>; 2], AccelError> {
+        let rows = 2 * C63_SKETCH_ROWS;
+        if encoded.len() != 2 * C63_COLUMNS * C63_SKETCH_ROWS
+            || rho.len() != C63_COLUMNS
+        {
+            return Err(AccelError::InvalidInput("invalid C6.3 encoded projection buffers"));
+        }
+        self.validate_buffer(encoded)?;
+        self.validate_buffer(rho)?;
+        let limb0 = self.alloc_device(rows)?;
+        let limb1 = match self.alloc_device(rows) {
+            Ok(output) => output,
+            Err(error) => {
+                let _ = self.free_device(limb0);
+                return Err(error);
+            }
+        };
+        #[cfg(feature = "cuda")]
+        let result = self.cuda.as_mut().expect("CUDA kind without context").c63_project_columns_device(
+            encoded.id, 0, rho.id, 0, limb0.id, 0, limb1.id, 0, 0, 2,
+        );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(limb0);
+            let _ = self.free_device(limb1);
+            return Err(error);
+        }
+        Ok([limb0, limb1])
     }
 
     pub fn upload_new_device<T: DeviceElement>(

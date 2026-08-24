@@ -6,9 +6,11 @@
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
-use volta_accel::{AccelError, Backend, DeviceBuffer, DeviceMerkleTree, DeviceSlice};
+use p3_goldilocks::Goldilocks;
+use volta_accel::{AccelError, Backend, DeviceBuffer, DeviceMerkleTree, DeviceSlice, Fp2Repr};
+use volta_field::Fp2;
 
-use crate::c62_gpu_whir::C62GpuMmcs;
+use crate::c62_gpu_whir::{open_full_base_oracle, C62GpuMmcs, C62GpuMultiProof};
 use crate::c63_authenticated_sketch::{
     c63_correction_state_root_reference, C63SparseSetupReference, C63_BOLT_COLUMNS,
     C63_BOLT_LIVE_ROWS_PER_POSITION, C63_BOLT_ROWS, C63_BOLT_ROWS_PER_POSITION,
@@ -156,6 +158,58 @@ pub struct C63GpuStateOwner {
     sketch: Option<DeviceBuffer<u64>>,
     encoded_sketch: Option<DeviceBuffer<u64>>,
     encoded_tree: Option<DeviceMerkleTree>,
+}
+
+/// Response-local projected messages. Each limb is transferred exactly once
+/// into its WHIR lane; any untaken buffer is released on drop.
+pub struct C63GpuProjectedMessages {
+    backend: Arc<Mutex<Backend>>,
+    systematic: [Option<DeviceBuffer<u64>>; 2],
+    sketch: [Option<DeviceBuffer<u64>>; 2],
+    encoded_sketch: [Option<DeviceBuffer<u64>>; 2],
+}
+
+impl C63GpuProjectedMessages {
+    pub fn take_systematic(&mut self, limb: usize) -> Result<DeviceBuffer<u64>, C63GpuOwnerError> {
+        self.systematic
+            .get_mut(limb)
+            .and_then(Option::take)
+            .ok_or_else(|| C63GpuOwnerError::new("C6.3 systematic limb is absent"))
+    }
+
+    pub fn take_sketch(&mut self, limb: usize) -> Result<DeviceBuffer<u64>, C63GpuOwnerError> {
+        self.sketch
+            .get_mut(limb)
+            .and_then(Option::take)
+            .ok_or_else(|| C63GpuOwnerError::new("C6.3 sketch limb is absent"))
+    }
+
+    pub fn take_encoded_sketch(
+        &mut self,
+        limb: usize,
+    ) -> Result<DeviceBuffer<u64>, C63GpuOwnerError> {
+        self.encoded_sketch
+            .get_mut(limb)
+            .and_then(Option::take)
+            .ok_or_else(|| C63GpuOwnerError::new("C6.3 encoded-sketch limb is absent"))
+    }
+}
+
+impl Drop for C63GpuProjectedMessages {
+    fn drop(&mut self) {
+        if let Ok(mut backend) = self.backend.lock() {
+            for buffer in self
+                .systematic
+                .iter_mut()
+                .chain(&mut self.sketch)
+                .chain(&mut self.encoded_sketch)
+            {
+                if let Some(buffer) = buffer.take() {
+                    let _ = backend.free_device(buffer);
+                }
+            }
+        }
+    }
 }
 
 impl C63GpuStateOwner {
@@ -397,6 +451,86 @@ impl C63GpuStateOwner {
 
     pub fn encoded_tree(&self) -> &DeviceMerkleTree {
         self.encoded_tree.as_ref().expect("live C6.3 encoded tree")
+    }
+
+    /// Apply the post-root column challenge without materializing D', S or
+    /// either projected message in host memory.
+    pub fn project_messages(
+        &self,
+        rho: [Fp2; C63_BOLT_COLUMNS],
+    ) -> Result<C63GpuProjectedMessages, C63GpuOwnerError> {
+        let raw_rho = rho.map(Fp2Repr::from);
+        let mut backend = self.backend.lock().map_err(|_| C63GpuOwnerError::new("CUDA lock"))?;
+        let rho_device = backend.upload_new_device(&raw_rho)?;
+        let systematic = backend.c63_project_columns_device(
+            self.correction_rows.as_ref().expect("live C6.3 correction owner"),
+            &rho_device,
+            Some(usize::from(self.accepted_len)),
+        );
+        let systematic = match systematic {
+            Ok(messages) => messages,
+            Err(error) => {
+                let _ = backend.free_device(rho_device);
+                return Err(error.into());
+            }
+        };
+        let sketch = backend.c63_project_columns_device(
+            self.sketch.as_ref().expect("live C6.3 sketch owner"),
+            &rho_device,
+            None,
+        );
+        let sketch = match sketch {
+            Ok(messages) => messages,
+            Err(error) => {
+                for message in systematic {
+                    let _ = backend.free_device(message);
+                }
+                let _ = backend.free_device(rho_device);
+                return Err(error.into());
+            }
+        };
+        let encoded_sketch = backend.c63_project_encoded_columns_device(
+            self.encoded_sketch.as_ref().expect("live C6.3 encoded owner"),
+            &rho_device,
+        );
+        let encoded_sketch = match encoded_sketch {
+            Ok(messages) => messages,
+            Err(error) => {
+                for message in systematic.into_iter().chain(sketch) {
+                    let _ = backend.free_device(message);
+                }
+                let _ = backend.free_device(rho_device);
+                return Err(error.into());
+            }
+        };
+        if let Err(error) = backend.free_device(rho_device) {
+            for message in systematic.into_iter().chain(sketch).chain(encoded_sketch) {
+                let _ = backend.free_device(message);
+            }
+            return Err(error.into());
+        }
+        drop(backend);
+        Ok(C63GpuProjectedMessages {
+            backend: Arc::clone(&self.backend),
+            systematic: systematic.map(Some),
+            sketch: sketch.map(Some),
+            encoded_sketch: encoded_sketch.map(Some),
+        })
+    }
+
+    pub(crate) fn open_encoded_sketch_rows(
+        &self,
+        indices: &[usize],
+    ) -> Result<(Vec<Vec<Goldilocks>>, C62GpuMultiProof), C63GpuOwnerError> {
+        open_full_base_oracle(
+            &self.backend,
+            self.encoded_sketch.as_ref().expect("live C6.3 encoded owner"),
+            self.encoded_tree.as_ref().expect("live C6.3 encoded tree"),
+            C63_PHYSICAL_COMPONENTS,
+            C63_BOLT_SKETCH_ROWS,
+            indices,
+        )
+        .map_err(|error| C63GpuOwnerError::new(error.to_string()))
     }
 
     pub fn device_bytes(&self) -> u64 {

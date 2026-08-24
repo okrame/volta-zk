@@ -11,7 +11,8 @@ use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::mem;
 
-pub use data::HidingWhirProverData;
+pub use data::{HidingWhirProverData, ZkWhirInitialMessage};
+use data::HidingWhirInitialMessage;
 use data::ZkRoundData;
 use masks::{ProverMasks, fold_limb_chunks};
 use p3_challenger::{CanObserve, CanSampleUniformBits, FieldChallenger, GrindingChallenger};
@@ -97,7 +98,7 @@ where
 
     fn initialize_sumcheck(
         &self,
-        message: &[F],
+        message: ZkWhirInitialMessage<'_, F>,
         claims: &[(Point<EF>, EF)],
         coefficients: &[EF],
         batched_target: EF,
@@ -105,7 +106,7 @@ where
 
     fn commit_initial(
         &self,
-        message: &[F],
+        message: ZkWhirInitialMessage<'_, F>,
         randomness: &[F],
         folding: usize,
         height: usize,
@@ -177,11 +178,12 @@ where
 
     fn initialize_sumcheck(
         &self,
-        message: &[F],
+        message: ZkWhirInitialMessage<'_, F>,
         claims: &[(Point<EF>, EF)],
         coefficients: &[EF],
         batched_target: EF,
     ) -> Result<Self::SumcheckState, Self::Error> {
+        let message = message.host().expect("reference WHIR requires a host initial message");
         let num_variables = log2_strict_usize(message.len());
         let k_pack = log2_strict_usize(F::Packing::WIDTH);
         let product = if num_variables >= k_pack {
@@ -211,11 +213,12 @@ where
 
     fn commit_initial(
         &self,
-        message: &[F],
+        message: ZkWhirInitialMessage<'_, F>,
         randomness: &[F],
         folding: usize,
         height: usize,
     ) -> Result<(MT::Commitment, MT::ProverData<DenseMatrix<F>>), Self::Error> {
+        let message = message.host().expect("reference WHIR requires a host initial message");
         let encoded = self
             .dft
             .dft_batch(zk_padded_matrix(message, randomness, folding, height))
@@ -306,7 +309,15 @@ where
         }
         let (commitment, merkle) = self.mmcs.commit_matrix(encoded);
         challenger.observe(commitment.clone());
-        (commitment, HidingWhirProverData { message, randomness, merkle, _marker: PhantomData })
+        (
+            commitment,
+            HidingWhirProverData {
+                message: HidingWhirInitialMessage::Host(message),
+                randomness,
+                merkle,
+                _marker: PhantomData,
+            },
+        )
     }
 
     /// Commits the witness as an interleaved ZK Reed-Solomon codeword.
@@ -327,7 +338,15 @@ where
         let encoded = self.dft.dft_batch(padded).to_row_major_matrix();
         let (commitment, merkle) = self.mmcs.commit_matrix(encoded);
         challenger.observe(commitment.clone());
-        (commitment, HidingWhirProverData { message, randomness, merkle, _marker: PhantomData })
+        (
+            commitment,
+            HidingWhirProverData {
+                message: HidingWhirInitialMessage::Host(message),
+                randomness,
+                merkle,
+                _marker: PhantomData,
+            },
+        )
     }
 
     /// Commits the initial oracle through an exact native encode/commit
@@ -350,10 +369,59 @@ where
             (0..(self.config.oracle_randomness[0] << folding)).map(|_| rng.random()).collect();
         let height =
             (1 << (message.num_variables() - folding)) << self.config.starting_log_inv_rate;
-        let (commitment, merkle) =
-            oracle.commit_initial(message.as_slice(), &randomness, folding, height)?;
+        let (commitment, merkle) = oracle.commit_initial(
+            ZkWhirInitialMessage::Host(message.as_slice()),
+            &randomness,
+            folding,
+            height,
+        )?;
         challenger.observe(commitment.clone());
-        Ok((commitment, HidingWhirProverData { message, randomness, merkle, _marker: PhantomData }))
+        Ok((
+            commitment,
+            HidingWhirProverData {
+                message: HidingWhirInitialMessage::Host(message),
+                randomness,
+                merkle,
+                _marker: PhantomData,
+            },
+        ))
+    }
+
+    /// Commit a native initial message already owned by `oracle`.
+    /// Only its exact power-of-two length crosses this generic boundary.
+    pub fn commit_resident_with_oracle<R, O>(
+        &self,
+        message_len: usize,
+        oracle: &O,
+        challenger: &mut Challenger,
+        rng: &mut R,
+    ) -> Result<(MT::Commitment, HidingWhirProverData<F, EF, MT>), O::Error>
+    where
+        R: Rng,
+        O: ZkWhirOracleCommitter<F, EF, MT>,
+    {
+        assert_eq!(message_len, 1usize << self.config.num_variables);
+        let folding = self.config.round_folding_factor(0);
+        let randomness: Vec<F> =
+            (0..(self.config.oracle_randomness[0] << folding)).map(|_| rng.random()).collect();
+        let height =
+            (1 << (self.config.num_variables - folding)) << self.config.starting_log_inv_rate;
+        let (commitment, merkle) = oracle.commit_initial(
+            ZkWhirInitialMessage::Resident { len: message_len },
+            &randomness,
+            folding,
+            height,
+        )?;
+        challenger.observe(commitment.clone());
+        Ok((
+            commitment,
+            HidingWhirProverData {
+                message: HidingWhirInitialMessage::Resident { len: message_len },
+                randomness,
+                merkle,
+                _marker: PhantomData,
+            },
+        ))
     }
 
     /// Runs the full HVZK opening protocol for evaluation claims
@@ -458,6 +526,35 @@ where
         )
     }
 
+    /// Native-oracle variant with the opt-in first-oracle relation used by
+    /// C6.3's authenticated pre-encoded base.
+    #[instrument(skip_all)]
+    pub fn prove_claimless_with_oracle_and_initial_link<R, O, L>(
+        &self,
+        prover_data: HidingWhirProverData<F, EF, MT>,
+        claims: &[(Point<EF>, EF)],
+        base_claim_shift: EF,
+        oracle: &O,
+        initial_link: &L,
+        challenger: &mut Challenger,
+        rng: &mut R,
+    ) -> Result<ClaimlessWhirProverOutput<F, EF, MT>, O::Error>
+    where
+        R: Rng,
+        O: ZkWhirOracleCommitter<F, EF, MT>,
+        L: ZkWhirInitialOracleLink<F, EF, MT>,
+    {
+        self.prove_claimless_with_committer(
+            prover_data,
+            claims,
+            base_claim_shift,
+            oracle,
+            initial_link,
+            challenger,
+            rng,
+        )
+    }
+
     #[allow(clippy::too_many_lines)]
     fn prove_claimless_with_committer<R, O, L>(
         &self,
@@ -491,8 +588,9 @@ where
             batched_target += *coeff * *eval;
         }
 
+        debug_assert_eq!(prover_data.message.len(), 1usize << num_variables);
         let sumcheck_prover = oracle.initialize_sumcheck(
-            prover_data.message.as_slice(),
+            prover_data.message.borrowed(),
             claims,
             &coeffs,
             batched_target,

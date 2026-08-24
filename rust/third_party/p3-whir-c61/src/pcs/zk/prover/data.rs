@@ -9,6 +9,59 @@ use p3_matrix::dense::DenseMatrix;
 use p3_matrix::extension::FlatMatrixView;
 use p3_multilinear_util::poly::Poly;
 
+/// The first message is either ordinary host data or a native-oracle handle
+/// represented only by its exact length. The committer owns the resident
+/// buffer; no device identifier enters the proof engine or transcript.
+pub enum HidingWhirInitialMessage<F> {
+    Host(Poly<F>),
+    Resident { len: usize },
+}
+
+impl<F> HidingWhirInitialMessage<F> {
+    pub(super) fn len(&self) -> usize {
+        match self {
+            Self::Host(message) => message.as_slice().len(),
+            Self::Resident { len } => *len,
+        }
+    }
+
+    pub(super) fn borrowed(&self) -> ZkWhirInitialMessage<'_, F> {
+        match self {
+            Self::Host(message) => ZkWhirInitialMessage::Host(message.as_slice()),
+            Self::Resident { len } => ZkWhirInitialMessage::Resident { len: *len },
+        }
+    }
+
+    pub fn host(&self) -> Option<&Poly<F>> {
+        match self {
+            Self::Host(message) => Some(message),
+            Self::Resident { .. } => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum ZkWhirInitialMessage<'a, F> {
+    Host(&'a [F]),
+    Resident { len: usize },
+}
+
+impl<'a, F> ZkWhirInitialMessage<'a, F> {
+    pub fn len(self) -> usize {
+        match self {
+            Self::Host(message) => message.len(),
+            Self::Resident { len } => len,
+        }
+    }
+
+    pub fn host(self) -> Option<&'a [F]> {
+        match self {
+            Self::Host(message) => Some(message),
+            Self::Resident { .. } => None,
+        }
+    }
+}
+
 /// Prover-side handoff between the commit and open phases.
 pub struct HidingWhirProverData<F, EF, MT>
 where
@@ -17,7 +70,7 @@ where
     MT: Mmcs<F>,
 {
     /// Committed multilinear evaluations.
-    pub message: Poly<F>,
+    pub message: HidingWhirInitialMessage<F>,
     /// Limb-major ZK encoding randomness of the initial oracle.
     pub randomness: Vec<F>,
     /// Merkle prover data behind the initial commitment.

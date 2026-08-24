@@ -21,7 +21,7 @@ use p3_multilinear_util::point::Point;
 use p3_multilinear_util::poly::Poly;
 use p3_sumcheck_c61::strategy::ResidualSumcheckProver;
 use p3_symmetric::MerkleCap;
-use p3_whir_c61::pcs::zk::ZkWhirOracleCommitter;
+use p3_whir_c61::pcs::zk::{ZkWhirInitialMessage, ZkWhirOracleCommitter};
 use volta_accel::{
     AccelError, Backend, BackendKind, DeviceBuffer, DeviceMerkleTree, DeviceSlice, Fp2Repr,
 };
@@ -443,6 +443,91 @@ impl C62GpuMmcs {
         }))
     }
 
+    /// Adopt an already encoded base together with its decoded resident
+    /// message. Equality is intentionally not asserted here: C6.3 proves it
+    /// through the projected first-round opening against accepted A.
+    pub fn prepare_linked_fixed_base_resident(
+        &self,
+        key: C62ProviderCacheKey,
+        message: DeviceBuffer<u64>,
+        codeword: DeviceBuffer<u64>,
+    ) -> Result<Arc<C62ProviderFixedBase>, C62GpuWhirError> {
+        key.validate()?;
+        let message_len = 1usize << key.num_variables;
+        let width = 1usize << key.folding;
+        let expected_codeword = width
+            .checked_mul(key.height as usize)
+            .ok_or_else(|| C62GpuWhirError::new("linked fixed-base geometry overflows"))?;
+        let mut backend = self.backend.lock().map_err(|_| C62GpuWhirError::new("CUDA lock"))?;
+        if message.len() != message_len
+            || codeword.len() != expected_codeword
+            || !message.is_owned_by(&backend)
+            || !codeword.is_owned_by(&backend)
+        {
+            let _ = backend.free_device(message);
+            let _ = backend.free_device(codeword);
+            return Err(C62GpuWhirError::new("linked fixed-base owner or geometry differs"));
+        }
+        let evals = match backend.alloc_device::<Fp2Repr>(message_len) {
+            Ok(evals) => evals,
+            Err(error) => {
+                let _ = backend.free_device(message);
+                let _ = backend.free_device(codeword);
+                return Err(error.into());
+            }
+        };
+        if let Err(error) = backend.fp_to_fp2_device(&message, 0, &evals, 0, message_len) {
+            let _ = backend.free_device(evals);
+            let _ = backend.free_device(message);
+            let _ = backend.free_device(codeword);
+            return Err(error.into());
+        }
+        if let Err(error) = backend.free_device(message) {
+            let _ = backend.free_device(evals);
+            let _ = backend.free_device(codeword);
+            return Err(error.into());
+        }
+        let cache_bytes = codeword.len() as u64 * 8 + evals.len() as u64 * 16;
+        if cache_bytes > self.guard.fixed_cache_bytes {
+            let _ = backend.free_device(evals);
+            let _ = backend.free_device(codeword);
+            return Err(C62GpuWhirError::new("linked fixed base exceeds its admission"));
+        }
+        drop(backend);
+        Ok(Arc::new(C62ProviderFixedBase {
+            key,
+            message_len,
+            width,
+            owner: FixedBaseOwner {
+                backend: Arc::clone(&self.backend),
+                codeword: Some(codeword),
+                evals: Some(evals),
+            },
+        }))
+    }
+
+    /// Evaluate one resident fixed message without downloading its table.
+    pub fn evaluate_fixed_base(
+        &self,
+        cache: &C62ProviderFixedBase,
+        point: &[Fp2],
+    ) -> Result<Fp2, C62GpuWhirError> {
+        if !Arc::ptr_eq(&self.backend, &cache.owner.backend)
+            || point.len() != usize::from(cache.key.num_variables)
+        {
+            return Err(C62GpuWhirError::new("fixed-base evaluation owner or point differs"));
+        }
+        let mut backend = self.backend.lock().map_err(|_| C62GpuWhirError::new("CUDA lock"))?;
+        let evals = cache
+            .owner
+            .evals
+            .as_ref()
+            .ok_or_else(|| C62GpuWhirError::new("fixed-base evaluations were released"))?;
+        backend
+            .mle_eval_device(DeviceSlice::new(evals, 0, evals.len())?, point)
+            .map_err(Into::into)
+    }
+
     fn encode_base(
         &self,
         message: &[Goldilocks],
@@ -729,9 +814,33 @@ impl C62GpuMmcs {
             let mut backend = self.backend.lock().map_err(|_| C62GpuWhirError::new("CUDA lock"))?;
             upload_goldilocks(&mut backend, message)?
         };
+        self.commit_initial_fresh_reusing_resident(
+            base,
+            message.len(),
+            randomness,
+            folding,
+            height,
+        )
+    }
+
+    fn commit_initial_fresh_reusing_resident(
+        &self,
+        base: DeviceBuffer<u64>,
+        message_len: usize,
+        randomness: &[Goldilocks],
+        folding: usize,
+        height: usize,
+    ) -> Result<
+        (
+            C62GpuCommitment,
+            C62GpuProverData<DenseMatrix<Goldilocks>>,
+            DeviceBuffer<Fp2Repr>,
+        ),
+        C62GpuWhirError,
+    > {
         let encoded = match self.encode_base_resident(
             &base,
-            message.len(),
+            message_len,
             randomness,
             folding,
             height,
@@ -745,7 +854,7 @@ impl C62GpuMmcs {
         };
         let evals = {
             let mut backend = self.backend.lock().map_err(|_| C62GpuWhirError::new("CUDA lock"))?;
-            let evals = match backend.alloc_device::<Fp2Repr>(message.len()) {
+            let evals = match backend.alloc_device::<Fp2Repr>(message_len) {
                 Ok(evals) => evals,
                 Err(error) => {
                     let _ = backend.free_device(encoded);
@@ -753,7 +862,7 @@ impl C62GpuMmcs {
                     return Err(error.into());
                 }
             };
-            if let Err(error) = backend.fp_to_fp2_device(&base, 0, &evals, 0, message.len()) {
+            if let Err(error) = backend.fp_to_fp2_device(&base, 0, &evals, 0, message_len) {
                 let _ = backend.free_device(evals);
                 let _ = backend.free_device(encoded);
                 let _ = backend.free_device(base);
@@ -780,20 +889,20 @@ impl C62GpuMmcs {
     fn commit_initial_cached(
         &self,
         cache: &C62ProviderFixedBase,
-        message: &[Goldilocks],
+        message_len: usize,
         randomness: &[Goldilocks],
         folding: usize,
         height: usize,
     ) -> Result<(C62GpuCommitment, C62GpuProverData<DenseMatrix<Goldilocks>>), C62GpuWhirError>
     {
-        if cache.message_len != message.len()
+        if cache.message_len != message_len
             || cache.width != 1usize << folding
             || cache.key.folding as usize != folding
             || cache.key.height as usize != height
         {
             return Err(C62GpuWhirError::new("C62GW1 cache/workload geometry mismatch"));
         }
-        let mask = self.encode_base_mask(message.len(), randomness, folding, height)?;
+        let mask = self.encode_base_mask(message_len, randomness, folding, height)?;
         let combined = {
             let mut backend = self.backend.lock().map_err(|_| C62GpuWhirError::new("CUDA lock"))?;
             let fixed = cache
@@ -1005,11 +1114,12 @@ impl C62InitialSvo {
 pub struct C62GpuWhirCommitter {
     mmcs: C62GpuMmcs,
     initial: C62InitialOracleMode,
+    resident_initial: Mutex<Option<DeviceBuffer<u64>>>,
     pending_initial: Mutex<Option<C62PendingInitial>>,
 }
 
 struct C62PendingInitial {
-    message_address: usize,
+    message_address: Option<usize>,
     message_len: usize,
     folding: usize,
     fresh_evals: Option<DeviceBuffer<Fp2Repr>>,
@@ -1030,7 +1140,7 @@ pub struct C62GpuSumcheckState {
 impl C62GpuSumcheckState {
     fn initialize(
         backend: Arc<Mutex<Backend>>,
-        message: &[Goldilocks],
+        message: ZkWhirInitialMessage<'_, Goldilocks>,
         claims: &[(Point<C61P3Fp2>, C61P3Fp2)],
         coefficients: &[C61P3Fp2],
         batched_target: C61P3Fp2,
@@ -1039,12 +1149,13 @@ impl C62GpuSumcheckState {
         fresh_evals: Option<DeviceBuffer<Fp2Repr>>,
         initial_svo_folding: Option<usize>,
     ) -> Result<Self, C62GpuWhirError> {
-        if message.len() < 2
-            || !message.len().is_power_of_two()
+        let message_len = message.len();
+        if message_len < 2
+            || !message_len.is_power_of_two()
             || claims.is_empty()
             || claims.len() != coefficients.len()
             || claims.iter().any(|(point, _)| {
-                1usize.checked_shl(point.num_variables() as u32) != Some(message.len())
+                1usize.checked_shl(point.num_variables() as u32) != Some(message_len)
             })
         {
             return Err(C62GpuWhirError::new("C62GW1 sumcheck initialization mismatch"));
@@ -1054,14 +1165,14 @@ impl C62GpuSumcheckState {
             .checked_mul((1u64 << (point_len / 2)) + (1u64 << (point_len - point_len / 2)))
             .and_then(|value| value.checked_mul(16))
             .ok_or_else(|| C62GpuWhirError::new("C62GW2 claim workspace overflows"))?;
-        if (message.len() as u64).saturating_mul(40) > guard.other_live_bytes
+        if (message_len as u64).saturating_mul(40) > guard.other_live_bytes
             || claim_workspace_bytes > guard.claim_weight_workspace_bytes
         {
             return Err(C62GpuWhirError::new("C62GW1 sumcheck exceeds its admission"));
         }
         let mut cuda = backend.lock().map_err(|_| C62GpuWhirError::new("CUDA lock"))?;
         let evals = if let Some(evals) = fresh_evals {
-            if !evals.is_owned_by(&cuda) || evals.len() != message.len() {
+            if !evals.is_owned_by(&cuda) || evals.len() != message_len {
                 let _ = cuda.free_device(evals);
                 return Err(C62GpuWhirError::new("C62GW3 reused message is not live"));
             }
@@ -1069,15 +1180,18 @@ impl C62GpuSumcheckState {
         } else if fixed_evals.is_some() {
             None
         } else {
-            let base = upload_goldilocks(&mut cuda, message)?;
-            let evals = match cuda.alloc_device::<Fp2Repr>(message.len()) {
+            let host = message
+                .host()
+                .ok_or_else(|| C62GpuWhirError::new("resident message has no resident evals"))?;
+            let base = upload_goldilocks(&mut cuda, host)?;
+            let evals = match cuda.alloc_device::<Fp2Repr>(message_len) {
                 Ok(value) => value,
                 Err(error) => {
                     let _ = cuda.free_device(base);
                     return Err(error.into());
                 }
             };
-            if let Err(error) = cuda.fp_to_fp2_device(&base, 0, &evals, 0, message.len()) {
+            if let Err(error) = cuda.fp_to_fp2_device(&base, 0, &evals, 0, message_len) {
                 let _ = cuda.free_device(evals);
                 let _ = cuda.free_device(base);
                 return Err(error.into());
@@ -1111,7 +1225,7 @@ impl C62GpuSumcheckState {
                 return Err(C62GpuWhirError::new("C62GW3 initial SVO folding mismatch"));
             }
             let partials = match cuda.fp2_batched_svo_partials_device(
-                DeviceSlice::new(evals_ref, 0, message.len())?,
+                DeviceSlice::new(evals_ref, 0, message_len)?,
                 &points,
                 point_len,
                 folding,
@@ -1141,7 +1255,7 @@ impl C62GpuSumcheckState {
             };
             (None, Some(svo))
         } else {
-            let weights = match cuda.alloc_device::<Fp2Repr>(message.len()) {
+            let weights = match cuda.alloc_device::<Fp2Repr>(message_len) {
                 Ok(value) => value,
                 Err(error) => {
                     if let Some(evals) = evals {
@@ -1164,8 +1278,8 @@ impl C62GpuSumcheckState {
             }
             let actual = match (|| {
                 cuda.fp2_dot_device(
-                    DeviceSlice::new(evals_ref, 0, message.len())?,
-                    DeviceSlice::new(&weights, 0, message.len())?,
+                    DeviceSlice::new(evals_ref, 0, message_len)?,
+                    DeviceSlice::new(&weights, 0, message_len)?,
                 )
             })() {
                 Ok(value) => value,
@@ -1195,7 +1309,7 @@ impl C62GpuSumcheckState {
             fixed_evals,
             weights,
             initial_svo,
-            len: message.len(),
+            len: message_len,
             sum: batched_target,
             round_covector_workspace_bytes: guard.round_covector_workspace_bytes,
         })
@@ -1561,20 +1675,49 @@ impl ResidualSumcheckProver<Goldilocks, C61P3Fp2> for C62GpuSumcheckState {
 
 impl C62GpuWhirCommitter {
     pub fn fresh(mmcs: C62GpuMmcs) -> Self {
-        Self { mmcs, initial: C62InitialOracleMode::Fresh, pending_initial: Mutex::new(None) }
+        Self {
+            mmcs,
+            initial: C62InitialOracleMode::Fresh,
+            resident_initial: Mutex::new(None),
+            pending_initial: Mutex::new(None),
+        }
+    }
+
+    pub fn fresh_resident(
+        mmcs: C62GpuMmcs,
+        message: DeviceBuffer<u64>,
+    ) -> Result<Self, C62GpuWhirError> {
+        if message.len() < 2 || !message.len().is_power_of_two() {
+            return Err(C62GpuWhirError::new("invalid resident initial message"));
+        }
+        let owned = {
+            let backend =
+                mmcs.backend.lock().map_err(|_| C62GpuWhirError::new("CUDA lock"))?;
+            message.is_owned_by(&backend)
+        };
+        if !owned {
+            return Err(C62GpuWhirError::new("resident initial message has a different owner"));
+        }
+        Ok(Self {
+            mmcs,
+            initial: C62InitialOracleMode::Fresh,
+            resident_initial: Mutex::new(Some(message)),
+            pending_initial: Mutex::new(None),
+        })
     }
 
     pub fn provider_cached(mmcs: C62GpuMmcs, cache: Arc<C62ProviderFixedBase>) -> Self {
         Self {
             mmcs,
             initial: C62InitialOracleMode::ProviderCached(cache),
+            resident_initial: Mutex::new(None),
             pending_initial: Mutex::new(None),
         }
     }
 
     fn record_pending_initial(
         &self,
-        message: &[Goldilocks],
+        message: ZkWhirInitialMessage<'_, Goldilocks>,
         folding: usize,
         fresh_evals: Option<DeviceBuffer<Fp2Repr>>,
     ) -> Result<(), C62GpuWhirError> {
@@ -1590,7 +1733,7 @@ impl C62GpuWhirCommitter {
             return Err(C62GpuWhirError::new("C62GW3 previous initial message was not consumed"));
         }
         *pending = Some(C62PendingInitial {
-            message_address: message.as_ptr() as usize,
+            message_address: message.host().map(|host| host.as_ptr() as usize),
             message_len: message.len(),
             folding,
             fresh_evals,
@@ -1609,6 +1752,13 @@ impl C62GpuWhirCommitter {
 
 impl Drop for C62GpuWhirCommitter {
     fn drop(&mut self) {
+        if let Ok(resident) = self.resident_initial.get_mut() {
+            if let Some(message) = resident.take() {
+                if let Ok(mut backend) = self.mmcs.backend.lock() {
+                    let _ = backend.free_device(message);
+                }
+            }
+        }
         let Ok(pending) = self.pending_initial.get_mut() else { return };
         let Some(mut pending) = pending.take() else { return };
         let Some(evals) = pending.fresh_evals.take() else { return };
@@ -1624,7 +1774,7 @@ impl ZkWhirOracleCommitter<Goldilocks, C61P3Fp2, C62GpuMmcs> for C62GpuWhirCommi
 
     fn initialize_sumcheck(
         &self,
-        message: &[Goldilocks],
+        message: ZkWhirInitialMessage<'_, Goldilocks>,
         claims: &[(Point<C61P3Fp2>, C61P3Fp2)],
         coefficients: &[C61P3Fp2],
         batched_target: C61P3Fp2,
@@ -1635,7 +1785,7 @@ impl ZkWhirOracleCommitter<Goldilocks, C61P3Fp2, C62GpuMmcs> for C62GpuWhirCommi
             .map_err(|_| C62GpuWhirError::new("C62GW3 pending-initial lock"))?
             .take();
         let fresh_evals = if let Some(pending) = pending {
-            if pending.message_address != message.as_ptr() as usize
+            if pending.message_address != message.host().map(|host| host.as_ptr() as usize)
                 || pending.message_len != message.len()
                 || pending.folding == 0
             {
@@ -1667,24 +1817,53 @@ impl ZkWhirOracleCommitter<Goldilocks, C61P3Fp2, C62GpuMmcs> for C62GpuWhirCommi
 
     fn commit_initial(
         &self,
-        message: &[Goldilocks],
+        message: ZkWhirInitialMessage<'_, Goldilocks>,
         randomness: &[Goldilocks],
         folding: usize,
         height: usize,
     ) -> Result<(C62GpuCommitment, C62GpuProverData<DenseMatrix<Goldilocks>>), Self::Error> {
         match &self.initial {
             C62InitialOracleMode::Fresh => {
-                let (commitment, data, evals) = self.mmcs.commit_initial_fresh_reusing_message(
-                    message,
-                    randomness,
-                    folding,
-                    height,
-                )?;
+                let (commitment, data, evals) = match message {
+                    ZkWhirInitialMessage::Host(host) => self
+                        .mmcs
+                        .commit_initial_fresh_reusing_message(host, randomness, folding, height)?,
+                    ZkWhirInitialMessage::Resident { len } => {
+                        let resident = self
+                            .resident_initial
+                            .lock()
+                            .map_err(|_| C62GpuWhirError::new("resident initial lock"))?
+                            .take()
+                            .ok_or_else(|| C62GpuWhirError::new("resident initial message is absent"))?;
+                        if resident.len() != len {
+                            let mut backend = self
+                                .mmcs
+                                .backend
+                                .lock()
+                                .map_err(|_| C62GpuWhirError::new("CUDA lock"))?;
+                            let _ = backend.free_device(resident);
+                            return Err(C62GpuWhirError::new("resident initial length differs"));
+                        }
+                        self.mmcs.commit_initial_fresh_reusing_resident(
+                            resident,
+                            len,
+                            randomness,
+                            folding,
+                            height,
+                        )?
+                    }
+                };
                 self.record_pending_initial(message, folding, Some(evals))?;
                 Ok((commitment, data))
             }
             C62InitialOracleMode::ProviderCached(cache) => {
-                let output = self.mmcs.commit_initial_cached(cache, message, randomness, folding, height)?;
+                let output = self.mmcs.commit_initial_cached(
+                    cache,
+                    message.len(),
+                    randomness,
+                    folding,
+                    height,
+                )?;
                 self.record_pending_initial(message, folding, None)?;
                 Ok(output)
             }
@@ -2230,6 +2409,112 @@ fn open_resident_oracle(
     Ok((rows, C62GpuMultiProof { sibling_hashes: siblings }))
 }
 
+/// Open a base-field matrix already backed by one complete resident tree.
+/// C6.3 uses this for its accepted encoded-sketch owner; the returned proof
+/// is the same canonical pruned path verified by the ordinary CPU MMCS.
+pub(crate) fn open_full_base_oracle(
+    backend: &Arc<Mutex<Backend>>,
+    matrix: &DeviceBuffer<u64>,
+    tree: &DeviceMerkleTree,
+    width: usize,
+    height: usize,
+    indices: &[usize],
+) -> Result<(Vec<Vec<Goldilocks>>, C62GpuMultiProof), C62GpuWhirError> {
+    if width == 0
+        || height < 2
+        || !height.is_power_of_two()
+        || matrix.len() != width * height
+        || indices.is_empty()
+        || indices.iter().any(|&index| index >= height)
+    {
+        return Err(C62GpuWhirError::new("invalid complete resident opening geometry"));
+    }
+    let mut unique = indices.to_vec();
+    unique.sort_unstable();
+    unique.dedup();
+    let unique_u32 = unique
+        .iter()
+        .map(|&index| u32::try_from(index).map_err(|_| C62GpuWhirError::new("index exceeds u32")))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut backend = backend.lock().map_err(|_| C62GpuWhirError::new("CUDA lock"))?;
+    let device_indices = backend.upload_new_device(&unique_u32)?;
+    let gathered = match backend.pcs_gather_fp_device(
+        matrix,
+        width,
+        height,
+        &device_indices,
+        unique.len(),
+    ) {
+        Ok(buffer) => buffer,
+        Err(error) => {
+            let _ = backend.free_device(device_indices);
+            return Err(error.into());
+        }
+    };
+    let paths = match backend.merkle_paths_device(tree, &device_indices, unique.len()) {
+        Ok(buffer) => buffer,
+        Err(error) => {
+            let _ = backend.free_device(gathered);
+            let _ = backend.free_device(device_indices);
+            return Err(error.into());
+        }
+    };
+    let levels = height.ilog2() as usize;
+    let raw_rows = backend.download_device(&gathered, 0, width * unique.len());
+    let raw_paths = backend.download_device(&paths, 0, levels * 32 * unique.len());
+    let cleanup = backend
+        .free_device(paths)
+        .and_then(|()| backend.free_device(gathered))
+        .and_then(|()| backend.free_device(device_indices));
+    let raw_rows = raw_rows?;
+    let raw_paths = raw_paths?;
+    cleanup?;
+
+    let unique_rows = raw_rows
+        .chunks_exact(width)
+        .map(|row| row.iter().copied().map(Goldilocks::new).collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+    let row_by_index = unique.iter().copied().zip(unique_rows).collect::<BTreeMap<_, _>>();
+    let mut path_nodes = BTreeMap::<(usize, usize), [u8; 32]>::new();
+    for (query, &index) in unique.iter().enumerate() {
+        for level in 0..levels {
+            let offset = (query * levels + level) * 32;
+            let digest = raw_paths[offset..offset + 32].try_into().unwrap();
+            let key = (level, (index >> level) ^ 1);
+            if path_nodes.insert(key, digest).is_some_and(|old| old != digest) {
+                return Err(C62GpuWhirError::new("inconsistent complete resident Merkle path"));
+            }
+        }
+    }
+
+    let mut nodes = unique.clone();
+    let mut siblings = Vec::new();
+    for level in 0..levels {
+        let mut parents = Vec::with_capacity(nodes.len());
+        let mut cursor = 0;
+        while cursor < nodes.len() {
+            let group = nodes[cursor] / 2;
+            let group_start = group * 2;
+            let mut member = cursor;
+            for child in 0..2 {
+                let child_index = group_start + child;
+                if member < nodes.len() && nodes[member] == child_index {
+                    member += 1;
+                } else {
+                    siblings.push(*path_nodes.get(&(level, child_index)).ok_or_else(|| {
+                        C62GpuWhirError::new("missing complete resident Merkle sibling")
+                    })?);
+                }
+            }
+            parents.push(group);
+            cursor = member;
+        }
+        nodes = parents;
+    }
+    let rows = indices.iter().map(|index| row_by_index[index].clone()).collect();
+    Ok((rows, C62GpuMultiProof { sibling_hashes: siblings }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2547,7 +2832,7 @@ mod tests {
         };
         let cache = gpu.prepare_fixed_base(key, &message).unwrap();
         let (cached_root, cached_data) =
-            gpu.commit_initial_cached(&cache, &message, &randomness, folding, height).unwrap();
+            gpu.commit_initial_cached(&cache, message.len(), &randomness, folding, height).unwrap();
         assert_eq!(cached_root, reference_root);
 
         let indices = [1usize, 1023, 1024, 2049, 4095];

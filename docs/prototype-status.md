@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — G1 RESIDENT OWNER PASS / COORDINATOR TIMEBOX OPEN / E2E HARD STOP)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — G1 RESIDENT OWNER PASS / G2 RESIDENT-LANE HARD STOP / NO E2E)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,11 +10,10 @@ record; no external plan is authoritative.
 
 Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 
-- **Status.** C6.3 component work is open on the owner-provided A100; E2E is
-  stopped. Privacy/simulation, codecs,
-  production-dimension opening codecs, four linked lanes and the reduced
-  wrapper are locally green. ABI43 genesis and successor match the independent
-  CPU oracle on A100. No top-level production coordinator/verifier exists.
+- **Status.** C6.3 is stopped before E2E. Privacy/simulation, codecs, scaled
+  linked lanes and the reduced wrapper are locally green. ABI43 genesis and
+  successor match an independent CPU oracle on A100. G2 source trace proves
+  that the production resident lanes and top-level verifier do not yet exist.
 - **Evidence.** C6.2 precommit is `275.113308912 s`, about `249.51 s` dense
   encoding/I/O/trees. C6.3 screens `23,271,419 B` certificate,
   `2,704,573 B` `pi_final`, `124,469,116 B` setup plus first,
@@ -30,9 +29,26 @@ Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
   `<5 s`; verifier additional RSS `<=8,000,000,000 B`; soundness
   `>=78.80929487391641 bits`. Cold proof over
   20 s continues; no canonical certificate by 150 s stops.
-- **Resume.** Begin the 60--90 minute coordinator/verifier timebox from clean
-  G1 commit `8ae0e83`; bind the measured setup digest in the full manifest.
-  E2E remains stopped until every terminal check passes.
+- **Resume.** Owner decision is required before extending ABI43/the WHIR fork
+  with resident 16-column projection, a borrowed initial-message handoff,
+  resident `A` openings, a production four-lane coordinator and one complete
+  CPU verifier. Then pass their focused differentials from clean
+  `178c37e`; bind setup digest `5b391766...a12415`. No E2E beforehand.
+
+- **2026-08-24 — C63-G2 coordinator trace reaches a resident-lane HARD STOP;
+  no E2E attempted.** Clean source `178c37e`, disposition record
+  `c63-g2-2026-08-24-178c37e.json`. The existing GPU engine accepts its first
+  D22/D19 message through a host slice and stores a host polynomial; the C6.3
+  owner has no 16-column post-root projection operation. Its accepted `A`
+  tree also has no resident pruned-opening API, while `C63ProjectedMmcs`
+  attaches CPU prover data. Finally, the joint four-lane driver and verifier
+  replay are test-only, and `C63NativeFinalCertificate::validate` is a strict
+  structural decoder rather than the complete cryptographic verifier. Closing
+  this honestly requires a small ABI/WHIR ownership extension plus promotion
+  of the existing scaled driver; it is not wiring alone. No certificate,
+  protocol correlation, prover/verifier timing or gate credit was produced;
+  no dense-host or CPU-prover fallback was used. The owner must decide whether
+  to admit that expanded implementation before a new component checkpoint.
 
 - **2026-08-24 — C63-G1 production-geometry resident owner PASS on A100;
   coordinator timebox opens.** Clean source `8ae0e83`, raw record

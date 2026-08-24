@@ -1,0 +1,55 @@
+{
+  "schema": "volta.c63.g2-source-disposition.v1",
+  "milestone": "C63-G2",
+  "date": "2026-08-24",
+  "source_sha": "178c37e6098261a34beda90cd52be0d7bb1925cf",
+  "git_dirty": false,
+  "starting_evidence": {
+    "g1_record": "benchmarks/results/c63-g1-2026-08-24-8ae0e83.json",
+    "g1_source_sha": "8ae0e836ebfb0bcef7d40081f406d8bafec1c287",
+    "setup_digest": "5b391766f9c98f70f5149e63d77eca6bcc0626703fc86a972bbd7b37e6a12415"
+  },
+  "disposition": "HARD_STOP_BEFORE_E2E",
+  "credit": false,
+  "provider_protocol_attempted": false,
+  "certificate_constructed": false,
+  "top_level_verifier_executed": false,
+  "dense_host_fallback_used": false,
+  "cpu_prover_fallback_used": false,
+  "findings": [
+    {
+      "seam": "resident_initial_message",
+      "evidence": "ZkWhirOracleCommitter::commit_initial and initialize_sumcheck receive a host slice; HidingWhirProverData owns a host Poly. C62GpuWhirCommitter uploads that initial message. It has no borrowed resident-message entry for C6.3 D22/D19 limbs."
+    },
+    {
+      "seam": "resident_tensor_projection",
+      "evidence": "C63GpuStateOwner owns correction_rows, S and A on device, but the backend has no operation that projects their sixteen base-field columns by post-root rho into the two D22/D19 limb messages while preserving virtual-zero geometry."
+    },
+    {
+      "seam": "resident_projected_opening",
+      "evidence": "C63ProjectedMmcs delegates to the CPU C61Mmcs and attaches CPU C63AProverData. C63GpuStateOwner exposes its A tree but no pruned resident row-opening method, so A-to-y cannot use the accepted device owner."
+    },
+    {
+      "seam": "production_four_lane_coordinator",
+      "evidence": "The joint four-lane construction, transcript replay and terminal closure are confined to the cfg(test) scaled reference. The production codecs exist, but there is no normal-path coordinator that creates the four proofs, sparse closure and designated tail from one response state."
+    },
+    {
+      "seam": "complete_cpu_verifier",
+      "evidence": "C63NativeFinalCertificate::validate checks canonical framing, caps and digest/state consistency. It does not verify the four WHIR proofs, correction openings, sparse-H relation, output link, terminal authentication or inherited response proof in one call."
+    }
+  ],
+  "required_unblock": [
+    "Add one exact resident sixteen-column projection operation with a CPU/GPU differential for compact D22 rows, column-major D19 S and virtual zeros.",
+    "Add a borrowed resident initial-message handoff to the existing WHIR prover without a witness-sized host Poly or a second encoding.",
+    "Open accepted A rows from C63GpuStateOwner into the existing canonical pruned proof and wrap C62GpuMmcs for the projected first round.",
+    "Promote the scaled four-lane transcript/replay logic into one production coordinator and one complete four-thread CPU verifier.",
+    "Pass mutation, cleanup, dense-path sentinel and resource-supervisor checks before any cold or warm E2E attempt."
+  ],
+  "pod": {
+    "endpoint": "root@64.247.206.116:16596",
+    "source_synchronized_sha": "178c37e6098261a34beda90cd52be0d7bb1925cf",
+    "e2e_started": false,
+    "new_protocol_correlations_consumed": 0,
+    "new_protocol_artifacts_created": 0
+  }
+}

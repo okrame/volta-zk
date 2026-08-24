@@ -1,6 +1,6 @@
 # C6.3 Authenticated Sketched WHIR Design
 
-Status: **R0 GREEN / R1 LOCAL CODECS + IDEAL PRIVACY + REAL-PCG CENSUS + 105-BIT SOUNDNESS SCREEN GREEN / RESIDENT GPU OWNER HARD STOP / NO POD / NO EMPIRICAL CREDIT**
+Status: **R0/R1 LOCAL GREEN / C63-G1 A100 RESIDENT OWNER PASS / C63-G2 RESIDENT-LANE HARD STOP / NO E2E CREDIT**
 
 This document is the authority for C6.3. It replaces C6.2 only for new C6.3
 work; C6.2 code, artifacts and dispositions remain immutable evidence. The
@@ -15,7 +15,10 @@ Authenticated Sketched PCS. The objective is a complete response proof below
 weakening the existing designated-verifier statement. The owner accepts a
 complete certificate up to `30,000,000 B` for this experiment.
 
-No design choice currently needs owner input. The minimum path is selected:
+The minimum protocol path remains selected. One implementation-scope choice
+now needs owner input: admit the minimal resident projection/opening and WHIR
+message-ownership extension identified by G2. It does not change the proof
+statement, but it changes ABI43 and the local WHIR fork.
 
 1. keep the accepted K/V state compact and resident on the GPU;
 2. represent padding and the six inactive cache columns as canonical virtual
@@ -30,10 +33,13 @@ No design choice currently needs owner input. The minimum path is selected:
 7. batch every sketch-consistency check of a response into one closure and
    settle it inside the same certificate.
 
-Local reference work is authorized. No provider or pod may be contacted until
-a new endpoint and explicit experiment GO are supplied. A failure to prove
-both full binding and privacy is a hard stop: a small linear fingerprint by
-itself is not an admissible replacement for the PCS.
+Local reference work is authorized. The owner supplied and admitted the first
+A100 for component work; G1 passed there. G2 stopped before E2E, consumed no
+protocol correlations and created no certificate. Further pod protocol work
+requires the resident-extension decision above and a clean component
+checkpoint. A failure to prove both full binding and privacy remains a hard
+stop: a small linear fingerprint by itself is not an admissible replacement
+for the PCS.
 
 ## 0.1 Gates and clock definitions
 
@@ -967,8 +973,19 @@ chunks; the 256-MiB permutation is currently one device upload. `H` remains
 provider-fixed. Correction leaves use the versioned 216-byte `CR3`
 frame so the existing GPU BLAKE3 tree hashes exactly the same bytes as the CPU
 reference. ABI43 now compiles under CUDA 12.8 and both genesis and asymmetric
-successor match the full CPU oracle on one A100. The response-local
-Hiding-WHIR owner remains the next G1 step.
+successor match the full CPU oracle on one A100.
+
+The following G2 source trace proves that the response-local work is not a
+pure coordinator call. `C62GpuWhirCommitter` still receives the initial
+message as a host slice and `HidingWhirProverData` owns a host polynomial.
+There is no device operation that projects the accepted 16-column correction
+and sketch owners by post-root `rho` into the two D22/D19 limb messages.
+`C63ProjectedMmcs` attaches CPU `A` prover data, and `C63GpuStateOwner` cannot
+yet return canonical pruned openings from its resident `A` tree. The joint
+four-lane driver/replay remains inside the scaled test, while final-certificate
+validation checks structure and digest binding only. Therefore clean
+`178c37e` stops before E2E. Record
+`c63-g2-2026-08-24-178c37e.json` carries no timing or protocol credit.
 
 The first hardware check is the single ignored integration test
 `volta-pcs/tests/c63_gpu_owner.rs`. It uses the production D22-to-D19 sampler,
@@ -997,7 +1014,11 @@ four-lane reference, verifier and codecs. No new proof engine, abstraction or
 kernel is admitted unless the differential demonstrates it is necessary. If
 the complete candidate cannot be constructed and verified inside the
 timebox, stop before E2E and record the exact missing seam; a dense-host or
-CPU-prover fallback is forbidden.
+CPU-prover fallback is forbidden. The first timebox ended at the resident
+initial-lane boundary above without an E2E attempt. Resuming requires explicit
+admission of the minimal ABI/WHIR ownership extension listed in that
+disposition; calling the current host-message path would be the forbidden
+fallback.
 
 #### Pod admission and resource controls
 
@@ -1121,9 +1142,9 @@ a raw-K/V Merkle tree or a sketch-only commitment.
   `23,271,419 B`; real serialization still must reproduce it.
 - Probability that the new separation theorem and two-cohort codec preserve
   `pi_final <4.5 MB`: **94--98%**; the exact local maximum is `2,704,573 B`.
-- Probability that the complete warm prover reaches `<20 s` on one A100:
-  **70--84%** after fixing the interleaved `A` layout but before measuring it,
-  fresh masks, 105-bit proof-of-work, the resident adapter and D23 residual.
+- Probability that the complete warm prover reaches `<20 s` on one A100 after
+  the now-required resident handoff is implemented: **60--78%**. The current
+  tree has no complete candidate, so it has no prover-time probability claim.
 - Probability that the four-thread verifier stays below 5 seconds:
   **70--85%**, dominated by the unmeasured 768-MiB `H` scan and WHIR bodies.
 - Probability that an independent review accepts the finite Goldilocks

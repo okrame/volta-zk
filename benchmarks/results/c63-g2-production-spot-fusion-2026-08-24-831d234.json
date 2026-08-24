@@ -1,0 +1,91 @@
+{
+  "schema": "volta-c63-g2-production-spot-fusion-v1",
+  "credit": false,
+  "scope": "150-token production-geometry transcript sampling, resident correction opening, sparse spot fusion and one linked D19 lane; not a four-lane certificate or end-to-end run",
+  "git_sha": "831d234f9b5d03c615c3904ae43c2e9f7f073695",
+  "git_dirty": false,
+  "branch": "agent/c63-authenticated-sketch",
+  "hardware": {
+    "gpu": "NVIDIA A100-SXM4-80GB",
+    "gpu_total_mib": 81920,
+    "gpu_free_mib_at_admission": 81152,
+    "compute_capability": "8.0",
+    "cuda": "12.8",
+    "session_filesystem": "/root overlay",
+    "session_filesystem_free_gib_after_run": 228
+  },
+  "cuda_backend": {
+    "abi": 44,
+    "architecture": "sm_80",
+    "library": "/root/volta-zk/rust/target/cuda/libvolta_cuda_backend.so"
+  },
+  "command": "VOLTA_CUDA_LIBRARY=/root/volta-zk/rust/target/cuda/libvolta_cuda_backend.so VOLTA_REQUIRE_CUDA=1 CARGO_INCREMENTAL=0 cargo test --release --manifest-path rust/Cargo.toml -p volta-pcs --features cuda,c6-trace,c61-p3-authenticated-reference c63_preencoded_whir::tests::production_resident_projected_lane_verifies_on_cpu -- --exact --ignored --nocapture",
+  "result": "PASS",
+  "accepted_tokens": 150,
+  "systematic_query_rows": 4420,
+  "correction_opening_bytes": 260614,
+  "release_repetitions": [
+    {
+      "setup_ms": 19897,
+      "state_ms": 59,
+      "projection_ms": 0,
+      "correction_opening_and_cpu_check_ms": 401,
+      "public_h_prepare_ms": 1469,
+      "sparse_prove_ms": 1084,
+      "sparse_verify_ms": 1093,
+      "sparse_proof_bytes": 1496,
+      "d19_lane_prove_ms": 92,
+      "d19_lane_verify_ms": 21,
+      "d19_lane_proof_bytes": 988792,
+      "peak_device_bytes": 1722574028,
+      "h2d_bytes": 68963532,
+      "d2h_bytes": 3358624,
+      "total_ms": 24123,
+      "test_process_wall_seconds": 24.34
+    },
+    {
+      "setup_ms": 19503,
+      "state_ms": 63,
+      "projection_ms": 2,
+      "correction_opening_and_cpu_check_ms": 399,
+      "public_h_prepare_ms": 1461,
+      "sparse_prove_ms": 938,
+      "sparse_verify_ms": 950,
+      "sparse_proof_bytes": 1496,
+      "d19_lane_prove_ms": 89,
+      "d19_lane_verify_ms": 21,
+      "d19_lane_proof_bytes": 983960,
+      "peak_device_bytes": 1722574028,
+      "h2d_bytes": 68963532,
+      "d2h_bytes": 3358624,
+      "total_ms": 23433,
+      "test_process_wall_seconds": 23.65
+    }
+  ],
+  "checks": {
+    "query_rows_transcript_derived": true,
+    "query_rows_sorted_unique": true,
+    "verifier_replays_query_phase": true,
+    "resident_correction_opening_verified_on_cpu": true,
+    "all_spots_fused_into_sparse_relation": true,
+    "sparse_proof_bytes_unchanged": true,
+    "legacy_dense_precommit_used": false,
+    "certificate_created": false
+  },
+  "ineligible_diagnostics": [
+    {
+      "git_sha": "e6588538b5b4f72aa0ef9a3d61bd8f78c9f5b64c",
+      "result": "FAIL_CLOSED",
+      "test_seconds": 23.12,
+      "reason": "the prover consumed the systematic-query phase before its D19 proof while the component verifier omitted the same replay; proof-of-work verification rejected the divergent transcript"
+    }
+  ],
+  "limitations": [
+    "correction timing includes canonical encoding and immediate CPU verification, not opening alone",
+    "only one of four WHIR lanes is produced and verified",
+    "the output point is a component fixture rather than the final joint coordinator challenge",
+    "real PCG, compact Transformer output link, GW4, final certificate and top-level verifier are absent",
+    "no end-to-end timing, proof-size or acceptance gate is claimed"
+  ],
+  "decision": "Production 4420-row sampling and spot fusion are retained. Their 0.399-0.401 s combined opening/check cost, 260614-byte artifact and unchanged 1496-byte sparse proof leave the four-lane coordinator as the next implementation boundary."
+}

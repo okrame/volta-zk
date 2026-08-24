@@ -1022,9 +1022,12 @@ and 1,626,938,920 B combined device peak. Building the public `H` view takes
 1.448--1.452 s and is model-fixed preprocessing. These are `credit:false`
 component results. Clean `980f076` additionally opens sampled correction rows
 from the resident owner and matches the independent CPU encoding byte for byte
-without downloading a dense table. Transcript-derived production sampling and
-4,420-row spot fusion, the remaining three lanes, coordinator and complete
-verifier are still required before E2E.
+without downloading a dense table. Clean `831d234` then measures
+transcript-derived production sampling and 4,420-row spot fusion on a
+150-token state: opening plus immediate CPU check is 0.399--0.401 s,
+260,614 B, and the fused sparse proof remains 1,496 B. The remaining three
+lanes, compact output link, coordinator and complete verifier are still
+required before E2E.
 
 #### Pod admission and resource controls
 

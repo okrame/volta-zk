@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — LOCAL CODEC/PRIVACY/105-BIT SOUNDNESS SCREEN GREEN; RESIDENT GPU OWNER SOURCE READY; ABI43 A100 EXECUTION HARD STOP / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — LOCAL CODEC/PRIVACY/105-BIT SOUNDNESS SCREEN GREEN; ABI43 A100 COMPONENT EXECUTION OPEN / E2E HARD STOP)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,7 +10,8 @@ record; no external plan is authoritative.
 
 Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 
-- **Status.** C6.3 is open; no pod is open. Privacy/simulation, codecs,
+- **Status.** C6.3 component work is open on the owner-provided A100; E2E is
+  stopped. Privacy/simulation, codecs,
   production-dimension opening codecs, four linked lanes and the reduced
   wrapper are locally green. The ABI43 resident owner and differential compile at the Rust/CUDA
   boundary; device kernels remain unbuilt and unrun. The provider-independent
@@ -30,10 +31,24 @@ Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
   `<5 s`; verifier additional RSS `<=8,000,000,000 B`; soundness
   `>=78.80929487391641 bits`. Cold proof over
   20 s continues; no canonical certificate by 150 s stops.
-- **Resume.** A new A100 endpoint and owner GO are required. Build ABI43,
-  pass one-token and successor differentials, expand and bind the fixed setup
-  seed, close the coordinator/verifier in 60--90 minutes, then run one cold
-  plus one immediate warm response with all clocks separated.
+- **Resume.** Pull the clean C6.3 branch to `/root`, build ABI43, pass one-token
+  and successor differentials, expand and bind the fixed setup seed, then
+  close the coordinator/verifier in 60--90 minutes. E2E remains stopped until
+  every terminal check passes.
+
+- **2026-08-24 — Owner supplies the C6.3 A100 endpoint and GO; component work
+  admitted.** Read-only preflight observes one idle A100-SXM4-80GB with
+  81,152 MiB free, compute capability 8.0, CUDA 12.8, 128 CPUs and effective
+  cgroup memory `250,999,996,416 B`. The pod root overlay has
+  `246,944,014,336 B` free and ample inodes. `/workspace` has only
+  `119,997,273,866 B` free and is rejected for this run. Source, canonical
+  `rust/target`, setup, weights and the create-new session therefore share
+  `/root`; this session disk is not credited as surviving pod destruction.
+  Clean checkpoints and small evidence return through GitHub, never SCP, and
+  generated assets are disposable. The public branch is readable from the
+  pod. No hardware protocol result exists yet; official E2E remains blocked
+  on both GPU differentials, setup expansion/digest, complete coordinator/CPU
+  verifier, dense-path sentinel, cleanup baseline and resource supervisor.
 
 - **2026-08-24 — Readiness and pod-resource audit finds controlled pre-E2E
   blockers.** Source review confirms the projected MMCS, four scaled lanes,

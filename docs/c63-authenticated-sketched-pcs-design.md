@@ -1047,6 +1047,13 @@ their immutable JSON/log digests copied under `benchmarks/results/` and
 committed. Generated setup, weights and `rust/target` stay pod-local and are
 removed after evidence export; result files are never included in cleanup.
 
+For the owner-provided first pod, `/workspace` fails the admission floor.
+The pod root overlay is admitted instead because it has more than 200 GB free;
+all source, build, generated and session paths stay on that one filesystem.
+It is not credited as surviving pod destruction, so clean source checkpoints
+and small evidence are pushed after each boundary. Losing disposable setup or
+weights requires a fresh run and never permits a selective protocol retry.
+
 ### C63-E2E2 — two real responses
 
 Only after local tests, exact budgets, clean source, artifact checks and a new

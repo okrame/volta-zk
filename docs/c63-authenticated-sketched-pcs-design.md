@@ -1,6 +1,6 @@
 # C6.3 Authenticated Sketched WHIR Design
 
-Status: **R0/R1 LOCAL GREEN / C63-G1 A100 PASS / C63-G2 TERMINAL-JOIN HARD STOP / OWNER DECISION**
+Status: **R0/R1 LOCAL GREEN / C63-G1 A100 PASS / EIGHT-BODY REPAIR SELECTED / LOCAL JOIN OPEN / NO POD**
 
 This document is the authority for C6.3. It replaces C6.2 only for new C6.3
 work; C6.2 code, artifacts and dispositions remain immutable evidence. The
@@ -57,7 +57,7 @@ C6.3 experiment.
 | official four-thread CPU verifier | `<5.000 s` |
 | verifier additional RSS | `<=8,000,000,000 B` |
 | A100 device high-water guard | `<=45,818,576,864 B` |
-| complete per-certificate soundness | `>=78.80929487391641 bits` |
+| complete per-certificate soundness | `>=78.00 bits` |
 
 `response_specific_prover` starts after setup, model weights and fixed
 provider tables are resident. It includes fresh proof work, real/AES PCG
@@ -168,34 +168,32 @@ components and their three 40-byte component headers projects the retained
 residual/auxiliary tail to `2,703,013 B` before the new closure, leaving at
 most `1,796,986 B` under the strict `pi_final` gate. The current public-bulk
 front-runner is the `t=16` reshape with a 105-bit phase profile. Its exact
-two-level `q_X=4,420` correction artifact is at most `2,037,262 B`. The two
-`y` limbs may share one projected D19 query set: `q_A=245` gives a counted
-`149,316-B` D19-by-32 opening. The executable conservative layout keeps two
-separate openings, `298,632 B` total; their union has at most 490 rows and
-would cost `282,948 B`. Query sharing is optional and receives no credit.
+two-level `q_X=4,420` correction artifact is at most `2,037,262 B`. One
+projected D19 query set at `q_A=245` costs `149,316 B`. The selected
+conservative layout keeps four separate openings, `597,264 B` total.
+Cross-tape query sharing is optional and receives no credit.
 
-The intended adapter proves decoded `m` at D22 and `u` at D19 while supplying
-already encoded `w=C(m)` and `y=C(u)` as initial oracles. Two 105-bit cores of
-each type total `4,519,664 B`; ordinary WHIR over D23/D20 would encode
-`w/y` again and is only a `4,822,680-B` fallback. Paired public bulk is
-`6,706,626 B`. The `1,496-B` sparse closure and four 16-byte WHIR terminal
-tags enter the designated tail, giving a projected `2,704,573-B` `pi_final`
-and `23,122,063-B` certificate. Charging the strict `pi_final` cap instead
-gives `24,917,489 B`, leaving `5,082,511 B`.
-The selected two-opening fallback has `6,855,982 B` of C6.3 public bulk,
-`23,271,419 B` complete with the projected tail, or `25,066,845 B` at the
-strict `pi_final` cap, leaving `4,933,155 B`.
+The selected adapter proves tape-separated decoded `m_l` at D22 and `u_l` at
+D19 while supplying already encoded `w_l=C(m_l)` and `y_l=C(u_l)` initial
+oracles. Four 105-bit cores per authentication tape give eight bodies and
+`9,039,328 B`. The conservative executable layout assigns each of the four
+D19 bodies its own authenticated `A` opening and 20-byte outer frame. Its
+public bulk is `11,674,318 B`; the `1,496-B` sparse closure and four 16-byte
+terminal tags leave `pi_final` at `2,704,573 B`. The resulting complete
+certificate is `28,089,755 B`, or `29,885,181 B` when charged against the
+strict `pi_final` cap. Setup plus first is `129,287,452 B`.
 
 This remains `credit:false`. The canonical public, designated and final
 certificate codecs include
 every required proof-of-work witness and the local projected verifier binds
-the accepted `A` rows to the randomized initial oracle. The selected 105-bit
-profile unions all 60 registered phase events, four terminal ZeroOpen errors,
-the sparse relation, systematic spots, inherited C6.1 terms and the finite
+the accepted `A` rows to the randomized initial oracle. Screen v15 unions all
+120 registered phase events, four terminal ZeroOpen errors, both sparse
+relations, systematic spots, inherited C6.1 terms and the finite
 setup-distance term. With `H_pow` independent from `H_fs`, the inherited
-`2^20` Fiat--Shamir query cap gives `78.9485568461 bits`. This clears the ideal
-target by about `0.1393` bits and charges a conservative `2^-128` BLAKE3-XOF
-computational assumption. Grinding has about `7,995,392` expected hashes and
+`2^20` Fiat--Shamir query cap gives `78.019023342845... bits`. This clears the
+owner-revised `78.00`-bit target by only about `0.0190` bits and charges a
+conservative `2^-128` BLAKE3-XOF computational assumption. Grinding has about
+`15,990,784` expected hashes and
 a fail-closed `2^26` candidate cap per phase. Adding those hashes to one
 monolithic oracle remains invalid and below target. This is a computational
 screen, not a formal standard-model theorem or empirical gate credit.
@@ -464,30 +462,33 @@ a_l(cell) = g(row(cell)) * rho[column(cell,l)]
 R_l(cell) + D'_e[row(cell), column(cell)] = X(cell)
 ```
 
-Define the post-`rho` messages without flattening the tensor:
+For authentication tape `l`, define the post-`rho` messages without
+flattening the tensor and without adding the two tapes:
 
 ```text
-m[row] = sum(column=0..15) rho[column] * D'_e[row,column]
-u[out] = sum(column=0..15) rho[column] * S_e[out,column] = H m
-y[code_row] = sum(column=0..15) rho[column] * A_e[code_row,column] = C(u)
-w = C(m)
+m_l[row] = sum(column: tape(column)=l) rho[column] * D'_e[row,column]
+u_l[out] = sum(column: tape(column)=l) rho[column] * S_e[out,column] = H m_l
+y_l[code_row] = sum(column: tape(column)=l) rho[column] * A_e[code_row,column]
+              = C(u_l)
+w_l = C(m_l)
 ```
 
-`A_e` is fixed before `rho`; `y` is obtained only by opening complete rows of
-that root and taking their `rho` combination. `w` is the fresh code switch
+`A_e` is fixed before `rho`; each `y_l` is obtained only by opening complete rows of
+that root and taking their tape-restricted `rho` combination. `w_l` is the fresh code switch
 committed after `rho`. The constrained WHIR adapter proves the decoded
-messages `m` and `u` against the already encoded initial oracles `w` and `y`;
-it must not pass `w/y` as new messages to the ordinary encoder. The sparse
-closure proves that the decoded messages obey `u=H m`.
+messages `m_l` and `u_l` against the already encoded initial oracles `w_l` and
+`y_l`; it must not pass `w_l/y_l` as new messages to the ordinary encoder.
+The sparse closure proves both decoded relations `u_l=H m_l` with shared
+round challenges and separate authenticated round streams.
 
 The persistent `A` root is deterministic and external to Hiding-WHIR's fresh
 randomness. It is never the randomized initial oracle `ZC(S;zeta)`: reusing
 one mask across responses accumulates openings beyond the present privacy
 argument, while refreshing it would change the accepted root. Each response
 therefore built four fresh randomized base-field initial roots in the rejected
-combined-tape composition. The recommended repair builds eight, one per
+combined-tape composition. The selected repair builds eight, one per
 arithmetic limb, object and MAC tape, and links them to deterministic `D'`,
-`A`, `w` and `y` inside the same transcript.
+`A`, `w_l` and `y_l` inside the same transcript.
 
 The CPU reference now packs the physical `A` rows as
 `[column][fold_position]`, projects both limbs of `A*rho`, and obtains exactly
@@ -527,22 +528,21 @@ authenticated output link. The verifier closes the two MAC tapes separately:
 K_l(a_l) + Delta_l * D_l(a_l) = M_l(a_l) + Delta_l * X_l(a_l)
 ```
 
-Their authenticated contributions `t_0,t_1` are bound to the same Transformer
-output relation, then the public target checks `m_target = t_0 + t_1`. The two
-MAC equations are never added together because `Delta_0` and `Delta_1` are
-independent secrets. R1 must prove that the output link, sparse `H` relation
-and Hiding-WHIR targets compile these identical coefficients, including the
-base-to-extension conversion.
+The selected statement binds `m_0` and `m_1` separately to the corresponding
+Transformer output equation. It never publishes or authenticates only their
+sum. The two MAC equations are never added because `Delta_0` and `Delta_1`
+are independent secrets. R1 must prove that the output link, both sparse `H`
+relations and all eight Hiding-WHIR bodies compile the identical per-tape
+coefficients, including the base-to-extension conversion.
 
-The Rust reference executes the single 16-column pullback and checks that the
-combined functional equals the sum of the two independently accumulated tape
-contributions. This check alone is executable algebra evidence; transcript,
-privacy and binding evidence are supplied by the later local seams and remain
-without full-chain hardware credit.
+The historical Rust reference checks only that the combined 16-column
+functional equals the sum of two tape contributions. It is algebra evidence,
+not the selected authenticated output link. The revised reference must expose
+and verify the two contributions separately.
 
 This removes the eight persistent D24/D25/D28 cache encodings, files and CPU
-tree walks. It does not forbid the transient `w=C(m)` owner and the constrained
-proof view `y=A*rho` required by the opening proof. They are derived after the
+tree walks. It does not forbid the transient `w_l=C(m_l)` owners and the
+constrained views `y_l` required by the opening proof. They are derived after the
 state roots and are never promoted as cache state; the pre-`rho` encoded tensor
 `A` is the persistent second Bolt object.
 
@@ -562,24 +562,23 @@ The conservative R1 construction keeps the checks that make Bolt binding:
 
 1. query the systematic correction root at transcript-derived rows;
 2. open the pre-`rho` encoded-sketch tensor `A` at transcript-derived rows;
-3. derive `m=D'*rho`, `u=S*rho`, the row view `y=A*rho` and the fresh code
-   switch `w=C(m)`;
-4. prove with the constrained Hiding-WHIR adapter that `w` and `y` are valid
-   base-code words and that their decoded messages satisfy `u=H*m`;
+3. derive `m_l`, `u_l`, the row views `y_l` and fresh code switches `w_l`
+   separately for both authentication tapes;
+4. prove with the constrained Hiding-WHIR adapter that every `w_l/y_l` pair
+   is valid and that its decoded messages satisfy `u_l=H*m_l`;
 5. resolve every output into the existing two-tape VOLE authentication rather
    than a clear cache evaluation.
 
 The common `rho in Fp2^16` collapses each tensor row to one extension-field
 symbol. The current WHIR implementation accepts one base-field polynomial and
 encodes it internally. The minimum new adapter instead accepts both a decoded
-message and an already encoded resident initial oracle. It runs four base
-proof cores sequentially: two D22 limbs of `m` against `w`, and two D19 limbs
-of `u` against `y`. The `w` limbs share one projected query set; the `y` limbs
-share the persistent `A` rows and a paired D19 projected query set. They are
-not four unrelated codewords. Target decomposition, the projected MMCS and
-strict codecs exist in the scaled/reference path. What does not yet exist is
-the production response coordinator that borrows the GPU owners, executes
-these four lanes and invokes one complete C6.3 CPU verifier. Base-field row
+message and an already encoded resident initial oracle. It runs eight base
+proof cores sequentially: for each tape, two D22 limbs of `m_l` against `w_l`
+and two D19 limbs of `u_l` against `y_l`. The conservative codec gives each
+D19 body an independent authenticated `A` opening. Target decomposition, the
+projected MMCS and strict four-body codecs exist in the scaled/reference path.
+What does not yet exist is the eight-body coordinator and complete C6.3 CPU
+verifier. Base-field row
 challenges are not assumed: one Goldilocks draw has only about 64 bits and
 cannot alone cover the complete soundness target.
 
@@ -590,15 +589,16 @@ queries and the row difference is constrained to the encoding of fresh mask
 coefficients. Calling the cached-base seam without that second equation is a
 diagnostic only.
 
-`m` has D22 `Fp2` symbols and `w=C(m)` has D23 symbols at rate `1/2`; `u` has
-D19 `Fp2` symbols and `y=C(u)` has D20. The selected 105-bit adapter profile
+Each `m_l` has D22 `Fp2` symbols and `w_l=C(m_l)` has D23 symbols at rate
+`1/2`; each `u_l` has D19 `Fp2` symbols and `y_l=C(u_l)` has D20. The selected 105-bit adapter profile
 uses D22 intermediate rates `[1,2,3,3,4,5,6,7]` with at most 18 bits of
 fold proof-of-work, and D19 rates `[1,2,3,4,5,6]` with at most 17 bits. The
 respective claimless body sizes are `1,289,080 B` and `970,752 B`, including
-native proof-of-work witnesses; two limbs of each total `4,519,664 B`. No
+native proof-of-work witnesses. Four bodies per tape cost `4,519,664 B` and
+the selected eight bodies cost `9,039,328 B`. No
 clear terminal evaluation is serialized. Each projected D19 artifact adds a
 20-byte outer frame plus its authenticated `A` opening. An unmodified
-WHIR call over D23/D20 would double-encode `w/y` and costs `4,822,680 B`; it is
+WHIR call over D23/D20 would double-encode `w_l/y_l`; it is
 a safe implementation fallback, not the selected statement. This geometry is
 why `t=16`, rather than the smaller-row `t=4` or earlier `t=128`, is the
 current byte/time front-runner.
@@ -617,20 +617,21 @@ accepted prefix. These are operation counts, not A100 timings.
 
 WHIR replaces Bolt's two Reed-Solomon/Ligerito proximity layers and hides their
 targets. It does not, by itself, replace the code switch, systematic spot
-checks or the `H` consistency relation. The conservative body census is two
-limbs of `w` and two limbs of `y`, implemented as four base-field WHIR cores.
-This is the Bolt-inside-WHIR contribution; it is not a separate PCS.
+checks or the `H` consistency relation. The selected census is two limbs of
+`w_l` and two limbs of `y_l` for each tape, implemented as eight base-field
+WHIR cores. This is the Bolt-inside-WHIR contribution; it is not a separate
+PCS.
 
-The four WHIR cores do not by themselves prove `u = H m`. The selected
-Volta-specific replacement for Bolt's non-amortized MulPerm is one
-authenticated inner-product sumcheck. After a fresh `r in Fp2^19`, set
-`q=eq(r)` and `a=H^T q`; prove
-`<q,u>=<a,m>` in 22 degree-two rounds, then link the terminal `m` and `u`
-values to the four WHIR cores. Its exact production-dimension census is
+The eight WHIR cores do not by themselves prove `u_l = H m_l`. The selected
+Volta-specific replacement for Bolt's non-amortized MulPerm is one two-stream
+authenticated inner-product proof. After a fresh `r in Fp2^19`, set
+`q=eq(r)` and `a=H^T q`; prove `<q,u_l>=<a,m_l>` for both tapes in 22
+degree-two rounds with common challenges, then link the four extension-field
+terminal values to the eight WHIR bodies. Its exact production-dimension census is
 `67,108,864` Fp2-by-Fp multiply-adds for the `H` scan, `524,287` Fp2
 multiplications for `eq(r)`, `16,777,212` for sumcheck folds, about 72 MiB
 scratch, `1,496 B` framed, 44 full correlations per MAC tape, and error at
-most `64/|Fp2|` for the tensor mix, random output point and sumcheck rounds.
+most `128/|Fp2|` for the union of both tape relations.
 This term does not silently cover any additional ZeroOpen or MAC failure.
 The rejected four-body composition's final census was locally closed at 24
 sub plus 703 full correlations per tape, but remains unexecuted with the real
@@ -649,7 +650,7 @@ real-PCG privacy audit are locally green only for the rejected four-body
 suffix. GPU component measurements remain valid, but the terminal
 join now precedes GPU ownership and receives no protocol credit.
 
-The recommended repair keeps the authentication tapes separate all the way
+The owner-selected repair keeps the authentication tapes separate all the way
 through the sparse relation. For tape `l`, define `m_l` from only that tape's
 eight correction columns and `u_l=H m_l`. Each is still an extension-field
 message and therefore needs two base-field WHIR limb bodies. This gives four
@@ -659,16 +660,17 @@ extension-field target using the already implemented joint-bridge algebra;
 the certificate still carries one terminal tag per object and tape. Opposite
 errors cannot cancel because neither sparse equation adds the two tapes.
 
-This repair adds the existing four-body census, `4,519,664 B`, to the selected
-certificate: about `27,791,083 B` total and `128,988,780 B` setup plus first.
-It consumes four rather than two WHIR masks per tape, moving the projected
-full-correlation census from 703 to 705. The sparse proof remains 1,496 bytes,
-but its two round streams now prove distinct `u_l=H m_l` relations. These are
-analytic projections only. The statement digest, soundness union, compact
-output-link coefficients, codecs and mutation tests must be revised before
-implementation credit. A four-body alternative would require a new
-cross-tape authenticated-value conversion and is not admitted without a
-separate proof.
+This repair doubles the claimless body bytes to `9,039,328 B`. The selected
+conservative codec also carries four independent authenticated `A` openings,
+giving `28,089,755 B` total and `129,287,452 B` setup plus first. It consumes
+four rather than two WHIR masks per tape, moving the projected full-correlation
+census from 703 to 705. The sparse proof remains 1,496 bytes, but its two round
+streams now prove distinct `u_l=H m_l` relations. Screen v15 gives
+`78.019023342845...` bits against the owner-revised `78.00`-bit gate while
+keeping every phase at 105 bits. These remain analytic projections. The
+statement digest, output-link coefficients, codecs and mutation tests must
+close before implementation credit. The four-body cross-tape conversion is
+rejected for this milestone.
 
 The C6.3-specific contribution is the append-aligned 16-column reshape, the
 typed correction-row commitment and batching around Volta's accepted
@@ -681,9 +683,10 @@ The closure must establish all of the following in the same certificate:
 1. the systematic correction root has the accepted old prefix, the exact
    authenticated append correction and canonical virtual zeros;
 2. the proposed sketch is the accepted sketch plus `H J(delta_D')`;
-3. the persistent `A`, fresh `w` and all four limb proof views are valid under
-   the dedicated C6.3 Hiding-WHIR profile, including `y=A*rho` row linkage;
-4. the sparse `H` relation links the systematic and sketch sides;
+3. the persistent `A`, fresh `w_l` and all eight limb proof views are valid
+   under the dedicated C6.3 Hiding-WHIR profile, including each `y_l` row
+   linkage;
+4. both sparse `H` relations link the systematic and sketch sides;
 5. every cache value used by the Transformer is reconstructed from the same
    correction and correlation, on both tapes;
 6. the successor head, epoch and length are exactly the objects verified and
@@ -733,17 +736,17 @@ The candidate is rejected if an implementation changes this dependency order:
 2. commit the successor systematic root `R_D`, encoded-sketch tensor root
    `R_A`, their descriptors and the evaluation-target decomposition;
 3. derive one typed row-combination challenge `rho in Fp2^16`, construct
-   `m/u/w/y`, and bind the transient `w` descriptor plus the four fresh
+   both `m_l/u_l/w_l/y_l` groups, and bind the transient descriptors plus the eight fresh
    randomized initial roots required by the limb cores;
 4. derive the sorted unique systematic spot set `q_X`, open complete `D'`
-   rows, verify its deduplicated Merkle frontier and compute each public
-   `m[row]=<rho,D'[row]>`; under the current screen `q_X=4,420`;
+   rows, verify its deduplicated Merkle frontier and compute both tape-restricted
+   row products `m_l[row]`; under the current screen `q_X=4,420`;
 5. include those row/value pairs in the sparse-`H` statement, derive its
-   compression challenge only after that header, and execute the sumcheck.
-   This yields the D22/D19 terminal points for `m/u`;
-6. open the four already committed limb cores at those terminal points and
-   finish them sequentially. The two `y` cores derive and open their paired
-   projected `A` set `q_A` internally; under the current screen `q_A=245`.
+   compression challenge only after that header, and execute both tape
+   relations. This yields the D22/D19 terminal points for each `m_l/u_l`;
+6. open the eight already committed limb cores at those terminal points and
+   finish them sequentially. The four `y_l` cores independently derive and
+   open their projected `A` sets; under the current screen each `q_A=245`.
    In every round the message or next fold root precedes its challenge. Each
    proof-of-work search uses role/phase/snapshot-bound `H_pow`; only its
    accepted witness enters the separate `H_fs` transcript;
@@ -771,8 +774,8 @@ prove a sub-20-second result. C6.3 also requires:
    proof-of-work, and encode the fixed-count witnesses under a new magic;
    do not change or rebenchmark GW4's D27/D28 chains;
 3. **one batched consistency envelope:** use persistent `A=C^16(H D')`, fresh
-   `w=C(D'*rho)` and four sequential base-field WHIR cores over decoded D22/D19
-   limb messages with pre-encoded `w/y` initial oracles; for the `y` cores,
+   `w_l=C(m_l)` and eight sequential base-field WHIR cores over decoded D22/D19
+   limb messages with pre-encoded `w_l/y_l` initial oracles; for the `y_l` cores,
    authenticate projected `A` rows and constrain the randomized-row difference
    to `Enc(0,zeta)` inside the first round; independent per-column closures and
    double encoding are forbidden;
@@ -785,9 +788,9 @@ prove a sub-20-second result. C6.3 also requires:
    the completed
    precommit probe and may become the next bottleneck;
 7. **direct GPU ownership:** source slabs, `H delta_D`, encoded `A`, roots,
-   transient `w`, decoded `m/u`, fresh randomized oracles and opening work remain device-resident, with only
+   transient `w_l`, decoded `m_l/u_l`, fresh randomized oracles and opening work remain device-resident, with only
    the final codec copied out; GW4 transient owners are released before the
-   four sequential WHIR limb cores begin;
+   eight sequential WHIR limb cores begin;
 8. **reusable fixed owners:** the current one-certificate runner consumes
    fixed coefficient owners with `take()`; a two-response runner must borrow
    the immutable owners while keeping response state separate, and the
@@ -826,7 +829,7 @@ paper's complete Bolt-min evaluation proof at its parameters, not one body per
 column. Therefore `23.56 MB` is neither an upper nor a lower bound for C6.3.
 It remains only a `credit:false` selection screen. C6.3 interleaves K/V and
 both tapes behind `R_D`, commits `A=C^16(H D')` before `rho`, constructs fresh
-`w=C(D'*rho)`, and maps the limbs of `w` and `y=A*rho` to four sequential
+`w_l=C(m_l)`, and maps the limbs of each `w_l/y_l` pair to eight sequential
 base-field WHIR cores through decoded D22/D19 messages and pre-encoded initial
 oracles. The analytic profile sizes are counted above; executable codec credit
 still requires the adapter and proof-of-work witnesses.
@@ -836,42 +839,29 @@ The reproduced YHC calculation changes the field-size input from Bolt's
 At the selected 105-bit target, `gamma=0.049` requires `q_X=4,420` rows.
 The canonical D12-inside-D10 correction artifact is at most `2,037,262 B`,
 including metadata and both multiproof levels. The persistent `A` root is
-D19-by-32 physically. A paired projected MMCS lets its two limbs share
-`q_A=245` and costs `149,316 B`; the selected executable fallback serializes
-two such openings for `298,632 B`. Their deduplicated union has at most 490
-rows and would cost `282,948 B`.
+D19-by-32 physically. One projected opening at `q_A=245` costs `149,316 B`.
+The selected conservative eight-body codec serializes four independent
+openings, `597,264 B` total. Cross-tape query sharing is not counted.
 
-The four D22/D19 bodies add `4,519,664 B`, so paired public bulk is
-`6,706,626 B`. The sparse closure and four WHIR terminal tags are MAC-dependent
-and belong in `pi_final`: `2,703,013 + 1,496 + 64 = 2,704,573 B`, leaving
-`1,795,426 B` under the strict partition. Using that projected tail gives a
-`23,122,063-B` certificate and `124,319,760 B` for the measured setup floor
-plus first certificate. Replacing the projected tail with the strict
-`4,499,999-B` cap gives `24,917,489 B` and `5,082,511 B` of certificate
-headroom. These values include the 384-B public frame and 793-B final
-certificate frame.
+The eight D22/D19 bodies add `9,039,328 B`. The paired-opening analytic lower
+screen has `11,226,290 B` public bulk and a `27,641,727-B` certificate, but it
+assumes query sharing that has no selected codec. The conservative layout
+serializes four `A` openings and four 20-byte projected frames, giving
+`11,674,318 B` public bulk. The sparse closure and four terminal tags remain
+in `pi_final`: `2,703,013 + 1,496 + 64 = 2,704,573 B`. The selected complete
+certificate is therefore `28,089,755 B`, leaving `1,910,245 B` below the
+experimental limit. Charging the strict `4,499,999-B` `pi_final` cap gives
+`29,885,181 B`, leaving `114,819 B`. Setup plus first is `129,287,452 B`.
+These are exact analytic maxima for screen v15, not serialized proof credit.
 
-Paired queries are an optimization, not a certificate-size dependency. Two
-independent 245-query limb sets have union at most 490; the maximum-frontier
-screen gives `6,840,258 B` public bulk, `23,255,695 B` with the projected
-tail, or `25,051,121 B` under the strict `pi_final` cap. The last case still
-has `4,948,879 B` of headroom.
-
-The smallest linked implementation may serialize the two `A` multiproofs
-separately before an outer union driver exists. That deliberately lazier
-fallback costs `298,632 B` for the two counted `A` openings plus two 20-byte
-projected frames, giving `6,855,982 B` public bulk, `23,271,419 B` with the
-projected tail, or `25,066,845 B` under the strict `pi_final` cap. It leaves
-`4,933,155 B`. The first setup plus this conservative certificate is
-`124,469,116 B`. The codecs make these exact maxima locally executable, but
-they remain `credit:false` until a real response is serialized.
-
-The selected screen unions all 60 phase events at 105 bits. It separately
-charges the systematic spot event, `4,420/|Fp2|` spot fusion, the
-`64/|Fp2|` sparse closure, four terminal ZeroOpen failures, inherited C6.1
-terms, exact finite setup distance and a `2^-128` BLAKE3-XOF computational
-assumption. Under the inherited `2^20` Fiat--Shamir query cap the result is
-`78.9485568461 bits`, above the target by about `0.1393` bits.
+The selected screen unions all 120 phase events at 105 bits. It separately
+charges the systematic spot event, `4,420/|Fp2|` spot fusion, two sparse
+relations totaling `128/|Fp2|`, four terminal ZeroOpen failures, inherited
+C6.1 terms, exact finite setup distance and a `2^-128` BLAKE3-XOF
+computational assumption. Under the inherited `2^20` Fiat--Shamir query cap
+the result is `78.019023342845... bits`, above the owner-revised `78.00`-bit
+target by about `0.0190` bits. Any newly discovered error term reopens this
+screen rather than being absorbed by the margin.
 
 This calculation requires two independent modeled oracles:
 `H_pow(profile, role, phase, snapshot, witness)` for grinding and
@@ -880,7 +870,7 @@ challenger is insufficient. The Rust reference now implements this separation
 with keyed BLAKE3 for `H_pow`; only a valid witness is absorbed by the ordinary
 Fiat--Shamir challenger. Changed role, transcript, phase or witness rejects,
 and a differential test proves grinding consumes no Fiat--Shamir samples.
-Expected grinding is `7,995,392` hashes; each phase stops after `2^26`
+Expected grinding is `15,990,784` hashes; each phase stops after `2^26`
 candidates. Treating grinding as Fiat--Shamir queries remains a rejected
 monolithic model and fails the gate. The selected result is a computational
 random-oracle screen, not a standard-model proof or empirical credit.
@@ -895,7 +885,7 @@ the 768-MiB sparse map, that state and one complete D23/Fp2 lane guard is
 `46,088,197,900 B`, or `269,621,036 B` above the A100 guard. The lane guard
 already contains its D23 codeword; it is not counted twice. The normative
 schedule keeps `H` resident, finishes GW4, releases all GW4 transient owners,
-then executes the four base WHIR cores one at a time with one reused
+then executes the eight base WHIR cores one at a time with one reused
 workspace. Analytic phase proxies are `40,559,056,684 B` for GW4 plus `H`
 plus state and `19,826,737,056 B` for C6.3. These are `credit:false`: the
 state subtotal is an analytic census and the complete-tree convention
@@ -909,11 +899,12 @@ Hiding randomness, typed
 framing and the Volta `H` closure may move the final size in either direction.
 
 The executable screen is `scripts/budget_c63_authenticated_sketch.py` (schema
-v14). Version 14 only corrects the stale diagnostic field name from 4,378 to
-the already enforced 4,420 rows and lists the remaining production coordinator
-and setup-seed evidence; arithmetic is unchanged. Canonical correction-row
-and historical four-lane WHIR codecs exist locally. The selected terminal
-repair still needs revised public/designated and final-certificate codecs. The
+v15). Version 15 selects eight bodies, charges four independent `A` openings,
+counts 120 phase events and changes only the owner-set complete soundness gate
+to 78.00 bits; every per-phase profile remains 105 bits. Canonical
+correction-row and historical four-lane WHIR codecs exist locally. The
+selected terminal repair still needs revised public/designated and
+final-certificate codecs. The
 historical exact byte, setup,
 `pi_final` and computational soundness screens are evaluated but remain
 `credit:false`; prover time, verifier time, RAM and VRAM stay unevaluated until
@@ -947,8 +938,8 @@ preceding design step; it does not silently relax a statement.
 - prove systematic-correction-plus-sketch binding, two-tape VOLE linkage,
   tensor target decomposition, sparse-code consistency, delta linkage and
   complete transcript privacy;
-- replace the scaled sparse-`H` verifier's full `m/u` inputs with the terminal
-  D22/D19 WHIR openings while preserving its 1,496-B codec and two MAC tapes;
+- replace the scaled sparse-`H` verifier's full inputs with separate terminal
+  D22/D19 `m_l/u_l` openings while preserving its 1,496-B codec and two tapes;
 - replace the honest cached-base check with a projected initial MMCS opening
   and the first-round mask-only equation; include an attack test where plain
   WHIR accepts a substituted base and the linked C6.3 verifier rejects it;
@@ -956,8 +947,8 @@ preceding design step; it does not silently relax a statement.
 - reproduce the green 188-bit rational distance screen independently and bind
   it to the production version of the exact-ensemble D22 setup sampler;
 - add adversarial mutations for prefix, append ordinal/value, zero tail,
-  correction domain/tape, `H delta_D'`, encoded-`A` row/root, fresh `w`,
-  `y=A*rho`, both child roots, epoch/length and framing.
+  correction domain/tape, `H delta_D'`, encoded-`A` row/root, fresh `w_l`,
+  every `y_l` linkage, both child roots, epoch/length and framing.
 
 Changing the protocol statement opens additive Lean work. Frozen historical
 M1--M11 files are not edited; C6.3 lemmas must cover the new relation before a
@@ -975,16 +966,16 @@ contain exactly one linked `A` opening each. Production-depth synthetic codecs
 include every registered PoW witness. This remains `credit:false`: the fixture
 is scaled, uses mock correlations, serializes the public component but not one
 complete final certificate, and is not composed with the GPU owner. The
-eight-body tape-separated repair above supersedes this four-body terminal
-composition if selected by the owner.
+owner-selected eight-body tape-separated repair above supersedes this
+four-body terminal composition.
 
 ### C63-G1 — GPU component boundary
 
 - consume the live K/V slabs without a dense host state;
 - compute/update the correction root, raw `S` and encoded tensor `A` on GPU;
 - use a C6.3-only fresh Hiding-WHIR owner and resident initial-message hook;
-- retain accepted and proposed `A` until verification, and keep fresh `w` plus
-  the `y=A*rho` proof view device-resident with shared row paths;
+- retain accepted and proposed `A` until verification, and keep both fresh
+  `w_l` plus the `y_l` proof views device-resident;
 - serialize one complete candidate and run the CPU verifier;
 - separately time cache update, base code, hashing, closure, D23, GW4,
   synchronization and serialization.
@@ -1160,24 +1151,24 @@ JSON record returns through Git.
 ## 7. Current decision and confidence
 
 The direction is **the append-aligned `t=16` Bolt sparse precode over Volta's
-masked correction state, adapted inside WHIR as one 16-column extension-field
-mix, a deterministic pre-`rho` `A=C^16(H D')` tensor rooted as D19-by-32,
-fresh randomized D22/D19 WHIR cores over already encoded `w/y` oracles, and one
-dual-tape sparse inner-product closure; tagless bulk stays public and only the
-designated tail enters `pi_final`**. It is not a Bolt crate port, a second PCS,
-a raw-K/V Merkle tree or a sketch-only commitment.
+masked correction state, adapted inside WHIR as two tape-separated projections
+of one deterministic pre-`rho` `A=C^16(H D')` tensor, eight fresh randomized
+D22/D19 WHIR bodies over already encoded `w_l/y_l` oracles, and one two-stream
+sparse inner-product closure; tagless bulk stays public and only the designated
+tail enters `pi_final`**. It is not a Bolt crate port, a second PCS, a raw-K/V
+Merkle tree or a sketch-only commitment.
 
 - Probability that it removes the measured cache-precommit bottleneck:
   **88--96%**.
 - Probability that the one-`rho`, two-tensor Bolt-to-WHIR algebra survives
   independent review before privacy and full error accounting: **90--96%**.
 - Probability that the first complete GPT-2 certificate fits 30 MB:
-  **94--98%** because the conservative two-opening codec is exactly bounded at
-  `23,271,419 B`; real serialization still must reproduce it.
+  **90--96%** because screen v15 bounds the conservative four-opening codec at
+  `28,089,755 B`; real serialization still must reproduce it.
 - Probability that the new separation theorem and two-cohort codec preserve
   `pi_final <4.5 MB`: **94--98%**; the exact local maximum is `2,704,573 B`.
 - Probability that the complete warm prover reaches `<20 s` on one A100 after
-  the now-required resident handoff is implemented: **60--78%**. The current
+  the now-required resident handoff is implemented: **50--70%**. The current
   tree has no complete candidate, so it has no prover-time probability claim.
 - Probability that the four-thread verifier stays below 5 seconds:
   **70--85%**, dominated by the unmeasured 768-MiB `H` scan and WHIR bodies.
@@ -1185,7 +1176,8 @@ a raw-K/V Merkle tree or a sketch-only commitment.
   distance bound without changing the query count: **92--98%**.
 - Probability that independent review accepts the 105-bit two-oracle soundness
   screen and the 128-bit BLAKE3-XOF assumption without a profile change:
-  **65--80%**. The computed result is `78.9485568461 bits`.
+  **55--70%**. The computed result is `78.019023342845... bits` against the
+  owner-revised `78.00`-bit gate, leaving almost no room for an omitted term.
 - Probability that eight literal non-amortized Bolt closures reach `<20 s`:
   **below 10%**.
 

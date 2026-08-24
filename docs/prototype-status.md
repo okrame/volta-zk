@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — G2 SPOT FUSION PASS / TERMINAL-JOIN HARD STOP / OWNER DECISION)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — EIGHT-BODY REPAIR SELECTED / LOCAL JOIN OPEN / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,26 +10,39 @@ record; no external plan is authoritative.
 
 Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 
-- **Status.** C6.3 G2 component evidence is green; E2E and new pod work are
-  stopped. The scaled four-lane test assigned arithmetic limb 0 to MAC tape 0
-  and limb 1 to tape 1, then reconstructed clear `Fp2` openings. The sparse
-  verifier manufactured public keys for those values. It therefore does not
-  cryptographically join the four WHIR terminals to the two-tape relation.
+- **Status.** The owner selects the tape-separated eight-body repair. Local
+  statement, codec and verifier work may resume; E2E and pod work remain
+  stopped until the joined terminal mutations and complete CPU verifier pass.
 - **Evidence.** Resident projection/openings, 4,420 spots, one D19 lane and the
   production sparse engine remain valid `credit:false` components. Measured
   spots cost 0.399--0.401 s; sparse prove/verify 0.938--1.084/0.950--1.093 s;
   one D19 lane 64--96/20--21 ms. The 1,496-B sparse codec is unchanged.
-- **Decision.** Recommended repair separates `m_l,u_l` by MAC tape, proves
-  both arithmetic limbs per tape and joins each limb pair with the existing
-  normalized authenticated bridge pattern: eight WHIR bodies, four terminal
-  tags, about `27,791,083 B` total, `128,988,780 B` setup plus first and 705
-  full correlations per tape. Cross-tape conversion is the smaller but novel
-  alternative and has no proof.
-- **Checks.** Certificate `<=30,000,000 B`; warm prover `<20 s`; CPU verifier
-  `<5 s`; cold certificate stops at 150 s. No aggregate pod timebox.
-- **Resume.** Owner selects the repair; then update the statement, deviations,
-  codecs and tests at a clean checkpoint. No E2E or pod run before the joined
-  terminal mutations and complete verifier pass.
+- **Decision.** Separate `m_l,u_l` by authentication tape and prove both
+  arithmetic limbs per object and tape: eight WHIR bodies and four terminal
+  tags. Keep every phase at 105 bits and set the complete gate to `>=78.00`
+  bits. Screen v15 counts 120 phase events and gives `78.0190233428` bits.
+  The conservative separate-opening codec projects `28,089,755 B`,
+  `129,287,452 B` setup plus first and 705 full correlations per tape.
+- **Checks.** Certificate `<=30,000,000 B`; soundness `>=78.00` bits; warm
+  prover `<20 s`; CPU verifier `<5 s`; cold certificate stops at 150 s.
+- **Resume.** Close the tape-separated statement, codecs, output link,
+  terminal mutations and complete verifier locally. The 0.019-bit analytic
+  margin admits no omitted error term. No E2E or pod run before a clean pass.
+
+- **2026-08-24 — Owner selects the eight-body repair and revises the
+  soundness gate.** C6.3 now keeps `m_l,u_l` separate through each
+  authentication tape, proves two arithmetic limbs per object and tape, and
+  retains four same-tape terminal tags. The complete per-certificate target is
+  owner-revised from `78.80929487391641` to `78.00` bits so the 105-bit phase
+  profile remains unchanged. Analytic screen v15 charges eight bodies, 120
+  phase events and two sparse-relation errors, producing
+  `78.019023342845...` bits. Its conservative four-independent-`A`-opening
+  layout gives `28,089,755 B` complete and `129,287,452 B` setup plus first;
+  both are `credit:false`. The earlier `27,791,083-B` projection assumed
+  cross-tape sharing not yet proved by a codec and is not selected. The
+  0.019-bit margin is provisional until the revised transcript and every
+  terminal error are recounted. Local implementation is admitted; pod and E2E
+  remain stopped.
 
 - **2026-08-24 — C63-G2 terminal join fails security review before
   promotion.** The scaled four-lane reference authenticates the two

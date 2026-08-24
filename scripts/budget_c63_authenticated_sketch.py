@@ -52,7 +52,7 @@ PI_FINAL_LIMIT_BYTES = 4_500_000
 PROVIDER_LIMIT_NS = 20_000_000_000
 VERIFIER_LIMIT_NS = 5_000_000_000
 VERIFIER_RSS_LIMIT_BYTES = 8_000_000_000
-SOUNDNESS_LIMIT_BITS = Decimal("78.80929487391641")
+SOUNDNESS_LIMIT_BITS = Decimal("78.00")
 VRAM_GUARD_BYTES = 45_818_576_864
 
 HISTORICAL_FIXED_REMAINDER_BYTES = 6_840_000
@@ -79,12 +79,12 @@ C63_ENCODED_SKETCH_ROW_BYTES = (
 )
 C63_T16_ROWS_PER_POSITION = 1 << 12
 C63_T16_LIVE_ROWS_PER_POSITION = 6 << 9
+C63_MAC_TAPES = 2
 C63_EXTENSION_ORACLES = 2
 C63_BASE_LIMBS_PER_EXTENSION = 2
 C63_CONSERVATIVE_BASE_WHIR_BODIES = (
-    C63_EXTENSION_ORACLES * C63_BASE_LIMBS_PER_EXTENSION
+    C63_MAC_TAPES * C63_EXTENSION_ORACLES * C63_BASE_LIMBS_PER_EXTENSION
 )
-C63_WHIR_PHASE_EVENT_LOWER_BOUND = 60
 C61_D23_75BIT_HIDING_WHIR_BYTES = 868_288
 C61_D23_HIDING_WHIR_BITS = 75
 C63_SELECTED_PER_CORE_SCREEN_BITS = 105
@@ -102,14 +102,17 @@ C63_D22_WHIR_POW_BITS = 18
 C63_D19_WHIR_POW_BITS = 17
 C63_D22_WHIR_POW_WITNESSES = 17
 C63_D19_WHIR_POW_WITNESSES = 13
+C63_WHIR_PHASE_EVENT_LOWER_BOUND = C63_MAC_TAPES * C63_BASE_LIMBS_PER_EXTENSION * (
+    C63_D22_WHIR_POW_WITNESSES + C63_D19_WHIR_POW_WITNESSES
+)
 C63_D22_WHIR_BODY_BYTES = 1_289_080
 C63_D19_WHIR_BODY_BYTES = 970_752
 C63_PROJECTED_WHIR_OUTER_BYTES = 20
-C63_PROFILED_WHIR_BODIES_BYTES = 2 * (
+C63_PROFILED_WHIR_BODIES_BYTES = C63_MAC_TAPES * C63_BASE_LIMBS_PER_EXTENSION * (
     C63_D22_WHIR_BODY_BYTES + C63_D19_WHIR_BODY_BYTES
 )
 C63_UNMODIFIED_DOUBLE_ENCODED_WHIR_BODIES_BYTES = 4_822_680
-C63_PROFILED_POW_EXPECTED_TRIALS = 7_995_392
+C63_PROFILED_POW_EXPECTED_TRIALS = 15_990_784
 C63_105_POW_EXPECTED_TRIALS = C63_PROFILED_POW_EXPECTED_TRIALS
 C63_105_POW_FORMAL_CAP = 1 << 25
 C63_SPARSE_H_CLOSURE_BYTES = 1_496
@@ -120,13 +123,13 @@ C63_REDUCED_WRAPPER_PCS_BYTES = 2_668_730
 C63_REDUCED_OUTPUT_LINK_BYTES = 2_672_044
 C63_RESPONSE_ENVELOPE_BYTES = 2_703_780
 C63_SPARSE_H_CLOSURE_CORRELATIONS_PER_TAPE = 44
-C63_SPARSE_H_CLOSURE_ERROR_NUMERATOR = 64
+C63_SPARSE_H_CLOSURE_ERROR_NUMERATOR = 128
 C63_SYSTEMATIC_SPOT_FUSION_QUERIES = 4_420
 C63_SYSTEMATIC_SPOT_FUSION_ERROR_NUMERATOR = C63_SYSTEMATIC_SPOT_FUSION_QUERIES
 C63_MERKLE_MULTIPROOF_COUNT_BYTES = 4
 C63_PAIRED_A_QUERIES = 245
 C63_INDEPENDENT_LIMB_A_QUERIES = 490
-C63_INDEPENDENT_A_PROOFS = 2
+C63_INDEPENDENT_A_PROOFS = C63_MAC_TAPES * C63_BASE_LIMBS_PER_EXTENSION
 C63_SPARSE_SETUP_DESCRIPTOR_BYTES = 80
 C63_SPARSE_SETUP_SOCKET_LOG2 = 26
 C63_SPARSE_SETUP_SOCKET_COUNT = 1 << C63_SPARSE_SETUP_SOCKET_LOG2
@@ -517,7 +520,7 @@ def c63_soundness_screen() -> dict[str, Any]:
         "profile_target_bits_per_base_core": C63_SELECTED_PER_CORE_SCREEN_BITS,
         "base_core_count": C63_CONSERVATIVE_BASE_WHIR_BODIES,
         "inherited_c61_interactive": c62.error_report(inherited_error),
-        "four_core_union": c62.error_report(whir_core_union_error),
+        "base_core_union": c62.error_report(whir_core_union_error),
         "whole_core_phase_union_complete": True,
         "whir_phase_event_lower_bound_count": C63_WHIR_PHASE_EVENT_LOWER_BOUND,
         "phase_event_lower_bound_union": c62.error_report(
@@ -533,7 +536,9 @@ def c63_soundness_screen() -> dict[str, Any]:
         "systematic_spot_fusion_4420_over_fp2": c62.error_report(
             systematic_spot_fusion_error
         ),
-        "sparse_h_closure_64_over_fp2": c62.error_report(sparse_h_closure_error),
+        "two_sparse_h_relations_128_over_fp2": c62.error_report(
+            sparse_h_closure_error
+        ),
         "four_terminal_zeroopen_over_fp2": c62.error_report(terminal_zeroopen_error),
         "sparse_h_zeroopen_and_mac_additional_error_census_complete": True,
         "interactive_known_terms": c62.error_report(interactive_error),
@@ -830,7 +835,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "schema": "volta-c63-authenticated-sketch-analytic-screen-v14",
+        "schema": "volta-c63-authenticated-sketch-analytic-screen-v15",
         "credit": False,
         "transfer_to_c63_gates": False,
         "gates": gates,
@@ -902,7 +907,9 @@ def build_report() -> dict[str, Any]:
                 "WHIR-aligned D19x32 commitment rows"
             ),
             "randomized_hiding_oracles_persisted_across_responses": False,
-            "fresh_randomized_base_core_oracles_per_response": 4,
+            "fresh_randomized_base_core_oracles_per_response": (
+                C63_CONSERVATIVE_BASE_WHIR_BODIES
+            ),
             "systematic_row_bytes_before_metadata": C63_T16_ROW_BYTES,
             "logical_rows_per_appended_position": C63_T16_ROWS_PER_POSITION,
             "stored_rows_per_appended_position": C63_T16_LIVE_ROWS_PER_POSITION,
@@ -1003,19 +1010,19 @@ def build_report() -> dict[str, Any]:
                 "legacy_75bit_d23_hiding_whir_body_bytes": (
                     C61_D23_75BIT_HIDING_WHIR_BYTES
                 ),
-                "legacy_profile_body_count": (
+                "selected_profile_body_count": (
                     C63_CONSERVATIVE_BASE_WHIR_BODIES
                 ),
                 "legacy_profile_per_body_bits": C61_D23_HIDING_WHIR_BITS,
-                "legacy_four_body_union_bits_upper_bound": (
+                "legacy_selected_body_union_bits_upper_bound": (
                     C61_D23_HIDING_WHIR_BITS
                     - math.log2(C63_CONSERVATIVE_BASE_WHIR_BODIES)
                 ),
                 "selected_c63_per_core_screen_bits": C63_SELECTED_PER_CORE_SCREEN_BITS,
                 "selected_profile": {
                     "adapter_rule": (
-                        "prove decoded m:D22 and u:D19 while supplying their already "
-                        "encoded w/y initial oracles; do not encode w/y again"
+                        "for each MAC tape prove decoded m_l:D22 and u_l:D19 while "
+                        "supplying already encoded w_l/y_l initial oracles"
                     ),
                     "d22_rates": C63_D22_WHIR_RATES,
                     "d22_folding": C63_D22_WHIR_FOLDING,
@@ -1033,7 +1040,7 @@ def build_report() -> dict[str, Any]:
                     "d19_pow_bits": C63_D19_WHIR_POW_BITS,
                     "d19_pow_witnesses": C63_D19_WHIR_POW_WITNESSES,
                     "d19_body_bytes_each": C63_D19_WHIR_BODY_BYTES,
-                    "two_d22_plus_two_d19_bytes": C63_PROFILED_WHIR_BODIES_BYTES,
+                    "four_d22_plus_four_d19_bytes": C63_PROFILED_WHIR_BODIES_BYTES,
                     "projected_outer_bytes_each": C63_PROJECTED_WHIR_OUTER_BYTES,
                     "unmodified_double_encoded_d23_d20_fallback_bytes": (
                         C63_UNMODIFIED_DOUBLE_ENCODED_WHIR_BODIES_BYTES
@@ -1042,7 +1049,7 @@ def build_report() -> dict[str, Any]:
                     "honest_preencoded_cached_base_reference_green": True,
                     "cpu_linked_projected_adapter_reference_green": True,
                     "cpu_fresh_mask_encoding_relation_reference_green": True,
-                    "cpu_four_authenticated_terminal_lanes_reference_green": True,
+                    "historical_cpu_four_terminal_lanes_reference_green": True,
                     "canonical_whir_codec_with_native_pow_green": True,
                     "canonical_correction_rows_codec_green": True,
                     "canonical_public_argument_codec_green": True,
@@ -1055,7 +1062,7 @@ def build_report() -> dict[str, Any]:
                     "reduced_wrapper_correlations_per_tape": 96,
                     "production_linked_projected_adapter_codec_green": True,
                     "production_fresh_mask_encoding_relation_codec_green": True,
-                    "production_four_terminal_lane_codecs_green": True,
+                    "historical_production_four_terminal_lane_codecs_green": True,
                     "joint_ideal_correction_privacy_lean_green": True,
             "production_codec_privacy_audit_green": True,
                     "credit": False,
@@ -1067,7 +1074,7 @@ def build_report() -> dict[str, Any]:
                 "correction_artifact_max_bytes": C63_CORRECTION_ARTIFACT_MAX_BYTES,
                 "public_argument_framing_bytes": C63_PUBLIC_ARGUMENT_FRAMING_BYTES,
                 "designated_response_envelope_bytes": C63_RESPONSE_ENVELOPE_BYTES,
-                "public_bulk_before_sparse_h_tail_and_outer_framing_bytes": (
+                "paired_public_bulk_before_sparse_h_tail_and_outer_framing_bytes": (
                     t16_profiled_public_bulk_screen
                 ),
                 "pi_final_two_cohort_screen": {
@@ -1200,10 +1207,10 @@ def build_report() -> dict[str, Any]:
                         C63_SYSTEMATIC_SPOT_FUSION_QUERIES
                     ),
                     "separate_spot_batch_body_bytes": 0,
-                    "whir_targets_after_fusion": 1,
+                    "whir_targets_after_fusion": C63_MAC_TAPES,
                     "claim_relation": (
-                        "<eq(r),u>+sum beta^(j+1)*x[i_j] = "
-                        "<H^T*eq(r)+sum beta^(j+1)*e[i_j],m>"
+                        "for each tape l: <eq(r),u_l>+spots_l = "
+                        "<H^T*eq(r)+spot_basis,m_l>"
                     ),
                     "scratch_bytes": 75_497_472,
                     "framed_bytes_when_terminal_residual_joins_zero_batch": (
@@ -1212,7 +1219,7 @@ def build_report() -> dict[str, Any]:
                     "correlations_per_mac_tape": (
                         C63_SPARSE_H_CLOSURE_CORRELATIONS_PER_TAPE
                     ),
-                    "existing_error": "64/|Fp2|",
+                    "existing_error": "2*64/|Fp2|",
                     "additional_spot_compression_error": "4420/|Fp2|",
                     "cpu_verifier_scans_h_bytes": C63_SPARSE_SETUP_RESIDENT_BYTES,
                     "production_integration_credit": False,
@@ -1236,18 +1243,21 @@ def build_report() -> dict[str, Any]:
                 ),
                 "full_old_new_state_proxy_bytes": C63_FULL_STATE_PROXY_BYTES,
                 "required_schedule": (
-                    "keep H resident; release GW4 transient owners; execute four base "
+                    "keep H resident; release GW4 transient owners; execute eight base "
                     "WHIR cores sequentially with one workspace"
                 ),
                 "credit": False,
             },
             "transient_code_switch_required": True,
             "conservative_body_census": {
-                "extension_oracles": ["w=C(D'*rho)", "y=A*rho=C((H*D')*rho)"],
+                "extension_oracles_per_tape": ["w_l=C(m_l)", "y_l=C(u_l)"],
+                "mac_tapes": C63_MAC_TAPES,
                 "base_limbs_per_extension_oracle": C63_BASE_LIMBS_PER_EXTENSION,
                 "sequential_base_whir_cores": C63_CONSERVATIVE_BASE_WHIR_BODIES,
                 "persistent_pre_rho_roots": ["D'", "deterministic A"],
-                "fresh_randomized_initial_roots_per_response": 4,
+                "fresh_randomized_initial_roots_per_response": (
+                    C63_CONSERVATIVE_BASE_WHIR_BODIES
+                ),
                 "profiled_bodies_bytes": C63_PROFILED_WHIR_BODIES_BYTES,
             },
             "gw4_changed": False,
@@ -1327,16 +1337,18 @@ def build_report() -> dict[str, Any]:
     assert t16_encoded_sketch_paired_opening["opening_bytes_before_framing"] == 149_312
     assert t16_encoded_sketch_independent_opening["opening_bytes_before_framing"] == 282_944
     assert t16_encoded_sketch_outer_stress_opening["opening_bytes_before_framing"] == 2_100_864
-    assert t16_old_profile_whir_bodies == 3_473_152
-    assert C63_PROFILED_WHIR_BODIES_BYTES == 4_519_664
-    assert 2 * (
+    assert t16_old_profile_whir_bodies == 6_946_304
+    assert C63_PROFILED_WHIR_BODIES_BYTES == 9_039_328
+    assert C63_CONSERVATIVE_BASE_WHIR_BODIES == 8
+    assert C63_INDEPENDENT_A_PROOFS == 4
+    assert C63_MAC_TAPES * C63_BASE_LIMBS_PER_EXTENSION * (
         C63_D22_WHIR_POW_WITNESSES + C63_D19_WHIR_POW_WITNESSES
     ) == C63_WHIR_PHASE_EVENT_LOWER_BOUND
     assert C63_D22_WHIR_ROUND_QUERIES[0] == C63_PAIRED_A_QUERIES
     assert C63_D19_WHIR_ROUND_QUERIES[0] == C63_PAIRED_A_QUERIES
-    assert t16_profiled_public_bulk_screen == 6_706_626
-    assert t16_independent_limb_public_bulk_screen == 6_840_258
-    assert t16_independent_separate_public_bulk_screen == 6_855_982
+    assert t16_profiled_public_bulk_screen == 11_226_290
+    assert t16_independent_limb_public_bulk_screen == 11_359_922
+    assert t16_independent_separate_public_bulk_screen == 11_674_318
     assert (
         C62_PI_FINAL_MAX_BYTES
         - C62_CACHE_COHORT_LINK_SAVING_BYTES
@@ -1349,26 +1361,27 @@ def build_report() -> dict[str, Any]:
         == 1_796_986
     )
     assert projected_pi_final_with_sparse_h == 2_704_573
-    assert certificate_with_projected_pi_before_outer_framing == 23_122_063
+    assert certificate_with_projected_pi_before_outer_framing == 27_641_727
     assert (
         CERTIFICATE_LIMIT_BYTES - certificate_with_projected_pi_before_outer_framing
-        == 6_877_937
+        == 2_358_273
     )
-    assert certificate_at_strict_pi_cap_before_new_public_framing == 24_917_489
+    assert certificate_at_strict_pi_cap_before_new_public_framing == 29_437_153
     assert (
         CERTIFICATE_LIMIT_BYTES
         - certificate_at_strict_pi_cap_before_new_public_framing
-        == 5_082_511
+        == 562_847
     )
-    assert independent_limb_certificate_with_projected_pi == 23_255_695
-    assert independent_limb_certificate_at_strict_pi_cap == 25_051_121
-    assert CERTIFICATE_LIMIT_BYTES - independent_limb_certificate_at_strict_pi_cap == 4_948_879
-    assert independent_separate_certificate_with_projected_pi == 23_271_419
-    assert independent_separate_certificate_at_strict_pi_cap == 25_066_845
-    assert CERTIFICATE_LIMIT_BYTES - independent_separate_certificate_at_strict_pi_cap == 4_933_155
+    assert independent_limb_certificate_with_projected_pi == 27_775_359
+    assert independent_limb_certificate_at_strict_pi_cap == 29_570_785
+    assert CERTIFICATE_LIMIT_BYTES - independent_limb_certificate_at_strict_pi_cap == 429_215
+    assert independent_separate_certificate_with_projected_pi == 28_089_755
+    assert independent_separate_certificate_at_strict_pi_cap == 29_885_181
+    assert CERTIFICATE_LIMIT_BYTES - independent_separate_certificate_at_strict_pi_cap == 114_819
     assert setup_with_sparse_descriptor == 101_197_697
     assert setup_plus_max_certificate == 131_197_697
-    assert setup_plus_projected_first == 124_319_760
+    assert setup_plus_projected_first == 128_839_424
+    assert setup_plus_conservative_codec_first == 129_287_452
     assert C63_SPARSE_SETUP_RESIDENT_BYTES == 805_306_368
     assert setup_resident_vram == 39_951_669_100
     assert VRAM_GUARD_BYTES - setup_resident_vram == 5_866_907_764
@@ -1412,8 +1425,8 @@ def build_report() -> dict[str, Any]:
     assert report["credit"] is False
     assert soundness_screen["known_terms_under_inherited_qro_clear_gate"]
     assert not soundness_screen["known_terms_with_expected_pow_trials_clear_gate"]
-    assert soundness_screen["maximum_monolithic_qro_at_gate"] == 1_154_840
-    assert soundness_screen["expected_qro_excess_over_gate"] == 7_889_128
+    assert soundness_screen["maximum_monolithic_qro_at_gate"] == 1_062_494
+    assert soundness_screen["expected_qro_excess_over_gate"] == 15_976_866
     assert soundness_screen["phase_event_lower_bound_clears_gate"]
     assert not soundness_screen["raising_profile_does_not_fix_monolithic_qro"][
         "expected_trial_screen_clear_gate"
@@ -1423,6 +1436,10 @@ def build_report() -> dict[str, Any]:
     ]
     assert soundness_screen["complete_soundness_gate_evaluated"]
     assert soundness_screen["complete_soundness_gate_pass"]
+    assert SOUNDNESS_LIMIT_BITS == Decimal("78.00")
+    assert Decimal("78.019") < Decimal(
+        soundness_screen["complete_soundness_bits"]
+    ) < Decimal("78.020")
     assert {
         name for name, gate in gates.items() if gate["evaluated"]
     } == {

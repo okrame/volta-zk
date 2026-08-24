@@ -1,6 +1,6 @@
 # C6.3 Authenticated Sketched WHIR Design
 
-Status: **R0/R1 LOCAL GREEN / C63-G1 A100 RESIDENT OWNER PASS / C63-G2 RESIDENT-LANE HARD STOP / NO E2E CREDIT**
+Status: **R0/R1 LOCAL GREEN / C63-G1 A100 PASS / C63-G2 RESIDENT EXTENSION OWNER-GO / E2E HARD STOP**
 
 This document is the authority for C6.3. It replaces C6.2 only for new C6.3
 work; C6.2 code, artifacts and dispositions remain immutable evidence. The
@@ -15,10 +15,10 @@ Authenticated Sketched PCS. The objective is a complete response proof below
 weakening the existing designated-verifier statement. The owner accepts a
 complete certificate up to `30,000,000 B` for this experiment.
 
-The minimum protocol path remains selected. One implementation-scope choice
-now needs owner input: admit the minimal resident projection/opening and WHIR
-message-ownership extension identified by G2. It does not change the proof
-statement, but it changes ABI43 and the local WHIR fork.
+The minimum protocol path remains selected. The owner authorizes the minimal
+resident projection/opening and WHIR message-ownership extension identified
+by G2. It does not change the proof statement; it may extend ABI43 and the
+local WHIR fork only as required by the registered five-item unblock.
 
 1. keep the accepted K/V state compact and resident on the GPU;
 2. represent padding and the six inactive cache columns as canonical virtual
@@ -36,8 +36,8 @@ statement, but it changes ABI43 and the local WHIR fork.
 Local reference work is authorized. The owner supplied and admitted the first
 A100 for component work; G1 passed there. G2 stopped before E2E, consumed no
 protocol correlations and created no certificate. Further pod protocol work
-requires the resident-extension decision above and a clean component
-checkpoint. A failure to prove both full binding and privacy remains a hard
+requires a clean component checkpoint and all terminal differentials. A
+failure to prove both full binding and privacy remains a hard
 stop: a small linear fingerprint by itself is not an admissible replacement
 for the PCS.
 

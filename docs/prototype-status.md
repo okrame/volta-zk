@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — G1 RESIDENT OWNER PASS / G2 RESIDENT-LANE HARD STOP / NO E2E)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — G1 PASS / G2 RESIDENT EXTENSION OWNER-GO / E2E HARD STOP)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,10 +10,10 @@ record; no external plan is authoritative.
 
 Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 
-- **Status.** C6.3 is stopped before E2E. Privacy/simulation, codecs, scaled
-  linked lanes and the reduced wrapper are locally green. ABI43 genesis and
-  successor match an independent CPU oracle on A100. G2 source trace proves
-  that the production resident lanes and top-level verifier do not yet exist.
+- **Status.** C6.3 G2 resident implementation is owner-authorized; E2E remains
+  stopped. Privacy/simulation, codecs, scaled linked lanes and the reduced
+  wrapper are locally green. ABI43 genesis/successor match an independent CPU
+  oracle on A100. Production resident lanes and top-level verifier are open.
 - **Evidence.** C6.2 precommit is `275.113308912 s`, about `249.51 s` dense
   encoding/I/O/trees. C6.3 screens `23,271,419 B` certificate,
   `2,704,573 B` `pi_final`, `124,469,116 B` setup plus first,
@@ -29,11 +29,19 @@ Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
   `<5 s`; verifier additional RSS `<=8,000,000,000 B`; soundness
   `>=78.80929487391641 bits`. Cold proof over
   20 s continues; no canonical certificate by 150 s stops.
-- **Resume.** Owner decision is required before extending ABI43/the WHIR fork
-  with resident 16-column projection, a borrowed initial-message handoff,
-  resident `A` openings, a production four-lane coordinator and one complete
-  CPU verifier. Then pass their focused differentials from clean
-  `178c37e`; bind setup digest `5b391766...a12415`. No E2E beforehand.
+- **Resume.** From clean authorization checkpoint after `276454d`, implement
+  resident 16-column projection, borrowed initial-message handoff, resident
+  `A` openings, production four-lane coordinator and complete CPU verifier.
+  Pass focused differentials and bind setup digest `5b391766...a12415`; no E2E
+  before every terminal check is green.
+
+- **2026-08-24 — Owner authorizes the minimal resident ABI/WHIR extension and
+  resumes C63-G2.** Scope is exactly the five unblocks in
+  `c63-g2-2026-08-24-178c37e.json`: device-resident 16-column projection,
+  borrowed initial message, resident accepted-`A` openings, promotion of the
+  existing four-lane driver and one complete CPU verifier. This GO does not
+  authorize a host-sized witness, second encoding, CPU prover, proof-statement
+  change or E2E before the registered terminal checks pass.
 
 - **2026-08-24 — C63-G2 coordinator trace reaches a resident-lane HARD STOP;
   no E2E attempted.** Clean source `178c37e`, disposition record

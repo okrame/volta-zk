@@ -19,14 +19,15 @@ const LAYERS: usize = 12;
 const WIDTH: usize = 768;
 const FOLD_CHUNK: usize = C63_BOLT_SKETCH_ROWS / 2;
 
-fn tapes() -> [Vec<Fp>; 2] {
+fn tapes(value_offset: u64) -> [Vec<Fp>; 2] {
     std::array::from_fn(|tape| {
         let mut values = Vec::with_capacity(2 * LAYERS * WIDTH);
         for kind in 0..2 {
             for layer in 0..LAYERS {
                 for channel in 0..WIDTH {
                     values.push(Fp::new(
-                        1 + tape as u64 * 20_000_003
+                        1 + value_offset
+                            + tape as u64 * 20_000_003
                             + kind as u64 * 10_000_019
                             + layer as u64 * 100_003
                             + channel as u64 * 17,
@@ -41,10 +42,23 @@ fn tapes() -> [Vec<Fp>; 2] {
 fn cpu_state(
     setup: &C63SparseSetupReference,
     tapes: &[Vec<Fp>; 2],
+    position: usize,
+    predecessor_corrections: Option<&[Fp]>,
+    predecessor_sketch: Option<&[Fp]>,
     metadata: C63GpuTileMetadata,
 ) -> (Vec<Fp>, Vec<Fp>, Vec<Fp>, Hash) {
-    let mut corrections = vec![Fp::ZERO; C63_BOLT_LIVE_ROWS_PER_POSITION * C63_BOLT_COLUMNS];
-    let mut sketch = vec![Fp::ZERO; C63_BOLT_COLUMNS * C63_BOLT_SKETCH_ROWS];
+    let old_correction_len = position * C63_BOLT_LIVE_ROWS_PER_POSITION * C63_BOLT_COLUMNS;
+    let mut corrections =
+        vec![Fp::ZERO; (position + 1) * C63_BOLT_LIVE_ROWS_PER_POSITION * C63_BOLT_COLUMNS];
+    if let Some(predecessor) = predecessor_corrections {
+        assert_eq!(predecessor.len(), old_correction_len);
+        corrections[..old_correction_len].copy_from_slice(predecessor);
+    } else {
+        assert_eq!(position, 0);
+    }
+    let mut sketch = predecessor_sketch
+        .map(<[Fp]>::to_vec)
+        .unwrap_or_else(|| vec![Fp::ZERO; C63_BOLT_COLUMNS * C63_BOLT_SKETCH_ROWS]);
     for (tape, values) in tapes.iter().enumerate() {
         let mut offset = 0;
         for kind in [C6CacheSlotKind::Key, C6CacheSlotKind::Value] {
@@ -56,7 +70,7 @@ fn cpu_state(
                         C6CacheCell {
                             kind,
                             layer: layer as u16,
-                            position: 0,
+                            position: position as u16,
                             channel: channel as u16,
                         },
                         tape as u8,
@@ -90,13 +104,16 @@ fn cpu_state(
 
     let rows = (0..C63_BOLT_LIVE_ROWS_PER_POSITION)
         .map(|row| C63CorrectionRowReference {
-            position: 0,
+            position: position as u16,
             layer_high: (row >> 9) as u8,
             channel_low: (row & 511) as u16,
             birth_epoch: metadata.birth_epoch,
             allocation_binding_digest: metadata.allocation_binding_digest,
             source_schedule_digest: metadata.source_schedule_digest,
-            corrections: std::array::from_fn(|column| corrections[row * C63_BOLT_COLUMNS + column]),
+            corrections: std::array::from_fn(|column| {
+                corrections
+                    [(position * C63_BOLT_LIVE_ROWS_PER_POSITION + row) * C63_BOLT_COLUMNS + column]
+            }),
         })
         .collect::<Vec<_>>();
     let tile_root = c63_correction_tile_root_reference(&rows).unwrap();
@@ -120,6 +137,22 @@ fn encoded_root(encoded: &[Fp]) -> Hash {
     MerkleTree::from_leaves(leaves).root()
 }
 
+fn print_stats(label: &str, stats: &volta_accel::BackendStats) {
+    eprintln!(
+        "{label}: wall_ns={} kernel_ns={} peak_device_bytes={} h2d_bytes={} d2h_bytes={} d2d_bytes={} synchronizations={} rows_calls={} ntt_calls={} merkle_calls={}",
+        stats.measurement_wall_ns,
+        stats.kernel_ns(),
+        stats.peak_device_bytes,
+        stats.h2d_bytes,
+        stats.d2h_bytes,
+        stats.explicit_d2d_copy_bytes,
+        stats.synchronizations,
+        stats.operation(Operation::PcsRows).calls,
+        stats.operation(Operation::PcsNtt).calls,
+        stats.operation(Operation::PcsMerkle).calls,
+    );
+}
+
 #[test]
 #[ignore = "requires the production ABI43 CUDA library and one A100"]
 fn production_owner_matches_cpu_for_one_complete_token() {
@@ -131,7 +164,15 @@ fn production_owner_matches_cpu_for_one_complete_token() {
         C63_BOLT_LDPC_CHECK_DEGREE,
     )
     .unwrap();
-    let tapes = tapes();
+    eprintln!(
+        "c63_setup_digest={}",
+        sparse_setup
+            .expanded_h_digest()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    );
+    let genesis_tapes = tapes(0);
     let metadata = C63GpuTileMetadata {
         birth_epoch: 1,
         allocation_binding_digest: [0x71; 32],
@@ -139,7 +180,7 @@ fn production_owner_matches_cpu_for_one_complete_token() {
     };
     let profile_digest = [0x73; 32];
     let (expected_corrections, expected_sketch, expected_encoded, tile_root) =
-        cpu_state(&sparse_setup, &tapes, metadata);
+        cpu_state(&sparse_setup, &genesis_tapes, 0, None, None, metadata);
     let expected_correction_root =
         c63_correction_state_root_reference(profile_digest, 1, &[tile_root]).unwrap();
     let expected_encoded_root = encoded_root(&expected_encoded);
@@ -151,7 +192,8 @@ fn production_owner_matches_cpu_for_one_complete_token() {
     let backend = mmcs.backend();
     let setup_resident_bytes =
         backend.lock().unwrap().device_memory_breakdown().unwrap().resident_bytes;
-    let tape_words = tapes.map(|values| values.into_iter().map(Fp::value).collect::<Vec<_>>());
+    let tape_words =
+        genesis_tapes.map(|values| values.into_iter().map(Fp::value).collect::<Vec<_>>());
     let (tape0, tape1) = {
         let mut gpu = backend.lock().unwrap();
         let tape0 = gpu.upload_new_device(&tape_words[0]).unwrap();
@@ -170,6 +212,7 @@ fn production_owner_matches_cpu_for_one_complete_token() {
     )
     .unwrap();
     let stats = backend.lock().unwrap().finish_measurement().unwrap();
+    print_stats("c63_genesis", &stats);
     assert!(stats.operation(Operation::PcsRows).calls > 0);
     assert!(stats.operation(Operation::PcsNtt).calls > 0);
     assert!(stats.operation(Operation::PcsMerkle).calls > 0);
@@ -205,6 +248,101 @@ fn production_owner_matches_cpu_for_one_complete_token() {
     assert!(encoded.iter().zip(&expected_encoded).all(|(&got, expected)| got == expected.value()));
     assert_eq!(state.correction_root(), expected_correction_root);
     assert_eq!(state.encoded_sketch_root(), expected_encoded_root);
+    assert_eq!(state.epoch(), 1);
+    assert_eq!(state.accepted_len(), 1);
+
+    let accepted_resident_bytes =
+        backend.lock().unwrap().device_memory_breakdown().unwrap().resident_bytes;
+    let successor_tapes = tapes(0x1234_5678);
+    let successor_metadata = C63GpuTileMetadata {
+        birth_epoch: 2,
+        allocation_binding_digest: [0x81; 32],
+        source_schedule_digest: [0x82; 32],
+    };
+    let (
+        expected_successor_corrections,
+        expected_successor_sketch,
+        expected_successor_encoded,
+        successor_tile_root,
+    ) = cpu_state(
+        &sparse_setup,
+        &successor_tapes,
+        1,
+        Some(&expected_corrections),
+        Some(&expected_sketch),
+        successor_metadata,
+    );
+    let expected_successor_correction_root =
+        c63_correction_state_root_reference(profile_digest, 2, &[tile_root, successor_tile_root])
+            .unwrap();
+    let expected_successor_encoded_root = encoded_root(&expected_successor_encoded);
+    let successor_tape_words =
+        successor_tapes.map(|values| values.into_iter().map(Fp::value).collect::<Vec<_>>());
+    let (successor_tape0, successor_tape1) = {
+        let mut gpu = backend.lock().unwrap();
+        let tape0 = gpu.upload_new_device(&successor_tape_words[0]).unwrap();
+        let tape1 = gpu.upload_new_device(&successor_tape_words[1]).unwrap();
+        gpu.begin_measurement().unwrap();
+        (tape0, tape1)
+    };
+    let successor = C63GpuStateOwner::propose_append(
+        &setup,
+        Some(&state),
+        profile_digest,
+        2,
+        DeviceSlice::new(&successor_tape0, 0, successor_tape0.len()).unwrap(),
+        DeviceSlice::new(&successor_tape1, 0, successor_tape1.len()).unwrap(),
+        &[successor_metadata],
+    )
+    .unwrap();
+    let successor_stats = backend.lock().unwrap().finish_measurement().unwrap();
+    print_stats("c63_successor", &successor_stats);
+    let (successor_corrections, successor_sketch, successor_encoded) = {
+        let mut gpu = backend.lock().unwrap();
+        let corrections = successor.correction_rows();
+        let sketch = successor.sparse_sketch();
+        let encoded = successor.encoded_sketch();
+        let corrections = gpu
+            .download_device(corrections.buffer(), corrections.offset(), corrections.len())
+            .unwrap();
+        let sketch = gpu.download_device(sketch.buffer(), sketch.offset(), sketch.len()).unwrap();
+        let encoded =
+            gpu.download_device(encoded.buffer(), encoded.offset(), encoded.len()).unwrap();
+        gpu.free_device(successor_tape0).unwrap();
+        gpu.free_device(successor_tape1).unwrap();
+        (corrections, sketch, encoded)
+    };
+    assert!(
+        successor_corrections[..expected_corrections.len()]
+            .iter()
+            .zip(&expected_corrections)
+            .all(|(&got, expected)| got == expected.value()),
+        "the accepted prefix changed"
+    );
+    assert!(successor_corrections
+        .iter()
+        .zip(&expected_successor_corrections)
+        .all(|(&got, expected)| got == expected.value()));
+    assert!(successor_sketch
+        .iter()
+        .zip(&expected_successor_sketch)
+        .all(|(&got, expected)| got == expected.value()));
+    assert!(successor_encoded
+        .iter()
+        .zip(&expected_successor_encoded)
+        .all(|(&got, expected)| got == expected.value()));
+    assert_eq!(successor.correction_root(), expected_successor_correction_root);
+    assert_eq!(successor.encoded_sketch_root(), expected_successor_encoded_root);
+    assert_ne!(successor.correction_root(), state.correction_root());
+    assert_ne!(successor.encoded_sketch_root(), state.encoded_sketch_root());
+    assert_eq!(successor.epoch(), 2);
+    assert_eq!(successor.accepted_len(), 2);
+    drop(successor);
+    assert_eq!(
+        backend.lock().unwrap().device_memory_breakdown().unwrap().resident_bytes,
+        accepted_resident_bytes,
+        "discarding the successor must preserve only the accepted state",
+    );
     drop(state);
     assert_eq!(
         backend.lock().unwrap().device_memory_breakdown().unwrap().resident_bytes,

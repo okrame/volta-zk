@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — G2 PRODUCTION SPOT FUSION PASS / FOUR-LANE COORDINATOR OPEN / E2E HARD STOP)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — G2 SPOT FUSION PASS / TERMINAL-JOIN HARD STOP / OWNER DECISION)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,32 +10,48 @@ record; no external plan is authoritative.
 
 Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 
-- **Status.** C6.3 G2 is owner-authorized; E2E remains stopped. ABI44
-  projection, resident message/`A` and correction openings, 4,420-row spot
-  fusion, one linked D19 lane and the production sparse relation pass. The
-  remaining lanes, compact output link and complete verifier remain open.
-- **Evidence.** C6.2 precommit is `275.113308912 s`, about `249.51 s` dense
-  encoding/I/O/trees. C6.3 screens `23,271,419 B` certificate,
-  `2,704,573 B` `pi_final`, `124,469,116 B` setup plus first,
-  `78.9485568461 bits` and 24 sub plus 703 full correlations per tape. G2
-  measures one D19 lane at 64--96/20--21 ms and 981,112--988,792 B. At 150
-  tokens, 4,420 correction spots cost 0.399--0.401 s and 260,614 B; fused
-  sparse prove/verify is 0.938--1.084/0.950--1.093 s with a 1,496-B proof and
-  1,722,574,028-B device peak. Public `H` construction is 1.448--1.469 s and
-  cacheable per model. All are component-only `credit:false` evidence.
-- **Construction.** Roots bind `D'` and `A=C^16(H D')`; one column mix feeds
-  four fresh pre-encoded WHIR lanes. Authentication tapes stay separate; GW4
-  is fixed.
-- **Checks.** Certificate `<=30,000,000 B`; setup `<150,000,000 B`; setup plus
-  first `<172,000,000 B`; `pi_final <4,500,000 B`; warm prover `<20 s`; four-thread CPU verifier
-  `<5 s`; verifier additional RSS `<=8,000,000,000 B`; soundness
-  `>=78.80929487391641 bits`. Cold proof over
-  20 s continues; no canonical certificate by 150 s stops. There is no
-  aggregate pod timebox; resource controls and informative-run discipline
-  remain mandatory.
-- **Resume.** From clean `831d234`, promote the four-lane driver, compact
-  output link and complete CPU verifier. Bind setup digest
-  `5b391766...a12415`; no E2E before every terminal check is green.
+- **Status.** C6.3 G2 component evidence is green; E2E and new pod work are
+  stopped. The scaled four-lane test assigned arithmetic limb 0 to MAC tape 0
+  and limb 1 to tape 1, then reconstructed clear `Fp2` openings. The sparse
+  verifier manufactured public keys for those values. It therefore does not
+  cryptographically join the four WHIR terminals to the two-tape relation.
+- **Evidence.** Resident projection/openings, 4,420 spots, one D19 lane and the
+  production sparse engine remain valid `credit:false` components. Measured
+  spots cost 0.399--0.401 s; sparse prove/verify 0.938--1.084/0.950--1.093 s;
+  one D19 lane 64--96/20--21 ms. The 1,496-B sparse codec is unchanged.
+- **Decision.** Recommended repair separates `m_l,u_l` by MAC tape, proves
+  both arithmetic limbs per tape and joins each limb pair with the existing
+  normalized authenticated bridge pattern: eight WHIR bodies, four terminal
+  tags, about `27,791,083 B` total, `128,988,780 B` setup plus first and 705
+  full correlations per tape. Cross-tape conversion is the smaller but novel
+  alternative and has no proof.
+- **Checks.** Certificate `<=30,000,000 B`; warm prover `<20 s`; CPU verifier
+  `<5 s`; cold certificate stops at 150 s. No aggregate pod timebox.
+- **Resume.** Owner selects the repair; then update the statement, deviations,
+  codecs and tests at a clean checkpoint. No E2E or pod run before the joined
+  terminal mutations and complete verifier pass.
+
+- **2026-08-24 — C63-G2 terminal join fails security review before
+  promotion.** The scaled four-lane reference authenticates the two
+  base-field limbs under different MAC tapes, reconstructs clear extension-
+  field `m/u` openings, and passes those clear values into a sparse verifier
+  that creates public verifier keys. The 1,496-byte sparse proof consequently
+  verifies its own round relation but is not cryptographically tied to the
+  four WHIR terminal keys. This contradicts the design prose and the rule that
+  PCS openings resolve into authenticated values. A same-plaintext two-tape
+  patch passed a focused local mutation test but was discarded before commit:
+  the four existing bodies do not provide the same combined opening under
+  both tapes. The least novel repair is tape-separated `m_l/u_l`: two
+  arithmetic limb bodies per object and tape, eight bodies total, while
+  reusing the existing normalized joint-bridge algebra to retain four
+  terminal tags. Analytically it adds `4,519,664 B`, projecting
+  `27,791,083 B` total and `128,988,780 B` setup plus first; two extra WHIR
+  masks give 705 full correlations per tape. It also roughly doubles the
+  sparse fold work but keeps lanes sequential. These are `credit:false`
+  projections, not a revised soundness theorem. The alternative is a new
+  cross-tape authenticated-value conversion that preserves four bodies but
+  currently lacks a construction and proof. The terminal join is a HARD STOP
+  pending owner choice; no A100 run or E2E is admitted.
 
 - **2026-08-24 — C63-G2 production systematic spots pass twice.** Clean
   source `831d234`, raw record
@@ -3166,6 +3182,19 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-08-24 — C6.3 four-lane terminal composition is withdrawn before
+  promotion.** The implementation and prose conflated the two base-field
+  limbs of one extension-field opening with the two independent MAC tapes.
+  Reconstructing the extension-field value in clear and asking the sparse
+  verifier to create public keys is not an authenticated PCS opening. No Lean
+  theorem covers that join. The production path is hard-stopped. The
+  recommended tape-separated repair changes the statement to two distinct
+  relations `u_l=H m_l`, uses eight WHIR bodies, retains four normalized joint
+  terminal tags and requires new additive C6.3 lemmas plus an independent
+  soundness review. Until owner selection and those checks, neither the old
+  four-body screen nor the projected 27,791,083-byte repair has protocol or
+  hardware credit.
 
 - **2026-08-19 — C62GW1 resource admission now counts both product-reduction
   workspaces.** R2 proved the preload trim was effective but still crossed the

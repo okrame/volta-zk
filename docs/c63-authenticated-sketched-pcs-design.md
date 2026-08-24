@@ -1,6 +1,6 @@
 # C6.3 Authenticated Sketched WHIR Design
 
-Status: **R0/R1 LOCAL GREEN / C63-G1 A100 PASS / C63-G2 RESIDENT EXTENSION OWNER-GO / E2E HARD STOP**
+Status: **R0/R1 LOCAL GREEN / C63-G1 A100 PASS / C63-G2 TERMINAL-JOIN HARD STOP / OWNER DECISION**
 
 This document is the authority for C6.3. It replaces C6.2 only for new C6.3
 work; C6.2 code, artifacts and dispositions remain immutable evidence. The
@@ -341,9 +341,10 @@ plaintext and is forbidden. The production codec audit is now closed at the
 typed boundary: public payloads contain corrections and tagless PCS material;
 the designated tail contains only simulator-compatible ZeroOpen tags; client
 replay keys have a separate private codec and are absent from the certificate.
-The registered C6.3 real-PCG suffix consumes 24 sub-correlations and 703 full
-correlations per tape, including two fresh terminal masks. This does not prove
-the AES-PCG assumption or replace the required real execution.
+The rejected four-body C6.3 suffix consumed 24 sub-correlations and 703 full
+correlations per tape, including two fresh terminal masks. The recommended
+repair projects 705 full correlations per tape. Neither census proves the
+AES-PCG assumption or replaces the required real execution.
 
 The source behind the local HVZK-WHIR fork is Chiesa--Fenzi--Weissenberg,
 *Zero-Knowledge IOPPs for Constrained Interleaved Codes*, ePrint 2026/391
@@ -483,9 +484,10 @@ The persistent `A` root is deterministic and external to Hiding-WHIR's fresh
 randomness. It is never the randomized initial oracle `ZC(S;zeta)`: reusing
 one mask across responses accumulates openings beyond the present privacy
 argument, while refreshing it would change the accepted root. Each response
-therefore builds four fresh randomized base-field initial roots, one per limb
-core, and links them to deterministic `D'`, `A`, `w` and `y` inside the same
-transcript.
+therefore built four fresh randomized base-field initial roots in the rejected
+combined-tape composition. The recommended repair builds eight, one per
+arithmetic limb, object and MAC tape, and links them to deterministic `D'`,
+`A`, `w` and `y` inside the same transcript.
 
 The CPU reference now packs the physical `A` rows as
 `[column][fold_position]`, projects both limbs of `A*rho`, and obtains exactly
@@ -630,20 +632,43 @@ multiplications for `eq(r)`, `16,777,212` for sumcheck folds, about 72 MiB
 scratch, `1,496 B` framed, 44 full correlations per MAC tape, and error at
 most `64/|Fp2|` for the tensor mix, random output point and sumcheck rounds.
 This term does not silently cover any additional ZeroOpen or MAC failure.
-Their separate final C6.3 census is locally closed at 24 sub plus 703 full
-correlations per tape, but remains unexecuted with the real generator. The
-scaled dual-tape Rust prover/verifier and strict codec pass mutation tests.
+The rejected four-body composition's final census was locally closed at 24
+sub plus 703 full correlations per tape, but remains unexecuted with the real
+generator. The scaled dual-tape Rust prover/verifier and strict codec pass
+mutation tests.
 
-This closes the algebraic shape, not production integration. The scaled
-reference now receives only the four authenticated WHIR terminal openings,
-reconstructs the two Fp2 scalars and feeds them into the sparse relation. Its
-production-dimension verifier will still scan the 768-MiB expanded `H`. A four-thread CPU
+This closes the algebraic shape, not production integration. Security review
+found that the scaled reference did **not** receive four jointly authenticated
+openings: it authenticated one arithmetic limb per MAC tape, reconstructed
+clear `Fp2` scalars and let the sparse verifier create public keys for them.
+That path is rejected and the terminal join is a hard stop. Its
+production-dimension verifier would still scan the 768-MiB expanded `H`. A four-thread CPU
 scan is projected at `0.17--0.40 s` from the registered local rate with
-`65--80%` confidence, but must be measured. The complete outer codec and
-real-PCG privacy audit are locally green: the C6.3 suffix is exactly 24
-sub-correlations and 703 full correlations per tape, with two fresh typed
-terminal masks. GPU ownership remains the hard stop and receives no timing or
-protocol credit.
+`65--80%` confidence, but must be measured. The historical outer codec and
+real-PCG privacy audit are locally green only for the rejected four-body
+suffix. GPU component measurements remain valid, but the terminal
+join now precedes GPU ownership and receives no protocol credit.
+
+The recommended repair keeps the authentication tapes separate all the way
+through the sparse relation. For tape `l`, define `m_l` from only that tape's
+eight correction columns and `u_l=H m_l`. Each is still an extension-field
+message and therefore needs two base-field WHIR limb bodies. This gives four
+bodies per tape, eight total. The two arithmetic limb base identities for one
+object and tape are normalized and joined against the authenticated
+extension-field target using the already implemented joint-bridge algebra;
+the certificate still carries one terminal tag per object and tape. Opposite
+errors cannot cancel because neither sparse equation adds the two tapes.
+
+This repair adds the existing four-body census, `4,519,664 B`, to the selected
+certificate: about `27,791,083 B` total and `128,988,780 B` setup plus first.
+It consumes four rather than two WHIR masks per tape, moving the projected
+full-correlation census from 703 to 705. The sparse proof remains 1,496 bytes,
+but its two round streams now prove distinct `u_l=H m_l` relations. These are
+analytic projections only. The statement digest, soundness union, compact
+output-link coefficients, codecs and mutation tests must be revised before
+implementation credit. A four-body alternative would require a new
+cross-tape authenticated-value conversion and is not admitted without a
+separate proof.
 
 The C6.3-specific contribution is the append-aligned 16-column reshape, the
 typed correction-row commitment and batching around Volta's accepted
@@ -886,9 +911,10 @@ framing and the Volta `H` closure may move the final size in either direction.
 The executable screen is `scripts/budget_c63_authenticated_sketch.py` (schema
 v14). Version 14 only corrects the stale diagnostic field name from 4,378 to
 the already enforced 4,420 rows and lists the remaining production coordinator
-and setup-seed evidence; arithmetic is unchanged. Canonical correction-row,
-four-lane WHIR, public/designated partition and
-final certificate codecs now exist locally. Their exact byte, setup,
+and setup-seed evidence; arithmetic is unchanged. Canonical correction-row
+and historical four-lane WHIR codecs exist locally. The selected terminal
+repair still needs revised public/designated and final-certificate codecs. The
+historical exact byte, setup,
 `pi_final` and computational soundness screens are evaluated but remain
 `credit:false`; prover time, verifier time, RAM and VRAM stay unevaluated until
 the real A100 artifact exists.
@@ -937,18 +963,20 @@ Changing the protocol statement opens additive Lean work. Frozen historical
 M1--M11 files are not edited; C6.3 lemmas must cover the new relation before a
 production claim.
 
-The scaled CPU reference now closes the terminal-opening integration step. It
-executes four real Hiding-WHIR lanes (two D22 `m` limbs and two D19 `u` limbs),
-checks a separate designated terminal MAC for each lane, reconstructs the two
-Fp2 openings and feeds only those scalars into the sparse-`H` verifier. The
-verifier no longer needs either full witness table. The same test uses the
+The scaled CPU reference executes four real Hiding-WHIR lanes (two D22 `m`
+limbs and two D19 `u` limbs), checks one designated terminal MAC per lane and
+reconstructs two clear `Fp2` openings. It does not cryptographically link
+those reconstructed values to the two-tape sparse proof and therefore does
+not close the terminal-opening integration step. The same test uses the
 linked `A -> y` path for both D19 limbs and derives its fused systematic spots
 from verified D12-inside-D10 correction multiproofs. All four actual proofs
 round-trip through strict codecs before verification; the two D19 artifacts
 contain exactly one linked `A` opening each. Production-depth synthetic codecs
 include every registered PoW witness. This remains `credit:false`: the fixture
 is scaled, uses mock correlations, serializes the public component but not one
-complete final certificate, and is not composed with the GPU owner.
+complete final certificate, and is not composed with the GPU owner. The
+eight-body tape-separated repair above supersedes this four-body terminal
+composition if selected by the owner.
 
 ### C63-G1 — GPU component boundary
 
@@ -975,17 +1003,14 @@ frame so the existing GPU BLAKE3 tree hashes exactly the same bytes as the CPU
 reference. ABI43 now compiles under CUDA 12.8 and both genesis and asymmetric
 successor match the full CPU oracle on one A100.
 
-The following G2 source trace proves that the response-local work is not a
-pure coordinator call. `C62GpuWhirCommitter` still receives the initial
-message as a host slice and `HidingWhirProverData` owns a host polynomial.
-There is no device operation that projects the accepted 16-column correction
-and sketch owners by post-root `rho` into the two D22/D19 limb messages.
-`C63ProjectedMmcs` attaches CPU `A` prover data, and `C63GpuStateOwner` cannot
-yet return canonical pruned openings from its resident `A` tree. The joint
-four-lane driver/replay remains inside the scaled test, while final-certificate
-validation checks structure and digest binding only. Therefore clean
-`178c37e` stops before E2E. Record
-`c63-g2-2026-08-24-178c37e.json` carries no timing or protocol credit.
+The historical clean `178c37e` trace proved that the response-local work was
+not a pure coordinator call and stopped before E2E; its record
+`c63-g2-2026-08-24-178c37e.json` carries no timing or protocol credit. ABI44
+later closed resident initial-message ownership, combined-tape projection and
+canonical pruned `A` openings for one D19 lane. Tape-separated projection,
+the revised terminal join and complete final-certificate verification remain
+unimplemented. The rejected four-lane driver/replay remains only a scaled
+test.
 
 The first hardware check is the single ignored integration test
 `volta-pcs/tests/c63_gpu_owner.rs`. It uses the production D22-to-D19 sampler,
@@ -1001,7 +1026,7 @@ walls, not proof walls.
 Here **complete the resident proof/verifier link** means only the narrow
 production adapter at the existing cache-PCS/output-link join. It must borrow
 the accepted/proposed device owners, derive `rho` after both roots, feed the
-already implemented four C6.3 lanes and sparse closure, assemble the existing
+owner-selected authenticated lanes and sparse closure, assemble the revised
 public argument, designated envelope and final certificate codecs, run the
 CPU verifier, and promote the proposal only on acceptance. Large `D'`, `S`,
 `A`, `m/u/w/y` owners never cross to host; only roots, authenticated queried
@@ -1011,9 +1036,9 @@ After the ABI43 differential, this adapter has **no aggregate pod timebox**.
 Focused component work continues while resource controls hold and each run can
 produce useful evidence. Cold compilation and fixed setup remain separately
 measured. The 150-second per-certificate watchdog and every E2E hard stop remain
-unchanged. The implementation reuses the existing cached-fixed-base seam,
-four-lane reference, verifier and codecs; no new proof engine, abstraction or
-kernel is admitted unless a focused differential proves it necessary. A
+unchanged. The implementation reuses the existing cached-fixed-base seam and
+normalized joint-bridge algebra; no new proof engine, abstraction or kernel is
+admitted unless a focused differential proves it necessary. A
 dense-host or CPU-prover fallback remains forbidden. ABI44 closes the admitted
 resident projection, initial-message and `A`-opening extension for one D19 lane.
 Clean `377c03a` also measures the production-size resident sparse relation at

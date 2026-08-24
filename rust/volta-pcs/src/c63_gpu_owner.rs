@@ -6,13 +6,15 @@
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
+use p3_field::PrimeField64;
 use p3_goldilocks::Goldilocks;
 use volta_accel::{AccelError, Backend, DeviceBuffer, DeviceMerkleTree, DeviceSlice, Fp2Repr};
 use volta_field::Fp2;
 
 use crate::c62_gpu_whir::{open_full_base_oracle, C62GpuMmcs, C62GpuMultiProof};
 use crate::c63_authenticated_sketch::{
-    c63_correction_state_root_reference, C63SparseSetupReference, C63_BOLT_COLUMNS,
+    c63_correction_rows_opening_from_resident_parts, c63_correction_state_root_reference,
+    C63CorrectionRowsOpeningReference, C63SparseSetupReference, C63_BOLT_COLUMNS,
     C63_BOLT_LIVE_ROWS_PER_POSITION, C63_BOLT_ROWS, C63_BOLT_ROWS_PER_POSITION,
     C63_BOLT_SKETCH_ROWS,
 };
@@ -604,6 +606,127 @@ impl C63GpuStateOwner {
             indices,
         )
         .map_err(|error| C63GpuOwnerError::new(error.to_string()))
+    }
+
+    /// Open only sampled correction rows. Accepted tile frames and trees are
+    /// regenerated one at a time; the compact correction table never crosses
+    /// to host and virtual rows/tiles carry no payload.
+    pub fn open_correction_rows(
+        &self,
+        queried_rows: &[u32],
+    ) -> Result<C63CorrectionRowsOpeningReference, C63GpuOwnerError> {
+        if queried_rows.is_empty()
+            || queried_rows.windows(2).any(|pair| pair[0] >= pair[1])
+            || queried_rows.last().is_some_and(|&row| row as usize >= C63_BOLT_ROWS)
+        {
+            return Err(C63GpuOwnerError::new("C6.3 correction query rows are noncanonical"));
+        }
+        let mut positions =
+            queried_rows.iter().map(|row| (*row as usize) >> 12).collect::<Vec<_>>();
+        positions.dedup();
+        let metadata_words =
+            self.metadata.iter().flat_map(|entry| entry.words()).collect::<Vec<_>>();
+        let metadata_device = self
+            .backend
+            .lock()
+            .map_err(|_| C63GpuOwnerError::new("CUDA lock"))?
+            .upload_new_device(&metadata_words)?;
+        let result = (|| {
+            let mut tiles = Vec::new();
+            for position in positions
+                .iter()
+                .copied()
+                .filter(|&position| position < usize::from(self.accepted_len))
+            {
+                let locals = queried_rows
+                    .iter()
+                    .copied()
+                    .filter(|row| (*row as usize) >> 12 == position)
+                    .map(|row| (row as usize) & (C63_BOLT_ROWS_PER_POSITION - 1))
+                    .collect::<Vec<_>>();
+                let (frame, tree) = {
+                    let mut backend =
+                        self.backend.lock().map_err(|_| C63GpuOwnerError::new("CUDA lock"))?;
+                    let frame = backend.c63_correction_tile_frame_device(
+                        self.correction_rows.as_ref().expect("live C6.3 correction owner"),
+                        &metadata_device,
+                        usize::from(self.accepted_len),
+                        position,
+                    )?;
+                    let tree = match backend.hash_fp_tree_device(
+                        &frame,
+                        C63_CORRECTION_FRAME_WORDS,
+                        C63_BOLT_ROWS_PER_POSITION,
+                    ) {
+                        Ok(tree) => tree,
+                        Err(error) => {
+                            let _ = backend.free_device(frame);
+                            return Err(error.into());
+                        }
+                    };
+                    (frame, tree)
+                };
+                let opened = open_full_base_oracle(
+                    &self.backend,
+                    &frame,
+                    &tree,
+                    C63_CORRECTION_FRAME_WORDS,
+                    C63_BOLT_ROWS_PER_POSITION,
+                    &locals,
+                );
+                let cleanup = {
+                    let mut backend =
+                        self.backend.lock().map_err(|_| C63GpuOwnerError::new("CUDA lock"))?;
+                    backend.free_device_merkle_tree(tree).and_then(|()| backend.free_device(frame))
+                };
+                let (rows, proof) = match (opened, cleanup) {
+                    (Ok(opened), Ok(())) => opened,
+                    (Err(error), _) => return Err(C63GpuOwnerError::new(error.to_string())),
+                    (_, Err(error)) => return Err(error.into()),
+                };
+                let corrections = locals
+                    .iter()
+                    .zip(rows)
+                    .filter(|(local, _)| **local < C63_BOLT_LIVE_ROWS_PER_POSITION)
+                    .map(|(_, row)| {
+                        if row.len() != C63_CORRECTION_FRAME_WORDS {
+                            return Err(C63GpuOwnerError::new(
+                                "C6.3 correction opening row width differs",
+                            ));
+                        }
+                        Ok(std::array::from_fn(|column| {
+                            volta_field::Fp::new(row[11 + column].as_canonical_u64())
+                        }))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                let metadata = (!corrections.is_empty()).then(|| {
+                    let metadata = self.metadata[position];
+                    (
+                        metadata.birth_epoch,
+                        metadata.allocation_binding_digest,
+                        metadata.source_schedule_digest,
+                    )
+                });
+                tiles.push((metadata, corrections, proof.sibling_hashes));
+            }
+            c63_correction_rows_opening_from_resident_parts(
+                self.accepted_len,
+                &self.tile_roots,
+                queried_rows,
+                tiles,
+            )
+            .map_err(C63GpuOwnerError::new)
+        })();
+        let cleanup = self
+            .backend
+            .lock()
+            .map_err(|_| C63GpuOwnerError::new("CUDA lock"))?
+            .free_device(metadata_device);
+        match (result, cleanup) {
+            (Ok(opening), Ok(())) => Ok(opening),
+            (Err(error), _) => Err(error),
+            (_, Err(error)) => Err(error.into()),
+        }
     }
 
     pub fn device_bytes(&self) -> u64 {

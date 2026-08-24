@@ -8,11 +8,11 @@ use volta_pcs::merkle::{hash_leaf, Hash, MerkleTree};
 use volta_pcs::ntt::NttPlan;
 use volta_pcs::{
     c63_bolt_correction_index, c63_correction_state_root_reference,
-    c63_correction_tile_root_reference, C63CorrectionRowReference, C63GpuSetupOwner,
-    C63GpuStateOwner, C63GpuTileMetadata, C63SparseSetupReference, C6CacheCell, C6CacheSlotKind,
-    C63_BOLT_COLUMNS, C63_BOLT_LDPC_CHECK_DEGREE, C63_BOLT_LDPC_COLUMN_DEGREE,
-    C63_BOLT_LIVE_ROWS_PER_POSITION, C63_BOLT_ROWS, C63_BOLT_ROWS_PER_POSITION,
-    C63_BOLT_SKETCH_ROWS, C63_PRODUCTION_SETUP_SEED,
+    c63_correction_tile_root_reference, c63_open_correction_rows_reference,
+    C63CorrectionRowReference, C63GpuSetupOwner, C63GpuStateOwner, C63GpuTileMetadata,
+    C63SparseSetupReference, C6CacheCell, C6CacheSlotKind, C63_BOLT_COLUMNS,
+    C63_BOLT_LDPC_CHECK_DEGREE, C63_BOLT_LDPC_COLUMN_DEGREE, C63_BOLT_LIVE_ROWS_PER_POSITION,
+    C63_BOLT_ROWS, C63_BOLT_ROWS_PER_POSITION, C63_BOLT_SKETCH_ROWS, C63_PRODUCTION_SETUP_SEED,
 };
 
 const LAYERS: usize = 12;
@@ -252,6 +252,37 @@ fn production_owner_matches_cpu_for_one_complete_token() {
     assert_eq!(state.encoded_sketch_root(), expected_encoded_root);
     assert_eq!(state.epoch(), 1);
     assert_eq!(state.accepted_len(), 1);
+
+    let queried_rows = [
+        0,
+        17,
+        C63_BOLT_LIVE_ROWS_PER_POSITION as u32 - 1,
+        C63_BOLT_LIVE_ROWS_PER_POSITION as u32,
+        C63_BOLT_ROWS_PER_POSITION as u32 - 1,
+        C63_BOLT_ROWS_PER_POSITION as u32,
+        C63_BOLT_ROWS as u32 - 1,
+    ];
+    let expected_rows = (0..C63_BOLT_LIVE_ROWS_PER_POSITION)
+        .map(|row| C63CorrectionRowReference {
+            position: 0,
+            layer_high: (row >> 9) as u8,
+            channel_low: (row & 511) as u16,
+            birth_epoch: metadata.birth_epoch,
+            allocation_binding_digest: metadata.allocation_binding_digest,
+            source_schedule_digest: metadata.source_schedule_digest,
+            corrections: std::array::from_fn(|column| {
+                expected_corrections[row * C63_BOLT_COLUMNS + column]
+            }),
+        })
+        .collect::<Vec<_>>();
+    let (_, expected_opening) =
+        c63_open_correction_rows_reference(profile_digest, 1, &[expected_rows], &queried_rows)
+            .unwrap();
+    let resident_opening = state.open_correction_rows(&queried_rows).unwrap();
+    assert_eq!(
+        resident_opening.encode(1, &queried_rows).unwrap(),
+        expected_opening.encode(1, &queried_rows).unwrap(),
+    );
 
     let rho: [Fp2; C63_BOLT_COLUMNS] = std::array::from_fn(|column| {
         Fp2::new(Fp::new(11 + column as u64 * 13), Fp::new(17 + column as u64 * 19))

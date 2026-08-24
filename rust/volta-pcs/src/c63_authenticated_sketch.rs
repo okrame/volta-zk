@@ -630,6 +630,53 @@ impl C63CorrectionRowsOpeningReference {
     }
 }
 
+/// Assemble the canonical two-level proof from resident tile openings. The
+/// caller supplies only accepted-tile payloads; virtual tiles remain derived
+/// from the public geometry.
+pub(crate) fn c63_correction_rows_opening_from_resident_parts(
+    accepted_len: u16,
+    tile_roots: &[Hash],
+    queried_rows: &[u32],
+    tiles: Vec<(Option<(u64, Hash, Hash)>, Vec<[Fp; C63_BOLT_COLUMNS]>, Vec<Hash>)>,
+) -> Result<C63CorrectionRowsOpeningReference, String> {
+    validate_c63_correction_queries(queried_rows)?;
+    validate_c63_accepted_len(accepted_len)?;
+    if tile_roots.len() != usize::from(accepted_len) || tile_roots.contains(&[0; 32]) {
+        return Err("C6.3 resident correction tile roots differ".to_owned());
+    }
+    let positions = c63_correction_query_positions(queried_rows);
+    if tiles.len()
+        != positions.iter().filter(|&&position| position < usize::from(accepted_len)).count()
+    {
+        return Err("C6.3 resident correction tile opening count differs".to_owned());
+    }
+    let tiles = tiles
+        .into_iter()
+        .map(|(metadata, corrections, frontier)| C63CorrectionTileOpeningReference {
+            metadata: metadata.map(
+                |(birth_epoch, allocation_binding_digest, source_schedule_digest)| {
+                    C63CorrectionTileMetadataReference {
+                        birth_epoch,
+                        allocation_binding_digest,
+                        source_schedule_digest,
+                    }
+                },
+            ),
+            corrections,
+            frontier,
+        })
+        .collect::<Vec<_>>();
+    let virtual_tile_root = c63_virtual_correction_tile_root();
+    let mut outer_leaves = vec![virtual_tile_root; 1 << 10];
+    outer_leaves[..tile_roots.len()].copy_from_slice(tile_roots);
+    let outer_frontier = MerkleTree::from_leaves(outer_leaves)
+        .open_multi(&positions)
+        .ok_or_else(|| "C6.3 resident correction outer query set is invalid".to_owned())?;
+    let opening = C63CorrectionRowsOpeningReference { tiles, outer_frontier };
+    opening.encode(accepted_len, queried_rows)?;
+    Ok(opening)
+}
+
 /// Reference prover for the exact production-depth correction tree.
 pub fn c63_open_correction_rows_reference(
     profile_digest: Hash,

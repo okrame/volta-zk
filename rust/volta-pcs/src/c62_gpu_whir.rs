@@ -506,7 +506,8 @@ impl C62GpuMmcs {
         }))
     }
 
-    /// Evaluate one resident fixed message without downloading its table.
+    /// Evaluate one resident fixed message at a Plonky3/MSB-first point
+    /// without downloading its table.
     pub fn evaluate_fixed_base(
         &self,
         cache: &C62ProviderFixedBase,
@@ -523,8 +524,9 @@ impl C62GpuMmcs {
             .evals
             .as_ref()
             .ok_or_else(|| C62GpuWhirError::new("fixed-base evaluations were released"))?;
+        let lsb_point = point.iter().rev().copied().collect::<Vec<_>>();
         backend
-            .mle_eval_device(DeviceSlice::new(evals, 0, evals.len())?, point)
+            .mle_eval_device(DeviceSlice::new(evals, 0, evals.len())?, &lsb_point)
             .map_err(Into::into)
     }
 
@@ -1538,7 +1540,12 @@ impl ResidualSumcheckProver<Goldilocks, C61P3Fp2> for C62GpuSumcheckState {
         if 1usize.checked_shl(point.num_variables() as u32) != Some(self.len) {
             return Err(C62GpuWhirError::new("C62GW1 resident MLE point mismatch"));
         }
-        let point = point.iter().copied().map(c61_volta_fp2_from_p3).collect::<Vec<_>>();
+        let point = point
+            .iter()
+            .rev()
+            .copied()
+            .map(c61_volta_fp2_from_p3)
+            .collect::<Vec<_>>();
         let mut backend = self.backend.lock().map_err(|_| C62GpuWhirError::new("CUDA lock"))?;
         let value = backend.mle_eval_device(
             DeviceSlice::new(self.evals_buffer(), 0, self.len)?,

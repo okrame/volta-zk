@@ -193,16 +193,78 @@ impl C63GpuProjectedMessages {
             .and_then(Option::take)
             .ok_or_else(|| C63GpuOwnerError::new("C6.3 encoded-sketch limb is absent"))
     }
+
+    /// Combine the two base-field limbs into one resident extension-field
+    /// message without consuming either limb.
+    pub fn combined_systematic(&self) -> Result<DeviceBuffer<Fp2Repr>, C63GpuOwnerError> {
+        self.combine(&self.systematic, "systematic")
+    }
+
+    /// Combine the two base-field limbs into one resident extension-field
+    /// sketch without consuming either limb.
+    pub fn combined_sketch(&self) -> Result<DeviceBuffer<Fp2Repr>, C63GpuOwnerError> {
+        self.combine(&self.sketch, "sketch")
+    }
+
+    pub fn evaluate_combined_sketch(&self, point: &[Fp2]) -> Result<Fp2, C63GpuOwnerError> {
+        let combined = self.combined_sketch()?;
+        let mut backend = self.backend.lock().map_err(|_| C63GpuOwnerError::new("CUDA lock"))?;
+        let value = backend.mle_eval_device(DeviceSlice::new(&combined, 0, combined.len())?, point);
+        let cleanup = backend.free_device(combined);
+        match (value, cleanup) {
+            (Ok(value), Ok(())) => Ok(value),
+            (Err(error), _) | (_, Err(error)) => Err(error.into()),
+        }
+    }
+
+    fn combine(
+        &self,
+        limbs: &[Option<DeviceBuffer<u64>>; 2],
+        label: &str,
+    ) -> Result<DeviceBuffer<Fp2Repr>, C63GpuOwnerError> {
+        let [Some(limb0), Some(limb1)] = limbs else {
+            return Err(C63GpuOwnerError::new(format!("C6.3 {label} limb is absent")));
+        };
+        if limb0.len() != limb1.len() {
+            return Err(C63GpuOwnerError::new(format!("C6.3 {label} limb lengths differ")));
+        }
+        let mut backend = self.backend.lock().map_err(|_| C63GpuOwnerError::new("CUDA lock"))?;
+        let combined = backend.alloc_device::<Fp2Repr>(limb0.len())?;
+        let imaginary = match backend.alloc_device::<Fp2Repr>(limb1.len()) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = backend.free_device(combined);
+                return Err(error.into());
+            }
+        };
+        let result = backend
+            .fp_to_fp2_device(limb0, 0, &combined, 0, limb0.len())
+            .and_then(|()| backend.fp_to_fp2_device(limb1, 0, &imaginary, 0, limb1.len()))
+            .and_then(|()| {
+                backend.fp2_scale_inplace_device(
+                    &imaginary,
+                    0,
+                    imaginary.len(),
+                    Fp2::new(volta_field::Fp::ZERO, volta_field::Fp::ONE),
+                )
+            })
+            .and_then(|()| {
+                backend.fp2_add_inplace_device(&combined, 0, &imaginary, 0, combined.len())
+            });
+        let imaginary_cleanup = backend.free_device(imaginary);
+        if let Err(error) = result.and(imaginary_cleanup) {
+            let _ = backend.free_device(combined);
+            return Err(error.into());
+        }
+        Ok(combined)
+    }
 }
 
 impl Drop for C63GpuProjectedMessages {
     fn drop(&mut self) {
         if let Ok(mut backend) = self.backend.lock() {
-            for buffer in self
-                .systematic
-                .iter_mut()
-                .chain(&mut self.sketch)
-                .chain(&mut self.encoded_sketch)
+            for buffer in
+                self.systematic.iter_mut().chain(&mut self.sketch).chain(&mut self.encoded_sketch)
             {
                 if let Some(buffer) = buffer.take() {
                     let _ = backend.free_device(buffer);

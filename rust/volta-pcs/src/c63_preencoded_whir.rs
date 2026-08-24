@@ -5,6 +5,7 @@
 //! production adapter, a privacy proof, the systematic `D' -> m` link, or
 //! evidence for paired queries.
 
+use std::collections::BTreeSet;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -54,6 +55,40 @@ pub const C63_WHIR_VERSION: u16 = 1;
 pub const C63_WHIR_SECURITY_BITS: usize = 105;
 pub const C63_POW_SEARCH_CAP_PER_PHASE: u64 = 1 << 26;
 const C63_H_POW_CONTEXT: &str = "volta-zk/c63/H_pow/v1";
+const C63_SYSTEMATIC_QUERY_PHASE_TAG: u64 = 0x6330_6358_5152_5931;
+
+/// Draw sorted unique systematic rows after both state roots and `rho` have
+/// already entered the caller's transcript. Duplicate draws are rejected,
+/// which is uniform sampling without replacement over this power-of-two
+/// domain. The cap fails closed instead of permitting an adversarial sampler
+/// to stall verification.
+pub fn c63_sample_systematic_query_rows<Challenger>(
+    challenger: &mut Challenger,
+    num_variables: usize,
+    queries: usize,
+) -> Result<Vec<u32>, String>
+where
+    Challenger: CanObserve<Goldilocks> + CanSampleBits<usize>,
+{
+    let domain = 1usize
+        .checked_shl(num_variables as u32)
+        .ok_or_else(|| "C6.3 systematic query dimension overflows".to_owned())?;
+    if num_variables == 0 || num_variables > 32 || queries == 0 || queries > domain {
+        return Err("C6.3 systematic query geometry differs".to_owned());
+    }
+    challenger.observe(Goldilocks::new(C63_SYSTEMATIC_QUERY_PHASE_TAG));
+    let draw_cap = queries
+        .checked_mul(2)
+        .ok_or_else(|| "C6.3 systematic query draw cap overflows".to_owned())?;
+    let mut rows = BTreeSet::new();
+    for _ in 0..draw_cap {
+        rows.insert(challenger.sample_bits(num_variables) as u32);
+        if rows.len() == queries {
+            return Ok(rows.into_iter().collect());
+        }
+    }
+    Err("C6.3 systematic query duplicate-draw cap reached".to_owned())
+}
 
 /// Fiat--Shamir delegates to `inner`; grinding uses an independent keyed hash.
 #[derive(Clone)]
@@ -1757,7 +1792,8 @@ mod tests {
     #[cfg(feature = "cuda")]
     use crate::c63_authenticated_sketch::{
         C63SparseSetupReference, C63_BOLT_LDPC_CHECK_DEGREE, C63_BOLT_LDPC_COLUMN_DEGREE,
-        C63_BOLT_ROWS, C63_BOLT_SKETCH_ROWS, C63_PRODUCTION_SETUP_SEED,
+        C63_BOLT_ROWS, C63_BOLT_ROW_LOG2, C63_BOLT_SKETCH_ROWS, C63_PRODUCTION_SETUP_SEED,
+        C63_SYSTEMATIC_SPOT_QUERIES,
     };
     #[cfg(feature = "cuda")]
     use crate::c63_gpu_owner::{C63GpuSetupOwner, C63GpuStateOwner, C63GpuTileMetadata};
@@ -2110,6 +2146,21 @@ mod tests {
         .unwrap();
         wrong_role.observe(observed);
         assert!(!wrong_role.check_witness(10, witness));
+    }
+
+    #[test]
+    fn systematic_query_rows_are_replayable_sorted_and_unique() {
+        let mut prover = challenger([0x62; 32]);
+        let mut verifier = challenger([0x62; 32]);
+        let prover_rows = c63_sample_systematic_query_rows(&mut prover, 12, 257).unwrap();
+        let verifier_rows = c63_sample_systematic_query_rows(&mut verifier, 12, 257).unwrap();
+        assert_eq!(prover_rows, verifier_rows);
+        assert_eq!(prover_rows.len(), 257);
+        assert!(prover_rows.windows(2).all(|pair| pair[0] < pair[1]));
+        let prover_next: Goldilocks = prover.sample();
+        let verifier_next: Goldilocks = verifier.sample();
+        assert_eq!(prover_next, verifier_next);
+        assert!(c63_sample_systematic_query_rows(&mut challenger([0x62; 32]), 0, 1).is_err());
     }
 
     fn verify_claimless(
@@ -2759,8 +2810,9 @@ mod tests {
 
         let state_started = Instant::now();
         let backend = base_mmcs.backend();
+        const ACCEPTED_LEN: usize = 150;
         let tapes: [Vec<u64>; 2] = std::array::from_fn(|tape| {
-            (0..2 * 12 * 768)
+            (0..ACCEPTED_LEN * 2 * 12 * 768)
                 .map(|index| 1 + tape as u64 * 1_000_003 + index as u64 * 17)
                 .collect()
         });
@@ -2780,11 +2832,14 @@ mod tests {
                 1,
                 DeviceSlice::new(&tape0, 0, tape0.len()).unwrap(),
                 DeviceSlice::new(&tape1, 0, tape1.len()).unwrap(),
-                &[C63GpuTileMetadata {
-                    birth_epoch: 1,
-                    allocation_binding_digest: [0x71; 32],
-                    source_schedule_digest: [0x72; 32],
-                }],
+                &vec![
+                    C63GpuTileMetadata {
+                        birth_epoch: 1,
+                        allocation_binding_digest: [0x71; 32],
+                        source_schedule_digest: [0x72; 32],
+                    };
+                    ACCEPTED_LEN
+                ],
             )
             .unwrap(),
         );
@@ -2812,6 +2867,31 @@ mod tests {
         let projection_started = Instant::now();
         let mut projected = state.project_messages(rho).unwrap();
         let projection_ms = projection_started.elapsed().as_millis();
+        let spot_rows = c63_sample_systematic_query_rows(
+            &mut prover_challenger,
+            C63_BOLT_ROW_LOG2 as usize,
+            C63_SYSTEMATIC_SPOT_QUERIES,
+        )
+        .unwrap();
+        let correction_started = Instant::now();
+        let correction_opening = state.open_correction_rows(&spot_rows).unwrap();
+        let correction_artifact = correction_opening
+            .encode(state.accepted_len(), &spot_rows)
+            .unwrap();
+        let spots = c63_verify_correction_rows_reference(
+            state.correction_root(),
+            profile_digest,
+            state.epoch(),
+            state.accepted_len(),
+            &spot_rows,
+            &rho,
+            &correction_opening,
+        )
+        .unwrap()
+        .into_iter()
+        .map(|(row, value)| C63SystematicSpot { row, value })
+        .collect::<Vec<_>>();
+        let correction_ms = correction_started.elapsed().as_millis();
         let h_started = Instant::now();
         let h = C63SparseSketchReference::new(
             C63_BOLT_ROWS,
@@ -2841,7 +2921,7 @@ mod tests {
             projected.combined_systematic().unwrap(),
             u_opening,
             &sparse_statement,
-            &[],
+            &spots,
             &mut sparse_streams,
             &mut sparse_prover_transcript,
         )
@@ -2855,7 +2935,7 @@ mod tests {
             &h,
             u_opening,
             &sparse_statement,
-            &[],
+            &spots,
             &sparse_proof,
             &mut sparse_contexts,
             &mut sparse_verifier_transcript,
@@ -2958,7 +3038,9 @@ mod tests {
         assert_eq!(closure.target, output.target);
         assert_eq!(closure.base_case, output.base_case);
         eprintln!(
-            "c63_resident_projected_lane setup_ms={setup_ms} state_ms={state_ms} projection_ms={projection_ms} h_prepare_ms={h_prepare_ms} sparse_prove_ms={sparse_prove_ms} sparse_verify_ms={sparse_verify_ms} sparse_proof_bytes={} lane_prepare_ms={lane_prepare_ms} prove_ms={prove_ms} verify_ms={verify_ms} proof_bytes={} peak_device_bytes={} h2d_bytes={} d2h_bytes={} total_ms={}",
+            "c63_resident_projected_lane setup_ms={setup_ms} state_ms={state_ms} projection_ms={projection_ms} correction_ms={correction_ms} correction_rows={} correction_bytes={} h_prepare_ms={h_prepare_ms} sparse_prove_ms={sparse_prove_ms} sparse_verify_ms={sparse_verify_ms} sparse_proof_bytes={} lane_prepare_ms={lane_prepare_ms} prove_ms={prove_ms} verify_ms={verify_ms} proof_bytes={} peak_device_bytes={} h2d_bytes={} d2h_bytes={} total_ms={}",
+            spots.len(),
+            correction_artifact.len(),
             sparse_proof.encode().unwrap().len(),
             artifact.len(),
             stats.peak_device_bytes,

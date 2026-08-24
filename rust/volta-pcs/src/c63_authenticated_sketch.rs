@@ -24,6 +24,7 @@ pub const C63_BOLT_SKETCH_ROW_LOG2: u8 = 19;
 pub const C63_BOLT_SKETCH_ROWS: usize = 1 << C63_BOLT_SKETCH_ROW_LOG2;
 pub const C63_BOLT_LDPC_COLUMN_DEGREE: u8 = 16;
 pub const C63_BOLT_LDPC_CHECK_DEGREE: u16 = 128;
+pub const C63_SYSTEMATIC_SPOT_QUERIES: usize = 4_420;
 pub const C63_SPARSE_SETUP_DESCRIPTOR_BYTES: usize = 80;
 pub const C63_CORRECTION_ROW_FRAME_WORDS: usize = 27;
 /// Public one-shot production setup seed fixed before the first C6.3 pod run.

@@ -1,0 +1,96 @@
+{
+  "schema": "volta-c63-g2-resident-sparse-closure-v1",
+  "credit": false,
+  "scope": "production-geometry resident sparse H closure plus one linked D19 lane; not the four-lane certificate or an end-to-end run",
+  "git_sha": "377c03aa1810987003ec99158523bca2a9b15129",
+  "git_dirty": false,
+  "branch": "agent/c63-authenticated-sketch",
+  "hardware": {
+    "gpu": "NVIDIA A100-SXM4-80GB",
+    "gpu_total_mib": 81920,
+    "gpu_free_mib_at_admission": 81152,
+    "compute_capability": "8.0",
+    "cuda": "12.8",
+    "session_filesystem": "/root overlay",
+    "session_filesystem_free_gib_at_admission": 228
+  },
+  "cuda_backend": {
+    "abi": 44,
+    "architecture": "sm_80",
+    "library": "/root/volta-zk/rust/target/cuda/libvolta_cuda_backend.so"
+  },
+  "command": "VOLTA_CUDA_LIBRARY=/root/volta-zk/rust/target/cuda/libvolta_cuda_backend.so VOLTA_REQUIRE_CUDA=1 CARGO_INCREMENTAL=0 cargo test --release --manifest-path rust/Cargo.toml -p volta-pcs --features cuda,c6-trace,c61-p3-authenticated-reference c63_preencoded_whir::tests::production_resident_projected_lane_verifies_on_cpu -- --exact --ignored --nocapture",
+  "result": "PASS",
+  "release_repetitions": [
+    {
+      "setup_ms": 19741,
+      "state_ms": 8,
+      "projection_ms": 0,
+      "public_h_prepare_ms": 1452,
+      "sparse_prove_ms": 964,
+      "sparse_verify_ms": 971,
+      "sparse_proof_bytes": 1496,
+      "d19_lane_prepare_ms": 0,
+      "d19_lane_prove_ms": 69,
+      "d19_lane_verify_ms": 20,
+      "d19_lane_proof_bytes": 981112,
+      "peak_device_bytes": 1626938920,
+      "h2d_bytes": 68950148,
+      "d2h_bytes": 2971024,
+      "total_ms": 23231,
+      "test_process_wall_seconds_rounded": 23.44
+    },
+    {
+      "setup_ms": 19403,
+      "state_ms": 8,
+      "projection_ms": 0,
+      "public_h_prepare_ms": 1448,
+      "sparse_prove_ms": 901,
+      "sparse_verify_ms": 926,
+      "sparse_proof_bytes": 1496,
+      "d19_lane_prepare_ms": 0,
+      "d19_lane_prove_ms": 96,
+      "d19_lane_verify_ms": 20,
+      "d19_lane_proof_bytes": 985048,
+      "peak_device_bytes": 1626938920,
+      "h2d_bytes": 68950148,
+      "d2h_bytes": 2971024,
+      "total_ms": 22808,
+      "test_process_wall_seconds_rounded": 23.09
+    }
+  ],
+  "observed_release_ranges": {
+    "model_fixed_setup_ms": [19403, 19741],
+    "public_h_prepare_ms": [1448, 1452],
+    "sparse_prove_ms": [901, 964],
+    "sparse_verify_ms": [926, 971],
+    "sparse_proof_bytes": [1496, 1496],
+    "d19_lane_prove_ms": [69, 96],
+    "d19_lane_verify_ms": [20, 20],
+    "d19_lane_proof_bytes": [981112, 985048],
+    "peak_device_bytes": [1626938920, 1626938920]
+  },
+  "checks": {
+    "resident_private_message": true,
+    "only_round_scalars_cross_device_to_host": true,
+    "ordinary_cpu_opening_verifier": true,
+    "proof_matches_small_cpu_reference_exactly": true,
+    "temporary_device_memory_released_in_small_differential": true,
+    "legacy_dense_precommit_used": false,
+    "certificate_created": false
+  },
+  "clock_partition": {
+    "public_h_prepare": "model-fixed construction in the current harness; cache once per loaded model/profile",
+    "sparse_prove": "response-specific resident relation proof including one 64-MiB upload of public transpose weights",
+    "sparse_verify": "response-specific ordinary-CPU verification including public H transpose scan and one verified systematic opening callback",
+    "setup": "fixed setup expansion/install; not response-specific proving"
+  },
+  "limitations": [
+    "production run used zero systematic spots, so no production correction-row opening is credited",
+    "spot fusion is exact only in the separate small CPU/GPU differential",
+    "only one of four WHIR lanes is produced and verified",
+    "real PCG, GW4, final certificate assembly and top-level verification are absent",
+    "no end-to-end timing, size, memory or acceptance gate is claimed"
+  ],
+  "decision": "The experimental resident sparse relation is fast enough to retain: 0.901-0.964 s prover and 0.926-0.971 s ordinary-CPU verifier at GPT-2 geometry. Cache the 1.448-1.452 s public H construction, then implement production correction-row openings, systematic spots, the remaining lanes and the complete verifier."
+}

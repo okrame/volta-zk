@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — G2 RESIDENT D19 LANE PASS / COORDINATOR OPEN / E2E HARD STOP)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — G2 RESIDENT SPARSE CLOSURE PASS / COORDINATOR OPEN / E2E HARD STOP)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,19 +10,20 @@ record; no external plan is authoritative.
 
 Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 
-- **Status.** C6.3 G2 resident implementation is owner-authorized; E2E remains
-  stopped. ABI43 genesis/successor match an independent CPU oracle on A100.
-  ABI44 projection, resident initial-message handoff, accepted-`A` opening and
-  one linked production D19 lane now pass; the four-lane coordinator and
-  complete verifier remain open.
+- **Status.** C6.3 G2 is owner-authorized; E2E remains stopped. ABI44
+  projection, resident message/`A` openings, one linked D19 lane and the
+  production-size sparse relation now pass. Correction-row openings,
+  systematic spots, the remaining lanes and complete verifier remain open.
 - **Evidence.** C6.2 precommit is `275.113308912 s`, about `249.51 s` dense
   encoding/I/O/trees. C6.3 screens `23,271,419 B` certificate,
   `2,704,573 B` `pi_final`, `124,469,116 B` setup plus first,
-  `78.9485568461 bits`, 24 sub plus 703 full correlations per tape, 64-MiB
-  `S` and `607,387,584 B` old/new state. G2's two release repetitions measure
+  `78.9485568461 bits` and 24 sub plus 703 full correlations per tape. G2
+  measures
   64--83 ms proof, 20 ms ordinary-CPU verification, 982,968--987,160 B proof
-  and 1,339,850,244 B peak device memory for one D19 lane. Setup is separately
-  19.314--20.460 s. All are component-only `credit:false` evidence.
+  for one D19 lane. The sparse relation measures 0.901--0.964 s prover,
+  0.926--0.971 s ordinary-CPU verifier, 1,496 B and 1,626,938,920 B combined
+  device peak. Public `H` construction is 1.448--1.452 s and cacheable per
+  model. All are component-only `credit:false` evidence.
 - **Construction.** Roots bind `D'` and `A=C^16(H D')`; one column mix feeds
   four fresh pre-encoded WHIR lanes. Authentication tapes stay separate; GW4
   is fixed.
@@ -33,9 +34,22 @@ Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
   20 s continues; no canonical certificate by 150 s stops. There is no
   aggregate pod timebox; resource controls and informative-run discipline
   remain mandatory.
-- **Resume.** From clean `afea5f5`, promote the existing four-lane driver and
-  complete CPU verifier, then pass focused differentials and bind setup digest
-  `5b391766...a12415`. No E2E before every terminal check is green.
+- **Resume.** From clean `377c03a`, add resident correction-row openings and
+  production spot fusion, then promote the four-lane driver and complete CPU
+  verifier. Bind setup digest `5b391766...a12415`; no E2E before every
+  terminal check is green.
+
+- **2026-08-24 — C63-G2 resident sparse relation passes production geometry.**
+  Clean ABI44 source `377c03a`, raw record
+  `c63-g2-resident-sparse-closure-2026-08-24-377c03a.json`. Two release runs
+  measure 0.901--0.964 s to prove on A100, 0.926--0.971 s to verify on an
+  ordinary CPU and exactly 1,496 B. Public `H` construction is separately
+  1.448--1.452 s and must be cached with the loaded model. Combined state,
+  sparse fold and one D19 lane peak at 1,626,938,920 device bytes. A small
+  CPU/GPU differential produces byte-identical proofs with fused spots and
+  returns temporary memory. The production run has no correction-row spots;
+  therefore correction opening, four-lane, PCG, final-certificate and E2E
+  credit remain open. Evidence is `credit:false`.
 
 - **2026-08-24 — C63-G2 resident D19 lane passes twice; aggregate pod timebox
   removed by owner.** Clean ABI44 source `afea5f5`, raw record

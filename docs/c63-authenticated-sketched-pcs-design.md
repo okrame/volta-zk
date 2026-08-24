@@ -1015,8 +1015,13 @@ unchanged. The implementation reuses the existing cached-fixed-base seam,
 four-lane reference, verifier and codecs; no new proof engine, abstraction or
 kernel is admitted unless a focused differential proves it necessary. A
 dense-host or CPU-prover fallback remains forbidden. ABI44 closes the admitted
-resident projection, initial-message and `A`-opening extension for one D19 lane;
-the production four-lane coordinator and complete verifier are still required
+resident projection, initial-message and `A`-opening extension for one D19 lane.
+Clean `377c03a` also measures the production-size resident sparse relation at
+0.901--0.964 s prover, 0.926--0.971 s ordinary-CPU verifier, exactly 1,496 B
+and 1,626,938,920 B combined device peak. Building the public `H` view takes
+1.448--1.452 s and is model-fixed preprocessing. These are `credit:false`
+component results: production correction-row openings/systematic spots, the
+remaining three lanes, coordinator and complete verifier are still required
 before E2E.
 
 #### Pod admission and resource controls

@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — LOCAL CODEC/PRIVACY/105-BIT SOUNDNESS SCREEN GREEN; ABI43 A100 COMPONENT EXECUTION OPEN / E2E HARD STOP)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — G1 RESIDENT OWNER PASS / COORDINATOR TIMEBOX OPEN / E2E HARD STOP)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -13,16 +13,15 @@ Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 - **Status.** C6.3 component work is open on the owner-provided A100; E2E is
   stopped. Privacy/simulation, codecs,
   production-dimension opening codecs, four linked lanes and the reduced
-  wrapper are locally green. The ABI43 resident owner and differential compile at the Rust/CUDA
-  boundary; device kernels remain unbuilt and unrun. The provider-independent
-  setup seed is fixed locally; no top-level production coordinator/verifier
-  or full-size setup expansion exists.
+  wrapper are locally green. ABI43 genesis and successor match the independent
+  CPU oracle on A100. No top-level production coordinator/verifier exists.
 - **Evidence.** C6.2 precommit is `275.113308912 s`, about `249.51 s` dense
   encoding/I/O/trees. C6.3 screens `23,271,419 B` certificate,
   `2,704,573 B` `pi_final`, `124,469,116 B` setup plus first,
   `78.9485568461 bits`, 24 sub plus 703 full correlations per tape, 64-MiB
-  `S` and `607,387,584 B` old/new state. All are `credit:false`; no A100
-  timing or memory result exists.
+  `S` and `607,387,584 B` old/new state. G1 measures 7.316/4.270 ms and
+  1,144,782,888/1,481,474,056 B device peaks for one-token
+  genesis/successor; this is component-only `credit:false` evidence.
 - **Construction.** Roots bind `D'` and `A=C^16(H D')`; one column mix feeds
   four fresh pre-encoded WHIR lanes. Authentication tapes stay separate; GW4
   is fixed.
@@ -31,10 +30,23 @@ Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
   `<5 s`; verifier additional RSS `<=8,000,000,000 B`; soundness
   `>=78.80929487391641 bits`. Cold proof over
   20 s continues; no canonical certificate by 150 s stops.
-- **Resume.** Pull the clean C6.3 branch to `/root`, build ABI43, pass one-token
-  and successor differentials, expand and bind the fixed setup seed, then
-  close the coordinator/verifier in 60--90 minutes. E2E remains stopped until
-  every terminal check passes.
+- **Resume.** Begin the 60--90 minute coordinator/verifier timebox from clean
+  G1 commit `8ae0e83`; bind the measured setup digest in the full manifest.
+  E2E remains stopped until every terminal check passes.
+
+- **2026-08-24 — C63-G1 production-geometry resident owner PASS on A100;
+  coordinator timebox opens.** Clean source `8ae0e83`, raw record
+  `c63-g1-2026-08-24-8ae0e83.json`. Fixed-seed expansion gives digest
+  `5b391766...a12415`. The optimized harness independently reconstructs all
+  corrections, `S`, `A` and both roots for genesis and an asymmetric
+  successor; it also checks prefix preservation, epoch/length advance and
+  proposal cleanup. Exact backend walls are `7,316,008 / 4,270,320 ns`, with
+  device peaks `1,144,782,888 / 1,481,474,056 B`. The full CPU-oracle test is
+  20.24 s and is not prover timing. ABI43 built in 18.200 s. One unoptimized
+  predecessor-only PASS, one successor CPU-oracle indexing failure and one
+  missing test-import compile failure are retained as ineligible diagnostics.
+  This closes only the G1 owner boundary. It gives no certificate, verifier,
+  PCG, GW4, whole-memory or E2E credit.
 
 - **2026-08-24 — Owner supplies the C6.3 A100 endpoint and GO; component work
   admitted.** Read-only preflight observes one idle A100-SXM4-80GB with

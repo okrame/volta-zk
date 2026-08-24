@@ -966,16 +966,20 @@ new D12 tile roots are rebuilt. Setup coefficients are uploaded in bounded
 chunks; the 256-MiB permutation is currently one device upload. `H` remains
 provider-fixed. Correction leaves use the versioned 216-byte `CR3`
 frame so the existing GPU BLAKE3 tree hashes exactly the same bytes as the CPU
-reference. This is source evidence only: ABI43 has not been compiled by
-`nvcc`, no device root has been compared, and the response-local Hiding-WHIR
-owner remains the next G1 step after that differential.
+reference. ABI43 now compiles under CUDA 12.8 and both genesis and asymmetric
+successor match the full CPU oracle on one A100. The response-local
+Hiding-WHIR owner remains the next G1 step.
 
-The first hardware check is frozen as the single ignored integration test
-`volta-pcs/tests/c63_gpu_owner.rs`. It uses the production D22-to-D19 sampler
-and one full GPT-2 token, then compares every compact correction, every `S`
-and `A` field and both roots with an independently built CPU result. It also
-requires native row, NTT and Merkle counters. A scaled geometry cannot replace
-this test because the ABI is intentionally fixed to the production layout.
+The first hardware check is the single ignored integration test
+`volta-pcs/tests/c63_gpu_owner.rs`. It uses the production D22-to-D19 sampler,
+one full GPT-2 token and one different successor token, then compares every
+compact correction, every `S` and `A` field and both roots with an independently
+built CPU result. It also requires prefix preservation, cleanup and native row,
+NTT and Merkle counters. A scaled geometry cannot replace this test because
+the ABI is intentionally fixed to the production layout. The clean G1 record
+measures `7,316,008 ns` for genesis and `4,270,320 ns` for successor, excluding
+setup, CPU-oracle construction and validation downloads; these are component
+walls, not proof walls.
 
 Here **complete the resident proof/verifier link** means only the narrow
 production adapter at the existing cache-PCS/output-link join. It must borrow

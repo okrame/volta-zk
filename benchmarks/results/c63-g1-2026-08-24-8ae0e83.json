@@ -1,0 +1,106 @@
+{
+  "schema": "volta-c63-g1-component-differential-v1",
+  "credit": false,
+  "scope": "production-geometry GPU owner differential; not a proof or end-to-end run",
+  "git_sha": "8ae0e836ebfb0bcef7d40081f406d8bafec1c287",
+  "git_dirty": false,
+  "branch": "agent/c63-authenticated-sketch",
+  "hardware": {
+    "gpu": "NVIDIA A100-SXM4-80GB",
+    "gpu_total_mib": 81920,
+    "gpu_free_mib_at_admission": 81152,
+    "compute_capability": "8.0",
+    "cuda": "12.8",
+    "logical_cpus": 128,
+    "cgroup_memory_limit_bytes": 250999996416,
+    "session_filesystem": "/root overlay",
+    "session_filesystem_free_bytes_at_admission": 246944014336
+  },
+  "cuda_backend": {
+    "abi": 43,
+    "architecture": "sm_80",
+    "build_wall_ns": 18200045956,
+    "library_bytes": 3664000,
+    "sha256": "2ef42d13b40f19e42249dc82993ed808d550bbfae1e879c77ce3827fc99bb81d"
+  },
+  "setup": {
+    "seed_hex": "deda54f405265cd5f57b0baec79fbc6fcd1e5149f68937e28bb0737338c5bdea",
+    "expanded_h_digest_hex": "5b391766f9c98f70f5149e63d77eca6bcc0626703fc86a972bbd7b37e6a12415",
+    "input_rows": 4194304,
+    "sketch_rows": 524288,
+    "column_degree": 16,
+    "check_degree": 128
+  },
+  "command": "RAYON_NUM_THREADS=8 VOLTA_CUDA_LIBRARY=/root/volta-zk/rust/target/cuda/libvolta_cuda_backend.so CARGO_INCREMENTAL=0 cargo test --release --manifest-path rust/Cargo.toml -p volta-pcs --test c63_gpu_owner --features cuda,c6-trace,c61-p3-authenticated-reference -- --ignored --exact production_owner_matches_cpu_for_one_complete_token --nocapture",
+  "result": "PASS",
+  "test_process_wall_seconds_rounded": 20.24,
+  "command_wall_ns_including_focused_relink": 30457303423,
+  "genesis": {
+    "accepted_length": 1,
+    "epoch": 1,
+    "backend_measurement_wall_ns": 7316008,
+    "kernel_ns": 3550592,
+    "peak_device_bytes": 1144782888,
+    "h2d_bytes": 2097224,
+    "d2h_bytes": 64,
+    "explicit_d2d_copy_bytes": 134217728,
+    "synchronizations": 2,
+    "row_calls": 5,
+    "ntt_calls": 1,
+    "merkle_calls": 2
+  },
+  "successor": {
+    "accepted_length": 2,
+    "epoch": 2,
+    "backend_measurement_wall_ns": 4270320,
+    "kernel_ns": 2812384,
+    "peak_device_bytes": 1481474056,
+    "h2d_bytes": 144,
+    "d2h_bytes": 64,
+    "explicit_d2d_copy_bytes": 201719808,
+    "synchronizations": 2,
+    "row_calls": 6,
+    "ntt_calls": 1,
+    "merkle_calls": 2
+  },
+  "checks": {
+    "all_compact_corrections_match_cpu": true,
+    "accepted_prefix_preserved": true,
+    "all_sparse_sketch_values_match_cpu": true,
+    "all_encoded_sketch_values_match_cpu": true,
+    "correction_roots_match_cpu": true,
+    "encoded_roots_match_cpu": true,
+    "successor_roots_differ_from_predecessor": true,
+    "epoch_and_length_advance": true,
+    "discard_successor_returns_to_accepted_resident_bytes": true,
+    "discard_genesis_returns_to_setup_resident_bytes": true
+  },
+  "post_run": {
+    "git_dirty": false,
+    "gpu_compute_processes": 0,
+    "session_filesystem_free_bytes": 244891590656,
+    "canonical_target_bytes": 1299931141
+  },
+  "ineligible_diagnostics": [
+    {
+      "git_sha": "8e0fbe7e38a14846b5f05984d8d332ccc9246acc",
+      "mode": "unoptimized genesis-only predecessor test",
+      "result": "PASS",
+      "test_wall_seconds_rounded": 57.68,
+      "reason": "predecessor-only and unoptimized; diagnostic compilation/run credit only"
+    },
+    {
+      "git_sha": "98d9b183df0d4c9312bbcc838e7a352c4447d5c0",
+      "mode": "optimized genesis-plus-successor test",
+      "result": "FAIL before successor GPU call",
+      "reason": "new independent CPU oracle used a logical row as a compact row"
+    },
+    {
+      "git_sha": "d6ddfacbe4a60631ed028b67a79c0c4cbc9c05a2",
+      "mode": "optimized compile",
+      "result": "COMPILE FAIL",
+      "reason": "missing test-only row-geometry import"
+    }
+  ],
+  "decision": "C63-G1 resident owner genesis/successor boundary is green; production proof coordinator, complete CPU verifier, real PCG and end-to-end gates remain blocked"
+}

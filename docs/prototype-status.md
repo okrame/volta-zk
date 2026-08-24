@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — G1 PASS / G2 RESIDENT EXTENSION OWNER-GO / E2E HARD STOP)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — G2 RESIDENT D19 LANE PASS / COORDINATOR OPEN / E2E HARD STOP)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,16 +11,18 @@ record; no external plan is authoritative.
 Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 
 - **Status.** C6.3 G2 resident implementation is owner-authorized; E2E remains
-  stopped. Privacy/simulation, codecs, scaled linked lanes and the reduced
-  wrapper are locally green. ABI43 genesis/successor match an independent CPU
-  oracle on A100. Production resident lanes and top-level verifier are open.
+  stopped. ABI43 genesis/successor match an independent CPU oracle on A100.
+  ABI44 projection, resident initial-message handoff, accepted-`A` opening and
+  one linked production D19 lane now pass; the four-lane coordinator and
+  complete verifier remain open.
 - **Evidence.** C6.2 precommit is `275.113308912 s`, about `249.51 s` dense
   encoding/I/O/trees. C6.3 screens `23,271,419 B` certificate,
   `2,704,573 B` `pi_final`, `124,469,116 B` setup plus first,
   `78.9485568461 bits`, 24 sub plus 703 full correlations per tape, 64-MiB
-  `S` and `607,387,584 B` old/new state. G1 measures 7.316/4.270 ms and
-  1,144,782,888/1,481,474,056 B device peaks for one-token
-  genesis/successor; this is component-only `credit:false` evidence.
+  `S` and `607,387,584 B` old/new state. G2's two release repetitions measure
+  64--83 ms proof, 20 ms ordinary-CPU verification, 982,968--987,160 B proof
+  and 1,339,850,244 B peak device memory for one D19 lane. Setup is separately
+  19.314--20.460 s. All are component-only `credit:false` evidence.
 - **Construction.** Roots bind `D'` and `A=C^16(H D')`; one column mix feeds
   four fresh pre-encoded WHIR lanes. Authentication tapes stay separate; GW4
   is fixed.
@@ -28,12 +30,25 @@ Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
   first `<172,000,000 B`; `pi_final <4,500,000 B`; warm prover `<20 s`; four-thread CPU verifier
   `<5 s`; verifier additional RSS `<=8,000,000,000 B`; soundness
   `>=78.80929487391641 bits`. Cold proof over
-  20 s continues; no canonical certificate by 150 s stops.
-- **Resume.** From clean authorization checkpoint after `276454d`, implement
-  resident 16-column projection, borrowed initial-message handoff, resident
-  `A` openings, production four-lane coordinator and complete CPU verifier.
-  Pass focused differentials and bind setup digest `5b391766...a12415`; no E2E
-  before every terminal check is green.
+  20 s continues; no canonical certificate by 150 s stops. There is no
+  aggregate pod timebox; resource controls and informative-run discipline
+  remain mandatory.
+- **Resume.** From clean `afea5f5`, promote the existing four-lane driver and
+  complete CPU verifier, then pass focused differentials and bind setup digest
+  `5b391766...a12415`. No E2E before every terminal check is green.
+
+- **2026-08-24 — C63-G2 resident D19 lane passes twice; aggregate pod timebox
+  removed by owner.** Clean ABI44 source `afea5f5`, raw record
+  `c63-g2-resident-projected-lane-2026-08-24-afea5f5.json`. Two release runs
+  produce and verify one linked production D19 limb in 64--83/20 ms, with
+  982,968--987,160 B proofs and 1,339,850,244 B peak device allocation. The
+  19.314--20.460 s fixed setup is reported separately. An earlier point-order
+  mismatch failed closed and was fixed at the shared accelerator boundary.
+  This closes only projection, resident message/`A` openings, link and normal
+  CPU verification for one limb; it is `credit:false` and gives no four-lane,
+  sparse-terminal, GW4, PCG, final-certificate or E2E credit. The owner removes
+  the historical 60--90 minute aggregate pod limit; the 150-second
+  per-certificate stop and all resource/hard-stop rules remain.
 
 - **2026-08-24 — Owner authorizes the minimal resident ABI/WHIR extension and
   resumes C63-G2.** Scope is exactly the five unblocks in
@@ -119,10 +134,10 @@ Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
   limited to one adapter at the existing cache/output-link join: borrow the
   device state, invoke the existing four lanes and sparse closure, assemble
   the canonical codecs, verify on four CPU threads and promote only on
-  acceptance. After the ABI43 differential it receives 60--90 minutes,
-  including a focused rebuild but excluding initial clone/cold compilation;
-  failure to close it stops before E2E without dense-host or CPU-prover
-  fallback. The cold record separates provider model preprocessing, inference,
+  acceptance. It initially received 60--90 minutes including a focused rebuild
+  but excluding initial clone/cold compilation; the later owner entry above
+  removes that aggregate limit. A blocked link still stops before E2E without
+  dense-host or CPU-prover fallback. The cold record separates provider model preprocessing, inference,
   certificate proving/serialization, verification, request-to-accept and
   deployment-to-accept. `<20 s` remains the prover target but is nonterminal:
   a complete certificate may continue to verifier; no certificate by exactly

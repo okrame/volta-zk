@@ -1007,18 +1007,17 @@ CPU verifier, and promote the proposal only on acceptance. Large `D'`, `S`,
 `A`, `m/u/w/y` owners never cross to host; only roots, authenticated queried
 rows and final certificate bytes do.
 
-After the ABI43 differential is green, this adapter has a **60--90 minute pod
-timebox**, including its focused rebuild but excluding the initial clone and
-cold dependency/CUDA build. It reuses the existing cached-fixed-base seam,
-four-lane reference, verifier and codecs. No new proof engine, abstraction or
-kernel is admitted unless the differential demonstrates it is necessary. If
-the complete candidate cannot be constructed and verified inside the
-timebox, stop before E2E and record the exact missing seam; a dense-host or
-CPU-prover fallback is forbidden. The first timebox ended at the resident
-initial-lane boundary above without an E2E attempt. Resuming requires explicit
-admission of the minimal ABI/WHIR ownership extension listed in that
-disposition; calling the current host-message path would be the forbidden
-fallback.
+After the ABI43 differential, this adapter has **no aggregate pod timebox**.
+Focused component work continues while resource controls hold and each run can
+produce useful evidence. Cold compilation and fixed setup remain separately
+measured. The 150-second per-certificate watchdog and every E2E hard stop remain
+unchanged. The implementation reuses the existing cached-fixed-base seam,
+four-lane reference, verifier and codecs; no new proof engine, abstraction or
+kernel is admitted unless a focused differential proves it necessary. A
+dense-host or CPU-prover fallback remains forbidden. ABI44 closes the admitted
+resident projection, initial-message and `A`-opening extension for one D19 lane;
+the production four-lane coordinator and complete verifier are still required
+before E2E.
 
 #### Pod admission and resource controls
 

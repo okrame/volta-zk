@@ -1,0 +1,107 @@
+{
+  "schema": "volta-c63-g2-resident-projected-lane-v1",
+  "credit": false,
+  "scope": "one production-geometry D19 projected sketch limb with resident GPU message and A opening; not the four-lane certificate or an end-to-end run",
+  "git_sha": "afea5f5287c48afbf3b17b0422c14bd6b50164e9",
+  "git_dirty": false,
+  "branch": "agent/c63-authenticated-sketch",
+  "hardware": {
+    "gpu": "NVIDIA A100-SXM4-80GB",
+    "gpu_total_mib": 81920,
+    "gpu_free_mib_at_admission": 81152,
+    "compute_capability": "8.0",
+    "cuda": "12.8",
+    "logical_cpus": 128,
+    "physical_memory": "2.0 TiB",
+    "physical_memory_available_at_admission": "1.8 TiB",
+    "session_filesystem": "/root overlay",
+    "session_filesystem_free_bytes_before_component_build": 244813135872
+  },
+  "cuda_backend": {
+    "abi": 44,
+    "architecture": "sm_80",
+    "library": "/root/volta-zk/rust/target/cuda/libvolta_cuda_backend.so"
+  },
+  "command": "VOLTA_CUDA_LIBRARY=/root/volta-zk/rust/target/cuda/libvolta_cuda_backend.so VOLTA_REQUIRE_CUDA=1 CARGO_INCREMENTAL=0 cargo test --release --manifest-path rust/Cargo.toml -p volta-pcs --features cuda,c6-trace,c61-p3-authenticated-reference c63_preencoded_whir::tests::production_resident_projected_lane_verifies_on_cpu -- --exact --ignored --nocapture",
+  "result": "PASS",
+  "release_repetitions": [
+    {
+      "setup_ms": 19314,
+      "state_ms": 8,
+      "projection_ms": 1,
+      "prove_ms": 83,
+      "verify_ms": 20,
+      "proof_bytes": 982968,
+      "peak_device_bytes": 1339850244,
+      "h2d_bytes": 1840628,
+      "d2h_bytes": 2970256,
+      "total_ms": 19429,
+      "test_process_wall_seconds_rounded": 19.66
+    },
+    {
+      "setup_ms": 20460,
+      "state_ms": 8,
+      "projection_ms": 1,
+      "prove_ms": 64,
+      "verify_ms": 20,
+      "proof_bytes": 987160,
+      "peak_device_bytes": 1339850244,
+      "h2d_bytes": 1840628,
+      "d2h_bytes": 2970256,
+      "total_ms": 20557,
+      "test_process_wall_seconds_rounded": 20.71
+    }
+  ],
+  "observed_release_ranges": {
+    "setup_ms": [19314, 20460],
+    "state_ms": [8, 8],
+    "projection_ms": [1, 1],
+    "prove_ms": [64, 83],
+    "verify_ms": [20, 20],
+    "proof_bytes": [982968, 987160],
+    "peak_device_bytes": [1339850244, 1339850244]
+  },
+  "checks": {
+    "resident_projection_used": true,
+    "resident_initial_message_used": true,
+    "resident_accepted_a_rows_used": true,
+    "linked_sumcheck_verified": true,
+    "decoded_limb_verified": true,
+    "ordinary_cpu_verifier": true,
+    "certificate_created": true,
+    "legacy_dense_precommit_used": false
+  },
+  "proof_size_variation": "The parallel proof-of-work search accepts any first valid worker result. Its valid witness changes later query collisions and the pruned opening length; the certificate remains canonical and verified for that transcript.",
+  "ineligible_diagnostics": [
+    {
+      "git_sha": "7eb7cf9b5ea77cb40f7ecd874bd40a81ec30268c",
+      "mode": "debug resident projected lane",
+      "result": "FAIL_CLOSED",
+      "wall_seconds_rounded": 55.42,
+      "reason": "Plonky3 supplied a most-significant-bit-first evaluation point to a least-significant-bit-first accelerator helper"
+    },
+    {
+      "git_sha": "afea5f5287c48afbf3b17b0422c14bd6b50164e9",
+      "mode": "debug resident projected lane after point-order fix",
+      "result": "PASS",
+      "setup_ms": 56160,
+      "state_ms": 11,
+      "projection_ms": 1,
+      "prove_ms": 495,
+      "verify_ms": 609,
+      "proof_bytes": 985016,
+      "peak_device_bytes": 1339850244,
+      "h2d_bytes": 1840628,
+      "d2h_bytes": 2970256,
+      "total_ms": 57286,
+      "reason": "unoptimized correctness diagnostic; no timing credit"
+    }
+  ],
+  "limitations": [
+    "only one D19 projected sketch limb is exercised",
+    "the two D22 systematic limbs, second D19 limb, sparse terminal relation, GW4, real PCG and final certificate coordinator are absent",
+    "setup is component preprocessing and not a complete model preprocessing measurement",
+    "no end-to-end gate or whole-response resource credit is claimed"
+  ],
+  "decision": "The resident projection, borrowed initial-message handoff, accepted-A opening, linked proof and ordinary-CPU verification boundary is green. Continue with the minimal four-lane coordinator and complete verifier; E2E remains stopped."
+}

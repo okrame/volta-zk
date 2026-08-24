@@ -10,29 +10,44 @@ record; no external plan is authoritative.
 
 Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 
-- **Status.** Local C6.3 is open; no pod is open. Joint correction privacy and
-  terminal simulation compile in Lean. Codecs, production-depth openings,
-  four linked WHIR lanes and the reduced wrapper are locally green. The ABI43
-  resident state owner plus production differential harness compile at the
-  Rust/CUDA source boundary, but its `.cu` kernels have not been built or run.
-- **Evidence.** C6.2 precommit remains `275.113308912 s`; about `249.51 s` was
-  dense encoding, persistence, reread and trees. The conservative 105-bit
-  codec is `23,271,419 B`, `pi_final` is `2,704,573 B`, setup plus first is
-  `124,469,116 B`, and the separated-oracle screen is `78.9485568461 bits`.
-  Real-PCG registers 24 sub plus 703 full correlations per tape. Screen v13
-  counts `S` as 64 MiB and old/new resident state as `607,387,584 B`. All
-  remain `credit:false`; no A100 timing, RAM or VRAM result exists.
-- **Selected construction.** Bolt stays inside Hiding-WHIR. Roots bind `D'`
-  and D19-by-32 `A=C^16(H D')`; one `Fp2^16` mix yields `m/u/w/y`; four fresh
-  WHIR cores consume pre-encoded `w/y`. MAC tapes stay separate; GW4 is fixed.
-- **Checks.** Certificate `<=30,000,000 B`; setup `<150,000,000 B`; setup plus
-  first `<172,000,000 B`; `pi_final <4,500,000 B`; warm A100 prover `<20 s`;
-  four-thread verifier `<5 s`, RSS `<=8,000,000,000 B`, soundness target
-  `>=78.80929487391641 bits`.
-- **Hard stop / resume.** A new A100 endpoint and owner GO are now required.
-  Build ABI43 with `nvcc`, differentially match compact rows, `S`, `A` and both
-  roots to CPU references, then complete G1 and run exactly one cold plus one
-  immediate warm real response.
+- **Status.** C6.3 is open; no pod is open. Privacy/simulation, codecs,
+  production openings, four linked lanes and the reduced wrapper are locally
+  green. The ABI43 resident owner and differential compile at the Rust/CUDA
+  boundary; device kernels remain unbuilt and unrun.
+- **Evidence.** C6.2 precommit is `275.113308912 s`, about `249.51 s` dense
+  encoding/I/O/trees. C6.3 screens `23,271,419 B` certificate,
+  `2,704,573 B` `pi_final`, `124,469,116 B` setup plus first,
+  `78.9485568461 bits`, 24 sub plus 703 full correlations per tape, 64-MiB
+  `S` and `607,387,584 B` old/new state. All are `credit:false`; no A100
+  timing or memory result exists.
+- **Construction.** Roots bind `D'` and `A=C^16(H D')`; one column mix feeds
+  four fresh pre-encoded WHIR lanes. Authentication tapes stay separate; GW4
+  is fixed.
+- **Checks.** Certificate `<=30 MB`; setup `<150 MB`; setup plus first
+  `<172 MB`; `pi_final <4.5 MB`; warm prover `<20 s`; four-thread CPU verifier
+  `<5 s`; RSS `<=8 GB`; soundness `>=78.80929487391641 bits`. Cold proof over
+  20 s continues; no canonical certificate by 150 s stops.
+- **Resume.** A new A100 endpoint and owner GO are required. Build ABI43,
+  match rows, `S`, `A` and roots to CPU, close the resident adapter in 60--90
+  minutes, then run one cold plus one immediate warm response with all clocks
+  separated.
+
+- **2026-08-24 — Owner refines the first C6.3 pod plan.** The resident link is
+  limited to one adapter at the existing cache/output-link join: borrow the
+  device state, invoke the existing four lanes and sparse closure, assemble
+  the canonical codecs, verify on four CPU threads and promote only on
+  acceptance. After the ABI43 differential it receives 60--90 minutes,
+  including a focused rebuild but excluding initial clone/cold compilation;
+  failure to close it stops before E2E without dense-host or CPU-prover
+  fallback. The cold record separates provider model preprocessing, inference,
+  certificate proving/serialization, verification, request-to-accept and
+  deployment-to-accept. `<20 s` remains the prover target but is nonterminal:
+  a complete certificate may continue to verifier; no certificate by exactly
+  150 seconds stops and records the attempt. Component diagnostics record
+  sparse throughput, full-versus-incremental encoded-sketch work, tree reuse,
+  transfers/synchronization, grinding, D23/GW4, per-phase memory and disk
+  growth. Source/results use Git push/pull; generated weights/setup remain pod
+  local. No pod is yet authorized.
 
 - **2026-08-23 — The ABI43 A100 differential is now one registered test.**
   `volta-pcs/tests/c63_gpu_owner.rs` constructs the exact D22-to-D19 sampled

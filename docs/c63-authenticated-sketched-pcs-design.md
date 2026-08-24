@@ -60,6 +60,28 @@ inference, network time and the one-time fixed preload. The first cold run
 also records those excluded phases so the real deployment cost remains
 visible. A cold total is not compared with the 20-second gate.
 
+The cold record keeps the following clocks separate:
+
+1. `provider_model_preprocess`: setup generation/validation, model and fixed
+   table load, sparse-`H` expansion/upload and every other provider-fixed
+   one-time operation;
+2. `cold_inference`: generation of the model response and authenticated K/V
+   append, after preprocessing is complete;
+3. `cold_certificate_prover`: from the ready authenticated append through all
+   fresh correlations, proof work, device synchronization and canonical
+   certificate serialization; it excludes preprocessing, inference and
+   verification;
+4. `cold_verifier`: decoding and complete four-thread CPU verification;
+5. `cold_request_to_accept`: inference, certificate generation and verifier;
+6. `cold_deployment_to_first_accept`: preprocessing plus request-to-accept.
+
+Crossing 20 seconds marks the prover gate **FAIL** but is not an execution
+stop: the run continues so certificate bytes and verifier time can still be
+measured. If `cold_certificate_prover` has not produced the complete canonical
+certificate by `150.000 s`, the attempt stops and records a no-certificate
+disposition. A certificate completed before that cap is always passed to the
+verifier even when the 20-second target failed.
+
 The setup and fixed model cache may be shared by several connections when the
 model and parameters are identical. K/V values, their sketch state, the
 accepted head and all PCG correlation state are connection-specific and are
@@ -940,25 +962,67 @@ and `A` field and both roots with an independently built CPU result. It also
 requires native row, NTT and Merkle counters. A scaled geometry cannot replace
 this test because the ABI is intentionally fixed to the production layout.
 
+Here **complete the resident proof/verifier link** means only the narrow
+production adapter at the existing cache-PCS/output-link join. It must borrow
+the accepted/proposed device owners, derive `rho` after both roots, feed the
+already implemented four C6.3 lanes and sparse closure, assemble the existing
+public argument, designated envelope and final certificate codecs, run the
+CPU verifier, and promote the proposal only on acceptance. Large `D'`, `S`,
+`A`, `m/u/w/y` owners never cross to host; only roots, authenticated queried
+rows and final certificate bytes do.
+
+After the ABI43 differential is green, this adapter has a **60--90 minute pod
+timebox**, including its focused rebuild but excluding the initial clone and
+cold dependency/CUDA build. It reuses the existing cached-fixed-base seam,
+four-lane reference, verifier and codecs. No new proof engine, abstraction or
+kernel is admitted unless the differential demonstrates it is necessary. If
+the complete candidate cannot be constructed and verified inside the
+timebox, stop before E2E and record the exact missing seam; a dense-host or
+CPU-prover fallback is forbidden.
+
 ### C63-E2E2 — two real responses
 
 Only after local tests, exact budgets, clean source, artifact checks and a new
 owner GO may one A100 execute the first experiment.
 
 1. Generate/install the complete 17-profile setup if absent, then run real
-   `0 -> 150`. Record `cold_deployment_to_first_accept`, including setup
-   generation, process/model load, fixed preload, inference, proof,
-   serialization and verification. Also record the gate clock
-   `response_specific_prover` separately.
+   `0 -> 150`. Record every cold clock defined in Section 0.1 so provider
+   model preprocessing is not conflated with inference or certificate
+   generation. `cold_certificate_prover` is also the response-specific prover
+   gate clock for this response and carries the 150-second terminal cap.
 2. Without restarting, warming artificially or replacing state, promote the
    first accepted successor and run real `150 -> 200`. Record the complete
    warm request-to-accept wall plus provider proof and verifier subclocks.
+
+The run also emits diagnostic-only component counters intended to guide the
+next optimization without changing the official clocks:
+
+- appended values, scheduled sparse edges, sparse-update time and effective
+  edges per second;
+- accepted-state copy time/bytes, all 32 base-code transforms, full encoded
+  tree time, changed-input fraction and bytes that an incremental update could
+  avoid;
+- new versus reused correction-tree leaves, device-to-device/host transfers,
+  synchronization calls and wall time;
+- proof-of-work hashes per lane, D23 residual time, GW4 time, serialization
+  time, CPU verifier subclocks and memory high-water by phase;
+- process read/write bytes, result-directory growth and free disk before and
+  after each phase.
+
+The official run does not count per-atomic retry instrumentation because that
+would perturb the timing. Contention is inferred from the public sparse-map
+bucket distribution, scheduled edges and measured kernel throughput; a
+separate pre-E2E component diagnostic may use a hardware profiler.
 
 Both certificates use the real/AES PCG and the same connection with disjoint
 correlation ranges. Compilation, repository synchronization and weight/setup
 transfer are preparation, not deployment or response time. No mutation set,
 four burns, 17-response loop or retry runs in this experiment. Any failure
-stops and records the create-new disposition.
+stops and records the create-new disposition, except that crossing the
+20-second prover target alone deliberately continues up to the 150-second
+cold certificate cap. Source moves through `git push`/`pull`, not SCP; weights
+and generated setup stay uncommitted on the pod, while the small append-only
+JSON record returns through Git.
 
 ## 7. Current decision and confidence
 

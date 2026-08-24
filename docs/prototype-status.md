@@ -11,9 +11,9 @@ record; no external plan is authoritative.
 Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 
 - **Status.** C6.3 G2 is owner-authorized; E2E remains stopped. ABI44
-  projection, resident message/`A` openings, one linked D19 lane and the
-  production-size sparse relation now pass. Correction-row openings,
-  systematic spots, the remaining lanes and complete verifier remain open.
+  projection, resident message/`A` openings, correction-row openings, one
+  linked D19 lane and the production-size sparse relation pass. Production
+  spot fusion, the remaining lanes and complete verifier remain open.
 - **Evidence.** C6.2 precommit is `275.113308912 s`, about `249.51 s` dense
   encoding/I/O/trees. C6.3 screens `23,271,419 B` certificate,
   `2,704,573 B` `pi_final`, `124,469,116 B` setup plus first,
@@ -34,10 +34,20 @@ Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
   20 s continues; no canonical certificate by 150 s stops. There is no
   aggregate pod timebox; resource controls and informative-run discipline
   remain mandatory.
-- **Resume.** From clean `377c03a`, add resident correction-row openings and
-  production spot fusion, then promote the four-lane driver and complete CPU
-  verifier. Bind setup digest `5b391766...a12415`; no E2E before every
-  terminal check is green.
+- **Resume.** From clean `980f076`, add transcript-derived production spot
+  fusion, then promote the four-lane driver and complete CPU verifier. Bind
+  setup digest `5b391766...a12415`; no E2E before every terminal check is
+  green.
+
+- **2026-08-24 — C63-G2 resident correction-row opening passes.** Clean ABI44
+  source `980f076`, raw record
+  `c63-g2-resident-correction-opening-2026-08-24-980f076.json`. The A100 owner
+  opens live, virtual-row and virtual-tile queries with canonical pruned paths;
+  encoding matches an independent CPU reconstruction byte for byte and no
+  dense correction table crosses to host. The 20.63-second test includes setup,
+  two state constructions and the full CPU oracle; it does not isolate opening
+  time. Production 4,420-row sampling/fusion, four lanes, complete verifier,
+  real PCG, GW4, certificate and E2E remain open. Evidence is `credit:false`.
 
 - **2026-08-24 — C63-G2 resident sparse relation passes production geometry.**
   Clean ABI44 source `377c03a`, raw record

@@ -1,0 +1,69 @@
+{
+  "schema": "volta-c63-g2-resident-correction-opening-v1",
+  "credit": false,
+  "scope": "production-geometry resident correction-row opening differential; not a four-lane certificate or an end-to-end run",
+  "git_sha": "980f07617f01ba50ddbee92115dd0c9463f01f27",
+  "git_dirty": false,
+  "branch": "agent/c63-authenticated-sketch",
+  "hardware": {
+    "gpu": "NVIDIA A100-SXM4-80GB",
+    "gpu_total_mib": 81920,
+    "gpu_free_mib_at_admission": 81152,
+    "compute_capability": "8.0",
+    "cuda": "12.8",
+    "session_filesystem": "/root overlay",
+    "session_filesystem_free_gib_after_run": 228
+  },
+  "cuda_backend": {
+    "abi": 44,
+    "architecture": "sm_80",
+    "library": "/root/volta-zk/rust/target/cuda/libvolta_cuda_backend.so"
+  },
+  "command": "VOLTA_CUDA_LIBRARY=/root/volta-zk/rust/target/cuda/libvolta_cuda_backend.so VOLTA_REQUIRE_CUDA=1 CARGO_INCREMENTAL=0 cargo test --release --manifest-path rust/Cargo.toml -p volta-pcs --test c63_gpu_owner --features cuda,c6-trace,c61-p3-authenticated-reference production_owner_matches_cpu_for_one_complete_token -- --exact --ignored --nocapture",
+  "result": "PASS",
+  "setup_digest": "5b391766...a12415",
+  "test_process_wall_seconds": 20.63,
+  "state_builds": {
+    "genesis": {
+      "wall_ns": 7240559,
+      "kernel_ns": 3561344,
+      "peak_device_bytes": 1144782888,
+      "h2d_bytes": 2097224,
+      "d2h_bytes": 64,
+      "d2d_bytes": 134217728,
+      "sync_calls": 2,
+      "row_kernels": 5,
+      "ntt_kernels": 1,
+      "merkle_kernels": 2
+    },
+    "successor": {
+      "wall_ns": 4372149,
+      "kernel_ns": 2804800,
+      "peak_device_bytes": 1572603816,
+      "h2d_bytes": 144,
+      "d2h_bytes": 64,
+      "d2d_bytes": 201719808,
+      "sync_calls": 2,
+      "row_kernels": 6,
+      "ntt_kernels": 1,
+      "merkle_kernels": 2
+    }
+  },
+  "checks": {
+    "sampled_rows_opened_from_resident_owner": true,
+    "opening_matches_independent_cpu_reference_byte_for_byte": true,
+    "live_row_query_checked": true,
+    "virtual_row_query_checked": true,
+    "virtual_tile_query_checked": true,
+    "full_correction_table_downloaded": false,
+    "legacy_dense_precommit_used": false,
+    "certificate_created": false
+  },
+  "limitations": [
+    "the row-opening operation was not timed separately from the full owner differential",
+    "the production 4420-row transcript sample and fusion into the sparse relation remain unmeasured",
+    "the four-lane coordinator, complete CPU verifier, real PCG, GW4 and final certificate are absent",
+    "the successor peak includes allocator history from the same process and is not a whole-response high-water claim"
+  ],
+  "decision": "The resident owner can now emit canonical pruned correction openings without a dense host table. Continue with transcript-derived production sampling, spot fusion and the existing four-lane proof/replay path; E2E remains stopped."
+}

@@ -1020,9 +1020,11 @@ Clean `377c03a` also measures the production-size resident sparse relation at
 0.901--0.964 s prover, 0.926--0.971 s ordinary-CPU verifier, exactly 1,496 B
 and 1,626,938,920 B combined device peak. Building the public `H` view takes
 1.448--1.452 s and is model-fixed preprocessing. These are `credit:false`
-component results: production correction-row openings/systematic spots, the
-remaining three lanes, coordinator and complete verifier are still required
-before E2E.
+component results. Clean `980f076` additionally opens sampled correction rows
+from the resident owner and matches the independent CPU encoding byte for byte
+without downloading a dense table. Transcript-derived production sampling and
+4,420-row spot fusion, the remaining three lanes, coordinator and complete
+verifier are still required before E2E.
 
 #### Pod admission and resource controls
 

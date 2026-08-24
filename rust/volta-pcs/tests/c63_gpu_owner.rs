@@ -76,11 +76,13 @@ fn cpu_state(
                         tape as u8,
                     )
                     .unwrap();
-                    let row = index.row as usize;
+                    let source_row = index.row as usize;
+                    let row_in_position = source_row & (C63_BOLT_ROWS_PER_POSITION - 1);
+                    let compact_row = position * C63_BOLT_LIVE_ROWS_PER_POSITION + row_in_position;
                     let column = index.column as usize;
-                    corrections[row * C63_BOLT_COLUMNS + column] = value;
+                    corrections[compact_row * C63_BOLT_COLUMNS + column] = value;
                     for edge in 0..usize::from(C63_BOLT_LDPC_COLUMN_DEGREE) {
-                        let socket = row * usize::from(C63_BOLT_LDPC_COLUMN_DEGREE) + edge;
+                        let socket = source_row * usize::from(C63_BOLT_LDPC_COLUMN_DEGREE) + edge;
                         let output = setup.permutation()[socket] as usize
                             / usize::from(C63_BOLT_LDPC_CHECK_DEGREE);
                         sketch[column * C63_BOLT_SKETCH_ROWS + output] +=

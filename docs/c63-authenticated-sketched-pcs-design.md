@@ -123,9 +123,10 @@ This closes the hidden-constant issue, not the complete protocol soundness.
 The result transfers only to the exact YHC setup ensemble: one uniform socket
 permutation, parallel edges allowed, and independent uniform nonzero
 Goldilocks labels. Deduplicating edges, rejecting graphs or sampling labels
-with bias changes the distribution and needs a new proof. The production
-sampler, non-grindable seed procedure and cryptographic randomness accounting
-remain hard stops.
+with bias changes the distribution and needs a new proof. Production expansion
+and cryptographic randomness accounting remain hard stops. The one-shot public
+seed was fixed locally, before any provider saw it, as
+`deda54f405265cd5f57b0baec79fbc6fcd1e5149f68937e28bb0737338c5bdea`.
 
 The scaled sampler reference now implements the exact socket construction:
 one domain-separated BLAKE3-XOF stream drives descending Fisher--Yates with
@@ -136,7 +137,9 @@ for the shuffle and at most `2^-102` for labels. Conditioned on success this
 is the YHC distribution in the ideal-public-XOF model. A 32-byte public seed
 cannot information-theoretically describe a uniform D26 permutation, so the
 remaining hybrid term for a public BLAKE3 random tape is explicit and unknown.
-The seed must be provider-independent and non-grindable.
+The fixed seed is provider-independent and cannot be replaced or retried after
+the provider sees it. Its full-size expansion and manifest digest still need
+to execute on the pod.
 
 At 90 bits, a D19-by-128 fixed-row opening is already `4,738,496 B` before
 framing. Even a codec that reconstructs every public zero needs more than
@@ -483,8 +486,10 @@ The CPU reference now packs the physical `A` rows as
 the existing fixed-base encoding of the correspondingly projected decoded
 message. Reusing that fixed base with two independent random tapes produces
 different roots and two valid WHIR proofs. Mutating an authenticated `A` row
-or the honest projection is rejected. This proves the layout and honest
-linearity only; it is not yet a malicious-prover link.
+or the honest projection is rejected. This check alone proves layout and
+honest linearity; the linked projected-MMCS attack test below supplies the
+scaled malicious-substitution check. Production resident composition remains
+unexecuted.
 
 A virtual row `A*rho + mask` alone is insufficient. A dishonest prover could
 choose `mask = C(u)-A*rho+Enc(0,zeta)` and make ordinary WHIR valid for an
@@ -523,8 +528,9 @@ base-to-extension conversion.
 
 The Rust reference executes the single 16-column pullback and checks that the
 combined functional equals the sum of the two independently accumulated tape
-contributions. This is executable algebra evidence, not yet the transcript,
-privacy argument or binding theorem.
+contributions. This check alone is executable algebra evidence; transcript,
+privacy and binding evidence are supplied by the later local seams and remain
+without full-chain hardware credit.
 
 This removes the eight persistent D24/D25/D28 cache encodings, files and CPU
 tree walks. It does not forbid the transient `w=C(m)` owner and the constrained
@@ -562,8 +568,10 @@ message and an already encoded resident initial oracle. It runs four base
 proof cores sequentially: two D22 limbs of `m` against `w`, and two D19 limbs
 of `u` against `y`. The `w` limbs share one projected query set; the `y` limbs
 share the persistent `A` rows and a paired D19 projected query set. They are
-not four unrelated codewords. The target-decomposition lemma, paired MMCS and
-resident adapter do not yet exist in the production codec. Base-field row
+not four unrelated codewords. Target decomposition, the projected MMCS and
+strict codecs exist in the scaled/reference path. What does not yet exist is
+the production response coordinator that borrows the GPU owners, executes
+these four lanes and invokes one complete C6.3 CPU verifier. Base-field row
 challenges are not assumed: one Goldilocks draw has only about 64 bits and
 cannot alone cover the complete soundness target.
 
@@ -615,9 +623,10 @@ values to the four WHIR cores. Its exact production-dimension census is
 multiplications for `eq(r)`, `16,777,212` for sumcheck folds, about 72 MiB
 scratch, `1,496 B` framed, 44 full correlations per MAC tape, and error at
 most `64/|Fp2|` for the tensor mix, random output point and sumcheck rounds.
-This term does not silently cover any additional ZeroOpen or MAC failure;
-their final C6.3 census is still open. The scaled dual-tape Rust
-prover/verifier and strict codec pass mutation tests.
+This term does not silently cover any additional ZeroOpen or MAC failure.
+Their separate final C6.3 census is locally closed at 24 sub plus 703 full
+correlations per tape, but remains unexecuted with the real generator. The
+scaled dual-tape Rust prover/verifier and strict codec pass mutation tests.
 
 This closes the algebraic shape, not production integration. The scaled
 reference now receives only the four authenticated WHIR terminal openings,
@@ -674,8 +683,9 @@ components, but model privacy no longer rests on an unsupported claim that
 Hiding-WHIR conceals deterministic `A` openings. Production must instantiate
 the Lean post-processing premise: every tagless field must be derived only
 from the accepted correction state and public/fresh inputs, and every terminal
-tag must use the designated simulator. The codec audit, real/AES PCG
-assumption and Fiat--Shamir composition remain open.
+tag must use the designated simulator. The typed codec audit and correlation
+census are locally closed; real/AES-PCG execution, whole-transcript
+Fiat--Shamir composition and the implementation audit remain open.
 
 A Merkle root built over raw K/V plus masked query answers is rejected: the
 masked answer is not linked to the raw leaf without revealing that leaf. A
@@ -868,7 +878,10 @@ Hiding randomness, typed
 framing and the Volta `H` closure may move the final size in either direction.
 
 The executable screen is `scripts/budget_c63_authenticated_sketch.py` (schema
-v13). Canonical correction-row, four-lane WHIR, public/designated partition and
+v14). Version 14 only corrects the stale diagnostic field name from 4,378 to
+the already enforced 4,420 rows and lists the remaining production coordinator
+and setup-seed evidence; arithmetic is unchanged. Canonical correction-row,
+four-lane WHIR, public/designated partition and
 final certificate codecs now exist locally. Their exact byte, setup,
 `pi_final` and computational soundness screens are evaluated but remain
 `credit:false`; prover time, verifier time, RAM and VRAM stay unevaluated until
@@ -928,7 +941,8 @@ from verified D12-inside-D10 correction multiproofs. All four actual proofs
 round-trip through strict codecs before verification; the two D19 artifacts
 contain exactly one linked `A` opening each. Production-depth synthetic codecs
 include every registered PoW witness. This remains `credit:false`: the fixture
-is scaled, uses mock correlations, and has no outer C6.3 codec or GPU owner.
+is scaled, uses mock correlations, serializes the public component but not one
+complete final certificate, and is not composed with the GPU owner.
 
 ### C63-G1 — GPU component boundary
 
@@ -948,8 +962,9 @@ shared between them. Component results remain `credit:false`.
 The first local G1 boundary now compiles on the Rust side. It owns the D22-by-16
 live correction prefix, D19-by-16 `S`, D19-by-32 `A` and its device Merkle
 tree; a proposal copies its accepted predecessor without mutating it and only
-new D12 tile roots are rebuilt. Setup `H` is uploaded in bounded chunks and
-remains provider-fixed. Correction leaves use the versioned 216-byte `CR3`
+new D12 tile roots are rebuilt. Setup coefficients are uploaded in bounded
+chunks; the 256-MiB permutation is currently one device upload. `H` remains
+provider-fixed. Correction leaves use the versioned 216-byte `CR3`
 frame so the existing GPU BLAKE3 tree hashes exactly the same bytes as the CPU
 reference. This is source evidence only: ABI43 has not been compiled by
 `nvcc`, no device root has been compared, and the response-local Hiding-WHIR
@@ -979,6 +994,58 @@ kernel is admitted unless the differential demonstrates it is necessary. If
 the complete candidate cannot be constructed and verified inside the
 timebox, stop before E2E and record the exact missing seam; a dense-host or
 CPU-prover fallback is forbidden.
+
+#### Pod admission and resource controls
+
+The pod is admitted for component work only when preflight records one
+exclusive A100 with 80 GB, `sm_80`, working `nvcc`, no competing device
+process, at least 96 GiB of effective cgroup RAM, and at least 200 GiB free on
+the persistent filesystem. Setup, weights, work, session and canonical
+`rust/target` directories must use that filesystem; heavy data may not use
+`/tmp`. Inodes, cgroup limits, driver/CUDA versions and the exact clean Git SHA
+are recorded. CUDA output is `rust/target/cuda/libvolta_cuda_backend.so`; no
+top-level or experiment-specific build target is created. The component
+differential enables exactly `cuda,c6-trace,c61-p3-authenticated-reference`;
+omitting `c6-trace` is a compile error, not a protocol failure.
+
+Before official E2E, all of these checks are terminal:
+
+1. the existing one-token CPU/GPU differential passes;
+2. the same harness passes one asymmetric successor append, checking preserved
+   prefix, new position, new epoch, `S`, `A` and both roots;
+3. the fixed public setup seed
+   `deda54f405265cd5f57b0baec79fbc6fcd1e5149f68937e28bb0737338c5bdea`
+   is expanded once and its digest is bound by the setup manifest; the
+   provider gets no alternative seed or retry;
+4. one top-level C6.3 verifier, not certificate structural decoding alone,
+   accepts the candidate produced by the resident coordinator;
+5. a source/runtime sentinel proves the legacy dense cache-precommit path was
+   never entered;
+6. the measured backend high-water respects `45,818,576,864 B`, GW4 transient
+   owners are released before C6.3 lanes, and provider/verifier thread counts
+   are fixed at eight/four;
+7. discarding a successful proposal returns active resident device allocation
+   to the setup-only baseline; any cleanup mismatch is terminal.
+
+A one-second supervisor records process resident/high-water memory, cgroup
+events, device memory, process I/O, free bytes/inodes and result-tree growth.
+It begins E2E only with at least 120 GiB still free, stops before allocation if
+free space falls below 100 GiB or effective RAM has less than a 16-GiB reserve,
+and treats unexpected run-artifact growth above 10 GiB as evidence that the
+dense path returned. The 150-second proof watchdog uses a monotonic clock and
+cooperative termination; its parent writes the create-new disposition, burns
+the allocated correlation range and leaves the predecessor unpromoted. A hard
+kill is reserved for imminent resource exhaustion and still cannot promote
+state.
+
+The cold and immediate warm records are staged in one create-new session
+directory outside the Git checkout. Both record the same clean source SHA and
+`git_dirty:false`; neither response makes the checkout dirty before the next
+one starts. Small JSON dispositions are written to a temporary same-filesystem
+name, synchronized, then renamed atomically. Only after both responses stop are
+their immutable JSON/log digests copied under `benchmarks/results/` and
+committed. Generated setup, weights and `rust/target` stay pod-local and are
+removed after evidence export; result files are never included in cleanup.
 
 ### C63-E2E2 — two real responses
 

@@ -530,7 +530,7 @@ def c63_soundness_screen() -> dict[str, Any]:
             c6.soundness_bits(phase_event_screen_error) >= SOUNDNESS_LIMIT_BITS
         ),
         "systematic_spot": c62.error_report(systematic_spot_error),
-        "systematic_spot_fusion_4378_over_fp2": c62.error_report(
+        "systematic_spot_fusion_4420_over_fp2": c62.error_report(
             systematic_spot_fusion_error
         ),
         "sparse_h_closure_64_over_fp2": c62.error_report(sparse_h_closure_error),
@@ -830,7 +830,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "schema": "volta-c63-authenticated-sketch-analytic-screen-v13",
+        "schema": "volta-c63-authenticated-sketch-analytic-screen-v14",
         "credit": False,
         "transfer_to_c63_gates": False,
         "gates": gates,
@@ -1288,6 +1288,8 @@ def build_report() -> dict[str, Any]:
             "verifier additional RSS",
             "peak VRAM",
             "resident GPU integration of sparse H closure and transient code switch",
+            "top-level C6.3 production coordinator and complete CPU verifier",
+            "production expansion/digest of the fixed provider-independent setup seed",
             "real/AES-PCG full-response execution",
         ],
         "decision": "local codec/privacy/soundness candidate; GPU implementation and real E2E remain required",

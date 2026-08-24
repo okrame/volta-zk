@@ -11,9 +11,11 @@ record; no external plan is authoritative.
 Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 
 - **Status.** C6.3 is open; no pod is open. Privacy/simulation, codecs,
-  production openings, four linked lanes and the reduced wrapper are locally
-  green. The ABI43 resident owner and differential compile at the Rust/CUDA
-  boundary; device kernels remain unbuilt and unrun.
+  production-dimension opening codecs, four linked lanes and the reduced
+  wrapper are locally green. The ABI43 resident owner and differential compile at the Rust/CUDA
+  boundary; device kernels remain unbuilt and unrun. The provider-independent
+  setup seed is fixed locally; no top-level production coordinator/verifier
+  or full-size setup expansion exists.
 - **Evidence.** C6.2 precommit is `275.113308912 s`, about `249.51 s` dense
   encoding/I/O/trees. C6.3 screens `23,271,419 B` certificate,
   `2,704,573 B` `pi_final`, `124,469,116 B` setup plus first,
@@ -23,14 +25,44 @@ Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 - **Construction.** Roots bind `D'` and `A=C^16(H D')`; one column mix feeds
   four fresh pre-encoded WHIR lanes. Authentication tapes stay separate; GW4
   is fixed.
-- **Checks.** Certificate `<=30 MB`; setup `<150 MB`; setup plus first
-  `<172 MB`; `pi_final <4.5 MB`; warm prover `<20 s`; four-thread CPU verifier
-  `<5 s`; RSS `<=8 GB`; soundness `>=78.80929487391641 bits`. Cold proof over
+- **Checks.** Certificate `<=30,000,000 B`; setup `<150,000,000 B`; setup plus
+  first `<172,000,000 B`; `pi_final <4,500,000 B`; warm prover `<20 s`; four-thread CPU verifier
+  `<5 s`; verifier additional RSS `<=8,000,000,000 B`; soundness
+  `>=78.80929487391641 bits`. Cold proof over
   20 s continues; no canonical certificate by 150 s stops.
 - **Resume.** A new A100 endpoint and owner GO are required. Build ABI43,
-  match rows, `S`, `A` and roots to CPU, close the resident adapter in 60--90
-  minutes, then run one cold plus one immediate warm response with all clocks
-  separated.
+  pass one-token and successor differentials, expand and bind the fixed setup
+  seed, close the coordinator/verifier in 60--90 minutes, then run one cold
+  plus one immediate warm response with all clocks separated.
+
+- **2026-08-24 — Readiness and pod-resource audit finds controlled pre-E2E
+  blockers.** Source review confirms the projected MMCS, four scaled lanes,
+  codecs and resident state owner exist separately; there is no top-level
+  production C6.3 coordinator or complete CPU verifier yet. Earlier design
+  prose claiming those reference seams did not exist is corrected, as are the
+  closed 24-sub/703-full correlation census and the one-shot 256-MiB
+  permutation upload. Analytic screen v14 changes no arithmetic: it renames a
+  stale `4378` field to the enforced `4420` and lists the missing coordinator,
+  verifier and full-size expansion of the fixed setup seed. The public seed
+  `deda54f405265cd5f57b0baec79fbc6fcd1e5149f68937e28bb0737338c5bdea`
+  was fixed locally before a provider saw it and may not be replaced or
+  retried. E2E now additionally requires an asymmetric successor differential,
+  proof that the dense C6.2 precommit was never entered and complete
+  cryptographic verification rather than codec validation. Pod preflight
+  requires one exclusive 80-GB A100, effective cgroup RAM `>=96 GiB`, persistent
+  free disk `>=200 GiB`, canonical `rust/target`, no heavy `/tmp`, fixed 8/4
+  provider/verifier threads and one-second memory/I/O/disk monitoring. E2E
+  starts only with `>=120 GiB` free and stops below 100 GiB, below a 16-GiB RAM
+  reserve or above 10-GiB unexpected run growth. The 150-second watchdog must
+  burn correlations and preserve the predecessor. This is a readiness plan,
+  not hardware credit; no pod is authorized. The component build must enable
+  `cuda,c6-trace,c61-p3-authenticated-reference`; a local sampler test passed
+  with the two non-CUDA features, and the exact CUDA-featured test target
+  passes `cargo check`. Whole-workspace formatting is not claimed: the current
+  formatter reports pre-existing, out-of-scope differences. The two response
+  records stage outside the checkout and are imported only after both finish,
+  so the immediate warm run retains the same clean source claim; atomic result
+  publication and post-export build/setup cleanup are required.
 
 - **2026-08-24 — Owner refines the first C6.3 pod plan.** The resident link is
   limited to one adapter at the existing cache/output-link join: borrow the

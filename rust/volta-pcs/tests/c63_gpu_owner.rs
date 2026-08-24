@@ -12,6 +12,7 @@ use volta_pcs::{
     C63GpuStateOwner, C63GpuTileMetadata, C63SparseSetupReference, C6CacheCell, C6CacheSlotKind,
     C63_BOLT_COLUMNS, C63_BOLT_LDPC_CHECK_DEGREE, C63_BOLT_LDPC_COLUMN_DEGREE,
     C63_BOLT_LIVE_ROWS_PER_POSITION, C63_BOLT_ROWS, C63_BOLT_SKETCH_ROWS,
+    C63_PRODUCTION_SETUP_SEED,
 };
 
 const LAYERS: usize = 12;
@@ -123,7 +124,7 @@ fn encoded_root(encoded: &[Fp]) -> Hash {
 #[ignore = "requires the production ABI43 CUDA library and one A100"]
 fn production_owner_matches_cpu_for_one_complete_token() {
     let sparse_setup = C63SparseSetupReference::sample(
-        [0x63; 32],
+        C63_PRODUCTION_SETUP_SEED,
         C63_BOLT_ROWS,
         C63_BOLT_SKETCH_ROWS,
         C63_BOLT_LDPC_COLUMN_DEGREE,
@@ -148,6 +149,8 @@ fn production_owner_matches_cpu_for_one_complete_token() {
     let mmcs = C62GpuMmcs::new(backend, 19, guard).unwrap();
     let setup = C63GpuSetupOwner::install(&mmcs, &sparse_setup).unwrap();
     let backend = mmcs.backend();
+    let setup_resident_bytes =
+        backend.lock().unwrap().device_memory_breakdown().unwrap().resident_bytes;
     let tape_words = tapes.map(|values| values.into_iter().map(Fp::value).collect::<Vec<_>>());
     let (tape0, tape1) = {
         let mut gpu = backend.lock().unwrap();
@@ -202,4 +205,10 @@ fn production_owner_matches_cpu_for_one_complete_token() {
     assert!(encoded.iter().zip(&expected_encoded).all(|(&got, expected)| got == expected.value()));
     assert_eq!(state.correction_root(), expected_correction_root);
     assert_eq!(state.encoded_sketch_root(), expected_encoded_root);
+    drop(state);
+    assert_eq!(
+        backend.lock().unwrap().device_memory_breakdown().unwrap().resident_bytes,
+        setup_resident_bytes,
+        "discarding a proposal must release every response-owned device buffer",
+    );
 }

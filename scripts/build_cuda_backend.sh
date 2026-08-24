@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 NVCC="${NVCC:-/usr/local/cuda/bin/nvcc}"
-OUT="${VOLTA_CUDA_LIBRARY:-$ROOT/target/cuda/libvolta_cuda_backend.so}"
+OUT="${VOLTA_CUDA_LIBRARY:-$ROOT/rust/target/cuda/libvolta_cuda_backend.so}"
 ARCH="${VOLTA_CUDA_ARCH:-sm_80}"
 
 mkdir -p "$(dirname "$OUT")"

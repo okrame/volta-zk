@@ -26,6 +26,11 @@ pub const C63_BOLT_LDPC_COLUMN_DEGREE: u8 = 16;
 pub const C63_BOLT_LDPC_CHECK_DEGREE: u16 = 128;
 pub const C63_SPARSE_SETUP_DESCRIPTOR_BYTES: usize = 80;
 pub const C63_CORRECTION_ROW_FRAME_WORDS: usize = 27;
+/// Public one-shot production setup seed fixed before the first C6.3 pod run.
+pub const C63_PRODUCTION_SETUP_SEED: Hash = [
+    0xde, 0xda, 0x54, 0xf4, 0x05, 0x26, 0x5c, 0xd5, 0xf5, 0x7b, 0x0b, 0xae, 0xc7, 0x9f, 0xbc, 0x6f,
+    0xcd, 0x1e, 0x51, 0x49, 0xf6, 0x89, 0x37, 0xe2, 0x8b, 0xb0, 0x73, 0x73, 0x38, 0xc5, 0xbd, 0xea,
+];
 
 const C63_CORRECTION_TREE_MAGIC: [u8; 8] = *b"C63CR3\0\0";
 const C63_VIRTUAL_ROW_MAGIC: [u8; 8] = *b"C63VZ3\0\0";

@@ -56,7 +56,7 @@ type Result<T> = std::result::Result<T, C63SparseHClosureError>;
 pub struct C63SparseHClosureError(String);
 
 impl C63SparseHClosureError {
-    fn new(message: impl Into<String>) -> Self {
+    pub(crate) fn new(message: impl Into<String>) -> Self {
         Self(message.into())
     }
 }

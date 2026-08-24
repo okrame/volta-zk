@@ -1761,6 +1761,8 @@ mod tests {
     };
     #[cfg(feature = "cuda")]
     use crate::c63_gpu_owner::{C63GpuSetupOwner, C63GpuStateOwner, C63GpuTileMetadata};
+    #[cfg(feature = "cuda")]
+    use crate::c63_sparse_h_closure::prove_c63_sparse_h_closure_with_spots_resident;
     use crate::c63_sparse_h_closure::{
         prove_c63_sparse_h_closure_with_spots_reference,
         verify_c63_sparse_h_closure_from_whir_openings_reference,
@@ -2809,6 +2811,64 @@ mod tests {
 
         let projection_started = Instant::now();
         let mut projected = state.project_messages(rho).unwrap();
+        let projection_ms = projection_started.elapsed().as_millis();
+        let h_started = Instant::now();
+        let h = C63SparseSketchReference::new(
+            C63_BOLT_ROWS,
+            C63_BOLT_SKETCH_ROWS,
+            sparse_setup.sketch_edges(),
+        )
+        .unwrap();
+        let h_prepare_ms = h_started.elapsed().as_millis();
+        let output_point = (0..19)
+            .map(|index| Fp2::new(Fp::new(211 + index as u64), Fp::new(251 + index as u64)))
+            .collect::<Vec<_>>();
+        let u_opening = projected.evaluate_combined_sketch(&output_point).unwrap();
+        let sparse_statement =
+            C63SparseHClosureStatement::new(state.correction_root(), output_point).unwrap();
+        let sparse_seeds = [[0x91; 32], [0x92; 32]];
+        let sparse_deltas = [
+            Fp2::new(Fp::new(97), Fp::new(101)),
+            Fp2::new(Fp::new(103), Fp::new(107)),
+        ];
+        let sparse_transcript_seed = [0x93; 32];
+        let mut sparse_streams = sparse_seeds.map(CorrelationStream::new);
+        let mut sparse_prover_transcript = Transcript::new(sparse_transcript_seed);
+        let sparse_started = Instant::now();
+        let sparse_proof = prove_c63_sparse_h_closure_with_spots_resident(
+            backend.clone(),
+            &h,
+            projected.combined_systematic().unwrap(),
+            u_opening,
+            &sparse_statement,
+            &[],
+            &mut sparse_streams,
+            &mut sparse_prover_transcript,
+        )
+        .unwrap();
+        let sparse_prove_ms = sparse_started.elapsed().as_millis();
+        let sparse_verify_started = Instant::now();
+        let mut sparse_contexts =
+            std::array::from_fn(|tape| VerifierCtx::new(sparse_seeds[tape], sparse_deltas[tape]));
+        let mut sparse_verifier_transcript = Transcript::new(sparse_transcript_seed);
+        let sparse_audit = verify_c63_sparse_h_closure_from_whir_openings_reference(
+            &h,
+            u_opening,
+            &sparse_statement,
+            &[],
+            &sparse_proof,
+            &mut sparse_contexts,
+            &mut sparse_verifier_transcript,
+            |point| {
+                projected.evaluate_combined_systematic(point).map_err(|error| {
+                    crate::c63_sparse_h_closure::C63SparseHClosureError::new(error.to_string())
+                })
+            },
+        )
+        .unwrap();
+        let sparse_verify_ms = sparse_verify_started.elapsed().as_millis();
+        assert_eq!(sparse_audit.sumcheck_point.len(), 22);
+        let lane_prepare_started = Instant::now();
         let message = projected.take_sketch(0).unwrap();
         let encoded = projected.take_encoded_sketch(0).unwrap();
         drop(projected);
@@ -2833,7 +2893,7 @@ mod tests {
         let point = Point::new(
             point_values.iter().copied().map(c61_p3_fp2_from_volta).collect(),
         );
-        let projection_ms = projection_started.elapsed().as_millis();
+        let lane_prepare_ms = lane_prepare_started.elapsed().as_millis();
 
         let config = c63_whir_config(19).unwrap();
         let projected_mmcs = C63ProjectedGpuMmcs::new(base_mmcs.clone(), context);
@@ -2898,7 +2958,8 @@ mod tests {
         assert_eq!(closure.target, output.target);
         assert_eq!(closure.base_case, output.base_case);
         eprintln!(
-            "c63_resident_projected_lane setup_ms={setup_ms} state_ms={state_ms} projection_ms={projection_ms} prove_ms={prove_ms} verify_ms={verify_ms} proof_bytes={} peak_device_bytes={} h2d_bytes={} d2h_bytes={} total_ms={}",
+            "c63_resident_projected_lane setup_ms={setup_ms} state_ms={state_ms} projection_ms={projection_ms} h_prepare_ms={h_prepare_ms} sparse_prove_ms={sparse_prove_ms} sparse_verify_ms={sparse_verify_ms} sparse_proof_bytes={} lane_prepare_ms={lane_prepare_ms} prove_ms={prove_ms} verify_ms={verify_ms} proof_bytes={} peak_device_bytes={} h2d_bytes={} d2h_bytes={} total_ms={}",
+            sparse_proof.encode().unwrap().len(),
             artifact.len(),
             stats.peak_device_bytes,
             stats.h2d_bytes,

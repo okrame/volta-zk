@@ -207,7 +207,18 @@ impl C63GpuProjectedMessages {
     }
 
     pub fn evaluate_combined_sketch(&self, point: &[Fp2]) -> Result<Fp2, C63GpuOwnerError> {
-        let combined = self.combined_sketch()?;
+        self.evaluate_combined(self.combined_sketch()?, point)
+    }
+
+    pub fn evaluate_combined_systematic(&self, point: &[Fp2]) -> Result<Fp2, C63GpuOwnerError> {
+        self.evaluate_combined(self.combined_systematic()?, point)
+    }
+
+    fn evaluate_combined(
+        &self,
+        combined: DeviceBuffer<Fp2Repr>,
+        point: &[Fp2],
+    ) -> Result<Fp2, C63GpuOwnerError> {
         let mut backend = self.backend.lock().map_err(|_| C63GpuOwnerError::new("CUDA lock"))?;
         let value = backend.mle_eval_device(DeviceSlice::new(&combined, 0, combined.len())?, point);
         let cleanup = backend.free_device(combined);

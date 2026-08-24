@@ -3021,6 +3021,13 @@ mod tests {
         )
         .unwrap();
         assert!(replayed_contexts[0] == *verifier_mmcs.context);
+        let replayed_spot_rows = c63_sample_systematic_query_rows(
+            &mut verifier_challenger,
+            C63_BOLT_ROW_LOG2 as usize,
+            C63_SYSTEMATIC_SPOT_QUERIES,
+        )
+        .unwrap();
+        assert_eq!(replayed_spot_rows, spot_rows);
         verifier_challenger.observe(decoded_commitment.clone());
         verifier_challenger.observe_algebra_slice(point.as_slice());
         let verifier = HidingWhirVerifier::new(&config, &verifier_mmcs);

@@ -1,0 +1,110 @@
+{
+  "schema": 1,
+  "profile": "runpod-a100-c63-authenticated-sketch-cold-warm-v1",
+  "mode": "c63-prove",
+  "status": "failed_before_first_certificate",
+  "source_git_commit": "f5fd79d04135482398cb43625ac4d150b9661b41",
+  "git_dirty": false,
+  "cloud": {
+    "provider": "RunPod",
+    "endpoint": "64.247.196.128:13949",
+    "region": "not-exposed",
+    "image": "Ubuntu 24.04.3 LTS",
+    "driver_version": "580.159.04",
+    "cuda_version": "12.8",
+    "gpu_sku": "NVIDIA A100-SXM4-80GB",
+    "cpu_model": "AMD EPYC 7742 64-Core Processor",
+    "cgroup_memory_limit_bytes": 249999998976,
+    "vcpus": 128
+  },
+  "installed_setup_reused": {
+    "source_git_commit": "a2adb7a",
+    "profiles": 17,
+    "profiles_consumed_by_planned_campaign": [0, 150],
+    "wall_s": 2092.76,
+    "max_rss_bytes": 12928634880,
+    "file_bytes": 197278943,
+    "tree_digest": "280eb194bdd208fd02f1964353abc6579bb9a5949eb1e3c0166d9f5c773bd138"
+  },
+  "attempt": {
+    "elapsed_wall_s": 907.32,
+    "user_cpu_s": 1426.02,
+    "system_cpu_s": 114.94,
+    "time_max_rss_bytes": 33484832768,
+    "exit_status": 101,
+    "panic": "pooled full correlation underflow",
+    "certificates_produced": 0,
+    "artifacts_produced": 0,
+    "proof_directory_bytes": 0,
+    "client_head_promoted": false,
+    "burned_correlation_authorizations": 2,
+    "selective_retry_performed": false
+  },
+  "supervisor": {
+    "stop_reason": "none",
+    "max_process_rss_bytes": 33484832768,
+    "max_cgroup_usage_bytes": 46623481856,
+    "cgroup_failcnt": 0,
+    "max_gpu_used_mib_external": 44525,
+    "max_gpu_used_bytes_external": 46687846400,
+    "device_guard_bytes": 45818576864,
+    "device_guard_excess_bytes": 869269536,
+    "device_guard_pass": false,
+    "min_filesystem_free_bytes": 213312102400,
+    "max_transient_run_bytes": 25769803776,
+    "retained_transient_run_bytes": 19629343144,
+    "max_work_bytes": 3221225728,
+    "process_read_bytes": 26071834624,
+    "process_write_bytes": 29579071488,
+    "dense_growth_guard_observed": true,
+    "resource_supervisor_terminated_attempt": false
+  },
+  "observable_timeline": {
+    "fixed_model_work_first_observed_s": 60,
+    "first_run_bytes_s": 372,
+    "run_bytes_at_first_observation": 260046848,
+    "run_reached_19gb_s": 390,
+    "wrapper_cohorts_complete_by_s_approx": 445,
+    "gpu_exceeded_40gib_s": 524,
+    "process_rss_peak_started_s": 836,
+    "panic_observed_s": 905,
+    "post_wrapper_to_exit_s_approx": 462.32,
+    "phase_attribution": "The proof directory stayed empty and the panic suppressed phase records; observable intervals are not official prover subclocks."
+  },
+  "largest_observed_transients": [
+    {
+      "role": "inherited_encoded_weight_oracle_fp2",
+      "bytes": 17179869184
+    },
+    {
+      "role": "inherited_weight_coefficients_fp2",
+      "bytes": 2147483648
+    },
+    {
+      "role": "residual_or_auxiliary_oracle_fp2",
+      "bytes": 268435456
+    }
+  ],
+  "evidence_digests": {
+    "session_log_sha256": "e3dfbd8a4a63eadf6921048a725a7392de42113455410437104429978b294c55",
+    "session_time_sha256": "0c16aae6737488665421c32f8a40eaa68d6bba4f091d068202f5d236b3dfbb63",
+    "supervisor_csv_sha256": "9474f0f4b2eb6823fd5c8e74459bdcef929a87572160f1b018713aac5e599510"
+  },
+  "gate_credit": {
+    "certificate_bytes": false,
+    "prover_time": false,
+    "verifier_time": false,
+    "verifier_memory": false,
+    "protocol_acceptance": false,
+    "e2e": false,
+    "session": false
+  },
+  "diagnosis": {
+    "class": "finite real-PCG capacity and composed-schedule mismatch",
+    "confirmed": "The registered finite pool was exhausted by the live production composition after the repaired post-source boundary.",
+    "registered_suffix_full_correlations_per_tape": 707,
+    "exact_deficit_known": false,
+    "late_failure_cause": "The complete suffix was not atomically capacity-preflighted, and local constant/mock/component tests did not execute the finite production pool end to end.",
+    "repair_authorized": false
+  }
+}

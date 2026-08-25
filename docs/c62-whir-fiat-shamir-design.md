@@ -1,10 +1,13 @@
 # C6.2 WHIR Fiat--Shamir Design
 
-Status: **CACHE PRECOMMIT DIAGNOSTIC COMPLETE / C6.3 READY / NOT OPEN**
+Status: **CLOSED — 17 A100 SESSION FAILURE DISPOSITIONS / ZERO CERTIFICATES / CACHE PRECOMMIT DIAGNOSED AT 275.113 S**
 
 This document records the completed C6.2 line and its measured C6.3 handoff.
-No C6.3 protocol or pod experiment is opened. It has precedence over the
-interactive C6.1 sections in `c6-delta-residual-inline-design.md`; frozen C6
+Seventeen create-new A100 dispositions produced no certificate. Most were
+late composition failures across historical/live codecs, transcript events,
+topology censuses, lifecycle phases and finite PCG capacity; passing local
+component suites did not exercise those exact boundaries. The final useful
+result is the cache-precommit diagnostic below, not an E2E result. Frozen C6
 and C6.1 records remain historical evidence.
 
 ## 0. Authority and objective
@@ -1665,13 +1668,12 @@ a timing pass. If runtime is operationally excessive, the predecessor
 manifest plus the external timeline is sufficient to stop manually; no
 watcher is allowed to advance into PCG and no retry is authorized.
 
-The owner also preauthorized clean repository export to owner-designated pods
-and selected GitHub CLI as the normal transport. Local publication and remote
-SHA verification use GitHub-managed authentication. Pod `gh` 2.45 refuses an
-anonymous public clone; rather than export the local `repo`-scoped credential,
-the pod clones the same public branch over anonymous GitHub HTTPS. Equal clean
-HEADs remain mandatory. No repository archive, secret, credential or ignored
-file is exported.
+Repository synchronization on every new pod uses only `git push`/`git pull`
+against the GitHub HTTPS remote. `gh`, Git-over-SSH, SCP/rsync, repository
+archives and credential export are not part of the workflow. Equal clean
+HEADs remain mandatory; generated setup, weights and large run data stay
+pod-local unless the active design explicitly promotes small evidence through
+Git.
 
 ### Inputs that C6.3 must carry forward
 

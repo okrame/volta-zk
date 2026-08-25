@@ -41,6 +41,12 @@ below it is supporting history, not competing authority.
 - Production/provider work needs the explicit owner GO required by the active
   ledger.  Production records are create-new and append-only; no selective
   retry is allowed unless separately authorized.
+- On every new pod, synchronize repository files and small tracked evidence
+  only with `git push`/`git pull` against a GitHub HTTPS remote.  Do not use
+  `gh`, Git-over-SSH, SCP/rsync, repository archives or exported credentials.
+  Verify the clean SHA after every pull; generated weights, setup and large
+  run artifacts stay pod-local unless the active design explicitly says
+  otherwise.
 
 ## Build, test and generated artifacts
 

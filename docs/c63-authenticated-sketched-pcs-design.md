@@ -1,6 +1,6 @@
 # C6.3 Authenticated Sketched WHIR Design
 
-Status: **R0/R1 LOCAL GREEN / C63-G1 FULL-SIZE DIFFERENTIAL PASS / CHECKPOINT 697f43e / E2E CAMPAIGN IN PROGRESS**
+Status: **CLOSED — COMPONENT DIFFERENTIAL PASS / TWO REAL-PCG FAILURES / ZERO CERTIFICATES / NO E2E CREDIT**
 
 This document is the authority for C6.3. It replaces C6.2 only for new C6.3
 work; C6.2 code, artifacts and dispositions remain immutable evidence. The
@@ -34,13 +34,11 @@ local WHIR fork only as required by the registered five-item unblock.
 7. batch every sketch-consistency check of a response into one closure and
    settle it inside the same certificate.
 
-Local reference work is authorized. The owner supplied and admitted the first
-A100 for component work; G1 passed there. G2 stopped before E2E, consumed no
-protocol correlations and created no certificate. Further pod protocol work
-requires a clean component checkpoint and all terminal differentials. A
-failure to prove both full binding and privacy remains a hard
-stop: a small linear fingerprint by itself is not an admissible replacement
-for the PCS.
+The C6.3 line is closed. The A100 component differential remains valid, but
+both real-PCG create-new attempts stopped before serialization and verifier
+replay and produced no certificate. No C6.3 repair, rerun or pod work is
+authorized. A successor starts only after the owner opens a C7 branch and
+design; it must not inherit C6.3 timing, proof-size or E2E credit.
 
 ## 0.1 Gates and clock definitions
 
@@ -95,10 +93,13 @@ model and parameters are identical. K/V values, their sketch state, the
 accepted head and all PCG correlation state are connection-specific and are
 never shared.
 
-The historical 17 accepted responses and four burn attempts remain future
-session requirements. The first C6.3 experiment deliberately evaluates only
-two accepted responses and records `session_gate_evaluated:false`; it cannot
-claim the 17-response or burn gates.
+The first C6.3 experiment was intended to evaluate only two responses, but the
+inherited setup manifest and generator rigidly required all 17 context
+profiles. Generation took `2,092.76 s` and `12,928,634,880 B` RSS before the
+minimal `0 -> 150` case could start. This was harness/setup cost, not evidence
+for the unevaluated 17-response session gate. A future first experiment must
+generate only the profiles consumed by its minimal E2E case unless its active
+statement proves the larger bundle is load-bearing.
 
 ## 0.2 R1 correction: public bulk, designated tail
 
@@ -348,9 +349,10 @@ typed boundary: public payloads contain corrections and tagless PCS material;
 the designated tail contains only simulator-compatible ZeroOpen tags; client
 replay keys have a separate private codec and are absent from the certificate.
 The rejected four-body C6.3 suffix consumed 24 sub-correlations and 703 full
-correlations per tape, including two fresh terminal masks. The recommended
-repair projects 705 full correlations per tape. Neither census proves the
-AES-PCG assumption or replaces the required real execution.
+correlations per tape, including two fresh terminal masks. The selected
+eight-body code registered 707 per tape after adding four limb masks and two
+source functionals. The real run exhausted that allocation, so neither census
+proves the AES-PCG assumption or replaces the required real execution.
 
 The source behind the local HVZK-WHIR fork is Chiesa--Fenzi--Weissenberg,
 *Zero-Knowledge IOPPs for Constrained Interleaved Codes*, ePrint 2026/391
@@ -679,8 +681,8 @@ This repair doubles the claimless body bytes to `9,039,328 B`. The selected
 conservative transition codec carries up to eight authenticated `A` openings,
 giving `28,710,631 B` total and `129,908,328 B` setup plus first after the
 inherited response-target frame. It consumes
-four rather than two WHIR masks per tape, moving the projected full-correlation
-census from 703 to 705. The sparse proof remains 1,496 bytes, but its two round
+four rather than two WHIR masks per tape; with two later source functionals the
+registered full-correlation census moved from 703 to 707. The sparse proof remains 1,496 bytes, but its two round
 streams now prove distinct `u_l=H m_l` relations. Screen v16 gives
 `78.019023342845...` bits against the owner-revised `78.00`-bit gate while
 keeping every phase at 105 bits. These remain analytic projections. The
@@ -1104,11 +1106,10 @@ CPU verifier, and promote the proposal only on acceptance. Large `D'`, `S`,
 `A`, `m/u/w/y` owners never cross to host; only roots, authenticated queried
 rows and final certificate bytes do.
 
-After the ABI43 differential, this adapter has **no aggregate pod timebox**.
-Focused component work continues while resource controls hold and each run can
-produce useful evidence. Cold compilation and fixed setup remain separately
-measured. The 150-second mark is a nonterminal supervisor event; only the
-security and imminent-resource hard stops remain. The implementation reuses
+After the ABI43 differential, the adapter was run without an aggregate pod
+timebox. That policy exposed a late integration failure only after more than
+15 minutes and is not carried forward. Cold compilation and fixed setup were
+separately measured. The implementation reuses
 the existing cached-fixed-base seam and
 normalized joint-bridge algebra; no new proof engine, abstraction or kernel is
 admitted unless a focused differential proves it necessary. A
@@ -1127,9 +1128,10 @@ transcript-derived production sampling and 4,420-row spot fusion on a
 eight-body prepare/finish driver, exact source link and complete verifier now
 pass 31 focused local tests; the CUDA-feature path compiles. The production
 wrapper admission also accepts the two-cohort C6.3 profile. The existing
-`c62_whir_fiat_shamir_record` binary now exposes `--mode c63-prove`: it runs
-only cold `0→150` and warm `150→200`, reuses one fixed model cache, persists
-each canonical artifact, verifies it on four ordinary CPU threads, then
+`c62_whir_fiat_shamir_record` binary exposes `--mode c63-prove`: its response
+loop contains only cold `0→150` and warm `150→200`, but its inherited setup
+loader still requires all 17 C6.2 profiles. It reuses one fixed model cache,
+persists each canonical artifact, verifies it on four ordinary CPU threads, then
 promotes client/GPU state and removes the large transient proof directory.
 It records installed-profile generation, preprocessing, setup, provider,
 serialization, verifier, I/O, RSS, three CUDA-backend counter sets and spill bytes separately. Target misses do
@@ -1178,14 +1180,14 @@ and emit nonterminal observations. A hard kill is reserved for imminent
 resource exhaustion and still cannot promote state; an incomplete or rejected
 proof burns its correlation range and leaves the predecessor unpromoted.
 
-The cold and immediate warm records are staged in one create-new session
+The cold and immediate warm records were staged in one create-new session
 directory outside the Git checkout. Both record the same clean source SHA and
 `git_dirty:false`; neither response makes the checkout dirty before the next
-one starts. Small JSON dispositions are written to a temporary same-filesystem
-name, synchronized, then renamed atomically. Only after both responses stop are
-their immutable JSON/log digests copied under `benchmarks/results/` and
-committed. Generated setup, weights and `rust/target` stay pod-local and are
-removed after evidence export; result files are never included in cleanup.
+one starts. Small JSON dispositions were written to a temporary same-filesystem
+name, synchronized, then renamed atomically. Generated setup, weights and
+`rust/target` stayed pod-local. Repository files and small tracked evidence
+synchronize only with `git push`/`git pull` through the GitHub HTTPS remote:
+no `gh`, Git-over-SSH, SCP/rsync or repository archive.
 
 On the historical first pod, `/workspace` failed the admission floor and the
 root overlay was used. Every new pod repeats that filesystem preflight; it may
@@ -1197,11 +1199,12 @@ requires a fresh run and never permits a selective protocol retry.
 
 ### C63-E2E2 — two real responses
 
-Only after local tests, exact budgets, clean source, artifact checks and a new
-owner GO may one A100 execute the first experiment.
+The following was the historical two-response campaign. It is closed and no
+longer authorizes execution.
 
-1. Generate/install the complete 17-profile setup if absent, then run real
-   `0 -> 150`. Record every cold clock defined in Section 0.1 so provider
+1. The harness generated the complete 17-profile setup even though the run
+   consumed only contexts 0 and 150, then started real `0 -> 150`. It was to
+   record every cold clock defined in Section 0.1 so provider
    model preprocessing is not conflated with inference or certificate
    generation. `cold_certificate_prover` is also the response-specific prover
    gate clock; 20 and 150 seconds are both recorded, nonterminal marks.
@@ -1235,12 +1238,12 @@ transfer are preparation, not deployment or response time. No mutation set,
 four burns, 17-response loop or retry runs in this experiment. Security
 rejection, invalid state promotion or imminent resource exhaustion stops and
 records a create-new disposition. Byte, 20/150-second and verifier-RSS misses
-continue through serialization and verification. Source moves through Git,
-not SCP; weights and generated setup stay uncommitted on the pod, while the
-small append-only JSON record returns through Git. A measurement miss never
+continue through serialization and verification. Source and small evidence
+move only through GitHub HTTPS `git push`/`git pull`; weights and generated
+setup stay uncommitted on the pod. A measurement miss never
 replaces a complete artifact with a no-certificate disposition.
 
-#### First create-new disposition and lifecycle repair
+#### Final create-new dispositions
 
 Clean `a2adb7a` generated the complete reusable 17-profile setup in
 `2,092.76 s`, with `12,928,634,880 B` maximum RSS and `197,278,943 B` of
@@ -1271,57 +1274,66 @@ recorder still rejects before the transition. This changes lifecycle plumbing,
 not the certificate relation, correlation budget or zero-knowledge argument.
 
 All 41 `volta-mac` tests, the four focused C6.3 persistent-state tests and the
-CUDA-feature runner check pass. The failed attempt remains append-only at
+CUDA-feature runner check passed. The failed attempt remains append-only at
 `benchmarks/results/c63-e2e-cold-warm-failure-2026-08-25-a2adb7a.json` and
-earns no gate credit. A new result must use a new session, nonce and correlation
-ranges and rerun both cold and warm responses from genesis. Confidence that
-this repair removes the observed stop is 95%; it gives no credit to later
-unexecuted seams.
+earns no gate credit. Those checks covered the lifecycle repair, state
+transitions and compilation; they did not execute the finite real-PCG pool
+through the complete production composition.
 
-## 7. Current decision and confidence
+An intervening clean `f5fd79d` launch stopped after `0.07 s` at generic
+hardware admission with empty work/run/state paths. It consumed no protocol
+authorization and is harness noise, not timing or protocol evidence.
 
-The direction is **the append-aligned `t=16` Bolt sparse precode over Volta's
-masked correction state, adapted inside WHIR as two tape-separated projections
-of one deterministic pre-`rho` `A=C^16(H D')` tensor, eight fresh randomized
-D22/D19 WHIR bodies over already encoded `w_l/y_l` oracles, and one two-stream
-sparse inner-product closure; tagless bulk stays public and only the designated
-tail enters `pi_final`**. It is not a Bolt crate port, a second PCS, a raw-K/V
-Merkle tree or a sketch-only commitment.
+Clean `f5fd79d` passed the repaired boundary, then panicked after `907.32 s`
+with `pooled full correlation underflow`. The registered C6.3 allocation used
+the fixed `707`-full-correlation suffix census, but the live composition
+exhausted it. The panic reported neither requested nor remaining capacity, so
+the exact deficit is unknown. Both authorizations were burned, no client head
+was promoted, and no certificate, artifact or verifier replay exists.
 
-- Probability that it removes the measured cache-precommit bottleneck:
-  **88--96%**.
-- Probability that the one-`rho`, two-tensor Bolt-to-WHIR algebra survives
-  independent review before privacy and full error accounting: **90--96%**.
-- Probability that the first complete GPT-2 certificate fits 30 MB:
-  **88--95%** because screen v16 bounds the conservative eight-transition-
-  opening codec at `28,710,631 B`; real serialization still must reproduce it.
-- Probability that the new separation theorem and two-cohort codec preserve
-  `pi_final <4.5 MB`: **94--98%**; the exact local projection is `2,723,157 B`.
-- Probability that the complete warm prover reaches `<20 s` on one A100:
-  **50--70%**. The resident path is locally complete but has not produced one
-  full-size certificate, so this remains an engineering estimate.
-- Probability that the four-thread verifier stays below 5 seconds:
-  **70--85%**, dominated by the unmeasured 768-MiB `H` scan and WHIR bodies.
-- Probability that an independent review accepts the finite Goldilocks
-  distance bound without changing the query count: **92--98%**.
-- Probability that independent review accepts the 105-bit two-oracle soundness
-  screen and the 128-bit BLAKE3-XOF assumption without a profile change:
-  **55--70%**. The computed result is `78.019023342845... bits` against the
-  owner-revised `78.00`-bit gate, leaving almost no room for an omitted term.
-- Probability that eight literal non-amortized Bolt closures reach `<20 s`:
-  **below 10%**.
+This second attempt peaked at `33,484,832,768 B` process RSS and an external
+`44,525 MiB` of device use (`869,269,536 B` above the design guard). It read
+`26,071,834,624 B`, wrote `29,579,071,488 B`, and grew the transient run tree
+to `25,769,803,776 B`. The wrapper alone retained `19,629,343,144 B`, led by
+the inherited `17,179,869,184-B` encoded weight oracle. The first wrapper data
+appeared after 372 s; both wrapper cohorts were complete by about 445 s, then
+the in-memory/GPU proof path continued for roughly another 462 s before the
+underflow. The proof directory stayed empty, so these intervals cannot be
+promoted to certificate-generation subclocks.
 
-The largest uncertainties are independent review of the two-oracle model,
-the pre-encoded resident WHIR adapter, unmeasured encoded-`A` update, 105-bit
-grinding cost and D23 cohort. The projective/monomial-basis
-sumcheck optimization is deferred until a timer shows that the sparse closure
-matters; its present wire cost is only 1,496 B. A D23 merge likewise follows
-only a measured bottleneck.
+The underflow is a composition/test-boundary failure, not evidence against the
+small component timings. Unit tests asserted the registered `707` constant
+and mock/scaled suites had no finite production pool; no up-front reservation
+covered the complete live suffix. Raw disposition:
+`benchmarks/results/c63-e2e-correlation-underflow-2026-08-25-f5fd79d.json`.
+C6.3 is terminal with zero certificate, proof-size, verifier, E2E or session
+credit.
 
-The lazier fallback is one direct compact Hiding-WHIR commitment to `D`,
-without sparse `H`. A scalar D26 diagnostic body currently screens at
-`1,063,480 B`, but the production profile rejects D26, its prover owner is
-consumed after one proof and its VRAM screen passes only under sequential
-scheduling. It is retained as a control, not substituted for the
-owner-selected Bolt-inside-WHIR contribution, and is considered only if the
-exact sampler or a measured component timer blocks `t=16`.
+## 7. Final decision
+
+C6.3 is closed without a complete certificate. Its useful evidence is limited
+to the full-size cache/sketch differential and measured component boundaries.
+The analytic `28,710,631-B` certificate, `2,723,157-B` `pi_final`,
+`78.019023342845...`-bit screen and sub-second sparse components remain
+`credit:false`; the real run never reached serialization or verification.
+
+The measured bottleneck picture is now:
+
+1. C6.2 dense cache precommit is conclusively dominated by persisted
+   encoding/reread/hash/tree work: `249.51 s` of `275.113308912 s`, with
+   `78,383,153,576 B` durable spill.
+2. C6.3 removed that cache path but retained a `17,179,869,184-B` encoded
+   weight oracle, at least 372 s before wrapper output and more than 462 s of
+   later proof work before a finite-PCG underflow. Component timings did not
+   predict the composed path.
+3. The 17-profile setup cost `2,092.76 s` although the first campaign consumed
+   only two profiles. This is experiment-harness rigidity, not response proof
+   performance.
+4. The recurring late failures came from versioned legacy/live seams and from
+   exact resource/correlation censuses not exercised end to end. A future
+   design must first make the smallest complete case serialize and verify with
+   finite production resources before expanding setup profiles or campaign
+   length.
+
+No C6.3 repair or pod rerun is authorized. C7 begins only from a new owner
+design and branch, with no transferred C6.3 E2E, timing or byte credit.

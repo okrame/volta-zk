@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — FULL-SIZE DIFFERENTIAL PASS / E2E ADAPTER IN PROGRESS)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,27 +10,47 @@ record; no external plan is authoritative.
 
 Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 
-- **Status.** C6.3 remains the active design. Clean `a2adb7a` completed the
-  reusable 17-profile setup, then the first create-new `0→150` attempt stopped
-  before serialization with `C6 full-field witness collection is already
-  closed`. It produced zero certificates; both authorizations are burned and
-  no client state was promoted.
-- **Evidence.** Setup took `2,092.76 s`, `12.93 GB` RSS and `197,278,943 B`.
-  The failed attempt took `700.51 s`, peaked at `21.97 GB` process RSS,
-  `46.78 GB` cgroup use, `44,101 MiB` external device use and `25.63 GB`
-  transient data. No resource guard fired. This is diagnostic evidence only;
-  certificate, verifier, timing and end-to-end credit remain absent.
-- **Hard stop and repair.** The attempt is terminal and is never resumed. The
-  root defect is a lifecycle mismatch: after the typed post-source boundary,
-  recorder annotations must be non-consuming no-ops. Before that boundary,
-  closed-sidecar writes still reject. The minimal shared fix passes all 41
-  `volta-mac` tests, four C6.3 state tests and the CUDA runner check.
-- **Checks/authorization.** Soundness `>=78.00` bits and protocol acceptance
-  remain mandatory. Byte/time/memory misses remain nonterminal. The owner GO
-  and pod endpoint remain active for one full create-new rerun.
-- **Resume.** Commit and push the repair plus append-only failure record, pull
-  it on the pod, release-build the runner, then run fresh cold `0→150` and warm
-  `150→200`. Preserve the failed run and use new session paths/correlations.
+- **Status/hard stop.** C6.3 is closed after two real-PCG attempts produced
+  zero certificates. Clean `f5fd79d` passed the repaired post-source boundary,
+  then panicked after `907.32 s` with `pooled full correlation underflow`.
+  Both authorizations burned; no client state was promoted. No C6.3 repair,
+  rerun or pod work is authorized.
+- **Measured evidence.** The final attempt peaked at `33,484,832,768 B` RSS,
+  `44,525 MiB` external device use and `25,769,803,776 B` transient run data.
+  It read/wrote `26,071,834,624/29,579,071,488 B`. The inherited
+  `17,179,869,184-B` weight oracle dominated the retained 19.63-GB wrapper;
+  more than 462 s elapsed after both wrapper cohorts existed and before the
+  underflow. The exact correlation deficit is unknown.
+- **Setup/tests/credit.** The two-response harness unnecessarily required all
+  17 profiles: `2,092.76 s`, `12.93 GB` RSS. Local lifecycle, state,
+  mock/scaled and component tests did not exercise the finite composed pool.
+  The full-size cache/sketch differential remains component evidence only;
+  certificate bytes, prover/verifier time, acceptance, session and E2E credit
+  are all absent.
+- **Resume.** C7 starts only after an owner-supplied design and dedicated
+  branch. Its first pod experiment must serialize and verify the smallest
+  complete case with only its consumed profiles. New pods synchronize tracked
+  files only by GitHub HTTPS `git push`/`git pull`, never `gh`.
+
+- **2026-08-25 — Repaired C6.3 reaches the composed proof path, then exhausts
+  its finite full-correlation pool.** Clean `f5fd79d` reused the 17-profile
+  setup and ran for `907.32 s` before `pooled full correlation underflow`.
+  The registered suffix census was 707 full correlations per tape; the panic
+  omitted requested/remaining counts, so the exact deficit is unavailable.
+  The run produced no proof bytes, certificate, artifact or verifier replay;
+  both authorizations burned and the predecessor remained unpromoted. Process
+  RSS reached `33,484,832,768 B`; external device use reached `44,525 MiB`,
+  `869,269,536 B` above the design guard. The process read
+  `26,071,834,624 B`, wrote `29,579,071,488 B`, and the run tree peaked at
+  `25,769,803,776 B`. Wrapper output first appeared at 372 s and both cohorts
+  existed by about 445 s; the proof path then continued about 462 s before the
+  panic. The 19.63-GB retained wrapper was dominated by the inherited
+  `17,179,869,184-B` encoded weight oracle. Existing local tests checked the
+  lifecycle fix, constants and component/mock paths, not one finite production
+  allocation through the full composition; the failure therefore remained
+  late. Raw disposition:
+  `c63-e2e-correlation-underflow-2026-08-25-f5fd79d.json`. C6.3 is closed with
+  no gate credit; C7 is not yet open.
 
 - **2026-08-25 — First real C6.3 attempt fails closed at the post-source
   lifecycle boundary.** Clean `a2adb7a` generated all 17 reusable installed

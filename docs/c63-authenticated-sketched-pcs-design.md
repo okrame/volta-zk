@@ -182,9 +182,12 @@ D19 while supplying already encoded `w_l=C(m_l)` and `y_l=C(u_l)` initial
 oracles. Four 105-bit cores per authentication tape give eight bodies and
 `9,039,328 B`. The conservative executable layout assigns each D19 body its
 own authenticated predecessor/successor transition opening and 20-byte outer
-frame. Its public bulk is `12,276,610 B`; the complete designated tail is
-`2,704,637 B`. The resulting complete certificate is `28,692,111 B` and setup
-plus first is `129,889,808 B`. Both actual gates pass analytically. Filling
+frame. Its public bulk is `12,276,610 B`. The inherited response verifier also
+requires its `18,480-B` cache-fold target frame; omitting it makes the envelope
+unverifiable. With framing, the designated response envelope is `2,722,364 B`,
+complete `pi_final` is `2,723,157 B`, the complete certificate is
+`28,710,631 B`, and setup plus first is `129,908,328 B`. Both actual gates pass
+analytically. Filling
 `pi_final` all the way to its independent maximum would instead give
 `30,487,473 B`, so the two unused margins cannot be spent simultaneously.
 
@@ -674,7 +677,8 @@ errors cannot cancel because neither sparse equation adds the two tapes.
 
 This repair doubles the claimless body bytes to `9,039,328 B`. The selected
 conservative transition codec carries up to eight authenticated `A` openings,
-giving `28,692,111 B` total and `129,889,808 B` setup plus first. It consumes
+giving `28,710,631 B` total and `129,908,328 B` setup plus first after the
+inherited response-target frame. It consumes
 four rather than two WHIR masks per tape, moving the projected full-correlation
 census from 703 to 705. The sparse proof remains 1,496 bytes, but its two round
 streams now prove distinct `u_l=H m_l` relations. Screen v16 gives
@@ -862,12 +866,13 @@ The eight D22/D19 bodies add `9,039,328 B`. The paired-opening analytic lower
 screen has `11,231,314 B` public bulk and a `27,646,815-B` certificate, but it
 assumes query sharing that has no selected codec. The conservative layout
 serializes all eight transition openings and four 20-byte projected frames,
-giving `12,276,610 B` public bulk. The complete designated tail is
-`2,704,637 B`. The selected complete certificate is therefore `28,692,111 B`,
-leaving `1,307,889 B` below the experimental limit. Replacing the actual tail
-with its independent `4,499,999-B` maximum would give `30,487,473 B`; that is
-not composable with the full public-bulk maximum. Setup plus first is
-`129,889,808 B`. These are exact analytic maxima for screen v16, not
+giving `12,276,610 B` public bulk. The designated response envelope is
+`2,722,364 B` and complete `pi_final` is `2,723,157 B`, including the inherited
+response-target frame. The selected complete certificate is therefore
+`28,710,631 B`, leaving `1,289,369 B` below the experimental limit. Replacing
+the actual tail with its independent `4,499,999-B` maximum would give
+`30,487,473 B`; that is not composable with the full public-bulk maximum. Setup
+plus first is `129,908,328 B`. These are exact analytic maxima for screen v16, not
 serialized proof credit.
 
 The selected screen unions all 120 phase events at 105 bits. It separately
@@ -925,7 +930,10 @@ remains 105 bits. Canonical correction-row/envelope version-2 and
 public-argument/final-certificate version-3 codecs now exist locally. The exact
 output link passes over canonical live-cell
 inputs; resident source wiring is locally green and the complete CPU-verifier
-entry compiles with green constituent and ordering checks. Its first complete
+entry compiles with green constituent and ordering checks. The final certificate
+uses a two-level join: the disk wrapper binds the inherited C6.2 outer
+statement, and the C6.3 sketch argument binds that inherited statement. It must
+not equate the sketch statement directly with the wrapper. Its first complete
 serialized-candidate execution remains part of the A100 run.
 The historical exact byte, setup,
 `pi_final` and computational soundness screens are evaluated but remain
@@ -1241,9 +1249,9 @@ Merkle tree or a sketch-only commitment.
   independent review before privacy and full error accounting: **90--96%**.
 - Probability that the first complete GPT-2 certificate fits 30 MB:
   **88--95%** because screen v16 bounds the conservative eight-transition-
-  opening codec at `28,692,111 B`; real serialization still must reproduce it.
+  opening codec at `28,710,631 B`; real serialization still must reproduce it.
 - Probability that the new separation theorem and two-cohort codec preserve
-  `pi_final <4.5 MB`: **94--98%**; the exact local projection is `2,704,637 B`.
+  `pi_final <4.5 MB`: **94--98%**; the exact local projection is `2,723,157 B`.
 - Probability that the complete warm prover reaches `<20 s` on one A100:
   **50--70%**. The resident path is locally complete but has not produced one
   full-size certificate, so this remains an engineering estimate.

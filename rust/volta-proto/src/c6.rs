@@ -24,6 +24,7 @@ use std::path::{Path, PathBuf};
 use volta_field::{Fp, Fp2, P};
 
 use crate::c62_certificate::C62NativeFinalCertificate;
+use crate::c63_certificate::C63NativeFinalCertificate;
 use crate::c6_response_envelope::{C6ResponseProofEnvelope, C6_RESPONSE_PROOF_ENVELOPE_MAX_BYTES};
 
 pub type C6Digest = [u8; 32];
@@ -551,6 +552,22 @@ impl C6ClientAttempt {
         {
             return Err(C6Error::new(
                 "C6.2 certificate does not match the client-reserved attempt",
+            ));
+        }
+        Ok(())
+    }
+
+    fn matches_c63_certificate(self, certificate: &C63NativeFinalCertificate) -> C6Result<()> {
+        if certificate.slot != self.slot
+            || certificate.nonce != self.nonce
+            || certificate.setup_manifest_digest != self.setup_manifest_digest
+            || certificate.old_head.digest() != self.old_head_digest
+            || certificate.predecessor_certificate_digest != self.predecessor_certificate_digest
+            || certificate.correlation_ranges != self.correlation_ranges
+            || certificate.workload != self.workload
+        {
+            return Err(C6Error::new(
+                "C6.3 certificate does not match the client-reserved attempt",
             ));
         }
         Ok(())
@@ -1341,6 +1358,41 @@ impl C6ClientState {
         Ok(next)
     }
 
+    pub fn accepts_c63(self, certificate: &C63NativeFinalCertificate) -> C6Result<Self> {
+        self.validate()?;
+        certificate.validate().map_err(|error| C6Error::new(error.to_string()))?;
+        let attempt = self
+            .pending_attempt
+            .ok_or_else(|| C6Error::new("C6.3 certificate has no client-reserved attempt"))?;
+        attempt.matches_c63_certificate(certificate)?;
+        if certificate.protocol_digest != self.protocol_digest
+            || certificate.model_digest != self.model_digest
+            || certificate.params_digest != self.params_digest
+            || certificate.setup_manifest_digest != self.setup_manifest_digest
+            || certificate.connection_id != self.connection_id
+            || certificate.old_head != self.head
+            || certificate.predecessor_certificate_digest != self.accepted_certificate_digest
+        {
+            return Err(C6Error::new("C6.3 certificate is not a child of the durable head"));
+        }
+        let next = Self {
+            protocol_digest: self.protocol_digest,
+            model_digest: self.model_digest,
+            params_digest: self.params_digest,
+            setup_manifest_digest: self.setup_manifest_digest,
+            connection_id: self.connection_id,
+            head: certificate.new_head,
+            accepted_certificate_digest: certificate
+                .digest()
+                .map_err(|error| C6Error::new(error.to_string()))?,
+            next_slot: self.next_slot,
+            raw_high_water: self.raw_high_water,
+            pending_attempt: None,
+        };
+        next.validate()?;
+        Ok(next)
+    }
+
     pub fn reserve_attempt(
         self,
         nonce_entropy: C6Digest,
@@ -1631,6 +1683,21 @@ impl C6ClientStore {
             return Err(C6Error::new("C6.2 client compare-and-swap predecessor mismatch"));
         }
         let next = current.accepts_c62(certificate)?;
+        valid_client_state_transition(current, next)?;
+        atomic_replace_state(&self.path, next, AtomicFault::None)?;
+        Ok(next)
+    }
+
+    pub fn accept_c63(
+        &self,
+        expected: C6ClientState,
+        certificate: &C63NativeFinalCertificate,
+    ) -> C6Result<C6ClientState> {
+        let current = self.load()?;
+        if current != expected {
+            return Err(C6Error::new("C6.3 client compare-and-swap predecessor mismatch"));
+        }
+        let next = current.accepts_c63(certificate)?;
         valid_client_state_transition(current, next)?;
         atomic_replace_state(&self.path, next, AtomicFault::None)?;
         Ok(next)

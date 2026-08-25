@@ -123,7 +123,10 @@ C63_REDUCED_WRAPPER_PCS_BYTES = 2_668_730
 C63_REDUCED_OUTPUT_LINK_BYTES = 2_672_044
 C63_SOURCE_FUNCTIONAL_CORRECTION_BYTES = 64
 C63_SOURCE_FUNCTIONAL_CORRELATIONS_PER_TAPE = 2
-C63_RESPONSE_ENVELOPE_BYTES = 2_703_844
+# The inherited response verifier still needs its 18,480-byte public target
+# frame. C6.3 removes the dense cache proof, not this response-local input;
+# adding the fifth component also adds one 40-byte frame header.
+C63_RESPONSE_ENVELOPE_BYTES = 2_722_364
 C63_SPARSE_H_CLOSURE_CORRELATIONS_PER_TAPE = 44
 C63_SPARSE_H_CLOSURE_ERROR_NUMERATOR = 128
 C63_SYSTEMATIC_SPOT_FUSION_QUERIES = 4_420
@@ -1389,11 +1392,11 @@ def build_report() -> dict[str, Any]:
         PI_FINAL_LIMIT_BYTES - 1 - C63_RESIDUAL_AUX_PI_BEFORE_CLOSURE_BYTES
         == 1_796_986
     )
-    assert projected_pi_final_with_sparse_h == 2_704_637
-    assert certificate_with_projected_pi_before_outer_framing == 27_646_815
+    assert projected_pi_final_with_sparse_h == 2_723_157
+    assert certificate_with_projected_pi_before_outer_framing == 27_665_335
     assert (
         CERTIFICATE_LIMIT_BYTES - certificate_with_projected_pi_before_outer_framing
-        == 2_353_185
+        == 2_334_665
     )
     assert certificate_at_strict_pi_cap_before_new_public_framing == 29_442_177
     assert (
@@ -1401,16 +1404,16 @@ def build_report() -> dict[str, Any]:
         - certificate_at_strict_pi_cap_before_new_public_framing
         == 557_823
     )
-    assert independent_limb_certificate_with_projected_pi == 27_780_447
+    assert independent_limb_certificate_with_projected_pi == 27_798_967
     assert independent_limb_certificate_at_strict_pi_cap == 29_575_809
     assert CERTIFICATE_LIMIT_BYTES - independent_limb_certificate_at_strict_pi_cap == 424_191
-    assert independent_separate_certificate_with_projected_pi == 28_692_111
+    assert independent_separate_certificate_with_projected_pi == 28_710_631
     assert independent_separate_certificate_at_strict_pi_cap == 30_487_473
     assert CERTIFICATE_LIMIT_BYTES - independent_separate_certificate_at_strict_pi_cap == -487_473
     assert setup_with_sparse_descriptor == 101_197_697
     assert setup_plus_max_certificate == 131_197_697
-    assert setup_plus_projected_first == 128_844_512
-    assert setup_plus_conservative_codec_first == 129_889_808
+    assert setup_plus_projected_first == 128_863_032
+    assert setup_plus_conservative_codec_first == 129_908_328
     assert C63_SPARSE_SETUP_RESIDENT_BYTES == 805_306_368
     assert setup_resident_vram == 39_951_669_100
     assert VRAM_GUARD_BYTES - setup_resident_vram == 5_866_907_764

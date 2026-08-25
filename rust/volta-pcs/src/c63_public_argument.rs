@@ -91,6 +91,10 @@ impl C63VerifierSketchState {
         self.accepted_len
     }
 
+    pub fn profile_digest(&self) -> [u8; 32] {
+        self.profile_digest
+    }
+
     pub fn correction_root(&self) -> [u8; 32] {
         self.correction_root
     }

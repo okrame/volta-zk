@@ -536,6 +536,10 @@ impl C63GpuStateOwner {
         self.accepted_len
     }
 
+    pub fn profile_digest(&self) -> Hash {
+        self.profile_digest
+    }
+
     pub fn append_start(&self) -> u16 {
         self.append_start
     }

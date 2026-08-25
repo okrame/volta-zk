@@ -10,31 +10,44 @@ record; no external plan is authoritative.
 
 Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 
-- **Status.** Hardware checkpoint `3bd56a2` contains the resident coordinator,
-  exact `D=X-R` link, eight-body suffix, composed CPU verifier, canonical
-  production-profile binding, direct live-correction packer and two-cohort
-  provider materializer. Pod bootstrap and the mandatory full-size
-  differential pass; E2E has not begun.
+- **Status.** Candidate contains the resident coordinator, exact `D=X-R` link,
+  eight-body suffix, CPU verifier, production binding, live-correction packer,
+  two-cohort materializer and campaign boundary. Pod bootstrap and full-size
+  differential pass; record driver and E2E execution remain pending.
 - **Evidence.** The authorized pod has one exclusive A100 80 GB, `sm_80`, CUDA
-  12.8, 250 GB effective RAM and 228 GB admission storage. Genesis/successor
+  12.8, 250 GB RAM and 228 GB admission storage. Genesis/successor
   GPU states match the CPU oracle, including canonical zero root;
   transition walls are 15.129/9.204 ms and device peaks 1.31/1.64 GB. This and
-  earlier projection/spot/sparse results remain `credit:false` component data.
+  prior screens remain `credit:false` component data.
 - **Decision.** Keep two authentication tapes, eight WHIR bodies and four
   terminal tags. The driver fixes eight roots, closes sparse/source claims,
   consumes the existing global link, then draws WHIR masks. Screen v16 keeps
   105 bits per phase and gives `78.0190233428` complete bits. The conservative
-  codec projects `28,692,111 B` and `129,889,808 B` setup plus first. The
-  designated tail is `2,704,637 B`; both actual gates pass analytically, but
-  their unused maxima cannot be spent simultaneously.
+  corrected codec projects `28,710,631 B` and `129,908,328 B` setup plus first.
+  The designated envelope is `2,722,364 B` and complete `pi_final` is
+  `2,723,157 B`; both gates pass analytically.
 - **Checks.** Certificate `<=30,000,000 B`, warm prover `<20 s`, CPU verifier
   `<5 s`, verifier RSS `<=8 GB` and the 150-second prover mark are engineering
   targets: crossing them records `FAIL` but does not stop a viable run.
   Soundness `>=78.00` bits and protocol acceptance remain mandatory.
-- **Resume.** Finish and checkpoint the thin campaign boundary, then run one
-  cold `0→150` and one immediate warm
+- **Resume.** Checkpoint and compile the campaign boundary on the pod, finish
+  only the thin record-driver mode, then run one cold `0→150` and one warm
   `150→200` response. Retain complete artifacts after byte/time/RSS misses.
   Stop only for cryptographic failure, invalid transition or imminent loss.
+
+- **2026-08-25 — Complete campaign boundary restores the inherited response
+  target and the two-level statement join.** C6.3 now serializes and replays
+  the response-local cache-fold target frame required by the inherited C6.2
+  verifier. The sketch argument matches the inherited outer statement, while
+  that statement remains separately bound to the disk wrapper; directly
+  equating sketch and wrapper would reject honest transcripts. The provider
+  proposes the resident successor, seals inherited and eight-body proofs,
+  emits the final certificate, reloads the four-file artifact and exposes the
+  ordinary-CPU verifier transition. Focused C6.3 tests, CUDA-feature build and
+  corrected v16 budget pass. Projections are `28,710,631 B` certificate,
+  `2,723,157 B` complete `pi_final`, `129,908,328 B` setup plus first and
+  `78.0190233428` bits. This is executable local integration, not E2E, timing,
+  memory, proof-size or hardware credit. The pod record driver is next.
 
 - **2026-08-25 — Canonical full-size GPU/CPU differential passes.** Clean
   checkpoint `3bd56a2` ran the production D22-to-D19 setup, canonical GPU zero
@@ -101,8 +114,9 @@ Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
   Focused C6.3 tests pass 31/31, the CUDA-feature path passes `cargo check`,
   and analytic screen v16 passes. Version 16 supersedes the four-opening v15
   byte screen: a continuation needs predecessor and successor `A` openings
-  for all four D19 bodies. The corrected candidate is `28,692,111 B`, its
-  designated tail is `2,704,637 B`, and setup plus first is `129,889,808 B`.
+  for all four D19 bodies. After restoring the inherited response-target
+  frame, the corrected candidate is `28,710,631 B`, complete `pi_final` is
+  `2,723,157 B`, and setup plus first is `129,908,328 B`.
   Eight pending initial owners retain exactly
   `637,534,208 B`; their conservative overlap with GW4, `H` and both states is
   `41,196,590,892 B`, leaving `4,621,985,972 B` below the device guard. The

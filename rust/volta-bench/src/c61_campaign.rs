@@ -12,8 +12,10 @@ use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+use std::sync::Arc;
 #[cfg(feature = "c6-trace")]
-use volta_accel::Backend;
+use volta_accel::{Backend, DeviceSlice};
 use volta_gpt2::{
     decode_verifier_model_canonical, encode_verifier_model_canonical, Gpt2VerifierModel,
 };
@@ -27,8 +29,12 @@ use volta_mac::{
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_pcg::ProductionFaseDConnection;
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
-use volta_pcs::c61_authenticated_whir::C62ResponseCompilerBinding;
+use volta_pcs::c61_authenticated_whir::{
+    C62ResponseCompilerBinding, C63AuthenticatedWhirMaskRange,
+};
 use volta_pcs::c61_authenticated_whir_p3::C61CompilerVerifierProfile;
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+use volta_pcs::c62_gpu_whir::C62GpuMmcs;
 #[cfg(feature = "c61-p3-authenticated-reference")]
 use volta_pcs::c61_authenticated_whir_p3::{
     c62_authenticated_p3_parameter_digest,
@@ -55,29 +61,39 @@ use volta_pcs::c61_public_compression::C61NativeComponent;
 use volta_pcs::c6_blind_round_coordinator::{
     assemble_c61_native_exact_production_nbr2_certificate,
     assemble_c62_native_exact_production_nbr2_certificate,
+    assemble_c63_exact_production_components,
     decode_c62_native_exact_production_blind_envelope,
+    finish_c63_production_blind_with_persisted_link, finish_c63_resident_sketch_suffix,
     finish_c61_native_production_blind_with_persisted_nbr2_link,
     finish_c62_native_decoded_nbr2_verifier,
     finish_c62_native_production_blind_with_persisted_nbr2_link,
     materialize_c61_native_cache_append_owner, materialize_c61_native_cache_append_verifier_owner,
     prepare_c61_native_decoded_blind_verifier, prepare_c61_native_terminal_compiler,
-    prove_c61_native_production_blind_components, C61NativeExactProductionNbr2Certificate,
-    C61NativeProductionBlindProverOutput, C62ExactProductionNbr2VerifierOutput,
-    C62NativeExactProductionNbr2Certificate,
+    prepare_c63_decoded_blind_verifier, prepare_c63_resident_sketch_suffix,
+    prepare_c63_terminal_compiler, prove_c61_native_production_blind_components,
+    prove_c63_production_blind_components, verify_c63_complete_decoded_response,
+    C61NativeExactProductionNbr2Certificate, C61NativeProductionBlindProverOutput,
+    C62ExactProductionNbr2VerifierOutput, C62NativeExactProductionNbr2Certificate,
+    C63CompleteProductionVerifierOutput, C63ProductionBlindProverOutput,
 };
 #[cfg(feature = "c6-trace")]
 use volta_pcs::C61ProductionResidualRelationBound;
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_pcs::{
     build_c61_production_arithmetic_frame, prepare_c6_blind_residual_statement_fused,
-    C61ArithmeticFrame, C62PublicArgument, C6BlindResidualFusedCompilerContext,
-    C6BlindResidualStatement, C6Nbr2CorrectionFunctional,
+    C61ArithmeticFrame, C62PublicArgument, C63SparseSetupReference, C63SparseSketchReference,
+    C63VerifierSketchState, C6BlindResidualFusedCompilerContext,
+    C6BlindResidualPendingTransferFrame, C6BlindResidualStatement,
+    C6BlindResidualSumcheckProof, C6Nbr2CorrectionFunctional,
 };
 use volta_pcs::{
     c61_response_transcript_context_digest, c6_wrapper_profile_digest,
+    c63_pack_resident_append_corrections, decode_c63_response_tail,
     finish_production_c62_native_live_wrapper_roots_cuda,
     install_production_c61_native_live_wrapper_roots_verifier,
+    install_production_c63_authenticated_sketch_live_wrapper_roots_verifier,
     materialize_production_c61_native_live_wrapper_roots_cuda,
+    materialize_production_c63_authenticated_sketch_live_wrapper_roots_cuda,
     precommit_production_c62_native_cache_roots_cuda,
     spawn_c61_private_entropy_duplex_transcript_broker, C61EqualityDrawn, C61InteractiveTape,
     C61InteractiveTapeBundle, C61JointPublicArgument, C61PrivateEntropyBrokerHandle,
@@ -92,8 +108,8 @@ use volta_pcs::{
 #[cfg(feature = "c6-trace")]
 use volta_pcs::{
     C61NativeLiveWrapperSources, C6LiveWrapperMaskSeed, C6PersistedLiveWrapperRootBinding,
-    C6PersistentCacheStateWitness, C6PersistentCacheStaticProfile,
-    C6VerifierLiveWrapperRootBinding,
+    C6PersistentCacheStateWitness, C6PersistentCacheStaticProfile, C6VerifierLiveWrapperRootBinding,
+    C63GpuSetupOwner, C63GpuStateOwner, C63GpuTileMetadata,
 };
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_proto::c6_residual::{C6CompiledNativeTargetFunctional, C6NativeTargetProverBridgeFold};
@@ -116,6 +132,8 @@ use volta_proto::{
 use volta_proto::{
     C62NativeFinalCertificate, C62NativeWrapperCommitments, C62_NATIVE_CERTIFICATE_VERSION,
     C62_NATIVE_WRAPPER_QUERIES,
+    C63NativeFinalCertificate, C63NativeWrapperCommitments, C63_NATIVE_CERTIFICATE_VERSION,
+    C63_NATIVE_WRAPPER_QUERIES,
 };
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_proto::{C6ResidualFusedCoefficientArena, C6ResidualFusedWitnessView};
@@ -141,6 +159,8 @@ const CAMPAIGN_FILE_NAMES: [&str; 5] = [
 ];
 const C62_CAMPAIGN_ARTIFACT_PROFILE: &str =
     "C6.2-C62PA1-C62PIF1-C6NBR2-Fiat-Shamir-native-campaign-v1";
+const C63_CAMPAIGN_ARTIFACT_PROFILE: &str =
+    "C6.3-C62PA1-C63PUB3-C63PIF2-authenticated-sketch-campaign-v1";
 const C62_CAMPAIGN_FILE_NAMES: [&str; 4] =
     ["certificate.bin", "verifier-replay.bin", "setup-manifest.bin", "public-instance.bin"];
 const CAMPAIGN_CLIENT_PARAMETERS_MAGIC: &[u8; 8] = b"C61CP4\0\0";
@@ -261,6 +281,27 @@ pub struct C62CampaignArtifact {
     pub quantization_digest: [u8; 32],
     pub public_instance: C61PublicWorkloadInstance,
     pub public_argument: C62PublicArgument,
+    pub source_git_commit: String,
+    pub wire_bytes: u64,
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub struct C63CampaignArtifact {
+    pub certificate: C63NativeFinalCertificate,
+    pub verifier_replay: C6BoundProductionVerifierReplay,
+    pub setup_manifest: C6SetupManifest,
+    pub verifier_model: Gpt2VerifierModel,
+    pub source_manifest: C6TraceSourceManifest,
+    pub operation_plan_artifact: C6OperationPlanArtifact,
+    pub verifier_extraction_artifact: C6InstanceExtractionArtifact,
+    pub verifier_plan: C6InstalledOperationPlan,
+    pub verifier_extraction: C6DecodedInstanceExtractionPlan,
+    pub verifier_extraction_setup_bytes: u64,
+    pub native_profile: C6CanonicalTargetProfile,
+    pub compiler_profile: C61CompilerVerifierProfile,
+    pub quantization_digest: [u8; 32],
+    pub public_instance: C61PublicWorkloadInstance,
+    pub inherited_public_argument: C62PublicArgument,
     pub source_git_commit: String,
     pub wire_bytes: u64,
 }
@@ -783,6 +824,34 @@ pub fn c61_campaign_native_mask_ranges(
     Ok([tape0, tape1, tape0, tape1, tape0, tape1])
 }
 
+/// Derive the sole C6.3 four-mask range. Tape separation is encoded by the
+/// C6.3 authentication domain, so both tapes share this reserved ordinal span.
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub fn c63_campaign_mask_range(
+    attempt: C6ClientAttempt,
+) -> Result<C63AuthenticatedWhirMaskRange, String> {
+    attempt.correlation_ranges.validate().map_err(|error| error.to_string())?;
+    let slot = u16::try_from(attempt.slot)
+        .map_err(|_| "C6.3 WHIR mask slot exceeds u16".to_owned())?;
+    let [first, second] = attempt.correlation_ranges.coordinates;
+    if first.stage != second.stage
+        || first.start != second.start
+        || first.count < volta_pcs::C63_AUTHENTICATED_WHIR_MASKS_PER_TAPE as u64
+        || second.count < volta_pcs::C63_AUTHENTICATED_WHIR_MASKS_PER_TAPE as u64
+    {
+        return Err("C6.3 WHIR mask reservation differs between tapes".to_owned());
+    }
+    let range = C63AuthenticatedWhirMaskRange {
+        stage: u8::try_from(first.stage)
+            .map_err(|_| "C6.3 WHIR mask stage exceeds u8".to_owned())?,
+        slot,
+        range_start: u32::try_from(first.start)
+            .map_err(|_| "C6.3 WHIR mask range start exceeds u32".to_owned())?,
+    };
+    range.end().map_err(|error| error.to_string())?;
+    Ok(range)
+}
+
 /// Consume the canonical T1 workload through the campaign-owned duplex
 /// response session. The response executor receives only the two endpoint
 /// transcripts; verifier entropy and the broker remain private to `session`.
@@ -925,6 +994,29 @@ pub fn build_c62_campaign_disk_wrapper_statement(
     .map_err(|error| error.to_string())
 }
 
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub fn build_c63_campaign_disk_wrapper_statement(
+    response_statement: C61ResponseStatementBinding,
+    certificate: &C63NativeFinalCertificate,
+    public_instance: &C61PublicWorkloadInstance,
+    residual: &C6T1DiskResidualOwner,
+    native_profile: &C6CanonicalTargetProfile,
+    compiler_profile: &C61CompilerVerifierProfile,
+) -> Result<C61StatementBinding, String> {
+    if response_statement.digest() != public_instance.response_statement_digest() {
+        return Err("C6.3 disk response statement differs from public instance".to_owned());
+    }
+    C61StatementBinding::bind_production_response_prefix(
+        response_statement,
+        certificate.retained_response_binding(),
+        public_instance.preimage(),
+        residual.manifest(),
+        native_profile,
+        compiler_profile,
+    )
+    .map_err(|error| error.to_string())
+}
+
 /// Linear live owner after the four persisted roots and exact residual
 /// relation have been fixed on both response transcripts.
 #[cfg(feature = "c6-trace")]
@@ -964,6 +1056,19 @@ impl C61CampaignLiveResidualRooted {
 pub struct C61CampaignNativeBlindOwner {
     blind: C61NativeProductionBlindProverOutput,
     statements: [C6BlindResidualStatement; 2],
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub struct C63CampaignNativeBlindOwner {
+    blind: C63ProductionBlindProverOutput,
+    statements: [C6BlindResidualStatement; 2],
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+impl C63CampaignNativeBlindOwner {
+    fn into_parts(self) -> (C63ProductionBlindProverOutput, [C6BlindResidualStatement; 2]) {
+        (self.blind, self.statements)
+    }
 }
 
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
@@ -1045,6 +1150,53 @@ pub fn prove_c61_campaign_native_blind(
         transcript,
     )?;
     Ok(C61CampaignNativeBlindOwner { blind, statements })
+}
+
+/// Execute only the residual blind prefix. The cache is authenticated by the
+/// resident C6.3 state and cannot re-enter as a dense participant here.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub fn prove_c63_campaign_native_blind(
+    roots: &C61CampaignLiveRoots,
+    residual: &C6T1ProductionResidualBoundOwner,
+    attempt: &mut C6ProductionPairedPcgAttempt,
+    transcript: &mut Transcript,
+) -> Result<C63CampaignNativeBlindOwner, String> {
+    if roots.provider_roots.cohorts().len() != 2
+        || roots.provider_roots.session_digest() != roots.session_digest
+    {
+        return Err("C6.3 blind root or session census differs".to_owned());
+    }
+    let response = residual.response();
+    let compiler = C6BlindResidualFusedCompilerContext::new(
+        response.provider().operation_plan(),
+        response.provider().extraction(),
+        response.provider().runtime(),
+        residual.provider_linear(),
+        residual.relation(),
+    );
+    let witness = C6ResidualFusedWitnessView::new(
+        residual.relation().manifest(),
+        residual.leaf(),
+        residual.closure(),
+        residual.auxiliary(),
+    )
+    .map_err(|error| error.to_string())?;
+    let arena = C6ResidualFusedCoefficientArena::new(residual.relation().manifest());
+    let statements: [C6BlindResidualStatement; 2] = (0..2u8)
+        .map(|repetition| prepare_c6_blind_residual_statement_fused(compiler, repetition))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?
+        .try_into()
+        .map_err(|_| "C6.3 blind statement census differs".to_owned())?;
+    let blind = prove_c63_production_blind_components(
+        &statements,
+        compiler,
+        witness,
+        &arena,
+        attempt.prover_streams_array_mut(),
+        transcript,
+    )?;
+    Ok(C63CampaignNativeBlindOwner { blind, statements })
 }
 
 /// Exact response-owned four-chain output. Primary and secondary executions
@@ -1809,6 +1961,222 @@ pub fn finish_c62_campaign_native_proof(
     )
 }
 
+/// Complete the inherited native/compiler proof and the resident C6.3
+/// authenticated-sketch suffix under one correlation cursor.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+#[allow(clippy::too_many_arguments)]
+pub fn finish_c63_campaign_native_proof(
+    setup: &C6SetupManifest,
+    sparse_setup: &C63SparseSetupReference,
+    h: &C63SparseSketchReference,
+    mmcs: &C62GpuMmcs,
+    predecessor_verifier: &C63VerifierSketchState,
+    predecessor_provider: Option<Arc<C63GpuStateOwner>>,
+    successor: Arc<C63GpuStateOwner>,
+    public_attempt: C6ClientAttempt,
+    roots: &C61CampaignLiveRoots,
+    residual: &C6T1ProductionResidualBoundOwner,
+    blind: C63CampaignNativeBlindOwner,
+    equality: C61EqualityDrawn,
+    functional: C62CampaignNativeFunctionalOwner,
+    profile: &C6CanonicalTargetProfile,
+    compiler_profile: &C61CompilerVerifierProfile,
+    contexts: &C62CampaignNativeContexts,
+    admission: C61ProductionPersistedResourceAdmission,
+    attempt: &mut C6ProductionPairedPcgAttempt,
+    backend: &mut Backend,
+    gpu: &C62ProductionGpuWhir,
+    spill_root: &Path,
+    transcript: &mut Transcript,
+) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>), String> {
+    use rand_010::SeedableRng;
+
+    let (blind, statements) = blind.into_parts();
+    let terminal = prepare_c63_terminal_compiler(&blind, equality, transcript)?;
+    let (
+        primary,
+        functional,
+        joint,
+        bridge,
+        native_profile_digest,
+        body_schedule_digest,
+        response_binding_digest,
+        root_binding_digest,
+        outer_statement_digest,
+    ) = functional.into_parts();
+    if joint.challenge().schedule_digest != body_schedule_digest
+        || bridge.functional_digest != functional.functional_digest()
+    {
+        return Err("C6.3 native suffix functional schedule differs".to_owned());
+    }
+    let response = residual.response();
+    let nbr2 = C6Nbr2CorrectionFunctional::new(
+        roots.provider_roots.fixed(),
+        outer_statement_digest,
+        residual.relation().manifest().digest(),
+        roots.provider_roots.source_binding_digest(),
+        response.source_schedule().digest,
+        native_profile_digest,
+        functional.functional_digest(),
+        functional.leaf_coefficients(),
+        bridge.correction,
+    )
+    .map_err(|error| error.to_string())?;
+    let binding = C62ResponseCompilerBinding {
+        schedule_digest: body_schedule_digest,
+        response_binding_digest,
+        functional_digest: functional.functional_digest(),
+        nbr2_statement_digest: nbr2.digest(),
+        root_binding_digest,
+        compiler_correction: bridge.correction,
+    };
+    binding.validate().map_err(|error| error.to_string())?;
+    let native = joint.prepare_nbr2_link(bridge.base_value, binding)?;
+
+    let compiler_roots = [spill_root.join("compiler0"), spill_root.join("compiler1")];
+    let link_root = spill_root.join("native-link");
+    for path in compiler_roots.iter().chain(std::iter::once(&link_root)) {
+        fs::create_dir(path).map_err(|error| format!("create C6.3 spill lane: {error}"))?;
+    }
+    let inputs = terminal.inputs();
+    if inputs.relation_challenges_digest() != residual.relation().digest()
+        || compiler_profile.operation_plan_digest()
+            != response.provider().operation_plan().artifact_digest()
+    {
+        return Err("C6.3 compiler setup or relation differs from terminal owner".to_owned());
+    }
+    let ids = C61NativeChainId::ordered();
+    let compiler = {
+        let (stream0, stream1) = attempt.prover_streams_mut();
+        [
+            run_c62_authenticated_whir_p3_production_compiler_fiat_shamir_in_attempt(
+                response.provider().operation_plan(),
+                compiler_profile.terminal_metadata().clone(),
+                response.provider().extraction(),
+                response.provider().runtime(),
+                residual.relation(),
+                inputs.leaf_points(),
+                inputs.auxiliary_points(),
+                *inputs.terminal_functionals(),
+                inputs.output_beta(),
+                inputs.relation_root(),
+                contexts.lane_contexts[4],
+                &compiler_roots[0],
+                admission,
+                gpu,
+                stream0,
+                ids[4],
+                contexts.mask_ranges[4],
+            )?,
+            run_c62_authenticated_whir_p3_production_compiler_fiat_shamir_in_attempt(
+                response.provider().operation_plan(),
+                compiler_profile.terminal_metadata().clone(),
+                response.provider().extraction(),
+                response.provider().runtime(),
+                residual.relation(),
+                inputs.leaf_points(),
+                inputs.auxiliary_points(),
+                *inputs.terminal_functionals(),
+                inputs.output_beta(),
+                inputs.relation_root(),
+                contexts.lane_contexts[5],
+                &compiler_roots[1],
+                admission,
+                gpu,
+                stream1,
+                ids[5],
+                contexts.mask_ranges[5],
+            )?,
+        ]
+    };
+    let canonical_runtime = response
+        .provider()
+        .runtime()
+        .canonical_runtime_values(response.provider().extraction())
+        .map_err(|error| error.to_string())?;
+    let arithmetic = build_c61_production_arithmetic_frame(
+        terminal.ready(),
+        outer_statement_digest,
+        &canonical_runtime,
+        inputs.functional_fold(),
+    )
+    .map_err(|error| error.to_string())?;
+
+    let mut entropy = [0u8; 32];
+    OsRng
+        .try_fill_bytes(&mut entropy)
+        .map_err(|error| format!("C6.3 WHIR entropy unavailable: {error}"))?;
+    let mut rng = rand_010::rngs::StdRng::from_seed(entropy);
+    let profile_digest = sparse_setup.production_profile_digest()?;
+    let (prepared_suffix, source_claims) = prepare_c63_resident_sketch_suffix(
+        mmcs.clone(),
+        h,
+        public_attempt,
+        setup,
+        roots.provider_roots.fixed(),
+        outer_statement_digest,
+        profile_digest,
+        roots.provider_roots.source_binding_digest(),
+        predecessor_verifier,
+        predecessor_provider,
+        Arc::clone(&successor),
+        response.cache_append_sources(),
+        response.source_schedule(),
+        response.paired_sources(),
+        attempt.prover_streams_array_mut(),
+        transcript,
+        &mut rng,
+    )?;
+    let proof = finish_c63_production_blind_with_persisted_link(
+        &roots.provider_roots,
+        blind,
+        &nbr2,
+        source_claims,
+        &terminal,
+        native,
+        attempt.prover_streams_array_mut(),
+        backend,
+        &link_root,
+        roots.session_digest,
+        transcript,
+    )?;
+    let suffix = finish_c63_resident_sketch_suffix(
+        prepared_suffix,
+        &proof,
+        c63_campaign_mask_range(public_attempt)?,
+        attempt.prover_streams_array_mut(),
+        &mut rng,
+    )?;
+    let (sketch_public_argument, sparse_h_closure, terminal_proofs) = suffix.into_parts();
+    let response_cache_fold_targets =
+        response.cache_target_frame().encode().map_err(|error| error.to_string())?;
+    let product_coordinate_one = residual
+        .relation()
+        .claims()
+        .product_coordinate(residual.relation().manifest(), 1)
+        .map_err(|error| error.to_string())?
+        .payload_bytes();
+    let (inherited, proof_envelope) = assemble_c63_exact_production_components(
+        roots.provider_roots.fixed().statement_digest(),
+        native_profile_digest,
+        functional.functional_digest(),
+        response_binding_digest,
+        root_binding_digest,
+        profile,
+        primary,
+        compiler,
+        arithmetic,
+        &product_coordinate_one,
+        &response_cache_fold_targets,
+        &statements,
+        roots.provider_roots.fixed(),
+        proof,
+        &sparse_h_closure,
+        terminal_proofs,
+    )?;
+    Ok((inherited.encoded().to_vec(), sketch_public_argument, proof_envelope))
+}
+
 /// Exact native provider output after the response, four-root wrapper,
 /// C6NBR2 receipt and C6PA2 assembly have all been consumed once.
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
@@ -2042,6 +2410,124 @@ pub fn seal_c62_campaign_native_output(
     Ok(C62CampaignSealedNativeOutput { certificate, public_instance })
 }
 
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub struct C63CampaignSealedNativeOutput {
+    pub certificate: C63NativeFinalCertificate,
+    pub public_instance: C61PublicWorkloadInstance,
+}
+
+/// Seal the C6.3 certificate from the two live wrapper roots and the two
+/// public arguments. The final state head is derived by the certificate codec.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+#[allow(clippy::too_many_arguments)]
+pub fn seal_c63_campaign_native_output(
+    setup: &C6SetupManifest,
+    attempt: C6ClientAttempt,
+    old_head: C6CacheHead,
+    response_statement: &C61ResponseStatementBinding,
+    workload: C61PublicWorkloadPreimage,
+    roots: &C61CampaignLiveRoots,
+    residual: &C6T1ProductionResidualBoundOwner,
+    inherited_public_argument: Vec<u8>,
+    sketch_public_argument: Vec<u8>,
+    proof_envelope: Vec<u8>,
+) -> Result<C63CampaignSealedNativeOutput, String> {
+    setup.validate().map_err(|error| error.to_string())?;
+    old_head.validate().map_err(|error| error.to_string())?;
+    let setup_digest = setup.digest().map_err(|error| error.to_string())?;
+    let fixed = roots.provider_roots.fixed();
+    let commitments = fixed.commitments();
+    if commitments.len() != 2
+        || roots.verifier_roots.fixed().statement_digest() != fixed.statement_digest()
+        || roots.verifier_roots.fixed().binding_digest() != fixed.binding_digest()
+        || roots
+            .verifier_roots
+            .fixed()
+            .commitments()
+            .iter()
+            .map(|commitment| commitment.root)
+            .ne(commitments.iter().map(|commitment| commitment.root))
+        || setup_digest != attempt.setup_manifest_digest
+        || old_head.digest() != attempt.old_head_digest
+        || workload.workload() != attempt.workload
+        || response_statement.digest() == fixed.statement_digest()
+    {
+        return Err("C6.3 native seal input binding mismatch".to_owned());
+    }
+    let wrapper_roots: [[u8; 32]; 2] = commitments
+        .iter()
+        .map(|commitment| commitment.root)
+        .collect::<Vec<_>>()
+        .try_into()
+        .map_err(|_| "C6.3 native seal root census differs".to_owned())?;
+    let inherited =
+        C62PublicArgument::decode(&inherited_public_argument).map_err(|error| error.to_string())?;
+    let public_argument_statement_digest = inherited.statement_digest();
+    validate_campaign_statement_domains(
+        response_statement.digest(),
+        fixed.statement_digest(),
+        public_argument_statement_digest,
+    )?;
+    let public_instance = workload
+        .bind_statements(response_statement.digest(), public_argument_statement_digest)
+        .map_err(|error| error.to_string())?;
+    let retained_response = residual.response().encoded_c62_retained_response()?;
+    let mut retained_transcript = Vec::with_capacity(
+        retained_response.len() + inherited_public_argument.len() + sketch_public_argument.len(),
+    );
+    retained_transcript.extend_from_slice(&retained_response);
+    retained_transcript.extend_from_slice(&inherited_public_argument);
+    retained_transcript.extend_from_slice(&sketch_public_argument);
+    let relation = residual.relation();
+    let mut certificate = C63NativeFinalCertificate {
+        version: C63_NATIVE_CERTIFICATE_VERSION,
+        wrapper_queries: C63_NATIVE_WRAPPER_QUERIES,
+        protocol_digest: setup.protocol_digest,
+        model_digest: setup.model_digest,
+        params_digest: setup.params_digest,
+        setup_manifest_digest: setup_digest,
+        connection_id: setup.connection_id,
+        nonce: attempt.nonce,
+        slot: attempt.slot,
+        correlation_ranges: attempt.correlation_ranges,
+        predecessor_certificate_digest: attempt.predecessor_certificate_digest,
+        old_head,
+        new_head: C6CacheHead {
+            epoch: old_head.epoch + 1,
+            cache_len: attempt.workload.new_context,
+            cache_root: [0; 32],
+            producer_transition_digest: [0; 32],
+        },
+        workload: attempt.workload,
+        public_output_digest: public_instance.preimage().public_output_digest(),
+        wrapper: C63NativeWrapperCommitments {
+            statement_digest: fixed.statement_digest(),
+            residual_root: wrapper_roots[0],
+            auxiliary_root: wrapper_roots[1],
+            source_binding_digest: roots.provider_roots.source_binding_digest(),
+        },
+        residual: relation.claims().residual(),
+        retained_transcript_digest: [0; 32],
+        proof_envelope_digest: [0; 32],
+        transition_statement_digest: [0; 32],
+        retained_transcript,
+        proof_envelope: proof_envelope.clone(),
+    }
+    .seal()
+    .map_err(|error| error.to_string())?;
+    let encoded = certificate.encode().map_err(|error| error.to_string())?;
+    certificate = C63NativeFinalCertificate::decode(&encoded).map_err(|error| error.to_string())?;
+    if certificate.wrapper.residual_root != wrapper_roots[0]
+        || certificate.wrapper.auxiliary_root != wrapper_roots[1]
+        || certificate.inherited_public_argument() != inherited_public_argument
+        || certificate.sketch_public_argument() != sketch_public_argument
+        || certificate.proof_envelope != proof_envelope
+    {
+        return Err("C6.3 native seal strict round trip differs from live owners".to_owned());
+    }
+    Ok(C63CampaignSealedNativeOutput { certificate, public_instance })
+}
+
 /// Complete live provider result plus the client-private state required for
 /// independent disk verification. Only `certificate` is provider wire.
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
@@ -2261,6 +2747,271 @@ pub struct C62CampaignCachePrecommitOwner {
     proposed_head: C6ProposedCacheHead,
     cache_precommit: C62PersistedNativeCachePrecommit,
     run_root: PathBuf,
+}
+
+/// Pre-response C6.3 transition intent. The provisional head is used only by
+/// the inherited response statement; the final certificate derives its real
+/// state head from the accepted sketch roots.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub struct C63CampaignTransitionOwner {
+    workload_owner: C62CampaignWorkloadOwner,
+    public_workload: C61PublicWorkloadPreimage,
+    old_head: C6CacheHead,
+    response_head_intent: C6ProposedCacheHead,
+    predecessor_provider: Option<Arc<C63GpuStateOwner>>,
+    predecessor_verifier: C63VerifierSketchState,
+    run_root: PathBuf,
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+impl C63CampaignTransitionOwner {
+    pub fn old_head(&self) -> C6CacheHead {
+        self.old_head
+    }
+
+    pub fn response_head_intent(&self) -> C6ProposedCacheHead {
+        self.response_head_intent
+    }
+
+    pub fn workload(&self) -> volta_proto::C6Workload {
+        self.public_workload.workload()
+    }
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub fn c63_campaign_genesis_head(
+    setup: &C6SetupManifest,
+    sparse_setup: &C63SparseSetupReference,
+    state: &C63VerifierSketchState,
+) -> Result<C6CacheHead, String> {
+    setup.validate().map_err(|error| error.to_string())?;
+    let profile_digest = sparse_setup.production_profile_digest()?;
+    if state.epoch() != 0
+        || state.accepted_len() != 0
+        || state.profile_digest() != profile_digest
+        || state.correction_root() == [0; 32]
+        || state.encoded_sketch_root() == [0; 32]
+    {
+        return Err("C6.3 genesis sketch state differs from setup".to_owned());
+    }
+    let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c6.3/genesis-state-head/v1");
+    hasher.update(&setup.digest().map_err(|error| error.to_string())?);
+    hasher.update(&setup.connection_id);
+    hasher.update(&profile_digest);
+    hasher.update(&state.correction_root());
+    hasher.update(&state.encoded_sketch_root());
+    let head = C6CacheHead {
+        epoch: 0,
+        cache_len: 0,
+        cache_root: *hasher.finalize().as_bytes(),
+        producer_transition_digest: [0; 32],
+    };
+    head.validate().map_err(|error| error.to_string())?;
+    Ok(head)
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub fn c63_campaign_response_head_intent(
+    setup: &C6SetupManifest,
+    sparse_setup: &C63SparseSetupReference,
+    old_head: C6CacheHead,
+    workload: &C61PublicWorkloadPreimage,
+    predecessor: &C63VerifierSketchState,
+) -> Result<C6ProposedCacheHead, String> {
+    setup.validate().map_err(|error| error.to_string())?;
+    old_head.validate().map_err(|error| error.to_string())?;
+    let profile_digest = sparse_setup.production_profile_digest()?;
+    if predecessor.profile_digest() != profile_digest
+        || u32::from(predecessor.accepted_len()) != old_head.cache_len
+        || predecessor.epoch() != old_head.epoch
+        || workload.workload().old_context != old_head.cache_len
+    {
+        return Err("C6.3 response intent predecessor differs".to_owned());
+    }
+    let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c6.3/response-head-intent/v1");
+    hasher.update(&setup.digest().map_err(|error| error.to_string())?);
+    hasher.update(&old_head.digest());
+    hasher.update(&workload.digest());
+    hasher.update(&profile_digest);
+    hasher.update(&predecessor.correction_root());
+    hasher.update(&predecessor.encoded_sketch_root());
+    let root = *hasher.finalize().as_bytes();
+    C6ProposedCacheHead::successor(old_head, workload.workload(), root)
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+fn prepare_c63_campaign_transition_inner<W: Into<C62CampaignWorkloadOwner>>(
+    setup: &C6SetupManifest,
+    sparse_setup: &C63SparseSetupReference,
+    workload_owner: W,
+    public_workload: C61PublicWorkloadPreimage,
+    predecessor_provider: Option<Arc<C63GpuStateOwner>>,
+    predecessor_verifier: C63VerifierSketchState,
+    expected_old_head: Option<C6CacheHead>,
+    run_root: &Path,
+) -> Result<C63CampaignTransitionOwner, String> {
+    let workload_owner = validate_c62_campaign_cache_precommit_inputs(
+        setup,
+        workload_owner,
+        &public_workload,
+        run_root,
+    )?;
+    let profile_digest = sparse_setup.production_profile_digest()?;
+    let old_head = match (expected_old_head, predecessor_provider.as_deref()) {
+        (None, None) => c63_campaign_genesis_head(setup, sparse_setup, &predecessor_verifier)?,
+        (Some(head), Some(provider))
+            if provider.profile_digest() == profile_digest
+                && provider.epoch() == predecessor_verifier.epoch()
+                && provider.accepted_len() == predecessor_verifier.accepted_len()
+                && provider.correction_root() == predecessor_verifier.correction_root()
+                && provider.encoded_sketch_root() == predecessor_verifier.encoded_sketch_root() =>
+        {
+            head.validate().map_err(|error| error.to_string())?;
+            head
+        }
+        _ => return Err("C6.3 provider/verifier predecessor ownership differs".to_owned()),
+    };
+    let response_head_intent = c63_campaign_response_head_intent(
+        setup,
+        sparse_setup,
+        old_head,
+        &public_workload,
+        &predecessor_verifier,
+    )?;
+    Ok(C63CampaignTransitionOwner {
+        workload_owner,
+        public_workload,
+        old_head,
+        response_head_intent,
+        predecessor_provider,
+        predecessor_verifier,
+        run_root: run_root.to_path_buf(),
+    })
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub fn prepare_c63_campaign_genesis_transition<W: Into<C62CampaignWorkloadOwner>>(
+    setup: &C6SetupManifest,
+    sparse_setup: &C63SparseSetupReference,
+    workload_owner: W,
+    public_workload: C61PublicWorkloadPreimage,
+    predecessor_verifier: C63VerifierSketchState,
+    run_root: &Path,
+) -> Result<C63CampaignTransitionOwner, String> {
+    prepare_c63_campaign_transition_inner(
+        setup,
+        sparse_setup,
+        workload_owner,
+        public_workload,
+        None,
+        predecessor_verifier,
+        None,
+        run_root,
+    )
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+#[allow(clippy::too_many_arguments)]
+pub fn prepare_c63_campaign_continuation_transition(
+    setup: &C6SetupManifest,
+    sparse_setup: &C63SparseSetupReference,
+    workload_owner: crate::c6_t1_owner::C62ContinuationWorkloadOwner,
+    public_workload: C61PublicWorkloadPreimage,
+    predecessor_provider: Arc<C63GpuStateOwner>,
+    predecessor_verifier: C63VerifierSketchState,
+    old_head: C6CacheHead,
+    run_root: &Path,
+) -> Result<C63CampaignTransitionOwner, String> {
+    prepare_c63_campaign_transition_inner(
+        setup,
+        sparse_setup,
+        workload_owner,
+        public_workload,
+        Some(predecessor_provider),
+        predecessor_verifier,
+        Some(old_head),
+        run_root,
+    )
+}
+
+/// Build the proposed resident successor directly from the response-owned
+/// one-time corrections. Temporary upload buffers are always released.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub fn propose_c63_campaign_successor_state(
+    sparse_setup: &C63SparseSetupReference,
+    gpu_setup: &C63GpuSetupOwner,
+    mmcs: &C62GpuMmcs,
+    predecessor: Option<&C63GpuStateOwner>,
+    predecessor_verifier: &C63VerifierSketchState,
+    residual: &C6T1ProductionResidualBoundOwner,
+    workload: volta_proto::C6Workload,
+) -> Result<Arc<C63GpuStateOwner>, String> {
+    let old_len = u16::try_from(workload.old_context)
+        .map_err(|_| "C6.3 old context exceeds u16".to_owned())?;
+    let new_len = u16::try_from(workload.new_context)
+        .map_err(|_| "C6.3 new context exceeds u16".to_owned())?;
+    let epoch = predecessor_verifier
+        .epoch()
+        .checked_add(1)
+        .ok_or_else(|| "C6.3 successor epoch overflows".to_owned())?;
+    let profile_digest = sparse_setup.production_profile_digest()?;
+    if predecessor_verifier.profile_digest() != profile_digest
+        || predecessor_verifier.accepted_len() != old_len
+        || predecessor.map(C63GpuStateOwner::accepted_len) != (old_len != 0).then_some(old_len)
+    {
+        return Err("C6.3 proposed state predecessor differs".to_owned());
+    }
+    let response = residual.response();
+    let packed = c63_pack_resident_append_corrections(
+        old_len,
+        new_len,
+        response.source_schedule().digest,
+        response.cache_append_sources(),
+        response.source_schedule(),
+        response.paired_sources(),
+    )?;
+    let metadata = vec![
+        C63GpuTileMetadata {
+            birth_epoch: epoch,
+            allocation_binding_digest: response.paired_sources().allocation_binding_digest(),
+            source_schedule_digest: response.source_schedule().digest,
+        };
+        usize::from(new_len - old_len)
+    ];
+    let backend = mmcs.backend();
+    let (tape0, tape1) = {
+        let mut locked = backend.lock().map_err(|_| "C6.3 CUDA lock".to_owned())?;
+        let tape0 = locked.upload_new_device(&packed[0]).map_err(|error| error.to_string())?;
+        let tape1 = match locked.upload_new_device(&packed[1]) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = locked.free_device(tape0);
+                return Err(error.to_string());
+            }
+        };
+        (tape0, tape1)
+    };
+    let proposed = C63GpuStateOwner::propose_append(
+        gpu_setup,
+        predecessor,
+        profile_digest,
+        epoch,
+        DeviceSlice::new(&tape0, 0, tape0.len()).map_err(|error| error.to_string())?,
+        DeviceSlice::new(&tape1, 0, tape1.len()).map_err(|error| error.to_string())?,
+        &metadata,
+    )
+    .map_err(|error| error.to_string());
+    let cleanup = {
+        let mut locked = backend.lock().map_err(|_| "C6.3 CUDA cleanup lock".to_owned())?;
+        let first = locked.free_device(tape0);
+        let second = locked.free_device(tape1);
+        first.and(second).map_err(|error| error.to_string())
+    };
+    match (proposed, cleanup) {
+        (Ok(state), Ok(())) => Ok(Arc::new(state)),
+        (Err(error), _) | (_, Err(error)) => Err(error),
+    }
 }
 
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
@@ -2658,6 +3409,240 @@ pub fn run_c62_campaign_live_production(
     })
 }
 
+/// Complete one C6.3 provider transition and retain only the proposed GPU
+/// successor. Promotion remains a client action after CPU verification.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub struct C63CampaignLiveProductionOutput {
+    pub certificate: C63NativeFinalCertificate,
+    pub public_instance: C61PublicWorkloadInstance,
+    pub verifier_replay: C6BoundProductionVerifierReplay,
+    pub response_context_digest: [u8; 32],
+    pub native_public_context_digest: [u8; 32],
+    pub connections: [ProductionFaseDConnection; 2],
+    pub successor_provider: Arc<C63GpuStateOwner>,
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+#[allow(clippy::too_many_arguments)]
+pub fn run_c63_campaign_live_production(
+    setup: &C6SetupManifest,
+    sparse_setup: &C63SparseSetupReference,
+    h: &C63SparseSketchReference,
+    installed: C61CampaignInstalledSetup,
+    transition: C63CampaignTransitionOwner,
+    mut attempt: C6ProductionPairedPcgAttempt,
+    model_coefficients: C61ProductionCoefficientOwner,
+    embedding_coefficients: C61ProductionCoefficientOwner,
+    admission: C61ProductionPersistedResourceAdmission,
+    backend: &mut Backend,
+    gpu: &C62ProductionGpuWhir,
+    mmcs: &C62GpuMmcs,
+    gpu_setup: &C63GpuSetupOwner,
+) -> Result<C63CampaignLiveProductionOutput, String> {
+    setup.validate().map_err(|error| error.to_string())?;
+    let C63CampaignTransitionOwner {
+        workload_owner,
+        public_workload,
+        old_head,
+        response_head_intent,
+        predecessor_provider,
+        predecessor_verifier,
+        run_root,
+    } = transition;
+    let reservation = attempt.reservation();
+    let public_attempt = C6ClientAttempt {
+        slot: reservation.slot,
+        nonce: reservation.nonce,
+        setup_manifest_digest: reservation.setup_manifest_digest,
+        old_head_digest: reservation.old_head_digest,
+        predecessor_certificate_digest: reservation.predecessor_certificate_digest,
+        correlation_ranges: reservation.correlation_ranges,
+        workload: reservation.workload,
+    };
+    if reservation.connection_id != setup.connection_id
+        || reservation.old_head_digest != old_head.digest()
+        || public_workload.workload() != public_attempt.workload
+        || public_workload.public_tokens() != workload_owner.sequence()
+    {
+        return Err("C6.3 live setup, attempt, or workload owners differ".to_owned());
+    }
+    if !run_root.is_dir()
+        || fs::read_dir(&run_root)
+            .map_err(|error| format!("read C6.3 live run root: {error}"))?
+            .next()
+            .is_some()
+    {
+        return Err("C6.3 live run root must be an existing empty directory".to_owned());
+    }
+    let wrapper_root = run_root.join("wrapper");
+    let proof_root = run_root.join("proof");
+    fs::create_dir(&wrapper_root).map_err(|error| format!("create C6.3 wrapper lane: {error}"))?;
+    fs::create_dir(&proof_root).map_err(|error| format!("create C6.3 proof lane: {error}"))?;
+    let C61CampaignInstalledSetup {
+        source_manifest: _,
+        provider_plan,
+        verifier_plan,
+        provider_extraction,
+        verifier_extraction,
+        native_profile,
+        compiler_profile,
+        operation_plan_artifact: _,
+        verifier_extraction_artifact: _,
+        native_profile_artifact,
+        plan_bytes: _,
+        extraction_bytes: _,
+        native_profile_bytes: _,
+    } = installed;
+    let response_statement = build_c62_campaign_response_statement(
+        setup,
+        &provider_plan,
+        public_attempt,
+        old_head,
+        response_head_intent,
+        &public_workload,
+    )?;
+    let mut response_session =
+        C62CampaignResponseTranscriptSession::start(public_attempt, &response_statement)?;
+    let response_context_digest = response_session.context_digest();
+    let response = execute_c62_campaign_response_owner(
+        workload_owner,
+        &response_statement,
+        [provider_plan, verifier_plan],
+        [provider_extraction, verifier_extraction],
+        &mut attempt,
+        &mut response_session,
+    )?;
+    let replay_owner = attempt.take_verifier_replay_owner(response_statement.digest())?;
+    let native_bindings = C62CampaignNativeBindings::start(public_attempt)?;
+    let (returned_workload, response, native_claims) = response.into_parts();
+    if returned_workload.sequence() != public_workload.public_tokens() {
+        return Err("C6.3 persisted response workload changed".to_owned());
+    }
+    drop(returned_workload);
+    let residual = {
+        let (provider, verifier) = response_session.transcripts();
+        prepare_c6_t1_production_residual_owner(response, &native_profile, provider, verifier)
+            .map_err(|error| error.to_string())?
+    };
+    drop(native_claims.production_paired_targets(&native_profile, residual.native_targets())?);
+    let wrapper_statement = build_c62_campaign_live_wrapper_statement(
+        response_statement.clone(),
+        &public_workload,
+        &residual,
+        &native_profile,
+        &compiler_profile,
+    )?;
+    let wrapper_statement_digest = wrapper_statement.digest();
+    let rooted = bind_c63_campaign_live_residual_roots(
+        setup,
+        wrapper_statement,
+        &public_workload,
+        residual,
+        backend,
+        &wrapper_root,
+        &mut response_session,
+    )?;
+    response_session.verify_synchronized()?;
+    let (roots, relation) = rooted.into_parts();
+    let (equality, residual) = relation.into_parts();
+    let contexts = native_bindings.bind_public_context(
+        public_attempt,
+        &native_profile,
+        &compiler_profile,
+        response_statement.digest(),
+        wrapper_statement_digest,
+        residual.relation().digest(),
+        response_head_intent.digest(),
+        roots.provider_roots.source_binding_digest(),
+    )?;
+    let native_public_context_digest = contexts.public_context_digest;
+    let four_chain = prepare_c62_campaign_native_four_chains(
+        native_claims,
+        &residual,
+        model_coefficients,
+        embedding_coefficients,
+        &native_profile,
+        &contexts,
+        admission,
+        &mut attempt,
+        backend,
+        gpu,
+        &proof_root,
+    )?;
+    let functional = prepare_c62_campaign_native_functional(
+        &roots,
+        &residual,
+        &native_profile,
+        &native_profile_artifact,
+        response_statement.digest(),
+        four_chain,
+    )?;
+    let blind = {
+        let (provider, _) = response_session.transcripts();
+        prove_c63_campaign_native_blind(&roots, &residual, &mut attempt, provider)?
+    };
+    let successor_provider = propose_c63_campaign_successor_state(
+        sparse_setup,
+        gpu_setup,
+        mmcs,
+        predecessor_provider.as_deref(),
+        &predecessor_verifier,
+        &residual,
+        public_attempt.workload,
+    )?;
+    let (inherited_public_argument, sketch_public_argument, proof_envelope) = {
+        let (provider, _) = response_session.transcripts();
+        finish_c63_campaign_native_proof(
+            setup,
+            sparse_setup,
+            h,
+            mmcs,
+            &predecessor_verifier,
+            predecessor_provider,
+            Arc::clone(&successor_provider),
+            public_attempt,
+            &roots,
+            &residual,
+            blind,
+            equality,
+            functional,
+            &native_profile,
+            &compiler_profile,
+            &contexts,
+            admission,
+            &mut attempt,
+            backend,
+            gpu,
+            &proof_root,
+            provider,
+        )?
+    };
+    let sealed = seal_c63_campaign_native_output(
+        setup,
+        public_attempt,
+        old_head,
+        &response_statement,
+        public_workload,
+        &roots,
+        &residual,
+        inherited_public_argument,
+        sketch_public_argument,
+        proof_envelope,
+    )?;
+    let certificate_digest = sealed.certificate.digest().map_err(|error| error.to_string())?;
+    let verifier_replay = replay_owner.bind_certificate(certificate_digest)?;
+    let connections = attempt.finish_success()?;
+    Ok(C63CampaignLiveProductionOutput {
+        certificate: sealed.certificate,
+        public_instance: sealed.public_instance,
+        verifier_replay,
+        response_context_digest,
+        native_public_context_digest,
+        connections,
+        successor_provider,
+    })
+}
+
 /// Commit the four exact wrapper cohorts, install the same roots on the live
 /// verifier and consume the production residual owner through coordinate 1.
 #[cfg(feature = "c6-trace")]
@@ -2800,6 +3785,77 @@ pub fn bind_c62_campaign_live_residual_roots(
     let verifier_roots = install_production_c61_native_live_wrapper_roots_verifier(
         statement.digest(),
         &cache_profile,
+        roots,
+        verifier_transcript,
+    )
+    .map_err(|error| error.to_string())?;
+    let root = provider_roots
+        .bind_residual_relation(
+            residual.manifest().clone(),
+            residual.leaf(),
+            residual.closure(),
+            residual.auxiliary(),
+        )
+        .map_err(|error| error.to_string())?;
+    let relation = volta_pcs::bind_c61_production_residual_relation(
+        statement,
+        residual,
+        root,
+        provider_transcript,
+        verifier_transcript,
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(C61CampaignLiveResidualRooted { provider_roots, verifier_roots, relation, session_digest })
+}
+
+/// Commit and install only the residual and auxiliary wrapper cohorts. The
+/// predecessor and successor cache roots live in the authenticated sketch.
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+pub fn bind_c63_campaign_live_residual_roots(
+    setup: &C6SetupManifest,
+    statement: C61StatementBinding,
+    workload: &C61PublicWorkloadPreimage,
+    residual: C6T1ProductionResidualOwner,
+    backend: &mut Backend,
+    spill_root: &Path,
+    response_session: &mut C62CampaignResponseTranscriptSession,
+) -> Result<C61CampaignLiveResidualRooted, String> {
+    setup.validate().map_err(|error| error.to_string())?;
+    if statement.public_output_digest() != workload.public_output_digest() {
+        return Err("C6.3 rooted residual workload differs from wrapper base".to_owned());
+    }
+    let mask_seed = C6LiveWrapperMaskSeed::random();
+    let mut session_hasher =
+        blake3::Hasher::new_derive_key("volta-zk/c6.3/campaign-wrapper-session/v1");
+    session_hasher.update(&statement.response_statement_digest());
+    session_hasher.update(&statement.digest());
+    session_hasher.update(&mask_seed.commitment());
+    let session_digest = *session_hasher.finalize().as_bytes();
+    let (provider_transcript, verifier_transcript) = response_session.transcripts();
+    let provider_roots = materialize_production_c63_authenticated_sketch_live_wrapper_roots_cuda(
+        statement.digest(),
+        residual.manifest(),
+        residual.leaf(),
+        residual.closure(),
+        residual.auxiliary(),
+        mask_seed,
+        backend,
+        spill_root,
+        session_digest,
+        provider_transcript,
+    )
+    .map_err(|error| error.to_string())?;
+    let roots: [[u8; 32]; 2] = provider_roots
+        .fixed()
+        .commitments()
+        .iter()
+        .map(|item| item.root)
+        .collect::<Vec<_>>()
+        .try_into()
+        .map_err(|_| "C6.3 persisted wrapper root census differs".to_owned())?;
+    let verifier_roots = install_production_c63_authenticated_sketch_live_wrapper_roots_verifier(
+        statement.digest(),
         roots,
         verifier_transcript,
     )
@@ -2973,6 +4029,77 @@ pub fn replay_c62_campaign_response_verifier(
     };
     if response.source_manifest() != expected_source_manifest {
         return Err("C6.2 disk response source manifest differs from setup".to_owned());
+    }
+    Ok(C61CampaignResponseVerifierReplay { response, contexts, transcript })
+}
+
+/// Replay the inherited response prefix using the explicit response-local
+/// target frame carried by the C6.3 envelope.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+#[allow(clippy::too_many_arguments)]
+pub fn replay_c63_campaign_response_verifier(
+    certificate: &C63NativeFinalCertificate,
+    verifier_replay: &C6BoundProductionVerifierReplay,
+    verifier_model: &Gpt2VerifierModel,
+    public_instance: &C61PublicWorkloadInstance,
+    expected_source_manifest: &C6TraceSourceManifest,
+    verifier_plan: C6InstalledOperationPlan,
+    verifier_extraction: C6DecodedInstanceExtractionPlan,
+) -> Result<C61CampaignResponseVerifierReplay, String> {
+    let certificate_digest = certificate.digest().map_err(|error| error.to_string())?;
+    let attempt = C6ClientAttempt {
+        slot: certificate.slot,
+        nonce: certificate.nonce,
+        setup_manifest_digest: certificate.setup_manifest_digest,
+        old_head_digest: certificate.old_head.digest(),
+        predecessor_certificate_digest: certificate.predecessor_certificate_digest,
+        correlation_ranges: certificate.correlation_ranges,
+        workload: certificate.workload,
+    };
+    if verifier_replay.certificate_digest() != certificate_digest
+        || verifier_replay.statement_digest() != public_instance.response_statement_digest()
+        || public_instance.public_tokens().len()
+            != usize::try_from(public_instance.workload().new_context).expect("u32 fits usize")
+    {
+        return Err("C6.3 disk response binding or profile mismatch".to_owned());
+    }
+    let context_digest = c62_campaign_response_transcript_context_digest(
+        attempt,
+        public_instance.response_statement_digest(),
+    )?;
+    let mut transcript = Transcript::new_fiat_shamir(context_digest)?;
+    let retained = C6RetainedResponseProof::decode_c62(certificate.retained_response())
+        .map_err(|error| error.to_string())?;
+    let mut contexts = verifier_replay.fresh_contexts(certificate_digest)?;
+    let targets = certificate.decoded_proof_envelope().response_cache_fold_targets().to_vec();
+    let response = if public_instance.workload().old_context == 0 {
+        replay_c6_t1_production_response_verifier(
+            verifier_model,
+            public_instance.public_tokens(),
+            public_instance.response_statement_digest(),
+            verifier_plan,
+            verifier_extraction,
+            &targets,
+            &retained,
+            &mut contexts,
+            &mut transcript,
+        )?
+    } else {
+        replay_c62_continuation_production_response_verifier(
+            verifier_model,
+            public_instance.public_tokens(),
+            usize::try_from(public_instance.workload().old_context).expect("u32 fits usize"),
+            public_instance.response_statement_digest(),
+            verifier_plan,
+            verifier_extraction,
+            &targets,
+            &retained,
+            &mut contexts,
+            &mut transcript,
+        )?
+    };
+    if response.source_manifest() != expected_source_manifest {
+        return Err("C6.3 disk response source manifest differs from setup".to_owned());
     }
     Ok(C61CampaignResponseVerifierReplay { response, contexts, transcript })
 }
@@ -3390,6 +4517,423 @@ pub fn verify_c62_campaign_e2e(
     })
 }
 
+/// Result of one complete CPU-only C6.3 verifier replay.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub struct C63CampaignVerifierOutput {
+    pub complete: C63CompleteProductionVerifierOutput,
+    pub certificate_digest: [u8; 32],
+    pub inherited_public_argument_bytes: u64,
+    pub sketch_public_argument_bytes: u64,
+    pub proof_envelope_bytes: u64,
+}
+
+/// Verify response, residual wrapper, inherited six chains, exact source
+/// link, sparse closure and all eight C6.3 WHIR bodies on ordinary CPU state.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+#[allow(clippy::too_many_arguments)]
+pub fn verify_c63_campaign_e2e(
+    certificate: &C63NativeFinalCertificate,
+    verifier_replay: &C6BoundProductionVerifierReplay,
+    setup: &C6SetupManifest,
+    sparse_setup: &C63SparseSetupReference,
+    h: &C63SparseSketchReference,
+    predecessor_state: &C63VerifierSketchState,
+    verifier_model: &Gpt2VerifierModel,
+    public_instance: &C61PublicWorkloadInstance,
+    source_manifest: &C6TraceSourceManifest,
+    verifier_plan: C6InstalledOperationPlan,
+    verifier_extraction: C6DecodedInstanceExtractionPlan,
+    verifier_extraction_setup_bytes: u64,
+    native_profile: &C6CanonicalTargetProfile,
+    compiler_profile: &C61CompilerVerifierProfile,
+) -> Result<C63CampaignVerifierOutput, String> {
+    setup.validate().map_err(|error| error.to_string())?;
+    certificate.encode().map_err(|error| error.to_string())?;
+    let certificate_digest = certificate.digest().map_err(|error| error.to_string())?;
+    let setup_digest = setup.digest().map_err(|error| error.to_string())?;
+    let inherited = C62PublicArgument::decode(certificate.inherited_public_argument())
+        .map_err(|error| error.to_string())?;
+    if certificate.setup_manifest_digest != setup_digest
+        || certificate.model_digest != public_instance.model_family_digest()
+        || certificate.workload != public_instance.workload()
+        || certificate.public_output_digest != public_instance.preimage().public_output_digest()
+        || inherited.encode().map_err(|error| error.to_string())?
+            != certificate.inherited_public_argument()
+        || predecessor_state.profile_digest() != sparse_setup.production_profile_digest()?
+        || predecessor_state.epoch() != certificate.old_head.epoch
+        || u32::from(predecessor_state.accepted_len()) != certificate.old_head.cache_len
+    {
+        return Err("C6.3 verifier certificate, setup, or predecessor differs".to_owned());
+    }
+    let attempt = C6ClientAttempt {
+        slot: certificate.slot,
+        nonce: certificate.nonce,
+        setup_manifest_digest: certificate.setup_manifest_digest,
+        old_head_digest: certificate.old_head.digest(),
+        predecessor_certificate_digest: certificate.predecessor_certificate_digest,
+        correlation_ranges: certificate.correlation_ranges,
+        workload: certificate.workload,
+    };
+    let response_head_intent = c63_campaign_response_head_intent(
+        setup,
+        sparse_setup,
+        certificate.old_head,
+        public_instance.preimage(),
+        predecessor_state,
+    )?;
+    let response_statement = build_c62_campaign_response_statement(
+        setup,
+        &verifier_plan,
+        attempt,
+        certificate.old_head,
+        response_head_intent,
+        public_instance.preimage(),
+    )?;
+    if response_statement.digest() != public_instance.response_statement_digest() {
+        return Err("C6.3 verifier response statement differs from public instance".to_owned());
+    }
+    let verifier_topology = verifier_plan.topology();
+    let replay = replay_c63_campaign_response_verifier(
+        certificate,
+        verifier_replay,
+        verifier_model,
+        public_instance,
+        source_manifest,
+        verifier_plan,
+        verifier_extraction,
+    )?;
+    let (response, mut contexts, mut transcript) = replay.into_parts();
+    let disk_residual =
+        prepare_c6_t1_disk_residual_owner(response, &mut transcript).map_err(|e| e.to_string())?;
+    let wrapper_statement = build_c63_campaign_disk_wrapper_statement(
+        response_statement.clone(),
+        certificate,
+        public_instance,
+        &disk_residual,
+        native_profile,
+        compiler_profile,
+    )?;
+    let wrapper_statement_digest = wrapper_statement.digest();
+    if wrapper_statement_digest != certificate.wrapper.statement_digest {
+        return Err("C6.3 disk wrapper statement differs from certificate".to_owned());
+    }
+    let roots = install_production_c63_authenticated_sketch_live_wrapper_roots_verifier(
+        wrapper_statement_digest,
+        [certificate.wrapper.residual_root, certificate.wrapper.auxiliary_root],
+        &mut transcript,
+    )
+    .map_err(|error| error.to_string())?;
+    let root = roots
+        .bind_residual_relation(disk_residual.manifest().clone())
+        .map_err(|error| error.to_string())?;
+    let tail = decode_c63_response_tail(roots.fixed(), &certificate.proof_envelope)?;
+    let coordinate_one = C6ResidualProductClaimCoordinate::decode_payload(
+        disk_residual.manifest(),
+        1,
+        tail.envelope.product_coordinate_one(),
+    )
+    .map_err(|error| error.to_string())?;
+    let relation = volta_pcs::bind_c61_disk_residual_relation(
+        wrapper_statement,
+        disk_residual,
+        root,
+        coordinate_one,
+        certificate.residual,
+        &mut transcript,
+    )
+    .map_err(|error| error.to_string())?;
+    let (equality, residual) = relation.into_parts();
+    let native_bindings = C62CampaignNativeBindings::start(attempt)?;
+    let native_contexts = native_bindings.bind_public_context(
+        attempt,
+        native_profile,
+        compiler_profile,
+        response_statement.digest(),
+        wrapper_statement_digest,
+        residual.relation().digest(),
+        response_head_intent.digest(),
+        certificate.wrapper.source_binding_digest,
+    )?;
+
+    let raw_argument = inherited;
+    let arithmetic =
+        C61ArithmeticFrame::decode(raw_argument.arithmetic()).map_err(|e| e.to_string())?;
+    let native_claims = C6T1NativeVerifierClaimOwner::from_disk_response(residual.response())?;
+    let ids = C61NativeChainId::ordered();
+    let model_primary = native_claims.statement(
+        ids[0],
+        decode_c62_production_native_commitment_descriptor(
+            ids[0],
+            &raw_argument.native_chains()[0],
+        )?,
+    )?;
+    let model_secondary = native_claims.statement(
+        ids[1],
+        decode_c62_production_native_commitment_descriptor(
+            ids[1],
+            &raw_argument.native_chains()[1],
+        )?,
+    )?;
+    let embedding_primary = native_claims.statement(
+        ids[2],
+        decode_c62_production_native_commitment_descriptor(
+            ids[2],
+            &raw_argument.native_chains()[2],
+        )?,
+    )?;
+    let embedding_secondary = native_claims.statement(
+        ids[3],
+        decode_c62_production_native_commitment_descriptor(
+            ids[3],
+            &raw_argument.native_chains()[3],
+        )?,
+    )?;
+    let secondary_proofs = [
+        C62ProductionCommittedChainProof::decode(
+            &raw_argument.native_chains()[1],
+            model_secondary.public(),
+            C61JointNativeTailRole::Correction,
+        )?,
+        C62ProductionCommittedChainProof::decode(
+            &raw_argument.native_chains()[3],
+            embedding_secondary.public(),
+            C61JointNativeTailRole::ZeroOpenTag,
+        )?,
+    ];
+    let secondary_statements = [model_secondary, embedding_secondary];
+    let secondary_fixed = prepare_c62_production_joint_native_verifier_bodies(
+        native_profile,
+        &secondary_statements,
+        &secondary_proofs,
+        &[native_contexts.lane_contexts[1], native_contexts.lane_contexts[3]],
+        &[native_contexts.mask_ranges[1], native_contexts.mask_ranges[3]],
+        native_contexts.joint_context,
+    )?;
+    verify_c62_authenticated_whir_p3_primary_chain_fiat_shamir_in_attempt(
+        &model_primary,
+        &C61ProductionCommittedChainProof::decode(
+            &raw_argument.native_chains()[0],
+            model_primary.public(),
+        )?,
+        &mut contexts[0],
+        native_contexts.lane_contexts[0],
+        native_contexts.mask_ranges[0],
+    )?;
+    verify_c62_authenticated_whir_p3_primary_chain_fiat_shamir_in_attempt(
+        &embedding_primary,
+        &C61ProductionCommittedChainProof::decode(
+            &raw_argument.native_chains()[2],
+            embedding_primary.public(),
+        )?,
+        &mut contexts[0],
+        native_contexts.lane_contexts[2],
+        native_contexts.mask_ranges[2],
+    )?;
+    let claim_weights = secondary_fixed
+        .claim_weights()
+        .into_iter()
+        .map(<[volta_field::Fp2]>::to_vec)
+        .collect::<Vec<_>>();
+    let functional = C6CompiledNativeTargetFunctional::compile(
+        residual.response().installed().operation_plan(),
+        residual.response().installed().extraction(),
+        residual.response().installed().runtime(),
+        native_profile,
+        &claim_weights,
+        &secondary_fixed.challenge().cohort_weights,
+    )
+    .map_err(|error| error.to_string())?;
+    let native_profile_artifact =
+        C6NativeTargetProfileArtifact::encode(native_profile, verifier_topology)
+            .map_err(|error| error.to_string())?;
+    let native_profile_digest = *blake3::hash(native_profile_artifact.as_bytes()).as_bytes();
+    let response_binding_digest = c62_campaign_response_binding_digest(
+        response_statement.digest(),
+        certificate.retained_response(),
+        residual.response().source_schedule().digest,
+        residual.relation().digest(),
+    )?;
+    let root_binding_digest = roots.fixed().binding_digest();
+    let outer_statement_digest = volta_pcs::c62_public_statement_digest(
+        roots.fixed().statement_digest(),
+        native_profile_digest,
+        secondary_fixed.challenge().schedule_digest,
+        functional.functional_digest(),
+        response_binding_digest,
+        root_binding_digest,
+    )
+    .map_err(|error| error.to_string())?;
+    if outer_statement_digest != raw_argument.statement_digest()
+        || outer_statement_digest != public_instance.public_argument_statement_digest()
+        || arithmetic.statement_digest != outer_statement_digest
+    {
+        return Err("C6.3 inherited public argument statement binding differs".to_owned());
+    }
+    let compiler_correction = secondary_fixed.pending_correction();
+    let nbr2 = C6Nbr2CorrectionFunctional::new(
+        roots.fixed(),
+        outer_statement_digest,
+        residual.relation().manifest().digest(),
+        certificate.wrapper.source_binding_digest,
+        residual.response().source_schedule().digest,
+        native_profile_digest,
+        functional.functional_digest(),
+        functional.leaf_coefficients(),
+        compiler_correction,
+    )
+    .map_err(|error| error.to_string())?;
+    let base_fold = functional
+        .replay_verifier_base_coordinate(1, residual.response().source_schedule(), &mut contexts[1])
+        .map_err(|error| error.to_string())?;
+    let binding = C62ResponseCompilerBinding {
+        schedule_digest: secondary_fixed.challenge().schedule_digest,
+        response_binding_digest,
+        functional_digest: functional.functional_digest(),
+        nbr2_statement_digest: nbr2.digest(),
+        root_binding_digest,
+        compiler_correction,
+    };
+    let native = secondary_fixed.prepare_nbr2_link(base_fold.key, binding, &mut contexts[1])?;
+
+    let blind_compiler = C6BlindResidualFusedCompilerContext::new(
+        residual.response().installed().operation_plan(),
+        residual.response().installed().extraction(),
+        residual.response().installed().runtime(),
+        residual.verifier_linear(),
+        residual.relation(),
+    );
+    let statements: [C6BlindResidualStatement; 2] = (0..2u8)
+        .map(|repetition| prepare_c6_blind_residual_statement_fused(blind_compiler, repetition))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?
+        .try_into()
+        .map_err(|_| "C6.3 blind statement census differs".to_owned())?;
+    let residual_proof = C6BlindResidualSumcheckProof::decode(
+        &statements,
+        tail.envelope.residual_sumcheck(),
+    )
+    .map_err(|error| error.to_string())?;
+    let residual_frame = C6BlindResidualPendingTransferFrame::decode(
+        tail.envelope.residual_pending_corrections(),
+    )
+    .map_err(|error| error.to_string())?;
+    let old_len = u16::try_from(certificate.workload.old_context)
+        .map_err(|_| "C6.3 old cache length exceeds u16")?;
+    let canonical_runtime = residual
+        .response()
+        .installed()
+        .runtime()
+        .canonical_runtime_values(residual.response().installed().extraction())
+        .map_err(|error| error.to_string())?;
+    let blind = prepare_c63_decoded_blind_verifier(
+        &roots,
+        &statements,
+        &residual_proof,
+        &residual_frame,
+        residual.relation(),
+        equality,
+        &arithmetic,
+        &canonical_runtime,
+        &mut contexts,
+        &mut transcript,
+    )?;
+    let compiler0 = blind.compiler_public_statement(
+        residual.response().installed().operation_plan(),
+        compiler_profile.terminal_metadata(),
+        residual.response().installed().extraction(),
+        residual.response().installed().runtime(),
+        residual.relation(),
+        decode_c62_production_compiler_commitment_descriptors(
+            ids[4],
+            &raw_argument.native_chains()[4],
+        )?,
+        ids[4],
+    )?;
+    let compiler1 = blind.compiler_public_statement(
+        residual.response().installed().operation_plan(),
+        compiler_profile.terminal_metadata(),
+        residual.response().installed().extraction(),
+        residual.response().installed().runtime(),
+        residual.relation(),
+        decode_c62_production_compiler_commitment_descriptors(
+            ids[5],
+            &raw_argument.native_chains()[5],
+        )?,
+        ids[5],
+    )?;
+    let public_statements = [
+        model_primary.public().clone(),
+        secondary_statements[0].public().clone(),
+        embedding_primary.public().clone(),
+        secondary_statements[1].public().clone(),
+        compiler0.clone(),
+        compiler1.clone(),
+    ];
+    let (decoded_argument, artifacts, decoded_arithmetic) = decode_c62_production_public_argument(
+        certificate.inherited_public_argument(),
+        &public_statements,
+        native_profile,
+        native.challenge().schedule_digest,
+        functional.functional_digest(),
+    )?;
+    if decoded_argument != raw_argument || decoded_arithmetic != arithmetic {
+        return Err("C6.3 typed inherited argument differs from strict predecode".to_owned());
+    }
+    for index in 4..6 {
+        let proof = match artifacts[index].proof() {
+            C62ProductionNativeChainProof::Compiler(proof) => proof,
+            _ => return Err("C6.3 compiler artifact has another role".to_owned()),
+        };
+        verify_c62_authenticated_whir_p3_production_compiler_fiat_shamir_in_attempt(
+            compiler_profile,
+            verifier_extraction_setup_bytes,
+            &public_statements[index],
+            residual.relation(),
+            &proof.inner().encode()?,
+            &mut contexts[index - 4],
+            native_contexts.lane_contexts[index],
+            ids[index],
+            native_contexts.mask_ranges[index],
+        )?;
+    }
+    let complete = verify_c63_complete_decoded_response(
+        &roots,
+        blind,
+        &tail.authenticated_output_link,
+        outer_statement_digest,
+        &nbr2,
+        certificate.wrapper.source_binding_digest,
+        old_len,
+        residual.response().cache_append_sources(),
+        residual.response().source_schedule(),
+        &tail.source_functional_corrections,
+        native,
+        certificate.sketch_public_argument(),
+        attempt,
+        h,
+        &tail.sparse_h_closure,
+        predecessor_state,
+        tail.whir_terminal_tags,
+        c63_campaign_mask_range(attempt)?,
+        &mut contexts,
+        &mut transcript,
+    )?;
+    if complete.inherited().inherited().bound_slots() != 2 * 40
+        || complete.inherited().inherited().joint_native().cohort_count != 2
+        || complete.successor_state().epoch() != certificate.new_head.epoch
+        || u32::from(complete.successor_state().accepted_len()) != certificate.new_head.cache_len
+    {
+        return Err("C6.3 final verifier census or successor differs".to_owned());
+    }
+    Ok(C63CampaignVerifierOutput {
+        complete,
+        certificate_digest,
+        inherited_public_argument_bytes: certificate.inherited_public_argument().len() as u64,
+        sketch_public_argument_bytes: certificate.sketch_public_argument().len() as u64,
+        proof_envelope_bytes: certificate.proof_envelope.len() as u64,
+    })
+}
+
 /// Consume one strict disk artifact through the complete C6.2 verifier.
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 pub fn verify_c62_loaded_campaign_e2e(
@@ -3418,6 +4962,51 @@ pub fn verify_c62_loaded_campaign_e2e(
         &certificate,
         &verifier_replay,
         &setup_manifest,
+        &verifier_model,
+        &public_instance,
+        &source_manifest,
+        verifier_plan,
+        verifier_extraction,
+        verifier_extraction_setup_bytes,
+        &native_profile,
+        &compiler_profile,
+    )
+}
+
+/// Consume one strict disk artifact through the complete C6.3 CPU verifier.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub fn verify_c63_loaded_campaign_e2e(
+    artifact: C63CampaignArtifact,
+    sparse_setup: &C63SparseSetupReference,
+    h: &C63SparseSketchReference,
+    predecessor_state: &C63VerifierSketchState,
+) -> Result<C63CampaignVerifierOutput, String> {
+    let C63CampaignArtifact {
+        certificate,
+        verifier_replay,
+        setup_manifest,
+        verifier_model,
+        source_manifest,
+        operation_plan_artifact: _,
+        verifier_extraction_artifact: _,
+        verifier_plan,
+        verifier_extraction,
+        verifier_extraction_setup_bytes,
+        native_profile,
+        compiler_profile,
+        quantization_digest: _,
+        public_instance,
+        inherited_public_argument: _,
+        source_git_commit: _,
+        wire_bytes: _,
+    } = artifact;
+    verify_c63_campaign_e2e(
+        &certificate,
+        &verifier_replay,
+        &setup_manifest,
+        sparse_setup,
+        h,
+        predecessor_state,
         &verifier_model,
         &public_instance,
         &source_manifest,
@@ -4702,6 +6291,42 @@ fn validate_c62_campaign_bindings(
 }
 
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+fn validate_c63_campaign_bindings(
+    certificate: &C63NativeFinalCertificate,
+    verifier_replay: &C6BoundProductionVerifierReplay,
+    setup_manifest: &C6SetupManifest,
+    public_instance: &C61PublicWorkloadInstance,
+) -> Result<C62PublicArgument, String> {
+    certificate.encode().map_err(|error| error.to_string())?;
+    setup_manifest.validate().map_err(|error| error.to_string())?;
+    let certificate_digest = certificate.digest().map_err(|error| error.to_string())?;
+    let setup_manifest_digest = setup_manifest.digest().map_err(|error| error.to_string())?;
+    let inherited = C62PublicArgument::decode(certificate.inherited_public_argument())
+        .map_err(|error| error.to_string())?;
+    validate_campaign_statement_domains(
+        public_instance.response_statement_digest(),
+        certificate.wrapper.statement_digest,
+        inherited.statement_digest(),
+    )?;
+    if verifier_replay.certificate_digest() != certificate_digest
+        || verifier_replay.setup_manifest_digest() != setup_manifest_digest
+        || verifier_replay.statement_digest() != public_instance.response_statement_digest()
+        || setup_manifest_digest != certificate.setup_manifest_digest
+        || setup_manifest.protocol_digest != certificate.protocol_digest
+        || setup_manifest.model_digest != certificate.model_digest
+        || setup_manifest.params_digest != certificate.params_digest
+        || setup_manifest.connection_id != certificate.connection_id
+        || inherited.statement_digest() != public_instance.public_argument_statement_digest()
+        || certificate.model_digest != public_instance.model_family_digest()
+        || certificate.workload != public_instance.workload()
+        || certificate.public_output_digest != public_instance.preimage().public_output_digest()
+    {
+        return Err("C6.3 campaign objects do not share one certificate and statement".to_owned());
+    }
+    Ok(inherited)
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 fn decode_c62_campaign_payloads(
     payloads: &C62CampaignPayloads,
 ) -> Result<C62CampaignArtifact, String> {
@@ -4749,6 +6374,58 @@ fn decode_c62_campaign_payloads(
         quantization_digest: client_parameters.quantization_digest,
         public_instance,
         public_argument,
+        source_git_commit: String::new(),
+    })
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+fn decode_c63_campaign_payloads(
+    payloads: &C62CampaignPayloads,
+) -> Result<C63CampaignArtifact, String> {
+    if payloads.public_instance.len() > PUBLIC_INSTANCE_MAX_BYTES {
+        return Err("C6.3 campaign public local artifact size differs".to_owned());
+    }
+    let certificate = C63NativeFinalCertificate::decode(&payloads.certificate)
+        .map_err(|error| error.to_string())?;
+    let verifier_replay =
+        C6BoundProductionVerifierReplay::decode_client_state(&payloads.verifier_replay)?;
+    let setup_manifest =
+        C6SetupManifest::decode(&payloads.setup_manifest).map_err(|error| error.to_string())?;
+    if setup_manifest.first_exchange_bytes().map_err(|error| error.to_string())?
+        > C62_CAMPAIGN_SETUP_MAX_BYTES
+    {
+        return Err("C6.3 campaign setup exceeds its compressed cap".to_owned());
+    }
+    let public_instance = C61PublicWorkloadInstance::decode(&payloads.public_instance)
+        .map_err(|error| error.to_string())?;
+    let client_parameters = decode_c62_campaign_client_parameters(
+        &setup_manifest.client_parameters,
+        public_instance.workload().old_context,
+    )?;
+    let inherited_public_argument = validate_c63_campaign_bindings(
+        &certificate,
+        &verifier_replay,
+        &setup_manifest,
+        &public_instance,
+    )?;
+    Ok(C63CampaignArtifact {
+        wire_bytes: u64::try_from(payloads.certificate.len())
+            .map_err(|_| "C6.3 certificate length exceeds u64")?,
+        certificate,
+        verifier_replay,
+        setup_manifest,
+        verifier_model: client_parameters.verifier_model,
+        source_manifest: client_parameters.source_manifest,
+        operation_plan_artifact: client_parameters.operation_plan_artifact,
+        verifier_extraction_artifact: client_parameters.verifier_extraction_artifact,
+        verifier_plan: client_parameters.verifier_plan,
+        verifier_extraction: client_parameters.verifier_extraction,
+        verifier_extraction_setup_bytes: client_parameters.verifier_extraction_setup_bytes,
+        native_profile: client_parameters.native_profile,
+        compiler_profile: client_parameters.compiler_profile,
+        quantization_digest: client_parameters.quantization_digest,
+        public_instance,
+        inherited_public_argument,
         source_git_commit: String::new(),
     })
 }
@@ -4844,6 +6521,49 @@ pub fn create_c62_campaign_artifact(
         response_statement_digest: hex_digest(public_instance.response_statement_digest()),
         wire_bytes: u64::try_from(payloads.certificate.len())
             .map_err(|_| "C6.2 certificate length exceeds u64")?,
+        files: c62_campaign_rows(&payloads)?,
+    };
+    create_c62_campaign_directory(root, &record, &payloads)
+}
+
+/// Persist one complete C6.3 output using the existing four-file campaign
+/// framing. Only `certificate.bin` is provider wire.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub fn create_c63_campaign_artifact(
+    root: &Path,
+    certificate: &C63NativeFinalCertificate,
+    verifier_replay: &C6BoundProductionVerifierReplay,
+    setup_manifest: &C6SetupManifest,
+    public_instance: &C61PublicWorkloadInstance,
+    source_git_commit: &str,
+) -> Result<(), String> {
+    validate_source_commit(source_git_commit)?;
+    let inherited = validate_c63_campaign_bindings(
+        certificate,
+        verifier_replay,
+        setup_manifest,
+        public_instance,
+    )?;
+    let payloads = C62CampaignPayloads {
+        certificate: certificate.encode().map_err(|error| error.to_string())?,
+        verifier_replay: verifier_replay.encode_client_state()?,
+        setup_manifest: setup_manifest.encode().map_err(|error| error.to_string())?,
+        public_instance: public_instance.encode().map_err(|error| error.to_string())?,
+    };
+    decode_c63_campaign_payloads(&payloads)?;
+    let record = CampaignArtifactRecord {
+        schema: 1,
+        profile: C63_CAMPAIGN_ARTIFACT_PROFILE.to_owned(),
+        source_git_commit: source_git_commit.to_owned(),
+        git_dirty: false,
+        backend: CAMPAIGN_BACKEND.to_owned(),
+        pcg: CAMPAIGN_PCG.to_owned(),
+        certificate_digest: hex_digest(certificate.digest().map_err(|error| error.to_string())?),
+        setup_manifest_digest: hex_digest(certificate.setup_manifest_digest),
+        wrapper_statement_digest: hex_digest(certificate.wrapper.statement_digest),
+        public_argument_statement_digest: hex_digest(inherited.statement_digest()),
+        response_statement_digest: hex_digest(public_instance.response_statement_digest()),
+        wire_bytes: payloads.certificate.len() as u64,
         files: c62_campaign_rows(&payloads)?,
     };
     create_c62_campaign_directory(root, &record, &payloads)
@@ -4946,6 +6666,57 @@ pub fn load_c62_campaign_artifact(root: &Path) -> Result<C62CampaignArtifact, St
         )? != artifact.public_instance.response_statement_digest()
     {
         return Err("C6.2 campaign manifest binding differs from decoded objects".to_owned());
+    }
+    artifact.source_git_commit = record.source_git_commit;
+    Ok(artifact)
+}
+
+/// Load and cross-bind one exact C6.3 disk artifact.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub fn load_c63_campaign_artifact(root: &Path) -> Result<C63CampaignArtifact, String> {
+    validate_c62_campaign_directory_census(root)?;
+    let manifest_bytes = fs::read(root.join("manifest.json"))
+        .map_err(|error| format!("read C6.3 campaign manifest: {error}"))?;
+    let record: CampaignArtifactRecord = serde_json::from_slice(&manifest_bytes)
+        .map_err(|error| format!("decode C6.3 campaign manifest: {error}"))?;
+    if serde_json::to_vec(&record)
+        .map_err(|error| format!("re-encode C6.3 campaign manifest: {error}"))?
+        != manifest_bytes
+    {
+        return Err("C6.3 campaign manifest is not canonical compact JSON".to_owned());
+    }
+    validate_source_commit(&record.source_git_commit)?;
+    if record.schema != 1
+        || record.profile != C63_CAMPAIGN_ARTIFACT_PROFILE
+        || record.git_dirty
+        || record.backend != CAMPAIGN_BACKEND
+        || record.pcg != CAMPAIGN_PCG
+        || record.files.len() != C62_CAMPAIGN_FILE_NAMES.len()
+        || record.files.iter().map(|row| row.name.as_str()).ne(C62_CAMPAIGN_FILE_NAMES)
+        || record.files.iter().map(|row| row.confidential).ne([false, true, false, false])
+    {
+        return Err("C6.3 campaign manifest or file census differs".to_owned());
+    }
+    let payloads = C62CampaignPayloads {
+        certificate: load_campaign_file(root, &record.files[0])?,
+        verifier_replay: load_campaign_file(root, &record.files[1])?,
+        setup_manifest: load_campaign_file(root, &record.files[2])?,
+        public_instance: load_campaign_file(root, &record.files[3])?,
+    };
+    let mut artifact = decode_c63_campaign_payloads(&payloads)?;
+    if record.wire_bytes != artifact.wire_bytes
+        || parse_hex_32(&record.certificate_digest, "C6.3 campaign certificate digest")?
+            != artifact.certificate.digest().map_err(|error| error.to_string())?
+        || parse_hex_32(&record.setup_manifest_digest, "C6.3 campaign setup digest")?
+            != artifact.certificate.setup_manifest_digest
+        || parse_hex_32(&record.wrapper_statement_digest, "C6.3 campaign wrapper digest")?
+            != artifact.certificate.wrapper.statement_digest
+        || parse_hex_32(&record.public_argument_statement_digest, "C6.3 inherited statement")?
+            != artifact.inherited_public_argument.statement_digest()
+        || parse_hex_32(&record.response_statement_digest, "C6.3 response statement")?
+            != artifact.public_instance.response_statement_digest()
+    {
+        return Err("C6.3 campaign manifest binding differs from decoded objects".to_owned());
     }
     artifact.source_git_commit = record.source_git_commit;
     Ok(artifact)

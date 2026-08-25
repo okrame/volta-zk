@@ -1,19 +1,20 @@
 //! Canonical C6.3 designated tail.
 //!
-//! Cache-source, cache-blind and cache-fold components are absent. The final
+//! Cache-source and cache-blind components are absent. The small public target
+//! frame needed to replay the inherited response remains explicit. The final
 //! component is one fixed-layout designated bundle: source-functional
 //! corrections, reduced output link, sparse-H closure, then four terminal tags.
 
 use std::fmt;
 
 use crate::{
-    C62_RESPONSE_PRODUCT_COORDINATE_ONE_BYTES, C62_RESPONSE_RESIDUAL_PENDING_BYTES,
-    C62_RESPONSE_RESIDUAL_SUMCHECK_MAX_BYTES,
+    C62_RESPONSE_CACHE_FOLD_TARGET_BYTES, C62_RESPONSE_PRODUCT_COORDINATE_ONE_BYTES,
+    C62_RESPONSE_RESIDUAL_PENDING_BYTES, C62_RESPONSE_RESIDUAL_SUMCHECK_MAX_BYTES,
 };
 
 pub const C63_RESPONSE_PROOF_ENVELOPE_MAGIC: [u8; 8] = *b"C63PIF2\0";
 pub const C63_RESPONSE_PROOF_ENVELOPE_VERSION: u16 = 2;
-pub const C63_RESPONSE_PROOF_COMPONENTS: usize = 4;
+pub const C63_RESPONSE_PROOF_COMPONENTS: usize = 5;
 pub const C63_RESPONSE_SOURCE_FUNCTIONAL_CORRECTIONS_BYTES: u64 = 64;
 pub const C63_RESPONSE_AUTHENTICATED_OUTPUT_LINK_BYTES: u64 = 2_672_044;
 pub const C63_RESPONSE_SPARSE_H_CLOSURE_BYTES: u64 = 1_496;
@@ -34,6 +35,7 @@ pub const C63_RESPONSE_PROOF_ENVELOPE_MAX_BYTES: u64 = C63_RESPONSE_PROOF_ENVELO
     + C62_RESPONSE_RESIDUAL_SUMCHECK_MAX_BYTES
     + C62_RESPONSE_PRODUCT_COORDINATE_ONE_BYTES
     + C62_RESPONSE_RESIDUAL_PENDING_BYTES
+    + C62_RESPONSE_CACHE_FOLD_TARGET_BYTES
     + C63_RESPONSE_AUTHENTICATED_SKETCH_LINK_BYTES;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -61,7 +63,8 @@ enum ComponentKind {
     ResidualSumcheck = 1,
     ProductCoordinateOne = 2,
     ResidualPendingCorrections = 3,
-    AuthenticatedSketchLink = 4,
+    ResponseCacheFoldTargets = 4,
+    AuthenticatedSketchLink = 5,
 }
 
 impl ComponentKind {
@@ -69,6 +72,7 @@ impl ComponentKind {
         Self::ResidualSumcheck,
         Self::ProductCoordinateOne,
         Self::ResidualPendingCorrections,
+        Self::ResponseCacheFoldTargets,
         Self::AuthenticatedSketchLink,
     ];
 
@@ -77,6 +81,7 @@ impl ComponentKind {
             Self::ResidualSumcheck => C62_RESPONSE_RESIDUAL_SUMCHECK_MAX_BYTES,
             Self::ProductCoordinateOne => C62_RESPONSE_PRODUCT_COORDINATE_ONE_BYTES,
             Self::ResidualPendingCorrections => C62_RESPONSE_RESIDUAL_PENDING_BYTES,
+            Self::ResponseCacheFoldTargets => C62_RESPONSE_CACHE_FOLD_TARGET_BYTES,
             Self::AuthenticatedSketchLink => C63_RESPONSE_AUTHENTICATED_SKETCH_LINK_BYTES,
         }
     }
@@ -91,6 +96,7 @@ pub struct C63ResponseProofEnvelope {
     residual_sumcheck: Vec<u8>,
     product_coordinate_one: Vec<u8>,
     residual_pending_corrections: Vec<u8>,
+    response_cache_fold_targets: Vec<u8>,
     source_functional_corrections: Vec<u8>,
     authenticated_output_link: Vec<u8>,
     sparse_h_closure: Vec<u8>,
@@ -102,6 +108,7 @@ impl C63ResponseProofEnvelope {
         residual_sumcheck: Vec<u8>,
         product_coordinate_one: Vec<u8>,
         residual_pending_corrections: Vec<u8>,
+        response_cache_fold_targets: Vec<u8>,
         source_functional_corrections: Vec<u8>,
         authenticated_output_link: Vec<u8>,
         sparse_h_closure: Vec<u8>,
@@ -111,6 +118,7 @@ impl C63ResponseProofEnvelope {
             residual_sumcheck,
             product_coordinate_one,
             residual_pending_corrections,
+            response_cache_fold_targets,
             source_functional_corrections,
             authenticated_output_link,
             sparse_h_closure,
@@ -130,6 +138,10 @@ impl C63ResponseProofEnvelope {
 
     pub fn residual_pending_corrections(&self) -> &[u8] {
         &self.residual_pending_corrections
+    }
+
+    pub fn response_cache_fold_targets(&self) -> &[u8] {
+        &self.response_cache_fold_targets
     }
 
     pub fn authenticated_output_link(&self) -> &[u8] {
@@ -208,6 +220,7 @@ impl C63ResponseProofEnvelope {
         let residual_sumcheck = components.next().expect("fixed component census");
         let product_coordinate_one = components.next().expect("fixed component census");
         let residual_pending_corrections = components.next().expect("fixed component census");
+        let response_cache_fold_targets = components.next().expect("fixed component census");
         let linked = components.next().expect("fixed component census");
         let source_end = C63_RESPONSE_SOURCE_FUNCTIONAL_CORRECTIONS_BYTES as usize;
         let output_end = source_end + C63_RESPONSE_AUTHENTICATED_OUTPUT_LINK_BYTES as usize;
@@ -216,6 +229,7 @@ impl C63ResponseProofEnvelope {
             residual_sumcheck,
             product_coordinate_one,
             residual_pending_corrections,
+            response_cache_fold_targets,
             linked[..source_end].to_vec(),
             linked[source_end..output_end].to_vec(),
             linked[output_end..sparse_end].to_vec(),
@@ -237,6 +251,7 @@ impl C63ResponseProofEnvelope {
             (ComponentKind::ResidualSumcheck, self.residual_sumcheck.clone()),
             (ComponentKind::ProductCoordinateOne, self.product_coordinate_one.clone()),
             (ComponentKind::ResidualPendingCorrections, self.residual_pending_corrections.clone()),
+            (ComponentKind::ResponseCacheFoldTargets, self.response_cache_fold_targets.clone()),
             (ComponentKind::AuthenticatedSketchLink, linked),
         ]
     }
@@ -345,6 +360,7 @@ mod tests {
             vec![1; C62_RESPONSE_RESIDUAL_SUMCHECK_MAX_BYTES as usize],
             vec![2; C62_RESPONSE_PRODUCT_COORDINATE_ONE_BYTES as usize],
             vec![3; C62_RESPONSE_RESIDUAL_PENDING_BYTES as usize],
+            vec![8; C62_RESPONSE_CACHE_FOLD_TARGET_BYTES as usize],
             vec![7; C63_RESPONSE_SOURCE_FUNCTIONAL_CORRECTIONS_BYTES as usize],
             vec![4; C63_RESPONSE_AUTHENTICATED_OUTPUT_LINK_BYTES as usize],
             vec![5; C63_RESPONSE_SPARSE_H_CLOSURE_BYTES as usize],

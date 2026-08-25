@@ -25,6 +25,8 @@ pub const C63_CERTIFICATE_CODEC_MAX_BYTES: u64 = C63_NATIVE_CERTIFICATE_FRAMING_
 
 const C63_NATIVE_CERTIFICATE_MAGIC: &[u8] = b"VOLTA-C63-CERT-v3";
 const C62_PUBLIC_ARGUMENT_MAGIC: &[u8; 8] = b"C62PA1\0\0";
+const C62_PUBLIC_ARGUMENT_VERSION: u16 = 1;
+const C62_PUBLIC_ARGUMENT_COMPONENTS: u16 = 7;
 const C63_PUBLIC_ARGUMENT_MAGIC: &[u8; 8] = b"C63PUB3\0";
 const C63_PUBLIC_ARGUMENT_HEADER_BYTES: usize = 216;
 const C63_PUBLIC_ARGUMENT_COMPONENTS: u16 = 9;
@@ -257,14 +259,12 @@ impl C63NativeFinalCertificate {
         }
         C6RetainedResponseProof::decode_c62(self.retained_response())
             .map_err(|error| C63CertificateError::new(error.to_string()))?;
-        if self.inherited_public_argument().get(..8) != Some(C62_PUBLIC_ARGUMENT_MAGIC) {
-            return Err(C63CertificateError::new("C63NFC3 inherited public argument differs"));
-        }
+        let inherited_statement = c62_public_argument_statement(self.inherited_public_argument())?;
         let public = parse_public_header(self.sketch_public_argument_unchecked())?;
         if public.epoch != self.new_head.epoch
             || u32::from(public.old_len) != self.old_head.cache_len
             || u32::from(public.accepted_len) != self.new_head.cache_len
-            || public.statement_digest != self.wrapper.statement_digest
+            || public.statement_digest != inherited_statement
             || self.new_head.cache_root != self.compute_state_head_digest(public)
         {
             return Err(C63CertificateError::new("C63NFC3 public state binding differs"));
@@ -451,6 +451,24 @@ fn parse_public_header(bytes: &[u8]) -> Result<PublicHeader> {
     Ok(header)
 }
 
+fn c62_public_argument_statement(bytes: &[u8]) -> Result<[u8; 32]> {
+    if bytes.len() < 44
+        || bytes.get(..8) != Some(C62_PUBLIC_ARGUMENT_MAGIC)
+        || u16::from_le_bytes(bytes[8..10].try_into().unwrap()) != C62_PUBLIC_ARGUMENT_VERSION
+        || u16::from_le_bytes(bytes[10..12].try_into().unwrap())
+            != C62_PUBLIC_ARGUMENT_COMPONENTS
+    {
+        return Err(C63CertificateError::new("C63NFC3 inherited public argument differs"));
+    }
+    let statement: [u8; 32] = bytes[12..44].try_into().unwrap();
+    if statement == [0; 32] {
+        return Err(C63CertificateError::new(
+            "C63NFC3 inherited public statement is zero",
+        ));
+    }
+    Ok(statement)
+}
+
 fn c63_public_component_digest(kind: u16, payload: &[u8]) -> [u8; 32] {
     let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c63/public-component/v3");
     hasher.update(&kind.to_le_bytes());
@@ -490,6 +508,9 @@ mod tests {
         let mut retained = crate::model_proof_codec::retained_response_c62_test_bytes();
         let mut inherited = vec![0; C63_INHERITED_PUBLIC_ARGUMENT_BYTES as usize];
         inherited[..8].copy_from_slice(C62_PUBLIC_ARGUMENT_MAGIC);
+        inherited[8..10].copy_from_slice(&C62_PUBLIC_ARGUMENT_VERSION.to_le_bytes());
+        inherited[10..12].copy_from_slice(&C62_PUBLIC_ARGUMENT_COMPONENTS.to_le_bytes());
+        inherited[12..44].copy_from_slice(&digest(19));
         retained.extend(inherited);
         let mut sketch = vec![0; C63_PUBLIC_ARGUMENT_HEADER_BYTES];
         sketch[..8].copy_from_slice(C63_PUBLIC_ARGUMENT_MAGIC);
@@ -518,6 +539,7 @@ mod tests {
             vec![0x51],
             vec![0x52; crate::C62_RESPONSE_PRODUCT_COORDINATE_ONE_BYTES as usize],
             vec![0x53; crate::C62_RESPONSE_RESIDUAL_PENDING_BYTES as usize],
+            vec![0x58; crate::C62_RESPONSE_CACHE_FOLD_TARGET_BYTES as usize],
             vec![0x57; crate::C63_RESPONSE_SOURCE_FUNCTIONAL_CORRECTIONS_BYTES as usize],
             vec![0x54; crate::C63_RESPONSE_AUTHENTICATED_OUTPUT_LINK_BYTES as usize],
             vec![0x55; crate::C63_RESPONSE_SPARSE_H_CLOSURE_BYTES as usize],
@@ -563,7 +585,7 @@ mod tests {
             },
             public_output_digest: digest(18),
             wrapper: C63NativeWrapperCommitments {
-                statement_digest: digest(19),
+                statement_digest: digest(29),
                 residual_root: digest(23),
                 auxiliary_root: digest(24),
                 source_binding_digest: digest(25),
@@ -587,6 +609,7 @@ mod tests {
     #[test]
     fn c63_final_certificate_round_trip_binds_both_state_roots() {
         let certificate = certificate();
+        assert_ne!(certificate.wrapper.statement_digest, digest(19));
         let sketch = certificate.sketch_public_argument_unchecked();
         assert_eq!(sketch.len(), C63_PUBLIC_ARGUMENT_FRAMING_BYTES);
         assert!(parse_public_header(&sketch[..C63_PUBLIC_ARGUMENT_HEADER_BYTES]).is_err());
@@ -601,8 +624,13 @@ mod tests {
                 - certificate.proof_envelope.len() as u64,
             C63_NATIVE_CERTIFICATE_FRAMING_BYTES,
         );
-        assert_eq!(C63_CERTIFICATE_CODEC_MAX_BYTES, 28_692_111);
+        assert_eq!(C63_CERTIFICATE_CODEC_MAX_BYTES, 28_710_631);
         assert!(crate::C62NativeFinalCertificate::decode(&bytes).is_err());
+
+        let mut wrong_join = certificate.clone();
+        wrong_join.retained_transcript
+            [C63_RETAINED_NON_PCS_RESPONSE_BYTES as usize + 12] ^= 1;
+        assert!(wrong_join.seal().is_err());
 
         let mut changed = bytes;
         let correction_root = C63_NATIVE_CERTIFICATE_FRAMING_BYTES as usize

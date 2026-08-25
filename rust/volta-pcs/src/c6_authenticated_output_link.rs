@@ -5616,6 +5616,7 @@ mod tests {
             vec![0; volta_proto::C62_RESPONSE_RESIDUAL_SUMCHECK_MAX_BYTES as usize],
             vec![0; volta_proto::C62_RESPONSE_PRODUCT_COORDINATE_ONE_BYTES as usize],
             vec![0; volta_proto::C62_RESPONSE_RESIDUAL_PENDING_BYTES as usize],
+            vec![0; volta_proto::C62_RESPONSE_CACHE_FOLD_TARGET_BYTES as usize],
             C63ResidualSourceFunctionalFrame {
                 corrections: [[Fp2::ZERO; C6_AUTHENTICATED_OUTPUT_LINK_TAPES]; 2],
             },

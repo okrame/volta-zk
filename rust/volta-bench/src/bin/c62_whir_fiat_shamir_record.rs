@@ -1684,6 +1684,7 @@ mod enabled {
         params_digest: String,
         quantization_digest: String,
         fixed_session_generation_wall_s: f64,
+        installed_setup_generation_wall_s: f64,
         manifest_setup_wall_s: f64,
         sparse_setup_cpu_wall_s: f64,
         sparse_setup_gpu_wall_s: f64,
@@ -1718,6 +1719,17 @@ mod enabled {
 
     fn c63_prove(args: &Args) -> Result<(), String> {
         let session_started = Instant::now();
+        let installed_setup_generation_wall_s = std::env::var(
+            "VOLTA_C63_INSTALLED_SETUP_GENERATION_WALL_S",
+        )
+        .map_err(|_| "VOLTA_C63_INSTALLED_SETUP_GENERATION_WALL_S is required".to_owned())?
+        .parse::<f64>()
+        .map_err(|_| "C6.3 installed-setup wall is not a number".to_owned())?;
+        if !installed_setup_generation_wall_s.is_finite()
+            || installed_setup_generation_wall_s < 0.0
+        {
+            return Err("C6.3 installed-setup wall is invalid".to_owned());
+        }
         let source_git_commit = git_sha_clean()?;
         let cloud = cloud_metadata_from_env()
             .ok_or_else(|| "cloud metadata environment is required".to_owned())?;
@@ -2127,7 +2139,9 @@ mod enabled {
             let verifier_target_pass = verifier_wall_s < VERIFIER_TARGET_S;
             let verifier_memory_pass =
                 verifier_additional_peak_bytes <= VERIFIER_MEMORY_LIMIT_BYTES;
-            let cold_full_e2e_wall_s = (index == 0).then(|| session_started.elapsed().as_secs_f64());
+            let cold_full_e2e_wall_s = (index == 0).then(|| {
+                installed_setup_generation_wall_s + session_started.elapsed().as_secs_f64()
+            });
             certificates.push(C63CertificateRecord {
                 index,
                 slot: reservation.slot,
@@ -2210,6 +2224,7 @@ mod enabled {
             params_digest: hex(&params_digest),
             quantization_digest: hex(&quantization_digest),
             fixed_session_generation_wall_s,
+            installed_setup_generation_wall_s,
             manifest_setup_wall_s,
             sparse_setup_cpu_wall_s,
             sparse_setup_gpu_wall_s,

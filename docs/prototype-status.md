@@ -44,7 +44,7 @@ Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
   recording its byte census. The durable slot journal now recognizes C6.3 for
   produce, retransmit, crash recovery and acknowledgement; a focused lifecycle
   test passes. Timings separate fixed-session generation, model preprocessing,
-  manifest setup, sparse setup, workload construction, provider certificate,
+  installed-profile generation, manifest setup, sparse setup, workload construction, provider certificate,
   artifact persistence and verifier. Per-backend transfers, copies,
   synchronization, process I/O, RSS and spill bytes are recorded. Byte, time
   and memory target misses remain nonterminal; only protocol/session failure

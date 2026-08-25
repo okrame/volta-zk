@@ -1131,8 +1131,8 @@ wrapper admission also accepts the two-cohort C6.3 profile. The existing
 only cold `0→150` and warm `150→200`, reuses one fixed model cache, persists
 each canonical artifact, verifies it on four ordinary CPU threads, then
 promotes client/GPU state and removes the large transient proof directory.
-It records preprocessing, setup, provider, serialization, verifier, I/O, RSS,
-three CUDA-backend counter sets and spill bytes separately. Target misses do
+It records installed-profile generation, preprocessing, setup, provider,
+serialization, verifier, I/O, RSS, three CUDA-backend counter sets and spill bytes separately. Target misses do
 not abort the second response or suppress the record. A real candidate and
 measured cleanup/promotion still require this command on the registered A100.
 

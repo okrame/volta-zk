@@ -1,6 +1,6 @@
 # C6.3 Authenticated Sketched WHIR Design
 
-Status: **R0/R1 LOCAL GREEN / C63-G1 A100 PASS / RESIDENT COORDINATOR GREEN / COMPLETE CPU VERIFIER COMPOSED / A100 E2E PENDING / NO POD**
+Status: **R0/R1 LOCAL GREEN / C63-G1 A100 PASS / CHECKPOINT 1f61d71 / A100 E2E AUTHORIZED / PREFLIGHT PENDING**
 
 This document is the authority for C6.3. It replaces C6.2 only for new C6.3
 work; C6.2 code, artifacts and dispositions remain immutable evidence. The
@@ -12,8 +12,9 @@ from measured scaling rather than assumed here.
 The owner opens autonomous local design and implementation of an
 Authenticated Sketched PCS. The objective is a complete response proof below
 20 seconds on one A100 without moving work to another response and without
-weakening the existing designated-verifier statement. The owner accepts a
-complete certificate up to `30,000,000 B` for this experiment.
+weakening the existing designated-verifier statement. The certificate target
+is `30,000,000 B`; a larger complete certificate is still serialized, verified
+and recorded rather than discarded.
 
 The minimum protocol path remains selected. The owner authorizes the minimal
 resident projection/opening and WHIR message-ownership extension identified
@@ -44,10 +45,10 @@ for the PCS.
 ## 0.1 Gates and clock definitions
 
 The numerical gates are engineering targets, not permission to weaken a
-cryptographic invariant. Only the certificate ceiling changes for the first
-C6.3 experiment.
+cryptographic invariant. A time, certificate-byte or verifier-RSS miss records
+`FAIL` but is nonterminal when the run can safely continue.
 
-| Gate | C6.3 requirement |
+| Gate | C6.3 target |
 |---|---:|
 | public/connection setup | `<150,000,000 B` |
 | setup plus first certificate | `<172,000,000 B` |
@@ -82,11 +83,12 @@ The cold record keeps the following clocks separate:
 6. `cold_deployment_to_first_accept`: preprocessing plus request-to-accept.
 
 Crossing 20 seconds marks the prover gate **FAIL** but is not an execution
-stop: the run continues so certificate bytes and verifier time can still be
-measured. If `cold_certificate_prover` has not produced the complete canonical
-certificate by `150.000 s`, the attempt stops and records a no-certificate
-disposition. A certificate completed before that cap is always passed to the
-verifier even when the 20-second target failed.
+stop. Crossing `150.000 s` records a second diagnostic miss and the run still
+continues until it produces and verifies a complete canonical certificate or
+hits a genuine protocol/resource failure. Certificate bytes above 30 MB and
+verifier RSS above 8 GB are handled the same way. The supervisor may terminate
+only for imminent memory/disk exhaustion, a cryptographic rejection or an
+invalid state transition.
 
 The setup and fixed model cache may be shared by several connections when the
 model and parameters are identical. K/V values, their sketch state, the
@@ -1067,8 +1069,9 @@ rows and final certificate bytes do.
 After the ABI43 differential, this adapter has **no aggregate pod timebox**.
 Focused component work continues while resource controls hold and each run can
 produce useful evidence. Cold compilation and fixed setup remain separately
-measured. The 150-second per-certificate watchdog and every E2E hard stop remain
-unchanged. The implementation reuses the existing cached-fixed-base seam and
+measured. The 150-second mark is a nonterminal supervisor event; only the
+security and imminent-resource hard stops remain. The implementation reuses
+the existing cached-fixed-base seam and
 normalized joint-bridge algebra; no new proof engine, abstraction or kernel is
 admitted unless a focused differential proves it necessary. A
 dense-host or CPU-prover fallback remains forbidden. ABI44 closes the admitted
@@ -1125,11 +1128,10 @@ events, device memory, process I/O, free bytes/inodes and result-tree growth.
 It begins E2E only with at least 120 GiB still free, stops before allocation if
 free space falls below 100 GiB or effective RAM has less than a 16-GiB reserve,
 and treats unexpected run-artifact growth above 10 GiB as evidence that the
-dense path returned. The 150-second proof watchdog uses a monotonic clock and
-cooperative termination; its parent writes the create-new disposition, burns
-the allocated correlation range and leaves the predecessor unpromoted. A hard
-kill is reserved for imminent resource exhaustion and still cannot promote
-state.
+dense path returned. The 20- and 150-second proof marks use a monotonic clock
+and emit nonterminal observations. A hard kill is reserved for imminent
+resource exhaustion and still cannot promote state; an incomplete or rejected
+proof burns its correlation range and leaves the predecessor unpromoted.
 
 The cold and immediate warm records are staged in one create-new session
 directory outside the Git checkout. Both record the same clean source SHA and
@@ -1140,12 +1142,13 @@ their immutable JSON/log digests copied under `benchmarks/results/` and
 committed. Generated setup, weights and `rust/target` stay pod-local and are
 removed after evidence export; result files are never included in cleanup.
 
-For the owner-provided first pod, `/workspace` fails the admission floor.
-The pod root overlay is admitted instead because it has more than 200 GB free;
-all source, build, generated and session paths stay on that one filesystem.
-It is not credited as surviving pod destruction, so clean source checkpoints
-and small evidence are pushed after each boundary. Losing disposable setup or
-weights requires a fresh run and never permits a selective protocol retry.
+On the historical first pod, `/workspace` failed the admission floor and the
+root overlay was used. Every new pod repeats that filesystem preflight; it may
+not inherit the old placement decision. All source, build, generated and
+session paths stay on the one newly admitted filesystem. Pod-local data is not
+credited as surviving pod destruction, so clean source checkpoints and small
+evidence are pushed after each boundary. Losing disposable setup or weights
+requires a fresh run and never permits a selective protocol retry.
 
 ### C63-E2E2 — two real responses
 
@@ -1156,7 +1159,7 @@ owner GO may one A100 execute the first experiment.
    `0 -> 150`. Record every cold clock defined in Section 0.1 so provider
    model preprocessing is not conflated with inference or certificate
    generation. `cold_certificate_prover` is also the response-specific prover
-   gate clock for this response and carries the 150-second terminal cap.
+   gate clock; 20 and 150 seconds are both recorded, nonterminal marks.
 2. Without restarting, warming artificially or replacing state, promote the
    first accepted successor and run real `150 -> 200`. Record the complete
    warm request-to-accept wall plus provider proof and verifier subclocks.
@@ -1184,12 +1187,13 @@ separate pre-E2E component diagnostic may use a hardware profiler.
 Both certificates use the real/AES PCG and the same connection with disjoint
 correlation ranges. Compilation, repository synchronization and weight/setup
 transfer are preparation, not deployment or response time. No mutation set,
-four burns, 17-response loop or retry runs in this experiment. Any failure
-stops and records the create-new disposition, except that crossing the
-20-second prover target alone deliberately continues up to the 150-second
-cold certificate cap. Source moves through `git push`/`pull`, not SCP; weights
-and generated setup stay uncommitted on the pod, while the small append-only
-JSON record returns through Git.
+four burns, 17-response loop or retry runs in this experiment. Security
+rejection, invalid state promotion or imminent resource exhaustion stops and
+records a create-new disposition. Byte, 20/150-second and verifier-RSS misses
+continue through serialization and verification. Source moves through Git,
+not SCP; weights and generated setup stay uncommitted on the pod, while the
+small append-only JSON record returns through Git. A measurement miss never
+replaces a complete artifact with a no-certificate disposition.
 
 ## 7. Current decision and confidence
 

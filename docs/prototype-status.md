@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — LOCAL COORDINATOR / COMPLETE CPU VERIFIER COMPOSED / A100 E2E PENDING / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — CHECKPOINT 1f61d71 / A100 E2E AUTHORIZED / PREFLIGHT PENDING)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,10 +10,9 @@ record; no external plan is authoritative.
 
 Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 
-- **Status.** The tape-separated resident coordinator, exact `D=X-R` source
-  link, eight-body suffix and one complete CPU-verifier entry compile; their
-  constituent and ordering checks pass. The entry has not yet consumed a full
-  serialized A100 certificate; E2E and all empirical gates remain pending.
+- **Status.** Clean checkpoint `1f61d71` contains the resident coordinator,
+  exact `D=X-R` source link, eight-body suffix and composed CPU verifier. The
+  owner has authorized a new A100 endpoint; preflight and E2E are pending.
 - **Evidence.** Resident projection/openings, 4,420 spots, one D19 lane and the
   production sparse engine remain valid `credit:false` components. Measured
   spots cost 0.399--0.401 s; sparse prove/verify 0.938--1.084/0.950--1.093 s;
@@ -25,13 +24,26 @@ Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
   codec projects `28,692,111 B` and `129,889,808 B` setup plus first. The
   designated tail is `2,704,637 B`; both actual gates pass analytically, but
   their unused maxima cannot be spent simultaneously.
-- **Checks.** Certificate `<=30,000,000 B`; soundness `>=78.00` bits; warm
-  prover `<20 s`; CPU verifier `<5 s`; cold certificate stops at 150 s.
-- **Resume.** Create a clean checkpoint, then obtain a new owner-provided A100
-  endpoint and GO. Run the registered full-size setup/differentials and one
-  cold plus one immediate warm response. The 0.019-bit soundness margin admits
-  no omitted error term; measured VRAM, bytes, prover and verifier gates remain
-  terminal.
+- **Checks.** Certificate `<=30,000,000 B`, warm prover `<20 s`, CPU verifier
+  `<5 s`, verifier RSS `<=8 GB` and the 150-second prover mark are engineering
+  targets: crossing them records `FAIL` but does not stop a viable run.
+  Soundness `>=78.00` bits and protocol acceptance remain mandatory.
+- **Resume.** Pull `1f61d71` on the authorized pod, run preflight, full-size
+  setup/differentials, one cold and one immediate warm response, and retain a
+  complete artifact even after byte/time/RSS target misses. Stop only for a
+  cryptographic failure, invalid state transition or imminent resource loss.
+
+- **2026-08-25 — Owner authorizes the C6.3 A100 E2E and makes measurement
+  targets nonterminal.** Checkpoint `1f61d71` is clean and pushed. The complete
+  certificate, 150-second prover mark and verifier-RSS limit remain reported
+  gates, but exceeding them no longer terminates a viable certificate run.
+  The harness must continue through canonical serialization and complete CPU
+  verification, then record the failure together with phase timing, proof
+  bytes, process/device memory, transfers, synchronization, disk growth,
+  sparse work, encoded-tree reuse, grinding and inherited D23/GW4 costs.
+  Security rejection, correlation misuse, invalid promotion and imminent
+  resource exhaustion remain terminal. The owner-provided A100 endpoint and
+  GO are active; source synchronization remains Git-only.
 
 - **2026-08-25 — Resident coordinator and composed CPU-verifier entry close
   the local C6.3 source/link implementation stop.** The provider now fixes all eight

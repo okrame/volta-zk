@@ -1,6 +1,6 @@
 # C6.3 Authenticated Sketched WHIR Design
 
-Status: **R0/R1 LOCAL GREEN / C63-G1 A100 PASS / CHECKPOINT 1f61d71 / A100 E2E AUTHORIZED / PREFLIGHT PENDING**
+Status: **R0/R1 LOCAL GREEN / C63-G1 A100 PASS / CHECKPOINT 215d4f4 / POD PREFLIGHT PASS / FULL-SIZE DIFFERENTIAL PENDING**
 
 This document is the authority for C6.3. It replaces C6.2 only for new C6.3
 work; C6.2 code, artifacts and dispositions remain immutable evidence. The
@@ -1045,6 +1045,16 @@ two seams: it consumes the inference-owned paired source, releases terminal
 masks only after the existing global link, and exposes one complete CPU
 verifier entry. This is compiled and mutation-tested code, not a measured
 full certificate.
+
+Checkpoint `215d4f4` also removes two caller-selected setup values before the
+real run. The profile digest is derived from the exact sampled production
+descriptor and fixed v16 domain; genesis derives the all-zero encoded-sketch
+root from the physical D19-by-32 Merkle geometry. The direct append packer
+reads the inference-owned correction audit in the source schedule, checks
+`X=R+D` for every appended cell and emits exactly the kind/layer/position/
+channel order consumed by the existing CUDA update. Focused local tests pass.
+The production setup expansion, GPU zero-root match and asymmetric owner
+differential remain terminal before E2E.
 
 The first hardware check is the single ignored integration test
 `volta-pcs/tests/c63_gpu_owner.rs`. It uses the production D22-to-D19 sampler,

@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — CHECKPOINT 1f61d71 / A100 E2E AUTHORIZED / PREFLIGHT PENDING)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — CHECKPOINT 215d4f4 / POD PREFLIGHT PASS / FULL-SIZE DIFFERENTIAL PENDING)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,13 +10,14 @@ record; no external plan is authoritative.
 
 Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 
-- **Status.** Clean checkpoint `1f61d71` contains the resident coordinator,
-  exact `D=X-R` source link, eight-body suffix and composed CPU verifier. The
-  owner has authorized a new A100 endpoint; preflight and E2E are pending.
-- **Evidence.** Resident projection/openings, 4,420 spots, one D19 lane and the
-  production sparse engine remain valid `credit:false` components. Measured
-  spots cost 0.399--0.401 s; sparse prove/verify 0.938--1.084/0.950--1.093 s;
-  one D19 lane 64--96/20--21 ms. The 1,496-B sparse codec is unchanged.
+- **Status.** Clean code checkpoint `215d4f4` contains the resident coordinator,
+  exact `D=X-R` link, eight-body suffix, composed CPU verifier, canonical
+  production-profile binding and direct live-correction packer. Pod preflight
+  passes; environment bootstrap is in progress and E2E has not begun.
+- **Evidence.** The authorized pod has one exclusive A100 80 GB, `sm_80`, CUDA
+  12.8, 250 GB effective RAM and 228 GB free root storage. Local focused source
+  packing/profile tests pass. Earlier resident projection/opening, 4,420-spot,
+  sparse and one-lane results remain `credit:false`; no new proof credit exists.
 - **Decision.** Keep two authentication tapes, eight WHIR bodies and four
   terminal tags. The driver fixes eight roots, closes sparse/source claims,
   consumes the existing global link, then draws WHIR masks. Screen v16 keeps
@@ -28,10 +29,26 @@ Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
   `<5 s`, verifier RSS `<=8 GB` and the 150-second prover mark are engineering
   targets: crossing them records `FAIL` but does not stop a viable run.
   Soundness `>=78.00` bits and protocol acceptance remain mandatory.
-- **Resume.** Pull `1f61d71` on the authorized pod, run preflight, full-size
-  setup/differentials, one cold and one immediate warm response, and retain a
-  complete artifact even after byte/time/RSS target misses. Stop only for a
-  cryptographic failure, invalid state transition or imminent resource loss.
+- **Resume.** Pull the next clean checkpoint, finish bootstrap, run the
+  production setup/root and asymmetric-owner differential, then one cold and
+  one immediate warm response. Retain complete artifacts after byte/time/RSS
+  misses. Stop only for cryptographic failure, invalid transition or imminent
+  resource loss.
+
+- **2026-08-25 — New A100 preflight passes; production setup identity is no
+  longer caller-selected.** The pod exposes one idle A100-SXM4-80GB at `sm_80`,
+  CUDA 12.8, about 250 GB cgroup RAM and 228 GB free root storage. Source was
+  cloned and updated only through Git. Bootstrap found and closed two ordinary
+  build defects: the exporter omitted its `tiktoken` dependency and the
+  default build exposed a trace-only C6.3 import. Security review then found
+  that test callers supplied both the C6.3 profile digest and genesis encoded
+  root. Checkpoint `215d4f4` instead derives the profile from the exact sampled
+  production descriptor, derives the zero root from the fixed physical Merkle
+  geometry, and packs inference-owned `D=X-R` corrections directly in the CUDA
+  append order while checking every plaintext/mask/correction equality. Local
+  focused tests pass. The production sampler, GPU zero-root differential and
+  asymmetric state differential are still terminal pre-E2E checks; this entry
+  grants no certificate, timing, memory or hardware-result credit.
 
 - **2026-08-25 — Owner authorizes the C6.3 A100 E2E and makes measurement
   targets nonterminal.** Checkpoint `1f61d71` is clean and pushed. The complete

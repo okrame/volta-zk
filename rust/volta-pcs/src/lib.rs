@@ -155,9 +155,8 @@ pub use c61_terminal_functional::{
 };
 pub use c63_authenticated_sketch::{
     c63_bolt_correction_cell, c63_bolt_correction_index,
-    c63_bolt_interleaved_coefficient_reference, c63_compile_residual_source_functionals,
-    c63_correction_state_root_reference, c63_correction_tile_root_reference,
-    c63_evaluate_residual_source_functionals, c63_open_correction_rows_reference,
+    c63_bolt_interleaved_coefficient_reference, c63_correction_state_root_reference,
+    c63_correction_tile_root_reference, c63_open_correction_rows_reference,
     c63_production_compact_cache_reference_census, c63_verify_correction_rows_by_tape_reference,
     c63_verify_correction_rows_reference, C63BoltCorrectionIndex, C63CompactCacheReference,
     C63CompactCacheReferenceCensus, C63CorrectionAppendFrontier, C63CorrectionRowReference,
@@ -167,6 +166,10 @@ pub use c63_authenticated_sketch::{
     C63_BOLT_LIVE_ROWS_PER_POSITION, C63_BOLT_ROWS, C63_BOLT_ROWS_PER_POSITION, C63_BOLT_ROW_LOG2,
     C63_BOLT_SKETCH_ROWS, C63_BOLT_SKETCH_ROW_LOG2, C63_CORRECTION_ROW_FRAME_WORDS,
     C63_PRODUCTION_SETUP_SEED, C63_SPARSE_SETUP_DESCRIPTOR_BYTES, C63_SYSTEMATIC_SPOT_QUERIES,
+};
+#[cfg(feature = "c6-trace")]
+pub use c63_authenticated_sketch::{
+    c63_compile_residual_source_functionals, c63_evaluate_residual_source_functionals,
 };
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub use c63_gpu_owner::{

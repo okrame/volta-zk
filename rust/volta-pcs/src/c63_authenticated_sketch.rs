@@ -10,8 +10,10 @@ use volta_field::{Fp, Fp2};
 use volta_mac::{CorrScheduleAudit, CorrScheduleKind, CorrScheduleRole};
 #[cfg(test)]
 use volta_mac::{ProverAuthed, VerifierKey};
+#[cfg(feature = "c6-trace")]
 use volta_proto::c6_cache_fold::{C6CacheFoldAppendSourcePlan, C6CacheFoldKind};
 use volta_proto::mle::eq_vec;
+#[cfg(feature = "c6-trace")]
 use volta_proto::{C6PairedSourceWitness, C6ProductionPairedSourceWitness};
 
 use crate::c6_persistent_cache::{
@@ -454,6 +456,7 @@ pub fn c63_bolt_interleaved_coefficient_reference(
 
 /// Compile the two tape-separated correction functionals directly in the
 /// residual source order. Unrelated Transformer sources retain zero weight.
+#[cfg(feature = "c6-trace")]
 pub fn c63_compile_residual_source_functionals(
     old_len: u16,
     new_len: u16,
@@ -582,6 +585,7 @@ pub(crate) fn c63_direct_source_domain_offsets(
 /// Evaluate the two response-local correction openings from the paired source
 /// witness already produced by inference. This is the production `D=X-R`
 /// seam: it reads only the append's subfield audit and allocates no dense cache.
+#[cfg(feature = "c6-trace")]
 pub fn c63_evaluate_residual_source_functionals(
     old_len: u16,
     new_len: u16,
@@ -605,6 +609,7 @@ pub fn c63_evaluate_residual_source_functionals(
     )
 }
 
+#[cfg(feature = "c6-trace")]
 fn c63_evaluate_paired_source_functionals(
     old_len: u16,
     new_len: u16,
@@ -2034,9 +2039,11 @@ mod tests {
     use super::*;
     use volta_field::{Fp, Fp2};
     use volta_mac::CorrelationStream;
+    #[cfg(feature = "c6-trace")]
     use volta_proto::c6_cache_fold::{
         C6CacheFoldAppendSourceLayer, C6CacheFoldDirectSourceSegment,
     };
+    #[cfg(feature = "c6-trace")]
     use volta_proto::C6SourceCoordinate;
 
     use crate::c6_persistent_cache::C6PersistentCacheStateWitness;
@@ -2606,6 +2613,7 @@ mod tests {
         .is_err());
     }
 
+    #[cfg(feature = "c6-trace")]
     #[test]
     fn residual_source_functional_compiler_maps_cache_domains_without_key_log() {
         let layers = (0..12u16)

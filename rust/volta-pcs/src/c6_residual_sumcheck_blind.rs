@@ -3163,8 +3163,34 @@ fn verify_c6_blind_residual_sumchecks_inner<T>(
     pending_frame: &C6BlindResidualPendingTransferFrame,
     contexts: &mut [VerifierCtx; MAC_TAPES],
     transcript: &mut Transcript,
-    mut terminal_compiler: T,
+    terminal_compiler: T,
 ) -> Result<C6BlindResidualPendingClaimsVerifier>
+where
+    T: FnMut(&C6BlindResidualStatement, &[Fp2], &[Fp2]) -> Result<C6BlindResidualTerminalScalars>,
+{
+    Ok(verify_c6_blind_residual_sumchecks_inner_with_points(
+        statements,
+        proof,
+        pending_frame,
+        contexts,
+        transcript,
+        terminal_compiler,
+    )?
+    .0)
+}
+
+fn verify_c6_blind_residual_sumchecks_inner_with_points<T>(
+    statements: &[C6BlindResidualStatement],
+    proof: &C6BlindResidualSumcheckProof,
+    pending_frame: &C6BlindResidualPendingTransferFrame,
+    contexts: &mut [VerifierCtx; MAC_TAPES],
+    transcript: &mut Transcript,
+    mut terminal_compiler: T,
+) -> Result<(
+    C6BlindResidualPendingClaimsVerifier,
+    [Vec<Fp2>; C6_RESIDUAL_SUMCHECK_REPETITIONS],
+    [Vec<Fp2>; C6_RESIDUAL_SUMCHECK_REPETITIONS],
+)>
 where
     T: FnMut(&C6BlindResidualStatement, &[Fp2], &[Fp2]) -> Result<C6BlindResidualTerminalScalars>,
 {
@@ -3176,6 +3202,8 @@ where
         transcript,
     )?;
     let mut repetitions = Vec::with_capacity(C6_RESIDUAL_SUMCHECK_REPETITIONS);
+    let mut leaf_points = Vec::with_capacity(C6_RESIDUAL_SUMCHECK_REPETITIONS);
+    let mut auxiliary_points = Vec::with_capacity(C6_RESIDUAL_SUMCHECK_REPETITIONS);
     for statement in statements {
         let repetition = statement.repetition();
         let mut state = prepare_c6_blind_residual_verifier_round_state(statement, proof)?;
@@ -3191,6 +3219,10 @@ where
             state.bind_challenge(challenge)?;
         }
 
+        let (leaf_point, auxiliary_point) = state.terminal_points()?;
+        leaf_points.push(leaf_point);
+        auxiliary_points.push(auxiliary_point);
+
         let frame_start = usize::from(repetition) * C6_RESIDUAL_TABLES_PER_REPETITION;
         let frame_end = frame_start + C6_RESIDUAL_TABLES_PER_REPETITION;
         let local_pending = state.finish(
@@ -3203,7 +3235,16 @@ where
         )?;
         repetitions.push(local_pending);
     }
-    assemble_c6_blind_residual_verifier_stepwise(repetitions, transcript)
+    let pending = assemble_c6_blind_residual_verifier_stepwise(repetitions, transcript)?;
+    Ok((
+        pending,
+        leaf_points
+            .try_into()
+            .map_err(|_| C6BlindResidualError::new("C6RSC3 verifier leaf-point census differs"))?,
+        auxiliary_points.try_into().map_err(|_| {
+            C6BlindResidualError::new("C6RSC3 verifier auxiliary-point census differs")
+        })?,
+    ))
 }
 
 pub(crate) fn begin_c6_blind_residual_verifier_stepwise(
@@ -3395,6 +3436,29 @@ fn verify_c6_blind_residual_sumchecks_direct_claims(
     transcript: &mut Transcript,
 ) -> Result<C6BlindResidualPendingClaimsVerifier> {
     verify_c6_blind_residual_sumchecks_inner(
+        statements,
+        proof,
+        pending_frame,
+        contexts,
+        transcript,
+        |statement, _, _| terminal_scalars_from_direct_claims(statement, terminal_functionals),
+    )
+}
+
+#[cfg(feature = "c6-trace")]
+pub(crate) fn verify_c6_blind_residual_sumchecks_direct_claims_with_points(
+    statements: &[C6BlindResidualStatement],
+    proof: &C6BlindResidualSumcheckProof,
+    pending_frame: &C6BlindResidualPendingTransferFrame,
+    terminal_functionals: &[Fp2; C6_RESIDUAL_TERMINAL_FUNCTIONALS],
+    contexts: &mut [VerifierCtx; MAC_TAPES],
+    transcript: &mut Transcript,
+) -> Result<(
+    C6BlindResidualPendingClaimsVerifier,
+    [Vec<Fp2>; C6_RESIDUAL_SUMCHECK_REPETITIONS],
+    [Vec<Fp2>; C6_RESIDUAL_SUMCHECK_REPETITIONS],
+)> {
+    verify_c6_blind_residual_sumchecks_inner_with_points(
         statements,
         proof,
         pending_frame,

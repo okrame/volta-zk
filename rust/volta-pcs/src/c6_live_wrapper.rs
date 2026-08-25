@@ -24,12 +24,14 @@ use crate::c6_persistent_cache::{
 use crate::c6_wrapper_pcs::{
     bind_production_c6_residual_relation_roots, commit_c6_cache_state_cohort,
     commit_c6_wrapper_cohort, fix_production_c61_native_wrapper_commitments,
+    fix_production_c63_authenticated_sketch_wrapper_commitments,
     fix_production_c6_wrapper_commitments, production_c61_native_wrapper_specs,
-    production_c6_wrapper_specs, C6CacheStateDescriptors, C6CommittedWrapperCohort,
-    C6FixedWrapperCommitments, C6WrapperCohortSpec, C6WrapperCommitment, C6WrapperDigest,
-    C6WrapperOracleKind, C6WrapperSlotWitness, C6_DELTA_RESIDUAL_COHORT_ID,
-    C6_HIDDEN_U_EMBED_COHORT_ID, C6_HIDDEN_U_WEIGHTS_COHORT_ID, C6_PREDECESSOR_CACHE_COHORT_ID,
-    C6_SUCCESSOR_CACHE_COHORT_ID, C6_WRAPPER_AUXILIARY_COHORT_ID,
+    production_c63_authenticated_sketch_wrapper_specs, production_c6_wrapper_specs,
+    C6CacheStateDescriptors, C6CommittedWrapperCohort, C6FixedWrapperCommitments,
+    C6WrapperCohortSpec, C6WrapperCommitment, C6WrapperDigest, C6WrapperOracleKind,
+    C6WrapperSlotWitness, C6_DELTA_RESIDUAL_COHORT_ID, C6_HIDDEN_U_EMBED_COHORT_ID,
+    C6_HIDDEN_U_WEIGHTS_COHORT_ID, C6_PREDECESSOR_CACHE_COHORT_ID, C6_SUCCESSOR_CACHE_COHORT_ID,
+    C6_WRAPPER_AUXILIARY_COHORT_ID,
 };
 use crate::c6_wrapper_persisted::{
     commit_production_c6_wrapper_cohort_cuda, C6PersistedWrapperCohort, C6PersistedWrapperMetrics,
@@ -505,6 +507,28 @@ pub fn install_production_c61_native_live_wrapper_roots_verifier(
     let fixed = fix_production_c61_native_wrapper_commitments(
         statement_digest,
         &cache_descriptors,
+        &commitments,
+        transcript,
+    )
+    .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+    Ok(C6VerifierLiveWrapperRootBinding { fixed })
+}
+
+/// Install the two C6.3 residual/auxiliary roots. Cache state is bound by the
+/// authenticated-sketch public argument and cannot enter this root token.
+pub fn install_production_c63_authenticated_sketch_live_wrapper_roots_verifier(
+    statement_digest: C6WrapperDigest,
+    roots: [C6WrapperDigest; 2],
+    transcript: &mut Transcript,
+) -> Result<C6VerifierLiveWrapperRootBinding> {
+    let commitments = production_c63_authenticated_sketch_wrapper_specs()
+        .into_iter()
+        .zip(roots)
+        .map(|(spec, root)| C6WrapperCommitment::from_root(statement_digest, spec, root))
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(|error| C6LiveWrapperError::new(error.to_string()))?;
+    let fixed = fix_production_c63_authenticated_sketch_wrapper_commitments(
+        statement_digest,
         &commitments,
         transcript,
     )

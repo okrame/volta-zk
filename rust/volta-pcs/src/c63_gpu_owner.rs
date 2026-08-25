@@ -151,6 +151,7 @@ pub struct C63GpuStateOwner {
     profile_digest: Hash,
     expanded_h_digest: Hash,
     epoch: u64,
+    append_start: u16,
     accepted_len: u16,
     metadata: Vec<C63GpuTileMetadata>,
     tile_roots: Vec<Hash>,
@@ -214,6 +215,39 @@ impl C63GpuProjectedMessages {
 
     pub fn evaluate_combined_systematic(&self, point: &[Fp2]) -> Result<Fp2, C63GpuOwnerError> {
         self.evaluate_combined(self.combined_systematic()?, point)
+    }
+
+    pub fn evaluate_systematic_limb(
+        &self,
+        limb: usize,
+        point: &[Fp2],
+    ) -> Result<Fp2, C63GpuOwnerError> {
+        self.evaluate_limb(&self.systematic, limb, point, "systematic")
+    }
+
+    pub fn evaluate_sketch_limb(
+        &self,
+        limb: usize,
+        point: &[Fp2],
+    ) -> Result<Fp2, C63GpuOwnerError> {
+        self.evaluate_limb(&self.sketch, limb, point, "sketch")
+    }
+
+    fn evaluate_limb(
+        &self,
+        limbs: &[Option<DeviceBuffer<u64>>; 2],
+        limb: usize,
+        point: &[Fp2],
+        label: &str,
+    ) -> Result<Fp2, C63GpuOwnerError> {
+        let values = limbs
+            .get(limb)
+            .and_then(Option::as_ref)
+            .ok_or_else(|| C63GpuOwnerError::new(format!("C6.3 {label} limb is absent")))?;
+        let mut backend = self.backend.lock().map_err(|_| C63GpuOwnerError::new("CUDA lock"))?;
+        backend
+            .mle_eval_device(DeviceSlice::new(values, 0, values.len())?, point)
+            .map_err(Into::into)
     }
 
     fn evaluate_combined(
@@ -481,6 +515,7 @@ impl C63GpuStateOwner {
             profile_digest,
             expanded_h_digest: setup.expanded_h_digest,
             epoch,
+            append_start: old_len as u16,
             accepted_len: new_len as u16,
             metadata,
             tile_roots,
@@ -499,6 +534,10 @@ impl C63GpuStateOwner {
 
     pub fn accepted_len(&self) -> u16 {
         self.accepted_len
+    }
+
+    pub fn append_start(&self) -> u16 {
+        self.append_start
     }
 
     pub fn correction_root(&self) -> Hash {
@@ -528,15 +567,40 @@ impl C63GpuStateOwner {
         self.encoded_tree.as_ref().expect("live C6.3 encoded tree")
     }
 
-    /// Apply the post-root column challenge without materializing D', S or
-    /// either projected message in host memory.
-    pub fn project_messages(
+    /// Apply the post-root column challenge to this response's transition
+    /// without materializing D', S or either projected message in host memory.
+    pub fn project_transition_messages(
         &self,
+        predecessor: Option<&Self>,
         rho: [Fp2; C63_BOLT_COLUMNS],
     ) -> Result<C63GpuProjectedMessages, C63GpuOwnerError> {
+        match predecessor {
+            Some(previous)
+                if Arc::ptr_eq(&self.backend, &previous.backend)
+                    && self.profile_digest == previous.profile_digest
+                    && self.expanded_h_digest == previous.expanded_h_digest
+                    && self.append_start == previous.accepted_len
+                    && self.epoch
+                        == previous.epoch.checked_add(1).ok_or_else(|| {
+                            C63GpuOwnerError::new("C6.3 projection epoch overflows")
+                        })? => {}
+            None if self.append_start == 0 && self.epoch == 1 => {}
+            _ => return Err(C63GpuOwnerError::new("C6.3 projection predecessor differs")),
+        }
         let raw_rho = rho.map(Fp2Repr::from);
+        let raw_negative_rho = rho.map(|value| Fp2Repr::from(Fp2::ZERO - value));
         let mut backend = self.backend.lock().map_err(|_| C63GpuOwnerError::new("CUDA lock"))?;
         let rho_device = backend.upload_new_device(&raw_rho)?;
+        let negative_rho_device = match predecessor {
+            Some(_) => match backend.upload_new_device(&raw_negative_rho) {
+                Ok(device) => Some(device),
+                Err(error) => {
+                    let _ = backend.free_device(rho_device);
+                    return Err(error.into());
+                }
+            },
+            None => None,
+        };
         let systematic = backend.c63_project_columns_device(
             self.correction_rows.as_ref().expect("live C6.3 correction owner"),
             &rho_device,
@@ -546,9 +610,29 @@ impl C63GpuStateOwner {
             Ok(messages) => messages,
             Err(error) => {
                 let _ = backend.free_device(rho_device);
+                if let Some(device) = negative_rho_device {
+                    let _ = backend.free_device(device);
+                }
                 return Err(error.into());
             }
         };
+        if let Some(previous) = predecessor {
+            let negative = backend.c63_project_columns_device(
+                previous.correction_rows.as_ref().expect("live predecessor corrections"),
+                negative_rho_device.as_ref().expect("uploaded negative challenge"),
+                Some(usize::from(previous.accepted_len)),
+            );
+            if let Err(error) = negative
+                .and_then(|negative| add_projected_and_release(&mut backend, &systematic, negative))
+            {
+                free_projected(&mut backend, systematic);
+                let _ = backend.free_device(rho_device);
+                if let Some(device) = negative_rho_device {
+                    let _ = backend.free_device(device);
+                }
+                return Err(error.into());
+            }
+        }
         let sketch = backend.c63_project_columns_device(
             self.sketch.as_ref().expect("live C6.3 sketch owner"),
             &rho_device,
@@ -557,13 +641,32 @@ impl C63GpuStateOwner {
         let sketch = match sketch {
             Ok(messages) => messages,
             Err(error) => {
-                for message in systematic {
-                    let _ = backend.free_device(message);
-                }
+                free_projected(&mut backend, systematic);
                 let _ = backend.free_device(rho_device);
+                if let Some(device) = negative_rho_device {
+                    let _ = backend.free_device(device);
+                }
                 return Err(error.into());
             }
         };
+        if let Some(previous) = predecessor {
+            let negative = backend.c63_project_columns_device(
+                previous.sketch.as_ref().expect("live predecessor sketch"),
+                negative_rho_device.as_ref().expect("uploaded negative challenge"),
+                None,
+            );
+            if let Err(error) = negative
+                .and_then(|negative| add_projected_and_release(&mut backend, &sketch, negative))
+            {
+                free_projected(&mut backend, systematic);
+                free_projected(&mut backend, sketch);
+                let _ = backend.free_device(rho_device);
+                if let Some(device) = negative_rho_device {
+                    let _ = backend.free_device(device);
+                }
+                return Err(error.into());
+            }
+        }
         let encoded_sketch = backend.c63_project_encoded_columns_device(
             self.encoded_sketch.as_ref().expect("live C6.3 encoded owner"),
             &rho_device,
@@ -571,17 +674,42 @@ impl C63GpuStateOwner {
         let encoded_sketch = match encoded_sketch {
             Ok(messages) => messages,
             Err(error) => {
-                for message in systematic.into_iter().chain(sketch) {
-                    let _ = backend.free_device(message);
-                }
+                free_projected(&mut backend, systematic);
+                free_projected(&mut backend, sketch);
                 let _ = backend.free_device(rho_device);
+                if let Some(device) = negative_rho_device {
+                    let _ = backend.free_device(device);
+                }
                 return Err(error.into());
             }
         };
-        if let Err(error) = backend.free_device(rho_device) {
-            for message in systematic.into_iter().chain(sketch).chain(encoded_sketch) {
-                let _ = backend.free_device(message);
+        if let Some(previous) = predecessor {
+            let negative = backend.c63_project_encoded_columns_device(
+                previous.encoded_sketch.as_ref().expect("live predecessor encoded sketch"),
+                negative_rho_device.as_ref().expect("uploaded negative challenge"),
+            );
+            if let Err(error) = negative.and_then(|negative| {
+                add_projected_and_release(&mut backend, &encoded_sketch, negative)
+            }) {
+                free_projected(&mut backend, systematic);
+                free_projected(&mut backend, sketch);
+                free_projected(&mut backend, encoded_sketch);
+                let _ = backend.free_device(rho_device);
+                if let Some(device) = negative_rho_device {
+                    let _ = backend.free_device(device);
+                }
+                return Err(error.into());
             }
+        }
+        let rho_cleanup = backend.free_device(rho_device);
+        let negative_cleanup = match negative_rho_device {
+            Some(device) => backend.free_device(device),
+            None => Ok(()),
+        };
+        if let Err(error) = rho_cleanup.and(negative_cleanup) {
+            free_projected(&mut backend, systematic);
+            free_projected(&mut backend, sketch);
+            free_projected(&mut backend, encoded_sketch);
             return Err(error.into());
         }
         drop(backend);
@@ -591,6 +719,27 @@ impl C63GpuStateOwner {
             sketch: sketch.map(Some),
             encoded_sketch: encoded_sketch.map(Some),
         })
+    }
+
+    /// Project only one authentication tape. The returned two-limb owners are
+    /// consumed before projecting the other tape, so the eight-body repair
+    /// reuses the existing lane workspace.
+    pub fn project_tape_messages(
+        &self,
+        predecessor: Option<&Self>,
+        rho: [Fp2; C63_BOLT_COLUMNS],
+        tape: usize,
+    ) -> Result<C63GpuProjectedMessages, C63GpuOwnerError> {
+        if tape >= 2 {
+            return Err(C63GpuOwnerError::new("C6.3 projection tape is out of range"));
+        }
+        let mut masked = rho;
+        for (column, coefficient) in masked.iter_mut().enumerate() {
+            if column & 1 != tape {
+                *coefficient = Fp2::ZERO;
+            }
+        }
+        self.project_transition_messages(predecessor, masked)
     }
 
     pub(crate) fn open_encoded_sketch_rows(
@@ -633,11 +782,10 @@ impl C63GpuStateOwner {
             .upload_new_device(&metadata_words)?;
         let result = (|| {
             let mut tiles = Vec::new();
-            for position in positions
-                .iter()
-                .copied()
-                .filter(|&position| position < usize::from(self.accepted_len))
-            {
+            for position in positions.iter().copied().filter(|&position| {
+                position >= usize::from(self.append_start)
+                    && position < usize::from(self.accepted_len)
+            }) {
                 let locals = queried_rows
                     .iter()
                     .copied()
@@ -710,6 +858,7 @@ impl C63GpuStateOwner {
                 tiles.push((metadata, corrections, proof.sibling_hashes));
             }
             c63_correction_rows_opening_from_resident_parts(
+                self.append_start,
                 self.accepted_len,
                 &self.tile_roots,
                 queried_rows,
@@ -749,6 +898,31 @@ impl Drop for C63GpuStateOwner {
                 &mut self.correction_rows,
             );
         }
+    }
+}
+
+fn add_projected_and_release(
+    backend: &mut Backend,
+    target: &[DeviceBuffer<u64>; 2],
+    addend: [DeviceBuffer<u64>; 2],
+) -> Result<(), AccelError> {
+    let mut result = Ok(());
+    for (target, addend) in target.iter().zip(addend) {
+        if result.is_ok() {
+            result = backend.fp_add_inplace_device(target, 0, &addend, 0, target.len());
+        }
+        if let Err(error) = backend.free_device(addend) {
+            if result.is_ok() {
+                result = Err(error);
+            }
+        }
+    }
+    result
+}
+
+fn free_projected(backend: &mut Backend, projected: [DeviceBuffer<u64>; 2]) {
+    for message in projected {
+        let _ = backend.free_device(message);
     }
 }
 
@@ -808,7 +982,8 @@ impl C63GpuResourceCensus {
         };
         let transient_bytes = 2 * C63_BOLT_COLUMNS as u64 * C63_BOLT_SKETCH_ROWS as u64 * 8
             + C63_CORRECTION_FRAME_WORDS as u64 * C63_BOLT_ROWS_PER_POSITION as u64 * 8
-            + (2 * C63_BOLT_ROWS_PER_POSITION as u64 - 1) * 32;
+            + (2 * C63_BOLT_ROWS_PER_POSITION as u64 - 1) * 32
+            + if old_len == 0 { 0 } else { 2 * C63_BOLT_ROWS as u64 * 8 };
         Ok(Self {
             setup_bytes,
             accepted_state_bytes: if old_len == 0 { 0 } else { state_bytes(old_len) },
@@ -838,7 +1013,7 @@ mod tests {
         let warm = C63GpuResourceCensus::for_transition(150, 200).unwrap();
         assert_eq!(first.setup_bytes, 805_306_368);
         assert_eq!(first.checked_peak_bytes().unwrap(), 5_529_501_632);
-        assert_eq!(warm.checked_peak_bytes().unwrap(), 5_843_025_824);
+        assert_eq!(warm.checked_peak_bytes().unwrap(), 5_910_134_688);
     }
 
     #[test]

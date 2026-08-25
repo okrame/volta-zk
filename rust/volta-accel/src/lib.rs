@@ -2005,19 +2005,14 @@ impl Backend {
         if old_len >= new_len || new_len > 1024 {
             return Err(AccelError::InvalidInput("invalid C6.3 append geometry"));
         }
-        let per_tape = checked_product(
-            checked_product(2 * C63_LAYERS, new_len - old_len)?,
-            C63_WIDTH,
-        )?;
+        let per_tape =
+            checked_product(checked_product(2 * C63_LAYERS, new_len - old_len)?, C63_WIDTH)?;
         if tape0.len() != per_tape
             || tape1.len() != per_tape
             || permutation.len() != C63_SOCKET_COUNT
             || coefficients.len() != C63_SOCKET_COUNT
             || correction_rows.len()
-                != checked_product(
-                    checked_product(new_len, C63_LIVE_ROWS_PER_TOKEN)?,
-                    C63_COLUMNS,
-                )?
+                != checked_product(checked_product(new_len, C63_LIVE_ROWS_PER_TOKEN)?, C63_COLUMNS)?
             || sketch.len() != checked_product(C63_COLUMNS, C63_SKETCH_ROWS)?
         {
             return Err(AccelError::InvalidInput("invalid C6.3 resident region length"));
@@ -2030,22 +2025,26 @@ impl Backend {
         self.validate_buffer(sketch)?;
         #[cfg(feature = "cuda")]
         {
-            return self.cuda.as_mut().expect("CUDA kind without context").c63_append_corrections_device(
-                tape0.buffer.id,
-                tape0.offset,
-                tape1.buffer.id,
-                tape1.offset,
-                permutation.id,
-                0,
-                coefficients.id,
-                0,
-                correction_rows.id,
-                0,
-                sketch.id,
-                0,
-                old_len,
-                new_len,
-            );
+            return self
+                .cuda
+                .as_mut()
+                .expect("CUDA kind without context")
+                .c63_append_corrections_device(
+                    tape0.buffer.id,
+                    tape0.offset,
+                    tape1.buffer.id,
+                    tape1.offset,
+                    permutation.id,
+                    0,
+                    coefficients.id,
+                    0,
+                    correction_rows.id,
+                    0,
+                    sketch.id,
+                    0,
+                    old_len,
+                    new_len,
+                );
         }
         #[cfg(not(feature = "cuda"))]
         Err(AccelError::FeatureDisabled)
@@ -2073,20 +2072,23 @@ impl Backend {
         }
         self.validate_buffer(correction_rows)?;
         self.validate_buffer(metadata)?;
-        let output = self.alloc_device(
-            checked_product(C63_ROW_FRAME_WORDS, C63_ROWS_PER_TOKEN)?,
-        )?;
+        let output =
+            self.alloc_device(checked_product(C63_ROW_FRAME_WORDS, C63_ROWS_PER_TOKEN)?)?;
         #[cfg(feature = "cuda")]
-        let result = self.cuda.as_mut().expect("CUDA kind without context").c63_correction_tile_frame_device(
-            correction_rows.id,
-            0,
-            metadata.id,
-            0,
-            output.id,
-            0,
-            accepted_len,
-            position,
-        );
+        let result = self
+            .cuda
+            .as_mut()
+            .expect("CUDA kind without context")
+            .c63_correction_tile_frame_device(
+                correction_rows.id,
+                0,
+                metadata.id,
+                0,
+                output.id,
+                0,
+                accepted_len,
+                position,
+            );
         #[cfg(not(feature = "cuda"))]
         let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
         if let Err(error) = result {
@@ -2109,12 +2111,11 @@ impl Backend {
         self.validate_buffer(sketch)?;
         let output = self.alloc_device(output_elements)?;
         #[cfg(feature = "cuda")]
-        let result = self.cuda.as_mut().expect("CUDA kind without context").c63_pad_sketch_for_encoding_device(
-            sketch.id,
-            0,
-            output.id,
-            0,
-        );
+        let result = self
+            .cuda
+            .as_mut()
+            .expect("CUDA kind without context")
+            .c63_pad_sketch_for_encoding_device(sketch.id, 0, output.id, 0);
         #[cfg(not(feature = "cuda"))]
         let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
         if let Err(error) = result {
@@ -2139,10 +2140,7 @@ impl Backend {
             if accepted_len == 0 || accepted_len > 1024 {
                 return Err(AccelError::InvalidInput("invalid C6.3 projection length"));
             }
-            checked_product(
-                checked_product(accepted_len, C63_LIVE_ROWS_PER_TOKEN)?,
-                C63_COLUMNS,
-            )?
+            checked_product(checked_product(accepted_len, C63_LIVE_ROWS_PER_TOKEN)?, C63_COLUMNS)?
         } else {
             checked_product(C63_COLUMNS, C63_SKETCH_ROWS)?
         };
@@ -2160,18 +2158,19 @@ impl Backend {
             }
         };
         #[cfg(feature = "cuda")]
-        let result = self.cuda.as_mut().expect("CUDA kind without context").c63_project_columns_device(
-            input.id,
-            0,
-            rho.id,
-            0,
-            limb0.id,
-            0,
-            limb1.id,
-            0,
-            accepted_len,
-            if compact_corrections { 0 } else { 1 },
-        );
+        let result =
+            self.cuda.as_mut().expect("CUDA kind without context").c63_project_columns_device(
+                input.id,
+                0,
+                rho.id,
+                0,
+                limb0.id,
+                0,
+                limb1.id,
+                0,
+                accepted_len,
+                if compact_corrections { 0 } else { 1 },
+            );
         #[cfg(not(feature = "cuda"))]
         let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
         if let Err(error) = result {
@@ -2190,9 +2189,7 @@ impl Backend {
         rho: &DeviceBuffer<Fp2Repr>,
     ) -> Result<[DeviceBuffer<u64>; 2], AccelError> {
         let rows = 2 * C63_SKETCH_ROWS;
-        if encoded.len() != 2 * C63_COLUMNS * C63_SKETCH_ROWS
-            || rho.len() != C63_COLUMNS
-        {
+        if encoded.len() != 2 * C63_COLUMNS * C63_SKETCH_ROWS || rho.len() != C63_COLUMNS {
             return Err(AccelError::InvalidInput("invalid C6.3 encoded projection buffers"));
         }
         self.validate_buffer(encoded)?;
@@ -2206,9 +2203,10 @@ impl Backend {
             }
         };
         #[cfg(feature = "cuda")]
-        let result = self.cuda.as_mut().expect("CUDA kind without context").c63_project_columns_device(
-            encoded.id, 0, rho.id, 0, limb0.id, 0, limb1.id, 0, 0, 2,
-        );
+        let result =
+            self.cuda.as_mut().expect("CUDA kind without context").c63_project_columns_device(
+                encoded.id, 0, rho.id, 0, limb0.id, 0, limb1.id, 0, 0, 2,
+            );
         #[cfg(not(feature = "cuda"))]
         let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
         if let Err(error) = result {
@@ -7316,18 +7314,20 @@ impl Backend {
         point_len: usize,
         folding: usize,
     ) -> Result<Vec<Fp2>, AccelError> {
-        let claim_count = points.len().checked_div(point_len).ok_or(
-            AccelError::InvalidInput("SVO point geometry overflows"),
-        )?;
+        let claim_count = points
+            .len()
+            .checked_div(point_len)
+            .ok_or(AccelError::InvalidInput("SVO point geometry overflows"))?;
         if self.kind != BackendKind::CudaResident
             || point_len == 0
             || folding == 0
             || folding >= point_len
             || claim_count == 0
             || claim_count * point_len != points.len()
-            || message.len() != 1usize.checked_shl(point_len as u32).ok_or(
-                AccelError::InvalidInput("SVO message dimension overflows"),
-            )?
+            || message.len()
+                != 1usize
+                    .checked_shl(point_len as u32)
+                    .ok_or(AccelError::InvalidInput("SVO message dimension overflows"))?
         {
             return Err(AccelError::InvalidInput("invalid resident batched SVO geometry"));
         }
@@ -7336,9 +7336,11 @@ impl Backend {
         let left_count = 1usize << (residual_len / 2);
         let right_count = 1usize << (residual_len - residual_len / 2);
         let factor_len = claim_count
-            .checked_mul(left_count.checked_add(right_count).ok_or(
-                AccelError::InvalidInput("SVO factor geometry overflows"),
-            )?)
+            .checked_mul(
+                left_count
+                    .checked_add(right_count)
+                    .ok_or(AccelError::InvalidInput("SVO factor geometry overflows"))?,
+            )
             .ok_or(AccelError::InvalidInput("SVO factor geometry overflows"))?;
         let output_len = claim_count
             .checked_mul(1usize << folding)
@@ -7365,11 +7367,8 @@ impl Backend {
             }
         };
         #[cfg(feature = "cuda")]
-        let result = self
-            .cuda
-            .as_mut()
-            .expect("CUDA kind without context")
-            .fp2_batched_svo_partials_device(
+        let result =
+            self.cuda.as_mut().expect("CUDA kind without context").fp2_batched_svo_partials_device(
                 message.buffer.id,
                 message.offset,
                 message.len(),
@@ -7388,9 +7387,7 @@ impl Backend {
         let factors_free = self.free_device(factors);
         let cleanup = output_free.and(point_free).and(factors_free);
         match (values, cleanup) {
-            (Ok(values), Ok(())) => {
-                Ok(values.into_iter().map(Fp2::from).collect())
-            }
+            (Ok(values), Ok(())) => Ok(values.into_iter().map(Fp2::from).collect()),
             (Err(error), _) | (Ok(_), Err(error)) => Err(error),
         }
     }
@@ -7490,7 +7487,12 @@ impl Backend {
                 .cuda
                 .as_mut()
                 .expect("CUDA kind without context")
-                .fp2_polynomial_eval_device(values.buffer.id, values.offset, values.len, point.into())
+                .fp2_polynomial_eval_device(
+                    values.buffer.id,
+                    values.offset,
+                    values.len,
+                    point.into(),
+                )
                 .map(Fp2::from);
         }
         #[cfg(not(feature = "cuda"))]
@@ -10566,10 +10568,8 @@ mod cuda_tests {
         let sparse = gpu.alloc_device::<Fp2Repr>(av.len()).unwrap();
         gpu.zero_device(&sparse, 0, sparse.len()).unwrap();
         let sparse_values = [rho, gamma];
-        gpu.fp2_scatter_device(&sparse, 0, sparse.len(), &[1, 6], &sparse_values)
-            .unwrap();
-        gpu.fp2_add_geometric_inplace_device(&sparse, 0, sparse.len(), challenge, rho)
-            .unwrap();
+        gpu.fp2_scatter_device(&sparse, 0, sparse.len(), &[1, 6], &sparse_values).unwrap();
+        gpu.fp2_add_geometric_inplace_device(&sparse, 0, sparse.len(), challenge, rho).unwrap();
         let expected_sparse = (0..av.len())
             .scan(Fp2::ONE, |power, index| {
                 let mut value = rho * *power;
@@ -10602,9 +10602,7 @@ mod cuda_tests {
             .unwrap(),
             expected_evaluation,
         );
-        assert!(gpu
-            .fp2_scatter_device(&sparse, 0, sparse.len(), &[2, 2], &sparse_values)
-            .is_err());
+        assert!(gpu.fp2_scatter_device(&sparse, 0, sparse.len(), &[2, 2], &sparse_values).is_err());
         gpu.free_device(sparse).unwrap();
         let folded_a = gpu.fp2_fold_rows_device(&da, 0, 1, av.len(), challenge).unwrap();
         let got_fold: Vec<Fp2> = gpu

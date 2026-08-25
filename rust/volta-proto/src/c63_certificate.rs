@@ -11,8 +11,8 @@ use crate::{
 
 pub const C63_RETAINED_NON_PCS_RESPONSE_BYTES: u64 = crate::C62_RETAINED_RESPONSE_BYTES as u64;
 pub const C63_INHERITED_PUBLIC_ARGUMENT_BYTES: u64 = 9_210_864;
-pub const C63_SKETCH_PUBLIC_ARGUMENT_MAX_BYTES: u64 = 6_855_982;
-pub const C63_NATIVE_CERTIFICATE_VERSION: u16 = 1;
+pub const C63_SKETCH_PUBLIC_ARGUMENT_MAX_BYTES: u64 = 12_276_610;
+pub const C63_NATIVE_CERTIFICATE_VERSION: u16 = 3;
 pub const C63_NATIVE_WRAPPER_QUERIES: u16 = 86;
 pub const C63_NATIVE_CERTIFICATE_FRAMING_BYTES: u64 = 793;
 pub const C63_NATIVE_STRICT_PI_FINAL_MAX_BYTES: u64 =
@@ -23,10 +23,16 @@ pub const C63_CERTIFICATE_CODEC_MAX_BYTES: u64 = C63_NATIVE_CERTIFICATE_FRAMING_
     + C63_SKETCH_PUBLIC_ARGUMENT_MAX_BYTES
     + crate::C63_RESPONSE_PROOF_ENVELOPE_MAX_BYTES;
 
-const C63_NATIVE_CERTIFICATE_MAGIC: &[u8] = b"VOLTA-C63-CERT-v1";
+const C63_NATIVE_CERTIFICATE_MAGIC: &[u8] = b"VOLTA-C63-CERT-v3";
 const C62_PUBLIC_ARGUMENT_MAGIC: &[u8; 8] = b"C62PA1\0\0";
-const C63_PUBLIC_ARGUMENT_MAGIC: &[u8; 8] = b"C63PUB1\0";
-const C63_PUBLIC_ARGUMENT_HEADER_BYTES: usize = 152;
+const C63_PUBLIC_ARGUMENT_MAGIC: &[u8; 8] = b"C63PUB3\0";
+const C63_PUBLIC_ARGUMENT_HEADER_BYTES: usize = 216;
+const C63_PUBLIC_ARGUMENT_COMPONENTS: u16 = 9;
+const C63_PUBLIC_ARGUMENT_COMPONENT_FRAME_BYTES: usize = 40;
+const C63_PUBLIC_ARGUMENT_DIGEST_BYTES: usize = 32;
+const C63_PUBLIC_ARGUMENT_FRAMING_BYTES: usize = C63_PUBLIC_ARGUMENT_HEADER_BYTES
+    + C63_PUBLIC_ARGUMENT_COMPONENTS as usize * C63_PUBLIC_ARGUMENT_COMPONENT_FRAME_BYTES
+    + C63_PUBLIC_ARGUMENT_DIGEST_BYTES;
 const C63_NATIVE_RETAINED_MAX_BYTES: u64 = C63_RETAINED_NON_PCS_RESPONSE_BYTES
     + C63_INHERITED_PUBLIC_ARGUMENT_BYTES
     + C63_SKETCH_PUBLIC_ARGUMENT_MAX_BYTES;
@@ -55,9 +61,12 @@ type Result<T> = std::result::Result<T, C63CertificateError>;
 #[derive(Clone, Copy)]
 struct PublicHeader {
     epoch: u64,
+    old_len: u16,
     accepted_len: u16,
     statement_digest: [u8; 32],
     profile_digest: [u8; 32],
+    predecessor_correction_root: [u8; 32],
+    predecessor_encoded_sketch_root: [u8; 32],
     correction_root: [u8; 32],
     encoded_sketch_root: [u8; 32],
 }
@@ -102,11 +111,11 @@ impl C63NativeFinalCertificate {
 
     pub fn decode(bytes: &[u8]) -> Result<Self> {
         if bytes.len() as u64 > C63_CERTIFICATE_CODEC_MAX_BYTES {
-            return Err(C63CertificateError::new("C63NFC1 exceeds its codec cap"));
+            return Err(C63CertificateError::new("C63NFC3 exceeds its codec cap"));
         }
         let mut input = Decoder::new(bytes);
         if read(input.take(C63_NATIVE_CERTIFICATE_MAGIC.len()))? != C63_NATIVE_CERTIFICATE_MAGIC {
-            return Err(C63CertificateError::new("wrong C63NFC1 certificate magic"));
+            return Err(C63CertificateError::new("wrong C63NFC3 certificate magic"));
         }
         let certificate = Self {
             version: read(input.u16())?,
@@ -142,7 +151,7 @@ impl C63NativeFinalCertificate {
         read(input.finish())?;
         certificate.validate()?;
         if certificate.encode_unchecked() != bytes {
-            return Err(C63CertificateError::new("noncanonical C63NFC1 encoding"));
+            return Err(C63CertificateError::new("noncanonical C63NFC3 encoding"));
         }
         Ok(certificate)
     }
@@ -153,7 +162,7 @@ impl C63NativeFinalCertificate {
     }
 
     pub fn digest(&self) -> Result<[u8; 32]> {
-        Ok(hash_parts(b"volta-zk/c6.3/final-certificate/v1", &[&self.encode()?]))
+        Ok(hash_parts(b"volta-zk/c6.3/final-certificate/v3", &[&self.encode()?]))
     }
 
     pub fn encoded_len(&self) -> Result<u64> {
@@ -176,12 +185,12 @@ impl C63NativeFinalCertificate {
 
     pub fn retained_response_binding(&self) -> C61RetainedResponseBinding {
         C61RetainedResponseBinding::from_c62_bytes(self.retained_response())
-            .expect("validated C63NFC1 has a strict retained response")
+            .expect("validated C63NFC3 has a strict retained response")
     }
 
     pub fn decoded_proof_envelope(&self) -> C63ResponseProofEnvelope {
         C63ResponseProofEnvelope::decode(&self.proof_envelope)
-            .expect("validated C63NFC1 has a strict proof envelope")
+            .expect("validated C63NFC3 has a strict proof envelope")
     }
 
     pub fn wrapper_roots(&self) -> [[u8; 32]; 4] {
@@ -189,14 +198,14 @@ impl C63NativeFinalCertificate {
     }
 
     pub fn compute_transition_statement_digest(&self) -> [u8; 32] {
-        hash_parts(b"volta-zk/c6.3/transition-statement/v1", &[&self.encode_statement()])
+        hash_parts(b"volta-zk/c6.3/transition-statement/v3", &[&self.encode_statement()])
     }
 
     pub fn validate(&self) -> Result<()> {
         if self.version != C63_NATIVE_CERTIFICATE_VERSION
             || self.wrapper_queries != C63_NATIVE_WRAPPER_QUERIES
         {
-            return Err(C63CertificateError::new("wrong C63NFC1 version or query profile"));
+            return Err(C63CertificateError::new("wrong C63NFC3 version or query profile"));
         }
         if [
             self.protocol_digest,
@@ -212,14 +221,14 @@ impl C63NativeFinalCertificate {
         ]
         .contains(&[0; 32])
         {
-            return Err(C63CertificateError::new("C63NFC1 contains a zero required digest"));
+            return Err(C63CertificateError::new("C63NFC3 contains a zero required digest"));
         }
         self.old_head.validate().map_err(|error| C63CertificateError::new(error.to_string()))?;
         self.new_head.validate().map_err(|error| C63CertificateError::new(error.to_string()))?;
         if (self.old_head.epoch == 0 && self.predecessor_certificate_digest != [0; 32])
             || (self.old_head.epoch != 0 && self.predecessor_certificate_digest == [0; 32])
         {
-            return Err(C63CertificateError::new("C63NFC1 predecessor differs from genesis"));
+            return Err(C63CertificateError::new("C63NFC3 predecessor differs from genesis"));
         }
         self.correlation_ranges
             .validate()
@@ -231,12 +240,12 @@ impl C63NativeFinalCertificate {
                 .old_head
                 .epoch
                 .checked_add(1)
-                .ok_or_else(|| C63CertificateError::new("C63NFC1 cache epoch overflows"))?
+                .ok_or_else(|| C63CertificateError::new("C63NFC3 cache epoch overflows"))?
             || self.workload.old_context != self.old_head.cache_len
             || self.workload.new_context != self.new_head.cache_len
             || self.new_head.cache_len > C6_MAX_CONTEXT
         {
-            return Err(C63CertificateError::new("C63NFC1 does not advance its predecessor"));
+            return Err(C63CertificateError::new("C63NFC3 does not advance its predecessor"));
         }
         let minimum = C63_RETAINED_NON_PCS_RESPONSE_BYTES
             + C63_INHERITED_PUBLIC_ARGUMENT_BYTES
@@ -244,42 +253,43 @@ impl C63NativeFinalCertificate {
         if (self.retained_transcript.len() as u64) < minimum
             || (self.retained_transcript.len() as u64) > C63_NATIVE_RETAINED_MAX_BYTES
         {
-            return Err(C63CertificateError::new("C63NFC1 retained partition violates its cap"));
+            return Err(C63CertificateError::new("C63NFC3 retained partition violates its cap"));
         }
         C6RetainedResponseProof::decode_c62(self.retained_response())
             .map_err(|error| C63CertificateError::new(error.to_string()))?;
         if self.inherited_public_argument().get(..8) != Some(C62_PUBLIC_ARGUMENT_MAGIC) {
-            return Err(C63CertificateError::new("C63NFC1 inherited public argument differs"));
+            return Err(C63CertificateError::new("C63NFC3 inherited public argument differs"));
         }
         let public = parse_public_header(self.sketch_public_argument_unchecked())?;
         if public.epoch != self.new_head.epoch
+            || u32::from(public.old_len) != self.old_head.cache_len
             || u32::from(public.accepted_len) != self.new_head.cache_len
             || public.statement_digest != self.wrapper.statement_digest
             || self.new_head.cache_root != self.compute_state_head_digest(public)
         {
-            return Err(C63CertificateError::new("C63NFC1 public state binding differs"));
+            return Err(C63CertificateError::new("C63NFC3 public state binding differs"));
         }
         C63ResponseProofEnvelope::decode(&self.proof_envelope)
             .map_err(|error| C63CertificateError::new(error.to_string()))?;
         if self.retained_transcript_digest != c63_retained_digest(&self.retained_transcript)
             || self.proof_envelope_digest != c63_proof_digest(&self.proof_envelope)
         {
-            return Err(C63CertificateError::new("C63NFC1 payload digest mismatch"));
+            return Err(C63CertificateError::new("C63NFC3 payload digest mismatch"));
         }
         let statement_digest = self.compute_transition_statement_digest();
         if self.transition_statement_digest != statement_digest
             || self.new_head.producer_transition_digest != statement_digest
         {
-            return Err(C63CertificateError::new("C63NFC1 transition or head digest mismatch"));
+            return Err(C63CertificateError::new("C63NFC3 transition or head digest mismatch"));
         }
         let encoded_len = self.encode_unchecked().len() as u64;
         let proof_boundary = C63_NATIVE_CERTIFICATE_FRAMING_BYTES
             .checked_add(self.proof_envelope.len() as u64)
-            .ok_or_else(|| C63CertificateError::new("C63NFC1 proof boundary overflows"))?;
+            .ok_or_else(|| C63CertificateError::new("C63NFC3 proof boundary overflows"))?;
         if encoded_len > C63_CERTIFICATE_CODEC_MAX_BYTES
             || proof_boundary > C63_NATIVE_STRICT_PI_FINAL_MAX_BYTES
         {
-            return Err(C63CertificateError::new("C63NFC1 size cap exceeded"));
+            return Err(C63CertificateError::new("C63NFC3 size cap exceeded"));
         }
         Ok(())
     }
@@ -292,7 +302,7 @@ impl C63NativeFinalCertificate {
 
     fn compute_state_head_digest(&self, public: PublicHeader) -> [u8; 32] {
         let mut state = Encoder::new();
-        state.raw(b"VOLTA-C63-STATE-HEAD-v1");
+        state.raw(b"VOLTA-C63-STATE-HEAD-v3");
         for digest in [
             self.protocol_digest,
             self.model_digest,
@@ -303,6 +313,8 @@ impl C63NativeFinalCertificate {
             self.old_head.cache_root,
             self.old_head.producer_transition_digest,
             public.profile_digest,
+            public.predecessor_correction_root,
+            public.predecessor_encoded_sketch_root,
             public.correction_root,
             public.encoded_sketch_root,
             self.wrapper.source_binding_digest,
@@ -313,12 +325,12 @@ impl C63NativeFinalCertificate {
         state.u32(self.old_head.cache_len);
         state.u64(public.epoch);
         state.u16(public.accepted_len);
-        hash_parts(b"volta-zk/c6.3/state-head/v1", &[&state.finish()])
+        hash_parts(b"volta-zk/c6.3/state-head/v3", &[&state.finish()])
     }
 
     fn encode_statement(&self) -> Vec<u8> {
         let mut out = Encoder::new();
-        out.raw(b"VOLTA-C63-STATEMENT-v1");
+        out.raw(b"VOLTA-C63-STATEMENT-v3");
         self.encode_fixed_prefix(&mut out, false);
         out.finish()
     }
@@ -370,49 +382,99 @@ impl C63NativeFinalCertificate {
 }
 
 fn parse_public_header(bytes: &[u8]) -> Result<PublicHeader> {
-    if bytes.len() < C63_PUBLIC_ARGUMENT_HEADER_BYTES
+    if bytes.len() < C63_PUBLIC_ARGUMENT_FRAMING_BYTES
         || bytes.len() as u64 > C63_SKETCH_PUBLIC_ARGUMENT_MAX_BYTES
         || bytes.get(..8) != Some(C63_PUBLIC_ARGUMENT_MAGIC)
     {
-        return Err(C63CertificateError::new("C63NFC1 sketch public argument differs"));
+        return Err(C63CertificateError::new("C63NFC3 sketch public argument differs"));
     }
     let u16_at = |offset| u16::from_le_bytes(bytes[offset..offset + 2].try_into().unwrap());
     let u64_at = |offset| u64::from_le_bytes(bytes[offset..offset + 8].try_into().unwrap());
     let digest_at = |offset| bytes[offset..offset + 32].try_into().unwrap();
-    if u16_at(8) != 1 || u16_at(10) != 5 || u16_at(22) != 0 {
-        return Err(C63CertificateError::new("C63NFC1 sketch public header differs"));
+    if u16_at(8) != 3 || u16_at(10) != C63_PUBLIC_ARGUMENT_COMPONENTS {
+        return Err(C63CertificateError::new("C63NFC3 sketch public header differs"));
     }
     let header = PublicHeader {
         epoch: u64_at(12),
-        accepted_len: u16_at(20),
+        old_len: u16_at(20),
+        accepted_len: u16_at(22),
         statement_digest: digest_at(24),
         profile_digest: digest_at(56),
-        correction_root: digest_at(88),
-        encoded_sketch_root: digest_at(120),
+        predecessor_correction_root: digest_at(88),
+        predecessor_encoded_sketch_root: digest_at(120),
+        correction_root: digest_at(152),
+        encoded_sketch_root: digest_at(184),
     };
     if [
         header.statement_digest,
         header.profile_digest,
+        header.predecessor_correction_root,
+        header.predecessor_encoded_sketch_root,
         header.correction_root,
         header.encoded_sketch_root,
     ]
     .contains(&[0; 32])
     {
-        return Err(C63CertificateError::new("C63NFC1 sketch public digest is zero"));
+        return Err(C63CertificateError::new("C63NFC3 sketch public digest is zero"));
+    }
+    let mut offset = C63_PUBLIC_ARGUMENT_HEADER_BYTES;
+    for expected_kind in 1..=C63_PUBLIC_ARGUMENT_COMPONENTS {
+        let frame_end = offset
+            .checked_add(C63_PUBLIC_ARGUMENT_COMPONENT_FRAME_BYTES)
+            .ok_or_else(|| C63CertificateError::new("C63NFC3 sketch component overflows"))?;
+        let frame = bytes
+            .get(offset..frame_end)
+            .ok_or_else(|| C63CertificateError::new("C63NFC3 sketch component is truncated"))?;
+        let kind = u16::from_le_bytes(frame[..2].try_into().unwrap());
+        let reserved = u16::from_le_bytes(frame[2..4].try_into().unwrap());
+        let len = u32::from_le_bytes(frame[4..8].try_into().unwrap()) as usize;
+        let digest: [u8; 32] = frame[8..40].try_into().unwrap();
+        let payload_end = frame_end
+            .checked_add(len)
+            .ok_or_else(|| C63CertificateError::new("C63NFC3 sketch payload overflows"))?;
+        let payload = bytes
+            .get(frame_end..payload_end)
+            .ok_or_else(|| C63CertificateError::new("C63NFC3 sketch payload is truncated"))?;
+        if kind != expected_kind
+            || reserved != 0
+            || digest != c63_public_component_digest(kind, payload)
+        {
+            return Err(C63CertificateError::new("C63NFC3 sketch component differs"));
+        }
+        offset = payload_end;
+    }
+    if offset.checked_add(C63_PUBLIC_ARGUMENT_DIGEST_BYTES) != Some(bytes.len())
+        || bytes[offset..] != c63_public_argument_digest(&bytes[..offset])
+    {
+        return Err(C63CertificateError::new("C63NFC3 sketch argument digest differs"));
     }
     Ok(header)
 }
 
+fn c63_public_component_digest(kind: u16, payload: &[u8]) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c63/public-component/v3");
+    hasher.update(&kind.to_le_bytes());
+    hasher.update(&(payload.len() as u64).to_le_bytes());
+    hasher.update(payload);
+    *hasher.finalize().as_bytes()
+}
+
+fn c63_public_argument_digest(bytes: &[u8]) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c63/public-argument/v3");
+    hasher.update(bytes);
+    *hasher.finalize().as_bytes()
+}
+
 fn c63_retained_digest(bytes: &[u8]) -> [u8; 32] {
-    hash_parts(b"volta-zk/c6.3/retained-transcript/v1", &[bytes])
+    hash_parts(b"volta-zk/c6.3/retained-transcript/v3", &[bytes])
 }
 
 fn c63_proof_digest(bytes: &[u8]) -> [u8; 32] {
-    hash_parts(b"volta-zk/c6.3/proof-envelope/v1", &[bytes])
+    hash_parts(b"volta-zk/c6.3/proof-envelope/v3", &[bytes])
 }
 
 fn read<T>(value: std::result::Result<T, crate::C62CertificateError>) -> Result<T> {
-    value.map_err(|_| C63CertificateError::new("malformed C63NFC1 certificate"))
+    value.map_err(|_| C63CertificateError::new("malformed C63NFC3 certificate"))
 }
 
 #[cfg(test)]
@@ -431,19 +493,32 @@ mod tests {
         retained.extend(inherited);
         let mut sketch = vec![0; C63_PUBLIC_ARGUMENT_HEADER_BYTES];
         sketch[..8].copy_from_slice(C63_PUBLIC_ARGUMENT_MAGIC);
-        sketch[8..10].copy_from_slice(&1u16.to_le_bytes());
-        sketch[10..12].copy_from_slice(&5u16.to_le_bytes());
+        sketch[8..10].copy_from_slice(&3u16.to_le_bytes());
+        sketch[10..12].copy_from_slice(&9u16.to_le_bytes());
         sketch[12..20].copy_from_slice(&1u64.to_le_bytes());
-        sketch[20..22].copy_from_slice(&1u16.to_le_bytes());
+        sketch[20..22].copy_from_slice(&0u16.to_le_bytes());
+        sketch[22..24].copy_from_slice(&1u16.to_le_bytes());
         sketch[24..56].copy_from_slice(&digest(19));
         sketch[56..88].copy_from_slice(&digest(20));
         sketch[88..120].copy_from_slice(&digest(21));
         sketch[120..152].copy_from_slice(&digest(22));
+        sketch[152..184].copy_from_slice(&digest(26));
+        sketch[184..216].copy_from_slice(&digest(27));
+        for kind in 1..=C63_PUBLIC_ARGUMENT_COMPONENTS {
+            sketch.extend_from_slice(&kind.to_le_bytes());
+            sketch.extend_from_slice(&0u16.to_le_bytes());
+            sketch.extend_from_slice(&0u32.to_le_bytes());
+            sketch.extend_from_slice(&c63_public_component_digest(kind, &[]));
+        }
+        let sketch_digest = c63_public_argument_digest(&sketch);
+        sketch.extend_from_slice(&sketch_digest);
+        assert_eq!(sketch.len(), C63_PUBLIC_ARGUMENT_FRAMING_BYTES);
         retained.extend(sketch);
         let proof = C63ResponseProofEnvelope::new(
             vec![0x51],
             vec![0x52; crate::C62_RESPONSE_PRODUCT_COORDINATE_ONE_BYTES as usize],
             vec![0x53; crate::C62_RESPONSE_RESIDUAL_PENDING_BYTES as usize],
+            vec![0x57; crate::C63_RESPONSE_SOURCE_FUNCTIONAL_CORRECTIONS_BYTES as usize],
             vec![0x54; crate::C63_RESPONSE_AUTHENTICATED_OUTPUT_LINK_BYTES as usize],
             vec![0x55; crate::C63_RESPONSE_SPARSE_H_CLOSURE_BYTES as usize],
             vec![0x56; crate::C63_RESPONSE_WHIR_TERMINAL_TAGS_BYTES as usize],
@@ -512,6 +587,12 @@ mod tests {
     #[test]
     fn c63_final_certificate_round_trip_binds_both_state_roots() {
         let certificate = certificate();
+        let sketch = certificate.sketch_public_argument_unchecked();
+        assert_eq!(sketch.len(), C63_PUBLIC_ARGUMENT_FRAMING_BYTES);
+        assert!(parse_public_header(&sketch[..C63_PUBLIC_ARGUMENT_HEADER_BYTES]).is_err());
+        let mut changed_component = sketch.to_vec();
+        changed_component[C63_PUBLIC_ARGUMENT_HEADER_BYTES + 8] ^= 1;
+        assert!(parse_public_header(&changed_component).is_err());
         let bytes = certificate.encode().unwrap();
         assert_eq!(C63NativeFinalCertificate::decode(&bytes).unwrap(), certificate);
         assert_eq!(
@@ -520,14 +601,14 @@ mod tests {
                 - certificate.proof_envelope.len() as u64,
             C63_NATIVE_CERTIFICATE_FRAMING_BYTES,
         );
-        assert_eq!(C63_CERTIFICATE_CODEC_MAX_BYTES, 23_271_419);
+        assert_eq!(C63_CERTIFICATE_CODEC_MAX_BYTES, 28_692_111);
         assert!(crate::C62NativeFinalCertificate::decode(&bytes).is_err());
 
         let mut changed = bytes;
         let correction_root = C63_NATIVE_CERTIFICATE_FRAMING_BYTES as usize
             + C63_RETAINED_NON_PCS_RESPONSE_BYTES as usize
             + C63_INHERITED_PUBLIC_ARGUMENT_BYTES as usize
-            + 88;
+            + 152;
         changed[correction_root] ^= 1;
         assert!(C63NativeFinalCertificate::decode(&changed).is_err());
     }

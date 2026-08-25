@@ -8,12 +8,10 @@
 //! <q, u> = <a, m>.
 //! ```
 //!
-//! Each quadratic round sends only `g(0), g(2)`.  Both values are corrected
-//! independently on both MAC tapes before the shared challenge is drawn.
-//! This is executable algebra and wire-census evidence only: the scaled
-//! verifier still receives `m` and `u` to evaluate the terminal product.
-//! Production must instead bind the initial/terminal claims to the C6.3
-//! roots and four WHIR lanes, preserve privacy, and move the fold to the GPU.
+//! Each quadratic round sends only `g(0), g(2)`. Both values are corrected
+//! independently on both MAC tapes before the shared challenge is drawn. The
+//! selected seam starts and ends with authenticated WHIR keys; the historical
+//! combined-message reference remains only for earlier diagnostics.
 
 use std::{array, fmt};
 
@@ -32,8 +30,8 @@ use volta_proto::mle::{eq_vec, fold_low, lagrange3};
 
 use crate::c63_authenticated_sketch::C63SparseSketchReference;
 
-pub const C63_SPARSE_H_MAGIC: [u8; 8] = *b"C63SHC1\0";
-pub const C63_SPARSE_H_VERSION: u16 = 1;
+pub const C63_SPARSE_H_MAGIC: [u8; 8] = *b"C63SHC2\0";
+pub const C63_SPARSE_H_VERSION: u16 = 2;
 pub const C63_SPARSE_H_TAPES: usize = 2;
 pub const C63_SPARSE_H_PRODUCTION_ROUNDS: u64 = 22;
 pub const C63_SPARSE_H_PRODUCTION_ROUND_PAYLOAD_BYTES: u64 = 1_408;
@@ -45,7 +43,8 @@ const HEADER_BYTES: u64 = 56;
 const TERMINAL_TAG_BYTES: u64 = 32;
 const ROUND_BYTES: u64 = 64;
 const CORRELATION_BASE: u64 = 0x0C68_0000_0000_0000;
-const STATEMENT_DOMAIN: &str = "volta-zk/c63/sparse-h-closure-statement/v1";
+const STATEMENT_DOMAIN: &str = "volta-zk/c63/sparse-h-closure-statement/v2";
+const SOURCE_FUNCTIONAL_PREFIX_DOMAIN: &str = "volta-zk/c63/sparse-h-source-functional-prefix/v1";
 const HEADER_LABEL: &str = "c63_sparse_h_closure_header";
 const ROUND_LABEL: &str = "c63_sparse_h_closure_round_corrections";
 const TERMINAL_LABEL: &str = "c63_sparse_h_closure_terminal_tags";
@@ -85,6 +84,13 @@ pub struct C63SparseHClosureStatement {
 pub struct C63SystematicSpot {
     pub row: u32,
     pub value: Fp2,
+}
+
+/// One queried systematic row with a distinct value for each authentication tape.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C63TapeSystematicSpot {
+    pub row: u32,
+    pub values: [Fp2; C63_SPARSE_H_TAPES],
 }
 
 impl C63SparseHClosureStatement {
@@ -148,13 +154,30 @@ impl C63SparseHClosureProof {
         Ok(bytes)
     }
 
+    /// Bind exactly the header and round corrections that determine the D22
+    /// terminal point. Terminal tags are deliberately later in the protocol.
+    pub fn source_functional_prefix_digest(&self) -> Result<[u8; 32]> {
+        self.validate_shape()?;
+        let mut hasher = blake3::Hasher::new_derive_key(SOURCE_FUNCTIONAL_PREFIX_DOMAIN);
+        hasher.update(&self.header_bytes()?);
+        for round in 0..self.round_count() {
+            for tape_corrections in &self.round_corrections {
+                for value in tape_corrections[round] {
+                    hasher.update(&value.c0.value().to_le_bytes());
+                    hasher.update(&value.c1.value().to_le_bytes());
+                }
+            }
+        }
+        Ok(*hasher.finalize().as_bytes())
+    }
+
     pub fn decode(bytes: &[u8]) -> Result<Self> {
         let mut cursor = Cursor::new(bytes);
         if cursor.take(8)? != C63_SPARSE_H_MAGIC {
-            return Err(C63SparseHClosureError::new("bad C63SHC1 magic"));
+            return Err(C63SparseHClosureError::new("bad C63SHC2 magic"));
         }
         if cursor.u16()? != C63_SPARSE_H_VERSION {
-            return Err(C63SparseHClosureError::new("bad C63SHC1 version"));
+            return Err(C63SparseHClosureError::new("bad C63SHC2 version"));
         }
         let input_log2 = cursor.u8()?;
         let output_log2 = cursor.u8()?;
@@ -164,14 +187,14 @@ impl C63SparseHClosureProof {
             || round_count != usize::from(input_log2)
             || cursor.u16()? as usize != C63_SPARSE_H_TAPES
         {
-            return Err(C63SparseHClosureError::new("C63SHC1 header geometry differs"));
+            return Err(C63SparseHClosureError::new("C63SHC2 header geometry differs"));
         }
         let statement_digest = cursor.digest()?;
         if statement_digest == [0; 32]
             || cursor.u64()? != round_payload_bytes(round_count)?
             || bytes.len() as u64 != encoded_len(round_count)?
         {
-            return Err(C63SparseHClosureError::new("C63SHC1 header census differs"));
+            return Err(C63SparseHClosureError::new("C63SHC2 header census differs"));
         }
         let mut round_corrections: [Vec<[Fp2; 2]>; C63_SPARSE_H_TAPES] =
             array::from_fn(|_| Vec::with_capacity(round_count));
@@ -182,7 +205,7 @@ impl C63SparseHClosureProof {
         }
         let terminal_tags = [cursor.fp2()?, cursor.fp2()?];
         if !cursor.is_eof() {
-            return Err(C63SparseHClosureError::new("trailing C63SHC1 proof bytes"));
+            return Err(C63SparseHClosureError::new("trailing C63SHC2 proof bytes"));
         }
         let proof =
             Self { input_log2, output_log2, statement_digest, round_corrections, terminal_tags };
@@ -200,7 +223,7 @@ impl C63SparseHClosureProof {
             || self.statement_digest == [0; 32]
             || self.round_corrections.iter().any(|rounds| rounds.len() != self.round_count())
         {
-            return Err(C63SparseHClosureError::new("C63SHC1 proof shape differs"));
+            return Err(C63SparseHClosureError::new("C63SHC2 proof shape differs"));
         }
         Ok(())
     }
@@ -226,6 +249,80 @@ pub struct C63SparseHClosureReferenceAudit {
     pub terminal_m: Fp2,
     pub transcript_digest: [u8; 32],
     pub transcript_bytes: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C63SparseHTapeClosureReferenceAudit {
+    pub sumcheck_point: Vec<Fp2>,
+    pub terminal_a: Fp2,
+    pub terminal_m_keys: [VerifierKey; C63_SPARSE_H_TAPES],
+    pub transcript_digest: [u8; 32],
+    pub transcript_bytes: u64,
+}
+
+/// Verifier state after the sparse transcript has fixed its D22 terminal
+/// point but before the eight WHIR bodies reveal their authenticated targets.
+/// It is local-only and can be completed exactly once with the four keys.
+pub struct C63SparseHTapeVerifierPending {
+    sumcheck_point: Vec<Fp2>,
+    terminal_a: Fp2,
+    u_coefficient: Fp2,
+    offsets: [VerifierKey; C63_SPARSE_H_TAPES],
+    terminal_tags: [Fp2; C63_SPARSE_H_TAPES],
+    transcript_digest: [u8; 32],
+    transcript_bytes: u64,
+}
+
+impl C63SparseHTapeVerifierPending {
+    pub fn sumcheck_point(&self) -> &[Fp2] {
+        &self.sumcheck_point
+    }
+
+    /// Recover the only authenticated `u_l` keys consistent with the fixed
+    /// sparse transcript, its terminal tags, and the supplied `m_l` keys.
+    /// This breaks the verifier-order cycle: projected WHIR can compare its
+    /// derived targets against these keys without receiving clear openings.
+    pub fn derive_u_opening_keys(
+        &self,
+        terminal_m_keys: [VerifierKey; C63_SPARSE_H_TAPES],
+    ) -> Result<[VerifierKey; C63_SPARSE_H_TAPES]> {
+        if self.u_coefficient == Fp2::ZERO {
+            return Err(C63SparseHClosureError::new(
+                "C6.3 sparse-H terminal u coefficient is zero",
+            ));
+        }
+        let inverse = self.u_coefficient.inv();
+        Ok(std::array::from_fn(|tape| {
+            terminal_m_keys[tape]
+                .scale(self.terminal_a)
+                .sub(self.offsets[tape])
+                .add(VerifierKey::new(self.terminal_tags[tape]))
+                .scale(inverse)
+        }))
+    }
+
+    pub fn finish(
+        self,
+        u_opening_keys: [VerifierKey; C63_SPARSE_H_TAPES],
+        terminal_m_keys: [VerifierKey; C63_SPARSE_H_TAPES],
+    ) -> Result<C63SparseHTapeClosureReferenceAudit> {
+        for tape in 0..C63_SPARSE_H_TAPES {
+            let current = u_opening_keys[tape].scale(self.u_coefficient).add(self.offsets[tape]);
+            let residual = current.sub(terminal_m_keys[tape].scale(self.terminal_a));
+            if !zero_open_verify(residual, self.terminal_tags[tape]) {
+                return Err(C63SparseHClosureError::new(
+                    "C6.3 tape-separated sparse-H terminal ZeroOpen failed",
+                ));
+            }
+        }
+        Ok(C63SparseHTapeClosureReferenceAudit {
+            sumcheck_point: self.sumcheck_point,
+            terminal_a: self.terminal_a,
+            terminal_m_keys,
+            transcript_digest: self.transcript_digest,
+            transcript_bytes: self.transcript_bytes,
+        })
+    }
 }
 
 /// Scaled honest prover.  It checks `u = H*m` before producing the reference
@@ -337,6 +434,124 @@ pub fn prove_c63_sparse_h_closure_with_spots_reference(
     })
 }
 
+/// Selected C6.3 prover: one sparse relation per authentication tape with
+/// common challenges and no cross-tape plaintext combination.
+pub fn prove_c63_sparse_h_tape_closure_with_spots_reference<F>(
+    h: &C63SparseSketchReference,
+    m: [&[Fp2]; C63_SPARSE_H_TAPES],
+    u: [&[Fp2]; C63_SPARSE_H_TAPES],
+    u_claims: [ProverAuthed; C63_SPARSE_H_TAPES],
+    statement: &C63SparseHClosureStatement,
+    spots: &[C63TapeSystematicSpot],
+    streams: &mut [CorrelationStream; C63_SPARSE_H_TAPES],
+    transcript: &mut Transcript,
+    mut open_m: F,
+) -> Result<C63SparseHClosureProof>
+where
+    F: FnMut(usize, &[Fp2]) -> Result<ProverAuthed>,
+{
+    let (input_log2, output_log2, mut claims, mut a) = prepare_tape_relation(h, m, u, statement)?;
+    validate_tape_systematic_spots(spots, a.len())?;
+    for tape in 0..C63_SPARSE_H_TAPES {
+        if h.apply(m[tape]).map_err(C63SparseHClosureError::new)? != u[tape] {
+            return Err(C63SparseHClosureError::new(
+                "C6.3 tape-separated witness does not satisfy u_l = H*m_l",
+            ));
+        }
+        if u_claims[tape].x != claims[tape] {
+            return Err(C63SparseHClosureError::new(
+                "C6.3 tape-separated authenticated u_l claim differs",
+            ));
+        }
+    }
+    let statement_digest =
+        reference_tape_statement_digest(statement, input_log2, output_log2, spots);
+    transcript
+        .append_message(HEADER_LABEL, &header_bytes(input_log2, output_log2, statement_digest)?);
+    let mut current = u_claims;
+    if !spots.is_empty() {
+        let additions = fuse_tape_systematic_spots(&mut a, spots, transcript.challenge_fp2());
+        for tape in 0..C63_SPARSE_H_TAPES {
+            claims[tape] += additions[tape];
+            current[tape] = current[tape].add(ProverAuthed::from_public(additions[tape]));
+        }
+    }
+    for tape in 0..C63_SPARSE_H_TAPES {
+        if inner_product(&a, m[tape])? != claims[tape] {
+            return Err(C63SparseHClosureError::new(
+                "C6.3 tape-separated witness differs from its systematic spots",
+            ));
+        }
+    }
+
+    let mut folded_m = [m[0].to_vec(), m[1].to_vec()];
+    let mut point = Vec::with_capacity(usize::from(input_log2));
+    let mut round_corrections: [Vec<[Fp2; 2]>; C63_SPARSE_H_TAPES] =
+        array::from_fn(|_| Vec::with_capacity(usize::from(input_log2)));
+
+    for round in 0..usize::from(input_log2) {
+        let mut corrected = [[Fp2::ZERO; 2]; C63_SPARSE_H_TAPES];
+        let mut sent = [[ProverAuthed::ZERO; 2]; C63_SPARSE_H_TAPES];
+        for tape in 0..C63_SPARSE_H_TAPES {
+            let [g0, g1, g2] = product_round(&a, &folded_m[tape])?;
+            let domain = correlation_domain(tape, round)?;
+            let correlations = streams[tape].draw_fulls(domain, 2);
+            streams[tape]
+                .record_c6_fullfield_plaintexts(domain, &[g0, g2])
+                .map_err(C63SparseHClosureError::new)?;
+            corrected[tape] = [g0 - correlations[0].x, g2 - correlations[1].x];
+            sent[tape] = [correlations[0].authenticate(g0), correlations[1].authenticate(g2)];
+            if current[tape].sub(sent[tape][0]).x != g1 {
+                return Err(C63SparseHClosureError::new(
+                    "C6.3 tape-separated round does not sum to its claim",
+                ));
+            }
+            round_corrections[tape].push(corrected[tape]);
+        }
+        append_round(transcript, &corrected);
+        let challenge = transcript.challenge_fp2();
+        let weights = lagrange3(challenge);
+        for tape in 0..C63_SPARSE_H_TAPES {
+            let one = current[tape].sub(sent[tape][0]);
+            current[tape] = sent[tape][0]
+                .scale(weights[0])
+                .add(one.scale(weights[1]))
+                .add(sent[tape][1].scale(weights[2]));
+            fold_low(&mut folded_m[tape], challenge);
+        }
+        fold_low(&mut a, challenge);
+        point.push(challenge);
+    }
+
+    let mut terminal_tags = [Fp2::ZERO; C63_SPARSE_H_TAPES];
+    for tape in 0..C63_SPARSE_H_TAPES {
+        let terminal_m = open_m(tape, &point)?;
+        if terminal_m.x != folded_m[tape][0] {
+            return Err(C63SparseHClosureError::new(
+                "C6.3 tape-separated authenticated m_l opening differs",
+            ));
+        }
+        let residual = current[tape].sub(terminal_m.scale(a[0]));
+        if residual.x != Fp2::ZERO {
+            return Err(C63SparseHClosureError::new(
+                "C6.3 tape-separated terminal product differs",
+            ));
+        }
+        terminal_tags[tape] = residual.m;
+    }
+    transcript.append_fp2s(TERMINAL_LABEL, &terminal_tags);
+    if let Some(error) = transcript.interactive_error() {
+        return Err(C63SparseHClosureError::new(error));
+    }
+    Ok(C63SparseHClosureProof {
+        input_log2,
+        output_log2,
+        statement_digest,
+        round_corrections,
+        terminal_tags,
+    })
+}
+
 /// Production prover seam for the sparse relation. The private projected
 /// correction message stays resident; only two field elements per round cross
 /// to the transcript. Public transpose weights are uploaded once and folded
@@ -380,8 +595,8 @@ pub fn prove_c63_sparse_h_closure_with_spots_resident(
         fuse_systematic_spots(&mut a, &mut claim, spots, transcript.challenge_fp2());
     }
 
-    let mut fold = ResidentSparseFold::new(backend, m, &a)?;
-    if fold.dot()? != claim {
+    let mut fold = ResidentSparseFold::new(backend, vec![m], &a)?;
+    if fold.dots()?[0] != claim {
         return Err(C63SparseHClosureError::new("C6.3 resident sparse-H initial claim differs"));
     }
     let mut current = [ProverAuthed::from_public(claim); C63_SPARSE_H_TAPES];
@@ -389,7 +604,7 @@ pub fn prove_c63_sparse_h_closure_with_spots_resident(
         array::from_fn(|_| Vec::with_capacity(usize::from(input_log2)));
 
     for round in 0..usize::from(input_log2) {
-        let [g0, g2] = fold.round()?;
+        let [g0, g2] = fold.rounds()?[0];
         let mut corrected = [[Fp2::ZERO; 2]; C63_SPARSE_H_TAPES];
         let mut sent = [[ProverAuthed::ZERO; 2]; C63_SPARSE_H_TAPES];
         for tape in 0..C63_SPARSE_H_TAPES {
@@ -415,7 +630,7 @@ pub fn prove_c63_sparse_h_closure_with_spots_resident(
         fold.fold(challenge)?;
     }
 
-    let terminal = fold.dot()?;
+    let terminal = fold.dots()?[0];
     let mut terminal_tags = [Fp2::ZERO; C63_SPARSE_H_TAPES];
     for tape in 0..C63_SPARSE_H_TAPES {
         let residual = current[tape].sub(ProverAuthed::from_public(terminal));
@@ -439,17 +654,162 @@ pub fn prove_c63_sparse_h_closure_with_spots_resident(
     })
 }
 
+/// Selected resident prover: one private message per authentication tape,
+/// one shared public transpose vector and one shared challenge sequence.
+#[cfg(feature = "cuda")]
+#[allow(clippy::too_many_arguments)]
+pub fn prove_c63_sparse_h_tape_closure_with_spots_resident<F>(
+    backend: Arc<Mutex<Backend>>,
+    h: &C63SparseSketchReference,
+    messages: [DeviceBuffer<Fp2Repr>; C63_SPARSE_H_TAPES],
+    u_claims: [ProverAuthed; C63_SPARSE_H_TAPES],
+    statement: &C63SparseHClosureStatement,
+    spots: &[C63TapeSystematicSpot],
+    streams: &mut [CorrelationStream; C63_SPARSE_H_TAPES],
+    transcript: &mut Transcript,
+    mut open_m: F,
+) -> Result<(C63SparseHClosureProof, Vec<Fp2>)>
+where
+    F: FnMut(
+        usize,
+        &[Fp2],
+        [u8; 32],
+        &mut [CorrelationStream; C63_SPARSE_H_TAPES],
+    ) -> Result<ProverAuthed>,
+{
+    let prepared = (|| {
+        let (input_log2, output_log2, mut a) = prepare_relation_from_output_opening(h, statement)?;
+        validate_tape_systematic_spots(spots, a.len())?;
+        if messages.iter().any(|message| message.len() != a.len()) {
+            return Err(C63SparseHClosureError::new("C6.3 resident tape message geometry differs"));
+        }
+        let statement_digest =
+            reference_tape_statement_digest(statement, input_log2, output_log2, spots);
+        let header = header_bytes(input_log2, output_log2, statement_digest)?;
+        transcript.append_message(HEADER_LABEL, &header);
+        let additions = if spots.is_empty() {
+            [Fp2::ZERO; C63_SPARSE_H_TAPES]
+        } else {
+            fuse_tape_systematic_spots(&mut a, spots, transcript.challenge_fp2())
+        };
+        Ok((input_log2, output_log2, a, additions, statement_digest))
+    })();
+    let (input_log2, output_log2, a, additions, statement_digest) = match prepared {
+        Ok(prepared) => prepared,
+        Err(error) => {
+            if let Ok(mut locked) = backend.lock() {
+                for message in messages {
+                    let _ = locked.free_device(message);
+                }
+            }
+            return Err(error);
+        }
+    };
+
+    let mut current: [ProverAuthed; C63_SPARSE_H_TAPES] =
+        std::array::from_fn(|tape| u_claims[tape].add(ProverAuthed::from_public(additions[tape])));
+    let mut fold = ResidentSparseFold::new(backend, Vec::from(messages), &a)?;
+    if fold.dots()?.as_slice() != current.map(|claim| claim.x) {
+        return Err(C63SparseHClosureError::new("C6.3 resident tape initial claims differ"));
+    }
+    let mut point = Vec::with_capacity(usize::from(input_log2));
+    let mut round_corrections: [Vec<[Fp2; 2]>; C63_SPARSE_H_TAPES] =
+        array::from_fn(|_| Vec::with_capacity(usize::from(input_log2)));
+
+    for round in 0..usize::from(input_log2) {
+        let products = fold.rounds()?;
+        let mut corrected = [[Fp2::ZERO; 2]; C63_SPARSE_H_TAPES];
+        let mut sent = [[ProverAuthed::ZERO; 2]; C63_SPARSE_H_TAPES];
+        for tape in 0..C63_SPARSE_H_TAPES {
+            let [g0, g2] = products[tape];
+            let domain = correlation_domain(tape, round)?;
+            let correlations = streams[tape].draw_fulls(domain, 2);
+            streams[tape]
+                .record_c6_fullfield_plaintexts(domain, &[g0, g2])
+                .map_err(C63SparseHClosureError::new)?;
+            corrected[tape] = [g0 - correlations[0].x, g2 - correlations[1].x];
+            sent[tape] = [correlations[0].authenticate(g0), correlations[1].authenticate(g2)];
+            round_corrections[tape].push(corrected[tape]);
+        }
+        append_round(transcript, &corrected);
+        let challenge = transcript.challenge_fp2();
+        let weights = lagrange3(challenge);
+        for tape in 0..C63_SPARSE_H_TAPES {
+            let one = current[tape].sub(sent[tape][0]);
+            current[tape] = sent[tape][0]
+                .scale(weights[0])
+                .add(one.scale(weights[1]))
+                .add(sent[tape][1].scale(weights[2]));
+        }
+        fold.fold(challenge)?;
+        point.push(challenge);
+    }
+
+    let terminal_a = fold.terminal_a()?;
+    let terminal_messages = fold.terminal_messages()?;
+    let source_prefix_digest = C63SparseHClosureProof {
+        input_log2,
+        output_log2,
+        statement_digest,
+        round_corrections: round_corrections.clone(),
+        terminal_tags: [Fp2::ZERO; C63_SPARSE_H_TAPES],
+    }
+    .source_functional_prefix_digest()?;
+    let mut terminal_tags = [Fp2::ZERO; C63_SPARSE_H_TAPES];
+    for tape in 0..C63_SPARSE_H_TAPES {
+        let terminal_m = open_m(tape, &point, source_prefix_digest, streams)?;
+        if terminal_m.x != terminal_messages[tape] {
+            return Err(C63SparseHClosureError::new(
+                "C6.3 resident tape authenticated opening differs",
+            ));
+        }
+        let residual = current[tape].sub(terminal_m.scale(terminal_a));
+        if residual.x != Fp2::ZERO {
+            return Err(C63SparseHClosureError::new("C6.3 resident tape terminal product differs"));
+        }
+        terminal_tags[tape] = residual.m;
+    }
+    transcript.append_fp2s(TERMINAL_LABEL, &terminal_tags);
+    if let Some(error) = transcript.interactive_error() {
+        return Err(C63SparseHClosureError::new(error));
+    }
+    Ok((
+        C63SparseHClosureProof {
+            input_log2,
+            output_log2,
+            statement_digest,
+            round_corrections,
+            terminal_tags,
+        },
+        point,
+    ))
+}
+
 #[cfg(feature = "cuda")]
 struct ResidentSparseFold {
     backend: Arc<Mutex<Backend>>,
     a: Option<DeviceBuffer<Fp2Repr>>,
-    m: Option<DeviceBuffer<Fp2Repr>>,
+    messages: Vec<Option<DeviceBuffer<Fp2Repr>>>,
     len: usize,
 }
 
 #[cfg(feature = "cuda")]
 impl ResidentSparseFold {
-    fn new(backend: Arc<Mutex<Backend>>, m: DeviceBuffer<Fp2Repr>, a: &[Fp2]) -> Result<Self> {
+    fn new(
+        backend: Arc<Mutex<Backend>>,
+        messages: Vec<DeviceBuffer<Fp2Repr>>,
+        a: &[Fp2],
+    ) -> Result<Self> {
+        if messages.is_empty() || messages.iter().any(|message| message.len() != a.len()) {
+            if let Ok(mut locked) = backend.lock() {
+                for message in messages {
+                    let _ = locked.free_device(message);
+                }
+            }
+            return Err(C63SparseHClosureError::new(
+                "C6.3 resident sparse message geometry differs",
+            ));
+        }
         let raw = a.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>();
         let a = {
             let mut locked =
@@ -457,38 +817,55 @@ impl ResidentSparseFold {
             match locked.upload_new_device(&raw) {
                 Ok(a) => a,
                 Err(error) => {
-                    let _ = locked.free_device(m);
+                    for message in messages {
+                        let _ = locked.free_device(message);
+                    }
                     return Err(C63SparseHClosureError::new(error.to_string()));
                 }
             }
         };
-        Ok(Self { backend, a: Some(a), m: Some(m), len: raw.len() })
+        Ok(Self {
+            backend,
+            a: Some(a),
+            messages: messages.into_iter().map(Some).collect(),
+            len: raw.len(),
+        })
     }
 
-    fn dot(&self) -> Result<Fp2> {
+    fn dots(&self) -> Result<Vec<Fp2>> {
         let mut locked =
             self.backend.lock().map_err(|_| C63SparseHClosureError::new("CUDA lock"))?;
-        locked
-            .fp2_dot_device(
-                DeviceSlice::new(self.a.as_ref().expect("resident sparse a"), 0, self.len)
-                    .map_err(|error| C63SparseHClosureError::new(error.to_string()))?,
-                DeviceSlice::new(self.m.as_ref().expect("resident sparse m"), 0, self.len)
-                    .map_err(|error| C63SparseHClosureError::new(error.to_string()))?,
-            )
-            .map_err(|error| C63SparseHClosureError::new(error.to_string()))
+        self.messages
+            .iter()
+            .map(|message| {
+                locked
+                    .fp2_dot_device(
+                        DeviceSlice::new(self.a.as_ref().expect("resident sparse a"), 0, self.len)
+                            .map_err(|error| C63SparseHClosureError::new(error.to_string()))?,
+                        DeviceSlice::new(message.as_ref().expect("resident sparse m"), 0, self.len)
+                            .map_err(|error| C63SparseHClosureError::new(error.to_string()))?,
+                    )
+                    .map_err(|error| C63SparseHClosureError::new(error.to_string()))
+            })
+            .collect()
     }
 
-    fn round(&self) -> Result<[Fp2; 2]> {
+    fn rounds(&self) -> Result<Vec<[Fp2; 2]>> {
         let mut locked =
             self.backend.lock().map_err(|_| C63SparseHClosureError::new("CUDA lock"))?;
-        locked
-            .fp2_product_round_device(
-                DeviceSlice::new(self.a.as_ref().expect("resident sparse a"), 0, self.len)
-                    .map_err(|error| C63SparseHClosureError::new(error.to_string()))?,
-                DeviceSlice::new(self.m.as_ref().expect("resident sparse m"), 0, self.len)
-                    .map_err(|error| C63SparseHClosureError::new(error.to_string()))?,
-            )
-            .map_err(|error| C63SparseHClosureError::new(error.to_string()))
+        self.messages
+            .iter()
+            .map(|message| {
+                locked
+                    .fp2_product_round_device(
+                        DeviceSlice::new(self.a.as_ref().expect("resident sparse a"), 0, self.len)
+                            .map_err(|error| C63SparseHClosureError::new(error.to_string()))?,
+                        DeviceSlice::new(message.as_ref().expect("resident sparse m"), 0, self.len)
+                            .map_err(|error| C63SparseHClosureError::new(error.to_string()))?,
+                    )
+                    .map_err(|error| C63SparseHClosureError::new(error.to_string()))
+            })
+            .collect()
     }
 
     fn fold(&mut self, challenge: Fp2) -> Result<()> {
@@ -503,30 +880,77 @@ impl ResidentSparseFold {
                 challenge,
             )
             .map_err(|error| C63SparseHClosureError::new(error.to_string()))?;
-        let next_m = match locked.fp2_fold_rows_device(
-            self.m.as_ref().expect("resident sparse m"),
-            0,
-            1,
-            self.len,
-            challenge,
-        ) {
-            Ok(value) => value,
-            Err(error) => {
-                let _ = locked.free_device(next_a);
-                return Err(C63SparseHClosureError::new(error.to_string()));
+        let mut next_messages = Vec::with_capacity(self.messages.len());
+        for message in &self.messages {
+            match locked.fp2_fold_rows_device(
+                message.as_ref().expect("resident sparse m"),
+                0,
+                1,
+                self.len,
+                challenge,
+            ) {
+                Ok(value) => next_messages.push(value),
+                Err(error) => {
+                    let _ = locked.free_device(next_a);
+                    for value in next_messages {
+                        let _ = locked.free_device(value);
+                    }
+                    return Err(C63SparseHClosureError::new(error.to_string()));
+                }
             }
-        };
+        }
         let old_a = self.a.take().expect("resident sparse a");
-        let old_m = self.m.take().expect("resident sparse m");
-        if let Err(error) = locked.free_device(old_a).and_then(|()| locked.free_device(old_m)) {
+        let old_messages = self
+            .messages
+            .iter_mut()
+            .map(|message| message.take().expect("resident sparse m"))
+            .collect::<Vec<_>>();
+        let cleanup = locked.free_device(old_a).and_then(|()| {
+            for message in old_messages {
+                locked.free_device(message)?;
+            }
+            Ok(())
+        });
+        if let Err(error) = cleanup {
             let _ = locked.free_device(next_a);
-            let _ = locked.free_device(next_m);
+            for message in next_messages {
+                let _ = locked.free_device(message);
+            }
             return Err(C63SparseHClosureError::new(error.to_string()));
         }
         self.a = Some(next_a);
-        self.m = Some(next_m);
+        self.messages = next_messages.into_iter().map(Some).collect();
         self.len /= 2;
         Ok(())
+    }
+
+    fn terminal_a(&self) -> Result<Fp2> {
+        if self.len != 1 {
+            return Err(C63SparseHClosureError::new("C6.3 sparse fold is not terminal"));
+        }
+        let mut locked =
+            self.backend.lock().map_err(|_| C63SparseHClosureError::new("CUDA lock"))?;
+        locked
+            .download_device(self.a.as_ref().expect("resident sparse a"), 0, 1)
+            .map(|values| Fp2::from(values[0]))
+            .map_err(|error| C63SparseHClosureError::new(error.to_string()))
+    }
+
+    fn terminal_messages(&self) -> Result<Vec<Fp2>> {
+        if self.len != 1 {
+            return Err(C63SparseHClosureError::new("C6.3 sparse fold is not terminal"));
+        }
+        let mut locked =
+            self.backend.lock().map_err(|_| C63SparseHClosureError::new("CUDA lock"))?;
+        self.messages
+            .iter()
+            .map(|message| {
+                locked
+                    .download_device(message.as_ref().expect("resident sparse m"), 0, 1)
+                    .map(|values| Fp2::from(values[0]))
+                    .map_err(|error| C63SparseHClosureError::new(error.to_string()))
+            })
+            .collect()
     }
 }
 
@@ -537,8 +961,10 @@ impl Drop for ResidentSparseFold {
             if let Some(a) = self.a.take() {
                 let _ = locked.free_device(a);
             }
-            if let Some(m) = self.m.take() {
-                let _ = locked.free_device(m);
+            for message in &mut self.messages {
+                if let Some(message) = message.take() {
+                    let _ = locked.free_device(message);
+                }
             }
         }
     }
@@ -634,6 +1060,109 @@ where
         transcript,
         open_m,
     )
+}
+
+/// Selected verifier seam. Each tape supplies its own hidden WHIR openings;
+/// only common challenges and the public transpose weights are shared.
+pub fn verify_c63_sparse_h_tape_closure_from_whir_openings_reference<F>(
+    h: &C63SparseSketchReference,
+    u_opening_keys: [VerifierKey; C63_SPARSE_H_TAPES],
+    statement: &C63SparseHClosureStatement,
+    spots: &[C63TapeSystematicSpot],
+    proof: &C63SparseHClosureProof,
+    contexts: &mut [VerifierCtx; C63_SPARSE_H_TAPES],
+    transcript: &mut Transcript,
+    mut open_m: F,
+) -> Result<C63SparseHTapeClosureReferenceAudit>
+where
+    F: FnMut(usize, &[Fp2]) -> std::result::Result<VerifierKey, C63SparseHClosureError>,
+{
+    let pending = begin_verify_c63_sparse_h_tape_closure_reference(
+        h, statement, spots, proof, contexts, transcript,
+    )?;
+    let terminal_m_keys =
+        [open_m(0, pending.sumcheck_point())?, open_m(1, pending.sumcheck_point())?];
+    pending.finish(u_opening_keys, terminal_m_keys)
+}
+
+/// Replay the sparse proof and derive its D22 point without requiring WHIR
+/// target keys prematurely. The returned local state is closed only after all
+/// eight WHIR bodies have verified.
+pub fn begin_verify_c63_sparse_h_tape_closure_reference(
+    h: &C63SparseSketchReference,
+    statement: &C63SparseHClosureStatement,
+    spots: &[C63TapeSystematicSpot],
+    proof: &C63SparseHClosureProof,
+    contexts: &mut [VerifierCtx; C63_SPARSE_H_TAPES],
+    transcript: &mut Transcript,
+) -> Result<C63SparseHTapeVerifierPending> {
+    proof.validate_shape()?;
+    if contexts[0].delta == contexts[1].delta {
+        return Err(C63SparseHClosureError::new(
+            "C6.3 sparse-H MAC tape multipliers are not independent",
+        ));
+    }
+    let (input_log2, output_log2, mut a) = prepare_relation_from_output_opening(h, statement)?;
+    validate_tape_systematic_spots(spots, a.len())?;
+    let statement_digest =
+        reference_tape_statement_digest(statement, input_log2, output_log2, spots);
+    if proof.input_log2 != input_log2
+        || proof.output_log2 != output_log2
+        || proof.statement_digest != statement_digest
+    {
+        return Err(C63SparseHClosureError::new("C6.3 tape-separated sparse-H statement differs"));
+    }
+    transcript.append_message(HEADER_LABEL, &proof.header_bytes()?);
+    let mut offsets = [VerifierKey::ZERO; C63_SPARSE_H_TAPES];
+    if !spots.is_empty() {
+        let additions = fuse_tape_systematic_spots(&mut a, spots, transcript.challenge_fp2());
+        for tape in 0..C63_SPARSE_H_TAPES {
+            offsets[tape] = VerifierKey::from_public(additions[tape], contexts[tape].delta);
+        }
+    }
+
+    let mut u_coefficient = Fp2::ONE;
+    let mut point = Vec::with_capacity(proof.round_count());
+    for round in 0..proof.round_count() {
+        let mut corrected = [[Fp2::ZERO; 2]; C63_SPARSE_H_TAPES];
+        let mut sent = [[VerifierKey::ZERO; 2]; C63_SPARSE_H_TAPES];
+        for tape in 0..C63_SPARSE_H_TAPES {
+            corrected[tape] = proof.round_corrections[tape][round];
+            let keys = contexts[tape]
+                .correct_full_verifier_keys(correlation_domain(tape, round)?, &corrected[tape]);
+            sent[tape] = [keys[0], keys[1]];
+        }
+        append_round(transcript, &corrected);
+        let challenge = transcript.challenge_fp2();
+        let weights = lagrange3(challenge);
+        for tape in 0..C63_SPARSE_H_TAPES {
+            offsets[tape] = offsets[tape]
+                .scale(weights[1])
+                .add(sent[tape][0].scale(weights[0] - weights[1]))
+                .add(sent[tape][1].scale(weights[2]));
+        }
+        u_coefficient = u_coefficient * weights[1];
+        fold_low(&mut a, challenge);
+        point.push(challenge);
+    }
+
+    transcript.append_fp2s(TERMINAL_LABEL, &proof.terminal_tags);
+    let transcript_digest =
+        transcript.canonical_binding_digest().map_err(C63SparseHClosureError::new)?;
+    if transcript.total_bytes() != proof.encoded_len()? {
+        return Err(C63SparseHClosureError::new(
+            "C6.3 tape-separated sparse-H transcript census differs",
+        ));
+    }
+    Ok(C63SparseHTapeVerifierPending {
+        sumcheck_point: point,
+        terminal_a: a[0],
+        u_coefficient,
+        offsets,
+        terminal_tags: proof.terminal_tags,
+        transcript_digest,
+        transcript_bytes: transcript.total_bytes(),
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -756,6 +1285,20 @@ fn prepare_relation(
     Ok((input_log2, output_log2, inner_product(&q, u)?, a))
 }
 
+fn prepare_tape_relation(
+    h: &C63SparseSketchReference,
+    m: [&[Fp2]; C63_SPARSE_H_TAPES],
+    u: [&[Fp2]; C63_SPARSE_H_TAPES],
+    statement: &C63SparseHClosureStatement,
+) -> Result<(u8, u8, [Fp2; C63_SPARSE_H_TAPES], Vec<Fp2>)> {
+    let (input_log2, output_log2, claim0, a) = prepare_relation(h, m[0], u[0], statement)?;
+    if m[1].len() != m[0].len() || u[1].len() != u[0].len() {
+        return Err(C63SparseHClosureError::new("C6.3 tape-separated message geometry differs"));
+    }
+    let q = eq_vec(&statement.output_point);
+    Ok((input_log2, output_log2, [claim0, inner_product(&q, u[1])?], a))
+}
+
 fn exact_log2(length: usize, label: &str) -> Result<u8> {
     if length < 2 || !length.is_power_of_two() {
         return Err(C63SparseHClosureError::new(format!(
@@ -787,6 +1330,19 @@ fn validate_systematic_spots(spots: &[C63SystematicSpot], input_len: usize) -> R
     Ok(())
 }
 
+fn validate_tape_systematic_spots(spots: &[C63TapeSystematicSpot], input_len: usize) -> Result<()> {
+    let mut previous = None;
+    for spot in spots {
+        if spot.row as usize >= input_len || previous.is_some_and(|old| old >= spot.row) {
+            return Err(C63SparseHClosureError::new(
+                "C6.3 tape-separated spots are not sorted, unique and in range",
+            ));
+        }
+        previous = Some(spot.row);
+    }
+    Ok(())
+}
+
 fn fuse_systematic_spots(a: &mut [Fp2], claim: &mut Fp2, spots: &[C63SystematicSpot], beta: Fp2) {
     let mut weight = beta;
     for spot in spots {
@@ -794,6 +1350,23 @@ fn fuse_systematic_spots(a: &mut [Fp2], claim: &mut Fp2, spots: &[C63SystematicS
         *claim += weight * spot.value;
         weight = weight * beta;
     }
+}
+
+fn fuse_tape_systematic_spots(
+    a: &mut [Fp2],
+    spots: &[C63TapeSystematicSpot],
+    beta: Fp2,
+) -> [Fp2; C63_SPARSE_H_TAPES] {
+    let mut additions = [Fp2::ZERO; C63_SPARSE_H_TAPES];
+    let mut weight = beta;
+    for spot in spots {
+        a[spot.row as usize] += weight;
+        for tape in 0..C63_SPARSE_H_TAPES {
+            additions[tape] += weight * spot.values[tape];
+        }
+        weight = weight * beta;
+    }
+    additions
 }
 
 fn product_round(a: &[Fp2], m: &[Fp2]) -> Result<[Fp2; 3]> {
@@ -837,6 +1410,31 @@ fn reference_statement_digest(
             hasher.update(&spot.row.to_le_bytes());
             hasher.update(&spot.value.c0.value().to_le_bytes());
             hasher.update(&spot.value.c1.value().to_le_bytes());
+        }
+    }
+    *hasher.finalize().as_bytes()
+}
+
+fn reference_tape_statement_digest(
+    statement: &C63SparseHClosureStatement,
+    input_log2: u8,
+    output_log2: u8,
+    spots: &[C63TapeSystematicSpot],
+) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new_derive_key(STATEMENT_DOMAIN);
+    hasher.update(b"volta-zk/c63/tape-separated/v1");
+    hasher.update(&statement.binding_digest);
+    hasher.update(&[input_log2, output_log2]);
+    for coordinate in &statement.output_point {
+        hasher.update(&coordinate.c0.value().to_le_bytes());
+        hasher.update(&coordinate.c1.value().to_le_bytes());
+    }
+    hasher.update(&(spots.len() as u64).to_le_bytes());
+    for spot in spots {
+        hasher.update(&spot.row.to_le_bytes());
+        for value in spot.values {
+            hasher.update(&value.c0.value().to_le_bytes());
+            hasher.update(&value.c1.value().to_le_bytes());
         }
     }
     *hasher.finalize().as_bytes()
@@ -918,11 +1516,11 @@ impl<'a> Cursor<'a> {
         let end = self
             .offset
             .checked_add(count)
-            .ok_or_else(|| C63SparseHClosureError::new("C63SHC1 decoder overflow"))?;
+            .ok_or_else(|| C63SparseHClosureError::new("C63SHC2 decoder overflow"))?;
         let value = self
             .bytes
             .get(self.offset..end)
-            .ok_or_else(|| C63SparseHClosureError::new("truncated C63SHC1 proof"))?;
+            .ok_or_else(|| C63SparseHClosureError::new("truncated C63SHC2 proof"))?;
         self.offset = end;
         Ok(value)
     }
@@ -953,7 +1551,7 @@ impl<'a> Cursor<'a> {
         let c0 = self.u64()?;
         let c1 = self.u64()?;
         if c0 >= P || c1 >= P {
-            return Err(C63SparseHClosureError::new("noncanonical C63SHC1 field element"));
+            return Err(C63SparseHClosureError::new("noncanonical C63SHC2 field element"));
         }
         Ok(Fp2::new(volta_field::Fp::new(c0), volta_field::Fp::new(c1)))
     }
@@ -1157,12 +1755,20 @@ mod tests {
 
         let mut bad_round = proof.clone();
         bad_round.round_corrections[1][1][0] += Fp2::ONE;
+        assert_ne!(
+            bad_round.source_functional_prefix_digest().unwrap(),
+            proof.source_functional_prefix_digest().unwrap()
+        );
         assert!(verify(&h, &m, &u, &statement, &bad_round, TRANSCRIPT_SEED).is_err());
 
         assert!(verify(&h, &m, &u, &statement, &proof, [0xB2; 32]).is_err());
 
         let mut bad_terminal = proof.clone();
         bad_terminal.terminal_tags[0] += Fp2::ONE;
+        assert_eq!(
+            bad_terminal.source_functional_prefix_digest().unwrap(),
+            proof.source_functional_prefix_digest().unwrap()
+        );
         assert!(verify(&h, &m, &u, &statement, &bad_terminal, TRANSCRIPT_SEED).is_err());
 
         let u_opening = opening(&u, statement.output_point()).unwrap();
@@ -1277,6 +1883,101 @@ mod tests {
 
         let (honest, _, _) = prove_with_spots(&h, &x, &u, &statement, &spots).unwrap();
         verify_with_spots(&h, &x, &u, &statement, &spots, &honest).unwrap();
+    }
+
+    #[test]
+    fn tape_separated_sparse_h_binds_both_distinct_whir_targets() {
+        let (h, m0, _, statement) = fixture();
+        let m1 = (0..m0.len()).map(|index| fp2(71 + index as u64)).collect::<Vec<_>>();
+        let u0 = h.apply(&m0).unwrap();
+        let u1 = h.apply(&m1).unwrap();
+        let messages = [m0, m1];
+        let sketches = [u0, u1];
+        let spots = [
+            C63TapeSystematicSpot { row: 1, values: [messages[0][1], messages[1][1]] },
+            C63TapeSystematicSpot { row: 5, values: [messages[0][5], messages[1][5]] },
+        ];
+        let u_values = [
+            opening(&sketches[0], statement.output_point()).unwrap(),
+            opening(&sketches[1], statement.output_point()).unwrap(),
+        ];
+        let u_tags = [fp2(211), fp2(223)];
+        let m_tags = [fp2(227), fp2(229)];
+        let u_claims = array::from_fn(|tape| ProverAuthed::new(u_values[tape], u_tags[tape]));
+        let u_opening_keys =
+            array::from_fn(|tape| VerifierKey::new(u_tags[tape] + DELTAS[tape] * u_values[tape]));
+        let mut streams = TAPE_SEEDS.map(CorrelationStream::new);
+        let mut prover_transcript = Transcript::new(TRANSCRIPT_SEED);
+        let proof = prove_c63_sparse_h_tape_closure_with_spots_reference(
+            &h,
+            [&messages[0], &messages[1]],
+            [&sketches[0], &sketches[1]],
+            u_claims,
+            &statement,
+            &spots,
+            &mut streams,
+            &mut prover_transcript,
+            |tape, point| Ok(ProverAuthed::new(opening(&messages[tape], point)?, m_tags[tape])),
+        )
+        .unwrap();
+        assert_eq!(proof.encoded_len().unwrap(), 56 + 3 * 64 + 32);
+        assert_eq!(streams.map(|stream| stream.counters.full_corrs), [6, 6]);
+
+        let verify = |opening_keys, selected_spots: &[C63TapeSystematicSpot], proof| {
+            let mut contexts =
+                array::from_fn(|tape| VerifierCtx::new(TAPE_SEEDS[tape], DELTAS[tape]));
+            let mut transcript = Transcript::new(TRANSCRIPT_SEED);
+            verify_c63_sparse_h_tape_closure_from_whir_openings_reference(
+                &h,
+                opening_keys,
+                &statement,
+                selected_spots,
+                proof,
+                &mut contexts,
+                &mut transcript,
+                |tape, point| {
+                    Ok(VerifierKey::new(
+                        m_tags[tape] + DELTAS[tape] * opening(&messages[tape], point)?,
+                    ))
+                },
+            )
+        };
+        let audit = verify(u_opening_keys, &spots, &proof).unwrap();
+        assert_eq!(audit.transcript_digest, prover_transcript.canonical_binding_digest().unwrap());
+        assert_eq!(
+            audit.terminal_m_keys,
+            array::from_fn(|tape| VerifierKey::new(
+                m_tags[tape]
+                    + DELTAS[tape] * opening(&messages[tape], &audit.sumcheck_point).unwrap()
+            ))
+        );
+
+        assert!(verify([u_opening_keys[1], u_opening_keys[0]], &spots, &proof).is_err());
+        let mut changed_spots = spots;
+        changed_spots[0].values[1] += Fp2::ONE;
+        assert!(verify(u_opening_keys, &changed_spots, &proof).is_err());
+        let mut changed_round = proof.clone();
+        changed_round.round_corrections[1][0][0] += Fp2::ONE;
+        assert!(verify(u_opening_keys, &spots, &changed_round).is_err());
+
+        let mut contexts = array::from_fn(|tape| VerifierCtx::new(TAPE_SEEDS[tape], DELTAS[tape]));
+        let mut transcript = Transcript::new(TRANSCRIPT_SEED);
+        assert!(verify_c63_sparse_h_tape_closure_from_whir_openings_reference(
+            &h,
+            u_opening_keys,
+            &statement,
+            &spots,
+            &proof,
+            &mut contexts,
+            &mut transcript,
+            |tape, point| {
+                let wrong_tape = usize::from(tape == 0);
+                Ok(VerifierKey::new(
+                    m_tags[tape] + DELTAS[tape] * opening(&messages[wrong_tape], point)?,
+                ))
+            },
+        )
+        .is_err());
     }
 
     #[cfg(feature = "cuda")]

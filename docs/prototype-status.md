@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — EIGHT-BODY REPAIR SELECTED / LOCAL JOIN OPEN / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — LOCAL COORDINATOR / COMPLETE CPU VERIFIER COMPOSED / A100 E2E PENDING / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,24 +10,99 @@ record; no external plan is authoritative.
 
 Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 
-- **Status.** The owner selects the tape-separated eight-body repair. Local
-  statement, codec and verifier work may resume; E2E and pod work remain
-  stopped until the joined terminal mutations and complete CPU verifier pass.
+- **Status.** The tape-separated resident coordinator, exact `D=X-R` source
+  link, eight-body suffix and one complete CPU-verifier entry compile; their
+  constituent and ordering checks pass. The entry has not yet consumed a full
+  serialized A100 certificate; E2E and all empirical gates remain pending.
 - **Evidence.** Resident projection/openings, 4,420 spots, one D19 lane and the
   production sparse engine remain valid `credit:false` components. Measured
   spots cost 0.399--0.401 s; sparse prove/verify 0.938--1.084/0.950--1.093 s;
   one D19 lane 64--96/20--21 ms. The 1,496-B sparse codec is unchanged.
-- **Decision.** Separate `m_l,u_l` by authentication tape and prove both
-  arithmetic limbs per object and tape: eight WHIR bodies and four terminal
-  tags. Keep every phase at 105 bits and set the complete gate to `>=78.00`
-  bits. Screen v15 counts 120 phase events and gives `78.0190233428` bits.
-  The conservative separate-opening codec projects `28,089,755 B`,
-  `129,287,452 B` setup plus first and 705 full correlations per tape.
+- **Decision.** Keep two authentication tapes, eight WHIR bodies and four
+  terminal tags. The driver fixes eight roots, closes sparse/source claims,
+  consumes the existing global link, then draws WHIR masks. Screen v16 keeps
+  105 bits per phase and gives `78.0190233428` complete bits. The conservative
+  codec projects `28,692,111 B` and `129,889,808 B` setup plus first. The
+  designated tail is `2,704,637 B`; both actual gates pass analytically, but
+  their unused maxima cannot be spent simultaneously.
 - **Checks.** Certificate `<=30,000,000 B`; soundness `>=78.00` bits; warm
   prover `<20 s`; CPU verifier `<5 s`; cold certificate stops at 150 s.
-- **Resume.** Close the tape-separated statement, codecs, output link,
-  terminal mutations and complete verifier locally. The 0.019-bit analytic
-  margin admits no omitted error term. No E2E or pod run before a clean pass.
+- **Resume.** Create a clean checkpoint, then obtain a new owner-provided A100
+  endpoint and GO. Run the registered full-size setup/differentials and one
+  cold plus one immediate warm response. The 0.019-bit soundness margin admits
+  no omitted error term; measured VRAM, bytes, prover and verifier gates remain
+  terminal.
+
+- **2026-08-25 — Resident coordinator and composed CPU-verifier entry close
+  the local C6.3 source/link implementation stop.** The provider now fixes all eight
+  initial roots, derives the sparse point, authenticates the exact live-source
+  functionals, consumes the existing global output link and only then draws
+  the four WHIR masks per tape. The verifier replays sparse, source, global
+  link and eight-body terminal checks in the identical correlation order. The
+  production wrapper PCS now admits the registered two-cohort C6.3 profile;
+  previously it compiled but would have rejected that profile at runtime.
+  Focused C6.3 tests pass 31/31, the CUDA-feature path passes `cargo check`,
+  and analytic screen v16 passes. Version 16 supersedes the four-opening v15
+  byte screen: a continuation needs predecessor and successor `A` openings
+  for all four D19 bodies. The corrected candidate is `28,692,111 B`, its
+  designated tail is `2,704,637 B`, and setup plus first is `129,889,808 B`.
+  Eight pending initial owners retain exactly
+  `637,534,208 B`; their conservative overlap with GW4, `H` and both states is
+  `41,196,590,892 B`, leaving `4,621,985,972 B` below the device guard. The
+  complete entry compiles and its constituent cryptographic and ordering tests
+  pass, but only the A100 candidate can execute it end to end. This
+  memory result is `credit:false`: separate backend accounting and allocator
+  overhead require the A100 supervisor. No full certificate, real-PCG run,
+  proof-size, timing, verifier-memory or E2E credit exists; no pod was
+  contacted.
+
+- **2026-08-24 — Normalized eight-body verifier removes supplied-target
+  circularity.** Review found that the first local join still handed each
+  WHIR limb target key to its verifier. That is unavailable in a real client
+  replay and would make the composition circular, especially for `u_l`. The
+  replacement normalizes each limb's affine WHIR closure, recombines the two
+  arithmetic limbs into the authenticated extension-field target, and checks
+  one target tag per object and tape. The output link now emits both arithmetic
+  limb keys for `m_l`; the sparse terminal tag uniquely derives `u_l` after
+  `m_l` is fixed. One ordered verifier function replays all eight serialized
+  bodies, both projected `A -> y` links, four normalized target tags and both
+  sparse relations using one correlation context per tape. The focused
+  normalized-PCG and full eight-body tests pass; changing the final target tag
+  rejects. This remains scaled, deterministic `credit:false` evidence. Exact
+  transcript context derivation, resident source-owner wiring and the complete
+  inherited CPU verifier remain open; no pod was contacted.
+
+- **2026-08-24 — Exact authenticated output link and transcript order pass
+  locally.** The reference now compiles the terminal functional directly from
+  canonical live K/V cells: the Transformer value `X` and one-time mask `R`
+  share a tag, `D=X-R` matches the committed correction, and the verifier
+  checks the same equality using independent secret multipliers for both
+  tapes and exposes both arithmetic-limb keys. Equality coefficients are
+  factorized by channel, layer and position,
+  avoiding a dense D22 coefficient vector. The eight-body test now derives
+  its hidden D22 terminal keys from this exact link and matches them to the
+  four limb-pair WHIR closures. Sparse verification was split into begin and
+  finish states so its output point is derived before WHIR replay, matching
+  the selected transcript order without changing the 1,496-byte codec.
+  Correction drift and cell reordering reject; focused output-link,
+  tape-separation and eight-body tests pass. This is in-memory reference
+  evidence with deterministic correlations, so it remains `credit:false`.
+  Actual source-owner wiring and one complete CPU verifier remain the hard
+  stop; no pod was contacted.
+
+- **2026-08-24 — Eight-body scaled terminal join and version-2 codecs pass
+  locally.** Two distinct `m_l/u_l` relations now start and end with the same
+  authenticated keys consumed by eight real scaled WHIR bodies; the sparse
+  verifier no longer reconstructs public terminal keys. The nine-component
+  public codec, sparse codec and final structural codec use new versions, and
+  public-payload, tape-key, round and terminal mutations reject. Adding the
+  four missing component frames corrects public framing from 384 to 544 B:
+  screen v15 now projects `28,089,915 B` complete, `29,885,341 B` at the
+  strict tail cap and `129,287,612 B` setup plus first. Soundness remains
+  `78.019023342845...` bits because framing changes no error term. Tests use
+  scaled dimensions and deterministic correlation fixtures, so all evidence
+  remains `credit:false`. The production output link and complete CPU
+  verifier remain the hard stop; no pod was contacted.
 
 - **2026-08-24 — Owner selects the eight-body repair and revises the
   soundness gate.** C6.3 now keeps `m_l,u_l` separate through each

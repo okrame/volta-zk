@@ -7,12 +7,18 @@
 //! path.
 
 use volta_field::{Fp, Fp2};
+use volta_mac::{CorrScheduleAudit, CorrScheduleKind, CorrScheduleRole};
+#[cfg(test)]
+use volta_mac::{ProverAuthed, VerifierKey};
+use volta_proto::c6_cache_fold::{C6CacheFoldAppendSourcePlan, C6CacheFoldKind};
+use volta_proto::mle::eq_vec;
+use volta_proto::{C6PairedSourceWitness, C6ProductionPairedSourceWitness};
 
 use crate::c6_persistent_cache::{
     expected_c6_cache_append_cells, C6CacheCell, C6CacheSlotKind, C6CacheSourceValue,
     C6PersistentCacheLayout, C6_PERSISTENT_CACHE_LIVE_SLOTS, C6_PERSISTENT_CACHE_SLOTS,
 };
-use crate::merkle::{multi_root, Hash, MerkleTree};
+use crate::merkle::{hash_pair, multi_root, Hash, MerkleTree};
 
 pub const C63_BOLT_ROW_LOG2: u8 = 22;
 pub const C63_BOLT_COLUMN_LOG2: u8 = 4;
@@ -37,8 +43,8 @@ const C63_CORRECTION_TREE_MAGIC: [u8; 8] = *b"C63CR3\0\0";
 const C63_VIRTUAL_ROW_MAGIC: [u8; 8] = *b"C63VZ3\0\0";
 const C63_CORRECTION_TREE_VERSION: u16 = 3;
 const C63_STATE_ROOT_HASH_CONTEXT: &str = "volta-zk/c63/correction-state-root/v2";
-const C63_CORRECTION_OPENING_MAGIC: [u8; 8] = *b"C63CRM1\0";
-const C63_CORRECTION_OPENING_VERSION: u16 = 1;
+const C63_CORRECTION_OPENING_MAGIC: [u8; 8] = *b"C63CRM2\0";
+const C63_CORRECTION_OPENING_VERSION: u16 = 2;
 const C63_SPARSE_SETUP_MAGIC: [u8; 8] = *b"C63HSM1\0";
 const C63_SPARSE_SETUP_VERSION: u16 = 1;
 const C63_SPARSE_SETUP_FIELD_ID_GOLDILOCKS: u16 = 1;
@@ -446,6 +452,454 @@ pub fn c63_bolt_interleaved_coefficient_reference(
     Ok(row_weight * rho[usize::from(index.column)])
 }
 
+/// Compile the two tape-separated correction functionals directly in the
+/// residual source order. Unrelated Transformer sources retain zero weight.
+pub fn c63_compile_residual_source_functionals(
+    old_len: u16,
+    new_len: u16,
+    source_count: u32,
+    source_schedule_digest: Hash,
+    plan: &C6CacheFoldAppendSourcePlan,
+    schedule: &CorrScheduleAudit,
+    rho: &[Fp2; C63_BOLT_COLUMNS],
+    row_point: &[Fp2],
+) -> Result<[Vec<Fp2>; 2], String> {
+    let layout = C6PersistentCacheLayout::production();
+    layout.validate().map_err(|error| error.to_string())?;
+    if old_len >= new_len
+        || new_len > layout.capacity_tokens
+        || !schedule.is_canonical()
+        || schedule.digest != source_schedule_digest
+        || plan.layers().len() != usize::from(layout.layers)
+    {
+        return Err("C6.3 residual source-functional binding differs".to_owned());
+    }
+    let source_count = usize::try_from(source_count)
+        .map_err(|_| "C6.3 residual source count exceeds usize".to_owned())?;
+    let domains = c63_direct_source_domain_offsets(source_count, schedule)?;
+    let factors = C63RowEqualityFactors::new(row_point)?;
+    let width = usize::from(layout.width);
+    let mut coefficients = std::array::from_fn(|_| vec![Fp2::ZERO; source_count]);
+    let mut mapped = 0usize;
+    for (layer_index, layer) in plan.layers().iter().enumerate() {
+        if usize::from(layer.model_layer()) != layer_index
+            || layer.first_row() != usize::from(old_len)
+            || layer.row_count().map_err(|error| error.to_string())?
+                != usize::from(new_len - old_len)
+        {
+            return Err("C6.3 source plan does not cover the exact append".to_owned());
+        }
+        for (kind, slot_kind) in [
+            (C6CacheFoldKind::KeyRows, C6CacheSlotKind::Key),
+            (C6CacheFoldKind::ValueColumns, C6CacheSlotKind::Value),
+        ] {
+            for position in usize::from(old_len)..usize::from(new_len) {
+                let domain =
+                    layer.source_domain(kind, position).map_err(|error| error.to_string())?;
+                let &(start, _, count) = domains.get(&domain).ok_or_else(|| {
+                    "C6.3 cache source domain is absent from the residual".to_owned()
+                })?;
+                if count != width || start.checked_add(width).is_none_or(|end| end > source_count) {
+                    return Err("C6.3 cache source draw has the wrong width".to_owned());
+                }
+                for channel in 0..width {
+                    let cell = C6CacheCell {
+                        kind: slot_kind,
+                        layer: layer.model_layer(),
+                        position: position as u16,
+                        channel: channel as u16,
+                    };
+                    for tape in 0..2 {
+                        let index = c63_bolt_correction_index(cell, tape as u8)?;
+                        let coefficient = c63_bolt_interleaved_coefficient_reference(
+                            index,
+                            factors.weight(index.row)?,
+                            rho,
+                        )?;
+                        let target = &mut coefficients[tape][start + channel];
+                        if *target != Fp2::ZERO {
+                            return Err("C6.3 cache source maps to more than one cell".to_owned());
+                        }
+                        *target = coefficient;
+                    }
+                    mapped += 1;
+                }
+            }
+        }
+    }
+    let expected = C6_PERSISTENT_CACHE_LIVE_SLOTS
+        .checked_mul(usize::from(layout.layers))
+        .and_then(|count| count.checked_mul(usize::from(new_len - old_len)))
+        .and_then(|count| count.checked_mul(width))
+        .ok_or_else(|| "C6.3 cache source census overflows".to_owned())?;
+    if mapped != expected {
+        return Err("C6.3 cache source functional is incomplete".to_owned());
+    }
+    Ok(coefficients)
+}
+
+/// Locate direct subfield sources in the flattened residual leaf order.
+/// Shared by the coefficient compiler and the live append owner so they
+/// cannot disagree about schedule offsets.
+pub(crate) fn c63_direct_source_domain_offsets(
+    source_count: usize,
+    schedule: &CorrScheduleAudit,
+) -> Result<std::collections::BTreeMap<u64, (usize, usize, usize)>, String> {
+    if !schedule.is_canonical() {
+        return Err("C6.3 residual source schedule is not canonical".to_owned());
+    }
+    let mut domains = std::collections::BTreeMap::new();
+    let mut flat_offset = 0usize;
+    for draw in &schedule.draws {
+        let count = usize::try_from(draw.count)
+            .map_err(|_| "C6.3 correlation draw count exceeds usize".to_owned())?;
+        if draw.kind == CorrScheduleKind::Subfield
+            && draw.role == CorrScheduleRole::DirectCorrection
+            && domains
+                .insert(
+                    draw.domain,
+                    (
+                        flat_offset,
+                        usize::try_from(draw.global_offset)
+                            .map_err(|_| "C6.3 subfield source offset exceeds usize".to_owned())?,
+                        count,
+                    ),
+                )
+                .is_some()
+        {
+            return Err("C6.3 residual source domain is repeated".to_owned());
+        }
+        flat_offset = flat_offset
+            .checked_add(count)
+            .ok_or_else(|| "C6.3 residual source count overflows".to_owned())?;
+    }
+    if flat_offset != source_count {
+        return Err("C6.3 residual source census differs from its schedule".to_owned());
+    }
+    Ok(domains)
+}
+
+/// Evaluate the two response-local correction openings from the paired source
+/// witness already produced by inference. This is the production `D=X-R`
+/// seam: it reads only the append's subfield audit and allocates no dense cache.
+pub fn c63_evaluate_residual_source_functionals(
+    old_len: u16,
+    new_len: u16,
+    source_schedule_digest: Hash,
+    plan: &C6CacheFoldAppendSourcePlan,
+    schedule: &CorrScheduleAudit,
+    source: &C6ProductionPairedSourceWitness,
+    coefficients: [&[Fp2]; 2],
+) -> Result<[Fp2; 2], String> {
+    if source.allocation_binding_digest() == [0; 32] {
+        return Err("C6.3 resident correction allocation binding is empty".to_owned());
+    }
+    c63_evaluate_paired_source_functionals(
+        old_len,
+        new_len,
+        source_schedule_digest,
+        plan,
+        schedule,
+        source.source(),
+        coefficients,
+    )
+}
+
+fn c63_evaluate_paired_source_functionals(
+    old_len: u16,
+    new_len: u16,
+    source_schedule_digest: Hash,
+    plan: &C6CacheFoldAppendSourcePlan,
+    schedule: &CorrScheduleAudit,
+    paired: &C6PairedSourceWitness,
+    coefficients: [&[Fp2]; 2],
+) -> Result<[Fp2; 2], String> {
+    let layout = C6PersistentCacheLayout::production();
+    let source_count = coefficients[0].len();
+    if old_len >= new_len
+        || new_len > layout.capacity_tokens
+        || coefficients[1].len() != source_count
+        || plan.layers().len() != usize::from(layout.layers)
+        || paired.schedule_digest() != schedule.digest
+        || paired.source_schedule_digest() != source_schedule_digest
+    {
+        return Err("C6.3 resident correction-functional binding differs".to_owned());
+    }
+    let domains = c63_direct_source_domain_offsets(source_count, schedule)?;
+    let width = usize::from(layout.width);
+    let coordinates = paired.coordinates();
+    let mut values = [Fp2::ZERO; 2];
+    let mut mapped = 0usize;
+    for (layer_ordinal, layer) in plan.layers().iter().enumerate() {
+        if usize::from(layer.model_layer()) != layer_ordinal
+            || layer.first_row() != usize::from(old_len)
+            || layer.row_count().map_err(|error| error.to_string())?
+                != usize::from(new_len - old_len)
+        {
+            return Err("C6.3 resident correction-functional plan differs".to_owned());
+        }
+        for kind in [C6CacheFoldKind::KeyRows, C6CacheFoldKind::ValueColumns] {
+            for position in usize::from(old_len)..usize::from(new_len) {
+                let domain =
+                    layer.source_domain(kind, position).map_err(|error| error.to_string())?;
+                let &(flat_start, subfield_start, count) =
+                    domains.get(&domain).ok_or_else(|| {
+                        "C6.3 resident correction source is absent from the schedule".to_owned()
+                    })?;
+                if count != width
+                    || flat_start.checked_add(width).is_none_or(|end| end > source_count)
+                {
+                    return Err("C6.3 resident correction source width differs".to_owned());
+                }
+                for channel in 0..width {
+                    let source_index = subfield_start + channel;
+                    for tape in 0..2 {
+                        let audit = coordinates[tape].subfield();
+                        let mask = *audit.masks().get(source_index).ok_or_else(|| {
+                            "C6.3 resident correction mask is truncated".to_owned()
+                        })?;
+                        let correction = *audit
+                            .corrections()
+                            .get(source_index)
+                            .ok_or_else(|| "C6.3 resident correction is truncated".to_owned())?;
+                        if audit.plaintext(source_index) != Some(mask + correction) {
+                            return Err("C6.3 resident correction differs from X-R".to_owned());
+                        }
+                        values[tape] +=
+                            Fp2::from_base(correction) * coefficients[tape][flat_start + channel];
+                    }
+                    mapped += 1;
+                }
+            }
+        }
+    }
+    let expected = C6_PERSISTENT_CACHE_LIVE_SLOTS
+        .checked_mul(usize::from(layout.layers))
+        .and_then(|count| count.checked_mul(usize::from(new_len - old_len)))
+        .and_then(|count| count.checked_mul(width))
+        .ok_or_else(|| "C6.3 resident correction census overflows".to_owned())?;
+    if mapped != expected {
+        return Err("C6.3 resident correction functional is incomplete".to_owned());
+    }
+    Ok(values)
+}
+
+/// One live correction cell as held by the provider. `source` authenticates
+/// the Transformer K/V value and `mask` is the replayed correlation for the
+/// same source coordinate. Their difference must be the correction committed
+/// by the C6.3 state.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct C63AuthenticatedCorrectionProverCell {
+    pub cell: C6CacheCell,
+    pub correction: [Fp; 2],
+    pub source: [ProverAuthed; 2],
+    pub mask: [ProverAuthed; 2],
+}
+
+/// Verifier mirror of [`C63AuthenticatedCorrectionProverCell`]. The source
+/// keys come from the verified Transformer output and the mask keys from a
+/// counter-neutral replay of the same two connection-scoped correlations.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct C63AuthenticatedCorrectionVerifierCell {
+    pub cell: C6CacheCell,
+    pub source_keys: [VerifierKey; 2],
+    pub mask_keys: [VerifierKey; 2],
+}
+
+/// Compile the exact post-`rho` correction opening from the already
+/// authenticated Transformer sources. This reference streams the canonical
+/// live-cell order and never allocates a D22 coefficient vector.
+#[cfg(test)]
+pub(crate) fn c63_authenticated_correction_functional_prover_reference(
+    old_len: u16,
+    new_len: u16,
+    cells: &[C63AuthenticatedCorrectionProverCell],
+    rho: &[Fp2; C63_BOLT_COLUMNS],
+    row_point: &[Fp2],
+) -> Result<[[ProverAuthed; 2]; 2], String> {
+    validate_authenticated_correction_geometry(
+        old_len,
+        new_len,
+        cells.iter().map(|entry| entry.cell),
+        row_point,
+    )?;
+    let row_weights = C63RowEqualityFactors::new(row_point)?;
+    let mut result = [[ProverAuthed::ZERO; 2]; 2];
+    for entry in cells {
+        for tape in 0..2 {
+            let source = entry.source[tape];
+            let mask = entry.mask[tape];
+            let difference = source.sub(mask);
+            if source.x.c1 != Fp::ZERO
+                || mask.x.c1 != Fp::ZERO
+                || source.m != mask.m
+                || difference.x != Fp2::from_base(entry.correction[tape])
+            {
+                return Err(
+                    "C6.3 provider correction differs from its authenticated K/V source".to_owned()
+                );
+            }
+            let index = c63_bolt_correction_index(entry.cell, tape as u8)?;
+            let row_weight = row_weights.weight(index.row)?;
+            for (limb, scalar) in
+                [rho[usize::from(index.column)].c0, rho[usize::from(index.column)].c1]
+                    .into_iter()
+                    .enumerate()
+            {
+                result[tape][limb] =
+                    result[tape][limb].add(difference.scale(row_weight * Fp2::from_base(scalar)));
+            }
+        }
+    }
+    Ok(result)
+}
+
+/// Witness-free mirror of
+/// [`c63_authenticated_correction_functional_prover_reference`]. It derives
+/// each hidden correction key by subtracting the replayed mask key from the
+/// already verified Transformer source key. It deliberately does not receive
+/// all correction plaintexts; the systematic openings bind the resulting
+/// functional to the committed correction root.
+#[cfg(test)]
+pub(crate) fn c63_authenticated_correction_functional_verifier_reference(
+    old_len: u16,
+    new_len: u16,
+    cells: &[C63AuthenticatedCorrectionVerifierCell],
+    deltas: [Fp2; 2],
+    rho: &[Fp2; C63_BOLT_COLUMNS],
+    row_point: &[Fp2],
+) -> Result<[[VerifierKey; 2]; 2], String> {
+    if deltas[0] == deltas[1] {
+        return Err("C6.3 output-link MAC tapes are not independent".to_owned());
+    }
+    validate_authenticated_correction_geometry(
+        old_len,
+        new_len,
+        cells.iter().map(|entry| entry.cell),
+        row_point,
+    )?;
+    let row_weights = C63RowEqualityFactors::new(row_point)?;
+    let mut result = [[VerifierKey::ZERO; 2]; 2];
+    for entry in cells {
+        for tape in 0..2 {
+            let difference = entry.source_keys[tape].sub(entry.mask_keys[tape]);
+            let index = c63_bolt_correction_index(entry.cell, tape as u8)?;
+            let row_weight = row_weights.weight(index.row)?;
+            for (limb, scalar) in
+                [rho[usize::from(index.column)].c0, rho[usize::from(index.column)].c1]
+                    .into_iter()
+                    .enumerate()
+            {
+                result[tape][limb] =
+                    result[tape][limb].add(difference.scale(row_weight * Fp2::from_base(scalar)));
+            }
+        }
+    }
+    Ok(result)
+}
+
+#[cfg(test)]
+fn validate_authenticated_correction_geometry(
+    old_len: u16,
+    new_len: u16,
+    cells: impl Iterator<Item = C6CacheCell>,
+    row_point: &[Fp2],
+) -> Result<(), String> {
+    let layout = C6PersistentCacheLayout::production();
+    layout.validate().map_err(|error| error.to_string())?;
+    if old_len >= new_len || new_len > layout.capacity_tokens || row_point.is_empty() {
+        return Err("C6.3 authenticated correction geometry is invalid".to_owned());
+    }
+    let expected_count = C6_PERSISTENT_CACHE_LIVE_SLOTS
+        .checked_mul(usize::from(layout.layers))
+        .and_then(|count| count.checked_mul(usize::from(new_len - old_len)))
+        .and_then(|count| count.checked_mul(usize::from(layout.width)))
+        .ok_or_else(|| "C6.3 authenticated correction census overflows".to_owned())?;
+    let mut seen = 0usize;
+    for (ordinal, cell) in cells.enumerate() {
+        if ordinal >= expected_count
+            || cell != canonical_live_cell(layout, old_len, new_len, ordinal)?
+        {
+            return Err("C6.3 authenticated correction cells are not canonical".to_owned());
+        }
+        let index = c63_bolt_correction_index(cell, 0)?;
+        if usize::try_from(index.row).ok().is_none_or(|row| {
+            1usize.checked_shl(row_point.len() as u32).is_none_or(|rows| row >= rows)
+        }) {
+            return Err("C6.3 correction row is outside its opening point".to_owned());
+        }
+        seen += 1;
+    }
+    if seen != expected_count {
+        return Err("C6.3 authenticated correction cell census differs".to_owned());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+fn canonical_live_cell(
+    layout: C6PersistentCacheLayout,
+    old_len: u16,
+    new_len: u16,
+    ordinal: usize,
+) -> Result<C6CacheCell, String> {
+    let width = usize::from(layout.width);
+    let positions = usize::from(new_len - old_len);
+    let per_layer = positions
+        .checked_mul(width)
+        .ok_or_else(|| "C6.3 canonical correction layer overflows".to_owned())?;
+    let per_kind = usize::from(layout.layers)
+        .checked_mul(per_layer)
+        .ok_or_else(|| "C6.3 canonical correction kind overflows".to_owned())?;
+    let kind = if ordinal / per_kind == 0 { C6CacheSlotKind::Key } else { C6CacheSlotKind::Value };
+    let within_kind = ordinal % per_kind;
+    let layer = within_kind / per_layer;
+    let within_layer = within_kind % per_layer;
+    let position = usize::from(old_len) + within_layer / width;
+    let channel = within_layer % width;
+    Ok(C6CacheCell {
+        kind,
+        layer: u16::try_from(layer)
+            .map_err(|_| "C6.3 canonical correction layer exceeds u16".to_owned())?,
+        position: u16::try_from(position)
+            .map_err(|_| "C6.3 canonical correction position exceeds u16".to_owned())?,
+        channel: u16::try_from(channel)
+            .map_err(|_| "C6.3 canonical correction channel exceeds u16".to_owned())?,
+    })
+}
+
+struct C63RowEqualityFactors {
+    channel: Vec<Fp2>,
+    layer_high: Vec<Fp2>,
+    position: Vec<Fp2>,
+}
+
+impl C63RowEqualityFactors {
+    fn new(point: &[Fp2]) -> Result<Self, String> {
+        if !(12..=C63_BOLT_ROW_LOG2 as usize).contains(&point.len()) {
+            return Err("C6.3 correction opening point has the wrong dimension".to_owned());
+        }
+        Ok(Self {
+            channel: eq_vec(&point[..9]),
+            layer_high: eq_vec(&point[9..12]),
+            position: eq_vec(&point[12..]),
+        })
+    }
+
+    fn weight(&self, row: u32) -> Result<Fp2, String> {
+        let channel = row as usize & 0x01ff;
+        let layer_high = row as usize >> 9 & 0x07;
+        let position = row as usize >> 12;
+        let position_weight = self
+            .position
+            .get(position)
+            .ok_or_else(|| "C6.3 correction row is outside its opening point".to_owned())?;
+        Ok(self.channel[channel] * self.layer_high[layer_high] * *position_weight)
+    }
+}
+
 /// One typed systematic row. Padded columns must remain canonical zero.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C63CorrectionRowReference {
@@ -520,6 +974,96 @@ fn c63_virtual_correction_row_frame() -> [u8; C63_CORRECTION_ROW_FRAME_WORDS * 8
     bytes
 }
 
+/// Small verifier-owned frontier for the accepted contiguous tile prefix.
+/// It authenticates an exact append without retaining corrections or all
+/// historical tile roots.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C63CorrectionAppendFrontier {
+    accepted_len: u16,
+    peaks: [Option<Hash>; 11],
+}
+
+impl C63CorrectionAppendFrontier {
+    pub fn zero() -> Self {
+        Self { accepted_len: 0, peaks: [None; 11] }
+    }
+
+    pub fn from_tile_roots(tile_roots: &[Hash]) -> Result<Self, String> {
+        let mut frontier = Self::zero();
+        frontier.append(tile_roots)?;
+        Ok(frontier)
+    }
+
+    pub fn accepted_len(&self) -> u16 {
+        self.accepted_len
+    }
+
+    pub fn append(&mut self, tile_roots: &[Hash]) -> Result<(), String> {
+        if tile_roots.is_empty()
+            || tile_roots.contains(&[0; 32])
+            || usize::from(self.accepted_len)
+                .checked_add(tile_roots.len())
+                .is_none_or(|length| length > 1 << 10)
+        {
+            return Err("C6.3 correction append frontier geometry differs".to_owned());
+        }
+        for &root in tile_roots {
+            self.append_one(root)?;
+        }
+        self.accepted_len = self
+            .accepted_len
+            .checked_add(
+                u16::try_from(tile_roots.len())
+                    .map_err(|_| "C6.3 correction append length exceeds u16".to_owned())?,
+            )
+            .ok_or_else(|| "C6.3 correction append length overflows".to_owned())?;
+        Ok(())
+    }
+
+    pub fn state_root(&self, profile_digest: Hash, epoch: u64) -> Result<Hash, String> {
+        if (epoch == 0) != (self.accepted_len == 0) {
+            return Err("C6.3 correction frontier epoch differs".to_owned());
+        }
+        c63_correction_state_root_from_inner_reference(
+            profile_digest,
+            epoch,
+            self.accepted_len,
+            self.padded_inner_root()?,
+        )
+    }
+
+    fn append_one(&mut self, mut node: Hash) -> Result<(), String> {
+        for peak in &mut self.peaks {
+            match peak.take() {
+                None => {
+                    *peak = Some(node);
+                    return Ok(());
+                }
+                Some(left) => node = hash_pair(&left, &node),
+            }
+        }
+        Err("C6.3 correction append frontier is full".to_owned())
+    }
+
+    fn padded_inner_root(&self) -> Result<Hash, String> {
+        let mut padded = self.clone();
+        let virtual_tile_root = c63_virtual_correction_tile_root();
+        for _ in usize::from(self.accepted_len)..(1 << 10) {
+            padded.append_one(virtual_tile_root)?;
+        }
+        if padded.peaks[..10].iter().any(Option::is_some) {
+            return Err("C6.3 correction append frontier is noncanonical".to_owned());
+        }
+        padded.peaks[10].ok_or_else(|| "C6.3 correction append frontier root is missing".to_owned())
+    }
+}
+
+impl Default for C63CorrectionAppendFrontier {
+    fn default() -> Self {
+        Self::zero()
+    }
+}
+
 /// Deduplicated openings inside one accepted D12 position tile.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C63CorrectionTileOpeningReference {
@@ -538,22 +1082,36 @@ struct C63CorrectionTileMetadataReference {
 /// Two-level D12-inside-D10 multiproof. Virtual rows and tiles carry no payload.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C63CorrectionRowsOpeningReference {
+    appended_tile_roots: Vec<Hash>,
     tiles: Vec<C63CorrectionTileOpeningReference>,
-    outer_frontier: Vec<Hash>,
 }
 
 impl C63CorrectionRowsOpeningReference {
     /// Encode only non-derivable data. Query coordinates and virtual zeros are external.
-    pub fn encode(&self, accepted_len: u16, queried_rows: &[u32]) -> Result<Vec<u8>, String> {
+    pub fn encode(
+        &self,
+        old_len: u16,
+        new_len: u16,
+        queried_rows: &[u32],
+    ) -> Result<Vec<u8>, String> {
         validate_c63_correction_queries(queried_rows)?;
-        validate_c63_accepted_len(accepted_len)?;
+        validate_c63_append_lengths(old_len, new_len)?;
+        if self.appended_tile_roots.len() != usize::from(new_len - old_len)
+            || self.appended_tile_roots.contains(&[0; 32])
+        {
+            return Err("C6.3 correction append tile-root census differs".to_owned());
+        }
         let positions = c63_correction_query_positions(queried_rows);
         let mut tiles = self.tiles.iter();
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&C63_CORRECTION_OPENING_MAGIC);
         bytes.extend_from_slice(&C63_CORRECTION_OPENING_VERSION.to_le_bytes());
-        for position in
-            positions.into_iter().filter(|&position| position < usize::from(accepted_len))
+        for root in &self.appended_tile_roots {
+            bytes.extend_from_slice(root);
+        }
+        for position in positions
+            .into_iter()
+            .filter(|&position| position >= usize::from(old_len) && position < usize::from(new_len))
         {
             let tile =
                 tiles.next().ok_or_else(|| "C6.3 correction tile opening is missing".to_owned())?;
@@ -584,23 +1142,32 @@ impl C63CorrectionRowsOpeningReference {
         if tiles.next().is_some() {
             return Err("C6.3 correction proof has trailing tile openings".to_owned());
         }
-        encode_c63_frontier(&mut bytes, &self.outer_frontier, 1 << 10)?;
         Ok(bytes)
     }
 
-    pub fn decode(bytes: &[u8], accepted_len: u16, queried_rows: &[u32]) -> Result<Self, String> {
+    pub fn decode(
+        bytes: &[u8],
+        old_len: u16,
+        new_len: u16,
+        queried_rows: &[u32],
+    ) -> Result<Self, String> {
         validate_c63_correction_queries(queried_rows)?;
-        validate_c63_accepted_len(accepted_len)?;
+        validate_c63_append_lengths(old_len, new_len)?;
         let mut cursor = C63CorrectionOpeningCursor::new(bytes);
         if cursor.take(8)? != C63_CORRECTION_OPENING_MAGIC
             || cursor.u16()? != C63_CORRECTION_OPENING_VERSION
         {
             return Err("C6.3 correction opening header differs".to_owned());
         }
+        let appended_tile_roots =
+            (old_len..new_len).map(|_| cursor.hash()).collect::<Result<Vec<_>, _>>()?;
+        if appended_tile_roots.contains(&[0; 32]) {
+            return Err("C6.3 correction append contains an empty tile root".to_owned());
+        }
         let mut tiles = Vec::new();
         for position in c63_correction_query_positions(queried_rows)
             .into_iter()
-            .filter(|&position| position < usize::from(accepted_len))
+            .filter(|&position| position >= usize::from(old_len) && position < usize::from(new_len))
         {
             let live_count = c63_correction_live_query_count(queried_rows, position);
             let metadata = if live_count == 0 {
@@ -625,9 +1192,8 @@ impl C63CorrectionRowsOpeningReference {
             let frontier = cursor.frontier(C63_BOLT_ROWS_PER_POSITION)?;
             tiles.push(C63CorrectionTileOpeningReference { metadata, corrections, frontier });
         }
-        let outer_frontier = cursor.frontier(1 << 10)?;
         cursor.finish()?;
-        Ok(Self { tiles, outer_frontier })
+        Ok(Self { appended_tile_roots, tiles })
     }
 }
 
@@ -635,19 +1201,25 @@ impl C63CorrectionRowsOpeningReference {
 /// caller supplies only accepted-tile payloads; virtual tiles remain derived
 /// from the public geometry.
 pub(crate) fn c63_correction_rows_opening_from_resident_parts(
+    old_len: u16,
     accepted_len: u16,
     tile_roots: &[Hash],
     queried_rows: &[u32],
     tiles: Vec<(Option<(u64, Hash, Hash)>, Vec<[Fp; C63_BOLT_COLUMNS]>, Vec<Hash>)>,
 ) -> Result<C63CorrectionRowsOpeningReference, String> {
     validate_c63_correction_queries(queried_rows)?;
-    validate_c63_accepted_len(accepted_len)?;
+    validate_c63_append_lengths(old_len, accepted_len)?;
     if tile_roots.len() != usize::from(accepted_len) || tile_roots.contains(&[0; 32]) {
         return Err("C6.3 resident correction tile roots differ".to_owned());
     }
     let positions = c63_correction_query_positions(queried_rows);
     if tiles.len()
-        != positions.iter().filter(|&&position| position < usize::from(accepted_len)).count()
+        != positions
+            .iter()
+            .filter(|&&position| {
+                position >= usize::from(old_len) && position < usize::from(accepted_len)
+            })
+            .count()
     {
         return Err("C6.3 resident correction tile opening count differs".to_owned());
     }
@@ -667,14 +1239,11 @@ pub(crate) fn c63_correction_rows_opening_from_resident_parts(
             frontier,
         })
         .collect::<Vec<_>>();
-    let virtual_tile_root = c63_virtual_correction_tile_root();
-    let mut outer_leaves = vec![virtual_tile_root; 1 << 10];
-    outer_leaves[..tile_roots.len()].copy_from_slice(tile_roots);
-    let outer_frontier = MerkleTree::from_leaves(outer_leaves)
-        .open_multi(&positions)
-        .ok_or_else(|| "C6.3 resident correction outer query set is invalid".to_owned())?;
-    let opening = C63CorrectionRowsOpeningReference { tiles, outer_frontier };
-    opening.encode(accepted_len, queried_rows)?;
+    let opening = C63CorrectionRowsOpeningReference {
+        appended_tile_roots: tile_roots[usize::from(old_len)..].to_vec(),
+        tiles,
+    };
+    opening.encode(old_len, accepted_len, queried_rows)?;
     Ok(opening)
 }
 
@@ -682,10 +1251,14 @@ pub(crate) fn c63_correction_rows_opening_from_resident_parts(
 pub fn c63_open_correction_rows_reference(
     profile_digest: Hash,
     epoch: u64,
+    old_len: u16,
     accepted_tiles: &[Vec<C63CorrectionRowReference>],
     queried_rows: &[u32],
 ) -> Result<(Hash, C63CorrectionRowsOpeningReference), String> {
     validate_c63_correction_queries(queried_rows)?;
+    let new_len = u16::try_from(accepted_tiles.len())
+        .map_err(|_| "C6.3 accepted correction length exceeds u16".to_owned())?;
+    validate_c63_append_lengths(old_len, new_len)?;
     let tile_roots = accepted_tiles
         .iter()
         .enumerate()
@@ -697,19 +1270,15 @@ pub fn c63_open_correction_rows_reference(
         })
         .collect::<Result<Vec<_>, _>>()?;
     let state_root = c63_correction_state_root_reference(profile_digest, epoch, &tile_roots)?;
-    let virtual_tile_root = c63_virtual_correction_tile_root();
-    let mut outer_leaves = vec![virtual_tile_root; 1 << 10];
-    outer_leaves[..tile_roots.len()].copy_from_slice(&tile_roots);
-    let outer_tree = MerkleTree::from_leaves(outer_leaves);
     let positions = queried_rows.iter().map(|row| (*row as usize) >> 12).collect::<Vec<_>>();
     let mut unique_positions = positions.clone();
     unique_positions.dedup();
-    let outer_frontier = outer_tree
-        .open_multi(&unique_positions)
-        .ok_or_else(|| "C6.3 correction outer query set is invalid".to_owned())?;
 
     let mut tiles = Vec::new();
-    for position in unique_positions.iter().copied().filter(|&position| position < tile_roots.len())
+    for position in unique_positions
+        .iter()
+        .copied()
+        .filter(|&position| position >= usize::from(old_len) && position < tile_roots.len())
     {
         let rows = &accepted_tiles[position];
         let mut leaves =
@@ -738,25 +1307,74 @@ pub fn c63_open_correction_rows_reference(
             .ok_or_else(|| "C6.3 correction tile query set is invalid".to_owned())?;
         tiles.push(C63CorrectionTileOpeningReference { metadata, corrections, frontier });
     }
-    Ok((state_root, C63CorrectionRowsOpeningReference { tiles, outer_frontier }))
+    Ok((
+        state_root,
+        C63CorrectionRowsOpeningReference {
+            appended_tile_roots: tile_roots[usize::from(old_len)..].to_vec(),
+            tiles,
+        },
+    ))
 }
 
 /// Verify queried correction rows and return the authenticated `m=D'*rho` spots.
 pub fn c63_verify_correction_rows_reference(
-    state_root: Hash,
+    predecessor_root: Hash,
+    successor_root: Hash,
+    predecessor_frontier: &C63CorrectionAppendFrontier,
     profile_digest: Hash,
     epoch: u64,
-    accepted_len: u16,
+    old_len: u16,
+    new_len: u16,
     queried_rows: &[u32],
     rho: &[Fp2; C63_BOLT_COLUMNS],
     proof: &C63CorrectionRowsOpeningReference,
-) -> Result<Vec<(u32, Fp2)>, String> {
+) -> Result<(Vec<(u32, Fp2)>, C63CorrectionAppendFrontier), String> {
+    let (spots, frontier) = c63_verify_correction_rows_by_tape_reference(
+        predecessor_root,
+        successor_root,
+        predecessor_frontier,
+        profile_digest,
+        epoch,
+        old_len,
+        new_len,
+        queried_rows,
+        rho,
+        proof,
+    )?;
+    Ok((spots.into_iter().map(|(row, values)| (row, values[0] + values[1])).collect(), frontier))
+}
+
+/// Verify the same opening while preserving the two authentication tapes.
+pub fn c63_verify_correction_rows_by_tape_reference(
+    predecessor_root: Hash,
+    successor_root: Hash,
+    predecessor_frontier: &C63CorrectionAppendFrontier,
+    profile_digest: Hash,
+    epoch: u64,
+    old_len: u16,
+    new_len: u16,
+    queried_rows: &[u32],
+    rho: &[Fp2; C63_BOLT_COLUMNS],
+    proof: &C63CorrectionRowsOpeningReference,
+) -> Result<(Vec<(u32, [Fp2; 2])>, C63CorrectionAppendFrontier), String> {
     validate_c63_correction_queries(queried_rows)?;
-    validate_c63_accepted_len(accepted_len)?;
+    validate_c63_append_lengths(old_len, new_len)?;
+    let predecessor_epoch =
+        epoch.checked_sub(1).ok_or_else(|| "C6.3 correction append epoch is zero".to_owned())?;
+    if predecessor_frontier.accepted_len() != old_len
+        || predecessor_frontier.state_root(profile_digest, predecessor_epoch)? != predecessor_root
+        || proof.appended_tile_roots.len() != usize::from(new_len - old_len)
+    {
+        return Err("C6.3 correction predecessor state differs".to_owned());
+    }
+    let mut successor_frontier = predecessor_frontier.clone();
+    successor_frontier.append(&proof.appended_tile_roots)?;
+    if successor_frontier.state_root(profile_digest, epoch)? != successor_root {
+        return Err("C6.3 correction successor state differs".to_owned());
+    }
 
     let unique_positions = c63_correction_query_positions(queried_rows);
     let mut tile_openings = proof.tiles.iter();
-    let mut tile_roots = Vec::with_capacity(unique_positions.len());
     let mut spots = Vec::with_capacity(queried_rows.len());
     for &position in &unique_positions {
         let rows = queried_rows
@@ -764,9 +1382,8 @@ pub fn c63_verify_correction_rows_reference(
             .copied()
             .filter(|row| (*row as usize) >> 12 == position)
             .collect::<Vec<_>>();
-        if position >= usize::from(accepted_len) {
-            tile_roots.push(c63_virtual_correction_tile_root());
-            spots.extend(rows.into_iter().map(|row| (row, Fp2::ZERO)));
+        if position < usize::from(old_len) || position >= usize::from(new_len) {
+            spots.extend(rows.into_iter().map(|row| (row, [Fp2::ZERO; 2])));
             continue;
         }
 
@@ -789,13 +1406,16 @@ pub fn c63_verify_correction_rows_reference(
         for (&row_index, &local) in rows.iter().zip(&locals) {
             if local >= C63_BOLT_LIVE_ROWS_PER_POSITION {
                 leaf_hashes.push(c63_virtual_correction_row_hash());
-                spots.push((row_index, Fp2::ZERO));
+                spots.push((row_index, [Fp2::ZERO; 2]));
                 continue;
             }
             let correction = corrections
                 .next()
                 .ok_or_else(|| "C6.3 live correction row opening is missing".to_owned())?;
             let metadata = opening.metadata.expect("checked live C6.3 metadata");
+            if metadata.birth_epoch != epoch {
+                return Err("C6.3 correction append birth epoch differs".to_owned());
+            }
             let row = C63CorrectionRowReference {
                 position: position as u16,
                 layer_high: (local >> 9) as u8,
@@ -806,35 +1426,25 @@ pub fn c63_verify_correction_rows_reference(
                 corrections: *correction,
             };
             leaf_hashes.push(row.hash()?);
-            let value = correction
-                .iter()
-                .zip(rho)
-                .fold(Fp2::ZERO, |sum, (&correction, &weight)| sum + weight.mul_base(correction));
-            spots.push((row_index, value));
+            let mut values = [Fp2::ZERO; 2];
+            for (column, (&correction, &weight)) in correction.iter().zip(rho).enumerate() {
+                values[column & 1] += weight.mul_base(correction);
+            }
+            spots.push((row_index, values));
         }
         if corrections.next().is_some() {
             return Err("C6.3 live correction row opening has trailing payload".to_owned());
         }
-        tile_roots.push(
-            multi_root(&locals, &leaf_hashes, &opening.frontier, 12)
-                .ok_or_else(|| "C6.3 correction tile multiproof is invalid".to_owned())?,
-        );
+        let tile_root = multi_root(&locals, &leaf_hashes, &opening.frontier, 12)
+            .ok_or_else(|| "C6.3 correction tile multiproof is invalid".to_owned())?;
+        if proof.appended_tile_roots[position - usize::from(old_len)] != tile_root {
+            return Err("C6.3 correction append tile root differs".to_owned());
+        }
     }
     if tile_openings.next().is_some() {
         return Err("C6.3 correction proof has trailing tile openings".to_owned());
     }
-    let inner_root = multi_root(&unique_positions, &tile_roots, &proof.outer_frontier, 10)
-        .ok_or_else(|| "C6.3 correction outer multiproof is invalid".to_owned())?;
-    let recovered = c63_correction_state_root_from_inner_reference(
-        profile_digest,
-        epoch,
-        accepted_len,
-        inner_root,
-    )?;
-    if recovered != state_root {
-        return Err("C6.3 correction state root differs".to_owned());
-    }
-    Ok(spots)
+    Ok((spots, successor_frontier))
 }
 
 fn validate_c63_correction_queries(queried_rows: &[u32]) -> Result<(), String> {
@@ -850,6 +1460,14 @@ fn validate_c63_correction_queries(queried_rows: &[u32]) -> Result<(), String> {
 fn validate_c63_accepted_len(accepted_len: u16) -> Result<(), String> {
     if accepted_len > C6PersistentCacheLayout::production().capacity_tokens {
         return Err("C6.3 accepted correction length is invalid".to_owned());
+    }
+    Ok(())
+}
+
+fn validate_c63_append_lengths(old_len: u16, new_len: u16) -> Result<(), String> {
+    validate_c63_accepted_len(new_len)?;
+    if old_len >= new_len {
+        return Err("C6.3 correction append lengths differ".to_owned());
     }
     Ok(())
 }
@@ -1415,6 +2033,11 @@ fn validate_append_sources(
 mod tests {
     use super::*;
     use volta_field::{Fp, Fp2};
+    use volta_mac::CorrelationStream;
+    use volta_proto::c6_cache_fold::{
+        C6CacheFoldAppendSourceLayer, C6CacheFoldDirectSourceSegment,
+    };
+    use volta_proto::C6SourceCoordinate;
 
     use crate::c6_persistent_cache::C6PersistentCacheStateWitness;
 
@@ -1648,6 +2271,39 @@ mod tests {
     }
 
     #[test]
+    fn correction_frontier_matches_full_roots_for_genesis_and_150_to_200() {
+        let profile = [0x63; 32];
+        let tile_roots = (0..200u16)
+            .map(|position| crate::merkle::hash_leaf(&position.to_le_bytes()))
+            .collect::<Vec<_>>();
+        let mut frontier = C63CorrectionAppendFrontier::zero();
+        assert_eq!(
+            frontier.state_root(profile, 0).unwrap(),
+            c63_correction_state_root_reference(profile, 0, &[]).unwrap(),
+        );
+        frontier.append(&tile_roots[..150]).unwrap();
+        assert_eq!(
+            frontier.state_root(profile, 1).unwrap(),
+            c63_correction_state_root_reference(profile, 1, &tile_roots[..150]).unwrap(),
+        );
+        let accepted = frontier.clone();
+        frontier.append(&tile_roots[150..]).unwrap();
+        assert_eq!(frontier.accepted_len(), 200);
+        assert_eq!(
+            frontier.state_root(profile, 2).unwrap(),
+            c63_correction_state_root_reference(profile, 2, &tile_roots).unwrap(),
+        );
+        let mut changed = tile_roots[150..].to_vec();
+        changed[0][0] ^= 1;
+        let mut rejected = accepted;
+        rejected.append(&changed).unwrap();
+        assert_ne!(
+            rejected.state_root(profile, 2).unwrap(),
+            frontier.state_root(profile, 2).unwrap()
+        );
+    }
+
+    #[test]
     fn correction_multiproof_authenticates_spots_and_virtual_zeros() {
         let profile = [7; 32];
         let rows = correction_rows(0, 1, [11; 32], [17; 32]);
@@ -1655,14 +2311,40 @@ mod tests {
         let rho: [Fp2; C63_BOLT_COLUMNS] = std::array::from_fn(|column| {
             Fp2::new(Fp::new(31 + column as u64), Fp::new(71 + 3 * column as u64))
         });
+        let predecessor_frontier = C63CorrectionAppendFrontier::zero();
+        let predecessor_root = predecessor_frontier.state_root(profile, 0).unwrap();
         let (root, proof) =
-            c63_open_correction_rows_reference(profile, 1, &[rows.clone()], &queried).unwrap();
-        let spots =
-            c63_verify_correction_rows_reference(root, profile, 1, 1, &queried, &rho, &proof)
-                .unwrap();
-        let encoded = proof.encode(1, &queried).unwrap();
-        let decoded = C63CorrectionRowsOpeningReference::decode(&encoded, 1, &queried).unwrap();
+            c63_open_correction_rows_reference(profile, 1, 0, &[rows.clone()], &queried).unwrap();
+        let (spots, successor_frontier) = c63_verify_correction_rows_reference(
+            predecessor_root,
+            root,
+            &predecessor_frontier,
+            profile,
+            1,
+            0,
+            1,
+            &queried,
+            &rho,
+            &proof,
+        )
+        .unwrap();
+        let (tape_spots, replayed_frontier) = c63_verify_correction_rows_by_tape_reference(
+            predecessor_root,
+            root,
+            &predecessor_frontier,
+            profile,
+            1,
+            0,
+            1,
+            &queried,
+            &rho,
+            &proof,
+        )
+        .unwrap();
+        let encoded = proof.encode(0, 1, &queried).unwrap();
+        let decoded = C63CorrectionRowsOpeningReference::decode(&encoded, 0, 1, &queried).unwrap();
         assert_eq!(decoded, proof);
+        assert_eq!(successor_frontier, replayed_frontier);
         assert_eq!(spots.len(), queried.len());
         for (offset, &row_index) in queried.iter().enumerate() {
             let expected = if row_index < C63_BOLT_LIVE_ROWS_PER_POSITION as u32 {
@@ -1677,45 +2359,91 @@ mod tests {
                 Fp2::ZERO
             };
             assert_eq!(spots[offset], (row_index, expected));
+            assert_eq!(tape_spots[offset].0, row_index);
+            assert_eq!(tape_spots[offset].1[0] + tape_spots[offset].1[1], expected);
         }
 
         let mut bad_row = proof.clone();
         bad_row.tiles[0].corrections[0][0] += Fp::ONE;
         assert!(c63_verify_correction_rows_reference(
-            root, profile, 1, 1, &queried, &rho, &bad_row
+            predecessor_root,
+            root,
+            &predecessor_frontier,
+            profile,
+            1,
+            0,
+            1,
+            &queried,
+            &rho,
+            &bad_row
         )
         .is_err());
         let mut bad_frontier = proof.clone();
         bad_frontier.tiles[0].frontier[0][0] ^= 1;
         assert!(c63_verify_correction_rows_reference(
+            predecessor_root,
             root,
+            &predecessor_frontier,
             profile,
             1,
+            0,
             1,
             &queried,
             &rho,
-            &bad_frontier,
+            &bad_frontier
         )
         .is_err());
         let mut trailing = proof.clone();
         trailing.tiles.push(trailing.tiles[0].clone());
         assert!(c63_verify_correction_rows_reference(
-            root, profile, 1, 1, &queried, &rho, &trailing
+            predecessor_root,
+            root,
+            &predecessor_frontier,
+            profile,
+            1,
+            0,
+            1,
+            &queried,
+            &rho,
+            &trailing
         )
         .is_err());
-        assert!(c63_verify_correction_rows_reference(root, profile, 1, 1, &[0, 0], &rho, &proof,)
-            .is_err());
-        assert!(c63_verify_correction_rows_reference(root, profile, 1, 2, &queried, &rho, &proof)
-            .is_err());
+        assert!(c63_verify_correction_rows_reference(
+            predecessor_root,
+            root,
+            &predecessor_frontier,
+            profile,
+            1,
+            0,
+            1,
+            &[0, 0],
+            &rho,
+            &proof
+        )
+        .is_err());
+        assert!(c63_verify_correction_rows_reference(
+            predecessor_root,
+            root,
+            &predecessor_frontier,
+            profile,
+            1,
+            0,
+            2,
+            &queried,
+            &rho,
+            &proof
+        )
+        .is_err());
 
         let mut noncanonical = encoded.clone();
-        noncanonical[82..90].copy_from_slice(&volta_field::P.to_le_bytes());
-        assert!(C63CorrectionRowsOpeningReference::decode(&noncanonical, 1, &queried).is_err());
+        noncanonical[114..122].copy_from_slice(&volta_field::P.to_le_bytes());
+        assert!(C63CorrectionRowsOpeningReference::decode(&noncanonical, 0, 1, &queried).is_err());
         let mut trailing_bytes = encoded.clone();
         trailing_bytes.push(0);
-        assert!(C63CorrectionRowsOpeningReference::decode(&trailing_bytes, 1, &queried).is_err());
+        assert!(C63CorrectionRowsOpeningReference::decode(&trailing_bytes, 0, 1, &queried).is_err());
         assert!(C63CorrectionRowsOpeningReference::decode(
             &encoded[..encoded.len() - 1],
+            0,
             1,
             &queried,
         )
@@ -1765,6 +2493,252 @@ mod tests {
             C63BoltCorrectionIndex { row: C63_BOLT_ROWS as u32, column: 0 },
             Fp2::ONE,
             &rho,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn authenticated_correction_functional_reuses_transformer_sources_and_rejects_drift() {
+        let layout = C6PersistentCacheLayout::production();
+        let live_len = 1;
+        let point = (0..12)
+            .map(|index| Fp2::new(Fp::new(31 + index), Fp::new(47 + index)))
+            .collect::<Vec<_>>();
+        let rho: [Fp2; C63_BOLT_COLUMNS] = std::array::from_fn(|column| {
+            Fp2::new(Fp::new(71 + column as u64), Fp::new(97 + column as u64))
+        });
+        let deltas = [Fp2::new(Fp::new(101), Fp::new(103)), Fp2::new(Fp::new(107), Fp::new(109))];
+        let cells = expected_c6_cache_append_cells(layout, 0, live_len).unwrap();
+        let row_weights = C63RowEqualityFactors::new(&point).unwrap();
+        let mut prover = Vec::with_capacity(cells.len());
+        let mut verifier = Vec::with_capacity(cells.len());
+        let mut expected = [Fp2::ZERO; 2];
+        let mut expected_limbs = [[Fp2::ZERO; 2]; 2];
+        for (ordinal, cell) in cells.into_iter().enumerate() {
+            let correction =
+                std::array::from_fn(|tape| Fp::new(3 + ordinal as u64 * 5 + tape as u64 * 7));
+            let masks: [Fp; 2] =
+                std::array::from_fn(|tape| Fp::new(11 + ordinal as u64 * 13 + tape as u64 * 17));
+            let tags: [Fp2; 2] = std::array::from_fn(|tape| {
+                Fp2::new(
+                    Fp::new(19 + ordinal as u64 * 23 + tape as u64),
+                    Fp::new(29 + ordinal as u64 * 31 + tape as u64),
+                )
+            });
+            let source = std::array::from_fn(|tape| {
+                ProverAuthed::new(Fp2::from_base(masks[tape] + correction[tape]), tags[tape])
+            });
+            let mask = std::array::from_fn(|tape| {
+                ProverAuthed::new(Fp2::from_base(masks[tape]), tags[tape])
+            });
+            let source_keys = std::array::from_fn(|tape| {
+                VerifierKey::new(tags[tape] + deltas[tape] * source[tape].x)
+            });
+            let mask_keys = std::array::from_fn(|tape| {
+                VerifierKey::new(tags[tape] + deltas[tape] * mask[tape].x)
+            });
+            for tape in 0..2 {
+                let index = c63_bolt_correction_index(cell, tape as u8).unwrap();
+                let coefficient = c63_bolt_interleaved_coefficient_reference(
+                    index,
+                    row_weights.weight(index.row).unwrap(),
+                    &rho,
+                )
+                .unwrap();
+                expected[tape] += coefficient.mul_base(correction[tape]);
+                let row_weight = row_weights.weight(index.row).unwrap();
+                for limb in 0..2 {
+                    let scalar = if limb == 0 {
+                        rho[usize::from(index.column)].c0
+                    } else {
+                        rho[usize::from(index.column)].c1
+                    };
+                    expected_limbs[tape][limb] +=
+                        row_weight * Fp2::from_base(correction[tape] * scalar);
+                }
+            }
+            prover.push(C63AuthenticatedCorrectionProverCell { cell, correction, source, mask });
+            verifier.push(C63AuthenticatedCorrectionVerifierCell { cell, source_keys, mask_keys });
+        }
+
+        let prover_open = c63_authenticated_correction_functional_prover_reference(
+            0, live_len, &prover, &rho, &point,
+        )
+        .unwrap();
+        let verifier_open = c63_authenticated_correction_functional_verifier_reference(
+            0, live_len, &verifier, deltas, &rho, &point,
+        )
+        .unwrap();
+        let basis = Fp2::new(Fp::ZERO, Fp::ONE);
+        for tape in 0..2 {
+            assert_eq!(
+                prover_open[tape][0].add(prover_open[tape][1].scale(basis)).x,
+                expected[tape],
+            );
+            for limb in 0..2 {
+                let expected_limb = expected_limbs[tape][limb];
+                assert_eq!(prover_open[tape][limb].x, expected_limb);
+                assert_eq!(prover_open[tape][limb].m, Fp2::ZERO);
+                assert_eq!(verifier_open[tape][limb].k, deltas[tape] * expected_limb);
+            }
+        }
+
+        let mut changed = prover.clone();
+        changed[0].correction[0] += Fp::ONE;
+        assert!(c63_authenticated_correction_functional_prover_reference(
+            0, live_len, &changed, &rho, &point,
+        )
+        .is_err());
+        let mut changed = verifier.clone();
+        changed[0].source_keys[0] =
+            changed[0].source_keys[0].add(VerifierKey::from_public(Fp2::ONE, deltas[0]));
+        assert_ne!(
+            c63_authenticated_correction_functional_verifier_reference(
+                0, live_len, &changed, deltas, &rho, &point,
+            )
+            .unwrap(),
+            verifier_open,
+        );
+        prover.swap(0, 1);
+        assert!(c63_authenticated_correction_functional_prover_reference(
+            0, live_len, &prover, &rho, &point,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn residual_source_functional_compiler_maps_cache_domains_without_key_log() {
+        let layers = (0..12u16)
+            .map(|layer| {
+                C6CacheFoldAppendSourceLayer::new(
+                    layer,
+                    vec![C6CacheFoldDirectSourceSegment {
+                        base_domain: 0x0100_0000 + u64::from(layer) * 0x100,
+                        rows: 2,
+                    }],
+                    vec![C6CacheFoldDirectSourceSegment {
+                        base_domain: 0x0200_0000 + u64::from(layer) * 0x100,
+                        rows: 2,
+                    }],
+                )
+                .and_then(|layer| layer.suffix_from(1))
+                .unwrap()
+            })
+            .collect::<Vec<_>>();
+        let plan = C6CacheFoldAppendSourcePlan::new(layers).unwrap();
+        let mut streams = [CorrelationStream::new([0x31; 32]), CorrelationStream::new([0x32; 32])];
+        for stream in &mut streams {
+            stream.enable_c6_source_witness_collection().unwrap();
+            let _ = stream.draw_fulls(0x0300_0000, 2);
+            stream
+                .record_c6_fullfield_plaintexts(
+                    0x0300_0000,
+                    &[Fp2::from_base(Fp::new(5)), Fp2::from_base(Fp::new(7))],
+                )
+                .unwrap();
+        }
+        let mut sub_offset = 0u64;
+        for layer in plan.layers() {
+            for kind in [C6CacheFoldKind::KeyRows, C6CacheFoldKind::ValueColumns] {
+                let domain = layer.source_domain(kind, 1).unwrap();
+                let plaintexts =
+                    (0..768).map(|channel| Fp::new(101 + sub_offset + channel)).collect::<Vec<_>>();
+                for stream in &mut streams {
+                    let correlations = stream.draw_subs(domain, plaintexts.len());
+                    let corrections = correlations
+                        .iter()
+                        .zip(&plaintexts)
+                        .map(|(source, plaintext)| (*plaintext - source.r).value())
+                        .collect::<Vec<_>>();
+                    stream.record_c6_subfield_corrections(domain, &corrections).unwrap();
+                }
+                sub_offset += 768;
+            }
+        }
+        let schedule = streams[0].schedule_audit().unwrap();
+        assert_eq!(streams[1].schedule_audit(), Some(schedule.clone()));
+        let digest = schedule.digest;
+        let [mut first, mut second] = streams;
+        let coordinates = [
+            C6SourceCoordinate::new(
+                first.finish_c6_subfield_witness_collection().unwrap(),
+                first.finish_c6_fullfield_witness_collection().unwrap(),
+                &schedule,
+            )
+            .unwrap(),
+            C6SourceCoordinate::new(
+                second.finish_c6_subfield_witness_collection().unwrap(),
+                second.finish_c6_fullfield_witness_collection().unwrap(),
+                &schedule,
+            )
+            .unwrap(),
+        ];
+        let paired =
+            C6PairedSourceWitness::new([[0x41; 32], [0x42; 32]], coordinates, &schedule, digest)
+                .unwrap();
+        let point = (0..C63_BOLT_ROW_LOG2)
+            .map(|index| Fp2::new(Fp::new(401 + u64::from(index)), Fp::new(701 + u64::from(index))))
+            .collect::<Vec<_>>();
+        let rho = std::array::from_fn(|column| {
+            Fp2::new(Fp::new(1_001 + column as u64), Fp::new(2_003 + column as u64))
+        });
+        let source_count = u32::try_from(2 + sub_offset).unwrap();
+        let coefficients = c63_compile_residual_source_functionals(
+            1,
+            2,
+            source_count,
+            digest,
+            &plan,
+            &schedule,
+            &rho,
+            &point,
+        )
+        .unwrap();
+        assert_eq!(coefficients[0].len(), source_count as usize);
+        assert_eq!(coefficients[0][..2], [Fp2::ZERO; 2]);
+        let cell = C6CacheCell { kind: C6CacheSlotKind::Key, layer: 0, position: 1, channel: 0 };
+        let index = c63_bolt_correction_index(cell, 0).unwrap();
+        let factors = C63RowEqualityFactors::new(&point).unwrap();
+        assert_eq!(
+            coefficients[0][2],
+            c63_bolt_interleaved_coefficient_reference(
+                index,
+                factors.weight(index.row).unwrap(),
+                &rho,
+            )
+            .unwrap()
+        );
+        assert_ne!(coefficients[0][2], coefficients[1][2]);
+        let values = c63_evaluate_paired_source_functionals(
+            1,
+            2,
+            digest,
+            &plan,
+            &schedule,
+            &paired,
+            [&coefficients[0], &coefficients[1]],
+        )
+        .unwrap();
+        let expected = std::array::from_fn(|tape| {
+            paired.coordinates()[tape]
+                .subfield()
+                .corrections()
+                .iter()
+                .zip(&coefficients[tape][2..])
+                .fold(Fp2::ZERO, |sum, (&correction, &coefficient)| {
+                    sum + Fp2::from_base(correction) * coefficient
+                })
+        });
+        assert_eq!(values, expected);
+        assert!(c63_compile_residual_source_functionals(
+            1,
+            2,
+            source_count,
+            [0x55; 32],
+            &plan,
+            &schedule,
+            &rho,
+            &point,
         )
         .is_err());
     }

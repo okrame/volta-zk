@@ -21,8 +21,8 @@ pub const C62_PRODUCTION_SUFFIX_SUB_CORRELATIONS: usize = 24;
 pub const C62_PRODUCTION_SUFFIX_FULL_CORRELATIONS: usize = 765;
 pub const C63_PRODUCTION_SUFFIX_SUB_CORRELATIONS: usize = 24;
 /// 254 residual + 96 reduced output link + 305 compiler + 2 inherited
-/// noncompiler masks + 44 sparse-H + 2 C6.3 terminal masks.
-pub const C63_PRODUCTION_SUFFIX_FULL_CORRELATIONS: usize = 703;
+/// noncompiler masks + 44 sparse-H + 4 limb masks + 2 source functionals.
+pub const C63_PRODUCTION_SUFFIX_FULL_CORRELATIONS: usize = 707;
 pub const C62_GENESIS_RESPONSE_SUB_CORRELATIONS: usize = 4_892_214;
 pub const C62_GENESIS_RESPONSE_FULL_CORRELATIONS: usize = 226_917;
 pub const C62_CONTINUATION_256_RESPONSE_SUB_CORRELATIONS: usize = 1_795_150;
@@ -941,28 +941,28 @@ mod tests {
     #[test]
     fn c63_registered_geometries_remove_cache_and_add_sketch_closures() {
         assert_eq!(C63_PRODUCTION_SUFFIX_SUB_CORRELATIONS, 24);
-        assert_eq!(C63_PRODUCTION_SUFFIX_FULL_CORRELATIONS, 703);
+        assert_eq!(C63_PRODUCTION_SUFFIX_FULL_CORRELATIONS, 707);
         for (sub, full, raw) in [
-            (C63_GENESIS_SUB_CORRELATIONS, C63_GENESIS_FULL_CORRELATIONS, 5_347_478),
+            (C63_GENESIS_SUB_CORRELATIONS, C63_GENESIS_FULL_CORRELATIONS, 5_347_486),
             (
                 C63_CONTINUATION_256_SUB_CORRELATIONS,
                 C63_CONTINUATION_256_FULL_CORRELATIONS,
-                2_192_104,
+                2_192_112,
             ),
             (
                 C63_CONTINUATION_512_SUB_CORRELATIONS,
                 C63_CONTINUATION_512_FULL_CORRELATIONS,
-                2_201_704,
+                2_201_712,
             ),
             (
                 C63_CONTINUATION_1024_SUB_CORRELATIONS,
                 C63_CONTINUATION_1024_FULL_CORRELATIONS,
-                2_211_688,
+                2_211_696,
             ),
         ] {
             assert_eq!(registered_production_geometry(sub, full), Some(raw));
         }
-        assert_eq!(C62_GENESIS_RAW_CORRELATIONS - C63_GENESIS_RAW_CORRELATIONS, 124);
+        assert_eq!(C62_GENESIS_RAW_CORRELATIONS - C63_GENESIS_RAW_CORRELATIONS, 116);
     }
 
     #[test]

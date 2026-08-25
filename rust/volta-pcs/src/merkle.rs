@@ -12,7 +12,7 @@ pub fn hash_leaf(bytes: &[u8]) -> Hash {
     *blake3::hash(bytes).as_bytes()
 }
 
-fn hash_pair(l: &Hash, r: &Hash) -> Hash {
+pub(crate) fn hash_pair(l: &Hash, r: &Hash) -> Hash {
     let mut h = blake3::Hasher::new();
     h.update(l);
     h.update(r);

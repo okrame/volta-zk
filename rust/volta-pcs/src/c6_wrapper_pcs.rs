@@ -1692,11 +1692,14 @@ pub fn prove_c6_wrapper_pcs_persisted_cuda_assembled(
     let commitments = cohorts.iter().map(|cohort| cohort.commitment().clone()).collect::<Vec<_>>();
     let legacy_specs = production_c6_wrapper_specs();
     let native_specs = production_c61_native_wrapper_specs();
+    let c63_specs = production_c63_authenticated_sketch_wrapper_specs();
     let production_specs: &[C6WrapperCohortSpec] =
         if commitments.iter().map(|commitment| commitment.spec).eq(legacy_specs) {
             &legacy_specs
         } else if commitments.iter().map(|commitment| commitment.spec).eq(native_specs) {
             &native_specs
+        } else if commitments.iter().map(|commitment| commitment.spec).eq(c63_specs) {
+            &c63_specs
         } else {
             return Err(C6WrapperPcsError::new(
                 "C6 production persisted PCS rejects an unregistered profile",
@@ -4700,6 +4703,15 @@ mod tests {
 
     #[test]
     fn c63_profile_removes_cache_cohorts_and_one_global_fold_round() {
+        let production_cuda = include_str!("c6_wrapper_pcs.rs")
+            .split("pub fn prove_c6_wrapper_pcs_persisted_cuda_assembled")
+            .nth(1)
+            .unwrap()
+            .split("pub fn prove_c6_wrapper_pcs_assembled")
+            .next()
+            .unwrap();
+        assert!(production_cuda.contains("production_c63_authenticated_sketch_wrapper_specs()"));
+
         let specs = production_c63_authenticated_sketch_wrapper_specs();
         assert_eq!(
             specs.iter().map(|spec| usize::from(spec.slot_count)).sum::<usize>(),

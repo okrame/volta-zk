@@ -7,11 +7,13 @@
 
 use std::collections::BTreeSet;
 use std::marker::PhantomData;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 
+use p3_blake3::Blake3;
 use p3_challenger::{
     CanFinalizeDigest, CanObserve, CanSample, CanSampleBits, CanSampleUniformBits, FieldChallenger,
-    GrindingChallenger, ResamplingError,
+    GrindingChallenger, HashChallenger, ResamplingError, SerializingChallenger64,
 };
 use p3_commit::{BatchOpening, BatchOpeningRef, Mmcs};
 use p3_field::{Field, PrimeCharacteristicRing, PrimeField64};
@@ -26,23 +28,44 @@ use p3_sumcheck_c61::zk::ZkSumcheckData;
 use p3_whir_c61::parameters::{FoldingFactor, ProtocolParameters, SecurityAssumption};
 use p3_whir_c61::pcs::proof::{QueryOpenings, SharedProofOpening};
 use p3_whir_c61::pcs::zk::{
-    BaseCaseZkProof, BlindedMask, MaskOpeningPair, ZkParameters, ZkRoundProof, ZkWhirConfig,
-    ZkWhirInitialMessage, ZkWhirInitialOracleLink, ZkWhirOracleCommitter, ZkWhirProof,
+    BaseCaseZkProof, BlindedMask, ClaimlessWhirVerifierClosure, HidingWhirVerifier,
+    MaskOpeningPair, ZkParameters, ZkRoundProof, ZkWhirConfig, ZkWhirInitialMessage,
+    ZkWhirInitialOracleLink, ZkWhirOracleCommitter, ZkWhirProof,
 };
 use rayon::prelude::*;
 use volta_field::Fp2;
+use volta_mac::{Transcript, VerifierCtx, VerifierKey};
+use volta_proto::C6ClientAttempt;
 
+use crate::c61_authenticated_whir::{
+    verify_c63_authenticated_whir_limb_pair, C61AuthenticatedWhirAffineClaim,
+    C61AuthenticatedWhirBaseProof, C63AuthenticatedWhirLane, C63AuthenticatedWhirMaskRange,
+    C63AuthenticatedWhirNormalizedLimb,
+};
 use crate::c61_whir_reference::{
-    c61_max_pruned_binary_siblings, c61_reference_mmcs, c61_volta_fp2_from_p3, C61Commitment,
-    C61Mmcs, C61MultiProof, C61P3Fp2, C61Reader, C61SizingChallenger, C61WhirStructuralBudget,
-    C61Writer, C61_WHIRA1_DIGEST_BYTES, C61_WHIRA1_ELL_ZK, C61_WHIRA1_FP2_BYTES,
-    C61_WHIRA1_FP_BYTES, C61_WHIRA1_HEADER_BYTES, C61_WHIRA1_MULTIPROOF_COUNT_BYTES,
+    c61_max_pruned_binary_siblings, c61_p3_fp2_from_volta, c61_reference_mmcs,
+    c61_volta_fp2_from_p3, C61Commitment, C61Mmcs, C61MultiProof, C61P3Fp2, C61Reader,
+    C61SizingChallenger, C61WhirStructuralBudget, C61Writer, C61_WHIRA1_DIGEST_BYTES,
+    C61_WHIRA1_ELL_ZK, C61_WHIRA1_FP2_BYTES, C61_WHIRA1_FP_BYTES, C61_WHIRA1_HEADER_BYTES,
+    C61_WHIRA1_MULTIPROOF_COUNT_BYTES,
 };
 use crate::c62_gpu_whir::{
     C62GpuMmcs, C62GpuProverData, C62GpuSumcheckState, C62GpuWhirCommitter, C62GpuWhirError,
 };
-use crate::c63_authenticated_sketch::C63_BOLT_COLUMNS;
+use crate::c63_authenticated_sketch::{
+    c63_verify_correction_rows_by_tape_reference, C63CorrectionRowsOpeningReference,
+    C63SparseSketchReference, C63_BOLT_COLUMNS, C63_SYSTEMATIC_SPOT_QUERIES,
+};
+#[cfg(test)]
+use crate::c63_authenticated_sketch::{C63CorrectionAppendFrontier, C63_BOLT_ROWS_PER_POSITION};
 use crate::c63_gpu_owner::C63GpuStateOwner;
+use crate::c63_public_argument::{C63PublicArgument, C63VerifierSketchState};
+use crate::c63_sparse_h_closure::{
+    begin_verify_c63_sparse_h_tape_closure_reference, C63SparseHClosureProof,
+    C63SparseHClosureStatement, C63SparseHTapeClosureReferenceAudit, C63SparseHTapeVerifierPending,
+    C63TapeSystematicSpot,
+};
+use crate::c6_authenticated_output_link::C63ResidualSourceFunctionalsVerifiedLink;
 
 pub const C63_ENCODED_SKETCH_PHYSICAL_ROW_LOG2: usize = 19;
 pub const C63_ENCODED_SKETCH_PHYSICAL_ROWS: usize = 1 << C63_ENCODED_SKETCH_PHYSICAL_ROW_LOG2;
@@ -222,6 +245,477 @@ fn c63_pow_accepts(
 pub type C63SeparatedSizingChallenger = C63SeparatedChallenger<Goldilocks, C61SizingChallenger>;
 pub type C63WhirConfig = ZkWhirConfig<C61P3Fp2, Goldilocks, C63SeparatedSizingChallenger>;
 pub type C63OrdinaryWhirProof = ZkWhirProof<Goldilocks, C61P3Fp2, C61Mmcs>;
+
+const C63_TRANSCRIPT_BINDING_CONTEXT: &str = "volta-zk/c63/transcript-binding/v2";
+const C63_TRANSCRIPT_LANE_CONTEXT: &str = "volta-zk/c63/transcript-lane/v1";
+const C63_TRANSCRIPT_QUERY_CONTEXT: &str = "volta-zk/c63/transcript-query/v1";
+const C63_TRANSCRIPT_SPOT_CONTEXT: &str = "volta-zk/c63/transcript-spots/v1";
+const C63_TRANSCRIPT_SPARSE_CONTEXT: &str = "volta-zk/c63/transcript-sparse/v1";
+const C63_TRANSCRIPT_TERMINAL_CONTEXT: &str = "volta-zk/c63/transcript-terminal/v1";
+const C63_TRANSCRIPT_SOURCE_FUNCTIONAL_CONTEXT: &str =
+    "volta-zk/c63/transcript-source-functional/v1";
+
+/// Minimal C6.3 Fiat--Shamir schedule. The immutable request/model bindings
+/// fix `rho` and the eight lane contexts; all eight initial roots then fix the
+/// systematic/sparse context; only the complete public and sparse bodies fix
+/// the four terminal contexts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct C63TranscriptBinding {
+    digest: [u8; 32],
+}
+
+impl C63TranscriptBinding {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new(
+        attempt: C6ClientAttempt,
+        statement_digest: [u8; 32],
+        profile_digest: [u8; 32],
+        predecessor_correction_root: [u8; 32],
+        predecessor_encoded_sketch_root: [u8; 32],
+        correction_root: [u8; 32],
+        encoded_sketch_root: [u8; 32],
+        epoch: u64,
+        old_len: u16,
+        accepted_len: u16,
+    ) -> Result<Self, String> {
+        if [
+            statement_digest,
+            profile_digest,
+            predecessor_correction_root,
+            predecessor_encoded_sketch_root,
+            correction_root,
+            encoded_sketch_root,
+        ]
+        .contains(&[0; 32])
+            || epoch == 0
+            || old_len >= accepted_len
+            || attempt.workload.old_context != u32::from(old_len)
+            || attempt.workload.new_context != u32::from(accepted_len)
+        {
+            return Err("C6.3 transcript binding contains an empty field".to_owned());
+        }
+        let mut hasher = blake3::Hasher::new_derive_key(C63_TRANSCRIPT_BINDING_CONTEXT);
+        hasher.update(b"C63TX2");
+        hasher.update(&crate::c61_interactive_driver::c61_interactive_attempt_digest(attempt)?);
+        hasher.update(&statement_digest);
+        hasher.update(&profile_digest);
+        hasher.update(&predecessor_correction_root);
+        hasher.update(&predecessor_encoded_sketch_root);
+        hasher.update(&correction_root);
+        hasher.update(&encoded_sketch_root);
+        hasher.update(&epoch.to_le_bytes());
+        hasher.update(&old_len.to_le_bytes());
+        hasher.update(&accepted_len.to_le_bytes());
+        Ok(Self { digest: *hasher.finalize().as_bytes() })
+    }
+
+    pub(crate) fn rho_seed(self) -> [u8; 32] {
+        self.digest
+    }
+
+    pub(crate) fn lane_seed(
+        self,
+        rho: &[Fp2; C63_BOLT_COLUMNS],
+        lane: C63AuthenticatedWhirLane,
+        tape: usize,
+        limb: usize,
+    ) -> Result<[u8; 32], String> {
+        if tape >= 2 || limb >= 2 {
+            return Err("C6.3 transcript lane coordinate differs".to_owned());
+        }
+        let mut hasher = blake3::Hasher::new_derive_key(C63_TRANSCRIPT_LANE_CONTEXT);
+        hasher.update(&self.digest);
+        c63_hash_rho(&mut hasher, rho);
+        hasher.update(&[lane as u8, tape as u8, limb as u8]);
+        Ok(*hasher.finalize().as_bytes())
+    }
+
+    pub(crate) fn query_seed(
+        self,
+        rho: &[Fp2; C63_BOLT_COLUMNS],
+        initial_roots: &[[u8; 32]; 8],
+    ) -> Result<[u8; 32], String> {
+        if initial_roots.contains(&[0; 32]) {
+            return Err("C6.3 transcript contains an empty WHIR root".to_owned());
+        }
+        let mut hasher = blake3::Hasher::new_derive_key(C63_TRANSCRIPT_QUERY_CONTEXT);
+        hasher.update(&self.digest);
+        c63_hash_rho(&mut hasher, rho);
+        for root in initial_roots {
+            hasher.update(root);
+        }
+        Ok(*hasher.finalize().as_bytes())
+    }
+
+    pub(crate) fn spot_seed(self, query_seed: [u8; 32]) -> Result<[u8; 32], String> {
+        c63_phase_seed(C63_TRANSCRIPT_SPOT_CONTEXT, self.digest, query_seed)
+    }
+
+    pub(crate) fn sparse_seed(self, query_seed: [u8; 32]) -> Result<[u8; 32], String> {
+        c63_phase_seed(C63_TRANSCRIPT_SPARSE_CONTEXT, self.digest, query_seed)
+    }
+
+    pub(crate) fn source_functional_context(
+        self,
+        query_seed: [u8; 32],
+        sparse_prefix_digest: [u8; 32],
+    ) -> Result<[u8; 32], String> {
+        if query_seed == [0; 32] || sparse_prefix_digest == [0; 32] {
+            return Err("C6.3 source-functional transcript input is empty".to_owned());
+        }
+        let mut hasher = blake3::Hasher::new_derive_key(C63_TRANSCRIPT_SOURCE_FUNCTIONAL_CONTEXT);
+        hasher.update(&self.digest);
+        hasher.update(&query_seed);
+        hasher.update(&sparse_prefix_digest);
+        Ok(*hasher.finalize().as_bytes())
+    }
+
+    pub(crate) fn terminal_contexts(
+        self,
+        query_seed: [u8; 32],
+        public_argument: &[u8],
+        sparse_proof: &[u8],
+    ) -> Result<[[[u8; 32]; 2]; 2], String> {
+        if query_seed == [0; 32] || public_argument.is_empty() || sparse_proof.is_empty() {
+            return Err("C6.3 terminal transcript input is empty".to_owned());
+        }
+        Ok(std::array::from_fn(|lane| {
+            std::array::from_fn(|tape| {
+                let mut hasher = blake3::Hasher::new_derive_key(C63_TRANSCRIPT_TERMINAL_CONTEXT);
+                hasher.update(&self.digest);
+                hasher.update(&query_seed);
+                hasher.update(&(public_argument.len() as u64).to_le_bytes());
+                hasher.update(public_argument);
+                hasher.update(&(sparse_proof.len() as u64).to_le_bytes());
+                hasher.update(sparse_proof);
+                hasher.update(&[lane as u8, tape as u8]);
+                *hasher.finalize().as_bytes()
+            })
+        }))
+    }
+}
+
+fn c63_phase_seed(
+    context: &'static str,
+    binding: [u8; 32],
+    query_seed: [u8; 32],
+) -> Result<[u8; 32], String> {
+    if query_seed == [0; 32] {
+        return Err("C6.3 phase transcript input is empty".to_owned());
+    }
+    let mut hasher = blake3::Hasher::new_derive_key(context);
+    hasher.update(&binding);
+    hasher.update(&query_seed);
+    Ok(*hasher.finalize().as_bytes())
+}
+
+fn c63_hash_rho(hasher: &mut blake3::Hasher, rho: &[Fp2; C63_BOLT_COLUMNS]) {
+    for value in rho {
+        hasher.update(&value.c0.value().to_le_bytes());
+        hasher.update(&value.c1.value().to_le_bytes());
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct C63ClaimlessWhirVerifierClosure {
+    pub(crate) claim_weight: Fp2,
+    pub(crate) target: C61AuthenticatedWhirAffineClaim,
+    pub(crate) combined: Fp2,
+    pub(crate) shifted_masked_claim: Fp2,
+    pub(crate) gamma: Fp2,
+}
+
+pub(crate) fn c63_challenger(
+    context_digest: [u8; 32],
+) -> Result<C63SeparatedSizingChallenger, String> {
+    if context_digest == [0; 32] {
+        return Err("C6.3 WHIR transcript context is zero".to_owned());
+    }
+    C63SeparatedChallenger::new(
+        SerializingChallenger64::new(HashChallenger::<u8, Blake3, 32>::new(
+            context_digest.to_vec(),
+            Blake3 {},
+        )),
+        [0x63; 16],
+    )
+}
+
+fn c63_convert_verifier_closure(
+    closure: ClaimlessWhirVerifierClosure<C61P3Fp2>,
+) -> Result<C63ClaimlessWhirVerifierClosure, String> {
+    let [claim_weight]: [C61P3Fp2; 1] = closure
+        .claim_weights
+        .try_into()
+        .map_err(|_| "C6.3 WHIR claim-weight census differs".to_owned())?;
+    Ok(C63ClaimlessWhirVerifierClosure {
+        claim_weight: c61_volta_fp2_from_p3(claim_weight),
+        target: C61AuthenticatedWhirAffineClaim {
+            coefficient: c61_volta_fp2_from_p3(closure.target.coefficient),
+            constant: c61_volta_fp2_from_p3(closure.target.constant),
+        },
+        combined: c61_volta_fp2_from_p3(closure.base_case.combined),
+        shifted_masked_claim: c61_volta_fp2_from_p3(closure.base_case.shifted_masked_claim),
+        gamma: c61_volta_fp2_from_p3(closure.base_case.gamma),
+    })
+}
+
+#[cfg(feature = "cuda")]
+pub(crate) struct C63ResidentWhirLimbProof {
+    pub(crate) artifact: Vec<u8>,
+    pub(crate) normalized: C63AuthenticatedWhirNormalizedLimb,
+}
+
+#[cfg(feature = "cuda")]
+fn c63_normalize_prover_limb<MT>(
+    output: &p3_whir_c61::pcs::zk::ClaimlessWhirProverOutput<Goldilocks, C61P3Fp2, MT>,
+) -> Result<C63AuthenticatedWhirNormalizedLimb, String>
+where
+    MT: Mmcs<Goldilocks>,
+{
+    let [claim_weight]: [C61P3Fp2; 1] = output
+        .claim_weights
+        .clone()
+        .try_into()
+        .map_err(|_| "C6.3 resident WHIR claim-weight census differs".to_owned())?;
+    Ok(C63AuthenticatedWhirNormalizedLimb {
+        combined: c61_volta_fp2_from_p3(output.base_case.combined),
+        shifted_masked_claim: c61_volta_fp2_from_p3(output.base_case.shifted_masked_claim),
+        gamma: c61_volta_fp2_from_p3(output.base_case.gamma),
+        affine: C61AuthenticatedWhirAffineClaim {
+            coefficient: c61_volta_fp2_from_p3(output.target.coefficient),
+            constant: c61_volta_fp2_from_p3(output.target.constant),
+        },
+        claim_weight: c61_volta_fp2_from_p3(claim_weight),
+    })
+}
+
+#[cfg(feature = "cuda")]
+pub(crate) struct C63ResidentSystematicPrepared {
+    mmcs: C62GpuMmcs,
+    config: C63WhirConfig,
+    committer: C62GpuWhirCommitter,
+    commitment: C61Commitment,
+    data: p3_whir_c61::pcs::zk::HidingWhirProverData<Goldilocks, C61P3Fp2, C62GpuMmcs>,
+    challenger: C63SeparatedSizingChallenger,
+}
+
+#[cfg(feature = "cuda")]
+impl C63ResidentSystematicPrepared {
+    pub(crate) fn root(&self) -> [u8; 32] {
+        self.commitment.roots()[0]
+    }
+
+    pub(crate) fn evaluate(&self, point: &[Fp2]) -> Result<Fp2, String> {
+        self.committer.evaluate_pending_initial(point).map_err(|error| error.to_string())
+    }
+
+    pub(crate) fn finish<R: rand_010::Rng>(
+        self,
+        point: &[Fp2],
+        evaluation: Fp2,
+        mask: Fp2,
+        rng: &mut R,
+    ) -> Result<C63ResidentWhirLimbProof, String> {
+        if self.config.num_variables != point.len() {
+            return Err("C6.3 resident systematic opening geometry differs".to_owned());
+        }
+        let dft = p3_dft::Radix2DFTSmallBatch::default();
+        let prover = p3_whir_c61::pcs::zk::HidingWhirProver::new(&self.config, &dft, &self.mmcs);
+        let point = Point::new(point.iter().rev().copied().map(c61_p3_fp2_from_volta).collect());
+        let mut challenger = self.challenger;
+        challenger.observe_algebra_slice(point.as_slice());
+        let output = prover
+            .prove_claimless_with_oracle(
+                self.data,
+                &[(point, c61_p3_fp2_from_volta(evaluation))],
+                c61_p3_fp2_from_volta(mask),
+                &self.committer,
+                &mut challenger,
+                rng,
+            )
+            .map_err(|error| error.to_string())?;
+        let artifact = encode_c63_whir_ordinary_artifact_with_config(
+            self.config.num_variables,
+            &self.config,
+            &self.commitment,
+            &output.proof,
+        )?;
+        Ok(C63ResidentWhirLimbProof { artifact, normalized: c63_normalize_prover_limb(&output)? })
+    }
+}
+
+/// Commit one D22 systematic limb before the sparse point is drawn. The
+/// existing GPU WHIR committer performs the fresh code switch; no host-sized
+/// message or second proof engine is introduced.
+#[cfg(feature = "cuda")]
+pub(crate) fn prepare_c63_resident_systematic_limb<R: rand_010::Rng>(
+    mmcs: C62GpuMmcs,
+    config: &C63WhirConfig,
+    message: volta_accel::DeviceBuffer<u64>,
+    context_digest: [u8; 32],
+    rng: &mut R,
+) -> Result<C63ResidentSystematicPrepared, String> {
+    if message.len() != 1usize << config.num_variables {
+        return Err("C6.3 resident systematic lane geometry differs".to_owned());
+    }
+    let committer = C62GpuWhirCommitter::fresh_resident(mmcs.clone(), message)
+        .map_err(|error| error.to_string())?;
+    let dft = p3_dft::Radix2DFTSmallBatch::default();
+    let prover = p3_whir_c61::pcs::zk::HidingWhirProver::new(config, &dft, &mmcs);
+    let mut challenger = c63_challenger(context_digest)?;
+    let (commitment, data) = prover
+        .commit_resident_with_oracle(
+            1usize << config.num_variables,
+            &committer,
+            &mut challenger,
+            rng,
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(C63ResidentSystematicPrepared {
+        mmcs,
+        config: config.clone(),
+        committer,
+        commitment,
+        data,
+        challenger,
+    })
+}
+
+#[cfg(feature = "cuda")]
+pub(crate) struct C63ResidentProjectedPrepared {
+    config: C63WhirConfig,
+    mmcs: C63ProjectedGpuMmcs,
+    committer: C62GpuWhirCommitter,
+    commitment: C61Commitment,
+    data: p3_whir_c61::pcs::zk::HidingWhirProverData<Goldilocks, C61P3Fp2, C63ProjectedGpuMmcs>,
+    challenger: C63SeparatedSizingChallenger,
+}
+
+#[cfg(feature = "cuda")]
+impl C63ResidentProjectedPrepared {
+    pub(crate) fn root(&self) -> [u8; 32] {
+        self.commitment.roots()[0]
+    }
+
+    pub(crate) fn evaluate(&self, point: &[Fp2]) -> Result<Fp2, String> {
+        self.committer.evaluate_pending_initial(point).map_err(|error| error.to_string())
+    }
+
+    pub(crate) fn finish<R: rand_010::Rng>(
+        self,
+        point: &[Fp2],
+        evaluation: Fp2,
+        mask: Fp2,
+        rng: &mut R,
+    ) -> Result<C63ResidentWhirLimbProof, String> {
+        if self.config.num_variables != point.len() {
+            return Err("C6.3 resident projected opening geometry differs".to_owned());
+        }
+        let link = self.mmcs.link();
+        let dft = p3_dft::Radix2DFTSmallBatch::default();
+        let prover = p3_whir_c61::pcs::zk::HidingWhirProver::new(&self.config, &dft, &self.mmcs);
+        let point = Point::new(point.iter().rev().copied().map(c61_p3_fp2_from_volta).collect());
+        let mut challenger = self.challenger;
+        challenger.observe_algebra_slice(point.as_slice());
+        let output = prover
+            .prove_claimless_with_oracle_and_initial_link(
+                self.data,
+                &[(point, c61_p3_fp2_from_volta(evaluation))],
+                c61_p3_fp2_from_volta(mask),
+                &self.committer,
+                &link,
+                &mut challenger,
+                rng,
+            )
+            .map_err(|error| error.to_string())?;
+        let artifact = encode_c63_whir_projected_artifact_with_config(
+            self.config.num_variables,
+            &self.config,
+            &self.commitment,
+            &output.proof,
+        )?;
+        Ok(C63ResidentWhirLimbProof { artifact, normalized: c63_normalize_prover_limb(&output)? })
+    }
+}
+
+/// Commit one D19 sketch limb and attach the accepted `A` transition before
+/// the sparse point is drawn.
+#[cfg(feature = "cuda")]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prepare_c63_resident_projected_limb<R: rand_010::Rng>(
+    mmcs: C62GpuMmcs,
+    config: &C63WhirConfig,
+    key: crate::c62_gpu_whir::C62ProviderCacheKey,
+    message: volta_accel::DeviceBuffer<u64>,
+    encoded: volta_accel::DeviceBuffer<u64>,
+    context: C63EncodedSketchAtoYContext,
+    predecessor: Option<Arc<C63GpuStateOwner>>,
+    successor: Arc<C63GpuStateOwner>,
+    context_digest: [u8; 32],
+    rng: &mut R,
+) -> Result<C63ResidentProjectedPrepared, String> {
+    if message.len() != 1usize << config.num_variables
+        || key.num_variables as usize != config.num_variables
+    {
+        return Err("C6.3 resident projected lane geometry differs".to_owned());
+    }
+    let cache = mmcs
+        .prepare_linked_fixed_base_resident(key, message, encoded)
+        .map_err(|error| error.to_string())?;
+    let projected_mmcs = C63ProjectedGpuMmcs::new(mmcs.clone(), context);
+    let committer = C62GpuWhirCommitter::provider_cached(mmcs, cache);
+    let dft = p3_dft::Radix2DFTSmallBatch::default();
+    let prover = p3_whir_c61::pcs::zk::HidingWhirProver::new(config, &dft, &projected_mmcs);
+    let mut challenger = c63_challenger(context_digest)?;
+    let (commitment, mut data) = prover
+        .commit_resident_with_oracle(
+            1usize << config.num_variables,
+            &committer,
+            &mut challenger,
+            rng,
+        )
+        .map_err(|error| error.to_string())?;
+    projected_mmcs
+        .attach_encoded_sketch_a(&mut data.merkle, predecessor, successor)
+        .map_err(|error| error.to_string())?;
+    Ok(C63ResidentProjectedPrepared {
+        config: config.clone(),
+        mmcs: projected_mmcs,
+        committer,
+        commitment,
+        data,
+        challenger,
+    })
+}
+
+pub(crate) fn verify_c63_claimless_whir_limb_pair(
+    closures: [C63ClaimlessWhirVerifierClosure; 2],
+    opening_target_key: VerifierKey,
+    proof: C61AuthenticatedWhirBaseProof,
+    context: &mut VerifierCtx,
+    lane: C63AuthenticatedWhirLane,
+    mask_range: C63AuthenticatedWhirMaskRange,
+    transcript_context: [u8; 32],
+) -> Result<(), String> {
+    let inputs = std::array::from_fn(|limb| C63AuthenticatedWhirNormalizedLimb {
+        combined: closures[limb].combined,
+        shifted_masked_claim: closures[limb].shifted_masked_claim,
+        gamma: closures[limb].gamma,
+        affine: closures[limb].target,
+        claim_weight: closures[limb].claim_weight,
+    });
+    let mut transcript = Transcript::new_fiat_shamir(transcript_context)?;
+    verify_c63_authenticated_whir_limb_pair(
+        inputs,
+        opening_target_key,
+        proof,
+        context,
+        lane,
+        mask_range,
+        &mut transcript,
+    )
+    .map_err(|error| error.to_string())
+}
 
 fn encode_c63_fp_opening(
     writer: &mut C61Writer,
@@ -448,12 +942,15 @@ pub fn encode_c63_whir_ordinary_artifact(
     encode_c63_whir_ordinary_artifact_with_config(num_variables, &config, commitment, proof)
 }
 
-pub(crate) fn encode_c63_whir_ordinary_artifact_with_config(
+pub(crate) fn encode_c63_whir_ordinary_artifact_with_config<MT>(
     num_variables: usize,
     config: &C63WhirConfig,
     commitment: &C61Commitment,
-    proof: &C63OrdinaryWhirProof,
-) -> Result<Vec<u8>, String> {
+    proof: &ZkWhirProof<Goldilocks, C61P3Fp2, MT>,
+) -> Result<Vec<u8>, String>
+where
+    MT: Mmcs<Goldilocks, Commitment = C61Commitment, MultiProof = C61MultiProof>,
+{
     if config.num_variables != num_variables {
         return Err("C6.3 WHIR codec dimension differs".to_owned());
     }
@@ -815,6 +1312,37 @@ pub(crate) fn decode_c63_whir_ordinary_artifact_with_config(
     ))
 }
 
+pub(crate) fn verify_c63_whir_ordinary_artifact_with_config_at_point(
+    bytes: &[u8],
+    num_variables: usize,
+    config: &C63WhirConfig,
+    point: &[Fp2],
+    context_digest: [u8; 32],
+) -> Result<C63ClaimlessWhirVerifierClosure, String> {
+    if point.len() != num_variables || config.num_variables != num_variables {
+        return Err("C6.3 WHIR opening point geometry differs".to_owned());
+    }
+    let (commitment, proof) =
+        decode_c63_whir_ordinary_artifact_with_config(bytes, num_variables, config)?;
+    let point = Point::new(point.iter().rev().copied().map(c61_p3_fp2_from_volta).collect());
+    let mut challenger = c63_challenger(context_digest)?;
+    challenger.observe(commitment.clone());
+    challenger.observe_algebra_slice(point.as_slice());
+    let mmcs = c61_reference_mmcs();
+    let verifier = HidingWhirVerifier::new(config, &mmcs);
+    let closure = catch_unwind(AssertUnwindSafe(|| {
+        verifier.verify_claimless(
+            &proof,
+            &commitment,
+            std::slice::from_ref(&point),
+            &mut challenger,
+        )
+    }))
+    .map_err(|_| "C6.3 ordinary WHIR verifier panicked".to_owned())?
+    .map_err(|error| format!("C6.3 ordinary WHIR verification failed: {error}"))?;
+    c63_convert_verifier_closure(closure)
+}
+
 fn c63_sumcheck_pow_bits(config: &C63WhirConfig, batch: usize) -> usize {
     if batch == 0 {
         config.starting_folding_pow_bits
@@ -833,7 +1361,8 @@ fn c63_projected_whir_structural_bytes_for_config(config: &C63WhirConfig) -> Res
     Ok(C61_WHIRA1_HEADER_BYTES
         + C61_WHIRA1_MULTIPROOF_COUNT_BYTES
         + c63_whir_structural_budget_for_config(config)?.strict_chain_bytes
-        + a_opening)
+        + 1
+        + 2 * a_opening)
 }
 
 fn c63_projected_whir_structural_bytes() -> Result<usize, String> {
@@ -847,22 +1376,28 @@ type C63AProverData = <C61Mmcs as Mmcs<Goldilocks>>::ProverData<DenseMatrix<Gold
 /// `y` oracle, the separately rooted D19-by-32 tensor `A`.
 pub(crate) struct C63ProjectedProverData<M> {
     inner: <C61Mmcs as Mmcs<Goldilocks>>::ProverData<M>,
-    encoded_sketch_a: Option<Arc<C63AProverData>>,
+    predecessor_a: Option<Arc<C63AProverData>>,
+    successor_a: Option<Arc<C63AProverData>>,
 }
 
 /// The extra tuple member is present only for the opt-in `A -> y` opening.
 /// Keeping the ordinary proof first lets no-link commits and openings delegate
 /// without changing their values or transcript observations.
-type C63ProjectedProof = (C63InnerProof, Option<(Vec<Vec<Goldilocks>>, C63InnerProof)>);
-type C63ProjectedMultiProof = (C61MultiProof, Option<(Vec<Vec<Goldilocks>>, C61MultiProof)>);
+type C63LinkedAProof<P> = (Option<(Vec<Vec<Goldilocks>>, P)>, (Vec<Vec<Goldilocks>>, P));
+type C63ProjectedProof = (C63InnerProof, Option<C63LinkedAProof<C63InnerProof>>);
+type C63ProjectedMultiProof = (C61MultiProof, Option<C63LinkedAProof<C61MultiProof>>);
 
 /// Verifier-known context for one base-field limb of `y=A*rho`.
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct C63EncodedSketchAtoYContext {
-    accepted_d: C61Commitment,
-    accepted_a: C61Commitment,
+    predecessor_d: C61Commitment,
+    predecessor_a: C61Commitment,
+    successor_d: C61Commitment,
+    successor_a: C61Commitment,
+    old_len: u16,
     dimensions: Dimensions,
     coefficients: [Goldilocks; C63_BOLT_COLUMNS],
+    tape: Option<usize>,
     limb: usize,
 }
 
@@ -870,8 +1405,11 @@ impl C63EncodedSketchAtoYContext {
     /// Bind both deterministic roots, then draw one verifier-owned
     /// `rho in Fp2^16` and build the two limb contexts from that same draw.
     pub(crate) fn sample_pair_after_roots<Challenger>(
-        accepted_d: C61Commitment,
-        accepted_a: C61Commitment,
+        predecessor_d: C61Commitment,
+        predecessor_a: C61Commitment,
+        successor_d: C61Commitment,
+        successor_a: C61Commitment,
+        old_len: u16,
         rows: usize,
         challenger: &mut Challenger,
     ) -> Result<([Fp2; C63_BOLT_COLUMNS], [Self; 2]), String>
@@ -881,20 +1419,76 @@ impl C63EncodedSketchAtoYContext {
         if rows == 0 || !rows.is_power_of_two() {
             return Err("C6.3 A-to-y context geometry differs".to_owned());
         }
-        challenger.observe(accepted_d.clone());
-        challenger.observe(accepted_a.clone());
+        challenger.observe(predecessor_d.clone());
+        challenger.observe(predecessor_a.clone());
+        challenger.observe(successor_d.clone());
+        challenger.observe(successor_a.clone());
         let rho = std::array::from_fn(|_| {
             let value: C61P3Fp2 = challenger.sample_algebra_element();
             c61_volta_fp2_from_p3(value)
         });
         let contexts = std::array::from_fn(|limb| Self {
-            accepted_d: accepted_d.clone(),
-            accepted_a: accepted_a.clone(),
+            predecessor_d: predecessor_d.clone(),
+            predecessor_a: predecessor_a.clone(),
+            successor_d: successor_d.clone(),
+            successor_a: successor_a.clone(),
+            old_len,
             dimensions: Dimensions { width: C63_ENCODED_SKETCH_PHYSICAL_ROW_WIDTH, height: rows },
             coefficients: rho.map(|value| {
                 Goldilocks::new(if limb == 0 { value.c0.value() } else { value.c1.value() })
             }),
+            tape: None,
             limb,
+        });
+        Ok((rho, contexts))
+    }
+
+    pub(crate) fn sample_tape_limb_after_roots<Challenger>(
+        predecessor_d: C61Commitment,
+        predecessor_a: C61Commitment,
+        successor_d: C61Commitment,
+        successor_a: C61Commitment,
+        old_len: u16,
+        rows: usize,
+        challenger: &mut Challenger,
+    ) -> Result<([Fp2; C63_BOLT_COLUMNS], [[Self; 2]; 2]), String>
+    where
+        Challenger: FieldChallenger<Goldilocks> + CanObserve<C61Commitment>,
+    {
+        if rows == 0 || !rows.is_power_of_two() {
+            return Err("C6.3 A-to-y context geometry differs".to_owned());
+        }
+        challenger.observe(predecessor_d.clone());
+        challenger.observe(predecessor_a.clone());
+        challenger.observe(successor_d.clone());
+        challenger.observe(successor_a.clone());
+        let rho = std::array::from_fn(|_| {
+            let value: C61P3Fp2 = challenger.sample_algebra_element();
+            c61_volta_fp2_from_p3(value)
+        });
+        let contexts = std::array::from_fn(|tape| {
+            std::array::from_fn(|limb| Self {
+                predecessor_d: predecessor_d.clone(),
+                predecessor_a: predecessor_a.clone(),
+                successor_d: successor_d.clone(),
+                successor_a: successor_a.clone(),
+                old_len,
+                dimensions: Dimensions {
+                    width: C63_ENCODED_SKETCH_PHYSICAL_ROW_WIDTH,
+                    height: rows,
+                },
+                coefficients: std::array::from_fn(|column| {
+                    if column & 1 != tape {
+                        Goldilocks::ZERO
+                    } else if limb == 0 {
+                        Goldilocks::new(rho[column].c0.value())
+                    } else {
+                        Goldilocks::new(rho[column].c1.value())
+                    }
+                }),
+                tape: Some(tape),
+                limb,
+            })
         });
         Ok((rho, contexts))
     }
@@ -925,16 +1519,21 @@ impl C63ProjectedMmcs {
     pub(crate) fn attach_encoded_sketch_a<M>(
         &self,
         prover_data: &mut C63ProjectedProverData<M>,
-        commitment: &C61Commitment,
-        a_data: C63AProverData,
+        predecessor: Option<(&C61Commitment, C63AProverData)>,
+        successor_commitment: &C61Commitment,
+        successor_data: C63AProverData,
     ) -> Result<(), String> {
-        if commitment != &self.context.accepted_a {
-            return Err("C6.3 attached A root differs from accepted root".to_owned());
+        if successor_commitment != &self.context.successor_a
+            || predecessor.as_ref().map(|(root, _)| *root)
+                != (self.context.old_len != 0).then_some(&self.context.predecessor_a)
+        {
+            return Err("C6.3 attached A roots differ from the transition".to_owned());
         }
-        if prover_data.encoded_sketch_a.is_some() {
+        if prover_data.predecessor_a.is_some() || prover_data.successor_a.is_some() {
             return Err("C6.3 A prover data already attached".to_owned());
         }
-        prover_data.encoded_sketch_a = Some(Arc::new(a_data));
+        prover_data.predecessor_a = predecessor.map(|(_, data)| Arc::new(data));
+        prover_data.successor_a = Some(Arc::new(successor_data));
         Ok(())
     }
 }
@@ -951,7 +1550,7 @@ impl Mmcs<Goldilocks> for C63ProjectedMmcs {
         inputs: Vec<M>,
     ) -> (Self::Commitment, Self::ProverData<M>) {
         let (commitment, inner) = self.inner.commit(inputs);
-        (commitment, C63ProjectedProverData { inner, encoded_sketch_a: None })
+        (commitment, C63ProjectedProverData { inner, predecessor_a: None, successor_a: None })
     }
 
     fn open_batch<M: Matrix<Goldilocks>>(
@@ -960,10 +1559,15 @@ impl Mmcs<Goldilocks> for C63ProjectedMmcs {
         prover_data: &Self::ProverData<M>,
     ) -> BatchOpening<Goldilocks, Self> {
         let ordinary = self.inner.open_batch(index, &prover_data.inner);
-        let linked = prover_data.encoded_sketch_a.as_ref().map(|a_data| {
-            let opening = self.inner.open_batch(index, a_data);
+        let linked = prover_data.successor_a.as_ref().map(|successor| {
+            let predecessor = prover_data.predecessor_a.as_ref().map(|data| {
+                let opening = self.inner.open_batch(index, data);
+                let (rows, proof) = opening.unpack();
+                (rows, proof)
+            });
+            let opening = self.inner.open_batch(index, successor);
             let (rows, proof) = opening.unpack();
-            (rows, proof)
+            (predecessor, (rows, proof))
         });
         BatchOpening::new(ordinary.opened_values, (ordinary.opening_proof, linked))
     }
@@ -989,9 +1593,19 @@ impl Mmcs<Goldilocks> for C63ProjectedMmcs {
             index,
             BatchOpeningRef::new(batch_opening.opened_values, ordinary_proof),
         )?;
-        if let Some((a_rows, a_proof)) = linked {
+        if let Some((predecessor, (a_rows, a_proof))) = linked {
+            if let Some((rows, proof)) = predecessor {
+                self.inner.verify_batch(
+                    &self.context.predecessor_a,
+                    std::slice::from_ref(&self.context.dimensions),
+                    index,
+                    BatchOpeningRef::new(rows, proof),
+                )?;
+            } else if self.context.old_len != 0 {
+                return Err(MerkleTreeError::WrongBatchSize);
+            }
             self.inner.verify_batch(
-                &self.context.accepted_a,
+                &self.context.successor_a,
                 std::slice::from_ref(&self.context.dimensions),
                 index,
                 BatchOpeningRef::new(a_rows, a_proof),
@@ -1007,8 +1621,19 @@ impl Mmcs<Goldilocks> for C63ProjectedMmcs {
     ) -> (Vec<Vec<Vec<Goldilocks>>>, Self::MultiProof) {
         let (ordinary_rows, ordinary_proof) =
             self.inner.open_multi_batch(indices, &prover_data.inner);
-        let linked = prover_data.encoded_sketch_a.as_ref().map(|a_data| {
-            let (rows, proof) = self.inner.open_multi_batch(indices, a_data);
+        let linked = prover_data.successor_a.as_ref().map(|successor| {
+            let predecessor = prover_data.predecessor_a.as_ref().map(|data| {
+                let (rows, proof) = self.inner.open_multi_batch(indices, data);
+                let rows = rows
+                    .into_iter()
+                    .map(|mut per_matrix| {
+                        assert_eq!(per_matrix.len(), 1, "C6.3 predecessor A root holds one matrix");
+                        per_matrix.swap_remove(0)
+                    })
+                    .collect();
+                (rows, proof)
+            });
+            let (rows, proof) = self.inner.open_multi_batch(indices, successor);
             let rows = rows
                 .into_iter()
                 .map(|mut per_matrix| {
@@ -1016,7 +1641,7 @@ impl Mmcs<Goldilocks> for C63ProjectedMmcs {
                     per_matrix.swap_remove(0)
                 })
                 .collect();
-            (rows, proof)
+            (predecessor, (rows, proof))
         });
         (ordinary_rows, (ordinary_proof, linked))
     }
@@ -1030,10 +1655,22 @@ impl Mmcs<Goldilocks> for C63ProjectedMmcs {
         proof: &Self::MultiProof,
     ) -> Result<(), Self::Error> {
         self.inner.verify_multi_batch(commit, dimensions, indices, opened_values, &proof.0)?;
-        if let Some((a_rows, a_proof)) = &proof.1 {
+        if let Some((predecessor, (a_rows, a_proof))) = &proof.1 {
+            if let Some((rows, old_proof)) = predecessor {
+                let opened = rows.iter().map(|row| vec![row.as_slice()]).collect::<Vec<_>>();
+                self.inner.verify_multi_batch(
+                    &self.context.predecessor_a,
+                    std::slice::from_ref(&self.context.dimensions),
+                    indices,
+                    &opened,
+                    old_proof,
+                )?;
+            } else if self.context.old_len != 0 {
+                return Err(MerkleTreeError::WrongBatchSize);
+            }
             let opened_a = a_rows.iter().map(|row| vec![row.as_slice()]).collect::<Vec<_>>();
             self.inner.verify_multi_batch(
-                &self.context.accepted_a,
+                &self.context.successor_a,
                 std::slice::from_ref(&self.context.dimensions),
                 indices,
                 &opened_a,
@@ -1054,7 +1691,8 @@ pub(crate) struct C63ProjectedGpuMmcs {
 
 pub(crate) struct C63ProjectedGpuProverData<M> {
     inner: C62GpuProverData<M>,
-    encoded_sketch_a: Option<Arc<C63GpuStateOwner>>,
+    predecessor_a: Option<Arc<C63GpuStateOwner>>,
+    successor_a: Option<Arc<C63GpuStateOwner>>,
 }
 
 impl C63ProjectedGpuMmcs {
@@ -1069,16 +1707,23 @@ impl C63ProjectedGpuMmcs {
     pub(crate) fn attach_encoded_sketch_a<M>(
         &self,
         prover_data: &mut C63ProjectedGpuProverData<M>,
-        state: Arc<C63GpuStateOwner>,
+        predecessor: Option<Arc<C63GpuStateOwner>>,
+        successor: Arc<C63GpuStateOwner>,
     ) -> Result<(), String> {
-        let root = C61Commitment::new(vec![state.encoded_sketch_root()]);
-        if root != self.context.accepted_a {
-            return Err("C6.3 resident A root differs from accepted root".to_owned());
+        let successor_root = C61Commitment::new(vec![successor.encoded_sketch_root()]);
+        let predecessor_root =
+            predecessor.as_ref().map(|state| C61Commitment::new(vec![state.encoded_sketch_root()]));
+        if successor_root != self.context.successor_a
+            || predecessor_root.as_ref()
+                != (self.context.old_len != 0).then_some(&self.context.predecessor_a)
+        {
+            return Err("C6.3 resident A roots differ from the transition".to_owned());
         }
-        if prover_data.encoded_sketch_a.is_some() {
+        if prover_data.predecessor_a.is_some() || prover_data.successor_a.is_some() {
             return Err("C6.3 resident A owner already attached".to_owned());
         }
-        prover_data.encoded_sketch_a = Some(state);
+        prover_data.predecessor_a = predecessor;
+        prover_data.successor_a = Some(successor);
         Ok(())
     }
 }
@@ -1095,7 +1740,7 @@ impl Mmcs<Goldilocks> for C63ProjectedGpuMmcs {
         inputs: Vec<M>,
     ) -> (Self::Commitment, Self::ProverData<M>) {
         let (commitment, inner) = self.inner.commit(inputs);
-        (commitment, C63ProjectedGpuProverData { inner, encoded_sketch_a: None })
+        (commitment, C63ProjectedGpuProverData { inner, predecessor_a: None, successor_a: None })
     }
 
     fn open_batch<M: Matrix<Goldilocks>>(
@@ -1104,12 +1749,20 @@ impl Mmcs<Goldilocks> for C63ProjectedGpuMmcs {
         prover_data: &Self::ProverData<M>,
     ) -> BatchOpening<Goldilocks, Self> {
         let ordinary = self.inner.open_batch(index, &prover_data.inner);
-        let linked = prover_data.encoded_sketch_a.as_ref().map(|state| {
+        let linked = prover_data.successor_a.as_ref().map(|state| {
+            let predecessor = prover_data.predecessor_a.as_ref().map(|old| {
+                let (mut rows, proof) =
+                    old.open_encoded_sketch_rows(&[index]).unwrap_or_else(|error| {
+                        panic!("C6.3 resident predecessor A opening failed: {error}")
+                    });
+                assert_eq!(rows.len(), 1, "C6.3 resident predecessor A batch opening count");
+                (vec![rows.swap_remove(0)], proof.sibling_hashes)
+            });
             let (mut rows, proof) = state
                 .open_encoded_sketch_rows(&[index])
                 .unwrap_or_else(|error| panic!("C6.3 resident A opening failed: {error}"));
             assert_eq!(rows.len(), 1, "C6.3 resident A batch opening count");
-            (vec![rows.swap_remove(0)], proof.sibling_hashes)
+            (predecessor, (vec![rows.swap_remove(0)], proof.sibling_hashes))
         });
         BatchOpening::new(ordinary.opened_values, (ordinary.opening_proof, linked))
     }
@@ -1135,9 +1788,19 @@ impl Mmcs<Goldilocks> for C63ProjectedGpuMmcs {
             index,
             BatchOpeningRef::new(opening.opened_values, ordinary_proof),
         )?;
-        if let Some((a_rows, a_proof)) = linked {
+        if let Some((predecessor, (a_rows, a_proof))) = linked {
+            if let Some((rows, proof)) = predecessor {
+                self.inner.verify_batch(
+                    &self.context.predecessor_a,
+                    std::slice::from_ref(&self.context.dimensions),
+                    index,
+                    BatchOpeningRef::new(rows, proof),
+                )?;
+            } else if self.context.old_len != 0 {
+                return Err(MerkleTreeError::WrongBatchSize);
+            }
             self.inner.verify_batch(
-                &self.context.accepted_a,
+                &self.context.successor_a,
                 std::slice::from_ref(&self.context.dimensions),
                 index,
                 BatchOpeningRef::new(a_rows, a_proof),
@@ -1153,10 +1816,16 @@ impl Mmcs<Goldilocks> for C63ProjectedGpuMmcs {
     ) -> (Vec<Vec<Vec<Goldilocks>>>, Self::MultiProof) {
         let (ordinary_rows, ordinary_proof) =
             self.inner.open_multi_batch(indices, &prover_data.inner);
-        let linked = prover_data.encoded_sketch_a.as_ref().map(|state| {
-            state
+        let linked = prover_data.successor_a.as_ref().map(|state| {
+            let predecessor = prover_data.predecessor_a.as_ref().map(|old| {
+                old.open_encoded_sketch_rows(indices).unwrap_or_else(|error| {
+                    panic!("C6.3 resident predecessor A opening failed: {error}")
+                })
+            });
+            let successor = state
                 .open_encoded_sketch_rows(indices)
-                .unwrap_or_else(|error| panic!("C6.3 resident A opening failed: {error}"))
+                .unwrap_or_else(|error| panic!("C6.3 resident A opening failed: {error}"));
+            (predecessor, successor)
         });
         (ordinary_rows, (ordinary_proof, linked))
     }
@@ -1170,10 +1839,22 @@ impl Mmcs<Goldilocks> for C63ProjectedGpuMmcs {
         proof: &Self::MultiProof,
     ) -> Result<(), Self::Error> {
         self.inner.verify_multi_batch(commitment, dimensions, indices, opened_values, &proof.0)?;
-        if let Some((a_rows, a_proof)) = &proof.1 {
+        if let Some((predecessor, (a_rows, a_proof))) = &proof.1 {
+            if let Some((rows, old_proof)) = predecessor {
+                let opened = rows.iter().map(|row| vec![row.as_slice()]).collect::<Vec<_>>();
+                self.inner.verify_multi_batch(
+                    &self.context.predecessor_a,
+                    std::slice::from_ref(&self.context.dimensions),
+                    indices,
+                    &opened,
+                    old_proof,
+                )?;
+            } else if self.context.old_len != 0 {
+                return Err(MerkleTreeError::WrongBatchSize);
+            }
             let opened_a = a_rows.iter().map(|row| vec![row.as_slice()]).collect::<Vec<_>>();
             self.inner.verify_multi_batch(
-                &self.context.accepted_a,
+                &self.context.successor_a,
                 std::slice::from_ref(&self.context.dimensions),
                 indices,
                 &opened_a,
@@ -1184,9 +1865,7 @@ impl Mmcs<Goldilocks> for C63ProjectedGpuMmcs {
     }
 }
 
-impl ZkWhirOracleCommitter<Goldilocks, C61P3Fp2, C63ProjectedGpuMmcs>
-    for C62GpuWhirCommitter
-{
+impl ZkWhirOracleCommitter<Goldilocks, C61P3Fp2, C63ProjectedGpuMmcs> for C62GpuWhirCommitter {
     type Error = C62GpuWhirError;
     type SumcheckState = C62GpuSumcheckState;
 
@@ -1212,18 +1891,16 @@ impl ZkWhirOracleCommitter<Goldilocks, C61P3Fp2, C63ProjectedGpuMmcs>
         randomness: &[Goldilocks],
         folding: usize,
         height: usize,
-    ) -> Result<
-        (
-            C61Commitment,
-            C63ProjectedGpuProverData<DenseMatrix<Goldilocks>>,
-        ),
-        Self::Error,
-    > {
+    ) -> Result<(C61Commitment, C63ProjectedGpuProverData<DenseMatrix<Goldilocks>>), Self::Error>
+    {
         let (commitment, inner) =
             <Self as ZkWhirOracleCommitter<Goldilocks, C61P3Fp2, C62GpuMmcs>>::commit_initial(
                 self, message, randomness, folding, height,
             )?;
-        Ok((commitment, C63ProjectedGpuProverData { inner, encoded_sketch_a: None }))
+        Ok((
+            commitment,
+            C63ProjectedGpuProverData { inner, predecessor_a: None, successor_a: None },
+        ))
     }
 
     fn commit_extension(
@@ -1235,9 +1912,7 @@ impl ZkWhirOracleCommitter<Goldilocks, C61P3Fp2, C63ProjectedGpuMmcs>
     ) -> Result<
         (
             C61Commitment,
-            C63ProjectedGpuProverData<
-                FlatMatrixView<Goldilocks, C61P3Fp2, DenseMatrix<C61P3Fp2>>,
-            >,
+            C63ProjectedGpuProverData<FlatMatrixView<Goldilocks, C61P3Fp2, DenseMatrix<C61P3Fp2>>>,
         ),
         Self::Error,
     > {
@@ -1245,7 +1920,10 @@ impl ZkWhirOracleCommitter<Goldilocks, C61P3Fp2, C63ProjectedGpuMmcs>
             <Self as ZkWhirOracleCommitter<Goldilocks, C61P3Fp2, C62GpuMmcs>>::commit_extension(
                 self, message, randomness, folding, height,
             )?;
-        Ok((commitment, C63ProjectedGpuProverData { inner, encoded_sketch_a: None }))
+        Ok((
+            commitment,
+            C63ProjectedGpuProverData { inner, predecessor_a: None, successor_a: None },
+        ))
     }
 
     fn commit_extension_from_sumcheck(
@@ -1257,9 +1935,7 @@ impl ZkWhirOracleCommitter<Goldilocks, C61P3Fp2, C63ProjectedGpuMmcs>
     ) -> Result<
         Option<(
             C61Commitment,
-            C63ProjectedGpuProverData<
-                FlatMatrixView<Goldilocks, C61P3Fp2, DenseMatrix<C61P3Fp2>>,
-            >,
+            C63ProjectedGpuProverData<FlatMatrixView<Goldilocks, C61P3Fp2, DenseMatrix<C61P3Fp2>>>,
         )>,
         Self::Error,
     > {
@@ -1268,7 +1944,7 @@ impl ZkWhirOracleCommitter<Goldilocks, C61P3Fp2, C63ProjectedGpuMmcs>
         )
         .map(|result| {
             result.map(|(commitment, inner)| {
-                (commitment, C63ProjectedGpuProverData { inner, encoded_sketch_a: None })
+                (commitment, C63ProjectedGpuProverData { inner, predecessor_a: None, successor_a: None })
             })
         })
     }
@@ -1309,30 +1985,57 @@ pub(crate) type C63ProjectedWhirProof = ZkWhirProof<Goldilocks, C61P3Fp2, C63Pro
 
 fn strip_c63_opening<T: Clone>(
     opening: &SharedProofOpening<T, C63ProjectedMultiProof>,
-) -> (SharedProofOpening<T, C61MultiProof>, Option<SharedProofOpening<Goldilocks, C61MultiProof>>) {
-    let linked = opening.proof.1.clone().map(|(rows, proof)| SharedProofOpening { rows, proof });
+) -> (
+    SharedProofOpening<T, C61MultiProof>,
+    Option<(
+        Option<SharedProofOpening<Goldilocks, C61MultiProof>>,
+        SharedProofOpening<Goldilocks, C61MultiProof>,
+    )>,
+) {
+    let linked = opening.proof.1.clone().map(|(predecessor, (rows, proof))| {
+        (
+            predecessor.map(|(rows, proof)| SharedProofOpening { rows, proof }),
+            SharedProofOpening { rows, proof },
+        )
+    });
     (SharedProofOpening { rows: opening.rows.clone(), proof: opening.proof.0.clone() }, linked)
 }
 
 fn lift_c63_opening<T>(
     opening: SharedProofOpening<T, C61MultiProof>,
-    linked: Option<SharedProofOpening<Goldilocks, C61MultiProof>>,
+    linked: Option<(
+        Option<SharedProofOpening<Goldilocks, C61MultiProof>>,
+        SharedProofOpening<Goldilocks, C61MultiProof>,
+    )>,
 ) -> SharedProofOpening<T, C63ProjectedMultiProof> {
     SharedProofOpening {
         rows: opening.rows,
-        proof: (opening.proof, linked.map(|opening| (opening.rows, opening.proof))),
+        proof: (
+            opening.proof,
+            linked.map(|(predecessor, successor)| {
+                (
+                    predecessor.map(|opening| (opening.rows, opening.proof)),
+                    (successor.rows, successor.proof),
+                )
+            }),
+        ),
     }
 }
 
 fn strip_c63_projected_proof<MT>(
     proof: &ZkWhirProof<Goldilocks, C61P3Fp2, MT>,
-) -> Result<(C63OrdinaryWhirProof, SharedProofOpening<Goldilocks, C61MultiProof>), String>
+) -> Result<
+    (
+        C63OrdinaryWhirProof,
+        (
+            Option<SharedProofOpening<Goldilocks, C61MultiProof>>,
+            SharedProofOpening<Goldilocks, C61MultiProof>,
+        ),
+    ),
+    String,
+>
 where
-    MT: Mmcs<
-        Goldilocks,
-        Commitment = C61Commitment,
-        MultiProof = C63ProjectedMultiProof,
-    >,
+    MT: Mmcs<Goldilocks, Commitment = C61Commitment, MultiProof = C63ProjectedMultiProof>,
 {
     let mut linked_a = None;
     let mut rounds = Vec::with_capacity(proof.rounds.len());
@@ -1409,7 +2112,10 @@ where
 
 fn lift_c63_projected_proof(
     proof: C63OrdinaryWhirProof,
-    linked_a: SharedProofOpening<Goldilocks, C61MultiProof>,
+    linked_a: (
+        Option<SharedProofOpening<Goldilocks, C61MultiProof>>,
+        SharedProofOpening<Goldilocks, C61MultiProof>,
+    ),
 ) -> Result<C63ProjectedWhirProof, String> {
     let mut rounds = Vec::with_capacity(proof.rounds.len());
     for (index, round) in proof.rounds.into_iter().enumerate() {
@@ -1468,11 +2174,7 @@ pub(crate) fn encode_c63_whir_projected_artifact<MT>(
     proof: &ZkWhirProof<Goldilocks, C61P3Fp2, MT>,
 ) -> Result<Vec<u8>, String>
 where
-    MT: Mmcs<
-        Goldilocks,
-        Commitment = C61Commitment,
-        MultiProof = C63ProjectedMultiProof,
-    >,
+    MT: Mmcs<Goldilocks, Commitment = C61Commitment, MultiProof = C63ProjectedMultiProof>,
 {
     encode_c63_whir_projected_artifact_with_config(19, &c63_whir_config(19)?, commitment, proof)
 }
@@ -1484,11 +2186,7 @@ pub(crate) fn encode_c63_whir_projected_artifact_with_config<MT>(
     proof: &ZkWhirProof<Goldilocks, C61P3Fp2, MT>,
 ) -> Result<Vec<u8>, String>
 where
-    MT: Mmcs<
-        Goldilocks,
-        Commitment = C61Commitment,
-        MultiProof = C63ProjectedMultiProof,
-    >,
+    MT: Mmcs<Goldilocks, Commitment = C61Commitment, MultiProof = C63ProjectedMultiProof>,
 {
     if config.num_variables != num_variables {
         return Err("C6.3 projected WHIR codec dimension differs".to_owned());
@@ -1506,9 +2204,19 @@ where
     let mut body = C61Writer::default();
     body.u32(ordinary.len()).map_err(|error| error.to_string())?;
     body.bytes.extend_from_slice(&ordinary);
+    body.u8(linked_a.0.is_some() as u8);
+    if let Some(predecessor) = &linked_a.0 {
+        encode_c63_fp_opening(
+            &mut body,
+            predecessor,
+            queries,
+            C63_ENCODED_SKETCH_PHYSICAL_ROW_WIDTH,
+            leaves,
+        )?;
+    }
     encode_c63_fp_opening(
         &mut body,
-        &linked_a,
+        &linked_a.1,
         queries,
         C63_ENCODED_SKETCH_PHYSICAL_ROW_WIDTH,
         leaves,
@@ -1562,8 +2270,19 @@ pub(crate) fn decode_c63_whir_projected_artifact_with_config(
     let queries = config.round_parameters[0].num_queries;
     let fold = config.round_folding_factor(0);
     let leaves = config.round_parameters[0].domain_size >> fold;
-    let linked_a =
+    let predecessor = match reader.u8().map_err(|error| error.to_string())? {
+        0 => None,
+        1 => Some(decode_c63_fp_opening(
+            &mut reader,
+            queries,
+            C63_ENCODED_SKETCH_PHYSICAL_ROW_WIDTH,
+            leaves,
+        )?),
+        _ => return Err("C6.3 predecessor A opening flag differs".to_owned()),
+    };
+    let successor =
         decode_c63_fp_opening(&mut reader, queries, C63_ENCODED_SKETCH_PHYSICAL_ROW_WIDTH, leaves)?;
+    let linked_a = (predecessor, successor);
     reader.finish().map_err(|error| error.to_string())?;
     Ok((commitment, lift_c63_projected_proof(proof, linked_a)?))
 }
@@ -1594,13 +2313,19 @@ where
         let QueryOpenings::Base(opening) = opening else {
             return None;
         };
-        let (_, Some((a_rows, _))) = &opening.proof else {
+        let (_, Some((predecessor, (successor_rows, _)))) = &opening.proof else {
             return None;
         };
+        let predecessor_rows = predecessor.as_ref().map(|(rows, _)| rows);
         if opening.rows.len() != indices.len()
-            || a_rows.len() != indices.len()
+            || successor_rows.len() != indices.len()
+            || predecessor_rows.is_some_and(|rows| rows.len() != indices.len())
+            || (self.context.old_len == 0) != predecessor_rows.is_none()
             || opening.rows.iter().any(|row| row.len() != C63_ENCODED_SKETCH_FOLDED_POSITIONS)
-            || a_rows.iter().any(|row| row.len() != C63_ENCODED_SKETCH_PHYSICAL_ROW_WIDTH)
+            || successor_rows.iter().any(|row| row.len() != C63_ENCODED_SKETCH_PHYSICAL_ROW_WIDTH)
+            || predecessor_rows.is_some_and(|rows| {
+                rows.iter().any(|row| row.len() != C63_ENCODED_SKETCH_PHYSICAL_ROW_WIDTH)
+            })
         {
             return None;
         }
@@ -1608,22 +2333,578 @@ where
         opening
             .rows
             .iter()
-            .zip(a_rows)
-            .map(|(randomized, a_row)| {
+            .zip(successor_rows)
+            .enumerate()
+            .map(|(row_index, (randomized, successor_row))| {
                 let mut difference = randomized.clone();
                 for folded_position in 0..C63_ENCODED_SKETCH_FOLDED_POSITIONS {
-                    let projected = (0..C63_BOLT_COLUMNS)
+                    let successor = (0..C63_BOLT_COLUMNS)
                         .map(|column| {
-                            a_row[column * C63_ENCODED_SKETCH_FOLDED_POSITIONS + folded_position]
+                            successor_row
+                                [column * C63_ENCODED_SKETCH_FOLDED_POSITIONS + folded_position]
                                 * self.context.coefficients[column]
                         })
                         .sum::<Goldilocks>();
-                    difference[folded_position] -= projected;
+                    let predecessor = predecessor_rows.map_or(Goldilocks::ZERO, |rows| {
+                        (0..C63_BOLT_COLUMNS)
+                            .map(|column| {
+                                rows[row_index]
+                                    [column * C63_ENCODED_SKETCH_FOLDED_POSITIONS + folded_position]
+                                    * self.context.coefficients[column]
+                            })
+                            .sum()
+                    });
+                    difference[folded_position] -= successor - predecessor;
                 }
                 Some(Poly::new(difference).eval_base(randomness))
             })
             .collect()
     }
+}
+
+pub(crate) fn verify_c63_whir_projected_artifact_with_config_at_point(
+    bytes: &[u8],
+    num_variables: usize,
+    config: &C63WhirConfig,
+    point: &[Fp2],
+    context: C63EncodedSketchAtoYContext,
+    context_digest: [u8; 32],
+) -> Result<C63ClaimlessWhirVerifierClosure, String> {
+    if point.len() != num_variables
+        || config.num_variables != num_variables
+        || context.dimensions.height != 1usize << num_variables
+    {
+        return Err("C6.3 projected WHIR opening point geometry differs".to_owned());
+    }
+    let (commitment, proof) =
+        decode_c63_whir_projected_artifact_with_config(bytes, num_variables, config)?;
+    let point = Point::new(point.iter().rev().copied().map(c61_p3_fp2_from_volta).collect());
+    let mmcs = C63ProjectedMmcs::new(context);
+    let link = mmcs.link();
+    let mut challenger = c63_challenger(context_digest)?;
+    challenger.observe(commitment.clone());
+    challenger.observe_algebra_slice(point.as_slice());
+    let verifier = HidingWhirVerifier::new(config, &mmcs);
+    let closure = catch_unwind(AssertUnwindSafe(|| {
+        verifier.verify_claimless_with_initial_link(
+            &proof,
+            &commitment,
+            std::slice::from_ref(&point),
+            &link,
+            &mut challenger,
+        )
+    }))
+    .map_err(|_| "C6.3 projected WHIR verifier panicked".to_owned())?
+    .map_err(|error| format!("C6.3 projected WHIR verification failed: {error}"))?;
+    c63_convert_verifier_closure(closure)
+}
+
+/// Read only the initial root needed to derive post-commit challenges. Full
+/// canonical decoding and proof verification still happen before acceptance.
+fn c63_whir_initial_root(
+    bytes: &[u8],
+    num_variables: usize,
+    projected: bool,
+) -> Result<[u8; 32], String> {
+    let mut reader = C61Reader::new(bytes);
+    if reader.take(8).map_err(|error| error.to_string())? != C63_WHIR_MAGIC
+        || reader.u16().map_err(|error| error.to_string())? != C63_WHIR_VERSION
+        || reader.u8().map_err(|error| error.to_string())? as usize != num_variables
+        || reader.u8().map_err(|error| error.to_string())? != projected as u8
+    {
+        return Err("C6.3 WHIR root prefix differs".to_owned());
+    }
+    let body_len = reader.u32().map_err(|error| error.to_string())?;
+    if body_len != bytes.len().saturating_sub(C61_WHIRA1_HEADER_BYTES) {
+        return Err("C6.3 WHIR root prefix length differs".to_owned());
+    }
+    if projected {
+        let ordinary_len = reader.u32().map_err(|error| error.to_string())?;
+        let ordinary = reader.take(ordinary_len).map_err(|error| error.to_string())?;
+        return c63_whir_initial_root(ordinary, num_variables, false);
+    }
+    let commitment = reader.commitment().map_err(|error| error.to_string())?;
+    if commitment.roots().len() != 1 {
+        return Err("C6.3 WHIR initial root cap differs".to_owned());
+    }
+    Ok(commitment.roots()[0])
+}
+
+pub(crate) fn c63_whir_initial_roots(
+    d22_artifacts: &[[Vec<u8>; 2]; 2],
+    d19_artifacts: &[[Vec<u8>; 2]; 2],
+    input_variables: usize,
+    output_variables: usize,
+) -> Result<[[u8; 32]; 8], String> {
+    let mut roots = [[0u8; 32]; 8];
+    for tape in 0..2 {
+        for limb in 0..2 {
+            roots[tape * 2 + limb] =
+                c63_whir_initial_root(&d22_artifacts[tape][limb], input_variables, false)?;
+            roots[4 + tape * 2 + limb] =
+                c63_whir_initial_root(&d19_artifacts[tape][limb], output_variables, true)?;
+        }
+    }
+    Ok(roots)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn verify_c63_sketch_suffix(
+    public_argument_bytes: &[u8],
+    attempt: C6ClientAttempt,
+    h: &C63SparseSketchReference,
+    output_point: &[Fp2],
+    sparse_proof: &C63SparseHClosureProof,
+    predecessor_state: &C63VerifierSketchState,
+    source_link: C63ResidualSourceFunctionalsVerifiedLink,
+    terminal_proofs: [C61AuthenticatedWhirBaseProof; 4],
+    mask_range: C63AuthenticatedWhirMaskRange,
+    verifier_contexts: &mut [VerifierCtx; 2],
+) -> Result<(C63SparseHTapeClosureReferenceAudit, C63VerifierSketchState), String> {
+    begin_verify_c63_sketch_suffix(
+        public_argument_bytes,
+        attempt,
+        h,
+        output_point,
+        sparse_proof,
+        predecessor_state,
+        verifier_contexts,
+    )?
+    .finish(source_link, terminal_proofs, mask_range, verifier_contexts)
+}
+
+/// CPU-verifier state after the sparse proof has fixed the source-functional
+/// point but before the authenticated output link and eight WHIR bodies close.
+pub struct C63SketchSuffixVerifierPending {
+    argument: C63PublicArgument,
+    rho: [Fp2; C63_BOLT_COLUMNS],
+    projected_contexts: [[C63EncodedSketchAtoYContext; 2]; 2],
+    statement: C63SparseHClosureStatement,
+    source_functional_context_digest: [u8; 32],
+    successor_state: C63VerifierSketchState,
+    inner: C63EightBodyVerifierPending,
+}
+
+impl C63SketchSuffixVerifierPending {
+    pub fn sumcheck_point(&self) -> &[Fp2] {
+        self.inner.sparse.sumcheck_point()
+    }
+
+    pub fn rho(&self) -> &[Fp2; C63_BOLT_COLUMNS] {
+        &self.rho
+    }
+
+    pub fn source_functional_context_digest(&self) -> [u8; 32] {
+        self.source_functional_context_digest
+    }
+
+    pub fn statement_digest(&self) -> [u8; 32] {
+        self.argument.statement_digest()
+    }
+
+    pub fn accepted_len(&self) -> u16 {
+        self.argument.accepted_len()
+    }
+
+    pub fn finish(
+        self,
+        source_link: C63ResidualSourceFunctionalsVerifiedLink,
+        terminal_proofs: [C61AuthenticatedWhirBaseProof; 4],
+        mask_range: C63AuthenticatedWhirMaskRange,
+        verifier_contexts: &mut [VerifierCtx; 2],
+    ) -> Result<(C63SparseHTapeClosureReferenceAudit, C63VerifierSketchState), String> {
+        let input_config = c63_whir_config(22)?;
+        let output_config = c63_whir_config(19)?;
+        let audit = finish_verify_c63_eight_body_terminal_join_with_configs(
+            self.inner,
+            &self.statement,
+            self.argument.d22_whir(),
+            self.argument.d19_projected_whir(),
+            22,
+            &input_config,
+            19,
+            &output_config,
+            &self.projected_contexts,
+            source_link,
+            terminal_proofs,
+            mask_range,
+            verifier_contexts,
+        )?;
+        Ok((audit, self.successor_state))
+    }
+}
+
+pub fn begin_verify_c63_sketch_suffix(
+    public_argument_bytes: &[u8],
+    attempt: C6ClientAttempt,
+    h: &C63SparseSketchReference,
+    output_point: &[Fp2],
+    sparse_proof: &C63SparseHClosureProof,
+    predecessor_state: &C63VerifierSketchState,
+    verifier_contexts: &mut [VerifierCtx; 2],
+) -> Result<C63SketchSuffixVerifierPending, String> {
+    let input_config = c63_whir_config(22)?;
+    let output_config = c63_whir_config(19)?;
+    let (decoded, statement, spots, successor_state) = prepare_c63_sketch_suffix_inputs(
+        public_argument_bytes,
+        attempt,
+        output_point,
+        C63_SYSTEMATIC_SPOT_QUERIES,
+        22,
+        &input_config,
+        19,
+        &output_config,
+        predecessor_state,
+    )?;
+    let inner = begin_verify_c63_eight_body_terminal_join_with_configs(
+        h,
+        &statement,
+        &spots,
+        sparse_proof,
+        decoded.argument.d22_whir(),
+        decoded.argument.d19_projected_whir(),
+        22,
+        19,
+        decoded.binding,
+        &decoded.rho,
+        public_argument_bytes,
+        verifier_contexts,
+    )?;
+    let source_functional_context_digest = decoded.binding.source_functional_context(
+        inner.query_seed,
+        sparse_proof.source_functional_prefix_digest().map_err(|error| error.to_string())?,
+    )?;
+    Ok(C63SketchSuffixVerifierPending {
+        argument: decoded.argument,
+        rho: decoded.rho,
+        projected_contexts: decoded.projected_contexts,
+        statement,
+        source_functional_context_digest,
+        successor_state,
+        inner,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn verify_c63_sketch_suffix_with_configs(
+    public_argument_bytes: &[u8],
+    attempt: C6ClientAttempt,
+    h: &C63SparseSketchReference,
+    output_point: &[Fp2],
+    sparse_proof: &C63SparseHClosureProof,
+    predecessor_state: &C63VerifierSketchState,
+    source_link: C63ResidualSourceFunctionalsVerifiedLink,
+    terminal_proofs: [C61AuthenticatedWhirBaseProof; 4],
+    mask_range: C63AuthenticatedWhirMaskRange,
+    verifier_contexts: &mut [VerifierCtx; 2],
+    spot_queries: usize,
+    input_variables: usize,
+    input_config: &C63WhirConfig,
+    output_variables: usize,
+    output_config: &C63WhirConfig,
+) -> Result<(C63SparseHTapeClosureReferenceAudit, C63VerifierSketchState), String> {
+    let (decoded, statement, spots, successor_state) = prepare_c63_sketch_suffix_inputs(
+        public_argument_bytes,
+        attempt,
+        output_point,
+        spot_queries,
+        input_variables,
+        input_config,
+        output_variables,
+        output_config,
+        predecessor_state,
+    )?;
+    let pending = begin_verify_c63_eight_body_terminal_join_with_configs(
+        h,
+        &statement,
+        &spots,
+        sparse_proof,
+        decoded.argument.d22_whir(),
+        decoded.argument.d19_projected_whir(),
+        input_variables,
+        output_variables,
+        decoded.binding,
+        &decoded.rho,
+        public_argument_bytes,
+        verifier_contexts,
+    )?;
+    let audit = finish_verify_c63_eight_body_terminal_join_with_configs(
+        pending,
+        &statement,
+        decoded.argument.d22_whir(),
+        decoded.argument.d19_projected_whir(),
+        input_variables,
+        input_config,
+        output_variables,
+        output_config,
+        &decoded.projected_contexts,
+        source_link,
+        terminal_proofs,
+        mask_range,
+        verifier_contexts,
+    )?;
+    Ok((audit, successor_state))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prepare_c63_sketch_suffix_inputs(
+    public_argument_bytes: &[u8],
+    attempt: C6ClientAttempt,
+    output_point: &[Fp2],
+    spot_queries: usize,
+    input_variables: usize,
+    input_config: &C63WhirConfig,
+    output_variables: usize,
+    output_config: &C63WhirConfig,
+    predecessor_state: &C63VerifierSketchState,
+) -> Result<
+    (
+        crate::c63_public_argument::C63TranscriptPublicArgument,
+        C63SparseHClosureStatement,
+        Vec<C63TapeSystematicSpot>,
+        C63VerifierSketchState,
+    ),
+    String,
+> {
+    let decoded = C63PublicArgument::decode_in_attempt_with_configs(
+        public_argument_bytes,
+        attempt,
+        spot_queries,
+        input_variables,
+        input_config,
+        output_variables,
+        output_config,
+    )?;
+    let argument = &decoded.argument;
+    let opening = C63CorrectionRowsOpeningReference::decode(
+        argument.correction_opening(),
+        argument.old_len(),
+        argument.accepted_len(),
+        &decoded.queried_rows,
+    )?;
+    let (spots, successor_frontier) = c63_verify_correction_rows_by_tape_reference(
+        argument.predecessor_correction_root(),
+        argument.correction_root(),
+        predecessor_state.correction_frontier(),
+        argument.profile_digest(),
+        argument.epoch(),
+        argument.old_len(),
+        argument.accepted_len(),
+        &decoded.queried_rows,
+        &decoded.rho,
+        &opening,
+    )?;
+    let successor_state = predecessor_state.accept(argument, successor_frontier)?;
+    let spots = spots
+        .into_iter()
+        .map(|(row, values)| C63TapeSystematicSpot { row, values })
+        .collect::<Vec<_>>();
+    let statement =
+        C63SparseHClosureStatement::new(argument.correction_root(), output_point.to_vec())
+            .map_err(|error| error.to_string())?;
+    Ok((decoded, statement, spots, successor_state))
+}
+
+/// Verify the C6.3-specific cryptographic suffix in protocol order. Terminal
+/// proofs are object-major: systematic tape 0/1, then sketch tape 0/1.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn verify_c63_eight_body_terminal_join_with_configs(
+    h: &C63SparseSketchReference,
+    statement: &C63SparseHClosureStatement,
+    spots: &[C63TapeSystematicSpot],
+    sparse_proof: &C63SparseHClosureProof,
+    d22_artifacts: &[[Vec<u8>; 2]; 2],
+    d19_artifacts: &[[Vec<u8>; 2]; 2],
+    input_variables: usize,
+    input_config: &C63WhirConfig,
+    output_variables: usize,
+    output_config: &C63WhirConfig,
+    transcript_binding: C63TranscriptBinding,
+    rho: &[Fp2; C63_BOLT_COLUMNS],
+    public_argument_bytes: &[u8],
+    projected_contexts: &[[C63EncodedSketchAtoYContext; 2]; 2],
+    source_link: C63ResidualSourceFunctionalsVerifiedLink,
+    terminal_proofs: [C61AuthenticatedWhirBaseProof; 4],
+    mask_range: C63AuthenticatedWhirMaskRange,
+    verifier_contexts: &mut [VerifierCtx; 2],
+) -> Result<C63SparseHTapeClosureReferenceAudit, String> {
+    let pending = begin_verify_c63_eight_body_terminal_join_with_configs(
+        h,
+        statement,
+        spots,
+        sparse_proof,
+        d22_artifacts,
+        d19_artifacts,
+        input_variables,
+        output_variables,
+        transcript_binding,
+        rho,
+        public_argument_bytes,
+        verifier_contexts,
+    )?;
+    finish_verify_c63_eight_body_terminal_join_with_configs(
+        pending,
+        statement,
+        d22_artifacts,
+        d19_artifacts,
+        input_variables,
+        input_config,
+        output_variables,
+        output_config,
+        projected_contexts,
+        source_link,
+        terminal_proofs,
+        mask_range,
+        verifier_contexts,
+    )
+}
+
+struct C63EightBodyVerifierPending {
+    sparse: C63SparseHTapeVerifierPending,
+    lane_contexts: [[[[u8; 32]; 2]; 2]; 2],
+    terminal_contexts: [[[u8; 32]; 2]; 2],
+    query_seed: [u8; 32],
+}
+
+#[allow(clippy::too_many_arguments)]
+fn begin_verify_c63_eight_body_terminal_join_with_configs(
+    h: &C63SparseSketchReference,
+    statement: &C63SparseHClosureStatement,
+    spots: &[C63TapeSystematicSpot],
+    sparse_proof: &C63SparseHClosureProof,
+    d22_artifacts: &[[Vec<u8>; 2]; 2],
+    d19_artifacts: &[[Vec<u8>; 2]; 2],
+    input_variables: usize,
+    output_variables: usize,
+    transcript_binding: C63TranscriptBinding,
+    rho: &[Fp2; C63_BOLT_COLUMNS],
+    public_argument_bytes: &[u8],
+    verifier_contexts: &mut [VerifierCtx; 2],
+) -> Result<C63EightBodyVerifierPending, String> {
+    let initial_roots =
+        c63_whir_initial_roots(d22_artifacts, d19_artifacts, input_variables, output_variables)?;
+    let query_seed = transcript_binding.query_seed(rho, &initial_roots)?;
+    let mut spot_challenger = c63_challenger(transcript_binding.spot_seed(query_seed)?)?;
+    let expected_rows =
+        c63_sample_systematic_query_rows(&mut spot_challenger, input_variables, spots.len())?;
+    if spots.iter().map(|spot| spot.row).ne(expected_rows) {
+        return Err("C6.3 systematic rows differ from the post-root transcript".to_owned());
+    }
+    let mut lane_contexts = [[[[0u8; 32]; 2]; 2]; 2];
+    for (lane, lane_context) in lane_contexts.iter_mut().enumerate() {
+        for (tape, tape_context) in lane_context.iter_mut().enumerate() {
+            for (limb, context) in tape_context.iter_mut().enumerate() {
+                *context = transcript_binding.lane_seed(
+                    rho,
+                    if lane == 0 {
+                        C63AuthenticatedWhirLane::Systematic
+                    } else {
+                        C63AuthenticatedWhirLane::Sketch
+                    },
+                    tape,
+                    limb,
+                )?;
+            }
+        }
+    }
+    let sparse_bytes = sparse_proof.encode().map_err(|error| error.to_string())?;
+    let terminal_contexts =
+        transcript_binding.terminal_contexts(query_seed, public_argument_bytes, &sparse_bytes)?;
+    let mut sparse_transcript = Transcript::new(transcript_binding.sparse_seed(query_seed)?);
+    let pending = begin_verify_c63_sparse_h_tape_closure_reference(
+        h,
+        statement,
+        spots,
+        sparse_proof,
+        verifier_contexts,
+        &mut sparse_transcript,
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(C63EightBodyVerifierPending {
+        sparse: pending,
+        lane_contexts,
+        terminal_contexts,
+        query_seed,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finish_verify_c63_eight_body_terminal_join_with_configs(
+    pending: C63EightBodyVerifierPending,
+    statement: &C63SparseHClosureStatement,
+    d22_artifacts: &[[Vec<u8>; 2]; 2],
+    d19_artifacts: &[[Vec<u8>; 2]; 2],
+    input_variables: usize,
+    input_config: &C63WhirConfig,
+    output_variables: usize,
+    output_config: &C63WhirConfig,
+    projected_contexts: &[[C63EncodedSketchAtoYContext; 2]; 2],
+    source_link: C63ResidualSourceFunctionalsVerifiedLink,
+    terminal_proofs: [C61AuthenticatedWhirBaseProof; 4],
+    mask_range: C63AuthenticatedWhirMaskRange,
+    verifier_contexts: &mut [VerifierCtx; 2],
+) -> Result<C63SparseHTapeClosureReferenceAudit, String> {
+    let m_keys = source_link.terminal_m_keys();
+
+    for tape in 0..2 {
+        let closures = [
+            verify_c63_whir_ordinary_artifact_with_config_at_point(
+                &d22_artifacts[tape][0],
+                input_variables,
+                input_config,
+                pending.sparse.sumcheck_point(),
+                pending.lane_contexts[0][tape][0],
+            )?,
+            verify_c63_whir_ordinary_artifact_with_config_at_point(
+                &d22_artifacts[tape][1],
+                input_variables,
+                input_config,
+                pending.sparse.sumcheck_point(),
+                pending.lane_contexts[0][tape][1],
+            )?,
+        ];
+        verify_c63_claimless_whir_limb_pair(
+            closures,
+            m_keys[tape],
+            terminal_proofs[tape],
+            &mut verifier_contexts[tape],
+            C63AuthenticatedWhirLane::Systematic,
+            mask_range,
+            pending.terminal_contexts[0][tape],
+        )?;
+    }
+
+    let u_keys = pending.sparse.derive_u_opening_keys(m_keys).map_err(|error| error.to_string())?;
+    for tape in 0..2 {
+        let closures = [
+            verify_c63_whir_projected_artifact_with_config_at_point(
+                &d19_artifacts[tape][0],
+                output_variables,
+                output_config,
+                statement.output_point(),
+                projected_contexts[tape][0].clone(),
+                pending.lane_contexts[1][tape][0],
+            )?,
+            verify_c63_whir_projected_artifact_with_config_at_point(
+                &d19_artifacts[tape][1],
+                output_variables,
+                output_config,
+                statement.output_point(),
+                projected_contexts[tape][1].clone(),
+                pending.lane_contexts[1][tape][1],
+            )?,
+        ];
+        verify_c63_claimless_whir_limb_pair(
+            closures,
+            u_keys[tape],
+            terminal_proofs[2 + tape],
+            &mut verifier_contexts[tape],
+            C63AuthenticatedWhirLane::Sketch,
+            mask_range,
+            pending.terminal_contexts[1][tape],
+        )?;
+    }
+    pending.sparse.finish(u_keys, m_keys).map_err(|error| error.to_string())
 }
 
 /// Pack the sixteen deterministic scalar codewords into WHIR's first-fold
@@ -1670,7 +2951,26 @@ pub fn c63_project_encoded_sketch_limb_reference(
     rho: &[Fp2; C63_BOLT_COLUMNS],
     limb: usize,
 ) -> Result<DenseMatrix<Goldilocks>, String> {
+    c63_project_encoded_sketch_tape_limb(paired_rows, rho, None, limb)
+}
+
+pub fn c63_project_encoded_sketch_tape_limb_reference(
+    paired_rows: &DenseMatrix<Goldilocks>,
+    rho: &[Fp2; C63_BOLT_COLUMNS],
+    tape: usize,
+    limb: usize,
+) -> Result<DenseMatrix<Goldilocks>, String> {
+    c63_project_encoded_sketch_tape_limb(paired_rows, rho, Some(tape), limb)
+}
+
+fn c63_project_encoded_sketch_tape_limb(
+    paired_rows: &DenseMatrix<Goldilocks>,
+    rho: &[Fp2; C63_BOLT_COLUMNS],
+    tape: Option<usize>,
+    limb: usize,
+) -> Result<DenseMatrix<Goldilocks>, String> {
     if limb >= 2
+        || tape.is_some_and(|value| value >= 2)
         || paired_rows.width != C63_ENCODED_SKETCH_PHYSICAL_ROW_WIDTH
         || paired_rows.values.is_empty()
         || paired_rows.values.len() % C63_ENCODED_SKETCH_PHYSICAL_ROW_WIDTH != 0
@@ -1685,6 +2985,9 @@ pub fn c63_project_encoded_sketch_limb_reference(
         for folded_position in 0..C63_ENCODED_SKETCH_FOLDED_POSITIONS {
             let mut value = Goldilocks::ZERO;
             for column in 0..C63_BOLT_COLUMNS {
+                if tape.is_some_and(|selected| column & 1 != selected) {
+                    continue;
+                }
                 value += row[column * C63_ENCODED_SKETCH_FOLDED_POSITIONS + folded_position]
                     * coefficients[column];
             }
@@ -1700,7 +3003,25 @@ pub fn c63_project_decoded_sketch_limb_reference(
     rho: &[Fp2; C63_BOLT_COLUMNS],
     limb: usize,
 ) -> Result<Poly<Goldilocks>, String> {
-    if columns.len() != C63_BOLT_COLUMNS || limb >= 2 {
+    c63_project_decoded_sketch_tape_limb(columns, rho, None, limb)
+}
+
+pub fn c63_project_decoded_sketch_tape_limb_reference(
+    columns: &[Poly<Goldilocks>],
+    rho: &[Fp2; C63_BOLT_COLUMNS],
+    tape: usize,
+    limb: usize,
+) -> Result<Poly<Goldilocks>, String> {
+    c63_project_decoded_sketch_tape_limb(columns, rho, Some(tape), limb)
+}
+
+fn c63_project_decoded_sketch_tape_limb(
+    columns: &[Poly<Goldilocks>],
+    rho: &[Fp2; C63_BOLT_COLUMNS],
+    tape: Option<usize>,
+    limb: usize,
+) -> Result<Poly<Goldilocks>, String> {
+    if columns.len() != C63_BOLT_COLUMNS || limb >= 2 || tape.is_some_and(|value| value >= 2) {
         return Err("C6.3 decoded sketch projection geometry differs".to_owned());
     }
     let len = columns[0].as_slice().len();
@@ -1713,7 +3034,10 @@ pub fn c63_project_decoded_sketch_limb_reference(
     let coefficients = rho
         .map(|value| Goldilocks::new(if limb == 0 { value.c0.value() } else { value.c1.value() }));
     let mut projected = Goldilocks::zero_vec(len);
-    for (column, coefficient) in columns.iter().zip(coefficients) {
+    for (column_index, (column, coefficient)) in columns.iter().zip(coefficients).enumerate() {
+        if tape.is_some_and(|selected| column_index & 1 != selected) {
+            continue;
+        }
         for (target, &value) in projected.iter_mut().zip(column.as_slice()) {
             *target += value * coefficient;
         }
@@ -1760,34 +3084,40 @@ mod tests {
     };
     use rand_010::rngs::StdRng;
     use rand_010::SeedableRng;
-    use volta_field::{Fp, Fp2};
-    use volta_mac::{CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey};
     #[cfg(feature = "cuda")]
     use volta_accel::{Backend, DeviceSlice};
+    use volta_field::{Fp, Fp2};
+    use volta_mac::{CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey};
+    use volta_proto::{C6CorrelationRange, C6PairedCorrelationRanges, C6Workload};
 
     use super::*;
     use crate::c61_authenticated_whir::{
-        finish_c61_authenticated_whir_base, prepare_c61_authenticated_whir_mask,
-        prepare_c63_authenticated_whir_mask, verify_c61_authenticated_whir_base,
-        verify_c63_authenticated_whir_base, C61AuthenticatedWhirAffineClaim,
-        C61AuthenticatedWhirMaskRange, C61AuthenticatedWhirPreparedMask,
-        C61AuthenticatedWhirProverFinishInput, C61AuthenticatedWhirVerifierInput,
-        C63AuthenticatedWhirLane, C63AuthenticatedWhirMaskRange, C63AuthenticatedWhirVerifierInput,
+        finish_c61_authenticated_whir_base, finish_c63_authenticated_whir_limb_pair,
+        prepare_c61_authenticated_whir_mask, prepare_c63_authenticated_whir_limb_pair,
+        verify_c61_authenticated_whir_base, C61AuthenticatedWhirAffineClaim,
+        C61AuthenticatedWhirMaskRange, C61AuthenticatedWhirProverFinishInput,
+        C61AuthenticatedWhirVerifierInput, C63AuthenticatedWhirLane, C63AuthenticatedWhirMaskRange,
+        C63AuthenticatedWhirPreparedLimbPair,
     };
     use crate::c61_public_compression::{C61NativeChainId, C61NativeComponent};
     use crate::c61_whir_reference::{
         c61_p3_fp2_from_volta, c61_reference_mmcs, c61_volta_fp2_from_p3, C61P3Fp2,
     };
-    use crate::c63_authenticated_sketch::{
-        c63_correction_state_root_reference, c63_correction_tile_root_reference,
-        c63_open_correction_rows_reference, c63_verify_correction_rows_reference,
-        C63CorrectionRowReference, C63SparseSketchEdge, C63SparseSketchReference,
-        C63_BOLT_LIVE_ROWS_PER_POSITION,
-    };
     #[cfg(feature = "cuda")]
     use crate::c62_gpu_whir::{
         C62GpuResourceGuard, C62ProviderCacheKey, C62_GPU_WHIR_EXECUTOR_VERSION,
         C62_GPU_WHIR_FIELD_TAG,
+    };
+    #[cfg(feature = "cuda")]
+    use crate::c63_authenticated_sketch::c63_verify_correction_rows_reference;
+    use crate::c63_authenticated_sketch::{
+        c63_authenticated_correction_functional_prover_reference,
+        c63_authenticated_correction_functional_verifier_reference, c63_bolt_correction_index,
+        c63_correction_state_root_reference, c63_correction_tile_root_reference,
+        c63_open_correction_rows_reference, c63_verify_correction_rows_by_tape_reference,
+        C63AuthenticatedCorrectionProverCell, C63AuthenticatedCorrectionVerifierCell,
+        C63CorrectionRowReference, C63SparseSketchEdge, C63SparseSketchReference,
+        C63_BOLT_LIVE_ROWS_PER_POSITION,
     };
     #[cfg(feature = "cuda")]
     use crate::c63_authenticated_sketch::{
@@ -1800,11 +3130,16 @@ mod tests {
     #[cfg(feature = "cuda")]
     use crate::c63_sparse_h_closure::prove_c63_sparse_h_closure_with_spots_resident;
     use crate::c63_sparse_h_closure::{
-        prove_c63_sparse_h_closure_with_spots_reference,
-        verify_c63_sparse_h_closure_from_whir_openings_reference,
-        verify_c63_sparse_h_closure_with_spots_reference, C63SparseHClosureStatement,
-        C63SystematicSpot,
+        begin_verify_c63_sparse_h_tape_closure_reference,
+        prove_c63_sparse_h_tape_closure_with_spots_reference,
+        verify_c63_sparse_h_tape_closure_from_whir_openings_reference, C63SparseHClosureError,
+        C63SparseHClosureStatement, C63TapeSystematicSpot,
     };
+    #[cfg(feature = "cuda")]
+    use crate::c63_sparse_h_closure::{
+        verify_c63_sparse_h_closure_from_whir_openings_reference, C63SystematicSpot,
+    };
+    use crate::c6_persistent_cache::{expected_c6_cache_append_cells, C6PersistentCacheLayout};
 
     const TEST_NUM_VARIABLES: usize = 12;
 
@@ -2048,7 +3383,8 @@ mod tests {
             C63_ENCODED_SKETCH_PHYSICAL_ROW_WIDTH,
             C63_ENCODED_SKETCH_PHYSICAL_ROWS,
         );
-        let projected = lift_c63_projected_proof(ordinary, linked.clone()).unwrap();
+        let projected =
+            lift_c63_projected_proof(ordinary, (Some(linked.clone()), linked.clone())).unwrap();
         let encoded = encode_c63_whir_projected_artifact(&commitment, &projected).unwrap();
         assert_eq!(encoded.len(), c63_projected_whir_structural_bytes().unwrap());
         let (decoded_commitment, decoded) = decode_c63_whir_projected_artifact(&encoded).unwrap();
@@ -2069,7 +3405,8 @@ mod tests {
         let QueryOpenings::Extension(second) = &mut trailing_link.rounds[1].openings else {
             panic!("second C6.3 projected round must be extension-field");
         };
-        second.proof.1 = Some((linked.rows, linked.proof));
+        second.proof.1 =
+            Some((Some((linked.rows.clone(), linked.proof.clone())), (linked.rows, linked.proof)));
         assert!(encode_c63_whir_projected_artifact(&commitment, &trailing_link).is_err());
 
         let mut bad_flag = encoded.clone();
@@ -2204,100 +3541,76 @@ mod tests {
         .ok()
     }
 
-    fn replay_bound_projected_claimless(
-        mmcs: &C63ProjectedMmcs,
-        link: &C63EncodedSketchAtoYLink,
-        commitment: &crate::c61_whir_reference::C61Commitment,
-        proof: &p3_whir_c61::pcs::zk::ZkWhirProof<
-            Goldilocks,
-            BinomialExtensionField<Goldilocks, 2>,
-            C63ProjectedMmcs,
-        >,
-        point: &Point<C61P3Fp2>,
-        verifier_seed: [u8; 32],
-    ) -> Option<ClaimlessWhirVerifierClosure<C61P3Fp2>> {
-        let mut challenger = challenger(verifier_seed);
-        let config = config_for::<C63SeparatedSizingChallenger>(point.num_variables());
-        challenger.observe(commitment.clone());
-        challenger.observe_algebra_slice(point.as_slice());
-        let verifier = HidingWhirVerifier::new(&config, mmcs);
-        catch_unwind(AssertUnwindSafe(|| {
-            verifier.verify_claimless_with_initial_link(
-                proof,
-                commitment,
-                std::slice::from_ref(point),
-                link,
-                &mut challenger,
-            )
-        }))
-        .ok()?
-        .ok()
-    }
-
     #[allow(clippy::too_many_arguments)]
-    fn close_authenticated_lane<MT>(
-        prepared: C61AuthenticatedWhirPreparedMask,
-        output: &ClaimlessWhirProverOutput<Goldilocks, C61P3Fp2, MT>,
-        closure: &ClaimlessWhirVerifierClosure<C61P3Fp2>,
-        target_value: Fp2,
-        target_tag: Fp2,
-        pcg_seed: [u8; 32],
-        delta: Fp2,
+    fn close_authenticated_limb_pair<MT>(
+        prepared: C63AuthenticatedWhirPreparedLimbPair,
+        outputs: [&ClaimlessWhirProverOutput<Goldilocks, C61P3Fp2, MT>; 2],
+        closures: [&C63ClaimlessWhirVerifierClosure; 2],
+        target_values: [Fp2; 2],
+        target_tags: [Fp2; 2],
+        context: &mut VerifierCtx,
         lane: C63AuthenticatedWhirLane,
         mask_range: C63AuthenticatedWhirMaskRange,
         transcript_seed: [u8; 32],
-    ) -> Result<(), String>
+    ) -> Result<(ProverAuthed, VerifierKey, C61AuthenticatedWhirBaseProof), String>
     where
         MT: Mmcs<Goldilocks>,
     {
-        if output.claim_weights != closure.claim_weights
-            || output.target != closure.target
-            || output.base_case != closure.base_case
-        {
-            return Err("C6.3 WHIR prover/verifier closure differs".to_owned());
+        for limb in 0..2 {
+            if outputs[limb].claim_weights.len() != 1
+                || c61_volta_fp2_from_p3(outputs[limb].claim_weights[0])
+                    != closures[limb].claim_weight
+                || c61_volta_fp2_from_p3(outputs[limb].target.coefficient)
+                    != closures[limb].target.coefficient
+                || c61_volta_fp2_from_p3(outputs[limb].target.constant)
+                    != closures[limb].target.constant
+                || c61_volta_fp2_from_p3(outputs[limb].base_case.combined)
+                    != closures[limb].combined
+                || c61_volta_fp2_from_p3(outputs[limb].base_case.shifted_masked_claim)
+                    != closures[limb].shifted_masked_claim
+                || c61_volta_fp2_from_p3(outputs[limb].base_case.gamma) != closures[limb].gamma
+            {
+                return Err("C6.3 WHIR limb prover/verifier closure differs".to_owned());
+            }
         }
-        let target = ProverAuthed::new(target_value, target_tag);
-        let aggregate_target = target.scale(c61_volta_fp2_from_p3(output.claim_weights[0]));
-        let provider_affine = C61AuthenticatedWhirAffineClaim {
-            coefficient: c61_volta_fp2_from_p3(output.target.coefficient),
-            constant: c61_volta_fp2_from_p3(output.target.constant),
-        };
-        let mut provider_transcript = Transcript::new_fiat_shamir(transcript_seed)?;
-        let provider_closure = finish_c61_authenticated_whir_base(
+        let targets: [ProverAuthed; 2] =
+            std::array::from_fn(|limb| ProverAuthed::new(target_values[limb], target_tags[limb]));
+        let basis = Fp2::new(Fp::ZERO, Fp::ONE);
+        let target = targets[0].add(targets[1].scale(basis));
+        let mut prover_transcript = Transcript::new_fiat_shamir(transcript_seed)?;
+        let provider_closure = finish_c63_authenticated_whir_limb_pair(
             prepared,
-            C61AuthenticatedWhirProverFinishInput {
-                combined: c61_volta_fp2_from_p3(output.base_case.combined),
-                shifted_masked_claim: c61_volta_fp2_from_p3(output.base_case.shifted_masked_claim),
-                gamma: c61_volta_fp2_from_p3(output.base_case.gamma),
-                target: provider_affine.authenticate_prover(aggregate_target),
-            },
-            &mut provider_transcript,
+            std::array::from_fn(|limb| C63AuthenticatedWhirNormalizedLimb {
+                combined: c61_volta_fp2_from_p3(outputs[limb].base_case.combined),
+                shifted_masked_claim: c61_volta_fp2_from_p3(
+                    outputs[limb].base_case.shifted_masked_claim,
+                ),
+                gamma: c61_volta_fp2_from_p3(outputs[limb].base_case.gamma),
+                affine: C61AuthenticatedWhirAffineClaim {
+                    coefficient: c61_volta_fp2_from_p3(outputs[limb].target.coefficient),
+                    constant: c61_volta_fp2_from_p3(outputs[limb].target.constant),
+                },
+                claim_weight: c61_volta_fp2_from_p3(outputs[limb].claim_weights[0]),
+            }),
+            target,
+            &mut prover_transcript,
         )
         .map_err(|error| error.to_string())?;
 
-        let target_key = VerifierKey::new(target_tag + delta * target_value);
-        let aggregate_key = target_key.scale(c61_volta_fp2_from_p3(closure.claim_weights[0]));
-        let verifier_affine = C61AuthenticatedWhirAffineClaim {
-            coefficient: c61_volta_fp2_from_p3(closure.target.coefficient),
-            constant: c61_volta_fp2_from_p3(closure.target.constant),
-        };
-        let mut verifier_context = VerifierCtx::new(pcg_seed, delta);
-        let mut verifier_transcript = Transcript::new_fiat_shamir(transcript_seed)?;
-        verify_c63_authenticated_whir_base(
-            C63AuthenticatedWhirVerifierInput {
-                lane,
-                mask_range,
-                combined: c61_volta_fp2_from_p3(closure.base_case.combined),
-                shifted_masked_claim: c61_volta_fp2_from_p3(closure.base_case.shifted_masked_claim),
-                gamma: c61_volta_fp2_from_p3(closure.base_case.gamma),
-                target: verifier_affine.derive_verifier_key(aggregate_key, delta),
-            },
+        let target_keys: [VerifierKey; 2] = std::array::from_fn(|limb| {
+            VerifierKey::new(target_tags[limb] + context.delta * target_values[limb])
+        });
+        let target_key = target_keys[0].add(target_keys[1].scale(basis));
+        verify_c63_claimless_whir_limb_pair(
+            [*closures[0], *closures[1]],
+            target_key,
             provider_closure.proof,
-            &mut verifier_context,
-            &mut verifier_transcript,
-        )
-        .map_err(|error| error.to_string())?;
-        Ok(())
+            context,
+            lane,
+            mask_range,
+            transcript_seed,
+        )?;
+        Ok((target, target_key, provider_closure.proof))
     }
 
     fn replay_projected_claimless(
@@ -2315,8 +3628,11 @@ mod tests {
         let mut challenger = challenger(verifier_seed);
         let config = config::<C63SeparatedSizingChallenger>();
         let (_, contexts) = C63EncodedSketchAtoYContext::sample_pair_after_roots(
-            mmcs.context.accepted_d.clone(),
-            mmcs.context.accepted_a.clone(),
+            mmcs.context.predecessor_d.clone(),
+            mmcs.context.predecessor_a.clone(),
+            mmcs.context.successor_d.clone(),
+            mmcs.context.successor_a.clone(),
+            mmcs.context.old_len,
             mmcs.context.dimensions.height,
             &mut challenger,
         )
@@ -2444,6 +3760,21 @@ mod tests {
             projected_messages.push(message);
             projected_encodings.push(projected);
         }
+        for tape in 0..2 {
+            for limb in 0..2 {
+                let message =
+                    c63_project_decoded_sketch_tape_limb_reference(&columns, &rho, tape, limb)
+                        .unwrap();
+                let projected =
+                    c63_project_encoded_sketch_tape_limb_reference(&paired, &rho, tape, limb)
+                        .unwrap();
+                c63_check_preencoded_link_reference(
+                    &projected,
+                    &prover.c62_fixed_base_encoding(&message),
+                )
+                .unwrap();
+            }
+        }
 
         let (a_root, a_data) = mmcs.commit_matrix(paired.clone());
         let authenticated_row = 17usize;
@@ -2538,13 +3869,32 @@ mod tests {
             .map(|column| base_prover.c62_fixed_base_encoding(column))
             .collect::<Vec<_>>();
         let honest_a = c63_pack_encoded_sketch_rows_reference(&encoded_columns).unwrap();
-        let (honest_a_root, honest_a_data) = base_mmcs.commit_matrix(honest_a.clone());
+        let predecessor_a: DenseMatrix<Goldilocks> = DenseMatrix::new(
+            (0..honest_a.values.len())
+                .map(|index| Goldilocks::from_u64(31 + index as u64 * 7))
+                .collect(),
+            honest_a.width,
+        );
+        let successor_a = DenseMatrix::new(
+            predecessor_a
+                .values
+                .iter()
+                .zip(&honest_a.values)
+                .map(|(&predecessor, &delta)| predecessor + delta)
+                .collect(),
+            honest_a.width,
+        );
+        let (predecessor_a_root, predecessor_a_data) = base_mmcs.commit_matrix(predecessor_a);
+        let (honest_a_root, honest_a_data) = base_mmcs.commit_matrix(successor_a);
         let verifier_seed = [0x63; 32];
         let mut prover_challenger = challenger(verifier_seed);
         let (honest_rho, [honest_context, _]) =
             C63EncodedSketchAtoYContext::sample_pair_after_roots(
                 accepted_d_root.clone(),
+                predecessor_a_root.clone(),
+                accepted_d_root.clone(),
                 honest_a_root.clone(),
+                1,
                 honest_a.values.len() / honest_a.width,
                 &mut prover_challenger,
             )
@@ -2572,7 +3922,12 @@ mod tests {
             &mut rng,
         );
         projected_mmcs
-            .attach_encoded_sketch_a(&mut honest_data.merkle, &honest_a_root, honest_a_data)
+            .attach_encoded_sketch_a(
+                &mut honest_data.merkle,
+                Some((&predecessor_a_root, predecessor_a_data)),
+                &honest_a_root,
+                honest_a_data,
+            )
             .unwrap();
         prover_challenger.observe_algebra_slice(point.as_slice());
         let honest = projected_prover.prove_claimless_with_initial_link(
@@ -2611,8 +3966,11 @@ mod tests {
         let mut prover_challenger = challenger(verifier_seed);
         let (attack_rho, [attack_context, _]) =
             C63EncodedSketchAtoYContext::sample_pair_after_roots(
+                accepted_d_root.clone(),
+                substituted_a_root.clone(),
                 accepted_d_root,
                 substituted_a_root.clone(),
+                0,
                 substituted_a.values.len() / substituted_a.width,
                 &mut prover_challenger,
             )
@@ -2642,6 +4000,7 @@ mod tests {
         attack_mmcs
             .attach_encoded_sketch_a(
                 &mut attack_data.merkle,
+                None,
                 &substituted_a_root,
                 substituted_a_data,
             )
@@ -2679,8 +4038,11 @@ mod tests {
         let mut prover_challenger = challenger(verifier_seed);
         let (replayed_rho, [replayed_context, _]) =
             C63EncodedSketchAtoYContext::sample_pair_after_roots(
-                attack_mmcs.context.accepted_d.clone(),
+                attack_mmcs.context.predecessor_d.clone(),
+                attack_mmcs.context.predecessor_a.clone(),
+                attack_mmcs.context.successor_d.clone(),
                 linked_a_root.clone(),
+                0,
                 attack_mmcs.context.dimensions.height,
                 &mut prover_challenger,
             )
@@ -2695,7 +4057,7 @@ mod tests {
             &mut rng,
         );
         attack_mmcs
-            .attach_encoded_sketch_a(&mut linked_data.merkle, &linked_a_root, linked_a_data)
+            .attach_encoded_sketch_a(&mut linked_data.merkle, None, &linked_a_root, linked_a_data)
             .unwrap();
         prover_challenger.observe_algebra_slice(point.as_slice());
 
@@ -2794,16 +4156,8 @@ mod tests {
         )
         .unwrap();
         let backend = Backend::cuda_resident().expect("initialize ABI44 resident CUDA backend");
-        let guard = C62GpuResourceGuard::for_lane(
-            19,
-            1,
-            1 << 19,
-            19,
-            1,
-            true,
-            40u64 << 30,
-        )
-        .unwrap();
+        let guard =
+            C62GpuResourceGuard::for_lane(19, 1, 1 << 19, 19, 1, true, 40u64 << 30).unwrap();
         let base_mmcs = C62GpuMmcs::new(backend, 19, guard).unwrap();
         let setup = C63GpuSetupOwner::install(&base_mmcs, &sparse_setup).unwrap();
         let setup_ms = setup_started.elapsed().as_millis();
@@ -2818,10 +4172,7 @@ mod tests {
         });
         let (tape0, tape1) = {
             let mut gpu = backend.lock().unwrap();
-            (
-                gpu.upload_new_device(&tapes[0]).unwrap(),
-                gpu.upload_new_device(&tapes[1]).unwrap(),
-            )
+            (gpu.upload_new_device(&tapes[0]).unwrap(), gpu.upload_new_device(&tapes[1]).unwrap())
         };
         let profile_digest = [0x73; 32];
         let state = Arc::new(
@@ -2852,12 +4203,19 @@ mod tests {
         let state_ms = state_started.elapsed().as_millis();
 
         let verifier_seed = [0x63; 32];
+        let predecessor_frontier = C63CorrectionAppendFrontier::zero();
+        let predecessor_d =
+            C61Commitment::new(vec![predecessor_frontier.state_root(profile_digest, 0).unwrap()]);
+        let predecessor_a = C61Commitment::new(vec![[0x74; 32]]);
         let accepted_d = C61Commitment::new(vec![state.correction_root()]);
         let accepted_a = C61Commitment::new(vec![state.encoded_sketch_root()]);
         let mut prover_challenger = challenger(verifier_seed);
         let (rho, [context, _]) = C63EncodedSketchAtoYContext::sample_pair_after_roots(
+            predecessor_d,
+            predecessor_a,
             accepted_d,
             accepted_a,
+            0,
             C63_ENCODED_SKETCH_PHYSICAL_ROWS,
             &mut prover_challenger,
         )
@@ -2865,7 +4223,7 @@ mod tests {
         let cpu_context = context.clone();
 
         let projection_started = Instant::now();
-        let mut projected = state.project_messages(rho).unwrap();
+        let mut projected = state.project_transition_messages(None, rho).unwrap();
         let projection_ms = projection_started.elapsed().as_millis();
         let spot_rows = c63_sample_systematic_query_rows(
             &mut prover_challenger,
@@ -2875,22 +4233,25 @@ mod tests {
         .unwrap();
         let correction_started = Instant::now();
         let correction_opening = state.open_correction_rows(&spot_rows).unwrap();
-        let correction_artifact = correction_opening
-            .encode(state.accepted_len(), &spot_rows)
-            .unwrap();
-        let spots = c63_verify_correction_rows_reference(
+        let correction_artifact =
+            correction_opening.encode(0, state.accepted_len(), &spot_rows).unwrap();
+        let (spots, _) = c63_verify_correction_rows_reference(
+            predecessor_frontier.state_root(profile_digest, 0).unwrap(),
             state.correction_root(),
+            &predecessor_frontier,
             profile_digest,
             state.epoch(),
+            0,
             state.accepted_len(),
             &spot_rows,
             &rho,
             &correction_opening,
         )
-        .unwrap()
-        .into_iter()
-        .map(|(row, value)| C63SystematicSpot { row, value })
-        .collect::<Vec<_>>();
+        .unwrap();
+        let spots = spots
+            .into_iter()
+            .map(|(row, value)| C63SystematicSpot { row, value })
+            .collect::<Vec<_>>();
         let correction_ms = correction_started.elapsed().as_millis();
         let h_started = Instant::now();
         let h = C63SparseSketchReference::new(
@@ -2907,10 +4268,8 @@ mod tests {
         let sparse_statement =
             C63SparseHClosureStatement::new(state.correction_root(), output_point).unwrap();
         let sparse_seeds = [[0x91; 32], [0x92; 32]];
-        let sparse_deltas = [
-            Fp2::new(Fp::new(97), Fp::new(101)),
-            Fp2::new(Fp::new(103), Fp::new(107)),
-        ];
+        let sparse_deltas =
+            [Fp2::new(Fp::new(97), Fp::new(101)), Fp2::new(Fp::new(103), Fp::new(107))];
         let sparse_transcript_seed = [0x93; 32];
         let mut sparse_streams = sparse_seeds.map(CorrelationStream::new);
         let mut sparse_prover_transcript = Transcript::new(sparse_transcript_seed);
@@ -2963,16 +4322,12 @@ mod tests {
             folding: 1,
             height: 1 << 19,
         };
-        let cache = base_mmcs
-            .prepare_linked_fixed_base_resident(key, message, encoded)
-            .unwrap();
+        let cache = base_mmcs.prepare_linked_fixed_base_resident(key, message, encoded).unwrap();
         let point_values = (0..19)
             .map(|index| Fp2::new(Fp::new(41 + index as u64), Fp::new(71 + index as u64)))
             .collect::<Vec<_>>();
         let evaluation = base_mmcs.evaluate_fixed_base(&cache, &point_values).unwrap();
-        let point = Point::new(
-            point_values.iter().copied().map(c61_p3_fp2_from_volta).collect(),
-        );
+        let point = Point::new(point_values.iter().copied().map(c61_p3_fp2_from_volta).collect());
         let lane_prepare_ms = lane_prepare_started.elapsed().as_millis();
 
         let config = c63_whir_config(19).unwrap();
@@ -2986,9 +4341,7 @@ mod tests {
         let (commitment, mut data) = prover
             .commit_resident_with_oracle(1 << 19, &committer, &mut prover_challenger, &mut rng)
             .unwrap();
-        projected_mmcs
-            .attach_encoded_sketch_a(&mut data.merkle, Arc::clone(&state))
-            .unwrap();
+        projected_mmcs.attach_encoded_sketch_a(&mut data.merkle, None, Arc::clone(&state)).unwrap();
         prover_challenger.observe_algebra_slice(point.as_slice());
         let output = prover
             .prove_claimless_with_oracle_and_initial_link(
@@ -3014,8 +4367,11 @@ mod tests {
         let verifier_link = verifier_mmcs.link();
         let mut verifier_challenger = challenger(verifier_seed);
         let (_, replayed_contexts) = C63EncodedSketchAtoYContext::sample_pair_after_roots(
-            verifier_mmcs.context.accepted_d.clone(),
-            verifier_mmcs.context.accepted_a.clone(),
+            verifier_mmcs.context.predecessor_d.clone(),
+            verifier_mmcs.context.predecessor_a.clone(),
+            verifier_mmcs.context.successor_d.clone(),
+            verifier_mmcs.context.successor_a.clone(),
+            verifier_mmcs.context.old_len,
             C63_ENCODED_SKETCH_PHYSICAL_ROWS,
             &mut verifier_challenger,
         )
@@ -3058,8 +4414,8 @@ mod tests {
     }
 
     #[test]
-    fn four_whir_lanes_feed_the_sparse_h_terminal_without_full_tables() {
-        const INPUT_LOG2: usize = 12;
+    fn eight_whir_bodies_feed_authenticated_tape_separated_sparse_h_terminals() {
+        const INPUT_LOG2: usize = 13;
         const OUTPUT_LOG2: usize = 10;
         let input_len = 1usize << INPUT_LOG2;
         let output_len = 1usize << OUTPUT_LOG2;
@@ -3073,12 +4429,23 @@ mod tests {
             .collect::<Vec<_>>();
         let h = C63SparseSketchReference::new(input_len, output_len, edges.clone()).unwrap();
 
-        let correction_rows = (0..C63_BOLT_LIVE_ROWS_PER_POSITION)
+        let predecessor_rows = (0..C63_BOLT_LIVE_ROWS_PER_POSITION)
             .map(|row| C63CorrectionRowReference {
                 position: 0,
                 layer_high: (row >> 9) as u8,
                 channel_low: (row & 0x01ff) as u16,
                 birth_epoch: 1,
+                allocation_binding_digest: [0x21; 32],
+                source_schedule_digest: [0x22; 32],
+                corrections: [Fp::ZERO; C63_BOLT_COLUMNS],
+            })
+            .collect::<Vec<_>>();
+        let correction_rows = (0..C63_BOLT_LIVE_ROWS_PER_POSITION)
+            .map(|row| C63CorrectionRowReference {
+                position: 1,
+                layer_high: (row >> 9) as u8,
+                channel_low: (row & 0x01ff) as u16,
+                birth_epoch: 2,
                 allocation_binding_digest: [0x31; 32],
                 source_schedule_digest: [0x32; 32],
                 corrections: std::array::from_fn(|column| {
@@ -3095,9 +4462,10 @@ mod tests {
                 Poly::new(
                     (0..input_len)
                         .map(|row| {
+                            let local = row.checked_sub(C63_BOLT_ROWS_PER_POSITION);
                             Goldilocks::from_u64(
-                                correction_rows
-                                    .get(row)
+                                local
+                                    .and_then(|row| correction_rows.get(row))
                                     .map_or(0, |opened| opened.corrections[column].value()),
                             )
                         })
@@ -3127,29 +4495,108 @@ mod tests {
             .map(|column| u_base_prover.c62_fixed_base_encoding(column))
             .collect::<Vec<_>>();
         let paired_a = c63_pack_encoded_sketch_rows_reference(&encoded_s).unwrap();
+        let predecessor_a: DenseMatrix<Goldilocks> = DenseMatrix::new(
+            (0..paired_a.values.len())
+                .map(|index| Goldilocks::from_u64(43 + index as u64 * 5))
+                .collect(),
+            paired_a.width,
+        );
+        let successor_a = DenseMatrix::new(
+            predecessor_a
+                .values
+                .iter()
+                .zip(&paired_a.values)
+                .map(|(&predecessor, &delta)| predecessor + delta)
+                .collect(),
+            paired_a.width,
+        );
         let profile_digest = [0x33; 32];
+        let predecessor_tile = c63_correction_tile_root_reference(&predecessor_rows).unwrap();
         let correction_tile = c63_correction_tile_root_reference(&correction_rows).unwrap();
-        let correction_root =
-            c63_correction_state_root_reference(profile_digest, 1, &[correction_tile]).unwrap();
+        let correction_root = c63_correction_state_root_reference(
+            profile_digest,
+            2,
+            &[predecessor_tile, correction_tile],
+        )
+        .unwrap();
+        let predecessor_frontier =
+            C63CorrectionAppendFrontier::from_tile_roots(&[predecessor_tile]).unwrap();
+        let predecessor_correction_root =
+            predecessor_frontier.state_root(profile_digest, 1).unwrap();
         let d_root = C61Commitment::new(vec![correction_root]);
-        let (a_root, _) = base_mmcs.commit_matrix(paired_a.clone());
+        let (a_root, _) = base_mmcs.commit_matrix(successor_a.clone());
+        let (predecessor_a_root, _) = base_mmcs.commit_matrix(predecessor_a.clone());
+        let predecessor_state = C63VerifierSketchState::for_test(
+            profile_digest,
+            1,
+            predecessor_a_root.roots()[0],
+            predecessor_frontier.clone(),
+        )
+        .unwrap();
 
-        let mut rho_challenger = challenger([0x63; 32]);
-        let (rho, contexts) = C63EncodedSketchAtoYContext::sample_pair_after_roots(
+        let statement_digest = [0xd1; 32];
+        let statement = C63SparseHClosureStatement::new(
+            correction_root,
+            (0..OUTPUT_LOG2)
+                .map(|index| Fp2::new(Fp::new(31 + index as u64), Fp::new(47 + index as u64)))
+                .collect(),
+        )
+        .unwrap();
+        let attempt = C6ClientAttempt {
+            slot: 0,
+            nonce: [0xd0; 32],
+            setup_manifest_digest: [0xd2; 32],
+            old_head_digest: [0xd3; 32],
+            predecessor_certificate_digest: [0; 32],
+            correlation_ranges: C6PairedCorrelationRanges {
+                coordinates: [
+                    C6CorrelationRange { stage: 1, start: 1_000, count: 1_000 },
+                    C6CorrelationRange { stage: 1, start: 2_000, count: 1_000 },
+                ],
+            },
+            workload: C6Workload {
+                prompt_tokens: 1,
+                decode_tokens: 0,
+                old_context: 1,
+                new_context: 2,
+            },
+        };
+        let transcript_binding = C63TranscriptBinding::new(
+            attempt,
+            statement_digest,
+            profile_digest,
+            predecessor_correction_root,
+            predecessor_a_root.roots()[0],
+            correction_root,
+            a_root.roots()[0],
+            2,
+            1,
+            2,
+        )
+        .unwrap();
+        let mut rho_challenger = challenger(transcript_binding.rho_seed());
+        let (rho, contexts) = C63EncodedSketchAtoYContext::sample_tape_limb_after_roots(
+            C61Commitment::new(vec![predecessor_correction_root]),
+            predecessor_a_root.clone(),
             d_root,
             a_root.clone(),
+            1,
             paired_a.values.len() / paired_a.width,
             &mut rho_challenger,
         )
         .unwrap();
-        let m_limbs = [
-            c63_project_decoded_sketch_limb_reference(&d_columns, &rho, 0).unwrap(),
-            c63_project_decoded_sketch_limb_reference(&d_columns, &rho, 1).unwrap(),
-        ];
-        let u_limbs = [
-            c63_project_decoded_sketch_limb_reference(&s_columns, &rho, 0).unwrap(),
-            c63_project_decoded_sketch_limb_reference(&s_columns, &rho, 1).unwrap(),
-        ];
+        let m_limbs: [[Poly<Goldilocks>; 2]; 2] = std::array::from_fn(|tape| {
+            std::array::from_fn(|limb| {
+                c63_project_decoded_sketch_tape_limb_reference(&d_columns, &rho, tape, limb)
+                    .unwrap()
+            })
+        });
+        let u_limbs: [[Poly<Goldilocks>; 2]; 2] = std::array::from_fn(|tape| {
+            std::array::from_fn(|limb| {
+                c63_project_decoded_sketch_tape_limb_reference(&s_columns, &rho, tape, limb)
+                    .unwrap()
+            })
+        });
         let combine_coefficients = |left: &Poly<Goldilocks>, right: &Poly<Goldilocks>| {
             left.as_slice()
                 .iter()
@@ -3159,231 +4606,369 @@ mod tests {
                 })
                 .collect::<Vec<_>>()
         };
-        let m = combine_coefficients(&m_limbs[0], &m_limbs[1]);
-        let u = combine_coefficients(&u_limbs[0], &u_limbs[1]);
-        assert_eq!(h.apply(&m).unwrap(), u);
+        let messages: [Vec<Fp2>; 2] =
+            std::array::from_fn(|tape| combine_coefficients(&m_limbs[tape][0], &m_limbs[tape][1]));
+        let sketches: [Vec<Fp2>; 2] =
+            std::array::from_fn(|tape| combine_coefficients(&u_limbs[tape][0], &u_limbs[tape][1]));
+        for tape in 0..2 {
+            assert_eq!(h.apply(&messages[tape]).unwrap(), sketches[tape]);
+        }
 
-        let statement = C63SparseHClosureStatement::new(
-            correction_root,
-            (0..OUTPUT_LOG2)
-                .map(|index| Fp2::new(Fp::new(31 + index as u64), Fp::new(47 + index as u64)))
-                .collect(),
+        let m_config = config_for::<C63SeparatedSizingChallenger>(INPUT_LOG2);
+        let m_prover = HidingWhirProver::new(&m_config, &dft, &base_mmcs);
+        let mask_range = C63AuthenticatedWhirMaskRange { stage: 70, slot: 0, range_start: 0 };
+        let sparse_seeds = [[0x91; 32], [0x92; 32]];
+        let sparse_deltas =
+            [Fp2::new(Fp::new(97), Fp::new(101)), Fp2::new(Fp::new(103), Fp::new(107))];
+        let mut whir_streams = sparse_seeds.map(CorrelationStream::new);
+        let m_prepared: [C63AuthenticatedWhirPreparedLimbPair; 2] = std::array::from_fn(|tape| {
+            prepare_c63_authenticated_whir_limb_pair(
+                C63AuthenticatedWhirLane::Systematic,
+                mask_range,
+                &mut whir_streams[tape],
+            )
+            .unwrap()
+        });
+        let u_prepared: [C63AuthenticatedWhirPreparedLimbPair; 2] = std::array::from_fn(|tape| {
+            prepare_c63_authenticated_whir_limb_pair(
+                C63AuthenticatedWhirLane::Sketch,
+                mask_range,
+                &mut whir_streams[tape],
+            )
+            .unwrap()
+        });
+
+        let mut initial_roots = [[0u8; 32]; 8];
+        let mut m_commits = Vec::with_capacity(4);
+        for tape in 0..2 {
+            for limb in 0..2 {
+                let lane_seed = transcript_binding
+                    .lane_seed(&rho, C63AuthenticatedWhirLane::Systematic, tape, limb)
+                    .unwrap();
+                let mut prover_challenger = challenger(lane_seed);
+                let mut rng = StdRng::seed_from_u64(0xC6_3100 + (tape * 2 + limb) as u64);
+                let fixed = m_prover.c62_fixed_base_encoding(&m_limbs[tape][limb]);
+                let (root, data) = m_prover.commit_c62_cached_fixed_base(
+                    m_limbs[tape][limb].clone(),
+                    &fixed,
+                    &mut prover_challenger,
+                    &mut rng,
+                );
+                initial_roots[tape * 2 + limb] = root.roots()[0];
+                m_commits.push((lane_seed, root, data, prover_challenger, rng));
+            }
+        }
+
+        let mut u_commits = Vec::with_capacity(4);
+        for tape in 0..2 {
+            for limb in 0..2 {
+                let lane_seed = transcript_binding
+                    .lane_seed(&rho, C63AuthenticatedWhirLane::Sketch, tape, limb)
+                    .unwrap();
+                let projected_mmcs = C63ProjectedMmcs::new(contexts[tape][limb].clone());
+                let projected_prover = HidingWhirProver::new(&u_config, &dft, &projected_mmcs);
+                let fixed =
+                    c63_project_encoded_sketch_tape_limb_reference(&paired_a, &rho, tape, limb)
+                        .unwrap();
+                c63_check_preencoded_link_reference(
+                    &fixed,
+                    &u_base_prover.c62_fixed_base_encoding(&u_limbs[tape][limb]),
+                )
+                .unwrap();
+                let (recommitted_predecessor_root, predecessor_data) =
+                    base_mmcs.commit_matrix(predecessor_a.clone());
+                let (recommitted_a_root, a_data) = base_mmcs.commit_matrix(successor_a.clone());
+                assert_eq!(recommitted_predecessor_root, predecessor_a_root);
+                assert_eq!(recommitted_a_root, a_root);
+                let mut prover_challenger = challenger(lane_seed);
+                let mut rng = StdRng::seed_from_u64(0xC6_3100 + (4 + tape * 2 + limb) as u64);
+                let (root, mut data) = projected_prover.commit_c62_cached_fixed_base(
+                    u_limbs[tape][limb].clone(),
+                    &fixed,
+                    &mut prover_challenger,
+                    &mut rng,
+                );
+                projected_mmcs
+                    .attach_encoded_sketch_a(
+                        &mut data.merkle,
+                        Some((&predecessor_a_root, predecessor_data)),
+                        &a_root,
+                        a_data,
+                    )
+                    .unwrap();
+                initial_roots[4 + tape * 2 + limb] = root.roots()[0];
+                u_commits.push((lane_seed, root, data, prover_challenger, rng, projected_mmcs));
+            }
+        }
+
+        let query_seed = transcript_binding.query_seed(&rho, &initial_roots).unwrap();
+        let mut spot_challenger = challenger(transcript_binding.spot_seed(query_seed).unwrap());
+        let spot_rows =
+            c63_sample_systematic_query_rows(&mut spot_challenger, INPUT_LOG2, 3).unwrap();
+        let (opened_root, correction_opening) = c63_open_correction_rows_reference(
+            profile_digest,
+            2,
+            1,
+            &[predecessor_rows, correction_rows.clone()],
+            &spot_rows,
         )
         .unwrap();
-        let spot_rows = [19, 701, 3_500];
-        let (opened_root, correction_opening) =
-            c63_open_correction_rows_reference(profile_digest, 1, &[correction_rows], &spot_rows)
-                .unwrap();
         assert_eq!(opened_root, correction_root);
-        let correction_artifact = correction_opening.encode(1, &spot_rows).unwrap();
-        let spots = c63_verify_correction_rows_reference(
+        let correction_artifact = correction_opening.encode(1, 2, &spot_rows).unwrap();
+        let (spots, successor_frontier) = c63_verify_correction_rows_by_tape_reference(
+            predecessor_correction_root,
             correction_root,
+            &predecessor_frontier,
             profile_digest,
+            2,
             1,
-            1,
+            2,
             &spot_rows,
             &rho,
             &correction_opening,
         )
-        .unwrap()
-        .into_iter()
-        .map(|(row, value)| C63SystematicSpot { row, value })
-        .collect::<Vec<_>>();
-        assert!(spots.iter().all(|spot| spot.value == m[spot.row as usize]));
-        let sparse_seeds = [[0x91; 32], [0x92; 32]];
-        let sparse_deltas =
-            [Fp2::new(Fp::new(97), Fp::new(101)), Fp2::new(Fp::new(103), Fp::new(107))];
-        let sparse_transcript_seed = [0x93; 32];
+        .unwrap();
+        let spots = spots
+            .into_iter()
+            .map(|(row, values)| C63TapeSystematicSpot { row, values })
+            .collect::<Vec<_>>();
+        assert!(spots.iter().all(|spot| {
+            (0..2).all(|tape| spot.values[tape] == messages[tape][spot.row as usize])
+        }));
+        let sparse_transcript_seed = transcript_binding.sparse_seed(query_seed).unwrap();
+        let basis = Fp2::new(Fp::ZERO, Fp::ONE);
+        let live_cells =
+            expected_c6_cache_append_cells(C6PersistentCacheLayout::production(), 1, 2).unwrap();
+        let mut authenticated_corrections = Vec::with_capacity(live_cells.len());
+        let mut authenticated_correction_keys = Vec::with_capacity(live_cells.len());
+        for (ordinal, cell) in live_cells.into_iter().enumerate() {
+            let correction = std::array::from_fn(|tape| {
+                let index = c63_bolt_correction_index(cell, tape as u8).unwrap();
+                correction_rows[index.row as usize & (C63_BOLT_ROWS_PER_POSITION - 1)].corrections
+                    [usize::from(index.column)]
+            });
+            let masks: [Fp; 2] =
+                std::array::from_fn(|tape| Fp::new(179 + ordinal as u64 * 11 + tape as u64 * 13));
+            let tags: [Fp2; 2] = std::array::from_fn(|tape| {
+                Fp2::new(
+                    Fp::new(181 + ordinal as u64 * 17 + tape as u64),
+                    Fp::new(191 + ordinal as u64 * 19 + tape as u64),
+                )
+            });
+            let source = std::array::from_fn(|tape| {
+                ProverAuthed::new(Fp2::from_base(masks[tape] + correction[tape]), tags[tape])
+            });
+            let mask = std::array::from_fn(|tape| {
+                ProverAuthed::new(Fp2::from_base(masks[tape]), tags[tape])
+            });
+            authenticated_corrections.push(C63AuthenticatedCorrectionProverCell {
+                cell,
+                correction,
+                source,
+                mask,
+            });
+            authenticated_correction_keys.push(C63AuthenticatedCorrectionVerifierCell {
+                cell,
+                source_keys: std::array::from_fn(|tape| {
+                    VerifierKey::new(tags[tape] + sparse_deltas[tape] * source[tape].x)
+                }),
+                mask_keys: std::array::from_fn(|tape| {
+                    VerifierKey::new(tags[tape] + sparse_deltas[tape] * mask[tape].x)
+                }),
+            });
+        }
+        let u_limb_tags: [[Fp2; 2]; 2] = std::array::from_fn(|tape| {
+            std::array::from_fn(|limb| {
+                Fp2::new(
+                    Fp::new(131 + (tape * 2 + limb) as u64),
+                    Fp::new(149 + (tape * 2 + limb) as u64),
+                )
+            })
+        });
+        let m_limb_tags = [[Fp2::ZERO; 2]; 2];
+        let u_point = Point::new(
+            statement.output_point().iter().rev().copied().map(c61_p3_fp2_from_volta).collect(),
+        );
+        let u_limb_values: [[Fp2; 2]; 2] = std::array::from_fn(|tape| {
+            std::array::from_fn(|limb| {
+                c61_volta_fp2_from_p3(u_limbs[tape][limb].eval_base(&u_point))
+            })
+        });
+        let u_claims = std::array::from_fn(|tape| {
+            ProverAuthed::new(u_limb_values[tape][0], u_limb_tags[tape][0])
+                .add(ProverAuthed::new(u_limb_values[tape][1], u_limb_tags[tape][1]).scale(basis))
+        });
+        let u_opening_keys: [VerifierKey; 2] = std::array::from_fn(|tape| {
+            VerifierKey::new(u_limb_tags[tape][0] + sparse_deltas[tape] * u_limb_values[tape][0])
+                .add(
+                    VerifierKey::new(
+                        u_limb_tags[tape][1] + sparse_deltas[tape] * u_limb_values[tape][1],
+                    )
+                    .scale(basis),
+                )
+        });
         let mut sparse_streams = sparse_seeds.map(CorrelationStream::new);
         let mut sparse_prover_transcript = Transcript::new(sparse_transcript_seed);
-        let sparse_proof = prove_c63_sparse_h_closure_with_spots_reference(
+        let sparse_proof = prove_c63_sparse_h_tape_closure_with_spots_reference(
             &h,
-            &m,
-            &u,
+            [&messages[0], &messages[1]],
+            [&sketches[0], &sketches[1]],
+            u_claims,
             &statement,
             &spots,
             &mut sparse_streams,
             &mut sparse_prover_transcript,
+            |tape, point| {
+                c63_authenticated_correction_functional_prover_reference(
+                    1,
+                    2,
+                    &authenticated_corrections,
+                    &rho,
+                    point,
+                )
+                .map(|openings| openings[tape][0].add(openings[tape][1].scale(basis)))
+                .map_err(C63SparseHClosureError::new)
+            },
         )
         .unwrap();
-        let mut compatibility_contexts =
+        let mut sparse_contexts =
             std::array::from_fn(|tape| VerifierCtx::new(sparse_seeds[tape], sparse_deltas[tape]));
-        let mut compatibility_transcript = Transcript::new(sparse_transcript_seed);
-        let compatibility = verify_c63_sparse_h_closure_with_spots_reference(
+        let mut sparse_transcript = Transcript::new(sparse_transcript_seed);
+        let sparse_pending = begin_verify_c63_sparse_h_tape_closure_reference(
             &h,
-            &m,
-            &u,
             &statement,
             &spots,
             &sparse_proof,
-            &mut compatibility_contexts,
-            &mut compatibility_transcript,
+            &mut sparse_contexts,
+            &mut sparse_transcript,
+        )
+        .unwrap();
+        let linked_m_limb_keys = c63_authenticated_correction_functional_verifier_reference(
+            1,
+            2,
+            &authenticated_correction_keys,
+            sparse_deltas,
+            &rho,
+            sparse_pending.sumcheck_point(),
         )
         .unwrap();
 
         let m_point = Point::new(
-            compatibility.sumcheck_point.iter().rev().copied().map(c61_p3_fp2_from_volta).collect(),
-        );
-        let u_point = Point::new(
-            statement.output_point().iter().rev().copied().map(c61_p3_fp2_from_volta).collect(),
+            sparse_pending
+                .sumcheck_point()
+                .iter()
+                .rev()
+                .copied()
+                .map(c61_p3_fp2_from_volta)
+                .collect(),
         );
 
-        let mut m_openings = [Fp2::ZERO; 2];
-        let mut m_artifacts = [Vec::new(), Vec::new()];
-        let m_config = config_for::<C63SeparatedSizingChallenger>(INPUT_LOG2);
-        let m_prover = HidingWhirProver::new(&m_config, &dft, &base_mmcs);
-        for limb in 0..2 {
-            let lane = limb as u8;
-            let lane_seed = [0xA0 + lane; 32];
-            let pcg_seed = [0xB0 + lane; 32];
-            let delta = Fp2::new(Fp::new(109 + u64::from(lane)), Fp::new(127 + u64::from(lane)));
-            let target_tag =
-                Fp2::new(Fp::new(131 + u64::from(lane)), Fp::new(149 + u64::from(lane)));
-            let terminal_lane = C63AuthenticatedWhirLane::Systematic;
-            let mask_range = C63AuthenticatedWhirMaskRange { stage: 70, slot: 0, range_start: 0 };
-            let mut correlations = CorrelationStream::new(pcg_seed);
-            let prepared =
-                prepare_c63_authenticated_whir_mask(terminal_lane, mask_range, &mut correlations)
-                    .unwrap();
-            let mut prover_challenger = challenger(lane_seed);
-            let mut rng = StdRng::seed_from_u64(0xC6_3100 + limb as u64);
-            let fixed = m_prover.c62_fixed_base_encoding(&m_limbs[limb]);
-            let (root, data) = m_prover.commit_c62_cached_fixed_base(
-                m_limbs[limb].clone(),
-                &fixed,
-                &mut prover_challenger,
-                &mut rng,
-            );
-            let evaluation = m_limbs[limb].eval_base(&m_point);
-            prover_challenger.observe_algebra_slice(m_point.as_slice());
-            let output = m_prover.prove_claimless(
-                data,
-                &[(m_point.clone(), evaluation)],
-                c61_p3_fp2_from_volta(prepared.value()),
-                &mut prover_challenger,
-                &mut rng,
-            );
-            let encoded = encode_c63_whir_ordinary_artifact_with_config(
-                INPUT_LOG2,
-                &m_config,
-                &root,
-                &output.proof,
-            )
-            .unwrap();
-            m_artifacts[limb] = encoded.clone();
-            let (decoded_root, decoded_proof) =
-                decode_c63_whir_ordinary_artifact_with_config(&encoded, INPUT_LOG2, &m_config)
-                    .unwrap();
-            assert_eq!(decoded_root, root);
-            let closure =
-                replay_claimless(&decoded_root, &decoded_proof, &m_point, lane_seed).unwrap();
-            let target_value = c61_volta_fp2_from_p3(evaluation);
-            close_authenticated_lane(
-                prepared,
-                &output,
-                &closure,
-                target_value,
-                target_tag,
-                pcg_seed,
-                delta,
-                terminal_lane,
-                mask_range,
-                [0xC0 + lane; 32],
-            )
-            .unwrap();
-            m_openings[limb] = target_value;
+        let mut m_artifacts: [[Vec<u8>; 2]; 2] =
+            std::array::from_fn(|_| std::array::from_fn(|_| Vec::new()));
+        let mut m_close_inputs = Vec::with_capacity(2);
+        let mut m_commit_iter = m_commits.into_iter();
+        for (tape, prepared) in m_prepared.into_iter().enumerate() {
+            let masks = prepared.values();
+            let mut outputs = Vec::with_capacity(2);
+            let mut closures = Vec::with_capacity(2);
+            let mut target_values = [Fp2::ZERO; 2];
+            for limb in 0..2 {
+                let (lane_seed, root, data, mut prover_challenger, mut rng) =
+                    m_commit_iter.next().unwrap();
+                let evaluation = m_limbs[tape][limb].eval_base(&m_point);
+                prover_challenger.observe_algebra_slice(m_point.as_slice());
+                let output = m_prover.prove_claimless(
+                    data,
+                    &[(m_point.clone(), evaluation)],
+                    c61_p3_fp2_from_volta(masks[limb]),
+                    &mut prover_challenger,
+                    &mut rng,
+                );
+                let encoded = encode_c63_whir_ordinary_artifact_with_config(
+                    INPUT_LOG2,
+                    &m_config,
+                    &root,
+                    &output.proof,
+                )
+                .unwrap();
+                closures.push(
+                    verify_c63_whir_ordinary_artifact_with_config_at_point(
+                        &encoded,
+                        INPUT_LOG2,
+                        &m_config,
+                        sparse_pending.sumcheck_point(),
+                        lane_seed,
+                    )
+                    .unwrap(),
+                );
+                m_artifacts[tape][limb] = encoded;
+                target_values[limb] = c61_volta_fp2_from_p3(evaluation);
+                outputs.push(output);
+            }
+            m_close_inputs.push((prepared, outputs, closures, target_values));
         }
+        assert!(m_commit_iter.next().is_none());
 
-        let mut u_openings = [Fp2::ZERO; 2];
-        let mut u_artifacts = [Vec::new(), Vec::new()];
-        for (limb, context) in contexts.into_iter().enumerate() {
-            let lane = limb as u8 + 2;
-            let lane_seed = [0xA0 + lane; 32];
-            let pcg_seed = [0xB0 + lane; 32];
-            let delta = Fp2::new(Fp::new(109 + u64::from(lane)), Fp::new(127 + u64::from(lane)));
-            let target_tag =
-                Fp2::new(Fp::new(131 + u64::from(lane)), Fp::new(149 + u64::from(lane)));
-            let terminal_lane = C63AuthenticatedWhirLane::Sketch;
-            let mask_range = C63AuthenticatedWhirMaskRange { stage: 70, slot: 0, range_start: 0 };
-            let mut correlations = CorrelationStream::new(pcg_seed);
-            let prepared =
-                prepare_c63_authenticated_whir_mask(terminal_lane, mask_range, &mut correlations)
-                    .unwrap();
-            let projected_mmcs = C63ProjectedMmcs::new(context);
-            let link = projected_mmcs.link();
-            let projected_prover = HidingWhirProver::new(&u_config, &dft, &projected_mmcs);
-            let fixed = c63_project_encoded_sketch_limb_reference(&paired_a, &rho, limb).unwrap();
-            c63_check_preencoded_link_reference(
-                &fixed,
-                &u_base_prover.c62_fixed_base_encoding(&u_limbs[limb]),
-            )
-            .unwrap();
-            let (recommitted_a_root, a_data) = base_mmcs.commit_matrix(paired_a.clone());
-            assert_eq!(recommitted_a_root, a_root);
-            let mut prover_challenger = challenger(lane_seed);
-            let mut rng = StdRng::seed_from_u64(0xC6_3100 + lane as u64);
-            let (root, mut data) = projected_prover.commit_c62_cached_fixed_base(
-                u_limbs[limb].clone(),
-                &fixed,
-                &mut prover_challenger,
-                &mut rng,
-            );
-            projected_mmcs.attach_encoded_sketch_a(&mut data.merkle, &a_root, a_data).unwrap();
-            let evaluation = u_limbs[limb].eval_base(&u_point);
-            prover_challenger.observe_algebra_slice(u_point.as_slice());
-            let output = projected_prover.prove_claimless_with_initial_link(
-                data,
-                &[(u_point.clone(), evaluation)],
-                c61_p3_fp2_from_volta(prepared.value()),
-                &link,
-                &mut prover_challenger,
-                &mut rng,
-            );
-            let encoded = encode_c63_whir_projected_artifact_with_config(
-                OUTPUT_LOG2,
-                &u_config,
-                &root,
-                &output.proof,
-            )
-            .unwrap();
-            u_artifacts[limb] = encoded.clone();
-            let (decoded_root, decoded_proof) =
-                decode_c63_whir_projected_artifact_with_config(&encoded, OUTPUT_LOG2, &u_config)
-                    .unwrap();
-            assert_eq!(decoded_root, root);
-            let closure = replay_bound_projected_claimless(
-                &projected_mmcs,
-                &link,
-                &decoded_root,
-                &decoded_proof,
-                &u_point,
-                lane_seed,
-            )
-            .unwrap();
-            let target_value = c61_volta_fp2_from_p3(evaluation);
-            close_authenticated_lane(
-                prepared,
-                &output,
-                &closure,
-                target_value,
-                target_tag,
-                pcg_seed,
-                delta,
-                terminal_lane,
-                mask_range,
-                [0xC0 + lane; 32],
-            )
-            .unwrap();
-            u_openings[limb] = target_value;
+        let mut u_artifacts: [[Vec<u8>; 2]; 2] =
+            std::array::from_fn(|_| std::array::from_fn(|_| Vec::new()));
+        let mut u_close_inputs = Vec::with_capacity(2);
+        let mut u_commit_iter = u_commits.into_iter();
+        for (tape, prepared) in u_prepared.into_iter().enumerate() {
+            let masks = prepared.values();
+            let mut outputs = Vec::with_capacity(2);
+            let mut closures = Vec::with_capacity(2);
+            let mut target_values = [Fp2::ZERO; 2];
+            for limb in 0..2 {
+                let (lane_seed, root, data, mut prover_challenger, mut rng, projected_mmcs) =
+                    u_commit_iter.next().unwrap();
+                let link = projected_mmcs.link();
+                let projected_prover = HidingWhirProver::new(&u_config, &dft, &projected_mmcs);
+                let evaluation = u_limbs[tape][limb].eval_base(&u_point);
+                prover_challenger.observe_algebra_slice(u_point.as_slice());
+                let output = projected_prover.prove_claimless_with_initial_link(
+                    data,
+                    &[(u_point.clone(), evaluation)],
+                    c61_p3_fp2_from_volta(masks[limb]),
+                    &link,
+                    &mut prover_challenger,
+                    &mut rng,
+                );
+                let encoded = encode_c63_whir_projected_artifact_with_config(
+                    OUTPUT_LOG2,
+                    &u_config,
+                    &root,
+                    &output.proof,
+                )
+                .unwrap();
+                closures.push(
+                    verify_c63_whir_projected_artifact_with_config_at_point(
+                        &encoded,
+                        OUTPUT_LOG2,
+                        &u_config,
+                        statement.output_point(),
+                        contexts[tape][limb].clone(),
+                        lane_seed,
+                    )
+                    .unwrap(),
+                );
+                u_artifacts[tape][limb] = encoded;
+                target_values[limb] = c61_volta_fp2_from_p3(evaluation);
+                outputs.push(output);
+            }
+            u_close_inputs.push((prepared, outputs, closures, target_values));
         }
+        assert!(u_commit_iter.next().is_none());
 
         let public_argument = crate::c63_public_argument::C63PublicArgument::new_with_configs(
-            [0xd1; 32],
+            statement_digest,
             profile_digest,
+            predecessor_correction_root,
+            predecessor_a_root.roots()[0],
             correction_root,
             a_root.roots()[0],
+            2,
             1,
-            1,
+            2,
             &spot_rows,
             correction_artifact,
             m_artifacts,
@@ -3395,6 +4980,18 @@ mod tests {
         )
         .unwrap();
         let public_bytes = public_argument.encode().unwrap();
+        assert_eq!(
+            public_bytes.len(),
+            crate::c63_public_argument::C63_PUBLIC_ARGUMENT_FRAMING_BYTES
+                + public_argument.correction_opening().len()
+                + public_argument.d22_whir().iter().flatten().map(Vec::len).sum::<usize>()
+                + public_argument
+                    .d19_projected_whir()
+                    .iter()
+                    .flatten()
+                    .map(Vec::len)
+                    .sum::<usize>()
+        );
         let decoded_public = crate::c63_public_argument::C63PublicArgument::decode_with_configs(
             &public_bytes,
             &spot_rows,
@@ -3405,10 +5002,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(decoded_public, public_argument);
-        let mut public_mutation = public_bytes;
-        public_mutation[180] ^= 1;
+        let mut changed_public = public_bytes.clone();
+        changed_public[180] ^= 1;
         assert!(crate::c63_public_argument::C63PublicArgument::decode_with_configs(
-            &public_mutation,
+            &changed_public,
             &spot_rows,
             INPUT_LOG2,
             &m_config,
@@ -3417,43 +5014,154 @@ mod tests {
         )
         .is_err());
 
-        let basis = Fp2::new(Fp::ZERO, Fp::ONE);
-        let m_opening = m_openings[0] + basis * m_openings[1];
-        let u_opening = u_openings[0] + basis * u_openings[1];
-        assert_eq!(m_opening, volta_proto::mle::eval_mle(&m, &compatibility.sumcheck_point));
-        assert_eq!(u_opening, volta_proto::mle::eval_mle(&u, statement.output_point()));
+        let sparse_bytes = sparse_proof.encode().unwrap();
+        let terminal_contexts =
+            transcript_binding.terminal_contexts(query_seed, &public_bytes, &sparse_bytes).unwrap();
+        let mut terminal_proofs = [C61AuthenticatedWhirBaseProof::decode(&[0; 16]).unwrap(); 4];
+        let mut m_target_keys = [VerifierKey::ZERO; 2];
+        for (tape, (prepared, outputs, closures, target_values)) in
+            m_close_inputs.into_iter().enumerate()
+        {
+            let (_, key, proof) = close_authenticated_limb_pair(
+                prepared,
+                [&outputs[0], &outputs[1]],
+                [&closures[0], &closures[1]],
+                target_values,
+                m_limb_tags[tape],
+                &mut sparse_contexts[tape],
+                C63AuthenticatedWhirLane::Systematic,
+                mask_range,
+                terminal_contexts[0][tape],
+            )
+            .unwrap();
+            terminal_proofs[tape] = proof;
+            m_target_keys[tape] =
+                linked_m_limb_keys[tape][0].add(linked_m_limb_keys[tape][1].scale(basis));
+            assert_eq!(key, m_target_keys[tape]);
+        }
+        let mut u_target_keys = [VerifierKey::ZERO; 2];
+        for (tape, (prepared, outputs, closures, target_values)) in
+            u_close_inputs.into_iter().enumerate()
+        {
+            let (_, key, proof) = close_authenticated_limb_pair(
+                prepared,
+                [&outputs[0], &outputs[1]],
+                [&closures[0], &closures[1]],
+                target_values,
+                u_limb_tags[tape],
+                &mut sparse_contexts[tape],
+                C63AuthenticatedWhirLane::Sketch,
+                mask_range,
+                terminal_contexts[1][tape],
+            )
+            .unwrap();
+            terminal_proofs[2 + tape] = proof;
+            u_target_keys[tape] = key;
+            assert_eq!(u_target_keys[tape], u_opening_keys[tape]);
+            assert_eq!(whir_streams[tape].counters.full_corrs, 4);
+        }
 
-        let mut opening_contexts =
+        let derived_u_target_keys = sparse_pending.derive_u_opening_keys(m_target_keys).unwrap();
+        assert_eq!(derived_u_target_keys, u_target_keys);
+        let sparse_audit = sparse_pending.finish(derived_u_target_keys, m_target_keys).unwrap();
+        assert_eq!(
+            sparse_audit.transcript_digest,
+            sparse_prover_transcript.canonical_binding_digest().unwrap()
+        );
+
+        let mut joined_contexts =
             std::array::from_fn(|tape| VerifierCtx::new(sparse_seeds[tape], sparse_deltas[tape]));
-        let mut opening_transcript = Transcript::new(sparse_transcript_seed);
-        let opening_audit = verify_c63_sparse_h_closure_from_whir_openings_reference(
+        let source_link =
+            C63ResidualSourceFunctionalsVerifiedLink::for_test([0x63; 32], m_target_keys);
+        let joined = verify_c63_sketch_suffix_with_configs(
+            &public_bytes,
+            attempt,
             &h,
-            u_opening,
-            &statement,
-            &spots,
+            statement.output_point(),
             &sparse_proof,
-            &mut opening_contexts,
-            &mut opening_transcript,
-            |point| {
-                assert_eq!(point, compatibility.sumcheck_point);
-                Ok(m_opening)
-            },
+            &predecessor_state,
+            source_link,
+            terminal_proofs,
+            mask_range,
+            &mut joined_contexts,
+            3,
+            INPUT_LOG2,
+            &m_config,
+            OUTPUT_LOG2,
+            &u_config,
         )
         .unwrap();
-        assert_eq!(opening_audit, compatibility);
+        assert_eq!(joined.0, sparse_audit);
+        assert_eq!(joined.1.accepted_len(), successor_frontier.accepted_len());
+
+        let mut changed_terminal_proofs = terminal_proofs;
+        let mut changed_tag = changed_terminal_proofs[3].encode();
+        changed_tag[0] ^= 1;
+        changed_terminal_proofs[3] = C61AuthenticatedWhirBaseProof::decode(&changed_tag).unwrap();
+        let mut changed_contexts =
+            std::array::from_fn(|tape| VerifierCtx::new(sparse_seeds[tape], sparse_deltas[tape]));
+        assert!(verify_c63_sketch_suffix_with_configs(
+            &public_bytes,
+            attempt,
+            &h,
+            statement.output_point(),
+            &sparse_proof,
+            &predecessor_state,
+            source_link,
+            changed_terminal_proofs,
+            mask_range,
+            &mut changed_contexts,
+            3,
+            INPUT_LOG2,
+            &m_config,
+            OUTPUT_LOG2,
+            &u_config,
+        )
+        .is_err());
+
+        let mut changed_sparse_bytes = sparse_bytes;
+        let changed_sparse_tag = changed_sparse_bytes.len() - 32;
+        changed_sparse_bytes[changed_sparse_tag] ^= 1;
+        let changed_sparse = C63SparseHClosureProof::decode(&changed_sparse_bytes).unwrap();
+        let mut changed_sparse_contexts =
+            std::array::from_fn(|tape| VerifierCtx::new(sparse_seeds[tape], sparse_deltas[tape]));
+        assert!(verify_c63_sketch_suffix_with_configs(
+            &public_bytes,
+            attempt,
+            &h,
+            statement.output_point(),
+            &changed_sparse,
+            &predecessor_state,
+            source_link,
+            terminal_proofs,
+            mask_range,
+            &mut changed_sparse_contexts,
+            3,
+            INPUT_LOG2,
+            &m_config,
+            OUTPUT_LOG2,
+            &u_config,
+        )
+        .is_err());
 
         let mut bad_contexts =
             std::array::from_fn(|tape| VerifierCtx::new(sparse_seeds[tape], sparse_deltas[tape]));
         let mut bad_transcript = Transcript::new(sparse_transcript_seed);
-        assert!(verify_c63_sparse_h_closure_from_whir_openings_reference(
+        assert!(verify_c63_sparse_h_tape_closure_from_whir_openings_reference(
             &h,
-            u_opening,
+            u_target_keys,
             &statement,
             &spots,
             &sparse_proof,
             &mut bad_contexts,
             &mut bad_transcript,
-            |_| Ok(m_opening + Fp2::ONE),
+            |tape, _| {
+                Ok(if tape == 0 {
+                    m_target_keys[0].add(VerifierKey::from_public(Fp2::ONE, sparse_deltas[0]))
+                } else {
+                    m_target_keys[1]
+                })
+            },
         )
         .is_err());
     }

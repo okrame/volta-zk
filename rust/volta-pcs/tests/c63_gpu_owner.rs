@@ -276,18 +276,18 @@ fn production_owner_matches_cpu_for_one_complete_token() {
         })
         .collect::<Vec<_>>();
     let (_, expected_opening) =
-        c63_open_correction_rows_reference(profile_digest, 1, &[expected_rows], &queried_rows)
+        c63_open_correction_rows_reference(profile_digest, 1, 0, &[expected_rows], &queried_rows)
             .unwrap();
     let resident_opening = state.open_correction_rows(&queried_rows).unwrap();
     assert_eq!(
-        resident_opening.encode(1, &queried_rows).unwrap(),
-        expected_opening.encode(1, &queried_rows).unwrap(),
+        resident_opening.encode(0, 1, &queried_rows).unwrap(),
+        expected_opening.encode(0, 1, &queried_rows).unwrap(),
     );
 
     let rho: [Fp2; C63_BOLT_COLUMNS] = std::array::from_fn(|column| {
         Fp2::new(Fp::new(11 + column as u64 * 13), Fp::new(17 + column as u64 * 19))
     });
-    let mut projected = state.project_messages(rho).unwrap();
+    let mut projected = state.project_transition_messages(None, rho).unwrap();
     let projected_raw: [[Vec<u64>; 2]; 3] = std::array::from_fn(|family| {
         std::array::from_fn(|limb| {
             let buffer = match family {
@@ -303,46 +303,36 @@ fn production_owner_matches_cpu_for_one_complete_token() {
     });
     drop(projected);
     for limb in 0..2 {
-        assert!(projected_raw[0][limb]
-            .par_iter()
-            .enumerate()
-            .all(|(row, &got)| {
-                let position = row / C63_BOLT_ROWS_PER_POSITION;
-                let local = row % C63_BOLT_ROWS_PER_POSITION;
-                let expected = if position == 0 && local < C63_BOLT_LIVE_ROWS_PER_POSITION {
-                    (0..C63_BOLT_COLUMNS).fold(Fp::ZERO, |sum, column| {
-                        let coefficient = if limb == 0 { rho[column].c0 } else { rho[column].c1 };
-                        sum + expected_corrections[local * C63_BOLT_COLUMNS + column] * coefficient
-                    })
-                } else {
-                    Fp::ZERO
-                };
-                got == expected.value()
-            }));
-        assert!(projected_raw[1][limb]
-            .par_iter()
-            .enumerate()
-            .all(|(row, &got)| {
-                let expected = (0..C63_BOLT_COLUMNS).fold(Fp::ZERO, |sum, column| {
+        assert!(projected_raw[0][limb].par_iter().enumerate().all(|(row, &got)| {
+            let position = row / C63_BOLT_ROWS_PER_POSITION;
+            let local = row % C63_BOLT_ROWS_PER_POSITION;
+            let expected = if position == 0 && local < C63_BOLT_LIVE_ROWS_PER_POSITION {
+                (0..C63_BOLT_COLUMNS).fold(Fp::ZERO, |sum, column| {
                     let coefficient = if limb == 0 { rho[column].c0 } else { rho[column].c1 };
-                    sum + expected_sketch[column * C63_BOLT_SKETCH_ROWS + row] * coefficient
-                });
-                got == expected.value()
-            }));
-        assert!(projected_raw[2][limb]
-            .par_iter()
-            .enumerate()
-            .all(|(output_row, &got)| {
-                let fold = output_row / C63_BOLT_SKETCH_ROWS;
-                let row = output_row % C63_BOLT_SKETCH_ROWS;
-                let expected = (0..C63_BOLT_COLUMNS).fold(Fp::ZERO, |sum, column| {
-                    let coefficient = if limb == 0 { rho[column].c0 } else { rho[column].c1 };
-                    sum + expected_encoded
-                        [(2 * column + fold) * C63_BOLT_SKETCH_ROWS + row]
-                        * coefficient
-                });
-                got == expected.value()
-            }));
+                    sum + expected_corrections[local * C63_BOLT_COLUMNS + column] * coefficient
+                })
+            } else {
+                Fp::ZERO
+            };
+            got == expected.value()
+        }));
+        assert!(projected_raw[1][limb].par_iter().enumerate().all(|(row, &got)| {
+            let expected = (0..C63_BOLT_COLUMNS).fold(Fp::ZERO, |sum, column| {
+                let coefficient = if limb == 0 { rho[column].c0 } else { rho[column].c1 };
+                sum + expected_sketch[column * C63_BOLT_SKETCH_ROWS + row] * coefficient
+            });
+            got == expected.value()
+        }));
+        assert!(projected_raw[2][limb].par_iter().enumerate().all(|(output_row, &got)| {
+            let fold = output_row / C63_BOLT_SKETCH_ROWS;
+            let row = output_row % C63_BOLT_SKETCH_ROWS;
+            let expected = (0..C63_BOLT_COLUMNS).fold(Fp::ZERO, |sum, column| {
+                let coefficient = if limb == 0 { rho[column].c0 } else { rho[column].c1 };
+                sum + expected_encoded[(2 * column + fold) * C63_BOLT_SKETCH_ROWS + row]
+                    * coefficient
+            });
+            got == expected.value()
+        }));
     }
 
     let accepted_resident_bytes =
@@ -431,6 +421,58 @@ fn production_owner_matches_cpu_for_one_complete_token() {
     assert_ne!(successor.encoded_sketch_root(), state.encoded_sketch_root());
     assert_eq!(successor.epoch(), 2);
     assert_eq!(successor.accepted_len(), 2);
+
+    let mut transition = successor.project_transition_messages(Some(&state), rho).unwrap();
+    let transition_raw: [[Vec<u64>; 2]; 3] = std::array::from_fn(|family| {
+        std::array::from_fn(|limb| {
+            let buffer = match family {
+                0 => transition.take_systematic(limb).unwrap(),
+                1 => transition.take_sketch(limb).unwrap(),
+                _ => transition.take_encoded_sketch(limb).unwrap(),
+            };
+            let mut gpu = backend.lock().unwrap();
+            let values = gpu.download_device(&buffer, 0, buffer.len()).unwrap();
+            gpu.free_device(buffer).unwrap();
+            values
+        })
+    });
+    drop(transition);
+    for limb in 0..2 {
+        assert!(transition_raw[0][limb].par_iter().enumerate().all(|(row, &got)| {
+            let position = row / C63_BOLT_ROWS_PER_POSITION;
+            let local = row % C63_BOLT_ROWS_PER_POSITION;
+            let expected = if position == 1 && local < C63_BOLT_LIVE_ROWS_PER_POSITION {
+                (0..C63_BOLT_COLUMNS).fold(Fp::ZERO, |sum, column| {
+                    let coefficient = if limb == 0 { rho[column].c0 } else { rho[column].c1 };
+                    sum + expected_successor_corrections
+                        [(C63_BOLT_LIVE_ROWS_PER_POSITION + local) * C63_BOLT_COLUMNS + column]
+                        * coefficient
+                })
+            } else {
+                Fp::ZERO
+            };
+            got == expected.value()
+        }));
+        assert!(transition_raw[1][limb].par_iter().enumerate().all(|(row, &got)| {
+            let expected = (0..C63_BOLT_COLUMNS).fold(Fp::ZERO, |sum, column| {
+                let coefficient = if limb == 0 { rho[column].c0 } else { rho[column].c1 };
+                sum + (expected_successor_sketch[column * C63_BOLT_SKETCH_ROWS + row]
+                    - expected_sketch[column * C63_BOLT_SKETCH_ROWS + row])
+                    * coefficient
+            });
+            got == expected.value()
+        }));
+        assert!(transition_raw[2][limb].par_iter().enumerate().all(|(output_row, &got)| {
+            let fold = output_row / C63_BOLT_SKETCH_ROWS;
+            let row = output_row % C63_BOLT_SKETCH_ROWS;
+            let expected = (0..C63_BOLT_COLUMNS).fold(Fp::ZERO, |sum, column| {
+                let coefficient = if limb == 0 { rho[column].c0 } else { rho[column].c1 };
+                let index = (2 * column + fold) * C63_BOLT_SKETCH_ROWS + row;
+                sum + (expected_successor_encoded[index] - expected_encoded[index]) * coefficient
+            });
+            got == expected.value()
+        }));
+    }
     drop(successor);
     assert_eq!(
         backend.lock().unwrap().device_memory_breakdown().unwrap().resident_bytes,

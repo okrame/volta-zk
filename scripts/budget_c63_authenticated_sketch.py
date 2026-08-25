@@ -117,11 +117,13 @@ C63_105_POW_EXPECTED_TRIALS = C63_PROFILED_POW_EXPECTED_TRIALS
 C63_105_POW_FORMAL_CAP = 1 << 25
 C63_SPARSE_H_CLOSURE_BYTES = 1_496
 C63_WHIR_TERMINAL_TAG_BYTES = 4 * FP2_BYTES
-C63_CORRECTION_ARTIFACT_MAX_BYTES = 2_037_262
-C63_PUBLIC_ARGUMENT_FRAMING_BYTES = 384
+C63_CORRECTION_ARTIFACT_MAX_BYTES = 2_042_062
+C63_PUBLIC_ARGUMENT_FRAMING_BYTES = 608
 C63_REDUCED_WRAPPER_PCS_BYTES = 2_668_730
 C63_REDUCED_OUTPUT_LINK_BYTES = 2_672_044
-C63_RESPONSE_ENVELOPE_BYTES = 2_703_780
+C63_SOURCE_FUNCTIONAL_CORRECTION_BYTES = 64
+C63_SOURCE_FUNCTIONAL_CORRELATIONS_PER_TAPE = 2
+C63_RESPONSE_ENVELOPE_BYTES = 2_703_844
 C63_SPARSE_H_CLOSURE_CORRELATIONS_PER_TAPE = 44
 C63_SPARSE_H_CLOSURE_ERROR_NUMERATOR = 128
 C63_SYSTEMATIC_SPOT_FUSION_QUERIES = 4_420
@@ -130,6 +132,8 @@ C63_MERKLE_MULTIPROOF_COUNT_BYTES = 4
 C63_PAIRED_A_QUERIES = 245
 C63_INDEPENDENT_LIMB_A_QUERIES = 490
 C63_INDEPENDENT_A_PROOFS = C63_MAC_TAPES * C63_BASE_LIMBS_PER_EXTENSION
+C63_TRANSITION_A_PROOFS = 2 * C63_INDEPENDENT_A_PROOFS
+C63_TRANSITION_A_FLAGS_BYTES = C63_INDEPENDENT_A_PROOFS
 C63_SPARSE_SETUP_DESCRIPTOR_BYTES = 80
 C63_SPARSE_SETUP_SOCKET_LOG2 = 26
 C63_SPARSE_SETUP_SOCKET_COUNT = 1 << C63_SPARSE_SETUP_SOCKET_LOG2
@@ -141,6 +145,14 @@ C63_SPARSE_SETUP_RESIDENT_BYTES = (
 C63_FIXED_MODEL_CACHE_BYTES = 12 * (1 << 30)
 # Includes one complete D23 Fp2 lane/codeword and its proof workspace.
 C63_D23_LANE_GUARD_BYTES = 5_529_141_216
+# All eight initial roots precede the sparse challenge.  The resident driver
+# therefore retains four D22 fresh codewords/evaluation tables and four D19
+# projected cache/codeword triples across the authenticated output link.
+C63_D22_PENDING_INITIAL_BYTES = 4 * ((1 << 23) * 8 + (1 << 22) * 16)
+C63_D19_PENDING_INITIAL_BYTES = 4 * (3 * (1 << 20) * 8)
+C63_PENDING_INITIAL_ROOT_BYTES = (
+    C63_D22_PENDING_INITIAL_BYTES + C63_D19_PENDING_INITIAL_BYTES
+)
 C63_ACCEPTED_CORRECTION_BYTES = 150 * (6 << 9) * C63_T16_COLUMNS * 8
 C63_PROPOSED_CORRECTION_BYTES = 200 * (6 << 9) * C63_T16_COLUMNS * 8
 C63_ONE_SPARSE_SKETCH_BYTES = C63_T16_COLUMNS * (1 << 19) * 8
@@ -589,6 +601,7 @@ def c63_soundness_screen() -> dict[str, Any]:
         "public_xof_assumption_error": c62.error_report(
             public_xof_computational_assumption_error
         ),
+        "append_frontier_additional_probabilistic_error": "0 (exact Merkle append)",
         "complete_soundness_gate_evaluated": True,
         "complete_soundness_bits": str(c6.soundness_bits(known_terms_error)),
         "complete_soundness_gate_pass": (
@@ -696,13 +709,14 @@ def build_report() -> dict[str, Any]:
     )
     t16_independent_separate_public_bulk_screen = (
         C63_CORRECTION_ARTIFACT_MAX_BYTES
-        + C63_INDEPENDENT_A_PROOFS
+        + C63_TRANSITION_A_PROOFS
         * (
             t16_encoded_sketch_paired_opening["opening_bytes_before_framing"]
             + C63_MERKLE_MULTIPROOF_COUNT_BYTES
         )
         + C63_PROFILED_WHIR_BODIES_BYTES
         + C63_INDEPENDENT_A_PROOFS * C63_PROJECTED_WHIR_OUTER_BYTES
+        + C63_TRANSITION_A_FLAGS_BYTES
         + C63_PUBLIC_ARGUMENT_FRAMING_BYTES
     )
     certificate_at_strict_pi_cap_before_new_public_framing = (
@@ -764,12 +778,14 @@ def build_report() -> dict[str, Any]:
         + C63_FULL_STATE_PROXY_BYTES
     )
     sequential_gw4_phase_vram = setup_resident_vram + C63_FULL_STATE_PROXY_BYTES
+    linked_gw4_phase_vram = sequential_gw4_phase_vram + C63_PENDING_INITIAL_ROOT_BYTES
     sequential_c63_phase_vram = (
         C63_FIXED_MODEL_CACHE_BYTES
         + C63_SPARSE_SETUP_RESIDENT_BYTES
         + C63_D23_LANE_GUARD_BYTES
         + C63_FULL_STATE_PROXY_BYTES
     )
+    retained_c63_phase_vram = sequential_c63_phase_vram + C63_PENDING_INITIAL_ROOT_BYTES
     speedup = Decimal(C62_PRECOMMIT_NS) / Decimal(CACHE_TIME_BUDGET_NS)
 
     gates: dict[str, dict[str, Any]] = {
@@ -835,7 +851,7 @@ def build_report() -> dict[str, Any]:
     }
 
     report: dict[str, Any] = {
-        "schema": "volta-c63-authenticated-sketch-analytic-screen-v15",
+        "schema": "volta-c63-authenticated-sketch-analytic-screen-v16",
         "credit": False,
         "transfer_to_c63_gates": False,
         "gates": gates,
@@ -1021,8 +1037,8 @@ def build_report() -> dict[str, Any]:
                 "selected_c63_per_core_screen_bits": C63_SELECTED_PER_CORE_SCREEN_BITS,
                 "selected_profile": {
                     "adapter_rule": (
-                        "for each MAC tape prove decoded m_l:D22 and u_l:D19 while "
-                        "supplying already encoded w_l/y_l initial oracles"
+                        "for each MAC tape prove append-only decoded m_l:D22 and u_l:D19; "
+                        "the initial-oracle link authenticates successor A minus predecessor A"
                     ),
                     "d22_rates": C63_D22_WHIR_RATES,
                     "d22_folding": C63_D22_WHIR_FOLDING,
@@ -1060,6 +1076,10 @@ def build_report() -> dict[str, Any]:
                     "reduced_wrapper_relations": 40,
                     "reduced_wrapper_rounds": 24,
                     "reduced_wrapper_correlations_per_tape": 96,
+                    "source_functional_correction_bytes": C63_SOURCE_FUNCTIONAL_CORRECTION_BYTES,
+                    "source_functional_correlations_per_tape": (
+                        C63_SOURCE_FUNCTIONAL_CORRELATIONS_PER_TAPE
+                    ),
                     "production_linked_projected_adapter_codec_green": True,
                     "production_fresh_mask_encoding_relation_codec_green": True,
                     "historical_production_four_terminal_lane_codecs_green": True,
@@ -1128,6 +1148,9 @@ def build_report() -> dict[str, Any]:
                     ),
                 },
                 "independent_separate_a_proofs_minimal_fallback": {
+                    "selected_transition_layout": (
+                        "one predecessor and one successor A opening for each of four D19 bodies"
+                    ),
                     "a_opening_bytes_with_counts": C63_INDEPENDENT_A_PROOFS
                     * (
                         t16_encoded_sketch_paired_opening[
@@ -1150,6 +1173,7 @@ def build_report() -> dict[str, Any]:
                         CERTIFICATE_LIMIT_BYTES
                         - independent_separate_certificate_at_strict_pi_cap
                     ),
+                    "strict_pi_cap_is_not_composable_with_public_bulk_cap": True,
                 },
                 "partition_rule": (
                     "Delta-independent tagless Bolt/WHIR material is public; only common-X, "
@@ -1230,7 +1254,11 @@ def build_report() -> dict[str, Any]:
                 "forced_gw4_whir_overlap_bytes": forced_overlap_vram,
                 "forced_overlap_exceeds_guard": forced_overlap_vram > VRAM_GUARD_BYTES,
                 "sequential_gw4_plus_h_plus_state_bytes": sequential_gw4_phase_vram,
+                "pending_eight_initial_roots_bytes": C63_PENDING_INITIAL_ROOT_BYTES,
+                "linked_gw4_plus_pending_initial_roots_bytes": linked_gw4_phase_vram,
+                "linked_gw4_margin_bytes": VRAM_GUARD_BYTES - linked_gw4_phase_vram,
                 "sequential_c63_one_workspace_bytes": sequential_c63_phase_vram,
+                "c63_one_workspace_plus_all_pending_roots_bytes": retained_c63_phase_vram,
                 "lane_guard_includes_one_d23_fp2_codeword": True,
                 "pre_a_state_proxy_bytes": C63_PRE_A_STATE_PROXY_BYTES,
                 "one_sparse_sketch_bytes": C63_ONE_SPARSE_SKETCH_BYTES,
@@ -1243,8 +1271,9 @@ def build_report() -> dict[str, Any]:
                 ),
                 "full_old_new_state_proxy_bytes": C63_FULL_STATE_PROXY_BYTES,
                 "required_schedule": (
-                    "keep H resident; release GW4 transient owners; execute eight base "
-                    "WHIR cores sequentially with one workspace"
+                    "fix eight initial roots; retain their 608-MiB initial owners across "
+                    "the authenticated output link; release GW4 transient owners; execute "
+                    "eight base WHIR cores sequentially with one active workspace"
                 ),
                 "credit": False,
             },
@@ -1297,12 +1326,12 @@ def build_report() -> dict[str, Any]:
             "four-thread verifier wall",
             "verifier additional RSS",
             "peak VRAM",
-            "resident GPU integration of sparse H closure and transient code switch",
-            "top-level C6.3 production coordinator and complete CPU verifier",
+            "full-size A100 execution of the resident sparse/code-switch coordinator",
+            "complete CPU-verifier execution on a serialized A100 candidate",
             "production expansion/digest of the fixed provider-independent setup seed",
             "real/AES-PCG full-response execution",
         ],
-        "decision": "local codec/privacy/soundness candidate; GPU implementation and real E2E remain required",
+        "decision": "local resident implementation candidate; full-size A100 execution and real E2E remain required",
     }
 
     # One executable self-check: any changed input must update the registered arithmetic.
@@ -1346,9 +1375,9 @@ def build_report() -> dict[str, Any]:
     ) == C63_WHIR_PHASE_EVENT_LOWER_BOUND
     assert C63_D22_WHIR_ROUND_QUERIES[0] == C63_PAIRED_A_QUERIES
     assert C63_D19_WHIR_ROUND_QUERIES[0] == C63_PAIRED_A_QUERIES
-    assert t16_profiled_public_bulk_screen == 11_226_290
-    assert t16_independent_limb_public_bulk_screen == 11_359_922
-    assert t16_independent_separate_public_bulk_screen == 11_674_318
+    assert t16_profiled_public_bulk_screen == 11_231_314
+    assert t16_independent_limb_public_bulk_screen == 11_364_946
+    assert t16_independent_separate_public_bulk_screen == 12_276_610
     assert (
         C62_PI_FINAL_MAX_BYTES
         - C62_CACHE_COHORT_LINK_SAVING_BYTES
@@ -1360,28 +1389,28 @@ def build_report() -> dict[str, Any]:
         PI_FINAL_LIMIT_BYTES - 1 - C63_RESIDUAL_AUX_PI_BEFORE_CLOSURE_BYTES
         == 1_796_986
     )
-    assert projected_pi_final_with_sparse_h == 2_704_573
-    assert certificate_with_projected_pi_before_outer_framing == 27_641_727
+    assert projected_pi_final_with_sparse_h == 2_704_637
+    assert certificate_with_projected_pi_before_outer_framing == 27_646_815
     assert (
         CERTIFICATE_LIMIT_BYTES - certificate_with_projected_pi_before_outer_framing
-        == 2_358_273
+        == 2_353_185
     )
-    assert certificate_at_strict_pi_cap_before_new_public_framing == 29_437_153
+    assert certificate_at_strict_pi_cap_before_new_public_framing == 29_442_177
     assert (
         CERTIFICATE_LIMIT_BYTES
         - certificate_at_strict_pi_cap_before_new_public_framing
-        == 562_847
+        == 557_823
     )
-    assert independent_limb_certificate_with_projected_pi == 27_775_359
-    assert independent_limb_certificate_at_strict_pi_cap == 29_570_785
-    assert CERTIFICATE_LIMIT_BYTES - independent_limb_certificate_at_strict_pi_cap == 429_215
-    assert independent_separate_certificate_with_projected_pi == 28_089_755
-    assert independent_separate_certificate_at_strict_pi_cap == 29_885_181
-    assert CERTIFICATE_LIMIT_BYTES - independent_separate_certificate_at_strict_pi_cap == 114_819
+    assert independent_limb_certificate_with_projected_pi == 27_780_447
+    assert independent_limb_certificate_at_strict_pi_cap == 29_575_809
+    assert CERTIFICATE_LIMIT_BYTES - independent_limb_certificate_at_strict_pi_cap == 424_191
+    assert independent_separate_certificate_with_projected_pi == 28_692_111
+    assert independent_separate_certificate_at_strict_pi_cap == 30_487_473
+    assert CERTIFICATE_LIMIT_BYTES - independent_separate_certificate_at_strict_pi_cap == -487_473
     assert setup_with_sparse_descriptor == 101_197_697
     assert setup_plus_max_certificate == 131_197_697
-    assert setup_plus_projected_first == 128_839_424
-    assert setup_plus_conservative_codec_first == 129_287_452
+    assert setup_plus_projected_first == 128_844_512
+    assert setup_plus_conservative_codec_first == 129_889_808
     assert C63_SPARSE_SETUP_RESIDENT_BYTES == 805_306_368
     assert setup_resident_vram == 39_951_669_100
     assert VRAM_GUARD_BYTES - setup_resident_vram == 5_866_907_764
@@ -1396,7 +1425,13 @@ def build_report() -> dict[str, Any]:
     assert forced_overlap_vram == 46_088_197_900
     assert forced_overlap_vram - VRAM_GUARD_BYTES == 269_621_036
     assert sequential_gw4_phase_vram == 40_559_056_684
+    assert C63_D22_PENDING_INITIAL_BYTES == 536_870_912
+    assert C63_D19_PENDING_INITIAL_BYTES == 100_663_296
+    assert C63_PENDING_INITIAL_ROOT_BYTES == 637_534_208
+    assert linked_gw4_phase_vram == 41_196_590_892
+    assert VRAM_GUARD_BYTES - linked_gw4_phase_vram == 4_621_985_972
     assert sequential_c63_phase_vram == 19_826_737_056
+    assert retained_c63_phase_vram == 20_464_271_264
     assert PADDED_ENTRIES_PER_SLOT == 1 << 24
     assert legacy_state_entries == 1 << 27
     assert compact_state_entries == 1 << 25

@@ -1,8 +1,8 @@
 //! Canonical C6.3 designated tail.
 //!
 //! Cache-source, cache-blind and cache-fold components are absent. The final
-//! component is one fixed-layout designated bundle: reduced output link,
-//! sparse-H closure, then four authenticated WHIR terminal tags.
+//! component is one fixed-layout designated bundle: source-functional
+//! corrections, reduced output link, sparse-H closure, then four terminal tags.
 
 use std::fmt;
 
@@ -11,14 +11,16 @@ use crate::{
     C62_RESPONSE_RESIDUAL_SUMCHECK_MAX_BYTES,
 };
 
-pub const C63_RESPONSE_PROOF_ENVELOPE_MAGIC: [u8; 8] = *b"C63PIF1\0";
-pub const C63_RESPONSE_PROOF_ENVELOPE_VERSION: u16 = 1;
+pub const C63_RESPONSE_PROOF_ENVELOPE_MAGIC: [u8; 8] = *b"C63PIF2\0";
+pub const C63_RESPONSE_PROOF_ENVELOPE_VERSION: u16 = 2;
 pub const C63_RESPONSE_PROOF_COMPONENTS: usize = 4;
+pub const C63_RESPONSE_SOURCE_FUNCTIONAL_CORRECTIONS_BYTES: u64 = 64;
 pub const C63_RESPONSE_AUTHENTICATED_OUTPUT_LINK_BYTES: u64 = 2_672_044;
 pub const C63_RESPONSE_SPARSE_H_CLOSURE_BYTES: u64 = 1_496;
 pub const C63_RESPONSE_WHIR_TERMINAL_TAGS_BYTES: u64 = 64;
 pub const C63_RESPONSE_AUTHENTICATED_SKETCH_LINK_BYTES: u64 =
-    C63_RESPONSE_AUTHENTICATED_OUTPUT_LINK_BYTES
+    C63_RESPONSE_SOURCE_FUNCTIONAL_CORRECTIONS_BYTES
+        + C63_RESPONSE_AUTHENTICATED_OUTPUT_LINK_BYTES
         + C63_RESPONSE_SPARSE_H_CLOSURE_BYTES
         + C63_RESPONSE_WHIR_TERMINAL_TAGS_BYTES;
 
@@ -89,6 +91,7 @@ pub struct C63ResponseProofEnvelope {
     residual_sumcheck: Vec<u8>,
     product_coordinate_one: Vec<u8>,
     residual_pending_corrections: Vec<u8>,
+    source_functional_corrections: Vec<u8>,
     authenticated_output_link: Vec<u8>,
     sparse_h_closure: Vec<u8>,
     whir_terminal_tags: Vec<u8>,
@@ -99,6 +102,7 @@ impl C63ResponseProofEnvelope {
         residual_sumcheck: Vec<u8>,
         product_coordinate_one: Vec<u8>,
         residual_pending_corrections: Vec<u8>,
+        source_functional_corrections: Vec<u8>,
         authenticated_output_link: Vec<u8>,
         sparse_h_closure: Vec<u8>,
         whir_terminal_tags: Vec<u8>,
@@ -107,6 +111,7 @@ impl C63ResponseProofEnvelope {
             residual_sumcheck,
             product_coordinate_one,
             residual_pending_corrections,
+            source_functional_corrections,
             authenticated_output_link,
             sparse_h_closure,
             whir_terminal_tags,
@@ -129,6 +134,10 @@ impl C63ResponseProofEnvelope {
 
     pub fn authenticated_output_link(&self) -> &[u8] {
         &self.authenticated_output_link
+    }
+
+    pub fn source_functional_corrections(&self) -> &[u8] {
+        &self.source_functional_corrections
     }
 
     pub fn sparse_h_closure(&self) -> &[u8] {
@@ -162,7 +171,7 @@ impl C63ResponseProofEnvelope {
 
     pub fn decode(bytes: &[u8]) -> Result<Self> {
         if bytes.len() as u64 > C63_RESPONSE_PROOF_ENVELOPE_MAX_BYTES {
-            return Err(C63ResponseProofEnvelopeError::new("C63PIF1 exceeds its cap"));
+            return Err(C63ResponseProofEnvelopeError::new("C63PIF2 exceeds its cap"));
         }
         let mut cursor = Cursor::new(bytes);
         if cursor.take(8)? != C63_RESPONSE_PROOF_ENVELOPE_MAGIC
@@ -170,14 +179,14 @@ impl C63ResponseProofEnvelope {
             || usize::from(cursor.u16()?) != C63_RESPONSE_PROOF_COMPONENTS
         {
             return Err(C63ResponseProofEnvelopeError::new(
-                "C63PIF1 header, version or component census differs",
+                "C63PIF2 header, version or component census differs",
             ));
         }
         let mut components = Vec::with_capacity(C63_RESPONSE_PROOF_COMPONENTS);
         for expected in ComponentKind::ORDERED {
             if cursor.u16()? != expected as u16 || cursor.u16()? != 0 {
                 return Err(C63ResponseProofEnvelopeError::new(
-                    "C63PIF1 component kind, order or reserved field differs",
+                    "C63PIF2 component kind, order or reserved field differs",
                 ));
             }
             let len = cursor.u32()? as usize;
@@ -185,13 +194,13 @@ impl C63ResponseProofEnvelope {
             let digest = cursor.digest()?;
             let payload = cursor.take(len)?.to_vec();
             if digest != component_digest(expected, &payload) {
-                return Err(C63ResponseProofEnvelopeError::new("C63PIF1 component digest differs"));
+                return Err(C63ResponseProofEnvelopeError::new("C63PIF2 component digest differs"));
             }
             components.push(payload);
         }
         let digest_offset = cursor.offset;
         if cursor.digest()? != envelope_digest(&bytes[..digest_offset]) {
-            return Err(C63ResponseProofEnvelopeError::new("C63PIF1 digest differs"));
+            return Err(C63ResponseProofEnvelopeError::new("C63PIF2 digest differs"));
         }
         cursor.finish()?;
 
@@ -200,24 +209,27 @@ impl C63ResponseProofEnvelope {
         let product_coordinate_one = components.next().expect("fixed component census");
         let residual_pending_corrections = components.next().expect("fixed component census");
         let linked = components.next().expect("fixed component census");
-        let output_end = C63_RESPONSE_AUTHENTICATED_OUTPUT_LINK_BYTES as usize;
+        let source_end = C63_RESPONSE_SOURCE_FUNCTIONAL_CORRECTIONS_BYTES as usize;
+        let output_end = source_end + C63_RESPONSE_AUTHENTICATED_OUTPUT_LINK_BYTES as usize;
         let sparse_end = output_end + C63_RESPONSE_SPARSE_H_CLOSURE_BYTES as usize;
         let envelope = Self::new(
             residual_sumcheck,
             product_coordinate_one,
             residual_pending_corrections,
-            linked[..output_end].to_vec(),
+            linked[..source_end].to_vec(),
+            linked[source_end..output_end].to_vec(),
             linked[output_end..sparse_end].to_vec(),
             linked[sparse_end..].to_vec(),
         )?;
         if envelope.encode()?.as_slice() != bytes {
-            return Err(C63ResponseProofEnvelopeError::new("noncanonical C63PIF1 encoding"));
+            return Err(C63ResponseProofEnvelopeError::new("noncanonical C63PIF2 encoding"));
         }
         Ok(envelope)
     }
 
     fn components(&self) -> [(ComponentKind, Vec<u8>); C63_RESPONSE_PROOF_COMPONENTS] {
         let mut linked = Vec::with_capacity(C63_RESPONSE_AUTHENTICATED_SKETCH_LINK_BYTES as usize);
+        linked.extend_from_slice(&self.source_functional_corrections);
         linked.extend_from_slice(&self.authenticated_output_link);
         linked.extend_from_slice(&self.sparse_h_closure);
         linked.extend_from_slice(&self.whir_terminal_tags);
@@ -230,6 +242,17 @@ impl C63ResponseProofEnvelope {
     }
 
     fn validate(&self) -> Result<()> {
+        if self.source_functional_corrections.len() as u64
+            != C63_RESPONSE_SOURCE_FUNCTIONAL_CORRECTIONS_BYTES
+            || self.authenticated_output_link.len() as u64
+                != C63_RESPONSE_AUTHENTICATED_OUTPUT_LINK_BYTES
+            || self.sparse_h_closure.len() as u64 != C63_RESPONSE_SPARSE_H_CLOSURE_BYTES
+            || self.whir_terminal_tags.len() as u64 != C63_RESPONSE_WHIR_TERMINAL_TAGS_BYTES
+        {
+            return Err(C63ResponseProofEnvelopeError::new(
+                "C63PIF2 linked subcomponent length differs",
+            ));
+        }
         for (kind, payload) in self.components() {
             validate_component_len(kind, payload.len())?;
         }
@@ -242,7 +265,7 @@ impl C63ResponseProofEnvelope {
             |total, (_, payload)| {
                 total
                     .checked_add(payload.len() as u64)
-                    .ok_or_else(|| C63ResponseProofEnvelopeError::new("C63PIF1 length overflows"))
+                    .ok_or_else(|| C63ResponseProofEnvelopeError::new("C63PIF2 length overflows"))
             },
         )
     }
@@ -251,7 +274,7 @@ impl C63ResponseProofEnvelope {
 fn validate_component_len(kind: ComponentKind, len: usize) -> Result<()> {
     let len = len as u64;
     if len > kind.max_bytes() || (kind.exact() && len != kind.max_bytes()) {
-        return Err(C63ResponseProofEnvelopeError::new("C63PIF1 component length differs"));
+        return Err(C63ResponseProofEnvelopeError::new("C63PIF2 component length differs"));
     }
     Ok(())
 }
@@ -284,11 +307,11 @@ impl<'a> Cursor<'a> {
         let end = self
             .offset
             .checked_add(len)
-            .ok_or_else(|| C63ResponseProofEnvelopeError::new("C63PIF1 cursor overflows"))?;
+            .ok_or_else(|| C63ResponseProofEnvelopeError::new("C63PIF2 cursor overflows"))?;
         let value = self
             .bytes
             .get(self.offset..end)
-            .ok_or_else(|| C63ResponseProofEnvelopeError::new("truncated C63PIF1"))?;
+            .ok_or_else(|| C63ResponseProofEnvelopeError::new("truncated C63PIF2"))?;
         self.offset = end;
         Ok(value)
     }
@@ -307,7 +330,7 @@ impl<'a> Cursor<'a> {
 
     fn finish(self) -> Result<()> {
         if self.offset != self.bytes.len() {
-            return Err(C63ResponseProofEnvelopeError::new("trailing C63PIF1 bytes"));
+            return Err(C63ResponseProofEnvelopeError::new("trailing C63PIF2 bytes"));
         }
         Ok(())
     }
@@ -322,6 +345,7 @@ mod tests {
             vec![1; C62_RESPONSE_RESIDUAL_SUMCHECK_MAX_BYTES as usize],
             vec![2; C62_RESPONSE_PRODUCT_COORDINATE_ONE_BYTES as usize],
             vec![3; C62_RESPONSE_RESIDUAL_PENDING_BYTES as usize],
+            vec![7; C63_RESPONSE_SOURCE_FUNCTIONAL_CORRECTIONS_BYTES as usize],
             vec![4; C63_RESPONSE_AUTHENTICATED_OUTPUT_LINK_BYTES as usize],
             vec![5; C63_RESPONSE_SPARSE_H_CLOSURE_BYTES as usize],
             vec![6; C63_RESPONSE_WHIR_TERMINAL_TAGS_BYTES as usize],

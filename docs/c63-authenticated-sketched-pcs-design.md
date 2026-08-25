@@ -1,6 +1,6 @@
 # C6.3 Authenticated Sketched WHIR Design
 
-Status: **R0/R1 LOCAL GREEN / C63-G1 A100 PASS / EIGHT-BODY REPAIR SELECTED / LOCAL JOIN OPEN / NO POD**
+Status: **R0/R1 LOCAL GREEN / C63-G1 A100 PASS / RESIDENT COORDINATOR GREEN / COMPLETE CPU VERIFIER COMPOSED / A100 E2E PENDING / NO POD**
 
 This document is the authority for C6.3. It replaces C6.2 only for new C6.3
 work; C6.2 code, artifacts and dispositions remain immutable evidence. The
@@ -168,25 +168,28 @@ components and their three 40-byte component headers projects the retained
 residual/auxiliary tail to `2,703,013 B` before the new closure, leaving at
 most `1,796,986 B` under the strict `pi_final` gate. The current public-bulk
 front-runner is the `t=16` reshape with a 105-bit phase profile. Its exact
-two-level `q_X=4,420` correction artifact is at most `2,037,262 B`. One
+two-level `q_X=4,420` correction artifact is at most `2,042,062 B`. One
 projected D19 query set at `q_A=245` costs `149,316 B`. The selected
-conservative layout keeps four separate openings, `597,264 B` total.
-Cross-tape query sharing is optional and receives no credit.
+transition layout gives each of four D19 bodies one successor opening and,
+for a continuation, one predecessor opening. Eight openings plus four
+presence flags cost at most `1,194,532 B`. Cross-body or cross-tape query
+sharing is optional and receives no credit.
 
 The selected adapter proves tape-separated decoded `m_l` at D22 and `u_l` at
 D19 while supplying already encoded `w_l=C(m_l)` and `y_l=C(u_l)` initial
 oracles. Four 105-bit cores per authentication tape give eight bodies and
-`9,039,328 B`. The conservative executable layout assigns each of the four
-D19 bodies its own authenticated `A` opening and 20-byte outer frame. Its
-public bulk is `11,674,318 B`; the `1,496-B` sparse closure and four 16-byte
-terminal tags leave `pi_final` at `2,704,573 B`. The resulting complete
-certificate is `28,089,755 B`, or `29,885,181 B` when charged against the
-strict `pi_final` cap. Setup plus first is `129,287,452 B`.
+`9,039,328 B`. The conservative executable layout assigns each D19 body its
+own authenticated predecessor/successor transition opening and 20-byte outer
+frame. Its public bulk is `12,276,610 B`; the complete designated tail is
+`2,704,637 B`. The resulting complete certificate is `28,692,111 B` and setup
+plus first is `129,889,808 B`. Both actual gates pass analytically. Filling
+`pi_final` all the way to its independent maximum would instead give
+`30,487,473 B`, so the two unused margins cannot be spent simultaneously.
 
 This remains `credit:false`. The canonical public, designated and final
 certificate codecs include
 every required proof-of-work witness and the local projected verifier binds
-the accepted `A` rows to the randomized initial oracle. Screen v15 unions all
+the accepted `A` rows to the randomized initial oracle. Screen v16 unions all
 120 registered phase events, four terminal ZeroOpen errors, both sparse
 relations, systematic spots, inherited C6.1 terms and the finite
 setup-distance term. With `H_pow` independent from `H_fs`, the inherited
@@ -535,10 +538,16 @@ are independent secrets. R1 must prove that the output link, both sparse `H`
 relations and all eight Hiding-WHIR bodies compile the identical per-tape
 coefficients, including the base-to-extension conversion.
 
-The historical Rust reference checks only that the combined 16-column
-functional equals the sum of two tape contributions. It is algebra evidence,
-not the selected authenticated output link. The revised reference must expose
-and verify the two contributions separately.
+The exact Rust reference now exposes both tape contributions and both
+arithmetic-limb keys separately.
+For every canonical live K/V cell it checks that the Transformer-authenticated
+source `X` and replayed mask `R` share a tag, that `X-R` equals the correction,
+and that the verifier-key difference equals its secret multiplier times that
+correction. It compiles the terminal functional with factorized channel,
+layer and position equality weights rather than a dense D22 vector. The
+resident coordinator now compiles and authenticates this functional directly
+from the inference-owned paired source after the sparse terminal point is
+fixed; it creates neither a dense cache nor a second correction log.
 
 This removes the eight persistent D24/D25/D28 cache encodings, files and CPU
 tree walks. It does not forbid the transient `w_l=C(m_l)` owners and the
@@ -575,10 +584,11 @@ encodes it internally. The minimum new adapter instead accepts both a decoded
 message and an already encoded resident initial oracle. It runs eight base
 proof cores sequentially: for each tape, two D22 limbs of `m_l` against `w_l`
 and two D19 limbs of `u_l` against `y_l`. The conservative codec gives each
-D19 body an independent authenticated `A` opening. Target decomposition, the
-projected MMCS and strict four-body codecs exist in the scaled/reference path.
-What does not yet exist is the eight-body coordinator and complete C6.3 CPU
-verifier. Base-field row
+D19 body an independent authenticated `A` transition opening. Target
+decomposition, the projected MMCS and strict codecs exist in both the scaled
+reference and resident adapters. The resident coordinator derives its D22
+terminal keys from the exact source/output link, and the complete CPU-verifier
+entry replays the same sparse, source, global-link and WHIR order. Base-field row
 challenges are not assumed: one Goldilocks draw has only about 64 bits and
 cannot alone cover the complete soundness target.
 
@@ -661,11 +671,11 @@ the certificate still carries one terminal tag per object and tape. Opposite
 errors cannot cancel because neither sparse equation adds the two tapes.
 
 This repair doubles the claimless body bytes to `9,039,328 B`. The selected
-conservative codec also carries four independent authenticated `A` openings,
-giving `28,089,755 B` total and `129,287,452 B` setup plus first. It consumes
+conservative transition codec carries up to eight authenticated `A` openings,
+giving `28,692,111 B` total and `129,889,808 B` setup plus first. It consumes
 four rather than two WHIR masks per tape, moving the projected full-correlation
 census from 703 to 705. The sparse proof remains 1,496 bytes, but its two round
-streams now prove distinct `u_l=H m_l` relations. Screen v15 gives
+streams now prove distinct `u_l=H m_l` relations. Screen v16 gives
 `78.019023342845...` bits against the owner-revised `78.00`-bit gate while
 keeping every phase at 105 bits. These remain analytic projections. The
 statement digest, output-link coefficients, codecs and mutation tests must
@@ -717,9 +727,10 @@ components, but model privacy no longer rests on an unsupported claim that
 Hiding-WHIR conceals deterministic `A` openings. Production must instantiate
 the Lean post-processing premise: every tagless field must be derived only
 from the accepted correction state and public/fresh inputs, and every terminal
-tag must use the designated simulator. The typed codec audit and correlation
-census are locally closed; real/AES-PCG execution, whole-transcript
-Fiat--Shamir composition and the implementation audit remain open.
+tag must use the designated simulator. The typed codec, correlation census,
+whole-transcript order and local implementation audit are closed by the
+resident coordinator and complete verifier. A full real/AES-PCG execution and
+independent review remain open.
 
 A Merkle root built over raw K/V plus masked query answers is rejected: the
 masked answer is not linked to the raw leaf without revealing that leaf. A
@@ -837,22 +848,25 @@ still requires the adapter and proof-of-work witnesses.
 The reproduced YHC calculation changes the field-size input from Bolt's
 `2^32` to Goldilocks `P` and gives root `0.0497943788349776`, not `0.096`.
 At the selected 105-bit target, `gamma=0.049` requires `q_X=4,420` rows.
-The canonical D12-inside-D10 correction artifact is at most `2,037,262 B`,
+The canonical D12-inside-D10 correction artifact is at most `2,042,062 B`,
 including metadata and both multiproof levels. The persistent `A` root is
 D19-by-32 physically. One projected opening at `q_A=245` costs `149,316 B`.
-The selected conservative eight-body codec serializes four independent
-openings, `597,264 B` total. Cross-tape query sharing is not counted.
+The selected continuation codec serializes one predecessor and one successor
+opening for each of four D19 bodies. Eight openings plus four presence flags
+cost at most `1,194,532 B`. Cross-body or cross-tape query sharing is not
+counted.
 
 The eight D22/D19 bodies add `9,039,328 B`. The paired-opening analytic lower
-screen has `11,226,290 B` public bulk and a `27,641,727-B` certificate, but it
+screen has `11,231,314 B` public bulk and a `27,646,815-B` certificate, but it
 assumes query sharing that has no selected codec. The conservative layout
-serializes four `A` openings and four 20-byte projected frames, giving
-`11,674,318 B` public bulk. The sparse closure and four terminal tags remain
-in `pi_final`: `2,703,013 + 1,496 + 64 = 2,704,573 B`. The selected complete
-certificate is therefore `28,089,755 B`, leaving `1,910,245 B` below the
-experimental limit. Charging the strict `4,499,999-B` `pi_final` cap gives
-`29,885,181 B`, leaving `114,819 B`. Setup plus first is `129,287,452 B`.
-These are exact analytic maxima for screen v15, not serialized proof credit.
+serializes all eight transition openings and four 20-byte projected frames,
+giving `12,276,610 B` public bulk. The complete designated tail is
+`2,704,637 B`. The selected complete certificate is therefore `28,692,111 B`,
+leaving `1,307,889 B` below the experimental limit. Replacing the actual tail
+with its independent `4,499,999-B` maximum would give `30,487,473 B`; that is
+not composable with the full public-bulk maximum. Setup plus first is
+`129,889,808 B`. These are exact analytic maxima for screen v16, not
+serialized proof credit.
 
 The selected screen unions all 120 phase events at 105 bits. It separately
 charges the systematic spot event, `4,420/|Fp2|` spot fusion, two sparse
@@ -883,14 +897,17 @@ forbidden. Accepted and proposed `A` each use `134,217,728 B` of rows plus a
 both `A` owners give a `607,387,584-B` state proxy. Forced overlap of measured GW4,
 the 768-MiB sparse map, that state and one complete D23/Fp2 lane guard is
 `46,088,197,900 B`, or `269,621,036 B` above the A100 guard. The lane guard
-already contains its D23 codeword; it is not counted twice. The normative
-schedule keeps `H` resident, finishes GW4, releases all GW4 transient owners,
-then executes the eight base WHIR cores one at a time with one reused
-workspace. Analytic phase proxies are `40,559,056,684 B` for GW4 plus `H`
-plus state and `19,826,737,056 B` for C6.3. These are `credit:false`: the
-state subtotal is an analytic census and the complete-tree convention
-conservatively retains leaf hashes. An executable tensor/Fp2 guard and A100
-high-water counter must agree. Spilling a codeword to host is forbidden.
+already contains its D23 codeword; it is not counted twice. The transcript
+requires all eight initial roots before the sparse point and exact source
+link. Their initial codewords/evaluation tables retain `637,534,208 B` across
+GW4. The resulting conservative linked-GW4 proxy is `41,196,590,892 B`,
+leaving `4,621,985,972 B` below the device guard. After GW4 releases its
+transient owners, the eight base WHIR cores execute one at a time with one
+active workspace; including all still-pending initial owners gives a
+`20,464,271,264-B` C6.3 proxy. These are `credit:false`: separate backend
+accounting, allocator overhead and the complete-tree convention require the
+A100 supervisor to confirm the real high-water. Spilling a codeword to host
+is forbidden.
 
 The two raw genesis correction tapes alone are `44,236,800 B`; therefore they
 stay behind the systematic root and only queried rows, distinct deduplicated
@@ -899,13 +916,16 @@ Hiding randomness, typed
 framing and the Volta `H` closure may move the final size in either direction.
 
 The executable screen is `scripts/budget_c63_authenticated_sketch.py` (schema
-v15). Version 15 selects eight bodies, charges four independent `A` openings,
-counts 120 phase events and changes only the owner-set complete soundness gate
-to 78.00 bits; every per-phase profile remains 105 bits. Canonical
-correction-row and historical four-lane WHIR codecs exist locally. The
-selected terminal repair still needs revised public/designated and
-final-certificate codecs. The
-historical exact byte, setup,
+v16). Version 16 selects eight bodies, charges both predecessor and successor
+`A` openings for every D19 body, counts 120 phase events and keeps the
+owner-set complete soundness gate at 78.00 bits; every per-phase profile
+remains 105 bits. Canonical correction-row/envelope version-2 and
+public-argument/final-certificate version-3 codecs now exist locally. The exact
+output link passes over canonical live-cell
+inputs; resident source wiring is locally green and the complete CPU-verifier
+entry compiles with green constituent and ordering checks. Its first complete
+serialized-candidate execution remains part of the A100 run.
+The historical exact byte, setup,
 `pi_final` and computational soundness screens are evaluated but remain
 `credit:false`; prover time, verifier time, RAM and VRAM stay unevaluated until
 the real A100 artifact exists.
@@ -969,6 +989,23 @@ complete final certificate, and is not composed with the GPU owner. The
 owner-selected eight-body tape-separated repair above supersedes this
 four-body terminal composition.
 
+The selected scaled reference now executes eight real Hiding-WHIR bodies,
+keeps both authentication tapes separate, joins each limb pair into one
+authenticated extension-field target and passes those same hidden keys into
+the two-stream sparse proof. Its D22 terminal keys come from the exact
+canonical-cell `D=X-R` output functional, and the sparse verifier derives that
+functional's point before replaying the eight WHIR bodies. Each limb closure
+is normalized before the two limbs are recombined; the verifier is never
+given a limb target key. Once `m_l` is fixed by the output link, the sparse
+terminal equation determines the only compatible `u_l` key, which the
+projected bodies must match. Its nine-component public codec round-trips and
+mutations of the public payload, a tape key, correction value, cell order,
+sparse terminal or final target tag fail. This closes the local
+output/terminal verifier seam only: correlations are deterministic test
+fixtures, dimensions are scaled, and concrete transcript derivation, the
+production coordinator and complete inherited certificate verifier remain
+open.
+
 ### C63-G1 — GPU component boundary
 
 - consume the live K/V slabs without a dense host state;
@@ -999,9 +1036,13 @@ not a pure coordinator call and stopped before E2E; its record
 `c63-g2-2026-08-24-178c37e.json` carries no timing or protocol credit. ABI44
 later closed resident initial-message ownership, combined-tape projection and
 canonical pruned `A` openings for one D19 lane. Tape-separated projection,
-the revised terminal join and complete final-certificate verification remain
-unimplemented. The rejected four-lane driver/replay remains only a scaled
-test.
+the revised terminal join and exact authenticated output functional then
+passed locally, while resident source wiring and complete verification still
+remained open at that checkpoint. The current local coordinator closes those
+two seams: it consumes the inference-owned paired source, releases terminal
+masks only after the existing global link, and exposes one complete CPU
+verifier entry. This is compiled and mutation-tested code, not a measured
+full certificate.
 
 The first hardware check is the single ignored integration test
 `volta-pcs/tests/c63_gpu_owner.rs`. It uses the production D22-to-D19 sampler,
@@ -1041,9 +1082,11 @@ from the resident owner and matches the independent CPU encoding byte for byte
 without downloading a dense table. Clean `831d234` then measures
 transcript-derived production sampling and 4,420-row spot fusion on a
 150-token state: opening plus immediate CPU check is 0.399--0.401 s,
-260,614 B, and the fused sparse proof remains 1,496 B. The remaining three
-lanes, compact output link, coordinator and complete verifier are still
-required before E2E.
+260,614 B, and the fused sparse proof remains 1,496 B. The resident
+eight-body prepare/finish driver, exact source link and complete verifier now
+pass 31 focused local tests; the CUDA-feature path compiles. The production
+wrapper admission also accepts the two-cohort C6.3 profile. A real candidate,
+measured cleanup and promotion still require the registered A100 run.
 
 #### Pod admission and resource controls
 
@@ -1163,13 +1206,13 @@ Merkle tree or a sketch-only commitment.
 - Probability that the one-`rho`, two-tensor Bolt-to-WHIR algebra survives
   independent review before privacy and full error accounting: **90--96%**.
 - Probability that the first complete GPT-2 certificate fits 30 MB:
-  **90--96%** because screen v15 bounds the conservative four-opening codec at
-  `28,089,755 B`; real serialization still must reproduce it.
+  **88--95%** because screen v16 bounds the conservative eight-transition-
+  opening codec at `28,692,111 B`; real serialization still must reproduce it.
 - Probability that the new separation theorem and two-cohort codec preserve
-  `pi_final <4.5 MB`: **94--98%**; the exact local maximum is `2,704,573 B`.
-- Probability that the complete warm prover reaches `<20 s` on one A100 after
-  the now-required resident handoff is implemented: **50--70%**. The current
-  tree has no complete candidate, so it has no prover-time probability claim.
+  `pi_final <4.5 MB`: **94--98%**; the exact local projection is `2,704,637 B`.
+- Probability that the complete warm prover reaches `<20 s` on one A100:
+  **50--70%**. The resident path is locally complete but has not produced one
+  full-size certificate, so this remains an engineering estimate.
 - Probability that the four-thread verifier stays below 5 seconds:
   **70--85%**, dominated by the unmeasured 768-MiB `H` scan and WHIR bodies.
 - Probability that an independent review accepts the finite Goldilocks

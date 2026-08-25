@@ -1029,7 +1029,7 @@ fn decode_exact_transcript_message<'a>(
     (payload_end == bytes.len()).then(|| &bytes[length_end..payload_end])
 }
 
-fn c61_interactive_attempt_digest(attempt: C6ClientAttempt) -> Result<[u8; 32], String> {
+pub(crate) fn c61_interactive_attempt_digest(attempt: C6ClientAttempt) -> Result<[u8; 32], String> {
     attempt.correlation_ranges.validate().map_err(|error| error.to_string())?;
     attempt.workload.validate().map_err(|error| error.to_string())?;
     if attempt.setup_manifest_digest == [0; 32]

@@ -1,7 +1,16 @@
 #![allow(dead_code)]
 
 use std::path::Path;
+#[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
+use std::sync::Arc;
 
+#[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
+use crate::c61_authenticated_whir::{
+    finish_c63_authenticated_whir_limb_pair, prepare_c63_authenticated_whir_limb_pair,
+    C63AuthenticatedWhirLane, C63AuthenticatedWhirPreparedLimbPair,
+};
+#[cfg(feature = "c61-p3-authenticated-reference")]
+use crate::c61_authenticated_whir::{C61AuthenticatedWhirBaseProof, C63AuthenticatedWhirMaskRange};
 #[cfg(feature = "c61-p3-authenticated-reference")]
 use crate::c61_authenticated_whir_p3::{
     assemble_c61_production_joint_public_argument_from_executions,
@@ -17,16 +26,48 @@ use crate::c61_authenticated_whir_p3::{
 use crate::c61_public_compression::{
     C61EqualityDrawn, C61OutputChallengeDrawn, C61ReadyPublicProof,
 };
+#[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
+use crate::c62_gpu_whir::{C62GpuMmcs, C62ProviderCacheKey};
 #[cfg(feature = "c61-p3-authenticated-reference")]
-use crate::c6_authenticated_output_link::verify_c6_authenticated_output_link_production_nbr2_strict;
+use crate::c63_preencoded_whir::{begin_verify_c63_sketch_suffix, C63SketchSuffixVerifierPending};
+#[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
+use crate::c63_preencoded_whir::{
+    c63_challenger, c63_sample_systematic_query_rows, c63_whir_config,
+    prepare_c63_resident_projected_limb, prepare_c63_resident_systematic_limb,
+    C63EncodedSketchAtoYContext, C63ResidentProjectedPrepared, C63ResidentSystematicPrepared,
+    C63TranscriptBinding,
+};
+#[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
+use crate::c63_public_argument::C63PublicArgument;
+#[cfg(feature = "c61-p3-authenticated-reference")]
+use crate::c63_public_argument::C63VerifierSketchState;
+#[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
+use crate::c63_sparse_h_closure::{
+    prove_c63_sparse_h_tape_closure_with_spots_resident, C63SparseHClosureError,
+    C63SparseHClosureStatement, C63TapeSystematicSpot,
+};
+#[cfg(feature = "c61-p3-authenticated-reference")]
+use crate::c63_sparse_h_closure::{C63SparseHClosureProof, C63SparseHTapeClosureReferenceAudit};
 use crate::c6_authenticated_output_link::{
+    authenticate_c63_residual_source_functionals,
+    prove_c63_authenticated_output_link_persisted_cuda_nbr2_strict,
     prove_c6_authenticated_output_link_persisted_cuda,
     prove_c6_authenticated_output_link_persisted_cuda_nbr2_strict,
     verify_c6_authenticated_output_link_production, C61NativePendingSlotRegistryProverBuilder,
-    C61NativePendingSlotRegistryVerifierBuilder, C6AuthenticatedOutputLinkProof,
-    C6Nbr2CorrectionFunctional, C6Nbr2ProvedLink, C6PendingSlotRegistryProverBuilder,
-    C6PendingSlotRegistryVerifier, C6PendingSlotRegistryVerifierBuilder,
-    C6ProductionAuthenticatedOutputLinkMetrics,
+    C61NativePendingSlotRegistryVerifierBuilder,
+    C63AuthenticatedSketchPendingSlotRegistryProverBuilder,
+    C63AuthenticatedSketchPendingSlotRegistryVerifierBuilder, C63ResidualSourceFunctionalFrame,
+    C63ResidualSourceFunctionalProverClaims, C63ResidualSourceFunctionals,
+    C6AuthenticatedOutputLinkProof, C6Nbr2CorrectionFunctional, C6Nbr2ProvedLink,
+    C6PendingSlotRegistryProverBuilder, C6PendingSlotRegistryVerifier,
+    C6PendingSlotRegistryVerifierBuilder, C6ProductionAuthenticatedOutputLinkMetrics,
+};
+#[cfg(feature = "c61-p3-authenticated-reference")]
+use crate::c6_authenticated_output_link::{
+    verify_c63_authenticated_output_link_production_nbr2_strict,
+    verify_c63_residual_source_functionals,
+    verify_c6_authenticated_output_link_production_nbr2_strict,
+    C63ResidualSourceFunctionalVerifierClaims, C63ResidualSourceFunctionalsVerifiedLink,
 };
 use crate::c6_hidden_u::{
     C6HiddenULayout, C6HiddenUPostCommit, C6HiddenUPrequery, C6SealedHiddenUBundle,
@@ -53,6 +94,10 @@ use crate::c6_persistent_cache_blind::{
     C6PersistentCacheSourceBootstrapFrame, C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS,
     C6_PERSISTENT_CACHE_BLIND_ROUND_BYTES,
 };
+#[cfg(feature = "c6-trace")]
+use crate::c6_residual_sumcheck_blind::prove_c6_blind_residual_sumchecks_fused_direct;
+#[cfg(feature = "c6-trace")]
+use crate::c6_residual_sumcheck_blind::verify_c6_blind_residual_sumchecks_direct_claims_with_points;
 use crate::c6_residual_sumcheck_blind::{
     assemble_c6_blind_residual_prover_stepwise, assemble_c6_blind_residual_verifier_stepwise,
     begin_c6_blind_residual_prover_stepwise, begin_c6_blind_residual_verifier_stepwise,
@@ -67,19 +112,27 @@ use crate::c6_residual_sumcheck_blind::{
 use crate::c6_wrapper_pcs::{
     C61NativeWrapperRoundCoordinator, C6FixedWrapperCommitments, C6WrapperRoundCoordinator,
     C6WrapperRoundMessageReceipt, C6WrapperRoundPoint, C61_NATIVE_WRAPPER_ACTIVE_SLOTS,
-    C6_CACHE_ROUND_PARTICIPANT_ID, C6_DELTA_RESIDUAL_ACTIVATION_ROUND,
-    C6_DELTA_RESIDUAL_ROUND_PARTICIPANT_ID, C6_HIDDEN_U_ROUND_PARTICIPANT_ID,
-    C6_HIDDEN_U_WEIGHTS_ACTIVATION_ROUND, C6_WRAPPER_RANDOM_POINT_LEN, C6_WRAPPER_REPETITIONS,
+    C63_AUTHENTICATED_SKETCH_WRAPPER_ACTIVE_SLOTS, C6_CACHE_ROUND_PARTICIPANT_ID,
+    C6_DELTA_RESIDUAL_ACTIVATION_ROUND, C6_DELTA_RESIDUAL_ROUND_PARTICIPANT_ID,
+    C6_HIDDEN_U_ROUND_PARTICIPANT_ID, C6_HIDDEN_U_WEIGHTS_ACTIVATION_ROUND,
+    C6_WRAPPER_RANDOM_POINT_LEN, C6_WRAPPER_REPETITIONS,
+};
+#[cfg(feature = "c61-p3-authenticated-reference")]
+use crate::C63SparseSketchReference;
+#[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
+use crate::{
+    c63_verify_correction_rows_by_tape_reference, C63GpuStateOwner, C63_SYSTEMATIC_SPOT_QUERIES,
 };
 use volta_field::Fp2;
-use volta_mac::{CorrelationStream, ProverAuthed, Transcript, VerifierCtx};
+use volta_mac::{CorrScheduleAudit, CorrelationStream, ProverAuthed, Transcript, VerifierCtx};
 use volta_proto::c6_cache_fold::{
     compile_c6_cache_fold_scalar_batch, C6CacheFoldAppendSourcePlan, C6CacheFoldKind,
     C6CacheFoldPairedProverTargets, C6CacheFoldPairedVerifierTargets,
     C6CacheFoldTargetFixedCorrections, C6CacheFoldTraceSnapshot,
 };
 use volta_proto::{
-    C61NativeResponseProofEnvelope, C62ResponseProofEnvelope, C6ResponseProofEnvelope,
+    C61NativeResponseProofEnvelope, C62ResponseProofEnvelope, C6ClientAttempt,
+    C6ProductionPairedSourceWitness, C6ResponseProofEnvelope,
 };
 use volta_proto::{C6ResidualFusedCoefficientArena, C6ResidualFusedWitnessView};
 
@@ -117,6 +170,592 @@ impl C61NativeCacheAppendOwner {
     pub fn semantic_bytes_read(&self) -> u64 {
         self.semantic_bytes_read
     }
+}
+
+/// Authenticate the two C6.3 openings from the inference-owned paired source
+/// witness. This path never materializes or rereads the historical dense
+/// cache: it consumes the already recorded one-time corrections `D=X-R`.
+pub fn authenticate_c63_resident_source_functionals(
+    old_len: u16,
+    new_len: u16,
+    plan: &C6CacheFoldAppendSourcePlan,
+    schedule: &CorrScheduleAudit,
+    source: &C6ProductionPairedSourceWitness,
+    statement: C63ResidualSourceFunctionals,
+    streams: &mut [CorrelationStream; TAPES],
+    transcript: &mut Transcript,
+) -> Result<C63ResidentSourceFunctionalClaims, String> {
+    let values = crate::c63_evaluate_residual_source_functionals(
+        old_len,
+        new_len,
+        statement.source_schedule_digest(),
+        plan,
+        schedule,
+        source,
+        [
+            statement.coefficients(0).map_err(text_error)?,
+            statement.coefficients(1).map_err(text_error)?,
+        ],
+    )?;
+    let (claims, frame) =
+        authenticate_c63_residual_source_functionals(statement, values, streams, transcript)
+            .map_err(text_error)?;
+    Ok(C63ResidentSourceFunctionalClaims { claims, frame })
+}
+
+/// Compile the exact tape-separated D22 terminal functionals after the sparse
+/// rounds have fixed their point, then authenticate them from the live
+/// inference source. The owned statement keeps the coefficient vectors alive
+/// through the later output-link join without copying them again.
+#[allow(clippy::too_many_arguments)]
+pub fn authenticate_c63_resident_source_functionals_at_point(
+    fixed: &C6FixedWrapperCommitments,
+    outer_statement_digest: [u8; 32],
+    source_binding_digest: [u8; 32],
+    functional_context_digest: [u8; 32],
+    old_len: u16,
+    new_len: u16,
+    plan: &C6CacheFoldAppendSourcePlan,
+    schedule: &CorrScheduleAudit,
+    source: &C6ProductionPairedSourceWitness,
+    rho: &[Fp2; crate::C63_BOLT_COLUMNS],
+    row_point: &[Fp2],
+    streams: &mut [CorrelationStream; TAPES],
+    transcript: &mut Transcript,
+) -> Result<C63ResidentSourceFunctionalClaims, String> {
+    if source.source().subfield_leaf_count() as u64 != schedule.counters.sub_corrs {
+        return Err("C6.3 resident source count differs from its schedule".to_owned());
+    }
+    let source_count = u32::try_from(schedule.counters.sub_corrs)
+        .map_err(|_| "C6.3 resident source count exceeds u32".to_owned())?;
+    let coefficients = crate::c63_compile_residual_source_functionals(
+        old_len,
+        new_len,
+        source_count,
+        schedule.digest,
+        plan,
+        schedule,
+        rho,
+        row_point,
+    )?;
+    let statement = C63ResidualSourceFunctionals::new_owned(
+        fixed,
+        outer_statement_digest,
+        source_binding_digest,
+        schedule.digest,
+        functional_context_digest,
+        coefficients,
+    )
+    .map_err(text_error)?;
+    authenticate_c63_resident_source_functionals(
+        old_len, new_len, plan, schedule, source, statement, streams, transcript,
+    )
+}
+
+/// Verifier mirror of the resident source compiler. The sparse proof has
+/// already fixed `rho`, the terminal point and their transcript context, so
+/// the provider cannot choose any coefficient here.
+#[cfg(feature = "c61-p3-authenticated-reference")]
+#[allow(clippy::too_many_arguments)]
+pub fn verify_c63_resident_source_functionals_at_pending(
+    fixed: &C6FixedWrapperCommitments,
+    source_binding_digest: [u8; 32],
+    old_len: u16,
+    plan: &C6CacheFoldAppendSourcePlan,
+    schedule: &CorrScheduleAudit,
+    suffix: &C63SketchSuffixVerifierPending,
+    frame: &C63ResidualSourceFunctionalFrame,
+    contexts: &mut [VerifierCtx; TAPES],
+    transcript: &mut Transcript,
+) -> Result<C63ResidualSourceFunctionalVerifierClaims, String> {
+    let source_count = u32::try_from(schedule.counters.sub_corrs)
+        .map_err(|_| "C6.3 verifier source count exceeds u32".to_owned())?;
+    let coefficients = crate::c63_compile_residual_source_functionals(
+        old_len,
+        suffix.accepted_len(),
+        source_count,
+        schedule.digest,
+        plan,
+        schedule,
+        suffix.rho(),
+        suffix.sumcheck_point(),
+    )?;
+    let statement = C63ResidualSourceFunctionals::new_owned(
+        fixed,
+        suffix.statement_digest(),
+        source_binding_digest,
+        schedule.digest,
+        suffix.source_functional_context_digest(),
+        coefficients,
+    )
+    .map_err(text_error)?;
+    verify_c63_residual_source_functionals(statement, frame, contexts, transcript)
+        .map_err(text_error)
+}
+
+/// Serialized resident C6.3 suffix. No dense correction table is returned.
+#[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
+pub struct C63ResidentSketchSuffixProverOutput {
+    sketch_public_argument: Vec<u8>,
+    sparse_h_closure: C63SparseHClosureProof,
+    terminal_proofs: [C61AuthenticatedWhirBaseProof; 4],
+}
+
+#[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
+impl C63ResidentSketchSuffixProverOutput {
+    pub fn into_parts(
+        self,
+    ) -> (Vec<u8>, C63SparseHClosureProof, [C61AuthenticatedWhirBaseProof; 4]) {
+        (self.sketch_public_argument, self.sparse_h_closure, self.terminal_proofs)
+    }
+}
+
+/// Resident commitments held while the existing authenticated output link
+/// consumes its correlations. The exact source claim is returned separately
+/// and must be consumed by that link before this state can be finished.
+#[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
+pub struct C63ResidentSketchSuffixPrepared {
+    binding: C63TranscriptBinding,
+    query_seed: [u8; 32],
+    outer_statement_digest: [u8; 32],
+    profile_digest: [u8; 32],
+    predecessor_correction_root: [u8; 32],
+    predecessor_encoded_sketch_root: [u8; 32],
+    correction_root: [u8; 32],
+    encoded_sketch_root: [u8; 32],
+    epoch: u64,
+    old_len: u16,
+    new_len: u16,
+    spot_rows: Vec<u32>,
+    correction_artifact: Vec<u8>,
+    output_point: Vec<Fp2>,
+    m_point: Vec<Fp2>,
+    systematic: [[Option<C63ResidentSystematicPrepared>; 2]; TAPES],
+    projected: [[Option<C63ResidentProjectedPrepared>; 2]; TAPES],
+    u_limb_values: [[Fp2; 2]; TAPES],
+    m_claims: [ProverAuthed; TAPES],
+    u_claims: [ProverAuthed; TAPES],
+    source_functional_statement_digest: [u8; 32],
+    sparse_h_closure: C63SparseHClosureProof,
+}
+
+/// Commit the eight initial roots and close the resident sparse relation. The
+/// exact `D=X-R` source is authenticated only after its terminal point is
+/// fixed; WHIR masks remain undrawn for the intervening output-link phase.
+#[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
+#[allow(clippy::too_many_arguments)]
+pub fn prepare_c63_resident_sketch_suffix<R: rand_010::Rng>(
+    mmcs: C62GpuMmcs,
+    h: &C63SparseSketchReference,
+    attempt: C6ClientAttempt,
+    fixed: &C6FixedWrapperCommitments,
+    outer_statement_digest: [u8; 32],
+    profile_digest: [u8; 32],
+    source_binding_digest: [u8; 32],
+    predecessor_state: &C63VerifierSketchState,
+    predecessor: Option<Arc<C63GpuStateOwner>>,
+    successor: Arc<C63GpuStateOwner>,
+    projected_keys: &[[C62ProviderCacheKey; 2]; 2],
+    output_point: &[Fp2],
+    plan: &C6CacheFoldAppendSourcePlan,
+    schedule: &CorrScheduleAudit,
+    source: &C6ProductionPairedSourceWitness,
+    streams: &mut [CorrelationStream; TAPES],
+    transcript: &mut Transcript,
+    rng: &mut R,
+) -> Result<(C63ResidentSketchSuffixPrepared, C63ResidentSourceFunctionalClaims), String> {
+    let backend = mmcs.backend();
+    let mut sparse_messages = std::array::from_fn::<_, TAPES, _>(|_| None);
+    let result = (|| {
+        let old_len = predecessor_state.accepted_len();
+        let new_len = successor.accepted_len();
+        if successor.append_start() != old_len
+            || successor.epoch()
+                != predecessor_state
+                    .epoch()
+                    .checked_add(1)
+                    .ok_or_else(|| "C6.3 resident predecessor epoch overflows".to_owned())?
+            || old_len >= new_len
+            || predecessor_state.correction_root() == [0; 32]
+            || predecessor_state.encoded_sketch_root() == [0; 32]
+            || successor.correction_root() == [0; 32]
+            || successor.encoded_sketch_root() == [0; 32]
+        {
+            return Err("C6.3 resident suffix state transition differs".to_owned());
+        }
+        match predecessor.as_deref() {
+            Some(owner)
+                if owner.epoch() != predecessor_state.epoch()
+                    || owner.accepted_len() != old_len
+                    || owner.correction_root() != predecessor_state.correction_root()
+                    || owner.encoded_sketch_root() != predecessor_state.encoded_sketch_root() =>
+            {
+                return Err("C6.3 resident predecessor owner differs".to_owned())
+            }
+            None if old_len != 0 || predecessor_state.epoch() != 0 => {
+                return Err("C6.3 resident predecessor owner is absent".to_owned())
+            }
+            _ => {}
+        }
+
+        let binding = C63TranscriptBinding::new(
+            attempt,
+            outer_statement_digest,
+            profile_digest,
+            predecessor_state.correction_root(),
+            predecessor_state.encoded_sketch_root(),
+            successor.correction_root(),
+            successor.encoded_sketch_root(),
+            successor.epoch(),
+            old_len,
+            new_len,
+        )?;
+        let mut rho_challenger = c63_challenger(binding.rho_seed())?;
+        let (rho, projected_contexts) = C63EncodedSketchAtoYContext::sample_tape_limb_after_roots(
+            crate::c61_whir_reference::C61Commitment::new(
+                vec![predecessor_state.correction_root()],
+            ),
+            crate::c61_whir_reference::C61Commitment::new(vec![
+                predecessor_state.encoded_sketch_root()
+            ]),
+            crate::c61_whir_reference::C61Commitment::new(vec![successor.correction_root()]),
+            crate::c61_whir_reference::C61Commitment::new(vec![successor.encoded_sketch_root()]),
+            old_len,
+            1usize << 19,
+            &mut rho_challenger,
+        )?;
+        let input_config = c63_whir_config(22)?;
+        let output_config = c63_whir_config(19)?;
+        let mut systematic: [[Option<C63ResidentSystematicPrepared>; 2]; TAPES] =
+            std::array::from_fn(|_| std::array::from_fn(|_| None));
+        let mut projected: [[Option<C63ResidentProjectedPrepared>; 2]; TAPES] =
+            std::array::from_fn(|_| std::array::from_fn(|_| None));
+        let mut initial_roots = [[0u8; 32]; 8];
+        let mut u_limb_values = [[Fp2::ZERO; 2]; TAPES];
+
+        for tape in 0..TAPES {
+            let mut messages = successor
+                .project_tape_messages(predecessor.as_deref(), rho, tape)
+                .map_err(|error| error.to_string())?;
+            sparse_messages[tape] =
+                Some(messages.combined_systematic().map_err(|error| error.to_string())?);
+            for limb in 0..2 {
+                let systematic_lane = prepare_c63_resident_systematic_limb(
+                    mmcs.clone(),
+                    &input_config,
+                    messages.take_systematic(limb).map_err(|error| error.to_string())?,
+                    binding.lane_seed(&rho, C63AuthenticatedWhirLane::Systematic, tape, limb)?,
+                    rng,
+                )?;
+                initial_roots[tape * 2 + limb] = systematic_lane.root();
+                systematic[tape][limb] = Some(systematic_lane);
+
+                let projected_lane = prepare_c63_resident_projected_limb(
+                    mmcs.clone(),
+                    &output_config,
+                    projected_keys[tape][limb].clone(),
+                    messages.take_sketch(limb).map_err(|error| error.to_string())?,
+                    messages.take_encoded_sketch(limb).map_err(|error| error.to_string())?,
+                    projected_contexts[tape][limb].clone(),
+                    predecessor.clone(),
+                    Arc::clone(&successor),
+                    binding.lane_seed(&rho, C63AuthenticatedWhirLane::Sketch, tape, limb)?,
+                    rng,
+                )?;
+                initial_roots[4 + tape * 2 + limb] = projected_lane.root();
+                u_limb_values[tape][limb] = projected_lane.evaluate(output_point)?;
+                projected[tape][limb] = Some(projected_lane);
+            }
+        }
+
+        let query_seed = binding.query_seed(&rho, &initial_roots)?;
+        let mut spot_challenger = c63_challenger(binding.spot_seed(query_seed)?)?;
+        let spot_rows = c63_sample_systematic_query_rows(
+            &mut spot_challenger,
+            22,
+            C63_SYSTEMATIC_SPOT_QUERIES,
+        )?;
+        let correction_opening =
+            successor.open_correction_rows(&spot_rows).map_err(|error| error.to_string())?;
+        let correction_artifact = correction_opening.encode(old_len, new_len, &spot_rows)?;
+        let (spots, _) = c63_verify_correction_rows_by_tape_reference(
+            predecessor_state.correction_root(),
+            successor.correction_root(),
+            predecessor_state.correction_frontier(),
+            profile_digest,
+            successor.epoch(),
+            old_len,
+            new_len,
+            &spot_rows,
+            &rho,
+            &correction_opening,
+        )?;
+        let spots = spots
+            .into_iter()
+            .map(|(row, values)| C63TapeSystematicSpot { row, values })
+            .collect::<Vec<_>>();
+        let statement =
+            C63SparseHClosureStatement::new(successor.correction_root(), output_point.to_vec())
+                .map_err(|error| error.to_string())?;
+        let basis = Fp2::new(volta_field::Fp::ZERO, volta_field::Fp::ONE);
+        let u_claims = std::array::from_fn(|tape| {
+            ProverAuthed::from_public(u_limb_values[tape][0] + u_limb_values[tape][1] * basis)
+        });
+        let mut source_claims = None;
+        let mut sparse_transcript = Transcript::new(binding.sparse_seed(query_seed)?);
+        let (sparse_h_closure, m_point) = prove_c63_sparse_h_tape_closure_with_spots_resident(
+            Arc::clone(&backend),
+            h,
+            sparse_messages.each_mut().map(|message| {
+                message.take().expect("both resident sparse messages were prepared")
+            }),
+            u_claims,
+            &statement,
+            &spots,
+            streams,
+            &mut sparse_transcript,
+            |tape, point, prefix_digest, streams| {
+                if source_claims.is_none() {
+                    let functional_context = binding
+                        .source_functional_context(query_seed, prefix_digest)
+                        .map_err(C63SparseHClosureError::new)?;
+                    source_claims = Some(
+                        authenticate_c63_resident_source_functionals_at_point(
+                            fixed,
+                            outer_statement_digest,
+                            source_binding_digest,
+                            functional_context,
+                            old_len,
+                            new_len,
+                            plan,
+                            schedule,
+                            source,
+                            &rho,
+                            point,
+                            streams,
+                            transcript,
+                        )
+                        .map_err(C63SparseHClosureError::new)?,
+                    );
+                }
+                Ok(source_claims
+                    .as_ref()
+                    .expect("C6.3 source claims were created")
+                    .terminal_m_claims()[tape])
+            },
+        )
+        .map_err(|error| error.to_string())?;
+        let source_claims =
+            source_claims.ok_or_else(|| "C6.3 resident source claims are absent".to_owned())?;
+        let m_claims = source_claims.terminal_m_claims();
+        let source_functional_statement_digest = source_claims.claims.statement().digest();
+
+        Ok((
+            C63ResidentSketchSuffixPrepared {
+                binding,
+                query_seed,
+                outer_statement_digest,
+                profile_digest,
+                predecessor_correction_root: predecessor_state.correction_root(),
+                predecessor_encoded_sketch_root: predecessor_state.encoded_sketch_root(),
+                correction_root: successor.correction_root(),
+                encoded_sketch_root: successor.encoded_sketch_root(),
+                epoch: successor.epoch(),
+                old_len,
+                new_len,
+                spot_rows,
+                correction_artifact,
+                output_point: output_point.to_vec(),
+                m_point,
+                systematic,
+                projected,
+                u_limb_values,
+                m_claims,
+                u_claims,
+                source_functional_statement_digest,
+                sparse_h_closure,
+            },
+            source_claims,
+        ))
+    })();
+    if result.is_err() {
+        if let Ok(mut locked) = backend.lock() {
+            for message in sparse_messages.into_iter().flatten() {
+                let _ = locked.free_device(message);
+            }
+        }
+    }
+    result
+}
+
+/// Draw the WHIR masks only after the existing global output link has
+/// consumed its correlations, then serialize the eight bodies and four final
+/// tags.
+#[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
+pub fn finish_c63_resident_sketch_suffix<R: rand_010::Rng>(
+    prepared: C63ResidentSketchSuffixPrepared,
+    linked: &C63ExactProductionProverProof,
+    mask_range: C63AuthenticatedWhirMaskRange,
+    streams: &mut [CorrelationStream; TAPES],
+    rng: &mut R,
+) -> Result<C63ResidentSketchSuffixProverOutput, String> {
+    let C63ResidentSketchSuffixPrepared {
+        binding,
+        query_seed,
+        outer_statement_digest,
+        profile_digest,
+        predecessor_correction_root,
+        predecessor_encoded_sketch_root,
+        correction_root,
+        encoded_sketch_root,
+        epoch,
+        old_len,
+        new_len,
+        spot_rows,
+        correction_artifact,
+        output_point,
+        m_point,
+        mut systematic,
+        mut projected,
+        u_limb_values,
+        m_claims,
+        u_claims,
+        source_functional_statement_digest,
+        sparse_h_closure,
+    } = prepared;
+    if linked.source_functional_statement_digest != source_functional_statement_digest
+        || linked.outer_statement_digest != outer_statement_digest
+    {
+        return Err("C6.3 resident suffix was not released by its output link".to_owned());
+    }
+    let mut systematic_masks = Vec::with_capacity(TAPES);
+    let mut projected_masks = Vec::with_capacity(TAPES);
+    for stream in streams.iter_mut() {
+        systematic_masks.push(
+            prepare_c63_authenticated_whir_limb_pair(
+                C63AuthenticatedWhirLane::Systematic,
+                mask_range,
+                stream,
+            )
+            .map_err(|error| error.to_string())?,
+        );
+        projected_masks.push(
+            prepare_c63_authenticated_whir_limb_pair(
+                C63AuthenticatedWhirLane::Sketch,
+                mask_range,
+                stream,
+            )
+            .map_err(|error| error.to_string())?,
+        );
+    }
+    let systematic_masks: [C63AuthenticatedWhirPreparedLimbPair; TAPES] = systematic_masks
+        .try_into()
+        .map_err(|_| "C6.3 systematic mask census differs".to_owned())?;
+    let mut systematic_masks = systematic_masks.map(Some);
+    let projected_masks: [C63AuthenticatedWhirPreparedLimbPair; TAPES] =
+        projected_masks.try_into().map_err(|_| "C6.3 projected mask census differs".to_owned())?;
+    let mut projected_masks = projected_masks.map(Some);
+    let mut m_artifacts: [[Vec<u8>; 2]; TAPES] =
+        std::array::from_fn(|_| std::array::from_fn(|_| Vec::new()));
+    let mut u_artifacts: [[Vec<u8>; 2]; TAPES] =
+        std::array::from_fn(|_| std::array::from_fn(|_| Vec::new()));
+    let mut m_normalized = [[None; 2]; TAPES];
+    let mut u_normalized = [[None; 2]; TAPES];
+    for tape in 0..TAPES {
+        let m_mask_values = systematic_masks[tape]
+            .as_ref()
+            .ok_or_else(|| "C6.3 systematic masks are absent".to_owned())?
+            .values();
+        let u_mask_values = projected_masks[tape]
+            .as_ref()
+            .ok_or_else(|| "C6.3 projected masks are absent".to_owned())?
+            .values();
+        for limb in 0..2 {
+            let lane = systematic[tape][limb]
+                .take()
+                .ok_or_else(|| "C6.3 systematic lane is absent".to_owned())?;
+            let evaluation = lane.evaluate(&m_point)?;
+            let proof = lane.finish(&m_point, evaluation, m_mask_values[limb], rng)?;
+            m_artifacts[tape][limb] = proof.artifact;
+            m_normalized[tape][limb] = Some(proof.normalized);
+
+            let lane = projected[tape][limb]
+                .take()
+                .ok_or_else(|| "C6.3 projected lane is absent".to_owned())?;
+            let proof =
+                lane.finish(&output_point, u_limb_values[tape][limb], u_mask_values[limb], rng)?;
+            u_artifacts[tape][limb] = proof.artifact;
+            u_normalized[tape][limb] = Some(proof.normalized);
+        }
+    }
+
+    let public_argument = C63PublicArgument::new(
+        outer_statement_digest,
+        profile_digest,
+        predecessor_correction_root,
+        predecessor_encoded_sketch_root,
+        correction_root,
+        encoded_sketch_root,
+        epoch,
+        old_len,
+        new_len,
+        &spot_rows,
+        correction_artifact,
+        m_artifacts,
+        u_artifacts,
+    )?;
+    let sketch_public_argument = public_argument.encode()?;
+    let sparse_bytes = sparse_h_closure.encode().map_err(|error| error.to_string())?;
+    let terminal_contexts =
+        binding.terminal_contexts(query_seed, &sketch_public_argument, &sparse_bytes)?;
+    let mut terminal_proofs = Vec::with_capacity(4);
+    for tape in 0..TAPES {
+        let mut terminal_transcript = Transcript::new_fiat_shamir(terminal_contexts[0][tape])?;
+        terminal_proofs.push(
+            finish_c63_authenticated_whir_limb_pair(
+                systematic_masks[tape]
+                    .take()
+                    .ok_or_else(|| "C6.3 systematic terminal mask is absent".to_owned())?,
+                [
+                    m_normalized[tape][0]
+                        .ok_or_else(|| "C6.3 systematic limb zero is absent".to_owned())?,
+                    m_normalized[tape][1]
+                        .ok_or_else(|| "C6.3 systematic limb one is absent".to_owned())?,
+                ],
+                m_claims[tape],
+                &mut terminal_transcript,
+            )
+            .map_err(|error| error.to_string())?
+            .proof,
+        );
+    }
+    for tape in 0..TAPES {
+        let mut terminal_transcript = Transcript::new_fiat_shamir(terminal_contexts[1][tape])?;
+        terminal_proofs.push(
+            finish_c63_authenticated_whir_limb_pair(
+                projected_masks[tape]
+                    .take()
+                    .ok_or_else(|| "C6.3 projected terminal mask is absent".to_owned())?,
+                [
+                    u_normalized[tape][0]
+                        .ok_or_else(|| "C6.3 projected limb zero is absent".to_owned())?,
+                    u_normalized[tape][1]
+                        .ok_or_else(|| "C6.3 projected limb one is absent".to_owned())?,
+                ],
+                u_claims[tape],
+                &mut terminal_transcript,
+            )
+            .map_err(|error| error.to_string())?
+            .proof,
+        );
+    }
+    let terminal_proofs =
+        terminal_proofs.try_into().map_err(|_| "C6.3 terminal-proof census differs".to_owned())?;
+    Ok(C63ResidentSketchSuffixProverOutput {
+        sketch_public_argument,
+        sparse_h_closure,
+        terminal_proofs,
+    })
 }
 
 /// Recover the exact K/V append cells from the committed successor cache and
@@ -316,6 +955,29 @@ pub struct C61NativeProductionBlindProverOutput {
     pub(crate) cache_metrics: C6PersistentCacheProductionMetrics,
 }
 
+/// C6.3 blind prefix. Cache and hidden owners are absent: the authenticated
+/// sketch replaces the cache proof and only the residual relation remains.
+pub struct C63ProductionBlindProverOutput {
+    pub(crate) residual_proof: C6BlindResidualSumcheckProof,
+    pub(crate) residual_frame: C6BlindResidualPendingTransferFrame,
+    pub(crate) residual_pending: C6BlindResidualPendingClaimsProver,
+    pub(crate) residual_terminal_outputs: C6BlindResidualDirectTerminalOutputs,
+}
+
+/// The fresh authentication and its wire correction are created together and
+/// consumed together, preventing a frame from another response from being
+/// paired with the resident `D=X-R` values.
+pub struct C63ResidentSourceFunctionalClaims {
+    claims: C63ResidualSourceFunctionalProverClaims,
+    frame: C63ResidualSourceFunctionalFrame,
+}
+
+impl C63ResidentSourceFunctionalClaims {
+    pub fn terminal_m_claims(&self) -> [ProverAuthed; TAPES] {
+        [self.claims.claims()[0][0], self.claims.claims()[1][1]]
+    }
+}
+
 /// Linear public-compression continuation derived from the exact native blind
 /// output. Compiler inputs, arithmetic typestate and the later C6NBR2 join
 /// therefore cannot be assembled from detached terminal claims.
@@ -362,6 +1024,21 @@ pub struct C62NativeExactProductionNbr2ProverProof {
     pub(crate) blind: C61NativeExactProductionProverProof,
     pub(crate) joint_native: C62ProductionJointNativeProverExecution,
     nbr2_statement_digest: [u8; 32],
+    outer_statement_digest: [u8; 32],
+}
+
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub struct C63ExactProductionProverProof {
+    pub(crate) residual_proof: C6BlindResidualSumcheckProof,
+    pub(crate) residual_frame: C6BlindResidualPendingTransferFrame,
+    pub(crate) residual_terminal_outputs: C6BlindResidualDirectTerminalOutputs,
+    pub(crate) residual_terminal_fold: C6BlindResidualDirectTerminalFold,
+    pub(crate) source_functional_frame: C63ResidualSourceFunctionalFrame,
+    pub(crate) authenticated_link: C6AuthenticatedOutputLinkProof,
+    pub(crate) authenticated_link_metrics: C6ProductionAuthenticatedOutputLinkMetrics,
+    pub(crate) joint_native: C62ProductionJointNativeProverExecution,
+    nbr2_statement_digest: [u8; 32],
+    source_functional_statement_digest: [u8; 32],
     outer_statement_digest: [u8; 32],
 }
 
@@ -517,7 +1194,24 @@ pub fn prepare_c61_native_terminal_compiler(
     equality: C61EqualityDrawn,
     transcript: &mut Transcript,
 ) -> Result<C61NativeTerminalCompilerPrepared, String> {
-    let outputs = &blind.residual_terminal_outputs;
+    prepare_native_terminal_compiler(&blind.residual_terminal_outputs, equality, transcript)
+}
+
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub fn prepare_c63_terminal_compiler(
+    blind: &C63ProductionBlindProverOutput,
+    equality: C61EqualityDrawn,
+    transcript: &mut Transcript,
+) -> Result<C61NativeTerminalCompilerPrepared, String> {
+    prepare_native_terminal_compiler(&blind.residual_terminal_outputs, equality, transcript)
+}
+
+#[cfg(feature = "c61-p3-authenticated-reference")]
+fn prepare_native_terminal_compiler(
+    outputs: &C6BlindResidualDirectTerminalOutputs,
+    equality: C61EqualityDrawn,
+    transcript: &mut Transcript,
+) -> Result<C61NativeTerminalCompilerPrepared, String> {
     let public_output = equality
         .fix_terminal_claims(*outputs.terminal_functionals(), transcript)
         .draw_output_challenge(transcript);
@@ -530,7 +1224,7 @@ pub fn prepare_c61_native_terminal_compiler(
     if ready.terminal_claims() != inputs.terminal_functionals()
         || ready.adjoint_root() != inputs.relation_root()
     {
-        return Err("C6.1 compiler typestate differs from exact blind outputs".to_owned());
+        return Err("native compiler typestate differs from exact blind outputs".to_owned());
     }
     Ok(C61NativeTerminalCompilerPrepared { public_output, ready, inputs })
 }
@@ -591,6 +1285,131 @@ pub struct C6ExactProductionNbr2VerifierOutput {
 pub struct C62ExactProductionNbr2VerifierOutput {
     blind: C6ExactProductionVerifierOutput,
     joint_native: C62ProductionJointNativeVerification,
+}
+
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub struct C63ExactProductionVerifierOutput {
+    inherited: C62ExactProductionNbr2VerifierOutput,
+    source_link: C63ResidualSourceFunctionalsVerifiedLink,
+}
+
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub struct C63CompleteProductionVerifierOutput {
+    inherited: C63ExactProductionVerifierOutput,
+    sparse_audit: C63SparseHTapeClosureReferenceAudit,
+    successor_state: C63VerifierSketchState,
+}
+
+#[cfg(feature = "c61-p3-authenticated-reference")]
+impl C63ExactProductionVerifierOutput {
+    pub fn inherited(&self) -> &C62ExactProductionNbr2VerifierOutput {
+        &self.inherited
+    }
+
+    pub fn source_link(&self) -> C63ResidualSourceFunctionalsVerifiedLink {
+        self.source_link
+    }
+}
+
+#[cfg(feature = "c61-p3-authenticated-reference")]
+impl C63CompleteProductionVerifierOutput {
+    pub fn inherited(&self) -> &C63ExactProductionVerifierOutput {
+        &self.inherited
+    }
+
+    pub fn sparse_audit(&self) -> &C63SparseHTapeClosureReferenceAudit {
+        &self.sparse_audit
+    }
+
+    pub fn successor_state(&self) -> &C63VerifierSketchState {
+        &self.successor_state
+    }
+
+    pub fn into_successor_state(self) -> C63VerifierSketchState {
+        self.successor_state
+    }
+}
+
+/// Release the successor only after the inherited verifier and the complete
+/// authenticated-sketch suffix have both accepted.
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub fn finish_c63_complete_verifier(
+    inherited: C63ExactProductionVerifierOutput,
+    suffix: C63SketchSuffixVerifierPending,
+    terminal_proofs: [C61AuthenticatedWhirBaseProof; 4],
+    mask_range: C63AuthenticatedWhirMaskRange,
+    verifier_contexts: &mut [VerifierCtx; TAPES],
+) -> Result<C63CompleteProductionVerifierOutput, String> {
+    let (sparse_audit, successor_state) =
+        suffix.finish(inherited.source_link(), terminal_proofs, mask_range, verifier_contexts)?;
+    Ok(C63CompleteProductionVerifierOutput { inherited, sparse_audit, successor_state })
+}
+
+/// One CPU-verifier entry point for the complete C6.3 suffix and its inherited
+/// authenticated output link. It preserves the real correlation order:
+/// sparse rounds, exact source corrections, global link, then WHIR masks.
+#[cfg(feature = "c61-p3-authenticated-reference")]
+#[allow(clippy::too_many_arguments)]
+pub fn verify_c63_complete_decoded_response(
+    roots: &C6VerifierLiveWrapperRootBinding,
+    blind: C6ResidualDecodedBlindVerifierPending,
+    authenticated_link: &C6AuthenticatedOutputLinkProof,
+    inherited_public_argument_statement_digest: [u8; 32],
+    nbr2: &C6Nbr2CorrectionFunctional<'_>,
+    source_binding_digest: [u8; 32],
+    old_len: u16,
+    plan: &C6CacheFoldAppendSourcePlan,
+    schedule: &CorrScheduleAudit,
+    source_frame: &C63ResidualSourceFunctionalFrame,
+    native: C62ProductionJointNativeVerifierLinkPending,
+    sketch_public_argument: &[u8],
+    attempt: C6ClientAttempt,
+    h: &C63SparseSketchReference,
+    output_point: &[Fp2],
+    sparse_h_closure: &C63SparseHClosureProof,
+    predecessor_state: &C63VerifierSketchState,
+    terminal_proofs: [C61AuthenticatedWhirBaseProof; 4],
+    mask_range: C63AuthenticatedWhirMaskRange,
+    contexts: &mut [VerifierCtx; TAPES],
+    transcript: &mut Transcript,
+) -> Result<C63CompleteProductionVerifierOutput, String> {
+    let suffix = begin_verify_c63_sketch_suffix(
+        sketch_public_argument,
+        attempt,
+        h,
+        output_point,
+        sparse_h_closure,
+        predecessor_state,
+        contexts,
+    )?;
+    if suffix.statement_digest() != inherited_public_argument_statement_digest
+        || suffix.accepted_len() <= old_len
+    {
+        return Err("C6.3 inherited and sketch statements differ".to_owned());
+    }
+    let source_functionals = verify_c63_resident_source_functionals_at_pending(
+        roots.fixed(),
+        source_binding_digest,
+        old_len,
+        plan,
+        schedule,
+        &suffix,
+        source_frame,
+        contexts,
+        transcript,
+    )?;
+    let inherited = finish_c63_decoded_verifier(
+        roots,
+        blind,
+        authenticated_link,
+        inherited_public_argument_statement_digest,
+        nbr2,
+        &source_functionals,
+        native,
+        contexts,
+        transcript,
+    )?;
+    finish_c63_complete_verifier(inherited, suffix, terminal_proofs, mask_range, contexts)
 }
 
 #[cfg(feature = "c61-p3-authenticated-reference")]
@@ -803,18 +1622,20 @@ pub fn decode_c62_native_exact_production_blind_envelope(
     })
 }
 
-/// Disk-only continuation after the blind residual/cache proof has been
-/// checked and the exact terminal/compiler challenge order has been replayed.
-/// The pending link remains linear and cannot be released without C6NBR2.
+/// Disk-only continuation after the blind residual proof has been checked and
+/// the exact terminal/compiler challenge order has been replayed.
 #[cfg(feature = "c61-p3-authenticated-reference")]
-pub struct C61NativeDecodedBlindVerifierPending {
+pub struct C6ResidualDecodedBlindVerifierPending {
     pending: C6PendingSlotRegistryVerifier,
     ready: C61ReadyPublicProof,
     inputs: C6ExactTerminalCompilerInputs,
 }
 
 #[cfg(feature = "c61-p3-authenticated-reference")]
-impl C61NativeDecodedBlindVerifierPending {
+pub type C61NativeDecodedBlindVerifierPending = C6ResidualDecodedBlindVerifierPending;
+
+#[cfg(feature = "c61-p3-authenticated-reference")]
+impl C6ResidualDecodedBlindVerifierPending {
     pub fn ready(&self) -> &C61ReadyPublicProof {
         &self.ready
     }
@@ -1154,6 +1975,77 @@ pub fn finish_c62_native_production_blind_with_persisted_nbr2_link(
     })
 }
 
+/// Close the residual-only C6.3 prefix, its two resident correction
+/// functionals and the inherited C6.2 native tail in one typed operation.
+#[cfg(feature = "c61-p3-authenticated-reference")]
+#[allow(clippy::too_many_arguments)]
+pub fn finish_c63_production_blind_with_persisted_link(
+    roots: &C6PersistedLiveWrapperRootBinding,
+    blind: C63ProductionBlindProverOutput,
+    nbr2: &C6Nbr2CorrectionFunctional<'_>,
+    source: C63ResidentSourceFunctionalClaims,
+    terminal: &C61NativeTerminalCompilerPrepared,
+    native: C62ProductionJointNativeProverLinkPending,
+    streams: &mut [CorrelationStream; TAPES],
+    backend: &mut Backend,
+    spill_root: &Path,
+    session_digest: [u8; 32],
+    transcript: &mut Transcript,
+) -> Result<C63ExactProductionProverProof, String> {
+    validate_production_streams(streams)?;
+    if roots.session_digest() != session_digest
+        || terminal.public_output.terminal_claims()
+            != blind.residual_terminal_outputs.terminal_functionals()
+        || terminal.inputs.relation_root() != blind.residual_terminal_outputs.digest()
+        || nbr2.outer_statement_digest() != source.claims.statement().outer_statement_digest()
+    {
+        return Err("C6.3 exact runner statement or terminal binding differs".to_owned());
+    }
+    let residual_terminal_fold = blind
+        .residual_terminal_outputs
+        .clone()
+        .bind_output_beta(terminal.public_output.output_beta());
+    let mut pending = C63AuthenticatedSketchPendingSlotRegistryProverBuilder::new(roots.fixed())
+        .map_err(text_error)?;
+    pending.absorb_residual(&blind.residual_pending).map_err(text_error)?;
+    let pending = pending.finish().map_err(text_error)?;
+    let C63ResidentSourceFunctionalClaims { claims, frame } = source;
+    let source_functional_statement_digest = claims.statement().digest();
+    let (authenticated_link, bound, authenticated_link_metrics, receipt, source_receipt) =
+        prove_c63_authenticated_output_link_persisted_cuda_nbr2_strict(
+            roots.fixed(),
+            roots.cohorts(),
+            pending,
+            nbr2,
+            &claims,
+            streams,
+            backend,
+            spill_root,
+            session_digest,
+            transcript,
+        )
+        .map_err(text_error)?;
+    if bound.len() != 2 * C63_AUTHENTICATED_SKETCH_WRAPPER_ACTIVE_SLOTS
+        || source_receipt.statement_digest() != source_functional_statement_digest
+    {
+        return Err("C6.3 exact runner link census or source receipt differs".to_owned());
+    }
+    let joint_native = native.finish_after_nbr2_link(receipt)?;
+    Ok(C63ExactProductionProverProof {
+        residual_proof: blind.residual_proof,
+        residual_frame: blind.residual_frame,
+        residual_terminal_outputs: blind.residual_terminal_outputs,
+        residual_terminal_fold,
+        source_functional_frame: frame,
+        authenticated_link,
+        authenticated_link_metrics,
+        joint_native,
+        nbr2_statement_digest: nbr2.digest(),
+        source_functional_statement_digest,
+        outer_statement_digest: nbr2.outer_statement_digest(),
+    })
+}
+
 /// Consume all remaining same-attempt provider owners into the exact C6PA2
 /// plus global-blind certificate boundary. This function accepts no detached
 /// secondary proof: that proof must come from the receipt-gated output above.
@@ -1309,6 +2201,64 @@ pub fn assemble_c62_native_exact_production_nbr2_certificate(
         public_argument,
         proof_envelope,
     })
+}
+
+/// Assemble the two C6.3 certificate payloads from the exact joined proof.
+/// Final session metadata remains with the campaign boundary; no historical
+/// cache-proof component is accepted here.
+#[cfg(feature = "c61-p3-authenticated-reference")]
+#[allow(clippy::too_many_arguments)]
+pub fn assemble_c63_exact_production_components(
+    base_statement_digest: [u8; 32],
+    native_profile_digest: [u8; 32],
+    functional_digest: [u8; 32],
+    response_binding_digest: [u8; 32],
+    root_binding_digest: [u8; 32],
+    profile: &volta_mac::C6CanonicalTargetProfile,
+    primary: [C61ProductionCommittedChainExecution; 2],
+    compiler: [C61ProductionCompilerChainExecution; 2],
+    arithmetic: crate::c61_public_compression::C61ArithmeticFrame,
+    product_coordinate_one: &[u8],
+    statements: &[C6BlindResidualStatement],
+    fixed: &C6FixedWrapperCommitments,
+    proof: C63ExactProductionProverProof,
+    sparse_h_closure: &crate::c63_sparse_h_closure::C63SparseHClosureProof,
+    terminal_proofs: [C61AuthenticatedWhirBaseProof; 4],
+) -> Result<(C62ProductionPublicArgumentAssembly, Vec<u8>), String> {
+    if proof.nbr2_statement_digest == [0; 32]
+        || proof.source_functional_statement_digest == [0; 32]
+        || proof.residual_terminal_fold.terminal_outputs_digest()
+            != proof.residual_terminal_outputs.digest()
+        || arithmetic.terminal_claims != *proof.residual_terminal_outputs.terminal_functionals()
+    {
+        return Err("C6.3 exact assembly has a noncanonical terminal binding".to_owned());
+    }
+    let public_argument = assemble_c62_production_public_argument_from_executions(
+        base_statement_digest,
+        native_profile_digest,
+        functional_digest,
+        response_binding_digest,
+        root_binding_digest,
+        profile,
+        primary,
+        proof.joint_native,
+        compiler,
+        arithmetic,
+    )?;
+    if public_argument.argument().statement_digest() != proof.outer_statement_digest {
+        return Err("C6.3 inherited public argument differs from the exact link".to_owned());
+    }
+    let response_tail = crate::assemble_c63_response_tail(
+        fixed,
+        proof.residual_proof.encode(statements).map_err(text_error)?,
+        product_coordinate_one.to_vec(),
+        proof.residual_frame.encode().map_err(text_error)?,
+        proof.source_functional_frame,
+        &proof.authenticated_link,
+        sparse_h_closure,
+        terminal_proofs,
+    )?;
+    Ok((public_argument, response_tail))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1651,6 +2601,37 @@ pub fn prove_c61_native_production_blind_components<'a>(
         cache_source_frame,
         cache_pending,
         cache_metrics,
+    })
+}
+
+/// Produce the C6.3 residual-only blind prefix with the existing fused
+/// arithmetic. No cache participant, dense cache encoding or hidden owner is
+/// admitted to this path.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub fn prove_c63_production_blind_components<'a>(
+    statements: &[C6BlindResidualStatement],
+    residual_compiler: C6BlindResidualFusedCompilerContext<'a>,
+    residual_witness: C6ResidualFusedWitnessView<'a>,
+    residual_arena: &'a C6ResidualFusedCoefficientArena,
+    streams: &mut [CorrelationStream; TAPES],
+    transcript: &mut Transcript,
+) -> Result<C63ProductionBlindProverOutput, String> {
+    validate_production_streams(streams)?;
+    let (residual_proof, residual_frame, residual_pending, residual_terminal_outputs) =
+        prove_c6_blind_residual_sumchecks_fused_direct(
+            statements,
+            residual_compiler,
+            residual_witness,
+            residual_arena,
+            streams,
+            transcript,
+        )
+        .map_err(text_error)?;
+    Ok(C63ProductionBlindProverOutput {
+        residual_proof,
+        residual_frame,
+        residual_pending,
+        residual_terminal_outputs,
     })
 }
 
@@ -2010,7 +2991,69 @@ pub fn prepare_c61_native_decoded_blind_verifier(
     {
         return Err("decoded C6RSC4 differs from the replayed terminal relation".to_owned());
     }
-    Ok(C61NativeDecodedBlindVerifierPending { pending, ready, inputs })
+    Ok(C6ResidualDecodedBlindVerifierPending { pending, ready, inputs })
+}
+
+/// Replay the C6.3 residual-only blind prefix. Cache state has moved to the
+/// authenticated sketch, so no cache or hidden participant is accepted here.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+#[allow(clippy::too_many_arguments)]
+pub fn prepare_c63_decoded_blind_verifier(
+    roots: &C6VerifierLiveWrapperRootBinding,
+    statements: &[C6BlindResidualStatement],
+    residual_proof: &C6BlindResidualSumcheckProof,
+    residual_frame: &C6BlindResidualPendingTransferFrame,
+    relation: &volta_proto::c6_residual::C6ResidualRelationChallenges,
+    equality: C61EqualityDrawn,
+    arithmetic: &crate::c61_public_compression::C61ArithmeticFrame,
+    canonical_runtime: &[Fp2],
+    contexts: &mut [VerifierCtx; TAPES],
+    transcript: &mut Transcript,
+) -> Result<C6ResidualDecodedBlindVerifierPending, String> {
+    validate_production_contexts(contexts)?;
+    let (residual_pending, leaf_points, auxiliary_points) =
+        verify_c6_blind_residual_sumchecks_direct_claims_with_points(
+            statements,
+            residual_proof,
+            residual_frame,
+            &arithmetic.terminal_claims,
+            contexts,
+            transcript,
+        )
+        .map_err(text_error)?;
+    let mut pending = C63AuthenticatedSketchPendingSlotRegistryVerifierBuilder::new(roots.fixed())
+        .map_err(text_error)?;
+    pending.absorb_residual(&residual_pending).map_err(text_error)?;
+    let pending = pending.finish().map_err(text_error)?;
+    let outputs = C6BlindResidualDirectTerminalOutputs::from_verifier_claims(
+        statements,
+        relation,
+        leaf_points,
+        auxiliary_points,
+        arithmetic.terminal_claims,
+    )
+    .map_err(text_error)?;
+    let public_output = equality
+        .fix_terminal_claims(arithmetic.terminal_claims, transcript)
+        .draw_output_challenge(transcript);
+    let inputs = terminal_compiler_inputs(&outputs, public_output.output_beta())?;
+    let ready = public_output
+        .fix_adjoint_root(inputs.relation_root(), transcript)
+        .map_err(text_error)?
+        .draw_runtime_challenges(transcript);
+    crate::verify_c61_production_arithmetic_frame(
+        &ready,
+        arithmetic.statement_digest,
+        canonical_runtime,
+        arithmetic,
+    )
+    .map_err(text_error)?;
+    if inputs.relation_challenges_digest() != relation.digest()
+        || inputs.functional_fold() != arithmetic.source_boundary
+    {
+        return Err("decoded C6.3 residual differs from the terminal relation".to_owned());
+    }
+    Ok(C6ResidualDecodedBlindVerifierPending { pending, ready, inputs })
 }
 
 /// Consume the exact disk blind continuation only after compiler/native
@@ -2073,6 +3116,46 @@ pub fn finish_c62_native_decoded_nbr2_verifier(
     let blind = c61_native_exact_bound_slot_output(bound.len())?;
     let joint_native = native.finish_after_nbr2_link(receipt)?;
     Ok(C62ExactProductionNbr2VerifierOutput { blind, joint_native })
+}
+
+/// Close the C6.3 residual-only link and retain the authenticated systematic
+/// opening receipt for the subsequent sparse/WHIR suffix.
+#[cfg(feature = "c61-p3-authenticated-reference")]
+#[allow(clippy::too_many_arguments)]
+pub fn finish_c63_decoded_verifier(
+    roots: &C6VerifierLiveWrapperRootBinding,
+    blind: C6ResidualDecodedBlindVerifierPending,
+    authenticated_link: &C6AuthenticatedOutputLinkProof,
+    public_argument_statement_digest: [u8; 32],
+    nbr2: &C6Nbr2CorrectionFunctional<'_>,
+    source_functionals: &C63ResidualSourceFunctionalVerifierClaims,
+    native: C62ProductionJointNativeVerifierLinkPending,
+    contexts: &mut [VerifierCtx; TAPES],
+    transcript: &mut Transcript,
+) -> Result<C63ExactProductionVerifierOutput, String> {
+    if public_argument_statement_digest != nbr2.outer_statement_digest()
+        || public_argument_statement_digest
+            != source_functionals.statement().outer_statement_digest()
+    {
+        return Err("decoded C6.3 public argument differs from the link statements".to_owned());
+    }
+    let (bound, receipt, source_link) =
+        verify_c63_authenticated_output_link_production_nbr2_strict(
+            roots.fixed(),
+            blind.pending,
+            authenticated_link,
+            nbr2,
+            source_functionals,
+            contexts,
+            transcript,
+        )
+        .map_err(text_error)?;
+    let blind = c63_exact_bound_slot_output(bound.len())?;
+    let joint_native = native.finish_after_nbr2_link(receipt)?;
+    Ok(C63ExactProductionVerifierOutput {
+        inherited: C62ExactProductionNbr2VerifierOutput { blind, joint_native },
+        source_link,
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2430,6 +3513,18 @@ fn c61_native_exact_bound_slot_output(
     let bound_slots = bound_slots as u64;
     if bound_slots != 2 * C61_NATIVE_WRAPPER_ACTIVE_SLOTS as u64 {
         return Err("C6.1 native verifier bound-slot census mismatch".to_owned());
+    }
+    Ok(C6ExactProductionVerifierOutput { bound_slots })
+}
+
+fn c63_exact_bound_slot_output(
+    bound_slots: usize,
+) -> Result<C6ExactProductionVerifierOutput, String> {
+    let bound_slots = bound_slots as u64;
+    if bound_slots
+        != 2 * crate::c6_wrapper_pcs::C63_AUTHENTICATED_SKETCH_WRAPPER_ACTIVE_SLOTS as u64
+    {
+        return Err("C6.3 verifier bound-slot census mismatch".to_owned());
     }
     Ok(C6ExactProductionVerifierOutput { bound_slots })
 }
@@ -2902,6 +3997,48 @@ mod tests {
             verifier.find("verify_c6_authenticated_output_link_production_nbr2_strict(").unwrap()
                 < verifier.find("native.finish_after_nbr2_link(receipt)").unwrap()
         );
+    }
+
+    #[test]
+    fn c63_resident_driver_and_complete_verifier_keep_the_link_order() {
+        let source = include_str!("c6_blind_round_coordinator.rs");
+        let prepare = source
+            .split("pub fn prepare_c63_resident_sketch_suffix")
+            .nth(1)
+            .unwrap()
+            .split("pub fn finish_c63_resident_sketch_suffix")
+            .next()
+            .unwrap();
+        assert!(prepare.contains("prove_c63_sparse_h_tape_closure_with_spots_resident("));
+        assert!(prepare.contains("authenticate_c63_resident_source_functionals_at_point("));
+        assert!(!prepare.contains("prepare_c63_authenticated_whir_limb_pair("));
+
+        let finish = source
+            .split("pub fn finish_c63_resident_sketch_suffix")
+            .nth(1)
+            .unwrap()
+            .split("/// Recover the exact K/V append cells")
+            .next()
+            .unwrap();
+        assert!(finish.contains("linked: &C63ExactProductionProverProof"));
+        assert!(
+            finish.find("source_functional_statement_digest !=").unwrap()
+                < finish.find("prepare_c63_authenticated_whir_limb_pair(").unwrap()
+        );
+
+        let verifier = source
+            .split("pub fn verify_c63_complete_decoded_response")
+            .nth(1)
+            .unwrap()
+            .split("impl C62ExactProductionNbr2VerifierOutput")
+            .next()
+            .unwrap();
+        let sparse = verifier.find("begin_verify_c63_sketch_suffix(").unwrap();
+        let source_functional =
+            verifier.find("verify_c63_resident_source_functionals_at_pending(").unwrap();
+        let link = verifier.find("finish_c63_decoded_verifier(").unwrap();
+        let whir = verifier.find("finish_c63_complete_verifier(").unwrap();
+        assert!(sparse < source_functional && source_functional < link && link < whir);
     }
 
     #[test]

@@ -10,30 +10,50 @@ record; no external plan is authoritative.
 
 Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 
-- **Status.** Candidate contains the resident coordinator, exact `D=X-R` link,
-  eight-body suffix, CPU verifier, production binding, live-correction packer,
-  two-cohort materializer and campaign boundary. Pod bootstrap and full-size
-  differential pass; the two-response record driver compiles locally.
-- **Evidence.** The authorized pod has one exclusive A100 80 GB, `sm_80`, CUDA
-  12.8, 250 GB RAM and 228 GB admission storage. Genesis/successor
-  GPU states match the CPU oracle, including canonical zero root;
-  transition walls are 15.129/9.204 ms and device peaks 1.31/1.64 GB. This and
-  prior screens remain `credit:false` component data.
-- **Decision.** Keep two authentication tapes, eight WHIR bodies and four
-  terminal tags. The driver fixes eight roots, closes sparse/source claims,
-  consumes the existing global link, then draws WHIR masks. Screen v16 keeps
-  105 bits per phase and gives `78.0190233428` complete bits. The conservative
-  corrected codec projects `28,710,631 B` and `129,908,328 B` setup plus first.
-  The designated envelope is `2,722,364 B` and complete `pi_final` is
-  `2,723,157 B`; both gates pass analytically.
-- **Checks.** Certificate `<=30,000,000 B`, warm prover `<20 s`, CPU verifier
-  `<5 s`, verifier RSS `<=8 GB` and the 150-second prover mark are engineering
-  targets: crossing them records `FAIL` but does not stop a viable run.
-  Soundness `>=78.00` bits and protocol acceptance remain mandatory.
-- **Resume.** Pull and release-build the record driver on the pod, then run one
-  cold `0→150` and one warm
-  `150→200` response. Retain complete artifacts after byte/time/RSS misses.
-  Stop only for cryptographic failure, invalid transition or imminent loss.
+- **Status.** C6.3 remains the active design. Clean `a2adb7a` completed the
+  reusable 17-profile setup, then the first create-new `0→150` attempt stopped
+  before serialization with `C6 full-field witness collection is already
+  closed`. It produced zero certificates; both authorizations are burned and
+  no client state was promoted.
+- **Evidence.** Setup took `2,092.76 s`, `12.93 GB` RSS and `197,278,943 B`.
+  The failed attempt took `700.51 s`, peaked at `21.97 GB` process RSS,
+  `46.78 GB` cgroup use, `44,101 MiB` external device use and `25.63 GB`
+  transient data. No resource guard fired. This is diagnostic evidence only;
+  certificate, verifier, timing and end-to-end credit remain absent.
+- **Hard stop and repair.** The attempt is terminal and is never resumed. The
+  root defect is a lifecycle mismatch: after the typed post-source boundary,
+  recorder annotations must be non-consuming no-ops. Before that boundary,
+  closed-sidecar writes still reject. The minimal shared fix passes all 41
+  `volta-mac` tests, four C6.3 state tests and the CUDA runner check.
+- **Checks/authorization.** Soundness `>=78.00` bits and protocol acceptance
+  remain mandatory. Byte/time/memory misses remain nonterminal. The owner GO
+  and pod endpoint remain active for one full create-new rerun.
+- **Resume.** Commit and push the repair plus append-only failure record, pull
+  it on the pod, release-build the runner, then run fresh cold `0→150` and warm
+  `150→200`. Preserve the failed run and use new session paths/correlations.
+
+- **2026-08-25 — First real C6.3 attempt fails closed at the post-source
+  lifecycle boundary.** Clean `a2adb7a` generated all 17 reusable installed
+  profiles in `2,092.76 s` with `12,928,634,880 B` RSS and `197,278,943 B` of
+  files. The create-new cold attempt then exited after `700.51 s` before any
+  certificate or verifier replay with `C6 full-field witness collection is
+  already closed`. It used at most `21,972,549,632 B` process RSS,
+  `46,778,408,960 B` cgroup memory, `44,101 MiB` external device memory and
+  `25,627,197,440 B` transient disk; no memory/disk guard fired. Two real-PCG
+  authorizations were burned, the predecessor was not promoted, and no retry
+  was made. The wrapper path also crossed the 10-GiB diagnostic guard, led by
+  a `17,179,869,184-B` encoded weight oracle; this disproves the expected
+  small-transient engineering condition but is not the failure cause.
+  Inspection found the typed replay-owner transfer correctly entered the
+  authorized post-source phase, while generic recorder annotations still
+  rejected the closed sidecar. The shared repair makes those annotations
+  non-consuming no-ops only after that one-way transition; premature writes
+  still reject, the iterator is not consumed and the bound source schedule is
+  unchanged. All 41 `volta-mac` tests, four C6.3 state tests and the CUDA
+  runner check pass. Raw disposition:
+  `c63-e2e-cold-warm-failure-2026-08-25-a2adb7a.json`. Confidence in this root
+  cause is 95%; later unexecuted seams remain uncredited until a fresh full
+  run.
 
 - **2026-08-25 — Thin cold/warm E2E record driver is locally green.** The
   existing C6.2 recorder now has one C6.3 mode rather than a second harness. It

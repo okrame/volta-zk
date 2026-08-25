@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "profile": "runpod-a100-c63-authenticated-sketch-cold-warm-v1",
+  "mode": "c63-prove",
+  "status": "failed_before_first_certificate",
+  "source_git_commit": "a2adb7a",
+  "git_dirty": false,
+  "cloud": {
+    "provider": "RunPod",
+    "endpoint": "64.247.196.128:13949",
+    "region": "not-exposed",
+    "image": "Ubuntu 24.04.3 LTS",
+    "driver_version": "580.159.04",
+    "cuda_version": "12.8",
+    "gpu_sku": "NVIDIA A100-SXM4-80GB",
+    "cpu_model": "AMD EPYC 7742 64-Core Processor",
+    "cgroup_memory_limit_bytes": 249999998976,
+    "vcpus": 128
+  },
+  "installed_setup": {
+    "profiles": 17,
+    "wall_s": 2092.76,
+    "max_rss_bytes": 12928634880,
+    "file_bytes": 197278943,
+    "exit_status": 0,
+    "reusable_after_failure": true
+  },
+  "attempt": {
+    "elapsed_wall_s": 700.51,
+    "user_cpu_s": 1225.13,
+    "system_cpu_s": 106.85,
+    "time_max_rss_bytes": 21906468864,
+    "exit_status": 1,
+    "error": "C6 full-field witness collection is already closed",
+    "certificates_produced": 0,
+    "artifacts_produced": 0,
+    "client_head_promoted": false,
+    "burned_correlation_authorizations": 2,
+    "selective_retry_performed": false
+  },
+  "supervisor": {
+    "stop_reason": "none",
+    "samples": 556,
+    "samples_with_valid_inode_count": 396,
+    "replacement_after_inode_cli_error": true,
+    "max_process_rss_bytes": 21972549632,
+    "max_cgroup_usage_bytes": 46778408960,
+    "cgroup_failcnt": 0,
+    "max_gpu_used_bytes_external": 46243250176,
+    "min_filesystem_free_bytes": 215460429824,
+    "max_transient_run_bytes": 25627197440,
+    "retained_transient_run_bytes": 19629343144,
+    "dense_growth_guard_observed": true,
+    "resource_guard_terminated_attempt": false
+  },
+  "largest_observed_transients": [
+    {
+      "role": "wrapper_oracle_fp2",
+      "bytes": 17179869184
+    },
+    {
+      "role": "wrapper_staging_outer_0",
+      "bytes": 4294967296
+    },
+    {
+      "role": "wrapper_coefficients_fp2",
+      "bytes": 2147483648
+    }
+  ],
+  "gate_credit": {
+    "certificate_bytes": false,
+    "prover_time": false,
+    "verifier_time": false,
+    "verifier_memory": false,
+    "protocol_acceptance": false,
+    "e2e": false
+  },
+  "diagnosis": {
+    "class": "post-source lifecycle integration defect",
+    "confidence": 0.95,
+    "detail": "The typed post-source transition authorized later correlation draws, but recorder annotations still rejected the already-closed source sidecar instead of becoming non-consuming no-ops."
+  }
+}

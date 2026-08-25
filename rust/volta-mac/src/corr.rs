@@ -1591,12 +1591,15 @@ impl CorrelationStream {
     }
 
     /// Attach canonical hidden corrections to a previously drawn subfield
-    /// domain. It is a no-op unless C6 witness collection was enabled.
+    /// domain. It is a no-op outside the active C6 source phase.
     pub fn record_c6_subfield_corrections(
         &mut self,
         domain: u64,
         corrections: &[u64],
     ) -> Result<(), String> {
+        if self.c6_source_post_phase {
+            return Ok(());
+        }
         if self.c6_subfield_witness_closed {
             return Err("C6 subfield witness collection is already closed".to_owned());
         }
@@ -1607,13 +1610,16 @@ impl CorrelationStream {
     }
 
     /// Attach hidden full-field corrections to a previously drawn direct
-    /// source domain. It is a no-op unless complete C6 source collection was
-    /// enabled. ProductMask domains reject corrections.
+    /// source domain. It is a no-op outside the active C6 source phase.
+    /// ProductMask domains reject corrections.
     pub fn record_c6_fullfield_corrections(
         &mut self,
         domain: u64,
         corrections: &[Fp2],
     ) -> Result<(), String> {
+        if self.c6_source_post_phase {
+            return Ok(());
+        }
         if self.c6_fullfield_witness_closed {
             return Err("C6 full-field witness collection is already closed".to_owned());
         }
@@ -1625,12 +1631,16 @@ impl CorrelationStream {
 
     /// Attach direct full-field plaintexts to a previously drawn domain.
     /// Corrections are derived only when the complete C6 source sidecar is
-    /// active, so the ordinary prover path allocates no extra vector.
+    /// active, so ordinary and authorized post-source paths allocate no extra
+    /// vector.
     pub fn record_c6_fullfield_plaintexts(
         &mut self,
         domain: u64,
         plaintexts: &[Fp2],
     ) -> Result<(), String> {
+        if self.c6_source_post_phase {
+            return Ok(());
+        }
         if self.c6_fullfield_witness_closed {
             return Err("C6 full-field witness collection is already closed".to_owned());
         }
@@ -1650,6 +1660,9 @@ impl CorrelationStream {
     where
         I: IntoIterator<Item = Fp2>,
     {
+        if self.c6_source_post_phase {
+            return Ok(());
+        }
         if self.c6_fullfield_witness_closed {
             return Err("C6 full-field witness collection is already closed".to_owned());
         }
@@ -3076,8 +3089,17 @@ mod tests {
         let _ = prover.draw_fulls(41, 1);
         assert_eq!(prover.counters.sub_corrs, counters.sub_corrs + 1);
         assert_eq!(prover.counters.full_corrs, counters.full_corrs + 1);
-        assert!(prover.record_c6_subfield_corrections(40, &[1]).is_err());
-        assert!(prover.record_c6_fullfield_plaintexts(41, &[Fp2::ONE]).is_err());
+        let post_schedule = prover.schedule_audit().unwrap();
+        prover.record_c6_subfield_corrections(40, &[1]).unwrap();
+        prover.record_c6_fullfield_corrections(41, &[Fp2::ONE]).unwrap();
+        prover.record_c6_fullfield_plaintexts(41, &[Fp2::ONE]).unwrap();
+        prover
+            .record_c6_fullfield_plaintexts_iter(
+                42,
+                std::iter::once_with(|| panic!("post-source iterator was consumed")),
+            )
+            .unwrap();
+        assert_eq!(prover.schedule_audit().unwrap(), post_schedule);
         assert!(prover.enter_post_c6_source_phase().is_err());
 
         let mut incomplete = CorrelationStream::new([0xD7; 32]);

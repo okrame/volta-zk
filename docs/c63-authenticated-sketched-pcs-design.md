@@ -1240,6 +1240,44 @@ not SCP; weights and generated setup stay uncommitted on the pod, while the
 small append-only JSON record returns through Git. A measurement miss never
 replaces a complete artifact with a no-certificate disposition.
 
+#### First create-new disposition and lifecycle repair
+
+Clean `a2adb7a` generated the complete reusable 17-profile setup in
+`2,092.76 s`, with `12,928,634,880 B` maximum RSS and `197,278,943 B` of
+installed files. The first cold attempt then failed closed after `700.51 s`
+with `C6 full-field witness collection is already closed`, before artifact
+serialization or verifier replay. It produced no certificate, burned both
+reserved real-PCG authorizations and did not promote the client head. No
+selective retry was made.
+
+The failure was not a resource stop: maximum process RSS was
+`21,972,549,632 B`, cgroup use `46,778,408,960 B`, external device use
+`44,101 MiB`, transient data `25,627,197,440 B`, and the filesystem retained
+at least `215,460,429,824 B` free. The 10-GiB transient diagnostic did fire.
+The largest object was the inherited encoded weight oracle at
+`17,179,869,184 B`; therefore the no-large-transient engineering expectation
+is false for this implementation even though the removed dense K/V-cache path
+did not return.
+
+The typed replay-owner transfer had correctly sealed both response-source
+sidecars and entered the one-way post-source phase. Ordinary proof components
+then issued the same recorder annotations they use when a source sidecar is
+active. Draws were explicitly authorized in the post-source phase, but the
+annotations still rejected the already-closed recorder. The shared repair
+makes subfield/full-field recorder annotations non-consuming no-ops only after
+that typed transition. It does not reopen either sidecar, consume an input
+iterator, change the frozen source schedule, or authorize a draw; a closed
+recorder still rejects before the transition. This changes lifecycle plumbing,
+not the certificate relation, correlation budget or zero-knowledge argument.
+
+All 41 `volta-mac` tests, the four focused C6.3 persistent-state tests and the
+CUDA-feature runner check pass. The failed attempt remains append-only at
+`benchmarks/results/c63-e2e-cold-warm-failure-2026-08-25-a2adb7a.json` and
+earns no gate credit. A new result must use a new session, nonce and correlation
+ranges and rerun both cold and warm responses from genesis. Confidence that
+this repair removes the observed stop is 95%; it gives no credit to later
+unexecuted seams.
+
 ## 7. Current decision and confidence
 
 The direction is **the append-aligned `t=16` Bolt sparse precode over Volta's

@@ -53,6 +53,16 @@ Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
   owner, new engine or new kernel is admitted. The thin campaign boundary is
   next.
 
+- **2026-08-25 — Production suffix choices are transcript-derived.** The
+  production caller no longer supplies the D19 evaluation point or any of the
+  four projected fixed-cache identities. The point is derived from the C6.3
+  transcript binding; cache identities additionally bind `rho`, tape, limb
+  and the validated setup manifest. The CPU verifier derives the same point
+  from decoded public data. A focused mutation test separates transcript and
+  tape/limb coordinates, and the CUDA-feature build passes. This is a trust-
+  boundary reduction with no wire-byte or dominant-time change; it is not E2E
+  evidence.
+
 - **2026-08-25 — New A100 preflight passes; production setup identity is no
   longer caller-selected.** The pod exposes one idle A100-SXM4-80GB at `sm_80`,
   CUDA 12.8, about 250 GB cgroup RAM and 228 GB free root storage. Source was

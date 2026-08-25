@@ -254,6 +254,8 @@ const C63_TRANSCRIPT_SPARSE_CONTEXT: &str = "volta-zk/c63/transcript-sparse/v1";
 const C63_TRANSCRIPT_TERMINAL_CONTEXT: &str = "volta-zk/c63/transcript-terminal/v1";
 const C63_TRANSCRIPT_SOURCE_FUNCTIONAL_CONTEXT: &str =
     "volta-zk/c63/transcript-source-functional/v1";
+const C63_TRANSCRIPT_OUTPUT_POINT_CONTEXT: &str = "volta-zk/c63/transcript-output-point/v1";
+const C63_PROJECTED_CACHE_CONTENT_CONTEXT: &str = "volta-zk/c63/projected-cache-content/v1";
 
 /// Minimal C6.3 Fiat--Shamir schedule. The immutable request/model bindings
 /// fix `rho` and the eight lane contexts; all eight initial roots then fix the
@@ -311,6 +313,29 @@ impl C63TranscriptBinding {
 
     pub(crate) fn rho_seed(self) -> [u8; 32] {
         self.digest
+    }
+
+    pub(crate) fn output_point(self) -> Vec<Fp2> {
+        let mut hasher = blake3::Hasher::new_derive_key(C63_TRANSCRIPT_OUTPUT_POINT_CONTEXT);
+        hasher.update(&self.digest);
+        let mut transcript = Transcript::new(*hasher.finalize().as_bytes());
+        (0..C63_ENCODED_SKETCH_PHYSICAL_ROW_LOG2).map(|_| transcript.challenge_fp2()).collect()
+    }
+
+    pub(crate) fn projected_cache_content_digest(
+        self,
+        rho: &[Fp2; C63_BOLT_COLUMNS],
+        tape: usize,
+        limb: usize,
+    ) -> Result<[u8; 32], String> {
+        if tape >= 2 || limb >= 2 {
+            return Err("C6.3 projected cache coordinate differs".to_owned());
+        }
+        let mut hasher = blake3::Hasher::new_derive_key(C63_PROJECTED_CACHE_CONTENT_CONTEXT);
+        hasher.update(&self.digest);
+        c63_hash_rho(&mut hasher, rho);
+        hasher.update(&[tape as u8, limb as u8]);
+        Ok(*hasher.finalize().as_bytes())
     }
 
     pub(crate) fn lane_seed(
@@ -2453,7 +2478,6 @@ pub fn verify_c63_sketch_suffix(
     public_argument_bytes: &[u8],
     attempt: C6ClientAttempt,
     h: &C63SparseSketchReference,
-    output_point: &[Fp2],
     sparse_proof: &C63SparseHClosureProof,
     predecessor_state: &C63VerifierSketchState,
     source_link: C63ResidualSourceFunctionalsVerifiedLink,
@@ -2465,7 +2489,6 @@ pub fn verify_c63_sketch_suffix(
         public_argument_bytes,
         attempt,
         h,
-        output_point,
         sparse_proof,
         predecessor_state,
         verifier_contexts,
@@ -2538,7 +2561,6 @@ pub fn begin_verify_c63_sketch_suffix(
     public_argument_bytes: &[u8],
     attempt: C6ClientAttempt,
     h: &C63SparseSketchReference,
-    output_point: &[Fp2],
     sparse_proof: &C63SparseHClosureProof,
     predecessor_state: &C63VerifierSketchState,
     verifier_contexts: &mut [VerifierCtx; 2],
@@ -2548,7 +2570,7 @@ pub fn begin_verify_c63_sketch_suffix(
     let (decoded, statement, spots, successor_state) = prepare_c63_sketch_suffix_inputs(
         public_argument_bytes,
         attempt,
-        output_point,
+        None,
         C63_SYSTEMATIC_SPOT_QUERIES,
         22,
         &input_config,
@@ -2606,7 +2628,7 @@ pub(crate) fn verify_c63_sketch_suffix_with_configs(
     let (decoded, statement, spots, successor_state) = prepare_c63_sketch_suffix_inputs(
         public_argument_bytes,
         attempt,
-        output_point,
+        Some(output_point),
         spot_queries,
         input_variables,
         input_config,
@@ -2650,7 +2672,7 @@ pub(crate) fn verify_c63_sketch_suffix_with_configs(
 fn prepare_c63_sketch_suffix_inputs(
     public_argument_bytes: &[u8],
     attempt: C6ClientAttempt,
-    output_point: &[Fp2],
+    supplied_output_point: Option<&[Fp2]>,
     spot_queries: usize,
     input_variables: usize,
     input_config: &C63WhirConfig,
@@ -2675,6 +2697,15 @@ fn prepare_c63_sketch_suffix_inputs(
         output_variables,
         output_config,
     )?;
+    let derived_output_point;
+    let output_point = match supplied_output_point {
+        Some(point) => point,
+        None if output_variables == C63_ENCODED_SKETCH_PHYSICAL_ROW_LOG2 => {
+            derived_output_point = decoded.binding.output_point();
+            &derived_output_point
+        }
+        None => return Err("C6.3 production output-point geometry differs".to_owned()),
+    };
     let argument = &decoded.argument;
     let opening = C63CorrectionRowsOpeningReference::decode(
         argument.correction_opening(),
@@ -3335,6 +3366,60 @@ mod tests {
             assert_eq!(c63_whir_structural_budget(variables).unwrap().strict_chain_bytes, bytes);
         }
         assert!(c63_whir_config(20).is_err());
+    }
+
+    #[test]
+    fn transcript_derives_the_output_point_and_projected_cache_identity() {
+        let attempt = C6ClientAttempt {
+            slot: 7,
+            nonce: [0x11; 32],
+            setup_manifest_digest: [0x12; 32],
+            old_head_digest: [0x13; 32],
+            predecessor_certificate_digest: [0x14; 32],
+            correlation_ranges: C6PairedCorrelationRanges {
+                coordinates: [
+                    C6CorrelationRange { stage: 1, start: 1_000, count: 1_000 },
+                    C6CorrelationRange { stage: 1, start: 2_000, count: 1_000 },
+                ],
+            },
+            workload: C6Workload {
+                prompt_tokens: 1,
+                decode_tokens: 0,
+                old_context: 1,
+                new_context: 2,
+            },
+        };
+        let binding = C63TranscriptBinding::new(
+            attempt, [0x21; 32], [0x22; 32], [0x23; 32], [0x24; 32], [0x25; 32], [0x26; 32], 2, 1,
+            2,
+        )
+        .unwrap();
+        let mut changed_attempt = attempt;
+        changed_attempt.nonce[0] ^= 1;
+        let changed_binding = C63TranscriptBinding::new(
+            changed_attempt,
+            [0x21; 32],
+            [0x22; 32],
+            [0x23; 32],
+            [0x24; 32],
+            [0x25; 32],
+            [0x26; 32],
+            2,
+            1,
+            2,
+        )
+        .unwrap();
+        assert_eq!(binding.output_point().len(), C63_ENCODED_SKETCH_PHYSICAL_ROW_LOG2);
+        assert_ne!(binding.output_point(), changed_binding.output_point());
+
+        let rho = std::array::from_fn(|index| {
+            Fp2::new(Fp::new(31 + index as u64), Fp::new(47 + index as u64))
+        });
+        let key = binding.projected_cache_content_digest(&rho, 0, 0).unwrap();
+        assert_ne!(key, binding.projected_cache_content_digest(&rho, 0, 1).unwrap());
+        assert_ne!(key, binding.projected_cache_content_digest(&rho, 1, 0).unwrap());
+        assert_ne!(key, changed_binding.projected_cache_content_digest(&rho, 0, 0).unwrap());
+        assert!(binding.projected_cache_content_digest(&rho, 2, 0).is_err());
     }
 
     #[test]

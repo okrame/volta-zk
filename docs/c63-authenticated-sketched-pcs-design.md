@@ -1,6 +1,6 @@
 # C6.3 Authenticated Sketched WHIR Design
 
-Status: **R0/R1 LOCAL GREEN / C63-G1 A100 PASS / CHECKPOINT 215d4f4 / POD PREFLIGHT PASS / FULL-SIZE DIFFERENTIAL PENDING**
+Status: **R0/R1 LOCAL GREEN / C63-G1 FULL-SIZE DIFFERENTIAL PASS / CHECKPOINT 697f43e / E2E CAMPAIGN IN PROGRESS**
 
 This document is the authority for C6.3. It replaces C6.2 only for new C6.3
 work; C6.2 code, artifacts and dispositions remain immutable evidence. The
@@ -1064,6 +1064,17 @@ two-cohort residual/auxiliary provider materializer now shares the existing
 C6.2 slot builder and rejects CPU execution; it admits no cache or hidden
 owner. The next boundary is only the thin campaign adapter; no dense cache
 cohort may re-enter.
+
+The post-`697f43e` adapter also removes the last two caller-selected values
+from the production suffix. The D19 evaluation point is derived from the
+attempt, statement and predecessor/successor roots already fixed by the C6.3
+transcript. Each projected fixed-cache identity is derived from that same
+binding, `rho`, tape and limb together with the setup manifest. The scaled
+test helper may still supply its smaller-geometry point explicitly; the
+production verifier cannot. A focused mutation test changes the derived point
+and cache identity when the transcript changes and separates all four
+tape/limb identities. This changes no certificate byte and adds no dominant
+prover work.
 
 The first hardware check is the single ignored integration test
 `volta-pcs/tests/c63_gpu_owner.rs`. It uses the production D22-to-D19 sampler,

@@ -27,7 +27,9 @@ use crate::c61_public_compression::{
     C61EqualityDrawn, C61OutputChallengeDrawn, C61ReadyPublicProof,
 };
 #[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
-use crate::c62_gpu_whir::{C62GpuMmcs, C62ProviderCacheKey};
+use crate::c62_gpu_whir::{
+    C62GpuMmcs, C62ProviderCacheKey, C62_GPU_WHIR_EXECUTOR_VERSION, C62_GPU_WHIR_FIELD_TAG,
+};
 #[cfg(feature = "c61-p3-authenticated-reference")]
 use crate::c63_preencoded_whir::{begin_verify_c63_sketch_suffix, C63SketchSuffixVerifierPending};
 #[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
@@ -130,6 +132,8 @@ use volta_proto::c6_cache_fold::{
     C6CacheFoldPairedProverTargets, C6CacheFoldPairedVerifierTargets,
     C6CacheFoldTargetFixedCorrections, C6CacheFoldTraceSnapshot,
 };
+#[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
+use volta_proto::C6SetupManifest;
 use volta_proto::{
     C61NativeResponseProofEnvelope, C62ResponseProofEnvelope, C6ClientAttempt,
     C6ProductionPairedSourceWitness, C6ResponseProofEnvelope,
@@ -348,6 +352,7 @@ pub fn prepare_c63_resident_sketch_suffix<R: rand_010::Rng>(
     mmcs: C62GpuMmcs,
     h: &C63SparseSketchReference,
     attempt: C6ClientAttempt,
+    setup_manifest: &C6SetupManifest,
     fixed: &C6FixedWrapperCommitments,
     outer_statement_digest: [u8; 32],
     profile_digest: [u8; 32],
@@ -355,8 +360,6 @@ pub fn prepare_c63_resident_sketch_suffix<R: rand_010::Rng>(
     predecessor_state: &C63VerifierSketchState,
     predecessor: Option<Arc<C63GpuStateOwner>>,
     successor: Arc<C63GpuStateOwner>,
-    projected_keys: &[[C62ProviderCacheKey; 2]; 2],
-    output_point: &[Fp2],
     plan: &C6CacheFoldAppendSourcePlan,
     schedule: &CorrScheduleAudit,
     source: &C6ProductionPairedSourceWitness,
@@ -410,6 +413,13 @@ pub fn prepare_c63_resident_sketch_suffix<R: rand_010::Rng>(
             old_len,
             new_len,
         )?;
+        setup_manifest.validate().map_err(|error| error.to_string())?;
+        if setup_manifest.digest().map_err(|error| error.to_string())?
+            != attempt.setup_manifest_digest
+        {
+            return Err("C6.3 resident suffix setup differs from its attempt".to_owned());
+        }
+        let output_point = binding.output_point();
         let mut rho_challenger = c63_challenger(binding.rho_seed())?;
         let (rho, projected_contexts) = C63EncodedSketchAtoYContext::sample_tape_limb_after_roots(
             crate::c61_whir_reference::C61Commitment::new(
@@ -453,7 +463,14 @@ pub fn prepare_c63_resident_sketch_suffix<R: rand_010::Rng>(
                 let projected_lane = prepare_c63_resident_projected_limb(
                     mmcs.clone(),
                     &output_config,
-                    projected_keys[tape][limb].clone(),
+                    c63_projected_cache_key(
+                        setup_manifest,
+                        binding,
+                        &rho,
+                        tape,
+                        limb,
+                        &output_config,
+                    )?,
                     messages.take_sketch(limb).map_err(|error| error.to_string())?,
                     messages.take_encoded_sketch(limb).map_err(|error| error.to_string())?,
                     projected_contexts[tape][limb].clone(),
@@ -463,7 +480,7 @@ pub fn prepare_c63_resident_sketch_suffix<R: rand_010::Rng>(
                     rng,
                 )?;
                 initial_roots[4 + tape * 2 + limb] = projected_lane.root();
-                u_limb_values[tape][limb] = projected_lane.evaluate(output_point)?;
+                u_limb_values[tape][limb] = projected_lane.evaluate(&output_point)?;
                 projected[tape][limb] = Some(projected_lane);
             }
         }
@@ -495,7 +512,7 @@ pub fn prepare_c63_resident_sketch_suffix<R: rand_010::Rng>(
             .map(|(row, values)| C63TapeSystematicSpot { row, values })
             .collect::<Vec<_>>();
         let statement =
-            C63SparseHClosureStatement::new(successor.correction_root(), output_point.to_vec())
+            C63SparseHClosureStatement::new(successor.correction_root(), output_point.clone())
                 .map_err(|error| error.to_string())?;
         let basis = Fp2::new(volta_field::Fp::ZERO, volta_field::Fp::ONE);
         let u_claims = std::array::from_fn(|tape| {
@@ -565,7 +582,7 @@ pub fn prepare_c63_resident_sketch_suffix<R: rand_010::Rng>(
                 new_len,
                 spot_rows,
                 correction_artifact,
-                output_point: output_point.to_vec(),
+                output_point,
                 m_point,
                 systematic,
                 projected,
@@ -586,6 +603,32 @@ pub fn prepare_c63_resident_sketch_suffix<R: rand_010::Rng>(
         }
     }
     result
+}
+
+#[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
+fn c63_projected_cache_key(
+    setup: &C6SetupManifest,
+    binding: C63TranscriptBinding,
+    rho: &[Fp2; crate::C63_BOLT_COLUMNS],
+    tape: usize,
+    limb: usize,
+    config: &crate::c63_preencoded_whir::C63WhirConfig,
+) -> Result<C62ProviderCacheKey, String> {
+    let folding = config.round_folding_factor(0);
+    let height = (1usize << (config.num_variables - folding)) << config.starting_log_inv_rate;
+    let key = C62ProviderCacheKey {
+        model_digest: setup.model_digest,
+        protocol_digest: setup.protocol_digest,
+        parameter_digest: setup.params_digest,
+        content_digest: binding.projected_cache_content_digest(rho, tape, limb)?,
+        field_tag: C62_GPU_WHIR_FIELD_TAG,
+        encoder_version: C62_GPU_WHIR_EXECUTOR_VERSION,
+        num_variables: config.num_variables as u8,
+        folding: folding as u8,
+        height: height as u64,
+    };
+    key.validate().map_err(|error| error.to_string())?;
+    Ok(key)
 }
 
 /// Draw the WHIR masks only after the existing global output link has
@@ -1365,7 +1408,6 @@ pub fn verify_c63_complete_decoded_response(
     sketch_public_argument: &[u8],
     attempt: C6ClientAttempt,
     h: &C63SparseSketchReference,
-    output_point: &[Fp2],
     sparse_h_closure: &C63SparseHClosureProof,
     predecessor_state: &C63VerifierSketchState,
     terminal_proofs: [C61AuthenticatedWhirBaseProof; 4],
@@ -1377,7 +1419,6 @@ pub fn verify_c63_complete_decoded_response(
         sketch_public_argument,
         attempt,
         h,
-        output_point,
         sparse_h_closure,
         predecessor_state,
         contexts,

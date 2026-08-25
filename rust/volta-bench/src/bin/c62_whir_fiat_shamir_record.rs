@@ -35,12 +35,16 @@ mod enabled {
     use volta_accel::{Backend, BackendStats, ResidentTimingPolicy};
     use volta_bench::c61_campaign::{
         build_c62_campaign_setup_manifest, create_c62_campaign_artifact,
+        create_c63_campaign_artifact, c63_campaign_genesis_head,
         load_c62_campaign_artifact, load_c62_campaign_installed_setup,
+        load_c63_campaign_artifact,
         prepare_c62_campaign_cache_precommit, prepare_c62_campaign_continuation_cache_precommit,
+        prepare_c63_campaign_continuation_transition, prepare_c63_campaign_genesis_transition,
         run_c62_campaign_live_production, validate_c62_campaign_cache_precommit_inputs,
-        verify_c62_campaign_e2e, verify_c62_loaded_campaign_e2e,
+        run_c63_campaign_live_production, verify_c62_campaign_e2e,
+        verify_c62_loaded_campaign_e2e, verify_c63_loaded_campaign_e2e,
         C61CampaignInstalledSetup, C62CampaignArtifact, C62CampaignLiveProductionOutput,
-        C62_CAMPAIGN_SETUP_MAX_BYTES,
+        C63CampaignLiveProductionOutput, C62_CAMPAIGN_SETUP_MAX_BYTES,
     };
     use volta_bench::c6_t1_owner::{
         build_c62_continuation_workload_owner, build_c6_t1_workload_owner,
@@ -59,8 +63,13 @@ mod enabled {
         C61_PRODUCTION_COMPILER_SUB_CORRELATIONS_PER_TAPE,
         C61_PRODUCTION_PERSISTED_MIN_AVAILABLE_HOST_BYTES,
     };
+    use volta_pcs::c62_gpu_whir::{C62GpuMmcs, C62GpuResourceGuard};
     use volta_pcs::{
         C62PublicArgument, C61NativeComponent, C61_AUTHENTICATED_WHIR_MASKS_PER_TAPE,
+        C63GpuSetupOwner, C63SparseSetupReference, C63SparseSketchReference,
+        C63VerifierSketchState, C63_BOLT_LDPC_CHECK_DEGREE,
+        C63_BOLT_LDPC_COLUMN_DEGREE, C63_BOLT_ROWS, C63_BOLT_SKETCH_ROWS,
+        C63_PRODUCTION_SETUP_SEED, C63_SPARSE_SETUP_DESCRIPTOR_BYTES,
         C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_CORRELATIONS_PER_TAPE,
         C6_RESIDUAL_BLIND_FULL_CORRELATIONS_PER_TAPE,
     };
@@ -80,6 +89,10 @@ mod enabled {
         C62_NATIVE_CERTIFICATE_FRAMING_BYTES, C62_NATIVE_STRICT_PI_FINAL_MAX_BYTES,
         C62_RETAINED_NON_PCS_RESPONSE_BYTES, C6_ABORT_RETRY_CREDITS, C6_ACCEPTANCE_CREDITS,
         C6_TERMINAL_ONE_RAW_CAPACITY,
+        C63_CONTINUATION_256_FULL_CORRELATIONS, C63_CONTINUATION_256_RAW_CORRELATIONS,
+        C63_CONTINUATION_256_SUB_CORRELATIONS, C63_GENESIS_FULL_CORRELATIONS,
+        C63_GENESIS_RAW_CORRELATIONS, C63_GENESIS_SUB_CORRELATIONS,
+        C63_NATIVE_CERTIFICATE_FRAMING_BYTES, C63_NATIVE_STRICT_PI_FINAL_MAX_BYTES,
     };
 
     const SCHEMA: u64 = 4;
@@ -98,6 +111,16 @@ mod enabled {
         volta_pcs::c62_gpu_whir::C62_GPU_WHIR_EXECUTOR_PROFILE;
     const C62_GPU_PERFORMANCE_ELIGIBLE_EXECUTOR: bool = true;
     const C62_RUN_CERTIFICATES: u16 = 1;
+    const C63_PROFILE: &str = "runpod-a100-c63-authenticated-sketch-cold-warm-v1";
+    const C63_PROTOCOL_ID: &str =
+        "VOLTA-C6.3-C63ASW1-C63SH1-C63PA3-C63PIF1-C63NFC3-v1";
+    const C63_RUN_CERTIFICATES: u16 = 2;
+    const C63_CERTIFICATE_TARGET_BYTES: u64 = 30_000_000;
+    const C63_SETUP_PLUS_FIRST_TARGET_BYTES: u64 = 129_908_328;
+    const C63_PROVER_TARGET_S: f64 = 20.0;
+    const C63_PROVER_DIAGNOSTIC_MARK_S: f64 = 150.0;
+    const C63_SOUNDNESS_BITS: f64 = 78.019_023_342_845;
+    const C63_SOUNDNESS_FLOOR_BITS: f64 = 78.0;
     /// r17 measured about 197 GiB of live persisted wrapper/four-chain data.
     /// Keep one bounded per-certificate spill lane and require useful headroom.
     const C62_PRODUCTION_PERSISTED_MIN_AVAILABLE_SPILL_BYTES: u64 =
@@ -155,6 +178,7 @@ mod enabled {
         Preflight,
         Precommit,
         Prove,
+        C63Prove,
         Verify,
         Mutate,
     }
@@ -174,7 +198,7 @@ mod enabled {
 
     fn usage() -> ! {
         eprintln!(
-            "usage: c62_whir_fiat_shamir_record --mode preflight|precommit|prove|verify|mutate \
+            "usage: c62_whir_fiat_shamir_record --mode preflight|precommit|prove|c63-prove|verify|mutate \
              --output PATH [--weights PATH --setup-dir PATH --work-root PATH] \
              [--run-root PATH --artifact-root PATH --state-root PATH] \
              [--threads N] [--accept]"
@@ -202,6 +226,7 @@ mod enabled {
                         "preflight" => Mode::Preflight,
                         "precommit" => Mode::Precommit,
                         "prove" => Mode::Prove,
+                        "c63-prove" => Mode::C63Prove,
                         "verify" => Mode::Verify,
                         "mutate" => Mode::Mutate,
                         _ => usage(),
@@ -367,6 +392,22 @@ mod enabled {
         }
     }
 
+    fn c63_correlation_profile(old_context: u32) -> Result<(usize, usize, u64), String> {
+        match old_context {
+            0 => Ok((
+                C63_GENESIS_SUB_CORRELATIONS,
+                C63_GENESIS_FULL_CORRELATIONS,
+                C63_GENESIS_RAW_CORRELATIONS,
+            )),
+            150 => Ok((
+                C63_CONTINUATION_256_SUB_CORRELATIONS,
+                C63_CONTINUATION_256_FULL_CORRELATIONS,
+                C63_CONTINUATION_256_RAW_CORRELATIONS,
+            )),
+            _ => Err("C6.3 record supports only contexts 0 and 150".to_owned()),
+        }
+    }
+
     fn c62_session_sequence(weights: &Path) -> Result<Vec<u32>, String> {
         let model = load_model(weights).map_err(|error| format!("load session model: {error}"))?;
         model.validate_layout().map_err(|error| error.to_string())?;
@@ -389,6 +430,12 @@ mod enabled {
     fn protocol_digest() -> [u8; 32] {
         let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c6.2/protocol-identity/v1");
         hasher.update(PROTOCOL_ID.as_bytes());
+        *hasher.finalize().as_bytes()
+    }
+
+    fn c63_protocol_digest() -> [u8; 32] {
+        let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c6.3/protocol-identity/v1");
+        hasher.update(C63_PROTOCOL_ID.as_bytes());
         *hasher.finalize().as_bytes()
     }
 
@@ -609,6 +656,7 @@ mod enabled {
         kernel_ns: u64,
         h2d_bytes: u64,
         d2h_bytes: u64,
+        explicit_d2d_copy_bytes: u64,
         h2d_ns: u64,
         d2h_ns: u64,
         synchronizations: u64,
@@ -628,6 +676,7 @@ mod enabled {
                 kernel_ns: stats.kernel_ns(),
                 h2d_bytes: stats.h2d_bytes,
                 d2h_bytes: stats.d2h_bytes,
+                explicit_d2d_copy_bytes: stats.explicit_d2d_copy_bytes,
                 h2d_ns: stats.h2d_ns,
                 d2h_ns: stats.d2h_ns,
                 synchronizations: stats.synchronizations,
@@ -1582,6 +1631,623 @@ mod enabled {
         Ok(())
     }
 
+    #[derive(Serialize)]
+    struct C63CertificateRecord {
+        index: u16,
+        slot: u32,
+        old_context: u32,
+        new_context: u32,
+        setup_profile: &'static str,
+        certificate_digest: String,
+        response_context_digest: String,
+        native_public_context_digest: String,
+        certificate_bytes: u64,
+        pi_final_bytes: u64,
+        workload_owner_wall_s: f64,
+        provider_certificate_wall_s: f64,
+        response_plus_proof_wall_s: f64,
+        artifact_persist_wall_s: f64,
+        verifier_wall_s: f64,
+        cold_full_e2e_wall_s: Option<f64>,
+        prover_rss_before_bytes: u64,
+        prover_rss_peak_bytes: u64,
+        verifier_rss_before_bytes: u64,
+        verifier_rss_peak_bytes: u64,
+        verifier_additional_peak_bytes: u64,
+        persisted_spill_bytes: u64,
+        accepted_sketch_state_device_bytes: u64,
+        certificate_target_pass: bool,
+        pi_final_target_pass: bool,
+        prover_target_pass: bool,
+        prover_diagnostic_mark_pass: bool,
+        verifier_target_pass: bool,
+        verifier_memory_pass: bool,
+        process_io: IoRecord,
+        response_backend: BackendRecord,
+        fixed_whir_backend: BackendRecord,
+        sketch_whir_backend: BackendRecord,
+        protocol_acceptance: bool,
+    }
+
+    #[derive(Serialize)]
+    struct C63SessionRecord {
+        schema: u64,
+        profile: &'static str,
+        mode: &'static str,
+        source_git_commit: String,
+        git_dirty: bool,
+        cloud: CloudMetadata,
+        hardware: HardwareRecord,
+        protocol_id: &'static str,
+        protocol_digest: String,
+        model_digest: String,
+        params_digest: String,
+        quantization_digest: String,
+        fixed_session_generation_wall_s: f64,
+        manifest_setup_wall_s: f64,
+        sparse_setup_cpu_wall_s: f64,
+        sparse_setup_gpu_wall_s: f64,
+        model_preprocessing_wall_s: f64,
+        model_preprocessing_rss_before_bytes: u64,
+        model_preprocessing_rss_after_bytes: u64,
+        model_preprocessing_process_io: IoRecord,
+        model_preprocessing_backend: BackendRecord,
+        fixed_model_cache_bytes: u64,
+        sparse_setup_descriptor_bytes: u64,
+        sparse_setup_gpu_bytes: u64,
+        setup_bytes: u64,
+        setup_plus_first_bytes: u64,
+        setup_plus_first_target_pass: bool,
+        accepted_slots: u16,
+        final_context: u32,
+        final_next_slot: u32,
+        raw_correlations_per_tape: u64,
+        expected_raw_correlations_per_tape: u64,
+        capacity_reconciled: bool,
+        soundness_bits_per_certificate: f64,
+        soundness_floor_bits: f64,
+        soundness_pass: bool,
+        engineering_targets_pass: bool,
+        certificates: Vec<C63CertificateRecord>,
+        credit: bool,
+        pass: bool,
+        artifact_root: String,
+        state_root: String,
+        run_root: String,
+    }
+
+    fn c63_prove(args: &Args) -> Result<(), String> {
+        let session_started = Instant::now();
+        let source_git_commit = git_sha_clean()?;
+        let cloud = cloud_metadata_from_env()
+            .ok_or_else(|| "cloud metadata environment is required".to_owned())?;
+        let weights = required_path(&args.weights, "--weights")?;
+        let setup_dir = required_path(&args.setup_dir, "--setup-dir")?;
+        let work_root = required_path(&args.work_root, "--work-root")?;
+        let run_root = required_path(&args.run_root, "--run-root")?;
+        let artifact_root = required_path(&args.artifact_root, "--artifact-root")?;
+        let state_root = required_path(&args.state_root, "--state-root")?;
+        for path in [run_root, artifact_root, state_root] {
+            if path.exists() {
+                return Err(format!("{} must not exist", path.display()));
+            }
+        }
+        let hardware = hardware_record(work_root)?;
+        if !hardware.overall_pass {
+            return Err("C6.3 hardware admission failed".to_owned());
+        }
+        fs::create_dir(run_root)
+            .map_err(|error| format!("create {}: {error}", run_root.display()))?;
+        fs::create_dir(artifact_root)
+            .map_err(|error| format!("create {}: {error}", artifact_root.display()))?;
+        fs::create_dir(state_root)
+            .map_err(|error| format!("create {}: {error}", state_root.display()))?;
+
+        let model_digest = hash_file_set("volta-zk/c6.2/model-file-set/v1", weights, &MODEL_FILES)?;
+        let params_digest = hash_c62_setup_profiles(setup_dir)?;
+        let quantization_digest = quantization_digest()?;
+        let fixed_session_started = Instant::now();
+        let session_sequence = c62_session_sequence(weights)?;
+        let fixed_session_generation_wall_s = fixed_session_started.elapsed().as_secs_f64();
+
+        let model_preprocessing_started = Instant::now();
+        let model_preprocessing_before_io = process_io()?;
+        let model_preprocessing_rss_before_bytes = current_rss_bytes()?;
+        let model = load_model(weights).map_err(|error| format!("load provider model: {error}"))?;
+        let verifier_model = Gpt2VerifierModel::from_model(&model)?;
+        let provider_cache_root = work_root.join("c63-fixed-model-cache");
+        if provider_cache_root.exists() {
+            return Err("C6.3 fixed-model cache root must be create-new".to_owned());
+        }
+        fs::create_dir(&provider_cache_root)
+            .map_err(|error| format!("create fixed-model cache: {error}"))?;
+        let (model_coefficients, embedding_coefficients) =
+            create_c62_provider_fixed_coefficient_owners(
+                &model,
+                &provider_cache_root,
+                random_digest("C6.3 fixed coefficient owner")?,
+            )?;
+        let model_base = model_coefficients.load_for(C61NativeComponent::Model, 0)?;
+        let embedding_base = embedding_coefficients.load_for(C61NativeComponent::Embedding, 0)?;
+        let mut fixed_gpu_backend =
+            Backend::cuda_resident_with_timing(ResidentTimingPolicy::WallOnlyCounters)
+                .map_err(|error| format!("initialize fixed-model CUDA backend: {error}"))?;
+        fixed_gpu_backend
+            .begin_measurement()
+            .map_err(|error| format!("begin fixed-model measurement: {error}"))?;
+        let gpu = C62ProductionGpuWhir::new(
+            fixed_gpu_backend,
+            hardware.gpu_total_bytes,
+            model_digest,
+            c63_protocol_digest(),
+            &model_base,
+            &embedding_base,
+        )?;
+        drop(model_base);
+        drop(embedding_base);
+        drop(model);
+        let model_preprocessing_backend = BackendRecord::from(gpu.finish_measurement()?);
+        let model_preprocessing_wall_s = model_preprocessing_started.elapsed().as_secs_f64();
+        let model_preprocessing_rss_after_bytes = current_rss_bytes()?;
+        let model_preprocessing_process_io =
+            io_delta(&model_preprocessing_before_io, &process_io()?);
+        let fixed_model_cache_bytes = directory_file_bytes(&provider_cache_root)?;
+
+        let sparse_cpu_started = Instant::now();
+        let sparse_setup = C63SparseSetupReference::sample(
+            C63_PRODUCTION_SETUP_SEED,
+            C63_BOLT_ROWS,
+            C63_BOLT_SKETCH_ROWS,
+            C63_BOLT_LDPC_COLUMN_DEGREE,
+            C63_BOLT_LDPC_CHECK_DEGREE,
+        )?;
+        let h = C63SparseSketchReference::new(
+            C63_BOLT_ROWS,
+            C63_BOLT_SKETCH_ROWS,
+            sparse_setup.sketch_edges(),
+        )?;
+        let sparse_setup_cpu_wall_s = sparse_cpu_started.elapsed().as_secs_f64();
+        let sketch_backend =
+            Backend::cuda_resident_with_timing(ResidentTimingPolicy::WallOnlyCounters)
+                .map_err(|error| format!("initialize C6.3 sketch CUDA backend: {error}"))?;
+        let sketch_guard = C62GpuResourceGuard::for_lane(
+            19,
+            1,
+            1 << 19,
+            19,
+            1,
+            true,
+            hardware.gpu_total_bytes,
+        )
+        .map_err(|error| error.to_string())?;
+        let mmcs = C62GpuMmcs::new(sketch_backend, 19, sketch_guard)
+            .map_err(|error| error.to_string())?;
+        let sparse_gpu_started = Instant::now();
+        let gpu_setup = C63GpuSetupOwner::install(&mmcs, &sparse_setup)
+            .map_err(|error| error.to_string())?;
+        let sparse_setup_gpu_wall_s = sparse_gpu_started.elapsed().as_secs_f64();
+        let sparse_setup_gpu_bytes = gpu_setup.device_bytes();
+
+        let installed_profiles = load_c62_installed_setups(setup_dir)?;
+        let connection_store = ConnectionStore::new(state_root.join("connections"))
+            .map_err(|error| format!("connection store: {error}"))?;
+        let authorization_stores = [
+            ResponseAuthorizationStore::new(state_root.join("authorization-0"))
+                .map_err(|error| format!("authorization store 0: {error}"))?,
+            ResponseAuthorizationStore::new(state_root.join("authorization-1"))
+                .map_err(|error| format!("authorization store 1: {error}"))?,
+        ];
+        let bindings = [
+            ConnectionBinding::new(
+                random_digest("C6.3 tape-0 connection")?,
+                random_digest("C6.3 tape-0 authenticated channel")?,
+                FaseDStagePlan::TerminalOne,
+            )
+            .map_err(|error| error.to_string())?,
+            ConnectionBinding::new(
+                random_digest("C6.3 tape-1 connection")?,
+                random_digest("C6.3 tape-1 authenticated channel")?,
+                FaseDStagePlan::TerminalOne,
+            )
+            .map_err(|error| error.to_string())?,
+        ];
+        let manifest_setup_started = Instant::now();
+        let mut connections = [
+            open_fase_d_connection_with_ggm_prg(
+                &connection_store,
+                bindings[0],
+                None,
+                FaseDParams::production(FaseDStagePlan::TerminalOne),
+                GgmPrg::Aes128Mmo,
+            )
+            .map_err(|error| format!("open C6.3 tape-0 connection: {error}"))?,
+            open_fase_d_connection_with_ggm_prg(
+                &connection_store,
+                bindings[1],
+                None,
+                FaseDParams::production(FaseDStagePlan::TerminalOne),
+                GgmPrg::Aes128Mmo,
+            )
+            .map_err(|error| format!("open C6.3 tape-1 connection: {error}"))?,
+        ];
+        let setup = build_c62_campaign_setup_manifest(
+            std::array::from_fn(|index| &installed_profiles[index]),
+            &verifier_model,
+            quantization_digest,
+            c63_protocol_digest(),
+            model_digest,
+            params_digest,
+            random_digest("C6.3 logical connection")?,
+            [bindings[0].connection_id, bindings[1].connection_id],
+        )?;
+        drop(installed_profiles);
+        let manifest_setup_wall_s = manifest_setup_started.elapsed().as_secs_f64();
+        let setup_bytes = setup
+            .first_exchange_bytes()
+            .map_err(|error| error.to_string())?
+            .checked_add(C63_SPARSE_SETUP_DESCRIPTOR_BYTES as u64)
+            .ok_or_else(|| "C6.3 setup bytes overflow".to_owned())?;
+
+        let genesis_verifier = C63VerifierSketchState::production_genesis(&sparse_setup)?;
+        let genesis_head = c63_campaign_genesis_head(&setup, &sparse_setup, &genesis_verifier)?;
+        let genesis = C6ClientState::genesis_from_setup(&setup, genesis_head.cache_root)
+            .map_err(|error| error.to_string())?;
+        if genesis.head != genesis_head {
+            return Err("C6.3 client genesis differs from sketch genesis".to_owned());
+        }
+        let client_store = C6ClientStore::initialize(state_root.join("client.state"), genesis)
+            .map_err(|error| error.to_string())?;
+        let slot_store =
+            C6SlotStore::open(state_root.join("slots")).map_err(|error| error.to_string())?;
+        let verifier_pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(4)
+            .build()
+            .map_err(|error| format!("build four-thread verifier pool: {error}"))?;
+        let mut response_backend =
+            Backend::cuda_resident_with_timing(ResidentTimingPolicy::WallOnlyCounters)
+                .map_err(|error| format!("initialize response CUDA backend: {error}"))?;
+        let mut provider_state = None;
+        let mut verifier_state = genesis_verifier;
+        let mut certificates = Vec::with_capacity(C63_RUN_CERTIFICATES as usize);
+
+        for index in 0..C63_RUN_CERTIFICATES {
+            let current = client_store.load().map_err(|error| error.to_string())?;
+            let old_context = if index == 0 { 0 } else { 150 };
+            let new_context = if index == 0 { 150 } else { 200 };
+            if current.head.cache_len != old_context || current.pending_attempt.is_some() {
+                return Err("C6.3 accepted prefix differs before response".to_owned());
+            }
+            let workload = C6Workload {
+                prompt_tokens: if index == 0 { 100 } else { 0 },
+                decode_tokens: 50,
+                old_context,
+                new_context,
+            };
+            let run_directory = run_root.join(format!("certificate-{index:02}"));
+            fs::create_dir(&run_directory)
+                .map_err(|error| format!("create {}: {error}", run_directory.display()))?;
+            let response_plus_proof_started = Instant::now();
+            let workload_owner_started = Instant::now();
+            let public = C61PublicWorkloadPreimage::new(
+                model_digest,
+                workload,
+                session_sequence[..new_context as usize].to_vec(),
+            )
+            .map_err(|error| error.to_string())?;
+            let transition = if index == 0 {
+                let owner = build_c6_t1_workload_owner(weights)?;
+                if owner.sequence() != public.public_tokens() {
+                    return Err("C6.3 genesis workload owner differs".to_owned());
+                }
+                prepare_c63_campaign_genesis_transition(
+                    &setup,
+                    &sparse_setup,
+                    owner,
+                    public,
+                    verifier_state.clone(),
+                    &run_directory,
+                )?
+            } else {
+                let owner = build_c62_continuation_workload_owner(
+                    weights,
+                    session_sequence[..new_context as usize].to_vec(),
+                    old_context as usize,
+                )?;
+                prepare_c63_campaign_continuation_transition(
+                    &setup,
+                    &sparse_setup,
+                    owner,
+                    public,
+                    provider_state
+                        .as_ref()
+                        .map(Arc::clone)
+                        .ok_or_else(|| "C6.3 continuation lacks provider state".to_owned())?,
+                    verifier_state.clone(),
+                    current.head,
+                    &run_directory,
+                )?
+            };
+            let workload_owner_wall_s = workload_owner_started.elapsed().as_secs_f64();
+            if transition.old_head() != current.head || transition.workload() != workload {
+                return Err("C6.3 transition differs from durable client state".to_owned());
+            }
+            let (sub_correlations, full_correlations, raw_correlations) =
+                c63_correlation_profile(old_context)?;
+            let (pending, client_attempt) = client_store
+                .reserve_attempt(
+                    current,
+                    random_digest("C6.3 accepted attempt nonce")?,
+                    raw_correlations,
+                    workload,
+                )
+                .map_err(|error| error.to_string())?;
+            let reservation =
+                C6SlotReservation::from_client_attempt(setup.connection_id, client_attempt)
+                    .map_err(|error| error.to_string())?;
+            let mut slot = slot_store.reserve(reservation).map_err(|error| error.to_string())?;
+            slot.start().map_err(|error| error.to_string())?;
+            let attempt = C6ProductionPairedPcgAttempt::allocate(
+                &setup,
+                reservation,
+                [&authorization_stores[0], &authorization_stores[1]],
+                connections,
+                sub_correlations,
+                full_correlations,
+            )
+            .map_err(|error| format!("allocate C6.3 PCG attempt {index}: {error}"))?;
+            let installed = load_c62_campaign_installed_setup(
+                &setup_dir.join(c62_setup_profile_name(old_context)?),
+            )?;
+            let admission = C61ProductionPersistedResourceAdmission {
+                available_host_bytes: mem_available_bytes()?,
+                available_spill_bytes: filesystem_available_bytes(work_root)?,
+                gpu_total_bytes: hardware.gpu_total_bytes,
+                a100_present: hardware.a100_present,
+                allow_persisted_executor: true,
+            };
+            response_backend
+                .begin_measurement()
+                .map_err(|error| format!("begin response measurement {index}: {error}"))?;
+            gpu.begin_measurement()?;
+            mmcs.backend()
+                .lock()
+                .map_err(|_| "C6.3 sketch CUDA lock".to_owned())?
+                .begin_measurement()
+                .map_err(|error| format!("begin sketch measurement {index}: {error}"))?;
+            let prover_rss_before_bytes = current_rss_bytes()?;
+            let prover_sampler = RssSampler::start(prover_rss_before_bytes);
+            let before_io = process_io()?;
+            let provider_started = Instant::now();
+            let produced = run_c63_campaign_live_production(
+                &setup,
+                &sparse_setup,
+                &h,
+                installed,
+                transition,
+                attempt,
+                model_coefficients.clone(),
+                embedding_coefficients.clone(),
+                admission,
+                &mut response_backend,
+                &gpu,
+                &mmcs,
+                &gpu_setup,
+            )?;
+            let provider_certificate_wall_s = provider_started.elapsed().as_secs_f64();
+            let prover_rss_peak_bytes = prover_sampler.finish()?;
+            let response_backend_record = BackendRecord::from(
+                response_backend
+                    .finish_measurement()
+                    .map_err(|error| format!("finish response measurement {index}: {error}"))?,
+            );
+            let fixed_whir_backend = BackendRecord::from(gpu.finish_measurement()?);
+            let sketch_whir_backend = BackendRecord::from(
+                mmcs.backend()
+                    .lock()
+                    .map_err(|_| "C6.3 sketch CUDA finish lock".to_owned())?
+                    .finish_measurement()
+                    .map_err(|error| format!("finish sketch measurement {index}: {error}"))?,
+            );
+            let response_plus_proof_wall_s = response_plus_proof_started.elapsed().as_secs_f64();
+            let process_io = io_delta(&before_io, &process_io()?);
+            let C63CampaignLiveProductionOutput {
+                certificate,
+                public_instance,
+                verifier_replay,
+                response_context_digest,
+                native_public_context_digest,
+                connections: returned_connections,
+                successor_provider,
+            } = produced;
+            connections = returned_connections;
+            let certificate_digest =
+                slot.produce_c63(&certificate).map_err(|error| error.to_string())?;
+            let certificate_directory = artifact_root.join(format!("certificate-{index:02}"));
+            let artifact_started = Instant::now();
+            create_c63_campaign_artifact(
+                &certificate_directory,
+                &certificate,
+                &verifier_replay,
+                &setup,
+                &public_instance,
+                &source_git_commit,
+            )?;
+            let artifact_persist_wall_s = artifact_started.elapsed().as_secs_f64();
+            let certificate_bytes = certificate.encoded_len().map_err(|error| error.to_string())?;
+            let pi_final_bytes = C63_NATIVE_CERTIFICATE_FRAMING_BYTES
+                .checked_add(certificate.proof_envelope.len() as u64)
+                .ok_or_else(|| "C6.3 pi_final bytes overflow".to_owned())?;
+            let persisted_spill_bytes = directory_file_bytes(&run_directory)?;
+
+            let verifier_rss_before_bytes = current_rss_bytes()?;
+            let verifier_sampler = RssSampler::start(verifier_rss_before_bytes);
+            let artifact = load_c63_campaign_artifact(&certificate_directory)?;
+            let verifier_started = Instant::now();
+            let verified = verifier_pool.install(|| {
+                verify_c63_loaded_campaign_e2e(
+                    artifact,
+                    &sparse_setup,
+                    &h,
+                    &verifier_state,
+                )
+            })?;
+            let verifier_wall_s = verifier_started.elapsed().as_secs_f64();
+            let verifier_rss_peak_bytes = verifier_sampler.finish()?;
+            let verifier_additional_peak_bytes =
+                verifier_rss_peak_bytes.saturating_sub(verifier_rss_before_bytes);
+            if verified.certificate_digest != certificate_digest {
+                return Err("C6.3 disk verifier accepted another digest".to_owned());
+            }
+            let successor_verifier = verified.complete.into_successor_state();
+            if successor_verifier.correction_root() != successor_provider.correction_root()
+                || successor_verifier.encoded_sketch_root()
+                    != successor_provider.encoded_sketch_root()
+                || successor_verifier.epoch() != successor_provider.epoch()
+                || successor_verifier.accepted_len() != successor_provider.accepted_len()
+            {
+                return Err("C6.3 provider and verifier successor states differ".to_owned());
+            }
+            let accepted = client_store
+                .accept_c63(pending, &certificate)
+                .map_err(|error| error.to_string())?;
+            slot.acknowledge(certificate_digest).map_err(|error| error.to_string())?;
+            if accepted.head != certificate.new_head
+                || accepted.accepted_certificate_digest != certificate_digest
+            {
+                return Err("C6.3 accepted client head differs".to_owned());
+            }
+            let accepted_sketch_state_device_bytes = successor_provider.device_bytes();
+            provider_state = Some(successor_provider);
+            verifier_state = successor_verifier;
+            let certificate_target_pass = certificate_bytes <= C63_CERTIFICATE_TARGET_BYTES;
+            let pi_final_target_pass = pi_final_bytes <= C63_NATIVE_STRICT_PI_FINAL_MAX_BYTES;
+            let prover_target_pass = provider_certificate_wall_s < C63_PROVER_TARGET_S;
+            let prover_diagnostic_mark_pass =
+                provider_certificate_wall_s <= C63_PROVER_DIAGNOSTIC_MARK_S;
+            let verifier_target_pass = verifier_wall_s < VERIFIER_TARGET_S;
+            let verifier_memory_pass =
+                verifier_additional_peak_bytes <= VERIFIER_MEMORY_LIMIT_BYTES;
+            let cold_full_e2e_wall_s = (index == 0).then(|| session_started.elapsed().as_secs_f64());
+            certificates.push(C63CertificateRecord {
+                index,
+                slot: reservation.slot,
+                old_context,
+                new_context,
+                setup_profile: c62_setup_profile_name(old_context)?,
+                certificate_digest: hex(&certificate_digest),
+                response_context_digest: hex(&response_context_digest),
+                native_public_context_digest: hex(&native_public_context_digest),
+                certificate_bytes,
+                pi_final_bytes,
+                workload_owner_wall_s,
+                provider_certificate_wall_s,
+                response_plus_proof_wall_s,
+                artifact_persist_wall_s,
+                verifier_wall_s,
+                cold_full_e2e_wall_s,
+                prover_rss_before_bytes,
+                prover_rss_peak_bytes,
+                verifier_rss_before_bytes,
+                verifier_rss_peak_bytes,
+                verifier_additional_peak_bytes,
+                persisted_spill_bytes,
+                accepted_sketch_state_device_bytes,
+                certificate_target_pass,
+                pi_final_target_pass,
+                prover_target_pass,
+                prover_diagnostic_mark_pass,
+                verifier_target_pass,
+                verifier_memory_pass,
+                process_io,
+                response_backend: response_backend_record,
+                fixed_whir_backend,
+                sketch_whir_backend,
+                protocol_acceptance: true,
+            });
+            fs::remove_dir_all(&run_directory)
+                .map_err(|error| format!("remove C6.3 transient {}: {error}", run_directory.display()))?;
+        }
+
+        let final_state = client_store.load().map_err(|error| error.to_string())?;
+        let expected_raw_correlations_per_tape =
+            C63_GENESIS_RAW_CORRELATIONS + C63_CONTINUATION_256_RAW_CORRELATIONS;
+        let capacity_reconciled = expected_raw_correlations_per_tape <= C6_TERMINAL_ONE_RAW_CAPACITY
+            && final_state.raw_high_water == [expected_raw_correlations_per_tape; 2];
+        let soundness_pass = C63_SOUNDNESS_BITS >= C63_SOUNDNESS_FLOOR_BITS;
+        let setup_plus_first_bytes = setup_bytes
+            .checked_add(
+                certificates
+                    .first()
+                    .ok_or_else(|| "C6.3 produced no certificate".to_owned())?
+                    .certificate_bytes,
+            )
+            .ok_or_else(|| "C6.3 setup plus first bytes overflow".to_owned())?;
+        let setup_plus_first_target_pass =
+            setup_plus_first_bytes <= C63_SETUP_PLUS_FIRST_TARGET_BYTES;
+        let engineering_targets_pass = setup_plus_first_target_pass
+            && certificates.iter().all(|record| {
+                record.certificate_target_pass
+                    && record.pi_final_target_pass
+                    && record.prover_target_pass
+                    && record.verifier_target_pass
+                    && record.verifier_memory_pass
+            });
+        let pass = soundness_pass
+            && capacity_reconciled
+            && final_state.head.cache_len == 200
+            && final_state.pending_attempt.is_none();
+        let record = C63SessionRecord {
+            schema: 1,
+            profile: C63_PROFILE,
+            mode: "c63-prove",
+            source_git_commit,
+            git_dirty: false,
+            cloud,
+            hardware,
+            protocol_id: C63_PROTOCOL_ID,
+            protocol_digest: hex(&c63_protocol_digest()),
+            model_digest: hex(&model_digest),
+            params_digest: hex(&params_digest),
+            quantization_digest: hex(&quantization_digest),
+            fixed_session_generation_wall_s,
+            manifest_setup_wall_s,
+            sparse_setup_cpu_wall_s,
+            sparse_setup_gpu_wall_s,
+            model_preprocessing_wall_s,
+            model_preprocessing_rss_before_bytes,
+            model_preprocessing_rss_after_bytes,
+            model_preprocessing_process_io,
+            model_preprocessing_backend,
+            fixed_model_cache_bytes,
+            sparse_setup_descriptor_bytes: C63_SPARSE_SETUP_DESCRIPTOR_BYTES as u64,
+            sparse_setup_gpu_bytes,
+            setup_bytes,
+            setup_plus_first_bytes,
+            setup_plus_first_target_pass,
+            accepted_slots: C63_RUN_CERTIFICATES,
+            final_context: final_state.head.cache_len,
+            final_next_slot: final_state.next_slot,
+            raw_correlations_per_tape: final_state.raw_high_water[0],
+            expected_raw_correlations_per_tape,
+            capacity_reconciled,
+            soundness_bits_per_certificate: C63_SOUNDNESS_BITS,
+            soundness_floor_bits: C63_SOUNDNESS_FLOOR_BITS,
+            soundness_pass,
+            engineering_targets_pass,
+            certificates,
+            credit: pass,
+            pass,
+            artifact_root: artifact_root.display().to_string(),
+            state_root: state_root.display().to_string(),
+            run_root: run_root.display().to_string(),
+        };
+        create_new_json(&args.output, &record)?;
+        if !pass {
+            return Err("C6.3 protocol/session acceptance failed".to_owned());
+        }
+        Ok(())
+    }
+
     struct RssSampler {
         stop: Arc<AtomicBool>,
         handle: thread::JoinHandle<u64>,
@@ -2377,6 +3043,7 @@ mod enabled {
             Mode::Preflight => "preflight",
             Mode::Precommit => "precommit",
             Mode::Prove => "prove",
+            Mode::C63Prove => "c63-prove",
             Mode::Verify => "verify",
             Mode::Mutate => "mutate",
         };
@@ -2384,6 +3051,7 @@ mod enabled {
             Mode::Preflight => preflight(&args),
             Mode::Precommit => precommit(&args),
             Mode::Prove => prove(&args),
+            Mode::C63Prove => c63_prove(&args),
             Mode::Verify => verify(&args),
             Mode::Mutate => mutate(&args),
         };
@@ -2393,7 +3061,7 @@ mod enabled {
                     &args.output,
                     &FailureRecord {
                         schema: SCHEMA,
-                        profile: PROFILE,
+                        profile: if args.mode == Mode::C63Prove { C63_PROFILE } else { PROFILE },
                         mode,
                         status: "failed",
                         error: &error,

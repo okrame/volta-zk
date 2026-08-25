@@ -640,4 +640,40 @@ mod tests {
         changed[correction_root] ^= 1;
         assert!(C63NativeFinalCertificate::decode(&changed).is_err());
     }
+
+    #[test]
+    fn c63_certificate_uses_durable_slot_lifecycle() {
+        let certificate = certificate();
+        let root = std::env::temp_dir().join(format!(
+            "volta-c63-slot-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
+        ));
+        let store = crate::C6SlotStore::open(&root).unwrap();
+        let reservation = crate::C6SlotReservation {
+            connection_id: certificate.connection_id,
+            setup_manifest_digest: certificate.setup_manifest_digest,
+            slot: certificate.slot,
+            nonce: certificate.nonce,
+            old_head_digest: certificate.old_head.digest(),
+            predecessor_certificate_digest: certificate.predecessor_certificate_digest,
+            correlation_ranges: certificate.correlation_ranges,
+            workload: certificate.workload,
+        };
+        let mut slot = store.reserve(reservation).unwrap();
+        slot.start().unwrap();
+        let expected = certificate.encode().unwrap();
+        let certificate_digest = slot.produce_c63(&certificate).unwrap();
+        assert_eq!(slot.retransmit_c63().unwrap(), expected);
+        assert_eq!(slot.produce_c63(&certificate).unwrap(), certificate_digest);
+        slot.acknowledge(certificate_digest).unwrap();
+        drop(slot);
+        let reopened = store.open_slot(certificate.connection_id, certificate.slot).unwrap();
+        assert_eq!(reopened.retransmit_c63().unwrap(), expected);
+        drop(reopened);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

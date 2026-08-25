@@ -4037,6 +4037,7 @@ pub struct C61ProductionCoefficientOwnerMetrics {
 /// Durable create-new D28/D27 coefficient source.  Loading validates the
 /// complete canonical file and content digest before returning a vector to a
 /// native chain; repetitions therefore cannot silently switch polynomials.
+#[derive(Clone)]
 pub struct C61ProductionCoefficientOwner {
     component: C61NativeComponent,
     session_digest: [u8; 32],

@@ -572,6 +572,7 @@ impl C6ClientAttempt {
         }
         Ok(())
     }
+
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1873,6 +1874,24 @@ impl C6SlotReservation {
         }
         Ok(())
     }
+
+    fn matches_c63_certificate(self, certificate: &C63NativeFinalCertificate) -> C6Result<()> {
+        certificate.validate().map_err(|error| C6Error::new(error.to_string()))?;
+        if certificate.connection_id != self.connection_id
+            || certificate.setup_manifest_digest != self.setup_manifest_digest
+            || certificate.slot != self.slot
+            || certificate.nonce != self.nonce
+            || certificate.old_head.digest() != self.old_head_digest
+            || certificate.predecessor_certificate_digest != self.predecessor_certificate_digest
+            || certificate.correlation_ranges != self.correlation_ranges
+            || certificate.workload != self.workload
+        {
+            return Err(C6Error::new(
+                "C6.3 certificate does not match its durable slot reservation",
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2306,6 +2325,54 @@ impl C6SlotHandle {
         Ok(digest)
     }
 
+    /// Persist one C6.3 certificate under the same burn-before-use journal.
+    pub fn produce_c63(&mut self, certificate: &C63NativeFinalCertificate) -> C6Result<C6Digest> {
+        self.record.reservation.matches_c63_certificate(certificate)?;
+        let bytes = certificate.encode().map_err(|error| C6Error::new(error.to_string()))?;
+        let digest = certificate.digest().map_err(|error| C6Error::new(error.to_string()))?;
+
+        if matches!(self.record.status, C6SlotStatus::Produced | C6SlotStatus::Accepted) {
+            let stored = self.retransmit_c63()?;
+            if stored != bytes || self.record.produced_certificate_digest != Some(digest) {
+                return Err(C6Error::new(
+                    "alternate C6.3 certificate forbidden for a produced slot",
+                ));
+            }
+            return Ok(digest);
+        }
+        if self.record.status != C6SlotStatus::InFlight {
+            return Err(C6Error::new("C6.3 certificate requires a durable in-flight slot"));
+        }
+
+        let path = certificate_path(&self.journal_path);
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        set_private_mode(&mut options);
+        match options.open(&path) {
+            Ok(mut file) => {
+                file.write_all(&bytes)
+                    .map_err(|error| io_error("cannot write C6.3 certificate", &path, error))?;
+                file.sync_all()
+                    .map_err(|error| io_error("cannot sync C6.3 certificate", &path, error))?;
+                sync_directory(parent_directory(&path))?;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                let stored = fs::read(&path).map_err(|read_error| {
+                    io_error("cannot read existing C6.3 certificate", &path, read_error)
+                })?;
+                if stored != bytes {
+                    self.abort()?;
+                    return Err(C6Error::new(
+                        "alternate bytes found in an in-flight C6.3 certificate slot",
+                    ));
+                }
+            }
+            Err(error) => return Err(io_error("cannot create C6.3 certificate", &path, error)),
+        }
+        self.append_transition(SLOT_TRANSITION_PRODUCED, digest, bytes.len() as u64)?;
+        Ok(digest)
+    }
+
     pub fn retransmit(&self) -> C6Result<Vec<u8>> {
         if !matches!(self.record.status, C6SlotStatus::Produced | C6SlotStatus::Accepted) {
             return Err(C6Error::new("C6 slot has no retransmittable certificate"));
@@ -2345,6 +2412,27 @@ impl C6SlotHandle {
         Ok(bytes)
     }
 
+    pub fn retransmit_c63(&self) -> C6Result<Vec<u8>> {
+        if !matches!(self.record.status, C6SlotStatus::Produced | C6SlotStatus::Accepted) {
+            return Err(C6Error::new("C6.3 slot has no retransmittable certificate"));
+        }
+        let path = certificate_path(&self.journal_path);
+        let bytes = fs::read(&path)
+            .map_err(|error| io_error("cannot read stored C6.3 certificate", &path, error))?;
+        if Some(bytes.len() as u64) != self.record.produced_certificate_len {
+            return Err(C6Error::new("stored C6.3 certificate length mismatch"));
+        }
+        let certificate = C63NativeFinalCertificate::decode(&bytes)
+            .map_err(|error| C6Error::new(error.to_string()))?;
+        self.record.reservation.matches_c63_certificate(&certificate)?;
+        if Some(certificate.digest().map_err(|error| C6Error::new(error.to_string()))?)
+            != self.record.produced_certificate_digest
+        {
+            return Err(C6Error::new("stored C6.3 certificate digest mismatch"));
+        }
+        Ok(bytes)
+    }
+
     fn validate_stored_certificate(&self, bytes: &[u8]) -> C6Result<C6Digest> {
         if let Ok(certificate) = C6FinalCertificate::decode(bytes) {
             self.record.reservation.matches_certificate(&certificate)?;
@@ -2354,7 +2442,13 @@ impl C6SlotHandle {
             self.record.reservation.matches_c62_certificate(&certificate)?;
             return certificate.digest().map_err(|error| C6Error::new(error.to_string()));
         }
-        Err(C6Error::new("stored certificate is neither canonical C6 nor canonical C6.2"))
+        if let Ok(certificate) = C63NativeFinalCertificate::decode(bytes) {
+            self.record.reservation.matches_c63_certificate(&certificate)?;
+            return certificate.digest().map_err(|error| C6Error::new(error.to_string()));
+        }
+        Err(C6Error::new(
+            "stored certificate is neither canonical C6, C6.2 nor C6.3",
+        ))
     }
 
     pub fn acknowledge(&mut self, certificate_digest: C6Digest) -> C6Result<()> {

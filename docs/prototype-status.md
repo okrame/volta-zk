@@ -13,7 +13,7 @@ Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 - **Status.** Candidate contains the resident coordinator, exact `D=X-R` link,
   eight-body suffix, CPU verifier, production binding, live-correction packer,
   two-cohort materializer and campaign boundary. Pod bootstrap and full-size
-  differential pass; record driver and E2E execution remain pending.
+  differential pass; the two-response record driver compiles locally.
 - **Evidence.** The authorized pod has one exclusive A100 80 GB, `sm_80`, CUDA
   12.8, 250 GB RAM and 228 GB admission storage. Genesis/successor
   GPU states match the CPU oracle, including canonical zero root;
@@ -30,10 +30,26 @@ Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
   `<5 s`, verifier RSS `<=8 GB` and the 150-second prover mark are engineering
   targets: crossing them records `FAIL` but does not stop a viable run.
   Soundness `>=78.00` bits and protocol acceptance remain mandatory.
-- **Resume.** Checkpoint and compile the campaign boundary on the pod, finish
-  only the thin record-driver mode, then run one cold `0→150` and one warm
+- **Resume.** Pull and release-build the record driver on the pod, then run one
+  cold `0→150` and one warm
   `150→200` response. Retain complete artifacts after byte/time/RSS misses.
   Stop only for cryptographic failure, invalid transition or imminent loss.
+
+- **2026-08-25 — Thin cold/warm E2E record driver is locally green.** The
+  existing C6.2 recorder now has one C6.3 mode rather than a second harness. It
+  reuses one fixed model cache, the registered real/AES correlation allocator,
+  inherited setup profiles and four-thread ordinary-CPU verification. It runs
+  exactly `0→150` then `150→200`, promotes GPU and client state only after disk
+  replay accepts, and deletes the large per-response proving directory after
+  recording its byte census. The durable slot journal now recognizes C6.3 for
+  produce, retransmit, crash recovery and acknowledgement; a focused lifecycle
+  test passes. Timings separate fixed-session generation, model preprocessing,
+  manifest setup, sparse setup, workload construction, provider certificate,
+  artifact persistence and verifier. Per-backend transfers, copies,
+  synchronization, process I/O, RSS and spill bytes are recorded. Byte, time
+  and memory target misses remain nonterminal; only protocol/session failure
+  makes the command fail. Focused tests are 4/4 and the CUDA record binary
+  compiles locally. No serialized proof or E2E credit exists before the pod run.
 
 - **2026-08-25 — Complete campaign boundary restores the inherited response
   target and the two-level statement join.** C6.3 now serializes and replays

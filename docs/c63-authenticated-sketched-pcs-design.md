@@ -1126,8 +1126,15 @@ transcript-derived production sampling and 4,420-row spot fusion on a
 260,614 B, and the fused sparse proof remains 1,496 B. The resident
 eight-body prepare/finish driver, exact source link and complete verifier now
 pass 31 focused local tests; the CUDA-feature path compiles. The production
-wrapper admission also accepts the two-cohort C6.3 profile. A real candidate,
-measured cleanup and promotion still require the registered A100 run.
+wrapper admission also accepts the two-cohort C6.3 profile. The existing
+`c62_whir_fiat_shamir_record` binary now exposes `--mode c63-prove`: it runs
+only cold `0→150` and warm `150→200`, reuses one fixed model cache, persists
+each canonical artifact, verifies it on four ordinary CPU threads, then
+promotes client/GPU state and removes the large transient proof directory.
+It records preprocessing, setup, provider, serialization, verifier, I/O, RSS,
+three CUDA-backend counter sets and spill bytes separately. Target misses do
+not abort the second response or suppress the record. A real candidate and
+measured cleanup/promotion still require this command on the registered A100.
 
 #### Pod admission and resource controls
 

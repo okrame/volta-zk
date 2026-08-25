@@ -9,8 +9,8 @@ use volta_pcs::ntt::NttPlan;
 use volta_pcs::{
     c63_bolt_correction_index, c63_correction_state_root_reference,
     c63_correction_tile_root_reference, c63_open_correction_rows_reference,
-    C63CorrectionRowReference, C63GpuSetupOwner, C63GpuStateOwner, C63GpuTileMetadata,
-    C63SparseSetupReference, C6CacheCell, C6CacheSlotKind, C63_BOLT_COLUMNS,
+    c63_zero_encoded_sketch_root, C63CorrectionRowReference, C63GpuSetupOwner, C63GpuStateOwner,
+    C63GpuTileMetadata, C63SparseSetupReference, C6CacheCell, C6CacheSlotKind, C63_BOLT_COLUMNS,
     C63_BOLT_LDPC_CHECK_DEGREE, C63_BOLT_LDPC_COLUMN_DEGREE, C63_BOLT_LIVE_ROWS_PER_POSITION,
     C63_BOLT_ROWS, C63_BOLT_ROWS_PER_POSITION, C63_BOLT_SKETCH_ROWS, C63_PRODUCTION_SETUP_SEED,
 };
@@ -180,7 +180,7 @@ fn production_owner_matches_cpu_for_one_complete_token() {
         allocation_binding_digest: [0x71; 32],
         source_schedule_digest: [0x72; 32],
     };
-    let profile_digest = [0x73; 32];
+    let profile_digest = sparse_setup.production_profile_digest().unwrap();
     let (expected_corrections, expected_sketch, expected_encoded, tile_root) =
         cpu_state(&sparse_setup, &genesis_tapes, 0, None, None, metadata);
     let expected_correction_root =
@@ -192,6 +192,16 @@ fn production_owner_matches_cpu_for_one_complete_token() {
     let mmcs = C62GpuMmcs::new(backend, 19, guard).unwrap();
     let setup = C63GpuSetupOwner::install(&mmcs, &sparse_setup).unwrap();
     let backend = mmcs.backend();
+    {
+        let mut gpu = backend.lock().unwrap();
+        let zero = gpu.alloc_device::<u64>(2 * C63_BOLT_COLUMNS * C63_BOLT_SKETCH_ROWS).unwrap();
+        gpu.zero_device(&zero, 0, zero.len()).unwrap();
+        let tree =
+            gpu.hash_fp_tree_device(&zero, 2 * C63_BOLT_COLUMNS, C63_BOLT_SKETCH_ROWS).unwrap();
+        assert_eq!(gpu.merkle_root_device(&tree).unwrap(), c63_zero_encoded_sketch_root());
+        gpu.free_device_merkle_tree(tree).unwrap();
+        gpu.free_device(zero).unwrap();
+    }
     let setup_resident_bytes =
         backend.lock().unwrap().device_memory_breakdown().unwrap().resident_bytes;
     let tape_words =

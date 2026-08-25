@@ -170,6 +170,7 @@ pub use c63_authenticated_sketch::{
 #[cfg(feature = "c6-trace")]
 pub use c63_authenticated_sketch::{
     c63_compile_residual_source_functionals, c63_evaluate_residual_source_functionals,
+    c63_pack_resident_append_corrections,
 };
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub use c63_gpu_owner::{
@@ -178,9 +179,9 @@ pub use c63_gpu_owner::{
 };
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub use c63_public_argument::{
-    C63PublicArgument, C63VerifierSketchState, C63_CORRECTION_OPENING_MAX_BYTES,
-    C63_PUBLIC_ARGUMENT_COMPONENTS, C63_PUBLIC_ARGUMENT_FRAMING_BYTES, C63_PUBLIC_ARGUMENT_MAGIC,
-    C63_PUBLIC_ARGUMENT_VERSION,
+    c63_zero_encoded_sketch_root, C63PublicArgument, C63VerifierSketchState,
+    C63_CORRECTION_OPENING_MAX_BYTES, C63_PUBLIC_ARGUMENT_COMPONENTS,
+    C63_PUBLIC_ARGUMENT_FRAMING_BYTES, C63_PUBLIC_ARGUMENT_MAGIC, C63_PUBLIC_ARGUMENT_VERSION,
 };
 pub use c63_response_tail::{
     assemble_c63_response_tail, decode_c63_response_tail, C63DecodedResponseTail,

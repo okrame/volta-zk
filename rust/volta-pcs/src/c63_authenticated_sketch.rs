@@ -54,6 +54,7 @@ const C63_SPARSE_SETUP_MAX_REJECTION_DRAWS: usize = 4;
 const C63_SPARSE_SETUP_PERMUTATION_CONTEXT: &str = "volta-zk/c63/sparse-H/permutation/v1";
 const C63_SPARSE_SETUP_COEFFICIENT_CONTEXT: &str = "volta-zk/c63/sparse-H/coefficient/v1";
 const C63_SPARSE_SETUP_DIGEST_CONTEXT: &str = "volta-zk/c63/sparse-H/expanded-digest/v1";
+const C63_PRODUCTION_PROFILE_CONTEXT: &str = "volta-zk/c63/authenticated-sketched-whir/v16";
 
 /// Compact setup descriptor. The expanded edge table is derived, never sent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -258,6 +259,26 @@ impl C63SparseSetupReference {
             self.expanded_h_digest,
         )
         .expect("sampled C6.3 setup has a canonical descriptor")
+    }
+
+    /// Bind the exact sampled production matrix to the frozen C6.3 v16
+    /// protocol profile. Callers cannot supply a digest independently.
+    pub fn production_profile_digest(&self) -> Result<Hash, String> {
+        let descriptor = self.descriptor();
+        if descriptor.geometry()?
+            != (
+                C63_BOLT_ROWS,
+                C63_BOLT_SKETCH_ROWS,
+                C63_BOLT_LDPC_COLUMN_DEGREE,
+                C63_BOLT_LDPC_CHECK_DEGREE,
+            )
+            || descriptor.seed != C63_PRODUCTION_SETUP_SEED
+        {
+            return Err("C6.3 setup is not the fixed production profile".to_owned());
+        }
+        let mut hasher = blake3::Hasher::new_derive_key(C63_PRODUCTION_PROFILE_CONTEXT);
+        hasher.update(&descriptor.encode()?);
+        Ok(*hasher.finalize().as_bytes())
     }
 
     /// Regenerate the sampled matrix and reject any seed/digest substitution.
@@ -580,6 +601,113 @@ pub(crate) fn c63_direct_source_domain_offsets(
         return Err("C6.3 residual source census differs from its schedule".to_owned());
     }
     Ok(domains)
+}
+
+/// Pack the inference-owned append corrections in the exact layout consumed
+/// by the resident CUDA update: kind, layer, appended position, channel.
+#[cfg(feature = "c6-trace")]
+pub fn c63_pack_resident_append_corrections(
+    old_len: u16,
+    new_len: u16,
+    source_schedule_digest: Hash,
+    plan: &C6CacheFoldAppendSourcePlan,
+    schedule: &CorrScheduleAudit,
+    source: &C6ProductionPairedSourceWitness,
+) -> Result<[Vec<u64>; 2], String> {
+    if source.allocation_binding_digest() == [0; 32] {
+        return Err("C6.3 resident append allocation binding is empty".to_owned());
+    }
+    c63_pack_paired_source_corrections(
+        old_len,
+        new_len,
+        source_schedule_digest,
+        plan,
+        schedule,
+        source.source(),
+    )
+}
+
+#[cfg(feature = "c6-trace")]
+fn c63_pack_paired_source_corrections(
+    old_len: u16,
+    new_len: u16,
+    source_schedule_digest: Hash,
+    plan: &C6CacheFoldAppendSourcePlan,
+    schedule: &CorrScheduleAudit,
+    paired: &C6PairedSourceWitness,
+) -> Result<[Vec<u64>; 2], String> {
+    let layout = C6PersistentCacheLayout::production();
+    let delta = usize::from(
+        new_len.checked_sub(old_len).ok_or("C6.3 resident append length does not increase")?,
+    );
+    if new_len > layout.capacity_tokens
+        || plan.layers().len() != usize::from(layout.layers)
+        || paired.schedule_digest() != schedule.digest
+        || paired.source_schedule_digest() != source_schedule_digest
+    {
+        return Err("C6.3 resident append binding differs".to_owned());
+    }
+    let source_count = schedule.draws.iter().try_fold(0usize, |total, draw| {
+        usize::try_from(draw.count)
+            .ok()
+            .and_then(|count| total.checked_add(count))
+            .ok_or_else(|| "C6.3 resident source count overflows".to_owned())
+    })?;
+    let domains = c63_direct_source_domain_offsets(source_count, schedule)?;
+    let layers = usize::from(layout.layers);
+    let width = usize::from(layout.width);
+    let per_tape = 2usize
+        .checked_mul(layers)
+        .and_then(|count| count.checked_mul(delta))
+        .and_then(|count| count.checked_mul(width))
+        .ok_or_else(|| "C6.3 resident append count overflows".to_owned())?;
+    let mut packed = std::array::from_fn(|_| vec![0u64; per_tape]);
+    for (layer_index, layer) in plan.layers().iter().enumerate() {
+        if usize::from(layer.model_layer()) != layer_index
+            || layer.first_row() != usize::from(old_len)
+            || layer.row_count().map_err(|error| error.to_string())? != delta
+        {
+            return Err("C6.3 resident append plan differs".to_owned());
+        }
+        for (kind_index, kind) in
+            [C6CacheFoldKind::KeyRows, C6CacheFoldKind::ValueColumns].into_iter().enumerate()
+        {
+            for position_delta in 0..delta {
+                let position = usize::from(old_len) + position_delta;
+                let domain =
+                    layer.source_domain(kind, position).map_err(|error| error.to_string())?;
+                let &(_, subfield_start, count) = domains.get(&domain).ok_or_else(|| {
+                    "C6.3 resident append source is absent from the schedule".to_owned()
+                })?;
+                if count != width {
+                    return Err("C6.3 resident append source width differs".to_owned());
+                }
+                let destination =
+                    ((kind_index * layers + layer_index) * delta + position_delta) * width;
+                for channel in 0..width {
+                    let source_index = subfield_start + channel;
+                    for tape in 0..2 {
+                        let audit = paired.coordinates()[tape].subfield();
+                        let mask = *audit
+                            .masks()
+                            .get(source_index)
+                            .ok_or_else(|| "C6.3 resident append mask is truncated".to_owned())?;
+                        let correction =
+                            *audit.corrections().get(source_index).ok_or_else(|| {
+                                "C6.3 resident append correction is truncated".to_owned()
+                            })?;
+                        if audit.plaintext(source_index) != Some(mask + correction) {
+                            return Err(
+                                "C6.3 resident append correction differs from X-R".to_owned()
+                            );
+                        }
+                        packed[tape][destination + channel] = correction.value();
+                    }
+                }
+            }
+        }
+    }
+    Ok(packed)
 }
 
 /// Evaluate the two response-local correction openings from the paired source
@@ -2738,6 +2866,27 @@ mod tests {
                 })
         });
         assert_eq!(values, expected);
+        let packed =
+            c63_pack_paired_source_corrections(1, 2, digest, &plan, &schedule, &paired).unwrap();
+        assert_eq!(packed[0].len(), 2 * 12 * 768);
+        let domains = c63_direct_source_domain_offsets(source_count as usize, &schedule).unwrap();
+        for (layer_index, layer) in plan.layers().iter().enumerate() {
+            for (kind_index, kind) in
+                [C6CacheFoldKind::KeyRows, C6CacheFoldKind::ValueColumns].into_iter().enumerate()
+            {
+                let (_, source_start, count) = domains[&layer.source_domain(kind, 1).unwrap()];
+                assert_eq!(count, 768);
+                for tape in 0..2 {
+                    let expected = paired.coordinates()[tape].subfield().corrections()
+                        [source_start..source_start + 768]
+                        .iter()
+                        .map(|value| value.value())
+                        .collect::<Vec<_>>();
+                    let destination = (kind_index * 12 + layer_index) * 768;
+                    assert_eq!(&packed[tape][destination..destination + 768], expected);
+                }
+            }
+        }
         assert!(c63_compile_residual_source_functionals(
             1,
             2,
@@ -2892,6 +3041,7 @@ mod tests {
         assert_eq!(decoded.expanded_h_digest(), setup.expanded_h_digest());
         assert_eq!(C63SparseSetupReference::verify_descriptor(decoded).unwrap(), setup);
         assert!(C63SparseSetupReference::verify_production_descriptor(decoded).is_err());
+        assert!(setup.production_profile_digest().is_err());
 
         let mut wrong_seed = encoded;
         wrong_seed[16] ^= 1;

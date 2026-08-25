@@ -1,10 +1,10 @@
 //! Canonical tagless C6.3 public argument.
 
 use crate::c61_whir_reference::C61Commitment;
-use crate::c63_authenticated_sketch::C63_BOLT_COLUMNS;
 use crate::c63_authenticated_sketch::{
     C63CorrectionAppendFrontier, C63CorrectionRowsOpeningReference,
 };
+use crate::c63_authenticated_sketch::{C63SparseSetupReference, C63_BOLT_COLUMNS};
 use crate::c63_preencoded_whir::{
     c63_challenger, c63_sample_systematic_query_rows, c63_whir_config, c63_whir_initial_roots,
     decode_c63_whir_ordinary_artifact_with_config, decode_c63_whir_projected_artifact_with_config,
@@ -13,6 +13,8 @@ use crate::c63_preencoded_whir::{
 };
 use volta_field::Fp2;
 use volta_proto::C6ClientAttempt;
+
+use crate::merkle::{hash_leaf, hash_pair};
 
 pub const C63_PUBLIC_ARGUMENT_MAGIC: [u8; 8] = *b"C63PUB3\0";
 pub const C63_PUBLIC_ARGUMENT_VERSION: u16 = 3;
@@ -58,6 +60,10 @@ pub struct C63VerifierSketchState {
 }
 
 impl C63VerifierSketchState {
+    pub fn production_genesis(setup: &C63SparseSetupReference) -> Result<Self, String> {
+        Self::genesis(setup.production_profile_digest()?, c63_zero_encoded_sketch_root())
+    }
+
     pub fn genesis(
         profile_digest: [u8; 32],
         zero_encoded_sketch_root: [u8; 32],
@@ -142,6 +148,16 @@ impl C63VerifierSketchState {
             correction_frontier,
         })
     }
+}
+
+/// Merkle root of the setup-owned all-zero physical `A` tensor. A zero row is
+/// 32 canonical Goldilocks limbs and the physical tree has depth 19.
+pub fn c63_zero_encoded_sketch_root() -> [u8; 32] {
+    let mut root = hash_leaf(&[0u8; 2 * C63_BOLT_COLUMNS * 8]);
+    for _ in 0..19 {
+        root = hash_pair(&root, &root);
+    }
+    root
 }
 
 impl C63PublicArgument {

@@ -22,8 +22,9 @@ source "$HOME/.cargo/env"
 echo "== python venv =="
 if [[ ! -d "$repo_root/.venv" ]]; then
     python3 -m venv "$repo_root/.venv"
-    "$repo_root/.venv/bin/pip" -q install numpy
 fi
+"$repo_root/.venv/bin/python" -c 'import numpy, tiktoken' 2>/dev/null || \
+    "$repo_root/.venv/bin/pip" -q install numpy tiktoken
 
 echo "== weight artifact (HF gpt2, public — no token needed) =="
 mkdir -p "$weights_dir"

@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — CHECKPOINT 215d4f4 / POD PREFLIGHT PASS / FULL-SIZE DIFFERENTIAL PENDING)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CACHE PRECOMMIT DIAGNOSTIC COMPLETE; C6.3 AUTHENTICATED SKETCHED WHIR — FULL-SIZE DIFFERENTIAL PASS / E2E ADAPTER IN PROGRESS)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,14 +10,16 @@ record; no external plan is authoritative.
 
 Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
 
-- **Status.** Clean code checkpoint `215d4f4` contains the resident coordinator,
+- **Status.** Hardware checkpoint `3bd56a2` contains the resident coordinator,
   exact `D=X-R` link, eight-body suffix, composed CPU verifier, canonical
-  production-profile binding and direct live-correction packer. Pod preflight
-  passes; environment bootstrap is in progress and E2E has not begun.
+  production-profile binding, direct live-correction packer and two-cohort
+  provider materializer. Pod bootstrap and the mandatory full-size
+  differential pass; E2E has not begun.
 - **Evidence.** The authorized pod has one exclusive A100 80 GB, `sm_80`, CUDA
-  12.8, 250 GB effective RAM and 228 GB free root storage. Local focused source
-  packing/profile tests pass. Earlier resident projection/opening, 4,420-spot,
-  sparse and one-lane results remain `credit:false`; no new proof credit exists.
+  12.8, 250 GB effective RAM and 228 GB admission storage. Genesis/successor
+  GPU states match the CPU oracle, including canonical zero root;
+  transition walls are 15.129/9.204 ms and device peaks 1.31/1.64 GB. This and
+  earlier projection/spot/sparse results remain `credit:false` component data.
 - **Decision.** Keep two authentication tapes, eight WHIR bodies and four
   terminal tags. The driver fixes eight roots, closes sparse/source claims,
   consumes the existing global link, then draws WHIR masks. Screen v16 keeps
@@ -29,11 +31,27 @@ Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
   `<5 s`, verifier RSS `<=8 GB` and the 150-second prover mark are engineering
   targets: crossing them records `FAIL` but does not stop a viable run.
   Soundness `>=78.00` bits and protocol acceptance remain mandatory.
-- **Resume.** Pull the next clean checkpoint, finish bootstrap, run the
-  production setup/root and asymmetric-owner differential, then one cold and
-  one immediate warm response. Retain complete artifacts after byte/time/RSS
-  misses. Stop only for cryptographic failure, invalid transition or imminent
-  resource loss.
+- **Resume.** Finish and checkpoint the thin campaign boundary, then run one
+  cold `0→150` and one immediate warm
+  `150→200` response. Retain complete artifacts after byte/time/RSS misses.
+  Stop only for cryptographic failure, invalid transition or imminent loss.
+
+- **2026-08-25 — Canonical full-size GPU/CPU differential passes.** Clean
+  checkpoint `3bd56a2` ran the production D22-to-D19 setup, canonical GPU zero
+  root, one genesis token and one asymmetric successor token on the authorized
+  A100. Every compact correction, sparse-sketch value, encoded value and both
+  state roots matched the independent CPU construction; prefix preservation,
+  epoch advance and cleanup passed. Backend transition walls were
+  `15,129,087 ns` and `9,203,948 ns`; backend device peaks were
+  `1,312,260,104 B` and `1,635,223,432 B`. The debug process used
+  `1,890,040 KiB` RSS and `80.92 s` including first compilation and the
+  55.27-second full CPU oracle. Record
+  `c63-g1-full-differential-2026-08-25-3bd56a2.json` is `credit:false`: it is
+  component evidence, not a certificate or prover timing. This checkpoint
+  also adds the tested two-cohort residual/auxiliary provider materializer,
+  sharing the existing slot builder with C6.2; no dense cache owner, hidden
+  owner, new engine or new kernel is admitted. The thin campaign boundary is
+  next.
 
 - **2026-08-25 — New A100 preflight passes; production setup identity is no
   longer caller-selected.** The pod exposes one idle A100-SXM4-80GB at `sm_80`,

@@ -1,0 +1,104 @@
+{
+  "schema": "volta-c63-g1-full-differential-v2",
+  "credit": false,
+  "scope": "production-geometry canonical setup, zero-root, genesis/successor GPU-to-CPU differential; not a proof or end-to-end run",
+  "git_sha": "3bd56a29ea995e20dbf34be33664bec0aba2ba95",
+  "git_dirty": false,
+  "branch": "agent/c63-authenticated-sketch",
+  "hardware": {
+    "gpu": "NVIDIA A100-SXM4-80GB",
+    "gpu_total_mib": 81920,
+    "gpu_used_mib_at_admission": 0,
+    "compute_capability": "8.0",
+    "cuda": "12.8",
+    "logical_cpus": 128,
+    "cgroup_memory_limit_bytes": 249999998976,
+    "session_filesystem": "/root overlay",
+    "session_filesystem_free_at_admission": "228 GiB"
+  },
+  "cuda_backend": {
+    "abi": 44,
+    "architecture": "sm_80",
+    "library": "/root/volta-zk/rust/target/cuda/libvolta_cuda_backend.so",
+    "library_bytes": 3684800,
+    "sha256": "cb1c67c81ff1601a4259535c2a0e77cdb0ec0cd1645d18931e6151b4b6629419"
+  },
+  "setup": {
+    "seed_hex": "deda54f405265cd5f57b0baec79fbc6fcd1e5149f68937e28bb0737338c5bdea",
+    "expanded_h_digest_hex": "5b391766f9c98f70f5149e63d77eca6bcc0626703fc86a972bbd7b37e6a12415",
+    "input_rows": 4194304,
+    "sketch_rows": 524288,
+    "column_degree": 16,
+    "check_degree": 128
+  },
+  "command": "RAYON_NUM_THREADS=8 VOLTA_CUDA_LIBRARY=/root/volta-zk/rust/target/cuda/libvolta_cuda_backend.so VOLTA_REQUIRE_CUDA=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_TEST_DEBUG=0 /usr/bin/time -v cargo test --manifest-path rust/Cargo.toml -p volta-pcs --test c63_gpu_owner --features cuda,c6-trace,c61-p3-authenticated-reference production_owner_matches_cpu_for_one_complete_token -- --ignored --nocapture",
+  "result": "PASS",
+  "test_process": {
+    "wall_seconds_including_first_compile": 80.92,
+    "test_body_seconds": 55.27,
+    "maximum_resident_set_kib": 1890040,
+    "user_seconds": 139.27,
+    "system_seconds": 11.78,
+    "filesystem_output_blocks": 1363328,
+    "swaps": 0
+  },
+  "genesis": {
+    "accepted_length": 1,
+    "epoch": 1,
+    "backend_measurement_wall_ns": 15129087,
+    "kernel_ns": 2800096,
+    "peak_device_bytes": 1312260104,
+    "h2d_bytes": 2097224,
+    "d2h_bytes": 64,
+    "explicit_d2d_copy_bytes": 134217728,
+    "synchronizations": 2,
+    "row_calls": 5,
+    "ntt_calls": 1,
+    "merkle_calls": 2
+  },
+  "successor": {
+    "accepted_length": 2,
+    "epoch": 2,
+    "backend_measurement_wall_ns": 9203948,
+    "kernel_ns": 2809440,
+    "peak_device_bytes": 1635223432,
+    "h2d_bytes": 144,
+    "d2h_bytes": 64,
+    "explicit_d2d_copy_bytes": 201719808,
+    "synchronizations": 2,
+    "row_calls": 6,
+    "ntt_calls": 1,
+    "merkle_calls": 2
+  },
+  "external_gpu_sampler": {
+    "interval_seconds": 1,
+    "maximum_observed_memory_used_mib": 2067,
+    "maximum_observed_utilization_percent": 6
+  },
+  "checks": {
+    "canonical_production_profile_digest_derived_from_setup": true,
+    "gpu_zero_encoded_root_matches_canonical_cpu_root": true,
+    "all_compact_corrections_match_cpu": true,
+    "accepted_prefix_preserved": true,
+    "all_sparse_sketch_values_match_cpu": true,
+    "all_encoded_sketch_values_match_cpu": true,
+    "correction_roots_match_cpu": true,
+    "encoded_roots_match_cpu": true,
+    "successor_roots_differ_from_predecessor": true,
+    "epoch_and_length_advance": true,
+    "discard_successor_returns_to_accepted_resident_bytes": true,
+    "discard_genesis_returns_to_setup_resident_bytes": true,
+    "legacy_dense_cache_precommit_used": false
+  },
+  "post_run": {
+    "git_dirty": false,
+    "gpu_compute_processes": 0,
+    "session_filesystem_free_bytes": 243398656000
+  },
+  "limitations": [
+    "debug correctness run; compilation and a full CPU oracle dominate wall time",
+    "one-token genesis and one-token successor exercise state geometry but not a complete response proof",
+    "real PCG, eight proof bodies, final certificate and independent CPU certificate verifier are absent"
+  ],
+  "decision": "The canonical setup/genesis/successor resident state boundary is green. Continue to the thin C6.3 campaign adapter; no end-to-end gate credit is claimed."
+}

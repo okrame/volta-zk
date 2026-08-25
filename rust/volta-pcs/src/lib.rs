@@ -264,6 +264,7 @@ pub use c6_live_wrapper::{
     install_production_c63_authenticated_sketch_live_wrapper_roots_verifier,
     install_production_c6_live_wrapper_roots_verifier,
     materialize_production_c61_native_live_wrapper_roots_cuda,
+    materialize_production_c63_authenticated_sketch_live_wrapper_roots_cuda,
     materialize_production_c6_live_wrapper_roots,
     materialize_production_c6_live_wrapper_roots_cuda,
     precommit_production_c62_native_cache_roots_cuda, C61NativeLiveWrapperSources,

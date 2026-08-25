@@ -1054,7 +1054,16 @@ reads the inference-owned correction audit in the source schedule, checks
 `X=R+D` for every appended cell and emits exactly the kind/layer/position/
 channel order consumed by the existing CUDA update. Focused local tests pass.
 The production setup expansion, GPU zero-root match and asymmetric owner
-differential remain terminal before E2E.
+differential passed on clean checkpoint `3bd56a2`. The complete independent
+CPU comparison used a debug build and is recorded only as `credit:false`
+component evidence in
+`c63-g1-full-differential-2026-08-25-3bd56a2.json`: resident genesis and
+successor transition walls were `15,129,087 ns` and `9,203,948 ns`, with
+backend device peaks of `1,312,260,104 B` and `1,635,223,432 B`. The
+two-cohort residual/auxiliary provider materializer now shares the existing
+C6.2 slot builder and rejects CPU execution; it admits no cache or hidden
+owner. The next boundary is only the thin campaign adapter; no dense cache
+cohort may re-enter.
 
 The first hardware check is the single ignored integration test
 `volta-pcs/tests/c63_gpu_owner.rs`. It uses the production D22-to-D19 sampler,

@@ -69,42 +69,46 @@ theorem packed_functional_eq
 
 /-! ## Claims fixed before the response-wide batching challenge -/
 
-/-- Commitments, claims, and query descriptions are arguments outside the
-filter binder; hence the residual vector is fixed before `beta` is sampled.
-The scalar-power RLC has at most `T` roots when one fixed residual is nonzero.
--/
-theorem fixed_before_beta_rlc_root
-    {F Commitments Claims Queries : Type*}
-    [Field F] [Fintype F] [DecidableEq F]
+/-- For one already serialized transcript prefix, if acceptance implies the
+scalar-power residual identity and one residual is nonzero, at most `T`
+challenges accept.  The concrete protocol must separately prove that `prefix`
+binds every commitment/claim/query before the challenge and that Fiat--Shamir
+samples it with the required distribution. -/
+theorem fixed_prefix_rlc_accepting_card_le
+    {F Prefix : Type*}
+    [Field F] [Fintype F]
     {T : Nat}
-    (_commitments : Commitments) (_claims : Claims) (_queries : Queries)
-    (error : Fin T → F) {j₀ : Fin T} (herror : error j₀ ≠ 0) :
-    (univ.filter fun beta : F =>
-      ∑ j, beta ^ (j.val + 1) * error j = 0).card ≤ T :=
-  card_scalarRlc_zero_le error herror
+    (transcriptPrefix : Prefix) (errorOf : Prefix → Fin T → F)
+    (accept : Prefix → F → Bool)
+    {j₀ : Fin T} (herror : errorOf transcriptPrefix j₀ ≠ 0)
+    (haccept : ∀ beta, accept transcriptPrefix beta = true →
+      ∑ j, beta ^ (j.val + 1) * errorOf transcriptPrefix j = 0) :
+    (univ.filter fun beta : F => accept transcriptPrefix beta = true).card ≤ T := by
+  classical
+  refine (card_le_card ?_).trans
+    (card_scalarRlc_zero_le (errorOf transcriptPrefix) herror)
+  intro beta hbeta
+  simp only [mem_filter, mem_univ, true_and] at hbeta ⊢
+  exact haccept beta hbeta
 
-/-! ## One multi-commitment terminal in both Fp2 limbs -/
+/-! ## One multi-commitment terminal in the extension field -/
 
-/-- Componentwise pair batch for one logical terminal over many commitment
-planes.  `Fin 2` is the two-limb representation used for an `Fp2` value. -/
+/-- Pair batch for one logical terminal over many commitment planes.  The
+field is the actual MAC/challenge field (for C7, `Fp2`), not two independent
+base-field MACs. -/
 def multiCommitTerminalPair
-    {F C : Type*} [Semiring F] [Fintype C]
-    (coefficient : C → F) (value : C → Fin 2 → F × F) :
-    Fin 2 → F × F :=
-  fun limb =>
-    (∑ c, coefficient c * (value c limb).1,
-      ∑ c, coefficient c * (value c limb).2)
+    {E C : Type*} [Semiring E] [Fintype C]
+    (coefficient : C → E) (value : C → E × E) : E × E :=
+  (∑ c, coefficient c * (value c).1,
+    ∑ c, coefficient c * (value c).2)
 
 /-- Verifier-key projection commutes with the multi-commitment terminal for
-each of the two `Fp` limbs. -/
-theorem multi_commit_terminal_key_linearity_fp2
-    {F C : Type*} [Field F] [Fintype C]
-    (Delta : Fin 2 → F) (coefficient : C → F)
-    (value : C → Fin 2 → F × F) :
-    ∀ limb : Fin 2,
-      keyOf (Delta limb) (multiCommitTerminalPair coefficient value limb) =
-        ∑ c, coefficient c * keyOf (Delta limb) (value c limb) := by
-  intro limb
+one shared extension-field MAC key. -/
+theorem multi_commit_terminal_key_linearity
+    {E C : Type*} [Field E] [Fintype C]
+    (Delta : E) (coefficient : C → E) (value : C → E × E) :
+    keyOf Delta (multiCommitTerminalPair coefficient value) =
+      ∑ c, coefficient c * keyOf Delta (value c) := by
   unfold multiCommitTerminalPair keyOf
   rw [Finset.mul_sum, ← Finset.sum_add_distrib]
   apply Finset.sum_congr rfl
@@ -113,24 +117,39 @@ theorem multi_commit_terminal_key_linearity_fp2
 
 /-- Componentwise MAC batch corresponding to `multiCommitTerminalPair`. -/
 def multiCommitTerminalAuthed
-    {F C : Type*} [Field F] [Fintype C]
-    (coefficient : C → F) (value : C → Fin 2 → Authed F) :
-    Fin 2 → Authed F :=
-  fun limb => ∑ c, coefficient c • value c limb
+    {E C : Type*} [Field E] [Fintype C]
+    (coefficient : C → E) (value : C → Authed E) : Authed E :=
+  ∑ c, coefficient c • value c
 
 /-- MAC validity is preserved by the same multi-commitment linear batch in
-both `Fp` limbs. -/
-theorem multi_commit_terminal_mac_linearity_fp2
-    {F C : Type*} [Field F] [Fintype C]
-    (Delta : Fin 2 → F) (coefficient : C → F)
-    (value : C → Fin 2 → Authed F)
-    (hvalid : ∀ c limb, (value c limb).Valid (Delta limb)) :
-    ∀ limb : Fin 2,
-      (multiCommitTerminalAuthed coefficient value limb).Valid (Delta limb) := by
-  intro limb
+the extension field under the same `Delta`. -/
+theorem multi_commit_terminal_mac_linearity
+    {E C : Type*} [Field E] [Fintype C]
+    (Delta : E) (coefficient : C → E) (value : C → Authed E)
+    (hvalid : ∀ c, (value c).Valid Delta) :
+    (multiCommitTerminalAuthed coefficient value).Valid Delta := by
   apply Authed.Valid.sum
   intro c _
-  exact (hvalid c limb).smul (coefficient c)
+  exact (hvalid c).smul (coefficient c)
+
+/-- Equality of the extension-field key equation implies equality of every
+serialized coordinate.  Instantiating `coordinate` with the two canonical
+`Fp2` projections covers both base-field limbs without replacing `Fp2`
+multiplication by two unrelated base-field MACs. -/
+theorem multi_commit_terminal_mac_equation_on_coordinates
+    {Fp E C : Type*} [Field E] [Fintype C]
+    (coordinate : Fin 2 → E → Fp)
+    (Delta : E) (coefficient : C → E) (value : C → Authed E)
+    (hvalid : ∀ c, (value c).Valid Delta) :
+    ∀ limb,
+      coordinate limb (multiCommitTerminalAuthed coefficient value).k =
+        coordinate limb
+          ((multiCommitTerminalAuthed coefficient value).m +
+            Delta * (multiCommitTerminalAuthed coefficient value).x) := by
+  intro limb
+  have h := multi_commit_terminal_mac_linearity Delta coefficient value hvalid
+  unfold Authed.Valid at h
+  exact congrArg (coordinate limb) h
 
 /-! ## Static-mask reuse is extractable -/
 
@@ -268,30 +287,64 @@ theorem connection_sliced_union_bound_shared_delta
       (n + 1) * B * Fintype.card Xi ^ n :=
   connection_soundness_union_bound bad hslice
 
+/-! ## Conditional computational/statistical hybrid composition -/
+
+/-- If `advantage r` is the distinguishing advantage after `r` attempts, a
+base loss plus an additive per-attempt hybrid bound composes linearly.  The
+cryptographic work is the `hstep` premise: this arithmetic lemma does not
+manufacture the missing malicious-DV per-attempt simulator. -/
+theorem connection_hybrid_advantage_bound
+    (advantage : Nat → ℚ) (epsilonAttempt epsilonFixed : ℚ)
+    (hzero : advantage 0 ≤ epsilonFixed)
+    (hstep : ∀ r, advantage (r + 1) ≤ advantage r + epsilonAttempt) :
+    ∀ Rmax, advantage Rmax ≤ epsilonFixed + Rmax * epsilonAttempt := by
+  intro Rmax
+  induction Rmax with
+  | zero => simpa using hzero
+  | succ r ih =>
+      calc
+        advantage (r + 1) ≤ advantage r + epsilonAttempt := hstep r
+        _ ≤ (epsilonFixed + r * epsilonAttempt) + epsilonAttempt :=
+          by linarith
+        _ = epsilonFixed + (↑(Nat.succ r) : ℚ) * epsilonAttempt := by
+          rw [Nat.cast_succ]
+          ring
+
+/-- Exact R0 arithmetic: if every one of the 64 attempt-local events really
+has error at most `2^-110`, the `2^20`-attempt union plus the registered
+hash/PCG/state/framing terms remains below `2^-78`. -/
+theorem c7_registered_connection_error_below_78_bits :
+    (2 ^ 20 : ℚ) * ((64 : ℚ) / 2 ^ 110) +
+        1 / 2 ^ 128 + 1 / 2 ^ 128 + 1 / 2 ^ 120 + 1 / 2 ^ 128
+      < 1 / 2 ^ 78 := by
+  norm_num
+
 /-! ## Transparent serialization refinement -/
 
 /-- One canonical ALFC schedule entry.  The authenticated value has two
-`Fp` limbs and is never modeled as a clear verifier output. -/
-structure C7AlfcClaim (Commitment Query F : Type*) where
+party-local shares represented only by an opaque handle; this structure does
+not serialize a plaintext/tag pair. -/
+structure C7AlfcClaim (Commitment Query Handle : Type*) where
   commitment : Commitment
   query : Query
-  authenticatedValue : Fin 2 → F × F
+  authenticatedHandle : Handle
 
 /-- The abstract relation is deliberately just successful decoding to the
 canonical ordered schedule, not an ideal binding/privacy interface. -/
 def C7AbstractAlfcRelation
-    {Wire Commitment Query F : Type*}
-    (decode : Wire → Option (List (C7AlfcClaim Commitment Query F)))
-    (wire : Wire) (schedule : List (C7AlfcClaim Commitment Query F)) : Prop :=
+    {Wire Commitment Query Handle : Type*}
+    (decode : Wire → Option (List (C7AlfcClaim Commitment Query Handle)))
+    (wire : Wire)
+    (schedule : List (C7AlfcClaim Commitment Query Handle)) : Prop :=
   decode wire = some schedule
 
 /-- A concrete canonical serializer refines the abstract ALFC schedule when
 its stated decode/encode round trip holds. -/
 theorem canonical_serialized_claim_schedule_refines_alfc
-    {Wire Commitment Query F : Type*}
-    (encode : List (C7AlfcClaim Commitment Query F) → Wire)
-    (decode : Wire → Option (List (C7AlfcClaim Commitment Query F)))
-    (schedule : List (C7AlfcClaim Commitment Query F))
+    {Wire Commitment Query Handle : Type*}
+    (encode : List (C7AlfcClaim Commitment Query Handle) → Wire)
+    (decode : Wire → Option (List (C7AlfcClaim Commitment Query Handle)))
+    (schedule : List (C7AlfcClaim Commitment Query Handle))
     (hcodec : decode (encode schedule) = some schedule) :
     C7AbstractAlfcRelation decode (encode schedule) schedule :=
   hcodec
@@ -299,12 +352,15 @@ theorem canonical_serialized_claim_schedule_refines_alfc
 end VoltaZk
 
 #print axioms VoltaZk.packed_functional_eq
-#print axioms VoltaZk.fixed_before_beta_rlc_root
-#print axioms VoltaZk.multi_commit_terminal_key_linearity_fp2
-#print axioms VoltaZk.multi_commit_terminal_mac_linearity_fp2
+#print axioms VoltaZk.fixed_prefix_rlc_accepting_card_le
+#print axioms VoltaZk.multi_commit_terminal_key_linearity
+#print axioms VoltaZk.multi_commit_terminal_mac_linearity
+#print axioms VoltaZk.multi_commit_terminal_mac_equation_on_coordinates
 #print axioms VoltaZk.reused_affine_mask_extract
 #print axioms VoltaZk.mle_append_difference
 #print axioms VoltaZk.accepted_append_tails_induction
 #print axioms VoltaZk.atomic_promotion_fork_exclusion
 #print axioms VoltaZk.connection_union_bound_with_rmax_shared_delta
+#print axioms VoltaZk.connection_hybrid_advantage_bound
+#print axioms VoltaZk.c7_registered_connection_error_below_78_bits
 #print axioms VoltaZk.canonical_serialized_claim_schedule_refines_alfc

@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 R0 DESIGN CHECKPOINT — BACKEND A NO-GO / WHIR-UD CONTROL ONLY)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 R0.1 HARDENED — NO PRIVATE BACKEND SELECTED / WHIR TRANSPARENT CONTROL ONLY)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,29 +10,67 @@ record; no external plan is authoritative.
 
 Read `c7-stateful-authenticated-lfc-design.md` next.
 
-- **Status/hard stop.** C7 R0 is a design-only checkpoint on
-  `agent/c7-stateful-alfc`. Backend A is NO-GO for R1 until its one-pass
-  bounded-memory code schedule, two-limb authenticated terminal, exact
-  storage/byte census and malicious-DV stateful privacy theorem exist.
-  WHIR-UD is GO only as a smallest local control on the same packed relation.
-- **Completed versus credit.** The exact incremental 100+50 recurrence,
-  four-plane ALFC transcript, one-terminal-point-per-segment invariant,
-  executable GPT-2/31B budget and nine additive Lean seams are recorded.
-  The 12,385,563/19,212,300-B certificate envelopes and 7.142-GB/1.776-TB
-  setup screens are `credit:false`; no composed certificate, prover time,
-  complete memory, privacy or E2E result exists. C6.3 transfers no credit.
-- **Security/state.** Policy 3 permits a static weight root only inside one
-  connection and only under the new theorem. `R_max=2^20` counts accepts,
-  failures, retries and selective aborts; every abort burns masks/correlations.
-  The registered union screen is effectively 83.99999999998 bits (strict
-  whole-bit label 83) against the 78-bit target. Cross-connection root reuse
-  is unauthorized.
-- **Checks/authorization.** Budget self-checks, the focused Lean check and
-  full `lake build` pass. No large prover, production/provider work or pod is
-  authorized; C6.3 remains closed.
-- **Resume.** Require an executable multiplicity-one compiler, no-clear
-  adapter, one-pass I/O/memory schedule, connection privacy proof and exact
-  composed budgets. R1 and any pod still require later explicit owner GO.
+- **Status/hard stop.** C7 R0.1 is design-only on
+  `agent/c7-stateful-alfc`. Published Merkle/BCS Ligerito, ERA and WHIR reveal
+  queried payloads; Backend A plus a terminal adapter is rejected under
+  literal policy 3. No private backend is selected. WHIR-UD is only a
+  transparent tiny/scaled control.
+- **Evidence/credit.** The incremental 100+50 relation, packed identity,
+  extension-field/shared-`Delta` MAC seam, conditional hybrid recurrence and
+  exact `<2^-78` allocation arithmetic are recorded. The 12.386/19.212-MB
+  sums, 7.142-GB/1.776-TB artifacts, 106/378 claims, 512-handle and 64-event
+  counts are screens/caps, `credit:false`; no compiled certificate, privacy,
+  time, memory or E2E result exists.
+- **Security.** Policy 3 is only a candidate; static-root reuse remains
+  unauthorized. `R_max=2^20` counts every reserved attempt. The effective
+  83.999-bit figure is conditional on an incomplete event/hybrid registry and
+  is not a C7 security label.
+- **Checks/authorization.** Budget self-check, focused Lean and full Lean build
+  pass. No large prover, provider or pod is authorized. Local work means only
+  tiny/scaled integration; full GPT-2 E2E is pod-only after `C7_POD_READY`
+  **and** a later explicit owner GO.
+- **Resume.** Owner must choose strict no-clear policy 3 versus bounded clear
+  masked-symbol policy 2 and its root/query horizon; then require compiler,
+  private adapter, one-pass census, concrete privacy theorem and derived
+  budgets before R1.
+
+- **2026-08-26 — C7 R0.1 rejects the terminal-adapter privacy shortcut and
+  reaches an owner decision gate.** The local SOTA audit establishes that the
+  published Merkle/BCS instantiations do not implement literal policy 3:
+  Ligerito transmits requested rows and its terminal matrix, ERA transmits
+  requested columns plus authentication paths, and WHIR queries return leaf
+  evaluations/payloads. 2026/391 makes a bounded set of randomized encoding
+  symbols simulatable under query-bounded non-adaptive HVZK, but those symbols
+  remain clear oracle outputs. Unique decoding changes soundness assumptions,
+  not leakage. Backend A as composed is therefore rejected under policy 3;
+  WHIR remains only a public/synthetic tiny/scaled code control.
+
+  The additive C7 Lean seam now authenticates the terminal in the actual
+  extension field under one shared `Delta`, then projects the equality to both
+  serialized limbs; the previous two-independent-base-MAC interpretation is
+  removed. The RLC theorem now takes one fixed serialized prefix and explicit
+  residual/accept implications. The wire claim contains only an opaque handle.
+  A new conditional hybrid recurrence proves
+  `Adv(R) <= epsilon_fixed + R*epsilon_attempt`, and exact rational arithmetic
+  proves the registered allocation below `2^-78`. None supplies the missing
+  concrete per-attempt malicious-DV simulator, transcript binding, codec
+  privacy or backend knowledge soundness. Focused and full Lean checks pass
+  without `sorryAx`; the budget self-check passes.
+
+  The executable calculator now labels 106/378 segments, 512 handles, 64 bad
+  events, 12,385,563/19,212,300 certificate bytes and
+  7,142,399,968/1,775,600,639,968 artifact bytes as illustrative caps or
+  sensitivity only. It emits `compiled_certificate_bytes_counted:false` and
+  an incomplete security registry. The active design adds an append-only
+  decision/rejection table retaining the evidence and reason for every
+  demotion.
+
+  No pod/provider was contacted. “Starts locally” is fixed to tiny/scaled
+  integration preflight only. A complete GPT-2 E2E remains pod-only and needs
+  both a prior `C7_POD_READY` ledger state and a new explicit owner GO;
+  readiness alone is not authorization. Resume requires the owner to choose
+  policy 3 with a new authenticated-oracle compiler, or policy 2 with an exact
+  total query/root horizon and adaptive stateful privacy theorem.
 
 - **2026-08-26 — C7 R0 fixes the incremental stateful ALFC statement and
   stops before implementation.** The owner-opened branch

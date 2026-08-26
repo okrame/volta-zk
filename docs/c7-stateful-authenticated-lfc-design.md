@@ -1,8 +1,8 @@
 # C7 — stateful authenticated linear-functional commitment
 
-**Status:** C7 R0 design checkpoint; design and small formal/analytic seams
-only.  This document is the task-specific authority named by
-`prototype-status.md`.
+**Status:** C7 R0.1 hardened design checkpoint; design and small
+formal/analytic seams only.  This document is the task-specific authority
+named by `prototype-status.md`.
 
 **Branch:** `agent/c7-stateful-alfc`.
 
@@ -28,7 +28,7 @@ claim, per-token folding instance, or deferred cross-response settlement.
 DeepProve and zkAgent are evidence for response-wide operator batching, but
 their teacher-forced full-forward statements are not the C7 relation.
 
-R0 makes the following decisions.
+R0.1 retains only the following decisions.
 
 1. The immutable model, response trace and persistent cache are separate
    commitment planes.  "One opening" means one transcript-bound
@@ -36,16 +36,15 @@ R0 makes the following decisions.
 2. Every physical packed segment has **exactly one** operator-reduced terminal
    point before the ALFC batching challenge.  This is the only admitted
    resolution of the `O(KN)` packed-functional hard stop.
-3. Static-weight privacy uses policy 3: no PCS symbol or evaluation is ever
-   revealed in clear; accepted terminal values enter the connection VOLE-MAC
-   directly.  Reuse of the static weight root is conditional on the named
-   malicious-DV multi-session privacy theorem in Section 4.  It is not
-   inferred from HVZK.
-4. Backend A (packed Ligerito/ERA-style code, constrained-code masking and a
-   new VOLE-MAC adapter) remains the architectural candidate, but is
-   **NO-GO for R1 implementation** at this checkpoint.  Strict
-   unique-decoding WHIR is **GO as a local executable control only**, using
-   this exact packed relation and never the C6.3 eight-body topology.
+3. Policy 3 is the **candidate** static-weight privacy policy: no PCS symbol
+   or evaluation may be revealed in clear.  Static-root reuse is not
+   authorized by this choice; it remains conditional on the named
+   malicious-DV multi-session theorem in Section 4.
+4. The published Merkle/BCS forms of Ligerito, ERA and WHIR reveal queried
+   row/column/leaf payloads.  Therefore Backend A plus a terminal-only
+   VOLE-MAC adapter is **rejected under policy 3**, not an architectural
+   front-runner.  WHIR-UD remains **GO only as a transparent tiny/scaled code
+   control**; it carries no private-weight or no-clear credit.
 
 The following are terminal R0 hard stops.  Until all are discharged there is
 no large prover implementation, production equivalence claim, provider/pod
@@ -54,17 +53,22 @@ contact, or proof/time/memory credit:
 - a concrete compiler census must show one terminal point per physical
   segment; any segment with multiplicity `K_i > 1` reopens the `sum K_i N_i`
   stop;
-- the selected code must have a proved, executable one-pass bounded-memory
-  schedule, with exact read/write traffic and no expanded resident Fp/Fp2
-  weight wrapper;
-- the Fp2-to-two-Fp-limb authenticated terminal adapter must be proved and
-  exercised without exposing an evaluation;
+- any newly selected code/commitment composition must have a proved,
+  executable one-pass bounded-memory schedule, with exact read/write traffic
+  and no expanded resident Fp/Fp2 weight wrapper;
+- the authenticated terminal must operate in the actual Fp2 extension field
+  under one shared `Delta`; its two serialized Fp limbs must be checked without
+  replacing Fp2 multiplication by independent base-field MACs;
+- under policy 3, every queried oracle payload and every witness-dependent
+  intermediate message—not merely the terminal evaluation—must remain hidden
+  or authenticated and privately verified;
 - the malicious designated-verifier, adaptive, stateful privacy theorem must
   cover the full connection horizon, rejection feedback, retries and
   selective aborts;
 - certificate constants, setup/oracle storage and refresh must be obtained
-  from the composed protocol.  The R0 budget is an exact target-envelope
-  calculation, `credit:false`, not a measurement or construction theorem.
+  from the composed protocol.  The R0 calculator contains allocation caps and
+  artifact-volume sensitivity only, all `credit:false`; it is not a compiled
+  certificate, security proof or construction theorem.
 
 No C6.3 measurement, component test or analytic certificate is transferred as
 C7 credit.
@@ -115,9 +119,9 @@ The intended public leakage is:
 
 Privacy is only required between weight/cache witnesses inducing the same
 declared public leakage.  Availability and suppression of a sampled response
-are not hidden.  C7 proves that a published token follows the committed
-sampling coins; it does not promise unbiased service after a provider chooses
-to abort.  Every such attempt still consumes the connection horizon and burns
+are not hidden.  The C7 relation requires a published token to follow the
+committed sampling coins; it does not promise unbiased service after a
+provider chooses to abort.  Every such attempt still consumes the connection horizon and burns
 its masks/correlations.
 
 ## 2. Exact response relation
@@ -172,8 +176,9 @@ The witness `w_e` contains:
   views, and successor opening data;
 - commitment randomness for the fresh trace/successor planes;
 - operator-reduction messages, the canonical terminal schedule, private
-  terminal values, two-limb authenticated shares/tags, and the exact one-time
-  VOLE correlations/masks consumed by this attempt.
+  terminal values, extension-field authenticated shares/tags, the two-limb
+  serialization witness, and the exact one-time VOLE correlations/masks
+  consumed by this attempt.
 
 The response trace commitment is fresh even when the same public prompt is
 retried.  No trace cell or K/V cell is required to be directly transmitted as
@@ -238,9 +243,9 @@ For every `t < T`, the relation constrains:
 7. **ALFC.** The one logical multi-commitment opening accepts and transfers
    every claimed linear result directly into the shared VOLE-MAC.  No clear
    `W~(r)`, K/V evaluation, code symbol or affine fold is exposed.
-8. **Terminal settlement.** One post-ALFC challenge settles all two-limb MAC
-   residuals to zero, and every reserved correlation/mask is consumed exactly
-   once.
+8. **Terminal settlement.** One post-ALFC challenge settles all
+   extension-field MAC residuals to zero; both serialized coordinates check,
+   and every reserved correlation/mask is consumed exactly once.
 9. **Atomic state change.** A durable compare-and-swap on the predecessor head,
    nonce and slot promotes `(e,k,C_KV,e)` to `(e+1,k+T,C_KV,e+1)` together with
    the certificate/transcript journal.  The ACK is sent only after this commit.
@@ -289,11 +294,13 @@ All four roots are included in certificate framing.  The old K/V and weight
 roots may already be in durable state, but omitting their bytes from the
 certificate budget would hide framing dependence.
 
-For `F_{p^2} = F_p[u]/f(u)`, write `v = v_0 + u v_1`.  The terminal adapter
-authenticates both `F_p` limbs using separately domain-separated one-time raw
-correlations.  Linearity must hold for the value, MAC and verifier-key share
-on both limbs.  One 8-byte correction per consumed limb is counted; direct
-per-cell corrections are forbidden.
+For `F_{p^2} = F_p[u]/f(u)`, write `v = v_0 + u v_1`.  The terminal is one
+authenticated value over the extension field with one connection-scoped
+`Delta in F_{p^2}`.  Its canonical codec has two `F_p` coordinates and must
+check both, but those coordinates are not independent MAC fields: extension
+multiplication includes cross-limb terms.  The R0 allocation reserves one
+8-byte correction per coordinate; the concrete correlation construction and
+wire codec remain hard stops.  Direct per-cell corrections are forbidden.
 
 ### 3.2 Canonical schedule
 
@@ -327,21 +334,23 @@ segment_id -> (physical_len, terminal_count = 1, point, claim_digest)
 and the verifier must recompute it.  A missing, duplicated or reordered entry
 rejects before `beta`.
 
-The R0 layout allocates eight physical weight segments per layer, two global
-weight segments, four response-boundary segments, two predecessor K/V
-segments and two successor K/V segments.  Thus the screen has 106 terminal
-claims for GPT-2 and 378 for the 31B envelope.  The codec hard-caps a schedule
-at `J_max = 512` logical terminal claims.  The concrete compiler must fit this
-census or stop and rederive the proof/privacy/PCG budgets.  Over one
-connection this bounds logical authenticated handles by
-`t_max = R_max * J_max = 2^29`, and two-limb transfers by `2^30`.
+The budget-only illustrative layout uses eight weight segments per layer, two
+global weight segments, four response-boundary segments, two predecessor K/V
+segments and two successor K/V segments.  That produces illustrative counts
+of 106 and 378; no canonical serializer/compiler manifest currently derives
+them.  Likewise `J_screen_cap = 512` is an admission target, not an enforced
+codec bound.  The corresponding `2^29` connection-handle count is only a
+sensitivity screen.  Neither number may parameterize a privacy theorem until
+the concrete compiler, codec and every partially visible attempt are counted
+and a 513th handle fails closed before any challenge or correlation release.
 
 ### 3.3 Packed-functional identity and its cost
 
 Let public disjoint segments `S_i` partition the non-padding packed indices.
 Let `local_i(j)` be the canonical local coordinate of `j in S_i`, and let the
-one terminal point be `r_i`.  After all entries are fixed, sample
-`beta_i` in `F_{p^2}` and define
+one terminal point be `r_i`.  After all entries are fixed, sample one scalar
+`beta in F_{p^2}` and set `beta_i = beta^(ordinal_i+1)`; this exact
+scalar-power schedule is what the RLC root theorem analyzes.  Define
 
 ```text
 L(j) = beta_i * eq(r_i, local_i(j))   when j in S_i,
@@ -395,7 +404,7 @@ optimization note.
 ```text
 Client durable journal             Provider / prover
 ----------------------             -----------------
-reserve slot, nonce, two-limb
+reserve slot, nonce, terminal
 correlation ranges; persist
 high-water marks
         |  authorization + client entropy
@@ -414,7 +423,7 @@ fix complete canonical schedule, every q_j and every authenticated(v_j)
         |<-------------------------------------------|
         |  gamma = H(transcript_through_ALFC)
         |------------------------------------------->
-        |                 one two-limb MAC settlement
+        |                 one extension-field MAC settlement
         |<-------------------------------------------|
 verify complete relation and CAS old head -> new head
 persist certificate + transcript + consumed ranges
@@ -423,31 +432,32 @@ persist certificate + transcript + consumed ranges
 ```
 
 An abort at any point after reservation burns the slot, nonce, seed
-commitment, masks and both correlation ranges.  It leaves the accepted head
-unchanged.  A retry begins strictly after the burned high-water marks and has
-a fresh response root and transcript.
+commitment, masks and every reserved correlation range.  It leaves the
+accepted head unchanged.  A retry begins strictly after the burned high-water
+marks and has a fresh response root and transcript.
 
 ## 4. Stateful privacy and connection security
 
-### 4.1 Selected static-weight policy
+### 4.1 Candidate static-weight policy
 
-C7 selects policy 3:
+R0.1 investigates policy 3:
 
 > PCS symbols and linear evaluations are never revealed; they are delivered
 > only as one-time, connection-domain-separated VOLE-authenticated shares,
 > under a new malicious-DV multi-session privacy theorem.
 
-This policy permits a static `C_W` only if the theorem below is discharged.
+This policy permits a static `C_W` only if the theorem below is discharged;
+until then static-root reuse is unauthorized even inside one connection.
 It does not permit reuse merely because an underlying code/PCS is hiding or
 HVZK.  If the theorem fails, C7 must stop and select/rebudget fresh roots, a
 proved finite query budget, or a finite consumable pool.  There is no silent
 fallback.
 
-R0 scopes a static `C_W` to one connection.  Reusing the same root across
-connections or colluding designated verifiers is unauthorized until either a
-multi-user theorem supplies a root-wide attempt/query bound or a durable
-root-wide counter accounts the sum of every attempt.  A per-connection union
-bound cannot justify global root reuse.
+If policy 3 is accepted and proved, its first proposed scope is one
+connection.  Reusing the same root across connections or colluding designated
+verifiers remains unauthorized until either a multi-user theorem supplies a
+root-wide attempt/query bound or a durable root-wide counter accounts the sum
+of every attempt.  A per-connection union bound cannot justify global reuse.
 
 ### 4.2 Why a reusable affine mask is insufficient
 
@@ -478,9 +488,10 @@ attempt-local and burned on abort.
 - It interacts for at most `R_max` authorized attempts, including accepted
   responses, failures, retries and selective aborts, with persistent `C_W`
   and accepted K/V roots.
-- It sees at most `J_max = 512` logical authenticated terminal handles per
-  attempt, including every partial attempt, and the theorem composes over the
-  resulting `t_max = 2^29` adaptive functionals.
+- It sees every oracle response, intermediate message and authenticated
+  handle emitted by complete and partial attempts.  Their concrete census
+  must be enforced by the codec; `J_screen_cap = 512` and `2^29` are not yet
+  theorem parameters.
 - It may observe all roots, queries, authenticated handles, proof bytes,
   timing classes admitted by the leakage policy, accept/reject, crash/replay
   recovery and the durable journal.
@@ -498,7 +509,49 @@ replay/fork exclusion and the exact public leakage function.  The t-query
 CFW/constrained-code HVZK theorem used by 2026/391 has a non-adaptive,
 query-bounded simulator; it does not discharge this game.
 
-### 4.4 Horizon and union bound
+### 4.4 What is and is not cryptographically proved
+
+The R0.1 Lean seam now proves exactly three relevant facts.
+
+1. The terminal batch is linear in the actual extension field under one
+   shared `Delta`; applying either canonical coordinate projection yields the
+   corresponding equality for both serialized Fp limbs.  This fixes the old,
+   invalid model of two unrelated base-field MACs, but does not construct the
+   adapter or its codec.
+2. `connection_hybrid_advantage_bound` proves the sequential hybrid
+   recurrence
+
+   ```text
+   Adv(R) <= epsilon_fixed + R * epsilon_attempt
+   ```
+
+   provided the concrete serialized game supplies the uniform step premise
+   for every reachable transcript/journal state.  That premise is precisely
+   the missing malicious-DV per-attempt simulator; the lemma does not assume
+   an ideal ALFC.
+3. `c7_registered_connection_error_below_78_bits` proves in exact rational
+   arithmetic that the current allocation is below `2^-78`, *if* all 64
+   attempt-local event bounds and the four connection-wide terms are actually
+   established with their registered scopes.
+
+The fixed-prefix Lean result proves only that an accepting-challenge set has
+at most `T` elements when one already serialized prefix supplies a nonzero
+residual and acceptance implies its scalar-power identity.  It does not prove
+transcript freezing, Fiat--Shamir uniformity or commitment binding.  The
+serializer refinement is only decode/encode round-trip.  Its authenticated
+value is now an opaque handle, so the type no longer accidentally permits
+serializing plaintext/tag pairs, but no codec-privacy theorem follows from
+round-trip correctness.
+Likewise, the packed-functional theorem is algebra only, the append theorem is
+a list dot-product identity rather than a concrete Boolean MLE codec, and the
+atomic wrappers inherit an abstract old/new state type rather than proving a
+filesystem WAL or CAS implementation.
+
+This is the maximal honest composition result before a privacy policy and
+concrete backend are selected.  Full cryptographic soundness/privacy is not
+proved at R0.1.
+
+### 4.5 Horizon and conditional union budget
 
 Set
 
@@ -510,7 +563,7 @@ An attempt is counted when its durable nonce/correlation reservation is
 created, whether it later accepts, fails, crashes, retries or is selectively
 aborted.  The connection closes before a `2^20 + 1`-st reservation.
 
-R0 allocates at most 64 response-local bad events, each at most `2^-110`:
+R0 allocates a cap of 64 response-local bad events, each at most `2^-110`:
 
 | Class | Maximum events |
 | --- | ---: |
@@ -518,14 +571,17 @@ R0 allocates at most 64 response-local bad events, each at most `2^-110`:
 | boundary commitments | 8 |
 | predecessor/successor state | 8 |
 | code/ALFC binding, proximity and privacy | 16 |
-| two-limb terminal MAC | 8 |
+| extension-field terminal/MAC codec | 8 |
 | sampling/range rules | 4 |
 | serialization/order | 4 |
 | **Total** | **64** |
 
-Each concrete event must still prove its degree, list-size, query and grinding
-numerator fits this allocation; the table is not a generic "110-bit" label.
-The connection budget is
+This is a partition of an error budget, not an event census.  Each concrete
+event must have an identifier, theorem/hypothesis, numerator, denominator,
+repetition count and connection/attempt scope.  Hash, PCG and privacy query
+factors must be connection-wide rather than silently charged once.  Until a
+fail-closed registry derives every row, the following is conditional
+arithmetic only:
 
 ```text
 epsilon_response <= 64 * 2^-110 = 2^-104
@@ -540,16 +596,18 @@ epsilon_connection
   < 2^-83.99.
 ```
 
-The executable budget computes the non-rounded bit value.  This retains
-almost six bits of reserve above the 78-bit connection target.  The shared
+The executable calculator computes the non-rounded bit value.  If every
+premise is discharged, this retains almost six bits of reserve above the
+78-bit connection target.  The shared
 `Delta` does not justify independence: the formal wrapper reuses M10's
 fixed-other-coins slice and ordinary union bound.
 
-The strict whole-bit label is 83 bits, five whole bits above 78; the effective
-value is approximately 83.99999999998 bits.  The sum is slightly larger than
-`2^-84`, so it is not labeled as a strict 84-bit result.
+The conditional strict whole-bit label would be 83 bits, five whole bits
+above 78; the effective allocation is approximately 83.99999999998 bits.  It
+is not a C7 security label while the event registry and per-attempt privacy
+premise are missing.
 
-### 4.5 Atomic promotion, replay and forks
+### 4.6 Atomic promotion, replay and forks
 
 Verification and state promotion are one journal transaction keyed by
 `(connection_id, epoch, old_root, predecessor_certificate, slot, nonce)`.
@@ -589,20 +647,37 @@ from the selected line.
   explicit masking construction for a public target.
 - Jagged gives the canonical heterogeneous packing map and an `O(N_i)` method
   to enumerate one equality table.
+- The publications are explicit about their oracle interface: Ligerito sends
+  requested rows and a terminal matrix, ERA sends requested columns and
+  Merkle proofs, and WHIR/BCS queries return leaf payloads plus paths.
+  2026/391 likewise describes a Merkle query as a leaf value plus its
+  authentication path.  Its ZK encoding makes a bounded set of masked symbols
+  simulatable; it does not make those symbols absent from the wire.
+
+Local evidence anchors are `sota/2025-1187-ligerito.md` §§5--6,
+`sota/2026-864-era-codes.md` §7, `sota/2024-1586-whir.md` §§4/6 and
+`sota/2026-0391-zero-knowledge-iopps-constrained-interleaved-codes.md`
+Definitions 4.7 and §12.3.  These anchors remain part of the rejection record.
 
 **Assumptions / missing composition**
 
 - 2026/391 proves HVZK for a query-bounded non-adaptive distinguisher, not the
   C7 malicious-DV connection game.
-- No paper supplies the no-clear two-limb VOLE-MAC terminal adapter.
+- No paper supplies private verification of every Merkle leaf/code response,
+  intermediate witness-dependent symbol and terminal value under VOLE-MAC.
+  A terminal-only adapter leaves the published clear-symbol channel intact.
 - ERA's query-efficient `2^32` proof is an estimate, not a prover/memory
   measurement; its random permutations/multipliers and indexer oracles are
   linear setup objects.
 - Neither Ligerito nor ERA supplies the required one-sequential-scan,
   bounded-memory composed schedule at 31B.
 
-**R0 recommendation:** architectural front-runner, **NO-GO for R1** until all
-Section 0 hard stops are discharged.
+**R0.1 recommendation:** **REJECT AS COMPOSED UNDER POLICY 3 / NO-GO FOR R1**.
+Retain its code, proof-law and storage evidence.  It becomes eligible only if
+the owner either (a) selects policy 2 and accepts a concrete total query/root
+budget plus a new adaptive stateful theorem, or (b) selects policy 3 and a new
+authenticated-oracle compiler privately verifies every queried payload.  The
+latter is a new protocol, not a terminal adapter.
 
 ### 5.2 B — SwitchFold/QAFold challenger
 
@@ -619,7 +694,7 @@ published evaluation is clear.
 **Dead end as implemented:** `T` arbitrary openings cost `O(TN)`; the special
 generator-matrix accumulator does not batch arbitrary weight functionals.
 
-**R0 recommendation:** retain as an analytic challenger, **NO-GO**.
+**R0.1 recommendation:** retain as an analytic challenger, **NO-GO**.
 
 ### 5.3 C — strict unique-decoding WHIR control
 
@@ -633,11 +708,13 @@ list-decoding conjecture.
 terminal, or bounded-memory result.  A `2^30` low-rate case ran out of memory
 on a 768-GiB host.
 
-**R0 recommendation:** **GO as a local executable control only** after the
-packed schedule exists.  Use one packed oracle and one logical C7 ALFC
-invocation.  The C6.3 eight-body WHIR+Bolt topology is forbidden.  Control
-results remain component evidence and cannot promote C7 state or grant E2E
-credit.
+**R0.1 recommendation:** **GO as a transparent tiny/scaled code control only**
+after a packed illustrative schedule exists.  It may test the packed identity,
+unique-decoding verifier and byte/I/O instrumentation on public or synthetic
+data.  It cannot test a no-clear adapter that does not exist and cannot use
+private production weights.  The C6.3 eight-body WHIR+Bolt topology is
+forbidden.  Results remain component evidence and cannot promote C7 state or
+grant privacy/E2E credit.
 
 ### 5.4 Layout/reference-only and quarantined lines
 
@@ -663,12 +740,13 @@ weight evaluation; unbounded root/mask reuse; HVZK promoted to malicious-DV
 privacy; hidden list-decoding/conjectural assumptions; and withdrawn LiLAC,
 HyperWolf or similar bases.
 
-## 6. Registered analytic budgets
+## 6. Registered analytic screens
 
-The executable authority is `scripts/budget_c7_stateful_alfc.py`.  Every
-output carries `credit:false`.  Constants describe a target envelope and
-storage consequence of the selected candidate components; they are not
-measured C7 proof bytes or time.
+The executable calculator is `scripts/budget_c7_stateful_alfc.py`.  Every
+output carries `credit:false`.  It reproduces scaling arithmetic, allocation
+caps and one selected artifact-volume scenario; it is not an authority for a
+compiler manifest, certificate codec, security-event registry or measured C7
+time.
 
 ### 6.1 Models and common workload
 
@@ -696,7 +774,7 @@ The optional 6x ceiling gives `a <= log(6)/log(248.6)`; it is reported but is
 not active without later owner approval.
 
 The following law table and component numbers are reproduced by the script;
-the symbolic definitions are authoritative:
+the symbolic definitions are authoritative only for this screen:
 
 ```text
 B_certificate
@@ -714,28 +792,31 @@ B_weight_ALFC(N)
 ```
 
 The weight term is conservatively calibrated to ERA's published 4.014-MB
-`2^32`, 100-bit estimate and uses the larger `log^2 N` law.  The other exact
-formula constants in the script are **allocations** sized to expose layer,
-token, K/V length, terminal-segment and root dependence.  Changing them is a
-ledger deviation, not a free fit after measurement.
+`2^32`, 100-bit estimate and uses the larger `log^2 N` law.  The other
+formulas are **allocation caps** sized to expose layer, token, K/V length,
+illustrative terminal-segment and root dependence.  They omit real protocol
+message counts and cannot become `B_*` evidence without compiler and
+serializer provenance.  Changing them remains a ledger deviation, not a free
+fit after measurement.
 
-### 6.2 Certificate target table
+### 6.2 Illustrative allocation table
 
 | Certificate component | GPT-2 (B) | 31B envelope (B) | Classification |
 | --- | ---: | ---: | --- |
-| `B_compute` | 6,000,000 | 9,379,670 | target allocation |
-| `B_boundary_commitments` | 1,200,000 | 1,846,426 | target allocation |
-| `B_state` | 2,000,000 | 2,676,008 | target allocation |
+| `B_compute` | 6,000,000 | 9,379,670 | allocation cap |
+| `B_boundary_commitments` | 1,200,000 | 1,846,426 | allocation cap |
+| `B_state` | 2,000,000 | 2,676,008 | allocation cap |
 | `B_weight_ALFC` | 3,116,843 | 5,234,948 | ERA-calibrated transposition |
-| `B_MAC` | 2,208 | 6,560 | target allocation; both Fp limbs |
-| `B_framing` | 66,512 | 68,688 | target allocation; all four roots |
-| **Complete target envelope** | **12,385,563** | **19,212,300** | **`credit:false`** |
+| `B_MAC` | 2,208 | 6,560 | allocation cap; both Fp limbs |
+| `B_framing` | 66,512 | 68,688 | allocation cap; all four roots |
+| **Sum of allocation caps** | **12,385,563** | **19,212,300** | **`credit:false`** |
 
-The large/GPT-2 ratio is `1.55118503697x`.  All three Tier-A allocation
-checks pass (`12.39 MB <= 30 MB`, `19.21 MB <= 100 MB`, ratio `<= 3x`), but
-none is protocol or measurement credit.  In particular, the table cannot be
-used as a certificate claim until every target allocation is replaced by an
-exact compiled byte census.
+The ratio of these chosen allocations is `1.55118503697x`.  Their arithmetic
+fits the three Tier-A ceilings (`12.39 MB <= 30 MB`, `19.21 MB <= 100 MB`,
+ratio `<= 3x`), but the protocol gates are **unevaluated**.  The calculator
+emits `compiled_certificate_bytes_counted:false`; every allocation must be
+replaced by an exact compiled byte census before the table can become a
+certificate or growth claim.
 
 The preferred gates are GPT-2 approximately at or below 30 MB, the 31B point
 at or below 100 MB, and large/GPT-2 growth at or below 3x.  Tier B's 200-MB
@@ -761,27 +842,27 @@ reports layer count, `T`, predecessor/successor K/V length, terminal-segment
 count and root count.  A design that batches only `N` while allowing any of
 those dimensions to multiply certificates has not passed C7.
 
-### 6.4 Online prover I/O, time and memory
+### 6.4 Packed-source functional scan target
 
-For the weight terminal, R0 registers:
+For only the direct packed-source dot product, R0 registers:
 
 ```text
 packed bytes read per response = 2 * N
 materialized L bytes           = 0
 expanded Fp/Fp2 weight copy    = forbidden
-source passes                  = 1 target
-working chunk                  = configurable, default 256 MB
-bandwidth floor                = (2*N) / 3.2e9 seconds
+packed-source passes           = 1 target
+source chunk                   = configurable, default 256 MB
+read-only roofline             = (2*N) / 3.2e9 seconds
 ```
 
 | Online weight-terminal item | GPT-2 | 31B envelope |
 | --- | ---: | ---: |
 | packed i16 bytes read | 248,000,000 B | 61,652,800,000 B |
-| source passes | 1 target | 1 target |
-| bytes written for `L`/spill | 0 B | 0 B |
+| packed-source passes | 1 target | 1 target |
+| bytes written for `L`/source-scan spill | 0 B target | 0 B target |
 | resident expanded weight wrapper | 0 B | 0 B |
 | 256-MB chunks | 1 | 241 |
-| 3.2-GB/s bandwidth floor | 0.0775 s | 19.2665 s |
+| 3.2-GB/s packed-source read-only roofline | 0.0775 s | 19.2665 s |
 
 | Online memory item | GPT-2 | 31B envelope |
 | --- | ---: | ---: |
@@ -792,14 +873,15 @@ bandwidth floor                = (2*N) / 3.2e9 seconds
 | code/hash/operator workspace | not derived | not derived |
 | complete peak RSS/device memory | **not established** | **not established** |
 
-The exact compute/boundary/K/V proxies used by the target allocations are
+The compute/boundary/K/V proxies used by the allocation caps are
 `353,894,400 / 460,800 / 2,764,800` cells for GPT-2 and
 `48,837,427,200 / 10,598,400 / 28,262,400` cells for the 31B envelope.  They
 make layer, response-token, successor-length, K/V-head and head-width
-dependence executable.  The terminal schedule has 106/378 claims, all with
-multiplicity one.
+dependence executable.  The 106/378 terminal counts are illustrative and do
+not exist as a compiled schedule.
 
-This floor is not prover time.  The complete symbolic time is
+This packed-source read-only floor is not prover time.  The complete symbolic
+time is
 
 ```text
 T_response
@@ -819,14 +901,16 @@ not establish one pass and bounded memory simultaneously.  Any R1 schedule
 must report exact pass count, source/oracle bytes read, scratch bytes written,
 peak RSS/device use and bandwidth rooflines.
 
-The 256-MB chunk is a configurable target, not a complete peak-memory claim.
-The missing code/hash/operator rows are an explicit Backend-A hard stop; they
+The 256-MB chunk is only a configurable source-stream target, not complete
+working memory.  The missing code/hash/operator rows are an explicit
+Backend-A hard stop; they
 cannot be filled by reclassifying the 1.221-TB 31B persistent oracle as
 "setup" while mapping it resident during a response.
 
-### 6.5 Setup, persistent storage and refresh
+### 6.5 Selected artifact-volume and refresh sensitivity
 
-The script makes linear setup visible instead of treating it as free:
+The calculator makes one linear artifact-volume scenario visible instead of
+treating preprocessing as free:
 
 ```text
 packed model                  = 2*N bytes
@@ -844,23 +928,25 @@ Merkle tree                   = 2*ceil(4.4*N/64)*32 B
 | multiplier vector | 992,000,000 B | 246,611,200,000 B |
 | compact Merkle tree, 64 symbols/leaf | 545,599,968 B | 135,636,159,968 B |
 | persistent oracle + Merkle | 4,910,399,968 B | 1,220,725,439,968 B |
-| **total setup disk** | **7,142,399,968 B** | **1,775,600,639,968 B** |
-| minimum fused preprocessing I/O | 7,142,399,968 B | 1,775,600,639,968 B |
+| **selected artifact-volume sum** | **7,142,399,968 B** | **1,775,600,639,968 B** |
+| ideal fused artifact read/write volume | 7,142,399,968 B | 1,775,600,639,968 B |
 | 3.2-GB/s preprocessing floor | 2.2320 s | 554.8752 s |
 | non-fused Merkle extra read | 4,364,800,000 B | 1,085,089,280,000 B |
 
-A full fresh-root refresh has the same `7.142 GB / 1.776 TB` I/O floor in
-this screen.  A consumable `2^20` root/oracle pool would require about
+A hypothetical full re-encoding has the same `7.142 GB / 1.776 TB` volume in
+this chosen screen; this is not a proved refresh schedule.  A consumable
+`2^20` oracle pool would require about
 `5.149 PB / 1.280 EB` before other metadata, so it is sensitivity evidence
 against silently switching to policies 1 or 4.  Four-byte permutation
 indices require canonical segment-local shards below `2^32`; that layout is
 an assumption, not a completed indexer.
 
-The encoded-oracle and indexer numbers are consequences of the R0 ERA-style
-storage model, not a selected production layout.  They are intentionally
-large and contribute to Backend A's NO-GO.  Setup preprocessing time is
-reported as bytes processed and a bandwidth floor; code generation, hashing
-and random-permutation work remain separately unmeasured.
+The encoded-oracle and indexer numbers combine unproved assumptions about
+4.4x rate, P1/P2/multiplier cardinalities, four-byte sharded indices and a
+compact unpadded Merkle tree.  They are a sensitivity scenario, not a derived
+ERA layout or total setup.  Base-code/code-switch/masking artifacts, forest
+roots and intermediate traffic remain unknown.  The 3.2-GB/s number is an
+illustrative throughput floor, not preprocessing time.
 
 Policy 3 has no routine static-weight root refresh within a connection.  A
 model change rebuilds all model setup.  If the privacy theorem fails and a
@@ -871,24 +957,26 @@ canonical prefix and its commitment data; old proposed states are deleted
 only after durable acceptance or recorded burn according to the future R1
 journal design.
 
-### 6.6 Security budget
+### 6.6 Conditional security allocation
 
 | Security item | Registered value |
 | --- | ---: |
 | attempts in connection horizon | `2^20` |
-| response-local bad events | 64 |
+| response-local event budget cap | 64; registry incomplete |
 | allocation per event | `2^-110` |
 | `epsilon_response` | `2^-104` |
 | hash / PCG / state / framing | `2^-128 / 2^-128 / 2^-120 / 2^-128` |
 | exact `epsilon_connection` | `17592186044675 / 2^128` |
 | effective connection bits | `83.99999999997877` |
-| strict whole-bit label | 83 bits |
+| conditional strict whole-bit allocation | 83 bits |
 | target | at least 78 bits |
 
-The exact result must remain at least 78 bits after the `2^20` horizon.  If a
-concrete backend needs more than 64 local events, a larger list/degree
-numerator, more roots, or additional error terms, the per-event parameter is
-raised and the executable calculation rerun before code.
+The arithmetic must remain at least 78 bits after the `2^20` horizon, but it
+is not a protocol security result until a complete fail-closed event/hybrid
+registry supplies every term and scope.  If a concrete backend needs more
+than 64 local events, a larger list/degree numerator, more roots, query-scaled
+hash/PCG loss or additional hybrid terms, parameters are raised and the
+calculator rerun before code.
 
 ## 7. Lean-first obligations
 
@@ -898,62 +986,94 @@ M1--M12 statements.  It proves the following algebra/state seams:
 | Obligation | Lean result |
 | --- | --- |
 | heterogeneous packed functional | `packed_functional_eq` |
-| fixed-before-beta RLC | C7 fixed-claim RLC root/cardinality theorem |
-| multi-commit terminal MAC, both limbs | C7 two-limb key/MAC linearity theorem |
+| fixed-before-beta RLC | `fixed_prefix_rlc_accepting_card_le`; prefix/residual implications are premises, with no transcript/FS theorem |
+| multi-commit terminal MAC, both limbs | extension-field key/MAC linearity under one `Delta`, then both coordinate equalities |
 | affine mask reuse extraction | `reused_affine_mask_extract` |
 | append MLE/linear-functional difference | C7 append-difference theorem |
 | prefix and accepted-tail induction | C7 prefix/transition-chain theorems |
 | atomic promotion/replay/fork exclusion | C7 wrappers over the existing durable state seam |
-| connection union bound/shared Delta | C7 wrapper over M10's slice union theorem |
-| serialized schedule refinement | C7 canonical schedule-to-ALFC refinement theorem |
+| connection union bound/shared Delta | finite bad-set cardinality wrapper over M10; no computational-privacy claim |
+| connection hybrid composition | additive advantage recurrence, conditional on the concrete per-attempt game step |
+| registered 78-bit arithmetic | exact rational inequality, conditional on the incomplete event registry |
+| serialized schedule refinement | opaque-handle codec round-trip only; no binding/privacy theorem |
 
 These theorems prove no concrete PCS binding, hash/PCG security, transformer
-compiler completeness or malicious-DV privacy.  Those assumptions remain
-visible in `AcceptC7` and cannot be hidden behind an ideal ALFC API.
+compiler completeness or malicious-DV privacy.  Section 2.4 names the prose
+predicate and its hypotheses; no Lean `AcceptC7` definition yet exists.  A
+future definition must expose those assumptions rather than hide them behind
+an ideal ALFC API.
 
-## 8. R0 disposition and exact resume conditions
+## 8. R0.1 disposition and exact resume conditions
 
 ### 8.1 Backend/control recommendation
 
-- **Backend A: NO-GO for R1 implementation.**  Keep it as the selected design
-  candidate and resolve the one-pass code schedule, exact storage, terminal
-  adapter and stateful privacy theorem before changing this verdict.
-- **WHIR-UD control: GO for a smallest local control only.**  It may test the
-  canonical packed schedule and no-clear adapter on a tiny case.  It grants no
-  complete certificate, scale, privacy or E2E credit.
+- **Backend A as composed: REJECT under policy 3 / NO-GO for R1.**  Keep only
+  its code/proof-law/storage evidence.  A terminal-only adapter cannot hide
+  the row/column/leaf payloads already exposed by its oracle queries.
+- **WHIR-UD control: GO for a transparent tiny/scaled control only.**  It may
+  test the packed identity and code path on public/synthetic data.  It cannot
+  test no-clear privacy and grants no complete certificate, scale, privacy or
+  E2E credit.
 
 ### 8.2 Resume conditions for an R1 proposal
 
-An owner may consider opening R1 only after a new checkpoint supplies all of:
+Before further backend implementation, the owner must first choose between
+strict policy 3 and a policy change to bounded clear masked-symbol queries.
+An owner may consider opening R1 only after a later checkpoint supplies all
+of:
 
-1. an executable canonical compiler with terminal multiplicity exactly one
+1. a selected privacy/root-lifecycle policy and exact attempt/query horizon;
+2. an executable canonical compiler with terminal multiplicity exactly one
    for every physical weight, boundary and K/V segment;
-2. a proved/checked ALFC adapter whose two Fp limbs enter VOLE-MAC without a
-   clear evaluation or reusable affine fold;
-3. a one-pass bounded-memory backend schedule with exact setup/oracle and
+3. a proved/checked extension-field ALFC adapter under one shared `Delta`,
+   with both serialized limbs and every allowed oracle response covered by
+   the selected privacy theorem;
+4. a one-pass bounded-memory backend schedule with exact setup/oracle and
    online read/write byte counts;
-4. a malicious-DV connection privacy theorem for the selected static-root
+5. a malicious-DV connection privacy theorem for the selected static-root
    policy and the exact `R_max` game;
-5. a composed certificate/security budget replacing allocation constants
+6. a composed certificate/security budget replacing allocation constants
    with derived protocol counts while retaining the gates.
 
 If those pass, R1 is the smallest complete production-equivalent case: two
 incremental responses, real finite PCG, only consumed profiles,
 serialization/reload/full verifier, accepted predecessor/successor K/V,
-mutation tests, abort burn and atomic promotion.  It starts locally.  A first
-pod experiment still requires a later explicit owner GO and must run the
-smallest complete serialized case before any scale component.
+mutation tests, abort burn and atomic promotion.  **“Starts locally” means
+only tiny/scaled integration preflight.**  The first complete GPT-2 E2E is
+pod-only.  It may be proposed only after the ledger records `C7_POD_READY`,
+and `C7_POD_READY` is necessary but not authorization: pod contact and that
+first run still require a new explicit owner GO.  The pod must run the
+smallest complete serialized case before any larger component benchmark.
 
 ## 9. Deviations and non-credit record
 
 - The Gemma-class 31B point is a declared envelope because no exact target
   checkpoint/configuration was supplied.  Its ratio and all model-shape inputs
   are explicit and replaceable in the executable budget.
-- R0 selects policy 3 because fresh weight roots or a finite full-mask pool
-  would add unbudgeted full encodings/storage.  The policy is not accepted for
-  production until its new privacy theorem is proved.
+- R0 originally selected policy 3 because fresh weight roots or a finite
+  full-mask pool would add unbudgeted full encodings/storage.  R0.1 demotes it
+  to a candidate: the published Merkle/code candidates expose masked query
+  symbols and do not implement the literal policy.
 - The proof-byte table is a target allocation calibrated to public component
   evidence, not a composed certificate derivation.  It is `credit:false` and
   is one reason Backend A remains NO-GO.
 - No pod, production provider, frozen forward, quantization spec, or frozen
-  M1--M12 statement was touched in R0.
+  M1--M12 statement was touched in R0/R0.1.
+
+## 10. Append-only decision and rejection register
+
+Entries in this section are append-only.  A later decision may supersede an
+entry, but must retain its evidence and reason.
+
+| ID / date | Disposition | Evidence and durable reason |
+| --- | --- | --- |
+| `C7-D001` / 2026-08-26 | retain | One terminal point per physical segment; otherwise coefficient generation is `sum_i Theta(K_i N_i)` and no tournament construction removes it for arbitrary points. |
+| `C7-D002` / 2026-08-26 | reject | C6.3 eight-body WHIR+Bolt topology: measured resource failure history and wrong lifecycle shape for one response-wide C7 relation. |
+| `C7-D003` / 2026-08-26 | reject under policy 3 | Published Ligerito sends requested rows and its terminal matrix; ERA sends requested columns plus Merkle proofs; WHIR/BCS queries reveal leaf evaluations/payloads. 2026/391 masks these payloads under bounded-query HVZK but still sends them. A terminal-only VOLE adapter therefore cannot satisfy “no PCS symbol in clear.” |
+| `C7-D004` / 2026-08-26 | reject | Modeling Fp2 settlement as `Fin 2` independent Fp MACs with `Delta : Fin 2 -> F`: it omits extension-field cross terms and the single shared `Delta`. Replaced by extension-field linearity plus coordinate consequences. |
+| `C7-D005` / 2026-08-26 | demote to screen | Eight segments/layer, 106/378 claims, `J=512` and `2^29` handles lack a canonical compiler/codec census. They remain illustrative caps and may not parameterize privacy. |
+| `C7-D006` / 2026-08-26 | demote to conditional arithmetic | The 64-event table is an allocation, not a theorem-backed registry. The 83-bit figure holds only if every event/hybrid and global scope is derived. |
+| `C7-D007` / 2026-08-26 | demote to allocation | 12.386/19.212-MB sums and their 1.551x ratio are chosen allocation caps, not compiled proof bytes or proof-growth evidence. Unknown components fail closed. |
+| `C7-D008` / 2026-08-26 | demote to source target | One `2N` scan and zero `L` writes cover only the packed functional dot product, not encoding, Merkle/oracle I/O, operator reduction, total prover time or memory. |
+| `C7-D009` / 2026-08-26 | demote to sensitivity | 7.142-GB/1.776-TB totals combine an illustrative 4.4x ERA oracle, assumed P1/P2/multiplier sizes and Merkle layout; they are not a derived setup or refresh construction. |
+| `C7-D010` / 2026-08-26 | reject as proof | Fixed-error RLC root counting does not prove transcript freeze/FS; codec round-trip does not prove no-clear serialization; a finite-set union bound does not compose computational privacy. The conditional hybrid recurrence exposes the missing concrete per-attempt premise. |

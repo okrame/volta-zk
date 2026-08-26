@@ -36,8 +36,9 @@ ACCEPTED_CONTEXT_TOKENS = 100
 RESPONSE_TOKENS = 50
 SUCCESSOR_CONTEXT_TOKENS = 150
 R_MAX = 1 << 20
-RESPONSE_BAD_EVENTS = 64
+RESPONSE_BAD_EVENT_BUDGET_CAP = 64
 RESPONSE_EVENT_BITS = 110
+TERMINAL_CLAIM_SCREEN_CAP = 512
 
 REFERENCE_N = 1 << 32
 REFERENCE_WEIGHT_ALFC_BYTES = 4_014_000
@@ -126,6 +127,7 @@ def terminal_segments(model: dict[str, object]) -> dict[str, int]:
         "successor_kv": SUCCESSOR_KV_SEGMENTS,
         "total": total,
         "terminal_claims_per_segment": 1,
+        "compiled_manifest": False,
     }
 
 
@@ -229,10 +231,14 @@ def setup_and_refresh(model: dict[str, object], bandwidth_bytes_per_second: floa
                 "weight_count*(22/5)*8",
             ),
         },
-        "P1": byte_result(p1, "target_setup_layout", "weight_count*4"),
-        "P2": byte_result(p2, "target_setup_layout", "weight_count*4"),
+        "P1": byte_result(
+            p1, "illustrative_artifact_layout", "weight_count*4"
+        ),
+        "P2": byte_result(
+            p2, "illustrative_artifact_layout", "weight_count*4"
+        ),
         "multiplier": byte_result(
-            multiplier, "target_setup_layout", "weight_count*8"
+            multiplier, "illustrative_artifact_layout", "weight_count*8"
         ),
         "merkle": {
             "symbols_per_leaf": MERKLE_SYMBOLS_PER_LEAF,
@@ -247,15 +253,15 @@ def setup_and_refresh(model: dict[str, object], bandwidth_bytes_per_second: floa
         },
         "persistent_oracle": byte_result(
             persistent_oracle,
-            "target_setup_layout",
+            "illustrative_artifact_layout",
             "era_oracle_bytes + compact_Merkle_tree_bytes",
         ),
-        "total_setup_disk": byte_result(
+        "selected_artifact_volume_sum": byte_result(
             setup_disk,
-            "target_setup_layout",
+            "illustrative_artifact_volume_not_derived_setup",
             "packed_i16 + ERA_oracle + P1 + P2 + multiplier + Merkle_tree",
         ),
-        "preprocessing_minimum_fused_io": {
+        "ideal_fused_artifact_io_screen": {
             "bytes_read": byte_result(
                 preprocessing_read, "analytic_lower_bound", "packed_i16_bytes"
             ),
@@ -279,20 +285,20 @@ def setup_and_refresh(model: dict[str, object], bandwidth_bytes_per_second: floa
                 "one additional ERA_oracle read",
             ),
         },
-        "fresh_rerandomized_weight_root_refresh": {
+        "hypothetical_full_reencode_sensitivity": {
             "bytes_read": byte_result(
                 refresh_read,
-                "target_refresh_screen",
+                "hypothetical_reencode_screen",
                 "packed_i16 + P1 + P2 + multiplier",
             ),
             "bytes_written": byte_result(
                 refresh_write,
-                "target_refresh_screen",
+                "hypothetical_reencode_screen",
                 "fresh ERA_oracle + fresh compact Merkle tree",
             ),
             "total_io": byte_result(
                 refresh_io,
-                "target_refresh_screen",
+                "hypothetical_reencode_screen",
                 "refresh_bytes_read + refresh_bytes_written",
             ),
             "bandwidth_roofline": time_result(
@@ -325,16 +331,24 @@ def online_scan(model: dict[str, object], chunk_bytes: int, bandwidth: float) ->
     return {
         "sequential_passes": 1,
         "bytes_read": byte_result(
-            scan_bytes, "target_schedule", "weight_count*2 packed_i16 bytes"
+            scan_bytes,
+            "packed_source_target_not_backend_schedule",
+            "weight_count*2 packed_i16 bytes",
         ),
         "bytes_written": byte_result(
-            0, "target_schedule", "no spill and no materialized functional"
+            0,
+            "L_and_source_scan_spill_target_only",
+            "no spill and no materialized functional",
         ),
         "materialized_L": byte_result(
-            0, "target_schedule", "eq weights generated and consumed in stream order"
+            0,
+            "packed_source_target_not_backend_schedule",
+            "eq weights generated and consumed in stream order",
         ),
         "resident_expanded_Fp_or_Fp2_weight_wrapper": byte_result(
-            0, "target_schedule", "packed i16 conversion is chunk-local"
+            0,
+            "packed_source_target_not_backend_schedule",
+            "packed i16 conversion is chunk-local",
         ),
         "configured_working_chunk": byte_result(
             chunk_bytes, "configurable_memory_ceiling", "--chunk-mb*1,000,000"
@@ -377,14 +391,21 @@ def model_report(
             "components": components,
             "total": byte_result(
                 total,
-                "complete_target_envelope_sum_not_evidence",
+                "sum_of_allocation_caps_not_a_compiled_certificate",
                 "B_compute+B_boundary_commitments+B_state+B_weight_ALFC+B_MAC+B_framing",
             ),
-            "all_certificate_bytes_counted": True,
+            "compiled_certificate_bytes_counted": False,
+            "unknown_components_fail_closed": [
+                "operator_protocol",
+                "authenticated_oracle_query_compiler",
+                "concrete_codec",
+            ],
             "credit": False,
         },
-        "online_weight_scan": online_scan(model, chunk_bytes, bandwidth),
-        "setup_and_refresh": setup_and_refresh(model, bandwidth),
+        "source_functional_scan_target": online_scan(
+            model, chunk_bytes, bandwidth
+        ),
+        "selected_artifact_volume_screen": setup_and_refresh(model, bandwidth),
         "credit": False,
     }
 
@@ -424,7 +445,9 @@ def growth_screen() -> dict[str, object]:
 
 
 def security_screen() -> dict[str, object]:
-    response_epsilon = Fraction(RESPONSE_BAD_EVENTS, 1 << RESPONSE_EVENT_BITS)
+    response_epsilon = Fraction(
+        RESPONSE_BAD_EVENT_BUDGET_CAP, 1 << RESPONSE_EVENT_BITS
+    )
     hash_epsilon = Fraction(1, 1 << 128)
     pcg_epsilon = Fraction(1, 1 << 128)
     state_epsilon = Fraction(1, 1 << 120)
@@ -443,9 +466,13 @@ def security_screen() -> dict[str, object]:
         "R_max": R_MAX,
         "R_max_scope": "accepted responses + failed attempts + retries + selective aborts",
         "shared_Delta_connection_scoped": True,
-        "challenge_field": "Fp2; both Fp limbs are included in B_MAC",
+        "challenge_field": (
+            "target Fp2 with one shared Delta; Lean proves extension-field "
+            "linearity and coordinate consequences, not the concrete adapter"
+        ),
         "one_time_correlations_and_masks_burn_on_abort": True,
-        "response_bad_events": RESPONSE_BAD_EVENTS,
+        "response_bad_event_budget_cap": RESPONSE_BAD_EVENT_BUDGET_CAP,
+        "event_registry_complete": False,
         "bits_per_bad_event": RESPONSE_EVENT_BITS,
         "epsilon_response_exact": (
             f"{response_epsilon.numerator}/{response_epsilon.denominator}"
@@ -464,8 +491,10 @@ def security_screen() -> dict[str, object]:
         ),
         "connection_security_bits": connection_bits,
         "target_bits": 78,
-        "passes": connection_bits >= 78,
-        "classification": "union_bound_screen_not_a_security_proof",
+        "conditional_budget_fits_78": connection_bits >= 78,
+        "classification": (
+            "conditional_union_budget_arithmetic_not_a_security_proof"
+        ),
         "credit": False,
     }
 
@@ -477,7 +506,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
     large_total = int(large["certificate"]["total"]["bytes"])
     certificate_growth = large_total / small_total
     return {
-        "schema": "volta-c7-stateful-alfc-r0-screen-v1",
+        "schema": "volta-c7-stateful-alfc-r0-screen-v2",
         "design": "C7 stateful authenticated linear-functional commitment",
         "screening_only": True,
         "credit": False,
@@ -487,7 +516,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "successor_context_tokens": SUCCESSOR_CONTEXT_TOKENS,
             "same_workload_for_both_models": True,
         },
-        "ALFC_schedule_assumptions": {
+        "illustrative_ALFC_schedule_screen": {
             "logical_openings_per_response": 1,
             "terminal_MAC_settlements_per_response": 1,
             "roots": list(ROOT_NAMES),
@@ -502,6 +531,10 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "predecessor_KV_segments": PREDECESSOR_KV_SEGMENTS,
             "successor_KV_segments": SUCCESSOR_KV_SEGMENTS,
             "terminal_claim_multiplicity_per_segment": 1,
+            "terminal_claim_screen_cap": TERMINAL_CLAIM_SCREEN_CAP,
+            "connection_handle_screen_cap": R_MAX * TERMINAL_CLAIM_SCREEN_CAP,
+            "compiled_layout_manifest": False,
+            "codec_enforces_screen_cap": False,
             "hard_stop": "If any segment retains K unrelated points, replace O(N) by O(K*N); this screen no longer applies.",
             "credit": False,
         },
@@ -526,13 +559,17 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
         "models": {str(GPT2["name"]): small, str(GEMMA_ENVELOPE["name"]): large},
         "certificate_comparison": {
             "gpt2_total": byte_result(
-                small_total, "target_envelope", "sum of all six GPT-2 components"
+                small_total,
+                "sum_of_allocation_caps",
+                "sum of all six GPT-2 allocation components",
             ),
             "large_total": byte_result(
-                large_total, "target_envelope", "sum of all six large-model components"
+                large_total,
+                "sum_of_allocation_caps",
+                "sum of all six large-model allocation components",
             ),
             "large_to_gpt2_growth": certificate_growth,
-            "tier_A_gates": {
+            "allocation_partition_within_Tier_A": {
                 "gpt2_at_most_30MB": small_total <= GPT2_CERTIFICATE_LIMIT_BYTES,
                 "large_at_most_100MB": large_total <= LARGE_CERTIFICATE_LIMIT_BYTES,
                 "large_at_most_3x_gpt2": certificate_growth
@@ -556,6 +593,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
 
 
 def self_check(report: dict[str, object]) -> None:
+    assert report["schema"] == "volta-c7-stateful-alfc-r0-screen-v2"
     models = report["models"]
     small = models[str(GPT2["name"])]
     large = models[str(GEMMA_ENVELOPE["name"])]
@@ -564,12 +602,29 @@ def self_check(report: dict[str, object]) -> None:
     assert terminal_segments(GPT2)["total"] == 106
     assert terminal_segments(GEMMA_ENVELOPE)["total"] == 378
     assert weight_alfc_bytes(REFERENCE_N) == 4_415_400
-    assert small["setup_and_refresh"]["total_setup_disk"]["bytes"] == 7_142_399_968
-    assert large["setup_and_refresh"]["total_setup_disk"]["bytes"] == 1_775_600_639_968
-    assert small["online_weight_scan"]["bytes_read"]["bytes"] == 248_000_000
-    assert large["online_weight_scan"]["bytes_read"]["bytes"] == 61_652_800_000
-    assert small["online_weight_scan"]["materialized_L"]["bytes"] == 0
-    assert report["ALFC_schedule_assumptions"]["root_bytes_in_certificate"]["bytes"] == 128
+    assert (
+        small["selected_artifact_volume_screen"]["selected_artifact_volume_sum"]["bytes"]
+        == 7_142_399_968
+    )
+    assert (
+        large["selected_artifact_volume_screen"]["selected_artifact_volume_sum"]["bytes"]
+        == 1_775_600_639_968
+    )
+    assert (
+        small["source_functional_scan_target"]["bytes_read"]["bytes"]
+        == 248_000_000
+    )
+    assert (
+        large["source_functional_scan_target"]["bytes_read"]["bytes"]
+        == 61_652_800_000
+    )
+    assert small["source_functional_scan_target"]["materialized_L"]["bytes"] == 0
+    schedule = report["illustrative_ALFC_schedule_screen"]
+    assert schedule["root_bytes_in_certificate"]["bytes"] == 128
+    assert schedule["terminal_claim_screen_cap"] == 512
+    assert schedule["connection_handle_screen_cap"] == 1 << 29
+    assert not schedule["compiled_layout_manifest"]
+    assert not schedule["codec_enforces_screen_cap"]
     assert report["growth"]["exponent_threshold_for_3x"] < 0.200
     assert report["growth"]["exponent_threshold_for_6x"] < 0.326
     assert 1.55 < report["growth"]["laws"]["log2_N_over_loglog_N"]["growth"] < 1.57
@@ -577,7 +632,13 @@ def self_check(report: dict[str, object]) -> None:
         "17592186044675/340282366920938463463374607431768211456"
     )
     assert report["security"]["connection_security_bits"] >= 78
-    assert all(report["certificate_comparison"]["tier_A_gates"].values())
+    assert all(
+        report["certificate_comparison"][
+            "allocation_partition_within_Tier_A"
+        ].values()
+    )
+    assert not report["security"]["event_registry_complete"]
+    assert report["security"]["conditional_budget_fits_78"]
     assert all(
         not component["credit"]
         for model in (small, large)

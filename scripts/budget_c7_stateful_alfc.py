@@ -207,6 +207,7 @@ def setup_and_refresh(model: dict[str, object], bandwidth_bytes_per_second: floa
     leaves = ceil_div(oracle_symbols, MERKLE_SYMBOLS_PER_LEAF)
     merkle_nodes = 2 * leaves - 1
     merkle = merkle_nodes * HASH_BYTES
+    digest_only_screen = packed + merkle
     persistent_oracle = oracle + merkle
     setup_disk = packed + persistent_oracle + p1 + p2 + multiplier
 
@@ -256,11 +257,30 @@ def setup_and_refresh(model: dict[str, object], bandwidth_bytes_per_second: floa
             "illustrative_artifact_layout",
             "era_oracle_bytes + compact_Merkle_tree_bytes",
         ),
+        "digest_only_candidate_floor_screen": {
+            **byte_result(
+                digest_only_screen,
+                "illustrative_packed_plus_digest_tree_not_a_derived_candidate",
+                "packed_i16 + compact_Merkle_tree",
+            ),
+            "amplification_over_packed_i16": digest_only_screen / packed,
+        },
         "selected_artifact_volume_sum": byte_result(
             setup_disk,
             "illustrative_artifact_volume_not_derived_setup",
             "packed_i16 + ERA_oracle + P1 + P2 + multiplier + Merkle_tree",
         ),
+        "setup_amplification_over_packed_i16": setup_disk / packed,
+        "anti_x4d_structural_gate": {
+            "passes": False,
+            "reasons": [
+                "persistent expanded field/code oracle",
+                "model-linear P1/P2/multiplier planes",
+                "model-sized preprocessing writes",
+            ],
+            "numeric_setup_ceiling_registered": False,
+            "credit": False,
+        },
         "ideal_fused_artifact_io_screen": {
             "bytes_read": byte_result(
                 preprocessing_read, "analytic_lower_bound", "packed_i16_bytes"
@@ -506,10 +526,50 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
     large_total = int(large["certificate"]["total"]["bytes"])
     certificate_growth = large_total / small_total
     return {
-        "schema": "volta-c7-stateful-alfc-r0-screen-v2",
+        "schema": "volta-c7-stateful-alfc-r0-screen-v3",
         "design": "C7 stateful authenticated linear-functional commitment",
         "screening_only": True,
         "credit": False,
+        "privacy_policy": {
+            "active": 3,
+            "sole_candidate_shape": (
+                "digest-only salted leaf commitment with public Merkle paths "
+                "and attempt-local VOLE-private leaf/PCS checks"
+            ),
+            "policy_3_candidate_exhaustion_documented": False,
+            "policy_2_status": "dormant_not_authorized",
+            "policy_2_activation_authorized": False,
+            "policy_2_root_wide_query_horizon_registered": False,
+        },
+        "admission_gates": {
+            "candidate_setup_manifest_complete": False,
+            "setup_disk_time_traffic_refresh_derived": False,
+            "peak_resident_or_mapped_setup_bytes_counted": False,
+            "numeric_setup_ceiling_registered": False,
+            "anti_x4d_setup_gate_pass": False,
+            "leaf_commitment_adaptive_hiding_proved": False,
+            "authenticated_transcript_extraction_proved": False,
+            "all_query_payloads_nonclear_codec_proved": False,
+            "malicious_dv_connection_privacy_theorem_complete": False,
+            "query_schedule_compiled": False,
+            "query_counter_schema": [
+                "q_open_by_root_and_round",
+                "unique_leaves",
+                "secret_symbols",
+                "adversarial_random_oracle_queries",
+            ],
+            "exact_query_counts_by_root_and_round": {
+                str(GPT2["name"]): None,
+                str(GEMMA_ENVELOPE["name"]): None,
+            },
+            "adversarial_random_oracle_query_bound": None,
+            "post_fiat_shamir_query_bytes_by_model": {
+                str(GPT2["name"]): None,
+                str(GEMMA_ENVELOPE["name"]): None,
+            },
+            "query_bytes_reconciled_into_certificate_total": False,
+            "compiled_tier_a_certificate_gate_pass": False,
+        },
         "workload": {
             "accepted_context_tokens": ACCEPTED_CONTEXT_TOKENS,
             "response_tokens": RESPONSE_TOKENS,
@@ -542,6 +602,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "evidence_calibration": "Only the 4,014,000-byte ERA N=2^32, 100-bit point is imported evidence.",
             "target_allocation": "B_compute, B_boundary_commitments, B_state, B_MAC and B_framing are explicit design envelopes, not backend evidence.",
             "weight_transposition_assumption": "The ERA point is security-scaled to 110 bits and log^2-scaled in N; the new VOLE-MAC ALFC adapter is unproved.",
+            "post_fiat_shamir_query_ledger": "B_query_FS is a cross-cutting sub-ledger assigned exactly once into the six certificate components; its query census and bytes are unknown.",
             "all_results": "Every byte, time and memory quantity is credit:false.",
         },
         "parameters": {
@@ -593,7 +654,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
 
 
 def self_check(report: dict[str, object]) -> None:
-    assert report["schema"] == "volta-c7-stateful-alfc-r0-screen-v2"
+    assert report["schema"] == "volta-c7-stateful-alfc-r0-screen-v3"
     models = report["models"]
     small = models[str(GPT2["name"])]
     large = models[str(GEMMA_ENVELOPE["name"])]
@@ -607,9 +668,21 @@ def self_check(report: dict[str, object]) -> None:
         == 7_142_399_968
     )
     assert (
+        small["selected_artifact_volume_screen"][
+            "digest_only_candidate_floor_screen"
+        ]["bytes"]
+        == 793_599_968
+    )
+    assert (
         large["selected_artifact_volume_screen"]["selected_artifact_volume_sum"]["bytes"]
         == 1_775_600_639_968
     )
+    assert not small["selected_artifact_volume_screen"][
+        "anti_x4d_structural_gate"
+    ]["passes"]
+    assert not large["selected_artifact_volume_screen"][
+        "anti_x4d_structural_gate"
+    ]["passes"]
     assert (
         small["source_functional_scan_target"]["bytes_read"]["bytes"]
         == 248_000_000
@@ -639,6 +712,35 @@ def self_check(report: dict[str, object]) -> None:
     )
     assert not report["security"]["event_registry_complete"]
     assert report["security"]["conditional_budget_fits_78"]
+    policy = report["privacy_policy"]
+    assert policy["active"] == 3
+    assert policy["policy_2_status"] == "dormant_not_authorized"
+    assert not policy["policy_2_activation_authorized"]
+    gates = report["admission_gates"]
+    assert not gates["numeric_setup_ceiling_registered"]
+    assert not gates["anti_x4d_setup_gate_pass"]
+    assert not gates["leaf_commitment_adaptive_hiding_proved"]
+    assert not gates["authenticated_transcript_extraction_proved"]
+    assert not gates["all_query_payloads_nonclear_codec_proved"]
+    assert not gates["malicious_dv_connection_privacy_theorem_complete"]
+    assert not gates["query_schedule_compiled"]
+    assert gates["query_counter_schema"] == [
+        "q_open_by_root_and_round",
+        "unique_leaves",
+        "secret_symbols",
+        "adversarial_random_oracle_queries",
+    ]
+    assert gates["adversarial_random_oracle_query_bound"] is None
+    assert all(
+        value is None
+        for value in gates["exact_query_counts_by_root_and_round"].values()
+    )
+    assert all(
+        value is None
+        for value in gates["post_fiat_shamir_query_bytes_by_model"].values()
+    )
+    assert not gates["query_bytes_reconciled_into_certificate_total"]
+    assert not gates["compiled_tier_a_certificate_gate_pass"]
     assert all(
         not component["credit"]
         for model in (small, large)

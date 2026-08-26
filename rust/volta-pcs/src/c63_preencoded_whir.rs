@@ -854,7 +854,7 @@ pub fn c63_whir_structural_budget(num_variables: usize) -> Result<C61WhirStructu
     c63_whir_structural_budget_for_config(&config)
 }
 
-fn c63_whir_structural_budget_for_config(
+pub(crate) fn c63_whir_structural_budget_for_config(
     config: &C63WhirConfig,
 ) -> Result<C61WhirStructuralBudget, String> {
     let num_variables = config.num_variables;
@@ -1376,7 +1376,9 @@ fn c63_sumcheck_pow_bits(config: &C63WhirConfig, batch: usize) -> usize {
     }
 }
 
-fn c63_projected_whir_structural_bytes_for_config(config: &C63WhirConfig) -> Result<usize, String> {
+pub(crate) fn c63_projected_whir_structural_bytes_for_config(
+    config: &C63WhirConfig,
+) -> Result<usize, String> {
     let queries = config.round_parameters[0].num_queries;
     let fold = config.round_folding_factor(0);
     let leaves = config.round_parameters[0].domain_size >> fold;

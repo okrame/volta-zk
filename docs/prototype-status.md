@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 R0 SOURCE/LINEAR + STRUCTURAL BYTES PASS / TERMINAL-LINK HARD STOP)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,29 +8,57 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
+Read `c64-joint-residual-sketch-design.md` next.
 
-- **Status/hard stop.** C6.3 is closed after two real-PCG attempts produced
-  zero certificates. Clean `f5fd79d` passed the repaired post-source boundary,
-  then panicked after `907.32 s` with `pooled full correlation underflow`.
-  Both authorizations burned; no client state was promoted. No C6.3 repair,
-  rerun or pod work is authorized.
-- **Measured evidence.** The final attempt peaked at `33,484,832,768 B` RSS,
-  `44,525 MiB` external device use and `25,769,803,776 B` transient run data.
-  It read/wrote `26,071,834,624/29,579,071,488 B`. The inherited
-  `17,179,869,184-B` weight oracle dominated the retained 19.63-GB wrapper;
-  more than 462 s elapsed after both wrapper cohorts existed and before the
-  underflow. The exact correlation deficit is unknown.
-- **Setup/tests/credit.** The two-response harness unnecessarily required all
-  17 profiles: `2,092.76 s`, `12.93 GB` RSS. Local lifecycle, state,
-  mock/scaled and component tests did not exercise the finite composed pool.
-  The full-size cache/sketch differential remains component evidence only;
-  certificate bytes, prover/verifier time, acceptance, session and E2E credit
-  are all absent.
-- **Resume.** C7 starts only after an owner-supplied design and dedicated
-  branch. Its first pod experiment must serialize and verify the smallest
-  complete case with only its consumed profiles. New pods synchronize tracked
-  files only by GitHub HTTPS `git push`/`git pull`, never `gh`.
+- **Status.** C6.4 R0 is active on `agent/c64-joint-residual-sketch`, isolated
+  from C7. It replaces the inherited 17.18-GB residual wrapper with one joint
+  D23-to-D20 cache/residual correction sketch; the eight WHIR bodies are
+  replaced, never supplemented.
+- **Completed evidence versus credit.** Exact capacity fits both responses. A
+  correction-only extractor reuses the paired-source cursor, and a scaled
+  differential matches separately streamed cache/residual contributions to
+  the joint sketch while rejecting private columns. D23/D20 structural bytes
+  project a `29,114,967-B` complete certificate: below the 30-MB hard limit,
+  above the 28-MB engineering target. All are `credit:false` screens, not a
+  serialized proof, security result or timing credit.
+- **Hard stop.** No production protocol, SIMT, full prover, provider or pod
+  until the joint openings are linked to C6RSC3 terminals, concrete codec
+  privacy and reload pass, D23/D20 distance/soundness is recomputed, and the
+  finite real-PCG census is reconciled up front.
+- **Campaign.** The future first run uses exactly setup profiles `[0,150]` and
+  exactly proofs `0->150`, `150->200`; no 17-profile bundle, duplicate profile
+  or retry. Pod contact additionally requires `C64_POD_READY` and a later
+  run-specific owner GO. Local builds use only `rust/target` and are cleaned.
+
+- **2026-08-26 — C6.4 R0 selects a joint public-correction layout and a
+  two-profile campaign.** C6.3's raw seven-column residual leaf cannot be made
+  systematic: it contains hidden plaintext, masks and tags. C6.4 exposes only
+  the two already one-time-masked `Fp2` corrections, occupying four of the
+  existing sixteen base-field columns; twelve columns and the D23 tail are
+  virtual zeros. Canonical cache-live rows precede exact correlation-schedule
+  residual rows. Genesis/continuation live rows are
+  `5,579,931/2,607,312`, below `2^23`; compact physical public bytes are
+  `222,794,592/142,416,384`. The D20 sketch is `134,217,728 B`; fixed sparse
+  setup is `1,610,612,736 B`. `scripts/budget_c64_joint_residual_sketch.py`
+  records these values with `credit:false`. The selected setup contains only
+  contexts 0 and 150. Privacy/source/C6RSC3 binding, D23/D20 WHIR parameters,
+  certificate bytes, soundness, finite correlations and timings remain hard
+  stops; no SIMT or pod action occurred.
+
+- **2026-08-26 — C6.4 R0 source/linear seam and structural byte screen pass.**
+  The new compact extractor walks the existing paired-source cursor and
+  retains only two `Fp2` corrections per live residual source; a differential
+  matches them exactly to the correction columns of the old seven-column
+  witness. Production extraction binds the existing allocation digest. A
+  scaled joint-table test matches separate cache/residual streaming to one
+  sparse `H` application; row reorder changes the binding and any nonzero
+  private residual column rejects. The D23/D20 profiles keep the 105-bit query
+  counts and cost `9,322,048 B` for eight bodies plus `1,257,332 B` for four
+  transition openings. Including the bounded `2,100,878-B` D23 systematic
+  opening projects `29,114,967 B`, `885,033 B` below the hard limit but
+  `1,114,967 B` above target. Five focused tests pass. This remains
+  `credit:false`: C6RSC3 terminal binding, codec/reload, distance/soundness,
+  finite PCG and time are open; no SIMT or pod action occurred.
 
 - **2026-08-25 — Repaired C6.3 reaches the composed proof path, then exhausts
   its finite full-correlation pool.** Clean `f5fd79d` reused the 17-profile

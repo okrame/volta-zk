@@ -25,6 +25,9 @@ pub mod c63_preencoded_whir;
 pub mod c63_public_argument;
 pub mod c63_response_tail;
 pub mod c63_sparse_h_closure;
+pub mod c64_joint_residual_sketch;
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub mod c64_whir_profile;
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub use c61_interactive_driver::{
     c61_response_transcript_context_digest, spawn_c61_private_entropy_duplex_transcript_broker,
@@ -199,6 +202,15 @@ pub use c63_sparse_h_closure::{
     C63_SPARSE_H_PRODUCTION_FRAMED_BYTES, C63_SPARSE_H_PRODUCTION_FRAMING_BYTES,
     C63_SPARSE_H_PRODUCTION_FULL_CORRELATIONS_PER_TAPE, C63_SPARSE_H_PRODUCTION_ROUNDS,
     C63_SPARSE_H_PRODUCTION_ROUND_PAYLOAD_BYTES,
+};
+pub use c64_joint_residual_sketch::{
+    C64JointCorrectionLayout, C64JointCorrectionRow, C64JointSketchCensus, C64_JOINT_COLUMNS,
+    C64_RESIDUAL_PUBLIC_COLUMNS,
+};
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub use c64_whir_profile::{
+    c64_whir_config, c64_whir_structural_screen, C64WhirStructuralScreen, C64_BASE_LIMBS,
+    C64_INPUT_VARIABLES, C64_SKETCH_VARIABLES,
 };
 pub use c6_authenticated_output_link::{
     authenticate_c63_residual_source_functionals,

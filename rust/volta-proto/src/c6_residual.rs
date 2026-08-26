@@ -1097,20 +1097,20 @@ pub struct C6ResidualRelationManifest {
 fn is_registered_c62_production_topology(topology: C6OperationPlanTopologyIdentity) -> bool {
     topology.version == 2
         && matches!(
-        (
-            topology.source_count,
-            topology.canonical_node_count,
-            topology.public_input_count,
-            topology.scalar_input_count,
-            topology.product_closure_count,
-            topology.product_triple_count,
-            topology.zero_root_count,
-        ),
-        (5_119_131, 17_894_474, 2_093, 6_458_502, 673, 29_620, 10_909)
-            | (1_992_912, 7_082_024, 2_093, 2_599_883, 673, 27_073, 10_060)
-            | (1_997_712, 7_104_920, 2_093, 2_611_091, 673, 27_361, 10_156)
-            | (2_002_704, 7_128_872, 2_093, 2_622_875, 673, 27_649, 10_252)
-    )
+            (
+                topology.source_count,
+                topology.canonical_node_count,
+                topology.public_input_count,
+                topology.scalar_input_count,
+                topology.product_closure_count,
+                topology.product_triple_count,
+                topology.zero_root_count,
+            ),
+            (5_119_131, 17_894_474, 2_093, 6_458_502, 673, 29_620, 10_909)
+                | (1_992_912, 7_082_024, 2_093, 2_599_883, 673, 27_073, 10_060)
+                | (1_997_712, 7_104_920, 2_093, 2_611_091, 673, 27_361, 10_156)
+                | (2_002_704, 7_128_872, 2_093, 2_622_875, 673, 27_649, 10_252)
+        )
 }
 
 impl C6ResidualRelationManifest {
@@ -4507,6 +4507,41 @@ impl C6PairedResidualLeafWitness {
                 .copy_from_slice(self.column(column));
         }
         Ok(padded)
+    }
+}
+
+/// Prover-only live residual corrections in exact paired-source order.
+///
+/// Unlike [`C6PairedResidualLeafWitness`], this C6.4 seam never retains
+/// plaintexts, masks or tags and never pads the live prefix.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6PairedResidualCorrectionRows {
+    source_schedule_digest: C6ResidualDigest,
+    paired_source_digest: C6ResidualDigest,
+    production_allocation_binding_digest: Option<C6ResidualDigest>,
+    rows: Vec<[Fp2; 2]>,
+    rows_digest: C6ResidualDigest,
+}
+
+impl C6PairedResidualCorrectionRows {
+    pub fn source_schedule_digest(&self) -> C6ResidualDigest {
+        self.source_schedule_digest
+    }
+
+    pub fn paired_source_digest(&self) -> C6ResidualDigest {
+        self.paired_source_digest
+    }
+
+    pub fn production_allocation_binding_digest(&self) -> Option<C6ResidualDigest> {
+        self.production_allocation_binding_digest
+    }
+
+    pub fn rows(&self) -> &[[Fp2; 2]] {
+        &self.rows
+    }
+
+    pub fn rows_digest(&self) -> C6ResidualDigest {
+        self.rows_digest
     }
 }
 
@@ -11329,6 +11364,52 @@ impl C6CompiledLinearResidual {
         })
     }
 
+    /// Extract only the two public `D=X-R` corrections used by C6.4.
+    /// The same validated cursor and ProductMask rule as the seven-column
+    /// residual witness remain authoritative.
+    pub fn build_paired_residual_correction_rows(
+        &self,
+        sources: &C6PairedSourceWitness,
+        schedule: &CorrScheduleAudit,
+    ) -> C6ResidualResult<C6PairedResidualCorrectionRows> {
+        self.validate_paired_source_schedule(sources, schedule)?;
+        let source_count = self.topology.source_count as usize;
+        let mut rows = Vec::new();
+        rows.try_reserve_exact(source_count)
+            .map_err(|_| C6ResidualError::new("C6 residual correction-row allocation failed"))?;
+        let mut hasher =
+            blake3::Hasher::new_derive_key("volta-zk/c64/paired-residual-correction-rows/v1");
+        hasher.update(&self.topology.source_schedule_digest);
+        hasher.update(&sources.pair_digest());
+        hasher.update(&self.topology.source_count.to_le_bytes());
+
+        let mut cursor = C6PairedSourceCursor::new(sources, schedule);
+        for source in 0..self.topology.source_count {
+            let witnesses = cursor.next(source)?;
+            let row = [witnesses[0].correction(), witnesses[1].correction()];
+            if self.product_mask_sources.binary_search(&source).is_ok()
+                && row.iter().any(|correction| *correction != Fp2::ZERO)
+            {
+                return Err(C6ResidualError::new(
+                    "C6 ProductMask acquired a correction in the compact residual bridge",
+                ));
+            }
+            hasher.update(&source.to_le_bytes());
+            for correction in row {
+                hash_fp2(&mut hasher, correction);
+            }
+            rows.push(row);
+        }
+        cursor.finish(self.topology.source_count)?;
+        Ok(C6PairedResidualCorrectionRows {
+            source_schedule_digest: self.topology.source_schedule_digest,
+            paired_source_digest: sources.pair_digest(),
+            production_allocation_binding_digest: None,
+            rows,
+            rows_digest: *hasher.finalize().as_bytes(),
+        })
+    }
+
     /// Production-only descendant: preserve the exact source-column
     /// construction while binding it to the dual-tape allocation token.
     pub fn build_production_paired_residual_leaf_witness(
@@ -11344,6 +11425,22 @@ impl C6CompiledLinearResidual {
         leaf.witness_digest = *hasher.finalize().as_bytes();
         leaf.production_allocation_binding_digest = Some(allocation_binding_digest);
         Ok(leaf)
+    }
+
+    pub fn build_production_paired_residual_correction_rows(
+        &self,
+        sources: &C6ProductionPairedSourceWitness,
+        schedule: &CorrScheduleAudit,
+    ) -> C6ResidualResult<C6PairedResidualCorrectionRows> {
+        let mut rows = self.build_paired_residual_correction_rows(sources.source(), schedule)?;
+        let allocation_binding_digest = sources.allocation_binding_digest();
+        let mut hasher =
+            blake3::Hasher::new_derive_key("volta-zk/c64/production-residual-correction-rows/v1");
+        hasher.update(&rows.rows_digest);
+        hasher.update(&allocation_binding_digest);
+        rows.rows_digest = *hasher.finalize().as_bytes();
+        rows.production_allocation_binding_digest = Some(allocation_binding_digest);
+        Ok(rows)
     }
 
     /// Evaluate the installed response DAG on both authenticated source
@@ -14773,13 +14870,35 @@ mod tests {
         assert_eq!(compiled.source_count(), 5);
         assert_eq!(compiled.product_mask_sources(), &[4]);
         let leaf_witness = compiled.build_paired_residual_leaf_witness(&paired, &schedule).unwrap();
+        let correction_rows =
+            compiled.build_paired_residual_correction_rows(&paired, &schedule).unwrap();
         assert_eq!(leaf_witness.source_count(), 5);
         assert_eq!(leaf_witness.product_mask_count(), 1);
         assert_eq!(leaf_witness.live_elements(), 35);
-        assert_eq!(leaf_witness.source_schedule_digest(), [0x6A; 32]);
+        assert_eq!(leaf_witness.source_schedule_digest(), schedule.digest);
         assert_eq!(leaf_witness.paired_source_digest(), paired.pair_digest());
         assert_eq!(leaf_witness.production_allocation_binding_digest(), None);
         assert_ne!(leaf_witness.witness_digest(), [0; 32]);
+        assert_eq!(correction_rows.rows().len(), 5);
+        assert_eq!(correction_rows.source_schedule_digest(), schedule.digest);
+        assert_eq!(correction_rows.paired_source_digest(), paired.pair_digest());
+        assert_eq!(correction_rows.production_allocation_binding_digest(), None);
+        assert_ne!(correction_rows.rows_digest(), [0; 32]);
+        assert_eq!(
+            correction_rows.rows(),
+            leaf_witness
+                .column(C6ResidualLeafColumn::Coordinate0Correction)
+                .iter()
+                .copied()
+                .zip(
+                    leaf_witness
+                        .column(C6ResidualLeafColumn::Coordinate1Correction)
+                        .iter()
+                        .copied()
+                )
+                .map(|(left, right)| [left, right])
+                .collect::<Vec<_>>()
+        );
         let production_source =
             C6ProductionPairedSourceWitness::from_reference(paired.clone(), [0xA7; 32]);
         let production_leaf = compiled
@@ -14787,6 +14906,12 @@ mod tests {
             .unwrap();
         assert_eq!(production_leaf.production_allocation_binding_digest(), Some([0xA7; 32]));
         assert_ne!(production_leaf.witness_digest(), leaf_witness.witness_digest());
+        let production_corrections = compiled
+            .build_production_paired_residual_correction_rows(&production_source, &schedule)
+            .unwrap();
+        assert_eq!(production_corrections.rows(), correction_rows.rows());
+        assert_eq!(production_corrections.production_allocation_binding_digest(), Some([0xA7; 32]));
+        assert_ne!(production_corrections.rows_digest(), correction_rows.rows_digest());
         for column in C6ResidualLeafColumn::ALL {
             assert_eq!(production_leaf.column(column), leaf_witness.column(column));
         }

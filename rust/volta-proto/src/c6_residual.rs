@@ -4523,6 +4523,25 @@ pub struct C6PairedResidualCorrectionRows {
     rows_digest: C6ResidualDigest,
 }
 
+/// Scaled C6.4 oracle for all C6RSC3 terminal table values.  It is computed
+/// from the compact source/closure owners and never pads or retains the old
+/// eight D23 plus sixteen D15 wrapper tables.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6PairedResidualTerminalEvaluations {
+    leaf: [Fp2; C6_RESIDUAL_RELATION_LEAF_TABLES],
+    auxiliary: [Fp2; C6_RESIDUAL_AUXILIARY_LANES as usize],
+}
+
+impl C6PairedResidualTerminalEvaluations {
+    pub fn leaf(&self) -> &[Fp2; C6_RESIDUAL_RELATION_LEAF_TABLES] {
+        &self.leaf
+    }
+
+    pub fn auxiliary(&self) -> &[Fp2; C6_RESIDUAL_AUXILIARY_LANES as usize] {
+        &self.auxiliary
+    }
+}
+
 impl C6PairedResidualCorrectionRows {
     pub fn source_schedule_digest(&self) -> C6ResidualDigest {
         self.source_schedule_digest
@@ -4543,6 +4562,37 @@ impl C6PairedResidualCorrectionRows {
     pub fn rows_digest(&self) -> C6ResidualDigest {
         self.rows_digest
     }
+}
+
+fn c6_paired_residual_source_row(
+    witnesses: [C6SourceWitness; 2],
+    is_product_mask: bool,
+) -> C6ResidualResult<[Fp2; C6_RESIDUAL_LEAF_ALIGNED_SLOTS as usize]> {
+    let plaintexts = witnesses.map(|witness| witness.base_plaintext() + witness.correction());
+    let common_plaintext = if is_product_mask {
+        if witnesses.iter().any(|witness| witness.correction() != Fp2::ZERO) {
+            return Err(C6ResidualError::new(
+                "C6 ProductMask acquired a correction in the residual source bridge",
+            ));
+        }
+        Fp2::ZERO
+    } else {
+        if plaintexts[0] != plaintexts[1] {
+            return Err(C6ResidualError::new(
+                "C6 direct source plaintext differs across residual coordinates",
+            ));
+        }
+        plaintexts[0]
+    };
+    Ok([
+        common_plaintext,
+        witnesses[0].base_plaintext(),
+        witnesses[0].tag(),
+        witnesses[0].correction(),
+        witnesses[1].base_plaintext(),
+        witnesses[1].tag(),
+        witnesses[1].correction(),
+    ])
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -11307,34 +11357,7 @@ impl C6CompiledLinearResidual {
         for source in 0..self.topology.source_count {
             let witnesses = cursor.next(source)?;
             let is_product_mask = self.product_mask_sources.binary_search(&source).is_ok();
-            let x = [
-                witnesses[0].base_plaintext() + witnesses[0].correction(),
-                witnesses[1].base_plaintext() + witnesses[1].correction(),
-            ];
-            let common_plaintext = if is_product_mask {
-                if witnesses.iter().any(|witness| witness.correction() != Fp2::ZERO) {
-                    return Err(C6ResidualError::new(
-                        "C6 ProductMask acquired a correction in the wrapper source bridge",
-                    ));
-                }
-                Fp2::ZERO
-            } else {
-                if x[0] != x[1] {
-                    return Err(C6ResidualError::new(
-                        "C6 direct source plaintext differs across residual coordinates",
-                    ));
-                }
-                x[0]
-            };
-            let row = [
-                common_plaintext,
-                witnesses[0].base_plaintext(),
-                witnesses[0].tag(),
-                witnesses[0].correction(),
-                witnesses[1].base_plaintext(),
-                witnesses[1].tag(),
-                witnesses[1].correction(),
-            ];
+            let row = c6_paired_residual_source_row(witnesses, is_product_mask)?;
             for (column, value) in columns.iter_mut().zip(row) {
                 column.push(value);
             }
@@ -11408,6 +11431,83 @@ impl C6CompiledLinearResidual {
             rows,
             rows_digest: *hasher.finalize().as_bytes(),
         })
+    }
+
+    /// Scaled terminal-link differential for the exact 24 C6RSC3 witness
+    /// tables.  Production replaces the two equality vectors with streamed
+    /// CPU/SIMT folds; this reference intentionally stops before that backend.
+    pub fn evaluate_paired_residual_terminal_tables_reference(
+        &self,
+        manifest: &C6ResidualRelationManifest,
+        sources: &C6PairedSourceWitness,
+        schedule: &CorrScheduleAudit,
+        closure: &C6PairedResidualClosureWitness,
+        leaf_point: &[Fp2],
+        auxiliary_point: &[Fp2],
+    ) -> C6ResidualResult<C6PairedResidualTerminalEvaluations> {
+        self.validate_paired_source_schedule(sources, schedule)?;
+        if manifest.operation_plan_artifact_digest != self.operation_plan_artifact_digest
+            || manifest.topology != self.topology
+            || manifest.instance != self.instance
+            || leaf_point.len() != usize::from(manifest.leaf_log2)
+            || auxiliary_point.len() != usize::from(manifest.auxiliary_log2)
+            || closure.census.product_closures != manifest.topology.product_closure_count
+            || closure.census.product_triples != manifest.topology.product_triple_count
+            || closure.census.zero_roots != manifest.topology.zero_root_count
+            || closure.values.len() as u64
+                != manifest.raw_copy_entries + C6_RESIDUAL_CLOSURE_FOOTER_ENTRIES
+        {
+            return Err(C6ResidualError::new(
+                "C6.4 terminal-table owners differ from the residual relation",
+            ));
+        }
+        if let Some(binding) = closure.installed_binding {
+            if binding.operation_plan_artifact_digest != self.operation_plan_artifact_digest
+                || binding.topology_digest != self.topology.topology_digest
+                || binding.instance_digest != self.instance.instance_digest
+                || binding.source_schedule_digest != schedule.digest
+                || binding.paired_source_digest != sources.pair_digest()
+            {
+                return Err(C6ResidualError::new(
+                    "C6.4 installed closure differs from the paired source owner",
+                ));
+            }
+        } else if manifest.production_geometry {
+            return Err(C6ResidualError::new(
+                "C6.4 production terminal tables require an installed closure binding",
+            ));
+        }
+
+        let leaf_weights = crate::mle::eq_vec(leaf_point);
+        let auxiliary_weights = crate::mle::eq_vec(auxiliary_point);
+        let mut leaf = [Fp2::ZERO; C6_RESIDUAL_RELATION_LEAF_TABLES];
+        let mut cursor = C6PairedSourceCursor::new(sources, schedule);
+        for source in 0..self.topology.source_count {
+            let witnesses = cursor.next(source)?;
+            let row = c6_paired_residual_source_row(
+                witnesses,
+                self.product_mask_sources.binary_search(&source).is_ok(),
+            )?;
+            let weight = leaf_weights[source as usize];
+            for (target, value) in leaf[..7].iter_mut().zip(row) {
+                *target += weight * value;
+            }
+        }
+        cursor.finish(self.topology.source_count)?;
+        leaf[7] = closure
+            .values
+            .iter()
+            .zip(&leaf_weights)
+            .fold(Fp2::ZERO, |sum, (&value, &weight)| sum + value * weight);
+
+        let auxiliary_witness = closure.transpose_auxiliary_lanes()?;
+        let auxiliary = std::array::from_fn(|lane| {
+            auxiliary_witness.lanes[lane]
+                .iter()
+                .zip(&auxiliary_weights)
+                .fold(Fp2::ZERO, |sum, (&value, &weight)| sum + value * weight)
+        });
+        Ok(C6PairedResidualTerminalEvaluations { leaf, auxiliary })
     }
 
     /// Production-only descendant: preserve the exact source-column
@@ -15177,6 +15277,42 @@ mod tests {
             false,
         )
         .unwrap();
+        let leaf_point = (0..7).map(|index| fp2(101 + index)).collect::<Vec<_>>();
+        let auxiliary_point = vec![fp2(109), fp2(113)];
+        let terminal = compiled
+            .evaluate_paired_residual_terminal_tables_reference(
+                &manifest,
+                &paired,
+                &schedule,
+                closure,
+                &leaf_point,
+                &auxiliary_point,
+            )
+            .unwrap();
+        for table in 0..C6_RESIDUAL_RELATION_LEAF_TABLES {
+            let live = if table < 7 {
+                leaf.column(C6ResidualLeafColumn::ALL[table])
+            } else {
+                closure.values()
+            };
+            assert_eq!(terminal.leaf()[table], crate::mle::eval_mle(live, &leaf_point));
+        }
+        for lane in C6ResidualAuxiliaryLane::ALL {
+            assert_eq!(
+                terminal.auxiliary()[lane.index()],
+                crate::mle::eval_mle(auxiliary.lane(lane), &auxiliary_point)
+            );
+        }
+        assert!(compiled
+            .evaluate_paired_residual_terminal_tables_reference(
+                &manifest,
+                &paired,
+                &schedule,
+                closure,
+                &leaf_point[..6],
+                &auxiliary_point,
+            )
+            .is_err());
         let view = C6ResidualFusedWitnessView::new(&manifest, &leaf, closure, &auxiliary).unwrap();
         assert_eq!(view.manifest_digest(), manifest.digest());
         assert_ne!(view.digest(), [0; 32]);

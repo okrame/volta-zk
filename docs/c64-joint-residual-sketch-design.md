@@ -1,7 +1,7 @@
 # C6.4 — joint cache/residual authenticated sketch
 
-**Status:** R0 SOURCE/LINEAR + STRUCTURAL-BYTE SCREENS PASS; HARD STOP BEFORE
-PRODUCTION CODE, SIMT OR POD.
+**Status:** R1 ALL-TERMINAL SCALED DIFFERENTIAL PASS; HARD STOP BEFORE
+AUTHENTICATED TERMINAL LINK, SIMT OR POD.
 
 **Branch:** `agent/c64-joint-residual-sketch`.
 
@@ -78,6 +78,15 @@ The row frame binds protocol version, response nonce, epoch, segment kind,
 source ordinal, live lengths and both source-schedule/allocation digests.
 Changing a row kind, offset, length, tape order or limb order rejects.
 
+This public object is not by itself a replacement for the residual wrapper.
+C6RSC3 produces 24 terminal table claims per repetition: eight leaf tables
+and sixteen auxiliary tables.  The joint sketch directly covers only leaf
+slots 3 and 6.  Treating those two openings as coverage for all 24 would be
+an unsound terminal gap.  C6.4 therefore reconstructs the other 22 values
+privately from the already authenticated source cursor, installed affine DAG,
+compact slot-7 closure and its deterministic auxiliary transpose.  None of
+those hidden values becomes a public systematic column.
+
 The production capacity census is:
 
 | Response | cache rows | residual rows | total live rows | D23 headroom |
@@ -104,7 +113,9 @@ these identities.
    for this relation.
 3. **Residual binding.**  The C6RSC3 correction factors at its terminal points
    equal the corresponding claims opened from the joint systematic object.
-   The linking challenges occur only after both first messages are fixed.
+   Its remaining 22 terminal values equal folds of the compact private owners,
+   never digest-only substitutes. The linking challenges occur only after
+   both first messages are fixed.
 4. **Sparse relation.**  The committed sketch is exactly `H` applied to the
    canonical joint rows; cache and residual contributions may be computed
    separately and added only because a differential checks the same final
@@ -223,13 +234,16 @@ a local build cache requires explicit owner approval.
 
 ## 8. Current disposition
 
-R0 selects the four-public-correction joint layout and the exact two-profile
+R1 retains the four-public-correction joint layout and the exact two-profile
 campaign.  Capacity fits D23 analytically.  A scaled executable differential
 shows that cache and correction-only residual streams produce the same sketch
 as the canonical joint table; the correction-only extractor reuses the exact
-paired-source cursor and rejects private residual columns.  The D23/D20 WHIR
-structure and a sub-30-MB certificate projection pass without adding proof
-bodies.  Concrete privacy-codec review, the C6RSC3 terminal link, finite-size
-distance/soundness, exact serialized certificate, finite-correlation census
-and all measured clocks remain open.  Therefore no SIMT, production prover,
-pod or performance claim is yet authorized.
+paired-source cursor and rejects private residual columns.  A second scaled
+differential reconstructs all eight leaf and sixteen auxiliary terminal table
+evaluations from the same source plus compact closure owners, with zero padded
+tables.  The D23/D20 WHIR structure and a sub-30-MB certificate projection
+pass without adding proof bodies.  Concrete privacy-codec review, the
+authenticated terminal equality, finite-size distance/soundness, exact
+serialized certificate, finite-correlation census and all measured clocks
+remain open. Therefore no SIMT, production prover, pod or performance claim
+is yet authorized.

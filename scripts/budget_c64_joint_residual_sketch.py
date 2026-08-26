@@ -18,6 +18,10 @@ SKETCH_ROWS = 1 << SKETCH_LOG2
 COLUMN_DEGREE = 16
 CHECK_DEGREE = 128
 SYSTEMATIC_QUERIES = 4_420
+C6RSC3_LEAF_TABLES = 8
+C6RSC3_AUXILIARY_TABLES = 16
+C6RSC3_REPETITIONS = 2
+PUBLIC_CORRECTION_TABLES = 2
 
 # Historical C6.3 values are used only as a byte-delta baseline.  They confer
 # no C6.4 credit.
@@ -105,7 +109,7 @@ def build_screen() -> dict[str, object]:
     responses = [response_screen(*response) for response in RESPONSES]
     return {
         "schema": 1,
-        "milestone": "C6.4-R0",
+        "milestone": "C6.4-R1",
         "credit": False,
         "geometry": {
             "input_log2": INPUT_LOG2,
@@ -127,6 +131,20 @@ def build_screen() -> dict[str, object]:
         },
         "responses": responses,
         "structural_byte_screen": byte_screen(),
+        "terminal_link_screen": {
+            "leaf_tables_per_repetition": C6RSC3_LEAF_TABLES,
+            "auxiliary_tables_per_repetition": C6RSC3_AUXILIARY_TABLES,
+            "tables_per_repetition": C6RSC3_LEAF_TABLES + C6RSC3_AUXILIARY_TABLES,
+            "public_correction_tables_per_repetition": PUBLIC_CORRECTION_TABLES,
+            "private_compact_tables_per_repetition": (
+                C6RSC3_LEAF_TABLES + C6RSC3_AUXILIARY_TABLES - PUBLIC_CORRECTION_TABLES
+            ),
+            "terminal_claims_total": (
+                C6RSC3_REPETITIONS * (C6RSC3_LEAF_TABLES + C6RSC3_AUXILIARY_TABLES)
+            ),
+            "padded_tables_materialized": 0,
+            "credit": False,
+        },
         "setup_profile_ids": [0, 150],
         "setup_profile_count": 2,
         "open_gates": [
@@ -145,9 +163,11 @@ def self_check(screen: dict[str, object]) -> None:
     geometry = screen["geometry"]
     responses = screen["responses"]
     byte_budget = screen["structural_byte_screen"]
+    terminal = screen["terminal_link_screen"]
     assert isinstance(geometry, dict)
     assert isinstance(responses, list)
     assert isinstance(byte_budget, dict)
+    assert isinstance(terminal, dict)
     assert geometry["dense_joint_bytes_forbidden"] == 1_073_741_824
     assert geometry["one_sparse_sketch_bytes"] == 134_217_728
     assert geometry["sparse_setup_total_bytes"] == 1_610_612_736
@@ -167,6 +187,12 @@ def self_check(screen: dict[str, object]) -> None:
     assert byte_budget["target_28mb_pass"] is False
     assert byte_budget["hard_limit_30mb_pass"] is True
     assert byte_budget["credit"] is False
+    assert terminal["tables_per_repetition"] == 24
+    assert terminal["public_correction_tables_per_repetition"] == 2
+    assert terminal["private_compact_tables_per_repetition"] == 22
+    assert terminal["terminal_claims_total"] == 48
+    assert terminal["padded_tables_materialized"] == 0
+    assert terminal["credit"] is False
     assert screen["credit"] is False
 
 

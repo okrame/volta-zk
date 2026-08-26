@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 R0 DESIGN CHECKPOINT — BACKEND A NO-GO / WHIR-UD CONTROL ONLY)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,29 +8,76 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-Read `c63-authenticated-sketched-pcs-design.md` §§0--7 next.
+Read `c7-stateful-authenticated-lfc-design.md` next.
 
-- **Status/hard stop.** C6.3 is closed after two real-PCG attempts produced
-  zero certificates. Clean `f5fd79d` passed the repaired post-source boundary,
-  then panicked after `907.32 s` with `pooled full correlation underflow`.
-  Both authorizations burned; no client state was promoted. No C6.3 repair,
-  rerun or pod work is authorized.
-- **Measured evidence.** The final attempt peaked at `33,484,832,768 B` RSS,
-  `44,525 MiB` external device use and `25,769,803,776 B` transient run data.
-  It read/wrote `26,071,834,624/29,579,071,488 B`. The inherited
-  `17,179,869,184-B` weight oracle dominated the retained 19.63-GB wrapper;
-  more than 462 s elapsed after both wrapper cohorts existed and before the
-  underflow. The exact correlation deficit is unknown.
-- **Setup/tests/credit.** The two-response harness unnecessarily required all
-  17 profiles: `2,092.76 s`, `12.93 GB` RSS. Local lifecycle, state,
-  mock/scaled and component tests did not exercise the finite composed pool.
-  The full-size cache/sketch differential remains component evidence only;
-  certificate bytes, prover/verifier time, acceptance, session and E2E credit
-  are all absent.
-- **Resume.** C7 starts only after an owner-supplied design and dedicated
-  branch. Its first pod experiment must serialize and verify the smallest
-  complete case with only its consumed profiles. New pods synchronize tracked
-  files only by GitHub HTTPS `git push`/`git pull`, never `gh`.
+- **Status/hard stop.** C7 R0 is a design-only checkpoint on
+  `agent/c7-stateful-alfc`. Backend A is NO-GO for R1 until its one-pass
+  bounded-memory code schedule, two-limb authenticated terminal, exact
+  storage/byte census and malicious-DV stateful privacy theorem exist.
+  WHIR-UD is GO only as a smallest local control on the same packed relation.
+- **Completed versus credit.** The exact incremental 100+50 recurrence,
+  four-plane ALFC transcript, one-terminal-point-per-segment invariant,
+  executable GPT-2/31B budget and nine additive Lean seams are recorded.
+  The 12,385,563/19,212,300-B certificate envelopes and 7.142-GB/1.776-TB
+  setup screens are `credit:false`; no composed certificate, prover time,
+  complete memory, privacy or E2E result exists. C6.3 transfers no credit.
+- **Security/state.** Policy 3 permits a static weight root only inside one
+  connection and only under the new theorem. `R_max=2^20` counts accepts,
+  failures, retries and selective aborts; every abort burns masks/correlations.
+  The registered union screen is effectively 83.99999999998 bits (strict
+  whole-bit label 83) against the 78-bit target. Cross-connection root reuse
+  is unauthorized.
+- **Checks/authorization.** Budget self-checks, the focused Lean check and
+  full `lake build` pass. No large prover, production/provider work or pod is
+  authorized; C6.3 remains closed.
+- **Resume.** Require an executable multiplicity-one compiler, no-clear
+  adapter, one-pass I/O/memory schedule, connection privacy proof and exact
+  composed budgets. R1 and any pod still require later explicit owner GO.
+
+- **2026-08-26 — C7 R0 fixes the incremental stateful ALFC statement and
+  stops before implementation.** The owner-opened branch
+  `agent/c7-stateful-alfc` adds
+  `docs/c7-stateful-authenticated-lfc-design.md`. One certificate now proves
+  the real 50-step fixed-point `DecodeStep_q` recurrence from an accepted
+  100-token hidden predecessor to its append-only 150-token K/V successor.
+  Weight, fresh response trace, predecessor K/V and successor K/V remain
+  separate commitment planes inside one transcript-bound ALFC call and one
+  terminal MAC settlement; per-token PCS/folding and cross-response debt are
+  forbidden. The canonical schedule fixes all roots, queries and
+  authenticated values before `beta` and admits exactly one terminal point
+  per physical segment. The packed identity is linear-time only under that
+  invariant; any retained `K_i>1` point multiplicity restores
+  `sum_i K_i*N_i` and is a hard stop.
+
+  Backend A (packed Ligerito/ERA-style code, 2026/391 constrained-code masking
+  and a new VOLE-MAC adapter) is the architectural candidate but receives an
+  R1 NO-GO: the papers do not compose malicious-DV stateful privacy, a
+  no-clear two-limb terminal or one-pass bounded memory. SwitchFold/QAFold
+  remains an analytic challenger only. Strict unique-decoding WHIR is GO as a
+  tiny local control on the C7 packed relation, never C6.3's eight-body
+  topology and never as E2E credit.
+
+  `scripts/budget_c7_stateful_alfc.py` registers the same 100+50 workload for
+  GPT-2 and a declared 30,826,400,000-weight screening envelope. Its complete
+  target allocations are `12,385,563 B` and `19,212,300 B` (`1.551185x`), all
+  `credit:false`. The target weight terminal reads exactly
+  `248,000,000/61,652,800,000 B` in one pass and materializes no `L` or Fp/Fp2
+  wrapper; the 3.2-GB/s floors are `0.0775/19.2665 s`, not prover timings.
+  The explicit ERA-style setup screen is `7,142,399,968 B` versus
+  `1,775,600,639,968 B`, which reinforces the NO-GO. For `R=248.6`, the 3x
+  exponent ceiling is `0.1991738805`; the optional 6x ceiling is
+  `0.3248386079` and has no authorization.
+
+  Static-weight privacy selects authenticated-only policy 3, conditional on
+  a new adaptive malicious-DV theorem for at most `2^20` attempts and 512
+  terminal handles per attempt. No PCS symbol, evaluation or raw MAC tag may
+  be clear. The exact connection screen is
+  `2^-84 + 2^-120 + 3*2^-128`, effectively 83.99999999998 bits; root reuse
+  across connections is outside R0. `lean/VoltaZk/C7StatefulAlfc.lean` proves
+  the nine requested algebra/state seams without `sorry` or crypto axioms;
+  direct checking and the full 3,274-job `lake build` pass. These component
+  seams do not prove the concrete backend or full C7 relation. No pod,
+  production run, fixed-point change or frozen M1--M12 edit occurred.
 
 - **2026-08-25 — Repaired C6.3 reaches the composed proof path, then exhausts
   its finite full-correlation pool.** Clean `f5fd79d` reused the 17-profile

@@ -1,18 +1,19 @@
-# C7 R0.4 — CPU-first fail-closed prover and pod handoff
+# C7 R0.5 — policy-3 terminal NO-GO and fail-closed handoff
 
-**State:** `C7_R04_CPU_SEARCH_ACTIVE_NOT_READY`.
+**State:** `C7_R05_POLICY3_EXHAUSTED_OWNER_DECISION_REQUIRED`.
 
 This handoff prepares the order, evidence and stop rules for later C7 work.
-It authorizes only the tiny CPU `BatchOpenBlocks` search/reference described
-below, not a large prover/E2E, optimized SIMT kernel, provider contact or pod
-run.  The protocol authority remains
+The authorized tiny CPU `BatchOpenBlocks` screen is complete and terminally
+negative as a PCS.  This document authorizes no further backend, large
+prover/E2E, optimized SIMT kernel, provider contact or pod run.  The protocol
+authority remains
 `docs/c7-stateful-authenticated-lfc-design.md` and the active capsule in
 `docs/prototype-status.md`.
 
 ## 1. Authorization boundary
 
-- Local work is design/theorem/census, transparent tiny/scaled screening and
-  the authorized CPU `BatchOpenBlocks` reference only.
+- Local work is limited to this checkpoint's design/theorem/census and
+  transparent tiny tests.  A new backend requires a later owner decision.
 - No optimized SIMT kernel or GPU scaffold is authorized before the ledger
   records `C7_CPU_REFERENCE_PASS`.
 - A complete GPT-2 E2E is never local.  It remains pod-only.
@@ -30,9 +31,9 @@ Every row is fail-closed and currently **open**.
 
 | Gate | Required evidence |
 | --- | --- |
-| concrete crypto | selected domain-separated `LeafCom` and tree hash; fresh honest-DV `rho/beta/gamma` are serialized with `Q_FS=0`; adaptive hiding/binding, authenticated-checker soundness or PoK, real PCG/VOLE and complete connection bound |
-| canonical compiler | exact response relation, serialized schedule, one terminal point per physical segment and reject-before-correlation on any multiplicity/count mismatch |
-| opening schedule | CPU reference with derived `c_source*N+poly(q,log N)`, `c_source` independent of `q`, exactly one monotone packed scan, bounded memory, no N-scale scratch or expanded Fp/Fp2/code/tag plane |
+| concrete crypto | Poseidon2 leaf function is executable but not admitted: adaptive hiding/binding, shared authenticated-checker soundness or PoK, real PCG/VOLE and complete connection bound remain missing; fresh honest-DV `rho/beta/gamma` stay selected with `Q_FS=0` |
+| canonical compiler | exact causal sampling prelude (client commit, provider commit, client open, private provider opening proved), response relation, serialized schedule, one terminal point per physical segment and reject-before-correlation on any multiplicity/count mismatch |
+| opening schedule | one-stage RA screen meets the online count shape but fails distance and ordered-root setup, so `C7_CPU_REFERENCE_PASS=false`; any replacement still needs the full original contract |
 | setup | logical `g=141`; manifest with persistent, temporary, read/write, refresh, peak host/device and wall counts; `A_setup<=2.00` target or explicit tolerance at `<=2.10` |
 | certificate | exact five-counter query census, serialized interactive challenge frames and six-component reconciliation; `B_weight_ALFC<=target` or explicit tolerance at `<=105%`; complete 30/100-MB and 3x gates |
 | security | theorem/hypothesis registry with scope, repetition and exact error for every event; analytic `Q_leaf<=2^64`, selected `Q_FS=0`, and connection arithmetic remains at least 78 bits |
@@ -57,6 +58,13 @@ reference precedes that case and by itself earns no lifecycle/E2E credit.
 4. Only then implement the admitted SIMT stages and prove byte-exact
    CPU/SIMT equivalence.
 5. Only then run scaled local integration; no complete GPT-2 locally.
+
+R0.5 executed steps 1--2 for the one-stage RA dense exception.  Its counters
+and tiny differential test pass the online algorithm shape, but its code
+distance and streaming ordered-root gates fail.  Therefore step 3 did not
+occur and steps 4--5 remain blocked.  A working component is not a passing PCS.
+Its source is a borrowed `&[i16]`, so the one-pass/`2N` values are logical
+access counts, not filesystem, RSS or `VmHWM` measurements.
 
 The CPU report must assert one source open/pass, monotonically increasing
 offsets, exactly `2*N` packed bytes, no reopen/backward seek, no full codeword,
@@ -135,7 +143,9 @@ gates rather than prepare them.
 6. Persist create-new reports/checksums and append the ledger disposition.
    Large generated weights/setup stay pod-local.
 
-Current blockers are the concrete leaf commitment, authenticated soundness
-bridge, CPU-pass locally openable code, compiler/query
-census and all downstream complete-chain evidence.  Therefore no pod action
-is presently valid.
+Current blockers are the admitted leaf commitment/private checker,
+authenticated soundness bridge, CPU-pass locally openable code, compiler/query
+census and all downstream complete-chain evidence.  All credible policy-3
+lines have terminal dispositions under the registered gates.  The next valid
+action is an owner design decision on policy 2; no pod action is presently
+valid.

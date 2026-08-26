@@ -287,6 +287,41 @@ theorem connection_sliced_union_bound_shared_delta
       (n + 1) * B * Fintype.card Xi ^ n :=
   connection_soundness_union_bound bad hslice
 
+/-- If each of two bad challenge sets has at most `T` elements, their
+Cartesian product has at most `T * T` elements.  This is only counting in a
+product space: independent/fresh sampling, random-oracle programming and
+transcript binding remain external cryptographic hypotheses. -/
+theorem c7_independent_bad_challenge_product_card_le
+    {Xi₀ Xi₁ : Type*}
+    {T : Nat} (bad₀ : Finset Xi₀) (bad₁ : Finset Xi₁)
+    (hbad₀ : bad₀.card ≤ T) (hbad₁ : bad₁.card ≤ T) :
+    (bad₀.product bad₁).card ≤ T * T := by
+  calc
+    (bad₀.product bad₁).card = bad₀.card * bad₁.card :=
+      Finset.card_product bad₀ bad₁
+    _ ≤ T * T := Nat.mul_le_mul hbad₀ hbad₁
+
+/-- C7 specialization of the M10 connection lemma to a pair of local
+challenges.  The positive connection horizon is exactly `Rmax = n + 1`;
+the premise must already establish the `T * T` slice bound after fixing all
+other responses.  Fiat--Shamir/RO soundness, challenge freshness and binding
+of the pre-challenge transcript are not proved here. -/
+theorem c7_pair_challenge_connection_sliced_union_bound
+    {Delta Xi₀ Xi₁ : Type*}
+    [Fintype Delta] [Fintype Xi₀] [Fintype Xi₁]
+    [DecidableEq Delta] [DecidableEq Xi₀] [DecidableEq Xi₁]
+    {n T : Nat}
+    (bad : Fin (n + 1) →
+      Finset (Delta × (Fin (n + 1) → (Xi₀ × Xi₁))))
+    (hslice : ∀ r (rest : Fin n → (Xi₀ × Xi₁)),
+      (univ.filter fun dxi : Delta × (Xi₀ × Xi₁) =>
+        responseTapeEquiv r (dxi, rest) ∈ bad r).card ≤ T * T) :
+    (univ.biUnion bad).card ≤
+      (n + 1) * (T * T) *
+        (Fintype.card Xi₀ * Fintype.card Xi₁) ^ n := by
+  simpa only [Fintype.card_prod] using
+    (connection_soundness_union_bound (B := T * T) bad hslice)
+
 /-! ## Conditional computational/statistical hybrid composition -/
 
 /-- If `advantage r` is the distinguishing advantage after `r` attempts, a
@@ -361,6 +396,9 @@ end VoltaZk
 #print axioms VoltaZk.accepted_append_tails_induction
 #print axioms VoltaZk.atomic_promotion_fork_exclusion
 #print axioms VoltaZk.connection_union_bound_with_rmax_shared_delta
+#print axioms VoltaZk.connection_sliced_union_bound_shared_delta
+#print axioms VoltaZk.c7_independent_bad_challenge_product_card_le
+#print axioms VoltaZk.c7_pair_challenge_connection_sliced_union_bound
 #print axioms VoltaZk.connection_hybrid_advantage_bound
 #print axioms VoltaZk.c7_registered_connection_error_below_78_bits
 #print axioms VoltaZk.canonical_serialized_claim_schedule_refines_alfc

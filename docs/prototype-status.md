@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 R0.4 CPU REFERENCE SEARCH ACTIVE — NO SIMT KERNEL / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 R0.5 POLICY-3 TERMINAL NO-GO — OWNER DECISION / NO SIMT / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,27 +11,95 @@ record; no external plan is authoritative.
 Read `c7-stateful-authenticated-lfc-design.md`, then
 `c7-r03-prover-pod-handoff.md`.
 
-- **Status/choices.** C7 R0.4 on `agent/c7-stateful-alfc` selects policy 3,
-  fresh serialized honest-DV `rho/beta/gamma` (`Q_FS=0`) and logical `g=141`;
-  policy 2 remains dormant pending documented exhaustion and owner activation.
-  Setup target/hard remains `2.00x/2.10x`; weight wire target/hard remains
-  `100%/105%`. The 256-bit-salt, `Q_leaf<=2^64` screen has ~161.16 bits.
-- **Evidence/hard stop.** For `G in F^(k*n)` of distance `d`, `nnz(G)>=kd`;
-  direct accumulation over a uniform `U`-leaf subset has expected
-  `Omega(U*N)` work, and the `U` heaviest leaves give the worst-case bound
-  (`N=k`). This says nothing about an arbitrary sparse subset or shared
-  circuit; only a structured algorithm remains. It must first earn
-  `C7_CPU_REFERENCE_PASS` with a
-  derived `cN+poly(q,log N)` cost, one `2N` monotone packed scan, bounded
-  memory and exact operation/I/O counters. Concrete `LeafCom`, checker/codec,
-  soundness and malicious-DV refinement remain missing. Budget v5 checks pass;
-  every result is `credit:false`.
-- **Authorization/resume.** Only the tiny CPU search/reference is authorized.
-  No optimized SIMT kernel, large prover/E2E, provider contact or pod is
-  authorized. After CPU pass, SIMT needs bit-exact transcript/certificate and
-  reconciled disk/H2D/D2H/RSS/VRAM/padding/sync counters. Full GPT-2 remains
-  pod-only after `C7_POD_READY` plus later run-specific owner GO. The next
-  owner decision follows a CPU-pass candidate or documented exhaustion.
+- **Status.** C7 R0.5 on `agent/c7-stateful-alfc` records a terminal policy-3
+  NO-GO under the registered gates. Policy 2 remains dormant pending explicit
+  owner activation. Interactive serialized honest-DV `rho/beta/gamma`
+  (`Q_FS=0`), logical `g=141`, setup `2.00x/2.10x` and weight-wire
+  `100%/105%` remain fixed.
+- **Evidence versus credit.** The one-stage RA CPU screen really opens queried
+  blocks with one logical borrowed-slice `2N` scan, `rN` source work,
+  `64rN` trie steps and
+  `O(64*141U)` memory; 3 differential/fail-closed tests pass. It is not a PCS:
+  distance and ordered-root setup fail, so `C7_CPU_REFERENCE_PASS=false`.
+  The concrete Poseidon2 salted leaf has KAT/codec/mutation/cost tests, but its
+  31B RA-`r=4` screen needs at least 7.346T S-box
+  multiplication-equivalents before hashes (packed-root control: 1.836T) and
+  lacks the shared checker, codec refinement and malicious-DV
+  theorem. Sampling now has a causal 96-B public prelude with a private
+  provider seed, still uncompiled. The focused Lean target passes and proves
+  only the independent pair/counting bounds; budget v6 passes. All evidence
+  is `credit:false`.
+- **Hard stop/resume.** No SIMT, prover/E2E, provider contact or pod is
+  authorized; `C7_POD_READY=false`. Resume requires an owner decision to
+  activate policy 2 and fix its root-wide query horizon plus challenge mode,
+  or an explicit relaxation of a named setup/distance/one-pass/proof-byte gate.
+  Full GPT-2 remains pod-only after readiness and a later run-specific GO.
+
+- **2026-08-26 — C7 R0.5 implements the dense exception and closes policy 3
+  with a terminal NO-GO.** The one-stage RA CPU screen is real: a 64-level
+  successor trie opens canonical `g=141` blocks with one monotone logical `2N` packed
+  scan, `rN` permutation/diagonal/Fp operations, `64rN` successor steps,
+  `141U` query-prefix additions and `O(64*141U)` memory. It writes no codeword,
+  model-sized scratch or expanded weights. Three tests match a full tiny
+  encoder including final padding and fail closed on malformed queries,
+  source/counter mutation and attempted gate promotion. It is explicitly not
+  a PCS: the affine/diagonal fixture has no admitted Goldilocks distance/KS
+  theorem, and a random interleaver cannot produce the complete committed
+  accumulator oracle in order without forbidden reorder/random I/O. The
+  borrowed-slice counters are not physical disk/RSS evidence.
+
+  A concrete Poseidon2/Goldilocks width-16/rate-12 salted leaf now absorbs 141
+  Fp symbols, 256-bit salt, layout-derived root context and exact total/leaf
+  geometry into 32 bytes; internal partial/empty leaves reject. It uses 14
+  permutations, 8,400 secret multiplications and a 1,192-B private input floor
+  per opened leaf; KAT, canonical codec, mutations and cost checks pass. At
+  `r=4`, packed/tree/minimum-root storage is
+  473,134,816/117,621,299,360 B, within 2x, but setup requires
+  at least 29,548,940,400/7,345,865,536,800 S-box
+  multiplication-equivalents, before salt PRFs/tree hashes, and still has no
+  ordered streaming root. A shared Poseidon trace zerocheck could avoid 8,400
+  direct corrections per leaf, but its checker, trace PCS and exact proof-byte
+  census do not exist.
+
+  Consequently the soundness bridge, concrete codec-to-Lean privacy and
+  stateful malicious-DV theorem are not claimed. Their named missing premises
+  are tree/leaf/trace binding, authenticated zerocheck, code KS/unique decoding,
+  typed no-clear codec refinement, real PRF/PCG/VOLE and atomic state
+  composition. The ideal Lean theorem fixes `Delta` and the whole key function
+  upfront; only challenges are adaptive. C7 therefore binds the key-tape
+  seed/domain at connection start, reserves each exact attempt interval before
+  witness-dependent bytes, expands it lazily and burns every unused suffix.
+
+  Interactive `T/|Fp2|` at analytic `T=512` is about 119 bits. Direct FS with
+  `Q_FS=2^64` is about 55 bits; two independent FS challenges screen at about
+  174 bits via `Q_FS*T^2/|Fp2|^2`, but their added responses, paths, MACs, work
+  and scans are uncompiled. Additive Lean lemmas prove only the product and
+  connection counting numerators; RO security remains a hypothesis.
+  Interactive `Q_FS=0` stays selected.
+
+  Transcript review repairs a noncausal sampling diagram without revealing
+  the provider seed: client entropy commitment precedes provider seed
+  commitment, then the client opens; only afterward may the provider derive
+  coins, execute decode and commit output roots/messages. The relation proves
+  the private provider-seed opening and coin use. Two public commitments plus
+  the client opening contribute 96 payload bytes to future `B_framing` before
+  unknown headers. Hash binding, client-entropy hiding until the provider
+  commit, and provider-seed hiding from the verifier remain separate named
+  hypotheses; no wire/privacy credit is inferred.
+
+  The design records terminal reasons for published clear-query PCS/HVZK,
+  one-stage RA, RAA/ERA, full dense root-and-dot proving,
+  Poseidon2/BLAKE3/LigeSIS/linear/group leaf lines and preprocessing-only
+  binding. This is credible-candidate exhaustion under the
+  registered gates, not a universal lower bound. Budget schema v6 passes both
+  registered profiles. The feature-gated command
+  `cd rust && cargo test -p volta-pcs --features c7-policy3-reference c7_`
+  passes 7/7; the default feature set does not compile these screens and is
+  not evidence. `cd lean && lake build +VoltaZk.C7StatefulAlfc:olean` passes
+  without `sorryAx` in the C7 lemmas. All results remain `credit:false`,
+  `C7_CPU_REFERENCE_PASS=false`, and `C7_POD_READY=false`. No SIMT, provider or
+  pod action occurred. Policy 2 now awaits explicit owner activation plus an
+  exact root-wide query horizon and challenge-mode decision.
 
 - **2026-08-26 — C7 R0.4 selects the interactive/g141/CPU-first path and
   rejects sparse-output regeneration.** The owner selects fresh honest-DV

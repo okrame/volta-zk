@@ -8,6 +8,11 @@ license.workspace = true
 default = []
 cuda = ["volta-accel/cuda", "volta-proto/cuda"]
 c6-trace = ["volta-proto/c6-trace", "volta-mac/c6-trace"]
+c7-policy3-reference = [
+    "dep:p3-field",
+    "dep:p3-goldilocks",
+    "dep:p3-symmetric",
+]
 c61-p3-reference = [
     "dep:p3-blake3",
     "dep:p3-challenger",

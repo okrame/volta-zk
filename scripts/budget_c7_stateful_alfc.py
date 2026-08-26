@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Executable C7 R0.4 analytic/readiness screen; every result is credit:false."""
+"""Executable C7 R0.5 analytic/readiness screen; every result is credit:false."""
 
 from __future__ import annotations
 
@@ -61,6 +61,24 @@ LEAF_SALT_BITS = 256
 LEAF_ORACLE_QUERY_SCREEN = 1 << 64
 SELECTED_CHALLENGE_MODE = "fresh-honest-dv-post-prefix-interactive"
 SELECTED_FIAT_SHAMIR_QUERY_BOUND = 0
+FIAT_SHAMIR_AMPLIFIED_QUERY_SCREEN = 1 << 64
+RLC_BAD_CHALLENGE_CAP = 512
+GOLDILOCKS_MODULUS = (1 << 64) - (1 << 32) + 1
+
+C7_RA_SCREEN_REPETITION = 4
+C7_RA_SUCCESSOR_TRIE_DEPTH = 64
+C7_POSEIDON_WIDTH = 16
+C7_POSEIDON_RATE = 12
+C7_POSEIDON_PERMUTATIONS_PER_LEAF = 14
+C7_POSEIDON_SBOXES_PER_PERMUTATION = 8 * 16 + 22
+C7_POSEIDON_SECRET_MULTIPLICATIONS_PER_SBOX = 4
+C7_LEAF_SBOX_MULTIPLICATION_EQUIVALENTS = (
+    C7_POSEIDON_PERMUTATIONS_PER_LEAF
+    * C7_POSEIDON_SBOXES_PER_PERMUTATION
+    * C7_POSEIDON_SECRET_MULTIPLICATIONS_PER_SBOX
+)
+C7_LEAF_PRIVATE_INPUT_CORRECTION_BYTES = (141 + 8) * 8
+C7_LEAF_ROOT_METADATA_BYTES = 64  # private salt seed + public commitment nonce
 
 SETUP_TARGET_NUMERATOR = 2
 SETUP_TARGET_DENOMINATOR = 1
@@ -452,6 +470,212 @@ def online_scan(model: dict[str, object], chunk_bytes: int, bandwidth: float) ->
     }
 
 
+def c7_policy3_ra_leaf_screen(model: dict[str, object]) -> dict[str, object]:
+    """Count the executable one-stage RA/LeafCom screen, not an admitted PCS."""
+    weights = int(model["weights"])
+    packed = weights * PACKED_WEIGHT_BYTES
+    packed_leaves = ceil_div(weights, LOGICAL_LEAF_SYMBOLS)
+    code_symbols = weights * C7_RA_SCREEN_REPETITION
+    leaves = ceil_div(code_symbols, LOGICAL_LEAF_SYMBOLS)
+    tree_nodes = 2 * leaves - 1
+    tree_bytes = tree_nodes * HASH_BYTES
+    ligesis_c7_tree_bytes = tree_nodes * 56
+    ligesis_c7_persistent = packed + ligesis_c7_tree_bytes
+    persistent = packed + tree_bytes + C7_LEAF_ROOT_METADATA_BYTES
+    setup_target = packed * SETUP_TARGET_NUMERATOR // SETUP_TARGET_DENOMINATOR
+    setup_hard = packed * SETUP_HARD_NUMERATOR // SETUP_HARD_DENOMINATOR
+    permutations = leaves * C7_POSEIDON_PERMUTATIONS_PER_LEAF
+    sboxes = permutations * C7_POSEIDON_SBOXES_PER_PERMUTATION
+    secret_multiplications = leaves * C7_LEAF_SBOX_MULTIPLICATION_EQUIVALENTS
+    return {
+        "status": "EXECUTABLE_ONLINE_SCREEN_ONLY_NOT_A_PCS",
+        "code": {
+            "shape": "one-stage repeat-permute-diagonal-accumulate",
+            "repetition": C7_RA_SCREEN_REPETITION,
+            "code_symbols": code_symbols,
+            "logical_leaf_symbols": LOGICAL_LEAF_SYMBOLS,
+            "leaf_count": leaves,
+            "online_cost_identity": (
+                "r*N source occurrences, 64*r*N successor-trie steps, "
+                "r*N Fp multiplications, at most r*N range adds, and "
+                "141*U query-prefix additions"
+            ),
+            "online_memory_identity": "O(64*141*U) trie nodes plus 141*U Fp outputs",
+            "packed_source_passes": 1,
+            "packed_source_bytes_read": packed,
+            "model_linear_scratch_write_bytes": 0,
+            "complete_codeword_bytes": 0,
+            "source_coefficient_independent_of_queries": True,
+            "cpu_reference_implemented": True,
+            "cpu_reference_module": "volta_pcs::c7_ra_batch_open_screen",
+            "distance_gate_passed": False,
+            "distance_reason": (
+                "no accepted constant-relative-distance theorem for this "
+                "one-stage Goldilocks construction; binary RA evidence does "
+                "not transfer, and accepted nonbinary linear-distance results "
+                "require multiple accumulators"
+            ),
+            "setup_generation_gate_passed": False,
+            "setup_generation_reason": (
+                "a random interleaver needs a model-sized reorder/scatter or "
+                "nonmonotone source reads to emit the committed accumulator "
+                "oracle in leaf order"
+            ),
+            "c7_cpu_reference_pass": False,
+            "credit": False,
+        },
+        "leaf_commitment": {
+            "implementation": "Poseidon2 Goldilocks width-16/rate-12 salted leaf",
+            "implementation_module": "volta_pcs::c7_policy3_leaf",
+            "payload_symbols": LOGICAL_LEAF_SYMBOLS,
+            "salt_bits": LEAF_SALT_BITS,
+            "digest_bytes": HASH_BYTES,
+            "permutations_per_leaf": C7_POSEIDON_PERMUTATIONS_PER_LEAF,
+            "sboxes_per_permutation": C7_POSEIDON_SBOXES_PER_PERMUTATION,
+            "secret_multiplications_per_leaf": (
+                C7_POSEIDON_PERMUTATIONS_PER_LEAF
+                * C7_POSEIDON_SBOXES_PER_PERMUTATION
+                * C7_POSEIDON_SECRET_MULTIPLICATIONS_PER_SBOX
+            ),
+            "private_input_correction_bytes_per_opened_leaf": (
+                C7_LEAF_PRIVATE_INPUT_CORRECTION_BYTES
+            ),
+            "root_salt_seed_and_commitment_nonce_bytes": C7_LEAF_ROOT_METADATA_BYTES,
+            "private_checker_implemented": False,
+            "private_checker_required_shape": (
+                "all queried Poseidon traces in fresh C_B,e plus one shared "
+                "randomized zerocheck and authenticated terminal links"
+            ),
+            "malicious_dv_hiding_or_binding_proved": False,
+            "credit": False,
+        },
+        "alternative_leaf_controls": {
+            "blake3": {
+                "setup_control": "conventional_fast_hash",
+                "private_bit_carry_checker_implemented": False,
+                "hiding_or_malicious_dv_theorem": False,
+                "credit": False,
+            },
+            "ligesis_c7": {
+                "digest_bytes": 56,
+                "compact_tree_bytes": ligesis_c7_tree_bytes,
+                "packed_plus_tree_bytes": ligesis_c7_persistent,
+                "amplification_over_packed_i16": ligesis_c7_persistent / packed,
+                "preprocessing_table_multiplier_excluded_from_floor": 32,
+                "cited_property": "SIS_collision_resistance_for_bounded_binary_inputs_not_hiding",
+                "within_hard_ceiling": ligesis_c7_persistent <= setup_hard,
+                "credit": False,
+            },
+        },
+        "setup": {
+            "packed_i16_bytes": packed,
+            "compact_tree_nodes": tree_nodes,
+            "compact_tree_bytes": tree_bytes,
+            "minimal_persistent_bytes": persistent,
+            "amplification_over_packed_i16": persistent / packed,
+            "target_bytes": setup_target,
+            "hard_ceiling_bytes": setup_hard,
+            "storage_within_target": persistent <= setup_target,
+            "storage_within_hard_ceiling": persistent <= setup_hard,
+            "poseidon_permutations": permutations,
+            "poseidon_sboxes": sboxes,
+            "poseidon_sbox_multiplication_equivalents": secret_multiplications,
+            "salt_key_derivations_in_current_one_shot_helper": leaves,
+            "salt_keyed_hash_calls": leaves,
+            "cached_root_salt_key_implementation_exists": False,
+            "internal_tree_hash_compressions": leaves - 1,
+            "tree_hash_io_bytes": None,
+            "poseidon_work_is_lower_bound_excluding_salt_kdf_prf_tree_hash_and_root_ordering": True,
+            "packed_root_leaf_count_control": packed_leaves,
+            "packed_root_sbox_multiplication_equivalents_per_response_control": (
+                packed_leaves * C7_LEAF_SBOX_MULTIPLICATION_EQUIVALENTS
+            ),
+            "streaming_root_schedule_exists": False,
+            "setup_gate_passed": False,
+            "credit": False,
+        },
+        "terminal_disposition": (
+            "reject as C7 backend: the online block algorithm is executable, "
+            "but distance, streaming root construction, private checker, "
+            "codec refinement and malicious-DV theorem do not compose"
+        ),
+        "credit": False,
+    }
+
+
+def challenge_mode_comparison() -> dict[str, object]:
+    extension_field_size = GOLDILOCKS_MODULUS**2
+    interactive = Fraction(RLC_BAD_CHALLENGE_CAP, extension_field_size)
+    fs_direct = Fraction(
+        FIAT_SHAMIR_AMPLIFIED_QUERY_SCREEN * RLC_BAD_CHALLENGE_CAP,
+        extension_field_size,
+    )
+    fs_pair = Fraction(
+        FIAT_SHAMIR_AMPLIFIED_QUERY_SCREEN * RLC_BAD_CHALLENGE_CAP**2,
+        extension_field_size**2,
+    )
+
+    def probability(value: Fraction) -> dict[str, object]:
+        return {
+            "exact": f"{value.numerator}/{value.denominator}",
+            "effective_bits": math.log2(value.denominator) - math.log2(value.numerator),
+        }
+
+    return {
+        "scope": (
+            "one fixed-prefix RLC bad set; connection composition and every "
+            "other event remain separate"
+        ),
+        "challenge_field_size": extension_field_size,
+        "bad_challenge_cap_T": RLC_BAD_CHALLENGE_CAP,
+        "interactive_selected": {
+            "formula": "T/|Fp2|",
+            **probability(interactive),
+            "explicit_challenge_bytes_per_draw": AUTHENTICATED_FP2_SYMBOL_BYTES,
+            "grinding_queries": 0,
+            "requirements": [
+                "prefix fixed before the draw",
+                "fresh uniform honest-DV randomness",
+                "canonical serialized challenge and durable attempt binding",
+            ],
+            "selected": True,
+            "credit": False,
+        },
+        "fiat_shamir_direct_control": {
+            "formula": "Q_FS*T/|Fp2|",
+            "Q_FS": FIAT_SHAMIR_AMPLIFIED_QUERY_SCREEN,
+            **probability(fs_direct),
+            "selected": False,
+            "credit": False,
+        },
+        "fiat_shamir_two_challenge_amplified": {
+            "formula": "Q_FS*T^2/|Fp2|^2",
+            "Q_FS": FIAT_SHAMIR_AMPLIFIED_QUERY_SCREEN,
+            **probability(fs_pair),
+            "explicit_challenge_bytes": 0,
+            "extra_response_handle_path_settlement_bytes": None,
+            "extra_field_and_hash_work": None,
+            "extra_packed_source_passes": None,
+            "requirements": [
+                "two independent domain-separated fresh random-oracle slices",
+                "canonical rejection sampling into Fp2",
+                "both challenges check the same complete relation",
+                "no state restoration or cross-attempt transcript reuse",
+                "Q_FS counts the entire declared grinding scope",
+                "all duplicate/shared responses, paths, MACs and scans are compiled and counted",
+            ],
+            "selected": False,
+            "proof_size_gate_passed": False,
+            "credit": False,
+        },
+        "privacy_note": (
+            "challenge mode changes soundness and wire/work accounting; it "
+            "does not replace the malicious-DV privacy theorem"
+        ),
+        "credit": False,
+    }
+
+
 def model_report(
     model: dict[str, object], chunk_bytes: int, bandwidth: float
 ) -> dict[str, object]:
@@ -549,6 +773,7 @@ def model_report(
         "illustrative_era_artifact_volume_screen": illustrative_era_setup_and_refresh(
             model, bandwidth
         ),
+        "policy3_one_stage_ra_poseidon_screen": c7_policy3_ra_leaf_screen(model),
         "credit": False,
     }
 
@@ -633,6 +858,37 @@ def security_screen() -> dict[str, object]:
             "linearity and coordinate consequences, not the concrete adapter"
         ),
         "one_time_correlations_and_masks_burn_on_abort": True,
+        "malicious_verifier_key_schedule": {
+            "lean_model": "Delta and total Nat-to-F key tape fixed upfront; challenges and chi adaptive",
+            "connection_key_tape_seed_or_domain_fixed_before_responses": True,
+            "attempt_interval_reserved_before_witness_dependent_bytes": True,
+            "attempt_interval_count": None,
+            "attempt_interval_count_source": "J_cap(concrete codec, public shape)",
+            "lazy_indexed_expansion_allowed": True,
+            "unused_suffix_burned_on_every_outcome": True,
+            "adaptive_post_correction_keys_allowed": False,
+            "real_pcg_vole_refinement_proved": False,
+            "credit": False,
+        },
+        "sampling_commit_private_open_schedule": {
+            "order": [
+                "client_entropy_commit",
+                "provider_seed_commit",
+                "client_entropy_open",
+                "response_tokens_roots_and_first_messages",
+                "relation_proves_private_provider_seed_opening_and_coin_use",
+            ],
+            "public_commitment_count": 2,
+            "public_opening_count": 1,
+            "provider_seed_opening_serialized": False,
+            "fixed_payload_bytes_before_framing": 96,
+            "framing_bytes": None,
+            "reconciled_into_B_framing": False,
+            "hash_collision_binding_proved": False,
+            "client_entropy_hiding_until_provider_commit_proved": False,
+            "provider_seed_hiding_from_verifier_proved": False,
+            "credit": False,
+        },
         "response_bad_event_budget_cap": RESPONSE_BAD_EVENT_BUDGET_CAP,
         "event_registry_complete": False,
         "bits_per_bad_event": RESPONSE_EVENT_BITS,
@@ -669,6 +925,7 @@ def security_screen() -> dict[str, object]:
             "salt_192_disposition": "reject",
             "Q_leaf_is_not_R_max": True,
             "connection_wide_leaf_count_complete": False,
+            "concrete_leaf_function_implemented": True,
             "concrete_arithmetizable_commitment_selected": False,
             "binding_error_derived": False,
             "credit": False,
@@ -708,13 +965,14 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
     large_total = int(large["certificate"]["total"]["bytes"])
     certificate_growth = large_total / small_total
     return {
-        "schema": "volta-c7-stateful-alfc-r04-screen-v5",
+        "schema": "volta-c7-stateful-alfc-r05-screen-v6",
         "design": "C7 stateful authenticated linear-functional commitment",
         "screening_only": True,
         "credit": False,
         "authorization": {
-            "r04_tiny_cpu_code_search_authorized": True,
+            "r05_tiny_cpu_screen_authorized": True,
             "batch_open_blocks_cpu_reference_authorized": True,
+            "tiny_cpu_screen_completed": True,
             "optimized_simt_kernel_authorized": False,
             "simt_requires_c7_cpu_reference_pass": True,
             "large_prover_or_e2e_execution_authorized": False,
@@ -724,12 +982,26 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "c7_pod_ready": False,
         },
         "privacy_policy": {
-            "active": 3,
-            "sole_candidate_shape": (
+            "active": None,
+            "last_tested": 3,
+            "active_status": "terminal_no_go_owner_decision_required",
+            "tested_terminal_shape": (
                 "digest-only salted leaf commitment with public Merkle paths "
                 "and attempt-local VOLE-private leaf/PCS checks"
             ),
-            "policy_3_candidate_exhaustion_documented": False,
+            "policy_3_candidate_exhaustion_documented": True,
+            "terminal_catalog": {
+                "published_clear_query_pcs_hvzk": "reject_no_clear_policy",
+                "one_stage_ra": "reject_distance_and_ordered_root_setup",
+                "raa_two_stage_era": "reject_N_intermediate_or_qN",
+                "full_dense_root_and_dot": "reject_full_nonlinear_per_response_circuit_and_no_one_pass_schedule",
+                "poseidon2_leaf": "reject_composed_backend_setup_and_checker_missing",
+                "blake3_leaf": "reject_private_checker_and_byte_census_missing",
+                "ligesis_subset_sum": "reject_collision_resistance_only_no_hiding_and_c7_tree_floor_2.5887x",
+                "linear_leaf": "reject_constructed_collisions",
+                "group_lattice_leaf": "reject_non_native_or_msm_setup_gates",
+                "preprocessing_evaluation_binding": "reject_missing_strong_binding_knowledge_soundness",
+            },
             "policy_2_status": "dormant_not_authorized",
             "policy_2_activation_authorized": False,
             "policy_2_root_wide_query_horizon_registered": False,
@@ -742,6 +1014,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "weight_query_wire_envelope_registered": True,
             "logical_leaf_geometry_selected": True,
             "anti_x4d_setup_gate_pass": False,
+            "concrete_leaf_function_implemented": True,
             "concrete_leaf_commitment_selected": False,
             "leaf_commitment_adaptive_hiding_proved": False,
             "authenticated_checker_soundness_or_pok_refinement_proved": False,
@@ -780,7 +1053,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "compiled_tier_a_certificate_gate_pass": False,
         },
         "batch_open_blocks_admission": {
-            "state": "TINY_CPU_SEARCH_AUTHORIZED_REFERENCE_MISSING",
+            "state": "EXECUTABLE_ONE_STAGE_RA_SCREEN_BACKEND_REJECTED",
             "logical_leaf_symbols": LOGICAL_LEAF_SYMBOLS,
             "complexity_target": "O(N + poly(q, log N))",
             "generator_incidence_obstruction": {
@@ -817,13 +1090,11 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
                     "against a structured shared linear circuit"
                 ),
             },
-            "only_surviving_algorithm_shape": (
-                "structured pruned/shared DAG with a derived source-linear "
-                "coefficient independent of q"
-            ),
+            "only_surviving_algorithm_shape": None,
             "cpu_reference_contract": {
                 "algorithm_selected": False,
-                "reference_implemented": False,
+                "reference_implemented": True,
+                "reference_kind": "one-stage_RA_negative_screen_not_a_PCS",
                 "cost_identity_required": (
                     "C(N,q,h)=c_source*N+P(q,h), h=ceil(log2(N)), "
                     "c_source independent of q"
@@ -932,7 +1203,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "credit": False,
         },
         "pod_readiness": {
-            "state": "C7_R04_CPU_SEARCH_ACTIVE_NOT_READY",
+            "state": "C7_R05_POLICY3_EXHAUSTED_OWNER_DECISION_REQUIRED",
             "handoff_spec": "docs/c7-r03-prover-pod-handoff.md",
             "handoff_preparation_authorized": True,
             "required_before_C7_POD_READY": {
@@ -1048,12 +1319,13 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "credit": False,
         },
         "security": security_screen(),
+        "interactive_vs_fiat_shamir": challenge_mode_comparison(),
         "self_check": {"status": "pending", "credit": False},
     }
 
 
 def self_check(report: dict[str, object]) -> None:
-    assert report["schema"] == "volta-c7-stateful-alfc-r04-screen-v5"
+    assert report["schema"] == "volta-c7-stateful-alfc-r05-screen-v6"
     models = report["models"]
     small = models[str(GPT2["name"])]
     large = models[str(GEMMA_ENVELOPE["name"])]
@@ -1115,6 +1387,39 @@ def self_check(report: dict[str, object]) -> None:
     ] == 32
     assert not small_artifacts["anti_x4d_structural_gate"]["passes"]
     assert not large_artifacts["anti_x4d_structural_gate"]["passes"]
+    small_ra = small["policy3_one_stage_ra_poseidon_screen"]
+    large_ra = large["policy3_one_stage_ra_poseidon_screen"]
+    assert small_ra["code"]["cpu_reference_implemented"]
+    assert small_ra["code"]["packed_source_bytes_read"] == 248_000_000
+    assert small_ra["setup"]["compact_tree_bytes"] == 225_134_752
+    assert small_ra["setup"]["minimal_persistent_bytes"] == 473_134_816
+    assert small_ra["setup"]["poseidon_sbox_multiplication_equivalents"] == 29_548_940_400
+    assert small_ra["setup"][
+        "packed_root_sbox_multiplication_equivalents_per_response_control"
+    ] == 7_387_237_200
+    assert large_ra["setup"]["compact_tree_bytes"] == 55_968_499_296
+    assert large_ra["setup"]["minimal_persistent_bytes"] == 117_621_299_360
+    assert large_ra["setup"]["poseidon_sbox_multiplication_equivalents"] == 7_345_865_536_800
+    assert large_ra["setup"][
+        "packed_root_sbox_multiplication_equivalents_per_response_control"
+    ] == 1_836_466_388_400
+    assert small_ra["alternative_leaf_controls"]["ligesis_c7"][
+        "packed_plus_tree_bytes"
+    ] == 641_985_816
+    assert large_ra["alternative_leaf_controls"]["ligesis_c7"][
+        "packed_plus_tree_bytes"
+    ] == 159_597_673_768
+    assert not small_ra["alternative_leaf_controls"]["ligesis_c7"][
+        "within_hard_ceiling"
+    ]
+    assert not large_ra["alternative_leaf_controls"]["ligesis_c7"][
+        "within_hard_ceiling"
+    ]
+    assert small_ra["setup"]["storage_within_target"]
+    assert large_ra["setup"]["storage_within_target"]
+    assert not small_ra["code"]["distance_gate_passed"]
+    assert not small_ra["code"]["setup_generation_gate_passed"]
+    assert not small_ra["setup"]["setup_gate_passed"]
     assert (
         small["source_functional_scan_target"]["bytes_read"]["bytes"]
         == 248_000_000
@@ -1144,12 +1449,27 @@ def self_check(report: dict[str, object]) -> None:
     )
     assert not report["security"]["event_registry_complete"]
     assert report["security"]["conditional_budget_fits_78"]
+    key_schedule = report["security"]["malicious_verifier_key_schedule"]
+    assert key_schedule["connection_key_tape_seed_or_domain_fixed_before_responses"]
+    assert key_schedule["attempt_interval_reserved_before_witness_dependent_bytes"]
+    assert key_schedule["attempt_interval_count"] is None
+    assert not key_schedule["adaptive_post_correction_keys_allowed"]
+    assert not key_schedule["real_pcg_vole_refinement_proved"]
+    sampling = report["security"]["sampling_commit_private_open_schedule"]
+    assert sampling["fixed_payload_bytes_before_framing"] == 96
+    assert not sampling["provider_seed_opening_serialized"]
+    assert not sampling["reconciled_into_B_framing"]
     policy = report["privacy_policy"]
-    assert policy["active"] == 3
+    assert policy["active"] is None
+    assert policy["last_tested"] == 3
+    assert policy["active_status"] == "terminal_no_go_owner_decision_required"
+    assert policy["policy_3_candidate_exhaustion_documented"]
+    assert len(policy["terminal_catalog"]) == 10
     assert policy["policy_2_status"] == "dormant_not_authorized"
     assert not policy["policy_2_activation_authorized"]
     authorization = report["authorization"]
-    assert authorization["r04_tiny_cpu_code_search_authorized"]
+    assert authorization["r05_tiny_cpu_screen_authorized"]
+    assert authorization["tiny_cpu_screen_completed"]
     assert authorization["batch_open_blocks_cpu_reference_authorized"]
     assert not authorization["optimized_simt_kernel_authorized"]
     assert authorization["simt_requires_c7_cpu_reference_pass"]
@@ -1162,6 +1482,7 @@ def self_check(report: dict[str, object]) -> None:
     assert gates["weight_query_wire_envelope_registered"]
     assert gates["logical_leaf_geometry_selected"]
     assert not gates["anti_x4d_setup_gate_pass"]
+    assert gates["concrete_leaf_function_implemented"]
     assert not gates["leaf_commitment_adaptive_hiding_proved"]
     assert not gates["concrete_leaf_commitment_selected"]
     assert not gates["authenticated_checker_soundness_or_pok_refinement_proved"]
@@ -1220,6 +1541,7 @@ def self_check(report: dict[str, object]) -> None:
     assert leaf_hide["largest_static_weight_leaf_count_screen"] == 961_958_582
     assert leaf_hide["effective_bits"] > 161
     assert leaf_hide["salt_192_effective_bits_same_screen"] < 98
+    assert leaf_hide["concrete_leaf_function_implemented"]
     assert not leaf_hide["concrete_arithmetizable_commitment_selected"]
     challenge = report["security"]["challenge_generation"]
     assert challenge["mode_selected"]
@@ -1228,12 +1550,19 @@ def self_check(report: dict[str, object]) -> None:
     assert challenge["rho_beta_gamma_serialized"]
     assert not challenge["honest_dv_entropy_delivery_instantiated"]
     assert not challenge["interactive_transcript_binding_proved"]
+    challenge_comparison = report["interactive_vs_fiat_shamir"]
+    assert 118.9 < challenge_comparison["interactive_selected"]["effective_bits"] < 119.1
+    assert 54.9 < challenge_comparison["fiat_shamir_direct_control"]["effective_bits"] < 55.1
+    assert 173.9 < challenge_comparison["fiat_shamir_two_challenge_amplified"]["effective_bits"] < 174.1
+    assert not challenge_comparison["fiat_shamir_two_challenge_amplified"][
+        "proof_size_gate_passed"
+    ]
     batch_open = report["batch_open_blocks_admission"]
     assert batch_open["logical_leaf_symbols"] == 141
     assert batch_open["generator_incidence_obstruction"][
         "nonzero_incidence_lower_bound"
     ] == "nnz(G) >= k*d"
-    assert not batch_open["cpu_reference_contract"]["reference_implemented"]
+    assert batch_open["cpu_reference_contract"]["reference_implemented"]
     assert batch_open["cpu_reference_contract"]["packed_source_passes"] == 1
     assert not batch_open["c7_cpu_reference_pass"]
     simt = report["simt_path"]
@@ -1245,7 +1574,7 @@ def self_check(report: dict[str, object]) -> None:
     assert simt["packed_source_h2d_passes_per_scope"] == 1
     assert not simt["simt_bit_exact_equivalence_pass"]
     readiness = report["pod_readiness"]
-    assert readiness["state"] == "C7_R04_CPU_SEARCH_ACTIVE_NOT_READY"
+    assert readiness["state"] == "C7_R05_POLICY3_EXHAUSTED_OWNER_DECISION_REQUIRED"
     assert not readiness["all_required_gates_pass"]
     assert not any(readiness["required_before_C7_POD_READY"].values())
     assert not readiness["conditional_before_C7_POD_READY"]["simt_selected"]

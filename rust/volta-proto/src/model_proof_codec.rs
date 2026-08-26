@@ -5,8 +5,7 @@
 //! bytes without retaining prover state, witness material, or keys.
 
 use crate::block_proof::{
-    AttnBlockProof, C62SoftmaxRecipProof, FfnBlockProof, LayerProof, LnChainProof,
-    TableCloseProof,
+    AttnBlockProof, C62SoftmaxRecipProof, FfnBlockProof, LayerProof, LnChainProof, TableCloseProof,
 };
 use crate::boundary_thinning::EqReductionProof;
 use crate::gemm_proof::ChainedGemmProof;
@@ -75,11 +74,7 @@ impl Writer {
     }
 
     fn thin(bytes: Vec<u8>, digests: &[C62SubfieldDigest]) -> Self {
-        Self {
-            bytes,
-            thin_subfields: true,
-            digest_overrides: digests.iter().cloned().collect(),
-        }
+        Self { bytes, thin_subfields: true, digest_overrides: digests.iter().cloned().collect() }
     }
 
     fn finish(self) -> Result<Vec<u8>> {
@@ -537,17 +532,9 @@ pub struct C6RetainedResponseProof {
     c62_subfield_digests: Vec<C62SubfieldDigest>,
 }
 
-fn visit_layer_subfield_vecs<'a>(
-    layer: &'a LayerProof,
-    visit: &mut impl FnMut(&'a Vec<u64>),
-) {
-    for values in [
-        &layer.xin_corr,
-        &layer.k_corr,
-        &layer.v_corr,
-        &layer.abo_corr,
-        &layer.fbo_corr,
-    ] {
+fn visit_layer_subfield_vecs<'a>(layer: &'a LayerProof, visit: &mut impl FnMut(&'a Vec<u64>)) {
+    for values in [&layer.xin_corr, &layer.k_corr, &layer.v_corr, &layer.abo_corr, &layer.fbo_corr]
+    {
         visit(values);
     }
     for values in &layer.ffn.ln_vec_corrs {
@@ -606,9 +593,7 @@ fn encode_model_proof_c62_compact(
     out.finish()
 }
 
-fn decode_model_proof_c62_compact(
-    bytes: &[u8],
-) -> Result<(ModelProof, Vec<C62SubfieldDigest>)> {
+fn decode_model_proof_c62_compact(bytes: &[u8]) -> Result<(ModelProof, Vec<C62SubfieldDigest>)> {
     let mut input = Reader {
         bytes,
         offset: 0,
@@ -670,10 +655,12 @@ fn count_u64_vec(values: &[u64], bytes: &mut usize, vectors: &mut usize) -> Resu
         .checked_add(values.len().checked_mul(8).ok_or_else(|| {
             ModelProofCodecError::new("C6.2 subfield correction byte census overflows")
         })?)
-        .ok_or_else(|| ModelProofCodecError::new("C6.2 subfield correction byte census overflows"))?;
-    *vectors = vectors
-        .checked_add(1)
-        .ok_or_else(|| ModelProofCodecError::new("C6.2 subfield correction vector census overflows"))?;
+        .ok_or_else(|| {
+            ModelProofCodecError::new("C6.2 subfield correction byte census overflows")
+        })?;
+    *vectors = vectors.checked_add(1).ok_or_else(|| {
+        ModelProofCodecError::new("C6.2 subfield correction vector census overflows")
+    })?;
     Ok(())
 }
 
@@ -682,13 +669,8 @@ fn count_layer_subfield_corrections(
     bytes: &mut usize,
     vectors: &mut usize,
 ) -> Result<()> {
-    for values in [
-        &layer.xin_corr,
-        &layer.k_corr,
-        &layer.v_corr,
-        &layer.abo_corr,
-        &layer.fbo_corr,
-    ] {
+    for values in [&layer.xin_corr, &layer.k_corr, &layer.v_corr, &layer.abo_corr, &layer.fbo_corr]
+    {
         count_u64_vec(values, bytes, vectors)?;
     }
     for values in &layer.ffn.ln_vec_corrs {
@@ -714,10 +696,8 @@ fn count_layer_subfield_corrections(
 fn c62_subfield_correction_census(model: &ModelProof) -> Result<(usize, usize)> {
     let mut bytes = 0usize;
     let mut vectors = 0usize;
-    for layer in model
-        .layers
-        .iter()
-        .chain(model.chunks.iter().flat_map(|chunk| chunk.layers.iter()))
+    for layer in
+        model.layers.iter().chain(model.chunks.iter().flat_map(|chunk| chunk.layers.iter()))
     {
         count_layer_subfield_corrections(layer, &mut bytes, &mut vectors)?;
     }
@@ -817,9 +797,7 @@ impl C6RetainedResponseProof {
 
     /// Bind every compact digest to the stable decoded placeholder that will
     /// be consumed by the response transcript.
-    pub fn c62_subfield_digest_overrides(
-        &self,
-    ) -> Result<Vec<(*const u64, usize, [u8; 32])>> {
+    pub fn c62_subfield_digest_overrides(&self) -> Result<Vec<(*const u64, usize, [u8; 32])>> {
         if self.c62_subfield_digests.is_empty() {
             return Err(ModelProofCodecError::new("C6.2 compact subfield manifest is absent"));
         }
@@ -878,11 +856,7 @@ impl C6RetainedResponseProof {
     /// Encode the C6.2 response with a distinct frame and a strict C62SRE1
     /// trailer. The base model-proof bytes retain their historical grammar.
     pub fn encode_c62(&self) -> Result<Vec<u8>> {
-        Self::encode_c62_parts_with_digests(
-            &self.model,
-            &self.product,
-            &self.c62_subfield_digests,
-        )
+        Self::encode_c62_parts_with_digests(&self.model, &self.product, &self.c62_subfield_digests)
     }
 
     pub fn encode_c62_parts(model_proof: &ModelProof, product: &ProdProof) -> Result<Vec<u8>> {
@@ -1369,8 +1343,7 @@ mod tests {
         assert_eq!(census.model_bytes, encode_model_proof_canonical(&model).unwrap().len());
         assert_eq!(census.extension_bytes.len(), 2);
         assert_eq!(
-            census.layer_sections.iter().flatten().sum::<usize>()
-                + census.non_layer_model_bytes,
+            census.layer_sections.iter().flatten().sum::<usize>() + census.non_layer_model_bytes,
             census.model_bytes,
         );
         assert_ne!(census.compact_model_bytes, census.model_bytes);

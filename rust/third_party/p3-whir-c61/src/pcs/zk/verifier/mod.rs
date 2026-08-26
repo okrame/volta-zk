@@ -14,12 +14,12 @@ use alloc::vec::Vec;
 use masks::VerifierMasks;
 use p3_challenger::{CanObserve, CanSampleUniformBits, FieldChallenger, GrindingChallenger};
 use p3_commit::{ExtensionMmcs, Mmcs};
-use p3_field::{ExtensionField, TwoAdicField, dot_product};
+use p3_field::{dot_product, ExtensionField, TwoAdicField};
 use p3_matrix::Dimensions;
 use p3_multilinear_util::point::Point;
 use p3_multilinear_util::poly::Poly;
-use p3_sumcheck::SumcheckError;
 use p3_sumcheck::zk::{AffineClaim, ZkVerifier};
+use p3_sumcheck::SumcheckError;
 use thiserror::Error;
 use tracing::instrument;
 
@@ -27,7 +27,7 @@ use super::base_case::{
     BaseCaseClaimlessClosure, BaseCaseZkConfig, BaseCaseZkError, BaseCaseZkVerifier,
 };
 use super::code_switch::{
-    CodeSwitchError, ZkMaskClaim, accumulate_randomness_query_covector, switch_mask_covector,
+    accumulate_randomness_query_covector, switch_mask_covector, CodeSwitchError, ZkMaskClaim,
 };
 use super::config::ZkWhirConfig;
 use super::constraint::SourceClaim;
@@ -160,6 +160,27 @@ where
             commitment,
             points,
             &NoZkWhirInitialOracleLink,
+            None,
+            challenger,
+        )
+    }
+
+    /// Verify a multi-opening batched by the wider post-commitment transcript.
+    #[instrument(skip_all)]
+    pub fn verify_claimless_with_batch_alpha(
+        &self,
+        proof: &ZkWhirProof<F, EF, MT>,
+        commitment: &MT::Commitment,
+        points: &[Point<EF>],
+        batch_alpha: EF,
+        challenger: &mut Challenger,
+    ) -> Result<ClaimlessWhirVerifierClosure<EF>, ZkVerifierError> {
+        self.verify_claimless_inner(
+            proof,
+            commitment,
+            points,
+            &NoZkWhirInitialOracleLink,
+            Some(batch_alpha),
             challenger,
         )
     }
@@ -178,7 +199,7 @@ where
     where
         L: ZkWhirInitialOracleLink<F, EF, MT>,
     {
-        self.verify_claimless_inner(proof, commitment, points, initial_link, challenger)
+        self.verify_claimless_inner(proof, commitment, points, initial_link, None, challenger)
     }
 
     #[allow(clippy::too_many_lines)]
@@ -188,6 +209,7 @@ where
         commitment: &MT::Commitment,
         points: &[Point<EF>],
         initial_link: &L,
+        batch_alpha: Option<EF>,
         challenger: &mut Challenger,
     ) -> Result<ClaimlessWhirVerifierClosure<EF>, ZkVerifierError>
     where
@@ -238,7 +260,13 @@ where
         // Reduce the ordered point batch with one fresh post-commitment
         // alpha, while never materializing any opening value on the verifier
         // role.  The same coefficients aggregate the designated target keys.
-        let alpha: EF = challenger.sample_algebra_element();
+        let alpha: EF = match batch_alpha {
+            Some(alpha) => {
+                challenger.observe_algebra_element(alpha);
+                alpha
+            }
+            None => challenger.sample_algebra_element(),
+        };
         let claim_weights: Vec<EF> = alpha.powers().collect_n(points.len());
         let mut source = SourceClaim::new();
         for (point, coefficient) in points.iter().cloned().zip(claim_weights.iter().copied()) {

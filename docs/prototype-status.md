@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 R2 AUTHENTICATED TERMINAL LINK PASS / PRODUCTION-STREAMING HARD STOP)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 R3 C64_POD_READY / AWAITING RUN-SPECIFIC GO)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,24 +10,56 @@ record; no external plan is authoritative.
 
 Read `c64-joint-residual-sketch-design.md` next.
 
-- **Status.** C6.4 R2 is active on `agent/c64-joint-residual-sketch`, isolated
-  from C7. It removes the inherited 17.18-GB residual wrapper by packing the
-  complete private residual owner beside cache corrections in one D23x16
-  table; only cache rows have a systematic opening API.
-- **Completed evidence versus credit.** The exact 48 C6RSC3 terminal claims
-  fold in transcript order into one authenticated 27-round link to that table;
-  honest, codec, content/key mutation and exact pending-claim tests pass.
-  D23 capacity is `645,096,528/313,534,080 B` of live data. The structural
-  certificate projection is `29,116,783 B`, with `883,217 B` diagnostic and
-  `5,883,217 B` hard headroom. Exact distance is at least 186 bits; the complete
-  analytic union is `78.0190232026` bits. All remain `credit:false`.
-- **Hard stop.** No provider or pod until production streaming/SIMT, strict
-  complete codec/reload, the exact two-proof real-PCG lifecycle and diagnostics
-  pass locally as applicable and the ledger records `C64_POD_READY`.
-- **Campaign.** The future first run uses exactly setup profiles `[0,150]` and
-  exactly proofs `0->150`, `150->200`; no 17-profile bundle, duplicate profile
-  or retry. Pod contact additionally requires `C64_POD_READY` and a later
-  run-specific owner GO. Local builds use only `rust/target` and are cleaned.
+- **Status/design.** C6.4 R3 is `C64_POD_READY` on
+  `agent/c64-joint-residual-sketch`, isolated from C7. It keeps C6.3's D22/D19
+  cache and replaces the residual wrapper with D23 other/closure, concatenated
+  D24 correction and D15 auxiliary projections: six 107-bit WHIR bodies plus
+  a 24-round authenticated correction link. R2 remains invalidated.
+- **Completed evidence.** The production coordinator, strict version-4
+  35-MB certificate/tail codec, reload verifier, finite correlation census and
+  exact two-profile/two-proof driver are executable. Full workspace and
+  feature-enabled C6.4 tests pass. No pod was contacted.
+- **Analytic credit only.** `32,903,995 B` certificate projection
+  (`2,096,005 B` hard-limit headroom), `78.001993132250...` soundness bits,
+  `403,177,472 B` resident projection and 661 suffix full correlations per
+  tape are `credit:false` until measured on the pod.
+- **Hard stop/resume.** Provider contact and a run need a new pod and
+  run-specific owner GO. Then compile and differentially test native CUDA,
+  followed by exactly profiles `[0,150]` and no-retry proofs `0->150`,
+  `150->200`, each serialized, reloaded, fully verified and promoted in order.
+
+- **2026-08-26 — C6.4 R3 reaches `C64_POD_READY`.** The production path now
+  precommits the three projected residual families before the two residual
+  challenges, proves six base-field WHIR bodies, opens the concatenated D24
+  correction family at both repetitions and the sparse-cache point, and uses
+  the compact 24-round authenticated correction link. The old residual
+  wrapper/output link is absent. Strict `VOLTA-C64-CERT-v4` and `C64PIF1`
+  codecs bind version-specific states and reject mutation, cross-version or
+  trailing data. The exact finite suffix is 661 full correlations per tape.
+  The campaign admits only setup contexts `[0,150]`, creates proofs `0->150`
+  and `150->200`, and reloads before acceptance with no retry. The analytic
+  screen reports `6,861,312 B` for six bodies, `32,903,995 B` complete,
+  `2,096,005 B` below the 35-MB limit, `78.001993132250...` bits and
+  `403,177,472 B` resident projection, all `credit:false`. Full workspace tests
+  pass (one pre-existing production-scale test ignored); ten feature-enabled
+  C6.4 tests and the budget self-check pass. No pod was contacted. Resume
+  requires a new pod and run-specific owner GO for CUDA compile/differential
+  and the two measured proofs.
+
+- **2026-08-26 — C6.4 R3 invalidates R2 and selects projected residual PCS.**
+  Audit found that R2's final callback invented authentication for an arbitrary
+  D27 opening without proving that the four D23 WHIR messages determined it;
+  the R2 protocol-pass interpretation is withdrawn. R3 keeps the C6.3 cache
+  PCS and splits the exact leaf columns into other/closure and correction D23
+  projections, plus one D15 auxiliary projection. The correction projection
+  also opens at the cache point. Native WHIR needs six 107-bit base-limb
+  bodies. Independent tape masks are corrected to common hiding values and
+  closed by six terminal checks. The screen projects `32,815,979 B`,
+  `2,184,021 B` below the 35-MB hard limit but above the 30-MB diagnostic,
+  with `78.001993199523...` bits, no new sparse setup and `268,959,744 B`
+  resident output. Exact projected
+  pending-claim algebra passes; production coordinator, strict codec/reload,
+  finite PCG and CUDA differential remain hard stops. No pod was contacted.
 
 - **2026-08-26 — C6.4 R2 closes the authenticated terminal gap and exact
   analytic censuses.** The selected table now stores all seven residual leaf

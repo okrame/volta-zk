@@ -18,7 +18,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 44;
+constexpr uint32_t ABI_VERSION = 45;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -1548,6 +1548,14 @@ __global__ void c63_project_columns_kernel(
     }
     limb0[output_row] = acc0;
     limb1[output_row] = acc1;
+}
+
+__global__ void fp2_to_base_limbs_kernel(
+    const Fp2* input, uint64_t* limb0, uint64_t* limb1, size_t elements) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z >= elements) return;
+    limb0[z] = input[z].c0;
+    limb1[z] = input[z].c1;
 }
 
 // -------------------------------------------------------------------------
@@ -4695,6 +4703,32 @@ extern "C" int volta_cuda_c63_project_columns_device(
     CUDA_OR_RETURN(c, cudaGetLastError());
     if (mark_timing(c, 2)) return -1;
     return finish_timing(c, OP_PCS_ROWS, 0, 0, 2 * output_rows * sizeof(uint64_t));
+}
+
+extern "C" int volta_cuda_fp2_to_base_limbs_device(
+    void* raw,
+    uint64_t input_id, size_t input_offset,
+    uint64_t limb0_id, size_t limb0_offset,
+    uint64_t limb1_id, size_t limb1_offset,
+    size_t elements) {
+    Context* c = static_cast<Context*>(raw);
+    void *input = nullptr, *limb0 = nullptr, *limb1 = nullptr;
+    if (!c || !elements ||
+        resident_region(c, input_id, input_offset * sizeof(Fp2),
+                        elements * sizeof(Fp2), &input) ||
+        resident_region(c, limb0_id, limb0_offset * sizeof(uint64_t),
+                        elements * sizeof(uint64_t), &limb0) ||
+        resident_region(c, limb1_id, limb1_offset * sizeof(uint64_t),
+                        elements * sizeof(uint64_t), &limb1)) return -1;
+    if (limb0_id == limb1_id || input_id == limb0_id || input_id == limb1_id)
+        return fail_message(c, "Fp2 limb split must be out of place");
+    if (begin_timing(c) || mark_timing(c, 1)) return -1;
+    fp2_to_base_limbs_kernel<<<(elements + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const Fp2*>(input), static_cast<uint64_t*>(limb0),
+        static_cast<uint64_t*>(limb1), elements);
+    CUDA_OR_RETURN(c, cudaGetLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_PCS_ROWS, 0, 0, 2 * elements * sizeof(uint64_t));
 }
 
 extern "C" int volta_cuda_gemm_i64(

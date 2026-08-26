@@ -18,7 +18,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 44;
+pub const CUDA_ABI_VERSION: u32 = 45;
 pub const OPERATION_COUNT: usize = 7;
 pub const DEFERRED_TIMING_CAPACITY: usize = 512;
 
@@ -2212,6 +2212,39 @@ impl Backend {
         if let Err(error) = result {
             let _ = self.free_device(limb0);
             let _ = self.free_device(limb1);
+            return Err(error);
+        }
+        Ok([limb0, limb1])
+    }
+
+    /// Split one resident extension-field message into canonical base limbs.
+    pub fn fp2_to_base_limbs_device(
+        &mut self,
+        input: &DeviceBuffer<Fp2Repr>,
+    ) -> Result<[DeviceBuffer<u64>; 2], AccelError> {
+        if input.is_empty() {
+            return Err(AccelError::InvalidInput("empty Fp2 limb split"));
+        }
+        self.validate_buffer(input)?;
+        let limb0 = self.alloc_device(input.len())?;
+        let limb1 = match self.alloc_device(input.len()) {
+            Ok(output) => output,
+            Err(error) => {
+                let _ = self.free_device(limb0);
+                return Err(error);
+            }
+        };
+        #[cfg(feature = "cuda")]
+        let result = self
+            .cuda
+            .as_mut()
+            .expect("CUDA kind without context")
+            .fp2_to_base_limbs_device(input.id, 0, limb0.id, 0, limb1.id, 0, input.len());
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(limb1);
+            let _ = self.free_device(limb0);
             return Err(error);
         }
         Ok([limb0, limb1])

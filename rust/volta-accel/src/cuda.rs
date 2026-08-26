@@ -203,6 +203,8 @@ type C63ProjectColumnsDevice = unsafe extern "C" fn(
     usize,
     c_int,
 ) -> c_int;
+type Fp2ToBaseLimbsDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, u64, usize, usize) -> c_int;
 type GemmI64 = unsafe extern "C" fn(
     *mut c_void,
     *const i16,
@@ -1095,6 +1097,7 @@ struct Api {
     c63_correction_tile_frame_device: C63CorrectionTileFrameDevice,
     c63_pad_sketch_for_encoding_device: C63PadSketchForEncodingDevice,
     c63_project_columns_device: C63ProjectColumnsDevice,
+    fp2_to_base_limbs_device: Fp2ToBaseLimbsDevice,
     gemm_i64: GemmI64,
     gemm_i64_device: GemmI64Device,
     gemm_requant_auth: GemmRequantAuth,
@@ -1332,6 +1335,9 @@ impl CudaContext {
             },
             c63_project_columns_device: unsafe {
                 load_symbol(handle, b"volta_cuda_c63_project_columns_device\0")?
+            },
+            fp2_to_base_limbs_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fp2_to_base_limbs_device\0")?
             },
             gemm_i64: unsafe { load_symbol(handle, b"volta_cuda_gemm_i64\0")? },
             gemm_i64_device: unsafe { load_symbol(handle, b"volta_cuda_gemm_i64_device\0")? },
@@ -2223,6 +2229,32 @@ impl CudaContext {
                 limb1_offset,
                 accepted_len,
                 kind,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn fp2_to_base_limbs_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        limb0: u64,
+        limb0_offset: usize,
+        limb1: u64,
+        limb1_offset: usize,
+        elements: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates ownership and every resident region.
+        self.check(unsafe {
+            (self.api.fp2_to_base_limbs_device)(
+                self.raw,
+                input,
+                input_offset,
+                limb0,
+                limb0_offset,
+                limb1,
+                limb1_offset,
+                elements,
             )
         })
     }

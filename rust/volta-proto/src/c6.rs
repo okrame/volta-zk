@@ -572,7 +572,6 @@ impl C6ClientAttempt {
         }
         Ok(())
     }
-
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2446,9 +2445,7 @@ impl C6SlotHandle {
             self.record.reservation.matches_c63_certificate(&certificate)?;
             return certificate.digest().map_err(|error| C6Error::new(error.to_string()));
         }
-        Err(C6Error::new(
-            "stored certificate is neither canonical C6, C6.2 nor C6.3",
-        ))
+        Err(C6Error::new("stored certificate is neither canonical C6, C6.2 nor C6.3"))
     }
 
     pub fn acknowledge(&mut self, certificate_digest: C6Digest) -> C6Result<()> {
@@ -2706,8 +2703,7 @@ mod tests {
         nonce: C6Digest,
         correlation_ranges: C6PairedCorrelationRanges,
     ) -> C62NativeFinalCertificate {
-        let mut retained_transcript =
-            crate::model_proof_codec::retained_response_c62_test_bytes();
+        let mut retained_transcript = crate::model_proof_codec::retained_response_c62_test_bytes();
         retained_transcript.push(0xa5);
         let proof_envelope = C62ResponseProofEnvelope::new(
             vec![0x51],

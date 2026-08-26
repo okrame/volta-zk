@@ -1390,12 +1390,7 @@ pub(crate) fn verify_layers_thinned_scheduled_c6(
         bank,
         &mut cache_mode,
     )?;
-    let ThinnedVerifierCacheMode::C6 {
-        metrics,
-        mut append_source_layers,
-        paired_targets,
-        ..
-    } =
+    let ThinnedVerifierCacheMode::C6 { metrics, mut append_source_layers, paired_targets, .. } =
         cache_mode
     else {
         unreachable!("C6 scheduled verifier mode changed during execution")

@@ -11,17 +11,17 @@ use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::mem;
 
-pub use data::{HidingWhirProverData, ZkWhirInitialMessage};
 use data::HidingWhirInitialMessage;
 use data::ZkRoundData;
-use masks::{ProverMasks, fold_limb_chunks};
+pub use data::{HidingWhirProverData, ZkWhirInitialMessage};
+use masks::{fold_limb_chunks, ProverMasks};
 use p3_challenger::{CanObserve, CanSampleUniformBits, FieldChallenger, GrindingChallenger};
 use p3_commit::{ExtensionMmcs, Mmcs};
 use p3_dft::TwoAdicSubgroupDft;
-use p3_field::{ExtensionField, PackedValue, PrimeCharacteristicRing, TwoAdicField, dot_product};
-use p3_matrix::Matrix;
+use p3_field::{dot_product, ExtensionField, PackedValue, PrimeCharacteristicRing, TwoAdicField};
 use p3_matrix::dense::DenseMatrix;
 use p3_matrix::extension::FlatMatrixView;
+use p3_matrix::Matrix;
 use p3_maybe_rayon::prelude::*;
 use p3_multilinear_util::point::Point;
 use p3_multilinear_util::poly::Poly;
@@ -29,7 +29,7 @@ use p3_multilinear_util::split_eq::SplitEq;
 use p3_sumcheck::constraints::statement::SelectStatement;
 use p3_sumcheck::product_polynomial::ProductPolynomial;
 use p3_sumcheck::strategy::{ResidualSumcheckProver, SumcheckProver, VariableOrder};
-use p3_sumcheck::zk::{AffineClaim, ZkSumcheckData, into_zk_sumcheck_claimless_with_residual};
+use p3_sumcheck::zk::{into_zk_sumcheck_claimless_with_residual, AffineClaim, ZkSumcheckData};
 use p3_util::log2_strict_usize;
 use p3_zk_codes::ZkEncodingWithRandomness;
 use rand::distr::{Distribution, StandardUniform};
@@ -42,9 +42,9 @@ use crate::pcs::zk::base_case::{
     BaseCaseClaimlessClosure, BaseCaseZkConfig, BaseCaseZkProver, MaskGroupWitness,
 };
 use crate::pcs::zk::code_switch::{
-    ZkMaskClaim, accumulate_randomness_query_covector, switch_mask_covector,
+    accumulate_randomness_query_covector, switch_mask_covector, ZkMaskClaim,
 };
-use crate::pcs::zk::committer::{FoldedRsCode, zk_padded_matrix};
+use crate::pcs::zk::committer::{zk_padded_matrix, FoldedRsCode};
 use crate::pcs::zk::config::ZkWhirConfig;
 use crate::pcs::zk::proof::{ZkRoundProof, ZkWhirProof};
 use crate::pcs::zk::{NoZkWhirInitialOracleLink, ZkWhirInitialOracleLink};
@@ -127,10 +127,7 @@ where
         _folding: usize,
         _height: usize,
     ) -> Result<
-        Option<(
-            MT::Commitment,
-            MT::ProverData<FlatMatrixView<F, EF, DenseMatrix<EF>>>,
-        )>,
+        Option<(MT::Commitment, MT::ProverData<FlatMatrixView<F, EF, DenseMatrix<EF>>>)>,
         Self::Error,
     > {
         Ok(None)
@@ -450,6 +447,7 @@ where
             base_claim_shift,
             &oracle,
             &initial_link,
+            None,
             challenger,
             rng,
         ) {
@@ -489,6 +487,7 @@ where
             base_claim_shift,
             &oracle,
             initial_link,
+            None,
             challenger,
             rng,
         ) {
@@ -521,6 +520,37 @@ where
             base_claim_shift,
             oracle,
             &initial_link,
+            None,
+            challenger,
+            rng,
+        )
+    }
+
+    /// Native-oracle multi-opening with a batching challenge derived by a
+    /// wider transcript after all related limb commitments are fixed.
+    #[instrument(skip_all)]
+    pub fn prove_claimless_with_oracle_and_batch_alpha<R, O>(
+        &self,
+        prover_data: HidingWhirProverData<F, EF, MT>,
+        claims: &[(Point<EF>, EF)],
+        base_claim_shift: EF,
+        oracle: &O,
+        batch_alpha: EF,
+        challenger: &mut Challenger,
+        rng: &mut R,
+    ) -> Result<ClaimlessWhirProverOutput<F, EF, MT>, O::Error>
+    where
+        R: Rng,
+        O: ZkWhirOracleCommitter<F, EF, MT>,
+    {
+        let initial_link = NoZkWhirInitialOracleLink;
+        self.prove_claimless_with_committer(
+            prover_data,
+            claims,
+            base_claim_shift,
+            oracle,
+            &initial_link,
+            Some(batch_alpha),
             challenger,
             rng,
         )
@@ -550,6 +580,7 @@ where
             base_claim_shift,
             oracle,
             initial_link,
+            None,
             challenger,
             rng,
         )
@@ -563,6 +594,7 @@ where
         base_claim_shift: EF,
         oracle: &O,
         initial_link: &L,
+        batch_alpha: Option<EF>,
         challenger: &mut Challenger,
         rng: &mut R,
     ) -> Result<ClaimlessWhirProverOutput<F, EF, MT>, O::Error>
@@ -580,7 +612,13 @@ where
         // Initial relation: claims batched by powers of alpha.
         //
         //     W = sum_i alpha^i eq(z_i, .)        claim = sum_i alpha^i v_i
-        let alpha: EF = challenger.sample_algebra_element();
+        let alpha: EF = match batch_alpha {
+            Some(alpha) => {
+                challenger.observe_algebra_element(alpha);
+                alpha
+            }
+            None => challenger.sample_algebra_element(),
+        };
         let coeffs: Vec<EF> = alpha.powers().collect_n(claims.len());
         let mut batched_target = EF::ZERO;
         for ((point, eval), coeff) in claims.iter().zip(&coeffs) {
@@ -713,11 +751,7 @@ where
                         if host_message.is_none() {
                             host_message = Some(batch.residual_prover.evals()?);
                         }
-                        padded_ood_t1(
-                            rho,
-                            host_message.as_ref().unwrap().as_slice(),
-                            &mask_message,
-                        )
+                        padded_ood_t1(rho, host_message.as_ref().unwrap().as_slice(), &mask_message)
                     }
                 };
                 challenger.observe_algebra_element(answer);
@@ -831,33 +865,33 @@ where
                 let k = log2_strict_usize(message_len);
                 let k_pack = log2_strict_usize(F::Packing::WIDTH);
                 let mut weight_delta = if k >= k_pack {
-                let mut packed_delta =
-                    Poly::new(EF::ExtensionPacking::zero_vec(message_len >> k_pack));
-                let mut select = SelectStatement::<F, EF>::initialize(k);
-                for &var in &query_vars {
-                    // Evaluations are unused: only the covector side is read.
-                    select.add_constraint(var, EF::ZERO);
-                }
-                // Query coefficients are gamma^{1 + t_ood + q}.
-                let mut unused_sum = EF::ZERO;
-                select.combine_packed(
-                    &mut packed_delta,
-                    &mut unused_sum,
-                    combination,
-                    1 + rho_points.len(),
-                );
-                packed_delta.unpack::<F, EF>().into_evals()
-            } else {
-                // Too few variables for the packed kernel: power runs only.
-                let mut weight_delta = EF::zero_vec(message_len);
-                for (&var, &coeff) in query_points.iter().zip(query_coeffs) {
-                    let mut term = coeff;
-                    for dst in &mut weight_delta {
-                        *dst += term;
-                        term *= var;
+                    let mut packed_delta =
+                        Poly::new(EF::ExtensionPacking::zero_vec(message_len >> k_pack));
+                    let mut select = SelectStatement::<F, EF>::initialize(k);
+                    for &var in &query_vars {
+                        // Evaluations are unused: only the covector side is read.
+                        select.add_constraint(var, EF::ZERO);
                     }
-                }
-                weight_delta
+                    // Query coefficients are gamma^{1 + t_ood + q}.
+                    let mut unused_sum = EF::ZERO;
+                    select.combine_packed(
+                        &mut packed_delta,
+                        &mut unused_sum,
+                        combination,
+                        1 + rho_points.len(),
+                    );
+                    packed_delta.unpack::<F, EF>().into_evals()
+                } else {
+                    // Too few variables for the packed kernel: power runs only.
+                    let mut weight_delta = EF::zero_vec(message_len);
+                    for (&var, &coeff) in query_points.iter().zip(query_coeffs) {
+                        let mut term = coeff;
+                        for dst in &mut weight_delta {
+                            *dst += term;
+                            term *= var;
+                        }
+                    }
+                    weight_delta
                 };
                 // Chunked parallel power run: chunk `c` starts at coeff * rho^(c * CHUNK).
                 const POW_CHUNK: usize = 1 << 12;

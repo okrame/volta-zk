@@ -392,6 +392,29 @@ impl C62GpuMmcs {
         })
     }
 
+    pub(crate) fn sequential_fresh_lane(
+        &self,
+        num_variables: usize,
+        folding: usize,
+        starting_log_inv_rate: usize,
+        claim_capacity: usize,
+    ) -> Result<Self, C62GpuWhirError> {
+        if folding >= num_variables {
+            return Err(C62GpuWhirError::new("C62GW1 sequential lane folding is invalid"));
+        }
+        let height = (1usize << (num_variables - folding)) << starting_log_inv_rate;
+        let guard = C62GpuResourceGuard::for_lane(
+            num_variables,
+            folding,
+            height,
+            self.tile_log,
+            claim_capacity,
+            false,
+            self.guard.available_device_bytes,
+        )?;
+        self.sequential_lane(self.tile_log, guard)
+    }
+
     pub fn prepare_fixed_base(
         &self,
         key: C62ProviderCacheKey,

@@ -23,6 +23,7 @@ pub const C61_AUTHENTICATED_WHIR_TAPES: usize = 2;
 pub const C61_AUTHENTICATED_WHIR_CHAINS: usize =
     C61_AUTHENTICATED_WHIR_MASKS_PER_TAPE * C61_AUTHENTICATED_WHIR_TAPES;
 pub const C63_AUTHENTICATED_WHIR_MASKS_PER_TAPE: usize = 4;
+pub const C64_AUTHENTICATED_WHIR_MASKS_PER_TAPE: usize = 6;
 
 /// The clear Fp2 evaluation removed from upstream and the replacement
 /// designated ZeroOpen tag have the same strict width.
@@ -38,6 +39,7 @@ pub const C61_JOINT_NATIVE_BRIDGE_FRAME_BYTES: usize = 32;
 /// `stage:8 || slot:16 || range_start:32 || component:2 || repetition:1`.
 const C61_AUTHENTICATED_WHIR_DOMAIN_PREFIX: u64 = 0b01 << 59;
 const C63_AUTHENTICATED_WHIR_DOMAIN_PREFIX: u64 = 0b10 << 59;
+const C64_AUTHENTICATED_WHIR_DOMAIN_PREFIX: u64 = 0b11 << 59;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C61AuthenticatedWhirError(String);
@@ -118,6 +120,62 @@ impl C61AuthenticatedWhirMaskRange {
 pub enum C63AuthenticatedWhirLane {
     Systematic = 0,
     Sketch = 1,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum C64ProjectedResidualFamily {
+    LeafOther = 0,
+    LeafCorrection = 1,
+    Auxiliary = 2,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C64AuthenticatedWhirMaskRange {
+    pub stage: u8,
+    pub slot: u16,
+    pub range_start: u32,
+}
+
+impl C64AuthenticatedWhirMaskRange {
+    pub fn end(self) -> Result<u32> {
+        self.range_start
+            .checked_add(C64_AUTHENTICATED_WHIR_MASKS_PER_TAPE as u32)
+            .ok_or_else(|| C61AuthenticatedWhirError::new("C6.4 WHIR mask range overflows u32"))
+    }
+
+    pub fn mask_ordinal_limb(self, family: C64ProjectedResidualFamily, limb: u8) -> Result<u32> {
+        self.end()?;
+        if limb >= 2 {
+            return Err(C61AuthenticatedWhirError::new("C6.4 WHIR limb is out of range"));
+        }
+        self.range_start
+            .checked_add(u32::from(family as u8) * 2 + u32::from(limb))
+            .ok_or_else(|| C61AuthenticatedWhirError::new("C6.4 WHIR mask ordinal overflows u32"))
+    }
+
+    pub fn correlation_domain_limb(
+        self,
+        family: C64ProjectedResidualFamily,
+        limb: u8,
+    ) -> Result<u64> {
+        self.end()?;
+        if limb >= 2 {
+            return Err(C61AuthenticatedWhirError::new("C6.4 WHIR limb is out of range"));
+        }
+        let component = u64::from(family as u8) * 2 + u64::from(limb);
+        let domain = C64_AUTHENTICATED_WHIR_DOMAIN_PREFIX
+            | (u64::from(self.stage) << 51)
+            | (u64::from(self.slot) << 35)
+            | (u64::from(self.range_start) << 3)
+            | component;
+        if domain & RESERVED_DOMAIN_BITS != 0 {
+            return Err(C61AuthenticatedWhirError::new(
+                "C6.4 WHIR correlation domain overlaps reserved MAC bits",
+            ));
+        }
+        Ok(domain)
+    }
 }
 
 /// Four response-local terminal masks on one real-PCG tape: two arithmetic
@@ -644,6 +702,27 @@ pub struct C63AuthenticatedWhirLimbPairClosure {
     pub mask_ordinals: [u32; 2],
 }
 
+/// One pair of WHIR hiding masks authenticated on both independent tapes.
+/// Tape zero supplies the private values; tape one receives canonical field
+/// corrections, so the expensive WHIR body is shared without sharing a VOLE
+/// correlation.
+#[derive(Debug)]
+pub struct C64SharedAuthenticatedWhirLimbPair {
+    values: [Fp2; 2],
+    tapes: [[Option<C61AuthenticatedWhirPreparedMask>; 2]; 2],
+    corrections: [[Fp2; 2]; 2],
+}
+
+impl C64SharedAuthenticatedWhirLimbPair {
+    pub fn values(&self) -> [Fp2; 2] {
+        self.values
+    }
+
+    pub fn corrections(&self) -> [[Fp2; 2]; 2] {
+        self.corrections
+    }
+}
+
 /// One consumed provider mask waiting for the WHIR base case.  It is neither
 /// cloneable nor serializable; finishing the closure consumes it exactly once.
 #[derive(Debug)]
@@ -851,6 +930,73 @@ pub fn prepare_c63_authenticated_whir_limb_pair(
         })
     };
     Ok(C63AuthenticatedWhirPreparedLimbPair { limbs: [prepare(0)?, prepare(1)?] })
+}
+
+pub fn prepare_c64_shared_authenticated_whir_limb_pair(
+    family: C64ProjectedResidualFamily,
+    mask_range: C64AuthenticatedWhirMaskRange,
+    streams: &mut [CorrelationStream; 2],
+) -> Result<C64SharedAuthenticatedWhirLimbPair> {
+    let mut values = [Fp2::ZERO; 2];
+    let mut tapes: [[Option<C61AuthenticatedWhirPreparedMask>; 2]; 2] =
+        std::array::from_fn(|_| std::array::from_fn(|_| None));
+    let mut corrections = [[Fp2::ZERO; 2]; 2];
+    for limb in 0..2u8 {
+        let domain = mask_range.correlation_domain_limb(family, limb)?;
+        let ordinal = mask_range.mask_ordinal_limb(family, limb)?;
+        let mut correlations = Vec::with_capacity(2);
+        for stream in streams.iter_mut() {
+            correlations.push(stream.draw_fulls(domain, 1).into_iter().next().ok_or_else(
+                || C61AuthenticatedWhirError::new("C6.4 WHIR missing full correlation"),
+            )?);
+        }
+        let [left, right]: [_; 2] = correlations
+            .try_into()
+            .map_err(|_| C61AuthenticatedWhirError::new("C6.4 WHIR tape census differs"))?;
+        let common = left.x;
+        values[usize::from(limb)] = common;
+        for (tape, correlation) in [left, right].into_iter().enumerate() {
+            let correction = common - correlation.x;
+            corrections[tape][usize::from(limb)] = correction;
+            tapes[tape][usize::from(limb)] = Some(C61AuthenticatedWhirPreparedMask {
+                value: common,
+                authenticated: correlation
+                    .authenticate(correlation.x)
+                    .add(ProverAuthed::from_public(correction)),
+                mask_domain: domain,
+                mask_ordinal: ordinal,
+            });
+        }
+    }
+    Ok(C64SharedAuthenticatedWhirLimbPair { values, tapes, corrections })
+}
+
+pub fn finish_c64_shared_authenticated_whir_limb_pair(
+    mut prepared: C64SharedAuthenticatedWhirLimbPair,
+    inputs: [C63AuthenticatedWhirNormalizedLimb; 2],
+    expected_targets: [ProverAuthed; 2],
+    transcripts: &mut [Transcript; 2],
+) -> Result<[C63AuthenticatedWhirLimbPairClosure; 2]> {
+    let mut closures = Vec::with_capacity(2);
+    for tape in 0..2 {
+        let limbs = [
+            prepared.tapes[tape][0]
+                .take()
+                .ok_or_else(|| C61AuthenticatedWhirError::new("C6.4 shared WHIR mask is absent"))?,
+            prepared.tapes[tape][1]
+                .take()
+                .ok_or_else(|| C61AuthenticatedWhirError::new("C6.4 shared WHIR mask is absent"))?,
+        ];
+        transcripts[tape]
+            .append_fp2s("c64_shared_whir_mask_corrections", &prepared.corrections[tape]);
+        closures.push(finish_c63_authenticated_whir_limb_pair(
+            C63AuthenticatedWhirPreparedLimbPair { limbs },
+            inputs,
+            expected_targets[tape],
+            &mut transcripts[tape],
+        )?);
+    }
+    closures.try_into().map_err(|_| C61AuthenticatedWhirError::new("C6.4 WHIR tape census differs"))
 }
 
 pub fn finish_c63_authenticated_whir_limb_pair(
@@ -1068,6 +1214,49 @@ pub fn verify_c63_authenticated_whir_limb_pair(
     if !zero_open_verify(residual, proof.zero_open_tag) {
         return Err(C61AuthenticatedWhirError::new(
             "C6.3 WHIR normalized limb-pair ZeroOpen failed",
+        ));
+    }
+    Ok(())
+}
+
+pub fn verify_c64_shared_authenticated_whir_limb_pair(
+    inputs: [C63AuthenticatedWhirNormalizedLimb; 2],
+    expected_target: VerifierKey,
+    proof: C61AuthenticatedWhirBaseProof,
+    corrections: [Fp2; 2],
+    context: &mut VerifierCtx,
+    family: C64ProjectedResidualFamily,
+    mask_range: C64AuthenticatedWhirMaskRange,
+    transcript: &mut Transcript,
+) -> Result<()> {
+    transcript.append_fp2s("c64_shared_whir_mask_corrections", &corrections);
+    let mut targets = [VerifierKey::ZERO; 2];
+    for limb in 0..2 {
+        let input = inputs[limb];
+        let coefficient = input.gamma * input.affine.coefficient * input.claim_weight;
+        if coefficient == Fp2::ZERO {
+            return Err(C61AuthenticatedWhirError::new(
+                "C6.4 WHIR normalized limb coefficient is zero",
+            ));
+        }
+        let mask_domain = mask_range.correlation_domain_limb(family, limb as u8)?;
+        let raw_mask_key = context
+            .expand_full_verifier_keys(mask_domain, 1)
+            .into_iter()
+            .next()
+            .ok_or_else(|| C61AuthenticatedWhirError::new("C6.4 WHIR missing limb key"))?;
+        let mask_key = raw_mask_key.add(VerifierKey::from_public(corrections[limb], context.delta));
+        let public =
+            input.combined - input.shifted_masked_claim - input.gamma * input.affine.constant;
+        targets[limb] =
+            VerifierKey::from_public(public, context.delta).add(mask_key).scale(coefficient.inv());
+    }
+    let residual =
+        targets[0].add(targets[1].scale(Fp2::new(Fp::ZERO, Fp::ONE))).sub(expected_target);
+    append_authenticated_whir_zero_open_verifier(proof.zero_open_tag, transcript);
+    if !zero_open_verify(residual, proof.zero_open_tag) {
+        return Err(C61AuthenticatedWhirError::new(
+            "C6.4 WHIR normalized limb-pair ZeroOpen failed",
         ));
     }
     Ok(())
@@ -1352,6 +1541,79 @@ mod tests {
         assert_eq!(verifier.counters.full_corrs, 4);
         #[cfg(feature = "c61-p3-authenticated-reference")]
         assert_eq!(simulator.counters.full_corrs, 4);
+    }
+
+    #[test]
+    fn c64_shared_masks_keep_one_whir_value_and_two_independent_mac_tapes() {
+        let delta = f(1_251);
+        let range = C64AuthenticatedWhirMaskRange { stage: 0x64, slot: 19, range_start: 2_100 };
+        let mut streams =
+            [CorrelationStream::new(PCG_SEEDS[0]), CorrelationStream::new(PCG_SEEDS[1])];
+        let prepared = prepare_c64_shared_authenticated_whir_limb_pair(
+            C64ProjectedResidualFamily::LeafOther,
+            range,
+            &mut streams,
+        )
+        .unwrap();
+        let corrections = prepared.corrections();
+        assert_eq!(corrections[0], [Fp2::ZERO; 2]);
+        assert_ne!(corrections[1], [Fp2::ZERO; 2]);
+
+        let target_values = [f(1_253), f(1_257)];
+        let expected_value = target_values[0] + target_values[1] * Fp2::new(Fp::ZERO, Fp::ONE);
+        let expected =
+            [target(expected_value, f(1_263), delta), target(expected_value, f(1_269), delta)];
+        let masked_claims = [f(1_271), f(1_277)];
+        let shifted =
+            [masked_claims[0] + prepared.values()[0], masked_claims[1] + prepared.values()[1]];
+        let inputs = std::array::from_fn(|limb| C63AuthenticatedWhirNormalizedLimb {
+            combined: masked_claims[limb] + f(1_281 + limb as u64) * target_values[limb],
+            shifted_masked_claim: shifted[limb],
+            gamma: f(1_281 + limb as u64),
+            affine: C61AuthenticatedWhirAffineClaim::identity(),
+            claim_weight: Fp2::ONE,
+        });
+        let mut prover_transcripts = [Transcript::new([0xE1; 32]), Transcript::new([0xE2; 32])];
+        let closures = finish_c64_shared_authenticated_whir_limb_pair(
+            prepared,
+            inputs,
+            [expected[0].0, expected[1].0],
+            &mut prover_transcripts,
+        )
+        .unwrap();
+
+        for tape in 0..2 {
+            let mut context = VerifierCtx::new(PCG_SEEDS[tape], delta);
+            let mut transcript = Transcript::new([0xE1 + tape as u8; 32]);
+            verify_c64_shared_authenticated_whir_limb_pair(
+                inputs,
+                expected[tape].1,
+                closures[tape].proof,
+                corrections[tape],
+                &mut context,
+                C64ProjectedResidualFamily::LeafOther,
+                range,
+                &mut transcript,
+            )
+            .unwrap();
+            assert_eq!(context.counters.full_corrs, 2);
+            assert_eq!(prover_transcripts[tape].ledger(), transcript.ledger());
+            assert_eq!(transcript.ledger()["c64_shared_whir_mask_corrections"], 32);
+        }
+
+        let mut changed = corrections[1];
+        changed[0] = changed[0] + Fp2::ONE;
+        assert!(verify_c64_shared_authenticated_whir_limb_pair(
+            inputs,
+            expected[1].1,
+            closures[1].proof,
+            changed,
+            &mut VerifierCtx::new(PCG_SEEDS[1], delta),
+            C64ProjectedResidualFamily::LeafOther,
+            range,
+            &mut Transcript::new([0xE2; 32]),
+        )
+        .is_err());
     }
 
     #[test]

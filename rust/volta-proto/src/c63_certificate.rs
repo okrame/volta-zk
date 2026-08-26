@@ -13,6 +13,7 @@ pub const C63_RETAINED_NON_PCS_RESPONSE_BYTES: u64 = crate::C62_RETAINED_RESPONS
 pub const C63_INHERITED_PUBLIC_ARGUMENT_BYTES: u64 = 9_210_864;
 pub const C63_SKETCH_PUBLIC_ARGUMENT_MAX_BYTES: u64 = 12_276_610;
 pub const C63_NATIVE_CERTIFICATE_VERSION: u16 = 3;
+pub const C64_NATIVE_CERTIFICATE_VERSION: u16 = 4;
 pub const C63_NATIVE_WRAPPER_QUERIES: u16 = 86;
 pub const C63_NATIVE_CERTIFICATE_FRAMING_BYTES: u64 = 793;
 pub const C63_NATIVE_STRICT_PI_FINAL_MAX_BYTES: u64 =
@@ -22,8 +23,11 @@ pub const C63_CERTIFICATE_CODEC_MAX_BYTES: u64 = C63_NATIVE_CERTIFICATE_FRAMING_
     + C63_INHERITED_PUBLIC_ARGUMENT_BYTES
     + C63_SKETCH_PUBLIC_ARGUMENT_MAX_BYTES
     + crate::C63_RESPONSE_PROOF_ENVELOPE_MAX_BYTES;
+pub const C64_NATIVE_STRICT_PI_FINAL_MAX_BYTES: u64 = 8_500_793;
+pub const C64_CERTIFICATE_CODEC_MAX_BYTES: u64 = 35_000_000;
 
 const C63_NATIVE_CERTIFICATE_MAGIC: &[u8] = b"VOLTA-C63-CERT-v3";
+const C64_NATIVE_CERTIFICATE_MAGIC: &[u8] = b"VOLTA-C64-CERT-v4";
 const C62_PUBLIC_ARGUMENT_MAGIC: &[u8; 8] = b"C62PA1\0\0";
 const C62_PUBLIC_ARGUMENT_VERSION: u16 = 1;
 const C62_PUBLIC_ARGUMENT_COMPONENTS: u16 = 7;
@@ -103,8 +107,8 @@ impl C63NativeFinalCertificate {
     pub fn seal(mut self) -> Result<Self> {
         let public = parse_public_header(self.sketch_public_argument_unchecked())?;
         self.new_head.cache_root = self.compute_state_head_digest(public);
-        self.retained_transcript_digest = c63_retained_digest(&self.retained_transcript);
-        self.proof_envelope_digest = c63_proof_digest(&self.proof_envelope);
+        self.retained_transcript_digest = retained_digest(self.version, &self.retained_transcript);
+        self.proof_envelope_digest = proof_digest(self.version, &self.proof_envelope);
         self.transition_statement_digest = self.compute_transition_statement_digest();
         self.new_head.producer_transition_digest = self.transition_statement_digest;
         self.validate()?;
@@ -112,13 +116,18 @@ impl C63NativeFinalCertificate {
     }
 
     pub fn decode(bytes: &[u8]) -> Result<Self> {
-        if bytes.len() as u64 > C63_CERTIFICATE_CODEC_MAX_BYTES {
-            return Err(C63CertificateError::new("C63NFC3 exceeds its codec cap"));
+        if bytes.len() as u64 > C64_CERTIFICATE_CODEC_MAX_BYTES {
+            return Err(C63CertificateError::new("C63/C64 certificate exceeds its codec cap"));
         }
         let mut input = Decoder::new(bytes);
-        if read(input.take(C63_NATIVE_CERTIFICATE_MAGIC.len()))? != C63_NATIVE_CERTIFICATE_MAGIC {
-            return Err(C63CertificateError::new("wrong C63NFC3 certificate magic"));
-        }
+        let magic = read(input.take(C63_NATIVE_CERTIFICATE_MAGIC.len()))?;
+        let magic_version = if magic == C63_NATIVE_CERTIFICATE_MAGIC {
+            C63_NATIVE_CERTIFICATE_VERSION
+        } else if magic == C64_NATIVE_CERTIFICATE_MAGIC {
+            C64_NATIVE_CERTIFICATE_VERSION
+        } else {
+            return Err(C63CertificateError::new("wrong C63/C64 certificate magic"));
+        };
         let certificate = Self {
             version: read(input.u16())?,
             wrapper_queries: read(input.u16())?,
@@ -146,10 +155,14 @@ impl C63NativeFinalCertificate {
             proof_envelope_digest: read(input.digest())?,
             transition_statement_digest: read(input.digest())?,
             retained_transcript: read(input.blob(C63_NATIVE_RETAINED_MAX_BYTES as usize))?,
-            proof_envelope: read(
-                input.blob(crate::C63_RESPONSE_PROOF_ENVELOPE_MAX_BYTES as usize),
-            )?,
+            proof_envelope: read(input.blob(
+                (C64_NATIVE_STRICT_PI_FINAL_MAX_BYTES - C63_NATIVE_CERTIFICATE_FRAMING_BYTES)
+                    as usize,
+            ))?,
         };
+        if certificate.version != magic_version {
+            return Err(C63CertificateError::new("certificate magic and version differ"));
+        }
         read(input.finish())?;
         certificate.validate()?;
         if certificate.encode_unchecked() != bytes {
@@ -164,7 +177,12 @@ impl C63NativeFinalCertificate {
     }
 
     pub fn digest(&self) -> Result<[u8; 32]> {
-        Ok(hash_parts(b"volta-zk/c6.3/final-certificate/v3", &[&self.encode()?]))
+        let domain = if self.version == C64_NATIVE_CERTIFICATE_VERSION {
+            b"volta-zk/c6.4/final-certificate/v4".as_slice()
+        } else {
+            b"volta-zk/c6.3/final-certificate/v3".as_slice()
+        };
+        Ok(hash_parts(domain, &[&self.encode()?]))
     }
 
     pub fn encoded_len(&self) -> Result<u64> {
@@ -200,11 +218,16 @@ impl C63NativeFinalCertificate {
     }
 
     pub fn compute_transition_statement_digest(&self) -> [u8; 32] {
-        hash_parts(b"volta-zk/c6.3/transition-statement/v3", &[&self.encode_statement()])
+        let domain = if self.version == C64_NATIVE_CERTIFICATE_VERSION {
+            b"volta-zk/c6.4/transition-statement/v4".as_slice()
+        } else {
+            b"volta-zk/c6.3/transition-statement/v3".as_slice()
+        };
+        hash_parts(domain, &[&self.encode_statement()])
     }
 
     pub fn validate(&self) -> Result<()> {
-        if self.version != C63_NATIVE_CERTIFICATE_VERSION
+        if ![C63_NATIVE_CERTIFICATE_VERSION, C64_NATIVE_CERTIFICATE_VERSION].contains(&self.version)
             || self.wrapper_queries != C63_NATIVE_WRAPPER_QUERIES
         {
             return Err(C63CertificateError::new("wrong C63NFC3 version or query profile"));
@@ -269,10 +292,15 @@ impl C63NativeFinalCertificate {
         {
             return Err(C63CertificateError::new("C63NFC3 public state binding differs"));
         }
-        C63ResponseProofEnvelope::decode(&self.proof_envelope)
-            .map_err(|error| C63CertificateError::new(error.to_string()))?;
-        if self.retained_transcript_digest != c63_retained_digest(&self.retained_transcript)
-            || self.proof_envelope_digest != c63_proof_digest(&self.proof_envelope)
+        if self.version == C63_NATIVE_CERTIFICATE_VERSION {
+            C63ResponseProofEnvelope::decode(&self.proof_envelope)
+                .map_err(|error| C63CertificateError::new(error.to_string()))?;
+        } else {
+            validate_c64_proof_envelope(&self.proof_envelope)?;
+        }
+        if self.retained_transcript_digest
+            != retained_digest(self.version, &self.retained_transcript)
+            || self.proof_envelope_digest != proof_digest(self.version, &self.proof_envelope)
         {
             return Err(C63CertificateError::new("C63NFC3 payload digest mismatch"));
         }
@@ -286,9 +314,12 @@ impl C63NativeFinalCertificate {
         let proof_boundary = C63_NATIVE_CERTIFICATE_FRAMING_BYTES
             .checked_add(self.proof_envelope.len() as u64)
             .ok_or_else(|| C63CertificateError::new("C63NFC3 proof boundary overflows"))?;
-        if encoded_len > C63_CERTIFICATE_CODEC_MAX_BYTES
-            || proof_boundary > C63_NATIVE_STRICT_PI_FINAL_MAX_BYTES
-        {
+        let (certificate_cap, proof_cap) = if self.version == C64_NATIVE_CERTIFICATE_VERSION {
+            (C64_CERTIFICATE_CODEC_MAX_BYTES, C64_NATIVE_STRICT_PI_FINAL_MAX_BYTES)
+        } else {
+            (C63_CERTIFICATE_CODEC_MAX_BYTES, C63_NATIVE_STRICT_PI_FINAL_MAX_BYTES)
+        };
+        if encoded_len > certificate_cap || proof_boundary > proof_cap {
             return Err(C63CertificateError::new("C63NFC3 size cap exceeded"));
         }
         Ok(())
@@ -302,7 +333,8 @@ impl C63NativeFinalCertificate {
 
     fn compute_state_head_digest(&self, public: PublicHeader) -> [u8; 32] {
         let mut state = Encoder::new();
-        state.raw(b"VOLTA-C63-STATE-HEAD-v3");
+        let c64 = self.version == C64_NATIVE_CERTIFICATE_VERSION;
+        state.raw(if c64 { b"VOLTA-C64-STATE-HEAD-v4" } else { b"VOLTA-C63-STATE-HEAD-v3" });
         for digest in [
             self.protocol_digest,
             self.model_digest,
@@ -325,19 +357,30 @@ impl C63NativeFinalCertificate {
         state.u32(self.old_head.cache_len);
         state.u64(public.epoch);
         state.u16(public.accepted_len);
-        hash_parts(b"volta-zk/c6.3/state-head/v3", &[&state.finish()])
+        hash_parts(
+            if c64 { b"volta-zk/c6.4/state-head/v4" } else { b"volta-zk/c6.3/state-head/v3" },
+            &[&state.finish()],
+        )
     }
 
     fn encode_statement(&self) -> Vec<u8> {
         let mut out = Encoder::new();
-        out.raw(b"VOLTA-C63-STATEMENT-v3");
+        out.raw(if self.version == C64_NATIVE_CERTIFICATE_VERSION {
+            b"VOLTA-C64-STATEMENT-v4"
+        } else {
+            b"VOLTA-C63-STATEMENT-v3"
+        });
         self.encode_fixed_prefix(&mut out, false);
         out.finish()
     }
 
     fn encode_unchecked(&self) -> Vec<u8> {
         let mut out = Encoder::new();
-        out.raw(C63_NATIVE_CERTIFICATE_MAGIC);
+        out.raw(if self.version == C64_NATIVE_CERTIFICATE_VERSION {
+            C64_NATIVE_CERTIFICATE_MAGIC
+        } else {
+            C63_NATIVE_CERTIFICATE_MAGIC
+        });
         self.encode_fixed_prefix(&mut out, true);
         out.blob(&self.retained_transcript);
         out.blob(&self.proof_envelope);
@@ -379,6 +422,36 @@ impl C63NativeFinalCertificate {
             out.digest(self.transition_statement_digest);
         }
     }
+}
+
+fn validate_c64_proof_envelope(bytes: &[u8]) -> Result<()> {
+    const HEADER: usize = 8 + 2 + 2 + 8 * 8;
+    if bytes.len() > 8_500_000
+        || bytes.len() < HEADER + 32
+        || bytes.get(..8) != Some(b"C64PIF1\0")
+        || u16::from_le_bytes(bytes[8..10].try_into().unwrap()) != 1
+        || u16::from_le_bytes(bytes[10..12].try_into().unwrap()) != 8
+    {
+        return Err(C63CertificateError::new("C64PIF1 header or size differs"));
+    }
+    let payload_bytes = (0..8).try_fold(0usize, |total, index| {
+        let offset = 12 + index * 8;
+        let length = u64::from_le_bytes(bytes[offset..offset + 8].try_into().unwrap());
+        let length = usize::try_from(length)
+            .map_err(|_| C63CertificateError::new("C64PIF1 component exceeds usize"))?;
+        total
+            .checked_add(length)
+            .ok_or_else(|| C63CertificateError::new("C64PIF1 component census overflows"))
+    })?;
+    let digest_offset = HEADER
+        .checked_add(payload_bytes)
+        .ok_or_else(|| C63CertificateError::new("C64PIF1 payload census overflows"))?;
+    if digest_offset.checked_add(32) != Some(bytes.len())
+        || bytes[digest_offset..] != *blake3::hash(&bytes[..digest_offset]).as_bytes()
+    {
+        return Err(C63CertificateError::new("C64PIF1 digest or length differs"));
+    }
+    Ok(())
 }
 
 fn parse_public_header(bytes: &[u8]) -> Result<PublicHeader> {
@@ -455,16 +528,13 @@ fn c62_public_argument_statement(bytes: &[u8]) -> Result<[u8; 32]> {
     if bytes.len() < 44
         || bytes.get(..8) != Some(C62_PUBLIC_ARGUMENT_MAGIC)
         || u16::from_le_bytes(bytes[8..10].try_into().unwrap()) != C62_PUBLIC_ARGUMENT_VERSION
-        || u16::from_le_bytes(bytes[10..12].try_into().unwrap())
-            != C62_PUBLIC_ARGUMENT_COMPONENTS
+        || u16::from_le_bytes(bytes[10..12].try_into().unwrap()) != C62_PUBLIC_ARGUMENT_COMPONENTS
     {
         return Err(C63CertificateError::new("C63NFC3 inherited public argument differs"));
     }
     let statement: [u8; 32] = bytes[12..44].try_into().unwrap();
     if statement == [0; 32] {
-        return Err(C63CertificateError::new(
-            "C63NFC3 inherited public statement is zero",
-        ));
+        return Err(C63CertificateError::new("C63NFC3 inherited public statement is zero"));
     }
     Ok(statement)
 }
@@ -483,12 +553,26 @@ fn c63_public_argument_digest(bytes: &[u8]) -> [u8; 32] {
     *hasher.finalize().as_bytes()
 }
 
-fn c63_retained_digest(bytes: &[u8]) -> [u8; 32] {
-    hash_parts(b"volta-zk/c6.3/retained-transcript/v3", &[bytes])
+fn retained_digest(version: u16, bytes: &[u8]) -> [u8; 32] {
+    hash_parts(
+        if version == C64_NATIVE_CERTIFICATE_VERSION {
+            b"volta-zk/c6.4/retained-transcript/v4"
+        } else {
+            b"volta-zk/c6.3/retained-transcript/v3"
+        },
+        &[bytes],
+    )
 }
 
-fn c63_proof_digest(bytes: &[u8]) -> [u8; 32] {
-    hash_parts(b"volta-zk/c6.3/proof-envelope/v3", &[bytes])
+fn proof_digest(version: u16, bytes: &[u8]) -> [u8; 32] {
+    hash_parts(
+        if version == C64_NATIVE_CERTIFICATE_VERSION {
+            b"volta-zk/c6.4/proof-envelope/v4"
+        } else {
+            b"volta-zk/c6.3/proof-envelope/v3"
+        },
+        &[bytes],
+    )
 }
 
 fn read<T>(value: std::result::Result<T, crate::C62CertificateError>) -> Result<T> {
@@ -628,8 +712,7 @@ mod tests {
         assert!(crate::C62NativeFinalCertificate::decode(&bytes).is_err());
 
         let mut wrong_join = certificate.clone();
-        wrong_join.retained_transcript
-            [C63_RETAINED_NON_PCS_RESPONSE_BYTES as usize + 12] ^= 1;
+        wrong_join.retained_transcript[C63_RETAINED_NON_PCS_RESPONSE_BYTES as usize + 12] ^= 1;
         assert!(wrong_join.seal().is_err());
 
         let mut changed = bytes;
@@ -647,10 +730,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!(
             "volta-c63-slot-{}-{}",
             std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos(),
         ));
         let store = crate::C6SlotStore::open(&root).unwrap();
         let reservation = crate::C6SlotReservation {
@@ -675,5 +755,28 @@ mod tests {
         assert_eq!(reopened.retransmit_c63().unwrap(), expected);
         drop(reopened);
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn c64_version_four_round_trip_is_domain_separated_and_capped_at_35_mb() {
+        let mut proof = Vec::from(b"C64PIF1\0".as_slice());
+        proof.extend_from_slice(&1u16.to_le_bytes());
+        proof.extend_from_slice(&8u16.to_le_bytes());
+        proof.extend_from_slice(&[0; 8 * 8]);
+        proof.extend_from_slice(blake3::hash(&proof).as_bytes());
+        let mut certificate = certificate();
+        certificate.version = C64_NATIVE_CERTIFICATE_VERSION;
+        certificate.proof_envelope = proof;
+        certificate = certificate.seal().unwrap();
+        let bytes = certificate.encode().unwrap();
+        assert_eq!(C63NativeFinalCertificate::decode(&bytes).unwrap(), certificate);
+        assert_eq!(
+            bytes.get(..C64_NATIVE_CERTIFICATE_MAGIC.len()),
+            Some(C64_NATIVE_CERTIFICATE_MAGIC)
+        );
+        assert_eq!(C64_CERTIFICATE_CODEC_MAX_BYTES, 35_000_000);
+        let mut changed = bytes;
+        changed[C64_NATIVE_CERTIFICATE_MAGIC.len() - 1] = b'3';
+        assert!(C63NativeFinalCertificate::decode(&changed).is_err());
     }
 }

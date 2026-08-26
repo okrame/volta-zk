@@ -27,6 +27,11 @@ pub mod c63_response_tail;
 pub mod c63_sparse_h_closure;
 pub mod c64_joint_residual_sketch;
 #[cfg(feature = "c61-p3-authenticated-reference")]
+pub mod c64_projected_residual_codec;
+pub mod c64_projected_residual_suffix;
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub mod c64_response_tail;
+#[cfg(feature = "c61-p3-authenticated-reference")]
 pub mod c64_whir_profile;
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub use c61_interactive_driver::{
@@ -71,22 +76,25 @@ pub use batch::{
 pub use c61_authenticated_whir::{
     finish_c61_authenticated_whir_base, finish_c61_authenticated_whir_base_with_zero_rows,
     finish_c61_joint_native_bridge, finish_c63_authenticated_whir_limb_pair,
-    prepare_c61_authenticated_whir_mask, prepare_c63_authenticated_whir_limb_pair,
-    prepare_c63_authenticated_whir_mask, prove_c61_authenticated_whir_base,
+    finish_c64_shared_authenticated_whir_limb_pair, prepare_c61_authenticated_whir_mask,
+    prepare_c63_authenticated_whir_limb_pair, prepare_c63_authenticated_whir_mask,
+    prepare_c64_shared_authenticated_whir_limb_pair, prove_c61_authenticated_whir_base,
     verify_c61_authenticated_whir_base, verify_c61_authenticated_whir_base_with_zero_rows,
     verify_c61_joint_native_bridge, verify_c63_authenticated_whir_base,
-    verify_c63_authenticated_whir_limb_pair, C61AuthenticatedWhirAffineClaim,
-    C61AuthenticatedWhirBaseProof, C61AuthenticatedWhirError, C61AuthenticatedWhirMaskRange,
-    C61AuthenticatedWhirPreparedMask, C61AuthenticatedWhirProverClosure,
-    C61AuthenticatedWhirProverFinishInput, C61AuthenticatedWhirProverInput,
-    C61AuthenticatedWhirVerifierInput, C61JointNativeBridgeFrame, C61JointNativeProverTerm,
-    C61JointNativeVerifierTerm, C63AuthenticatedWhirLane, C63AuthenticatedWhirLimbPairClosure,
-    C63AuthenticatedWhirMaskRange, C63AuthenticatedWhirNormalizedLimb,
-    C63AuthenticatedWhirPreparedLimbPair, C63AuthenticatedWhirVerifierInput,
-    C61_AUTHENTICATED_WHIR_CHAINS, C61_AUTHENTICATED_WHIR_MASKS_PER_TAPE,
-    C61_AUTHENTICATED_WHIR_NET_PROVIDER_BYTES, C61_AUTHENTICATED_WHIR_REMOVED_EVALUATION_BYTES,
-    C61_AUTHENTICATED_WHIR_TAPES, C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES,
-    C61_JOINT_NATIVE_BRIDGE_FRAME_BYTES, C63_AUTHENTICATED_WHIR_MASKS_PER_TAPE,
+    verify_c63_authenticated_whir_limb_pair, verify_c64_shared_authenticated_whir_limb_pair,
+    C61AuthenticatedWhirAffineClaim, C61AuthenticatedWhirBaseProof, C61AuthenticatedWhirError,
+    C61AuthenticatedWhirMaskRange, C61AuthenticatedWhirPreparedMask,
+    C61AuthenticatedWhirProverClosure, C61AuthenticatedWhirProverFinishInput,
+    C61AuthenticatedWhirProverInput, C61AuthenticatedWhirVerifierInput, C61JointNativeBridgeFrame,
+    C61JointNativeProverTerm, C61JointNativeVerifierTerm, C63AuthenticatedWhirLane,
+    C63AuthenticatedWhirLimbPairClosure, C63AuthenticatedWhirMaskRange,
+    C63AuthenticatedWhirNormalizedLimb, C63AuthenticatedWhirPreparedLimbPair,
+    C63AuthenticatedWhirVerifierInput, C64AuthenticatedWhirMaskRange, C64ProjectedResidualFamily,
+    C64SharedAuthenticatedWhirLimbPair, C61_AUTHENTICATED_WHIR_CHAINS,
+    C61_AUTHENTICATED_WHIR_MASKS_PER_TAPE, C61_AUTHENTICATED_WHIR_NET_PROVIDER_BYTES,
+    C61_AUTHENTICATED_WHIR_REMOVED_EVALUATION_BYTES, C61_AUTHENTICATED_WHIR_TAPES,
+    C61_AUTHENTICATED_WHIR_ZERO_OPEN_TAG_BYTES, C61_JOINT_NATIVE_BRIDGE_FRAME_BYTES,
+    C63_AUTHENTICATED_WHIR_MASKS_PER_TAPE, C64_AUTHENTICATED_WHIR_MASKS_PER_TAPE,
 };
 pub use c61_joint_native_bridge::{
     C61JointNativeBodiesFixed, C61JointNativeBodyBinding, C61JointNativeBodyScheduleBuilder,
@@ -193,27 +201,49 @@ pub use c63_response_tail::{
 pub use c63_sparse_h_closure::prove_c63_sparse_h_tape_closure_with_spots_resident;
 pub use c63_sparse_h_closure::{
     begin_verify_c63_sparse_h_tape_closure_reference, prove_c63_sparse_h_closure_reference,
-    prove_c63_sparse_h_tape_closure_with_spots_reference,
+    prove_c63_sparse_h_tape_closure_with_spots_reference, prove_c64_terminal_link_reference,
     verify_c63_sparse_h_closure_from_whir_openings_reference,
     verify_c63_sparse_h_closure_reference,
-    verify_c63_sparse_h_tape_closure_from_whir_openings_reference, C63SparseHClosureError,
-    C63SparseHClosureProof, C63SparseHClosureReferenceAudit, C63SparseHClosureStatement,
+    verify_c63_sparse_h_tape_closure_from_whir_openings_reference,
+    verify_c64_terminal_link_reference, C63SparseHClosureError, C63SparseHClosureProof,
+    C63SparseHClosureReferenceAudit, C63SparseHClosureStatement,
     C63SparseHTapeClosureReferenceAudit, C63SparseHTapeVerifierPending, C63TapeSystematicSpot,
     C64TerminalLinkStatement, C63_SPARSE_H_PRODUCTION_FRAMED_BYTES,
     C63_SPARSE_H_PRODUCTION_FRAMING_BYTES, C63_SPARSE_H_PRODUCTION_FULL_CORRELATIONS_PER_TAPE,
     C63_SPARSE_H_PRODUCTION_ROUNDS, C63_SPARSE_H_PRODUCTION_ROUND_PAYLOAD_BYTES,
-    C64_TERMINAL_LINK_PRODUCTION_FRAMED_BYTES,
+    C64_CORRECTION_LINK_PRODUCTION_FRAMED_BYTES,
+    C64_CORRECTION_LINK_PRODUCTION_FULL_CORRELATIONS_PER_TAPE,
+    C64_CORRECTION_LINK_PRODUCTION_ROUNDS, C64_TERMINAL_LINK_PRODUCTION_FRAMED_BYTES,
     C64_TERMINAL_LINK_PRODUCTION_FULL_CORRELATIONS_PER_TAPE, C64_TERMINAL_LINK_PRODUCTION_ROUNDS,
 };
 pub use c64_joint_residual_sketch::{
     C64JointCorrectionLayout, C64JointCorrectionRow, C64JointSketchCensus,
-    C64JointTerminalLayoutReference, C64_JOINT_COLUMNS, C64_RESIDUAL_AUXILIARY_TABLES,
-    C64_RESIDUAL_LEAF_TABLES, C64_RESIDUAL_PUBLIC_COLUMNS, C64_RESIDUAL_TERMINAL_CLAIMS,
+    C64JointTerminalLayoutReference, C64ProjectedResidualReference, C64_JOINT_COLUMNS,
+    C64_RESIDUAL_AUXILIARY_TABLES, C64_RESIDUAL_LEAF_TABLES, C64_RESIDUAL_PUBLIC_COLUMNS,
+    C64_RESIDUAL_TERMINAL_CLAIMS,
+};
+#[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
+pub use c64_joint_residual_sketch::{C64ProjectedResidualGpuCensus, C64ProjectedResidualGpuOwner};
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub use c64_projected_residual_codec::C64ProjectedResidualFrame;
+#[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
+pub use c64_projected_residual_suffix::{
+    c64_projected_residual_binding_digest, prepare_c64_projected_residual_precommit,
+    C64ProjectedResidualPrecommit,
 };
 #[cfg(feature = "c61-p3-authenticated-reference")]
+pub use c64_projected_residual_suffix::{
+    draw_c64_projected_residual_weights, replay_c64_projected_residual_precommit,
+    C64ProjectedResidualWeights,
+};
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub use c64_response_tail::C64DecodedResponseTail;
+#[cfg(feature = "c61-p3-authenticated-reference")]
 pub use c64_whir_profile::{
-    c64_whir_config, c64_whir_structural_screen, C64WhirStructuralScreen, C64_BASE_LIMBS,
-    C64_INPUT_VARIABLES, C64_SKETCH_VARIABLES,
+    c64_projected_residual_whir_config, c64_whir_config, c64_whir_structural_screen,
+    C64WhirStructuralScreen, C64_AUXILIARY_VARIABLES, C64_BASE_LIMBS, C64_CORRECTION_VARIABLES,
+    C64_INPUT_VARIABLES, C64_PROJECTED_RESIDUAL_BODIES, C64_PROJECTED_RESIDUAL_SECURITY_BITS,
+    C64_SKETCH_VARIABLES,
 };
 pub use c6_authenticated_output_link::{
     authenticate_c63_residual_source_functionals,

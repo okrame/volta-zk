@@ -30,15 +30,12 @@ use volta_mac::{
 use volta_pcg::ProductionFaseDConnection;
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_pcs::c61_authenticated_whir::{
-    C62ResponseCompilerBinding, C63AuthenticatedWhirMaskRange,
+    C62ResponseCompilerBinding, C63AuthenticatedWhirMaskRange, C64AuthenticatedWhirMaskRange,
 };
 use volta_pcs::c61_authenticated_whir_p3::C61CompilerVerifierProfile;
-#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
-use volta_pcs::c62_gpu_whir::C62GpuMmcs;
 #[cfg(feature = "c61-p3-authenticated-reference")]
 use volta_pcs::c61_authenticated_whir_p3::{
-    c62_authenticated_p3_parameter_digest,
-    decode_c62_production_compiler_commitment_descriptors,
+    c62_authenticated_p3_parameter_digest, decode_c62_production_compiler_commitment_descriptors,
     decode_c62_production_native_commitment_descriptor, decode_c62_production_public_argument,
     prepare_c61_authenticated_whir_p3_production_joint_four_chains_private_entropy_in_attempt,
     prepare_c62_authenticated_whir_p3_production_joint_four_chains_fiat_shamir_in_attempt,
@@ -52,43 +49,51 @@ use volta_pcs::c61_authenticated_whir_p3::{
     C61ProductionJointNativeProverBodiesFixed, C61ProductionPersistedResourceAdmission,
     C61ProductionResponseClaimSchedule, C61ProviderJointSessionBinding, C61ProviderSessionBinding,
     C62FiatShamirJointContext, C62FiatShamirLaneContext, C62FiatShamirPublicContext,
-    C62ProductionCommittedChainProof, C62ProductionJointNativeProverBodiesFixed,
-    C62ProductionGpuWhir, C62ProductionNativeChainProof,
+    C62ProductionCommittedChainProof, C62ProductionGpuWhir,
+    C62ProductionJointNativeProverBodiesFixed, C62ProductionNativeChainProof,
 };
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_pcs::c61_public_compression::C61NativeComponent;
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+use volta_pcs::c62_gpu_whir::C62GpuMmcs;
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_pcs::c6_blind_round_coordinator::{
     assemble_c61_native_exact_production_nbr2_certificate,
     assemble_c62_native_exact_production_nbr2_certificate,
-    assemble_c63_exact_production_components,
+    assemble_c63_exact_production_components, assemble_c64_exact_production_components,
     decode_c62_native_exact_production_blind_envelope,
-    finish_c63_production_blind_with_persisted_link, finish_c63_resident_sketch_suffix,
     finish_c61_native_production_blind_with_persisted_nbr2_link,
     finish_c62_native_decoded_nbr2_verifier,
     finish_c62_native_production_blind_with_persisted_nbr2_link,
+    finish_c63_production_blind_with_persisted_link, finish_c63_resident_sketch_suffix,
+    finish_c64_production_blind_with_projected_residual, finish_c64_resident_sketch_suffix,
     materialize_c61_native_cache_append_owner, materialize_c61_native_cache_append_verifier_owner,
     prepare_c61_native_decoded_blind_verifier, prepare_c61_native_terminal_compiler,
     prepare_c63_decoded_blind_verifier, prepare_c63_resident_sketch_suffix,
-    prepare_c63_terminal_compiler, prove_c61_native_production_blind_components,
-    prove_c63_production_blind_components, verify_c63_complete_decoded_response,
-    C61NativeExactProductionNbr2Certificate, C61NativeProductionBlindProverOutput,
-    C62ExactProductionNbr2VerifierOutput, C62NativeExactProductionNbr2Certificate,
-    C63CompleteProductionVerifierOutput, C63ProductionBlindProverOutput,
+    prepare_c63_terminal_compiler, prepare_c64_terminal_compiler,
+    prove_c61_native_production_blind_components, prove_c63_production_blind_components,
+    prove_c64_production_blind_components, verify_c63_complete_decoded_response,
+    verify_c64_complete_decoded_response, C61NativeExactProductionNbr2Certificate,
+    C61NativeProductionBlindProverOutput, C62ExactProductionNbr2VerifierOutput,
+    C62NativeExactProductionNbr2Certificate, C63CompleteProductionVerifierOutput,
+    C63ProductionBlindProverOutput, C64CompleteProductionVerifierOutput,
+    C64ProductionBlindProverOutput,
 };
 #[cfg(feature = "c6-trace")]
 use volta_pcs::C61ProductionResidualRelationBound;
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_pcs::{
-    build_c61_production_arithmetic_frame, prepare_c6_blind_residual_statement_fused,
-    C61ArithmeticFrame, C62PublicArgument, C63SparseSetupReference, C63SparseSketchReference,
-    C63VerifierSketchState, C6BlindResidualFusedCompilerContext,
-    C6BlindResidualPendingTransferFrame, C6BlindResidualStatement,
-    C6BlindResidualSumcheckProof, C6Nbr2CorrectionFunctional,
+    build_c61_production_arithmetic_frame, c64_projected_residual_binding_digest,
+    prepare_c64_projected_residual_precommit, prepare_c6_blind_residual_statement_fused,
+    replay_c64_projected_residual_precommit, C61ArithmeticFrame, C62PublicArgument,
+    C63SparseSetupReference, C63SparseSketchReference, C63VerifierSketchState,
+    C64DecodedResponseTail, C6BlindResidualFusedCompilerContext,
+    C6BlindResidualPendingTransferFrame, C6BlindResidualStatement, C6BlindResidualSumcheckProof,
+    C6Nbr2CorrectionFunctional,
 };
 use volta_pcs::{
-    c61_response_transcript_context_digest, c6_wrapper_profile_digest,
-    c63_pack_resident_append_corrections, decode_c63_response_tail,
+    c61_response_transcript_context_digest, c63_pack_resident_append_corrections,
+    c6_wrapper_profile_digest, decode_c63_response_tail,
     finish_production_c62_native_live_wrapper_roots_cuda,
     install_production_c61_native_live_wrapper_roots_verifier,
     install_production_c63_authenticated_sketch_live_wrapper_roots_verifier,
@@ -107,17 +112,17 @@ use volta_pcs::{
 };
 #[cfg(feature = "c6-trace")]
 use volta_pcs::{
-    C61NativeLiveWrapperSources, C6LiveWrapperMaskSeed, C6PersistedLiveWrapperRootBinding,
-    C6PersistentCacheStateWitness, C6PersistentCacheStaticProfile, C6VerifierLiveWrapperRootBinding,
-    C63GpuSetupOwner, C63GpuStateOwner, C63GpuTileMetadata,
+    C61NativeLiveWrapperSources, C63GpuSetupOwner, C63GpuStateOwner, C63GpuTileMetadata,
+    C6LiveWrapperMaskSeed, C6PersistedLiveWrapperRootBinding, C6PersistentCacheStateWitness,
+    C6PersistentCacheStaticProfile, C6VerifierLiveWrapperRootBinding,
 };
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_proto::c6_residual::{C6CompiledNativeTargetFunctional, C6NativeTargetProverBridgeFold};
 #[cfg(feature = "c6-trace")]
 use volta_proto::{
     prepare_c6_t1_disk_residual_owner, prepare_c6_t1_production_residual_owner,
-    replay_c6_t1_production_response_verifier,
-    replay_c62_continuation_production_response_verifier, C6ProductionPairedPcgAttempt,
+    replay_c62_continuation_production_response_verifier,
+    replay_c6_t1_production_response_verifier, C6ProductionPairedPcgAttempt,
     C6ResidualProductClaimCoordinate, C6RetainedResponseProof, C6T1DiskResidualOwner,
     C6T1ProductionResidualBoundOwner, C6T1ProductionResidualOwner,
     C6T1ProductionResponseVerifierReplay,
@@ -130,10 +135,9 @@ use volta_proto::{
 };
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_proto::{
-    C62NativeFinalCertificate, C62NativeWrapperCommitments, C62_NATIVE_CERTIFICATE_VERSION,
-    C62_NATIVE_WRAPPER_QUERIES,
-    C63NativeFinalCertificate, C63NativeWrapperCommitments, C63_NATIVE_CERTIFICATE_VERSION,
-    C63_NATIVE_WRAPPER_QUERIES,
+    C62NativeFinalCertificate, C62NativeWrapperCommitments, C63NativeFinalCertificate,
+    C63NativeWrapperCommitments, C62_NATIVE_CERTIFICATE_VERSION, C62_NATIVE_WRAPPER_QUERIES,
+    C63_NATIVE_CERTIFICATE_VERSION, C63_NATIVE_WRAPPER_QUERIES, C64_NATIVE_CERTIFICATE_VERSION,
 };
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_proto::{C6ResidualFusedCoefficientArena, C6ResidualFusedWitnessView};
@@ -142,9 +146,8 @@ use volta_proto::{C6ResidualFusedCoefficientArena, C6ResidualFusedWitnessView};
 use crate::c6_t1_owner::{
     execute_c62_t1_production_owner_export, execute_c6_t1_production_owner_export,
     materialize_c62_t1_cache_states, persist_c6_t1_native_coefficient_owners,
-    C62CampaignWorkloadOwner,
-    C62T1ProductionOwnerExport, C6T1NativeClaimOwner, C6T1NativeVerifierClaimOwner,
-    C6T1ProductionOwnerExport, C6T1WorkloadOwner,
+    C62CampaignWorkloadOwner, C62T1ProductionOwnerExport, C6T1NativeClaimOwner,
+    C6T1NativeVerifierClaimOwner, C6T1ProductionOwnerExport, C6T1WorkloadOwner,
 };
 
 const CAMPAIGN_ARTIFACT_PROFILE: &str = "C6.1-C6PA2-C6NBR3-C6ICT5-native-campaign-v7";
@@ -161,6 +164,8 @@ const C62_CAMPAIGN_ARTIFACT_PROFILE: &str =
     "C6.2-C62PA1-C62PIF1-C6NBR2-Fiat-Shamir-native-campaign-v1";
 const C63_CAMPAIGN_ARTIFACT_PROFILE: &str =
     "C6.3-C62PA1-C63PUB3-C63PIF2-authenticated-sketch-campaign-v1";
+const C64_CAMPAIGN_ARTIFACT_PROFILE: &str =
+    "C6.4-C62PA1-C63PUB3-C64PIF1-projected-residual-campaign-v1";
 const C62_CAMPAIGN_FILE_NAMES: [&str; 4] =
     ["certificate.bin", "verifier-replay.bin", "setup-manifest.bin", "public-instance.bin"];
 const CAMPAIGN_CLIENT_PARAMETERS_MAGIC: &[u8; 8] = b"C61CP4\0\0";
@@ -178,9 +183,8 @@ pub const C62_CAMPAIGN_SETUP_MAX_BYTES: u64 = 141_882_261;
 const C62_CAMPAIGN_PROFILE_BUNDLE_MAGIC: &[u8; 8] = b"C62MP1\0\0";
 const C62_CAMPAIGN_PROFILE_BUNDLE_VERSION: u16 = 1;
 const C62_CAMPAIGN_PROFILE_COUNT: usize = 17;
-const C62_CAMPAIGN_PROFILE_IDS: [u32; C62_CAMPAIGN_PROFILE_COUNT] = [
-    0, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900,
-];
+const C62_CAMPAIGN_PROFILE_IDS: [u32; C62_CAMPAIGN_PROFILE_COUNT] =
+    [0, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900];
 const C62_CAMPAIGN_PROFILE_BUNDLE_HEADER_BYTES: usize =
     8 + 2 + 2 + (4 + 8 + 32) * C62_CAMPAIGN_PROFILE_COUNT;
 const C64_CAMPAIGN_PROFILE_BUNDLE_MAGIC: &[u8; 8] = b"C64MP1\0\0";
@@ -839,8 +843,8 @@ pub fn c63_campaign_mask_range(
     attempt: C6ClientAttempt,
 ) -> Result<C63AuthenticatedWhirMaskRange, String> {
     attempt.correlation_ranges.validate().map_err(|error| error.to_string())?;
-    let slot = u16::try_from(attempt.slot)
-        .map_err(|_| "C6.3 WHIR mask slot exceeds u16".to_owned())?;
+    let slot =
+        u16::try_from(attempt.slot).map_err(|_| "C6.3 WHIR mask slot exceeds u16".to_owned())?;
     let [first, second] = attempt.correlation_ranges.coordinates;
     if first.stage != second.stage
         || first.start != second.start
@@ -855,6 +859,37 @@ pub fn c63_campaign_mask_range(
         slot,
         range_start: u32::try_from(first.start)
             .map_err(|_| "C6.3 WHIR mask range start exceeds u32".to_owned())?,
+    };
+    range.end().map_err(|error| error.to_string())?;
+    Ok(range)
+}
+
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub fn c64_campaign_mask_range(
+    attempt: C6ClientAttempt,
+) -> Result<C64AuthenticatedWhirMaskRange, String> {
+    attempt.correlation_ranges.validate().map_err(|error| error.to_string())?;
+    let slot =
+        u16::try_from(attempt.slot).map_err(|_| "C6.4 WHIR mask slot exceeds u16".to_owned())?;
+    let [first, second] = attempt.correlation_ranges.coordinates;
+    let required = (volta_pcs::C63_AUTHENTICATED_WHIR_MASKS_PER_TAPE
+        + volta_pcs::C64_AUTHENTICATED_WHIR_MASKS_PER_TAPE) as u64;
+    if first.stage != second.stage
+        || first.start != second.start
+        || first.count < required
+        || second.count < required
+    {
+        return Err("C6.4 WHIR mask reservation differs between tapes".to_owned());
+    }
+    let range_start = u32::try_from(first.start)
+        .map_err(|_| "C6.4 WHIR mask range start exceeds u32".to_owned())?
+        .checked_add(volta_pcs::C63_AUTHENTICATED_WHIR_MASKS_PER_TAPE as u32)
+        .ok_or_else(|| "C6.4 WHIR mask range start overflows".to_owned())?;
+    let range = C64AuthenticatedWhirMaskRange {
+        stage: u8::try_from(first.stage)
+            .map_err(|_| "C6.4 WHIR mask stage exceeds u8".to_owned())?,
+        slot,
+        range_start,
     };
     range.end().map_err(|error| error.to_string())?;
     Ok(range)
@@ -1073,6 +1108,19 @@ pub struct C63CampaignNativeBlindOwner {
 }
 
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub struct C64CampaignNativeBlindOwner {
+    blind: C64ProductionBlindProverOutput,
+    statements: [C6BlindResidualStatement; 2],
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+impl C64CampaignNativeBlindOwner {
+    fn into_parts(self) -> (C64ProductionBlindProverOutput, [C6BlindResidualStatement; 2]) {
+        (self.blind, self.statements)
+    }
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 impl C63CampaignNativeBlindOwner {
     fn into_parts(self) -> (C63ProductionBlindProverOutput, [C6BlindResidualStatement; 2]) {
         (self.blind, self.statements)
@@ -1205,6 +1253,76 @@ pub fn prove_c63_campaign_native_blind(
         transcript,
     )?;
     Ok(C63CampaignNativeBlindOwner { blind, statements })
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub fn prove_c64_campaign_native_blind(
+    roots: &C61CampaignLiveRoots,
+    residual: &C6T1ProductionResidualBoundOwner,
+    functional: &C62CampaignNativeFunctionalOwner,
+    mmcs: &C62GpuMmcs,
+    attempt: &mut C6ProductionPairedPcgAttempt,
+    transcript: &mut Transcript,
+) -> Result<C64CampaignNativeBlindOwner, String> {
+    use rand_010::SeedableRng;
+
+    if roots.provider_roots.cohorts().len() != 2
+        || roots.provider_roots.session_digest() != roots.session_digest
+    {
+        return Err("C6.4 blind root or session census differs".to_owned());
+    }
+    let response = residual.response();
+    let compiler = C6BlindResidualFusedCompilerContext::new(
+        response.provider().operation_plan(),
+        response.provider().extraction(),
+        response.provider().runtime(),
+        residual.provider_linear(),
+        residual.relation(),
+    );
+    let witness = C6ResidualFusedWitnessView::new(
+        residual.relation().manifest(),
+        residual.leaf(),
+        residual.closure(),
+        residual.auxiliary(),
+    )
+    .map_err(|error| error.to_string())?;
+    let arena = C6ResidualFusedCoefficientArena::new(residual.relation().manifest());
+    let statements: [C6BlindResidualStatement; 2] = (0..2u8)
+        .map(|repetition| prepare_c6_blind_residual_statement_fused(compiler, repetition))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?
+        .try_into()
+        .map_err(|_| "C6.4 blind statement census differs".to_owned())?;
+    let binding_digest = c64_projected_residual_binding_digest(
+        roots.provider_roots.fixed().binding_digest(),
+        functional.outer_statement_digest(),
+        residual.relation().digest(),
+        roots.provider_roots.source_binding_digest(),
+    )?;
+    let mut entropy = [0u8; 32];
+    OsRng
+        .try_fill_bytes(&mut entropy)
+        .map_err(|error| format!("C6.4 precommit entropy unavailable: {error}"))?;
+    let mut rng = rand_010::rngs::StdRng::from_seed(entropy);
+    let precommit = prepare_c64_projected_residual_precommit(
+        mmcs,
+        binding_digest,
+        residual.leaf(),
+        residual.closure(),
+        residual.auxiliary(),
+        transcript,
+        &mut rng,
+    )?;
+    let blind = prove_c64_production_blind_components(
+        precommit,
+        &statements,
+        compiler,
+        witness,
+        &arena,
+        attempt.prover_streams_array_mut(),
+        transcript,
+    )?;
+    Ok(C64CampaignNativeBlindOwner { blind, statements })
 }
 
 /// Exact response-owned four-chain output. Primary and secondary executions
@@ -1517,6 +1635,10 @@ pub struct C62CampaignNativeFunctionalOwner {
 
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 impl C62CampaignNativeFunctionalOwner {
+    fn outer_statement_digest(&self) -> [u8; 32] {
+        self.outer_statement_digest
+    }
+
     #[allow(clippy::type_complexity)]
     fn into_parts(
         self,
@@ -2185,6 +2307,219 @@ pub fn finish_c63_campaign_native_proof(
     Ok((inherited.encoded().to_vec(), sketch_public_argument, proof_envelope))
 }
 
+/// Complete C6.4 with the inherited cache sketch and the precommitted
+/// projected-residual proof. The historical residual output-link is absent.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+#[allow(clippy::too_many_arguments)]
+pub fn finish_c64_campaign_native_proof(
+    setup: &C6SetupManifest,
+    sparse_setup: &C63SparseSetupReference,
+    h: &C63SparseSketchReference,
+    mmcs: &C62GpuMmcs,
+    predecessor_verifier: &C63VerifierSketchState,
+    predecessor_provider: Option<Arc<C63GpuStateOwner>>,
+    successor: Arc<C63GpuStateOwner>,
+    public_attempt: C6ClientAttempt,
+    roots: &C61CampaignLiveRoots,
+    residual: &C6T1ProductionResidualBoundOwner,
+    blind: C64CampaignNativeBlindOwner,
+    equality: C61EqualityDrawn,
+    functional: C62CampaignNativeFunctionalOwner,
+    profile: &C6CanonicalTargetProfile,
+    compiler_profile: &C61CompilerVerifierProfile,
+    contexts: &C62CampaignNativeContexts,
+    admission: C61ProductionPersistedResourceAdmission,
+    attempt: &mut C6ProductionPairedPcgAttempt,
+    gpu: &C62ProductionGpuWhir,
+    spill_root: &Path,
+    transcript: &mut Transcript,
+) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>), String> {
+    use rand_010::SeedableRng;
+
+    let (blind, statements) = blind.into_parts();
+    let terminal = prepare_c64_terminal_compiler(&blind, equality, transcript)?;
+    let (
+        primary,
+        functional,
+        joint,
+        bridge,
+        native_profile_digest,
+        body_schedule_digest,
+        response_binding_digest,
+        root_binding_digest,
+        outer_statement_digest,
+    ) = functional.into_parts();
+    if joint.challenge().schedule_digest != body_schedule_digest
+        || bridge.functional_digest != functional.functional_digest()
+    {
+        return Err("C6.4 native suffix functional schedule differs".to_owned());
+    }
+    let response = residual.response();
+    let nbr2 = C6Nbr2CorrectionFunctional::new(
+        roots.provider_roots.fixed(),
+        outer_statement_digest,
+        residual.relation().manifest().digest(),
+        roots.provider_roots.source_binding_digest(),
+        response.source_schedule().digest,
+        native_profile_digest,
+        functional.functional_digest(),
+        functional.leaf_coefficients(),
+        bridge.correction,
+    )
+    .map_err(|error| error.to_string())?;
+    let binding = C62ResponseCompilerBinding {
+        schedule_digest: body_schedule_digest,
+        response_binding_digest,
+        functional_digest: functional.functional_digest(),
+        nbr2_statement_digest: nbr2.digest(),
+        root_binding_digest,
+        compiler_correction: bridge.correction,
+    };
+    binding.validate().map_err(|error| error.to_string())?;
+    let native = joint.prepare_nbr2_link(bridge.base_value, binding)?;
+
+    let compiler_roots = [spill_root.join("compiler0"), spill_root.join("compiler1")];
+    for path in &compiler_roots {
+        fs::create_dir(path).map_err(|error| format!("create C6.4 spill lane: {error}"))?;
+    }
+    let inputs = terminal.inputs();
+    if inputs.relation_challenges_digest() != residual.relation().digest()
+        || compiler_profile.operation_plan_digest()
+            != response.provider().operation_plan().artifact_digest()
+    {
+        return Err("C6.4 compiler setup or relation differs from terminal owner".to_owned());
+    }
+    let ids = C61NativeChainId::ordered();
+    let compiler = {
+        let (stream0, stream1) = attempt.prover_streams_mut();
+        [
+            run_c62_authenticated_whir_p3_production_compiler_fiat_shamir_in_attempt(
+                response.provider().operation_plan(),
+                compiler_profile.terminal_metadata().clone(),
+                response.provider().extraction(),
+                response.provider().runtime(),
+                residual.relation(),
+                inputs.leaf_points(),
+                inputs.auxiliary_points(),
+                *inputs.terminal_functionals(),
+                inputs.output_beta(),
+                inputs.relation_root(),
+                contexts.lane_contexts[4],
+                &compiler_roots[0],
+                admission,
+                gpu,
+                stream0,
+                ids[4],
+                contexts.mask_ranges[4],
+            )?,
+            run_c62_authenticated_whir_p3_production_compiler_fiat_shamir_in_attempt(
+                response.provider().operation_plan(),
+                compiler_profile.terminal_metadata().clone(),
+                response.provider().extraction(),
+                response.provider().runtime(),
+                residual.relation(),
+                inputs.leaf_points(),
+                inputs.auxiliary_points(),
+                *inputs.terminal_functionals(),
+                inputs.output_beta(),
+                inputs.relation_root(),
+                contexts.lane_contexts[5],
+                &compiler_roots[1],
+                admission,
+                gpu,
+                stream1,
+                ids[5],
+                contexts.mask_ranges[5],
+            )?,
+        ]
+    };
+    let canonical_runtime = response
+        .provider()
+        .runtime()
+        .canonical_runtime_values(response.provider().extraction())
+        .map_err(|error| error.to_string())?;
+    let arithmetic = build_c61_production_arithmetic_frame(
+        terminal.ready(),
+        outer_statement_digest,
+        &canonical_runtime,
+        inputs.functional_fold(),
+    )
+    .map_err(|error| error.to_string())?;
+
+    let mut entropy = [0u8; 32];
+    OsRng
+        .try_fill_bytes(&mut entropy)
+        .map_err(|error| format!("C6.4 WHIR entropy unavailable: {error}"))?;
+    let mut rng = rand_010::rngs::StdRng::from_seed(entropy);
+    let profile_digest = sparse_setup.production_profile_digest()?;
+    let (prepared_suffix, source_claims) = prepare_c63_resident_sketch_suffix(
+        mmcs.clone(),
+        h,
+        public_attempt,
+        setup,
+        roots.provider_roots.fixed(),
+        outer_statement_digest,
+        profile_digest,
+        roots.provider_roots.source_binding_digest(),
+        predecessor_verifier,
+        predecessor_provider,
+        Arc::clone(&successor),
+        response.cache_append_sources(),
+        response.source_schedule(),
+        response.paired_sources(),
+        attempt.prover_streams_array_mut(),
+        transcript,
+        &mut rng,
+    )?;
+    let proof = finish_c64_production_blind_with_projected_residual(
+        &roots.provider_roots,
+        blind,
+        &nbr2,
+        source_claims,
+        &terminal,
+        native,
+        c64_campaign_mask_range(public_attempt)?,
+        attempt.prover_streams_array_mut(),
+        roots.session_digest,
+        transcript,
+        &mut rng,
+    )?;
+    let suffix = finish_c64_resident_sketch_suffix(
+        prepared_suffix,
+        &proof,
+        c63_campaign_mask_range(public_attempt)?,
+        attempt.prover_streams_array_mut(),
+        &mut rng,
+    )?;
+    let (sketch_public_argument, sparse_h_closure, cache_terminal_proofs) = suffix.into_parts();
+    let response_cache_fold_targets =
+        response.cache_target_frame().encode().map_err(|error| error.to_string())?;
+    let product_coordinate_one = residual
+        .relation()
+        .claims()
+        .product_coordinate(residual.relation().manifest(), 1)
+        .map_err(|error| error.to_string())?
+        .payload_bytes();
+    let (inherited, proof_envelope) = assemble_c64_exact_production_components(
+        roots.provider_roots.fixed().statement_digest(),
+        native_profile_digest,
+        functional.functional_digest(),
+        response_binding_digest,
+        root_binding_digest,
+        profile,
+        primary,
+        compiler,
+        arithmetic,
+        &product_coordinate_one,
+        &response_cache_fold_targets,
+        &statements,
+        proof,
+        sparse_h_closure,
+        cache_terminal_proofs,
+    )?;
+    Ok((inherited.encoded().to_vec(), sketch_public_argument, proof_envelope))
+}
+
 /// Exact native provider output after the response, four-root wrapper,
 /// C6NBR2 receipt and C6PA2 assembly have all been consumed once.
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
@@ -2440,6 +2775,65 @@ pub fn seal_c63_campaign_native_output(
     sketch_public_argument: Vec<u8>,
     proof_envelope: Vec<u8>,
 ) -> Result<C63CampaignSealedNativeOutput, String> {
+    seal_c63_or_c64_campaign_native_output(
+        setup,
+        attempt,
+        old_head,
+        response_statement,
+        workload,
+        roots,
+        residual,
+        inherited_public_argument,
+        sketch_public_argument,
+        proof_envelope,
+        C63_NATIVE_CERTIFICATE_VERSION,
+    )
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+#[allow(clippy::too_many_arguments)]
+pub fn seal_c64_campaign_native_output(
+    setup: &C6SetupManifest,
+    attempt: C6ClientAttempt,
+    old_head: C6CacheHead,
+    response_statement: &C61ResponseStatementBinding,
+    workload: C61PublicWorkloadPreimage,
+    roots: &C61CampaignLiveRoots,
+    residual: &C6T1ProductionResidualBoundOwner,
+    inherited_public_argument: Vec<u8>,
+    sketch_public_argument: Vec<u8>,
+    proof_envelope: Vec<u8>,
+) -> Result<C63CampaignSealedNativeOutput, String> {
+    seal_c63_or_c64_campaign_native_output(
+        setup,
+        attempt,
+        old_head,
+        response_statement,
+        workload,
+        roots,
+        residual,
+        inherited_public_argument,
+        sketch_public_argument,
+        proof_envelope,
+        C64_NATIVE_CERTIFICATE_VERSION,
+    )
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+#[allow(clippy::too_many_arguments)]
+fn seal_c63_or_c64_campaign_native_output(
+    setup: &C6SetupManifest,
+    attempt: C6ClientAttempt,
+    old_head: C6CacheHead,
+    response_statement: &C61ResponseStatementBinding,
+    workload: C61PublicWorkloadPreimage,
+    roots: &C61CampaignLiveRoots,
+    residual: &C6T1ProductionResidualBoundOwner,
+    inherited_public_argument: Vec<u8>,
+    sketch_public_argument: Vec<u8>,
+    proof_envelope: Vec<u8>,
+    version: u16,
+) -> Result<C63CampaignSealedNativeOutput, String> {
     setup.validate().map_err(|error| error.to_string())?;
     old_head.validate().map_err(|error| error.to_string())?;
     let setup_digest = setup.digest().map_err(|error| error.to_string())?;
@@ -2488,7 +2882,7 @@ pub fn seal_c63_campaign_native_output(
     retained_transcript.extend_from_slice(&sketch_public_argument);
     let relation = residual.relation();
     let mut certificate = C63NativeFinalCertificate {
-        version: C63_NATIVE_CERTIFICATE_VERSION,
+        version,
         wrapper_queries: C63_NATIVE_WRAPPER_QUERIES,
         protocol_digest: setup.protocol_digest,
         model_digest: setup.model_digest,
@@ -3431,8 +3825,87 @@ pub struct C63CampaignLiveProductionOutput {
 }
 
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub type C64CampaignLiveProductionOutput = C63CampaignLiveProductionOutput;
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+enum C63OrC64CampaignBlindOwner {
+    C63(C63CampaignNativeBlindOwner),
+    C64(C64CampaignNativeBlindOwner),
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 #[allow(clippy::too_many_arguments)]
 pub fn run_c63_campaign_live_production(
+    setup: &C6SetupManifest,
+    sparse_setup: &C63SparseSetupReference,
+    h: &C63SparseSketchReference,
+    installed: C61CampaignInstalledSetup,
+    transition: C63CampaignTransitionOwner,
+    attempt: C6ProductionPairedPcgAttempt,
+    model_coefficients: C61ProductionCoefficientOwner,
+    embedding_coefficients: C61ProductionCoefficientOwner,
+    admission: C61ProductionPersistedResourceAdmission,
+    backend: &mut Backend,
+    gpu: &C62ProductionGpuWhir,
+    mmcs: &C62GpuMmcs,
+    gpu_setup: &C63GpuSetupOwner,
+) -> Result<C63CampaignLiveProductionOutput, String> {
+    run_c63_or_c64_campaign_live_production(
+        setup,
+        sparse_setup,
+        h,
+        installed,
+        transition,
+        attempt,
+        model_coefficients,
+        embedding_coefficients,
+        admission,
+        backend,
+        gpu,
+        mmcs,
+        gpu_setup,
+        false,
+    )
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+#[allow(clippy::too_many_arguments)]
+pub fn run_c64_campaign_live_production(
+    setup: &C6SetupManifest,
+    sparse_setup: &C63SparseSetupReference,
+    h: &C63SparseSketchReference,
+    installed: C61CampaignInstalledSetup,
+    transition: C63CampaignTransitionOwner,
+    attempt: C6ProductionPairedPcgAttempt,
+    model_coefficients: C61ProductionCoefficientOwner,
+    embedding_coefficients: C61ProductionCoefficientOwner,
+    admission: C61ProductionPersistedResourceAdmission,
+    backend: &mut Backend,
+    gpu: &C62ProductionGpuWhir,
+    mmcs: &C62GpuMmcs,
+    gpu_setup: &C63GpuSetupOwner,
+) -> Result<C64CampaignLiveProductionOutput, String> {
+    run_c63_or_c64_campaign_live_production(
+        setup,
+        sparse_setup,
+        h,
+        installed,
+        transition,
+        attempt,
+        model_coefficients,
+        embedding_coefficients,
+        admission,
+        backend,
+        gpu,
+        mmcs,
+        gpu_setup,
+        true,
+    )
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+#[allow(clippy::too_many_arguments)]
+fn run_c63_or_c64_campaign_live_production(
     setup: &C6SetupManifest,
     sparse_setup: &C63SparseSetupReference,
     h: &C63SparseSketchReference,
@@ -3446,6 +3919,7 @@ pub fn run_c63_campaign_live_production(
     gpu: &C62ProductionGpuWhir,
     mmcs: &C62GpuMmcs,
     gpu_setup: &C63GpuSetupOwner,
+    c64: bool,
 ) -> Result<C63CampaignLiveProductionOutput, String> {
     setup.validate().map_err(|error| error.to_string())?;
     let C63CampaignTransitionOwner {
@@ -3587,7 +4061,23 @@ pub fn run_c63_campaign_live_production(
     )?;
     let blind = {
         let (provider, _) = response_session.transcripts();
-        prove_c63_campaign_native_blind(&roots, &residual, &mut attempt, provider)?
+        if c64 {
+            C63OrC64CampaignBlindOwner::C64(prove_c64_campaign_native_blind(
+                &roots,
+                &residual,
+                &functional,
+                mmcs,
+                &mut attempt,
+                provider,
+            )?)
+        } else {
+            C63OrC64CampaignBlindOwner::C63(prove_c63_campaign_native_blind(
+                &roots,
+                &residual,
+                &mut attempt,
+                provider,
+            )?)
+        }
     };
     let successor_provider = propose_c63_campaign_successor_state(
         sparse_setup,
@@ -3600,32 +4090,58 @@ pub fn run_c63_campaign_live_production(
     )?;
     let (inherited_public_argument, sketch_public_argument, proof_envelope) = {
         let (provider, _) = response_session.transcripts();
-        finish_c63_campaign_native_proof(
-            setup,
-            sparse_setup,
-            h,
-            mmcs,
-            &predecessor_verifier,
-            predecessor_provider,
-            Arc::clone(&successor_provider),
-            public_attempt,
-            &roots,
-            &residual,
-            blind,
-            equality,
-            functional,
-            &native_profile,
-            &compiler_profile,
-            &contexts,
-            admission,
-            &mut attempt,
-            backend,
-            gpu,
-            &proof_root,
-            provider,
-        )?
+        match blind {
+            C63OrC64CampaignBlindOwner::C63(blind) => finish_c63_campaign_native_proof(
+                setup,
+                sparse_setup,
+                h,
+                mmcs,
+                &predecessor_verifier,
+                predecessor_provider,
+                Arc::clone(&successor_provider),
+                public_attempt,
+                &roots,
+                &residual,
+                blind,
+                equality,
+                functional,
+                &native_profile,
+                &compiler_profile,
+                &contexts,
+                admission,
+                &mut attempt,
+                backend,
+                gpu,
+                &proof_root,
+                provider,
+            )?,
+            C63OrC64CampaignBlindOwner::C64(blind) => finish_c64_campaign_native_proof(
+                setup,
+                sparse_setup,
+                h,
+                mmcs,
+                &predecessor_verifier,
+                predecessor_provider,
+                Arc::clone(&successor_provider),
+                public_attempt,
+                &roots,
+                &residual,
+                blind,
+                equality,
+                functional,
+                &native_profile,
+                &compiler_profile,
+                &contexts,
+                admission,
+                &mut attempt,
+                gpu,
+                &proof_root,
+                provider,
+            )?,
+        }
     };
-    let sealed = seal_c63_campaign_native_output(
+    let seal = if c64 { seal_c64_campaign_native_output } else { seal_c63_campaign_native_output };
+    let sealed = seal(
         setup,
         public_attempt,
         old_head,
@@ -4535,6 +5051,21 @@ pub struct C63CampaignVerifierOutput {
     pub proof_envelope_bytes: u64,
 }
 
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub struct C64CampaignVerifierOutput {
+    pub complete: C64CompleteProductionVerifierOutput,
+    pub certificate_digest: [u8; 32],
+    pub inherited_public_argument_bytes: u64,
+    pub sketch_public_argument_bytes: u64,
+    pub proof_envelope_bytes: u64,
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+enum C63OrC64CampaignVerifierOutput {
+    C63(C63CampaignVerifierOutput),
+    C64(C64CampaignVerifierOutput),
+}
+
 /// Verify response, residual wrapper, inherited six chains, exact source
 /// link, sparse closure and all eight C6.3 WHIR bodies on ordinary CPU state.
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
@@ -4555,13 +5086,96 @@ pub fn verify_c63_campaign_e2e(
     native_profile: &C6CanonicalTargetProfile,
     compiler_profile: &C61CompilerVerifierProfile,
 ) -> Result<C63CampaignVerifierOutput, String> {
+    match verify_c63_or_c64_campaign_e2e(
+        certificate,
+        verifier_replay,
+        setup,
+        sparse_setup,
+        h,
+        predecessor_state,
+        verifier_model,
+        public_instance,
+        source_manifest,
+        verifier_plan,
+        verifier_extraction,
+        verifier_extraction_setup_bytes,
+        native_profile,
+        compiler_profile,
+        false,
+    )? {
+        C63OrC64CampaignVerifierOutput::C63(output) => Ok(output),
+        C63OrC64CampaignVerifierOutput::C64(_) => unreachable!("C6.3 verifier mode"),
+    }
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+#[allow(clippy::too_many_arguments)]
+pub fn verify_c64_campaign_e2e(
+    certificate: &C63NativeFinalCertificate,
+    verifier_replay: &C6BoundProductionVerifierReplay,
+    setup: &C6SetupManifest,
+    sparse_setup: &C63SparseSetupReference,
+    h: &C63SparseSketchReference,
+    predecessor_state: &C63VerifierSketchState,
+    verifier_model: &Gpt2VerifierModel,
+    public_instance: &C61PublicWorkloadInstance,
+    source_manifest: &C6TraceSourceManifest,
+    verifier_plan: C6InstalledOperationPlan,
+    verifier_extraction: C6DecodedInstanceExtractionPlan,
+    verifier_extraction_setup_bytes: u64,
+    native_profile: &C6CanonicalTargetProfile,
+    compiler_profile: &C61CompilerVerifierProfile,
+) -> Result<C64CampaignVerifierOutput, String> {
+    match verify_c63_or_c64_campaign_e2e(
+        certificate,
+        verifier_replay,
+        setup,
+        sparse_setup,
+        h,
+        predecessor_state,
+        verifier_model,
+        public_instance,
+        source_manifest,
+        verifier_plan,
+        verifier_extraction,
+        verifier_extraction_setup_bytes,
+        native_profile,
+        compiler_profile,
+        true,
+    )? {
+        C63OrC64CampaignVerifierOutput::C64(output) => Ok(output),
+        C63OrC64CampaignVerifierOutput::C63(_) => unreachable!("C6.4 verifier mode"),
+    }
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+#[allow(clippy::too_many_arguments)]
+fn verify_c63_or_c64_campaign_e2e(
+    certificate: &C63NativeFinalCertificate,
+    verifier_replay: &C6BoundProductionVerifierReplay,
+    setup: &C6SetupManifest,
+    sparse_setup: &C63SparseSetupReference,
+    h: &C63SparseSketchReference,
+    predecessor_state: &C63VerifierSketchState,
+    verifier_model: &Gpt2VerifierModel,
+    public_instance: &C61PublicWorkloadInstance,
+    source_manifest: &C6TraceSourceManifest,
+    verifier_plan: C6InstalledOperationPlan,
+    verifier_extraction: C6DecodedInstanceExtractionPlan,
+    verifier_extraction_setup_bytes: u64,
+    native_profile: &C6CanonicalTargetProfile,
+    compiler_profile: &C61CompilerVerifierProfile,
+    c64: bool,
+) -> Result<C63OrC64CampaignVerifierOutput, String> {
     setup.validate().map_err(|error| error.to_string())?;
     certificate.encode().map_err(|error| error.to_string())?;
     let certificate_digest = certificate.digest().map_err(|error| error.to_string())?;
     let setup_digest = setup.digest().map_err(|error| error.to_string())?;
     let inherited = C62PublicArgument::decode(certificate.inherited_public_argument())
         .map_err(|error| error.to_string())?;
-    if certificate.setup_manifest_digest != setup_digest
+    if certificate.version
+        != if c64 { C64_NATIVE_CERTIFICATE_VERSION } else { C63_NATIVE_CERTIFICATE_VERSION }
+        || certificate.setup_manifest_digest != setup_digest
         || certificate.model_digest != public_instance.model_family_digest()
         || certificate.workload != public_instance.workload()
         || certificate.public_output_digest != public_instance.preimage().public_output_digest()
@@ -4634,11 +5248,44 @@ pub fn verify_c63_campaign_e2e(
     let root = roots
         .bind_residual_relation(disk_residual.manifest().clone())
         .map_err(|error| error.to_string())?;
-    let tail = decode_c63_response_tail(roots.fixed(), &certificate.proof_envelope)?;
+    let (
+        residual_sumcheck,
+        product_coordinate_one,
+        residual_pending_corrections,
+        source_functional_corrections,
+        authenticated_output_link,
+        sparse_h_closure,
+        cache_whir_terminal_tags,
+        projected_residual,
+    ) = if c64 {
+        let tail = C64DecodedResponseTail::decode(&certificate.proof_envelope)?;
+        (
+            tail.residual_sumcheck,
+            tail.product_coordinate_one,
+            tail.residual_pending_corrections,
+            tail.source_functional_corrections,
+            None,
+            tail.sparse_h_closure,
+            tail.cache_whir_terminal_tags,
+            Some(tail.projected_residual),
+        )
+    } else {
+        let tail = decode_c63_response_tail(roots.fixed(), &certificate.proof_envelope)?;
+        (
+            tail.envelope.residual_sumcheck().to_vec(),
+            tail.envelope.product_coordinate_one().to_vec(),
+            tail.envelope.residual_pending_corrections().to_vec(),
+            tail.source_functional_corrections,
+            Some(tail.authenticated_output_link),
+            tail.sparse_h_closure,
+            tail.whir_terminal_tags,
+            None,
+        )
+    };
     let coordinate_one = C6ResidualProductClaimCoordinate::decode_payload(
         disk_residual.manifest(),
         1,
-        tail.envelope.product_coordinate_one(),
+        &product_coordinate_one,
     )
     .map_err(|error| error.to_string())?;
     let relation = volta_pcs::bind_c61_disk_residual_relation(
@@ -4816,15 +5463,10 @@ pub fn verify_c63_campaign_e2e(
         .map_err(|error| error.to_string())?
         .try_into()
         .map_err(|_| "C6.3 blind statement census differs".to_owned())?;
-    let residual_proof = C6BlindResidualSumcheckProof::decode(
-        &statements,
-        tail.envelope.residual_sumcheck(),
-    )
-    .map_err(|error| error.to_string())?;
-    let residual_frame = C6BlindResidualPendingTransferFrame::decode(
-        tail.envelope.residual_pending_corrections(),
-    )
-    .map_err(|error| error.to_string())?;
+    let residual_proof = C6BlindResidualSumcheckProof::decode(&statements, &residual_sumcheck)
+        .map_err(|error| error.to_string())?;
+    let residual_frame = C6BlindResidualPendingTransferFrame::decode(&residual_pending_corrections)
+        .map_err(|error| error.to_string())?;
     let old_len = u16::try_from(certificate.workload.old_context)
         .map_err(|_| "C6.3 old cache length exceeds u16")?;
     let canonical_runtime = residual
@@ -4833,6 +5475,21 @@ pub fn verify_c63_campaign_e2e(
         .runtime()
         .canonical_runtime_values(residual.response().installed().extraction())
         .map_err(|error| error.to_string())?;
+    let projected_weights = if let Some(projected) = projected_residual.as_ref() {
+        let binding_digest = c64_projected_residual_binding_digest(
+            roots.fixed().binding_digest(),
+            outer_statement_digest,
+            residual.relation().digest(),
+            certificate.wrapper.source_binding_digest,
+        )?;
+        Some(replay_c64_projected_residual_precommit(
+            binding_digest,
+            projected.roots,
+            &mut transcript,
+        )?)
+    } else {
+        None
+    };
     let blind = prepare_c63_decoded_blind_verifier(
         &roots,
         &statements,
@@ -4904,42 +5561,96 @@ pub fn verify_c63_campaign_e2e(
             native_contexts.mask_ranges[index],
         )?;
     }
-    let complete = verify_c63_complete_decoded_response(
-        &roots,
-        blind,
-        &tail.authenticated_output_link,
-        outer_statement_digest,
-        &nbr2,
-        certificate.wrapper.source_binding_digest,
-        old_len,
-        residual.response().cache_append_sources(),
-        residual.response().source_schedule(),
-        &tail.source_functional_corrections,
-        native,
-        certificate.sketch_public_argument(),
-        attempt,
-        h,
-        &tail.sparse_h_closure,
-        predecessor_state,
-        tail.whir_terminal_tags,
-        c63_campaign_mask_range(attempt)?,
-        &mut contexts,
-        &mut transcript,
-    )?;
-    if complete.inherited().inherited().bound_slots() != 2 * 40
-        || complete.inherited().inherited().joint_native().cohort_count != 2
-        || complete.successor_state().epoch() != certificate.new_head.epoch
-        || u32::from(complete.successor_state().accepted_len()) != certificate.new_head.cache_len
-    {
-        return Err("C6.3 final verifier census or successor differs".to_owned());
+    if c64 {
+        let projected = projected_residual
+            .as_ref()
+            .ok_or_else(|| "C6.4 projected residual frame is absent".to_owned())?;
+        let precommit_binding_digest = c64_projected_residual_binding_digest(
+            roots.fixed().binding_digest(),
+            outer_statement_digest,
+            residual.relation().digest(),
+            certificate.wrapper.source_binding_digest,
+        )?;
+        let complete = verify_c64_complete_decoded_response(
+            &roots,
+            blind,
+            outer_statement_digest,
+            &nbr2,
+            certificate.wrapper.source_binding_digest,
+            old_len,
+            residual.response().cache_append_sources(),
+            residual.response().source_schedule(),
+            &source_functional_corrections,
+            native,
+            certificate.sketch_public_argument(),
+            attempt,
+            h,
+            &sparse_h_closure,
+            predecessor_state,
+            cache_whir_terminal_tags,
+            c63_campaign_mask_range(attempt)?,
+            projected,
+            precommit_binding_digest,
+            projected_weights.ok_or_else(|| "C6.4 projection weights are absent".to_owned())?,
+            c64_campaign_mask_range(attempt)?,
+            &mut contexts,
+            &mut transcript,
+        )?;
+        if complete.joint_native().cohort_count != 2
+            || complete.successor_state().epoch() != certificate.new_head.epoch
+            || u32::from(complete.successor_state().accepted_len())
+                != certificate.new_head.cache_len
+        {
+            return Err("C6.4 final verifier census or successor differs".to_owned());
+        }
+        Ok(C63OrC64CampaignVerifierOutput::C64(C64CampaignVerifierOutput {
+            complete,
+            certificate_digest,
+            inherited_public_argument_bytes: certificate.inherited_public_argument().len() as u64,
+            sketch_public_argument_bytes: certificate.sketch_public_argument().len() as u64,
+            proof_envelope_bytes: certificate.proof_envelope.len() as u64,
+        }))
+    } else {
+        let complete = verify_c63_complete_decoded_response(
+            &roots,
+            blind,
+            authenticated_output_link
+                .as_ref()
+                .ok_or_else(|| "C6.3 authenticated output link is absent".to_owned())?,
+            outer_statement_digest,
+            &nbr2,
+            certificate.wrapper.source_binding_digest,
+            old_len,
+            residual.response().cache_append_sources(),
+            residual.response().source_schedule(),
+            &source_functional_corrections,
+            native,
+            certificate.sketch_public_argument(),
+            attempt,
+            h,
+            &sparse_h_closure,
+            predecessor_state,
+            cache_whir_terminal_tags,
+            c63_campaign_mask_range(attempt)?,
+            &mut contexts,
+            &mut transcript,
+        )?;
+        if complete.inherited().inherited().bound_slots() != 2 * 40
+            || complete.inherited().inherited().joint_native().cohort_count != 2
+            || complete.successor_state().epoch() != certificate.new_head.epoch
+            || u32::from(complete.successor_state().accepted_len())
+                != certificate.new_head.cache_len
+        {
+            return Err("C6.3 final verifier census or successor differs".to_owned());
+        }
+        Ok(C63OrC64CampaignVerifierOutput::C63(C63CampaignVerifierOutput {
+            complete,
+            certificate_digest,
+            inherited_public_argument_bytes: certificate.inherited_public_argument().len() as u64,
+            sketch_public_argument_bytes: certificate.sketch_public_argument().len() as u64,
+            proof_envelope_bytes: certificate.proof_envelope.len() as u64,
+        }))
     }
-    Ok(C63CampaignVerifierOutput {
-        complete,
-        certificate_digest,
-        inherited_public_argument_bytes: certificate.inherited_public_argument().len() as u64,
-        sketch_public_argument_bytes: certificate.sketch_public_argument().len() as u64,
-        proof_envelope_bytes: certificate.proof_envelope.len() as u64,
-    })
 }
 
 /// Consume one strict disk artifact through the complete C6.2 verifier.
@@ -5009,6 +5720,50 @@ pub fn verify_c63_loaded_campaign_e2e(
         wire_bytes: _,
     } = artifact;
     verify_c63_campaign_e2e(
+        &certificate,
+        &verifier_replay,
+        &setup_manifest,
+        sparse_setup,
+        h,
+        predecessor_state,
+        &verifier_model,
+        &public_instance,
+        &source_manifest,
+        verifier_plan,
+        verifier_extraction,
+        verifier_extraction_setup_bytes,
+        &native_profile,
+        &compiler_profile,
+    )
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub fn verify_c64_loaded_campaign_e2e(
+    artifact: C63CampaignArtifact,
+    sparse_setup: &C63SparseSetupReference,
+    h: &C63SparseSketchReference,
+    predecessor_state: &C63VerifierSketchState,
+) -> Result<C64CampaignVerifierOutput, String> {
+    let C63CampaignArtifact {
+        certificate,
+        verifier_replay,
+        setup_manifest,
+        verifier_model,
+        source_manifest,
+        operation_plan_artifact: _,
+        verifier_extraction_artifact: _,
+        verifier_plan,
+        verifier_extraction,
+        verifier_extraction_setup_bytes,
+        native_profile,
+        compiler_profile,
+        quantization_digest: _,
+        public_instance,
+        inherited_public_argument: _,
+        source_git_commit: _,
+        wire_bytes: _,
+    } = artifact;
+    verify_c64_campaign_e2e(
         &certificate,
         &verifier_replay,
         &setup_manifest,
@@ -5222,8 +5977,7 @@ fn encode_campaign_client_parameters_with_plan_limit(
     exact_plan_bytes: Option<usize>,
     allocation_bytes: Option<usize>,
 ) -> Result<Vec<u8>, String> {
-    if exact_plan_bytes
-        .is_some_and(|expected| installed.operation_plan_artifact.len() != expected)
+    if exact_plan_bytes.is_some_and(|expected| installed.operation_plan_artifact.len() != expected)
         || installed.operation_plan_artifact.is_empty()
         || installed.operation_plan_artifact.len() > C61_CANONICAL_OPERATION_PLAN_BYTES
         || quantization_digest == [0; 32]
@@ -5246,9 +6000,7 @@ fn encode_campaign_client_parameters_with_plan_limit(
         &quantization_digest,
         &compiler_profile,
     ];
-    let header_bytes = magic.len()
-        + 4
-        + CAMPAIGN_CLIENT_PARAMETER_COMPONENTS * (8 + 32);
+    let header_bytes = magic.len() + 4 + CAMPAIGN_CLIENT_PARAMETER_COMPONENTS * (8 + 32);
     let used = components.iter().try_fold(header_bytes, |total, component| {
         total
             .checked_add(component.len())
@@ -5400,17 +6152,11 @@ fn c62_profile_index(old_context: u32) -> Result<usize, String> {
         .ok_or_else(|| "C6.2 workload has no registered setup profile".to_owned())
 }
 
-fn c62_installed_profile_matches(
-    index: usize,
-    installed: &C61CampaignInstalledSetup,
-) -> bool {
+fn c62_installed_profile_matches(index: usize, installed: &C61CampaignInstalledSetup) -> bool {
     c62_profile_topology_matches(index, installed.verifier_plan.topology())
 }
 
-fn c62_profile_topology_matches(
-    index: usize,
-    topology: C6OperationPlanTopologyIdentity,
-) -> bool {
+fn c62_profile_topology_matches(index: usize, topology: C6OperationPlanTopologyIdentity) -> bool {
     C62_CAMPAIGN_PROFILE_IDS
         .get(index)
         .is_some_and(|&old_context| campaign_profile_topology_matches(old_context, topology))
@@ -5503,7 +6249,9 @@ fn encode_c64_campaign_profile_bundle(
     let mut profiles = Vec::with_capacity(C64_CAMPAIGN_PROFILE_COUNT);
     for (old_context, profile) in C64_CAMPAIGN_PROFILE_IDS.into_iter().zip(installed) {
         if !campaign_profile_topology_matches(old_context, profile.verifier_plan.topology()) {
-            return Err(format!("C6.4 installed setup profile {old_context} has the wrong topology"));
+            return Err(format!(
+                "C6.4 installed setup profile {old_context} has the wrong topology"
+            ));
         }
         profiles.push(encode_campaign_client_parameters_with_plan_limit(
             profile,
@@ -5555,9 +6303,8 @@ fn c62_campaign_profile_bundle_slices(
         || bundle.get(..8) != Some(C62_CAMPAIGN_PROFILE_BUNDLE_MAGIC)
         || u16::from_le_bytes(bundle[8..10].try_into().expect("fixed profile version"))
             != C62_CAMPAIGN_PROFILE_BUNDLE_VERSION
-        || usize::from(u16::from_le_bytes(
-            bundle[10..12].try_into().expect("fixed profile count"),
-        )) != C62_CAMPAIGN_PROFILE_COUNT
+        || usize::from(u16::from_le_bytes(bundle[10..12].try_into().expect("fixed profile count")))
+            != C62_CAMPAIGN_PROFILE_COUNT
     {
         return Err("C6.2 setup profile bundle header or length differs".to_owned());
     }
@@ -5590,9 +6337,8 @@ fn c62_campaign_profile_bundle_slices(
         let end = cursor
             .checked_add(length)
             .ok_or_else(|| "C6.2 setup profile offset overflows".to_owned())?;
-        let profile = bundle
-            .get(cursor..end)
-            .ok_or_else(|| "C6.2 setup profile is truncated".to_owned())?;
+        let profile =
+            bundle.get(cursor..end).ok_or_else(|| "C6.2 setup profile is truncated".to_owned())?;
         let expected = &bundle[digest_start + 32 * index..digest_start + 32 * (index + 1)];
         if blake3::hash(profile).as_bytes() != expected {
             return Err(format!("C6.2 setup profile {index} digest differs"));
@@ -5603,9 +6349,8 @@ fn c62_campaign_profile_bundle_slices(
     if cursor != bundle.len() {
         return Err("C6.2 setup profile bundle has trailing bytes".to_owned());
     }
-    let profiles: [&[u8]; C62_CAMPAIGN_PROFILE_COUNT] = profiles
-        .try_into()
-        .map_err(|_| "C6.2 setup profile census differs".to_owned())?;
+    let profiles: [&[u8]; C62_CAMPAIGN_PROFILE_COUNT] =
+        profiles.try_into().map_err(|_| "C6.2 setup profile census differs".to_owned())?;
     let mut verifier_model_digest = None;
     let mut quantization = None;
     for profile in profiles {
@@ -5630,9 +6375,8 @@ fn c64_campaign_profile_bundle_slices(
         || bundle.get(..8) != Some(C64_CAMPAIGN_PROFILE_BUNDLE_MAGIC)
         || u16::from_le_bytes(bundle[8..10].try_into().expect("fixed profile version"))
             != C64_CAMPAIGN_PROFILE_BUNDLE_VERSION
-        || usize::from(u16::from_le_bytes(
-            bundle[10..12].try_into().expect("fixed profile count"),
-        )) != C64_CAMPAIGN_PROFILE_COUNT
+        || usize::from(u16::from_le_bytes(bundle[10..12].try_into().expect("fixed profile count")))
+            != C64_CAMPAIGN_PROFILE_COUNT
     {
         return Err("C6.4 setup profile bundle header or length differs".to_owned());
     }
@@ -5665,9 +6409,8 @@ fn c64_campaign_profile_bundle_slices(
         let end = cursor
             .checked_add(length)
             .ok_or_else(|| "C6.4 setup profile offset overflows".to_owned())?;
-        let profile = bundle
-            .get(cursor..end)
-            .ok_or_else(|| "C6.4 setup profile is truncated".to_owned())?;
+        let profile =
+            bundle.get(cursor..end).ok_or_else(|| "C6.4 setup profile is truncated".to_owned())?;
         let expected = &bundle[digest_start + 32 * index..digest_start + 32 * (index + 1)];
         if blake3::hash(profile).as_bytes() != expected {
             return Err(format!("C6.4 setup profile {index} digest differs"));
@@ -5678,9 +6421,8 @@ fn c64_campaign_profile_bundle_slices(
     if cursor != bundle.len() {
         return Err("C6.4 setup profile bundle has trailing bytes".to_owned());
     }
-    let profiles: [&[u8]; C64_CAMPAIGN_PROFILE_COUNT] = profiles
-        .try_into()
-        .map_err(|_| "C6.4 setup profile census differs".to_owned())?;
+    let profiles: [&[u8]; C64_CAMPAIGN_PROFILE_COUNT] =
+        profiles.try_into().map_err(|_| "C6.4 setup profile census differs".to_owned())?;
     let mut verifier_model_digest = None;
     let mut quantization = None;
     for profile in profiles {
@@ -5703,8 +6445,7 @@ pub fn encode_c62_campaign_client_parameters(
     verifier_model: &Gpt2VerifierModel,
     quantization_digest: [u8; 32],
 ) -> Result<Vec<u8>, String> {
-    let inner =
-        encode_c62_campaign_profile_bundle(installed, verifier_model, quantization_digest)?;
+    let inner = encode_c62_campaign_profile_bundle(installed, verifier_model, quantization_digest)?;
     let encoded = encode_c62_client_parameter_envelope(&inner)?;
     if encoded.len() > C62_CAMPAIGN_CLIENT_PARAMETERS_MAX_BYTES {
         return Err("C6.2 client parameters exceed their compressed setup cap".to_owned());
@@ -5717,8 +6458,7 @@ pub fn encode_c64_campaign_client_parameters(
     verifier_model: &Gpt2VerifierModel,
     quantization_digest: [u8; 32],
 ) -> Result<Vec<u8>, String> {
-    let inner =
-        encode_c64_campaign_profile_bundle(installed, verifier_model, quantization_digest)?;
+    let inner = encode_c64_campaign_profile_bundle(installed, verifier_model, quantization_digest)?;
     let encoded = encode_c62_client_parameter_envelope(&inner)?;
     if encoded.len() > C62_CAMPAIGN_CLIENT_PARAMETERS_MAX_BYTES {
         return Err("C6.4 client parameters exceed their compressed setup cap".to_owned());
@@ -5825,14 +6565,11 @@ fn campaign_client_parameter_components<'a>(
     exact_total_bytes: Option<usize>,
     exact_plan_bytes: Option<usize>,
 ) -> Result<[&'a [u8]; CAMPAIGN_CLIENT_PARAMETER_COMPONENTS], String> {
-    let header_bytes = magic.len()
-        + 4
-        + CAMPAIGN_CLIENT_PARAMETER_COMPONENTS * (8 + 32);
+    let header_bytes = magic.len() + 4 + CAMPAIGN_CLIENT_PARAMETER_COMPONENTS * (8 + 32);
     if bytes.len() < header_bytes
         || exact_total_bytes.is_some_and(|expected| bytes.len() != expected)
         || bytes.get(..8) != Some(magic)
-        || u16::from_le_bytes(bytes[8..10].try_into().expect("fixed width"))
-            != version
+        || u16::from_le_bytes(bytes[8..10].try_into().expect("fixed width")) != version
         || bytes[10..12] != [0, 0]
     {
         return Err("C6.1 client-parameter header/profile mismatch".to_owned());
@@ -5990,9 +6727,7 @@ fn decode_c61_campaign_client_parameters(
     decode_campaign_client_parameters_from_components(components)
 }
 
-fn decode_c62_campaign_profile(
-    bytes: &[u8],
-) -> Result<DecodedCampaignClientParameters, String> {
+fn decode_c62_campaign_profile(bytes: &[u8]) -> Result<DecodedCampaignClientParameters, String> {
     let components = c62_campaign_client_parameter_components(bytes)?;
     decode_campaign_client_parameters_from_components(components)
 }
@@ -6578,12 +7313,16 @@ fn decode_c62_campaign_payloads(
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 fn decode_c63_campaign_payloads(
     payloads: &C62CampaignPayloads,
+    expected_version: u16,
 ) -> Result<C63CampaignArtifact, String> {
     if payloads.public_instance.len() > PUBLIC_INSTANCE_MAX_BYTES {
         return Err("C6.3 campaign public local artifact size differs".to_owned());
     }
     let certificate = C63NativeFinalCertificate::decode(&payloads.certificate)
         .map_err(|error| error.to_string())?;
+    if certificate.version != expected_version {
+        return Err("C6.3/C6.4 campaign certificate version differs".to_owned());
+    }
     let verifier_replay =
         C6BoundProductionVerifierReplay::decode_client_state(&payloads.verifier_replay)?;
     let setup_manifest =
@@ -6734,6 +7473,51 @@ pub fn create_c63_campaign_artifact(
     public_instance: &C61PublicWorkloadInstance,
     source_git_commit: &str,
 ) -> Result<(), String> {
+    create_c63_or_c64_campaign_artifact(
+        root,
+        certificate,
+        verifier_replay,
+        setup_manifest,
+        public_instance,
+        source_git_commit,
+        C63_NATIVE_CERTIFICATE_VERSION,
+        C63_CAMPAIGN_ARTIFACT_PROFILE,
+    )
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub fn create_c64_campaign_artifact(
+    root: &Path,
+    certificate: &C63NativeFinalCertificate,
+    verifier_replay: &C6BoundProductionVerifierReplay,
+    setup_manifest: &C6SetupManifest,
+    public_instance: &C61PublicWorkloadInstance,
+    source_git_commit: &str,
+) -> Result<(), String> {
+    create_c63_or_c64_campaign_artifact(
+        root,
+        certificate,
+        verifier_replay,
+        setup_manifest,
+        public_instance,
+        source_git_commit,
+        C64_NATIVE_CERTIFICATE_VERSION,
+        C64_CAMPAIGN_ARTIFACT_PROFILE,
+    )
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+#[allow(clippy::too_many_arguments)]
+fn create_c63_or_c64_campaign_artifact(
+    root: &Path,
+    certificate: &C63NativeFinalCertificate,
+    verifier_replay: &C6BoundProductionVerifierReplay,
+    setup_manifest: &C6SetupManifest,
+    public_instance: &C61PublicWorkloadInstance,
+    source_git_commit: &str,
+    version: u16,
+    profile: &str,
+) -> Result<(), String> {
     validate_source_commit(source_git_commit)?;
     let inherited = validate_c63_campaign_bindings(
         certificate,
@@ -6747,10 +7531,10 @@ pub fn create_c63_campaign_artifact(
         setup_manifest: setup_manifest.encode().map_err(|error| error.to_string())?,
         public_instance: public_instance.encode().map_err(|error| error.to_string())?,
     };
-    decode_c63_campaign_payloads(&payloads)?;
+    decode_c63_campaign_payloads(&payloads, version)?;
     let record = CampaignArtifactRecord {
         schema: 1,
-        profile: C63_CAMPAIGN_ARTIFACT_PROFILE.to_owned(),
+        profile: profile.to_owned(),
         source_git_commit: source_git_commit.to_owned(),
         git_dirty: false,
         backend: CAMPAIGN_BACKEND.to_owned(),
@@ -6871,6 +7655,28 @@ pub fn load_c62_campaign_artifact(root: &Path) -> Result<C62CampaignArtifact, St
 /// Load and cross-bind one exact C6.3 disk artifact.
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 pub fn load_c63_campaign_artifact(root: &Path) -> Result<C63CampaignArtifact, String> {
+    load_c63_or_c64_campaign_artifact(
+        root,
+        C63_NATIVE_CERTIFICATE_VERSION,
+        C63_CAMPAIGN_ARTIFACT_PROFILE,
+    )
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub fn load_c64_campaign_artifact(root: &Path) -> Result<C63CampaignArtifact, String> {
+    load_c63_or_c64_campaign_artifact(
+        root,
+        C64_NATIVE_CERTIFICATE_VERSION,
+        C64_CAMPAIGN_ARTIFACT_PROFILE,
+    )
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+fn load_c63_or_c64_campaign_artifact(
+    root: &Path,
+    version: u16,
+    profile: &str,
+) -> Result<C63CampaignArtifact, String> {
     validate_c62_campaign_directory_census(root)?;
     let manifest_bytes = fs::read(root.join("manifest.json"))
         .map_err(|error| format!("read C6.3 campaign manifest: {error}"))?;
@@ -6884,7 +7690,7 @@ pub fn load_c63_campaign_artifact(root: &Path) -> Result<C63CampaignArtifact, St
     }
     validate_source_commit(&record.source_git_commit)?;
     if record.schema != 1
-        || record.profile != C63_CAMPAIGN_ARTIFACT_PROFILE
+        || record.profile != profile
         || record.git_dirty
         || record.backend != CAMPAIGN_BACKEND
         || record.pcg != CAMPAIGN_PCG
@@ -6900,7 +7706,7 @@ pub fn load_c63_campaign_artifact(root: &Path) -> Result<C63CampaignArtifact, St
         setup_manifest: load_campaign_file(root, &record.files[2])?,
         public_instance: load_campaign_file(root, &record.files[3])?,
     };
-    let mut artifact = decode_c63_campaign_payloads(&payloads)?;
+    let mut artifact = decode_c63_campaign_payloads(&payloads, version)?;
     if record.wire_bytes != artifact.wire_bytes
         || parse_hex_32(&record.certificate_digest, "C6.3 campaign certificate digest")?
             != artifact.certificate.digest().map_err(|error| error.to_string())?
@@ -7700,9 +8506,8 @@ mod campaign_artifact_tests {
         let compiler = suffix
             .find("run_c62_authenticated_whir_p3_production_compiler_fiat_shamir_in_attempt(")
             .unwrap();
-        let receipt = suffix
-            .find("finish_c62_native_production_blind_with_persisted_nbr2_link(")
-            .unwrap();
+        let receipt =
+            suffix.find("finish_c62_native_production_blind_with_persisted_nbr2_link(").unwrap();
         assert!(nbr2 < binding && binding < relation && relation < compiler && compiler < receipt);
         let signature = suffix.split_once(") -> Result").unwrap().0;
         for forbidden in ["binding:", "eta:", "challenge:", "response_target:"] {
@@ -7858,15 +8663,9 @@ mod campaign_artifact_tests {
         for stale in ["4_976_100, 17_189_671", "4_976_101, 28_845_631"] {
             assert!(!matcher.contains(stale));
         }
-        for (old_context, expected) in [
-            (0, 0),
-            (150, 1),
-            (200, 2),
-            (250, 3),
-            (450, 7),
-            (500, 8),
-            (900, 16),
-        ] {
+        for (old_context, expected) in
+            [(0, 0), (150, 1), (200, 2), (250, 3), (450, 7), (500, 8), (900, 16)]
+        {
             assert_eq!(c62_profile_index(old_context).unwrap(), expected);
         }
         for old_context in [1, 149, 201, 451, 901, 950] {

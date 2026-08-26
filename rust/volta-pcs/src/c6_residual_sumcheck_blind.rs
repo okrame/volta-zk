@@ -4952,14 +4952,10 @@ mod tests {
 
     #[cfg(feature = "c6-trace")]
     #[test]
-    fn c64_joint_terminal_link_folds_the_exact_pending_claims() {
-        use crate::c63_sparse_h_closure::{
-            prove_c64_terminal_link_reference, verify_c64_terminal_link_reference,
-            C64TerminalLinkStatement,
-        };
+    fn c64_projected_residual_folds_the_exact_pending_claims() {
         use crate::c64_joint_residual_sketch::{
-            fold_c64_terminal_pending_prover, fold_c64_terminal_pending_verifier,
-            C64JointTerminalLayoutReference, C64_JOINT_COLUMNS,
+            fold_c64_projected_pending_prover, fold_c64_projected_pending_verifier,
+            C64ProjectedResidualReference, C64_RESIDUAL_FAMILIES,
         };
         use volta_proto::mle::eval_mle;
 
@@ -4988,57 +4984,46 @@ mod tests {
                 &mut prover_transcript,
             )
             .unwrap();
-        let cache = vec![[Fp::new(73); C64_JOINT_COLUMNS], [Fp::new(79); C64_JOINT_COLUMNS]];
-        let layout = C64JointTerminalLayoutReference::new(
-            128,
-            &cache,
+        let projected = C64ProjectedResidualReference::new(
+            1usize << fixture.manifest().leaf_log2(),
+            1usize << fixture.manifest().auxiliary_log2(),
+            &[symbol(8_001), symbol(8_003), symbol(8_009)],
+            &[symbol(8_011), symbol(8_021), symbol(8_023), symbol(8_029)],
             fixture.leaf_witness(),
             fixture.closure_witness(),
             fixture.auxiliary_witness(),
         )
         .unwrap();
-        let joint_roots = [0x64; 64];
-        prover_transcript.append_message("c64_joint_terminal_roots", &joint_roots);
-        let beta = prover_transcript.challenge_fp2();
-        let mut power = Fp2::ONE;
-        let weights = std::array::from_fn(|_| {
-            let value = power;
-            power = power * beta;
-            value
-        });
-        let coefficients = layout
-            .terminal_coefficients_reference(
-                [terminal.leaf_point(0).unwrap(), terminal.leaf_point(1).unwrap()],
-                [terminal.auxiliary_point(0).unwrap(), terminal.auxiliary_point(1).unwrap()],
-                &weights,
-            )
-            .unwrap();
-        let (initial_claims, pending_digest) =
-            fold_c64_terminal_pending_prover(&pending, &weights).unwrap();
-        assert_eq!(
-            initial_claims[0].x,
-            layout.evaluate_terminal_functional_reference(&coefficients).unwrap()
-        );
-        let statement = C64TerminalLinkStatement::new(
-            layout.binding_digest(),
-            C64JointTerminalLayoutReference::coefficient_digest(&coefficients),
-            pending_digest,
-            coefficients.len().ilog2() as u8,
+        let projected_pending = fold_c64_projected_pending_prover(
+            &pending,
+            projected.leaf_weights(),
+            projected.auxiliary_weights(),
         )
         .unwrap();
-        let message = layout.private_message_reference();
-        let opening_tags = [symbol(9_101), symbol(9_103)];
-        let terminal_link = prove_c64_terminal_link_reference(
-            &coefficients,
-            &message,
-            initial_claims,
-            &statement,
-            &mut streams,
-            &mut prover_transcript,
-            |tape, point| Ok(ProverAuthed::new(eval_mle(&message, point), opening_tags[tape])),
-        )
-        .unwrap();
-
+        for repetition in 0..2 {
+            assert_eq!(
+                projected_pending[0][repetition][0].x,
+                eval_mle(projected.leaf_other(), terminal.leaf_point(repetition).unwrap())
+            );
+            assert_eq!(
+                projected_pending[1][repetition][0].x,
+                {
+                    let mut correction_point = terminal.leaf_point(repetition).unwrap().to_vec();
+                    correction_point.push(Fp2::ZERO);
+                    projected.leaf_weights()[3]
+                        * eval_mle(projected.leaf_correction(), &correction_point)
+                } + {
+                    let mut correction_point = terminal.leaf_point(repetition).unwrap().to_vec();
+                    correction_point.push(Fp2::ONE);
+                    projected.leaf_weights()[6]
+                        * eval_mle(projected.leaf_correction(), &correction_point)
+                }
+            );
+            assert_eq!(
+                projected_pending[2][repetition][0].x,
+                eval_mle(projected.auxiliary(), terminal.auxiliary_point(repetition).unwrap())
+            );
+        }
         let mut contexts = verifier_contexts();
         let deltas = [contexts[0].delta, contexts[1].delta];
         let mut verifier_transcript = Transcript::new(CHALLENGE_SEED);
@@ -5051,27 +5036,22 @@ mod tests {
             &mut verifier_transcript,
         )
         .unwrap();
-        verifier_transcript.append_message("c64_joint_terminal_roots", &joint_roots);
-        assert_eq!(verifier_transcript.challenge_fp2(), beta);
-        let (initial_keys, verifier_pending_digest) =
-            fold_c64_terminal_pending_verifier(&verified_pending, &weights).unwrap();
-        assert_eq!(verifier_pending_digest, pending_digest);
-        let audit = verify_c64_terminal_link_reference(
-            &coefficients,
-            initial_keys,
-            &statement,
-            &terminal_link,
-            &mut contexts,
-            &mut verifier_transcript,
-            |tape, point| {
-                let value = eval_mle(&message, point);
-                Ok(VerifierKey::new(opening_tags[tape] + deltas[tape] * value))
-            },
+        let projected_keys = fold_c64_projected_pending_verifier(
+            &verified_pending,
+            projected.leaf_weights(),
+            projected.auxiliary_weights(),
         )
         .unwrap();
-        assert_eq!(audit.transcript_bytes, 792);
+        for family in 0..C64_RESIDUAL_FAMILIES {
+            for repetition in 0..2 {
+                for tape in 0..2 {
+                    let prover = projected_pending[family][repetition][tape];
+                    let verifier = projected_keys[family][repetition][tape];
+                    assert_eq!(verifier.k, prover.m + deltas[tape] * prover.x);
+                }
+            }
+        }
         assert_eq!(prover_transcript.ledger(), verifier_transcript.ledger());
-        assert_eq!(terminal_link.encode().unwrap().len(), 792);
     }
 
     #[cfg(feature = "c6-trace")]

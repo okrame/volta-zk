@@ -1,6 +1,6 @@
 #![cfg(feature = "cuda")]
 
-use volta_accel::{AccelError, Backend, DeviceSlice, Operation};
+use volta_accel::{AccelError, Backend, DeviceSlice, Fp2Repr, Operation};
 use volta_field::{Fp, Fp2, FpStream};
 use volta_mac::{CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey};
 use volta_pcs::{
@@ -33,6 +33,30 @@ fn cuda_resident() -> Option<Backend> {
         }
         Err(e) => panic!("CUDA required: {e}"),
     }
+}
+
+#[test]
+fn cuda_fp2_split_is_exact_and_reclaims_buffers() {
+    let Some(mut gpu) = cuda_resident() else { return };
+    let before = gpu.device_memory_breakdown().unwrap().resident_bytes;
+    let values = (0..257u64)
+        .map(|index| Fp2Repr { c0: 3 + 17 * index, c1: 5 + 29 * index })
+        .collect::<Vec<_>>();
+    let input = gpu.upload_new_device(&values).unwrap();
+    let limbs = gpu.fp2_to_base_limbs_device(&input).unwrap();
+    assert_eq!(
+        gpu.download_device(&limbs[0], 0, values.len()).unwrap(),
+        values.iter().map(|value| value.c0).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        gpu.download_device(&limbs[1], 0, values.len()).unwrap(),
+        values.iter().map(|value| value.c1).collect::<Vec<_>>()
+    );
+    for limb in limbs {
+        gpu.free_device(limb).unwrap();
+    }
+    gpu.free_device(input).unwrap();
+    assert_eq!(gpu.device_memory_breakdown().unwrap().resident_bytes, before);
 }
 
 #[test]

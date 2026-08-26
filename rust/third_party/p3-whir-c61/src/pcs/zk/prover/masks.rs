@@ -12,11 +12,11 @@ use core::marker::PhantomData;
 use core::mem::take;
 
 use p3_commit::{ExtensionMmcs, Mmcs};
-use p3_field::{ExtensionField, Field, TwoAdicField, dot_product};
+use p3_field::{dot_product, ExtensionField, Field, TwoAdicField};
 use p3_multilinear_util::point::Point;
 use p3_multilinear_util::poly::Poly;
 use p3_sumcheck::strategy::ResidualSumcheckProver;
-use p3_sumcheck::zk::{ZkSumcheckData, ZkSumcheckHandoff, mask_residual_covectors_from_shape};
+use p3_sumcheck::zk::{mask_residual_covectors_from_shape, ZkSumcheckData, ZkSumcheckHandoff};
 
 use crate::pcs::zk::base_case::MaskProverData;
 use crate::pcs::zk::constraint::MaskClaims;

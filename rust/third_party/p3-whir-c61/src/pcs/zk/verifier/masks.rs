@@ -38,11 +38,7 @@ where
     MT: Mmcs<F>,
 {
     pub(super) const fn new() -> Self {
-        Self {
-            claims: MaskClaims::new(),
-            groups: Vec::new(),
-            commitments: Vec::new(),
-        }
+        Self { claims: MaskClaims::new(), groups: Vec::new(), commitments: Vec::new() }
     }
 
     /// Records one masked sumcheck batch.
@@ -64,10 +60,7 @@ where
         for covector in mask_residual_covectors_from_shape(folding, ell_zk, &gammas) {
             self.claims.push(covector);
         }
-        self.groups.push(MaskGroupShape {
-            shape,
-            width: folding,
-        });
+        self.groups.push(MaskGroupShape { shape, width: folding });
         self.commitments.push(commitment);
     }
 

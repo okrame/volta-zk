@@ -491,6 +491,13 @@ pub(crate) struct C63ResidentWhirLimbProof {
 }
 
 #[cfg(feature = "cuda")]
+pub(crate) struct C64ResidentWhirLimbProof {
+    pub(crate) artifact: Vec<u8>,
+    pub(crate) normalized: C63AuthenticatedWhirNormalizedLimb,
+    pub(crate) claim_weights: Vec<Fp2>,
+}
+
+#[cfg(feature = "cuda")]
 fn c63_normalize_prover_limb<MT>(
     output: &p3_whir_c61::pcs::zk::ClaimlessWhirProverOutput<Goldilocks, C61P3Fp2, MT>,
 ) -> Result<C63AuthenticatedWhirNormalizedLimb, String>
@@ -567,6 +574,124 @@ impl C63ResidentSystematicPrepared {
         )?;
         Ok(C63ResidentWhirLimbProof { artifact, normalized: c63_normalize_prover_limb(&output)? })
     }
+
+    pub(crate) fn finish_two<R: rand_010::Rng>(
+        self,
+        claims: [(&[Fp2], Fp2); 2],
+        mask: Fp2,
+        rng: &mut R,
+    ) -> Result<C64ResidentWhirLimbProof, String> {
+        self.finish_many(&claims, mask, rng)
+    }
+
+    pub(crate) fn finish_many<R: rand_010::Rng>(
+        self,
+        claims: &[(&[Fp2], Fp2)],
+        mask: Fp2,
+        rng: &mut R,
+    ) -> Result<C64ResidentWhirLimbProof, String> {
+        self.finish_many_inner(claims, mask, None, rng)
+    }
+
+    pub(crate) fn finish_many_with_batch_alpha<R: rand_010::Rng>(
+        self,
+        claims: &[(&[Fp2], Fp2)],
+        mask: Fp2,
+        batch_alpha: Fp2,
+        rng: &mut R,
+    ) -> Result<C64ResidentWhirLimbProof, String> {
+        self.finish_many_inner(claims, mask, Some(batch_alpha), rng)
+    }
+
+    fn finish_many_inner<R: rand_010::Rng>(
+        self,
+        claims: &[(&[Fp2], Fp2)],
+        mask: Fp2,
+        batch_alpha: Option<Fp2>,
+        rng: &mut R,
+    ) -> Result<C64ResidentWhirLimbProof, String> {
+        if !(2..=5).contains(&claims.len())
+            || claims.iter().any(|(point, _)| point.len() != self.config.num_variables)
+        {
+            return Err("C6.4 projected residual opening geometry differs".to_owned());
+        }
+        let claims = claims
+            .iter()
+            .map(|(point, value)| {
+                (
+                    Point::new(point.iter().rev().copied().map(c61_p3_fp2_from_volta).collect()),
+                    c61_p3_fp2_from_volta(*value),
+                )
+            })
+            .collect::<Vec<_>>();
+        let dft = p3_dft::Radix2DFTSmallBatch::default();
+        let prover = p3_whir_c61::pcs::zk::HidingWhirProver::new(&self.config, &dft, &self.mmcs);
+        let mut challenger = self.challenger;
+        for (point, _) in &claims {
+            challenger.observe_algebra_slice(point.as_slice());
+        }
+        let output = match batch_alpha {
+            Some(alpha) => prover.prove_claimless_with_oracle_and_batch_alpha(
+                self.data,
+                &claims,
+                c61_p3_fp2_from_volta(mask),
+                &self.committer,
+                c61_p3_fp2_from_volta(alpha),
+                &mut challenger,
+                rng,
+            ),
+            None => prover.prove_claimless_with_oracle(
+                self.data,
+                &claims,
+                c61_p3_fp2_from_volta(mask),
+                &self.committer,
+                &mut challenger,
+                rng,
+            ),
+        }
+        .map_err(|error| error.to_string())?;
+        let artifact = encode_c63_whir_ordinary_artifact_with_config(
+            self.config.num_variables,
+            &self.config,
+            &self.commitment,
+            &output.proof,
+        )?;
+        let claim_weights =
+            output.claim_weights.iter().copied().map(c61_volta_fp2_from_p3).collect::<Vec<_>>();
+        if claim_weights.len() != claims.len() {
+            return Err("C6.4 projected residual claim-weight census differs".to_owned());
+        }
+        if claim_weights[0] != Fp2::ONE {
+            return Err("C6.4 projected residual first claim weight differs".to_owned());
+        }
+        let normalized = C63AuthenticatedWhirNormalizedLimb {
+            claim_weight: Fp2::ONE,
+            ..c64_normalize_multi_prover_limb(&output)?
+        };
+        Ok(C64ResidentWhirLimbProof { artifact, normalized, claim_weights })
+    }
+}
+
+#[cfg(feature = "cuda")]
+fn c64_normalize_multi_prover_limb<MT>(
+    output: &p3_whir_c61::pcs::zk::ClaimlessWhirProverOutput<Goldilocks, C61P3Fp2, MT>,
+) -> Result<C63AuthenticatedWhirNormalizedLimb, String>
+where
+    MT: Mmcs<Goldilocks>,
+{
+    if !(2..=5).contains(&output.claim_weights.len()) {
+        return Err("C6.4 projected residual claim-weight census differs".to_owned());
+    }
+    Ok(C63AuthenticatedWhirNormalizedLimb {
+        combined: c61_volta_fp2_from_p3(output.base_case.combined),
+        shifted_masked_claim: c61_volta_fp2_from_p3(output.base_case.shifted_masked_claim),
+        gamma: c61_volta_fp2_from_p3(output.base_case.gamma),
+        affine: C61AuthenticatedWhirAffineClaim {
+            coefficient: c61_volta_fp2_from_p3(output.target.coefficient),
+            constant: c61_volta_fp2_from_p3(output.target.constant),
+        },
+        claim_weight: Fp2::ONE,
+    })
 }
 
 /// Commit one D22 systematic limb before the sparse point is drawn. The
@@ -1366,6 +1491,152 @@ pub(crate) fn verify_c63_whir_ordinary_artifact_with_config_at_point(
     .map_err(|_| "C6.3 ordinary WHIR verifier panicked".to_owned())?
     .map_err(|error| format!("C6.3 ordinary WHIR verification failed: {error}"))?;
     c63_convert_verifier_closure(closure)
+}
+
+pub(crate) fn verify_c64_whir_ordinary_artifact_with_config_at_two_points(
+    bytes: &[u8],
+    num_variables: usize,
+    config: &C63WhirConfig,
+    points: [&[Fp2]; 2],
+    context_digest: [u8; 32],
+) -> Result<(C63ClaimlessWhirVerifierClosure, [Fp2; 2]), String> {
+    let (closure, weights) = verify_c64_whir_ordinary_artifact_with_config_at_many_points(
+        bytes,
+        num_variables,
+        config,
+        &points,
+        context_digest,
+    )?;
+    Ok((
+        closure,
+        weights
+            .try_into()
+            .map_err(|_| "C6.4 projected residual claim-weight census differs".to_owned())?,
+    ))
+}
+
+pub(crate) fn verify_c64_whir_ordinary_artifact_with_config_at_many_points(
+    bytes: &[u8],
+    num_variables: usize,
+    config: &C63WhirConfig,
+    points: &[&[Fp2]],
+    context_digest: [u8; 32],
+) -> Result<(C63ClaimlessWhirVerifierClosure, Vec<Fp2>), String> {
+    verify_c64_whir_ordinary_artifact_with_config_at_many_points_inner(
+        bytes,
+        num_variables,
+        config,
+        points,
+        context_digest,
+        None,
+        None,
+    )
+}
+
+pub(crate) fn verify_c64_whir_ordinary_artifact_with_config_at_many_points_with_batch_alpha(
+    bytes: &[u8],
+    num_variables: usize,
+    config: &C63WhirConfig,
+    points: &[&[Fp2]],
+    context_digest: [u8; 32],
+    batch_alpha: Fp2,
+) -> Result<(C63ClaimlessWhirVerifierClosure, Vec<Fp2>), String> {
+    verify_c64_whir_ordinary_artifact_with_config_at_many_points_inner(
+        bytes,
+        num_variables,
+        config,
+        points,
+        context_digest,
+        Some(batch_alpha),
+        None,
+    )
+}
+
+pub(crate) fn verify_c64_whir_ordinary_artifact_with_config_at_many_points_with_batch_alpha_and_root(
+    bytes: &[u8],
+    num_variables: usize,
+    config: &C63WhirConfig,
+    points: &[&[Fp2]],
+    context_digest: [u8; 32],
+    batch_alpha: Fp2,
+    expected_root: [u8; 32],
+) -> Result<(C63ClaimlessWhirVerifierClosure, Vec<Fp2>), String> {
+    if expected_root == [0; 32] {
+        return Err("C6.4 WHIR expected root is zero".to_owned());
+    }
+    verify_c64_whir_ordinary_artifact_with_config_at_many_points_inner(
+        bytes,
+        num_variables,
+        config,
+        points,
+        context_digest,
+        Some(batch_alpha),
+        Some(expected_root),
+    )
+}
+
+fn verify_c64_whir_ordinary_artifact_with_config_at_many_points_inner(
+    bytes: &[u8],
+    num_variables: usize,
+    config: &C63WhirConfig,
+    points: &[&[Fp2]],
+    context_digest: [u8; 32],
+    batch_alpha: Option<Fp2>,
+    expected_root: Option<[u8; 32]>,
+) -> Result<(C63ClaimlessWhirVerifierClosure, Vec<Fp2>), String> {
+    if config.num_variables != num_variables
+        || !(2..=5).contains(&points.len())
+        || points.iter().any(|point| point.len() != num_variables)
+    {
+        return Err("C6.4 WHIR opening point geometry differs".to_owned());
+    }
+    let (commitment, proof) =
+        decode_c63_whir_ordinary_artifact_with_config(bytes, num_variables, config)?;
+    if expected_root.is_some_and(|expected_root| commitment.roots()[0] != expected_root) {
+        return Err("C6.4 WHIR artifact root differs".to_owned());
+    }
+    let points = points
+        .iter()
+        .map(|point| Point::new(point.iter().rev().copied().map(c61_p3_fp2_from_volta).collect()))
+        .collect::<Vec<_>>();
+    let mut challenger = c63_challenger(context_digest)?;
+    challenger.observe(commitment.clone());
+    for point in &points {
+        challenger.observe_algebra_slice(point.as_slice());
+    }
+    let mmcs = c61_reference_mmcs();
+    let verifier = HidingWhirVerifier::new(config, &mmcs);
+    let closure = catch_unwind(AssertUnwindSafe(|| match batch_alpha {
+        Some(alpha) => verifier.verify_claimless_with_batch_alpha(
+            &proof,
+            &commitment,
+            &points,
+            c61_p3_fp2_from_volta(alpha),
+            &mut challenger,
+        ),
+        None => verifier.verify_claimless(&proof, &commitment, &points, &mut challenger),
+    }))
+    .map_err(|_| "C6.4 ordinary WHIR verifier panicked".to_owned())?
+    .map_err(|error| format!("C6.4 ordinary WHIR verification failed: {error}"))?;
+    let claim_weights =
+        closure.claim_weights.iter().copied().map(c61_volta_fp2_from_p3).collect::<Vec<_>>();
+    if claim_weights.len() != points.len() {
+        return Err("C6.4 projected residual claim-weight census differs".to_owned());
+    }
+    if claim_weights[0] != Fp2::ONE {
+        return Err("C6.4 projected residual first claim weight differs".to_owned());
+    }
+    let converted = C63ClaimlessWhirVerifierClosure {
+        claim_weight: Fp2::ONE,
+        target: C61AuthenticatedWhirAffineClaim {
+            coefficient: c61_volta_fp2_from_p3(closure.target.coefficient),
+            constant: c61_volta_fp2_from_p3(closure.target.constant),
+        },
+        combined: c61_volta_fp2_from_p3(closure.base_case.combined),
+        shifted_masked_claim: c61_volta_fp2_from_p3(closure.base_case.shifted_masked_claim),
+        gamma: c61_volta_fp2_from_p3(closure.base_case.gamma),
+    };
+    Ok((converted, claim_weights))
 }
 
 fn c63_sumcheck_pow_bits(config: &C63WhirConfig, batch: usize) -> usize {

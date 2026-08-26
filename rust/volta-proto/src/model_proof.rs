@@ -2761,19 +2761,18 @@ pub(crate) fn prove_response_c6_cache_inline(
         metrics: C6CacheFoldOnlineLayerMetrics::default(),
         append_source_layers: Vec::with_capacity(L),
     };
-    let (proof, out, prod, zero) =
-        prove_response_impl(
-            model,
-            wit,
-            chunks,
-            None,
-            stream,
-            tx,
-            None,
-            false,
-            true,
-            &mut cache_mode,
-        );
+    let (proof, out, prod, zero) = prove_response_impl(
+        model,
+        wit,
+        chunks,
+        None,
+        stream,
+        tx,
+        None,
+        false,
+        true,
+        &mut cache_mode,
+    );
     let ResponseProverCacheMode::C6 { metrics, append_source_layers, .. } = cache_mode else {
         unreachable!("C6 response provider mode changed during execution")
     };
@@ -2819,19 +2818,18 @@ pub fn prove_response_private_logits_c6_cache_inline(
         metrics: C6CacheFoldOnlineLayerMetrics::default(),
         append_source_layers: Vec::with_capacity(L),
     };
-    let (proof, out, prod, zero) =
-        prove_response_impl(
-            model,
-            wit,
-            chunks,
-            None,
-            stream,
-            tx,
-            None,
-            true,
-            true,
-            &mut cache_mode,
-        );
+    let (proof, out, prod, zero) = prove_response_impl(
+        model,
+        wit,
+        chunks,
+        None,
+        stream,
+        tx,
+        None,
+        true,
+        true,
+        &mut cache_mode,
+    );
     let ResponseProverCacheMode::C6 { metrics, append_source_layers, .. } = cache_mode else {
         unreachable!("C6 private-logit provider mode changed during execution")
     };
@@ -3022,11 +3020,8 @@ fn prove_response_impl(
     let private_argmax_witness = private_logits.then(|| {
         let mut token_groups = Vec::with_capacity(1 + chunks.len());
         if let Some(base) = continuation {
-            token_groups.push(
-                (0..t)
-                    .map(|row| chunks[0].seq[base.band.t0 + row + 1])
-                    .collect::<Vec<_>>(),
-            );
+            token_groups
+                .push((0..t).map(|row| chunks[0].seq[base.band.t0 + row + 1]).collect::<Vec<_>>());
         } else {
             token_groups.push(vec![chunks[0].seq[t]]);
         }
@@ -3133,8 +3128,7 @@ fn prove_response_impl(
             "P5 seam shifts must be ≤16 (no chained seams supported here) — got {shift} at seam {l}"
         );
         if shift > 0 {
-            let acc: Vec<i64> =
-                base_layers[l].ffn_block_out.iter().map(|&v| v as i64).collect();
+            let acc: Vec<i64> = base_layers[l].ffn_block_out.iter().map(|&v| v as i64).collect();
             add_range_mult(&mut bank, &acc, &base_layers[l + 1].x_in, t, D, shift);
         }
     }
@@ -3621,22 +3615,15 @@ fn prove_response_impl(
     if continuation.is_none() {
         pt_fbo.extend(bit_coords(t - 1, rb_t));
     }
-    let fbo_open = open_matrix_p(
-        cx.stream,
-        dom_fbo_last,
-        &base_layers[L - 1].ffn_block_out,
-        t,
-        D,
-        &pt_fbo,
-    );
+    let fbo_open =
+        open_matrix_p(cx.stream, dom_fbo_last, &base_layers[L - 1].ffn_block_out, t, D, &pt_fbo);
     cx.zero.push(row_open.sub(fbo_open));
 
     // Manufactured "wire": a fresh opening of row 0 of the SAME final_ln.out
     // auth (see module docs).
-    let rho_f: Vec<Fp2> =
-        (0..d_cb + if continuation.is_some() { rb_ln } else { 0 })
-            .map(|_| cx.tx.challenge_fp2())
-            .collect();
+    let rho_f: Vec<Fp2> = (0..d_cb + if continuation.is_some() { rb_ln } else { 0 })
+        .map(|_| cx.tx.challenge_fp2())
+        .collect();
     let mut pt_wire = rho_f.clone();
     if continuation.is_none() {
         pt_wire.extend(bit_coords(0, rb_ln));
@@ -3725,11 +3712,8 @@ fn prove_response_impl(
     let base_row_weights = private_phase.map(|phase| phase.row_weights.as_slice());
     for row in 0..if continuation.is_some() { t } else { 1 } {
         let row_weight = base_row_weights.map_or(Fp2::ONE, |weights| weights[row]);
-        let source = if continuation.is_some() {
-            &out2[row * D..(row + 1) * D]
-        } else {
-            &wit.final_ln.out
-        };
+        let source =
+            if continuation.is_some() { &out2[row * D..(row + 1) * D] } else { &wit.final_ln.out };
         for (j, &x) in source.iter().enumerate() {
             fin_lift[j] += row_weight.mul_base(Fp::from_i64(x as i64));
         }
@@ -4645,8 +4629,7 @@ fn preflight_verify_response_public(
         || proof.final_ln.row_corr.len()
             != if continuation.is_some() { t.checked_mul(D)? } else { 2usize.checked_mul(D)? }
         || proof.final_ln.ln_vec_corrs.iter().any(|corrections| {
-            corrections.len()
-                != if continuation.is_some() { t.next_power_of_two() } else { 2 }
+            corrections.len() != if continuation.is_some() { t.next_power_of_two() } else { 2 }
         })
     {
         return None;
@@ -4859,19 +4842,18 @@ fn verify_response_c6_cache_inline_view(
         append_source_layers: Vec::with_capacity(L),
         paired_targets: Vec::with_capacity(4 * crate::c6_cache_fold::C6_CACHE_HEADS * L),
     };
-    let (out, prod, zero) =
-        verify_response_impl(
-            &model,
-            t,
-            logits,
-            chunks,
-            None,
-            proof,
-            vc,
-            tx,
-            false,
-            &mut cache_mode,
-        )?;
+    let (out, prod, zero) = verify_response_impl(
+        &model,
+        t,
+        logits,
+        chunks,
+        None,
+        proof,
+        vc,
+        tx,
+        false,
+        &mut cache_mode,
+    )?;
     let ResponseVerifierCacheMode::C6 { metrics, append_source_layers, paired_targets, .. } =
         cache_mode
     else {
@@ -5054,18 +5036,7 @@ fn verify_response_private_logits_c6_cache_inline_view(
         paired_targets: Vec::with_capacity(4 * crate::c6_cache_fold::C6_CACHE_HEADS * L),
     };
     let (out, prod, zero) =
-        verify_response_impl(
-            &model,
-            t,
-            &[],
-            &views,
-            None,
-            proof,
-            vc,
-            tx,
-            true,
-            &mut cache_mode,
-        )?;
+        verify_response_impl(&model, t, &[], &views, None, proof, vc, tx, true, &mut cache_mode)?;
     let ResponseVerifierCacheMode::C6 { metrics, append_source_layers, paired_targets, .. } =
         cache_mode
     else {
@@ -5104,8 +5075,7 @@ fn verify_response_impl(
         private_logits,
     )?;
     let base_t0 = continuation.map_or(0, |profile| profile.base_t0);
-    let base_shape =
-        continuation.map_or(BandShape::square(t), |_| BandShape { t0: base_t0, q: t });
+    let base_shape = continuation.map_or(BandShape::square(t), |_| BandShape { t0: base_t0, q: t });
     let d_cb = pad_bits(D);
     let rb_t = pad_bits(t);
     let n_vars_td = d_cb + rb_t;
@@ -5178,11 +5148,7 @@ fn verify_response_impl(
         let mut cx = BlockCtxV::new(vc, tx, 221, &mut pre_bank);
         if proof.final_ln.out_corr.len() != t_ln * D
             || proof.final_ln.row_corr.len() != t_ln * D
-            || proof
-                .final_ln
-                .ln_vec_corrs
-                .iter()
-                .any(|c| c.len() != 1usize << rb_ln)
+            || proof.final_ln.ln_vec_corrs.iter().any(|c| c.len() != 1usize << rb_ln)
         {
             return None;
         }
@@ -5309,11 +5275,12 @@ fn verify_response_impl(
     }
 
     let private_layout = private_logits.then(|| {
-        continuation.map_or_else(
-            || private_argmax_public_layout(t, chunks),
-            |profile| private_argmax_continuation_layout(profile.base_t0, t, chunks),
-        )
-        .expect("private preflight fixed layout")
+        continuation
+            .map_or_else(
+                || private_argmax_public_layout(t, chunks),
+                |profile| private_argmax_continuation_layout(profile.base_t0, t, chunks),
+            )
+            .expect("private preflight fixed layout")
     });
     let argmax_prepared = if let Some((phases, _)) = &private_layout {
         Some(prepare_private_argmax_verifier(proof.private_argmax.as_ref()?, phases.len(), vc, tx)?)
@@ -5914,17 +5881,12 @@ mod tests {
             C6CacheFoldTargetInlineProver, C6CacheFoldTargetInlineVerifier,
             C6CacheFoldTargetPublicSchedule,
         };
-        use crate::c6_source::{
-            C6SourceScheduleProverFollower, C6SourceScheduleVerifierFollower,
-        };
         use crate::c6_residual::C6_RESIDUAL_TRACE_FIXTURE_LOCK;
+        use crate::c6_source::{C6SourceScheduleProverFollower, C6SourceScheduleVerifierFollower};
+        use volta_gpt2::{band_model_witness, forward_model_tokens, Gpt2VerifierModel, KvCache};
         use volta_mac::{
-            begin_c6_prover_trace, compile_c6_operation_trace_for_role,
-            finish_c6_prover_trace, C6InstanceExtractionRole, C6TraceSourceManifest,
-            CorrScheduleRole,
-        };
-        use volta_gpt2::{
-            band_model_witness, forward_model_tokens, Gpt2VerifierModel, KvCache,
+            begin_c6_prover_trace, compile_c6_operation_trace_for_role, finish_c6_prover_trace,
+            C6InstanceExtractionRole, C6TraceSourceManifest, CorrScheduleRole,
         };
 
         let dir = weights_dir();
@@ -5956,10 +5918,7 @@ mod tests {
         let full = forward_model_tokens(&model, &sequence);
         let first = band_model_witness(&model, &first_full, old_len - 1);
         let second = band_model_witness(&model, &full, old_len + 25);
-        assert_eq!(
-            (first.t0, first.q, second.t0, second.q),
-            (old_len - 1, 26, old_len + 25, 25)
-        );
+        assert_eq!((first.t0, first.q, second.t0, second.q), (old_len - 1, 26, old_len + 25, 25));
         let extended_gap_count = [&first, &second]
             .into_iter()
             .map(|band| {
@@ -5972,9 +5931,8 @@ mod tests {
                                 (0..band.q)
                                     .map(|row| {
                                         let width = band.t0 + row + 1;
-                                        let start = head * causal
-                                            + row * band.t0
-                                            + row * (row + 1) / 2;
+                                        let start =
+                                            head * causal + row * band.t0 + row * (row + 1) / 2;
                                         layer.scores_q[start..start + width]
                                             .iter()
                                             .filter(|&&score| {
@@ -6098,17 +6056,15 @@ mod tests {
         assert_eq!(
             topology.source_schedule_digest,
             [
-                130, 85, 122, 79, 218, 185, 20, 246, 10, 251, 219, 161, 24, 118, 110,
-                209, 169, 134, 216, 231, 97, 109, 59, 169, 243, 182, 216, 83, 82, 243,
-                184, 206,
+                130, 85, 122, 79, 218, 185, 20, 246, 10, 251, 219, 161, 24, 118, 110, 209, 169,
+                134, 216, 231, 97, 109, 59, 169, 243, 182, 216, 83, 82, 243, 184, 206,
             ],
         );
         assert_eq!(
             topology.topology_digest,
             [
-                14, 91, 135, 30, 168, 34, 119, 229, 183, 235, 119, 196, 184, 17, 203,
-                108, 35, 185, 177, 244, 254, 119, 20, 49, 18, 47, 27, 2, 193, 150, 139,
-                71,
+                14, 91, 135, 30, 168, 34, 119, 229, 183, 235, 119, 196, 184, 17, 203, 108, 35, 185,
+                177, 244, 254, 119, 20, 49, 18, 47, 27, 2, 193, 150, 139, 71,
             ],
         );
 
@@ -6141,24 +6097,24 @@ mod tests {
             Some(())
         );
         let verified = verify_response_continuation_private_logits_c6_cache_inline_from_profile(
-                &verifier_model,
-                old_len - 1,
-                &sequence,
-                &proof,
-                &mut primary_v,
-                &mut secondary_v,
-                &mut verifier_follower,
-                &mut cursor,
-                &mut verifier_tx,
-            );
-        let (verifier_out, product_keys, _, verifier_metrics, _, targets) =
-            verified.unwrap_or_else(|| {
-            panic!(
-                "C6 continuation verifier rejected: {}",
-                prover_tx
-                    .debug_first_canonical_divergence(&verifier_tx)
-                    .unwrap_or_else(|| "equal transcript prefixes".to_owned())
-            )
+            &verifier_model,
+            old_len - 1,
+            &sequence,
+            &proof,
+            &mut primary_v,
+            &mut secondary_v,
+            &mut verifier_follower,
+            &mut cursor,
+            &mut verifier_tx,
+        );
+        let (verifier_out, product_keys, _, verifier_metrics, _, targets) = verified
+            .unwrap_or_else(|| {
+                panic!(
+                    "C6 continuation verifier rejected: {}",
+                    prover_tx
+                        .debug_first_canonical_divergence(&verifier_tx)
+                        .unwrap_or_else(|| "equal transcript prefixes".to_owned())
+                )
             });
         let verifier_snapshot = verifier_trace.finish().unwrap();
         cursor
@@ -6171,8 +6127,8 @@ mod tests {
         let mut verifier_product_doms = Doms::new(layer_dom_base(255));
         let verifier_product_domain = verifier_product_doms.take(1);
         assert_eq!(product_domain, verifier_product_domain);
-        let product_mask_key = primary_v
-            .expand_product_mask_verifier_key(verifier_product_domain, product_keys.len());
+        let product_mask_key =
+            primary_v.expand_product_mask_verifier_key(verifier_product_domain, product_keys.len());
         verifier_tx.append_fp2s("prod_check_m0_m1", &[product_proof.m0, product_proof.m1]);
         assert!(prod_batch_verify(
             &product_keys,

@@ -45,15 +45,14 @@ use volta_pcs::{
 };
 #[cfg(feature = "c6-trace")]
 use volta_proto::{
-    build_c6_t1_production_response_owner, build_c62_continuation_production_response_owner,
+    build_c62_continuation_production_response_owner, build_c6_t1_production_response_owner,
     cattn_permuted, C6PairedNativeTargetValues, C6ProductionPairedPcgAttempt,
-    C6T1ProductionResponseOwner,
-    C6T1ProductionResponseVerifierReplay,
+    C6T1ProductionResponseOwner, C6T1ProductionResponseVerifierReplay,
 };
 
 #[cfg(feature = "c6-trace")]
 use crate::c6_t1_live_sources::{
-    materialize_c6_t1_genesis_cache_states, materialize_c62_continuation_cache_states,
+    materialize_c62_continuation_cache_states, materialize_c6_t1_genesis_cache_states,
 };
 
 pub const C6_T1_PROMPT_TOKENS: usize = 100;
@@ -467,9 +466,7 @@ impl C6T1NativeClaimOwner {
                 .zip(&self.primary_embedding_targets)
                 .any(|(evaluated, live)| evaluated.x != live.x)
         {
-            return Err(
-                "C6ICT2 paired target plaintext differs from the live response".to_owned()
-            );
+            return Err("C6ICT2 paired target plaintext differs from the live response".to_owned());
         }
         // Tape zero is the authentication already emitted and checked by the
         // response.  The installed evaluator links its plaintext to tape one;
@@ -1137,7 +1134,7 @@ mod tests {
             .split("pub fn persist_c62_t1_native_coefficient_owners")
             .nth(1)
             .unwrap()
-            .split("fn persist_c6_t1_native_coefficients")
+            .split("pub fn create_c62_provider_fixed_coefficient_owners")
             .next()
             .unwrap();
         assert!(c62_persistence.contains("response: C62T1ProductionOwnerExport"));

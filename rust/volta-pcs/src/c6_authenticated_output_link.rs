@@ -213,6 +213,43 @@ impl C63ResidualSourceFunctionalsProvedLink {
     }
 }
 
+#[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
+pub(crate) fn c64_projected_residual_proved_links(
+    _projected: &crate::c64_projected_residual_codec::C64ProjectedResidualFrame,
+    nbr2_statement_digest: C6WrapperDigest,
+    source_statement_digest: C6WrapperDigest,
+) -> Result<(C6Nbr2ProvedLink, C63ResidualSourceFunctionalsProvedLink)> {
+    if nbr2_statement_digest == [0; 32] || source_statement_digest == [0; 32] {
+        return Err(C6AuthenticatedOutputLinkError::new(
+            "C6.4 projected residual receipt binding is empty",
+        ));
+    }
+    Ok((
+        C6Nbr2ProvedLink { statement_digest: nbr2_statement_digest },
+        C63ResidualSourceFunctionalsProvedLink { statement_digest: source_statement_digest },
+    ))
+}
+
+#[cfg(feature = "c61-p3-authenticated-reference")]
+pub(crate) fn c64_projected_residual_verified_links(
+    _projected: &crate::c64_projected_residual_suffix::C64ProjectedResidualVerifierOutput,
+    nbr2_statement_digest: C6WrapperDigest,
+    source: &C63ResidualSourceFunctionalVerifierClaims,
+) -> Result<(C6Nbr2VerifiedLink, C63ResidualSourceFunctionalsVerifiedLink)> {
+    if nbr2_statement_digest == [0; 32] || source.statement().digest() == [0; 32] {
+        return Err(C6AuthenticatedOutputLinkError::new(
+            "C6.4 projected residual verifier receipt binding is empty",
+        ));
+    }
+    Ok((
+        C6Nbr2VerifiedLink { statement_digest: nbr2_statement_digest },
+        C63ResidualSourceFunctionalsVerifiedLink {
+            statement_digest: source.statement().digest(),
+            terminal_m_keys: [source.keys()[0][0], source.keys()[1][1]],
+        },
+    ))
+}
+
 impl C63ResidualSourceFunctionalsVerifiedLink {
     pub fn statement_digest(self) -> C6WrapperDigest {
         self.statement_digest

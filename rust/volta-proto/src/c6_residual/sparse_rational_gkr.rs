@@ -621,11 +621,8 @@ fn compile_c6_sparse_rational_packed_oracle_materialized(
         .checked_next_power_of_two()
         .ok_or_else(|| C6ResidualError::new("C6SPR2 base domain overflows"))?;
     let registered_production = super::is_registered_c62_production_topology(topology);
-    let base_rows = if require_production && registered_production {
-        1usize << 25
-    } else {
-        natural_base_rows
-    };
+    let base_rows =
+        if require_production && registered_production { 1usize << 25 } else { natural_base_rows };
     let base_domain_log2 = u8::try_from(base_rows.trailing_zeros())
         .map_err(|_| C6ResidualError::new("C6SPR2 base dimension exceeds u8"))?;
     let production_geometry = base_domain_log2 == 25 && registered_production;

@@ -7,6 +7,7 @@
 //! key from plaintext, never serializes a cache vector, and earns no wire or
 //! timing credit.
 
+use crate::c6_source::{C6SourceScheduleProverFollower, C6SourceScheduleVerifierFollower};
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -17,7 +18,6 @@ use volta_mac::{
     C6TraceToken, CorrIndex, CorrelationStream, FullCorr, ProverAuthed, Transcript, VerifierCtx,
     VerifierKey,
 };
-use crate::c6_source::{C6SourceScheduleProverFollower, C6SourceScheduleVerifierFollower};
 
 pub const C6_CACHE_FOLD_TRACE_VERSION: u32 = 1;
 pub const C6_CACHE_FOLD_SCALAR_BATCH_VERSION: u32 = 1;
@@ -1561,13 +1561,8 @@ impl<'a, 'b> C6CacheFoldOnlineLayerProver<'a, 'b> {
         schedule_follower: &'a mut C6SourceScheduleProverFollower,
         target_builder: &'b mut C6CacheFoldTargetInlineProver,
     ) -> Result<Self, C6CacheFoldTraceError> {
-        let mut online = Self::new(
-            model_layer,
-            key_segments,
-            value_segments,
-            secondary,
-            target_builder,
-        )?;
+        let mut online =
+            Self::new(model_layer, key_segments, value_segments, secondary, target_builder)?;
         online.schedule_follower = Some(schedule_follower);
         Ok(online)
     }
@@ -1646,12 +1641,8 @@ impl<'a, 'b> C6CacheFoldOnlineLayerProver<'a, 'b> {
             prepared.correlations[1].authenticate(target),
         ];
         let base_masks = [prepared.correlations[0].x, prepared.correlations[1].x];
-        let accepted = self.target_builder.push_target_before_product(
-            kind,
-            paired,
-            base_masks,
-            transcript,
-        )?;
+        let accepted =
+            self.target_builder.push_target_before_product(kind, paired, base_masks, transcript)?;
         self.prepared_plaintexts.push(target);
         self.paired_targets.push((kind, accepted));
         self.next_prepared += 1;
@@ -1775,13 +1766,8 @@ impl<'a, 'b, 'frame> C6CacheFoldOnlineLayerVerifier<'a, 'b, 'frame> {
         schedule_follower: &'a mut C6SourceScheduleVerifierFollower,
         target_cursor: &'b mut C6CacheFoldTargetInlineVerifier<'frame>,
     ) -> Result<Self, C6CacheFoldTraceError> {
-        let mut online = Self::new(
-            model_layer,
-            key_segments,
-            value_segments,
-            secondary,
-            target_cursor,
-        )?;
+        let mut online =
+            Self::new(model_layer, key_segments, value_segments, secondary, target_cursor)?;
         online.schedule_follower = Some(schedule_follower);
         Ok(online)
     }
@@ -1825,10 +1811,7 @@ impl<'a, 'b, 'frame> C6CacheFoldOnlineLayerVerifier<'a, 'b, 'frame> {
         self.prepared = primary_keys
             .into_iter()
             .zip(secondary_keys)
-            .map(|base_keys| C6OnlinePreparedVerifierTarget {
-                kind,
-                base_keys: base_keys.into(),
-            })
+            .map(|base_keys| C6OnlinePreparedVerifierTarget { kind, base_keys: base_keys.into() })
             .collect();
         self.next_prepared = 0;
         self.metrics.source_groups += 1;
@@ -3964,15 +3947,13 @@ mod tests {
                 linear_auxiliary_source_cells: 0,
             }
         );
-        assert!(online_prover
-            .paired_targets()
-            .iter()
-            .zip(&prover_targets)
-            .all(|((kind, targets), (expected_kind, expected_targets))| {
+        assert!(online_prover.paired_targets().iter().zip(&prover_targets).all(
+            |((kind, targets), (expected_kind, expected_targets))| {
                 kind == expected_kind
                     && targets[0].x == expected_targets[0].x
                     && targets[1].x == expected_targets[1].x
-            }));
+            }
+        ));
         let aggregate_targets = online_prover.paired_targets().to_vec();
         drop(online_prover);
         let (frame, _) = builder

@@ -49,8 +49,7 @@ use crate::c6_source::{
 };
 use crate::logup::Doms;
 use crate::model_proof::{
-    prove_response_c6_cache_inline,
-    prove_response_continuation_private_logits_c6_cache_inline,
+    prove_response_c6_cache_inline, prove_response_continuation_private_logits_c6_cache_inline,
     prove_response_private_logits_c6_cache_inline, verify_response_c6_cache_inline_from_profile,
     verify_response_continuation_private_logits_c6_cache_inline_from_profile,
     verify_response_private_logits_c6_cache_inline_from_profile, C6GrandResidualProverRoots,
@@ -949,9 +948,8 @@ fn replay_c6_production_response_verifier(
     .map_err(|error| error.to_string())?;
     let compact_subfield_replay = retained.is_c62_compact();
     if compact_subfield_replay {
-        let compact_subfield_overrides = retained
-            .c62_subfield_digest_overrides()
-            .map_err(|error| error.to_string())?;
+        let compact_subfield_overrides =
+            retained.c62_subfield_digest_overrides().map_err(|error| error.to_string())?;
         transcript.install_c62_subfield_digest_overrides(compact_subfield_overrides)?;
         primary.enable_compact_subfield_replay().map_err(str::to_owned)?;
         secondary.enable_compact_subfield_replay().map_err(str::to_owned)?;
@@ -1169,10 +1167,7 @@ fn prove_c6_production_response_provider(
 ) -> Result<C6T1ProductionResponseProviderPending, String> {
     let valid_profile = match profile {
         C6ProductionResponseProverProfile::Genesis { prefill, decode } => {
-            prefill.t == 100
-                && decode.t0 == 100
-                && decode.q == 50
-                && sequence.len() == 150
+            prefill.t == 100 && decode.t0 == 100 && decode.q == 50 && sequence.len() == 150
         }
         C6ProductionResponseProverProfile::Continuation { full, first, second } => {
             let old_len = first.t0.checked_add(1);
@@ -2408,16 +2403,12 @@ mod transcript_tests {
         let source = include_str!("c6_response_fixture.rs");
         assert_eq!(source.matches("installed_final_product_triples").count(), 6);
         assert_eq!(source.matches(".products()\n        .last()").count(), 2);
-        let stale_prover = [
-            "products.len() as u64 != installed_plan.topology()",
-            ".product_triple_count",
-        ]
-        .concat();
-        let stale_verifier = [
-            "product_keys.len() as u64 != installed_plan.topology()",
-            ".product_triple_count",
-        ]
-        .concat();
+        let stale_prover =
+            ["products.len() as u64 != installed_plan.topology()", ".product_triple_count"]
+                .concat();
+        let stale_verifier =
+            ["product_keys.len() as u64 != installed_plan.topology()", ".product_triple_count"]
+                .concat();
         assert!(!source.contains(&stale_prover));
         assert!(!source.contains(&stale_verifier));
     }

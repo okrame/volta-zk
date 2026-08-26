@@ -41,6 +41,9 @@ pub const C63_SPARSE_H_PRODUCTION_FULL_CORRELATIONS_PER_TAPE: u64 = 44;
 pub const C64_TERMINAL_LINK_PRODUCTION_ROUNDS: u64 = 27;
 pub const C64_TERMINAL_LINK_PRODUCTION_FULL_CORRELATIONS_PER_TAPE: u64 = 54;
 pub const C64_TERMINAL_LINK_PRODUCTION_FRAMED_BYTES: u64 = 1_816;
+pub const C64_CORRECTION_LINK_PRODUCTION_ROUNDS: u64 = 24;
+pub const C64_CORRECTION_LINK_PRODUCTION_FULL_CORRELATIONS_PER_TAPE: u64 = 48;
+pub const C64_CORRECTION_LINK_PRODUCTION_FRAMED_BYTES: u64 = 1_624;
 
 const HEADER_BYTES: u64 = 56;
 const TERMINAL_TAG_BYTES: u64 = 32;
@@ -56,6 +59,7 @@ const C64_TERMINAL_LINK_HEADER_LABEL: &str = "c64_terminal_link_header";
 const C64_TERMINAL_LINK_ROUND_LABEL: &str = "c64_terminal_link_round_corrections";
 const C64_TERMINAL_LINK_TERMINAL_LABEL: &str = "c64_terminal_link_terminal_tags";
 const C64_TERMINAL_LINK_CORRELATION_BASE: u64 = 0x0C69_0000_0000_0000;
+const C64_CORRECTION_COEFFICIENT_DOMAIN: &str = "volta-zk/c64/correction-link-coefficients/v1";
 
 type Result<T> = std::result::Result<T, C63SparseHClosureError>;
 
@@ -250,6 +254,19 @@ pub fn c63_sparse_h_closure_production_codec_reference() -> C63SparseHClosurePro
     }
 }
 
+/// Grammar-only C6.4 correction-link fixture; never protocol evidence.
+pub fn c64_correction_link_production_codec_reference() -> C63SparseHClosureProof {
+    C63SparseHClosureProof {
+        input_log2: C64_CORRECTION_LINK_PRODUCTION_ROUNDS as u8,
+        output_log2: C64_CORRECTION_LINK_PRODUCTION_ROUNDS as u8,
+        statement_digest: [1; 32],
+        round_corrections: array::from_fn(|_| {
+            vec![[Fp2::ZERO; 2]; C64_CORRECTION_LINK_PRODUCTION_ROUNDS as usize]
+        }),
+        terminal_tags: [Fp2::ZERO; C63_SPARSE_H_TAPES],
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C63SparseHClosureReferenceAudit {
     pub sumcheck_point: Vec<Fp2>,
@@ -322,21 +339,48 @@ impl C64TerminalLinkStatement {
     }
 }
 
-/// Scaled authenticated C6.4 terminal link. Production supplies `open_m`
-/// from the already verified joint WHIR opening at the returned D27 point.
+pub fn c64_correction_link_coefficient_digest(
+    coefficients: [&[Fp2]; 2],
+    second_weight: Fp2,
+    half_rows: usize,
+) -> Result<[u8; 32]> {
+    if !half_rows.is_power_of_two()
+        || coefficients.iter().any(|values| values.is_empty() || values.len() > half_rows)
+        || coefficients[0].len() != coefficients[1].len()
+        || second_weight == Fp2::ZERO
+    {
+        return Err(C63SparseHClosureError::new(
+            "C6.4 correction-link coefficient geometry differs",
+        ));
+    }
+    let mut hasher = blake3::Hasher::new_derive_key(C64_CORRECTION_COEFFICIENT_DOMAIN);
+    hasher.update(&(half_rows as u64).to_le_bytes());
+    hasher.update(&(coefficients[0].len() as u64).to_le_bytes());
+    hasher.update(&second_weight.c0.value().to_le_bytes());
+    hasher.update(&second_weight.c1.value().to_le_bytes());
+    for (coordinate, values) in coefficients.into_iter().enumerate() {
+        hasher.update(&[coordinate as u8]);
+        for &value in values {
+            let value = if coordinate == 0 { value } else { value * second_weight };
+            hasher.update(&value.c0.value().to_le_bytes());
+            hasher.update(&value.c1.value().to_le_bytes());
+        }
+    }
+    Ok(*hasher.finalize().as_bytes())
+}
+
+/// Scaled authenticated C6.4 inner-product link. Its terminal opening target
+/// is derived from the authenticated running claim and must subsequently be
+/// closed by the WHIR proof for the same committed message.
 #[allow(clippy::too_many_arguments)]
-pub fn prove_c64_terminal_link_reference<F>(
+pub fn prove_c64_terminal_link_reference(
     coefficients: &[Fp2],
     message: &[Fp2],
     initial_claims: [ProverAuthed; C63_SPARSE_H_TAPES],
     statement: &C64TerminalLinkStatement,
     streams: &mut [CorrelationStream; C63_SPARSE_H_TAPES],
     transcript: &mut Transcript,
-    mut open_m: F,
-) -> Result<C63SparseHClosureProof>
-where
-    F: FnMut(usize, &[Fp2]) -> Result<ProverAuthed>,
-{
+) -> Result<(C63SparseHClosureProof, Vec<Fp2>, [ProverAuthed; C63_SPARSE_H_TAPES])> {
     let input_log2 = exact_log2(message.len(), "C6.4 packed input")?;
     if coefficients.len() != message.len()
         || input_log2 != statement.input_log2
@@ -392,41 +436,187 @@ where
         fold_low(&mut folded_m, challenge);
         point.push(challenge);
     }
-    let mut terminal_tags = [Fp2::ZERO; C63_SPARSE_H_TAPES];
-    for tape in 0..C63_SPARSE_H_TAPES {
-        let terminal_m = open_m(tape, &point)?;
-        if terminal_m.x != folded_m[0] {
-            return Err(C63SparseHClosureError::new("C6.4 terminal-link WHIR opening differs"));
-        }
-        let residual = current[tape].sub(terminal_m.scale(a[0]));
-        if residual.x != Fp2::ZERO {
-            return Err(C63SparseHClosureError::new("C6.4 terminal-link terminal product differs"));
-        }
-        terminal_tags[tape] = residual.m;
+    if a[0] == Fp2::ZERO {
+        return Err(C63SparseHClosureError::new("C6.4 terminal-link coefficient is zero"));
     }
+    let terminal_m = current.map(|claim| claim.scale(a[0].inv()));
+    if terminal_m.iter().any(|claim| claim.x != folded_m[0]) {
+        return Err(C63SparseHClosureError::new("C6.4 terminal-link folded opening differs"));
+    }
+    let terminal_tags = [Fp2::ZERO; C63_SPARSE_H_TAPES];
     transcript.append_fp2s(C64_TERMINAL_LINK_TERMINAL_LABEL, &terminal_tags);
-    Ok(C63SparseHClosureProof {
-        input_log2,
-        output_log2: 1,
-        statement_digest,
-        round_corrections,
-        terminal_tags,
-    })
+    Ok((
+        C63SparseHClosureProof {
+            input_log2,
+            output_log2: 1,
+            statement_digest,
+            round_corrections,
+            terminal_tags,
+        },
+        point,
+        terminal_m,
+    ))
+}
+
+#[cfg(feature = "cuda")]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prove_c64_correction_link_resident(
+    backend: Arc<Mutex<Backend>>,
+    coefficients: [&[Fp2]; 2],
+    second_weight: Fp2,
+    message: DeviceBuffer<Fp2Repr>,
+    initial_claims: [ProverAuthed; C63_SPARSE_H_TAPES],
+    statement: &C64TerminalLinkStatement,
+    streams: &mut [CorrelationStream; C63_SPARSE_H_TAPES],
+    transcript: &mut Transcript,
+) -> Result<(C63SparseHClosureProof, Vec<Fp2>, [ProverAuthed; C63_SPARSE_H_TAPES])> {
+    let input_log2 = exact_log2(message.len(), "C6.4 correction input")?;
+    let half_rows = message.len() / 2;
+    if input_log2 != statement.input_log2
+        || statement.digest != c64_terminal_link_statement_digest(statement)
+        || c64_correction_link_coefficient_digest(coefficients, second_weight, half_rows)?
+            != statement.coefficient_digest
+        || initial_claims[0].x != initial_claims[1].x
+    {
+        if let Ok(mut locked) = backend.lock() {
+            let _ = locked.free_device(message);
+        }
+        return Err(C63SparseHClosureError::new("C6.4 resident correction-link statement differs"));
+    }
+    let coefficient_message =
+        upload_c64_correction_coefficients(&backend, coefficients, second_weight, half_rows)?;
+    let statement_digest = statement.digest;
+    transcript.append_message(
+        C64_TERMINAL_LINK_HEADER_LABEL,
+        &header_bytes(input_log2, 1, statement_digest)?,
+    );
+    let mut fold =
+        ResidentSparseFold::from_device(Arc::clone(&backend), coefficient_message, vec![message])?;
+    if fold.dots()?.as_slice() != [initial_claims[0].x] {
+        return Err(C63SparseHClosureError::new(
+            "C6.4 resident correction-link initial claim differs",
+        ));
+    }
+    let mut current = initial_claims;
+    let mut point = Vec::with_capacity(input_log2 as usize);
+    let mut round_corrections: [Vec<[Fp2; 2]>; C63_SPARSE_H_TAPES] =
+        array::from_fn(|_| Vec::with_capacity(input_log2 as usize));
+    for round in 0..input_log2 as usize {
+        let [g0, g2] = fold.rounds()?[0];
+        let mut corrected = [[Fp2::ZERO; 2]; C63_SPARSE_H_TAPES];
+        let mut sent = [[ProverAuthed::ZERO; 2]; C63_SPARSE_H_TAPES];
+        for tape in 0..C63_SPARSE_H_TAPES {
+            let domain = c64_terminal_link_correlation_domain(tape, round)?;
+            let correlations = streams[tape].draw_fulls(domain, 2);
+            streams[tape]
+                .record_c6_fullfield_plaintexts(domain, &[g0, g2])
+                .map_err(C63SparseHClosureError::new)?;
+            corrected[tape] = [g0 - correlations[0].x, g2 - correlations[1].x];
+            sent[tape] = [correlations[0].authenticate(g0), correlations[1].authenticate(g2)];
+            round_corrections[tape].push(corrected[tape]);
+        }
+        append_c64_terminal_link_round(transcript, &corrected);
+        let challenge = transcript.challenge_fp2();
+        let weights = lagrange3(challenge);
+        for tape in 0..C63_SPARSE_H_TAPES {
+            let one = current[tape].sub(sent[tape][0]);
+            current[tape] = sent[tape][0]
+                .scale(weights[0])
+                .add(one.scale(weights[1]))
+                .add(sent[tape][1].scale(weights[2]));
+        }
+        fold.fold(challenge)?;
+        point.push(challenge);
+    }
+    let terminal_a = fold.terminal_a()?;
+    let terminal_m = fold.terminal_messages()?[0];
+    if terminal_a == Fp2::ZERO {
+        return Err(C63SparseHClosureError::new(
+            "C6.4 resident correction-link coefficient is zero",
+        ));
+    }
+    let targets = current.map(|claim| claim.scale(terminal_a.inv()));
+    if targets.iter().any(|target| target.x != terminal_m) {
+        return Err(C63SparseHClosureError::new(
+            "C6.4 resident correction-link terminal opening differs",
+        ));
+    }
+    let terminal_tags = [Fp2::ZERO; C63_SPARSE_H_TAPES];
+    transcript.append_fp2s(C64_TERMINAL_LINK_TERMINAL_LABEL, &terminal_tags);
+    Ok((
+        C63SparseHClosureProof {
+            input_log2,
+            output_log2: 1,
+            statement_digest,
+            round_corrections,
+            terminal_tags,
+        },
+        point,
+        targets,
+    ))
+}
+
+#[cfg(feature = "cuda")]
+fn upload_c64_correction_coefficients(
+    backend: &Arc<Mutex<Backend>>,
+    coefficients: [&[Fp2]; 2],
+    second_weight: Fp2,
+    half_rows: usize,
+) -> Result<DeviceBuffer<Fp2Repr>> {
+    const CHUNK: usize = 1 << 20;
+    c64_correction_link_coefficient_digest(coefficients, second_weight, half_rows)?;
+    let mut locked = backend.lock().map_err(|_| C63SparseHClosureError::new("CUDA lock"))?;
+    let output = locked
+        .alloc_device::<Fp2Repr>(2 * half_rows)
+        .map_err(|error| C63SparseHClosureError::new(error.to_string()))?;
+    if let Err(error) = locked.zero_device(&output, 0, 2 * half_rows) {
+        let _ = locked.free_device(output);
+        return Err(C63SparseHClosureError::new(error.to_string()));
+    }
+    let mailbox = match locked.alloc_device::<Fp2Repr>(coefficients[0].len().min(CHUNK)) {
+        Ok(value) => value,
+        Err(error) => {
+            let _ = locked.free_device(output);
+            return Err(C63SparseHClosureError::new(error.to_string()));
+        }
+    };
+    let operation = (|| {
+        for (coordinate, values) in coefficients.into_iter().enumerate() {
+            let scale = if coordinate == 0 { Fp2::ONE } else { second_weight };
+            for (chunk, values) in values.chunks(CHUNK).enumerate() {
+                let encoded =
+                    values.iter().map(|&value| Fp2Repr::from(value * scale)).collect::<Vec<_>>();
+                locked.upload_device(&mailbox, 0, &encoded)?;
+                locked.fp2_add_inplace_device(
+                    &output,
+                    coordinate * half_rows + chunk * CHUNK,
+                    &mailbox,
+                    0,
+                    encoded.len(),
+                )?;
+            }
+        }
+        Ok(())
+    })();
+    let cleanup = locked.free_device(mailbox);
+    match (operation, cleanup) {
+        (Ok(()), Ok(())) => Ok(output),
+        (Err(error), _) | (_, Err(error)) => {
+            let _ = locked.free_device(output);
+            Err(C63SparseHClosureError::new(error.to_string()))
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn verify_c64_terminal_link_reference<F>(
+pub fn verify_c64_terminal_link_reference(
     coefficients: &[Fp2],
     initial_keys: [VerifierKey; C63_SPARSE_H_TAPES],
     statement: &C64TerminalLinkStatement,
     proof: &C63SparseHClosureProof,
     contexts: &mut [VerifierCtx; C63_SPARSE_H_TAPES],
     transcript: &mut Transcript,
-    mut open_m: F,
-) -> Result<C63SparseHTapeClosureReferenceAudit>
-where
-    F: FnMut(usize, &[Fp2]) -> Result<VerifierKey>,
-{
+) -> Result<C63SparseHTapeClosureReferenceAudit> {
     proof.validate_shape()?;
     let transcript_start_bytes = transcript.total_bytes();
     let input_log2 = exact_log2(coefficients.len(), "C6.4 coefficient")?;
@@ -467,7 +657,10 @@ where
         fold_low(&mut a, challenge);
         point.push(challenge);
     }
-    let terminal_m_keys = [open_m(0, &point)?, open_m(1, &point)?];
+    if a[0] == Fp2::ZERO {
+        return Err(C63SparseHClosureError::new("C6.4 terminal-link coefficient is zero"));
+    }
+    let terminal_m_keys = current.map(|key| key.scale(a[0].inv()));
     for tape in 0..C63_SPARSE_H_TAPES {
         let residual = current[tape].sub(terminal_m_keys[tape].scale(a[0]));
         if !zero_open_verify(residual, proof.terminal_tags[tape]) {
@@ -493,6 +686,112 @@ where
         transcript_digest,
         transcript_bytes,
     })
+}
+
+pub fn verify_c64_correction_link(
+    coefficients: [&[Fp2]; 2],
+    second_weight: Fp2,
+    half_rows: usize,
+    initial_keys: [VerifierKey; C63_SPARSE_H_TAPES],
+    statement: &C64TerminalLinkStatement,
+    proof: &C63SparseHClosureProof,
+    contexts: &mut [VerifierCtx; C63_SPARSE_H_TAPES],
+    transcript: &mut Transcript,
+) -> Result<C63SparseHTapeClosureReferenceAudit> {
+    proof.validate_shape()?;
+    let transcript_start_bytes = transcript.total_bytes();
+    let input_log2 = exact_log2(2 * half_rows, "C6.4 correction coefficient")?;
+    if contexts[0].delta == contexts[1].delta
+        || input_log2 != statement.input_log2
+        || statement.digest != c64_terminal_link_statement_digest(statement)
+        || c64_correction_link_coefficient_digest(coefficients, second_weight, half_rows)?
+            != statement.coefficient_digest
+        || proof.input_log2 != input_log2
+        || proof.output_log2 != 1
+        || proof.statement_digest != statement.digest
+    {
+        return Err(C63SparseHClosureError::new("C6.4 correction-link verifier statement differs"));
+    }
+    transcript.append_message(C64_TERMINAL_LINK_HEADER_LABEL, &proof.header_bytes()?);
+    let mut current = initial_keys;
+    let mut point = Vec::with_capacity(input_log2 as usize);
+    for round in 0..input_log2 as usize {
+        let mut corrected = [[Fp2::ZERO; 2]; C63_SPARSE_H_TAPES];
+        let mut sent = [[VerifierKey::ZERO; 2]; C63_SPARSE_H_TAPES];
+        for tape in 0..C63_SPARSE_H_TAPES {
+            corrected[tape] = proof.round_corrections[tape][round];
+            let keys = contexts[tape].correct_full_verifier_keys(
+                c64_terminal_link_correlation_domain(tape, round)?,
+                &corrected[tape],
+            );
+            sent[tape] = [keys[0], keys[1]];
+        }
+        append_c64_terminal_link_round(transcript, &corrected);
+        let challenge = transcript.challenge_fp2();
+        let weights = lagrange3(challenge);
+        for tape in 0..C63_SPARSE_H_TAPES {
+            let one = current[tape].sub(sent[tape][0]);
+            current[tape] = sent[tape][0]
+                .scale(weights[0])
+                .add(one.scale(weights[1]))
+                .add(sent[tape][1].scale(weights[2]));
+        }
+        point.push(challenge);
+    }
+    let terminal_a =
+        evaluate_c64_correction_coefficients(coefficients, second_weight, half_rows, &point)?;
+    if terminal_a == Fp2::ZERO {
+        return Err(C63SparseHClosureError::new("C6.4 correction-link coefficient is zero"));
+    }
+    let terminal_m_keys = current.map(|key| key.scale(terminal_a.inv()));
+    for tape in 0..C63_SPARSE_H_TAPES {
+        let residual = current[tape].sub(terminal_m_keys[tape].scale(terminal_a));
+        if !zero_open_verify(residual, proof.terminal_tags[tape]) {
+            return Err(C63SparseHClosureError::new(
+                "C6.4 correction-link terminal ZeroOpen failed",
+            ));
+        }
+    }
+    transcript.append_fp2s(C64_TERMINAL_LINK_TERMINAL_LABEL, &proof.terminal_tags);
+    let transcript_bytes = transcript
+        .total_bytes()
+        .checked_sub(transcript_start_bytes)
+        .ok_or_else(|| C63SparseHClosureError::new("C6.4 transcript census underflow"))?;
+    if transcript_bytes != proof.encoded_len()? {
+        return Err(C63SparseHClosureError::new("C6.4 correction-link transcript census differs"));
+    }
+    let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c64/correction-link-audit/v1");
+    hasher.update(&statement.digest);
+    hasher.update(&proof.encode()?);
+    Ok(C63SparseHTapeClosureReferenceAudit {
+        sumcheck_point: point,
+        terminal_a,
+        terminal_m_keys,
+        transcript_digest: *hasher.finalize().as_bytes(),
+        transcript_bytes,
+    })
+}
+
+fn evaluate_c64_correction_coefficients(
+    coefficients: [&[Fp2]; 2],
+    second_weight: Fp2,
+    half_rows: usize,
+    point: &[Fp2],
+) -> Result<Fp2> {
+    c64_correction_link_coefficient_digest(coefficients, second_weight, half_rows)?;
+    let half_log2 = half_rows.ilog2() as usize;
+    if point.len() != half_log2 + 1 {
+        return Err(C63SparseHClosureError::new("C6.4 correction-link point geometry differs"));
+    }
+    let equality = eq_vec(&point[..half_log2]);
+    let values = coefficients.map(|coefficients| {
+        coefficients
+            .iter()
+            .zip(&equality)
+            .fold(Fp2::ZERO, |sum, (&coefficient, &weight)| sum + coefficient * weight)
+    });
+    let selector = point[half_log2];
+    Ok(values[0] * (Fp2::ONE - selector) + second_weight * values[1] * selector)
 }
 
 impl C63SparseHTapeVerifierPending {
@@ -1017,6 +1316,27 @@ struct ResidentSparseFold {
 
 #[cfg(feature = "cuda")]
 impl ResidentSparseFold {
+    fn from_device(
+        backend: Arc<Mutex<Backend>>,
+        a: DeviceBuffer<Fp2Repr>,
+        messages: Vec<DeviceBuffer<Fp2Repr>>,
+    ) -> Result<Self> {
+        let len = a.len();
+        if len == 0 || !len.is_power_of_two() || messages.iter().any(|message| message.len() != len)
+        {
+            if let Ok(mut locked) = backend.lock() {
+                let _ = locked.free_device(a);
+                for message in messages {
+                    let _ = locked.free_device(message);
+                }
+            }
+            return Err(C63SparseHClosureError::new(
+                "C6.4 resident correction fold geometry differs",
+            ));
+        }
+        Ok(Self { backend, a: Some(a), messages: messages.into_iter().map(Some).collect(), len })
+    }
+
     fn new(
         backend: Arc<Mutex<Backend>>,
         messages: Vec<DeviceBuffer<Fp2Repr>>,
@@ -1817,6 +2137,74 @@ impl<'a> Cursor<'a> {
 mod tests {
     use super::*;
     use volta_field::Fp;
+
+    #[test]
+    fn c64_sparse_correction_verifier_matches_dense_reference() {
+        let half_rows = 64usize;
+        let coefficients = [
+            (0..23).map(|index| fp2(101 + index)).collect::<Vec<_>>(),
+            (0..23).map(|index| fp2(211 + index)).collect::<Vec<_>>(),
+        ];
+        let message = (0..2 * half_rows).map(|index| fp2(401 + index as u64)).collect::<Vec<_>>();
+        let second_weight = fp2(907);
+        let mut dense_coefficients = vec![Fp2::ZERO; 2 * half_rows];
+        dense_coefficients[..coefficients[0].len()].copy_from_slice(&coefficients[0]);
+        for (target, &value) in dense_coefficients[half_rows..].iter_mut().zip(&coefficients[1]) {
+            *target = second_weight * value;
+        }
+        let claim = inner_product(&dense_coefficients, &message).unwrap();
+        let tags = [fp2(1_001), fp2(1_003)];
+        let claims = array::from_fn(|tape| ProverAuthed::new(claim, tags[tape]));
+        let keys = array::from_fn(|tape| VerifierKey::new(tags[tape] + DELTAS[tape] * claim));
+        let coefficient_digest = c64_correction_link_coefficient_digest(
+            [&coefficients[0], &coefficients[1]],
+            second_weight,
+            half_rows,
+        )
+        .unwrap();
+        let statement =
+            C64TerminalLinkStatement::new([0x64; 32], coefficient_digest, [0x65; 32], 7).unwrap();
+        let mut streams = TAPE_SEEDS.map(CorrelationStream::new);
+        let mut prover_transcript = Transcript::new(TRANSCRIPT_SEED);
+        let (proof, _, _) = prove_c64_terminal_link_reference(
+            &dense_coefficients,
+            &message,
+            claims,
+            &statement,
+            &mut streams,
+            &mut prover_transcript,
+        )
+        .unwrap();
+        let mut sparse_contexts =
+            array::from_fn(|tape| VerifierCtx::new(TAPE_SEEDS[tape], DELTAS[tape]));
+        let mut sparse_transcript = Transcript::new(TRANSCRIPT_SEED);
+        let sparse = verify_c64_correction_link(
+            [&coefficients[0], &coefficients[1]],
+            second_weight,
+            half_rows,
+            keys,
+            &statement,
+            &proof,
+            &mut sparse_contexts,
+            &mut sparse_transcript,
+        )
+        .unwrap();
+        let mut dense_contexts =
+            array::from_fn(|tape| VerifierCtx::new(TAPE_SEEDS[tape], DELTAS[tape]));
+        let mut dense_transcript = Transcript::new(TRANSCRIPT_SEED);
+        let dense = verify_c64_terminal_link_reference(
+            &dense_coefficients,
+            keys,
+            &statement,
+            &proof,
+            &mut dense_contexts,
+            &mut dense_transcript,
+        )
+        .unwrap();
+        assert_eq!(sparse.terminal_a, dense.terminal_a);
+        assert_eq!(sparse.terminal_m_keys, dense.terminal_m_keys);
+        assert_eq!(sparse_transcript.ledger(), dense_transcript.ledger());
+    }
 
     #[cfg(feature = "cuda")]
     use std::sync::{Arc, Mutex};

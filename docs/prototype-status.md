@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 R0.2 POLICY 3 ACTIVE — SETUP/POST-FS GATES OPEN / NO PRIVATE BACKEND)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 R0.3 THEOREM/CENSUS CHECKPOINT — OWNER DECISION / NO PROVER OR POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,29 +8,73 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-Read `c7-stateful-authenticated-lfc-design.md` next.
+Read `c7-stateful-authenticated-lfc-design.md`, then
+`c7-r03-prover-pod-handoff.md`.
 
-- **Status/hard stop.** C7 R0.2 is design-only on
-  `agent/c7-stateful-alfc`. Policy 3 is the sole active no-clear line; policy 2
-  is dormant and needs documented exhaustion plus later explicit owner
-  activation. No private backend or static-root reuse is authorized.
-- **Narrowed funnel.** Only a digest-only salted leaf commitment with
-  attempt-local VOLE-private payload checks and public Merkle paths remains
-  analytically eligible. Expanded field/code/tag planes, private full paths,
-  model-sized temporaries and pools fail. Exact queries and all
-  post-Fiat--Shamir bytes must reconcile once into the six components.
-- **Evidence/credit.** X4d's 9.619-GB durable tier and 133.544-GB host peak,
-  plus X4's 4.022-MB query-frame lower bound, motivate the gates. C7's
-  12.386/19.212-MB certificate and 7.142-GB/1.776-TB setup figures remain
-  screens, `credit:false`; privacy, compiled bytes and complete resources are
-  unknown.
-- **Security/authorization.** `R_max=2^20` counts all reserved attempts; the
-  83.999-bit arithmetic remains conditional. Prior budget/Lean checks pass.
-  No large prover, provider or pod is authorized. Local means tiny/scaled
-  only; full GPT-2 E2E needs `C7_POD_READY` and later owner GO.
-- **Resume.** Owner must set numeric setup amplification and place an explicit
-  `B_query_FS` sub-budget, then authorize only the sole candidate's
-  malicious-DV theorem and exact one-pass/codec census before R1.
+- **Status/hard stop.** C7 R0.3 is an owner-decision checkpoint on
+  `agent/c7-stateful-alfc`. Policy 3 remains sole active; policy 2 is dormant
+  pending full documented exhaustion and later owner activation. No current
+  backend passes concrete privacy/soundness, setup, one-pass opening and
+  serialized query-byte gates together.
+- **Registered gates.** Setup target/hard is `2.00x/2.10x` packed. Total
+  `B_weight_ALFC`, including queries, has `100%/105%` target/hard ceilings.
+  `g=141` is the first analytic setup-target leaf; `g=256` the first
+  power-of-two screen. Neither has `BatchOpenBlocks` or compiled bytes.
+- **Security/evidence.** The non-vacuous privacy game excludes hiding roots
+  from equal `Leak_base`; 256-bit salts survive only an analytic screen.
+  Existing ideal shared-Delta malicious-DV ZK is reused, but concrete
+  `LeafCom`, checker/codec refinement, soundness bridge, `Q_leaf/Q_FS` policy
+  and event registry are missing. Budget v4 self-check passes; all numbers
+  remain `credit:false`.
+- **Authorization/resume.** No prover execution, provider contact or pod is
+  authorized; local remains tiny/scaled. Owner must choose honest-DV versus
+  amplified FS challenges, provisional `g=141` versus justified `g=256`, and
+  whether to authorize a tiny locally-openable-code search. Full GPT-2 stays
+  pod-only after `C7_POD_READY` plus a later run-specific owner GO.
+
+- **2026-08-26 — C7 R0.3 fixes the tolerated setup/query envelopes, repairs
+  the cryptographic games and stops at an owner decision.** The owner
+  registers a 2.00x packed setup target and 2.10x hard ceiling, and places all
+  weight-oracle query bytes inside `B_weight_ALFC` with a 105% hard ceiling.
+  Integer hard limits are 520,800,000/129,470,880,000 B for GPT-2/31B setup
+  and 3,272,685/5,496,695 B for the weight certificate component. The latter
+  leave only 155,842/261,747 B above target; all six complete components and
+  Tier-A/3x gates still apply.
+
+  For the 4.4x digest geometry, `A_setup~=1+140.8/g`: `g=128` has only 32 B
+  of metadata headroom at the hard cap, `g=141` is the first integer target
+  screen, and `g=256` is the first power-of-two target screen. Larger leaves
+  directly enlarge private payload and Merkle bytes. No retained code closes
+  the other half of the trade-off: Ligero/RS direct restriction is
+  `Theta(qN)`; BaseFold/X4 materializes full transforms; WHIR persists full
+  matrices/tree levels; ERA needs N-scale permutation/accumulator
+  intermediates or `Theta(qN)` restriction. Thus no candidate passes setup,
+  one sequential scan without N-scale scratch, and private query bytes
+  together. Policy 3 is not declared exhausted; the remaining shape is
+  research-only and has no prover/pod authority.
+
+  The privacy game now compares equal witness-independent `Leak_base` while
+  constructing hiding roots independently per branch. Requiring equal
+  binding `C_W`/K/V roots had made privacy essentially vacuous. The theorem
+  separates adversarial leaf-oracle work `Q_leaf` from Fiat--Shamir work
+  `Q_FS`; a static large-model tree has fewer than `2^30` leaves, so 256-bit
+  salts with the analytic `Q_leaf<=2^64` screen give a `<2^-161` salt-hit
+  term, while 192-bit salts give only about 97 bits and are rejected. No
+  concrete arithmetizable leaf commitment is selected. Opaque handles plus
+  verifier `(Delta,k)` cannot extract a clear PCS transcript, while exposing
+  the prover tag would reveal plaintext. Soundness therefore needs a direct
+  authenticated-checker theorem or committed-input PoK/extractor.
+
+  Existing Lean malicious-verifier perfect ZK and shared-Delta sequential
+  composition already cover ideal zero-residual windows, so R0.3 adds no
+  duplicate lemma. The missing step is a concrete private-checker/codec to
+  those windows. A roughly 128-bit Fp2 Fiat--Shamir challenge with
+  `Q_FS=2^64` gives only a roughly 64-bit grinding screen; challenge mode is
+  now an owner gate, with fresh honest-DV post-prefix randomness recommended.
+  Budget schema v4 passes its self-check and remains entirely `credit:false`.
+  The create-new `c7-r03-prover-pod-handoff.md` records every readiness gate
+  and future run order; no placeholder runner, prover execution, provider or
+  pod contact occurred.
 
 - **2026-08-26 — C7 R0.2 selects policy 3 and installs independent setup and
   post-Fiat--Shamir byte hard stops.** The owner selects literal no-clear

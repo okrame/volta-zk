@@ -1,8 +1,8 @@
 # C7 — stateful authenticated linear-functional commitment
 
-**Status:** C7 R0.2 policy-3 admission checkpoint; design and small
-formal/analytic seams only.  This document is the task-specific authority
-named by `prototype-status.md`.
+**Status:** C7 R0.3 theorem/census checkpoint; owner decision gate.  Design,
+tiny/scaled screens and fail-closed handoff preparation only.  This document
+is the task-specific authority named by `prototype-status.md`.
 
 **Branch:** `agent/c7-stateful-alfc`.
 
@@ -28,7 +28,7 @@ claim, per-token folding instance, or deferred cross-response settlement.
 DeepProve and zkAgent are evidence for response-wide operator batching, but
 their teacher-forced full-forward statements are not the C7 relation.
 
-R0.2 retains only the following decisions.
+R0.3 retains the R0.2 decisions and adds the following owner-approved gates.
 
 1. The immutable model, response trace and persistent cache are separate
    commitment planes.  "One opening" means one transcript-bound
@@ -49,6 +49,32 @@ R0.2 retains only the following decisions.
    VOLE-MAC adapter is **rejected under policy 3**, not an architectural
    front-runner.  WHIR-UD remains **GO only as a transparent tiny/scaled code
    control**; it carries no private-weight or no-clear credit.
+5. Persistent setup has target `A_setup <= 2.00` and hard ceiling
+   `A_setup <= 2.10`.  The interval `(2.00, 2.10]` is a preregistered 5%
+   tolerance, not permission for an expanded field/code/tag plane or an
+   N-scale temporary.
+6. Weight-oracle `B_query_FS` is included inside `B_weight_ALFC`, never added
+   as a seventh component.  Its hard ceiling is 105% of the registered target;
+   use of the tolerance is recorded explicitly and the complete certificate
+   must still pass Tier A and the 3x growth gate.
+7. R0.3 design/theorem/census work and preparation of a fail-closed
+   prover/pod handoff are authorized.  Prover implementation/execution, pod
+   contact and pod execution remain unauthorized until the ledger reaches
+   `C7_POD_READY` and a later explicit owner GO authorizes the concrete run.
+8. No current backend passes setup, one-pass opening and private query-byte
+   gates together.  The digest-only form remains a parameterized research
+   shape, not an implementation candidate.  `g=141` is the first analytic
+   setup-target leaf size and `g=256` the first power-of-two one; neither has
+   a valid `BatchOpenBlocks` schedule or compiled proof census.
+9. Privacy comparisons use equal witness-independent `Leak_base`; hiding
+   roots, digests and paths are generated independently in the two worlds.
+   Requiring equal binding roots would make weight and K/V privacy vacuous.
+   The only salt length retained for screening is 256 bits.  No concrete
+   arithmetizable leaf commitment is selected.
+10. Challenge generation is now an explicit owner gate.  The recommended
+    simple path uses fresh honest-DV challenges after their committed
+    prefixes, serialized in the transcript.  Fiat--Shamir remains quarantined until
+    its `Q_FS` grinding loss and any amplification bytes/work are derived.
 
 The following are terminal R0 hard stops.  Until all are discharged there is
 no large prover implementation, production equivalence claim, provider/pod
@@ -66,16 +92,24 @@ contact, or proof/time/memory credit:
 - under policy 3, every queried oracle payload and every witness-dependent
   intermediate message—not merely the terminal evaluation—must remain hidden
   or authenticated and privately verified;
+- a concrete domain-separated `LeafCom`, tree hash and transcript hash must
+  supply adaptive hiding, position binding and an arithmetized private
+  checker; collision resistance alone is not hiding, and an ideal random
+  oracle is not an executable checker;
+- soundness must use either a direct authenticated-checker theorem or an
+  explicit committed-input PoK/extractor.  Opaque handles plus the verifier's
+  `Delta` do not extract a virtual clear PCS transcript, while serializing a
+  raw prover tag would reveal the plaintext;
 - a weight oracle may persist only the canonical packed weights, one compact
   digest-only salted leaf commitment/index and compact metadata.  An expanded
   Fp/Fp2 weight copy, encoded codeword, per-coordinate authentication plane,
   P1/P2/multiplier planes or consumable root/mask pool is an anti-X4d hard
-  stop unless a later owner decision admits a concrete setup envelope;
+  stop; the registered numeric tolerance does not admit those shapes;
 - every candidate must compile the exact query count by root and round and
-  the complete noninteractive bytes induced after Fiat--Shamir.  Query
+  the complete serialized bytes under the selected challenge mode.  Query
   answers/private handles, authentication or multiproof material, round
   commitments and framing are assigned exactly once to the six certificate
-  components.  Missing or merely interactive query bytes fail closed;
+  components.  Missing interactive or Fiat--Shamir bytes fail closed;
 - the malicious designated-verifier, adaptive, stateful privacy theorem must
   cover the full connection horizon, rejection feedback, retries and
   selective aborts;
@@ -122,7 +156,7 @@ retry, and use accept/reject feedback.  The connection shares one MAC key
 `Delta`; raw correlations, masks, nonces and attempt slots are one-time and
 domain-separated.
 
-The intended public leakage is:
+One real execution exposes:
 
 - model identifier, architecture, quantization/layout digest and static
   weight commitment root;
@@ -132,11 +166,20 @@ The intended public leakage is:
   accept/reject and durable journal state.
 
 Privacy is only required between weight/cache witnesses inducing the same
-declared public leakage.  Availability and suppression of a sampled response
-are not hidden.  The C7 relation requires a published token to follow the
-committed sampling coins; it does not promise unbiased service after a
-provider chooses to abort.  Every such attempt still consumes the connection horizon and burns
-its masks/correlations.
+declared **base leakage** `Leak_base`, which excludes every witness-dependent
+hiding commitment value: `C_W`, boundary/K/V roots, leaf digests and paths.
+The challenger constructs these independently in each left/right world.  The
+public shape, indices, lengths and equality/linkability pattern must match;
+the root bytes need only be indistinguishable.  Within either world `C_W`
+remains static and therefore linkable across attempts.  Requiring the same
+binding root in both worlds would restrict the game to essentially identical
+weights and make the privacy claim vacuous.
+
+Availability and suppression of a sampled response are not hidden.  The C7
+relation requires a published token to follow the committed sampling coins;
+it does not promise unbiased service after a provider chooses to abort.
+Every such attempt still consumes the connection horizon and burns its
+masks/correlations.
 
 ## 2. Exact response relation
 
@@ -157,8 +200,10 @@ The public instance `x_e` contains, in canonical byte order:
    their already-durable high-water marks;
 5. public input/output tokens, `T`, maximum context/capacity and the exact
    sampler policy;
-6. a prover sampling-seed commitment, client entropy, and the transcript rule
-   deriving per-step sampling coins;
+6. a client sampling-entropy commitment, a later prover sampling-seed
+   commitment, the client's opened entropy and the transcript rule deriving
+   per-step sampling coins; sampling entropy is domain-separated from proof
+   challenges;
 7. fresh response root `C_B,e`, successor root `C_KV,e+1`, successor length
    `k + T`, and the canonical claim-schedule digest;
 8. hash/code/field parameter identifiers and the complete certificate framing
@@ -420,30 +465,61 @@ Client durable journal             Provider / prover
 ----------------------             -----------------
 reserve slot, nonce, terminal
 correlation ranges; persist
-high-water marks
-        |  authorization + client entropy
+high-water marks; commit fresh
+sampling entropy
+        |  authorization + entropy commitment
         |------------------------------------------->
-        |                 commit seed, C_B,e, C_KV,e+1
+        |       commit prover seed, C_B,e, C_KV,e+1,
+        |                         first proof messages
         |<-------------------------------------------|
-bind public state, C_W, C_KV,e, all four roots and sampler metadata
-        |  operator/GKR/code challenges
+        |  open sampling entropy
         |------------------------------------------->
-        |                 response-wide operator messages
+derive and prove sampling coins; bind public state, fresh F_VOLE+id,
+C_W, C_KV,e, all four roots, output tokens and sampler metadata
+        |       each operator/code first message m_i
         |<-------------------------------------------|
-fix complete canonical schedule, every q_j and every authenticated(v_j)
-        |  beta = H(transcript_through_fixed_schedule)
+        |  fresh DV challenge rho_i; repeat by round
+        |------------------------------------------->
+        |       close canonical schedule, every q_j,
+        |       authenticated(v_j), prefix and shape
+        |<-------------------------------------------|
+        |  fresh response-wide batching beta
         |------------------------------------------->
         |                 one multi-plane ALFC proof
         |<-------------------------------------------|
-        |  gamma = H(transcript_through_ALFC)
+        |  fresh terminal-settlement gamma
         |------------------------------------------->
-        |                 one extension-field MAC settlement
+        |                 one Fp2 MAC settlement
         |<-------------------------------------------|
 verify complete relation and CAS old head -> new head
 persist certificate + transcript + consumed ranges
         |  durable ACK
         |------------------------------------------->
 ```
+
+The recommended path is deliberately interactive: an honest designated
+verifier samples each `rho_i`, then `beta`, then `gamma` only after its exact
+canonical prefix is fixed, and the durable certificate serializes them.
+Privacy is still against a malicious verifier choosing them arbitrarily; the
+existing ideal-VOLE theorem already permits adaptive challenges.  Soundness
+uses honest unpredictable verifier randomness and pays the registered attempt
+union bound, not an unbounded Fiat--Shamir grinding oracle.
+
+The alternative noninteractive compiler replaces each challenge message with
+locally recomputed
+
+```text
+H_FS(domain || F_VOLE_id || statement || canonical_prefix || round_id).
+```
+
+It is **quarantined**, not silently enabled.  Its prover and verifier must
+recompute identical challenges; `Q_FS` is a separate adversarial query bound.
+A roughly 128-bit Fp2 challenge with `Q_FS=2^64` has at most a roughly 64-bit
+direct grinding bound.  Even before degree/list factors, retaining 110 bits
+would require `Q_FS<=2^18`, at least 174 effective challenge bits, or a proved
+independent repetition whose extra terminal multiplicity, scan work and bytes
+are all counted.  Concrete factors can only tighten those requirements.  No
+such choice is registered at R0.3.
 
 An abort at any point after reservation burns the slot, nonce, seed
 commitment, masks and every reserved correlation range.  It leaves the
@@ -508,67 +584,132 @@ attempt-local and burned on abort.
 
 ### 4.3 Named privacy theorem still required
 
-`C7-ALFC-MDV-STATEFUL-PRIV` must state the following game.
+`C7-ALFC-MDV-STATEFUL-PRIV(lambda,R_max,L,Q_leaf,Q_FS)` is a left/right game.
+For two valid witness histories `(W_0,KV_0,trace_0)` and
+`(W_1,KV_1,trace_1)` with equal witness-independent `Leak_base`, the
+challenger samples `b`, independently constructs that world's hiding roots
+and salts, and runs at most `R_max` durable reservations.  A malicious
+designated verifier controls `Delta`, its keys, public challenges, aborts,
+retries and rejection feedback.  Its view includes every byte prefix,
+queried digest/path/index, length and admitted timing class, accept/reject and
+journal transition.  The weight root remains static and linkable within the
+chosen world.  No root equality is required across worlds.
 
-- A malicious designated verifier holds `Delta`, verification state and all
-  client shares and chooses messages adaptively.
-- It interacts for at most `R_max` authorized attempts, including accepted
-  responses, failures, retries and selective aborts, with persistent `C_W`
-  and accepted K/V roots.
-- It sees every oracle response, intermediate message and authenticated
-  handle emitted by complete and partial attempts.  Their concrete census
-  must be enforced by the codec; `J_screen_cap = 512` and `2^29` are not yet
-  theorem parameters.
-- It may observe all roots, queries, authenticated handles, proof bytes,
-  timing classes admitted by the leakage policy, accept/reject, crash/replay
-  recovery and the durable journal.
-- For any two weight/cache witness sequences with identical declared public
-  leakage and valid recurrence outputs, the real views are simulatable or
-  computationally indistinguishable within the registered privacy error.
-- The simulator handles adaptive queries and rejection feedback; masks,
-  nonces and raw correlations are unique even for aborted transcripts; no
-  clear symbol/evaluation is an oracle output.
+Every witness-dependent message must occur only after reservation; an abort
+at any byte prefix burns all associated state.  The concrete codec must
+enforce the number of handles and windows; `J_screen_cap=512` and `2^29` are
+not theorem parameters until compiled.
 
-Required hypotheses must be named individually: concrete commitment hiding
-and binding, code query leakage, Fiat--Shamir/ROM, hash collision resistance,
-real/AES PCG security, VOLE security with shared `Delta`, journal durability,
-replay/fork exclusion and the exact public leakage function.  The t-query
-CFW/constrained-code HVZK theorem used by 2026/391 has a non-adaptive,
-query-bounded simulator; it does not discharge this game.
+The required hybrid sequence is explicit:
 
-For the sole Section 5.4 candidate, the proof must expose the following
-hybrids rather than call the authenticated oracle ideal:
+1. replace the salt PRF and real PCG/VOLE by ideal independent salts and
+   `F_sVOLE+id` correlations;
+2. refine the concrete private leaf/hash/PCS checker to public-shape
+   authenticated windows whose only openings are true zero residuals;
+3. use the existing straight-line malicious-verifier simulator for all
+   corrections, adaptive challenges and partial transcripts;
+4. replace branch-0 roots, queried digests and public paths by branch 1 using
+   adaptive multi-target `LeafPathHide`;
+5. reverse the ideal-window and PRF/PCG hybrids for branch 1, then compose
+   durable replay/fork transitions over the connection.
 
-1. replace provider salt derivation and attempt masks by their PRF/PCG ideals;
-2. simulate every VOLE correction, authenticated leaf predicate and partial
-   transcript, including malicious verifier messages and selective abort;
-3. prove adaptive multi-opening hiding for the static salted leaf
-   commitment given roots, public digests and paths;
-4. extract from any accepted authenticated execution one virtual clear PCS
-   verifier transcript with the same fixed prefix and queries;
-5. apply hash collision binding, preprocessed-data correctness and the PCS's
-   unique-decoding/knowledge theorem to that transcript;
-6. compose Fiat--Shamir/ROM, journal, replay and fork transitions over the
-   complete connection horizon.
+The ideal-VOLE middle is already formal: `BlindSumcheck.lean` lets the
+verifier choose `Delta`, every key and challenge adaptively;
+`bsc_zeroBatch_perfect_zk` gives perfect ZK when all opened claims are zero;
+`sequential_composition_perfect_zk` composes arbitrary windows with a shared
+`Delta` and fresh offsets.  R0.3 therefore does **not** invent a duplicate
+ideal privacy theorem.  The missing theorem is the concrete
+checker/codec-to-window refinement.
 
-The per-attempt premise must therefore contain separate terms for
-`epsilon_leaf_hide`, `epsilon_hash_bind`, `epsilon_private_verifier`,
-`epsilon_MAC`, `epsilon_PCG/VOLE`, `epsilon_FS` and codec/state failures.
-Collision resistance alone gives no hiding theorem.  Authentication alone
-also gives no privacy: a raw tag/key-share combination can reveal the value
-to the designated verifier that knows `Delta`.  Only opaque handles consumed
-inside the authenticated computation are admitted.
+The connection privacy bound must have the form
+
+```text
+Adv_priv_conn
+ <= Adv_PRF_salt(L)
+  + 2*L*Q_leaf/2^sigma
+  + epsilon_LeafPathHide_extra
+  + epsilon_challenge_ZK(R_max,Q_FS)
+  + sum_attempt (
+        Adv_real_VOLE_malV(J_a)
+      + Adv_PCG_a
+      + epsilon_checker_refinement_a
+      + epsilon_codec_timing_a)
+  + epsilon_state_replay.
+```
+
+`Q_leaf` counts adversarial offline commitment-oracle work and is not bounded
+by `R_max`.  At the setup-hard `g=128`, the large-model static tree has
+`L=1,059,657,500 < 2^30` leaves.  With `Q_leaf<=2^64`, 256-bit independent
+salts give
+
+```text
+2*L*Q_leaf/2^256 < 2^-161,
+```
+
+whereas 192-bit salts give only about 97 bits.  R0.3 therefore rejects 192-bit
+salts and retains 256 bits as a **screen**, not as a proof: the connection-wide
+leaf census, `Q_leaf` policy and concrete `LeafCom` remain missing.
+
+`LeafCom(payload;salt)`, `H_tree(left,right)` and the challenge hash are
+separate domain-separated primitives.  The leaf input binds commitment nonce,
+plane, position, payload length and padding.  It cannot contain the Merkle
+root itself, which would be circular.  Collision resistance supplies binding,
+not hiding; a random-oracle salt-guess calculation does not make that oracle
+an arithmetizable private checker.
+
+#### Soundness/knowledge is a separate game
+
+`C7-ALFC-STATEFUL-KS` asks whether a prover can cause the first durable state
+promotion for which no extracted witness satisfies the full C7 relation and
+accepted predecessor.  Its bound separately charges challenge soundness,
+leaf/position binding, code unique-decoding/knowledge soundness, Fp2 MAC/RLC,
+the private checker, PCG and state/replay/fork errors.
+
+```text
+Pr[Bad]
+ <= epsilon_challenge(R_max,t,Q_FS,challenge_space)
+  + epsilon_AuthCheckerExtract(J_total)
+  + epsilon_LeafComBinding(L,U_leaf,Q_leaf)
+  + epsilon_MerklePositionBinding
+  + epsilon_CodeKS_or_UniqueDecode
+  + sum_attempt (
+        epsilon_MAC_Fp2
+      + epsilon_private_checker
+      + epsilon_RLC_operator
+      + epsilon_codec)
+  + epsilon_PCG
+  + epsilon_state_replay_fork.
+```
+
+No term is declared independent merely because attempts use fresh masks; the
+same `Delta` is handled by fixed-other-coins slices and union bounds.
+
+The earlier step “extract a virtual clear PCS transcript” is rejected as
+circular.  Opaque handles plus verifier data `(Delta,k)` do not reveal the
+authenticated plaintext; exposing the prover tag together with them destroys
+privacy.  `OpeningMac.lean` reasons about a mathematical authenticated output
+but does not extract it from serialized bytes.  The concrete construction
+must instead prove either direct authenticated-checker soundness or an
+explicit committed-input PoK/extractor in `F_sVOLE+id`, including its trapdoor
+and challenge-oracle log.  Evaluation binding from preprocessing is not this
+knowledge theorem.
 
 ### 4.4 What is and is not cryptographically proved
 
-The R0.1 Lean seam now proves exactly three relevant facts.
+The repository proves four relevant ideal/algebraic facts; none instantiates
+the private oracle.
 
-1. The terminal batch is linear in the actual extension field under one
+1. `bsc_zeroBatch_perfect_zk` and
+   `sequential_composition_perfect_zk` prove perfect straight-line privacy in
+   ideal `F_sVOLE` for public-shape windows with true zero residuals, even
+   when one malicious verifier chooses shared `Delta`, keys and challenges
+   adaptively.  The missing concrete refinement is not assumed by them.
+2. The terminal batch is linear in the actual extension field under one
    shared `Delta`; applying either canonical coordinate projection yields the
    corresponding equality for both serialized Fp limbs.  This fixes the old,
    invalid model of two unrelated base-field MACs, but does not construct the
    adapter or its codec.
-2. `connection_hybrid_advantage_bound` proves the sequential hybrid
+3. `connection_hybrid_advantage_bound` proves the sequential hybrid
    recurrence
 
    ```text
@@ -579,7 +720,7 @@ The R0.1 Lean seam now proves exactly three relevant facts.
    for every reachable transcript/journal state.  That premise is precisely
    the missing malicious-DV per-attempt simulator; the lemma does not assume
    an ideal ALFC.
-3. `c7_registered_connection_error_below_78_bits` proves in exact rational
+4. `c7_registered_connection_error_below_78_bits` proves in exact rational
    arithmetic that the current allocation is below `2^-78`, *if* all 64
    attempt-local event bounds and the four connection-wide terms are actually
    established with their registered scopes.
@@ -597,9 +738,15 @@ a list dot-product identity rather than a concrete Boolean MLE codec, and the
 atomic wrappers inherit an abstract old/new state type rather than proving a
 filesystem WAL or CAS implementation.
 
-This is the maximal honest composition result before a privacy policy and
-concrete backend are selected.  Full cryptographic soundness/privacy is not
-proved at R0.1.
+The existing correction-privacy seam also records why serializing a raw
+prover tag alongside verifier material exposes the plaintext.  No duplicate
+C7 lemma is added: a salt-counting identity or another ideal theorem would
+not discharge concrete adaptive commitment hiding.
+
+This is the maximal honest R0.3 composition result.  Full concrete
+cryptographic soundness/privacy is **not proved** until `LeafCom`, the private
+checker/codec refinement, real PCG/VOLE, challenge policy and code knowledge
+soundness are instantiated and composed.
 
 ### 4.5 Horizon and conditional union budget
 
@@ -629,7 +776,10 @@ R0 allocates a cap of 64 response-local bad events, each at most `2^-110`:
 This is a partition of an error budget, not an event census.  Each concrete
 event must have an identifier, theorem/hypothesis, numerator, denominator,
 repetition count and connection/attempt scope.  Hash, PCG and privacy query
-factors must be connection-wide rather than silently charged once.  Until a
+factors must be connection-wide rather than silently charged once.  In
+particular the `2^-128` hash row is an allocation, not a consequence of the
+32-byte digest, and a Fiat--Shamir event cannot retain a `2^-110` label
+independently of `Q_FS`.  Until a
 fail-closed registry derives every row, the following is conditional
 arithmetic only:
 
@@ -766,13 +916,15 @@ private production weights.  The C6.3 eight-body WHIR+Bolt topology is
 forbidden.  Results remain component evidence and cannot promote C7 state or
 grant privacy/E2E credit.
 
-### 5.4 R0.2 policy-3 construction funnel
+### 5.4 R0.3 policy-3 construction funnel
 
 Only one architectural shape remains eligible for further analytic work; it
 is not a selected backend:
 
 ```text
-digest_i = H(domain || root_id || i || salt_i || payload_i)
+digest_i = LeafCom(
+  domain || commitment_nonce || plane || i || length || padding || payload_i;
+  salt_i)
 ```
 
 The persistent oracle is a **digest-only salted leaf commitment**.  Leaf
@@ -782,12 +934,15 @@ authenticated verifier proves the leaf preimage equation and the PCS
 algebraic predicate under MAC.  Only constrained zero residuals may be
 opened.  Internal Merkle paths stay public, so the private verifier pays one
 leaf-hash check per unique leaf rather than privately proving every path hash.
+`commitment_nonce` is fixed before the tree and is not the Merkle root.
 Collision resistance supplies binding only; adaptive hiding of the static
 salted root/path requires a separate theorem.  Provider-side PRF-derived
-salts are eligible only under that theorem and the real-PCG/PRF budget.
+256-bit salts are eligible only under that theorem and the real-PCG/PRF
+budget.  Neither a generic random oracle nor SHA/BLAKE/Poseidon is selected:
+the concrete primitive must also be cheap enough inside the private checker.
 
-No encoded payload/codeword is persistent.  After Fiat--Shamir fixes the
-queried leaves, a candidate must implement
+No encoded payload/codeword is persistent.  After the selected challenge mode
+fixes the queried leaves, a candidate must implement
 
 ```text
 BatchOpenBlocks(W, queried_indices)
@@ -800,6 +955,22 @@ schedule, the candidate fails; a second scan or a full persisted oracle is
 not an alternative implementation.  No published Ligerito, ERA, WHIR,
 SwitchFold or 2026/391 composition currently supplies this compiler.
 
+The R0.3 schedule audit closes the current families: direct Ligero/RS queried
+evaluation is `Theta(qN)`; BaseFold/X4 needs full NTT/Mobius materializations;
+WHIR persists matrices and Merkle levels; ERA's random permutations and
+accumulators need `Theta(N)` intermediates, while direct restriction again
+costs `Theta(qN)`.  “Linear-time encodable” is not “locally openable.”  A new
+sparse-row code could in principle accumulate only queried outputs during the
+source scan, but no retained family currently combines the required distance,
+knowledge binding, policy-3 privacy and certificate law.
+
+Repository evidence matches the paper audit: `rust/volta-pcs/src/ligero.rs`
+stores the full encoded matrix and tree; `rust/volta-pcs/src/x4/ntt.rs`
+allocates a full transform vector; `x4/artifacts_v4.rs` records two complete
+rebuild materializations; and `c61_persisted_mmcs.rs` persists matrices and
+digest layers before serving rows.  These are historical/control
+implementations, not templates for C7.
+
 The following shapes are rejected, not deferred optimizations: a persistent
 expanded field/code oracle; an O(N) plane of VOLE tags or per-coordinate
 opening proofs; privately proving the whole Merkle path; reusable secret
@@ -807,8 +978,8 @@ linear sketches; and a consumable root/mask pool.  Preprocessing-backed
 evaluation is also ineligible until the proof establishes correctness of the
 preprocessed data structure, not only evaluation binding.  This funnel leaves
 no implementation GO: the sole candidate still lacks the malicious-DV
-theorem, the one-scan block-opening algorithm and exact compiled
-byte/resource census.
+refinement, concrete `LeafCom`, soundness/PoK bridge, one-scan block-opening
+algorithm and exact compiled byte/resource census.
 
 ### 5.5 Layout/reference-only and quarantined lines
 
@@ -896,16 +1067,16 @@ fit after measurement.
 ### 6.2 Post-Fiat--Shamir query ledger (hard stop)
 
 Query count is a first-class certificate and privacy parameter, not only a
-verifier/prover-time parameter.  For each concrete candidate keep four
+verifier/prover-time parameter.  For each concrete candidate keep five
 different counters:
 
 - `q_open[c,r]`: PCS spot checks for commitment/root `c` in round `r`;
 - `U_leaf[c,r]`: unique leaves after exact deduplication/multiproof sharing;
 - `P_secret[c,r]`: witness-dependent symbols inside those leaves and all
   authenticated intermediate messages;
-- `Q_RO`: adversarial random-oracle queries in the Fiat--Shamir security
-  reduction.  This is a security-loss parameter, not `q_open` or a
-  certificate byte count.
+- `Q_leaf`: adversarial offline queries against the leaf commitment;
+- `Q_FS`: adversarial transcript-hash queries if Fiat--Shamir is selected.
+  Neither is `q_open`, a certificate byte count or bounded by `R_max`.
 
 Then define
 
@@ -933,8 +1104,57 @@ them canonically.  A multiproof receives only its exact measured/derived
 sibling sharing: neither naive `Q*depth` charging nor free path deduplication
 is acceptable.
 
+For unique queried leaves `A_0`, let `A_(l+1)` be their distinct parents.  The
+layout-independent exact sibling count is
+
+```text
+F(A_0) = sum_l |{sibling(v) : v in A_l, sibling(v) exists} minus A_l|.
+```
+
+When every selected parent has two children this reduces to
+`sum_l (2*|A_(l+1)|-|A_l|)`.  The compact-tree codec must account explicitly
+for odd/singleton levels.  This, not `U_leaf*depth`, is serialized.  The byte
+identity is
+
+```text
+B_weight_nonquery + B_query_FS <= B_weight_ALFC_limit,
+```
+
+so the query ledger never receives the whole weight allocation for free.
+
+R0.3 preregisters a target and one 5% hard tolerance for the weight-oracle
+share.  Both include all weight-oracle post-Fiat--Shamir material and are
+inside `B_weight_ALFC`:
+
+| Weight-oracle envelope | GPT-2 | 31B envelope |
+| --- | ---: | ---: |
+| target `B_weight_ALFC` | 3,116,843 B | 5,234,948 B |
+| `floor(105*target/100)` hard ceiling | 3,272,685 B | 5,496,695 B |
+| tolerance reserve over target | 155,842 B | 261,747 B |
+| complete certificate if the hard ceiling is fully used | 12,541,405 B | 19,474,047 B |
+
+Bytes at or below target are a target pass; bytes above target and at or
+below the hard ceiling are `pass_with_tolerance` and require an append-only
+deviation entry.  Any larger value is a hard failure.  The tolerance supplies
+no privacy, soundness or compiled-certificate credit and cannot offset an
+overrun in another component.
+
+The leaf-size tension is already severe.  With an optimistic 8-byte
+authenticated symbol, one full leaf, one unshared Merkle path and **zero**
+bytes for salt, private hash checking, IOP messages or framing, the gross
+ceilings are:
+
+| `g` | GPT-2 bytes/leaf; leaves under hard / 5% reserve | 31B bytes/leaf; leaves under hard / 5% reserve |
+| ---: | ---: | ---: |
+| 128 | 1,792; 1,826 / 86 | 2,016; 2,726 / 129 |
+| 141 | 1,864; 1,755 / 83 | 2,120; 2,592 / 123 |
+| 256 | 2,784; 1,175 / 55 | 3,008; 1,827 / 87 |
+
+These are optimistic upper bounds, not query budgets.  Fp2 payloads,
+multiproof misses and the nonlinear private checker only reduce them.
+
 Before a candidate is admissible, the same GPT-2 and 31B workload reports all
-four counters, answer alphabet/handle widths, exact multiproof nodes, round
+five counters, answer alphabet/handle widths, exact multiproof nodes, round
 roots, codec bytes and total `B_query_FS`.  Those counts must parameterize
 both the malicious-DV privacy theorem and the complete connection soundness
 bound.
@@ -1105,9 +1325,20 @@ with `chunk + O(log chunks)` working memory and no model-sized temporary.  The
 only per-weight-width persistent payload plane is packed i16; a compact
 chunk-granular salted digest tree is separately counted.  Leaf/chunk
 granularity must also enter the post-Fiat--Shamir query ledger, so large
-leaves cannot move setup cost silently into proof bytes.  A numeric `A_setup`
-ceiling remains owner-unset;
-until it is registered, no candidate can pass the setup admission gate.
+leaves cannot move setup cost silently into proof bytes.
+
+R0.3 registers
+
+```text
+target:       A_setup = S_total / S_packed_i16 <= 2.00
+hard ceiling: A_setup <= 2.10
+```
+
+The interval `(2.00, 2.10]` is the owner-approved 5% tolerance.  It requires
+an append-only deviation entry and never relaxes the structural anti-X4d
+gate.  Exact byte ceilings are **496,000,000 / 520,800,000 B** for GPT-2 and
+**123,305,600,000 / 129,470,880,000 B** for the 31B envelope (target / hard).
+Anything above the hard ceiling fails.
 
 For `M` source/code symbols, `g` symbols per leaf, `h` digest bytes and
 authenticated symbol width `b_auth`, the first required trade-off screen is
@@ -1120,6 +1351,37 @@ B_secret_payload  ~= U_leaf*g*b_auth.
 Increasing `g` shrinks setup/tree storage but expands the private leaf
 payload and leaf-hash circuit.  A hierarchy merely reintroduces the hashes it
 claims to remove; neither direction receives free credit.
+
+Ignoring all persistent metadata `K`,
+
+```text
+A_setup ~= 1 + 140.8/g + K/S_packed.
+```
+
+Thus `g>=141` is the first integer meeting the 2.00 target asymptotically;
+`g=128` is only the pre-metadata 2.10 boundary.  At the illustrative 4.4x
+code geometry, exact compact-tree floor screens are:
+
+| Symbols/leaf | GPT-2 total | 31B total | Setup disposition before `K` |
+| ---: | ---: | ---: | --- |
+| 64 | 793,599,968 B | 197,288,959,968 B | reject; about 3.2x |
+| 128 | 520,799,968 B | 129,470,879,968 B | only 32 B hard headroom; not realistically admissible |
+| 129 | 518,685,280 B | 128,945,158,432 B | tolerance band |
+| 141 | 495,648,224 B | 123,218,149,216 B | first integer target screen |
+| 256 | 384,399,968 B | 95,561,839,968 B | first power-of-two target screen |
+
+These rows count packed weights plus digests only.  They do not prove that a
+codeword can be generated, committed and post-challenge opened in one source
+scan, nor count the private leaf checker.  Consequently none is a selected
+leaf size.  In particular `g=128`
+fails unless the complete persistent manifest, salt state and metadata fit in
+32 bytes.  Larger leaves buy setup by spending private query bytes.
+
+Changing only the tree to `g=141` does not rescue the ERA topology.  If its
+full 4.4x oracle, P1/P2 and multiplier planes are materialized, the scenario
+is still **6,844,448,224 B / 1,701,529,829,216 B**.  A valid setup therefore
+needs a streaming root builder that never materializes those planes; no
+current backend supplies it.
 
 | Setup/storage item | GPT-2 | 31B envelope |
 | --- | ---: | ---: |
@@ -1144,8 +1406,8 @@ At the illustrative 4.4x oracle geometry and 64-symbol leaves, retaining only
 packed weights plus digests is already approximately **3.2x** packed size.
 That row is a floor screen, not a constructed setup: it omits the private
 leaf checker, salts/PRF theorem, exact tree layout and block-regeneration
-algorithm.  It exposes why the owner must set both setup amplification and
-query-byte policy before choosing leaf size.
+algorithm.  It records why both the setup and query-byte gates are required
+before selecting a leaf size.
 
 A hypothetical full re-encoding has the same `7.142 GB / 1.776 TB` volume in
 this chosen screen; this is not a proved refresh schedule.  A consumable
@@ -1179,7 +1441,10 @@ journal design.
 | response-local event budget cap | 64; registry incomplete |
 | allocation per event | `2^-110` |
 | `epsilon_response` | `2^-104` |
-| hash / PCG / state / framing | `2^-128 / 2^-128 / 2^-120 / 2^-128` |
+| leaf salt screen | 256 bits; 192 bits rejected |
+| leaf-oracle work screen | `Q_leaf=2^64`; not a theorem cap |
+| challenge mode / `Q_FS` | owner-unset / unbounded, fail closed |
+| hash / PCG / state / framing | allocated `2^-128 / 2^-128 / 2^-120 / 2^-128`; not yet derived |
 | exact `epsilon_connection` | `17592186044675 / 2^128` |
 | effective connection bits | `83.99999999997877` |
 | conditional strict whole-bit allocation | 83 bits |
@@ -1191,6 +1456,13 @@ registry supplies every term and scope.  If a concrete backend needs more
 than 64 local events, a larger list/degree numerator, more roots, query-scaled
 hash/PCG loss or additional hybrid terms, parameters are raised and the
 calculator rerun before code.
+
+The arithmetic also does not survive an uncharged Fiat--Shamir grinding
+factor.  In particular one roughly 128-bit Fp2 challenge and `Q_FS=2^64`
+give only a roughly 64-bit direct ROM screen.  The registered 110-bit event
+allocation is therefore compatible only with the recommended fresh
+post-prefix verifier challenge, or with a later amplified FS construction
+whose work, multiplicity and bytes are explicitly charged.
 
 ## 7. Lean-first obligations
 
@@ -1210,6 +1482,7 @@ M1--M12 statements.  It proves the following algebra/state seams:
 | connection hybrid composition | additive advantage recurrence, conditional on the concrete per-attempt game step |
 | registered 78-bit arithmetic | exact rational inequality, conditional on the incomplete event registry |
 | serialized schedule refinement | opaque-handle codec round-trip only; no binding/privacy theorem |
+| ideal malicious-DV privacy | existing `bsc_zeroBatch_perfect_zk` and `sequential_composition_perfect_zk`; applies only after concrete checker-to-window refinement |
 
 These theorems prove no concrete PCS binding, hash/PCG security, transformer
 compiler completeness or malicious-DV privacy.  Section 2.4 names the prose
@@ -1217,13 +1490,24 @@ predicate and its hypotheses; no Lean `AcceptC7` definition yet exists.  A
 future definition must expose those assumptions rather than hide them behind
 an ideal ALFC API.
 
-## 8. R0.2 disposition and exact resume conditions
+R0.3 adds no Lean lemma.  Raw-tag leakage and ideal shared-`Delta` privacy are
+already proved; a new salt-counting identity would not prove adaptive hiding.
+The next useful statements are
+`serialized_private_oracle_view_refines_windows` and
+`private_checker_all_opened_residuals_zero`, only after a concrete codec and
+checker exist.
+
+## 8. R0.3 disposition and exact resume conditions
 
 ### 8.1 Backend/control recommendation
 
 - **Backend A as composed: REJECT under policy 3 / NO-GO for R1.**  Keep only
   its code/proof-law/storage evidence.  A terminal-only adapter cannot hide
   the row/column/leaf payloads already exposed by its oracle queries.
+- **Digest-only private-oracle shape: NO-GO for prover/pod.**  Its persistent
+  tree can fit at `g>=141`, but no concrete `LeafCom`, soundness bridge,
+  one-pass `BatchOpenBlocks` or compiled post-challenge census exists.  Keep
+  it only for a tiny local discovery screen if separately authorized.
 - **WHIR-UD control: GO for a transparent tiny/scaled control only.**  It may
   test the packed identity and code path on public/synthetic data.  It cannot
   test no-clear privacy and grants no complete certificate, scale, privacy or
@@ -1232,12 +1516,12 @@ an ideal ALFC API.
 ### 8.2 Resume conditions for an R1 proposal
 
 Policy 3 is now selected and policy 2 is dormant.  Before further backend
-implementation, the next design checkpoint requires the owner to register a
-numeric setup-amplification ceiling and decide whether `B_query_FS` must fit
-inside the current `B_weight_ALFC` allocation or receives another explicit
-sub-allocation inside Tier A.  A later owner instruction may then authorize
-the sole Section 5.4 candidate's theorem/census screen.  None of those
-decisions authorizes implementation or pod work.
+implementation, R0.3 is authorized to complete the sole Section 5.4
+candidate's theorem/census screen and prepare a fail-closed prover/pod handoff.
+The setup and query envelopes are now fixed with their 5% hard tolerances.
+The fail-closed readiness handoff is
+`docs/c7-r03-prover-pod-handoff.md`.  Preparation does not authorize prover
+execution, pod contact or pod execution.
 
 An owner may consider opening R1 only after a later checkpoint supplies all
 of:
@@ -1254,6 +1538,16 @@ of:
    policy and the exact `R_max` game;
 6. a composed certificate/security budget replacing allocation constants
    with derived protocol counts while retaining the gates.
+
+Before an R0.4 implementation proposal, the owner must additionally select:
+
+1. fresh post-prefix honest-DV challenges (recommended), or an explicit
+   Fiat--Shamir amplification and `Q_FS` work bound;
+2. provisional `g=141` leaf geometry, or `g=256` only if a power-of-two
+   codec justifies its larger private query payload;
+3. whether to authorize only a tiny local sparse/local-opening code search,
+   or to stop this policy-3 shape and begin the append-only exhaustion audit
+   required before policy 2 can even be considered.
 
 Policy 2 can replace item 1 only after the exhaustion and explicit activation
 procedure in Section 4.1; its existence grants no automatic resume path.
@@ -1281,11 +1575,16 @@ smallest complete serialized case before any larger component benchmark.
   This supersedes the R0.1 decision gate but does not authorize static-root
   reuse, select a backend or discharge the missing privacy theorem.  Policy 2
   remains a documented but dormant fallback under Section 4.1.
+- R0.3 registers 2.00/2.10 setup and 100/105% weight-byte envelopes, then
+  finds no current backend satisfying those gates together with one-pass
+  opening and private proof bytes.  It corrects the non-vacuous privacy game,
+  separates `Q_leaf` from `Q_FS`, rejects clear-transcript extraction and
+  leaves challenge generation at an owner decision gate.
 - The proof-byte table is a target allocation calibrated to public component
   evidence, not a composed certificate derivation.  It is `credit:false` and
   is one reason Backend A remains NO-GO.
 - No pod, production provider, frozen forward, quantization spec, or frozen
-  M1--M12 statement was touched in R0/R0.1/R0.2.
+  M1--M12 statement was touched in R0/R0.1/R0.2/R0.3.
 
 ## 10. Append-only decision and rejection register
 
@@ -1310,3 +1609,11 @@ entry, but must retain its evidence and reason.
 | `C7-D014` / 2026-08-26 | narrow policy-3 funnel | Only a digest-only salted leaf commitment remains analytically eligible: payload/salt and the PCS predicate are checked under attempt-local VOLE, while digest and Merkle path stay public. Persistent expanded oracles, O(N) VOLE-tag/opening planes, private full paths, reusable secret sketches and consumable root pools are rejected because they move nonlinear work, cost or leakage into setup/proof rather than solving it. The survivor has no implementation authority. |
 | `C7-D015` / 2026-08-26 | reject query-count-only optimization | `q_open`, unique leaves, secret symbols and adversarial RO queries are distinct. ERA's 4.014-MB point contains 72,418 field elements and 53,011 hashes; under policy 3 witness-dependent elements must be eliminated or privately authenticated, so the byte point cannot be transposed unchanged. Fewer wider leaves can increase proof/private-verifier cost even when spot checks fall. |
 | `C7-D016` / 2026-08-26 | demote digest-only size to floor screen | At the illustrative 4.4x/64-symbol geometry, packed weights plus only the digest tree are already 793.600 MB / 197.289 GB, about 3.2x packed. This omits the private checker, salt theorem and block-opening algorithm, so it is neither a setup result nor a pass; leaf size must be chosen jointly against setup and `B_query_FS`. |
+| `C7-D017` / 2026-08-26 | register setup target/tolerance | Owner registers `A_setup<=2.00` target and `<=2.10` hard ceiling. The 5% band is recorded tolerance, never permission for expanded code/tag planes or N-scale scratch. At 4.4x, `A_setup~=1+140.8/g`: `g=141` is the first integer target screen; `g=128` leaves only 32 B for all metadata and is not a realistic pass. |
+| `C7-D018` / 2026-08-26 | register weight/query envelope | `B_weight_nonquery+B_query_FS` remains one `B_weight_ALFC` component. Exact hard bytes are `floor(1.05*target)=3,272,685/5,496,695 B`; the 155,842/261,747-B tolerance reserves cannot hide query material or offset another component. Every leaf payload, exact multiproof sibling, private check, IOP message and frame counts after the selected challenge transform. |
+| `C7-D019` / 2026-08-26 | authorize preparation only | Owner authorizes R0.3 theorem/census and fail-closed prover/pod preparation. This does not authorize prover execution, provider contact or pod use. `C7_POD_READY` requires every readiness gate, and even then a later run-specific owner GO remains mandatory. |
+| `C7-D020` / 2026-08-26 | repair privacy game | Requiring identical declared leakage while including binding `C_W`/K/V roots makes the left/right game essentially compare the same witness. `Leak_base` now excludes witness-dependent hiding commitments; each world constructs its own roots, while within-world static-root linkability remains visible. |
+| `C7-D021` / 2026-08-26 | parameterize leaf commitment; reject 192-bit salt | Collision resistance does not imply hiding and an ideal random oracle is not an executable private checker. With `L<2^30,Q_leaf<=2^64`, 256-bit salts give a `<2^-161` salt-hit screen while 192-bit salts give only about 97 bits. `LeafCom`, tree hash and challenge hash remain separate; no concrete hash/commitment receives implementation GO. |
+| `C7-D022` / 2026-08-26 | reject clear-transcript extraction | Opaque handles plus verifier `(Delta,k)` do not extract an authenticated plaintext; exposing the prover tag would reveal it. Soundness therefore needs direct authenticated-checker soundness or an explicit committed-input PoK/extractor. Ideal malicious-DV zero-residual privacy and shared-Delta composition already exist in Lean and are reused only after a concrete codec-to-window refinement. |
+| `C7-D023` / 2026-08-26 | quarantine Fiat--Shamir pending owner choice | A roughly 128-bit Fp2 challenge with `Q_FS=2^64` has only a roughly 64-bit direct grinding screen, contradicting the unqualified 110-bit event allocation. Fresh honest-DV randomness after the committed prefix is recommended; FS needs an exact work bound or amplified challenges with all extra scans, multiplicity and bytes counted. |
+| `C7-D024` / 2026-08-26 | current private-oracle backend NO-GO | No retained family passes setup, one-pass opening and private query bytes together. Direct RS/Ligero restriction is `Theta(qN)`; BaseFold/X4 materializes full transforms; WHIR persists matrices/tree levels; ERA uses N-scale permutation/accumulator intermediates or `Theta(qN)` restriction. A new locally openable code remains a tiny design search, not a prover/pod candidate. |

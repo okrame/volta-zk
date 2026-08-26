@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Executable C7 R0 analytic screen; every result is credit:false."""
+"""Executable C7 R0.3 analytic/readiness screen; every result is credit:false."""
 
 from __future__ import annotations
 
@@ -52,7 +52,19 @@ PACKED_WEIGHT_BYTES = 2
 PERMUTATION_INDEX_BYTES = 4
 MULTIPLIER_BYTES = 8
 MERKLE_SYMBOLS_PER_LEAF = 64
+DIGEST_ONLY_LEAF_CANDIDATES = (64, 128, 129, 141, 256)
 HASH_BYTES = 32
+AUTHENTICATED_FP_SYMBOL_BYTES = 8
+AUTHENTICATED_FP2_SYMBOL_BYTES = 16
+LEAF_SALT_BITS = 256
+LEAF_ORACLE_QUERY_SCREEN = 1 << 64
+
+SETUP_TARGET_NUMERATOR = 2
+SETUP_TARGET_DENOMINATOR = 1
+SETUP_HARD_NUMERATOR = 21
+SETUP_HARD_DENOMINATOR = 10
+QUERY_TOLERANCE_NUMERATOR = 105
+QUERY_TOLERANCE_DENOMINATOR = 100
 
 ROOT_COUNT = 4
 ROOT_NAMES = ("C_W", "C_B_e", "C_KV_e", "C_KV_e_plus_1")
@@ -210,6 +222,38 @@ def setup_and_refresh(model: dict[str, object], bandwidth_bytes_per_second: floa
     digest_only_screen = packed + merkle
     persistent_oracle = oracle + merkle
     setup_disk = packed + persistent_oracle + p1 + p2 + multiplier
+    setup_target = packed * SETUP_TARGET_NUMERATOR // SETUP_TARGET_DENOMINATOR
+    setup_hard = packed * SETUP_HARD_NUMERATOR // SETUP_HARD_DENOMINATOR
+    leaf_screens: dict[str, object] = {}
+    for symbols_per_leaf in DIGEST_ONLY_LEAF_CANDIDATES:
+        candidate_leaves = ceil_div(oracle_symbols, symbols_per_leaf)
+        candidate_nodes = 2 * candidate_leaves - 1
+        candidate_tree = candidate_nodes * HASH_BYTES
+        candidate_total = packed + candidate_tree
+        leaf_screens[str(symbols_per_leaf)] = {
+            "symbols_per_leaf": symbols_per_leaf,
+            "leaf_count": candidate_leaves,
+            "maximum_path_depth": math.ceil(math.log2(candidate_leaves)),
+            "tree_bytes": candidate_tree,
+            "total_persistent_bytes": candidate_total,
+            "target_metadata_headroom_bytes": setup_target - candidate_total,
+            "hard_ceiling_metadata_headroom_bytes": setup_hard - candidate_total,
+            "amplification_over_packed_i16": candidate_total / packed,
+            "private_payload_bytes_per_unique_leaf": {
+                "Fp": symbols_per_leaf * AUTHENTICATED_FP_SYMBOL_BYTES,
+                "Fp2": symbols_per_leaf * AUTHENTICATED_FP2_SYMBOL_BYTES,
+            },
+            "within_2x_target": candidate_total <= setup_target,
+            "within_2_1x_hard_ceiling": candidate_total <= setup_hard,
+            "classification": (
+                "within_target_floor_only"
+                if candidate_total <= setup_target
+                else "within_registered_tolerance_floor_only"
+                if candidate_total <= setup_hard
+                else "reject"
+            ),
+            "credit": False,
+        }
 
     preprocessing_read = packed
     preprocessing_write = persistent_oracle + p1 + p2 + multiplier
@@ -265,6 +309,22 @@ def setup_and_refresh(model: dict[str, object], bandwidth_bytes_per_second: floa
             ),
             "amplification_over_packed_i16": digest_only_screen / packed,
         },
+        "owner_setup_envelope": {
+            "target_multiplier": "2/1",
+            "hard_multiplier_with_tolerance": "21/10",
+            "tolerance_percent_of_target": 5,
+            "target_bytes": setup_target,
+            "hard_ceiling_bytes": setup_hard,
+            "asymptotic_minimum_symbols_per_leaf": {
+                "2x_target": 141,
+                "2_1x_hard": 128,
+                "smallest_power_of_two_meeting_target": 256,
+                "formula": "A_setup ~= 1 + 140.8/g",
+            },
+            "leaf_screens": leaf_screens,
+            "compiled_candidate_manifest_complete": False,
+            "credit": False,
+        },
         "selected_artifact_volume_sum": byte_result(
             setup_disk,
             "illustrative_artifact_volume_not_derived_setup",
@@ -278,7 +338,7 @@ def setup_and_refresh(model: dict[str, object], bandwidth_bytes_per_second: floa
                 "model-linear P1/P2/multiplier planes",
                 "model-sized preprocessing writes",
             ],
-            "numeric_setup_ceiling_registered": False,
+            "numeric_setup_ceiling_registered": True,
             "credit": False,
         },
         "ideal_fused_artifact_io_screen": {
@@ -387,6 +447,33 @@ def model_report(
 ) -> dict[str, object]:
     components = certificate_components(model)
     total = sum(int(component["bytes"]) for component in components.values())
+    weight_target = int(components["B_weight_ALFC"]["bytes"])
+    weight_hard = (
+        weight_target * QUERY_TOLERANCE_NUMERATOR
+        // QUERY_TOLERANCE_DENOMINATOR
+    )
+    weight_tolerance_reserve = weight_hard - weight_target
+    payload_only_leaf_bounds = {}
+    for symbols_per_leaf in DIGEST_ONLY_LEAF_CANDIDATES:
+        payload_only_leaf_bounds[str(symbols_per_leaf)] = {
+            "Fp": {
+                "target": weight_target
+                // (symbols_per_leaf * AUTHENTICATED_FP_SYMBOL_BYTES),
+                "hard": weight_hard
+                // (symbols_per_leaf * AUTHENTICATED_FP_SYMBOL_BYTES),
+                "tolerance_only": weight_tolerance_reserve
+                // (symbols_per_leaf * AUTHENTICATED_FP_SYMBOL_BYTES),
+            },
+            "Fp2": {
+                "target": weight_target
+                // (symbols_per_leaf * AUTHENTICATED_FP2_SYMBOL_BYTES),
+                "hard": weight_hard
+                // (symbols_per_leaf * AUTHENTICATED_FP2_SYMBOL_BYTES),
+                "tolerance_only": weight_tolerance_reserve
+                // (symbols_per_leaf * AUTHENTICATED_FP2_SYMBOL_BYTES),
+            },
+        }
+    total_at_weight_hard = total - weight_target + weight_hard
     segments = terminal_segments(model)
     compute_cells = (
         int(model["layers"]) * RESPONSE_TOKENS * int(model["d_model"]) ** 2
@@ -415,6 +502,26 @@ def model_report(
                 "B_compute+B_boundary_commitments+B_state+B_weight_ALFC+B_MAC+B_framing",
             ),
             "compiled_certificate_bytes_counted": False,
+            "weight_oracle_post_fiat_shamir_envelope": {
+                "included_in_B_weight_ALFC_not_additive": True,
+                "target_bytes": weight_target,
+                "hard_ceiling_bytes": weight_hard,
+                "tolerance_reserve_over_target_bytes": weight_tolerance_reserve,
+                "tolerance_percent": 5,
+                "compiled_weight_oracle_query_bytes": None,
+                "status": "unknown_fail_closed",
+                "payload_only_unique_leaf_upper_bounds": payload_only_leaf_bounds,
+                "upper_bound_warning": (
+                    "reserves zero bytes for digests, multiproofs, the private "
+                    "leaf checker, authenticated IOP messages or framing"
+                ),
+                "credit": False,
+            },
+            "total_if_weight_envelope_uses_hard_tolerance": byte_result(
+                total_at_weight_hard,
+                "allocation_sensitivity_not_a_compiled_certificate",
+                "certificate_target-B_weight_ALFC_target+B_weight_ALFC_hard",
+            ),
             "unknown_components_fail_closed": [
                 "operator_protocol",
                 "authenticated_oracle_query_compiler",
@@ -482,6 +589,25 @@ def security_screen() -> dict[str, object]:
     connection_bits = math.log2(connection_epsilon.denominator) - math.log2(
         connection_epsilon.numerator
     )
+    largest_static_leaf_count = ceil_div(
+        int(GEMMA_ENVELOPE["weights"]) * ERA_INVERSE_RATE_NUMERATOR
+        // ERA_INVERSE_RATE_DENOMINATOR,
+        128,
+    )
+    leaf_hit = Fraction(
+        2 * largest_static_leaf_count * LEAF_ORACLE_QUERY_SCREEN,
+        1 << LEAF_SALT_BITS,
+    )
+    leaf_hit_bits = math.log2(leaf_hit.denominator) - math.log2(
+        leaf_hit.numerator
+    )
+    leaf_hit_192 = Fraction(
+        2 * largest_static_leaf_count * LEAF_ORACLE_QUERY_SCREEN,
+        1 << 192,
+    )
+    leaf_hit_192_bits = math.log2(leaf_hit_192.denominator) - math.log2(
+        leaf_hit_192.numerator
+    )
     return {
         "R_max": R_MAX,
         "R_max_scope": "accepted responses + failed attempts + retries + selective aborts",
@@ -500,7 +626,7 @@ def security_screen() -> dict[str, object]:
         "response_composed_bits": math.log2(response_epsilon.denominator)
         - math.log2(response_epsilon.numerator),
         "other_terms": {
-            "hash": "2^-128",
+            "hash": "2^-128 allocation; not yet derived from a concrete commitment",
             "PCG": "2^-128",
             "state_replay_collision": "2^-120",
             "framing": "2^-128",
@@ -515,6 +641,37 @@ def security_screen() -> dict[str, object]:
         "classification": (
             "conditional_union_budget_arithmetic_not_a_security_proof"
         ),
+        "leaf_commitment_hiding_screen": {
+            "salt_bits": LEAF_SALT_BITS,
+            "largest_static_weight_leaf_count_screen": largest_static_leaf_count,
+            "adversarial_leaf_oracle_queries_screen": LEAF_ORACLE_QUERY_SCREEN,
+            "formula": "2*L_static*Q_leaf/2^salt_bits",
+            "hit_probability_exact": f"{leaf_hit.numerator}/{leaf_hit.denominator}",
+            "effective_bits": leaf_hit_bits,
+            "salt_192_effective_bits_same_screen": leaf_hit_192_bits,
+            "salt_192_disposition": "reject",
+            "Q_leaf_is_not_R_max": True,
+            "connection_wide_leaf_count_complete": False,
+            "concrete_arithmetizable_commitment_selected": False,
+            "binding_error_derived": False,
+            "credit": False,
+        },
+        "challenge_generation": {
+            "mode_selected": False,
+            "recommended_mode": (
+                "fresh honest-DV challenges after their committed prefixes; "
+                "serialize them in the durable transcript"
+            ),
+            "fiat_shamir_status": (
+                "quarantined until Q_FS and grinding loss are derived"
+            ),
+            "adversarial_fiat_shamir_query_bound": None,
+            "warning": (
+                "a roughly 128-bit Fp2 challenge loses log2(Q_FS) bits "
+                "under a direct ROM grinding bound"
+            ),
+            "credit": False,
+        },
         "credit": False,
     }
 
@@ -526,10 +683,17 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
     large_total = int(large["certificate"]["total"]["bytes"])
     certificate_growth = large_total / small_total
     return {
-        "schema": "volta-c7-stateful-alfc-r0-screen-v3",
+        "schema": "volta-c7-stateful-alfc-r03-screen-v4",
         "design": "C7 stateful authenticated linear-functional commitment",
         "screening_only": True,
         "credit": False,
+        "authorization": {
+            "r03_design_theorem_census_authorized": True,
+            "prover_implementation_or_execution_authorized": False,
+            "pod_contact_or_execution_authorized": False,
+            "pod_preparation_only": True,
+            "c7_pod_ready": False,
+        },
         "privacy_policy": {
             "active": 3,
             "sole_candidate_shape": (
@@ -545,30 +709,56 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "candidate_setup_manifest_complete": False,
             "setup_disk_time_traffic_refresh_derived": False,
             "peak_resident_or_mapped_setup_bytes_counted": False,
-            "numeric_setup_ceiling_registered": False,
+            "numeric_setup_ceiling_registered": True,
+            "weight_query_fs_envelope_registered": True,
             "anti_x4d_setup_gate_pass": False,
+            "concrete_leaf_commitment_selected": False,
             "leaf_commitment_adaptive_hiding_proved": False,
-            "authenticated_transcript_extraction_proved": False,
+            "authenticated_checker_soundness_or_pok_refinement_proved": False,
             "all_query_payloads_nonclear_codec_proved": False,
             "malicious_dv_connection_privacy_theorem_complete": False,
+            "challenge_generation_and_grinding_policy_selected": False,
+            "one_pass_batch_open_blocks_proved": False,
             "query_schedule_compiled": False,
             "query_counter_schema": [
                 "q_open_by_root_and_round",
                 "unique_leaves",
                 "secret_symbols",
-                "adversarial_random_oracle_queries",
+                "adversarial_leaf_oracle_queries",
+                "adversarial_fiat_shamir_queries",
             ],
             "exact_query_counts_by_root_and_round": {
                 str(GPT2["name"]): None,
                 str(GEMMA_ENVELOPE["name"]): None,
             },
-            "adversarial_random_oracle_query_bound": None,
+            "adversarial_leaf_oracle_query_bound": None,
+            "adversarial_fiat_shamir_query_bound": None,
             "post_fiat_shamir_query_bytes_by_model": {
                 str(GPT2["name"]): None,
                 str(GEMMA_ENVELOPE["name"]): None,
             },
             "query_bytes_reconciled_into_certificate_total": False,
             "compiled_tier_a_certificate_gate_pass": False,
+        },
+        "pod_readiness": {
+            "state": "C7_R03_NOT_READY",
+            "handoff_spec": "docs/c7-r03-prover-pod-handoff.md",
+            "handoff_preparation_authorized": True,
+            "required_before_C7_POD_READY": {
+                "concrete_crypto_and_composed_security_pass": False,
+                "canonical_compiler_and_query_census_pass": False,
+                "one_pass_bounded_memory_schedule_pass": False,
+                "setup_manifest_within_owner_envelope": False,
+                "compiled_certificate_within_owner_envelope": False,
+                "no_clear_codec_and_real_finite_pcg_pass": False,
+                "two_response_tiny_scaled_serialized_chain_pass": False,
+                "reload_full_verifier_and_mutations_pass": False,
+                "abort_burn_and_atomic_promotion_pass": False,
+                "clean_checkpoint_and_ledger_transition": False,
+            },
+            "all_required_gates_pass": False,
+            "pod_contact_requires_later_explicit_owner_GO": True,
+            "credit": False,
         },
         "workload": {
             "accepted_context_tokens": ACCEPTED_CONTEXT_TOKENS,
@@ -613,6 +803,12 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "P2_bytes_per_source_weight": PERMUTATION_INDEX_BYTES,
             "multiplier_bytes_per_source_weight": MULTIPLIER_BYTES,
             "Merkle_symbols_per_leaf": MERKLE_SYMBOLS_PER_LEAF,
+            "digest_only_leaf_candidates": list(DIGEST_ONLY_LEAF_CANDIDATES),
+            "setup_target_multiplier": 2.0,
+            "setup_hard_multiplier_with_tolerance": 2.1,
+            "weight_query_hard_tolerance_percent": 5,
+            "leaf_salt_bits_screen": LEAF_SALT_BITS,
+            "leaf_oracle_query_screen": LEAF_ORACLE_QUERY_SCREEN,
             "selected_bandwidth_GB_per_second": bandwidth_bytes_per_second / 1_000_000_000,
             "configured_chunk_MB": chunk_bytes / 1_000_000,
         },
@@ -654,7 +850,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
 
 
 def self_check(report: dict[str, object]) -> None:
-    assert report["schema"] == "volta-c7-stateful-alfc-r0-screen-v3"
+    assert report["schema"] == "volta-c7-stateful-alfc-r03-screen-v4"
     models = report["models"]
     small = models[str(GPT2["name"])]
     large = models[str(GEMMA_ENVELOPE["name"])]
@@ -677,6 +873,34 @@ def self_check(report: dict[str, object]) -> None:
         large["selected_artifact_volume_screen"]["selected_artifact_volume_sum"]["bytes"]
         == 1_775_600_639_968
     )
+    small_setup = small["selected_artifact_volume_screen"]["owner_setup_envelope"]
+    large_setup = large["selected_artifact_volume_screen"]["owner_setup_envelope"]
+    assert small_setup["target_bytes"] == 496_000_000
+    assert small_setup["hard_ceiling_bytes"] == 520_800_000
+    assert large_setup["target_bytes"] == 123_305_600_000
+    assert large_setup["hard_ceiling_bytes"] == 129_470_880_000
+    assert small_setup["leaf_screens"]["64"]["classification"] == "reject"
+    assert small_setup["leaf_screens"]["128"]["classification"] == (
+        "within_registered_tolerance_floor_only"
+    )
+    assert small_setup["leaf_screens"]["256"]["classification"] == (
+        "within_target_floor_only"
+    )
+    assert small_setup["leaf_screens"]["129"]["classification"] == (
+        "within_registered_tolerance_floor_only"
+    )
+    assert small_setup["leaf_screens"]["141"]["classification"] == (
+        "within_target_floor_only"
+    )
+    assert large_setup["leaf_screens"]["128"]["classification"] == (
+        "within_registered_tolerance_floor_only"
+    )
+    assert small_setup["leaf_screens"]["128"][
+        "hard_ceiling_metadata_headroom_bytes"
+    ] == 32
+    assert large_setup["leaf_screens"]["128"][
+        "hard_ceiling_metadata_headroom_bytes"
+    ] == 32
     assert not small["selected_artifact_volume_screen"][
         "anti_x4d_structural_gate"
     ]["passes"]
@@ -716,21 +940,32 @@ def self_check(report: dict[str, object]) -> None:
     assert policy["active"] == 3
     assert policy["policy_2_status"] == "dormant_not_authorized"
     assert not policy["policy_2_activation_authorized"]
+    authorization = report["authorization"]
+    assert authorization["r03_design_theorem_census_authorized"]
+    assert not authorization["prover_implementation_or_execution_authorized"]
+    assert not authorization["pod_contact_or_execution_authorized"]
+    assert not authorization["c7_pod_ready"]
     gates = report["admission_gates"]
-    assert not gates["numeric_setup_ceiling_registered"]
+    assert gates["numeric_setup_ceiling_registered"]
+    assert gates["weight_query_fs_envelope_registered"]
     assert not gates["anti_x4d_setup_gate_pass"]
     assert not gates["leaf_commitment_adaptive_hiding_proved"]
-    assert not gates["authenticated_transcript_extraction_proved"]
+    assert not gates["concrete_leaf_commitment_selected"]
+    assert not gates["authenticated_checker_soundness_or_pok_refinement_proved"]
     assert not gates["all_query_payloads_nonclear_codec_proved"]
     assert not gates["malicious_dv_connection_privacy_theorem_complete"]
+    assert not gates["challenge_generation_and_grinding_policy_selected"]
+    assert not gates["one_pass_batch_open_blocks_proved"]
     assert not gates["query_schedule_compiled"]
     assert gates["query_counter_schema"] == [
         "q_open_by_root_and_round",
         "unique_leaves",
         "secret_symbols",
-        "adversarial_random_oracle_queries",
+        "adversarial_leaf_oracle_queries",
+        "adversarial_fiat_shamir_queries",
     ]
-    assert gates["adversarial_random_oracle_query_bound"] is None
+    assert gates["adversarial_leaf_oracle_query_bound"] is None
+    assert gates["adversarial_fiat_shamir_query_bound"] is None
     assert all(
         value is None
         for value in gates["exact_query_counts_by_root_and_round"].values()
@@ -741,6 +976,29 @@ def self_check(report: dict[str, object]) -> None:
     )
     assert not gates["query_bytes_reconciled_into_certificate_total"]
     assert not gates["compiled_tier_a_certificate_gate_pass"]
+    small_query = small["certificate"]["weight_oracle_post_fiat_shamir_envelope"]
+    large_query = large["certificate"]["weight_oracle_post_fiat_shamir_envelope"]
+    assert small_query["target_bytes"] == 3_116_843
+    assert small_query["hard_ceiling_bytes"] == 3_272_685
+    assert small_query["tolerance_reserve_over_target_bytes"] == 155_842
+    assert large_query["target_bytes"] == 5_234_948
+    assert large_query["hard_ceiling_bytes"] == 5_496_695
+    assert large_query["tolerance_reserve_over_target_bytes"] == 261_747
+    assert small["certificate"][
+        "total_if_weight_envelope_uses_hard_tolerance"
+    ]["bytes"] == 12_541_405
+    assert large["certificate"][
+        "total_if_weight_envelope_uses_hard_tolerance"
+    ]["bytes"] == 19_474_047
+    leaf_hide = report["security"]["leaf_commitment_hiding_screen"]
+    assert leaf_hide["salt_bits"] == 256
+    assert leaf_hide["effective_bits"] > 161
+    assert leaf_hide["salt_192_effective_bits_same_screen"] < 98
+    assert not leaf_hide["concrete_arithmetizable_commitment_selected"]
+    readiness = report["pod_readiness"]
+    assert readiness["state"] == "C7_R03_NOT_READY"
+    assert not readiness["all_required_gates_pass"]
+    assert not any(readiness["required_before_C7_POD_READY"].values())
     assert all(
         not component["credit"]
         for model in (small, large)

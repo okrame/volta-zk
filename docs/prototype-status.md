@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 R0.3 THEOREM/CENSUS CHECKPOINT — OWNER DECISION / NO PROVER OR POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 R0.4 CPU REFERENCE SEARCH ACTIVE — NO SIMT KERNEL / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,26 +11,85 @@ record; no external plan is authoritative.
 Read `c7-stateful-authenticated-lfc-design.md`, then
 `c7-r03-prover-pod-handoff.md`.
 
-- **Status/hard stop.** C7 R0.3 is an owner-decision checkpoint on
-  `agent/c7-stateful-alfc`. Policy 3 remains sole active; policy 2 is dormant
-  pending full documented exhaustion and later owner activation. No current
-  backend passes concrete privacy/soundness, setup, one-pass opening and
-  serialized query-byte gates together.
-- **Registered gates.** Setup target/hard is `2.00x/2.10x` packed. Total
-  `B_weight_ALFC`, including queries, has `100%/105%` target/hard ceilings.
-  `g=141` is the first analytic setup-target leaf; `g=256` the first
-  power-of-two screen. Neither has `BatchOpenBlocks` or compiled bytes.
-- **Security/evidence.** The non-vacuous privacy game excludes hiding roots
-  from equal `Leak_base`; 256-bit salts survive only an analytic screen.
-  Existing ideal shared-Delta malicious-DV ZK is reused, but concrete
-  `LeafCom`, checker/codec refinement, soundness bridge, `Q_leaf/Q_FS` policy
-  and event registry are missing. Budget v4 self-check passes; all numbers
-  remain `credit:false`.
-- **Authorization/resume.** No prover execution, provider contact or pod is
-  authorized; local remains tiny/scaled. Owner must choose honest-DV versus
-  amplified FS challenges, provisional `g=141` versus justified `g=256`, and
-  whether to authorize a tiny locally-openable-code search. Full GPT-2 stays
-  pod-only after `C7_POD_READY` plus a later run-specific owner GO.
+- **Status/choices.** C7 R0.4 on `agent/c7-stateful-alfc` selects policy 3,
+  fresh serialized honest-DV `rho/beta/gamma` (`Q_FS=0`) and logical `g=141`;
+  policy 2 remains dormant pending documented exhaustion and owner activation.
+  Setup target/hard remains `2.00x/2.10x`; weight wire target/hard remains
+  `100%/105%`. The 256-bit-salt, `Q_leaf<=2^64` screen has ~161.16 bits.
+- **Evidence/hard stop.** For `G in F^(k*n)` of distance `d`, `nnz(G)>=kd`;
+  direct accumulation over a uniform `U`-leaf subset has expected
+  `Omega(U*N)` work, and the `U` heaviest leaves give the worst-case bound
+  (`N=k`). This says nothing about an arbitrary sparse subset or shared
+  circuit; only a structured algorithm remains. It must first earn
+  `C7_CPU_REFERENCE_PASS` with a
+  derived `cN+poly(q,log N)` cost, one `2N` monotone packed scan, bounded
+  memory and exact operation/I/O counters. Concrete `LeafCom`, checker/codec,
+  soundness and malicious-DV refinement remain missing. Budget v5 checks pass;
+  every result is `credit:false`.
+- **Authorization/resume.** Only the tiny CPU search/reference is authorized.
+  No optimized SIMT kernel, large prover/E2E, provider contact or pod is
+  authorized. After CPU pass, SIMT needs bit-exact transcript/certificate and
+  reconciled disk/H2D/D2H/RSS/VRAM/padding/sync counters. Full GPT-2 remains
+  pod-only after `C7_POD_READY` plus later run-specific owner GO. The next
+  owner decision follows a CPU-pass candidate or documented exhaustion.
+
+- **2026-08-26 — C7 R0.4 selects the interactive/g141/CPU-first path and
+  rejects sparse-output regeneration.** The owner selects fresh honest-DV
+  `rho_i`, `beta` and `gamma` after their exact committed prefixes; all are
+  serialized and the selected protocol has `Q_FS=0`. Fiat--Shamir stays
+  quarantined because its historical grinding loss and changed wire bytes
+  cannot be hidden behind a transform. Logical leaf width is fixed at
+  `g=141`; `g=256` is allowed only after a concrete power-of-two codec
+  necessity and new private-query census. The registered 5% setup and
+  weight-wire tolerances remain hard ceilings, not transferable reserves.
+
+  At the illustrative 4.4x geometry, packed plus the g141 digest tree is
+  495,648,224 / 123,218,149,216 B for GPT-2/31B, leaving 351,776 / 87,450,784
+  B below the 2.00x targets before metadata; these remain floor screens with
+  no setup credit. The large tree has 961,958,582 leaves. With 256-bit salts
+  and analytic `Q_leaf<=2^64`, the salt-hit term has about 161.16 bits versus
+  about 97.16 for rejected 192-bit salts. This does not instantiate adaptive
+  `LeafCom` hiding or its private checker.
+
+  The former “sparse-row code” escape is removed. For
+  `G in F^(k*n)`, `Enc(m)=mG`, distance `d`, every row is a nonzero basis
+  codeword, so `nnz(G)>=kd`. With `B=ceil(n/141)`, uniform `U` queried leaves
+  require expected direct updates at least `Ukd/B`, and the U heaviest leaves
+  require at least `ceil(Ukd/B)`. Constant relative distance therefore makes
+  direct accumulation `Omega(U*N)`. Bias toward sparse columns may lower the
+  distributional detection distance; whenever it does, the independent
+  sampler needs more queries/proof bytes. This is explicitly not a lower
+  bound on structured linear circuits; only a pruned,
+  shared DAG remains a tiny research candidate.
+
+  A candidate earns `C7_CPU_REFERENCE_PASS` only with both a code-derived
+  `C(N,q)=c_source*N+poly(q,log N)` (`c_source` independent of `q`) and exact
+  counter reconciliation: one source open/pass, monotonically increasing
+  offsets, exactly `2N` packed bytes, bounded configurable memory, zero full
+  codeword/expanded weights/model-sized scratch or spill. Reports separate
+  source/query operations, Fp/Fp2, hashes, AES/VOLE/MAC, leaf/reduction work,
+  disk I/O, RSS/`VmHWM`, outputs and certificate/transcript bytes. Timing
+  sweeps alone cannot pass. No placeholder reference or kernel was created.
+
+  Optimized SIMT is blocked until that checkpoint. Afterwards it may cover
+  only streaming setup, LeafCom/Merkle, PCG/VOLE, MAC, Fp/Fp2, leaf checks and
+  reductions. Logical g141 is immutable; wider device tiles are measured
+  temporary zero padding excluded from LeafCom, root, certificate and
+  transcript. CPU/SIMT must be byte-identical across leaves, multiproof,
+  provider-internal salts and finite-fixture PCG/VOLE values/consumption,
+  handles, correlation schedule, every transcript frame/challenge, Fp2 limbs,
+  certificate, CPU verifier and journal. Disk, H2D/D2H/explicit-D2D,
+  generated/zeroed bytes, RSS/VRAM/pinned peaks, launches and sync reasons are
+  mandatory. A second scan, `qN`, full codeword, N-scratch, unassigned byte or
+  transcript difference fails.
+
+  Budget schema v5 passes default and alternate-chunk self-checks and remains
+  wholly `credit:false`. Existing ideal shared-Delta malicious-DV ZK and the
+  conditional 83-bit connection arithmetic remain the proved boundary;
+  concrete LeafCom/checker soundness, codec-to-window privacy and real
+  PCG/VOLE composition are still hard stops. Only tiny CPU search/reference is
+  authorized. No large prover/E2E, provider contact or pod occurred; complete
+  GPT-2 remains pod-only after `C7_POD_READY` and a later run-specific GO.
 
 - **2026-08-26 — C7 R0.3 fixes the tolerated setup/query envelopes, repairs
   the cryptographic games and stops at an owner decision.** The owner

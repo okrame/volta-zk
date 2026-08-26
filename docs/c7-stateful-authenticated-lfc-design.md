@@ -1,8 +1,9 @@
 # C7 — stateful authenticated linear-functional commitment
 
-**Status:** C7 R0.3 theorem/census checkpoint; owner decision gate.  Design,
-tiny/scaled screens and fail-closed handoff preparation only.  This document
-is the task-specific authority named by `prototype-status.md`.
+**Status:** C7 R0.4 tiny CPU `BatchOpenBlocks` search active; no SIMT kernel,
+large prover, E2E or pod.  Design, reference-only local work and fail-closed
+handoff preparation only.  This document is the task-specific authority named
+by `prototype-status.md`.
 
 **Branch:** `agent/c7-stateful-alfc`.
 
@@ -28,7 +29,8 @@ claim, per-token folding instance, or deferred cross-response settlement.
 DeepProve and zkAgent are evidence for response-wide operator batching, but
 their teacher-forced full-forward statements are not the C7 relation.
 
-R0.3 retains the R0.2 decisions and adds the following owner-approved gates.
+R0.4 retains the earlier decisions and records the owner's 1.A/2.A/3.A
+choices plus the CPU-first SIMT gate.
 
 1. The immutable model, response trace and persistent cache are separate
    commitment planes.  "One opening" means one transcript-bound
@@ -43,7 +45,7 @@ R0.3 retains the R0.2 decisions and adds the following owner-approved gates.
    grants no implementation authority.  It may be activated only by a later
    explicit owner decision after every credible policy-3 construction has an
    append-only terminal disposition across security/privacy, setup/storage,
-   online resources and serialized post-Fiat--Shamir bytes.
+   online resources and serialized query/challenge bytes.
 4. The published Merkle/BCS forms of Ligerito, ERA and WHIR reveal queried
    row/column/leaf payloads.  Therefore Backend A plus a terminal-only
    VOLE-MAC adapter is **rejected under policy 3**, not an architectural
@@ -53,28 +55,44 @@ R0.3 retains the R0.2 decisions and adds the following owner-approved gates.
    `A_setup <= 2.10`.  The interval `(2.00, 2.10]` is a preregistered 5%
    tolerance, not permission for an expanded field/code/tag plane or an
    N-scale temporary.
-6. Weight-oracle `B_query_FS` is included inside `B_weight_ALFC`, never added
-   as a seventh component.  Its hard ceiling is 105% of the registered target;
-   use of the tolerance is recorded explicitly and the complete certificate
-   must still pass Tier A and the 3x growth gate.
-7. R0.3 design/theorem/census work and preparation of a fail-closed
-   prover/pod handoff are authorized.  Prover implementation/execution, pod
-   contact and pod execution remain unauthorized until the ledger reaches
-   `C7_POD_READY` and a later explicit owner GO authorizes the concrete run.
+6. Weight-oracle `B_query_wire` (the interactive successor to the historical
+   `B_query_FS` label) is included inside `B_weight_ALFC`, never added as a
+   seventh component.  Its hard ceiling is 105% of the registered target; use
+   of the tolerance is recorded explicitly and the complete certificate must
+   still pass Tier A and the 3x growth gate.
+7. R0.4 authorizes only a tiny local search and CPU reference implementation
+   for `BatchOpenBlocks`, plus continued design/theorem/census and fail-closed
+   handoff preparation.  Large-prover/E2E execution, pod contact and pod
+   execution remain unauthorized until the ledger reaches `C7_POD_READY` and
+   a later explicit owner GO authorizes the concrete run.
 8. No current backend passes setup, one-pass opening and private query-byte
    gates together.  The digest-only form remains a parameterized research
-   shape, not an implementation candidate.  `g=141` is the first analytic
-   setup-target leaf size and `g=256` the first power-of-two one; neither has
-   a valid `BatchOpenBlocks` schedule or compiled proof census.
+   shape, not a selected backend.  Logical `g=141` is selected; its setup row
+   remains a floor screen without construction credit.  `g=256` is admitted
+   only if a concrete codec proves that power-of-two geometry is necessary
+   and re-passes private-query bytes; it is not a backend convenience.
 9. Privacy comparisons use equal witness-independent `Leak_base`; hiding
    roots, digests and paths are generated independently in the two worlds.
    Requiring equal binding roots would make weight and K/V privacy vacuous.
    The only salt length retained for screening is 256 bits.  No concrete
    arithmetizable leaf commitment is selected.
-10. Challenge generation is now an explicit owner gate.  The recommended
-    simple path uses fresh honest-DV challenges after their committed
-    prefixes, serialized in the transcript.  Fiat--Shamir remains quarantined until
-    its `Q_FS` grinding loss and any amplification bytes/work are derived.
+10. Fresh honest-DV `rho_i`, `beta` and `gamma`, each sampled after its exact
+    committed prefix and serialized in the durable transcript, are selected.
+    The selected protocol uses no Fiat--Shamir oracle (`Q_FS=0`); FS remains
+    quarantined, not a dormant uncounted transform.
+11. No optimized SIMT kernel or GPU scaffold may exist before an executable
+    CPU reference proves `O(N+poly(q,log N))`, exactly one monotone packed
+    scan and bounded memory using derived cost identities plus exact counters.
+12. After that checkpoint, SIMT may accelerate only streaming setup,
+    `LeafCom`/Merkle, PCG/VOLE, MAC, Fp/Fp2, leaf checks and reductions.  It
+    must remain byte-identical to CPU and may not add a codeword, model-sized
+    scratch, second scan, `qN`, unassigned traffic or transcript difference.
+    Logical `g=141` never changes; any wider device tile is temporary measured
+    zero padding excluded from commitments, certificate and transcript.
+13. Direct sparse-coordinate regeneration is rejected for every linear code
+    with useful distance by the generator-incidence argument in Section 5.4.
+    Only an explicitly structured shared computation can remain in the tiny
+    search.
 
 The following are terminal R0 hard stops.  Until all are discharged there is
 no large prover implementation, production equivalence claim, provider/pod
@@ -86,6 +104,13 @@ contact, or proof/time/memory credit:
 - any newly selected code/commitment composition must have a proved,
   executable one-pass bounded-memory schedule, with exact read/write traffic
   and no expanded resident Fp/Fp2 weight wrapper;
+- the CPU reference must derive
+  `C(N,q,h)=c_source*N+P(q,h)` with `c_source` independent of `q`, and
+  `M<=chunk+M_fixed+P_M(q,h)`; timing sweeps alone cannot discharge this stop;
+- SIMT work is blocked until the ledger records `C7_CPU_REFERENCE_PASS`.
+  Afterwards any second packed read, complete codeword, model-sized scratch,
+  `qN` source work, unmetered host/device traffic, unclassified barrier or
+  CPU/SIMT transcript mismatch is terminal for that implementation;
 - the authenticated terminal must operate in the actual Fp2 extension field
   under one shared `Delta`; its two serialized Fp limbs must be checked without
   replacing Fp2 multiplication by independent base-field MACs;
@@ -109,7 +134,8 @@ contact, or proof/time/memory credit:
   the complete serialized bytes under the selected challenge mode.  Query
   answers/private handles, authentication or multiproof material, round
   commitments and framing are assigned exactly once to the six certificate
-  components.  Missing interactive or Fiat--Shamir bytes fail closed;
+  components.  Missing interactive messages or later Fiat--Shamir transform
+  bytes fail closed;
 - the malicious designated-verifier, adaptive, stateful privacy theorem must
   cover the full connection horizon, rejection feedback, retries and
   selective aborts;
@@ -310,8 +336,10 @@ For every `t < T`, the relation constrains:
    the certificate/transcript journal.  The ACK is sent only after this commit.
 
 Concrete PCS binding/knowledge soundness, code distance, collision resistance,
-Fiat--Shamir/ROM, real-PCG security and malicious-DV privacy are explicit
-hypotheses.  Component lemmas do not imply this complete predicate.
+fresh honest-DV entropy delivery and transcript binding, real-PCG security and
+malicious-DV privacy are explicit hypotheses.  Fiat--Shamir/ROM applies only
+to the quarantined alternative.  Component lemmas do not imply this complete
+predicate.
 
 ## 3. Authenticated linear-functional commitment
 
@@ -497,7 +525,7 @@ persist certificate + transcript + consumed ranges
         |------------------------------------------->
 ```
 
-The recommended path is deliberately interactive: an honest designated
+The selected path is deliberately interactive: an honest designated
 verifier samples each `rho_i`, then `beta`, then `gamma` only after its exact
 canonical prefix is fixed, and the durable certificate serializes them.
 Privacy is still against a malicious verifier choosing them arbitrarily; the
@@ -518,8 +546,11 @@ A roughly 128-bit Fp2 challenge with `Q_FS=2^64` has at most a roughly 64-bit
 direct grinding bound.  Even before degree/list factors, retaining 110 bits
 would require `Q_FS<=2^18`, at least 174 effective challenge bits, or a proved
 independent repetition whose extra terminal multiplicity, scan work and bytes
-are all counted.  Concrete factors can only tighten those requirements.  No
-such choice is registered at R0.3.
+are all counted.  Concrete factors can only tighten those requirements.  R0.4
+therefore fixes `Q_FS=0`: no FS query or grinding term exists in the selected
+protocol, while serialized interactive challenges and framing still count in
+the certificate.  Reintroducing FS changes the statement and byte budget and
+requires a later owner decision.
 
 An abort at any point after reservation burns the slot, nonce, seed
 commitment, masks and every reserved correlation range.  It leaves the
@@ -584,7 +615,8 @@ attempt-local and burned on abort.
 
 ### 4.3 Named privacy theorem still required
 
-`C7-ALFC-MDV-STATEFUL-PRIV(lambda,R_max,L,Q_leaf,Q_FS)` is a left/right game.
+`C7-ALFC-MDV-STATEFUL-PRIV(lambda,R_max,L,Q_leaf,interactive)` is a left/right
+game for the selected protocol (`Q_FS=0`).
 For two valid witness histories `(W_0,KV_0,trace_0)` and
 `(W_1,KV_1,trace_1)` with equal witness-independent `Leak_base`, the
 challenger samples `b`, independently constructs that world's hiding roots
@@ -617,7 +649,7 @@ The ideal-VOLE middle is already formal: `BlindSumcheck.lean` lets the
 verifier choose `Delta`, every key and challenge adaptively;
 `bsc_zeroBatch_perfect_zk` gives perfect ZK when all opened claims are zero;
 `sequential_composition_perfect_zk` composes arbitrary windows with a shared
-`Delta` and fresh offsets.  R0.3 therefore does **not** invent a duplicate
+`Delta` and fresh offsets.  R0.4 therefore does **not** invent a duplicate
 ideal privacy theorem.  The missing theorem is the concrete
 checker/codec-to-window refinement.
 
@@ -628,7 +660,6 @@ Adv_priv_conn
  <= Adv_PRF_salt(L)
   + 2*L*Q_leaf/2^sigma
   + epsilon_LeafPathHide_extra
-  + epsilon_challenge_ZK(R_max,Q_FS)
   + sum_attempt (
         Adv_real_VOLE_malV(J_a)
       + Adv_PCG_a
@@ -637,21 +668,31 @@ Adv_priv_conn
   + epsilon_state_replay.
 ```
 
+There is no honest-challenge term in this **privacy** game: the malicious DV
+may choose every challenge arbitrarily, and the ideal zero-residual theorem
+already covers that.  Honest post-prefix unpredictability is used for
+soundness; concrete challenge framing, timing and abort leakage remain inside
+the codec/state terms above.
+
 `Q_leaf` counts adversarial offline commitment-oracle work and is not bounded
-by `R_max`.  At the setup-hard `g=128`, the large-model static tree has
-`L=1,059,657,500 < 2^30` leaves.  With `Q_leaf<=2^64`, 256-bit independent
+by `R_max`.  At the selected logical `g=141`, the large-model static tree has
+`L=961,958,582 < 2^30` leaves.  With the registered analytic adversary screen
+`Q_leaf<=2^64`, 256-bit independent
 salts give
 
 ```text
 2*L*Q_leaf/2^256 < 2^-161,
 ```
 
-whereas 192-bit salts give only about 97 bits.  R0.3 therefore rejects 192-bit
-salts and retains 256 bits as a **screen**, not as a proof: the connection-wide
-leaf census, `Q_leaf` policy and concrete `LeafCom` remain missing.
+whereas 192-bit salts give about **97.16 bits**.  The selected 256-bit screen
+has about **161.16 bits**, leaving substantial margin above both the 110-bit
+response allocation and 78-bit connection target.  This is still a
+**screen**, not adaptive-hiding proof: the connection-wide leaf census and
+concrete `LeafCom` remain missing.
 
-`LeafCom(payload;salt)`, `H_tree(left,right)` and the challenge hash are
-separate domain-separated primitives.  The leaf input binds commitment nonce,
+`LeafCom(payload;salt)`, `H_tree(left,right)` and `H_transcript` are separate
+domain-separated primitives; `H_FS` exists only in the quarantined compiler.
+The leaf input binds commitment nonce,
 plane, position, payload length and padding.  It cannot contain the Merkle
 root itself, which would be circular.  Collision resistance supplies binding,
 not hiding; a random-oracle salt-guess calculation does not make that oracle
@@ -667,7 +708,7 @@ the private checker, PCG and state/replay/fork errors.
 
 ```text
 Pr[Bad]
- <= epsilon_challenge(R_max,t,Q_FS,challenge_space)
+ <= epsilon_honest_DV_challenge(R_max,t,|Fp2|)
   + epsilon_AuthCheckerExtract(J_total)
   + epsilon_LeafComBinding(L,U_leaf,Q_leaf)
   + epsilon_MerklePositionBinding
@@ -728,7 +769,8 @@ the private oracle.
 The fixed-prefix Lean result proves only that an accepting-challenge set has
 at most `T` elements when one already serialized prefix supplies a nonzero
 residual and acceptance implies its scalar-power identity.  It does not prove
-transcript freezing, Fiat--Shamir uniformity or commitment binding.  The
+transcript freezing, honest challenge delivery or commitment binding (nor
+Fiat--Shamir uniformity in the quarantined alternative).  The
 serializer refinement is only decode/encode round-trip.  Its authenticated
 value is now an opaque handle, so the type no longer accidentally permits
 serializing plaintext/tag pairs, but no codec-privacy theorem follows from
@@ -743,10 +785,10 @@ prover tag alongside verifier material exposes the plaintext.  No duplicate
 C7 lemma is added: a salt-counting identity or another ideal theorem would
 not discharge concrete adaptive commitment hiding.
 
-This is the maximal honest R0.3 composition result.  Full concrete
+This is the maximal honest R0.4 composition result.  Full concrete
 cryptographic soundness/privacy is **not proved** until `LeafCom`, the private
-checker/codec refinement, real PCG/VOLE, challenge policy and code knowledge
-soundness are instantiated and composed.
+checker/codec refinement, real PCG/VOLE, honest-DV entropy/transcript binding
+and code knowledge soundness are instantiated and composed.
 
 ### 4.5 Horizon and conditional union budget
 
@@ -916,7 +958,7 @@ private production weights.  The C6.3 eight-body WHIR+Bolt topology is
 forbidden.  Results remain component evidence and cannot promote C7 state or
 grant privacy/E2E credit.
 
-### 5.4 R0.3 policy-3 construction funnel
+### 5.4 R0.4 policy-3 construction funnel and CPU gate
 
 Only one architectural shape remains eligible for further analytic work; it
 is not a selected backend:
@@ -955,14 +997,65 @@ schedule, the candidate fails; a second scan or a full persisted oracle is
 not an alternative implementation.  No published Ligerito, ERA, WHIR,
 SwitchFold or 2026/391 composition currently supplies this compiler.
 
-The R0.3 schedule audit closes the current families: direct Ligero/RS queried
+The R0.4 schedule audit closes the current families: direct Ligero/RS queried
 evaluation is `Theta(qN)`; BaseFold/X4 needs full NTT/Mobius materializations;
-WHIR persists matrices and Merkle levels; ERA's random permutations and
-accumulators need `Theta(N)` intermediates, while direct restriction again
-costs `Theta(qN)`.  “Linear-time encodable” is not “locally openable.”  A new
-sparse-row code could in principle accumulate only queried outputs during the
-source scan, but no retained family currently combines the required distance,
-knowledge binding, policy-3 privacy and certificate law.
+WHIR persists matrices and Merkle levels; published ERA is specified through
+full permuted/accumulator vectors and supplies no one-source-pass,
+no-N-liveness schedule, while direct restriction again costs `Theta(qN)`.
+“Linear-time encodable” is not “locally openable.”  The
+former sparse-output-generator escape is now rejected by the following exact
+cost identity.
+
+**Generator-incidence theorem.**  Let `G in F^(k*n)`, `Enc(m)=mG`, have rank
+`k` and minimum distance `d`.  Each basis word `e_j G` is a nonzero codeword,
+so its row weight is at least `d`; hence
+
+```text
+nnz(G) = sum_j wt(e_j G) >= k*d,
+E_uniform_column[support] = nnz(G)/n >= k*d/n.
+```
+
+For logical `g=141`, put `B=ceil(n/141)`, zero-pad only the final logical
+block, and let `I_b` count generator incidences in block `b`.  For
+`1<=U<=B`, `sum_b I_b>=k*d`; a uniform `U`-block subset has expected direct updates at
+least `U*k*d/B`.  Equivalently this is approximately
+`U*141*k*delta_phys`, where `delta_phys=d/(141B)`.  A direct routine that
+accumulates each requested output performs exactly those coefficient
+scale-adds.  Constant relative distance therefore gives an **expected**
+`Omega(U*k)` cross-term for uniform subsets, which is `Omega(U*N)` when `N=k`
+denotes the packed source length.  Moreover, the `U` heaviest leaves contain
+at least `ceil(U*k*d/B)` incidences, giving the corresponding worst-case
+bound.  It may be called `Omega(qN)` only in a schedule that defines
+`q=Theta(U)`; `q_open` and unique leaves otherwise remain distinct counters.
+This rejects direct sparse-coordinate regeneration under the uniform screen
+and in the worst case; it says nothing about an arbitrary hand-picked sparse
+subset and is not a general linear-circuit lower bound.  A
+structured pruned/shared DAG could reuse intermediate nodes and remains the
+only logical escape, but receives no credit without its exact schedule.
+For a nonuniform query distribution `mu`, define
+`delta_mu=min_(m!=0) Pr_(i<-mu)[(mG)_i!=0]`.  The same row argument gives
+`E_mu[wt(G[:,i])]>=k*delta_mu`; a plain independent proximity sampler at
+`lambda` bits needs no finite `q` when `delta_mu=0`, exactly one query when
+`delta_mu=1`, and otherwise
+`q>=ceil(lambda*ln(2)/-ln(1-delta_mu))`.  Bias toward sparse systematic
+columns **may** lower `delta_mu`; a candidate must derive it, and whenever it
+does fall the required queries, private payload and proof bytes rise.  This is
+a sampling screen, not a lower bound on richer IOPs, whose exact schedule must
+still be compiled.
+For example, dense prefix-sum outputs share one running accumulator and can be
+selected in `O(k+q)` despite `Theta(k^2)` incidences (their relative distance
+is only `1/k`, so this is a scope witness, not a candidate code).
+
+| Candidate shape | R0.4 disposition and reason |
+| --- | --- |
+| sparse output generator | **REJECT:** `nnz(G)>=kd`; useful distance forbids uniformly sparse output functionals |
+| RS/Ligerito/WHIR direct openings | **REJECT:** direct restriction is `qN`; shared FFT/encoding requires full vectors; WHIR stays control-only |
+| ERA/RAA as published | **QUARANTINE AS-IS:** the linear shared encoder is closest, but the published full-vector schedule does not prove one-pass/no-N-liveness; direct restriction is `qN` |
+| Brakedown/LDPC | **REJECT:** sparse encoding/parity circuit does not imply sparse generator outputs; its proof-size law was already ineligible |
+| Bolt | **REJECT:** systematic stream still needs `C(Hx)`/fresh RS work; direct selected parities are `qN` or shared state is model-linear |
+| QA/QAFold/SwitchFold | **REJECT:** shared WHT/full transforms and multi-root/deferred topology violate this relation |
+| constrained-code HVZK 2026/391 | **EVIDENCE ONLY:** small-space interleaving does not supply post-challenge `BatchOpenBlocks` |
+| new structured pruned/streaming code | **TINY SEARCH ONLY:** exact CPU DAG, distance/soundness and proof-byte census required |
 
 Repository evidence matches the paper audit: `rust/volta-pcs/src/ligero.rs`
 stores the full encoded matrix and tree; `rust/volta-pcs/src/x4/ntt.rs`
@@ -970,6 +1063,107 @@ allocates a full transform vector; `x4/artifacts_v4.rs` records two complete
 rebuild materializations; and `c61_persisted_mmcs.rs` persists matrices and
 digest layers before serving rows.  These are historical/control
 implementations, not templates for C7.
+
+#### CPU `BatchOpenBlocks` admission certificate
+
+Choice 3.A authorizes a tiny CPU reference only after the search identifies a
+concrete structured algorithm.  It does not authorize a placeholder API.  The
+reference consumes the canonical packed i16 stream, the canonical query plan
+fixed by the serialized `rho_i` prefix, logical `g=141`, and commitment
+metadata.  Passing requires a derivation from the implementation together
+with exact counters:
+
+```text
+C(N,q,h) = c_source*N + P(q,h),       h=ceil(log2 N)
+M(N,q,h) <= chunk + M_fixed + P_M(q,h),
+```
+
+where `c_source` is independent of `q` and `P,P_M` are preregistered
+polynomials with no `qN` or `N log q` term.  An empirical sweep alone is not a
+proof.  The executable assertions are:
+
+```text
+packed_source_opens              = 1
+packed_source_passes             = 1
+packed_source_bytes_read         = 2*N
+backward_seeks_or_reopens        = 0
+model_linear_scratch_write_bytes = 0
+complete_codeword_bytes          = 0
+expanded_weight_bytes            = 0
+```
+
+Offsets are strictly increasing and each source byte is consumed once.  Live
+memory is at most the configurable chunk, a 140-symbol cross-chunk carry and
+`poly(q,log N)` state.  Disk output is only the queried logical blocks and
+`poly(q,log N)` proof/audit data; no source, codeword or stage vector may spill.
+The reference produces exact 141-symbol leaves and salts only
+provider-internally and feeds them directly into the authenticated checker;
+neither is serialized.  Its external result contains digests/root and
+multiproof checks, opaque authenticated handles/corrections and all counters.
+A truncated, extended or mutated source, counter mismatch, noncanonical query,
+second pass or hidden model-linear allocation fails before output or state
+promotion and burns the reserved attempt when run inside a lifecycle.
+
+The report separates source-dependent from query-only work and records:
+
+- opens, read calls, logical bytes, EOF, seek/reopen and pass count;
+- i16 decode, candidate primitives, Fp/Fp2 adds/muls/reductions, `LeafCom`,
+  Merkle compressions, AES blocks, PCG/VOLE correlations, MACs, leaf checks and
+  reduction nodes;
+- host disk read/write/syscall bytes, scratch bytes/files and durable syncs;
+- configured chunk, peak logical scratch, RSS and `VmHWM`;
+- output, certificate, framing, transcript and padding bytes.
+
+Geometric `N,q` fixtures must reconcile the formula: at fixed `N`, changing
+`q` cannot change the source-linear count; at fixed `q`, doubling `N` changes
+only its derived linear term.  Full-encoder equality is checked on tiny
+fixtures.  Only after all these checks may the ledger record
+`C7_CPU_REFERENCE_PASS`.
+
+#### SIMT path after the CPU checkpoint
+
+The stage order is analytic screen -> CPU reference -> scoped checkpoint ->
+SIMT implementation -> byte-exact conformance -> scaled local integration.
+No optimized kernel or GPU scaffold is admitted earlier.  SIMT may replace
+only pure stages for streaming setup, `LeafCom`/Merkle, PCG/VOLE, MAC, Fp/Fp2,
+leaf checks and reductions under the same host orchestration.  Canonical
+serialization, challenge release and correlation indexing remain unchanged.
+
+Logical leaf width is always 141.  If a later device implementation uses a
+wider physical tile, every extra lane is temporary zero scratch and obeys
+
+```text
+gpu_padding_persistent_bytes = 0
+gpu_padding_certificate_bytes = 0
+gpu_padding_LeafCom_input_bytes = 0
+gpu_padding_transcript_bytes = 0.
+```
+
+Padding symbols/bytes, operations, device zeroing and peak VRAM are measured;
+cryptographic hash padding and device-lane padding are distinct.  A chunk of
+packed source may cross H2D only once in each separately accounted setup or
+response scope.  Reports add per-phase H2D, D2H,
+explicit D2D, device-generated/zeroed bytes, VRAM and pinned peaks, allocation
+counts, kernel launches, and synchronization count/reason/wall.  Any
+unclassified barrier or unassigned byte fails.  Streaming setup and online
+response are separate scopes; traffic or peaks cannot be netted between them.
+
+On identical input, queries, verifier coins and finite PCG fixture, CPU and
+SIMT must match byte-for-byte on provider-internal leaves and salts, exact
+PCG/VOLE values and consumption, leaf digests, root, multiproof,
+handles/corrections, correlation schedule digest, transcript after every
+frame, challenge sequence, both Fp2 limbs, terminal settlement, certificate,
+CPU-verifier result and journal transition.  Tiny conformance fixtures compare
+the internal values directly; production reports retain only domain-separated
+digests and counters, never those secrets.  Thread/block order cannot alter
+serialization, reductions or correlation consumption.  A requested
+unavailable SIMT backend fails rather than falling back silently.
+
+The future implementation should reuse `Transcript::canonical_binding_digest`,
+`CorrScheduleAudit`, `BackendStats` and the existing RSS/`VmHWM` reader.  These
+are measurement/orchestration seams only; no X4/C6 oracle, lifecycle, constants
+or model-sized batch implementation transfers.  R0.4 creates no duplicate
+stats abstraction or speculative kernel.
 
 The following shapes are rejected, not deferred optimizations: a persistent
 expanded field/code oracle; an O(N) plane of VOLE tags or per-coordinate
@@ -1064,7 +1258,7 @@ message counts and cannot become `B_*` evidence without compiler and
 serializer provenance.  Changing them remains a ledger deviation, not a free
 fit after measurement.
 
-### 6.2 Post-Fiat--Shamir query ledger (hard stop)
+### 6.2 Serialized query-and-challenge wire ledger (hard stop)
 
 Query count is a first-class certificate and privacy parameter, not only a
 verifier/prover-time parameter.  For each concrete candidate keep five
@@ -1078,31 +1272,39 @@ different counters:
 - `Q_FS`: adversarial transcript-hash queries if Fiat--Shamir is selected.
   Neither is `q_open`, a certificate byte count or bounded by `R_max`.
 
+Here `c` ranges only over auxiliary weight-oracle commitments/round roots
+below top-level `C_W`.  It excludes boundary/K/V planes and all four top-level
+roots (`C_W`, `C_B,e`, `C_KV,e`, `C_KV,e+1`), whose 128 bytes are already
+assigned to `B_framing`.
+
 Then define
 
 ```text
-q_open_total = sum_(commitment root c, round r) q_open[c,r]
+q_open_weight_total = sum_(weight root c, round r) q_open[c,r]
 
-B_query_FS
+B_query_wire
   = sum_c,r (
         P_secret[c,r] * authenticated_symbol_or_correction_bytes
       + U_leaf[c,r] * leaf_digest_bytes
       + exact_sibling_hashes[c,r] * hash_bytes
       + private_leaf_check_bytes[c,r]
       + index_and_query_framing_bytes[c,r])
-  + B_authenticated_IOP_messages
-  + B_roots_and_prechallenge_messages.
+  + B_authenticated_weight_oracle_IOP_messages
+  + B_aux_weight_oracle_round_roots_and_prechallenge_messages
+  + B_serialized_weight_oracle_rho.
 ```
 
-`B_query_FS` is a cross-cutting sub-ledger, not a seventh certificate
+`B_query_wire` is a cross-cutting sub-ledger, not a seventh certificate
 category.  Every byte is assigned exactly once to one of the six registered
-`B_*` components and the sub-ledger must reconcile to those assignments.
-Fiat--Shamir verifier coins that are canonically re-derived need not be sent,
-but every commitment and prover answer needed to derive or answer those coins
-does count.  Query indices may be omitted only when the verifier reconstructs
-them canonically.  A multiproof receives only its exact measured/derived
-sibling sharing: neither naive `Q*depth` charging nor free path deduplication
-is acceptable.
+`B_*` components and the sub-ledger must reconcile to those assignments.  The
+selected interactive `rho_i`, `beta` and `gamma` messages and their framing
+are serialized and count.  Only weight-oracle challenge frames enter
+`B_query_wire`; response-wide `beta/gamma` and nonweight `rho_i` are assigned
+exactly once to `B_MAC`, `B_framing` or their owning component.  Query indices
+may be omitted only when the
+verifier reconstructs them canonically.  A multiproof receives only its exact
+measured/derived sibling sharing: neither naive `Q*depth` charging nor free
+path deduplication is acceptable.  FS would change this ledger, not erase it.
 
 For unique queried leaves `A_0`, let `A_(l+1)` be their distinct parents.  The
 layout-independent exact sibling count is
@@ -1117,14 +1319,15 @@ for odd/singleton levels.  This, not `U_leaf*depth`, is serialized.  The byte
 identity is
 
 ```text
-B_weight_nonquery + B_query_FS <= B_weight_ALFC_limit,
+B_weight_nonquery + B_query_wire <= B_weight_ALFC_limit,
 ```
 
 so the query ledger never receives the whole weight allocation for free.
 
-R0.3 preregisters a target and one 5% hard tolerance for the weight-oracle
-share.  Both include all weight-oracle post-Fiat--Shamir material and are
-inside `B_weight_ALFC`:
+R0.3 preregistered a target and one 5% hard tolerance for the weight-oracle
+share.  R0.4 carries the same limits over to all serialized weight-oracle
+query and challenge material inside `B_weight_ALFC`; response-wide and
+nonweight challenges remain in their separate owners:
 
 | Weight-oracle envelope | GPT-2 | 31B envelope |
 | --- | ---: | ---: |
@@ -1155,7 +1358,8 @@ multiproof misses and the nonlinear private checker only reduce them.
 
 Before a candidate is admissible, the same GPT-2 and 31B workload reports all
 five counters, answer alphabet/handle widths, exact multiproof nodes, round
-roots, codec bytes and total `B_query_FS`.  Those counts must parameterize
+roots, interactive challenge frames, codec bytes and total `B_query_wire`.
+Those counts must parameterize
 both the malicious-DV privacy theorem and the complete connection soundness
 bound.
 Reducing `Q` by weakening proximity error is not a size optimization.  The
@@ -1169,8 +1373,8 @@ query frames and failed its 4-MB query gate.  The later `s=111` profile still
 serialized **2,615,414 B** of query material in a **2,683,236-B** PCS.  The
 Ligerito analysis likewise identifies Merkle openings as the asymptotic
 communication dominant.  C7 therefore never accepts “few roots”, “small
-interactive messages” or fast proving as a substitute for the compiled
-post-Fiat--Shamir byte census.
+interactive messages” or fast proving as a substitute for the compiled wire
+byte census.
 
 ERA's published `2^32`, 100-bit estimate already contains **72,418 field
 elements** and **53,011 hashes** for approximately **4.014 MB**.  Under policy
@@ -1324,7 +1528,7 @@ The active structural gate allows one streaming digest-only commitment scan
 with `chunk + O(log chunks)` working memory and no model-sized temporary.  The
 only per-weight-width persistent payload plane is packed i16; a compact
 chunk-granular salted digest tree is separately counted.  Leaf/chunk
-granularity must also enter the post-Fiat--Shamir query ledger, so large
+granularity must also enter the serialized query-wire ledger, so large
 leaves cannot move setup cost silently into proof bytes.
 
 R0.3 registers
@@ -1372,10 +1576,12 @@ code geometry, exact compact-tree floor screens are:
 
 These rows count packed weights plus digests only.  They do not prove that a
 codeword can be generated, committed and post-challenge opened in one source
-scan, nor count the private leaf checker.  Consequently none is a selected
-leaf size.  In particular `g=128`
+scan, nor count the private leaf checker.  R0.4 selects logical `g=141` as the
+format for the authorized search, not as setup or backend credit.  In
+particular `g=128`
 fails unless the complete persistent manifest, salt state and metadata fit in
-32 bytes.  Larger leaves buy setup by spending private query bytes.
+32 bytes.  `g=256` requires concrete power-of-two codec necessity; larger
+leaves buy setup by spending private query bytes.
 
 Changing only the tree to `g=141` does not rescue the ERA topology.  If its
 full 4.4x oracle, P1/P2 and multiplier planes are materialized, the scenario
@@ -1443,7 +1649,7 @@ journal design.
 | `epsilon_response` | `2^-104` |
 | leaf salt screen | 256 bits; 192 bits rejected |
 | leaf-oracle work screen | `Q_leaf=2^64`; not a theorem cap |
-| challenge mode / `Q_FS` | owner-unset / unbounded, fail closed |
+| challenge mode / `Q_FS` | fresh honest-DV post-prefix interactive / `0`; entropy delivery and transcript binding not instantiated |
 | hash / PCG / state / framing | allocated `2^-128 / 2^-128 / 2^-120 / 2^-128`; not yet derived |
 | exact `epsilon_connection` | `17592186044675 / 2^128` |
 | effective connection bits | `83.99999999997877` |
@@ -1460,9 +1666,9 @@ calculator rerun before code.
 The arithmetic also does not survive an uncharged Fiat--Shamir grinding
 factor.  In particular one roughly 128-bit Fp2 challenge and `Q_FS=2^64`
 give only a roughly 64-bit direct ROM screen.  The registered 110-bit event
-allocation is therefore compatible only with the recommended fresh
-post-prefix verifier challenge, or with a later amplified FS construction
-whose work, multiplicity and bytes are explicitly charged.
+allocation is therefore compatible with the selected fresh post-prefix
+verifier challenges.  A later amplified FS construction would need a new
+owner decision and must charge its work, multiplicity and bytes.
 
 ## 7. Lean-first obligations
 
@@ -1490,14 +1696,15 @@ predicate and its hypotheses; no Lean `AcceptC7` definition yet exists.  A
 future definition must expose those assumptions rather than hide them behind
 an ideal ALFC API.
 
-R0.3 adds no Lean lemma.  Raw-tag leakage and ideal shared-`Delta` privacy are
+R0.4 adds no Lean lemma.  Raw-tag leakage and ideal shared-`Delta` privacy are
 already proved; a new salt-counting identity would not prove adaptive hiding.
-The next useful statements are
+The generator-incidence obstruction and CPU/SIMT resource contract are not
+statements about the frozen protocol semantics.  The next useful statements are
 `serialized_private_oracle_view_refines_windows` and
 `private_checker_all_opened_residuals_zero`, only after a concrete codec and
 checker exist.
 
-## 8. R0.3 disposition and exact resume conditions
+## 8. R0.4 disposition and exact resume conditions
 
 ### 8.1 Backend/control recommendation
 
@@ -1505,9 +1712,9 @@ checker exist.
   its code/proof-law/storage evidence.  A terminal-only adapter cannot hide
   the row/column/leaf payloads already exposed by its oracle queries.
 - **Digest-only private-oracle shape: NO-GO for prover/pod.**  Its persistent
-  tree can fit at `g>=141`, but no concrete `LeafCom`, soundness bridge,
-  one-pass `BatchOpenBlocks` or compiled post-challenge census exists.  Keep
-  it only for a tiny local discovery screen if separately authorized.
+  tree floor fits at logical `g=141`, but no concrete `LeafCom`, soundness
+  bridge, one-pass `BatchOpenBlocks` or compiled post-challenge census exists.
+  The owner authorizes only its tiny CPU algorithm search/reference gate.
 - **WHIR-UD control: GO for a transparent tiny/scaled control only.**  It may
   test the packed identity and code path on public/synthetic data.  It cannot
   test no-clear privacy and grants no complete certificate, scale, privacy or
@@ -1515,13 +1722,12 @@ checker exist.
 
 ### 8.2 Resume conditions for an R1 proposal
 
-Policy 3 is now selected and policy 2 is dormant.  Before further backend
-implementation, R0.3 is authorized to complete the sole Section 5.4
-candidate's theorem/census screen and prepare a fail-closed prover/pod handoff.
-The setup and query envelopes are now fixed with their 5% hard tolerances.
-The fail-closed readiness handoff is
-`docs/c7-r03-prover-pod-handoff.md`.  Preparation does not authorize prover
-execution, pod contact or pod execution.
+Policy 3 remains selected and policy 2 dormant.  R0.4 selects interactive
+honest-DV challenges (`Q_FS=0`), logical `g=141` and a tiny CPU-only search.
+The setup and query envelopes retain their 5% hard tolerances.  The
+fail-closed readiness handoff is
+`docs/c7-r03-prover-pod-handoff.md`.  Preparation does not authorize a large
+prover/E2E, pod contact or pod execution.
 
 An owner may consider opening R1 only after a later checkpoint supplies all
 of:
@@ -1532,25 +1738,20 @@ of:
 3. a proved/checked extension-field ALFC adapter under one shared `Delta`,
    with both serialized limbs and every allowed oracle response covered by
    the selected privacy theorem;
-4. a one-pass bounded-memory backend schedule with exact setup/oracle and
-   online read/write byte counts;
+4. `C7_CPU_REFERENCE_PASS`: a derived and executable one-pass bounded-memory
+   `BatchOpenBlocks` schedule with exact operations/setup/oracle/online I/O;
 5. a malicious-DV connection privacy theorem for the selected static-root
    policy and the exact `R_max` game;
 6. a composed certificate/security budget replacing allocation constants
-   with derived protocol counts while retaining the gates.
+   with derived protocol counts while retaining the gates;
+7. if SIMT is proposed, byte-exact CPU/SIMT equivalence and every registered
+   transfer, memory, padding and synchronization counter.
 
-Before an R0.4 implementation proposal, the owner must additionally select:
-
-1. fresh post-prefix honest-DV challenges (recommended), or an explicit
-   Fiat--Shamir amplification and `Q_FS` work bound;
-2. provisional `g=141` leaf geometry, or `g=256` only if a power-of-two
-   codec justifies its larger private query payload;
-3. whether to authorize only a tiny local sparse/local-opening code search,
-   or to stop this policy-3 shape and begin the append-only exhaustion audit
-   required before policy 2 can even be considered.
-
-Policy 2 can replace item 1 only after the exhaustion and explicit activation
-procedure in Section 4.1; its existence grants no automatic resume path.
+The next owner design gate occurs only after the tiny search either produces a
+CPU-pass candidate or documents credible-candidate exhaustion.  On a pass,
+the owner must choose whether to authorize the concrete `LeafCom`/checker and
+then scoped SIMT S3.  On exhaustion, policy 2 still requires its append-only
+audit and explicit activation; it is not an automatic fallback.
 
 If those pass, R1 is the smallest complete production-equivalent case: two
 incremental responses, real finite PCG, only consumed profiles,
@@ -1580,11 +1781,15 @@ smallest complete serialized case before any larger component benchmark.
   opening and private proof bytes.  It corrects the non-vacuous privacy game,
   separates `Q_leaf` from `Q_FS`, rejects clear-transcript extraction and
   leaves challenge generation at an owner decision gate.
+- R0.4 resolves that gate with fresh interactive honest-DV challenges,
+  `Q_FS=0`, logical `g=141` and a tiny CPU search.  It rejects the former
+  sparse-generator escape by `nnz(G)>=kd` and blocks every optimized SIMT
+  implementation until a derived/counted CPU `BatchOpenBlocks` pass.
 - The proof-byte table is a target allocation calibrated to public component
   evidence, not a composed certificate derivation.  It is `credit:false` and
   is one reason Backend A remains NO-GO.
 - No pod, production provider, frozen forward, quantization spec, or frozen
-  M1--M12 statement was touched in R0/R0.1/R0.2/R0.3.
+  M1--M12 statement was touched in R0/R0.1/R0.2/R0.3/R0.4.
 
 ## 10. Append-only decision and rejection register
 
@@ -1617,3 +1822,8 @@ entry, but must retain its evidence and reason.
 | `C7-D022` / 2026-08-26 | reject clear-transcript extraction | Opaque handles plus verifier `(Delta,k)` do not extract an authenticated plaintext; exposing the prover tag would reveal it. Soundness therefore needs direct authenticated-checker soundness or an explicit committed-input PoK/extractor. Ideal malicious-DV zero-residual privacy and shared-Delta composition already exist in Lean and are reused only after a concrete codec-to-window refinement. |
 | `C7-D023` / 2026-08-26 | quarantine Fiat--Shamir pending owner choice | A roughly 128-bit Fp2 challenge with `Q_FS=2^64` has only a roughly 64-bit direct grinding screen, contradicting the unqualified 110-bit event allocation. Fresh honest-DV randomness after the committed prefix is recommended; FS needs an exact work bound or amplified challenges with all extra scans, multiplicity and bytes counted. |
 | `C7-D024` / 2026-08-26 | current private-oracle backend NO-GO | No retained family passes setup, one-pass opening and private query bytes together. Direct RS/Ligero restriction is `Theta(qN)`; BaseFold/X4 materializes full transforms; WHIR persists matrices/tree levels; ERA uses N-scale permutation/accumulator intermediates or `Theta(qN)` restriction. A new locally openable code remains a tiny design search, not a prover/pod candidate. |
+| `C7-D025` / 2026-08-26 | select interactive challenges; FS quarantined | Owner selects fresh honest-DV `rho_i`, `beta` and `gamma` after their exact committed prefixes. Every challenge is serialized; `Q_FS=0` in the selected protocol. This supersedes the D023 owner gate without erasing its reason: any future FS transform must restore a grinding/work bound and count every changed byte. |
+| `C7-D026` / 2026-08-26 | select logical `g=141` with tolerance retained | `g=141` is fixed in the logical LeafCom/query/certificate format and gives packed-plus-digest floor bytes 495,648,224 / 123,218,149,216. Headroom is 351,776 / 87,450,784 B under the 2.00x targets and 25,151,776 / 6,252,730,784 B under the 2.10x hard tolerance, all before metadata. The 105% weight-wire tolerance also remains. Device padding cannot change `g`; `g=256` requires codec necessity and a new byte census. The 256-bit-salt, `Q_leaf<=2^64` screen is about 161.16 bits at 961,958,582 large-model leaves. |
+| `C7-D027` / 2026-08-26 | authorize tiny CPU search/reference only | Owner authorizes discovery and, once a concrete algorithm exists, the smallest CPU `BatchOpenBlocks` reference. No large prover/E2E, optimized SIMT kernel, provider contact or pod is authorized. Full GPT-2 remains pod-only after `C7_POD_READY` plus a later run-specific GO. |
+| `C7-D028` / 2026-08-26 | CPU-before-SIMT hard gate | SIMT is allowed later only for streaming setup, LeafCom/Merkle, PCG/VOLE, MAC, Fp/Fp2, leaf checks and reductions after `C7_CPU_REFERENCE_PASS`. It must be byte-identical to CPU and report passes, operations, disk I/O, H2D/D2H/explicit-D2D, RSS/VRAM/pinned peaks, padding, launches and synchronizations. Full codewords, model-sized scratch, a second scan, `qN`, unassigned bytes or transcript/correlation changes fail. |
+| `C7-D029` / 2026-08-26 | reject sparse-output-generator escape | For `G in F^(k*n)` of distance `d`, every row is a nonzero basis codeword, hence `nnz(G)>=kd`; uniform output coordinates have average support at least `kd/n`, and direct opening of `U` logical 141-symbol blocks has expected `Omega(U*k)` work at constant relative distance. This rejects direct sparse accumulation, not every structured linear circuit. Only an explicit pruned/shared DAG with derived `c_source*N+poly(q,log N)`, one packed scan and bounded memory remains open. |

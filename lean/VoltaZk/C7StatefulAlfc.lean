@@ -258,6 +258,32 @@ theorem atomic_promotion_fork_exclusion
   rw [holdNew] at hepoch
   omega
 
+/-! ## Policy-2 root query accounting -/
+
+/-- A fixed positive reservation of `qAttempt` units per attempt limits the
+root lifetime to `QRoot / qAttempt` attempts.  This is only natural-number
+accounting: durable atomic reservation, abort consumption, query-unit
+semantics, and PCS privacy remain external protocol obligations. -/
+theorem policy2_root_lifetime_le_budget_div_reservation
+    (qAttempt RRoot QRoot : Nat)
+    (hqAttempt : 0 < qAttempt)
+    (hreserved : RRoot * qAttempt ≤ QRoot) :
+    RRoot ≤ QRoot / qAttempt :=
+  (Nat.le_div_iff_mul_le hqAttempt).2 hreserved
+
+/-- Charging every event at one class-independent worst-case weight dominates
+the sum of its class-specific costs.  The protocol must separately justify
+the chosen units and the `hcost` bounds; this lemma proves no leakage claim. -/
+theorem policy2_worst_case_query_counter_dominates
+    {Class : Type*} [Fintype Class]
+    (count actualCost : Class → Nat) (worstCost : Nat)
+    (hcost : ∀ c, actualCost c ≤ worstCost) :
+    (∑ c, count c * actualCost c) ≤ (∑ c, count c) * worstCost := by
+  calc
+    (∑ c, count c * actualCost c) ≤ ∑ c, count c * worstCost := by
+      exact Finset.sum_le_sum fun c _ => Nat.mul_le_mul_left (count c) (hcost c)
+    _ = (∑ c, count c) * worstCost := by rw [Finset.sum_mul]
+
 /-! ## Connection horizon with one shared Delta -/
 
 /-- Exact `Rmax`-event union bound on a tape whose first coordinate is the
@@ -395,6 +421,8 @@ end VoltaZk
 #print axioms VoltaZk.mle_append_difference
 #print axioms VoltaZk.accepted_append_tails_induction
 #print axioms VoltaZk.atomic_promotion_fork_exclusion
+#print axioms VoltaZk.policy2_root_lifetime_le_budget_div_reservation
+#print axioms VoltaZk.policy2_worst_case_query_counter_dominates
 #print axioms VoltaZk.connection_union_bound_with_rmax_shared_delta
 #print axioms VoltaZk.connection_sliced_union_bound_shared_delta
 #print axioms VoltaZk.c7_independent_bad_challenge_product_card_le

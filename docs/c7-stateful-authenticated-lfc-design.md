@@ -1,8 +1,9 @@
 # C7 — stateful authenticated linear-functional commitment
 
-**Status:** C7 R0.5 policy-3 terminal NO-GO; policy 2 awaits an explicit owner
-decision.  No SIMT kernel, large prover, E2E or pod.  This document is the
-task-specific authority named by `prototype-status.md`.
+**Status:** C7 R0.6; policy 2 is active for design and exact query accounting,
+with no backend or numeric root budget selected.  Policy 3 remains a terminal
+NO-GO under the registered gates.  No SIMT kernel, large prover, E2E or pod.
+This document is the task-specific authority named by `prototype-status.md`.
 
 **Branch:** `agent/c7-stateful-alfc`.
 
@@ -28,8 +29,8 @@ claim, per-token folding instance, or deferred cross-response settlement.
 DeepProve and zkAgent are evidence for response-wide operator batching, but
 their teacher-forced full-forward statements are not the C7 relation.
 
-R0.5 retains the owner's 1.A/2.A/3.A choices and records the terminal result
-of the CPU-first policy-3 screen.
+R0.6 retains the owner's 1.A/2.A/3.A choices, the R0.5 terminal policy-3
+record, and activates the bounded-query policy 2 with interactive challenges.
 
 1. The immutable model, response trace and persistent cache are separate
    commitment planes.  "One opening" means one transcript-bound
@@ -37,18 +38,16 @@ of the CPU-first policy-3 screen.
 2. Every physical packed segment has **exactly one** operator-reduced terminal
    point before the ALFC batching challenge.  This is the only admitted
    resolution of the `O(KN)` packed-functional hard stop.
-3. Policy 3 was the sole active static-weight line through R0.4 and still
-   defines the no-clear experiment, but R0.5 gives it a terminal **NO-GO**
-   under the registered gates.  Every credible construction now has an
-   append-only disposition across security/privacy, setup/storage, online
-   resources and serialized query/challenge bytes.  Policy 2 remains dormant
-   and grants no implementation authority until a later explicit owner
-   activation.
-4. The published Merkle/BCS forms of Ligerito, ERA and WHIR reveal queried
-   row/column/leaf payloads.  Therefore Backend A plus a terminal-only
-   VOLE-MAC adapter is **rejected under policy 3**, not an architectural
-   front-runner.  WHIR-UD remains **GO only as a transparent tiny/scaled code
-   control**; it carries no private-weight or no-clear credit.
+3. The active static-weight statement is policy 2: **only root-bound masked
+   PCS responses within a durable global budget are visible; the terminal
+   evaluation remains VOLE-authenticated and is never cleartext**.  This is
+   design authority only.  No concrete codec, backend, numeric `q_attempt`,
+   `Q_root` or `R_root` is selected.
+4. Policy 3 is terminally rejected under the registered gates, with every
+   reason retained in the append-only register.  Its Poseidon2/private-checker
+   work is historical control evidence, not a requirement of policy 2.
+   Ligerito/WHIR plus a t-query ZK encoding is reopened only as a theorem
+   carrier; ERA `r=4` is only a byte/prover control.  Neither is admitted.
 5. Persistent setup has target `A_setup <= 2.00` and hard ceiling
    `A_setup <= 2.10`.  The interval `(2.00, 2.10]` is a preregistered 5%
    tolerance, not permission for an expanded field/code/tag plane or an
@@ -58,25 +57,25 @@ of the CPU-first policy-3 screen.
    seventh component.  Its hard ceiling is 105% of the registered target; use
    of the tolerance is recorded explicitly and the complete certificate must
    still pass Tier A and the 3x growth gate.
-7. The authorized tiny CPU screen is complete.  Its online algorithm works,
+7. The historical authorized tiny CPU screen is complete.  Its online algorithm works,
    but it fails code distance and ordered-root setup, so
    `C7_CPU_REFERENCE_PASS=false`.  No further backend, large-prover/E2E,
    provider or pod action is authorized.
-8. No current backend passes setup, one-pass opening and private query-byte
-   gates together.  The digest-only form is terminally rejected as a composed
-   policy-3 backend.  Logical `g=141` remains the screened format; `g=256`
-   is not an automatic recovery option.
-9. Privacy comparisons use equal witness-independent `Leak_base`; hiding
-   roots, digests and paths are generated independently in the two worlds.
-   Requiring equal binding roots would make weight and K/V privacy vacuous.
-   The only salt length retained for screening is 256 bits.  A concrete
-   Poseidon2 leaf function is implemented, but no commitment receives
-   cryptographic or setup credit without its checker/hiding/binding theorem.
+8. No current backend passes setup, one-pass opening, normalized nearly
+   constant query counts, proof bytes and stateful malicious-DV privacy
+   together.  Logical `g=141` remains fixed; every grouped/alphabet query is
+   unstacked into this format and Fp2 counts as two Fp limbs before admission.
+9. Policy 2 permits a public salted BLAKE3 leaf/tree check because the masked
+   queried payload and its salt are visible.  This removes the private
+   Poseidon2 checker; it does not prove randomized-encoding root hiding,
+   adaptive t-query privacy, collision/position binding or cross-root
+   composition.  The 256-bit salt screen remains; Poseidon2 is quarantined as
+   a historical policy-3/inside-circuit control.
 10. Fresh honest-DV `rho_i`, `beta` and `gamma`, each sampled after its exact
     committed prefix and serialized in the durable transcript, are selected.
     The selected protocol uses no Fiat--Shamir oracle (`Q_FS=0`); FS remains
     quarantined, not a dormant uncounted transform.
-11. No optimized SIMT kernel or GPU scaffold may exist: the executable CPU
+11. No optimized SIMT kernel or GPU scaffold may exist: the historical executable CPU
     screen proves the online cost identity but does not pass the PCS distance
     and setup gates.
 12. After that checkpoint, SIMT may accelerate only streaming setup,
@@ -85,7 +84,7 @@ of the CPU-first policy-3 screen.
     scratch, second scan, `qN`, unassigned traffic or transcript difference.
     Logical `g=141` never changes; any wider device tile is temporary measured
     zero padding excluded from commitments, certificate and transcript.
-13. Direct sparse-coordinate regeneration is rejected by the
+13. Direct sparse-coordinate regeneration remains rejected by the
     generator-incidence argument.  The explicit one-stage RA shared circuit
     removes `qN` online work but fails the independent distance/root gates;
     the tiny search is closed.
@@ -110,22 +109,21 @@ contact, or proof/time/memory credit:
 - the authenticated terminal must operate in the actual Fp2 extension field
   under one shared `Delta`; its two serialized Fp limbs must be checked without
   replacing Fp2 multiplication by independent base-field MACs;
-- under policy 3, every queried oracle payload and every witness-dependent
-  intermediate message—not merely the terminal evaluation—must remain hidden
-  or authenticated and privately verified;
-- a concrete domain-separated `LeafCom`, tree hash and transcript hash must
-  supply adaptive hiding, position binding and an arithmetized private
-  checker; collision resistance alone is not hiding, and an ideal random
-  oracle is not an executable checker;
-- soundness must use either a direct authenticated-checker theorem or an
-  explicit committed-input PoK/extractor.  Opaque handles plus the verifier's
-  `Delta` do not extract a virtual clear PCS transcript, while serializing a
-  raw prover tag would reveal the plaintext;
-- a weight oracle may persist only the canonical packed weights, one compact
-  digest-only salted leaf commitment/index and compact metadata.  An expanded
-  Fp/Fp2 weight copy, encoded codeword, per-coordinate authentication plane,
-  P1/P2/multiplier planes or consumable root/mask pool is an anti-X4d hard
-  stop; the registered numeric tolerance does not admit those shapes;
+- only root-bound masked codec payloads may be exposed, within the exact
+  reserved query schedule; raw weights, unmasked code symbols and the
+  terminal evaluation remain forbidden on the wire;
+- a concrete domain-separated public `LeafCom`, tree hash and transcript hash
+  must supply collision/position binding, while the randomized encoding plus
+  salt/root construction must supply the separately named adaptive hiding
+  theorem.  Collision resistance alone is not hiding;
+- soundness must bind every visible masked response and authenticated terminal
+  to one extracted randomized encoding of the same canonical `W`; t-query
+  privacy or opaque MAC handles alone do not provide knowledge soundness;
+- a weight oracle may persist only the canonical packed weights plus the
+  candidate's fully counted root/index/metadata inside `A_setup<=2.00`
+  (hard `2.10`).  Expanded Fp/Fp2 copies, per-coordinate authentication,
+  P1/P2/multiplier planes, full codewords or N-scale setup temporaries remain
+  anti-X4d hard stops; a new root is never a free budget reset;
 - every candidate must compile the exact query count by root and round and
   the complete serialized bytes under the selected challenge mode.  Query
   answers/private handles, authentication or multiproof material, round
@@ -133,8 +131,9 @@ contact, or proof/time/memory credit:
   components.  Missing interactive messages or later Fiat--Shamir transform
   bytes fail closed;
 - the malicious designated-verifier, adaptive, stateful privacy theorem must
-  cover the full connection horizon, rejection feedback, retries and
-  selective aborts;
+  cover all connections and colluding verifiers sharing a root, rejection
+  feedback, retries, crashes and selective aborts, plus bounded composition
+  over root rotations;
 - certificate constants, setup/oracle storage and refresh must be obtained
   from the composed protocol.  The R0 calculator contains allocation caps and
   artifact-volume sensitivity only, all `credit:false`; it is not a compiled
@@ -188,14 +187,20 @@ One real execution exposes:
   accept/reject and durable journal state.
 
 Privacy is only required between weight/cache witnesses inducing the same
-declared **base leakage** `Leak_base`, which excludes every witness-dependent
-hiding commitment value: `C_W`, boundary/K/V roots, leaf digests and paths.
-The challenger constructs these independently in each left/right world.  The
-public shape, indices, lengths and equality/linkability pattern must match;
-the root bytes need only be indistinguishable.  Within either world `C_W`
-remains static and therefore linkable across attempts.  Requiring the same
-binding root in both worlds would restrict the game to essentially identical
-weights and make the privacy claim vacuous.
+declared **base leakage** `Leak_base`.  This equality predicate contains only
+witness-independent API semantics, counters, shapes and the public
+equality/linkability pattern.  It excludes the complete branch-derived
+closure `Deriv_b`: `C_W`, boundary/K/V roots, leaf digests and paths,
+`root_budget_id`, authenticated receipts, predecessor-certificate digests,
+and transcript/journal heads computed from any of those values.  The
+challenger constructs `Deriv_0` and `Deriv_1` independently and returns the
+resulting full views; their bytes are required to be indistinguishable, not
+equal.  Within either world `C_W` remains static and therefore linkable across
+attempts.  Requiring either equal binding roots or equal deterministic
+derivatives of those roots would restrict the game to essentially identical
+weights and make the privacy claim vacuous.  A named
+`BranchDerivedViewClosure` reduction must cover every serialized derivative;
+omitting one fails admission.
 
 Availability and suppression of a sampled response are not hidden.  The C7
 relation requires a published token to follow the committed sampling coins;
@@ -209,39 +214,95 @@ Let `e` be the accepted epoch, `k` the predecessor cache length, `T` the
 response length, and `tau_0,...,tau_T` the public token boundary and response.
 For the registered workload, `k = 100` and `T = 50`.
 
+The response epoch `e` is distinct from the weight-oracle privacy epoch
+`omega`.  One `omega` identifies the immutable `C_W` plus the complete ordered
+set of auxiliary randomized-code roots, their root contexts, encoding/masking
+parameters and one policy-2 profile digest binding the query vector, privacy
+atom, plane-tagged fixed attempt charge vector, `Q_root`, `Q_B`, `Q_KV` and
+rotation policy.  Its
+`root_budget_id` is the
+domain-separated hash of that canonical descriptor.  Replacing, renaming or
+reordering any auxiliary root creates a new `omega`, consumes the model-wide
+root-epoch allowance and never resets leakage accounting for free.
+
 ### 2.1 Public and durable session state
 
 The public instance `x_e` contains, in canonical byte order:
 
 1. protocol/version and all domain-separation labels;
-2. `connection_id`, model/layout/quantization digests and the immutable root
-   `C_W`;
+2. `connection_id`, model/layout/quantization digests, immutable `C_W`, and
+   the complete `omega` descriptor with `root_budget_id` and policy-2 profile
+   digest;
 3. accepted `epoch = e`, predecessor certificate digest, `C_KV,e`, and
-   `kv_len = k`;
-4. attempt slot, single-use response nonce, reserved correlation ranges and
-   their already-durable high-water marks;
-5. public input/output tokens, `T`, maximum context/capacity and the exact
+   `kv_len = k`, plus the authenticated `state_budget_head` and either the
+   prior accepted map transition or `InitKVState(s0)` record;
+4. attempt slot, single-use response nonce, connection/MAC key-domain ID,
+   reserved correlation ranges and their already-durable high-water marks;
+5. a globally unique root-budget reservation receipt binding `omega`,
+   `root_budget_id`, profile digest, attempt ID, the complete receipt-free
+   `reservation_request_binding` (`connection_id`, nonce, MAC key domain and
+   fixed plane-charge vector included), weight/predecessor-KV pre/post-spend
+   high-water marks and nonrefundable boundary/successor-KV assignment slots;
+   a later authenticated plane-assignment record binds those already-burned
+   slots to `C_B,e` and `C_KV,e+1` before either root is disclosed.  Its
+   authenticated lifecycle is `Reserved -> InFlight -> Burned | Accepted`.
+   Receipt authenticity and allocator linearizability use the separately
+   scoped hypotheses in Sections 4.3 and 4.6;
+6. public input/output tokens, `T`, maximum context/capacity and the exact
    sampler policy;
-6. a client sampling-entropy commitment, the later prover sampling-seed
+7. a client sampling-entropy commitment, the later prover sampling-seed
    commitment, the client's canonical opening and the exact pre-response
    prefix deriving per-step sampling coins; the provider opening remains
    private and is proved inside the relation, and sampling entropy is
    domain-separated from proof challenges;
-7. fresh response root `C_B,e`, successor root `C_KV,e+1`, successor length
+8. fresh response root `C_B,e`, successor root `C_KV,e+1`, successor length
    `k + T`, and the canonical claim-schedule digest;
-8. hash/code/field parameter identifiers and the complete certificate framing
+9. hash/code/field parameter identifiers and the complete certificate framing
    lengths.
 
 The accepted client state is the tuple
 
 ```text
-(connection_id, e, k, C_W, C_KV,e,
+(connection_id, e, k, C_W, omega, root_budget_id, policy2_profile_digest,
+ C_KV,e, reservation_receipt, root_budget_high_water,
+ plane_assignment_receipt, boundary_budget_high_water,
+ predecessor_KV_budget_high_water, successor_KV_budget_high_water,
+ state_budget_head,
  predecessor_certificate, accepted_transcript_head,
- correlation_high_water, attempt_high_water).
+ MAC_key_domain_id, correlation_high_water, attempt_high_water).
 ```
 
-The client persists a reservation before exposing its nonce, entropy or raw
-correlations.  `C_W` cannot change within the connection.
+The authoritative model-owner/provider allocator keeps two separated durable
+ledgers:
+
+```text
+weight_epoch_ledger[omega] =
+  (root_budget_id, profile_digest, Q_root, spent_root, sealed)
+
+state_plane_ledger =
+  (reservation_map[receipt -> (omega, reserved_session_binding, status,
+                                transcript_state, cached_reply,
+                                plane_charge_vector, assignment_status)],
+   boundary_budget_map[attempt -> (C_B_or_tombstone, Q_B, spent_B, sealed)],
+   kv_budget_map[s -> (C_KV, Q_KV, spent_KV, sealed, accepted_epoch?)],
+   state_budget_head, root_epoch_high_water, D_model_high_water).
+```
+
+The malicious designated verifier cannot mint receipts or roll this ledger
+back.  The provider obtains the reservation from that allocator and refuses
+every attempt-local `W`/`omega`-dependent response without it; the client
+persists only the authenticated receipt and its local state.  `C_W` cannot
+change within the connection; auxiliary roots may change only through the
+sealed rotation protocol in Section 4.6.
+
+Before the first accepted predecessor `C_KV,0` or its certificate is
+disclosed, `InitKVState(s0)` atomically creates
+`kv_budget_map[s0]`, applies its creation charge and authenticates the initial
+`state_budget_head`.  A predecessor imported from an earlier accepted session
+must already have the same live entry; otherwise the request rejects before
+any new response.  `InitKVStateSound` and its malicious-DV privacy reduction
+remain named hypotheses.  Weight-epoch creation or rotation cannot create,
+replace or reset this entry.
 
 ### 2.2 Private witness
 
@@ -284,16 +345,24 @@ does not recompute a teacher-forced `0..t` prefix.
 Starting from `KV_0`, define
 
 ```text
-session_binding = Encode(protocol_version, connection_id, nonce, e, k, T,
+request_binding = Encode(protocol_version, connection_id, nonce, e, k, T,
                          model/layout/quantization digests, C_W, C_KV,e,
+                         requested_omega, root_budget_id, profile_digest,
                          predecessor_certificate, sampler_policy, input_tokens),
 client_entropy_commit =
-  H("VOLTA-C7/SAMPLE/CLIENT/v1" || session_binding || client_entropy),
+  H("VOLTA-C7/SAMPLE/CLIENT/v1" || request_binding || client_entropy),
+reservation_request_binding = Encode(request_binding, MAC_key_domain_id,
+                                     q_attempt_by_plane,
+                                     attempt_plane_charge_vector),
+reservation_receipt = AuthAllocator(reservation_request_binding,
+                                    pre_spend, post_spend),
+reserved_session_binding = Encode(reservation_request_binding,
+                                  reservation_receipt),
 prover_seed_commit =
-  H("VOLTA-C7/SAMPLE/PROVER/v1" || session_binding ||
+  H("VOLTA-C7/SAMPLE/PROVER/v1" || reserved_session_binding ||
     client_entropy_commit || prover_seed),
 KV_(t+1) = KV_t || KV_write_t,
-sampling_prefix = Encode(protocol/session/authorization,
+sampling_prefix = Encode(reserved_session_binding, protocol/authorization,
                          client_entropy_commit, prover_seed_commit,
                          client_entropy_open),
 coin_t   = H(domain, connection_id, nonce, e, t,
@@ -330,34 +399,65 @@ For every `t < T`, the relation constrains:
 
 `AcceptC7(x_e, w_e, pi_e)` holds iff all of the following hold.
 
-1. **Plane binding.** `C_W`, `C_B,e`, `C_KV,e` and `C_KV,e+1` bind their
-   canonical layouts under the named concrete binding hypotheses.  `C_W`
-   binds the same weight cells at every layer and step.
+1. **Plane/epoch binding.** `C_W`, every auxiliary root in `omega`, `C_B,e`,
+   `C_KV,e` and `C_KV,e+1` bind their canonical layouts under the named
+   concrete binding hypotheses.  The canonical `omega` descriptor and
+   `root_budget_id` contain the complete ordered weight-oracle root set;
+   setup knowledge soundness ties every auxiliary encoding to the same
+   canonical packed `W` opened by `C_W`, which binds the same weight cells at
+   every layer and step.
 2. **Accepted predecessor.** The old K/V commitment, length, epoch and
-   predecessor certificate exactly equal the durable accepted head.
-3. **All real steps.** The recurrence in Section 2.3 holds for every
+   predecessor certificate exactly equal the durable accepted head; its live
+   `kv_budget_map` entry and authenticated high-water equal
+   `state_budget_head`.  At `e=0`, the checked `InitKVState(s0)` transition
+   precedes any disclosure.
+3. **Plane-budget reservation.** `ReceiptUnforgeability` validates one
+   globally unique, unrefundable receipt for this attempt, `omega`, profile,
+   complete receipt-free `reservation_request_binding` and positive fixed
+   charge; combining the verified receipt with that binding uniquely derives
+   `reserved_session_binding`.  Its plane-tagged charge vector has weight,
+   boundary, predecessor-K/V and proposed-successor-K/V components.  Weight
+   and predecessor high-water marks are consecutive within `Q_root` and the
+   existing `Q_KV[s_old]`; boundary/successor slots are burned with no refund.
+   Before their roots are emitted, an authenticated assignment CAS creates
+   `boundary_budget_map[a]` and `kv_budget_map[s_new]`, applies the reserved
+   creation charges and fixes their high-water marks within `Q_B[a]` and
+   `Q_KV[s_new]`.  Both receipt digests are in the frozen transcript prefix.
+   A linearizable allocator CAS
+   admits only its single lifecycle.  An exact duplicate input at the current
+   transcript state may return only the cached byte-identical reply; a
+   divergent replay, including a different challenge, fails before a new
+   `W`/root-dependent byte.  The parsed response census is componentwise at
+   most the receipt's plane-tagged `q_attempt` vectors and uses exactly their
+   privacy-unit mappings.
+4. **All real steps.** The recurrence in Section 2.3 holds for every
    `t = 0,...,T-1`, including the public client opening, the private provider
    opening, the exact pre-response prefix, the fixed token tie rule and
    sampler coins.
-4. **Append-only successor.** `KV_T = KV_0 || canonical_tail`, the prefix is
+5. **Append-only successor.** `KV_T = KV_0 || canonical_tail`, the prefix is
    unchanged, the length is `k + T`, all written addresses are canonical and
    no other cell changes.
-5. **Response-wide stacking.** Operator, weight, boundary and K/V claims cover
+6. **Response-wide stacking.** Operator, weight, boundary and K/V claims cover
    all `T` steps in one protocol execution.  There is no per-token proof or
    later debt.
-6. **Canonical schedule.** Serialization parses uniquely; ordinals, segment
+7. **Canonical schedule.** Serialization parses uniquely; ordinals, segment
    bounds, padding, roots and query-vector derivations match the public layout;
    every physical segment appears exactly once.  Commitments, schedule,
    query vectors and authenticated claimed values are fixed before `beta`.
-7. **ALFC.** The one logical multi-commitment opening accepts and transfers
-   every claimed linear result directly into the shared VOLE-MAC.  No clear
-   `W~(r)`, K/V evaluation, code symbol or affine fold is exposed.
-8. **Terminal settlement.** One post-ALFC challenge settles all
+8. **ALFC.** The one logical multi-commitment opening accepts and transfers
+   every terminal linear result directly into the connection VOLE-MAC.  Only
+   the profile-approved masked code symbols may be visible and every one is
+   charged to its W/B/KV plane component in the reservation/assignment
+   records; no clear `W~(r)`, K/V evaluation,
+   terminal value or reusable affine fold is exposed.
+9. **Terminal settlement.** One post-ALFC challenge settles all
    extension-field MAC residuals to zero; both serialized coordinates check,
    and every reserved correlation/mask is consumed exactly once.
-9. **Atomic state change.** A durable compare-and-swap on the predecessor head,
+10. **Atomic state change.** A durable compare-and-swap on the predecessor head,
    nonce and slot promotes `(e,k,C_KV,e)` to `(e+1,k+T,C_KV,e+1)` together with
-   the certificate/transcript journal.  The ACK is sent only after this commit.
+   the certificate/transcript journal, seals the boundary budget record and
+   retains the successor K/V record with its creation spend.  The ACK is sent
+   only after this commit.
 
 Concrete PCS binding/knowledge soundness, code distance, collision resistance,
 fresh honest-DV entropy delivery and transcript binding, real-PCG security and
@@ -513,25 +613,36 @@ optimization note.
 ### 3.4 Transcript phase diagram
 
 ```text
-Client durable journal             Provider / prover
-----------------------             -----------------
-reserve slot, nonce, terminal
-correlation ranges; persist
-high-water marks; commit fresh
-sampling entropy
-        |  authorization + entropy commitment
+Client / DV journal                Model-owner allocator + provider/prover
+-------------------                ----------------------------------------
+choose single-use request nonce;
+commit fresh sampling entropy
+        |  authorization + requested active omega/profile
+        |  + nonce + MAC-key-domain ID + entropy commitment
         |------------------------------------------->
-        |                    commit prover seed only
+provider validates the active complete omega/profile; atomically debits the
+weight and predecessor-KV components, burns/escrows the boundary and proposed-
+successor components of the fixed plane-charge vector, and persists an
+authenticated receipt over the receipt-free reservation-request binding in
+`Reserved` status; before emitting anything, it commits the provider seed,
+CASes `Reserved -> InFlight` and caches the complete first reply plus
+connection correlation ranges
+        |  omega/profile/receipt + commit prover seed only
         |<-------------------------------------------|
+client durably records the receipt
         |  open sampling entropy
         |------------------------------------------->
-provider verifies the client opening, privately derives every coin_t
-from the exact pre-response sampling prefix, executes all T DecodeStep_q
+provider verifies the client opening, atomically advances the exact cached
+transcript state, privately derives every coin_t from the pre-response
+sampling prefix, then executes all T DecodeStep_q; before disclosing the new
+roots it atomically binds the already-burned slots to C_B,e and C_KV,e+1,
+creates their budget-map records and caches the root-assignment reply
         |  output tokens + sampler metadata + C_B,e + C_KV,e+1
-        |                    + first proof messages
+        |  + plane-assignment receipt + first proof messages
         |<-------------------------------------------|
-bind public state, fresh F_VOLE+id, C_W, C_KV,e, all four roots,
-output tokens, sampler metadata and each operator/code message m_i
+bind public state, omega's complete ordered root set, profile/receipt,
+fresh F_VOLE+id, C_W, C_KV,e, all four top-level roots, output tokens,
+sampler metadata and each operator/code message m_i
 the response relation proves the private provider-seed opening and coin use
         |  fresh DV challenge rho_i; repeat by round
         |------------------------------------------->
@@ -586,46 +697,107 @@ marks and has a fresh response root and transcript.
 
 ## 4. Stateful privacy and connection security
 
-### 4.1 Selected static-weight line and dormant fallback
+### 4.1 Selected static-weight line: bounded masked queries
 
-R0.2 selects policy 3 as the sole active line:
+R0.6 activates policy 2:
 
-> PCS symbols and linear evaluations are never revealed; they are delivered
-> only as one-time, connection-domain-separated VOLE-authenticated shares,
-> under a new malicious-DV multi-session privacy theorem.
+> Only root-bound masked PCS responses, quantitatively limited by a durable
+> global root counter, are shown; the terminal evaluation remains
+> VOLE-authenticated and is never revealed in clear.
 
-R0.5 records that every credible instantiation of this line fails at least one
-registered composition gate, so policy 3 is now terminally rejected for
-implementation.  The game below remains the exact statement that was tested
-and explains the rejection; it is not a claim that its missing theorem was
-proved.  Policy 2 is still dormant until explicit owner activation.
+The policy-3 no-clear line remains terminally rejected under the registered
+gates.  That historical decision is not erased: it explains why C7 now
+accepts a bounded masked-symbol leakage channel instead of inventing a
+private checker for every leaf/hash/PCS response.
 
-This policy permits a static `C_W` only if the theorem below is discharged;
-until then static-root reuse is unauthorized even inside one connection.
-It does not permit reuse merely because an underlying code/PCS is hiding or
-HVZK.
+Every complete weight-oracle epoch `omega` from Section 2.1 has one public,
+compiler-bound reservation profile and one global durable record.  The
+authoritative attempt census is plane-tagged:
 
-Policy 2—bounded clear masked-symbol queries under a proved total horizon—is
-retained only as a dormant fallback.  Failure of one policy-3 candidate or
-one gate does not activate it.  Activation requires (i) an append-only
-terminal classification of every credible policy-3 line, retaining each
-security, setup, prover, memory and proof-byte reason, and (ii) a later
-explicit owner decision.  Exhaustion means that all credible constructions
-have been disposed, not that one construction must fail every axis at once.
-There is no automatic or silent fallback.  R0.5 satisfies condition (i);
-condition (ii) is now the exact owner decision gate.
+```text
+q_attempt[p]  = (U_leaf, S_visible_Fp, H_sibling), p in {W,B,KV_old,KV_new}
+q_response[p] = the actual response vector, componentwise <= q_attempt[p]
+A_attempt = 1 for every successful global reservation
+```
 
-If policy 2 is later activated, its theorem and durable counter must bound
-every query made against a root across accepted attempts, failures, retries,
-selective aborts, connections and colluding designated verifiers.  That
-horizon and its clear-symbol leakage must be fixed before parameters or
-proof bytes are optimized.
+`U_leaf` counts unique opened logical leaves; `S_visible_Fp` counts every
+serialized masked base-field symbol occurrence; `H_sibling` counts exact
+Merkle multiproof siblings; and `A_attempt=1` for every successful
+reservation.  An Fp2 symbol is two Fp symbols.  A complete `g=141` leaf costs
+141 visible symbols even if only one inner coordinate was requested.  A
+grouped or N-dependent alphabet query is never counted as one before this
+unstacking.  No cross-attempt deduplication receives privacy credit.  The
+profile maps these vectors to a fixed charge vector
 
-If policy 3 is accepted and proved, its first proposed scope is one
-connection.  Reusing the same root across connections or colluding designated
-verifiers remains unauthorized until either a multi-user theorem supplies a
-root-wide attempt/query bound or a durable root-wide counter accounts the sum
-of every attempt.  A per-connection union bound cannot justify global reuse.
+```text
+u_attempt = (u_W, u_B, u_KV_old, u_KV_new).
+```
+
+No component pays another plane's horizon.
+
+The privacy theorem chooses its exact atom.  Until it does, the conservative
+scalar is `S_visible_Fp`; a vector or a worst-case weighted scalar is required
+for multiple correlated oracles/alphabets.  Merkle siblings cost bytes and
+belong to the simulator view, but are not silently equated with one masked
+field symbol.  The following quantities remain separate:
+
+```text
+q_attempt   maximum plane-tagged vectors reserved by one attempt
+q_response  actual plane-tagged vectors for one response
+Q_root      total theorem-backed privacy capacity for one complete omega
+R_root      maximum reserved attempts before that omega is sealed
+
+R_root <= floor(Q_root / u_W).
+```
+
+This formula is admitted only with
+`0 < u_W <= Q_root`; each nonzero plane charge must likewise fit its named
+`Q_B`/`Q_KV` horizon, and a profile that cannot reserve one complete attempt
+is invalid.  Positive headroom beyond the selected service floor remains
+mandatory.
+
+Proof size constrains `q_attempt/q_response`; privacy constrains `Q_root`;
+setup constrains root construction and rotation; one-pass work constrains an
+attempt.  There is no valid single minimum across these quantities.
+
+Before the first attempt-local provider response byte whose distribution
+depends on `W` or its root, a linearizable durable reservation increments
+`spent_root += u_W`, debits `u_KV_old` against the accepted predecessor,
+burns `u_B/u_KV_new` assignment slots and increments the attempt count.  The public root
+itself is a baseline **view element**, not free leakage: replacing it between
+worlds is charged to `SaltedMerkleRootPathHide`.  The reservation
+cannot be extended or refunded.  Accept, reject, timeout, crash, retry and
+selective abort all burn the full reservation.  Insufficient capacity rejects
+before answering.  The record is global to the root across users,
+connections, replicas and colluding designated verifiers.  Per-user quotas
+and rate limits may run before it to mitigate denial of service, but they are
+not cryptographic counters.
+
+After response computation but before `C_B,e` or the proposed successor root
+is emitted, one no-extension assignment CAS binds the burned slots, creates
+`boundary_budget_map[a]` and `kv_budget_map[s_new]`, and records their exact
+high-water marks.  It cannot increase a charge.  Abort before assignment
+leaves tombstoned burned slots; abort/reject after assignment seals both new
+records.  Acceptance seals the one-shot boundary record but leaves the same
+successor K/V record active for future predecessor debits.
+
+Uniqueness is not single use by itself.  The allocator authenticates the
+receipt-free `reservation_request_binding`; appending that receipt defines the
+complete `reserved_session_binding`.  It enforces
+`Reserved -> InFlight -> Burned | Accepted`.  Every protocol message advances
+one canonical transcript state by compare-and-swap.  Repeating the identical
+input may return only its cached byte-identical reply; a different connection,
+nonce, MAC domain, prefix or challenge is rejected before any new
+`W`/root-dependent byte.  Thus replica races cannot obtain two adaptive query
+sets after one charge.  This state machine, its receipt codec and its cache
+durability are still unimplemented hypotheses, not consequences of a unique
+receipt identifier.
+
+At exhaustion the root is sealed; it is not rotated on adversarial demand.
+A replacement uses independent encoding randomness, salts and seeds, proves a
+bridge to the same canonical `W`, compiles setup/storage/refresh, and switches
+atomically.  A model-wide epoch cap `K_model` or a multi-root composition
+theorem is still required: fresh roots do not reset leakage for free.
 
 ### 4.2 Why a reusable affine mask is insufficient
 
@@ -643,14 +815,150 @@ W = (d*X1 - b*X2) / (a*d - b*c).
 ```
 
 The Lean theorem `reused_affine_mask_extract` proves this field identity.
-It applies equally to partial code symbols or terminal folds.  Therefore C7
-never places either `X1` or `X2` on the wire, and every authentication mask is
-attempt-local and burned on abort.
+It applies equally to partial code symbols or terminal folds.  Policy 2 may
+show theorem-approved randomized-code symbols, but never two affine folds
+under one reusable mask.  Attempt masks/correlations are fresh and burned on
+abort; root-level reuse is limited only by the proved t-query capacity and
+global counter.
 
 ### 4.3 Named privacy theorem still required
 
+`C7-P2-MDV-STATEFUL-PRIV(lambda,K_model,D_model,Q_root,{Q_B},{Q_KV},
+Q_hide,Q_PRF,interactive)` is the active
+left/right game (`Q_FS=0`).  One adversary represents unlimited identities,
+connections and colluding designated verifiers.  It adaptively chooses legal
+challenges, queries, abort points and timing while the global allocator
+enforces each root budget and a model-wide epoch bound.  Its view contains
+all masked payloads, opened salts, indices, digests, paths, byte prefixes,
+exhaustion errors, accept/reject results and journal transitions.  The
+terminal value occurs only as a VOLE-authenticated value.
+
+For equal witness-independent `Leak_base`, each world independently builds
+its hiding roots.  Requiring an equal binding root would make the game
+vacuous.  The simulator covers the adaptive union of observations under a
+root, not one independent response at a time.  A published non-adaptive HVZK
+or t-query encoding is therefore only a named hypothesis until extended to
+this stateful malicious-DV game.
+
+The game is operationally a paired-history oracle.  At attempt `a`, the
+adversary submits one common public request and two branch-specific valid
+continuations extending the accepted predecessor in their respective worlds.
+Their next canonical **base** frame must be byte-identical: public
+prompt/input, output tokens, lengths, sampler policy, admitted
+availability/abort class, counters, public shape and linkability pattern are
+included.  Malformed pairs or unequal base frames reject before any
+branch-dependent protocol byte.  The challenger then constructs the complete
+branch-derived closure `Deriv_b`, including roots and every identifier,
+receipt/authentication, predecessor digest and transcript/journal head derived
+from them.  These bytes are not an equality precondition: their replacement
+is paid by the hiding/authentication hybrids and
+`BranchDerivedViewClosure`.  The adversary may choose later pairs from its
+adaptive view, but each pair must remain valid in both branch histories.  C7
+therefore hides weights only beyond the authorized inference/API leakage; it
+does not hide public model outputs.
+
+Let `D_model` bound the distinct connection/MAC key domains that receive an
+attempt-local `W`-dependent response during the model lifetime.  Each domain
+fixes one `Delta` and complete indexed key-tape domain before its first
+response.  The adversary may correlate `Delta` and key functions across
+domains; provider-side coins/masks are fresh and domain-separated.  `D_model`
+is bounded by the global reservation journal (and in
+particular by total reserved attempts), not by user identity.  The existing
+Lean simulator covers one domain with one shared `Delta`; C7 additionally
+requires a named `MultiUserVoleCompose(D_model)` hybrid theorem.  Colluding
+verifiers cannot be charged to the single-connection theorem.
+
+`Q_root` applies only to the complete weight-oracle epoch `omega`.  It does
+not silently pay for the fresh response and persistent state planes.  A
+concrete compiler must additionally instantiate:
+
+```text
+Q_B[a]       visible masked-symbol/path horizon for fresh response root C_B,a
+Q_KV[s]      lifetime horizon for every created K/V root instance s
+```
+
+and tag every census entry by plane.  `C_B,a` is charged once per attempt.
+Every proposed successor `C_KV,e+1` creates a distinct root instance `s` and
+burns its creation charge before disclosure, even if the attempt later aborts
+or rejects.  An unaccepted instance is sealed permanently.  If accepted, the
+same `Q_KV[s]` counter continues whenever that exact root is reused as a
+predecessor; acceptance does not reset it.  If a backend reveals no
+payload/path for a plane, its zero charge must follow from its concrete
+authenticated-only codec and hiding theorem.  Until the per-plane horizons
+and reductions exist, boundary/K/V privacy is fail-closed.
+
+The required lifetime bound is
+
+```text
+Adv_priv_lifetime
+ <= sum_root (
+       zeta_joint_adaptive_tZK(root,Q_root)
+     + Adv_PRF_root_masks_and_salts(Q_PRF[root])
+     + epsilon_SaltedMerkleRootPathHide(Q_hide[root]))
+  + sum_attempt (
+       zeta_boundary_plane(a,Q_B[a])
+     + Adv_PRF_boundary_masks_and_salts(a)
+     + epsilon_boundary_root_path_hide(a))
+  + sum_created_KV_root s (
+       zeta_KV_plane(s,Q_KV[s])
+     + Adv_PRF_KV_masks_and_salts(s)
+     + epsilon_KV_root_path_hide(s))
+  + sum_MAC_domain (
+       Adv_real_VOLE_malDV(domain,{J_a})
+     + epsilon_key_domain_separation)
+  + sum_attempt (
+       Adv_PCG_a
+     + epsilon_terminal_codec_a
+     + epsilon_timing_a)
+  + sum_rotation Adv_RotateSameW_private_bridge
+  + epsilon_MultiUserVoleCompose(D_model)
+  + epsilon_BranchDerivedViewClosure
+  + epsilon_receipt_auth_privacy
+  + epsilon_global_counter_rollback_fork
+  + epsilon_plane_budget_assignment_rollback_fork
+  + epsilon_InitKVState_privacy
+  + epsilon_state_budget_carry_privacy
+  + epsilon_state_replay
+  + epsilon_rotation_composition.
+```
+
+Admission additionally requires the composed model-lifetime game—not merely
+one connection slice—to satisfy
+
+```text
+Adv_priv_model_lifetime(K_model,D_model,Q_root,{Q_B},{Q_KV},Q_hide,Q_PRF)
+  <= 2^-78.
+```
+
+There is no honest-challenge term in this privacy game; honest post-prefix
+unpredictability is a soundness premise.  The existing ideal shared-`Delta`
+VOLE-MAC simulator can discharge one domain's terminal middle only after a
+concrete codec refinement.  It neither simulates the visible PCS encoding nor
+proves the multi-domain hybrid.
+
+The preferred public leaf/tree candidate is BLAKE3 with separate domains for
+leaf, tree and transcript hashing.  An opened masked payload and 256-bit salt
+let the verifier recompute its leaf and path, so no private Poseidon2 checker
+is required.  Collision resistance still proves neither root hiding nor
+adaptive t-query privacy; `SaltedMerkleRootPathHide`, randomized-encoding
+privacy and position/geometry binding remain named hypotheses.
+
+The active hash reductions use three non-interchangeable work bounds:
+
+```text
+Q_CR[root]    collision/binding work against leaf/tree hashing
+Q_hide[root]  adaptive root/path-hiding oracle work and cumulative view
+Q_PRF[root]   mask/salt PRF oracle work, including all derived leaves
+```
+
+The concrete reductions must derive these from `K_model`, every `omega`, the
+opened-leaf/path union and the adversary's declared oracle access.  They are
+not `q_attempt`, `Q_root`, each other, or the historical policy-3 `Q_leaf`.
+
+#### Historical policy-3 game and rejection evidence
+
 `C7-ALFC-MDV-STATEFUL-PRIV(lambda,R_max,L,Q_leaf,interactive)` is a left/right
-game for the selected protocol (`Q_FS=0`).
+game for the rejected policy-3 protocol (`Q_FS=0`).
 For two valid witness histories `(W_0,KV_0,trace_0)` and
 `(W_1,KV_1,trace_1)` with equal witness-independent `Leak_base`, the
 challenger samples `b`, independently constructs that world's hiding roots
@@ -722,7 +1030,7 @@ Adv_priv_conn
   + epsilon_state_replay.
 ```
 
-There is no honest-challenge term in this **privacy** game: the malicious DV
+There is no honest-challenge term in that historical **privacy** game: the malicious DV
 may choose every challenge arbitrarily, and the ideal zero-residual theorem
 already covers that.  Honest post-prefix unpredictability is used for
 soundness; concrete challenge framing, timing and abort leakage remain inside
@@ -744,7 +1052,7 @@ response allocation and 78-bit connection target.  This is still a
 **screen**, not adaptive-hiding proof: the connection-wide leaf census and
 concrete adaptive-hiding theorem/private checker remain missing.
 
-`LeafCom(payload;salt)`, `H_tree(left,right)` and `H_transcript` are separate
+In that historical line, `LeafCom(payload;salt)`, `H_tree(left,right)` and `H_transcript` are separate
 domain-separated primitives; `H_FS` exists only in the quarantined compiler.
 The leaf input binds a root context derived from the layout digest,
 commitment nonce and plane, plus position, exact total/leaf count, payload
@@ -758,49 +1066,76 @@ checker.
 `C7-ALFC-STATEFUL-KS` asks whether a prover can cause the first durable state
 promotion for which no extracted witness satisfies the full C7 relation and
 accepted predecessor.  Its bound separately charges challenge soundness,
-leaf/position binding, code unique-decoding/knowledge soundness, Fp2 MAC/RLC,
-the private checker, PCG and state/replay/fork errors.
+public salted-leaf/position binding, randomized-code unique-decoding/knowledge
+soundness, the bridge from every masked response and authenticated terminal
+to one encoding of the same `W`, Fp2 MAC/RLC, PCG and state/replay/fork
+errors.
 
 ```text
 Pr[Bad]
  <= epsilon_honest_DV_challenge(R_max,t,|Fp2|)
-  + epsilon_AuthCheckerExtract(J_total)
-  + epsilon_LeafComBinding(L,U_leaf,Q_leaf)
-  + epsilon_MerklePositionBinding
-  + epsilon_CodeKS_or_UniqueDecode
+  + sum_root (
+        epsilon_MaskedOracleExtract(J_root,Q_root)
+      + epsilon_LeafComBinding(L_root,U_leaf_root,Q_CR[root])
+      + epsilon_MerklePositionBinding
+      + epsilon_CodeKS_or_UniqueDecode
+      + epsilon_EncodedRootSetupBinding)
+  + sum_rotation (
+        epsilon_RotateSameW_KS
+      + epsilon_bridge_transcript_binding
+      + epsilon_seal_cutover_fork
+      + epsilon_state_budget_carry_binding)
+  + sum_MAC_domain epsilon_MAC_domain
+  + epsilon_MultiUserMacCompose(D_model)
   + sum_attempt (
         epsilon_MAC_Fp2
-      + epsilon_private_checker
+      + epsilon_masked_response_binding
       + epsilon_RLC_operator
-      + epsilon_codec)
-  + epsilon_PCG
+      + epsilon_codec
+      + epsilon_PCG)
+  + epsilon_ReceiptUnforgeability
+  + epsilon_PlaneBudgetAssignmentSound
+  + epsilon_InitKVStateSound
+  + epsilon_global_allocator_rollback_fork
   + epsilon_state_replay_fork.
 ```
 
 No term is declared independent merely because attempts use fresh masks; the
-same `Delta` is handled by fixed-other-coins slices and union bounds.
+same `Delta` is handled only within one MAC domain by fixed-other-coins slices
+and union bounds.  Cross-domain composition is the named multi-user premise.
+The root and rotation sums range over at most `K_model` complete `omega`
+descriptors.  `RotateSameW` must knowledge-bind both randomized encodings to
+the immutable `C_W`; its private bridge transcript and bytes/setup are charged
+separately rather than hidden inside root creation.
 
-The earlier step “extract a virtual clear PCS transcript” is rejected as
-circular.  Opaque handles plus verifier data `(Delta,k)` do not reveal the
-authenticated plaintext; exposing the prover tag together with them destroys
-privacy.  `OpeningMac.lean` reasons about a mathematical authenticated output
-but does not extract it from serialized bytes.  The concrete construction
-must instead prove either direct authenticated-checker soundness or an
-explicit committed-input PoK/extractor in `F_sVOLE+id`, including its trapdoor
-and challenge-oracle log.  Evaluation binding from preprocessing is not this
-knowledge theorem.
+The earlier policy-3 step “extract a virtual clear PCS transcript” remains
+rejected as circular.  In policy 2 the masked oracle transcript is concrete,
+but soundness still needs an extractor/unique-decoding theorem tying it and
+the opaque terminal handle to one committed randomized encoding of `W`.
+`OpeningMac.lean` supplies only the mathematical authenticated-output seam.
+Evaluation binding from preprocessing is not this knowledge theorem.
+
+The allocator trust boundary is explicit.  Privacy assumes an honest
+model-owner/provider allocator satisfying `AllocatorPrivacyIntegrity`; a
+corrupt allocator can intentionally exceed the advertised leakage budget and
+is outside this game.  Soundness against a dishonest prover instead uses
+`ReceiptUnforgeability` plus verifier-side validation, so the prover cannot
+mint or fork budget/state authority.  The shared implementation may support
+both properties, but one undifferentiated `GlobalBudgetReceiptSound` label is
+not accepted as a proof of either.
 
 ### 4.4 What is and is not cryptographically proved
 
 The repository proves four relevant ideal/algebraic facts; none instantiates
-the private oracle.
+the active masked PCS oracle, global budget or rotation protocol.
 
 1. `bsc_zeroBatch_perfect_zk` and
    `sequential_composition_perfect_zk` prove perfect straight-line privacy in
    ideal `F_sVOLE` for public-shape windows with true zero residuals, even
    when one malicious verifier fixes shared `Delta` and its whole indexed key
    function upfront, then chooses challenges adaptively.  The missing concrete
-   refinement is not assumed by them.
+   refinement is not assumed by them.  This is one MAC/key domain, not the
+   active multi-connection `MultiUserVoleCompose` theorem.
 2. The terminal batch is linear in the actual extension field under one
    shared `Delta`; applying either canonical coordinate projection yields the
    corresponding equality for both serialized Fp limbs.  This fixes the old,
@@ -816,7 +1151,7 @@ the private oracle.
    provided the concrete serialized game supplies the uniform step premise
    for every reachable transcript/journal state.  That premise is precisely
    the missing malicious-DV per-attempt simulator; the lemma does not assume
-   an ideal ALFC.
+   an ideal ALFC and does not compose distinct `Delta`/key domains.
 4. `c7_registered_connection_error_below_78_bits` proves in exact rational
    arithmetic that the current allocation is below `2^-78`, *if* all 64
    attempt-local event bounds and the four connection-wide terms are actually
@@ -841,14 +1176,17 @@ prover tag alongside verifier material exposes the plaintext.  No duplicate
 C7 lemma is added: a salt-counting identity or another ideal theorem would
 not discharge concrete adaptive commitment hiding.
 
-This is the maximal honest R0.4 composition result.  Full concrete
-cryptographic soundness/privacy is **not proved** until `LeafCom`, the private
-checker/codec refinement, real PCG/VOLE, honest-DV entropy/transcript binding
-and code knowledge soundness are instantiated and composed.
+This is the current proved boundary.  Full concrete cryptographic
+soundness/privacy is **not proved** until public `LeafCom` binding and adaptive
+root hiding, the masked-code codec/t-query theorem, the same-`W` terminal
+bridge, paired-history game, transcript-bound authenticated allocator receipt,
+multi-user VOLE/MAC theorem, private knowledge-sound rotation, distinct hash
+work bounds, real PCG/VOLE, honest-DV entropy/transcript binding and code
+knowledge soundness are instantiated and composed.
 
 ### 4.5 Horizon and conditional union budget
 
-Set
+The connection-level security allocation retains
 
 ```text
 R_max = 2^20 attempts.
@@ -856,7 +1194,11 @@ R_max = 2^20 attempts.
 
 An attempt is counted when its durable nonce/correlation reservation is
 created, whether it later accepts, fails, crashes, retries or is selectively
-aborted.  The connection closes before a `2^20 + 1`-st reservation.
+aborted.  The connection closes before a `2^20 + 1`-st reservation.  This is
+not `R_root`: the active root privacy budget can seal a root earlier, and all
+connections sharing that root debit the same allocator.  Conversely, a root
+rotation cannot restart the model-lifetime privacy game without the missing
+`K_model`/multi-root composition theorem.
 
 R0 allocates a cap of 64 response-local bad events, each at most `2^-110`:
 
@@ -908,10 +1250,30 @@ premise are missing.
 ### 4.6 Atomic promotion, replay and forks
 
 Verification and state promotion are one journal transaction keyed by
-`(connection_id, epoch, old_root, predecessor_certificate, slot, nonce)`.
+`(connection_id, epoch, old_root, predecessor_certificate, slot, nonce,
+omega, root_budget_id, profile_digest, reservation_receipt_digest,
+plane_assignment_receipt_digest, state_budget_head, MAC_key_domain_id)`.
 Recovery observes either the complete old record or the complete new record.
 It never observes a promoted root without the matching certificate and
 consumption high-water marks.
+
+The root-wide query reservation is a separate linearization that must become
+durable before the first attempt-local provider response byte dependent on
+`W`/`omega`.  A local hash chain is insufficient against rollback or replica
+forks; the implementation needs a shared allocator or monotonic anchor.
+Before the receipt or any other first reply is emitted, an allocator CAS
+changes the exact internally created receipt from `Reserved` to `InFlight`
+and caches that complete first reply.  Each later input CASes the expected
+transcript state and caches its reply.  A duplicate with identical state/input receives
+only that byte-identical cache entry; any divergent replay fails without a
+new witness-dependent reply.  Before the first reply containing `C_B,e` or
+`C_KV,e+1`, the same CAS chain binds the pre-burned plane slots, initializes
+their budget maps and caches the authenticated assignment record with that
+reply.  Terminal settlement changes `InFlight` to exactly one of `Burned` or
+`Accepted`.  State acceptance validates both transcript-bound receipts and
+all W/B/KV high-water marks but never refunds them.  Abort/reject seals every
+assigned response/successor record; acceptance seals the response record and
+promotes the already-charged successor record without resetting it.
 
 - A byte-identical produced certificate may be retransmitted after ACK
   ambiguity; no different certificate may occupy that slot.
@@ -920,6 +1282,29 @@ consumption high-water marks.
 - Abort/reject marks the attempt burned and cannot promote K/V state.
 - No retry may reuse the burned nonce, sampler seed commitment, PCS mask/root
   for the response-local planes, or either base-limb correlation range.
+
+Rotation is a stop-admit protocol, not an automatic response to exhaustion:
+
+1. atomically seal `omega` against new reservations;
+2. resolve every outstanding receipt by completing the byte-identical
+   in-flight attempt or durably burning/cancelling it; no unaccounted attempt
+   may cross cutover;
+3. construct `omega'` with independent encoding randomness/salts and prove a
+   `RotateSameW` relation anchored to immutable `C_W` that knowledge-binds both
+   complete oracle descriptors to the same canonical packed `W`;
+4. charge bridge proof bytes, setup/I/O and a malicious-DV private bridge
+   transcript, verify them, initialize only a fresh **weight-epoch** bounded
+   counter and atomically activate `omega'` while carrying the complete
+   `state_plane_ledger`, every live/sealed K/V high-water and
+   `state_budget_head` byte-identically into the cutover record;
+5. retain old roots only for verification/audit of accepted certificates;
+   they answer no new openings.
+
+`RotateSameW` therefore needs distinct binding/knowledge, bridge-privacy and
+atomic-cutover theorems.  A successful bridge consumes one of at most
+`K_model` root epochs; it does not erase the old epoch's leakage or reset any
+boundary/K/V capacity.  Because admission is stopped and every in-flight
+receipt is resolved first, no plane assignment can straddle the cutover.
 
 The C7 Lean module reuses the existing C6 durable-state definitions only as
 an already proved abstract state-machine seam; it does not reuse the C6 proof
@@ -930,6 +1315,21 @@ backend or certificate topology.
 Labels mean: **Evidence** is a proved/published component fact;
 **Assumption** is required but not supplied for C7; **Dead end** is excluded
 from the selected line.
+
+R0.6 narrows active analysis to two non-admitted lines:
+
+1. RS t-query ZK plus strict-UD WHIR/Ligerito and a salted public BLAKE3
+   Merkle tree, as the best carrier for binding/privacy theorems;
+2. ERA `r=4` plus the same public tree, only as a concrete query-byte and
+   linear-prover control.
+
+Neither line currently supplies the joint adaptive stateful privacy theorem,
+an ordered root construction inside the setup gate, and an executable
+`O(N+poly(q,log N))` one-scan opener.  Therefore neither authorizes code.
+Every candidate must first unstack its query alphabet to logical `g=141` and
+Fp limbs.  The GPT-2 and 31B `U_leaf` and `S_visible_Fp` attempt caps must be
+constant (the registered 5% tolerance is allowed only as a recorded hard
+ceiling); Merkle depth may grow only if exact total wire bytes still pass.
 
 ### 5.1 A — packed Ligerito/ERA code plus constrained-code masking
 
@@ -961,21 +1361,22 @@ Definitions 4.7 and §12.3.  These anchors remain part of the rejection record.
 
 - 2026/391 proves HVZK for a query-bounded non-adaptive distinguisher, not the
   C7 malicious-DV connection game.
-- No paper supplies private verification of every Merkle leaf/code response,
-  intermediate witness-dependent symbol and terminal value under VOLE-MAC.
-  A terminal-only adapter leaves the published clear-symbol channel intact.
+- No paper supplies the joint theorem that the visible masked code responses
+  remain private under adaptive root-wide queries and are bound to the same
+  `W` as the VOLE-authenticated terminal.  A terminal-only adapter does not
+  establish either property.
 - ERA's query-efficient `2^32` proof is an estimate, not a prover/memory
   measurement; its random permutations/multipliers and indexer oracles are
   linear setup objects.
 - Neither Ligerito nor ERA supplies the required one-sequential-scan,
   bounded-memory composed schedule at 31B.
 
-**R0.2 disposition:** **REJECT AS COMPOSED UNDER POLICY 3 / NO-GO FOR R1**.
-Retain its code, proof-law and storage evidence.  Under the active policy it
-becomes eligible only if a new authenticated-oracle compiler privately
-verifies every queried payload and passes the setup/query gates.  That is a
-new protocol, not a terminal adapter.  Dormant policy 2 would require the
-separate exhaustion and explicit activation procedure in Section 4.1.
+**R0.6 disposition:** reopen only the RS t-query-ZK plus strict-UD
+WHIR/Ligerito composition as a theorem carrier.  The published 2026/391
+statement is non-adaptive HVZK over an N-dependent alphabet, not C7's
+stateful malicious-DV theorem.  ERA remains a byte/prover control: as
+published its `O(lambda log N)` field-coordinate query law fails the strict
+constant normalized-query gate and its N-scale intermediates fail setup.
 
 ### 5.2 B — SwitchFold/QAFold challenger
 
@@ -1006,18 +1407,20 @@ list-decoding conjecture.
 terminal, or bounded-memory result.  A `2^30` low-rate case ran out of memory
 on a 768-GiB host.
 
-**R0.2 disposition:** **GO as a transparent tiny/scaled code control only**
+**Historical R0.2 disposition, superseded by the R0.6 no-backend GO:**
+**GO as a transparent tiny/scaled code control only**
 after a packed illustrative schedule exists.  It may test the packed identity,
 unique-decoding verifier and byte/I/O instrumentation on public or synthetic
-data.  It cannot test a no-clear adapter that does not exist and cannot use
-private production weights.  The C6.3 eight-body WHIR+Bolt topology is
-forbidden.  Results remain component evidence and cannot promote C7 state or
-grant privacy/E2E credit.
+data.  It cannot test the missing masked-encoding privacy/same-`W` composition
+and cannot use private production weights.  The C6.3 eight-body WHIR+Bolt
+topology is forbidden.  Results remain component evidence and cannot promote
+C7 state or grant privacy/E2E credit.
 
-### 5.4 R0.4 policy-3 construction funnel and CPU gate
+### 5.4 Historical R0.4/R0.5 policy-3 funnel and CPU gate
 
-Only one architectural shape remains eligible for further analytic work; it
-is not a selected backend:
+Under the then-active policy 3, only one architectural shape remained eligible
+for analytic work; it is now terminally rejected and retained only to explain
+the current exclusions:
 
 ```text
 root_context = H_ctx(domain || layout_digest || commitment_nonce || plane)
@@ -1155,13 +1558,15 @@ Offsets are strictly increasing and each source byte is consumed once.  Live
 memory is at most the configurable chunk, a 140-symbol cross-chunk carry and
 `poly(q,log N)` state.  Disk output is only the queried logical blocks and
 `poly(q,log N)` proof/audit data; no source, codeword or stage vector may spill.
-The reference produces exact 141-symbol leaves and salts only
-provider-internally and feeds them directly into the authenticated checker;
-neither is serialized.  Its external result contains digests/root and
-multiproof checks, opaque authenticated handles/corrections and all counters.
-A truncated, extended or mutated source, counter mismatch, noncanonical query,
-second pass or hidden model-linear allocation fails before output or state
-promotion and burns the reserved attempt when run inside a lifecycle.
+The policy-3 contract that kept leaves/salts provider-internal is historical
+and terminally superseded.  Under active policy 2, the reference produces the
+exact profile-approved masked 141-symbol payload occurrences, opened salts,
+indices and public Merkle multiproof that are actually serialized, plus the
+authenticated-only terminal handle and all counters.  No clear terminal
+evaluation is added.  A truncated, extended or mutated source, counter
+mismatch, noncanonical query, second pass or hidden model-linear allocation
+fails before output or state promotion and burns the reserved attempt when
+run inside a lifecycle.
 
 The report separates source-dependent from query-only work and records:
 
@@ -1208,13 +1613,15 @@ unclassified barrier or unassigned byte fails.  Streaming setup and online
 response are separate scopes; traffic or peaks cannot be netted between them.
 
 On identical input, queries, verifier coins and finite PCG fixture, CPU and
-SIMT must match byte-for-byte on provider-internal leaves and salts, exact
-PCG/VOLE values and consumption, leaf digests, root, multiproof,
+SIMT must match byte-for-byte on the serialized masked payload occurrences,
+opened salts and indices, exact PCG/VOLE values and consumption, leaf digests,
+root, multiproof,
 handles/corrections, correlation schedule digest, transcript after every
 frame, challenge sequence, both Fp2 limbs, terminal settlement, certificate,
 CPU-verifier result and journal transition.  Tiny conformance fixtures compare
-the internal values directly; production reports retain only domain-separated
-digests and counters, never those secrets.  Thread/block order cannot alter
+any additional internal values directly; production reports retain only
+domain-separated digests and counters for material not already serialized.
+Thread/block order cannot alter
 serialization, reductions or correlation consumption.  A requested
 unavailable SIMT backend fails rather than falling back silently.
 
@@ -1422,8 +1829,8 @@ terminal under the registered constraints:
 | preprocessing-only evaluation binding | does not give strong binding/knowledge soundness | proving data-structure correctness restores omitted setup/work |
 
 This is documented credible-candidate exhaustion, not a universal lower bound
-against unknown cryptography.  Policy 3 receives a **NO-GO** and policy 2
-remains dormant until an explicit owner activation.
+against unknown cryptography.  Policy 3 receives a **NO-GO**; R0.6 later
+activates policy 2 without erasing any of these rejection reasons.
 
 ### 5.5 Layout/reference-only and quarantined lines
 
@@ -1448,6 +1855,46 @@ accepted-predecessor bridge; reusable secret Freivalds sketches; any clear
 weight evaluation; unbounded root/mask reuse; HVZK promoted to malicious-DV
 privacy; hidden list-decoding/conjectural assumptions; and withdrawn LiLAC,
 HyperWolf or similar bases.
+
+### 5.6 R0.6 public leaf and setup screen
+
+The preferred policy-2 leaf candidate is
+
+```text
+d_i = BLAKE3(
+  domain || root_context || geometry || i
+  || masked_ZK_code_payload_i || salt_i).
+```
+
+The verifier receives the masked payload and 256-bit `salt_i`, recomputes the
+leaf and exact multiproof publicly, and never receives the terminal weight
+evaluation.  The leaf digest itself need not be serialized when recomputable.
+BLAKE3 removes the historical 8,400 secret multiplications per Poseidon2 leaf
+and its private trace checker.  It does not remove salt bytes, path bytes,
+root-hiding, binding or adaptive encoding privacy.  SHA-256/BLAKE2 add no
+missing property; Poseidon2 is retained only if a future admitted protocol
+must hash inside an arithmetic proof.
+
+Setup is screened independently from query privacy and wire bytes.  For an
+illustrative randomized codeword of `M=c_eff*N` Fp symbols, a compact 32-byte
+digest tree, `g=141`, and packed i16 source, the digest-only floor is
+
+```text
+A_setup ~= 1 + 32*c_eff/141,
+c_eff = c0*(1+t/N)                 # only for append-t-symbol ZK encodings
+
+target 2.00: c_eff <= 4.40625
+hard   2.10: c_eff <= 4.846875.
+```
+
+For `c0=4.4`, the illustrative bounds are `t/N<=1/704` at target and
+`t/N<=13/128` at the hard tolerance.  On GPT-2 these correspond to floors of
+176,136 and 12,593,750 extra symbols before metadata.  If, purely as a unit
+check, `q_attempt=830` consumed the same scalar units, the corresponding
+root lives would be at most 212 and 15,173 attempts.  These are not selected
+`Q_root/R_root` values: ERA's alphabet, masking and interleaving are not
+compiled, and one logical query may expose many Fp symbols.  The calculation
+exists to prevent a privacy budget from silently buying an X4d-sized setup.
 
 ## 6. Registered analytic screens
 
@@ -1520,21 +1967,64 @@ fit after measurement.
 ### 6.2 Serialized query-and-challenge wire ledger (hard stop)
 
 Query count is a first-class certificate and privacy parameter, not only a
-verifier/prover-time parameter.  For each concrete candidate keep five
-different counters:
+verifier/prover-time parameter.  For each candidate and model, first compile
+plane/root/round-tagged entries and their aggregate attempt and
+accepted-response vectors
 
-- `q_open[c,r]`: PCS spot checks for commitment/root `c` in round `r`;
-- `U_leaf[c,r]`: unique leaves after exact deduplication/multiproof sharing;
-- `P_secret[c,r]`: witness-dependent symbols inside those leaves and all
-  authenticated intermediate messages;
-- `Q_leaf`: adversarial offline queries against the leaf commitment;
-- `Q_FS`: adversarial transcript-hash queries if Fiat--Shamir is selected.
-  Neither is `q_open`, a certificate byte count or bounded by `R_max`.
+```text
+q_attempt[p]  = (U_leaf, S_visible_Fp, H_sibling)
+q_response[p] = (U_leaf, S_visible_Fp, H_sibling),
+q_response[p] <= q_attempt[p] componentwise,
+p in {W,B,KV_old,KV_new}; A_attempt=1.
+```
 
-Here `c` ranges only over auxiliary weight-oracle commitments/round roots
-below top-level `C_W`.  It excludes boundary/K/V planes and all four top-level
-roots (`C_W`, `C_B,e`, `C_KV,e`, `C_KV,e+1`), whose 128 bytes are already
-assigned to `B_framing`.
+`q_attempt` is fixed by the public schedule and reserved before any
+attempt-local provider response byte whose distribution depends on `W` or its
+root; `q_response` is the actual accepted census.  Both retain
+per-root and per-round detail.  `S_visible_Fp` counts occurrences, including
+overfetch and padding in every opened 141-symbol leaf; Fp2 counts twice.
+`H_sibling` counts exact digests, not field leakage.  Aborted prefixes are
+also measured, but the global privacy allocator conservatively burns the full
+reserved worst case with no refund or cross-attempt deduplication.
+
+Separately record:
+
+- `q_open[c,r]`, the logical PCS samples before alphabet/leaf unstacking;
+- `Q_root`, the theorem-backed lifetime privacy capacity in its exact query
+  atom, and `R_root<=floor(Q_root/u_W)` for the fixed weight-plane charge;
+- `Q_B[a]`, the per-attempt response-plane horizon, and `Q_KV[s]`, the
+  per-created-K/V-root horizon covering proposed-successor disclosure plus
+  every predecessor reuse if that same root is accepted;
+- `Q_CR`, `Q_hide` and `Q_PRF`, respectively the collision/binding,
+  adaptive root/path-hiding and mask/salt-PRF reduction work bounds, all
+  indexed by the complete `omega` and composed across `K_model`;
+- `Q_FS`, adversarial transcript-hash queries, fixed to zero in the selected
+  interactive protocol.
+
+None of these is automatically a certificate byte count, bounded by the
+connection `R_max`, or interchangeable.  A single scalar counter is admitted
+only when a joint theorem supplies worst-case class weights.
+
+Admission is the conjunction, never one optimized minimum:
+
+```text
+q_sound_min(theta,N) <= q_attempt(theta,N)
+B_query_wire(theta,N,q_attempt) <= B_weight_ALFC_limit(N)
+R_root*u_W <= Q_root <= t_ZK(theta)
+q_B_attempt[a] <= Q_B[a] <= t_ZK_B(theta)
+q_KV_create[s] + sum_(accepted predecessor reuses of s) q_KV_use
+  <= Q_KV[s] <= t_ZK_KV(theta)
+Setup_bytes/time(theta,N,Q_root) <= setup_limit(N)
+Work_attempt(theta,N,q_attempt) <= one_scan_and_memory_limits.
+```
+
+In the following weight sub-ledger, `c` ranges only over auxiliary
+weight-oracle commitments/round roots below top-level `C_W`.  Boundary/K/V
+query payload/path bytes are reconciled separately into
+`B_boundary_commitments` and `B_state` under their `Q_B/Q_KV` horizons.  The
+four top-level root bytes (`C_W`, `C_B,e`, `C_KV,e`, `C_KV,e+1`) remain
+assigned once to `B_framing`; this byte assignment does not pay their privacy
+terms.
 
 Then define
 
@@ -1543,19 +2033,27 @@ q_open_weight_total = sum_(weight root c, round r) q_open[c,r]
 
 B_query_wire
   = sum_c,r (
-        P_secret[c,r] * authenticated_symbol_or_correction_bytes
-      + U_leaf[c,r] * leaf_digest_bytes
+        S_visible_Fp[c,r] * masked_symbol_bytes
+      + U_leaf[c,r] * opened_salt_bytes
+      + nonrecomputable_leaf_digests[c,r] * leaf_digest_bytes
       + exact_sibling_hashes[c,r] * hash_bytes
-      + private_leaf_check_bytes[c,r]
       + index_and_query_framing_bytes[c,r])
-  + B_authenticated_weight_oracle_IOP_messages
+  + B_masked_weight_oracle_IOP_messages
+  + B_authenticated_terminal_adapter
   + B_aux_weight_oracle_round_roots_and_prechallenge_messages
+  + B_omega_profile_and_authenticated_reservation_receipt
   + B_serialized_weight_oracle_rho.
 ```
 
 `B_query_wire` is a cross-cutting sub-ledger, not a seventh certificate
 category.  Every byte is assigned exactly once to one of the six registered
 `B_*` components and the sub-ledger must reconcile to those assignments.  The
+complete epoch/profile descriptor and reservation receipt/authentication bytes
+are serialized and currently unknown.  The later plane-assignment receipt is
+also serialized but is reconciled outside this weight sub-ledger exactly once
+to `B_boundary_commitments`, `B_state` or `B_framing` by field ownership.
+Neither receives a free framing allowance.
+The
 selected interactive `rho_i`, `beta` and `gamma` messages and their framing
 are serialized and count.  Only weight-oracle challenge frames enter
 `B_query_wire`; response-wide `beta/gamma` and nonweight `rho_i` are assigned
@@ -1601,9 +2099,9 @@ deviation entry.  Any larger value is a hard failure.  The tolerance supplies
 no privacy, soundness or compiled-certificate credit and cannot offset an
 overrun in another component.
 
-The leaf-size tension is already severe.  With an optimistic 8-byte
-authenticated symbol, one full leaf, one unshared Merkle path and **zero**
-bytes for salt, private hash checking, IOP messages or framing, the gross
+The leaf-size tension remains severe.  The following R0.3 table is a
+historical optimistic floor using one 8-byte symbol, one full leaf, one
+unshared Merkle path and **zero** bytes for salt, IOP messages or framing:
 ceilings are:
 
 | `g` | GPT-2 bytes/leaf; leaves under hard / 5% reserve | 31B bytes/leaf; leaves under hard / 5% reserve |
@@ -1612,15 +2110,24 @@ ceilings are:
 | 141 | 1,864; 1,755 / 83 | 2,120; 2,592 / 123 |
 | 256 | 2,784; 1,175 / 55 | 3,008; 1,827 / 87 |
 
-These are optimistic upper bounds, not query budgets.  Fp2 payloads,
-multiproof misses and the nonlinear private checker only reduce them.
+These are optimistic upper bounds, not query budgets.  Fp2 payloads, opened
+256-bit salts and multiproof misses only reduce them.  Policy 2 removes the
+nonlinear private checker but must serialize the masked payload itself.
 
-Before a candidate is admissible, the same GPT-2 and 31B workload reports all
-five counters, answer alphabet/handle widths, exact multiproof nodes, round
+Before a candidate is admissible, the same GPT-2 and 31B workload reports the
+full vectors and auxiliary counters, answer alphabet/handle widths, exact multiproof nodes, round
 roots, interactive challenge frames, codec bytes and total `B_query_wire`.
 Those counts must parameterize
 both the malicious-DV privacy theorem and the complete connection soundness
 bound.
+After unstacking, logical PCS samples `q_open`, ZK-alphabet query atoms,
+`U_leaf` and `S_visible_Fp` in `q_attempt` must each stay within the separately
+registered 5% growth tolerance from GPT-2 to 31B.  Packing or deduplication may
+identify two counters only under a proved codec equivalence.  Merkle paths may
+grow only while the complete byte gates pass.  This is stricter than the
+generic `N^0.199` proof-law screen and forces nearly constant PCS query count
+in the weight dimension.
+
 Reducing `Q` by weakening proximity error is not a size optimization.  The
 compiled complete certificate must still pass 30/100 MB and at most 3x
 growth; every weight-dependent `N^a` query-byte term must satisfy
@@ -1637,11 +2144,11 @@ byte census.
 
 ERA's published `2^32`, 100-bit estimate already contains **72,418 field
 elements** and **53,011 hashes** for approximately **4.014 MB**.  Under policy
-3 each witness-dependent element must instead be eliminated or privately
-authenticated and checked, so that byte point cannot be copied unchanged
+2 those field elements may be visible only if they are outputs of the proved
+masked encoding and fit `Q_root`; the point still cannot be copied unchanged
 into `B_weight_ALFC`.  Distance amplification likewise cannot be judged by
-`q_open` alone: fewer queries can widen each leaf and increase both private
-verification and certificate bytes.
+`q_open` alone: fewer logical queries can widen each leaf and increase both
+privacy leakage and certificate bytes.
 
 ### 6.3 Illustrative allocation table
 
@@ -1790,6 +2297,14 @@ chunk-granular salted digest tree is separately counted.  Leaf/chunk
 granularity must also enter the serialized query-wire ledger, so large
 leaves cannot move setup cost silently into proof bytes.
 
+The weight oracle is not the only persistent artifact.  The allocator manifest
+separately reports bytes per reservation, boundary and K/V record; live versus
+sealed counts; worst-case model-lifetime storage under `K_model`, `R_root` and
+state horizons; journal writes/fsyncs; and refresh/recovery traffic.  This
+state-plane ledger is not charged to `A_setup`, but it is not free storage.
+Authenticated compaction may replace old records only after a proved
+high-water-preserving refinement; no such compaction is currently admitted.
+
 R0.3 registers
 
 ```text
@@ -1808,12 +2323,12 @@ authenticated symbol width `b_auth`, the first required trade-off screen is
 
 ```text
 S_tree            ~= 2*h*M/g
-B_secret_payload  ~= U_leaf*g*b_auth.
+B_opened_payload  ~= U_leaf*g*b_masked.
 ```
 
-Increasing `g` shrinks setup/tree storage but expands the private leaf
-payload and leaf-hash circuit.  A hierarchy merely reintroduces the hashes it
-claims to remove; neither direction receives free credit.
+Increasing `g` shrinks setup/tree storage but expands the visible masked leaf
+payload and public leaf-hash work.  A hierarchy merely reintroduces the hashes
+it claims to remove; neither direction receives free credit.
 
 Ignoring all persistent metadata `K`,
 
@@ -1835,12 +2350,13 @@ code geometry, exact compact-tree floor screens are:
 
 These rows count packed weights plus digests only.  They do not prove that a
 codeword can be generated, committed and post-challenge opened in one source
-scan, nor count the private leaf checker.  R0.4 selects logical `g=141` as the
-format for the authorized search, not as setup or backend credit.  In
+scan, nor count opened masked payloads, salts, paths or public leaf checks.
+R0.4 selects logical `g=141` as the format for the authorized search, not as
+setup or backend credit.  In
 particular `g=128`
 fails unless the complete persistent manifest, salt state and metadata fit in
 32 bytes.  `g=256` requires concrete power-of-two codec necessity; larger
-leaves buy setup by spending private query bytes.
+leaves buy setup by spending public masked-query bytes.
 
 Changing only the tree to `g=141` does not rescue the ERA topology.  If its
 full 4.4x oracle, P1/P2 and multiplier planes are materialized, the scenario
@@ -1869,10 +2385,10 @@ scales and fails the anti-X4d structural gate.  Being smaller than X4d's
 
 At the illustrative 4.4x oracle geometry and 64-symbol leaves, retaining only
 packed weights plus digests is already approximately **3.2x** packed size.
-That row is a floor screen, not a constructed setup: it omits the private
-leaf checker, salts/PRF theorem, exact tree layout and block-regeneration
-algorithm.  It records why both the setup and query-byte gates are required
-before selecting a leaf size.
+That row is a floor screen, not a constructed setup: it omits opened masked
+payloads, salts/PRF and adaptive root-hiding theorems, exact tree layout and
+block-regeneration algorithm.  It records why both the setup and query-byte
+gates are required before selecting a leaf size.
 
 A hypothetical full re-encoding has the same `7.142 GB / 1.776 TB` volume in
 this chosen screen; this is not a proved refresh schedule.  A consumable
@@ -1889,38 +2405,55 @@ ERA layout or total setup.  Base-code/code-switch/masking artifacts, forest
 roots and intermediate traffic remain unknown.  The 3.2-GB/s number is an
 illustrative throughput floor, not preprocessing time.
 
-Policy 3 has no routine static-weight root refresh within a connection.  A
-model change rebuilds all model setup.  If the privacy theorem fails and a
-fresh-root or finite-pool policy is selected, its full re-encoding/storage
-refresh cost must be added before implementation.  Response trace storage is
-attempt-local.  The accepted K/V provider state persists only the current
-canonical prefix and its commitment data; old proposed states are deleted
-only after durable acceptance or recorded burn according to the future R1
-journal design.
+Under active policy 2, root exhaustion may require rotation even when the
+model does not change.  Every rotation therefore charges full root
+construction, validation, storage, refresh traffic and atomic cutover; it also
+needs an independent mask/salt seed and a proved bridge to the same canonical
+weights.  The rotation ledger separately reports `RotateSameW` proof bytes,
+verification work, privacy/KS error and outstanding-receipt resolution; none
+is amortized into a response certificate without an explicit allocation.
+Neither `Q_root` nor a new root is free setup.  Response trace
+storage is attempt-local.  The accepted K/V provider state persists only the
+current canonical prefix and its commitment data; old proposed states are
+deleted only after durable acceptance or recorded burn according to the
+future R1 journal design.
 
 ### 6.7 Conditional security allocation
 
 | Security item | Registered value |
 | --- | ---: |
 | attempts in connection horizon | `2^20` |
+| root privacy budget / root attempts | `Q_root` / `R_root`, numeric values unselected; fixed full-reservation burn |
+| response/state privacy horizons | per-attempt `Q_B[a]` / per-created-root `Q_KV[s]`, unselected and not paid by `Q_root`; aborted successor roots are charged then sealed |
+| model root epochs | `K_model`, unselected pending multi-root composition |
+| MAC/key domains over model lifetime | `D_model`, unselected; multi-user VOLE/MAC composition unproved |
 | response-local event budget cap | 64; registry incomplete |
 | allocation per event | `2^-110` |
 | `epsilon_response` | `2^-104` |
 | leaf salt screen | 256 bits; 192 bits rejected |
-| leaf-oracle work screen | `Q_leaf=2^64`; not a theorem cap |
+| active hash work bounds | `Q_CR / Q_hide / Q_PRF`, all unselected and distinct |
+| historical policy-3 salt screen | `Q_leaf=2^64`; not an active theorem cap |
 | challenge mode / `Q_FS` | fresh honest-DV post-prefix interactive / `0`; entropy delivery and transcript binding not instantiated |
 | hash / PCG / state / framing | allocated `2^-128 / 2^-128 / 2^-120 / 2^-128`; not yet derived |
 | exact `epsilon_connection` | `17592186044675 / 2^128` |
 | effective connection bits | `83.99999999997877` |
 | conditional strict whole-bit allocation | 83 bits |
-| target | at least 78 bits |
+| connection soundness/state target | at least 78 bits |
+| policy-2 model-lifetime privacy target | at least 78 bits after all roots, connections and colluding verifiers; bound not derived |
 
-The arithmetic must remain at least 78 bits after the `2^20` horizon, but it
+The arithmetic must remain at least 78 bits after the `2^20` connection
+horizon, but it
 is not a protocol security result until a complete fail-closed event/hybrid
 registry supplies every term and scope.  If a concrete backend needs more
 than 64 local events, a larger list/degree numerator, more roots, query-scaled
 hash/PCG loss or additional hybrid terms, parameters are raised and the
 calculator rerun before code.
+
+The policy-2 privacy advantage in Section 4.3 is additional and has its own
+`Adv_priv_model_lifetime<=2^-78` gate.  It ranges over all roots, connections
+and attempts, including counter rollback/fork and rotation terms; it cannot be
+paid by this 64-event arithmetic until a concrete adaptive t-query theorem and
+exact `Q_root/Q_B/Q_KV/K_model` values are registered.
 
 The arithmetic also does not survive an uncharged Fiat--Shamir grinding
 factor.  In particular one roughly 128-bit Fp2 challenge and `Q_FS=2^64`
@@ -1942,13 +2475,16 @@ and `p=2^64-2^32+1`:
 | direct FS control, `Q_FS=2^64` | `Q_FS*T/card(E)` | ~55 bits | reject security target |
 | two-challenge amplified FS, `Q_FS=2^64` | `Q_FS*T^2/card(E)^2` | ~174 bits | security screen passes; proof/work bytes unknown, so NO-GO |
 
-The pair bound requires two independent, domain-separated fresh random-oracle
-slices sampled canonically into `Fp2`, both checking the same complete
-relation.  Two equations using the same challenge do not amplify.  The
-declared `Q_FS` must cover the whole grinding scope, including restored or
-forked transcript states.  Random-oracle programmability, XOF/domain
-separation, rejection sampling, state binding and transcript-prefix binding
-remain named hypotheses.
+The displayed pair bound interprets one adversarial RO trial as one paired
+invocation on the same frozen prefix/grinding nonce, expanded with internal
+domain separation into two independent canonical `Fp2` challenges that both
+check the complete relation.  `Q_FS` counts paired trials.  Two equations
+using the same challenge do not amplify; two separately queryable challenge
+oracles do not inherit this formula and require a new joint bound (potentially
+including a product of grinding budgets).  The declared `Q_FS` must cover the
+whole grinding scope, including restored or forked transcript states.
+Random-oracle programmability, XOF/domain separation, rejection sampling,
+state binding and transcript-prefix binding remain named hypotheses.
 
 Fiat--Shamir removes explicit verifier challenge frames but does not make its
 second check free.  Every additional response, opaque handle, queried leaf,
@@ -1987,92 +2523,106 @@ M1--M12 statements.  It proves the following algebra/state seams:
 | append MLE/linear-functional difference | C7 append-difference theorem |
 | prefix and accepted-tail induction | C7 prefix/transition-chain theorems |
 | atomic promotion/replay/fork exclusion | C7 wrappers over the existing durable state seam |
+| fixed policy-2 root lifetime | `policy2_root_lifetime_le_budget_div_reservation`; Nat accounting only |
+| worst-case query-class charge | `policy2_worst_case_query_counter_dominates`; no leakage theorem |
 | connection union bound/shared Delta | finite bad-set cardinality wrapper over M10; no computational-privacy claim |
 | independent two-challenge counting | product-cardinality and sliced connection bounds; RO freshness/programming remain external |
 | connection hybrid composition | additive advantage recurrence, conditional on the concrete per-attempt game step |
 | registered 78-bit arithmetic | exact rational inequality, conditional on the incomplete event registry |
 | serialized schedule refinement | opaque-handle codec round-trip only; no binding/privacy theorem |
-| ideal malicious-DV privacy | existing `bsc_zeroBatch_perfect_zk` and `sequential_composition_perfect_zk`; applies only after concrete checker-to-window refinement |
+| ideal malicious-DV privacy | existing `bsc_zeroBatch_perfect_zk` and `sequential_composition_perfect_zk`; applies only to authenticated terminal/windows after concrete codec refinement and does not cover the visible masked code |
 
 These theorems prove no concrete PCS binding, hash/PCG security, transformer
-compiler completeness or malicious-DV privacy.  Section 2.4 names the prose
+compiler completeness, durable global allocator or malicious-DV privacy.
+Section 2.4 names the prose
 predicate and its hypotheses; no Lean `AcceptC7` definition yet exists.  A
 future definition must expose those assumptions rather than hide them behind
 an ideal ALFC API.
 
-R0.5 adds only
+R0.5 added only
 `c7_independent_bad_challenge_product_card_le` and
 `c7_pair_challenge_connection_sliced_union_bound`.  They prove the finite
 counting numerators used in Section 6.8, not Fiat--Shamir security.  Raw-tag
 leakage and ideal shared-`Delta` privacy were already proved; a new
 salt-counting identity would not prove adaptive hiding.  The generator
 incidence obstruction and CPU/SIMT resource contract are not statements about
-the frozen protocol semantics.  The next useful statements would be
+the frozen protocol semantics.  The historical policy-3 next statements would
+have been
 `serialized_private_oracle_view_refines_windows` and
 `private_checker_all_opened_residuals_zero`, but adding them before an admitted
 codec/checker would only rename missing cryptography.  Because the concrete
 policy-3 backend is rejected, no fake `C7Policy3Codec.lean` is created.
+R0.6 adds only the two natural-number policy-2 accounting lemmas above.  They
+formalize fixed reservation and conservative class weighting, not atomicity,
+the query atom, transcript-bound epoch receipts, multi-user `Delta`
+composition, adaptive t-query privacy or root rotation.  The next active Lean
+refinement waits for a concrete compiler/receipt codec; adding an abstract
+wrapper now would only rename the distinct missing
+`AllocatorPrivacyIntegrity`, `ReceiptUnforgeability` and single-session CAS
+properties.
 The focused command
 `cd lean && lake build +VoltaZk.C7StatefulAlfc:olean` passes without
 `sorryAx` in these C7 lemmas.
 
-## 8. R0.5 disposition and exact resume conditions
+## 8. R0.6 disposition and exact resume conditions
 
 ### 8.1 Backend/control recommendation
 
-- **Backend A as composed: REJECT under policy 3 / NO-GO for R1.**  Keep only
-  its code/proof-law/storage evidence.  A terminal-only adapter cannot hide
-  the row/column/leaf payloads already exposed by its oracle queries.
-- **Digest-only private-oracle shape: terminal NO-GO under policy 3.**  A
-  concrete Poseidon2 leaf function and a real one-pass one-stage-RA block
-  screen now exist, but they do not compose: the code has no admitted distance
-  theorem, ordered root generation violates the setup schedule, and the
-  private checker/codec/soundness/privacy/proof-byte gates remain open.  This
-  is candidate exhaustion, not `C7_CPU_REFERENCE_PASS`.
-- **WHIR-UD control: GO for a transparent tiny/scaled control only.**  It may
-  test the packed identity and code path on public/synthetic data.  It cannot
-  test no-clear privacy and grants no complete certificate, scale, privacy or
-  E2E credit.
+- **Policy 2: ACTIVE FOR DESIGN; NO BACKEND GO.**  Only budgeted root-bound
+  masked PCS responses may be visible; the terminal evaluation stays
+  authenticated.  Numeric counters remain fail-closed and unset.
+- **RS t-query ZK + strict-UD WHIR/Ligerito + salted BLAKE3: preferred theorem
+  carrier, census only.**  It still lacks adaptive stateful malicious-DV
+  privacy and a setup-safe, one-scan opener.
+- **ERA `r=4` + salted BLAKE3: byte/prover control only.**  Its published
+  field-query law grows with `log N`, its masked encoding is unproved here,
+  and its N-scale setup intermediates remain excluded.
+- **Historical policy-3/Poseidon2 and one-stage RA lines: terminal NO-GO.**
+  Their checker cost, distance and ordered-root failures remain recorded.
 
 ### 8.2 Resume conditions for an R1 proposal
 
-Policy 3 is now terminally rejected under the registered constraints and
-policy 2 remains dormant pending the owner's explicit activation.  The
-selected challenge baseline remains interactive honest-DV (`Q_FS=0`) and
+Policy 3 remains terminally rejected under the registered constraints and
+policy 2 is active.  The selected challenge baseline remains interactive
+honest-DV (`Q_FS=0`) and
 logical `g=141`; the setup and query envelopes retain their 5% hard
 tolerances.  The
 fail-closed readiness handoff is
 `docs/c7-r03-prover-pod-handoff.md`.  Preparation does not authorize a large
 prover/E2E, pod contact or pod execution.
 
-The next step is an owner design decision, not implementation.  If policy 2
-is explicitly activated, a new checkpoint must first fix the total
-root-wide query/connection horizon—including failures, retries, selective
-aborts, connections and colluding verifiers—and compile its post-challenge
-query/proof bytes.  Only then may an R1 proposal be considered, and it must
-supply all of:
+The next step remains a design/census checkpoint, not implementation.  Before
+an R1 proposal it must supply all of:
 
-1. the selected-policy root lifecycle and exact root-wide attempt/query
-   horizon;
+1. exact plane-tagged GPT-2/31B `q_attempt/q_response` vectors,
+   theorem-defined weight `Q_root`, response `Q_B` and state `Q_KV` horizons,
+   derived `R_root`, positive privacy headroom, distinct
+   `Q_CR/Q_hide/Q_PRF`, bounded `D_model`, and a bounded `K_model` or
+   multi-root theorem;
 2. an executable canonical compiler with terminal multiplicity exactly one
-   for every physical weight, boundary and K/V segment;
-3. a proved/checked extension-field ALFC adapter under one shared `Delta`,
-   with both serialized limbs, every allowed oracle response and the bounded
-   policy-2 leakage covered by the selected theorem;
+   for every physical weight, boundary and K/V segment, plus the complete
+   ordered `omega`, profile and authenticated single-session
+   reservation plus no-extension plane-assignment receipts, durable W/B/KV
+   high-water maps and state machine;
+3. a proved/checked extension-field ALFC adapter under one shared `Delta` per
+   MAC domain, both serialized limbs, every allowed oracle response, and a
+   multi-user composition covering all `D_model` colluding domains;
 4. `C7_CPU_REFERENCE_PASS`: a derived and executable one-pass bounded-memory
    `BatchOpenBlocks` schedule with exact operations/setup/oracle/online I/O;
-5. a malicious-DV connection privacy theorem for the activated static-root
-   policy and the exact root-wide horizon;
+5. the paired-history policy-2 adaptive malicious-DV lifetime theorem with
+   complete branch-derived-view closure, honest-allocator privacy integrity,
+   dishonest-prover receipt unforgeability, global receipt CAS/cache
+   rollback-fork protection, full burn, and a private
+   `RotateSameW` bridge with stop-admit/outstanding-attempt resolution and
+   atomic cutover;
 6. a composed certificate/security budget replacing allocation constants
    with derived protocol counts while retaining the gates;
 7. if SIMT is proposed, byte-exact CPU/SIMT equivalence and every registered
    transfer, memory, padding and synchronization counter.
 
-The tiny search has taken the second branch: credible-candidate exhaustion is
-documented in Section 5.4 and the append-only register.  No SIMT S3, prover or
-pod work follows from the negative screen.  Policy 2 is not automatic; owner
-activation must also select its exact query/root budget and interactive versus
-amplified-FS mode before any codec or prover implementation.
+The R0.5 policy-3 exhaustion remains documented in Section 5.4 and the
+append-only register.  No SIMT S3, prover or pod work follows from activating
+policy 2.  Interactive `Q_FS=0` is fixed; amplified FS remains quarantined.
 
 If those pass, R1 is the smallest complete production-equivalent case: two
 incremental responses, real finite PCG, only consumed profiles,
@@ -2111,11 +2661,15 @@ smallest complete serialized case before any larger component benchmark.
   distance plus ordered-root setup; the latter has exact tests/counts but an
   enormous setup and no authenticated shared checker.  The checkpoint records
   policy-3 candidate exhaustion rather than promoting either component.
+- R0.6 activates policy 2 with a global root-wide fixed-reservation counter,
+  separates query/privacy/setup/work gates, retains interactive `Q_FS=0`, and
+  makes salted public BLAKE3 the preferred leaf candidate.  Backend, query
+  atom, numeric `Q_root/R_root/K_model`, codec and prover remain unselected.
 - The proof-byte table is a target allocation calibrated to public component
   evidence, not a composed certificate derivation.  It is `credit:false` and
   is one reason Backend A remains NO-GO.
 - No pod, production provider, frozen forward, quantization spec, or frozen
-  M1--M12 statement was touched in R0/R0.1/R0.2/R0.3/R0.4/R0.5.
+  M1--M12 statement was touched in R0/R0.1/R0.2/R0.3/R0.4/R0.5/R0.6.
 
 ## 10. Append-only decision and rejection register
 
@@ -2160,3 +2714,26 @@ entry, but must retain its evidence and reason.
 | `C7-D034` / 2026-08-26 | retain interactive; quarantine amplified FS on bytes | With analytic `T=512`, interactive `T/|Fp2|` is about 119 bits; direct FS with `Q_FS=2^64` is about 55 bits; two independent challenges give the conditional `Q_FS*T^2/|Fp2|^2` screen of about 174 bits. The pair numerator is proved in Lean, but RO freshness/programming and every duplicate/shared response, path, MAC, scan and byte remain uncompiled. Interactive `Q_FS=0` stays selected. |
 | `C7-D035` / 2026-08-26 | repair sampling causality; keep provider seed private | Output-dependent roots cannot precede the client-entropy opening that determines decode coins. The fixed order is client commitment, provider seed commitment, client opening, then decode/output roots; `AcceptC7` proves the private provider-seed opening and coin use. Revealing the provider seed is rejected because coin plus token can enlarge logits/CDF leakage. The public prelude has 96 payload bytes before uncompiled framing and requires distinct hash binding/client-hiding/provider-hiding hypotheses. |
 | `C7-D036` / 2026-08-26 | repair canonical leaf geometry and root context | `leaf_index<leaf_count` alone admitted empty or partial internal leaves and did not bind a layout identity. `LeafCom` now derives a root context from layout digest, nonce and plane; absorbs exact total symbols; derives the unique leaf count/final length; and rejects empty, mismatched or internally partial layouts. The future root codec must recompute the context. Updated KAT/mutations prove parsing behavior only, not hash binding/hiding or checker soundness. |
+| `C7-D037` / 2026-08-26 | activate policy 2; retain policy-3 terminal record | Owner activates bounded masked PCS responses while the terminal evaluation remains VOLE-authenticated. This supersedes D011/D032 only as the active line; it does not erase why private-checker policy 3 failed or authorize a backend/prover. |
+| `C7-D038` / 2026-08-26 | separate query, privacy, setup and work quantities | `q_attempt`, `q_response`, `Q_root` and `R_root` have different roles and cannot be collapsed into one minimum. The authoritative attempt census distinguishes unique leaves, visible masked Fp occurrences, exact sibling digests and attempts; Fp2 counts twice and a full g141 leaf counts all 141 symbols. |
+| `C7-D039` / 2026-08-26 | require global fixed reservation and bounded rotation | Before any attempt-local provider response byte dependent on `W`/root, a linearizable global allocator reserves and burns the full `q_attempt_privacy_units` and declared census profile on accept, abort, timeout, crash or retry, across users/connections/colluding verifiers. The public root is a baseline view element whose replacement is charged to root hiding. Rate limits and user quotas mitigate DoS only. Root exhaustion seals the root; rotation needs independent randomness, same-W bridge, counted setup/cutover and `K_model` or a multi-root theorem. |
+| `C7-D040` / 2026-08-26 | retain interactive challenges | Policy 2 does not reopen the Fiat--Shamir decision. Fresh post-prefix interactive challenges remain selected with `Q_FS=0`; amplified FS stays quarantined because its second responses, paths, MACs, scans and bytes are uncompiled. |
+| `C7-D041` / 2026-08-26 | prefer salted public BLAKE3 under policy 2 | Because masked queried payloads and salts are visible, the verifier can recompute leaves/paths publicly and the Poseidon2 private checker is unnecessary. BLAKE3 collision resistance still does not prove randomized-root hiding, adaptive t-query privacy or position binding; 256-bit salts and those named hypotheses remain. Poseidon2 is historical/inside-circuit control only. |
+| `C7-D042` / 2026-08-26 | require nearly constant normalized PCS queries | Before comparison, grouped and N-dependent alphabet queries are unstacked to logical g141 leaves and Fp limbs. GPT-2 to 31B `U_leaf` and visible-symbol attempt caps may not grow beyond the separately recorded 5% hard tolerance; paths may grow only if exact proof bytes pass. ERA's published O(lambda log N) coordinate law fails this strict gate absent a different compiled counter. |
+| `C7-D043` / 2026-08-26 | narrow R0.6 to two analytic lines | RS t-query ZK plus strict-UD WHIR/Ligerito is retained only as the best security/privacy theorem carrier; ERA r=4 is retained only as byte/prover control. Neither has the joint adaptive stateful theorem, ordered root-only setup and one-scan bounded opener, so neither receives implementation GO. The setup screen remains 2.00 target/2.10 hard and forbids X4d-style expanded planes. |
+| `C7-D044` / 2026-08-26 | separate model-lifetime privacy from connection arithmetic | The global policy-2 adversary spans roots, connections and colluding verifiers, so an 83-bit conditional connection union bound alone is insufficient. Admission separately requires `Adv_priv_model_lifetime(K_model,D_model,Q_root,Q_hide,Q_PRF)<=2^-78`; its parameters and bound are not derived yet. |
+| `C7-D045` / 2026-08-26 | bind the complete weight-oracle epoch and reservation receipt | `Q_root` applies to immutable `C_W` plus the complete ordered auxiliary randomized-root set, encoding parameters and profile, not to a convenient root name. Replacing any member creates a new `omega` and consumes `K_model`. A globally authenticated reservation receipt and spend high-water enter `x_e`, the frozen transcript prefix and the journal; otherwise auxiliary-root churn could reset accounting. |
+| `C7-D046` / 2026-08-26 | require paired-history and multi-user malicious-DV composition | Public prompts, outputs, lengths and abort class are authorized leakage and must match in an operational paired-history query; branch roots are challenger-generated view elements paid by hiding. The existing Lean VOLE simulator covers one connection key domain/shared `Delta`, not colluding domains. `D_model` and a domain-separated `MultiUserVoleCompose` theorem are therefore hard stops. |
+| `C7-D047` / 2026-08-26 | separate hash-reduction work bounds | Collision binding, adaptive root/path hiding and mask/salt PRF security use distinct `Q_CR`, `Q_hide` and `Q_PRF` bounds composed across `K_model`. The historical `Q_leaf` salt screen cannot stand in for any of them or for `Q_root`; all active values remain unset pending a concrete codec/reduction. |
+| `C7-D048` / 2026-08-26 | make rotation a private stop-admit protocol | Exhaustion never triggers an unchecked root swap. Rotation seals new admissions, completes or burns every outstanding receipt, knowledge-binds both full oracle epochs to immutable `C_W`, charges malicious-DV bridge privacy plus all proof/setup bytes, and only then atomically cuts over. Old roots become verify-only. |
+| `C7-D049` / 2026-08-26 | scope the quarantined amplified-FS screen to paired trials | The `Q_FS*T^2/|Fp2|^2` control applies only when one RO trial on one frozen prefix yields a domain-separated challenge pair and `Q_FS` counts such pairs. Separately queryable challenge oracles may incur a product grinding budget and need a new proof. Interactive `Q_FS=0` remains selected. |
+| `C7-D050` / 2026-08-26 | make reservation receipts stateful and single-session | A unique receipt alone does not stop replica replay under fresh challenges. The allocator binds the complete connection/nonce/MAC-domain session and enforces `Reserved -> InFlight -> Burned | Accepted`; exact duplicate inputs may receive only cached byte-identical replies and divergent inputs fail before new witness-dependent bytes. |
+| `C7-D051` / 2026-08-26 | close paired-history leakage under branch-derived values | Requiring equal root-derived IDs, receipt authenticators or transcript/journal heads would make the two-world game impossible. Only the witness-independent base frame is equal; the challenger constructs the complete branch-derived closure and a named reduction pays for its indistinguishability. |
+| `C7-D052` / 2026-08-26 | separate weight, boundary and K/V privacy horizons | `Q_root` pays only for the complete weight-oracle epoch. Fresh response roots use per-attempt `Q_B[a]`; persistent accepted K/V roots use per-state `Q_KV[e]` across retries. A backend may claim zero visible-query charge only from its concrete authenticated-only codec and hiding theorem. |
+| `C7-D053` / 2026-08-26 | separate local MAC error, multi-user composition and allocator trust | Soundness sums per-domain MAC error once and then adds one `MultiUserMacCompose(D_model)` term. Privacy assumes an honest allocator with integrity; dishonest-prover soundness separately requires receipt unforgeability. One generic receipt hypothesis cannot discharge both scopes. |
+| `C7-D054` / 2026-08-26 | update the CPU/SIMT byte contract to active policy 2 | The policy-3 provider-internal leaf/salt contract is superseded. CPU and later SIMT must emit and match the exact serialized masked payload occurrences, opened salts, public paths and authenticated-only terminal; otherwise a stale policy-3 preflight could falsely satisfy the active resume condition. |
+| `C7-D055` / 2026-08-26 | charge every proposed K/V root, including aborted successors | D052's accepted-state wording omitted a successor root already shown before promotion. Every created K/V root instance now receives a creation charge; abort/reject seals it, while acceptance preserves the same `Q_KV[s]` counter for later predecessor reuse. This prevents selective abort from creating uncounted state-root views. |
+| `C7-D056` / 2026-08-26 | remove receipt self-reference and cache before disclosure | A receipt cannot authenticate `reserved_session_binding` if that value already contains the receipt. The allocator instead authenticates a receipt-free `reservation_request_binding`; appending the receipt derives the session binding. The provider transitions the internal record to `InFlight` and caches the complete first reply before emitting receipt/seed commitment, closing the root-dependent first-byte race without an exemption. |
+| `C7-D057` / 2026-08-26 | make every plane charge enforceable in durable state | Merely adding `Q_B/Q_KV` to a union bound left them absent from the relation and allocator. The fixed profile/receipt now binds separate W/B/KV charges: W and predecessor K/V debit existing maps, boundary/successor charges burn into nonrefundable slots, and a no-extension CAS assigns those slots to the new roots before disclosure. Abort seals them; acceptance preserves the successor high-water. This prevents `Q_root` from silently paying other planes. |
+| `C7-D058` / 2026-08-26 | keep state budgets outside weight-root rotation | An initial accepted K/V root had no map to debit, and placing K/V maps inside `omega` would let `RotateSameW` reset their capacity. `InitKVState(s0)` now creates and charges genesis before disclosure. The state-plane ledger and all K/V high-waters persist byte-identically across weight rotation; only the weight-epoch counter is fresh. |
+| `C7-D059` / 2026-08-26 | apply the 5% query-growth gate before every packing layer | D042 constrained leaves and visible Fp occurrences but left logical PCS samples and ZK-alphabet atoms unchecked. All four normalized counts must independently remain within 1.05 from GPT-2 to 31B unless a proved codec equivalence identifies them. This prevents constant leaf payload from hiding a model-growing internal query schedule. |

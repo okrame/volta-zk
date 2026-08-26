@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Executable C7 R0.5 analytic/readiness screen; every result is credit:false."""
+"""Executable C7 R0.6 analytic/readiness screen; every result is credit:false."""
 
 from __future__ import annotations
 
@@ -79,6 +79,13 @@ C7_LEAF_SBOX_MULTIPLICATION_EQUIVALENTS = (
 )
 C7_LEAF_PRIVATE_INPUT_CORRECTION_BYTES = (141 + 8) * 8
 C7_LEAF_ROOT_METADATA_BYTES = 64  # private salt seed + public commitment nonce
+
+POLICY2_QUERY_CLASSES = (
+    "unique_opened_leaves",
+    "visible_masked_base_field_symbols",
+    "merkle_sibling_digests",
+)
+POLICY2_AGGREGATE_CENSUS_CLASSES = POLICY2_QUERY_CLASSES + ("attempts",)
 
 SETUP_TARGET_NUMERATOR = 2
 SETUP_TARGET_DENOMINATOR = 1
@@ -657,11 +664,13 @@ def challenge_mode_comparison() -> dict[str, object]:
             "extra_field_and_hash_work": None,
             "extra_packed_source_passes": None,
             "requirements": [
-                "two independent domain-separated fresh random-oracle slices",
+                "one paired RO invocation on one frozen prefix and grinding nonce",
+                "paired output expands with domain separation into two independent challenges",
                 "canonical rejection sampling into Fp2",
                 "both challenges check the same complete relation",
                 "no state restoration or cross-attempt transcript reuse",
-                "Q_FS counts the entire declared grinding scope",
+                "Q_FS counts paired trials over the entire declared grinding scope",
+                "separately queryable challenge oracles require a new joint grinding bound",
                 "all duplicate/shared responses, paths, MACs and scans are compiled and counted",
             ],
             "selected": False,
@@ -672,6 +681,327 @@ def challenge_mode_comparison() -> dict[str, object]:
             "challenge mode changes soundness and wire/work accounting; it "
             "does not replace the malicious-DV privacy theorem"
         ),
+        "credit": False,
+    }
+
+
+def policy2_query_accounting() -> dict[str, object]:
+    """Register distinct policy-2 limits without inventing backend counts."""
+    empty_query_census = {
+        query_class: None for query_class in POLICY2_QUERY_CLASSES
+    }
+    empty_aggregate_census = {
+        query_class: None for query_class in POLICY2_AGGREGATE_CENSUS_CLASSES
+    }
+    query_growth_tolerance = Fraction(
+        QUERY_TOLERANCE_NUMERATOR, QUERY_TOLERANCE_DENOMINATOR
+    )
+    era_like_target_t_over_n = Fraction(1, 704)
+    era_like_hard_t_over_n = Fraction(13, 128)
+
+    def appended_symbol_screen(weight_count: int) -> dict[str, object]:
+        target_extra = weight_count * era_like_target_t_over_n.numerator // (
+            era_like_target_t_over_n.denominator
+        )
+        hard_extra = weight_count * era_like_hard_t_over_n.numerator // (
+            era_like_hard_t_over_n.denominator
+        )
+        return {
+            "target_extra_symbols_floor": target_extra,
+            "hard_extra_symbols_floor": hard_extra,
+            "hypothetical_attempts_at_830_same_units": {
+                "target": target_extra // 830,
+                "hard": hard_extra // 830,
+            },
+        }
+
+    return {
+        "status": "ACTIVE_BACKEND_AND_COUNTS_UNSELECTED",
+        "privacy_statement": (
+            "only root-bound masked PCS responses within the durable global "
+            "budget are visible; the terminal evaluation remains VOLE-authenticated"
+        ),
+        "authoritative_attempt_census": {
+            "q_attempt": dict(empty_aggregate_census),
+            "q_response": dict(empty_aggregate_census),
+            "plane_tags": ["weight", "boundary", "kv_predecessor", "kv_successor"],
+            "q_attempt_by_plane": {
+                plane: dict(empty_query_census)
+                for plane in ("weight", "boundary", "kv_predecessor", "kv_successor")
+            },
+            "q_response_by_plane": {
+                plane: dict(empty_query_census)
+                for plane in ("weight", "boundary", "kv_predecessor", "kv_successor")
+            },
+            "A_attempt": None,
+            "logical_pcs_samples_q_open_by_plane_root_round": None,
+            "zk_alphabet_query_atoms_by_plane_root_round": None,
+            "flat_vectors_are_wire_aggregates_not_privacy_substitutes": True,
+            "q_attempt_is_reserved_maximum": True,
+            "q_response_is_actual_accepted_response_census": True,
+            "q_response_componentwise_at_most_q_attempt": None,
+            "entries_tagged_by_commitment_plane": False,
+            "aborted_prefix_exposure_counted_separately": True,
+            "base_field_symbol_rule": (
+                "Fp2 counts as two Fp symbols; a whole 141-symbol leaf counts "
+                "all 141 symbols; no packed alphabet query counts as one until unstacked"
+            ),
+            "cross_attempt_deduplication_allowed": False,
+            "credit": False,
+        },
+        "root_privacy_budget": {
+            "privacy_unit": "visible masked base-field symbol occurrence",
+            "privacy_unit_status": (
+                "conservative_provisional_screen_pending_joint_theorem"
+            ),
+            "attempt_plane_charge_vector": {
+                "u_W": None,
+                "u_B": None,
+                "u_KV_predecessor": None,
+                "u_KV_successor": None,
+            },
+            "Q_root_privacy_units": None,
+            "R_root_attempts": None,
+            "positive_q_attempt_required": True,
+            "positive_weight_charge_u_W_required": True,
+            "at_least_one_complete_attempt_capacity_required": True,
+            "numeric_preconditions_instantiated": False,
+            "model_lifetime_privacy_target_bits": 78,
+            "model_lifetime_advantage_ceiling": "2^-78",
+            "model_lifetime_bound_signature": (
+                "Adv_priv_model_lifetime(K_model,D_model,Q_root,Q_B,Q_KV,"
+                "Q_hide,Q_PRF)"
+            ),
+            "model_lifetime_bound_derived": False,
+            "fixed_consumption_formula": (
+                "R_root <= floor(Q_root/u_W)"
+            ),
+            "fixed_consumption_on_accept_abort_retry_crash": True,
+            "unused_reservation_refunded": False,
+            "positive_privacy_headroom_required": True,
+            "headroom_fraction_selected": None,
+            "credit": False,
+        },
+        "global_counter": {
+            "authority": "model_owner_provider_not_designated_verifier",
+            "malicious_verifier_can_mint_or_rollback_receipts": False,
+            "scope": (
+                "one complete ordered weight-oracle epoch across accepted responses, "
+                "failures, retries, selective aborts, connections and colluding "
+                "designated verifiers"
+            ),
+            "plane_state_scope": (
+                "weight high-water plus boundary-attempt and every-created-KV-root "
+                "maps under one plane-tagged reservation/assignment state machine"
+            ),
+            "atomic_reservation_before_first_witness_dependent_answer": True,
+            "public_root_is_baseline_view_element": True,
+            "cross_world_root_replacement_charged_to_hiding": True,
+            "reservation_extension_after_first_answer_allowed": False,
+            "remaining_budget_below_q_attempt_rejects_before_answer": True,
+            "durable_hash_chained_or_equivalent_journal_required": True,
+            "local_hash_chain_alone_prevents_rollback_or_fork": False,
+            "shared_allocator_or_monotonic_anchor_required": True,
+            "globally_consistent_multi_replica_reservation_proved": False,
+            "complete_weight_oracle_epoch_schema_compiled": False,
+            "authenticated_reservation_receipt_codec_instantiated": False,
+            "receipt_bound_into_canonical_transcript_proved": False,
+            "receipt_authenticates_receipt_free_request_binding": True,
+            "receipt_free_binding_includes_connection_nonce_mac_domain_charge": True,
+            "reserved_session_binding_is_request_binding_plus_receipt": True,
+            "receipt_lifecycle": "Reserved->InFlight->Burned|Accepted",
+            "linearizable_single_session_receipt_state_machine_proved": False,
+            "first_reply_cached_before_receipt_or_seed_commitment_emission": True,
+            "exact_duplicate_returns_only_cached_byte_identical_reply": True,
+            "divergent_replay_rejects_before_new_witness_dependent_bytes": True,
+            "durable_transcript_state_and_reply_cache_instantiated": False,
+            "durable_weight_budget_high_water_map_instantiated": False,
+            "durable_boundary_budget_map_instantiated": False,
+            "durable_kv_budget_map_instantiated": False,
+            "nonrefundable_new_root_assignment_slots_instantiated": False,
+            "plane_assignment_receipt_codec_instantiated": False,
+            "plane_assignment_cas_before_root_disclosure_proved": False,
+            "post_first_reply_charge_extension_allowed": False,
+            "persistent_state_plane_record_bytes": None,
+            "model_lifetime_allocator_storage_bytes": None,
+            "authenticated_state_ledger_compaction_proved": False,
+            "rate_limits_or_user_quotas_are_security_counters": False,
+            "rate_limits_or_user_quotas_are_dos_mitigations": True,
+            "credit": False,
+        },
+        "root_rotation": {
+            "rotation_authorized": False,
+            "same_weight_root_epoch_cap_K_model": None,
+            "cross_root_adaptive_composition_theorem_proved": False,
+            "fresh_independent_encoding_randomness_required": True,
+            "stop_admit_before_cutover_required": True,
+            "outstanding_receipts_resolved_or_burned_before_cutover": False,
+            "same_W_bridge_knowledge_soundness_proved": False,
+            "same_W_bridge_malicious_dv_privacy_proved": False,
+            "setup_storage_refresh_and_atomic_cutover_compiled": False,
+            "only_weight_epoch_counter_is_fresh_after_rotation": True,
+            "state_plane_ledger_carried_byte_identically_required": True,
+            "state_plane_ledger_carry_forward_proved": False,
+            "warning": "a new root does not reset privacy or setup accounting for free",
+            "credit": False,
+        },
+        "cryptographic_work_bounds": {
+            "Q_CR_collision_binding": None,
+            "Q_hide_adaptive_root_path": None,
+            "Q_PRF_masks_and_salts": None,
+            "historical_Q_leaf_is_not_an_active_substitute": True,
+            "all_three_derived_across_K_model": False,
+            "credit": False,
+        },
+        "response_and_state_plane_privacy": {
+            "weight_Q_root_does_not_pay_for_boundary_or_kv": True,
+            "Q_B_per_attempt": None,
+            "Q_KV_per_created_state_root": None,
+            "census_tagged_by_commitment_plane": False,
+            "boundary_root_charged_once_per_attempt": True,
+            "every_proposed_successor_root_charged_before_disclosure": True,
+            "aborted_or_rejected_successor_root_sealed": True,
+            "accepted_successor_keeps_same_counter_on_predecessor_reuse": True,
+            "genesis_InitKVState_before_first_disclosure_required": True,
+            "genesis_InitKVState_codec_and_theorems_proved": False,
+            "kv_budget_maps_are_outside_weight_epoch_ledger": True,
+            "boundary_and_successor_charges_reserved_before_first_reply": True,
+            "new_roots_assigned_to_preburned_slots_before_disclosure": True,
+            "authenticated_only_zero_visible_query_claim_proved": False,
+            "per_plane_hiding_prf_and_path_bounds_derived": False,
+            "credit": False,
+        },
+        "multiuser_mac_composition": {
+            "D_model_key_domains": None,
+            "one_Delta_and_fixed_key_tape_per_domain": True,
+            "malicious_verifier_may_correlate_Delta_and_keys_across_domains": True,
+            "fresh_domain_separated_provider_coins_and_masks_required": True,
+            "existing_lean_theorem_covers_one_domain_only": True,
+            "soundness_bound_shape": (
+                "sum_domain(epsilon_MAC_domain)+"
+                "epsilon_MultiUserMacCompose(D_model)"
+            ),
+            "multiuser_vole_mac_theorem_proved": False,
+            "allocator_privacy_trust": "honest_model_owner_provider",
+            "allocator_privacy_integrity_proved": False,
+            "dishonest_prover_receipt_unforgeability_proved": False,
+            "generic_receipt_hypothesis_disallowed": True,
+            "credit": False,
+        },
+        "paired_history_privacy_game": {
+            "common_public_request_required": True,
+            "equal_public_prompt_output_abort_and_shape_leakage_required": True,
+            "branch_specific_predecessors_must_both_be_valid": True,
+            "roots_excluded_from_equal_leakage_and_replaced_by_hiding_hybrid": True,
+            "equal_predicate_is_witness_independent_base_frame_only": True,
+            "branch_derived_closure_includes": [
+                "roots_and_paths",
+                "root_budget_id",
+                "receipt_and_authentication",
+                "predecessor_certificate_digest",
+                "transcript_and_journal_heads",
+            ],
+            "branch_derived_view_closure_reduction_proved": False,
+            "operational_game_formalized": False,
+            "credit": False,
+        },
+        "separate_gates": {
+            "proof_size": (
+                "B_query_wire(q_attempt or q_response,N) must pass the 105% "
+                "weight-wire ceiling and complete Tier-A/3x gates"
+            ),
+            "privacy": (
+                "weight Q_root and response/state Q_B/Q_KV are separately "
+                "derived from their exact masking/ZK theorems"
+            ),
+            "setup": "root construction, storage and rotation must pass 2.00x/2.10x",
+            "prover": "each attempt must retain one packed scan and bounded memory",
+            "single_minimum_across_these_gates_valid": False,
+            "credit": False,
+        },
+        "model_scaling_gate": {
+            "rule": (
+                "after unstacking to fixed 141-symbol leaves and Fp limbs, "
+                "logical PCS samples, ZK-alphabet query atoms, unique leaves "
+                "and visible-symbol caps may each grow by at most the registered "
+                "5% tolerance from GPT-2 to 31B"
+            ),
+            "constrained_counts": [
+                "logical_pcs_samples",
+                "zk_alphabet_query_atoms",
+                "unique_opened_leaves",
+                "visible_masked_base_field_symbols",
+            ],
+            "gpt2": None,
+            "gemma_31b": None,
+            "max_normalized_query_count_growth_ratio": float(
+                query_growth_tolerance
+            ),
+            "equivalent_max_query_exponent": math.log(
+                float(query_growth_tolerance)
+            )
+            / math.log(float(GEMMA_ENVELOPE["weights"]) / float(GPT2["weights"])),
+            "passes": False,
+            "merkle_paths_may_grow_only_if_complete_proof_bytes_still_pass": True,
+            "credit": False,
+        },
+        "candidate_query_laws": {
+            "whir_unique_decoding": {
+                "published_label": "O(lambda) grouped queries for suitable parameters",
+                "disposition": "census_only_unstack_grouped_alphabet_and_leaf_alignment",
+            },
+            "constrained_code_hvzk_2026_391": {
+                "published_label": "O(lambda) queries over an N-dependent alphabet",
+                "disposition": "census_only_hvzk_is_not_stateful_malicious_dv_privacy",
+            },
+            "ligerito": {
+                "published_label": "log^2(N)/loglog(N) proof law and level schedule",
+                "disposition": "fails_constant_normalized_query_gate_until_exact_counter_refutes",
+            },
+            "era_codeswitch": {
+                "published_label": "O(lambda*log(N)) field-element queries",
+                "disposition": "fails_constant_normalized_query_gate_as_published",
+            },
+        },
+        "public_hash_choice": {
+            "blake3_leaf_and_tree_eligible": True,
+            "blake3_selected_as_concrete_binding_primitive": False,
+            "private_hash_checker_required": False,
+            "canonical_domain_position_length_binding_required": True,
+            "collision_and_position_binding_proved": False,
+            "randomized_encoding_root_hiding_proved": False,
+            "leaf_digest_serialized_when_recomputable": False,
+            "opened_salt_bytes_per_unique_leaf": LEAF_SALT_BITS // 8,
+            "poseidon2_policy3_control_selected": False,
+            "terminal_evaluation_serialized_clear": False,
+            "credit": False,
+        },
+        "anti_x4d_setup_privacy_screen": {
+            "scope": (
+                "illustrative c0=4.4 append-t-symbol randomized encoding; "
+                "not a selected backend or Q_root unit"
+            ),
+            "formula": "A_setup ~= 1 + 32*c_eff/141, c_eff=c0*(1+t/N)",
+            "c0": 4.4,
+            "max_c_eff_target_2_00": 4.40625,
+            "max_c_eff_hard_2_10": 4.846875,
+            "max_t_over_n_target": (
+                f"{era_like_target_t_over_n.numerator}/"
+                f"{era_like_target_t_over_n.denominator}"
+            ),
+            "max_t_over_n_hard": (
+                f"{era_like_hard_t_over_n.numerator}/"
+                f"{era_like_hard_t_over_n.denominator}"
+            ),
+            "models": {
+                str(GPT2["name"]): appended_symbol_screen(int(GPT2["weights"])),
+                str(GEMMA_ENVELOPE["name"]): appended_symbol_screen(
+                    int(GEMMA_ENVELOPE["weights"])
+                ),
+            },
+            "counts_metadata_or_persistent_payload_oracle": False,
+            "credit": False,
+        },
         "credit": False,
     }
 
@@ -736,6 +1066,12 @@ def model_report(
                 "B_compute+B_boundary_commitments+B_state+B_weight_ALFC+B_MAC+B_framing",
             ),
             "compiled_certificate_bytes_counted": False,
+            "plane_budget_control_wire": {
+                "compiled_plane_assignment_receipt_and_auth_bytes": None,
+                "assigned_once_to_boundary_state_or_framing": False,
+                "status": "unknown_fail_closed",
+                "credit": False,
+            },
             "weight_oracle_query_wire_envelope": {
                 "included_in_B_weight_ALFC_not_additive": True,
                 "target_bytes": weight_target,
@@ -744,14 +1080,16 @@ def model_report(
                 "tolerance_percent": 5,
                 "compiled_weight_oracle_query_bytes": None,
                 "compiled_weight_oracle_interactive_challenge_bytes": None,
+                "compiled_omega_profile_receipt_and_auth_bytes": None,
                 "challenge_messages_are_serialized": True,
                 "response_wide_beta_gamma_counted_elsewhere_exactly_once": True,
                 "fiat_shamir_transform_selected": False,
                 "status": "unknown_fail_closed",
                 "payload_only_unique_leaf_upper_bounds": payload_only_leaf_bounds,
                 "upper_bound_warning": (
-                    "reserves zero bytes for digests, multiproofs, the private "
-                    "leaf checker, authenticated IOP messages or framing"
+                    "reserves zero bytes for opened salts, digests, multiproofs, "
+                    "masked IOP messages, omega/profile/reservation authentication, "
+                    "terminal authentication or framing"
                 ),
                 "credit": False,
             },
@@ -762,7 +1100,7 @@ def model_report(
             ),
             "unknown_components_fail_closed": [
                 "operator_protocol",
-                "authenticated_oracle_query_compiler",
+                "masked_oracle_query_compiler_and_privacy_theorem",
                 "concrete_codec",
             ],
             "credit": False,
@@ -914,6 +1252,7 @@ def security_screen() -> dict[str, object]:
             "conditional_union_budget_arithmetic_not_a_security_proof"
         ),
         "leaf_commitment_hiding_screen": {
+            "status": "historical_policy3_screen_not_active_policy2_budget",
             "salt_bits": LEAF_SALT_BITS,
             "logical_leaf_symbols": LOGICAL_LEAF_SYMBOLS,
             "largest_static_weight_leaf_count_screen": largest_static_leaf_count,
@@ -965,13 +1304,15 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
     large_total = int(large["certificate"]["total"]["bytes"])
     certificate_growth = large_total / small_total
     return {
-        "schema": "volta-c7-stateful-alfc-r05-screen-v6",
+        "schema": "volta-c7-stateful-alfc-r06-screen-v8",
         "design": "C7 stateful authenticated linear-functional commitment",
         "screening_only": True,
         "credit": False,
         "authorization": {
-            "r05_tiny_cpu_screen_authorized": True,
-            "batch_open_blocks_cpu_reference_authorized": True,
+            "r06_policy2_design_and_census_authorized": True,
+            "batch_open_blocks_cpu_reference_authorized_now": False,
+            "batch_open_blocks_cpu_reference_pre_authorized_after_checkpoint": True,
+            "batch_open_blocks_cpu_reference_requires_backend_checkpoint": True,
             "tiny_cpu_screen_completed": True,
             "optimized_simt_kernel_authorized": False,
             "simt_requires_c7_cpu_reference_pass": True,
@@ -982,10 +1323,10 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "c7_pod_ready": False,
         },
         "privacy_policy": {
-            "active": None,
+            "active": 2,
             "last_tested": 3,
-            "active_status": "terminal_no_go_owner_decision_required",
-            "tested_terminal_shape": (
+            "active_status": "policy2_accounting_active_backend_unselected",
+            "last_tested_policy3_terminal_shape": (
                 "digest-only salted leaf commitment with public Merkle paths "
                 "and attempt-local VOLE-private leaf/PCS checks"
             ),
@@ -1002,9 +1343,12 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
                 "group_lattice_leaf": "reject_non_native_or_msm_setup_gates",
                 "preprocessing_evaluation_binding": "reject_missing_strong_binding_knowledge_soundness",
             },
-            "policy_2_status": "dormant_not_authorized",
-            "policy_2_activation_authorized": False,
-            "policy_2_root_wide_query_horizon_registered": False,
+            "policy_2_status": "active_design_only",
+            "policy_2_activation_authorized": True,
+            "policy_2_root_wide_query_horizon_schema_registered": True,
+            "policy_2_root_wide_query_horizon_instantiated": False,
+            "policy_2_exact_numeric_caps_derived": False,
+            "policy_2_query_accounting_ref": "top-level policy2_query_accounting",
         },
         "admission_gates": {
             "candidate_setup_manifest_complete": False,
@@ -1014,12 +1358,29 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "weight_query_wire_envelope_registered": True,
             "logical_leaf_geometry_selected": True,
             "anti_x4d_setup_gate_pass": False,
-            "concrete_leaf_function_implemented": True,
+            "active_public_leaf_function_implemented": False,
+            "historical_policy3_poseidon2_leaf_implemented": True,
             "concrete_leaf_commitment_selected": False,
             "leaf_commitment_adaptive_hiding_proved": False,
-            "authenticated_checker_soundness_or_pok_refinement_proved": False,
-            "all_query_payloads_nonclear_codec_proved": False,
+            "policy3_private_leaf_checker_required": False,
+            "only_budgeted_masked_query_payloads_codec_proved": False,
+            "terminal_evaluation_remains_authenticated": True,
             "malicious_dv_connection_privacy_theorem_complete": False,
+            "policy2_model_lifetime_privacy_78bit_proved": False,
+            "policy2_epoch_and_receipt_transcript_binding_proved": False,
+            "policy2_single_session_receipt_state_machine_proved": False,
+            "policy2_plane_charge_vector_and_durable_maps_instantiated": False,
+            "policy2_no_extension_plane_assignment_cas_proved": False,
+            "policy2_genesis_kv_budget_initialization_proved": False,
+            "policy2_state_budget_carry_across_weight_rotation_proved": False,
+            "policy2_multiuser_vole_mac_composition_proved": False,
+            "policy2_same_W_rotation_bridge_complete": False,
+            "policy2_paired_history_game_formalized": False,
+            "policy2_branch_derived_view_closure_proved": False,
+            "policy2_boundary_and_kv_plane_privacy_horizons_derived": False,
+            "policy2_allocator_privacy_integrity_proved": False,
+            "policy2_receipt_unforgeability_proved": False,
+            "policy2_distinct_hash_work_bounds_derived": False,
             "challenge_generation_and_grinding_policy_selected": True,
             "honest_dv_entropy_delivery_instantiated": False,
             "interactive_challenge_transcript_binding_proved": False,
@@ -1027,13 +1388,13 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "cpu_batch_open_blocks_reference_pass": False,
             "simt_bit_exact_equivalence_pass": False,
             "query_schedule_compiled": False,
-            "query_counter_schema": [
-                "q_open_by_root_and_round",
-                "unique_leaves",
-                "secret_symbols",
-                "adversarial_leaf_oracle_queries",
-                "adversarial_fiat_shamir_queries",
-            ],
+            "query_counter_schema": {
+                "aggregate": list(POLICY2_AGGREGATE_CENSUS_CLASSES),
+                "per_plane": list(POLICY2_QUERY_CLASSES),
+                "attempt_counter": "A_attempt",
+                "logical_pcs_samples_q_open_by_plane_root_round": None,
+                "zk_alphabet_query_atoms_by_plane_root_round": None,
+            },
             "exact_query_counts_by_root_and_round": {
                 str(GPT2["name"]): None,
                 str(GEMMA_ENVELOPE["name"]): None,
@@ -1053,7 +1414,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "compiled_tier_a_certificate_gate_pass": False,
         },
         "batch_open_blocks_admission": {
-            "state": "EXECUTABLE_ONE_STAGE_RA_SCREEN_BACKEND_REJECTED",
+            "state": "POLICY2_BACKEND_UNSELECTED_R05_RA_SCREEN_REJECTED",
             "logical_leaf_symbols": LOGICAL_LEAF_SYMBOLS,
             "complexity_target": "O(N + poly(q, log N))",
             "generator_incidence_obstruction": {
@@ -1115,9 +1476,10 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
                 ),
                 "disk_output": "poly(q,log N) only; no source/codeword spill",
                 "required_output": [
-                    "provider-internal canonical 141-symbol leaves and salts never serialized clear",
+                    "exact root-bound masked PCS payload occurrences serialized under plane budgets",
+                    "opened leaf salts and canonical query/leaf indices",
                     "public digests/root and exact multiproof checks",
-                    "opaque authenticated handles/corrections",
+                    "terminal evaluation only as opaque authenticated handles/corrections",
                     "source, operation, disk and memory counters",
                 ],
                 "hard_fail": [
@@ -1144,7 +1506,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "optimized_kernel_or_scaffold_exists": False,
             "allowed_phases": [
                 "streaming setup",
-                "LeafCom/Merkle",
+                "public leaf hash/Merkle",
                 "PCG/VOLE",
                 "MAC",
                 "Fp/Fp2",
@@ -1187,7 +1549,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "cross_scope_netting_allowed": False,
             "byte_exact_cpu_simt_required": [
                 "packed input interpretation and canonical query plan",
-                "provider-internal logical leaves and salts on tiny fixtures",
+                "root-bound masked logical leaves, opened salts and canonical indices",
                 "exact finite-fixture PCG/VOLE values and consumption",
                 "leaf digests, root and multiproof",
                 "opaque handles, corrections and correlation schedule digest",
@@ -1203,7 +1565,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "credit": False,
         },
         "pod_readiness": {
-            "state": "C7_R05_POLICY3_EXHAUSTED_OWNER_DECISION_REQUIRED",
+            "state": "C7_R06_POLICY2_ACCOUNTING_ACTIVE_NOT_READY",
             "handoff_spec": "docs/c7-r03-prover-pod-handoff.md",
             "handoff_preparation_authorized": True,
             "required_before_C7_POD_READY": {
@@ -1213,7 +1575,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
                 "one_pass_bounded_memory_schedule_pass": False,
                 "setup_manifest_within_owner_envelope": False,
                 "compiled_certificate_within_owner_envelope": False,
-                "no_clear_codec_and_real_finite_pcg_pass": False,
+                "bounded_masked_query_codec_and_real_finite_pcg_pass": False,
                 "two_response_tiny_scaled_serialized_chain_pass": False,
                 "reload_full_verifier_and_mutations_pass": False,
                 "abort_burn_and_atomic_promotion_pass": False,
@@ -1258,8 +1620,8 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
         "formula_labels": {
             "evidence_calibration": "Only the 4,014,000-byte ERA N=2^32, 100-bit point is imported evidence.",
             "target_allocation": "B_compute, B_boundary_commitments, B_state, B_MAC and B_framing are explicit design envelopes, not backend evidence.",
-            "weight_transposition_assumption": "The ERA point is security-scaled to 110 bits and log^2-scaled in N; the new VOLE-MAC ALFC adapter is unproved.",
-            "serialized_query_wire_ledger": "B_query_wire is the weight-oracle sub-ledger inside B_weight_ALFC; weight-local rho messages count there, while response-wide beta/gamma and nonweight challenges are assigned once to their six-component owner; the compiled census is unknown.",
+            "weight_transposition_assumption": "The ERA point remains a historical allocation calibration; no policy-2 backend or query count is selected.",
+            "serialized_query_wire_ledger": "B_query_wire is the weight-oracle sub-ledger inside B_weight_ALFC; q_attempt/q_response leaf, symbol, path and attempt counters remain distinct and the compiled census is unknown.",
             "all_results": "Every byte, time and memory quantity is credit:false.",
         },
         "parameters": {
@@ -1319,13 +1681,14 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "credit": False,
         },
         "security": security_screen(),
+        "policy2_query_accounting": policy2_query_accounting(),
         "interactive_vs_fiat_shamir": challenge_mode_comparison(),
         "self_check": {"status": "pending", "credit": False},
     }
 
 
 def self_check(report: dict[str, object]) -> None:
-    assert report["schema"] == "volta-c7-stateful-alfc-r05-screen-v6"
+    assert report["schema"] == "volta-c7-stateful-alfc-r06-screen-v8"
     models = report["models"]
     small = models[str(GPT2["name"])]
     large = models[str(GEMMA_ENVELOPE["name"])]
@@ -1460,17 +1823,24 @@ def self_check(report: dict[str, object]) -> None:
     assert not sampling["provider_seed_opening_serialized"]
     assert not sampling["reconciled_into_B_framing"]
     policy = report["privacy_policy"]
-    assert policy["active"] is None
+    assert policy["active"] == 2
     assert policy["last_tested"] == 3
-    assert policy["active_status"] == "terminal_no_go_owner_decision_required"
+    assert policy["active_status"] == "policy2_accounting_active_backend_unselected"
     assert policy["policy_3_candidate_exhaustion_documented"]
     assert len(policy["terminal_catalog"]) == 10
-    assert policy["policy_2_status"] == "dormant_not_authorized"
-    assert not policy["policy_2_activation_authorized"]
+    assert policy["policy_2_status"] == "active_design_only"
+    assert policy["policy_2_activation_authorized"]
+    assert policy["policy_2_root_wide_query_horizon_schema_registered"]
+    assert not policy["policy_2_root_wide_query_horizon_instantiated"]
+    assert not policy["policy_2_exact_numeric_caps_derived"]
     authorization = report["authorization"]
-    assert authorization["r05_tiny_cpu_screen_authorized"]
+    assert authorization["r06_policy2_design_and_census_authorized"]
     assert authorization["tiny_cpu_screen_completed"]
-    assert authorization["batch_open_blocks_cpu_reference_authorized"]
+    assert not authorization["batch_open_blocks_cpu_reference_authorized_now"]
+    assert authorization[
+        "batch_open_blocks_cpu_reference_pre_authorized_after_checkpoint"
+    ]
+    assert authorization["batch_open_blocks_cpu_reference_requires_backend_checkpoint"]
     assert not authorization["optimized_simt_kernel_authorized"]
     assert authorization["simt_requires_c7_cpu_reference_pass"]
     assert not authorization["large_prover_or_e2e_execution_authorized"]
@@ -1482,12 +1852,29 @@ def self_check(report: dict[str, object]) -> None:
     assert gates["weight_query_wire_envelope_registered"]
     assert gates["logical_leaf_geometry_selected"]
     assert not gates["anti_x4d_setup_gate_pass"]
-    assert gates["concrete_leaf_function_implemented"]
+    assert not gates["active_public_leaf_function_implemented"]
+    assert gates["historical_policy3_poseidon2_leaf_implemented"]
     assert not gates["leaf_commitment_adaptive_hiding_proved"]
     assert not gates["concrete_leaf_commitment_selected"]
-    assert not gates["authenticated_checker_soundness_or_pok_refinement_proved"]
-    assert not gates["all_query_payloads_nonclear_codec_proved"]
+    assert not gates["policy3_private_leaf_checker_required"]
+    assert not gates["only_budgeted_masked_query_payloads_codec_proved"]
+    assert gates["terminal_evaluation_remains_authenticated"]
     assert not gates["malicious_dv_connection_privacy_theorem_complete"]
+    assert not gates["policy2_model_lifetime_privacy_78bit_proved"]
+    assert not gates["policy2_epoch_and_receipt_transcript_binding_proved"]
+    assert not gates["policy2_single_session_receipt_state_machine_proved"]
+    assert not gates["policy2_plane_charge_vector_and_durable_maps_instantiated"]
+    assert not gates["policy2_no_extension_plane_assignment_cas_proved"]
+    assert not gates["policy2_genesis_kv_budget_initialization_proved"]
+    assert not gates["policy2_state_budget_carry_across_weight_rotation_proved"]
+    assert not gates["policy2_multiuser_vole_mac_composition_proved"]
+    assert not gates["policy2_same_W_rotation_bridge_complete"]
+    assert not gates["policy2_paired_history_game_formalized"]
+    assert not gates["policy2_branch_derived_view_closure_proved"]
+    assert not gates["policy2_boundary_and_kv_plane_privacy_horizons_derived"]
+    assert not gates["policy2_allocator_privacy_integrity_proved"]
+    assert not gates["policy2_receipt_unforgeability_proved"]
+    assert not gates["policy2_distinct_hash_work_bounds_derived"]
     assert gates["challenge_generation_and_grinding_policy_selected"]
     assert not gates["honest_dv_entropy_delivery_instantiated"]
     assert not gates["interactive_challenge_transcript_binding_proved"]
@@ -1495,13 +1882,15 @@ def self_check(report: dict[str, object]) -> None:
     assert not gates["cpu_batch_open_blocks_reference_pass"]
     assert not gates["simt_bit_exact_equivalence_pass"]
     assert not gates["query_schedule_compiled"]
-    assert gates["query_counter_schema"] == [
-        "q_open_by_root_and_round",
-        "unique_leaves",
-        "secret_symbols",
-        "adversarial_leaf_oracle_queries",
-        "adversarial_fiat_shamir_queries",
-    ]
+    assert gates["query_counter_schema"]["aggregate"] == list(
+        POLICY2_AGGREGATE_CENSUS_CLASSES
+    )
+    assert gates["query_counter_schema"]["per_plane"] == list(
+        POLICY2_QUERY_CLASSES
+    )
+    assert gates["query_counter_schema"][
+        "logical_pcs_samples_q_open_by_plane_root_round"
+    ] is None
     assert gates["adversarial_leaf_oracle_query_bound"] == 1 << 64
     assert gates["adversarial_leaf_oracle_query_bound_kind"] == (
         "owner_selected_analytic_screen_not_a_concrete_theorem_cap"
@@ -1523,6 +1912,10 @@ def self_check(report: dict[str, object]) -> None:
     assert small_query["hard_ceiling_bytes"] == 3_272_685
     assert small_query["tolerance_reserve_over_target_bytes"] == 155_842
     assert small_query["compiled_weight_oracle_interactive_challenge_bytes"] is None
+    assert small_query["compiled_omega_profile_receipt_and_auth_bytes"] is None
+    assert small["certificate"]["plane_budget_control_wire"][
+        "compiled_plane_assignment_receipt_and_auth_bytes"
+    ] is None
     assert small_query[
         "response_wide_beta_gamma_counted_elsewhere_exactly_once"
     ]
@@ -1563,6 +1956,9 @@ def self_check(report: dict[str, object]) -> None:
         "nonzero_incidence_lower_bound"
     ] == "nnz(G) >= k*d"
     assert batch_open["cpu_reference_contract"]["reference_implemented"]
+    assert "opened leaf salts and canonical query/leaf indices" in batch_open[
+        "cpu_reference_contract"
+    ]["required_output"]
     assert batch_open["cpu_reference_contract"]["packed_source_passes"] == 1
     assert not batch_open["c7_cpu_reference_pass"]
     simt = report["simt_path"]
@@ -1573,8 +1969,189 @@ def self_check(report: dict[str, object]) -> None:
     assert simt["gpu_padding"]["certificate_bytes"] == 0
     assert simt["packed_source_h2d_passes_per_scope"] == 1
     assert not simt["simt_bit_exact_equivalence_pass"]
+    assert (
+        "root-bound masked logical leaves, opened salts and canonical indices"
+        in simt["byte_exact_cpu_simt_required"]
+    )
+    policy2 = report["policy2_query_accounting"]
+    assert policy2["status"] == "ACTIVE_BACKEND_AND_COUNTS_UNSELECTED"
+    assert list(policy2["authoritative_attempt_census"]["q_attempt"]) == list(
+        POLICY2_AGGREGATE_CENSUS_CLASSES
+    )
+    assert set(policy2["authoritative_attempt_census"]["q_attempt_by_plane"]) == {
+        "weight",
+        "boundary",
+        "kv_predecessor",
+        "kv_successor",
+    }
+    assert all(
+        list(census) == list(POLICY2_QUERY_CLASSES)
+        for census in policy2["authoritative_attempt_census"][
+            "q_attempt_by_plane"
+        ].values()
+    )
+    assert policy2["authoritative_attempt_census"][
+        "logical_pcs_samples_q_open_by_plane_root_round"
+    ] is None
+    assert all(
+        value is None
+        for value in policy2["root_privacy_budget"][
+            "attempt_plane_charge_vector"
+        ].values()
+    )
+    assert policy2["root_privacy_budget"]["fixed_consumption_formula"] == (
+        "R_root <= floor(Q_root/u_W)"
+    )
+    assert policy2["root_privacy_budget"]["privacy_unit_status"] == (
+        "conservative_provisional_screen_pending_joint_theorem"
+    )
+    assert policy2["root_privacy_budget"]["positive_q_attempt_required"]
+    assert policy2["root_privacy_budget"][
+        "at_least_one_complete_attempt_capacity_required"
+    ]
+    assert not policy2["root_privacy_budget"][
+        "numeric_preconditions_instantiated"
+    ]
+    assert policy2["root_privacy_budget"][
+        "fixed_consumption_on_accept_abort_retry_crash"
+    ]
+    assert policy2["root_privacy_budget"][
+        "model_lifetime_privacy_target_bits"
+    ] == 78
+    assert not policy2["root_privacy_budget"]["model_lifetime_bound_derived"]
+    assert not policy2["root_privacy_budget"]["unused_reservation_refunded"]
+    assert policy2["global_counter"][
+        "public_root_is_baseline_view_element"
+    ]
+    assert policy2["global_counter"][
+        "cross_world_root_replacement_charged_to_hiding"
+    ]
+    assert not policy2["global_counter"][
+        "rate_limits_or_user_quotas_are_security_counters"
+    ]
+    assert not policy2["global_counter"][
+        "malicious_verifier_can_mint_or_rollback_receipts"
+    ]
+    assert not policy2["global_counter"][
+        "complete_weight_oracle_epoch_schema_compiled"
+    ]
+    assert not policy2["global_counter"][
+        "authenticated_reservation_receipt_codec_instantiated"
+    ]
+    assert policy2["global_counter"]["receipt_lifecycle"] == (
+        "Reserved->InFlight->Burned|Accepted"
+    )
+    assert policy2["global_counter"][
+        "receipt_authenticates_receipt_free_request_binding"
+    ]
+    assert policy2["global_counter"][
+        "first_reply_cached_before_receipt_or_seed_commitment_emission"
+    ]
+    assert not policy2["global_counter"][
+        "linearizable_single_session_receipt_state_machine_proved"
+    ]
+    assert not policy2["global_counter"][
+        "durable_transcript_state_and_reply_cache_instantiated"
+    ]
+    assert not policy2["global_counter"][
+        "durable_boundary_budget_map_instantiated"
+    ]
+    assert not policy2["global_counter"]["durable_kv_budget_map_instantiated"]
+    assert not policy2["global_counter"][
+        "plane_assignment_receipt_codec_instantiated"
+    ]
+    assert not policy2["global_counter"][
+        "plane_assignment_cas_before_root_disclosure_proved"
+    ]
+    assert not policy2["global_counter"][
+        "post_first_reply_charge_extension_allowed"
+    ]
+    assert policy2["global_counter"]["persistent_state_plane_record_bytes"] is None
+    assert policy2["global_counter"][
+        "model_lifetime_allocator_storage_bytes"
+    ] is None
+    assert not policy2["root_rotation"][
+        "outstanding_receipts_resolved_or_burned_before_cutover"
+    ]
+    assert not policy2["root_rotation"][
+        "same_W_bridge_knowledge_soundness_proved"
+    ]
+    assert not policy2["root_rotation"][
+        "same_W_bridge_malicious_dv_privacy_proved"
+    ]
+    assert policy2["root_rotation"][
+        "only_weight_epoch_counter_is_fresh_after_rotation"
+    ]
+    assert not policy2["root_rotation"][
+        "state_plane_ledger_carry_forward_proved"
+    ]
+    assert all(
+        value is None
+        for key, value in policy2["cryptographic_work_bounds"].items()
+        if key.startswith("Q_")
+    )
+    assert not policy2["multiuser_mac_composition"][
+        "multiuser_vole_mac_theorem_proved"
+    ]
+    assert not policy2["multiuser_mac_composition"][
+        "allocator_privacy_integrity_proved"
+    ]
+    assert not policy2["multiuser_mac_composition"][
+        "dishonest_prover_receipt_unforgeability_proved"
+    ]
+    assert not policy2["paired_history_privacy_game"][
+        "operational_game_formalized"
+    ]
+    assert not policy2["paired_history_privacy_game"][
+        "branch_derived_view_closure_reduction_proved"
+    ]
+    assert not policy2["response_and_state_plane_privacy"][
+        "per_plane_hiding_prf_and_path_bounds_derived"
+    ]
+    assert policy2["response_and_state_plane_privacy"][
+        "every_proposed_successor_root_charged_before_disclosure"
+    ]
+    assert policy2["response_and_state_plane_privacy"][
+        "aborted_or_rejected_successor_root_sealed"
+    ]
+    assert policy2["response_and_state_plane_privacy"][
+        "genesis_InitKVState_before_first_disclosure_required"
+    ]
+    assert not policy2["response_and_state_plane_privacy"][
+        "genesis_InitKVState_codec_and_theorems_proved"
+    ]
+    assert not policy2["separate_gates"]["single_minimum_across_these_gates_valid"]
+    assert not policy2["model_scaling_gate"]["passes"]
+    assert policy2["model_scaling_gate"][
+        "max_normalized_query_count_growth_ratio"
+    ] == 1.05
+    assert policy2["model_scaling_gate"]["constrained_counts"] == [
+        "logical_pcs_samples",
+        "zk_alphabet_query_atoms",
+        "unique_opened_leaves",
+        "visible_masked_base_field_symbols",
+    ]
+    assert 0.0088 < policy2["model_scaling_gate"][
+        "equivalent_max_query_exponent"
+    ] < 0.0089
+    assert policy2["public_hash_choice"]["blake3_leaf_and_tree_eligible"]
+    assert not policy2["public_hash_choice"]["private_hash_checker_required"]
+    assert not policy2["public_hash_choice"][
+        "blake3_selected_as_concrete_binding_primitive"
+    ]
+    assert policy2["public_hash_choice"]["opened_salt_bytes_per_unique_leaf"] == 32
+    setup_privacy = policy2["anti_x4d_setup_privacy_screen"]
+    assert setup_privacy["max_t_over_n_target"] == "1/704"
+    assert setup_privacy["max_t_over_n_hard"] == "13/128"
+    assert setup_privacy["models"]["gpt2-124m-screen"][
+        "target_extra_symbols_floor"
+    ] == 176_136
+    assert setup_privacy["models"]["gemma-class-31b-envelope"][
+        "target_extra_symbols_floor"
+    ] == 43_787_500
+    assert not policy2["root_rotation"]["rotation_authorized"]
     readiness = report["pod_readiness"]
-    assert readiness["state"] == "C7_R05_POLICY3_EXHAUSTED_OWNER_DECISION_REQUIRED"
+    assert readiness["state"] == "C7_R06_POLICY2_ACCOUNTING_ACTIVE_NOT_READY"
     assert not readiness["all_required_gates_pass"]
     assert not any(readiness["required_before_C7_POD_READY"].values())
     assert not readiness["conditional_before_C7_POD_READY"]["simt_selected"]

@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 R0.5 POLICY-3 TERMINAL NO-GO — OWNER DECISION / NO SIMT / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 R0.6 POLICY-2 BOUNDED ROOT QUERIES ACTIVE — BACKEND UNSELECTED / NO SIMT / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,29 +11,102 @@ record; no external plan is authoritative.
 Read `c7-stateful-authenticated-lfc-design.md`, then
 `c7-r03-prover-pod-handoff.md`.
 
-- **Status.** C7 R0.5 on `agent/c7-stateful-alfc` records a terminal policy-3
-  NO-GO under the registered gates. Policy 2 remains dormant pending explicit
-  owner activation. Interactive serialized honest-DV `rho/beta/gamma`
-  (`Q_FS=0`), logical `g=141`, setup `2.00x/2.10x` and weight-wire
-  `100%/105%` remain fixed.
-- **Evidence versus credit.** The one-stage RA CPU screen really opens queried
-  blocks with one logical borrowed-slice `2N` scan, `rN` source work,
-  `64rN` trie steps and
-  `O(64*141U)` memory; 3 differential/fail-closed tests pass. It is not a PCS:
-  distance and ordered-root setup fail, so `C7_CPU_REFERENCE_PASS=false`.
-  The concrete Poseidon2 salted leaf has KAT/codec/mutation/cost tests, but its
-  31B RA-`r=4` screen needs at least 7.346T S-box
-  multiplication-equivalents before hashes (packed-root control: 1.836T) and
-  lacks the shared checker, codec refinement and malicious-DV
-  theorem. Sampling now has a causal 96-B public prelude with a private
-  provider seed, still uncompiled. The focused Lean target passes and proves
-  only the independent pair/counting bounds; budget v6 passes. All evidence
-  is `credit:false`.
-- **Hard stop/resume.** No SIMT, prover/E2E, provider contact or pod is
-  authorized; `C7_POD_READY=false`. Resume requires an owner decision to
-  activate policy 2 and fix its root-wide query horizon plus challenge mode,
-  or an explicit relaxation of a named setup/distance/one-pass/proof-byte gate.
-  Full GPT-2 remains pod-only after readiness and a later run-specific GO.
+- **Status.** C7 R0.6 on `agent/c7-stateful-alfc` activates policy 2: only
+  root-bound masked PCS responses within a durable global budget may be
+  visible; the terminal evaluation remains authenticated. Policy 3 stays
+  terminally rejected. Interactive `Q_FS=0`, logical `g=141`, setup
+  `2.00x/2.10x` and weight-wire `100%/105%` remain fixed.
+- **Evidence/credit.** The authoritative vector distinguishes unique leaves,
+  visible masked Fp occurrences, sibling digests and attempts; fixed full
+  reservation burns on accept/abort/crash/retry across all connections and
+  colluding verifiers before the first attempt-local provider response
+  dependent on `W`/root; the public root is a view element paid by hiding.
+  `q_attempt`, `q_response`, `Q_root` and `R_root` remain
+  separate; numeric values/backend are unset. Salted public BLAKE3 is eligible,
+  but binding, adaptive root hiding, paired-history/derived-view privacy,
+  single-session receipt/plane-map CAS, KV genesis/rotation carry,
+  boundary/KV horizons, multi-domain VOLE and
+  private same-W rotation are unproved;
+  model-lifetime privacy has a separate unproved 78-bit gate. Policy-2 Nat accounting lemmas and
+  budget v8 checks pass; all are `credit:false`.
+- **Hard stop/resume.** `C7_CPU_REFERENCE_PASS=false` and
+  `C7_POD_READY=false`: no prover, SIMT, provider contact or pod. Resume only
+  after one candidate compiles nearly constant normalized GPT-2/31B query
+  vectors, exact wire bytes, single-session receipts/hash work/multi-user
+  domains, theorem-backed per-plane/model horizons, setup/rotation under 2.10x, and an
+  ordered one-scan bounded-memory opener. Full GPT-2 stays
+  pod-only after readiness plus a later run-specific owner GO.
+
+- **2026-08-26 — C7 R0.6 activates policy 2 and separates root privacy from
+  proof/setup/work accounting.** The owner selects bounded masked PCS
+  responses with an authenticated-only terminal and retains interactive
+  post-prefix challenges (`Q_FS=0`). Policy 3 remains terminally rejected;
+  its Poseidon2/private-checker, one-stage RA distance and ordered-root setup
+  failures stay in the append-only decision register.
+
+  The authoritative attempt census is
+  `(unique opened leaves, visible masked Fp occurrences, exact Merkle sibling
+  digests, attempts)`. Fp2 costs two Fp occurrences and a full logical
+  `g=141` leaf costs 141 before any grouped-query comparison. `q_attempt` is
+  the public reserved maximum; `q_response` is an accepted response's actual
+  vector; `Q_root` is the theorem-backed root-life privacy capacity; and
+  `R_root<=floor(Q_root/u_W)` for the weight-plane charge. These are not one minimum:
+  proof bytes, privacy, setup/rotation and online work retain separate gates.
+  The composed game across all roots/connections/colluding verifiers must
+  satisfy `Adv_priv_model_lifetime<=2^-78`; the conditional 83-bit connection
+  arithmetic does not discharge it.
+
+  A model-owner/provider global linearizable allocator must durably burn the complete reservation
+  before the first attempt-local provider response dependent on `W`/root on
+  every accept, abort, timeout, crash or retry, across identities,
+  connections, replicas and colluding verifiers.  The public root is a
+  baseline view element whose replacement is charged to root hiding.
+  Rate limits/quotas mitigate DoS only. Exhaustion seals the root; rotation
+  uses a complete ordered weight-oracle epoch and transcript-bound receipt,
+  stops admission, resolves all outstanding attempts, then privately proves
+  same-`W` and atomically cuts over. `D_model`, `K_model`, multi-user
+  VOLE/MAC composition and distinct `Q_CR/Q_hide/Q_PRF` remain unset/unproved.
+  The operational paired-history game requires equal public
+  prompt/output/abort leakage and charges branch-root replacement to hiding.
+  The equality predicate covers only the witness-independent base frame;
+  roots, root-derived IDs, authenticated receipts, predecessor digests and
+  transcript/journal heads form a challenger-generated branch closure whose
+  indistinguishability remains a named obligation. A receipt binds the full
+  connection/nonce/MAC-domain session and must follow
+  receipt-free request binding; before emitting receipt/seed commitment it
+  passes `Reserved -> InFlight` and caches the first reply. Exact duplicate
+  messages receive only cached byte-identical replies, while divergent
+  challenges reject before new witness-dependent bytes. `Q_root` pays only
+  for the weight epoch; per-attempt `Q_B` and per-created-root `Q_KV` horizons
+  remain unset. Every proposed successor is charged, then sealed on abort or
+  retains the same counter after acceptance. The profile/receipt binds fixed
+  `(u_W,u_B,u_KV_old,u_KV_new)` charges: existing maps debit immediately;
+  new-root slots burn before the first reply and a no-extension assignment CAS
+  creates their durable maps before disclosure. Privacy assumes allocator
+  integrity; soundness separately requires
+  receipt unforgeability and local-plus-multi-user MAC composition.
+  `InitKVState(s0)` must create/charge the first predecessor before disclosure;
+  state-plane maps live outside `omega` and survive weight rotation
+  byte-identically, so only the weight counter is refreshed. The executable
+  census separates per-plane `(U,S,H)`, `A_attempt`, logical PCS samples and
+  ZK-alphabet atoms; all numeric entries remain fail-closed.
+
+  Policy 2 makes salted public BLAKE3 the preferred leaf/tree candidate:
+  opened masked payloads and salts allow public path verification, removing
+  the private Poseidon2 circuit. Collision resistance still does not prove
+  adaptive root hiding or t-query privacy. Active analysis is narrowed to
+  RS t-query ZK + strict-UD WHIR/Ligerito as theorem carrier and ERA `r=4` as
+  byte/prover control. Neither has joint stateful malicious-DV privacy,
+  ordered root setup under 2.10x and a one-scan bounded opener. After
+  unstacking, logical samples, ZK atoms, leaf and visible-symbol caps must each
+  stay within 1.05 from GPT-2 to 31B; path growth is allowed only inside exact
+  byte gates.
+
+  Budget schema v8 passes both registered invocations. The focused additive
+  Lean target passes and adds only fixed-reservation lifetime and conservative
+  worst-class-charge arithmetic; it proves no allocator, leakage or PCS
+  theorem. All results are `credit:false`, `C7_CPU_REFERENCE_PASS=false` and
+  `C7_POD_READY=false`. No prover, SIMT, provider or pod action occurred.
 
 - **2026-08-26 — C7 R0.5 implements the dense exception and closes policy 3
   with a terminal NO-GO.** The one-stage RA CPU screen is real: a 64-level

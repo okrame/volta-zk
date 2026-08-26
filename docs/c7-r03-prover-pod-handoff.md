@@ -1,19 +1,50 @@
-# C7 R0.5 — policy-3 terminal NO-GO and fail-closed handoff
+# C7 R0.6 — policy-2 root-wide bounded-query handoff
 
-**State:** `C7_R05_POLICY3_EXHAUSTED_OWNER_DECISION_REQUIRED`.
+**State:** `C7_R06_POLICY2_ACTIVE_DESIGN_ONLY`.
 
 This handoff prepares the order, evidence and stop rules for later C7 work.
-The authorized tiny CPU `BatchOpenBlocks` screen is complete and terminally
-negative as a PCS.  This document authorizes no further backend, large
-prover/E2E, optimized SIMT kernel, provider contact or pod run.  The protocol
-authority remains
+Policy 3 remains terminally rejected under its registered gates; R0.6 activates
+policy 2, in which only masked PCS answers within a cryptographically enforced
+root-wide horizon may be public and the terminal evaluation remains
+VOLE-authenticated.  No backend, concrete query counts or root capacity are
+selected yet.  This document authorizes no PCS prover, SIMT kernel, provider
+contact or pod run.  The protocol authority remains
 `docs/c7-stateful-authenticated-lfc-design.md` and the active capsule in
 `docs/prototype-status.md`.
 
 ## 1. Authorization boundary
 
-- Local work is limited to this checkpoint's design/theorem/census and
-  transparent tiny tests.  A new backend requires a later owner decision.
+- Local work is limited to the policy-2 design, theorem and executable analytic
+  census plus tiny counter/hash/codec fixtures.  Selecting a backend and its
+  exact counts requires a recorded design checkpoint before prover work.
+- Before the first attempt-local provider response byte whose distribution
+  depends on `W` or its oracle epoch, the model-owner/provider's authoritative
+  global allocator for the complete ordered `omega` root set must
+  durably reserve the fixed plane-charge vector and its declared census
+  profile.  Its authenticated reservation/assignment receipts, profile and root-set digest enter the
+  canonical transcript.  The already-public root is a baseline view element whose
+  cross-world replacement is charged to the root-hiding theorem.
+  Accept, abort, crash,
+  timeout and retry all consume the complete reservation; no suffix is
+  refunded or reused.
+- The root-wide allocator aggregates every connection, identity, failed
+  attempt and colluding designated verifier.  Per-user quotas and rate limits
+  may mitigate exhaustion attacks but never replace this counter.
+- Each authenticated receipt binds a receipt-free request containing the
+  complete connection/nonce/MAC-domain/charge context; appending the receipt
+  derives the session binding.  Before emitting receipt/seed commitment the
+  provider CASes `Reserved -> InFlight` and caches that first reply.  Replica
+  duplicates may return only the cached byte-identical reply for the exact
+  transcript state; divergent challenges fail before new witness-dependent
+  bytes.
+- Exhaustion seals the root; it does not automatically reset the budget.  A
+  later rotation needs fresh independent masks/salts, a same-weights bridge,
+  a bounded root-epoch/lifetime composition and one atomic activation.  Only
+  the weight-epoch counter rotates; the separate state-plane ledger and every
+  K/V high-water survive byte-identically.
+- Before the first accepted predecessor root is disclosed, `InitKVState(s0)`
+  must create and charge its durable map entry.  A carried predecessor without
+  that authenticated live entry rejects before a new response.
 - No optimized SIMT kernel or GPU scaffold is authorized before the ledger
   records `C7_CPU_REFERENCE_PASS`.
 - A complete GPT-2 E2E is never local.  It remains pod-only.
@@ -31,26 +62,59 @@ Every row is fail-closed and currently **open**.
 
 | Gate | Required evidence |
 | --- | --- |
-| concrete crypto | Poseidon2 leaf function is executable but not admitted: adaptive hiding/binding, shared authenticated-checker soundness or PoK, real PCG/VOLE and complete connection bound remain missing; fresh honest-DV `rho/beta/gamma` stay selected with `Q_FS=0` |
-| canonical compiler | exact causal sampling prelude (client commit, provider commit, client open, private provider opening proved), response relation, serialized schedule, one terminal point per physical segment and reject-before-correlation on any multiplicity/count mismatch |
-| opening schedule | one-stage RA screen meets the online count shape but fails distance and ordered-root setup, so `C7_CPU_REFERENCE_PASS=false`; any replacement still needs the full original contract |
-| setup | logical `g=141`; manifest with persistent, temporary, read/write, refresh, peak host/device and wall counts; `A_setup<=2.00` target or explicit tolerance at `<=2.10` |
-| certificate | exact five-counter query census, serialized interactive challenge frames and six-component reconciliation; `B_weight_ALFC<=target` or explicit tolerance at `<=105%`; complete 30/100-MB and 3x gates |
-| security | theorem/hypothesis registry with scope, repetition and exact error for every event; analytic `Q_leaf<=2^64`, selected `Q_FS=0`, and connection arithmetic remains at least 78 bits |
+| concrete crypto | a domain-separated public salted-Merkle construction such as BLAKE3 is eligible because masked leaves may be shown and checked in public; distinct `Q_CR/Q_hide/Q_PRF` bounds, collision binding, adaptive root/path hiding, mask PRF, joint t-query ZK, multi-user VOLE/MAC composition, real PCG/VOLE and the authenticated terminal theorem remain named missing premises; Poseidon2 private-leaf checking is not required by policy 2 |
+| canonical compiler | exact causal sampling prelude, response relation and serialized schedule; complete ordered `omega` descriptor, profile/root-budget IDs and authenticated reservation receipt fixed in the prefix; every allowed clear answer is typed as a masked symbol of a declared ZK alphabet, while the terminal evaluation has no clear codec; one terminal point per physical segment and reject-before-correlation on every mismatch |
+| root budget | exact plane-tagged `q_attempt`/`q_response` vectors and fixed `(u_W,u_B,u_KV_old,u_KV_new)` charges; weight-epoch `Q_root`/`R_root`, per-attempt `Q_B[a]` and per-created-K/V-root `Q_KV[s]`; `InitKVState(s0)` before first disclosure; durable weight ledger separated from boundary/KV state ledger; every proposed successor is charged, then sealed on abort or keeps the same counter after acceptance; receipt-free request binding plus single-session receipt state machine reserves all components before the first reply, and a no-extension assignment CAS binds pre-burned slots to new roots before disclosure; no refund, global aggregation across connections/colluding verifiers and stop-admit rotation carrying state maps byte-identically plus a private same-weights bridge |
+| opening schedule | backend and counts are unselected; logical PCS samples, ZK-alphabet atoms, unique leaves and visible Fp occurrences must each stay within 1.05 from GPT-2 to 31B absent a proved codec equivalence; standard public leaf/path verification, one fused packed-weight scan, `O(N+poly(q,log N))` CPU work and bounded memory remain mandatory; the R0.5 one-stage RA screen remains rejected for distance and ordered-root setup, so `C7_CPU_REFERENCE_PASS=false` |
+| setup | logical `g=141`; exact static randomized oracle, salted tree, counter and same-weights rotation costs; persistent, temporary, read/write, refresh, peak host/device and wall counts; `A_setup<=2.00` target or explicit tolerance at `<=2.10`, with no X4d-style expanded setup hidden in rotation |
+| certificate | separate logical PCS samples, ZK-alphabet query atoms, visible masked Fp/Fp2 limbs, unique leaves, exact multiproof siblings/paths and attempt counts; serialized `omega`/profile/receipt authentication and interactive challenge frames with six-component reconciliation; `B_weight_ALFC<=target` or explicit tolerance at `<=105%`; complete 30/100-MB and 3x gates |
+| security | one paired-history model/root-lifetime adaptive malicious-DV game covering all connections/MAC domains, collusion, concurrency, selective abort and every byte prefix; equality applies only to the witness-independent base frame while a named reduction covers all branch-derived IDs/receipts/heads; theorem scopes separate local MAC error, multi-user composition, honest-allocator privacy integrity and dishonest-prover receipt unforgeability; `Q_FS=0`; connection soundness/state and the separate composed model-lifetime privacy advantage each remain at least 78 bits without treating rate limits as cryptographic evidence |
 | SIMT, if used | only after CPU pass; bit-exact leaves/root/multiproof/MAC/transcript/certificate/journal plus reconciled disk, H2D/D2H/D2D, RSS/VRAM, padding, launch and synchronization counters |
-| lifecycle | two incremental responses, accepted predecessor/successor K/V, real finite PCG using only consumed profiles, abort burn and atomic promotion |
+| lifecycle | two incremental responses, accepted predecessor/successor K/V, real finite PCG using only consumed profiles, abort burn and atomic promotion; rotation seals admission, resolves/burns all outstanding receipts, privately proves same-`W`, then atomically cuts over |
 | verifier | canonical serialization, reload and full ordinary-CPU verification; mutation, replay, fork, truncation, reordered-prefix and configured-count-plus-one failures |
+
+The four original query quantities are deliberately not one minimum.
+`q_attempt[p]` is the fixed maximum census vector for each W/B/KV plane;
+`q_response[p]` is the census
+actually serialized by an accepted response; `Q_root` is the total charge
+covered by the root-wide privacy theorem; and `R_root` counts every durable
+attempt reservation, including failures and selective aborts.  With one fixed
+profile,
+
+```text
+u_attempt = (u_W,u_B,u_KV_old,u_KV_new)
+spent_root = attempts_reserved * u_W <= Q_root
+q_response[p] <= q_attempt[p]                     # componentwise
+R_root <= floor(Q_root / u_W).
+```
+
+The formula requires `0 < u_W <= Q_root`; every nonzero other component must
+fit its separate `Q_B/Q_KV` horizon. A profile that cannot reserve one full
+attempt is invalid, and the selected operational service floor must retain
+positive privacy headroom.
+
+The compiler defines a query atom in the exact ZK alphabet.  Opening a
+141-scalar leaf for one sample charges 141 atoms unless the cited theorem
+treats that complete block as one alphabet symbol.  Merkle siblings charge no
+query atoms but do charge path/hash bytes.  Every attempt therefore records a
+vector—not a scalar substitute—of logical PCS samples, visible masked
+symbols/limbs, unique leaves, exact multiproof sibling nodes and attempt
+reservations, both per transcript and as a per-plane union.  Proof size limits
+the per-attempt vector, privacy limits `Q_root/Q_B/Q_KV`, setup limits root
+construction/rotation, and online resource gates limit work; their units and
+tolerances are not transferable.
 
 The smallest valid local case must execute the whole lifecycle twice.  A
 mock-PCG, component-only, analytic or public-WHIR result remains
-`credit:false` and cannot establish `C7_LOCAL_READY`.  The authorized CPU
-reference precedes that case and by itself earns no lifecycle/E2E credit.
+`credit:false` and cannot establish `C7_LOCAL_READY`.  The future CPU reference
+precedes that case and by itself earns no lifecycle/E2E credit.
 
 ## 3. CPU-first ladder and SIMT contract
 
-1. Prove the generator/structure screen analytically; `nnz(G)>=kd` already
-   rejects direct sparse-output accumulation for uniform queries in expectation
-   and for the heaviest queried leaves in the worst case.
+1. Select a policy-2 PCS only after compiling its exact root-wide privacy unit,
+   query counts, public salted-Merkle wire bytes, soundness floor, setup and
+   rotation schedule.  A query answer count that grows materially with `N`
+   fails even if its prover is fast.
 2. Implement only the smallest CPU reference for a surviving structured
    algorithm and tiny canonical fixtures.
 3. Record `C7_CPU_REFERENCE_PASS` only if code-derived
@@ -59,14 +123,18 @@ reference precedes that case and by itself earns no lifecycle/E2E credit.
    CPU/SIMT equivalence.
 5. Only then run scaled local integration; no complete GPT-2 locally.
 
-R0.5 executed steps 1--2 for the one-stage RA dense exception.  Its counters
+R0.5 executed the earlier structure screen and a CPU fixture for the one-stage
+RA dense exception.  Its counters
 and tiny differential test pass the online algorithm shape, but its code
 distance and streaming ordered-root gates fail.  Therefore step 3 did not
 occur and steps 4--5 remain blocked.  A working component is not a passing PCS.
 Its source is a borrowed `&[i16]`, so the one-pass/`2N` values are logical
 access counts, not filesystem, RSS or `VmHWM` measurements.
 
-The CPU report must assert one source open/pass, monotonically increasing
+The policy-2 CPU report must additionally prove that every query answer was
+fixed by the canonical interactive schedule, came from the committed masked
+oracle and was charged before disclosure to the root reservation.  It must
+assert one source open/pass, monotonically increasing
 offsets, exactly `2*N` packed bytes, no reopen/backward seek, no full codeword,
 expanded weights or model-linear scratch, and live memory bounded by
 `chunk+140 symbols+poly(q,log N)`.  It separately reports source/query
@@ -79,8 +147,8 @@ device-generated/zeroed bytes, VRAM/pinned peaks, allocation/launch counts,
 and synchronizations by reason and wall.  Logical `g=141` is immutable.  Any
 wider device tile is temporary zero padding with zero persistent,
 `LeafCom`-input, certificate and transcript bytes; its work and peak are
-measured.  CPU and SIMT must match leaves, digests/root/multiproof,
-provider-internal salts, exact finite-fixture PCG/VOLE values and consumption,
+measured.  CPU and SIMT must match masked leaf payloads, opened public salts,
+digests/root/multiproof, exact finite-fixture PCG/VOLE values and consumption,
 handles/corrections, correlation schedule, every transcript frame/challenge,
 both Fp2 limbs, certificate, CPU-verifier result and journal transition.
 Production records store only secret-free digests/counters for internal values.
@@ -98,11 +166,26 @@ single run-of-record directory must contain create-new artifacts covering:
 ```text
 compiler manifest       layouts, segment IDs, points, roots and transcript order
 setup manifest          persistent/temp/refresh bytes and build resource counters
-query census            q_open, U_leaf, P_secret, Q_leaf screen and Q_FS=0
+root budget manifest    complete omega/root-set and profile digests, authenticated
+                        receipt-free request binding plus single-session
+                        receipt lifecycle/cache schema, privacy
+                        unit, plane charge vector, q_attempt, q_response,
+                        Q_root, R_root, per-plane Q_B/Q_KV horizons including
+                        aborted successors, budget-map high-waters, assignment
+                        receipt, InitKVState and rotation carry-forward heads,
+                        D_model and K_model
+query census            plane-tagged logical samples, masked symbols/limbs, unique leaves,
+                        exact sibling/path nodes, q_exposed and attempts; Q_FS=0
 certificate census      six B_* components with every byte assigned once
 security registry       named theorem/hypothesis, scope, repetitions and epsilon
 resource report         passes, bytes read/written, peak RSS/device and wall phases
-lifecycle journal       reservation, burn, accept, promotion, replay/fork decisions
+lifecycle journal       global omega reservation/receipt/high-water mark,
+                        Reserved/InFlight/Burned/Accepted CAS and cached replies,
+                        W/B/KV maps, pre-burned slot assignment before root
+                        disclosure, InitKVState before genesis disclosure, full
+                        burn, outstanding-at-seal resolution, private same-W
+                        bridge, byte-identical state-map carry at cutover,
+                        promotion and replay/fork decisions
 verifier/mutation log   reload result and every negative test
 checksums                inputs, setup, certificate, journal and reports
 ```
@@ -143,9 +226,17 @@ gates rather than prepare them.
 6. Persist create-new reports/checksums and append the ledger disposition.
    Large generated weights/setup stay pod-local.
 
-Current blockers are the admitted leaf commitment/private checker,
-authenticated soundness bridge, CPU-pass locally openable code, compiler/query
-census and all downstream complete-chain evidence.  All credible policy-3
-lines have terminal dispositions under the registered gates.  The next valid
-action is an owner design decision on policy 2; no pod action is presently
-valid.
+Policy 2 removes the need to verify Poseidon2 privately: a public salted
+BLAKE3 leaf/tree is eligible, with every opened payload, salt and path charged
+to the certificate.  It does not yet supply collision binding, adaptive
+root/path hiding or the joint root-wide t-query theorem.  Current blockers are
+backend selection, exact plane/root/round query counts, transcript-bound
+single-session receipts, branch-derived-view closure, response/K/V privacy
+horizons and durable no-extension plane maps, distinct hash-work bounds, the cryptographic global counter,
+genesis state-map initialization, rotation carry-forward, multi-user VOLE/MAC
+composition and private stop-admit rotation bridge,
+authenticated soundness/terminal privacy,
+`C7_CPU_REFERENCE_PASS`, the compiled certificate census and all downstream
+complete-chain evidence.  No prover, SIMT, provider or pod action is presently
+valid.  A complete GPT-2 E2E remains pod-only after `C7_POD_READY` and a later
+run-specific owner GO.

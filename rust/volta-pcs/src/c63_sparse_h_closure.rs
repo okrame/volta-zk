@@ -38,6 +38,9 @@ pub const C63_SPARSE_H_PRODUCTION_ROUND_PAYLOAD_BYTES: u64 = 1_408;
 pub const C63_SPARSE_H_PRODUCTION_FRAMING_BYTES: u64 = 88;
 pub const C63_SPARSE_H_PRODUCTION_FRAMED_BYTES: u64 = 1_496;
 pub const C63_SPARSE_H_PRODUCTION_FULL_CORRELATIONS_PER_TAPE: u64 = 44;
+pub const C64_TERMINAL_LINK_PRODUCTION_ROUNDS: u64 = 27;
+pub const C64_TERMINAL_LINK_PRODUCTION_FULL_CORRELATIONS_PER_TAPE: u64 = 54;
+pub const C64_TERMINAL_LINK_PRODUCTION_FRAMED_BYTES: u64 = 1_816;
 
 const HEADER_BYTES: u64 = 56;
 const TERMINAL_TAG_BYTES: u64 = 32;
@@ -48,6 +51,11 @@ const SOURCE_FUNCTIONAL_PREFIX_DOMAIN: &str = "volta-zk/c63/sparse-h-source-func
 const HEADER_LABEL: &str = "c63_sparse_h_closure_header";
 const ROUND_LABEL: &str = "c63_sparse_h_closure_round_corrections";
 const TERMINAL_LABEL: &str = "c63_sparse_h_closure_terminal_tags";
+const C64_TERMINAL_LINK_DOMAIN: &str = "volta-zk/c64/terminal-inner-product/v1";
+const C64_TERMINAL_LINK_HEADER_LABEL: &str = "c64_terminal_link_header";
+const C64_TERMINAL_LINK_ROUND_LABEL: &str = "c64_terminal_link_round_corrections";
+const C64_TERMINAL_LINK_TERMINAL_LABEL: &str = "c64_terminal_link_terminal_tags";
+const C64_TERMINAL_LINK_CORRELATION_BASE: u64 = 0x0C69_0000_0000_0000;
 
 type Result<T> = std::result::Result<T, C63SparseHClosureError>;
 
@@ -271,6 +279,220 @@ pub struct C63SparseHTapeVerifierPending {
     terminal_tags: [Fp2; C63_SPARSE_H_TAPES],
     transcript_digest: [u8; 32],
     transcript_bytes: u64,
+}
+
+/// Transcript binding for the one C6.4 inner product that batches all 48
+/// C6RSC3 terminal claims into the packed D23 x 16 joint table.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C64TerminalLinkStatement {
+    binding_digest: [u8; 32],
+    coefficient_digest: [u8; 32],
+    terminal_claims_digest: [u8; 32],
+    input_log2: u8,
+    digest: [u8; 32],
+}
+
+impl C64TerminalLinkStatement {
+    pub fn new(
+        binding_digest: [u8; 32],
+        coefficient_digest: [u8; 32],
+        terminal_claims_digest: [u8; 32],
+        input_log2: u8,
+    ) -> Result<Self> {
+        if [binding_digest, coefficient_digest, terminal_claims_digest].contains(&[0; 32])
+            || input_log2 == 0
+        {
+            return Err(C63SparseHClosureError::new(
+                "C6.4 terminal-link statement contains an empty binding",
+            ));
+        }
+        let mut statement = Self {
+            binding_digest,
+            coefficient_digest,
+            terminal_claims_digest,
+            input_log2,
+            digest: [0; 32],
+        };
+        statement.digest = c64_terminal_link_statement_digest(&statement);
+        Ok(statement)
+    }
+
+    pub fn digest(&self) -> [u8; 32] {
+        self.digest
+    }
+}
+
+/// Scaled authenticated C6.4 terminal link. Production supplies `open_m`
+/// from the already verified joint WHIR opening at the returned D27 point.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_c64_terminal_link_reference<F>(
+    coefficients: &[Fp2],
+    message: &[Fp2],
+    initial_claims: [ProverAuthed; C63_SPARSE_H_TAPES],
+    statement: &C64TerminalLinkStatement,
+    streams: &mut [CorrelationStream; C63_SPARSE_H_TAPES],
+    transcript: &mut Transcript,
+    mut open_m: F,
+) -> Result<C63SparseHClosureProof>
+where
+    F: FnMut(usize, &[Fp2]) -> Result<ProverAuthed>,
+{
+    let input_log2 = exact_log2(message.len(), "C6.4 packed input")?;
+    if coefficients.len() != message.len()
+        || input_log2 != statement.input_log2
+        || statement.digest != c64_terminal_link_statement_digest(statement)
+        || initial_claims[0].x != initial_claims[1].x
+        || initial_claims[0].x != inner_product(coefficients, message)?
+    {
+        return Err(C63SparseHClosureError::new(
+            "C6.4 terminal-link witness or initial claim differs",
+        ));
+    }
+    let statement_digest = statement.digest;
+    transcript.append_message(
+        C64_TERMINAL_LINK_HEADER_LABEL,
+        &header_bytes(input_log2, 1, statement_digest)?,
+    );
+    let mut a = coefficients.to_vec();
+    let mut folded_m = message.to_vec();
+    let mut current = initial_claims;
+    let mut point = Vec::with_capacity(input_log2 as usize);
+    let mut round_corrections: [Vec<[Fp2; 2]>; C63_SPARSE_H_TAPES] =
+        array::from_fn(|_| Vec::with_capacity(input_log2 as usize));
+    for round in 0..input_log2 as usize {
+        let [g0, g1, g2] = product_round(&a, &folded_m)?;
+        let mut corrected = [[Fp2::ZERO; 2]; C63_SPARSE_H_TAPES];
+        let mut sent = [[ProverAuthed::ZERO; 2]; C63_SPARSE_H_TAPES];
+        for tape in 0..C63_SPARSE_H_TAPES {
+            let domain = c64_terminal_link_correlation_domain(tape, round)?;
+            let correlations = streams[tape].draw_fulls(domain, 2);
+            streams[tape]
+                .record_c6_fullfield_plaintexts(domain, &[g0, g2])
+                .map_err(C63SparseHClosureError::new)?;
+            corrected[tape] = [g0 - correlations[0].x, g2 - correlations[1].x];
+            sent[tape] = [correlations[0].authenticate(g0), correlations[1].authenticate(g2)];
+            if current[tape].sub(sent[tape][0]).x != g1 {
+                return Err(C63SparseHClosureError::new(
+                    "C6.4 terminal-link round does not sum to its claim",
+                ));
+            }
+            round_corrections[tape].push(corrected[tape]);
+        }
+        append_c64_terminal_link_round(transcript, &corrected);
+        let challenge = transcript.challenge_fp2();
+        let weights = lagrange3(challenge);
+        for tape in 0..C63_SPARSE_H_TAPES {
+            let one = current[tape].sub(sent[tape][0]);
+            current[tape] = sent[tape][0]
+                .scale(weights[0])
+                .add(one.scale(weights[1]))
+                .add(sent[tape][1].scale(weights[2]));
+        }
+        fold_low(&mut a, challenge);
+        fold_low(&mut folded_m, challenge);
+        point.push(challenge);
+    }
+    let mut terminal_tags = [Fp2::ZERO; C63_SPARSE_H_TAPES];
+    for tape in 0..C63_SPARSE_H_TAPES {
+        let terminal_m = open_m(tape, &point)?;
+        if terminal_m.x != folded_m[0] {
+            return Err(C63SparseHClosureError::new("C6.4 terminal-link WHIR opening differs"));
+        }
+        let residual = current[tape].sub(terminal_m.scale(a[0]));
+        if residual.x != Fp2::ZERO {
+            return Err(C63SparseHClosureError::new("C6.4 terminal-link terminal product differs"));
+        }
+        terminal_tags[tape] = residual.m;
+    }
+    transcript.append_fp2s(C64_TERMINAL_LINK_TERMINAL_LABEL, &terminal_tags);
+    Ok(C63SparseHClosureProof {
+        input_log2,
+        output_log2: 1,
+        statement_digest,
+        round_corrections,
+        terminal_tags,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn verify_c64_terminal_link_reference<F>(
+    coefficients: &[Fp2],
+    initial_keys: [VerifierKey; C63_SPARSE_H_TAPES],
+    statement: &C64TerminalLinkStatement,
+    proof: &C63SparseHClosureProof,
+    contexts: &mut [VerifierCtx; C63_SPARSE_H_TAPES],
+    transcript: &mut Transcript,
+    mut open_m: F,
+) -> Result<C63SparseHTapeClosureReferenceAudit>
+where
+    F: FnMut(usize, &[Fp2]) -> Result<VerifierKey>,
+{
+    proof.validate_shape()?;
+    let transcript_start_bytes = transcript.total_bytes();
+    let input_log2 = exact_log2(coefficients.len(), "C6.4 coefficient")?;
+    if contexts[0].delta == contexts[1].delta
+        || input_log2 != statement.input_log2
+        || statement.digest != c64_terminal_link_statement_digest(statement)
+        || proof.input_log2 != input_log2
+        || proof.output_log2 != 1
+        || proof.statement_digest != statement.digest
+    {
+        return Err(C63SparseHClosureError::new("C6.4 terminal-link verifier statement differs"));
+    }
+    transcript.append_message(C64_TERMINAL_LINK_HEADER_LABEL, &proof.header_bytes()?);
+    let mut a = coefficients.to_vec();
+    let mut current = initial_keys;
+    let mut point = Vec::with_capacity(input_log2 as usize);
+    for round in 0..input_log2 as usize {
+        let mut corrected = [[Fp2::ZERO; 2]; C63_SPARSE_H_TAPES];
+        let mut sent = [[VerifierKey::ZERO; 2]; C63_SPARSE_H_TAPES];
+        for tape in 0..C63_SPARSE_H_TAPES {
+            corrected[tape] = proof.round_corrections[tape][round];
+            let keys = contexts[tape].correct_full_verifier_keys(
+                c64_terminal_link_correlation_domain(tape, round)?,
+                &corrected[tape],
+            );
+            sent[tape] = [keys[0], keys[1]];
+        }
+        append_c64_terminal_link_round(transcript, &corrected);
+        let challenge = transcript.challenge_fp2();
+        let weights = lagrange3(challenge);
+        for tape in 0..C63_SPARSE_H_TAPES {
+            let one = current[tape].sub(sent[tape][0]);
+            current[tape] = sent[tape][0]
+                .scale(weights[0])
+                .add(one.scale(weights[1]))
+                .add(sent[tape][1].scale(weights[2]));
+        }
+        fold_low(&mut a, challenge);
+        point.push(challenge);
+    }
+    let terminal_m_keys = [open_m(0, &point)?, open_m(1, &point)?];
+    for tape in 0..C63_SPARSE_H_TAPES {
+        let residual = current[tape].sub(terminal_m_keys[tape].scale(a[0]));
+        if !zero_open_verify(residual, proof.terminal_tags[tape]) {
+            return Err(C63SparseHClosureError::new("C6.4 terminal-link terminal ZeroOpen failed"));
+        }
+    }
+    transcript.append_fp2s(C64_TERMINAL_LINK_TERMINAL_LABEL, &proof.terminal_tags);
+    let transcript_bytes =
+        transcript.total_bytes().checked_sub(transcript_start_bytes).ok_or_else(|| {
+            C63SparseHClosureError::new("C6.4 terminal-link transcript census underflow")
+        })?;
+    if transcript_bytes != proof.encoded_len()? {
+        return Err(C63SparseHClosureError::new("C6.4 terminal-link transcript census differs"));
+    }
+    let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c64/terminal-link-audit/v1");
+    hasher.update(&statement.digest);
+    hasher.update(&proof.encode()?);
+    let transcript_digest = *hasher.finalize().as_bytes();
+    Ok(C63SparseHTapeClosureReferenceAudit {
+        sumcheck_point: point,
+        terminal_a: a[0],
+        terminal_m_keys,
+        transcript_digest,
+        transcript_bytes,
+    })
 }
 
 impl C63SparseHTapeVerifierPending {
@@ -1453,6 +1675,40 @@ fn correlation_domain(tape: usize, round: usize) -> Result<u64> {
         ));
     }
     Ok(domain)
+}
+
+fn c64_terminal_link_statement_digest(statement: &C64TerminalLinkStatement) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new_derive_key(C64_TERMINAL_LINK_DOMAIN);
+    hasher.update(&statement.binding_digest);
+    hasher.update(&statement.coefficient_digest);
+    hasher.update(&statement.terminal_claims_digest);
+    hasher.update(&[statement.input_log2]);
+    *hasher.finalize().as_bytes()
+}
+
+fn c64_terminal_link_correlation_domain(tape: usize, round: usize) -> Result<u64> {
+    if tape >= C63_SPARSE_H_TAPES || round > u16::MAX as usize {
+        return Err(C63SparseHClosureError::new(
+            "C6.4 terminal-link correlation component is out of range",
+        ));
+    }
+    let domain = C64_TERMINAL_LINK_CORRELATION_BASE | ((tape as u64) << 24) | round as u64;
+    if domain & RESERVED_DOMAIN_BITS != 0 {
+        return Err(C63SparseHClosureError::new(
+            "C6.4 terminal-link correlation domain uses reserved bits",
+        ));
+    }
+    Ok(domain)
+}
+
+fn append_c64_terminal_link_round(
+    transcript: &mut Transcript,
+    corrections: &[[Fp2; 2]; C63_SPARSE_H_TAPES],
+) {
+    transcript.append_fp2s(
+        C64_TERMINAL_LINK_ROUND_LABEL,
+        &[corrections[0][0], corrections[0][1], corrections[1][0], corrections[1][1]],
+    );
 }
 
 fn append_round(transcript: &mut Transcript, corrections: &[[Fp2; 2]; C63_SPARSE_H_TAPES]) {

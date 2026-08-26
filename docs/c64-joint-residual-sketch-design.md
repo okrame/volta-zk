@@ -1,7 +1,7 @@
 # C6.4 — joint cache/residual authenticated sketch
 
-**Status:** R1 ALL-TERMINAL SCALED DIFFERENTIAL PASS; HARD STOP BEFORE
-AUTHENTICATED TERMINAL LINK, SIMT OR POD.
+**Status:** R2 AUTHENTICATED TERMINAL LINK PASS; HARD STOP BEFORE PRODUCTION
+STREAMING, SIMT OR POD.
 
 **Branch:** `agent/c64-joint-residual-sketch`.
 
@@ -11,7 +11,8 @@ C6.4 is a separate recovery line from the clean C6.3 closure checkpoint.  It
 does not change the fixed-point forward pass or reuse any C7 result.  Its
 objective is two complete GPT-2 certificates, `0 -> 150` and `150 -> 200`,
 with each response-specific prover below `20.000 s` on one A100 and each
-complete certificate at most `30,000,000 B`.
+complete certificate at most `35,000,000 B`.  `30,000,000 B` remains the
+diagnostic engineering threshold.
 
 Local design, exact census, tiny/scaled references and implementation are
 authorized.  No provider contact, pod use or production-size run is
@@ -29,29 +30,28 @@ response-local residual wrapper.  That wrapper expanded into a
 `17,179,869,184-B` encoded oracle and retained `19,629,343,144 B`.  C6.4
 removes that wrapper rather than optimizing its allocation.
 
-The replacement reuses the existing C6.3 correction sketch and the existing
+The replacement reuses the existing C6.3 sparse construction and the existing
 compact C6RSC3 residual relation:
 
 ```text
-public cache corrections ---------+
-                                   +--> one D23 systematic layout
-public residual corrections ------+        |
-                                            H
-                                             |
-                                      one D20 sketch
-                                             |
+cache corrections ----------------+
+                                   +--> one D23 x 16 private table
+complete private residual owner --+        |             |
+                                            H       one authenticated
+                                             |       terminal link
+                                      one D20 sketch      |
+                                             |             |
                               replacement D23/D20 WHIR lanes
-                                             |
-                         existing authenticated residual closure
 ```
 
 The eight tape/limb WHIR bodies are replaced, not supplemented.  Adding a
 ninth body or retaining the old D23 residual wrapper is forbidden.
 
-No new proof engine, generic table abstraction, mask plane or persistent
-response oracle is admitted in R0.
+The terminal link reuses the existing authenticated quadratic sumcheck. No new
+proof engine, generic table abstraction, mask plane or persistent response
+oracle is admitted.
 
-## 2. Exact public row boundary
+## 2. Exact private row boundary
 
 The existing paired residual leaf has seven `Fp2` columns:
 
@@ -61,61 +61,51 @@ tape-0 base mask, tag, correction,
 tape-1 base mask, tag, correction.
 ```
 
-Only the two corrections may enter the public systematic object.  Each
-correction has two base-field coordinates, so a residual row occupies four of
-the existing sixteen base-field columns.  The other twelve columns are
-canonical virtual zeros.  Clear common plaintext, base masks or tags are a
-terminal privacy failure.
-
-Cache rows keep their existing sixteen public one-time correction columns.
-The response-local row order is canonical and disjoint:
-
-1. all live cache correction rows in canonical `(position, live-slot)` order;
-2. all residual correction rows in exact correlation-schedule order;
-3. canonical virtual-zero padding to `2^23` rows.
+R0's four-public-correction layout was sufficient for the sparse differential
+but insufficient for the complete C6RSC3 statement. The selected table is
+private. Cache rows keep their sixteen one-time corrections and are the only
+rows the systematic-opening API can expose. Residual rows pack leaf slots
+0--6 and compact closure slot 7 as eight `Fp2` values; auxiliary live prefixes
+continue in the unused cell suffix. Tail cells are canonical zeros.
 
 The row frame binds protocol version, response nonce, epoch, segment kind,
 source ordinal, live lengths and both source-schedule/allocation digests.
 Changing a row kind, offset, length, tape order or limb order rejects.
 
-This public object is not by itself a replacement for the residual wrapper.
-C6RSC3 produces 24 terminal table claims per repetition: eight leaf tables
-and sixteen auxiliary tables.  The joint sketch directly covers only leaf
-slots 3 and 6.  Treating those two openings as coverage for all 24 would be
-an unsound terminal gap.  C6.4 therefore reconstructs the other 22 values
-privately from the already authenticated source cursor, installed affine DAG,
-compact slot-7 closure and its deterministic auxiliary transpose.  None of
-those hidden values becomes a public systematic column.
+The row frame binds protocol version, response nonce, epoch, source schedule,
+allocation, exact live lengths and all table roots. The verifier samples one
+weight after the 48 pending descriptors and joint roots are fixed. A
+27-round authenticated inner-product reduction binds the weighted claims to
+one opening of this same D23 table. No residual plaintext, mask, tag or raw
+prover authentication value is serialized.
 
 The production capacity census is:
 
-| Response | cache rows | residual rows | total live rows | D23 headroom |
-| --- | ---: | ---: | ---: | ---: |
-| `0 -> 150` | 460,800 | 5,119,131 | 5,579,931 | 2,808,677 |
-| `150 -> 200` | 614,400 | 1,992,912 | 2,607,312 | 5,781,296 |
+| Response | cache rows | leaf rows | closure rows | auxiliary `Fp2` | packed-cell headroom | live bytes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `0 -> 150` | 460,800 | 5,119,131 | 399,140 | 399,076 | 44,140,680 | 645,096,528 |
+| `150 -> 200` | 614,400 | 1,992,912 | 365,180 | 365,116 | 91,770,504 | 313,534,080 |
 
-Virtual-zero columns and tail rows are never materialized or transferred.
-The exact physical public payload is therefore `222,794,592 B` for genesis
-and `142,416,384 B` for continuation, rather than a 1-GiB dense table.
+Virtual-zero cells are not host payload. Production streaming must show
+whether a transient device zero-tail allocation is required and count it
+explicitly; it may not become a retained or encoded response oracle.
 
 ## 3. Required protocol identities
 
-R0 is blocked before production code until a scaled reference closes all of
-these identities.
+Production admission requires all of these identities. R2 closes items 1--6
+at scaled/reference level; production streaming and codec replay must preserve
+them exactly.
 
-1. **Public privacy.**  For each tape, `D = X - R` with fresh uniform
-   one-time `R`.  The pair of corrections from two independent tapes is
-   independent of `X`.  The concrete codec exposes only these corrections and
-   public shape.
+1. **Privacy.** Only cache corrections and public shape may be exposed by a
+   systematic opening. Every residual row is private and inaccessible through
+   the row API.
 2. **Source binding.**  The residual correction rows are exactly those
    consumed by the existing paired source cursor, in the same finite
    correlation allocation and order.  No digest-only equality substitutes
    for this relation.
-3. **Residual binding.**  The C6RSC3 correction factors at its terminal points
-   equal the corresponding claims opened from the joint systematic object.
-   Its remaining 22 terminal values equal folds of the compact private owners,
-   never digest-only substitutes. The linking challenges occur only after
-   both first messages are fixed.
+3. **Residual binding.** All 48 C6RSC3 terminal pending values, not only the
+   two correction slots, enter the descriptor-ordered authenticated link. The
+   batching challenge occurs after descriptors and roots are fixed.
 4. **Sparse relation.**  The committed sketch is exactly `H` applied to the
    canonical joint rows; cache and residual contributions may be computed
    separately and added only because a differential checks the same final
@@ -139,7 +129,7 @@ The early gates deliberately leave margin for composition error:
 | joint cache/residual subsystem on A100 | `<=9.640596167 s` |
 | residual extraction + joint-sketch increment | `<=5.000 s` diagnostic subgate |
 | projected complete prover before pod | `<=17.000 s` |
-| complete serialized certificate | target `<=28,000,000 B`; hard `<=30,000,000 B` |
+| complete serialized certificate | diagnostic `<=30,000,000 B`; hard `<=35,000,000 B` |
 | complete `pi_final` | `<4,500,000 B` |
 | four-thread CPU verifier | `<5.000 s` |
 | verifier additional RSS | `<=8,000,000,000 B` |
@@ -152,10 +142,17 @@ Its D23/D20 bodies occupy `9,322,048 B` and the four transition openings
 `1,257,332 B`, increases of `282,720 B` and `62,800 B`.  A direct D23
 systematic multiproof for 4,420 queries is at most `2,100,878 B` under the
 selected canonical framing.  Substituting those three components into the
-historical C6.3 composition projects `29,114,967 B`: it misses the 28-MB
-engineering target by `1,114,967 B` but remains `885,033 B` below the hard
-limit.  This is `credit:false` structural evidence; complete codec bytes are
-still unknown until the new public argument serializes and reloads.
+historical C6.3 composition plus the `1,816-B` terminal link projects
+`29,116,783 B`: it passes the 30-MB diagnostic by `883,217 B` and remains
+`5,883,217 B` below the 35-MB hard limit. This is
+`credit:false` structural evidence; complete codec bytes are still unknown
+until the new public argument serializes and reloads.
+
+The exact D23 finite-distance certificate gives at least 186 bits. Adding the
+terminal batching (`47/|Fp2|`), 27 degree-two rounds (`54/|Fp2|`) and two
+terminal authentication checks to the inherited complete union gives
+`78.019023202616...` bits per certificate. This passes the 78-bit gate with
+little margin; no term may be removed without a new exact union.
 
 The historical compact C6RSC3 CPU result (`17.401844 s`, `573,299,712 B`)
 proves capacity only.  It receives no C6.4 time credit.  SIMT means executing
@@ -219,7 +216,7 @@ pod-local; tracked source/evidence synchronizes only through GitHub HTTPS.
 2. Scaled source-binding, privacy-codec and C6RSC3 terminal-link differential,
    including one mutation for every boundary above.
 3. Exact D23/D20 WHIR structural bytes, soundness and finite-correlation
-   census.  Unknown fields fail closed.
+   census. Unknown fields fail closed. **R2 complete analytically.**
 4. Small complete serialized two-response lifecycle with finite real PCG,
    reload, verifier, mutation, burn and promotion.
 5. Only after a scoped clean checkpoint: SIMT implementation and byte-exact
@@ -234,16 +231,13 @@ a local build cache requires explicit owner approval.
 
 ## 8. Current disposition
 
-R1 retains the four-public-correction joint layout and the exact two-profile
-campaign.  Capacity fits D23 analytically.  A scaled executable differential
-shows that cache and correction-only residual streams produce the same sketch
-as the canonical joint table; the correction-only extractor reuses the exact
-paired-source cursor and rejects private residual columns.  A second scaled
-differential reconstructs all eight leaf and sixteen auxiliary terminal table
-evaluations from the same source plus compact closure owners, with zero padded
-tables.  The D23/D20 WHIR structure and a sub-30-MB certificate projection
-pass without adding proof bodies.  Concrete privacy-codec review, the
-authenticated terminal equality, finite-size distance/soundness, exact
-serialized certificate, finite-correlation census and all measured clocks
-remain open. Therefore no SIMT, production prover, pod or performance claim
-is yet authorized.
+R2 selects the complete private layout and exact two-profile campaign. Scaled
+execution folds the real 48 pending claims into one authenticated link to the
+packed table and rejects content, key, order, point and private-row mutations.
+The link reuses one existing proof codec (`1,816 B`) and consumes 54 full
+correlations per tape. Exact D23 capacity, 186-bit finite distance, complete
+78.019-bit soundness and two-profile correlation allocations pass. A distinct
+versioned setup bundle admits only `[0,150]`. Production streaming/SIMT,
+strict complete certificate serialization/reload, real-PCG two-proof state
+promotion and all measured clocks remain open. Therefore no provider, pod or
+performance claim is yet authorized.

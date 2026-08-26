@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 R1 ALL-TERMINAL SCALED PASS / AUTHENTICATED-LINK HARD STOP)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 R2 AUTHENTICATED TERMINAL LINK PASS / PRODUCTION-STREAMING HARD STOP)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,24 +10,48 @@ record; no external plan is authoritative.
 
 Read `c64-joint-residual-sketch-design.md` next.
 
-- **Status.** C6.4 R1 is active on `agent/c64-joint-residual-sketch`, isolated
-  from C7. It replaces the inherited 17.18-GB residual wrapper with one joint
-  D23-to-D20 cache/residual correction sketch; the eight WHIR bodies are
-  replaced, never supplemented.
-- **Completed evidence versus credit.** Exact capacity fits both responses. A
-  correction-only extractor reuses the paired-source cursor; scaled checks
-  match the joint sketch and reconstruct all 8 leaf plus 16 auxiliary C6RSC3
-  terminal evaluations from compact owners without padded tables. D23/D20
-  structural bytes project `29,114,967 B`, below the 30-MB hard limit and above
-  the 28-MB target. All are `credit:false`, not proof or timing credit.
-- **Hard stop.** No production protocol, SIMT, full prover, provider or pod
-  until those 24 values receive a transcript-ordered authenticated equality
-  to C6RSC3 pending claims, concrete codec privacy/reload passes, D23/D20
-  distance/soundness is recomputed, and finite real-PCG is reconciled.
+- **Status.** C6.4 R2 is active on `agent/c64-joint-residual-sketch`, isolated
+  from C7. It removes the inherited 17.18-GB residual wrapper by packing the
+  complete private residual owner beside cache corrections in one D23x16
+  table; only cache rows have a systematic opening API.
+- **Completed evidence versus credit.** The exact 48 C6RSC3 terminal claims
+  fold in transcript order into one authenticated 27-round link to that table;
+  honest, codec, content/key mutation and exact pending-claim tests pass.
+  D23 capacity is `645,096,528/313,534,080 B` of live data. The structural
+  certificate projection is `29,116,783 B`, with `883,217 B` diagnostic and
+  `5,883,217 B` hard headroom. Exact distance is at least 186 bits; the complete
+  analytic union is `78.0190232026` bits. All remain `credit:false`.
+- **Hard stop.** No provider or pod until production streaming/SIMT, strict
+  complete codec/reload, the exact two-proof real-PCG lifecycle and diagnostics
+  pass locally as applicable and the ledger records `C64_POD_READY`.
 - **Campaign.** The future first run uses exactly setup profiles `[0,150]` and
   exactly proofs `0->150`, `150->200`; no 17-profile bundle, duplicate profile
   or retry. Pod contact additionally requires `C64_POD_READY` and a later
   run-specific owner GO. Local builds use only `rust/target` and are cleaned.
+
+- **2026-08-26 — C6.4 R2 closes the authenticated terminal gap and exact
+  analytic censuses.** The selected table now stores all seven residual leaf
+  columns, compact closure slot 7 and all sixteen auxiliary live prefixes as
+  private cells; exposing a non-cache row rejects. Two repetitions' 48 exact
+  pending claims are transcript-weighted, descriptor/point-bound and reduced
+  by one authenticated D27 inner-product proof to the same table opening. The
+  codec is `1,816 B` and consumes exactly 54 full correlations per tape.
+  Mutation and composed-transcript replay pass. The C6.4 suffix census is 759
+  full correlations per tape (`707 - 2 + 54`), giving genesis/continuation raw
+  counts `5,347,590/2,192,216`; production allocation recognizes only those
+  two profiles. A versioned setup bundle accepts exactly contexts `[0,150]`.
+  The D23 finite-distance certificate gives 186 bits and the complete union
+  gives `78.019023202616...` bits, narrowly above the 78-bit gate. Updated
+  structural projection including the terminal link is `29,116,783 B`.
+  Production joint-table streaming, strict complete certificate lifecycle,
+  SIMT and measured gates remain open; no pod was contacted. Local build
+  artifacts were removed after the checks.
+
+- **2026-08-26 — Owner raises the C6.4 certificate hard limit to 35 MB.** The
+  30-MB boundary remains a diagnostic engineering threshold, not a gate.  The
+  unchanged `29,114,967-B` structural projection passes it by `885,033 B` and
+  has `5,885,033 B` of hard-limit headroom.  This changes no evidence credit:
+  complete serialized/reloaded bytes and every active hard stop remain open.
 
 - **2026-08-26 — C6.4 R0 selects a joint public-correction layout and a
   two-profile campaign.** C6.3's raw seven-column residual leaf cannot be made

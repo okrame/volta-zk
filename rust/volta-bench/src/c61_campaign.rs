@@ -183,6 +183,12 @@ const C62_CAMPAIGN_PROFILE_IDS: [u32; C62_CAMPAIGN_PROFILE_COUNT] = [
 ];
 const C62_CAMPAIGN_PROFILE_BUNDLE_HEADER_BYTES: usize =
     8 + 2 + 2 + (4 + 8 + 32) * C62_CAMPAIGN_PROFILE_COUNT;
+const C64_CAMPAIGN_PROFILE_BUNDLE_MAGIC: &[u8; 8] = b"C64MP1\0\0";
+const C64_CAMPAIGN_PROFILE_BUNDLE_VERSION: u16 = 1;
+const C64_CAMPAIGN_PROFILE_COUNT: usize = 2;
+const C64_CAMPAIGN_PROFILE_IDS: [u32; C64_CAMPAIGN_PROFILE_COUNT] = [0, 150];
+const C64_CAMPAIGN_PROFILE_BUNDLE_HEADER_BYTES: usize =
+    8 + 2 + 2 + (4 + 8 + 32) * C64_CAMPAIGN_PROFILE_COUNT;
 const C61_CANONICAL_OPERATION_PLAN_BYTES: usize = 63_994_751;
 const C61_CLIENT_PARAMETER_ALLOCATION_BYTES: usize = 8_000_000;
 const C6_SETUP_BASE_CLIENT_PARAMETER_BYTES: usize = 128;
@@ -194,6 +200,8 @@ const C62_CAMPAIGN_PROFILE_MAX_BYTES: usize = C61_CANONICAL_OPERATION_PLAN_BYTES
     + C6_SETUP_BASE_CLIENT_PARAMETER_BYTES;
 const C62_CAMPAIGN_PROFILE_BUNDLE_MAX_BYTES: usize = C62_CAMPAIGN_PROFILE_BUNDLE_HEADER_BYTES
     + C62_CAMPAIGN_PROFILE_COUNT * C62_CAMPAIGN_PROFILE_MAX_BYTES;
+const C64_CAMPAIGN_PROFILE_BUNDLE_MAX_BYTES: usize = C64_CAMPAIGN_PROFILE_BUNDLE_HEADER_BYTES
+    + C64_CAMPAIGN_PROFILE_COUNT * C62_CAMPAIGN_PROFILE_MAX_BYTES;
 pub const C61_CAMPAIGN_SETUP_BYTES: u64 = 148_738_118;
 const VERIFIER_MODEL_SETUP_MAX_BYTES: usize = 1_000_000;
 const PUBLIC_INSTANCE_MAX_BYTES: usize = 160 + 4 * 1_024;
@@ -5403,6 +5411,15 @@ fn c62_profile_topology_matches(
     index: usize,
     topology: C6OperationPlanTopologyIdentity,
 ) -> bool {
+    C62_CAMPAIGN_PROFILE_IDS
+        .get(index)
+        .is_some_and(|&old_context| campaign_profile_topology_matches(old_context, topology))
+}
+
+fn campaign_profile_topology_matches(
+    old_context: u32,
+    topology: C6OperationPlanTopologyIdentity,
+) -> bool {
     let measured = (
         topology.source_count,
         topology.canonical_node_count,
@@ -5412,9 +5429,6 @@ fn c62_profile_topology_matches(
         topology.product_triple_count,
         topology.zero_root_count,
     );
-    let Some(old_context) = C62_CAMPAIGN_PROFILE_IDS.get(index).copied() else {
-        return false;
-    };
     let expected = match old_context {
         0 => (5_119_131, 17_894_474, 2_093, 6_458_502, 673, 29_620, 10_909),
         150 | 200 => (1_992_912, 7_082_024, 2_093, 2_599_883, 673, 27_073, 10_060),
@@ -5477,6 +5491,58 @@ fn encode_c62_campaign_profile_bundle(
     }
     if bundle.len() != bundle_bytes || bundle.len() > C62_CAMPAIGN_PROFILE_BUNDLE_MAX_BYTES {
         return Err("C6.2 setup profile bundle byte census changed".to_owned());
+    }
+    Ok(bundle)
+}
+
+fn encode_c64_campaign_profile_bundle(
+    installed: [&C61CampaignInstalledSetup; C64_CAMPAIGN_PROFILE_COUNT],
+    verifier_model: &Gpt2VerifierModel,
+    quantization_digest: [u8; 32],
+) -> Result<Vec<u8>, String> {
+    let mut profiles = Vec::with_capacity(C64_CAMPAIGN_PROFILE_COUNT);
+    for (old_context, profile) in C64_CAMPAIGN_PROFILE_IDS.into_iter().zip(installed) {
+        if !campaign_profile_topology_matches(old_context, profile.verifier_plan.topology()) {
+            return Err(format!("C6.4 installed setup profile {old_context} has the wrong topology"));
+        }
+        profiles.push(encode_campaign_client_parameters_with_plan_limit(
+            profile,
+            verifier_model,
+            quantization_digest,
+            C62_CAMPAIGN_PROFILE_MAGIC,
+            C62_CAMPAIGN_PROFILE_VERSION,
+            None,
+            None,
+        )?);
+    }
+    let profile_bytes = profiles.iter().try_fold(0usize, |total, profile| {
+        total.checked_add(profile.len()).ok_or_else(|| "C6.4 profile bundle overflows".to_owned())
+    })?;
+    let bundle_bytes = C64_CAMPAIGN_PROFILE_BUNDLE_HEADER_BYTES
+        .checked_add(profile_bytes)
+        .ok_or_else(|| "C6.4 profile bundle length overflows".to_owned())?;
+    let mut bundle = Vec::with_capacity(bundle_bytes);
+    bundle.extend_from_slice(C64_CAMPAIGN_PROFILE_BUNDLE_MAGIC);
+    bundle.extend_from_slice(&C64_CAMPAIGN_PROFILE_BUNDLE_VERSION.to_le_bytes());
+    bundle.extend_from_slice(&(C64_CAMPAIGN_PROFILE_COUNT as u16).to_le_bytes());
+    for profile in C64_CAMPAIGN_PROFILE_IDS {
+        bundle.extend_from_slice(&profile.to_le_bytes());
+    }
+    for profile in &profiles {
+        bundle.extend_from_slice(
+            &u64::try_from(profile.len())
+                .map_err(|_| "C6.4 setup profile length exceeds u64".to_owned())?
+                .to_le_bytes(),
+        );
+    }
+    for profile in &profiles {
+        bundle.extend_from_slice(blake3::hash(profile).as_bytes());
+    }
+    for profile in profiles {
+        bundle.extend_from_slice(&profile);
+    }
+    if bundle.len() != bundle_bytes || bundle.len() > C64_CAMPAIGN_PROFILE_BUNDLE_MAX_BYTES {
+        return Err("C6.4 setup profile bundle byte census changed".to_owned());
     }
     Ok(bundle)
 }
@@ -5556,6 +5622,81 @@ fn c62_campaign_profile_bundle_slices(
     Ok(profiles)
 }
 
+fn c64_campaign_profile_bundle_slices(
+    bundle: &[u8],
+) -> Result<[&[u8]; C64_CAMPAIGN_PROFILE_COUNT], String> {
+    if bundle.len() < C64_CAMPAIGN_PROFILE_BUNDLE_HEADER_BYTES
+        || bundle.len() > C64_CAMPAIGN_PROFILE_BUNDLE_MAX_BYTES
+        || bundle.get(..8) != Some(C64_CAMPAIGN_PROFILE_BUNDLE_MAGIC)
+        || u16::from_le_bytes(bundle[8..10].try_into().expect("fixed profile version"))
+            != C64_CAMPAIGN_PROFILE_BUNDLE_VERSION
+        || usize::from(u16::from_le_bytes(
+            bundle[10..12].try_into().expect("fixed profile count"),
+        )) != C64_CAMPAIGN_PROFILE_COUNT
+    {
+        return Err("C6.4 setup profile bundle header or length differs".to_owned());
+    }
+    let mut cursor = 12;
+    for expected in C64_CAMPAIGN_PROFILE_IDS {
+        let actual = u32::from_le_bytes(
+            bundle[cursor..cursor + 4].try_into().expect("fixed profile identifier"),
+        );
+        cursor += 4;
+        if actual != expected {
+            return Err("C6.4 setup profile order differs".to_owned());
+        }
+    }
+    let mut lengths = [0usize; C64_CAMPAIGN_PROFILE_COUNT];
+    for length in &mut lengths {
+        *length = usize::try_from(u64::from_le_bytes(
+            bundle[cursor..cursor + 8].try_into().expect("fixed profile length"),
+        ))
+        .map_err(|_| "C6.4 setup profile length exceeds usize".to_owned())?;
+        cursor += 8;
+        if *length == 0 || *length > C62_CAMPAIGN_PROFILE_MAX_BYTES {
+            return Err("C6.4 setup profile length is outside its allocation".to_owned());
+        }
+    }
+    let digest_start = cursor;
+    cursor += 32 * C64_CAMPAIGN_PROFILE_COUNT;
+    debug_assert_eq!(cursor, C64_CAMPAIGN_PROFILE_BUNDLE_HEADER_BYTES);
+    let mut profiles = Vec::with_capacity(C64_CAMPAIGN_PROFILE_COUNT);
+    for (index, length) in lengths.into_iter().enumerate() {
+        let end = cursor
+            .checked_add(length)
+            .ok_or_else(|| "C6.4 setup profile offset overflows".to_owned())?;
+        let profile = bundle
+            .get(cursor..end)
+            .ok_or_else(|| "C6.4 setup profile is truncated".to_owned())?;
+        let expected = &bundle[digest_start + 32 * index..digest_start + 32 * (index + 1)];
+        if blake3::hash(profile).as_bytes() != expected {
+            return Err(format!("C6.4 setup profile {index} digest differs"));
+        }
+        profiles.push(profile);
+        cursor = end;
+    }
+    if cursor != bundle.len() {
+        return Err("C6.4 setup profile bundle has trailing bytes".to_owned());
+    }
+    let profiles: [&[u8]; C64_CAMPAIGN_PROFILE_COUNT] = profiles
+        .try_into()
+        .map_err(|_| "C6.4 setup profile census differs".to_owned())?;
+    let mut verifier_model_digest = None;
+    let mut quantization = None;
+    for profile in profiles {
+        let components = c62_campaign_client_parameter_components(profile)?;
+        let model_digest = *blake3::hash(components[4]).as_bytes();
+        if verifier_model_digest.replace(model_digest).is_some_and(|prior| prior != model_digest)
+            || quantization
+                .replace(components[5])
+                .is_some_and(|prior: &[u8]| prior != components[5])
+        {
+            return Err("C6.4 setup profiles do not share one model and quantization".to_owned());
+        }
+    }
+    Ok(profiles)
+}
+
 /// Compress 17 variable-length C62SP1 profiles into one C62CP1 bundle.
 pub fn encode_c62_campaign_client_parameters(
     installed: [&C61CampaignInstalledSetup; C62_CAMPAIGN_PROFILE_COUNT],
@@ -5567,6 +5708,20 @@ pub fn encode_c62_campaign_client_parameters(
     let encoded = encode_c62_client_parameter_envelope(&inner)?;
     if encoded.len() > C62_CAMPAIGN_CLIENT_PARAMETERS_MAX_BYTES {
         return Err("C6.2 client parameters exceed their compressed setup cap".to_owned());
+    }
+    Ok(encoded)
+}
+
+pub fn encode_c64_campaign_client_parameters(
+    installed: [&C61CampaignInstalledSetup; C64_CAMPAIGN_PROFILE_COUNT],
+    verifier_model: &Gpt2VerifierModel,
+    quantization_digest: [u8; 32],
+) -> Result<Vec<u8>, String> {
+    let inner =
+        encode_c64_campaign_profile_bundle(installed, verifier_model, quantization_digest)?;
+    let encoded = encode_c62_client_parameter_envelope(&inner)?;
+    if encoded.len() > C62_CAMPAIGN_CLIENT_PARAMETERS_MAX_BYTES {
+        return Err("C6.4 client parameters exceed their compressed setup cap".to_owned());
     }
     Ok(encoded)
 }
@@ -5629,6 +5784,36 @@ pub fn build_c62_campaign_setup_manifest(
         > C62_CAMPAIGN_SETUP_MAX_BYTES
     {
         return Err("C6.2 constructed setup exceeds its compressed cap".to_owned());
+    }
+    Ok(setup)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn build_c64_campaign_setup_manifest(
+    installed: [&C61CampaignInstalledSetup; C64_CAMPAIGN_PROFILE_COUNT],
+    verifier_model: &Gpt2VerifierModel,
+    quantization_digest: [u8; 32],
+    protocol_digest: [u8; 32],
+    model_digest: [u8; 32],
+    params_digest: [u8; 32],
+    connection_id: [u8; 32],
+    tape_ids: [[u8; 32]; 2],
+) -> Result<C6SetupManifest, String> {
+    let client_parameters =
+        encode_c64_campaign_client_parameters(installed, verifier_model, quantization_digest)?;
+    let setup = C6SetupManifest::production(
+        protocol_digest,
+        model_digest,
+        params_digest,
+        connection_id,
+        tape_ids,
+        client_parameters,
+    )
+    .map_err(|error| error.to_string())?;
+    if setup.first_exchange_bytes().map_err(|error| error.to_string())?
+        > C62_CAMPAIGN_SETUP_MAX_BYTES
+    {
+        return Err("C6.4 constructed setup exceeds its compressed cap".to_owned());
     }
     Ok(setup)
 }
@@ -5874,6 +6059,18 @@ pub(crate) fn decode_c62_campaign_client_parameters(
         C62_CAMPAIGN_PROFILE_BUNDLE_MAX_BYTES,
         C62_CAMPAIGN_CLIENT_PARAMETERS_MAX_BYTES,
     )?;
+    if bundle.get(..8) == Some(C64_CAMPAIGN_PROFILE_BUNDLE_MAGIC) {
+        let index = C64_CAMPAIGN_PROFILE_IDS
+            .iter()
+            .position(|&candidate| candidate == old_context)
+            .ok_or_else(|| "C6.4 workload has no registered setup profile".to_owned())?;
+        let profiles = c64_campaign_profile_bundle_slices(&bundle)?;
+        let decoded = decode_c62_campaign_profile(profiles[index])?;
+        if !campaign_profile_topology_matches(old_context, decoded.verifier_plan.topology()) {
+            return Err("C6.4 selected client setup has the wrong topology".to_owned());
+        }
+        return Ok(decoded);
+    }
     let index = c62_profile_index(old_context)?;
     let profiles = c62_campaign_profile_bundle_slices(&bundle)?;
     let decoded = decode_c62_campaign_profile(profiles[index])?;
@@ -7674,6 +7871,23 @@ mod campaign_artifact_tests {
         }
         for old_context in [1, 149, 201, 451, 901, 950] {
             assert!(c62_profile_index(old_context).is_err());
+        }
+    }
+
+    #[test]
+    fn c64_setup_profile_selection_is_exactly_zero_and_150() {
+        assert_eq!(C64_CAMPAIGN_PROFILE_COUNT, 2);
+        assert_eq!(C64_CAMPAIGN_PROFILE_IDS, [0, 150]);
+        assert_eq!(C64_CAMPAIGN_PROFILE_BUNDLE_HEADER_BYTES, 100);
+        assert_eq!(
+            C64_CAMPAIGN_PROFILE_BUNDLE_MAX_BYTES,
+            100 + 2 * C61_CAMPAIGN_CLIENT_PARAMETERS_BYTES,
+        );
+        for context in [0, 150] {
+            assert!(C64_CAMPAIGN_PROFILE_IDS.contains(&context));
+        }
+        for context in [50, 100, 200, 900] {
+            assert!(!C64_CAMPAIGN_PROFILE_IDS.contains(&context));
         }
     }
 

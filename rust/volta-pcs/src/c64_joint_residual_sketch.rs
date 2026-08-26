@@ -1,16 +1,136 @@
-//! Small executable C6.4 reference for the joint cache/residual correction sketch.
+//! Executable C6.4 references for the joint cache/residual sketch.
 //!
-//! This module proves only the linear row-layout identity.  It intentionally
-//! has no prover, codec, production geometry allocation, GPU path or claim of
-//! residual/source binding.
+//! The historical correction-only layout remains as a differential fixture.
+//! The selected terminal layout packs the complete private residual owner in
+//! the unused cells of the same table and exposes systematic rows only for the
+//! cache prefix.
 
 use volta_field::{Fp, Fp2};
-use volta_proto::C6PairedResidualCorrectionRows;
+use volta_mac::{ProverAuthed, VerifierKey};
+use volta_proto::mle::eq_vec;
+use volta_proto::{
+    C6PairedResidualAuxiliaryWitness, C6PairedResidualClosureWitness,
+    C6PairedResidualCorrectionRows, C6PairedResidualLeafWitness, C6ResidualAuxiliaryLane,
+    C6ResidualLeafColumn,
+};
 
 use crate::c63_authenticated_sketch::C63SparseSketchReference;
+use crate::c6_residual_sumcheck::C6ResidualSumcheckFamily;
+use crate::c6_residual_sumcheck_blind::{
+    C6BlindResidualPendingClaimsProver, C6BlindResidualPendingClaimsVerifier,
+};
 
 pub const C64_JOINT_COLUMNS: usize = 16;
 pub const C64_RESIDUAL_PUBLIC_COLUMNS: usize = 4;
+pub const C64_RESIDUAL_LEAF_TABLES: usize = 8;
+pub const C64_RESIDUAL_AUXILIARY_TABLES: usize = 16;
+pub const C64_RESIDUAL_TERMINAL_CLAIMS: usize = 48;
+
+pub(crate) fn fold_c64_terminal_pending_prover(
+    pending: &C6BlindResidualPendingClaimsProver,
+    weights: &[Fp2; C64_RESIDUAL_TERMINAL_CLAIMS],
+) -> Result<([ProverAuthed; 2], [u8; 32]), String> {
+    let entries = pending.link_entries();
+    let digest = validate_and_digest_terminal_entries(
+        entries.iter().map(|(descriptor, _)| descriptor),
+        weights,
+    )?;
+    let claims = entries.iter().zip(weights).fold(
+        [ProverAuthed::ZERO; 2],
+        |mut folded, ((_, claims), &weight)| {
+            for tape in 0..2 {
+                folded[tape] = folded[tape].add(claims[tape].scale(weight));
+            }
+            folded
+        },
+    );
+    if claims[0].x != claims[1].x {
+        return Err("C6.4 folded terminal plaintext differs across tapes".to_owned());
+    }
+    Ok((claims, digest))
+}
+
+pub(crate) fn fold_c64_terminal_pending_verifier(
+    pending: &C6BlindResidualPendingClaimsVerifier,
+    weights: &[Fp2; C64_RESIDUAL_TERMINAL_CLAIMS],
+) -> Result<([VerifierKey; 2], [u8; 32]), String> {
+    let entries = pending.link_entries();
+    let digest = validate_and_digest_terminal_entries(
+        entries.iter().map(|(descriptor, _)| descriptor),
+        weights,
+    )?;
+    let keys = entries.iter().zip(weights).fold(
+        [VerifierKey::ZERO; 2],
+        |mut folded, ((_, keys), &weight)| {
+            for tape in 0..2 {
+                folded[tape] = folded[tape].add(keys[tape].scale(weight));
+            }
+            folded
+        },
+    );
+    Ok((keys, digest))
+}
+
+fn validate_and_digest_terminal_entries<'a>(
+    descriptors: impl IntoIterator<
+        Item = &'a crate::c6_residual_sumcheck_blind::C6BlindResidualPendingDescriptor,
+    >,
+    weights: &[Fp2; C64_RESIDUAL_TERMINAL_CLAIMS],
+) -> Result<[u8; 32], String> {
+    let descriptors = descriptors.into_iter().collect::<Vec<_>>();
+    if descriptors.len() != C64_RESIDUAL_TERMINAL_CLAIMS {
+        return Err("C6.4 terminal pending-claim census differs".to_owned());
+    }
+    let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c64/terminal-pending-fold/v1");
+    for (index, (descriptor, &weight)) in descriptors.iter().zip(weights).enumerate() {
+        let repetition = index / 24;
+        let local = index % 24;
+        let (family, table) = if local < C64_RESIDUAL_LEAF_TABLES {
+            (C6ResidualSumcheckFamily::LeafRaw, local)
+        } else {
+            (C6ResidualSumcheckFamily::Auxiliary, local - C64_RESIDUAL_LEAF_TABLES)
+        };
+        if usize::from(descriptor.repetition()) != repetition
+            || descriptor.family() != family
+            || usize::from(descriptor.table().slot) != table
+            || descriptor.statement_digest() == [0; 32]
+            || descriptor.point().is_empty()
+        {
+            return Err(format!(
+                "C6.4 terminal pending descriptor {index} differs: repetition {}, family {:?}, slot {}",
+                descriptor.repetition(),
+                descriptor.family(),
+                descriptor.table().slot
+            ));
+        }
+        hasher.update(&descriptor.statement_digest());
+        hasher.update(&[descriptor.repetition(), family as u8]);
+        hasher.update(&descriptor.table().cohort_id.to_le_bytes());
+        hasher.update(&descriptor.table().slot.to_le_bytes());
+        hasher.update(&(descriptor.point().len() as u64).to_le_bytes());
+        for value in descriptor.point() {
+            hasher.update(&value.c0.value().to_le_bytes());
+            hasher.update(&value.c1.value().to_le_bytes());
+        }
+        hasher.update(&weight.c0.value().to_le_bytes());
+        hasher.update(&weight.c1.value().to_le_bytes());
+    }
+    for repetition in 0..2 {
+        let leaf = descriptors[repetition * 24].point();
+        let auxiliary = descriptors[repetition * 24 + C64_RESIDUAL_LEAF_TABLES].point();
+        if descriptors[repetition * 24..repetition * 24 + C64_RESIDUAL_LEAF_TABLES]
+            .iter()
+            .any(|descriptor| descriptor.point() != leaf)
+            || descriptors[repetition * 24 + C64_RESIDUAL_LEAF_TABLES..(repetition + 1) * 24]
+                .iter()
+                .any(|descriptor| descriptor.point() != auxiliary)
+            || !leaf.ends_with(auxiliary)
+        {
+            return Err("C6.4 terminal pending point families differ".to_owned());
+        }
+    }
+    Ok(*hasher.finalize().as_bytes())
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum C64JointRowKind {
@@ -247,6 +367,228 @@ impl C64JointCorrectionLayout {
     }
 }
 
+/// Scaled/reference packing of the complete private residual owner into the
+/// unused cells of the same D23 x 16 table.  Only cache rows have a public
+/// row-opening API; residual leaf and auxiliary cells remain private.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C64JointTerminalLayoutReference {
+    input_rows: usize,
+    cache_rows: usize,
+    leaf_rows: usize,
+    closure_rows: usize,
+    residual_rows: usize,
+    auxiliary_offsets: [usize; C64_RESIDUAL_AUXILIARY_TABLES],
+    auxiliary_lengths: [usize; C64_RESIDUAL_AUXILIARY_TABLES],
+    cells: Vec<Fp>,
+}
+
+impl C64JointTerminalLayoutReference {
+    pub fn new(
+        input_rows: usize,
+        cache_rows: &[[Fp; C64_JOINT_COLUMNS]],
+        leaf: &C6PairedResidualLeafWitness,
+        closure: &C6PairedResidualClosureWitness,
+        auxiliary: &C6PairedResidualAuxiliaryWitness,
+    ) -> Result<Self, String> {
+        if input_rows == 0 || !input_rows.is_power_of_two() {
+            return Err("C6.4 terminal layout input rows are not a power of two".to_owned());
+        }
+        let leaf_rows = leaf.source_count() as usize;
+        let closure_rows = closure.values().len();
+        let residual_rows = leaf_rows.max(closure_rows);
+        if auxiliary.closure_witness_digest() != closure.witness_digest() {
+            return Err("C6.4 terminal layout owners differ".to_owned());
+        }
+        let cell_capacity = input_rows
+            .checked_mul(C64_JOINT_COLUMNS)
+            .ok_or_else(|| "C6.4 terminal layout capacity overflows".to_owned())?;
+        if cache_rows.len() > input_rows {
+            return Err("C6.4 cache rows exceed D23".to_owned());
+        }
+        let mut cells = vec![Fp::ZERO; cell_capacity];
+        for (row, values) in cache_rows.iter().enumerate() {
+            cells[row * C64_JOINT_COLUMNS..(row + 1) * C64_JOINT_COLUMNS].copy_from_slice(values);
+        }
+        let residual_start = cache_rows.len();
+        if residual_start.checked_add(residual_rows).is_none_or(|end| end > input_rows) {
+            return Err("C6.4 terminal leaf rows exceed D23".to_owned());
+        }
+        for (slot, column) in C6ResidualLeafColumn::ALL.into_iter().enumerate() {
+            for (row, &value) in leaf.column(column).iter().enumerate() {
+                write_fp2_cell(
+                    &mut cells,
+                    (residual_start + row) * C64_JOINT_COLUMNS + 2 * slot,
+                    value,
+                )?;
+            }
+        }
+        for (row, &value) in closure.values().iter().enumerate() {
+            write_fp2_cell(&mut cells, (residual_start + row) * C64_JOINT_COLUMNS + 14, value)?;
+        }
+
+        let mut cursor = residual_start
+            .checked_add(residual_rows)
+            .and_then(|rows| rows.checked_mul(C64_JOINT_COLUMNS))
+            .ok_or_else(|| "C6.4 terminal auxiliary offset overflows".to_owned())?;
+        let mut auxiliary_offsets = [0usize; C64_RESIDUAL_AUXILIARY_TABLES];
+        let mut auxiliary_lengths = [0usize; C64_RESIDUAL_AUXILIARY_TABLES];
+        for lane in C6ResidualAuxiliaryLane::ALL {
+            auxiliary_offsets[lane.index()] = cursor;
+            auxiliary_lengths[lane.index()] = auxiliary.lane(lane).len();
+            for &value in auxiliary.lane(lane) {
+                write_fp2_cell(&mut cells, cursor, value)?;
+                cursor = cursor
+                    .checked_add(2)
+                    .ok_or_else(|| "C6.4 terminal auxiliary cursor overflows".to_owned())?;
+            }
+        }
+        if cursor > cell_capacity {
+            return Err("C6.4 complete residual owner exceeds the joint D23 table".to_owned());
+        }
+        Ok(Self {
+            input_rows,
+            cache_rows: cache_rows.len(),
+            leaf_rows,
+            closure_rows,
+            residual_rows,
+            auxiliary_offsets,
+            auxiliary_lengths,
+            cells,
+        })
+    }
+
+    pub fn public_cache_row(&self, row: usize) -> Result<[Fp; C64_JOINT_COLUMNS], String> {
+        if row >= self.cache_rows {
+            return Err("C6.4 systematic opening attempted to expose a private row".to_owned());
+        }
+        self.cells[row * C64_JOINT_COLUMNS..(row + 1) * C64_JOINT_COLUMNS]
+            .try_into()
+            .map_err(|_| "C6.4 cache row geometry differs".to_owned())
+    }
+
+    pub fn physical_private_fp_values(&self) -> usize {
+        self.leaf_rows * 14
+            + self.closure_rows * 2
+            + 2 * self.auxiliary_lengths.iter().sum::<usize>()
+    }
+
+    pub fn binding_digest(&self) -> [u8; 32] {
+        let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c64/joint-terminal-layout/v1");
+        hasher.update(&(self.input_rows as u64).to_le_bytes());
+        hasher.update(&(self.cache_rows as u64).to_le_bytes());
+        hasher.update(&(self.leaf_rows as u64).to_le_bytes());
+        hasher.update(&(self.closure_rows as u64).to_le_bytes());
+        hasher.update(&(self.residual_rows as u64).to_le_bytes());
+        for (&offset, &length) in self.auxiliary_offsets.iter().zip(&self.auxiliary_lengths) {
+            hasher.update(&(offset as u64).to_le_bytes());
+            hasher.update(&(length as u64).to_le_bytes());
+        }
+        for value in &self.cells {
+            hasher.update(&value.value().to_le_bytes());
+        }
+        *hasher.finalize().as_bytes()
+    }
+
+    pub fn private_message_reference(&self) -> Vec<Fp2> {
+        self.cells.iter().copied().map(Fp2::from_base).collect()
+    }
+
+    pub fn coefficient_digest(coefficients: &[Fp2]) -> [u8; 32] {
+        let mut hasher =
+            blake3::Hasher::new_derive_key("volta-zk/c64/joint-terminal-coefficients/v1");
+        hasher.update(&(coefficients.len() as u64).to_le_bytes());
+        for value in coefficients {
+            hasher.update(&value.c0.value().to_le_bytes());
+            hasher.update(&value.c1.value().to_le_bytes());
+        }
+        *hasher.finalize().as_bytes()
+    }
+
+    /// Compile the one public coefficient vector whose inner product with
+    /// the packed table equals a transcript-weighted fold of all 48 C6RSC3
+    /// terminal claims. Production streams these coefficients into the
+    /// existing authenticated sumcheck instead of materializing the vector.
+    pub fn terminal_coefficients_reference(
+        &self,
+        leaf_points: [&[Fp2]; 2],
+        auxiliary_points: [&[Fp2]; 2],
+        claim_weights: &[Fp2; C64_RESIDUAL_TERMINAL_CLAIMS],
+    ) -> Result<Vec<Fp2>, String> {
+        let mut coefficients = vec![Fp2::ZERO; self.cells.len()];
+        for repetition in 0..2 {
+            if leaf_points[repetition].len() != self.input_rows.ilog2() as usize
+                || auxiliary_points[repetition].len() >= leaf_points[repetition].len()
+                || !leaf_points[repetition].ends_with(auxiliary_points[repetition])
+            {
+                return Err("C6.4 terminal point geometry differs".to_owned());
+            }
+            let leaf_eq = eq_vec(leaf_points[repetition]);
+            let auxiliary_eq = eq_vec(auxiliary_points[repetition]);
+            let claim_base =
+                repetition * (C64_RESIDUAL_LEAF_TABLES + C64_RESIDUAL_AUXILIARY_TABLES);
+            for slot in 0..C64_RESIDUAL_LEAF_TABLES {
+                let rows = if slot == 7 { self.closure_rows } else { self.leaf_rows };
+                for row in 0..rows {
+                    add_fp2_coefficient(
+                        &mut coefficients,
+                        (self.cache_rows + row) * C64_JOINT_COLUMNS + 2 * slot,
+                        claim_weights[claim_base + slot] * leaf_eq[row],
+                    )?;
+                }
+            }
+            for lane in 0..C64_RESIDUAL_AUXILIARY_TABLES {
+                if self.auxiliary_lengths[lane] > auxiliary_eq.len() {
+                    return Err("C6.4 auxiliary live prefix exceeds its terminal point".to_owned());
+                }
+                for (row, &equality) in
+                    auxiliary_eq[..self.auxiliary_lengths[lane]].iter().enumerate()
+                {
+                    add_fp2_coefficient(
+                        &mut coefficients,
+                        self.auxiliary_offsets[lane] + 2 * row,
+                        claim_weights[claim_base + C64_RESIDUAL_LEAF_TABLES + lane] * equality,
+                    )?;
+                }
+            }
+        }
+        Ok(coefficients)
+    }
+
+    pub fn evaluate_terminal_functional_reference(
+        &self,
+        coefficients: &[Fp2],
+    ) -> Result<Fp2, String> {
+        if coefficients.len() != self.cells.len() {
+            return Err("C6.4 terminal coefficient census differs".to_owned());
+        }
+        Ok(coefficients
+            .iter()
+            .zip(&self.cells)
+            .fold(Fp2::ZERO, |sum, (&coefficient, &value)| sum + coefficient.mul_base(value)))
+    }
+}
+
+fn write_fp2_cell(cells: &mut [Fp], offset: usize, value: Fp2) -> Result<(), String> {
+    let target = cells
+        .get_mut(offset..offset + 2)
+        .ok_or_else(|| "C6.4 packed Fp2 exceeds the joint table".to_owned())?;
+    target.copy_from_slice(&[value.c0, value.c1]);
+    Ok(())
+}
+
+fn add_fp2_coefficient(
+    coefficients: &mut [Fp2],
+    offset: usize,
+    coefficient: Fp2,
+) -> Result<(), String> {
+    let target = coefficients
+        .get_mut(offset..offset + 2)
+        .ok_or_else(|| "C6.4 packed coefficient exceeds the joint table".to_owned())?;
+    target[0] += coefficient;
+    target[1] += coefficient * Fp2::new(Fp::ZERO, Fp::ONE);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -333,6 +675,155 @@ mod tests {
             vec![leaking],
             [0x64; 32],
             [0xa4; 32],
+        )
+        .is_err());
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn complete_terminal_functional_matches_packed_joint_table() {
+        use crate::c63_sparse_h_closure::{
+            prove_c64_terminal_link_reference, verify_c64_terminal_link_reference,
+            C63SparseHClosureProof, C64TerminalLinkStatement,
+            C64_TERMINAL_LINK_PRODUCTION_FRAMED_BYTES,
+            C64_TERMINAL_LINK_PRODUCTION_FULL_CORRELATIONS_PER_TAPE,
+            C64_TERMINAL_LINK_PRODUCTION_ROUNDS,
+        };
+        use volta_mac::{CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey};
+        use volta_proto::{build_c6_residual_direct_fused_scaled_fixture, mle::eval_mle};
+
+        let fixture = build_c6_residual_direct_fused_scaled_fixture().unwrap();
+        assert_eq!(C64_TERMINAL_LINK_PRODUCTION_ROUNDS, 27);
+        assert_eq!(56 + 27 * 64 + 32, C64_TERMINAL_LINK_PRODUCTION_FRAMED_BYTES);
+        assert_eq!(
+            2 * C64_TERMINAL_LINK_PRODUCTION_ROUNDS,
+            C64_TERMINAL_LINK_PRODUCTION_FULL_CORRELATIONS_PER_TAPE
+        );
+        let cache = vec![[Fp::new(101); C64_JOINT_COLUMNS], [Fp::new(103); C64_JOINT_COLUMNS]];
+        let layout = C64JointTerminalLayoutReference::new(
+            128,
+            &cache,
+            fixture.leaf_witness(),
+            fixture.closure_witness(),
+            fixture.auxiliary_witness(),
+        )
+        .unwrap();
+        let leaf_points: [Vec<Fp2>; 2] = std::array::from_fn(|repetition| {
+            (0..7)
+                .map(|index| Fp2::new(fp(211 + 17 * repetition as u64 + index), fp(307 + index)))
+                .collect()
+        });
+        let auxiliary_points: [Vec<Fp2>; 2] =
+            std::array::from_fn(|repetition| leaf_points[repetition][5..].to_vec());
+        let weights = std::array::from_fn(|index| {
+            Fp2::new(fp(401 + index as u64), fp(701 + 3 * index as u64))
+        });
+        let coefficients = layout
+            .terminal_coefficients_reference(
+                [&leaf_points[0], &leaf_points[1]],
+                [&auxiliary_points[0], &auxiliary_points[1]],
+                &weights,
+            )
+            .unwrap();
+        let mut expected = Fp2::ZERO;
+        for repetition in 0..2 {
+            let base = repetition * 24;
+            for (slot, column) in C6ResidualLeafColumn::ALL.into_iter().enumerate() {
+                expected += weights[base + slot]
+                    * eval_mle(fixture.leaf_witness().column(column), &leaf_points[repetition]);
+            }
+            expected += weights[base + 7]
+                * eval_mle(fixture.closure_witness().values(), &leaf_points[repetition]);
+            for lane in C6ResidualAuxiliaryLane::ALL {
+                expected += weights[base + 8 + lane.index()]
+                    * eval_mle(
+                        fixture.auxiliary_witness().lane(lane),
+                        &auxiliary_points[repetition],
+                    );
+            }
+        }
+        assert_eq!(layout.evaluate_terminal_functional_reference(&coefficients).unwrap(), expected);
+        assert_eq!(layout.public_cache_row(0).unwrap(), cache[0]);
+        assert!(layout.public_cache_row(cache.len()).is_err());
+
+        let mut changed = layout.clone();
+        changed.cells[cache.len() * C64_JOINT_COLUMNS] += Fp::ONE;
+        assert_ne!(
+            changed.evaluate_terminal_functional_reference(&coefficients).unwrap(),
+            expected
+        );
+        assert_ne!(changed.binding_digest(), layout.binding_digest());
+
+        let message = layout.private_message_reference();
+        let claim = layout.evaluate_terminal_functional_reference(&coefficients).unwrap();
+        let statement = C64TerminalLinkStatement::new(
+            layout.binding_digest(),
+            C64JointTerminalLayoutReference::coefficient_digest(&coefficients),
+            [0x48; 32],
+            message.len().ilog2() as u8,
+        )
+        .unwrap();
+        let deltas = [Fp2::new(fp(811), fp(821)), Fp2::new(fp(823), fp(827))];
+        let initial_tags = [Fp2::new(fp(829), fp(839)), Fp2::new(fp(853), fp(857))];
+        let opening_tags = [Fp2::new(fp(859), fp(863)), Fp2::new(fp(877), fp(881))];
+        let initial_claims =
+            std::array::from_fn(|tape| ProverAuthed::new(claim, initial_tags[tape]));
+        let initial_keys =
+            std::array::from_fn(|tape| VerifierKey::new(initial_tags[tape] + deltas[tape] * claim));
+        let seeds = [[0x64; 32], [0x65; 32]];
+        let mut streams = std::array::from_fn(|tape| CorrelationStream::new(seeds[tape]));
+        let mut prover_transcript = Transcript::new([0x66; 32]);
+        let proof = prove_c64_terminal_link_reference(
+            &coefficients,
+            &message,
+            initial_claims,
+            &statement,
+            &mut streams,
+            &mut prover_transcript,
+            |tape, point| Ok(ProverAuthed::new(eval_mle(&message, point), opening_tags[tape])),
+        )
+        .unwrap();
+        assert_eq!(proof.round_count(), 11);
+        assert_eq!(proof.encoded_len().unwrap(), 792);
+        assert!(streams
+            .iter()
+            .all(|stream| stream.counters.full_corrs == 2 * proof.round_count() as u64));
+        let encoded = proof.encode().unwrap();
+        let decoded = C63SparseHClosureProof::decode(&encoded).unwrap();
+        let mut contexts = std::array::from_fn(|tape| VerifierCtx::new(seeds[tape], deltas[tape]));
+        let mut verifier_transcript = Transcript::new([0x66; 32]);
+        let audit = verify_c64_terminal_link_reference(
+            &coefficients,
+            initial_keys,
+            &statement,
+            &decoded,
+            &mut contexts,
+            &mut verifier_transcript,
+            |tape, point| {
+                let value = eval_mle(&message, point);
+                Ok(VerifierKey::new(opening_tags[tape] + deltas[tape] * value))
+            },
+        )
+        .unwrap();
+        assert_eq!(audit.transcript_bytes, 792);
+        assert_eq!(prover_transcript.ledger(), verifier_transcript.ledger());
+
+        let mut wrong_keys = initial_keys;
+        wrong_keys[0] = wrong_keys[0].add(VerifierKey::new(Fp2::ONE));
+        let mut wrong_contexts =
+            std::array::from_fn(|tape| VerifierCtx::new(seeds[tape], deltas[tape]));
+        let mut wrong_transcript = Transcript::new([0x66; 32]);
+        assert!(verify_c64_terminal_link_reference(
+            &coefficients,
+            wrong_keys,
+            &statement,
+            &decoded,
+            &mut wrong_contexts,
+            &mut wrong_transcript,
+            |tape, point| {
+                let value = eval_mle(&message, point);
+                Ok(VerifierKey::new(opening_tags[tape] + deltas[tape] * value))
+            },
         )
         .is_err());
     }

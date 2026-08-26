@@ -199,13 +199,16 @@ pub use c63_sparse_h_closure::{
     verify_c63_sparse_h_tape_closure_from_whir_openings_reference, C63SparseHClosureError,
     C63SparseHClosureProof, C63SparseHClosureReferenceAudit, C63SparseHClosureStatement,
     C63SparseHTapeClosureReferenceAudit, C63SparseHTapeVerifierPending, C63TapeSystematicSpot,
-    C63_SPARSE_H_PRODUCTION_FRAMED_BYTES, C63_SPARSE_H_PRODUCTION_FRAMING_BYTES,
-    C63_SPARSE_H_PRODUCTION_FULL_CORRELATIONS_PER_TAPE, C63_SPARSE_H_PRODUCTION_ROUNDS,
-    C63_SPARSE_H_PRODUCTION_ROUND_PAYLOAD_BYTES,
+    C64TerminalLinkStatement, C63_SPARSE_H_PRODUCTION_FRAMED_BYTES,
+    C63_SPARSE_H_PRODUCTION_FRAMING_BYTES, C63_SPARSE_H_PRODUCTION_FULL_CORRELATIONS_PER_TAPE,
+    C63_SPARSE_H_PRODUCTION_ROUNDS, C63_SPARSE_H_PRODUCTION_ROUND_PAYLOAD_BYTES,
+    C64_TERMINAL_LINK_PRODUCTION_FRAMED_BYTES,
+    C64_TERMINAL_LINK_PRODUCTION_FULL_CORRELATIONS_PER_TAPE, C64_TERMINAL_LINK_PRODUCTION_ROUNDS,
 };
 pub use c64_joint_residual_sketch::{
-    C64JointCorrectionLayout, C64JointCorrectionRow, C64JointSketchCensus, C64_JOINT_COLUMNS,
-    C64_RESIDUAL_PUBLIC_COLUMNS,
+    C64JointCorrectionLayout, C64JointCorrectionRow, C64JointSketchCensus,
+    C64JointTerminalLayoutReference, C64_JOINT_COLUMNS, C64_RESIDUAL_AUXILIARY_TABLES,
+    C64_RESIDUAL_LEAF_TABLES, C64_RESIDUAL_PUBLIC_COLUMNS, C64_RESIDUAL_TERMINAL_CLAIMS,
 };
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub use c64_whir_profile::{

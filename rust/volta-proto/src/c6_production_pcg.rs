@@ -23,6 +23,10 @@ pub const C63_PRODUCTION_SUFFIX_SUB_CORRELATIONS: usize = 24;
 /// 254 residual + 96 reduced output link + 305 compiler + 2 inherited
 /// noncompiler masks + 44 sparse-H + 4 limb masks + 2 source functionals.
 pub const C63_PRODUCTION_SUFFIX_FULL_CORRELATIONS: usize = 707;
+pub const C64_PRODUCTION_SUFFIX_SUB_CORRELATIONS: usize = 24;
+/// C6.3 suffix minus two correction-only source functionals plus the
+/// 54-correlation complete terminal link.
+pub const C64_PRODUCTION_SUFFIX_FULL_CORRELATIONS: usize = 759;
 pub const C62_GENESIS_RESPONSE_SUB_CORRELATIONS: usize = 4_892_214;
 pub const C62_GENESIS_RESPONSE_FULL_CORRELATIONS: usize = 226_917;
 pub const C62_CONTINUATION_256_RESPONSE_SUB_CORRELATIONS: usize = 1_795_150;
@@ -81,6 +85,18 @@ pub const C63_CONTINUATION_1024_FULL_CORRELATIONS: usize =
 pub const C63_CONTINUATION_1024_RAW_CORRELATIONS: u64 = C63_CONTINUATION_1024_SUB_CORRELATIONS
     as u64
     + 2 * C63_CONTINUATION_1024_FULL_CORRELATIONS as u64;
+pub const C64_GENESIS_SUB_CORRELATIONS: usize =
+    C62_GENESIS_RESPONSE_SUB_CORRELATIONS + C64_PRODUCTION_SUFFIX_SUB_CORRELATIONS;
+pub const C64_GENESIS_FULL_CORRELATIONS: usize =
+    C62_GENESIS_RESPONSE_FULL_CORRELATIONS + C64_PRODUCTION_SUFFIX_FULL_CORRELATIONS;
+pub const C64_GENESIS_RAW_CORRELATIONS: u64 =
+    C64_GENESIS_SUB_CORRELATIONS as u64 + 2 * C64_GENESIS_FULL_CORRELATIONS as u64;
+pub const C64_CONTINUATION_256_SUB_CORRELATIONS: usize =
+    C62_CONTINUATION_256_RESPONSE_SUB_CORRELATIONS + C64_PRODUCTION_SUFFIX_SUB_CORRELATIONS;
+pub const C64_CONTINUATION_256_FULL_CORRELATIONS: usize =
+    C62_CONTINUATION_256_RESPONSE_FULL_CORRELATIONS + C64_PRODUCTION_SUFFIX_FULL_CORRELATIONS;
+pub const C64_CONTINUATION_256_RAW_CORRELATIONS: u64 = C64_CONTINUATION_256_SUB_CORRELATIONS as u64
+    + 2 * C64_CONTINUATION_256_FULL_CORRELATIONS as u64;
 pub const C61_VERIFIER_REPLAY_STATE_BYTES: usize = 8
     + 4
     + 7 * 32
@@ -117,6 +133,12 @@ fn registered_production_geometry(sub: usize, full: usize) -> Option<u64> {
         }
         (C63_CONTINUATION_1024_SUB_CORRELATIONS, C63_CONTINUATION_1024_FULL_CORRELATIONS) => {
             Some(C63_CONTINUATION_1024_RAW_CORRELATIONS)
+        }
+        (C64_GENESIS_SUB_CORRELATIONS, C64_GENESIS_FULL_CORRELATIONS) => {
+            Some(C64_GENESIS_RAW_CORRELATIONS)
+        }
+        (C64_CONTINUATION_256_SUB_CORRELATIONS, C64_CONTINUATION_256_FULL_CORRELATIONS) => {
+            Some(C64_CONTINUATION_256_RAW_CORRELATIONS)
         }
         _ => None,
     }
@@ -963,6 +985,23 @@ mod tests {
             assert_eq!(registered_production_geometry(sub, full), Some(raw));
         }
         assert_eq!(C62_GENESIS_RAW_CORRELATIONS - C63_GENESIS_RAW_CORRELATIONS, 116);
+    }
+
+    #[test]
+    fn c64_registered_geometries_cover_exactly_two_profiles() {
+        assert_eq!(C64_PRODUCTION_SUFFIX_SUB_CORRELATIONS, 24);
+        assert_eq!(C64_PRODUCTION_SUFFIX_FULL_CORRELATIONS, 759);
+        for (sub, full, raw) in [
+            (C64_GENESIS_SUB_CORRELATIONS, C64_GENESIS_FULL_CORRELATIONS, 5_347_590),
+            (
+                C64_CONTINUATION_256_SUB_CORRELATIONS,
+                C64_CONTINUATION_256_FULL_CORRELATIONS,
+                2_192_216,
+            ),
+        ] {
+            assert_eq!(registered_production_geometry(sub, full), Some(raw));
+        }
+        assert_eq!(C64_PRODUCTION_SUFFIX_FULL_CORRELATIONS, 707 - 2 + 54);
     }
 
     #[test]

@@ -3191,6 +3191,10 @@ mod enabled {
             assert!(campaign_credit(true, true));
             assert!(!campaign_credit(true, false));
             assert!(!campaign_credit(false, true));
+            let projected = include_str!("../../../volta-pcs/src/c64_projected_residual_suffix.rs");
+            assert!(projected.contains("drop(prepared);"));
+            assert!(projected.contains("C6.4 rebuilt projected residual root differs"));
+            assert!(!projected.contains("pub(crate) lanes:"));
         }
 
         #[cfg(unix)]

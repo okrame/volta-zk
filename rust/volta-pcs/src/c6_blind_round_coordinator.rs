@@ -2288,9 +2288,12 @@ pub fn finish_c63_production_blind_with_persisted_link(
 /// linked directly to the committed correction polynomial.
 #[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
 #[allow(clippy::too_many_arguments)]
-pub fn finish_c64_production_blind_with_projected_residual<R: rand_010::Rng>(
+pub fn finish_c64_production_blind_with_projected_residual(
     roots: &C6PersistedLiveWrapperRootBinding,
-    mut blind: C64ProductionBlindProverOutput,
+    blind: C64ProductionBlindProverOutput,
+    residual_leaf: &volta_proto::C6PairedResidualLeafWitness,
+    residual_closure: &volta_proto::C6PairedResidualClosureWitness,
+    residual_auxiliary: &volta_proto::C6PairedResidualAuxiliaryWitness,
     nbr2: &C6Nbr2CorrectionFunctional<'_>,
     source: C63ResidentSourceFunctionalClaims,
     terminal: &C61NativeTerminalCompilerPrepared,
@@ -2299,7 +2302,6 @@ pub fn finish_c64_production_blind_with_projected_residual<R: rand_010::Rng>(
     streams: &mut [CorrelationStream; TAPES],
     session_digest: [u8; 32],
     transcript: &mut Transcript,
-    rng: &mut R,
 ) -> Result<C64ExactProductionProverProof, String> {
     validate_production_streams(streams)?;
     if roots.session_digest() != session_digest
@@ -2357,14 +2359,19 @@ pub fn finish_c64_production_blind_with_projected_residual<R: rand_010::Rng>(
     let initial_claims = std::array::from_fn(|tape| {
         source_claims.claims()[0][tape].add(source_claims.claims()[1][tape].scale(correction_beta))
     });
-    let correction_message = blind
-        .precommit
-        .correction_message
-        .take()
-        .ok_or_else(|| "C6.4 correction message is absent".to_owned())?;
+    let mut projected_owner =
+        crate::c64_joint_residual_sketch::C64ProjectedResidualGpuOwner::build_production(
+            &blind.precommit.mmcs,
+            blind.precommit.weights.leaf(),
+            blind.precommit.weights.auxiliary(),
+            residual_leaf,
+            residual_closure,
+            residual_auxiliary,
+        )?;
+    let correction_message = projected_owner.take_correction_message()?;
     let (correction_link, correction_link_point, correction_link_targets) =
         crate::c63_sparse_h_closure::prove_c64_correction_link_resident(
-            std::sync::Arc::clone(&blind.precommit.backend),
+            blind.precommit.mmcs.backend(),
             coefficients,
             correction_beta,
             correction_message,
@@ -2386,6 +2393,7 @@ pub fn finish_c64_production_blind_with_projected_residual<R: rand_010::Rng>(
     let projected_output =
         crate::c64_projected_residual_suffix::finish_c64_projected_residual_precommit(
             blind.precommit,
+            projected_owner,
             projected_pending,
             correction_pending,
             [
@@ -2402,7 +2410,6 @@ pub fn finish_c64_production_blind_with_projected_residual<R: rand_010::Rng>(
             batch_alphas,
             mask_range,
             streams,
-            rng,
         )?;
     let projected = crate::c64_projected_residual_codec::C64ProjectedResidualFrame::from_output(
         correction_binding_digest,

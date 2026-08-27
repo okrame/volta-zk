@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "profile": "c64-r3-failure-attribution-amendment-v1",
+  "status": "append_only_correction",
+  "source_record": "c64-e2e-gpu-guard-failure-2026-08-27-31aae24.json",
+  "source_git_commit": "31aae249c62a2580d3649e7d8cd479056382243d",
+  "analysis_base_commit": "25695acbc688f879390fdb7a04a707a9afaa8463",
+  "git_dirty_at_source_run": false,
+  "correction": {
+    "original_roles_are_withdrawn": true,
+    "cohorts": [
+      {
+        "cohort_id_hex": "c6010003",
+        "role": "legacy_delta_residual_wrapper",
+        "oracle_bytes": 17179869184,
+        "coefficient_bytes": 2147483648
+      },
+      {
+        "cohort_id_hex": "c6010006",
+        "role": "legacy_residual_auxiliary_wrapper",
+        "oracle_bytes": 268435456,
+        "coefficient_bytes": 33554432
+      }
+    ],
+    "total_legacy_wrapper_bytes": 19629342720,
+    "not_an_inherited_weight_oracle": true
+  },
+  "implementation_trace": {
+    "c64_calls_legacy_root_materializer": true,
+    "campaign_function": "run_c63_or_c64_campaign_live_production",
+    "root_binding_function": "bind_c63_campaign_live_residual_roots",
+    "materializer": "materialize_production_c63_authenticated_sketch_live_wrapper_roots_cuda",
+    "projected_six_root_precommit_occurs_after_legacy_materialization": true,
+    "c64_certificate_retains_legacy_two_root_wrapper_fields": true
+  },
+  "timing_interpretation": {
+    "external_process_elapsed_s": 432,
+    "guard_observed_s": 430,
+    "provider_certificate_call_includes_response_wrapper_native_compiler_pcs_and_seal": true,
+    "completed_provider_wall_scalar_available": false,
+    "completed_cryptographic_suffix_scalar_available": false,
+    "under_20_second_credit": false,
+    "note": "The process died inside the provider certificate call before its completion-only timer was serialized. The 430-second external observation is not a pure suffix timer, but the response-dependent legacy wrapper is inside the registered provider interval and is therefore not setup outside the prover gate."
+  },
+  "credit": false
+}

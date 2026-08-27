@@ -1,7 +1,7 @@
 # C6.4 — projected residual PCS recovery
 
-**Status:** R3 second pod attempt fail-closed before certificate at the GPU
-memory guard; zero gate credit; no further retry authorized.
+**Status:** R4 local memory repair passes compilation and focused checks; pod
+execution is held by the legacy residual-wrapper deviation below.
 
 **Branch:** `agent/c64-joint-residual-sketch`.
 
@@ -140,7 +140,11 @@ Before paid setup it builds ABI45 and runs the whole projected-residual CUDA
 differential, including output equality and allocation cleanup. It either
 copies only contexts 0 and 150 from `C64_SETUP_SOURCE` or invokes the existing
 setup compiler with `--stop-after 150`; it can never generate the other 15
-profiles. Compilation completes before the measured process starts.
+profiles. Compilation completes before the measured process starts. R4
+compiles for the pod's native CPU and refuses admission unless the compiler
+exposes AVX2, NEON or SVE vector instructions. Rayon uses the allocated vCPU
+count rather than the guest-wide processor census. The compiler features, CPU
+topology and thread count are retained beside the run.
 
 The measured process has a default 600-second emergency timebox, adjustable
 through `C64_SESSION_TIMEOUT_S`, plus the registered disk, cgroup-memory and
@@ -148,8 +152,10 @@ device-memory hard stops. The 20- and 150-second marks are diagnostic only.
 Every second is recorded with process memory/I/O, device memory, compute and
 memory utilization, power, clocks, temperature, free disk and cgroup use;
 stdout, stderr, build/setup logs, artifact hashes and failure file censuses
-remain outside the repository. A target miss keeps both proofs for diagnosis
-but makes `credit:false`.
+remain outside the repository. `C64PH1` markers delimit response, legacy
+wrapper, native chains, projected proof and seal. `C64GPU1` markers record live
+device bytes after each projected root and opening. A target miss keeps both
+proofs for diagnosis but makes `credit:false`.
 
 On a new pod, source and small tracked evidence move only through GitHub HTTPS.
 Generated setup, weights and large run artifacts remain pod-local. Every raw
@@ -157,25 +163,33 @@ run is create-new and records the clean SHA.
 
 ## 7. Exact resume condition
 
-`C64_POD_READY` records the following completed local gates:
+R4 keeps only six roots and six private replay seeds after projected
+precommit. Each committed lane is released immediately, rebuilt from the same
+seed after its opening points exist, and rejected if the rebuilt root is not
+byte-identical. Thus at most one prepared projected lane is owned instead of
+six, and released allocations are reusable by later lanes; the allocator may
+still cache freed blocks. This is the selected SIMT memory repair for the
+measured 422,576,128-byte overrun. Native CPU code continues to use the
+repository's `target-cpu=native` SIMD path.
 
-- projected-pending algebra and mutation checks;
-- shared-mask two-tape authentication and finite counters for six bodies;
-- CUDA projection ownership compiles through the Rust production boundary,
-  cleans up on every error and has a differential runnable on the pod;
-- production coordinator no longer calls the residual wrapper/output-link;
-- strict certificate codec/reload and two-response lifecycle pass;
-- complete local byte/correlation diagnostics agree with this design;
-- the full workspace, feature-enabled C6.4 suite, budget self-check and strict
-  two-profile driver tests pass;
-- `rust/target` and ignored nested build caches are removed after checkpoint.
+The R3 `C64_POD_READY` claim is withdrawn. Source audit after the failed run
+found that C6.4 still unconditionally calls
+`bind_c63_campaign_live_residual_roots`, which materializes cohorts
+`c6010003` and `c6010006` before the compact six-root proof. Their retained
+bytes are 19,629,342,720, dominated by the 17,179,869,184-byte residual
+oracle. The raw failure record mislabeled this as an inherited weight oracle;
+the append-only attribution amendment corrects it. The inherited certificate
+codec also still carries these two roots. Therefore the earlier statements
+that the old residual wrapper was absent and that the response-local dense
+oracle was 0 B do not describe the executed implementation.
 
-The first clean pod attempt at `ba09091` failed at C64MP1 dispatch. The shared
-selector repair at `31aae24` passed that live boundary, but the first response
-then reached `44,099 MiB` and the registered `43,696-MiB` device guard stopped
-it before a certificate. No state was promoted and both authorizations burned.
-Resume requires a plan that removes, reuses or streams at least `422,576,128 B`
-of simultaneous device buffers, or an explicit device-gate change, plus new
-owner GO and a new pod. No third or selective retry is authorized.
-The campaign pod is stopped; its persistent volume retains setup and hashed
-diagnostics.
+`C64_POD_READY` now requires all previous local gates plus a sound C6.4 root
+typestate and certificate binding that removes the two legacy cohorts without
+substituting projected roots into the old wrapper type. The first clean pod
+attempt at `ba09091` failed at dispatch; `31aae24` crossed that boundary but
+reached `44,099 MiB` against the `43,696-MiB` guard. No state was promoted.
+The simultaneous-buffer condition now has a local repair but is not measured
+on an A100. A target-bearing retry remains blocked until the legacy wrapper is
+removed. A separately authorized diagnostic-only run may measure replay and
+phase costs, but cannot receive the under-20-second gate while the 19.63-GB
+wrapper remains. The stopped pod retains setup and hashed diagnostics.

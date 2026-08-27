@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 R3 SECOND POD ATTEMPT FAIL-CLOSED — GPU GUARD / ZERO CERTIFICATES / NO RETRY)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 R4 LOCAL MEMORY REPAIR / LEGACY WRAPPER HARD STOP / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,26 +10,41 @@ record; no external plan is authoritative.
 
 Read `c64-joint-residual-sketch-design.md` next.
 
-- **Status/design.** C6.4 R3 remains isolated from C7. The `ba09091` C64MP1
-  dispatch failure is repaired. Clean `31aae24` crossed that boundary but the
-  first response exceeded the registered GPU guard before any certificate;
-  the supervisor stopped it. Two fresh real-PCG authorizations burned and no
-  state was promoted. This establishes a resource failure, not a protocol or
-  PCS verdict.
-- **Completed evidence.** Native CUDA differential (`0.71 s`), allocation
-  cleanup, campaign discipline, release build and live C64MP1 response
-  dispatch passed. Setup `[0,150]` remains `36,119,243 B`. At 429 s GPU compute
-  reached `94%`; at 430 s memory reached `44,099 MiB`, exceeding the
-  `43,696-MiB` guard by `403 MiB`. Peak host RSS was `21,833,981,952 B`. RunPod
-  allocated 24 vCPU/117 GB although the guest exposed host-wide 192/945 GiB.
-- **Analytic credit only.** `32,903,995 B` certificate projection
-  (`2,096,005 B` hard-limit headroom), `78.001993132250...` soundness bits,
-  `403,177,472 B` resident projection and 661 suffix full correlations per
-  tape are `credit:false` until measured on the pod.
-- **Hard stop/resume.** No third or selective retry is authorized. Resume
-  requires a concrete plan to remove/reuse/stream at least `422,576,128 B` of
-  simultaneous device buffers, or an explicit gate change, plus new owner GO
-  and a new pod. Prover time and certificate bytes remain unmeasured.
+- **Status/design.** C6.4 R4 remains isolated from C7. The failed process spent
+  430 s externally; its completion-only provider timer never serialized. That
+  interval includes response, wrapper commitment, native/compiler proofs,
+  compact PCS and seal, so it is not a pure suffix time. No completed `<20 s`
+  scalar or certificate exists.
+- **Completed evidence.** R4 releases each of six projected commitments after
+  fixing its root and rebuilds one lane at a time from the same private seed;
+  any root mismatch rejects. Feature compile, full workspace, eight focused
+  tests, campaign check and runner syntax pass. Native SIMD admission,
+  allocation-wide Rayon, phase markers and device-residency markers are
+  registered. No pod contacted.
+- **Deviation/no credit.** The 17,179,869,184-B file is legacy residual cohort
+  `c6010003`, not a weight oracle. C6.4 still materializes it plus `c6010006`
+  (19,629,342,720 B total) before six compact roots. Old-wrapper-absent/0-B
+  claims are withdrawn. All measured gates remain false.
+- **Hard stop/resume.** A target-bearing pod retry requires a sound C6.4 root
+  typestate/certificate migration removing both legacy cohorts. A new pod plus
+  explicit diagnostic-only GO may measure R4 despite the known time blocker;
+  it earns no `<20 s` credit while that wrapper remains.
+
+- **2026-08-27 — R4 streams projected commitments but uncovers a legacy
+  wrapper hard stop.** The six projected lanes are now root-fixed and released
+  during precommit, then deterministically rebuilt one at a time for opening;
+  a changed root fails closed. This removes simultaneous ownership of six
+  lanes and permits allocator reuse; the A100 high-water remains unmeasured.
+  The pod runner requires native AVX2/NEON/SVE,
+  uses the allocated vCPU count, and retains CPU/compiler, phase and live-device
+  diagnostics. Local feature compile, full workspace, eight focused tests,
+  campaign discipline and shell syntax pass. Audit also found the executed
+  C6.4 path still builds legacy residual and auxiliary cohorts before the
+  compact proof. Their
+  19,629,342,720 B were misattributed in the immutable R3 record; append-only
+  correction: `c64-wrapper-attribution-amendment-2026-08-27-25695ac.json`.
+  This leaves the `<20 s` target blocked pending a sound root/certificate
+  migration. No pod was contacted and no gate credit changed.
 
 - **2026-08-27 — Pod control-plane metadata amended and pod stopped.** The
   RunPod control plane identifies pod `6zjxkjop55rjqp` (`wooden_crimson_bee`)

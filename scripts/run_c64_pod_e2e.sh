@@ -87,6 +87,10 @@ if [[ $VOLTA_CLOUD_PROVIDER != RunPod || $CUDA_VISIBLE_DEVICES == *,* ]]; then
   echo "the record requires RunPod and exactly one selected GPU" >&2
   exit 2
 fi
+if [[ ! $VOLTA_CLOUD_VCPUS =~ ^[1-9][0-9]*$ ]]; then
+  echo "VOLTA_CLOUD_VCPUS must be the positive allocated vCPU count" >&2
+  exit 2
+fi
 
 IFS=, read -r gpu_name gpu_total_mib <<<"$(
   nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits --id="$CUDA_VISIBLE_DEVICES"
@@ -153,10 +157,20 @@ cd "$REPO_ROOT"
 source "$HOME/.cargo/env"
 export CARGO_INCREMENTAL=0
 export CARGO_PROFILE_RELEASE_DEBUG=0
-export RAYON_NUM_THREADS=8
+export RAYON_NUM_THREADS="$VOLTA_CLOUD_VCPUS"
 export VOLTA_CUDA_ARCH=sm_80
 export VOLTA_CUDA_LIBRARY="$REPO_ROOT/rust/target/cuda/libvolta_cuda_backend.so"
 export VOLTA_REQUIRE_CUDA=1
+
+rustc -C target-cpu=native --print cfg >"$SESSION_ROOT/rustc-native-cfg.txt"
+if ! grep -Eq 'target_feature="(avx2|neon|sve)"' "$SESSION_ROOT/rustc-native-cfg.txt"; then
+  echo "native Rust target exposes no admitted SIMD feature" >&2
+  exit 2
+fi
+lscpu >"$SESSION_ROOT/cpu-topology.txt"
+printf 'rayon_threads=%s\n' "$RAYON_NUM_THREADS" >"$SESSION_ROOT/cpu-execution.txt"
+grep -E '^target_feature=' "$SESSION_ROOT/rustc-native-cfg.txt" \
+  >>"$SESSION_ROOT/cpu-execution.txt"
 
 scripts/build_cuda_backend.sh >"$SESSION_ROOT/cuda-build.log" 2>&1
 cargo test --release --manifest-path rust/Cargo.toml \

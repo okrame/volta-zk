@@ -1,5 +1,7 @@
 //! C6.4 pre-challenge commitment boundary for the compact residual PCS.
 
+#[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
+use rand_010::{RngExt, SeedableRng};
 use volta_field::Fp2;
 #[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
 use volta_mac::ProverAuthed;
@@ -9,6 +11,22 @@ use volta_proto::mle::eq_vec;
 #[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
 use crate::c64_joint_residual_sketch::C64ProjectedResidualGpuOwner;
 use crate::c64_joint_residual_sketch::{C64_RESIDUAL_AUXILIARY_TABLES, C64_RESIDUAL_LEAF_TABLES};
+
+#[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
+fn c64_gpu_phase(mmcs: &crate::c62_gpu_whir::C62GpuMmcs, name: &str) {
+    let epoch_ns = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|value| value.as_nanos())
+        .unwrap_or_default();
+    let resident = mmcs
+        .backend()
+        .lock()
+        .ok()
+        .and_then(|backend| backend.device_memory_breakdown().ok())
+        .map(|memory| memory.resident_bytes)
+        .unwrap_or_default();
+    eprintln!("C64GPU1\t{epoch_ns}\t{name}\tresident_bytes={resident}");
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct C64ProjectedResidualWeights {
@@ -91,22 +109,11 @@ pub(crate) fn draw_c64_projected_residual_postclaim_challenges(
 
 #[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
 pub struct C64ProjectedResidualPrecommit {
-    pub(crate) backend: std::sync::Arc<std::sync::Mutex<volta_accel::Backend>>,
+    pub(crate) mmcs: crate::c62_gpu_whir::C62GpuMmcs,
+    binding_digest: [u8; 32],
     pub(crate) weights: C64ProjectedResidualWeights,
     pub(crate) roots: [[u8; 32]; 6],
-    pub(crate) lanes: [[Option<crate::c63_preencoded_whir::C63ResidentSystematicPrepared>; 2]; 3],
-    pub(crate) correction_message: Option<volta_accel::DeviceBuffer<volta_accel::Fp2Repr>>,
-}
-
-#[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
-impl Drop for C64ProjectedResidualPrecommit {
-    fn drop(&mut self) {
-        if let Some(message) = self.correction_message.take() {
-            if let Ok(mut backend) = self.backend.lock() {
-                let _ = backend.free_device(message);
-            }
-        }
-    }
+    lane_seeds: [[[u8; 32]; 2]; 3],
 }
 
 #[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
@@ -160,7 +167,7 @@ pub fn prepare_c64_projected_residual_precommit<R: rand_010::Rng>(
     };
 
     let weights = draw_c64_projected_residual_weights(binding_digest, transcript)?;
-    let backend = mmcs.backend();
+    c64_gpu_phase(mmcs, "projected_precommit_start");
     let mut owner = C64ProjectedResidualGpuOwner::build_production(
         mmcs,
         weights.leaf(),
@@ -204,7 +211,10 @@ pub fn prepare_c64_projected_residual_precommit<R: rand_010::Rng>(
             c64_residual_limb_context(binding_digest, &weights, family, limb)
         })
     });
-    let mut lanes = std::array::from_fn(|_| std::array::from_fn(|_| None));
+    let mut lane_seeds = [[[0u8; 32]; 2]; 3];
+    for seed in lane_seeds.iter_mut().flatten() {
+        rng.fill(seed);
+    }
     let mut roots = [[0u8; 32]; 6];
     for family in 0..3 {
         for limb in 0..2 {
@@ -217,35 +227,41 @@ pub fn prepare_c64_projected_residual_precommit<R: rand_010::Rng>(
                 ),
                 _ => (auxiliary_mmcs.clone(), &auxiliary_config, owner.take_auxiliary_limb(limb)?),
             };
+            let mut lane_rng = rand_010::rngs::StdRng::from_seed(lane_seeds[family][limb]);
             let prepared = prepare_c63_resident_systematic_limb(
                 lane_mmcs,
                 config,
                 message,
                 contexts[family][limb],
-                rng,
+                &mut lane_rng,
             )?;
             roots[family * 2 + limb] = prepared.root();
-            lanes[family][limb] = Some(prepared);
+            // Only the root crosses this boundary. Rebuild the same committed
+            // lane from its private seed when the later opening points exist.
+            drop(prepared);
+            c64_gpu_phase(mmcs, &format!("projected_root_{family}_{limb}_released"));
         }
     }
     transcript.absorb_public_message(
         "c64_projected_residual_roots",
         &roots.iter().flatten().copied().collect::<Vec<_>>(),
     );
-    let correction_message = owner.take_correction_message()?;
+    drop(owner);
+    c64_gpu_phase(mmcs, "projected_precommit_released");
     Ok(C64ProjectedResidualPrecommit {
-        backend,
+        mmcs: mmcs.clone(),
+        binding_digest,
         weights,
         roots,
-        lanes,
-        correction_message: Some(correction_message),
+        lane_seeds,
     })
 }
 
 #[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn finish_c64_projected_residual_precommit<R: rand_010::Rng>(
-    mut precommit: C64ProjectedResidualPrecommit,
+pub(crate) fn finish_c64_projected_residual_precommit(
+    precommit: C64ProjectedResidualPrecommit,
+    mut owner: C64ProjectedResidualGpuOwner,
     projected_pending: [[[ProverAuthed; 2]; 2]; 3],
     correction_pending: [[[ProverAuthed; 2]; 2]; 2],
     leaf_points: [&[Fp2]; 2],
@@ -256,11 +272,14 @@ pub(crate) fn finish_c64_projected_residual_precommit<R: rand_010::Rng>(
     batch_alphas: [Fp2; 3],
     mask_range: crate::c61_authenticated_whir::C64AuthenticatedWhirMaskRange,
     streams: &mut [volta_mac::CorrelationStream; 2],
-    rng: &mut R,
 ) -> Result<C64ProjectedResidualProverOutput, String> {
     use crate::c61_authenticated_whir::{
         finish_c64_shared_authenticated_whir_limb_pair,
         prepare_c64_shared_authenticated_whir_limb_pair, C64ProjectedResidualFamily,
+    };
+    use crate::c64_whir_profile::{
+        c64_projected_residual_whir_config, C64_AUXILIARY_VARIABLES, C64_CORRECTION_VARIABLES,
+        C64_INPUT_VARIABLES,
     };
 
     if leaf_points.iter().any(|point| point.len() != 23)
@@ -274,6 +293,37 @@ pub(crate) fn finish_c64_projected_residual_precommit<R: rand_010::Rng>(
         C64ProjectedResidualFamily::LeafCorrection,
         C64ProjectedResidualFamily::Auxiliary,
     ];
+    c64_gpu_phase(&precommit.mmcs, "projected_rebuild_open_start");
+    let leaf_config = c64_projected_residual_whir_config(C64_INPUT_VARIABLES)?;
+    let correction_config = c64_projected_residual_whir_config(C64_CORRECTION_VARIABLES)?;
+    let auxiliary_config = c64_projected_residual_whir_config(C64_AUXILIARY_VARIABLES)?;
+    let leaf_mmcs = precommit
+        .mmcs
+        .sequential_fresh_lane(
+            C64_INPUT_VARIABLES,
+            leaf_config.round_folding_factor(0),
+            leaf_config.starting_log_inv_rate,
+            3,
+        )
+        .map_err(|error| error.to_string())?;
+    let auxiliary_mmcs = precommit
+        .mmcs
+        .sequential_fresh_lane(
+            C64_AUXILIARY_VARIABLES,
+            auxiliary_config.round_folding_factor(0),
+            auxiliary_config.starting_log_inv_rate,
+            2,
+        )
+        .map_err(|error| error.to_string())?;
+    let correction_mmcs = precommit
+        .mmcs
+        .sequential_fresh_lane(
+            C64_CORRECTION_VARIABLES,
+            correction_config.round_folding_factor(0),
+            correction_config.starting_log_inv_rate,
+            5,
+        )
+        .map_err(|error| error.to_string())?;
     let mut artifacts: [[Option<Vec<u8>>; 2]; 3] =
         std::array::from_fn(|_| std::array::from_fn(|_| None));
     let mut mask_corrections = [[[Fp2::ZERO; 2]; 2]; 3];
@@ -308,9 +358,36 @@ pub(crate) fn finish_c64_projected_residual_precommit<R: rand_010::Rng>(
         let masks = shared.values();
         let mut limb_outputs = Vec::with_capacity(2);
         for limb in 0..2 {
-            let lane = precommit.lanes[family_index][limb]
-                .take()
-                .ok_or_else(|| "C6.4 projected residual lane is absent".to_owned())?;
+            let (lane_mmcs, config, message) = match family {
+                C64ProjectedResidualFamily::LeafOther => {
+                    (leaf_mmcs.clone(), &leaf_config, owner.take_leaf_other_limb(limb)?)
+                }
+                C64ProjectedResidualFamily::LeafCorrection => (
+                    correction_mmcs.clone(),
+                    &correction_config,
+                    owner.take_leaf_correction_limb(limb)?,
+                ),
+                C64ProjectedResidualFamily::Auxiliary => {
+                    (auxiliary_mmcs.clone(), &auxiliary_config, owner.take_auxiliary_limb(limb)?)
+                }
+            };
+            let mut lane_rng =
+                rand_010::rngs::StdRng::from_seed(precommit.lane_seeds[family_index][limb]);
+            let lane = crate::c63_preencoded_whir::prepare_c63_resident_systematic_limb(
+                lane_mmcs,
+                config,
+                message,
+                c64_residual_limb_context(
+                    precommit.binding_digest,
+                    &precommit.weights,
+                    family_index,
+                    limb,
+                ),
+                &mut lane_rng,
+            )?;
+            if lane.root() != precommit.roots[family_index * 2 + limb] {
+                return Err("C6.4 rebuilt projected residual root differs".to_owned());
+            }
             let values = owned_points
                 .iter()
                 .map(|point| lane.evaluate(point))
@@ -324,8 +401,12 @@ pub(crate) fn finish_c64_projected_residual_precommit<R: rand_010::Rng>(
                 &claims,
                 masks[limb],
                 batch_alphas[family_index],
-                rng,
+                &mut lane_rng,
             )?);
+            c64_gpu_phase(
+                &precommit.mmcs,
+                &format!("projected_open_{family_index}_{limb}_released"),
+            );
         }
         if limb_outputs[0].claim_weights != limb_outputs[1].claim_weights {
             return Err("C6.4 projected residual limb batch weights differ".to_owned());

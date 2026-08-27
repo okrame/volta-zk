@@ -14,6 +14,15 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use std::sync::Arc;
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+fn c64_phase(name: &str) {
+    let epoch_ns = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|value| value.as_nanos())
+        .unwrap_or_default();
+    eprintln!("C64PH1\t{epoch_ns}\t{name}");
+}
 #[cfg(feature = "c6-trace")]
 use volta_accel::{Backend, DeviceSlice};
 use volta_gpt2::{
@@ -2474,6 +2483,9 @@ pub fn finish_c64_campaign_native_proof(
     let proof = finish_c64_production_blind_with_projected_residual(
         &roots.provider_roots,
         blind,
+        residual.leaf(),
+        residual.closure(),
+        residual.auxiliary(),
         &nbr2,
         source_claims,
         &terminal,
@@ -2482,7 +2494,6 @@ pub fn finish_c64_campaign_native_proof(
         attempt.prover_streams_array_mut(),
         roots.session_digest,
         transcript,
-        &mut rng,
     )?;
     let suffix = finish_c64_resident_sketch_suffix(
         prepared_suffix,
@@ -3921,6 +3932,9 @@ fn run_c63_or_c64_campaign_live_production(
     gpu_setup: &C63GpuSetupOwner,
     c64: bool,
 ) -> Result<C63CampaignLiveProductionOutput, String> {
+    if c64 {
+        c64_phase("campaign_start");
+    }
     setup.validate().map_err(|error| error.to_string())?;
     let C63CampaignTransitionOwner {
         workload_owner,
@@ -3994,6 +4008,9 @@ fn run_c63_or_c64_campaign_live_production(
         &mut attempt,
         &mut response_session,
     )?;
+    if c64 {
+        c64_phase("response_complete");
+    }
     let replay_owner = attempt.take_verifier_replay_owner(response_statement.digest())?;
     let native_bindings = C62CampaignNativeBindings::start(public_attempt)?;
     let (returned_workload, response, native_claims) = response.into_parts();
@@ -4006,6 +4023,9 @@ fn run_c63_or_c64_campaign_live_production(
         prepare_c6_t1_production_residual_owner(response, &native_profile, provider, verifier)
             .map_err(|error| error.to_string())?
     };
+    if c64 {
+        c64_phase("residual_owner_complete");
+    }
     drop(native_claims.production_paired_targets(&native_profile, residual.native_targets())?);
     let wrapper_statement = build_c62_campaign_live_wrapper_statement(
         response_statement.clone(),
@@ -4015,6 +4035,9 @@ fn run_c63_or_c64_campaign_live_production(
         &compiler_profile,
     )?;
     let wrapper_statement_digest = wrapper_statement.digest();
+    if c64 {
+        c64_phase("legacy_residual_wrapper_start");
+    }
     let rooted = bind_c63_campaign_live_residual_roots(
         setup,
         wrapper_statement,
@@ -4024,6 +4047,9 @@ fn run_c63_or_c64_campaign_live_production(
         &wrapper_root,
         &mut response_session,
     )?;
+    if c64 {
+        c64_phase("legacy_residual_wrapper_complete");
+    }
     response_session.verify_synchronized()?;
     let (roots, relation) = rooted.into_parts();
     let (equality, residual) = relation.into_parts();
@@ -4038,6 +4064,9 @@ fn run_c63_or_c64_campaign_live_production(
         roots.provider_roots.source_binding_digest(),
     )?;
     let native_public_context_digest = contexts.public_context_digest;
+    if c64 {
+        c64_phase("native_four_chain_start");
+    }
     let four_chain = prepare_c62_campaign_native_four_chains(
         native_claims,
         &residual,
@@ -4051,6 +4080,9 @@ fn run_c63_or_c64_campaign_live_production(
         gpu,
         &proof_root,
     )?;
+    if c64 {
+        c64_phase("native_four_chain_complete");
+    }
     let functional = prepare_c62_campaign_native_functional(
         &roots,
         &residual,
@@ -4079,6 +4111,9 @@ fn run_c63_or_c64_campaign_live_production(
             )?)
         }
     };
+    if c64 {
+        c64_phase("residual_blind_complete");
+    }
     let successor_provider = propose_c63_campaign_successor_state(
         sparse_setup,
         gpu_setup,
@@ -4140,6 +4175,9 @@ fn run_c63_or_c64_campaign_live_production(
             )?,
         }
     };
+    if c64 {
+        c64_phase("proof_envelope_complete");
+    }
     let seal = if c64 { seal_c64_campaign_native_output } else { seal_c63_campaign_native_output };
     let sealed = seal(
         setup,
@@ -4153,6 +4191,9 @@ fn run_c63_or_c64_campaign_live_production(
         sketch_public_argument,
         proof_envelope,
     )?;
+    if c64 {
+        c64_phase("certificate_sealed");
+    }
     let certificate_digest = sealed.certificate.digest().map_err(|error| error.to_string())?;
     let verifier_replay = replay_owner.bind_certificate(certificate_digest)?;
     let connections = attempt.finish_success()?;

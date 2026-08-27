@@ -359,6 +359,13 @@ mod enabled {
         if actual != expected {
             return Err("C6.4 setup root must contain exactly contexts 0 and 150".to_owned());
         }
+        for name in C64_SETUP_PROFILE_DIRS {
+            let metadata = fs::symlink_metadata(root.join(name))
+                .map_err(|error| format!("stat C6.4 setup profile {name}: {error}"))?;
+            if !metadata.file_type().is_dir() || metadata.file_type().is_symlink() {
+                return Err(format!("C6.4 setup profile {name} is not a physical directory"));
+            }
+        }
         C64_SETUP_PROFILE_DIRS
             .iter()
             .map(|name| load_c62_campaign_installed_setup(&root.join(name)))
@@ -1782,6 +1789,10 @@ mod enabled {
         run_root: String,
     }
 
+    fn campaign_credit(protocol_pass: bool, engineering_targets_pass: bool) -> bool {
+        protocol_pass && engineering_targets_pass
+    }
+
     fn c63_prove(args: &Args, c64: bool) -> Result<(), String> {
         let session_started = Instant::now();
         let setup_wall_env = if c64 {
@@ -2309,7 +2320,7 @@ mod enabled {
             .ok_or_else(|| "C6.3 setup plus first bytes overflow".to_owned())?;
         let setup_plus_first_target_pass =
             setup_plus_first_bytes <= C63_SETUP_PLUS_FIRST_TARGET_BYTES;
-        let engineering_targets_pass = setup_plus_first_target_pass
+        let engineering_targets_pass = (!c64 || setup_plus_first_target_pass)
             && certificates.iter().all(|record| {
                 record.certificate_target_pass
                     && record.pi_final_target_pass
@@ -2321,6 +2332,7 @@ mod enabled {
             && capacity_reconciled
             && final_state.head.cache_len == 200
             && final_state.pending_attempt.is_none();
+        let credit = campaign_credit(pass, engineering_targets_pass);
         let record = C63SessionRecord {
             schema: 1,
             profile: if c64 { C64_PROFILE } else { C63_PROFILE },
@@ -2361,7 +2373,7 @@ mod enabled {
             soundness_pass,
             engineering_targets_pass,
             certificates,
-            credit: pass,
+            credit,
             pass,
             artifact_root: artifact_root.display().to_string(),
             state_root: state_root.display().to_string(),
@@ -3175,6 +3187,32 @@ mod enabled {
             let verify = campaign.find("verify_c64_loaded_campaign_e2e").unwrap();
             let accept = campaign.find(".accept_c63(pending, &certificate)").unwrap();
             assert!(load < verify && verify < accept);
+            assert!(campaign.contains("(!c64 || setup_plus_first_target_pass)"));
+            assert!(campaign_credit(true, true));
+            assert!(!campaign_credit(true, false));
+            assert!(!campaign_credit(false, true));
+        }
+
+        #[cfg(unix)]
+        #[test]
+        fn c64_setup_rejects_symlink_profiles_before_decode() {
+            use std::os::unix::fs::symlink;
+            use std::time::{SystemTime, UNIX_EPOCH};
+
+            let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+            let parent = std::env::temp_dir().join(format!("volta-c64-symlink-{nonce}"));
+            let root = parent.join("setup");
+            let targets = parent.join("targets");
+            fs::create_dir_all(&root).unwrap();
+            fs::create_dir_all(&targets).unwrap();
+            for name in C64_SETUP_PROFILE_DIRS {
+                let target = targets.join(name);
+                fs::create_dir(&target).unwrap();
+                symlink(target, root.join(name)).unwrap();
+            }
+            let error = load_c64_installed_setups(&root).err().unwrap();
+            assert!(error.contains("not a physical directory"));
+            fs::remove_dir_all(parent).unwrap();
         }
     }
 

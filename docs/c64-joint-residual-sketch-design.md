@@ -132,6 +132,23 @@ runs exactly proof `0 -> 150`, then—only after serialization, reload, complete
 verification and atomic promotion—proof `150 -> 200`. There is no automatic or
 selective retry. A third profile is out of scope.
 
+The registered entrypoint is `scripts/run_c64_pod_e2e.sh`. It refuses to run
+without the exact clean SHA and run-specific owner GO, one idle 80-GB A100,
+96 GiB available RAM and 208 GiB free on the shared persistent filesystem.
+Before paid setup it builds ABI45 and runs the whole projected-residual CUDA
+differential, including output equality and allocation cleanup. It either
+copies only contexts 0 and 150 from `C64_SETUP_SOURCE` or invokes the existing
+setup compiler with `--stop-after 150`; it can never generate the other 15
+profiles. Compilation completes before the measured process starts.
+
+The measured process has a default 600-second emergency timebox, adjustable
+through `C64_SESSION_TIMEOUT_S`, plus the registered disk, cgroup-memory and
+device-memory hard stops. The 20- and 150-second marks are diagnostic only.
+Every second is recorded with process memory/I/O, device memory, free disk and
+cgroup use; stdout, stderr, build/setup logs, artifact hashes and failure file
+censuses remain outside the repository. A target miss keeps both proofs for
+diagnosis but makes `credit:false`.
+
 On a new pod, source and small tracked evidence move only through GitHub HTTPS.
 Generated setup, weights and large run artifacts remain pod-local. Every raw
 run is create-new and records the clean SHA.

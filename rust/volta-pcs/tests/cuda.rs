@@ -59,6 +59,112 @@ fn cuda_fp2_split_is_exact_and_reclaims_buffers() {
     assert_eq!(gpu.device_memory_breakdown().unwrap().resident_bytes, before);
 }
 
+#[cfg(all(feature = "c61-p3-authenticated-reference", feature = "c6-trace"))]
+#[test]
+fn cuda_c64_projected_residual_matches_reference_and_reclaims_buffers() {
+    use volta_pcs::c62_gpu_whir::{C62GpuMmcs, C62GpuResourceGuard};
+    use volta_pcs::{C64ProjectedResidualGpuOwner, C64ProjectedResidualReference};
+    use volta_proto::{
+        build_c6_residual_direct_fused_scaled_fixture, C6ResidualAuxiliaryLane,
+        C6ResidualLeafColumn,
+    };
+
+    let Some(backend) = cuda_resident() else { return };
+    let guard = C62GpuResourceGuard::for_lane(7, 1, 1 << 7, 10, 5, true, 80u64 << 30)
+        .expect("valid scaled C6.4 CUDA guard");
+    let mmcs = C62GpuMmcs::new(backend, 10, guard).expect("scaled C6.4 CUDA MMCS");
+    let shared = mmcs.backend();
+    let before = shared.lock().unwrap().device_memory_breakdown().unwrap().resident_bytes;
+    let fixture = build_c6_residual_direct_fused_scaled_fixture().unwrap();
+    let leaf_rows = 1usize << fixture.manifest().leaf_log2();
+    let auxiliary_rows = 1usize << fixture.manifest().auxiliary_log2();
+    let leaf_point = [
+        Fp2::new(Fp::new(101), Fp::new(103)),
+        Fp2::new(Fp::new(107), Fp::new(109)),
+        Fp2::new(Fp::new(113), Fp::new(127)),
+    ];
+    let auxiliary_point = [
+        Fp2::new(Fp::new(131), Fp::new(137)),
+        Fp2::new(Fp::new(139), Fp::new(149)),
+        Fp2::new(Fp::new(151), Fp::new(157)),
+        Fp2::new(Fp::new(163), Fp::new(167)),
+    ];
+    let reference = C64ProjectedResidualReference::new(
+        leaf_rows,
+        auxiliary_rows,
+        &leaf_point,
+        &auxiliary_point,
+        fixture.leaf_witness(),
+        fixture.closure_witness(),
+        fixture.auxiliary_witness(),
+    )
+    .unwrap();
+    let mut owner = C64ProjectedResidualGpuOwner::build(
+        &mmcs,
+        leaf_rows,
+        auxiliary_rows,
+        reference.leaf_weights(),
+        reference.auxiliary_weights(),
+        fixture.leaf_witness(),
+        fixture.closure_witness(),
+        fixture.auxiliary_witness(),
+    )
+    .unwrap();
+
+    let source_fp2_values = C6ResidualLeafColumn::ALL
+        .into_iter()
+        .map(|column| fixture.leaf_witness().column(column).len() as u64)
+        .sum::<u64>()
+        + fixture.closure_witness().values().len() as u64
+        + C6ResidualAuxiliaryLane::ALL
+            .into_iter()
+            .map(|lane| fixture.auxiliary_witness().lane(lane).len() as u64)
+            .sum::<u64>();
+    let census = owner.census();
+    assert_eq!(census.source_fp2_values, source_fp2_values);
+    assert_eq!(census.host_to_device_bytes, source_fp2_values * 16);
+    assert_eq!(census.projected_fp2_bytes, ((3 * leaf_rows + auxiliary_rows) * 16) as u64);
+    assert_eq!(census.base_limb_bytes, census.projected_fp2_bytes);
+
+    let check_family = |limbs: [volta_accel::DeviceBuffer<u64>; 2], expected: &[Fp2]| {
+        let mut gpu = shared.lock().unwrap();
+        assert_eq!(
+            gpu.download_device(&limbs[0], 0, expected.len()).unwrap(),
+            expected.iter().map(|value| value.c0.value()).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            gpu.download_device(&limbs[1], 0, expected.len()).unwrap(),
+            expected.iter().map(|value| value.c1.value()).collect::<Vec<_>>()
+        );
+        for limb in limbs {
+            gpu.free_device(limb).unwrap();
+        }
+    };
+    check_family(
+        [owner.take_leaf_other_limb(0).unwrap(), owner.take_leaf_other_limb(1).unwrap()],
+        reference.leaf_other(),
+    );
+    check_family(
+        [owner.take_leaf_correction_limb(0).unwrap(), owner.take_leaf_correction_limb(1).unwrap()],
+        reference.leaf_correction(),
+    );
+    check_family(
+        [owner.take_auxiliary_limb(0).unwrap(), owner.take_auxiliary_limb(1).unwrap()],
+        reference.auxiliary(),
+    );
+    let correction = owner.take_correction_message().unwrap();
+    {
+        let mut gpu = shared.lock().unwrap();
+        assert_eq!(
+            gpu.download_device(&correction, 0, reference.leaf_correction().len()).unwrap(),
+            reference.leaf_correction().iter().copied().map(Fp2Repr::from).collect::<Vec<_>>()
+        );
+        gpu.free_device(correction).unwrap();
+    }
+    drop(owner);
+    assert_eq!(shared.lock().unwrap().device_memory_breakdown().unwrap().resident_bytes, before);
+}
+
 #[test]
 fn cuda_commit_and_multi_open_match_cpu_and_fault_rejects() {
     let Some(mut gpu) = cuda() else { return };

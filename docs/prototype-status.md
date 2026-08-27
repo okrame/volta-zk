@@ -17,7 +17,9 @@ Read `c64-joint-residual-sketch-design.md` next.
   a 24-round authenticated correction link. R2 remains invalidated.
 - **Completed evidence.** The production coordinator, strict version-4
   35-MB certificate/tail codec, reload verifier, finite correlation census and
-  exact two-profile/two-proof driver are executable. Full workspace and
+  exact two-profile/two-proof driver are executable. The guarded pod runner
+  compiles before measurement, reuses or generates only contexts 0 and 150,
+  and records one-second failure diagnostics. Full workspace and
   feature-enabled C6.4 tests pass. No pod was contacted.
 - **Analytic credit only.** `32,903,995 B` certificate projection
   (`2,096,005 B` hard-limit headroom), `78.001993132250...` soundness bits,
@@ -27,6 +29,23 @@ Read `c64-joint-residual-sketch-design.md` next.
   run-specific owner GO. Then compile and differentially test native CUDA,
   followed by exactly profiles `[0,150]` and no-retry proofs `0->150`,
   `150->200`, each serialized, reloaded, fully verified and promoted in order.
+
+- **2026-08-27 — Final paid-run audit closes cost and credit gaps.** The audit
+  found that the existing CUDA test covered only the final extension-field
+  limb split, not the complete C6.4 projection, and that a protocol-valid run
+  missing size/time/resource targets could inherit `credit:true`. A new scaled
+  CUDA differential now compares all three projected families and correction
+  message with the independent reference and checks device allocation returns
+  to baseline; it compiles locally and is forced to execute before pod setup.
+  Credit now requires both protocol acceptance and every active engineering
+  target; the inherited setup-plus-first diagnostic is not a C6.4 gate.
+  `scripts/run_c64_pod_e2e.sh` pins the clean SHA and owner GO, rejects a busy
+  or undersized pod before compilation, builds ABI45 once, reuses only setup
+  contexts 0 and 150 when available or generates exactly those two, and runs
+  the two no-retry proofs under a configurable 600-second emergency timebox.
+  One-second process I/O/RSS, device memory, disk and cgroup diagnostics plus
+  all logs and hashes survive failure; transient proof/cache data is removed.
+  No pod was contacted.
 
 - **2026-08-26 — C6.4 R3 reaches `C64_POD_READY`.** The production path now
   precommits the three projected residual families before the two residual

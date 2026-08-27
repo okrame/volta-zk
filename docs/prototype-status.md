@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 R5 ROOT/CERTIFICATE MIGRATION / C64_POD_READY / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 R6 A100 TIMEBOX FAIL / ZERO CERTIFICATES / NO RETRY)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,23 +10,40 @@ record; no external plan is authoritative.
 
 Read `c64-joint-residual-sketch-design.md` next.
 
-- **Status/design.** C6.4 R5 remains isolated from C7 and is
-  `C64_POD_READY`. No pod has been contacted.
-- **Completed evidence.** C6.4 commits six projected roots directly, releases
-  each lane and rebuilds one at a time. The relation is bound only after those
-  roots; the verifier decodes and replays them first. Certificate v4 binds the
-  statement, six-root digest and source schedule with a six-body profile. It
-  rejects legacy roots/profile, mutation and cross-version bytes; C6.3 v3 is
-  unchanged. The C6.4 path cannot create or call the old 19,629,342,720-B
-  wrapper cohorts. Full workspace, 18 focused checks, budget self-check and
-  runner syntax pass locally.
-- **Credit.** The analytic complete size is `32,903,963 B`, leaving
-  `2,096,037 B` below 35 MB but missing 30 MB; `credit:false`. Prover time,
-  serialized size, device high-water and verifier gates remain unmeasured.
-- **Hard stop/resume.** Execution requires a new clean pod endpoint and
-  explicit run-specific owner GO. The campaign remains exactly profiles
-  `[0,150]`, proofs `0->150` and `150->200`, no retry; any protocol, session,
-  finite-correlation or resource-integrity failure stops it.
+- **Status/design.** C6.4 R6 remains isolated from C7 and is at a measured
+  A100 timing hard stop; no retry is authorized.
+- **Completed evidence.** Clean `813dd22` passed the complete CUDA
+  differential (`0.99 s`), allocation cleanup and campaign discipline. The
+  first certificate reached migrated roots in `5.711 s`; six releases were
+  observed. Peak device use was `40,053 MiB`, `3,643 MiB` below the unchanged
+  guard. Response construction took `66.014 s`; native four-chain proving
+  took `227.870 s`; the residual-blind suffix was unfinished after another
+  `92.784 s` when the 600-second session timebox stopped it.
+- **Credit.** Zero certificates, artifacts, verifier replays or promotions
+  exist. Serialized size, prover, verifier, protocol, session and device gates
+  remain `credit:false`; no protocol/PCS fault is established.
+- **Hard stop/resume.** No further pod contact. Resume requires a code-level
+  design reducing response, native-chain and residual-blind costs, a local
+  projected complete prover `<=17 s`, clean checks, and a new owner GO.
+
+- **2026-08-27 — C6.4 R6 root/certificate migration clears memory but the
+  first certificate hits the 600-second timebox.** Clean `813dd22` reused only
+  setup contexts 0 and 150, passed the full CUDA differential in `0.99 s`,
+  allocation cleanup, campaign discipline and release build, then allocated
+  two real/AES correlation connections. The measured process spent
+  `194.875 s` before `campaign_start`. Within the provider interval, response
+  construction took `66.014 s`, residual-owner construction `12.292 s`,
+  projected roots `5.711 s`, and native four-chain proving `227.870 s`; the
+  residual-blind suffix remained unfinished after another `92.784 s`.
+  The supervisor stopped at 600 s and exited 143 at 602 s, before proof
+  envelope, certificate, artifact, verifier replay or state promotion. Peak
+  process RSS was `19,608,326,144 B`; peak device use was `40,053 MiB`, now
+  `3,643 MiB` below the unchanged guard. Native AVX2 and 16 Rayon threads were
+  active, while GPU utilization occurred only in short bursts. The migration
+  therefore fixes the prior simultaneous-memory failure but cannot approach
+  20 s without redesigning all three dominant timed paths. Raw disposition:
+  `c64-e2e-session-timebox-2026-08-27-813dd22.json`. All gates remain
+  `credit:false`; no protocol/PCS verdict and no further run authorization.
 
 - **2026-08-27 — C6.4 R5 migrates roots and certificate; `C64_POD_READY`.**
   The prover fixes six compact projected roots before residual challenges and

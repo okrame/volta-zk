@@ -1,7 +1,7 @@
 # C6.4 — projected residual PCS recovery
 
-**Status:** R5 root and certificate migration passes all local gates;
-`C64_POD_READY`. No pod has been contacted.
+**Status:** R6 A100 timing hard stop after the root and certificate migration;
+zero certificates and no further pod run authorized.
 
 **Branch:** `agent/c64-joint-residual-sketch`.
 
@@ -163,6 +163,26 @@ Generated setup, weights and large run artifacts remain pod-local. Every raw
 run is create-new and records the clean SHA.
 
 ## 7. Exact resume condition
+
+R6 is not `C64_POD_READY`. Clean `813dd22` passed the complete CUDA
+differential and campaign checks, and the migrated six-root lifecycle stayed
+below the device guard: `40,053 MiB` peak with `3,643 MiB` headroom. The first
+certificate nevertheless exceeded the 600-second session timebox. From the
+first provider marker, response construction took `66.014 s`, residual-owner
+construction `12.292 s`, projected roots `5.711 s`, and native four-chain
+proving `227.870 s`; the residual-blind suffix was still incomplete after a
+further `92.784 s`. No proof envelope, certificate or verifier replay exists,
+so no complete protocol, size or timing claim follows.
+
+The root/certificate migration should be retained as the measured memory
+repair, but moving one more object into the same compact representation cannot
+by itself reach 20 seconds: the response path alone already exceeds the gate,
+and two later CPU-dominated paths are larger. Native AVX2 and 16 Rayon threads
+were enabled; GPU execution appeared only in short bursts. Resume requires a
+code-level plan that moves or removes work in all three dominant paths,
+demonstrates a projected complete prover at most `17.000 s` locally, passes the
+clean registered checks, and receives a new run-specific owner GO. A longer
+timebox or parameter-only retry is not an unblock.
 
 R5 is `C64_POD_READY`. C6.4 now precommits the six projected roots directly,
 fixes a distinct projected-root typestate, and only then binds the residual

@@ -1,7 +1,7 @@
 # C6.4 — projected residual PCS recovery
 
-**Status:** R4 local memory repair passes compilation and focused checks; pod
-execution is held by the legacy residual-wrapper deviation below.
+**Status:** R5 root and certificate migration passes all local gates;
+`C64_POD_READY`. No pod has been contacted.
 
 **Branch:** `agent/c64-joint-residual-sketch`.
 
@@ -92,13 +92,13 @@ matrix or a new persistent response oracle is a NO-GO.
 
 ## 4. Analytic screens (`credit:false`)
 
-The executable R3 screen currently reports:
+The executable R5 screen currently reports:
 
 - six 107-bit WHIR bodies: `6,861,312 B`;
-- projected complete certificate: `32,903,995 B`, including a `4,096-B`
+- projected complete certificate: `32,903,963 B`, including a `4,096-B`
   new-codec reserve;
-- 30-MB diagnostic miss: `2,903,995 B`;
-- 35-MB hard-limit headroom: `2,096,005 B`;
+- 30-MB diagnostic miss: `2,903,963 B`;
+- 35-MB hard-limit headroom: `2,096,037 B`;
 - complete analytic soundness: `78.001993132250...` bits;
 - no new sparse setup and inherited D22 finite-distance lower bound: 188 bits;
 - resident projected output: `403,177,472 B`;
@@ -106,7 +106,8 @@ The executable R3 screen currently reports:
 - forbidden dense residual wrapper: exactly `0 B`.
 
 The byte estimate replaces the exact `2,672,044-B` old output-link frame with
-the six bodies and reserves `4,096 B` for new framing and corrections.
+the six bodies, reserves `4,096 B` for new framing and corrections, and applies
+the exact `793 -> 761 B` outer-framing reduction.
 Only a complete serialized and reloaded certificate receives size credit.
 
 ## 5. Gates
@@ -152,8 +153,8 @@ device-memory hard stops. The 20- and 150-second marks are diagnostic only.
 Every second is recorded with process memory/I/O, device memory, compute and
 memory utilization, power, clocks, temperature, free disk and cgroup use;
 stdout, stderr, build/setup logs, artifact hashes and failure file censuses
-remain outside the repository. `C64PH1` markers delimit response, legacy
-wrapper, native chains, projected proof and seal. `C64GPU1` markers record live
+remain outside the repository. `C64PH1` markers delimit response, projected
+roots, native chains, projected proof and seal. `C64GPU1` markers record live
 device bytes after each projected root and opening. A target miss keeps both
 proofs for diagnosis but makes `credit:false`.
 
@@ -162,6 +163,25 @@ Generated setup, weights and large run artifacts remain pod-local. Every raw
 run is create-new and records the clean SHA.
 
 ## 7. Exact resume condition
+
+R5 is `C64_POD_READY`. C6.4 now precommits the six projected roots directly,
+fixes a distinct projected-root typestate, and only then binds the residual
+relation. The verifier decodes and replays those same six roots before drawing
+or checking the dependent relation challenges. The v4 certificate binds the
+statement, the digest of all six roots and the source schedule; its profile is
+six projected bodies, not the C6.3 86-query wrapper profile. A v4 certificate
+carrying legacy roots, a legacy profile, reordered/mutated projected roots or
+cross-version bytes rejects. C6.3 v3 behavior is unchanged.
+
+The C6.4 branch no longer creates the wrapper directory or calls the legacy
+root materializer. The former `c6010003`/`c6010006` cohorts are therefore
+unreachable from the C6.4 campaign path. Full workspace tests, 18 focused
+C6.4/certificate checks, the budget self-check, campaign discipline and runner
+syntax pass locally. This is structural evidence only; device high-water,
+complete prover time, serialized certificate size and verifier gates remain
+unmeasured. Resume requires a new clean pod endpoint and explicit run-specific
+owner GO; the registered run remains exactly profiles `[0,150]` and two proofs
+with no retry.
 
 R4 keeps only six roots and six private replay seeds after projected
 precommit. Each committed lane is released immediately, rebuilt from the same
@@ -183,13 +203,12 @@ codec also still carries these two roots. Therefore the earlier statements
 that the old residual wrapper was absent and that the response-local dense
 oracle was 0 B do not describe the executed implementation.
 
-`C64_POD_READY` now requires all previous local gates plus a sound C6.4 root
+R4 required all previous local gates plus a sound C6.4 root
 typestate and certificate binding that removes the two legacy cohorts without
 substituting projected roots into the old wrapper type. The first clean pod
 attempt at `ba09091` failed at dispatch; `31aae24` crossed that boundary but
 reached `44,099 MiB` against the `43,696-MiB` guard. No state was promoted.
-The simultaneous-buffer condition now has a local repair but is not measured
-on an A100. A target-bearing retry remains blocked until the legacy wrapper is
-removed. A separately authorized diagnostic-only run may measure replay and
-phase costs, but cannot receive the under-20-second gate while the 19.63-GB
-wrapper remains. The stopped pod retains setup and hashed diagnostics.
+At R4 the simultaneous-buffer condition had a local repair but was not
+measured on an A100, and a target-bearing retry remained blocked until the
+legacy wrapper was removed. The stopped historical pod retained setup and
+hashed diagnostics.

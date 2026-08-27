@@ -226,15 +226,20 @@ pub use c64_joint_residual_sketch::{
 pub use c64_joint_residual_sketch::{C64ProjectedResidualGpuCensus, C64ProjectedResidualGpuOwner};
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub use c64_projected_residual_codec::C64ProjectedResidualFrame;
-#[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
-pub use c64_projected_residual_suffix::{
-    c64_projected_residual_binding_digest, prepare_c64_projected_residual_precommit,
-    C64ProjectedResidualPrecommit,
-};
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub use c64_projected_residual_suffix::{
-    draw_c64_projected_residual_weights, replay_c64_projected_residual_precommit,
-    C64ProjectedResidualWeights,
+    c64_projected_residual_precommit_binding_digest, draw_c64_projected_residual_weights,
+    replay_c64_projected_residual_precommit, C64ProjectedResidualWeights,
+};
+#[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
+pub use c64_projected_residual_suffix::{
+    fix_c64_projected_residual_roots_provider, prepare_c64_projected_residual_precommit,
+    C64ProjectedResidualPrecommit,
+};
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub use c64_projected_residual_suffix::{
+    install_c64_projected_residual_roots_verifier, C64FixedProjectedResidualCommitments,
+    C64ProjectedResidualRootBinding, C64VerifierProjectedResidualRootBinding,
 };
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub use c64_response_tail::C64DecodedResponseTail;

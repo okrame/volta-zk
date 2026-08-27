@@ -63,6 +63,7 @@ use crate::c6_authenticated_output_link::{
     C6AuthenticatedOutputLinkProof, C6Nbr2CorrectionFunctional, C6Nbr2ProvedLink,
     C6PendingSlotRegistryProverBuilder, C6PendingSlotRegistryVerifier,
     C6PendingSlotRegistryVerifierBuilder, C6ProductionAuthenticatedOutputLinkMetrics,
+    C6ResidualCommitmentBinding,
 };
 #[cfg(feature = "c61-p3-authenticated-reference")]
 use crate::c6_authenticated_output_link::{
@@ -212,8 +213,8 @@ pub fn authenticate_c63_resident_source_functionals(
 /// inference source. The owned statement keeps the coefficient vectors alive
 /// through the later output-link join without copying them again.
 #[allow(clippy::too_many_arguments)]
-pub fn authenticate_c63_resident_source_functionals_at_point(
-    fixed: &C6FixedWrapperCommitments,
+pub fn authenticate_c63_resident_source_functionals_at_point<B: C6ResidualCommitmentBinding>(
+    fixed: &B,
     outer_statement_digest: [u8; 32],
     source_binding_digest: [u8; 32],
     functional_context_digest: [u8; 32],
@@ -261,8 +262,8 @@ pub fn authenticate_c63_resident_source_functionals_at_point(
 /// the provider cannot choose any coefficient here.
 #[cfg(feature = "c61-p3-authenticated-reference")]
 #[allow(clippy::too_many_arguments)]
-pub fn verify_c63_resident_source_functionals_at_pending(
-    fixed: &C6FixedWrapperCommitments,
+pub fn verify_c63_resident_source_functionals_at_pending<B: C6ResidualCommitmentBinding>(
+    fixed: &B,
     source_binding_digest: [u8; 32],
     old_len: u16,
     plan: &C6CacheFoldAppendSourcePlan,
@@ -348,12 +349,12 @@ pub struct C63ResidentSketchSuffixPrepared {
 /// fixed; WHIR masks remain undrawn for the intervening output-link phase.
 #[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
 #[allow(clippy::too_many_arguments)]
-pub fn prepare_c63_resident_sketch_suffix<R: rand_010::Rng>(
+pub fn prepare_c63_resident_sketch_suffix<R: rand_010::Rng, B: C6ResidualCommitmentBinding>(
     mmcs: C62GpuMmcs,
     h: &C63SparseSketchReference,
     attempt: C6ClientAttempt,
     setup_manifest: &C6SetupManifest,
-    fixed: &C6FixedWrapperCommitments,
+    fixed: &B,
     outer_statement_digest: [u8; 32],
     profile_digest: [u8; 32],
     source_binding_digest: [u8; 32],
@@ -1551,7 +1552,7 @@ pub fn verify_c63_complete_decoded_response(
 #[cfg(feature = "c61-p3-authenticated-reference")]
 #[allow(clippy::too_many_arguments)]
 pub fn verify_c64_complete_decoded_response(
-    roots: &C6VerifierLiveWrapperRootBinding,
+    roots: &crate::c64_projected_residual_suffix::C64VerifierProjectedResidualRootBinding,
     blind: C6ResidualDecodedBlindVerifierPending,
     inherited_public_argument_statement_digest: [u8; 32],
     nbr2: &C6Nbr2CorrectionFunctional<'_>,
@@ -1575,6 +1576,7 @@ pub fn verify_c64_complete_decoded_response(
     contexts: &mut [VerifierCtx; TAPES],
     transcript: &mut Transcript,
 ) -> Result<C64CompleteProductionVerifierOutput, String> {
+    let fixed = roots.fixed();
     let suffix = begin_verify_c63_sketch_suffix(
         sketch_public_argument,
         attempt,
@@ -1590,7 +1592,7 @@ pub fn verify_c64_complete_decoded_response(
         return Err("C6.4 inherited and sketch statements differ".to_owned());
     }
     let source_functionals = verify_c63_resident_source_functionals_at_pending(
-        roots.fixed(),
+        &fixed,
         source_binding_digest,
         old_len,
         plan,
@@ -1616,7 +1618,7 @@ pub fn verify_c64_complete_decoded_response(
     let projected = crate::c64_projected_residual_suffix::verify_c64_projected_residual(
         projected_frame,
         precommit_binding_digest,
-        roots.fixed().binding_digest(),
+        fixed.binding_digest(),
         nbr2.digest(),
         projected_weights,
         residual_pending,
@@ -1861,7 +1863,7 @@ pub fn decode_c62_native_exact_production_blind_envelope(
 /// the exact terminal/compiler challenge order has been replayed.
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub struct C6ResidualDecodedBlindVerifierPending {
-    pending: C6PendingSlotRegistryVerifier,
+    pending: Option<C6PendingSlotRegistryVerifier>,
     residual_pending:
         Option<crate::c6_residual_sumcheck_blind::C6BlindResidualPendingClaimsVerifier>,
     ready: C61ReadyPublicProof,
@@ -2289,7 +2291,7 @@ pub fn finish_c63_production_blind_with_persisted_link(
 #[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
 #[allow(clippy::too_many_arguments)]
 pub fn finish_c64_production_blind_with_projected_residual(
-    roots: &C6PersistedLiveWrapperRootBinding,
+    roots: &crate::c64_projected_residual_suffix::C64ProjectedResidualRootBinding,
     blind: C64ProductionBlindProverOutput,
     residual_leaf: &volta_proto::C6PairedResidualLeafWitness,
     residual_closure: &volta_proto::C6PairedResidualClosureWitness,
@@ -2300,13 +2302,11 @@ pub fn finish_c64_production_blind_with_projected_residual(
     native: C62ProductionJointNativeProverLinkPending,
     mask_range: crate::c61_authenticated_whir::C64AuthenticatedWhirMaskRange,
     streams: &mut [CorrelationStream; TAPES],
-    session_digest: [u8; 32],
     transcript: &mut Transcript,
 ) -> Result<C64ExactProductionProverProof, String> {
     validate_production_streams(streams)?;
-    if roots.session_digest() != session_digest
-        || terminal.public_output.terminal_claims()
-            != blind.blind.residual_terminal_outputs.terminal_functionals()
+    if terminal.public_output.terminal_claims()
+        != blind.blind.residual_terminal_outputs.terminal_functionals()
         || terminal.inputs.relation_root() != blind.blind.residual_terminal_outputs.digest()
     {
         return Err("C6.4 exact runner statement or terminal binding differs".to_owned());
@@ -3465,7 +3465,12 @@ pub fn prepare_c61_native_decoded_blind_verifier(
     {
         return Err("decoded C6RSC4 differs from the replayed terminal relation".to_owned());
     }
-    Ok(C6ResidualDecodedBlindVerifierPending { pending, residual_pending: None, ready, inputs })
+    Ok(C6ResidualDecodedBlindVerifierPending {
+        pending: Some(pending),
+        residual_pending: None,
+        ready,
+        inputs,
+    })
 }
 
 /// Replay the C6.3 residual-only blind prefix. Cache state has moved to the
@@ -3484,6 +3489,83 @@ pub fn prepare_c63_decoded_blind_verifier(
     contexts: &mut [VerifierCtx; TAPES],
     transcript: &mut Transcript,
 ) -> Result<C6ResidualDecodedBlindVerifierPending, String> {
+    let (residual_pending, ready, inputs) = replay_c63_or_c64_decoded_blind(
+        statements,
+        residual_proof,
+        residual_frame,
+        relation,
+        equality,
+        arithmetic,
+        canonical_runtime,
+        contexts,
+        transcript,
+    )?;
+    let mut pending = C63AuthenticatedSketchPendingSlotRegistryVerifierBuilder::new(roots.fixed())
+        .map_err(text_error)?;
+    pending.absorb_residual(&residual_pending).map_err(text_error)?;
+    let pending = pending.finish().map_err(text_error)?;
+    Ok(C6ResidualDecodedBlindVerifierPending {
+        pending: Some(pending),
+        residual_pending: Some(residual_pending),
+        ready,
+        inputs,
+    })
+}
+
+/// C6.4 replay has no historical wrapper slot registry. Its residual pending
+/// claims are consumed only by the six projected openings.
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+#[allow(clippy::too_many_arguments)]
+pub fn prepare_c64_decoded_blind_verifier(
+    statements: &[C6BlindResidualStatement],
+    residual_proof: &C6BlindResidualSumcheckProof,
+    residual_frame: &C6BlindResidualPendingTransferFrame,
+    relation: &volta_proto::c6_residual::C6ResidualRelationChallenges,
+    equality: C61EqualityDrawn,
+    arithmetic: &crate::c61_public_compression::C61ArithmeticFrame,
+    canonical_runtime: &[Fp2],
+    contexts: &mut [VerifierCtx; TAPES],
+    transcript: &mut Transcript,
+) -> Result<C6ResidualDecodedBlindVerifierPending, String> {
+    let (residual_pending, ready, inputs) = replay_c63_or_c64_decoded_blind(
+        statements,
+        residual_proof,
+        residual_frame,
+        relation,
+        equality,
+        arithmetic,
+        canonical_runtime,
+        contexts,
+        transcript,
+    )?;
+    Ok(C6ResidualDecodedBlindVerifierPending {
+        pending: None,
+        residual_pending: Some(residual_pending),
+        ready,
+        inputs,
+    })
+}
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+#[allow(clippy::too_many_arguments)]
+fn replay_c63_or_c64_decoded_blind(
+    statements: &[C6BlindResidualStatement],
+    residual_proof: &C6BlindResidualSumcheckProof,
+    residual_frame: &C6BlindResidualPendingTransferFrame,
+    relation: &volta_proto::c6_residual::C6ResidualRelationChallenges,
+    equality: C61EqualityDrawn,
+    arithmetic: &crate::c61_public_compression::C61ArithmeticFrame,
+    canonical_runtime: &[Fp2],
+    contexts: &mut [VerifierCtx; TAPES],
+    transcript: &mut Transcript,
+) -> Result<
+    (
+        crate::c6_residual_sumcheck_blind::C6BlindResidualPendingClaimsVerifier,
+        C61ReadyPublicProof,
+        C6ExactTerminalCompilerInputs,
+    ),
+    String,
+> {
     validate_production_contexts(contexts)?;
     let (residual_pending, leaf_points, auxiliary_points) =
         verify_c6_blind_residual_sumchecks_direct_claims_with_points(
@@ -3495,10 +3577,6 @@ pub fn prepare_c63_decoded_blind_verifier(
             transcript,
         )
         .map_err(text_error)?;
-    let mut pending = C63AuthenticatedSketchPendingSlotRegistryVerifierBuilder::new(roots.fixed())
-        .map_err(text_error)?;
-    pending.absorb_residual(&residual_pending).map_err(text_error)?;
-    let pending = pending.finish().map_err(text_error)?;
     let outputs = C6BlindResidualDirectTerminalOutputs::from_verifier_claims(
         statements,
         relation,
@@ -3527,12 +3605,7 @@ pub fn prepare_c63_decoded_blind_verifier(
     {
         return Err("decoded C6.3 residual differs from the terminal relation".to_owned());
     }
-    Ok(C6ResidualDecodedBlindVerifierPending {
-        pending,
-        residual_pending: Some(residual_pending),
-        ready,
-        inputs,
-    })
+    Ok((residual_pending, ready, inputs))
 }
 
 /// Consume the exact disk blind continuation only after compiler/native
@@ -3554,7 +3627,7 @@ pub fn finish_c61_native_decoded_nbr2_verifier(
     }
     let (bound, receipt) = verify_c6_authenticated_output_link_production_nbr2_strict(
         roots.fixed(),
-        blind.pending,
+        blind.pending.ok_or_else(|| "decoded C6.1 pending registry is absent".to_owned())?,
         &proof.authenticated_link,
         nbr2,
         contexts,
@@ -3585,7 +3658,7 @@ pub fn finish_c62_native_decoded_nbr2_verifier(
     }
     let (bound, receipt) = verify_c6_authenticated_output_link_production_nbr2_strict(
         roots.fixed(),
-        blind.pending,
+        blind.pending.ok_or_else(|| "decoded C6.2 pending registry is absent".to_owned())?,
         &proof.authenticated_link,
         nbr2,
         contexts,
@@ -3621,7 +3694,7 @@ pub fn finish_c63_decoded_verifier(
     let (bound, receipt, source_link) =
         verify_c63_authenticated_output_link_production_nbr2_strict(
             roots.fixed(),
-            blind.pending,
+            blind.pending.ok_or_else(|| "decoded C6.3 pending registry is absent".to_owned())?,
             authenticated_link,
             nbr2,
             source_functionals,

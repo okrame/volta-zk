@@ -7,6 +7,12 @@ use volta_field::Fp2;
 use volta_mac::ProverAuthed;
 use volta_mac::Transcript;
 use volta_proto::mle::eq_vec;
+#[cfg(feature = "c6-trace")]
+use volta_proto::{
+    C64NativeProjectedResidualCommitments, C6PairedResidualAuxiliaryWitness,
+    C6PairedResidualClosureWitness, C6PairedResidualLeafWitness, C6ResidualFusedWitnessView,
+    C6ResidualRelationManifest, C6ResidualRelationRootBound,
+};
 
 #[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
 use crate::c64_joint_residual_sketch::C64ProjectedResidualGpuOwner;
@@ -32,6 +38,218 @@ fn c64_gpu_phase(mmcs: &crate::c62_gpu_whir::C62GpuMmcs, name: &str) {
 pub struct C64ProjectedResidualWeights {
     leaf: [Fp2; C64_RESIDUAL_LEAF_TABLES],
     auxiliary: [Fp2; C64_RESIDUAL_AUXILIARY_TABLES],
+}
+
+/// Public C6.4 root state. It is deliberately unrelated to the historical
+/// dense-wrapper commitment type.
+#[cfg(feature = "c6-trace")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C64FixedProjectedResidualCommitments {
+    statement_digest: [u8; 32],
+    roots_digest: [u8; 32],
+    source_binding_digest: [u8; 32],
+    roots: [[u8; 32]; 6],
+    source_log2: u8,
+}
+
+#[cfg(feature = "c6-trace")]
+impl C64FixedProjectedResidualCommitments {
+    pub fn statement_digest(self) -> [u8; 32] {
+        self.statement_digest
+    }
+
+    pub fn binding_digest(self) -> [u8; 32] {
+        self.roots_digest
+    }
+
+    pub fn source_binding_digest(self) -> [u8; 32] {
+        self.source_binding_digest
+    }
+
+    pub fn roots(self) -> [[u8; 32]; 6] {
+        self.roots
+    }
+
+    pub fn source_log2(self) -> u8 {
+        self.source_log2
+    }
+
+    pub fn certificate_binding(self) -> C64NativeProjectedResidualCommitments {
+        C64NativeProjectedResidualCommitments {
+            statement_digest: self.statement_digest,
+            roots_digest: self.roots_digest,
+            source_binding_digest: self.source_binding_digest,
+        }
+    }
+}
+
+#[cfg(feature = "c6-trace")]
+pub struct C64ProjectedResidualRootBinding {
+    fixed: C64FixedProjectedResidualCommitments,
+    manifest_digest: [u8; 32],
+    view_digest: [u8; 32],
+    paired_source_digest: [u8; 32],
+}
+
+#[cfg(feature = "c6-trace")]
+pub struct C64VerifierProjectedResidualRootBinding {
+    fixed: C64FixedProjectedResidualCommitments,
+}
+
+#[cfg(feature = "c6-trace")]
+impl C64ProjectedResidualRootBinding {
+    pub fn fixed(&self) -> C64FixedProjectedResidualCommitments {
+        self.fixed
+    }
+
+    pub fn bind_residual_relation(
+        &self,
+        manifest: C6ResidualRelationManifest,
+        leaf: &C6PairedResidualLeafWitness,
+        closure: &C6PairedResidualClosureWitness,
+        auxiliary: &C6PairedResidualAuxiliaryWitness,
+    ) -> Result<C6ResidualRelationRootBound, String> {
+        let view = C6ResidualFusedWitnessView::new(&manifest, leaf, closure, auxiliary)
+            .map_err(|error| error.to_string())?;
+        if manifest.digest() != self.manifest_digest
+            || view.digest() != self.view_digest
+            || leaf.paired_source_digest() != self.paired_source_digest
+        {
+            return Err("C6.4 projected roots and residual owners differ".to_owned());
+        }
+        C6ResidualRelationRootBound::bind_fixed_roots(
+            manifest,
+            self.fixed.statement_digest,
+            self.fixed.roots_digest,
+        )
+        .map_err(|error| error.to_string())
+    }
+}
+
+#[cfg(feature = "c6-trace")]
+impl C64VerifierProjectedResidualRootBinding {
+    pub fn fixed(&self) -> C64FixedProjectedResidualCommitments {
+        self.fixed
+    }
+
+    pub fn bind_residual_relation(
+        &self,
+        manifest: C6ResidualRelationManifest,
+    ) -> Result<C6ResidualRelationRootBound, String> {
+        C6ResidualRelationRootBound::bind_fixed_roots(
+            manifest,
+            self.fixed.statement_digest,
+            self.fixed.roots_digest,
+        )
+        .map_err(|error| error.to_string())
+    }
+}
+
+pub fn c64_projected_residual_precommit_binding_digest(
+    statement_digest: [u8; 32],
+    manifest_digest: [u8; 32],
+    source_schedule_digest: [u8; 32],
+) -> Result<[u8; 32], String> {
+    if [statement_digest, manifest_digest, source_schedule_digest].contains(&[0; 32]) {
+        return Err("C6.4 projected precommit context is empty".to_owned());
+    }
+    let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c64/projected-residual-precommit/v2");
+    hasher.update(&statement_digest);
+    hasher.update(&manifest_digest);
+    hasher.update(&source_schedule_digest);
+    Ok(*hasher.finalize().as_bytes())
+}
+
+#[cfg(feature = "c6-trace")]
+fn c64_projected_source_binding_digest(
+    statement_digest: [u8; 32],
+    roots_digest: [u8; 32],
+    manifest_digest: [u8; 32],
+    source_schedule_digest: [u8; 32],
+) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c64/projected-residual-source/v2");
+    for digest in [statement_digest, roots_digest, manifest_digest, source_schedule_digest] {
+        hasher.update(&digest);
+    }
+    *hasher.finalize().as_bytes()
+}
+
+#[cfg(all(feature = "cuda", feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub fn fix_c64_projected_residual_roots_provider(
+    statement_digest: [u8; 32],
+    source_schedule_digest: [u8; 32],
+    manifest: &C6ResidualRelationManifest,
+    leaf: &C6PairedResidualLeafWitness,
+    closure: &C6PairedResidualClosureWitness,
+    auxiliary: &C6PairedResidualAuxiliaryWitness,
+    precommit: &C64ProjectedResidualPrecommit,
+) -> Result<C64ProjectedResidualRootBinding, String> {
+    let view = C6ResidualFusedWitnessView::new(manifest, leaf, closure, auxiliary)
+        .map_err(|error| error.to_string())?;
+    if !manifest.is_production_geometry()
+        || leaf.production_allocation_binding_digest().is_none()
+        || precommit.roots.contains(&[0; 32])
+    {
+        return Err("C6.4 projected residual production geometry differs".to_owned());
+    }
+    let roots_digest =
+        C64NativeProjectedResidualCommitments::roots_digest(statement_digest, precommit.roots);
+    let manifest_digest = manifest.digest();
+    let fixed = C64FixedProjectedResidualCommitments {
+        statement_digest,
+        roots_digest,
+        source_binding_digest: c64_projected_source_binding_digest(
+            statement_digest,
+            roots_digest,
+            manifest_digest,
+            source_schedule_digest,
+        ),
+        roots: precommit.roots,
+        source_log2: manifest.leaf_log2(),
+    };
+    Ok(C64ProjectedResidualRootBinding {
+        fixed,
+        manifest_digest,
+        view_digest: view.digest(),
+        paired_source_digest: leaf.paired_source_digest(),
+    })
+}
+
+#[cfg(feature = "c6-trace")]
+pub fn install_c64_projected_residual_roots_verifier(
+    statement_digest: [u8; 32],
+    source_schedule_digest: [u8; 32],
+    manifest: &C6ResidualRelationManifest,
+    roots: [[u8; 32]; 6],
+    transcript: &mut Transcript,
+) -> Result<(C64VerifierProjectedResidualRootBinding, C64ProjectedResidualWeights), String> {
+    if !manifest.is_production_geometry() || roots.contains(&[0; 32]) {
+        return Err("C6.4 verifier projected residual geometry differs".to_owned());
+    }
+    let precommit_binding = c64_projected_residual_precommit_binding_digest(
+        statement_digest,
+        manifest.digest(),
+        source_schedule_digest,
+    )?;
+    let weights = replay_c64_projected_residual_precommit(precommit_binding, roots, transcript)?;
+    let roots_digest = C64NativeProjectedResidualCommitments::roots_digest(statement_digest, roots);
+    Ok((
+        C64VerifierProjectedResidualRootBinding {
+            fixed: C64FixedProjectedResidualCommitments {
+                statement_digest,
+                roots_digest,
+                source_binding_digest: c64_projected_source_binding_digest(
+                    statement_digest,
+                    roots_digest,
+                    manifest.digest(),
+                    source_schedule_digest,
+                ),
+                roots,
+                source_log2: manifest.leaf_log2(),
+            },
+        },
+        weights,
+    ))
 }
 
 impl C64ProjectedResidualWeights {
@@ -117,6 +335,17 @@ pub struct C64ProjectedResidualPrecommit {
 }
 
 #[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
+impl C64ProjectedResidualPrecommit {
+    pub fn roots(&self) -> [[u8; 32]; 6] {
+        self.roots
+    }
+
+    pub fn weights(&self) -> C64ProjectedResidualWeights {
+        self.weights
+    }
+}
+
+#[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]
 pub(crate) struct C64ProjectedResidualProverOutput {
     pub(crate) artifacts: [[Vec<u8>; 2]; 3],
     pub(crate) mask_corrections: [[[Fp2; 2]; 2]; 3],
@@ -128,25 +357,6 @@ pub(crate) struct C64ProjectedResidualProverOutput {
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub(crate) struct C64ProjectedResidualVerifierOutput {
     pub(crate) correction_audit: crate::c63_sparse_h_closure::C63SparseHTapeClosureReferenceAudit,
-}
-
-pub fn c64_projected_residual_binding_digest(
-    fixed_roots_digest: [u8; 32],
-    outer_statement_digest: [u8; 32],
-    relation_digest: [u8; 32],
-    source_binding_digest: [u8; 32],
-) -> Result<[u8; 32], String> {
-    if [fixed_roots_digest, outer_statement_digest, relation_digest, source_binding_digest]
-        .contains(&[0; 32])
-    {
-        return Err("C6.4 projected residual public binding is empty".to_owned());
-    }
-    let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c64/projected-residual-binding/v1");
-    hasher.update(&fixed_roots_digest);
-    hasher.update(&outer_statement_digest);
-    hasher.update(&relation_digest);
-    hasher.update(&source_binding_digest);
-    Ok(*hasher.finalize().as_bytes())
 }
 
 #[cfg(all(feature = "cuda", feature = "c61-p3-authenticated-reference"))]

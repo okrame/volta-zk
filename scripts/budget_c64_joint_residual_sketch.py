@@ -60,6 +60,8 @@ C63_CORRECTION_ARTIFACT_MAX_BYTES = 2_042_062
 
 # Exact output of the executable Rust structural screen.
 C64_CODEC_RESERVE_BYTES = 4_096
+C63_CERTIFICATE_FRAMING_BYTES = 793
+C64_CERTIFICATE_FRAMING_BYTES = 761
 CERTIFICATE_DIAGNOSTIC_BYTES = 30_000_000
 CERTIFICATE_LIMIT_BYTES = 35_000_000
 
@@ -84,6 +86,8 @@ def byte_screen() -> dict[str, int | bool]:
         - C63_REDUCED_OUTPUT_LINK_BYTES
         + C64_PROJECTED_RESIDUAL_BODY_BYTES
         + C64_CODEC_RESERVE_BYTES
+        + C64_CERTIFICATE_FRAMING_BYTES
+        - C63_CERTIFICATE_FRAMING_BYTES
     )
     return {
         "retained_c63_certificate_ceiling_bytes": C63_COMPLETE_CERTIFICATE_BYTES,
@@ -175,7 +179,7 @@ def build_screen() -> dict[str, object]:
     responses = [response_screen(*response) for response in RESPONSES]
     return {
         "schema": 3,
-        "milestone": "C6.4-R3",
+        "milestone": "C6.4-R5",
         "credit": False,
         "geometry": {
             "projected_leaf_log2": 23,
@@ -242,9 +246,9 @@ def self_check(screen: dict[str, object]) -> None:
     assert responses[1]["dense_residual_wrapper_bytes"] == 0
     assert screen["setup_profile_ids"] == [0, 150]
     assert screen["setup_profile_count"] == 2
-    assert byte_budget["projected_complete_certificate_bytes"] == 32_903_995
-    assert byte_budget["diagnostic_headroom_bytes"] == -2_903_995
-    assert byte_budget["hard_limit_headroom_bytes"] == 2_096_005
+    assert byte_budget["projected_complete_certificate_bytes"] == 32_903_963
+    assert byte_budget["diagnostic_headroom_bytes"] == -2_903_963
+    assert byte_budget["hard_limit_headroom_bytes"] == 2_096_037
     assert byte_budget["diagnostic_30mb_pass"] is False
     assert byte_budget["hard_limit_35mb_pass"] is True
     assert byte_budget["credit"] is False

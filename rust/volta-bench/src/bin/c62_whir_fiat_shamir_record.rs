@@ -93,8 +93,8 @@ mod enabled {
         C64_CONTINUATION_256_FULL_CORRELATIONS, C64_CONTINUATION_256_RAW_CORRELATIONS,
         C64_CONTINUATION_256_SUB_CORRELATIONS, C64_GENESIS_FULL_CORRELATIONS,
         C64_GENESIS_RAW_CORRELATIONS, C64_GENESIS_SUB_CORRELATIONS,
-        C64_NATIVE_STRICT_PI_FINAL_MAX_BYTES, C6_ABORT_RETRY_CREDITS, C6_ACCEPTANCE_CREDITS,
-        C6_TERMINAL_ONE_RAW_CAPACITY,
+        C64_NATIVE_CERTIFICATE_FRAMING_BYTES, C64_NATIVE_STRICT_PI_FINAL_MAX_BYTES,
+        C6_ABORT_RETRY_CREDITS, C6_ACCEPTANCE_CREDITS, C6_TERMINAL_ONE_RAW_CAPACITY,
     };
 
     const SCHEMA: u64 = 4;
@@ -2193,9 +2193,13 @@ mod enabled {
             }
             let artifact_persist_wall_s = artifact_started.elapsed().as_secs_f64();
             let certificate_bytes = certificate.encoded_len().map_err(|error| error.to_string())?;
-            let pi_final_bytes = C63_NATIVE_CERTIFICATE_FRAMING_BYTES
-                .checked_add(certificate.proof_envelope.len() as u64)
-                .ok_or_else(|| "C6.3 pi_final bytes overflow".to_owned())?;
+            let pi_final_bytes = if c64 {
+                C64_NATIVE_CERTIFICATE_FRAMING_BYTES
+            } else {
+                C63_NATIVE_CERTIFICATE_FRAMING_BYTES
+            }
+            .checked_add(certificate.proof_envelope.len() as u64)
+            .ok_or_else(|| "C6.3 pi_final bytes overflow".to_owned())?;
             let persisted_spill_bytes = directory_file_bytes(&run_directory)?;
 
             let verifier_rss_before_bytes = current_rss_bytes()?;

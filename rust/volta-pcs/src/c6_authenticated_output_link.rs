@@ -50,6 +50,52 @@ use crate::c6_wrapper_pcs::{
     C6_SUCCESSOR_CACHE_COHORT_ID, C6_WRAPPER_ACTIVE_SLOTS, C6_WRAPPER_AUXILIARY_COHORT_ID,
     C6_WRAPPER_REPETITIONS, C6_WRAPPER_TWO_CHAIN_BYTES,
 };
+
+/// The shared public binding needed by the NBR2/source-functional statements.
+/// C6.4 implements this with its own six-root type, never with a wrapper
+/// commitment adapter.
+pub trait C6ResidualCommitmentBinding {
+    fn residual_statement_digest(&self) -> C6WrapperDigest;
+    fn residual_roots_digest(&self) -> C6WrapperDigest;
+    fn residual_source_log2(&self) -> Result<u8>;
+}
+
+impl C6ResidualCommitmentBinding for C6FixedWrapperCommitments {
+    fn residual_statement_digest(&self) -> C6WrapperDigest {
+        self.statement_digest()
+    }
+
+    fn residual_roots_digest(&self) -> C6WrapperDigest {
+        self.binding_digest()
+    }
+
+    fn residual_source_log2(&self) -> Result<u8> {
+        self.commitments()
+            .iter()
+            .find(|commitment| commitment.spec.cohort_id == C6_DELTA_RESIDUAL_COHORT_ID)
+            .map(|commitment| commitment.spec.payload_log2)
+            .ok_or_else(|| {
+                C6AuthenticatedOutputLinkError::new("residual commitment binding is missing")
+            })
+    }
+}
+
+#[cfg(feature = "c6-trace")]
+impl C6ResidualCommitmentBinding
+    for crate::c64_projected_residual_suffix::C64FixedProjectedResidualCommitments
+{
+    fn residual_statement_digest(&self) -> C6WrapperDigest {
+        self.statement_digest()
+    }
+
+    fn residual_roots_digest(&self) -> C6WrapperDigest {
+        self.binding_digest()
+    }
+
+    fn residual_source_log2(&self) -> Result<u8> {
+        Ok(self.source_log2())
+    }
+}
 use crate::c6_wrapper_persisted::{
     C6CudaPersistedLinkFoldOwner, C6PersistedCoefficientSlotReader, C6PersistedLinkFoldMetrics,
     C6PersistedLinkFoldOwner, C6PersistedWrapperCohort,
@@ -291,8 +337,8 @@ impl fmt::Debug for C6Nbr2CorrectionFunctional<'_> {
 
 impl<'a> C6Nbr2CorrectionFunctional<'a> {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        fixed: &C6FixedWrapperCommitments,
+    pub fn new<B: C6ResidualCommitmentBinding>(
+        fixed: &B,
         outer_statement_digest: C6WrapperDigest,
         residual_manifest_digest: C6WrapperDigest,
         source_binding_digest: C6WrapperDigest,
@@ -305,18 +351,11 @@ impl<'a> C6Nbr2CorrectionFunctional<'a> {
         let source_count = u32::try_from(coefficients.len())
             .map_err(|_| C6AuthenticatedOutputLinkError::new("C6NBR2 source count exceeds u32"))?;
         let coefficient_vector_digest = c6_nbr2_coefficient_vector_digest(coefficients);
-        let source_log2 = fixed
-            .commitments()
-            .iter()
-            .find(|commitment| commitment.spec.cohort_id == C6_DELTA_RESIDUAL_COHORT_ID)
-            .map(|commitment| commitment.spec.payload_log2)
-            .ok_or_else(|| {
-                C6AuthenticatedOutputLinkError::new("C6NBR2 residual commitment is missing")
-            })?;
+        let source_log2 = fixed.residual_source_log2()?;
         let mut statement = Self {
             outer_statement_digest,
-            wrapper_statement_digest: fixed.statement_digest(),
-            fixed_roots_digest: fixed.binding_digest(),
+            wrapper_statement_digest: fixed.residual_statement_digest(),
+            fixed_roots_digest: fixed.residual_roots_digest(),
             residual_manifest_digest,
             source_binding_digest,
             source_schedule_digest,
@@ -370,10 +409,14 @@ impl<'a> C6Nbr2CorrectionFunctional<'a> {
         self.coefficients
     }
 
-    fn validate_for_link(&self, fixed: &C6FixedWrapperCommitments, rounds: usize) -> Result<()> {
+    fn validate_for_link<B: C6ResidualCommitmentBinding>(
+        &self,
+        fixed: &B,
+        rounds: usize,
+    ) -> Result<()> {
         let capacity = 1usize.checked_shl(u32::from(self.source_log2)).unwrap_or_default();
-        if self.wrapper_statement_digest != fixed.statement_digest()
-            || self.fixed_roots_digest != fixed.binding_digest()
+        if self.wrapper_statement_digest != fixed.residual_statement_digest()
+            || self.fixed_roots_digest != fixed.residual_roots_digest()
             || self.coefficients.len() != self.source_count as usize
             || self.coefficients.len() > capacity
             || rounds != usize::from(self.source_log2) + 2
@@ -425,8 +468,8 @@ impl fmt::Debug for C63ResidualSourceFunctionals {
 }
 
 impl C63ResidualSourceFunctionals {
-    pub fn new(
-        fixed: &C6FixedWrapperCommitments,
+    pub fn new<B: C6ResidualCommitmentBinding>(
+        fixed: &B,
         outer_statement_digest: C6WrapperDigest,
         source_binding_digest: C6WrapperDigest,
         source_schedule_digest: C6WrapperDigest,
@@ -443,8 +486,8 @@ impl C63ResidualSourceFunctionals {
         )
     }
 
-    pub fn new_owned(
-        fixed: &C6FixedWrapperCommitments,
+    pub fn new_owned<B: C6ResidualCommitmentBinding>(
+        fixed: &B,
         outer_statement_digest: C6WrapperDigest,
         source_binding_digest: C6WrapperDigest,
         source_schedule_digest: C6WrapperDigest,
@@ -461,8 +504,8 @@ impl C63ResidualSourceFunctionals {
         )
     }
 
-    fn new_inner(
-        fixed: &C6FixedWrapperCommitments,
+    fn new_inner<B: C6ResidualCommitmentBinding>(
+        fixed: &B,
         outer_statement_digest: C6WrapperDigest,
         source_binding_digest: C6WrapperDigest,
         source_schedule_digest: C6WrapperDigest,
@@ -472,22 +515,13 @@ impl C63ResidualSourceFunctionals {
         let source_count = u32::try_from(coefficients[0].len()).map_err(|_| {
             C6AuthenticatedOutputLinkError::new("C6.3 source-functional count exceeds u32")
         })?;
-        let source_log2 = fixed
-            .commitments()
-            .iter()
-            .find(|commitment| commitment.spec.cohort_id == C6_DELTA_RESIDUAL_COHORT_ID)
-            .map(|commitment| commitment.spec.payload_log2)
-            .ok_or_else(|| {
-                C6AuthenticatedOutputLinkError::new(
-                    "C6.3 source-functional residual commitment is missing",
-                )
-            })?;
+        let source_log2 = fixed.residual_source_log2()?;
         let coefficient_digests =
             coefficients.each_ref().map(|values| c6_nbr2_coefficient_vector_digest(values));
         let mut statement = Self {
             outer_statement_digest,
-            wrapper_statement_digest: fixed.statement_digest(),
-            fixed_roots_digest: fixed.binding_digest(),
+            wrapper_statement_digest: fixed.residual_statement_digest(),
+            fixed_roots_digest: fixed.residual_roots_digest(),
             source_binding_digest,
             source_schedule_digest,
             functional_context_digest,
@@ -536,10 +570,10 @@ impl C63ResidualSourceFunctionals {
         })
     }
 
-    fn validate_for_link(&self, fixed: &C6FixedWrapperCommitments) -> Result<()> {
+    fn validate_for_link<B: C6ResidualCommitmentBinding>(&self, fixed: &B) -> Result<()> {
         let capacity = 1usize.checked_shl(u32::from(self.source_log2)).unwrap_or_default();
-        if self.wrapper_statement_digest != fixed.statement_digest()
-            || self.fixed_roots_digest != fixed.binding_digest()
+        if self.wrapper_statement_digest != fixed.residual_statement_digest()
+            || self.fixed_roots_digest != fixed.residual_roots_digest()
             || self.coefficients.iter().any(|values| values.len() != self.source_count as usize)
             || self.source_count as usize > capacity
             || self.digest != c63_source_functionals_digest(self)

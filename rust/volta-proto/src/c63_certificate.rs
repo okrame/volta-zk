@@ -15,6 +15,7 @@ pub const C63_SKETCH_PUBLIC_ARGUMENT_MAX_BYTES: u64 = 12_276_610;
 pub const C63_NATIVE_CERTIFICATE_VERSION: u16 = 3;
 pub const C64_NATIVE_CERTIFICATE_VERSION: u16 = 4;
 pub const C63_NATIVE_WRAPPER_QUERIES: u16 = 86;
+pub const C64_NATIVE_PROJECTED_RESIDUAL_BODIES: u16 = 6;
 pub const C63_NATIVE_CERTIFICATE_FRAMING_BYTES: u64 = 793;
 pub const C63_NATIVE_STRICT_PI_FINAL_MAX_BYTES: u64 =
     C63_NATIVE_CERTIFICATE_FRAMING_BYTES + crate::C63_RESPONSE_PROOF_ENVELOPE_MAX_BYTES;
@@ -23,7 +24,9 @@ pub const C63_CERTIFICATE_CODEC_MAX_BYTES: u64 = C63_NATIVE_CERTIFICATE_FRAMING_
     + C63_INHERITED_PUBLIC_ARGUMENT_BYTES
     + C63_SKETCH_PUBLIC_ARGUMENT_MAX_BYTES
     + crate::C63_RESPONSE_PROOF_ENVELOPE_MAX_BYTES;
-pub const C64_NATIVE_STRICT_PI_FINAL_MAX_BYTES: u64 = 8_500_793;
+pub const C64_NATIVE_CERTIFICATE_FRAMING_BYTES: u64 = 761;
+pub const C64_NATIVE_STRICT_PI_FINAL_MAX_BYTES: u64 =
+    C64_NATIVE_CERTIFICATE_FRAMING_BYTES + 8_500_000;
 pub const C64_CERTIFICATE_CODEC_MAX_BYTES: u64 = 35_000_000;
 
 const C63_NATIVE_CERTIFICATE_MAGIC: &[u8] = b"VOLTA-C63-CERT-v3";
@@ -44,6 +47,76 @@ const C63_NATIVE_RETAINED_MAX_BYTES: u64 = C63_RETAINED_NON_PCS_RESPONSE_BYTES
     + C63_SKETCH_PUBLIC_ARGUMENT_MAX_BYTES;
 
 pub type C63NativeWrapperCommitments = C62NativeWrapperCommitments;
+
+/// C6.4 binds the six projected residual roots carried by `C64PIF1`; it does
+/// not encode either historical dense-wrapper root.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C64NativeProjectedResidualCommitments {
+    pub statement_digest: [u8; 32],
+    pub roots_digest: [u8; 32],
+    pub source_binding_digest: [u8; 32],
+}
+
+impl C64NativeProjectedResidualCommitments {
+    pub fn roots_digest(statement_digest: [u8; 32], roots: [[u8; 32]; 6]) -> [u8; 32] {
+        let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c64/projected-residual-roots/v2");
+        hasher.update(&statement_digest);
+        for root in roots {
+            hasher.update(&root);
+        }
+        *hasher.finalize().as_bytes()
+    }
+
+    fn validate(self) -> Result<()> {
+        if [self.statement_digest, self.roots_digest, self.source_binding_digest].contains(&[0; 32])
+        {
+            return Err(C63CertificateError::new(
+                "C64 projected-residual binding contains a zero digest",
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum C63NativeResidualCommitments {
+    C63(C63NativeWrapperCommitments),
+    C64(C64NativeProjectedResidualCommitments),
+}
+
+impl C63NativeResidualCommitments {
+    pub fn statement_digest(self) -> [u8; 32] {
+        match self {
+            Self::C63(binding) => binding.statement_digest,
+            Self::C64(binding) => binding.statement_digest,
+        }
+    }
+
+    pub fn source_binding_digest(self) -> [u8; 32] {
+        match self {
+            Self::C63(binding) => binding.source_binding_digest,
+            Self::C64(binding) => binding.source_binding_digest,
+        }
+    }
+
+    pub fn c63(self) -> Result<C63NativeWrapperCommitments> {
+        match self {
+            Self::C63(binding) => Ok(binding),
+            Self::C64(_) => Err(C63CertificateError::new(
+                "C6.4 projected roots cannot be decoded as C6.3 wrapper roots",
+            )),
+        }
+    }
+
+    pub fn c64(self) -> Result<C64NativeProjectedResidualCommitments> {
+        match self {
+            Self::C64(binding) => Ok(binding),
+            Self::C63(_) => Err(C63CertificateError::new(
+                "C6.3 wrapper roots cannot be decoded as C6.4 projected roots",
+            )),
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C63CertificateError(String);
@@ -80,7 +153,7 @@ struct PublicHeader {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C63NativeFinalCertificate {
     pub version: u16,
-    pub wrapper_queries: u16,
+    pub commitment_profile: u16,
     pub protocol_digest: [u8; 32],
     pub model_digest: [u8; 32],
     pub params_digest: [u8; 32],
@@ -94,7 +167,7 @@ pub struct C63NativeFinalCertificate {
     pub new_head: C6CacheHead,
     pub workload: C6Workload,
     pub public_output_digest: [u8; 32],
-    pub wrapper: C63NativeWrapperCommitments,
+    pub wrapper: C63NativeResidualCommitments,
     pub residual: C6PairedDeltaResidual,
     pub retained_transcript_digest: [u8; 32],
     pub proof_envelope_digest: [u8; 32],
@@ -130,7 +203,7 @@ impl C63NativeFinalCertificate {
         };
         let certificate = Self {
             version: read(input.u16())?,
-            wrapper_queries: read(input.u16())?,
+            commitment_profile: read(input.u16())?,
             protocol_digest: read(input.digest())?,
             model_digest: read(input.digest())?,
             params_digest: read(input.digest())?,
@@ -144,21 +217,26 @@ impl C63NativeFinalCertificate {
             new_head: read(input.cache_head())?,
             workload: read(input.workload())?,
             public_output_digest: read(input.digest())?,
-            wrapper: C63NativeWrapperCommitments {
-                statement_digest: read(input.digest())?,
-                residual_root: read(input.digest())?,
-                auxiliary_root: read(input.digest())?,
-                source_binding_digest: read(input.digest())?,
+            wrapper: if magic_version == C64_NATIVE_CERTIFICATE_VERSION {
+                C63NativeResidualCommitments::C64(C64NativeProjectedResidualCommitments {
+                    statement_digest: read(input.digest())?,
+                    roots_digest: read(input.digest())?,
+                    source_binding_digest: read(input.digest())?,
+                })
+            } else {
+                C63NativeResidualCommitments::C63(C63NativeWrapperCommitments {
+                    statement_digest: read(input.digest())?,
+                    residual_root: read(input.digest())?,
+                    auxiliary_root: read(input.digest())?,
+                    source_binding_digest: read(input.digest())?,
+                })
             },
             residual: read(input.paired_residual())?,
             retained_transcript_digest: read(input.digest())?,
             proof_envelope_digest: read(input.digest())?,
             transition_statement_digest: read(input.digest())?,
             retained_transcript: read(input.blob(C63_NATIVE_RETAINED_MAX_BYTES as usize))?,
-            proof_envelope: read(input.blob(
-                (C64_NATIVE_STRICT_PI_FINAL_MAX_BYTES - C63_NATIVE_CERTIFICATE_FRAMING_BYTES)
-                    as usize,
-            ))?,
+            proof_envelope: read(input.blob(8_500_000))?,
         };
         if certificate.version != magic_version {
             return Err(C63CertificateError::new("certificate magic and version differ"));
@@ -214,7 +292,10 @@ impl C63NativeFinalCertificate {
     }
 
     pub fn wrapper_roots(&self) -> [[u8; 32]; 4] {
-        self.wrapper.roots(self.old_head.cache_root, self.new_head.cache_root)
+        self.wrapper
+            .c63()
+            .expect("validated C6.3 certificate has historical wrapper roots")
+            .roots(self.old_head.cache_root, self.new_head.cache_root)
     }
 
     pub fn compute_transition_statement_digest(&self) -> [u8; 32] {
@@ -227,8 +308,13 @@ impl C63NativeFinalCertificate {
     }
 
     pub fn validate(&self) -> Result<()> {
+        let expected_profile = if self.version == C64_NATIVE_CERTIFICATE_VERSION {
+            C64_NATIVE_PROJECTED_RESIDUAL_BODIES
+        } else {
+            C63_NATIVE_WRAPPER_QUERIES
+        };
         if ![C63_NATIVE_CERTIFICATE_VERSION, C64_NATIVE_CERTIFICATE_VERSION].contains(&self.version)
-            || self.wrapper_queries != C63_NATIVE_WRAPPER_QUERIES
+            || self.commitment_profile != expected_profile
         {
             return Err(C63CertificateError::new("wrong C63NFC3 version or query profile"));
         }
@@ -259,7 +345,19 @@ impl C63NativeFinalCertificate {
             .validate()
             .map_err(|error| C63CertificateError::new(error.to_string()))?;
         self.workload.validate().map_err(|error| C63CertificateError::new(error.to_string()))?;
-        self.wrapper.validate().map_err(|error| C63CertificateError::new(error.to_string()))?;
+        match (self.version, self.wrapper) {
+            (C63_NATIVE_CERTIFICATE_VERSION, C63NativeResidualCommitments::C63(binding)) => {
+                binding.validate().map_err(|error| C63CertificateError::new(error.to_string()))?;
+            }
+            (C64_NATIVE_CERTIFICATE_VERSION, C63NativeResidualCommitments::C64(binding)) => {
+                binding.validate()?;
+            }
+            _ => {
+                return Err(C63CertificateError::new(
+                    "certificate version and residual commitment type differ",
+                ));
+            }
+        }
         if self.new_head.epoch
             != self
                 .old_head
@@ -296,7 +394,16 @@ impl C63NativeFinalCertificate {
             C63ResponseProofEnvelope::decode(&self.proof_envelope)
                 .map_err(|error| C63CertificateError::new(error.to_string()))?;
         } else {
-            validate_c64_proof_envelope(&self.proof_envelope)?;
+            let roots = validate_c64_proof_envelope(&self.proof_envelope)?;
+            let binding = self.wrapper.c64()?;
+            if binding.roots_digest
+                != C64NativeProjectedResidualCommitments::roots_digest(
+                    binding.statement_digest,
+                    roots,
+                )
+            {
+                return Err(C63CertificateError::new("C64 certificate and projected roots differ"));
+            }
         }
         if self.retained_transcript_digest
             != retained_digest(self.version, &self.retained_transcript)
@@ -311,7 +418,12 @@ impl C63NativeFinalCertificate {
             return Err(C63CertificateError::new("C63NFC3 transition or head digest mismatch"));
         }
         let encoded_len = self.encode_unchecked().len() as u64;
-        let proof_boundary = C63_NATIVE_CERTIFICATE_FRAMING_BYTES
+        let framing = if self.version == C64_NATIVE_CERTIFICATE_VERSION {
+            C64_NATIVE_CERTIFICATE_FRAMING_BYTES
+        } else {
+            C63_NATIVE_CERTIFICATE_FRAMING_BYTES
+        };
+        let proof_boundary = framing
             .checked_add(self.proof_envelope.len() as u64)
             .ok_or_else(|| C63CertificateError::new("C63NFC3 proof boundary overflows"))?;
         let (certificate_cap, proof_cap) = if self.version == C64_NATIVE_CERTIFICATE_VERSION {
@@ -349,7 +461,7 @@ impl C63NativeFinalCertificate {
             public.predecessor_encoded_sketch_root,
             public.correction_root,
             public.encoded_sketch_root,
-            self.wrapper.source_binding_digest,
+            self.wrapper.source_binding_digest(),
         ] {
             state.digest(digest);
         }
@@ -389,7 +501,7 @@ impl C63NativeFinalCertificate {
 
     fn encode_fixed_prefix(&self, out: &mut Encoder, include_transition: bool) {
         out.u16(self.version);
-        out.u16(self.wrapper_queries);
+        out.u16(self.commitment_profile);
         for digest in [
             self.protocol_digest,
             self.model_digest,
@@ -407,13 +519,24 @@ impl C63NativeFinalCertificate {
         out.cache_head(self.new_head, include_transition);
         out.workload(self.workload);
         out.digest(self.public_output_digest);
-        for digest in [
-            self.wrapper.statement_digest,
-            self.wrapper.residual_root,
-            self.wrapper.auxiliary_root,
-            self.wrapper.source_binding_digest,
-        ] {
-            out.digest(digest);
+        match self.wrapper {
+            C63NativeResidualCommitments::C63(binding) => {
+                for digest in [
+                    binding.statement_digest,
+                    binding.residual_root,
+                    binding.auxiliary_root,
+                    binding.source_binding_digest,
+                ] {
+                    out.digest(digest);
+                }
+            }
+            C63NativeResidualCommitments::C64(binding) => {
+                for digest in
+                    [binding.statement_digest, binding.roots_digest, binding.source_binding_digest]
+                {
+                    out.digest(digest);
+                }
+            }
         }
         out.paired_residual(self.residual);
         out.digest(self.retained_transcript_digest);
@@ -424,7 +547,7 @@ impl C63NativeFinalCertificate {
     }
 }
 
-fn validate_c64_proof_envelope(bytes: &[u8]) -> Result<()> {
+fn validate_c64_proof_envelope(bytes: &[u8]) -> Result<[[u8; 32]; 6]> {
     const HEADER: usize = 8 + 2 + 2 + 8 * 8;
     if bytes.len() > 8_500_000
         || bytes.len() < HEADER + 32
@@ -434,11 +557,13 @@ fn validate_c64_proof_envelope(bytes: &[u8]) -> Result<()> {
     {
         return Err(C63CertificateError::new("C64PIF1 header or size differs"));
     }
+    let mut lengths = [0usize; 8];
     let payload_bytes = (0..8).try_fold(0usize, |total, index| {
         let offset = 12 + index * 8;
         let length = u64::from_le_bytes(bytes[offset..offset + 8].try_into().unwrap());
         let length = usize::try_from(length)
             .map_err(|_| C63CertificateError::new("C64PIF1 component exceeds usize"))?;
+        lengths[index] = length;
         total
             .checked_add(length)
             .ok_or_else(|| C63CertificateError::new("C64PIF1 component census overflows"))
@@ -451,7 +576,31 @@ fn validate_c64_proof_envelope(bytes: &[u8]) -> Result<()> {
     {
         return Err(C63CertificateError::new("C64PIF1 digest or length differs"));
     }
-    Ok(())
+    let projected_offset = HEADER
+        + lengths[..7]
+            .iter()
+            .try_fold(0usize, |total, length| total.checked_add(*length))
+            .ok_or_else(|| C63CertificateError::new("C64PIF1 projected offset overflows"))?;
+    let projected = bytes
+        .get(projected_offset..projected_offset + lengths[7])
+        .ok_or_else(|| C63CertificateError::new("C64 projected frame is truncated"))?;
+    const ROOTS_OFFSET: usize = 8 + 2 + 2 + 32;
+    if projected.len() < ROOTS_OFFSET + 6 * 32
+        || projected.get(..8) != Some(b"C64PRS1\0")
+        || u16::from_le_bytes(projected[8..10].try_into().unwrap()) != 1
+        || u16::from_le_bytes(projected[10..12].try_into().unwrap()) != 6
+    {
+        return Err(C63CertificateError::new("C64 projected root frame differs"));
+    }
+    let mut roots = [[0u8; 32]; 6];
+    for (index, root) in roots.iter_mut().enumerate() {
+        let start = ROOTS_OFFSET + index * 32;
+        *root = projected[start..start + 32].try_into().unwrap();
+    }
+    if roots.contains(&[0; 32]) {
+        return Err(C63CertificateError::new("C64 projected root is zero"));
+    }
+    Ok(roots)
 }
 
 fn parse_public_header(bytes: &[u8]) -> Result<PublicHeader> {
@@ -634,7 +783,7 @@ mod tests {
         .unwrap();
         C63NativeFinalCertificate {
             version: C63_NATIVE_CERTIFICATE_VERSION,
-            wrapper_queries: C63_NATIVE_WRAPPER_QUERIES,
+            commitment_profile: C63_NATIVE_WRAPPER_QUERIES,
             protocol_digest: digest(10),
             model_digest: digest(11),
             params_digest: digest(12),
@@ -668,12 +817,12 @@ mod tests {
                 new_context: 1,
             },
             public_output_digest: digest(18),
-            wrapper: C63NativeWrapperCommitments {
+            wrapper: C63NativeResidualCommitments::C63(C63NativeWrapperCommitments {
                 statement_digest: digest(29),
                 residual_root: digest(23),
                 auxiliary_root: digest(24),
                 source_binding_digest: digest(25),
-            },
+            }),
             residual: C6PairedDeltaResidual {
                 coordinates: [
                     crate::C6DeltaResidual { correction_rlc: Fp2::ZERO, public_tag_rlc: Fp2::ZERO },
@@ -693,7 +842,7 @@ mod tests {
     #[test]
     fn c63_final_certificate_round_trip_binds_both_state_roots() {
         let certificate = certificate();
-        assert_ne!(certificate.wrapper.statement_digest, digest(19));
+        assert_ne!(certificate.wrapper.statement_digest(), digest(19));
         let sketch = certificate.sketch_public_argument_unchecked();
         assert_eq!(sketch.len(), C63_PUBLIC_ARGUMENT_FRAMING_BYTES);
         assert!(parse_public_header(&sketch[..C63_PUBLIC_ARGUMENT_HEADER_BYTES]).is_err());
@@ -759,13 +908,34 @@ mod tests {
 
     #[test]
     fn c64_version_four_round_trip_is_domain_separated_and_capped_at_35_mb() {
+        let roots = std::array::from_fn(|index| digest(40 + index as u8));
+        let mut projected = Vec::from(b"C64PRS1\0".as_slice());
+        projected.extend_from_slice(&1u16.to_le_bytes());
+        projected.extend_from_slice(&6u16.to_le_bytes());
+        projected.extend_from_slice(&digest(39));
+        for root in roots {
+            projected.extend_from_slice(&root);
+        }
         let mut proof = Vec::from(b"C64PIF1\0".as_slice());
         proof.extend_from_slice(&1u16.to_le_bytes());
         proof.extend_from_slice(&8u16.to_le_bytes());
-        proof.extend_from_slice(&[0; 8 * 8]);
+        for length in [0usize; 7].into_iter().chain([projected.len()]) {
+            proof.extend_from_slice(&(length as u64).to_le_bytes());
+        }
+        proof.extend_from_slice(&projected);
         proof.extend_from_slice(blake3::hash(&proof).as_bytes());
         let mut certificate = certificate();
         certificate.version = C64_NATIVE_CERTIFICATE_VERSION;
+        certificate.commitment_profile = C64_NATIVE_PROJECTED_RESIDUAL_BODIES;
+        certificate.wrapper =
+            C63NativeResidualCommitments::C64(C64NativeProjectedResidualCommitments {
+                statement_digest: digest(29),
+                roots_digest: C64NativeProjectedResidualCommitments::roots_digest(
+                    digest(29),
+                    roots,
+                ),
+                source_binding_digest: digest(25),
+            });
         certificate.proof_envelope = proof;
         certificate = certificate.seal().unwrap();
         let bytes = certificate.encode().unwrap();
@@ -775,6 +945,32 @@ mod tests {
             Some(C64_NATIVE_CERTIFICATE_MAGIC)
         );
         assert_eq!(C64_CERTIFICATE_CODEC_MAX_BYTES, 35_000_000);
+        assert_eq!(
+            bytes.len() as u64
+                - certificate.retained_transcript.len() as u64
+                - certificate.proof_envelope.len() as u64,
+            C64_NATIVE_CERTIFICATE_FRAMING_BYTES,
+        );
+        let mut changed_root = certificate.clone();
+        let root_offset = 8 + 2 + 2 + 8 * 8 + 8 + 2 + 2 + 32;
+        changed_root.proof_envelope[root_offset] ^= 1;
+        let digest_offset = changed_root.proof_envelope.len() - 32;
+        let envelope_digest =
+            *blake3::hash(&changed_root.proof_envelope[..digest_offset]).as_bytes();
+        changed_root.proof_envelope[digest_offset..].copy_from_slice(&envelope_digest);
+        assert!(changed_root.seal().is_err());
+
+        let mut legacy_type = certificate.clone();
+        legacy_type.wrapper = C63NativeResidualCommitments::C63(C63NativeWrapperCommitments {
+            statement_digest: digest(29),
+            residual_root: digest(23),
+            auxiliary_root: digest(24),
+            source_binding_digest: digest(25),
+        });
+        assert!(legacy_type.seal().is_err());
+        let mut legacy_profile = certificate.clone();
+        legacy_profile.commitment_profile = C63_NATIVE_WRAPPER_QUERIES;
+        assert!(legacy_profile.seal().is_err());
         let mut changed = bytes;
         changed[C64_NATIVE_CERTIFICATE_MAGIC.len() - 1] = b'3';
         assert!(C63NativeFinalCertificate::decode(&changed).is_err());

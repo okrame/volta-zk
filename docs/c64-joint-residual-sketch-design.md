@@ -177,3 +177,5 @@ it before a certificate. No state was promoted and both authorizations burned.
 Resume requires a plan that removes, reuses or streams at least `422,576,128 B`
 of simultaneous device buffers, or an explicit device-gate change, plus new
 owner GO and a new pod. No third or selective retry is authorized.
+The campaign pod is stopped; its persistent volume retains setup and hashed
+diagnostics.

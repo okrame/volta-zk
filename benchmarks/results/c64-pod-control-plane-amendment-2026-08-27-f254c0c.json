@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "kind": "append_only_control_plane_metadata_amendment",
+  "related_runs": [
+    "c64-e2e-preproof-setup-bundle-failure-2026-08-27-ba09091.json",
+    "c64-e2e-gpu-guard-failure-2026-08-27-31aae24.json"
+  ],
+  "record_git_commit": "f254c0c1a9923386fe360be16ec433e5e5b522f4",
+  "control_plane": {
+    "provider": "RunPod",
+    "pod_id": "6zjxkjop55rjqp",
+    "pod_name": "wooden_crimson_bee",
+    "ssh_endpoint": "185.216.23.244:10541",
+    "image": "runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404",
+    "gpu_count": 1,
+    "allocated_vcpus": 24,
+    "allocated_memory_gb": 117,
+    "volume_gb": 250,
+    "container_disk_gb": 230,
+    "cost_per_hour_usd": 1.59
+  },
+  "guest_visibility": {
+    "proc_online_cpus": 192,
+    "proc_memtotal_bytes": 1014482096128,
+    "cgroup_memory_max": "max",
+    "interpretation": "The guest-visible CPU and memory values in the two run dispositions describe host visibility, not the RunPod control-plane allocation."
+  },
+  "impact": {
+    "gpu_measurements_changed": false,
+    "gpu_guard_verdict_changed": false,
+    "certificate_or_timing_credit_changed": false,
+    "resource_diagnosis_changed": false
+  },
+  "shutdown": {
+    "command": "runpodctl pod stop 6zjxkjop55rjqp",
+    "desired_status": "EXITED",
+    "confirmed_at_utc": "2026-08-27T16:22:46Z",
+    "volume_retained": true
+  }
+}

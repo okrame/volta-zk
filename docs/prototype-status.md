@@ -20,7 +20,8 @@ Read `c64-joint-residual-sketch-design.md` next.
   cleanup, campaign discipline, release build and live C64MP1 response
   dispatch passed. Setup `[0,150]` remains `36,119,243 B`. At 429 s GPU compute
   reached `94%`; at 430 s memory reached `44,099 MiB`, exceeding the
-  `43,696-MiB` guard by `403 MiB`. Peak host RSS was `21,833,981,952 B`.
+  `43,696-MiB` guard by `403 MiB`. Peak host RSS was `21,833,981,952 B`. RunPod
+  allocated 24 vCPU/117 GB although the guest exposed host-wide 192/945 GiB.
 - **Analytic credit only.** `32,903,995 B` certificate projection
   (`2,096,005 B` hard-limit headroom), `78.001993132250...` soundness bits,
   `403,177,472 B` resident projection and 661 suffix full correlations per
@@ -29,6 +30,18 @@ Read `c64-joint-residual-sketch-design.md` next.
   requires a concrete plan to remove/reuse/stream at least `422,576,128 B` of
   simultaneous device buffers, or an explicit gate change, plus new owner GO
   and a new pod. Prover time and certificate bytes remain unmeasured.
+
+- **2026-08-27 — Pod control-plane metadata amended and pod stopped.** The
+  RunPod control plane identifies pod `6zjxkjop55rjqp` (`wooden_crimson_bee`)
+  at the exact campaign endpoint, with one GPU, 24 allocated vCPU, 117 GB RAM
+  and a 250-GB volume. The guest instead exposed host-wide `/proc` values of
+  192 processors and `1,014,482,096,128 B`; the raw run fields explicitly
+  named physical/guest values remain unchanged, and the append-only amendment
+  distinguishes them from the allocation. This changes no GPU measurement or
+  verdict. After final Git synchronization and build-cache removal,
+  `runpodctl pod stop` returned and a separate get confirmed `EXITED` at
+  `2026-08-27T16:22:46Z`. The volume retains setup and diagnostic roots. Raw
+  amendment: `c64-pod-control-plane-amendment-2026-08-27-f254c0c.json`.
 
 - **2026-08-27 — C6.4 repair run crosses dispatch, then fails the GPU-memory
   gate before its first certificate.** Clean `31aae24` reused only setup

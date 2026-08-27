@@ -19,7 +19,7 @@ Read `c64-joint-residual-sketch-design.md` next.
   35-MB certificate/tail codec, reload verifier, finite correlation census and
   exact two-profile/two-proof driver are executable. The guarded pod runner
   compiles before measurement, reuses or generates only contexts 0 and 150,
-  and records one-second failure diagnostics. Full workspace and
+  and records one-second process and GPU diagnostics. Full workspace and
   feature-enabled C6.4 tests pass. No pod was contacted.
 - **Analytic credit only.** `32,903,995 B` certificate projection
   (`2,096,005 B` hard-limit headroom), `78.001993132250...` soundness bits,
@@ -43,8 +43,9 @@ Read `c64-joint-residual-sketch-design.md` next.
   or undersized pod before compilation, builds ABI45 once, reuses only setup
   contexts 0 and 150 when available or generates exactly those two, and runs
   the two no-retry proofs under a configurable 600-second emergency timebox.
-  One-second process I/O/RSS, device memory, disk and cgroup diagnostics plus
-  all logs and hashes survive failure; transient proof/cache data is removed.
+  One-second process I/O/RSS, device memory/utilization/power/clocks/temperature,
+  disk and cgroup diagnostics plus all logs and hashes survive failure;
+  transient proof/cache data is removed.
   No pod was contacted.
 
 - **2026-08-26 — C6.4 R3 reaches `C64_POD_READY`.** The production path now

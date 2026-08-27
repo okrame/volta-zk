@@ -144,10 +144,11 @@ profiles. Compilation completes before the measured process starts.
 The measured process has a default 600-second emergency timebox, adjustable
 through `C64_SESSION_TIMEOUT_S`, plus the registered disk, cgroup-memory and
 device-memory hard stops. The 20- and 150-second marks are diagnostic only.
-Every second is recorded with process memory/I/O, device memory, free disk and
-cgroup use; stdout, stderr, build/setup logs, artifact hashes and failure file
-censuses remain outside the repository. A target miss keeps both proofs for
-diagnosis but makes `credit:false`.
+Every second is recorded with process memory/I/O, device memory, compute and
+memory utilization, power, clocks, temperature, free disk and cgroup use;
+stdout, stderr, build/setup logs, artifact hashes and failure file censuses
+remain outside the repository. A target miss keeps both proofs for diagnosis
+but makes `credit:false`.
 
 On a new pod, source and small tracked evidence move only through GitHub HTTPS.
 Generated setup, weights and large run artifacts remain pod-local. Every raw

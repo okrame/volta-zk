@@ -198,7 +198,7 @@ export VOLTA_C64_INSTALLED_SETUP_GENERATION_WALL_S
 
 record_bin="$REPO_ROOT/rust/target/release/c62_whir_fiat_shamir_record"
 timeline="$SESSION_ROOT/resource-timeline.tsv"
-printf 'timestamp_ns\telapsed_s\trss_bytes\thwm_bytes\tread_bytes\twrite_bytes\tgpu_mib\tdisk_free_bytes\tcgroup_current_bytes\tevent\n' >"$timeline"
+printf 'timestamp_ns\telapsed_s\trss_bytes\thwm_bytes\tread_bytes\twrite_bytes\tgpu_mib\tgpu_util_pct\tgpu_mem_util_pct\tgpu_power_w\tgpu_sm_clock_mhz\tgpu_mem_clock_mhz\tgpu_temp_c\tdisk_free_bytes\tcgroup_current_bytes\tevent\n' >"$timeline"
 "$record_bin" \
   --mode c64-prove \
   --weights "$WEIGHTS_DIR" \
@@ -232,9 +232,14 @@ while kill -0 "$record_pid" 2>/dev/null; do
     ) || true
   fi
   monitor_failed=0
-  if ! gpu_mib=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits \
-    --id="$CUDA_VISIBLE_DEVICES" | awk '{ print $1 + 0 }'); then
-    gpu_mib=0
+  if ! IFS=, read -r gpu_mib gpu_util_pct gpu_mem_util_pct gpu_power_w \
+    gpu_sm_clock_mhz gpu_mem_clock_mhz gpu_temp_c < <(
+      nvidia-smi \
+        --query-gpu=memory.used,utilization.gpu,utilization.memory,power.draw,clocks.current.sm,clocks.current.memory,temperature.gpu \
+        --format=csv,noheader,nounits --id="$CUDA_VISIBLE_DEVICES" | tr -d ' '
+    ); then
+    gpu_mib=0 gpu_util_pct=0 gpu_mem_util_pct=0 gpu_power_w=0
+    gpu_sm_clock_mhz=0 gpu_mem_clock_mhz=0 gpu_temp_c=0
     monitor_failed=1
   fi
   if ! disk_free=$(df -PB1 "$WORK_ROOT" | awk 'NR == 2 { print $4 }'); then
@@ -255,9 +260,10 @@ while kill -0 "$record_pid" 2>/dev/null; do
   if [[ $sent_term_at -eq 0 && $cgroup_max != max && $((cgroup_max - cgroup_current)) -lt $CGROUP_RESERVE_BYTES ]]; then event=cgroup_hard_stop; sent_term_at=$now_s; kill -TERM "$record_pid" 2>/dev/null || true; fi
   if [[ $sent_term_at -eq 0 && $elapsed_s -ge $SESSION_TIMEOUT_S ]]; then event=session_timebox; sent_term_at=$now_s; kill -TERM "$record_pid" 2>/dev/null || true; fi
   if [[ $sent_term_at -ne 0 && $((now_s - sent_term_at)) -ge 30 ]]; then event=forced_kill; kill -KILL "$record_pid" 2>/dev/null || true; fi
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$(date +%s%N)" "$elapsed_s" "$rss_bytes" "$hwm_bytes" "$read_bytes" "$write_bytes" \
-    "$gpu_mib" "$disk_free" "$cgroup_current" "$event" >>"$timeline"
+    "$gpu_mib" "$gpu_util_pct" "$gpu_mem_util_pct" "$gpu_power_w" "$gpu_sm_clock_mhz" \
+    "$gpu_mem_clock_mhz" "$gpu_temp_c" "$disk_free" "$cgroup_current" "$event" >>"$timeline"
   sleep 1
 done
 set +e
@@ -265,7 +271,7 @@ wait "$record_pid"
 record_status=$?
 record_pid=
 set -e
-printf '%s\t%s\t0\t0\t0\t0\t0\t0\t0\texit_%s\n' \
+printf '%s\t%s\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\texit_%s\n' \
   "$(date +%s%N)" "$(( $(date +%s) - record_started_s ))" "$record_status" >>"$timeline"
 if [[ $record_status -ne 0 ]]; then
   exit "$record_status"

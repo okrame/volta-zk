@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 R3 FIRST POD ATTEMPT FAILED PRE-PROOF / REPAIR TESTED / SECOND ATTEMPT OWNER-GO)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 R3 SECOND POD ATTEMPT FAIL-CLOSED — GPU GUARD / ZERO CERTIFICATES / NO RETRY)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,25 +10,43 @@ record; no external plan is authoritative.
 
 Read `c64-joint-residual-sketch-design.md` next.
 
-- **Status/design.** C6.4 R3 on `agent/c64-joint-residual-sketch` remains
-  isolated from C7. The first clean A100 attempt at `ba09091` is immutable and
-  failed before any proof: the response builder parsed the valid C64MP1
-  two-profile bundle as old C62MP1. Two real-PCG authorizations burned; no
-  state was promoted. This is an integration defect, not protocol evidence.
-- **Completed evidence.** Native CUDA differential, allocation cleanup,
-  campaign discipline and release build passed. Setup contexts `[0,150]`
-  occupy `36,119,243 B` and remain reusable. The shared C6.2/C6.4 selector now
-  dispatches by bundle magic; its focused regression passes. The complete
-  failure diagnostics remain pod-local and their 20-file hash index is
-  recorded append-only.
+- **Status/design.** C6.4 R3 remains isolated from C7. The `ba09091` C64MP1
+  dispatch failure is repaired. Clean `31aae24` crossed that boundary but the
+  first response exceeded the registered GPU guard before any certificate;
+  the supervisor stopped it. Two fresh real-PCG authorizations burned and no
+  state was promoted. This establishes a resource failure, not a protocol or
+  PCS verdict.
+- **Completed evidence.** Native CUDA differential (`0.71 s`), allocation
+  cleanup, campaign discipline, release build and live C64MP1 response
+  dispatch passed. Setup `[0,150]` remains `36,119,243 B`. At 429 s GPU compute
+  reached `94%`; at 430 s memory reached `44,099 MiB`, exceeding the
+  `43,696-MiB` guard by `403 MiB`. Peak host RSS was `21,833,981,952 B`.
 - **Analytic credit only.** `32,903,995 B` certificate projection
   (`2,096,005 B` hard-limit headroom), `78.001993132250...` soundness bits,
   `403,177,472 B` resident projection and 661 suffix full correlations per
   tape are `credit:false` until measured on the pod.
-- **Hard stop/resume.** The owner authorized one fresh second attempt using
-  new directories and authorizations, reusing only setup `[0,150]`. It may run
-  exactly proofs `0->150`, `150->200`, each serialized, reloaded, verified and
-  promoted in order. No third or selective retry is authorized.
+- **Hard stop/resume.** No third or selective retry is authorized. Resume
+  requires a concrete plan to remove/reuse/stream at least `422,576,128 B` of
+  simultaneous device buffers, or an explicit gate change, plus new owner GO
+  and a new pod. Prover time and certificate bytes remain unmeasured.
+
+- **2026-08-27 — C6.4 repair run crosses dispatch, then fails the GPU-memory
+  gate before its first certificate.** Clean `31aae24` reused only setup
+  contexts 0 and 150 and passed the full CUDA projection differential in
+  `0.71 s`, allocation cleanup, campaign discipline and release build. The
+  live response crossed the former C64MP1/C62MP1 failure boundary. Fixed
+  preprocessing held `13,983 MiB`; later stages reached `19,103 MiB` and
+  `27,807 MiB`. At 429 s the active proof used `33,951 MiB`, `94%` compute and
+  `276.68 W`; the next allocation reached `44,099 MiB`, so the registered
+  `43,696-MiB` guard stopped it at 430 s. Excess was `403 MiB`
+  (`422,576,128 B`). Exit was 143 at 432 s, with zero certificate, artifact,
+  verifier replay or state promotion; both real-PCG authorizations burned.
+  Peak host RSS was `21,833,981,952 B`, reads `26,108,071,936 B`, writes
+  `29,579,157,504 B`, GPU memory utilization `56%` and temperature `37 C`.
+  The runner preserved a hashed 15-file diagnostic set and removed transient
+  work. Raw disposition:
+  `c64-e2e-gpu-guard-failure-2026-08-27-31aae24.json`. No protocol/PCS verdict,
+  proof-size credit or prover-time credit exists. No further run is authorized.
 
 - **2026-08-27 — First C6.4 pod attempt fails before proof; one repair run is
   authorized.** Clean `ba09091` passed the complete CUDA projection

@@ -1,0 +1,129 @@
+{
+  "schema": 1,
+  "profile": "runpod-a100-c64-projected-residual-cold-warm-v1",
+  "mode": "c64-prove",
+  "status": "failed_before_first_certificate",
+  "source_git_commit": "31aae249c62a2580d3649e7d8cd479056382243d",
+  "git_dirty": false,
+  "cloud": {
+    "provider": "RunPod",
+    "endpoint": "185.216.23.244:10541",
+    "instance_id": "280f7602698c",
+    "region": "not-exported-by-pod",
+    "image": "Ubuntu 24.04.3 LTS",
+    "driver_version": "570.172.08",
+    "cuda_version": "12.8",
+    "gpu_sku": "NVIDIA A100-SXM4-80GB",
+    "gpu_memory_mib": 81920,
+    "cpu_model": "Intel(R) Xeon(R) Platinum 8470",
+    "physical_ram_bytes": 1014482096128,
+    "vcpus": 192
+  },
+  "pre_proof_checks": {
+    "c64_cuda_projection_differential_pass": true,
+    "c64_cuda_projection_differential_wall_s": 0.71,
+    "c64_cuda_allocation_cleanup_pass": true,
+    "campaign_discipline_test_pass": true,
+    "release_build_pass": true,
+    "c64mp1_response_dispatch_reached_live_path": true
+  },
+  "installed_setup_reused": {
+    "source": "/workspace/c64-setup-ba09091-r1",
+    "profiles": [0, 150],
+    "file_bytes": 36119243,
+    "reusable_after_failure": true
+  },
+  "attempt": {
+    "elapsed_wall_s": 432,
+    "exit_status": 143,
+    "stop_reason": "gpu_hard_stop",
+    "stop_observed_s": 430,
+    "certificates_produced": 0,
+    "artifacts_produced": 0,
+    "session_record_produced": false,
+    "client_head_promoted": false,
+    "burned_correlation_authorizations": 2,
+    "selective_retry_performed": false,
+    "further_retry_authorized": false
+  },
+  "supervisor": {
+    "samples": 414,
+    "max_process_rss_bytes": 21833981952,
+    "max_process_hwm_bytes": 21833981952,
+    "process_read_bytes": 26108071936,
+    "process_write_bytes": 29579157504,
+    "max_gpu_used_mib_external": 44099,
+    "max_gpu_used_bytes_external": 46241153024,
+    "device_guard_mib": 43696,
+    "device_guard_bytes": 45818576864,
+    "device_guard_excess_mib": 403,
+    "device_guard_excess_bytes": 422576128,
+    "max_gpu_compute_utilization_pct": 94,
+    "max_gpu_memory_utilization_pct": 56,
+    "max_gpu_power_w": 276.68,
+    "max_gpu_sm_clock_mhz": 1410,
+    "max_gpu_memory_clock_mhz": 1593,
+    "max_gpu_temperature_c": 37,
+    "min_filesystem_free_bytes": 237329776640,
+    "retained_failure_run_bytes_before_cleanup": 19629343144,
+    "retained_work_bytes_after_cleanup": 0,
+    "resource_supervisor_terminated_attempt": true
+  },
+  "observable_timeline": {
+    "fixed_preprocessing_gpu_mib_at_150s": 13983,
+    "first_large_transient_growth_s_approx": 250,
+    "gpu_mib_at_249s": 19103,
+    "gpu_compute_utilization_pct_at_249s": 88,
+    "gpu_mib_at_328s": 27807,
+    "gpu_memory_utilization_pct_at_328s": 56,
+    "gpu_mib_at_429s": 33951,
+    "gpu_compute_utilization_pct_at_429s": 94,
+    "gpu_mib_at_guard_s": 44099,
+    "phase_attribution": "The abrupt final 10,148-MiB allocation occurred as the first response entered its active GPU proof phase. No internal prover record or certificate completed, so the under-20-second gate remains unmeasured."
+  },
+  "failure_run_census": [
+    {
+      "role": "inherited_encoded_weight_oracle_fp2",
+      "bytes": 17179869184
+    },
+    {
+      "role": "inherited_weight_coefficients_fp2",
+      "bytes": 2147483648
+    },
+    {
+      "role": "small_response_oracle_fp2",
+      "bytes": 268435456
+    },
+    {
+      "role": "small_response_coefficients_fp2",
+      "bytes": 33554432
+    }
+  ],
+  "evidence": {
+    "pod_local_root": "/workspace/c64-session-31aae24-r2",
+    "cuda_differential_log_sha256": "40ceb0449c8dc596fdd907d03b39c5f210f8ae4c6a27baa1bd0e2e2465473701",
+    "driver_check_log_sha256": "fff34ea3837a2c14c4022543bcd3e0f13495dcaa6c94a5324318e943d0d618a3",
+    "release_build_log_sha256": "06655d42c656c6579a33943d3c5a3a9de2cd021ad87314b7f27bf404f0d9e7f4",
+    "resource_timeline_sha256": "b26ff58b91ab94df10d0a29305061441bb06601498f4034444e86ffa90d035f8",
+    "failure_run_census_sha256": "9d4f9076df23443e71aa94d84d0f8f4918394e324cf3393dff406aa7d80e28a8",
+    "stable_failure_file_index_sha256": "aea9beaa0e636ed85b995675e2f31dfdf99144111860d46b55243846a434c67d",
+    "stable_failure_file_index_entries": 15
+  },
+  "gate_credit": {
+    "certificate_bytes": false,
+    "prover_time": false,
+    "verifier_time": false,
+    "verifier_memory": false,
+    "protocol_acceptance": false,
+    "e2e": false,
+    "session": false,
+    "device_memory": false
+  },
+  "diagnosis": {
+    "class": "first-response GPU high-water exceeds the registered resource gate",
+    "confirmed": "The C64MP1 repair passed the former failure boundary and the active GPU proof phase exceeded the 43,696-MiB guard by 403 MiB.",
+    "protocol_or_pcs_fault_established": false,
+    "likely_recovery_boundary": "remove, reuse or stream at least 422,576,128 bytes from the simultaneous proof buffers, or separately authorize a changed memory gate",
+    "repair_run_authorized": false
+  }
+}

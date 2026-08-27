@@ -1,7 +1,7 @@
 # C6.4 — projected residual PCS recovery
 
-**Status:** R3 first pod attempt failed before proof at setup-bundle dispatch;
-shared repair tested; one create-new second attempt owner-authorized.
+**Status:** R3 second pod attempt fail-closed before certificate at the GPU
+memory guard; zero gate credit; no further retry authorized.
 
 **Branch:** `agent/c64-joint-residual-sketch`.
 
@@ -170,10 +170,10 @@ run is create-new and records the clean SHA.
   two-profile driver tests pass;
 - `rust/target` and ignored nested build caches are removed after checkpoint.
 
-The first clean pod attempt at `ba09091` passed native CUDA differential and
-setup, then failed before proof because response construction parsed C64MP1 as
-C62MP1. Its burned authorizations and diagnostics remain immutable. A shared
-selector repair passes its focused regression. The owner authorized one fresh
-attempt with new directories and authorizations, reusing only setup contexts 0
-and 150. It may run the two ordered proofs once; no third or selective retry is
-authorized.
+The first clean pod attempt at `ba09091` failed at C64MP1 dispatch. The shared
+selector repair at `31aae24` passed that live boundary, but the first response
+then reached `44,099 MiB` and the registered `43,696-MiB` device guard stopped
+it before a certificate. No state was promoted and both authorizations burned.
+Resume requires a plan that removes, reuses or streams at least `422,576,128 B`
+of simultaneous device buffers, or an explicit device-gate change, plus new
+owner GO and a new pod. No third or selective retry is authorized.

@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "profile": "runpod-a100-c64-projected-residual-cold-warm-v1",
+  "mode": "c64-prove",
+  "status": "failed_before_first_certificate",
+  "source_git_commit": "ba0909167db81a403e792da7ae7b280a58266f84",
+  "git_dirty": false,
+  "cloud": {
+    "provider": "RunPod",
+    "endpoint": "185.216.23.244:10541",
+    "instance_id": "280f7602698c",
+    "region": "not-exported-by-pod",
+    "image": "Ubuntu 24.04.3 LTS",
+    "driver_version": "570.172.08",
+    "cuda_version": "12.8",
+    "gpu_sku": "NVIDIA A100-SXM4-80GB",
+    "gpu_memory_mib": 81920,
+    "cpu_model": "Intel(R) Xeon(R) Platinum 8470",
+    "physical_ram_bytes": 1014482096128,
+    "vcpus": 192
+  },
+  "pre_proof_checks": {
+    "c64_cuda_projection_differential_pass": true,
+    "c64_cuda_projection_differential_wall_s": 0.65,
+    "campaign_discipline_test_pass": true,
+    "release_build_pass": true
+  },
+  "installed_setup": {
+    "profiles": [0, 150],
+    "file_bytes": 36119243,
+    "reusable_after_failure": true,
+    "profile_0": {
+      "full_correlations_per_tape": 4892214,
+      "subfield_correlations_per_tape": 226917,
+      "topology": [5119131, 17894474, 2093, 6458502, 673, 29620, 10909]
+    },
+    "profile_150": {
+      "full_correlations_per_tape": 1795150,
+      "subfield_correlations_per_tape": 197762,
+      "topology": [1992912, 7082024, 2093, 2599883, 673, 27073, 10060]
+    }
+  },
+  "attempt": {
+    "elapsed_wall_s": 182,
+    "exit_status": 1,
+    "error": "C6.2 setup profile bundle header or length differs",
+    "certificates_produced": 0,
+    "artifacts_produced": 0,
+    "client_head_promoted": false,
+    "burned_correlation_authorizations": 2,
+    "selective_retry_performed": false
+  },
+  "supervisor": {
+    "samples": 174,
+    "max_process_rss_bytes": 16715538432,
+    "max_process_hwm_bytes": 16715538432,
+    "process_read_bytes": 49152,
+    "process_write_bytes": 1326170112,
+    "max_gpu_used_mib_external": 15023,
+    "max_gpu_compute_utilization_pct": 42,
+    "max_gpu_memory_utilization_pct": 3,
+    "max_gpu_power_w": 96.29,
+    "max_gpu_memory_clock_mhz": 1593,
+    "max_gpu_temperature_c": 33,
+    "min_filesystem_free_bytes": 265283944448,
+    "resource_supervisor_terminated_attempt": false,
+    "phase_attribution": "Failure followed fixed-model preprocessing and authorization allocation but preceded response proof construction; these values are not prover-target evidence."
+  },
+  "evidence": {
+    "pod_local_root": "/workspace/c64-session-ba09091-r1",
+    "bootstrap_log_sha256": "6a9d86bf0bfeba36332c092e504840fa029139be0f71d01e1382fe19a4c401d3",
+    "cuda_differential_log_sha256": "6c99de18f18d305b2ab7fb40018a53822ff95137aa8a5613343ee2e713fac177",
+    "resource_timeline_sha256": "6af25222f99bf95c999f562a1cc6aeff6dd257d9b8db909f01f9cb72606c9557",
+    "failure_file_index_sha256": "632765ff3058e8d1ca03376ae5cd7cd91d0ba2cdb75f42185780b191b1a0a3b4",
+    "failure_file_index_entries": 20
+  },
+  "gate_credit": {
+    "certificate_bytes": false,
+    "prover_time": false,
+    "verifier_time": false,
+    "verifier_memory": false,
+    "protocol_acceptance": false,
+    "e2e": false,
+    "session": false
+  },
+  "diagnosis": {
+    "class": "C6.4 setup-bundle dispatch integration defect",
+    "confirmed": "The response-statement builder unconditionally parsed the valid C64MP1 two-profile bundle as the older C62MP1 seventeen-profile bundle.",
+    "failure_boundary": "after two real-PCG authorizations were allocated and before any proof or certificate was constructed",
+    "protocol_or_pcs_fault": false,
+    "second_attempt_authorized": true
+  }
+}

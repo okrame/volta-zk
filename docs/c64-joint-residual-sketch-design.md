@@ -1,6 +1,7 @@
 # C6.4 — projected residual PCS recovery
 
-**Status:** R3 `C64_POD_READY`; MEASURED CAMPAIGN HARD STOP; NO POD CONTACTED.
+**Status:** R3 first pod attempt failed before proof at setup-bundle dispatch;
+shared repair tested; one create-new second attempt owner-authorized.
 
 **Branch:** `agent/c64-joint-residual-sketch`.
 
@@ -169,6 +170,10 @@ run is create-new and records the clean SHA.
   two-profile driver tests pass;
 - `rust/target` and ignored nested build caches are removed after checkpoint.
 
-The remaining hard stop is measured evidence. A new pod plus run-specific
-owner GO is required for native CUDA compilation/differential, full-size
-timing, complete serialization/reload and the two no-retry proofs.
+The first clean pod attempt at `ba09091` passed native CUDA differential and
+setup, then failed before proof because response construction parsed C64MP1 as
+C62MP1. Its burned authorizations and diagnostics remain immutable. A shared
+selector repair passes its focused regression. The owner authorized one fresh
+attempt with new directories and authorizations, reusing only setup contexts 0
+and 150. It may run the two ordered proofs once; no third or selective retry is
+authorized.

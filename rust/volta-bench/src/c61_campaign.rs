@@ -6439,6 +6439,22 @@ fn c64_campaign_profile_bundle_slices(
     Ok(profiles)
 }
 
+fn c62_or_c64_campaign_profile_slice(
+    bundle: &[u8],
+    old_context: u32,
+) -> Result<(&[u8], bool), String> {
+    let c64 = bundle.get(..8) == Some(C64_CAMPAIGN_PROFILE_BUNDLE_MAGIC);
+    if c64 {
+        let index = C64_CAMPAIGN_PROFILE_IDS
+            .iter()
+            .position(|&candidate| candidate == old_context)
+            .ok_or_else(|| "C6.4 workload has no registered setup profile".to_owned())?;
+        return Ok((c64_campaign_profile_bundle_slices(bundle)?[index], true));
+    }
+    let index = c62_profile_index(old_context)?;
+    Ok((c62_campaign_profile_bundle_slices(bundle)?[index], false))
+}
+
 /// Compress 17 variable-length C62SP1 profiles into one C62CP1 bundle.
 pub fn encode_c62_campaign_client_parameters(
     installed: [&C61CampaignInstalledSetup; C62_CAMPAIGN_PROFILE_COUNT],
@@ -6695,12 +6711,16 @@ pub fn build_c62_campaign_response_statement(
         C62_CAMPAIGN_PROFILE_BUNDLE_MAX_BYTES,
         C62_CAMPAIGN_CLIENT_PARAMETERS_MAX_BYTES,
     )?;
-    let profiles = c62_campaign_profile_bundle_slices(&bundle)?;
-    let profile_index = c62_profile_index(workload.workload().old_context)?;
-    let inner = profiles[profile_index];
-    let components = c62_campaign_client_parameter_components(&inner)?;
+    let old_context = workload.workload().old_context;
+    let (inner, c64) = c62_or_c64_campaign_profile_slice(&bundle, old_context)?;
+    let components = c62_campaign_client_parameter_components(inner)?;
+    let topology_matches = if c64 {
+        campaign_profile_topology_matches(old_context, plan.topology())
+    } else {
+        c62_profile_topology_matches(c62_profile_index(old_context)?, plan.topology())
+    };
     if *blake3::hash(components[1]).as_bytes() != plan.artifact_digest()
-        || !c62_profile_topology_matches(profile_index, plan.topology())
+        || !topology_matches
         || workload.model_family_digest() != setup.model_digest
         || workload.workload() != attempt.workload
     {
@@ -6794,21 +6814,15 @@ pub(crate) fn decode_c62_campaign_client_parameters(
         C62_CAMPAIGN_PROFILE_BUNDLE_MAX_BYTES,
         C62_CAMPAIGN_CLIENT_PARAMETERS_MAX_BYTES,
     )?;
-    if bundle.get(..8) == Some(C64_CAMPAIGN_PROFILE_BUNDLE_MAGIC) {
-        let index = C64_CAMPAIGN_PROFILE_IDS
-            .iter()
-            .position(|&candidate| candidate == old_context)
-            .ok_or_else(|| "C6.4 workload has no registered setup profile".to_owned())?;
-        let profiles = c64_campaign_profile_bundle_slices(&bundle)?;
-        let decoded = decode_c62_campaign_profile(profiles[index])?;
+    let (profile, c64) = c62_or_c64_campaign_profile_slice(&bundle, old_context)?;
+    let decoded = decode_c62_campaign_profile(profile)?;
+    if c64 {
         if !campaign_profile_topology_matches(old_context, decoded.verifier_plan.topology()) {
             return Err("C6.4 selected client setup has the wrong topology".to_owned());
         }
         return Ok(decoded);
     }
     let index = c62_profile_index(old_context)?;
-    let profiles = c62_campaign_profile_bundle_slices(&bundle)?;
-    let decoded = decode_c62_campaign_profile(profiles[index])?;
     if !c62_profile_topology_matches(index, decoded.verifier_plan.topology()) {
         return Err("C6.2 selected client setup has the wrong topology".to_owned());
     }
@@ -8688,6 +8702,26 @@ mod campaign_artifact_tests {
         for context in [50, 100, 200, 900] {
             assert!(!C64_CAMPAIGN_PROFILE_IDS.contains(&context));
         }
+        let source = include_str!("c61_campaign.rs");
+        let selector = source
+            .split_once("fn c62_or_c64_campaign_profile_slice(")
+            .unwrap()
+            .1
+            .split_once("/// Compress 17 variable-length")
+            .unwrap()
+            .0;
+        assert!(selector.contains("Some(C64_CAMPAIGN_PROFILE_BUNDLE_MAGIC)"));
+        assert!(selector.contains("c64_campaign_profile_bundle_slices(bundle)?[index]"));
+        let response_builder = source
+            .split_once("pub fn build_c62_campaign_response_statement(")
+            .unwrap()
+            .1
+            .split_once("fn encode_c62_campaign_session_setup_request(")
+            .unwrap()
+            .0;
+        assert!(
+            response_builder.contains("c62_or_c64_campaign_profile_slice(&bundle, old_context)")
+        );
     }
 
     #[test]

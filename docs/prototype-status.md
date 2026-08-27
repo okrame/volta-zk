@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 R3 C64_POD_READY / AWAITING RUN-SPECIFIC GO)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 R3 FIRST POD ATTEMPT FAILED PRE-PROOF / REPAIR TESTED / SECOND ATTEMPT OWNER-GO)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,25 +10,41 @@ record; no external plan is authoritative.
 
 Read `c64-joint-residual-sketch-design.md` next.
 
-- **Status/design.** C6.4 R3 is `C64_POD_READY` on
-  `agent/c64-joint-residual-sketch`, isolated from C7. It keeps C6.3's D22/D19
-  cache and replaces the residual wrapper with D23 other/closure, concatenated
-  D24 correction and D15 auxiliary projections: six 107-bit WHIR bodies plus
-  a 24-round authenticated correction link. R2 remains invalidated.
-- **Completed evidence.** The production coordinator, strict version-4
-  35-MB certificate/tail codec, reload verifier, finite correlation census and
-  exact two-profile/two-proof driver are executable. The guarded pod runner
-  compiles before measurement, reuses or generates only contexts 0 and 150,
-  and records one-second process and GPU diagnostics. Full workspace and
-  feature-enabled C6.4 tests pass. No pod was contacted.
+- **Status/design.** C6.4 R3 on `agent/c64-joint-residual-sketch` remains
+  isolated from C7. The first clean A100 attempt at `ba09091` is immutable and
+  failed before any proof: the response builder parsed the valid C64MP1
+  two-profile bundle as old C62MP1. Two real-PCG authorizations burned; no
+  state was promoted. This is an integration defect, not protocol evidence.
+- **Completed evidence.** Native CUDA differential, allocation cleanup,
+  campaign discipline and release build passed. Setup contexts `[0,150]`
+  occupy `36,119,243 B` and remain reusable. The shared C6.2/C6.4 selector now
+  dispatches by bundle magic; its focused regression passes. The complete
+  failure diagnostics remain pod-local and their 20-file hash index is
+  recorded append-only.
 - **Analytic credit only.** `32,903,995 B` certificate projection
   (`2,096,005 B` hard-limit headroom), `78.001993132250...` soundness bits,
   `403,177,472 B` resident projection and 661 suffix full correlations per
   tape are `credit:false` until measured on the pod.
-- **Hard stop/resume.** Provider contact and a run need a new pod and
-  run-specific owner GO. Then compile and differentially test native CUDA,
-  followed by exactly profiles `[0,150]` and no-retry proofs `0->150`,
-  `150->200`, each serialized, reloaded, fully verified and promoted in order.
+- **Hard stop/resume.** The owner authorized one fresh second attempt using
+  new directories and authorizations, reusing only setup `[0,150]`. It may run
+  exactly proofs `0->150`, `150->200`, each serialized, reloaded, verified and
+  promoted in order. No third or selective retry is authorized.
+
+- **2026-08-27 — First C6.4 pod attempt fails before proof; one repair run is
+  authorized.** Clean `ba09091` passed the complete CUDA projection
+  differential (`0.65 s`), campaign discipline, release build and generated
+  only setup contexts 0 and 150 (`36,119,243 B`). The measured process then
+  stopped at 182 s with `C6.2 setup profile bundle header or length differs`,
+  zero proof/certificate/artifact and no client promotion. Two real-PCG
+  authorizations burned. Peak process RSS was `16,715,538,432 B`; external
+  device memory `15,023 MiB`; compute utilization `42%`; memory utilization
+  `3%`; power `96.29 W`; write I/O `1,326,170,112 B`. These pre-proof values
+  receive no gate credit. Root cause is exact: the response-statement builder
+  alone still called the strict 17-profile C62MP1 parser on a valid C64MP1
+  bundle. The shared format selector now covers both response construction and
+  decode; its focused regression passes. Raw disposition:
+  `c64-e2e-preproof-setup-bundle-failure-2026-08-27-ba09091.json`. The owner
+  authorized one create-new second attempt; no further retry is authorized.
 
 - **2026-08-27 — Final paid-run audit closes cost and credit gaps.** The audit
   found that the existing CUDA test covered only the final extension-field

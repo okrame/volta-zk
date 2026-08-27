@@ -31,6 +31,7 @@ use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use volta_field::{Fp, Fp2, FpStream, P};
 use volta_mac::{
     C6CanonicalTargetProfile, C6DecodedInstanceExtractionPlan, C6InstalledOperationKind,
@@ -2563,6 +2564,19 @@ pub trait C6ResidualAtomicEventSink {
         &mut self,
         event: C6ResidualAtomicCoefficientEvent,
     ) -> Result<(), C6ResidualError>;
+
+    fn direct_linear_tail(
+        &mut self,
+        _proof_repetition: u8,
+        _family: C6ResidualAtomicFamily,
+        _target: C6ResidualAtomicCoefficientTarget,
+        _row_start: u32,
+        _row_end: u32,
+        _output_start: u64,
+        _atomic_point: &[Fp2],
+    ) -> Result<bool, C6ResidualError> {
+        Ok(false)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -3060,6 +3074,7 @@ struct C6AtomicEventEmitter<'a, S: C6ResidualAtomicEventSink> {
     coefficient_writes: u64,
     weighted_public_constant: Fp2,
     current_output: Option<(u64, C6ResidualAtomicFamily)>,
+    direct_point: Option<Vec<Fp2>>,
 }
 
 impl<'a, S: C6ResidualAtomicEventSink> C6AtomicEventEmitter<'a, S> {
@@ -3081,7 +3096,77 @@ impl<'a, S: C6ResidualAtomicEventSink> C6AtomicEventEmitter<'a, S> {
             coefficient_writes: 0,
             weighted_public_constant: Fp2::ZERO,
             current_output: None,
+            direct_point: schedule.direct_point.clone(),
         })
+    }
+
+    fn add_linear_tail(
+        &mut self,
+        family: C6ResidualAtomicFamily,
+        target: C6ResidualAtomicCoefficientTarget,
+        row_start: usize,
+        row_end: usize,
+    ) -> C6ResidualResult<()> {
+        if row_start > row_end {
+            return Err(C6ResidualError::new("C6 atomic tail range is reversed"));
+        }
+        if row_start == row_end {
+            return Ok(());
+        }
+        let row_start = u32::try_from(row_start)
+            .map_err(|_| C6ResidualError::new("C6 atomic tail start exceeds u32"))?;
+        let row_end = u32::try_from(row_end)
+            .map_err(|_| C6ResidualError::new("C6 atomic tail end exceeds u32"))?;
+        let count = u64::from(row_end - row_start);
+        if let Some(point) = self.direct_point.as_deref() {
+            let output_start = self.atomic_outputs;
+            if self.sink.direct_linear_tail(
+                self.proof_repetition,
+                family,
+                target,
+                row_start,
+                row_end,
+                output_start,
+                point,
+            )? {
+                self.stream.skip(count)?;
+                self.family_outputs[family.index()] = self.family_outputs[family.index()]
+                    .checked_add(count)
+                    .ok_or_else(|| C6ResidualError::new("C6 atomic tail output census overflows"))?;
+                self.family_coefficient_writes[family.index()] = self.family_coefficient_writes
+                    [family.index()]
+                .checked_add(count)
+                .ok_or_else(|| C6ResidualError::new("C6 atomic tail write census overflows"))?;
+                self.atomic_outputs = self
+                    .atomic_outputs
+                    .checked_add(count)
+                    .ok_or_else(|| C6ResidualError::new("C6 atomic tail output census overflows"))?;
+                self.coefficient_writes = self
+                    .coefficient_writes
+                    .checked_add(count)
+                    .ok_or_else(|| C6ResidualError::new("C6 atomic tail write census overflows"))?;
+                self.current_output = None;
+                return Ok(());
+            }
+        }
+        for row in row_start..row_end {
+            let weight = self.next(family, Fp2::ZERO)?;
+            self.write(
+                match target {
+                    C6ResidualAtomicCoefficientTarget::LeafLinear { table, .. } => {
+                        C6ResidualAtomicCoefficientTarget::LeafLinear { table, row }
+                    }
+                    C6ResidualAtomicCoefficientTarget::AuxiliaryLinear { table, .. } => {
+                        C6ResidualAtomicCoefficientTarget::AuxiliaryLinear { table, row }
+                    }
+                    C6ResidualAtomicCoefficientTarget::AuxiliaryQuadratic { .. } => {
+                        return Err(C6ResidualError::new("C6 atomic linear tail is quadratic"));
+                    }
+                },
+                weight,
+            )?;
+        }
+        Ok(())
     }
 
     fn next(
@@ -3536,26 +3621,34 @@ pub fn replay_c6_residual_atomic_events<S: C6ResidualAtomicEventSink>(
     }
 
     for table in 0..7usize {
-        for row in source_count..leaf_entries {
-            let weight = emitter.next(C6ResidualAtomicFamily::LeafTail, Fp2::ZERO)?;
-            emitter.add_leaf(table, row, weight)?;
-        }
+        emitter.add_linear_tail(
+            C6ResidualAtomicFamily::LeafTail,
+            C6ResidualAtomicCoefficientTarget::LeafLinear { table: table as u8, row: 0 },
+            source_count,
+            leaf_entries,
+        )?;
     }
-    for row in raw_position..leaf_entries {
-        let weight = emitter.next(C6ResidualAtomicFamily::LeafTail, Fp2::ZERO)?;
-        emitter.add_leaf(7, row, weight)?;
-    }
+    emitter.add_linear_tail(
+        C6ResidualAtomicFamily::LeafTail,
+        C6ResidualAtomicCoefficientTarget::LeafLinear { table: 7, row: 0 },
+        raw_position,
+        leaf_entries,
+    )?;
     for lane in 0..12usize {
-        for row in product_triples..auxiliary_entries {
-            let weight = emitter.next(C6ResidualAtomicFamily::AuxiliaryTail, Fp2::ZERO)?;
-            emitter.add_auxiliary(lane, row, weight)?;
-        }
+        emitter.add_linear_tail(
+            C6ResidualAtomicFamily::AuxiliaryTail,
+            C6ResidualAtomicCoefficientTarget::AuxiliaryLinear { table: lane as u8, row: 0 },
+            product_triples,
+            auxiliary_entries,
+        )?;
     }
     for lane in 12..16usize {
-        for row in zero_roots..auxiliary_entries {
-            let weight = emitter.next(C6ResidualAtomicFamily::AuxiliaryTail, Fp2::ZERO)?;
-            emitter.add_auxiliary(lane, row, weight)?;
-        }
+        emitter.add_linear_tail(
+            C6ResidualAtomicFamily::AuxiliaryTail,
+            C6ResidualAtomicCoefficientTarget::AuxiliaryLinear { table: lane as u8, row: 0 },
+            zero_roots,
+            auxiliary_entries,
+        )?;
     }
 
     let expected_outputs = expected_atomic_family_outputs(manifest)?;
@@ -5420,6 +5513,67 @@ impl C6ResidualAtomicEventSink for C6ResidualFusedFirstRoundSink<'_> {
         }
         Ok(())
     }
+
+    fn direct_linear_tail(
+        &mut self,
+        proof_repetition: u8,
+        family: C6ResidualAtomicFamily,
+        target: C6ResidualAtomicCoefficientTarget,
+        row_start: u32,
+        row_end: u32,
+        output_start: u64,
+        atomic_point: &[Fp2],
+    ) -> Result<bool, C6ResidualError> {
+        if proof_repetition != self.proof_repetition {
+            return Err(C6ResidualError::new("C6 first-round tail swapped repetition"));
+        }
+        let live_entries = match target {
+            C6ResidualAtomicCoefficientTarget::LeafLinear { table, .. } => {
+                self.witness.leaf_live_entries(usize::from(table))?
+            }
+            C6ResidualAtomicCoefficientTarget::AuxiliaryLinear { table, .. } => {
+                self.witness.auxiliary_live_entries(usize::from(table))?
+            }
+            C6ResidualAtomicCoefficientTarget::AuxiliaryQuadratic { .. } => return Ok(false),
+        };
+        let live_pair_end = live_entries.saturating_add(1) & !1;
+        let relevant_end = row_end.min(u32::try_from(live_pair_end).map_err(|_| {
+            C6ResidualError::new("C6 first-round live tail exceeds u32")
+        })?);
+        if row_start < relevant_end {
+            let entries = 1u64 << atomic_point.len();
+            let mut cursor = C6ResidualEqPointCursor::new(
+                atomic_point,
+                entries,
+                "C6 first-round direct tail",
+            )?;
+            for row in row_start..relevant_end {
+                let ordinal = output_start
+                    .checked_add(u64::from(row - row_start))
+                    .ok_or_else(|| C6ResidualError::new("C6 first-round tail ordinal overflows"))?;
+                let coefficient = cursor.at(u32::try_from(ordinal).map_err(|_| {
+                    C6ResidualError::new("C6 first-round tail ordinal exceeds u32")
+                })?)?;
+                let target = match target {
+                    C6ResidualAtomicCoefficientTarget::LeafLinear { table, .. } => {
+                        C6ResidualAtomicCoefficientTarget::LeafLinear { table, row }
+                    }
+                    C6ResidualAtomicCoefficientTarget::AuxiliaryLinear { table, .. } => {
+                        C6ResidualAtomicCoefficientTarget::AuxiliaryLinear { table, row }
+                    }
+                    C6ResidualAtomicCoefficientTarget::AuxiliaryQuadratic { .. } => unreachable!(),
+                };
+                self.coefficient(C6ResidualAtomicCoefficientEvent {
+                    proof_repetition,
+                    output_ordinal: ordinal,
+                    family,
+                    target,
+                    coefficient,
+                })?;
+            }
+        }
+        Ok(true)
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -5441,6 +5595,7 @@ pub fn compile_c6_residual_fused_first_round(
         leaf_message: [Fp2::ZERO; 3],
         auxiliary_message: [Fp2::ZERO; 4],
     };
+    let replay_started = Instant::now();
     let summary = replay_c6_residual_atomic_events(
         operation_plan,
         extraction,
@@ -5450,6 +5605,13 @@ pub fn compile_c6_residual_fused_first_round(
         proof_repetition,
         &mut sink,
     )?;
+    if std::env::var_os("VOLTA_C64_DIAGNOSTICS").is_some() {
+        eprintln!(
+            "C64OPT1\tresidual_first_round\t{}\t{:.9}",
+            proof_repetition,
+            replay_started.elapsed().as_secs_f64(),
+        );
+    }
     let mut round = C6ResidualFusedFirstRound {
         proof_repetition,
         target: summary.target,
@@ -6344,6 +6506,85 @@ impl C6ResidualAtomicEventSink for C6ResidualFusedFoldedCoefficientSink<'_> {
         }
         Ok(())
     }
+
+    fn direct_linear_tail(
+        &mut self,
+        proof_repetition: u8,
+        _family: C6ResidualAtomicFamily,
+        target: C6ResidualAtomicCoefficientTarget,
+        row_start: u32,
+        row_end: u32,
+        output_start: u64,
+        atomic_point: &[Fp2],
+    ) -> Result<bool, C6ResidualError> {
+        if proof_repetition != self.proof_repetition {
+            return Err(C6ResidualError::new("C6 folded tail swapped repetition"));
+        }
+        let table = match (self.family, target) {
+            (
+                C6ResidualFusedCoefficientFamily::Leaf,
+                C6ResidualAtomicCoefficientTarget::LeafLinear { table, .. },
+            ) => usize::from(table),
+            (
+                C6ResidualFusedCoefficientFamily::Auxiliary,
+                C6ResidualAtomicCoefficientTarget::AuxiliaryLinear { table, .. },
+            ) => usize::from(table),
+            (_, C6ResidualAtomicCoefficientTarget::AuxiliaryQuadratic { .. }) => return Ok(false),
+            _ => return Ok(true),
+        };
+        let layout = self
+            .arena
+            .layout(self.family)
+            .ok_or_else(|| C6ResidualError::new("C6 folded tail lost its arena layout"))?;
+        let range = layout.table_range(table)?;
+        let folded_start = usize::try_from(row_start / 2)
+            .map_err(|_| C6ResidualError::new("C6 folded tail start exceeds usize"))?;
+        let folded_end = usize::try_from(row_end.div_ceil(2))
+            .map_err(|_| C6ResidualError::new("C6 folded tail end exceeds usize"))?;
+        if folded_end > layout.entries_per_table || folded_start > folded_end {
+            return Err(C6ResidualError::new("C6 folded tail exceeds its table"));
+        }
+        let challenge = self.challenge;
+        let atomic_entries = 1u64
+            .checked_shl(atomic_point.len() as u32)
+            .ok_or_else(|| C6ResidualError::new("C6 folded tail point dimension overflows"))?;
+        self.arena.backing[range.start + folded_start..range.start + folded_end]
+            .par_chunks_mut(1 << 14)
+            .enumerate()
+            .try_for_each(|(chunk_index, chunk)| -> C6ResidualResult<()> {
+                let first_folded = folded_start + chunk_index * (1 << 14);
+                let mut cursor = C6ResidualEqPointCursor::new(
+                    atomic_point,
+                    atomic_entries,
+                    "C6 folded direct tail",
+                )?;
+                for (offset, entry) in chunk.iter_mut().enumerate() {
+                    let folded_row = first_folded + offset;
+                    for bit in 0..2usize {
+                        let row = folded_row * 2 + bit;
+                        if row < row_start as usize || row >= row_end as usize {
+                            continue;
+                        }
+                        let ordinal = output_start
+                            .checked_add((row - row_start as usize) as u64)
+                            .ok_or_else(|| {
+                                C6ResidualError::new("C6 folded tail ordinal overflows")
+                            })?;
+                        let weight = cursor.at(u32::try_from(ordinal).map_err(|_| {
+                            C6ResidualError::new("C6 folded tail ordinal exceeds u32")
+                        })?)?;
+                        let selector = if bit == 0 { Fp2::ONE - challenge } else { challenge };
+                        *entry += weight * selector;
+                    }
+                }
+                Ok(())
+            })?;
+        self.selected_coefficient_writes = self
+            .selected_coefficient_writes
+            .checked_add(u64::from(row_end - row_start))
+            .ok_or_else(|| C6ResidualError::new("C6 folded tail write census overflows"))?;
+        Ok(true)
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -6375,6 +6616,7 @@ pub fn compile_c6_residual_fused_folded_coefficients(
         memory_census,
         arena,
     )?;
+    let replay_started = Instant::now();
     let summary = replay_c6_residual_atomic_events(
         operation_plan,
         extraction,
@@ -6384,6 +6626,14 @@ pub fn compile_c6_residual_fused_folded_coefficients(
         proof_repetition,
         &mut sink,
     )?;
+    if std::env::var_os("VOLTA_C64_DIAGNOSTICS").is_some() {
+        eprintln!(
+            "C64OPT1\tresidual_folded_coefficients\t{}\t{:?}\t{:.9}",
+            proof_repetition,
+            family,
+            replay_started.elapsed().as_secs_f64(),
+        );
+    }
     if sink.selected_coefficient_writes != expected_writes {
         return Err(C6ResidualError::new(format!(
             "C6 fused folded selected-write census differs from the manifest: got {}, expected {}",
@@ -6457,6 +6707,22 @@ impl C6ResidualScheduleWeightStream {
                     .ok_or_else(|| C6ResidualError::new("C6 equality schedule cursor overflows"))?;
                 Ok(value)
             }
+        }
+    }
+
+    fn skip(&mut self, count: u64) -> C6ResidualResult<()> {
+        match self {
+            Self::Equality { next, .. } => {
+                let count = u32::try_from(count)
+                    .map_err(|_| C6ResidualError::new("C6 equality skip exceeds u32"))?;
+                *next = next
+                    .checked_add(count)
+                    .ok_or_else(|| C6ResidualError::new("C6 equality schedule cursor overflows"))?;
+                Ok(())
+            }
+            Self::Prg(_) => Err(C6ResidualError::new(
+                "C6 pseudorandom weight stream cannot skip materialization",
+            )),
         }
     }
 }

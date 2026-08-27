@@ -65,6 +65,18 @@ C64_CERTIFICATE_FRAMING_BYTES = 761
 CERTIFICATE_DIAGNOSTIC_BYTES = 30_000_000
 CERTIFICATE_LIMIT_BYTES = 35_000_000
 
+# R7 engineering projection. The response value is the conservative rounded
+# A100 value in docs/gpt2-comparison-WIP.md. Roots are the measured C6.4 R6
+# phase; native chains sum the matching provider-cached D28/D27 GW4 lanes.
+# Residual and seal are admission budgets for the new single-replay path, not
+# measured hardware credit.
+C64_R7_RESPONSE_SECONDS = Decimal("4.180000000")
+C64_R7_PROJECTED_ROOTS_SECONDS = Decimal("5.710866424")
+C64_R7_NATIVE_CHAINS_SECONDS = Decimal("3.409945669")
+C64_R7_RESIDUAL_BLIND_BUDGET_SECONDS = Decimal("3.000000000")
+C64_R7_SEAL_BUDGET_SECONDS = Decimal("0.500000000")
+C64_R7_LOCAL_ADMISSION_SECONDS = Decimal("17.000000000")
+
 RESPONSES = (
     ("genesis_0_150", 150 * (6 << 9), 5_119_131, 399_140, 399_076),
     ("continuation_150_200", 200 * (6 << 9), 1_992_912, 365_180, 365_116),
@@ -177,9 +189,16 @@ def soundness_screen() -> dict[str, object]:
 
 def build_screen() -> dict[str, object]:
     responses = [response_screen(*response) for response in RESPONSES]
+    projected_seconds = (
+        C64_R7_RESPONSE_SECONDS
+        + C64_R7_PROJECTED_ROOTS_SECONDS
+        + C64_R7_NATIVE_CHAINS_SECONDS
+        + C64_R7_RESIDUAL_BLIND_BUDGET_SECONDS
+        + C64_R7_SEAL_BUDGET_SECONDS
+    )
     return {
         "schema": 3,
-        "milestone": "C6.4-R5",
+        "milestone": "C6.4-R7",
         "credit": False,
         "geometry": {
             "projected_leaf_log2": 23,
@@ -212,6 +231,20 @@ def build_screen() -> dict[str, object]:
             "complete_suffix_full_correlations_per_tape": C64_PRODUCTION_SUFFIX_FULL_CORRELATIONS_PER_TAPE,
             "credit": False,
         },
+        "r7_timing_projection": {
+            "response_a100_anchor_seconds": str(C64_R7_RESPONSE_SECONDS),
+            "projected_roots_measured_seconds": str(C64_R7_PROJECTED_ROOTS_SECONDS),
+            "native_matching_lane_sum_seconds": str(C64_R7_NATIVE_CHAINS_SECONDS),
+            "residual_blind_admission_budget_seconds": str(
+                C64_R7_RESIDUAL_BLIND_BUDGET_SECONDS
+            ),
+            "seal_admission_budget_seconds": str(C64_R7_SEAL_BUDGET_SECONDS),
+            "projected_complete_seconds": str(projected_seconds),
+            "admission_seconds": str(C64_R7_LOCAL_ADMISSION_SECONDS),
+            "headroom_seconds": str(C64_R7_LOCAL_ADMISSION_SECONDS - projected_seconds),
+            "gate_pass": projected_seconds <= C64_R7_LOCAL_ADMISSION_SECONDS,
+            "credit": False,
+        },
         "setup_profile_ids": [0, 150],
         "setup_profile_count": 2,
         "open_gates": [
@@ -230,12 +263,14 @@ def self_check(screen: dict[str, object]) -> None:
     terminal = screen["terminal_link_screen"]
     distance = screen["finite_distance_screen"]
     soundness = screen["soundness_screen"]
+    timing = screen["r7_timing_projection"]
     assert isinstance(geometry, dict)
     assert isinstance(responses, list)
     assert isinstance(byte_budget, dict)
     assert isinstance(terminal, dict)
     assert isinstance(distance, dict)
     assert isinstance(soundness, dict)
+    assert isinstance(timing, dict)
     assert geometry["dense_joint_bytes_forbidden"] == 1_073_741_824
     assert geometry["new_sparse_setup_bytes"] == 0
     assert responses[0]["physical_total_bytes"] == 645_096_528
@@ -271,6 +306,10 @@ def self_check(screen: dict[str, object]) -> None:
     assert soundness["projected_residual_security_bits_per_core"] == 107
     assert str(soundness["complete_soundness_bits"]).startswith("78.001993")
     assert soundness["gate_pass"] is True
+    assert timing["projected_complete_seconds"] == "16.800812093"
+    assert timing["headroom_seconds"] == "0.199187907"
+    assert timing["gate_pass"] is True
+    assert timing["credit"] is False
     assert screen["credit"] is False
 
 

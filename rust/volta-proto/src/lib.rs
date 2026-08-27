@@ -217,8 +217,10 @@ pub use c6_response_envelope::{
 };
 #[cfg(feature = "c6-trace")]
 pub use c6_response_fixture::{
-    build_c62_continuation_production_response_owner, build_c6_response_residual_fixture,
-    build_c6_response_residual_fixture_production_geometry, build_c6_t1_production_response_owner,
+    build_c62_continuation_production_response_owner,
+    build_c62_continuation_production_response_owner_with_backend,
+    build_c6_response_residual_fixture, build_c6_response_residual_fixture_production_geometry,
+    build_c6_t1_production_response_owner, build_c6_t1_production_response_owner_with_backend,
     c6_gpt2_native_target_profile, prepare_c6_t1_disk_residual_owner,
     prepare_c6_t1_production_residual_owner, prove_c62_continuation_production_response_provider,
     prove_c6_t1_production_response_provider, replay_c62_continuation_production_response_verifier,

@@ -2499,6 +2499,52 @@ pub fn prove_c6_blind_residual_sumchecks_fused_direct(
     ))
 }
 
+/// Direct-MLE prover using the statement and first message produced by one
+/// witness replay. This is byte-identical to the ordinary direct entry point.
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+pub fn prove_c6_blind_residual_sumchecks_fused_direct_prepared(
+    prepared: &[C6BlindResidualFusedPreparedRepetition],
+    compiler: C6BlindResidualFusedCompilerContext<'_>,
+    fused_witness: C6ResidualFusedWitnessView<'_>,
+    arena: &C6ResidualFusedCoefficientArena,
+    streams: &mut [CorrelationStream; MAC_TAPES],
+    transcript: &mut Transcript,
+) -> Result<(
+    C6BlindResidualSumcheckProof,
+    C6BlindResidualPendingTransferFrame,
+    C6BlindResidualPendingClaimsProver,
+    C6BlindResidualDirectTerminalOutputs,
+)> {
+    if compiler.relation.protocol_version() != C6_RESIDUAL_RELATION_PROTOCOL_DIRECT_MLE
+        || prepared.len() != C6_RESIDUAL_SUMCHECK_REPETITIONS
+    {
+        return Err(C6BlindResidualError::new(
+            "C6RSC3-v4 prepared direct prover geometry differs",
+        ));
+    }
+    let statements = prepared.iter().map(|item| item.statement.clone()).collect::<Vec<_>>();
+    let first_rounds = prepared.iter().map(|item| item.first_round.clone()).collect::<Vec<_>>();
+    let (proof, frame, pending, terminal_outputs) =
+        prove_c6_blind_residual_sumchecks_fused_inner(
+            &statements,
+            Some(&first_rounds),
+            compiler,
+            fused_witness,
+            arena,
+            streams,
+            transcript,
+        )?;
+    Ok((
+        proof,
+        frame,
+        pending,
+        terminal_outputs.ok_or_else(|| {
+            C6BlindResidualError::new("C6RSC3-v4 prepared prover omitted terminal outputs")
+        })?,
+    ))
+}
+
 /// Prover entry point that reuses the first-round messages which already
 /// supplied the compact statements. No response bytes, challenges or
 /// correlations differ from [`prove_c6_blind_residual_sumchecks_fused`].
@@ -4810,6 +4856,37 @@ mod tests {
                 &mut prover_transcript,
             )
             .unwrap();
+        let prepared = (0..C6_RESIDUAL_SUMCHECK_REPETITIONS)
+            .map(|repetition| {
+                prepare_c6_blind_residual_prover_repetition_fused(
+                    compiler,
+                    fixture.witness_view().unwrap(),
+                    repetition as u8,
+                )
+            })
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(
+            prepared.iter().map(|item| item.statement()).collect::<Vec<_>>(),
+            statements.iter().collect::<Vec<_>>(),
+        );
+        let prepared_arena = C6ResidualFusedCoefficientArena::new(fixture.manifest());
+        let mut prepared_streams = prover_streams();
+        let mut prepared_transcript = Transcript::new(CHALLENGE_SEED);
+        let prepared_output = prove_c6_blind_residual_sumchecks_fused_direct_prepared(
+            &prepared,
+            compiler,
+            fixture.witness_view().unwrap(),
+            &prepared_arena,
+            &mut prepared_streams,
+            &mut prepared_transcript,
+        )
+        .unwrap();
+        assert_eq!(prepared_output.0, proof);
+        assert_eq!(prepared_output.1, frame);
+        assert_eq!(prepared_output.2, pending);
+        assert_eq!(prepared_output.3, terminal_outputs);
+        assert_eq!(prepared_transcript.ledger(), prover_transcript.ledger());
         assert_eq!(
             pending.len(),
             C6_RESIDUAL_SUMCHECK_REPETITIONS * C6_RESIDUAL_TABLES_PER_REPETITION

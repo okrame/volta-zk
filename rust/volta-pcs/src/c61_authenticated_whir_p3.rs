@@ -15,6 +15,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Instant;
 
 use p3_challenger::{CanObserve, CanSampleUniformBits, FieldChallenger, GrindingChallenger};
 use p3_commit::Mmcs;
@@ -119,6 +120,10 @@ fn c61_production_private_zk_rng() -> Result<StdRng, String> {
 
 struct C61ReferenceWhirExecutor;
 
+fn c61_pending_initial_point(point: &Point<C61P3Fp2>) -> Vec<Fp2> {
+    point.iter().rev().copied().map(c61_volta_fp2_from_p3).collect()
+}
+
 trait C61ProductionWhirExecutor<MT, Challenger>
 where
     MT: Mmcs<Goldilocks, Commitment = C61Commitment>,
@@ -137,6 +142,12 @@ where
         challenger: &mut Challenger,
         rng: &mut StdRng,
     ) -> Result<(C61Commitment, HidingWhirProverData<Goldilocks, C61P3Fp2, MT>), String>;
+
+    fn evaluate(
+        &self,
+        data: &HidingWhirProverData<Goldilocks, C61P3Fp2, MT>,
+        point: &Point<C61P3Fp2>,
+    ) -> Result<C61P3Fp2, String>;
 
     fn prove(
         &self,
@@ -179,6 +190,14 @@ where
         rng: &mut StdRng,
     ) -> Result<(C61Commitment, HidingWhirProverData<Goldilocks, C61P3Fp2, MT>), String> {
         Ok(prover.commit(message, challenger, rng))
+    }
+
+    fn evaluate(
+        &self,
+        data: &HidingWhirProverData<Goldilocks, C61P3Fp2, MT>,
+        point: &Point<C61P3Fp2>,
+    ) -> Result<C61P3Fp2, String> {
+        Ok(data.message.host().expect("C6.1 host message").eval_base(point))
     }
 
     fn prove(
@@ -230,6 +249,17 @@ where
         String,
     > {
         prover.commit_with_oracle(message, self, challenger, rng).map_err(|error| error.to_string())
+    }
+
+    fn evaluate(
+        &self,
+        _data: &HidingWhirProverData<Goldilocks, C61P3Fp2, crate::c62_gpu_whir::C62GpuMmcs>,
+        point: &Point<C61P3Fp2>,
+    ) -> Result<C61P3Fp2, String> {
+        let point = c61_pending_initial_point(point);
+        self.evaluate_pending_initial(&point)
+            .map(c61_p3_fp2_from_volta)
+            .map_err(|error| error.to_string())
     }
 
     fn prove(
@@ -4643,8 +4673,12 @@ fn prepare_c61_authenticated_whir_p3_production_four_committed_chain_bodies(
     let mut bodies = Vec::with_capacity(4);
     let mut peak_loaded_coefficient_bytes = 0u64;
     for (ordinal, (component, repetition)) in schedule.into_iter().enumerate() {
+        let load_started = Instant::now();
         let coefficients = load_coefficients(component, repetition)?;
+        let load_seconds = load_started.elapsed().as_secs_f64();
+        let digest_started = Instant::now();
         let digest = c61_production_coefficient_digest(component, &coefficients)?;
+        let digest_seconds = digest_started.elapsed().as_secs_f64();
         let expected_digest = match component {
             C61NativeComponent::Model => expected_model_coefficient_digest,
             C61NativeComponent::Embedding => expected_embedding_coefficient_digest,
@@ -4683,7 +4717,8 @@ fn prepare_c61_authenticated_whir_p3_production_four_committed_chain_bodies(
         };
         let id = C61NativeChainId { component, repetition };
         let child = spill_root.join(format!("{:?}-{repetition}", component).to_ascii_lowercase());
-        bodies.push(prepare_c61_authenticated_whir_p3_production_committed_chain_with_transcript(
+        let chain_started = Instant::now();
+        let body = prepare_c61_authenticated_whir_p3_production_committed_chain_with_transcript(
             coefficients,
             claim_schedule.claims(component)?,
             targets,
@@ -4697,7 +4732,14 @@ fn prepare_c61_authenticated_whir_p3_production_four_committed_chain_bodies(
             provider_session_bindings.next().expect("four C6ICT2 provider session bindings"),
             id,
             mask_ranges[ordinal],
-        )?);
+        )?;
+        if gpu.is_some() {
+            eprintln!(
+                "C64OPT1\tnative_chain\t{component:?}\t{repetition}\tload={load_seconds:.9}\tdigest={digest_seconds:.9}\tcommit_eval_prove={:.9}",
+                chain_started.elapsed().as_secs_f64(),
+            );
+        }
+        bodies.push(body);
     }
     let bodies =
         bodies.try_into().map_err(|_| "C6SPR11 four-chain body census mismatch".to_owned())?;
@@ -7411,8 +7453,8 @@ where
     let points = c61_model_embedding_points(statement.public())?;
     let evaluations = points
         .iter()
-        .map(|point| data.message.host().expect("C6.1 host message").eval_base(point))
-        .collect::<Vec<_>>();
+        .map(|point| executor.evaluate(&data, point))
+        .collect::<Result<Vec<_>, _>>()?;
     if evaluations
         .iter()
         .zip(statement.targets())
@@ -10876,6 +10918,19 @@ pub fn run_c61_private_entropy_driver_diagnostic(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gpu_pending_initial_point_restores_semantic_order() {
+        let semantic = vec![
+            Fp2::from_base(Fp::new(3)),
+            Fp2::from_base(Fp::new(5)),
+            Fp2::from_base(Fp::new(7)),
+        ];
+        let native = Point::new(
+            semantic.iter().rev().copied().map(c61_p3_fp2_from_volta).collect(),
+        );
+        assert_eq!(c61_pending_initial_point(&native), semantic);
+    }
 
     #[cfg(feature = "cuda")]
     #[allow(clippy::too_many_arguments)]

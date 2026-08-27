@@ -7,6 +7,7 @@
 use std::path::PathBuf;
 use std::time::Instant;
 
+use volta_accel::Backend;
 use volta_field::{Fp, Fp2};
 use volta_gpt2::Gpt2VerifierModel;
 use volta_gpt2::{
@@ -50,7 +51,10 @@ use crate::c6_source::{
 use crate::logup::Doms;
 use crate::model_proof::{
     prove_response_c6_cache_inline, prove_response_continuation_private_logits_c6_cache_inline,
-    prove_response_private_logits_c6_cache_inline, verify_response_c6_cache_inline_from_profile,
+    prove_response_continuation_private_logits_c6_cache_inline_with_backend,
+    prove_response_private_logits_c6_cache_inline,
+    prove_response_private_logits_c6_cache_inline_with_backend,
+    verify_response_c6_cache_inline_from_profile,
     verify_response_continuation_private_logits_c6_cache_inline_from_profile,
     verify_response_private_logits_c6_cache_inline_from_profile, C6GrandResidualProverRoots,
     C6GrandResidualVerifierRoots, ChunkPub, ChunkRef, ModelOut, ModelOutV, ModelProof,
@@ -1164,6 +1168,7 @@ fn prove_c6_production_response_provider(
     extraction: C6DecodedInstanceExtractionPlan,
     streams: &mut [CorrelationStream; 2],
     provider_transcript: &mut Transcript,
+    mut backend: Option<&mut Backend>,
 ) -> Result<C6T1ProductionResponseProviderPending, String> {
     let valid_profile = match profile {
         C6ProductionResponseProverProfile::Genesis { prefill, decode } => {
@@ -1241,30 +1246,60 @@ fn prove_c6_production_response_provider(
         let (proof, output, products, zero_roots, metrics, append_sources) = match profile {
             C6ProductionResponseProverProfile::Genesis { prefill, decode } => {
                 let chunks = [ChunkRef { band: decode, seq: sequence }];
-                prove_response_private_logits_c6_cache_inline(
-                    model,
-                    prefill,
-                    &chunks,
-                    primary,
-                    secondary,
-                    &mut follower,
-                    &mut target_builder,
-                    provider_transcript,
-                )
+                if let Some(backend) = backend.as_deref_mut() {
+                    prove_response_private_logits_c6_cache_inline_with_backend(
+                        model,
+                        prefill,
+                        &chunks,
+                        primary,
+                        secondary,
+                        &mut follower,
+                        &mut target_builder,
+                        provider_transcript,
+                        backend,
+                    )
+                } else {
+                    prove_response_private_logits_c6_cache_inline(
+                        model,
+                        prefill,
+                        &chunks,
+                        primary,
+                        secondary,
+                        &mut follower,
+                        &mut target_builder,
+                        provider_transcript,
+                    )
+                }
             }
             C6ProductionResponseProverProfile::Continuation { full, first, second } => {
-                prove_response_continuation_private_logits_c6_cache_inline(
-                    model,
-                    full,
-                    first,
-                    second,
-                    sequence,
-                    primary,
-                    secondary,
-                    &mut follower,
-                    &mut target_builder,
-                    provider_transcript,
-                )
+                if let Some(backend) = backend.as_deref_mut() {
+                    prove_response_continuation_private_logits_c6_cache_inline_with_backend(
+                        model,
+                        full,
+                        first,
+                        second,
+                        sequence,
+                        primary,
+                        secondary,
+                        &mut follower,
+                        &mut target_builder,
+                        provider_transcript,
+                        backend,
+                    )
+                } else {
+                    prove_response_continuation_private_logits_c6_cache_inline(
+                        model,
+                        full,
+                        first,
+                        second,
+                        sequence,
+                        primary,
+                        secondary,
+                        &mut follower,
+                        &mut target_builder,
+                        provider_transcript,
+                    )
+                }
             }
         };
         let cache_snapshot = cache_trace.finish().map_err(|error| error.to_string())?;
@@ -1425,6 +1460,7 @@ pub fn prove_c6_t1_production_response_provider(
         extraction,
         streams,
         provider_transcript,
+        None,
     )
 }
 
@@ -1451,6 +1487,7 @@ pub fn prove_c62_continuation_production_response_provider(
         extraction,
         streams,
         provider_transcript,
+        None,
     )
 }
 
@@ -1469,7 +1506,9 @@ fn build_c6_production_response_owner(
     attempt: &mut C6ProductionPairedPcgAttempt,
     provider_transcript: &mut Transcript,
     verifier_transcript: &mut Transcript,
+    backend: Option<&mut Backend>,
 ) -> Result<C6T1ProductionResponseOwner, String> {
+    let accelerated = backend.is_some();
     let [provider_plan, verifier_plan] = installed_plans;
     let [provider_extraction, verifier_extraction] = extraction_maps;
     if provider_plan.topology() != verifier_plan.topology()
@@ -1478,6 +1517,7 @@ fn build_c6_production_response_owner(
     {
         return Err("C6ICT3 provider/verifier installed topology mismatch".to_owned());
     }
+    let provider_started = Instant::now();
     let C6T1ProductionResponseProviderPending {
         retained,
         prover_output,
@@ -1505,12 +1545,24 @@ fn build_c6_production_response_owner(
         provider_extraction,
         attempt.prover_streams_array_mut(),
         provider_transcript,
+        backend,
     )?;
+    if accelerated {
+        eprintln!(
+            "C64OPT1\tresponse_provider\t{:.9}",
+            provider_started.elapsed().as_secs_f64()
+        );
+    }
+    let seal_started = Instant::now();
     let paired_sources =
         attempt.seal_sources(source_coordinates, &source_schedule, source_schedule.digest)?;
     let cache_target_frame_bytes =
         cache_target_frame.encode().map_err(|error| error.to_string())?;
     let verifier_model = volta_gpt2::Gpt2VerifierModel::from_model(model)?;
+    if accelerated {
+        eprintln!("C64OPT1\tresponse_seal\t{:.9}", seal_started.elapsed().as_secs_f64());
+    }
+    let verifier_started = Instant::now();
     let verifier = replay_c6_production_response_verifier(
         &verifier_model,
         sequence,
@@ -1523,6 +1575,12 @@ fn build_c6_production_response_owner(
         attempt.verifier_contexts_array_mut(),
         verifier_transcript,
     )?;
+    if accelerated {
+        eprintln!(
+            "C64OPT1\tresponse_verifier_replay\t{:.9}",
+            verifier_started.elapsed().as_secs_f64()
+        );
+    }
 
     let provider_binding = provider_transcript
         .canonical_binding_digest()
@@ -1633,6 +1691,36 @@ pub fn build_c6_t1_production_response_owner(
         attempt,
         provider_transcript,
         verifier_transcript,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn build_c6_t1_production_response_owner_with_backend(
+    model: &volta_gpt2::Gpt2Model,
+    prefill: &volta_gpt2::ModelWitness,
+    decode: &volta_gpt2::BandModelWitness,
+    sequence: &[u32],
+    statement_digest: [u8; 32],
+    installed_plans: [C6InstalledOperationPlan; 2],
+    extraction_maps: [C6DecodedInstanceExtractionPlan; 2],
+    attempt: &mut C6ProductionPairedPcgAttempt,
+    provider_transcript: &mut Transcript,
+    verifier_transcript: &mut Transcript,
+    backend: &mut Backend,
+) -> Result<C6T1ProductionResponseOwner, String> {
+    build_c6_production_response_owner(
+        model,
+        C6ProductionResponseProverProfile::Genesis { prefill, decode },
+        C6ProductionResponseVerifierProfile::Genesis,
+        sequence,
+        statement_digest,
+        installed_plans,
+        extraction_maps,
+        attempt,
+        provider_transcript,
+        verifier_transcript,
+        Some(backend),
     )
 }
 
@@ -1666,6 +1754,41 @@ pub fn build_c62_continuation_production_response_owner(
         attempt,
         provider_transcript,
         verifier_transcript,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn build_c62_continuation_production_response_owner_with_backend(
+    model: &volta_gpt2::Gpt2Model,
+    full: &volta_gpt2::ModelWitness,
+    first: &volta_gpt2::BandModelWitness,
+    second: &volta_gpt2::BandModelWitness,
+    sequence: &[u32],
+    statement_digest: [u8; 32],
+    installed_plans: [C6InstalledOperationPlan; 2],
+    extraction_maps: [C6DecodedInstanceExtractionPlan; 2],
+    attempt: &mut C6ProductionPairedPcgAttempt,
+    provider_transcript: &mut Transcript,
+    verifier_transcript: &mut Transcript,
+    backend: &mut Backend,
+) -> Result<C6T1ProductionResponseOwner, String> {
+    let old_context = first
+        .t0
+        .checked_add(1)
+        .ok_or_else(|| "C6.2 continuation old context overflows".to_owned())?;
+    build_c6_production_response_owner(
+        model,
+        C6ProductionResponseProverProfile::Continuation { full, first, second },
+        C6ProductionResponseVerifierProfile::Continuation { base_t0: old_context - 1 },
+        sequence,
+        statement_digest,
+        installed_plans,
+        extraction_maps,
+        attempt,
+        provider_transcript,
+        verifier_transcript,
+        Some(backend),
     )
 }
 

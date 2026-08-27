@@ -66,6 +66,11 @@ use volta_pcs::c61_public_compression::C61NativeComponent;
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_pcs::c62_gpu_whir::C62GpuMmcs;
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+use volta_pcs::c6_residual_sumcheck_blind::{
+    prepare_c6_blind_residual_prover_repetition_fused,
+    C6BlindResidualFusedPreparedRepetition,
+};
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_pcs::c6_blind_round_coordinator::{
     assemble_c61_native_exact_production_nbr2_certificate,
     assemble_c62_native_exact_production_nbr2_certificate,
@@ -81,7 +86,7 @@ use volta_pcs::c6_blind_round_coordinator::{
     prepare_c63_decoded_blind_verifier, prepare_c63_resident_sketch_suffix,
     prepare_c63_terminal_compiler, prepare_c64_decoded_blind_verifier,
     prepare_c64_terminal_compiler, prove_c61_native_production_blind_components,
-    prove_c63_production_blind_components, prove_c64_production_blind_components,
+    prove_c63_production_blind_components, prove_c64_production_blind_components_prepared,
     verify_c63_complete_decoded_response, verify_c64_complete_decoded_response,
     C61NativeExactProductionNbr2Certificate, C61NativeProductionBlindProverOutput,
     C62ExactProductionNbr2VerifierOutput, C62NativeExactProductionNbr2Certificate,
@@ -155,7 +160,8 @@ use volta_proto::{C6ResidualFusedCoefficientArena, C6ResidualFusedWitnessView};
 
 #[cfg(feature = "c6-trace")]
 use crate::c6_t1_owner::{
-    execute_c62_t1_production_owner_export, execute_c6_t1_production_owner_export,
+    execute_c62_t1_production_owner_export,
+    execute_c62_t1_production_owner_export_with_backend, execute_c6_t1_production_owner_export,
     materialize_c62_t1_cache_states, persist_c6_t1_native_coefficient_owners,
     C62CampaignWorkloadOwner, C62T1ProductionOwnerExport, C6T1NativeClaimOwner,
     C6T1NativeVerifierClaimOwner, C6T1ProductionOwnerExport, C6T1WorkloadOwner,
@@ -953,6 +959,30 @@ pub fn execute_c62_campaign_response_owner(
     )
 }
 
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+pub fn execute_c62_campaign_response_owner_with_backend(
+    workload: C62CampaignWorkloadOwner,
+    statement: &C61ResponseStatementBinding,
+    installed_plans: [C6InstalledOperationPlan; 2],
+    extraction_maps: [C6DecodedInstanceExtractionPlan; 2],
+    attempt: &mut C6ProductionPairedPcgAttempt,
+    session: &mut C62CampaignResponseTranscriptSession,
+    backend: &mut Backend,
+) -> Result<C62T1ProductionOwnerExport, String> {
+    let (provider, verifier) = session.transcripts();
+    execute_c62_t1_production_owner_export_with_backend(
+        workload,
+        statement.digest(),
+        installed_plans,
+        extraction_maps,
+        attempt,
+        provider,
+        verifier,
+        backend,
+    )
+}
+
 /// Derive the post-response wrapper base from the same live response and
 /// setup-owned compiler identities that will be consumed by the residual
 /// relation. No digest-valued production input is accepted.
@@ -1322,15 +1352,18 @@ pub fn prove_c64_campaign_native_blind(
     )
     .map_err(|error| error.to_string())?;
     let arena = C6ResidualFusedCoefficientArena::new(residual.relation().manifest());
-    let statements: [C6BlindResidualStatement; 2] = (0..2u8)
-        .map(|repetition| prepare_c6_blind_residual_statement_fused(compiler, repetition))
+    let prepared: [C6BlindResidualFusedPreparedRepetition; 2] = (0..2u8)
+        .map(|repetition| {
+            prepare_c6_blind_residual_prover_repetition_fused(compiler, witness, repetition)
+        })
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?
         .try_into()
-        .map_err(|_| "C6.4 blind statement census differs".to_owned())?;
-    let blind = prove_c64_production_blind_components(
+        .map_err(|_| "C6.4 blind prepared repetition census differs".to_owned())?;
+    let statements = prepared.each_ref().map(|repetition| repetition.statement().clone());
+    let blind = prove_c64_production_blind_components_prepared(
         precommit,
-        &statements,
+        &prepared,
         compiler,
         witness,
         &arena,
@@ -4099,14 +4132,28 @@ fn run_c63_or_c64_campaign_live_production(
     let mut response_session =
         C62CampaignResponseTranscriptSession::start(public_attempt, &response_statement)?;
     let response_context_digest = response_session.context_digest();
-    let response = execute_c62_campaign_response_owner(
-        workload_owner,
-        &response_statement,
-        [provider_plan, verifier_plan],
-        [provider_extraction, verifier_extraction],
-        &mut attempt,
-        &mut response_session,
-    )?;
+    let response = if c64 {
+        let mut response_backend = Backend::cuda_hybrid()
+            .map_err(|error| format!("initialize C6.4 response CUDA backend: {error}"))?;
+        execute_c62_campaign_response_owner_with_backend(
+            workload_owner,
+            &response_statement,
+            [provider_plan, verifier_plan],
+            [provider_extraction, verifier_extraction],
+            &mut attempt,
+            &mut response_session,
+            &mut response_backend,
+        )?
+    } else {
+        execute_c62_campaign_response_owner(
+            workload_owner,
+            &response_statement,
+            [provider_plan, verifier_plan],
+            [provider_extraction, verifier_extraction],
+            &mut attempt,
+            &mut response_session,
+        )?
+    };
     if c64 {
         c64_phase("response_complete");
     }
@@ -9132,6 +9179,18 @@ mod campaign_artifact_tests {
         assert!(c64_arm.contains("bind_c64_campaign_projected_residual_roots("));
         assert!(!c64_arm.contains("bind_c63_campaign_live_residual_roots("));
         assert!(runner.contains("if !c64 {\n        fs::create_dir(&wrapper_root)"));
+        assert!(runner.contains("Backend::cuda_hybrid()"));
+        assert!(runner.contains("execute_c62_campaign_response_owner_with_backend("));
+
+        let blind = source
+            .split_once("pub fn prove_c64_campaign_native_blind(")
+            .unwrap()
+            .1
+            .split_once("/// Exact response-owned four-chain output")
+            .unwrap()
+            .0;
+        assert!(blind.contains("prepare_c6_blind_residual_prover_repetition_fused("));
+        assert!(blind.contains("prove_c64_production_blind_components_prepared("));
 
         let verifier = source
             .split_once("fn verify_c63_or_c64_campaign_e2e(")

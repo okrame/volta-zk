@@ -45,7 +45,9 @@ use volta_pcs::{
 };
 #[cfg(feature = "c6-trace")]
 use volta_proto::{
-    build_c62_continuation_production_response_owner, build_c6_t1_production_response_owner,
+    build_c62_continuation_production_response_owner,
+    build_c62_continuation_production_response_owner_with_backend,
+    build_c6_t1_production_response_owner, build_c6_t1_production_response_owner_with_backend,
     cattn_permuted, C6PairedNativeTargetValues, C6ProductionPairedPcgAttempt,
     C6T1ProductionResponseOwner, C6T1ProductionResponseVerifierReplay,
 };
@@ -663,21 +665,87 @@ pub fn execute_c62_t1_production_owner_export(
     provider_transcript: &mut Transcript,
     verifier_transcript: &mut Transcript,
 ) -> Result<C62T1ProductionOwnerExport, String> {
+    execute_c62_t1_production_owner_export_impl(
+        workload,
+        statement_digest,
+        installed_plans,
+        extraction_maps,
+        attempt,
+        provider_transcript,
+        verifier_transcript,
+        None,
+    )
+}
+
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+pub fn execute_c62_t1_production_owner_export_with_backend(
+    workload: C62CampaignWorkloadOwner,
+    statement_digest: [u8; 32],
+    installed_plans: [C6InstalledOperationPlan; 2],
+    extraction_maps: [C6DecodedInstanceExtractionPlan; 2],
+    attempt: &mut C6ProductionPairedPcgAttempt,
+    provider_transcript: &mut Transcript,
+    verifier_transcript: &mut Transcript,
+    backend: &mut Backend,
+) -> Result<C62T1ProductionOwnerExport, String> {
+    if backend.kind() != BackendKind::CudaHybrid {
+        return Err("C6.4 response proving requires the CUDA hybrid backend".to_owned());
+    }
+    execute_c62_t1_production_owner_export_impl(
+        workload,
+        statement_digest,
+        installed_plans,
+        extraction_maps,
+        attempt,
+        provider_transcript,
+        verifier_transcript,
+        Some(backend),
+    )
+}
+
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+fn execute_c62_t1_production_owner_export_impl(
+    workload: C62CampaignWorkloadOwner,
+    statement_digest: [u8; 32],
+    installed_plans: [C6InstalledOperationPlan; 2],
+    extraction_maps: [C6DecodedInstanceExtractionPlan; 2],
+    attempt: &mut C6ProductionPairedPcgAttempt,
+    provider_transcript: &mut Transcript,
+    verifier_transcript: &mut Transcript,
+    mut backend: Option<&mut Backend>,
+) -> Result<C62T1ProductionOwnerExport, String> {
     let response = match &workload {
-        C62CampaignWorkloadOwner::Genesis(workload) => build_c6_t1_production_response_owner(
-            workload.model(),
-            workload.prefill(),
-            workload.decode(),
-            workload.sequence(),
-            statement_digest,
-            installed_plans,
-            extraction_maps,
-            attempt,
-            provider_transcript,
-            verifier_transcript,
-        )?,
-        C62CampaignWorkloadOwner::Continuation(workload) => {
-            build_c62_continuation_production_response_owner(
+        C62CampaignWorkloadOwner::Genesis(workload) => match backend.as_deref_mut() {
+            Some(backend) => build_c6_t1_production_response_owner_with_backend(
+                workload.model(),
+                workload.prefill(),
+                workload.decode(),
+                workload.sequence(),
+                statement_digest,
+                installed_plans,
+                extraction_maps,
+                attempt,
+                provider_transcript,
+                verifier_transcript,
+                backend,
+            )?,
+            None => build_c6_t1_production_response_owner(
+                workload.model(),
+                workload.prefill(),
+                workload.decode(),
+                workload.sequence(),
+                statement_digest,
+                installed_plans,
+                extraction_maps,
+                attempt,
+                provider_transcript,
+                verifier_transcript,
+            )?,
+        },
+        C62CampaignWorkloadOwner::Continuation(workload) => match backend.as_deref_mut() {
+            Some(backend) => build_c62_continuation_production_response_owner_with_backend(
                 workload.model(),
                 workload.full(),
                 workload.first(),
@@ -689,8 +757,22 @@ pub fn execute_c62_t1_production_owner_export(
                 attempt,
                 provider_transcript,
                 verifier_transcript,
-            )?
-        }
+                backend,
+            )?,
+            None => build_c62_continuation_production_response_owner(
+                workload.model(),
+                workload.full(),
+                workload.first(),
+                workload.second(),
+                workload.sequence(),
+                statement_digest,
+                installed_plans,
+                extraction_maps,
+                attempt,
+                provider_transcript,
+                verifier_transcript,
+            )?,
+        },
     };
     let native_claims = C6T1NativeClaimOwner::from_response(&response)?;
     Ok(C62T1ProductionOwnerExport { workload, response, native_claims })

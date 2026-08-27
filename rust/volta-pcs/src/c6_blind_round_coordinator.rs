@@ -98,7 +98,11 @@ use crate::c6_persistent_cache_blind::{
     C6_PERSISTENT_CACHE_BLIND_ROUND_BYTES,
 };
 #[cfg(feature = "c6-trace")]
-use crate::c6_residual_sumcheck_blind::prove_c6_blind_residual_sumchecks_fused_direct;
+use crate::c6_residual_sumcheck_blind::{
+    prove_c6_blind_residual_sumchecks_fused_direct,
+    prove_c6_blind_residual_sumchecks_fused_direct_prepared,
+    C6BlindResidualFusedPreparedRepetition,
+};
 #[cfg(feature = "c6-trace")]
 use crate::c6_residual_sumcheck_blind::verify_c6_blind_residual_sumchecks_direct_claims_with_points;
 use crate::c6_residual_sumcheck_blind::{
@@ -3107,6 +3111,38 @@ pub fn prove_c64_production_blind_components<'a>(
         transcript,
     )?;
     Ok(C64ProductionBlindProverOutput { blind, precommit })
+}
+
+#[cfg(all(feature = "cuda", feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+pub fn prove_c64_production_blind_components_prepared<'a>(
+    precommit: crate::c64_projected_residual_suffix::C64ProjectedResidualPrecommit,
+    prepared: &[C6BlindResidualFusedPreparedRepetition],
+    residual_compiler: C6BlindResidualFusedCompilerContext<'a>,
+    residual_witness: C6ResidualFusedWitnessView<'a>,
+    residual_arena: &'a C6ResidualFusedCoefficientArena,
+    streams: &mut [CorrelationStream; TAPES],
+    transcript: &mut Transcript,
+) -> Result<C64ProductionBlindProverOutput, String> {
+    validate_production_streams(streams)?;
+    let (residual_proof, residual_frame, residual_pending, residual_terminal_outputs) =
+        prove_c6_blind_residual_sumchecks_fused_direct_prepared(
+            prepared,
+            residual_compiler,
+            residual_witness,
+            residual_arena,
+            streams,
+            transcript,
+        )
+        .map_err(text_error)?;
+    Ok(C64ProductionBlindProverOutput {
+        blind: C63ProductionBlindProverOutput {
+            residual_proof,
+            residual_frame,
+            residual_pending,
+            residual_terminal_outputs,
+        },
+        precommit,
+    })
 }
 
 /// Witness-free mirror of the complete blind coordinator and production

@@ -15,7 +15,7 @@ SESSION_ROOT=$(realpath -m "$4")
 REPO_ROOT=$(git rev-parse --show-toplevel)
 EXPECTED_SHA=${C64_EXPECTED_GIT_SHA:-}
 SETUP_SOURCE=${C64_SETUP_SOURCE:-}
-SESSION_TIMEOUT_S=${C64_SESSION_TIMEOUT_S:-600}
+SESSION_TIMEOUT_S=${C64_SESSION_TIMEOUT_S:-300}
 DISK_FLOOR_BYTES=223338299392
 RUN_DISK_STOP_BYTES=107374182400
 HOST_FLOOR_BYTES=103079215104
@@ -148,7 +148,14 @@ cleanup() {
     find "$SESSION_ROOT/run" -type f -printf '%P\t%s\n' \
       | LC_ALL=C sort >"$SESSION_ROOT/failure-run-files.tsv" || true
   fi
+  if [[ -f $SESSION_ROOT/session.stderr.log ]]; then
+    grep -E '^C64(PH1|GPU1|OPT1)[[:space:]]' "$SESSION_ROOT/session.stderr.log" \
+      >"$SESSION_ROOT/optimization-phases.tsv" || true
+  fi
   rm -rf -- "$SESSION_ROOT/run" "$WORK_ROOT/c63-fixed-model-cache"
+  find "$SESSION_ROOT" -maxdepth 1 -type f ! -name checksums.sha256 -print0 \
+    | LC_ALL=C sort -z \
+    | xargs -0 sha256sum >"$SESSION_ROOT/checksums.sha256"
   exit "$status"
 }
 trap cleanup EXIT
@@ -161,6 +168,7 @@ export RAYON_NUM_THREADS="$VOLTA_CLOUD_VCPUS"
 export VOLTA_CUDA_ARCH=sm_80
 export VOLTA_CUDA_LIBRARY="$REPO_ROOT/rust/target/cuda/libvolta_cuda_backend.so"
 export VOLTA_REQUIRE_CUDA=1
+export VOLTA_C64_DIAGNOSTICS=1
 
 rustc -C target-cpu=native --print cfg >"$SESSION_ROOT/rustc-native-cfg.txt"
 if ! grep -Eq 'target_feature="(avx2|neon|sve)"' "$SESSION_ROOT/rustc-native-cfg.txt"; then

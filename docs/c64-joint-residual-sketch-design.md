@@ -1,7 +1,7 @@
 # C6.4 — projected residual PCS recovery
 
-**Status:** R6 A100 timing hard stop after the root and certificate migration;
-zero certificates and no further pod run authorized.
+**Status:** R7 local GPU/SIMD repair is `C64_POD_READY`; zero certificates and
+the measured A100 gates remain open pending a new run-specific owner GO.
 
 **Branch:** `agent/c64-joint-residual-sketch`.
 
@@ -147,7 +147,7 @@ exposes AVX2, NEON or SVE vector instructions. Rayon uses the allocated vCPU
 count rather than the guest-wide processor census. The compiler features, CPU
 topology and thread count are retained beside the run.
 
-The measured process has a default 600-second emergency timebox, adjustable
+The measured process has a default 300-second emergency timebox, adjustable
 through `C64_SESSION_TIMEOUT_S`, plus the registered disk, cgroup-memory and
 device-memory hard stops. The 20- and 150-second marks are diagnostic only.
 Every second is recorded with process memory/I/O, device memory, compute and
@@ -162,7 +162,49 @@ On a new pod, source and small tracked evidence move only through GitHub HTTPS.
 Generated setup, weights and large run artifacts remain pod-local. Every raw
 run is create-new and records the clean SHA.
 
-## 7. Exact resume condition
+## 7. R7 GPU/SIMD repair and exact resume condition
+
+R7 keeps the R6 protocol and certificate bytes unchanged and repairs the
+executed implementation at the three measured CPU fallbacks:
+
+1. The C6.4 response alone selects the existing CUDA-hybrid proving backend;
+   historical C6.2/C6.3 entry points remain CPU-identical. The backend is
+   dropped after the response so its allocations cannot overlap the six-root
+   phase.
+2. Each of the four native WHIR lanes remains sequential for device-memory
+   safety, but its opening evaluation now reads the pending device-resident
+   message instead of scanning the full message on the CPU. SIMT is used for
+   the dense commitment, opening and proof kernels; transcript and loading
+   stay on the CPU.
+3. The direct residual prover now obtains each statement and first sumcheck
+   message from one replay, not two. Regular zero tails are skipped in the
+   first message and their folded coefficients are generated in bounded Rayon
+   chunks. SIMD/Rayon is retained here because these short independent ranges
+   already live in host memory; a new GPU-resident residual engine is deferred
+   unless the phase exceeds its `3.000 s` admission budget.
+
+The executable non-credit R7 projection is `16.800812093 s`: conservative
+rounded response anchor `4.180000000`, measured C6.4 roots `5.710866424`, the
+sum of matching C62GW4 provider-cached D28/D27 lanes `3.409945669`, residual
+budget `3.000000000`, and seal budget `0.500000000`. Headroom below the local
+`17.000 s` admission gate is `0.199187907 s`. This is engineering admission,
+not A100 timing credit.
+
+The runner records `C64OPT1` timings for response provider/seal/replay, each
+native lane, both residual first messages and every folded-coefficient build.
+It extracts those together with `C64PH1` and `C64GPU1` into a checksummed file
+on success or failure. The default emergency timebox is reduced from 600 to
+300 seconds; setup remains exactly contexts `[0,150]`, and the second proof is
+attempted only after the first proof is serialized, reloaded and verified.
+
+R7 is `C64_POD_READY` only for that registered two-proof campaign. It still
+requires a fresh clean SHA, the new A100 endpoint and explicit run-specific
+owner GO. A response above its anchor or residual above `3.000 s` is diagnostic
+evidence for the already identified next step: retain coefficients and compact
+witness tables on device and reuse the existing equality, product, triple-
+product and fold kernels. It does not authorize a parameter-only retry.
+
+### R6 disposition
 
 R6 is not `C64_POD_READY`. Clean `813dd22` passed the complete CUDA
 differential and campaign checks, and the migrated six-root lifecycle stayed

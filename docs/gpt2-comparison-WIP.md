@@ -61,6 +61,20 @@ The first append-only incident record is
 SHA-256
 `9190621281ce5cb5b2c37d4b30bc945692405170fdc6203e58c3f3e4268f0d6e`.
 
+## C6.4 R6 timing disposition
+
+The row “Prova risposta totale” in the comparison table is not the complete
+C6.4 provider/certificate interval. Clean `813dd22` recorded **more than
+404.726069869 s** from `campaign_start` to the 600-second timebox, with no
+certificate. Inside that lower bound, response construction was
+`66.013804893 s`, residual-owner construction `12.292302782 s`, projected
+roots `5.710866424 s`, native four-chain proving `227.869846047 s`, and the
+unfinished residual-blind suffix exceeded `92.784116159 s`. The complete
+measured process was 600 seconds, but `194.875433059 s` preceded
+`campaign_start`; therefore neither 600 seconds nor 66.014 seconds is the
+comparable “Prova risposta totale” value. All C6.4 R6 timing and size gates
+remain `credit:false`.
+
 | Voce | CPU locale (4 thread) | A100 RunPod (8 worker Rayon) | C4 anchor A100 `1/4,Q=120` | C4 rate-8 A100 `1/8,Q=97` | A100 RunPod X4d.1 (8 response + 27 settlement worker) |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | **PCS e legatura dei pesi** | Ligero rate `1/4`, `Q=120` — apertura **inline** per risposta | Ligero rate `1/4`, `Q=120` — apertura **inline** per risposta | Ligero rate `1/4`, `Q=120` — **inline**, profilo accettato | Ligero rate `1/8`, `Q=97` — **inline**, C4 raw **FAIL**, owner-adopted C5 base | `x4-zkdeepfold-ud-e29-v4` (BaseFold/DeepFold), rate `1/8`, `s=111` — **settlement differito**, risposta senza blocco PCS |

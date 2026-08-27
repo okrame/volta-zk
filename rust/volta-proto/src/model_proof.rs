@@ -2810,6 +2810,73 @@ pub fn prove_response_private_logits_c6_cache_inline(
     C6CacheFoldOnlineLayerMetrics,
     C6CacheFoldAppendSourcePlan,
 ) {
+    prove_response_private_logits_c6_cache_inline_impl(
+        model,
+        wit,
+        chunks,
+        stream,
+        secondary,
+        schedule_follower,
+        target_builder,
+        tx,
+        None,
+    )
+}
+
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+pub fn prove_response_private_logits_c6_cache_inline_with_backend(
+    model: &Gpt2Model,
+    wit: &ModelWitness,
+    chunks: &[ChunkRef],
+    stream: &mut CorrelationStream,
+    secondary: &mut CorrelationStream,
+    schedule_follower: &mut C6SourceScheduleProverFollower,
+    target_builder: &mut C6CacheFoldTargetInlineProver,
+    tx: &mut Transcript,
+    backend: &mut Backend,
+) -> (
+    ModelProof,
+    ModelOut,
+    ProdTriples,
+    C6GrandResidualProverRoots,
+    C6CacheFoldOnlineLayerMetrics,
+    C6CacheFoldAppendSourcePlan,
+) {
+    assert_eq!(backend.kind(), BackendKind::CudaHybrid);
+    prove_response_private_logits_c6_cache_inline_impl(
+        model,
+        wit,
+        chunks,
+        stream,
+        secondary,
+        schedule_follower,
+        target_builder,
+        tx,
+        Some(backend),
+    )
+}
+
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+fn prove_response_private_logits_c6_cache_inline_impl(
+    model: &Gpt2Model,
+    wit: &ModelWitness,
+    chunks: &[ChunkRef],
+    stream: &mut CorrelationStream,
+    secondary: &mut CorrelationStream,
+    schedule_follower: &mut C6SourceScheduleProverFollower,
+    target_builder: &mut C6CacheFoldTargetInlineProver,
+    tx: &mut Transcript,
+    backend: Option<&mut Backend>,
+) -> (
+    ModelProof,
+    ModelOut,
+    ProdTriples,
+    C6GrandResidualProverRoots,
+    C6CacheFoldOnlineLayerMetrics,
+    C6CacheFoldAppendSourcePlan,
+) {
     assert_eq!(chunks.len(), 1, "C6 v1 requires one stacked decode phase");
     let mut cache_mode = ResponseProverCacheMode::C6 {
         secondary,
@@ -2825,7 +2892,7 @@ pub fn prove_response_private_logits_c6_cache_inline(
         None,
         stream,
         tx,
-        None,
+        backend,
         true,
         true,
         &mut cache_mode,
@@ -2865,6 +2932,81 @@ pub fn prove_response_continuation_private_logits_c6_cache_inline(
     C6CacheFoldOnlineLayerMetrics,
     C6CacheFoldAppendSourcePlan,
 ) {
+    prove_response_continuation_private_logits_c6_cache_inline_impl(
+        model,
+        full,
+        first,
+        second,
+        sequence,
+        stream,
+        secondary,
+        schedule_follower,
+        target_builder,
+        tx,
+        None,
+    )
+}
+
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+pub fn prove_response_continuation_private_logits_c6_cache_inline_with_backend(
+    model: &Gpt2Model,
+    full: &ModelWitness,
+    first: &BandModelWitness,
+    second: &BandModelWitness,
+    sequence: &[u32],
+    stream: &mut CorrelationStream,
+    secondary: &mut CorrelationStream,
+    schedule_follower: &mut C6SourceScheduleProverFollower,
+    target_builder: &mut C6CacheFoldTargetInlineProver,
+    tx: &mut Transcript,
+    backend: &mut Backend,
+) -> (
+    ModelProof,
+    ModelOut,
+    ProdTriples,
+    C6GrandResidualProverRoots,
+    C6CacheFoldOnlineLayerMetrics,
+    C6CacheFoldAppendSourcePlan,
+) {
+    assert_eq!(backend.kind(), BackendKind::CudaHybrid);
+    prove_response_continuation_private_logits_c6_cache_inline_impl(
+        model,
+        full,
+        first,
+        second,
+        sequence,
+        stream,
+        secondary,
+        schedule_follower,
+        target_builder,
+        tx,
+        Some(backend),
+    )
+}
+
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+fn prove_response_continuation_private_logits_c6_cache_inline_impl(
+    model: &Gpt2Model,
+    full: &ModelWitness,
+    first: &BandModelWitness,
+    second: &BandModelWitness,
+    sequence: &[u32],
+    stream: &mut CorrelationStream,
+    secondary: &mut CorrelationStream,
+    schedule_follower: &mut C6SourceScheduleProverFollower,
+    target_builder: &mut C6CacheFoldTargetInlineProver,
+    tx: &mut Transcript,
+    backend: Option<&mut Backend>,
+) -> (
+    ModelProof,
+    ModelOut,
+    ProdTriples,
+    C6GrandResidualProverRoots,
+    C6CacheFoldOnlineLayerMetrics,
+    C6CacheFoldAppendSourcePlan,
+) {
     assert_eq!(first.q, 26, "C6 continuation first band must contain one overlap row");
     assert_eq!(second.q, 25, "C6 continuation second band must contain 25 new rows");
     assert_eq!(second.t0, first.t0 + first.q, "C6 continuation bands must be contiguous");
@@ -2883,7 +3025,7 @@ pub fn prove_response_continuation_private_logits_c6_cache_inline(
         Some(C6ContinuationBase { band: first, full }),
         stream,
         tx,
-        None,
+        backend,
         true,
         true,
         &mut cache_mode,

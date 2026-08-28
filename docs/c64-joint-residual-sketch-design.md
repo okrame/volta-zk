@@ -1,9 +1,9 @@
 # C6.4 — projected residual PCS recovery
 
-**Status:** R8 retained-opening order fix local green. One owner-authorized
-diagnostic-completion run is pod-ready; timing, size and engineering-memory
-targets remain `credit:false` until measured. Functional and verifier failures
-still fail closed.
+**Status:** R9 exact finite-correlation census repair local green. One
+create-new diagnostic-completion run is pod-ready; timing, size and
+engineering-memory targets remain `credit:false`. Functional and verifier
+failures still fail closed.
 
 **Branch:** `agent/c64-joint-residual-sketch`.
 
@@ -104,7 +104,7 @@ The executable R5 screen currently reports:
 - complete analytic soundness: `78.001993132250...` bits;
 - no new sparse setup and inherited D22 finite-distance lower bound: 188 bits;
 - resident projected output: `403,177,472 B`;
-- complete suffix: exactly `661` full correlations per tape;
+- complete suffix: exactly `665` full correlations per tape;
 - forbidden dense residual wrapper: exactly `0 B`.
 
 The byte estimate replaces the exact `2,672,044-B` old output-link frame with
@@ -256,6 +256,23 @@ serialized, reloaded and completely verified. Full artifacts, hashes, phase
 timings, resource telemetry, certificate bytes and proof-envelope bytes are
 retained. Any functional, transcript, correlation, reload or verifier failure
 remains terminal.
+
+### R8 A100 disposition and R9 correlation repair
+
+Clean `e6668ef` passed the corrected four native openings and the 43,696-MiB
+target without termination, then failed closed after the residual blind phase
+with `pooled full correlation underflow`. It produced no certificate or size.
+The peak was `44,149 MiB`; response provider was `57.801164646 s` and the full
+response component was `64.387053481 s`.
+
+The finite census was exactly four correlations short per tape. The `661`
+formula subtracted the four resident-sketch limb masks as “old”, but C6.4 still
+calls `finish_c64_resident_sketch_suffix`, which draws two two-limb mask pairs
+per tape. Those four masks remain part of the certificate; only the 96-mask
+legacy output link was removed. The corrected suffix is therefore
+`707 - 96 + 6 + 48 = 665`. This changes allocation accounting only, not the
+transcript, proof construction or encoded bytes. R9 requires the focused
+geometry and budget checks before one create-new completion campaign.
 
 ### R6 disposition
 

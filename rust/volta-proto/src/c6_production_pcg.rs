@@ -24,10 +24,10 @@ pub const C63_PRODUCTION_SUFFIX_SUB_CORRELATIONS: usize = 24;
 /// noncompiler masks + 44 sparse-H + 4 limb masks + 2 source functionals.
 pub const C63_PRODUCTION_SUFFIX_FULL_CORRELATIONS: usize = 707;
 pub const C64_PRODUCTION_SUFFIX_SUB_CORRELATIONS: usize = 24;
-/// C6.3 suffix without its 96-correlation residual wrapper link or four old
-/// residual limb masks, plus six projected-residual limb masks and the
-/// 48-round compact correction/cache inner-product link.
-pub const C64_PRODUCTION_SUFFIX_FULL_CORRELATIONS: usize = 661;
+/// C6.3 suffix without its 96-correlation residual wrapper link, plus six
+/// projected-residual limb masks and the 48-round compact correction/cache
+/// inner-product link. The four resident-sketch limb masks remain live.
+pub const C64_PRODUCTION_SUFFIX_FULL_CORRELATIONS: usize = 665;
 pub const C62_GENESIS_RESPONSE_SUB_CORRELATIONS: usize = 4_892_214;
 pub const C62_GENESIS_RESPONSE_FULL_CORRELATIONS: usize = 226_917;
 pub const C62_CONTINUATION_256_RESPONSE_SUB_CORRELATIONS: usize = 1_795_150;
@@ -991,18 +991,18 @@ mod tests {
     #[test]
     fn c64_registered_geometries_cover_exactly_two_profiles() {
         assert_eq!(C64_PRODUCTION_SUFFIX_SUB_CORRELATIONS, 24);
-        assert_eq!(C64_PRODUCTION_SUFFIX_FULL_CORRELATIONS, 661);
+        assert_eq!(C64_PRODUCTION_SUFFIX_FULL_CORRELATIONS, 665);
         for (sub, full, raw) in [
-            (C64_GENESIS_SUB_CORRELATIONS, C64_GENESIS_FULL_CORRELATIONS, 5_347_394),
+            (C64_GENESIS_SUB_CORRELATIONS, C64_GENESIS_FULL_CORRELATIONS, 5_347_402),
             (
                 C64_CONTINUATION_256_SUB_CORRELATIONS,
                 C64_CONTINUATION_256_FULL_CORRELATIONS,
-                2_192_020,
+                2_192_028,
             ),
         ] {
             assert_eq!(registered_production_geometry(sub, full), Some(raw));
         }
-        assert_eq!(C64_PRODUCTION_SUFFIX_FULL_CORRELATIONS, 707 - 96 - 4 + 6 + 48);
+        assert_eq!(C64_PRODUCTION_SUFFIX_FULL_CORRELATIONS, 707 - 96 + 6 + 48);
     }
 
     #[test]

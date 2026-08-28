@@ -34,7 +34,7 @@ C64_CORRECTION_LINK_ROUNDS = 24
 C64_PROJECTED_RESIDUAL_SECURITY_BITS = 107
 C64_PROJECTED_RESIDUAL_CORES = 6
 C64_PROJECTED_RESIDUAL_FULL_CORRELATIONS_PER_TAPE = 6 + 2 * C64_CORRECTION_LINK_ROUNDS
-C64_PRODUCTION_SUFFIX_FULL_CORRELATIONS_PER_TAPE = 661
+C64_PRODUCTION_SUFFIX_FULL_CORRELATIONS_PER_TAPE = 665
 C64_TERMINAL_BATCH_ERROR_NUMERATOR = 2 * (5 + 1 + 15) + 1
 C64_CORRECTION_BATCH_ERROR_NUMERATOR = 1
 C64_TERMINAL_SUMCHECK_ERROR_NUMERATOR = 2 * C64_CORRECTION_LINK_ROUNDS
@@ -297,7 +297,7 @@ def self_check(screen: dict[str, object]) -> None:
     assert terminal["correction_link_framed_bytes"] == 1_624
     assert terminal["framed_bytes"] == 6_861_312
     assert terminal["full_correlations_per_tape"] == 54
-    assert terminal["complete_suffix_full_correlations_per_tape"] == 661
+    assert terminal["complete_suffix_full_correlations_per_tape"] == 665
     assert terminal["credit"] is False
     assert distance["bits_lower"] == 188
     assert distance["new_sparse_matrix"] is False

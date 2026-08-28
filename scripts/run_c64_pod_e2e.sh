@@ -203,7 +203,7 @@ cargo test --release --manifest-path rust/Cargo.toml \
   cuda_c64_projected_residual_matches_reference_and_reclaims_buffers \
   -- --exact --nocapture \
   >"$SESSION_ROOT/cuda-differential.log" 2>&1
-cargo test --release --manifest-path rust/Cargo.toml \
+C64_CORRELATION_CENSUS_DIAGNOSTIC=0 cargo test --release --manifest-path rust/Cargo.toml \
   -p volta-bench --bin c62_whir_fiat_shamir_record \
   --features cuda,c6-trace,c61-p3-authenticated-reference \
   c64_campaign_is_two_profiles_two_proofs_and_reload_before_accept \

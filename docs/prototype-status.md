@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 R10 EXACT PCG CENSUS DIAGNOSTIC POD READY / GATE CREDIT FALSE)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 R10 PCG CENSUS PREFLIGHT ISOLATION REPAIRED / POD READY / GATE CREDIT FALSE)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -21,9 +21,20 @@ Read `c64-joint-residual-sketch-design.md` next.
   logs counters at every composed boundary, requested/remaining capacity,
   backtrace, and pre-finish certificate bytes. Exact-consumption reconciliation
   remains unchanged, so slack fails closed and earns no credit.
-- **Resume.** Pass focused checks, push one clean R10 SHA, run one create-new
-  diagnostic on the owner-provided pod, then set the measured exact R11
-  reservation before any credit-bearing completion run.
+- **Preflight/resume.** The first `49c227d` invocation passed the A100
+  differential `1/1` in `0.78 s`, then stopped before setup/campaign because
+  the normal-profile test inherited the diagnostic flag. No correlation was
+  consumed. Isolate that test at `665`, push a clean SHA, then rerun the
+  create-new diagnostic and set the measured exact R11 reservation.
+
+- **2026-08-28 — R10 first invocation stops before campaign; diagnostic flag
+  isolated from the normal-profile test.** Clean `49c227d` passed the A100
+  projected-residual differential `1/1` in `0.78 s`. The following structural
+  driver test inherited `C64_CORRELATION_CENSUS_DIAGNOSTIC=1` and correctly
+  rejected diagnostic profile `(4892238, 227682, 5347602)` against normal C6.4
+  `(4892238, 227582, 5347402)`. No setup copy, response, proof or correlation
+  ran. The runner now forces this one test to the normal profile and preserves
+  the diagnostic flag for the record process only.
 
 - **2026-08-28 — R9 remains four-plus correlations short; R10 instruments an
   exact composed census.** Clean `eed8866` used `665` full correlations per

@@ -1,8 +1,9 @@
 # C6.4 — projected residual PCS recovery
 
-**Status:** R10 exact finite-correlation census diagnostic local. R9 still
-underflowed at `665`; one bounded over-reservation run is pod-ready to measure
-the composed total and pre-finish proof bytes. All gates remain `credit:false`.
+**Status:** R10 exact finite-correlation census diagnostic pod-ready after a
+pre-campaign runner isolation repair. R9 still underflowed at `665`; one
+bounded over-reservation run will measure the composed total and pre-finish
+proof bytes. All gates remain `credit:false`.
 
 **Branch:** `agent/c64-joint-residual-sketch`.
 
@@ -286,6 +287,13 @@ actual prover/verifier counters. This run cannot receive protocol, size or
 timing credit unless the actual total is exactly 765 and full verification
 completes. Its sole purpose is to establish the exact R11 reservation without
 another late guess.
+
+The first `49c227d` invocation stopped before setup and campaign: the runner's
+structural driver test inherited `C64_CORRELATION_CENSUS_DIAGNOSTIC=1`, so its
+normal-profile assertion correctly rejected the diagnostic `765` profile in
+place of `665`. The A100 differential had passed `1/1` in `0.78 s`; no proof
+or correlation was consumed. R10 isolates that test with the diagnostic flag
+set to zero and leaves the flag enabled only for the subsequent record process.
 
 ### R6 disposition
 

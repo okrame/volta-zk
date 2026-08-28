@@ -61,6 +61,23 @@ The first append-only incident record is
 SHA-256
 `9190621281ce5cb5b2c37d4b30bc945692405170fdc6203e58c3f3e4268f0d6e`.
 
+## C6.4 R7 timing disposition
+
+Clean A100 `41b4e07` does not supply a new value for “Prova risposta totale”.
+The first proof failed before its envelope and certificate when the retained
+device-message opening disagreed with its authenticated target. Before that
+failure, response construction alone took `65.524719047 s`: provider
+`58.727182131 s`, seal `1.266567169 s`, verifier replay `5.433695015 s`.
+Residual-owner construction took `11.547041744 s` and projected roots
+`5.903876539 s`; the process failed after entering the first native chain.
+
+Thus R7 definitively fails the `<20 s` complete-prover target, but the table row
+remains unchanged because there was no complete serialized, reloaded and
+verified certificate. The earlier `16.800812093-s` figure was a non-credit
+component projection and is invalidated by this run, not a measured prover
+time. Raw record:
+`benchmarks/results/c64-r7-a100-opening-mismatch-2026-08-28-41b4e07.json`.
+
 ## C6.4 R6 timing disposition
 
 The row “Prova risposta totale” in the comparison table is not the complete

@@ -1,7 +1,9 @@
 # C6.4 — projected residual PCS recovery
 
-**Status:** R7 local GPU/SIMD repair is `C64_POD_READY`; zero certificates and
-the measured A100 gates remain open pending a new run-specific owner GO.
+**Status:** R7 A100 FAIL. Response construction remained `65.524719047 s` and
+the first retained-device native opening rejected with `C6SPR11`. HARD STOP:
+no pod or parameter-only retry before the local identity and timing repairs
+below are complete.
 
 **Branch:** `agent/c64-joint-residual-sketch`.
 
@@ -203,6 +205,30 @@ owner GO. A response above its anchor or residual above `3.000 s` is diagnostic
 evidence for the already identified next step: retain coefficients and compact
 witness tables on device and reuse the existing equality, product, triple-
 product and fold kernels. It does not authorize a parameter-only retry.
+
+### R7 A100 disposition
+
+Clean `41b4e07` invalidates the `16.800812093-s` projection. The response
+component took `65.524719047 s`, split into `58.727182131 s` provider,
+`1.266567169 s` seal and `5.433695015 s` verifier replay. Selecting the
+CUDA-hybrid backend therefore did not move the dominant provider work; this is
+not cold-start attribution because it followed `142.781160265 s` of measured
+pre-campaign preparation. The residual owner took `11.547041744 s` and the six
+projected roots `5.903876539 s`.
+
+The first native chain then failed closed: `C6SPR11 retained authenticated
+target differs from its committed polynomial opening`. The focused CUDA
+differential had passed, so it did not cover the production retained-message
+identity across the exact representation, limb/order mapping and transcript
+evaluation point. No certificate or verifier result exists, and all gates
+remain `credit:false`.
+
+Resume is local only. First add one production-path identity check that compares
+the retained-device opening with the committed polynomial at the exact sampled
+point and repair the root cause. Separately trace `response_provider` and move
+or remove its CPU-dominant operations; backend dispatch by itself is not a
+repair. Re-establish a complete `<=17.000 s` projection from matching measured
+components before requesting another pod and run-specific owner GO.
 
 ### R6 disposition
 

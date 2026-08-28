@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 R7 LOCAL GPU/SIMD REPAIR / POD READY PENDING OWNER GO)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 R7 A100 FAIL — RESPONSE 65.525 S / RETAINED-OPENING MISMATCH / HARD STOP)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,24 +10,45 @@ record; no external plan is authoritative.
 
 Read `c64-joint-residual-sketch-design.md` next.
 
-- **Status/design.** C6.4 R7 remains isolated from C7. The local GPU/SIMD
-  repair is `C64_POD_READY`; no pod contact is authorized without a new
-  run-specific owner GO.
-- **Completed evidence.** C6.4 alone selects the existing CUDA-hybrid response
-  prover and releases it before later phases. Native WHIR openings evaluate
-  the pending device message instead of rescanning it on CPU. Residual
-  statement/first-message construction is one replay; zero tails are skipped
-  or chunked in Rayon. The byte-identical prepared/ordinary direct prover test,
-  CUDA feature compilation, budget self-check and runner syntax pass locally.
-- **Projection/credit.** The non-credit engineering projection is
-  `16.800812093 s`: response `4.180000000`, measured roots `5.710866424`,
-  matching native lanes `3.409945669`, residual budget `3.000000000`, seal
-  budget `0.500000000`. Zero R6 certificates, artifacts, verifier replays or
-  promotions exist; all measured R7 hardware, timing, size and protocol gates
-  remain `credit:false`.
-- **Hard stop/resume.** Resume requires a clean R7 SHA, one owner-provided
-  80-GB A100 endpoint and explicit GO. The registered run has contexts
-  `[0,150]`, two no-retry proofs, full diagnostics and a 300-second timebox.
+- **Status/design.** C6.4 R7 remains isolated from C7 and is now an official
+  A100 failure. Pod `nudqsdr5apsd96` is stopped. A HARD STOP forbids another
+  pod or parameter-only retry.
+- **Completed evidence.** Clean `41b4e07` generated only setup contexts
+  `[0,150]`; CUDA differential and campaign-discipline checks passed. The
+  measured process reached the first native opening, then failed closed with
+  `C6SPR11`: the retained authenticated target differed from its committed
+  polynomial opening. No second proof started.
+- **Measurement/credit.** Pre-campaign was `142.781160265 s`; response was
+  `65.524719047 s` (`58.727182131` provider, `1.266567169` seal,
+  `5.433695015` response-level verifier replay), residual owner
+  `11.547041744 s`, roots `5.903876539 s`. Zero certificates, artifacts,
+  complete verifier acceptances or promotions exist; every size, timing,
+  protocol and device gate is `credit:false`.
+- **Resume condition.** First prove retained-device opening identity across
+  representation, limb/order and evaluation point, then replace the
+  CPU-dominant response provider and re-establish a complete `<=17.000 s`
+  projection. A fresh clean SHA, explicit owner GO and new A100 are required
+  only after those local gates pass.
+
+- **2026-08-28 — C6.4 R7 A100 fails timing and retained-device opening;
+  control-plane stop complete.** Clean `41b4e07` ran on one 80-GB A100 with
+  24 allocated vCPU and 117 GiB RAM. Exact weight/golden hashes, the `0.70-s`
+  projected-residual CUDA differential, allocation cleanup and two-proof
+  driver check passed; setup generated only contexts 0 and 150. The measured
+  process spent `142.781160265 s` before `campaign_start`. Response construction
+  then took `65.524719047 s`, essentially unchanged from R6 `66.013804893 s`:
+  provider `58.727182131 s`, seal `1.266567169 s`, verifier replay
+  `5.433695015 s`. Residual-owner construction was `11.547041744 s` and the six
+  roots `5.903876539 s`. At native-chain start the retained device-message
+  opening rejected with `C6SPR11`; no proof envelope, certificate, artifact,
+  certificate reload, complete verifier acceptance or promotion exists. Peak
+  host RSS was `19,597,516,800 B`; peak external device use was `27,855 MiB`,
+  below the guard. The response alone proves the `<20 s` gate impossible,
+  independently of the functional failure. The R7 `16.800812093-s` projection
+  is invalidated: backend selection did not move the dominant response work,
+  while the new retained-message opening lacks production identity. Raw record:
+  `c64-r7-a100-opening-mismatch-2026-08-28-41b4e07.json`. Build cache was
+  removed and RunPod reports `EXITED`; no retry is authorized.
 
 - **2026-08-27 — C6.4 R7 repairs all three measured CPU-dominated paths and reaches
   local `C64_POD_READY`.** The C6.4 response now uses the existing

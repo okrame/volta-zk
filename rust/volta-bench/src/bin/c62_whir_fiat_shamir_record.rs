@@ -90,6 +90,10 @@ mod enabled {
         C63_CONTINUATION_256_RAW_CORRELATIONS, C63_CONTINUATION_256_SUB_CORRELATIONS,
         C63_GENESIS_FULL_CORRELATIONS, C63_GENESIS_RAW_CORRELATIONS, C63_GENESIS_SUB_CORRELATIONS,
         C63_NATIVE_CERTIFICATE_FRAMING_BYTES, C63_NATIVE_STRICT_PI_FINAL_MAX_BYTES,
+        C64_CENSUS_DIAGNOSTIC_CONTINUATION_256_FULL_CORRELATIONS,
+        C64_CENSUS_DIAGNOSTIC_CONTINUATION_256_RAW_CORRELATIONS,
+        C64_CENSUS_DIAGNOSTIC_GENESIS_FULL_CORRELATIONS,
+        C64_CENSUS_DIAGNOSTIC_GENESIS_RAW_CORRELATIONS,
         C64_CONTINUATION_256_FULL_CORRELATIONS, C64_CONTINUATION_256_RAW_CORRELATIONS,
         C64_CONTINUATION_256_SUB_CORRELATIONS, C64_GENESIS_FULL_CORRELATIONS,
         C64_GENESIS_RAW_CORRELATIONS, C64_GENESIS_SUB_CORRELATIONS,
@@ -462,7 +466,19 @@ mod enabled {
 
     fn c64_correlation_profile(old_context: u32) -> Result<(usize, usize, u64), String> {
         if std::env::var("C64_CORRELATION_CENSUS_DIAGNOSTIC").as_deref() == Ok("1") {
-            return c62_correlation_profile(old_context);
+            return match old_context {
+                0 => Ok((
+                    C64_GENESIS_SUB_CORRELATIONS,
+                    C64_CENSUS_DIAGNOSTIC_GENESIS_FULL_CORRELATIONS,
+                    C64_CENSUS_DIAGNOSTIC_GENESIS_RAW_CORRELATIONS,
+                )),
+                150 => Ok((
+                    C64_CONTINUATION_256_SUB_CORRELATIONS,
+                    C64_CENSUS_DIAGNOSTIC_CONTINUATION_256_FULL_CORRELATIONS,
+                    C64_CENSUS_DIAGNOSTIC_CONTINUATION_256_RAW_CORRELATIONS,
+                )),
+                _ => Err("C6.4 census supports only contexts 0 and 150".to_owned()),
+            };
         }
         match old_context {
             0 => Ok((

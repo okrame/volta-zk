@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 R10 PCG CENSUS PREFLIGHT ISOLATION REPAIRED / POD READY / GATE CREDIT FALSE)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 R10B 765 PCG CENSUS UNDERFLOW / R10C WIDE CENSUS LOCAL / GATE CREDIT FALSE)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,22 +10,30 @@ record; no external plan is authoritative.
 
 Read `c64-joint-residual-sketch-design.md` next.
 
-- **Status/design.** C6.4 R10 remains isolated from C7. R8 fixed the retained
-  opening; R9 proved `665` correlations per tape is still insufficient. All
-  gates are `credit:false`; no certificate or size exists.
-- **Measured evidence.** Clean `eed8866` again passed all native openings,
-  then underflowed after residual blind at 465 s. Response provider was
-  `58.426802643 s`, complete response `65.029261316 s`, device peak
-  `44,569 MiB`; no verifier or second proof ran.
-- **Diagnostic unblock.** R10 over-reserves to the established `765` ceiling,
-  logs counters at every composed boundary, requested/remaining capacity,
-  backtrace, and pre-finish certificate bytes. Exact-consumption reconciliation
-  remains unchanged, so slack fails closed and earns no credit.
-- **Preflight/resume.** The first `49c227d` invocation passed the A100
-  differential `1/1` in `0.78 s`, then stopped before setup/campaign because
-  the normal-profile test inherited the diagnostic flag. No correlation was
-  consumed. Isolate that test at `665`, push a clean SHA, then rerun the
-  create-new diagnostic and set the measured exact R11 reservation.
+- **Status/design.** C6.4 R10c remains isolated from C7. All gates are
+  `credit:false`; no certificate or size exists.
+- **Measured evidence.** Clean `72d5793` passed response, native chains and
+  residual blind, then exhausted the `765` suffix inside the compiler at
+  `227682/227682`. Provider was `59.942247505 s`; device peak `44,149 MiB`.
+- **Root cause/unblock.** The static suffix omits live compiler consumption;
+  even the historical C6.2 ceiling is insufficient. R10c temporarily reserves
+  `8,192` suffix correlations, logs all counters and retains exact-consumption
+  rejection, so it changes neither transcript nor certificate bytes.
+- **Resume.** Pass focused geometry/driver checks, push one clean SHA, run one
+  create-new R10c census, then remove the diagnostic geometry and set exact R11
+  constants before any credit-bearing completion run.
+
+- **2026-08-28 — R10b exhausts the 765 ceiling inside the live compiler.**
+  Clean `72d5793` completed provider response in `59.942247505 s`, full response
+  in `67.114066014 s`, residual owner in `12.010182536 s`, roots in
+  `6.089714694 s`, native chains in `38.887984479 s`, and residual blind in
+  `65.860438747 s`. Counters progressed from `226917` after response to
+  `226919` after native chains and `227173` after residual blind. The compiler
+  then consumed the remaining 509 and requested two more at capacity
+  `227682`; it never completed. No certificate, size, verifier or second proof
+  exists. R10c uses an 8,192 suffix only to reach exact reconciliation; slack
+  remains fail-closed. Raw record:
+  `c64-r10b-a100-correlation-underflow-2026-08-28-72d5793.json`.
 
 - **2026-08-28 — R10 first invocation stops before campaign; diagnostic flag
   isolated from the normal-profile test.** Clean `49c227d` passed the A100

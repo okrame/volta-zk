@@ -28,6 +28,8 @@ pub const C64_PRODUCTION_SUFFIX_SUB_CORRELATIONS: usize = 24;
 /// projected-residual limb masks and the 48-round compact correction/cache
 /// inner-product link. The four resident-sketch limb masks remain live.
 pub const C64_PRODUCTION_SUFFIX_FULL_CORRELATIONS: usize = 665;
+/// Deliberately loose, non-credit capacity used only by the C6.4 census run.
+pub const C64_CENSUS_DIAGNOSTIC_SUFFIX_FULL_CORRELATIONS: usize = 8_192;
 pub const C62_GENESIS_RESPONSE_SUB_CORRELATIONS: usize = 4_892_214;
 pub const C62_GENESIS_RESPONSE_FULL_CORRELATIONS: usize = 226_917;
 pub const C62_CONTINUATION_256_RESPONSE_SUB_CORRELATIONS: usize = 1_795_150;
@@ -98,6 +100,17 @@ pub const C64_CONTINUATION_256_FULL_CORRELATIONS: usize =
     C62_CONTINUATION_256_RESPONSE_FULL_CORRELATIONS + C64_PRODUCTION_SUFFIX_FULL_CORRELATIONS;
 pub const C64_CONTINUATION_256_RAW_CORRELATIONS: u64 = C64_CONTINUATION_256_SUB_CORRELATIONS as u64
     + 2 * C64_CONTINUATION_256_FULL_CORRELATIONS as u64;
+pub const C64_CENSUS_DIAGNOSTIC_GENESIS_FULL_CORRELATIONS: usize =
+    C62_GENESIS_RESPONSE_FULL_CORRELATIONS + C64_CENSUS_DIAGNOSTIC_SUFFIX_FULL_CORRELATIONS;
+pub const C64_CENSUS_DIAGNOSTIC_GENESIS_RAW_CORRELATIONS: u64 =
+    C64_GENESIS_SUB_CORRELATIONS as u64
+        + 2 * C64_CENSUS_DIAGNOSTIC_GENESIS_FULL_CORRELATIONS as u64;
+pub const C64_CENSUS_DIAGNOSTIC_CONTINUATION_256_FULL_CORRELATIONS: usize =
+    C62_CONTINUATION_256_RESPONSE_FULL_CORRELATIONS
+        + C64_CENSUS_DIAGNOSTIC_SUFFIX_FULL_CORRELATIONS;
+pub const C64_CENSUS_DIAGNOSTIC_CONTINUATION_256_RAW_CORRELATIONS: u64 =
+    C64_CONTINUATION_256_SUB_CORRELATIONS as u64
+        + 2 * C64_CENSUS_DIAGNOSTIC_CONTINUATION_256_FULL_CORRELATIONS as u64;
 pub const C61_VERIFIER_REPLAY_STATE_BYTES: usize = 8
     + 4
     + 7 * 32
@@ -141,6 +154,14 @@ fn registered_production_geometry(sub: usize, full: usize) -> Option<u64> {
         (C64_CONTINUATION_256_SUB_CORRELATIONS, C64_CONTINUATION_256_FULL_CORRELATIONS) => {
             Some(C64_CONTINUATION_256_RAW_CORRELATIONS)
         }
+        (
+            C64_GENESIS_SUB_CORRELATIONS,
+            C64_CENSUS_DIAGNOSTIC_GENESIS_FULL_CORRELATIONS,
+        ) => Some(C64_CENSUS_DIAGNOSTIC_GENESIS_RAW_CORRELATIONS),
+        (
+            C64_CONTINUATION_256_SUB_CORRELATIONS,
+            C64_CENSUS_DIAGNOSTIC_CONTINUATION_256_FULL_CORRELATIONS,
+        ) => Some(C64_CENSUS_DIAGNOSTIC_CONTINUATION_256_RAW_CORRELATIONS),
         _ => None,
     }
 }
@@ -994,7 +1015,7 @@ mod tests {
     }
 
     #[test]
-    fn c64_registered_geometries_cover_exactly_two_profiles() {
+    fn c64_registered_geometries_cover_production_and_census_profiles() {
         assert_eq!(C64_PRODUCTION_SUFFIX_SUB_CORRELATIONS, 24);
         assert_eq!(C64_PRODUCTION_SUFFIX_FULL_CORRELATIONS, 665);
         for (sub, full, raw) in [
@@ -1003,6 +1024,16 @@ mod tests {
                 C64_CONTINUATION_256_SUB_CORRELATIONS,
                 C64_CONTINUATION_256_FULL_CORRELATIONS,
                 2_192_028,
+            ),
+            (
+                C64_GENESIS_SUB_CORRELATIONS,
+                C64_CENSUS_DIAGNOSTIC_GENESIS_FULL_CORRELATIONS,
+                5_362_456,
+            ),
+            (
+                C64_CONTINUATION_256_SUB_CORRELATIONS,
+                C64_CENSUS_DIAGNOSTIC_CONTINUATION_256_FULL_CORRELATIONS,
+                2_207_082,
             ),
         ] {
             assert_eq!(registered_production_geometry(sub, full), Some(raw));

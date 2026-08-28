@@ -1,9 +1,9 @@
 # C6.4 — projected residual PCS recovery
 
-**Status:** R10 exact finite-correlation census diagnostic pod-ready after a
-pre-campaign runner isolation repair. R9 still underflowed at `665`; one
-bounded over-reservation run will measure the composed total and pre-finish
-proof bytes. All gates remain `credit:false`.
+**Status:** R10b proved the historical `765` ceiling is also insufficient;
+R10c uses one deliberately loose `8,192`-correlation suffix to finish the
+exact census and measure pre-finish proof bytes. All gates remain
+`credit:false`.
 
 **Branch:** `agent/c64-joint-residual-sketch`.
 
@@ -294,6 +294,17 @@ normal-profile assertion correctly rejected the diagnostic `765` profile in
 place of `665`. The A100 differential had passed `1/1` in `0.78 s`; no proof
 or correlation was consumed. R10 isolates that test with the diagnostic flag
 set to zero and leaves the flag enabled only for the subsequent record process.
+
+Clean `72d5793` then ran the first proof through response, four native chains
+and residual blind. The compiler consumed every remaining correlation and
+underflowed requesting two more at `227682/227682`; thus even the historical
+`765` suffix ceiling is below the live C6.4 composition. The failure occurred
+before compiler completion, certificate or verification. R10c registers an
+`8,192`-correlation diagnostic suffix for contexts 0 and 150. This adds only
+temporary preprocessing capacity, no proof fields or certificate bytes. Exact
+consumption remains mandatory, so the expected slack reports the true total
+and cannot receive credit. The diagnostic geometry must be removed when R11
+sets the measured exact constants.
 
 ### R6 disposition
 

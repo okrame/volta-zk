@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "profile": "runpod-a100-c64-r10b-wide-census-v1",
+  "mode": "c64-prove",
+  "status": "failed_before_first_certificate",
+  "source_git_commit": "72d57939addd31e1a313efdda97ba57e5907cb50",
+  "git_dirty": false,
+  "cloud": {
+    "provider": "RunPod",
+    "instance_id": "nudqsdr5apsd96",
+    "endpoint": "185.216.23.227:21048",
+    "gpu_sku": "NVIDIA A100-SXM4-80GB",
+    "driver_version": "570.172.08",
+    "cuda_version": "12.8",
+    "cpu_model": "Intel Xeon Platinum 8470",
+    "ram_gib": 117,
+    "vcpus": 24
+  },
+  "setup": {
+    "reused_source": "/workspace/c64-setup-41b4e07",
+    "profiles": [0, 150],
+    "weights_sha256_verified": true
+  },
+  "attempt": {
+    "pre_campaign_elapsed_s": 142,
+    "measured_process_elapsed_s": 472,
+    "exit_status": 101,
+    "panic": "pooled full correlation underflow: need 2, remaining 0, consumed 227682, capacity 227682",
+    "diagnostic_suffix_full_correlations_per_tape": 765,
+    "full_correlations_after_response_per_tape": 226917,
+    "full_correlations_after_native_chains_per_tape": 226919,
+    "full_correlations_after_residual_blind_per_tape": 227173,
+    "certificates_produced": 0,
+    "artifacts_produced": 0,
+    "client_head_promoted": false,
+    "second_proof_started": false,
+    "selective_retry_performed": false
+  },
+  "first_proof_observed_phases": {
+    "response_provider_s": 59.942247505,
+    "response_seal_s": 1.360593870,
+    "response_verifier_replay_s": 5.811224639,
+    "response_component_s": 67.114066014,
+    "residual_owner_s": 12.010182536,
+    "projected_roots_s": 6.089714694,
+    "native_four_chains_s": 38.887984479,
+    "residual_blind_after_native_s": 65.860438747,
+    "residual_first_round_s": [15.213409917, 15.064443184],
+    "residual_folded_coefficients_s": [8.866232269, 7.590971348, 8.828914726, 7.875522926]
+  },
+  "supervisor": {
+    "target_gpu_mib": 43696,
+    "max_gpu_used_mib": 44149,
+    "gpu_target_pass": false,
+    "gpu_target_miss_observed_s": 241,
+    "emergency_gpu_stop_mib": 78000,
+    "max_process_rss_bytes": 32541138944,
+    "max_process_hwm_bytes": 33495891968,
+    "min_filesystem_free_bytes": 264435056640,
+    "resource_supervisor_terminated_attempt": false,
+    "stop_reason": "none"
+  },
+  "evidence_digests": {
+    "session_stderr_sha256": "ca8a34e9fc523d90eaf72eee28397025e9395cd160ed45b5b1f9cfdf18ac0cbe",
+    "resource_timeline_sha256": "66d6b96debc73fb0f254b4b122589a5da4bc95c205043ebb597172c7b5f58f20",
+    "optimization_phases_sha256": "a8519132e9352302fe7d9284cec657ddbb2f9a5be5c7d908f00bed3233465c5c",
+    "session_checksums_verified": true
+  },
+  "gate_credit": {
+    "certificate_bytes": false,
+    "prover_time": false,
+    "verifier_time": false,
+    "verifier_memory": false,
+    "protocol_acceptance": false,
+    "e2e": false,
+    "session": false
+  },
+  "diagnosis": {
+    "class": "finite real-PCG live-compiler census omission",
+    "confirmed": "The live compiler alone exceeded all 509 correlations remaining after response, native chains, and residual blind; both 665 and the historical 765 suffix ceiling are insufficient.",
+    "exact_total_known": false,
+    "next_diagnostic": "Use an 8192-correlation diagnostic suffix, preserve exact-consumption rejection, and remove the temporary geometry once the exact R11 total is measured."
+  }
+}

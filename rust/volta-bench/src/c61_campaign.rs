@@ -66,11 +66,6 @@ use volta_pcs::c61_public_compression::C61NativeComponent;
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_pcs::c62_gpu_whir::C62GpuMmcs;
 #[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
-use volta_pcs::c6_residual_sumcheck_blind::{
-    prepare_c6_blind_residual_prover_repetition_fused,
-    C6BlindResidualFusedPreparedRepetition,
-};
-#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
 use volta_pcs::c6_blind_round_coordinator::{
     assemble_c61_native_exact_production_nbr2_certificate,
     assemble_c62_native_exact_production_nbr2_certificate,
@@ -92,6 +87,10 @@ use volta_pcs::c6_blind_round_coordinator::{
     C62ExactProductionNbr2VerifierOutput, C62NativeExactProductionNbr2Certificate,
     C63CompleteProductionVerifierOutput, C63ProductionBlindProverOutput,
     C64CompleteProductionVerifierOutput, C64ProductionBlindProverOutput,
+};
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+use volta_pcs::c6_residual_sumcheck_blind::{
+    prepare_c6_blind_residual_prover_repetition_fused, C6BlindResidualFusedPreparedRepetition,
 };
 #[cfg(feature = "c6-trace")]
 use volta_pcs::C61ProductionResidualRelationBound;
@@ -160,12 +159,24 @@ use volta_proto::{C6ResidualFusedCoefficientArena, C6ResidualFusedWitnessView};
 
 #[cfg(feature = "c6-trace")]
 use crate::c6_t1_owner::{
-    execute_c62_t1_production_owner_export,
-    execute_c62_t1_production_owner_export_with_backend, execute_c6_t1_production_owner_export,
-    materialize_c62_t1_cache_states, persist_c6_t1_native_coefficient_owners,
-    C62CampaignWorkloadOwner, C62T1ProductionOwnerExport, C6T1NativeClaimOwner,
-    C6T1NativeVerifierClaimOwner, C6T1ProductionOwnerExport, C6T1WorkloadOwner,
+    execute_c62_t1_production_owner_export, execute_c62_t1_production_owner_export_with_backend,
+    execute_c6_t1_production_owner_export, materialize_c62_t1_cache_states,
+    persist_c6_t1_native_coefficient_owners, C62CampaignWorkloadOwner, C62T1ProductionOwnerExport,
+    C6T1NativeClaimOwner, C6T1NativeVerifierClaimOwner, C6T1ProductionOwnerExport,
+    C6T1WorkloadOwner,
 };
+
+#[cfg(all(feature = "c6-trace", feature = "c61-p3-authenticated-reference"))]
+fn c64_correlation_phase(name: &str, attempt: &mut C6ProductionPairedPcgAttempt) {
+    let streams = attempt.prover_streams_array_mut();
+    eprintln!(
+        "C64OPT1\tcorrelations\t{name}\tfull={}:{}\tsub={}:{}",
+        streams[0].counters.full_corrs,
+        streams[1].counters.full_corrs,
+        streams[0].counters.sub_corrs,
+        streams[1].counters.sub_corrs,
+    );
+}
 
 const CAMPAIGN_ARTIFACT_PROFILE: &str = "C6.1-C6PA2-C6NBR3-C6ICT5-native-campaign-v7";
 const CAMPAIGN_BACKEND: &str = "cuda-resident";
@@ -2478,6 +2489,7 @@ pub fn finish_c64_campaign_native_proof(
             )?,
         ]
     };
+    c64_correlation_phase("compiler_complete", attempt);
     let canonical_runtime = response
         .provider()
         .runtime()
@@ -2516,6 +2528,7 @@ pub fn finish_c64_campaign_native_proof(
         transcript,
         &mut rng,
     )?;
+    c64_correlation_phase("resident_suffix_prepared", attempt);
     let proof = finish_c64_production_blind_with_projected_residual(
         &roots.provider_roots,
         blind,
@@ -2530,6 +2543,7 @@ pub fn finish_c64_campaign_native_proof(
         attempt.prover_streams_array_mut(),
         transcript,
     )?;
+    c64_correlation_phase("projected_residual_complete", attempt);
     let suffix = finish_c64_resident_sketch_suffix(
         prepared_suffix,
         &proof,
@@ -2537,6 +2551,7 @@ pub fn finish_c64_campaign_native_proof(
         attempt.prover_streams_array_mut(),
         &mut rng,
     )?;
+    c64_correlation_phase("resident_suffix_complete", attempt);
     let (sketch_public_argument, sparse_h_closure, cache_terminal_proofs) = suffix.into_parts();
     let response_cache_fold_targets =
         response.cache_target_frame().encode().map_err(|error| error.to_string())?;
@@ -4155,6 +4170,7 @@ fn run_c63_or_c64_campaign_live_production(
         )?
     };
     if c64 {
+        c64_correlation_phase("response_complete", &mut attempt);
         c64_phase("response_complete");
     }
     let replay_owner = attempt.take_verifier_replay_owner(response_statement.digest())?;
@@ -4237,6 +4253,7 @@ fn run_c63_or_c64_campaign_live_production(
         &proof_root,
     )?;
     if c64 {
+        c64_correlation_phase("native_four_chain_complete", &mut attempt);
         c64_phase("native_four_chain_complete");
     }
     let functional = prepare_c62_campaign_native_functional(
@@ -4261,6 +4278,7 @@ fn run_c63_or_c64_campaign_live_production(
         }
     };
     if c64 {
+        c64_correlation_phase("residual_blind_complete", &mut attempt);
         c64_phase("residual_blind_complete");
     }
     let successor_provider = propose_c63_campaign_successor_state(
@@ -4363,6 +4381,14 @@ fn run_c63_or_c64_campaign_live_production(
     }
     let certificate_digest = sealed.certificate.digest().map_err(|error| error.to_string())?;
     let verifier_replay = replay_owner.bind_certificate(certificate_digest)?;
+    if c64 {
+        c64_correlation_phase("pre_finish_success", &mut attempt);
+        eprintln!(
+            "C64OPT1\tpre_finish_certificate\tcertificate_bytes={}\tproof_envelope_bytes={}",
+            sealed.certificate.encoded_len().map_err(|error| error.to_string())?,
+            sealed.certificate.proof_envelope.len(),
+        );
+    }
     let connections = attempt.finish_success()?;
     Ok(C63CampaignLiveProductionOutput {
         certificate: sealed.certificate,

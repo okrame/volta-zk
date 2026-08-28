@@ -1,0 +1,80 @@
+{
+  "schema": 1,
+  "profile": "runpod-a100-c64-r9-diagnostic-completion-v1",
+  "mode": "c64-prove",
+  "status": "failed_before_first_certificate",
+  "source_git_commit": "eed8866ce74fefc9ea646a4df0b445d7cc6c0aa6",
+  "git_dirty": false,
+  "cloud": {
+    "provider": "RunPod",
+    "instance_id": "nudqsdr5apsd96",
+    "endpoint": "185.216.23.227:21048",
+    "gpu_sku": "NVIDIA A100-SXM4-80GB",
+    "driver_version": "570.172.08",
+    "cuda_version": "12.8",
+    "cpu_model": "Intel Xeon Platinum 8470",
+    "ram_gib": 117,
+    "vcpus": 24
+  },
+  "setup": {
+    "reused_source": "/workspace/c64-setup-41b4e07",
+    "profiles": [0, 150],
+    "weights_sha256_verified": true
+  },
+  "attempt": {
+    "measured_process_elapsed_s": 465,
+    "exit_status": 101,
+    "panic": "pooled full correlation underflow",
+    "registered_suffix_full_correlations_per_tape": 665,
+    "certificates_produced": 0,
+    "artifacts_produced": 0,
+    "client_head_promoted": false,
+    "second_proof_started": false,
+    "selective_retry_performed": false
+  },
+  "first_proof_observed_phases": {
+    "response_provider_s": 58.426802643,
+    "response_seal_s": 1.260907422,
+    "response_verifier_replay_s": 5.341551251,
+    "response_component_s": 65.029261316,
+    "residual_owner_s": 11.732661810,
+    "projected_roots_s": 6.006099492,
+    "native_four_chains_s": 38.703871551,
+    "residual_blind_after_native_s": 65.277418118,
+    "residual_first_round_s": [15.058517367, 14.960399963],
+    "residual_folded_coefficients_s": [8.916305893, 7.513203405, 8.844964630, 7.623729315]
+  },
+  "supervisor": {
+    "target_gpu_mib": 43696,
+    "max_gpu_used_mib": 44569,
+    "gpu_target_pass": false,
+    "gpu_target_miss_observed_s": 238,
+    "emergency_gpu_stop_mib": 78000,
+    "max_process_rss_bytes": 32484065280,
+    "max_process_hwm_bytes": 33357004800,
+    "min_filesystem_free_bytes": 264472813568,
+    "resource_supervisor_terminated_attempt": false,
+    "stop_reason": "none"
+  },
+  "evidence_digests": {
+    "session_stderr_sha256": "0e9e3734b750dd1cc81153362ae47cb57caa835d8f6d0c508e887c05c76313a0",
+    "resource_timeline_sha256": "c1b7d02dc37ca601d70cfce0cacfe786707f1bd8b3dea872d66489c8510d8555",
+    "optimization_phases_sha256": "085c9dad4e6a79b3fffe36936fbeca4659fbf07ac2927b637d37e3cc68520f51",
+    "session_checksums_verified": true
+  },
+  "gate_credit": {
+    "certificate_bytes": false,
+    "prover_time": false,
+    "verifier_time": false,
+    "verifier_memory": false,
+    "protocol_acceptance": false,
+    "e2e": false,
+    "session": false
+  },
+  "diagnosis": {
+    "class": "finite real-PCG composed-schedule mismatch",
+    "confirmed": "Adding the four resident-sketch limb masks was necessary but insufficient; the live composition still exceeded 665 full correlations per tape.",
+    "exact_total_known": false,
+    "next_diagnostic": "Over-reserve to the established 765-correlation C6.2 ceiling, record counters at every phase, proof bytes before finish, and fail closed at exact-consumption reconciliation."
+  }
+}

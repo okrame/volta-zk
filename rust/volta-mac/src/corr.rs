@@ -2760,7 +2760,13 @@ impl PooledProver {
     }
 
     fn assert_full_capacity(&self, n: usize) {
-        assert!(n <= self.remaining_full_capacity(), "pooled full correlation underflow");
+        assert!(
+            n <= self.remaining_full_capacity(),
+            "pooled full correlation underflow: need {n}, remaining {}, consumed {}, capacity {}",
+            self.remaining_full_capacity(),
+            self.next_full,
+            self.fulls.len()
+        );
     }
 
     fn remaining_full_capacity(&self) -> usize {
@@ -2840,7 +2846,13 @@ impl PooledVerifier {
     }
 
     fn assert_full_capacity(&self, n: usize) {
-        assert!(n <= self.remaining_full_capacity(), "pooled full-key underflow");
+        assert!(
+            n <= self.remaining_full_capacity(),
+            "pooled full-key underflow: need {n}, remaining {}, consumed {}, capacity {}",
+            self.remaining_full_capacity(),
+            self.next_full,
+            self.full_keys.len()
+        );
     }
 
     fn remaining_full_capacity(&self) -> usize {

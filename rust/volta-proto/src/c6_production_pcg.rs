@@ -748,9 +748,14 @@ impl C6ProductionPairedPcgAttempt {
             context.counters.sub_corrs != self.expected_counters.sub_corrs
                 || context.counters.full_corrs != self.expected_counters.full_corrs
         }) {
-            return Err(
-                "C6 production attempt did not consume its exact correlation profile".into()
-            );
+            return Err(format!(
+                "C6 production attempt did not consume its exact correlation profile: expected {:?}, prover [{:?}, {:?}], verifier [{:?}, {:?}]",
+                self.expected_counters,
+                self.prover[0].counters,
+                self.prover[1].counters,
+                self.verifier[0].counters,
+                self.verifier[1].counters,
+            ));
         }
         for connection in &mut self.connections {
             connection.connection.finish_response_success().map_err(|error| error.to_string())?;

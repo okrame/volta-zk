@@ -17,6 +17,7 @@ EXPECTED_SHA=${C64_EXPECTED_GIT_SHA:-}
 SETUP_SOURCE=${C64_SETUP_SOURCE:-}
 SESSION_TIMEOUT_S=${C64_SESSION_TIMEOUT_S:-300}
 DIAGNOSTIC_COMPLETION=${C64_DIAGNOSTIC_COMPLETION:-0}
+CORRELATION_CENSUS_DIAGNOSTIC=${C64_CORRELATION_CENSUS_DIAGNOSTIC:-0}
 DISK_FLOOR_BYTES=223338299392
 RUN_DISK_STOP_BYTES=107374182400
 HOST_FLOOR_BYTES=103079215104
@@ -39,6 +40,10 @@ if [[ ! $SESSION_TIMEOUT_S =~ ^[1-9][0-9]*$ ]]; then
 fi
 if [[ $DIAGNOSTIC_COMPLETION != 0 && $DIAGNOSTIC_COMPLETION != 1 ]]; then
   echo "C64_DIAGNOSTIC_COMPLETION must be 0 or 1" >&2
+  exit 2
+fi
+if [[ $CORRELATION_CENSUS_DIAGNOSTIC != 0 && $CORRELATION_CENSUS_DIAGNOSTIC != 1 ]]; then
+  echo "C64_CORRELATION_CENSUS_DIAGNOSTIC must be 0 or 1" >&2
   exit 2
 fi
 if [[ ! -d $WEIGHTS_DIR ]]; then
@@ -142,8 +147,9 @@ else
 fi
 
 mkdir "$SESSION_ROOT"
-printf 'diagnostic_completion=%s\ngpu_target_mib=%s\ngpu_emergency_stop_mib=%s\nsession_timeout_s=%s\n' \
-  "$DIAGNOSTIC_COMPLETION" "$GPU_STOP_MIB" "$GPU_EMERGENCY_STOP_MIB" "$SESSION_TIMEOUT_S" \
+printf 'diagnostic_completion=%s\ncorrelation_census_diagnostic=%s\ngpu_target_mib=%s\ngpu_emergency_stop_mib=%s\nsession_timeout_s=%s\n' \
+  "$DIAGNOSTIC_COMPLETION" "$CORRELATION_CENSUS_DIAGNOSTIC" "$GPU_STOP_MIB" \
+  "$GPU_EMERGENCY_STOP_MIB" "$SESSION_TIMEOUT_S" \
   >"$SESSION_ROOT/completion-mode.txt"
 record_pid=
 cleanup() {
@@ -178,6 +184,7 @@ export VOLTA_CUDA_ARCH=sm_80
 export VOLTA_CUDA_LIBRARY="$REPO_ROOT/rust/target/cuda/libvolta_cuda_backend.so"
 export VOLTA_REQUIRE_CUDA=1
 export VOLTA_C64_DIAGNOSTICS=1
+export RUST_BACKTRACE=1
 
 rustc -C target-cpu=native --print cfg >"$SESSION_ROOT/rustc-native-cfg.txt"
 if ! grep -Eq 'target_feature="(avx2|neon|sve)"' "$SESSION_ROOT/rustc-native-cfg.txt"; then

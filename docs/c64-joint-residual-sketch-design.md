@@ -1,9 +1,8 @@
 # C6.4 — projected residual PCS recovery
 
-**Status:** R9 exact finite-correlation census repair local green. One
-create-new diagnostic-completion run is pod-ready; timing, size and
-engineering-memory targets remain `credit:false`. Functional and verifier
-failures still fail closed.
+**Status:** R10 exact finite-correlation census diagnostic local. R9 still
+underflowed at `665`; one bounded over-reservation run is pod-ready to measure
+the composed total and pre-finish proof bytes. All gates remain `credit:false`.
 
 **Branch:** `agent/c64-joint-residual-sketch`.
 
@@ -273,6 +272,20 @@ legacy output link was removed. The corrected suffix is therefore
 `707 - 96 + 6 + 48 = 665`. This changes allocation accounting only, not the
 transcript, proof construction or encoded bytes. R9 requires the focused
 geometry and budget checks before one create-new completion campaign.
+
+R9 clean `eed8866` consumed the four added correlations and still underflowed
+after residual blind, with no certificate. The component sum is therefore
+incomplete elsewhere; another guessed exact constant is forbidden. R10 uses
+the already registered C6.2 ceiling of `765` only as diagnostic capacity,
+records prover counters after response, four native chains, residual blind,
+compiler, resident preparation, projected residual and resident finish, and
+prints requested/remaining capacity on underflow. If construction reaches the
+sealed certificate, it records certificate and proof-envelope bytes, then the
+unchanged exact-consumption check rejects any slack and reports expected versus
+actual prover/verifier counters. This run cannot receive protocol, size or
+timing credit unless the actual total is exactly 765 and full verification
+completes. Its sole purpose is to establish the exact R11 reservation without
+another late guess.
 
 ### R6 disposition
 

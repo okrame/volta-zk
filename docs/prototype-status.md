@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 R9 EXACT PCG CENSUS LOCAL GREEN / DIAGNOSTIC POD READY / GATE CREDIT FALSE)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 R10 EXACT PCG CENSUS DIAGNOSTIC POD READY / GATE CREDIT FALSE)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,21 +10,31 @@ record; no external plan is authoritative.
 
 Read `c64-joint-residual-sketch-design.md` next.
 
-- **Status/design.** C6.4 R9 remains isolated from C7. R8 fixed the retained
-  opening but then exhausted its finite correlation pool. All gates remain
-  `credit:false`; no certificate or size exists.
-- **Measured evidence.** Clean `e6668ef` passed all four native openings.
-  Response provider was `57.801164646 s`, complete response `64.387053481 s`,
-  and device peak `44,149 MiB`. It failed after residual blind with a full-field
-  correlation underflow; no verifier or second proof ran.
-- **Root cause/repair.** The `661` suffix census wrongly removed four
-  resident-sketch limb masks that the C6.4 path still consumes. The exact
-  allocation is `707 - 96 + 6 + 48 = 665` per tape. This changes reservation
-  accounting only, not protocol or proof bytes.
-- **Checks/resume.** The focused registered-geometry test passes `1/1`; the
-  executable budget self-check reports `665`. Push one clean R9 SHA, then run
-  one create-new diagnostic campaign on the owner-provided pod with the same
-  physical safeguards and full telemetry.
+- **Status/design.** C6.4 R10 remains isolated from C7. R8 fixed the retained
+  opening; R9 proved `665` correlations per tape is still insufficient. All
+  gates are `credit:false`; no certificate or size exists.
+- **Measured evidence.** Clean `eed8866` again passed all native openings,
+  then underflowed after residual blind at 465 s. Response provider was
+  `58.426802643 s`, complete response `65.029261316 s`, device peak
+  `44,569 MiB`; no verifier or second proof ran.
+- **Diagnostic unblock.** R10 over-reserves to the established `765` ceiling,
+  logs counters at every composed boundary, requested/remaining capacity,
+  backtrace, and pre-finish certificate bytes. Exact-consumption reconciliation
+  remains unchanged, so slack fails closed and earns no credit.
+- **Resume.** Pass focused checks, push one clean R10 SHA, run one create-new
+  diagnostic on the owner-provided pod, then set the measured exact R11
+  reservation before any credit-bearing completion run.
+
+- **2026-08-28 — R9 remains four-plus correlations short; R10 instruments an
+  exact composed census.** Clean `eed8866` used `665` full correlations per
+  tape, passed the four native openings, and still underflowed after residual
+  blind at 465 s. Provider response was `58.426802643 s`, complete response
+  `65.029261316 s`, native chains `38.703871551 s`, and device peak
+  `44,569 MiB`. No certificate or proof size exists. R10 forbids another
+  guessed exact value: its diagnostic-only profile over-reserves to the known
+  `765` ceiling, records counters at every suffix boundary plus proof bytes,
+  and preserves exact-consumption failure on any slack. Raw record:
+  `c64-r9-a100-correlation-underflow-2026-08-28-eed8866.json`.
 
 - **2026-08-28 — R8 reaches the late suffix and R9 repairs the exact finite
   correlation census.** Clean `e6668ef` passed all four formerly failing

@@ -94,7 +94,7 @@ theorem fixed_prefix_rlc_accepting_card_le
 /-! ## One multi-commitment terminal in the extension field -/
 
 /-- Pair batch for one logical terminal over many commitment planes.  The
-field is the actual MAC/challenge field (for C7, `Fp2`), not two independent
+field is the actual MAC/challenge field (for C7 R0.8, `Fp3`), not independent
 base-field MACs. -/
 def multiCommitTerminalPair
     {E C : Type*} [Semiring E] [Fintype C]
@@ -133,12 +133,12 @@ theorem multi_commit_terminal_mac_linearity
   exact (hvalid c).smul (coefficient c)
 
 /-- Equality of the extension-field key equation implies equality of every
-serialized coordinate.  Instantiating `coordinate` with the two canonical
-`Fp2` projections covers both base-field limbs without replacing `Fp2`
-multiplication by two unrelated base-field MACs. -/
+serialized coordinate.  Instantiating `coordinate` with the three canonical
+`Fp3` projections covers all base-field limbs without replacing `Fp3`
+multiplication by three unrelated base-field MACs. -/
 theorem multi_commit_terminal_mac_equation_on_coordinates
-    {Fp E C : Type*} [Field E] [Fintype C]
-    (coordinate : Fin 2 → E → Fp)
+    {Fp E C : Type*} {d : Nat} [Field E] [Fintype C]
+    (coordinate : Fin d → E → Fp)
     (Delta : E) (coefficient : C → E) (value : C → Authed E)
     (hvalid : ∀ c, (value c).Valid Delta) :
     ∀ limb,

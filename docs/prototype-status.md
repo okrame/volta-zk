@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 R0.7 OWNER 1.30 QUERY-AXIS CANDIDATE — BACKEND UNADMITTED / NO SIMT / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 R0.8A DUAL-TRACK CARRIER SCREEN OPEN — FP3 SEAM ONLY / NO PROVER / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,27 +11,284 @@ record; no external plan is authoritative.
 Read `c7-stateful-authenticated-lfc-design.md`, then
 `c7-r03-prover-pod-handoff.md`.
 
-- **Status.** C7 R0.7 on `agent/c7-stateful-alfc`; policy 2, RS t-query ZK +
-  strict-UD WHIR/Ligerito, salted BLAKE3, interactive `Q_FS=0`, rate 1/2,
-  `k0=4`, one root and logical `g=141`. Both bounded 1.05 alternatives are
-  NO-GO. The owner activates 1.30 only for four componentwise query-growth
-  counts. Proof-wire 105% is target; an exploratory 125--150% cap requires
-  total proof <=35/115 MB and <=3.5x. Setup adds a conditional 3x ceiling to
-  the 2.00/2.10 target/baseline. Policy 3 remains terminal.
-- **Evidence/credit.** Budget v11 passes both registered invocations. Joint
-  sampling leaves `q` at 831/1,054 and best derived Fp control at
-  17,974/22,552 (1.255x). ERA-to-BaseFold has q growth 1.520x and setup floor
-  2.4667x; no other code-switch has a complete row. The retained Fp2 controls
-  pass 1.30 at 1.268351x/1.262982x, but `Fp_positions` is not compiled
-  `S_visible_Fp`; `Z_atom/U_leaf/S_visible_Fp`, paths, bytes, setup and
-  security remain open. All evidence is `credit:false`; caps stay unset.
-- **Hard stop/resume.** `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`:
-  no prover, SIMT, provider or pod. Resume only after owner checkpoint into an
-  exact four-axis g141 codec/security screen, preserving one scan, bounded
-  memory, same-W soundness, adaptive stateful privacy and 110/78-bit bounds.
-  Exploratory proof cap and absolute setup/refresh time caps are unset and
-  fail-closed. Fp3 closes only algebraic security. Full GPT-2 remains pod-only
-  after readiness and later run-specific owner GO.
+- **Status.** C7 R0.8 design-only on `agent/c7-stateful-alfc`; policy 2, Fp3,
+  rate 1/2, `k0=4`, one packed root, `g=141` and interactive `Q_FS=0` remain
+  fixed. The tournament has two roles: published constructions are exact-cost
+  baselines/controls; a co-designed C7 circuit is the main research line.
+  Strict-UD RS is control-only and its prover is forbidden. Policy 3 is terminal.
+- **Evidence/credit.** Budget v23, Rust field/MAC and focused Lean C7 pass.
+  The new carrier-independent seam has a canonical 24-byte Fp3 codec,
+  `u^3=2` KAT, noncanonical-limb rejection and shared-`Delta` terminal
+  linearity/mutation tests. It instantiates no PCS, PCG/VOLE or prover and
+  earns no protocol/security credit. Prior `(q,Z,U,S)` and setup/byte controls
+  remain `831/29192/1662/234342`, `1055/33848/2110/297510`,
+  491,686,208/92,844,619,328 B and 2,605,740/3,729,724 B.
+- **Hard stop/resume.** The current RS realization remains **NO-GO** (qN or
+  inadmissible codeword/setup/memory). The co-designed line has no design
+  credit and no entrant is admitted. A tiny CPU prototype requires a complete
+  relation/codec, exact resource census, stateful soundness/privacy bridge and
+  one-scan `O(N+poly(q,log N))` proof. No prover, SIMT, refresh, provider or
+  pod; `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`.
+
+- **2026-08-28 — C7 R0.8a fixes the dual-track tournament and authorizes a
+  scoped checkpoint.** Published constructions are baseline/control rows and
+  may enter only with exact, independently verifiable costs. The main research
+  line is a new C7 co-designed shared circuit. It earns no credit from its
+  design: before any tiny CPU prototype it must provide (1) a complete
+  algebraic relation and codec, (2) exact query/byte/memory/setup/work counts,
+  (3) a soundness/privacy bridge to the MAC, KV cache and malicious verifier,
+  and (4) a one-packed-scan `O(N+poly(q,log N))` proof. The checkpoint remains
+  design/seam-only and authorizes no prover, SIMT, refresh, provider or pod.
+  Both registered budget invocations and diff check pass; Rust passes
+  9 field, 37 MAC unit and 5 MAC integration tests; the focused Lean C7 build
+  completes all 3,247 jobs with no `sorryAx`. All protocol credit remains
+  false.
+
+- **2026-08-28 — C7 R0.8 opens the new-carrier tournament and lands only the
+  carrier-independent Fp3 seam.** The owner selects 1.A/2.A/3.B: preserve all
+  gates and search only for a genuinely new shared code-switch/circuit; retain
+  strict-UD RS solely as an algebraic/security control and never implement its
+  prover; implement only the canonical Fp3 codec/KAT and shared-`Delta` MAC
+  adapter independent of any carrier. Budget v23 records an empty, fail-closed
+  tournament with exact admission predicates and the existing exclusions plus
+  their reasons; it does not repeat pure-fold or bounded code-switch screens.
+
+  Rust now encodes `Fp[u]/(u^3-2)` as three canonical little-endian Fp limbs,
+  rejects wrong lengths and limbs `>=p`, and tests the multiplication KAT
+  `(1,2,3)*(4,5,6)=(58,49,28)`. The terminal seam tests two commitments and an
+  RLC under one shared `Delta`, exact 24-byte corrections and mutations in all
+  three limbs. `volta-field` passes 9 tests; the focused `volta-mac c7_fp3`
+  test passes. This is not a PCG/VOLE/PCS refinement and grants no prover,
+  SIMT, refresh, provider or pod authorization; all protocol credit remains
+  false.
+
+- **2026-08-28 — C7 R0.8 closes the root/codec fixed point and records the
+  selected-RS online NO-GO.** The owner freezes the 64-KiB
+  `C7-RM-KMACXOF256-v1` descriptor, approves the six-`2^-110` plus
+  two-`2^-120` privacy allocation with exact codec refinement, and reconfirms
+  BLAKE3-XOF as the performance/parallelism-primary root-mask candidate while
+  KMAC remains an unpromoted high-margin control. The current protocol stays
+  interactive with `Q_FS=0`. A future FS selection is deliberately separate:
+  KMAC is preferred when conserving security margin dominates; BLAKE3 is
+  preferred for throughput only under a tightly preregistered `Q_FS` and a
+  complete ROM/multi-target/byte budget.
+
+  Budget v22 corrects a non-fungible geometry inconsistency. GPT-2's selected
+  `Q_root=134,980,992` raises the RS coefficient dimension from `2^27` to
+  `2^28`, so its rate-1/2 oracle is `2^29` Fp symbols and its final schedule is
+  `[4,5,3,3,3,4]`; Gemma remains `2^35`. GPT-2 `(q,Z,U,S)` becomes
+  `(831,29192,1662,234342)`, known opening bytes 2,605,740 and selected setup
+  491,686,208 B. Gemma remains `(1055,33848,2110,297510)`, 3,729,724 B and
+  92,844,619,328 B. All four query-growth axes stay within 1.30.
+
+  The bounded online screen then closes every registered standard-RS
+  realization: direct opening is a qN control; persisting the complete
+  codeword totals 4,786,653,504/642,600,433,216 B, or 19.301x/10.423x packed;
+  online materialization is model-sized; and no pruned/shared schedule with a
+  q-independent source-linear term, one scan and bounded memory is present.
+  Seeded BLAKE3/KMAC removes mask storage but does not evaluate the dense RS
+  map. This is a NO-GO for the current realization, not a universal lower
+  bound. Budget invocations and diff check pass; all evidence is
+  `credit:false`. No prover, SIMT, refresh, provider or pod action occurred.
+
+- **2026-08-28 — C7 R0.8 confirms the global horizon and compiles the KMAC
+  alternative.** The owner confirms that the fallback's `2^20` attempts are
+  one irrevocable model-wide aggregate across every connection, failure,
+  retry and selective abort. It is not reset by a new connection. This fixes
+  GPT-2/31B `K_model=2048/128` and total seed attempts 4096/256 for the
+  authorized fallback profiles.
+
+  Budget v21 adds `C7-RM-KMACXOF256-v1`, an unpromoted mainline alternative.
+  Independent 64-KiB chunks use a 104-byte root descriptor plus `le64(chunk)`,
+  preserve one ordered CPU/SIMT coefficient stream and bound per-worker memory
+  at 65,848 B. Two-seed root setup controls are
+  12,958,175,232/263,217,807,360 generated bytes and
+  95,699,420/1,943,930,342 Keccak-f[1600] permutations; required target rates
+  are 14.398/48.744 MB/s. No generated mask/codeword is persisted; the online
+  one-scan mask-contribution schedule remains unknown and separately gated.
+
+  Under a named, unselected `2^64` adversarial-permutation screen, the generic
+  ideal-permutation arithmetic reaches 152.992/152.647 bits and conditionally
+  passes 110. The complete target allocations are 86.406856/86.062533 bits for
+  BLAKE3 and 107.414568 bits for conditional KMAC, so both pass 78 as budgets.
+  They earn no security/setup credit: the adaptive multi-key
+  KMAC-to-fixed-Keccak reduction, numeric fixed-permutation advantage and
+  achieved RS/PRF/hash/PCG/VOLE/MAC/state/abort/codec terms plus measured setup
+  wall and online schedule are missing. Both registered budget invocations pass;
+  `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`. No implementation,
+  refresh, prover, SIMT, provider or pod action occurred.
+
+- **2026-08-28 — C7 R0.8 authorizes a full-78 BLAKE3 fallback while retaining
+  mainline 110.** The owner authorizes the numeric 512/8,192 root profiles only
+  as a computational variant. Mainline root-mask PRG remains `<=2^-110`.
+  Fallback admission requires the exact sum of every privacy term to remain
+  `<=2^-78`; failure promotes KMACXOF256 or reduces the load per root.
+
+  The fallback caps all model-variant attempts across connections at `2^20`.
+  Therefore GPT-2/31B have `K_model=2048/128`, total setup seed attempts
+  4096/256 and model-wide `Q_mask_words` maxima
+  3,317,292,859,392/4,211,484,917,760. No primary source located by the bounded
+  audit gives a quantitative BLAKE3 multi-root theorem. Under the expressly
+  named, unproved `Q/2^128` control, BLAKE3 plus six-draw rejection reaches
+  86.407/86.063 bits: it fails mainline 110 but passes the fallback mask-only
+  78-bit subcheck.
+
+  The full fallback is still false: adaptive RS-view, salt/hash, PCG/VOLE, MAC,
+  allocator/state, replay/fork, abort/timing and codec/transcript terms remain
+  nonnumeric. Budget v20 checks pass; all is `credit:false`. No implementation,
+  refresh, prover, SIMT, provider or pod action occurred.
+
+- **2026-08-28 — C7 R0.8 compiles concrete maximum root-profile proposals.**
+  The owner confirms that security uses a preregistered maximum, never an
+  observed average or post-hoc refund, and that every failure is included.
+  The proposed GPT-2/31B profiles use `R_root=512/8192`; these counters include
+  accepted responses, failed attempts, retries and selective aborts. A separate
+  1/8 attempt-equivalent reserve covers future typed lifecycle/load charges,
+  and at most two setup seeds are allowed and fully charged.
+
+  Proposed scalar `Q_root` is 134,980,992/2,741,852,160. Worst-case six-draw
+  `Q_mask_words` across both seed attempts is
+  1,619,771,904/32,902,225,920. Both fit target-2.00x RS capacity with
+  9,454,464/791,486,208 coefficients unused. A linear `Q/2^128` BLAKE3 control
+  certifies only 97.406/93.063 bits and therefore fails 110.
+
+  The profiles remain owner-unselected and `credit:false`: exact plane/lifecycle
+  refinement and a tighter primitive-specific BLAKE3 theorem are missing.
+  Budget v19 checks pass. No implementation, refresh, prover, SIMT, provider or
+  pod action occurred.
+
+- **2026-08-28 — C7 R0.8 selects computational per-root seeded masks.** The
+  owner selects one fresh private 256-bit seed per disclosed candidate root,
+  explicitly declares policy-2 weight-root privacy computational and requires
+  the root-mask PRG/PCG advantage inside the 78-bit model-lifetime budget.
+  Persisted uniform Fp coefficients remain the information-theoretic baseline,
+  not the main line. Setup occurs once per root epoch and serves its bounded
+  interaction horizon; refresh is intended to be rare but remains untested and
+  is not a security assumption.
+
+  Budget schema v18 fixes addressed derivation by model/epoch/layout/field/
+  rate/k0/coefficient/draw index and selects six canonical 64-bit Goldilocks
+  rejection draws. At the largest geometry-only GPT-2/31B capacities, setup
+  failure is bounded by 2^-163.379/2^-156.859 per seed attempt. The required
+  model-lifetime component is
+  `Adv_RootMaskPRG_multi(K_model,{Q_mask_words}) +
+  K_seed_attempts*epsilon_rejection <= 2^-110`; it is distinct from salt PRF
+  and VOLE PCG and is included once in the 78-bit privacy sum.
+
+  The concrete generator suite, multi-key work-factor theorem,
+  `K_seed_attempts` and numeric word bounds remain unset, so privacy/setup stay
+  fail-closed. Mock `FpStream`/ChaCha8 is rejected; the existing AES-128-MMO
+  and BLAKE3 GGM paths remain quarantined outside their registered 16-byte
+  WYKW node role because they provide no C7 multi-root mask bound. The seed
+  adds 32 persistent bytes: current floors become
+  369,843,136/92,844,619,328 B. Both registered v18 invocations pass; all is
+  `credit:false`. No refresh, prover, SIMT, provider or pod action occurred.
+
+- **2026-08-28 — C7 R0.8 selects BLAKE3-XOF first, without spending the
+  security target.** Keyed BLAKE3-XOF is the primary root-mask candidate for
+  speed, seekable addressed output and parallelism. KMACXOF256 is the fallback;
+  if necessary, attempts per root may be reduced and the RS/setup row
+  recomputed. The 78-bit connection target cannot be lowered to admit a PRG.
+
+  The official BLAKE3 specification targets 128-bit security and treats its
+  256-bit key as extra defense, not as 256 security bits. Consequently only 18
+  bits (`2^18` factor) of total multi-root/query loss fit before C7's `2^-110`
+  PRG reserve. `Q_mask_words` counts all addressed generator words consumed by
+  candidate-root setup, including rejection and failed seeds; visible PCS
+  queries cannot replace it without a tighter reduction. The exploratory 31B
+  first-draw floor is already 37,893,076,736 words and the six-draw cap is
+  227,358,460,416. A linear-loss control permits only 262,144 words: the
+  conservative one-attempt charges are 234,342/297,510, so 31B fails that proof
+  form before lifecycle reserve. This is not terminal because the exact
+  charge-to-theorem mapping remains open. No inspected source supplies the
+  exact C7 multi-root bound.
+
+  BLAKE3 and KMAC therefore remain `credit:false`; primitive promotion awaits
+  the exact root horizon, quantitative theorem and setup-wall row. Budget v18
+  checks pass. No implementation, refresh, prover, SIMT, provider or pod action
+  occurred.
+
+- **2026-08-28 — C7 R0.8 bounds RS mask capacity and rejects one root for the
+  connection horizon.** Proposition 3.19 of 2026/391 requires randomness
+  length `t` for perfect t-query RS privacy: retaining `W` message coefficients
+  requires `ell>=W+t`, and rate 1/2 commits `2*ell` symbols. Conservatively
+  charging the compiled visible-Fp reservations 234,342/297,510 per attempt
+  leaves only 10,217,728/3,533,338,368 random coefficients in the current
+  power-of-two trees, or 43/11,876 full attempts before lifecycle reserve or
+  privacy margin.
+
+  Geometry-only root ceilings within 2.00/2.10/3.00x setup are
+  616/616/1,761 attempts for GPT-2 and 11,876/127,367/127,367 for 31B.
+  These omit mask persistence. Explicitly retaining every uniform coefficient
+  lowers them to 43/43/134 and 11,876/11,876/25,596. A short seed instead needs
+  a separately charged computational PCG/PRG hybrid and random-access one-scan
+  refinement. The all-round control is 1007.188x/9.095x but still awaits the
+  cross-round load theorem. Independently, the initial 16-lane oracle alone
+  reserves 75,012 Fp positions per attempt; `16*max load>=sum load` forces at
+  least 78,655,782,912 random coefficients over `R_max`. Its geometry is
+  125,015,276,960/186,420,076,960 B, or 504.094x/3.023708x. Thus one root for
+  `R_max` is NO-GO even if all later-round leakage is free.
+
+  This is not an admitted `Q_root/R_root`: paper queries are interleaved
+  alphabet locations, so the g141 load map, adaptive stateful refinement,
+  lifecycle reserve and positive margin remain required. Rotation is
+  necessary, but refresh remains expressly untested/uncredited. Budget schema
+  v15 default and 64-MB/1.6-GB/s invocations pass; all remains `credit:false`.
+  No prover, SIMT, provider or pod action is authorized.
+
+- **2026-08-28 — C7 R0.8 selects Fp3 and compiles the bounded opening
+  subcodec.** The owner selects direct Goldilocks Fp3, keeps the 78-bit
+  connection target and fixes setup target/hard caps at 900/990 s for GPT-2
+  and 5,400/5,940 s for 31B. Refresh uses separate counters and the same
+  initial numeric pairs, with no budget transfer; it is explicitly not tested
+  or credited in R0.8.
+
+  Budget schema v14 gives exact inherited Fp3 all-fold bounds of
+  161.017/153.173 response bits and 141.017/133.173 after `R_max=2^20`. This
+  passes only the algebraic-gap 110/78 axis. Fp3 is fixed as
+  `Fp[u]/(u^3-2)` with canonical three-limb encoding; the exact non-cube
+  witness is `2^((p-1)/3) mod p = 2^32-1`. The focused C7 Lean build passes
+  after generalizing the shared-Delta coordinate consequence to `Fin d`,
+  covering all three limbs without independent base-field MACs. The
+  conservative g141 opening
+  census is `q_open=831/1055`, `Z_atom=26528/33848`, `U_leaf=1662/2110` and
+  `S_visible_Fp=234342/297510`; all four GPT-2-to-31B ratios pass 1.30. Exact
+  compact-tree sibling caps are 19,335/39,843 and known serialized opening
+  bytes are 2,552,532/3,729,724 B. Pre-mask-capacity setup floors are
+  369,843,104/92,844,619,296 B, inside 2x persistent storage; t-query ZK
+  randomness capacity and associated bytes remain unknown.
+
+  All evidence remains `credit:false`. Non-oracle strict-UD/OOD messages,
+  reservation/assignment receipts, root-hiding metadata, the Rust Fp3 codec
+  and shared-Delta adapter refinement, malicious-DV privacy, numeric root
+  horizons and the ordered one-scan bounded-memory generator remain missing.
+  Setup time is unmeasured; refresh is out of scope. No CPU prover, SIMT,
+  provider or pod is authorized; `C7_CPU_REFERENCE_PASS=false` and
+  `C7_POD_READY=false`.
+
+- **2026-08-28 — C7 R0.8 opens the codec/security/resource pass and stops on
+  the strict Fp2 decision.** The owner authorizes design-only R0.8 and retains
+  RS t-query ZK plus strict-UD WHIR/Ligerito, rate 1/2, `k0=4`, one packed
+  weight root, logical `g=141` and fresh interactive challenges with `Q_FS=0`.
+  The required output is the canonical codec, security-event registry,
+  complete serialized bytes and setup/refresh/online resource row; no backend
+  tournament, prover, SIMT, provider or pod is reopened.
+
+  Budget schema v12 applies the inherited algebraic-gap bound round-by-round
+  to the selected schedules `[4,5,3,3,3,3]` and
+  `[4,4,3,3,3,4,4,4]`. GPT-2/31B certify 97.017/89.087 all-fold response bits
+  and 77.017/69.087 after `R_max=2^20`. Thus 31B misses 110 by 20.913 bits and
+  78 by 8.913 before all other terms. A modest 104- or 98-bit response target
+  cannot pass. Omitting all other errors, 78 bits permit only 2,175 attempts;
+  84 bits permit 33. This is a proved upper-bound audit, not a tight attack.
+
+  Setup-wall targets are 900 s for GPT-2 and 5,400 s for 31B. The owner also
+  requires tolerance, but its numeric hard caps and the separate refresh
+  targets/caps remain unset and cannot be selected after measurement. The 3x
+  disk ceiling and all traffic/memory/invalidation gates remain conjunctive.
+  R0.8 now requires the owner security and time-tolerance decisions before
+  fixing the codec field or completing its byte/resource row. All evidence is
+  `credit:false`; `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`.
 
 - **2026-08-27 — C7 R0.7 resource-envelope amendment and owner checkpoint
   GO.** The owner keeps proof-wire 105% as a target rather than an immediate

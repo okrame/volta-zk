@@ -1,12 +1,16 @@
 # C7 — stateful authenticated linear-functional commitment
 
-**Status:** C7 R0.7; policy 2 is active and the owner has selected RS t-query
-ZK plus strict-unique-decoding WHIR/Ligerito with public salted BLAKE3 as the
-theorem carrier.  Both bounded 1.05 closure screens are NO-GO; the owner has
-activated a separate 1.30 query-growth hard ceiling and retained the Fp2
-Pareto pair only as a query-axis candidate.  ERA `r=4` is a byte/prover
-control.  No complete codec row, executable backend or numeric root budget is
-admitted.  Policy 3 remains a terminal NO-GO.  No SIMT, prover, E2E or pod.
+**Status:** C7 R0.8 design audit; policy 2, direct Goldilocks Fp3, rate 1/2,
+`k0=4`, one packed weight root, logical `g=141` and interactive `Q_FS=0`
+remain fixed.  R0.8a makes published constructions exact-cost
+baselines/controls and a new co-designed C7 shared circuit the main research
+line.  Strict-UD RS is an algebraic/security control whose prover must not be
+implemented.  Only the carrier-independent Rust Fp3 codec/KAT plus
+shared-`Delta` MAC seam exists; it is not a PCS/PCG/VOLE refinement.  No new
+carrier has a complete row or CPU-prototype authorization.  BLAKE3-XOF remains the primary
+performance/parallelism mask candidate; frozen KMACXOF256-v1 remains an
+unpromoted high-margin control.  The approved privacy allocation is not
+theorem discharge.  Policy 3 remains terminal.  No SIMT, prover, E2E or pod.
 This document is the task-specific authority named by `prototype-status.md`.
 
 **Branch:** `agent/c7-stateful-alfc`.
@@ -33,10 +37,12 @@ claim, per-token folding instance, or deferred cross-response settlement.
 DeepProve and zkAgent are evidence for response-wide operator batching, but
 their teacher-forced full-forward statements are not the C7 relation.
 
-R0.7 retains the owner's 1.A/2.A/3.A choices, the R0.5 terminal policy-3
-record and R0.6 bounded-query policy 2, fixes the theorem carrier, allocator
-authority and Pareto-before-caps order with interactive challenges, and closes
-the two bounded post-Pareto alternatives before activating the 1.30 fallback.
+R0.8 retains the owner's latest 1.A/2.A/3.B choices, the R0.5 terminal policy-3
+record and R0.6 bounded-query policy 2, carries forward the allocator
+authority and Pareto-before-caps order with interactive challenges, closes
+the two bounded post-Pareto alternatives, and audits the retained Fp2 schedule
+before any field change.  Its required output is the canonical codec plus
+security, serialized bytes and resource row; R0.8 is not an implementation GO.
 
 1. The immutable model, response trace and persistent cache are separate
    commitment planes.  "One opening" means one transcript-bound
@@ -47,14 +53,21 @@ the two bounded post-Pareto alternatives before activating the 1.30 fallback.
 3. The active static-weight statement is policy 2: **only root-bound masked
    PCS responses within a durable global budget are visible; the terminal
    evaluation remains VOLE-authenticated and is never cleartext**.  This is
-   design authority only.  No concrete codec, executable backend, numeric `q_attempt`,
-   `Q_root` or `R_root` is selected.
+   design authority only.  The Fp3 g141 opening subcodec has an exact
+   conservative census, but the complete codec and executable backend remain
+   open.  Numeric `Q_root/R_root/K_model` are selected only for the separately
+   labelled fallback variant below, not for the main line.
+   Root masks use one fresh private 256-bit seed per root epoch and a
+   domain-separated addressed PRG/PCG.  Privacy is computational and its
+   multi-root advantage is charged once in the 78-bit model-lifetime bound.
+   Uniform persisted coefficients remain a baseline, not the main line.
 4. Policy 3 is terminally rejected under the registered gates, with every
    reason retained in the append-only register.  Its Poseidon2/private-checker
    work is historical control evidence, not a requirement of policy 2.
-   RS t-query ZK plus strict-UD Ligerito/WHIR and public salted BLAKE3 is the
-   selected theorem carrier; ERA `r=4` is only a byte/prover control.  This is
-   not an executable-backend GO.
+   RS t-query ZK plus strict-UD Ligerito/WHIR is retained only as an
+   algebraic/security control baseline.  Its current realization is not the
+   selected theorem carrier and its prover must not be implemented.  ERA
+   `r=4` remains only a byte/prover control.
 5. Persistent setup keeps `A_setup <= 2.00` as target and `<=2.10` as the
    baseline tolerance.  A separate exploratory ceiling near `3.00x` is
    registered, but it passes only with absolute persistent-disk, setup-wall
@@ -104,10 +117,15 @@ the two bounded post-Pareto alternatives before activating the 1.30 fallback.
     conditioned on an honest linearizable durable allocator; authenticated
     receipts protect soundness against a dishonest proof worker, not against a
     corrupt allocator.
-15. Numeric `Q_root`, `R_root`, `K_model` and `D_model` remain unset until a
-    complete non-scalar Pareto table exists.  Missing cells fail closed and no
-    setup, proof-size, privacy or service-life tolerance is transferable to a
-    different axis.
+15. Mainline numeric `Q_root`, `R_root`, `K_model` and `D_model` remain unset
+    until a complete non-scalar Pareto table exists.  The separately labelled
+    BLAKE3 fallback alone pins the numeric root profile and `K_model` below;
+    its other cells remain fail-closed.  No setup, proof-size, privacy or
+    service-life tolerance is transferable between the two lines.
+16. Setup-wall targets/hard caps are 900/990 seconds for GPT-2 and
+    5,400/5,940 seconds for the 31B envelope.  Refresh has distinct counters
+    with the same initial numeric target/cap and no budget transfer.  R0.8 does
+    not test or credit refresh; its caps remain registered for later work.
 
 The following are terminal R0 hard stops.  Until all are discharged there is
 no large prover implementation, production equivalence claim, provider/pod
@@ -716,15 +734,25 @@ H_FS(domain || F_VOLE_id || statement || canonical_prefix || round_id).
 
 It is **quarantined**, not silently enabled.  Its prover and verifier must
 recompute identical challenges; `Q_FS` is a separate adversarial query bound.
-A roughly 128-bit Fp2 challenge with `Q_FS=2^64` has at most a roughly 64-bit
-direct grinding bound.  Even before degree/list factors, retaining 110 bits
-would require `Q_FS<=2^18`, at least 174 effective challenge bits, or a proved
-independent repetition whose extra terminal multiplicity, scan work and bytes
-are all counted.  Concrete factors can only tighten those requirements.  R0.4
-therefore fixes `Q_FS=0`: no FS query or grinding term exists in the selected
-protocol, while serialized interactive challenges and framing still count in
-the certificate.  Reintroducing FS changes the statement and byte budget and
-requires a later owner decision.
+With the selected Fp3 field and fixed-prefix bad-set cap `T=512`, the separate
+challenge-mode screen is:
+
+| Mode | Bound for the fixed prefix | effective bits | selected |
+| --- | --- | ---: | --- |
+| interactive | `T/|Fp3|` | 183.000 | yes |
+| direct FS, `Q_FS=2^64` | `Q_FS*T/|Fp3|` | 119.000 | no |
+| paired FS amplification | `Q_FS*T^2/|Fp3|^2` | 302.000 | no |
+
+The interactive row serializes 24 bytes per Fp3 draw.  Direct FS removes
+those draw bytes but must define whether `Q_FS` is per attempt, connection or
+model lifetime and still pays nonce/framing/hash work; the connection union
+and every other event remain separate.  Paired FS is not a free 302-bit row:
+it needs one frozen paired-RO prefix, two independent Fp3 challenges checking
+the same relation, and exact duplicate/shared response, path, MAC, scan and
+wire accounting.  Its proof-size/resource gate is false.  Neither FS form
+changes malicious-DV privacy or the root query budget.  R0.8 therefore retains
+`Q_FS=0`; reintroducing FS changes the statement and needs a later owner
+decision.
 
 An abort at any point after reservation burns the slot, nonce, seed
 commitment, masks and every reserved correlation range.  It leaves the
@@ -923,7 +951,7 @@ global counter.
 ### 4.3 Named privacy theorem still required
 
 `C7-P2-MDV-STATEFUL-PRIV(lambda,K_model,D_model,Q_root,{Q_B},{Q_KV},
-Q_hide,Q_PRF,interactive)` is the active
+Q_hide,Q_saltPRF,{Q_mask_words},interactive)` is the active
 left/right game (`Q_FS=0`).  One adversary represents unlimited identities,
 connections and colluding designated verifiers.  It adaptively chooses legal
 challenges, queries, abort points and timing while the global allocator
@@ -961,6 +989,19 @@ component capacity: one query to an interleaved `Sigma^(2^k)` alphabet is not
 one Fp query.  Proposition 3.19 of 2026/391 gives fixed-set RS t-query privacy
 with error zero, but its composition class is explicitly non-adaptive and its
 result is HVZK.  It does not prove this online stateful refinement.
+
+That proposition also fixes a non-negotiable capacity cost: for
+`RS[F,L,ell]`, perfect privacy for `t` queried locations uses message length
+`ell-t` and randomness length exactly `t`.  With `W` canonical base-field
+message coefficients, C7 therefore needs `ell >= W+t`; at rate 1/2 the oracle
+contains `2*ell` base-field symbols.  The current `S_visible_Fp` reservation is
+a conservative scalar charge, not yet an equality with the paper's alphabet
+query unit: Claim 3.23 preserves `t` interleaved alphabet queries while one
+answer contains `2^k` base symbols.  Section 6.6 screens the resulting
+power-of-two geometry.  It proves that `R_root=R_max` is incompatible with the
+setup cap, but does not admit `Q_root` or `R_root` before the codec load map,
+adaptive refinement, lifecycle reserve and concrete mask-generator bound are
+complete.
 
 The game is operationally a paired-history oracle.  At attempt `a`, the
 adversary submits one common public request and two branch-specific valid
@@ -1022,7 +1063,7 @@ With `eps_RV^p(r,q)` defined by
 eps_RV^p(r,q)
   = eps_OnlineMDVViewRefine^p(r,q)
   + zeta_RS_adapt^p(r,q)
-  + Adv_PRF^p_r(Q_PRF[r])
+  + Adv_SaltPRF^p_r(Q_saltPRF[r])
   + Adv_BLAKE3_RootPathHide^p_r(Q_hide[r]),
 ```
 
@@ -1033,6 +1074,8 @@ Adv_priv_model
  <= sum_(omega in Omega) eps_RV^W(omega,Q_root[omega])
   + sum_(a in B_created) eps_RV^B(a,Q_B[a])
   + sum_(s in KV_created) eps_RV^KV(s,Q_KV[s])
+  + Adv_RootMaskPRG_multi(K_model,{Q_mask_words[omega]})
+  + K_seed_attempts * epsilon_mask_rejection
   + Adv_MultiUserVOLE_MDV(D_model,{J_d})
   + sum_domain Adv_PCG_d(Q_PCG[d])
   + sum_attempt (epsilon_terminal_codec_a + epsilon_timing_class_a)
@@ -1056,7 +1099,8 @@ one connection slice—to satisfy
 
 ```text
 Adv_priv_model_lifetime(K_model,D_model,Q_root,u_init,u_rotate_in,
-                        u_rotate_out,{Q_B},{Q_KV},Q_hide,Q_PRF)
+                        u_rotate_out,{Q_B},{Q_KV},Q_hide,Q_saltPRF,
+                        {Q_mask_words})
   <= 2^-78.
 ```
 
@@ -1078,12 +1122,302 @@ The active hash reductions use three non-interchangeable work bounds:
 ```text
 Q_CR[root]    collision/binding work against leaf/tree hashing
 Q_hide[root]  adaptive root/path-hiding oracle work and cumulative view
-Q_PRF[root]   mask/salt PRF oracle work, including all derived leaves
+Q_saltPRF[root]       salt-derivation PRF work
+Q_mask_words[root]    addressed root-mask generator words, including failed setup seeds
 ```
 
 The concrete reductions must derive these from `K_model`, every `omega`, the
-opened-leaf/path union and the adversary's declared oracle access.  They are
-not `q_attempt`, `Q_root`, each other, or the historical policy-3 `Q_leaf`.
+opened-leaf/path union and the adversary's declared oracle access.  Root-mask
+PRG, salt PRF and VOLE PCG are distinct hybrids and are counted once each.
+They are not `q_attempt`, `Q_root`, each other, or the historical policy-3
+`Q_leaf`.
+
+The owner selects a **computational seeded root mask** as the main line.  Each
+disclosed candidate root samples one fresh private 256-bit seed; the same seed
+defines that root's randomized encoding for its entire bounded lifetime and is
+never serialized in a response.  There is no per-response reseed or setup.
+Every generator word has the fixed address
+
+```text
+domain(model,epoch,layout,field,rate,k0,coefficient_index,draw_index).
+```
+
+For a coefficient, C7 takes the first little-endian 64-bit word below the
+Goldilocks modulus among six addressed draws.  This canonical rejection map is
+exactly uniform in the ideal-generator hybrid conditioned on success, supports
+random access, and avoids transcript-dependent stream offsets.  Since one
+draw rejects with probability `(2^32-1)/2^64`, the six-draw union bound at the
+largest geometry-only root capacities is 163.379 bits for GPT-2 and 156.859
+bits for 31B per seed attempt.  Exhausting all six draws aborts before root
+disclosure and burns the seed/candidate slot.
+
+The selected privacy declaration is therefore computational:
+
+```text
+Adv_RootMaskPRG_multi(K_model,{Q_mask_words[omega]})
+  + K_seed_attempts * epsilon_mask_rejection
+  <= 2^-110
+```
+
+as one provisional component of the complete 78-bit model-lifetime bound.
+The generator primitive, its multi-key/multi-root work-factor theorem,
+`K_seed_attempts` and numeric `Q_mask_words` are not yet selected, so this gate
+is false.  The explicitly persisted uniform-Fp coefficients remain the
+information-theoretic reference baseline.  They are not a fallback silently
+used by the main setup path.  Seeded coefficient addressing solves persistent
+entropy storage and CPU/SIMT reproducibility; it does not solve the ordered
+one-scan RS generator or the adaptive load theorem.
+
+Existing repository generators do not close this cell.  `FpStream`/ChaCha8 is
+explicitly a mock-PCG stand-in with a sequential unbounded rejection loop.
+The production AES-128-MMO primitive is registered only for fixed-key 16-byte
+WYKW GGM-node expansion, not as the selected 256-bit addressed root-mask
+function.  Its non-default 16-byte BLAKE3 GGM sibling has the same scope.
+ChaCha8 is rejected for production use; both GGM paths are quarantined until a
+C7-specific multi-root reduction accounts the actual `Q_mask_words`.  Public
+salted BLAKE3 remains the leaf/tree commitment choice; that separate use does
+not select BLAKE3 as the private mask PRG.
+
+The owner now selects **keyed BLAKE3-XOF as the primary root-mask candidate**,
+because its native keyed mode, seekable XOF and tree parallelism match the
+addressed, streaming setup.  This is a candidate order, not security credit.
+The [BLAKE3 specification](https://github.com/BLAKE3-team/BLAKE3-specs/blob/master/blake3.tex)
+targets 128-bit security for its goals and describes the 256-bit key only as
+extra defense, including against possible multi-target attacks.  It does not
+instantiate C7's quantitative multi-root advantage.  Therefore the key length
+must not be promoted to 256 security bits.  Even if the stated 128-bit target
+applies directly, the `2^-110` component reserve permits at most 18 bits, or a
+factor `2^18`, of total multi-root/query loss.
+
+The exact gate is:
+
+```text
+Adv_BLAKE3_XOF_multi(K_model,{Q_mask_words[omega]})
+  + K_seed_attempts * epsilon_mask_rejection
+  <= 2^-110.
+```
+
+The frozen logical candidate codec is `C7-RM-B3XOF-v1`.  It initializes
+BLAKE3 keyed mode with the private 32-byte root seed, absorbs
+`suite||model_id||epoch_id||layout_digest||field_id||rate||k0`, and reads the
+little-endian word for `(coefficient_index,draw_index)` at byte offset
+`8*(6*coefficient_index+draw_index)`.  Thus each candidate root has one
+seekable XOF stream and fixed addresses independent of rejection history.
+The largest screened 31B six-draw position is 1,818,867,683,328 bytes, below
+BLAKE3's `2^64-1` output-byte limit.  CPU and eventual SIMT paths must emit the
+same bytes; this codec is not implemented and earns no setup/security credit.
+
+Here `Q_mask_words` counts every addressed 64-bit word actually consumed to
+construct every candidate root, including rejected draws and failed seeds.
+It is not the visible PCS query count unless a tighter leakage reduction proves
+that substitution.  At the exploratory 31B geometry, even the mandatory first
+draw is 37,893,076,736 words (`>2^35`), while the six-draw cap is
+227,358,460,416 words.  No inspected BLAKE3 source supplies the required
+multi-root theorem at this volume, so the candidate remains fail-closed.
+As a proof-form control, any bound losing linearly in `Q` could cover at most
+`2^18=262,144` words.  The current conservative one-attempt visible-Fp charges
+are 234,342/297,510, so GPT-2 only barely fits that control and 31B already
+misses it by 35,366 before lifecycle reserve.  This is not yet a BLAKE3
+NO-GO: the mapping from visible-Fp charges to the exact theorem loss remains
+unproved, and a tighter primitive-specific reduction may use another scope.
+
+If it fails after the exact root horizon fixes `Q_mask_words`, the next line is
+KMACXOF256.  [NIST SP 800-185](https://csrc.nist.gov/pubs/sp/800/185/final)
+standardizes KMAC as a SHA-3-derived function usable as a PRF.  C7 now has the
+concrete chunk-addressed codec screen below, but still needs the exact
+multi-key reduction and a measured setup-wall pass.
+If KMAC also fails a conjunctive gate, reduce attempts per root and recompute
+the RS randomness dimension.  The 78-bit connection target is never reduced
+to admit either generator.
+
+#### Owner-authorized BLAKE3 fallback root profiles
+
+The maximum is preregistered, never inferred from a favorable completed setup.
+`R_root` counts accepted responses, failures, retries and selective aborts.
+Each proposal additionally reserves 1/8 of its response-attempt charge for
+typed init/rotation/load-refinement events and permits at most two setup seeds;
+each failed seed is fully charged and burned.  A second setup failure closes
+the candidate epoch before disclosure.
+
+| model | proposed `R_root` | service charge | lifecycle reserve | proposed `Q_root` | all-seed six-draw `Q_mask_words` | unused RS capacity | setup tier |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| GPT-2 | 512 | 119,983,104 | 14,997,888 | 134,980,992 | 1,619,771,904 | 9,454,464 | target 2.00x |
+| 31B | 8,192 | 2,437,201,920 | 304,650,240 | 2,741,852,160 | 32,902,225,920 | 791,486,208 | target 2.00x |
+
+These are authorized only for the computational fallback, not admitted
+profiles or mainline parameters: the 1/8 reserve
+must later be split by plane and lifecycle event, and the visible-Fp-to-paper-
+query refinement remains open.  A control of the form `Q/2^128` certifies only
+97.406/93.063 bits after both allowed setup seeds, so it fails the 110-bit gate
+for both profiles.  Keyed BLAKE3-XOF can advance only with a tighter exact
+multi-root theorem; otherwise the registered order promotes KMACXOF256 or
+reduces `R_root`.
+
+The owner confirms that the fallback caps the **global model-variant attempt
+horizon** at `2^20` across all connections, not `2^20` per connection.  Hence
+`K_model=ceil(2^20/R_root)` is
+2,048/128 and the total two-seed counts are 4,096/256.  Across that full
+horizon, maximum `Q_mask_words` is
+3,317,292,859,392/4,211,484,917,760.  Under the explicitly named—but unproved
+for BLAKE3—linear 128-bit XOF control, the BLAKE3 term is 86.407/86.063 bits;
+including six-draw rejection leaves the same rounded values and fails the
+mainline 110-bit component gate.
+
+The owner authorizes a separate fallback admission test:
+
+```text
+epsilon_privacy_model
+  = Adv_BLAKE3_multi(K_model,{Q_mask_words})
+  + epsilon_rejection(K_seed_attempts)
+  + epsilon_adaptive_RS_view
+  + Adv_saltPRF_multi
+  + Adv_root_path_hash
+  + Adv_multi_user_PCG_VOLE
+  + Adv_multi_user_MAC
+  + epsilon_allocator_state
+  + epsilon_replay_fork_collision
+  + epsilon_abort_timing
+  + epsilon_codec_transcript
+  <= 2^-78.
+```
+
+The known mask terms alone pass 78 and leave an other-terms budget slightly
+smaller than `2^-78` (78.004/78.005 effective bits).  R0.8 now registers the
+complete target allocation separately from theorem discharge:
+
+```text
+adaptive RS view, salt PRF, root/path hash,
+multi-user PCG/VOLE, multi-user MAC, abort/timing   each <= 2^-110
+allocator/state, replay/fork/collision              each <= 2^-120
+codec/transcript refinement                          exact, epsilon = 0
+```
+
+Adding every target to the known mask control gives 86.406856/86.062533 bits,
+so the **allocation** passes 78.  Every corresponding achieved advantage is
+still nonnumeric, and no BLAKE3-specific multi-root theorem was found in the
+bounded primary-source audit.  Therefore the actual complete epsilon remains
+undefined, the fallback is not admitted, and implementation remains
+forbidden.  Failure promotes KMACXOF256 or reduces `R_root`; it never lowers
+78.
+
+#### KMACXOF256 unpromoted high-margin control
+
+KMAC is not promoted yet.  The minimal SIMT-compatible candidate is
+`C7-RM-KMACXOF256-v1`: one private 32-byte candidate-root seed keys independent
+64-KiB KMACXOF256 chunks.  The customization string is the 24 ASCII bytes
+`VOLTA-ZK/C7/root-mask/v1`.  Each chunk input is a 104-byte fixed descriptor
+followed by its little-endian 64-bit chunk index:
+
+| descriptor field | bytes |
+| --- | ---: |
+| magic `C7RMKX01` | 8 |
+| model ID / epoch / root slot | 32 / 8 / 8 |
+| layout-and-root-profile digest | 32 |
+| field `Fp3/u^3-2`=`0x03` / rate numerator=`1` / denominator=`2` / `k0=4` | 1 / 1 / 1 / 1 |
+| logical `g=141` / draw cap=`6` / `Q_root` / seed-attempt index | 2 / 1 / 8 / 1 |
+
+The descriptor is exactly 104 bytes and the KMAC input exactly 112 bytes.
+For coefficient `i` and draw `d in {0,...,5}`, set
+
+```text
+total_bytes = 8*6*Q_root
+for c in 0..ceil(total_bytes/65536)-1:
+len_c       = min(65536, total_bytes-65536*c)
+chunk_c     = KMACXOF256(seed, descriptor||le64(c), 8*len_c, S)
+offset      = 8*(6*i+d)
+c           = floor(offset/65536)
+local       = offset mod 65536
+draw        = le64(chunk_c[local..local+8])
+```
+
+The last chunk is the exact required prefix; no padding byte is serialized.
+This is SP 800-185 KMACXOF semantics: every call absorbs `right_encode(0)`;
+`8*len_c` controls only how many output bits are squeezed.
+Chunks are emitted in increasing index/word order.  This keeps the logical
+coefficient stream identical on CPU and SIMT, enables parallel chunk
+evaluation, needs at most 65,848 working bytes per worker, and creates no
+persistent mask/codeword, proof byte or visible PCS query by itself.  It does
+not authorize implementation or a second packed-weight scan.  In particular,
+zero persistent codeword does **not** make online mask work free:
+`BatchOpenBlocks` must still derive the selected mask/codeword contribution in
+`O(N+poly(q,log N))`, one packed scan and bounded memory.  That schedule and
+its per-attempt generator bytes are currently unknown; setup work cannot be
+transferred into this online cell.
+
+For KMACXOF256, rate/capacity are 1,088/512 bits.  The 24-byte customization,
+32-byte key and 112-byte chunk input each fit their single padded rate block.
+Consequently a full chunk costs 484 Keccak-f[1600] permutations: 482 squeeze
+blocks plus two prefix/key blocks.  Chunking adds 0.41494% over a monolithic
+squeeze and yields the exact resource controls:
+
+| model | output per candidate seed | chunks | permutations/seed | two-seed root cap | target throughput |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| GPT-2 | 6,479,087,616 B | 98,864 | 47,849,710 | 12,958,175,232 B / 95,699,420 perm. | 14.398 MB/s / 106,333 perm./s |
+| 31B | 131,608,903,680 B | 2,008,193 | 971,965,171 | 263,217,807,360 B / 1,943,930,342 perm. | 48.744 MB/s / 359,987 perm./s |
+
+These are root-construction generator bytes: ephemeral work, not disk or
+certificate bytes, but fully charged to setup.  They do not settle the open
+online mask-contribution row above.  The target-throughput cells assume both
+allowed seeds inside 900/5,400 seconds; the hard-cap floors are 13.089/44.313
+MB/s.  No setup time is measured or credited.
+
+The [sponge indifferentiability theorem](https://keccak.team/papers.html)
+gives the generic control `N(N+1)/2^(c+1)`.  Under an expressly unselected
+`2^64` adversarial Keccak-permutation-query screen, counting all honest setup
+permutations model-wide gives:
+
+| conditional term | GPT-2 bits | 31B bits |
+| --- | ---: | ---: |
+| sponge, `c=512` | 385.000 | 385.000 |
+| multi-key guessing control | 180.000 | 184.000 |
+| independent-seed collision | 233.000 | 241.006 |
+| six-draw rejection | 152.992 | 152.647 |
+| conditional sum | **152.992** | **152.647** |
+
+Thus the arithmetic has ample 110-bit margin in the ideal-permutation control,
+with rejection—not output volume—the largest known term.  It is not a C7
+security result: SP 800-185 states the construction and PRF role but does not
+supply the required adaptive multi-key KMAC-to-fixed-Keccak-f reduction, the
+`2^64` adversary screen is not an admitted security definition, and the
+fixed-permutation advantage is nonnumeric.  `passes_component_reserve=false`,
+`candidate_promoted=false`, and every full-privacy term remains required.  If
+the same complete other-term targets above are added, the conditional KMAC
+whole-privacy allocation is 107.414568 bits for both profiles and passes 78;
+this is still an allocation result, not theorem discharge.
+
+The owner freezes this 64-KiB v1 KMAC descriptor and the registered privacy
+target allocation, but does not promote KMAC: keyed BLAKE3-XOF remains the
+primary performance/parallelism candidate.  Current challenge generation
+remains interactive with `Q_FS=0`.  A future Fiat--Shamir selection is a
+separate decision and domain: KMACXOF256 is preferred if preserving security
+margin dominates; BLAKE3 is preferred for throughput only with a tightly
+preregistered `Q_FS` and a complete ROM, multi-target and certificate-byte
+sum.  Root-mask expansion and transcript hashing may not silently share a
+security bound merely because the same primitive family is used.
+
+#### Bounded online RS screen and current-carrier NO-GO
+
+Closing the root/codec fixed point makes the missing online cost concrete.
+The initial selected rate-1/2 codewords contain `2^29`/`2^36` Fp symbols.
+The bounded screen tests every registered standard realization at the exact
+selected profiles:
+
+| realization | GPT-2 control | 31B control | disposition |
+| --- | ---: | ---: | --- |
+| independent dense opening | 19,426,682,171,904 FMA | 2,518,021,731,025,920 FMA | qN control; not a lower bound on shared circuits |
+| persist complete codeword plus tree | 4,786,653,504 B (19.301x packed) | 642,600,433,216 B (10.423x) | fails even 3x setup |
+| online full materialization | 4,294,967,296 B scratch | 549,755,813,888 B scratch | model-sized scratch forbidden |
+| pruned/subset shared transform | no exact C7 schedule | no exact C7 schedule | registered shape is `O(N log q)` or has a model-linear frontier |
+| seeded mask alone | random access only | random access only | does not evaluate the dense RS map |
+
+No row proves `O(N+poly(q,log N))` with a q-independent source-linear
+constant, one monotone packed scan and bounded memory.  Therefore the current
+strict-UD RS realization is **NO-GO**, `C7_CPU_REFERENCE_PASS=false`, and no
+CPU prover or SIMT kernel may be implemented.  This is not a universal lower
+bound: a new structured shared circuit or genuinely different code-switch may
+reopen the line, but only with exact operations, proof bytes, setup, I/O and
+memory.  Relaxing one of the recorded one-scan, bounded-memory or 3x setup
+gates is an owner decision, not an analytic substitution.
 
 #### Historical policy-3 game and rejection evidence
 
@@ -1260,12 +1594,12 @@ the active masked PCS oracle, global budget or rotation protocol.
    function upfront, then chooses challenges adaptively.  The missing concrete
    refinement is not assumed by them.  This is one MAC/key domain, not the
    active multi-connection `MultiUserVoleCompose` theorem.
-2. The existing terminal batch is linear in Fp2 under one shared `Delta`;
-   applying either canonical coordinate projection yields both serialized Fp
-   equalities.  This fixes the old, invalid model of two unrelated base-field
-   MACs, but does not construct the adapter or its codec.  If D071 reaches
-   Fp3, the analogous three-coordinate theorem is a new explicit obligation,
-   not inherited credit.
+2. The terminal batch is linear in any extension field under one shared
+   `Delta`; applying every canonical coordinate projection yields all
+   serialized Fp equalities.  R0.8 generalizes the consequence from `Fin 2`
+   to `Fin d`, so direct Fp3 has all three coordinate equalities without
+   modeling three unrelated base-field MACs.  This still does not construct
+   the Rust adapter or prove its codec refinement.
 3. `connection_hybrid_advantage_bound` proves the sequential hybrid
    recurrence
 
@@ -2222,11 +2556,11 @@ storage is 1.9826x/2.0119x, but dual-root rotation is 2.9652x/3.0237x and is
 rejected.  These floors do not prove an ordered root build: stock FFT/matrix
 encoders still lack the required one-scan, bounded-memory, no-codeword
 schedule.  Padding leaves 10,217,728 / 3,533,338,368 coefficient slots before
-the actual packed messages reach `2^27` / `2^35`.  These are unused message
-slots, not a derived CFW randomness capacity and not `Q_root`; exact ZK
-randomness rows, code slack and any domain impact remain compiler cells.  The
-adaptive Fp load theorem, all correlated components and a positive service
-margin remain missing.
+the actual packed messages reach `2^27` / `2^35`.  R0.7 treated these only as
+unused message slots.  R0.8 D091 now derives the RS randomness-dimension
+screen from Proposition 3.19, but still does not admit `Q_root`: the adaptive
+Fp load theorem, all correlated components, persistence/generation path and a
+positive service margin remain missing.
 
 The Pareto vector is deliberately non-scalar:
 
@@ -2344,14 +2678,143 @@ ceiling with absolute disk/time/refresh caps.  One packed scan/bounded memory
 and 110/78-bit security are unchanged.  Fp3 can close only the
 algebraic-security axis and must pass the same complete census.
 
+### 5.9 R0.8 fixed envelope, Fp3 selection and opening subcodec
+
+The owner authorizes the design-only R0.8 compiler/security/resource pass and
+retains, without reopening the backend tournament:
+
+```text
+carrier       RS t-query ZK + strict-UD WHIR/Ligerito
+rate          1/2
+first fold    k0=4
+weight roots  one packed root
+leaf format   flat logical g=141
+challenge     fresh post-prefix interactive; Q_FS=0
+```
+
+R0.8 must emit the canonical plane/root/round codec, exact reserved and actual
+query counters, all serialized bytes, the complete security-event registry,
+and setup/refresh/online I/O, wall and memory resources.  It may not change
+the field merely to fill an incomplete codec cell.  The first step is the
+inherited strict-UD algebraic-gap audit on the selected Fp2 Pareto schedules
+`[4,5,3,3,3,3]` and `[4,4,3,3,3,4,4,4]`.
+
+For round `i`, with `m_i` variables and inverse-rate exponent `r_i`, the
+registered proved upper bound is
+
+```text
+epsilon_i <= k_i * 2^(m_i+r_i) / |Fp2|,
+epsilon_all <= sum_i epsilon_i.
+```
+
+Using the exact Goldilocks modulus rather than a rounded 128-bit denominator
+gives:
+
+| Selected Fp2 schedule | `q_open` | unstacked Fp | all-fold response bits | after `R_max=2^20` |
+| --- | ---: | ---: | ---: | ---: |
+| GPT-2 | 831 | 19,104 | 97.017 | 77.017 |
+| 31B envelope | 1,054 | 24,128 | **89.087** | **69.087** |
+
+The 31B row therefore misses 110 by 20.913 bits and misses the 78-bit
+connection target by 8.913 bits before hash, PCG, state, codec, privacy or
+other terms.  This is a proved upper-bound audit, not a tight attack or an
+impossibility theorem.  A modest response-target change to 104 or the bare
+98-bit minimum cannot admit it.  With all other errors temporarily omitted,
+the largest 78-bit lifetime is only 2,175 attempts; 2,048 attempts leave
+0.087 bit of slack, while an 84-bit intermediate target permits only 33.
+The owner selects direct Goldilocks Fp3 and keeps the 78-bit connection
+target.  This closes only the registered algebraic-gap axis.  Using
+`|Fp3|=p^3`, three canonical Fp limbs after the first base-field oracle and
+the selected schedules gives:
+
+| Selected Fp3 schedule | `q_open` | `Z_atom` / unstacked Fp | response bits | after `R_max=2^20` |
+| --- | ---: | ---: | ---: | ---: |
+| GPT-2 `[4,5,3,3,3,4]` | 831 | 29,192 | 160.011 | 140.011 |
+| 31B `[4,3,3,3,4,4,4,4]` | 1,055 | 33,848 | **153.173** | **133.173** |
+
+The GPT-2 row changed because the selected mask capacity raises its coefficient
+dimension from `2^27` to `2^28`; the 31B row remains unchanged.  Both exceed
+110/78 on this axis before the other connection terms.  The full 78-bit
+theorem remains false until the complete
+codec, adaptive privacy, transcript/receipt, hash/PCG, multi-user VOLE/MAC and
+state/replay terms are derived.
+
+R0.8 fixes the executable field representation rather than using cardinality
+alone:
+
+```text
+E = Fp[u] / (u^3 - 2)
+x = x0 + x1*u + x2*u^2
+wire(x) = le64(x0) || le64(x1) || le64(x2), each xi < p
+```
+
+Here `p mod 3 = 1` and
+`2^((p-1)/3) mod p = 2^32-1 != 1`; hence 2 is not a cube in the cyclic
+`Fp*`.  The cubic has no Fp root and is irreducible.  Decoding rejects a
+length other than 24 bytes or any limb `>=p`.  With `u^3=2`, multiplication
+uses
+
+```text
+c0 = a0*b0 + 2*(a1*b2 + a2*b1)
+c1 = a0*b1 + a1*b0 + 2*a2*b2
+c2 = a0*b2 + a1*b1 + a2*b0                 (all mod p).
+```
+
+The terminal has one shared `Delta in E` and verifies `k=m+Delta*x` in E.
+It serializes one 24-byte provider correction, never `x`, and may not replace
+the equation by three independent Fp MACs.  The generic Lean coordinate
+consequence covers all three limbs.  The carrier-independent Rust seam now
+implements the canonical codec/KAT and tests shared-`Delta` linearity plus
+three-limb mutation rejection.  It deliberately instantiates no PCG, VOLE or
+PCS, so the concrete adapter/codec refinement and protocol credit remain open.
+
+The exact conservative g141 opening reservation compiles as follows.  Each
+queried `2^k`-symbol block touches at most two logical leaves; leaf payloads,
+256-bit salts, compact-tree multiproofs, interactive challenges, auxiliary
+roots, the direct-send tail and the three-limb terminal frame are counted.
+
+| Counter | GPT-2 | 31B | growth | 1.30 gate |
+| --- | ---: | ---: | ---: | --- |
+| `q_open` | 831 | 1,055 | 1.269555x | PASS |
+| `Z_atom` | 29,192 | 33,848 | 1.159496x | PASS |
+| `U_leaf` | 1,662 | 2,110 | 1.269555x | PASS |
+| `S_visible_Fp` | 234,342 | 297,510 | 1.269555x | PASS |
+
+The exact worst-case compact-tree sibling caps are 20,997/39,843.  Known
+serialized opening bytes are **2,605,740 / 3,729,724 B** (1.431349x), within
+the 105% weight-wire targets in isolation.  This is not the complete wire
+gate: strict-UD non-oracle sumcheck/OOD messages, the authenticated
+`omega`/profile reservation receipt, plane-assignment receipt and root-hiding
+capacity metadata remain unknown and fail closed.  Actual accepted counts may
+be smaller, but reservations never refund.
+
+Setup and refresh use separate, non-transferable clocks:
+
+```text
+GPT-2 setup target/hard cap       900 / 990 s
+31B setup target/hard cap        5400 / 5940 s
+refresh target/hard cap          same initial numbers, separate counters
+refresh test in R0.8              forbidden / not credited
+```
+
+The 3x persistent-disk ceiling remains conjunctive with the setup time cells.
+Refresh cannot borrow setup slack; its registered placeholder caps do not
+authorize a refresh measurement.
+
 ## 6. Registered analytic screens
 
 The executable calculator is `scripts/budget_c7_stateful_alfc.py`.  Every
-output carries `credit:false`.  Schema v11 reproduces scaling arithmetic,
+output carries `credit:false`.  Schema v23 reproduces scaling arithmetic,
 allocation caps, artifact-volume scenarios, the R0.7 strict-UD controls and
-the two bounded closure screens; it is not an authority for a
-compiler manifest, certificate codec, security-event registry or measured C7
-time.
+the two bounded closure screens, and adds the exact selected-schedule Fp2/Fp3
+audits, g141 opening subcodec, known serialized bytes and setup resource
+floors, the confirmed global fallback horizon and the conditional
+chunk-addressed KMACXOF256 screen, closes the root/codec geometry fixed point
+and records the bounded selected-RS online NO-GO.  It also registers the
+empty fail-closed new-carrier tournament and the tested carrier-independent
+`Fp[u]/(u^3-2)` field/terminal seam.  It is
+not an authority for a complete compiler manifest, complete
+certificate, security theorem or measured C7 time.
 
 The two registered self-check invocations are:
 
@@ -2447,9 +2910,10 @@ Separately record:
 - `Q_B[a]`, the per-attempt response-plane horizon, and `Q_KV[s]`, the
   per-created-K/V-root horizon covering proposed-successor disclosure plus
   every predecessor reuse if that same root is accepted;
-- `Q_CR`, `Q_hide` and `Q_PRF`, respectively the collision/binding,
-  adaptive root/path-hiding and mask/salt-PRF reduction work bounds, all
-  indexed by the complete `omega` and composed across `K_model`;
+- `Q_CR`, `Q_hide`, `Q_saltPRF` and `Q_mask_words`, respectively the
+  collision/binding, adaptive root/path-hiding, salt-PRF and root-mask PRG
+  reduction work bounds, all indexed by the complete `omega` and composed
+  across `K_model`;
 - `Q_FS`, adversarial transcript-hash queries, fixed to zero in the selected
   interactive protocol.
 
@@ -2781,13 +3245,94 @@ exploratory ceiling:   A_setup <= 3.00
 
 The interval `(2.00,2.10]` remains the preferred tolerance.  The exploratory
 3x ceiling fixes absolute persistent-disk caps of **744,000,000 B** for GPT-2
-and **184,958,400,000 B** for the 31B envelope.  It is usable only after the
-candidate also preregisters absolute setup-wall and refresh-wall seconds;
-those time caps are intentionally unset in R0.7 because no R0.8 candidate or
-owner SLA exists.  Until both are numeric, the exploratory setup gate is
-false.  Temporary disk, preprocessing read/write, peak RSS/VRAM and refresh
-traffic remain separately counted; X4d-scale planes or unbounded scratch
-cannot be hidden inside the 3x ratio.  Anything above 3x fails.
+and **184,958,400,000 B** for the 31B envelope.  Setup-wall target/hard caps
+are **900/990 s** and **5,400/5,940 s**.  Refresh has separate counters and
+initially registers the same numeric pairs, with no transfer of setup budget.
+R0.8 neither tests nor credits refresh.  Temporary disk, preprocessing
+read/write, peak RSS/VRAM and eventual refresh traffic remain separately
+counted; X4d-scale planes or unbounded scratch cannot be hidden inside the 3x
+ratio.  Anything above 3x fails.
+
+For the selected rate-1/2, one-root Fp3 opening screen, the persistent setup
+stores packed i16 weights, the compact g141 digest tree, 64 bytes of root
+salt-seed/nonce metadata and the selected 32-byte private root-mask seed.  It
+does not persist the codeword payload:
+
+| Setup floor | GPT-2 | 31B |
+| --- | ---: | ---: |
+| persistent bytes | 491,686,208 | 92,844,619,328 |
+| amplification over packed i16 | 1.982606x | 1.505927x |
+| minimum packed-read + tree-write bytes | 491,686,112 | 92,844,619,232 |
+| oracle payload hashed | 4,294,967,296 | 549,755,813,888 B |
+| target oracle-symbol rate | 596,523/s | 12,725,829/s |
+| target payload-hash rate | 4.772 MB/s | 101.807 MB/s |
+
+These are the selected seeded-mask-capacity geometry/I/O floors, not complete
+or measured setup credit.  GPT-2's selected `Q_root=134,980,992` crosses the
+next power-of-two boundary: `ell=2^28` and the rate-1/2 oracle has `2^29` Fp
+symbols.  Gemma remains at `ell=2^35`.  Recompiling the codec at those exact
+dimensions reproduces the same selected root profiles, closing the fixed
+point.  Proposition 3.19 makes the first capacity screen
+exact: an RS polynomial with total coefficient dimension `ell` hides at most
+`t=ell-W` queried locations while retaining `W` message coefficients.  Using
+the complete visible-Fp leaf reservation as a conservative per-attempt charge
+gives:
+
+| Fixed current tree | GPT-2 | 31B |
+| --- | ---: | ---: |
+| total RS coefficient dimension `ell_0` | 134,217,728 | 34,359,738,368 |
+| zero-tree-growth random coefficient headroom | 10,217,728 | 3,533,338,368 |
+| reserved visible-Fp charge per attempt | 234,342 | 297,510 |
+| full attempts before lifecycle reserve or margin | **43** | **11,876** |
+
+These are provisional ceilings, not selected service lives: the paper counts
+distinct alphabet locations, whereas C7 conservatively burns every visible
+base-field occurrence and forbids cross-attempt refunds.  The exact
+cross-round load refinement, init/rotation charges and positive privacy margin
+can only tighten the admitted row.  Under the selected 32-byte seed, without
+persisting the expanded random coefficients, the power-of-two tree geometry
+permits the following full-opening-reservation controls within each setup tier:
+
+| Geometry-only tier | GPT-2 attempts | GPT-2 persistent | 31B attempts | 31B persistent |
+| --- | ---: | ---: | ---: | ---: |
+| target 2.00x | 616 | 491,686,208 B | 11,876 | 92,844,619,328 B |
+| tolerance 2.10x | 616 | 491,686,208 B | 127,367 | 124,036,438,528 B |
+| exploratory 3.00x | 1,761 | 735,372,288 B | 127,367 | 124,036,438,528 B |
+
+The owner selects the seeded computational line represented by this geometry,
+but the numeric attempt ceilings remain unadmitted until the exact load map
+and lifecycle margin exist.  Persisting all uniform Fp mask coefficients is
+retained as the information-theoretic baseline: its corresponding attempt
+ceilings are **43/43/134** for GPT-2 and
+**11,876/11,876/25,596** for 31B across the same three tiers.  The selected
+32-byte seed removes that coefficient store, but its PRG advantage is now an
+explicit term in the 78-bit lifetime budget and the ordered one-scan schedule
+remains unproved.
+
+Charging every compiled round for all `R_max=2^20` attempts gives the
+provisional controls 245,725,396,992/311,961,845,760 random Fp coefficients
+and 249,782,553,920/560,721,907,712 B of geometry
+(1007.188x/9.095x), before coefficient persistence.  This full-round row
+still awaits the cross-round load refinement.
+
+The **NO-GO** does not depend on that missing sharing theorem.  The initial
+`k0=4` oracle alone exposes a reserved 75,012 Fp positions per attempt.  For
+its 16 dense interleaving lanes, `16*max_c load_c >= sum_c load_c`; every lane
+needs at least its own queried-location load in RS randomness.  Concretely,
+on distinct nonzero evaluation points with `q` below the lane message
+dimension, the message Vandermonde has rank `q`, the mask image has rank at
+most `r`, and privacy requires `im(G_message) subseteq im(G_mask)`; hence
+`r>=q`.  Thus
+`R_max` requires at least 78,655,782,912 random Fp coefficients even if every
+later-round disclosure is free.  The corresponding GPT-2/31B geometries are
+125,015,276,992 B (**504.094x**) and 186,420,076,992 B (**3.023708x**), both
+above the absolute 3x caps.  Therefore one root for the full connection
+horizon is NO-GO.  Root rotation is necessary, but its same-`W` bridge and
+composition remain open; R0.8 neither tests nor credits refresh.  The setup
+gate also remains false pending the exact full load refinement, concrete
+generator advantage, an ordered rate-1/2 RS symbol generator with
+one packed-source scan, and measured wall/RSS/temporary I/O.  Full codeword or
+model-sized temporary materialization remains forbidden.
 
 For `M` source/code symbols, `g` symbols per leaf, `h` digest bytes and
 authenticated symbol width `b_auth`, the first required trade-off screen is
@@ -2905,11 +3450,14 @@ future R1 journal design.
 | allocation per event | `2^-110` |
 | `epsilon_response` | `2^-104` |
 | leaf salt screen | 256 bits; 192 bits rejected |
-| active hash work bounds | `Q_CR / Q_hide / Q_PRF`, all unselected and distinct |
+| active hash/generator work bounds | `Q_CR / Q_hide / Q_saltPRF / Q_mask_words`, all unselected and distinct |
+| root-mask privacy | selected 256-bit per-root seed; computational `Adv_RootMaskPRG_multi + K_seed_attempts*epsilon_rejection <= 2^-110`; primitive/work bound unselected |
+| BLAKE3 fallback only | `R_root=512/8192`, global attempts `2^20`, `K_model=2048/128`, total seeds `4096/256`, model-wide `Q_mask_words=3,317,292,859,392/4,211,484,917,760`; complete target allocation is 86.407/86.063 bits and passes 78, but achieved terms remain nonnumeric/false |
+| KMAC unpromoted high-margin control | same confirmed global horizon/profile; frozen 64-KiB v1 codec; conditional ideal-permutation PRG sum 152.992/152.647 bits and conditional whole-privacy allocation 107.415 bits; multi-key reduction/fixed-permutation advantage/setup measurement missing, so unpromoted/false |
 | historical policy-3 salt screen | `Q_leaf=2^64`; not an active theorem cap |
-| challenge mode / `Q_FS` | fresh honest-DV post-prefix interactive / `0`; entropy delivery and transcript binding not instantiated |
-| inherited unamplified strict-UD Fp2 bound, rate 1/2 `k0=4` | certifies 97.023/89.006 bits across all GPT-2/31B folds; 77.023/69.006 after `2^20`, before other terms; insufficient for admission, not a security upper bound |
-| algebraic closure | one bounded tighter-bound audit, then direct three-limb Fp3 if it fails; selected but unproved/unadmitted, and all bytes/work remain required |
+| challenge mode / `Q_FS` | fresh honest-DV post-prefix interactive / `0`; future FS selects neither primitive now—KMAC favors margin, BLAKE3 throughput only with tightly preregistered `Q_FS`; entropy delivery and transcript binding not instantiated |
+| inherited unamplified strict-UD Fp2 bound, rate 1/2 `k0=4` | certifies 97.017/89.087 bits across all GPT-2/31B folds; 77.017/69.087 after `2^20`, before other terms; insufficient for admission, not a security upper bound |
+| algebraic closure | direct three-limb Goldilocks Fp3 selected; fixed-point schedules certify 160.011/153.173 response bits and 140.011/133.173 after `2^20` on this axis; Rust codec/KAT and the carrier-independent MAC equation seam pass, while PCS/PCG/VOLE refinement and all other bytes/work/security terms remain required |
 | hash / PCG / state / framing | allocated `2^-128 / 2^-128 / 2^-120 / 2^-128`; not yet derived |
 | exact `epsilon_connection` | `17592186044675 / 2^128` |
 | effective connection bits | `83.99999999997877` |
@@ -3000,7 +3548,7 @@ M1--M12 statements.  It proves the following algebra/state seams:
 | --- | --- |
 | heterogeneous packed functional | `packed_functional_eq` |
 | fixed-before-beta RLC | `fixed_prefix_rlc_accepting_card_le`; prefix/residual implications are premises, with no transcript/FS theorem |
-| multi-commit terminal MAC | existing Fp2 key/MAC linearity under one `Delta` and both coordinate equalities; direct three-coordinate analogue remains required if the selected Fp3 fallback is reached |
+| multi-commit terminal MAC | extension-field key/MAC linearity under one `Delta`; `multi_commit_terminal_mac_equation_on_coordinates` is generic in `Fin d` and covers all three Fp3 limbs |
 | affine mask reuse extraction | `reused_affine_mask_extract` |
 | append MLE/linear-functional difference | C7 append-difference theorem |
 | prefix and accepted-tail induction | C7 prefix/transition-chain theorems |
@@ -3049,30 +3597,36 @@ The focused command
 `cd lean && lake build +VoltaZk.C7StatefulAlfc:olean` passes without
 `sorryAx` in these C7 lemmas.
 
-## 8. R0.7 disposition and exact resume conditions
+## 8. R0.8 disposition and exact resume conditions
 
 ### 8.1 Backend/control recommendation
 
 - **Policy 2: ACTIVE FOR DESIGN; NO EXECUTABLE BACKEND GO.**  Only budgeted root-bound
   masked PCS responses may be visible; the terminal evaluation stays
   authenticated.  Numeric counters remain fail-closed and unset.
-- **RS t-query ZK + strict-UD WHIR/Ligerito + salted BLAKE3: owner-selected
-  theorem carrier, census only.**  It still lacks `OnlineMDVViewRefine`, adaptive stateful malicious-DV
-  privacy and a setup-safe, one-scan opener.
+- **RS t-query ZK + strict-UD WHIR/Ligerito: CONTROL BASELINE ONLY.**  Owner
+  choice 2.A demotes it from selected carrier and forbids implementing its
+  prover.  It retains the algebraic/security census and every rejection
+  reason: missing `OnlineMDVViewRefine`, adaptive malicious-DV privacy,
+  setup-safe one-scan opener and an admitted root horizon.
+- **Root-mask realization: COMPUTATIONAL SEEDED LINE SELECTED.**  One private
+  256-bit seed is persisted per root, with fixed addressed rejection sampling
+  and no response reseed.  `Adv_RootMaskPRG_multi` plus rejection failure is
+  included in the 78-bit lifetime budget with a provisional 110-bit component
+  reserve.  The concrete primitive/work-factor theorem remains unselected;
+  explicit uniform coefficient persistence is baseline evidence only.
 - **Unamplified Fp2 strict-UD: NO-GO under current evidence, not declared
   insecure.**  The inherited all-fold bound does not certify the target; no
   tight attack or impossibility theorem is claimed.
-- **Owner-selected soundness-closure path:** perform one bounded tighter-bound
-  audit of the retained strict-UD argument.  It must produce a
-  schedule-parametric all-fold bound, then pass on the eventual 31B schedule
-  inside the rate-1/2/first-`k0=4` envelope at the registered 110-bit
-  response-event allocation without list-decoding or conjectural assumptions.
-  The known-failing constant-`k=4` row is only its control fixture.  If the
-  audit does not pass, the analytic baseline changes to
-  Goldilocks Fp3 with a direct three-Fp-limb terminal/MAC.  Fp3 preserves the
-  logical query count and is the smallest current payload control (+42.8%)
-  that clears the inherited bound.  This selection changes the eventual
-  Fp2-only terminal obligation, but earns no theorem, codec or backend credit.
+- **Selected-schedule Fp2 audit: COMPLETE FAIL.**  The 31B schedule certifies
+  89.087 response bits and 69.087 after `R_max=2^20`, before other terms.
+  A modest relaxation to 104 or 98 cannot preserve the 78-bit connection
+  target.
+- **Direct Goldilocks Fp3: SELECTED FOR THE CODEC; ALGEBRAIC AXIS PASS.**  The
+  31B schedule certifies 153.173 response bits and 133.173 after `R_max`.
+  The carrier-independent Rust codec/KAT and shared-`Delta` equation seam now
+  pass focused tests.  This is not full connection security: PCS/PCG/VOLE
+  refinement, malicious-DV privacy and every other error term remain open.
 - **Two Fp2 repetitions: fallback only.**  It preserves the field but needs a
   new adaptive repetition/shared-scan theorem and conservatively doubles the
   query/privacy payload.  **Interactive PoW remains NO-GO** under `Q_FS=0`
@@ -3080,14 +3634,27 @@ The focused command
 - **Owner-selected compiler envelope:** starting rate 1/2, first fold `k0=4`,
   one flat packed weight oracle/root and the dense logical `g=141` stream.
   Pure-width optimization and both bounded alternatives are closed under the
-  original 1.05 gate.  The owner-authorized fallback retains the exact Fp2
-  formula pair `(831,19104)->(1054,24128)` under a new componentwise 1.30
-  query-growth ceiling.  Here `Fp_positions` is an unstacked formula control,
-  not compiled `S_visible_Fp`; `Z_atom`, `U_leaf`, `S_visible_Fp`, paths and
-  bytes remain unknown.  The row must pass all four active query gates and all
-  unchanged gates before a CPU reference.  Fp3 may close only the algebraic
-  axis.  Segmentation, a new base field and persistent row padding do not
-  themselves repair query growth.
+  original 1.05 gate.  The Fp3 g141 opening subcodec now compiles
+  `(q,Z,U,S)=(831,29192,1662,234342)` and
+  `(1055,33848,2110,297510)`; all four growth ratios pass 1.30.  Known opening
+  bytes are 2,605,740/3,729,724 B, but the non-oracle and receipt frames remain
+  unknown, so the complete codec/wire gate is false.  Segmentation, another
+  field and persistent row padding do not waive any unchanged gate.
+- **Selected strict-UD RS realization: NO-GO.**  The root/codec fixed point
+  requires `2^29/2^36` initial symbols.  Direct opening is qN; persisting the
+  codeword is 19.301x/10.423x packed; online materialization is model-sized;
+  and no exact `O(N+poly(q,log N))` shared schedule is registered.  Seeded
+  BLAKE3/KMAC does not solve the RS linear map.  This is not a universal lower
+  bound.  It is retained only as the control above.
+- **New-carrier tournament: OPEN, EMPTY, FAIL-CLOSED.**  Owner choice 1.A
+  has two tracks. Published constructions are baseline/control rows, admitted
+  only with exact independently verifiable costs. A co-designed C7 shared
+  circuit is the main research line, but earns no design credit. Before a tiny
+  CPU prototype it must supply a complete relation/codec, exact resource
+  census, stateful soundness/privacy bridge and a one-packed-scan
+  `O(N+poly(q,log N))` proof. Pure fold width, the two bounded R0.7
+  alternatives and already rejected families are not rescreened; their
+  individual reasons remain in the decision register.
 - **ERA `r=4` + salted BLAKE3: byte/prover control only.**  Its published
   field-query law grows with `log N`, its masked encoding is unproved here,
   and its N-scale setup intermediates remain excluded.
@@ -3096,9 +3663,9 @@ The focused command
 
 ### 8.2 Resume conditions for an R1 proposal
 
-Policy 3 remains terminally rejected under the registered constraints and
-policy 2 is active.  Numeric lifetime caps remain forbidden until a complete
-Pareto census exists.  The selected challenge baseline remains interactive
+Policy 3 remains terminally rejected and policy 2 is active.  Strict-UD RS is
+now only the control baseline; the new-carrier tournament has no admitted row.
+The selected challenge baseline remains interactive
 honest-DV (`Q_FS=0`) and logical `g=141`.  Setup retains its 2.00 target/2.10
 baseline, with a conditional exploratory 3x ceiling plus absolute disk,
 setup-wall and refresh-wall caps.  Proof wire retains 105% as target and may
@@ -3110,33 +3677,25 @@ fail-closed readiness handoff is
 prover/E2E, pod contact or pod execution.
 
 Both bounded post-Pareto alternatives are closed and must not be repeated.
-Subject to a new owner checkpoint decision, the next design-only step is to
-compile the retained Fp2 pair into exact `Z_atom`, g141 `U_leaf`,
-`S_visible_Fp`, paths and serialized bytes and test all four counts separately
-against 1.30.  The 1.268x/1.263x controls do not pre-decide that result, and
-padding GPT-2 remains forbidden.  The selected soundness audit remains
-required for the compiled schedule; if its explicit
-all-fold bound does not meet the registered allocation, switch the analytic
-row to Goldilocks Fp3 and serialize/authenticate all three base-field limbs
-directly under the connection-scoped MAC domain.  There is no Fp2 embedding,
-limb truncation or hidden second terminal.  Two independent Fp2 folds remain
-fallback only if the Fp3 row later fails a non-security gate.  Interactive PoW
-remains quarantined absent a new resource-bounded theorem.  Compile only the
-selected rate-1/2/first-`k0=4` Goldilocks envelope with one flat packed root
-and the physical g141 layout, but do not reopen pure fold-width search: its
-complete frontier and both bounded alternatives are already closed.  If the
-compiled pair fails any 1.30 query count or another unchanged gate, the
-theorem-carrier line is NO-GO before a CPU reference; segmentation or a new
-base field does not waive that gate.  Before
-an R1 proposal it must supply all of:
+The owner has authorized the dual-track new-carrier tournament, but even a
+tiny CPU prototype waits for all four R0.8a screen obligations. The tested Fp3
+codec/MAC seam is expressly carrier-independent and is not such authorization.
+Fp3, 78 connection bits, setup 900/990 and
+5,400/5,940 seconds, separate untested refresh counters and computational
+per-root masks otherwise remain fixed.  Any successor must serialize and
+authenticate all three base-field limbs directly under the connection-scoped
+MAC domain; there is no Fp2 embedding, limb truncation or hidden second
+terminal.  Pure fold-width search and the already bounded alternatives stay
+closed.  Before an R1 proposal the successor must supply all of:
 
 1. exact plane-tagged GPT-2/31B `q_attempt/q_response` vectors,
    theorem-defined weight `Q_root`, response `Q_B` and state `Q_KV` horizons,
    typed `q_init/q_rotate_in/q_rotate_out` and
    `u_init/u_rotate_in/u_rotate_out`, derived `R_root` after lifecycle reserve,
    positive privacy headroom, distinct
-   `Q_CR/Q_hide/Q_PRF`, bounded `D_model`, and a bounded `K_model` or
-   multi-root theorem;
+   `Q_CR/Q_hide/Q_saltPRF/Q_mask_words`, a concrete multi-root PRG advantage
+   meeting its 110-bit component reserve, bounded `D_model`, and a bounded
+   `K_model` or multi-root theorem;
 2. an executable canonical compiler with terminal multiplicity exactly one
    for every physical weight, boundary and K/V segment, plus the complete
    ordered `omega`, profile and authenticated single-session
@@ -3209,11 +3768,15 @@ smallest complete serialized case before any larger component benchmark.
   non-adaptive-HVZK gap, the retained post-first-fold domain rule, unamplified
   Fp2 algebraic-security failure, constant-schedule query-growth failures and
   dual-root rotation floor; no executable backend or lifetime cap is promoted.
+- R0.8 fixes the codec/security/byte/resource output and retains rate 1/2,
+  `k0=4`, one packed root, g141 and interactive `Q_FS=0`.  Its exact selected-
+  schedule Fp2 audit fails 110/78 on 31B; setup-wall targets become 900/5,400
+  seconds while tolerance and refresh caps await the owner decision.
 - The proof-byte table is a target allocation calibrated to public component
   evidence, not a composed certificate derivation.  It is `credit:false` and
   is one reason Backend A remains NO-GO.
 - No pod, production provider, frozen forward, quantization spec, or frozen
-  M1--M12 statement was touched in R0/R0.1/R0.2/R0.3/R0.4/R0.5/R0.6/R0.7.
+  M1--M12 statement was touched in R0/R0.1/R0.2/R0.3/R0.4/R0.5/R0.6/R0.7/R0.8.
 
 ## 10. Append-only decision and rejection register
 
@@ -3303,3 +3866,26 @@ entry, but must retain its evidence and reason.
 | `C7-D079` / 2026-08-27 | correct Fp-control semantics and constrain Fp3 | The DP's `Fp_positions` is an unstacked field-position formula control, not the compiled g141 payload `S_visible_Fp`; exact `Z_atom`, `U_leaf`, `S_visible_Fp=141*U_leaf`, paths and bytes remain unknown, so the four-axis 1.30 gate is still fail-closed. Fp3 can discharge only the algebraic-security axis and must independently pass the same complete codec/resource census; it cannot promote a row by field choice alone. |
 | `C7-D080` / 2026-08-27 | relax proof-wire as a conditional exploratory envelope | The former 105% hard ceiling becomes the target. A candidate may preregister one exact hard cap in 125--150% before compiled measurement, but only if the complete proof also stays within 35 MB GPT-2, 115 MB 31B and 3.5x growth. Above 150% fails. The band cannot pay another component or supply privacy/soundness credit; exact cap and full codec bytes remain fail-closed in R0.7. This supersedes D018/D026/D078 only on proof-wire resource tolerance and retains their accounting reasons. |
 | `C7-D081` / 2026-08-27 | add conditional near-3x setup exploration | Setup keeps 2.00 as target and 2.10 as baseline tolerance, while adding `A_setup<=3.00` as an exploratory ceiling. For the fixed workloads this gives absolute persistent-disk caps 744,000,000 B / 184,958,400,000 B. Absolute setup-wall and refresh-wall seconds must be preregistered before measurement; they remain unset until an R0.8 candidate/owner SLA exists, so the exploratory gate is false. All temporary disk, traffic, peak memory and refresh work remain counted, and X4d-scale expansion/unbounded scratch remains rejected. This supersedes D017/D043/D078 only on the setup ratio. |
+| `C7-D082` / 2026-08-28 | open R0.8 without changing the carrier envelope | R0.8 is design/analytic-only and must output the canonical codec, security-event registry, serialized bytes and resource row. RS t-query ZK + strict-UD WHIR/Ligerito, rate 1/2, `k0=4`, one packed weight root, logical `g=141` and fresh interactive `Q_FS=0` remain fixed. No prover, SIMT, E2E or pod is authorized. |
+| `C7-D083` / 2026-08-28 | strict-audit Fp2 before any Fp3 transition | The selected schedules certify 97.017/89.087 all-fold response bits and 77.017/69.087 after `R_max=2^20`. The 31B row fails both 110 and 78 before other terms. A 104- or 98-bit response relaxation cannot repair it. A bare 78-bit lifetime permits at most 2,175 attempts and an 84-bit intermediate target only 33; these are screens, not selected horizons. Field degree remains Fp2 until the owner chooses Fp3, a materially shorter horizon, or a weaker connection target. |
+| `C7-D084` / 2026-08-28 | register setup-wall targets but not post-hoc tolerance | GPT-2/31B setup-wall targets are 900/5,400 seconds. The owner requires tolerance, but its numeric hard caps and the separate refresh targets/caps remain unset and fail-closed. Persistent-disk 3x, temporary disk, traffic, peak memory and invalidation remain independent conjunctive gates. |
+| `C7-D085` / 2026-08-28 | select direct Fp3 and retain 78 connection bits | The owner rejects shortening the horizon or weakening the target. On schedules `[4,5,3,3,3,3]` and `[4,3,3,3,4,4,4,4]`, the exact inherited `p^3` all-fold bound certifies 161.017/153.173 response bits and 141.017/133.173 after `R_max=2^20`. This passes only the algebraic-gap axis. Full connection security remains false pending concrete Fp3 arithmetic/serialization, shared-Delta terminal soundness, complete codec, malicious-DV privacy and every other error term. |
+| `C7-D086` / 2026-08-28 | fix independent setup and refresh clocks | GPT-2 setup target/hard cap is 900/990 s; 31B is 5,400/5,940 s. Refresh receives separate counters and the same initial numeric pairs, cannot borrow setup budget, and is explicitly not tested or credited in R0.8. This supersedes D084's unset cells without changing persistent disk, temporary I/O or peak-memory gates. |
+| `C7-D087` / 2026-08-28 | compile the Fp3 g141 opening reservation but not the full codec | Conservative GPT-2/31B counts are `q_open=831/1055`, `Z_atom=26528/33848`, `U_leaf=1662/2110` and `S_visible_Fp=234342/297510`; growth is 1.269555x/1.275935x/1.269555x/1.269555x, so all four owner 1.30 gates pass without denominator padding. Exact compact-tree sibling caps are 19,335/39,843 and known serialized opening bytes are 2,552,532/3,729,724 B. The latter fit the 105% targets only in isolation: strict-UD non-oracle/OOD frames, authenticated reservation/assignment receipts and root-hiding capacity metadata remain unknown, so complete codec, certificate and backend gates stay false. |
+| `C7-D088` / 2026-08-28 | pin canonical Fp3 and generalize the Lean coordinate consequence | Select `Fp[u]/(u^3-2)`, canonical `le64(a0)||le64(a1)||le64(a2)` with each limb `<p`, and reject noncanonical 24-byte encodings. Since `p mod 3=1` and `2^((p-1)/3) mod p=2^32-1!=1`, 2 is a non-cube and the cubic is irreducible. The terminal uses one shared `Delta in Fp3`, one 24-byte correction and no clear evaluation; three independent Fp MACs are forbidden. `multi_commit_terminal_mac_equation_on_coordinates` is generalized from `Fin 2` to `Fin d`; the focused C7 Lean build passes. Rust codec/KAT and the concrete terminal refinement remain unimplemented and uncredited. |
+| `C7-D089` / 2026-08-28 | recompute interactive versus Fiat--Shamir on selected Fp3 | For one fixed prefix and `T=512`, fresh interactive Fp3 has 183.000 effective bits and serializes 24 B/draw. Direct FS under the analytic `Q_FS=2^64` control has 119.000 bits; paired FS has 302.000 only if one frozen paired-RO invocation yields two independent challenges checking the same relation. Connection composition is separate. Both FS rows remain unselected: their nonce/hash scope and exact duplicate/shared response, path, MAC, scan and byte costs are uncompiled, and neither improves malicious-DV privacy or the root budget. `Q_FS=0` remains fixed. |
+| `C7-D090` / 2026-08-28 | quarantine the apparent 1.49x/1.51x setup pass | The 369,843,104/92,844,619,296-B rows count packed i16, one rate-1/2 compact g141 tree and root metadata only. They are pre-mask-capacity lower bounds, not complete setup: the RS t-query ZK randomness dimension and any persistent payload/index bytes are unknown. Those bytes cannot be hidden behind a digest root or preprocessing label. Until capacity plus ordered one-scan generation, temporary I/O, RSS and wall are derived, setup remains false even though the known floor is below 2x; any X4d-scale expansion remains rejected. |
+| `C7-D091` / 2026-08-28 | bound RS mask capacity and reject one root for `R_max` | Proposition 3.19 requires randomness length `t` for perfect t-query RS privacy, so `ell>=W+t` and a rate-1/2 oracle has `2*ell` symbols. Conservatively charging all visible Fp occurrences gives zero-tree-growth ceilings of only 43/11,876 attempts for GPT-2/31B. Geometry-only 2.00/2.10/3.00x ceilings are 616/616/1,761 and 11,876/127,367/127,367 attempts; explicit persistence of uniform coefficients lowers them to 43/43/134 and 11,876/11,876/25,596. These are not admitted `R_root`: paper alphabet queries still need the g141/interleaving load refinement, and lifecycle reserve/margin can only reduce them. The full-opening control is 1007.188x/9.095x. Independently, the initial 16-lane oracle alone reserves 75,012 Fp positions per attempt; `16*max load>=sum load` forces at least 78,655,782,912 random coefficients over `2^20` attempts, yielding 504.094x/3.023708x geometry. Hence one root for `R_max` is NO-GO even if all later rounds are free. Rotation is necessary but refresh remains untested; a short seed requires a separately charged computational PCG/PRG and one-scan random-access refinement. |
+| `C7-D092` / 2026-08-28 | select computational per-root seeded masks and retain explicit coefficients as baseline | The main line persists one fresh private 256-bit seed per disclosed candidate root, never reseeds per response, and declares weight-root privacy computational. Fixed addresses include model/epoch/layout/field/rate/k0/coefficient/draw indices. Six addressed 64-bit Goldilocks rejection draws give exact ideal Fp coefficients conditioned on success and per-seed failure bounds of 163.379/156.859 bits at the largest GPT-2/31B geometry-only capacities. The model-lifetime privacy theorem must include `Adv_RootMaskPRG_multi(K_model,{Q_mask_words}) + K_seed_attempts*epsilon_rejection <= 2^-110` as one component inside the 78-bit bound, distinct from salt PRF and VOLE PCG. The concrete generator and multi-key work-factor bound remain unselected, so security and setup stay fail-closed. Persisted uniform coefficients remain the information-theoretic baseline only. The seed adds 32 persistent bytes per root; setup occurs once per root epoch and refresh remains rare by design but untested and not a security assumption. |
+| `C7-D093` / 2026-08-28 | quarantine existing generators for the C7 root-mask role | Repository reuse was audited before selecting a new primitive. `volta-field::FpStream`/ChaCha8 is rejected because it is explicitly a mock-PCG stand-in, has an unbounded sequential rejection loop and no C7 multi-root theorem. `volta-pcg` AES-128-MMO is quarantined because its registered scope is fixed-key 16-byte WYKW GGM-node expansion, not a 256-bit addressed root-mask function; the non-default 16-byte BLAKE3 GGM path is quarantined for the same scope mismatch. No claim is made that these primitives are broken in their registered roles. Public salted BLAKE3 remains selected for the separate leaf/tree commitment role. Resume requires a primitive-specific `Adv_RootMaskPRG_multi(K_model,{Q_mask_words})` bound before implementation. |
+| `C7-D094` / 2026-08-28 | select keyed BLAKE3-XOF candidate order without lowering security | Keyed BLAKE3-XOF is the primary root-mask candidate for speed, seekable addressed output and parallelism; KMACXOF256 is the fallback, then the root-attempt horizon may be reduced and all RS/setup budgets recomputed. The connection target stays 78 bits. BLAKE3's specification targets 128-bit security and does not turn its 256-bit key into a 256-bit security claim or supply C7's quantitative multi-root theorem. Thus only 18 bits (`2^18` factor) of compositional loss can fit before the `2^-110` PRG reserve. `Q_mask_words` counts all generator words consumed by setup, not merely visible PCS queries absent a tighter proof. Under a linear-loss control, the 262,144-word ceiling barely exceeds GPT-2's conservative 234,342 one-attempt charge but is below 31B's 297,510; this is not terminal because the charge-to-theorem mapping is open. At exploratory 31B geometry the first-draw floor already exceeds `2^35` words. BLAKE3 and KMAC remain candidates with `credit:false` until their exact multi-root bounds and setup-wall rows pass. |
+| `C7-D095` / 2026-08-28 | compile maximum preregistered root-profile proposals including failures | Post-hoc averages/refunds are forbidden. Proposed GPT-2/31B profiles use `R_root=512/8192`, include every accepted/failed/retried/selectively aborted response attempt, reserve a separate 1/8 attempt-equivalent margin for lifecycle/load refinement, and cap setup at two fully charged seeds. This gives proposed scalar `Q_root=134,980,992/2,741,852,160` and worst-case six-draw all-seed `Q_mask_words=1,619,771,904/32,902,225,920`; both fit target-2.00x RS capacity with 9,454,464/791,486,208 coefficients left. A linear `Q/2^128` proof form certifies only 97.406/93.063 bits, below 110. The proposals remain owner-unselected and unadmitted because the plane/lifecycle split and exact BLAKE3 multi-root theorem are missing. |
+| `C7-D096` / 2026-08-28 | authorize a full-78 BLAKE3 fallback without relaxing mainline 110 | The owner authorizes D095's numeric profiles only as a computational fallback. Mainline root-mask PRG remains `<=2^-110`. The fallback caps all model-variant attempts across connections at `2^20`, yielding `K_model=2048/128`, total seed attempts 4096/256 and model-wide `Q_mask_words=3,317,292,859,392/4,211,484,917,760`. The named, non-theorem `Q/2^128` BLAKE3 control plus rejection gives 86.407/86.063 bits: it fails mainline 110 but does not alone exceed `2^-78`. Fallback admission requires the exact BLAKE3 multi-root term and every RS-view, salt/hash, PCG/VOLE, MAC, allocator/state, replay/fork, abort/timing and codec term to be numeric and their exact sum `<=2^-78`. They are not, so the variant remains fail-closed and unimplemented; failure promotes KMACXOF256 or reduces `R_root`. |
+| `C7-D097` / 2026-08-28 | confirm one global model-wide fallback horizon | The owner confirms that `2^20` is the irrevocable aggregate maximum for the model privacy variant across all connections, users, accepted responses, failures, retries and selective aborts, not a per-connection allowance. This fixes `K_model=2048/128` for the fallback profiles and forbids resetting the lifetime by opening a new connection. |
+| `C7-D098` / 2026-08-28 | compile but do not promote chunk-addressed KMACXOF256 | The 64-KiB `C7-RM-KMACXOF256-v1` codec uses a 104-byte root descriptor plus `le64(chunk)`, exact ordered six-draw word mapping and independent KMAC calls for bounded-memory CPU/SIMT equivalence. Two-seed root-construction controls are 12,958,175,232/263,217,807,360 generator bytes and 95,699,420/1,943,930,342 Keccak-f[1600] permutations. Zero persistent codeword does not pay the still-unknown online `BatchOpenBlocks` mask contribution; it must separately meet one scan, `O(N+poly(q,log N))` and bounded memory. Under an unselected `2^64` adversarial-permutation screen, the generic ideal-permutation PRG sum is 152.992/152.647 bits and conditionally passes 110; adding every registered other-privacy target gives 107.415 bits and conditionally passes 78. Neither is security credit because the adaptive multi-key KMAC-to-fixed-Keccak reduction, numeric fixed-permutation advantage, achieved non-generator privacy terms, online schedule and measured setup wall are missing. BLAKE3 remains the named primary order; KMAC is an unpromoted mainline alternative. |
+| `C7-D099` / 2026-08-28 | separate complete privacy allocation from theorem discharge | Six non-generator terms receive target cap `2^-110`, allocator/state and replay/fork receive `2^-120`, and codec/transcript refinement must be exact. Adding every target gives 86.406856/86.062533 bits for the BLAKE3 fallback and 107.414568 bits for the conditional KMAC row, so both allocations pass 78. `complete_privacy_passes_78` remains false: a numeric target is not an achieved advantage, and promoting it would hide the missing adaptive RS-view, PRF/hash, PCG/VOLE/MAC, allocator/state, abort/timing and codec theorems. |
+| `C7-D100` / 2026-08-28 | freeze KMAC v1 and privacy allocation without changing the primary | The owner freezes the 64-KiB `C7-RM-KMACXOF256-v1` chunk/descriptor and approves D099's target allocation, while reconfirming BLAKE3-XOF as primary for performance and parallelism and KMAC as an unpromoted high-margin control. Current challenges remain interactive with `Q_FS=0`. Future Fiat--Shamir selection is separate: KMAC is favored when security margin dominates; BLAKE3 is favored for throughput only under a tightly preregistered `Q_FS` and complete ROM/multi-target/proof-byte sum. Root-mask expansion and transcript hashing remain distinct domains and cannot share an advantage bound implicitly. |
+| `C7-D101` / 2026-08-28 | close the root-profile/codec fixed point | D085/D087 used GPT-2's pre-mask `2^27` geometry, but selected `Q_root=134,980,992` requires `2^28` total coefficients and a `2^29`-symbol rate-1/2 oracle. Recompilation changes the GPT-2 schedule to `[4,5,3,3,3,4]`, `Z_atom` to 29,192, sibling cap to 20,997, known bytes to 2,605,740, algebraic bits to 160.011/140.011 and selected setup to 491,686,208 B (1.982606x). `q/U/S` are unchanged. Gemma remains at `2^35`, and all four large/GPT growth axes still pass 1.30. Recomputing capacity returns the same selected dimensions, so the fixed point is closed. This supersedes D085/D087/D090 only for the active selected geometry; their pre-mask observations remain historical evidence. |
+| `C7-D102` / 2026-08-28 | selected strict-UD RS realization NO-GO under online gates | The exact initial codewords are `2^29/2^36` Fp symbols. Direct dense opening is a qN control (not a lower bound on shared circuits); persisting codeword plus tree is 4,786,653,504/642,600,433,216 B, or 19.301x/10.423x packed and fails 3x; online materialization needs 4.295/549.756 GB scratch; and the bounded repository/paper screen contains no pruned/shared circuit with a q-independent source-linear term, one packed scan and bounded memory. BLAKE3/KMAC random access removes mask storage but does not evaluate the RS map. No complete row exists, so `C7_CPU_REFERENCE_PASS=false` and prover/SIMT/pod remain forbidden. This is not a universal lower bound. Resume requires an owner-selected new code-switch/shared circuit with exact bytes and `O(N+poly(q,log N))`, or an explicit relaxation of a recorded hard resource gate. |
+| `C7-D103` / 2026-08-28 | choose 1.A/2.A/3.B: open a new-carrier tournament, demote RS, implement only the Fp3 seam | All resource and security gates stay fixed. The tournament admits only a genuinely new shared code-switch/circuit with an exact q-independent source-linear term, one monotone packed scan, bounded memory, complete g141 codec/bytes and policy-2 soundness/privacy bridge. Pure fold width and the already closed joint-sampling/code-switch families are not repeated; their original rejection reasons remain controlling. Strict-UD RS is retained solely as an algebraic/security baseline, and its prover is forbidden. The only implementation authority is carrier-independent: canonical 24-byte `Fp[u]/(u^3-2)` encoding/KAT and the shared-`Delta` equation seam. Focused Rust tests cover wrong length, noncanonical limbs, multiplication, two-commitment RLC linearity and correction mutation in each limb. This supplies no PCS, PCG/VOLE, malicious-DV theorem or protocol credit. No prover, SIMT, refresh, provider or pod is authorized. |
+| `C7-D104` / 2026-08-28 | split the R0.8a tournament into published controls and a co-designed C7 main line | Published constructions serve only as baseline/control rows and require exact independently verifiable costs. The main research line is a new co-designed C7 shared circuit because no published row currently combines one scan, bounded memory, nearly linear online work, policy-2 privacy and stateful authentication. Co-design earns no credit by intent: before a tiny CPU prototype it must supply a complete algebraic relation/codec; exact query, byte, memory, setup and work counts; the soundness/privacy bridge to MAC, KV cache and a malicious verifier; and a proof of one packed scan in `O(N+poly(q,log N))`. Until all four pass, no prototype exists. SIMT, a complete prover, refresh and pod remain separately forbidden. |

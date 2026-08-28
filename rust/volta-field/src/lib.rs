@@ -1,8 +1,9 @@
-//! Goldilocks field `F_p`, `p = 2^64 - 2^32 + 1`, and its quadratic extension
-//! `E = F_p[X]/(X^2 - 7)`. Canonical representation in `[0, p)`.
+//! Goldilocks field `F_p`, `p = 2^64 - 2^32 + 1`, its quadratic extension
+//! `F_p[X]/(X^2 - 7)`, and C7's cubic extension `F_p[u]/(u^3 - 2)`.
+//! Canonical base-field representation is `[0, p)`.
 //!
-//! Quantized plaintexts (i16) embed into `F_p`; MAC tags, keys, Δ and
-//! challenges live in `E` (~2^124 statistical soundness per opening).
+//! Quantized plaintexts (i16) embed into `F_p`; existing MAC tags, keys, Δ and
+//! challenges use `Fp2`, while C7's carrier-independent seam uses `Fp3`.
 
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -221,6 +222,142 @@ impl core::ops::AddAssign for Fp2 {
     }
 }
 
+/// `F_p³ = F_p[u]/(u³ - 2)`: `c0 + c1·u + c2·u²`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Hash)]
+pub struct Fp3 {
+    pub c0: Fp,
+    pub c1: Fp,
+    pub c2: Fp,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Fp3DecodeError {
+    WrongLength { actual: usize },
+    NonCanonicalLimb { limb: usize },
+}
+
+impl core::fmt::Display for Fp3DecodeError {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::WrongLength { actual } => {
+                write!(formatter, "Fp3 encoding is {actual} bytes, expected 24")
+            }
+            Self::NonCanonicalLimb { limb } => {
+                write!(formatter, "Fp3 limb {limb} is not canonical")
+            }
+        }
+    }
+}
+
+impl std::error::Error for Fp3DecodeError {}
+
+impl Fp3 {
+    pub const ZERO: Fp3 = Fp3 { c0: Fp::ZERO, c1: Fp::ZERO, c2: Fp::ZERO };
+    pub const ONE: Fp3 = Fp3 { c0: Fp::ONE, c1: Fp::ZERO, c2: Fp::ZERO };
+    pub const ENCODED_BYTES: usize = 24;
+
+    #[inline]
+    pub const fn new(c0: Fp, c1: Fp, c2: Fp) -> Fp3 {
+        Fp3 { c0, c1, c2 }
+    }
+
+    #[inline]
+    pub const fn from_base(x: Fp) -> Fp3 {
+        Fp3 { c0: x, c1: Fp::ZERO, c2: Fp::ZERO }
+    }
+
+    #[inline]
+    pub fn add(self, rhs: Fp3) -> Fp3 {
+        Fp3::new(self.c0 + rhs.c0, self.c1 + rhs.c1, self.c2 + rhs.c2)
+    }
+
+    #[inline]
+    pub fn sub(self, rhs: Fp3) -> Fp3 {
+        Fp3::new(self.c0 - rhs.c0, self.c1 - rhs.c1, self.c2 - rhs.c2)
+    }
+
+    #[inline]
+    pub fn mul(self, rhs: Fp3) -> Fp3 {
+        let two = Fp::new(2);
+        Fp3::new(
+            self.c0 * rhs.c0 + two * (self.c1 * rhs.c2 + self.c2 * rhs.c1),
+            self.c0 * rhs.c1 + self.c1 * rhs.c0 + two * (self.c2 * rhs.c2),
+            self.c0 * rhs.c2 + self.c1 * rhs.c1 + self.c2 * rhs.c0,
+        )
+    }
+
+    #[inline]
+    pub fn mul_base(self, rhs: Fp) -> Fp3 {
+        Fp3::new(self.c0 * rhs, self.c1 * rhs, self.c2 * rhs)
+    }
+
+    pub fn to_bytes(self) -> [u8; Self::ENCODED_BYTES] {
+        let mut encoded = [0u8; Self::ENCODED_BYTES];
+        for (index, limb) in [self.c0, self.c1, self.c2].into_iter().enumerate() {
+            encoded[index * 8..(index + 1) * 8].copy_from_slice(&limb.value().to_le_bytes());
+        }
+        encoded
+    }
+
+    pub fn from_bytes(encoded: &[u8]) -> Result<Fp3, Fp3DecodeError> {
+        if encoded.len() != Self::ENCODED_BYTES {
+            return Err(Fp3DecodeError::WrongLength { actual: encoded.len() });
+        }
+        let mut limbs = [Fp::ZERO; 3];
+        for (index, limb) in limbs.iter_mut().enumerate() {
+            let raw = u64::from_le_bytes(encoded[index * 8..(index + 1) * 8].try_into().unwrap());
+            if raw >= P {
+                return Err(Fp3DecodeError::NonCanonicalLimb { limb: index });
+            }
+            *limb = Fp(raw);
+        }
+        Ok(Fp3::new(limbs[0], limbs[1], limbs[2]))
+    }
+}
+
+impl core::ops::Add for Fp3 {
+    type Output = Fp3;
+
+    #[inline]
+    fn add(self, rhs: Fp3) -> Fp3 {
+        Fp3::add(self, rhs)
+    }
+}
+
+impl core::ops::Sub for Fp3 {
+    type Output = Fp3;
+
+    #[inline]
+    fn sub(self, rhs: Fp3) -> Fp3 {
+        Fp3::sub(self, rhs)
+    }
+}
+
+impl core::ops::Mul for Fp3 {
+    type Output = Fp3;
+
+    #[inline]
+    fn mul(self, rhs: Fp3) -> Fp3 {
+        Fp3::mul(self, rhs)
+    }
+}
+
+impl core::ops::Neg for Fp3 {
+    type Output = Fp3;
+
+    #[inline]
+    fn neg(self) -> Fp3 {
+        Fp3::ZERO - self
+    }
+}
+
+impl core::ops::AddAssign for Fp3 {
+    #[inline]
+    fn add_assign(&mut self, rhs: Fp3) {
+        *self = *self + rhs;
+    }
+}
+
 /// Deterministic stream of field elements from a seed (mock-PCG stand-in:
 /// both parties expand the same stream; Δ stays verifier-only).
 pub struct FpStream {
@@ -348,6 +485,37 @@ mod tests {
             }
             assert_eq!(a.mul_base(Fp(3)), a * Fp2::from_base(Fp(3)));
         }
+    }
+
+    #[test]
+    fn fp3_codec_and_multiplication_kat() {
+        let left = Fp3::new(Fp::new(1), Fp::new(2), Fp::new(3));
+        let right = Fp3::new(Fp::new(4), Fp::new(5), Fp::new(6));
+        assert_eq!(left * right, Fp3::new(Fp::new(58), Fp::new(49), Fp::new(28)));
+
+        let encoded = left.to_bytes();
+        assert_eq!(Fp3::from_bytes(&encoded), Ok(left));
+        assert_eq!(&encoded[..8], &1u64.to_le_bytes());
+        assert_eq!(&encoded[8..16], &2u64.to_le_bytes());
+        assert_eq!(&encoded[16..], &3u64.to_le_bytes());
+        assert!(matches!(
+            Fp3::from_bytes(&encoded[..23]),
+            Err(Fp3DecodeError::WrongLength { actual: 23 })
+        ));
+
+        for limb in 0..3 {
+            let mut noncanonical = encoded;
+            noncanonical[limb * 8..(limb + 1) * 8].copy_from_slice(&P.to_le_bytes());
+            assert_eq!(
+                Fp3::from_bytes(&noncanonical),
+                Err(Fp3DecodeError::NonCanonicalLimb { limb })
+            );
+        }
+    }
+
+    #[test]
+    fn two_is_a_cubic_nonresidue() {
+        assert_eq!(Fp::new(2).pow((P - 1) / 3).value(), (1u64 << 32) - 1);
     }
 
     #[test]

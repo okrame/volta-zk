@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Executable C7 R0.7 analytic/readiness screen; every result is credit:false."""
+"""Executable C7 R0.8 analytic/readiness screen; every result is credit:false."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import argparse
 import json
 import math
 from fractions import Fraction
+from functools import lru_cache
 
 
 GPT2 = {
@@ -79,6 +80,26 @@ C7_LEAF_SBOX_MULTIPLICATION_EQUIVALENTS = (
 )
 C7_LEAF_PRIVATE_INPUT_CORRECTION_BYTES = (141 + 8) * 8
 C7_LEAF_ROOT_METADATA_BYTES = 64  # private salt seed + public commitment nonce
+C7_ROOT_MASK_SEED_BYTES = 32
+ROOT_MASK_REJECTION_DRAW_CAP_CONTROLS = (5, 6)
+ROOT_MASK_PRG_LIFETIME_RESERVE_BITS = 110
+ROOT_MASK_BLAKE3_STATED_SECURITY_BITS = 128
+ROOT_MASK_KMAC_STATED_SECURITY_BITS = 256
+KMACXOF256_RATE_BYTES = 136
+KMACXOF256_CAPACITY_BITS = 512
+KMACXOF256_CHUNK_BYTES = 1 << 16
+KMACXOF256_ADVERSARY_PERM_QUERY_CONTROL = 1 << 64
+R08_PRIVACY_OTHER_TERM_TARGET_BITS = {
+    "adaptive_RS_view_refinement": 110,
+    "salt_PRF_multi_root": 110,
+    "root_path_hiding_and_hash": 110,
+    "multi_user_PCG_VOLE": 110,
+    "multi_user_MAC": 110,
+    "allocator_receipt_and_state": 120,
+    "replay_fork_collision": 120,
+    "selective_abort_and_timing": 110,
+    "codec_transcript_refinement": None,
+}
 
 POLICY2_QUERY_CLASSES = (
     "unique_opened_leaves",
@@ -93,6 +114,10 @@ SETUP_HARD_NUMERATOR = 21
 SETUP_HARD_DENOMINATOR = 10
 SETUP_EXPLORATORY_NUMERATOR = 3
 SETUP_EXPLORATORY_DENOMINATOR = 1
+GPT2_SETUP_WALL_TARGET_SECONDS = 15 * 60
+GEMMA_SETUP_WALL_TARGET_SECONDS = 90 * 60
+GPT2_SETUP_WALL_HARD_CAP_SECONDS = 990
+GEMMA_SETUP_WALL_HARD_CAP_SECONDS = 5_940
 ORIGINAL_QUERY_GROWTH_NUMERATOR = 105
 ORIGINAL_QUERY_GROWTH_DENOMINATOR = 100
 ACTIVE_QUERY_GROWTH_NUMERATOR = 130
@@ -108,6 +133,23 @@ WHIR_CONSTANT_FOLD_CONTROLS = tuple(range(1, 9))
 WHIR_STARTING_LOG_INV_RATE_CONTROLS = (1, 2)
 GOLDILOCKS_TWO_ADICITY = 32
 GOLDILOCKS_FP2_CARDINALITY = GOLDILOCKS_MODULUS**2
+GOLDILOCKS_FP3_NONCUBE = 2
+R08_SELECTED_FP2_SCHEDULES = {
+    "gpt2-124m-screen": (4, 5, 3, 3, 3, 3),
+    "gemma-class-31b-envelope": (4, 4, 3, 3, 3, 4, 4, 4),
+}
+R08_PROVISIONAL_PRE_MASK_FP3_SCHEDULES = {
+    "gpt2-124m-screen": (4, 5, 3, 3, 3, 3),
+    "gemma-class-31b-envelope": (4, 3, 3, 3, 4, 4, 4, 4),
+}
+R08_SELECTED_FP3_SCHEDULES = {
+    "gpt2-124m-screen": (4, 5, 3, 3, 3, 4),
+    "gemma-class-31b-envelope": (4, 3, 3, 3, 4, 4, 4, 4),
+}
+C7_R08_CODEC_HEADER_BYTES = 16
+C7_R08_FRAME_HEADER_BYTES = 16
+C7_R08_MULTIPROOF_COUNT_BYTES = 4
+C7_R08_QUERY_INDEX_BYTES = 4
 
 ROOT_COUNT = 4
 ROOT_NAMES = ("C_W", "C_B_e", "C_KV_e", "C_KV_e_plus_1")
@@ -148,6 +190,1533 @@ def strict_ud_query_count(security_bits: int, log_inv_rate: int) -> int:
     """Queries for (1-delta)^q < 2^-lambda, delta=(1-rate)/2."""
     miss_probability = (1.0 + 2.0 ** (-log_inv_rate)) / 2.0
     return math.ceil(-security_bits / math.log2(miss_probability))
+
+
+def r08_selected_extension_strict_audit(
+    model: dict[str, object],
+    schedule: tuple[int, ...],
+    extension_degree: int,
+    num_variables: int | None = None,
+) -> dict[str, object]:
+    """Audit the inherited strict-UD gap bound on one selected schedule."""
+    if extension_degree < 2:
+        raise ValueError("selected extension degree must be at least two")
+    variables = (
+        (int(model["weights"]) - 1).bit_length()
+        if num_variables is None
+        else num_variables
+    )
+    remaining = variables
+    log_inv_rate = 1
+    q_open = 0
+    fp_positions = 0
+    total_gap_error = Fraction(0, 1)
+    rounds = []
+    for round_index, fold in enumerate(schedule):
+        if fold <= 0 or fold > remaining:
+            raise ValueError("invalid selected extension-field folding schedule")
+        queries = strict_ud_query_count(STRICT_UD_SECURITY_BITS, log_inv_rate)
+        limbs = 1 if round_index == 0 else extension_degree
+        positions = queries * (1 << fold) * limbs
+        per_challenge_error = Fraction(
+            1 << (remaining + log_inv_rate), GOLDILOCKS_MODULUS**extension_degree
+        )
+        round_error = fold * per_challenge_error
+        rounds.append(
+            {
+                "round": round_index,
+                "remaining_variables_before_fold": remaining,
+                "log_inv_rate_before_fold": log_inv_rate,
+                "folding_factor": fold,
+                "strict_ud_queries": queries,
+                "Fp_limbs_per_opened_symbol": limbs,
+                "unstacked_Fp_positions": positions,
+                "gap_error_upper_bound": (
+                    f"{round_error.numerator}/{round_error.denominator}"
+                ),
+                "certified_gap_bits": certified_bits(round_error),
+            }
+        )
+        q_open += queries
+        fp_positions += positions
+        total_gap_error += round_error
+        remaining -= fold
+        log_inv_rate += fold - 1
+
+    response_bits = certified_bits(total_gap_error)
+    after_r_max_bits = response_bits - math.log2(R_MAX)
+    bare_78_ratio = Fraction(1, 1 << 78) / total_gap_error
+    reserve_84_ratio = Fraction(1, 1 << 84) / total_gap_error
+    return {
+        "model": model["name"],
+        "field": f"Goldilocks_Fp{extension_degree}",
+        "starting_rate": "1/2",
+        "first_fold": 4,
+        "schedule": list(schedule),
+        "remaining_direct_send_variables": remaining,
+        "q_open": q_open,
+        "unstacked_Fp_positions": fp_positions,
+        "rounds": rounds,
+        "all_fold_gap_error_upper_bound": (
+            f"{total_gap_error.numerator}/{total_gap_error.denominator}"
+        ),
+        "all_fold_certified_response_bits": response_bits,
+        "deficit_to_110_bits": TARGET_RESPONSE_EVENT_BITS - response_bits,
+        "after_R_max_2_pow_20_certified_bits": after_r_max_bits,
+        "deficit_to_78_connection_bits_before_other_terms": 78 - after_r_max_bits,
+        "bare_max_attempts_for_78_bits_before_other_terms": (
+            bare_78_ratio.numerator // bare_78_ratio.denominator
+        ),
+        "max_attempts_for_84_bits_before_other_terms": (
+            reserve_84_ratio.numerator // reserve_84_ratio.denominator
+        ),
+        "certifies_110_response_bits": response_bits >= TARGET_RESPONSE_EVENT_BITS,
+        "certifies_78_after_R_max_before_other_terms": after_r_max_bits >= 78,
+        "modest_110_to_104_or_98_relaxation_suffices": response_bits >= 98,
+        "classification": "proved_upper_bound_audit_not_tight_attack",
+        "credit": False,
+    }
+
+
+def r08_selected_fp2_strict_audit(
+    model: dict[str, object], schedule: tuple[int, ...]
+) -> dict[str, object]:
+    return r08_selected_extension_strict_audit(model, schedule, 2)
+
+
+def r08_fp3_field_and_terminal_screen() -> dict[str, object]:
+    """Pin the carrier-independent Fp3 seam without claiming PCS refinement."""
+    noncube_witness = pow(
+        GOLDILOCKS_FP3_NONCUBE, (GOLDILOCKS_MODULUS - 1) // 3, GOLDILOCKS_MODULUS
+    )
+    return {
+        "base_modulus": GOLDILOCKS_MODULUS,
+        "construction": "Fp[u]/(u^3-2)",
+        "irreducibility_check": {
+            "p_mod_3": GOLDILOCKS_MODULUS % 3,
+            "two_to_the_p_minus_1_over_3_mod_p": noncube_witness,
+            "noncube": noncube_witness != 1,
+            "reason": (
+                "Fp_star_is_cyclic_and_3_divides_p_minus_1; two_is_not_a_cube; "
+                "a_cubic_without_a_root_is_irreducible"
+            ),
+        },
+        "canonical_element": "a0+a1*u+a2*u^2 with 0<=ai<p",
+        "canonical_wire": "a0_le64 || a1_le64 || a2_le64",
+        "wire_bytes": 3 * FIELD_SYMBOL_BYTES,
+        "decode_rejects_noncanonical_limb_or_wrong_length": True,
+        "multiplication": {
+            "c0": "a0*b0 + 2*(a1*b2+a2*b1)",
+            "c1": "a0*b1 + a1*b0 + 2*a2*b2",
+            "c2": "a0*b2 + a1*b1 + a2*b0",
+            "all_coordinates_reduced_mod_p": True,
+            "kat": "(1,2,3)*(4,5,6)=(58,49,28)",
+        },
+        "terminal": {
+            "shared_Delta_in_Fp3": True,
+            "validity_equation": "k=m+Delta*x in Fp3",
+            "independent_base_field_MACs_forbidden": True,
+            "clear_terminal_evaluation_serialized": False,
+            "provider_terminal_correction_limbs": 3,
+            "provider_terminal_correction_bytes": 3 * FP_CORRECTION_BYTES,
+            "single_nonzero_equation_error_bound": "1/|Fp3|",
+            "single_nonzero_equation_bits": math.log2(GOLDILOCKS_MODULUS**3),
+            "soundness_scope": (
+                "uniform_honest_DV_Delta_fixed_after_the_bound_prefix"
+            ),
+            "malicious_DV_privacy_implied": False,
+        },
+        "concrete_rust_codec_implemented": True,
+        "rust_codec_and_multiplication_KAT_pass": True,
+        "rust_decode_wrong_length_and_noncanonical_limb_tests_pass": True,
+        "carrier_independent_shared_Delta_adapter_implemented": True,
+        "rust_shared_Delta_linearity_and_three_limb_mutation_tests_pass": True,
+        "lean_three_coordinate_consequence_proved": True,
+        "concrete_shared_Delta_adapter_refinement_proved": False,
+        "implementation_scope": (
+            "field_codec_KAT_and_terminal_MAC_equation_only; no_PCG_VOLE_PCS_or_prover"
+        ),
+        "credit": False,
+    }
+
+
+@lru_cache(maxsize=None)
+def compact_merkle_max_siblings(leaves: int, opened: int) -> int:
+    """Exact maximum frontier for the canonical compact full binary tree."""
+    if leaves <= 0 or opened <= 0 or opened > leaves:
+        raise ValueError("invalid compact Merkle opening geometry")
+    if opened == leaves or leaves == 1:
+        return 0
+    if leaves & (leaves - 1) == 0:
+        nodes = leaves
+        present = opened
+        siblings = 0
+        while nodes > 1:
+            siblings += min(present, nodes - present)
+            nodes //= 2
+            present = min(present, nodes)
+        return siblings
+    left = 1 << (leaves.bit_length() - 1)
+    right = leaves - left
+    best = -1
+    for opened_left in range(max(0, opened - right), min(opened, left) + 1):
+        opened_right = opened - opened_left
+        if opened_left == 0:
+            candidate = 1 + compact_merkle_max_siblings(right, opened_right)
+        elif opened_right == 0:
+            candidate = 1 + compact_merkle_max_siblings(left, opened_left)
+        else:
+            candidate = compact_merkle_max_siblings(
+                left, opened_left
+            ) + compact_merkle_max_siblings(right, opened_right)
+        best = max(best, candidate)
+    return best
+
+
+def r08_fp3_opening_codec_screen(
+    model: dict[str, object],
+    schedule: tuple[int, ...],
+    num_variables: int | None = None,
+) -> dict[str, object]:
+    """Compile the exact fail-closed g141 opening subcodec reservation caps."""
+    audit = r08_selected_extension_strict_audit(
+        model, schedule, 3, num_variables
+    )
+    rounds = []
+    total = {
+        "q_open": 0,
+        "Z_atom": 0,
+        "U_leaf": 0,
+        "S_visible_Fp": 0,
+        "H_sibling": 0,
+        "payload_bytes": 0,
+        "salt_bytes": 0,
+        "multiproof_bytes": 0,
+        "challenge_bytes": 0,
+        "frame_header_bytes": 0,
+    }
+    for audit_round in audit["rounds"]:
+        round_index = int(audit_round["round"])
+        fold = int(audit_round["folding_factor"])
+        queries = int(audit_round["strict_ud_queries"])
+        limbs = int(audit_round["Fp_limbs_per_opened_symbol"])
+        domain_exponent = int(audit_round["remaining_variables_before_fold"]) + int(
+            audit_round["log_inv_rate_before_fold"]
+        )
+        oracle_fp_limbs = (1 << domain_exponent) * limbs
+        leaf_count = ceil_div(oracle_fp_limbs, LOGICAL_LEAF_SYMBOLS)
+        block_fp_limbs = (1 << fold) * limbs
+        max_leaves_per_block = ceil_div(
+            block_fp_limbs + LOGICAL_LEAF_SYMBOLS - 1,
+            LOGICAL_LEAF_SYMBOLS,
+        )
+        unique_leaf_cap = min(leaf_count, queries * max_leaves_per_block)
+        visible_fp_cap = unique_leaf_cap * LOGICAL_LEAF_SYMBOLS
+        sibling_cap = compact_merkle_max_siblings(leaf_count, unique_leaf_cap)
+        payload_bytes = visible_fp_cap * FIELD_SYMBOL_BYTES
+        salt_bytes = unique_leaf_cap * (LEAF_SALT_BITS // 8)
+        multiproof_bytes = (
+            C7_R08_MULTIPROOF_COUNT_BYTES + sibling_cap * HASH_BYTES
+        )
+        challenge_bytes = (
+            fold * 3 * FIELD_SYMBOL_BYTES
+            + queries * C7_R08_QUERY_INDEX_BYTES
+        )
+        frame_header_bytes = 2 * C7_R08_FRAME_HEADER_BYTES
+        row = {
+            "round": round_index,
+            "folding_factor": fold,
+            "q_open": queries,
+            "Fp_limbs_per_oracle_symbol": limbs,
+            "Z_atom": int(audit_round["unstacked_Fp_positions"]),
+            "oracle_Fp_limb_count": oracle_fp_limbs,
+            "logical_leaf_count": leaf_count,
+            "opened_block_Fp_limbs": block_fp_limbs,
+            "maximum_logical_leaves_per_block": max_leaves_per_block,
+            "U_leaf_reserved_cap": unique_leaf_cap,
+            "S_visible_Fp_reserved_cap": visible_fp_cap,
+            "H_sibling_reserved_cap": sibling_cap,
+            "masked_payload_bytes": payload_bytes,
+            "opened_salt_bytes": salt_bytes,
+            "multiproof_bytes": multiproof_bytes,
+            "interactive_challenge_bytes": challenge_bytes,
+            "frame_header_bytes": frame_header_bytes,
+            "leaf_indices_serialized_bytes": 0,
+            "leaf_indices_reconstructed_from_u32_query_indices": True,
+            "actual_accepted_counts_may_be_lower_but_reservation_never_refunds": True,
+        }
+        rounds.append(row)
+        for key, value in (
+            ("q_open", queries),
+            ("Z_atom", row["Z_atom"]),
+            ("U_leaf", unique_leaf_cap),
+            ("S_visible_Fp", visible_fp_cap),
+            ("H_sibling", sibling_cap),
+            ("payload_bytes", payload_bytes),
+            ("salt_bytes", salt_bytes),
+            ("multiproof_bytes", multiproof_bytes),
+            ("challenge_bytes", challenge_bytes),
+            ("frame_header_bytes", frame_header_bytes),
+        ):
+            total[key] += value
+
+    auxiliary_root_count = len(schedule) - 1
+    auxiliary_root_bytes = auxiliary_root_count * (
+        HASH_BYTES + C7_R08_FRAME_HEADER_BYTES
+    )
+    direct_send_bytes = (1 << int(audit["remaining_direct_send_variables"])) * (
+        3 * FIELD_SYMBOL_BYTES
+    )
+    final_direct_frame_bytes = C7_R08_FRAME_HEADER_BYTES + direct_send_bytes
+    terminal_adapter_bytes = C7_R08_FRAME_HEADER_BYTES + 3 * FP_CORRECTION_BYTES
+    known_serialized_bytes = (
+        C7_R08_CODEC_HEADER_BYTES
+        + total["payload_bytes"]
+        + total["salt_bytes"]
+        + total["multiproof_bytes"]
+        + total["challenge_bytes"]
+        + total["frame_header_bytes"]
+        + auxiliary_root_bytes
+        + final_direct_frame_bytes
+        + terminal_adapter_bytes
+    )
+    total.update(
+        {
+            "auxiliary_root_count": auxiliary_root_count,
+            "auxiliary_root_and_frame_bytes": auxiliary_root_bytes,
+            "final_direct_send_and_frame_bytes": final_direct_frame_bytes,
+            "terminal_adapter_three_limb_and_frame_bytes": terminal_adapter_bytes,
+            "codec_header_bytes": C7_R08_CODEC_HEADER_BYTES,
+            "known_serialized_bytes": known_serialized_bytes,
+        }
+    )
+    return {
+        "model": model["name"],
+        "field": "Goldilocks_Fp3",
+        "schedule": list(schedule),
+        "logical_leaf_symbols": LOGICAL_LEAF_SYMBOLS,
+        "compact_tree_shape": (
+            "recursive_largest_power_of_two_left_subtree_full_binary_2L_minus_1"
+        ),
+        "reservation_is_exact_conservative_cap": True,
+        "deduplication_scope": "one_root_round_proof_only",
+        "rounds": rounds,
+        "totals": total,
+        "unknown_fail_closed_bytes": [
+            "strict_UD_non_oracle_sumcheck_and_OOD_messages",
+            "omega_profile_and_authenticated_reservation_receipt",
+            "plane_assignment_receipt",
+            "root_hiding_randomness_capacity_metadata",
+        ],
+        "complete_codec_bytes_known": False,
+        "compiled_four_axis_query_counts_known": True,
+        "credit": False,
+    }
+
+
+def r08_fp3_setup_resource_screen(
+    model: dict[str, object],
+    bandwidth_bytes_per_second: float,
+    total_coefficient_dimension: int | None = None,
+) -> dict[str, object]:
+    """Count the selected rate-1/2 packed-root setup without claiming an encoder."""
+    weights = int(model["weights"])
+    dimension = (
+        1 << (weights - 1).bit_length()
+        if total_coefficient_dimension is None
+        else total_coefficient_dimension
+    )
+    assert dimension > 0 and dimension & (dimension - 1) == 0
+    assert dimension >= weights
+    variables = dimension.bit_length() - 1
+    domain_symbols = 1 << (variables + 1)
+    leaves = ceil_div(domain_symbols, LOGICAL_LEAF_SYMBOLS)
+    tree_nodes = 2 * leaves - 1
+    tree_bytes = tree_nodes * HASH_BYTES
+    packed_bytes = weights * PACKED_WEIGHT_BYTES
+    persistent_bytes = (
+        packed_bytes
+        + tree_bytes
+        + C7_LEAF_ROOT_METADATA_BYTES
+        + C7_ROOT_MASK_SEED_BYTES
+    )
+    setup_target_seconds = (
+        GPT2_SETUP_WALL_TARGET_SECONDS
+        if model["name"] == GPT2["name"]
+        else GEMMA_SETUP_WALL_TARGET_SECONDS
+    )
+    setup_hard_seconds = (
+        GPT2_SETUP_WALL_HARD_CAP_SECONDS
+        if model["name"] == GPT2["name"]
+        else GEMMA_SETUP_WALL_HARD_CAP_SECONDS
+    )
+    oracle_payload_hash_bytes = domain_symbols * FIELD_SYMBOL_BYTES
+    derived_salt_hash_bytes = leaves * (LEAF_SALT_BITS // 8)
+    counted_io_bytes = packed_bytes + tree_bytes
+    bandwidth_floor_seconds = counted_io_bytes / bandwidth_bytes_per_second
+    return {
+        "model": model["name"],
+        "field": "Goldilocks_Fp3_challenges_initial_oracle_over_Fp",
+        "starting_rate": "1/2",
+        "packed_weight_roots": 1,
+        "packed_weight_bytes": packed_bytes,
+        "initial_oracle_Fp_symbols": domain_symbols,
+        "logical_g141_leaves": leaves,
+        "compact_tree_nodes": tree_nodes,
+        "compact_tree_bytes": tree_bytes,
+        "root_salt_seed_and_nonce_bytes": C7_LEAF_ROOT_METADATA_BYTES,
+        "private_root_mask_seed_bytes": C7_ROOT_MASK_SEED_BYTES,
+        "persistent_bytes": persistent_bytes,
+        "selected_RS_total_coefficient_dimension": dimension,
+        "persistent_bytes_is_pre_mask_capacity_lower_bound": (
+            total_coefficient_dimension is None
+        ),
+        "includes_selected_seeded_mask_capacity_geometry": (
+            total_coefficient_dimension is not None
+        ),
+        "zk_randomness_capacity_symbols": dimension - weights,
+        "zk_randomness_capacity_screen_ref": (
+            "RS_t_query_root_capacity_screen"
+        ),
+        "zk_randomness_capacity_persistent_bytes": None,
+        "complete_persistent_setup_bytes_known": False,
+        "persistent_amplification_over_packed_i16": persistent_bytes
+        / packed_bytes,
+        "within_2x_target": (
+            persistent_bytes * SETUP_TARGET_DENOMINATOR
+            <= packed_bytes * SETUP_TARGET_NUMERATOR
+        ),
+        "within_2_1x_baseline_tolerance": (
+            persistent_bytes * SETUP_HARD_DENOMINATOR
+            <= packed_bytes * SETUP_HARD_NUMERATOR
+        ),
+        "within_3x_exploratory_disk_cap": (
+            persistent_bytes * SETUP_EXPLORATORY_DENOMINATOR
+            <= packed_bytes * SETUP_EXPLORATORY_NUMERATOR
+        ),
+        "setup_wall_target_seconds": setup_target_seconds,
+        "setup_wall_hard_cap_seconds": setup_hard_seconds,
+        "measured_setup_wall_seconds": None,
+        "setup_wall_gate_pass": False,
+        "setup_wall_status": "not_measured_fail_closed",
+        "minimum_counted_IO": {
+            "packed_read_bytes": packed_bytes,
+            "persistent_tree_write_bytes": tree_bytes,
+            "temporary_disk_write_bytes_target": 0,
+            "temporary_disk_read_bytes_target": 0,
+            "total_read_plus_write_bytes": counted_io_bytes,
+            "bandwidth_floor_seconds_at_selected_rate": bandwidth_floor_seconds,
+        },
+        "hash_stream": {
+            "oracle_payload_bytes": oracle_payload_hash_bytes,
+            "derived_salt_bytes_absorbed": derived_salt_hash_bytes,
+            "per_leaf_context_bytes": None,
+            "complete_hash_input_bytes_known": False,
+        },
+        "required_rates_at_target": {
+            "initial_oracle_Fp_symbols_per_second": domain_symbols
+            / setup_target_seconds,
+            "counted_IO_bytes_per_second": counted_io_bytes
+            / setup_target_seconds,
+            "oracle_payload_hash_bytes_per_second": oracle_payload_hash_bytes
+            / setup_target_seconds,
+        },
+        "streaming_memory_target": (
+            "configured_chunk_plus_at_most_140_Fp_carry_plus_O(log(leaves))_digests"
+        ),
+        "streaming_tree_builder_possible_if_ordered_symbols_exist": True,
+        "ordered_RS_symbol_generator_one_source_scan_proved": False,
+        "packed_source_scan_target": 1,
+        "full_codeword_materialization_allowed": False,
+        "model_sized_temporary_allowed": False,
+        "setup_resource_gate_pass": False,
+        "refresh": {
+            "counter_domain": "distinct_from_setup",
+            "budget_transfer_from_setup_allowed": False,
+            "target_seconds": setup_target_seconds,
+            "hard_cap_seconds": setup_hard_seconds,
+            "test_authorized_or_required_in_R08": False,
+            "measured_seconds": None,
+            "status": "registered_not_tested_not_credited",
+        },
+        "credit": False,
+    }
+
+
+def r08_rs_t_query_capacity_screen(
+    model: dict[str, object],
+    visible_fp_per_attempt: int,
+    initial_visible_fp_per_attempt: int,
+) -> dict[str, object]:
+    """Bound root life from the exact RS t-query randomness dimension."""
+    weights = int(model["weights"])
+    packed_bytes = weights * PACKED_WEIGHT_BYTES
+    base_dimension = 1 << (weights - 1).bit_length()
+    setup_target_seconds = (
+        GPT2_SETUP_WALL_TARGET_SECONDS
+        if model["name"] == GPT2["name"]
+        else GEMMA_SETUP_WALL_TARGET_SECONDS
+    )
+
+    def geometry(dimension: int) -> dict[str, int]:
+        domain_symbols = 2 * dimension
+        leaves = ceil_div(domain_symbols, LOGICAL_LEAF_SYMBOLS)
+        tree_bytes = (2 * leaves - 1) * HASH_BYTES
+        return {
+            "RS_total_coefficient_dimension": dimension,
+            "rate_half_oracle_Fp_symbols": domain_symbols,
+            "logical_g141_leaves": leaves,
+            "compact_tree_bytes": tree_bytes,
+            "persistent_bytes_excluding_mask_coefficients": (
+                packed_bytes
+                + tree_bytes
+                + C7_LEAF_ROOT_METADATA_BYTES
+                + C7_ROOT_MASK_SEED_BYTES
+            ),
+        }
+
+    setup_caps = {
+        "target_2_00x": packed_bytes * SETUP_TARGET_NUMERATOR
+        // SETUP_TARGET_DENOMINATOR,
+        "baseline_tolerance_2_10x": packed_bytes * SETUP_HARD_NUMERATOR
+        // SETUP_HARD_DENOMINATOR,
+        "exploratory_3_00x": packed_bytes * SETUP_EXPLORATORY_NUMERATOR
+        // SETUP_EXPLORATORY_DENOMINATOR,
+    }
+    geometry_only_tiers = {}
+    explicit_uniform_tiers = {}
+    for tier, cap in setup_caps.items():
+        dimension = base_dimension
+        best_geometry = None
+        best_uniform = None
+        while geometry(dimension)[
+            "persistent_bytes_excluding_mask_coefficients"
+        ] <= cap:
+            row = geometry(dimension)
+            randomness_capacity = dimension - weights
+            best_geometry = {
+                **row,
+                "setup_cap_bytes": cap,
+                "random_Fp_coefficient_capacity": randomness_capacity,
+                "maximum_full_attempts_at_reserved_visible_Fp_charge": (
+                    randomness_capacity // visible_fp_per_attempt
+                ),
+                "required_oracle_Fp_symbols_per_second_at_setup_target": (
+                    row["rate_half_oracle_Fp_symbols"] / setup_target_seconds
+                ),
+                "required_oracle_payload_bytes_per_second_at_setup_target": (
+                    row["rate_half_oracle_Fp_symbols"]
+                    * FIELD_SYMBOL_BYTES
+                    / setup_target_seconds
+                ),
+            }
+            uniform_capacity = min(
+                randomness_capacity,
+                (
+                    cap
+                    - row["persistent_bytes_excluding_mask_coefficients"]
+                )
+                // FIELD_SYMBOL_BYTES,
+            )
+            if uniform_capacity >= 0 and (
+                best_uniform is None
+                or uniform_capacity
+                > best_uniform["random_Fp_coefficient_capacity"]
+            ):
+                best_uniform = {
+                    **row,
+                    "setup_cap_bytes": cap,
+                    "random_Fp_coefficient_capacity": uniform_capacity,
+                    "explicit_random_coefficient_bytes": (
+                        uniform_capacity * FIELD_SYMBOL_BYTES
+                    ),
+                    "total_persistent_bytes": (
+                        row["persistent_bytes_excluding_mask_coefficients"]
+                        + uniform_capacity * FIELD_SYMBOL_BYTES
+                    ),
+                    "maximum_full_attempts_at_reserved_visible_Fp_charge": (
+                        uniform_capacity // visible_fp_per_attempt
+                    ),
+                }
+            dimension *= 2
+        assert best_geometry is not None
+        assert best_uniform is not None
+        geometry_only_tiers[tier] = best_geometry
+        explicit_uniform_tiers[tier] = best_uniform
+
+    fixed_geometry = geometry(base_dimension)
+    fixed_capacity = base_dimension - weights
+    rmax_charge = visible_fp_per_attempt * R_MAX
+    rmax_dimension = 1 << (weights + rmax_charge - 1).bit_length()
+    rmax_geometry = geometry(rmax_dimension)
+    rmax_geometry_bytes = rmax_geometry[
+        "persistent_bytes_excluding_mask_coefficients"
+    ]
+    initial_rmax_charge = initial_visible_fp_per_attempt * R_MAX
+    initial_rmax_dimension = 1 << (
+        weights + initial_rmax_charge - 1
+    ).bit_length()
+    initial_rmax_geometry = geometry(initial_rmax_dimension)
+    initial_rmax_geometry_bytes = initial_rmax_geometry[
+        "persistent_bytes_excluding_mask_coefficients"
+    ]
+    return {
+        "model": model["name"],
+        "theorem_carrier": (
+            "2026/391 Proposition 3.19: RS[F,L,ell] has perfect t-query "
+            "ZK with message length ell-t and randomness length t"
+        ),
+        "paper_query_unit": "one distinct codeword alphabet location",
+        "paper_scope": "fixed-set honest-verifier zero knowledge",
+        "C7_charge_unit": "visible masked base-field symbol occurrence",
+        "C7_charge_is_conservative_scalar_upper_bound": True,
+        "C7_charge_to_paper_query_refinement_proved": False,
+        "interleaving_warning": (
+            "Claim 3.23 preserves t alphabet queries while each answer contains "
+            "2^k base symbols; the g141 load map must prove the conversion"
+        ),
+        "reserved_visible_Fp_charge_per_attempt": visible_fp_per_attempt,
+        "charge_scope": "compiled_weight_opening_leaf_payloads_only",
+        "full_weight_attempt_and_lifecycle_charge_compiled": False,
+        "initial_oracle_visible_Fp_charge_per_attempt": (
+            initial_visible_fp_per_attempt
+        ),
+        "initial_interleaving_lanes": 1 << 4,
+        "initial_dense_layout_randomness_lower_bound": (
+            "16*max_c(load_c)>=sum_c(load_c)=visible_Fp; each RS lane needs "
+            "randomness length at least its queried-location load"
+        ),
+        "initial_RS_mask_rank_argument": {
+            "message_evaluation_rank": (
+                "q for q distinct nonzero domain points and q<=message_dimension"
+            ),
+            "mask_evaluation_rank_upper_bound": "min(q,randomness_length)",
+            "perfect_privacy_requires": "im(G_message)<=im(G_mask)",
+            "consequence": "randomness_length>=q in every interleaving lane",
+            "multiplicative_nonzero_evaluation_domain_required": True,
+            "lean_proved": False,
+        },
+        "base_RS_total_coefficient_dimension": base_dimension,
+        "canonical_weight_message_Fp_coefficients": weights,
+        "zero_tree_growth_randomness_headroom_Fp_coefficients": fixed_capacity,
+        "zero_tree_growth_maximum_full_attempts": (
+            fixed_capacity // visible_fp_per_attempt
+        ),
+        "fixed_geometry": fixed_geometry,
+        "setup_caps_bytes": setup_caps,
+        "geometry_only_capacity_by_setup_tier": geometry_only_tiers,
+        "geometry_only_warning": (
+            "omits persistence of t uniform coefficients; admission needs either "
+            "counted explicit storage or a computational PRG/PCG refinement plus "
+            "a random-access one-scan schedule"
+        ),
+        "explicit_uniform_coefficient_persistence_control_by_setup_tier": (
+            explicit_uniform_tiers
+        ),
+        "single_root_for_R_max_control": {
+            "attempts": R_MAX,
+            "required_random_Fp_coefficients": rmax_charge,
+            **rmax_geometry,
+            "persistent_amplification_excluding_mask_coefficients": (
+                rmax_geometry_bytes / packed_bytes
+            ),
+            "explicit_uniform_random_coefficient_bytes": (
+                rmax_charge * FIELD_SYMBOL_BYTES
+            ),
+            "total_persistent_amplification_with_explicit_coefficients": (
+                (rmax_geometry_bytes + rmax_charge * FIELD_SYMBOL_BYTES)
+                / packed_bytes
+            ),
+            "within_exploratory_3x": (
+                rmax_geometry_bytes
+                <= setup_caps["exploratory_3_00x"]
+            ),
+            "disposition": (
+                "provisional_full_opening_charge_control_pending_cross_round_"
+                "load_refinement"
+            ),
+        },
+        "initial_oracle_only_R_max_lower_bound_control": {
+            "attempts": R_MAX,
+            "required_random_Fp_coefficients_lower_bound": initial_rmax_charge,
+            **initial_rmax_geometry,
+            "persistent_amplification_excluding_mask_coefficients": (
+                initial_rmax_geometry_bytes / packed_bytes
+            ),
+            "within_exploratory_3x": (
+                initial_rmax_geometry_bytes
+                <= setup_caps["exploratory_3_00x"]
+            ),
+            "disposition": (
+                "NO_GO_same_root_for_full_connection_horizon_even_if_all_"
+                "later_round_leakage_is_free"
+            ),
+        },
+        "R_root_is_distinct_from_R_max": True,
+        "root_rotation_is_required_before_R_max": True,
+        "refresh_test_authorized_or_required_in_R08": False,
+        "stateful_malicious_DV_privacy_completed_by_this_screen": False,
+        "numeric_Q_root_admitted": False,
+        "reason_numeric_Q_root_not_admitted": (
+            "the full codec load map, adaptive multi-session refinement, lifecycle "
+            "charges and mask persistence/generation construction remain missing"
+        ),
+        "credit": False,
+    }
+
+
+def r08_root_mask_prg_policy_screen(
+    model: dict[str, object], capacity: dict[str, object]
+) -> dict[str, object]:
+    """Register the selected computational root-mask line and its baseline."""
+    maximum_coefficients = int(
+        capacity["geometry_only_capacity_by_setup_tier"][
+            "exploratory_3_00x"
+        ]["random_Fp_coefficient_capacity"]
+    )
+    rejection_numerator = (1 << 64) - GOLDILOCKS_MODULUS
+    draw_cap_rows = {}
+    for draw_cap in ROOT_MASK_REJECTION_DRAW_CAP_CONTROLS:
+        failure = Fraction(
+            maximum_coefficients * rejection_numerator**draw_cap,
+            (1 << 64) ** draw_cap,
+        )
+        draw_cap_rows[str(draw_cap)] = {
+            "draws_per_coefficient_cap": draw_cap,
+            "maximum_addressed_64_bit_words": (
+                maximum_coefficients * draw_cap
+            ),
+            "root_generation_failure_upper_bound": (
+                f"{failure.numerator}/{failure.denominator}"
+            ),
+            "root_generation_failure_certified_bits": certified_bits(failure),
+        }
+
+    selected_draw_cap = 6
+    selected_failure = draw_cap_rows[str(selected_draw_cap)]
+    blake3_loss_headroom_bits = (
+        ROOT_MASK_BLAKE3_STATED_SECURITY_BITS
+        - ROOT_MASK_PRG_LIFETIME_RESERVE_BITS
+    )
+    linear_loss_word_ceiling = 1 << blake3_loss_headroom_bits
+    conservative_attempt_charge = int(
+        capacity["reserved_visible_Fp_charge_per_attempt"]
+    )
+    return {
+        "model": model["name"],
+        "selected_policy": "computational_seeded_root_mask",
+        "baseline_policy": "persisted_uniform_Fp_coefficients",
+        "baseline_remains_reference_not_main_line": True,
+        "setup_once_per_root_epoch": True,
+        "response_reseeding_allowed": False,
+        "bounded_root_reuse_required": True,
+        "refresh_expected_rare_but_not_a_security_assumption": True,
+        "root_mask_seed_bits": C7_ROOT_MASK_SEED_BYTES * 8,
+        "root_mask_seed_bytes": C7_ROOT_MASK_SEED_BYTES,
+        "fresh_uniform_private_seed_per_disclosed_candidate_root": True,
+        "seed_reuse_across_root_epochs_allowed": False,
+        "seed_serialized_in_certificate": False,
+        "seed_must_remain_provider_private_at_rest": True,
+        "generator_suite_id": None,
+        "generator_primitive_selected": False,
+        "candidate_order": [
+            "keyed_BLAKE3_XOF",
+            "KMACXOF256",
+            "reduce_attempts_per_root_and_recompute",
+        ],
+        "primary_candidate_selected": "keyed_BLAKE3_XOF",
+        "fallback_candidate": "KMACXOF256",
+        "connection_target_bits": 78,
+        "connection_target_reduction_allowed_to_admit_PRG": False,
+        "candidate_promotion_rule": (
+            "admit keyed BLAKE3-XOF only if its concrete multi-root advantage "
+            "passes 2^-110 at the exact Q_mask_words; otherwise promote "
+            "KMACXOF256 or reduce the attempt budget per root and recompute"
+        ),
+        "blake3_xof_candidate_screen": {
+            "mode": "keyed_hash with 256-bit root seed and seekable XOF output",
+            "candidate_only_not_admitted": True,
+            "stated_general_security_target_bits": (
+                ROOT_MASK_BLAKE3_STATED_SECURITY_BITS
+            ),
+            "stated_key_bits": 256,
+            "key_bits_are_not_credited_as_security_bits": True,
+            "component_reserve_bits": ROOT_MASK_PRG_LIFETIME_RESERVE_BITS,
+            "maximum_composable_loss_bits_if_128_bit_target_is_applicable": (
+                blake3_loss_headroom_bits
+            ),
+            "maximum_composable_loss_factor_if_128_bit_target_is_applicable": (
+                1 << blake3_loss_headroom_bits
+            ),
+            "linear_in_Q_proof_form_control": {
+                "maximum_words_for_110_bits": linear_loss_word_ceiling,
+                "conservative_visible_Fp_charge_per_attempt": (
+                    conservative_attempt_charge
+                ),
+                "conservative_one_attempt_passes": (
+                    conservative_attempt_charge <= linear_loss_word_ceiling
+                ),
+                "terminal_verdict": False,
+                "reason_not_terminal": (
+                    "C7 visible-Fp charge to the theorem's generator-query loss "
+                    "has not been refined"
+                ),
+            },
+            "minimum_first_draw_words_at_exploratory_geometry": (
+                maximum_coefficients
+            ),
+            "minimum_first_draw_words_log2": math.log2(maximum_coefficients),
+            "maximum_six_draw_words_at_exploratory_geometry": int(
+                selected_failure["maximum_addressed_64_bit_words"]
+            ),
+            "logical_codec_candidate": {
+                "suite": "C7-RM-B3XOF-v1",
+                "key": "private 32-byte root seed",
+                "absorbed_prefix": (
+                    "suite||model_id||epoch_id||layout_digest||field_id||rate||k0"
+                ),
+                "word_byte_offset": "8*(6*coefficient_index+draw_index)",
+                "word_encoding": "little-endian u64",
+                "draw_index_range": "0..5",
+                "one_XOF_stream_per_candidate_root": True,
+                "maximum_output_position_exclusive_bytes": (
+                    int(selected_failure["maximum_addressed_64_bit_words"])
+                    * 8
+                ),
+                "within_BLAKE3_2^64_minus_1_output_byte_limit": (
+                    int(selected_failure["maximum_addressed_64_bit_words"])
+                    * 8
+                    <= (1 << 64) - 1
+                ),
+                "CPU_SIMT_bytes_must_match": True,
+                "implemented": False,
+            },
+            "exact_Q_mask_words_numeric": None,
+            "exact_multi_root_advantage_theorem_available": False,
+            "passes_component_reserve": False,
+            "reason": (
+                "the official 128-bit security target and 256-bit key do not "
+                "instantiate Adv_RootMaskPRG_multi(K_model,{Q_mask_words})"
+            ),
+        },
+        "kmacxof256_fallback_screen": {
+            "candidate_only_not_admitted": True,
+            "nist_role": "KMAC is standardized as a PRF-capable SHA-3-derived function",
+            "logical_codec_suite": "C7-RM-KMACXOF256-v1",
+            "addressed_parallel_codec_selected": True,
+            "conditional_ideal_permutation_control_compiled": True,
+            "exact_multi_root_advantage_theorem_available": False,
+            "setup_wall_gate_must_still_pass": True,
+            "passes_component_reserve": False,
+        },
+        "Q_mask_words_definition": (
+            "total addressed 64-bit generator words consumed by every candidate "
+            "root setup, including rejection draws and failed seeds; visible PCS "
+            "q may replace this only under a proved tighter leakage reduction"
+        ),
+        "coefficient_derivation": {
+            "address": (
+                "domain(model,epoch,layout,field,rate,k0,coefficient_index,draw_index)"
+            ),
+            "mapping": (
+                "first little-endian u64 below p among fixed addressed draws"
+            ),
+            "selected_draw_cap": selected_draw_cap,
+            "failure_action": (
+                "abort before root disclosure; burn seed and candidate epoch slot"
+            ),
+            "fixed_addresses_support_random_access_and_CPU_SIMT_equivalence": True,
+            "canonical_rejection_is_exactly_uniform_conditioned_on_success": True,
+        },
+        "maximum_random_Fp_coefficients_under_exploratory_setup_geometry": (
+            maximum_coefficients
+        ),
+        "expected_64_bit_words_at_maximum_capacity": (
+            maximum_coefficients * (1 << 64) / GOLDILOCKS_MODULUS
+        ),
+        "draw_cap_controls": draw_cap_rows,
+        "selected_draw_cap_failure_bits": selected_failure[
+            "root_generation_failure_certified_bits"
+        ],
+        "privacy_hybrid": {
+            "real": "addressed coefficients from the private per-root seed",
+            "ideal": "independent uniform Fp coefficients for every root epoch",
+            "then_apply": (
+                "ideal RS t-query privacy plus C7-OnlineMDVViewRefine and "
+                "bounded root counters"
+            ),
+            "bound": (
+                "Adv_RootMaskPRG_multi(K_model,{Q_mask_words[omega]}) + "
+                "K_seed_attempts*epsilon_rejection <= 2^-110"
+            ),
+            "included_in_model_lifetime_78_bit_budget": True,
+            "component_reserve_bits": ROOT_MASK_PRG_LIFETIME_RESERVE_BITS,
+            "Adv_RootMaskPRG_multi_numeric": None,
+            "K_model_numeric": None,
+            "K_seed_attempts_numeric": None,
+            "passes_component_reserve": False,
+        },
+        "separate_from_salt_PRF_and_VOLE_PCG": True,
+        "existing_repository_generator_disposition": {
+            "volta_field_FpStream_ChaCha8": {
+                "status": "REJECT_PRODUCTION_C7_ROOT_MASK",
+                "reason": (
+                    "the implementation labels itself a mock-PCG stand-in, uses "
+                    "a sequential unbounded rejection loop, and has no C7 multi-root "
+                    "advantage theorem"
+                ),
+            },
+            "volta_pcg_Aes128Mmo_GGM": {
+                "status": "QUARANTINE",
+                "reason": (
+                    "the registered fixed-key 16-byte primitive is scoped only to "
+                    "WYKW GGM node expansion, not the selected 256-bit addressed "
+                    "root-mask function, and has no C7 Q_mask_words bound"
+                ),
+            },
+            "volta_pcg_Blake3_GGM": {
+                "status": "QUARANTINE",
+                "reason": (
+                    "the existing path is an explicit non-default 16-byte GGM-node "
+                    "control, not a selected root-mask suite or multi-root reduction"
+                ),
+            },
+        },
+        "random_access_mask_coefficients_solve_RS_one_scan_generator": False,
+        "refresh_test_authorized_or_required_in_R08": False,
+        "credit": False,
+    }
+
+
+def r08_concrete_root_profile_proposal(
+    model: dict[str, object],
+    capacity: dict[str, object],
+    r_root: int,
+) -> dict[str, object]:
+    """Compile one conservative, owner-unselected root-lifetime proposal."""
+    assert r_root > 0 and r_root & (r_root - 1) == 0
+    charge = int(capacity["reserved_visible_Fp_charge_per_attempt"])
+    lifecycle_reserve_attempt_equivalents = r_root // 8
+    response_attempt_charge = r_root * charge
+    lifecycle_reserve_charge = lifecycle_reserve_attempt_equivalents * charge
+    q_root = response_attempt_charge + lifecycle_reserve_charge
+    tier_order = (
+        "target_2_00x",
+        "baseline_tolerance_2_10x",
+        "exploratory_3_00x",
+    )
+    selected_tier = next(
+        tier
+        for tier in tier_order
+        if q_root
+        <= int(
+            capacity["geometry_only_capacity_by_setup_tier"][tier][
+                "random_Fp_coefficient_capacity"
+            ]
+        )
+    )
+    tier = capacity["geometry_only_capacity_by_setup_tier"][selected_tier]
+    seed_attempt_cap = 2
+    draw_cap = 6
+    q_mask_words_per_seed = q_root * draw_cap
+    q_mask_words_all_seed_attempts = q_mask_words_per_seed * seed_attempt_cap
+    linear_control_bits = (
+        ROOT_MASK_BLAKE3_STATED_SECURITY_BITS
+        - math.log2(q_mask_words_all_seed_attempts)
+    )
+    rejection_failure = Fraction(
+        seed_attempt_cap
+        * q_root
+        * ((1 << 64) - GOLDILOCKS_MODULUS) ** draw_cap,
+        (1 << 64) ** draw_cap,
+    )
+    capacity_coefficients = int(tier["random_Fp_coefficient_capacity"])
+    return {
+        "profile_id": f"C7-R08-{model['name']}-Rroot-{r_root}-proposal-v1",
+        "model": model["name"],
+        "owner_selected": True,
+        "owner_selected_as_fallback_variant": True,
+        "owner_selected_as_mainline": False,
+        "screening_only": True,
+        "R_root_proposed": r_root,
+        "R_root_scope": (
+            "all accepted responses, failed attempts, retries and selective aborts"
+        ),
+        "post_hoc_refund_or_observed_average_allowed": False,
+        "reserved_visible_Fp_charge_per_attempt_control": charge,
+        "response_attempt_charge": response_attempt_charge,
+        "lifecycle_reserve_attempt_equivalents": (
+            lifecycle_reserve_attempt_equivalents
+        ),
+        "lifecycle_reserve_fraction_of_attempt_charge": "1/8",
+        "lifecycle_reserve_charge": lifecycle_reserve_charge,
+        "Q_root_scalar_cap_proposed": q_root,
+        "Q_root_plane_vector_and_lifecycle_breakdown_complete": False,
+        "selected_setup_tier": selected_tier,
+        "RS_total_coefficient_dimension": int(
+            tier["RS_total_coefficient_dimension"]
+        ),
+        "random_Fp_coefficient_capacity": capacity_coefficients,
+        "unused_randomness_capacity_after_Q_root": capacity_coefficients - q_root,
+        "persistent_bytes_excluding_mask_coefficients": int(
+            tier["persistent_bytes_excluding_mask_coefficients"]
+        ),
+        "setup_cap_bytes": int(tier["setup_cap_bytes"]),
+        "K_seed_attempts_per_root_epoch_cap": seed_attempt_cap,
+        "seed_failure_policy": (
+            "each failed setup seed is burned and charged; after two failures "
+            "the root epoch fails closed before disclosure"
+        ),
+        "draws_per_coefficient_cap": draw_cap,
+        "Q_mask_words_per_seed_cap": q_mask_words_per_seed,
+        "Q_mask_words_all_seed_attempts_cap": q_mask_words_all_seed_attempts,
+        "maximum_preregistered_Q_mask_words_compiled": True,
+        "root_generation_rejection_failure_upper_bound": (
+            f"{rejection_failure.numerator}/{rejection_failure.denominator}"
+        ),
+        "root_generation_rejection_failure_certified_bits": certified_bits(
+            rejection_failure
+        ),
+        "BLAKE3_linear_in_Q_control_bits": linear_control_bits,
+        "BLAKE3_linear_in_Q_control_passes_110": (
+            linear_control_bits >= ROOT_MASK_PRG_LIFETIME_RESERVE_BITS
+        ),
+        "BLAKE3_exact_multi_root_advantage_passes_110": False,
+        "reason_exact_gate_false": (
+            "the full plane/lifecycle query map and a primitive-specific "
+            "multi-root BLAKE3-XOF theorem remain missing"
+        ),
+        "connection_target_bits": 78,
+        "connection_target_reduction_allowed": False,
+        "profile_admitted": False,
+        "credit": False,
+    }
+
+
+def r08_blake3_fallback_privacy_variant(
+    profile: dict[str, object],
+) -> dict[str, object]:
+    """Compose the authorized fallback, leaving every unknown term fail-closed."""
+    r_root = int(profile["R_root_proposed"])
+    k_model = ceil_div(R_MAX, r_root)
+    seed_attempts_per_root = int(profile["K_seed_attempts_per_root_epoch_cap"])
+    k_seed_attempts = k_model * seed_attempts_per_root
+    q_mask_words = (
+        k_model * int(profile["Q_mask_words_all_seed_attempts_cap"])
+    )
+    blake3_linear_control = Fraction(
+        q_mask_words, 1 << ROOT_MASK_BLAKE3_STATED_SECURITY_BITS
+    )
+    rejection = Fraction(
+        k_seed_attempts
+        * int(profile["Q_root_scalar_cap_proposed"])
+        * ((1 << 64) - GOLDILOCKS_MODULUS) ** 6,
+        (1 << 64) ** 6,
+    )
+    known_mask_sum = blake3_linear_control + rejection
+    fallback_budget = Fraction(1, 1 << 78)
+    remaining_other_terms_budget = fallback_budget - known_mask_sum
+    other_terms = {
+        "adaptive_RS_view_refinement": None,
+        "salt_PRF_multi_root": None,
+        "root_path_hiding_and_hash": None,
+        "multi_user_PCG_VOLE": None,
+        "multi_user_MAC": None,
+        "allocator_receipt_and_state": None,
+        "replay_fork_collision": None,
+        "selective_abort_and_timing": None,
+        "codec_transcript_refinement": None,
+    }
+    other_target_fractions = {
+        name: (Fraction(0, 1) if bits is None else Fraction(1, 1 << bits))
+        for name, bits in R08_PRIVACY_OTHER_TERM_TARGET_BITS.items()
+    }
+    other_target_sum = sum(other_target_fractions.values(), Fraction(0, 1))
+    allocated_complete_sum = known_mask_sum + other_target_sum
+    return {
+        "variant_id": f"{profile['profile_id']}-blake3-full78-fallback-v1",
+        "owner_authorized_fallback": True,
+        "mainline_PRG_component_target_bits": 110,
+        "mainline_target_unchanged": True,
+        "fallback_complete_privacy_target_bits": 78,
+        "model_global_attempt_horizon": R_MAX,
+        "model_global_attempt_horizon_owner_confirmed": True,
+        "model_global_attempt_horizon_scope": (
+            "all connections, accepted responses, failures, retries and "
+            "selective aborts using this model-privacy variant"
+        ),
+        "model_must_retire_variant_at_global_horizon": True,
+        "R_root": r_root,
+        "K_model": k_model,
+        "K_seed_attempts": k_seed_attempts,
+        "Q_mask_words_model_max": q_mask_words,
+        "all_root_and_seed_failures_included": True,
+        "blake3_specific_multi_root_theorem_found": False,
+        "blake3_linear_128_control_is_named_hypothesis_not_theorem": True,
+        "conditional_Adv_BLAKE3_multi_exact": (
+            f"{blake3_linear_control.numerator}/{blake3_linear_control.denominator}"
+        ),
+        "conditional_Adv_BLAKE3_multi_bits": certified_bits(
+            blake3_linear_control
+        ),
+        "rejection_error_exact": f"{rejection.numerator}/{rejection.denominator}",
+        "rejection_error_bits": certified_bits(rejection),
+        "known_mask_terms_sum_exact": (
+            f"{known_mask_sum.numerator}/{known_mask_sum.denominator}"
+        ),
+        "known_mask_terms_sum_bits": certified_bits(known_mask_sum),
+        "known_mask_terms_pass_mainline_110": (
+            known_mask_sum <= Fraction(1, 1 << 110)
+        ),
+        "known_mask_terms_pass_fallback_78": known_mask_sum <= fallback_budget,
+        "maximum_other_privacy_terms_sum_exact": (
+            f"{remaining_other_terms_budget.numerator}/"
+            f"{remaining_other_terms_budget.denominator}"
+        ),
+        "maximum_other_privacy_terms_sum_bits": certified_bits(
+            remaining_other_terms_budget
+        ),
+        "other_privacy_terms": other_terms,
+        "other_privacy_term_target_bits": R08_PRIVACY_OTHER_TERM_TARGET_BITS,
+        "other_privacy_term_target_epsilon_exact": {
+            name: f"{epsilon.numerator}/{epsilon.denominator}"
+            for name, epsilon in other_target_fractions.items()
+        },
+        "allocated_complete_privacy_epsilon_exact": (
+            f"{allocated_complete_sum.numerator}/{allocated_complete_sum.denominator}"
+        ),
+        "allocated_complete_privacy_bits": certified_bits(
+            allocated_complete_sum
+        ),
+        "allocated_complete_privacy_passes_78": (
+            allocated_complete_sum <= fallback_budget
+        ),
+        "allocation_pass_is_not_theorem_discharge": True,
+        "all_privacy_terms_numeric": all(
+            term is not None for term in other_terms.values()
+        ),
+        "complete_privacy_formula": (
+            "Adv_BLAKE3_multi + epsilon_rejection + "
+            "epsilon_adaptive_RS_view + Adv_saltPRF_multi + "
+            "Adv_root_path_hash + Adv_multi_user_PCG_VOLE + "
+            "Adv_multi_user_MAC + epsilon_allocator_state + "
+            "epsilon_replay_fork_collision + epsilon_abort_timing + "
+            "epsilon_codec_transcript"
+        ),
+        "complete_privacy_epsilon_exact": None,
+        "complete_privacy_passes_78": False,
+        "reason_complete_gate_false": (
+            "the BLAKE3 term is only a named linear control and every listed "
+            "non-mask achieved advantage remains unknown; numeric target "
+            "allocations are not theorem discharge"
+        ),
+        "promote_if_complete_gate_fails": [
+            "KMACXOF256",
+            "reduce_R_root_and_recompute_all_terms",
+        ],
+        "variant_admitted": False,
+        "credit": False,
+    }
+
+
+def r08_kmacxof256_mainline_screen(
+    profile: dict[str, object],
+) -> dict[str, object]:
+    """Count the minimal chunk-addressed KMAC alternative, without credit."""
+    assert len(b"VOLTA-ZK/C7/root-mask/v1") == 24
+    assert KMACXOF256_CHUNK_BYTES % 8 == 0
+    r_root = int(profile["R_root_proposed"])
+    k_model = ceil_div(R_MAX, r_root)
+    seed_attempts_per_root = int(profile["K_seed_attempts_per_root_epoch_cap"])
+    k_seed_attempts = k_model * seed_attempts_per_root
+    q_root = int(profile["Q_root_scalar_cap_proposed"])
+    words_per_seed = q_root * 6
+    bytes_per_seed = words_per_seed * 8
+    full_chunks, tail_bytes = divmod(bytes_per_seed, KMACXOF256_CHUNK_BYTES)
+    chunks_per_seed = full_chunks + (1 if tail_bytes else 0)
+    full_chunk_squeeze_blocks = ceil_div(
+        KMACXOF256_CHUNK_BYTES, KMACXOF256_RATE_BYTES
+    )
+    squeeze_blocks_per_seed = (
+        full_chunks * full_chunk_squeeze_blocks
+        + (ceil_div(tail_bytes, KMACXOF256_RATE_BYTES) if tail_bytes else 0)
+    )
+    # Each independent chunk has one cSHAKE prefix block and one key bytepad
+    # block.  Its final message/padding permutation is also its first squeeze.
+    permutations_per_seed = squeeze_blocks_per_seed + 2 * chunks_per_seed
+    honest_model_permutations = permutations_per_seed * k_seed_attempts
+    total_permutation_query_control = (
+        honest_model_permutations + KMACXOF256_ADVERSARY_PERM_QUERY_CONTROL
+    )
+    sponge_indifferentiability_control = Fraction(
+        total_permutation_query_control
+        * (total_permutation_query_control + 1),
+        1 << (KMACXOF256_CAPACITY_BITS + 1),
+    )
+    key_guess_control = Fraction(
+        k_seed_attempts * KMACXOF256_ADVERSARY_PERM_QUERY_CONTROL,
+        1 << ROOT_MASK_KMAC_STATED_SECURITY_BITS,
+    )
+    seed_collision = Fraction(
+        k_seed_attempts * (k_seed_attempts - 1),
+        1 << (ROOT_MASK_KMAC_STATED_SECURITY_BITS + 1),
+    )
+    rejection = Fraction(
+        k_seed_attempts
+        * q_root
+        * ((1 << 64) - GOLDILOCKS_MODULUS) ** 6,
+        (1 << 64) ** 6,
+    )
+    conditional_sum = (
+        sponge_indifferentiability_control
+        + key_guess_control
+        + seed_collision
+        + rejection
+    )
+    other_target_fractions = {
+        name: (Fraction(0, 1) if bits is None else Fraction(1, 1 << bits))
+        for name, bits in R08_PRIVACY_OTHER_TERM_TARGET_BITS.items()
+    }
+    other_target_sum = sum(other_target_fractions.values(), Fraction(0, 1))
+    conditional_full_privacy_sum = conditional_sum + other_target_sum
+    absorbed_padded_bytes_per_seed = (
+        chunks_per_seed * 3 * KMACXOF256_RATE_BYTES
+    )
+    squeezed_internal_bytes_per_seed = (
+        squeeze_blocks_per_seed * KMACXOF256_RATE_BYTES
+    )
+    descriptor_fields = {
+        "magic_C7RMKX01": 8,
+        "model_id": 32,
+        "epoch_id_le64": 8,
+        "root_slot_le64": 8,
+        "layout_and_root_profile_digest": 32,
+        "field_id_Goldilocks_Fp3_u3_minus_2_0x03": 1,
+        "rate_numerator_0x01": 1,
+        "rate_denominator_0x02": 1,
+        "k0_0x04": 1,
+        "logical_leaf_symbols_le16_141": 2,
+        "draw_cap_0x06": 1,
+        "Q_root_coefficients_le64": 8,
+        "seed_attempt_index": 1,
+    }
+    assert sum(descriptor_fields.values()) == 104
+    setup_target_seconds = (
+        GPT2_SETUP_WALL_TARGET_SECONDS
+        if profile["model"] == GPT2["name"]
+        else GEMMA_SETUP_WALL_TARGET_SECONDS
+    )
+    setup_hard_cap_seconds = (
+        GPT2_SETUP_WALL_HARD_CAP_SECONDS
+        if profile["model"] == GPT2["name"]
+        else GEMMA_SETUP_WALL_HARD_CAP_SECONDS
+    )
+    return {
+        "model": profile["model"],
+        "candidate": "KMACXOF256",
+        "role": "mainline_110_bit_alternative_not_promoted",
+        "model_global_attempt_horizon": R_MAX,
+        "model_global_attempt_horizon_owner_confirmed": True,
+        "R_root": r_root,
+        "K_model": k_model,
+        "K_seed_attempts": k_seed_attempts,
+        "Q_mask_words_model_max": words_per_seed * k_seed_attempts,
+        "standard": {
+            "NIST_SP_800_185": "https://doi.org/10.6028/NIST.SP.800-185",
+            "KMAC_may_be_used_as_PRF": True,
+            "stated_security_strength_bits": ROOT_MASK_KMAC_STATED_SECURITY_BITS,
+            "Keccak_rate_bits": KMACXOF256_RATE_BYTES * 8,
+            "Keccak_capacity_bits": KMACXOF256_CAPACITY_BITS,
+            "standard_supplies_C7_exact_multi_key_theorem": False,
+        },
+        "logical_codec_candidate": {
+            "suite": "C7-RM-KMACXOF256-v1",
+            "key": "private uniform 32-byte candidate-root seed",
+            "customization_ASCII": "VOLTA-ZK/C7/root-mask/v1",
+            "customization_bytes": 24,
+            "SP800_185_KMACXOF_suffix": "right_encode(0)",
+            "descriptor_fields_and_bytes": descriptor_fields,
+            "descriptor_bytes": 104,
+            "chunk_index_encoding": "le64 appended to descriptor",
+            "KMAC_input_bytes_per_chunk": 112,
+            "chunk_output_bytes": KMACXOF256_CHUNK_BYTES,
+            "last_chunk_is_exact_prefix_without_serialized_padding": True,
+            "word_mapping": (
+                "offset=8*(6*coefficient_index+draw_index); "
+                "chunk=floor(offset/65536); local=offset mod 65536; le64"
+            ),
+            "chunk_output_length_bits": (
+                "8*min(65536,total_generator_bytes-65536*chunk_index)"
+            ),
+            "independent_KMACXOF256_call_per_chunk": True,
+            "fixed_chunk_calls_allow_parallel_CPU_SIMT_evaluation": True,
+            "canonical_emission_order_is_increasing_chunk_then_word": True,
+            "CPU_SIMT_bytes_must_match": True,
+            "persistent_generated_mask_or_codeword_bytes": 0,
+            "certificate_bytes_added_by_generator_choice": 0,
+            "visible_PCS_query_count_added_by_generator_choice": 0,
+            "model_sized_scratch_allowed": False,
+            "second_packed_weight_scan_allowed": False,
+            "online_BatchOpen_mask_contribution_schedule_proved": False,
+            "online_mask_regeneration_bytes_per_attempt": None,
+            "setup_work_may_pay_online_regeneration": False,
+            "implemented": False,
+        },
+        "per_candidate_seed_resource_control": {
+            "logical_output_words": words_per_seed,
+            "logical_output_bytes": bytes_per_seed,
+            "chunks": chunks_per_seed,
+            "last_chunk_logical_bytes": (
+                tail_bytes if tail_bytes else KMACXOF256_CHUNK_BYTES
+            ),
+            "squeeze_rate_blocks": squeeze_blocks_per_seed,
+            "Keccak_f1600_permutations": permutations_per_seed,
+            "absorbed_padded_bytes": absorbed_padded_bytes_per_seed,
+            "unserialized_squeeze_tail_bytes": (
+                squeezed_internal_bytes_per_seed - bytes_per_seed
+            ),
+            "working_bytes_per_worker_upper_bound": (
+                KMACXOF256_CHUNK_BYTES + 200 + 112
+            ),
+        },
+        "per_root_two_seed_setup_cap": {
+            "logical_generator_bytes": bytes_per_seed * seed_attempts_per_root,
+            "Keccak_f1600_permutations": (
+                permutations_per_seed * seed_attempts_per_root
+            ),
+            "minimum_logical_generator_Bps_for_setup_target": (
+                bytes_per_seed * seed_attempts_per_root / setup_target_seconds
+            ),
+            "minimum_logical_generator_Bps_for_setup_hard_cap": (
+                bytes_per_seed * seed_attempts_per_root / setup_hard_cap_seconds
+            ),
+            "minimum_Keccak_f1600_permutations_per_second_for_setup_target": (
+                permutations_per_seed
+                * seed_attempts_per_root
+                / setup_target_seconds
+            ),
+            "setup_target_seconds": setup_target_seconds,
+            "setup_hard_cap_seconds": setup_hard_cap_seconds,
+            "setup_wall_measured": False,
+        },
+        "conditional_ideal_permutation_control": {
+            "adversary_Keccak_permutation_queries_screen": (
+                KMACXOF256_ADVERSARY_PERM_QUERY_CONTROL
+            ),
+            "adversary_query_screen_selected_as_security_definition": False,
+            "honest_model_Keccak_permutations": honest_model_permutations,
+            "total_permutation_query_control": total_permutation_query_control,
+            "sponge_term_formula": "N*(N+1)/2^513",
+            "sponge_term_bits": certified_bits(
+                sponge_indifferentiability_control
+            ),
+            "multi_key_guess_control_bits": certified_bits(key_guess_control),
+            "seed_collision_bits": certified_bits(seed_collision),
+            "rejection_bits": certified_bits(rejection),
+            "conditional_sum_exact": (
+                f"{conditional_sum.numerator}/{conditional_sum.denominator}"
+            ),
+            "conditional_sum_bits": certified_bits(conditional_sum),
+            "conditional_sum_passes_110": (
+                conditional_sum <= Fraction(1, 1 << 110)
+            ),
+            "conditional_only_not_security_credit": True,
+        },
+        "conditional_full_privacy_allocation": {
+            "other_privacy_term_target_bits": R08_PRIVACY_OTHER_TERM_TARGET_BITS,
+            "complete_epsilon_exact": (
+                f"{conditional_full_privacy_sum.numerator}/"
+                f"{conditional_full_privacy_sum.denominator}"
+            ),
+            "complete_bits": certified_bits(conditional_full_privacy_sum),
+            "complete_allocation_passes_78": (
+                conditional_full_privacy_sum <= Fraction(1, 1 << 78)
+            ),
+            "allocation_pass_is_not_theorem_discharge": True,
+        },
+        "exact_multi_key_KMAC_to_Keccak_reduction_instantiated": False,
+        "fixed_Keccak_f1600_assumption_numeric": False,
+        "passes_component_reserve": False,
+        "reason_gate_false": (
+            "SP 800-185 supplies the construction/PRF role, while C7 still "
+            "needs an exact adaptive multi-key reduction including adversarial "
+            "permutation work; the displayed bound is an ideal-permutation control"
+        ),
+        "setup_wall_gate_must_still_pass": True,
+        "candidate_promoted": False,
+        "credit": False,
+    }
+
+
+def r08_online_rs_batch_open_screen(
+    model: dict[str, object],
+    profile: dict[str, object],
+    setup: dict[str, object],
+    codec: dict[str, object],
+) -> dict[str, object]:
+    """Bounded screen of the missing online selected-RS opening circuit."""
+    weights = int(model["weights"])
+    q_root = int(profile["Q_root_scalar_cap_proposed"])
+    dimension = int(profile["RS_total_coefficient_dimension"])
+    codeword_symbols = 2 * dimension
+    codeword_bytes = codeword_symbols * FIELD_SYMBOL_BYTES
+    packed_bytes = weights * PACKED_WEIGHT_BYTES
+    stored_total = int(setup["persistent_bytes"]) + codeword_bytes
+    initial_visible = int(codec["rounds"][0]["S_visible_Fp_reserved_cap"])
+    dense_source_coefficients = weights + q_root
+    dense_fma_control = dense_source_coefficients * initial_visible
+    return {
+        "model": model["name"],
+        "scope": (
+            "initial packed-weight RS oracle only; failure here is sufficient "
+            "to reject the complete response opener"
+        ),
+        "required_contract": {
+            "work": "O(N + poly(q,log N)) with source-linear constant independent of q",
+            "packed_source_scans": 1,
+            "bounded_memory": True,
+            "full_codeword_or_model_sized_scratch": False,
+            "second_scan": False,
+            "CPU_SIMT_transcript_difference": False,
+        },
+        "selected_geometry": {
+            "weight_Fp_coefficients": weights,
+            "root_randomness_Fp_coefficients": q_root,
+            "RS_total_coefficient_dimension": dimension,
+            "rate_half_codeword_Fp_symbols": codeword_symbols,
+            "initial_visible_Fp_reserved_cap": initial_visible,
+        },
+        "rows": {
+            "independent_dense_evaluation": {
+                "source_coefficients": dense_source_coefficients,
+                "opened_outputs_control": initial_visible,
+                "dense_FMA_control": dense_fma_control,
+                "classification": "qN_control_not_lower_bound_on_shared_circuits",
+                "pass": False,
+                "reason": (
+                    "direct Horner/dot evaluation repeats the dense source for "
+                    "each opened symbol and violates the q-independent source term"
+                ),
+            },
+            "persist_complete_rate_half_codeword": {
+                "codeword_bytes": codeword_bytes,
+                "persistent_bytes_with_existing_tree": stored_total,
+                "persistent_amplification_over_packed_i16": (
+                    stored_total / packed_bytes
+                ),
+                "selected_setup_tier_cap_bytes": int(profile["setup_cap_bytes"]),
+                "exploratory_3x_cap_bytes": 3 * packed_bytes,
+                "pass": False,
+                "reason": (
+                    "payload persistence exceeds the selected setup tier and "
+                    "the 3x exploratory anti-X4d ceiling"
+                ),
+            },
+            "online_full_codeword_materialization": {
+                "minimum_full_payload_scratch_bytes": codeword_bytes,
+                "model_sized_scratch": True,
+                "pass": False,
+                "reason": (
+                    "materialization violates bounded memory even before its "
+                    "encoder operations and temporary I/O are counted"
+                ),
+            },
+            "pruned_or_subset_shared_transform": {
+                "best_registered_standard_shape": "O(N*log(q)) or model-linear frontier",
+                "exact_C7_operation_schedule_derived": False,
+                "one_pass_bounded_memory_schedule_derived": False,
+                "pass": False,
+                "reason": (
+                    "the bounded repository/paper screen contains no schedule "
+                    "whose source-linear coefficient is independent of q; this "
+                    "is a missing construction, not a universal lower bound"
+                ),
+            },
+            "seeded_mask_only": {
+                "BLAKE3_or_KMAC_changes_RS_linear_map": False,
+                "generator_random_access_solves_shared_RS_evaluation": False,
+                "pass": False,
+                "reason": (
+                    "addressed coefficients remove persistent mask storage but "
+                    "do not evaluate their dense RS contribution at queried points"
+                ),
+            },
+        },
+        "complete_row_exists": False,
+        "RS_control_online_gate_pass": False,
+        "disposition": (
+            "NO_GO_current_strict_UD_RS_realization_under_one_scan_bounded_"
+            "memory_and_3x_setup_gates"
+        ),
+        "escape_requires_owner_design_change": (
+            "a concrete different code-switch/shared circuit with exact bytes and "
+            "O(N+poly(q,log N)), or relaxation of a recorded hard resource gate"
+        ),
+        "prover_or_SIMT_implementation_authorized": False,
+        "credit": False,
+    }
+
+
+def r08_new_carrier_tournament() -> dict[str, object]:
+    """Owner-authorized admission boundary; no old negative screen is rerun."""
+    return {
+        "state": "OPEN_DUAL_TRACK_NO_ENTRANT_ADMITTED",
+        "owner_choice": "1.A",
+        "tracks": {
+            "published_constructions": {
+                "role": "baseline_and_controls_only",
+                "admission_rule": "exact_and_independently_verifiable_costs_only",
+                "implementation_authorized": False,
+                "credit": False,
+            },
+            "C7_codesigned_circuit": {
+                "role": "main_research_line",
+                "pre_CPU_screen_requires": [
+                    "complete algebraic relation and codec",
+                    "exact query, byte, memory, setup and work census",
+                    "soundness and privacy bridge to MAC, KV cache and malicious verifier",
+                    "one packed scan in O(N+poly(q,log N))",
+                ],
+                "pre_CPU_screen_pass": False,
+                "tiny_CPU_prototype_authorized": False,
+                "credit_by_design": False,
+            },
+        },
+        "strict_ud_RS_role": "algebraic_and_security_control_baseline_only",
+        "strict_ud_RS_prover_implementation_authorized": False,
+        "admission_requires_one_complete_row": [
+            "source-linear constant independent of q",
+            "one monotone packed scan and bounded working memory",
+            "no complete codeword or model-sized scratch",
+            "exact logical-g141 query/load and certificate-byte codec",
+            "all four query-growth axes <=1.30",
+            "complete certificate <=35/115 MB and <=3.5x",
+            "persistent setup <=3x and wall <=990/5940 seconds",
+            "policy-2 t-query privacy and dishonest-prover soundness bridge",
+            "canonical Fp3 wire and unchanged interactive Q_FS=0 transcript",
+        ],
+        "excluded_without_rescreen": {
+            "pure_fold_width": "R0.7 exhausted; width alone creates no shared evaluation circuit",
+            "cross_round_joint_sampling": "bounded screen found no actual visible-Fp sharing",
+            "ERA_to_BaseFold": "fails q growth and setup floor before C7 privacy/terminal work",
+            "SwitchFold_QAFold_BrakeFold": (
+                "no exact one-scan bounded-memory Goldilocks schedule; auxiliary full encodings"
+            ),
+            "current_strict_UD_RS": (
+                "direct qN, or complete-codeword persistence/materialization beyond setup/memory"
+            ),
+            "TensorSwitch_Titan": "sqrt-weight proof law exceeds the scaling exponent",
+            "ITC_univariate_compiler": "does not supply the required multilinear opening relation",
+            "constrained_code_HVZK_2026_391": (
+                "privacy compiler only; does not supply the missing shared base-code evaluation"
+            ),
+        },
+        "entrants": [],
+        "selected_carrier": None,
+        "complete_row_exists": False,
+        "prover_or_SIMT_implementation_authorized": False,
+        "credit": False,
+    }
 
 
 def constant_fold_schedule(num_variables: int, factor: int) -> list[int]:
@@ -1087,6 +2656,16 @@ def illustrative_era_setup_and_refresh(
     model: dict[str, object], bandwidth_bytes_per_second: float
 ) -> dict[str, object]:
     weights = int(model["weights"])
+    setup_wall_target = (
+        GPT2_SETUP_WALL_TARGET_SECONDS
+        if model["name"] == GPT2["name"]
+        else GEMMA_SETUP_WALL_TARGET_SECONDS
+    )
+    setup_wall_hard_cap = (
+        GPT2_SETUP_WALL_HARD_CAP_SECONDS
+        if model["name"] == GPT2["name"]
+        else GEMMA_SETUP_WALL_HARD_CAP_SECONDS
+    )
     assert weights * ERA_INVERSE_RATE_NUMERATOR % ERA_INVERSE_RATE_DENOMINATOR == 0
     oracle_symbols = (
         weights * ERA_INVERSE_RATE_NUMERATOR // ERA_INVERSE_RATE_DENOMINATOR
@@ -1209,10 +2788,15 @@ def illustrative_era_setup_and_refresh(
             "target_bytes": setup_target,
             "baseline_tolerance_bytes": setup_hard,
             "exploratory_persistent_disk_cap_bytes": setup_exploratory,
-            "absolute_setup_wall_cap_seconds": None,
-            "absolute_refresh_wall_cap_seconds": None,
+            "setup_wall_target_seconds": setup_wall_target,
+            "setup_wall_hard_cap_seconds": setup_wall_hard_cap,
+            "refresh_wall_target_seconds": setup_wall_target,
+            "refresh_wall_hard_cap_seconds": setup_wall_hard_cap,
+            "refresh_counter_is_separate": True,
+            "refresh_budget_transfer_allowed": False,
+            "refresh_tested_in_R08": False,
             "absolute_time_caps_must_be_preregistered_before_measurement": True,
-            "all_absolute_caps_selected": False,
+            "all_absolute_caps_selected": True,
             "exploratory_setup_gate_pass": False,
             "selected_logical_leaf_symbols": LOGICAL_LEAF_SYMBOLS,
             "selected_leaf_status": (
@@ -1492,7 +3076,7 @@ def c7_policy3_ra_leaf_screen(model: dict[str, object]) -> dict[str, object]:
 
 
 def challenge_mode_comparison() -> dict[str, object]:
-    extension_field_size = GOLDILOCKS_MODULUS**2
+    extension_field_size = GOLDILOCKS_MODULUS**3
     interactive = Fraction(RLC_BAD_CHALLENGE_CAP, extension_field_size)
     fs_direct = Fraction(
         FIAT_SHAMIR_AMPLIFIED_QUERY_SCREEN * RLC_BAD_CHALLENGE_CAP,
@@ -1517,9 +3101,9 @@ def challenge_mode_comparison() -> dict[str, object]:
         "challenge_field_size": extension_field_size,
         "bad_challenge_cap_T": RLC_BAD_CHALLENGE_CAP,
         "interactive_selected": {
-            "formula": "T/|Fp2|",
+            "formula": "T/|Fp3|",
             **probability(interactive),
-            "explicit_challenge_bytes_per_draw": AUTHENTICATED_FP2_SYMBOL_BYTES,
+            "explicit_challenge_bytes_per_draw": 3 * FIELD_SYMBOL_BYTES,
             "grinding_queries": 0,
             "requirements": [
                 "prefix fixed before the draw",
@@ -1530,14 +3114,14 @@ def challenge_mode_comparison() -> dict[str, object]:
             "credit": False,
         },
         "fiat_shamir_direct_control": {
-            "formula": "Q_FS*T/|Fp2|",
+            "formula": "Q_FS*T/|Fp3|",
             "Q_FS": FIAT_SHAMIR_AMPLIFIED_QUERY_SCREEN,
             **probability(fs_direct),
             "selected": False,
             "credit": False,
         },
         "fiat_shamir_two_challenge_amplified": {
-            "formula": "Q_FS*T^2/|Fp2|^2",
+            "formula": "Q_FS*T^2/|Fp3|^2",
             "Q_FS": FIAT_SHAMIR_AMPLIFIED_QUERY_SCREEN,
             **probability(fs_pair),
             "explicit_challenge_bytes": 0,
@@ -1547,7 +3131,7 @@ def challenge_mode_comparison() -> dict[str, object]:
             "requirements": [
                 "one paired RO invocation on one frozen prefix and grinding nonce",
                 "paired output expands with domain separation into two independent challenges",
-                "canonical rejection sampling into Fp2",
+                "canonical rejection sampling into Fp3",
                 "both challenges check the same complete relation",
                 "no state restoration or cross-attempt transcript reuse",
                 "Q_FS counts paired trials over the entire declared grinding scope",
@@ -1601,7 +3185,7 @@ def policy2_query_accounting() -> dict[str, object]:
         }
 
     return {
-        "status": "R07_OWNER_1_30_QUERY_AXIS_CANDIDATE_BACKEND_UNADMITTED",
+        "status": "R08_FP3_SEEDED_MASK_SELECTED_FULL_CODEC_UNADMITTED",
         "privacy_statement": (
             "only root-bound masked PCS responses within the durable global "
             "budget are visible; the terminal evaluation remains VOLE-authenticated"
@@ -1786,9 +3370,15 @@ def policy2_query_accounting() -> dict[str, object]:
         "cryptographic_work_bounds": {
             "Q_CR_collision_binding": None,
             "Q_hide_adaptive_root_path": None,
-            "Q_PRF_masks_and_salts": None,
+            "Q_salt_PRF": None,
+            "Q_root_mask_PRG_words_by_epoch": None,
+            "Adv_RootMaskPRG_multi": None,
+            "root_mask_PRG_component_reserve_bits": (
+                ROOT_MASK_PRG_LIFETIME_RESERVE_BITS
+            ),
+            "root_mask_PRG_is_distinct_from_salt_PRF_and_VOLE_PCG": True,
             "historical_Q_leaf_is_not_an_active_substitute": True,
-            "all_three_derived_across_K_model": False,
+            "all_active_bounds_derived_across_K_model": False,
             "credit": False,
         },
         "response_and_state_plane_privacy": {
@@ -1879,14 +3469,17 @@ def policy2_query_accounting() -> dict[str, object]:
             "formula": (
                 "sum_disclosed_candidate_omega eps_RV_W + sum_attempt eps_RV_B + "
                 "sum_state eps_RV_KV + Adv_MultiUserVOLE_MDV + "
+                "Adv_RootMaskPRG_multi + K_seed_attempts*eps_rejection + "
                 "sum_domain Adv_PCG + sum_attempt(eps_terminal_codec+eps_timing) + "
                 "sum_all_rotation_attempts eps_RotateSameW_priv + "
                 "eps_branch_derived_closure + eps_state_codec_carry"
             ),
             "eps_RV_formula": (
-                "eps_OnlineMDVViewRefine + zeta_RS_adapt + Adv_PRF + "
+                "eps_OnlineMDVViewRefine + zeta_RS_adapt + Adv_SaltPRF + "
                 "Adv_BLAKE3_RootPathHide"
             ),
+            "root_mask_privacy_is_computational": True,
+            "root_mask_PRG_advantage_included_once_model_wide": True,
             "allocator_failure_term": (
                 "zero only under the selected AllocOK trust boundary; otherwise Pr[not AllocOK]"
             ),
@@ -2273,8 +3866,9 @@ def security_screen() -> dict[str, object]:
         "R_max_scope": "accepted responses + failed attempts + retries + selective aborts",
         "shared_Delta_connection_scoped": True,
         "challenge_field": (
-            "terminal baseline Fp2 with one shared Delta; PCS algebraic "
-            "amplifier/field is unselected, and Lean does not prove its bridge"
+            "selected Goldilocks Fp3 with one shared Delta and canonical three-limb "
+            "encoding; Lean proves coordinate linearity, while the concrete Rust "
+            "codec/shared-Delta adapter refinement remains open"
         ),
         "one_time_correlations_and_masks_burn_on_abort": True,
         "malicious_verifier_key_schedule": {
@@ -2418,16 +4012,143 @@ def security_screen() -> dict[str, object]:
 def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[str, object]:
     small = model_report(GPT2, chunk_bytes, bandwidth_bytes_per_second)
     large = model_report(GEMMA_ENVELOPE, chunk_bytes, bandwidth_bytes_per_second)
+    fp3_field_and_terminal = r08_fp3_field_and_terminal_screen()
+
+    # First close the root-capacity fixed point from the pre-mask codec.  GPT-2
+    # crosses from 2^27 to 2^28 coefficients once its selected Q_root is added;
+    # Gemma remains at 2^35.  The final codec below must reproduce these roots.
+    small_provisional_codec = r08_fp3_opening_codec_screen(
+        GPT2,
+        R08_PROVISIONAL_PRE_MASK_FP3_SCHEDULES[str(GPT2["name"])],
+    )
+    large_provisional_codec = r08_fp3_opening_codec_screen(
+        GEMMA_ENVELOPE,
+        R08_PROVISIONAL_PRE_MASK_FP3_SCHEDULES[
+            str(GEMMA_ENVELOPE["name"])
+        ],
+    )
+    small_provisional_capacity = r08_rs_t_query_capacity_screen(
+        GPT2,
+        int(small_provisional_codec["totals"]["S_visible_Fp"]),
+        int(small_provisional_codec["rounds"][0]["S_visible_Fp_reserved_cap"]),
+    )
+    large_provisional_capacity = r08_rs_t_query_capacity_screen(
+        GEMMA_ENVELOPE,
+        int(large_provisional_codec["totals"]["S_visible_Fp"]),
+        int(large_provisional_codec["rounds"][0]["S_visible_Fp_reserved_cap"]),
+    )
+    small_provisional_profile = r08_concrete_root_profile_proposal(
+        GPT2, small_provisional_capacity, 1 << 9
+    )
+    large_provisional_profile = r08_concrete_root_profile_proposal(
+        GEMMA_ENVELOPE, large_provisional_capacity, 1 << 13
+    )
+    small_selected_dimension = int(
+        small_provisional_profile["RS_total_coefficient_dimension"]
+    )
+    large_selected_dimension = int(
+        large_provisional_profile["RS_total_coefficient_dimension"]
+    )
+    small_selected_variables = small_selected_dimension.bit_length() - 1
+    large_selected_variables = large_selected_dimension.bit_length() - 1
+
+    small_fp3_audit = r08_selected_extension_strict_audit(
+        GPT2,
+        R08_SELECTED_FP3_SCHEDULES[str(GPT2["name"])],
+        3,
+        small_selected_variables,
+    )
+    large_fp3_audit = r08_selected_extension_strict_audit(
+        GEMMA_ENVELOPE,
+        R08_SELECTED_FP3_SCHEDULES[str(GEMMA_ENVELOPE["name"])],
+        3,
+        large_selected_variables,
+    )
+    small_fp3_codec = r08_fp3_opening_codec_screen(
+        GPT2,
+        R08_SELECTED_FP3_SCHEDULES[str(GPT2["name"])],
+        small_selected_variables,
+    )
+    large_fp3_codec = r08_fp3_opening_codec_screen(
+        GEMMA_ENVELOPE,
+        R08_SELECTED_FP3_SCHEDULES[str(GEMMA_ENVELOPE["name"])],
+        large_selected_variables,
+    )
+    small_fp3_totals = small_fp3_codec["totals"]
+    large_fp3_totals = large_fp3_codec["totals"]
+    small_t_query_capacity = r08_rs_t_query_capacity_screen(
+        GPT2,
+        int(small_fp3_totals["S_visible_Fp"]),
+        int(small_fp3_codec["rounds"][0]["S_visible_Fp_reserved_cap"]),
+    )
+    large_t_query_capacity = r08_rs_t_query_capacity_screen(
+        GEMMA_ENVELOPE,
+        int(large_fp3_totals["S_visible_Fp"]),
+        int(large_fp3_codec["rounds"][0]["S_visible_Fp_reserved_cap"]),
+    )
+    small_root_mask_prg = r08_root_mask_prg_policy_screen(
+        GPT2, small_t_query_capacity
+    )
+    large_root_mask_prg = r08_root_mask_prg_policy_screen(
+        GEMMA_ENVELOPE, large_t_query_capacity
+    )
+    small_root_profile = r08_concrete_root_profile_proposal(
+        GPT2, small_t_query_capacity, 1 << 9
+    )
+    large_root_profile = r08_concrete_root_profile_proposal(
+        GEMMA_ENVELOPE, large_t_query_capacity, 1 << 13
+    )
+    assert (
+        int(small_root_profile["RS_total_coefficient_dimension"])
+        == small_selected_dimension
+    )
+    assert (
+        int(large_root_profile["RS_total_coefficient_dimension"])
+        == large_selected_dimension
+    )
+    small_fp3_setup = r08_fp3_setup_resource_screen(
+        GPT2, bandwidth_bytes_per_second, small_selected_dimension
+    )
+    large_fp3_setup = r08_fp3_setup_resource_screen(
+        GEMMA_ENVELOPE, bandwidth_bytes_per_second, large_selected_dimension
+    )
+    small_online_rs_open = r08_online_rs_batch_open_screen(
+        GPT2, small_root_profile, small_fp3_setup, small_fp3_codec
+    )
+    large_online_rs_open = r08_online_rs_batch_open_screen(
+        GEMMA_ENVELOPE, large_root_profile, large_fp3_setup, large_fp3_codec
+    )
+    small_blake3_fallback = r08_blake3_fallback_privacy_variant(
+        small_root_profile
+    )
+    large_blake3_fallback = r08_blake3_fallback_privacy_variant(
+        large_root_profile
+    )
+    small_kmac_mainline = r08_kmacxof256_mainline_screen(
+        small_root_profile
+    )
+    large_kmac_mainline = r08_kmacxof256_mainline_screen(
+        large_root_profile
+    )
+    fp3_opening_growth = {
+        key: large_fp3_totals[key] / small_fp3_totals[key]
+        for key in ("q_open", "Z_atom", "U_leaf", "S_visible_Fp")
+    }
+    fp3_known_bytes = {
+        str(GPT2["name"]): small_fp3_totals["known_serialized_bytes"],
+        str(GEMMA_ENVELOPE["name"]): large_fp3_totals["known_serialized_bytes"],
+    }
     small_total = int(small["certificate"]["total"]["bytes"])
     large_total = int(large["certificate"]["total"]["bytes"])
     certificate_growth = large_total / small_total
     return {
-        "schema": "volta-c7-stateful-alfc-r07-screen-v11",
+        "schema": "volta-c7-stateful-alfc-r08-screen-v23",
         "design": "C7 stateful authenticated linear-functional commitment",
         "screening_only": True,
         "credit": False,
         "authorization": {
             "r07_carrier_and_pareto_checkpoint_authorized": True,
+            "r08_codec_security_bytes_resources_design_authorized": True,
             "batch_open_blocks_cpu_reference_authorized_now": False,
             "batch_open_blocks_cpu_reference_pre_authorized_after_checkpoint": False,
             "batch_open_blocks_cpu_reference_requires_backend_checkpoint": True,
@@ -2439,13 +4160,22 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "pod_preparation_only": True,
             "c7_cpu_reference_pass": False,
             "c7_pod_ready": False,
+            "former_selected_RS_realization_no_go": True,
+            "owner_design_decision_required_before_more_implementation": False,
+            "new_shared_carrier_tournament_authorized": True,
+            "strict_ud_RS_demoted_to_control_baseline": True,
+            "strict_ud_RS_prover_authorized": False,
+            "carrier_independent_Fp3_codec_KAT_MAC_adapter_authorized": True,
+            "carrier_independent_Fp3_seam_implemented": True,
+            "published_carriers_baseline_controls_only": True,
+            "C7_codesigned_circuit_main_research_line": True,
+            "C7_codesigned_pre_CPU_screen_pass": False,
+            "tiny_CPU_prototype_authorized_now": False,
         },
         "privacy_policy": {
             "active": 2,
             "last_tested": 3,
-            "active_status": (
-                "policy2_owner1_30_query_axis_candidate_backend_unadmitted"
-            ),
+            "active_status": "policy2_dual_track_carrier_tournament_open_RS_control_Fp3_seam_only",
             "last_tested_policy3_terminal_shape": (
                 "digest-only salted leaf commitment with public Merkle paths "
                 "and attempt-local VOLE-private leaf/PCS checks"
@@ -2465,13 +4195,32 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             },
             "policy_2_status": "active_design_only",
             "policy_2_activation_authorized": True,
+            "policy_2_root_mask_main_line": "computational_per_root_seed_PRG_PCG",
+            "policy_2_root_mask_baseline": "persisted_uniform_Fp_coefficients",
+            "policy_2_root_mask_primary_candidate": "keyed_BLAKE3_XOF",
+            "policy_2_root_mask_fallback_candidate": "KMACXOF256",
+            "policy_2_PRG_failure_may_not_reduce_78bit_target": True,
+            "policy_2_privacy_declared_computational": True,
+            "policy_2_Adv_root_mask_PRG_in_78_bit_budget": True,
             "policy_2_root_wide_query_horizon_schema_registered": True,
             "policy_2_root_wide_query_horizon_instantiated": False,
+            "policy_2_concrete_root_profile_proposals_compiled": True,
+            "policy_2_concrete_root_profile_owner_selected_for_fallback": True,
+            "policy_2_concrete_root_profile_owner_selected_for_mainline": False,
+            "policy_2_blake3_full78_fallback_owner_authorized": True,
+            "policy_2_blake3_full78_fallback_admitted": False,
+            "policy_2_model_global_2_pow_20_horizon_owner_confirmed": True,
+            "policy_2_kmacxof256_mainline_screen_compiled": True,
+            "policy_2_kmacxof256_mainline_promoted": False,
+            "policy_2_kmac_64KiB_v1_codec_owner_frozen": True,
+            "policy_2_complete_privacy_target_allocation_owner_approved": True,
+            "policy_2_candidate_order_owner_reconfirmed": (
+                "BLAKE3_primary_KMAC_unpromoted_control"
+            ),
             "policy_2_exact_numeric_caps_derived": False,
             "numeric_caps_deferred_until_complete_pareto": True,
-            "selected_theorem_carrier": (
-                "RS_t_query_ZK_plus_strict_unique_decoding_WHIR_or_Ligerito"
-            ),
+            "selected_theorem_carrier": None,
+            "strict_ud_RS_role": "algebraic_and_security_control_baseline_only",
             "selected_public_leaf_tree_function": "salted_BLAKE3",
             "era_r4_role": "byte_and_prover_control_only",
             "policy_2_query_accounting_ref": "top-level policy2_query_accounting",
@@ -2488,7 +4237,8 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "proof_wire_exploratory_total_35_115MB_3_5x_caps_registered": True,
             "setup_exploratory_3x_ceiling_registered": True,
             "setup_exploratory_absolute_disk_caps_registered": True,
-            "setup_exploratory_absolute_time_and_refresh_caps_selected": False,
+            "setup_wall_targets_15m_90m_registered": True,
+            "setup_exploratory_absolute_time_and_refresh_caps_selected": True,
             "logical_leaf_geometry_selected": True,
             "anti_x4d_setup_gate_pass": False,
             "active_public_leaf_function_implemented": False,
@@ -2501,6 +4251,29 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "terminal_evaluation_remains_authenticated": True,
             "malicious_dv_connection_privacy_theorem_complete": False,
             "policy2_model_lifetime_privacy_78bit_proved": False,
+            "policy2_root_mask_seed_policy_selected": True,
+            "policy2_root_mask_primary_candidate_selected": True,
+            "policy2_root_mask_generator_primitive_selected": False,
+            "policy2_root_mask_PRG_advantage_numeric": False,
+            "policy2_rs_t_query_dimension_screen_complete": True,
+            "policy2_same_root_for_Rmax_disposition": "NO_GO",
+            "policy2_rs_t_query_numeric_Q_root_admitted": False,
+            "policy2_concrete_R_root_profile_proposals_compiled": True,
+            "policy2_concrete_R_root_profile_owner_selected_for_fallback": True,
+            "policy2_concrete_R_root_profile_owner_selected_for_mainline": False,
+            "policy2_blake3_full78_fallback_owner_authorized": True,
+            "policy2_blake3_full78_fallback_complete_sum_pass": False,
+            "policy2_model_global_2_pow_20_horizon_owner_confirmed": True,
+            "policy2_kmacxof256_mainline_screen_compiled": True,
+            "policy2_kmacxof256_mainline_promoted": False,
+            "policy2_RS_control_online_opening_screen_complete": True,
+            "policy2_RS_control_online_opening_screen_pass": False,
+            "new_shared_carrier_tournament_authorized": True,
+            "new_shared_carrier_tournament_complete_row_exists": False,
+            "strict_ud_RS_prover_implementation_authorized": False,
+            "carrier_independent_Fp3_codec_KAT_pass": True,
+            "carrier_independent_Fp3_MAC_adapter_test_pass": True,
+            "carrier_independent_Fp3_PCS_refinement_proved": False,
             "policy2_epoch_and_receipt_transcript_binding_proved": False,
             "policy2_single_session_receipt_state_machine_proved": False,
             "policy2_plane_charge_vector_and_durable_maps_instantiated": False,
@@ -2521,14 +4294,15 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "policy2_online_mdv_view_refine_proved": False,
             "challenge_generation_and_grinding_policy_selected": True,
             "retained_interleaved_goldilocks_domain_rule_admitted": False,
-            "algebraic_security_amplifier_selected": False,
+            "algebraic_security_amplifier_selected": True,
             "algebraic_security_closure_path_selected": True,
             "fp3_direct_three_limb_fallback_selected": True,
             "first_compiler_envelope_selected": (
-                "rate1-k0-4-owner1_30-Fp2-query-axis-flat-g141-one-root"
+                "rate1-k0-4-owner1_30-Fp3-flat-g141-one-root"
             ),
-            "strict_ud_algebraic_110bit_per_response_derived": False,
-            "strict_ud_model_lifetime_soundness_78bit_derived": False,
+            "strict_ud_algebraic_110bit_per_response_derived": True,
+            "strict_ud_algebraic_gap_after_Rmax_78bit_derived": True,
+            "full_connection_78bit_security_derived": False,
             "honest_dv_entropy_delivery_instantiated": False,
             "interactive_challenge_transcript_binding_proved": False,
             "pure_fold_width_tail_screen_pass": False,
@@ -2539,23 +4313,29 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "selected_carrier_original_1_05_disposition": "NO_GO",
             "owner_1_30_query_growth_fallback_active": True,
             "owner_1_30_known_q_and_unstacked_Fp_controls_pass": True,
-            "owner_1_30_complete_four_axis_query_gate_pass": False,
+            "owner_1_30_complete_four_axis_query_gate_pass": True,
             "joint_sampler_visible_Fp_sharing_selected": False,
             "different_code_switch_selected": False,
             "one_pass_batch_open_blocks_proved": False,
             "cpu_batch_open_blocks_reference_pass": False,
             "simt_bit_exact_equivalence_pass": False,
             "query_schedule_compiled": False,
+            "opening_query_schedule_compiled": True,
             "query_counter_schema": {
                 "aggregate": list(POLICY2_AGGREGATE_CENSUS_CLASSES),
                 "per_plane": list(POLICY2_QUERY_CLASSES),
                 "attempt_counter": "A_attempt",
-                "logical_pcs_samples_q_open_by_plane_root_round": None,
-                "zk_alphabet_query_atoms_by_plane_root_round": None,
+                "logical_pcs_samples_q_open_by_plane_root_round": (
+                    "r08_owner_decisions_and_security_codec_screen."
+                    "Fp3_g141_opening_codec_screen.rounds"
+                ),
+                "zk_alphabet_query_atoms_by_plane_root_round": (
+                    "same_round_rows_Z_atom"
+                ),
             },
             "exact_query_counts_by_root_and_round": {
-                str(GPT2["name"]): None,
-                str(GEMMA_ENVELOPE["name"]): None,
+                str(GPT2["name"]): small_fp3_codec["rounds"],
+                str(GEMMA_ENVELOPE["name"]): large_fp3_codec["rounds"],
             },
             "adversarial_leaf_oracle_query_bound": LEAF_ORACLE_QUERY_SCREEN,
             "adversarial_leaf_oracle_query_bound_kind": (
@@ -2565,16 +4345,18 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
                 SELECTED_FIAT_SHAMIR_QUERY_BOUND
             ),
             "serialized_query_and_challenge_bytes_by_model": {
-                str(GPT2["name"]): None,
-                str(GEMMA_ENVELOPE["name"]): None,
+                str(GPT2["name"]): small_fp3_codec["totals"][
+                    "known_serialized_bytes"
+                ],
+                str(GEMMA_ENVELOPE["name"]): large_fp3_codec["totals"][
+                    "known_serialized_bytes"
+                ],
             },
             "query_bytes_reconciled_into_certificate_total": False,
             "compiled_tier_a_certificate_gate_pass": False,
         },
         "batch_open_blocks_admission": {
-            "state": (
-                "R07_OWNER_1_30_QUERY_AXIS_CANDIDATE_CPU_BACKEND_UNADMITTED"
-            ),
+            "state": "R08_STRICT_UD_RS_CONTROL_REALIZATION_NO_GO",
             "logical_leaf_symbols": LOGICAL_LEAF_SYMBOLS,
             "complexity_target": "O(N + poly(q, log N))",
             "generator_incidence_obstruction": {
@@ -2612,6 +4394,16 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
                 ),
             },
             "only_surviving_algorithm_shape": None,
+            "RS_control_bounded_online_screen": {
+                str(GPT2["name"]): small_online_rs_open,
+                str(GEMMA_ENVELOPE["name"]): large_online_rs_open,
+            },
+            "no_complete_row_reason": (
+                "direct evaluation is qN; complete-codeword persistence and "
+                "materialization fail setup/memory; no pruned/shared circuit "
+                "with O(N+poly(q,log N)) and exact bytes was found"
+            ),
+            "not_a_universal_lower_bound": True,
             "cpu_reference_contract": {
                 "algorithm_selected": False,
                 "reference_implemented": True,
@@ -2653,6 +4445,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "c7_cpu_reference_pass": False,
             "credit": False,
         },
+        "new_carrier_tournament": r08_new_carrier_tournament(),
         "simt_path": {
             "state": "BLOCKED_BEFORE_CPU_REFERENCE_PASS",
             "stage_order": [
@@ -2725,7 +4518,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "credit": False,
         },
         "pod_readiness": {
-            "state": "C7_R07_OWNER_1_30_QUERY_AXIS_CANDIDATE_NOT_READY",
+            "state": "C7_R08A_DUAL_TRACK_CARRIER_SCREEN_OPEN_FP3_SEAM_ONLY",
             "handoff_spec": "docs/c7-r03-prover-pod-handoff.md",
             "handoff_preparation_authorized": True,
             "required_before_C7_POD_READY": {
@@ -2799,6 +4592,14 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "setup_target_multiplier": 2.0,
             "setup_baseline_tolerance_multiplier": 2.1,
             "setup_exploratory_ceiling_multiplier": 3.0,
+            "setup_wall_target_seconds": {
+                str(GPT2["name"]): GPT2_SETUP_WALL_TARGET_SECONDS,
+                str(GEMMA_ENVELOPE["name"]): GEMMA_SETUP_WALL_TARGET_SECONDS,
+            },
+            "setup_wall_hard_cap_seconds": {
+                str(GPT2["name"]): GPT2_SETUP_WALL_HARD_CAP_SECONDS,
+                str(GEMMA_ENVELOPE["name"]): GEMMA_SETUP_WALL_HARD_CAP_SECONDS,
+            },
             "weight_wire_target_percent": 105,
             "weight_wire_exploratory_hard_band_percent": [125, 150],
             "leaf_salt_bits_screen": LEAF_SALT_BITS,
@@ -2877,19 +4678,210 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
                         // SETUP_EXPLORATORY_DENOMINATOR
                     ),
                 },
-                "absolute_setup_wall_caps_seconds": {
-                    str(GPT2["name"]): None,
-                    str(GEMMA_ENVELOPE["name"]): None,
+                "setup_wall_targets_seconds": {
+                    str(GPT2["name"]): GPT2_SETUP_WALL_TARGET_SECONDS,
+                    str(GEMMA_ENVELOPE["name"]): GEMMA_SETUP_WALL_TARGET_SECONDS,
                 },
-                "absolute_refresh_wall_caps_seconds": {
-                    str(GPT2["name"]): None,
-                    str(GEMMA_ENVELOPE["name"]): None,
+                "setup_wall_tolerance_caps_seconds": {
+                    str(GPT2["name"]): GPT2_SETUP_WALL_HARD_CAP_SECONDS,
+                    str(GEMMA_ENVELOPE["name"]): (
+                        GEMMA_SETUP_WALL_HARD_CAP_SECONDS
+                    ),
                 },
+                "refresh_wall_targets_seconds": {
+                    str(GPT2["name"]): GPT2_SETUP_WALL_TARGET_SECONDS,
+                    str(GEMMA_ENVELOPE["name"]): GEMMA_SETUP_WALL_TARGET_SECONDS,
+                },
+                "refresh_wall_hard_caps_seconds": {
+                    str(GPT2["name"]): GPT2_SETUP_WALL_HARD_CAP_SECONDS,
+                    str(GEMMA_ENVELOPE["name"]): (
+                        GEMMA_SETUP_WALL_HARD_CAP_SECONDS
+                    ),
+                },
+                "refresh_counters_independent_from_setup": True,
+                "refresh_budget_transfer_allowed": False,
+                "refresh_test_authorized_or_required_in_R08": False,
+                "refresh_status": "registered_not_tested_not_credited",
                 "time_caps_must_be_preregistered_before_measurement": True,
-                "all_absolute_caps_selected": False,
+                "all_absolute_caps_selected": True,
                 "complete_compiled_gate_pass": False,
             },
             "no_tolerance_transfer": True,
+            "credit": False,
+        },
+        "r08_owner_decisions_and_security_codec_screen": {
+            "fixed_carrier": (
+                "RS_t_query_ZK_plus_strict_UD_WHIR_or_Ligerito"
+            ),
+            "starting_rate": "1/2",
+            "first_fold": 4,
+            "packed_weight_roots": 1,
+            "logical_leaf_symbols": LOGICAL_LEAF_SYMBOLS,
+            "challenge_mode": SELECTED_CHALLENGE_MODE,
+            "Q_FS": SELECTED_FIAT_SHAMIR_QUERY_BOUND,
+            "owner_confirmations": {
+                "KMACXOF256_64KiB_chunk_and_v1_descriptor_frozen": True,
+                "complete_privacy_target_allocation_approved": True,
+                "BLAKE3_remains_primary_for_performance_and_parallelism": True,
+                "KMACXOF256_remains_unpromoted_high_margin_control": True,
+            },
+            "future_Fiat_Shamir_rule": {
+                "changes_current_interactive_protocol": False,
+                "current_Q_FS": 0,
+                "root_mask_PRG_and_transcript_hash_are_distinct_roles": True,
+                "KMACXOF256_preferred_if_security_margin_has_priority": True,
+                "BLAKE3_preferred_if_performance_parallelism_has_priority": True,
+                "BLAKE3_requires_tightly_preregistered_Q_FS": True,
+                "full_ROM_multi_target_proof_byte_budget_required_before_selection": True,
+                "future_primitive_selected_now": False,
+            },
+            "setup_wall_targets_seconds": {
+                str(GPT2["name"]): GPT2_SETUP_WALL_TARGET_SECONDS,
+                str(GEMMA_ENVELOPE["name"]): GEMMA_SETUP_WALL_TARGET_SECONDS,
+            },
+            "setup_wall_tolerance_caps_seconds": {
+                str(GPT2["name"]): GPT2_SETUP_WALL_HARD_CAP_SECONDS,
+                str(GEMMA_ENVELOPE["name"]): GEMMA_SETUP_WALL_HARD_CAP_SECONDS,
+            },
+            "refresh_wall_targets_seconds": {
+                str(GPT2["name"]): GPT2_SETUP_WALL_TARGET_SECONDS,
+                str(GEMMA_ENVELOPE["name"]): GEMMA_SETUP_WALL_TARGET_SECONDS,
+            },
+            "refresh_wall_hard_caps_seconds": {
+                str(GPT2["name"]): GPT2_SETUP_WALL_HARD_CAP_SECONDS,
+                str(GEMMA_ENVELOPE["name"]): GEMMA_SETUP_WALL_HARD_CAP_SECONDS,
+            },
+            "refresh_counters_independent_from_setup": True,
+            "refresh_budget_transfer_allowed": False,
+            "refresh_test_authorized_or_required_in_R08": False,
+            "refresh_status": "registered_not_tested_not_credited",
+            "Fp2_strict_schedule_audit": {
+                str(GPT2["name"]): r08_selected_fp2_strict_audit(
+                    GPT2, R08_SELECTED_FP2_SCHEDULES[str(GPT2["name"])]
+                ),
+                str(GEMMA_ENVELOPE["name"]): r08_selected_fp2_strict_audit(
+                    GEMMA_ENVELOPE,
+                    R08_SELECTED_FP2_SCHEDULES[str(GEMMA_ENVELOPE["name"])],
+                ),
+            },
+            "security_disposition": (
+                "Fp2_fails; owner_selects_direct_Fp3_and_retains_78_bit_"
+                "connection_target"
+            ),
+            "selected_codec_field": "Goldilocks_Fp3",
+            "selected_terminal_base_field_limbs": 3,
+            "connection_target_bits": 78,
+            "Fp3_field_and_terminal_screen": fp3_field_and_terminal,
+            "Fp3_strict_schedule_audit": {
+                str(GPT2["name"]): small_fp3_audit,
+                str(GEMMA_ENVELOPE["name"]): large_fp3_audit,
+            },
+            "Fp3_g141_opening_codec_screen": {
+                str(GPT2["name"]): small_fp3_codec,
+                str(GEMMA_ENVELOPE["name"]): large_fp3_codec,
+            },
+            "root_profile_codec_fixed_point": {
+                str(GPT2["name"]): {
+                    "pre_mask_schedule": list(
+                        R08_PROVISIONAL_PRE_MASK_FP3_SCHEDULES[
+                            str(GPT2["name"])
+                        ]
+                    ),
+                    "pre_mask_num_variables": (
+                        int(GPT2["weights"]) - 1
+                    ).bit_length(),
+                    "selected_schedule": list(
+                        R08_SELECTED_FP3_SCHEDULES[str(GPT2["name"])]
+                    ),
+                    "selected_num_variables": small_selected_variables,
+                    "selected_RS_total_coefficient_dimension": (
+                        small_selected_dimension
+                    ),
+                    "crossed_power_of_two_boundary": True,
+                    "final_profile_reproduces_selected_dimension": True,
+                },
+                str(GEMMA_ENVELOPE["name"]): {
+                    "pre_mask_schedule": list(
+                        R08_PROVISIONAL_PRE_MASK_FP3_SCHEDULES[
+                            str(GEMMA_ENVELOPE["name"])
+                        ]
+                    ),
+                    "pre_mask_num_variables": (
+                        int(GEMMA_ENVELOPE["weights"]) - 1
+                    ).bit_length(),
+                    "selected_schedule": list(
+                        R08_SELECTED_FP3_SCHEDULES[
+                            str(GEMMA_ENVELOPE["name"])
+                        ]
+                    ),
+                    "selected_num_variables": large_selected_variables,
+                    "selected_RS_total_coefficient_dimension": (
+                        large_selected_dimension
+                    ),
+                    "crossed_power_of_two_boundary": False,
+                    "final_profile_reproduces_selected_dimension": True,
+                },
+                "fixed_point_closed": True,
+                "credit": False,
+            },
+            "Fp3_g141_opening_comparison": {
+                "four_axis_large_to_gpt2_growth": fp3_opening_growth,
+                "all_four_axes_within_1_30": all(
+                    growth <= ACTIVE_QUERY_GROWTH_NUMERATOR
+                    / ACTIVE_QUERY_GROWTH_DENOMINATOR
+                    for growth in fp3_opening_growth.values()
+                ),
+                "known_serialized_bytes": fp3_known_bytes,
+                "known_serialized_large_to_gpt2_growth": (
+                    fp3_known_bytes[str(GEMMA_ENVELOPE["name"])]
+                    / fp3_known_bytes[str(GPT2["name"])]
+                ),
+                "known_bytes_within_weight_wire_105_percent_targets": {
+                    str(GPT2["name"]): (
+                        fp3_known_bytes[str(GPT2["name"])]
+                        <= small["certificate"]["weight_oracle_query_wire_envelope"][
+                            "target_ceiling_105_percent_bytes"
+                        ]
+                    ),
+                    str(GEMMA_ENVELOPE["name"]): (
+                        fp3_known_bytes[str(GEMMA_ENVELOPE["name"])]
+                        <= large["certificate"]["weight_oracle_query_wire_envelope"][
+                            "target_ceiling_105_percent_bytes"
+                        ]
+                    ),
+                },
+                "full_weight_wire_gate_pass": False,
+                "reason": "unknown_fail_closed_bytes_are_not_yet_serialized",
+                "credit": False,
+            },
+            "Fp3_setup_resource_screen": {
+                str(GPT2["name"]): small_fp3_setup,
+                str(GEMMA_ENVELOPE["name"]): large_fp3_setup,
+            },
+            "RS_t_query_root_capacity_screen": {
+                str(GPT2["name"]): small_t_query_capacity,
+                str(GEMMA_ENVELOPE["name"]): large_t_query_capacity,
+            },
+            "root_mask_PRG_policy_screen": {
+                str(GPT2["name"]): small_root_mask_prg,
+                str(GEMMA_ENVELOPE["name"]): large_root_mask_prg,
+            },
+            "concrete_root_profile_proposal_screen": {
+                str(GPT2["name"]): small_root_profile,
+                str(GEMMA_ENVELOPE["name"]): large_root_profile,
+            },
+            "blake3_full78_fallback_privacy_screen": {
+                str(GPT2["name"]): small_blake3_fallback,
+                str(GEMMA_ENVELOPE["name"]): large_blake3_fallback,
+            },
+            "kmacxof256_mainline_security_codec_resource_screen": {
+                str(GPT2["name"]): small_kmac_mainline,
+                str(GEMMA_ENVELOPE["name"]): large_kmac_mainline,
+            },
+            "online_RS_BatchOpenBlocks_bounded_screen": {
+                str(GPT2["name"]): small_online_rs_open,
+                str(GEMMA_ENVELOPE["name"]): large_online_rs_open,
+            },
             "credit": False,
         },
         "sensitivity": {
@@ -2911,7 +4903,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
 
 
 def self_check(report: dict[str, object]) -> None:
-    assert report["schema"] == "volta-c7-stateful-alfc-r07-screen-v11"
+    assert report["schema"] == "volta-c7-stateful-alfc-r08-screen-v23"
     models = report["models"]
     small = models[str(GPT2["name"])]
     large = models[str(GEMMA_ENVELOPE["name"])]
@@ -2944,9 +4936,16 @@ def self_check(report: dict[str, object]) -> None:
     assert large_setup["exploratory_persistent_disk_cap_bytes"] == (
         184_958_400_000
     )
-    assert small_setup["absolute_setup_wall_cap_seconds"] is None
-    assert small_setup["absolute_refresh_wall_cap_seconds"] is None
-    assert not small_setup["all_absolute_caps_selected"]
+    assert small_setup["setup_wall_target_seconds"] == 900
+    assert large_setup["setup_wall_target_seconds"] == 5_400
+    assert small_setup["setup_wall_hard_cap_seconds"] == 990
+    assert large_setup["setup_wall_hard_cap_seconds"] == 5_940
+    assert small_setup["refresh_wall_target_seconds"] == 900
+    assert small_setup["refresh_wall_hard_cap_seconds"] == 990
+    assert small_setup["refresh_counter_is_separate"]
+    assert not small_setup["refresh_budget_transfer_allowed"]
+    assert not small_setup["refresh_tested_in_R08"]
+    assert small_setup["all_absolute_caps_selected"]
     assert not small_setup["exploratory_setup_gate_pass"]
     assert small_setup["leaf_screens"]["64"]["classification"] == "reject"
     assert small_setup["leaf_screens"]["128"]["classification"] == (
@@ -3060,21 +5059,412 @@ def self_check(report: dict[str, object]) -> None:
         "gpt2-124m-screen": 744_000_000,
         "gemma-class-31b-envelope": 184_958_400_000,
     }
-    assert all(
-        value is None
-        for value in relaxations["setup"][
-            "absolute_setup_wall_caps_seconds"
-        ].values()
-    )
-    assert all(
-        value is None
-        for value in relaxations["setup"][
-            "absolute_refresh_wall_caps_seconds"
-        ].values()
-    )
-    assert not relaxations["setup"]["all_absolute_caps_selected"]
+    assert relaxations["setup"]["setup_wall_targets_seconds"] == {
+        "gpt2-124m-screen": 900,
+        "gemma-class-31b-envelope": 5_400,
+    }
+    assert relaxations["setup"]["setup_wall_tolerance_caps_seconds"] == {
+        "gpt2-124m-screen": 990,
+        "gemma-class-31b-envelope": 5_940,
+    }
+    assert relaxations["setup"]["refresh_wall_targets_seconds"] == {
+        "gpt2-124m-screen": 900,
+        "gemma-class-31b-envelope": 5_400,
+    }
+    assert relaxations["setup"]["refresh_wall_hard_caps_seconds"] == {
+        "gpt2-124m-screen": 990,
+        "gemma-class-31b-envelope": 5_940,
+    }
+    assert relaxations["setup"]["refresh_counters_independent_from_setup"]
+    assert not relaxations["setup"]["refresh_budget_transfer_allowed"]
+    assert not relaxations["setup"]["refresh_test_authorized_or_required_in_R08"]
+    assert relaxations["setup"]["all_absolute_caps_selected"]
     assert not relaxations["setup"]["complete_compiled_gate_pass"]
     assert relaxations["no_tolerance_transfer"]
+    r08 = report["r08_owner_decisions_and_security_codec_screen"]
+    assert r08["starting_rate"] == "1/2"
+    assert r08["first_fold"] == 4
+    assert r08["packed_weight_roots"] == 1
+    assert r08["logical_leaf_symbols"] == 141
+    assert r08["Q_FS"] == 0
+    assert r08["owner_confirmations"] == {
+        "KMACXOF256_64KiB_chunk_and_v1_descriptor_frozen": True,
+        "complete_privacy_target_allocation_approved": True,
+        "BLAKE3_remains_primary_for_performance_and_parallelism": True,
+        "KMACXOF256_remains_unpromoted_high_margin_control": True,
+    }
+    future_fs = r08["future_Fiat_Shamir_rule"]
+    assert not future_fs["changes_current_interactive_protocol"]
+    assert future_fs["current_Q_FS"] == 0
+    assert future_fs["root_mask_PRG_and_transcript_hash_are_distinct_roles"]
+    assert future_fs["BLAKE3_requires_tightly_preregistered_Q_FS"]
+    assert not future_fs["future_primitive_selected_now"]
+    assert r08["setup_wall_targets_seconds"] == {
+        "gpt2-124m-screen": 900,
+        "gemma-class-31b-envelope": 5_400,
+    }
+    assert r08["setup_wall_tolerance_caps_seconds"] == {
+        "gpt2-124m-screen": 990,
+        "gemma-class-31b-envelope": 5_940,
+    }
+    assert r08["refresh_counters_independent_from_setup"]
+    assert not r08["refresh_budget_transfer_allowed"]
+    assert not r08["refresh_test_authorized_or_required_in_R08"]
+    assert r08["selected_codec_field"] == "Goldilocks_Fp3"
+    assert r08["selected_terminal_base_field_limbs"] == 3
+    assert r08["connection_target_bits"] == 78
+    fp3_field = r08["Fp3_field_and_terminal_screen"]
+    assert fp3_field["construction"] == "Fp[u]/(u^3-2)"
+    assert fp3_field["irreducibility_check"][
+        "two_to_the_p_minus_1_over_3_mod_p"
+    ] == (1 << 32) - 1
+    assert fp3_field["irreducibility_check"]["noncube"]
+    assert fp3_field["wire_bytes"] == 24
+    assert fp3_field["terminal"]["shared_Delta_in_Fp3"]
+    assert fp3_field["terminal"]["independent_base_field_MACs_forbidden"]
+    assert not fp3_field["terminal"]["clear_terminal_evaluation_serialized"]
+    assert fp3_field["terminal"]["provider_terminal_correction_bytes"] == 24
+    assert not fp3_field["terminal"]["malicious_DV_privacy_implied"]
+    assert fp3_field["concrete_rust_codec_implemented"]
+    assert fp3_field["rust_codec_and_multiplication_KAT_pass"]
+    assert fp3_field["rust_decode_wrong_length_and_noncanonical_limb_tests_pass"]
+    assert fp3_field["carrier_independent_shared_Delta_adapter_implemented"]
+    assert fp3_field[
+        "rust_shared_Delta_linearity_and_three_limb_mutation_tests_pass"
+    ]
+    assert fp3_field["lean_three_coordinate_consequence_proved"]
+    assert not fp3_field["concrete_shared_Delta_adapter_refinement_proved"]
+    fp2_audit = r08["Fp2_strict_schedule_audit"]
+    assert fp2_audit["gpt2-124m-screen"]["q_open"] == 831
+    assert fp2_audit["gpt2-124m-screen"]["unstacked_Fp_positions"] == 19_104
+    large_fp2_audit = fp2_audit["gemma-class-31b-envelope"]
+    assert large_fp2_audit["q_open"] == 1_054
+    assert large_fp2_audit["unstacked_Fp_positions"] == 24_128
+    assert 89.087 < large_fp2_audit["all_fold_certified_response_bits"] < 89.088
+    assert 69.087 < large_fp2_audit[
+        "after_R_max_2_pow_20_certified_bits"
+    ] < 69.088
+    assert large_fp2_audit[
+        "bare_max_attempts_for_78_bits_before_other_terms"
+    ] == 2_175
+    assert large_fp2_audit["max_attempts_for_84_bits_before_other_terms"] == 33
+    assert not large_fp2_audit["certifies_110_response_bits"]
+    assert not large_fp2_audit["certifies_78_after_R_max_before_other_terms"]
+    assert not large_fp2_audit["modest_110_to_104_or_98_relaxation_suffices"]
+    fp3_audit = r08["Fp3_strict_schedule_audit"]
+    small_fp3_audit = fp3_audit["gpt2-124m-screen"]
+    large_fp3_audit = fp3_audit["gemma-class-31b-envelope"]
+    assert small_fp3_audit["schedule"] == [4, 5, 3, 3, 3, 4]
+    assert small_fp3_audit["unstacked_Fp_positions"] == 29_192
+    assert 160.01 < small_fp3_audit["all_fold_certified_response_bits"] < 160.02
+    assert large_fp3_audit["q_open"] == 1_055
+    assert large_fp3_audit["unstacked_Fp_positions"] == 33_848
+    assert 153.17 < large_fp3_audit["all_fold_certified_response_bits"] < 153.18
+    assert 133.17 < large_fp3_audit[
+        "after_R_max_2_pow_20_certified_bits"
+    ] < 133.18
+    assert large_fp3_audit["certifies_110_response_bits"]
+    assert large_fp3_audit["certifies_78_after_R_max_before_other_terms"]
+    fp3_codec = r08["Fp3_g141_opening_codec_screen"]
+    assert fp3_codec["gpt2-124m-screen"]["totals"]["q_open"] == 831
+    assert fp3_codec["gemma-class-31b-envelope"]["totals"]["q_open"] == 1_055
+    assert not fp3_codec["gpt2-124m-screen"]["complete_codec_bytes_known"]
+    assert compact_merkle_max_siblings(3, 1) == 2
+    assert compact_merkle_max_siblings(3, 2) == 1
+    assert compact_merkle_max_siblings(8, 1) == 3
+    fixed_point = r08["root_profile_codec_fixed_point"]
+    assert fixed_point["fixed_point_closed"]
+    assert fixed_point["gpt2-124m-screen"]["pre_mask_num_variables"] == 27
+    assert fixed_point["gpt2-124m-screen"]["selected_num_variables"] == 28
+    assert fixed_point["gpt2-124m-screen"]["crossed_power_of_two_boundary"]
+    assert fixed_point["gemma-class-31b-envelope"]["selected_num_variables"] == 35
+    assert not fixed_point["gemma-class-31b-envelope"][
+        "crossed_power_of_two_boundary"
+    ]
+    assert fp3_codec["gpt2-124m-screen"]["totals"] == {
+        "q_open": 831,
+        "Z_atom": 29_192,
+        "U_leaf": 1_662,
+        "S_visible_Fp": 234_342,
+        "H_sibling": 20_997,
+        "payload_bytes": 1_874_736,
+        "salt_bytes": 53_184,
+        "multiproof_bytes": 671_928,
+        "challenge_bytes": 3_852,
+        "frame_header_bytes": 192,
+        "auxiliary_root_count": 5,
+        "auxiliary_root_and_frame_bytes": 240,
+        "final_direct_send_and_frame_bytes": 1_552,
+        "terminal_adapter_three_limb_and_frame_bytes": 40,
+        "codec_header_bytes": 16,
+        "known_serialized_bytes": 2_605_740,
+    }
+    large_codec_totals = fp3_codec["gemma-class-31b-envelope"]["totals"]
+    assert large_codec_totals["Z_atom"] == 33_848
+    assert large_codec_totals["U_leaf"] == 2_110
+    assert large_codec_totals["S_visible_Fp"] == 297_510
+    assert large_codec_totals["H_sibling"] == 39_843
+    assert large_codec_totals["known_serialized_bytes"] == 3_729_724
+    assert large_codec_totals["q_open"] * 100 <= 130 * 831
+    assert large_codec_totals["Z_atom"] * 100 <= 130 * 29_192
+    assert large_codec_totals["U_leaf"] * 100 <= 130 * 1_662
+    assert large_codec_totals["S_visible_Fp"] * 100 <= 130 * 234_342
+    fp3_comparison = r08["Fp3_g141_opening_comparison"]
+    assert fp3_comparison["all_four_axes_within_1_30"]
+    assert fp3_comparison["known_serialized_bytes"] == {
+        "gpt2-124m-screen": 2_605_740,
+        "gemma-class-31b-envelope": 3_729_724,
+    }
+    assert all(
+        fp3_comparison["known_bytes_within_weight_wire_105_percent_targets"].values()
+    )
+    assert not fp3_comparison["full_weight_wire_gate_pass"]
+    fp3_setup = r08["Fp3_setup_resource_screen"]
+    small_fp3_setup = fp3_setup["gpt2-124m-screen"]
+    large_fp3_setup = fp3_setup["gemma-class-31b-envelope"]
+    assert small_fp3_setup["persistent_bytes"] == 491_686_208
+    assert large_fp3_setup["persistent_bytes"] == 92_844_619_328
+    assert not small_fp3_setup["persistent_bytes_is_pre_mask_capacity_lower_bound"]
+    assert small_fp3_setup["includes_selected_seeded_mask_capacity_geometry"]
+    assert small_fp3_setup["zk_randomness_capacity_symbols"] == 144_435_456
+    assert not small_fp3_setup["complete_persistent_setup_bytes_known"]
+    assert small_fp3_setup["within_2x_target"]
+    assert large_fp3_setup["within_2x_target"]
+    assert small_fp3_setup["setup_wall_target_seconds"] == 900
+    assert small_fp3_setup["setup_wall_hard_cap_seconds"] == 990
+    assert large_fp3_setup["setup_wall_target_seconds"] == 5_400
+    assert large_fp3_setup["setup_wall_hard_cap_seconds"] == 5_940
+    assert not small_fp3_setup["ordered_RS_symbol_generator_one_source_scan_proved"]
+    assert not small_fp3_setup["setup_resource_gate_pass"]
+    assert not small_fp3_setup["refresh"]["test_authorized_or_required_in_R08"]
+    t_query_capacity = r08["RS_t_query_root_capacity_screen"]
+    small_t_query = t_query_capacity["gpt2-124m-screen"]
+    large_t_query = t_query_capacity["gemma-class-31b-envelope"]
+    assert small_t_query["zero_tree_growth_randomness_headroom_Fp_coefficients"] == 10_217_728
+    assert large_t_query["zero_tree_growth_randomness_headroom_Fp_coefficients"] == 3_533_338_368
+    assert small_t_query["zero_tree_growth_maximum_full_attempts"] == 43
+    assert large_t_query["zero_tree_growth_maximum_full_attempts"] == 11_876
+    assert small_t_query["geometry_only_capacity_by_setup_tier"][
+        "target_2_00x"
+    ]["maximum_full_attempts_at_reserved_visible_Fp_charge"] == 616
+    assert large_t_query["geometry_only_capacity_by_setup_tier"][
+        "baseline_tolerance_2_10x"
+    ]["maximum_full_attempts_at_reserved_visible_Fp_charge"] == 127_367
+    assert small_t_query[
+        "explicit_uniform_coefficient_persistence_control_by_setup_tier"
+    ]["exploratory_3_00x"][
+        "maximum_full_attempts_at_reserved_visible_Fp_charge"
+    ] == 134
+    assert large_t_query[
+        "explicit_uniform_coefficient_persistence_control_by_setup_tier"
+    ]["exploratory_3_00x"][
+        "maximum_full_attempts_at_reserved_visible_Fp_charge"
+    ] == 25_596
+    assert small_t_query["single_root_for_R_max_control"][
+        "persistent_bytes_excluding_mask_coefficients"
+    ] == 249_782_553_920
+    assert large_t_query["single_root_for_R_max_control"][
+        "persistent_bytes_excluding_mask_coefficients"
+    ] == 560_721_907_712
+    assert small_t_query["initial_oracle_visible_Fp_charge_per_attempt"] == 75_012
+    assert large_t_query["initial_oracle_visible_Fp_charge_per_attempt"] == 75_012
+    assert small_t_query["initial_oracle_only_R_max_lower_bound_control"][
+        "persistent_bytes_excluding_mask_coefficients"
+    ] == 125_015_276_992
+    assert large_t_query["initial_oracle_only_R_max_lower_bound_control"][
+        "persistent_bytes_excluding_mask_coefficients"
+    ] == 186_420_076_992
+    assert not large_t_query[
+        "initial_oracle_only_R_max_lower_bound_control"
+    ]["within_exploratory_3x"]
+    assert not small_t_query["single_root_for_R_max_control"][
+        "within_exploratory_3x"
+    ]
+    assert not large_t_query["C7_charge_to_paper_query_refinement_proved"]
+    assert not large_t_query["numeric_Q_root_admitted"]
+    assert not large_t_query["refresh_test_authorized_or_required_in_R08"]
+    root_mask_prg = r08["root_mask_PRG_policy_screen"]
+    small_prg = root_mask_prg["gpt2-124m-screen"]
+    large_prg = root_mask_prg["gemma-class-31b-envelope"]
+    assert small_prg["selected_policy"] == "computational_seeded_root_mask"
+    assert small_prg["baseline_policy"] == (
+        "persisted_uniform_Fp_coefficients"
+    )
+    assert small_prg["root_mask_seed_bytes"] == 32
+    assert small_prg["primary_candidate_selected"] == "keyed_BLAKE3_XOF"
+    assert small_prg["fallback_candidate"] == "KMACXOF256"
+    assert not small_prg["connection_target_reduction_allowed_to_admit_PRG"]
+    blake3_screen = large_prg["blake3_xof_candidate_screen"]
+    assert blake3_screen[
+        "maximum_composable_loss_bits_if_128_bit_target_is_applicable"
+    ] == 18
+    assert blake3_screen[
+        "maximum_composable_loss_factor_if_128_bit_target_is_applicable"
+    ] == 262_144
+    assert large_prg["blake3_xof_candidate_screen"][
+        "linear_in_Q_proof_form_control"
+    ]["conservative_visible_Fp_charge_per_attempt"] == 297_510
+    assert not large_prg["blake3_xof_candidate_screen"][
+        "linear_in_Q_proof_form_control"
+    ]["conservative_one_attempt_passes"]
+    assert small_prg["blake3_xof_candidate_screen"][
+        "linear_in_Q_proof_form_control"
+    ]["conservative_visible_Fp_charge_per_attempt"] == 234_342
+    assert small_prg["blake3_xof_candidate_screen"][
+        "linear_in_Q_proof_form_control"
+    ]["conservative_one_attempt_passes"]
+    assert 35 < blake3_screen["minimum_first_draw_words_log2"] < 36
+    assert blake3_screen["logical_codec_candidate"][
+        "maximum_output_position_exclusive_bytes"
+    ] == 1_818_867_683_328
+    assert blake3_screen["logical_codec_candidate"][
+        "within_BLAKE3_2^64_minus_1_output_byte_limit"
+    ]
+    assert not blake3_screen["logical_codec_candidate"]["implemented"]
+    assert not blake3_screen["passes_component_reserve"]
+    assert not large_prg["kmacxof256_fallback_screen"][
+        "passes_component_reserve"
+    ]
+    assert large_prg["kmacxof256_fallback_screen"][
+        "addressed_parallel_codec_selected"
+    ]
+    assert small_prg["coefficient_derivation"]["selected_draw_cap"] == 6
+    assert 163.37 < small_prg["selected_draw_cap_failure_bits"] < 163.39
+    assert 156.85 < large_prg["selected_draw_cap_failure_bits"] < 156.87
+    assert large_prg["draw_cap_controls"]["6"][
+        "maximum_addressed_64_bit_words"
+    ] == 227_358_460_416
+    assert large_prg["privacy_hybrid"][
+        "included_in_model_lifetime_78_bit_budget"
+    ]
+    assert not large_prg["privacy_hybrid"]["passes_component_reserve"]
+    assert not large_prg["generator_primitive_selected"]
+    generator_disposition = large_prg[
+        "existing_repository_generator_disposition"
+    ]
+    assert generator_disposition["volta_field_FpStream_ChaCha8"][
+        "status"
+    ] == "REJECT_PRODUCTION_C7_ROOT_MASK"
+    assert generator_disposition["volta_pcg_Aes128Mmo_GGM"][
+        "status"
+    ] == "QUARANTINE"
+    assert generator_disposition["volta_pcg_Blake3_GGM"][
+        "status"
+    ] == "QUARANTINE"
+    assert not large_prg["refresh_test_authorized_or_required_in_R08"]
+    root_profiles = r08["concrete_root_profile_proposal_screen"]
+    small_root_profile = root_profiles["gpt2-124m-screen"]
+    large_root_profile = root_profiles["gemma-class-31b-envelope"]
+    assert small_root_profile["R_root_proposed"] == 512
+    assert small_root_profile["Q_root_scalar_cap_proposed"] == 134_980_992
+    assert small_root_profile["Q_mask_words_all_seed_attempts_cap"] == 1_619_771_904
+    assert small_root_profile["unused_randomness_capacity_after_Q_root"] == 9_454_464
+    assert small_root_profile["selected_setup_tier"] == "target_2_00x"
+    assert large_root_profile["R_root_proposed"] == 8_192
+    assert large_root_profile["Q_root_scalar_cap_proposed"] == 2_741_852_160
+    assert large_root_profile["Q_mask_words_all_seed_attempts_cap"] == 32_902_225_920
+    assert large_root_profile["unused_randomness_capacity_after_Q_root"] == 791_486_208
+    assert large_root_profile["selected_setup_tier"] == "target_2_00x"
+    assert not small_root_profile["BLAKE3_linear_in_Q_control_passes_110"]
+    assert not large_root_profile["BLAKE3_linear_in_Q_control_passes_110"]
+    assert small_root_profile["owner_selected"]
+    assert large_root_profile["owner_selected"]
+    assert small_root_profile["owner_selected_as_fallback_variant"]
+    assert large_root_profile["owner_selected_as_fallback_variant"]
+    assert not small_root_profile["owner_selected_as_mainline"]
+    assert not large_root_profile["owner_selected_as_mainline"]
+    assert not small_root_profile["profile_admitted"]
+    assert not large_root_profile["profile_admitted"]
+    fallbacks = r08["blake3_full78_fallback_privacy_screen"]
+    small_fallback = fallbacks["gpt2-124m-screen"]
+    large_fallback = fallbacks["gemma-class-31b-envelope"]
+    assert small_fallback["K_model"] == 2_048
+    assert large_fallback["K_model"] == 128
+    assert small_fallback["model_global_attempt_horizon_owner_confirmed"]
+    assert large_fallback["model_global_attempt_horizon_owner_confirmed"]
+    assert small_fallback["K_seed_attempts"] == 4_096
+    assert large_fallback["K_seed_attempts"] == 256
+    assert small_fallback["Q_mask_words_model_max"] == 3_317_292_859_392
+    assert large_fallback["Q_mask_words_model_max"] == 4_211_484_917_760
+    assert 86.40 < small_fallback["conditional_Adv_BLAKE3_multi_bits"] < 86.41
+    assert 86.06 < large_fallback["conditional_Adv_BLAKE3_multi_bits"] < 86.07
+    assert not small_fallback["known_mask_terms_pass_mainline_110"]
+    assert not large_fallback["known_mask_terms_pass_mainline_110"]
+    assert small_fallback["known_mask_terms_pass_fallback_78"]
+    assert large_fallback["known_mask_terms_pass_fallback_78"]
+    assert small_fallback["allocated_complete_privacy_passes_78"]
+    assert large_fallback["allocated_complete_privacy_passes_78"]
+    assert 86.40 < small_fallback["allocated_complete_privacy_bits"] < 86.41
+    assert 86.06 < large_fallback["allocated_complete_privacy_bits"] < 86.07
+    assert small_fallback["allocation_pass_is_not_theorem_discharge"]
+    assert 78 < small_fallback[
+        "maximum_other_privacy_terms_sum_bits"
+    ] < 78.01
+    assert 78 < large_fallback[
+        "maximum_other_privacy_terms_sum_bits"
+    ] < 78.01
+    assert not small_fallback["all_privacy_terms_numeric"]
+    assert not large_fallback["all_privacy_terms_numeric"]
+    assert not small_fallback["complete_privacy_passes_78"]
+    assert not large_fallback["complete_privacy_passes_78"]
+    assert not small_fallback["variant_admitted"]
+    assert not large_fallback["variant_admitted"]
+    kmac = r08["kmacxof256_mainline_security_codec_resource_screen"]
+    small_kmac = kmac["gpt2-124m-screen"]
+    large_kmac = kmac["gemma-class-31b-envelope"]
+    assert small_kmac["model_global_attempt_horizon_owner_confirmed"]
+    assert large_kmac["model_global_attempt_horizon_owner_confirmed"]
+    assert small_kmac["Q_mask_words_model_max"] == 3_317_292_859_392
+    assert large_kmac["Q_mask_words_model_max"] == 4_211_484_917_760
+    assert small_kmac["logical_codec_candidate"]["descriptor_bytes"] == 104
+    assert small_kmac["logical_codec_candidate"]["KMAC_input_bytes_per_chunk"] == 112
+    assert small_kmac["logical_codec_candidate"]["chunk_output_bytes"] == 65_536
+    assert small_kmac["logical_codec_candidate"][
+        "certificate_bytes_added_by_generator_choice"
+    ] == 0
+    assert small_kmac["logical_codec_candidate"][
+        "visible_PCS_query_count_added_by_generator_choice"
+    ] == 0
+    assert small_kmac["logical_codec_candidate"][
+        "fixed_chunk_calls_allow_parallel_CPU_SIMT_evaluation"
+    ]
+    assert not small_kmac["logical_codec_candidate"]["implemented"]
+    assert not small_kmac["logical_codec_candidate"][
+        "online_BatchOpen_mask_contribution_schedule_proved"
+    ]
+    assert small_kmac["logical_codec_candidate"][
+        "online_mask_regeneration_bytes_per_attempt"
+    ] is None
+    small_kmac_resource = small_kmac["per_candidate_seed_resource_control"]
+    large_kmac_resource = large_kmac["per_candidate_seed_resource_control"]
+    assert small_kmac_resource["logical_output_bytes"] == 6_479_087_616
+    assert small_kmac_resource["chunks"] == 98_864
+    assert small_kmac_resource["Keccak_f1600_permutations"] == 47_849_710
+    assert large_kmac_resource["logical_output_bytes"] == 131_608_903_680
+    assert large_kmac_resource["chunks"] == 2_008_193
+    assert large_kmac_resource["Keccak_f1600_permutations"] == 971_965_171
+    assert small_kmac["conditional_ideal_permutation_control"][
+        "conditional_sum_passes_110"
+    ]
+    assert large_kmac["conditional_ideal_permutation_control"][
+        "conditional_sum_passes_110"
+    ]
+    assert small_kmac["conditional_full_privacy_allocation"][
+        "complete_allocation_passes_78"
+    ]
+    assert large_kmac["conditional_full_privacy_allocation"][
+        "complete_allocation_passes_78"
+    ]
+    assert 107 < small_kmac["conditional_full_privacy_allocation"][
+        "complete_bits"
+    ] < 108
+    assert 107 < large_kmac["conditional_full_privacy_allocation"][
+        "complete_bits"
+    ] < 108
+    assert not small_kmac["exact_multi_key_KMAC_to_Keccak_reduction_instantiated"]
+    assert not large_kmac["fixed_Keccak_f1600_assumption_numeric"]
+    assert not small_kmac["passes_component_reserve"]
+    assert not large_kmac["candidate_promoted"]
     assert not report["security"]["event_registry_complete"]
     assert report["security"]["conditional_budget_fits_78"]
     assert not report["security"]["current_protocol_security_gate_pass"]
@@ -3113,13 +5503,36 @@ def self_check(report: dict[str, object]) -> None:
     assert policy["active"] == 2
     assert policy["last_tested"] == 3
     assert policy["active_status"] == (
-        "policy2_owner1_30_query_axis_candidate_backend_unadmitted"
+        "policy2_dual_track_carrier_tournament_open_RS_control_Fp3_seam_only"
     )
     assert policy["policy_3_candidate_exhaustion_documented"]
     assert len(policy["terminal_catalog"]) == 10
     assert policy["policy_2_status"] == "active_design_only"
     assert policy["policy_2_activation_authorized"]
     assert policy["policy_2_root_wide_query_horizon_schema_registered"]
+    assert policy["policy_2_concrete_root_profile_proposals_compiled"]
+    assert policy[
+        "policy_2_concrete_root_profile_owner_selected_for_fallback"
+    ]
+    assert not policy[
+        "policy_2_concrete_root_profile_owner_selected_for_mainline"
+    ]
+    assert policy["policy_2_blake3_full78_fallback_owner_authorized"]
+    assert not policy["policy_2_blake3_full78_fallback_admitted"]
+    assert policy["policy_2_model_global_2_pow_20_horizon_owner_confirmed"]
+    assert policy["policy_2_kmacxof256_mainline_screen_compiled"]
+    assert not policy["policy_2_kmacxof256_mainline_promoted"]
+    assert policy["policy_2_root_mask_main_line"] == (
+        "computational_per_root_seed_PRG_PCG"
+    )
+    assert policy["policy_2_root_mask_baseline"] == (
+        "persisted_uniform_Fp_coefficients"
+    )
+    assert policy["policy_2_root_mask_primary_candidate"] == "keyed_BLAKE3_XOF"
+    assert policy["policy_2_root_mask_fallback_candidate"] == "KMACXOF256"
+    assert policy["policy_2_PRG_failure_may_not_reduce_78bit_target"]
+    assert policy["policy_2_privacy_declared_computational"]
+    assert policy["policy_2_Adv_root_mask_PRG_in_78_bit_budget"]
     assert not policy["policy_2_root_wide_query_horizon_instantiated"]
     assert not policy["policy_2_exact_numeric_caps_derived"]
     assert policy["numeric_caps_deferred_until_complete_pareto"]
@@ -3139,6 +5552,21 @@ def self_check(report: dict[str, object]) -> None:
     assert not authorization["pod_contact_or_execution_authorized"]
     assert not authorization["c7_cpu_reference_pass"]
     assert not authorization["c7_pod_ready"]
+    assert authorization["former_selected_RS_realization_no_go"]
+    assert not authorization[
+        "owner_design_decision_required_before_more_implementation"
+    ]
+    assert authorization["new_shared_carrier_tournament_authorized"]
+    assert authorization["strict_ud_RS_demoted_to_control_baseline"]
+    assert not authorization["strict_ud_RS_prover_authorized"]
+    assert authorization[
+        "carrier_independent_Fp3_codec_KAT_MAC_adapter_authorized"
+    ]
+    assert authorization["carrier_independent_Fp3_seam_implemented"]
+    assert authorization["published_carriers_baseline_controls_only"]
+    assert authorization["C7_codesigned_circuit_main_research_line"]
+    assert not authorization["C7_codesigned_pre_CPU_screen_pass"]
+    assert not authorization["tiny_CPU_prototype_authorized_now"]
     gates = report["admission_gates"]
     assert gates["numeric_setup_ceiling_registered"]
     assert gates["weight_query_wire_envelope_registered"]
@@ -3150,7 +5578,7 @@ def self_check(report: dict[str, object]) -> None:
     ]
     assert gates["setup_exploratory_3x_ceiling_registered"]
     assert gates["setup_exploratory_absolute_disk_caps_registered"]
-    assert not gates[
+    assert gates[
         "setup_exploratory_absolute_time_and_refresh_caps_selected"
     ]
     assert gates["logical_leaf_geometry_selected"]
@@ -3164,6 +5592,22 @@ def self_check(report: dict[str, object]) -> None:
     assert gates["terminal_evaluation_remains_authenticated"]
     assert not gates["malicious_dv_connection_privacy_theorem_complete"]
     assert not gates["policy2_model_lifetime_privacy_78bit_proved"]
+    assert gates["policy2_root_mask_seed_policy_selected"]
+    assert gates["policy2_root_mask_primary_candidate_selected"]
+    assert not gates["policy2_root_mask_generator_primitive_selected"]
+    assert not gates["policy2_root_mask_PRG_advantage_numeric"]
+    assert gates["policy2_concrete_R_root_profile_proposals_compiled"]
+    assert gates[
+        "policy2_concrete_R_root_profile_owner_selected_for_fallback"
+    ]
+    assert not gates[
+        "policy2_concrete_R_root_profile_owner_selected_for_mainline"
+    ]
+    assert gates["policy2_blake3_full78_fallback_owner_authorized"]
+    assert not gates["policy2_blake3_full78_fallback_complete_sum_pass"]
+    assert gates["policy2_model_global_2_pow_20_horizon_owner_confirmed"]
+    assert gates["policy2_kmacxof256_mainline_screen_compiled"]
+    assert not gates["policy2_kmacxof256_mainline_promoted"]
     assert not gates["policy2_epoch_and_receipt_transcript_binding_proved"]
     assert not gates["policy2_single_session_receipt_state_machine_proved"]
     assert not gates["policy2_plane_charge_vector_and_durable_maps_instantiated"]
@@ -3183,14 +5627,15 @@ def self_check(report: dict[str, object]) -> None:
     assert not gates["policy2_distinct_hash_work_bounds_derived"]
     assert gates["challenge_generation_and_grinding_policy_selected"]
     assert not gates["retained_interleaved_goldilocks_domain_rule_admitted"]
-    assert not gates["algebraic_security_amplifier_selected"]
+    assert gates["algebraic_security_amplifier_selected"]
     assert gates["algebraic_security_closure_path_selected"]
     assert gates["fp3_direct_three_limb_fallback_selected"]
     assert gates["first_compiler_envelope_selected"] == (
-        "rate1-k0-4-owner1_30-Fp2-query-axis-flat-g141-one-root"
+        "rate1-k0-4-owner1_30-Fp3-flat-g141-one-root"
     )
-    assert not gates["strict_ud_algebraic_110bit_per_response_derived"]
-    assert not gates["strict_ud_model_lifetime_soundness_78bit_derived"]
+    assert gates["strict_ud_algebraic_110bit_per_response_derived"]
+    assert gates["strict_ud_algebraic_gap_after_Rmax_78bit_derived"]
+    assert not gates["full_connection_78bit_security_derived"]
     assert not gates["honest_dv_entropy_delivery_instantiated"]
     assert not gates["interactive_challenge_transcript_binding_proved"]
     assert not gates["pure_fold_width_tail_screen_pass"]
@@ -3201,13 +5646,14 @@ def self_check(report: dict[str, object]) -> None:
     assert gates["selected_carrier_original_1_05_disposition"] == "NO_GO"
     assert gates["owner_1_30_query_growth_fallback_active"]
     assert gates["owner_1_30_known_q_and_unstacked_Fp_controls_pass"]
-    assert not gates["owner_1_30_complete_four_axis_query_gate_pass"]
+    assert gates["owner_1_30_complete_four_axis_query_gate_pass"]
     assert not gates["joint_sampler_visible_Fp_sharing_selected"]
     assert not gates["different_code_switch_selected"]
     assert not gates["one_pass_batch_open_blocks_proved"]
     assert not gates["cpu_batch_open_blocks_reference_pass"]
     assert not gates["simt_bit_exact_equivalence_pass"]
     assert not gates["query_schedule_compiled"]
+    assert gates["opening_query_schedule_compiled"]
     assert gates["query_counter_schema"]["aggregate"] == list(
         POLICY2_AGGREGATE_CENSUS_CLASSES
     )
@@ -3216,20 +5662,22 @@ def self_check(report: dict[str, object]) -> None:
     )
     assert gates["query_counter_schema"][
         "logical_pcs_samples_q_open_by_plane_root_round"
-    ] is None
+    ].endswith("Fp3_g141_opening_codec_screen.rounds")
     assert gates["adversarial_leaf_oracle_query_bound"] == 1 << 64
     assert gates["adversarial_leaf_oracle_query_bound_kind"] == (
         "owner_selected_analytic_screen_not_a_concrete_theorem_cap"
     )
     assert gates["adversarial_fiat_shamir_query_bound"] == 0
-    assert all(
-        value is None
-        for value in gates["exact_query_counts_by_root_and_round"].values()
-    )
-    assert all(
-        value is None
-        for value in gates["serialized_query_and_challenge_bytes_by_model"].values()
-    )
+    assert len(gates["exact_query_counts_by_root_and_round"][
+        "gpt2-124m-screen"
+    ]) == 6
+    assert len(gates["exact_query_counts_by_root_and_round"][
+        "gemma-class-31b-envelope"
+    ]) == 8
+    assert gates["serialized_query_and_challenge_bytes_by_model"] == {
+        "gpt2-124m-screen": 2_605_740,
+        "gemma-class-31b-envelope": 3_729_724,
+    }
     assert not gates["query_bytes_reconciled_into_certificate_total"]
     assert not gates["compiled_tier_a_certificate_gate_pass"]
     small_query = small["certificate"]["weight_oracle_query_wire_envelope"]
@@ -3291,13 +5739,14 @@ def self_check(report: dict[str, object]) -> None:
     assert not challenge["honest_dv_entropy_delivery_instantiated"]
     assert not challenge["interactive_transcript_binding_proved"]
     challenge_comparison = report["interactive_vs_fiat_shamir"]
-    assert 118.9 < challenge_comparison["interactive_selected"]["effective_bits"] < 119.1
-    assert 54.9 < challenge_comparison["fiat_shamir_direct_control"]["effective_bits"] < 55.1
-    assert 173.9 < challenge_comparison["fiat_shamir_two_challenge_amplified"]["effective_bits"] < 174.1
+    assert 182.9 < challenge_comparison["interactive_selected"]["effective_bits"] < 183.1
+    assert 118.9 < challenge_comparison["fiat_shamir_direct_control"]["effective_bits"] < 119.1
+    assert 301.9 < challenge_comparison["fiat_shamir_two_challenge_amplified"]["effective_bits"] < 302.1
     assert not challenge_comparison["fiat_shamir_two_challenge_amplified"][
         "proof_size_gate_passed"
     ]
     batch_open = report["batch_open_blocks_admission"]
+    assert batch_open["state"] == "R08_STRICT_UD_RS_CONTROL_REALIZATION_NO_GO"
     assert batch_open["logical_leaf_symbols"] == 141
     assert batch_open["generator_incidence_obstruction"][
         "nonzero_incidence_lower_bound"
@@ -3307,7 +5756,40 @@ def self_check(report: dict[str, object]) -> None:
         "cpu_reference_contract"
     ]["required_output"]
     assert batch_open["cpu_reference_contract"]["packed_source_passes"] == 1
+    online_screens = batch_open["RS_control_bounded_online_screen"]
+    assert online_screens["gpt2-124m-screen"]["rows"][
+        "persist_complete_rate_half_codeword"
+    ]["codeword_bytes"] == 4_294_967_296
+    assert online_screens["gpt2-124m-screen"]["rows"][
+        "persist_complete_rate_half_codeword"
+    ]["persistent_bytes_with_existing_tree"] == 4_786_653_504
+    assert online_screens["gemma-class-31b-envelope"]["rows"][
+        "persist_complete_rate_half_codeword"
+    ]["persistent_bytes_with_existing_tree"] == 642_600_433_216
+    for online in online_screens.values():
+        assert not online["complete_row_exists"]
+        assert not online["RS_control_online_gate_pass"]
+        assert not online["prover_or_SIMT_implementation_authorized"]
     assert not batch_open["c7_cpu_reference_pass"]
+    tournament = report["new_carrier_tournament"]
+    assert tournament["state"] == "OPEN_DUAL_TRACK_NO_ENTRANT_ADMITTED"
+    assert tournament["tracks"]["published_constructions"]["role"] == (
+        "baseline_and_controls_only"
+    )
+    codesigned = tournament["tracks"]["C7_codesigned_circuit"]
+    assert codesigned["role"] == "main_research_line"
+    assert len(codesigned["pre_CPU_screen_requires"]) == 4
+    assert not codesigned["pre_CPU_screen_pass"]
+    assert not codesigned["tiny_CPU_prototype_authorized"]
+    assert not codesigned["credit_by_design"]
+    assert tournament["strict_ud_RS_role"] == (
+        "algebraic_and_security_control_baseline_only"
+    )
+    assert not tournament["strict_ud_RS_prover_implementation_authorized"]
+    assert not tournament["entrants"]
+    assert tournament["selected_carrier"] is None
+    assert not tournament["complete_row_exists"]
+    assert not tournament["prover_or_SIMT_implementation_authorized"]
     simt = report["simt_path"]
     assert simt["state"] == "BLOCKED_BEFORE_CPU_REFERENCE_PASS"
     assert simt["logical_leaf_symbols"] == 141
@@ -3322,7 +5804,7 @@ def self_check(report: dict[str, object]) -> None:
     )
     policy2 = report["policy2_query_accounting"]
     assert policy2["status"] == (
-        "R07_OWNER_1_30_QUERY_AXIS_CANDIDATE_BACKEND_UNADMITTED"
+        "R08_FP3_SEEDED_MASK_SELECTED_FULL_CODEC_UNADMITTED"
     )
     assert list(policy2["authoritative_attempt_census"]["q_attempt"]) == list(
         POLICY2_AGGREGATE_CENSUS_CLASSES
@@ -3813,7 +6295,7 @@ def self_check(report: dict[str, object]) -> None:
     ]
     readiness = report["pod_readiness"]
     assert readiness["state"] == (
-        "C7_R07_OWNER_1_30_QUERY_AXIS_CANDIDATE_NOT_READY"
+        "C7_R08A_DUAL_TRACK_CARRIER_SCREEN_OPEN_FP3_SEAM_ONLY"
     )
     assert not readiness["all_required_gates_pass"]
     assert not any(readiness["required_before_C7_POD_READY"].values())

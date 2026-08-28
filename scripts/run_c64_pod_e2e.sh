@@ -17,7 +17,6 @@ EXPECTED_SHA=${C64_EXPECTED_GIT_SHA:-}
 SETUP_SOURCE=${C64_SETUP_SOURCE:-}
 SESSION_TIMEOUT_S=${C64_SESSION_TIMEOUT_S:-300}
 DIAGNOSTIC_COMPLETION=${C64_DIAGNOSTIC_COMPLETION:-0}
-CORRELATION_CENSUS_DIAGNOSTIC=${C64_CORRELATION_CENSUS_DIAGNOSTIC:-0}
 DISK_FLOOR_BYTES=223338299392
 RUN_DISK_STOP_BYTES=107374182400
 HOST_FLOOR_BYTES=103079215104
@@ -40,10 +39,6 @@ if [[ ! $SESSION_TIMEOUT_S =~ ^[1-9][0-9]*$ ]]; then
 fi
 if [[ $DIAGNOSTIC_COMPLETION != 0 && $DIAGNOSTIC_COMPLETION != 1 ]]; then
   echo "C64_DIAGNOSTIC_COMPLETION must be 0 or 1" >&2
-  exit 2
-fi
-if [[ $CORRELATION_CENSUS_DIAGNOSTIC != 0 && $CORRELATION_CENSUS_DIAGNOSTIC != 1 ]]; then
-  echo "C64_CORRELATION_CENSUS_DIAGNOSTIC must be 0 or 1" >&2
   exit 2
 fi
 if [[ ! -d $WEIGHTS_DIR ]]; then
@@ -147,8 +142,8 @@ else
 fi
 
 mkdir "$SESSION_ROOT"
-printf 'diagnostic_completion=%s\ncorrelation_census_diagnostic=%s\ngpu_target_mib=%s\ngpu_emergency_stop_mib=%s\nsession_timeout_s=%s\n' \
-  "$DIAGNOSTIC_COMPLETION" "$CORRELATION_CENSUS_DIAGNOSTIC" "$GPU_STOP_MIB" \
+printf 'diagnostic_completion=%s\ngpu_target_mib=%s\ngpu_emergency_stop_mib=%s\nsession_timeout_s=%s\n' \
+  "$DIAGNOSTIC_COMPLETION" "$GPU_STOP_MIB" \
   "$GPU_EMERGENCY_STOP_MIB" "$SESSION_TIMEOUT_S" \
   >"$SESSION_ROOT/completion-mode.txt"
 record_pid=
@@ -203,7 +198,7 @@ cargo test --release --manifest-path rust/Cargo.toml \
   cuda_c64_projected_residual_matches_reference_and_reclaims_buffers \
   -- --exact --nocapture \
   >"$SESSION_ROOT/cuda-differential.log" 2>&1
-C64_CORRELATION_CENSUS_DIAGNOSTIC=0 cargo test --release --manifest-path rust/Cargo.toml \
+cargo test --release --manifest-path rust/Cargo.toml \
   -p volta-bench --bin c62_whir_fiat_shamir_record \
   --features cuda,c6-trace,c61-p3-authenticated-reference \
   c64_campaign_is_two_profiles_two_proofs_and_reload_before_accept \

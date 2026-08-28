@@ -1,0 +1,90 @@
+{
+  "schema": 1,
+  "profile": "runpod-a100-c64-r10c-compiler-no-go-v1",
+  "mode": "c64-prove",
+  "status": "owner_terminated_incomplete_first_certificate",
+  "source_git_commit": "d441ae69aad059453ebcc18cf1c178d1d26c44b5",
+  "git_dirty": false,
+  "cloud": {
+    "provider": "RunPod",
+    "instance_id": "nudqsdr5apsd96",
+    "endpoint": "185.216.23.227:21048",
+    "gpu_sku": "NVIDIA A100-SXM4-80GB",
+    "driver_version": "570.172.08",
+    "cuda_version": "12.8",
+    "cpu_model": "Intel Xeon Platinum 8470",
+    "ram_gib": 117,
+    "vcpus": 24
+  },
+  "setup": {
+    "reused_source": "/workspace/c64-setup-41b4e07",
+    "profiles": [0, 150],
+    "weights_sha256_verified": true
+  },
+  "attempt": {
+    "pre_campaign_elapsed_s": 146.753609994,
+    "measured_process_elapsed_s": 3677,
+    "first_proof_campaign_elapsed_s_lower_bound": 3529.377744423,
+    "compiler_elapsed_s_lower_bound": 3340.554625683,
+    "exit_status": 143,
+    "stop_signal": "TERM",
+    "stop_reason": "owner_no_go_after_serial_compiler_dominance",
+    "diagnostic_suffix_full_correlations_per_tape": 8192,
+    "full_correlations_after_response_per_tape": 226917,
+    "full_correlations_after_native_chains_per_tape": 226919,
+    "full_correlations_after_residual_blind_per_tape": 227173,
+    "full_correlations_after_compiler_per_tape": null,
+    "exact_correlation_total_known": false,
+    "certificates_produced": 0,
+    "artifacts_produced": 0,
+    "certificate_bytes": null,
+    "proof_envelope_bytes": null,
+    "client_head_promoted": false,
+    "second_proof_started": false,
+    "selective_retry_performed": false
+  },
+  "first_proof_observed_phases": {
+    "response_provider_s": 59.325186913,
+    "response_seal_s": 1.243870269,
+    "response_verifier_replay_s": 5.258207419,
+    "response_component_s": 65.827264601,
+    "residual_owner_s": 11.567332128,
+    "projected_roots_s": 6.449433868,
+    "native_four_chains_s": 38.491623409,
+    "residual_blind_after_native_s": 66.325941017
+  },
+  "supervisor": {
+    "target_gpu_mib": 43696,
+    "max_gpu_used_mib": 44569,
+    "gpu_target_pass": false,
+    "gpu_target_miss_observed_s": 246,
+    "emergency_gpu_stop_mib": 78000,
+    "max_process_rss_bytes": 34702098432,
+    "max_process_hwm_bytes": 34846334976,
+    "min_filesystem_free_bytes": 264397598720,
+    "resource_supervisor_terminated_attempt": false,
+    "stop_reason": "owner_no_go"
+  },
+  "evidence_digests": {
+    "session_stderr_sha256": "ef00052d2b51e9c1159a0dabafdf986f1e56e84d5e97bf87d70f139983076f52",
+    "resource_timeline_sha256": "8cd66f641c8765651443ad578361e6275197e915bfed41abf5b401abe5998a22",
+    "optimization_phases_sha256": "ef00052d2b51e9c1159a0dabafdf986f1e56e84d5e97bf87d70f139983076f52",
+    "completion_sha256": "ec11594b174d48a5fb4b4b2f6884e7b5990b1393790e47270784763f028b19e3",
+    "session_checksums_verified": true
+  },
+  "gate_credit": {
+    "certificate_bytes": false,
+    "prover_time": false,
+    "verifier_time": false,
+    "verifier_memory": false,
+    "protocol_acceptance": false,
+    "e2e": false,
+    "session": false
+  },
+  "diagnosis": {
+    "class": "serial live compiler dominates incomplete proof",
+    "confirmed": "After all earlier measured phases, the compiler remained incomplete for 3340.554625683 seconds with essentially one CPU core active and no useful sustained GPU work.",
+    "protocol_disposition": "The compact PCS components remain component evidence only; the composed C6.4 construction and implementation are not viable under the target.",
+    "resurrection_condition": "Replace or GPU-partition the compiler relation, derive exact correlations from its executable schedule, re-establish local gates, and obtain a new owner GO."
+  }
+}

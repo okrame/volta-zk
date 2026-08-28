@@ -90,10 +90,6 @@ mod enabled {
         C63_CONTINUATION_256_RAW_CORRELATIONS, C63_CONTINUATION_256_SUB_CORRELATIONS,
         C63_GENESIS_FULL_CORRELATIONS, C63_GENESIS_RAW_CORRELATIONS, C63_GENESIS_SUB_CORRELATIONS,
         C63_NATIVE_CERTIFICATE_FRAMING_BYTES, C63_NATIVE_STRICT_PI_FINAL_MAX_BYTES,
-        C64_CENSUS_DIAGNOSTIC_CONTINUATION_256_FULL_CORRELATIONS,
-        C64_CENSUS_DIAGNOSTIC_CONTINUATION_256_RAW_CORRELATIONS,
-        C64_CENSUS_DIAGNOSTIC_GENESIS_FULL_CORRELATIONS,
-        C64_CENSUS_DIAGNOSTIC_GENESIS_RAW_CORRELATIONS,
         C64_CONTINUATION_256_FULL_CORRELATIONS, C64_CONTINUATION_256_RAW_CORRELATIONS,
         C64_CONTINUATION_256_SUB_CORRELATIONS, C64_GENESIS_FULL_CORRELATIONS,
         C64_GENESIS_RAW_CORRELATIONS, C64_GENESIS_SUB_CORRELATIONS,
@@ -465,21 +461,6 @@ mod enabled {
     }
 
     fn c64_correlation_profile(old_context: u32) -> Result<(usize, usize, u64), String> {
-        if std::env::var("C64_CORRELATION_CENSUS_DIAGNOSTIC").as_deref() == Ok("1") {
-            return match old_context {
-                0 => Ok((
-                    C64_GENESIS_SUB_CORRELATIONS,
-                    C64_CENSUS_DIAGNOSTIC_GENESIS_FULL_CORRELATIONS,
-                    C64_CENSUS_DIAGNOSTIC_GENESIS_RAW_CORRELATIONS,
-                )),
-                150 => Ok((
-                    C64_CONTINUATION_256_SUB_CORRELATIONS,
-                    C64_CENSUS_DIAGNOSTIC_CONTINUATION_256_FULL_CORRELATIONS,
-                    C64_CENSUS_DIAGNOSTIC_CONTINUATION_256_RAW_CORRELATIONS,
-                )),
-                _ => Err("C6.4 census supports only contexts 0 and 150".to_owned()),
-            };
-        }
         match old_context {
             0 => Ok((
                 C64_GENESIS_SUB_CORRELATIONS,
@@ -3205,7 +3186,6 @@ mod enabled {
             );
             assert!(c64_correlation_profile(200).is_err());
             let source = include_str!("c62_whir_fiat_shamir_record.rs");
-            assert!(source.contains("C64_CORRELATION_CENSUS_DIAGNOSTIC"));
             let campaign = source.split_once("fn c63_prove(args: &Args, c64: bool)").unwrap().1;
             let load = campaign.find("load_c64_campaign_artifact(&certificate_directory)").unwrap();
             let verify = campaign.find("verify_c64_loaded_campaign_e2e").unwrap();
@@ -3217,7 +3197,6 @@ mod enabled {
             assert!(!campaign_credit(false, true));
             let runner = include_str!("../../../../scripts/run_c64_pod_e2e.sh");
             assert!(runner.contains("C64_DIAGNOSTIC_COMPLETION"));
-            assert!(runner.contains("C64_CORRELATION_CENSUS_DIAGNOSTIC"));
             assert!(runner.contains("RUST_BACKTRACE=1"));
             assert!(runner.contains("gpu_target_miss"));
             assert!(runner.contains("gpu_emergency_hard_stop"));

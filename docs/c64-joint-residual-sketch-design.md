@@ -1,9 +1,8 @@
 # C6.4 — projected residual PCS recovery
 
-**Status:** R10b proved the historical `765` ceiling is also insufficient;
-R10c uses one deliberately loose `8,192`-correlation suffix to finish the
-exact census and measure pre-finish proof bytes. All gates remain
-`credit:false`.
+**Status:** **CLOSED / NO-GO.** R10c remained inside the serial compiler for
+more than 55 minutes without producing the first certificate. All gates are
+`credit:false`; no proof size or verifier result exists.
 
 **Branch:** `agent/c64-joint-residual-sketch`.
 
@@ -14,10 +13,10 @@ C6.4 is isolated from C7. It targets two complete GPT-2 certificates,
 one A100 and complete certificate size at most `35,000,000 B`.
 `30,000,000 B` is diagnostic only.
 
-Local design, implementation and bounded tests are authorized. Target-bearing
-provider or pod work remains forbidden without `C64_POD_READY` and a later
-run-specific owner GO. Section 8 records the narrow owner-authorized exception
-for one diagnostic-completion campaign on the reactivated pod.
+C6.4 permits archival checks only. Further design, implementation, provider or
+pod work requires a new milestone/design satisfying the resume conditions
+below and a new explicit owner GO. Section 8 records the closed historical
+diagnostic campaign.
 
 ## 1. R2 invalidation
 
@@ -302,9 +301,35 @@ underflowed requesting two more at `227682/227682`; thus even the historical
 before compiler completion, certificate or verification. R10c registers an
 `8,192`-correlation diagnostic suffix for contexts 0 and 150. This adds only
 temporary preprocessing capacity, no proof fields or certificate bytes. Exact
-consumption remains mandatory, so the expected slack reports the true total
-and cannot receive credit. The diagnostic geometry must be removed when R11
-sets the measured exact constants.
+consumption remained mandatory, so only a completed compiler could have
+reported the true total. R10c did not complete; the diagnostic geometry was
+removed without setting production constants.
+
+### R10c A100 disposition — C6.4 closed NO-GO
+
+Clean `d441ae6` passed the A100 differential and structural preflight. The
+first campaign then remained incomplete for `3529.377744423 s`. Its observed
+phases were response `65.827264601 s` (provider `59.325186913 s`), residual
+owner `11.567332128 s`, projected roots `6.449433868 s`, four native chains
+`38.491623409 s`, and residual blind `66.325941017 s`. The compiler that
+followed was still incomplete after `3340.554625683 s`. It used essentially
+one CPU core while the A100 was idle; SIMD or more host threads cannot bridge
+the resulting two-orders-of-magnitude gap to the complete `<20 s` gate.
+
+The owner therefore terminated the process with TERM. Exit 143 is a controlled
+NO-GO, not a resource-supervisor failure. There is no certificate, proof
+envelope, byte count, reload, verifier result, state promotion or second proof.
+The `3529.377744423 s` campaign and `3340.554625683 s` compiler measurements
+are lower bounds on unfinished work, not complete prover timings.
+
+The temporary 8,192-correlation diagnostic geometry did not reach exact
+reconciliation and is removed. Its value must not become a production
+constant. C6.4 may be revisited only under a new design that replaces or
+GPU-partitions the compiler relation, exposes bounded kernels suitable for
+SIMT execution, derives the finite-correlation schedule from the executable
+plan before allocation, and re-establishes local correctness and budget gates.
+A parameter-only retry, a longer timebox, or SIMD tuning of the remaining CPU
+loop is not an unblock. A new explicit owner GO is required before any pod.
 
 ### R6 disposition
 

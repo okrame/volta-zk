@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 R10B 765 PCG CENSUS UNDERFLOW / R10C WIDE CENSUS LOCAL / GATE CREDIT FALSE)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,18 +10,39 @@ record; no external plan is authoritative.
 
 Read `c64-joint-residual-sketch-design.md` next.
 
-- **Status/design.** C6.4 R10c remains isolated from C7. All gates are
-  `credit:false`; no certificate or size exists.
-- **Measured evidence.** Clean `72d5793` passed response, native chains and
-  residual blind, then exhausted the `765` suffix inside the compiler at
-  `227682/227682`. Provider was `59.942247505 s`; device peak `44,149 MiB`.
-- **Root cause/unblock.** The static suffix omits live compiler consumption;
-  even the historical C6.2 ceiling is insufficient. R10c temporarily reserves
-  `8,192` suffix correlations, logs all counters and retains exact-consumption
-  rejection, so it changes neither transcript nor certificate bytes.
-- **Resume.** Pass focused geometry/driver checks, push one clean SHA, run one
-  create-new R10c census, then remove the diagnostic geometry and set exact R11
-  constants before any credit-bearing completion run.
+- **Status/design.** C6.4 is **CLOSED / NO-GO**, isolated from C7. There is no
+  pod or retry authorization. All gates are `credit:false`; no certificate,
+  proof size, verifier result or second proof exists.
+- **Measured evidence.** Clean `d441ae6` was owner-terminated after
+  `3529.377744423 s` of incomplete first-proof campaign. The compiler alone
+  remained incomplete after `3340.554625683 s`, with essentially one CPU core
+  active and the A100 idle. Earlier phases included response
+  `65.827264601 s`, native chains `38.491623409 s` and residual blind
+  `66.325941017 s`. Peak device use was `44,569 MiB`.
+- **Hard stop.** Do not resume C6.4, infer proof bytes, or turn the temporary
+  wide correlation reservation into production constants. The diagnostic
+  geometry is removed; useful phase/counter instrumentation remains.
+- **Resume conditions.** A new milestone/design must replace or GPU-partition
+  the serial compiler relation, derive its exact finite-correlation schedule
+  before allocation, pass local correctness and budget gates, and receive a
+  new explicit owner GO before any provider or pod run.
+
+- **2026-08-28 — C6.4 R10c closes NO-GO during the serial compiler.** Clean
+  `d441ae6` passed A100 differential and campaign preflight, then entered the
+  first proof. Preparation before `campaign_start` took `146.753609994 s`.
+  The response component took `65.827264601 s` (provider `59.325186913 s`),
+  residual-owner construction `11.567332128 s`, projected roots
+  `6.449433868 s`, four native chains `38.491623409 s`, and residual blind
+  `66.325941017 s`. The following compiler phase remained incomplete for
+  `3340.554625683 s`; telemetry showed essentially one CPU core and no useful
+  sustained A100 work. At the owner's NO-GO decision the controlled TERM
+  occurred after `3529.377744423 s` of campaign and process exit was 143.
+  No certificate, envelope, proof size, reload, verifier result, promotion or
+  second proof exists. These times are lower bounds on an incomplete proof,
+  not a table-comparable complete prover value. The temporary 8,192 suffix did
+  not reach exact reconciliation and is removed rather than promoted. Raw
+  record: `c64-r10c-a100-compiler-no-go-2026-08-28-d441ae6.json`. The pod build
+  cache was removed and the control plane reports stopped.
 
 - **2026-08-28 — R10b exhausts the 765 ceiling inside the live compiler.**
   Clean `72d5793` completed provider response in `59.942247505 s`, full response

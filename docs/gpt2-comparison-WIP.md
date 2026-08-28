@@ -61,6 +61,15 @@ The first append-only incident record is
 SHA-256
 `9190621281ce5cb5b2c37d4b30bc945692405170fdc6203e58c3f3e4268f0d6e`.
 
+## C6.4 final R10c disposition
+
+Clean A100 `d441ae6` also supplies no value for “Prova risposta totale”: the
+first certificate was still absent when the owner stopped the campaign after
+`3529.377744423 s`. The compiler phase alone was unfinished after
+`3340.554625683 s`. No proof size or verifier measurement exists. These are
+incomplete lower bounds, not comparable completed-prover values, so the table
+remains unchanged. C6.4 is closed **NO-GO**.
+
 ## C6.4 R7 timing disposition
 
 Clean A100 `41b4e07` does not supply a new value for “Prova risposta totale”.

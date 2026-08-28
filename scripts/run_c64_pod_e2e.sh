@@ -16,12 +16,14 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 EXPECTED_SHA=${C64_EXPECTED_GIT_SHA:-}
 SETUP_SOURCE=${C64_SETUP_SOURCE:-}
 SESSION_TIMEOUT_S=${C64_SESSION_TIMEOUT_S:-300}
+DIAGNOSTIC_COMPLETION=${C64_DIAGNOSTIC_COMPLETION:-0}
 DISK_FLOOR_BYTES=223338299392
 RUN_DISK_STOP_BYTES=107374182400
 HOST_FLOOR_BYTES=103079215104
 CGROUP_RESERVE_BYTES=17179869184
 GPU_TOTAL_FLOOR_MIB=80000
 GPU_STOP_MIB=43696
+GPU_EMERGENCY_STOP_MIB=78000
 
 if [[ ${C64_RUN_SPECIFIC_OWNER_GO:-} != 1 ]]; then
   echo "C64_RUN_SPECIFIC_OWNER_GO=1 is required" >&2
@@ -33,6 +35,10 @@ if [[ ! $EXPECTED_SHA =~ ^[0-9a-f]{40}$ || $(git rev-parse HEAD) != "$EXPECTED_S
 fi
 if [[ ! $SESSION_TIMEOUT_S =~ ^[1-9][0-9]*$ ]]; then
   echo "C64_SESSION_TIMEOUT_S must be a positive integer" >&2
+  exit 2
+fi
+if [[ $DIAGNOSTIC_COMPLETION != 0 && $DIAGNOSTIC_COMPLETION != 1 ]]; then
+  echo "C64_DIAGNOSTIC_COMPLETION must be 0 or 1" >&2
   exit 2
 fi
 if [[ ! -d $WEIGHTS_DIR ]]; then
@@ -136,6 +142,9 @@ else
 fi
 
 mkdir "$SESSION_ROOT"
+printf 'diagnostic_completion=%s\ngpu_target_mib=%s\ngpu_emergency_stop_mib=%s\nsession_timeout_s=%s\n' \
+  "$DIAGNOSTIC_COMPLETION" "$GPU_STOP_MIB" "$GPU_EMERGENCY_STOP_MIB" "$SESSION_TIMEOUT_S" \
+  >"$SESSION_ROOT/completion-mode.txt"
 record_pid=
 cleanup() {
   status=$?
@@ -236,6 +245,7 @@ record_started_s=$(date +%s)
 sent_term_at=0
 mark_20=0
 mark_150=0
+gpu_gate_missed=0
 while kill -0 "$record_pid" 2>/dev/null; do
   now_s=$(date +%s)
   elapsed_s=$((now_s - record_started_s))
@@ -278,7 +288,15 @@ while kill -0 "$record_pid" 2>/dev/null; do
   if [[ $mark_150 -eq 0 && $elapsed_s -ge 150 ]]; then event=diagnostic_mark_150s; mark_150=1; fi
   if [[ $sent_term_at -eq 0 && $monitor_failed -ne 0 ]]; then event=monitor_hard_stop; sent_term_at=$now_s; kill -TERM "$record_pid" 2>/dev/null || true; fi
   if [[ $sent_term_at -eq 0 && $disk_free -lt $RUN_DISK_STOP_BYTES ]]; then event=disk_hard_stop; sent_term_at=$now_s; kill -TERM "$record_pid" 2>/dev/null || true; fi
-  if [[ $sent_term_at -eq 0 && $gpu_mib -gt $GPU_STOP_MIB ]]; then event=gpu_hard_stop; sent_term_at=$now_s; kill -TERM "$record_pid" 2>/dev/null || true; fi
+  if [[ $sent_term_at -eq 0 && $DIAGNOSTIC_COMPLETION -eq 1 && $gpu_mib -gt $GPU_EMERGENCY_STOP_MIB ]]; then
+    event=gpu_emergency_hard_stop; sent_term_at=$now_s; kill -TERM "$record_pid" 2>/dev/null || true
+  elif [[ $sent_term_at -eq 0 && $gpu_mib -gt $GPU_STOP_MIB ]]; then
+    if [[ $DIAGNOSTIC_COMPLETION -eq 1 ]]; then
+      if [[ $gpu_gate_missed -eq 0 ]]; then event=gpu_target_miss; gpu_gate_missed=1; fi
+    else
+      event=gpu_hard_stop; sent_term_at=$now_s; kill -TERM "$record_pid" 2>/dev/null || true
+    fi
+  fi
   if [[ $sent_term_at -eq 0 && $cgroup_max != max && $((cgroup_max - cgroup_current)) -lt $CGROUP_RESERVE_BYTES ]]; then event=cgroup_hard_stop; sent_term_at=$now_s; kill -TERM "$record_pid" 2>/dev/null || true; fi
   if [[ $sent_term_at -eq 0 && $elapsed_s -ge $SESSION_TIMEOUT_S ]]; then event=session_timebox; sent_term_at=$now_s; kill -TERM "$record_pid" 2>/dev/null || true; fi
   if [[ $sent_term_at -ne 0 && $((now_s - sent_term_at)) -ge 30 ]]; then event=forced_kill; kill -KILL "$record_pid" 2>/dev/null || true; fi

@@ -3195,6 +3195,10 @@ mod enabled {
             assert!(campaign_credit(true, true));
             assert!(!campaign_credit(true, false));
             assert!(!campaign_credit(false, true));
+            let runner = include_str!("../../../../scripts/run_c64_pod_e2e.sh");
+            assert!(runner.contains("C64_DIAGNOSTIC_COMPLETION"));
+            assert!(runner.contains("gpu_target_miss"));
+            assert!(runner.contains("gpu_emergency_hard_stop"));
             let projected = include_str!("../../../volta-pcs/src/c64_projected_residual_suffix.rs");
             assert!(projected.contains("drop(prepared);"));
             assert!(projected.contains("C6.4 rebuilt projected residual root differs"));

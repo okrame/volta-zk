@@ -1,9 +1,9 @@
 # C6.4 — projected residual PCS recovery
 
-**Status:** R7 A100 FAIL. Response construction remained `65.524719047 s` and
-the first retained-device native opening rejected with `C6SPR11`. HARD STOP:
-no pod or parameter-only retry before the local identity and timing repairs
-below are complete.
+**Status:** R8 retained-opening order fix local green. One owner-authorized
+diagnostic-completion run is pod-ready; timing, size and engineering-memory
+targets remain `credit:false` until measured. Functional and verifier failures
+still fail closed.
 
 **Branch:** `agent/c64-joint-residual-sketch`.
 
@@ -14,10 +14,10 @@ C6.4 is isolated from C7. It targets two complete GPT-2 certificates,
 one A100 and complete certificate size at most `35,000,000 B`.
 `30,000,000 B` is diagnostic only.
 
-Local design, implementation and bounded tests are authorized. Provider or
-pod contact is forbidden until this document and `prototype-status.md` record
-`C64_POD_READY`; the actual campaign additionally needs a later run-specific
-owner GO.
+Local design, implementation and bounded tests are authorized. Target-bearing
+provider or pod work remains forbidden without `C64_POD_READY` and a later
+run-specific owner GO. Section 8 records the narrow owner-authorized exception
+for one diagnostic-completion campaign on the reactivated pod.
 
 ## 1. R2 invalidation
 
@@ -229,6 +229,33 @@ point and repair the root cause. Separately trace `response_provider` and move
 or remove its CPU-dominant operations; backend dispatch by itself is not a
 repair. Re-establish a complete `<=17.000 s` projection from matching measured
 components before requesting another pod and run-specific owner GO.
+
+## 8. R8 diagnostic-completion authorization
+
+Source tracing resolves `C6SPR11` to a double order conversion. The model
+embedding helper had already produced the native polynomial order; the pending
+opening helper reversed that point again before an evaluator which performs
+its own conversion into kernel order. R8 removes only that second reversal. A
+regression compares the committed polynomial's evaluation with the independent
+multilinear evaluator at the corresponding kernel point. It and the exact
+CUDA-feature campaign test pass locally; runner syntax is also green.
+
+The owner explicitly reactivated pod `nudqsdr5apsd96` at
+`185.216.23.227:21048` and requested the run continue beyond limits to obtain
+the complete proof size. This is a diagnostic deviation, not restoration of
+the invalidated `16.800812093-s` projection. The `20-s`, `35,000,000-B` and
+`43,696-MiB` targets are recorded misses rather than termination and force
+`credit:false`. The `78,000-MiB` emergency device stop, `16-GiB` cgroup reserve,
+`100-GiB` free-disk reserve, monitor-integrity checks and `7,200-s` stuck-process
+timebox remain physical safeguards.
+
+The campaign is create-new from one clean R8 SHA, reuses only pod-local setup
+contexts `[0,150]`, and performs exactly `0 -> 150` followed by `150 -> 200`,
+without retry. The second proof may begin only after the first certificate is
+serialized, reloaded and completely verified. Full artifacts, hashes, phase
+timings, resource telemetry, certificate bytes and proof-envelope bytes are
+retained. Any functional, transcript, correlation, reload or verifier failure
+remains terminal.
 
 ### R6 disposition
 

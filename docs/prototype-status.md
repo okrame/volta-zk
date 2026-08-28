@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 R7 A100 FAIL — RESPONSE 65.525 S / RETAINED-OPENING MISMATCH / HARD STOP)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 R8 ORDER FIX LOCAL GREEN / DIAGNOSTIC COMPLETION POD READY / GATE CREDIT FALSE)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,25 +10,39 @@ record; no external plan is authoritative.
 
 Read `c64-joint-residual-sketch-design.md` next.
 
-- **Status/design.** C6.4 R7 remains isolated from C7 and is now an official
-  A100 failure. Pod `nudqsdr5apsd96` is stopped. A HARD STOP forbids another
-  pod or parameter-only retry.
-- **Completed evidence.** Clean `41b4e07` generated only setup contexts
-  `[0,150]`; CUDA differential and campaign-discipline checks passed. The
-  measured process reached the first native opening, then failed closed with
-  `C6SPR11`: the retained authenticated target differed from its committed
-  polynomial opening. No second proof started.
-- **Measurement/credit.** Pre-campaign was `142.781160265 s`; response was
-  `65.524719047 s` (`58.727182131` provider, `1.266567169` seal,
-  `5.433695015` response-level verifier replay), residual owner
-  `11.547041744 s`, roots `5.903876539 s`. Zero certificates, artifacts,
-  complete verifier acceptances or promotions exist; every size, timing,
-  protocol and device gate is `credit:false`.
-- **Resume condition.** First prove retained-device opening identity across
-  representation, limb/order and evaluation point, then replace the
-  CPU-dominant response provider and re-establish a complete `<=17.000 s`
-  projection. A fresh clean SHA, explicit owner GO and new A100 are required
-  only after those local gates pass.
+- **Status/design.** C6.4 R8 remains isolated from C7. The retained-opening
+  order fix is local green and a diagnostic-completion run is
+  `C64_DIAGNOSTIC_POD_READY`; all target-bearing credit remains blocked.
+- **Completed evidence.** R7 inverted the already native-ordered opening point
+  before an evaluator that performs its own kernel-order conversion. The
+  one-line fix removes that inversion. A real polynomial-evaluation regression,
+  the exact CUDA-feature campaign test and runner syntax pass locally.
+- **Authorization/deviation.** The owner reactivated pod `nudqsdr5apsd96` at
+  `185.216.23.227:21048` and explicitly authorized completion beyond timing,
+  byte and engineering-memory targets to obtain exact proof size. Target
+  misses are diagnostic and force `credit:false`; functional, verification,
+  disk, cgroup and 78,000-MiB physical-safety failures still stop.
+- **Exact run.** Push one clean R8 SHA, reuse only pod-local setup contexts
+  `[0,150]`, run the same two no-retry proofs with full reload/verification,
+  `C64_DIAGNOSTIC_COMPLETION=1` and a `7200-s` emergency timebox. Record all
+  artifacts and diagnostics, then remove build cache and stop the pod.
+
+- **2026-08-28 — R8 fixes the retained-opening order and admits one
+  diagnostic-completion run.** Source tracing found a double reversal:
+  `c61_model_embedding_points` had already converted the global point into
+  the native polynomial order, but `c61_pending_initial_point` reversed it
+  again before `evaluate_fixed_base`, which itself converts native order to
+  the kernel convention. The fix preserves the native order. The replacement
+  regression compares an actual `Poly::eval_base` result with the independent
+  multilinear evaluator under the kernel convention and passes `1/1`; the
+  exact CUDA-feature campaign discipline test also passes `1/1`, and runner
+  shell syntax is green. The owner explicitly requests completion and proof
+  size despite known target misses. Therefore one create-new diagnostic run is
+  authorized on the reactivated pod: 20 s, 35 MB and the 43,696-MiB device
+  gate become recorded misses rather than termination. A 78,000-MiB emergency
+  device stop, 16-GiB cgroup reserve, 100-GiB disk reserve, monitor integrity
+  and a 7,200-s stuck-process timebox remain. This is not a timing repair or
+  protocol credit; any functional or verifier failure remains terminal.
 
 - **2026-08-28 — C6.4 R7 A100 fails timing and retained-device opening;
   control-plane stop complete.** Clean `41b4e07` ran on one 80-GB A100 with

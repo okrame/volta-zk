@@ -121,7 +121,7 @@ fn c61_production_private_zk_rng() -> Result<StdRng, String> {
 struct C61ReferenceWhirExecutor;
 
 fn c61_pending_initial_point(point: &Point<C61P3Fp2>) -> Vec<Fp2> {
-    point.iter().rev().copied().map(c61_volta_fp2_from_p3).collect()
+    point.iter().copied().map(c61_volta_fp2_from_p3).collect()
 }
 
 trait C61ProductionWhirExecutor<MT, Challenger>
@@ -10920,16 +10920,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn gpu_pending_initial_point_restores_semantic_order() {
+    fn gpu_pending_initial_point_matches_polynomial_evaluation_order() {
         let semantic = vec![
             Fp2::from_base(Fp::new(3)),
             Fp2::from_base(Fp::new(5)),
             Fp2::from_base(Fp::new(7)),
         ];
-        let native = Point::new(
-            semantic.iter().rev().copied().map(c61_p3_fp2_from_volta).collect(),
-        );
-        assert_eq!(c61_pending_initial_point(&native), semantic);
+        let native =
+            Point::new(semantic.iter().rev().copied().map(c61_p3_fp2_from_volta).collect());
+        let coefficients: Vec<Goldilocks> =
+            (0..8).map(|index| Goldilocks::new(11 + 17 * index as u64)).collect();
+        let expected = c61_volta_fp2_from_p3(Poly::new(coefficients).eval_base(&native));
+        let pending = c61_pending_initial_point(&native);
+        let kernel_point = pending.iter().rev().copied().collect::<Vec<_>>();
+        let values =
+            (0..8).map(|index| Fp2::from_base(Fp::new(11 + 17 * index as u64))).collect::<Vec<_>>();
+        assert_eq!(volta_proto::mle::eval_mle(&values, &kernel_point), expected);
     }
 
     #[cfg(feature = "cuda")]

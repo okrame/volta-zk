@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Executable C7 R0.8f analytic/readiness screen; every result is credit:false."""
+"""Executable C7 R0.8g analytic/readiness screen; every result is credit:false."""
 
 from __future__ import annotations
 
@@ -1657,10 +1657,310 @@ def r08_online_rs_batch_open_screen(
     }
 
 
-def r08_new_carrier_tournament() -> dict[str, object]:
-    """Owner-authorized admission boundary; no old negative screen is rerun."""
+def r08g_bolt_min_direct_screen() -> dict[str, object]:
+    """Screen one direct Bolt-min topology without rebuilding the C6 wrapper."""
+    alpha_num, alpha_den = 1, 8
+    column_sparsity = 16
+    interleaving = 128
+    fp3_bytes = 3 * FIELD_SYMBOL_BYTES
+    single_leaf_frame_bytes = 1296
+
+    def queries_for_miss(miss_probability: float) -> int:
+        return math.ceil(-TARGET_RESPONSE_EVENT_BITS / math.log2(miss_probability))
+
+    base_queries = queries_for_miss(3 / 4)
+    published_gamma = 0.096
+    goldilocks_control_gamma = 0.049
+
+    def query_row(gamma: float) -> dict[str, object]:
+        systematic_queries = queries_for_miss(1 - gamma / 3)
+        total_rows = systematic_queries + base_queries
+        explicit_g_visible_fp = 3 * interleaving
+        requested_fp = total_rows * interleaving + explicit_g_visible_fp
+        dense_leaf_cap = 2 * total_rows
+        dense_visible_fp_cap = (
+            dense_leaf_cap * LOGICAL_LEAF_SYMBOLS + explicit_g_visible_fp
+        )
+        return {
+            "gamma": gamma,
+            "systematic_row_queries": systematic_queries,
+            "base_code_row_queries": base_queries,
+            "total_opened_rows": total_rows,
+            "row_symbols": interleaving,
+            "explicit_g_Fp3_elements": interleaving,
+            "explicit_g_visible_Fp_limbs": explicit_g_visible_fp,
+            "requested_row_Fp_occurrences_lower_bound": requested_fp,
+            "dense_g141_unique_leaf_cap": dense_leaf_cap,
+            "dense_g141_visible_Fp_occurrences_cap": dense_visible_fp_cap,
+        }
+
+    published_queries = query_row(published_gamma)
+    goldilocks_queries = query_row(goldilocks_control_gamma)
+    selected_visible_fp = {
+        str(GPT2["name"]): 234_342,
+        str(GEMMA_ENVELOPE["name"]): 297_510,
+    }
+    certificate_caps = {
+        str(GPT2["name"]): EXPLORATORY_GPT2_CERTIFICATE_LIMIT_BYTES,
+        str(GEMMA_ENVELOPE["name"]): EXPLORATORY_LARGE_CERTIFICATE_LIMIT_BYTES,
+    }
+    setup_wall_caps = {
+        str(GPT2["name"]): GPT2_SETUP_WALL_HARD_CAP_SECONDS,
+        str(GEMMA_ENVELOPE["name"]): GEMMA_SETUP_WALL_HARD_CAP_SECONDS,
+    }
+
+    profiles = {}
+    for model in (GPT2, GEMMA_ENVELOPE):
+        name = str(model["name"])
+        weight_count = int(model["weights"])
+        packed_source_bytes = PACKED_WEIGHT_BYTES * weight_count
+        unpadded_rows = ceil_div(weight_count, interleaving)
+        message_rows = 1 << ((unpadded_rows - 1).bit_length())
+        padded_symbols = message_rows * interleaving
+        committed_rows = 5 * message_rows // 4
+        tree_depth = (committed_rows - 1).bit_length()
+
+        # C_H^t(X) stores X plus rate-1/2 RS parity for the 1/8 sketch.
+        encoded_sketch_bytes = 2 * padded_symbols
+        salted_tree_bytes = 96 * committed_rows
+        persistent_bytes = (
+            packed_source_bytes + encoded_sketch_bytes + salted_tree_bytes
+        )
+        transposed_packed_copy_bytes = 2 * padded_symbols
+        persistent_with_transpose = persistent_bytes + transposed_packed_copy_bytes
+
+        # Dense g141 forbids per-row padding.  A t=128 row therefore touches
+        # at most two leaves, while one-pass sparse H still retains every
+        # syndrome field accumulator.
+        row_major_syndrome_bytes = padded_symbols
+        external_scatter_read_write_bytes = (
+            2 * FIELD_SYMBOL_BYTES * column_sparsity * padded_symbols
+        )
+
+        # Column-major X reduces live H state, but every systematic spot then
+        # opens one independently rooted g141 leaf per column in the worst case.
+        column_major_syndrome_bytes = (
+            alpha_num * message_rows * FIELD_SYMBOL_BYTES // alpha_den
+        )
+        column_major_unique_leaf_cap = (
+            int(goldilocks_queries["systematic_row_queries"]) * interleaving
+        )
+        column_major_payload_cap = (
+            column_major_unique_leaf_cap * single_leaf_frame_bytes
+        )
+
+        # Bolt's evaluation proof creates w=RS(Xr) over the challenge field.
+        # Direct C7 challenges are Fp3, so the fresh rate-1/2 word has 2k Fp3
+        # elements; the encoded syndrome combination contributes k/4 more.
+        fresh_w_fp3_bytes = 2 * message_rows * fp3_bytes
+        syndrome_combination_fp3_bytes = message_rows * fp3_bytes // 4
+        fresh_proximity_payload_bytes = (
+            fresh_w_fp3_bytes + syndrome_combination_fp3_bytes
+        )
+
+        gold_requested = int(
+            goldilocks_queries["requested_row_Fp_occurrences_lower_bound"]
+        )
+        published_requested = int(
+            published_queries["requested_row_Fp_occurrences_lower_bound"]
+        )
+        gold_visible_cap = int(
+            goldilocks_queries["dense_g141_visible_Fp_occurrences_cap"]
+        )
+        published_visible_cap = int(
+            published_queries["dense_g141_visible_Fp_occurrences_cap"]
+        )
+        exploratory_visible_cap = (
+            WEIGHT_WIRE_EXPLORATORY_MAX_NUMERATOR
+            * selected_visible_fp[name]
+            // WEIGHT_WIRE_EXPLORATORY_DENOMINATOR
+        )
+        gold_rows = int(goldilocks_queries["total_opened_rows"])
+        published_rows = int(published_queries["total_opened_rows"])
+        profiles[name] = {
+            "weight_scalars": weight_count,
+            "message_rows_k": message_rows,
+            "interleaving_t": interleaving,
+            "padded_message_symbols": padded_symbols,
+            "committed_row_count": committed_rows,
+            "tree_depth": tree_depth,
+            "persistent_setup": {
+                "packed_source_bytes": packed_source_bytes,
+                "encoded_sketch_payload_bytes": encoded_sketch_bytes,
+                "encoded_sketch_is_complete_persistent_codeword": True,
+                "complete_codeword_gate_pass": False,
+                "salt_leaf_and_internal_digest_bytes": salted_tree_bytes,
+                "tree_bytes_are_conservative_per_row_upper_control": True,
+                "complete_masked_root_manifest": False,
+                "total_bytes": persistent_bytes,
+                "amplification_over_packed_source": (
+                    persistent_bytes / packed_source_bytes
+                ),
+                "exploratory_3x_cap_bytes": 3 * packed_source_bytes,
+                "within_exploratory_3x": persistent_bytes <= 3 * packed_source_bytes,
+                "setup_wall_hard_cap_seconds": setup_wall_caps[name],
+                "setup_wall_measured": False,
+                "setup_gate_pass": False,
+            },
+            "one_scan_layout_trilemma": {
+                "persistent_row_alignment_padding_bytes": 0,
+                "row_major_max_g141_leaves_per_opened_row": 2,
+                "row_major_syndrome_accumulator_bytes": row_major_syndrome_bytes,
+                "row_major_model_linear_scratch": True,
+                "external_random_scatter_minimum_read_write_bytes": (
+                    external_scatter_read_write_bytes
+                ),
+                "column_major_syndrome_accumulator_bytes": (
+                    column_major_syndrome_bytes
+                ),
+                "column_major_worst_case_unique_systematic_leaves": (
+                    column_major_unique_leaf_cap
+                ),
+                "column_major_leaf_payload_cap_bytes_before_paths": (
+                    column_major_payload_cap
+                ),
+                "column_major_exceeds_complete_certificate_cap": (
+                    column_major_payload_cap > certificate_caps[name]
+                ),
+                "persistent_transposed_packed_copy_bytes": (
+                    transposed_packed_copy_bytes
+                ),
+                "persistent_bytes_with_transposed_copy": persistent_with_transpose,
+                "amplification_with_transposed_copy": (
+                    persistent_with_transpose / packed_source_bytes
+                ),
+                "transposed_copy_within_3x": (
+                    persistent_with_transpose <= 3 * packed_source_bytes
+                ),
+                "block_local_H_escape": (
+                    "distance <= block_rows/k, so bounded blocks destroy constant distance"
+                ),
+                "one_scan_bounded_memory_gate_pass": False,
+            },
+            "query_wire_controls": {
+                "published_GF2_32_requested_Fp_lower_bound": published_requested,
+                "published_dense_g141_visible_Fp_cap": published_visible_cap,
+                "published_dense_cap_over_selected_visible_Fp": (
+                    published_visible_cap / selected_visible_fp[name]
+                ),
+                "published_dense_cap_within_150_percent_control": (
+                    published_visible_cap <= exploratory_visible_cap
+                ),
+                "goldilocks_gamma_0_049_requested_Fp_lower_bound": gold_requested,
+                "goldilocks_dense_g141_visible_Fp_cap": gold_visible_cap,
+                "goldilocks_dense_cap_over_selected_visible_Fp": (
+                    gold_visible_cap / selected_visible_fp[name]
+                ),
+                "goldilocks_dense_cap_within_150_percent_control": (
+                    gold_visible_cap <= exploratory_visible_cap
+                ),
+                "goldilocks_unshared_row_opening_bytes_control": (
+                    2
+                    * gold_rows
+                    * (single_leaf_frame_bytes + HASH_BYTES * tree_depth)
+                ),
+                "published_unshared_row_opening_bytes_control": (
+                    2
+                    * published_rows
+                    * (single_leaf_frame_bytes + HASH_BYTES * tree_depth)
+                ),
+                "complete_codec_known": False,
+                "proof_wire_gate_pass": False,
+            },
+            "fresh_code_switch": {
+                "fresh_w_rate_half_Fp3_bytes": fresh_w_fp3_bytes,
+                "syndrome_combination_Fp3_bytes": syndrome_combination_fp3_bytes,
+                "two_proximity_payload_bytes": fresh_proximity_payload_bytes,
+                "fresh_complete_codeword_created": True,
+                "response_local_model_linear_family": True,
+                "source_term_independent_of_q": True,
+                "packed_source_scan_count_if_other_gates_ignored": 1,
+                "gate_pass": False,
+            },
+        }
+
     return {
-        "state": "OPEN_DUAL_TRACK_NO_ENTRANT_ADMITTED",
+        "state": "BOLT_MIN_DIRECT_NO_GO_SINGLE_CANDIDATE_SCREEN_CLOSED",
+        "candidate": "C7-BOLT-MIN-G141-v0",
+        "paper": "ePrint 2026/310 Bolt",
+        "candidate_count": 1,
+        "parameters": {
+            "alpha": "1/8",
+            "base_RS_rate": "1/2",
+            "LDPC_column_sparsity": column_sparsity,
+            "interleaving_t": interleaving,
+            "logical_leaf_symbols": LOGICAL_LEAF_SYMBOLS,
+            "persistent_row_alignment_padding": False,
+            "challenge_field": "Goldilocks Fp3",
+            "challenge_mode": SELECTED_CHALLENGE_MODE,
+            "Q_FS": SELECTED_FIAT_SHAMIR_QUERY_BOUND,
+        },
+        "relation": {
+            "persistent_oracle": "C_H^t(X)=(X,C^t(HX)) under one typed packed root",
+            "evaluation_switch": "r in Fp3^t; x=Xr; u=HXr; fresh w=RS(x)",
+            "terminal": "the final claimed evaluation must enter the shared-Delta Fp3 MAC",
+            "source_linear_term": "H*X plus t short RS encodings, independent of q",
+            "source_linear_independent_of_q": True,
+        },
+        "query_controls": {
+            "published_GF2_32": published_queries,
+            "goldilocks_0_049_diagnostic": goldilocks_queries,
+            "published_distance_transfers_to_C7": False,
+            "goldilocks_distance_is_admitted_for_current_dimensions": False,
+        },
+        "profiles": profiles,
+        "c6_differential": {
+            "avoided": [
+                "no C6.3 eight-body WHIR wrapper",
+                "no C6.4 six-body projected residual suffix",
+                "one immutable weight root instead of 17 setup profiles",
+                "no C6 timing, byte, proof or E2E credit is transferred",
+            ],
+            "still_blocking": [
+                "the published protocol has no hiding theorem",
+                "two fresh RS proximity oracles remain per evaluation proof",
+                "the non-amortized Mulperm closure is estimated, not implemented",
+                "Goldilocks distance and the direct VOLE-MAC terminal bridge are absent",
+            ],
+            "historical_failures_not_misattributed_to_bolt": [
+                "C6.3 retained a 17,179,869,184-byte inherited encoded weight oracle",
+                "C6.3 generated 17 profiles in 2,092.76 seconds",
+                "C6.3 stopped on recorder then finite-PCG underflow with zero certificates",
+            ],
+        },
+        "soundness_privacy": {
+            "published_hiding_or_zero_knowledge": False,
+            "policy2_masked_root_and_query_theorem_complete": False,
+            "same_W_binding_into_shared_Delta_MAC_complete": False,
+            "malicious_DV_stateful_privacy_complete": False,
+            "Fp3_algebraic_axis_selected": True,
+            "Fp3_repairs_base_code_distance": False,
+            "attaching_Hiding_WHIR_without_rescreen_allowed": False,
+        },
+        "kill_criteria_triggered": [
+            "the setup stores a complete encoded sketch codeword",
+            "row-major one-pass setup needs model-linear syndrome scratch",
+            "column-major layout makes systematic query payload exceed certificate caps",
+            "a persistent transpose exceeds the 3x setup cap",
+            "the response code-switch creates a complete Fp3 RS codeword",
+            "dense g141 query controls exceed the 150 percent wire control",
+            "malicious soundness and stateful policy-2 privacy bridges are absent",
+        ],
+        "complete_row_exists": False,
+        "selected_carrier": False,
+        "c7_cpu_reference_pass": False,
+        "prover_or_SIMT_implementation_authorized": False,
+        "pod_contact_or_execution_authorized": False,
+        "credit": False,
+    }
+
+
+def r08_new_carrier_tournament(
+    bolt_screen: dict[str, object],
+) -> dict[str, object]:
+    """Close the owner-bounded one-candidate screen without starting another."""
+    return {
+        "state": "BOUNDED_SINGLE_CANDIDATE_SCREEN_CLOSED_NO_ENTRANT_ADMITTED",
         "owner_choice": "1.A",
         "tracks": {
             "published_constructions": {
@@ -1713,8 +2013,8 @@ def r08_new_carrier_tournament() -> dict[str, object]:
                 "privacy compiler only; does not supply the missing shared base-code evaluation"
             ),
         },
-        "entrants": [],
-        "main_research_candidate_not_admitted": None,
+        "entrants": ["C7-BOLT-MIN-G141-v0"],
+        "main_research_candidate_not_admitted": "C7-BOLT-MIN-G141-v0",
         "closed_candidate": "C7-SPBT-v0",
         "candidate_lineage": (
             "C7-SPBT-v0 repaired the operator reduction, but R0.8f closes it "
@@ -1730,7 +2030,15 @@ def r08_new_carrier_tournament() -> dict[str, object]:
             "non_affine_tau_dependent_line": (
                 "secondary_only_for_an_already_concrete_clearly_advantageous_construction"
             ),
+            "screen_completed": True,
+            "further_candidate_requires_owner_decision": True,
+            "abstract_complete_codeword_exception_authorized": False,
+            "reconsider_complete_codeword_gate_only_after": (
+                "concrete candidate eliminates per-response codeword and supplies "
+                "complete one-scan bounded-memory wire setup security row"
+            ),
         },
+        "bounded_single_candidate_result": bolt_screen,
         "bounded_codesigned_rows": r08b_codesigned_construction_screen(),
         "selected_carrier": None,
         "complete_row_exists": False,
@@ -4863,6 +5171,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
     small = model_report(GPT2, chunk_bytes, bandwidth_bytes_per_second)
     large = model_report(GEMMA_ENVELOPE, chunk_bytes, bandwidth_bytes_per_second)
     fp3_field_and_terminal = r08_fp3_field_and_terminal_screen()
+    bolt_min_direct = r08g_bolt_min_direct_screen()
 
     # First close the root-capacity fixed point from the pre-mask codec.  GPT-2
     # crosses from 2^27 to 2^28 coefficients once its selected Q_root is added;
@@ -4992,7 +5301,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
     large_total = int(large["certificate"]["total"]["bytes"])
     certificate_growth = large_total / small_total
     return {
-        "schema": "volta-c7-stateful-alfc-r08-screen-v28",
+        "schema": "volta-c7-stateful-alfc-r08-screen-v29",
         "design": "C7 stateful authenticated linear-functional commitment",
         "screening_only": True,
         "credit": False,
@@ -5011,7 +5320,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "c7_cpu_reference_pass": False,
             "c7_pod_ready": False,
             "former_selected_RS_realization_no_go": True,
-            "owner_design_decision_required_before_more_implementation": False,
+            "owner_design_decision_required_before_more_implementation": True,
             "new_shared_carrier_tournament_authorized": True,
             "strict_ud_RS_demoted_to_control_baseline": True,
             "strict_ud_RS_prover_authorized": False,
@@ -5026,14 +5335,16 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "C7_secret_point_butterfly_carrier_admitted": False,
             "C7_native_VOLE_stream_open_screen_closed": True,
             "C7_SPBT_carrier_line_open": False,
-            "C7_tournament_reopened": True,
+            "C7_tournament_reopened": False,
+            "C7_bounded_Bolt_min_screen_closed": True,
+            "C7_Bolt_min_carrier_admitted": False,
             "C7_codesigned_pre_CPU_screen_pass": False,
             "tiny_CPU_prototype_authorized_now": False,
         },
         "privacy_policy": {
             "active": 2,
             "last_tested": 3,
-            "active_status": "native_vole_stream_open_no_go_spbt_closed_tournament_reopened",
+            "active_status": "bolt_min_direct_no_go_bounded_tournament_closed",
             "last_tested_policy3_terminal_shape": (
                 "digest-only salted leaf commitment with public Merkle paths "
                 "and attempt-local VOLE-private leaf/PCS checks"
@@ -5303,13 +5614,14 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "c7_cpu_reference_pass": False,
             "credit": False,
         },
-        "new_carrier_tournament": r08_new_carrier_tournament(),
+        "new_carrier_tournament": r08_new_carrier_tournament(bolt_min_direct),
         "secret_point_dv_carrier_screen": r08c_secret_point_dv_carrier_screen(),
         "eq_to_secret_point_bridge_screen": r08d_eq_to_secret_point_bridge_screen(),
         "secret_point_butterfly_transform_screen": (
             r08e_secret_point_butterfly_transform_screen()
         ),
         "native_vole_stream_open_into_mac_screen": r08f_stream_open_into_mac_screen(),
+        "bolt_min_direct_codeswitch_screen": bolt_min_direct,
         "simt_path": {
             "state": "BLOCKED_BEFORE_CPU_REFERENCE_PASS",
             "stage_order": [
@@ -5767,7 +6079,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
 
 
 def self_check(report: dict[str, object]) -> None:
-    assert report["schema"] == "volta-c7-stateful-alfc-r08-screen-v28"
+    assert report["schema"] == "volta-c7-stateful-alfc-r08-screen-v29"
     models = report["models"]
     small = models[str(GPT2["name"])]
     large = models[str(GEMMA_ENVELOPE["name"])]
@@ -6367,7 +6679,7 @@ def self_check(report: dict[str, object]) -> None:
     assert policy["active"] == 2
     assert policy["last_tested"] == 3
     assert policy["active_status"] == (
-        "native_vole_stream_open_no_go_spbt_closed_tournament_reopened"
+        "bolt_min_direct_no_go_bounded_tournament_closed"
     )
     assert policy["policy_3_candidate_exhaustion_documented"]
     assert len(policy["terminal_catalog"]) == 10
@@ -6417,7 +6729,7 @@ def self_check(report: dict[str, object]) -> None:
     assert not authorization["c7_cpu_reference_pass"]
     assert not authorization["c7_pod_ready"]
     assert authorization["former_selected_RS_realization_no_go"]
-    assert not authorization[
+    assert authorization[
         "owner_design_decision_required_before_more_implementation"
     ]
     assert authorization["new_shared_carrier_tournament_authorized"]
@@ -6431,6 +6743,11 @@ def self_check(report: dict[str, object]) -> None:
     assert authorization["tiny_non_PCS_conformance_test_implemented"]
     assert authorization["published_carriers_baseline_controls_only"]
     assert authorization["C7_codesigned_circuit_main_research_line"]
+    assert authorization["C7_native_VOLE_stream_open_screen_closed"]
+    assert not authorization["C7_SPBT_carrier_line_open"]
+    assert not authorization["C7_tournament_reopened"]
+    assert authorization["C7_bounded_Bolt_min_screen_closed"]
+    assert not authorization["C7_Bolt_min_carrier_admitted"]
     assert authorization["C7_secret_point_quotient_research_authorized"]
     assert not authorization["C7_codesigned_pre_CPU_screen_pass"]
     assert not authorization["tiny_CPU_prototype_authorized_now"]
@@ -6639,7 +6956,9 @@ def self_check(report: dict[str, object]) -> None:
         assert not online["prover_or_SIMT_implementation_authorized"]
     assert not batch_open["c7_cpu_reference_pass"]
     tournament = report["new_carrier_tournament"]
-    assert tournament["state"] == "OPEN_DUAL_TRACK_NO_ENTRANT_ADMITTED"
+    assert tournament["state"] == (
+        "BOUNDED_SINGLE_CANDIDATE_SCREEN_CLOSED_NO_ENTRANT_ADMITTED"
+    )
     assert tournament["tracks"]["published_constructions"]["role"] == (
         "baseline_and_controls_only"
     )
@@ -6655,8 +6974,10 @@ def self_check(report: dict[str, object]) -> None:
         "algebraic_and_security_control_baseline_only"
     )
     assert not tournament["strict_ud_RS_prover_implementation_authorized"]
-    assert not tournament["entrants"]
-    assert tournament["main_research_candidate_not_admitted"] is None
+    assert tournament["entrants"] == ["C7-BOLT-MIN-G141-v0"]
+    assert tournament["main_research_candidate_not_admitted"] == (
+        "C7-BOLT-MIN-G141-v0"
+    )
     assert tournament["closed_candidate"] == "C7-SPBT-v0"
     next_screen = tournament["next_screen_policy"]
     assert next_screen["candidate_count_cap"] == 1
@@ -6664,6 +6985,12 @@ def self_check(report: dict[str, object]) -> None:
     assert next_screen["apply_all_gates_immediately"]
     assert not next_screen["open_ended_tournament_authorized"]
     assert not next_screen["new_computational_assumption_authorized"]
+    assert next_screen["screen_completed"]
+    assert next_screen["further_candidate_requires_owner_decision"]
+    assert not next_screen["abstract_complete_codeword_exception_authorized"]
+    assert tournament["bounded_single_candidate_result"] == (
+        report["bolt_min_direct_codeswitch_screen"]
+    )
     bounded_rows = tournament["bounded_codesigned_rows"]
     assert bounded_rows["state"] == "NO_CARRIER_ROW_COMPLETE_REFERENCE_SEAM_READY"
     seam = bounded_rows["policy2_reference_seam"]
@@ -6684,6 +7011,81 @@ def self_check(report: dict[str, object]) -> None:
     assert tournament["selected_carrier"] is None
     assert not tournament["complete_row_exists"]
     assert not tournament["prover_or_SIMT_implementation_authorized"]
+    bolt = report["bolt_min_direct_codeswitch_screen"]
+    assert bolt["state"] == "BOLT_MIN_DIRECT_NO_GO_SINGLE_CANDIDATE_SCREEN_CLOSED"
+    assert bolt["candidate_count"] == 1
+    assert bolt["parameters"]["interleaving_t"] == 128
+    assert bolt["parameters"]["logical_leaf_symbols"] == 141
+    assert bolt["parameters"]["Q_FS"] == 0
+    assert bolt["query_controls"]["published_GF2_32"][
+        "systematic_row_queries"
+    ] == 2_345
+    assert bolt["query_controls"]["goldilocks_0_049_diagnostic"][
+        "systematic_row_queries"
+    ] == 4_630
+    assert bolt["query_controls"]["goldilocks_0_049_diagnostic"][
+        "requested_row_Fp_occurrences_lower_bound"
+    ] == 627_072
+    assert bolt["query_controls"]["goldilocks_0_049_diagnostic"][
+        "dense_g141_visible_Fp_occurrences_cap"
+    ] == 1_381_056
+    bolt_small = bolt["profiles"]["gpt2-124m-screen"]
+    bolt_large = bolt["profiles"]["gemma-class-31b-envelope"]
+    assert bolt_small["message_rows_k"] == 1 << 20
+    assert bolt_large["message_rows_k"] == 1 << 28
+    assert bolt_small["persistent_setup"]["total_bytes"] == 642_264_576
+    assert bolt_large["persistent_setup"]["total_bytes"] == 162_584_531_456
+    assert bolt_small["persistent_setup"]["within_exploratory_3x"]
+    assert bolt_large["persistent_setup"]["within_exploratory_3x"]
+    assert bolt_small["persistent_setup"][
+        "encoded_sketch_is_complete_persistent_codeword"
+    ]
+    assert bolt_large["persistent_setup"][
+        "encoded_sketch_is_complete_persistent_codeword"
+    ]
+    assert not bolt_small["persistent_setup"]["complete_codeword_gate_pass"]
+    assert not bolt_large["persistent_setup"]["complete_codeword_gate_pass"]
+    assert not bolt_small["persistent_setup"]["setup_gate_pass"]
+    assert not bolt_large["persistent_setup"]["setup_gate_pass"]
+    assert bolt_small["one_scan_layout_trilemma"][
+        "row_major_syndrome_accumulator_bytes"
+    ] == 134_217_728
+    assert bolt_large["one_scan_layout_trilemma"][
+        "row_major_syndrome_accumulator_bytes"
+    ] == 34_359_738_368
+    assert not bolt_small["one_scan_layout_trilemma"][
+        "transposed_copy_within_3x"
+    ]
+    assert not bolt_large["one_scan_layout_trilemma"][
+        "transposed_copy_within_3x"
+    ]
+    assert bolt_small["fresh_code_switch"][
+        "fresh_w_rate_half_Fp3_bytes"
+    ] == 50_331_648
+    assert bolt_large["fresh_code_switch"][
+        "fresh_w_rate_half_Fp3_bytes"
+    ] == 12_884_901_888
+    for profile in bolt["profiles"].values():
+        assert profile["one_scan_layout_trilemma"][
+            "column_major_exceeds_complete_certificate_cap"
+        ]
+        assert not profile["one_scan_layout_trilemma"][
+            "one_scan_bounded_memory_gate_pass"
+        ]
+        assert not profile["query_wire_controls"][
+            "published_dense_cap_within_150_percent_control"
+        ]
+        assert not profile["query_wire_controls"][
+            "goldilocks_dense_cap_within_150_percent_control"
+        ]
+        assert profile["fresh_code_switch"]["fresh_complete_codeword_created"]
+        assert profile["fresh_code_switch"]["source_term_independent_of_q"]
+        assert not profile["fresh_code_switch"]["gate_pass"]
+    assert not bolt["soundness_privacy"]["published_hiding_or_zero_knowledge"]
+    assert not bolt["complete_row_exists"]
+    assert not bolt["selected_carrier"]
+    assert not bolt["c7_cpu_reference_pass"]
+    assert not bolt["prover_or_SIMT_implementation_authorized"]
     secret_point = report["secret_point_dv_carrier_screen"]
     assert secret_point["state"] == "MAIN_RESEARCH_CANDIDATE_NOT_ADMITTED"
     assert secret_point["candidate_id"] == "C7-DV-SPQ-v0"

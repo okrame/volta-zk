@@ -1,6 +1,6 @@
 # C7 — stateful authenticated linear-functional commitment
 
-**Status:** C7 R0.8f native VOLE/MAC delayed-opening screen; policy 2, direct Goldilocks Fp3, rate 1/2,
+**Status:** C7 R0.8g bounded direct-Bolt screen; policy 2, direct Goldilocks Fp3, rate 1/2,
 `k0=4`, one packed weight root, logical `g=141` and interactive `Q_FS=0`
 remain fixed.  R0.8a makes published constructions exact-cost
 baselines/controls and a new co-designed C7 shared circuit the main research
@@ -11,9 +11,12 @@ codec, nonrefundable query counter and in-memory KV CAS. It is not a
 PCS/PCG/VOLE refinement or durable allocator. `C7-SPBT-v0` remains a valid
 algebraic reduction, but its carrier line is closed: the last native
 `StreamOpenIntoMac` screen needs linear online corrections or forbidden
-preprocessing. The dual-track carrier tournament is reopened with no entrant.
-The next screen is restricted to one concrete code-switch/shared circuit with
-a source-linear term independent of `q`; generic exploration is forbidden.
+preprocessing. The authorized one-candidate tournament then screened a direct
+packed `Bolt-min` code switch rather than rebuilding C6's WHIR wrapper. Its
+source-linear term is independent of `q` and its optimistic persistent bytes
+fit 3x, but its layout needs model-linear setup state or excessive query wire,
+and every response creates a fresh complete Fp3 RS word. It is NO-GO; the
+bounded tournament is closed pending an owner decision.
 `C7-DV-SPQ-v0` remains a quarantined terminal primitive. No carrier has a complete row or
 `BatchOpenBlocks` CPU-prototype authorization. BLAKE3-XOF remains the primary
 performance/parallelism mask candidate; frozen KMACXOF256-v1 remains an
@@ -94,8 +97,9 @@ security, serialized bytes and resource row; R0.8 is not an implementation GO.
    seventh component.  The 105% value is now the target, not an immediate hard
    stop.  An exact exploratory cap may be preregistered inside 125--150% only
    if the complete certificate also stays within 35/115 MB and 3.5x growth.
-7. The historical authorized tiny CPU screen is complete.  Its online algorithm works,
-   but it fails code distance and ordered-root setup, so
+7. The historical authorized tiny CPU screen and the bounded R0.8g Bolt screen
+   are complete.  Their source-linear pieces work, but neither supplies a
+   complete admitted relation/resource/security row, so
    `C7_CPU_REFERENCE_PASS=false`.  No executable-backend implementation, large-prover/E2E,
    provider or pod action is authorized.
 8. No current backend passes setup, domain support, one-pass opening, all four
@@ -3546,17 +3550,142 @@ carrier independently passes every gate; its prior failure reasons remain
 binding.  This is `credit:false`: there is no new Lean/Rust protocol, CPU
 prototype, SIMT, refresh, provider contact or pod authorization.
 
+### 5.15 R0.8g direct `Bolt-min` code-switch screen
+
+R0.8g spends the one candidate authorized by D111 on a concrete topology,
+`C7-BOLT-MIN-G141-v0`, derived from
+[Bolt](../sota/2026-310-bolt.md).  This is deliberately **not** C6.3's Bolt
+precode inside eight Hiding-WHIR bodies and not C6.4's six-body projected
+residual suffix.  It applies Bolt directly to the immutable weight plane:
+
+```text
+X in Fp^(k x 128),                 M = 128k
+U = H X,                          H in Fp^((k/8) x k), degree 16
+C_H^128(X) = (X, RS_1/2^128(U)),
+
+r <- Fp3^128
+x = Xr, u = Ur = Hx,
+w = RS_1/2(x).
+```
+
+One typed root would bind the systematic masked rows and encoded sketch rows.
+The `t=128` rows are flattened into the fixed dense `g=141` stream with zero
+persistent row padding; a row therefore touches at most two leaves.  The final
+multilinear evaluation would still enter the shared-`Delta` Fp3 MAC.  The
+sparse `HX` work and the `t` short setup encodings are source-linear with a
+constant independent of the number of queries.  This is the genuine advantage
+over the rejected direct `qN` RS control.
+
+The setup storage cell is promising but incomplete.  Padding the row count to
+`k=2^20/2^28` gives `M=2^27/2^35`.  Counting the existing packed source, the
+rate-1/2 encoding of the one-eighth sketch, and a conservative 96 bytes for
+salt/leaf/internal-digest material per one of `5k/4` committed rows gives:
+
+| direct-Bolt setup control | GPT-2 | Gemma-class 31B |
+| --- | ---: | ---: |
+| packed source | 248,000,000 B | 61,652,800,000 B |
+| encoded sketch payload | 268,435,456 B | 68,719,476,736 B |
+| salted tree control | 125,829,120 B | 32,212,254,720 B |
+| total | **642,264,576 B (2.590x)** | **162,584,531,456 B (2.637x)** |
+| exploratory 3x cap | 744,000,000 B | 184,958,400,000 B |
+
+Thus this use of Bolt does **not** repeat X4d/C6 merely by existing: its
+optimistic persistent footprint is below the 3x disk cap and setup happens
+once per long-lived root.  This is positive size evidence, not admission: the
+encoded sketch is still one complete persistent codeword, forbidden by the
+unchanged gate.  The masked-root manifest, exact tree storage, temporary I/O
+and 990/5,940-second walls are also unmeasured.
+
+The hard failure appears when setup layout and later row openings are required
+together:
+
+1. In row-major order, each queried 128-symbol row touches at most two g141
+   leaves.  A single
+   packed scan computing random sparse `HX` must retain all `k/8 x 128`
+   accumulators: 134,217,728 B / 34,359,738,368 B.  Externalizing the degree-16
+   read-modify-writes moves at least 34,359,738,368 B / 8,796,093,022,208 B.
+   Both are model-linear setup state, not bounded streaming memory.
+2. In column-major order, live syndrome state falls to 1,048,576 B /
+   268,435,456 B and the packed source can be traversed once, but a systematic
+   row spot touches 128 distinct g141 leaves.  Under the conservative
+   Goldilocks query row this reserves up to 592,640 leaves and **768,061,440 B
+   of leaf frames before paths**, exceeding either complete-certificate cap.
+3. Persisting a row-major packed transpose repairs both access patterns but
+   raises setup to 910,700,032 B / 231,304,008,192 B, or 3.672x/3.752x.  A
+   bounded block-local `H` is not an escape: a nonzero word supported in one
+   block bounds relative distance by `block_rows/k`, which vanishes for
+   bounded blocks.
+
+The proof's code switch creates a second independent stop.  Bolt sends an
+explicit length-`t` function `g`, samples `r`, and creates the fresh
+rate-1/2 word `w=RS(Xr)`.  Because C7's challenge is Fp3, `w` occupies
+`2k*24` bytes.  The encoded syndrome combination has another `k/4` Fp3
+elements:
+
+| response-local proximity payload | GPT-2 | Gemma-class 31B |
+| --- | ---: | ---: |
+| fresh `w` | 50,331,648 B | 12,884,901,888 B |
+| syndrome combination | 6,291,456 B | 1,610,612,736 B |
+| total | **56,623,104 B** | **14,495,514,624 B** |
+
+This remains a complete response-local codeword family and model-linear
+scratch even though it is only a `1/128` column combination and its source
+term is independent of `q`.  Streaming its root does not remove the complete
+word or the FFT working set; increasing `t` trades it directly for the
+explicit `g` and every opened row.
+
+The query/security control also cannot import the paper's best row.  At 110
+bits, the published `GF(2^32)` `gamma=0.096` gives 2,345 systematic plus 266
+base-code rows.  The requested row symbols plus the 128 Fp3 elements of `g`
+already total 334,592 Fp occurrences.  Because dense g141 rows may cross leaf
+boundaries, the fail-closed reservation is 5,222 leaves and 736,686 visible Fp
+occurrences, **3.144x/2.476x** the selected GPT-2/31B controls.  That distance
+does not transfer to Goldilocks.  The historical Goldilocks diagnostic
+`gamma=0.049` instead gives 4,630+266 rows: its requested-symbol lower bound is
+627,072, while the dense reservation is 9,792 leaves and 1,381,056 visible Fp
+occurrences, **5.893x/4.642x**.  Both rows fail the 150% wire control.  Its
+prior exact finite-distance proof covered C6's
+specific D22 ensemble, not these D20/D28 message dimensions, so even this
+worse count is not an admitted 110-bit theorem.  Fp3 repairs the algebraic
+challenge axis; it cannot repair code distance or reduce row leakage.
+
+Published Bolt explicitly provides no hiding/zero knowledge, sends `g` in
+clear, and proves an ordinary public evaluation rather than a terminal MAC
+handle.  Its non-amortized sparse-`H` closure relies on Mulperm whose cost is
+estimated because no implementation was available.  C7 would still need a
+masked-code same-`W` theorem, exact root-wide query budget, direct Fp3
+VOLE-MAC adapter, malicious-prover knowledge bridge and stateful
+malicious-DV simulator.  Adding Hiding-WHIR by default is forbidden: it would
+recreate the C6 topology before those costs were screened.
+
+The C6 postmortem remains attributed correctly.  C6.3 retained an inherited
+17,179,869,184-byte encoded weight oracle, generated 17 profiles in 2,092.76
+seconds, and stopped first at recorder lifecycle then at finite-PCG underflow,
+with zero certificates.  Those are failures of the complete composed path,
+not a standalone Bolt impossibility.  R0.8g avoids those exact objects and
+transfers no timing/byte credit; it rejects the direct topology on the new
+layout, fresh-codeword, query and theorem gates above.
+
+**R0.8g disposition.** `C7-BOLT-MIN-G141-v0` is NO-GO and is not promoted to
+carrier.  The setup-size control is retained as positive evidence, while the
+separate codeword/layout/wire/security rejection reasons and the C6
+differential remain durable.  The
+one-candidate tournament is closed.  `C7_CPU_REFERENCE_PASS=false`; there is
+no CPU prototype, Rust/Lean protocol change, SIMT, refresh, provider contact
+or pod authorization.  Any further carrier or reopening of the non-affine
+line requires a new owner decision.
+
 ## 6. Registered analytic screens
 
 The executable calculator is `scripts/budget_c7_stateful_alfc.py`.  Every
-output carries `credit:false`.  Schema v28 reproduces scaling arithmetic,
+output carries `credit:false`.  Schema v29 reproduces scaling arithmetic,
 allocation caps, artifact-volume scenarios, the R0.7 strict-UD controls and
 the two bounded closure screens, and adds the exact selected-schedule Fp2/Fp3
 audits, g141 opening subcodec, known serialized bytes and setup resource
 floors, the confirmed global fallback horizon and the conditional
 chunk-addressed KMACXOF256 screen, closes the root/codec geometry fixed point
 and records the bounded selected-RS online NO-GO.  It also registers the
-fail-closed new-carrier tournament, the tested carrier-independent
+fail-closed carrier admission boundary, the tested carrier-independent
 `Fp[u]/(u^3-2)` field/terminal seam, the policy-2 reference codec, the three
 bounded co-designed rejections above, and the conditional `C7-DV-SPQ-v0`
 margin, missing interfaces, realization controls and safe online boundary. It
@@ -3566,8 +3695,10 @@ screen.  It additionally checks the exact SPBT identity/inverse, conditional
 Fp3 soundness, one-scan butterfly work, dense auxiliary traffic, raw-Merkle
 query miss and every branch of the delayed-opening triangle.  It also checks
 the native affine-VOLE Vandermonde rank obstruction, exact 8/24-byte
-correction floors and 5x/13x persistence controls, then records SPBT closed
-and the tournament reopened.  It is
+correction floors and 5x/13x persistence controls, then records SPBT closed.
+It additionally checks the single direct-Bolt candidate's padded dimensions,
+query rows, setup storage, layout trilemma, fresh Fp3 codeword bytes and C6
+differential, then closes the bounded tournament with no entrant.  It is
 not an authority for a complete compiler manifest, complete
 certificate, security theorem or measured C7 time.
 
@@ -3592,6 +3723,10 @@ inside this scoped checkpoint.
 R0.8f changes no Rust or Lean.  Its two budget-v28 invocations and
 `git diff --check` are the only new executable checks; no protocol artifact or
 benchmark receives credit.
+
+R0.8g likewise changes no Rust or Lean.  Its checks are the two registered
+budget-v29 invocations, `python3 -m py_compile` and `git diff --check`; it
+creates no prover or benchmark credit.
 
 ### 6.1 Models and common workload
 
@@ -4421,19 +4556,19 @@ The focused command
   and no exact `O(N+poly(q,log N))` shared schedule is registered.  Seeded
   BLAKE3/KMAC does not solve the RS linear map.  This is not a universal lower
   bound.  It is retained only as the control above.
-- **New-carrier tournament: REOPENED, NO ADMITTED CARRIER, FAIL-CLOSED.**  Owner choice 1.A
-  has two tracks. Published constructions are baseline/control rows, admitted
-  only with exact independently verifiable costs. A co-designed C7 shared
-  circuit is the main research line, but earns no design credit. Before a tiny
-  CPU prototype it must supply a complete relation/codec, exact resource
-  census, stateful soundness/privacy bridge and a one-packed-scan
-  `O(N+poly(q,log N))` proof. Pure fold width, the two bounded R0.7
-  alternatives and already rejected families are not rescreened; their
-  individual reasons remain in the decision register. The next screen admits
-  exactly one concrete code-switch/shared-circuit candidate and tests it
-  immediately against every gate; it is not an open-ended search. A non-affine
-  `tau`-dependent line remains secondary unless an already concrete
-  construction demonstrates a clear advantage.
+- **New-carrier tournament: BOUNDED SCREEN CLOSED, NO ADMITTED CARRIER.**
+  Owner choice 1.A retained published controls and a co-designed main line,
+  then D111 allowed exactly one concrete candidate. R0.8g spends that slot on
+  direct packed Bolt-min and rejects it below. Pure fold width, the two bounded
+  R0.7 alternatives and prior families remain closed. A further carrier or
+  non-affine line requires a new owner decision; no generic search continues.
+- **`C7-BOLT-MIN-G141-v0`: DIRECT CODE-SWITCH NO-GO.**  It avoids C6's
+  eight/six-body WHIR wrappers and has a q-independent source-linear term.
+  Its optimistic persistent setup is 2.590x/2.637x packed, but row-major setup
+  requires model-linear syndrome state, column-major query frames exceed the
+  certificate caps, and a transpose exceeds 3x. Every response creates a
+  50.332-MB/12.885-GB fresh Fp3 RS word. The transferable Goldilocks distance,
+  hiding, same-W MAC bridge and stateful malicious-DV theorem are absent.
 - **`C7-SPBT-v0`: ALGEBRA RETAINED; CARRIER LINE CLOSED.**  Its
   invertible complement transform preserves ordinary independent GKR
   challenges and gives one degree-`<M` secret-point identity.  The algebra,
@@ -4471,9 +4606,10 @@ The focused command
 ### 8.2 Resume conditions for an R1 proposal
 
 Policy 3 remains terminally rejected and policy 2 is active.  Strict-UD RS is
-now only the control baseline; R0.8f closes SPBT as a carrier and reopens the
-new-carrier tournament with no admitted entrant. SPBT remains reusable
-algebra only and does not weaken any recorded rejection.
+now only the control baseline; R0.8f closes SPBT as a carrier and R0.8g closes
+the authorized one-candidate direct-Bolt screen with no admitted entrant.
+SPBT and Bolt's setup-size control remain reusable evidence only and do not
+weaken any recorded rejection.
 The selected challenge baseline remains interactive
 honest-DV (`Q_FS=0`) and logical `g=141`.  Setup retains its 2.00 target/2.10
 baseline, with a conditional exploratory 3x ceiling plus absolute disk,
@@ -4485,9 +4621,9 @@ fail-closed readiness handoff is
 `docs/c7-r03-prover-pod-handoff.md`.  Preparation does not authorize a large
 prover/E2E, pod contact or pod execution.
 
-Both bounded post-Pareto alternatives are closed and must not be repeated.
-The owner has authorized the dual-track new-carrier tournament, but even a
-tiny CPU prototype waits for all four R0.8a screen obligations. The tested Fp3
+Both bounded post-Pareto alternatives and the one-candidate tournament are
+closed and must not be repeated without a new owner decision. Even a tiny CPU
+prototype still waits for all four R0.8a screen obligations. The tested Fp3
 codec/MAC seam is expressly carrier-independent and is not such authorization.
 Fp3, 78 connection bits, setup 900/990 and
 5,400/5,940 seconds, separate untested refresh counters and computational
@@ -4587,6 +4723,10 @@ smallest complete serialized case before any larger component benchmark.
 - R0.8f adds only the ideal `StreamOpenIntoMac` relation, a scoped affine-VOLE
   rank obstruction and budget-v28 cost checks. It closes SPBT as a carrier
   without claiming a universal PCS/2PC lower bound; no prototype follows.
+- R0.8g screens only one direct packed Bolt-min topology.  It avoids C6's
+  multi-WHIR wrapper and transfers no historical credit.  Its setup-size
+  control is below 3x, but the one-pass layout, fresh Fp3 codeword, Goldilocks
+  query wire and malicious security/privacy rows fail; no prototype follows.
 - The proof-byte table is a target allocation calibrated to public component
   evidence, not a composed certificate derivation.  It is `credit:false` and
   is one reason Backend A remains NO-GO.
@@ -4711,3 +4851,5 @@ entry, but must retain its evidence and reason.
 | `C7-D109` / 2026-08-29 | current SPBT delayed-opening realizations NO-GO; retain every reason | Soundness requires the transform coefficients fixed before `tau`. Revealing `tau` first lets one of `M` free coefficients absorb any false terminal. Fixing `C_Z,e` first and retaining its typed dense payload costs exactly `16*M_total` bytes (at least 9x packed including source); discarding and recomputing requires a forbidden second source scan. Hidden-`tau` streaming is precisely a malicious private inner product/OPE into MAC and no sublinear-wire, no-per-coefficient-correction construction is supplied. A plain exact later-point sketch is information-theoretically injective; raw Merkle sampling has no distance and misses a one-leaf error with probability above 0.9995/0.999997 under the current query controls; a rate-1/2 wrapper restores the rejected codeword; a two-party sign/square-root orbit is at least 25x packed; finite point pools lack 110-bit entropy and worsen reuse privacy. Symbolic all-round scalar commitments preserve the correlated-challenge attack or grow as `3^round`; convolution remainders create response-sized scratch or persistent FFT setup. These are scoped construction rejections, not a universal PCS lower bound. `C7_CPU_REFERENCE_PASS=false`; no prover, SIMT, refresh, provider or pod is authorized. |
 | `C7-D110` / 2026-08-29 | native `StreamOpenIntoMac` NO-GO; close SPBT carrier and reopen tournament | The target functionality keeps `tau` and the terminal value secret, outputs only shares satisfying `k_v=m_v+Delta*<x,q_tau>`, uses input-independent setup, one packed scan, bounded memory and sublinear wire, and must bind the same committed `x` against a malicious prover while simulating a policy-2 malicious verifier. In the `tau`-independent affine native-VOLE class, online corrections `c=A(x-r)` can evaluate every power query only if `ker(A)` lies in every query kernel. The `M` distinct-point Vandermonde queries span dimension `M`, so `rank(A)>=M` and at least `M` field corrections are required. Even the optimistic base-Fp floors are 992,000,000/246,611,200,000 B for GPT-2/31B; persisting them with the packed source is 5x before tags/tree, while Fp3 corrections give at least 13x. Silent VOLE compresses correlation generation, not fresh-input derandomization; published OLE/NIIP is linear, Horner/full MPC is linear, group/SRS routes are forbidden, HE/PIR lacks the complete native same-`W` bridge, and two-server PIR changes trust. This scoped result is not a universal computational PCS, `tau`-dependent secure-computation or 2PC lower bound. The rigid wire/setup criterion fires, so SPBT is closed as a carrier, its algebra is retained only as a reusable component, the dual-track tournament reopens with no entrant, and no CPU/Lean/Rust protocol/SIMT/refresh/provider/pod work is authorized. |
 | `C7-D111` / 2026-08-29 | bound the reopened tournament to one concrete code-switch/shared circuit | The owner selects the native code-switch/shared-circuit line with a source-linear term independent of `q`, no trusted setup, groups/SRS or new computational assumption. The next phase may screen exactly one concrete candidate and must apply every setup, wire, one-scan, memory, proof-size, policy-2 and malicious-security gate immediately; it is not authorization for an open-ended tournament or implementation. The non-affine `tau`-dependent line remains secondary and may reopen only around an already concrete construction with an evident advantage, never as generic research. |
+| `C7-D112` / 2026-08-29 | direct packed Bolt-min NO-GO; retain its setup advantage and the exact C6 differential | `C7-BOLT-MIN-G141-v0` is the sole D111 candidate: `alpha=1/8`, rate-1/2 RS, degree 16, `t=128`, dense g141 without row padding, Fp3 and interactive `Q_FS=0`. It does not rebuild C6.3's eight WHIR bodies or C6.4's six-body residual suffix. Its conservative persistent control is 642,264,576/162,584,531,456 B (2.590x/2.637x), below 3x but still a forbidden complete codeword and unmeasured against 990/5,940 s. Row-major one-pass setup needs 134,217,728/34,359,738,368 B syndrome state; column-major reserves up to 768,061,440 B of leaf frames before paths; a packed transpose makes setup 3.672x/3.752x. Each response additionally creates a 50,331,648/12,884,901,888-B fresh Fp3 RS word. The published GF(2^32) `gamma=0.096` does not transfer; even its dense-g141 cap is 736,686 visible Fp occurrences (3.144x/2.476x). The Goldilocks `gamma=0.049` diagnostic has a 627,072 requested-symbol lower bound and 1,381,056 dense-g141 cap (5.893x/4.642x). Both exceed 150%. Bolt supplies no hiding, direct VOLE-MAC terminal or stateful malicious-DV theorem, and its non-amortized Mulperm cost is estimated. C6.3's 17.180-GB inherited oracle, 2,092.76-s 17-profile setup and late PCG/lifecycle failures remain composed-path evidence, not a standalone Bolt lower bound. The candidate and bounded tournament close with no carrier, CPU prototype, SIMT, refresh or pod. Further search requires an owner decision. |
+| `C7-D113` / 2026-08-29 | retain the complete-codeword ban; no abstract exception for Bolt's sub-3x setup control | The owner approves the scoped R0.8g checkpoint but declines any exception based only on the 2.590x/2.637x static storage control. The fresh per-response `RS(Xr)`, layout trilemma, dense-g141 wire above 150% and missing malicious soundness/privacy theorems are independent blockers. The gate may be reconsidered only for a concrete candidate that first eliminates the per-response codeword and supplies the entire one-scan, bounded-memory, wire, setup and security row. This authorizes no new screen, implementation, push, SIMT, refresh or pod. |

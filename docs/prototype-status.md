@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 R0.8F NATIVE VOLE NO-GO / SPBT CLOSED / TOURNAMENT REOPENED — NO PROVER / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 R0.8G DIRECT BOLT-MIN NO-GO / BOUNDED TOURNAMENT CLOSED — NO PROVER / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,23 +11,60 @@ record; no external plan is authoritative.
 Read `c7-stateful-authenticated-lfc-design.md`, then
 `c7-r03-prover-pod-handoff.md`.
 
-- **Status.** C7 R0.8f on `agent/c7-stateful-alfc`; policy 2, Fp3, rate 1/2,
+- **Status.** C7 R0.8g on `agent/c7-stateful-alfc`; policy 2, Fp3, rate 1/2,
   `k0=4`, one packed root, `g=141`, interactive `Q_FS=0` and all gates remain.
-  SPBT is closed as a carrier; strict-UD RS is control-only; policy 3 is
-  terminal. The tournament is reopened with no entrant; its next screen is
-  limited to one concrete `q`-independent source-linear code-switch/shared circuit.
-- **Evidence/credit.** Budget v28 checks pass. In `tau`-independent affine native VOLE,
-  corrections `A(x-r)` that answer all secret-point power queries require
-  `rank(A)>=M` by Vandermonde, hence linear online wire. Base-Fp correction
-  floors are 992 MB/246.6112 GB; persistence is 5x packed before tags/tree.
-  This is scoped, not a universal PCS/2PC lower bound. R0.8e is checkpointed at
-  `8e6eadc`; all R0.8f evidence is `credit:false`.
+  SPBT and direct Bolt-min are closed as carriers; strict-UD RS is control-only;
+  policy 3 is terminal. The bounded one-candidate tournament is exhausted.
+- **Evidence/credit.** Budget v29 passes. Direct Bolt avoids C6's multi-WHIR
+  wrapper and has q-independent source work; its setup control is
+  642.265 MB/162.585 GB (2.590x/2.637x). It still needs model-linear syndrome
+  state or excessive query wire, while each response creates a
+  50.332-MB/12.885-GB fresh Fp3 RS word. Dense-g141 query reservations exceed
+  150%; hiding, same-W MAC and stateful malicious-DV theorems are absent.
+  All R0.8g evidence is `credit:false`; no C6 credit transfers.
 - **Hard stop/resume.** No PCS/prover, CPU prototype, SIMT, refresh, provider
-  or pod. No open-ended search or generic non-affine line. Resume implementation
-  only after the single concrete native entrant supplies
-  the complete malicious relation/codec, sublinear wire, one packed scan,
-  bounded memory, setup within gates and stateful privacy/soundness bridge;
-  `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`.
+  or pod. Further carrier/non-affine research needs an owner decision. Resume
+  implementation only after a carrier supplies the complete relation/codec,
+  sublinear wire, one packed scan, bounded memory, setup within gates and
+  stateful privacy/soundness bridge; `C7_CPU_REFERENCE_PASS=false`,
+  `C7_POD_READY=false`.
+
+- **2026-08-29 — C7 R0.8g rejects direct Bolt-min without repeating C6 and
+  closes the bounded tournament.** The sole D111 candidate is
+  `C7-BOLT-MIN-G141-v0`: `alpha=1/8`, rate-1/2 RS, degree 16, `t=128` inside
+  g141, Goldilocks Fp3 and interactive `Q_FS=0`. It applies the systematic
+  sketched code directly to the immutable packed weight plane, not inside
+  C6.3's eight Hiding-WHIR bodies or C6.4's six-body residual suffix. Its
+  `HX`/short-RS source term is linear and independent of `q`. The conservative
+  persistent control is 642,264,576/162,584,531,456 B (2.590x/2.637x), below
+  the exploratory 3x caps, but it is a complete persistent sketch codeword and
+  setup wall remains unmeasured.
+
+  The complete row is NO-GO. Row-major one-pass setup needs
+  134,217,728/34,359,738,368 B of syndrome state. Column-major setup lowers
+  live state but reserves up to 768,061,440 B of systematic leaf frames before
+  paths; persisting a transpose gives 3.672x/3.752x setup. Per response, the
+  fresh Fp3 `RS(Xr)` word is 50,331,648/12,884,901,888 B, before the encoded
+  syndrome combination. The published `GF(2^32)` `gamma=0.096` does not
+  transfer. With no row padding, even that row's dense-g141 cap is 736,686 Fp
+  occurrences (3.144x/2.476x). Goldilocks `gamma=0.049` is only a diagnostic
+  for these dimensions; its 627,072 requested-symbol lower bound becomes a
+  1,381,056-symbol dense cap (5.893x/4.642x). Both exceed 150%. Published Bolt supplies no hiding, same-W
+  shared-Delta MAC bridge or stateful malicious-DV theorem; non-amortized
+  Mulperm was estimated rather than implemented.
+
+  C6.3's 17,179,869,184-B inherited encoded weight oracle, 2,092.76-s
+  17-profile setup and recorder/finite-PCG late failures remain attributed to
+  that composed path; they are not restated as a Bolt lower bound and no C6
+  credit transfers. Budget v29's two invocations, `py_compile` and diff check
+  pass. The owner retains the complete-codeword ban: the sub-3x static control
+  grants no exception. Reconsideration requires a concrete candidate that
+  first removes the per-response codeword and supplies the complete one-scan,
+  bounded-memory, wire, setup and security row. No Rust/Lean protocol, CPU
+  prototype, SIMT, refresh, provider or pod is authorized. The one-candidate
+  tournament is exhausted; further carrier or non-affine work requires a new
+  owner decision. All evidence is
+  `credit:false`; `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`.
 
 - **2026-08-29 — C7 R0.8f closes native `StreamOpenIntoMac` and reopens the
   carrier tournament.** The ideal primitive keeps `tau` and the terminal

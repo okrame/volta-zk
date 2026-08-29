@@ -5401,7 +5401,7 @@ fn verify_response_impl(
     // (xin_keys, fbo_keys) per layer.
     let mut boundary_keys: Vec<(Vec<VerifierKey>, Vec<VerifierKey>, u64)> = Vec::with_capacity(L);
     // Prefill (k_keys, v_keys) per layer — the chunks' first cache segment.
-    let mut boundary_kv_keys: Vec<(u64, u64, Vec<VerifierKey>, Vec<VerifierKey>)> =
+    let mut boundary_kv_keys: Vec<(usize, u64, u64, Vec<VerifierKey>, Vec<VerifierKey>)> =
         Vec::with_capacity(L);
     #[cfg(feature = "c6-trace")]
     let mut boundary_kv_sources: Vec<(u64, u64)> = Vec::with_capacity(L);
@@ -5727,7 +5727,7 @@ fn verify_response_impl(
         boundary_keys.push((out.xin_keys, out.fbo_keys, out.dom_fbo));
         #[cfg(feature = "c6-trace")]
         boundary_kv_sources.push((out.dom_k, out.dom_v));
-        boundary_kv_keys.push((out.dom_k, out.dom_v, out.k_keys, out.v_keys));
+        boundary_kv_keys.push((t, out.dom_k, out.dom_v, out.k_keys, out.v_keys));
     }
 
     // ---- (d) embedding ---------------------------------------------------
@@ -5904,10 +5904,10 @@ fn verify_response_impl(
     // ---- decode chunks, phase 2 mirror (P6) ----------------------------------
     // Prefill boundary keys are the chunks' first cache segment; each proven
     // chunk extends the per-layer segment lists.
-    let mut kv_keys: Vec<Vec<(u64, u64, Vec<VerifierKey>, Vec<VerifierKey>)>> =
+    let mut kv_keys: Vec<Vec<(usize, u64, u64, Vec<VerifierKey>, Vec<VerifierKey>)>> =
         Vec::with_capacity(L);
     for bk in &boundary_kv_keys {
-        kv_keys.push(vec![(bk.0, bk.1, bk.2.clone(), bk.3.clone())]);
+        kv_keys.push(vec![(bk.0, bk.1, bk.2, bk.3.clone(), bk.4.clone())]);
     }
     #[cfg(feature = "c6-trace")]
     let mut kv_sources: Vec<Vec<(usize, u64, u64)>> = boundary_kv_sources
@@ -5937,8 +5937,8 @@ fn verify_response_impl(
                 .map(|l| {
                     kv_keys[l]
                         .iter()
-                        .map(|(dom_k, dom_v, kk, vk)| KvPrefixK {
-                            rows: kk.len() / D,
+                        .map(|(rows, dom_k, dom_v, kk, vk)| KvPrefixK {
+                            rows: *rows,
                             dom_k: *dom_k,
                             dom_v: *dom_v,
                             k_keys: kk,
@@ -6014,7 +6014,7 @@ fn verify_response_impl(
                 band_boundary_keys.push((out.xin_keys, out.fbo_keys, out.dom_fbo));
                 #[cfg(feature = "c6-trace")]
                 kv_sources[l].push((q, out.dom_k, out.dom_v));
-                kv_keys[l].push((out.dom_k, out.dom_v, out.k_keys, out.v_keys));
+                kv_keys[l].push((q, out.dom_k, out.dom_v, out.k_keys, out.v_keys));
             }
             // ---- band embedding -------------------------------------------------
             let mut cx = BlockCtxV::with_doms(vc, tx, v1c.embed_doms, &mut bank);

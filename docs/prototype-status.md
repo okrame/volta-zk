@@ -14,27 +14,41 @@ Read `c4.1-folded-query-high-degree-typed-ole.md` next.
   2026-08-29 GO. C6.4 remains CLOSED / NO-GO and must not be resumed.
 - **Completed evidence.** Clean `7c0e58a` passed paired A100 timing at
   `4.037166616 / 4.035909735 s` (`0.9996886725x`), peak
-  `18,403,517,364 B`; this remains timing-only credit. Clean `8888c5b` passed
-  the nonzero CPU/CUDA differential and measured real/AES PCG, ABI46 SIMT lot
-  production and party-separated cold reload. PCG setup is `2.599612970 s` /
-  `30,070,682 B`; typed exchange is `2,074,954 B`; total with C4 setup is
-  `70,517,101 B`. One prover lot takes `0.506608224 s`, its cold pinned-H2D
-  reload `0.750884772 s`, and peak device use is `1,311,806,976 B`.
+  `18,403,517,364 B`; this is timing-only credit. Clean `8888c5b` measured
+  real/AES PCG, ABI46 SIMT lot production and party-separated cold reload.
+  Setup is `2.599612970 s` / `30,070,682 B`; typed exchange `2,074,954 B`;
+  total with C4 setup `70,517,101 B`. A prover lot takes `0.506608224 s`, cold
+  pinned-H2D reload `0.750884772 s`, peak device use `1,311,806,976 B`.
 - **Local implementation.** The live K/V/group-exit consumers now use nonzero
   Packed16 lots. All bridge corrections are fixed before one scalar-power
   challenge; Rayon builds the aggregate query and CUDA performs the final
   12-lane SIMT fold. Strict model, PCS, degree-12 closure and `<70 MB` envelope
   codecs feed decoded objects to the verifier. Lean proves the bridge root
   bound and degree-12 preservation; focused Rust codecs/tamper checks pass.
-- **Hard stop / credit.** Two A100 attempts stopped in mock prepass: the old
-  alias opener, then a codec omitting stable-softmax extensions. Root fixes
-  route the alias through the typed bridge and serialize verifier fields;
-  rerun pending. Proof bytes, acceptance, time and peak remain unmeasured. Soundness is
-  `78.80929486268863` bits and weight-ZK `120.0170064253057` bits.
+- **Hard stop / credit.** A100 mock-prepass failures exposed the old alias
+  opener, omitted stable-softmax fields and a decode K/V row-count bug. Typed
+  keys are intentionally empty; the verifier now carries public segment rows
+  independently instead of inferring them from legacy keys. Rerun pending.
+  Proof bytes, acceptance, time and peak remain unmeasured. Soundness is
+  `78.80929486268863` bits; weight-ZK `120.0170064253057` bits.
 - **Authorization/checks.** Continue on the same pod through actual Packed16
   consumers, response codec, degree-12 close, deserialization and verifier
   accept/reject. Record `gpt2-comparison-WIP.md` only after that real E2E
   succeeds.
+
+- **2026-08-29 — Third C4.1 A100 attempt and diagnostic reruns fail closed at
+  decode K/V prefix geometry; root cause corrected; no record or credit.**
+  Clean `fbebae6` passed proof generation, group-entry aliasing, serialization
+  and exact structural round-trip, then its decoded verifier returned `None`
+  in the exact-count mock prepass. Clean diagnostic SHAs `a4becd5`, `8c18d65`
+  and `a00248c` narrowed the first rejection to scheduled decode K/V prefix
+  geometry. The verifier inferred segment rows as `ordinary_keys.len()/D`;
+  C4.1 correctly retains no ordinary per-cell keys for typed K/V, so every
+  prefix appeared empty. The shared verifier inventory now stores explicit
+  public row counts with each domain and uses them for both ordinary and typed
+  prefixes. No real PCG connection was opened, no one-time lot was consumed,
+  and no proof size, timing, memory or acceptance credit exists. All failed
+  stores are disposable; rerun requires a fresh clean build and store.
 
 - **2026-08-29 — Second C4.1 A100 attempt fails closed at canonical model
   round-trip; load-bearing softmax extensions restored; no record or credit.**

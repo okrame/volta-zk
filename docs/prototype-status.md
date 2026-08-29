@@ -26,15 +26,29 @@ Read `c4.1-folded-query-high-degree-typed-ole.md` next.
   12-lane SIMT fold. Strict model, PCS, degree-12 closure and `<70 MB` envelope
   codecs feed decoded objects to the verifier. Lean proves the bridge root
   bound and degree-12 preservation; focused Rust codecs/tamper checks pass.
-- **Hard stop / credit.** The first A100 attempt stopped in mock prepass:
-  a group-entry alias used the old MAC opener. The root fix carries its source
-  domain through the typed bridge; the pod rerun is pending. Proof bytes,
-  acceptance, time and peak remain unmeasured. Soundness is
+- **Hard stop / credit.** Two A100 attempts stopped in mock prepass: the old
+  alias opener, then a codec omitting stable-softmax extensions. Root fixes
+  route the alias through the typed bridge and serialize verifier fields;
+  rerun pending. Proof bytes, acceptance, time and peak remain unmeasured. Soundness is
   `78.80929486268863` bits and weight-ZK `120.0170064253057` bits.
 - **Authorization/checks.** Continue on the same pod through actual Packed16
   consumers, response codec, degree-12 close, deserialization and verifier
   accept/reject. Record `gpt2-comparison-WIP.md` only after that real E2E
   succeeds.
+
+- **2026-08-29 — Second C4.1 A100 attempt fails closed at canonical model
+  round-trip; load-bearing softmax extensions restored; no record or credit.**
+  Fresh `581ba6c` passed the prior alias site and produced the complete model
+  proof in the exact-count mock prepass, then rejected before real PCG setup
+  because decoded structure differed. The reused historical base grammar
+  intentionally omits each `C62SoftmaxRecipProof`: C6.2 sends those extensions
+  in a separate retained trailer, but C4.1 had not done so. Byte
+  recanonicalization alone was therefore insufficient and the decoded
+  verifier object would have lacked a required stable-softmax proof. The C4.1
+  `VC41MP2` grammar now appends and restores every extension in public
+  layer/chunk order before Packed16; its regression fixture uses nonempty extensions. All nine
+  focused C4.1 tests pass. The failed store and target are to be discarded
+  before another clean build and full restart.
 
 - **2026-08-29 — First C4.1 real-E2E A100 attempt fails closed in the mock
   census; group-entry alias root cause corrected; no record or credit.** Clean

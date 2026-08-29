@@ -32,8 +32,8 @@ const RETAINED_MAGIC: &[u8] = b"C6RRP1\0\0";
 const RETAINED_VERSION: u16 = 1;
 const C62_RETAINED_MAGIC: &[u8] = b"C62RRP2\0";
 const C62_RETAINED_VERSION: u16 = 2;
-const C41_MODEL_MAGIC: &[u8] = b"VC41MP1\0";
-const C41_MODEL_VERSION: u16 = 1;
+const C41_MODEL_MAGIC: &[u8] = b"VC41MP2\0";
+const C41_MODEL_VERSION: u16 = 2;
 pub const C6_RETAINED_RESPONSE_BYTES: usize = 2_921_744;
 /// C6.2 carries the strict C62SRE1 trailer in addition to the historical
 /// model-proof grammar. Keep its allocation separate so historical C6/C6.1
@@ -597,8 +597,8 @@ pub fn decode_model_proof_canonical(bytes: &[u8]) -> Result<ModelProof> {
     Ok(proof)
 }
 
-/// Strict C4.1 codec: historical model-proof bytes followed by the canonical
-/// Packed16 payload and its fixed 201-byte degree-12 close.
+/// Strict C4.1 codec: the base model proof, every verifier-consumed stable
+/// softmax extension, then Packed16 and its fixed 201-byte degree-12 close.
 pub fn encode_model_proof_c41_canonical(proof: &ModelProof) -> Result<Vec<u8>> {
     let c41 = proof
         .c41
@@ -608,6 +608,9 @@ pub fn encode_model_proof_c41_canonical(proof: &ModelProof) -> Result<Vec<u8>> {
     bytes.extend_from_slice(&C41_MODEL_VERSION.to_le_bytes());
     let mut out = Writer::full(bytes);
     proof.write(&mut out)?;
+    for extension in c62_extensions(proof) {
+        extension.write(&mut out)?;
+    }
     c41.write(&mut out)?;
     out.finish()
 }
@@ -624,6 +627,10 @@ pub fn decode_model_proof_c41_canonical(bytes: &[u8]) -> Result<ModelProof> {
         return Err(ModelProofCodecError::new("wrong C4.1 model-proof prefix"));
     }
     let mut proof = ModelProof::read(&mut input)?;
+    let extensions = (0..c62_layer_count(&proof))
+        .map(|_| Option::<C62SoftmaxRecipProof>::read(&mut input))
+        .collect::<Result<Vec<_>>>()?;
+    install_c62_extensions(&mut proof, extensions)?;
     proof.c41 = Some(C41ResponseProof::read(&mut input)?);
     input.finish()?;
     if encode_model_proof_c41_canonical(&proof)? != bytes {
@@ -1408,6 +1415,14 @@ mod tests {
     #[test]
     fn c41_model_proof_round_trips_and_rejects_bitmap_padding() {
         let mut proof = proof();
+        for layer in &mut proof.layers {
+            layer.attn.c62_recip = Some(c62_recip());
+        }
+        for chunk in &mut proof.chunks {
+            for layer in &mut chunk.layers {
+                layer.attn.c62_recip = Some(c62_recip());
+            }
+        }
         proof.c41 = Some(C41ResponseProof {
             d: vec![1, 2, 3],
             e: vec![0b0000_0101],

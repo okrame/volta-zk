@@ -20,15 +20,45 @@ Read `c4.1-folded-query-high-degree-typed-ole.md` next.
   `30,070,682 B`; typed exchange is `2,074,954 B`; total with C4 setup is
   `70,517,101 B`. One prover lot takes `0.506608224 s`, its cold pinned-H2D
   reload `0.750884772 s`, and peak device use is `1,311,806,976 B`.
+- **Local implementation.** The live K/V/group-exit consumers now use nonzero
+  Packed16 lots. All bridge corrections are fixed before one scalar-power
+  challenge; Rayon builds the aggregate query and CUDA performs the final
+  12-lane SIMT fold. Strict model, PCS, degree-12 closure and `<70 MB` envelope
+  codecs feed decoded objects to the verifier. Lean proves the bridge root
+  bound and degree-12 preservation; focused Rust codecs/tamper checks pass.
 - **Hard stop / credit.** No proof-size, verifier or construction credit yet.
-  This is component evidence (`credit:false`): live C4 boundaries are not yet
-  routed through typed folds and both proofs still serialize as C4
-  `84,544,352 B`. Conditional soundness is `78.80929487391572` bits and
-  weight-ZK `120.0170064253057` bits.
+  The integrated path has not run on A100, so its actual serialized bytes,
+  acceptance, time and peak remain unmeasured. The conservative five-response
+  composition is `78.80929486268863` soundness bits and weight-ZK is
+  `120.0170064253057` bits.
 - **Authorization/checks.** Continue on the same pod through actual Packed16
   consumers, response codec, degree-12 close, deserialization and verifier
   accept/reject. Record `gpt2-comparison-WIP.md` only after that real E2E
   succeeds.
+
+- **2026-08-29 — C4.1 real-E2E code reaches the local pre-pod boundary; no
+  hardware or proof credit.** The actual prefill-plus-decode path registers all
+  K/V and four-layer group-exit matrices against fresh one-time typed lots,
+  removes their historical elementwise corrections, and bridges every live
+  opening back to the existing ordinary MAC consumers. Corrections and query
+  descriptions are fixed before one scalar-power `beta`; a Rayon reduction
+  builds the aggregate query and the existing fused CUDA kernel performs one
+  final 12-lane SIMT fold before the masked degree-12 close. The executable
+  cap is one million bridges per response. Strict canonical codecs now cover
+  the model proof, both Ligero openings, the 64-byte product/zero closure and a
+  four-component proof envelope that rejects at `70,000,000 B`. The runner
+  creates fresh real/AES setup and one-time lots, serializes, deserializes and
+  verifies the decoded components, and separates setup, core prover, fully
+  accounted prover, codec and fully accounted verifier times. Lean proves the
+  fixed-before-challenge batch has at most `K` bad challenges and preserves
+  degree 12. With five response batches the bridge term is
+  `105.74650333511666` bits, the close/setup term `122.04580368894132` bits,
+  and the conservative composition `78.80929486268863` bits; conditional
+  weight-ZK remains `120.0170064253057` bits. Focused checks, the full Rust
+  workspace and the full Lean build are green. No production-size artifact
+  has run; proof bytes, acceptance,
+  verifier time, prover ratio and peak remain `credit:false` until the clean
+  A100 record.
 
 - **2026-08-29 — C4.1 real setup and lot boundary PASS as a component; no E2E
   credit.** Clean `8888c5b` on the same A100 passed the nonzero CPU/CUDA

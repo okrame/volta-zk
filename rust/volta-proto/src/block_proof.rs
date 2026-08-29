@@ -68,6 +68,7 @@ use crate::boundary_thinning::{
     prove_matrix_eval_claim_i16, verify_matrix_eval_claim, BoundaryClaimK, BoundaryClaimP,
     EqReductionProof,
 };
+use crate::c41_folded_tole::{C41ProverResponseState, C41VerifierResponseState};
 use crate::gemm_proof::{
     finalize_gemm_act_chained, finalize_verify_gemm_act_chained, prepare_gemm_act_chained_batch,
     prepare_gemm_act_chained_resident_batch, prove_gemm_committed_chained,
@@ -91,7 +92,9 @@ use crate::sumcheck_blind::{
     BlindSumcheckResidentBatchJob, BlindSumcheckResidentBatchOutput, ResidentBlindBatchError,
 };
 use crate::thaler::pad_bits;
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
+use std::rc::Rc;
 use volta_accel::{
     AccelError, Backend, DeviceAttentionProofWires, DeviceBuffer, DeviceLookupColumns, DeviceSlice,
     ResidentBaseElement, ResidentMatrixElement,
@@ -239,6 +242,7 @@ pub struct TableBankP {
     auth: BTreeMap<TableKey, (u64, Vec<Fp>, Vec<u64>)>,
     resident_auth: BTreeMap<TableKey, (u64, Vec<u64>)>,
     finalized: bool,
+    pub(crate) c41: Option<Rc<RefCell<C41ProverResponseState>>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -740,6 +744,7 @@ pub struct TableBankV {
     scheduled_sites: BTreeMap<TableKey, BTreeSet<SiteId>>,
     scheduled_kroots: BTreeMap<(TableKey, SiteId), (VerifierKey, VerifierKey)>,
     keys: BTreeMap<TableKey, Vec<VerifierKey>>,
+    pub(crate) c41: Option<Rc<RefCell<C41VerifierResponseState>>>,
 }
 
 impl TableBankV {
@@ -751,6 +756,7 @@ impl TableBankV {
             scheduled_sites: BTreeMap::new(),
             scheduled_kroots: BTreeMap::new(),
             keys: BTreeMap::new(),
+            c41: None,
         }
     }
 
@@ -785,6 +791,7 @@ impl TableBankV {
             scheduled_sites: BTreeMap::new(),
             scheduled_kroots: BTreeMap::new(),
             keys,
+            c41: None,
         })
     }
 
@@ -1415,6 +1422,44 @@ pub(crate) fn open_matrix_resident_p<T: ResidentMatrixElement>(
     }
 }
 
+pub(crate) fn open_matrix_resident_c41_p<T: ResidentMatrixElement>(
+    cx: &mut BlockCtxP<'_>,
+    base_dom: u64,
+    x: DeviceSlice<'_, T>,
+    rows: usize,
+    cols: usize,
+    point: &[Fp2],
+) -> Result<ProverAuthed, AccelError> {
+    let c41 = cx.bank.c41.clone();
+    if c41.as_ref().is_some_and(|state| state.borrow().has_domain(base_dom)) {
+        let backend = cx
+            .backend
+            .as_deref_mut()
+            .ok_or(AccelError::InvalidInput("C4.1 matrix opening requires a backend"))?;
+        let value = backend.matrix_mle_eval_device(
+            DeviceSlice::new(x.buffer(), x.offset(), rows * cols)?,
+            rows,
+            cols,
+            point,
+        )?;
+        return c41
+            .expect("checked C4.1 state")
+            .borrow_mut()
+            .bridge_matrix(base_dom, rows, cols, point, value, cx.stream, cx.tx);
+    }
+    open_matrix_resident_p(
+        cx.stream,
+        base_dom,
+        x,
+        rows,
+        cols,
+        point,
+        cx.backend
+            .as_deref_mut()
+            .ok_or(AccelError::InvalidInput("resident matrix opening requires a backend"))?,
+    )
+}
+
 pub(crate) fn open_matrix_weighted_rows_resident_p<T: ResidentMatrixElement>(
     stream: &mut CorrelationStream,
     base_dom: u64,
@@ -1521,6 +1566,21 @@ pub(crate) fn open_matrix_k(
         key = key.add(row_key.scale(eq_r[row]));
     }
     key
+}
+
+pub(crate) fn open_matrix_c41_k(
+    cx: &mut BlockCtxV<'_>,
+    base_dom: u64,
+    keys: &[VerifierKey],
+    rows: usize,
+    cols: usize,
+    point: &[Fp2],
+) -> Option<VerifierKey> {
+    let c41 = cx.bank.c41.clone();
+    if c41.as_ref().is_some_and(|state| state.borrow().has_domain(base_dom)) {
+        return c41?.borrow_mut().bridge_matrix(base_dom, rows, cols, point, cx.ctx, cx.tx).ok();
+    }
+    (keys.len() == rows.checked_mul(cols)?).then(|| open_matrix_k(keys, rows, cols, point))
 }
 
 pub(crate) fn open_matrix_weighted_rows_k(
@@ -1969,6 +2029,7 @@ pub struct CacheSegP<'a> {
 
 /// Verifier mirror: cached per-element keys of one segment.
 pub struct CacheSegK<'a> {
+    pub dom: u64,
     pub rows: usize,
     pub keys: &'a [VerifierKey],
 }
@@ -2090,6 +2151,8 @@ pub(crate) struct ResidentKvPrefixP {
 /// Verifier mirror of [`KvPrefixP`] (cached keys).
 pub struct KvPrefixK<'a> {
     pub rows: usize,
+    pub dom_k: u64,
+    pub dom_v: u64,
     pub k_keys: &'a [VerifierKey],
     pub v_keys: &'a [VerifierKey],
 }
@@ -2265,6 +2328,7 @@ pub(crate) fn public_window_fold_resident<T: ResidentMatrixElement>(
 #[allow(clippy::too_many_arguments)]
 fn cache_fold_cols_resident_p(
     stream: &mut CorrelationStream,
+    c41: bool,
     segments: &[ResidentCacheSegP],
     data: DeviceSlice<'_, i16>,
     rows: usize,
@@ -2289,12 +2353,14 @@ fn cache_fold_cols_resident_p(
     let mut tags_out = Vec::with_capacity(rows);
     for segment in segments {
         for row in 0..segment.rows {
-            let tags = stream.draw_sub_tags(segment.dom + row as u64, D);
-            tags_out.push(
-                (0..width).fold(Fp2::ZERO, |sum, index| {
+            if c41 {
+                tags_out.push(Fp2::ZERO);
+            } else {
+                let tags = stream.draw_sub_tags(segment.dom + row as u64, D);
+                tags_out.push((0..width).fold(Fp2::ZERO, |sum, index| {
                     sum + weights[index] * tags[column_offset + index]
-                }),
-            );
+                }));
+            }
         }
     }
     Ok((values, tags_out))
@@ -2303,6 +2369,7 @@ fn cache_fold_cols_resident_p(
 #[allow(clippy::too_many_arguments)]
 fn cache_fold_rows_resident_p(
     stream: &mut CorrelationStream,
+    c41: bool,
     segments: &[ResidentCacheSegP],
     data: DeviceSlice<'_, i16>,
     rows: usize,
@@ -2328,9 +2395,11 @@ fn cache_fold_rows_resident_p(
     let mut base = 0;
     for segment in segments {
         for row in 0..segment.rows {
-            let tags = stream.draw_sub_tags(segment.dom + row as u64, D);
-            for index in 0..width {
-                tags_out[index] += weights[base + row] * tags[column_offset + index];
+            if !c41 {
+                let tags = stream.draw_sub_tags(segment.dom + row as u64, D);
+                for index in 0..width {
+                    tags_out[index] += weights[base + row] * tags[column_offset + index];
+                }
             }
         }
         base += segment.rows;
@@ -3288,7 +3357,21 @@ fn prove_ln_chain_resident_impl(
     )?;
     let x_claim = centered_claim.add(mean_open);
     if let Some(dom_x) = dom_x {
-        let x_open = open_matrix_resident_p(cx.stream, dom_x, x, t, D, &bound_point, backend)?;
+        let c41 = cx.bank.c41.clone();
+        let x_open = if c41.as_ref().is_some_and(|state| state.borrow().has_domain(dom_x)) {
+            let value = backend.matrix_mle_eval_device(x, t, D, &bound_point)?;
+            c41.expect("checked C4.1 state").borrow_mut().bridge_matrix(
+                dom_x,
+                t,
+                D,
+                &bound_point,
+                value,
+                cx.stream,
+                cx.tx,
+            )?
+        } else {
+            open_matrix_resident_p(cx.stream, dom_x, x, t, D, &bound_point, backend)?
+        };
         cx.zero.push(x_claim.sub(x_open));
     }
     let gain_eval =
@@ -3351,7 +3434,24 @@ pub(crate) fn verify_ln_chain(
     wire: &WireKey,
     cx: &mut BlockCtxV,
 ) -> Option<()> {
-    verify_ln_chain_impl(t, s_ln, gain, bias, Some(x_keys), lvk, proof, wire, cx).map(|_| ())
+    verify_ln_chain_impl(t, s_ln, gain, bias, Some(x_keys), None, lvk, proof, wire, cx).map(|_| ())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn verify_ln_chain_c41(
+    t: usize,
+    s_ln: u32,
+    gain: &[i16],
+    bias: &[i16],
+    x_dom: u64,
+    x_keys: &[VerifierKey],
+    lvk: &LnVecsK,
+    proof: &LnChainProof,
+    wire: &WireKey,
+    cx: &mut BlockCtxV,
+) -> Option<()> {
+    verify_ln_chain_impl(t, s_ln, gain, bias, Some(x_keys), Some(x_dom), lvk, proof, wire, cx)
+        .map(|_| ())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3365,7 +3465,7 @@ pub(crate) fn verify_ln_chain_deferred(
     wire: &WireKey,
     cx: &mut BlockCtxV,
 ) -> Option<BoundaryClaimK> {
-    verify_ln_chain_impl(t, s_ln, gain, bias, None, lvk, proof, wire, cx)
+    verify_ln_chain_impl(t, s_ln, gain, bias, None, None, lvk, proof, wire, cx)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3375,6 +3475,7 @@ fn verify_ln_chain_impl(
     gain: &[i16],
     bias: &[i16],
     x_keys: Option<&[VerifierKey]>,
+    x_dom: Option<u64>,
     lvk: &LnVecsK,
     proof: &LnChainProof,
     wire: &WireKey,
@@ -3413,7 +3514,11 @@ fn verify_ln_chain_impl(
     let mean_k = open_fp_vec_k(&lvk.mean_keys, &r_h[d_cb..]);
     let x_key = k_e.add(mean_k);
     if let Some(x_keys) = x_keys {
-        let x_k_r = open_matrix_k(x_keys, t, D, &r_h);
+        let x_k_r = if let Some(domain) = x_dom {
+            open_matrix_c41_k(cx, domain, x_keys, t, D, &r_h)?
+        } else {
+            open_matrix_k(x_keys, t, D, &r_h)
+        };
         cx.kzero.push(x_key.sub(x_k_r));
     }
     let gain_lift = lift_padded_i16(gain, d_cb);
@@ -4292,18 +4397,13 @@ fn prove_ffn_before_gelu_resident_impl<W: ResidentLayerView>(
         let down_site = prove_range_site_resident(&p1.down, params.shift_ffn_down, aux, cx)?;
         let output_point = down_site.main.point.clone();
         let abo_residual_claim = if let Some((dom_abo, dom_fbo)) = legacy_doms {
-            let backend = cx
-                .backend
-                .as_deref_mut()
-                .ok_or(AccelError::InvalidInput("resident FFN proof requires a backend"))?;
-            let ffn_boundary = open_matrix_resident_p(
-                cx.stream,
+            let ffn_boundary = open_matrix_resident_c41_p(
+                cx,
                 dom_fbo,
                 wit.i16(LayerI16Field::FfnBlockOut),
                 t,
                 D,
                 &output_point,
-                backend,
             )?;
             let attn_boundary = open_matrix_resident_p(
                 cx.stream,
@@ -4312,7 +4412,7 @@ fn prove_ffn_before_gelu_resident_impl<W: ResidentLayerView>(
                 t,
                 D,
                 &output_point,
-                backend,
+                cx.backend.as_deref_mut().expect("resident FFN backend"),
             )?;
             cx.zero.push(down_site.main.col_claims[1].value.sub(ffn_boundary).add(attn_boundary));
             None
@@ -4324,14 +4424,13 @@ fn prove_ffn_before_gelu_resident_impl<W: ResidentLayerView>(
         } else {
             let dom_fbo = exit_dom_fbo
                 .ok_or(AccelError::InvalidInput("T1 resident FFN exit authentication missing"))?;
-            let f_open = open_matrix_resident_p(
-                cx.stream,
+            let f_open = open_matrix_resident_c41_p(
+                cx,
                 dom_fbo,
                 wit.i16(LayerI16Field::FfnBlockOut),
                 t,
                 D,
                 &output_point,
-                cx.backend.as_deref_mut().expect("resident FFN backend"),
             )?;
             Some(BoundaryClaimP {
                 point: output_point.clone(),
@@ -4633,18 +4732,13 @@ pub(crate) fn prove_ffn_block_resident<W: ResidentLayerView>(
 
         let down_site = prove_range_site_resident(&p1.down, params.shift_ffn_down, Vec::new(), cx)?;
         let output_point = down_site.main.point.clone();
-        let backend = cx
-            .backend
-            .as_deref_mut()
-            .ok_or(AccelError::InvalidInput("resident FFN proof requires a backend"))?;
-        let ffn_boundary = open_matrix_resident_p(
-            cx.stream,
+        let ffn_boundary = open_matrix_resident_c41_p(
+            cx,
             dom_fbo,
             wit.i16(LayerI16Field::FfnBlockOut),
             t,
             D,
             &output_point,
-            backend,
         )?;
         let attn_boundary = open_matrix_resident_p(
             cx.stream,
@@ -4653,7 +4747,7 @@ pub(crate) fn prove_ffn_block_resident<W: ResidentLayerView>(
             t,
             D,
             &output_point,
-            backend,
+            cx.backend.as_deref_mut().expect("resident FFN backend"),
         )?;
         cx.zero.push(down_site.main.col_claims[1].value.sub(ffn_boundary).add(attn_boundary));
 
@@ -4821,7 +4915,17 @@ pub(crate) fn verify_ffn_before_gelu(
     if proof.t1_q_corr.is_some() || proof.t1_abo_reduce.is_some() {
         return None;
     }
-    verify_ffn_before_gelu_impl(t, luts, proof, cx, Some((abo_keys, fbo_keys)), None, None, biases)
+    verify_ffn_before_gelu_impl(
+        t,
+        luts,
+        proof,
+        cx,
+        Some((abo_keys, fbo_keys)),
+        None,
+        None,
+        None,
+        biases,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -4832,12 +4936,23 @@ pub(crate) fn verify_ffn_before_gelu_thinned(
     cx: &mut BlockCtxV,
     downstream_f: Option<&BoundaryClaimK>,
     exit_fbo_keys: Option<&[VerifierKey]>,
+    exit_fbo_dom: Option<u64>,
     biases: Option<&GemmBiases>,
 ) -> Option<FfnAfterDownV> {
     if proof.t1_abo_reduce.is_none() || (downstream_f.is_some() == exit_fbo_keys.is_some()) {
         return None;
     }
-    verify_ffn_before_gelu_impl(t, luts, proof, cx, None, downstream_f, exit_fbo_keys, biases)
+    verify_ffn_before_gelu_impl(
+        t,
+        luts,
+        proof,
+        cx,
+        None,
+        downstream_f,
+        exit_fbo_keys,
+        exit_fbo_dom,
+        biases,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -4849,6 +4964,7 @@ fn verify_ffn_before_gelu_impl(
     legacy_keys: Option<(&[VerifierKey], &[VerifierKey])>,
     downstream_f: Option<&BoundaryClaimK>,
     exit_fbo_keys: Option<&[VerifierKey]>,
+    exit_fbo_dom: Option<u64>,
     biases: Option<&GemmBiases>,
 ) -> Option<FfnAfterDownV> {
     let rb = pad_bits(t);
@@ -4879,11 +4995,8 @@ fn verify_ffn_before_gelu_impl(
         })
     } else {
         let fbo_keys = exit_fbo_keys?;
-        if fbo_keys.len() != t * D {
-            return None;
-        }
         let point = site_dn.main.point.clone();
-        let f_key = open_matrix_k(fbo_keys, t, D, &point);
+        let f_key = open_matrix_c41_k(cx, exit_fbo_dom?, fbo_keys, t, D, &point)?;
         Some(BoundaryClaimK { point, key: f_key.sub(site_dn.main.col_keys[1].key) })
     };
     let pt = site_dn.acc_point().to_vec();
@@ -5031,6 +5144,7 @@ pub(crate) fn verify_ffn_block(
     cx: &mut BlockCtxV,
     abo_keys: &[VerifierKey],
     fbo_keys: &[VerifierKey],
+    dom_fbo: u64,
     biases: Option<&GemmBiases>,
 ) -> Option<Vec<(Vec<Fp2>, VerifierKey)>> {
     let p = luts.params;
@@ -5055,7 +5169,7 @@ pub(crate) fn verify_ffn_block(
         verify_range_site(n_d, s_dn, &proof.inst_down, proof.inst_down_stage1.as_ref(), &[], cx)?;
     let vd = &site_dn.main;
     let pt_out = vd.point.clone();
-    let f_k = open_matrix_k(fbo_keys, t, D, &pt_out);
+    let f_k = open_matrix_c41_k(cx, dom_fbo, fbo_keys, t, D, &pt_out)?;
     let a_k = open_matrix_k(abo_keys, t, D, &pt_out);
     cx.kzero.push(vd.col_keys[1].key.sub(f_k).add(a_k));
 
@@ -8044,6 +8158,7 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
             };
             let b_folded = match cache_fold_cols_resident_p(
                 cx.stream,
+                cx.bank.c41.is_some(),
                 v_segments,
                 wit.v_cache(),
                 shape.s(),
@@ -8121,10 +8236,27 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
             }
             let eq = eq_vec(&rounds.point);
             let tag = (0..shape.s()).fold(Fp2::ZERO, |sum, row| sum + eq[row] * b_tags[row]);
+            let b_open = if let Some(c41) = cx.bank.c41.clone() {
+                let segments = v_segments
+                    .iter()
+                    .map(|segment| (segment.dom, segment.rows))
+                    .collect::<Vec<_>>();
+                c41.borrow_mut().bridge_cache_matrix(
+                    &segments,
+                    &eq[..shape.s()],
+                    &eq_within,
+                    head * DH,
+                    b_final,
+                    cx.stream,
+                    cx.tx,
+                )?
+            } else {
+                ProverAuthed::new(b_final, tag)
+            };
             let (proof, wire, _, _, _) = finalize_gemm_act_chained(
                 rounds,
                 &av_point[d_cb..],
-                ProverAuthed::new(b_final, tag),
+                b_open,
                 &wv_doms[head],
                 cx.stream,
                 cx.tx,
@@ -8611,6 +8743,7 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
             };
             let b_folded = match cache_fold_rows_resident_p(
                 cx.stream,
+                cx.bank.c41.is_some(),
                 k_segments,
                 wit.k_cache(),
                 shape.s(),
@@ -8683,10 +8816,27 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
             }
             let eq = eq_vec(&rounds.point);
             let tag = (0..DH).fold(Fp2::ZERO, |sum, index| sum + eq[index] * b_tags[index]);
+            let b_open = if let Some(c41) = cx.bank.c41.clone() {
+                let segments = k_segments
+                    .iter()
+                    .map(|segment| (segment.dom, segment.rows))
+                    .collect::<Vec<_>>();
+                c41.borrow_mut().bridge_cache_matrix(
+                    &segments,
+                    &eq_score_columns[..shape.s()],
+                    &eq[..DH],
+                    head * DH,
+                    b_final,
+                    cx.stream,
+                    cx.tx,
+                )?
+            } else {
+                ProverAuthed::new(b_final, tag)
+            };
             let (proof, wire, _, _, _) = finalize_gemm_act_chained(
                 rounds,
                 &score_point[sb..sb + qb],
-                ProverAuthed::new(b_final, tag),
+                b_open,
                 &qk_doms[head],
                 cx.stream,
                 cx.tx,
@@ -8701,30 +8851,16 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
             gemm_qk.push((proof, wire.corr));
         }
         let rho_k: Vec<Fp2> = (0..d_cb + qb).map(|_| cx.tx.challenge_fp2()).collect();
-        let k_open = open_matrix_resident_p(
-            cx.stream,
-            dom_k,
-            wit.i16(LayerI16Field::K),
-            t,
-            D,
-            &rho_k,
-            cx.backend.as_deref_mut().expect("resident attention backend"),
-        )?;
+        let k_open =
+            open_matrix_resident_c41_p(cx, dom_k, wit.i16(LayerI16Field::K), t, D, &rho_k)?;
         let mut k_point = rho_k[..d_cb].to_vec();
         k_point.push(Fp2::ONE);
         k_point.push(Fp2::ZERO);
         k_point.extend_from_slice(&rho_k[d_cb..]);
         aux_qkv.push(LeafAuxClaim { col: 1, point: k_point, value: k_open });
         let rho_v: Vec<Fp2> = (0..d_cb + qb).map(|_| cx.tx.challenge_fp2()).collect();
-        let v_open = open_matrix_resident_p(
-            cx.stream,
-            dom_v,
-            wit.i16(LayerI16Field::V),
-            t,
-            D,
-            &rho_v,
-            cx.backend.as_deref_mut().expect("resident attention backend"),
-        )?;
+        let v_open =
+            open_matrix_resident_c41_p(cx, dom_v, wit.i16(LayerI16Field::V), t, D, &rho_v)?;
         let mut v_point = rho_v[..d_cb].to_vec();
         v_point.push(Fp2::ZERO);
         v_point.push(Fp2::ONE);
@@ -9230,7 +9366,11 @@ fn verify_attn_block_impl(
     for h in 0..H {
         match &cache_mode {
             AttentionVerifierCacheMode::Legacy { v_segments, .. } => {
-                wv_bkeys.push(cache_fold_cols_k(v_segments, &eq_within, h * DH, DH));
+                wv_bkeys.push(if cx.bank.c41.is_some() {
+                    Vec::new()
+                } else {
+                    cache_fold_cols_k(v_segments, &eq_within, h * DH, DH)
+                });
             }
             #[cfg(feature = "c6-trace")]
             AttentionVerifierCacheMode::C6(_) => {}
@@ -9267,8 +9407,28 @@ fn verify_attn_block_impl(
         }
         let eq_l = eq_vec(&output.point);
         let k_b = match &mut cache_mode {
-            AttentionVerifierCacheMode::Legacy { .. } => (0..s_len)
-                .fold(VerifierKey::ZERO, |sum, row| sum.add(wv_bkeys[h][row].scale(eq_l[row]))),
+            AttentionVerifierCacheMode::Legacy { v_segments, .. } => {
+                if let Some(c41) = cx.bank.c41.clone() {
+                    let segments = v_segments
+                        .iter()
+                        .map(|segment| (segment.dom, segment.rows))
+                        .collect::<Vec<_>>();
+                    c41.borrow_mut()
+                        .bridge_cache_matrix(
+                            &segments,
+                            &eq_l[..s_len],
+                            &eq_within,
+                            h * DH,
+                            cx.ctx,
+                            cx.tx,
+                        )
+                        .ok()?
+                } else {
+                    (0..s_len).fold(VerifierKey::ZERO, |sum, row| {
+                        sum.add(wv_bkeys[h][row].scale(eq_l[row]))
+                    })
+                }
+            }
             #[cfg(feature = "c6-trace")]
             AttentionVerifierCacheMode::C6(c6_cache) => c6_cache.correct_next_before_product(
                 crate::c6_cache_fold::C6CacheFoldKind::ValueColumns,
@@ -9521,7 +9681,11 @@ fn verify_attn_block_impl(
     for h in 0..H {
         match &cache_mode {
             AttentionVerifierCacheMode::Legacy { k_segments, .. } => {
-                qk_bkeys.push(cache_fold_rows_k(k_segments, &eq_rj_sc, h * DH, DH));
+                qk_bkeys.push(if cx.bank.c41.is_some() {
+                    Vec::new()
+                } else {
+                    cache_fold_rows_k(k_segments, &eq_rj_sc, h * DH, DH)
+                });
             }
             #[cfg(feature = "c6-trace")]
             AttentionVerifierCacheMode::C6(_) => {}
@@ -9558,10 +9722,28 @@ fn verify_attn_block_impl(
         }
         let eq_l = eq_vec(&output.point);
         let k_b = match &mut cache_mode {
-            AttentionVerifierCacheMode::Legacy { .. } => (0..DH)
-                .fold(VerifierKey::ZERO, |sum, column| {
-                    sum.add(qk_bkeys[h][column].scale(eq_l[column]))
-                }),
+            AttentionVerifierCacheMode::Legacy { k_segments, .. } => {
+                if let Some(c41) = cx.bank.c41.clone() {
+                    let segments = k_segments
+                        .iter()
+                        .map(|segment| (segment.dom, segment.rows))
+                        .collect::<Vec<_>>();
+                    c41.borrow_mut()
+                        .bridge_cache_matrix(
+                            &segments,
+                            &eq_rj_sc[..s_len],
+                            &eq_l[..DH],
+                            h * DH,
+                            cx.ctx,
+                            cx.tx,
+                        )
+                        .ok()?
+                } else {
+                    (0..DH).fold(VerifierKey::ZERO, |sum, column| {
+                        sum.add(qk_bkeys[h][column].scale(eq_l[column]))
+                    })
+                }
+            }
             #[cfg(feature = "c6-trace")]
             AttentionVerifierCacheMode::C6(c6_cache) => c6_cache.correct_next_before_product(
                 crate::c6_cache_fold::C6CacheFoldKind::KeyRows,
@@ -9604,7 +9786,8 @@ fn verify_attn_block_impl(
     let rho_k: Vec<Fp2> = (0..d_cb + rb).map(|_| cx.tx.challenge_fp2()).collect();
     let k_bound_k = match &mut cache_mode {
         AttentionVerifierCacheMode::Legacy { k_segments, .. } => {
-            open_matrix_k(k_segments.last()?.keys, t, D, &rho_k)
+            let segment = k_segments.last()?;
+            open_matrix_c41_k(cx, segment.dom, segment.keys, t, D, &rho_k)?
         }
         #[cfg(feature = "c6-trace")]
         AttentionVerifierCacheMode::C6(c6_cache) => c6_cache
@@ -9623,7 +9806,8 @@ fn verify_attn_block_impl(
     let rho_v: Vec<Fp2> = (0..d_cb + rb).map(|_| cx.tx.challenge_fp2()).collect();
     let v_bound_k = match &mut cache_mode {
         AttentionVerifierCacheMode::Legacy { v_segments, .. } => {
-            open_matrix_k(v_segments.last()?.keys, t, D, &rho_v)
+            let segment = v_segments.last()?;
+            open_matrix_c41_k(cx, segment.dom, segment.keys, t, D, &rho_v)?
         }
         #[cfg(feature = "c6-trace")]
         AttentionVerifierCacheMode::C6(c6_cache) => c6_cache
@@ -9764,6 +9948,7 @@ pub struct LayerOutV {
     /// vectors above; C6 callers carry only these domains across bands.
     pub dom_k: u64,
     pub dom_v: u64,
+    pub dom_fbo: u64,
 }
 
 /// Per-instance measured lookups for the layer (domain sizes).
@@ -9923,25 +10108,50 @@ fn prove_layer_phase1_resident_impl<W: ResidentLayerView>(
         ),
     };
     let dom_k = cx.doms.take(t as u64);
-    let k_corr = auth_matrix_rows_resident_p(
-        cx.stream,
-        cx.tx,
-        dom_k,
-        wit.i16(LayerI16Field::K),
-        t,
-        D,
-        cx.backend.as_deref_mut().expect("resident layer backend"),
-    )?;
+    let c41 = cx.bank.c41.clone();
+    let k_corr = if let Some(state) = &c41 {
+        state.borrow_mut().register_resident_matrix(
+            dom_k,
+            wit.i16(LayerI16Field::K),
+            t,
+            D,
+            cx.tx,
+            cx.backend.as_deref_mut().expect("resident layer backend"),
+        )?;
+        Vec::new()
+    } else {
+        auth_matrix_rows_resident_p(
+            cx.stream,
+            cx.tx,
+            dom_k,
+            wit.i16(LayerI16Field::K),
+            t,
+            D,
+            cx.backend.as_deref_mut().expect("resident layer backend"),
+        )?
+    };
     let dom_v = cx.doms.take(t as u64);
-    let v_corr = auth_matrix_rows_resident_p(
-        cx.stream,
-        cx.tx,
-        dom_v,
-        wit.i16(LayerI16Field::V),
-        t,
-        D,
-        cx.backend.as_deref_mut().expect("resident layer backend"),
-    )?;
+    let v_corr = if let Some(state) = &c41 {
+        state.borrow_mut().register_resident_matrix(
+            dom_v,
+            wit.i16(LayerI16Field::V),
+            t,
+            D,
+            cx.tx,
+            cx.backend.as_deref_mut().expect("resident layer backend"),
+        )?;
+        Vec::new()
+    } else {
+        auth_matrix_rows_resident_p(
+            cx.stream,
+            cx.tx,
+            dom_v,
+            wit.i16(LayerI16Field::V),
+            t,
+            D,
+            cx.backend.as_deref_mut().expect("resident layer backend"),
+        )?
+    };
     let dom_abo = cx.doms.take(t as u64);
     let abo_corr = if t1_layer.is_some() {
         Vec::new()
@@ -9958,15 +10168,27 @@ fn prove_layer_phase1_resident_impl<W: ResidentLayerView>(
     };
     let dom_fbo = cx.doms.take(t as u64);
     let fbo_corr = if t1_layer.is_none_or(|layer| layer % 4 == 3) {
-        auth_matrix_rows_resident_p(
-            cx.stream,
-            cx.tx,
-            dom_fbo,
-            wit.i16(LayerI16Field::FfnBlockOut),
-            t,
-            D,
-            cx.backend.as_deref_mut().expect("resident layer backend"),
-        )?
+        if let Some(state) = &c41 {
+            state.borrow_mut().register_resident_matrix(
+                dom_fbo,
+                wit.i16(LayerI16Field::FfnBlockOut),
+                t,
+                D,
+                cx.tx,
+                cx.backend.as_deref_mut().expect("resident layer backend"),
+            )?;
+            Vec::new()
+        } else {
+            auth_matrix_rows_resident_p(
+                cx.stream,
+                cx.tx,
+                dom_fbo,
+                wit.i16(LayerI16Field::FfnBlockOut),
+                t,
+                D,
+                cx.backend.as_deref_mut().expect("resident layer backend"),
+            )?
+        }
     } else {
         Vec::new()
     };
@@ -10498,6 +10720,7 @@ pub struct LayerV1 {
     pub doms: Doms,
     pub(crate) dom_k: u64,
     pub(crate) dom_v: u64,
+    pub(crate) dom_fbo: u64,
     pub(crate) xin_keys: Vec<VerifierKey>,
     pub(crate) k_keys: Vec<VerifierKey>,
     pub(crate) v_keys: Vec<VerifierKey>,
@@ -10602,6 +10825,7 @@ fn verify_layer_phase1_band_thinned_impl(
     }
     let t = sh.q;
     let group_pos = layer % 4;
+    let c41 = cx.bank.c41.is_some();
     let valid_x = match (group_pos, entry_alias_keys) {
         (0, Some(keys)) if layer > 0 => proof.xin_corr.is_empty() && keys.len() == t * D,
         (0, None) if layer == 0 => proof.xin_corr.len() == t * D,
@@ -10610,11 +10834,15 @@ fn verify_layer_phase1_band_thinned_impl(
         (_, Some(_)) => false,
     };
     if !valid_x
-        || proof.k_corr.len() != t * D
-        || proof.v_corr.len() != t * D
+        || proof.k_corr.len() != if c41 { 0 } else { t * D }
+        || proof.v_corr.len() != if c41 { 0 } else { t * D }
         || !proof.abo_corr.is_empty()
-        || (group_pos == 3) != (proof.fbo_corr.len() == t * D)
-        || (group_pos != 3 && !proof.fbo_corr.is_empty())
+        || (if c41 {
+            !proof.fbo_corr.is_empty()
+        } else {
+            (group_pos == 3) != (proof.fbo_corr.len() == t * D)
+                || (group_pos != 3 && !proof.fbo_corr.is_empty())
+        })
     {
         return None;
     }
@@ -10630,7 +10858,10 @@ fn verify_layer_phase1_band_thinned_impl(
         None => Vec::new(),
     };
     let dom_k = cx.doms.take(t as u64);
-    let k_keys = if reserve_kv_only {
+    let k_keys = if c41 {
+        cx.bank.c41.as_ref()?.borrow_mut().register_matrix(dom_k, t, D, cx.tx).ok()?;
+        Vec::new()
+    } else if reserve_kv_only {
         cx.tx.append_fp_values_digest("auth_corrections", &proof.k_corr);
         cx.ctx.reserve_sub_key_rows(dom_k, t, D);
         Vec::new()
@@ -10638,7 +10869,10 @@ fn verify_layer_phase1_band_thinned_impl(
         auth_matrix_rows_v(cx.ctx, cx.tx, dom_k, &proof.k_corr, t, D)
     };
     let dom_v = cx.doms.take(t as u64);
-    let v_keys = if reserve_kv_only {
+    let v_keys = if c41 {
+        cx.bank.c41.as_ref()?.borrow_mut().register_matrix(dom_v, t, D, cx.tx).ok()?;
+        Vec::new()
+    } else if reserve_kv_only {
         cx.tx.append_fp_values_digest("auth_corrections", &proof.v_corr);
         cx.ctx.reserve_sub_key_rows(dom_v, t, D);
         Vec::new()
@@ -10647,7 +10881,10 @@ fn verify_layer_phase1_band_thinned_impl(
     };
     let _dom_abo = cx.doms.take(t as u64);
     let dom_fbo = cx.doms.take(t as u64);
-    let fbo_keys = if group_pos == 3 {
+    let fbo_keys = if c41 && group_pos == 3 {
+        cx.bank.c41.as_ref()?.borrow_mut().register_matrix(dom_fbo, t, D, cx.tx).ok()?;
+        Vec::new()
+    } else if group_pos == 3 {
         auth_matrix_rows_v(cx.ctx, cx.tx, dom_fbo, &proof.fbo_corr, t, D)
     } else {
         Vec::new()
@@ -10658,6 +10895,7 @@ fn verify_layer_phase1_band_thinned_impl(
         doms: cx.doms,
         dom_k,
         dom_v,
+        dom_fbo,
         xin_keys,
         k_keys,
         v_keys,
@@ -10717,6 +10955,7 @@ fn verify_layer_phase1_band_aliased(
         doms: cx.doms,
         dom_k,
         dom_v,
+        dom_fbo,
         xin_keys,
         k_keys,
         v_keys,
@@ -10775,19 +11014,34 @@ pub fn verify_layer_phase2_band(
     biases: Option<&GemmBiases>,
 ) -> Option<LayerOutV> {
     let t = sh.q;
-    let LayerV1 { doms: _, dom_k, dom_v, xin_keys, k_keys, v_keys, abo_keys, fbo_keys, lvk2, attn } =
-        v1;
+    let LayerV1 {
+        doms: _,
+        dom_k,
+        dom_v,
+        dom_fbo,
+        xin_keys,
+        k_keys,
+        v_keys,
+        abo_keys,
+        fbo_keys,
+        lvk2,
+        attn,
+    } = v1;
 
     let mut w_ffn = verify_ffn_block(
-        t, ln2_gain, ln2_bias, luts, &proof.ffn, &lvk2, cx, &abo_keys, &fbo_keys, biases,
+        t, ln2_gain, ln2_bias, luts, &proof.ffn, &lvk2, cx, &abo_keys, &fbo_keys, dom_fbo, biases,
     )?;
     let w_attn_res = {
-        let mut k_segs: Vec<CacheSegK> =
-            prefix.iter().map(|pf| CacheSegK { rows: pf.rows, keys: pf.k_keys }).collect();
-        k_segs.push(CacheSegK { rows: t, keys: &k_keys });
-        let mut v_segs: Vec<CacheSegK> =
-            prefix.iter().map(|pf| CacheSegK { rows: pf.rows, keys: pf.v_keys }).collect();
-        v_segs.push(CacheSegK { rows: t, keys: &v_keys });
+        let mut k_segs: Vec<CacheSegK> = prefix
+            .iter()
+            .map(|pf| CacheSegK { dom: pf.dom_k, rows: pf.rows, keys: pf.k_keys })
+            .collect();
+        k_segs.push(CacheSegK { dom: dom_k, rows: t, keys: &k_keys });
+        let mut v_segs: Vec<CacheSegK> = prefix
+            .iter()
+            .map(|pf| CacheSegK { dom: pf.dom_v, rows: pf.rows, keys: pf.v_keys })
+            .collect();
+        v_segs.push(CacheSegK { dom: dom_v, rows: t, keys: &v_keys });
         verify_attn_block(
             sh,
             ln1_gain,
@@ -10817,6 +11071,7 @@ pub fn verify_layer_phase2_band(
         fbo_keys,
         dom_k,
         dom_v,
+        dom_fbo,
     })
 }
 
@@ -11408,8 +11663,8 @@ mod tests {
                 verifier_doms,
                 &mut verifier_bank,
             );
-            let k_segments = [CacheSegK { rows: t, keys: &k_keys }];
-            let v_segments = [CacheSegK { rows: t, keys: &v_keys }];
+            let k_segments = [CacheSegK { dom: 0, rows: t, keys: &k_keys }];
+            let v_segments = [CacheSegK { dom: 0, rows: t, keys: &v_keys }];
             let keys = verify_attn_block(
                 BandShape::square(t),
                 &weights.ln1_gain,
@@ -12314,6 +12569,7 @@ mod tests {
                 &mut cx,
                 &abo_keys,
                 &fbo_keys,
+                0,
                 Some(biases),
             )
             .expect("resident FFN proof verifies");

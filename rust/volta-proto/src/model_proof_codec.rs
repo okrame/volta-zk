@@ -8,6 +8,9 @@ use crate::block_proof::{
     AttnBlockProof, C62SoftmaxRecipProof, FfnBlockProof, LayerProof, LnChainProof, TableCloseProof,
 };
 use crate::boundary_thinning::EqReductionProof;
+use crate::c41_folded_tole::{
+    C41DegreeCloseProof, C41ResponseProof, C41_DEGREE12_CLOSE_BYTES, C41_MAX_BRIDGES_PER_RESPONSE,
+};
 use crate::gemm_proof::ChainedGemmProof;
 use crate::hadamard::HadamardProof;
 use crate::logup::{
@@ -29,6 +32,8 @@ const RETAINED_MAGIC: &[u8] = b"C6RRP1\0\0";
 const RETAINED_VERSION: u16 = 1;
 const C62_RETAINED_MAGIC: &[u8] = b"C62RRP2\0";
 const C62_RETAINED_VERSION: u16 = 2;
+const C41_MODEL_MAGIC: &[u8] = b"VC41MP1\0";
+const C41_MODEL_VERSION: u16 = 1;
 pub const C6_RETAINED_RESPONSE_BYTES: usize = 2_921_744;
 /// C6.2 carries the strict C62SRE1 trailer in addition to the historical
 /// model-proof grammar. Keep its allocation separate so historical C6/C6.1
@@ -191,6 +196,26 @@ impl Wire for u64 {
     }
     fn read(input: &mut Reader<'_>) -> Result<Self> {
         input.u64()
+    }
+}
+
+impl Wire for u16 {
+    fn write(&self, out: &mut Writer) -> Result<()> {
+        out.u16(*self);
+        Ok(())
+    }
+    fn read(input: &mut Reader<'_>) -> Result<Self> {
+        input.u16()
+    }
+}
+
+impl Wire for u8 {
+    fn write(&self, out: &mut Writer) -> Result<()> {
+        out.byte(*self);
+        Ok(())
+    }
+    fn read(input: &mut Reader<'_>) -> Result<Self> {
+        input.byte()
     }
 }
 
@@ -447,7 +472,7 @@ wire_struct!(PrivateArgmaxProof {
     packed_bridge,
     limb_instances,
 });
-wire_struct!(ModelProof {
+wire_struct_with_none!(ModelProof {
     layers,
     seams,
     embed,
@@ -457,7 +482,57 @@ wire_struct!(ModelProof {
     chunks,
     tables,
     private_argmax,
-});
+} none c41);
+
+impl Wire for C41ResponseProof {
+    fn write(&self, out: &mut Writer) -> Result<()> {
+        if self.d.is_empty()
+            || self.d.len() > 4_000_000
+            || self.e.len() != self.d.len().div_ceil(8)
+            || (self.d.len() % 8 != 0 && self.e[self.d.len() / 8] >> (self.d.len() % 8) != 0)
+            || self.bridge_corrections.is_empty()
+            || self.bridge_corrections.len() > C41_MAX_BRIDGES_PER_RESPONSE
+        {
+            return Err(ModelProofCodecError::new("invalid C4.1 response proof geometry"));
+        }
+        out.len(self.d.len())?;
+        for value in &self.d {
+            out.u16(*value);
+        }
+        out.len(self.e.len())?;
+        out.bytes.extend_from_slice(&self.e);
+        self.bridge_corrections.write(out)?;
+        out.bytes
+            .extend_from_slice(&self.close.encode_degree12().map_err(ModelProofCodecError::new)?);
+        Ok(())
+    }
+
+    fn read(input: &mut Reader<'_>) -> Result<Self> {
+        let d_len = usize::try_from(input.u32()?).expect("u32 fits usize");
+        if d_len == 0 || d_len > 4_000_000 {
+            return Err(ModelProofCodecError::new("C4.1 Packed16 cell count exceeds strict cap"));
+        }
+        let mut d = Vec::with_capacity(d_len);
+        for _ in 0..d_len {
+            d.push(input.u16()?);
+        }
+        let e_len = usize::try_from(input.u32()?).expect("u32 fits usize");
+        if e_len != d_len.div_ceil(8) {
+            return Err(ModelProofCodecError::new("C4.1 correction bitmap length differs"));
+        }
+        let e = input.take(e_len)?.to_vec();
+        if d_len % 8 != 0 && e[d_len / 8] >> (d_len % 8) != 0 {
+            return Err(ModelProofCodecError::new("nonzero C4.1 bitmap padding bits"));
+        }
+        let bridge_corrections = Vec::<Fp2>::read(input)?;
+        if bridge_corrections.is_empty() {
+            return Err(ModelProofCodecError::new("empty C4.1 bridge correction list"));
+        }
+        let close = C41DegreeCloseProof::decode_degree12(input.take(C41_DEGREE12_CLOSE_BYTES)?)
+            .map_err(ModelProofCodecError::new)?;
+        Ok(Self { d, e, bridge_corrections, close })
+    }
+}
 
 impl Wire for TableKey {
     fn write(&self, out: &mut Writer) -> Result<()> {
@@ -518,6 +593,41 @@ pub fn decode_model_proof_canonical(bytes: &[u8]) -> Result<ModelProof> {
     input.finish()?;
     if encode_model_proof_canonical(&proof)? != bytes {
         return Err(ModelProofCodecError::new("noncanonical model-proof encoding"));
+    }
+    Ok(proof)
+}
+
+/// Strict C4.1 codec: historical model-proof bytes followed by the canonical
+/// Packed16 payload and its fixed 201-byte degree-12 close.
+pub fn encode_model_proof_c41_canonical(proof: &ModelProof) -> Result<Vec<u8>> {
+    let c41 = proof
+        .c41
+        .as_ref()
+        .ok_or_else(|| ModelProofCodecError::new("C4.1 model proof has no C4.1 payload"))?;
+    let mut bytes = C41_MODEL_MAGIC.to_vec();
+    bytes.extend_from_slice(&C41_MODEL_VERSION.to_le_bytes());
+    let mut out = Writer::full(bytes);
+    proof.write(&mut out)?;
+    c41.write(&mut out)?;
+    out.finish()
+}
+
+pub fn decode_model_proof_c41_canonical(bytes: &[u8]) -> Result<ModelProof> {
+    let mut input = Reader {
+        bytes,
+        offset: 0,
+        thin_subfields: false,
+        subfield_digests: Vec::new(),
+        thin_subfield_items: 0,
+    };
+    if input.take(C41_MODEL_MAGIC.len())? != C41_MODEL_MAGIC || input.u16()? != C41_MODEL_VERSION {
+        return Err(ModelProofCodecError::new("wrong C4.1 model-proof prefix"));
+    }
+    let mut proof = ModelProof::read(&mut input)?;
+    proof.c41 = Some(C41ResponseProof::read(&mut input)?);
+    input.finish()?;
+    if encode_model_proof_c41_canonical(&proof)? != bytes {
+        return Err(ModelProofCodecError::new("noncanonical C4.1 model-proof encoding"));
     }
     Ok(proof)
 }
@@ -1256,6 +1366,7 @@ mod tests {
                 },
                 limb_instances: vec![instance()],
             }),
+            c41: None,
         }
     }
 
@@ -1292,6 +1403,27 @@ mod tests {
             thin_subfield_items: MAX_C62_LOGICAL_SUBFIELD_ITEMS,
         };
         assert!(Vec::<u64>::read(&mut capped).is_err());
+    }
+
+    #[test]
+    fn c41_model_proof_round_trips_and_rejects_bitmap_padding() {
+        let mut proof = proof();
+        proof.c41 = Some(C41ResponseProof {
+            d: vec![1, 2, 3],
+            e: vec![0b0000_0101],
+            bridge_corrections: vec![Fp2::ONE],
+            close: C41DegreeCloseProof { degree: 12, coefficients: vec![Fp2::ZERO; 12] },
+        });
+        let bytes = encode_model_proof_c41_canonical(&proof).unwrap();
+        assert_eq!(decode_model_proof_c41_canonical(&bytes).unwrap(), proof);
+
+        proof.c41.as_mut().unwrap().e[0] |= 0x80;
+        assert!(encode_model_proof_c41_canonical(&proof).is_err());
+
+        let c41 = proof.c41.as_mut().unwrap();
+        c41.e[0] &= 0x07;
+        c41.bridge_corrections = vec![Fp2::ZERO; C41_MAX_BRIDGES_PER_RESPONSE + 1];
+        assert!(encode_model_proof_c41_canonical(&proof).is_err());
     }
 
     #[test]

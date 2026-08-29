@@ -403,8 +403,9 @@ pub use layer_layout::{
 };
 pub use ligero::{
     commit, commit_resident, commit_resident_from_device, commit_with_backend,
-    free_resident_matrix, open_multi_zk, open_multi_zk_resident, open_multi_zk_with_backend,
-    open_zk, projected_multi_open_bytes, verify_multi_open, verify_open, Commitment, LigeroParams,
-    MultiOpenProof, MultiOpenTimings, OpenTimings, OpeningProof, ProverMatrix,
-    ResidentMatrixFreeError, ResidentProverMatrix, ResidentWeightPlacement, GPT2_FULL,
+    decode_multi_open_canonical, encode_multi_open_canonical, free_resident_matrix, open_multi_zk,
+    open_multi_zk_resident, open_multi_zk_with_backend, open_zk, projected_multi_open_bytes,
+    verify_multi_open, verify_open, Commitment, LigeroParams, MultiOpenProof, MultiOpenTimings,
+    OpenTimings, OpeningProof, ProverMatrix, ResidentMatrixFreeError, ResidentProverMatrix,
+    ResidentWeightPlacement, GPT2_FULL,
 };

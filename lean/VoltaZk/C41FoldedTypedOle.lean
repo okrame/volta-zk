@@ -1,12 +1,12 @@
 import VoltaZk.Mac
+import VoltaZk.Counting
 import Mathlib.Algebra.Polynomial.BigOperators
 
 /-!
 # C4.1 folded-query high-degree typed OLE kill test
 
-This file proves only the two facts that can reject FQ-HD-tOLE before an
-implementation exists: Packed16 openings need two typed linear queries, and
-the frozen C4 consumer census never needs degree above twelve.
+This file proves the Packed16 two-query identity, the degree-twelve bound,
+and the fixed-before-challenge scalar batching used by the real bridge.
 -/
 
 namespace VoltaZk
@@ -54,6 +54,42 @@ theorem c41_polynomial_open_degree_le {n : ℕ} (r : ι → F) (p : ι → Polyn
   refine Polynomial.natDegree_sum_le_of_forall_le _ _ fun i _ => ?_
   exact (Polynomial.natDegree_C_mul_le _ _).trans (hp i)
 
+/-- All bridge discrepancies are fixed before the single batching challenge.
+The Rust response codec fixes this finite list through its correction vector
+before `C41ProverResponseState.finish` samples `β`. -/
+structure C41FixedBridgeBatch (F : Type*) [Field F] (K : ℕ) where
+  error : Fin K → F
+
+/-- Scalar-power bridge accumulator used by Rust. -/
+def c41BridgeError {K : ℕ} (B : C41FixedBridgeBatch F K) (β : F) : F :=
+  ∑ k, β ^ (k.val + 1) * B.error k
+
+/-- If any fixed bridge is false, the final scalar batch can collapse for at
+most `K` values of the post-correction challenge. -/
+theorem c41_bridge_batch_sound [Fintype F] [DecidableEq F] {K : ℕ}
+    (B : C41FixedBridgeBatch F K) {k₀ : Fin K} (hbad : B.error k₀ ≠ 0) :
+    (univ.filter fun β : F => c41BridgeError B β = 0).card ≤ K := by
+  simpa [c41BridgeError] using card_scalarRlc_zero_le B.error hbad
+
+/-- Scalar batching preserves the degree-twelve authentication bound. -/
+noncomputable def c41BridgePolynomial {K : ℕ} (β : F) (p : Fin K → Polynomial F) :
+    Polynomial F :=
+  ∑ k, Polynomial.C (β ^ (k.val + 1)) * p k
+
+theorem c41_bridge_polynomial_degree_le_twelve {K : ℕ} (β : F)
+    (p : Fin K → Polynomial F) (hp : ∀ k, (p k).natDegree ≤ 12) :
+    (c41BridgePolynomial β p).natDegree ≤ 12 := by
+  unfold c41BridgePolynomial
+  refine Polynomial.natDegree_sum_le_of_forall_le _ _ fun k _ => ?_
+  exact (Polynomial.natDegree_C_mul_le _ _).trans (hp k)
+
+/-- Once batching survives, a nonzero degree-twelve relation has at most
+twelve accepting session-key points. -/
+theorem c41_degree_twelve_close_root_bound [Fintype F] [DecidableEq F]
+    (relation : Polynomial F) (hne : relation ≠ 0) (hdegree : relation.natDegree ≤ 12) :
+    (univ.filter fun Δ : F => relation.eval Δ = 0).card ≤ 12 :=
+  (card_eval_zero_le hne).trans hdegree
+
 /-- Adding a public affine term cannot raise a degree-11 typed claim. -/
 theorem c41_typed_affine_degree_le
     (typed affineTerm : Polynomial F)
@@ -92,6 +128,9 @@ theorem c41_typed_typed_rejected : ¬11 + 11 ≤ 12 := by
 
 #print axioms VoltaZk.packed16_folded_opening
 #print axioms VoltaZk.c41_polynomial_open_degree_le
+#print axioms VoltaZk.c41_bridge_batch_sound
+#print axioms VoltaZk.c41_bridge_polynomial_degree_le_twelve
+#print axioms VoltaZk.c41_degree_twelve_close_root_bound
 #print axioms VoltaZk.c41_typed_ordinary_product_degree_le
 #print axioms VoltaZk.c41_eligible_consumer_degree_le_twelve
 #print axioms VoltaZk.c41_typed_typed_rejected

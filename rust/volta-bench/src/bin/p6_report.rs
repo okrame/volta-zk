@@ -44,7 +44,10 @@ use volta_gpt2::{
     KvCache, LayerWeightField, ModelWeightField, ResidentBandModelWitness, ResidentGpt2Model,
     ResidentModelWitness, D, L, VOCAB,
 };
-use volta_mac::{zero_batch_exchange, CorrelationStream, Transcript, VerifierCtx};
+use volta_mac::{
+    fresh_zero_mask, zero_batch_exchange, zero_batch_prover, zero_batch_verify, zero_mask_key,
+    CorrelationStream, Transcript, VerifierCtx,
+};
 use volta_pcg::{
     expand_phase_b_production_with_ggm_prg, open_fase_d_connection_with_ggm_prg, ConnectionBinding,
     ConnectionState, ConnectionStore, CorrelationDomain, FaseDCapacityReport, FaseDParams,
@@ -53,24 +56,31 @@ use volta_pcg::{
     SessionBinding, SetupCommBreakdown, StageCorrelationCounters, VerifierPcgPool,
 };
 use volta_pcs::{
-    commit, commit_resident_from_device, commit_with_backend, free_resident_matrix,
-    layout_gpt2_embed, layout_gpt2_embed_c3, layout_gpt2_layer, layout_gpt2_weights_c3,
-    open_multi_zk, open_multi_zk_resident, open_multi_zk_with_backend, verify_multi_open,
-    LigeroParams, ProverMatrix, ResidentProverMatrix, ResidentWeightPlacement, C3_EMBED,
-    C3_WEIGHTS, C4_EMBED, C4_WEIGHTS, GPT2_FULL, P4_LAYER,
+    commit, commit_resident_from_device, commit_with_backend, decode_multi_open_canonical,
+    encode_multi_open_canonical, free_resident_matrix, layout_gpt2_embed, layout_gpt2_embed_c3,
+    layout_gpt2_layer, layout_gpt2_weights_c3, open_multi_zk, open_multi_zk_resident,
+    open_multi_zk_with_backend, verify_multi_open, LigeroParams, ProverMatrix,
+    ResidentProverMatrix, ResidentWeightPlacement, C3_EMBED, C3_WEIGHTS, C4_EMBED, C4_WEIGHTS,
+    GPT2_FULL, P4_LAYER,
 };
 use volta_proto::block_proof::layer_dom_base;
+use volta_proto::c41_folded_tole::{
+    c41_typed_setup_exchange, C41ProverResponseState, C41VerifierResponseState,
+    C41_MAX_BRIDGES_PER_RESPONSE,
+};
 use volta_proto::logup::Doms;
 use volta_proto::model_proof::{
     prove_model_resident, prove_response, prove_response_private_logits,
     prove_response_private_logits_c3b_baseline, prove_response_private_logits_with_backend,
-    prove_response_resident, prove_response_resident_private_logits, prove_response_with_backend,
-    verify_response, verify_response_private_logits, ChunkPub, ChunkRef, PrivateChunkPub,
-    ResidentChunkRef,
+    prove_response_resident, prove_response_resident_private_logits,
+    prove_response_resident_private_logits_c41, prove_response_with_backend, verify_response,
+    verify_response_private_logits, verify_response_private_logits_c41, ChunkPub, ChunkRef,
+    PrivateChunkPub, ResidentChunkRef,
 };
 use volta_proto::{
-    cattn_permuted, prod_batch_prover, prod_batch_verify, prove_model, prove_model_with_backend,
-    C41_TYPED_POLYNOMIAL_LANES,
+    cattn_permuted, decode_model_proof_c41_canonical, encode_model_proof_c41_canonical,
+    prod_batch_prover, prod_batch_verify, prove_model, prove_model_with_backend,
+    C41ResponseClosureProof, C41ResponseProofEnvelope, C41_TYPED_POLYNOMIAL_LANES,
 };
 
 const P7B_PREFILL_CORE_GATE_S: f64 = 10.0;
@@ -146,10 +156,11 @@ const C4_ANCHOR_CODEWORD_BYTES: u64 = 8_623_489_024;
 const C4_CANDIDATE_CODEWORD_BYTES: u64 = 17_246_978_048;
 const C4_DESIGN_SHA256: &str = "7bb8a4e64c35047c76c0a999feca33fe0da261d20c9f14776661c9832559e3f4";
 const C41_FOLD_CELLS: usize = 3_110_400;
+const C41_SEED_ROWS: usize = 253;
 const C41_PROJECTED_RESPONSE_BYTES: u64 = 66_270_953;
 const C41_RESPONSE_GATE_BYTES: u64 = 70_000_000;
 const C41_DEVICE_LIVE_GATE_BYTES: u64 = 30_000_000_000;
-const C41_CONDITIONAL_SECURITY_BITS: f64 = 78.809_294_873_915_72;
+const C41_CONDITIONAL_SECURITY_BITS: f64 = 78.809_294_862_688_63;
 const C41_SECURITY_FLOOR_BITS: f64 = 78.0;
 const C41_ANCHOR_PROVE_SECONDS: f64 = 4.104_595_717;
 const C41_PROVER_GATE_RATIO: f64 = 1.30;
@@ -907,6 +918,8 @@ struct Report {
     #[serde(skip_serializing_if = "Option::is_none")]
     c41_timing: Option<C41TimingRecord>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    c41_e2e: Option<C41E2eRecord>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     x123_foundation_reference_file: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     x123_foundation_reference_digest: Option<String>,
@@ -1438,6 +1451,7 @@ struct Args {
     c4_record: bool,
     c4_profile: Option<C4ProfileArg>,
     c41_timing_profile: Option<C41TimingProfileArg>,
+    c41_e2e_record: bool,
     x123_foundation_record: bool,
     c1_record: bool,
     flip_readiness_record: bool,
@@ -1604,7 +1618,7 @@ impl PcgBackendArg {
 
 fn usage() -> ! {
     eprintln!(
-        "usage: p6_report [--quick] [--c3|--c3-record|--t1-record|--c4-record|--x123-foundation-record|--c1-record|--flip-readiness-record|--fase-d-record] [--c4-profile anchor|rate8] [--c41-timing-profile anchor|candidate] [--pcs-q Q] \
+        "usage: p6_report [--quick] [--c3|--c3-record|--t1-record|--c4-record|--x123-foundation-record|--c1-record|--flip-readiness-record|--fase-d-record] [--c4-profile anchor|rate8] [--c41-timing-profile anchor|candidate] [--c41-e2e-record] [--pcs-q Q] \
          [--fase-d-pod-profile v1|v2] \
          [--pcg-backend mock|real] [--pcg-authorization-store PATH] \
          [--pcg-connection-store PATH] \
@@ -1625,6 +1639,7 @@ fn parse_args() -> Args {
         c4_record: false,
         c4_profile: None,
         c41_timing_profile: None,
+        c41_e2e_record: false,
         x123_foundation_record: false,
         c1_record: false,
         flip_readiness_record: false,
@@ -1663,6 +1678,8 @@ fn parse_args() -> Args {
             out.c41_timing_profile = Some(parse_c41_timing_profile(&profile));
         } else if let Some(profile) = a.strip_prefix("--c41-timing-profile=") {
             out.c41_timing_profile = Some(parse_c41_timing_profile(profile));
+        } else if a == "--c41-e2e-record" {
+            out.c41_e2e_record = true;
         } else if a == "--x123-foundation-record" {
             out.t1_record = true;
             out.x123_foundation_record = true;
@@ -2079,7 +2096,82 @@ struct SessionResult {
     public_logits_packed_bytes: u64,
     pcg_allocation_hash_match: Option<bool>,
     c41_fold_executed: bool,
+    c41_e2e: Option<C41E2eSession>,
     accelerator_stats: Option<BackendStats>,
+}
+
+#[derive(Clone, Serialize)]
+struct C41E2eSession {
+    typed_setup_total_bytes: u64,
+    typed_setup_wall_s: f64,
+    lot_generation_wall_s: f64,
+    prover_lot_prepare_wall_s: f64,
+    verifier_lot_prepare_wall_s: f64,
+    serialized_model_proof_bytes: u64,
+    serialized_proof_bytes: u64,
+    transcript_proof_bytes: u64,
+    envelope_overhead_bytes: u64,
+    proof_blake3: String,
+    serialize_wall_s: f64,
+    deserialize_wall_s: f64,
+    model_serialize_wall_s: f64,
+    model_deserialize_wall_s: f64,
+    pcs_serialize_wall_s: f64,
+    pcs_deserialize_wall_s: f64,
+    envelope_serialize_wall_s: f64,
+    envelope_deserialize_wall_s: f64,
+    closure_prover_wall_s: f64,
+    closure_verify_wall_s: f64,
+    codec_roundtrip: bool,
+    packed_cells: usize,
+    bridge_corrections: usize,
+    degree_close: u8,
+    bridge_batch_soundness_bits: f64,
+    degree_close_soundness_bits: f64,
+    conditional_soundness_bits: f64,
+    conditional_weight_zk_bits: f64,
+}
+
+#[derive(Serialize)]
+struct C41E2eRecord {
+    setup: C41E2eSession,
+    proof_bytes: u64,
+    transcript_proof_bytes: u64,
+    proof_gate_bytes: u64,
+    proof_gate_pass: bool,
+    prover_time_s: f64,
+    prover_accounted_s: f64,
+    anchor_prover_time_s: f64,
+    prover_ratio: f64,
+    prover_ratio_gate: f64,
+    prover_ratio_gate_pass: bool,
+    device_live_gate_bytes: u64,
+    observed_peak_device_bytes: u64,
+    device_live_gate_pass: bool,
+    verifier_core_s: f64,
+    verifier_accounted_s: f64,
+    accepted: bool,
+    real_aes_pcg: bool,
+    single_degree12_close: bool,
+    security_floor_bits: f64,
+    soundness_gate_pass: bool,
+    weight_zk_gate_pass: bool,
+    gate_verdict: bool,
+}
+
+fn c41_response_security_bits(bridges_per_response: usize, weight_zk_bits: f64) -> (f64, f64, f64) {
+    assert!((1..=C41_MAX_BRIDGES_PER_RESPONSE).contains(&bridges_per_response));
+    let field_size = (P as f64) * (P as f64);
+    let bridge_error = 5.0 * bridges_per_response as f64 / field_size;
+    let close_error = (5.0 * 12.0 + 2.0) / field_size;
+    let bridge_bits = -bridge_error.log2();
+    let close_bits = -close_error.log2();
+    let composed = -(2f64.powf(-C4_ANCHOR_SOUNDNESS_BITS)
+        + bridge_error
+        + close_error
+        + 2f64.powf(-weight_zk_bits))
+    .log2();
+    (bridge_bits, close_bits, composed)
 }
 
 fn digest_u64_map(domain: &[u8], values: &BTreeMap<String, u64>) -> String {
@@ -2484,6 +2576,7 @@ fn run_session(
         pcg_backend,
         None,
         None,
+        false,
         accelerator,
     )
 }
@@ -2504,6 +2597,7 @@ fn run_session_resident<'source>(
     seed: u8,
     pcg_backend: SessionPcgBackend,
     c41_timing: Option<&C41TimingOwner>,
+    c41_e2e: bool,
     backend: &mut Backend,
 ) -> SessionResult {
     run_session_impl(
@@ -2523,6 +2617,7 @@ fn run_session_resident<'source>(
             error,
         }),
         c41_timing,
+        c41_e2e,
         Some(backend),
     )
 }
@@ -2540,6 +2635,7 @@ fn run_session_impl<'source>(
     pcg_backend: SessionPcgBackend,
     resident: Option<ResidentSessionInput<'_, 'source>>,
     c41_timing: Option<&C41TimingOwner>,
+    c41_e2e: bool,
     mut accelerator: Option<&mut Backend>,
 ) -> SessionResult {
     let session_started = Instant::now();
@@ -2570,6 +2666,93 @@ fn run_session_impl<'source>(
     let mut txv = Transcript::new([seed ^ 0x5A; 32]);
     let resident_model_for_pcs = resident.as_ref().map(|input| input.model);
 
+    let mut c41_prover_state = None;
+    let mut c41_verifier_lot = None;
+    let mut c41_session = None;
+    if c41_e2e {
+        assert!(c3 && resident.is_some(), "C4.1 E2E requires the resident private-logit path");
+        let cells = (t + bands.iter().map(|band| band.q).sum::<usize>()) * (2 * L + 3) * D;
+        assert_eq!(cells, C41_FOLD_CELLS, "C4.1 response cell census changed");
+        let setup_started = Instant::now();
+        let transcript_seed = os_random_identity("C4.1 typed-setup transcript seed");
+        let mut setup_txp = Transcript::new(transcript_seed);
+        let mut setup_txv = Transcript::new(transcript_seed);
+        let public_seed = os_random_identity("C4.1 public incidence seed");
+        let exchange = c41_typed_setup_exchange(
+            os_random_identity("C4.1 secret seed entropy"),
+            public_seed,
+            C41_SEED_ROWS,
+            0x4_1000,
+            0x5_1000,
+            &mut stream,
+            &mut vc,
+            &mut setup_txp,
+            &mut setup_txv,
+        )
+        .expect("real C4.1 typed setup exchange");
+        let typed_setup_wall_s = setup_started.elapsed().as_secs_f64();
+        let accel = accelerator.as_deref_mut().expect("C4.1 setup requires resident CUDA");
+        let bits = accel.upload_new_device(&exchange.prover.bits).expect("upload C4.1 seed bits");
+        let tags = accel
+            .upload_new_device(
+                &exchange.prover.tags.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>(),
+            )
+            .expect("upload C4.1 seed tags");
+        let keys = accel
+            .upload_new_device(
+                &exchange.verifier.keys.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>(),
+            )
+            .expect("upload C4.1 seed keys");
+        let lot_started = Instant::now();
+        let prover_lot = accel
+            .c41_expand_packed_prover_device(&bits, &tags, public_seed, 0, cells)
+            .expect("generate C4.1 prover lot");
+        let verifier_lot = accel
+            .c41_expand_packed_verifier_device(&keys, public_seed, delta, 0, cells)
+            .expect("generate C4.1 verifier lot");
+        let lot_generation_wall_s = lot_started.elapsed().as_secs_f64();
+        accel.free_device(bits).expect("free C4.1 seed bits");
+        accel.free_device(tags).expect("free C4.1 seed tags");
+        accel.free_device(keys).expect("free C4.1 seed keys");
+        let lot_prepare_started = Instant::now();
+        c41_prover_state = Some(
+            C41ProverResponseState::new(prover_lot, accel)
+                .expect("prepare one-time C4.1 prover lot"),
+        );
+        let prover_lot_prepare_wall_s = lot_prepare_started.elapsed().as_secs_f64();
+        c41_verifier_lot = Some(verifier_lot);
+        c41_session = Some(C41E2eSession {
+            typed_setup_total_bytes: exchange.metrics.total_typed_setup_bytes,
+            typed_setup_wall_s,
+            lot_generation_wall_s,
+            prover_lot_prepare_wall_s,
+            verifier_lot_prepare_wall_s: 0.0,
+            serialized_model_proof_bytes: 0,
+            serialized_proof_bytes: 0,
+            transcript_proof_bytes: 0,
+            envelope_overhead_bytes: 0,
+            proof_blake3: String::new(),
+            serialize_wall_s: 0.0,
+            deserialize_wall_s: 0.0,
+            model_serialize_wall_s: 0.0,
+            model_deserialize_wall_s: 0.0,
+            pcs_serialize_wall_s: 0.0,
+            pcs_deserialize_wall_s: 0.0,
+            envelope_serialize_wall_s: 0.0,
+            envelope_deserialize_wall_s: 0.0,
+            closure_prover_wall_s: 0.0,
+            closure_verify_wall_s: 0.0,
+            codec_roundtrip: false,
+            packed_cells: cells,
+            bridge_corrections: 0,
+            degree_close: 0,
+            bridge_batch_soundness_bits: 0.0,
+            degree_close_soundness_bits: 0.0,
+            conditional_soundness_bits: exchange.metrics.conditional_soundness_bits,
+            conditional_weight_zk_bits: exchange.metrics.conditional_weight_zk_bits,
+        });
+    }
+
     let tp0 = Instant::now();
     let (proof, out, prod, zero) = if let Some(resident) = resident {
         assert_eq!(resident.bands.len(), bands.len());
@@ -2586,17 +2769,32 @@ fn run_session_impl<'source>(
         let accel = accelerator.as_deref_mut().expect("resident session requires CUDA backend");
         let error = DeviceSlice::new(resident.error, 0, 1).expect("resident proof error word");
         if c3 {
-            prove_response_resident_private_logits(
-                model,
-                resident.model,
-                resident.witness,
-                &resident_chunks,
-                error,
-                &mut stream,
-                &mut txp,
-                accel,
-            )
-            .expect("resident C3 response proof")
+            if let Some(state) = c41_prover_state.take() {
+                prove_response_resident_private_logits_c41(
+                    model,
+                    resident.model,
+                    resident.witness,
+                    &resident_chunks,
+                    error,
+                    state,
+                    &mut stream,
+                    &mut txp,
+                    accel,
+                )
+                .expect("resident C4.1 response proof")
+            } else {
+                prove_response_resident_private_logits(
+                    model,
+                    resident.model,
+                    resident.witness,
+                    &resident_chunks,
+                    error,
+                    &mut stream,
+                    &mut txp,
+                    accel,
+                )
+                .expect("resident C3 response proof")
+            }
         } else {
             prove_response_resident(
                 model,
@@ -2633,6 +2831,19 @@ fn run_session_impl<'source>(
             prove_response(model, wit, &chunks_p, &mut stream, &mut txp)
         }
     };
+    let mut proof = proof;
+    let mut c41_encoded = None;
+    if c41_e2e && with_pcs {
+        let serialize_started = Instant::now();
+        let encoded =
+            encode_model_proof_c41_canonical(&proof).expect("serialize canonical C4.1 model proof");
+        let serialize_wall_s = serialize_started.elapsed().as_secs_f64();
+        let metrics = c41_session.as_mut().expect("C4.1 session metrics");
+        metrics.serialized_model_proof_bytes = encoded.len() as u64;
+        metrics.model_serialize_wall_s = serialize_wall_s;
+        metrics.serialize_wall_s = serialize_wall_s;
+        c41_encoded = Some(encoded);
+    }
     let c41_fold_executed = if let Some(input) = c41_timing {
         let accel = accelerator.as_deref_mut().expect("C4.1 timing fold requires CUDA backend");
         accel
@@ -2658,6 +2869,28 @@ fn run_session_impl<'source>(
         false
     };
     let prove_s = tp0.elapsed().as_secs_f64();
+    if let Some(encoded) = c41_encoded.as_ref() {
+        let deserialize_started = Instant::now();
+        let decoded = decode_model_proof_c41_canonical(encoded)
+            .expect("deserialize canonical C4.1 model proof");
+        let deserialize_wall_s = deserialize_started.elapsed().as_secs_f64();
+        let payload = decoded.c41.as_ref().expect("decoded C4.1 payload");
+        let metrics = c41_session.as_mut().expect("C4.1 session metrics");
+        metrics.model_deserialize_wall_s = deserialize_wall_s;
+        metrics.deserialize_wall_s = deserialize_wall_s;
+        metrics.codec_roundtrip = decoded == proof;
+        metrics.bridge_corrections = payload.bridge_corrections.len();
+        metrics.degree_close = payload.close.degree;
+        let (bridge_bits, close_bits, composed_bits) = c41_response_security_bits(
+            metrics.bridge_corrections,
+            metrics.conditional_weight_zk_bits,
+        );
+        metrics.bridge_batch_soundness_bits = bridge_bits;
+        metrics.degree_close_soundness_bits = close_bits;
+        metrics.conditional_soundness_bits = composed_bits;
+        assert!(metrics.codec_roundtrip, "C4.1 model-proof codec changed the proof");
+        proof = decoded;
+    }
 
     // P7 prep: the public logits travel bit-packed (historical ledger decision);
     // the verifier consumes the DECODED matrix (asserted bit-exact), so the
@@ -2683,12 +2916,41 @@ fn run_session_impl<'source>(
             })
         })
         .collect();
+    let c41_verifier_state = if c41_e2e {
+        let started = Instant::now();
+        let state = C41VerifierResponseState::new(
+            c41_verifier_lot.take().expect("one C4.1 verifier lot"),
+            proof.c41.as_ref().expect("C4.1 proof payload"),
+            delta,
+            accelerator.as_deref_mut().expect("C4.1 verifier lot requires CUDA"),
+        )
+        .expect("prepare one-time C4.1 verifier lot");
+        c41_session.as_mut().expect("C4.1 metrics").verifier_lot_prepare_wall_s =
+            started.elapsed().as_secs_f64();
+        Some(state)
+    } else {
+        None
+    };
     let tv0 = Instant::now();
     let (outv, kprod, kzero) = if c3 {
         let chunks_v: Vec<PrivateChunkPub> =
             bands.iter().map(|band| PrivateChunkPub { q: band.q, seq }).collect();
-        verify_response_private_logits(model, t, &chunks_v, &proof, &mut vc, &mut txv)
-            .expect("honest C3 response must verify")
+        if let Some(state) = c41_verifier_state {
+            verify_response_private_logits_c41(
+                model,
+                t,
+                &chunks_v,
+                &proof,
+                state,
+                &mut vc,
+                &mut txv,
+                accelerator.as_deref_mut().expect("C4.1 verifier requires CUDA"),
+            )
+            .expect("honest C4.1 response must verify")
+        } else {
+            verify_response_private_logits(model, t, &chunks_v, &proof, &mut vc, &mut txv)
+                .expect("honest C3 response must verify")
+        }
     } else {
         let chunks_v: Vec<ChunkPub> = bands
             .iter()
@@ -2715,6 +2977,8 @@ fn run_session_impl<'source>(
     let mut pcs_opening_bytes = 0u64;
     let mut pcs_cached_query_marginal_bytes = 0u64;
     let mut pcs_all_ok = true;
+    let mut c41_weights_pcs_encoded = None;
+    let mut c41_embed_pcs_encoded = None;
     let tx_before_pcs = ledger_to_owned(&txp);
     if with_pcs {
         assert_eq!(out.weight_claims.len(), 4 * L * phases);
@@ -2844,6 +3108,26 @@ fn run_session_impl<'source>(
                         )
                     }
                 }
+            };
+            let opening = if c41_e2e {
+                let codec_started = Instant::now();
+                let encoded = encode_multi_open_canonical(&opening, layer_params, claims_p.len())
+                    .expect("serialize canonical C4.1 weights PCS opening");
+                let serialize_s = codec_started.elapsed().as_secs_f64();
+                let codec_started = Instant::now();
+                let decoded = decode_multi_open_canonical(&encoded, layer_params, claims_p.len())
+                    .expect("deserialize canonical C4.1 weights PCS opening");
+                assert_eq!(decoded, opening, "C4.1 weights PCS codec changed the proof");
+                let deserialize_s = codec_started.elapsed().as_secs_f64();
+                let metrics = c41_session.as_mut().expect("C4.1 session metrics");
+                metrics.pcs_serialize_wall_s += serialize_s;
+                metrics.pcs_deserialize_wall_s += deserialize_s;
+                metrics.serialize_wall_s += serialize_s;
+                metrics.deserialize_wall_s += deserialize_s;
+                c41_weights_pcs_encoded = Some(encoded);
+                decoded
+            } else {
+                opening
             };
             let open_s = to0.elapsed().as_secs_f64();
             let breakdown = opening.byte_breakdown();
@@ -3182,6 +3466,26 @@ fn run_session_impl<'source>(
                 }
             }
         };
+        let mproof_e = if c41_e2e {
+            let codec_started = Instant::now();
+            let encoded = encode_multi_open_canonical(&mproof_e, embed_params, claims_p.len())
+                .expect("serialize canonical C4.1 embed PCS opening");
+            let serialize_s = codec_started.elapsed().as_secs_f64();
+            let codec_started = Instant::now();
+            let decoded = decode_multi_open_canonical(&encoded, embed_params, claims_p.len())
+                .expect("deserialize canonical C4.1 embed PCS opening");
+            assert_eq!(decoded, mproof_e, "C4.1 embed PCS codec changed the proof");
+            let deserialize_s = codec_started.elapsed().as_secs_f64();
+            let metrics = c41_session.as_mut().expect("C4.1 session metrics");
+            metrics.pcs_serialize_wall_s += serialize_s;
+            metrics.pcs_deserialize_wall_s += deserialize_s;
+            metrics.serialize_wall_s += serialize_s;
+            metrics.deserialize_wall_s += deserialize_s;
+            c41_embed_pcs_encoded = Some(encoded);
+            decoded
+        } else {
+            mproof_e
+        };
         let open_s = to0.elapsed().as_secs_f64();
         let ob = mproof_e.bytes();
         let mbd = mproof_e.byte_breakdown();
@@ -3251,20 +3555,55 @@ fn run_session_impl<'source>(
     assert_eq!(closure_prod_claims, kprod.len(), "prover/verifier Prod batch length mismatch");
     assert_eq!(closure_zero_claims, kzero.len(), "prover/verifier ZeroBatch length mismatch");
     let chi = txp.challenge_fp2();
-    assert_eq!(chi, txv.challenge_fp2());
     let mut domsp = Doms::new(layer_dom_base(255));
     let mut domsv = Doms::new(layer_dom_base(255));
     let md = domsp.take(1);
     assert_eq!(md, domsv.take(1));
+    let prover_closure_started = Instant::now();
     let mask = stream.draw_product_mask(md, prod.len());
-    let k_mask = vc.expand_product_mask_verifier_key(md, kprod.len());
     let pp = prod_batch_prover(&prod, chi, mask, &mut txp);
+    let mut c41_closure_prover_s = prover_closure_started.elapsed().as_secs_f64();
+    assert_eq!(chi, txv.challenge_fp2());
+    let k_mask = vc.expand_product_mask_verifier_key(md, kprod.len());
+    if c41_e2e {
+        txv.append("prod_check_m0_m1", 32);
+    }
     let ok_prod = prod_batch_verify(&kprod, k_mask, delta, chi, &pp);
     let mz = domsp.take(1);
     assert_eq!(mz, domsv.take(1));
     // Without PCS the weight claims stay unresolved — the zero batch is then
     // run over the accumulated rows only (curve session: architecture-only).
-    let ok_zero = zero_batch_exchange(&zero, &kzero, &mut stream, &mut vc, mz, &mut txp);
+    let mut c41_closure = None;
+    let mut c41_zero_verifier = None;
+    let ok_zero = if c41_e2e {
+        let prover_closure_started = Instant::now();
+        let corr = stream.draw_fulls(mz, 1)[0];
+        stream
+            .record_c6_fullfield_plaintexts(mz, &[Fp2::ZERO])
+            .expect("C4.1 ZeroBatch mask correction schedule");
+        let (mask, correction) = fresh_zero_mask(corr, &mut txp);
+        let zero_challenge = txp.challenge_fp2();
+        let tag = zero_batch_prover(&zero, &mask, zero_challenge, &mut txp);
+        c41_closure_prover_s += prover_closure_started.elapsed().as_secs_f64();
+        let k_full = vc.expand_full_verifier_keys(mz, 1)[0];
+        txv.append("mask_correction", 16);
+        let k_mask = zero_mask_key(&vc, k_full, correction);
+        assert_eq!(zero_challenge, txv.challenge_fp2());
+        txv.append("zero_batch_tag", 16);
+        let accepted = zero_batch_verify(&kzero, k_mask, zero_challenge, tag);
+        c41_closure = Some(C41ResponseClosureProof {
+            product: pp,
+            zero_mask_correction: correction,
+            zero_batch_tag: tag,
+        });
+        c41_zero_verifier = Some((k_full, zero_challenge));
+        accepted
+    } else {
+        zero_batch_exchange(&zero, &kzero, &mut stream, &mut vc, mz, &mut txp)
+    };
+    if let Some(metrics) = c41_session.as_mut() {
+        metrics.closure_prover_wall_s = c41_closure_prover_s;
+    }
     let closure_exchange_s = closure_started.elapsed().as_secs_f64();
     let accepted = ok_prod && ok_zero && (!with_pcs || pcs_all_ok);
     assert_eq!(stream.counters, vc.counters, "prover/verifier correlation counters diverged");
@@ -3287,6 +3626,70 @@ fn run_session_impl<'source>(
             layer.k_corr.len() as u64
         })
         .sum();
+    if c41_e2e && with_pcs {
+        let serialize_started = Instant::now();
+        let model = c41_encoded.take().expect("one serialized C4.1 model proof");
+        let weights =
+            c41_weights_pcs_encoded.take().expect("one serialized C4.1 weights PCS opening");
+        let embed = c41_embed_pcs_encoded.take().expect("one serialized C4.1 embed PCS opening");
+        let closure = c41_closure.take().expect("one C4.1 closure").encode().to_vec();
+        let envelope = C41ResponseProofEnvelope::new(model, weights, embed, closure)
+            .expect("construct complete C4.1 proof envelope");
+        let encoded = envelope.encode().expect("serialize complete C4.1 proof envelope");
+        let serialize_wall_s = serialize_started.elapsed().as_secs_f64();
+        let deserialize_started = Instant::now();
+        let decoded =
+            C41ResponseProofEnvelope::decode(&encoded).expect("deserialize complete C4.1 proof");
+        let decoded_model = decode_model_proof_c41_canonical(decoded.model())
+            .expect("deserialize model component from complete C4.1 proof");
+        let decoded_weights = decode_multi_open_canonical(
+            decoded.weights_pcs(),
+            layer_params,
+            out.weight_claims.len(),
+        )
+        .expect("deserialize weights PCS component from complete C4.1 proof");
+        let decoded_embed =
+            decode_multi_open_canonical(decoded.embed_pcs(), embed_params, out.embed_claims.len())
+                .expect("deserialize embed PCS component from complete C4.1 proof");
+        let decoded_closure = C41ResponseClosureProof::decode(decoded.closure())
+            .expect("deserialize closure from complete C4.1 proof");
+        std::hint::black_box((&decoded_weights, &decoded_embed, &decoded_closure));
+        let deserialize_wall_s = deserialize_started.elapsed().as_secs_f64();
+        assert_eq!(decoded_model, proof, "complete C4.1 proof changed its model component");
+        let closure_verify_started = Instant::now();
+        assert!(
+            prod_batch_verify(&kprod, k_mask, delta, chi, &decoded_closure.product),
+            "deserialized C4.1 product closure must verify"
+        );
+        let (zero_full_key, zero_challenge) =
+            c41_zero_verifier.expect("C4.1 zero verifier replay state");
+        let zero_key = zero_mask_key(&vc, zero_full_key, decoded_closure.zero_mask_correction);
+        assert!(
+            zero_batch_verify(&kzero, zero_key, zero_challenge, decoded_closure.zero_batch_tag),
+            "deserialized C4.1 zero closure must verify"
+        );
+        let closure_verify_wall_s = closure_verify_started.elapsed().as_secs_f64();
+        let metrics = c41_session.as_mut().expect("C4.1 session metrics");
+        metrics.serialized_proof_bytes = encoded.len() as u64;
+        metrics.transcript_proof_bytes = txp.total_bytes();
+        metrics.envelope_overhead_bytes = encoded
+            .len()
+            .checked_sub(
+                decoded.model().len()
+                    + decoded.weights_pcs().len()
+                    + decoded.embed_pcs().len()
+                    + decoded.closure().len(),
+            )
+            .expect("C4.1 envelope overhead underflow")
+            as u64;
+        metrics.proof_blake3 = blake3::hash(&encoded).to_hex().to_string();
+        metrics.envelope_serialize_wall_s = serialize_wall_s;
+        metrics.envelope_deserialize_wall_s = deserialize_wall_s;
+        metrics.closure_verify_wall_s = closure_verify_wall_s;
+        metrics.serialize_wall_s += serialize_wall_s;
+        metrics.deserialize_wall_s += deserialize_wall_s;
+        metrics.codec_roundtrip = true;
+    }
     let accelerator_stats = accelerator
         .map(|accel| accel.finish_measurement().expect("finish accelerator measurement"));
     let session_wall_s = session_started.elapsed().as_secs_f64();
@@ -3321,6 +3724,7 @@ fn run_session_impl<'source>(
         public_logits_packed_bytes,
         pcg_allocation_hash_match,
         c41_fold_executed,
+        c41_e2e: c41_session,
         accelerator_stats,
     }
 }
@@ -3351,8 +3755,8 @@ fn main() {
     // merely happen to be clean when the JSON verdict is assembled.
     let git_dirty_before_benchmark = git_worktree_dirty();
     let quick = args.quick;
-    let t1_surface = args.t1_record || args.c4_record;
-    let c3_mode = args.c3 || args.c3_record || t1_surface;
+    let t1_surface = args.t1_record || (args.c4_record && !args.c41_e2e_record);
+    let c3_mode = args.c3 || args.c3_record || t1_surface || args.c41_e2e_record;
     let c3b_reporting = args.c3 || args.c3_record;
     let shared_connection_record =
         args.fase_d_record || args.c3_record || args.t1_record || args.c4_record;
@@ -3453,6 +3857,19 @@ fn main() {
         eprintln!("p6_report: --c41-timing-profile requires the cuda-resident C4 anchor record");
         std::process::exit(2);
     }
+    if args.c41_e2e_record
+        && (!args.c4_record
+            || args.c4_profile != Some(C4ProfileArg::Anchor)
+            || args.accelerator != AcceleratorArg::CudaResident
+            || args.pcg_backend != PcgBackendArg::Real
+            || args.ggm_prg != GgmPrg::Aes128Mmo
+            || args.c41_timing_profile.is_some())
+    {
+        eprintln!(
+            "p6_report: --c41-e2e-record requires the cuda-resident C4 anchor, real/AES PCG, and no synthetic timing profile"
+        );
+        std::process::exit(2);
+    }
     if args.c1_record
         && (quick
             || args.accelerator != AcceleratorArg::Cpu
@@ -3499,15 +3916,18 @@ fn main() {
         );
         std::process::exit(2);
     }
-    let repetitions =
-        args.repetitions.unwrap_or(if quick || args.flip_readiness_record { 1 } else { 3 });
-    let warmup_repetitions =
-        args.warmup_repetitions.unwrap_or(if quick || args.flip_readiness_record { 0 } else { 1 });
+    let repetitions = args
+        .repetitions
+        .unwrap_or(if quick || args.flip_readiness_record || args.c41_e2e_record { 1 } else { 3 });
+    let warmup_repetitions = args
+        .warmup_repetitions
+        .unwrap_or(if quick || args.flip_readiness_record || args.c41_e2e_record { 0 } else { 1 });
     if repetitions == 0 {
         eprintln!("p6_report: --repetitions must be at least 1");
         std::process::exit(2);
     }
     if (args.c3_record || args.t1_record || args.c4_record)
+        && !args.c41_e2e_record
         && (repetitions < 3 || warmup_repetitions < 1)
     {
         eprintln!("p6_report: record mode requires at least one warmup and three repetitions");
@@ -3808,6 +4228,7 @@ fn main() {
                     $seed,
                     $pcg,
                     c41_timing_owner.as_ref(),
+                    args.c41_e2e_record,
                     accelerator.as_mut().expect("resident CUDA backend"),
                 )
             } else {
@@ -4228,6 +4649,7 @@ fn main() {
                     0xA0 + i,
                     SessionPcgBackend::Mock,
                     None,
+                    false,
                     backend,
                 )
             } else {
@@ -4278,6 +4700,7 @@ fn main() {
                     0x40 + i,
                     SessionPcgBackend::Mock,
                     None,
+                    false,
                     backend,
                 );
                 (prefill, response)
@@ -4600,6 +5023,7 @@ fn main() {
                 0x22,
                 SessionPcgBackend::Mock,
                 None,
+                false,
                 accelerator.as_mut().expect("resident CUDA backend"),
             )
         } else {
@@ -5232,59 +5656,65 @@ fn main() {
             && p7b_sync_wall_absolute_gate_pass == Some(true)
             && p7b_h2d_gate_pass == Some(true)
     });
-    let c4 = args.c4_profile.map(|profile| {
-        let expected_pcs_bytes = profile.expected_pcs_bytes();
-        let expected_response_bytes = profile.expected_response_bytes();
-        let observed_soundness_bits =
-            pcs_response_soundness_bits(&[(&layer_params, 1, 96), (&embed_params, 1, 6)]);
-        let exact_communication_pass = rec.pcs_opening_bytes == expected_pcs_bytes
-            && rec.comm_bytes == expected_response_bytes
-            && rec.comm_bytes.checked_sub(rec.pcs_opening_bytes)
-                == Some(C4_NON_PCS_TRANSCRIPT_BYTES);
-        let inherited_t1_surface_pass = t1_surface_g3_pass == Some(true)
-            && t1_auth_correction_bytes == Some(T1_AUTH_CORRECTION_REFERENCE_BYTES)
-            && t1_eq_reducer_transcript_bytes == Some(T1_EQ_REDUCER_TRANSCRIPT_BYTES)
-            && t1_q_bridge_correction_bytes == Some(T1_Q_BRIDGE_CORRECTION_BYTES)
-            && t1_exact_counter_pass == Some(true)
-            && pcg_gate.setup_instances == 1
-            && pcg_gate.setup_wire_count_invariant_pass;
-        let observed_peak_device_bytes = repetitions_rows
-            .iter()
-            .filter_map(|row| row.accelerator_session.as_ref().map(|stats| stats.peak_device_bytes))
-            .max();
-        C4Record {
-            profile: profile.as_str(),
-            design_file: "docs/c4-ligero-inline-rate-design.md",
-            design_sha256: C4_DESIGN_SHA256,
-            resource_admission: c4_resource_admission.clone(),
-            weights: C4GeometryRecord::from_params(&layer_params),
-            embed: C4GeometryRecord::from_params(&embed_params),
-            non_pcs_transcript_bytes: C4_NON_PCS_TRANSCRIPT_BYTES,
-            expected_pcs_bytes,
-            observed_pcs_bytes: rec.pcs_opening_bytes,
-            expected_response_bytes,
-            observed_response_bytes: rec.comm_bytes,
-            response_saving_from_anchor_bytes: if profile == C4ProfileArg::Rate8 {
-                C4_RESPONSE_SAVING_BYTES
-            } else {
-                0
-            },
-            setup_bytes: C4_SETUP_BYTES,
-            first_exchange_bytes: profile.first_exchange_bytes(),
-            encoded_codeword_bytes: profile.codeword_bytes(),
-            device_live_gate_bytes: C4_DEVICE_LIVE_GATE_BYTES,
-            observed_peak_device_bytes,
-            device_live_gate_pass: observed_peak_device_bytes
-                .map(|bytes| bytes < C4_DEVICE_LIVE_GATE_BYTES),
-            soundness_floor_bits: C4_ANCHOR_SOUNDNESS_BITS,
-            observed_soundness_bits,
-            soundness_gate_pass: observed_soundness_bits >= C4_ANCHOR_SOUNDNESS_BITS,
-            exact_communication_pass,
-            inherited_t1_surface_pass,
-            performance_pair_evaluated: false,
-            gate_verdict: false,
-        }
-    });
+    let c4 = (!args.c41_e2e_record)
+        .then(|| {
+            args.c4_profile.map(|profile| {
+                let expected_pcs_bytes = profile.expected_pcs_bytes();
+                let expected_response_bytes = profile.expected_response_bytes();
+                let observed_soundness_bits =
+                    pcs_response_soundness_bits(&[(&layer_params, 1, 96), (&embed_params, 1, 6)]);
+                let exact_communication_pass = rec.pcs_opening_bytes == expected_pcs_bytes
+                    && rec.comm_bytes == expected_response_bytes
+                    && rec.comm_bytes.checked_sub(rec.pcs_opening_bytes)
+                        == Some(C4_NON_PCS_TRANSCRIPT_BYTES);
+                let inherited_t1_surface_pass = t1_surface_g3_pass == Some(true)
+                    && t1_auth_correction_bytes == Some(T1_AUTH_CORRECTION_REFERENCE_BYTES)
+                    && t1_eq_reducer_transcript_bytes == Some(T1_EQ_REDUCER_TRANSCRIPT_BYTES)
+                    && t1_q_bridge_correction_bytes == Some(T1_Q_BRIDGE_CORRECTION_BYTES)
+                    && t1_exact_counter_pass == Some(true)
+                    && pcg_gate.setup_instances == 1
+                    && pcg_gate.setup_wire_count_invariant_pass;
+                let observed_peak_device_bytes = repetitions_rows
+                    .iter()
+                    .filter_map(|row| {
+                        row.accelerator_session.as_ref().map(|stats| stats.peak_device_bytes)
+                    })
+                    .max();
+                C4Record {
+                    profile: profile.as_str(),
+                    design_file: "docs/c4-ligero-inline-rate-design.md",
+                    design_sha256: C4_DESIGN_SHA256,
+                    resource_admission: c4_resource_admission.clone(),
+                    weights: C4GeometryRecord::from_params(&layer_params),
+                    embed: C4GeometryRecord::from_params(&embed_params),
+                    non_pcs_transcript_bytes: C4_NON_PCS_TRANSCRIPT_BYTES,
+                    expected_pcs_bytes,
+                    observed_pcs_bytes: rec.pcs_opening_bytes,
+                    expected_response_bytes,
+                    observed_response_bytes: rec.comm_bytes,
+                    response_saving_from_anchor_bytes: if profile == C4ProfileArg::Rate8 {
+                        C4_RESPONSE_SAVING_BYTES
+                    } else {
+                        0
+                    },
+                    setup_bytes: C4_SETUP_BYTES,
+                    first_exchange_bytes: profile.first_exchange_bytes(),
+                    encoded_codeword_bytes: profile.codeword_bytes(),
+                    device_live_gate_bytes: C4_DEVICE_LIVE_GATE_BYTES,
+                    observed_peak_device_bytes,
+                    device_live_gate_pass: observed_peak_device_bytes
+                        .map(|bytes| bytes < C4_DEVICE_LIVE_GATE_BYTES),
+                    soundness_floor_bits: C4_ANCHOR_SOUNDNESS_BITS,
+                    observed_soundness_bits,
+                    soundness_gate_pass: observed_soundness_bits >= C4_ANCHOR_SOUNDNESS_BITS,
+                    exact_communication_pass,
+                    inherited_t1_surface_pass,
+                    performance_pair_evaluated: false,
+                    gate_verdict: false,
+                }
+            })
+        })
+        .flatten();
     let c41_timing = args.c41_timing_profile.map(|profile| {
         let candidate_setup_slab_bytes =
             (2 * C41_TYPED_POLYNOMIAL_LANES * C41_FOLD_CELLS * std::mem::size_of::<Fp2Repr>())
@@ -5336,8 +5766,7 @@ fn main() {
             response_projection_pass: C41_PROJECTED_RESPONSE_BYTES < C41_RESPONSE_GATE_BYTES,
             conditional_security_bits: C41_CONDITIONAL_SECURITY_BITS,
             security_floor_bits: C41_SECURITY_FLOOR_BITS,
-            conditional_security_gate_pass: C41_CONDITIONAL_SECURITY_BITS
-                > C41_SECURITY_FLOOR_BITS,
+            conditional_security_gate_pass: C41_CONDITIONAL_SECURITY_BITS > C41_SECURITY_FLOOR_BITS,
             device_live_gate_bytes: C41_DEVICE_LIVE_GATE_BYTES,
             observed_peak_device_bytes,
             device_live_gate_pass: observed_peak_device_bytes < C41_DEVICE_LIVE_GATE_BYTES,
@@ -5348,8 +5777,68 @@ fn main() {
             gate_verdict: false,
         }
     });
+    let c41_e2e = rec.c41_e2e.clone().map(|setup| {
+        let proof_bytes = setup.serialized_proof_bytes;
+        let prover_ratio = rec.prove_s / C41_ANCHOR_PROVE_SECONDS;
+        let proof_gate_pass = proof_bytes < C41_RESPONSE_GATE_BYTES;
+        let prover_ratio_gate_pass = prover_ratio <= C41_PROVER_GATE_RATIO;
+        let real_aes_pcg =
+            args.pcg_backend == PcgBackendArg::Real && args.ggm_prg == GgmPrg::Aes128Mmo;
+        let soundness_gate_pass = setup.conditional_soundness_bits > C41_SECURITY_FLOOR_BITS;
+        let weight_zk_gate_pass = setup.conditional_weight_zk_bits > C41_SECURITY_FLOOR_BITS;
+        let single_degree12_close = setup.degree_close == 12;
+        let observed_peak_device_bytes = repetitions_rows
+            .iter()
+            .filter_map(|row| row.accelerator_session.as_ref().map(|stats| stats.peak_device_bytes))
+            .max()
+            .expect("C4.1 E2E record needs measured device peaks");
+        let device_live_gate_pass = observed_peak_device_bytes < C41_DEVICE_LIVE_GATE_BYTES;
+        let prover_accounted_s = rec.prove_s
+            + rec.pcs_rows.iter().map(|row| row.commit_s + row.open_s).sum::<f64>()
+            - setup.pcs_deserialize_wall_s
+            + setup.closure_prover_wall_s
+            + setup.envelope_serialize_wall_s;
+        let verifier_accounted_s = setup.envelope_deserialize_wall_s
+            + rec.verify_s
+            + rec.pcs_rows.iter().map(|row| row.verify_s).sum::<f64>()
+            + setup.closure_verify_wall_s;
+        C41E2eRecord {
+            single_degree12_close,
+            transcript_proof_bytes: setup.transcript_proof_bytes,
+            proof_bytes,
+            proof_gate_bytes: C41_RESPONSE_GATE_BYTES,
+            proof_gate_pass,
+            prover_time_s: rec.prove_s,
+            prover_accounted_s,
+            anchor_prover_time_s: C41_ANCHOR_PROVE_SECONDS,
+            prover_ratio,
+            prover_ratio_gate: C41_PROVER_GATE_RATIO,
+            prover_ratio_gate_pass,
+            device_live_gate_bytes: C41_DEVICE_LIVE_GATE_BYTES,
+            observed_peak_device_bytes,
+            device_live_gate_pass,
+            verifier_core_s: rec.verify_s,
+            verifier_accounted_s,
+            accepted: rec.accepted,
+            real_aes_pcg,
+            security_floor_bits: C41_SECURITY_FLOOR_BITS,
+            soundness_gate_pass,
+            weight_zk_gate_pass,
+            gate_verdict: rec.accepted
+                && proof_gate_pass
+                && prover_ratio_gate_pass
+                && device_live_gate_pass
+                && real_aes_pcg
+                && single_degree12_close
+                && soundness_gate_pass
+                && weight_zk_gate_pass,
+            setup,
+        }
+    });
     let mut report = Report {
-        report_schema_version: if args.c4_record {
+        report_schema_version: if args.c41_e2e_record {
+            12
+        } else if args.c4_record {
             11
         } else if args.t1_record {
             10
@@ -5366,7 +5855,9 @@ fn main() {
         } else {
             6
         },
-        milestone: if args.c4_record {
+        milestone: if args.c41_e2e_record {
+            "C4.1-real-e2e".into()
+        } else if args.c4_record {
             match (args.c4_profile.expect("C4 profile"), args.accelerator) {
                 (C4ProfileArg::Anchor, AcceleratorArg::Cpu) => "C4-G1-anchor",
                 (C4ProfileArg::Rate8, AcceleratorArg::Cpu) => "C4-G1-rate8",
@@ -5490,6 +5981,7 @@ fn main() {
         t1_emult_other_total: t1_surface.then_some(rec.emult_other),
         c4,
         c41_timing,
+        c41_e2e,
         x123_foundation_reference_file: None,
         x123_foundation_reference_digest: None,
         x123_foundation_observed_digest: None,
@@ -5808,6 +6300,8 @@ fn main() {
     assert!(gate_flat, "P6 gate: per-token cost must stay ~flat as the cache grows");
     let mut label = if args.x123_foundation_record {
         "x1-foundation".to_string()
+    } else if args.c41_e2e_record {
+        "c41-real-e2e-a100".to_string()
     } else if let Some(profile) = args.c41_timing_profile {
         format!("c41-fq-hd-tole-timing-{}-a100", profile.as_str())
     } else if args.c4_record {

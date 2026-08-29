@@ -1087,6 +1087,153 @@ impl MultiOpenProof {
     }
 }
 
+/// Canonical C4.1 wire image. Geometry comes from the public PCS statement,
+/// so the encoding carries no redundant vector lengths and is exactly the
+/// byte census returned by [`MultiOpenProof::bytes`].
+pub fn encode_multi_open_canonical(
+    proof: &MultiOpenProof,
+    params: &LigeroParams,
+    n_claims: usize,
+) -> Result<Vec<u8>, String> {
+    params.validate();
+    let msg_len = params.msg_len();
+    if n_claims == 0
+        || proof.u_c.len() != msg_len
+        || proof.u_gs.len() != n_claims
+        || proof.u_gs.iter().any(|values| values.len() != msg_len)
+        || proof.corr_ss.len() != n_claims
+        || proof.columns.len() != params.n_queries
+    {
+        return Err("C4.1 PCS proof geometry differs".to_owned());
+    }
+    let expected = projected_multi_open_bytes(params, n_claims).total;
+    let mut bytes = Vec::with_capacity(
+        usize::try_from(expected).map_err(|_| "C4.1 PCS proof exceeds usize".to_owned())?,
+    );
+    bytes.extend_from_slice(&proof.mask_root);
+    for value in &proof.u_c {
+        encode_wire_fp2(&mut bytes, *value);
+    }
+    for values in &proof.u_gs {
+        for value in values {
+            encode_wire_fp2(&mut bytes, *value);
+        }
+    }
+    for value in &proof.corr_ss {
+        encode_wire_fp2(&mut bytes, *value);
+    }
+    encode_wire_fp2(&mut bytes, proof.mask_corr);
+    encode_wire_fp2(&mut bytes, proof.m_z);
+    for column in &proof.columns {
+        if column.j as usize >= params.code_len()
+            || column.col.len() != params.rows()
+            || column.mask_col.len() != n_claims + 1
+            || column.path.len() != params.code_bits as usize
+            || column.mask_path.len() != params.code_bits as usize
+        {
+            return Err("C4.1 PCS column geometry differs".to_owned());
+        }
+        bytes.extend_from_slice(&column.j.to_le_bytes());
+        for value in &column.col {
+            bytes.extend_from_slice(&value.value().to_le_bytes());
+        }
+        for value in &column.mask_col {
+            encode_wire_fp2(&mut bytes, *value);
+        }
+        for digest in &column.path {
+            bytes.extend_from_slice(digest);
+        }
+        for digest in &column.mask_path {
+            bytes.extend_from_slice(digest);
+        }
+    }
+    if bytes.len() as u64 != expected || proof.bytes() != expected {
+        return Err("C4.1 PCS wire census differs".to_owned());
+    }
+    Ok(bytes)
+}
+
+pub fn decode_multi_open_canonical(
+    bytes: &[u8],
+    params: &LigeroParams,
+    n_claims: usize,
+) -> Result<MultiOpenProof, String> {
+    params.validate();
+    if n_claims == 0 || bytes.len() as u64 != projected_multi_open_bytes(params, n_claims).total {
+        return Err("C4.1 PCS encoded length differs".to_owned());
+    }
+    let mut input = MultiOpenReader { bytes, offset: 0 };
+    let mask_root = input.hash()?;
+    let u_c = (0..params.msg_len()).map(|_| input.fp2()).collect::<Result<Vec<_>, _>>()?;
+    let u_gs = (0..n_claims)
+        .map(|_| (0..params.msg_len()).map(|_| input.fp2()).collect::<Result<Vec<_>, _>>())
+        .collect::<Result<Vec<_>, _>>()?;
+    let corr_ss = (0..n_claims).map(|_| input.fp2()).collect::<Result<Vec<_>, _>>()?;
+    let mask_corr = input.fp2()?;
+    let m_z = input.fp2()?;
+    let mut columns = Vec::with_capacity(params.n_queries);
+    for _ in 0..params.n_queries {
+        let j = input.u32()?;
+        let col = (0..params.rows()).map(|_| input.fp()).collect::<Result<Vec<_>, _>>()?;
+        let mask_col = (0..=n_claims).map(|_| input.fp2()).collect::<Result<Vec<_>, _>>()?;
+        let path = (0..params.code_bits).map(|_| input.hash()).collect::<Result<Vec<_>, _>>()?;
+        let mask_path =
+            (0..params.code_bits).map(|_| input.hash()).collect::<Result<Vec<_>, _>>()?;
+        columns.push(MultiColumnOpening { j, col, mask_col, path, mask_path });
+    }
+    if input.offset != bytes.len() {
+        return Err("trailing C4.1 PCS proof bytes".to_owned());
+    }
+    let proof = MultiOpenProof { mask_root, u_c, u_gs, corr_ss, mask_corr, m_z, columns };
+    if encode_multi_open_canonical(&proof, params, n_claims)?.as_slice() != bytes {
+        return Err("noncanonical C4.1 PCS proof encoding".to_owned());
+    }
+    Ok(proof)
+}
+
+fn encode_wire_fp2(bytes: &mut Vec<u8>, value: Fp2) {
+    bytes.extend_from_slice(&value.c0.value().to_le_bytes());
+    bytes.extend_from_slice(&value.c1.value().to_le_bytes());
+}
+
+struct MultiOpenReader<'a> {
+    bytes: &'a [u8],
+    offset: usize,
+}
+
+impl MultiOpenReader<'_> {
+    fn take(&mut self, len: usize) -> Result<&[u8], String> {
+        let end = self
+            .offset
+            .checked_add(len)
+            .filter(|end| *end <= self.bytes.len())
+            .ok_or_else(|| "truncated C4.1 PCS proof".to_owned())?;
+        let value = &self.bytes[self.offset..end];
+        self.offset = end;
+        Ok(value)
+    }
+
+    fn u32(&mut self) -> Result<u32, String> {
+        Ok(u32::from_le_bytes(self.take(4)?.try_into().expect("fixed u32 width")))
+    }
+
+    fn fp(&mut self) -> Result<Fp, String> {
+        let value = u64::from_le_bytes(self.take(8)?.try_into().expect("fixed Fp width"));
+        if value >= volta_field::P {
+            return Err("noncanonical C4.1 PCS field element".to_owned());
+        }
+        Ok(Fp::new(value))
+    }
+
+    fn fp2(&mut self) -> Result<Fp2, String> {
+        Ok(Fp2::new(self.fp()?, self.fp()?))
+    }
+
+    fn hash(&mut self) -> Result<Hash, String> {
+        Ok(self.take(32)?.try_into().expect("fixed digest width"))
+    }
+}
+
 #[derive(Default, Clone, Copy)]
 pub struct MultiOpenTimings {
     /// Mask rows: draw, encode, Merkle.
@@ -1862,6 +2009,32 @@ pub fn verify_multi_open(
 #[cfg(test)]
 mod cleanup_tests {
     use super::*;
+
+    #[test]
+    fn c41_multi_open_codec_is_exact_and_strict() {
+        let params = LigeroParams { rows: 2, col_bits: 1, pad: 2, code_bits: 2, n_queries: 1 };
+        let proof = MultiOpenProof {
+            mask_root: [1; 32],
+            u_c: vec![Fp2::ONE; params.msg_len()],
+            u_gs: vec![vec![Fp2::ZERO; params.msg_len()]],
+            corr_ss: vec![Fp2::ONE],
+            mask_corr: Fp2::ZERO,
+            m_z: Fp2::ONE,
+            columns: vec![MultiColumnOpening {
+                j: 3,
+                col: vec![Fp::ZERO, Fp::ONE],
+                mask_col: vec![Fp2::ZERO, Fp2::ONE],
+                path: vec![[2; 32], [3; 32]],
+                mask_path: vec![[4; 32], [5; 32]],
+            }],
+        };
+        let bytes = encode_multi_open_canonical(&proof, &params, 1).unwrap();
+        assert_eq!(bytes.len() as u64, proof.bytes());
+        assert_eq!(decode_multi_open_canonical(&bytes, &params, 1).unwrap(), proof);
+        let mut noncanonical = bytes;
+        noncanonical[32..40].copy_from_slice(&volta_field::P.to_le_bytes());
+        assert!(decode_multi_open_canonical(&noncanonical, &params, 1).is_err());
+    }
 
     #[test]
     fn cleanup_step_runs_every_action_and_retains_first_error() {

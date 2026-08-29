@@ -6,11 +6,16 @@
 //! lower coefficients in response slabs; the semantic top coefficient is
 //! reconstructed from the Packed16 correction.
 
-use volta_accel::{AccelError, Backend, DeviceBuffer, Fp2Repr};
+use rayon::prelude::*;
+use std::collections::BTreeMap;
+use volta_accel::{
+    AccelError, Backend, C41PackedProverDeviceLot, C41PackedVerifierDeviceLot, DeviceBuffer,
+    DeviceSlice, Fp2Repr,
+};
 use volta_field::{Fp, Fp2, FpStream, P};
 use volta_mac::{
-    auth_prover, auth_verifier, CorrelationStream, FullCorr, ProverSubAuthed, Transcript,
-    VerifierCtx, VerifierKey,
+    auth_prover, auth_verifier, CorrelationStream, FullCorr, ProverAuthed, ProverSubAuthed,
+    Transcript, VerifierCtx, VerifierKey,
 };
 
 pub const C41_TYPED_POLYNOMIAL_LANES: usize = 12;
@@ -20,12 +25,20 @@ pub const C41_PRG_OUTPUT_BITS: usize = 1 << 20;
 pub const C41_PRG_USABLE_BITS: usize = C41_PRG_OUTPUT_BITS - C41_SEED_BITS;
 pub const C41_BITS_PER_PACKED_CELL: usize = 17;
 pub const C41_DEGREE12_CLOSE_BYTES: usize = 201;
+pub const C41_MAX_BRIDGES_PER_RESPONSE: usize = 1_000_000;
 
 const C41_CLOSE_MAGIC: &[u8; 8] = b"C41D12\0\0";
 const C41_BITNESS_CLOSE_MAGIC: &[u8; 8] = b"C41D02\0\0";
 const C41_SETUP_MAGIC: &[u8; 8] = b"C41TS1\0\0";
 const C41_SETUP_VERSION: u16 = 1;
 const C41_SETUP_ROW_HEADER_BYTES: usize = 9;
+// Session 30 is reserved for C4.1. Keep the top three bits clear: the MAC
+// allocator uses them to distinguish tags, full-field draws and ledger keys.
+const C41_BRIDGE_DOMAIN_BASE: u64 = 0x1E_C4_1000_0000_0000;
+const C41_CLOSE_MASK_DOMAIN: u64 = 0x1E_C4_1FFF_FFFF_FFFF;
+const C41_PACKED_D_LABEL: &str = "c41_packed_d";
+const C41_PACKED_E_LABEL: &str = "c41_packed_e";
+const C41_BRIDGE_LABEL: &str = "c41_bridge_correction";
 // Coefficients, ascending, of the unique Goldilocks polynomial that is zero
 // on 0..=3 and one on 4..=7.
 const MAJ7_COEFFICIENTS: [u64; 8] = [
@@ -62,6 +75,13 @@ impl C41HdProver {
     pub fn public(value: Fp2) -> Self {
         let mut coefficients = [Fp2::ZERO; C41_MAX_DEGREE + 1];
         coefficients[1] = value;
+        Self { coefficients, degree: 1 }
+    }
+
+    pub fn ordinary(value: ProverAuthed) -> Self {
+        let mut coefficients = [Fp2::ZERO; C41_MAX_DEGREE + 1];
+        coefficients[0] = value.m;
+        coefficients[1] = value.x;
         Self { coefficients, degree: 1 }
     }
 
@@ -141,6 +161,10 @@ impl C41HdVerifier {
 
     pub fn public(delta: Fp2, value: Fp2) -> Self {
         Self { key: delta * value, degree: 1 }
+    }
+
+    pub fn ordinary(value: VerifierKey) -> Self {
+        Self { key: value.k, degree: 1 }
     }
 
     pub fn add(self, rhs: Self, delta: Fp2) -> Self {
@@ -909,11 +933,726 @@ pub fn c41_fold_typed_queries_resident(
     backend.c41_fold_typed_queries_device(a, b, query, correction_bitmap, cells)
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C41ResponseProof {
+    pub d: Vec<u16>,
+    pub e: Vec<u8>,
+    pub bridge_corrections: Vec<Fp2>,
+    pub close: C41DegreeCloseProof,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct C41ResponseSegment {
+    offset: usize,
+    rows: usize,
+    cols: usize,
+}
+
+struct C41ProverBridge {
+    entries: Vec<(usize, Fp2)>,
+    ordinary: ProverAuthed,
+}
+
+struct C41VerifierBridge {
+    entries: Vec<(usize, Fp2)>,
+    ordinary: VerifierKey,
+}
+
+fn packed_bits(values: &[u8]) -> Vec<u8> {
+    let mut packed = vec![0u8; values.len().div_ceil(8)];
+    for (index, value) in values.iter().copied().enumerate() {
+        packed[index / 8] |= value << (index % 8);
+    }
+    packed
+}
+
+fn exact_bits(len: usize) -> usize {
+    usize::BITS as usize - len.saturating_sub(1).leading_zeros() as usize
+}
+
+fn matrix_query(rows: usize, cols: usize, point: &[Fp2]) -> Result<Vec<Fp2>, AccelError> {
+    let col_bits = exact_bits(cols);
+    if point.len() != col_bits + exact_bits(rows) {
+        return Err(AccelError::InvalidInput("C4.1 matrix query point mismatch"));
+    }
+    let columns = crate::mle::eq_vec(&point[..col_bits]);
+    let row_weights = crate::mle::eq_vec(&point[col_bits..]);
+    let mut query = Vec::with_capacity(rows * cols);
+    for row_weight in row_weights.into_iter().take(rows) {
+        query.extend(columns.iter().take(cols).map(|column| row_weight * *column));
+    }
+    Ok(query)
+}
+
+pub struct C41ProverResponseState {
+    lot: Option<C41PackedProverDeviceLot>,
+    a_values: Vec<u16>,
+    b_values: Vec<u8>,
+    d: Vec<u16>,
+    e_values: Vec<u8>,
+    segments: BTreeMap<u64, C41ResponseSegment>,
+    cursor: usize,
+    bridge_corrections: Vec<Fp2>,
+    bridges: Vec<C41ProverBridge>,
+}
+
+impl C41ProverResponseState {
+    pub fn new(lot: C41PackedProverDeviceLot, backend: &mut Backend) -> Result<Self, AccelError> {
+        let cells = lot.cells;
+        let a_values = backend.download_device(&lot.a_values, 0, cells)?;
+        let b_values = backend.download_device(&lot.b_values, 0, cells)?;
+        if b_values.iter().any(|value| *value > 1) {
+            return Err(AccelError::InvalidInput("C4.1 lot contains a non-bit mask"));
+        }
+        Ok(Self {
+            lot: Some(lot),
+            a_values,
+            b_values,
+            d: vec![0; cells],
+            e_values: vec![0; cells],
+            segments: BTreeMap::new(),
+            cursor: 0,
+            bridge_corrections: Vec::new(),
+            bridges: Vec::new(),
+        })
+    }
+
+    pub fn cells(&self) -> usize {
+        self.a_values.len()
+    }
+
+    pub fn has_domain(&self, domain: u64) -> bool {
+        self.segments.contains_key(&domain)
+    }
+
+    pub fn register_resident_matrix(
+        &mut self,
+        domain: u64,
+        values: DeviceSlice<'_, i16>,
+        rows: usize,
+        cols: usize,
+        tx: &mut Transcript,
+        backend: &mut Backend,
+    ) -> Result<(), AccelError> {
+        let cells = rows
+            .checked_mul(cols)
+            .ok_or(AccelError::InvalidInput("C4.1 response segment overflows"))?;
+        let end = self
+            .cursor
+            .checked_add(cells)
+            .filter(|end| *end <= self.cells())
+            .ok_or(AccelError::InvalidInput("C4.1 response lot is exhausted"))?;
+        if values.len() < cells || self.segments.contains_key(&domain) {
+            return Err(AccelError::InvalidInput("invalid C4.1 response segment"));
+        }
+        let plaintexts = backend.download_device(values.buffer(), values.offset(), cells)?;
+        for (local, value) in plaintexts.into_iter().enumerate() {
+            let cell = self.cursor + local;
+            let shifted =
+                u32::try_from(i32::from(value) + (1 << 15)).expect("i16 shift is nonnegative");
+            let correction = shifted.wrapping_sub(u32::from(self.a_values[cell])) as u16;
+            let carry = (u32::from(self.a_values[cell]) + u32::from(correction) - shifted) >> 16;
+            self.d[cell] = correction;
+            self.e_values[cell] = self.b_values[cell] ^ carry as u8;
+        }
+        let mut d_bytes = Vec::with_capacity(2 * cells);
+        for value in &self.d[self.cursor..end] {
+            d_bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        tx.append_message(C41_PACKED_D_LABEL, &d_bytes);
+        tx.append_message(C41_PACKED_E_LABEL, &packed_bits(&self.e_values[self.cursor..end]));
+        self.segments.insert(domain, C41ResponseSegment { offset: self.cursor, rows, cols });
+        self.cursor = end;
+        Ok(())
+    }
+
+    fn bridge_entries(
+        &mut self,
+        entries: impl IntoIterator<Item = (usize, Fp2)>,
+        value: Fp2,
+        stream: &mut CorrelationStream,
+        tx: &mut Transcript,
+    ) -> Result<ProverAuthed, AccelError> {
+        let entries = entries.into_iter().collect::<Vec<_>>();
+        if entries.is_empty() || entries.iter().any(|(cell, _)| *cell >= self.cells()) {
+            return Err(AccelError::InvalidInput("C4.1 bridge query escapes its lot"));
+        }
+        let index = self.bridge_corrections.len();
+        if index >= C41_MAX_BRIDGES_PER_RESPONSE {
+            return Err(AccelError::InvalidInput("C4.1 bridge count exceeds soundness cap"));
+        }
+        let domain = C41_BRIDGE_DOMAIN_BASE
+            .checked_add(index as u64)
+            .ok_or(AccelError::InvalidInput("C4.1 bridge domain overflows"))?;
+        let correlation = stream.draw_fulls(domain, 1)[0];
+        stream
+            .record_c6_fullfield_plaintexts(domain, &[value])
+            .map_err(|_| AccelError::InvalidInput("C4.1 bridge correlation schedule differs"))?;
+        let correction = value - correlation.x;
+        tx.append_fp2s(C41_BRIDGE_LABEL, &[correction]);
+        self.bridge_corrections.push(correction);
+        let ordinary = correlation.authenticate(value);
+        self.bridges.push(C41ProverBridge { entries, ordinary });
+        Ok(ordinary)
+    }
+
+    pub fn bridge_matrix(
+        &mut self,
+        domain: u64,
+        rows: usize,
+        cols: usize,
+        point: &[Fp2],
+        value: Fp2,
+        stream: &mut CorrelationStream,
+        tx: &mut Transcript,
+    ) -> Result<ProverAuthed, AccelError> {
+        let segment = *self
+            .segments
+            .get(&domain)
+            .ok_or(AccelError::InvalidInput("unknown C4.1 matrix domain"))?;
+        if segment.rows != rows || segment.cols != cols {
+            return Err(AccelError::InvalidInput("C4.1 matrix segment geometry differs"));
+        }
+        let query = matrix_query(rows, cols, point)?;
+        self.bridge_entries(
+            query.into_iter().enumerate().map(|(index, weight)| (segment.offset + index, weight)),
+            value,
+            stream,
+            tx,
+        )
+    }
+
+    pub fn bridge_cache_columns(
+        &mut self,
+        segments: &[(u64, usize)],
+        weights: &[Fp2],
+        column_offset: usize,
+        width: usize,
+        values: &[Fp2],
+        stream: &mut CorrelationStream,
+        tx: &mut Transcript,
+    ) -> Result<Vec<ProverAuthed>, AccelError> {
+        if values.len() != segments.iter().map(|segment| segment.1).sum::<usize>()
+            || weights.len() < width
+        {
+            return Err(AccelError::InvalidInput("C4.1 cache-column fold geometry differs"));
+        }
+        let mut output = Vec::with_capacity(values.len());
+        let mut value_index = 0;
+        for &(domain, rows) in segments {
+            let segment = *self
+                .segments
+                .get(&domain)
+                .ok_or(AccelError::InvalidInput("unknown C4.1 cache segment"))?;
+            if segment.rows != rows || column_offset + width > segment.cols {
+                return Err(AccelError::InvalidInput("C4.1 cache-column segment differs"));
+            }
+            for row in 0..rows {
+                let entries = (0..width).map(|column| {
+                    (segment.offset + row * segment.cols + column_offset + column, weights[column])
+                });
+                output.push(self.bridge_entries(entries, values[value_index], stream, tx)?);
+                value_index += 1;
+            }
+        }
+        Ok(output)
+    }
+
+    pub fn bridge_cache_rows(
+        &mut self,
+        segments: &[(u64, usize)],
+        weights: &[Fp2],
+        column_offset: usize,
+        width: usize,
+        values: &[Fp2],
+        stream: &mut CorrelationStream,
+        tx: &mut Transcript,
+    ) -> Result<Vec<ProverAuthed>, AccelError> {
+        if values.len() != width || weights.len() < segments.iter().map(|segment| segment.1).sum() {
+            return Err(AccelError::InvalidInput("C4.1 cache-row fold geometry differs"));
+        }
+        let mut output = Vec::with_capacity(width);
+        for column in 0..width {
+            let mut entries = Vec::new();
+            let mut weight_offset = 0;
+            for &(domain, rows) in segments {
+                let segment = *self
+                    .segments
+                    .get(&domain)
+                    .ok_or(AccelError::InvalidInput("unknown C4.1 cache segment"))?;
+                if segment.rows != rows || column_offset + width > segment.cols {
+                    return Err(AccelError::InvalidInput("C4.1 cache-row segment differs"));
+                }
+                entries.extend((0..rows).map(|row| {
+                    (
+                        segment.offset + row * segment.cols + column_offset + column,
+                        weights[weight_offset + row],
+                    )
+                }));
+                weight_offset += rows;
+            }
+            output.push(self.bridge_entries(entries, values[column], stream, tx)?);
+        }
+        Ok(output)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn bridge_cache_matrix(
+        &mut self,
+        segments: &[(u64, usize)],
+        row_weights: &[Fp2],
+        column_weights: &[Fp2],
+        column_offset: usize,
+        value: Fp2,
+        stream: &mut CorrelationStream,
+        tx: &mut Transcript,
+    ) -> Result<ProverAuthed, AccelError> {
+        let rows = segments.iter().map(|segment| segment.1).sum::<usize>();
+        if row_weights.len() < rows || column_weights.is_empty() {
+            return Err(AccelError::InvalidInput("C4.1 cache matrix weights differ"));
+        }
+        let mut entries = Vec::with_capacity(rows * column_weights.len());
+        let mut row_offset = 0;
+        for &(domain, segment_rows) in segments {
+            let segment = *self
+                .segments
+                .get(&domain)
+                .ok_or(AccelError::InvalidInput("unknown C4.1 cache matrix segment"))?;
+            if segment.rows != segment_rows || column_offset + column_weights.len() > segment.cols {
+                return Err(AccelError::InvalidInput("C4.1 cache matrix geometry differs"));
+            }
+            for row in 0..segment_rows {
+                for (column, weight) in column_weights.iter().copied().enumerate() {
+                    entries.push((
+                        segment.offset + row * segment.cols + column_offset + column,
+                        row_weights[row_offset + row] * weight,
+                    ));
+                }
+            }
+            row_offset += segment_rows;
+        }
+        self.bridge_entries(entries, value, stream, tx)
+    }
+
+    pub fn finish(
+        mut self,
+        stream: &mut CorrelationStream,
+        tx: &mut Transcript,
+        backend: &mut Backend,
+    ) -> Result<C41ResponseProof, AccelError> {
+        if self.cursor != self.cells()
+            || self.bridge_corrections.is_empty()
+            || self.bridge_corrections.len() > C41_MAX_BRIDGES_PER_RESPONSE
+            || self.bridges.len() != self.bridge_corrections.len()
+        {
+            return Err(AccelError::InvalidInput("incomplete C4.1 response consumption"));
+        }
+        let e = packed_bits(&self.e_values);
+        let bridge_challenge = tx.challenge_fp2();
+        let mut bridge_power = Fp2::ONE;
+        let cells = self.cells();
+        let query_values = self
+            .bridges
+            .par_iter()
+            .enumerate()
+            .fold(
+                || vec![Fp2::ZERO; cells],
+                |mut local, (index, bridge)| {
+                    let power = fp2_pow(bridge_challenge, index + 1);
+                    for &(cell, coefficient) in &bridge.entries {
+                        local[cell] += power * coefficient;
+                    }
+                    local
+                },
+            )
+            .reduce(
+                || vec![Fp2::ZERO; cells],
+                |mut left, right| {
+                    left.iter_mut().zip(right).for_each(|(left, right)| *left += right);
+                    left
+                },
+            );
+        let mut ordinary = C41HdProver::public(Fp2::ZERO);
+        for bridge in &self.bridges {
+            bridge_power = bridge_power * bridge_challenge;
+            ordinary = ordinary.add(C41HdProver::ordinary(bridge.ordinary).scale(bridge_power));
+        }
+        let query_raw = query_values.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>();
+        let query = backend.upload_new_device(&query_raw)?;
+        let bitmap = backend.upload_new_device(&e)?;
+        let lot = self.lot.as_ref().expect("C4.1 prover lot is live");
+        let folded = c41_fold_typed_queries_resident(
+            backend,
+            &lot.a,
+            &lot.b,
+            &query,
+            &bitmap,
+            self.cells(),
+        )?;
+        let output = backend.download_device(&folded, 0, folded.len())?;
+        backend.free_device(folded)?;
+        backend.free_device(query)?;
+        backend.free_device(bitmap)?;
+        let radix = Fp2::from_base(Fp::new(1 << 16));
+        let mut coefficients = [Fp2::ZERO; C41_MAX_DEGREE + 1];
+        for lane in 0..C41_TYPED_POLYNOMIAL_LANES {
+            coefficients[lane] = Fp2::from(output[lane]) - radix * Fp2::from(output[12 + lane]);
+        }
+        // The claimed top coefficient is already the batched ordinary opening.
+        // The verifier's independently expanded typed key binds that claim to
+        // d/e; recomputing all plaintext cells here would only duplicate work.
+        coefficients[12] = ordinary.value();
+        let typed = C41HdProver { coefficients, degree: 12 };
+        let relation = typed.sub(ordinary);
+        if relation.value() != Fp2::ZERO {
+            return Err(AccelError::InvalidInput("C4.1 folded bridge plaintext differs"));
+        }
+        let masks = stream.draw_fulls(C41_CLOSE_MASK_DOMAIN, 11);
+        tx.append_message("c41_degree_close_frame", &[C41_CLOSE_MAGIC.as_slice(), &[12]].concat());
+        let close =
+            c41_degree_close_prover(relation, &masks, tx).map_err(AccelError::InvalidInput)?;
+        let lot = self.lot.take().expect("C4.1 prover lot is consumed once");
+        backend.free_device(lot.a)?;
+        backend.free_device(lot.b)?;
+        backend.free_device(lot.a_values)?;
+        backend.free_device(lot.b_values)?;
+        Ok(C41ResponseProof { d: self.d, e, bridge_corrections: self.bridge_corrections, close })
+    }
+}
+
+pub struct C41VerifierResponseState {
+    lot: Option<C41PackedVerifierDeviceLot>,
+    a_keys: Vec<Fp2>,
+    b_keys: Vec<Fp2>,
+    d: Vec<u16>,
+    e: Vec<u8>,
+    segments: BTreeMap<u64, C41ResponseSegment>,
+    cursor: usize,
+    bridge_corrections: Vec<Fp2>,
+    bridge_cursor: usize,
+    bridges: Vec<C41VerifierBridge>,
+}
+
+impl C41VerifierResponseState {
+    pub fn new(
+        lot: C41PackedVerifierDeviceLot,
+        proof: &C41ResponseProof,
+        _delta: Fp2,
+        backend: &mut Backend,
+    ) -> Result<Self, AccelError> {
+        let cells = lot.cells;
+        if proof.d.len() != cells
+            || proof.e.len() != cells.div_ceil(8)
+            || (cells % 8 != 0 && proof.e[cells / 8] >> (cells % 8) != 0)
+            || proof.bridge_corrections.is_empty()
+            || proof.bridge_corrections.len() > C41_MAX_BRIDGES_PER_RESPONSE
+        {
+            return Err(AccelError::InvalidInput("invalid C4.1 response proof geometry"));
+        }
+        let a_keys =
+            backend.download_device(&lot.a_keys, 0, cells)?.into_iter().map(Fp2::from).collect();
+        let b_keys =
+            backend.download_device(&lot.b_keys, 0, cells)?.into_iter().map(Fp2::from).collect();
+        Ok(Self {
+            lot: Some(lot),
+            a_keys,
+            b_keys,
+            d: proof.d.clone(),
+            e: proof.e.clone(),
+            segments: BTreeMap::new(),
+            cursor: 0,
+            bridge_corrections: proof.bridge_corrections.clone(),
+            bridge_cursor: 0,
+            bridges: Vec::new(),
+        })
+    }
+
+    pub fn has_domain(&self, domain: u64) -> bool {
+        self.segments.contains_key(&domain)
+    }
+
+    pub fn register_matrix(
+        &mut self,
+        domain: u64,
+        rows: usize,
+        cols: usize,
+        tx: &mut Transcript,
+    ) -> Result<(), AccelError> {
+        let cells = rows
+            .checked_mul(cols)
+            .ok_or(AccelError::InvalidInput("C4.1 verifier segment overflows"))?;
+        let end = self
+            .cursor
+            .checked_add(cells)
+            .filter(|end| *end <= self.d.len())
+            .ok_or(AccelError::InvalidInput("C4.1 verifier lot is exhausted"))?;
+        if self.segments.contains_key(&domain) {
+            return Err(AccelError::InvalidInput("duplicate C4.1 verifier segment"));
+        }
+        let mut d_bytes = Vec::with_capacity(2 * cells);
+        for value in &self.d[self.cursor..end] {
+            d_bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        let e_values =
+            (self.cursor..end).map(|cell| (self.e[cell / 8] >> (cell % 8)) & 1).collect::<Vec<_>>();
+        tx.append_message(C41_PACKED_D_LABEL, &d_bytes);
+        tx.append_message(C41_PACKED_E_LABEL, &packed_bits(&e_values));
+        self.segments.insert(domain, C41ResponseSegment { offset: self.cursor, rows, cols });
+        self.cursor = end;
+        Ok(())
+    }
+
+    fn bridge_entries(
+        &mut self,
+        entries: impl IntoIterator<Item = (usize, Fp2)>,
+        verifier: &mut VerifierCtx,
+        tx: &mut Transcript,
+    ) -> Result<VerifierKey, AccelError> {
+        let entries = entries.into_iter().collect::<Vec<_>>();
+        if entries.is_empty() || entries.iter().any(|(cell, _)| *cell >= self.d.len()) {
+            return Err(AccelError::InvalidInput("C4.1 verifier query escapes its lot"));
+        }
+        let index = self.bridge_cursor;
+        let correction = *self
+            .bridge_corrections
+            .get(index)
+            .ok_or(AccelError::InvalidInput("truncated C4.1 bridge corrections"))?;
+        self.bridge_cursor += 1;
+        let domain = C41_BRIDGE_DOMAIN_BASE
+            .checked_add(index as u64)
+            .ok_or(AccelError::InvalidInput("C4.1 verifier bridge domain overflows"))?;
+        tx.append_fp2s(C41_BRIDGE_LABEL, &[correction]);
+        let ordinary = verifier.correct_full_verifier_key(domain, correction);
+        self.bridges.push(C41VerifierBridge { entries, ordinary });
+        Ok(ordinary)
+    }
+
+    pub fn bridge_matrix(
+        &mut self,
+        domain: u64,
+        rows: usize,
+        cols: usize,
+        point: &[Fp2],
+        verifier: &mut VerifierCtx,
+        tx: &mut Transcript,
+    ) -> Result<VerifierKey, AccelError> {
+        let segment = *self
+            .segments
+            .get(&domain)
+            .ok_or(AccelError::InvalidInput("unknown C4.1 verifier matrix domain"))?;
+        if segment.rows != rows || segment.cols != cols {
+            return Err(AccelError::InvalidInput("C4.1 verifier matrix geometry differs"));
+        }
+        let query = matrix_query(rows, cols, point)?;
+        self.bridge_entries(
+            query.into_iter().enumerate().map(|(index, weight)| (segment.offset + index, weight)),
+            verifier,
+            tx,
+        )
+    }
+
+    pub fn bridge_cache_columns(
+        &mut self,
+        segments: &[(u64, usize)],
+        weights: &[Fp2],
+        column_offset: usize,
+        width: usize,
+        verifier: &mut VerifierCtx,
+        tx: &mut Transcript,
+    ) -> Result<Vec<VerifierKey>, AccelError> {
+        let mut output = Vec::with_capacity(segments.iter().map(|segment| segment.1).sum());
+        for &(domain, rows) in segments {
+            let segment = *self
+                .segments
+                .get(&domain)
+                .ok_or(AccelError::InvalidInput("unknown C4.1 verifier cache segment"))?;
+            if segment.rows != rows || weights.len() < width || column_offset + width > segment.cols
+            {
+                return Err(AccelError::InvalidInput(
+                    "C4.1 verifier cache-column geometry differs",
+                ));
+            }
+            for row in 0..rows {
+                let entries = (0..width).map(|column| {
+                    (segment.offset + row * segment.cols + column_offset + column, weights[column])
+                });
+                output.push(self.bridge_entries(entries, verifier, tx)?);
+            }
+        }
+        Ok(output)
+    }
+
+    pub fn bridge_cache_rows(
+        &mut self,
+        segments: &[(u64, usize)],
+        weights: &[Fp2],
+        column_offset: usize,
+        width: usize,
+        verifier: &mut VerifierCtx,
+        tx: &mut Transcript,
+    ) -> Result<Vec<VerifierKey>, AccelError> {
+        let rows = segments.iter().map(|segment| segment.1).sum::<usize>();
+        if weights.len() < rows {
+            return Err(AccelError::InvalidInput("C4.1 verifier cache-row weights differ"));
+        }
+        let mut output = Vec::with_capacity(width);
+        for column in 0..width {
+            let mut entries = Vec::with_capacity(rows);
+            let mut weight_offset = 0;
+            for &(domain, rows) in segments {
+                let segment = *self
+                    .segments
+                    .get(&domain)
+                    .ok_or(AccelError::InvalidInput("unknown C4.1 verifier cache segment"))?;
+                if segment.rows != rows || column_offset + width > segment.cols {
+                    return Err(AccelError::InvalidInput(
+                        "C4.1 verifier cache-row geometry differs",
+                    ));
+                }
+                entries.extend((0..rows).map(|row| {
+                    (
+                        segment.offset + row * segment.cols + column_offset + column,
+                        weights[weight_offset + row],
+                    )
+                }));
+                weight_offset += rows;
+            }
+            output.push(self.bridge_entries(entries, verifier, tx)?);
+        }
+        Ok(output)
+    }
+
+    pub fn bridge_cache_matrix(
+        &mut self,
+        segments: &[(u64, usize)],
+        row_weights: &[Fp2],
+        column_weights: &[Fp2],
+        column_offset: usize,
+        verifier: &mut VerifierCtx,
+        tx: &mut Transcript,
+    ) -> Result<VerifierKey, AccelError> {
+        let rows = segments.iter().map(|segment| segment.1).sum::<usize>();
+        if row_weights.len() < rows || column_weights.is_empty() {
+            return Err(AccelError::InvalidInput("C4.1 verifier cache matrix weights differ"));
+        }
+        let mut entries = Vec::with_capacity(rows * column_weights.len());
+        let mut row_offset = 0;
+        for &(domain, segment_rows) in segments {
+            let segment = *self
+                .segments
+                .get(&domain)
+                .ok_or(AccelError::InvalidInput("unknown C4.1 verifier cache matrix segment"))?;
+            if segment.rows != segment_rows || column_offset + column_weights.len() > segment.cols {
+                return Err(AccelError::InvalidInput(
+                    "C4.1 verifier cache matrix geometry differs",
+                ));
+            }
+            for row in 0..segment_rows {
+                for (column, weight) in column_weights.iter().copied().enumerate() {
+                    entries.push((
+                        segment.offset + row * segment.cols + column_offset + column,
+                        row_weights[row_offset + row] * weight,
+                    ));
+                }
+            }
+            row_offset += segment_rows;
+        }
+        self.bridge_entries(entries, verifier, tx)
+    }
+
+    pub fn finish(
+        mut self,
+        proof: &C41DegreeCloseProof,
+        verifier: &mut VerifierCtx,
+        tx: &mut Transcript,
+        backend: &mut Backend,
+    ) -> Result<bool, AccelError> {
+        if self.cursor != self.d.len() || self.bridge_cursor != self.bridge_corrections.len() {
+            return Err(AccelError::InvalidInput("incomplete C4.1 verifier consumption"));
+        }
+        let bridge_challenge = tx.challenge_fp2();
+        let mut bridge_power = Fp2::ONE;
+        let cells = self.d.len();
+        let query = self
+            .bridges
+            .par_iter()
+            .enumerate()
+            .fold(
+                || vec![Fp2::ZERO; cells],
+                |mut local, (index, bridge)| {
+                    let power = fp2_pow(bridge_challenge, index + 1);
+                    for &(cell, coefficient) in &bridge.entries {
+                        local[cell] += power * coefficient;
+                    }
+                    local
+                },
+            )
+            .reduce(
+                || vec![Fp2::ZERO; cells],
+                |mut left, right| {
+                    left.iter_mut().zip(right).for_each(|(left, right)| *left += right);
+                    left
+                },
+            );
+        let mut ordinary = C41HdVerifier::public(verifier.delta, Fp2::ZERO);
+        for bridge in &self.bridges {
+            bridge_power = bridge_power * bridge_challenge;
+            ordinary = ordinary
+                .add(C41HdVerifier::ordinary(bridge.ordinary).scale(bridge_power), verifier.delta);
+        }
+        let (a_key, b_key) = (0..query.len())
+            .into_par_iter()
+            .fold(
+                || (Fp2::ZERO, Fp2::ZERO),
+                |(a, b), cell| {
+                    let weight = query[cell];
+                    let signed = if (self.e[cell / 8] >> (cell % 8)) & 1 == 0 {
+                        weight
+                    } else {
+                        Fp2::ZERO - weight
+                    };
+                    (a + weight * self.a_keys[cell], b + signed * self.b_keys[cell])
+                },
+            )
+            .reduce(|| (Fp2::ZERO, Fp2::ZERO), |left, right| (left.0 + right.0, left.1 + right.1));
+        let public = query
+            .par_iter()
+            .enumerate()
+            .map(|(cell, weight)| {
+                let e = (self.e[cell / 8] >> (cell % 8)) & 1;
+                let correction = i64::from(self.d[cell]) - (1 << 15) - (i64::from(e) << 16);
+                weight.mul_base(Fp::from_i64(correction))
+            })
+            .reduce(|| Fp2::ZERO, |left, right| left + right);
+        let delta = verifier.delta;
+        let typed = C41HdVerifier {
+            key: a_key - Fp2::from_base(Fp::new(1 << 16)) * b_key + fp2_pow(delta, 12) * public,
+            degree: 12,
+        };
+        let relation = typed.sub(ordinary, delta);
+        let mask_keys = verifier.expand_full_verifier_keys(C41_CLOSE_MASK_DOMAIN, 11);
+        tx.append_message("c41_degree_close_frame", &[C41_CLOSE_MAGIC.as_slice(), &[12]].concat());
+        let accepted = c41_degree_close_verify(relation, &mask_keys, delta, proof, tx);
+        let lot = self.lot.take().expect("C4.1 verifier lot is consumed once");
+        backend.free_device(lot.a_keys)?;
+        backend.free_device(lot.b_keys)?;
+        Ok(accepted)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use volta_field::Fp;
-    use volta_mac::{auth_prover, auth_verifier, CorrelationStream, VerifierCtx};
+    use volta_mac::{
+        auth_prover, auth_verifier, CorrelationStream, VerifierCtx, RESERVED_DOMAIN_BITS,
+    };
+
+    #[test]
+    fn c41_domains_leave_mac_allocator_bits_clear() {
+        assert_eq!(C41_BRIDGE_DOMAIN_BASE & RESERVED_DOMAIN_BITS, 0);
+        assert_eq!(C41_CLOSE_MASK_DOMAIN & RESERVED_DOMAIN_BITS, 0);
+    }
 
     #[test]
     fn folded_queries_match_direct_signed_sums_and_reject_non_bits() {

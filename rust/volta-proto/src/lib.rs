@@ -5,6 +5,8 @@
 
 pub mod block_proof;
 pub(crate) mod boundary_thinning;
+pub mod c41_folded_tole;
+pub mod c41_response_envelope;
 pub mod c6;
 pub mod c61_certificate;
 pub mod c61_public_instance;
@@ -23,7 +25,6 @@ pub mod c6_response_envelope;
 pub mod c6_response_fixture;
 pub mod c6_source;
 pub mod c6_subfield;
-pub mod c41_folded_tole;
 pub(crate) mod ffn_schedule;
 pub mod gemm_proof;
 pub mod hadamard;
@@ -49,6 +50,14 @@ pub use block_proof::{
     prove_layer_phase1_with_wires, prove_layer_phase2, verify_layer_phase1, verify_layer_phase2,
     AttnBlockProof, AttnWires, BlockCtxP, BlockCtxV, FfnBlockProof, InstanceLookups, LayerBytes,
     LayerOut, LayerOutV, LayerProof, LnChainProof, TableBankP, TableBankV, TableCloseProof,
+};
+pub use c41_folded_tole::{
+    c41_fold_typed_queries_reference, c41_fold_typed_queries_resident, C41FoldedQueries,
+    C41_TYPED_POLYNOMIAL_LANES,
+};
+pub use c41_response_envelope::{
+    C41ResponseClosureProof, C41ResponseEnvelopeError, C41ResponseProofEnvelope,
+    C41_RESPONSE_ENVELOPE_MAX_BYTES,
 };
 pub use c6::{
     C6CacheHead, C6ClientAttempt, C6ClientState, C6ClientStore, C6CorrelationRange,
@@ -239,10 +248,6 @@ pub use c6_source::{
 pub use c6_subfield::{
     replay_c6_subfield_coordinate, C6PairedSubfieldWitness, C6SubfieldDigest, C6SubfieldError,
 };
-pub use c41_folded_tole::{
-    c41_fold_typed_queries_reference, c41_fold_typed_queries_resident, C41FoldedQueries,
-    C41_TYPED_POLYNOMIAL_LANES,
-};
 pub use gemm_proof::{
     auth_phase, prove_gemm_blind, prove_gemm_blind_committed, verify_gemm_blind,
     verify_gemm_blind_committed, GemmBlindProof, ProveTimings, WeightClaimP,
@@ -257,9 +262,10 @@ pub use hadamard::{hadamard_prove, hadamard_verify, HadamardDoms, HadamardProof}
 pub use model_proof::{
     prove_model, prove_model_with_backend, prove_response, prove_response_private_logits,
     prove_response_private_logits_with_backend, prove_response_resident,
-    prove_response_resident_private_logits, prove_response_with_backend, verify_model,
-    verify_response, verify_response_private_logits, ChunkPub, ChunkRef, EmbedProof, FinalLnProof,
-    ModelOut, ModelOutV, ModelProof, PrivateChunkPub, ResidentChunkRef, SeamProof,
+    prove_response_resident_private_logits, prove_response_resident_private_logits_c41,
+    prove_response_with_backend, verify_model, verify_response, verify_response_private_logits,
+    verify_response_private_logits_c41, ChunkPub, ChunkRef, EmbedProof, FinalLnProof, ModelOut,
+    ModelOutV, ModelProof, PrivateChunkPub, ResidentChunkRef, SeamProof,
 };
 #[cfg(feature = "c6-trace")]
 pub use model_proof::{
@@ -268,7 +274,8 @@ pub use model_proof::{
     C6GrandResidualVerifierRoots,
 };
 pub use model_proof_codec::{
-    c62_retained_response_byte_census, decode_model_proof_canonical, encode_model_proof_canonical,
+    c62_retained_response_byte_census, decode_model_proof_c41_canonical,
+    decode_model_proof_canonical, encode_model_proof_c41_canonical, encode_model_proof_canonical,
     C62RetainedResponseByteCensus, C6RetainedResponseProof, ModelProofCodecError,
     C62_RETAINED_RESPONSE_BYTES, C6_RETAINED_RESPONSE_BYTES,
 };

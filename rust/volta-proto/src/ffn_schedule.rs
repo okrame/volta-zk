@@ -1099,6 +1099,7 @@ struct VerifyPending {
     doms: Doms,
     dom_k: u64,
     dom_v: u64,
+    dom_fbo: u64,
     xin_keys: Vec<VerifierKey>,
     k_keys: Vec<VerifierKey>,
     v_keys: Vec<VerifierKey>,
@@ -1179,6 +1180,7 @@ pub(crate) fn verify_layers_scheduled(
             doms,
             dom_k,
             dom_v,
+            dom_fbo,
             xin_keys,
             k_keys,
             v_keys,
@@ -1205,6 +1207,7 @@ pub(crate) fn verify_layers_scheduled(
             doms: cx.doms,
             dom_k,
             dom_v,
+            dom_fbo,
             xin_keys,
             k_keys,
             v_keys,
@@ -1272,14 +1275,22 @@ pub(crate) fn verify_layers_scheduled(
         )?;
         let mut k_segments: Vec<_> = prefixes[layer]
             .iter()
-            .map(|segment| CacheSegK { rows: segment.rows, keys: segment.k_keys })
+            .map(|segment| CacheSegK {
+                dom: segment.dom_k,
+                rows: segment.rows,
+                keys: segment.k_keys,
+            })
             .collect();
-        k_segments.push(CacheSegK { rows: t, keys: &state.k_keys });
+        k_segments.push(CacheSegK { dom: state.dom_k, rows: t, keys: &state.k_keys });
         let mut v_segments: Vec<_> = prefixes[layer]
             .iter()
-            .map(|segment| CacheSegK { rows: segment.rows, keys: segment.v_keys })
+            .map(|segment| CacheSegK {
+                dom: segment.dom_v,
+                rows: segment.rows,
+                keys: segment.v_keys,
+            })
             .collect();
-        v_segments.push(CacheSegK { rows: t, keys: &state.v_keys });
+        v_segments.push(CacheSegK { dom: state.dom_v, rows: t, keys: &state.v_keys });
         let mut attn_keys = verify_attn_block(
             plan.shape,
             &weights.ln1_gain,
@@ -1310,6 +1321,7 @@ pub(crate) fn verify_layers_scheduled(
                 fbo_keys: state.fbo_keys,
                 dom_k: state.dom_k,
                 dom_v: state.dom_v,
+                dom_fbo: state.dom_fbo,
             },
             prod: cx.kprod,
             zero: cx.kzero,
@@ -1462,6 +1474,7 @@ fn verify_layers_thinned_scheduled_impl(
                 doms,
                 dom_k,
                 dom_v,
+                dom_fbo,
                 xin_keys,
                 k_keys,
                 v_keys,
@@ -1485,6 +1498,7 @@ fn verify_layers_thinned_scheduled_impl(
                 &mut cx,
                 downstream.as_ref(),
                 (wave == 3).then_some(fbo_keys.as_slice()),
+                (wave == 3).then_some(dom_fbo),
                 Some(&model.layers[layer].1),
             )?;
             let site_id = plan.site(layer).ok()?;
@@ -1500,6 +1514,7 @@ fn verify_layers_thinned_scheduled_impl(
                     doms: cx.doms,
                     dom_k,
                     dom_v,
+                    dom_fbo,
                     xin_keys,
                     k_keys,
                     v_keys,
@@ -1583,14 +1598,22 @@ fn verify_layers_thinned_scheduled_impl(
                 ThinnedVerifierCacheMode::Legacy { prefixes, .. } => {
                     let mut k_segments: Vec<_> = prefixes[layer]
                         .iter()
-                        .map(|segment| CacheSegK { rows: segment.rows, keys: segment.k_keys })
+                        .map(|segment| CacheSegK {
+                            dom: segment.dom_k,
+                            rows: segment.rows,
+                            keys: segment.k_keys,
+                        })
                         .collect();
-                    k_segments.push(CacheSegK { rows: t, keys: &state.k_keys });
+                    k_segments.push(CacheSegK { dom: state.dom_k, rows: t, keys: &state.k_keys });
                     let mut v_segments: Vec<_> = prefixes[layer]
                         .iter()
-                        .map(|segment| CacheSegK { rows: segment.rows, keys: segment.v_keys })
+                        .map(|segment| CacheSegK {
+                            dom: segment.dom_v,
+                            rows: segment.rows,
+                            keys: segment.v_keys,
+                        })
                         .collect();
-                    v_segments.push(CacheSegK { rows: t, keys: &state.v_keys });
+                    v_segments.push(CacheSegK { dom: state.dom_v, rows: t, keys: &state.v_keys });
                     verify_attn_block_thinned(
                         plan.shape,
                         &weights.ln1_gain,
@@ -1724,6 +1747,7 @@ fn verify_layers_thinned_scheduled_impl(
                     fbo_keys: state.fbo_keys,
                     dom_k: state.dom_k,
                     dom_v: state.dom_v,
+                    dom_fbo: state.dom_fbo,
                 },
                 prod: cx.kprod,
                 zero: cx.kzero,

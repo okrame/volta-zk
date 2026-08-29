@@ -59,12 +59,18 @@ BASE_SOUNDNESS_BITS = 78.80929487391641
 NEW_ERROR_BUDGET_BITS = -math.log2(2**-78 - 2**-BASE_SOUNDNESS_BITS)
 GOLDILOCKS = 2**64 - 2**32 + 1
 DEGREE_12_CHECK_BITS = 2 * math.log2(GOLDILOCKS) - math.log2(12)
-FIVE_CLOSE_CHECK_BITS = DEGREE_12_CHECK_BITS - math.log2(5)
+FIVE_RESPONSE_CLOSE_AND_SETUP_ROOTS = 5 * 12 + 2
+FIVE_CLOSE_CHECK_BITS = 2 * math.log2(GOLDILOCKS) - math.log2(
+    FIVE_RESPONSE_CLOSE_AND_SETUP_ROOTS
+)
+BRIDGE_BATCH_CAP = 1_000_000
+FIVE_BRIDGE_BATCH_BITS = 2 * math.log2(GOLDILOCKS) - math.log2(5 * BRIDGE_BATCH_CAP)
 PRG_CHALLENGE_TARGET_BITS = 128
 CONDITIONAL_MULTI_INSTANCE_BITS = PRG_CHALLENGE_TARGET_BITS - math.log2(EXPANSIONS)
 COMPOSED_SECURITY_BITS = -math.log2(
     2**-BASE_SOUNDNESS_BITS
     + 2**-FIVE_CLOSE_CHECK_BITS
+    + 2**-FIVE_BRIDGE_BATCH_BITS
     + 2**-CONDITIONAL_MULTI_INSTANCE_BITS
 )
 
@@ -230,12 +236,22 @@ SOURCE_PINS = {
         "self.claim = self.claim.add(v.scale(mu));",
         ".sub(self.claim);",
     ),
+    "rust/volta-proto/src/c41_folded_tole.rs": (
+        "self.bridges.push(C41ProverBridge { entries, ordinary });",
+        "let bridge_challenge = tx.challenge_fp2();",
+        "bridge_power = bridge_power * bridge_challenge;",
+        "pub const C41_MAX_BRIDGES_PER_RESPONSE: usize = 1_000_000;",
+        "0x1E_C4_1000_0000_0000",
+    ),
 }
 
 for relative, pins in SOURCE_PINS.items():
     source = (REPO / relative).read_text()
     for pin in pins:
         assert pin in source, f"C4.1 source-graph pin changed: {relative}: {pin}"
+
+c41_source = (REPO / "rust/volta-proto/src/c41_folded_tole.rs").read_text()
+assert c41_source.count("let bridge_challenge = tx.challenge_fp2();") == 2
 
 assert SETUP_CAP == 115_114_395
 assert SETUP_CAP - C4_SETUP == 76_742_930
@@ -260,8 +276,10 @@ assert MEASURED_CANDIDATE_PEAK_BYTES < DEVICE_CAP
 assert NEW_ERROR_BUDGET_BITS > 79.21
 assert DEGREE_12_CHECK_BITS > 124.41
 assert FIVE_CLOSE_CHECK_BITS > NEW_ERROR_BUDGET_BITS
+assert FIVE_BRIDGE_BATCH_BITS > NEW_ERROR_BUDGET_BITS
 assert CONDITIONAL_MULTI_INSTANCE_BITS > 96
 assert COMPOSED_SECURITY_BITS > 78
+assert math.isclose(COMPOSED_SECURITY_BITS, 78.80929486268863)
 assert COMMON_BIAS_NO_SELECTION[1:] == (338, 1_362)
 assert 364.88 < COMMON_BIAS_NO_SELECTION[0] < 364.90
 assert COMMON_BIAS_ONE_SELECTION[1:] == (258, 187_539)
@@ -296,6 +314,8 @@ print(
         "new_error_budget_bits": NEW_ERROR_BUDGET_BITS,
         "degree_12_check_bits": DEGREE_12_CHECK_BITS,
         "five_close_union_bits": FIVE_CLOSE_CHECK_BITS,
+        "five_bridge_batch_cap": BRIDGE_BATCH_CAP,
+        "five_bridge_batch_union_bits": FIVE_BRIDGE_BATCH_BITS,
         "conditional_128_bit_prg_multi_instance_bits": CONDITIONAL_MULTI_INSTANCE_BITS,
         "conditional_composed_security_bits": COMPOSED_SECURITY_BITS,
         "common_bias_attack_bits_single_instance": COMMON_BIAS_ONE_SELECTION[0],

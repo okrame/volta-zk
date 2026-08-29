@@ -47,19 +47,23 @@ use crate::block_proof::{
     add_range_mult, auth_ln_vecs_p, auth_ln_vecs_resident_p, auth_matrix_rows_p,
     auth_matrix_rows_resident_p, auth_matrix_rows_v, bind_range_site_resident, expand_ln_vecs_k,
     layer_content_keys, layer_dom_base, ln_acc_recompute, open_matrix_k, open_matrix_p,
-    open_matrix_resident_p, open_matrix_weighted_rows_k, open_matrix_weighted_rows_p,
-    open_matrix_weighted_rows_resident_p, prove_layer_phase1, prove_layer_phase1_band,
-    prove_layer_phase1_band_reusing_xin, prove_layer_phase1_band_thinned,
+    open_matrix_resident_c41_p, open_matrix_resident_p, open_matrix_weighted_rows_k,
+    open_matrix_weighted_rows_p, open_matrix_weighted_rows_resident_p, prove_layer_phase1,
+    prove_layer_phase1_band, prove_layer_phase1_band_reusing_xin, prove_layer_phase1_band_thinned,
     prove_layer_phase1_resident_thinned, prove_layer_phase1_reusing_xin,
     prove_layer_phase1_thinned, prove_ln_chain, prove_ln_chain_resident, prove_range_site,
     prove_range_site_resident, public_window_fold_resident, range_keys,
-    verify_layer_phase1_band_thinned, verify_ln_chain, verify_range_site, BandShape, BlockCtxP,
-    BlockCtxV, InstanceLookups, KvPrefixK, KvPrefixP, LayerBytes, LayerP1, LayerProof, LayerV1,
-    LnChainProof, ResidentKvPrefixP, ResidentLayerP1, ResidentLnVecsP, TableBankP, TableBankV,
-    TableCloseProof,
+    verify_layer_phase1_band_thinned, verify_ln_chain, verify_ln_chain_c41, verify_range_site,
+    BandShape, BlockCtxP, BlockCtxV, InstanceLookups, KvPrefixK, KvPrefixP, LayerBytes, LayerP1,
+    LayerProof, LayerV1, LnChainProof, ResidentKvPrefixP, ResidentLayerP1, ResidentLnVecsP,
+    TableBankP, TableBankV, TableCloseProof,
 };
 #[cfg(feature = "c6-trace")]
 use crate::block_proof::{verify_layer_phase1_band_thinned_c6, C6KvPrefixSource};
+use crate::c41_folded_tole::{
+    C41ProverResponseState, C41ResponseProof, C41VerifierResponseState,
+    C41_MAX_BRIDGES_PER_RESPONSE,
+};
 #[cfg(feature = "c6-trace")]
 use crate::c6_cache_fold::{
     C6CacheFoldAppendSourceLayer, C6CacheFoldAppendSourcePlan, C6CacheFoldKind,
@@ -88,7 +92,9 @@ use crate::private_argmax::{
 use crate::sumcheck_blind::{blind_prove, blind_prove_resident, blind_verify, BlindSumcheckProof};
 use crate::thaler::{fold_w, pad_bits};
 use rayon::prelude::*;
+use std::cell::RefCell;
 use std::collections::BTreeSet;
+use std::rc::Rc;
 use volta_accel::{
     AccelError, Backend, BackendKind, DeviceBuffer, DeviceLookupColumns, DeviceSlice, Fp2Repr,
     MatrixFoldAxis,
@@ -398,6 +404,8 @@ pub struct ModelProof {
     pub tables: Vec<TableCloseProof>,
     /// C3 private-logit greedy decoding. Historical proof modes keep `None`.
     pub private_argmax: Option<PrivateArgmaxProof>,
+    /// C4.1 Packed16 response payload and its single degree-12 close.
+    pub c41: Option<C41ResponseProof>,
 }
 
 pub struct ModelOut {
@@ -1417,6 +1425,7 @@ pub fn prove_response_resident<'chunk, 'source>(
         tx,
         backend,
         false,
+        None,
     )
 }
 
@@ -1443,7 +1452,42 @@ pub fn prove_response_resident_private_logits<'chunk, 'source>(
         tx,
         backend,
         true,
+        None,
     )
+}
+
+#[doc(hidden)]
+#[allow(clippy::too_many_arguments)]
+pub fn prove_response_resident_private_logits_c41<'chunk, 'source>(
+    model: &Gpt2Model,
+    resident_model: &ResidentGpt2Model,
+    wit: &ResidentModelWitness,
+    chunks: &[ResidentChunkRef<'chunk, 'source>],
+    error: DeviceSlice<'_, u32>,
+    state: C41ProverResponseState,
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+    backend: &mut Backend,
+) -> Result<(ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>), AccelError> {
+    let state = Rc::new(RefCell::new(state));
+    let (mut proof, out, prod, zero) = prove_response_resident_impl(
+        model,
+        resident_model,
+        wit,
+        &[],
+        chunks,
+        error,
+        stream,
+        tx,
+        backend,
+        true,
+        Some(state.clone()),
+    )?;
+    let state = Rc::try_unwrap(state)
+        .map_err(|_| AccelError::InvalidInput("C4.1 prover state is still borrowed"))?
+        .into_inner();
+    proof.c41 = Some(state.finish(stream, tx, backend)?);
+    Ok((proof, out, prod, zero))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1458,6 +1502,7 @@ fn prove_response_resident_impl<'chunk, 'source>(
     tx: &mut Transcript,
     backend: &mut Backend,
     private_logits: bool,
+    c41: Option<Rc<RefCell<C41ProverResponseState>>>,
 ) -> Result<(ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>), AccelError> {
     if backend.kind() != BackendKind::CudaResident {
         return Err(AccelError::InvalidInput(
@@ -1532,6 +1577,7 @@ fn prove_response_resident_impl<'chunk, 'source>(
     };
 
     let mut bank = TableBankP::new();
+    bank.c41 = c41;
     let mut layer_p1s: Vec<ResidentLayerP1> = Vec::with_capacity(L);
     for layer in 0..L {
         let luts = luts_for(layer);
@@ -2002,14 +2048,13 @@ fn prove_response_resident_impl<'chunk, 'source>(
             )?;
             let mut point_last = rho_row;
             point_last.extend(bit_coords(t - 1, rb_t));
-            let last_open = open_matrix_resident_p(
-                cx.stream,
+            let last_open = open_matrix_resident_c41_p(
+                &mut cx,
                 boundary_doms[L - 1].1,
                 wit.layers[L - 1].i16(LayerI16Field::FfnBlockOut),
                 t,
                 D,
                 &point_last,
-                cx.backend.as_deref_mut().unwrap(),
             )?;
             cx.zero.push(row_open.sub(last_open));
             let rho_final: Vec<Fp2> = (0..d_cb).map(|_| cx.tx.challenge_fp2()).collect();
@@ -2687,6 +2732,7 @@ fn prove_response_resident_impl<'chunk, 'source>(
             chunks: chunk_proofs,
             tables,
             private_argmax,
+            c41: None,
         },
         ModelOut {
             weight_claims,
@@ -4475,6 +4521,7 @@ fn prove_response_impl(
         chunks: chunk_proofs,
         tables,
         private_argmax,
+        c41: None,
     };
     let out = ModelOut {
         weight_claims,
@@ -4515,6 +4562,7 @@ fn preflight_layer_proof_shape(
     proof: &LayerProof,
     softmax_row_shift: bool,
     layer: usize,
+    c41: bool,
 ) -> Option<()> {
     if layer >= L {
         return None;
@@ -4529,11 +4577,15 @@ fn preflight_layer_proof_shape(
     };
     if (layer == 0) != (proof.xin_corr.len() == boundary_len)
         || (layer != 0 && !proof.xin_corr.is_empty())
-        || proof.k_corr.len() != boundary_len
-        || proof.v_corr.len() != boundary_len
+        || proof.k_corr.len() != if c41 { 0 } else { boundary_len }
+        || proof.v_corr.len() != if c41 { 0 } else { boundary_len }
         || !proof.abo_corr.is_empty()
-        || (group_pos == 3) != (proof.fbo_corr.len() == boundary_len)
-        || (group_pos != 3 && !proof.fbo_corr.is_empty())
+        || if c41 {
+            !proof.fbo_corr.is_empty()
+        } else {
+            (group_pos == 3) != (proof.fbo_corr.len() == boundary_len)
+                || (group_pos != 3 && !proof.fbo_corr.is_empty())
+        }
         || (group_pos != 3) != proof.ffn.t1_q_corr.is_some()
         || !proof.ffn.t1_abo_reduce.as_ref().is_some_and(reducer_shape)
         || proof.attn.t1_q_corr.is_none()
@@ -4737,6 +4789,7 @@ fn preflight_verify_response_public(
         model.p.lut.shift_qkv,
     ];
     let base_t0 = continuation.map_or(0, |profile| profile.base_t0);
+    let c41 = proof.c41.is_some();
     let base_end = base_t0.checked_add(t)?;
     if t < 2
         || t > NPOS
@@ -4752,6 +4805,7 @@ fn preflight_verify_response_public(
         || proof.seams.len() != L - 1
         || proof.chunks.len() != chunks.len()
         || proof.private_argmax.is_some() != private_logits
+        || (c41 && (!private_logits || continuation.is_some()))
         || !(1..=16).contains(&model.p.shift_embed)
         || global_shifts.into_iter().any(|shift| shift > 32)
         || model.p.shift_attn_proj.iter().copied().any(|shift| shift > 32)
@@ -4782,6 +4836,7 @@ fn preflight_verify_response_public(
             layer_proof,
             model.p.lut.softmax_row_shift,
             layer,
+            c41,
         )?;
     }
 
@@ -4817,6 +4872,7 @@ fn preflight_verify_response_public(
                 layer_proof,
                 model.p.lut.softmax_row_shift,
                 layer,
+                c41,
             )?;
         }
 
@@ -4829,6 +4885,20 @@ fn preflight_verify_response_public(
             private_argmax_continuation_layout(base_t0, t, chunks)?;
         } else {
             private_argmax_public_layout(t, chunks)?;
+        }
+    }
+
+    if let Some(c41_proof) = &proof.c41 {
+        let response_rows = chunks.iter().try_fold(t, |rows, chunk| rows.checked_add(chunk.q))?;
+        let cells = response_rows.checked_mul((2 * L + 3) * D)?;
+        if c41_proof.d.len() != cells
+            || c41_proof.e.len() != cells.div_ceil(8)
+            || c41_proof.bridge_corrections.is_empty()
+            || c41_proof.bridge_corrections.len() > C41_MAX_BRIDGES_PER_RESPONSE
+            || c41_proof.close.degree != 12
+            || c41_proof.close.coefficients.len() != 12
+        {
+            return None;
         }
     }
 
@@ -4864,7 +4934,19 @@ pub fn verify_response(
 ) -> Option<(ModelOutV, ProdKeyTriples, Vec<VerifierKey>)> {
     let model = Gpt2VerifierView::full(model);
     let mut cache_mode = ResponseVerifierCacheMode::Legacy(std::marker::PhantomData);
-    verify_response_impl(&model, t, logits, chunks, None, proof, vc, tx, false, &mut cache_mode)
+    verify_response_impl(
+        &model,
+        t,
+        logits,
+        chunks,
+        None,
+        proof,
+        vc,
+        tx,
+        false,
+        None,
+        &mut cache_mode,
+    )
 }
 
 pub fn verify_response_private_logits(
@@ -4879,7 +4961,43 @@ pub fn verify_response_private_logits(
     let views: Vec<ChunkPub<'_>> =
         chunks.iter().map(|chunk| ChunkPub { q: chunk.q, logits: &[], seq: chunk.seq }).collect();
     let mut cache_mode = ResponseVerifierCacheMode::Legacy(std::marker::PhantomData);
-    verify_response_impl(&model, t, &[], &views, None, proof, vc, tx, true, &mut cache_mode)
+    verify_response_impl(&model, t, &[], &views, None, proof, vc, tx, true, None, &mut cache_mode)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn verify_response_private_logits_c41(
+    model: &Gpt2Model,
+    t: usize,
+    chunks: &[PrivateChunkPub<'_>],
+    proof: &ModelProof,
+    state: C41VerifierResponseState,
+    vc: &mut VerifierCtx,
+    tx: &mut Transcript,
+    backend: &mut Backend,
+) -> Option<(ModelOutV, ProdKeyTriples, Vec<VerifierKey>)> {
+    let model = Gpt2VerifierView::full(model);
+    let views: Vec<ChunkPub<'_>> =
+        chunks.iter().map(|chunk| ChunkPub { q: chunk.q, logits: &[], seq: chunk.seq }).collect();
+    let state = Rc::new(RefCell::new(state));
+    let mut cache_mode = ResponseVerifierCacheMode::Legacy(std::marker::PhantomData);
+    let result = verify_response_impl(
+        &model,
+        t,
+        &[],
+        &views,
+        None,
+        proof,
+        vc,
+        tx,
+        true,
+        Some(state.clone()),
+        &mut cache_mode,
+    )?;
+    let state = Rc::try_unwrap(state).ok()?.into_inner();
+    if !state.finish(&proof.c41.as_ref()?.close, vc, tx, backend).ok()? {
+        return None;
+    }
+    Some(result)
 }
 
 #[cfg(feature = "c6-trace")]
@@ -4994,6 +5112,7 @@ fn verify_response_c6_cache_inline_view(
         vc,
         tx,
         false,
+        None,
         &mut cache_mode,
     )?;
     let ResponseVerifierCacheMode::C6 { metrics, append_source_layers, paired_targets, .. } =
@@ -5122,6 +5241,7 @@ pub fn verify_response_continuation_private_logits_c6_cache_inline_from_profile(
         vc,
         tx,
         true,
+        None,
         &mut cache_mode,
     )?;
     let ResponseVerifierCacheMode::C6 { metrics, append_source_layers, paired_targets, .. } =
@@ -5177,8 +5297,19 @@ fn verify_response_private_logits_c6_cache_inline_view(
         append_source_layers: Vec::with_capacity(L),
         paired_targets: Vec::with_capacity(4 * crate::c6_cache_fold::C6_CACHE_HEADS * L),
     };
-    let (out, prod, zero) =
-        verify_response_impl(&model, t, &[], &views, None, proof, vc, tx, true, &mut cache_mode)?;
+    let (out, prod, zero) = verify_response_impl(
+        &model,
+        t,
+        &[],
+        &views,
+        None,
+        proof,
+        vc,
+        tx,
+        true,
+        None,
+        &mut cache_mode,
+    )?;
     let ResponseVerifierCacheMode::C6 { metrics, append_source_layers, paired_targets, .. } =
         cache_mode
     else {
@@ -5205,8 +5336,12 @@ fn verify_response_impl(
     vc: &mut VerifierCtx,
     tx: &mut Transcript,
     private_logits: bool,
+    c41: Option<Rc<RefCell<C41VerifierResponseState>>>,
     cache_mode: &mut ResponseVerifierCacheMode<'_, '_>,
 ) -> Option<(ModelOutV, ProdKeyTriples, Vec<VerifierKey>)> {
+    if proof.c41.is_some() != c41.is_some() {
+        return None;
+    }
     preflight_verify_response_public(
         model,
         t,
@@ -5226,9 +5361,10 @@ fn verify_response_impl(
     let mut kzero: Vec<VerifierKey> = Vec::new();
     let mut weight_keys: Vec<(Vec<Fp2>, VerifierKey)> = Vec::with_capacity(4 * L);
     // (xin_keys, fbo_keys) per layer.
-    let mut boundary_keys: Vec<(Vec<VerifierKey>, Vec<VerifierKey>)> = Vec::with_capacity(L);
+    let mut boundary_keys: Vec<(Vec<VerifierKey>, Vec<VerifierKey>, u64)> = Vec::with_capacity(L);
     // Prefill (k_keys, v_keys) per layer — the chunks' first cache segment.
-    let mut boundary_kv_keys: Vec<(Vec<VerifierKey>, Vec<VerifierKey>)> = Vec::with_capacity(L);
+    let mut boundary_kv_keys: Vec<(u64, u64, Vec<VerifierKey>, Vec<VerifierKey>)> =
+        Vec::with_capacity(L);
     #[cfg(feature = "c6-trace")]
     let mut boundary_kv_sources: Vec<(u64, u64)> = Vec::with_capacity(L);
 
@@ -5241,6 +5377,7 @@ fn verify_response_impl(
 
     // ======================= PHASE 1 mirror (key expansion) =================
     let mut pre_bank = TableBankV::empty();
+    pre_bank.c41 = c41.clone();
     let mut layer_v1s: Vec<LayerV1> = Vec::with_capacity(L);
     for l in 0..L {
         let luts_l = luts_for(l);
@@ -5439,6 +5576,7 @@ fn verify_response_impl(
     }
     let mut table_doms = Doms::new(layer_dom_base(240));
     let mut bank = TableBankV::finalize(&expected, &proof.tables, vc, tx, &mut table_doms)?;
+    bank.c41 = c41;
     register_gelu_manifest_v(&mut bank, &gelu_manifest).ok()?;
 
     let private_phases = if let (Some(prepared), Some((phase_rows, public_tokens))) =
@@ -5521,10 +5659,10 @@ fn verify_response_impl(
         kprod.extend(layer.prod);
         kzero.extend(layer.zero);
         weight_keys.extend(out.weight_keys);
-        boundary_keys.push((out.xin_keys, out.fbo_keys));
+        boundary_keys.push((out.xin_keys, out.fbo_keys, out.dom_fbo));
         #[cfg(feature = "c6-trace")]
         boundary_kv_sources.push((out.dom_k, out.dom_v));
-        boundary_kv_keys.push((out.k_keys, out.v_keys));
+        boundary_kv_keys.push((out.dom_k, out.dom_v, out.k_keys, out.v_keys));
     }
 
     // ---- (d) embedding ---------------------------------------------------
@@ -5556,7 +5694,14 @@ fn verify_response_impl(
     if continuation.is_none() {
         pt_fbo.extend(bit_coords(t - 1, rb_t));
     }
-    let fbo_k = open_matrix_k(&boundary_keys[L - 1].1, t, D, &pt_fbo);
+    let fbo_k = crate::block_proof::open_matrix_c41_k(
+        &mut cx,
+        boundary_keys[L - 1].2,
+        &boundary_keys[L - 1].1,
+        t,
+        D,
+        &pt_fbo,
+    )?;
     cx.kzero.push(row_k.sub(fbo_k));
 
     let rho_f: Vec<Fp2> = (0..d_cb + if continuation.is_some() { rb_ln } else { 0 })
@@ -5677,9 +5822,10 @@ fn verify_response_impl(
     // ---- decode chunks, phase 2 mirror (P6) ----------------------------------
     // Prefill boundary keys are the chunks' first cache segment; each proven
     // chunk extends the per-layer segment lists.
-    let mut kv_keys: Vec<Vec<(Vec<VerifierKey>, Vec<VerifierKey>)>> = Vec::with_capacity(L);
+    let mut kv_keys: Vec<Vec<(u64, u64, Vec<VerifierKey>, Vec<VerifierKey>)>> =
+        Vec::with_capacity(L);
     for bk in &boundary_kv_keys {
-        kv_keys.push(vec![(bk.0.clone(), bk.1.clone())]);
+        kv_keys.push(vec![(bk.0, bk.1, bk.2.clone(), bk.3.clone())]);
     }
     #[cfg(feature = "c6-trace")]
     let mut kv_sources: Vec<Vec<(usize, u64, u64)>> = boundary_kv_sources
@@ -5702,14 +5848,20 @@ fn verify_response_impl(
             let qb = pad_bits(q);
             let n_vars_qd = d_cb + qb;
             let (_lb, sb_id, _eb, _fb, gb, zb) = chunk_ids(c);
-            let mut band_boundary_keys: Vec<(Vec<VerifierKey>, Vec<VerifierKey>)> =
+            let mut band_boundary_keys: Vec<(Vec<VerifierKey>, Vec<VerifierKey>, u64)> =
                 Vec::with_capacity(L);
             // ---- 12 band layers ------------------------------------------------
             let prefixes: Vec<Vec<KvPrefixK<'_>>> = (0..L)
                 .map(|l| {
                     kv_keys[l]
                         .iter()
-                        .map(|(kk, vk)| KvPrefixK { rows: kk.len() / D, k_keys: kk, v_keys: vk })
+                        .map(|(dom_k, dom_v, kk, vk)| KvPrefixK {
+                            rows: kk.len() / D,
+                            dom_k: *dom_k,
+                            dom_v: *dom_v,
+                            k_keys: kk,
+                            v_keys: vk,
+                        })
                         .collect()
                 })
                 .collect();
@@ -5777,10 +5929,10 @@ fn verify_response_impl(
                 kprod.extend(layer.prod);
                 kzero.extend(layer.zero);
                 weight_keys.extend(out.weight_keys);
-                band_boundary_keys.push((out.xin_keys, out.fbo_keys));
+                band_boundary_keys.push((out.xin_keys, out.fbo_keys, out.dom_fbo));
                 #[cfg(feature = "c6-trace")]
                 kv_sources[l].push((q, out.dom_k, out.dom_v));
-                kv_keys[l].push((out.k_keys, out.v_keys));
+                kv_keys[l].push((out.dom_k, out.dom_v, out.k_keys, out.v_keys));
             }
             // ---- band embedding -------------------------------------------------
             let mut cx = BlockCtxV::with_doms(vc, tx, v1c.embed_doms, &mut bank);
@@ -5802,11 +5954,12 @@ fn verify_response_impl(
             let wire_key = open_matrix_k(&v1c.fin_out_keys, q, D, &rho_f);
             let wk = WireKey { point: rho_f, key: wire_key };
             let s_lnf = model.p.lut.shift_ln_norm;
-            verify_ln_chain(
+            verify_ln_chain_c41(
                 q,
                 s_lnf,
                 model.lnf_gain,
                 model.lnf_bias,
+                band_boundary_keys[L - 1].2,
                 &band_boundary_keys[L - 1].1,
                 &v1c.fin_lvk,
                 &cp.fin_ln,

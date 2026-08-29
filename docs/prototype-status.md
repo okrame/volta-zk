@@ -28,8 +28,18 @@ Read `c4.1-folded-query-high-degree-typed-ole.md` next.
   XOR4-MAJ7 security is unchanged.
 - **Hard stop.** No retry or new pod run is authorized. Resume requires an
   owner-approved design that reduces prover time without buying it with proof
-  bytes, communication, security or memory. Documentation, GitHub sync,
-  cleanup and main fast-forward remain authorized.
+  bytes, communication, security or memory. Cleanup and GitHub publication are
+  complete; no further pod work is authorized under C4.1.
+
+- **2026-08-30 — One-time pod-sync deviation authorized; result content is
+  unchanged.** Pod migration removed the GitHub HTTPS credential helper, so
+  direct `git push` failed before remote negotiation. The owner explicitly
+  authorized one read-only Git-over-SSH import of exact commit `3203d83` into
+  the local repository. The imported object retained its original SHA, parent
+  `a3604cf`, sole raw-record file and SHA-256
+  `f5af817f00f3cfd5b85c4b128586e3ce952c0e2c56f545ad8701b847ebda911e`.
+  Subsequent publication uses the normal local GitHub HTTPS remote. This
+  operational exception grants no benchmark or protocol credit and is closed.
 
 - **2026-08-29 — C4.1 real E2E functionally accepts and measures the proof;
   proof/memory/security PASS, prover ratio FAIL; overall gate FAIL.** Clean

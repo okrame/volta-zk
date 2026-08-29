@@ -3,14 +3,14 @@
 > **C6.2 C62GW4 genesis — TIMING HARD STOP (2026-08-19).** Clean `299050d`
 > passed CUDA and preflight and generated all 17 setup profiles
 > (`101.197.617 B`). The only authorized genesis then established a complete
-> inline lower bound of **77,422289502 s > 15,75 s** before any certificate.
+> inline lower bound of **77,422289502 s > 15,75 s** before any proof.
 > It was interrupted once; no retry, verifier, mutation or artifact exists.
 
 > **C6.2 first real A100 E2E attempt — PRE-SESSION FAIL (2026-08-17).** The
 > single authorized run used clean source `126dbe3` on one
 > A100-SXM4-80GB. The mandatory CUDA gate passed 37 tests and failed two
 > bit-exact CPU/GPU checks. It stopped before setup generation. No retry was
-> performed. No certificate or production artifact exists, so there is no
+> performed. No proof or production artifact exists, so there is no
 > valid C6.2 provider, prover, consumer-verifier, byte, or session value to add
 > to the main comparison table.
 
@@ -46,16 +46,16 @@ dal selettore paired, non da proiezioni.
 | Provider hardware | A100-SXM4-80GB, CUDA 12.8 | A100-SXM4-80GB, CUDA 12.8 |
 | Mandatory CUDA gate | **37 passed / 2 failed — FAIL** | **7/7 boundary + 4/4 runner — PASS** |
 | Setup generation | not started | **17 profiles; 101.197.617 B** |
-| Production session | not started | **timing hard stop before certificate** |
+| Production session | not started | **timing hard stop before proof** |
 | A100 prover value | not measured | **>77,422289502 s lower bound — FAIL** |
 | Consumer CPU verifier value | not measured | not run |
-| Certificate and first exchange | not measured | certificate not created |
+| Proof and first exchange | not measured | proof not created |
 | Retry | none; forbidden | none; forbidden |
 | Comparison credit | **none** | **none** |
 
 The first failure is a CPU/GPU exactness mismatch in the attention proof wires
 and protocol field algebra. C62GW4 clears that boundary but fails the complete
-online wall before a certificate, so the main table still remains unchanged.
+online wall before a proof, so the main table still remains unchanged.
 The first append-only incident record is
 `benchmarks/results/c62-a100-preflight-failure-2026-08-17-126dbe3.json`,
 SHA-256
@@ -80,11 +80,11 @@ SHA-256
 | Traffico setup totale | 38,37 MB | 38,37 MB | 38,371465 MB | 38,371465 MB | 38,37 MB (invariante fase-D, non ri-emesso) |
 | Prover → verifier | 31,58 MB | 31,58 MB | 31,581007 MB | 31,581007 MB | 31,58 MB (invariante fase-D, non ri-emesso) |
 | Verifier → prover | 6,79 MB | 6,79 MB | 6,790458 MB | 6,790458 MB | 6,79 MB (invariante fase-D, non ri-emesso) |
-| Transcript / risposta packed | **105,72 MB** | **105,72 MB** | **84,544352 MB — exact** | **79,566504 MB — exact** | **41,270464 MB — exact**, stato `WEIGHT_PENDING` |
+| Prova | **105,72 MB** | **105,72 MB** | **84,544352 MB — exact** | **79,566504 MB — exact** | **41,270464 MB — exact**, stato `WEIGHT_PENDING` |
 | PCS opening (già incluso) | 43,27 MB | 43,27 MB | 43,273888 MB; commit/open/verify **0,202900 / 0,298579 / 0,081479 s** | 38,296040 MB; commit/open/verify **0,419875 / 0,307923 / 0,135791 s** | **0 B/risposta**; **3,564780 MB/batch**, **0,222799 MB/risposta equivalente** |
 | Logit pubblici packed | **0 MB** | **0 MB** | **0 MB** | **0 MB** | **0 MB** |
 | Primo scambio totale | **144,09 MB** | **144,09 MB** | **122,915817 MB** | **117,937969 MB** | **79,641929 MB** alla delivery; settlement differito **3,564780 MB/16** |
-| Latenza al certificato dei pesi | inline | inline | **inline (0,298579 s)** | **inline (0,307923 s)** | **333,456712 s** (`k=1`) / **878,973898 s** (`k=16`) dal seal |
+| Costo della prima prova per legare i pesi | inline | inline | **inline (0,298579 s)** | **inline (0,307923 s)** | **333,456712 s** (`k=1`) / **878,973898 s** (`k=16`) dal seal |
 
 ## Confronto Ligero inline vs settlement differito
 

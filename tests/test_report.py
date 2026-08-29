@@ -4403,6 +4403,7 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7(tmp_path)
     )
     assert c41_pair is not None
     assert c41_pair["overall_timing_screen_pass"] is True
+    assert c41_pair["candidate_c4_absolute_gates_pass"] is True
     assert c41_pair["proof_bytes_credit"] is False
     c41_pair_path = tmp_path / "c41-timing-pair.json"
     assert (
@@ -4432,6 +4433,26 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7(tmp_path)
         report.c41_timing_paired_verdict(c41_anchor_path, bad_c41_pair_path)
         is None
     )
+
+    # A slow candidate remains a complete paired measurement and records FAIL.
+    failed_c41_candidate = copy.deepcopy(c41_candidate)
+    failed_c41_candidate["repetitions"][1]["accelerator_session"][
+        "synchronization_s"
+    ] = 0.151
+    failed_c41_candidate["repetitions"][1]["p7b_sync_wall_fraction"] = 0.0151
+    failed_c41_candidate["p7b_sync_wall_fraction_observed"] = 0.0151
+    failed_c41_candidate["p7b_sync_wall_absolute_observed_s"] = 0.151
+    failed_c41_candidate["p7b_sync_wall_absolute_gate_pass"] = False
+    failed_c41_candidate["p7b_all_gates_pass"] = False
+    failed_c41_candidate_path = tmp_path / "c41-failed-candidate.json"
+    failed_c41_candidate_path.write_text(json.dumps(failed_c41_candidate))
+    assert report.validate_c41_timing_result(failed_c41_candidate_path) is True
+    failed_c41_pair = report.c41_timing_paired_verdict(
+        c41_anchor_path, failed_c41_candidate_path
+    )
+    assert failed_c41_pair is not None
+    assert failed_c41_pair["candidate_c4_absolute_gates_pass"] is False
+    assert failed_c41_pair["overall_timing_screen_pass"] is False
 
     fase_d_v2["p7b_sync_wall_absolute_gate_s"] = 0.151
     fase_d_v2_path.write_text(json.dumps(fase_d_v2))

@@ -8589,7 +8589,7 @@ def c41_timing_paired_verdict(
         and anchor["c41_timing"]["profile"] == "anchor"
         and candidate["c41_timing"]["profile"] == "candidate"
         and anchor.get("p7b_all_gates_pass") is True
-        and candidate.get("p7b_all_gates_pass") is True
+        and type(candidate.get("p7b_all_gates_pass")) is bool
         and anchor.get("git_sha") == candidate.get("git_sha")
         and anchor.get("accelerator_cuda_abi_version")
         == candidate.get("accelerator_cuda_abi_version")
@@ -8643,7 +8643,15 @@ def c41_timing_paired_verdict(
     ratio_pass = prove_ratio <= C41_PROVER_GATE_RATIO
     absolute_pass = candidate_prove <= C41_PROVER_ABSOLUTE_GATE_SECONDS
     device_pass = candidate["c41_timing"]["device_live_gate_pass"] is True
-    timing_pass = ratio_pass and absolute_pass and device_pass
+    anchor_c4_pass = anchor["p7b_all_gates_pass"] is True
+    candidate_c4_pass = candidate["p7b_all_gates_pass"] is True
+    timing_pass = (
+        anchor_c4_pass
+        and candidate_c4_pass
+        and ratio_pass
+        and absolute_pass
+        and device_pass
+    )
     return {
         "report_schema_version": 1,
         "milestone": "C4.1-FQ-HD-tOLE-paired-timing-A100",
@@ -8668,6 +8676,8 @@ def c41_timing_paired_verdict(
         "prove_response_ratio_gate_pass": ratio_pass,
         "prove_response_absolute_gate_s": C41_PROVER_ABSOLUTE_GATE_SECONDS,
         "prove_response_absolute_gate_pass": absolute_pass,
+        "anchor_c4_absolute_gates_pass": anchor_c4_pass,
+        "candidate_c4_absolute_gates_pass": candidate_c4_pass,
         "response_session_ratio_diagnostic": session_ratio,
         "candidate_observed_peak_device_bytes": candidate["c41_timing"][
             "observed_peak_device_bytes"

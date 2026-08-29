@@ -5337,7 +5337,7 @@ fn main() {
             conditional_security_bits: C41_CONDITIONAL_SECURITY_BITS,
             security_floor_bits: C41_SECURITY_FLOOR_BITS,
             conditional_security_gate_pass: C41_CONDITIONAL_SECURITY_BITS
-                >= C41_SECURITY_FLOOR_BITS,
+                > C41_SECURITY_FLOOR_BITS,
             device_live_gate_bytes: C41_DEVICE_LIVE_GATE_BYTES,
             observed_peak_device_bytes,
             device_live_gate_pass: observed_peak_device_bytes < C41_DEVICE_LIVE_GATE_BYTES,

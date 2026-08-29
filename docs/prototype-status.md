@@ -30,10 +30,35 @@ Read `c7-stateful-authenticated-lfc-design.md`, then
   `C7_POD_READY=false`.
 
 - **Parallel scoped C4.1 decision.** The owner admits `XOR4-MAJ7-128`, changes
-  only C4.1's median full-prover gate from `<=1.00x` to `<=1.30x`, and
-  authorizes complete local pod-ready preparation and the same-build paired
-  A100 run once its endpoint is supplied. This does not resume C7 or authorize
-  product credit or C4.1 verifier implementation.
+  C4.1's prover gate to `<=1.30x` and authorizes the complete same-build A100
+  pair on the existing pod. That pod is `EXITED` and its endpoint refuses
+  connections; resume after restart exposes an endpoint. The run records
+  `FAIL` even above the gate. A PASS unlocks codec, degree-12 close and
+  verifier; proof-size/verifier/product credit stay false meanwhile. Final
+  soundness and weight zero-knowledge must each exceed 78 bits. C7 stays
+  blocked.
+
+- **2026-08-29 — Owner fixes C4.1 terminology, timing scope and conditional
+  continuation.** “Proof” means the complete serialized prover artifact;
+  stable machine fields retain their historical names. “Prover time” is
+  `t_prove_response_s`, namely prefill proof generation plus marginal decode,
+  excluding setup, verifier, weight binding and first-proof-only cost. The
+  warmup includes the candidate fold. Fiat--Shamir is absent, so session wall
+  and synchronization are diagnostics rather than product-latency credit.
+  Read-only preflight found the existing RunPod instance `EXITED` and the
+  configured SSH endpoint refusing connections; no CUDA measurement ran.
+  The A100 pair must finish and preserve a failure even if the candidate is
+  inefficient or exceeds `1.30x`; selective retry remains forbidden, while a
+  corrected full restart uses fresh stores and append-only evidence. The
+  current candidate still emits the C4 proof of `84,544,352 B`;
+  `66,270,953 B` is a byte-exact projection without proof-byte or verifier
+  credit. A timing PASS authorizes immediate implementation of the C4.1 codec,
+  degree-12 close and verifier for the true
+  `setup -> prover -> proof <70 MB -> deserialize -> verifier -> accept/reject`
+  test. Final promotion requires separate soundness and weight zero-knowledge
+  gates strictly above 78 bits. The paired recorder now treats a candidate C4
+  absolute-gate failure as a complete paired `FAIL`, not an invalid pair. C7
+  remains blocked.
 
 - **2026-08-29 — C4.1 becomes endpoint-blocked for its paired A100 timing
   screen.** ABI45 and the resident prover seam are now wired into the existing

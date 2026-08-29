@@ -5382,14 +5382,15 @@ fn verify_response_impl(
     for l in 0..L {
         let luts_l = luts_for(l);
         let mut cx = BlockCtxV::new(vc, tx, l as u8, &mut pre_bank);
-        let entry_alias = (matches!(l, 4 | 8)).then(|| layer_v1s[l - 1].fbo_keys.as_slice());
+        let entry_alias = (matches!(l, 4 | 8)).then(|| &layer_v1s[l - 1]);
         let v1 = match cache_mode {
             ResponseVerifierCacheMode::Legacy(_) => verify_layer_phase1_band_thinned(
                 l,
                 base_shape,
                 &luts_l,
                 &proof.layers[l],
-                entry_alias,
+                entry_alias.map(|state| state.fbo_keys.as_slice()),
+                entry_alias.map(|state| state.dom_fbo),
                 &mut cx,
             ),
             #[cfg(feature = "c6-trace")]
@@ -5398,7 +5399,8 @@ fn verify_response_impl(
                 base_shape,
                 &luts_l,
                 &proof.layers[l],
-                entry_alias,
+                entry_alias.map(|state| state.fbo_keys.as_slice()),
+                entry_alias.map(|state| state.dom_fbo),
                 &mut cx,
             ),
         };
@@ -5461,15 +5463,15 @@ fn verify_response_impl(
             for l in 0..L {
                 let luts_l = luts_for(l);
                 let mut cx = BlockCtxV::new(vc, tx, lb + l as u8, &mut pre_bank);
-                let entry_alias =
-                    (matches!(l, 4 | 8)).then(|| layer_v1s[l - 1].fbo_keys.as_slice());
+                let entry_alias = (matches!(l, 4 | 8)).then(|| &layer_v1s[l - 1]);
                 let v1 = match cache_mode {
                     ResponseVerifierCacheMode::Legacy(_) => verify_layer_phase1_band_thinned(
                         l,
                         sh_c,
                         &luts_l,
                         &cp.layers[l],
-                        entry_alias,
+                        entry_alias.map(|state| state.fbo_keys.as_slice()),
+                        entry_alias.map(|state| state.dom_fbo),
                         &mut cx,
                     )?,
                     #[cfg(feature = "c6-trace")]
@@ -5478,7 +5480,8 @@ fn verify_response_impl(
                         sh_c,
                         &luts_l,
                         &cp.layers[l],
-                        entry_alias,
+                        entry_alias.map(|state| state.fbo_keys.as_slice()),
+                        entry_alias.map(|state| state.dom_fbo),
                         &mut cx,
                     )?,
                 };

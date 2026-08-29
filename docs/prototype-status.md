@@ -26,15 +26,29 @@ Read `c4.1-folded-query-high-degree-typed-ole.md` next.
   12-lane SIMT fold. Strict model, PCS, degree-12 closure and `<70 MB` envelope
   codecs feed decoded objects to the verifier. Lean proves the bridge root
   bound and degree-12 preservation; focused Rust codecs/tamper checks pass.
-- **Hard stop / credit.** No proof-size, verifier or construction credit yet.
-  The integrated path has not run on A100, so its actual serialized bytes,
-  acceptance, time and peak remain unmeasured. The conservative five-response
-  composition is `78.80929486268863` soundness bits and weight-ZK is
-  `120.0170064253057` bits.
+- **Hard stop / credit.** The first A100 attempt stopped in mock prepass:
+  a group-entry alias used the old MAC opener. The root fix carries its source
+  domain through the typed bridge; the pod rerun is pending. Proof bytes,
+  acceptance, time and peak remain unmeasured. Soundness is
+  `78.80929486268863` bits and weight-ZK `120.0170064253057` bits.
 - **Authorization/checks.** Continue on the same pod through actual Packed16
   consumers, response codec, degree-12 close, deserialization and verifier
   accept/reject. Record `gpt2-comparison-WIP.md` only after that real E2E
   succeeds.
+
+- **2026-08-29 — First C4.1 real-E2E A100 attempt fails closed in the mock
+  census; group-entry alias root cause corrected; no record or credit.** Clean
+  `390c264` built from an empty canonical target on the same migrated A100 pod.
+  Before opening a real PCG connection or producing a result, the exact-count
+  mock prepass rejected at domain `0x103002000000190`: layers 4 and 8 correctly
+  reused the preceding group-exit FBO domain, but the scheduled resident path
+  tried to expand historical elementwise tags that C4.1 intentionally no
+  longer allocates. The shared fix carries `dom_xin` through verifier phase 1
+  and routes both resident and verifier group-entry openings through the C4.1
+  bridge; ordinary C4 remains the fallback when the domain is not registered.
+  The strict report check and all nine C4.1 codec/typed-close tests pass, as
+  does the frozen response E2E regression. The empty failed stores are to be
+  removed and the complete setup/prover/codec/verifier run restarted fresh.
 
 - **2026-08-29 — C4.1 real-E2E code reaches the local pre-pod boundary; no
   hardware or proof credit.** The actual prefill-plus-decode path registers all

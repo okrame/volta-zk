@@ -10718,6 +10718,7 @@ pub fn layer_content_keys(luts: &Luts, keys: &mut std::collections::BTreeSet<Tab
 /// Layer verifier phase-1 state (mirror of [`LayerP1`]).
 pub struct LayerV1 {
     pub doms: Doms,
+    pub(crate) dom_xin: u64,
     pub(crate) dom_k: u64,
     pub(crate) dom_v: u64,
     pub(crate) dom_fbo: u64,
@@ -10789,9 +10790,19 @@ pub(crate) fn verify_layer_phase1_band_thinned(
     luts: &Luts,
     proof: &LayerProof,
     entry_alias_keys: Option<&[VerifierKey]>,
+    entry_alias_dom: Option<u64>,
     cx: &mut BlockCtxV,
 ) -> Option<LayerV1> {
-    verify_layer_phase1_band_thinned_impl(layer, sh, luts, proof, entry_alias_keys, cx, false)
+    verify_layer_phase1_band_thinned_impl(
+        layer,
+        sh,
+        luts,
+        proof,
+        entry_alias_keys,
+        entry_alias_dom,
+        cx,
+        false,
+    )
 }
 
 /// C6 phase-1 mirror: consume the identical public domain/allocation order,
@@ -10805,9 +10816,19 @@ pub(crate) fn verify_layer_phase1_band_thinned_c6(
     luts: &Luts,
     proof: &LayerProof,
     entry_alias_keys: Option<&[VerifierKey]>,
+    entry_alias_dom: Option<u64>,
     cx: &mut BlockCtxV,
 ) -> Option<LayerV1> {
-    verify_layer_phase1_band_thinned_impl(layer, sh, luts, proof, entry_alias_keys, cx, true)
+    verify_layer_phase1_band_thinned_impl(
+        layer,
+        sh,
+        luts,
+        proof,
+        entry_alias_keys,
+        entry_alias_dom,
+        cx,
+        true,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -10817,6 +10838,7 @@ fn verify_layer_phase1_band_thinned_impl(
     luts: &Luts,
     proof: &LayerProof,
     entry_alias_keys: Option<&[VerifierKey]>,
+    entry_alias_dom: Option<u64>,
     cx: &mut BlockCtxV,
     reserve_kv_only: bool,
 ) -> Option<LayerV1> {
@@ -10826,12 +10848,14 @@ fn verify_layer_phase1_band_thinned_impl(
     let t = sh.q;
     let group_pos = layer % 4;
     let c41 = cx.bank.c41.is_some();
-    let valid_x = match (group_pos, entry_alias_keys) {
-        (0, Some(keys)) if layer > 0 => proof.xin_corr.is_empty() && keys.len() == t * D,
-        (0, None) if layer == 0 => proof.xin_corr.len() == t * D,
-        (0, _) => false,
-        (_, None) => proof.xin_corr.is_empty(),
-        (_, Some(_)) => false,
+    let valid_x = match (group_pos, entry_alias_keys, entry_alias_dom) {
+        (0, Some(keys), Some(_)) if layer > 0 => {
+            proof.xin_corr.is_empty() && if c41 { keys.is_empty() } else { keys.len() == t * D }
+        }
+        (0, None, None) if layer == 0 => proof.xin_corr.len() == t * D,
+        (0, _, _) => false,
+        (_, None, None) => proof.xin_corr.is_empty(),
+        (_, _, _) => false,
     };
     if !valid_x
         || proof.k_corr.len() != if c41 { 0 } else { t * D }
@@ -10851,7 +10875,8 @@ fn verify_layer_phase1_band_thinned_impl(
         return None;
     }
 
-    let dom_xin = cx.doms.take(t as u64);
+    let xin_tombstone = cx.doms.take(t as u64);
+    let dom_xin = entry_alias_dom.unwrap_or(xin_tombstone);
     let xin_keys = match entry_alias_keys {
         Some(keys) => keys.to_vec(),
         None if layer == 0 => auth_matrix_rows_v(cx.ctx, cx.tx, dom_xin, &proof.xin_corr, t, D),
@@ -10893,6 +10918,7 @@ fn verify_layer_phase1_band_thinned_impl(
     let attn = verify_attn_phase1(sh, luts, &proof.attn, cx)?;
     Some(LayerV1 {
         doms: cx.doms,
+        dom_xin,
         dom_k,
         dom_v,
         dom_fbo,
@@ -10953,6 +10979,7 @@ fn verify_layer_phase1_band_aliased(
 
     Some(LayerV1 {
         doms: cx.doms,
+        dom_xin,
         dom_k,
         dom_v,
         dom_fbo,
@@ -11016,6 +11043,7 @@ pub fn verify_layer_phase2_band(
     let t = sh.q;
     let LayerV1 {
         doms: _,
+        dom_xin: _,
         dom_k,
         dom_v,
         dom_fbo,

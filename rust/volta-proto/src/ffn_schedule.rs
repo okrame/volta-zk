@@ -9,16 +9,17 @@
 //! worker threads, shared mutexes, or completion-order challenge assignment.
 
 use crate::block_proof::{
-    layer_dom_base, layer_lookups, open_matrix_k, open_matrix_p, prove_attn_block,
-    prove_attn_block_resident_thinned, prove_attn_block_thinned, prove_ffn_after_gelu,
-    prove_ffn_after_gelu_resident_thinned, prove_ffn_after_gelu_thinned, prove_ffn_before_gelu,
-    prove_ffn_before_gelu_resident_thinned, prove_ffn_before_gelu_thinned, prove_range_site,
-    prove_range_site_resident, verify_attn_block, verify_attn_block_thinned, verify_ffn_after_gelu,
-    verify_ffn_after_gelu_thinned, verify_ffn_before_gelu, verify_ffn_before_gelu_thinned,
-    verify_range_site, AttnP1, AttnV1, BandShape, BlockCtxP, BlockCtxV, CacheSegK, CacheSegP,
-    FfnAfterDownP, FfnAfterDownV, KvPrefixK, KvPrefixP, LayerBytes, LayerOut, LayerOutV, LayerP1,
-    LayerProof, LayerV1, ResidentAttnP1, ResidentCacheSegP, ResidentFfnAfterDownP,
-    ResidentKvPrefixP, ResidentLayerP1, TableBankP, TableBankSiteError, TableBankV,
+    layer_dom_base, layer_lookups, open_matrix_c41_k, open_matrix_p,
+    open_matrix_resident_c41_p, prove_attn_block, prove_attn_block_resident_thinned,
+    prove_attn_block_thinned, prove_ffn_after_gelu, prove_ffn_after_gelu_resident_thinned,
+    prove_ffn_after_gelu_thinned, prove_ffn_before_gelu, prove_ffn_before_gelu_resident_thinned,
+    prove_ffn_before_gelu_thinned, prove_range_site, prove_range_site_resident, verify_attn_block,
+    verify_attn_block_thinned, verify_ffn_after_gelu, verify_ffn_after_gelu_thinned,
+    verify_ffn_before_gelu, verify_ffn_before_gelu_thinned, verify_range_site, AttnP1, AttnV1,
+    BandShape, BlockCtxP, BlockCtxV, CacheSegK, CacheSegP, FfnAfterDownP, FfnAfterDownV, KvPrefixK,
+    KvPrefixP, LayerBytes, LayerOut, LayerOutV, LayerP1, LayerProof, LayerV1, ResidentAttnP1,
+    ResidentCacheSegP, ResidentFfnAfterDownP, ResidentKvPrefixP, ResidentLayerP1, TableBankP,
+    TableBankSiteError, TableBankV,
 };
 use crate::boundary_thinning::{
     prove_eq_reduction_i16, prove_eq_reduction_resident, verify_eq_reduction, BoundaryClaimK,
@@ -1097,6 +1098,7 @@ fn prove_layers_thinned_scheduled_impl(
 #[allow(dead_code)] // complete frozen C3b verifier state for audit/control comparison
 struct VerifyPending {
     doms: Doms,
+    dom_xin: u64,
     dom_k: u64,
     dom_v: u64,
     dom_fbo: u64,
@@ -1178,6 +1180,7 @@ pub(crate) fn verify_layers_scheduled(
     for (layer, v1) in v1s.into_iter().enumerate() {
         let LayerV1 {
             doms,
+            dom_xin,
             dom_k,
             dom_v,
             dom_fbo,
@@ -1205,6 +1208,7 @@ pub(crate) fn verify_layers_scheduled(
         }
         pending.push(VerifyPending {
             doms: cx.doms,
+            dom_xin,
             dom_k,
             dom_v,
             dom_fbo,
@@ -1472,6 +1476,7 @@ fn verify_layers_thinned_scheduled_impl(
             let v1 = states[layer].take()?;
             let LayerV1 {
                 doms,
+                dom_xin,
                 dom_k,
                 dom_v,
                 dom_fbo,
@@ -1512,6 +1517,7 @@ fn verify_layers_thinned_scheduled_impl(
                 layer,
                 VerifyPending {
                     doms: cx.doms,
+                    dom_xin,
                     dom_k,
                     dom_v,
                     dom_fbo,
@@ -1695,11 +1701,26 @@ fn verify_layers_thinned_scheduled_impl(
             };
 
             if wave == 0 {
-                if proofs[layer].attn.t1_x_reduce.is_some() || state.xin_keys.len() != t * D {
+                let c41_x =
+                    cx.bank.c41.as_ref().is_some_and(|c41| c41.borrow().has_domain(state.dom_xin));
+                if proofs[layer].attn.t1_x_reduce.is_some()
+                    || if c41_x {
+                        !state.xin_keys.is_empty()
+                    } else {
+                        state.xin_keys.len() != t * D
+                    }
+                {
                     return None;
                 }
                 for claim in [&x_residual, &x_ln] {
-                    let opened = open_matrix_k(&state.xin_keys, t, D, &claim.point);
+                    let opened = open_matrix_c41_k(
+                        &mut cx,
+                        state.dom_xin,
+                        &state.xin_keys,
+                        t,
+                        D,
+                        &claim.point,
+                    )?;
                     cx.kzero.push(claim.key.sub(opened));
                 }
             } else {
@@ -2361,14 +2382,13 @@ pub(crate) fn prove_layers_resident_scheduled<W: ResidentLayerView>(
 
             if wave == 0 {
                 for claim in [&x_residual, &x_ln] {
-                    let opened = match crate::block_proof::open_matrix_resident_p(
-                        cx.stream,
+                    let opened = match open_matrix_resident_c41_p(
+                        &mut cx,
                         state.dom_xin,
                         layers[layer].i16(LayerI16Field::XIn),
                         t,
                         D,
                         &claim.point,
-                        cx.backend.as_deref_mut().expect("T1 resident backend"),
                     ) {
                         Ok(value) => value,
                         Err(error) => {

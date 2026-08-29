@@ -1,17 +1,31 @@
 # C7 — stateful authenticated linear-functional commitment
 
-**Status:** C7 R0.8 design audit; policy 2, direct Goldilocks Fp3, rate 1/2,
+**Status:** C7 R0.8e secret-point butterfly reduction screen; policy 2, direct Goldilocks Fp3, rate 1/2,
 `k0=4`, one packed weight root, logical `g=141` and interactive `Q_FS=0`
 remain fixed.  R0.8a makes published constructions exact-cost
 baselines/controls and a new co-designed C7 shared circuit the main research
 line.  Strict-UD RS is an algebraic/security control whose prover must not be
-implemented.  Only the carrier-independent Rust Fp3 codec/KAT plus
-shared-`Delta` MAC seam exists; it is not a PCS/PCG/VOLE refinement.  No new
-carrier has a complete row or CPU-prototype authorization.  BLAKE3-XOF remains the primary
+implemented.  The carrier-independent Rust reference now includes the Fp3
+terminal, frozen BLAKE3-XOF addressing, public BLAKE3 leaf/tree, one-leaf
+codec, nonrefundable query counter and in-memory KV CAS. It is not a
+PCS/PCG/VOLE refinement or durable allocator. `C7-SPBT-v0` is the main
+co-designed reduction candidate: its exact invertible transform preserves
+independent GKR challenges, but no current delayed-opening realization closes
+commit order, one scan, bounded memory and sublinear wire together.
+`C7-DV-SPQ-v0` remains its quarantined terminal primitive. No carrier has a complete row or
+`BatchOpenBlocks` CPU-prototype authorization. BLAKE3-XOF remains the primary
 performance/parallelism mask candidate; frozen KMACXOF256-v1 remains an
 unpromoted high-margin control.  The approved privacy allocation is not
 theorem discharge.  Policy 3 remains terminal.  No SIMT, prover, E2E or pod.
 This document is the task-specific authority named by `prototype-status.md`.
+
+Volta-ZK is a stateful designated-verifier proof architecture for
+private-weight autoregressive inference. Like modern public zkML systems, it
+certifies an entire causal response without re-proving every decoding prefix.
+Unlike them, Volta keeps transformer boundaries and committed-weight
+evaluations authenticated under a session VOLE-MAC, performs one batched PCS
+opening into that MAC per response, and binds each response to an append-only
+authenticated KV-cache transition.
 
 **Branch:** `agent/c7-stateful-alfc`.
 
@@ -2801,18 +2815,657 @@ The 3x persistent-disk ceiling remains conjunctive with the setup time cells.
 Refresh cannot borrow setup slack; its registered placeholder caps do not
 authorize a refresh measurement.
 
+### 5.10 R0.8b co-designed construction screen and reference seam
+
+R0.8b implements only the carrier-independent pieces that remain valid for
+every future entrant. `rust/volta-pcs/src/c7_policy2_reference.rs` fixes:
+
+- the exact 90-byte keyed `C7-RM-B3XOF-v1` descriptor
+  `suite||model_id||epoch_id||layout_digest||03||01||02||04` and addresses
+  draw `(i,d)` at byte `8*(6i+d)`, with six-draw Goldilocks rejection;
+- a public, domain-separated salted BLAKE3 `LeafCom`, position/level-bound
+  binary tree and canonical one-leaf opening frame of `1296+32h` bytes;
+- distinct fixed `q_attempt` reservation and observed `q_response` census,
+  with full charge before disclosure and no refund after abort;
+- the existing shared-`Delta` Fp3 transfer and an in-memory accepted-KV CAS
+  that rejects replay and a competing fork.
+
+The tiny two-leaf Rust test exercises XOF KAT/address rejection, canonical
+padding, root/path/frame round-trip, mutation rejection, abort burn, acceptance,
+budget exhaustion, the Fp3 terminal equation and KV replay/fork exclusion.
+This is an executable conformance seam, not `BatchOpenBlocks`: the tree is
+full-memory, the budget and KV state are not durable, no root-wide privacy
+theorem is instantiated, and no relationship binds its masked leaves to a
+code or the terminal. It therefore earns no PCS, setup, security, lifecycle
+or `C7_CPU_REFERENCE_PASS` credit.
+
+The bounded circuit search also closes three tempting shortcuts while keeping
+their reasons distinct:
+
+1. For one geometric coset `z^B=c`, a coefficient scan can accumulate the
+   `B` residues modulo `X^B-c` and evaluate the whole block in
+   `O(N+B log B)` work and `O(B)` memory. This genuinely meets the one-scan
+   algebraic shape. It fails soundness amplification: a density-`delta` error
+   may occupy only a `delta` fraction of cosets, so one whole coset remains
+   only one worst-case hit. `t` independent cosets require `t` residue
+   accumulators and restore `tN`; one larger coset retains the same worst-case
+   partition obstruction. The row is **NO-GO**, not an implementation target.
+2. Persisting only the parity half of any rate-1/2 Goldilocks code already
+   costs `2N + 8N = 10N` bytes including canonical packed i16 weights, or
+   **5x packed before Merkle nodes**. More generally the floor is
+   `1+4(1/rate-1)`; even 3x requires `rate>=2/3` before the tree. The fixed
+   rate-1/2 line is therefore **NO-GO** for a persisted parity/codeword escape.
+3. A causal linear encoder that emits in packed-source order and retains only
+   a bounded delayed tail gives the last nonzero input only that tail's output
+   support. It cannot have constant relative distance without a linear tail
+   or noncausal setup/access. This rejects that bounded-tail subclass only;
+   it is not a lower bound on arbitrary linear circuits.
+
+No co-designed carrier row is complete. The four R0.8a pre-CPU obligations
+remain false, so the next local test may extend only this non-PCS seam until a
+new circuit supplies the missing same-W soundness/privacy bridge and one-scan
+opener.
+
+### 5.11 R0.8c designated-verifier secret-point carrier
+
+The absence of a published construction is not a rejection condition. R0.8c
+therefore promotes the *research question*, but not the carrier, to a concrete
+C7 object named `C7-DV-SPQ-v0`. The carrier is the PCS/code substrate that
+binds packed weights and carries the operator/GKR terminal linear functional
+into VOLE-MAC; it is not the transformer proof by itself.
+
+For the univariate core, let `F(X)=sum_i f_i X^i`, let `tau` be a root-scoped
+verifier secret, and let `A=F(tau)`. Neither party may receive `A` in clear.
+Enrollment must instead create persistent secret shares of `A`, later imported
+into a fresh connection-scoped shared-`Delta` Fp3 MAC. For a public point `r`
+and authenticated claim `v`, define
+
+```text
+Q(X) = (F(X)-v)/(X-r)
+F(tau)-v = (tau-r) Q(tau).
+```
+
+The honest synthetic-division recurrence is
+
+```text
+q[d-1] = f[d]
+q[i-1] = f[i] + r*q[i]       for i=d-1,...,1
+v      = f[0] + r*q[0].
+```
+
+It can be generated during one manifest-fixed reverse sequential scan with
+constant plain state if `tau` is known. C7 requires the stronger primitive:
+`OpenQuotientIntoMac` must perform the `tau`-dependent part without revealing
+`tau`, `F(tau)`, `Q(tau)` or `v`, without one correction per coefficient, and
+while binding `Q` to the enrolled `F` and fixed `v`. Three new interfaces are
+therefore explicit rather than hidden behind an ideal PCS:
+
+1. `EnrollSecretPoint` binds one packed `F` and creates shares of `F(tau)`;
+2. `ImportRootShareIntoMac` moves those shares into a fresh connection domain;
+3. `OpenQuotientIntoMac` authenticates the fixed quotient evaluation.
+
+R0.8d closes the algebraic part of this gap only on an exact one-dimensional
+curve.  For a segment with padded length `2^n`, the curve and denominator are
+
+```text
+r_k(t) = t^(2^k) / (1 + t^(2^k)),
+D_n(t) = product_(k<n) (1 + t^(2^k)).
+```
+
+Then `eq(r(t),j)=t^j/D_n(t)` and the raw packed segment values are already the
+coefficients of the univariate `F_i`.  No Möbius transform, expanded wrapper
+or materialized `L` is needed.  This is a conditional functional-basis PASS,
+not an admitted bridge: arbitrary independent GKR points do not lie on this
+curve, and forcing public sequential GKR challenges onto it breaks the
+existing soundness schedule as shown in Section 5.12.
+
+#### Conditional algebraic margin and transcript order
+
+Goldilocks Fp3 has 191.999999999 bits of cardinality. If a nonzero identity of
+degree below `2^28`/`2^35` is fixed before any `tau`-dependent output, and the
+view leaks no predicate of `tau` beyond terminal accept/reject, the adaptive
+first-false-accept union controls are 155.000 bits for 512 GPT-2 attempts and
+144.000 bits for 8,192 31B attempts. Charging four planes over the complete
+`R_max=2^20` horizon leaves 135.000 bits. These are algebraic screens, not
+security credit: the 110-bit component is met only after the four hypotheses
+below are proved.
+
+```text
+reserve attempt, pre-enrolled tau slot, masks and correlations
+  -> fix epoch/layout/root handles, claims, query vectors and MAC handles
+  -> fix the response-wide RLC and the quotient relation
+  -> run one reverse packed scan plus OpenQuotientIntoMac
+  -> settle F(tau)-v-(tau-r)Q(tau)=0 under the Fp3 MAC
+  -> atomically promote KV state, or burn everything on any abort.
+```
+
+The required hypotheses are: the false identity is fixed before secret-point
+feedback; the malicious view has a simulator that hides every other predicate
+of `tau`; failures, retries and selective aborts are all charged; and the
+response-wide RLC leaves one nonzero identity when any packed claim is false.
+If `tau` is revealed, a cheating prover can set
+`Q(tau)=(F(tau)-v)/(tau-r)` for any `v`. If `F(tau)` or `Q(tau)` is clear, the
+privacy goal is already violated. Reusing an uncharged accept/reject oracle can
+adaptively test root sets. Enrollment with `F'` and opening with `F`, or
+re-importing one persistent share under a reused connection MAC domain, breaks
+same-weight or one-time-correlation soundness. These are separate fail cases.
+
+The stateful theorem target is simulation based. For any malicious designated
+verifier controlling connections, challenges, retries, concurrency and aborts,
+and for two fixed-weight histories with identical allowed leakage (public
+tokens, shapes, length/timing buckets, counters and explicitly budgeted masked
+PCS symbols), the complete serialized views must be indistinguishable. The
+simulator receives only that leakage and the accept/abort/promotion journal; it
+does not receive weights, clear terminal evaluations, `tau`, root shares or
+MAC keys. Root and connection domains are jointly simulated, so opening a new
+connection cannot reset `R_root` or the model-global horizon.
+
+The games are not conflated. Dishonest-prover soundness fixes the enrolled
+polynomial/root first, then has the honest designated verifier sample uniform,
+domain-separated `tau`; every later quotient is fixed before any
+`tau`-dependent feedback. Model privacy permits a verifier to choose malformed or repeated
+points and schedules; the protocol must validate the public profile, reveal at
+most its prescribed share/view, charge the attempt, and otherwise abort. The
+135-bit root bound cannot be cited as malicious-verifier privacy.
+
+The soundness reduction must expose, rather than absorb, every term:
+
+```text
+Adv_sound <= Adv_enroll_same_F
+           + Adv_import_MAC
+           + Adv_open_quotient_malicious
+           + Adv_RLC
+           + 4*R_max*(2^35-1)/|Fp3|
+           + Adv_MAC + Adv_PCG/VOLE
+           + Adv_hash/commitment + Adv_state/replay/fork.
+
+Adv_priv  <= Adv_SPQ_view_sim
+           + Adv_root_mask_multi
+           + Adv_PCG/VOLE + Adv_MAC
+           + Adv_hash/path + Adv_abort/timing
+           + Adv_allocator/state + Adv_codec_refinement.
+```
+
+The algebraic term is about `2^-135`; every other term still uses the existing
+110/120-bit allocation and their complete sum must remain at most `2^-78`.
+`Adv_SPQ_view_sim`, `Adv_enroll_same_F` and
+`Adv_open_quotient_malicious` are named hypotheses, not consequences of the
+equation. An implementation may not replace them with an ideal API assertion.
+
+#### Bounded realization screen
+
+| Realization | Exact obstruction under current gates | Disposition |
+| --- | --- | --- |
+| algebraic-PRF verifiable polynomial evaluation | at least one authenticator group element per coefficient; even an optimistic 32-byte element gives packed weights plus tags `17x`, and online evaluation retains full group work | NO-GO |
+| silent OLE/VOLE or LPN/LWE NIIP | known general-field inner products retain linear wire; the `2N+o(N)` OLE control is `48N+o(N)` bytes in Fp3 | NO-GO online certificate |
+| Merkle root of response quotient | post-root queries require a second packed scan or a model-sized quotient/tree scratch | NO-GO |
+| public powers/KZG-style quotient | `N` public powers and a full large-field MSM violate setup and online gates | NO-GO |
+| finite hidden credential pool | credential bytes can be small, but pre-revealing the pool destroys challenge unpredictability and no near-linear hidden multipoint enrollment is supplied | QUARANTINE |
+| structured `X^B-c` residue | choosing the coset before quotient binding permits adaptation; binding first requires another pass, while independent amplification restores the already rejected `tN` work | NO-GO; preserves D105 |
+| succinct OTE/LFE | useful evidence for short private function evaluation, but no concrete same-`F` malicious proof, Fp3 codec or 110-bit parameters | CONTROL |
+
+The wider published screen also remains fail-closed for distinct reasons:
+small-alphabet Brakedown has a square-root certificate and no direct Fp3
+bridge; FRI-Binius has polylogarithmic proofs but full folding oracles and a
+characteristic-two/privacy bridge gap; Blaze's safe published row is rate 1/4,
+while rate 1/2 and good-setup certification rely on unproved or insufficient
+events and it supplies no hiding; binary GKR retains an encoded matrix and
+transpose plus no Fp3 same-value bridge; polynomial preprocessing gives only
+evaluation binding, and its fast multivariate theorem does not cover the
+needed multilinear specialization. These labels retain the rejection reason;
+they are not impossibility claims about a new C7 construction.
+
+Primary evidence for the new core screen is the converted Markdown for
+[algebraic-PRF/OPE](../sota/2015-004-oblivious-polynomial-evaluation-secure-set-intersection.md)
+and [LPN/LWE NIIP](../sota/2023-072-noninteractive-secure-inner-product-lpn-lwe.md).
+The former keeps one group authenticator per coefficient and linear server
+work; the latter explicitly retains linear communication, including the
+`2N+o(N)` general-field silent-OLE comparison. They justify only the control
+rows above, not a lower bound against `C7-DV-SPQ-v0`.
+
+#### Safe future online-only boundary
+
+An eventual deployment may expose only the online prover, but this is a
+process boundary, not an authorization. Root setup runs separately, records
+all source reads, temporary writes, traffic, RSS and wall time, and activates
+nothing until an immutable manifest and setup-relation receipt verify. The
+existing 900/990-second and 5,400/5,940-second setup clocks and exploratory 3x
+persistent-disk ceiling remain unchanged; a failed setup creates no active
+root or reusable privacy budget. Refresh is still untested and unauthorized.
+
+The future online process gets read-only model/root access, reserves the full
+attempt before witness-dependent output, performs exactly one
+manifest-direction monotone `2N`-byte packed scan with no reopen or model-sized
+spill, and writes only the bounded proof and atomic journal. Abort burns the
+secret-point slot, correlations, masks and `q_attempt`; acceptance promotes KV
+state only after terminal MAC settlement. No online prover exists until the
+operator-transcript bridge, enrollment binding, succinct malicious
+`OpenQuotientIntoMac`, full stateful privacy theorem and exact codec/resource
+row all pass.
+
+### 5.12 R0.8d exact `eq` bridge and transcript hard stop
+
+#### Exact heterogeneous scalarization
+
+Fix one canonical segment `i`, including its zero padding to length
+`N_i=2^n`, and write
+
+```text
+F_i(T) = sum_(0 <= j < N_i) W_i[j] T^j.
+```
+
+For a scalar `t_i` for which every `1+t_i^(2^k)` is nonzero, define the curve
+and denominator from Section 5.11.  Since
+
+```text
+1-r_k(t_i) = 1/(1+t_i^(2^k)),
+```
+
+the binary expansion `j=sum_k j_k*2^k` gives
+
+```text
+eq(r(t_i),j)
+  = product_(j_k=1) r_k(t_i) * product_(j_k=0) (1-r_k(t_i))
+  = product_k t_i^(j_k*2^k) / D_n(t_i)
+  = t_i^j / D_n(t_i).
+```
+
+Therefore the already-proved heterogeneous identity refines exactly to
+
+```text
+sum_i beta_i * MLE(W_i,r(t_i))
+  = sum_i [beta_i/D_i(t_i)] * F_i(t_i).
+```
+
+Padding remains zero and contributes nothing.  The illustrative schedule has
+98/370 weight segments and 106/378 all-plane segments for GPT-2/31B, below
+the screen cap 512, but these remain illustrative until the real compiler
+manifest derives them.  A reverse physical traversal can feed one synthetic
+division per segment while reading exactly `2N` packed bytes once.  Excluding
+the still-missing private quotient adapter, the source work is
+`N+O(J log N_max)`, the source-linear constant is independent of `J`, and no
+`L`, Möbius transform or extension-field weight wrapper is stored.
+Merely sharing one Fp3 token per illustrative weight segment would contribute
+only 4,704/17,760 combined two-party bytes for GPT-2/31B; this is a lower bound,
+not a setup estimate. Same-`F` binding, share protection, receipts and their
+construction traffic remain uncounted, and any realization still fails if it
+introduces a codeword, per-coefficient authenticator or setup beyond the
+registered disk/wall caps.
+
+This curve is also essentially the exact direct-power condition.  At a
+nondegenerate point, `eq(r,j)=c*t^j` for every `j` if and only if
+
+```text
+c = eq(r,0),
+r_k/(1-r_k) = t^(2^k)  for every k.
+```
+
+Necessity follows by dividing the coefficient at `j=2^k` by that at `j=0`;
+sufficiency is the product calculation above.  An arbitrary independently
+sampled GKR point fails these relations in general.  The budget v26 modular
+self-check verifies the identity and an explicit two-coordinate
+counterexample over Goldilocks.
+
+#### Why the current public GKR transcript is unsound on the curve
+
+The bridge cannot be installed by merely changing challenge derivation.
+`protocol-sketch.md` fixes public verifier challenges, and
+`SumcheckSound.card_deviation_le` counts independent uniform vectors in
+`F^n`: the round-`i` prover message sees only the prior coordinates, while the
+current coordinate is fresh over the whole field.  The curve contains at most
+`|F|` correlated vectors and does not meet that hypothesis.
+
+The failure is constructive for the degree-two product sumchecks used by GKR.
+Revealing `r_0=t/(1+t)` reveals `t=r_0/(1-r_0)`, hence every later coordinate.
+In the opposite direction, after revealing
+`r_k=t^(2^k)/(1+t^(2^k))`, an adjacent lower coordinate has only the two
+possibilities induced by `y` and `-y`, where `y^2=t^(2^k)`:
+
+```text
+s_plus  =  y/(1+y),
+s_minus = -y/(1-y).
+```
+
+For `P(X)=(X-s_plus)(X-s_minus)`, direct algebra gives
+
+```text
+P(s_plus)=P(s_minus)=0,
+P(0)+P(1)=1.
+```
+
+If the current false sumcheck gap is `delta`, the malicious prover sends the
+true next-round polynomial plus `delta*P`.  The round-sum check absorbs the
+whole gap, yet evaluation at either possible challenge returns the true value;
+the prover then continues honestly.  Before reaching such a round, a nonzero
+gap can be carried without risk by adding the constant `delta/2`, because the
+field has odd characteristic.  A known single next challenge is even easier:
+a degree-at-most-two polynomial can be chosen to have the prescribed
+`h(0)+h(1)=delta` and a root at that challenge.
+
+No coordinate permutation repairs this.  Once a lower power has been shown,
+any later higher power is deterministic.  Avoiding every such ascent forces a
+strictly descending permutation; a complete strictly descending order has
+adjacent powers and therefore the two-root attack.  Thus a false gap can be
+carried to a vulnerable round and erased with probability one on every
+nondegenerate execution.  This is a **NO-GO** for
+`C7-DV-SPQ-v0 + LogisticEqCurve + current public sequential blind GKR`, not a
+claim that secret-point commitments are impossible.
+
+#### Bounded escape screen
+
+| Escape | Evidence | Disposition |
+| --- | --- | --- |
+| retain independent per-round challenges | preserves the existing soundness theorem, but generic `r` fails the direct-power condition | CONTROL; no univariate SPQ bridge |
+| projective/monomial sumcheck | removes `D_i` and puts truth-table values directly in the monomial basis, but does not restore independent challenges | NO-GO as a transcript escape |
+| fuse all `n` variables into one univariate skip | obtains one fresh scalar, but the round polynomial has degree `Theta(2^n)=Theta(N)` and needs a linear message/oracle or another PCS | NO-GO under proof-wire and recursion gates |
+| bounded-size univariate skips | keep degree and messages bounded, but leave multiple independent scalars and a multivariate terminal | CONTROL; not the required scalar quotient |
+| keep challenges secret/encrypted | the current prover cannot form later round messages from an opaque challenge; no bounded-wire secure-fold refinement is supplied | QUARANTINE as a new operator protocol |
+
+The projective and univariate-skip controls are supported by the primary
+`sota/2026-762-projective-sumcheck.md` and
+`sota/2025-1473-time-space-tradeoffs-sumcheck.md` records.  Neither supplies a
+complete C7 row.  R0.8d therefore closes the scalar algebra but fails the
+operator composition.  Same-`F` enrollment, malicious succinct
+`OpenQuotientIntoMac`, the stateful malicious-DV theorem and the exact codec
+also remain open, so no CPU prototype, prover or SIMT work is authorized.
+
+### 5.13 R0.8e secret-point butterfly transform
+
+R0.8e replaces the unsound logistic operator bridge, not the independent
+GKR transcript.  The new reduction `C7-SPBT-v0` accepts each ordinary
+independent terminal point `r` already produced by blind GKR and changes the
+basis of the committed segment before one fresh secret-point check.  It is a
+reduction candidate, not an admitted PCS.
+
+#### Exact relation and invertibility
+
+Let a canonically padded segment have length `M=2^n`, coefficient vector
+`p_0` and polynomial
+
+```text
+P_l(X) = sum_(0 <= j < M/2^l) p_l[j] X^j.
+```
+
+At level `l`, split `P_l(X)=E_l(X^2)+X O_l(X^2)` and use the ordinary,
+independently sampled GKR coordinate `r_l` to define
+
+```text
+p_(l+1)[i] = (1-r_l) p_l[2i] + r_l p_l[2i+1]
+z_(l+1)[i] = p_l[2i] - p_l[2i+1].
+```
+
+Writing the corresponding polynomials as `Y_(l+1)` and `Z_(l+1)`, the exact
+one-level identity is
+
+```text
+P_l(X)
+  = (1+X) Y_(l+1)(X^2)
+  + (r_l-(1-r_l)X) Z_(l+1)(X^2).                 (SPBT-1)
+```
+
+The pair map has matrix
+
+```text
+[ 1-r_l   r_l ]
+[   1      -1  ]
+```
+
+and determinant `-1`, for every `r_l`.  Its inverse is therefore unconditional:
+
+```text
+p_l[2i]   = p_(l+1)[i] + r_l z_(l+1)[i]
+p_l[2i+1] = p_(l+1)[i] - (1-r_l) z_(l+1)[i].
+```
+
+After `n` levels, the only surviving fold is
+`y=p_n[0]=MLE(p_0,r)`.  The complements contain
+`M/2+M/4+...+1=M-1` coefficients, so
+
+```text
+T_r : p_0 <-> (Z_1,...,Z_n,y)
+```
+
+is an invertible `M`-coefficient transform.  This is the key difference from
+a raw fold transcript: no second `Y` oracle is committed, and there is no
+rate expansion in the number of algebraic coefficients.
+
+For
+
+```text
+D_l(X) = product_(h<l) (1+X^(2^h)),
+c_l(X) = r_l-(1-r_l)X^(2^l),
+```
+
+induction on (SPBT-1) gives
+
+```text
+P_0(X)
+  = D_n(X) y
+  + sum_(l=0)^(n-1)
+      D_l(X) c_l(X) Z_(l+1)(X^(2^(l+1))).        (SPBT-2)
+```
+
+Every term has degree at most `M-1`.  Because `T_r` is bijective, a proposed
+`(Z_1,...,Z_n,y)` differs from the true transform if and only if the residual
+polynomial in (SPBT-2) is nonzero.  Budget v27 checks (SPBT-2), coefficient
+count and the inverse exactly over Goldilocks on a 64-coefficient instance.
+The identity is field-generic; the selected execution and terminal remain
+Goldilocks Fp3.
+
+For heterogeneous segments, the canonical tagged stream contains every
+`Z_(i,l)` and `y_i` once.  A response-local `C_Z,e` may be one interleaved
+root inside the fresh boundary plane `C_B,e`; it is not another persistent
+weight root.  Jagged layout rules determine tags and padding, but do not add
+the paper's online adapter.  The one logical ALFC invocation opens the
+structured functional of `C_W` and `C_Z,e` into the session MAC and checks
+`y_i=v_i`, where `v_i` is the already authenticated operator terminal.  No
+`y_i`, `P_i(tau)` or `Z_(i,l)(tau^(2^(l+1)))` is cleartext.
+
+#### Required transcript and conditional soundness
+
+The only sound public-challenge order found is:
+
+```text
+reserve the whole attempt and bind accepted predecessor state
+  -> run response-wide GKR with its ordinary independent r_i
+  -> fix every authenticated terminal claim and the complete C_Z,e
+  -> sample tau after all transform coefficients are bound
+  -> derive and fix every structured query vector from tau
+  -> sample beta after all roots/claims/handles/query vectors are fixed
+  -> open C_W and C_Z,e structured evaluations into shared-Delta Fp3 MAC
+  -> settle SPBT residuals and y_i-v_i in one terminal RLC
+  -> atomically promote KV successor, or burn on every failure/abort.
+```
+
+Under named binding and authenticated-opening hypotheses, if any of `J`
+segment transforms or terminal claims is false, fresh `tau` makes every false
+residual evaluate to zero with probability at most `(M_max-1)/|Fp3|`.
+Conditioned on a nonzero scalar residual vector, the later beta aggregate
+vanishes with probability at most `(J-1)/|Fp3|`.  Thus the new algebraic term is
+
+```text
+epsilon_SPBT,response <= (J-1 + M_max-1)/|Fp3|.
+```
+
+Using the current conservative `M_max=2^28/2^35` and illustrative
+`J=106/378` controls gives about 164/157 bits per response and 144/137 bits
+after the full `R_max=2^20` connection horizon.  Both exceed the 110-bit
+component reserve.  These figures are conditional algebra only.  A complete
+bound must still expose
+
+```text
+Adv_sound <= Adv_bind_CW + Adv_bind_CZ + Adv_same_W
+           + Adv_delayed_open_into_MAC
+           + epsilon_SPBT,response
+           + Adv_MAC + Adv_PCG/VOLE
+           + Adv_hash + Adv_state/replay/fork.
+```
+
+No missing advantage is set to zero, and the existing R0.8d attack remains
+the durable reason that correlated logistic challenges cannot replace this
+independent transcript.
+
+#### One-scan transform schedule and exact dense cost
+
+A binary carry stack computes the transform in canonical packed order.  Each
+incoming coefficient occupies level zero; whenever a level already has a
+pending value, one butterfly emits the next tagged `Z_l` coefficient and
+carries `Y_l` upward.  For segment lengths `M_i`, this gives
+
+```text
+butterflies = sum_i (M_i-1) = M_total-J,
+N <= M_total < 2N,
+source reads = 2N bytes in one monotone scan,
+working state = one Fp3 value per level + one g141 leaf/hash frontier.
+```
+
+The source-linear constant is independent of query count and the stream can
+be hashed without an expanded resident weight wrapper.  One extension-scalar
+multiplication and two additions/subtractions suffice per butterfly.  This
+arithmetic path is SIMT-friendly in principle, but remains analytic and has
+no implementation authority.
+
+The dense transform traffic is not free.  `Z_1` is base-field-valued because
+the source is in Fp.  The remaining complements plus `y` are `M_total/2`
+Fp3 values.  The canonical dense stream is therefore exactly
+
+```text
+(M_total/2)*8 + (M_total/2)*24 = 16*M_total bytes,
+```
+
+or between `16N` and `32N` bytes before hashing.  The current workload bounds
+are:
+
+| Dense response-local transform control | GPT-2 | Gemma-class 31B |
+| --- | ---: | ---: |
+| one packed source read | 248,000,000 B | 61,652,800,000 B |
+| `16N` auxiliary-stream minimum | 1,984,000,000 B | 493,222,400,000 B |
+| `<32N` auxiliary-stream upper bound | <3,968,000,000 B | <986,444,800,000 B |
+| packed + retained minimum | 9x | 9x |
+
+The stream bytes are online generated/hash input, not certificate bytes.  If
+discarded, they do not enlarge persistent setup.  If retained so that a
+later challenge can be opened, they are forbidden model-sized scratch and
+already exceed the 3x setup envelope if moved to preprocessing.  An
+optimistic two-party preprocessed sign/square-root orbit uses at least one
+Fp3 token per coefficient per party: `48N` additional bytes, or at least 25x
+including packed weights.  This explicitly prevents SPBT from recreating the
+heavy XD4-style setup through another name.  No setup-wall or refresh test is
+authorized.
+
+#### Commit/challenge/open triangle: current realization NO-GO
+
+The reduction closes the operator transcript but exposes one remaining
+non-fungible triangle:
+
+| Schedule | Exact consequence | Disposition |
+| --- | --- | --- |
+| reveal `tau` before `C_Z,e` | one scalar equation leaves `M` proposed transform coefficients; a prover adapts one of them to any false `y` | **NO-GO: unsound** |
+| fix `C_Z,e`, then retain it until `tau` | canonical dense response scratch is `16*M_total` bytes, at least 8x the packed source in addition to the source | **NO-GO: model-sized scratch** |
+| fix `C_Z,e`, discard it, then recompute after `tau` | needs a second packed read and another transform | **NO-GO: second scan** |
+| keep `tau` hidden during the one scan | needs a malicious-secure streaming inner product/OPE into MAC with sublinear wire and no per-coefficient correction | **OPEN primitive; no complete row** |
+| save an exact plain sketch for arbitrary later `tau` | evaluations at `M` distinct points determine every degree-`<M` polynomial, so an information-theoretic exact sketch must be injective | **NO-GO for sublinear plain sketches; not a PCS lower bound** |
+
+A computational polynomial commitment can evade the plain-sketch argument,
+but it must then supply the exact delayed-opening witness algorithm.  KZG-like
+multilinear-to-univariate controls use group setup and online MSM work;
+BaseFold-like controls restore an encoded oracle; the known space-efficient
+PCS control explicitly assumes multi-pass streaming input.  None gives C7 a
+one-scan, setup-safe delayed opening.  These are construction-specific
+rejections, not a universal lower bound.
+
+Primary controls are
+[MicroNova](https://eprint.iacr.org/2024/2099), whose compressed path uses a
+universal KZG setup and group operations;
+[BaseFold](https://eprint.iacr.org/2023/1705), which obtains multilinear
+commitments from foldable codes and encoded-oracle work; and the
+[space-efficient PCS](https://eprint.iacr.org/2020/1425), whose stated sender
+interface has multi-pass streaming access.  Jagged remains only the canonical
+heterogeneous layout reference in `sota/2025-917-jagged-pcs.md`; none of these controls instantiates
+the SPBT delayed opener.
+
+Raw Merkle sampling is also insufficient.  `T_r` is invertible but rate one,
+so it has no distance: one false coefficient can change the claimed
+polynomial while occupying one leaf.  Even reusing the current 831/1,055
+query controls, the miss probability is at least 0.999527/0.999997 on the
+minimum g141 leaf counts, far from one security bit.  Wrapping the stream in
+the rate-1/2 code returns the already rejected full-codeword setup or online
+materialization.  A finite public `tau` pool cannot supply 110-bit challenge
+entropy and also worsens reuse privacy.
+
+Two other exact reductions remain closed with their reasons.  Committing all
+sumcheck rounds as functions of one scalar merely turns the R0.8d correlated
+challenge attack into a polynomial identity; enforcing causal dependence with
+degree-two prefix tables grows as `3^round` and requires another PCS.
+Middle-coefficient convolution can express a matmul exactly, but materializes
+linear convolution remainders per matmul/token or requires persistent FFT
+weight transforms, violating response scratch or setup.
+
+#### Policy-2 and stateful privacy consequences
+
+Because `T_r` is invertible, revealing all unmasked complements is equivalent
+to revealing the weights.  `C_Z,e` must therefore be fresh and attempt-bound,
+computationally hiding, and covered by policy 2.  Its operational disclosures
+charge the attempt-local `Q_B[a]`, while every weight-derived view also
+charges the model-global `Q_root`; a public salted hash root alone is not a
+hiding theorem.  Any visible
+leaf is exactly 141 masked Fp symbols, with each Fp3 value charged as three.
+Queries, paths, failed attempts, retries and selective aborts all consume the
+preregistered root budget before disclosure.  Abort never promotes the KV
+state and never refunds masks or correlations.
+
+The required malicious-DV theorem must simulate the joint `C_W/C_Z,e` roots,
+all masked adaptive leaf views, the opaque authenticated structured
+evaluations, accept/reject feedback and the atomic KV journal from only the
+allowed leakage.  It must also prove that the `y_i` authenticated by SPBT are
+the same values used by the operator proof and that every segment comes from
+the same canonical `W`.  Its new term is explicit:
+
+```text
+Adv_priv,connection <= Adv_SPBTView
+                     + Adv_RootMaskPRG_multi + Adv_PCG/VOLE + Adv_MAC
+                     + Adv_hash/path + Adv_abort/timing
+                     + Adv_allocator/state + Adv_codec_refinement.
+```
+
+`Adv_SPBTView` and the exact `q_attempt/Q_root` vector are not derived, so the
+78-bit stateful privacy gate remains false.  The one fresh transform-root
+digest is only a 32-byte certificate lower bound; all delayed-opening paths,
+masked payloads, MAC frames and interactive messages are unknown.  Proof-size
+and 3.5x growth gates therefore remain false rather than being inferred from
+the small root.
+
+**R0.8e disposition.**  `C7-SPBT-v0` passes the exact algebraic relation,
+preserves the independent public GKR soundness schedule, and has a conditional
+one-source-scan `O(N)` transform with bounded working state.  Its current
+Merkle/secret-point realizations fail the delayed-opening gate.  It is the
+main reduction candidate but not a selected carrier, and
+`C7_CPU_REFERENCE_PASS=false`.  Resume requires one concrete delayed-opening
+primitive that fixes all coefficients before `tau`, opens directly into the
+Fp3 MAC with sublinear wire, retains one packed scan and bounded memory,
+introduces no full codeword/heavy setup, and supplies the adaptive policy-2
+privacy bridge.  Until then there is no CPU prover, SIMT, refresh, provider or
+pod action.
+
 ## 6. Registered analytic screens
 
 The executable calculator is `scripts/budget_c7_stateful_alfc.py`.  Every
-output carries `credit:false`.  Schema v23 reproduces scaling arithmetic,
+output carries `credit:false`.  Schema v27 reproduces scaling arithmetic,
 allocation caps, artifact-volume scenarios, the R0.7 strict-UD controls and
 the two bounded closure screens, and adds the exact selected-schedule Fp2/Fp3
 audits, g141 opening subcodec, known serialized bytes and setup resource
 floors, the confirmed global fallback horizon and the conditional
 chunk-addressed KMACXOF256 screen, closes the root/codec geometry fixed point
 and records the bounded selected-RS online NO-GO.  It also registers the
-empty fail-closed new-carrier tournament and the tested carrier-independent
-`Fp[u]/(u^3-2)` field/terminal seam.  It is
+fail-closed new-carrier tournament, the tested carrier-independent
+`Fp[u]/(u^3-2)` field/terminal seam, the policy-2 reference codec, the three
+bounded co-designed rejections above, and the conditional `C7-DV-SPQ-v0`
+margin, missing interfaces, realization controls and safe online boundary. It
+also records the exact logistic `eq` identity, its one-pass conditional cost,
+the executable degree-two correlated-challenge attack and the bounded escape
+screen.  It additionally checks the exact SPBT identity/inverse, conditional
+Fp3 soundness, one-scan butterfly work, dense auxiliary traffic, raw-Merkle
+query miss and every branch of the delayed-opening triangle.  It is
 not an authority for a complete compiler manifest, complete
 certificate, security theorem or measured C7 time.
 
@@ -2824,6 +3477,15 @@ python3 scripts/budget_c7_stateful_alfc.py --chunk-mb 64 --bandwidth-gbps 1.6
 ```
 
 Both must exit zero; neither supplies production credit.
+
+For the scoped R0.8e checkpoint, the focused
+`tiny_policy2_codec_budget_terminal_and_state_seam` test and standalone
+rustfmt check for `c7_policy2_reference.rs` pass, as does `git diff --check`.
+The full Rust workspace has one committed, out-of-scope C6 source-guard
+failure: `native_persistence_source_guard_bypasses_hidden_u_owner` includes a
+later helper signature containing `session_digest`.  The failing
+`volta-bench` source is unchanged by C7, so it is recorded rather than repaired
+inside this scoped checkpoint.
 
 ### 6.1 Models and common workload
 
@@ -3627,6 +4289,13 @@ The focused command
   The carrier-independent Rust codec/KAT and shared-`Delta` equation seam now
   pass focused tests.  This is not full connection security: PCS/PCG/VOLE
   refinement, malicious-DV privacy and every other error term remain open.
+- **Policy-2 reference seam: TINY CONFORMANCE PASS, NO PCS CREDIT.** The exact
+  90-byte BLAKE3-XOF descriptor, public salted leaf/tree, `1296+32h` opening,
+  fixed reservation versus actual-response census, abort burn, Fp3 terminal
+  and in-memory KV replay/fork checks execute together. The tree/state are not
+  streaming or durable, and no code, same-W extractor or privacy reduction is
+  instantiated. This prepares a local test but does not authorize a
+  `BatchOpenBlocks` prototype.
 - **Two Fp2 repetitions: fallback only.**  It preserves the field but needs a
   new adaptive repetition/shared-scan theorem and conservatively doubles the
   query/privacy payload.  **Interactive PoW remains NO-GO** under `Q_FS=0`
@@ -3646,7 +4315,7 @@ The focused command
   and no exact `O(N+poly(q,log N))` shared schedule is registered.  Seeded
   BLAKE3/KMAC does not solve the RS linear map.  This is not a universal lower
   bound.  It is retained only as the control above.
-- **New-carrier tournament: OPEN, EMPTY, FAIL-CLOSED.**  Owner choice 1.A
+- **New-carrier tournament: OPEN, NO ADMITTED CARRIER, FAIL-CLOSED.**  Owner choice 1.A
   has two tracks. Published constructions are baseline/control rows, admitted
   only with exact independently verifiable costs. A co-designed C7 shared
   circuit is the main research line, but earns no design credit. Before a tiny
@@ -3655,6 +4324,26 @@ The focused command
   `O(N+poly(q,log N))` proof. Pure fold width, the two bounded R0.7
   alternatives and already rejected families are not rescreened; their
   individual reasons remain in the decision register.
+- **`C7-SPBT-v0`: MAIN REDUCTION CANDIDATE, NOT AN ADMITTED CARRIER.**  Its
+  invertible complement transform preserves ordinary independent GKR
+  challenges and gives one degree-`<M` secret-point identity.  The algebra,
+  inverse, coefficient count, conditional 144/137-bit lifetime margins and
+  one-source-scan butterfly schedule pass.  The complete row fails: sampling
+  `tau` before the transform root is unsound; retaining the root payload costs
+  at least 9x packed; recomputation is a second scan; hidden-`tau` streaming
+  still needs a sublinear malicious OPE/inner product into MAC.  Raw Merkle
+  sampling has no distance.  No code or CPU credit follows.
+- **`C7-DV-SPQ-v0`: QUARANTINED TERMINAL PRIMITIVE.**  Its ideal equation
+  retains conditional Fp3 margin, but the R0.8d logistic composition is
+  constructively unsound and R0.8e does not instantiate its same-`F`
+  enrollment or succinct opening.  It may serve only as the terminal of a
+  future SPBT delayed-opening carrier after those obligations pass.
+- **R0.8b co-designed bounded rows: NO-GO.** A single `X^B-c` coset has the
+  desired one-scan evaluator but only one worst-case soundness hit; independent
+  amplification restores `tN`. Persisted rate-1/2 field parity is 5x packed
+  before the tree. A packed-order causal encoder with bounded delayed tail has
+  sublinear distance. These scoped rejections do not prove that no suitable
+  shared circuit exists.
 - **ERA `r=4` + salted BLAKE3: byte/prover control only.**  Its published
   field-query law grows with `log N`, its masked encoding is unproved here,
   and its N-scale setup intermediates remain excluded.
@@ -3664,7 +4353,8 @@ The focused command
 ### 8.2 Resume conditions for an R1 proposal
 
 Policy 3 remains terminally rejected and policy 2 is active.  Strict-UD RS is
-now only the control baseline; the new-carrier tournament has no admitted row.
+now only the control baseline; the new-carrier tournament has no admitted
+carrier even though SPBT supplies a complete algebraic reduction.
 The selected challenge baseline remains interactive
 honest-DV (`Q_FS=0`) and logical `g=141`.  Setup retains its 2.00 target/2.10
 baseline, with a conditional exploratory 3x ceiling plus absolute disk,
@@ -3772,6 +4462,9 @@ smallest complete serialized case before any larger component benchmark.
   `k0=4`, one packed root, g141 and interactive `Q_FS=0`.  Its exact selected-
   schedule Fp2 audit fails 110/78 on 31B; setup-wall targets become 900/5,400
   seconds while tolerance and refresh caps await the owner decision.
+- R0.8e adds only an exact analytic reduction and budget-v27 self-check.  It
+  preserves independent GKR challenges and one packed source scan, but the
+  delayed opening is not constructed; no Lean/Rust/prover/SIMT code follows.
 - The proof-byte table is a target allocation calibrated to public component
   evidence, not a composed certificate derivation.  It is `credit:false` and
   is one reason Backend A remains NO-GO.
@@ -3889,3 +4582,8 @@ entry, but must retain its evidence and reason.
 | `C7-D102` / 2026-08-28 | selected strict-UD RS realization NO-GO under online gates | The exact initial codewords are `2^29/2^36` Fp symbols. Direct dense opening is a qN control (not a lower bound on shared circuits); persisting codeword plus tree is 4,786,653,504/642,600,433,216 B, or 19.301x/10.423x packed and fails 3x; online materialization needs 4.295/549.756 GB scratch; and the bounded repository/paper screen contains no pruned/shared circuit with a q-independent source-linear term, one packed scan and bounded memory. BLAKE3/KMAC random access removes mask storage but does not evaluate the RS map. No complete row exists, so `C7_CPU_REFERENCE_PASS=false` and prover/SIMT/pod remain forbidden. This is not a universal lower bound. Resume requires an owner-selected new code-switch/shared circuit with exact bytes and `O(N+poly(q,log N))`, or an explicit relaxation of a recorded hard resource gate. |
 | `C7-D103` / 2026-08-28 | choose 1.A/2.A/3.B: open a new-carrier tournament, demote RS, implement only the Fp3 seam | All resource and security gates stay fixed. The tournament admits only a genuinely new shared code-switch/circuit with an exact q-independent source-linear term, one monotone packed scan, bounded memory, complete g141 codec/bytes and policy-2 soundness/privacy bridge. Pure fold width and the already closed joint-sampling/code-switch families are not repeated; their original rejection reasons remain controlling. Strict-UD RS is retained solely as an algebraic/security baseline, and its prover is forbidden. The only implementation authority is carrier-independent: canonical 24-byte `Fp[u]/(u^3-2)` encoding/KAT and the shared-`Delta` equation seam. Focused Rust tests cover wrong length, noncanonical limbs, multiplication, two-commitment RLC linearity and correction mutation in each limb. This supplies no PCS, PCG/VOLE, malicious-DV theorem or protocol credit. No prover, SIMT, refresh, provider or pod is authorized. |
 | `C7-D104` / 2026-08-28 | split the R0.8a tournament into published controls and a co-designed C7 main line | Published constructions serve only as baseline/control rows and require exact independently verifiable costs. The main research line is a new co-designed C7 shared circuit because no published row currently combines one scan, bounded memory, nearly linear online work, policy-2 privacy and stateful authentication. Co-design earns no credit by intent: before a tiny CPU prototype it must supply a complete algebraic relation/codec; exact query, byte, memory, setup and work counts; the soundness/privacy bridge to MAC, KV cache and a malicious verifier; and a proof of one packed scan in `O(N+poly(q,log N))`. Until all four pass, no prototype exists. SIMT, a complete prover, refresh and pod remain separately forbidden. |
+| `C7-D105` / 2026-08-28 | implement only the policy-2 reference seam; reject three incomplete co-designed shortcuts | R0.8b fixes the exact 90-byte keyed `C7-RM-B3XOF-v1` descriptor/address map, six-draw rejection, public domain-separated salted BLAKE3 leaf/tree, canonical `1296+32h` single-leaf frame, distinct fixed `q_attempt` and actual `q_response`, nonrefundable abort burn, shared-`Delta` Fp3 terminal and in-memory accepted-KV CAS. The tiny test covers KAT, codec/path/padding mutation, burn/accept/exhaustion and replay/fork. It remains `credit:false`: BLAKE3's multi-root theorem, a durable allocator/state store, PCS same-W binding, adaptive malicious-DV privacy and a one-scan opener are absent. The structured coset evaluator is `N+B log B` for one block but one coset supplies only one worst-case hit and `t` independent cosets restore `tN`; persisted rate-1/2 Fp parity is 5x packed before the tree; a bounded-tail causal packed-order encoder cannot have constant relative distance. These scoped rows are NO-GO and preserve their separate security/setup/distance reasons; they are not a general circuit lower bound. No `BatchOpenBlocks` prototype, SIMT, prover, refresh or pod is authorized. |
+| `C7-D106` / 2026-08-28 | open the co-designed secret-point quotient line without relaxing gates | The owner permits a novel C7 construction even without a published instantiation. `C7-DV-SPQ-v0` becomes the main research candidate, not an admitted carrier. Its ideal root stores only secret shares of `F(tau)` and its online equation is `F(tau)-v=(tau-r)Q(tau)`, with all three values remaining under the connection MAC. The conditional Fp3 degree/attempt screen gives 155/144 bits per GPT-2/31B root profile and 135 bits after four roots over `R_max`; this receives no credit until transcript fixation and secret-view hypotheses are proved. The current `eq`-basis does not yet scalarize, and published algebraic-PRF, OLE/NIIP, Merkle-quotient, public-power, finite-pool and coset realizations fail or remain quarantined for their separately recorded setup, wire, pass, challenge-order or theorem gaps. Future root setup is isolated and immutable; an eventual online process is read-only, reserves before output, scans exactly once and burns on abort. No prover, SIMT, refresh or pod is authorized. |
+| `C7-D107` / 2026-08-29 | accept the exact logistic `eq` bridge and reject its current public-GKR composition | For `r_k(t)=t^(2^k)/(1+t^(2^k))`, `eq(r(t),j)=t^j/D_n(t)` with `D_n(t)=product_k(1+t^(2^k))`. Thus each raw packed segment is already a univariate coefficient vector; one reverse scan conditionally costs `N+O(J log N_max)` with no Möbius transform, `L`, expanded wrapper or second packed read. This closes only the algebraic basis gap. Public sequential challenges on the curve are unsound: low-to-high reveals every future challenge; high-to-low exposes two-point square-root fibers, and the degree-two polynomial through those roots has `P(0)+P(1)=1`, letting a malicious prover carry then erase any false sumcheck gap. Any coordinate order eventually has a deterministic ascent or an adjacent descending pair. Independent challenges retain soundness but not scalarization; projective basis retains the correlation; all-variable univariate skip has linear degree/wire; bounded skips remain multivariate; secret challenges need a new secure operator protocol. The composed curve/current-GKR row is NO-GO, while the secret-point primitive remains quarantined research. Every resource/security gate and the ban on CPU prover, SIMT, refresh and pod remain unchanged. |
+| `C7-D108` / 2026-08-29 | select `C7-SPBT-v0` as the main reduction candidate, not a carrier | For each independent GKR coordinate, the pair transform `Y=(1-r)E+rO`, `Z=E-O` has determinant `-1`. Recursing gives a bijection `W <-> (Z_1,...,Z_n,y)` with exactly `M` coefficients and `y=MLE(W,r)`, plus the degree-`<M` identity `P_0=D_n y+sum_l D_l c_l Z_(l+1)(X^(2^(l+1)))`. Fresh `tau` follows the transform commitment; every derived query vector is fixed before later beta RLC. The conditional error is at most `(M_max-1+J-1)/|Fp3|`, giving about 144/137 bits after `R_max` for the current GPT-2/31B controls. A binary carry stack computes all complements in one monotone packed scan with `M_total-J<2N-J` butterflies and logarithmic frontier state. Budget v27 checks the identity and inverse exactly. This repairs the R0.8d operator-challenge correlation without claiming a PCS or security theorem. |
+| `C7-D109` / 2026-08-29 | current SPBT delayed-opening realizations NO-GO; retain every reason | Soundness requires the transform coefficients fixed before `tau`. Revealing `tau` first lets one of `M` free coefficients absorb any false terminal. Fixing `C_Z,e` first and retaining its typed dense payload costs exactly `16*M_total` bytes (at least 9x packed including source); discarding and recomputing requires a forbidden second source scan. Hidden-`tau` streaming is precisely a malicious private inner product/OPE into MAC and no sublinear-wire, no-per-coefficient-correction construction is supplied. A plain exact later-point sketch is information-theoretically injective; raw Merkle sampling has no distance and misses a one-leaf error with probability above 0.9995/0.999997 under the current query controls; a rate-1/2 wrapper restores the rejected codeword; a two-party sign/square-root orbit is at least 25x packed; finite point pools lack 110-bit entropy and worsen reuse privacy. Symbolic all-round scalar commitments preserve the correlated-challenge attack or grow as `3^round`; convolution remainders create response-sized scratch or persistent FFT setup. These are scoped construction rejections, not a universal PCS lower bound. `C7_CPU_REFERENCE_PASS=false`; no prover, SIMT, refresh, provider or pod is authorized. |

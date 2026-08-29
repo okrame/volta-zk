@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Executable C7 R0.8 analytic/readiness screen; every result is credit:false."""
+"""Executable C7 R0.8e analytic/readiness screen; every result is credit:false."""
 
 from __future__ import annotations
 
@@ -1679,6 +1679,8 @@ def r08_new_carrier_tournament() -> dict[str, object]:
                 ],
                 "pre_CPU_screen_pass": False,
                 "tiny_CPU_prototype_authorized": False,
+                "carrier_independent_policy2_reference_implemented": True,
+                "tiny_non_PCS_conformance_test_implemented": True,
                 "credit_by_design": False,
             },
         },
@@ -1712,8 +1714,699 @@ def r08_new_carrier_tournament() -> dict[str, object]:
             ),
         },
         "entrants": [],
+        "main_research_candidate_not_admitted": "C7-SPBT-v0",
+        "candidate_lineage": (
+            "C7-SPBT-v0 replaces the unsound logistic operator bridge while "
+            "retaining C7-DV-SPQ-v0 as its quarantined secret-point terminal"
+        ),
+        "bounded_codesigned_rows": r08b_codesigned_construction_screen(),
         "selected_carrier": None,
         "complete_row_exists": False,
+        "prover_or_SIMT_implementation_authorized": False,
+        "credit": False,
+    }
+
+
+def r08b_codesigned_construction_screen() -> dict[str, object]:
+    """Exact local eliminations plus the carrier-independent tiny seam."""
+    rate_half_persisted_parity_amplification = 1 + FIELD_SYMBOL_BYTES / PACKED_WEIGHT_BYTES
+    return {
+        "state": "NO_CARRIER_ROW_COMPLETE_REFERENCE_SEAM_READY",
+        "policy2_reference_seam": {
+            "root_mask_suite": "C7-RM-B3XOF-v1",
+            "root_mask_descriptor_bytes": 90,
+            "root_mask_draw_cap": 6,
+            "logical_leaf_symbols": LOGICAL_LEAF_SYMBOLS,
+            "salt_bytes": 32,
+            "leaf_digest_bytes": 32,
+            "single_leaf_opening_fixed_bytes": 1296,
+            "single_leaf_opening_formula": "1296 + 32*tree_depth",
+            "tiny_two_leaf_opening_bytes": 1328,
+            "q_attempt_and_q_response_separate": True,
+            "abort_consumption_nonrefundable": True,
+            "Fp3_terminal_shared_Delta_tested": True,
+            "in_memory_KV_CAS_replay_fork_tested": True,
+            "durable_allocator_or_PCS": False,
+            "credit": False,
+        },
+        "structured_coset_block": {
+            "online_work": "N + B*log2(B) for one X^B-c residue block",
+            "online_memory": "B_Fp",
+            "packed_source_passes": 1,
+            "query_independent_source_constant": True,
+            "soundness_obstruction": (
+                "one random coset is one worst-case hit: a delta-density error "
+                "may occupy only a delta fraction of cosets"
+            ),
+            "independent_cosets_cost": "t*N + poly(t*B,logN)",
+            "disposition": "NO_GO_query_miss_amplification_reintroduces_tN",
+            "credit": False,
+        },
+        "persisted_rate_half_field_parity": {
+            "canonical_packed_bytes_per_source": PACKED_WEIGHT_BYTES,
+            "minimum_parity_Fp_bytes_per_source": FIELD_SYMBOL_BYTES,
+            "amplification_before_tree": rate_half_persisted_parity_amplification,
+            "exploratory_setup_cap": SETUP_EXPLORATORY_NUMERATOR
+            / SETUP_EXPLORATORY_DENOMINATOR,
+            "general_floor": "1 + 4*(1/rate-1)",
+            "rate_needed_before_tree_for_3x": "rate >= 2/3",
+            "disposition": "NO_GO_fixed_rate_half_is_5x_before_tree",
+            "credit": False,
+        },
+        "bounded_tail_causal_streaming_encoder": {
+            "scope": (
+                "linear causal encoders emitting in packed-source order with "
+                "only bounded delayed tail"
+            ),
+            "distance_bound": "last nonzero input affects only the delayed tail",
+            "disposition": "NO_GO_constant_relative_distance_requires_linear_tail_or_noncausal_setup",
+            "not_a_general_linear_circuit_lower_bound": True,
+            "credit": False,
+        },
+        "complete_relation_codec": False,
+        "exact_full_resource_census": False,
+        "stateful_soundness_privacy_bridge": False,
+        "one_scan_BatchOpenBlocks_proof": False,
+        "pre_CPU_screen_pass": False,
+        "credit": False,
+    }
+
+
+def r08c_secret_point_dv_carrier_screen() -> dict[str, object]:
+    """Fail-closed specification for the co-designed secret-point carrier."""
+    field_size = GOLDILOCKS_MODULUS**3
+    profiles = {}
+    for model, coefficient_bound, attempts in (
+        (GPT2, 1 << 28, 512),
+        (GEMMA_ENVELOPE, 1 << 35, 8192),
+    ):
+        degree_bound = coefficient_bound - 1
+        root_error = Fraction(attempts * degree_bound, field_size)
+        profiles[str(model["name"])] = {
+            "coefficient_bound": coefficient_bound,
+            "degree_bound": degree_bound,
+            "R_root_control": attempts,
+            "adaptive_first_false_accept_bound": (
+                f"{root_error.numerator}/{root_error.denominator}"
+            ),
+            "certified_bits_if_secret_view_hypothesis_holds": certified_bits(
+                root_error
+            ),
+        }
+    all_roots_error = Fraction(
+        ROOT_COUNT * R_MAX * ((1 << 35) - 1), field_size
+    )
+    optimistic_group_auth_bytes_per_weight = 32
+    return {
+        "state": "MAIN_RESEARCH_CANDIDATE_NOT_ADMITTED",
+        "candidate_id": "C7-DV-SPQ-v0",
+        "role": "codesigned_designated_verifier_secret_point_quotient_carrier",
+        "ideal_relation": {
+            "commitment_state": (
+                "root-scoped secret shares of A=F(tau), never a clear evaluation"
+            ),
+            "univariate_identity": "F(tau)-v=(tau-r)*Q(tau)",
+            "synthetic_division": [
+                "q[d-1]=f[d]",
+                "q[i-1]=f[i]+r*q[i] for i=d-1..1",
+                "v=f[0]+r*q[0]",
+            ],
+            "packed_scan_direction": "one manifest-fixed reverse sequential scan",
+            "packed_source_bytes_read": "2*N",
+            "clear_F_tau_Q_tau_or_v": False,
+            "terminal_values": "connection-scoped shared-Delta Fp3 MAC only",
+        },
+        "algebraic_screen": {
+            "field": "Goldilocks_Fp3",
+            "field_cardinality_bits": math.log2(field_size),
+            "per_root_profiles": profiles,
+            "all_roots_R_max_error_bound": (
+                f"{all_roots_error.numerator}/{all_roots_error.denominator}"
+            ),
+            "all_roots_R_max_certified_bits_if_hypotheses_hold": certified_bits(
+                all_roots_error
+            ),
+            "hypotheses": [
+                "the false identity is fixed before access to tau-dependent output",
+                "the malicious view leaks no tau predicate beyond terminal accept/reject",
+                "every failed attempt and selective abort consumes the root counter",
+                "one response-wide RLC leaves one nonzero terminal identity",
+            ],
+            "security_credit": False,
+        },
+        "required_new_apis": {
+            "EnrollSecretPoint": (
+                "bind the root polynomial and create persistent secret shares of F(tau) "
+                "without revealing tau, F(tau), or weights"
+            ),
+            "ImportRootShareIntoMac": (
+                "transfer the persistent share into a fresh connection MAC domain"
+            ),
+            "OpenQuotientIntoMac": (
+                "authenticate Q(tau) from the fixed quotient in sublinear wire "
+                "without revealing tau, Q(tau), or v"
+            ),
+        },
+        "hard_open_obligations": {
+            "operator_transcript_bridge": (
+                "R0.8d scalarizes packed eq claims exactly on the logistic curve, "
+                "but that curve is unsound in the current public sequential GKR transcript"
+            ),
+            "same_F_enrollment_binding": (
+                "the root token and every later quotient must use the same packed F"
+            ),
+            "succinct_malicious_OpenQuotientIntoMac": (
+                "known VOLE/OLE inner-product realizations expose linear corrections"
+            ),
+            "stateful_malicious_DV_privacy": (
+                "cover collusion, retries, selective abort, share import, replay and forks"
+            ),
+            "exact_resource_codec": (
+                "count setup traffic/time/temp data and every online byte/operation"
+            ),
+        },
+        "published_and_natural_backend_controls": {
+            "algebraic_PRF_authenticator": {
+                "persistent_authenticator": "at_least_one_group_element_per_coefficient",
+                "optimistic_group_element_bytes": optimistic_group_auth_bytes_per_weight,
+                "packed_plus_authenticator_amplification": (
+                    1
+                    + optimistic_group_auth_bytes_per_weight
+                    / PACKED_WEIGHT_BYTES
+                ),
+                "disposition": "NO_GO_setup_and_full_group_work",
+            },
+            "silent_VOLE_or_NIIP_inner_product": {
+                "known_communication": "linear_in_vector_length",
+                "silent_OLE_control": "2*N+o(N) field elements",
+                "Fp3_wire_control_bytes": "48*N+o(N)",
+                "disposition": "NO_GO_online_certificate",
+            },
+            "Merkle_commit_quotient_then_query": {
+                "disposition": "NO_GO_second_scan_or_model_sized_tree_scratch",
+            },
+            "public_power_group_commitment": {
+                "disposition": "NO_GO_N_point_setup_and_full_large_field_MSM",
+            },
+            "finite_hidden_credential_pool": {
+                "credential_storage_is_not_the_blocker": True,
+                "blocker": (
+                    "pre-revealed challenge pools are unsound; hidden batch credential "
+                    "construction still lacks near-linear setup"
+                ),
+                "disposition": "QUARANTINE",
+            },
+            "structured_coset_residue": {
+                "disposition": (
+                    "NO_GO_commit-order_or_tN_amplification; preserves_R08b_reason"
+                ),
+            },
+        },
+        "safe_future_online_boundary": {
+            "root_activation": [
+                "setup transcript and immutable artifact manifest verified before activation",
+                "setup target/hard wall remains 900/990 or 5400/5940 seconds",
+                "persistent setup remains inside the registered exploratory 3x ceiling",
+                "failed setup creates no active root and no reusable privacy budget",
+            ],
+            "attempt": [
+                "reserve q_attempt and the secret-point attempt before dependent output",
+                "online process has read-only root/model access",
+                "one manifest-fixed monotone packed scan and no source reopen",
+                "abort burns all reserved correlations, masks and root counters",
+                "promotion follows terminal MAC acceptance atomically",
+            ],
+            "online_only_prover_authorized_now": False,
+        },
+        "complete_relation_codec": False,
+        "exact_full_resource_census": False,
+        "stateful_soundness_privacy_bridge": False,
+        "one_scan_OpenQuotientIntoMac_proof": False,
+        "pre_CPU_screen_pass": False,
+        "selected_carrier": False,
+        "prover_or_SIMT_implementation_authorized": False,
+        "credit": False,
+    }
+
+
+def r08d_eq_to_secret_point_bridge_screen() -> dict[str, object]:
+    """Exact bridge identity plus the fail-closed public-sumcheck composition screen."""
+    p = GOLDILOCKS_MODULUS
+    t = 7
+    n = 6
+    points = []
+    denominator = 1
+    power = t
+    for _ in range(n):
+        factor = (1 + power) % p
+        assert factor != 0
+        points.append(power * pow(factor, p - 2, p) % p)
+        denominator = denominator * factor % p
+        power = power * power % p
+
+    eq_weights = []
+    for j in range(1 << n):
+        eq_weight = 1
+        for k, point in enumerate(points):
+            eq_weight = eq_weight * (point if (j >> k) & 1 else 1 - point) % p
+        assert eq_weight * denominator % p == pow(t, j, p)
+        eq_weights.append(eq_weight)
+    weights = [((17 * j + 3) % 257) for j in range(1 << n)]
+    mle_value = sum(w * q for w, q in zip(weights, eq_weights)) % p
+    univariate_value = sum(w * pow(t, j, p) for j, w in enumerate(weights)) % p
+    assert mle_value == univariate_value * pow(denominator, p - 2, p) % p
+
+    # If r_1 is revealed before r_0, the two possible r_0 values come from ±t.
+    # Their monic vanishing quadratic has h(0)+h(1)=1, so any false gap can
+    # be erased with a legal degree-two sumcheck message.
+    s_plus = t * pow(1 + t, p - 2, p) % p
+    s_minus = (-t) * pow(1 - t, p - 2, p) % p
+
+    def attack_poly(x: int) -> int:
+        return (x - s_plus) * (x - s_minus) % p
+
+    assert attack_poly(s_plus) == 0
+    assert attack_poly(s_minus) == 0
+    assert (attack_poly(0) + attack_poly(1)) % p == 1
+
+    # A generic independent MLE point is not on the scalar curve already for n=2.
+    arbitrary_r0 = 2
+    arbitrary_r1 = 3
+    odds0 = arbitrary_r0 * pow(1 - arbitrary_r0, p - 2, p) % p
+    odds1 = arbitrary_r1 * pow(1 - arbitrary_r1, p - 2, p) % p
+    assert odds1 != odds0 * odds0 % p
+
+    profiles = {}
+    for model in (GPT2, GEMMA_ENVELOPE):
+        segments = terminal_segments(model)
+        profiles[str(model["name"])] = {
+            "illustrative_weight_segment_points": segments["weight"],
+            "illustrative_all_plane_segment_points": segments["total"],
+            "screen_cap": TERMINAL_CLAIM_SCREEN_CAP,
+            "inside_screen_cap": segments["total"] <= TERMINAL_CLAIM_SCREEN_CAP,
+            "packed_source_bytes_one_reverse_scan": 2 * int(model["weights"]),
+            "ideal_combined_two_party_Fp3_token_payload_lower_bound_bytes": (
+                2 * 3 * FIELD_SYMBOL_BYTES * segments["weight"]
+            ),
+            "compiled_manifest": False,
+        }
+
+    return {
+        "state": "ALGEBRAIC_BRIDGE_PASS_PUBLIC_SEQUENTIAL_TRANSCRIPT_NO_GO",
+        "candidate_composition": "C7-DV-SPQ-v0+LogisticEqCurve+public_blind_GKR",
+        "exact_bridge": {
+            "curve": "r_k(t)=t^(2^k)/(1+t^(2^k))",
+            "denominator": "D_n(t)=product_k(1+t^(2^k))",
+            "identity": "eq(r(t),j)=t^j/D_n(t)",
+            "segment_claim": "MLE(W_i,r_i(t_i))=F_i(t_i)/D_i(t_i)",
+            "packed_claim": "sum_i beta_i*F_i(t_i)/D_i(t_i)",
+            "padding": "canonical padded coefficients are zero",
+            "nondegenerate_domain": "reject t with any 1+t^(2^k)=0 before activation",
+            "arbitrary_point_condition": (
+                "for nondegenerate r, scalarization exists iff "
+                "r_k/(1-r_k)=t^(2^k) for every k"
+            ),
+            "small_exact_modular_self_check": True,
+            "generic_independent_r_counterexample": True,
+            "materialized_Mobius_transform_or_L": False,
+            "conditional_source_work": "N+O(J*log(max padded_len))",
+            "conditional_packed_passes": 1,
+            "conditional_scan_direction": "manifest-fixed reverse",
+            "profiles": profiles,
+            "credit": False,
+        },
+        "transcript_attack": {
+            "current_protocol_challenges": "public and sequential",
+            "current_Lean_soundness_sample_space": "independent uniform F^n",
+            "curve_sample_space": "at most |F| correlated vectors",
+            "low_to_high": (
+                "r_0 reveals t=r_0/(1-r_0), so every later challenge is predictable"
+            ),
+            "high_to_low": (
+                "conditioned on r_k, adjacent r_(k-1) has the two values induced by ±t^(2^(k-1))"
+            ),
+            "degree_two_gap_eraser": (
+                "h(X)=delta*(X-s_plus)*(X-s_minus), with h(0)+h(1)=delta "
+                "and h(s_plus)=h(s_minus)=0"
+            ),
+            "any_coordinate_order": (
+                "an ascent after a previously revealed lower power is deterministic; "
+                "avoiding all ascents forces consecutive descending order and the two-root attack"
+            ),
+            "false_gap_can_be_carried_then_erased": True,
+            "small_exact_modular_attack_check": True,
+            "existing_sumcheck_soundness_theorem_applies": False,
+            "disposition": "NO_GO_for_current_public_sequential_blind_GKR_composition",
+        },
+        "bounded_escape_screen": {
+            "independent_round_challenges": {
+                "soundness_shape": "retains existing theorem",
+                "secret_point_scalarization": False,
+                "disposition": "CONTROL_not_a_univariate_SPQ_bridge",
+            },
+            "projective_monomial_sumcheck": {
+                "benefit": "removes D_i and makes packed truth-table values monomial coefficients",
+                "blocker": "the same correlated public challenge attack remains",
+                "disposition": "NO_GO_as_transcript_escape",
+            },
+            "all_variable_univariate_skip": {
+                "benefit": "one independent scalar challenge",
+                "round_polynomial_degree": "Theta(N)",
+                "blocker": "linear message/oracle or another PCS, violating the wire/recursion gate",
+                "disposition": "NO_GO",
+            },
+            "bounded_univariate_skip": {
+                "benefit": "only fuses a bounded number of coordinates",
+                "blocker": "leaves multiple independent scalars and a multivariate terminal",
+                "disposition": "CONTROL_not_a_univariate_SPQ_bridge",
+            },
+            "secret_or_encrypted_sumcheck_challenges": {
+                "blocker": (
+                    "the current blind-GKR prover needs public challenges to form later messages; "
+                    "no bounded-wire secure folding refinement is supplied"
+                ),
+                "disposition": "QUARANTINE_new_operator_protocol_required",
+            },
+            "complete_escape_row_exists": False,
+        },
+        "functional_basis_bridge_conditional_pass": True,
+        "public_GKR_composition_pass": False,
+        "complete_relation_codec": False,
+        "exact_full_resource_census": False,
+        "stateful_soundness_privacy_bridge": False,
+        "one_scan_OpenQuotientIntoMac_proof": False,
+        "pre_CPU_screen_pass": False,
+        "selected_carrier": False,
+        "prover_or_SIMT_implementation_authorized": False,
+        "credit": False,
+    }
+
+
+def r08e_secret_point_butterfly_transform_screen() -> dict[str, object]:
+    """Check the exact reduction and fail closed on its delayed-opening gap."""
+    p = GOLDILOCKS_MODULUS
+    size = 1 << 6
+    weights = [((19 * index + 7) % 263) for index in range(size)]
+    challenges = [3, 5, 11, 17, 29, 43]
+    levels: list[list[int]] = []
+    folded = weights
+    for challenge in challenges:
+        next_fold = []
+        complement = []
+        for index in range(0, len(folded), 2):
+            even = folded[index]
+            odd = folded[index + 1]
+            next_fold.append((even + challenge * (odd - even)) % p)
+            complement.append((even - odd) % p)
+        levels.append(complement)
+        folded = next_fold
+    terminal = folded[0]
+    assert sum(len(level) for level in levels) + 1 == size
+
+    def evaluate(coefficients: list[int], point: int) -> int:
+        value = 0
+        for coefficient in reversed(coefficients):
+            value = (value * point + coefficient) % p
+        return value
+
+    tau = 47
+    lhs = evaluate(weights, tau)
+    rhs = 0
+    prefix = 1
+    tau_power = tau
+    for challenge, complement in zip(challenges, levels):
+        selector = (challenge - (1 - challenge) * tau_power) % p
+        rhs = (
+            rhs
+            + prefix
+            * selector
+            * evaluate(complement, tau_power * tau_power % p)
+        ) % p
+        prefix = prefix * (1 + tau_power) % p
+        tau_power = tau_power * tau_power % p
+    rhs = (rhs + prefix * terminal) % p
+    assert lhs == rhs
+
+    recovered = [terminal]
+    for challenge, complement in reversed(list(zip(challenges, levels))):
+        parent = []
+        for child, difference in zip(recovered, complement):
+            even = (child + challenge * difference) % p
+            odd = (child - (1 - challenge) * difference) % p
+            parent.extend((even, odd))
+        recovered = parent
+    assert recovered == weights
+
+    field_size = p**3
+    profiles = {}
+    for model, coefficient_bound, q_open in (
+        (GPT2, 1 << 28, 831),
+        (GEMMA_ENVELOPE, 1 << 35, 1055),
+    ):
+        weight_count = int(model["weights"])
+        packed_bytes = PACKED_WEIGHT_BYTES * weight_count
+        segment_count = terminal_segments(model)["total"]
+        # For minimally power-of-two-padded nonempty segments,
+        # N <= M_total < 2N. Z_1 is base-field-valued; every later Z and y
+        # is Fp3, so the canonical dense transform uses exactly 16*M_total B.
+        dense_aux_min_bytes = 16 * weight_count
+        dense_aux_strict_upper_bytes = 32 * weight_count
+        minimum_logical_fp_symbols = 2 * weight_count
+        minimum_logical_leaves = ceil_div(
+            minimum_logical_fp_symbols, LOGICAL_LEAF_SYMBOLS
+        )
+        raw_query_hit_upper = min(
+            Fraction(1), Fraction(q_open, minimum_logical_leaves)
+        )
+        raw_query_miss_lower = 1 - raw_query_hit_upper
+        response_error = Fraction(
+            (coefficient_bound - 1) + (segment_count - 1), field_size
+        )
+        connection_error = R_MAX * response_error
+        profiles[str(model["name"])] = {
+            "packed_weight_scalars": weight_count,
+            "packed_source_bytes_one_scan": packed_bytes,
+            "illustrative_all_plane_segments": segment_count,
+            "conservative_max_segment_coefficient_bound": coefficient_bound,
+            "transform_butterflies": "M_total-J, hence <2*N-J",
+            "transform_output_coefficients": "M_total with N<=M_total<2*N",
+            "canonical_dense_auxiliary_bytes": {
+                "formula": "16*M_total",
+                "why": "M_total/2 Fp limbs at Z_1 plus M_total/2 Fp3 values",
+                "minimum": dense_aux_min_bytes,
+                "strict_upper_bound": dense_aux_strict_upper_bytes,
+                "minimum_additional_bytes_over_packed_source": (
+                    dense_aux_min_bytes / packed_bytes
+                ),
+                "minimum_packed_plus_retained_aux_amplification": (
+                    (packed_bytes + dense_aux_min_bytes) / packed_bytes
+                ),
+            },
+            "optimistic_two_party_orbit_token_control": {
+                "combined_Fp3_bytes_minimum": 48 * weight_count,
+                "packed_plus_tokens_amplification_minimum": (
+                    (packed_bytes + 48 * weight_count) / packed_bytes
+                ),
+            },
+            "raw_transform_merkle_sampling_control": {
+                "q_open_control": q_open,
+                "minimum_logical_g141_leaves": minimum_logical_leaves,
+                "single_bad_leaf_hit_probability_upper": (
+                    f"{raw_query_hit_upper.numerator}/{raw_query_hit_upper.denominator}"
+                ),
+                "single_bad_leaf_miss_probability_lower": (
+                    f"{raw_query_miss_lower.numerator}/{raw_query_miss_lower.denominator}"
+                ),
+                "miss_certified_bits_upper": certified_bits(
+                    raw_query_miss_lower
+                ),
+            },
+            "conditional_fixed_before_beta_tau_soundness": {
+                "per_response_error_bound": (
+                    f"{response_error.numerator}/{response_error.denominator}"
+                ),
+                "per_response_certified_bits": certified_bits(response_error),
+                "R_max_connection_error_bound": (
+                    f"{connection_error.numerator}/{connection_error.denominator}"
+                ),
+                "R_max_connection_certified_bits": certified_bits(
+                    connection_error
+                ),
+                "passes_110_bit_component_reserve": (
+                    certified_bits(connection_error) >= 110
+                ),
+            },
+            "compiled_segment_manifest": False,
+        }
+
+    return {
+        "state": "EXACT_REDUCTION_PASS_DELAYED_OPENING_REALIZATION_NO_GO",
+        "candidate_id": "C7-SPBT-v0",
+        "role": "secret_point_butterfly_transform_reduction_for_independent_GKR_points",
+        "architecture_summary": (
+            "one causal response proof; session VOLE-MAC boundaries and weight "
+            "evaluations; one response-wide PCS-to-MAC opening; append-only "
+            "authenticated KV transition"
+        ),
+        "exact_relation": {
+            "fold": "Y_(l+1)[i]=(1-r_l)*P_l[2i]+r_l*P_l[2i+1]",
+            "complement": "Z_(l+1)[i]=P_l[2i]-P_l[2i+1]",
+            "inverse": [
+                "P_l[2i]=Y_(l+1)[i]+r_l*Z_(l+1)[i]",
+                "P_l[2i+1]=Y_(l+1)[i]-(1-r_l)*Z_(l+1)[i]",
+            ],
+            "level_identity": (
+                "P_l(X)=(1+X)Y_(l+1)(X^2)+"
+                "(r_l-(1-r_l)X)Z_(l+1)(X^2)"
+            ),
+            "unrolled_identity": (
+                "P_0(X)=D_n(X)*y+sum_l D_l(X)*c_l(X)*"
+                "Z_(l+1)(X^(2^(l+1)))"
+            ),
+            "D_l": "product_(h<l)(1+X^(2^h))",
+            "c_l": "r_l-(1-r_l)X^(2^l)",
+            "degree_bound": "strictly less than M",
+            "output_coefficients": "sum_l M/2^(l+1)+1=M",
+            "pair_matrix_determinant": "-1 for every r_l",
+            "bijection": "W <-> (Z_1,...,Z_n,y)",
+            "final_y": "MLE(W,r) with ordinary independent GKR challenges",
+            "small_exact_modular_identity_and_inverse_check": True,
+        },
+        "transcript": [
+            "fix C_W, response relation, independent GKR challenges r and authenticated claims",
+            "one packed scan emits the canonical tagged complement stream and fixes C_Z,e",
+            "sample tau after all transform commitments are fixed and derive every query vector",
+            "sample response-wide beta after every root, claim, handle and query vector is fixed",
+            "open the C_W and C_Z,e structured linear evaluations directly into the shared-Delta Fp3 MAC",
+            "settle every residual and y-v in one terminal RLC, then atomically promote or burn",
+        ],
+        "conditional_soundness": {
+            "tau_term": "at most (M_max-1)/|Fp3| for every false residual evaluating to zero",
+            "beta_term": "at most (J-1)/|Fp3| for scalar RLC cancellation after tau",
+            "profiles": profiles,
+            "dishonest_prover_bridge_complete": False,
+            "credit": False,
+        },
+        "one_scan_transform_schedule": {
+            "source_reads": 1,
+            "source_bytes": "2*N",
+            "source_order": "canonical monotone packed order with virtual zero padding",
+            "algorithm": "binary carry stack; emit tagged Z_l coefficients in increasing local index",
+            "Fp3_pending_values": "at most one per level",
+            "commitment_frontier": "one g141 leaf buffer plus O(log N) hashes",
+            "butterflies": "M_total-J < 2*N-J",
+            "multiplications": "one extension-scalar multiply per butterfly",
+            "add_subtracts": "two per butterfly",
+            "response_auxiliary_hash_input": "16*M_total bytes in the typed dense codec",
+            "second_source_scan": False,
+            "model_sized_scratch_if_stream_is_discarded": False,
+            "conditional_transform_only_pass": True,
+            "complete_delayed_opening_pass": False,
+        },
+        "commit_challenge_open_triangle": {
+            "tau_before_C_Z": {
+                "attack": "one scalar identity leaves M transform coefficients adaptable",
+                "disposition": "NO_GO_unsound",
+            },
+            "tau_after_C_Z_retain_transform": {
+                "cost": "16*M_total response-local bytes; at least 9x packed including source",
+                "disposition": "NO_GO_model_sized_scratch",
+            },
+            "tau_after_C_Z_recompute": {
+                "cost": "a second packed source scan",
+                "disposition": "NO_GO_second_scan",
+            },
+            "hidden_tau_during_stream": {
+                "missing_primitive": (
+                    "malicious private streaming inner product/OPE into MAC "
+                    "with sublinear wire and no per-coefficient correction"
+                ),
+                "disposition": "OPEN_PRIMITIVE_NOT_A_COMPLETE_ROW",
+            },
+            "exact_tau_independent_sketch": {
+                "observation": (
+                    "supporting exact evaluation at M distinct later points is injective "
+                    "on degree-<M polynomials"
+                ),
+                "scope": "information-theoretic sketches only; not a PCS lower bound",
+                "disposition": "NO_GO_sublinear_exact_plain_sketch",
+            },
+        },
+        "policy2_privacy": {
+            "transform_is_invertible": True,
+            "unmasked_transform_disclosure_equivalent_to_weight_disclosure": True,
+            "C_Z_lifecycle": "fresh attempt-bound response commitment inside C_B,e",
+            "visible_unit": "one g141 leaf is 141 masked Fp symbols; Fp3 occupies three",
+            "all_failed_attempts_and_selective_aborts_burn": True,
+            "terminal_transform_and_weight_evaluations_cleartext": False,
+            "required_theorem": (
+                "adaptive hiding for roots and masked transform leaves plus same-W binding, "
+                "global Q_root accounting and malicious-DV view simulation"
+            ),
+            "policy2_query_vector_compiled": False,
+            "stateful_privacy_theorem_complete": False,
+        },
+        "bounded_controls": {
+            "raw_Merkle_local_checks": {
+                "reason": "the invertible rate-1 transform has no distance; one bad leaf can change the claim",
+                "disposition": "NO_GO_query_miss_is_near_one",
+            },
+            "rate_half_code_wrapper": {
+                "reason": "restores the already rejected full codeword/setup or online materialization",
+                "disposition": "NO_GO_current_realization",
+            },
+            "preprocessed_secret_point_orbit": {
+                "reason": "the square-root/sign orbit doubles per level and contains Theta(M) Fp3 tokens",
+                "disposition": "NO_GO_at_least_25x_packed_for_two_party_tokens",
+            },
+            "finite_public_tau_pool": {
+                "reason": "110-bit challenge entropy requires an infeasible pool and reuse adds privacy leakage",
+                "disposition": "NO_GO",
+            },
+            "all_round_symbolic_sumcheck_commitment": {
+                "reason": (
+                    "one scalar keeps the R0.8d correlated-challenge attack as a polynomial identity; "
+                    "causal degree-two prefix tables grow as 3^round"
+                ),
+                "disposition": "NO_GO_without_another_PCS",
+            },
+            "coefficient_extraction_convolution": {
+                "reason": (
+                    "exact middle-coefficient relation materializes linear convolution remainders "
+                    "for each matmul/token or needs persistent FFT transforms"
+                ),
+                "disposition": "NO_GO_response_scratch_or_setup",
+            },
+            "published_group_or_fold_controls": {
+                "reason": (
+                    "KZG-style reductions require group setup/MSMs; foldable-code PCS restores "
+                    "a complete encoded oracle; known space-efficient PCS assumes multi-pass input"
+                ),
+                "disposition": "CONTROL_not_C7_admission",
+            },
+        },
+        "persistent_setup": {
+            "transform_algebra_requires_new_persistent_oracle": False,
+            "discarded_stream_path_setup_amplification": "unchanged in principle",
+            "retained_dense_transform_or_orbit_within_3x": False,
+            "setup_wall_test_authorized": False,
+            "refresh_test_authorized": False,
+        },
+        "proof_codec": {
+            "one_fresh_transform_root_digest_lower_bound_bytes": HASH_BYTES,
+            "logical_leaf_symbols": LOGICAL_LEAF_SYMBOLS,
+            "challenge_mode": SELECTED_CHALLENGE_MODE,
+            "Q_FS": SELECTED_FIAT_SHAMIR_QUERY_BOUND,
+            "delayed_opening_queries_paths_and_MAC_frames_compiled": False,
+            "complete_certificate_bytes_known": False,
+        },
+        "algebraic_relation_complete": True,
+        "exact_full_resource_census": False,
+        "stateful_soundness_privacy_bridge": False,
+        "one_scan_transform_only_proof": True,
+        "one_scan_complete_opening_proof": False,
+        "pre_CPU_screen_pass": False,
+        "selected_carrier": False,
         "prover_or_SIMT_implementation_authorized": False,
         "credit": False,
     }
@@ -4142,7 +4835,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
     large_total = int(large["certificate"]["total"]["bytes"])
     certificate_growth = large_total / small_total
     return {
-        "schema": "volta-c7-stateful-alfc-r08-screen-v23",
+        "schema": "volta-c7-stateful-alfc-r08-screen-v27",
         "design": "C7 stateful authenticated linear-functional commitment",
         "screening_only": True,
         "credit": False,
@@ -4167,15 +4860,20 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "strict_ud_RS_prover_authorized": False,
             "carrier_independent_Fp3_codec_KAT_MAC_adapter_authorized": True,
             "carrier_independent_Fp3_seam_implemented": True,
+            "carrier_independent_policy2_reference_authorized": True,
+            "tiny_non_PCS_conformance_test_implemented": True,
             "published_carriers_baseline_controls_only": True,
             "C7_codesigned_circuit_main_research_line": True,
+            "C7_secret_point_quotient_research_authorized": True,
+            "C7_secret_point_butterfly_reduction_screened": True,
+            "C7_secret_point_butterfly_carrier_admitted": False,
             "C7_codesigned_pre_CPU_screen_pass": False,
             "tiny_CPU_prototype_authorized_now": False,
         },
         "privacy_policy": {
             "active": 2,
             "last_tested": 3,
-            "active_status": "policy2_dual_track_carrier_tournament_open_RS_control_Fp3_seam_only",
+            "active_status": "spbt_reduction_pass_delayed_opening_no_go",
             "last_tested_policy3_terminal_shape": (
                 "digest-only salted leaf commitment with public Merkle paths "
                 "and attempt-local VOLE-private leaf/PCS checks"
@@ -4241,9 +4939,9 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "setup_exploratory_absolute_time_and_refresh_caps_selected": True,
             "logical_leaf_geometry_selected": True,
             "anti_x4d_setup_gate_pass": False,
-            "active_public_leaf_function_implemented": False,
+            "active_public_leaf_function_implemented": True,
             "historical_policy3_poseidon2_leaf_implemented": True,
-            "concrete_leaf_commitment_selected": False,
+            "concrete_leaf_commitment_selected": True,
             "public_blake3_leaf_tree_function_selected": True,
             "leaf_commitment_adaptive_hiding_proved": False,
             "policy3_private_leaf_checker_required": False,
@@ -4446,6 +5144,11 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "credit": False,
         },
         "new_carrier_tournament": r08_new_carrier_tournament(),
+        "secret_point_dv_carrier_screen": r08c_secret_point_dv_carrier_screen(),
+        "eq_to_secret_point_bridge_screen": r08d_eq_to_secret_point_bridge_screen(),
+        "secret_point_butterfly_transform_screen": (
+            r08e_secret_point_butterfly_transform_screen()
+        ),
         "simt_path": {
             "state": "BLOCKED_BEFORE_CPU_REFERENCE_PASS",
             "stage_order": [
@@ -4518,7 +5221,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "credit": False,
         },
         "pod_readiness": {
-            "state": "C7_R08A_DUAL_TRACK_CARRIER_SCREEN_OPEN_FP3_SEAM_ONLY",
+            "state": "C7_R08E_SPBT_REDUCTION_PASS_DELAYED_OPENING_NO_GO",
             "handoff_spec": "docs/c7-r03-prover-pod-handoff.md",
             "handoff_preparation_authorized": True,
             "required_before_C7_POD_READY": {
@@ -4903,7 +5606,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
 
 
 def self_check(report: dict[str, object]) -> None:
-    assert report["schema"] == "volta-c7-stateful-alfc-r08-screen-v23"
+    assert report["schema"] == "volta-c7-stateful-alfc-r08-screen-v27"
     models = report["models"]
     small = models[str(GPT2["name"])]
     large = models[str(GEMMA_ENVELOPE["name"])]
@@ -5502,9 +6205,7 @@ def self_check(report: dict[str, object]) -> None:
     policy = report["privacy_policy"]
     assert policy["active"] == 2
     assert policy["last_tested"] == 3
-    assert policy["active_status"] == (
-        "policy2_dual_track_carrier_tournament_open_RS_control_Fp3_seam_only"
-    )
+    assert policy["active_status"] == "spbt_reduction_pass_delayed_opening_no_go"
     assert policy["policy_3_candidate_exhaustion_documented"]
     assert len(policy["terminal_catalog"]) == 10
     assert policy["policy_2_status"] == "active_design_only"
@@ -5563,8 +6264,11 @@ def self_check(report: dict[str, object]) -> None:
         "carrier_independent_Fp3_codec_KAT_MAC_adapter_authorized"
     ]
     assert authorization["carrier_independent_Fp3_seam_implemented"]
+    assert authorization["carrier_independent_policy2_reference_authorized"]
+    assert authorization["tiny_non_PCS_conformance_test_implemented"]
     assert authorization["published_carriers_baseline_controls_only"]
     assert authorization["C7_codesigned_circuit_main_research_line"]
+    assert authorization["C7_secret_point_quotient_research_authorized"]
     assert not authorization["C7_codesigned_pre_CPU_screen_pass"]
     assert not authorization["tiny_CPU_prototype_authorized_now"]
     gates = report["admission_gates"]
@@ -5583,10 +6287,10 @@ def self_check(report: dict[str, object]) -> None:
     ]
     assert gates["logical_leaf_geometry_selected"]
     assert not gates["anti_x4d_setup_gate_pass"]
-    assert not gates["active_public_leaf_function_implemented"]
+    assert gates["active_public_leaf_function_implemented"]
     assert gates["historical_policy3_poseidon2_leaf_implemented"]
     assert not gates["leaf_commitment_adaptive_hiding_proved"]
-    assert not gates["concrete_leaf_commitment_selected"]
+    assert gates["concrete_leaf_commitment_selected"]
     assert not gates["policy3_private_leaf_checker_required"]
     assert not gates["only_budgeted_masked_query_payloads_codec_proved"]
     assert gates["terminal_evaluation_remains_authenticated"]
@@ -5781,15 +6485,130 @@ def self_check(report: dict[str, object]) -> None:
     assert len(codesigned["pre_CPU_screen_requires"]) == 4
     assert not codesigned["pre_CPU_screen_pass"]
     assert not codesigned["tiny_CPU_prototype_authorized"]
+    assert codesigned["carrier_independent_policy2_reference_implemented"]
+    assert codesigned["tiny_non_PCS_conformance_test_implemented"]
     assert not codesigned["credit_by_design"]
     assert tournament["strict_ud_RS_role"] == (
         "algebraic_and_security_control_baseline_only"
     )
     assert not tournament["strict_ud_RS_prover_implementation_authorized"]
     assert not tournament["entrants"]
+    assert tournament["main_research_candidate_not_admitted"] == "C7-SPBT-v0"
+    bounded_rows = tournament["bounded_codesigned_rows"]
+    assert bounded_rows["state"] == "NO_CARRIER_ROW_COMPLETE_REFERENCE_SEAM_READY"
+    seam = bounded_rows["policy2_reference_seam"]
+    assert seam["root_mask_descriptor_bytes"] == 90
+    assert seam["tiny_two_leaf_opening_bytes"] == 1328
+    assert seam["q_attempt_and_q_response_separate"]
+    assert seam["abort_consumption_nonrefundable"]
+    assert not seam["durable_allocator_or_PCS"]
+    assert bounded_rows["persisted_rate_half_field_parity"][
+        "amplification_before_tree"
+    ] == 5
+    assert bounded_rows["structured_coset_block"]["packed_source_passes"] == 1
+    assert not bounded_rows["complete_relation_codec"]
+    assert not bounded_rows["exact_full_resource_census"]
+    assert not bounded_rows["stateful_soundness_privacy_bridge"]
+    assert not bounded_rows["one_scan_BatchOpenBlocks_proof"]
+    assert not bounded_rows["pre_CPU_screen_pass"]
     assert tournament["selected_carrier"] is None
     assert not tournament["complete_row_exists"]
     assert not tournament["prover_or_SIMT_implementation_authorized"]
+    secret_point = report["secret_point_dv_carrier_screen"]
+    assert secret_point["state"] == "MAIN_RESEARCH_CANDIDATE_NOT_ADMITTED"
+    assert secret_point["candidate_id"] == "C7-DV-SPQ-v0"
+    assert secret_point["algebraic_screen"][
+        "all_roots_R_max_certified_bits_if_hypotheses_hold"
+    ] > 110
+    assert secret_point["published_and_natural_backend_controls"][
+        "algebraic_PRF_authenticator"
+    ]["packed_plus_authenticator_amplification"] == 17
+    assert not secret_point["complete_relation_codec"]
+    assert not secret_point["exact_full_resource_census"]
+    assert not secret_point["stateful_soundness_privacy_bridge"]
+    assert not secret_point["one_scan_OpenQuotientIntoMac_proof"]
+    assert not secret_point["pre_CPU_screen_pass"]
+    assert not secret_point["selected_carrier"]
+    assert not secret_point["prover_or_SIMT_implementation_authorized"]
+    bridge = report["eq_to_secret_point_bridge_screen"]
+    assert bridge["state"] == (
+        "ALGEBRAIC_BRIDGE_PASS_PUBLIC_SEQUENTIAL_TRANSCRIPT_NO_GO"
+    )
+    assert bridge["exact_bridge"]["small_exact_modular_self_check"]
+    assert bridge["exact_bridge"]["generic_independent_r_counterexample"]
+    assert bridge["exact_bridge"]["conditional_packed_passes"] == 1
+    assert all(
+        profile["inside_screen_cap"]
+        and not profile["compiled_manifest"]
+        for profile in bridge["exact_bridge"]["profiles"].values()
+    )
+    assert bridge["transcript_attack"]["small_exact_modular_attack_check"]
+    assert bridge["transcript_attack"]["false_gap_can_be_carried_then_erased"]
+    assert not bridge["transcript_attack"][
+        "existing_sumcheck_soundness_theorem_applies"
+    ]
+    assert not bridge["bounded_escape_screen"]["complete_escape_row_exists"]
+    assert bridge["functional_basis_bridge_conditional_pass"]
+    assert not bridge["public_GKR_composition_pass"]
+    assert not bridge["complete_relation_codec"]
+    assert not bridge["exact_full_resource_census"]
+    assert not bridge["stateful_soundness_privacy_bridge"]
+    assert not bridge["one_scan_OpenQuotientIntoMac_proof"]
+    assert not bridge["pre_CPU_screen_pass"]
+    assert not bridge["selected_carrier"]
+    assert not bridge["prover_or_SIMT_implementation_authorized"]
+    butterfly = report["secret_point_butterfly_transform_screen"]
+    assert butterfly["state"] == (
+        "EXACT_REDUCTION_PASS_DELAYED_OPENING_REALIZATION_NO_GO"
+    )
+    assert butterfly["candidate_id"] == "C7-SPBT-v0"
+    relation = butterfly["exact_relation"]
+    assert relation["small_exact_modular_identity_and_inverse_check"]
+    assert relation["pair_matrix_determinant"] == "-1 for every r_l"
+    assert relation["output_coefficients"] == "sum_l M/2^(l+1)+1=M"
+    transcript = butterfly["transcript"]
+    tau_phase = next(
+        i for i, phase in enumerate(transcript) if phase.startswith("sample tau")
+    )
+    beta_phase = next(
+        i
+        for i, phase in enumerate(transcript)
+        if phase.startswith("sample response-wide beta")
+    )
+    assert tau_phase < beta_phase
+    assert butterfly["one_scan_transform_schedule"]["source_reads"] == 1
+    assert butterfly["one_scan_transform_schedule"]["conditional_transform_only_pass"]
+    assert not butterfly["one_scan_transform_schedule"]["complete_delayed_opening_pass"]
+    assert butterfly["commit_challenge_open_triangle"]["tau_before_C_Z"][
+        "disposition"
+    ] == "NO_GO_unsound"
+    assert butterfly["commit_challenge_open_triangle"]["tau_after_C_Z_recompute"][
+        "disposition"
+    ] == "NO_GO_second_scan"
+    assert butterfly["policy2_privacy"]["transform_is_invertible"]
+    assert not butterfly["policy2_privacy"]["policy2_query_vector_compiled"]
+    for profile in butterfly["conditional_soundness"]["profiles"].values():
+        assert profile["canonical_dense_auxiliary_bytes"][
+            "minimum_packed_plus_retained_aux_amplification"
+        ] == 9
+        assert profile["optimistic_two_party_orbit_token_control"][
+            "packed_plus_tokens_amplification_minimum"
+        ] == 25
+        assert profile["raw_transform_merkle_sampling_control"][
+            "miss_certified_bits_upper"
+        ] < 1
+        assert profile["conditional_fixed_before_beta_tau_soundness"][
+            "passes_110_bit_component_reserve"
+        ]
+        assert not profile["compiled_segment_manifest"]
+    assert butterfly["algebraic_relation_complete"]
+    assert butterfly["one_scan_transform_only_proof"]
+    assert not butterfly["exact_full_resource_census"]
+    assert not butterfly["stateful_soundness_privacy_bridge"]
+    assert not butterfly["one_scan_complete_opening_proof"]
+    assert not butterfly["pre_CPU_screen_pass"]
+    assert not butterfly["selected_carrier"]
+    assert not butterfly["prover_or_SIMT_implementation_authorized"]
     simt = report["simt_path"]
     assert simt["state"] == "BLOCKED_BEFORE_CPU_REFERENCE_PASS"
     assert simt["logical_leaf_symbols"] == 141
@@ -6295,7 +7114,7 @@ def self_check(report: dict[str, object]) -> None:
     ]
     readiness = report["pod_readiness"]
     assert readiness["state"] == (
-        "C7_R08A_DUAL_TRACK_CARRIER_SCREEN_OPEN_FP3_SEAM_ONLY"
+        "C7_R08E_SPBT_REDUCTION_PASS_DELAYED_OPENING_NO_GO"
     )
     assert not readiness["all_required_gates_pass"]
     assert not any(readiness["required_before_C7_POD_READY"].values())

@@ -9,6 +9,7 @@
 //!   → `ligero::open_zk` / `verify_open` (claim bound to the public C_W).
 
 pub mod batch;
+pub mod c7_policy2_reference;
 #[cfg(feature = "c7-policy3-reference")]
 pub mod c7_ra_batch_open_screen;
 #[cfg(feature = "c7-policy3-reference")]

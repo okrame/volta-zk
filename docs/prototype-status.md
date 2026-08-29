@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 R0.8A DUAL-TRACK CARRIER SCREEN OPEN — FP3 SEAM ONLY / NO PROVER / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 R0.8E SPBT REDUCTION PASS / DELAYED OPENING NO-GO — NO PROVER / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,24 +11,116 @@ record; no external plan is authoritative.
 Read `c7-stateful-authenticated-lfc-design.md`, then
 `c7-r03-prover-pod-handoff.md`.
 
-- **Status.** C7 R0.8 design-only on `agent/c7-stateful-alfc`; policy 2, Fp3,
-  rate 1/2, `k0=4`, one packed root, `g=141` and interactive `Q_FS=0` remain
-  fixed. The tournament has two roles: published constructions are exact-cost
-  baselines/controls; a co-designed C7 circuit is the main research line.
-  Strict-UD RS is control-only and its prover is forbidden. Policy 3 is terminal.
-- **Evidence/credit.** Budget v23, Rust field/MAC and focused Lean C7 pass.
-  The new carrier-independent seam has a canonical 24-byte Fp3 codec,
-  `u^3=2` KAT, noncanonical-limb rejection and shared-`Delta` terminal
-  linearity/mutation tests. It instantiates no PCS, PCG/VOLE or prover and
-  earns no protocol/security credit. Prior `(q,Z,U,S)` and setup/byte controls
-  remain `831/29192/1662/234342`, `1055/33848/2110/297510`,
-  491,686,208/92,844,619,328 B and 2,605,740/3,729,724 B.
-- **Hard stop/resume.** The current RS realization remains **NO-GO** (qN or
-  inadmissible codeword/setup/memory). The co-designed line has no design
-  credit and no entrant is admitted. A tiny CPU prototype requires a complete
-  relation/codec, exact resource census, stateful soundness/privacy bridge and
-  one-scan `O(N+poly(q,log N))` proof. No prover, SIMT, refresh, provider or
-  pod; `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`.
+- **Status.** C7 R0.8e on `agent/c7-stateful-alfc`; policy 2, Fp3, rate 1/2,
+  `k0=4`, one packed weight root, `g=141`, interactive `Q_FS=0` and all gates
+  remain fixed. `C7-SPBT-v0` is the main reduction candidate, not an admitted
+  carrier. Strict-UD RS is control-only; policy 3 remains terminal.
+- **Evidence/credit.** Budget v27 and both checks pass. SPBT is an invertible
+  `M`-coefficient transform for ordinary independent GKR points and yields one
+  degree-`<M` secret-point identity. Conditional lifetime algebra is 144/137
+  bits; a binary carry stack uses one packed scan and bounded frontier state.
+  The focused R0.8b C7 seam and its standalone rustfmt check pass. The full
+  workspace has one committed, out-of-scope C6 source-guard failure; no failing
+  file is in this diff. All evidence is `credit:false`.
+- **Hard stop/resume.** The delayed opening is unresolved. `tau` before the
+  transform root is unsound; retaining it is at least 9x packed; recomputation
+  is a second scan; hidden-`tau` streaming lacks a sublinear malicious
+  OPE/inner-product into MAC. No PCS/prover, SIMT, refresh, provider or pod.
+  Resume CPU work only after one concrete setup-safe delayed opener, exact
+  codec/query/privacy bridge and stateful theorem pass;
+  `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`.
+
+- **2026-08-29 — C7 R0.8e derives an independent-challenge butterfly
+  reduction and closes its current delayed-opening realizations.**
+  `C7-SPBT-v0` uses `Y=(1-r)E+rO` and `Z=E-O`; the pair determinant is `-1`.
+  Recursion is a bijection from each padded segment to its complements plus
+  `y=MLE(W,r)`, with exactly `M` coefficients and one degree-`<M` univariate
+  identity.  It preserves ordinary independent public GKR challenges.  Fresh
+  `tau` follows the transform root; its query vectors are fixed before later
+  beta RLC.  This conditionally leaves 144/137 lifetime bits for the GPT-2/31B
+  controls.  A binary carry stack uses one monotone `2N`-byte
+  source scan, fewer than `2N-J` butterflies and logarithmic frontier state.
+
+  The transform-only pass is not a PCS pass.  Revealing `tau` before its root
+  lets a prover adapt a coefficient.  Retaining the typed dense transform is
+  `16*M_total` bytes, at least 9x packed including source; discarding then
+  recomputing needs a second scan; hidden-`tau` streaming still requires a
+  sublinear malicious OPE/inner product into MAC.  Raw Merkle sampling has no
+  distance, a rate-1/2 wrapper restores the rejected codeword, and two-party
+  orbit preprocessing is at least 25x packed.  Budget v27 checks the identity,
+  inverse, conditional security, traffic and query-miss controls; both
+  registered invocations, the focused C7 seam and its standalone rustfmt check
+  pass; `git diff --check` passes. The full workspace has one pre-existing
+  out-of-scope failure: committed `volta-bench` source guard
+  `native_persistence_source_guard_bypasses_hidden_u_owner` matches the later
+  helper signature's `session_digest`; neither failing file is modified.
+  All is `credit:false`; no new R0.8e Lean/Rust/prover, SIMT, refresh, provider
+  or pod action is authorized.
+
+- **2026-08-29 — C7 R0.8d closes the packed-`eq` algebra and rejects its
+  current public-GKR composition.** For
+  `r_k(t)=t^(2^k)/(1+t^(2^k))`, the exact identity
+  `eq(r(t),j)=t^j/product_k(1+t^(2^k))` makes every raw packed segment a
+  univariate coefficient vector. Conditional source work is
+  `N+O(J log N_max)` in one reverse `2N`-byte scan, with no Möbius transform,
+  materialized functional, expanded wrapper or second source read. The
+  illustrative 106/378 all-plane points fit the 512 screen cap but are not a
+  compiled manifest.
+
+  This scalarization cannot reuse the current public sequential blind-GKR
+  theorem. Low-to-high reveals the scalar and all future challenges;
+  high-to-low yields adjacent two-point square-root fibers. The monic
+  quadratic through those points has `P(0)+P(1)=1`, so a malicious prover can
+  carry then erase an arbitrary false degree-two sumcheck gap. Any coordinate
+  order reaches a deterministic ascent or adjacent descending pair.
+  Independent challenges lose scalarization; projective basis preserves the
+  correlation; full univariate skip has linear degree/wire; bounded skips stay
+  multivariate; opaque challenges need a new secure operator protocol. The
+  composed curve/current-GKR row is NO-GO, while the secret-point primitive
+  remains quarantined. Budget v26 checks pass; no Lean/Rust/prover/SIMT,
+  refresh, provider or pod action is authorized.
+
+- **2026-08-28 — C7 R0.8c opens a novel secret-point quotient research line
+  without relaxing any gate.** The owner permits co-design beyond published
+  constructions. `C7-DV-SPQ-v0` enrolls only secret shares of `F(tau)` and
+  seeks to settle `F(tau)-v=(tau-r)Q(tau)` directly under the Fp3 MAC. The
+  conditional degree/attempt screen leaves 155/144 bits for the proposed
+  GPT-2/31B root profiles and 135 bits after four roots across `R_max=2^20`.
+  This is algebraic evidence only: the current packed `eq` functional is not a
+  univariate power vector, enrollment must bind the same packed `F`, and no
+  sublinear-wire malicious `OpenQuotientIntoMac` or stateful privacy theorem
+  exists.
+
+  Published algebraic-PRF authentication needs at least one group element per
+  coefficient (optimistically 17x including packed weights); silent OLE/NIIP
+  remains linear wire; quotient Merkle commits need a second scan or linear
+  scratch; public powers restore forbidden setup/MSM; finite hidden credential
+  pools lack near-linear private enrollment; and structured cosets retain the
+  recorded commit-order/`tN` failure. The separate Brakedown, FRI-Binius,
+  Blaze, binary-GKR and polynomial-preprocessing controls retain their
+  square-root, full-oracle/field bridge, conjectural rate/setup, encoded-matrix
+  and evaluation-binding-only rejection reasons. An eventual online process
+  is isolated/read-only and burn-on-abort, but no code, prover, SIMT, refresh,
+  provider or pod is authorized.
+
+- **2026-08-28 — C7 R0.8b prepares the first local test without promoting a
+  carrier.** The owner requests maximum construction progress toward a tiny
+  local case. A new isolated C7 policy-2 reference fixes the frozen keyed
+  BLAKE3-XOF stream and six-draw rejection addresses, public salted BLAKE3
+  leaf/tree, canonical `1296+32h` one-leaf frame, fixed nonrefundable root
+  reservation with distinct actual-response census, shared-`Delta` Fp3
+  terminal, and in-memory accepted-KV CAS. Its tiny two-leaf test covers KAT,
+  codec round-trip/mutation, abort burn, accept, exhaustion, terminal equation,
+  replay and fork rejection. Budget v24 records all evidence `credit:false`.
+
+  The co-designed tournament remains empty. A structured `X^B-c` coset block
+  has one-scan `N+B log B` evaluation but only one worst-case query hit;
+  independent amplification costs `tN`. Persisting rate-1/2 field parity is
+  at least 5x packed before the tree. A bounded-tail causal encoder cannot
+  give constant relative distance because the last input affects only its
+  tail. These are bounded rejections, not a general circuit lower bound. No
+  PCS/`BatchOpenBlocks` prototype, SIMT, prover, refresh, provider or pod is
+  authorized.
 
 - **2026-08-28 — C7 R0.8a fixes the dual-track tournament and authorizes a
   scoped checkpoint.** Published constructions are baseline/control rows and

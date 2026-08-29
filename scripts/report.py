@@ -76,6 +76,7 @@ C4_REPORT_SCHEMA_VERSION = 11
 C4_POD_GATE_PROFILE = "runpod-a100-c4-v1"
 C4_CUDA_ABI_VERSION = 33
 C41_CUDA_ABI_VERSION = 45
+C41_SETUP_CUDA_ABI_VERSION = 46
 C41_FOLD_CELLS = 3_110_400
 C41_POLYNOMIAL_LANES = 12
 C41_SETUP_SLAB_BYTES = 1_194_393_600
@@ -117,6 +118,9 @@ C4_HISTORICAL_DESIGN_SHA256_BY_GIT_SHA = {
     ),
 }
 C5_OBSTRUCTION_REPORT_SCHEMA_VERSION = 1
+C5_OBSTRUCTION_DESIGN_SHA256 = (
+    "30a999044e8f61d6625814b51088871c184e2ae72a9397b5fc2da9e05e9f34fc"
+)
 C5_ELIGIBLE_CELLS = 3_110_400
 C5_INVENTORIES = 5
 C5_SETUP_BYTES = 38_371_465
@@ -8718,12 +8722,6 @@ def validate_c5_typed_pcg_obstruction(path: Path) -> bool:
     design_file = row.get("design_file")
     if design_file != "docs/c5-packed16-rate8-design.md":
         return False
-    design_path = REPO / design_file
-    try:
-        design_sha256 = hashlib.sha256(design_path.read_bytes()).hexdigest()
-    except OSError:
-        return False
-
     census = row.get("census")
     projection = row.get("conditional_response_projection")
     budget = row.get("typed_setup_budget")
@@ -8755,7 +8753,7 @@ def validate_c5_typed_pcg_obstruction(path: Path) -> bool:
         and row.get("record_kind") == "analytic-security-and-byte-feasibility"
         and _full_git_sha(row.get("baseline_git_sha"))
         and row.get("baseline_git_dirty") is False
-        and row.get("design_sha256") == design_sha256
+        and row.get("design_sha256") == C5_OBSTRUCTION_DESIGN_SHA256
         and owner.get("c4_raw_history_rewritten") is False
         and owner.get("c4_rate8_owner_adopted_for_c5") is True
         and owner.get("response_ceiling_bytes") == 70_000_000

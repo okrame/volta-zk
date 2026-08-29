@@ -18,7 +18,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 45;
+pub const CUDA_ABI_VERSION: u32 = 46;
 pub const OPERATION_COUNT: usize = 7;
 pub const DEFERRED_TIMING_CAPACITY: usize = 512;
 
@@ -447,6 +447,7 @@ const _: () = assert!(size_of::<X4cCanonicalGatherOperation>() == 88);
 mod device_element {
     pub trait Sealed {}
     impl Sealed for u8 {}
+    impl Sealed for u16 {}
     impl Sealed for i16 {}
     impl Sealed for i64 {}
     impl Sealed for u32 {}
@@ -461,6 +462,7 @@ mod device_element {
 /// C boundary accidentally.
 pub trait DeviceElement: device_element::Sealed + Copy + Default + 'static {}
 impl DeviceElement for u8 {}
+impl DeviceElement for u16 {}
 impl DeviceElement for i16 {}
 impl DeviceElement for i64 {}
 impl DeviceElement for u32 {}
@@ -529,6 +531,25 @@ pub struct DeviceBuffer<T: DeviceElement> {
     len: usize,
     context_id: u64,
     _element: PhantomData<T>,
+}
+
+/// Device-resident output of one C4.1 setup-lot expansion. `b_values` is one
+/// byte per cell so independent SIMT threads never race on a packed bitmap;
+/// the response codec packs it after producing the XOR correction bits.
+#[derive(Debug)]
+pub struct C41PackedProverDeviceLot {
+    pub a: DeviceBuffer<Fp2Repr>,
+    pub b: DeviceBuffer<Fp2Repr>,
+    pub a_values: DeviceBuffer<u16>,
+    pub b_values: DeviceBuffer<u8>,
+    pub cells: usize,
+}
+
+#[derive(Debug)]
+pub struct C41PackedVerifierDeviceLot {
+    pub a_keys: DeviceBuffer<Fp2Repr>,
+    pub b_keys: DeviceBuffer<Fp2Repr>,
+    pub cells: usize,
 }
 
 /// Opaque, typed allocation from the context-owned pinned-host pool. Callers
@@ -2023,6 +2044,149 @@ impl Backend {
             );
         #[cfg(not(feature = "cuda"))]
         Err(AccelError::FeatureDisabled)
+    }
+
+    /// Expand one response-sized C4.1 prover lot directly on device. This is
+    /// setup work, not part of prover time.
+    pub fn c41_expand_packed_prover_device(
+        &mut self,
+        seed_bits: &DeviceBuffer<u8>,
+        seed_tags: &DeviceBuffer<Fp2Repr>,
+        public_seed: [u8; 32],
+        first_global_bit: usize,
+        cells: usize,
+    ) -> Result<C41PackedProverDeviceLot, AccelError> {
+        self.require_resident()?;
+        self.validate_buffer(seed_bits)?;
+        self.validate_buffer(seed_tags)?;
+        let seed_rows = seed_bits.len() / 1024;
+        let output_bits = checked_product(cells, 17)?;
+        let output_end = first_global_bit
+            .checked_add(output_bits)
+            .ok_or(AccelError::InvalidInput("C4.1 setup output range overflow"))?;
+        let capacity = checked_product(seed_rows, (1 << 20) - 1024)?;
+        if cells == 0
+            || seed_rows == 0
+            || seed_bits.len() != checked_product(seed_rows, 1024)?
+            || seed_tags.len() != seed_bits.len()
+            || output_end > capacity
+        {
+            return Err(AccelError::InvalidInput("invalid C4.1 packed prover setup geometry"));
+        }
+        let slab_len = checked_product(12, cells)?;
+        let a = self.alloc_device(slab_len)?;
+        let b = match self.alloc_device(slab_len) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = self.free_device(a);
+                return Err(error);
+            }
+        };
+        let a_values = match self.alloc_device(cells) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = self.free_device(a);
+                let _ = self.free_device(b);
+                return Err(error);
+            }
+        };
+        let b_values = match self.alloc_device(cells) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = self.free_device(a);
+                let _ = self.free_device(b);
+                let _ = self.free_device(a_values);
+                return Err(error);
+            }
+        };
+        #[cfg(feature = "cuda")]
+        let result =
+            self.cuda.as_mut().expect("CUDA kind without context").c41_expand_packed_prover_device(
+                seed_bits.id,
+                seed_tags.id,
+                &public_seed,
+                seed_rows,
+                first_global_bit,
+                cells,
+                a.id,
+                b.id,
+                a_values.id,
+                b_values.id,
+            );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = {
+            let _ = public_seed;
+            Err(AccelError::FeatureDisabled)
+        };
+        if let Err(error) = result {
+            let _ = self.free_device(a);
+            let _ = self.free_device(b);
+            let _ = self.free_device(a_values);
+            let _ = self.free_device(b_values);
+            return Err(error);
+        }
+        Ok(C41PackedProverDeviceLot { a, b, a_values, b_values, cells })
+    }
+
+    /// Verifier-side expansion from authenticated seed keys. No prover tag or
+    /// verifier `Delta` crosses the party boundary.
+    pub fn c41_expand_packed_verifier_device(
+        &mut self,
+        seed_keys: &DeviceBuffer<Fp2Repr>,
+        public_seed: [u8; 32],
+        delta: Fp2,
+        first_global_bit: usize,
+        cells: usize,
+    ) -> Result<C41PackedVerifierDeviceLot, AccelError> {
+        self.require_resident()?;
+        self.validate_buffer(seed_keys)?;
+        let seed_rows = seed_keys.len() / 1024;
+        let output_bits = checked_product(cells, 17)?;
+        let output_end = first_global_bit
+            .checked_add(output_bits)
+            .ok_or(AccelError::InvalidInput("C4.1 verifier output range overflow"))?;
+        let capacity = checked_product(seed_rows, (1 << 20) - 1024)?;
+        if cells == 0
+            || seed_rows == 0
+            || seed_keys.len() != checked_product(seed_rows, 1024)?
+            || output_end > capacity
+        {
+            return Err(AccelError::InvalidInput("invalid C4.1 packed verifier setup geometry"));
+        }
+        let a_keys = self.alloc_device(cells)?;
+        let b_keys = match self.alloc_device(cells) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = self.free_device(a_keys);
+                return Err(error);
+            }
+        };
+        #[cfg(feature = "cuda")]
+        let result = self
+            .cuda
+            .as_mut()
+            .expect("CUDA kind without context")
+            .c41_expand_packed_verifier_device(
+                seed_keys.id,
+                &public_seed,
+                delta,
+                seed_rows,
+                first_global_bit,
+                cells,
+                a_keys.id,
+                b_keys.id,
+            );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = {
+            let _ = (public_seed, delta);
+            Err(AccelError::FeatureDisabled)
+        };
+        if let Err(error) = result {
+            let _ = self.free_device(a_keys);
+            let _ = self.free_device(b_keys);
+            return Err(error);
+        }
+        Ok(C41PackedVerifierDeviceLot { a_keys, b_keys, cells })
     }
 
     /// Materialize `[base^1, ..., base^count]` on-device.

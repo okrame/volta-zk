@@ -170,6 +170,31 @@ type Fp2RowDotsDevice = unsafe extern "C" fn(
 ) -> c_int;
 type C41FoldTypedQueriesDevice =
     unsafe extern "C" fn(*mut c_void, u64, u64, u64, u64, u64, usize) -> c_int;
+type C41ExpandPackedProverDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    u64,
+    *const u8,
+    usize,
+    usize,
+    usize,
+    u64,
+    u64,
+    u64,
+    u64,
+) -> c_int;
+type C41ExpandPackedVerifierDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    *const u8,
+    u64,
+    u64,
+    usize,
+    usize,
+    usize,
+    u64,
+    u64,
+) -> c_int;
 type Fp2PowersDevice = unsafe extern "C" fn(*mut c_void, u64, u64, u64, usize, usize) -> c_int;
 type C63AppendCorrectionsDevice = unsafe extern "C" fn(
     *mut c_void,
@@ -1095,6 +1120,8 @@ struct Api {
     chacha8_prover_secret_fp2_rows_padded_device: Chacha8ProverSecretFp2RowsPaddedDevice,
     fp2_row_dots_device: Fp2RowDotsDevice,
     c41_fold_typed_queries_device: C41FoldTypedQueriesDevice,
+    c41_expand_packed_prover_device: C41ExpandPackedProverDevice,
+    c41_expand_packed_verifier_device: C41ExpandPackedVerifierDevice,
     fp2_powers_device: Fp2PowersDevice,
     c63_append_corrections_device: C63AppendCorrectionsDevice,
     c63_correction_tile_frame_device: C63CorrectionTileFrameDevice,
@@ -1328,6 +1355,12 @@ impl CudaContext {
             },
             c41_fold_typed_queries_device: unsafe {
                 load_symbol(handle, b"volta_cuda_c41_fold_typed_queries_device\0")?
+            },
+            c41_expand_packed_prover_device: unsafe {
+                load_symbol(handle, b"volta_cuda_c41_expand_packed_prover_device\0")?
+            },
+            c41_expand_packed_verifier_device: unsafe {
+                load_symbol(handle, b"volta_cuda_c41_expand_packed_verifier_device\0")?
             },
             fp2_powers_device: unsafe { load_symbol(handle, b"volta_cuda_fp2_powers_device\0")? },
             c63_append_corrections_device: unsafe {
@@ -2120,6 +2153,69 @@ impl CudaContext {
                 correction_bits_id,
                 output_id,
                 cells,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn c41_expand_packed_prover_device(
+        &mut self,
+        seed_bits_id: u64,
+        seed_tags_id: u64,
+        public_seed: &[u8; 32],
+        seed_rows: usize,
+        first_global_bit: usize,
+        cells: usize,
+        a_id: u64,
+        b_id: u64,
+        a_values_id: u64,
+        b_values_id: u64,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates ownership, exact lengths and the global
+        // output range; the CUDA ABI repeats every byte-envelope check.
+        self.check(unsafe {
+            (self.api.c41_expand_packed_prover_device)(
+                self.raw,
+                seed_bits_id,
+                seed_tags_id,
+                public_seed.as_ptr(),
+                seed_rows,
+                first_global_bit,
+                cells,
+                a_id,
+                b_id,
+                a_values_id,
+                b_values_id,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn c41_expand_packed_verifier_device(
+        &mut self,
+        seed_keys_id: u64,
+        public_seed: &[u8; 32],
+        delta: Fp2,
+        seed_rows: usize,
+        first_global_bit: usize,
+        cells: usize,
+        a_keys_id: u64,
+        b_keys_id: u64,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all typed resident buffers and geometry;
+        // Fp2 limbs are canonical by construction.
+        self.check(unsafe {
+            (self.api.c41_expand_packed_verifier_device)(
+                self.raw,
+                seed_keys_id,
+                public_seed.as_ptr(),
+                delta.c0.value(),
+                delta.c1.value(),
+                seed_rows,
+                first_global_bit,
+                cells,
+                a_keys_id,
+                b_keys_id,
             )
         })
     }

@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E ACTIVE)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,31 +8,48 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-Read `c64-joint-residual-sketch-design.md` next.
+Read `c4.1-folded-query-high-degree-typed-ole.md` next.
 
-- **Status/design.** C6.4 is **CLOSED / NO-GO**, isolated from C7. There is no
-  pod or retry authorization. All gates are `credit:false`; no certificate,
-  proof size, verifier result or second proof exists.
-- **Measured evidence.** Clean `d441ae6` was owner-terminated after
-  `3529.377744423 s` of incomplete first-proof campaign. The compiler alone
-  remained incomplete after `3340.554625683 s`, with essentially one CPU core
-  active and the A100 idle. Earlier phases included response
-  `65.827264601 s`, native chains `38.491623409 s` and residual blind
-  `66.325941017 s`. Peak device use was `44,569 MiB`.
-- **Hard stop.** Do not resume C6.4, infer proof bytes, or turn the temporary
-  wide correlation reservation into production constants. The diagnostic
-  geometry is removed; useful phase/counter instrumentation remains.
-- **Resume conditions.** A new milestone/design must replace or GPU-partition
-  the serial compiler relation, derive its exact finite-correlation schedule
-  before allocation, pass local correctness and budget gates, and receive a
-  new explicit owner GO before any provider or pod run.
+- **Status/design.** C4.1 real E2E implementation is active under the owner's
+  2026-08-29 GO. C6.4 remains CLOSED / NO-GO and must not be resumed.
+- **Completed evidence.** Clean `7c0e58a` passed paired A100 timing at
+  `4.037166616 / 4.035909735 s` (`0.9996886725x`), peak
+  `18,403,517,364 B`; this remains timing-only credit. The current checkpoint
+  adds party-separated typed-seed setup, a malicious bitness close, strict
+  setup/degree-12 codecs, Packed16 reference logic and ABI46 SIMT prover and
+  verifier lot producers. Local algebra/codec tests pass. Typed setup wire is
+  exactly `2,074,954 B` for 253 rows, excluding the existing real-PCG setup.
+- **Hard stop / credit.** No proof-size, verifier or construction credit yet.
+  The CUDA producer is not A100-validated, actual boundaries are not yet
+  routed through typed folds, and both proofs still serialize as C4
+  `84,544,352 B`. Security is conditional on owner-admitted
+  `XOR4-MAJ7-128`; separate soundness and weight-ZK must remain `>78` bits.
+- **Authorization/checks.** Synchronize the clean checkpoint by GitHub HTTPS,
+  reactivate or migrate the same pod, require the nonzero CPU/CUDA differential,
+  then measure setup generation, reload, lots/s and memory to completion even
+  on gate failure. Continue only through actual consumer integration, Packed16
+  codec, degree-12 close, deserialize and verifier accept/reject. Record
+  `gpt2-comparison-WIP.md` only after that real E2E succeeds.
 
-- **Parallel C4.1.** Clean `7c0e58a` passes paired A100 timing:
-  `4.037166616 / 4.035909735 s`, `0.9996886725x`, peak `18,403,517,364 B`.
-  This is timing credit only; both proofs remain C4 `84,544,352 B` and the
-  C4.1 `66,270,953 B` is projected. HARD STOP: measured buffers are zero and
-  typed setup/boundary integration are absent. Resume with those seams,
-  separate soundness and weight-ZK `>78` bits, then codec/close/verifier E2E.
+- **2026-08-29 — C4.1 real-E2E implementation starts at the typed setup
+  boundary.** The owner authorizes the ordered campaign through real setup,
+  nonzero boundary consumption, codec, degree-12 close, deserialization and
+  verifier, using the same A100 pod after GitHub-HTTPS synchronization. The
+  implementation now mirrors the ABBS high-degree MAC convention over
+  Goldilocks `Fp2`: authenticated seed bits expand through exact XOR4-MAJ7,
+  bitness is challenge-batched and masked, and strict setup/close codecs reject
+  bad lengths, headers, field limbs and trailing bytes. For 253 seed rows the
+  new typed exchange is exactly `2,074,906 B` prover-to-verifier plus `48 B`
+  verifier-to-prover, consumes `259,072` subfield and one full-field
+  correlation, and reports separate conditional soundness
+  `78.80929487391572` and weight-ZK `120.017...` bits. ABI46 adds independent
+  SIMT prover/verifier lot expansion; the existing fused response fold remains
+  resident. Six focused CPU tests pass, including all 2,048 predicate inputs,
+  an expansion-boundary crossing, signed-i16 Packed16 roundtrip, malformed
+  codecs, non-bit refusal and close tampering. These are local component
+  checks only: CUDA differential, real-PCG setup traffic, lot throughput,
+  persistence/reload and model consumer integration remain pending and have
+  no E2E credit.
 
 - **2026-08-28 — C6.4 R10c closes NO-GO during the serial compiler.** Clean
   `d441ae6` passed A100 differential and campaign preflight, then entered the

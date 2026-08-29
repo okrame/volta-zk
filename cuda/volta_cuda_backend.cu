@@ -18,7 +18,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 45;
+constexpr uint32_t ABI_VERSION = 46;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -1436,6 +1436,264 @@ __global__ void c41_fold_typed_queries_kernel(
     if (threadIdx.x == 0) {
         output[lane] = partial_a[0];
         output[12 + lane] = partial_b[0];
+    }
+}
+
+constexpr size_t C41_SEED_BITS = 1024;
+constexpr size_t C41_PRG_OUTPUT_BITS = size_t{1} << 20;
+constexpr size_t C41_PRG_USABLE_BITS = C41_PRG_OUTPUT_BITS - C41_SEED_BITS;
+constexpr size_t C41_PACKED_BITS = 17;
+constexpr size_t C41_HD_DEGREE = 12;
+constexpr uint64_t C41_MAJ7_COEFFICIENTS[8] = {
+    0,
+    UINT64_C(15855415735853964137),
+    UINT64_C(13578853273319069027),
+    UINT64_C(12041624600867853643),
+    UINT64_C(3586866902386169178),
+    UINT64_C(11119287397397124437),
+    UINT64_C(10504395928416638294),
+    UINT64_C(7100532439417518568),
+};
+
+struct C41HdPoly {
+    Fp2 coefficients[C41_HD_DEGREE + 1];
+    unsigned int degree;
+};
+
+struct C41HdKey {
+    Fp2 key;
+    unsigned int degree;
+};
+
+__device__ inline C41HdPoly c41_zero_poly(unsigned int degree) {
+    C41HdPoly output{};
+    output.degree = degree;
+    return output;
+}
+
+__device__ inline C41HdPoly c41_seed_poly(uint8_t bit, Fp2 tag) {
+    C41HdPoly output{};
+    output.coefficients[0] = tag;
+    output.coefficients[1] = Fp2{bit, 0};
+    output.degree = 1;
+    return output;
+}
+
+__device__ inline C41HdPoly c41_public_poly(uint64_t value) {
+    C41HdPoly output{};
+    output.coefficients[1] = Fp2{value, 0};
+    output.degree = 1;
+    return output;
+}
+
+__device__ inline C41HdPoly c41_poly_add(C41HdPoly left, const C41HdPoly& right) {
+    const unsigned int degree = left.degree > right.degree ? left.degree : right.degree;
+    if (left.degree < degree) {
+        const unsigned int shift = degree - left.degree;
+        for (int index = static_cast<int>(left.degree); index >= 0; --index)
+            left.coefficients[index + shift] = left.coefficients[index];
+        for (unsigned int index = 0; index < shift; ++index)
+            left.coefficients[index] = Fp2{0, 0};
+    }
+    const unsigned int offset = degree - right.degree;
+    for (unsigned int index = 0; index <= right.degree; ++index)
+        left.coefficients[offset + index] =
+            fp2_add(left.coefficients[offset + index], right.coefficients[index]);
+    left.degree = degree;
+    return left;
+}
+
+__device__ inline C41HdPoly c41_poly_mul(const C41HdPoly& left, const C41HdPoly& right) {
+    C41HdPoly output{};
+    output.degree = left.degree + right.degree;
+    for (unsigned int i = 0; i <= left.degree; ++i)
+        for (unsigned int j = 0; j <= right.degree; ++j)
+            output.coefficients[i + j] = fp2_add(
+                output.coefficients[i + j],
+                fp2_mul(left.coefficients[i], right.coefficients[j]));
+    return output;
+}
+
+__device__ inline C41HdPoly c41_poly_xor(const C41HdPoly& left, const C41HdPoly& right) {
+    C41HdPoly output = c41_poly_mul(left, right);
+    for (unsigned int index = 0; index <= output.degree; ++index)
+        output.coefficients[index] = fp2_mul_base(output.coefficients[index], P - 2);
+    output = c41_poly_add(output, left);
+    return c41_poly_add(output, right);
+}
+
+__device__ inline C41HdKey c41_key_add(C41HdKey left, C41HdKey right, Fp2 delta) {
+    if (left.degree < right.degree) {
+        left.key = fp2_mul(left.key, fp2_pow_device(delta, right.degree - left.degree));
+        left.degree = right.degree;
+    } else if (right.degree < left.degree) {
+        right.key = fp2_mul(right.key, fp2_pow_device(delta, left.degree - right.degree));
+    }
+    left.key = fp2_add(left.key, right.key);
+    return left;
+}
+
+__device__ inline C41HdKey c41_key_mul(C41HdKey left, C41HdKey right) {
+    return C41HdKey{fp2_mul(left.key, right.key), left.degree + right.degree};
+}
+
+__device__ inline C41HdKey c41_key_xor(C41HdKey left, C41HdKey right, Fp2 delta) {
+    C41HdKey product = c41_key_mul(left, right);
+    product.key = fp2_mul_base(product.key, P - 2);
+    return c41_key_add(c41_key_add(product, left, delta), right, delta);
+}
+
+__device__ inline C41HdKey c41_public_key(uint64_t value, Fp2 delta) {
+    return C41HdKey{fp2_mul_base(delta, value), 1};
+}
+
+__device__ inline void c41_public_sigma(
+    const volta::chacha8_fp::Key& key,
+    size_t expansion,
+    size_t output,
+    uint16_t sigma[11]) {
+    const uint64_t domain = (static_cast<uint64_t>(expansion) << 20) |
+                            static_cast<uint64_t>(output);
+    volta::chacha8_fp::Stream stream(key, domain);
+    for (unsigned int index = 0; index < 11; ++index) {
+        for (;;) {
+            const uint16_t candidate = static_cast<uint16_t>(stream.next_u64() & 1023);
+            bool duplicate = false;
+            for (unsigned int prior = 0; prior < index; ++prior)
+                duplicate |= sigma[prior] == candidate;
+            if (!duplicate) {
+                sigma[index] = candidate;
+                break;
+            }
+        }
+    }
+}
+
+__device__ inline C41HdPoly c41_xor4_maj7_poly(
+    const volta::chacha8_fp::Key& public_key,
+    const uint8_t* seed_bits,
+    const Fp2* seed_tags,
+    size_t expansion,
+    size_t output) {
+    uint16_t sigma[11];
+    c41_public_sigma(public_key, expansion, output, sigma);
+    const size_t seed_base = expansion * C41_SEED_BITS;
+    C41HdPoly xor4 = c41_poly_xor(
+        c41_seed_poly(seed_bits[seed_base + sigma[0]], seed_tags[seed_base + sigma[0]]),
+        c41_seed_poly(seed_bits[seed_base + sigma[1]], seed_tags[seed_base + sigma[1]]));
+    xor4 = c41_poly_xor(
+        xor4,
+        c41_seed_poly(seed_bits[seed_base + sigma[2]], seed_tags[seed_base + sigma[2]]));
+    xor4 = c41_poly_xor(
+        xor4,
+        c41_seed_poly(seed_bits[seed_base + sigma[3]], seed_tags[seed_base + sigma[3]]));
+    C41HdPoly sum =
+        c41_seed_poly(seed_bits[seed_base + sigma[4]], seed_tags[seed_base + sigma[4]]);
+    for (unsigned int index = 5; index < 11; ++index)
+        sum = c41_poly_add(
+            sum,
+            c41_seed_poly(
+                seed_bits[seed_base + sigma[index]], seed_tags[seed_base + sigma[index]]));
+    C41HdPoly majority = c41_public_poly(C41_MAJ7_COEFFICIENTS[7]);
+    for (int coefficient = 6; coefficient >= 0; --coefficient) {
+        majority = c41_poly_mul(majority, sum);
+        majority = c41_poly_add(majority, c41_public_poly(C41_MAJ7_COEFFICIENTS[coefficient]));
+    }
+    return c41_poly_xor(xor4, majority);
+}
+
+__device__ inline C41HdKey c41_xor4_maj7_key(
+    const volta::chacha8_fp::Key& public_key,
+    const Fp2* seed_keys,
+    Fp2 delta,
+    size_t expansion,
+    size_t output) {
+    uint16_t sigma[11];
+    c41_public_sigma(public_key, expansion, output, sigma);
+    const size_t seed_base = expansion * C41_SEED_BITS;
+    C41HdKey xor4 = c41_key_xor(
+        C41HdKey{seed_keys[seed_base + sigma[0]], 1},
+        C41HdKey{seed_keys[seed_base + sigma[1]], 1},
+        delta);
+    xor4 = c41_key_xor(xor4, C41HdKey{seed_keys[seed_base + sigma[2]], 1}, delta);
+    xor4 = c41_key_xor(xor4, C41HdKey{seed_keys[seed_base + sigma[3]], 1}, delta);
+    C41HdKey sum{seed_keys[seed_base + sigma[4]], 1};
+    for (unsigned int index = 5; index < 11; ++index)
+        sum = c41_key_add(sum, C41HdKey{seed_keys[seed_base + sigma[index]], 1}, delta);
+    C41HdKey majority = c41_public_key(C41_MAJ7_COEFFICIENTS[7], delta);
+    for (int coefficient = 6; coefficient >= 0; --coefficient) {
+        majority = c41_key_mul(majority, sum);
+        majority = c41_key_add(
+            majority, c41_public_key(C41_MAJ7_COEFFICIENTS[coefficient], delta), delta);
+    }
+    return c41_key_xor(xor4, majority, delta);
+}
+
+__global__ void c41_expand_packed_prover_kernel(
+    volta::chacha8_fp::Key public_key,
+    const uint8_t* seed_bits,
+    const Fp2* seed_tags,
+    size_t first_global_bit,
+    size_t cells,
+    Fp2* a,
+    Fp2* b,
+    uint16_t* a_values,
+    uint8_t* b_values) {
+    const size_t first = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    const size_t stride = static_cast<size_t>(gridDim.x) * blockDim.x;
+    for (size_t cell = first; cell < cells; cell += stride) {
+        C41HdPoly packed = c41_zero_poly(C41_HD_DEGREE);
+        const size_t bit_base = first_global_bit + cell * C41_PACKED_BITS;
+        for (unsigned int bit = 0; bit < C41_PACKED_BITS; ++bit) {
+            const size_t global_bit = bit_base + bit;
+            const size_t expansion = global_bit / C41_PRG_USABLE_BITS;
+            const size_t output = C41_SEED_BITS + global_bit % C41_PRG_USABLE_BITS;
+            C41HdPoly value =
+                c41_xor4_maj7_poly(public_key, seed_bits, seed_tags, expansion, output);
+            if (bit < 16) {
+                const uint64_t weight = uint64_t{1} << bit;
+                for (unsigned int lane = 0; lane <= C41_HD_DEGREE; ++lane)
+                    packed.coefficients[lane] = fp2_add(
+                        packed.coefficients[lane], fp2_mul_base(value.coefficients[lane], weight));
+            } else {
+                for (unsigned int lane = 0; lane < C41_HD_DEGREE; ++lane)
+                    b[lane * cells + cell] = value.coefficients[lane];
+                b_values[cell] = static_cast<uint8_t>(value.coefficients[C41_HD_DEGREE].c0);
+            }
+        }
+        for (unsigned int lane = 0; lane < C41_HD_DEGREE; ++lane)
+            a[lane * cells + cell] = packed.coefficients[lane];
+        a_values[cell] = static_cast<uint16_t>(packed.coefficients[C41_HD_DEGREE].c0);
+    }
+}
+
+__global__ void c41_expand_packed_verifier_kernel(
+    volta::chacha8_fp::Key public_key,
+    const Fp2* seed_keys,
+    Fp2 delta,
+    size_t first_global_bit,
+    size_t cells,
+    Fp2* a_keys,
+    Fp2* b_keys) {
+    const size_t first = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    const size_t stride = static_cast<size_t>(gridDim.x) * blockDim.x;
+    for (size_t cell = first; cell < cells; cell += stride) {
+        C41HdKey packed{Fp2{0, 0}, C41_HD_DEGREE};
+        const size_t bit_base = first_global_bit + cell * C41_PACKED_BITS;
+        for (unsigned int bit = 0; bit < C41_PACKED_BITS; ++bit) {
+            const size_t global_bit = bit_base + bit;
+            const size_t expansion = global_bit / C41_PRG_USABLE_BITS;
+            const size_t output = C41_SEED_BITS + global_bit % C41_PRG_USABLE_BITS;
+            C41HdKey value =
+                c41_xor4_maj7_key(public_key, seed_keys, delta, expansion, output);
+            if (bit < 16) {
+                value.key = fp2_mul_base(value.key, uint64_t{1} << bit);
+                packed = c41_key_add(packed, value, delta);
+            } else {
+                b_keys[cell] = value.key;
+            }
+        }
+        a_keys[cell] = packed.key;
     }
 }
 
@@ -4632,6 +4890,136 @@ extern "C" int volta_cuda_c41_fold_typed_queries_device(
     CUDA_OR_RETURN(c, cudaPeekAtLastError());
     if (mark_timing(c, 2)) return -1;
     return finish_timing(c, OP_AUTH_MASKS, 0, 0, 0, 0, output_bytes);
+}
+
+extern "C" int volta_cuda_c41_expand_packed_prover_device(
+    void* raw,
+    uint64_t seed_bits_id,
+    uint64_t seed_tags_id,
+    const uint8_t* public_seed,
+    size_t seed_rows,
+    size_t first_global_bit,
+    size_t cells,
+    uint64_t a_id,
+    uint64_t b_id,
+    uint64_t a_values_id,
+    uint64_t b_values_id) {
+    Context* c = static_cast<Context*>(raw);
+    size_t bits = 0;
+    size_t end_bit = 0;
+    size_t seed_items = 0;
+    size_t capacity_bits = 0;
+    size_t slab_items = 0;
+    size_t seed_tag_bytes = 0;
+    size_t slab_bytes = 0;
+    size_t a_value_bytes = 0;
+    if (!c || !public_seed || !seed_rows || !cells ||
+        !checked_mul_size(cells, C41_PACKED_BITS, &bits) ||
+        !checked_add_size(first_global_bit, bits, &end_bit) ||
+        !checked_mul_size(seed_rows, C41_SEED_BITS, &seed_items) ||
+        !checked_mul_size(seed_rows, C41_PRG_USABLE_BITS, &capacity_bits) ||
+        end_bit > capacity_bits ||
+        !checked_mul_size(C41_HD_DEGREE, cells, &slab_items) ||
+        !checked_mul_size(seed_items, sizeof(Fp2), &seed_tag_bytes) ||
+        !checked_mul_size(slab_items, sizeof(Fp2), &slab_bytes) ||
+        !checked_mul_size(cells, sizeof(uint16_t), &a_value_bytes))
+        return fail_message(c, "invalid C4.1 packed prover expansion geometry");
+    const uint64_t ids[] = {seed_bits_id, seed_tags_id, a_id, b_id, a_values_id, b_values_id};
+    for (size_t i = 0; i < sizeof(ids) / sizeof(ids[0]); ++i)
+        for (size_t j = i + 1; j < sizeof(ids) / sizeof(ids[0]); ++j)
+            if (ids[i] == ids[j])
+                return fail_message(c, "C4.1 packed prover expansion buffers overlap");
+    void* seed_bits = nullptr;
+    void* seed_tags = nullptr;
+    void* a = nullptr;
+    void* b = nullptr;
+    void* a_values = nullptr;
+    void* b_values = nullptr;
+    if (resident_region(c, seed_bits_id, 0, seed_items, &seed_bits) ||
+        resident_region(c, seed_tags_id, 0, seed_tag_bytes, &seed_tags) ||
+        resident_region(c, a_id, 0, slab_bytes, &a) ||
+        resident_region(c, b_id, 0, slab_bytes, &b) ||
+        resident_region(c, a_values_id, 0, a_value_bytes, &a_values) ||
+        resident_region(c, b_values_id, 0, cells, &b_values))
+        return -1;
+    const volta::chacha8_fp::Key key = volta::chacha8_fp::key_from_seed(public_seed);
+    const size_t needed_blocks = (cells + BLOCK - 1) / BLOCK;
+    const unsigned int blocks = static_cast<unsigned int>(std::min<size_t>(needed_blocks, 65535));
+    if (begin_timing(c) || mark_timing(c, 1)) return -1;
+    c41_expand_packed_prover_kernel<<<blocks, BLOCK, 0, c->stream>>>(
+        key,
+        static_cast<const uint8_t*>(seed_bits),
+        static_cast<const Fp2*>(seed_tags),
+        first_global_bit,
+        cells,
+        static_cast<Fp2*>(a),
+        static_cast<Fp2*>(b),
+        static_cast<uint16_t*>(a_values),
+        static_cast<uint8_t*>(b_values));
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    size_t generated = 0;
+    if (!checked_add_size(slab_bytes, slab_bytes, &generated) ||
+        !checked_add_size(generated, a_value_bytes, &generated) ||
+        !checked_add_size(generated, cells, &generated))
+        return fail_message(c, "C4.1 packed prover generated-byte count overflows");
+    return finish_timing(c, OP_AUTH_MASKS, 0, 0, 0, 0, generated);
+}
+
+extern "C" int volta_cuda_c41_expand_packed_verifier_device(
+    void* raw,
+    uint64_t seed_keys_id,
+    const uint8_t* public_seed,
+    uint64_t delta_c0,
+    uint64_t delta_c1,
+    size_t seed_rows,
+    size_t first_global_bit,
+    size_t cells,
+    uint64_t a_keys_id,
+    uint64_t b_keys_id) {
+    Context* c = static_cast<Context*>(raw);
+    size_t bits = 0;
+    size_t end_bit = 0;
+    size_t seed_items = 0;
+    size_t capacity_bits = 0;
+    size_t seed_bytes = 0;
+    size_t output_bytes = 0;
+    if (!c || !public_seed || !seed_rows || !cells || delta_c0 >= P || delta_c1 >= P ||
+        !checked_mul_size(cells, C41_PACKED_BITS, &bits) ||
+        !checked_add_size(first_global_bit, bits, &end_bit) ||
+        !checked_mul_size(seed_rows, C41_SEED_BITS, &seed_items) ||
+        !checked_mul_size(seed_rows, C41_PRG_USABLE_BITS, &capacity_bits) ||
+        end_bit > capacity_bits ||
+        !checked_mul_size(seed_items, sizeof(Fp2), &seed_bytes) ||
+        !checked_mul_size(cells, sizeof(Fp2), &output_bytes))
+        return fail_message(c, "invalid C4.1 packed verifier expansion geometry");
+    if (seed_keys_id == a_keys_id || seed_keys_id == b_keys_id || a_keys_id == b_keys_id)
+        return fail_message(c, "C4.1 packed verifier expansion buffers overlap");
+    void* seed_keys = nullptr;
+    void* a_keys = nullptr;
+    void* b_keys = nullptr;
+    if (resident_region(c, seed_keys_id, 0, seed_bytes, &seed_keys) ||
+        resident_region(c, a_keys_id, 0, output_bytes, &a_keys) ||
+        resident_region(c, b_keys_id, 0, output_bytes, &b_keys))
+        return -1;
+    const volta::chacha8_fp::Key key = volta::chacha8_fp::key_from_seed(public_seed);
+    const size_t needed_blocks = (cells + BLOCK - 1) / BLOCK;
+    const unsigned int blocks = static_cast<unsigned int>(std::min<size_t>(needed_blocks, 65535));
+    if (begin_timing(c) || mark_timing(c, 1)) return -1;
+    c41_expand_packed_verifier_kernel<<<blocks, BLOCK, 0, c->stream>>>(
+        key,
+        static_cast<const Fp2*>(seed_keys),
+        Fp2{delta_c0, delta_c1},
+        first_global_bit,
+        cells,
+        static_cast<Fp2*>(a_keys),
+        static_cast<Fp2*>(b_keys));
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    size_t generated = 0;
+    if (!checked_mul_size(2, output_bytes, &generated))
+        return fail_message(c, "C4.1 packed verifier generated-byte count overflows");
+    return finish_timing(c, OP_AUTH_MASKS, 0, 0, 0, 0, generated);
 }
 
 extern "C" int volta_cuda_fp2_powers_device(

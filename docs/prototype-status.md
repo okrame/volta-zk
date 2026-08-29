@@ -8,19 +8,20 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-- **Status.** Isolated C4.1 timing branch based on the immutable C4 anchor
-  `e99a1e5`; design `c4.1-folded-query-high-degree-typed-ole.md`. It ports only
-  ABI45, the resident fused fold, paired recorder and one-shot A100 runner.
-- **Evidence/credit.** The source retains the exact C4 proof relation and
-  `84,544,352-B` proof. C4.1 `66,270,953 B` remains a projection with no
-  proof-byte/verifier credit. Conditional security is
-  `78.80929487391572` bits under owner-admitted `XOR4-MAJ7-128`; final
-  soundness and weight zero-knowledge must each exceed 78 bits.
-- **Checks/authorization.** Owner authorizes one complete same-build A100 pair:
-  one warmup plus three measured repetitions per arm, real/AES PCG, fresh
-  stores, `<=1.30x`, `<=5.3359744321 s` and `<30 GB`. A failure is completed
-  and preserved. Fiat--Shamir, product-latency credit, codec, degree-12 close
-  and verifier remain absent; a timing PASS unlocks their implementation.
+- **Status.** C4.1 isolated timing PASS on clean `7c0e58a`; design
+  `c4.1-folded-query-high-degree-typed-ole.md`. Anchor/candidate prover medians
+  are `4.037166616 / 4.035909735 s`, ratio `0.9996886725x`; candidate peak is
+  `18,403,517,364 B`. All timing, C4-absolute and device gates pass.
+- **Evidence/credit.** This awards timing credit only. Both arms still produce
+  the exact `84,544,352-B` C4 proof. The `66,270,953-B` C4.1 proof, setup,
+  degree-12 close and verifier remain projections/absent. Conditional security
+  is `78.80929487391572` bits under owner-admitted `XOR4-MAJ7-128`; soundness
+  and weight zero-knowledge must each be strictly above 78 bits.
+- **Hard stop/resume.** The measured candidate folds zero-initialized timing
+  buffers; executable typed setup and nonzero boundary integration do not yet
+  exist. Do not substitute a zero codec. Resume only after those two seams are
+  specified and implemented; then add codec, degree-12 close and verifier and
+  run `setup -> prover -> proof <70 MB -> deserialize -> verifier`.
 
 - **2026-08-29 — C4.1 timing-anchor isolation.** A first attempt on the active
   C7 source completed the anchor but was rejected before the candidate: the
@@ -30,6 +31,32 @@ record; no external plan is authoritative.
   reinterpreting either relation by applying the C4.1 timing seam directly to
   the immutable accepted C4 source. Resume with a clean exact-SHA full restart
   and fresh PCG stores; C7 remains blocked on its own branch.
+
+- **2026-08-29 — C4.1 paired A100 timing PASS; definitive E2E prerequisite
+  corrected.** Clean source `7c0e58a85568c90a3d8e4848732fa6801be6da0b`
+  on RunPod `nudqsdr5apsd96` completed one warmup plus three accepted measured
+  repetitions per arm with real/AES PCG and distinct fresh stores. Anchor and
+  candidate prover medians are `4.037166616 / 4.035909735 s`; ratio
+  `0.9996886724974343x <=1.30x`; candidate peak is `18,403,517,364 B <30 GB`.
+  Both C4 absolute profiles pass and both still measure `84,544,352 B`.
+  Spike kernel/wall medians are `23,446,880 / 23,476,230 ns`.
+
+  Raw spike/anchor/candidate/pair SHA-256 values are respectively
+  `bd8fc4b2c1fd899e58aa07c9363990587d19e753e6bc9bd9446f57c515cdca1f`,
+  `b9fd36789e9bbcba987f2b05ece5b61e43e4dd0b3ed9ccffbd9fe46a1763bc0e`,
+  `ce8e3e21ffad7b309e2516eb77c518e386f8791b62cea30f285dd569bcd0b72a`
+  and `ce7473d5319f70398b8f07f219422cc6ec9eb3b415290a53934de081721900e5`.
+  They are preserved on the pod volume in commit `993c5b1`; the container has
+  no GitHub HTTPS write credential, so no forbidden credential export or
+  alternate transfer was used.
+
+  Code audit after PASS corrects the earlier implementation premise: the
+  timing owner explicitly zeroes `a`, `b`, query and bitmap, then checks a
+  zero output. No executable `XOR4-MAJ7` typed setup, no replacement of the
+  `3,045,600` eligible C4 corrections, and no typed verifier input exists.
+  Serializer/close/verifier alone would therefore serialize a diagnostic,
+  not the new relation. This is a HARD STOP before C4.1 E2E or byte/verifier
+  credit; the exact resume conditions are in the active capsule.
 
 Workload of record: **GPT-2 small (124M, L=12, d=768, h=12, d_ff=3072),
 prefill T=100 + 50 deferred decode tokens, causal, C3b PCS Q=120**, on the

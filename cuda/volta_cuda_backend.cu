@@ -1444,7 +1444,7 @@ constexpr size_t C41_PRG_OUTPUT_BITS = size_t{1} << 20;
 constexpr size_t C41_PRG_USABLE_BITS = C41_PRG_OUTPUT_BITS - C41_SEED_BITS;
 constexpr size_t C41_PACKED_BITS = 17;
 constexpr size_t C41_HD_DEGREE = 12;
-constexpr uint64_t C41_MAJ7_COEFFICIENTS[8] = {
+__device__ __constant__ uint64_t C41_MAJ7_COEFFICIENTS[8] = {
     0,
     UINT64_C(15855415735853964137),
     UINT64_C(13578853273319069027),

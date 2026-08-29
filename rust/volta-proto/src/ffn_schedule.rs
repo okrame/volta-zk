@@ -1454,6 +1454,9 @@ fn verify_layers_thinned_scheduled_impl(
             ThinnedVerifierCacheMode::C6 { prefixes, .. } => prefixes.len() != L,
         }
     {
+        if trace_c41 {
+            eprintln!("C4.1 scheduled verifier stopped at response geometry");
+        }
         return None;
     }
     let bad_prefix_geometry = match &*cache_mode {
@@ -1466,10 +1469,17 @@ fn verify_layers_thinned_scheduled_impl(
         }),
     };
     if bad_prefix_geometry {
+        if trace_c41 {
+            eprintln!("C4.1 scheduled verifier stopped at K/V prefix geometry");
+        }
         return None;
     }
-    bank.preflight_scheduled_kroots(TableKey::Gelu, plan.sites().iter().map(|site| site.id))
-        .ok()?;
+    verify_stage!(
+        "scheduled GELU roots",
+        "all",
+        bank.preflight_scheduled_kroots(TableKey::Gelu, plan.sites().iter().map(|site| site.id))
+            .ok()
+    );
     let luts_for = |layer: usize| {
         let mut luts = model.luts.clone();
         luts.params.shift_attn_proj = model.p.shift_attn_proj[layer];
@@ -1503,10 +1513,16 @@ fn verify_layers_thinned_scheduled_impl(
                 attn,
             } = v1;
             if !abo_keys.is_empty() {
+                if trace_c41 {
+                    eprintln!("C4.1 scheduled verifier found ordinary ABO keys (layer {layer})");
+                }
                 return None;
             }
             let downstream = downstream_f[layer].take();
             if (wave == 3) != downstream.is_none() {
+                if trace_c41 {
+                    eprintln!("C4.1 scheduled verifier stopped at F dependency (layer {layer})");
+                }
                 return None;
             }
             let mut cx = BlockCtxV::with_doms(ctx, tx, doms, bank);
@@ -1524,11 +1540,18 @@ fn verify_layers_thinned_scheduled_impl(
                     Some(&model.layers[layer].1),
                 )
             );
-            let site_id = plan.site(layer).ok()?;
-            let site = plan.sites().iter().find(|site| site.id == site_id)?;
+            let site_id = verify_stage!("GELU site id", layer, plan.site(layer).ok());
+            let site = verify_stage!(
+                "GELU site lookup",
+                layer,
+                plan.sites().iter().find(|site| site.id == site_id)
+            );
             if cx.doms.cursor() != site.mask_dom_base
                 || cx.doms.take(plan.gelu_span) != site.mask_dom_base
             {
+                if trace_c41 {
+                    eprintln!("C4.1 scheduled verifier stopped at GELU domains (layer {layer})");
+                }
                 return None;
             }
             pending.push((
@@ -1555,7 +1578,7 @@ fn verify_layers_thinned_scheduled_impl(
 
         let auxes: Vec<Vec<_>> =
             pending.iter().map(|(_, state)| vec![state.ffn.gelu_aux()]).collect();
-        let jobs = pending
+        let jobs = verify_stage!("GELU jobs", wave, pending
             .iter()
             .enumerate()
             .map(|(index, (layer, _))| {
@@ -1568,7 +1591,7 @@ fn verify_layers_thinned_scheduled_impl(
                     aux_claims: &auxes[index],
                 })
             })
-            .collect::<Option<Vec<_>>>()?;
+            .collect::<Option<Vec<_>>>());
         let mut batch_prod = ProdKeyTriples::new();
         let mut batch_zero = Vec::new();
         let outputs = verify_stage!(
@@ -1587,13 +1610,18 @@ fn verify_layers_thinned_scheduled_impl(
         let mut outputs: BTreeMap<_, _> =
             outputs.into_iter().map(|output| (output.site, output.output)).collect();
         for &layer in &wave_layers {
-            let site = plan.site(layer).ok()?;
-            let output = outputs.get(&site)?;
-            bank.push_scheduled_kroots(TableKey::Gelu, site, output.kroots).ok()?;
+            let site = verify_stage!("GELU output site", layer, plan.site(layer).ok());
+            let output = verify_stage!("GELU output", layer, outputs.get(&site));
+            verify_stage!(
+                "GELU table roots",
+                layer,
+                bank.push_scheduled_kroots(TableKey::Gelu, site, output.kroots).ok()
+            );
         }
 
         for (wave_index, (layer, mut state)) in pending.into_iter().enumerate() {
-            let gelu = outputs.remove(&plan.site(layer).ok()?)?;
+            let site = verify_stage!("canonical GELU site", layer, plan.site(layer).ok());
+            let gelu = verify_stage!("canonical GELU output", layer, outputs.remove(&site));
             if wave_index == 0 {
                 state.prod.extend(std::mem::take(&mut batch_prod));
                 state.zero.extend(std::mem::take(&mut batch_zero));
@@ -1743,6 +1771,9 @@ fn verify_layers_thinned_scheduled_impl(
                         state.xin_keys.len() != t * D
                     }
                 {
+                    if trace_c41 {
+                        eprintln!("C4.1 scheduled verifier stopped at XIn geometry (layer {layer})");
+                    }
                     return None;
                 }
                 for claim in [&x_residual, &x_ln] {
@@ -1775,15 +1806,26 @@ fn verify_layers_thinned_scheduled_impl(
                 let shift = model.p.seam_shifts[producer];
                 if shift == 0 {
                     if seam_instances[producer].is_some() {
+                        if trace_c41 {
+                            eprintln!("C4.1 scheduled verifier found a proof for identity seam {producer}");
+                        }
                         return None;
                     }
                     downstream_f[producer] = Some(x_claim);
                 } else {
-                    let proof = seam_instances[producer]?;
+                    let proof = verify_stage!(
+                        "non-identity seam proof",
+                        producer,
+                        seam_instances[producer]
+                    );
                     let saved_doms = cx.doms;
                     cx.doms = Doms::new(layer_dom_base(seam_base + producer as u8));
                     let aux = [(1usize, x_claim.point.clone(), x_claim.key)];
-                    let site = verify_range_site(n_d, shift, proof, None, &aux, &mut cx)?;
+                    let site = verify_stage!(
+                        "non-identity seam range proof",
+                        producer,
+                        verify_range_site(n_d, shift, proof, None, &aux, &mut cx)
+                    );
                     downstream_f[producer] = Some(BoundaryClaimK {
                         point: site.acc_point().to_vec(),
                         key: site.acc_key,
@@ -1792,11 +1834,14 @@ fn verify_layers_thinned_scheduled_impl(
                 }
             }
 
-            let cattn = attn_keys.pop()?;
-            let projection = attn_keys.pop()?;
-            let up = ffn_keys.pop()?;
-            let down = ffn_keys.pop()?;
+            let cattn = verify_stage!("c_attn weight claim", layer, attn_keys.pop());
+            let projection = verify_stage!("attention projection weight claim", layer, attn_keys.pop());
+            let up = verify_stage!("FFN-up weight claim", layer, ffn_keys.pop());
+            let down = verify_stage!("FFN-down weight claim", layer, ffn_keys.pop());
             if !attn_keys.is_empty() || !ffn_keys.is_empty() {
+                if trace_c41 {
+                    eprintln!("C4.1 scheduled verifier stopped at weight-claim cardinality (layer {layer})");
+                }
                 return None;
             }
             scheduled[layer] = Some(ScheduledLayerV {
@@ -1816,14 +1861,21 @@ fn verify_layers_thinned_scheduled_impl(
         }
     }
     if states.iter().any(Option::is_some) || downstream_f.iter().any(Option::is_some) {
+        if trace_c41 {
+            eprintln!("C4.1 scheduled verifier left layer state unconsumed");
+        }
         return None;
     }
     for (index, proof) in seam_instances.iter().enumerate() {
         if (model.p.seam_shifts[index] > 0) != proof.is_some() {
+            if trace_c41 {
+                eprintln!("C4.1 scheduled verifier stopped at seam manifest {index}");
+            }
             return None;
         }
     }
-    Some(ThinnedScheduledV { layers: scheduled.into_iter().collect::<Option<Vec<_>>>()? })
+    let layers = verify_stage!("scheduled layer output", "all", scheduled.into_iter().collect());
+    Some(ThinnedScheduledV { layers })
 }
 
 struct ResidentPending {

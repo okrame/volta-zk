@@ -168,6 +168,8 @@ type Fp2RowDotsDevice = unsafe extern "C" fn(
     usize,
     usize,
 ) -> c_int;
+type C41FoldTypedQueriesDevice =
+    unsafe extern "C" fn(*mut c_void, u64, u64, u64, u64, u64, usize) -> c_int;
 type Fp2PowersDevice = unsafe extern "C" fn(*mut c_void, u64, u64, u64, usize, usize) -> c_int;
 type C63AppendCorrectionsDevice = unsafe extern "C" fn(
     *mut c_void,
@@ -1090,6 +1092,7 @@ struct Api {
     mock_correlation_sub_masks_device: MockCorrelationSubMasksDevice,
     chacha8_prover_secret_fp2_rows_padded_device: Chacha8ProverSecretFp2RowsPaddedDevice,
     fp2_row_dots_device: Fp2RowDotsDevice,
+    c41_fold_typed_queries_device: C41FoldTypedQueriesDevice,
     fp2_powers_device: Fp2PowersDevice,
     c63_append_corrections_device: C63AppendCorrectionsDevice,
     c63_correction_tile_frame_device: C63CorrectionTileFrameDevice,
@@ -1319,6 +1322,9 @@ impl CudaContext {
             },
             fp2_row_dots_device: unsafe {
                 load_symbol(handle, b"volta_cuda_fp2_row_dots_device\0")?
+            },
+            c41_fold_typed_queries_device: unsafe {
+                load_symbol(handle, b"volta_cuda_c41_fold_typed_queries_device\0")?
             },
             fp2_powers_device: unsafe { load_symbol(handle, b"volta_cuda_fp2_powers_device\0")? },
             c63_append_corrections_device: unsafe {
@@ -2084,6 +2090,30 @@ impl CudaContext {
                 output_offset,
                 rows,
                 len,
+            )
+        })
+    }
+
+    pub(super) fn c41_fold_typed_queries_device(
+        &mut self,
+        a_id: u64,
+        b_id: u64,
+        query_id: u64,
+        correction_bits_id: u64,
+        output_id: u64,
+        cells: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: the safe caller validates ownership and exact typed lengths;
+        // the backend revalidates every resident byte region.
+        self.check(unsafe {
+            (self.api.c41_fold_typed_queries_device)(
+                self.raw,
+                a_id,
+                b_id,
+                query_id,
+                correction_bits_id,
+                output_id,
+                cells,
             )
         })
     }

@@ -1982,7 +1982,7 @@ mod tests {
 
     #[cfg(feature = "cuda")]
     #[test]
-    #[ignore = "requires the production ABI44 CUDA library"]
+    #[ignore = "requires the production ABI45 CUDA library"]
     fn resident_sparse_h_matches_the_cpu_reference_and_releases_memory() {
         let (h, m, u, statement) = fixture();
         let spots =

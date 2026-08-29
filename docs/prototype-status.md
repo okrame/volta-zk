@@ -29,6 +29,47 @@ Read `c7-stateful-authenticated-lfc-design.md`, then
   within gates and stateful privacy; `C7_CPU_REFERENCE_PASS=false`,
   `C7_POD_READY=false`.
 
+- **Parallel scoped C4.1 decision.** The owner admits `XOR4-MAJ7-128`, changes
+  only C4.1's median full-prover gate from `<=1.00x` to `<=1.30x`, and
+  authorizes complete local pod-ready preparation and the same-build paired
+  A100 run once its endpoint is supplied. This does not resume C7 or authorize
+  product credit or C4.1 verifier implementation.
+
+- **2026-08-29 — C4.1 becomes endpoint-blocked for its paired A100 timing
+  screen.** ABI45 and the resident prover seam are now wired into the existing
+  C4/P6 full-prover runner through `--c41-timing-profile anchor|candidate`.
+  Both arms retain the C4 anchor relation and real/AES PCG; only the candidate
+  owns the zero-initialized `1,244,549,184-B` timing allocation and performs
+  one synchronized 12-lane fused fold inside `t_prove_response_s`. Raw
+  response communication stays `84,544,352 B` and receives no C4.1 byte
+  credit. `scripts/report.py` validates ABI45 arms and an append-only pair,
+  including exact fold call/D2H accounting, `<=1.30x`, `<=5.3359744321 s`,
+  `<30 GB`, conditional `>=78` bits and projected `<70 MB`. The one-shot
+  `scripts/run_c41_timing_pod.sh` builds CUDA, runs the differential plus
+  production spike, executes one warmup and three measured repetitions per
+  arm with fresh stores, preserves failures and forbids selective retry.
+  Focused Rust, Python, budget and shell checks pass. The complete report suite
+  retains one unrelated historical C5 design-digest failure (23/24 pass); it
+  is not changed here. No CUDA measurement has run. Resume only with the
+  owner-provided A100 endpoint. C7 remains blocked unchanged.
+
+- **2026-08-29 — Owner conditionally admits C4.1 security and relaxes its
+  prover gate.** `XOR4-MAJ7-128` is an explicit computational assumption.
+  Union over 253 instances leaves `120.0170064253057` bits; including the
+  five-close statistical term and the C4 anchor gives
+  `78.80929487391572` conditional composed bits. The C4.1 median full-prover
+  gate is now `<=1.30x`, namely `<=5.3359744321 s` against the
+  `4.104595717-s` anchor. The analytic read-only ratio `1.000696083x` passes;
+  paired full-prover timing remains required for credit. Authorized scope is
+  the local fused-fold timing spike and minimal prover preparation only. No
+  verifier integration, provider contact, pod run, or product credit is
+  authorized; C7 remains blocked unchanged. The local preparation now exists:
+  ABI45 exposes one resident two-slab/12-lane kernel over the packed `e`
+  bitmap, `volta-proto` supplies its prover seam and CPU reference, and the
+  `c41_fused_fold_spike` binary runs a CUDA/reference differential before
+  production geometry. The focused Rust test and CUDA-feature compile pass;
+  no CUDA device measurement has run locally.
+
 - **2026-08-29 — Owner closes the C7 tournament and blocks generic R0.8h.**
   R0.8g is the terminal active screen under the current gates. No generic
   research continuation, prototype or further relaxation is authorized.

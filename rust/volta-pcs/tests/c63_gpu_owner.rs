@@ -156,7 +156,7 @@ fn print_stats(label: &str, stats: &volta_accel::BackendStats) {
 }
 
 #[test]
-#[ignore = "requires the production ABI44 CUDA library and one A100"]
+#[ignore = "requires the production ABI45 CUDA library and one A100"]
 fn production_owner_matches_cpu_for_one_complete_token() {
     let sparse_setup = C63SparseSetupReference::sample(
         C63_PRODUCTION_SETUP_SEED,
@@ -187,7 +187,7 @@ fn production_owner_matches_cpu_for_one_complete_token() {
         c63_correction_state_root_reference(profile_digest, 1, &[tile_root]).unwrap();
     let expected_encoded_root = encoded_root(&expected_encoded);
 
-    let backend = Backend::cuda_resident().expect("initialize ABI44 resident CUDA backend");
+    let backend = Backend::cuda_resident().expect("initialize ABI45 resident CUDA backend");
     let guard = C62GpuResourceGuard::for_lane(19, 1, 1 << 19, 19, 1, false, 40u64 << 30).unwrap();
     let mmcs = C62GpuMmcs::new(backend, 19, guard).unwrap();
     let setup = C63GpuSetupOwner::install(&mmcs, &sparse_setup).unwrap();

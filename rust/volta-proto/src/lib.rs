@@ -5,6 +5,7 @@
 
 pub mod block_proof;
 pub(crate) mod boundary_thinning;
+pub mod c41_folded_tole;
 pub mod c6;
 pub mod c61_certificate;
 pub mod c61_public_instance;
@@ -48,6 +49,10 @@ pub use block_proof::{
     prove_layer_phase1_with_wires, prove_layer_phase2, verify_layer_phase1, verify_layer_phase2,
     AttnBlockProof, AttnWires, BlockCtxP, BlockCtxV, FfnBlockProof, InstanceLookups, LayerBytes,
     LayerOut, LayerOutV, LayerProof, LnChainProof, TableBankP, TableBankV, TableCloseProof,
+};
+pub use c41_folded_tole::{
+    c41_fold_typed_queries_reference, c41_fold_typed_queries_resident, C41FoldedQueries,
+    C41_TYPED_POLYNOMIAL_LANES,
 };
 pub use c6::{
     C6CacheHead, C6ClientAttempt, C6ClientState, C6ClientStore, C6CorrelationRange,

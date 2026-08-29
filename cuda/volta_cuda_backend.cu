@@ -18,7 +18,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 44;
+constexpr uint32_t ABI_VERSION = 45;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -1403,6 +1403,39 @@ __global__ void fp2_row_dots_kernel(
         }
         if (threadIdx.x == 0) output[row] = partial[0];
         __syncthreads();
+    }
+}
+
+__global__ void c41_fold_typed_queries_kernel(
+    const Fp2* a, const Fp2* b, const Fp2* query,
+    const uint8_t* correction_bitmap, Fp2* output, size_t cells) {
+    const size_t lane = blockIdx.x;
+    if (lane >= 12) return;
+    Fp2 acc_a{0, 0};
+    Fp2 acc_b{0, 0};
+    for (size_t cell = threadIdx.x; cell < cells; cell += blockDim.x) {
+        const Fp2 weight = query[cell];
+        const bool correction =
+            ((correction_bitmap[cell >> 3] >> (cell & 7)) & 1) != 0;
+        const Fp2 signed_weight = correction ? fp2_sub(Fp2{0, 0}, weight) : weight;
+        acc_a = fp2_add(acc_a, fp2_mul(weight, a[lane * cells + cell]));
+        acc_b = fp2_add(acc_b, fp2_mul(signed_weight, b[lane * cells + cell]));
+    }
+    __shared__ Fp2 partial_a[BLOCK];
+    __shared__ Fp2 partial_b[BLOCK];
+    partial_a[threadIdx.x] = acc_a;
+    partial_b[threadIdx.x] = acc_b;
+    __syncthreads();
+    for (unsigned int width = blockDim.x / 2; width != 0; width >>= 1) {
+        if (threadIdx.x < width) {
+            partial_a[threadIdx.x] = fp2_add(partial_a[threadIdx.x], partial_a[threadIdx.x + width]);
+            partial_b[threadIdx.x] = fp2_add(partial_b[threadIdx.x], partial_b[threadIdx.x + width]);
+        }
+        __syncthreads();
+    }
+    if (threadIdx.x == 0) {
+        output[lane] = partial_a[0];
+        output[12 + lane] = partial_b[0];
     }
 }
 
@@ -4550,6 +4583,47 @@ extern "C" int volta_cuda_fp2_row_dots_device(
     CUDA_OR_RETURN(c, cudaGetLastError());
     if (mark_timing(c, 2)) return -1;
     return finish_timing(c, OP_PCS_ROWS, 0, 0);
+}
+
+extern "C" int volta_cuda_c41_fold_typed_queries_device(
+    void* raw, uint64_t a_id, uint64_t b_id, uint64_t query_id,
+    uint64_t correction_bitmap_id, uint64_t output_id, size_t cells) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !cells)
+        return fail_message(c, "invalid C4.1 folded-query geometry");
+    size_t slab_elements = 0;
+    size_t slab_bytes = 0;
+    size_t query_bytes = 0;
+    size_t bitmap_bytes = 0;
+    constexpr size_t output_bytes = 24 * sizeof(Fp2);
+    if (!checked_mul_size(size_t{12}, cells, &slab_elements) ||
+        !checked_mul_size(slab_elements, sizeof(Fp2), &slab_bytes) ||
+        !checked_mul_size(cells, sizeof(Fp2), &query_bytes) ||
+        !checked_add_size(cells, size_t{7}, &bitmap_bytes))
+        return fail_message(c, "C4.1 folded-query geometry overflows size_t");
+    bitmap_bytes /= 8;
+    void* a = nullptr;
+    void* b = nullptr;
+    void* query = nullptr;
+    void* bitmap = nullptr;
+    void* output = nullptr;
+    if (resident_region(c, a_id, 0, slab_bytes, &a) ||
+        resident_region(c, b_id, 0, slab_bytes, &b) ||
+        resident_region(c, query_id, 0, query_bytes, &query) ||
+        resident_region(c, correction_bitmap_id, 0, bitmap_bytes, &bitmap) ||
+        resident_region(c, output_id, 0, output_bytes, &output))
+        return -1;
+    if (output_id == a_id || output_id == b_id || output_id == query_id ||
+        output_id == correction_bitmap_id)
+        return fail_message(c, "C4.1 folded-query output overlaps an input");
+    if (begin_timing(c) || mark_timing(c, 1)) return -1;
+    c41_fold_typed_queries_kernel<<<12, BLOCK, 0, c->stream>>>(
+        static_cast<const Fp2*>(a), static_cast<const Fp2*>(b),
+        static_cast<const Fp2*>(query), static_cast<const uint8_t*>(bitmap),
+        static_cast<Fp2*>(output), cells);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_AUTH_MASKS, 0, 0, 0, 0, output_bytes);
 }
 
 extern "C" int volta_cuda_fp2_powers_device(

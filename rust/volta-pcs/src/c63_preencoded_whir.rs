@@ -4228,7 +4228,7 @@ mod tests {
 
     #[cfg(feature = "cuda")]
     #[test]
-    #[ignore = "requires the production ABI44 CUDA library and one A100"]
+    #[ignore = "requires the production ABI45 CUDA library and one A100"]
     fn production_resident_projected_lane_verifies_on_cpu() {
         let total_started = Instant::now();
         let setup_started = Instant::now();
@@ -4240,7 +4240,7 @@ mod tests {
             C63_BOLT_LDPC_CHECK_DEGREE,
         )
         .unwrap();
-        let backend = Backend::cuda_resident().expect("initialize ABI44 resident CUDA backend");
+        let backend = Backend::cuda_resident().expect("initialize ABI45 resident CUDA backend");
         let guard =
             C62GpuResourceGuard::for_lane(19, 1, 1 << 19, 19, 1, true, 40u64 << 30).unwrap();
         let base_mmcs = C62GpuMmcs::new(backend, 19, guard).unwrap();

@@ -1,11 +1,16 @@
-use serde_json::json;
+use rand::{rngs::OsRng, RngCore};
+use serde_json::{json, Value};
 use std::error::Error;
+use std::path::Path;
 use std::time::Instant;
 use volta_accel::{
     Backend, C41PackedProverDeviceLot, C41PackedVerifierDeviceLot, Fp2Repr, Operation,
 };
 use volta_field::{Fp, Fp2};
 use volta_mac::{CorrelationStream, ProverSubAuthed, Transcript, VerifierCtx, VerifierKey};
+use volta_pcg::{
+    expand_phase_b_production, PhaseAParams, ResponseAuthorizationStore, SessionBinding,
+};
 use volta_proto::c41_folded_tole::{
     c41_expand_packed_cells_reference, c41_expand_packed_keys_reference, c41_typed_setup_exchange,
     C41TypedSetupExchange, C41_BITS_PER_PACKED_CELL, C41_PRG_USABLE_BITS, C41_SEED_BITS,
@@ -13,16 +18,36 @@ use volta_proto::c41_folded_tole::{
 
 const PRODUCTION_CELLS: usize = 3_110_400;
 const PRODUCTION_SEED_ROWS: usize = 253;
+const C4_SETUP_BYTES: u64 = 38_371_465;
 
-fn setup(rows: usize) -> Result<C41TypedSetupExchange, Box<dyn Error>> {
+struct SetupRun {
+    exchange: C41TypedSetupExchange,
+    public_seed: [u8; 32],
+    delta: Fp2,
+    typed_setup_wall_ns: u64,
+    real_pcg: Option<Value>,
+}
+
+fn random_identity() -> Result<[u8; 32], Box<dyn Error>> {
+    let mut value = [0u8; 32];
+    OsRng.try_fill_bytes(&mut value)?;
+    if value == [0; 32] {
+        return Err("OS entropy returned a zero C4.1 identity".into());
+    }
+    Ok(value)
+}
+
+fn setup_mock(rows: usize) -> Result<SetupRun, Box<dyn Error>> {
     let delta = Fp2::new(Fp::new(0xC41), Fp::new(0xA100));
+    let public_seed = [0x74; 32];
     let mut prover = CorrelationStream::new([0x71; 32]);
     let mut verifier = VerifierCtx::new([0x71; 32], delta);
     let mut prover_tx = Transcript::new([0x72; 32]);
     let mut verifier_tx = Transcript::new([0x72; 32]);
-    Ok(c41_typed_setup_exchange(
+    let started = Instant::now();
+    let exchange = c41_typed_setup_exchange(
         [0x73; 32],
-        [0x74; 32],
+        public_seed,
         rows,
         0x4_1000,
         0x5_1000,
@@ -30,7 +55,83 @@ fn setup(rows: usize) -> Result<C41TypedSetupExchange, Box<dyn Error>> {
         &mut verifier,
         &mut prover_tx,
         &mut verifier_tx,
-    )?)
+    )?;
+    Ok(SetupRun {
+        exchange,
+        public_seed,
+        delta,
+        typed_setup_wall_ns: started.elapsed().as_nanos() as u64,
+        real_pcg: None,
+    })
+}
+
+fn setup_real(rows: usize, store_path: &Path) -> Result<SetupRun, Box<dyn Error>> {
+    let sub_corrs = rows.checked_mul(C41_SEED_BITS).ok_or("C4.1 real-PCG count overflow")?;
+    let store = ResponseAuthorizationStore::new(store_path)?;
+    let binding = SessionBinding::new(random_identity()?, random_identity()?, random_identity()?)?;
+    let started = Instant::now();
+    let production = expand_phase_b_production(
+        &store,
+        binding,
+        sub_corrs,
+        1,
+        PhaseAParams::for_counts(sub_corrs, 1),
+    )?;
+    let setup_wall_ns = started.elapsed().as_nanos() as u64;
+    let comm = &production.expansion.setup.comm;
+    let timings = production.expansion.timings;
+    let audit = &production.production;
+    let real_pcg = json!({
+        "backend": "real/AES-128-MMO",
+        "setup_wall_ns": setup_wall_ns,
+        "setup_comm_total_bytes": comm.total_bytes,
+        "setup_comm_prover_to_verifier_bytes": comm.prover_to_verifier_bytes,
+        "setup_comm_verifier_to_prover_bytes": comm.verifier_to_prover_bytes,
+        "setup_comm_base_ot_bytes": comm.base_ot_bytes,
+        "setup_comm_ot_extension_bytes": comm.ot_extension_bytes,
+        "setup_comm_ggm_bytes": comm.ggm_bytes,
+        "setup_comm_consistency_bytes": comm.consistency_bytes,
+        "base_ot_wall_s": timings.t_base_ot_s,
+        "ot_extension_wall_s": timings.t_ot_extension_s,
+        "base_vole_wall_s": timings.t_base_vole_from_setup_s,
+        "ggm_pprf_wall_s": timings.t_ggm_pprf_s,
+        "lpn_expand_wall_s": timings.t_lpn_expand_s,
+        "full_combine_wall_s": timings.t_full_combine_s,
+        "consistency_check_wall_s": timings.t_consistency_check_s,
+        "total_setup_and_expansion_wall_s": timings.t_total_setup_and_expansion_s,
+        "independent_role_entropy_samples": audit.independent_role_entropy_samples,
+        "role_seed_commitments_distinct": audit.role_seed_commitments_distinct,
+        "session_channel_identity_bound": audit.session_channel_identity_bound,
+        "authorization_burned_before_setup": audit.response_authorization_burned_before_setup,
+        "reconnect_retry_resume_allowed": audit.reconnect_retry_resume_allowed,
+    });
+    let delta = production.expansion.verifier_delta;
+    let public_seed = random_identity()?;
+    let secret_entropy = random_identity()?;
+    let mut prover = CorrelationStream::from_pcg_pool(production.expansion.prover);
+    let mut verifier = VerifierCtx::from_pcg_pool(delta, production.expansion.verifier);
+    let transcript_seed = random_identity()?;
+    let mut prover_tx = Transcript::new(transcript_seed);
+    let mut verifier_tx = Transcript::new(transcript_seed);
+    let started = Instant::now();
+    let exchange = c41_typed_setup_exchange(
+        secret_entropy,
+        public_seed,
+        rows,
+        0x4_1000,
+        0x5_1000,
+        &mut prover,
+        &mut verifier,
+        &mut prover_tx,
+        &mut verifier_tx,
+    )?;
+    Ok(SetupRun {
+        exchange,
+        public_seed,
+        delta,
+        typed_setup_wall_ns: started.elapsed().as_nanos() as u64,
+        real_pcg: Some(real_pcg),
+    })
 }
 
 fn prover_rows(exchange: &C41TypedSetupExchange) -> Vec<Vec<ProverSubAuthed>> {
@@ -100,24 +201,26 @@ fn free_verifier_lot(
 }
 
 fn small_differential(backend: &mut Backend) -> Result<(), Box<dyn Error>> {
-    let exchange = setup(2)?;
+    let run = setup_mock(2)?;
+    let exchange = &run.exchange;
     let first = C41_PRG_USABLE_BITS - 9;
     let cells = 2;
     let expected_p =
-        c41_expand_packed_cells_reference([0x74; 32], &prover_rows(&exchange), first, cells)?;
+        c41_expand_packed_cells_reference(run.public_seed, &prover_rows(exchange), first, cells)?;
     let expected_v = c41_expand_packed_keys_reference(
-        [0x74; 32],
-        Fp2::new(Fp::new(0xC41), Fp::new(0xA100)),
-        &verifier_rows(&exchange),
+        run.public_seed,
+        run.delta,
+        &verifier_rows(exchange),
         first,
         cells,
     )?;
-    let (bits, tags, keys) = upload_setup(backend, &exchange)?;
-    let prover = backend.c41_expand_packed_prover_device(&bits, &tags, [0x74; 32], first, cells)?;
+    let (bits, tags, keys) = upload_setup(backend, exchange)?;
+    let prover =
+        backend.c41_expand_packed_prover_device(&bits, &tags, run.public_seed, first, cells)?;
     let verifier = backend.c41_expand_packed_verifier_device(
         &keys,
-        [0x74; 32],
-        Fp2::new(Fp::new(0xC41), Fp::new(0xA100)),
+        run.public_seed,
+        run.delta,
         first,
         cells,
     )?;
@@ -172,9 +275,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut backend = Backend::cuda_resident()?;
     small_differential(&mut backend)?;
-    let setup_started = Instant::now();
-    let exchange = setup(PRODUCTION_SEED_ROWS)?;
-    let seed_auth_wall_ns = setup_started.elapsed().as_nanos() as u64;
+    let setup_run = match std::env::var_os("VOLTA_C41_REAL_PCG_STORE") {
+        Some(path) => setup_real(PRODUCTION_SEED_ROWS, Path::new(&path))?,
+        None => setup_mock(PRODUCTION_SEED_ROWS)?,
+    };
+    let exchange = &setup_run.exchange;
+    let seed_auth_wall_ns = setup_run.typed_setup_wall_ns;
     let (bits, tags, keys) = upload_setup(&mut backend, &exchange)?;
 
     let mut prover_kernel_ns = Vec::with_capacity(samples);
@@ -188,7 +294,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let prover = backend.c41_expand_packed_prover_device(
             &bits,
             &tags,
-            [0x74; 32],
+            setup_run.public_seed,
             first_global_bit,
             cells,
         )?;
@@ -204,8 +310,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         backend.begin_measurement()?;
         let verifier = backend.c41_expand_packed_verifier_device(
             &keys,
-            [0x74; 32],
-            Fp2::new(Fp::new(0xC41), Fp::new(0xA100)),
+            setup_run.public_seed,
+            setup_run.delta,
             first_global_bit,
             cells,
         )?;
@@ -232,6 +338,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let verifier_wall_median_ns = median(&mut verifier_wall_ns);
     let memory = backend.stats()?;
     let proof = exchange.proof.encode()?;
+    let combined_c4_and_typed_setup_bytes = setup_run.real_pcg.as_ref().map(|pcg| {
+        C4_SETUP_BYTES
+            + pcg["setup_comm_total_bytes"].as_u64().expect("real-PCG byte count")
+            + exchange.metrics.total_typed_setup_bytes
+    });
     println!(
         "{}",
         serde_json::to_string_pretty(&json!({
@@ -260,7 +371,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             "peak_device_bytes": memory.peak_device_bytes,
             "conditional_soundness_bits": exchange.metrics.conditional_soundness_bits,
             "conditional_weight_zk_bits": exchange.metrics.conditional_weight_zk_bits,
-            "small_nonzero_cpu_cuda_differential": true
+            "small_nonzero_cpu_cuda_differential": true,
+            "real_pcg": setup_run.real_pcg,
+            "combined_c4_and_typed_setup_bytes": combined_c4_and_typed_setup_bytes
         }))?
     );
 

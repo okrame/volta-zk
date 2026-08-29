@@ -2032,6 +2032,8 @@ def r08_new_carrier_tournament(
             ),
             "screen_completed": True,
             "further_candidate_requires_owner_decision": True,
+            "generic_R08h_research_authorized": False,
+            "c7_blocked_until_named_candidate": True,
             "abstract_complete_codeword_exception_authorized": False,
             "reconsider_complete_codeword_gate_only_after": (
                 "concrete candidate eliminates per-response codeword and supplies "
@@ -6987,6 +6989,8 @@ def self_check(report: dict[str, object]) -> None:
     assert not next_screen["new_computational_assumption_authorized"]
     assert next_screen["screen_completed"]
     assert next_screen["further_candidate_requires_owner_decision"]
+    assert not next_screen["generic_R08h_research_authorized"]
+    assert next_screen["c7_blocked_until_named_candidate"]
     assert not next_screen["abstract_complete_codeword_exception_authorized"]
     assert tournament["bounded_single_candidate_result"] == (
         report["bolt_min_direct_codeswitch_screen"]

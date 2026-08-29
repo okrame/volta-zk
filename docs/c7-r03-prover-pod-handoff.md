@@ -196,6 +196,12 @@ The R0.8g checks are both registered budget-v29 invocations,
 `git diff --check`. It changes no Rust/Lean protocol. The authorized one-
 candidate screen is exhausted; any further carrier or non-affine line needs a
 new owner decision. Generic exploration and implementation remain forbidden.
+C7 is blocked with `C7_CPU_REFERENCE_PASS=false`: no generic R0.8h, prototype
+or further relaxation is authorized. Reopening requires a named, transparent,
+no-trusted-setup candidate whose preliminary row includes the malicious-secure
+relation, same-W-to-MAC bridge, sublinear wire, setup within gates, one packed
+scan and stateful privacy. A non-affine `tau`-dependent candidate has the same
+owner-decision requirement.
 
 An eventual online-only process is permitted as a design boundary, not an
 implementation: setup must finish and verify under the existing disk/wall

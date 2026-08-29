@@ -16,7 +16,8 @@ packed `Bolt-min` code switch rather than rebuilding C6's WHIR wrapper. Its
 source-linear term is independent of `q` and its optimistic persistent bytes
 fit 3x, but its layout needs model-linear setup state or excessive query wire,
 and every response creates a fresh complete Fp3 RS word. It is NO-GO; the
-bounded tournament is closed pending an owner decision.
+bounded tournament is closed and C7 is blocked until a named candidate earns
+a new owner decision.
 `C7-DV-SPQ-v0` remains a quarantined terminal primitive. No carrier has a complete row or
 `BatchOpenBlocks` CPU-prototype authorization. BLAKE3-XOF remains the primary
 performance/parallelism mask candidate; frozen KMACXOF256-v1 remains an
@@ -4622,8 +4623,9 @@ fail-closed readiness handoff is
 prover/E2E, pod contact or pod execution.
 
 Both bounded post-Pareto alternatives and the one-candidate tournament are
-closed and must not be repeated without a new owner decision. Even a tiny CPU
-prototype still waits for all four R0.8a screen obligations. The tested Fp3
+closed. C7 is blocked: there is no generic R0.8h, prototype or further gate
+relaxation. A named candidate needs a new owner decision and must satisfy all
+four R0.8a screen obligations before even a tiny CPU prototype. The tested Fp3
 codec/MAC seam is expressly carrier-independent and is not such authorization.
 Fp3, 78 connection bits, setup 900/990 and
 5,400/5,940 seconds, separate untested refresh counters and computational
@@ -4853,3 +4855,4 @@ entry, but must retain its evidence and reason.
 | `C7-D111` / 2026-08-29 | bound the reopened tournament to one concrete code-switch/shared circuit | The owner selects the native code-switch/shared-circuit line with a source-linear term independent of `q`, no trusted setup, groups/SRS or new computational assumption. The next phase may screen exactly one concrete candidate and must apply every setup, wire, one-scan, memory, proof-size, policy-2 and malicious-security gate immediately; it is not authorization for an open-ended tournament or implementation. The non-affine `tau`-dependent line remains secondary and may reopen only around an already concrete construction with an evident advantage, never as generic research. |
 | `C7-D112` / 2026-08-29 | direct packed Bolt-min NO-GO; retain its setup advantage and the exact C6 differential | `C7-BOLT-MIN-G141-v0` is the sole D111 candidate: `alpha=1/8`, rate-1/2 RS, degree 16, `t=128`, dense g141 without row padding, Fp3 and interactive `Q_FS=0`. It does not rebuild C6.3's eight WHIR bodies or C6.4's six-body residual suffix. Its conservative persistent control is 642,264,576/162,584,531,456 B (2.590x/2.637x), below 3x but still a forbidden complete codeword and unmeasured against 990/5,940 s. Row-major one-pass setup needs 134,217,728/34,359,738,368 B syndrome state; column-major reserves up to 768,061,440 B of leaf frames before paths; a packed transpose makes setup 3.672x/3.752x. Each response additionally creates a 50,331,648/12,884,901,888-B fresh Fp3 RS word. The published GF(2^32) `gamma=0.096` does not transfer; even its dense-g141 cap is 736,686 visible Fp occurrences (3.144x/2.476x). The Goldilocks `gamma=0.049` diagnostic has a 627,072 requested-symbol lower bound and 1,381,056 dense-g141 cap (5.893x/4.642x). Both exceed 150%. Bolt supplies no hiding, direct VOLE-MAC terminal or stateful malicious-DV theorem, and its non-amortized Mulperm cost is estimated. C6.3's 17.180-GB inherited oracle, 2,092.76-s 17-profile setup and late PCG/lifecycle failures remain composed-path evidence, not a standalone Bolt lower bound. The candidate and bounded tournament close with no carrier, CPU prototype, SIMT, refresh or pod. Further search requires an owner decision. |
 | `C7-D113` / 2026-08-29 | retain the complete-codeword ban; no abstract exception for Bolt's sub-3x setup control | The owner approves the scoped R0.8g checkpoint but declines any exception based only on the 2.590x/2.637x static storage control. The fresh per-response `RS(Xr)`, layout trilemma, dense-g141 wire above 150% and missing malicious soundness/privacy theorems are independent blockers. The gate may be reconsidered only for a concrete candidate that first eliminates the per-response codeword and supplies the entire one-scan, bounded-memory, wire, setup and security row. This authorizes no new screen, implementation, push, SIMT, refresh or pod. |
+| `C7-D114` / 2026-08-29 | close the C7 tournament and block generic continuation | The owner declines R0.8h as generic research, every prototype and every further relaxation. C7 remains blocked with `C7_CPU_REFERENCE_PASS=false` until a named, concrete and transparent no-trusted-setup candidate first supplies a malicious-secure relation, same-W-to-MAC bridge, sublinear wire, setup within every gate, one packed scan and stateful privacy. A non-affine `tau`-dependent line also requires a new owner decision on the named candidate. This disposition authorizes only its scoped commit and branch push, not protocol implementation, SIMT, refresh, provider or pod work. |

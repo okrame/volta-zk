@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 R0.8G DIRECT BOLT-MIN NO-GO / BOUNDED TOURNAMENT CLOSED — NO PROVER / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 R0.8G BLOCKED — DIRECT BOLT-MIN NO-GO / TOURNAMENT CLOSED / NO PROVER / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -14,7 +14,7 @@ Read `c7-stateful-authenticated-lfc-design.md`, then
 - **Status.** C7 R0.8g on `agent/c7-stateful-alfc`; policy 2, Fp3, rate 1/2,
   `k0=4`, one packed root, `g=141`, interactive `Q_FS=0` and all gates remain.
   SPBT and direct Bolt-min are closed as carriers; strict-UD RS is control-only;
-  policy 3 is terminal. The bounded one-candidate tournament is exhausted.
+  policy 3 is terminal. The bounded tournament is closed and C7 is blocked.
 - **Evidence/credit.** Budget v29 passes. Direct Bolt avoids C6's multi-WHIR
   wrapper and has q-independent source work; its setup control is
   642.265 MB/162.585 GB (2.590x/2.637x). It still needs model-linear syndrome
@@ -22,12 +22,24 @@ Read `c7-stateful-authenticated-lfc-design.md`, then
   50.332-MB/12.885-GB fresh Fp3 RS word. Dense-g141 query reservations exceed
   150%; hiding, same-W MAC and stateful malicious-DV theorems are absent.
   All R0.8g evidence is `credit:false`; no C6 credit transfers.
-- **Hard stop/resume.** No PCS/prover, CPU prototype, SIMT, refresh, provider
-  or pod. Further carrier/non-affine research needs an owner decision. Resume
-  implementation only after a carrier supplies the complete relation/codec,
-  sublinear wire, one packed scan, bounded memory, setup within gates and
-  stateful privacy/soundness bridge; `C7_CPU_REFERENCE_PASS=false`,
+- **Hard stop/resume.** No generic R0.8h, PCS/prover, CPU prototype, relaxation,
+  SIMT, refresh, provider or pod. Resume only for a named transparent candidate
+  after a new owner decision and a preliminary malicious-secure relation,
+  same-W-to-MAC bridge, sublinear wire, one packed scan, bounded memory, setup
+  within gates and stateful privacy; `C7_CPU_REFERENCE_PASS=false`,
   `C7_POD_READY=false`.
+
+- **2026-08-29 — Owner closes the C7 tournament and blocks generic R0.8h.**
+  R0.8g is the terminal active screen under the current gates. No generic
+  research continuation, prototype or further relaxation is authorized.
+  `C7_CPU_REFERENCE_PASS=false` and `C7_POD_READY=false`. C7 may resume only
+  after a named, concrete, transparent and no-trusted-setup candidate receives
+  a new owner decision and preliminarily supplies its malicious-secure
+  relation, same-W-to-MAC bridge, sublinear wire, setup within every gate, one
+  packed scan, bounded memory and stateful privacy. A non-affine
+  `tau`-dependent line has the same named-candidate/owner-decision condition.
+  This entry authorizes only a scoped C7 commit and branch push; it authorizes
+  no protocol implementation, SIMT, refresh, provider contact or pod work.
 
 - **2026-08-29 — C7 R0.8g rejects direct Bolt-min without repeating C6 and
   closes the bounded tournament.** The sole D111 candidate is

@@ -1428,7 +1428,21 @@ fn verify_layers_thinned_scheduled_impl(
     bank: &mut TableBankV,
     cache_mode: &mut ThinnedVerifierCacheMode<'_, '_, '_, '_>,
 ) -> Option<ThinnedScheduledV> {
-    preflight_gelu_proofs(proofs, plan).ok()?;
+    let trace_c41 = bank.c41.is_some();
+    macro_rules! verify_stage {
+        ($stage:expr, $layer:expr, $value:expr) => {
+            match $value {
+                Some(value) => value,
+                None => {
+                    if trace_c41 {
+                        eprintln!("C4.1 scheduled verifier stopped at {} (layer {})", $stage, $layer);
+                    }
+                    return None;
+                }
+            }
+        };
+    }
+    verify_stage!("GELU proof preflight", "all", preflight_gelu_proofs(proofs, plan).ok());
     let t = plan.shape.q;
     if t < 2
         || proofs.len() != L
@@ -1470,10 +1484,10 @@ fn verify_layers_thinned_scheduled_impl(
 
     for wave in (0..4).rev() {
         let wave_layers = [wave, wave + 4, wave + 8];
-        let wave_plan = gelu_wave_plan(plan, wave).ok()?;
+        let wave_plan = verify_stage!("GELU wave plan", wave, gelu_wave_plan(plan, wave).ok());
         let mut pending = Vec::with_capacity(3);
         for &layer in &wave_layers {
-            let v1 = states[layer].take()?;
+            let v1 = verify_stage!("phase-1 state", layer, states[layer].take());
             let LayerV1 {
                 doms,
                 dom_xin,
@@ -1496,16 +1510,20 @@ fn verify_layers_thinned_scheduled_impl(
                 return None;
             }
             let mut cx = BlockCtxV::with_doms(ctx, tx, doms, bank);
-            let ffn = verify_ffn_before_gelu_thinned(
-                t,
-                &luts_for(layer),
-                &proofs[layer].ffn,
-                &mut cx,
-                downstream.as_ref(),
-                (wave == 3).then_some(fbo_keys.as_slice()),
-                (wave == 3).then_some(dom_fbo),
-                Some(&model.layers[layer].1),
-            )?;
+            let ffn = verify_stage!(
+                "FFN before GELU",
+                layer,
+                verify_ffn_before_gelu_thinned(
+                    t,
+                    &luts_for(layer),
+                    &proofs[layer].ffn,
+                    &mut cx,
+                    downstream.as_ref(),
+                    (wave == 3).then_some(fbo_keys.as_slice()),
+                    (wave == 3).then_some(dom_fbo),
+                    Some(&model.layers[layer].1),
+                )
+            );
             let site_id = plan.site(layer).ok()?;
             let site = plan.sites().iter().find(|site| site.id == site_id)?;
             if cx.doms.cursor() != site.mask_dom_base
@@ -1553,15 +1571,19 @@ fn verify_layers_thinned_scheduled_impl(
             .collect::<Option<Vec<_>>>()?;
         let mut batch_prod = ProdKeyTriples::new();
         let mut batch_zero = Vec::new();
-        let outputs = blind_instance_verify_batch(
-            &wave_plan,
-            jobs,
-            ctx,
-            tx,
-            &mut batch_prod,
-            &mut batch_zero,
-        )
-        .ok()?;
+        let outputs = verify_stage!(
+            "GELU batch",
+            wave,
+            blind_instance_verify_batch(
+                &wave_plan,
+                jobs,
+                ctx,
+                tx,
+                &mut batch_prod,
+                &mut batch_zero,
+            )
+            .ok()
+        );
         let mut outputs: BTreeMap<_, _> =
             outputs.into_iter().map(|output| (output.site, output.output)).collect();
         for &layer in &wave_layers {
@@ -1580,25 +1602,32 @@ fn verify_layers_thinned_scheduled_impl(
             let mut cx = BlockCtxV::with_doms(ctx, tx, state.doms, bank);
             cx.kprod = state.prod;
             cx.kzero = state.zero;
-            let (mut ffn_keys, (abo_residual, abo_ln)) = verify_ffn_after_gelu_thinned(
-                t,
-                &weights.ln2_gain,
-                &weights.ln2_bias,
-                &luts_for(layer),
-                &proofs[layer].ffn,
-                &state.lvk2,
-                state.ffn,
-                gelu,
-                &mut cx,
-                Some(&model.layers[layer].1),
-            )?;
-            let abo_claim = verify_eq_reduction(
-                n_d,
-                &abo_residual,
-                &abo_ln,
-                proofs[layer].ffn.t1_abo_reduce.as_ref()?,
-                &mut cx,
-            )?;
+            let (mut ffn_keys, (abo_residual, abo_ln)) = verify_stage!(
+                "FFN after GELU",
+                layer,
+                verify_ffn_after_gelu_thinned(
+                    t,
+                    &weights.ln2_gain,
+                    &weights.ln2_bias,
+                    &luts_for(layer),
+                    &proofs[layer].ffn,
+                    &state.lvk2,
+                    state.ffn,
+                    gelu,
+                    &mut cx,
+                    Some(&model.layers[layer].1),
+                )
+            );
+            let abo_reduce = verify_stage!(
+                "ABO reduction proof",
+                layer,
+                proofs[layer].ffn.t1_abo_reduce.as_ref()
+            );
+            let abo_claim = verify_stage!(
+                "ABO reduction",
+                layer,
+                verify_eq_reduction(n_d, &abo_residual, &abo_ln, abo_reduce, &mut cx)
+            );
 
             let (mut attn_keys, (x_residual, x_ln)) = match cache_mode {
                 ThinnedVerifierCacheMode::Legacy { prefixes, .. } => {
@@ -1620,19 +1649,23 @@ fn verify_layers_thinned_scheduled_impl(
                         })
                         .collect();
                     v_segments.push(CacheSegK { dom: state.dom_v, rows: t, keys: &state.v_keys });
-                    verify_attn_block_thinned(
-                        plan.shape,
-                        &weights.ln1_gain,
-                        &weights.ln1_bias,
-                        &luts_for(layer),
-                        &proofs[layer].attn,
-                        state.attn,
-                        &mut cx,
-                        &k_segments,
-                        &v_segments,
-                        &abo_claim,
-                        Some(&model.layers[layer].1),
-                    )?
+                    verify_stage!(
+                        "attention block",
+                        layer,
+                        verify_attn_block_thinned(
+                            plan.shape,
+                            &weights.ln1_gain,
+                            &weights.ln1_bias,
+                            &luts_for(layer),
+                            &proofs[layer].attn,
+                            state.attn,
+                            &mut cx,
+                            &k_segments,
+                            &v_segments,
+                            &abo_claim,
+                            Some(&model.layers[layer].1),
+                        )
+                    )
                 }
                 #[cfg(feature = "c6-trace")]
                 ThinnedVerifierCacheMode::C6 {
@@ -1713,24 +1746,31 @@ fn verify_layers_thinned_scheduled_impl(
                     return None;
                 }
                 for claim in [&x_residual, &x_ln] {
-                    let opened = open_matrix_c41_k(
-                        &mut cx,
-                        state.dom_xin,
-                        &state.xin_keys,
-                        t,
-                        D,
-                        &claim.point,
-                    )?;
+                    let opened = verify_stage!(
+                        "XIn folded opening",
+                        layer,
+                        open_matrix_c41_k(
+                            &mut cx,
+                            state.dom_xin,
+                            &state.xin_keys,
+                            t,
+                            D,
+                            &claim.point,
+                        )
+                    );
                     cx.kzero.push(claim.key.sub(opened));
                 }
             } else {
-                let x_claim = verify_eq_reduction(
-                    n_d,
-                    &x_residual,
-                    &x_ln,
-                    proofs[layer].attn.t1_x_reduce.as_ref()?,
-                    &mut cx,
-                )?;
+                let x_reduce = verify_stage!(
+                    "X reduction proof",
+                    layer,
+                    proofs[layer].attn.t1_x_reduce.as_ref()
+                );
+                let x_claim = verify_stage!(
+                    "X reduction",
+                    layer,
+                    verify_eq_reduction(n_d, &x_residual, &x_ln, x_reduce, &mut cx)
+                );
                 let producer = layer - 1;
                 let shift = model.p.seam_shifts[producer];
                 if shift == 0 {

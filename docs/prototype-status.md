@@ -14,22 +14,44 @@ Read `c4.1-folded-query-high-degree-typed-ole.md` next.
   2026-08-29 GO. C6.4 remains CLOSED / NO-GO and must not be resumed.
 - **Completed evidence.** Clean `7c0e58a` passed paired A100 timing at
   `4.037166616 / 4.035909735 s` (`0.9996886725x`), peak
-  `18,403,517,364 B`; this remains timing-only credit. The current checkpoint
-  adds party-separated typed-seed setup, a malicious bitness close, strict
-  setup/degree-12 codecs, Packed16 reference logic and ABI46 SIMT prover and
-  verifier lot producers. Local algebra/codec tests pass. Typed setup wire is
-  exactly `2,074,954 B` for 253 rows, excluding the existing real-PCG setup.
+  `18,403,517,364 B`; this remains timing-only credit. Clean `8888c5b` passed
+  the nonzero CPU/CUDA differential and measured real/AES PCG, ABI46 SIMT lot
+  production and party-separated cold reload. PCG setup is `2.599612970 s` /
+  `30,070,682 B`; typed exchange is `2,074,954 B`; total with C4 setup is
+  `70,517,101 B`. One prover lot takes `0.506608224 s`, its cold pinned-H2D
+  reload `0.750884772 s`, and peak device use is `1,311,806,976 B`.
 - **Hard stop / credit.** No proof-size, verifier or construction credit yet.
-  The CUDA producer is not A100-validated, actual boundaries are not yet
-  routed through typed folds, and both proofs still serialize as C4
-  `84,544,352 B`. Security is conditional on owner-admitted
-  `XOR4-MAJ7-128`; separate soundness and weight-ZK must remain `>78` bits.
-- **Authorization/checks.** Synchronize the clean checkpoint by GitHub HTTPS,
-  reactivate or migrate the same pod, require the nonzero CPU/CUDA differential,
-  then measure setup generation, reload, lots/s and memory to completion even
-  on gate failure. Continue only through actual consumer integration, Packed16
-  codec, degree-12 close, deserialize and verifier accept/reject. Record
-  `gpt2-comparison-WIP.md` only after that real E2E succeeds.
+  This is component evidence (`credit:false`): live C4 boundaries are not yet
+  routed through typed folds and both proofs still serialize as C4
+  `84,544,352 B`. Conditional soundness is `78.80929487391572` bits and
+  weight-ZK `120.0170064253057` bits.
+- **Authorization/checks.** Continue on the same pod through actual Packed16
+  consumers, response codec, degree-12 close, deserialization and verifier
+  accept/reject. Record `gpt2-comparison-WIP.md` only after that real E2E
+  succeeds.
+
+- **2026-08-29 — C4.1 real setup and lot boundary PASS as a component; no E2E
+  credit.** Clean `8888c5b` on the same A100 passed the nonzero CPU/CUDA
+  differential with real/AES PCG and strict party-separated persistence. The
+  PCG setup took `2.599612970 s` and `30,070,682 B`; seed authentication plus
+  bitness took `0.058652902 s` and the typed exchange was `2,074,954 B`.
+  Combined with C4 setup this is `70,517,101 B` (`1.8377484675x`), below the
+  `115,114,395-B` cap. One provider lot took `0.506608224 s` wall
+  (`0.495283200 s` kernel, `1.9739` lots/s); its `1,203,724,912-B` file reloaded
+  cold through 16-MiB pinned asynchronous H2D chunks in `0.750884772 s`.
+  Device peak was `1,311,806,976 B`. The verifier kernel took `0.069131744 s`;
+  its one-sample wall was an anomalous but preserved `0.339335767 s` and its
+  `99,532,912-B` file reloaded in `0.063722679 s`. A lot is the one-time secret
+  preprocessing for one response: its polynomial slabs alone are
+  `1,194,393,600 B`; full provider files for five responses occupy
+  `6,018,624,560 B`. The 253-row seed setup prepares five disjoint response
+  inventories, so prompt two consumes lot two without repeating that setup;
+  after five responses the provider must prepare a new inventory. Raw record:
+  `c41-setup-lot-a100-2026-08-29-8888c5b.json`, SHA-256
+  `b844fc29c2f43bdb62c5a17877f34f1a9107fc9105b5edcbdcbc210dcca097c5`.
+  Conditional soundness is `78.80929487391572` bits and weight-ZK is
+  `120.0170064253057` bits. Actual consumer routing, proof codec and verifier
+  remain the binding no-credit boundary.
 
 - **2026-08-29 — C4.1 real-E2E implementation starts at the typed setup
   boundary.** The owner authorizes the ordered campaign through real setup,
@@ -47,9 +69,9 @@ Read `c4.1-folded-query-high-degree-typed-ole.md` next.
   resident. Six focused CPU tests pass, including all 2,048 predicate inputs,
   an expansion-boundary crossing, signed-i16 Packed16 roundtrip, malformed
   codecs, non-bit refusal and close tampering. These are local component
-  checks only: CUDA differential, real-PCG setup traffic, lot throughput,
-  persistence/reload and model consumer integration remain pending and have
-  no E2E credit.
+  checks only: the previous append-only entry records their A100 component
+  validation; model consumer integration remains pending and has no E2E
+  credit.
 
 - **2026-08-28 — C6.4 R10c closes NO-GO during the serial compiler.** Clean
   `d441ae6` passed A100 differential and campaign preflight, then entered the

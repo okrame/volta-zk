@@ -1,6 +1,6 @@
 # C7 — stateful authenticated linear-functional commitment
 
-**Status:** C7 R0.8e secret-point butterfly reduction screen; policy 2, direct Goldilocks Fp3, rate 1/2,
+**Status:** C7 R0.8f native VOLE/MAC delayed-opening screen; policy 2, direct Goldilocks Fp3, rate 1/2,
 `k0=4`, one packed weight root, logical `g=141` and interactive `Q_FS=0`
 remain fixed.  R0.8a makes published constructions exact-cost
 baselines/controls and a new co-designed C7 shared circuit the main research
@@ -8,11 +8,13 @@ line.  Strict-UD RS is an algebraic/security control whose prover must not be
 implemented.  The carrier-independent Rust reference now includes the Fp3
 terminal, frozen BLAKE3-XOF addressing, public BLAKE3 leaf/tree, one-leaf
 codec, nonrefundable query counter and in-memory KV CAS. It is not a
-PCS/PCG/VOLE refinement or durable allocator. `C7-SPBT-v0` is the main
-co-designed reduction candidate: its exact invertible transform preserves
-independent GKR challenges, but no current delayed-opening realization closes
-commit order, one scan, bounded memory and sublinear wire together.
-`C7-DV-SPQ-v0` remains its quarantined terminal primitive. No carrier has a complete row or
+PCS/PCG/VOLE refinement or durable allocator. `C7-SPBT-v0` remains a valid
+algebraic reduction, but its carrier line is closed: the last native
+`StreamOpenIntoMac` screen needs linear online corrections or forbidden
+preprocessing. The dual-track carrier tournament is reopened with no entrant.
+The next screen is restricted to one concrete code-switch/shared circuit with
+a source-linear term independent of `q`; generic exploration is forbidden.
+`C7-DV-SPQ-v0` remains a quarantined terminal primitive. No carrier has a complete row or
 `BatchOpenBlocks` CPU-prototype authorization. BLAKE3-XOF remains the primary
 performance/parallelism mask candidate; frozen KMACXOF256-v1 remains an
 unpromoted high-margin control.  The approved privacy allocation is not
@@ -3447,10 +3449,107 @@ introduces no full codeword/heavy setup, and supplies the adaptive policy-2
 privacy bridge.  Until then there is no CPU prover, SIMT, refresh, provider or
 pod action.
 
+### 5.14 R0.8f native `StreamOpenIntoMac` screen
+
+R0.8f tests only the last open SPBT edge.  Let `E=Fp3`, let `C_x` bind a
+canonical length-`M` coefficient vector, and let the designated verifier hold
+secret `tau in E` and the connection MAC key `Delta`.  The requested ideal
+functionality is
+
+```text
+StreamOpenIntoMac(C_x, q_tau; prep, transcript)
+  -> P: (v, m_v), V: k_v
+
+v   = <x,q_tau>
+k_v = m_v + Delta*v,
+```
+
+where neither `tau`, `v`, `m_v` nor `k_v` is reconstructed on the wire.
+`prep` is independent of `x` and `tau`; there is no SRS or trusted setup.  A
+complete realization would additionally have to prove that one `x` bound by
+`C_x` supplies the response relation and terminal MAC, and simulate the
+adaptive malicious-verifier view under the policy-2 root budget.  It must use
+one monotone packed scan, bounded memory, `o(M)` wire, no correction per input
+coefficient and no persistent dense codeword/oracle.
+
+The only sound one-scan ordering would be:
+
+```text
+fix C_W, response statement and independent GKR challenges r
+V privately samples tau; tau is not sent to P
+one packed scan fixes C_Z,e while evaluating its tau-functionals into MAC
+fix every authenticated output handle and derived query descriptor
+sample beta; settle the response-wide RLC; atomically promote or burn
+```
+
+Hiding `tau` prevents the R0.8e adaptive-coefficient attack, but it turns the
+stream step into a private inner product.  The repository's native MAC
+correction has exactly the standard affine form: a fresh scalar `x_i` is
+derandomized against a correlation mask by sending `d_i=x_i-r_i` (8 bytes),
+while an Fp3 direct transfer sends three such limbs (24 bytes).  Silent VOLE
+can expand the input-independent correlations; it does not compress this
+input-dependent vector.
+
+The obstruction can be stated without treating it as a universal PCS lower
+bound.  In the affine native-VOLE class, suppose the online corrections use a
+`tau`-independent matrix:
+
+```text
+c = A(x-r) in E^s.
+```
+
+for preprocessing `r` independent of `x` and `tau`.  If `A(x-x')=0`, the two
+online views are identical, so exact correctness for every permitted point
+forces `<q_tau,x-x'>=0`.  Therefore
+
+```text
+ker(A) subseteq intersection_tau ker(q_tau),
+span{q_tau} subseteq row(A).
+```
+
+For `q_tau=(1,tau,...,tau^(M-1))`, any `M` distinct points form an invertible
+Vandermonde matrix.  Hence `rank(A)>=M`, `s>=M`, and the online correction
+wire is `Omega(M)` extension-field elements.  Budget v28 checks rank 8 over the
+actual Goldilocks modulus as a small executable witness; the general result is
+the Vandermonde determinant argument.  Its scope is standard affine
+VOLE/OLE derandomization with `A` independent of `tau`, not arbitrary
+computational PCS, `tau`-dependent secure computation, FHE or general
+two-party computation.
+
+The concrete floors already trigger the owner kill gate:
+
+| route | GPT-2 | Gemma-class 31B | disposition |
+| --- | ---: | ---: | --- |
+| optimistic one 8-byte Fp correction/packed scalar | 992,000,000 B | 246,611,200,000 B | linear wire; exceeds 35/115 MB alone |
+| one 24-byte Fp3 correction/coefficient | 2,976,000,000 B | 739,833,600,000 B | linear wire; stronger failure |
+| persist source plus optimistic Fp corrections | 5x packed | 5x packed | exceeds exploratory 3x setup before tags/tree |
+| persist source plus Fp3 corrections | at least 13x packed | at least 13x packed | exceeds setup gate |
+
+Horner evaluation at hidden `tau` uses `M` secret multiplications/OLEs and has
+the same linear online problem.  The published general-field batch-OLE control
+reduces a length-`M` inner product to `M` OLEs and reports
+`2M+o(M)` field-element communication; its LPN/LWE non-interactive encodings
+are also linear in `M`
+([local paper](../sota/2023-072-noninteractive-secure-inner-product-lpn-lwe.md)).
+Group OPE/KZG uses the forbidden group/SRS or per-coefficient material
+([local control](../sota/2015-004-oblivious-polynomial-evaluation-secure-set-intersection.md)).
+Garbled/full-MPC evaluation is linear in circuit size.  HE/PIR/FHE has no
+native VOLE/MAC, same-`W`, policy-2 malicious bridge and is quarantined rather
+than credited; two-server FSS/PIR changes the trust architecture.
+
+**R0.8f disposition.**  The native primitive has no complete malicious-secure
+row.  It triggers the rigid `Omega(M)` wire/per-coefficient-correction gate;
+moving those corrections to setup gives 5x/13x persistence.  Consequently the
+SPBT carrier line is closed and the dual-track carrier tournament is reopened
+with no active entrant.  The exact SPBT algebra may be reused only if a future
+carrier independently passes every gate; its prior failure reasons remain
+binding.  This is `credit:false`: there is no new Lean/Rust protocol, CPU
+prototype, SIMT, refresh, provider contact or pod authorization.
+
 ## 6. Registered analytic screens
 
 The executable calculator is `scripts/budget_c7_stateful_alfc.py`.  Every
-output carries `credit:false`.  Schema v27 reproduces scaling arithmetic,
+output carries `credit:false`.  Schema v28 reproduces scaling arithmetic,
 allocation caps, artifact-volume scenarios, the R0.7 strict-UD controls and
 the two bounded closure screens, and adds the exact selected-schedule Fp2/Fp3
 audits, g141 opening subcodec, known serialized bytes and setup resource
@@ -3465,7 +3564,10 @@ also records the exact logistic `eq` identity, its one-pass conditional cost,
 the executable degree-two correlated-challenge attack and the bounded escape
 screen.  It additionally checks the exact SPBT identity/inverse, conditional
 Fp3 soundness, one-scan butterfly work, dense auxiliary traffic, raw-Merkle
-query miss and every branch of the delayed-opening triangle.  It is
+query miss and every branch of the delayed-opening triangle.  It also checks
+the native affine-VOLE Vandermonde rank obstruction, exact 8/24-byte
+correction floors and 5x/13x persistence controls, then records SPBT closed
+and the tournament reopened.  It is
 not an authority for a complete compiler manifest, complete
 certificate, security theorem or measured C7 time.
 
@@ -3486,6 +3588,10 @@ failure: `native_persistence_source_guard_bypasses_hidden_u_owner` includes a
 later helper signature containing `session_digest`.  The failing
 `volta-bench` source is unchanged by C7, so it is recorded rather than repaired
 inside this scoped checkpoint.
+
+R0.8f changes no Rust or Lean.  Its two budget-v28 invocations and
+`git diff --check` are the only new executable checks; no protocol artifact or
+benchmark receives credit.
 
 ### 6.1 Models and common workload
 
@@ -4315,7 +4421,7 @@ The focused command
   and no exact `O(N+poly(q,log N))` shared schedule is registered.  Seeded
   BLAKE3/KMAC does not solve the RS linear map.  This is not a universal lower
   bound.  It is retained only as the control above.
-- **New-carrier tournament: OPEN, NO ADMITTED CARRIER, FAIL-CLOSED.**  Owner choice 1.A
+- **New-carrier tournament: REOPENED, NO ADMITTED CARRIER, FAIL-CLOSED.**  Owner choice 1.A
   has two tracks. Published constructions are baseline/control rows, admitted
   only with exact independently verifiable costs. A co-designed C7 shared
   circuit is the main research line, but earns no design credit. Before a tiny
@@ -4323,21 +4429,33 @@ The focused command
   census, stateful soundness/privacy bridge and a one-packed-scan
   `O(N+poly(q,log N))` proof. Pure fold width, the two bounded R0.7
   alternatives and already rejected families are not rescreened; their
-  individual reasons remain in the decision register.
-- **`C7-SPBT-v0`: MAIN REDUCTION CANDIDATE, NOT AN ADMITTED CARRIER.**  Its
+  individual reasons remain in the decision register. The next screen admits
+  exactly one concrete code-switch/shared-circuit candidate and tests it
+  immediately against every gate; it is not an open-ended search. A non-affine
+  `tau`-dependent line remains secondary unless an already concrete
+  construction demonstrates a clear advantage.
+- **`C7-SPBT-v0`: ALGEBRA RETAINED; CARRIER LINE CLOSED.**  Its
   invertible complement transform preserves ordinary independent GKR
   challenges and gives one degree-`<M` secret-point identity.  The algebra,
   inverse, coefficient count, conditional 144/137-bit lifetime margins and
   one-source-scan butterfly schedule pass.  The complete row fails: sampling
   `tau` before the transform root is unsound; retaining the root payload costs
   at least 9x packed; recomputation is a second scan; hidden-`tau` streaming
-  still needs a sublinear malicious OPE/inner product into MAC.  Raw Merkle
-  sampling has no distance.  No code or CPU credit follows.
+  still needs a sublinear malicious OPE/inner product into MAC. R0.8f shows
+  that the `tau`-independent affine native-VOLE form needs linear online
+  corrections; even the optimistic Fp control is already 5x if persisted
+  packed. Raw Merkle sampling has no distance. No code or CPU credit follows.
+- **`C7-StreamOpenIntoMac-v0`: NATIVE VOLE/MAC NO-GO.** For `tau`-independent affine online
+  corrections `A(x-r)`, exact evaluation at all secret points implies the
+  Vandermonde query family lies in `row(A)`, hence `rank(A)>=M` and linear
+  wire. Optimistic GPT-2/31B base-Fp floors are 992 MB/246.6112 GB, while moving them to
+  setup is 5x packed before tags/tree. This is a scoped native-VOLE/OLE rank
+  result, not a universal PCS or 2PC lower bound.
 - **`C7-DV-SPQ-v0`: QUARANTINED TERMINAL PRIMITIVE.**  Its ideal equation
   retains conditional Fp3 margin, but the R0.8d logistic composition is
   constructively unsound and R0.8e does not instantiate its same-`F`
-  enrollment or succinct opening.  It may serve only as the terminal of a
-  future SPBT delayed-opening carrier after those obligations pass.
+  enrollment or succinct opening. It remains only a quarantined reference;
+  it is not an active SPBT terminal after the carrier line closes.
 - **R0.8b co-designed bounded rows: NO-GO.** A single `X^B-c` coset has the
   desired one-scan evaluator but only one worst-case soundness hit; independent
   amplification restores `tN`. Persisted rate-1/2 field parity is 5x packed
@@ -4353,8 +4471,9 @@ The focused command
 ### 8.2 Resume conditions for an R1 proposal
 
 Policy 3 remains terminally rejected and policy 2 is active.  Strict-UD RS is
-now only the control baseline; the new-carrier tournament has no admitted
-carrier even though SPBT supplies a complete algebraic reduction.
+now only the control baseline; R0.8f closes SPBT as a carrier and reopens the
+new-carrier tournament with no admitted entrant. SPBT remains reusable
+algebra only and does not weaken any recorded rejection.
 The selected challenge baseline remains interactive
 honest-DV (`Q_FS=0`) and logical `g=141`.  Setup retains its 2.00 target/2.10
 baseline, with a conditional exploratory 3x ceiling plus absolute disk,
@@ -4465,6 +4584,9 @@ smallest complete serialized case before any larger component benchmark.
 - R0.8e adds only an exact analytic reduction and budget-v27 self-check.  It
   preserves independent GKR challenges and one packed source scan, but the
   delayed opening is not constructed; no Lean/Rust/prover/SIMT code follows.
+- R0.8f adds only the ideal `StreamOpenIntoMac` relation, a scoped affine-VOLE
+  rank obstruction and budget-v28 cost checks. It closes SPBT as a carrier
+  without claiming a universal PCS/2PC lower bound; no prototype follows.
 - The proof-byte table is a target allocation calibrated to public component
   evidence, not a composed certificate derivation.  It is `credit:false` and
   is one reason Backend A remains NO-GO.
@@ -4587,3 +4709,5 @@ entry, but must retain its evidence and reason.
 | `C7-D107` / 2026-08-29 | accept the exact logistic `eq` bridge and reject its current public-GKR composition | For `r_k(t)=t^(2^k)/(1+t^(2^k))`, `eq(r(t),j)=t^j/D_n(t)` with `D_n(t)=product_k(1+t^(2^k))`. Thus each raw packed segment is already a univariate coefficient vector; one reverse scan conditionally costs `N+O(J log N_max)` with no Möbius transform, `L`, expanded wrapper or second packed read. This closes only the algebraic basis gap. Public sequential challenges on the curve are unsound: low-to-high reveals every future challenge; high-to-low exposes two-point square-root fibers, and the degree-two polynomial through those roots has `P(0)+P(1)=1`, letting a malicious prover carry then erase any false sumcheck gap. Any coordinate order eventually has a deterministic ascent or an adjacent descending pair. Independent challenges retain soundness but not scalarization; projective basis retains the correlation; all-variable univariate skip has linear degree/wire; bounded skips remain multivariate; secret challenges need a new secure operator protocol. The composed curve/current-GKR row is NO-GO, while the secret-point primitive remains quarantined research. Every resource/security gate and the ban on CPU prover, SIMT, refresh and pod remain unchanged. |
 | `C7-D108` / 2026-08-29 | select `C7-SPBT-v0` as the main reduction candidate, not a carrier | For each independent GKR coordinate, the pair transform `Y=(1-r)E+rO`, `Z=E-O` has determinant `-1`. Recursing gives a bijection `W <-> (Z_1,...,Z_n,y)` with exactly `M` coefficients and `y=MLE(W,r)`, plus the degree-`<M` identity `P_0=D_n y+sum_l D_l c_l Z_(l+1)(X^(2^(l+1)))`. Fresh `tau` follows the transform commitment; every derived query vector is fixed before later beta RLC. The conditional error is at most `(M_max-1+J-1)/|Fp3|`, giving about 144/137 bits after `R_max` for the current GPT-2/31B controls. A binary carry stack computes all complements in one monotone packed scan with `M_total-J<2N-J` butterflies and logarithmic frontier state. Budget v27 checks the identity and inverse exactly. This repairs the R0.8d operator-challenge correlation without claiming a PCS or security theorem. |
 | `C7-D109` / 2026-08-29 | current SPBT delayed-opening realizations NO-GO; retain every reason | Soundness requires the transform coefficients fixed before `tau`. Revealing `tau` first lets one of `M` free coefficients absorb any false terminal. Fixing `C_Z,e` first and retaining its typed dense payload costs exactly `16*M_total` bytes (at least 9x packed including source); discarding and recomputing requires a forbidden second source scan. Hidden-`tau` streaming is precisely a malicious private inner product/OPE into MAC and no sublinear-wire, no-per-coefficient-correction construction is supplied. A plain exact later-point sketch is information-theoretically injective; raw Merkle sampling has no distance and misses a one-leaf error with probability above 0.9995/0.999997 under the current query controls; a rate-1/2 wrapper restores the rejected codeword; a two-party sign/square-root orbit is at least 25x packed; finite point pools lack 110-bit entropy and worsen reuse privacy. Symbolic all-round scalar commitments preserve the correlated-challenge attack or grow as `3^round`; convolution remainders create response-sized scratch or persistent FFT setup. These are scoped construction rejections, not a universal PCS lower bound. `C7_CPU_REFERENCE_PASS=false`; no prover, SIMT, refresh, provider or pod is authorized. |
+| `C7-D110` / 2026-08-29 | native `StreamOpenIntoMac` NO-GO; close SPBT carrier and reopen tournament | The target functionality keeps `tau` and the terminal value secret, outputs only shares satisfying `k_v=m_v+Delta*<x,q_tau>`, uses input-independent setup, one packed scan, bounded memory and sublinear wire, and must bind the same committed `x` against a malicious prover while simulating a policy-2 malicious verifier. In the `tau`-independent affine native-VOLE class, online corrections `c=A(x-r)` can evaluate every power query only if `ker(A)` lies in every query kernel. The `M` distinct-point Vandermonde queries span dimension `M`, so `rank(A)>=M` and at least `M` field corrections are required. Even the optimistic base-Fp floors are 992,000,000/246,611,200,000 B for GPT-2/31B; persisting them with the packed source is 5x before tags/tree, while Fp3 corrections give at least 13x. Silent VOLE compresses correlation generation, not fresh-input derandomization; published OLE/NIIP is linear, Horner/full MPC is linear, group/SRS routes are forbidden, HE/PIR lacks the complete native same-`W` bridge, and two-server PIR changes trust. This scoped result is not a universal computational PCS, `tau`-dependent secure-computation or 2PC lower bound. The rigid wire/setup criterion fires, so SPBT is closed as a carrier, its algebra is retained only as a reusable component, the dual-track tournament reopens with no entrant, and no CPU/Lean/Rust protocol/SIMT/refresh/provider/pod work is authorized. |
+| `C7-D111` / 2026-08-29 | bound the reopened tournament to one concrete code-switch/shared circuit | The owner selects the native code-switch/shared-circuit line with a source-linear term independent of `q`, no trusted setup, groups/SRS or new computational assumption. The next phase may screen exactly one concrete candidate and must apply every setup, wire, one-scan, memory, proof-size, policy-2 and malicious-security gate immediately; it is not authorization for an open-ended tournament or implementation. The non-affine `tau`-dependent line remains secondary and may reopen only around an already concrete construction with an evident advantage, never as generic research. |

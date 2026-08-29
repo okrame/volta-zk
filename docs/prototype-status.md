@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 R0.8E SPBT REDUCTION PASS / DELAYED OPENING NO-GO — NO PROVER / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 R0.8F NATIVE VOLE NO-GO / SPBT CLOSED / TOURNAMENT REOPENED — NO PROVER / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,24 +11,48 @@ record; no external plan is authoritative.
 Read `c7-stateful-authenticated-lfc-design.md`, then
 `c7-r03-prover-pod-handoff.md`.
 
-- **Status.** C7 R0.8e on `agent/c7-stateful-alfc`; policy 2, Fp3, rate 1/2,
-  `k0=4`, one packed weight root, `g=141`, interactive `Q_FS=0` and all gates
-  remain fixed. `C7-SPBT-v0` is the main reduction candidate, not an admitted
-  carrier. Strict-UD RS is control-only; policy 3 remains terminal.
-- **Evidence/credit.** Budget v27 and both checks pass. SPBT is an invertible
-  `M`-coefficient transform for ordinary independent GKR points and yields one
-  degree-`<M` secret-point identity. Conditional lifetime algebra is 144/137
-  bits; a binary carry stack uses one packed scan and bounded frontier state.
-  The focused R0.8b C7 seam and its standalone rustfmt check pass. The full
-  workspace has one committed, out-of-scope C6 source-guard failure; no failing
-  file is in this diff. All evidence is `credit:false`.
-- **Hard stop/resume.** The delayed opening is unresolved. `tau` before the
-  transform root is unsound; retaining it is at least 9x packed; recomputation
-  is a second scan; hidden-`tau` streaming lacks a sublinear malicious
-  OPE/inner-product into MAC. No PCS/prover, SIMT, refresh, provider or pod.
-  Resume CPU work only after one concrete setup-safe delayed opener, exact
-  codec/query/privacy bridge and stateful theorem pass;
+- **Status.** C7 R0.8f on `agent/c7-stateful-alfc`; policy 2, Fp3, rate 1/2,
+  `k0=4`, one packed root, `g=141`, interactive `Q_FS=0` and all gates remain.
+  SPBT is closed as a carrier; strict-UD RS is control-only; policy 3 is
+  terminal. The tournament is reopened with no entrant; its next screen is
+  limited to one concrete `q`-independent source-linear code-switch/shared circuit.
+- **Evidence/credit.** Budget v28 checks pass. In `tau`-independent affine native VOLE,
+  corrections `A(x-r)` that answer all secret-point power queries require
+  `rank(A)>=M` by Vandermonde, hence linear online wire. Base-Fp correction
+  floors are 992 MB/246.6112 GB; persistence is 5x packed before tags/tree.
+  This is scoped, not a universal PCS/2PC lower bound. R0.8e is checkpointed at
+  `8e6eadc`; all R0.8f evidence is `credit:false`.
+- **Hard stop/resume.** No PCS/prover, CPU prototype, SIMT, refresh, provider
+  or pod. No open-ended search or generic non-affine line. Resume implementation
+  only after the single concrete native entrant supplies
+  the complete malicious relation/codec, sublinear wire, one packed scan,
+  bounded memory, setup within gates and stateful privacy/soundness bridge;
   `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`.
+
+- **2026-08-29 — C7 R0.8f closes native `StreamOpenIntoMac` and reopens the
+  carrier tournament.** The ideal primitive keeps `tau` and the terminal
+  evaluation hidden and returns only shares satisfying
+  `k_v=m_v+Delta*<x,q_tau>`, with input-independent setup, one packed scan,
+  bounded memory and sublinear wire. For `tau`-independent affine VOLE corrections
+  `c=A(x-r)`, exact answers for all degree-`<M` secret-point power queries
+  imply `span{q_tau} subseteq row(A)`. The `M` distinct-point Vandermonde rows
+  have rank `M`, so at least `M` field corrections are needed. Even the
+  optimistic base-Fp online floors are 992,000,000/246,611,200,000 B for
+  GPT-2/31B; moving them into persistence is 5x packed before tags/tree, while
+  Fp3 corrections give
+  at least 13x. Silent VOLE does not compress fresh-input derandomization;
+  published OLE/NIIP and Horner/full MPC stay linear. Group/SRS paths trigger
+  the explicit kill gate, HE/PIR lacks the complete native same-`W` malicious
+  bridge, and two-server PIR changes trust. This scoped affine-VOLE result is
+  not a universal PCS/2PC lower bound. Budget v28's two checks pass; no
+  protocol code or prototype was added. SPBT algebra remains reusable, but its
+  carrier line is closed and the tournament has no entrant. All is
+  `credit:false`; this is not a lower bound for `tau`-dependent general secure
+  computation. No CPU prover, SIMT, refresh, provider or pod is authorized.
+  The owner selects exactly one concrete code-switch/shared-circuit candidate
+  with a source-linear term independent of `q` for the next bounded screen.
+  It must face every gate immediately. Non-affine `tau`-dependent research
+  remains closed absent an already concrete construction with a clear advantage.
 
 - **2026-08-29 — C7 R0.8e derives an independent-challenge butterfly
   reduction and closes its current delayed-opening realizations.**

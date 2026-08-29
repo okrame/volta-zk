@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Executable C7 R0.8e analytic/readiness screen; every result is credit:false."""
+"""Executable C7 R0.8f analytic/readiness screen; every result is credit:false."""
 
 from __future__ import annotations
 
@@ -1714,11 +1714,23 @@ def r08_new_carrier_tournament() -> dict[str, object]:
             ),
         },
         "entrants": [],
-        "main_research_candidate_not_admitted": "C7-SPBT-v0",
+        "main_research_candidate_not_admitted": None,
+        "closed_candidate": "C7-SPBT-v0",
         "candidate_lineage": (
-            "C7-SPBT-v0 replaces the unsound logistic operator bridge while "
-            "retaining C7-DV-SPQ-v0 as its quarantined secret-point terminal"
+            "C7-SPBT-v0 repaired the operator reduction, but R0.8f closes it "
+            "as a carrier after the native VOLE/MAC delayed-opening screen"
         ),
+        "next_screen_policy": {
+            "candidate_count_cap": 1,
+            "selected_family": "code_switch_or_shared_circuit",
+            "required_source_term": "linear_and_independent_of_q",
+            "apply_all_gates_immediately": True,
+            "open_ended_tournament_authorized": False,
+            "new_computational_assumption_authorized": False,
+            "non_affine_tau_dependent_line": (
+                "secondary_only_for_an_already_concrete_clearly_advantageous_construction"
+            ),
+        },
         "bounded_codesigned_rows": r08b_codesigned_construction_screen(),
         "selected_carrier": None,
         "complete_row_exists": False,
@@ -2407,6 +2419,151 @@ def r08e_secret_point_butterfly_transform_screen() -> dict[str, object]:
         "one_scan_complete_opening_proof": False,
         "pre_CPU_screen_pass": False,
         "selected_carrier": False,
+        "prover_or_SIMT_implementation_authorized": False,
+        "credit": False,
+    }
+
+
+def r08f_stream_open_into_mac_screen() -> dict[str, object]:
+    """Bound the native affine VOLE realization and apply the owner kill gate."""
+    p = GOLDILOCKS_MODULUS
+    dimension = 8
+
+    # Exact small Vandermonde rank check.  The symbolic argument is identical:
+    # M distinct secret points span every degree-<M linear functional.
+    matrix = [
+        [pow(point, exponent, p) for exponent in range(dimension)]
+        for point in range(1, dimension + 1)
+    ]
+    rank = 0
+    for column in range(dimension):
+        pivot = next(
+            (row for row in range(rank, dimension) if matrix[row][column]),
+            None,
+        )
+        if pivot is None:
+            continue
+        matrix[rank], matrix[pivot] = matrix[pivot], matrix[rank]
+        inverse = pow(matrix[rank][column], p - 2, p)
+        matrix[rank] = [(value * inverse) % p for value in matrix[rank]]
+        for row in range(dimension):
+            if row == rank:
+                continue
+            factor = matrix[row][column]
+            matrix[row] = [
+                (value - factor * pivot_value) % p
+                for value, pivot_value in zip(matrix[row], matrix[rank])
+            ]
+        rank += 1
+    assert rank == dimension
+
+    profiles = {}
+    for model, certificate_cap in ((GPT2, 35_000_000), (GEMMA_ENVELOPE, 115_000_000)):
+        weight_count = int(model["weights"])
+        packed_bytes = PACKED_WEIGHT_BYTES * weight_count
+        base_corrections = FIELD_SYMBOL_BYTES * weight_count
+        fp3_corrections = 3 * FIELD_SYMBOL_BYTES * weight_count
+        profiles[str(model["name"])] = {
+            "packed_weight_scalars": weight_count,
+            "packed_source_bytes": packed_bytes,
+            "native_base_Fp_online_correction_floor_bytes": base_corrections,
+            "native_Fp3_online_correction_floor_bytes": fp3_corrections,
+            "complete_certificate_cap_bytes": certificate_cap,
+            "base_Fp_floor_over_certificate_cap": base_corrections / certificate_cap,
+            "Fp3_floor_over_certificate_cap": fp3_corrections / certificate_cap,
+            "packed_plus_persisted_base_corrections_amplification": (
+                (packed_bytes + base_corrections) / packed_bytes
+            ),
+            "packed_plus_persisted_Fp3_corrections_amplification": (
+                (packed_bytes + fp3_corrections) / packed_bytes
+            ),
+            "sublinear_wire_gate_pass": False,
+            "three_x_setup_gate_pass_if_persisted": False,
+        }
+
+    return {
+        "state": "NATIVE_VOLE_STREAM_OPEN_NO_GO_SPBT_CARRIER_CLOSED_TOURNAMENT_REOPENED",
+        "primitive": "C7-StreamOpenIntoMac-v0",
+        "required_relation": {
+            "inputs": (
+                "binding C_x, prover x, verifier-secret tau and shared Delta; "
+                "input-independent setup correlations"
+            ),
+            "output": (
+                "prover (v,m_v), verifier k_v with v=<x,q(tau)> and "
+                "k_v=m_v+Delta*v; no clear v or tau on the wire"
+            ),
+            "malicious_soundness": (
+                "acceptance implies one x bound by C_x supplies the terminal "
+                "functional and response-wide MAC settlement"
+            ),
+            "privacy": (
+                "the malicious verifier view is simulatable from the bounded "
+                "policy-2 leakage and authenticated output handle"
+            ),
+            "complete_malicious_secure_realization": False,
+        },
+        "required_resource_shape": {
+            "trusted_setup": False,
+            "groups_or_KZG": False,
+            "packed_source_scans": 1,
+            "working_memory": "bounded independently of N",
+            "online_wire": "o(N)",
+            "per_coefficient_corrections": 0,
+            "persistent_dense_codeword_or_oracle": False,
+        },
+        "affine_VOLE_rank_obstruction": {
+            "model": (
+                "online corrections c=A(x-r) in E^s with A fixed independently "
+                "of tau and x-independent preprocessing"
+            ),
+            "same_transcript_implication": (
+                "ker(A) subset intersection_tau ker(q_tau), hence "
+                "span{q_tau} subset row(A)"
+            ),
+            "power_query_family": "q_tau=(1,tau,...,tau^(M-1))",
+            "vandermonde_argument": (
+                "M distinct tau give rank M, so rank(A)>=M and s>=M"
+            ),
+            "small_exact_modular_rank_check": {"dimension": dimension, "rank": rank},
+            "scope": (
+                "tau-independent affine native VOLE/OLE input derandomization; "
+                "not a universal lower bound for computational PCS, tau-dependent "
+                "secure computation or general 2PC"
+            ),
+        },
+        "profiles": profiles,
+        "route_screen": {
+            "public_q": "reject_tau_leakage_and_commit_order",
+            "silent_VOLE_or_batch_OLE": (
+                "reject_Omega_N_online_input_derandomization; published general-field "
+                "inner product uses N OLEs and 2N+o(N) field elements"
+            ),
+            "Horner_with_secret_tau": "reject_M_secret_multiplications_and_Omega_N_wire",
+            "preauthenticate_weights": "reject_5x_setup_before_tags_or_tree",
+            "preauthenticate_Fp3_transform": "reject_at_least_13x_setup",
+            "LPN_LWE_NIIP": "reject_published_linear_input_encoding",
+            "group_OPE_KZG": "reject_groups_or_trusted_SRS",
+            "HE_PIR_FHE": "quarantine_non_native_and_no_complete_C7_same_W_bridge",
+            "garbled_circuit_or_full_MPC": "reject_Omega_N_gates_and_wire",
+            "two_server_FSS_PIR": "reject_changes_designated_verifier_trust_model",
+        },
+        "kill_criteria": {
+            "triggered": [
+                "online wire Omega(N)",
+                "per-coefficient corrections",
+                "persistent preprocessing above 3x on the setup escape",
+            ],
+            "not_needed_to_trigger": [
+                "SRS/KZG or groups",
+                "second packed scan",
+            ],
+        },
+        "spbt_algebra_retained_as_reusable_component": True,
+        "spbt_carrier_line_open": False,
+        "tournament_reopened": True,
+        "selected_carrier": False,
+        "pre_CPU_screen_pass": False,
         "prover_or_SIMT_implementation_authorized": False,
         "credit": False,
     }
@@ -4835,7 +4992,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
     large_total = int(large["certificate"]["total"]["bytes"])
     certificate_growth = large_total / small_total
     return {
-        "schema": "volta-c7-stateful-alfc-r08-screen-v27",
+        "schema": "volta-c7-stateful-alfc-r08-screen-v28",
         "design": "C7 stateful authenticated linear-functional commitment",
         "screening_only": True,
         "credit": False,
@@ -4867,13 +5024,16 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "C7_secret_point_quotient_research_authorized": True,
             "C7_secret_point_butterfly_reduction_screened": True,
             "C7_secret_point_butterfly_carrier_admitted": False,
+            "C7_native_VOLE_stream_open_screen_closed": True,
+            "C7_SPBT_carrier_line_open": False,
+            "C7_tournament_reopened": True,
             "C7_codesigned_pre_CPU_screen_pass": False,
             "tiny_CPU_prototype_authorized_now": False,
         },
         "privacy_policy": {
             "active": 2,
             "last_tested": 3,
-            "active_status": "spbt_reduction_pass_delayed_opening_no_go",
+            "active_status": "native_vole_stream_open_no_go_spbt_closed_tournament_reopened",
             "last_tested_policy3_terminal_shape": (
                 "digest-only salted leaf commitment with public Merkle paths "
                 "and attempt-local VOLE-private leaf/PCS checks"
@@ -5149,6 +5309,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
         "secret_point_butterfly_transform_screen": (
             r08e_secret_point_butterfly_transform_screen()
         ),
+        "native_vole_stream_open_into_mac_screen": r08f_stream_open_into_mac_screen(),
         "simt_path": {
             "state": "BLOCKED_BEFORE_CPU_REFERENCE_PASS",
             "stage_order": [
@@ -5221,7 +5382,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
             "credit": False,
         },
         "pod_readiness": {
-            "state": "C7_R08E_SPBT_REDUCTION_PASS_DELAYED_OPENING_NO_GO",
+            "state": "C7_R08F_NATIVE_VOLE_NO_GO_SPBT_CLOSED_TOURNAMENT_REOPENED",
             "handoff_spec": "docs/c7-r03-prover-pod-handoff.md",
             "handoff_preparation_authorized": True,
             "required_before_C7_POD_READY": {
@@ -5606,7 +5767,7 @@ def build_report(chunk_bytes: int, bandwidth_bytes_per_second: float) -> dict[st
 
 
 def self_check(report: dict[str, object]) -> None:
-    assert report["schema"] == "volta-c7-stateful-alfc-r08-screen-v27"
+    assert report["schema"] == "volta-c7-stateful-alfc-r08-screen-v28"
     models = report["models"]
     small = models[str(GPT2["name"])]
     large = models[str(GEMMA_ENVELOPE["name"])]
@@ -6205,7 +6366,9 @@ def self_check(report: dict[str, object]) -> None:
     policy = report["privacy_policy"]
     assert policy["active"] == 2
     assert policy["last_tested"] == 3
-    assert policy["active_status"] == "spbt_reduction_pass_delayed_opening_no_go"
+    assert policy["active_status"] == (
+        "native_vole_stream_open_no_go_spbt_closed_tournament_reopened"
+    )
     assert policy["policy_3_candidate_exhaustion_documented"]
     assert len(policy["terminal_catalog"]) == 10
     assert policy["policy_2_status"] == "active_design_only"
@@ -6493,7 +6656,14 @@ def self_check(report: dict[str, object]) -> None:
     )
     assert not tournament["strict_ud_RS_prover_implementation_authorized"]
     assert not tournament["entrants"]
-    assert tournament["main_research_candidate_not_admitted"] == "C7-SPBT-v0"
+    assert tournament["main_research_candidate_not_admitted"] is None
+    assert tournament["closed_candidate"] == "C7-SPBT-v0"
+    next_screen = tournament["next_screen_policy"]
+    assert next_screen["candidate_count_cap"] == 1
+    assert next_screen["required_source_term"] == "linear_and_independent_of_q"
+    assert next_screen["apply_all_gates_immediately"]
+    assert not next_screen["open_ended_tournament_authorized"]
+    assert not next_screen["new_computational_assumption_authorized"]
     bounded_rows = tournament["bounded_codesigned_rows"]
     assert bounded_rows["state"] == "NO_CARRIER_ROW_COMPLETE_REFERENCE_SEAM_READY"
     seam = bounded_rows["policy2_reference_seam"]
@@ -6609,6 +6779,28 @@ def self_check(report: dict[str, object]) -> None:
     assert not butterfly["pre_CPU_screen_pass"]
     assert not butterfly["selected_carrier"]
     assert not butterfly["prover_or_SIMT_implementation_authorized"]
+    stream_open = report["native_vole_stream_open_into_mac_screen"]
+    assert stream_open["state"] == (
+        "NATIVE_VOLE_STREAM_OPEN_NO_GO_SPBT_CARRIER_CLOSED_TOURNAMENT_REOPENED"
+    )
+    assert stream_open["affine_VOLE_rank_obstruction"][
+        "small_exact_modular_rank_check"
+    ] == {"dimension": 8, "rank": 8}
+    assert stream_open["profiles"]["gpt2-124m-screen"][
+        "native_base_Fp_online_correction_floor_bytes"
+    ] == 992_000_000
+    assert stream_open["profiles"]["gemma-class-31b-envelope"][
+        "native_base_Fp_online_correction_floor_bytes"
+    ] == 246_611_200_000
+    for profile in stream_open["profiles"].values():
+        assert profile["packed_plus_persisted_base_corrections_amplification"] == 5
+        assert profile["packed_plus_persisted_Fp3_corrections_amplification"] == 13
+        assert not profile["sublinear_wire_gate_pass"]
+        assert not profile["three_x_setup_gate_pass_if_persisted"]
+    assert not stream_open["spbt_carrier_line_open"]
+    assert stream_open["tournament_reopened"]
+    assert not stream_open["pre_CPU_screen_pass"]
+    assert not stream_open["prover_or_SIMT_implementation_authorized"]
     simt = report["simt_path"]
     assert simt["state"] == "BLOCKED_BEFORE_CPU_REFERENCE_PASS"
     assert simt["logical_leaf_symbols"] == 141
@@ -7114,7 +7306,7 @@ def self_check(report: dict[str, object]) -> None:
     ]
     readiness = report["pod_readiness"]
     assert readiness["state"] == (
-        "C7_R08E_SPBT_REDUCTION_PASS_DELAYED_OPENING_NO_GO"
+        "C7_R08F_NATIVE_VOLE_NO_GO_SPBT_CLOSED_TOURNAMENT_REOPENED"
     )
     assert not readiness["all_required_gates_pass"]
     assert not any(readiness["required_before_C7_POD_READY"].values())

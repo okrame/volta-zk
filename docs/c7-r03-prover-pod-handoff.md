@@ -1,6 +1,6 @@
-# C7 R0.8e — secret-point butterfly delayed-opening handoff
+# C7 R0.8f — native VOLE/MAC screen handoff
 
-**State:** `C7_R08E_SPBT_REDUCTION_PASS_DELAYED_OPENING_NO_GO`.
+**State:** `C7_R08F_NATIVE_VOLE_NO_GO_SPBT_CLOSED_TOURNAMENT_REOPENED`.
 
 This handoff prepares the order, evidence and stop rules for later C7 work.
 Policy 3 remains terminally rejected under its registered gates.  Policy 2 is
@@ -98,7 +98,7 @@ univariate skips and opaque challenges supply no complete escape row for the
 separately recorded reasons. The current curve/public-GKR composition is
 NO-GO; the secret-point primitive remains quarantined research.
 
-R0.8e selects `C7-SPBT-v0` as the main reduction candidate, not as a carrier.
+R0.8e selected `C7-SPBT-v0` as a reduction candidate, not as a carrier.
 For each ordinary independent GKR coordinate it computes
 `Y=(1-r)E+rO` and `Z=E-O`.  The pair matrix has determinant `-1`, so the
 recursive output `(Z_1,...,Z_n,y)` is an invertible `M`-coefficient transform
@@ -116,7 +116,7 @@ bits for GPT-2/31B.  A binary carry stack computes the transform
 in one monotone packed scan with `M_total-J<2N-J` butterflies and logarithmic
 frontier state.
 
-The current realization is nevertheless NO-GO.  `tau` before the transform
+The R0.8e realization is nevertheless NO-GO.  `tau` before the transform
 root is unsound; retaining the typed dense transform costs `16*M_total` bytes,
 at least 9x packed including source; recomputation is a second scan; keeping
 `tau` hidden requires a new malicious streaming inner product/OPE into MAC
@@ -127,11 +127,48 @@ retains the exact reasons and prevents a heavy XD4-style setup from entering
 through SPBT.  `C7-DV-SPQ-v0` is now only the quarantined terminal primitive
 for a future delayed-opening carrier.
 
-Checkpoint verification is scoped. Both budget-v27 invocations, the focused
-C7 seam, its standalone rustfmt check and `git diff --check` pass. The full
-workspace retains one committed out-of-scope C6 source-guard failure in
+R0.8f performs the authorized last native-VOLE screen and closes that carrier
+line. Its ideal `C7-StreamOpenIntoMac-v0` keeps `tau` and the terminal
+evaluation secret and returns only MAC shares satisfying
+`k_v=m_v+Delta*<x,q_tau>`. Setup must be independent of weights and `tau`,
+with no SRS/groups, one packed scan, bounded memory, sublinear wire, no
+per-coefficient correction and no persistent dense oracle.
+
+The `tau`-independent affine VOLE form cannot meet those requirements. If its
+online corrections are `A(x-r)`, identical corrections for `x,x'` force every
+exact query to annihilate `x-x'`. The power queries at `M` distinct secret
+points form an invertible Vandermonde matrix, so `rank(A)>=M`: at least one
+field correction per coefficient is necessary. Even the optimistic base-Fp
+control is 992 MB/246.6112 GB online for GPT-2/31B. Moving it to setup is 5x
+packed before tags/tree; direct Fp3 corrections are at least 13x. Silent VOLE
+compresses correlations, not this
+fresh-input derandomization. Published OLE/NIIP and Horner/full MPC remain
+linear; group/SRS routes are forbidden; HE/PIR lacks the malicious same-`W`
+bridge; two-server PIR changes trust.
+
+This is a scoped result for `tau`-independent affine native VOLE/OLE, not a
+universal PCS, `tau`-dependent secure-computation or 2PC lower bound. The rigid
+kill criterion nevertheless fires. SPBT is closed as a
+carrier, its exact algebra remains reusable evidence, and the dual-track
+tournament is reopened with no active entrant. Budget v28 is the executable
+check. No prototype, Lean/Rust protocol, SIMT, refresh, provider or pod is
+authorized.
+
+The R0.8e checkpoint at `8e6eadc` was scoped: both budget-v27 invocations, the
+focused C7 seam, its standalone rustfmt check and `git diff --check` passed.
+The full workspace retained one committed out-of-scope C6 source-guard failure in
 `native_persistence_source_guard_bypasses_hidden_u_owner`; neither failing
 file is part of the C7 diff. This checkpoint does not repair or conceal it.
+The R0.8f checkpoint checks are exactly both registered budget-v28
+invocations, `python3 -m py_compile scripts/budget_c7_stateful_alfc.py` and
+`git diff --check`. It changes no Rust/Lean protocol and grants no
+implementation credit.
+
+After R0.8f, research may screen exactly one concrete new code-switch/shared
+circuit with a source-linear term independent of `q`, immediately against all
+admission gates. An open-ended tournament is forbidden. A non-affine
+`tau`-dependent line remains secondary and may reopen only for an already
+concrete construction with a clear advantage, not for generic exploration.
 
 An eventual online-only process is permitted as a design boundary, not an
 implementation: setup must finish and verify under the existing disk/wall
@@ -175,8 +212,8 @@ prover is authorized now.
   existing gate. Published rows are baseline/control evidence only. The
   co-designed main line must first provide its complete relation/codec, exact
   resource census, stateful soundness/privacy bridge and one-scan proof. SPBT
-  supplies only the relation and transform-only scan; its delayed opening,
-  codec and privacy rows remain false. Only
+  supplies only historical relation/transform evidence; its carrier is closed
+  after the native-VOLE screen. Only
   then may the owner authorize a tiny CPU prototype. This does not authorize
   another pure-fold search or any prover.
 - Before the first attempt-local provider response byte whose distribution
@@ -416,10 +453,9 @@ BLAKE3 leaf/tree function is selected, with every opened payload, salt and path
 charged to the certificate.  Its collision assumption does not supply adaptive
 root/path hiding or the joint root-wide t-query theorem.  The Fp3 codec/KAT
 and carrier-independent shared-`Delta` equation seam now pass; current
-blockers are their concrete PCS/PCG/VOLE refinement, an SPBT delayed-opening
-carrier, its interleaved-domain theorem, same-`W` transform binding,
-persistent-share import, malicious sublinear private stream evaluation into
-MAC, complete non-oracle and receipt codec,
+blockers are selection of a new tournament entrant, its concrete
+PCS/PCG/VOLE refinement, same-`W` binding, persistent-share import, complete
+non-oracle and receipt codec,
 `C7-OnlineMDVViewRefine`, complete
 plane/root/round query counts, transcript-bound
 single-session receipts, branch-derived-view closure, response/K/V privacy

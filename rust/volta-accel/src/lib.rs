@@ -18,7 +18,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 33;
+pub const CUDA_ABI_VERSION: u32 = 45;
 pub const OPERATION_COUNT: usize = 7;
 pub const DEFERRED_TIMING_CAPACITY: usize = 512;
 
@@ -1899,6 +1899,71 @@ impl Backend {
             return Err(error);
         }
         Ok(output)
+    }
+
+    /// Fold the two coefficient-major degree-11 C4.1 setup slabs in one
+    /// resident pass. The output is `[a_0..a_11, b_0..b_11]`.
+    pub fn c41_fold_typed_queries_device(
+        &mut self,
+        a: &DeviceBuffer<Fp2Repr>,
+        b: &DeviceBuffer<Fp2Repr>,
+        query: &DeviceBuffer<Fp2Repr>,
+        correction_bitmap: &DeviceBuffer<u8>,
+        cells: usize,
+    ) -> Result<DeviceBuffer<Fp2Repr>, AccelError> {
+        let output = self.alloc_device(24)?;
+        if let Err(error) =
+            self.c41_fold_typed_queries_into_device(a, b, query, correction_bitmap, cells, &output)
+        {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
+    }
+
+    pub fn c41_fold_typed_queries_into_device(
+        &mut self,
+        a: &DeviceBuffer<Fp2Repr>,
+        b: &DeviceBuffer<Fp2Repr>,
+        query: &DeviceBuffer<Fp2Repr>,
+        correction_bitmap: &DeviceBuffer<u8>,
+        cells: usize,
+        output: &DeviceBuffer<Fp2Repr>,
+    ) -> Result<(), AccelError> {
+        self.require_resident()?;
+        self.validate_buffer(a)?;
+        self.validate_buffer(b)?;
+        self.validate_buffer(query)?;
+        self.validate_buffer(correction_bitmap)?;
+        self.validate_buffer(output)?;
+        let slab_len = checked_product(12, cells)?;
+        let bitmap_len =
+            cells.checked_add(7).ok_or(AccelError::InvalidInput("C4.1 bitmap length overflow"))?
+                / 8;
+        if cells == 0
+            || a.len() != slab_len
+            || b.len() != slab_len
+            || query.len() != cells
+            || correction_bitmap.len() != bitmap_len
+            || output.len() != 24
+        {
+            return Err(AccelError::InvalidInput("invalid C4.1 folded-query geometry"));
+        }
+        #[cfg(feature = "cuda")]
+        return self
+            .cuda
+            .as_mut()
+            .expect("CUDA kind without context")
+            .c41_fold_typed_queries_device(
+                a.id,
+                b.id,
+                query.id,
+                correction_bitmap.id,
+                output.id,
+                cells,
+            );
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
     }
 
     /// Materialize `[base^1, ..., base^count]` on-device.
@@ -8686,6 +8751,20 @@ mod cuda_tests {
             Err(error) => error,
         };
         assert!(hybrid_error.to_string().contains("cuda-resident backend"));
+    }
+
+    #[test]
+    fn c41_fold_is_resident_only() {
+        let mut cpu = Backend::cpu();
+        let a = cpu.alloc_device::<Fp2Repr>(12).unwrap();
+        let b = cpu.alloc_device::<Fp2Repr>(12).unwrap();
+        let query = cpu.alloc_device::<Fp2Repr>(1).unwrap();
+        let bitmap = cpu.alloc_device::<u8>(1).unwrap();
+        let output = cpu.alloc_device::<Fp2Repr>(24).unwrap();
+        assert!(matches!(
+            cpu.c41_fold_typed_queries_into_device(&a, &b, &query, &bitmap, 1, &output),
+            Err(AccelError::InvalidInput(message)) if message.contains("cuda-resident backend")
+        ));
     }
 
     #[test]

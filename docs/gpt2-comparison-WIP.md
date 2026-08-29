@@ -65,11 +65,11 @@ comunicazione, e non la seconda.
 | Traffico setup totale | 38,37 MB | 38,37 MB | 38,37 MB | 38,37 MB (invariante fase-D, non ri-emesso) |
 | Prover → verifier | 31,58 MB | 31,58 MB | 31,58 MB | 31,58 MB (invariante fase-D, non ri-emesso) |
 | Verifier → prover | 6,79 MB | 6,79 MB | 6,79 MB | 6,79 MB (invariante fase-D, non ri-emesso) |
-| Transcript / risposta packed | **105,72 MB** | **105,72 MB** | **84,544352 MB — exact**, stato terminale accettato | **41,270464 MB — exact**, stato `WEIGHT_PENDING` |
+| Prova | **105,72 MB** | **105,72 MB** | **84,544352 MB — exact**, stato terminale accettato | **41,270464 MB — exact**, stato `WEIGHT_PENDING` |
 | PCS opening (già incluso) | 43,27 MB | 43,27 MB | 43,273888 MB inline; commit/open/verify **0,202912 / 0,296582 / 0,080867 s** | **0 B/risposta**; **3,564780 MB/batch**, **0,222799 MB/risposta equivalente** |
 | Logit pubblici packed | **0 MB** | **0 MB** | **0 MB** | **0 MB** |
 | Primo scambio totale | **144,09 MB** | **144,09 MB** | **122,915817 MB** | **79,641929 MB** alla delivery; settlement differito **3,564780 MB/16** |
-| Latenza al certificato dei pesi | inline | inline | **inline (0,296582 s)** | **333,456712 s** (`k=1`) / **878,973898 s** (`k=16`) dal seal |
+| Costo della prima prova per legare i pesi | inline | inline | **inline (0,296582 s)** | **333,456712 s** (`k=1`) / **878,973898 s** (`k=16`) dal seal |
 
 ## Confronto Ligero inline vs settlement differito
 

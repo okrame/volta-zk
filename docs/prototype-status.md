@@ -6,6 +6,31 @@ land in `benchmarks/results/*.json`. This ledger plus the current
 task-specific design named by its latest entry are the repo-local plan of
 record; no external plan is authoritative.
 
+## Active authority — read first
+
+- **Status.** Isolated C4.1 timing branch based on the immutable C4 anchor
+  `e99a1e5`; design `c4.1-folded-query-high-degree-typed-ole.md`. It ports only
+  ABI45, the resident fused fold, paired recorder and one-shot A100 runner.
+- **Evidence/credit.** The source retains the exact C4 proof relation and
+  `84,544,352-B` proof. C4.1 `66,270,953 B` remains a projection with no
+  proof-byte/verifier credit. Conditional security is
+  `78.80929487391572` bits under owner-admitted `XOR4-MAJ7-128`; final
+  soundness and weight zero-knowledge must each exceed 78 bits.
+- **Checks/authorization.** Owner authorizes one complete same-build A100 pair:
+  one warmup plus three measured repetitions per arm, real/AES PCG, fresh
+  stores, `<=1.30x`, `<=5.3359744321 s` and `<30 GB`. A failure is completed
+  and preserved. Fiat--Shamir, product-latency credit, codec, degree-12 close
+  and verifier remain absent; a timing PASS unlocks their implementation.
+
+- **2026-08-29 — C4.1 timing-anchor isolation.** A first attempt on the active
+  C7 source completed the anchor but was rejected before the candidate: the
+  post-C4 C6.2 extended-softmax relation had increased the proof by exactly
+  `1,499,504 B`, from `84,544,352` to `86,043,856 B`, and changed the frozen
+  T1 counters. That record has no C4.1 performance credit. This branch avoids
+  reinterpreting either relation by applying the C4.1 timing seam directly to
+  the immutable accepted C4 source. Resume with a clean exact-SHA full restart
+  and fresh PCG stores; C7 remains blocked on its own branch.
+
 Workload of record: **GPT-2 small (124M, L=12, d=768, h=12, d_ff=3072),
 prefill T=100 + 50 deferred decode tokens, causal, C3b PCS Q=120**, on the
 designated RunPod A100 profile. Earlier Q=200 rows are explicitly historical.

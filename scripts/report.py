@@ -75,6 +75,22 @@ T1_EMULT_OTHER_TOTAL = 114_852_961.2
 C4_REPORT_SCHEMA_VERSION = 11
 C4_POD_GATE_PROFILE = "runpod-a100-c4-v1"
 C4_CUDA_ABI_VERSION = 33
+C41_CUDA_ABI_VERSION = 45
+C41_FOLD_CELLS = 3_110_400
+C41_POLYNOMIAL_LANES = 12
+C41_SETUP_SLAB_BYTES = 1_194_393_600
+C41_QUERY_BYTES = 49_766_400
+C41_CORRECTION_BITMAP_BYTES = 388_800
+C41_FOLDED_OUTPUT_BYTES = 384
+C41_TIMING_OWNER_BYTES = 1_244_549_184
+C41_PROJECTED_RESPONSE_BYTES = 66_270_953
+C41_RESPONSE_GATE_BYTES = 70_000_000
+C41_DEVICE_LIVE_GATE_BYTES = 30_000_000_000
+C41_CONDITIONAL_SECURITY_BITS = 78.809_294_873_915_72
+C41_SECURITY_FLOOR_BITS = 78.0
+C41_ANCHOR_PROVE_SECONDS = 4.104_595_717
+C41_PROVER_GATE_RATIO = 1.30
+C41_PROVER_ABSOLUTE_GATE_SECONDS = C41_ANCHOR_PROVE_SECONDS * C41_PROVER_GATE_RATIO
 C4_NON_PCS_TRANSCRIPT_BYTES = 41_270_464
 C4_PCS_BYTES = {"anchor": 43_273_888, "rate8": 38_296_040}
 C4_RESPONSE_BYTES = {"anchor": 84_544_352, "rate8": 79_566_504}
@@ -8154,7 +8170,9 @@ def _c4_design_pin_valid(row: dict[str, Any], c4: dict[str, Any]) -> bool:
     return c4.get("design_sha256") == expected
 
 
-def _c4_record_valid(row: dict[str, Any]) -> bool:
+def _c4_record_valid(
+    row: dict[str, Any], cuda_abi_version: int = C4_CUDA_ABI_VERSION
+) -> bool:
     c4 = row.get("c4")
     if not isinstance(c4, dict):
         return False
@@ -8220,7 +8238,7 @@ def _c4_record_valid(row: dict[str, Any]) -> bool:
         and _finite_nonnegative(row.get("curve_last_over_first"))
         and row["curve_last_over_first"] <= 1.5
         and row.get("accelerator_backend") == "cuda-resident"
-        and row.get("accelerator_cuda_abi_version") == C4_CUDA_ABI_VERSION
+        and row.get("accelerator_cuda_abi_version") == cuda_abi_version
         and row.get("resident_timing_policy") == P7B_OFFICIAL_RESIDENT_TIMING_POLICY
         and row.get("p7b_gate_profile") == C4_POD_GATE_PROFILE
         and row.get("p7b_gate_evaluated") is True
@@ -8450,6 +8468,360 @@ def write_c4_paired_verdict(
     return output_path
 
 
+def _c41_timing_record_valid(row: dict[str, Any]) -> bool:
+    if not _c4_record_valid(row, C41_CUDA_ABI_VERSION):
+        return False
+    c41 = row.get("c41_timing")
+    c4 = row.get("c4")
+    repetitions = row.get("repetitions")
+    if not isinstance(c41, dict) or not isinstance(c4, dict):
+        return False
+    if not isinstance(repetitions, list) or not repetitions:
+        return False
+    profile = c41.get("profile")
+    if profile not in ("anchor", "candidate") or c4.get("profile") != "anchor":
+        return False
+    candidate = profile == "candidate"
+    peaks = []
+    for repetition in repetitions:
+        if not isinstance(repetition, dict):
+            return False
+        accelerator = repetition.get("accelerator_session")
+        if not isinstance(accelerator, dict):
+            return False
+        operations = accelerator.get("operations")
+        auth_masks = operations.get("auth_masks") if isinstance(operations, dict) else None
+        if (
+            repetition.get("c41_fold_executed") is not candidate
+            or not isinstance(auth_masks, dict)
+            or auth_masks.get("calls") != int(candidate)
+            or not _nonnegative_int(accelerator.get("d2h_bytes"))
+            or not _nonnegative_int(accelerator.get("peak_device_bytes"))
+        ):
+            return False
+        peaks.append(accelerator["peak_device_bytes"])
+    observed_peak = max(peaks)
+    expected_owner_bytes = C41_TIMING_OWNER_BYTES if candidate else 0
+    expected_download_bytes = C41_FOLDED_OUTPUT_BYTES if candidate else 0
+    return (
+        c41.get("design_file")
+        == "docs/c4.1-folded-query-high-degree-typed-ole.md"
+        and c41.get("construction") == "FQ-HD-tOLE"
+        and c41.get("owner_assumption") == "XOR4-MAJ7-128"
+        and c41.get("timing_only") is True
+        and c41.get("proof_bytes_credit") is False
+        and c41.get("setup_bytes_credit") is False
+        and c41.get("fold_cells") == C41_FOLD_CELLS
+        and c41.get("polynomial_lanes") == C41_POLYNOMIAL_LANES
+        and c41.get("candidate_setup_slab_bytes") == C41_SETUP_SLAB_BYTES
+        and c41.get("query_bytes") == C41_QUERY_BYTES
+        and c41.get("correction_bitmap_bytes") == C41_CORRECTION_BITMAP_BYTES
+        and c41.get("folded_output_bytes") == C41_FOLDED_OUTPUT_BYTES
+        and c41.get("allocated_timing_owner_bytes") == expected_owner_bytes
+        and c41.get("measurement_sync_download_bytes") == expected_download_bytes
+        and c41.get("product_output_remains_device_resident") is True
+        and c41.get("fold_expected") is candidate
+        and c41.get("fold_executed_all_measured") is candidate
+        and c41.get("unchanged_measured_response_bytes") == C4_RESPONSE_BYTES["anchor"]
+        and c41.get("projected_response_bytes") == C41_PROJECTED_RESPONSE_BYTES
+        and c41.get("response_gate_bytes") == C41_RESPONSE_GATE_BYTES
+        and c41.get("response_projection_pass") is True
+        and _same_number(
+            c41.get("conditional_security_bits"), C41_CONDITIONAL_SECURITY_BITS
+        )
+        and _same_number(c41.get("security_floor_bits"), C41_SECURITY_FLOOR_BITS)
+        and c41.get("conditional_security_gate_pass") is True
+        and c41.get("device_live_gate_bytes") == C41_DEVICE_LIVE_GATE_BYTES
+        and c41.get("observed_peak_device_bytes") == observed_peak
+        and c41.get("device_live_gate_pass")
+        is (observed_peak < C41_DEVICE_LIVE_GATE_BYTES)
+        and _same_number(
+            c41.get("anchor_prove_response_s"), C41_ANCHOR_PROVE_SECONDS
+        )
+        and _same_number(c41.get("full_prover_gate_ratio"), C41_PROVER_GATE_RATIO)
+        and _same_number(
+            c41.get("full_prover_absolute_gate_s"),
+            C41_PROVER_ABSOLUTE_GATE_SECONDS,
+        )
+        and c41.get("performance_pair_evaluated") is False
+        and c41.get("gate_verdict") is False
+    )
+
+
+def validate_c41_timing_result(path: Path) -> bool:
+    try:
+        row = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    return isinstance(row, dict) and _c41_timing_record_valid(row)
+
+
+def c41_timing_paired_verdict(
+    anchor_path: Path, candidate_path: Path
+) -> dict[str, Any] | None:
+    try:
+        anchor = json.loads(anchor_path.read_text())
+        candidate = json.loads(candidate_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not (
+        isinstance(anchor, dict)
+        and isinstance(candidate, dict)
+        and _c41_timing_record_valid(anchor)
+        and _c41_timing_record_valid(candidate)
+        and anchor["c41_timing"]["profile"] == "anchor"
+        and candidate["c41_timing"]["profile"] == "candidate"
+        and anchor.get("p7b_all_gates_pass") is True
+        and type(candidate.get("p7b_all_gates_pass")) is bool
+        and anchor.get("git_sha") == candidate.get("git_sha")
+        and anchor.get("accelerator_cuda_abi_version")
+        == candidate.get("accelerator_cuda_abi_version")
+        and anchor.get("threads") == candidate.get("threads") == P7B_OFFICIAL_RAYON_THREADS
+        and anchor.get("cloud") == candidate.get("cloud")
+        and anchor["c4"]["resource_admission"].get("selected_gpu")
+        == candidate["c4"]["resource_admission"].get("selected_gpu")
+        and anchor["c4"]["resource_admission"].get("local_storage_path")
+        == candidate["c4"]["resource_admission"].get("local_storage_path")
+        and anchor["c4"]["resource_admission"].get("local_storage_fs_type")
+        == candidate["c4"]["resource_admission"].get("local_storage_fs_type")
+        and anchor["c4"]["resource_admission"].get("local_storage_mount_source")
+        == candidate["c4"]["resource_admission"].get("local_storage_mount_source")
+        and anchor["c4"]["resource_admission"].get("local_storage_mount_fs_type")
+        == candidate["c4"]["resource_admission"].get("local_storage_mount_fs_type")
+        and anchor["c4"]["resource_admission"].get("local_storage_mount_options")
+        == candidate["c4"]["resource_admission"].get("local_storage_mount_options")
+        and anchor["c4"]["resource_admission"].get("detected_logical_cpus")
+        == candidate["c4"]["resource_admission"].get("detected_logical_cpus")
+        and _c4_non_pcs_labels(anchor) == _c4_non_pcs_labels(candidate)
+        and anchor.get("corr_sub_corrs") == candidate.get("corr_sub_corrs")
+        and anchor.get("corr_full_corrs") == candidate.get("corr_full_corrs")
+        and anchor.get("closure_prod_claims") == candidate.get("closure_prod_claims")
+        and anchor.get("closure_zero_claims") == candidate.get("closure_zero_claims")
+        and anchor.get("emult_instances_total") == candidate.get("emult_instances_total")
+        and isinstance(anchor.get("fase_d_lifecycle"), dict)
+        and isinstance(candidate.get("fase_d_lifecycle"), dict)
+        and isinstance(anchor["fase_d_lifecycle"].get("channel_ledger_digest"), str)
+        and isinstance(candidate["fase_d_lifecycle"].get("channel_ledger_digest"), str)
+        and anchor["fase_d_lifecycle"]["channel_ledger_digest"]
+        != candidate["fase_d_lifecycle"]["channel_ledger_digest"]
+        and len(anchor["repetitions"]) == len(candidate["repetitions"])
+    ):
+        return None
+    for baseline, folded in zip(anchor["repetitions"], candidate["repetitions"]):
+        baseline_accel = baseline["accelerator_session"]
+        folded_accel = folded["accelerator_session"]
+        if (
+            folded_accel["d2h_bytes"]
+            != baseline_accel["d2h_bytes"] + C41_FOLDED_OUTPUT_BYTES
+            or folded_accel["h2d_bytes"] != baseline_accel["h2d_bytes"]
+        ):
+            return None
+    anchor_prove = anchor["prove_response_timing"]["median_s"]
+    candidate_prove = candidate["prove_response_timing"]["median_s"]
+    prove_ratio = candidate_prove / anchor_prove
+    session_ratio = (
+        candidate["response_session_wall_timing"]["median_s"]
+        / anchor["response_session_wall_timing"]["median_s"]
+    )
+    ratio_pass = prove_ratio <= C41_PROVER_GATE_RATIO
+    absolute_pass = candidate_prove <= C41_PROVER_ABSOLUTE_GATE_SECONDS
+    device_pass = candidate["c41_timing"]["device_live_gate_pass"] is True
+    anchor_c4_pass = anchor["p7b_all_gates_pass"] is True
+    candidate_c4_pass = candidate["p7b_all_gates_pass"] is True
+    timing_pass = (
+        anchor_c4_pass
+        and candidate_c4_pass
+        and ratio_pass
+        and absolute_pass
+        and device_pass
+    )
+    return {
+        "report_schema_version": 1,
+        "milestone": "C4.1-FQ-HD-tOLE-paired-timing-A100",
+        "date": _dt.date.today().isoformat(),
+        "anchor_file": anchor_path.name,
+        "candidate_file": candidate_path.name,
+        "anchor_sha256": hashlib.sha256(anchor_path.read_bytes()).hexdigest(),
+        "candidate_sha256": hashlib.sha256(candidate_path.read_bytes()).hexdigest(),
+        "git_sha": anchor["git_sha"],
+        "instance_id": anchor["cloud"]["instance_id"],
+        "owner_assumption": "XOR4-MAJ7-128",
+        "conditional_security_bits": C41_CONDITIONAL_SECURITY_BITS,
+        "security_floor_bits": C41_SECURITY_FLOOR_BITS,
+        "conditional_security_gate_pass": True,
+        "projected_response_bytes": C41_PROJECTED_RESPONSE_BYTES,
+        "response_gate_bytes": C41_RESPONSE_GATE_BYTES,
+        "response_projection_pass": True,
+        "anchor_prove_response_s": anchor_prove,
+        "candidate_prove_response_s": candidate_prove,
+        "prove_response_ratio": prove_ratio,
+        "prove_response_ratio_gate": C41_PROVER_GATE_RATIO,
+        "prove_response_ratio_gate_pass": ratio_pass,
+        "prove_response_absolute_gate_s": C41_PROVER_ABSOLUTE_GATE_SECONDS,
+        "prove_response_absolute_gate_pass": absolute_pass,
+        "anchor_c4_absolute_gates_pass": anchor_c4_pass,
+        "candidate_c4_absolute_gates_pass": candidate_c4_pass,
+        "response_session_ratio_diagnostic": session_ratio,
+        "candidate_observed_peak_device_bytes": candidate["c41_timing"][
+            "observed_peak_device_bytes"
+        ],
+        "device_live_gate_bytes": C41_DEVICE_LIVE_GATE_BYTES,
+        "candidate_device_gate_pass": device_pass,
+        "timing_credit": timing_pass,
+        "proof_bytes_credit": False,
+        "setup_bytes_credit": False,
+        "construction_gate_verdict": False,
+        "overall_timing_screen_pass": timing_pass,
+    }
+
+
+def write_c41_timing_paired_verdict(
+    anchor_path: Path, candidate_path: Path, output_path: Path
+) -> Path | None:
+    verdict = c41_timing_paired_verdict(anchor_path, candidate_path)
+    if verdict is None:
+        return None
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with output_path.open("x") as handle:
+            json.dump(verdict, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+    except FileExistsError:
+        return None
+    return output_path
+
+
+def validate_c5_typed_pcg_obstruction(path: Path) -> bool:
+    """Validate the local C5 security/byte obstruction without promoting a gate."""
+    try:
+        row = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(row, dict):
+        return False
+    design_file = row.get("design_file")
+    if design_file != "docs/c5-packed16-rate8-design.md":
+        return False
+    design_path = REPO / design_file
+    try:
+        design_sha256 = hashlib.sha256(design_path.read_bytes()).hexdigest()
+    except OSError:
+        return False
+
+    census = row.get("census")
+    projection = row.get("conditional_response_projection")
+    budget = row.get("typed_setup_budget")
+    candidates = row.get("candidate_screen")
+    screen = row.get("screen_result")
+    execution = row.get("execution_state")
+    owner = row.get("owner_ruling")
+    if not all(
+        isinstance(value, dict)
+        for value in (census, projection, budget, screen, execution, owner)
+    ) or not isinstance(candidates, list):
+        return False
+    by_name = {
+        candidate.get("candidate"): candidate
+        for candidate in candidates
+        if isinstance(candidate, dict) and isinstance(candidate.get("candidate"), str)
+    }
+    c2 = by_name.get("C2 Ferret-Uni binary COT plus explicit Fp2 arithmetic lift")
+    quotient = by_name.get(
+        "current Goldilocks Fp sVOLE plus exact rejection and public quotients"
+    )
+    if not isinstance(c2, dict) or not isinstance(quotient, dict):
+        return False
+
+    inventories = C5_ELIGIBLE_CELLS * C5_INVENTORIES
+    return (
+        row.get("report_schema_version") == C5_OBSTRUCTION_REPORT_SCHEMA_VERSION
+        and row.get("milestone") == "C5-typed-PCG-local-obstruction"
+        and row.get("record_kind") == "analytic-security-and-byte-feasibility"
+        and _full_git_sha(row.get("baseline_git_sha"))
+        and row.get("baseline_git_dirty") is False
+        and row.get("design_sha256") == design_sha256
+        and owner.get("c4_raw_history_rewritten") is False
+        and owner.get("c4_rate8_owner_adopted_for_c5") is True
+        and owner.get("response_ceiling_bytes") == 70_000_000
+        and owner.get("combined_setup_ceiling_bytes") == C5_SETUP_CEILING_BYTES
+        and owner.get("first_exchange_ceiling_bytes") == 117_937_969
+        and owner.get("five_response_inventories_binding") is True
+        and owner.get("deferred_settlement_allowed") is False
+        and census.get("kv_cells") == 2 * 12 * 150 * 768
+        and census.get("t1_chain_exit_cells") == 3 * 150 * 768
+        and census.get("eligible_cells_per_response") == C5_ELIGIBLE_CELLS
+        and census.get("response_inventories") == C5_INVENTORIES
+        and census.get("u16_outputs") == inventories
+        and census.get("carry_bit_outputs") == inventories
+        and census.get("independent_entropy_bits_per_cell") == 17
+        and census.get("binary_source_outputs_for_bit_composition")
+        == C5_C2_SOURCE_BITS
+        and projection.get("old_eligible_payload_bytes")
+        == 8 * C5_ELIGIBLE_CELLS
+        and projection.get("u16_payload_bytes") == 2 * C5_ELIGIBLE_CELLS
+        and projection.get("carry_bitmap_bytes") == C5_ELIGIBLE_CELLS // 8
+        and projection.get("new_eligible_payload_bytes") == 6_609_600
+        and projection.get("saving_bytes") == C5_TYPED_INCREMENT_CEILING_BYTES
+        and projection.get("auth_corrections_bytes") == 20_075_120
+        and projection.get("other_non_pcs_bytes") == 2_921_744
+        and projection.get("non_pcs_bytes") == 22_996_864
+        and projection.get("pcs_bytes") == C5_PCS_BYTES
+        and projection.get("response_bytes") == C5_RESPONSE_BYTES
+        and 22_996_864 + C5_PCS_BYTES == C5_RESPONSE_BYTES
+        and projection.get("measured") is False
+        and budget.get("measured_c4_setup_bytes") == C5_SETUP_BYTES
+        and budget.get("combined_setup_ceiling_bytes") == C5_SETUP_CEILING_BYTES
+        and budget.get("typed_increment_ceiling_bytes")
+        == C5_TYPED_INCREMENT_CEILING_BYTES
+        and budget.get("typed_increment_ceiling_bits")
+        == 8 * C5_TYPED_INCREMENT_CEILING_BYTES
+        and budget.get("five_inventory_cells") == inventories
+        and _same_number(budget.get("bits_per_cell_including_all_overheads"), 9.4)
+        and c2.get("security_interface_fit") is True
+        and c2.get("exact_distribution_fit") is True
+        and c2.get("typed_increment_bytes") == C5_C2_LIFT_BYTES
+        and c2.get("typed_increment_bytes") == C5_C2_SOURCE_BITS * 16
+        and c2.get("combined_setup_lower_bound_bytes")
+        == C5_SETUP_BYTES + C5_C2_LIFT_BYTES
+        and c2.get("first_exchange_lower_bound_bytes")
+        == C5_SETUP_BYTES + C5_C2_LIFT_BYTES + C5_RESPONSE_BYTES
+        and _same_number(c2.get("pinned_binary_core_bits_per_cot"), 0.73)
+        and c2.get("pinned_binary_core_bytes_before_lift_and_checks")
+        == C5_FERRET_CORE_BYTES
+        and quotient.get("goldilocks_prime") == (1 << 64) - (1 << 32) + 1
+        and quotient.get("rejected_value") == (1 << 64) - (1 << 32)
+        and quotient.get("u16_quotient_bound_exclusive")
+        == (((1 << 64) - (1 << 32)) // (1 << 16))
+        and quotient.get("u16_quotient_bytes") == inventories * 6
+        and quotient.get("bit_quotient_bytes") == inventories * 8
+        and quotient.get("typed_increment_lower_bound_bytes") == C5_QUOTIENT_BYTES
+        and quotient.get("combined_setup_lower_bound_bytes")
+        == C5_QUOTIENT_SETUP_BYTES
+        and quotient.get("first_exchange_lower_bound_bytes")
+        == C5_QUOTIENT_FIRST_EXCHANGE_BYTES
+        and quotient.get("setup_gate_excess_lower_bound_bytes")
+        == C5_QUOTIENT_SETUP_BYTES - C5_SETUP_CEILING_BYTES
+        and quotient.get("range_proof_check_and_rejection_overhead_charged_bytes")
+        == 0
+        and len(candidates) == 8
+        and screen.get("selected_construction") is None
+        and screen.get("complete_security_reduction_available") is False
+        and screen.get("complete_serialized_formula_within_gate") is False
+        and screen.get("universal_impossibility_claimed") is False
+        and screen.get("disposition") == "HARD_STOP_TYPED_PCG_OBSTRUCTION"
+        and all(
+            execution.get(key) is False
+            for key in (
+                "lean_protocol_change_started",
+                "rust_protocol_change_started",
+                "cuda_protocol_change_started",
+                "pod_contacted",
+                "production_pair_started",
+                "performance_result_claimed",
+                "gate_verdict",
+            )
+        )
+    )
 def _finite_nonnegative(value: Any) -> bool:
     return type(value) in (int, float) and math.isfinite(value) and value >= 0
 
@@ -9564,6 +9936,23 @@ def main() -> None:
         help="append-only paired-verdict path; requires --validate-c4-pair",
     )
     ap.add_argument(
+        "--validate-c41-timing",
+        type=Path,
+        help="fail closed unless one raw JSON is a C4.1 paired-timing arm",
+    )
+    ap.add_argument(
+        "--validate-c41-timing-pair",
+        type=Path,
+        nargs=2,
+        metavar=("ANCHOR", "CANDIDATE"),
+        help="validate the same-build C4.1 anchor/fused-fold timing pair",
+    )
+    ap.add_argument(
+        "--write-c41-timing-pair",
+        type=Path,
+        help="append-only paired timing verdict; requires --validate-c41-timing-pair",
+    )
+    ap.add_argument(
         "--validate-x4-v4-cpu",
         type=Path,
         help="fail closed unless one JSON is the exact clean X4 v4 CPU synthetic record",
@@ -9725,6 +10114,8 @@ def main() -> None:
             args.validate_t1_official,
             args.validate_c4_official,
             args.validate_c4_pair,
+            args.validate_c41_timing,
+            args.validate_c41_timing_pair,
             args.validate_x4_v4_cpu,
             args.validate_x4_v4_migration,
             args.validate_x4_v4_pod,
@@ -9749,6 +10140,13 @@ def main() -> None:
     if (args.write_c4_pair is None) != (args.validate_c4_pair is None):
         if args.write_c4_pair is not None:
             raise SystemExit("--write-c4-pair requires --validate-c4-pair")
+    if (args.write_c41_timing_pair is None) != (
+        args.validate_c41_timing_pair is None
+    ):
+        if args.write_c41_timing_pair is not None:
+            raise SystemExit(
+                "--write-c41-timing-pair requires --validate-c41-timing-pair"
+            )
     if (args.validate_x4c_online is None) != (args.x4c_onboarding is None):
         raise SystemExit(
             "--validate-x4c-online and --x4c-onboarding must be supplied together"
@@ -9828,6 +10226,32 @@ def main() -> None:
             if written is None:
                 raise SystemExit("C4 paired output exists or pair became invalid")
             print(f"wrote append-only C4 paired verdict: {written}")
+        print(json.dumps(verdict, sort_keys=True))
+        return
+    if args.validate_c41_timing is not None:
+        if args.write_json:
+            raise SystemExit(
+                "--write-json and --validate-c41-timing are mutually exclusive"
+            )
+        if not validate_c41_timing_result(args.validate_c41_timing):
+            raise SystemExit("invalid or inconsistent C4.1 timing arm")
+        print(f"valid C4.1 timing arm: {args.validate_c41_timing}")
+        return
+    if args.validate_c41_timing_pair is not None:
+        if args.write_json:
+            raise SystemExit(
+                "--write-json and --validate-c41-timing-pair are mutually exclusive"
+            )
+        verdict = c41_timing_paired_verdict(*args.validate_c41_timing_pair)
+        if verdict is None:
+            raise SystemExit("invalid or inconsistent C4.1 timing pair")
+        if args.write_c41_timing_pair is not None:
+            written = write_c41_timing_paired_verdict(
+                *args.validate_c41_timing_pair, args.write_c41_timing_pair
+            )
+            if written is None:
+                raise SystemExit("C4.1 timing output exists or pair became invalid")
+            print(f"wrote append-only C4.1 timing verdict: {written}")
         print(json.dumps(verdict, sort_keys=True))
         return
     if args.validate_x4_v4_cpu is not None:

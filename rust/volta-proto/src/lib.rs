@@ -5,6 +5,7 @@
 
 pub mod block_proof;
 pub(crate) mod boundary_thinning;
+pub mod c41_folded_tole;
 pub(crate) mod ffn_schedule;
 pub mod gemm_proof;
 pub mod hadamard;
@@ -29,6 +30,10 @@ pub use block_proof::{
     prove_layer_phase1_with_wires, prove_layer_phase2, verify_layer_phase1, verify_layer_phase2,
     AttnBlockProof, AttnWires, BlockCtxP, BlockCtxV, FfnBlockProof, InstanceLookups, LayerBytes,
     LayerOut, LayerOutV, LayerProof, LnChainProof, TableBankP, TableBankV, TableCloseProof,
+};
+pub use c41_folded_tole::{
+    c41_fold_typed_queries_reference, c41_fold_typed_queries_resident, C41FoldedQueries,
+    C41_TYPED_POLYNOMIAL_LANES,
 };
 pub use gemm_proof::{
     auth_phase, prove_gemm_blind, prove_gemm_blind_committed, verify_gemm_blind,

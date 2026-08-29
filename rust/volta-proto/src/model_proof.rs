@@ -4980,7 +4980,7 @@ pub fn verify_response_private_logits_c41(
         chunks.iter().map(|chunk| ChunkPub { q: chunk.q, logits: &[], seq: chunk.seq }).collect();
     let state = Rc::new(RefCell::new(state));
     let mut cache_mode = ResponseVerifierCacheMode::Legacy(std::marker::PhantomData);
-    let result = verify_response_impl(
+    let Some(result) = verify_response_impl(
         &model,
         t,
         &[],
@@ -4992,10 +4992,28 @@ pub fn verify_response_private_logits_c41(
         true,
         Some(state.clone()),
         &mut cache_mode,
-    )?;
-    let state = Rc::try_unwrap(state).ok()?.into_inner();
-    if !state.finish(&proof.c41.as_ref()?.close, vc, tx, backend).ok()? {
+    ) else {
+        eprintln!("C4.1 verifier stopped in the model proof");
         return None;
+    };
+    let Ok(state) = Rc::try_unwrap(state) else {
+        eprintln!("C4.1 verifier retained an unexpected response-state reference");
+        return None;
+    };
+    let Some(c41_proof) = proof.c41.as_ref() else {
+        eprintln!("C4.1 verifier lost the response proof after preflight");
+        return None;
+    };
+    match state.into_inner().finish(&c41_proof.close, vc, tx, backend) {
+        Ok(true) => {}
+        Ok(false) => {
+            eprintln!("C4.1 verifier rejected the degree-12 close");
+            return None;
+        }
+        Err(error) => {
+            eprintln!("C4.1 verifier could not finish the degree-12 close: {error}");
+            return None;
+        }
     }
     Some(result)
 }
@@ -5339,18 +5357,38 @@ fn verify_response_impl(
     c41: Option<Rc<RefCell<C41VerifierResponseState>>>,
     cache_mode: &mut ResponseVerifierCacheMode<'_, '_>,
 ) -> Option<(ModelOutV, ProdKeyTriples, Vec<VerifierKey>)> {
+    let trace_c41 = c41.is_some();
+    macro_rules! verify_stage {
+        ($stage:expr, $value:expr) => {
+            match $value {
+                Some(value) => value,
+                None => {
+                    if trace_c41 {
+                        eprintln!("C4.1 verifier stopped at {}", $stage);
+                    }
+                    return None;
+                }
+            }
+        };
+    }
     if proof.c41.is_some() != c41.is_some() {
+        if trace_c41 {
+            eprintln!("C4.1 verifier stopped at proof/state mode binding");
+        }
         return None;
     }
-    preflight_verify_response_public(
-        model,
-        t,
-        logits,
-        chunks,
-        continuation,
-        proof,
-        private_logits,
-    )?;
+    verify_stage!(
+        "public preflight",
+        preflight_verify_response_public(
+            model,
+            t,
+            logits,
+            chunks,
+            continuation,
+            proof,
+            private_logits,
+        )
+    );
     let base_t0 = continuation.map_or(0, |profile| profile.base_t0);
     let base_shape = continuation.map_or(BandShape::square(t), |_| BandShape { t0: base_t0, q: t });
     let d_cb = pad_bits(D);
@@ -5405,6 +5443,9 @@ fn verify_response_impl(
             ),
         };
         let Some(v1) = v1 else {
+            if trace_c41 {
+                eprintln!("C4.1 verifier stopped at prefill layer {l} phase 1");
+            }
             return None;
         };
         layer_v1s.push(v1);
@@ -5473,7 +5514,7 @@ fn verify_response_impl(
                         entry_alias.map(|state| state.fbo_keys.as_slice()),
                         entry_alias.map(|state| state.dom_fbo),
                         &mut cx,
-                    )?,
+                    ),
                     #[cfg(feature = "c6-trace")]
                     ResponseVerifierCacheMode::C6 { .. } => verify_layer_phase1_band_thinned_c6(
                         l,
@@ -5483,8 +5524,9 @@ fn verify_response_impl(
                         entry_alias.map(|state| state.fbo_keys.as_slice()),
                         entry_alias.map(|state| state.dom_fbo),
                         &mut cx,
-                    )?,
+                    ),
                 };
+                let v1 = verify_stage!("decode layer phase 1", v1);
                 layer_v1s.push(v1);
             }
             let (embed_doms, out_keys) = {
@@ -5523,17 +5565,20 @@ fn verify_response_impl(
 
     // Validate every scheduled proof and domain range before table
     // finalization expands multiplicity keys or draws shared alphas.
-    let prefill_gelu = preflight_gelu_plan_thinned(
-        t,
-        base_t0,
-        0,
-        layer_v1s
-            .iter()
-            .enumerate()
-            .map(|(layer, v1)| (layer, v1.doms, model.p.shift_ffn_down[layer])),
-    )
-    .ok()?;
-    preflight_gelu_proofs(&proof.layers, &prefill_gelu).ok()?;
+    let prefill_gelu = verify_stage!(
+        "prefill GELU plan",
+        preflight_gelu_plan_thinned(
+            t,
+            base_t0,
+            0,
+            layer_v1s
+                .iter()
+                .enumerate()
+                .map(|(layer, v1)| (layer, v1.doms, model.p.shift_ffn_down[layer])),
+        )
+        .ok()
+    );
+    verify_stage!("prefill GELU proofs", preflight_gelu_proofs(&proof.layers, &prefill_gelu).ok());
     let mut gelu_manifest = Vec::with_capacity(1 + chunks.len());
     gelu_manifest.push(prefill_gelu);
     let mut decode_t0 = base_t0 + t;
@@ -5541,17 +5586,23 @@ fn verify_response_impl(
         chunks.iter().zip(&proof.chunks).zip(&chunk_v1s).enumerate()
     {
         let (layer_base, ..) = chunk_ids(chunk_index);
-        let plan = preflight_gelu_plan_thinned(
-            chunk.q,
-            decode_t0,
-            layer_base,
-            v1.layer_v1s
-                .iter()
-                .enumerate()
-                .map(|(layer, v1)| (layer, v1.doms, model.p.shift_ffn_down[layer])),
-        )
-        .ok()?;
-        preflight_gelu_proofs(&chunk_proof.layers, &plan).ok()?;
+        let plan = verify_stage!(
+            "decode GELU plan",
+            preflight_gelu_plan_thinned(
+                chunk.q,
+                decode_t0,
+                layer_base,
+                v1.layer_v1s
+                    .iter()
+                    .enumerate()
+                    .map(|(layer, v1)| (layer, v1.doms, model.p.shift_ffn_down[layer])),
+            )
+            .ok()
+        );
+        verify_stage!(
+            "decode GELU proofs",
+            preflight_gelu_proofs(&chunk_proof.layers, &plan).ok()
+        );
         gelu_manifest.push(plan);
         decode_t0 = decode_t0.checked_add(chunk.q)?;
     }
@@ -5565,7 +5616,11 @@ fn verify_response_impl(
             .expect("private preflight fixed layout")
     });
     let argmax_prepared = if let Some((phases, _)) = &private_layout {
-        Some(prepare_private_argmax_verifier(proof.private_argmax.as_ref()?, phases.len(), vc, tx)?)
+        let private_argmax = verify_stage!("private-argmax proof", proof.private_argmax.as_ref());
+        Some(verify_stage!(
+            "private-argmax preparation",
+            prepare_private_argmax_verifier(private_argmax, phases.len(), vc, tx)
+        ))
     } else {
         None
     };
@@ -5578,22 +5633,29 @@ fn verify_response_impl(
         expected.insert(TableKey::Range(16));
     }
     let mut table_doms = Doms::new(layer_dom_base(240));
-    let mut bank = TableBankV::finalize(&expected, &proof.tables, vc, tx, &mut table_doms)?;
+    let mut bank = verify_stage!(
+        "table-bank finalization",
+        TableBankV::finalize(&expected, &proof.tables, vc, tx, &mut table_doms)
+    );
     bank.c41 = c41;
-    register_gelu_manifest_v(&mut bank, &gelu_manifest).ok()?;
+    verify_stage!("GELU manifest registration", register_gelu_manifest_v(&mut bank, &gelu_manifest).ok());
 
     let private_phases = if let (Some(prepared), Some((phase_rows, public_tokens))) =
         (argmax_prepared, private_layout.as_ref())
     {
-        let argmax = verify_private_argmax(
-            prepared,
-            phase_rows,
-            public_tokens,
-            proof.private_argmax.as_ref()?,
-            &mut bank,
-            vc,
-            tx,
-        )?;
+        let private_argmax = verify_stage!("private-argmax proof reuse", proof.private_argmax.as_ref());
+        let argmax = verify_stage!(
+            "private-argmax verification",
+            verify_private_argmax(
+                prepared,
+                phase_rows,
+                public_tokens,
+                private_argmax,
+                &mut bank,
+                vc,
+                tx,
+            )
+        );
         kprod.extend(argmax.prod);
         kzero.extend(argmax.zero);
         Some(argmax.phases)
@@ -5606,7 +5668,7 @@ fn verify_response_impl(
     let prefill_prefixes: Vec<Vec<KvPrefixK<'_>>> = (0..L).map(|_| Vec::new()).collect();
     let seam_instances: Vec<_> =
         proof.seams.iter().map(|seam| seam.as_ref().map(|seam| &seam.inst)).collect();
-    let scheduled = match cache_mode {
+    let scheduled = verify_stage!("prefill scheduled layers", match cache_mode {
         ResponseVerifierCacheMode::Legacy(_) => verify_layers_thinned_scheduled(
             model.schedule_model,
             &proof.layers,
@@ -5618,7 +5680,7 @@ fn verify_response_impl(
             vc,
             tx,
             &mut bank,
-        )?,
+        ),
         #[cfg(feature = "c6-trace")]
         ResponseVerifierCacheMode::C6 {
             secondary,
@@ -5654,9 +5716,9 @@ fn verify_response_impl(
             add_c6_response_metrics(metrics, phase_metrics);
             *append_source_layers = phase_sources;
             paired_targets.extend(phase_targets);
-            scheduled
+            Some(scheduled)
         }
-    };
+    });
     for layer in scheduled.layers {
         let out = layer.out;
         kprod.extend(layer.prod);
@@ -5670,7 +5732,10 @@ fn verify_response_impl(
 
     // ---- (d) embedding ---------------------------------------------------
     let mut cx = BlockCtxV::with_doms(vc, tx, embed_doms, &mut bank);
-    let site = verify_range_site(n_vars_td, s_emb, &proof.embed.inst, None, &[], &mut cx)?;
+    let site = verify_stage!(
+        "prefill embedding range proof",
+        verify_range_site(n_vars_td, s_emb, &proof.embed.inst, None, &[], &mut cx)
+    );
     let out_k = open_matrix_k(&out_keys, t, D, &site.main.point);
     cx.kzero.push(site.main.col_keys[1].key.sub(out_k));
     let embed_acc_point = site.acc_point().to_vec();
@@ -5697,14 +5762,17 @@ fn verify_response_impl(
     if continuation.is_none() {
         pt_fbo.extend(bit_coords(t - 1, rb_t));
     }
-    let fbo_k = crate::block_proof::open_matrix_c41_k(
-        &mut cx,
-        boundary_keys[L - 1].2,
-        &boundary_keys[L - 1].1,
-        t,
-        D,
-        &pt_fbo,
-    )?;
+    let fbo_k = verify_stage!(
+        "prefill final-LN folded FBO opening",
+        crate::block_proof::open_matrix_c41_k(
+            &mut cx,
+            boundary_keys[L - 1].2,
+            &boundary_keys[L - 1].1,
+            t,
+            D,
+            &pt_fbo,
+        )
+    );
     cx.kzero.push(row_k.sub(fbo_k));
 
     let rho_f: Vec<Fp2> = (0..d_cb + if continuation.is_some() { rb_ln } else { 0 })
@@ -5718,17 +5786,20 @@ fn verify_response_impl(
     let wk = WireKey { point: pt_wire, key: wire_key };
 
     let s_ln = model.p.lut.shift_ln_norm;
-    verify_ln_chain(
-        t_ln,
-        s_ln,
-        model.lnf_gain,
-        model.lnf_bias,
-        &row_keys,
-        &lvk_f,
-        &proof.final_ln.ln,
-        &wk,
-        &mut cx,
-    )?;
+    verify_stage!(
+        "prefill final-LN proof",
+        verify_ln_chain(
+            t_ln,
+            s_ln,
+            model.lnf_gain,
+            model.lnf_bias,
+            &row_keys,
+            &lvk_f,
+            &proof.final_ln.ln,
+            &wk,
+            &mut cx,
+        )
+    );
     let BlockCtxV { kprod: lkp, kzero: lkz, .. } = cx;
     kprod.extend(lkp);
     kzero.extend(lkz);
@@ -5753,7 +5824,10 @@ fn verify_response_impl(
         |phase| phase.claim,
     );
     let dom_lg = cx.doms.take(d_cb as u64);
-    let (r_l, k_claim_n) = blind_verify(d_cb, logits_key, &proof.logits.sc, cx.ctx, dom_lg, cx.tx)?;
+    let (r_l, k_claim_n) = verify_stage!(
+        "prefill logits proof",
+        blind_verify(d_cb, logits_key, &proof.logits.sc, cx.ctx, dom_lg, cx.tx)
+    );
     let k_fin = if let Some(phase) = private_phase {
         if continuation.is_some() {
             open_matrix_weighted_rows_k(&out_keys_f, t_ln, D, &r_l, &phase.row_weights)
@@ -5792,7 +5866,10 @@ fn verify_response_impl(
     let k_p = cx.ctx.correct_full_verifier_key(dom_p, proof.selection.p_corr);
     let k_claim0 = embed_acc_key.sub(k_p);
     let dom_sel = cx.doms.take(16);
-    let (rho_z, k_sel_n) = blind_verify(16, k_claim0, &proof.selection.sc, cx.ctx, dom_sel, cx.tx)?;
+    let (rho_z, k_sel_n) = verify_stage!(
+        "prefill embedding selection",
+        blind_verify(16, k_claim0, &proof.selection.sc, cx.ctx, dom_sel, cx.tx)
+    );
     let base_tokens = if continuation.is_some() {
         &chunks[0].seq[base_t0..base_t0 + t]
     } else {
@@ -5808,8 +5885,10 @@ fn verify_response_impl(
     embed_keys.push((pt_wte2, k_wte2));
     // Masked-wpe sumcheck (mirror): P = Σ_w G(w)·w̃pe(w, r_d).
     let dom_wpe_sc = cx.doms.take(10);
-    let (rho_w, k_wpe_n) =
-        blind_verify(10, k_p, &proof.selection.sc_wpe, cx.ctx, dom_wpe_sc, cx.tx)?;
+    let (rho_w, k_wpe_n) = verify_stage!(
+        "prefill position selection",
+        blind_verify(10, k_p, &proof.selection.sc_wpe, cx.ctx, dom_wpe_sc, cx.tx)
+    );
     let g_eval = masked_eq_eval(&eq_i, base_t0, t, &rho_w);
     let dom_wpe = cx.doms.take(1);
     cx.tx.append_fp2s("selection_wpe_correction", &[proof.selection.wpe_corr]);
@@ -5870,7 +5949,7 @@ fn verify_response_impl(
                 .collect();
             let seam_instances: Vec<_> =
                 cp.seams.iter().map(|seam| seam.as_ref().map(|seam| &seam.inst)).collect();
-            let scheduled = match cache_mode {
+            let scheduled = verify_stage!("decode scheduled layers", match cache_mode {
                 ResponseVerifierCacheMode::Legacy(_) => verify_layers_thinned_scheduled(
                     model.schedule_model,
                     &cp.layers,
@@ -5882,7 +5961,7 @@ fn verify_response_impl(
                     vc,
                     tx,
                     &mut bank,
-                )?,
+                ),
                 #[cfg(feature = "c6-trace")]
                 ResponseVerifierCacheMode::C6 {
                     secondary,
@@ -5924,9 +6003,9 @@ fn verify_response_impl(
                     add_c6_response_metrics(metrics, phase_metrics);
                     *append_source_layers = phase_sources;
                     paired_targets.extend(phase_targets);
-                    scheduled
+                    Some(scheduled)
                 }
-            };
+            });
             for (l, layer) in scheduled.layers.into_iter().enumerate() {
                 let out = layer.out;
                 kprod.extend(layer.prod);
@@ -5939,7 +6018,10 @@ fn verify_response_impl(
             }
             // ---- band embedding -------------------------------------------------
             let mut cx = BlockCtxV::with_doms(vc, tx, v1c.embed_doms, &mut bank);
-            let site = verify_range_site(n_vars_qd, s_emb, &cp.embed.inst, None, &[], &mut cx)?;
+            let site = verify_stage!(
+                "decode embedding range proof",
+                verify_range_site(n_vars_qd, s_emb, &cp.embed.inst, None, &[], &mut cx)
+            );
             let out_k = open_matrix_k(&v1c.out_keys, q, D, &site.main.point);
             cx.kzero.push(site.main.col_keys[1].key.sub(out_k));
             let embed_acc_point_c = site.acc_point().to_vec();
@@ -5957,18 +6039,21 @@ fn verify_response_impl(
             let wire_key = open_matrix_k(&v1c.fin_out_keys, q, D, &rho_f);
             let wk = WireKey { point: rho_f, key: wire_key };
             let s_lnf = model.p.lut.shift_ln_norm;
-            verify_ln_chain_c41(
-                q,
-                s_lnf,
-                model.lnf_gain,
-                model.lnf_bias,
-                band_boundary_keys[L - 1].2,
-                &band_boundary_keys[L - 1].1,
-                &v1c.fin_lvk,
-                &cp.fin_ln,
-                &wk,
-                &mut cx,
-            )?;
+            verify_stage!(
+                "decode final-LN proof",
+                verify_ln_chain_c41(
+                    q,
+                    s_lnf,
+                    model.lnf_gain,
+                    model.lnf_bias,
+                    band_boundary_keys[L - 1].2,
+                    &band_boundary_keys[L - 1].1,
+                    &v1c.fin_lvk,
+                    &cp.fin_ln,
+                    &wk,
+                    &mut cx,
+                )
+            );
             let BlockCtxV { kprod: lkp, kzero: lkz, .. } = cx;
             kprod.extend(lkp);
             kzero.extend(lkz);
@@ -5999,8 +6084,10 @@ fn verify_response_impl(
                 |phase| phase.claim,
             );
             let dom_lg = cx.doms.take(d_cb as u64);
-            let (r_l, k_claim_n) =
-                blind_verify(d_cb, logits_key, &cp.logits.sc, cx.ctx, dom_lg, cx.tx)?;
+            let (r_l, k_claim_n) = verify_stage!(
+                "decode logits proof",
+                blind_verify(d_cb, logits_key, &cp.logits.sc, cx.ctx, dom_lg, cx.tx)
+            );
             let k_fin = if private_phase.is_some() {
                 let mut padded_weights = vec![Fp2::ZERO; q];
                 padded_weights[..row_weights.len()].copy_from_slice(&row_weights);
@@ -6031,8 +6118,10 @@ fn verify_response_impl(
             let k_p = cx.ctx.correct_full_verifier_key(dom_p, cp.selection.p_corr);
             let k_claim0 = embed_acc_key_c.sub(k_p);
             let dom_sel = cx.doms.take(16);
-            let (rho_z, k_sel_n) =
-                blind_verify(16, k_claim0, &cp.selection.sc, cx.ctx, dom_sel, cx.tx)?;
+            let (rho_z, k_sel_n) = verify_stage!(
+                "decode embedding selection",
+                blind_verify(16, k_claim0, &cp.selection.sc, cx.ctx, dom_sel, cx.tx)
+            );
             let s_eval = sel_s_eval(band_tokens, &eq_i, &rho_z);
             let dom_wv2 = cx.doms.take(1);
             cx.tx.append_fp2s("selection_wte_correction", &[cp.selection.wte_corr]);
@@ -6042,8 +6131,10 @@ fn verify_response_impl(
             pt_wte2.extend(rho_z.iter().copied());
             embed_keys.push((pt_wte2, k_wte2));
             let dom_wpe_sc = cx.doms.take(10);
-            let (rho_w, k_wpe_n) =
-                blind_verify(10, k_p, &cp.selection.sc_wpe, cx.ctx, dom_wpe_sc, cx.tx)?;
+            let (rho_w, k_wpe_n) = verify_stage!(
+                "decode position selection",
+                blind_verify(10, k_p, &cp.selection.sc_wpe, cx.ctx, dom_wpe_sc, cx.tx)
+            );
             let g_eval = masked_eq_eval(&eq_i, t0, q, &rho_w);
             let dom_wpe = cx.doms.take(1);
             cx.tx.append_fp2s("selection_wpe_correction", &[cp.selection.wpe_corr]);
@@ -6061,7 +6152,10 @@ fn verify_response_impl(
     }
 
     // ---- (h) per-content table sides (mirror) -------------------------------
-    bank.close(&model.luts, &proof.tables, vc, &mut table_doms, tx, &mut kprod, &mut kzero)?;
+    verify_stage!(
+        "table close",
+        bank.close(&model.luts, &proof.tables, vc, &mut table_doms, tx, &mut kprod, &mut kzero)
+    );
 
     Some((ModelOutV { weight_keys, embed_keys }, kprod, kzero))
 }

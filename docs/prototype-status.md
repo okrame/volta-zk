@@ -27,6 +27,13 @@ Read `c64-joint-residual-sketch-design.md` next.
   before allocation, pass local correctness and budget gates, and receive a
   new explicit owner GO before any provider or pod run.
 
+- **Parallel C4.1.** Clean `7c0e58a` passes paired A100 timing:
+  `4.037166616 / 4.035909735 s`, `0.9996886725x`, peak `18,403,517,364 B`.
+  This is timing credit only; both proofs remain C4 `84,544,352 B` and the
+  C4.1 `66,270,953 B` is projected. HARD STOP: measured buffers are zero and
+  typed setup/boundary integration are absent. Resume with those seams,
+  separate soundness and weight-ZK `>78` bits, then codec/close/verifier E2E.
+
 - **2026-08-28 — C6.4 R10c closes NO-GO during the serial compiler.** Clean
   `d441ae6` passed A100 differential and campaign preflight, then entered the
   first proof. Preparation before `campaign_start` took `146.753609994 s`.
@@ -3237,6 +3244,32 @@ pairs. The exact proof is **6,900 B** and final provider inline is
 **4.698793 + 12.703051 = 17.401844 s <20 s**. Strict response bytes remain
 **33,096,991 B**. This is a local CPU capacity/timing PASS, not a whole-RSS,
 CUDA/provider/real-PCG or hardware verdict; no provider or pod was contacted.
+
+- **2026-08-29 — C4.1 paired A100 timing PASS; definitive E2E prerequisite
+  corrected.** Clean source `7c0e58a85568c90a3d8e4848732fa6801be6da0b`
+  on RunPod `nudqsdr5apsd96` completed one warmup plus three accepted measured
+  repetitions per arm with real/AES PCG and distinct fresh stores. Anchor and
+  candidate prover medians are `4.037166616 / 4.035909735 s`; ratio
+  `0.9996886724974343x <=1.30x`; candidate peak is `18,403,517,364 B <30 GB`.
+  Both C4 absolute profiles pass and both still measure `84,544,352 B`.
+  Spike kernel/wall medians are `23,446,880 / 23,476,230 ns`.
+
+  Raw spike/anchor/candidate/pair SHA-256 values are respectively
+  `bd8fc4b2c1fd899e58aa07c9363990587d19e753e6bc9bd9446f57c515cdca1f`,
+  `b9fd36789e9bbcba987f2b05ece5b61e43e4dd0b3ed9ccffbd9fe46a1763bc0e`,
+  `ce8e3e21ffad7b309e2516eb77c518e386f8791b62cea30f285dd569bcd0b72a`
+  and `ce7473d5319f70398b8f07f219422cc6ec9eb3b415290a53934de081721900e5`.
+  They are preserved on the pod volume in commit `993c5b1`; the container has
+  no GitHub HTTPS write credential, so no forbidden credential export or
+  alternate transfer was used.
+
+  Code audit after PASS corrects the earlier implementation premise: the
+  timing owner explicitly zeroes `a`, `b`, query and bitmap, then checks a
+  zero output. No executable `XOR4-MAJ7` typed setup, no replacement of the
+  `3,045,600` eligible C4 corrections, and no typed verifier input exists.
+  Serializer/close/verifier alone would therefore serialize a diagnostic,
+  not the new relation. This is a HARD STOP before C4.1 E2E or byte/verifier
+  credit; the exact resume conditions are in the active capsule.
 
 Workload of record: **GPT-2 small (124M, L=12, d=768, h=12, d_ff=3072),
 prefill T=100 + 50 deferred decode tokens, causal, C3b PCS Q=120**, on the

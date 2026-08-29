@@ -1,5 +1,12 @@
 # GPT-2 real-weight — confronto CPU, A100, Ligero inline e storico X4
 
+> **C4.1 real E2E — FUNCTIONAL PASS / PROVER GATE FAIL (2026-08-29).** Clean
+> `a3604cf` sullo stesso A100 ha prodotto una prova canonica reale da
+> **67.831.020 B**, l'ha deserializzata e verificata con esito `accept`.
+> Dimensione, memoria, soundness e weight-ZK passano; il prover misura
+> **7,942478252 s = 1,935020839958646x** l'anchor C4 e fallisce il limite
+> `<=1,30x`. Come richiesto, il test è arrivato fino alla fine.
+
 > **C6.2 C62GW4 genesis — TIMING HARD STOP (2026-08-19).** Clean `299050d`
 > passed CUDA and preflight and generated all 17 setup profiles
 > (`101.197.617 B`). The only authorized genesis then established a complete
@@ -26,6 +33,75 @@
 > Packed16 si è però fermato localmente al gate typed-PCG: la risposta
 > **61.292.904 B** resta una proiezione, non una nuova colonna misurata. Non
 > esistono implementazione, pod, pair o verdict C5.
+
+## Terminologia operativa
+
+- **Prova** significa l'intero artefatto serializzato inviato dal prover. Non
+  usiamo “certificate” o “transcript packed” come sinonimi nel testo corrente;
+  i nomi macchina storici restano invariati per compatibilità.
+- **Prover time** è prefill più decode marginale, cioè
+  `t_prove_response_s`. Esclude setup, verifier, codec e il lavoro aggiuntivo
+  di una prima prova per legare i pesi. Questi costi sono riportati a parte.
+- Il transcript è ancora interattivo/simulato: Fiat--Shamir non è
+  implementato. I tempi non includono latenza di rete e non sono credito di
+  latenza prodotto.
+- Un **lotto** è tutto il preprocessing segreto one-time consumato da una
+  risposta. Le **slab** sono semplicemente i grandi array di coefficienti
+  polinomiali dentro quel lotto; non sono un'ulteriore fase del protocollo.
+
+## C4.1 reale: confronto con l'anchor C4
+
+Il run pulito esegue davvero
+
+```text
+setup -> prover C4.1 -> serialize -> proof <70 MB -> deserialize -> verifier -> accept
+```
+
+| Grandezza | C4 anchor | C4.1 reale `a3604cf` | Delta / esito |
+| --- | ---: | ---: | ---: |
+| Prova | 84.544.352 B | **67.831.020 B** | **−16.713.332 B; PASS <70 MB** |
+| Proiezione C4.1 precedente | — | 66.270.953 B | artefatto reale **+1.560.067 B** |
+| Prover time | 4,104595717 s | **7,942478252 s** | **1,935020840x; FAIL >1,30x** |
+| Prover completamente contabilizzato | — | 8,464356373 s | codec e PCS inclusi |
+| Verifier core | 0,632347 s | **3,035212223 s** | misurato dopo deserialize |
+| Verifier contabilizzato | 0,713656 s | **3,322998133 s** | deserialize + PCS + verifier |
+| Serializzazione / deserializzazione | — | 0,111495902 / 0,295940595 s | round-trip esatto |
+| Peak GPU | 17.158.968.308 B | **18.056.184.148 B** | **PASS <30 GB** |
+| Traffico setup fase-D | 38.371.465 B | 38.371.465 B | reale/AES |
+| Incremento setup typed | — | **2.074.954 B** | totale **40.446.419 B** |
+| Primo scambio setup + prova | 122.915.817 B | **108.277.439 B** | **−14.638.378 B** |
+| Celle Packed16 / bridge | — | 3.110.400 / 640 | nonzero, consumate davvero |
+| Chiusura | degree 1 | **una degree-12** | verifier `accept` |
+| Soundness composta | 78,809294874 bit | **78,809294874 bit** | **PASS >78** |
+| Zero knowledge dei pesi | >78 bit | **120,017006425 bit** | **PASS >78** |
+| Verdetto | PASS anchor | **functional PASS; overall FAIL** | fallisce solo il gate prover |
+
+La prova reale include tutti i campi usati dal verifier: estensioni
+stable-softmax, Packed16 `d/e`, 640 bridge, entrambe le aperture PCS,
+product/zero e framing. Il suo BLAKE3 è
+`de1a1624f357e4f8379255146bc6320968fdb8d135a118ff27adfbd2b4ad6918`.
+I `67.780.697 B` di transcript sono una metrica interna; la dimensione della
+prova è quella dell'artefatto completo, `67.831.020 B`.
+
+Il setup fase-D reale/AES ha richiesto `32,026404679 s`; il setup typed
+`0,064411622 s`. CUDA ABI46 SIMT ha espanso il lotto nonzero e ha eseguito il
+fold finale a 12 lane; la preparazione del lotto prover/verifier è stata
+`0,533527070 / 0,062183571 s`. La costruzione della query globale usa la
+riduzione parallela Rayon. Non abbiamo aggiunto un percorso SIMD CPU
+separato: sul carico dominante è già usato il percorso SIMT A100, mentre la
+ricarica usa H2D asincrono a chunk pinned da 16 MiB.
+
+Operativamente, un prompt consuma un lotto. Un secondo prompt nella stessa
+conversazione deve usare un secondo lotto, ma non deve rifare il setup se il
+provider lo ha preparato prima. Il record componente misura `1,9739` nuovi
+lotti prover/s e `0,750884772 s` per la ricarica cold di un lotto. Un lotto
+provider persistito occupa `1.203.724.912 B`; cinque lotti occupano
+`6.018.624.560 B`. Dopo cinque risposte occorre generare un nuovo inventario;
+un lotto consumato non può essere riutilizzato.
+
+Il raw record append-only è
+`benchmarks/results/c41-real-e2e-a100-2026-08-29-a3604cf.json`, SHA-256
+`f5af817f00f3cfd5b85c4b128586e3ce952c0e2c56f545ad8701b847ebda911e`.
 
 La quinta colonna conserva il pair pulito X4d.1 a
 `b83ffc1`: un settlement `k=1` e uno `k=16` sullo stesso host, build, GPU e
@@ -64,7 +140,7 @@ SHA-256
 ## C6.4 final R10c disposition
 
 Clean A100 `d441ae6` also supplies no value for “Prova risposta totale”: the
-first certificate was still absent when the owner stopped the campaign after
+first proof was still absent when the owner stopped the campaign after
 `3529.377744423 s`. The compiler phase alone was unfinished after
 `3340.554625683 s`. No proof size or verifier measurement exists. These are
 incomplete lower bounds, not comparable completed-prover values, so the table
@@ -73,7 +149,7 @@ remains unchanged. C6.4 is closed **NO-GO**.
 ## C6.4 R7 timing disposition
 
 Clean A100 `41b4e07` does not supply a new value for “Prova risposta totale”.
-The first proof failed before its envelope and certificate when the retained
+The first proof failed before its serialized envelope when the retained
 device-message opening disagreed with its authenticated target. Before that
 failure, response construction alone took `65.524719047 s`: provider
 `58.727182131 s`, seal `1.266567169 s`, verifier replay `5.433695015 s`.
@@ -82,7 +158,7 @@ Residual-owner construction took `11.547041744 s` and projected roots
 
 Thus R7 definitively fails the `<20 s` complete-prover target, but the table row
 remains unchanged because there was no complete serialized, reloaded and
-verified certificate. The earlier `16.800812093-s` figure was a non-credit
+verified proof. The earlier `16.800812093-s` figure was a non-credit
 component projection and is invalidated by this run, not a measured prover
 time. Raw record:
 `benchmarks/results/c64-r7-a100-opening-mismatch-2026-08-28-41b4e07.json`.
@@ -90,9 +166,9 @@ time. Raw record:
 ## C6.4 R6 timing disposition
 
 The row “Prova risposta totale” in the comparison table is not the complete
-C6.4 provider/certificate interval. Clean `813dd22` recorded **more than
+C6.4 prover/proof interval. Clean `813dd22` recorded **more than
 404.726069869 s** from `campaign_start` to the 600-second timebox, with no
-certificate. Inside that lower bound, response construction was
+proof. Inside that lower bound, response construction was
 `66.013804893 s`, residual-owner construction `12.292302782 s`, projected
 roots `5.710866424 s`, native four-chain proving `227.869846047 s`, and the
 unfinished residual-blind suffix exceeded `92.784116159 s`. The complete

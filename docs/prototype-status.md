@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E ACTIVE)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E COMPLETE — FUNCTIONAL PASS / PROVER GATE FAIL)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,31 +10,55 @@ record; no external plan is authoritative.
 
 Read `c4.1-folded-query-high-degree-typed-ole.md` next.
 
-- **Status/design.** C4.1 real E2E implementation is active under the owner's
-  2026-08-29 GO. C6.4 remains CLOSED / NO-GO and must not be resumed.
-- **Completed evidence.** Clean `7c0e58a` passed paired A100 timing at
-  `4.037166616 / 4.035909735 s` (`0.9996886725x`), peak
-  `18,403,517,364 B`; this is timing-only credit. Clean `8888c5b` measured
-  real/AES PCG, ABI46 SIMT lot production and party-separated cold reload.
-  Setup is `2.599612970 s` / `30,070,682 B`; typed exchange `2,074,954 B`;
-  total with C4 setup `70,517,101 B`. A prover lot takes `0.506608224 s`, cold
-  pinned-H2D reload `0.750884772 s`, peak device use `1,311,806,976 B`.
-- **Local implementation.** The live K/V/group-exit consumers now use nonzero
-  Packed16 lots. All bridge corrections are fixed before one scalar-power
-  challenge; Rayon builds the aggregate query and CUDA performs the final
-  12-lane SIMT fold. Strict model, PCS, degree-12 closure and `<70 MB` envelope
-  codecs feed decoded objects to the verifier. Lean proves the bridge root
-  bound and degree-12 preservation; focused Rust codecs/tamper checks pass.
-- **Hard stop / credit.** A100 mock-prepass failures exposed the old alias
-  opener, omitted stable-softmax fields and a decode K/V row-count bug. Typed
-  keys are intentionally empty; the verifier now carries public segment rows
-  independently instead of inferring them from legacy keys. Rerun pending.
-  Proof bytes, acceptance, time and peak remain unmeasured. Soundness is
-  `78.80929486268863` bits; weight-ZK `120.0170064253057` bits.
-- **Authorization/checks.** Continue on the same pod through actual Packed16
-  consumers, response codec, degree-12 close, deserialization and verifier
-  accept/reject. Record `gpt2-comparison-WIP.md` only after that real E2E
-  succeeds.
+- **Status/design.** C4.1 real E2E is complete under
+  `c4.1-folded-query-high-degree-typed-ole.md`. It is functionally accepted
+  but fails its prover-time gate. C6.4 remains CLOSED / NO-GO.
+- **Measured E2E.** Clean `a3604cf` on the same A100 produced and decoded a
+  `67,831,020-B` proof, then accepted the model, PCS, product/zero and single
+  degree-12 close. Core/accounted verifier is `3.035212223 / 3.322998133 s`;
+  peak device use `18,056,184,148 B`. Real/AES PCG and the nonzero SIMT typed
+  lot ran. Setup traffic is `38,371,465 + 2,074,954 = 40,446,419 B`.
+- **Verdict.** Proof `<70,000,000 B`, memory `<30,000,000,000 B`, soundness
+  `78.80929487390853` bits and weight-ZK `120.0170064253057` bits pass. Prover
+  time is `7.942478252 s`, or `1.935020839958646x` the `4.104595717-s` C4
+  anchor: **FAIL >1.30x**. Overall C4.1 gate is FAIL; functional E2E is PASS.
+- **Checks/credit.** The proof is an actual canonical artifact, not the old
+  `66,270,953-B` projection. Prior component credit remains: one prover lot
+  `0.506608224 s`, cold pinned-H2D reload `0.750884772 s`. Conditional
+  XOR4-MAJ7 security is unchanged.
+- **Hard stop.** No retry or new pod run is authorized. Resume requires an
+  owner-approved design that reduces prover time without buying it with proof
+  bytes, communication, security or memory. Documentation, GitHub sync,
+  cleanup and main fast-forward remain authorized.
+
+- **2026-08-29 — C4.1 real E2E functionally accepts and measures the proof;
+  proof/memory/security PASS, prover ratio FAIL; overall gate FAIL.** Clean
+  `a3604cf` ran from an empty canonical target and fresh one-time stores on
+  the same `A100-SXM4-80GB` pod. Real/AES fase-D setup took
+  `32.026404679 s` and `38,371,465 B`; the typed setup added `0.064411622 s`
+  and `2,074,954 B`, for `40,446,419 B` total setup traffic. CUDA ABI46 SIMT
+  expanded the nonzero lot; generation was `0.000059026 s`, while preparing
+  the prover and verifier lots took `0.533527070 / 0.062183571 s`.
+
+  The complete canonical proof is **`67,831,020 B`**, versus
+  `84,544,352 B` for C4 and the former `66,270,953-B` projection. It is
+  `16,713,332 B` smaller than C4, below the `70,000,000-B` cap by
+  `2,168,980 B`, and has BLAKE3
+  `de1a1624f357e4f8379255146bc6320968fdb8d135a118ff27adfbd2b4ad6918`.
+  Serialization/deserialization took `0.111495902 / 0.295940595 s`; exact
+  round-trip, both PCS openings, product/zero closure and the single
+  degree-12 close accepted. Core/accounted verifier time was
+  `3.035212223 / 3.322998133 s`. Peak device use was `18,056,184,148 B`.
+  Conditional soundness was `78.80929487390853` bits and weight-ZK
+  `120.0170064253057` bits.
+
+  The defined prover time was `7.942478252 s`; fully accounted prover work was
+  `8.464356373 s`. Against the `4.104595717-s` C4 anchor, the ratio was
+  `1.935020839958646x`, so the binding `<=1.30x` gate failed. Per owner
+  instruction, the run did not stop early: verifier acceptance and all other
+  measurements completed. Raw record:
+  `c41-real-e2e-a100-2026-08-29-a3604cf.json`, SHA-256
+  `f5af817f00f3cfd5b85c4b128586e3ce952c0e2c56f545ad8701b847ebda911e`.
 
 - **2026-08-29 — Third C4.1 A100 attempt and diagnostic reruns fail closed at
   decode K/V prefix geometry; root cause corrected; no record or credit.**

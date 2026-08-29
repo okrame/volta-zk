@@ -4329,6 +4329,131 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7(tmp_path)
     assert report.validate_c4_official_result(failed_anchor_path) is True
     assert report.c4_paired_verdict(failed_anchor_path, c4_candidate_path) is None
 
+    def c41_timing_record(profile: str):
+        row = copy.deepcopy(c4_anchor)
+        candidate = profile == "candidate"
+        row["accelerator_cuda_abi_version"] = report.C41_CUDA_ABI_VERSION
+        row["fase_d_lifecycle"]["channel_ledger_digest"] = (
+            "d" * 64 if candidate else "c" * 64
+        )
+        for repetition in row["repetitions"]:
+            repetition["c41_fold_executed"] = candidate
+            accelerator = repetition["accelerator_session"]
+            accelerator.setdefault("operations", {})["auth_masks"] = {
+                "calls": int(candidate)
+            }
+            accelerator.setdefault("d2h_bytes", 85_654_708)
+            if candidate:
+                accelerator["d2h_bytes"] += report.C41_FOLDED_OUTPUT_BYTES
+        peak = max(
+            repetition["accelerator_session"]["peak_device_bytes"]
+            for repetition in row["repetitions"]
+        )
+        row["c41_timing"] = {
+            "profile": profile,
+            "design_file": "docs/c4.1-folded-query-high-degree-typed-ole.md",
+            "construction": "FQ-HD-tOLE",
+            "owner_assumption": "XOR4-MAJ7-128",
+            "timing_only": True,
+            "proof_bytes_credit": False,
+            "setup_bytes_credit": False,
+            "fold_cells": report.C41_FOLD_CELLS,
+            "polynomial_lanes": report.C41_POLYNOMIAL_LANES,
+            "candidate_setup_slab_bytes": report.C41_SETUP_SLAB_BYTES,
+            "query_bytes": report.C41_QUERY_BYTES,
+            "correction_bitmap_bytes": report.C41_CORRECTION_BITMAP_BYTES,
+            "folded_output_bytes": report.C41_FOLDED_OUTPUT_BYTES,
+            "allocated_timing_owner_bytes": (
+                report.C41_TIMING_OWNER_BYTES if candidate else 0
+            ),
+            "measurement_sync_download_bytes": (
+                report.C41_FOLDED_OUTPUT_BYTES if candidate else 0
+            ),
+            "product_output_remains_device_resident": True,
+            "fold_expected": candidate,
+            "fold_executed_all_measured": candidate,
+            "unchanged_measured_response_bytes": report.C4_RESPONSE_BYTES["anchor"],
+            "projected_response_bytes": report.C41_PROJECTED_RESPONSE_BYTES,
+            "response_gate_bytes": report.C41_RESPONSE_GATE_BYTES,
+            "response_projection_pass": True,
+            "conditional_security_bits": report.C41_CONDITIONAL_SECURITY_BITS,
+            "security_floor_bits": report.C41_SECURITY_FLOOR_BITS,
+            "conditional_security_gate_pass": True,
+            "device_live_gate_bytes": report.C41_DEVICE_LIVE_GATE_BYTES,
+            "observed_peak_device_bytes": peak,
+            "device_live_gate_pass": True,
+            "anchor_prove_response_s": report.C41_ANCHOR_PROVE_SECONDS,
+            "full_prover_gate_ratio": report.C41_PROVER_GATE_RATIO,
+            "full_prover_absolute_gate_s": report.C41_PROVER_ABSOLUTE_GATE_SECONDS,
+            "performance_pair_evaluated": False,
+            "gate_verdict": False,
+        }
+        return row
+
+    c41_anchor = c41_timing_record("anchor")
+    c41_candidate = c41_timing_record("candidate")
+    c41_anchor_path = tmp_path / "c41-timing-anchor.json"
+    c41_candidate_path = tmp_path / "c41-timing-candidate.json"
+    c41_anchor_path.write_text(json.dumps(c41_anchor))
+    c41_candidate_path.write_text(json.dumps(c41_candidate))
+    assert report.validate_c41_timing_result(c41_anchor_path) is True
+    assert report.validate_c41_timing_result(c41_candidate_path) is True
+    c41_pair = report.c41_timing_paired_verdict(
+        c41_anchor_path, c41_candidate_path
+    )
+    assert c41_pair is not None
+    assert c41_pair["overall_timing_screen_pass"] is True
+    assert c41_pair["candidate_c4_absolute_gates_pass"] is True
+    assert c41_pair["proof_bytes_credit"] is False
+    c41_pair_path = tmp_path / "c41-timing-pair.json"
+    assert (
+        report.write_c41_timing_paired_verdict(
+            c41_anchor_path, c41_candidate_path, c41_pair_path
+        )
+        == c41_pair_path
+    )
+    assert (
+        report.write_c41_timing_paired_verdict(
+            c41_anchor_path, c41_candidate_path, c41_pair_path
+        )
+        is None
+    )
+
+    bad_c41_assumption = copy.deepcopy(c41_candidate)
+    bad_c41_assumption["c41_timing"]["owner_assumption"] = "unregistered"
+    bad_c41_assumption_path = tmp_path / "c41-bad-assumption.json"
+    bad_c41_assumption_path.write_text(json.dumps(bad_c41_assumption))
+    assert report.validate_c41_timing_result(bad_c41_assumption_path) is False
+
+    bad_c41_pair = copy.deepcopy(c41_candidate)
+    bad_c41_pair["repetitions"][0]["accelerator_session"]["d2h_bytes"] += 1
+    bad_c41_pair_path = tmp_path / "c41-bad-pair.json"
+    bad_c41_pair_path.write_text(json.dumps(bad_c41_pair))
+    assert (
+        report.c41_timing_paired_verdict(c41_anchor_path, bad_c41_pair_path)
+        is None
+    )
+
+    # A slow candidate remains a complete paired measurement and records FAIL.
+    failed_c41_candidate = copy.deepcopy(c41_candidate)
+    failed_c41_candidate["repetitions"][1]["accelerator_session"][
+        "synchronization_s"
+    ] = 0.151
+    failed_c41_candidate["repetitions"][1]["p7b_sync_wall_fraction"] = 0.0151
+    failed_c41_candidate["p7b_sync_wall_fraction_observed"] = 0.0151
+    failed_c41_candidate["p7b_sync_wall_absolute_observed_s"] = 0.151
+    failed_c41_candidate["p7b_sync_wall_absolute_gate_pass"] = False
+    failed_c41_candidate["p7b_all_gates_pass"] = False
+    failed_c41_candidate_path = tmp_path / "c41-failed-candidate.json"
+    failed_c41_candidate_path.write_text(json.dumps(failed_c41_candidate))
+    assert report.validate_c41_timing_result(failed_c41_candidate_path) is True
+    failed_c41_pair = report.c41_timing_paired_verdict(
+        c41_anchor_path, failed_c41_candidate_path
+    )
+    assert failed_c41_pair is not None
+    assert failed_c41_pair["candidate_c4_absolute_gates_pass"] is False
+    assert failed_c41_pair["overall_timing_screen_pass"] is False
+
     fase_d_v2["p7b_sync_wall_absolute_gate_s"] = 0.151
     fase_d_v2_path.write_text(json.dumps(fase_d_v2))
     assert report.validate_fase_d_pod_official_result(fase_d_v2_path) is False

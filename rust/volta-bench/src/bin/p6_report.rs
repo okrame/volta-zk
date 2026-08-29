@@ -32,8 +32,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::time::Instant;
 use volta_accel::{
-    Backend, BackendKind, BackendStats, DeviceBuffer, DeviceSlice, DeviceTimingMode, Operation,
-    ResidentTimingPolicy, CUDA_ABI_VERSION,
+    Backend, BackendKind, BackendStats, DeviceBuffer, DeviceSlice, DeviceTimingMode, Fp2Repr,
+    Operation, ResidentTimingPolicy, CUDA_ABI_VERSION,
 };
 use volta_bench::{cloud_metadata_from_env, logits_pack, time_paired_samples, CloudMetadata};
 use volta_field::{Fp, Fp2, P};
@@ -70,6 +70,7 @@ use volta_proto::model_proof::{
 };
 use volta_proto::{
     cattn_permuted, prod_batch_prover, prod_batch_verify, prove_model, prove_model_with_backend,
+    C41_TYPED_POLYNOMIAL_LANES,
 };
 
 const P7B_PREFILL_CORE_GATE_S: f64 = 10.0;
@@ -144,6 +145,14 @@ const C4_LOGICAL_CPU_FLOOR: usize = 13;
 const C4_ANCHOR_CODEWORD_BYTES: u64 = 8_623_489_024;
 const C4_CANDIDATE_CODEWORD_BYTES: u64 = 17_246_978_048;
 const C4_DESIGN_SHA256: &str = "7bb8a4e64c35047c76c0a999feca33fe0da261d20c9f14776661c9832559e3f4";
+const C41_FOLD_CELLS: usize = 3_110_400;
+const C41_PROJECTED_RESPONSE_BYTES: u64 = 66_270_953;
+const C41_RESPONSE_GATE_BYTES: u64 = 70_000_000;
+const C41_DEVICE_LIVE_GATE_BYTES: u64 = 30_000_000_000;
+const C41_CONDITIONAL_SECURITY_BITS: f64 = 78.809_294_873_915_72;
+const C41_SECURITY_FLOOR_BITS: f64 = 78.0;
+const C41_ANCHOR_PROVE_SECONDS: f64 = 4.104_595_717;
+const C41_PROVER_GATE_RATIO: f64 = 1.30;
 const T1_SUB_CORRS: u64 = 4_793_590;
 const T1_FULL_CORRS: u64 = 181_933;
 const T1_ZERO_CLAIMS: usize = 8_170;
@@ -612,6 +621,8 @@ struct BenchmarkRepetitionRow {
     pcs_open_total_s: f64,
     pcs_verify_total_s: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
+    c41_fold_executed: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     p7b_sync_wall_fraction: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     p7b_sync_wall_s: Option<f64>,
@@ -893,6 +904,8 @@ struct Report {
     t1_emult_other_total: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     c4: Option<C4Record>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c41_timing: Option<C41TimingRecord>,
     #[serde(skip_serializing_if = "Option::is_none")]
     x123_foundation_reference_file: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1217,6 +1230,84 @@ struct C4Record {
     gate_verdict: bool,
 }
 
+#[derive(Serialize)]
+struct C41TimingRecord {
+    profile: &'static str,
+    design_file: &'static str,
+    construction: &'static str,
+    owner_assumption: &'static str,
+    timing_only: bool,
+    proof_bytes_credit: bool,
+    setup_bytes_credit: bool,
+    fold_cells: usize,
+    polynomial_lanes: usize,
+    candidate_setup_slab_bytes: u64,
+    query_bytes: u64,
+    correction_bitmap_bytes: u64,
+    folded_output_bytes: u64,
+    allocated_timing_owner_bytes: u64,
+    measurement_sync_download_bytes: u64,
+    product_output_remains_device_resident: bool,
+    fold_expected: bool,
+    fold_executed_all_measured: bool,
+    unchanged_measured_response_bytes: u64,
+    projected_response_bytes: u64,
+    response_gate_bytes: u64,
+    response_projection_pass: bool,
+    conditional_security_bits: f64,
+    security_floor_bits: f64,
+    conditional_security_gate_pass: bool,
+    device_live_gate_bytes: u64,
+    observed_peak_device_bytes: u64,
+    device_live_gate_pass: bool,
+    anchor_prove_response_s: f64,
+    full_prover_gate_ratio: f64,
+    full_prover_absolute_gate_s: f64,
+    performance_pair_evaluated: bool,
+    gate_verdict: bool,
+}
+
+struct C41TimingOwner {
+    a: DeviceBuffer<Fp2Repr>,
+    b: DeviceBuffer<Fp2Repr>,
+    query: DeviceBuffer<Fp2Repr>,
+    correction_bitmap: DeviceBuffer<u8>,
+    output: DeviceBuffer<Fp2Repr>,
+}
+
+impl C41TimingOwner {
+    fn allocate(backend: &mut Backend) -> Result<Self, volta_accel::AccelError> {
+        let slab_len = C41_TYPED_POLYNOMIAL_LANES
+            .checked_mul(C41_FOLD_CELLS)
+            .ok_or(volta_accel::AccelError::InvalidInput("C4.1 timing slab length overflow"))?;
+        let bitmap_len = C41_FOLD_CELLS
+            .checked_add(7)
+            .ok_or(volta_accel::AccelError::InvalidInput("C4.1 timing bitmap length overflow"))?
+            / 8;
+        let owner = Self {
+            a: backend.alloc_device(slab_len)?,
+            b: backend.alloc_device(slab_len)?,
+            query: backend.alloc_device(C41_FOLD_CELLS)?,
+            correction_bitmap: backend.alloc_device(bitmap_len)?,
+            output: backend.alloc_device(2 * C41_TYPED_POLYNOMIAL_LANES)?,
+        };
+        backend.zero_device(&owner.a, 0, owner.a.len())?;
+        backend.zero_device(&owner.b, 0, owner.b.len())?;
+        backend.zero_device(&owner.query, 0, owner.query.len())?;
+        backend.zero_device(&owner.correction_bitmap, 0, owner.correction_bitmap.len())?;
+        Ok(owner)
+    }
+
+    fn free(self, backend: &mut Backend) -> Result<(), volta_accel::AccelError> {
+        let Self { a, b, query, correction_bitmap, output } = self;
+        backend.free_device(a)?;
+        backend.free_device(b)?;
+        backend.free_device(query)?;
+        backend.free_device(correction_bitmap)?;
+        backend.free_device(output)
+    }
+}
+
 #[derive(Clone, Serialize)]
 struct C4ResourceAdmission {
     selected_gpu: String,
@@ -1346,6 +1437,7 @@ struct Args {
     t1_record: bool,
     c4_record: bool,
     c4_profile: Option<C4ProfileArg>,
+    c41_timing_profile: Option<C41TimingProfileArg>,
     x123_foundation_record: bool,
     c1_record: bool,
     flip_readiness_record: bool,
@@ -1373,6 +1465,25 @@ enum PcgBackendArg {
 enum C4ProfileArg {
     Anchor,
     Rate8,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum C41TimingProfileArg {
+    Anchor,
+    Candidate,
+}
+
+impl C41TimingProfileArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Anchor => "anchor",
+            Self::Candidate => "candidate",
+        }
+    }
+
+    fn fold_expected(self) -> bool {
+        self == Self::Candidate
+    }
 }
 
 impl C4ProfileArg {
@@ -1493,7 +1604,7 @@ impl PcgBackendArg {
 
 fn usage() -> ! {
     eprintln!(
-        "usage: p6_report [--quick] [--c3|--c3-record|--t1-record|--c4-record|--x123-foundation-record|--c1-record|--flip-readiness-record|--fase-d-record] [--c4-profile anchor|rate8] [--pcs-q Q] \
+        "usage: p6_report [--quick] [--c3|--c3-record|--t1-record|--c4-record|--x123-foundation-record|--c1-record|--flip-readiness-record|--fase-d-record] [--c4-profile anchor|rate8] [--c41-timing-profile anchor|candidate] [--pcs-q Q] \
          [--fase-d-pod-profile v1|v2] \
          [--pcg-backend mock|real] [--pcg-authorization-store PATH] \
          [--pcg-connection-store PATH] \
@@ -1513,6 +1624,7 @@ fn parse_args() -> Args {
         t1_record: false,
         c4_record: false,
         c4_profile: None,
+        c41_timing_profile: None,
         x123_foundation_record: false,
         c1_record: false,
         flip_readiness_record: false,
@@ -1546,6 +1658,11 @@ fn parse_args() -> Args {
             out.c4_profile = Some(parse_c4_profile(&profile));
         } else if let Some(profile) = a.strip_prefix("--c4-profile=") {
             out.c4_profile = Some(parse_c4_profile(profile));
+        } else if a == "--c41-timing-profile" {
+            let Some(profile) = args.next() else { usage() };
+            out.c41_timing_profile = Some(parse_c41_timing_profile(&profile));
+        } else if let Some(profile) = a.strip_prefix("--c41-timing-profile=") {
+            out.c41_timing_profile = Some(parse_c41_timing_profile(profile));
         } else if a == "--x123-foundation-record" {
             out.t1_record = true;
             out.x123_foundation_record = true;
@@ -1618,6 +1735,14 @@ fn parse_c4_profile(value: &str) -> C4ProfileArg {
     match value {
         "anchor" => C4ProfileArg::Anchor,
         "rate8" => C4ProfileArg::Rate8,
+        _ => usage(),
+    }
+}
+
+fn parse_c41_timing_profile(value: &str) -> C41TimingProfileArg {
+    match value {
+        "anchor" => C41TimingProfileArg::Anchor,
+        "candidate" => C41TimingProfileArg::Candidate,
         _ => usage(),
     }
 }
@@ -1953,6 +2078,7 @@ struct SessionResult {
     chunk_p2_s: Vec<f64>,
     public_logits_packed_bytes: u64,
     pcg_allocation_hash_match: Option<bool>,
+    c41_fold_executed: bool,
     accelerator_stats: Option<BackendStats>,
 }
 
@@ -2357,6 +2483,7 @@ fn run_session(
         seed,
         pcg_backend,
         None,
+        None,
         accelerator,
     )
 }
@@ -2376,6 +2503,7 @@ fn run_session_resident<'source>(
     with_pcs: bool,
     seed: u8,
     pcg_backend: SessionPcgBackend,
+    c41_timing: Option<&C41TimingOwner>,
     backend: &mut Backend,
 ) -> SessionResult {
     run_session_impl(
@@ -2394,6 +2522,7 @@ fn run_session_resident<'source>(
             bands: resident_bands,
             error,
         }),
+        c41_timing,
         Some(backend),
     )
 }
@@ -2410,6 +2539,7 @@ fn run_session_impl<'source>(
     seed: u8,
     pcg_backend: SessionPcgBackend,
     resident: Option<ResidentSessionInput<'_, 'source>>,
+    c41_timing: Option<&C41TimingOwner>,
     mut accelerator: Option<&mut Backend>,
 ) -> SessionResult {
     let session_started = Instant::now();
@@ -2502,6 +2632,30 @@ fn run_session_impl<'source>(
         } else {
             prove_response(model, wit, &chunks_p, &mut stream, &mut txp)
         }
+    };
+    let c41_fold_executed = if let Some(input) = c41_timing {
+        let accel = accelerator.as_deref_mut().expect("C4.1 timing fold requires CUDA backend");
+        accel
+            .c41_fold_typed_queries_into_device(
+                &input.a,
+                &input.b,
+                &input.query,
+                &input.correction_bitmap,
+                C41_FOLD_CELLS,
+                &input.output,
+            )
+            .expect("C4.1 resident fused fold");
+        let folded = accel
+            .download_device(&input.output, 0, input.output.len())
+            .expect("synchronize C4.1 timing fold");
+        assert!(
+            folded.iter().all(|value| *value == Fp2Repr::default()),
+            "zero C4.1 timing inputs must fold to zero"
+        );
+        std::hint::black_box(folded);
+        true
+    } else {
+        false
     };
     let prove_s = tp0.elapsed().as_secs_f64();
 
@@ -3166,6 +3320,7 @@ fn run_session_impl<'source>(
         chunk_p2_s: out.chunk_p2_s,
         public_logits_packed_bytes,
         pcg_allocation_hash_match,
+        c41_fold_executed,
         accelerator_stats,
     }
 }
@@ -3288,6 +3443,14 @@ fn main() {
     }
     if args.c4_record != args.c4_profile.is_some() {
         eprintln!("p6_report: --c4-record requires exactly one --c4-profile anchor|rate8");
+        std::process::exit(2);
+    }
+    if args.c41_timing_profile.is_some()
+        && (!args.c4_record
+            || args.c4_profile != Some(C4ProfileArg::Anchor)
+            || args.accelerator != AcceleratorArg::CudaResident)
+    {
+        eprintln!("p6_report: --c41-timing-profile requires the cuda-resident C4 anchor record");
         std::process::exit(2);
     }
     if args.c1_record
@@ -3615,6 +3778,17 @@ fn main() {
     assert_eq!(band50.q, n_gen);
     let resident_band50_refs: Vec<&ResidentBandModelWitness<'_>> =
         resident_band50.as_ref().into_iter().collect();
+    let mut c41_timing_owner =
+        if args.c41_timing_profile.is_some_and(C41TimingProfileArg::fold_expected) {
+            Some(
+                C41TimingOwner::allocate(
+                    accelerator.as_mut().expect("C4.1 timing candidate needs resident CUDA"),
+                )
+                .expect("allocate and initialize C4.1 timing owner"),
+            )
+        } else {
+            None
+        };
 
     macro_rules! run_active_session {
         ($public_bands:expr, $resident_bands:expr, $with_pcs:expr, $seed:expr, $pcg:expr) => {{
@@ -3633,6 +3807,7 @@ fn main() {
                     $with_pcs,
                     $seed,
                     $pcg,
+                    c41_timing_owner.as_ref(),
                     accelerator.as_mut().expect("resident CUDA backend"),
                 )
             } else {
@@ -4052,6 +4227,7 @@ fn main() {
                     true,
                     0xA0 + i,
                     SessionPcgBackend::Mock,
+                    None,
                     backend,
                 )
             } else {
@@ -4101,6 +4277,7 @@ fn main() {
                     true,
                     0x40 + i,
                     SessionPcgBackend::Mock,
+                    None,
                     backend,
                 );
                 (prefill, response)
@@ -4292,6 +4469,7 @@ fn main() {
             pcs_commit_total_s: response.pcs_rows.iter().map(|r| r.commit_s).sum(),
             pcs_open_total_s: response.pcs_rows.iter().map(|r| r.open_s).sum(),
             pcs_verify_total_s: response.pcs_rows.iter().map(|r| r.verify_s).sum(),
+            c41_fold_executed: args.c41_timing_profile.map(|_| response.c41_fold_executed),
             p7b_sync_wall_fraction: response
                 .accelerator_stats
                 .as_ref()
@@ -4421,6 +4599,7 @@ fn main() {
                 false,
                 0x22,
                 SessionPcgBackend::Mock,
+                None,
                 accelerator.as_mut().expect("resident CUDA backend"),
             )
         } else {
@@ -4517,6 +4696,9 @@ fn main() {
         accelerator_cached_resident_device_bytes_after_cache_trim,
     ) = if args.accelerator == AcceleratorArg::CudaResident {
         let backend = accelerator.as_mut().expect("resident CUDA backend");
+        if let Some(owner) = c41_timing_owner.take() {
+            owner.free(backend).expect("free C4.1 timing owner");
+        }
         resident_band50
             .take()
             .expect("resident response band")
@@ -5103,6 +5285,69 @@ fn main() {
             gate_verdict: false,
         }
     });
+    let c41_timing = args.c41_timing_profile.map(|profile| {
+        let candidate_setup_slab_bytes =
+            (2 * C41_TYPED_POLYNOMIAL_LANES * C41_FOLD_CELLS * std::mem::size_of::<Fp2Repr>())
+                as u64;
+        let query_bytes = (C41_FOLD_CELLS * std::mem::size_of::<Fp2Repr>()) as u64;
+        let correction_bitmap_bytes = C41_FOLD_CELLS.div_ceil(8) as u64;
+        let folded_output_bytes =
+            (2 * C41_TYPED_POLYNOMIAL_LANES * std::mem::size_of::<Fp2Repr>()) as u64;
+        let observed_peak_device_bytes = repetitions_rows
+            .iter()
+            .filter_map(|row| row.accelerator_session.as_ref().map(|stats| stats.peak_device_bytes))
+            .max()
+            .expect("C4.1 timing record needs measured device peaks");
+        let fold_executed_all_measured =
+            repetitions_rows.iter().all(|row| row.c41_fold_executed == Some(true));
+        C41TimingRecord {
+            profile: profile.as_str(),
+            design_file: "docs/c4.1-folded-query-high-degree-typed-ole.md",
+            construction: "FQ-HD-tOLE",
+            owner_assumption: "XOR4-MAJ7-128",
+            timing_only: true,
+            proof_bytes_credit: false,
+            setup_bytes_credit: false,
+            fold_cells: C41_FOLD_CELLS,
+            polynomial_lanes: C41_TYPED_POLYNOMIAL_LANES,
+            candidate_setup_slab_bytes,
+            query_bytes,
+            correction_bitmap_bytes,
+            folded_output_bytes,
+            allocated_timing_owner_bytes: if profile.fold_expected() {
+                candidate_setup_slab_bytes
+                    + query_bytes
+                    + correction_bitmap_bytes
+                    + folded_output_bytes
+            } else {
+                0
+            },
+            measurement_sync_download_bytes: if profile.fold_expected() {
+                folded_output_bytes
+            } else {
+                0
+            },
+            product_output_remains_device_resident: true,
+            fold_expected: profile.fold_expected(),
+            fold_executed_all_measured,
+            unchanged_measured_response_bytes: rec.comm_bytes,
+            projected_response_bytes: C41_PROJECTED_RESPONSE_BYTES,
+            response_gate_bytes: C41_RESPONSE_GATE_BYTES,
+            response_projection_pass: C41_PROJECTED_RESPONSE_BYTES < C41_RESPONSE_GATE_BYTES,
+            conditional_security_bits: C41_CONDITIONAL_SECURITY_BITS,
+            security_floor_bits: C41_SECURITY_FLOOR_BITS,
+            conditional_security_gate_pass: C41_CONDITIONAL_SECURITY_BITS
+                > C41_SECURITY_FLOOR_BITS,
+            device_live_gate_bytes: C41_DEVICE_LIVE_GATE_BYTES,
+            observed_peak_device_bytes,
+            device_live_gate_pass: observed_peak_device_bytes < C41_DEVICE_LIVE_GATE_BYTES,
+            anchor_prove_response_s: C41_ANCHOR_PROVE_SECONDS,
+            full_prover_gate_ratio: C41_PROVER_GATE_RATIO,
+            full_prover_absolute_gate_s: C41_ANCHOR_PROVE_SECONDS * C41_PROVER_GATE_RATIO,
+            performance_pair_evaluated: false,
+            gate_verdict: false,
+        }
+    });
     let mut report = Report {
         report_schema_version: if args.c4_record {
             11
@@ -5244,6 +5489,7 @@ fn main() {
         t1_exact_counter_pass,
         t1_emult_other_total: t1_surface.then_some(rec.emult_other),
         c4,
+        c41_timing,
         x123_foundation_reference_file: None,
         x123_foundation_reference_digest: None,
         x123_foundation_observed_digest: None,
@@ -5562,6 +5808,8 @@ fn main() {
     assert!(gate_flat, "P6 gate: per-token cost must stay ~flat as the cache grows");
     let mut label = if args.x123_foundation_record {
         "x1-foundation".to_string()
+    } else if let Some(profile) = args.c41_timing_profile {
+        format!("c41-fq-hd-tole-timing-{}-a100", profile.as_str())
     } else if args.c4_record {
         match args.c4_profile.expect("C4 profile") {
             C4ProfileArg::Anchor => "c4-ligero-t1-anchor-a100".to_string(),

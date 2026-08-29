@@ -23,6 +23,7 @@ pub mod c6_response_envelope;
 pub mod c6_response_fixture;
 pub mod c6_source;
 pub mod c6_subfield;
+pub mod c41_folded_tole;
 pub(crate) mod ffn_schedule;
 pub mod gemm_proof;
 pub mod hadamard;
@@ -237,6 +238,10 @@ pub use c6_source::{
 };
 pub use c6_subfield::{
     replay_c6_subfield_coordinate, C6PairedSubfieldWitness, C6SubfieldDigest, C6SubfieldError,
+};
+pub use c41_folded_tole::{
+    c41_fold_typed_queries_reference, c41_fold_typed_queries_resident, C41FoldedQueries,
+    C41_TYPED_POLYNOMIAL_LANES,
 };
 pub use gemm_proof::{
     auth_phase, prove_gemm_blind, prove_gemm_blind_committed, verify_gemm_blind,

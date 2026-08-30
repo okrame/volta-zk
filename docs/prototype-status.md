@@ -8,28 +8,40 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-Read `c4.1-folded-query-high-degree-typed-ole.md` next.
+Read `c4.1-seed-streaming-fiat-shamir.md` next.
 
-- **Status/design.** C4.1 real E2E is complete under
-  `c4.1-folded-query-high-degree-typed-ole.md`. It is functionally accepted
-  but fails its prover-time gate. C6.4 remains CLOSED / NO-GO.
-- **Measured E2E.** Clean `a3604cf` on the same A100 produced and decoded a
-  `67,831,020-B` proof, then accepted the model, PCS, product/zero and single
-  degree-12 close. Core/accounted verifier is `3.035212223 / 3.322998133 s`;
-  peak device use `18,056,184,148 B`. Real/AES PCG and the nonzero SIMT typed
-  lot ran. Setup traffic is `38,371,465 + 2,074,954 = 40,446,419 B`.
-- **Verdict.** Proof `<70,000,000 B`, memory `<30,000,000,000 B`, soundness
-  `78.80929487390853` bits and weight-ZK `120.0170064253057` bits pass. Prover
-  time is `7.942478252 s`, or `1.935020839958646x` the `4.104595717-s` C4
-  anchor: **FAIL >1.30x**. Overall C4.1 gate is FAIL; functional E2E is PASS.
-- **Checks/credit.** The proof is an actual canonical artifact, not the old
-  `66,270,953-B` projection. Prior component credit remains: one prover lot
-  `0.506608224 s`, cold pinned-H2D reload `0.750884772 s`. Conditional
-  XOR4-MAJ7 security is unchanged.
-- **Hard stop.** No retry or new pod run is authorized. Resume requires an
-  owner-approved design that reduces prover time without buying it with proof
-  bytes, communication, security or memory. Cleanup and GitHub publication are
-  complete; no further pod work is authorized under C4.1.
+- **Active work.** The owner authorizes local implementation of C4.1-SVFS:
+  a seed-only streaming CPU verifier plus the domain-separated C41FS1 public
+  transcript. Verifier time, including seed expansion, has no threshold in
+  the first empirical run.
+- **Immutable evidence.** Clean `a3604cf` produced and accepted a
+  `67,831,020-B` proof. Soundness `78.80929487390853`, weight-ZK
+  `120.0170064253057`, setup traffic `40,446,419 B` and peak device use
+  `18,056,184,148 B` pass their gates. Core/accounted verifier was
+  `3.035212223 / 3.322998133 s`.
+- **Unchanged failure.** Prover time `7.942478252 s` is
+  `1.935020839958646x` the C4 anchor and fails `<=1.30x`; overall C4.1 remains
+  FAIL. The successor receives no prover-time repair or promotion credit.
+- **Current checks.** C41FS1 canonical binding, explicit soundness
+  composition, compact-query equivalence, one-time burn, bounded RSS and
+  AArch64 SIMD evidence are pending local implementation and measurement.
+- **Hard stop.** No provider or pod run is authorized. Resume to A100 requires
+  all local design gates, a clean checkpoint, an approved HTTPS artifact
+  channel and a new explicit owner GO recorded here. The separate prover-time
+  failure still requires its own approved repair before C4.1 can pass.
+
+- **2026-08-30 — C4.1-SVFS local implementation authorized; pod remains
+  stopped.** The owner approves the successor plan in
+  `c4.1-seed-streaming-fiat-shamir.md`: retain only compact verifier seed
+  keys, expand them inside a bounded streamed fold, eliminate the 99.5-MB
+  verifier lot and full/per-worker query vectors, and replace public-coin
+  response challenges with a canonical domain-separated BLAKE3 Fiat--Shamir
+  transcript. The complete verifier time, including expansion, is measured
+  without a first-run timing gate. Soundness and weight privacy must each
+  remain above 78 bits; one-time state, proof `<70 MB`, canonical decoding and
+  a 2-GiB safety ceiling remain binding. Work is local-only. No provider or
+  pod contact is authorized until local evidence is complete and a later
+  owner GO is recorded. The immutable C4.1 prover failure is unchanged.
 
 - **2026-08-30 — One-time pod-sync deviation authorized; result content is
   unchanged.** Pod migration removed the GitHub HTTPS credential helper, so

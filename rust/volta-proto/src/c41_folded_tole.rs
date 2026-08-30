@@ -7,7 +7,7 @@
 //! reconstructed from the Packed16 correction.
 
 use rayon::prelude::*;
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 use volta_accel::{
     AccelError, Backend, C41PackedProverDeviceLot, C41PackedVerifierDeviceLot, DeviceBuffer,
     DeviceSlice, Fp2Repr,
@@ -26,6 +26,7 @@ pub const C41_PRG_USABLE_BITS: usize = C41_PRG_OUTPUT_BITS - C41_SEED_BITS;
 pub const C41_BITS_PER_PACKED_CELL: usize = 17;
 pub const C41_DEGREE12_CLOSE_BYTES: usize = 201;
 pub const C41_MAX_BRIDGES_PER_RESPONSE: usize = 1_000_000;
+pub const C41_VERIFIER_STREAM_CHUNK_CELLS: usize = 4_096;
 
 const C41_CLOSE_MAGIC: &[u8; 8] = b"C41D12\0\0";
 const C41_BITNESS_CLOSE_MAGIC: &[u8; 8] = b"C41D02\0\0";
@@ -654,6 +655,88 @@ pub fn c41_expand_packed_keys_reference(
     Ok(lot)
 }
 
+fn c41_expand_packed_key_at(
+    public_seed: [u8; 32],
+    delta: Fp2,
+    seed_keys: &[VerifierKey],
+    rows: usize,
+    first_global_bit: usize,
+) -> Result<(Fp2, Fp2), &'static str> {
+    if rows == 0 || seed_keys.len() != rows.saturating_mul(C41_SEED_BITS) {
+        return Err("invalid C4.1 seed-only verifier inventory");
+    }
+    let end = first_global_bit
+        .checked_add(C41_BITS_PER_PACKED_CELL)
+        .ok_or("C4.1 seed-only coordinate overflow")?;
+    if end > rows.saturating_mul(C41_PRG_USABLE_BITS) {
+        return Err("C4.1 seed-only coordinate escapes its inventory");
+    }
+    let mut packed = C41HdVerifier { key: Fp2::ZERO, degree: C41_MAX_DEGREE as u8 };
+    let mut b_key = Fp2::ZERO;
+    for bit in 0..C41_BITS_PER_PACKED_CELL {
+        let (expansion, output) = c41_output_coordinate(first_global_bit + bit);
+        let row = &seed_keys[expansion * C41_SEED_BITS..(expansion + 1) * C41_SEED_BITS];
+        let sigma = c41_public_sigma(public_seed, expansion, output)?;
+        let value = c41_xor4_maj7_verifier(delta, row, sigma)?;
+        if bit < 16 {
+            packed = packed.add(value.scale(Fp2::from_base(Fp::new(1u64 << bit))), delta);
+        } else {
+            b_key = value.key;
+        }
+    }
+    Ok((packed.key, b_key))
+}
+
+/// Full-geometry verifier expansion smoke without a materialized lot or dense
+/// query. The all-one fold exercises every seed-derived packed key and leaves
+/// only two field accumulators live.
+pub fn c41_seed_streaming_checksum(
+    setup: &C41TypedSetupVerifierState,
+    public_seed: [u8; 32],
+    first_global_bit: usize,
+    cells: usize,
+    delta: Fp2,
+    chunk_cells: usize,
+) -> Result<(Fp2, Fp2), &'static str> {
+    let required = cells
+        .checked_mul(C41_BITS_PER_PACKED_CELL)
+        .and_then(|bits| first_global_bit.checked_add(bits))
+        .ok_or("C4.1 seed-streaming checksum range overflows")?;
+    if public_seed == [0; 32]
+        || delta == Fp2::ZERO
+        || cells == 0
+        || chunk_cells == 0
+        || setup.rows == 0
+        || setup.keys.len() != setup.rows.saturating_mul(C41_SEED_BITS)
+        || required > setup.rows.saturating_mul(C41_PRG_USABLE_BITS)
+    {
+        return Err("invalid C4.1 seed-streaming checksum geometry");
+    }
+    let keys = setup.keys.iter().copied().map(VerifierKey::new).collect::<Vec<_>>();
+    let mut folded = (Fp2::ZERO, Fp2::ZERO);
+    for chunk_start in (0..cells).step_by(chunk_cells) {
+        let chunk_end = (chunk_start + chunk_cells).min(cells);
+        let chunk = (chunk_start..chunk_end)
+            .into_par_iter()
+            .map(|cell| {
+                c41_expand_packed_key_at(
+                    public_seed,
+                    delta,
+                    &keys,
+                    setup.rows,
+                    first_global_bit + cell * C41_BITS_PER_PACKED_CELL,
+                )
+            })
+            .try_reduce(
+                || (Fp2::ZERO, Fp2::ZERO),
+                |left, right| Ok((left.0 + right.0, left.1 + right.1)),
+            )?;
+        folded.0 += chunk.0;
+        folded.1 += chunk.1;
+    }
+    Ok(folded)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C41PackedCorrections {
     pub d: Vec<u16>,
@@ -954,8 +1037,97 @@ struct C41ProverBridge {
 }
 
 struct C41VerifierBridge {
-    entries: Vec<(usize, Fp2)>,
+    query: C41VerifierQuery,
     ordinary: VerifierKey,
+}
+
+enum C41VerifierQuery {
+    Matrix {
+        segment: C41ResponseSegment,
+        row_weights: Arc<[Fp2]>,
+        column_weights: Arc<[Fp2]>,
+    },
+    CacheColumns {
+        segment: C41ResponseSegment,
+        row: usize,
+        column_offset: usize,
+        weights: Arc<[Fp2]>,
+    },
+    CacheRows {
+        segments: Arc<[C41ResponseSegment]>,
+        weights: Arc<[Fp2]>,
+        column_offset: usize,
+        column: usize,
+    },
+    CacheMatrix {
+        segments: Arc<[C41ResponseSegment]>,
+        row_weights: Arc<[Fp2]>,
+        column_weights: Arc<[Fp2]>,
+        column_offset: usize,
+    },
+}
+
+impl C41VerifierQuery {
+    fn add_to_chunk(&self, chunk_start: usize, chunk: &mut [Fp2], scale: Fp2) {
+        let chunk_end = chunk_start + chunk.len();
+        let mut add = |cell: usize, coefficient: Fp2| {
+            if (chunk_start..chunk_end).contains(&cell) {
+                chunk[cell - chunk_start] += scale * coefficient;
+            }
+        };
+        match self {
+            Self::Matrix { segment, row_weights, column_weights } => {
+                let start = chunk_start.max(segment.offset);
+                let end = chunk_end.min(segment.offset + segment.rows * segment.cols);
+                for cell in start..end {
+                    let local = cell - segment.offset;
+                    add(
+                        cell,
+                        row_weights[local / segment.cols] * column_weights[local % segment.cols],
+                    );
+                }
+            }
+            Self::CacheColumns { segment, row, column_offset, weights } => {
+                let base = segment.offset + row * segment.cols + column_offset;
+                let start = chunk_start.max(base);
+                let end = chunk_end.min(base + weights.len());
+                for cell in start..end {
+                    add(cell, weights[cell - base]);
+                }
+            }
+            Self::CacheRows { segments, weights, column_offset, column } => {
+                let mut weight_offset = 0;
+                for segment in segments.iter() {
+                    let base = segment.offset + column_offset + column;
+                    let start_row = chunk_start.saturating_sub(base).div_ceil(segment.cols);
+                    let end_row = chunk_end.saturating_sub(base).div_ceil(segment.cols);
+                    for row in start_row.min(segment.rows)..end_row.min(segment.rows) {
+                        add(base + row * segment.cols, weights[weight_offset + row]);
+                    }
+                    weight_offset += segment.rows;
+                }
+            }
+            Self::CacheMatrix { segments, row_weights, column_weights, column_offset } => {
+                let mut row_offset = 0;
+                for segment in segments.iter() {
+                    let first = segment.offset + column_offset;
+                    let start_row = chunk_start
+                        .saturating_sub(first + column_weights.len().saturating_sub(1))
+                        .div_ceil(segment.cols);
+                    let end_row = chunk_end.saturating_sub(first).div_ceil(segment.cols);
+                    for row in start_row.min(segment.rows)..end_row.min(segment.rows) {
+                        let base = segment.offset + row * segment.cols + column_offset;
+                        let start = chunk_start.max(base);
+                        let end = chunk_end.min(base + column_weights.len());
+                        for cell in start..end {
+                            add(cell, row_weights[row_offset + row] * column_weights[cell - base]);
+                        }
+                    }
+                    row_offset += segment.rows;
+                }
+            }
+        }
+    }
 }
 
 fn packed_bits(values: &[u8]) -> Vec<u8> {
@@ -1320,10 +1492,24 @@ impl C41ProverResponseState {
     }
 }
 
+enum C41VerifierKeySource {
+    Materialized {
+        lot: Option<C41PackedVerifierDeviceLot>,
+        a_keys: Vec<Fp2>,
+        b_keys: Vec<Fp2>,
+    },
+    SeedOnly {
+        public_seed: [u8; 32],
+        seed_keys: Vec<VerifierKey>,
+        rows: usize,
+        first_global_bit: usize,
+        delta: Fp2,
+        chunk_cells: usize,
+    },
+}
+
 pub struct C41VerifierResponseState {
-    lot: Option<C41PackedVerifierDeviceLot>,
-    a_keys: Vec<Fp2>,
-    b_keys: Vec<Fp2>,
+    key_source: C41VerifierKeySource,
     d: Vec<u16>,
     e: Vec<u8>,
     segments: BTreeMap<u64, C41ResponseSegment>,
@@ -1334,14 +1520,9 @@ pub struct C41VerifierResponseState {
 }
 
 impl C41VerifierResponseState {
-    pub fn new(
-        lot: C41PackedVerifierDeviceLot,
-        proof: &C41ResponseProof,
-        _delta: Fp2,
-        backend: &mut Backend,
-    ) -> Result<Self, AccelError> {
-        let cells = lot.cells;
-        if proof.d.len() != cells
+    fn validate_proof_geometry(cells: usize, proof: &C41ResponseProof) -> Result<(), AccelError> {
+        if cells == 0
+            || proof.d.len() != cells
             || proof.e.len() != cells.div_ceil(8)
             || (cells % 8 != 0 && proof.e[cells / 8] >> (cells % 8) != 0)
             || proof.bridge_corrections.is_empty()
@@ -1349,14 +1530,23 @@ impl C41VerifierResponseState {
         {
             return Err(AccelError::InvalidInput("invalid C4.1 response proof geometry"));
         }
+        Ok(())
+    }
+
+    pub fn new(
+        lot: C41PackedVerifierDeviceLot,
+        proof: &C41ResponseProof,
+        _delta: Fp2,
+        backend: &mut Backend,
+    ) -> Result<Self, AccelError> {
+        let cells = lot.cells;
+        Self::validate_proof_geometry(cells, proof)?;
         let a_keys =
             backend.download_device(&lot.a_keys, 0, cells)?.into_iter().map(Fp2::from).collect();
         let b_keys =
             backend.download_device(&lot.b_keys, 0, cells)?.into_iter().map(Fp2::from).collect();
         Ok(Self {
-            lot: Some(lot),
-            a_keys,
-            b_keys,
+            key_source: C41VerifierKeySource::Materialized { lot: Some(lot), a_keys, b_keys },
             d: proof.d.clone(),
             e: proof.e.clone(),
             segments: BTreeMap::new(),
@@ -1365,6 +1555,81 @@ impl C41VerifierResponseState {
             bridge_cursor: 0,
             bridges: Vec::new(),
         })
+    }
+
+    pub fn new_seed_streaming(
+        setup: C41TypedSetupVerifierState,
+        public_seed: [u8; 32],
+        first_global_bit: usize,
+        cells: usize,
+        proof: &C41ResponseProof,
+        delta: Fp2,
+    ) -> Result<Self, AccelError> {
+        Self::new_seed_streaming_with_chunk(
+            setup,
+            public_seed,
+            first_global_bit,
+            cells,
+            proof,
+            delta,
+            C41_VERIFIER_STREAM_CHUNK_CELLS,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_seed_streaming_with_chunk(
+        setup: C41TypedSetupVerifierState,
+        public_seed: [u8; 32],
+        first_global_bit: usize,
+        cells: usize,
+        proof: &C41ResponseProof,
+        delta: Fp2,
+        chunk_cells: usize,
+    ) -> Result<Self, AccelError> {
+        Self::validate_proof_geometry(cells, proof)?;
+        let required_bits = cells
+            .checked_mul(C41_BITS_PER_PACKED_CELL)
+            .and_then(|bits| first_global_bit.checked_add(bits))
+            .ok_or(AccelError::InvalidInput("C4.1 seed-only verifier range overflows"))?;
+        if public_seed == [0; 32]
+            || delta == Fp2::ZERO
+            || setup.rows == 0
+            || setup.keys.len() != setup.rows.saturating_mul(C41_SEED_BITS)
+            || required_bits > setup.rows.saturating_mul(C41_PRG_USABLE_BITS)
+            || chunk_cells == 0
+        {
+            return Err(AccelError::InvalidInput("invalid C4.1 seed-only verifier state"));
+        }
+        Ok(Self {
+            key_source: C41VerifierKeySource::SeedOnly {
+                public_seed,
+                seed_keys: setup.keys.into_iter().map(VerifierKey::new).collect(),
+                rows: setup.rows,
+                first_global_bit,
+                delta,
+                chunk_cells,
+            },
+            d: proof.d.clone(),
+            e: proof.e.clone(),
+            segments: BTreeMap::new(),
+            cursor: 0,
+            bridge_corrections: proof.bridge_corrections.clone(),
+            bridge_cursor: 0,
+            bridges: Vec::new(),
+        })
+    }
+
+    pub fn is_seed_streaming(&self) -> bool {
+        matches!(self.key_source, C41VerifierKeySource::SeedOnly { .. })
+    }
+
+    pub fn persistent_seed_bytes(&self) -> usize {
+        match &self.key_source {
+            C41VerifierKeySource::SeedOnly { seed_keys, .. } => {
+                seed_keys.len() * std::mem::size_of::<VerifierKey>()
+            }
+            C41VerifierKeySource::Materialized { .. } => 0,
+        }
     }
 
     pub fn has_domain(&self, domain: u64) -> bool {
@@ -1402,16 +1667,12 @@ impl C41VerifierResponseState {
         Ok(())
     }
 
-    fn bridge_entries(
+    fn bridge_query(
         &mut self,
-        entries: impl IntoIterator<Item = (usize, Fp2)>,
+        query: C41VerifierQuery,
         verifier: &mut VerifierCtx,
         tx: &mut Transcript,
     ) -> Result<VerifierKey, AccelError> {
-        let entries = entries.into_iter().collect::<Vec<_>>();
-        if entries.is_empty() || entries.iter().any(|(cell, _)| *cell >= self.d.len()) {
-            return Err(AccelError::InvalidInput("C4.1 verifier query escapes its lot"));
-        }
         let index = self.bridge_cursor;
         let correction = *self
             .bridge_corrections
@@ -1423,7 +1684,7 @@ impl C41VerifierResponseState {
             .ok_or(AccelError::InvalidInput("C4.1 verifier bridge domain overflows"))?;
         tx.append_fp2s(C41_BRIDGE_LABEL, &[correction]);
         let ordinary = verifier.correct_full_verifier_key(domain, correction);
-        self.bridges.push(C41VerifierBridge { entries, ordinary });
+        self.bridges.push(C41VerifierBridge { query, ordinary });
         Ok(ordinary)
     }
 
@@ -1443,9 +1704,16 @@ impl C41VerifierResponseState {
         if segment.rows != rows || segment.cols != cols {
             return Err(AccelError::InvalidInput("C4.1 verifier matrix geometry differs"));
         }
-        let query = matrix_query(rows, cols, point)?;
-        self.bridge_entries(
-            query.into_iter().enumerate().map(|(index, weight)| (segment.offset + index, weight)),
+        let col_bits = exact_bits(cols);
+        if point.len() != col_bits + exact_bits(rows) {
+            return Err(AccelError::InvalidInput("C4.1 matrix query point mismatch"));
+        }
+        let column_weights =
+            crate::mle::eq_vec(&point[..col_bits]).into_iter().take(cols).collect::<Arc<[_]>>();
+        let row_weights =
+            crate::mle::eq_vec(&point[col_bits..]).into_iter().take(rows).collect::<Arc<[_]>>();
+        self.bridge_query(
+            C41VerifierQuery::Matrix { segment, row_weights, column_weights },
             verifier,
             tx,
         )
@@ -1460,23 +1728,32 @@ impl C41VerifierResponseState {
         verifier: &mut VerifierCtx,
         tx: &mut Transcript,
     ) -> Result<Vec<VerifierKey>, AccelError> {
+        if weights.len() < width || width == 0 {
+            return Err(AccelError::InvalidInput("C4.1 verifier cache-column weights differ"));
+        }
+        let weights = Arc::<[Fp2]>::from(weights[..width].to_vec());
         let mut output = Vec::with_capacity(segments.iter().map(|segment| segment.1).sum());
         for &(domain, rows) in segments {
             let segment = *self
                 .segments
                 .get(&domain)
                 .ok_or(AccelError::InvalidInput("unknown C4.1 verifier cache segment"))?;
-            if segment.rows != rows || weights.len() < width || column_offset + width > segment.cols
-            {
+            if segment.rows != rows || column_offset + width > segment.cols {
                 return Err(AccelError::InvalidInput(
                     "C4.1 verifier cache-column geometry differs",
                 ));
             }
             for row in 0..rows {
-                let entries = (0..width).map(|column| {
-                    (segment.offset + row * segment.cols + column_offset + column, weights[column])
-                });
-                output.push(self.bridge_entries(entries, verifier, tx)?);
+                output.push(self.bridge_query(
+                    C41VerifierQuery::CacheColumns {
+                        segment,
+                        row,
+                        column_offset,
+                        weights: weights.clone(),
+                    },
+                    verifier,
+                    tx,
+                )?);
             }
         }
         Ok(output)
@@ -1495,29 +1772,34 @@ impl C41VerifierResponseState {
         if weights.len() < rows {
             return Err(AccelError::InvalidInput("C4.1 verifier cache-row weights differ"));
         }
+        if width == 0 {
+            return Err(AccelError::InvalidInput("C4.1 verifier cache-row width is zero"));
+        }
+        let mut resolved = Vec::with_capacity(segments.len());
+        for &(domain, segment_rows) in segments {
+            let segment = *self
+                .segments
+                .get(&domain)
+                .ok_or(AccelError::InvalidInput("unknown C4.1 verifier cache segment"))?;
+            if segment.rows != segment_rows || column_offset + width > segment.cols {
+                return Err(AccelError::InvalidInput("C4.1 verifier cache-row geometry differs"));
+            }
+            resolved.push(segment);
+        }
+        let segments = Arc::<[C41ResponseSegment]>::from(resolved);
+        let weights = Arc::<[Fp2]>::from(weights[..rows].to_vec());
         let mut output = Vec::with_capacity(width);
         for column in 0..width {
-            let mut entries = Vec::with_capacity(rows);
-            let mut weight_offset = 0;
-            for &(domain, rows) in segments {
-                let segment = *self
-                    .segments
-                    .get(&domain)
-                    .ok_or(AccelError::InvalidInput("unknown C4.1 verifier cache segment"))?;
-                if segment.rows != rows || column_offset + width > segment.cols {
-                    return Err(AccelError::InvalidInput(
-                        "C4.1 verifier cache-row geometry differs",
-                    ));
-                }
-                entries.extend((0..rows).map(|row| {
-                    (
-                        segment.offset + row * segment.cols + column_offset + column,
-                        weights[weight_offset + row],
-                    )
-                }));
-                weight_offset += rows;
-            }
-            output.push(self.bridge_entries(entries, verifier, tx)?);
+            output.push(self.bridge_query(
+                C41VerifierQuery::CacheRows {
+                    segments: segments.clone(),
+                    weights: weights.clone(),
+                    column_offset,
+                    column,
+                },
+                verifier,
+                tx,
+            )?);
         }
         Ok(output)
     }
@@ -1535,8 +1817,7 @@ impl C41VerifierResponseState {
         if row_weights.len() < rows || column_weights.is_empty() {
             return Err(AccelError::InvalidInput("C4.1 verifier cache matrix weights differ"));
         }
-        let mut entries = Vec::with_capacity(rows * column_weights.len());
-        let mut row_offset = 0;
+        let mut resolved = Vec::with_capacity(segments.len());
         for &(domain, segment_rows) in segments {
             let segment = *self
                 .segments
@@ -1547,17 +1828,18 @@ impl C41VerifierResponseState {
                     "C4.1 verifier cache matrix geometry differs",
                 ));
             }
-            for row in 0..segment_rows {
-                for (column, weight) in column_weights.iter().copied().enumerate() {
-                    entries.push((
-                        segment.offset + row * segment.cols + column_offset + column,
-                        row_weights[row_offset + row] * weight,
-                    ));
-                }
-            }
-            row_offset += segment_rows;
+            resolved.push(segment);
         }
-        self.bridge_entries(entries, verifier, tx)
+        self.bridge_query(
+            C41VerifierQuery::CacheMatrix {
+                segments: Arc::from(resolved),
+                row_weights: Arc::from(row_weights[..rows].to_vec()),
+                column_weights: Arc::from(column_weights.to_vec()),
+                column_offset,
+            },
+            verifier,
+            tx,
+        )
     }
 
     pub fn finish(
@@ -1565,66 +1847,104 @@ impl C41VerifierResponseState {
         proof: &C41DegreeCloseProof,
         verifier: &mut VerifierCtx,
         tx: &mut Transcript,
-        backend: &mut Backend,
+        mut backend: Option<&mut Backend>,
     ) -> Result<bool, AccelError> {
         if self.cursor != self.d.len() || self.bridge_cursor != self.bridge_corrections.len() {
             return Err(AccelError::InvalidInput("incomplete C4.1 verifier consumption"));
         }
         let bridge_challenge = tx.challenge_fp2();
         let mut bridge_power = Fp2::ONE;
-        let cells = self.d.len();
-        let query = self
-            .bridges
-            .par_iter()
-            .enumerate()
-            .fold(
-                || vec![Fp2::ZERO; cells],
-                |mut local, (index, bridge)| {
-                    let power = fp2_pow(bridge_challenge, index + 1);
-                    for &(cell, coefficient) in &bridge.entries {
-                        local[cell] += power * coefficient;
-                    }
-                    local
-                },
-            )
-            .reduce(
-                || vec![Fp2::ZERO; cells],
-                |mut left, right| {
-                    left.iter_mut().zip(right).for_each(|(left, right)| *left += right);
-                    left
-                },
-            );
+        let mut bridge_powers = Vec::with_capacity(self.bridges.len());
         let mut ordinary = C41HdVerifier::public(verifier.delta, Fp2::ZERO);
         for bridge in &self.bridges {
             bridge_power = bridge_power * bridge_challenge;
+            bridge_powers.push(bridge_power);
             ordinary = ordinary
                 .add(C41HdVerifier::ordinary(bridge.ordinary).scale(bridge_power), verifier.delta);
         }
-        let (a_key, b_key) = (0..query.len())
-            .into_par_iter()
-            .fold(
-                || (Fp2::ZERO, Fp2::ZERO),
-                |(a, b), cell| {
-                    let weight = query[cell];
-                    let signed = if (self.e[cell / 8] >> (cell % 8)) & 1 == 0 {
-                        weight
-                    } else {
-                        Fp2::ZERO - weight
-                    };
-                    (a + weight * self.a_keys[cell], b + signed * self.b_keys[cell])
-                },
-            )
-            .reduce(|| (Fp2::ZERO, Fp2::ZERO), |left, right| (left.0 + right.0, left.1 + right.1));
-        let public = query
-            .par_iter()
-            .enumerate()
-            .map(|(cell, weight)| {
-                let e = (self.e[cell / 8] >> (cell % 8)) & 1;
-                let correction = i64::from(self.d[cell]) - (1 << 15) - (i64::from(e) << 16);
-                weight.mul_base(Fp::from_i64(correction))
-            })
-            .reduce(|| Fp2::ZERO, |left, right| left + right);
         let delta = verifier.delta;
+        let chunk_cells = match &self.key_source {
+            C41VerifierKeySource::Materialized { a_keys, b_keys, .. } => {
+                if a_keys.len() != self.d.len() || b_keys.len() != self.d.len() {
+                    return Err(AccelError::InvalidInput("C4.1 materialized verifier keys differ"));
+                }
+                C41_VERIFIER_STREAM_CHUNK_CELLS
+            }
+            C41VerifierKeySource::SeedOnly {
+                seed_keys,
+                rows,
+                first_global_bit,
+                delta: setup_delta,
+                chunk_cells,
+                ..
+            } => {
+                let required = self
+                    .d
+                    .len()
+                    .checked_mul(C41_BITS_PER_PACKED_CELL)
+                    .and_then(|bits| first_global_bit.checked_add(bits))
+                    .ok_or(AccelError::InvalidInput("C4.1 seed-only verifier range overflows"))?;
+                if *setup_delta != delta
+                    || seed_keys.len() != rows.saturating_mul(C41_SEED_BITS)
+                    || required > rows.saturating_mul(C41_PRG_USABLE_BITS)
+                {
+                    return Err(AccelError::InvalidInput(
+                        "C4.1 seed-only verifier binding differs",
+                    ));
+                }
+                *chunk_cells
+            }
+        };
+        let mut a_key = Fp2::ZERO;
+        let mut b_key = Fp2::ZERO;
+        let mut public = Fp2::ZERO;
+        for chunk_start in (0..self.d.len()).step_by(chunk_cells) {
+            let chunk_end = (chunk_start + chunk_cells).min(self.d.len());
+            let mut query = vec![Fp2::ZERO; chunk_end - chunk_start];
+            for (bridge, power) in self.bridges.iter().zip(&bridge_powers) {
+                bridge.query.add_to_chunk(chunk_start, &mut query, *power);
+            }
+            let (chunk_a, chunk_b, chunk_public) = query
+                .par_iter()
+                .copied()
+                .enumerate()
+                .map(|(local, weight)| -> Result<(Fp2, Fp2, Fp2), AccelError> {
+                    if weight == Fp2::ZERO {
+                        return Ok((Fp2::ZERO, Fp2::ZERO, Fp2::ZERO));
+                    }
+                    let cell = chunk_start + local;
+                    let (a, b) = match &self.key_source {
+                        C41VerifierKeySource::Materialized { a_keys, b_keys, .. } => {
+                            (a_keys[cell], b_keys[cell])
+                        }
+                        C41VerifierKeySource::SeedOnly {
+                            public_seed,
+                            seed_keys,
+                            rows,
+                            first_global_bit,
+                            ..
+                        } => c41_expand_packed_key_at(
+                            *public_seed,
+                            delta,
+                            seed_keys,
+                            *rows,
+                            first_global_bit + cell * C41_BITS_PER_PACKED_CELL,
+                        )
+                        .map_err(AccelError::InvalidInput)?,
+                    };
+                    let e = (self.e[cell / 8] >> (cell % 8)) & 1;
+                    let signed = if e == 0 { weight } else { Fp2::ZERO - weight };
+                    let correction = i64::from(self.d[cell]) - (1 << 15) - (i64::from(e) << 16);
+                    Ok((weight * a, signed * b, weight.mul_base(Fp::from_i64(correction))))
+                })
+                .try_reduce(
+                    || (Fp2::ZERO, Fp2::ZERO, Fp2::ZERO),
+                    |left, right| Ok((left.0 + right.0, left.1 + right.1, left.2 + right.2)),
+                )?;
+            a_key += chunk_a;
+            b_key += chunk_b;
+            public += chunk_public;
+        }
         let typed = C41HdVerifier {
             key: a_key - Fp2::from_base(Fp::new(1 << 16)) * b_key + fp2_pow(delta, 12) * public,
             degree: 12,
@@ -1633,9 +1953,14 @@ impl C41VerifierResponseState {
         let mask_keys = verifier.expand_full_verifier_keys(C41_CLOSE_MASK_DOMAIN, 11);
         tx.append_message("c41_degree_close_frame", &[C41_CLOSE_MAGIC.as_slice(), &[12]].concat());
         let accepted = c41_degree_close_verify(relation, &mask_keys, delta, proof, tx);
-        let lot = self.lot.take().expect("C4.1 verifier lot is consumed once");
-        backend.free_device(lot.a_keys)?;
-        backend.free_device(lot.b_keys)?;
+        if let C41VerifierKeySource::Materialized { lot, .. } = &mut self.key_source {
+            let lot = lot.take().expect("C4.1 verifier lot is consumed once");
+            let backend = backend
+                .as_deref_mut()
+                .ok_or(AccelError::InvalidInput("C4.1 materialized verifier requires backend"))?;
+            backend.free_device(lot.a_keys)?;
+            backend.free_device(lot.b_keys)?;
+        }
         Ok(accepted)
     }
 }
@@ -1791,7 +2116,33 @@ mod tests {
             c41_expand_packed_cells_reference(public_seed, &prover_rows, first, 2).unwrap();
         let verifier =
             c41_expand_packed_keys_reference(public_seed, delta, &verifier_rows, first, 2).unwrap();
+        let flat_keys = verifier_rows.iter().flatten().copied().collect::<Vec<_>>();
+        let checksum = c41_seed_streaming_checksum(
+            &C41TypedSetupVerifierState {
+                keys: flat_keys.iter().map(|key| key.k).collect(),
+                rows: verifier_rows.len(),
+            },
+            public_seed,
+            first,
+            2,
+            delta,
+            1,
+        )
+        .unwrap();
+        assert_eq!(checksum.0, verifier.a_keys.iter().copied().fold(Fp2::ZERO, |a, b| a + b));
+        assert_eq!(checksum.1, verifier.b_keys.iter().copied().fold(Fp2::ZERO, |a, b| a + b));
         for cell in 0..2 {
+            assert_eq!(
+                c41_expand_packed_key_at(
+                    public_seed,
+                    delta,
+                    &flat_keys,
+                    verifier_rows.len(),
+                    first + cell * C41_BITS_PER_PACKED_CELL,
+                )
+                .unwrap(),
+                (verifier.a_keys[cell], verifier.b_keys[cell]),
+            );
             let mut a = [Fp2::ZERO; C41_MAX_DEGREE + 1];
             let mut b = [Fp2::ZERO; C41_MAX_DEGREE + 1];
             for lane in 0..C41_TYPED_POLYNOMIAL_LANES {
@@ -1815,6 +2166,166 @@ mod tests {
         let corrections =
             c41_pack_corrections(&values, &prover.a_values, &prover.b_bitmap).unwrap();
         assert_eq!(c41_unpack_corrections(&prover, &corrections).unwrap(), values);
+    }
+
+    #[test]
+    fn compact_verifier_queries_match_dense_entries_across_chunks() {
+        let f = |value| Fp2::from_base(Fp::new(value));
+        let first = C41ResponseSegment { offset: 2, rows: 2, cols: 3 };
+        let second = C41ResponseSegment { offset: 10, rows: 1, cols: 3 };
+        let queries = [
+            C41VerifierQuery::Matrix {
+                segment: first,
+                row_weights: Arc::from(vec![f(2), f(3)]),
+                column_weights: Arc::from(vec![f(5), f(7), f(11)]),
+            },
+            C41VerifierQuery::CacheColumns {
+                segment: first,
+                row: 1,
+                column_offset: 1,
+                weights: Arc::from(vec![f(13), f(17)]),
+            },
+            C41VerifierQuery::CacheRows {
+                segments: Arc::from(vec![first, second]),
+                weights: Arc::from(vec![f(19), f(23), f(29)]),
+                column_offset: 0,
+                column: 2,
+            },
+            C41VerifierQuery::CacheMatrix {
+                segments: Arc::from(vec![first, second]),
+                row_weights: Arc::from(vec![f(31), f(37), f(41)]),
+                column_weights: Arc::from(vec![f(43), f(47)]),
+                column_offset: 1,
+            },
+        ];
+        let powers = [f(53), f(59), f(61), f(67)];
+        let mut chunked = vec![Fp2::ZERO; 13];
+        for start in (0..chunked.len()).step_by(4) {
+            let end = (start + 4).min(chunked.len());
+            for (query, power) in queries.iter().zip(powers) {
+                query.add_to_chunk(start, &mut chunked[start..end], power);
+            }
+        }
+
+        let mut dense = vec![Fp2::ZERO; 13];
+        for row in 0..first.rows {
+            for column in 0..first.cols {
+                dense[first.offset + row * first.cols + column] +=
+                    powers[0] * [f(2), f(3)][row] * [f(5), f(7), f(11)][column];
+            }
+        }
+        dense[first.offset + first.cols + 1] += powers[1] * f(13);
+        dense[first.offset + first.cols + 2] += powers[1] * f(17);
+        for (segment, offset) in [(first, 0), (second, 2)] {
+            for row in 0..segment.rows {
+                dense[segment.offset + row * segment.cols + 2] +=
+                    powers[2] * [f(19), f(23), f(29)][offset + row];
+                for column in 0..2 {
+                    dense[segment.offset + row * segment.cols + 1 + column] +=
+                        powers[3] * [f(31), f(37), f(41)][offset + row] * [f(43), f(47)][column];
+                }
+            }
+        }
+        assert_eq!(chunked, dense);
+    }
+
+    #[test]
+    fn seed_streaming_finish_accepts_honest_reduced_geometry() {
+        let delta = Fp2::new(Fp::new(71), Fp::new(73));
+        let public_seed = [0xC4; 32];
+        let pcg_seed = [0x45; 32];
+        let cells = 8;
+        let segment = C41ResponseSegment { offset: 0, rows: 2, cols: 4 };
+        let point = vec![Fp2::new(Fp::new(5), Fp::new(7)); 3];
+        let query = matrix_query(segment.rows, segment.cols, &point).unwrap();
+
+        let mut prover = CorrelationStream::new(pcg_seed);
+        let bits = (0..C41_SEED_BITS).map(|index| (index % 5 == 0) as i16).collect::<Vec<_>>();
+        let (seed_corrections, seed_values) =
+            auth_prover(&mut prover, 0x4110, &bits, &mut Transcript::new([1; 32]));
+        let lot = c41_expand_packed_cells_reference(
+            public_seed,
+            std::slice::from_ref(&seed_values),
+            0,
+            cells,
+        )
+        .unwrap();
+        let plaintexts = [i16::MIN, -1234, -1, 0, 1, 2345, 30_000, i16::MAX];
+        let corrections = c41_pack_corrections(&plaintexts, &lot.a_values, &lot.b_bitmap).unwrap();
+        let bridge_value = query.iter().zip(plaintexts).fold(Fp2::ZERO, |sum, (weight, value)| {
+            sum + *weight * Fp2::from_base(Fp::from_i64(i64::from(value)))
+        });
+
+        let bridge_corr = prover.draw_fulls(C41_BRIDGE_DOMAIN_BASE, 1)[0];
+        let bridge_correction = bridge_value - bridge_corr.x;
+        let ordinary = bridge_corr.authenticate(bridge_value);
+        let mut prover_tx = Transcript::new_c41_fiat_shamir([0x46; 32]).unwrap();
+        prover_tx.append_fp2s(C41_BRIDGE_LABEL, &[bridge_correction]);
+        let challenge = prover_tx.challenge_fp2();
+        let scaled_query = query.iter().map(|weight| challenge * *weight).collect::<Vec<_>>();
+        let ordinary = ordinary.scale(challenge);
+        let radix = Fp2::from_base(Fp::new(1 << 16));
+        let mut coefficients = [Fp2::ZERO; C41_MAX_DEGREE + 1];
+        for lane in 0..C41_TYPED_POLYNOMIAL_LANES {
+            for (cell, weight) in scaled_query.iter().copied().enumerate() {
+                coefficients[lane] += weight * lot.a[lane * cells + cell];
+                let e = (corrections.e[cell / 8] >> (cell % 8)) & 1;
+                let signed = if e == 0 { weight } else { Fp2::ZERO - weight };
+                coefficients[lane] =
+                    coefficients[lane] - radix * signed * lot.b[lane * cells + cell];
+            }
+        }
+        coefficients[12] = ordinary.x;
+        let relation =
+            C41HdProver { coefficients, degree: 12 }.sub(C41HdProver::ordinary(ordinary));
+        assert_eq!(relation.value(), Fp2::ZERO);
+        let masks = prover.draw_fulls(C41_CLOSE_MASK_DOMAIN, 11);
+        prover_tx.append_message(
+            "c41_degree_close_frame",
+            &[C41_CLOSE_MAGIC.as_slice(), &[12]].concat(),
+        );
+        let close = c41_degree_close_prover(relation, &masks, &mut prover_tx).unwrap();
+
+        let run_verifier = |threads| {
+            let pool = rayon::ThreadPoolBuilder::new().num_threads(threads).build().unwrap();
+            pool.install(|| {
+                let mut verifier = VerifierCtx::new(pcg_seed, delta);
+                let seed_keys = auth_verifier(&mut verifier, 0x4110, &seed_corrections);
+                let bridge_key =
+                    verifier.correct_full_verifier_key(C41_BRIDGE_DOMAIN_BASE, bridge_correction);
+                let state = C41VerifierResponseState {
+                    key_source: C41VerifierKeySource::SeedOnly {
+                        public_seed,
+                        seed_keys,
+                        rows: 1,
+                        first_global_bit: 0,
+                        delta,
+                        chunk_cells: 3,
+                    },
+                    d: corrections.d.clone(),
+                    e: corrections.e.clone(),
+                    segments: BTreeMap::from([(0x4120, segment)]),
+                    cursor: cells,
+                    bridge_corrections: vec![bridge_correction],
+                    bridge_cursor: 1,
+                    bridges: vec![C41VerifierBridge {
+                        query: C41VerifierQuery::Matrix {
+                            segment,
+                            row_weights: Arc::from(crate::mle::eq_vec(&point[2..])),
+                            column_weights: Arc::from(crate::mle::eq_vec(&point[..2])),
+                        },
+                        ordinary: bridge_key,
+                    }],
+                };
+                let mut transcript = Transcript::new_c41_fiat_shamir([0x46; 32]).unwrap();
+                transcript.append_fp2s(C41_BRIDGE_LABEL, &[bridge_correction]);
+                assert!(state.finish(&close, &mut verifier, &mut transcript, None).unwrap());
+                transcript.canonical_binding_digest().unwrap()
+            })
+        };
+        let expected = prover_tx.canonical_binding_digest().unwrap();
+        assert_eq!(run_verifier(1), expected);
+        assert_eq!(run_verifier(4), expected);
     }
 
     #[test]

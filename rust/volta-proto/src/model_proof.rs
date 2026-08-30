@@ -4975,7 +4975,53 @@ pub fn verify_response_private_logits_c41(
     tx: &mut Transcript,
     backend: &mut Backend,
 ) -> Option<(ModelOutV, ProdKeyTriples, Vec<VerifierKey>)> {
-    let model = Gpt2VerifierView::full(model);
+    verify_response_private_logits_c41_view(
+        Gpt2VerifierView::full(model),
+        t,
+        chunks,
+        proof,
+        state,
+        vc,
+        tx,
+        Some(backend),
+    )
+}
+
+/// CPU/client entry point. The compact verifier profile contains no committed
+/// weight matrices, and seed-only C4.1 verification needs no accelerator.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_response_private_logits_c41_from_profile(
+    model: &Gpt2VerifierModel,
+    t: usize,
+    chunks: &[PrivateChunkPub<'_>],
+    proof: &ModelProof,
+    state: C41VerifierResponseState,
+    vc: &mut VerifierCtx,
+    tx: &mut Transcript,
+) -> Option<(ModelOutV, ProdKeyTriples, Vec<VerifierKey>)> {
+    verify_response_private_logits_c41_view(
+        Gpt2VerifierView::slim(model),
+        t,
+        chunks,
+        proof,
+        state,
+        vc,
+        tx,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_response_private_logits_c41_view(
+    model: Gpt2VerifierView<'_>,
+    t: usize,
+    chunks: &[PrivateChunkPub<'_>],
+    proof: &ModelProof,
+    state: C41VerifierResponseState,
+    vc: &mut VerifierCtx,
+    tx: &mut Transcript,
+    backend: Option<&mut Backend>,
+) -> Option<(ModelOutV, ProdKeyTriples, Vec<VerifierKey>)> {
     let views: Vec<ChunkPub<'_>> =
         chunks.iter().map(|chunk| ChunkPub { q: chunk.q, logits: &[], seq: chunk.seq }).collect();
     let state = Rc::new(RefCell::new(state));

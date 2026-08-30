@@ -52,12 +52,12 @@ pub use block_proof::{
     LayerOut, LayerOutV, LayerProof, LnChainProof, TableBankP, TableBankV, TableCloseProof,
 };
 pub use c41_folded_tole::{
-    c41_fold_typed_queries_reference, c41_fold_typed_queries_resident, C41FoldedQueries,
-    C41_TYPED_POLYNOMIAL_LANES,
+    c41_fold_typed_queries_reference, c41_fold_typed_queries_resident, c41_seed_streaming_checksum,
+    C41FoldedQueries, C41TypedSetupVerifierState, C41_TYPED_POLYNOMIAL_LANES,
 };
 pub use c41_response_envelope::{
-    C41ResponseClosureProof, C41ResponseEnvelopeError, C41ResponseProofEnvelope,
-    C41_RESPONSE_ENVELOPE_MAX_BYTES,
+    C41FiatShamirPublicContext, C41ResponseClosureProof, C41ResponseEnvelopeError,
+    C41ResponseProofEnvelope, C41_FIAT_SHAMIR_CONTEXT_VERSION, C41_RESPONSE_ENVELOPE_MAX_BYTES,
 };
 pub use c6::{
     C6CacheHead, C6ClientAttempt, C6ClientState, C6ClientStore, C6CorrelationRange,
@@ -264,8 +264,9 @@ pub use model_proof::{
     prove_response_private_logits_with_backend, prove_response_resident,
     prove_response_resident_private_logits, prove_response_resident_private_logits_c41,
     prove_response_with_backend, verify_model, verify_response, verify_response_private_logits,
-    verify_response_private_logits_c41, ChunkPub, ChunkRef, EmbedProof, FinalLnProof, ModelOut,
-    ModelOutV, ModelProof, PrivateChunkPub, ResidentChunkRef, SeamProof,
+    verify_response_private_logits_c41, verify_response_private_logits_c41_from_profile, ChunkPub,
+    ChunkRef, EmbedProof, FinalLnProof, ModelOut, ModelOutV, ModelProof, PrivateChunkPub,
+    ResidentChunkRef, SeamProof,
 };
 #[cfg(feature = "c6-trace")]
 pub use model_proof::{

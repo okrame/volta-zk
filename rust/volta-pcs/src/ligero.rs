@@ -1196,6 +1196,36 @@ fn encode_wire_fp2(bytes: &mut Vec<u8>, value: Fp2) {
     bytes.extend_from_slice(&value.c1.value().to_le_bytes());
 }
 
+fn append_multi_u_vectors(tx: &mut Transcript, u_c: &[Fp2], u_gs: &[Vec<Fp2>]) {
+    let mut slices = Vec::with_capacity(u_gs.len() + 1);
+    slices.push(u_c);
+    slices.extend(u_gs.iter().map(Vec::as_slice));
+    tx.append_fp2_value_slices_digest("pcs_u_vectors", &slices);
+}
+
+fn append_multi_columns(tx: &mut Transcript, columns: &[MultiColumnOpening]) {
+    let mut hasher = blake3::Hasher::new();
+    let mut logical_bytes = 0u64;
+    for column in columns {
+        hasher.update(&column.j.to_le_bytes());
+        logical_bytes = logical_bytes.checked_add(4).expect("PCS column byte count overflow");
+        for value in &column.col {
+            hasher.update(&value.value().to_le_bytes());
+            logical_bytes = logical_bytes.checked_add(8).expect("PCS column byte count overflow");
+        }
+        for value in &column.mask_col {
+            hasher.update(&value.c0.value().to_le_bytes());
+            hasher.update(&value.c1.value().to_le_bytes());
+            logical_bytes = logical_bytes.checked_add(16).expect("PCS column byte count overflow");
+        }
+        for digest in column.path.iter().chain(&column.mask_path) {
+            hasher.update(digest);
+            logical_bytes = logical_bytes.checked_add(32).expect("PCS column byte count overflow");
+        }
+    }
+    tx.append_message_digest("pcs_columns", logical_bytes, *hasher.finalize().as_bytes());
+}
+
 struct MultiOpenReader<'a> {
     bytes: &'a [u8],
     offset: usize,
@@ -1399,7 +1429,7 @@ pub fn open_multi_zk_resident(
     let mask_root = resident
         .backend
         .merkle_root_device(resident.mask_tree.as_ref().expect("resident mask tree registered"))?;
-    tx.append("pcs_mask_root", 32);
+    tx.append_message("pcs_mask_root", &mask_root);
     tm.t_masks_s = t0.elapsed().as_secs_f64();
 
     // 2. Proximity challenge and one resident global row pass.
@@ -1509,7 +1539,7 @@ pub fn open_multi_zk_resident(
     resident
         .backend
         .free_device(resident.coeff_device.take().expect("resident coefficients registered"))?;
-    tx.append("pcs_u_vectors", 16 * (msg_len * (n_claims + 1)) as u64);
+    append_multi_u_vectors(tx, &u_c, &u_gs);
     tm.t_block_passes_s = t2.elapsed().as_secs_f64();
 
     // 4. Compute every s_g on device. Only compact claim points cross H2D;
@@ -1576,7 +1606,7 @@ pub fn open_multi_zk_resident(
         let ip = (0..cols).fold(Fp2::ZERO, |sum, j| sum + u_gs[g][j] * q_col[j]);
         zs.push(claims[g].1.add(s_auth).sub(ProverAuthed::from_public(ip)));
     }
-    tx.append("pcs_s_corrections", 16 * n_claims as u64);
+    tx.append_fp2_value_slices_digest("pcs_s_corrections", &[&corr_ss]);
     let zb_corr = stream.draw_fulls(dom_zb, 1)[0];
     let (zb_mask, mask_corr) = fresh_zero_mask(zb_corr, tx);
     let chi = tx.challenge_fp2();
@@ -1686,15 +1716,7 @@ pub fn open_multi_zk_resident(
     resident
         .backend
         .free_device(resident.mask_encoded.take().expect("resident mask encoding registered"))?;
-    let col_b: u64 = columns
-        .iter()
-        .map(|column| {
-            4 + 8 * column.col.len() as u64
-                + 16 * column.mask_col.len() as u64
-                + 32 * (column.path.len() + column.mask_path.len()) as u64
-        })
-        .sum();
-    tx.append("pcs_columns", col_b);
+    append_multi_columns(tx, &columns);
     tm.t_columns_s = t4.elapsed().as_secs_f64();
 
     Ok((MultiOpenProof { mask_root, u_c, u_gs, corr_ss, mask_corr, m_z, columns }, tm))
@@ -1770,7 +1792,7 @@ fn open_multi_zk_impl(
     } else {
         build_mask_tree()
     };
-    tx.append("pcs_mask_root", 32);
+    tx.append_message("pcs_mask_root", &mask_tree.root());
     tm.t_masks_s = t0.elapsed().as_secs_f64();
 
     // 2. Proximity challenge and global pass over all rows.
@@ -1833,7 +1855,7 @@ fn open_multi_zk_impl(
             u[j] += masks[1 + g][j];
         }
     }
-    tx.append("pcs_u_vectors", 16 * (msg_len * (n_claims + 1)) as u64);
+    append_multi_u_vectors(tx, &u_c, &u_gs);
     tm.t_block_passes_s = t2.elapsed().as_secs_f64();
 
     // 4. Authenticate the s_g; MAC resolution via one Π_ZeroBatch.
@@ -1848,7 +1870,7 @@ fn open_multi_zk_impl(
         let ip = (0..cols).fold(Fp2::ZERO, |a, j| a + u_gs[g][j] * geo.q_col[j]);
         zs.push(claims[g].1.add(s_auth).sub(ProverAuthed::from_public(ip)));
     }
-    tx.append("pcs_s_corrections", 16 * n_claims as u64);
+    tx.append_fp2_value_slices_digest("pcs_s_corrections", &[&corr_ss]);
     let zb_corr = stream.draw_fulls(dom_zb, 1)[0];
     let (zb_mask, mask_corr) = fresh_zero_mask(zb_corr, tx);
     let chi = tx.challenge_fp2();
@@ -1885,15 +1907,7 @@ fn open_multi_zk_impl(
     } else {
         build_columns()
     };
-    let col_b: u64 = columns
-        .iter()
-        .map(|c| {
-            4 + 8 * c.col.len() as u64
-                + 16 * c.mask_col.len() as u64
-                + 32 * (c.path.len() + c.mask_path.len()) as u64
-        })
-        .sum();
-    tx.append("pcs_columns", col_b);
+    append_multi_columns(tx, &columns);
     tm.t_columns_s = t4.elapsed().as_secs_f64();
 
     Ok((
@@ -1923,7 +1937,13 @@ pub fn verify_multi_open(
         || proof.u_gs.iter().any(|u| u.len() != msg_len)
         || proof.corr_ss.len() != n_claims
         || proof.columns.len() != params.n_queries
-        || proof.columns.iter().any(|co| co.col.len() != rows || co.mask_col.len() != n_claims + 1)
+        || proof.columns.iter().any(|co| {
+            co.j as usize >= code_len
+                || co.col.len() != rows
+                || co.mask_col.len() != n_claims + 1
+                || co.path.len() != params.code_bits as usize
+                || co.mask_path.len() != params.code_bits as usize
+        })
     {
         return false;
     }
@@ -1934,7 +1954,8 @@ pub fn verify_multi_open(
         return false;
     };
 
-    // Same challenge order as the prover: c, χ, then the column queries.
+    // Same canonical provider moves and challenge order as the prover.
+    tx.append_message("pcs_mask_root", &proof.mask_root);
     let c = tx.challenge_fp2();
     let mut c_pows = Vec::with_capacity(rows);
     let mut acc = Fp2::ONE;
@@ -1942,6 +1963,10 @@ pub fn verify_multi_open(
         acc = acc * c;
         c_pows.push(acc);
     }
+
+    append_multi_u_vectors(tx, &proof.u_c, &proof.u_gs);
+    tx.append_fp2_value_slices_digest("pcs_s_corrections", &[&proof.corr_ss]);
+    tx.append_fp2s("mask_correction", &[proof.mask_corr]);
 
     // MAC resolution first (cheap): batched zero check over v_g + s_g − ip_g.
     let k_ss = ctx.correct_full_verifier_keys(dom_s, &proof.corr_ss);
@@ -1954,12 +1979,14 @@ pub fn verify_multi_open(
     let k_zb_full = ctx.expand_full_verifier_keys(dom_zb, 1)[0];
     let k_mask = zero_mask_key(ctx, k_zb_full, proof.mask_corr);
     let chi = tx.challenge_fp2();
+    tx.append_fp2s("zero_batch_tag", &[proof.m_z]);
     if !zero_batch_verify(&k_zs, k_mask, chi, proof.m_z) {
         return false;
     }
 
     let js: Vec<usize> =
         (0..params.n_queries).map(|_| tx.challenge_fp2().c0.value() as usize % code_len).collect();
+    append_multi_columns(tx, &proof.columns);
 
     // Encode all blinded combinations (componentwise NTT, parallel).
     let enc_uc = encode_fp2(&plan, &proof.u_c);
@@ -2034,6 +2061,57 @@ mod cleanup_tests {
         let mut noncanonical = bytes;
         noncanonical[32..40].copy_from_slice(&volta_field::P.to_le_bytes());
         assert!(decode_multi_open_canonical(&noncanonical, &params, 1).is_err());
+    }
+
+    #[test]
+    fn c41_multi_open_fiat_shamir_replays_exactly() {
+        let params = LigeroParams { rows: 4, col_bits: 2, pad: 4, code_bits: 3, n_queries: 3 };
+        let weights =
+            (0..params.rows() * params.cols()).map(|index| index as i16 - 7).collect::<Vec<_>>();
+        let embedded = weights
+            .iter()
+            .map(|value| Fp2::from_base(Fp::from_i64(i64::from(*value))))
+            .collect::<Vec<_>>();
+        let point = vec![Fp2::new(Fp::new(3), Fp::new(5)); params.n_vars()];
+        let value = volta_proto::mle::eval_mle(&embedded, &point);
+        let seed = [0x41; 32];
+        let delta = Fp2::new(Fp::new(17), Fp::new(19));
+        let (commitment, matrix) = commit(&weights, &params, [0x42; 32]);
+
+        let mut prover = CorrelationStream::new(seed);
+        let full = prover.draw_fulls(0x4100, 1)[0];
+        let correction = value - full.x;
+        let claims = [(BlockClaim { offset: 0, point }, full.authenticate(value))];
+        let mut prover_tx = Transcript::new_c41_fiat_shamir([0x43; 32]).unwrap();
+        let (proof, _) = open_multi_zk(
+            &weights,
+            &matrix,
+            &claims,
+            &mut prover,
+            0x4101,
+            0x4102,
+            [0x44; 32],
+            &mut prover_tx,
+        );
+
+        let mut verifier = VerifierCtx::new(seed, delta);
+        let key = verifier.expand_full_keys(0x4100, 1)[0] + delta * correction;
+        let verifier_claims = [(claims[0].0.clone(), VerifierKey::new(key))];
+        let mut verifier_tx = Transcript::new_c41_fiat_shamir([0x43; 32]).unwrap();
+        assert!(verify_multi_open(
+            &commitment.root,
+            &params,
+            &verifier_claims,
+            &proof,
+            &mut verifier,
+            0x4101,
+            0x4102,
+            &mut verifier_tx,
+        ));
+        assert_eq!(
+            prover_tx.canonical_binding_digest().unwrap(),
+            verifier_tx.canonical_binding_digest().unwrap()
+        );
     }
 
     #[test]

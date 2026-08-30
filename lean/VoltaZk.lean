@@ -40,4 +40,5 @@ import VoltaZk.C62SoftmaxGapRelation
 import VoltaZk.C62SoftmaxReciprocalRelation
 import VoltaZk.C62ScoreClampRelation
 import VoltaZk.C62FiatShamirComposition
+import VoltaZk.C41FiatShamirComposition
 import VoltaZk.C63CorrectionPrivacy

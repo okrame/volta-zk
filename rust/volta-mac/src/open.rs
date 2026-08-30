@@ -18,7 +18,7 @@ use volta_field::Fp2;
 /// Prover: open a zero claim by revealing its tag.
 pub fn zero_open_prover(y: &ProverAuthed, tx: &mut Transcript) -> Fp2 {
     debug_assert_eq!(y.x, Fp2::ZERO, "ZeroOpen on a nonzero claim");
-    tx.append("zero_open_tag", 16);
+    tx.append_fp2s("zero_open_tag", &[y.m]);
     y.m
 }
 
@@ -31,7 +31,7 @@ pub fn zero_open_verify(key: VerifierKey, m: Fp2) -> bool {
 /// uniform tag, emitting the 16 B re-centring correction `c = 0 − x`.
 pub fn fresh_zero_mask(corr: FullCorr, tx: &mut Transcript) -> (ProverAuthed, Fp2) {
     let c = Fp2::ZERO - corr.x;
-    tx.append("mask_correction", 16);
+    tx.append_fp2s("mask_correction", &[c]);
     (corr.authenticate(Fp2::ZERO), c)
 }
 
@@ -62,7 +62,7 @@ pub fn zero_batch_prover(
         w = w * chi;
         z = z.add(y.scale(w));
     }
-    tx.append("zero_batch_tag", 16);
+    tx.append_fp2s("zero_batch_tag", &[z.m]);
     z.m
 }
 

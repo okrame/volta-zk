@@ -1,17 +1,92 @@
 //! Closed canonical envelope for the complete C4.1 response proof.
 
 use crate::ProdProof;
-use std::fmt;
+use std::{fmt, io::Read};
 use volta_field::{Fp, Fp2, P};
+use volta_pcg::SessionBinding;
 
 pub const C41_RESPONSE_ENVELOPE_MAGIC: [u8; 8] = *b"C41PRF1\0";
 pub const C41_RESPONSE_ENVELOPE_VERSION: u16 = 1;
 pub const C41_RESPONSE_ENVELOPE_MAX_BYTES: u64 = 70_000_000;
+pub const C41_FIAT_SHAMIR_CONTEXT_VERSION: u16 = 1;
 const COMPONENTS: usize = 4;
 const HEADER_BYTES: u64 = 8 + 2 + 2;
 const COMPONENT_HEADER_BYTES: u64 = 2 + 2 + 4 + 32;
 const DIGEST_BYTES: u64 = 32;
 const CLOSURE_BYTES: usize = 64;
+
+/// Public attempt identity absorbed before the first C41FS1 move. Secret
+/// verifier keys and `Delta` are intentionally absent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C41FiatShamirPublicContext {
+    pub model_binding_digest: [u8; 32],
+    pub setup_digest: [u8; 32],
+    pub quantization_digest: [u8; 32],
+    pub statement_digest: [u8; 32],
+    pub connection_binding: [u8; 32],
+    pub public_incidence_seed: [u8; 32],
+    pub pcs_parameter_digest: [u8; 32],
+    pub response_index: u64,
+    pub cells: u64,
+}
+
+impl C41FiatShamirPublicContext {
+    pub fn digest(self) -> Result<[u8; 32]> {
+        if [
+            self.model_binding_digest,
+            self.setup_digest,
+            self.quantization_digest,
+            self.statement_digest,
+            self.connection_binding,
+            self.public_incidence_seed,
+            self.pcs_parameter_digest,
+        ]
+        .contains(&[0; 32])
+            || self.cells == 0
+        {
+            return Err(C41ResponseEnvelopeError::new(
+                "C41FS1 public context contains a zero identity or geometry",
+            ));
+        }
+        let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c4.1/fiat-shamir/context/v1");
+        hasher.update(&C41_FIAT_SHAMIR_CONTEXT_VERSION.to_le_bytes());
+        hasher.update(&C41_RESPONSE_ENVELOPE_VERSION.to_le_bytes());
+        hasher.update(&(COMPONENTS as u16).to_le_bytes());
+        hasher.update(&C41_RESPONSE_ENVELOPE_MAX_BYTES.to_le_bytes());
+        hasher.update(&self.response_index.to_le_bytes());
+        hasher.update(&self.cells.to_le_bytes());
+        for digest in [
+            self.model_binding_digest,
+            self.setup_digest,
+            self.quantization_digest,
+            self.statement_digest,
+            self.connection_binding,
+            self.public_incidence_seed,
+            self.pcs_parameter_digest,
+        ] {
+            hasher.update(&digest);
+        }
+        Ok(*hasher.finalize().as_bytes())
+    }
+
+    /// Existing durable PCG burn identity for this response index. The nonce
+    /// deliberately excludes proof bytes: a failed proof still consumes the
+    /// index, and changing the proof cannot make the index reusable.
+    pub fn response_authorization_binding(self) -> Result<SessionBinding> {
+        self.digest()?;
+        let mut channel = blake3::Hasher::new_derive_key("volta-zk/c4.1/burn-channel/v1");
+        channel.update(&self.connection_binding);
+        let mut nonce = blake3::Hasher::new_derive_key("volta-zk/c4.1/burn-response-index/v1");
+        nonce.update(&self.connection_binding);
+        nonce.update(&self.response_index.to_le_bytes());
+        SessionBinding::new(
+            self.connection_binding,
+            *channel.finalize().as_bytes(),
+            *nonce.finalize().as_bytes(),
+        )
+        .map_err(|error| C41ResponseEnvelopeError::new(error.to_string()))
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C41ResponseEnvelopeError(String);
@@ -216,6 +291,20 @@ impl C41ResponseProofEnvelope {
         Ok(envelope)
     }
 
+    /// Bounded verifier-side reader. It buffers at most cap+1 bytes, using the
+    /// final byte only to reject an oversized artifact before canonical decode.
+    pub fn decode_reader(reader: impl Read) -> Result<Self> {
+        let mut bytes = Vec::new();
+        reader
+            .take(C41_RESPONSE_ENVELOPE_MAX_BYTES + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|error| C41ResponseEnvelopeError::new(error.to_string()))?;
+        if bytes.len() as u64 > C41_RESPONSE_ENVELOPE_MAX_BYTES {
+            return Err(C41ResponseEnvelopeError::new("C4.1 proof exceeds 70 MB"));
+        }
+        Self::decode(&bytes)
+    }
+
     fn components(&self) -> [(ComponentKind, &[u8]); COMPONENTS] {
         [
             (ComponentKind::Model, &self.model),
@@ -274,6 +363,7 @@ impl Reader<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use volta_pcg::ResponseAuthorizationStore;
 
     #[test]
     fn c41_response_envelope_and_closure_are_strict() {
@@ -289,8 +379,68 @@ mod tests {
                 .unwrap();
         let bytes = envelope.encode().unwrap();
         assert_eq!(C41ResponseProofEnvelope::decode(&bytes).unwrap(), envelope);
+        assert_eq!(
+            C41ResponseProofEnvelope::decode_reader(std::io::Cursor::new(&bytes)).unwrap(),
+            envelope
+        );
         let mut tampered = bytes;
         tampered[52] ^= 1;
         assert!(C41ResponseProofEnvelope::decode(&tampered).is_err());
+    }
+
+    #[test]
+    fn c41_fiat_shamir_context_binds_every_public_identity() {
+        let context = C41FiatShamirPublicContext {
+            model_binding_digest: [1; 32],
+            setup_digest: [2; 32],
+            quantization_digest: [3; 32],
+            statement_digest: [4; 32],
+            connection_binding: [5; 32],
+            public_incidence_seed: [6; 32],
+            pcs_parameter_digest: [7; 32],
+            response_index: 8,
+            cells: 9,
+        };
+        let digest = context.digest().unwrap();
+        assert_ne!(digest, [0; 32]);
+        let mut changed = context;
+        changed.response_index += 1;
+        assert_ne!(digest, changed.digest().unwrap());
+        changed = context;
+        changed.statement_digest[0] ^= 1;
+        assert_ne!(digest, changed.digest().unwrap());
+        changed = context;
+        changed.setup_digest = [0; 32];
+        assert!(changed.digest().is_err());
+    }
+
+    #[test]
+    fn c41_response_index_is_burned_before_retry() {
+        let context = C41FiatShamirPublicContext {
+            model_binding_digest: [1; 32],
+            setup_digest: [2; 32],
+            quantization_digest: [3; 32],
+            statement_digest: [4; 32],
+            connection_binding: [5; 32],
+            public_incidence_seed: [6; 32],
+            pcs_parameter_digest: [7; 32],
+            response_index: 8,
+            cells: 9,
+        };
+        let root = std::env::temp_dir().join(format!(
+            "volta-c41-burn-{}-{}",
+            std::process::id(),
+            context.response_index
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let store = ResponseAuthorizationStore::new(&root).unwrap();
+        let binding = context.response_authorization_binding().unwrap();
+        store.reserve(&binding).unwrap();
+        assert!(store.reserve(&binding).unwrap_err().to_string().contains("already burned"));
+
+        let mut next = context;
+        next.response_index += 1;
+        store.reserve(&next.response_authorization_binding().unwrap()).unwrap();
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

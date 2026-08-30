@@ -471,6 +471,13 @@ vector-RLC bounds from being mistaken for implementation bounds.
 #print axioms VoltaZk.c62_random_oracle_query_cap
 #print axioms VoltaZk.C62FiatShamirCompositionSound
 #print axioms VoltaZk.c62_seventeen_certificate_union_census
+
+-- C4.1 seed-streaming Fiat--Shamir composition (additive).
+#print axioms VoltaZk.packed16_folded_opening
+#print axioms VoltaZk.c41_bridge_batch_sound
+#print axioms VoltaZk.c41_degree_twelve_close_root_bound
+#print axioms VoltaZk.c41_random_oracle_query_cap
+#print axioms VoltaZk.C41FiatShamirCompositionSound
 #print axioms VoltaZk.x4d_accepted_settlement_implies_each_m9_or_bad
 #print axioms VoltaZk.x4d_settlement_error_is_v4
 #print axioms VoltaZk.x4d_settlement_error_expanded

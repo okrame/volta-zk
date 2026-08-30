@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "profile": "C4.1-party-separated-real-AES-v1",
+  "git_sha": "9a3f0338a95898031f7b79bd78ec56e91dbac5b5",
+  "git_dirty": false,
+  "real_aes_pcg": true,
+  "response_index": 0,
+  "cells": 3110400,
+  "seed_rows": 253,
+  "total_sub_corrs": 2040886,
+  "total_full_corrs": 226981,
+  "ordinary_sub_corrs": 1781814,
+  "ordinary_full_corrs": 226980,
+  "model_initialization_wall_s": 12.433663053,
+  "pcg_setup_wall_s": 4.761708497,
+  "typed_setup_wall_s": 0.038947274,
+  "setup_comm_bytes": 30070682,
+  "typed_setup_comm_bytes": 2074954,
+  "conditional_soundness_bits": 78.80929487391572,
+  "conditional_weight_zk_bits": 120.0170064253057,
+  "artifacts": [
+    {
+      "name": "provider.bundle",
+      "bytes": 54204710,
+      "blake3": "6cd94a57b89a2b62a8aeca8da23508c60875977d7d14f2b355938e8c0ed0ca1a",
+      "secret": true
+    },
+    {
+      "name": "model-setup.bin",
+      "bytes": 234,
+      "blake3": "3e1af24c5f0bc541ee9c05e5a309ca1efa4ce50946b5d185f47436aad0d5919f",
+      "secret": false
+    },
+    {
+      "name": "verifier.bundle",
+      "bytes": 37053795,
+      "blake3": "51b67397a16ca5a46980faaf4b9215f3dd6308bd77feb766b75d12fded4ee074",
+      "secret": true
+    }
+  ]
+}

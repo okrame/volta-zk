@@ -22,10 +22,11 @@ Read `c4.1-seed-streaming-fiat-shamir.md` next.
 - **Unchanged failure.** Prover time `7.942478252 s` is
   `1.935020839958646x` the C4 anchor and fails `<=1.30x`; overall C4.1 remains
   FAIL. The successor receives no prover-time repair or promotion credit.
-- **Current checks.** The full Rust workspace, 15 focused C4.1 tests, strict
-  role/tamper codecs, one-time burn, 1/4-thread equality, Lean composition and
-  full-geometry AArch64 RSS/NEON evidence are green. The provider is unable to
-  decode verifier secrets; the client materializes no typed lot/full query.
+- **Current checks.** The full Rust workspace, 15 focused C4.1 tests,
+  role/tamper codecs, one-time burn, 1/4-thread equality and Lean are green.
+  Clean `9a3f033` measured real/AES setup: model init `12.433663053 s`, PCG plus
+  typed setup `4.800655771 s`; provider/verifier bundles are
+  `54,204,710 / 37,053,795 B`. No typed lot/full query is materialized.
 - **Hard stop.** No pod contact is authorized. Exact full-proof C41FS1 census,
   real-proof replay and a same-client C4 control require a full proof, while
   local heavy E2E is forbidden; the current pre-pod gate is therefore
@@ -33,6 +34,26 @@ Read `c4.1-seed-streaming-fiat-shamir.md` next.
   first fail-closed pod preflight (or a supplied genuine artifact), a named
   approved single-use HTTPS service, clean GitHub-HTTPS checkpoint and new
   explicit owner GO. The immutable prover-time failure remains controlling.
+
+- **2026-08-30 — C4.1 party-separated real/AES setup measured locally; pod
+  remains stopped.** Clean `9a3f033` generated one exact production-capacity
+  response lot with `2,040,886` subfield and `226,981` full-field
+  correlations. Deterministic model/PCS initialization took `12.433663053 s`,
+  ordinary real/AES PCG setup `4.761708497 s`, and typed setup
+  `0.038947274 s`. Ordinary plus typed setup traffic was
+  `30,070,682 + 2,074,954 = 32,145,636 B`. The strict provider-only bundle was
+  `54,204,710 B`; the strict verifier-only bundle, including ordinary C4 keys
+  and compact C4.1 seeds, was `37,053,795 B`. Conditional soundness and weight
+  privacy were `78.80929487391572 / 120.0170064253057` bits.
+
+  Raw public manifest
+  `c41-party-setup-2026-08-30-9a3f033.json` has SHA-256
+  `4b436be4002923474cf95c0b0921a5412fcbbf0bff24ebd71e6ed2ee4ee12477`.
+  The uncommitted provider/verifier bundles and their burn state were deleted
+  after recording sizes and digests; they cannot be reused or receive E2E
+  credit. This is setup/model-initialization evidence only: no inference,
+  proof, verifier time, GPU result or pod contact occurred. The active hard
+  stop and immutable prover-time failure are unchanged.
 
 - **2026-08-30 — C4.1 party-separated producer/verifier seam and prover
   diagnostics locally complete; pod remains stopped.** The implementation

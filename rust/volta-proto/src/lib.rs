@@ -6,6 +6,7 @@
 pub mod block_proof;
 pub(crate) mod boundary_thinning;
 pub mod c41_folded_tole;
+pub mod c41_party_bundle;
 pub mod c41_response_envelope;
 pub mod c6;
 pub mod c61_certificate;
@@ -54,6 +55,13 @@ pub use block_proof::{
 pub use c41_folded_tole::{
     c41_fold_typed_queries_reference, c41_fold_typed_queries_resident, c41_seed_streaming_checksum,
     C41FoldedQueries, C41TypedSetupVerifierState, C41_TYPED_POLYNOMIAL_LANES,
+};
+pub use c41_party_bundle::{
+    C41ModelSetupArtifact, C41PartyBundleError, C41PartySetupContext, C41ProviderBundle,
+    C41ResponseStatement, C41VerifierBundle, C41_PRODUCTION_CELLS,
+    C41_PRODUCTION_ORDINARY_FULL_CORRS, C41_PRODUCTION_ORDINARY_SUB_CORRS,
+    C41_PRODUCTION_SEED_ROWS, C41_PRODUCTION_TOTAL_FULL_CORRS, C41_PRODUCTION_TOTAL_SUB_CORRS,
+    C41_PRODUCTION_TYPED_SUB_CORRS,
 };
 pub use c41_response_envelope::{
     C41FiatShamirPublicContext, C41ResponseClosureProof, C41ResponseEnvelopeError,

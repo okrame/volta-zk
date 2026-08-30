@@ -7,7 +7,11 @@
 //! reconstructed from the Packed16 correction.
 
 use rayon::prelude::*;
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, Mutex},
+    time::Instant,
+};
 use volta_accel::{
     AccelError, Backend, C41PackedProverDeviceLot, C41PackedVerifierDeviceLot, DeviceBuffer,
     DeviceSlice, Fp2Repr,
@@ -27,6 +31,39 @@ pub const C41_BITS_PER_PACKED_CELL: usize = 17;
 pub const C41_DEGREE12_CLOSE_BYTES: usize = 201;
 pub const C41_MAX_BRIDGES_PER_RESPONSE: usize = 1_000_000;
 pub const C41_VERIFIER_STREAM_CHUNK_CELLS: usize = 4_096;
+
+#[derive(Clone, Debug, Default)]
+pub struct C41ProverDiagnostics {
+    pub cells: usize,
+    pub segments: usize,
+    pub bridges: usize,
+    pub bridge_sparse_entries: u64,
+    pub lot_prepare_download_s: f64,
+    pub registration_s: f64,
+    pub bridge_build_s: f64,
+    pub dense_query_build_s: f64,
+    pub dense_query_bytes: u64,
+    pub rayon_query_scratch_upper_bytes: u64,
+    pub query_upload_s: f64,
+    pub bitmap_upload_s: f64,
+    pub fused_fold_submit_s: f64,
+    pub fold_download_sync_s: f64,
+    pub degree12_close_s: f64,
+    pub cleanup_s: f64,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct C41VerifierDiagnostics {
+    pub cells: usize,
+    pub segments: usize,
+    pub bridges: usize,
+    pub chunks: usize,
+    pub query_chunk_peak_bytes: u64,
+    pub descriptor_build_s: f64,
+    pub query_chunk_build_s: f64,
+    pub seed_expand_and_stream_fold_s: f64,
+    pub degree12_close_s: f64,
+}
 
 const C41_CLOSE_MAGIC: &[u8; 8] = b"C41D12\0\0";
 const C41_BITNESS_CLOSE_MAGIC: &[u8; 8] = b"C41D02\0\0";
@@ -1166,15 +1203,38 @@ pub struct C41ProverResponseState {
     cursor: usize,
     bridge_corrections: Vec<Fp2>,
     bridges: Vec<C41ProverBridge>,
+    diagnostics_handle: Option<Arc<Mutex<C41ProverDiagnostics>>>,
+    diagnostics: C41ProverDiagnostics,
 }
 
 impl C41ProverResponseState {
     pub fn new(lot: C41PackedProverDeviceLot, backend: &mut Backend) -> Result<Self, AccelError> {
+        Self::new_inner(lot, backend, None)
+    }
+
+    pub fn new_with_diagnostics(
+        lot: C41PackedProverDeviceLot,
+        backend: &mut Backend,
+        diagnostics: Arc<Mutex<C41ProverDiagnostics>>,
+    ) -> Result<Self, AccelError> {
+        Self::new_inner(lot, backend, Some(diagnostics))
+    }
+
+    fn new_inner(
+        lot: C41PackedProverDeviceLot,
+        backend: &mut Backend,
+        diagnostics_handle: Option<Arc<Mutex<C41ProverDiagnostics>>>,
+    ) -> Result<Self, AccelError> {
         let cells = lot.cells;
+        let started = diagnostics_handle.as_ref().map(|_| Instant::now());
         let a_values = backend.download_device(&lot.a_values, 0, cells)?;
         let b_values = backend.download_device(&lot.b_values, 0, cells)?;
         if b_values.iter().any(|value| *value > 1) {
             return Err(AccelError::InvalidInput("C4.1 lot contains a non-bit mask"));
+        }
+        let mut diagnostics = C41ProverDiagnostics { cells, ..C41ProverDiagnostics::default() };
+        if let Some(started) = started {
+            diagnostics.lot_prepare_download_s = started.elapsed().as_secs_f64();
         }
         Ok(Self {
             lot: Some(lot),
@@ -1186,6 +1246,8 @@ impl C41ProverResponseState {
             cursor: 0,
             bridge_corrections: Vec::new(),
             bridges: Vec::new(),
+            diagnostics_handle,
+            diagnostics,
         })
     }
 
@@ -1206,6 +1268,7 @@ impl C41ProverResponseState {
         tx: &mut Transcript,
         backend: &mut Backend,
     ) -> Result<(), AccelError> {
+        let started = self.diagnostics_handle.as_ref().map(|_| Instant::now());
         let cells = rows
             .checked_mul(cols)
             .ok_or(AccelError::InvalidInput("C4.1 response segment overflows"))?;
@@ -1235,6 +1298,10 @@ impl C41ProverResponseState {
         tx.append_message(C41_PACKED_E_LABEL, &packed_bits(&self.e_values[self.cursor..end]));
         self.segments.insert(domain, C41ResponseSegment { offset: self.cursor, rows, cols });
         self.cursor = end;
+        if let Some(started) = started {
+            self.diagnostics.registration_s += started.elapsed().as_secs_f64();
+            self.diagnostics.segments += 1;
+        }
         Ok(())
     }
 
@@ -1245,6 +1312,7 @@ impl C41ProverResponseState {
         stream: &mut CorrelationStream,
         tx: &mut Transcript,
     ) -> Result<ProverAuthed, AccelError> {
+        let started = self.diagnostics_handle.as_ref().map(|_| Instant::now());
         let entries = entries.into_iter().collect::<Vec<_>>();
         if entries.is_empty() || entries.iter().any(|(cell, _)| *cell >= self.cells()) {
             return Err(AccelError::InvalidInput("C4.1 bridge query escapes its lot"));
@@ -1264,6 +1332,11 @@ impl C41ProverResponseState {
         tx.append_fp2s(C41_BRIDGE_LABEL, &[correction]);
         self.bridge_corrections.push(correction);
         let ordinary = correlation.authenticate(value);
+        if let Some(started) = started {
+            self.diagnostics.bridge_build_s += started.elapsed().as_secs_f64();
+            self.diagnostics.bridges += 1;
+            self.diagnostics.bridge_sparse_entries += entries.len() as u64;
+        }
         self.bridges.push(C41ProverBridge { entries, ordinary });
         Ok(ordinary)
     }
@@ -1423,6 +1496,7 @@ impl C41ProverResponseState {
         let bridge_challenge = tx.challenge_fp2();
         let mut bridge_power = Fp2::ONE;
         let cells = self.cells();
+        let query_build_started = self.diagnostics_handle.as_ref().map(|_| Instant::now());
         let query_values = self
             .bridges
             .par_iter()
@@ -1444,15 +1518,30 @@ impl C41ProverResponseState {
                     left
                 },
             );
+        if let Some(started) = query_build_started {
+            self.diagnostics.dense_query_build_s = started.elapsed().as_secs_f64();
+            self.diagnostics.dense_query_bytes = (cells * std::mem::size_of::<Fp2>()) as u64;
+            self.diagnostics.rayon_query_scratch_upper_bytes =
+                (rayon::current_num_threads() * cells * std::mem::size_of::<Fp2>()) as u64;
+        }
         let mut ordinary = C41HdProver::public(Fp2::ZERO);
         for bridge in &self.bridges {
             bridge_power = bridge_power * bridge_challenge;
             ordinary = ordinary.add(C41HdProver::ordinary(bridge.ordinary).scale(bridge_power));
         }
         let query_raw = query_values.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>();
+        let upload_started = self.diagnostics_handle.as_ref().map(|_| Instant::now());
         let query = backend.upload_new_device(&query_raw)?;
+        if let Some(started) = upload_started {
+            self.diagnostics.query_upload_s = started.elapsed().as_secs_f64();
+        }
+        let bitmap_started = self.diagnostics_handle.as_ref().map(|_| Instant::now());
         let bitmap = backend.upload_new_device(&e)?;
+        if let Some(started) = bitmap_started {
+            self.diagnostics.bitmap_upload_s = started.elapsed().as_secs_f64();
+        }
         let lot = self.lot.as_ref().expect("C4.1 prover lot is live");
+        let fold_started = self.diagnostics_handle.as_ref().map(|_| Instant::now());
         let folded = c41_fold_typed_queries_resident(
             backend,
             &lot.a,
@@ -1461,7 +1550,14 @@ impl C41ProverResponseState {
             &bitmap,
             self.cells(),
         )?;
+        if let Some(started) = fold_started {
+            self.diagnostics.fused_fold_submit_s = started.elapsed().as_secs_f64();
+        }
+        let download_started = self.diagnostics_handle.as_ref().map(|_| Instant::now());
         let output = backend.download_device(&folded, 0, folded.len())?;
+        if let Some(started) = download_started {
+            self.diagnostics.fold_download_sync_s = started.elapsed().as_secs_f64();
+        }
         backend.free_device(folded)?;
         backend.free_device(query)?;
         backend.free_device(bitmap)?;
@@ -1481,13 +1577,25 @@ impl C41ProverResponseState {
         }
         let masks = stream.draw_fulls(C41_CLOSE_MASK_DOMAIN, 11);
         tx.append_message("c41_degree_close_frame", &[C41_CLOSE_MAGIC.as_slice(), &[12]].concat());
+        let close_started = self.diagnostics_handle.as_ref().map(|_| Instant::now());
         let close =
             c41_degree_close_prover(relation, &masks, tx).map_err(AccelError::InvalidInput)?;
+        if let Some(started) = close_started {
+            self.diagnostics.degree12_close_s = started.elapsed().as_secs_f64();
+        }
+        let cleanup_started = self.diagnostics_handle.as_ref().map(|_| Instant::now());
         let lot = self.lot.take().expect("C4.1 prover lot is consumed once");
         backend.free_device(lot.a)?;
         backend.free_device(lot.b)?;
         backend.free_device(lot.a_values)?;
         backend.free_device(lot.b_values)?;
+        if let Some(started) = cleanup_started {
+            self.diagnostics.cleanup_s = started.elapsed().as_secs_f64();
+        }
+        if let Some(handle) = &self.diagnostics_handle {
+            *handle.lock().expect("C4.1 prover diagnostics mutex poisoned") =
+                self.diagnostics.clone();
+        }
         Ok(C41ResponseProof { d: self.d, e, bridge_corrections: self.bridge_corrections, close })
     }
 }
@@ -1517,6 +1625,8 @@ pub struct C41VerifierResponseState {
     bridge_corrections: Vec<Fp2>,
     bridge_cursor: usize,
     bridges: Vec<C41VerifierBridge>,
+    diagnostics_handle: Option<Arc<Mutex<C41VerifierDiagnostics>>>,
+    diagnostics: C41VerifierDiagnostics,
 }
 
 impl C41VerifierResponseState {
@@ -1554,6 +1664,8 @@ impl C41VerifierResponseState {
             bridge_corrections: proof.bridge_corrections.clone(),
             bridge_cursor: 0,
             bridges: Vec::new(),
+            diagnostics_handle: None,
+            diagnostics: C41VerifierDiagnostics { cells, ..Default::default() },
         })
     }
 
@@ -1565,7 +1677,7 @@ impl C41VerifierResponseState {
         proof: &C41ResponseProof,
         delta: Fp2,
     ) -> Result<Self, AccelError> {
-        Self::new_seed_streaming_with_chunk(
+        Self::new_seed_streaming_inner(
             setup,
             public_seed,
             first_global_bit,
@@ -1573,6 +1685,29 @@ impl C41VerifierResponseState {
             proof,
             delta,
             C41_VERIFIER_STREAM_CHUNK_CELLS,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_seed_streaming_with_diagnostics(
+        setup: C41TypedSetupVerifierState,
+        public_seed: [u8; 32],
+        first_global_bit: usize,
+        cells: usize,
+        proof: &C41ResponseProof,
+        delta: Fp2,
+        diagnostics: Arc<Mutex<C41VerifierDiagnostics>>,
+    ) -> Result<Self, AccelError> {
+        Self::new_seed_streaming_inner(
+            setup,
+            public_seed,
+            first_global_bit,
+            cells,
+            proof,
+            delta,
+            C41_VERIFIER_STREAM_CHUNK_CELLS,
+            Some(diagnostics),
         )
     }
 
@@ -1585,6 +1720,29 @@ impl C41VerifierResponseState {
         proof: &C41ResponseProof,
         delta: Fp2,
         chunk_cells: usize,
+    ) -> Result<Self, AccelError> {
+        Self::new_seed_streaming_inner(
+            setup,
+            public_seed,
+            first_global_bit,
+            cells,
+            proof,
+            delta,
+            chunk_cells,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn new_seed_streaming_inner(
+        setup: C41TypedSetupVerifierState,
+        public_seed: [u8; 32],
+        first_global_bit: usize,
+        cells: usize,
+        proof: &C41ResponseProof,
+        delta: Fp2,
+        chunk_cells: usize,
+        diagnostics_handle: Option<Arc<Mutex<C41VerifierDiagnostics>>>,
     ) -> Result<Self, AccelError> {
         Self::validate_proof_geometry(cells, proof)?;
         let required_bits = cells
@@ -1616,6 +1774,8 @@ impl C41VerifierResponseState {
             bridge_corrections: proof.bridge_corrections.clone(),
             bridge_cursor: 0,
             bridges: Vec::new(),
+            diagnostics_handle,
+            diagnostics: C41VerifierDiagnostics { cells, ..Default::default() },
         })
     }
 
@@ -1643,6 +1803,7 @@ impl C41VerifierResponseState {
         cols: usize,
         tx: &mut Transcript,
     ) -> Result<(), AccelError> {
+        let started = self.diagnostics_handle.as_ref().map(|_| Instant::now());
         let cells = rows
             .checked_mul(cols)
             .ok_or(AccelError::InvalidInput("C4.1 verifier segment overflows"))?;
@@ -1664,6 +1825,10 @@ impl C41VerifierResponseState {
         tx.append_message(C41_PACKED_E_LABEL, &packed_bits(&e_values));
         self.segments.insert(domain, C41ResponseSegment { offset: self.cursor, rows, cols });
         self.cursor = end;
+        if let Some(started) = started {
+            self.diagnostics.descriptor_build_s += started.elapsed().as_secs_f64();
+            self.diagnostics.segments += 1;
+        }
         Ok(())
     }
 
@@ -1673,6 +1838,7 @@ impl C41VerifierResponseState {
         verifier: &mut VerifierCtx,
         tx: &mut Transcript,
     ) -> Result<VerifierKey, AccelError> {
+        let started = self.diagnostics_handle.as_ref().map(|_| Instant::now());
         let index = self.bridge_cursor;
         let correction = *self
             .bridge_corrections
@@ -1685,6 +1851,10 @@ impl C41VerifierResponseState {
         tx.append_fp2s(C41_BRIDGE_LABEL, &[correction]);
         let ordinary = verifier.correct_full_verifier_key(domain, correction);
         self.bridges.push(C41VerifierBridge { query, ordinary });
+        if let Some(started) = started {
+            self.diagnostics.descriptor_build_s += started.elapsed().as_secs_f64();
+            self.diagnostics.bridges += 1;
+        }
         Ok(ordinary)
     }
 
@@ -1900,10 +2070,20 @@ impl C41VerifierResponseState {
         let mut public = Fp2::ZERO;
         for chunk_start in (0..self.d.len()).step_by(chunk_cells) {
             let chunk_end = (chunk_start + chunk_cells).min(self.d.len());
+            let query_started = self.diagnostics_handle.as_ref().map(|_| Instant::now());
             let mut query = vec![Fp2::ZERO; chunk_end - chunk_start];
             for (bridge, power) in self.bridges.iter().zip(&bridge_powers) {
                 bridge.query.add_to_chunk(chunk_start, &mut query, *power);
             }
+            if let Some(started) = query_started {
+                self.diagnostics.query_chunk_build_s += started.elapsed().as_secs_f64();
+                self.diagnostics.chunks += 1;
+                self.diagnostics.query_chunk_peak_bytes = self
+                    .diagnostics
+                    .query_chunk_peak_bytes
+                    .max((query.len() * std::mem::size_of::<Fp2>()) as u64);
+            }
+            let fold_started = self.diagnostics_handle.as_ref().map(|_| Instant::now());
             let (chunk_a, chunk_b, chunk_public) = query
                 .par_iter()
                 .copied()
@@ -1941,6 +2121,9 @@ impl C41VerifierResponseState {
                     || (Fp2::ZERO, Fp2::ZERO, Fp2::ZERO),
                     |left, right| Ok((left.0 + right.0, left.1 + right.1, left.2 + right.2)),
                 )?;
+            if let Some(started) = fold_started {
+                self.diagnostics.seed_expand_and_stream_fold_s += started.elapsed().as_secs_f64();
+            }
             a_key += chunk_a;
             b_key += chunk_b;
             public += chunk_public;
@@ -1952,7 +2135,11 @@ impl C41VerifierResponseState {
         let relation = typed.sub(ordinary, delta);
         let mask_keys = verifier.expand_full_verifier_keys(C41_CLOSE_MASK_DOMAIN, 11);
         tx.append_message("c41_degree_close_frame", &[C41_CLOSE_MAGIC.as_slice(), &[12]].concat());
+        let close_started = self.diagnostics_handle.as_ref().map(|_| Instant::now());
         let accepted = c41_degree_close_verify(relation, &mask_keys, delta, proof, tx);
+        if let Some(started) = close_started {
+            self.diagnostics.degree12_close_s = started.elapsed().as_secs_f64();
+        }
         if let C41VerifierKeySource::Materialized { lot, .. } = &mut self.key_source {
             let lot = lot.take().expect("C4.1 verifier lot is consumed once");
             let backend = backend
@@ -1960,6 +2147,10 @@ impl C41VerifierResponseState {
                 .ok_or(AccelError::InvalidInput("C4.1 materialized verifier requires backend"))?;
             backend.free_device(lot.a_keys)?;
             backend.free_device(lot.b_keys)?;
+        }
+        if let Some(handle) = &self.diagnostics_handle {
+            *handle.lock().expect("C4.1 verifier diagnostics mutex poisoned") =
+                self.diagnostics.clone();
         }
         Ok(accepted)
     }
@@ -2289,6 +2480,7 @@ mod tests {
         let run_verifier = |threads| {
             let pool = rayon::ThreadPoolBuilder::new().num_threads(threads).build().unwrap();
             pool.install(|| {
+                let diagnostics = Arc::new(Mutex::new(C41VerifierDiagnostics::default()));
                 let mut verifier = VerifierCtx::new(pcg_seed, delta);
                 let seed_keys = auth_verifier(&mut verifier, 0x4110, &seed_corrections);
                 let bridge_key =
@@ -2316,10 +2508,16 @@ mod tests {
                         },
                         ordinary: bridge_key,
                     }],
+                    diagnostics_handle: Some(diagnostics.clone()),
+                    diagnostics: C41VerifierDiagnostics { cells, ..Default::default() },
                 };
                 let mut transcript = Transcript::new_c41_fiat_shamir([0x46; 32]).unwrap();
                 transcript.append_fp2s(C41_BRIDGE_LABEL, &[bridge_correction]);
                 assert!(state.finish(&close, &mut verifier, &mut transcript, None).unwrap());
+                let measured = diagnostics.lock().unwrap().clone();
+                assert_eq!(measured.cells, cells);
+                assert_eq!(measured.chunks, 3);
+                assert_eq!(measured.query_chunk_peak_bytes, 3 * 16);
                 transcript.canonical_binding_digest().unwrap()
             })
         };

@@ -10,10 +10,10 @@ record; no external plan is authoritative.
 
 Read `c4.1-seed-streaming-fiat-shamir.md` next.
 
-- **Active work.** The owner authorizes local implementation of C4.1-SVFS:
-  a seed-only streaming CPU verifier plus the domain-separated C41FS1 public
-  transcript. Verifier time, including seed expansion, has no threshold in
-  the first empirical run.
+- **Active work.** C4.1-SVFS local implementation is complete: strict
+  party-separated real/AES setup bundles, client-pinned PCS model roots, a
+  one-response A100 producer, CPU seed-streaming verifier and C41FS1 replay.
+  Verifier time, including seed expansion, has no first-run threshold.
 - **Immutable evidence.** Clean `a3604cf` produced and accepted a
   `67,831,020-B` proof. Soundness `78.80929487390853`, weight-ZK
   `120.0170064253057`, setup traffic `40,446,419 B` and peak device use
@@ -22,15 +22,42 @@ Read `c4.1-seed-streaming-fiat-shamir.md` next.
 - **Unchanged failure.** Prover time `7.942478252 s` is
   `1.935020839958646x` the C4 anchor and fails `<=1.30x`; overall C4.1 remains
   FAIL. The successor receives no prover-time repair or promotion credit.
-- **Current checks.** C41FS1 parity/canonical mutation, compact-query versus
-  streaming equality, one-time burn, bounded decoding, 1/4-thread equality,
-  Lean composition and full-geometry AArch64 expansion/RSS/NEON are green.
-  Exact full-proof challenge census, a real-proof verifier-only replay and
-  party-separated setup transport remain pending.
-- **Hard stop.** No provider or pod run is authorized. Resume to A100 requires
-  all local design gates, a clean checkpoint, an approved HTTPS artifact
-  channel and a new explicit owner GO recorded here. The separate prover-time
-  failure still requires its own approved repair before C4.1 can pass.
+- **Current checks.** The full Rust workspace, 15 focused C4.1 tests, strict
+  role/tamper codecs, one-time burn, 1/4-thread equality, Lean composition and
+  full-geometry AArch64 RSS/NEON evidence are green. The provider is unable to
+  decode verifier secrets; the client materializes no typed lot/full query.
+- **Hard stop.** No pod contact is authorized. Exact full-proof C41FS1 census,
+  real-proof replay and a same-client C4 control require a full proof, while
+  local heavy E2E is forbidden; the current pre-pod gate is therefore
+  circular. Resume requires an owner amendment moving those items to the
+  first fail-closed pod preflight (or a supplied genuine artifact), a named
+  approved single-use HTTPS service, clean GitHub-HTTPS checkpoint and new
+  explicit owner GO. The immutable prover-time failure remains controlling.
+
+- **2026-08-30 — C4.1 party-separated producer/verifier seam and prover
+  diagnostics locally complete; pod remains stopped.** The implementation
+  adds canonical provider-only and verifier-only bundle codecs with strict
+  caps, digests and production censuses. `c41_party_setup` uses real/AES PCG,
+  runs typed setup, measures model initialization separately and pins the
+  deterministic weights/embed PCS roots locally. `p6_report` accepts exactly
+  one authenticated provider bundle after a mock schedule prepass, deletes
+  and fsyncs it before production proving, checks exact ordinary-correlation
+  consumption, emits public artifacts outside Git and defers acceptance to
+  the client. `c41_verify_client` is
+  CPU-only, binds clean SHA, model setup, proof and C41FS1 metadata, burns the
+  index before proof I/O, streams typed verification in bounded chunks and
+  reports inventory load separately from proof-to-verdict time.
+
+  New A100 diagnostics split lot expansion/preparation, registration, bridge
+  build/sparsity, dense-query construction and Rayon scratch upper bound,
+  query/bitmap H2D, fused fold, D2H/synchronization, degree-12 close and
+  cleanup; existing model/PCS/codec/peak-device fields remain. Focused C4.1
+  tests are **15/15 PASS**, `p6_report` tests **14/14 PASS** with one registered
+  production-size ignore, and `cargo test --workspace` is green. No proof,
+  verifier time or pod credit is claimed. The exact commands and cleanup are
+  frozen in `c4.1-party-e2e-runbook.md`. The hard stop above remains because
+  the exact full-proof census/replay cannot be produced locally without
+  violating the repository ban on heavy local E2E.
 
 - **2026-08-30 — C4.1-SVFS local implementation authorized; pod remains
   stopped.** The owner approves the successor plan in

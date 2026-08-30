@@ -1,0 +1,57 @@
+{
+  "schema": "volta-c41-seed-stream-v1",
+  "unix_time_s": 1788104610,
+  "git_sha": "72a7d5885522b58b727818049b04edcb62a531c3",
+  "git_dirty": false,
+  "architecture": "aarch64",
+  "cpu_summary": "CPU implementer\t: 0x61; CPU part\t: 0x000; CPU implementer\t: 0x61; CPU part\t: 0x000; CPU implementer\t: 0x61",
+  "target_feature_neon": true,
+  "available_parallelism": 4,
+  "cells": 3110400,
+  "rows": 253,
+  "chunk_cells": 4096,
+  "persistent_seed_bytes": 4145152,
+  "materialized_lot_bytes_avoided": 99532800,
+  "full_query_bytes_avoided": 49766400,
+  "runs": [
+    {
+      "threads": 1,
+      "wall_s": 46.482201157,
+      "cells_per_second": 66915.93604817032,
+      "checksum": [
+        [
+          9691630553199017478,
+          13356077944528586620
+        ],
+        [
+          15802660132895129514,
+          6139805270446935904
+        ]
+      ],
+      "minor_faults_delta": 508,
+      "major_faults_delta": 0,
+      "peak_rss_bytes": 10108928
+    },
+    {
+      "threads": 4,
+      "wall_s": 12.845134539,
+      "cells_per_second": 242146.15974292054,
+      "checksum": [
+        [
+          9691630553199017478,
+          13356077944528586620
+        ],
+        [
+          15802660132895129514,
+          6139805270446935904
+        ]
+      ],
+      "minor_faults_delta": 1033,
+      "major_faults_delta": 0,
+      "peak_rss_bytes": 10522624
+    }
+  ],
+  "checksums_equal": true,
+  "rss_stop_bytes": 2000000000,
+  "rss_stop_pass": true
+}

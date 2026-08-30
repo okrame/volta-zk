@@ -1,11 +1,8 @@
 //! Transcript accounting and verifier challenge derivation.
 //!
-//! Every protocol message is charged to a labelled byte ledger (the P2 gate
-//! compares totals against the analytic budget). Challenges are drawn from a
-//! verifier-side ChaCha stream — this mocks the *interactive* DV exchange
-//! (declared shortcut: in the deployed protocol challenges come fresh from V
-//! after each prover message; they are NOT Fiat–Shamir hashes and must not be
-//! derivable by the prover from public data alone).
+//! Every protocol message is charged to a labelled byte ledger. Legacy paths
+//! use a verifier-side stream or interactive channel; registered profiles can
+//! instead derive public Fiat--Shamir challenges from canonical moves.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use volta_field::{Fp, Fp2, FpStream, P};
@@ -87,6 +84,7 @@ impl FiatShamirProfile {
         }
     }
 
+    #[cfg(debug_assertions)]
     fn response_debug_label(self) -> &'static str {
         match self {
             Self::C41 => "c41_fiat_shamir_response",
@@ -524,7 +522,7 @@ impl Transcript {
 
     fn record_fs_response(
         &mut self,
-        profile: FiatShamirProfile,
+        _profile: FiatShamirProfile,
         response: TranscriptChallengeResponse,
     ) {
         self.canonical_moves.update(&[4]);
@@ -550,7 +548,7 @@ impl Transcript {
         self.canonical_moves.update(&encoded[..length]);
         #[cfg(debug_assertions)]
         self.canonical_event_debug
-            .push((profile.response_debug_label(), *blake3::hash(&encoded[..length]).as_bytes()));
+            .push((_profile.response_debug_label(), *blake3::hash(&encoded[..length]).as_bytes()));
     }
 
     fn fiat_shamir_challenge(

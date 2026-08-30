@@ -22,9 +22,11 @@ Read `c4.1-seed-streaming-fiat-shamir.md` next.
 - **Unchanged failure.** Prover time `7.942478252 s` is
   `1.935020839958646x` the C4 anchor and fails `<=1.30x`; overall C4.1 remains
   FAIL. The successor receives no prover-time repair or promotion credit.
-- **Current checks.** C41FS1 canonical binding, explicit soundness
-  composition, compact-query equivalence, one-time burn, bounded RSS and
-  AArch64 SIMD evidence are pending local implementation and measurement.
+- **Current checks.** C41FS1 parity/canonical mutation, compact-query versus
+  streaming equality, one-time burn, bounded decoding, 1/4-thread equality,
+  Lean composition and full-geometry AArch64 expansion/RSS/NEON are green.
+  Exact full-proof challenge census, a real-proof verifier-only replay and
+  party-separated setup transport remain pending.
 - **Hard stop.** No provider or pod run is authorized. Resume to A100 requires
   all local design gates, a clean checkpoint, an approved HTTPS artifact
   channel and a new explicit owner GO recorded here. The separate prover-time
@@ -42,6 +44,38 @@ Read `c4.1-seed-streaming-fiat-shamir.md` next.
   a 2-GiB safety ceiling remain binding. Work is local-only. No provider or
   pod contact is authorized until local evidence is complete and a later
   owner GO is recorded. The immutable C4.1 prover failure is unchanged.
+
+- **2026-08-30 — C4.1-SVFS implementation and component measurement are
+  locally green; full verifier remains unmeasured; no pod GO.** Clean
+  `72a7d58` implements the domain-separated `C41FS1` transcript, binds exact
+  canonical model/PCS/closure moves, rejects length-only Fiat--Shamir events,
+  and caps challenge/rejection sampling at `131,072 / 4`, or `1,048,576`
+  limb queries. The conservative field-event composition is
+  **`78.80929486033413` bits** at the maximum `1,000,000` bridges; inherited
+  XOR4-MAJ7 weight-ZK is **`120.0170064253057` bits**. BLAKE3 ROM,
+  state-restoration and non-rollback storage remain explicit computational or
+  deployment assumptions, not numerical field credit. The new Lean logical
+  composition boundary builds in **1,406 jobs**; the complete `lake build`
+  is green in **3,275 jobs**. `cargo test --workspace` is also green.
+
+  The verifier now retains **`4,145,152 B`** of typed seed keys, compact query
+  descriptors and one **4,096-cell** query chunk; it does not construct the
+  **`99,532,800-B`** expanded lot or **`49,766,400-B`** full query. The clean
+  full-geometry component report records **`46.482201157 s`** at one thread
+  and **`12.845134539 s`** at four, identical field checksums, zero major
+  faults and **`10,522,624 B`** peak RSS. The hot
+  `c41_expand_packed_key_at` symbol contains AArch64 ASIMD `cmeq/uzp1` at
+  `0x56704..0x5671c` and vector field reduction `add/cmhi/bit` at
+  `0x56c18..0x56c3c`. Raw report
+  `c41-seed-stream-2026-08-30-72a7d58.json`, SHA-256
+  `8e6de4e8a0672875665609479f771978b47b30cd6f550f4b6c461b781b716db2`.
+
+  This is component evidence, not total verifier time. The CPU-only bounded
+  proof reader builds, but no real C41FS1 artifact or party-separated verifier
+  state exists yet, so proof I/O, full Fiat--Shamir census, model/PCS/closure
+  replay and total local verifier time receive no credit. The pod hard stop
+  remains; resume still requires those local seams, a clean checkpoint,
+  approved HTTPS transport and a fresh owner GO.
 
 - **2026-08-30 — One-time pod-sync deviation authorized; result content is
   unchanged.** Pod migration removed the GitHub HTTPS credential helper, so

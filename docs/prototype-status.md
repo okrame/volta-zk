@@ -8,12 +8,12 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-Read `c4.1-seed-streaming-fiat-shamir.md` next.
+Read `c4.1-secret-challenge-no-crs.md` next.
 
-- **Active work.** C4.1-SVFS local implementation is complete: strict
-  party-separated real/AES setup bundles, client-pinned PCS model roots, a
-  one-response A100 producer, CPU seed-streaming verifier and C41FS1 replay.
-  Verifier time, including seed expansion, has no first-run threshold.
+- **Active work.** The seed-streaming successor is rejected: its measured
+  four-thread expansion/fold is `12.845134539 s`. Research moved to a
+  verifier-private post-commitment challenge on branch
+  `agent/c41-secret-challenge`; CRS/SRS constructions are excluded.
 - **Immutable evidence.** Clean `a3604cf` produced and accepted a
   `67,831,020-B` proof. Soundness `78.80929487390853`, weight-ZK
   `120.0170064253057`, setup traffic `40,446,419 B` and peak device use
@@ -22,18 +22,39 @@ Read `c4.1-seed-streaming-fiat-shamir.md` next.
 - **Unchanged failure.** Prover time `7.942478252 s` is
   `1.935020839958646x` the C4 anchor and fails `<=1.30x`; overall C4.1 remains
   FAIL. The successor receives no prover-time repair or promotion credit.
-- **Current checks.** The full Rust workspace, 15 focused C4.1 tests,
-  role/tamper codecs, one-time burn, 1/4-thread equality and Lean are green.
-  Clean `9a3f033` measured real/AES setup: model init `12.433663053 s`, PCG plus
-  typed setup `4.800655771 s`; provider/verifier bundles are
-  `54,204,710 / 37,053,795 B`. No typed lot/full query is materialized.
-- **Hard stop.** No pod contact is authorized. Exact full-proof C41FS1 census,
-  real-proof replay and a same-client C4 control require a full proof, while
-  local heavy E2E is forbidden; the current pre-pod gate is therefore
-  circular. Resume requires an owner amendment moving those items to the
-  first fail-closed pod preflight (or a supplied genuine artifact), a named
-  approved single-use HTTPS service, clean GitHub-HTTPS checkpoint and new
-  explicit owner GO. The immutable prover-time failure remains controlling.
+- **Current ruling.** Fiat--Shamir may remain for public-coin challenges, but
+  every coin determining the pre-folded typed query must be in the private
+  packet. Eliminating its online reveal without a CRS requires no-CRS silent
+  NISC for the complete challenge-dependent post-commitment function, not a
+  hash substitution.
+- **Hard stop.** No Rust, Lean or pod work is authorized. Resume requires an
+  exact factorization of the folded verifier key, malicious private-setup
+  realization, byte/work/state/security accounting, and owner selection of
+  the interactive baseline or the round-free NISC candidate. The immutable
+  prover-time failure remains controlling.
+
+- **2026-08-31 — Seed-streaming verifier rejected; secret-challenge no-CRS
+  research ruling recorded; no implementation or pod.** The owner rejects the
+  `12.845134539-s` four-thread seed expansion/fold as operationally
+  unacceptable and excludes CRS-based successors. Work moves to clean branch
+  `agent/c41-secret-challenge`. The simple baseline samples a verifier-private
+  challenge packet offline, pre-folds its keys, reveals the packet only after
+  the provider fixes the commitment frontier, and retains Fiat--Shamir for
+  later public-coin challenges.
+
+  Literature and code-order review show that a round-free variant is possible
+  only as preprocess-then-one-message secure computation: private base-OT/
+  VOLE/PCG preprocessing masks the verifier input, and the provider evaluates
+  the challenge-dependent post-commitment function without learning it. This
+  is silent NISC, not ordinary Fiat--Shamir and not a free NIZK. For C4.1 the
+  private packet must fix every GKR/PCS point that determines the typed query,
+  not only final bridge `beta`; otherwise the `3,110,400`-cell folded verifier
+  key cannot be precomputed. Generic NISC would securely evaluate the seed
+  expansion/fold or the complete post-commitment prover and is linear in that
+  function. No reviewed construction yet meets the few-KB client state,
+  `<70 MB` proof, inherited setup/prover/device gates and `>78`-bit security.
+  Design `c4.1-secret-challenge-no-crs.md` freezes the analytic screen and
+  literature ruling. No protocol, proof, measurement or pod credit is claimed.
 
 - **2026-08-30 — C4.1 party-separated real/AES setup measured locally; pod
   remains stopped.** Clean `9a3f033` generated one exact production-capacity

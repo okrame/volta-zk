@@ -1,21 +1,26 @@
 # C7 — stateful authenticated linear-functional commitment
 
-**Status:** `C7-LOGVOLE-FRONTIER-v1` is the active analytic-only screen under
-the 2026-08-31 owner GO recorded in D117.  It retains one monotone packed-`W`
-scan online and tests a model-init frontier sidecar plus bounded blockwise
-shrink/expand.  Only this row may use multi-pass/model-linear setup temporaries,
-an absolute 8-GB private frontier sidecar, at most 8 GB of proof-only scratch
-and a 76-GB complete device peak.  A verifier-private pre-folded response lot
-is allowed only as one-shot inventory and burns on abort; its preparation is
-per attempted response, never setup.  For the Gemma-class 31B envelope,
-`T_V_attempt = T_lot_prepare + T_proof_read_to_verdict` has a 30-s target and
-60-s hard cap on this CPU VM.  An exact root-to-`k_q` factorization or a truly
-sublinear sender fold is therefore a first kill gate.  Policy 2, direct
-Goldilocks Fp3 under one `Delta`, rate 1/2, `k0=4`, one packed weight root,
-logical `g=141`, interactive `Q_FS=0`, wire and security gates remain fixed.
-R0.8h v0 remains NO-GO evidence. `C7_CPU_REFERENCE_PASS=false`; no Rust, Lean,
-CPU prototype, SIMT, prover, H100, E2E, provider or pod work is authorized.
-This document is the task-specific authority named by `prototype-status.md`.
+**Status:** `C7-LOGVOLE-FRONTIER-v1` is closed analytic NO-GO by D118.  In the
+published construction raw LHE decryption is affine, but coordinatewise
+`Denoise` is scale-and-round; the paper proves its cleanup map only as a
+regular surjection and supplies no homomorphism.  The proposed affine fold
+therefore cannot be pushed through cleanup.  More decisively, fresh `H_ct`
+answers independently determine every leaf mask block.  In the paper's
+random-oracle syntax, an exact dense fold must query every active leaf.  Under
+its explicit correction API this is `Omega(N/n)` ring-word output and
+`Omega(N)` coefficient work for generic dense `q_tau`.  Pre-folding only
+moves that one-shot work into `T_lot_prepare`.  The 31B three-base-label
+control needs 7,168.930 s at the paper's 12.9-Mlabel/s online rate versus this
+VM's 60-s hard cap; it is foreign semi-honest evidence and remains
+`credit:false`.  Frontier pebbling retains its memory-control value but does
+not pass the sender gate, and same-`W`, direct Fp3 under one `Delta`, malicious
+interactive `Q_FS=0`, exact wire/resources, H100 and stateful-security gates
+also remain open.  This is scoped to the published LogVOLE correction-label
+realization, not a CI-VOLE, RLWE, HSS or secure-computation lower bound.  There
+is no active C7 implementation line. `C7_CPU_REFERENCE_PASS=false`; no Rust,
+Lean, CPU prototype, SIMT, prover, H100, E2E, provider or pod work is
+authorized.  This document is the task-specific authority named by
+`prototype-status.md`.
 
 Volta-ZK is a stateful designated-verifier proof architecture for
 private-weight autoregressive inference. Like modern public zkML systems, it
@@ -55,11 +60,12 @@ authority and Pareto-before-caps order with interactive challenges, closes
 the two bounded post-Pareto alternatives, and audits the retained Fp2 schedule
 before any field change.  Its required output is the canonical codec plus
 security, serialized bytes and resource row; R0.8 is not an implementation GO.
-R0.8h v0 is closed NO-GO.  D117 reopens only the named
+R0.8h v0 is closed NO-GO.  D117 reopened only the named
 `C7-LOGVOLE-FRONTIER-v1` revision as an analytic screen with the narrow
-setup/frontier/lot concessions in Section 5.17.  The owner GO expressly grants
-no Rust, Lean, CPU reference, H100/prover, provider or pod action unless that
-row first passes every gate.
+setup/frontier/lot concessions in Section 5.17.  D118 closes that revision on
+its first sender gate; the concessions transfer no credit or authority to a
+successor.  No Rust, Lean, CPU reference, H100/prover, provider or pod action
+is authorized.
 
 1. The immutable model, response trace and persistent cache are separate
    commitment planes.  "One opening" means one transcript-bound
@@ -89,21 +95,21 @@ row first passes every gate.
    baseline tolerance.  A separate exploratory ceiling near `3.00x` is
    registered, but it passes only with absolute persistent-disk, setup-wall
    and refresh-wall caps fixed before measurement.  X4d-scale expansion and
-   uncounted/model-sized temporary storage remain forbidden.  D117 makes the
+   uncounted/model-sized temporary storage remain forbidden.  D117 made the
    sole named exception for counted model-init temporaries and an independently
-   capped private frontier sidecar in `C7-LOGVOLE-FRONTIER-v1`; it does not
-   relax `A_setup` for any other artifact or candidate.
+   capped private frontier sidecar in `C7-LOGVOLE-FRONTIER-v1`; D118 closes
+   that screen and does not relax `A_setup` for any other artifact or
+   candidate.
 6. Weight-oracle `B_query_wire` (the interactive successor to the historical
    `B_query_FS` label) is included inside `B_weight_ALFC`, never added as a
    seventh component.  The 105% value is now the target, not an immediate hard
    stop.  An exact exploratory cap may be preregistered inside 125--150% only
    if the complete certificate also stays within 35/115 MB and 3.5x growth.
 7. The historical authorized tiny CPU screen, bounded R0.8g Bolt screen and
-   R0.8h LogVOLE challenge-order v0 screen are complete.  D117 now activates
-   only the v1 frontier analytic screen.  No row supplies a complete admitted
-   relation/resource/security result, so `C7_CPU_REFERENCE_PASS=false`.  No
-   executable-backend implementation, large-prover/E2E, provider or pod
-   action is authorized.
+   both R0.8h LogVOLE screens are complete.  D118 closes v1 on its sender gate.
+   No row supplies a complete admitted relation/resource/security result, so
+   `C7_CPU_REFERENCE_PASS=false`.  No executable-backend implementation,
+   large-prover/E2E, provider or pod action is authorized.
 8. No current backend passes setup, domain support, one-pass opening, all four
    normalized query counts, proof bytes and stateful malicious-DV privacy
    together.  Logical `g=141` remains fixed; every grouped/alphabet query is
@@ -3874,7 +3880,7 @@ action follows.
 
 #### Authority and exact concessions
 
-D117 reopens exactly `C7-LOGVOLE-FRONTIER-v1` as an analytic revision of the
+D117 reopened exactly `C7-LOGVOLE-FRONTIER-v1` as an analytic revision of the
 closed v0 row.  It is not a generic CI-VOLE tournament and grants no theorem,
 implementation or hardware credit.  The durable concessions, including for a
 later development of this named construction, are only:
@@ -3988,8 +3994,142 @@ screen must supply all of:
 - the root-to-`k_q` factorization or sublinear sender fold meeting the 30/60-s
   31B VM gate, plus the complete single-H100 inference-and-proof gate.
 
-The screen is active but all evidence remains `credit:false`.
+At D117 this screen was active and all evidence was `credit:false`.  D118 and
+Section 5.18 supersede that status and close it without implementation credit.
 `C7_CPU_REFERENCE_PASS=false` and `C7_POD_READY=false`.
+
+### 5.18 R0.8h.2 exact root-fold and sublinear-sender disposition
+
+#### Cleanup prevents the proposed affine factorization
+
+The optimistic affine template is invalid for the published recursion, not
+merely absent from its API.  At each sender expansion the relevant path is
+
+```text
+ctk[j,i]       = H_ct(id, seed, j, i)
+k_tilde[j,i]   = LHE.Dec(k_parent[j,i], ctk[j,i])
+k_child[j,i]   = Denoise(phi_j, k_tilde[j,i]),
+```
+
+followed where applicable by CRT composition and `Agg`.  Concrete LHE
+decryption is affine before cleanup.  For one scale `delta > 1`, however, the
+coordinate map
+
+```text
+D_delta(z) = round(z / delta) mod q_t
+```
+
+is not affine.  For the protocol's large scales, let
+`z=floor(2*delta/5)`.  The equally spaced inputs `0,z,2z` map to `0,0,1`,
+so their successive differences disagree.  On centered integer
+representatives, equivalently,
+
+```text
+D_delta(z) = (z - e(z)) / delta,
+```
+
+where the rounding-cell residue `e(z)` depends on that coordinate's parent
+key and fresh correction; this division is not an operation in `Rq`.  If
+`L=Trim o Agg o CRT` is the linear cleanup after equal-scale denoising, the
+scalar-limb fold contains the weighted residual `<L^T q,e>`.  The paper's
+per-coordinate noise margin neither makes it zero nor bounds a dense aggregate
+inside one rounding cell.  The direct Goldilocks-Fp3 lift needed to type that
+expression for C7 does not exist yet.
+
+This matches the paper's own malicious-security machinery.  Lemma 17 of
+`sota/2026-0925-logvole.md` proves that
+
+```text
+G = Trim o Agg o CRT o Denoise
+```
+
+is a **regular surjection**; it does not provide the homomorphism the affine
+fold would require.  Lemma 18 samples its fibers.  CRT and `Agg` do not recover
+the rounding-cell indices discarded by `Denoise`.  Thus the direct affine
+push-through must account exactly for their weighted aggregate, and the paper
+supplies no compact factorization that does so.  The random-oracle argument
+below shows why its current realization must touch every active leaf.  The
+malicious interactive namespace also depends on fresh
+`sk'_rt` through `seed=H_seed(id,sk'_rt)`, so a literal factorization omitting
+that response or seed is underspecified.
+
+#### Scoped random-oracle query bound
+
+There is a stronger obstruction to any exact black-box sender fold while the
+published correction syntax is retained.  Condition on no correctness bad
+event, and fix the setup, root transcript, seed, parent/internal correction
+path and every leaf answer except one active label
+
+```text
+L_i = (id, seed, leaf, i).
+```
+
+The paper's corrupted-sender proof states that the fresh value
+`H_ct(L_i)` determines the corresponding clean sender mask block through the
+same post-processing map.  Its corrupted-receiver proof programs that fresh
+value through the regular fibers to obtain any required clean block.  Hence,
+for a fold block `q_i != 0`, two random oracles can agree on the algorithm's
+entire queried view yet differ only at an unqueried `L_i` and produce different
+`k_q` values.  An exact algorithm must therefore query every leaf whose fold
+block is nonzero.  A randomized algorithm that skips one such fresh block can
+guess its contribution with probability at most `1/p` in the paper's scalar
+domain.
+
+Let `s_q` be the number of leaf blocks on which the scalar-limb fold is
+nonzero.  The unit-cost random-oracle argument gives `Omega(s_q)` point
+queries.  In the published API each answer explicitly contains `Theta(mu)`
+ring words.  With `n=8192`, the optimized semi-honest control `mu=8` and
+`w=ceil(N/n)`, generic registered `q_tau` has
+`s_q=Theta(w/mu)` and therefore gives
+
+```text
+Omega(w/mu) fresh H_ct leaf queries,
+Omega(w)    explicit ring-word output/work,
+Omega(N)    coefficient work in the explicit representation.
+```
+
+Challenges that make the fold sparse are exceptional/degenerate cases, not a
+general admitted proof path; the exact bound remains `Omega(s_q)` for them.
+Internal labels add a geometric series of the same order in the dense case. A
+short recurrence for generating `q_tau` changes none of this: it compresses
+the coefficients, not the independent mask blocks. Early private challenge
+sampling and a stored scalar `k_q` reduce live memory only; all expansion and
+fold work is one-shot `T_lot_prepare` and burns on every terminal outcome.
+
+This is a black-box lower bound for the paper's fresh domain-separated
+`H_ct` random oracle and cleanup map.  It is not a lower bound on CI-VOLE,
+RLWE, HSS, functional PRGs or secure computation in general.
+
+#### Time and conjunctive gate result
+
+The optimistic 31B three-base-label control contains 92,479,200,000 labels.
+Meeting 60/30 s would require 1.541/3.083 billion labels/s, respectively:
+119.5x/239.0x the paper's 12.9-Mlabel/s online result on 16 physical AVX512
+cores.  The corresponding published controls are 7,168.930 s online and
+9,734.653 s including setup and sender precomputation; malicious no-golden
+work and proof-read-to-verdict are additional.  These figures are not a VM
+measurement or hardware lower bound, but they provide no path to the
+registered 60-s cap, while the scoped argument above rules out the required
+sublinear evaluation in the current construction.
+
+The frontier still converts the prover's live-vector problem into the useful
+`O(B)` scratch plus `O(N/B)` checkpoint control.  It does not alter sender
+corrections.  Even a hypothetical perfect root fold would leave independent
+gates unresolved: malicious `C_W`/frontier same-input binding, one-scan splice,
+direct Goldilocks Fp3 under one `Delta`, interactive reusable setup with
+`Q_FS=0`, complete codec/wire and setup/refresh/traffic/peak rows, the full
+single-H100 inference-plus-proof row, canonical compiler with
+`terminal_count=1`, real/AES PCG, and the complete `AcceptC7` stateful
+soundness/privacy/allocator composition at the 78-bit lifetime target.
+
+**Disposition.** `C7-LOGVOLE-FRONTIER-v1` is NO-GO on its first sender gate
+and cannot satisfy all C7 gates.  A possible successor would need either a
+named exact root-to-`k_q` factorization whose complete one-shot work passes the
+30/60-s gate, or a structured correction/fold primitive with an exact `o(N)`
+aggregate API.  It must also provide multi-attempt pseudorandom-mask security,
+direct one-`Delta` Fp3 semantics and the complete same-`W`/resource/security
+row.  That is a new construction, not a scheduling change to LogVOLE, and
+requires a new owner decision.  No generic search or executable work follows.
 
 ## 6. Registered analytic screens
 
@@ -4902,16 +5042,18 @@ The focused command
   same-`W`, Goldilocks-Fp3, `Q_FS=0`, exact-codec or stateful malicious-DV
   bridge.  Both parties also pay linear ring work per response; the paper's
   CPU semi-honest rates are not VM-verifier or H100-prover evidence.
-- **`C7-LOGVOLE-FRONTIER-v1`: ACTIVE ANALYTIC SCREEN; NO IMPLEMENTATION
-  GO.**  A provider-private frontier and blockwise pebbling seek to replace
-  v0's linear live vector with `O(B)` scratch plus `O(N/B)` persistent
-  checkpoints while retaining one monotone online scan.  D117 alone permits
-  counted multi-pass setup temporaries, an 8-GB frontier sidecar, 8-GB proof
-  scratch, 76-GB device peak and one-shot verifier-private pre-folded lots.
-  For 31B the total per-attempt VM CPU time, including lot creation, targets
-  30 s and fails above 60 s.  Root-to-`k_q` factorization, same-`W`, direct
-  Fp3, malicious `Q_FS=0`, exact resources and stateful security are open;
-  all evidence remains `credit:false`.
+- **`C7-LOGVOLE-FRONTIER-v1`: FIRST SENDER GATE FAIL; ANALYTIC NO-GO.**
+  A provider-private frontier and blockwise pebbling give a useful `O(B)`
+  scratch plus `O(N/B)` checkpoint memory control while retaining one intended
+  monotone online scan.  They do not compress the verifier's fresh correction
+  labels.  Coordinatewise `Denoise` prevents the proposed affine root fold;
+  more decisively, the published random-oracle realization requires every
+  active leaf correction for a generic dense fold, hence `Omega(N/n)` explicit
+  ring-word work in its API.  A one-shot lot merely charges that work to
+  `T_lot_prepare`.  The 31B foreign
+  control is 7,168.930 s online versus the 60-s VM hard cap.  D118 closes the
+  screen; same-`W`, direct Fp3, malicious `Q_FS=0`, exact resources, H100 and
+  stateful security also remain open.  All evidence is `credit:false`.
 - **`C7-SPBT-v0`: ALGEBRA RETAINED; CARRIER LINE CLOSED.**  Its
   invertible complement transform preserves ordinary independent GKR
   challenges and gives one degree-`<M` secret-point identity.  The algebra,
@@ -4950,12 +5092,12 @@ The focused command
 
 Policy 3 remains terminally rejected and policy 2 is active.  Strict-UD RS is
 now only the control baseline; R0.8f closes SPBT as a carrier, R0.8g closes
-the authorized one-candidate direct-Bolt screen, and D116 closes the named
-R0.8h LogVOLE challenge-order v0 screen.  D117 reopens only
-`C7-LOGVOLE-FRONTIER-v1` as the active analytic screen; no carrier or
-executable backend is admitted.  SPBT, Bolt's setup-size control and
-LogVOLE's succinct-wire control remain reusable evidence only and do not
-weaken any recorded rejection.
+the authorized one-candidate direct-Bolt screen, D116 closes the named R0.8h
+LogVOLE challenge-order v0 screen, and D118 closes
+`C7-LOGVOLE-FRONTIER-v1` on its first sender gate.  No carrier, analytic line
+or executable backend is active.  SPBT, Bolt's setup-size control, LogVOLE's
+succinct-wire control and the frontier memory geometry remain reusable
+evidence only and do not weaken any recorded rejection.
 The selected challenge baseline remains interactive
 honest-DV (`Q_FS=0`) and logical `g=141`.  Setup retains its 2.00 target/2.10
 baseline, with a conditional exploratory 3x ceiling plus absolute disk,
@@ -4968,17 +5110,18 @@ fail-closed readiness handoff is
 prover/E2E, pod contact or pod execution.
 
 Both bounded post-Pareto alternatives and the earlier one-candidate tournament
-remain closed.  There is no generic R0.8i, prototype or further relaxation;
-only the Section 5.17 frontier revision is active.  It must satisfy the full
-analytic pass boundary before even a tiny CPU prototype.  The tested Fp3
-codec/MAC seam is carrier-independent and is not implementation authority.
-The v1 package must prove its one-monotone-scan frontier splice, bind the
-frontier and pre-`tau` digest to canonical `C_W`, instantiate the direct Fp3
-malicious interactive transcript without uncounted Fiat--Shamir, derive the
-root-to-`k_q` factorization or sublinear sender fold, and provide separate
-per-root setup, per-attempt lot, H100 prover, VM verifier, network, state and
-security rows.  For 31B the verifier row includes both lot preparation and
-proof-read-to-verdict and must pass the 30/60-s target/hard cap.
+remain closed.  There is no generic R0.8i, prototype or further relaxation.
+Section 5.18 shows that scheduling alone cannot repair v1: any successor must
+first supply either an exact root factorization passing the complete 30/60-s
+lot gate or a named exact sublinear fold primitive, and receive a new owner
+decision.  It must also prove
+the one-monotone-scan frontier splice, bind the frontier and pre-`tau` digest
+to canonical `C_W`, instantiate the direct Fp3 malicious interactive
+transcript without uncounted Fiat--Shamir, and provide separate per-root
+setup, per-attempt lot, H100 prover, VM verifier, network, state and security
+rows.  For 31B the verifier row includes both lot preparation and
+proof-read-to-verdict and must pass the 30/60-s target/hard cap.  The tested
+Fp3 codec/MAC seam is carrier-independent and is not implementation authority.
 Fp3, 78 connection bits, setup 900/990 and
 5,400/5,940 seconds, separate untested refresh counters and computational
 per-root masks otherwise remain fixed.  Any successor must serialize and
@@ -5086,6 +5229,13 @@ smallest complete serialized case before any larger component benchmark.
   pre-folded lot is still per-attempt verifier work, and the combined 31B VM
   CPU gate prevents temporal reclassification from hiding a linear sender
   fold.  No prototype follows from the owner GO.
+- R0.8h.2 closes that revision on the first sender gate.  The published raw
+  decryption is affine only before nonlinear scale-and-round cleanup, and its
+  fresh random-oracle leaf corrections impose linear black-box work for an
+  exact dense fold: `Omega(s_q)` oracle queries, and linear explicit output
+  work for generic dense `q_tau`.  This scoped result does not transfer to a
+  new structured correction primitive or to CI-VOLE/RLWE in general.
+  Frontier memory controls retain no implementation credit.
 - The proof-byte table is a target allocation calibrated to public component
   evidence, not a composed certificate derivation.  It is `credit:false` and
   is one reason Backend A remains NO-GO.
@@ -5216,3 +5366,4 @@ entry, but must retain its evidence and reason.
 | `C7-D115` / 2026-08-31 | owner reopens exactly the named LogVOLE challenge-order analytic screen | `C7-LOGVOLE-CHALLENGE-ORDER-v0` may be screened against every unchanged C7 gate using the local literature and C4.1 party-separated cost terminology. The verifier is the LogVOLE sender on this CPU VM; the provider/prover is the receiver performing inference plus proof on one eventual H100. Setup, response lot, prover time, verifier time and transfer remain separate by frequency. This GO authorizes capsule/design analysis only. No Rust, Lean, CPU prototype, H100/prover, provider or pod action is valid unless the analytic row first passes every gate. |
 | `C7-D116` / 2026-08-31 | LogVOLE challenge-order current row NO-GO | LogVOLE is a concrete computational escape from D110's scoped affine-correction lower bound and retains its polylogarithmic-wire evidence. The strongest order binds a randomized fixed-input digest before `tau` and streams the final fold after the verifier response. The published `OnlineRec` still performs bottom-up shrink followed by top-down expansion, requiring another packed read or model-linear intermediate/share state; its first recursive vector is already 1.845/472.446 GB per scalar-field instance at the C7 padded dimensions. Pre-enrollment instead retains at least 2.976/739.834 GB per Fp3 share and gives both parties linear per-response folds. The optimized implementation is semi-honest AVX512 CPU evidence; the reusable malicious route lacks the canonical same-`W`, direct Goldilocks-Fp3 shared-`Delta`, interactive `Q_FS=0`, exact setup/certificate, VM-verifier/H100-prover and stateful malicious-DV rows. The current candidate is not promoted; `C7_CPU_REFERENCE_PASS=false`. This is not a CI-VOLE/RLWE lower bound. No Rust, Lean, prototype, H100, provider or pod action follows. |
 | `C7-D117` / 2026-08-31 | owner reopens only `C7-LOGVOLE-FRONTIER-v1` with bounded setup/frontier/lot concessions | The active analytic revision checkpoints an ordered private digest frontier at model initialization, expands the small upper tree, then rebuilds and expands one macroblock at a time while folding immediately. It must retain one monotone packed-`W` scan online. Only this candidate may use fully counted multi-pass/model-linear setup temporaries, one private frontier sidecar `<=8,000,000,000 B`, response proof scratch `<=8,000,000,000 B` and complete device peak `<=76,000,000,000 B`; the sidecar is outside relative `A_setup` but remains charged to persistent/transfer/refresh/peak ledgers. A verifier-private pre-folded lot is one-shot, reserved and burned per attempted response and is never setup. On this CPU VM, Gemma-class 31B must satisfy `T_V_attempt=T_lot_prepare+T_proof_read_to_verdict`: target `<=30 s`, hard cap `<=60 s`; thus hours moved into inventory fail. The first kill gate is an exact root-to-`k_q` factorization with all lot-specific work inside that total, or a genuinely sublinear sender fold. Same-`W`, direct Fp3 under one `Delta`, malicious interactive `Q_FS=0`, exact wire/resources and stateful privacy remain unchanged. This GO is analytic only: no Rust, Lean, CPU prototype, H100/prover, provider or pod. |
+| `C7-D118` / 2026-08-31 | close `C7-LOGVOLE-FRONTIER-v1` NO-GO on the first sender gate | In the published LogVOLE recursion, concrete LHE decryption is affine before coordinatewise `Denoise`, but scale-and-round is not affine; Lemmas 17--18 characterize cleanup only as a regular surjection with programmable fibers and supply no homomorphism for the proposed direct fold. That push-through leaves a weighted rounding residual, and the paper supplies no compact factorization that accounts for it. More generally, conditioned on no correctness bad event and on a fixed parent/internal path, each fresh domain-separated leaf `H_ct` answer independently determines one clean mask block. For every nonzero fold block, two random oracles can agree on all queried points and differ at an unqueried leaf while changing `k_q`; exact black-box evaluation therefore needs every active leaf. The unit-cost bound is `Omega(s_q)` leaf queries; for generic dense `q_tau`, the paper's explicit API yields `Omega(N/n)` ring-word output and `Omega(N)` coefficient work. Pre-folding moves this one-shot work into `T_lot_prepare` and does not make it setup. The optimistic 31B three-base-label control is 7,168.930 s at the paper's 12.9-Mlabel/s semi-honest AVX512 rate, requiring 119.5x that rate merely for the 60-s VM cap. Frontier pebbling retains only `credit:false` prover-memory evidence. Same-`W`, direct one-`Delta` Fp3, malicious interactive `Q_FS=0`, exact wire/resources/H100, real/AES PCG and complete `AcceptC7` stateful soundness/privacy remain independently open. This result is scoped to the published correction-label random-oracle realization, not CI-VOLE, RLWE, HSS or secure computation generally. A successor requires either a named exact root factorization passing the complete 30/60-s lot gate or a structured exact `o(N)` fold, plus a new owner decision; no generic search, implementation, provider or pod action follows. |

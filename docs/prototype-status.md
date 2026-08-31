@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 LOGVOLE FRONTIER V1 ANALYTIC ACTIVE / NO RUST / NO LEAN / NO H100)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 LOGVOLE FRONTIER V1 ANALYTIC NO-GO — SENDER FOLD LINEAR / NO RUST / NO LEAN / NO H100)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,24 +11,61 @@ record; no external plan is authoritative.
 Read `c7-stateful-authenticated-lfc-design.md`; the R0.3 pod handoff remains
 inactive.
 
-- **Status.** `C7-LOGVOLE-FRONTIER-v1` is the active analytic-only screen under
-  D117. It retains one monotone online packed-`W` scan and permits only counted
-  multi-pass setup temporaries, an 8-GB private frontier sidecar, 8-GB proof
-  scratch, 76-GB device peak and one-shot pre-folded verifier lots.
-- **Evidence/credit.** Frontier pebbling targets `O(B)` live state plus
-  `O(N/B)` checkpoints instead of v0's linear recursive vector. The 31B
-  controls are about 1.845 GB scalar scratch and 5.536 GB for a naïve
-  three-limb scratch, before the missing direct-Fp3 wrapper. All remain
-  `credit:false`.
-- **Checks and hard stop.** For Gemma-class 31B, VM CPU
-  `T_lot_prepare + T_proof_read_to_verdict` targets 30 s and fails above 60 s;
-  precomputation cannot hide per-response work. Root-to-`k_q` factorization or
-  a sublinear sender fold, same-`W`, one-`Delta` Fp3, malicious `Q_FS=0`, exact
-  resources/wire and stateful privacy are open. No Rust, Lean, CPU prototype,
-  H100/prover, SIMT, provider or pod; `C7_CPU_REFERENCE_PASS=false` and
-  `C7_POD_READY=false` until every analytic gate passes. Current checks are
-  capsule length, D117/status cross-links and the document diff; no executable
-  check is authorized.
+- **Status.** D118 closes `C7-LOGVOLE-FRONTIER-v1` analytic NO-GO on its first
+  sender gate. No C7 carrier, research line or executable backend is active;
+  D117's frontier/lot concessions do not transfer.
+- **Evidence/credit.** Raw LHE decryption is affine, but coordinatewise
+  `Denoise` is scale-and-round and cleanup supplies only a regular surjection,
+  not the homomorphism needed by the proposed fold. Fresh leaf `H_ct` answers
+  independently determine mask blocks, so an exact dense fold in the
+  published random-oracle syntax requires
+  `Omega(N/n)` explicit ring-word and `Omega(N)` coefficient work for generic
+  dense `q_tau`. The 31B three-base-label
+  control is 7,168.930 s at 12.9 Mlabel/s versus the 60-s VM cap. Frontier
+  pebbling remains useful memory evidence; all controls are `credit:false`.
+- **Hard stop and resume.** Same-`W`, one-`Delta` Fp3, malicious interactive
+  `Q_FS=0`, exact wire/resources/H100 and stateful privacy also remain open.
+  No Rust, Lean, CPU prototype, H100/prover, SIMT, provider or pod;
+  `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`. Resume requires a new
+  owner decision on either a named exact root factorization passing the
+  complete 30/60-s lot gate or a structured fold primitive with exact `o(N)`
+  evaluation, plus a complete all-gates row; no generic search is authorized.
+  Current checks are capsule length, D118/status cross-links and the document
+  diff; no executable check is authorized.
+
+- **2026-08-31 — `C7-LOGVOLE-FRONTIER-v1` closes NO-GO on the exact
+  root-fold/sublinear-sender gate.**  Reconstructing the published sender path
+  shows that each raw LHE decryption is affine in its parent key and fresh
+  correction only before coordinatewise scale-and-round.  `Denoise` is not
+  additive; the paper's Lemmas 17--18 instead prove that the full cleanup is a
+  regular surjection with programmable fibers.  A direct affine push-through
+  must account for the weighted rounding residual, and the paper supplies no
+  compact factorization that does so.
+
+  More generally, once the malicious-interactive response fixes
+  `seed=H_seed(id,sk'_rt)`, condition on no correctness bad event and a fixed
+  internal path. Every domain-separated leaf `H_ct` answer is then fresh and
+  independently determines one clean sender mask block. For a nonzero
+  dense-fold block, two random oracles may agree on every queried point and
+  differ only at one unqueried leaf while changing `k_q`.  Exact black-box
+  evaluation thus needs every active leaf.  For generic dense `q_tau`, the
+  paper's explicit API incurs `Omega(N/n)` ring-word output and `Omega(N)`
+  coefficient work.  Sampling `tau`
+  privately or caching only `k_q` moves this work into the one-shot
+  `T_lot_prepare`; it does not turn it into reusable setup.
+
+  The optimistic 31B three-base-label control has 92,479,200,000 labels and
+  takes 7,168.930 s at the paper's 12.9-Mlabel/s semi-honest 16-core AVX512
+  rate; reaching 60/30 s would require 119.5x/239.0x that rate before
+  malicious and proof-verdict work.  This is `credit:false`, not a VM measure
+  or hardware lower bound.  Frontier pebbling retains its prover-memory shape,
+  but same-`W`, direct one-`Delta` Fp3, malicious `Q_FS=0`, exact resources,
+  codec/wire, H100 and stateful privacy remain independently open.  The result
+  is scoped to the published correction-label realization, not general
+  CI-VOLE/RLWE/HSS.  A successor needs either an exact root factorization
+  passing the complete 30/60-s lot gate or a named structured exact sublinear
+  fold, plus a new owner decision.  No implementation, provider or pod action
+  follows.
 
 - **2026-08-31 — Owner opens `C7-LOGVOLE-FRONTIER-v1` with bounded durable
   concessions and a non-hideable 31B verifier gate.**  The screen may replace

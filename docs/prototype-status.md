@@ -10,33 +10,61 @@ record; no external plan is authoritative.
 
 Read `c4.1-secret-challenge-no-crs.md` next.
 
-- **Active work.** Execute the frozen C41SC1 one-attempt E2E on the
-  owner-provided A100 pod. The 64-GiB host-RAM precondition applies to the A100
-  host, not Debian; the verifier's binding memory gate is peak RSS `<2 GB`.
-  No response or burn state exists yet.
-- **Immutable evidence.** Clean `a3604cf` produced and accepted a
-  `67,831,020-B` proof. Soundness `78.80929487390853`, weight-ZK
-  `120.0170064253057`, setup traffic `40,446,419 B` and peak device use
-  `18,056,184,148 B` pass their gates. Core/accounted verifier was
-  `3.035212223 / 3.322998133 s`.
-- **Unchanged failure.** Prover time `7.942478252 s` is
-  `1.935020839958646x` the C4 anchor and fails `<=1.30x`; overall C4.1 remains
-  FAIL. The successor receives no prover-time repair or promotion credit.
-- **Local evidence.** Strict codecs, burn/wait/replay seams, materialized fold,
-  sparse scatter and the frozen runbook are implemented; focused checks and
-  `cargo test --workspace` pass. This gives no proof-size, setup, timing,
-  memory, security or E2E credit. Lean stayed frozen because the relation is
-  unchanged.
-- **Checks.** Bind request to context/frontier/censuses, burn before release,
-  require exactly one private challenge, keep provider online traffic (proof
-  plus 330-B request) `<70 MB`, setup traffic `<=115,114,395 B`, prover
-  `<=5.3359744321 s`, device `<29,999,999,999 B`, verifier RSS `<2 GB`, and
-  security `>78` bits. `3.322998133 s` is diagnostic; no numeric successor
-  verifier-time gate exists.
-- **Authorization.** The owner GO authorizes the exact pod and one response.
-  Complete the producer even on prover-gate failure, require the committing
-  verifier RSS gate, record the full result, then stop and verify termination
-  of the pod. No retry or component-only credit.
+- **Disposition.** The final authorized C41SC1 one-attempt E2E is terminal
+  **FAIL** at clean `222e89d`; the active design remains
+  `c4.1-secret-challenge-no-crs.md`. One response was burned and no retry is
+  authorized.
+- **Completed evidence.** Fresh real/AES setup used `32,145,636 B` traffic,
+  materialized `99,532,800 B` of verifier keys and retained soundness
+  `78.80929487391572` / weight-ZK `120.0170064253057` bits. The authenticated
+  `330-B` request and one `90-B` private response transferred with exact BLAKE3
+  checks; durable setup and challenge burn records survive.
+- **Hard stop.** After receiving the private response, the provider exhausted
+  all `226,980` ordinary full correlations, then requested 11 C41 degree-close
+  masks: `need 11, remaining 0`. Exit was 101 before any certificate or public
+  artifact. The committing verifier could not run; proof-size, online-byte,
+  prover, device, verifier RSS, acceptance, session and E2E credit are all
+  false. Immutable C4.1 prover-time FAIL also remains controlling.
+- **Checks and authorization.** Exact clean SHA, canonical weights/goldens,
+  A100 admission, CUDA build, one actual request upload and one actual response
+  download passed. Only checkpoint, cleanup and mandated pod termination remain
+  authorized.
+- **Resume condition.** Correct and locally exercise the complete finite
+  party-separated pool through the C41 close, checkpoint a new clean SHA,
+  create a fresh setup/response index, and obtain a new explicit owner GO and
+  pod. No component evidence can unblock this hard stop.
+
+- **2026-08-31 — C41SC1 final one-attempt E2E terminal FAIL after private
+  response: finite real-PCG pool omits at least 11 close masks; no retry.**
+  Clean `222e89dfd944cb82c5d83b79ef29232172fe6ed7` ran on the authorized
+  RunPod A100-SXM4-80GB at `154.54.102.44:14781`. Canonical weights/goldens,
+  the CUDA build and producer admission passed. Fresh Debian setup used real
+  AES PCG, recorded `2,040,886 / 226,981` total sub/full correlations,
+  `1,781,814 / 226,980` ordinary correlations, `32,145,636 B` total setup
+  traffic and a `99,532,800-B` materialized verifier-key payload. Conditional
+  soundness was `78.80929487391572` bits and weight-ZK
+  `120.0170064253057` bits.
+
+  The `54,204,710-B` provider bundle crossed by authenticated HTTPS, matched
+  BLAKE3 `a2eeb7c...25c8`, and was burned before proving. The public request was
+  `330 B`, BLAKE3 `323af6...a395`; Debian durably burned response index 0 before
+  exporting the one `90-B` response, BLAKE3 `128d5d...b341`. One actual request
+  PUT and one actual response GET completed. Two earlier request-wrapper
+  invocations performed no network I/O: one named the wrong credential file,
+  and one ran `curl` on the wrong host side; neither duplicated protocol data.
+
+  After the response, production panicked with exit 101:
+  `pooled full correlation underflow: need 11, remaining 0, consumed 226980,
+  capacity 226980`. Source localization identifies the next draw as the 11
+  `C41_CLOSE_MASK_DOMAIN` masks in `C41ProverResponseState`; because execution
+  stopped at the first underflow, 11 is a minimum deficit rather than a proved
+  final total. Zero certificates and zero public artifacts were produced, so
+  the committing verifier did not run and every full-chain gate has
+  `credit:false`. No selective retry occurred. Raw setup and failure records
+  are `c41sc1-party-setup-2026-08-31-222e89d.json` and
+  `c41sc1-a100-correlation-underflow-2026-08-31-222e89d.json`. Durable burn
+  state is retained outside the repository. Resume requires a corrected and
+  locally complete finite-pool E2E, new SHA/setup/index and new owner GO.
 
 - **2026-08-31 — C41SC1 verifier-RAM preflight interpretation corrected;
   execution resumes without a gate waiver.** The 64-GiB host-RAM floor in the

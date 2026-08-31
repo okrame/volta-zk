@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 R0.8G BLOCKED — DIRECT BOLT-MIN NO-GO / TOURNAMENT CLOSED / NO PROVER / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 R0.8H LOGVOLE CHALLENGE-ORDER NO-GO / NO RUST / NO LEAN / NO H100)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,26 +8,64 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-Read `c7-stateful-authenticated-lfc-design.md`, then
-`c7-r03-prover-pod-handoff.md`.
+Read `c7-stateful-authenticated-lfc-design.md`; the R0.3 pod handoff remains
+inactive.
 
-- **Status.** C7 R0.8g on `agent/c7-stateful-alfc`; policy 2, Fp3, rate 1/2,
-  `k0=4`, one packed root, `g=141`, interactive `Q_FS=0` and all gates remain.
-  SPBT and direct Bolt-min are closed as carriers; strict-UD RS is control-only;
-  policy 3 is terminal. The bounded tournament is closed and C7 is blocked.
-- **Evidence/credit.** Budget v29 passes. Direct Bolt avoids C6's multi-WHIR
-  wrapper and has q-independent source work; its setup control is
-  642.265 MB/162.585 GB (2.590x/2.637x). It still needs model-linear syndrome
-  state or excessive query wire, while each response creates a
-  50.332-MB/12.885-GB fresh Fp3 RS word. Dense-g141 query reservations exceed
-  150%; hiding, same-W MAC and stateful malicious-DV theorems are absent.
-  All R0.8g evidence is `credit:false`; no C6 credit transfers.
-- **Hard stop/resume.** No generic R0.8h, PCS/prover, CPU prototype, relaxation,
-  SIMT, refresh, provider or pod. Resume only for a named transparent candidate
-  after a new owner decision and a preliminary malicious-secure relation,
-  same-W-to-MAC bridge, sublinear wire, one packed scan, bounded memory, setup
-  within gates and stateful privacy; `C7_CPU_REFERENCE_PASS=false`,
-  `C7_POD_READY=false`.
+- **Status.** C7 R0.8h on `agent/c7-logvole` is complete: the owner-authorized
+  named LogVOLE challenge-order analytic screen is NO-GO. Policy 2, Goldilocks
+  Fp3, `g=141`, interactive `Q_FS=0` and every existing gate remain.
+- **Evidence/credit.** LogVOLE genuinely escapes the scoped affine-correction
+  lower bound with polylogarithmic chosen-input wire. Its published
+  bottom-up-shrink/top-down-expand schedule still needs a second packed read or
+  model-linear state; the first recursive vector is 1.845/472.446 GB per
+  scalar-field instance. Same-`W`, direct Fp3, malicious `Q_FS=0`, VM-verifier,
+  H100-prover and stateful privacy rows are missing. Source hashes and document
+  diff are the current checks. All evidence is `credit:false`.
+- **Hard stop/resume.** No Rust, Lean, CPU prototype, H100/prover, SIMT,
+  provider or pod; `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`. Resume
+  only after a new owner decision on a named revision supplying a canonical
+  same-`W` digest bridge, direct malicious Fp3 codec, one monotone packed scan
+  with bounded memory, exact per-frequency verifier/prover/setup/wire costs and
+  the complete stateful security row.
+
+- **2026-08-31 — C7 R0.8h LogVOLE challenge-order screen is NO-GO.**  With
+  the CPU verifier as LogVOLE sender holding `Delta` and the eventual H100
+  prover as receiver holding `W`, the relation gives compact chosen-input
+  communication and can place fresh `tau` after a randomized input digest.
+  This is a concrete computational escape from R0.8f's deliberately scoped
+  `tau`-independent affine-correction lower bound.
+
+  The complete row still fails.  Pre-`tau` full-share enrollment retains at
+  least 2,976,000,000/739,833,600,000 B per Fp3 share and makes both parties
+  fold linearly per response.  The stronger cached-root order sends `tau`
+  with the interactive response and streams the final fold, but published
+  `OnlineRec` first shrinks bottom-up, recurses, then expands top-down.  It
+  therefore rereads packed `W` or retains model-linear intermediate state.
+  At the paper's `n=8192`, 220-bit ring modulus and the C7 padded dimensions,
+  its first recursive vector alone is 1,845,493,760/472,446,402,560 B per
+  scalar-field instance.  A straightforward three-limb control is
+  5,536,481,280/1,417,339,207,680 B before other levels.
+
+  The paper's 38-MB setup, 451-KB interactive query and 12.9M-label/s CPU
+  results are optimized semi-honest 55-bit/AVX512 controls, not C7 proof,
+  VM-verifier or H100-prover credit.  Its reusable malicious route disables
+  golden-seed grinding and lacks C7's canonical `C_W` same-input bridge,
+  direct Goldilocks-Fp3 shared-`Delta` wrapper, interactive `Q_FS=0` setup
+  certification, exact six-component codec and stateful malicious-DV
+  composition.  No gate tolerance changes and no lower bound on general
+  CI-VOLE/RLWE is claimed.  All evidence is `credit:false`;
+  `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`.  No Rust, Lean, CPU
+  prototype, H100/prover, provider or pod action is authorized.
+
+- **2026-08-31 — Owner reopens C7 only for the named LogVOLE challenge-order
+  analytic screen.**  Use C4.1 party-separated terminology and cost
+  frequencies: reusable setup/model initialization is separate; a response
+  lot is one-time and burns on abort; prover time is inference-plus-proof on
+  one eventual H100; verifier time is proof-read-to-verdict on this CPU VM;
+  transfer is separate.  No Rust, Lean or H100/pod work is authorized unless
+  the analytic candidate first passes every existing gate.  This decision
+  supersedes D114 only for this named screen, not for generic research,
+  implementation or relaxation.
 
 - **2026-08-29 — Owner closes the C7 tournament and blocks generic R0.8h.**
   R0.8g is the terminal active screen under the current gates. No generic

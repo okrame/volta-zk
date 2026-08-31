@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 COMMITTEDFOLDCI-VOLE ANALYTIC NO-GO — EXACT PREFIX FACTORIZATION / SAME-W FAIL / NO CODE)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 CWBRIDGE-ENDPOINT STRUCTURAL PASS — SAME-W CLOSED / RESOURCES DEFERRED / NO CODE)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,25 +11,71 @@ record; no external plan is authoritative.
 Read `c7-stateful-authenticated-lfc-design.md`; the R0.3 pod handoff remains
 inactive.
 
-- **Status.** D119 opened only `C7-COMMITTEDFOLD-CI-VOLE-v0`; D120 closes it
-  analytic NO-GO. No C7 carrier, research line or executable backend is
-  active, and D117's concessions do not transfer.
-- **Evidence/credit.** The new exact prefix lift sets
-  `X_(i+1)-X_i=q_i W_i` and converts HSS shares
-  `A_i-B_i=Delta X_i` into per-cell labels
-  `m_i=(A_(i+1)-A_i)/q_i=k_i+Delta W_i`; the verifier fold is exactly the two
-  endpoints `B_N-B_0`. This algebraic seam passes with `credit:false` when
-  every `q_i` is nonzero. A rank-one PCG variant gives the same endpoint
-  shape conditionally. Neither construction binds its post-challenge prefix
-  or correction to the `W` opened by `C_W`: a malicious prover may use
-  `W'=W+e` with `<q,e>=0`. Published HSS/PCG also lacks the required adaptive
-  malicious direct-Fp3 theorem and complete GPT-2/31B cost row.
-- **Hard stop and resume.** No Rust, Lean, CPU prototype, H100/prover, SIMT,
-  provider or pod; `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`.
-  Resume requires a named endpoint-only proof of
-  `Open(C_W,W)` and `X_(i+1)-X_i=q_i W_i`, under one Fp3 `Delta`, with the
-  complete malicious/stateful and resource row. Current checks are capsule
-  length, D119/D120 cross-links and the document diff.
+- **Status.** D121 opens only `C7-CWBRIDGE-ENDPOINT-v0`; D122 records a
+  malicious/stateful structural same-`W` PASS for GPT-2 and the 31B envelope.
+  No concrete carrier or executable backend is active.
+- **Evidence/credit.** Before `q`, a hiding `C_m` and the complete operator
+  registry are fixed. `SameWOpBind` jointly knowledge-binds their every
+  weight/label/correction/handle read to the unique `W` opening `C_W`.
+  Hidden committed evaluations give `z=<q,W>`, `M=<q,m>`; after `beta`, one
+  scalar VOLE `w=r+Delta*u` and proved corrections `d=z-u`, `e=M-w` give only
+  V-local `K=e+r-Delta*d`. Defining virtual `k_i=m_i-Delta W_i` proves every
+  cell MAC and canonical prefix exactly. Soundness/privacy allocations retain
+  95.4/79.4 lifetime bits; the optional 104-bit privacy row retains 71.4 and
+  is not selected. All performance evidence remains `credit:false`.
+- **Hard stop and resume.** The owner defers the 115-MB/77.2-B phase. No Rust,
+  Lean, CPU prototype, H100/prover, SIMT, provider or pod;
+  `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`. Resume requires a
+  separate resource checkpoint selecting concrete hidden-evaluation/CAOLE
+  codecs and deriving every setup, byte, scan, memory and timing row. Current
+  checks are capsule length, D121/D122 cross-links and document diff.
+
+- **2026-08-31 — `C7-CWBRIDGE-ENDPOINT-v0` closes the structural same-`W`
+  defect without materializing prefix or verifier-key vectors.**  The accepted
+  relation fixes a hiding, extractably binding label commitment `C_m` and the
+  complete canonical operator registry before `q`.  Its response-wide
+  `SameWOpBind` proof extracts one `W,m` such that `W` opens immutable `C_W`,
+  `m` opens `C_m`, and every indexed operator weight/label/correction/handle
+  read is exactly from those vectors.  Checking only `<q,m>` is explicitly
+  insufficient: an operator could otherwise consume `m+d` for any nonzero
+  `<q,d>=0`.
+
+  Hidden committed evaluations bind `z_s=<q_s,W_s>` and
+  `M_s=<q_s,m_s>`.  After every descriptor is fixed, the ordinary `beta`
+  combines them to hidden `z,M`.  One fresh direct-Fp3 scalar VOLE gives P
+  `(u,w)`, V `(Delta,r)`, `w=r+Delta*u`; P sends proved corrections
+  `d=z-u`, `e=M-w`, and V alone derives
+  `K=e+r-Delta*d=M-Delta*z`.  Given only `K`, its view is simulated by uniform
+  `d` and `e=K-r+Delta*d`.  Define virtual
+  `k_i=m_i-Delta W_i` and canonical
+  `X_0=0`, `X_(i+1)=X_i+q_iW_i`: every per-cell MAC, prefix recurrence and
+  beta-folded endpoint now follows exactly, while no `k`, prefix, evaluation,
+  tag or endpoint is serialized.  Zero `q_i` are allowed.
+
+  The construction is a new composition. Mystique supplies a linear
+  static-malicious full-vector reference; its optimized theorem covers its own
+  NICom, not `C_W`. zk-vSQL supplies the hidden committed-output pattern,
+  C-VOLE the committed-input pattern, and LPZK/malicious-HSS useful malicious
+  compilers; none is credited as a C7 drop-in. A generic authenticated-circuit
+  proof of `VerifyOpen(C_W,W)` plus identical operator handles is retained as
+  the self-contained but linear reference. With 128-bit soundness components,
+  pessimistic `R_max*16J` leaves 95.4 bits for 31B; Fp3 algebra leaves over
+  163 bits. With 112-bit privacy components the same overcount leaves 79.4
+  bits; a later 104-bit option leaves 71.4 and is not selected. This is a
+  dimension-independent structural PASS and all rows remain `credit:false`.
+  The owner-ordered 115-MB/77.2-B phase is deferred. No code, benchmark,
+  hardware, provider or pod action occurred.
+
+- **2026-08-31 — Owner opens only the security theorem for
+  `C7-CWBRIDGE-ENDPOINT-v0`.**  The successor may replace physical prefix HSS
+  with functional authentication, but must jointly prove the immutable
+  `C_W` opening, every operator label/correction/handle and a V-only endpoint
+  under the one connection Fp3 `Delta`, with interactive `Q_FS=0` and the
+  complete fail-closed state machine. Soundness may never fall below 78
+  lifetime bits. Weight privacy may fall to 70 lifetime bits only if later
+  exact resource evidence requires it. The owner explicitly orders the
+  structural defect closed before the 115-MB certificate/77.2-B control; this
+  entry authorizes no calculator, Lean, Rust, prototype, H100, provider or pod.
 
 - **2026-08-31 — `C7-COMMITTEDFOLD-CI-VOLE-v0` closes NO-GO despite an exact
   endpoint factorization.**  For each segment with nonzero `q_i`, define

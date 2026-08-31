@@ -1,21 +1,21 @@
 # C7 — stateful authenticated linear-functional commitment
 
-**Status:** C7 R0.8h named `C7-LOGVOLE-CHALLENGE-ORDER-v0` analytic screen,
-opened by the 2026-08-31 owner GO and now complete as NO-GO. Policy 2, direct
-Goldilocks Fp3, rate 1/2, `k0=4`, one packed weight root, logical `g=141` and
-interactive `Q_FS=0` remain fixed. LogVOLE is a genuine computational escape
-from R0.8f's scoped affine-derandomization lower bound: with the verifier as
-CI-VOLE sender and the prover as receiver it gives polylogarithmic
-chosen-input communication. It does not complete C7's challenge order.
-Pre-`tau` enrollment leaves linear shares/work, while response-local expansion
-is a bottom-up shrink followed by top-down expansion and therefore needs a
-second packed read or model-linear state. The published malicious reusable
-route also lacks the C7 same-`W`, Goldilocks-Fp3, `Q_FS=0`, stateful malicious-DV
-and exact-codec bridges. Its optimized implementation is semi-honest CPU
-evidence only. Direct Bolt, SPBT and strict-UD RS retain their prior NO-GO or
-control dispositions. `C7_CPU_REFERENCE_PASS=false`; no Rust, Lean, CPU
-prototype, SIMT, prover, H100, E2E, provider or pod work is authorized. This
-document is the task-specific authority named by `prototype-status.md`.
+**Status:** `C7-LOGVOLE-FRONTIER-v1` is the active analytic-only screen under
+the 2026-08-31 owner GO recorded in D117.  It retains one monotone packed-`W`
+scan online and tests a model-init frontier sidecar plus bounded blockwise
+shrink/expand.  Only this row may use multi-pass/model-linear setup temporaries,
+an absolute 8-GB private frontier sidecar, at most 8 GB of proof-only scratch
+and a 76-GB complete device peak.  A verifier-private pre-folded response lot
+is allowed only as one-shot inventory and burns on abort; its preparation is
+per attempted response, never setup.  For the Gemma-class 31B envelope,
+`T_V_attempt = T_lot_prepare + T_proof_read_to_verdict` has a 30-s target and
+60-s hard cap on this CPU VM.  An exact root-to-`k_q` factorization or a truly
+sublinear sender fold is therefore a first kill gate.  Policy 2, direct
+Goldilocks Fp3 under one `Delta`, rate 1/2, `k0=4`, one packed weight root,
+logical `g=141`, interactive `Q_FS=0`, wire and security gates remain fixed.
+R0.8h v0 remains NO-GO evidence. `C7_CPU_REFERENCE_PASS=false`; no Rust, Lean,
+CPU prototype, SIMT, prover, H100, E2E, provider or pod work is authorized.
+This document is the task-specific authority named by `prototype-status.md`.
 
 Volta-ZK is a stateful designated-verifier proof architecture for
 private-weight autoregressive inference. Like modern public zkML systems, it
@@ -55,9 +55,11 @@ authority and Pareto-before-caps order with interactive challenges, closes
 the two bounded post-Pareto alternatives, and audits the retained Fp2 schedule
 before any field change.  Its required output is the canonical codec plus
 security, serialized bytes and resource row; R0.8 is not an implementation GO.
-R0.8h reopens only the named LogVOLE challenge-order row as an analytic
-literature screen.  The owner GO expressly grants no Rust, Lean, CPU reference,
-H100/prover, provider or pod action unless that row first passes every gate.
+R0.8h v0 is closed NO-GO.  D117 reopens only the named
+`C7-LOGVOLE-FRONTIER-v1` revision as an analytic screen with the narrow
+setup/frontier/lot concessions in Section 5.17.  The owner GO expressly grants
+no Rust, Lean, CPU reference, H100/prover, provider or pod action unless that
+row first passes every gate.
 
 1. The immutable model, response trace and persistent cache are separate
    commitment planes.  "One opening" means one transcript-bound
@@ -87,18 +89,21 @@ H100/prover, provider or pod action unless that row first passes every gate.
    baseline tolerance.  A separate exploratory ceiling near `3.00x` is
    registered, but it passes only with absolute persistent-disk, setup-wall
    and refresh-wall caps fixed before measurement.  X4d-scale expansion and
-   uncounted/model-sized temporary storage remain forbidden.
+   uncounted/model-sized temporary storage remain forbidden.  D117 makes the
+   sole named exception for counted model-init temporaries and an independently
+   capped private frontier sidecar in `C7-LOGVOLE-FRONTIER-v1`; it does not
+   relax `A_setup` for any other artifact or candidate.
 6. Weight-oracle `B_query_wire` (the interactive successor to the historical
    `B_query_FS` label) is included inside `B_weight_ALFC`, never added as a
    seventh component.  The 105% value is now the target, not an immediate hard
    stop.  An exact exploratory cap may be preregistered inside 125--150% only
    if the complete certificate also stays within 35/115 MB and 3.5x growth.
 7. The historical authorized tiny CPU screen, bounded R0.8g Bolt screen and
-   R0.8h LogVOLE challenge-order screen are complete. Their source-linear or
-   succinct-wire pieces work, but none supplies a complete admitted
-   relation/resource/security row, so
-   `C7_CPU_REFERENCE_PASS=false`.  No executable-backend implementation, large-prover/E2E,
-   provider or pod action is authorized.
+   R0.8h LogVOLE challenge-order v0 screen are complete.  D117 now activates
+   only the v1 frontier analytic screen.  No row supplies a complete admitted
+   relation/resource/security result, so `C7_CPU_REFERENCE_PASS=false`.  No
+   executable-backend implementation, large-prover/E2E, provider or pod
+   action is authorized.
 8. No current backend passes setup, domain support, one-pass opening, all four
    normalized query counts, proof bytes and stateful malicious-DV privacy
    together.  Logical `g=141` remains fixed; every grouped/alphabet query is
@@ -3865,6 +3870,127 @@ the complete stateful security row.  `C7_CPU_REFERENCE_PASS=false`.  Per the
 owner hard stop, no Rust, Lean, CPU prototype, H100/prover, provider or pod
 action follows.
 
+### 5.17 R0.8h.1 frontier-checkpoint and pre-folded-DV screen
+
+#### Authority and exact concessions
+
+D117 reopens exactly `C7-LOGVOLE-FRONTIER-v1` as an analytic revision of the
+closed v0 row.  It is not a generic CI-VOLE tournament and grants no theorem,
+implementation or hardware credit.  The durable concessions, including for a
+later development of this named construction, are only:
+
+1. model initialization and rotation may use multiple packed-`W` passes and
+   model-linear temporary state while constructing and certifying the
+   frontier; every temporary byte, read, write, mapping, peak and wall second
+   is reported and the temporary is destroyed before admission;
+2. one provider-private persistent frontier sidecar
+   `B_frontier_private <= 8,000,000,000 B` is exempt from the relative
+   `A_setup` ratio, but remains charged to persistent disk, host RSS, setup
+   transfer, refresh, invalidation and every response-local H2D read;
+3. response-local proof scratch may be at most `8,000,000,000 B`, with
+   complete device peak at most `76,000,000,000 B`; neither allowance permits
+   a complete share vector, an expanded weight wrapper or a spill growing as
+   `Theta(N)`;
+4. a verifier-private pre-folded lot may be prepared before use, but is
+   one-shot per attempted response, is reserved before the first dependent
+   byte and burns on accept, reject, timeout or abort.  It is never reusable
+   setup and cannot be refunded or shared across attempts.
+
+The combined persistent-disk ceilings for this row are therefore
+
+```text
+B_persistent_total <= B_setup_3x + B_frontier_private
+                   <= 8,744,000,000 / 192,958,400,000 B.
+```
+
+The online packed source remains exactly one monotone read.  Setup-wall and
+refresh-wall target/hard caps remain 900/990 s and 5,400/5,940 s; proof wire,
+query growth, direct Fp3, shared `Delta`, `Q_FS=0`, 78-bit lifetime and every
+stateful-security gate are unchanged.  These exceptions do not transfer to
+another backend without a later owner decision.
+
+#### Frontier schedule under screen
+
+Partition the fixed canonical packed `W` into ordered macroblocks.  At model
+initialization the prover derives a private digest for each macroblock, builds
+the small upper digest tree and commits to the ordered frontier.  A required
+malicious same-input statement binds all three objects
+
+```text
+C_W  <->  canonical packed W  <->  ordered LogVOLE frontier/root.
+```
+
+For one response, top-level expansion first yields authenticated labels for
+the macroblock digests.  The H100 prover then walks the packed source once in
+order.  For each macroblock it retains only that block, rebuilds its digest
+subtree bottom-up, checks the registered frontier value, expands top-down,
+accumulates the `q_tau` fold immediately after exact denoising, and discards
+the block state before advancing.  The intended geometry is
+
+```text
+live recursive state = O(B)
+private frontier     = O(N/B)
+packed-W scans online = 1.
+```
+
+Thus the candidate is a checkpoint/pebbling schedule, not a cached full
+recursive vector.  A 31B control with 8,192 `Rq` inputs per macroblock gives
+about 1.845 GB scalar recursive scratch and roughly 0.92--1.85 GB of
+frontier/upper state before the missing direct-Fp3 wrapper.  A straightforward
+three-limb scratch control is about 5.536 GB.  These figures are
+`credit:false`; the exact Fp3 representation, RNS residency, sidecar traffic
+and complete peak must replace them.
+
+#### Verifier factorization and non-hideable time gate
+
+The verifier remains LogVOLE sender `S` on this four-core AArch64 VM.  For
+Gemma-class 31B define the per-attempt verifier CPU total
+
+```text
+T_V_attempt = T_lot_prepare + T_proof_read_to_verdict.
+```
+
+The target is `T_V_attempt <= 30 s` and the hard cap is
+`T_V_attempt <= 60 s`.  The two addends, setup/model-load time, transfer and
+RSS are still reported separately, but no per-response sender expansion,
+pre-fold, challenge preparation or inventory refill may be excluded from the
+sum.  Moving hours of sender work before proof receipt therefore cannot pass.
+
+A pre-folded lot is useful only if the screen derives an exact compact
+factorization of the form
+
+```text
+k_q = A(q, setup, id, d'_W) * k_rt + b(q, setup, id, d'_W),
+```
+
+or a stronger equivalent root-to-`k_q` map, with all lot-specific work inside
+the 60-s total.  Any `Theta(N)` construction of `A` or `b` is per-attempt work
+unless a theorem proves that it is reusable input-independent setup.  The
+complete challenge packet may be sampled early only while verifier-private,
+with no prover-visible leakage before its registered prefix and with the
+one-shot allocator enforcing burn.  If factorization through decryption,
+denoising and rounding is invalid, if it still costs hundreds of seconds, or
+if no genuinely sublinear sender fold replaces it, the candidate is NO-GO.
+
+#### Analytic pass boundary
+
+Before any Rust, Lean, CPU prototype, H100/prover, provider or pod action, the
+screen must supply all of:
+
+- the exact block/frontier splice theorem and canonical `C_W` same-input
+  bridge against a malicious prover;
+- a direct Goldilocks-Fp3 LogVOLE codec with one shared `Delta`, exact
+  corrections and a proved fold position after denoising;
+- an interactive `Q_FS=0` malicious reusable-setup certificate and complete
+  stateful malicious-DV/allocator composition;
+- exact setup, refresh, sidecar, one-scan source, H2D/D2H/D2D, scratch, peak,
+  ring-operation, launch, synchronization, wire and certificate rows;
+- the root-to-`k_q` factorization or sublinear sender fold meeting the 30/60-s
+  31B VM gate, plus the complete single-H100 inference-and-proof gate.
+
+The screen is active but all evidence remains `credit:false`.
+`C7_CPU_REFERENCE_PASS=false` and `C7_POD_READY=false`.
+
 ## 6. Registered analytic screens
 
 The executable calculator is `scripts/budget_c7_stateful_alfc.py`.  Every
@@ -4776,6 +4902,16 @@ The focused command
   same-`W`, Goldilocks-Fp3, `Q_FS=0`, exact-codec or stateful malicious-DV
   bridge.  Both parties also pay linear ring work per response; the paper's
   CPU semi-honest rates are not VM-verifier or H100-prover evidence.
+- **`C7-LOGVOLE-FRONTIER-v1`: ACTIVE ANALYTIC SCREEN; NO IMPLEMENTATION
+  GO.**  A provider-private frontier and blockwise pebbling seek to replace
+  v0's linear live vector with `O(B)` scratch plus `O(N/B)` persistent
+  checkpoints while retaining one monotone online scan.  D117 alone permits
+  counted multi-pass setup temporaries, an 8-GB frontier sidecar, 8-GB proof
+  scratch, 76-GB device peak and one-shot verifier-private pre-folded lots.
+  For 31B the total per-attempt VM CPU time, including lot creation, targets
+  30 s and fails above 60 s.  Root-to-`k_q` factorization, same-`W`, direct
+  Fp3, malicious `Q_FS=0`, exact resources and stateful security are open;
+  all evidence remains `credit:false`.
 - **`C7-SPBT-v0`: ALGEBRA RETAINED; CARRIER LINE CLOSED.**  Its
   invertible complement transform preserves ordinary independent GKR
   challenges and gives one degree-`<M` secret-point identity.  The algebra,
@@ -4814,11 +4950,12 @@ The focused command
 
 Policy 3 remains terminally rejected and policy 2 is active.  Strict-UD RS is
 now only the control baseline; R0.8f closes SPBT as a carrier, R0.8g closes
-the authorized one-candidate direct-Bolt screen, and the new owner GO reopens
-then closes only the named R0.8h LogVOLE challenge-order screen.  No entrant
-is admitted.  SPBT, Bolt's setup-size control and LogVOLE's succinct-wire
-control remain reusable evidence only and do not weaken any recorded
-rejection.
+the authorized one-candidate direct-Bolt screen, and D116 closes the named
+R0.8h LogVOLE challenge-order v0 screen.  D117 reopens only
+`C7-LOGVOLE-FRONTIER-v1` as the active analytic screen; no carrier or
+executable backend is admitted.  SPBT, Bolt's setup-size control and
+LogVOLE's succinct-wire control remain reusable evidence only and do not
+weaken any recorded rejection.
 The selected challenge baseline remains interactive
 honest-DV (`Q_FS=0`) and logical `g=141`.  Setup retains its 2.00 target/2.10
 baseline, with a conditional exploratory 3x ceiling plus absolute disk,
@@ -4831,18 +4968,17 @@ fail-closed readiness handoff is
 prover/E2E, pod contact or pod execution.
 
 Both bounded post-Pareto alternatives and the earlier one-candidate tournament
-are closed.  R0.8h is a completed named screen, not generic research. C7 is
-again blocked: there is no generic R0.8i, prototype or further gate
-relaxation. A named candidate or a materially revised LogVOLE schedule needs a
-new owner decision and must satisfy all four R0.8a screen obligations before
-even a tiny CPU prototype. The tested Fp3 codec/MAC seam is expressly
-carrier-independent and is not such authorization.
-For LogVOLE specifically, a resume package must replace the published
-bottom-up/top-down materialization with a proved one-monotone-scan schedule,
-bind its pre-`tau` digest to canonical `C_W`, instantiate the direct Fp3
-malicious interactive transcript without uncounted Fiat--Shamir, and provide
-separate per-root setup, per-response H100 prover, per-response VM verifier,
-network, state and security rows.
+remain closed.  There is no generic R0.8i, prototype or further relaxation;
+only the Section 5.17 frontier revision is active.  It must satisfy the full
+analytic pass boundary before even a tiny CPU prototype.  The tested Fp3
+codec/MAC seam is carrier-independent and is not implementation authority.
+The v1 package must prove its one-monotone-scan frontier splice, bind the
+frontier and pre-`tau` digest to canonical `C_W`, instantiate the direct Fp3
+malicious interactive transcript without uncounted Fiat--Shamir, derive the
+root-to-`k_q` factorization or sublinear sender fold, and provide separate
+per-root setup, per-attempt lot, H100 prover, VM verifier, network, state and
+security rows.  For 31B the verifier row includes both lot preparation and
+proof-read-to-verdict and must pass the 30/60-s target/hard cap.
 Fp3, 78 connection bits, setup 900/990 and
 5,400/5,940 seconds, separate untested refresh counters and computational
 per-root masks otherwise remain fixed.  Any successor must serialize and
@@ -4945,6 +5081,11 @@ smallest complete serialized case before any larger component benchmark.
   multi-WHIR wrapper and transfers no historical credit.  Its setup-size
   control is below 3x, but the one-pass layout, fresh Fp3 codeword, Goldilocks
   query wire and malicious security/privacy rows fail; no prototype follows.
+- R0.8h.1 reopens only the frontier-checkpoint LogVOLE revision.  Its 8-GB
+  sidecar and setup-temporary exceptions are candidate-specific; its
+  pre-folded lot is still per-attempt verifier work, and the combined 31B VM
+  CPU gate prevents temporal reclassification from hiding a linear sender
+  fold.  No prototype follows from the owner GO.
 - The proof-byte table is a target allocation calibrated to public component
   evidence, not a composed certificate derivation.  It is `credit:false` and
   is one reason Backend A remains NO-GO.
@@ -5074,3 +5215,4 @@ entry, but must retain its evidence and reason.
 | `C7-D114` / 2026-08-29 | close the C7 tournament and block generic continuation | The owner declines R0.8h as generic research, every prototype and every further relaxation. C7 remains blocked with `C7_CPU_REFERENCE_PASS=false` until a named, concrete and transparent no-trusted-setup candidate first supplies a malicious-secure relation, same-W-to-MAC bridge, sublinear wire, setup within every gate, one packed scan and stateful privacy. A non-affine `tau`-dependent line also requires a new owner decision on the named candidate. This disposition authorizes only its scoped commit and branch push, not protocol implementation, SIMT, refresh, provider or pod work. |
 | `C7-D115` / 2026-08-31 | owner reopens exactly the named LogVOLE challenge-order analytic screen | `C7-LOGVOLE-CHALLENGE-ORDER-v0` may be screened against every unchanged C7 gate using the local literature and C4.1 party-separated cost terminology. The verifier is the LogVOLE sender on this CPU VM; the provider/prover is the receiver performing inference plus proof on one eventual H100. Setup, response lot, prover time, verifier time and transfer remain separate by frequency. This GO authorizes capsule/design analysis only. No Rust, Lean, CPU prototype, H100/prover, provider or pod action is valid unless the analytic row first passes every gate. |
 | `C7-D116` / 2026-08-31 | LogVOLE challenge-order current row NO-GO | LogVOLE is a concrete computational escape from D110's scoped affine-correction lower bound and retains its polylogarithmic-wire evidence. The strongest order binds a randomized fixed-input digest before `tau` and streams the final fold after the verifier response. The published `OnlineRec` still performs bottom-up shrink followed by top-down expansion, requiring another packed read or model-linear intermediate/share state; its first recursive vector is already 1.845/472.446 GB per scalar-field instance at the C7 padded dimensions. Pre-enrollment instead retains at least 2.976/739.834 GB per Fp3 share and gives both parties linear per-response folds. The optimized implementation is semi-honest AVX512 CPU evidence; the reusable malicious route lacks the canonical same-`W`, direct Goldilocks-Fp3 shared-`Delta`, interactive `Q_FS=0`, exact setup/certificate, VM-verifier/H100-prover and stateful malicious-DV rows. The current candidate is not promoted; `C7_CPU_REFERENCE_PASS=false`. This is not a CI-VOLE/RLWE lower bound. No Rust, Lean, prototype, H100, provider or pod action follows. |
+| `C7-D117` / 2026-08-31 | owner reopens only `C7-LOGVOLE-FRONTIER-v1` with bounded setup/frontier/lot concessions | The active analytic revision checkpoints an ordered private digest frontier at model initialization, expands the small upper tree, then rebuilds and expands one macroblock at a time while folding immediately. It must retain one monotone packed-`W` scan online. Only this candidate may use fully counted multi-pass/model-linear setup temporaries, one private frontier sidecar `<=8,000,000,000 B`, response proof scratch `<=8,000,000,000 B` and complete device peak `<=76,000,000,000 B`; the sidecar is outside relative `A_setup` but remains charged to persistent/transfer/refresh/peak ledgers. A verifier-private pre-folded lot is one-shot, reserved and burned per attempted response and is never setup. On this CPU VM, Gemma-class 31B must satisfy `T_V_attempt=T_lot_prepare+T_proof_read_to_verdict`: target `<=30 s`, hard cap `<=60 s`; thus hours moved into inventory fail. The first kill gate is an exact root-to-`k_q` factorization with all lot-specific work inside that total, or a genuinely sublinear sender fold. Same-`W`, direct Fp3 under one `Delta`, malicious interactive `Q_FS=0`, exact wire/resources and stateful privacy remain unchanged. This GO is analytic only: no Rust, Lean, CPU prototype, H100/prover, provider or pod. |

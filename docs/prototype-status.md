@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 R0.8H LOGVOLE CHALLENGE-ORDER NO-GO / NO RUST / NO LEAN / NO H100)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 LOGVOLE FRONTIER V1 ANALYTIC ACTIVE / NO RUST / NO LEAN / NO H100)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,22 +11,49 @@ record; no external plan is authoritative.
 Read `c7-stateful-authenticated-lfc-design.md`; the R0.3 pod handoff remains
 inactive.
 
-- **Status.** C7 R0.8h on `agent/c7-logvole` is complete: the owner-authorized
-  named LogVOLE challenge-order analytic screen is NO-GO. Policy 2, Goldilocks
-  Fp3, `g=141`, interactive `Q_FS=0` and every existing gate remain.
-- **Evidence/credit.** LogVOLE genuinely escapes the scoped affine-correction
-  lower bound with polylogarithmic chosen-input wire. Its published
-  bottom-up-shrink/top-down-expand schedule still needs a second packed read or
-  model-linear state; the first recursive vector is 1.845/472.446 GB per
-  scalar-field instance. Same-`W`, direct Fp3, malicious `Q_FS=0`, VM-verifier,
-  H100-prover and stateful privacy rows are missing. Source hashes and document
-  diff are the current checks. All evidence is `credit:false`.
-- **Hard stop/resume.** No Rust, Lean, CPU prototype, H100/prover, SIMT,
-  provider or pod; `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`. Resume
-  only after a new owner decision on a named revision supplying a canonical
-  same-`W` digest bridge, direct malicious Fp3 codec, one monotone packed scan
-  with bounded memory, exact per-frequency verifier/prover/setup/wire costs and
-  the complete stateful security row.
+- **Status.** `C7-LOGVOLE-FRONTIER-v1` is the active analytic-only screen under
+  D117. It retains one monotone online packed-`W` scan and permits only counted
+  multi-pass setup temporaries, an 8-GB private frontier sidecar, 8-GB proof
+  scratch, 76-GB device peak and one-shot pre-folded verifier lots.
+- **Evidence/credit.** Frontier pebbling targets `O(B)` live state plus
+  `O(N/B)` checkpoints instead of v0's linear recursive vector. The 31B
+  controls are about 1.845 GB scalar scratch and 5.536 GB for a naïve
+  three-limb scratch, before the missing direct-Fp3 wrapper. All remain
+  `credit:false`.
+- **Checks and hard stop.** For Gemma-class 31B, VM CPU
+  `T_lot_prepare + T_proof_read_to_verdict` targets 30 s and fails above 60 s;
+  precomputation cannot hide per-response work. Root-to-`k_q` factorization or
+  a sublinear sender fold, same-`W`, one-`Delta` Fp3, malicious `Q_FS=0`, exact
+  resources/wire and stateful privacy are open. No Rust, Lean, CPU prototype,
+  H100/prover, SIMT, provider or pod; `C7_CPU_REFERENCE_PASS=false` and
+  `C7_POD_READY=false` until every analytic gate passes. Current checks are
+  capsule length, D117/status cross-links and the document diff; no executable
+  check is authorized.
+
+- **2026-08-31 — Owner opens `C7-LOGVOLE-FRONTIER-v1` with bounded durable
+  concessions and a non-hideable 31B verifier gate.**  The screen may replace
+  v0's full recursive state with an ordered provider-private digest frontier,
+  a small upper tree and blockwise checkpoint/pebbling. Model initialization
+  and rotation may use fully counted multiple packed-`W` passes and
+  model-linear temporaries, destroyed before admission. Only this candidate
+  receives a private frontier-sidecar cap of 8,000,000,000 B outside the
+  relative `A_setup` ratio, response proof scratch up to 8,000,000,000 B and
+  complete device peak up to 76,000,000,000 B. The sidecar remains counted in
+  persistent disk, RSS, setup/refresh/invalidation and response H2D. Online
+  packed `W` remains one monotone scan; setup/refresh wall, wire, direct Fp3,
+  shared `Delta`, `Q_FS=0`, 78-bit and stateful-security gates do not change.
+
+  A verifier-private pre-folded lot is permitted only as reserved one-shot
+  response inventory and burns on every terminal outcome. Its preparation is
+  per attempted response, not setup. For the Gemma-class 31B envelope on this
+  four-core AArch64 VM, define
+  `T_V_attempt=T_lot_prepare+T_proof_read_to_verdict`: target <=30 s, hard cap
+  <=60 s. Therefore an exact compact root-to-`k_q` factorization with all
+  lot-specific work inside the cap, or a genuinely sublinear sender fold, is
+  a first kill gate; hours moved before proof receipt fail. Same-`W`, direct
+  Fp3, malicious setup, exact resource/codec and complete privacy rows remain
+  open. All evidence is `credit:false`; no Rust, Lean, CPU prototype, H100,
+  provider or pod action is authorized before the analytic row passes.
 
 - **2026-08-31 — C7 R0.8h LogVOLE challenge-order screen is NO-GO.**  With
   the CPU verifier as LogVOLE sender holding `Delta` and the eventual H100

@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E COMPLETE — FUNCTIONAL PASS / PROVER GATE FAIL; C41SC1 LOCAL CENSUS REPAIRED — ONE FRESH A100 ATTEMPT AUTHORIZED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E COMPLETE — FUNCTIONAL PASS / PROVER GATE FAIL; C41SC1 SECOND FRESH A100 ATTEMPT TERMINAL OPERATOR FAIL BEFORE PRIVATE RESPONSE — NO CREDIT / NO RETRY)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,24 +11,47 @@ record; no external plan is authoritative.
 Read `c4.1-secret-challenge-no-crs.md` next.
 
 - **Disposition.** C41SC1 remains active under
-  `c4.1-secret-challenge-no-crs.md`. The `222e89d` attempt is immutable
-  **FAIL**; the owner now authorizes the local census repair followed by
-  exactly one fresh A100 attempt with new setup, connection and response index.
-- **Repair.** The failed `226,981` full total was the pre-tail `ModelOut`
-  snapshot, not pool exhaustion. The exact post-model tail is 117 full
-  correlations: 11 degree-close, 104 PCS and two final closures. Production is
-  now `2,040,886 / 227,098` total sub/full and `1,781,814 / 227,097` ordinary.
-- **Checks.** A finite ordinary pool test consumes the pre-tail census, executes
-  the degree-12 close and exact 117-element tail with zero slack; the focused
-  test and `p6_report` compile check pass, and the full workspace is green. No
-  relation, proof framing, gate or Lean statement moved.
-- **Hard stop.** No pod may be contacted until the repaired source is a clean
-  pushed checkpoint and the owner supplies the new pod endpoint. The prior pod
-  is stopped; prior setup, correlation material and burned index are forbidden.
-- **Resume condition.** On the new pod, verify the clean SHA, generate one
-  fresh real/AES setup, run the frozen one-message flow once, record all
-  outcomes, remove transient state and stop the pod. No selective retry or
-  component credit is authorized; immutable C4.1 prover-time FAIL remains.
+  `c4.1-secret-challenge-no-crs.md`, but clean `32fd7c5` is terminal **FAIL**
+  before private response. The only issuer invocation rejected the dirty local
+  tree after the append-only setup record was staged; it sampled nothing and
+  created no challenge store. The no-retry authorization is consumed.
+- **Evidence.** Pod SHA, canonical weights/goldens, CUDA build and producer
+  admission passed. Fresh real/AES setup measured `2,040,886 / 227,098`
+  total sub/full, `32,145,636 B` traffic and `99,532,800 B` typed-key payload.
+  The provider was burned and one authenticated `330-B` request reached Debian.
+- **Credit.** Zero response, certificates, public artifacts or committing
+  verification exist. Every proof, time, memory, acceptance, session and E2E
+  gate has `credit:false`; the immutable C4.1 prover-time FAIL remains.
+- **Hard stop.** Do not retry, issue a response or contact another pod. Preserve
+  setup authorization and request, checkpoint this result, remove transients,
+  stop the current pod and verify termination.
+- **Resume condition.** A new attempt requires a clean new SHA, setup,
+  connection, response index, burn roots and pod endpoint plus explicit owner
+  GO. Defer result-file writes until all clean-tree-guarded commands finish.
+
+- **2026-08-31 — C41SC1 second fresh A100 attempt terminal operator FAIL
+  before private response; no retry and zero gate credit.** Clean
+  `32fd7c5acdb73026aa350cc7992aaf0f74e18b62` passed canonical weight/golden,
+  CUDA, A100 resource and producer admission checks on RunPod endpoint
+  `154.54.102.44:16827`. Fresh real/AES setup measured the repaired exact
+  `2,040,886 / 227,098` total and `1,781,814 / 227,097` ordinary sub/full
+  correlations, `32,145,636 B` setup traffic, `99,532,800 B` materialized key
+  payload, `78.80929487391572` soundness bits and `120.0170064253057` weight-ZK
+  bits. Its `54,208,454-B` provider bundle crossed authenticated HTTPS exactly
+  once, matched BLAKE3 `2d5d085...f09cf8`, and was burned by the producer.
+
+  The producer reached the registered frontier and emitted one `330-B` public
+  request, BLAKE3 `63f7ddc...5ec7a`; its only PUT took `0.523009 s`. Before the
+  issuer ran, the setup manifest was added as a new untracked result file. The
+  sole issuer invocation therefore correctly rejected the no-longer-clean
+  expected revision with `C41SC1 challenge issuer requires the clean expected
+  revision`. It sampled no challenge, created no challenge store and exported
+  no response. Under the frozen no-retry rule this rejection consumes the
+  attempt. The waiting producer was terminated; zero certificates, public
+  artifacts or verifier runs exist, so all gates remain `credit:false`.
+  Setup authorization and the public request are durably retained. Raw records
+  are `c41sc1-party-setup-2026-08-31-32fd7c5.json` and
+  `c41sc1-a100-issuer-clean-tree-rejection-2026-08-31-32fd7c5.json`.
 
 - **2026-08-31 — C41SC1 local correlation-census root repair complete; one
   fresh A100 attempt owner-authorized, awaiting clean checkpoint and pod.** The

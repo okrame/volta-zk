@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E COMPLETE — FUNCTIONAL PASS / PROVER GATE FAIL; C41SC1 FINAL ONE-ATTEMPT A100 E2E AUTHORIZED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E COMPLETE — FUNCTIONAL PASS / PROVER GATE FAIL; C41SC1 LOCAL CENSUS REPAIRED — ONE FRESH A100 ATTEMPT AUTHORIZED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,30 +10,50 @@ record; no external plan is authoritative.
 
 Read `c4.1-secret-challenge-no-crs.md` next.
 
-- **Disposition.** The final authorized C41SC1 one-attempt E2E is terminal
-  **FAIL** at clean `222e89d`; the active design remains
-  `c4.1-secret-challenge-no-crs.md`. One response was burned and no retry is
-  authorized.
-- **Completed evidence.** Fresh real/AES setup used `32,145,636 B` traffic,
-  materialized `99,532,800 B` of verifier keys and retained soundness
-  `78.80929487391572` / weight-ZK `120.0170064253057` bits. The authenticated
-  `330-B` request and one `90-B` private response transferred with exact BLAKE3
-  checks; durable setup and challenge burn records survive.
-- **Hard stop.** After receiving the private response, the provider exhausted
-  all `226,980` ordinary full correlations, then requested 11 C41 degree-close
-  masks: `need 11, remaining 0`. Exit was 101 before any certificate or public
-  artifact. The committing verifier could not run; proof-size, online-byte,
-  prover, device, verifier RSS, acceptance, session and E2E credit are all
-  false. Immutable C4.1 prover-time FAIL also remains controlling.
-- **Checks and teardown.** Exact clean SHA, canonical weights/goldens, A100
-  admission, CUDA build, one actual request upload and one actual response
-  download passed. Pod `50bxa16xzffmlt` is API `EXITED` with no runtime and
-  SSH refused; transient state was removed first. No external work is
-  authorized.
-- **Resume condition.** Correct and locally exercise the complete finite
-  party-separated pool through the C41 close, checkpoint a new clean SHA,
-  create a fresh setup/response index, and obtain a new explicit owner GO and
-  pod. No component evidence can unblock this hard stop.
+- **Disposition.** C41SC1 remains active under
+  `c4.1-secret-challenge-no-crs.md`. The `222e89d` attempt is immutable
+  **FAIL**; the owner now authorizes the local census repair followed by
+  exactly one fresh A100 attempt with new setup, connection and response index.
+- **Repair.** The failed `226,981` full total was the pre-tail `ModelOut`
+  snapshot, not pool exhaustion. The exact post-model tail is 117 full
+  correlations: 11 degree-close, 104 PCS and two final closures. Production is
+  now `2,040,886 / 227,098` total sub/full and `1,781,814 / 227,097` ordinary.
+- **Checks.** A finite ordinary pool test consumes the pre-tail census, executes
+  the degree-12 close and exact 117-element tail with zero slack; the focused
+  test and `p6_report` compile check pass, and the full workspace is green. No
+  relation, proof framing, gate or Lean statement moved.
+- **Hard stop.** No pod may be contacted until the repaired source is a clean
+  pushed checkpoint and the owner supplies the new pod endpoint. The prior pod
+  is stopped; prior setup, correlation material and burned index are forbidden.
+- **Resume condition.** On the new pod, verify the clean SHA, generate one
+  fresh real/AES setup, run the frozen one-message flow once, record all
+  outcomes, remove transient state and stop the pod. No selective retry or
+  component credit is authorized; immutable C4.1 prover-time FAIL remains.
+
+- **2026-08-31 — C41SC1 local correlation-census root repair complete; one
+  fresh A100 attempt owner-authorized, awaiting clean checkpoint and pod.** The
+  party setup had frozen `226,981` total full correlations from
+  `ModelOut.corr_counters`, whose snapshot precedes the C41 response-state
+  finish, both batched PCS openings and the response-wide product/zero
+  closures. The failed live run consumed its `226,980` ordinary prefix exactly
+  and exposed the first omitted draw. Static executable-path reconciliation
+  closes the complete tail at `11 + (96 + 1) + (6 + 1) + 1 + 1 = 117` full
+  correlations; no post-model subfield draw exists.
+
+  The production totals are corrected to `2,040,886 / 227,098` sub/full, with
+  `1,781,814 / 227,097` in the ordinary provider/verifier bundles after the
+  typed prefix. The party-separated final assertion now distinguishes the
+  pre-tail model snapshot from final stream exhaustion. A regression test
+  places exactly `227,097` ordinary full correlations in a pooled stream,
+  consumes the `226,980` pre-tail census, executes the real degree-12 close and
+  consumes the 96-claim weights PCS, 6-claim embedding PCS and two closures
+  with zero slack. The focused test passes and
+  `CARGO_INCREMENTAL=0 cargo check -p volta-bench --bin p6_report` plus
+  `CARGO_INCREMENTAL=0 cargo test --workspace` exit zero. This is local repair
+  evidence only: no proof, gate or hardware credit; Lean remains frozen and no
+  pod was contacted. The owner authorizes exactly one new no-retry attempt
+  after a clean pushed checkpoint and a new pod endpoint, using new setup,
+  connection, response index and durable burn roots.
 
 - **2026-08-31 — C41SC1 terminal-result checkpoint and control-plane teardown
   complete.** Failure/setup checkpoint `020b1e7e24ca8443bc4d1f4c657fdcdb5be1dd25`

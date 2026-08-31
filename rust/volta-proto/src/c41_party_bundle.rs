@@ -11,7 +11,10 @@ use volta_pcg::{FullVole, ProverPcgPool, SubVole, VerifierPcgPool};
 pub const C41_PRODUCTION_CELLS: usize = 3_110_400;
 pub const C41_PRODUCTION_SEED_ROWS: usize = 253;
 pub const C41_PRODUCTION_TOTAL_SUB_CORRS: usize = 2_040_886;
-pub const C41_PRODUCTION_TOTAL_FULL_CORRS: usize = 226_981;
+pub const C41_PRODUCTION_MODEL_FULL_CORRS: usize = 226_981;
+pub const C41_PRODUCTION_POST_MODEL_FULL_CORRS: usize = 117;
+pub const C41_PRODUCTION_TOTAL_FULL_CORRS: usize =
+    C41_PRODUCTION_MODEL_FULL_CORRS + C41_PRODUCTION_POST_MODEL_FULL_CORRS;
 pub const C41_PRODUCTION_TYPED_SUB_CORRS: usize = C41_PRODUCTION_SEED_ROWS * 1024;
 pub const C41_PRODUCTION_ORDINARY_SUB_CORRS: usize =
     C41_PRODUCTION_TOTAL_SUB_CORRS - C41_PRODUCTION_TYPED_SUB_CORRS;
@@ -671,6 +674,8 @@ impl Reader<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::c41_folded_tole::{c41_degree_close_prover, C41HdProver, C41_MAX_DEGREE};
+    use volta_mac::{CorrelationStream, Transcript};
 
     fn context() -> C41PartySetupContext {
         C41PartySetupContext {
@@ -772,5 +777,31 @@ mod tests {
         };
         let bytes = setup.encode().unwrap();
         assert_eq!(C41ModelSetupArtifact::decode(&bytes).unwrap(), setup);
+    }
+
+    #[test]
+    fn production_ordinary_full_pool_consumes_exactly_through_close_and_tail() {
+        let correlation = FullVole { x: Fp2::ZERO, m: Fp2::ZERO };
+        let mut stream = CorrelationStream::from_pcg_pool(ProverPcgPool {
+            subs: Vec::new(),
+            fulls: vec![correlation; C41_PRODUCTION_ORDINARY_FULL_CORRS],
+        });
+        let mut tx = Transcript::new([0x41; 32]);
+        let relation = C41HdProver {
+            coefficients: [Fp2::ZERO; C41_MAX_DEGREE + 1],
+            degree: C41_MAX_DEGREE as u8,
+        };
+
+        stream.draw_fulls(0x4000, C41_PRODUCTION_MODEL_FULL_CORRS - 1);
+        let close_masks = stream.draw_fulls(0x4100, C41_MAX_DEGREE - 1);
+        c41_degree_close_prover(relation, &close_masks, &mut tx).unwrap();
+        stream.draw_fulls(0x4101, 96);
+        stream.draw_fulls(0x4102, 1);
+        stream.draw_fulls(0x4103, 6);
+        stream.draw_fulls(0x4104, 1);
+        stream.draw_product_mask(0x4105, 1);
+        stream.draw_fulls(0x4106, 1);
+
+        assert_eq!(stream.counters.full_corrs, C41_PRODUCTION_ORDINARY_FULL_CORRS as u64);
     }
 }

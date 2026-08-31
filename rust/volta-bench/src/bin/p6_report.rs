@@ -87,9 +87,10 @@ use volta_proto::{
     prod_batch_prover, prod_batch_verify, prove_model, prove_model_with_backend,
     C41FiatShamirPublicContext, C41ModelSetupArtifact, C41ProviderBundle, C41ResponseClosureProof,
     C41ResponseProofEnvelope, C41ResponseStatement, C41SecretChallengeRequest,
-    C41SecretChallengeResponse, C41_PRODUCTION_ORDINARY_FULL_CORRS,
-    C41_PRODUCTION_ORDINARY_SUB_CORRS, C41_SECRET_CHALLENGE_REQUEST_BYTES,
-    C41_SECRET_CHALLENGE_RESPONSE_BYTES, C41_TYPED_POLYNOMIAL_LANES,
+    C41SecretChallengeResponse, C41_PRODUCTION_MODEL_FULL_CORRS,
+    C41_PRODUCTION_ORDINARY_FULL_CORRS, C41_PRODUCTION_ORDINARY_SUB_CORRS,
+    C41_SECRET_CHALLENGE_REQUEST_BYTES, C41_SECRET_CHALLENGE_RESPONSE_BYTES,
+    C41_TYPED_POLYNOMIAL_LANES,
 };
 
 const P7B_PREFILL_CORE_GATE_S: f64 = 10.0;
@@ -4218,7 +4219,7 @@ fn run_session_impl<'source>(
             assert_eq!(stream.counters.sub_corrs, C41_PRODUCTION_ORDINARY_SUB_CORRS as u64);
             assert_eq!(stream.counters.full_corrs, C41_PRODUCTION_ORDINARY_FULL_CORRS as u64);
             assert_eq!(out.corr_counters.sub_corrs, stream.counters.sub_corrs);
-            assert_eq!(out.corr_counters.full_corrs, stream.counters.full_corrs);
+            assert_eq!(out.corr_counters.full_corrs, (C41_PRODUCTION_MODEL_FULL_CORRS - 1) as u64);
         }
     }
     if let Some(vc) = vc.as_ref() {

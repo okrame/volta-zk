@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "profile": "C41SC1-final-one-attempt-control-plane-teardown-v1",
+  "status": "complete",
+  "recorded_at": "2026-08-31T20:29:58+02:00",
+  "result_checkpoint": "020b1e7e24ca8443bc4d1f4c657fdcdb5be1dd25",
+  "attempt_source_git_commit": "222e89dfd944cb82c5d83b79ef29232172fe6ed7",
+  "pod": {
+    "provider": "RunPod",
+    "id": "50bxa16xzffmlt",
+    "name": "tired_purple_alligator",
+    "endpoint": "154.54.102.44:14781"
+  },
+  "pre_stop_cleanup": {
+    "p6_process_absent": true,
+    "pod_rust_target_removed": true,
+    "pod_transfer_artifacts_removed": true,
+    "pod_generated_weight_payloads_removed": true,
+    "pod_git_worktree_clean": true,
+    "local_canonical_rust_target_removed": true,
+    "local_transient_directory_removed": true,
+    "durable_setup_burn_retained": true,
+    "durable_challenge_burn_retained": true,
+    "durable_request_retained": true
+  },
+  "stop": {
+    "api": "RunPod GraphQL podStop",
+    "mutation_id_matched": true,
+    "mutation_desired_status": "EXITED",
+    "verification_desired_status": "EXITED",
+    "verification_runtime": null,
+    "ssh_endpoint_reachable_after_stop": false,
+    "ssh_observation": "connection refused",
+    "termination_verified": true
+  }
+}

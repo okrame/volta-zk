@@ -25,14 +25,27 @@ Read `c4.1-secret-challenge-no-crs.md` next.
   artifact. The committing verifier could not run; proof-size, online-byte,
   prover, device, verifier RSS, acceptance, session and E2E credit are all
   false. Immutable C4.1 prover-time FAIL also remains controlling.
-- **Checks and authorization.** Exact clean SHA, canonical weights/goldens,
-  A100 admission, CUDA build, one actual request upload and one actual response
-  download passed. Only checkpoint, cleanup and mandated pod termination remain
+- **Checks and teardown.** Exact clean SHA, canonical weights/goldens, A100
+  admission, CUDA build, one actual request upload and one actual response
+  download passed. Pod `50bxa16xzffmlt` is API `EXITED` with no runtime and
+  SSH refused; transient state was removed first. No external work is
   authorized.
 - **Resume condition.** Correct and locally exercise the complete finite
   party-separated pool through the C41 close, checkpoint a new clean SHA,
   create a fresh setup/response index, and obtain a new explicit owner GO and
   pod. No component evidence can unblock this hard stop.
+
+- **2026-08-31 — C41SC1 terminal-result checkpoint and control-plane teardown
+  complete.** Failure/setup checkpoint `020b1e7e24ca8443bc4d1f4c657fdcdb5be1dd25`
+  was pushed before teardown. The stopped process was absent; pod Rust cache,
+  transfer artifacts and generated weight payloads were removed, and its Git
+  tree remained clean. Local `rust/target` and transient setup/transfer copies
+  were also removed after setup and challenge burn state plus the public
+  request were persisted under a private `0700` state root with `0600` files.
+  RunPod mutation `podStop` returned pod `50bxa16xzffmlt` as `EXITED`; a fresh
+  query returned `desiredStatus: EXITED` and `runtime: null`, while SSH to
+  `154.54.102.44:14781` returned connection refused. The immutable teardown
+  record is `c41sc1-control-plane-teardown-2026-08-31-020b1e7.json`.
 
 - **2026-08-31 — C41SC1 final one-attempt E2E terminal FAIL after private
   response: finite real-PCG pool omits at least 11 close masks; no retry.**

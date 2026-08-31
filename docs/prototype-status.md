@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E COMPLETE — FUNCTIONAL PASS / PROVER GATE FAIL)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E COMPLETE — FUNCTIONAL PASS / PROVER GATE FAIL; C41NISC1 ANALYTIC SCREEN COMPLETE — CONDITIONAL FS+FP2 CI-VOLE ONLY / HARD STOP)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,10 +10,10 @@ record; no external plan is authoritative.
 
 Read `c4.1-secret-challenge-no-crs.md` next.
 
-- **Active work.** The seed-streaming successor is rejected: its measured
-  four-thread expansion/fold is `12.845134539 s`. Research moved to a
-  verifier-private post-commitment challenge on branch
-  `agent/c41-secret-challenge`; CRS/SRS constructions are excluded.
+- **Active work.** The no-round/no-CRS analytic screen is complete on branch
+  `agent/c41-secret-challenge`. Generic NISC is rejected. The sole research
+  survivor is `C41FS-LV2`: C41FS1 for every public coin plus direct malicious,
+  transparent, native-`Fp2` CI-VOLE authentication of the registered vector.
 - **Immutable evidence.** Clean `a3604cf` produced and accepted a
   `67,831,020-B` proof. Soundness `78.80929487390853`, weight-ZK
   `120.0170064253057`, setup traffic `40,446,419 B` and peak device use
@@ -22,16 +22,49 @@ Read `c4.1-secret-challenge-no-crs.md` next.
 - **Unchanged failure.** Prover time `7.942478252 s` is
   `1.935020839958646x` the C4 anchor and fails `<=1.30x`; overall C4.1 remains
   FAIL. The successor receives no prover-time repair or promotion credit.
-- **Current ruling.** Fiat--Shamir may remain for public-coin challenges, but
-  every coin determining the pre-folded typed query must be in the private
-  packet. Eliminating its online reveal without a CRS requires no-CRS silent
-  NISC for the complete challenge-dependent post-commitment function, not a
-  hash substitution.
+- **Screen.** Private-challenge census is zero in the FS hybrid. Removing
+  Packed16 `d/e` makes the conservative proof projection `61,446,700 B`; proof
+  bytes pass analytically. Published LogVOLE is only semi-honest `Z_p` at
+  `sigma=40`, which fails security. Its malicious setup is estimated `2--8x`;
+  no compatible `Fp2`, transparent-setup or exact state/timing evidence exists.
 - **Hard stop.** No Rust, Lean or pod work is authorized. Resume requires an
-  exact factorization of the folded verifier key, malicious private-setup
-  realization, byte/work/state/security accounting, and owner selection of
-  the interactive baseline or the round-free NISC candidate. The immutable
-  prover-time failure remains controlling.
+  `Fp2` CI-VOLE theorem, transparent malicious common-`Delta` setup at
+  `sigma>=96`, exact bytes/work/state, a numerical verifier gate and owner GO.
+  The prover failure remains controlling; `C41SC1` stays the practical fallback.
+
+- **2026-08-31 — C41NISC1 no-round/no-CRS screen complete; generic NISC
+  rejected; FS plus native-Fp2 CI-VOLE is the sole conditional survivor; no
+  implementation or pod.** Exact arithmetic is executable in
+  `check_c41_nisc_budget.py`. The successful factorization does not hide the
+  final folded query. Instead, a hiding chosen-input digest authenticates the
+  canonical `3,110,400`-cell boundary vector before the first C41FS1 challenge;
+  all later GKR/PCS coins are public Fiat--Shamir. If one malicious CI-VOLE
+  instance outputs ordinary `Fp2` MAC shares, the typed seeds, `6,609,600-B`
+  Packed16 `d/e`, 640 bridge corrections and degree-12 typed close disappear.
+  Conservatively retaining every other proof byte gives `61,446,700 B` with
+  one published-size LogVOLE query and `63,023,660 B` at eight times that query
+  traffic, both below 70 MB.
+
+  The other gates do not yet pass. The setup replacement budget is
+  `76,742,930 B`; a hypothetical single native-`Fp2` LogVOLE instance is about
+  `114,371,465 B` total at the paper's lowest malicious estimate and
+  `342,371,465 B` at its highest. Two unlinked base-field instances both lack
+  same-input binding and reach about `190,371,465 B` at the low malicious
+  estimate. Published `sigma=40` collapses the conservative soundness union to
+  40 bits; `sigma=96` would conditionally give `78.80928522995302` soundness
+  and `95.99999991501639` weight privacy. Published throughput projections span
+  both sides of the `1.2313787151-s` allowed successor overhead and receive no
+  timing credit. The existing ledger defines no numeric successor verifier
+  gate.
+
+  Static call-graph geometry gives `8,294,400` sparse entries, but the clean
+  record predates that counter, so it is not measured evidence. Generic silent
+  NISC, authenticated/succinct garbling, NIIP and succinct OTE fail the
+  communication, CRS, field or malicious-setup screens. Resume requires a
+  single-digest native-`Fp2` construction, transparent FS setup certification
+  binding the ordinary-PCG `Delta`, exact malicious bytes/state/work at
+  `sigma>=96`, an owner-set verifier gate and a new owner GO. The pod hard stop
+  is unchanged.
 
 - **2026-08-31 — Seed-streaming verifier rejected; secret-challenge no-CRS
   research ruling recorded; no implementation or pod.** The owner rejects the

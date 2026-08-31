@@ -63,8 +63,8 @@ pub use open::{
     zero_open_prover, zero_open_verify,
 };
 pub use transcript::{
-    Transcript, TranscriptChallengeChannel, TranscriptChallengeRequest,
-    TranscriptChallengeResponse, C41_FIAT_SHAMIR_MAX_CHALLENGES,
+    C41SecretChallengeChannel, C41SecretChallengeFrontier, Transcript, TranscriptChallengeChannel,
+    TranscriptChallengeRequest, TranscriptChallengeResponse, C41_FIAT_SHAMIR_MAX_CHALLENGES,
     C41_FIAT_SHAMIR_MAX_RANDOM_ORACLE_QUERIES, C41_FIAT_SHAMIR_MAX_REJECTION_DRAWS_PER_LIMB,
     C62_FIAT_SHAMIR_MAX_CHALLENGES, C62_FIAT_SHAMIR_MAX_RANDOM_ORACLE_QUERIES,
     C62_FIAT_SHAMIR_MAX_REJECTION_DRAWS_PER_LIMB,

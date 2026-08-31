@@ -18,10 +18,10 @@ use volta_pcg::{
 use volta_pcs::{
     commit, layout_gpt2_embed_c3, layout_gpt2_weights_c3, LigeroParams, C3_EMBED, C3_WEIGHTS,
 };
-use volta_proto::c41_folded_tole::c41_typed_setup_exchange;
+use volta_proto::c41_folded_tole::{c41_materialize_packed_keys, c41_typed_setup_exchange};
 use volta_proto::{
-    cattn_permuted, C41ModelSetupArtifact, C41PartySetupContext, C41ProviderBundle,
-    C41VerifierBundle, C41_PRODUCTION_CELLS, C41_PRODUCTION_ORDINARY_FULL_CORRS,
+    cattn_permuted, C41MaterializedVerifierLot, C41ModelSetupArtifact, C41PartySetupContext,
+    C41ProviderBundle, C41VerifierBundle, C41_PRODUCTION_CELLS, C41_PRODUCTION_ORDINARY_FULL_CORRS,
     C41_PRODUCTION_ORDINARY_SUB_CORRS, C41_PRODUCTION_SEED_ROWS, C41_PRODUCTION_TOTAL_FULL_CORRS,
     C41_PRODUCTION_TOTAL_SUB_CORRS, C41_PRODUCTION_TYPED_SUB_CORRS,
 };
@@ -51,6 +51,8 @@ struct Manifest {
     model_initialization_wall_s: f64,
     pcg_setup_wall_s: f64,
     typed_setup_wall_s: f64,
+    verifier_lot_materialize_wall_s: f64,
+    materialized_verifier_lot_payload_bytes: u64,
     setup_comm_bytes: u64,
     typed_setup_comm_bytes: u64,
     conditional_soundness_bits: f64,
@@ -280,6 +282,15 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Err("typed setup did not consume its exact PCG prefix".into());
     }
     let setup_proof = exchange.proof.encode()?;
+    let materialize_started = Instant::now();
+    let materialized_lot = c41_materialize_packed_keys(
+        public_seed,
+        delta,
+        &exchange.verifier,
+        0,
+        C41_PRODUCTION_CELLS,
+    )?;
+    let verifier_lot_materialize_wall_s = materialize_started.elapsed().as_secs_f64();
     let context = C41PartySetupContext {
         model_binding_digest: model_binding_digest(&weights)?,
         setup_digest: *blake3::hash(&setup_proof).as_bytes(),
@@ -327,20 +338,30 @@ fn main() -> Result<(), Box<dyn Error>> {
         verifier_model,
     }
     .encode()?;
+    let verifier_lot = C41MaterializedVerifierLot { context, lot: materialized_lot }.encode()?;
     C41ProviderBundle::decode(&provider)?.context.validate_production()?;
     C41VerifierBundle::decode(&verifier)?.context.validate_production()?;
+    C41MaterializedVerifierLot::decode(&verifier_lot)?.context.validate_production()?;
 
     let provider_name = "provider.bundle";
     let verifier_name = "verifier.bundle";
     let model_setup_name = "model-setup.bin";
+    let verifier_lot_name = "verifier-lot.bin";
     write_secret(&output.join(provider_name), &provider)?;
     write_secret(&output.join(verifier_name), &verifier)?;
+    write_secret(&output.join(verifier_lot_name), &verifier_lot)?;
     write_public(&output.join(model_setup_name), &model_setup)?;
     let artifacts = vec![
         ArtifactRow {
             name: provider_name,
             bytes: provider.len(),
             blake3: blake3::hash(&provider).to_hex().to_string(),
+            secret: true,
+        },
+        ArtifactRow {
+            name: verifier_lot_name,
+            bytes: verifier_lot.len(),
+            blake3: blake3::hash(&verifier_lot).to_hex().to_string(),
             secret: true,
         },
         ArtifactRow {
@@ -361,7 +382,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     let manifest = serde_json::to_vec_pretty(&Manifest {
         schema: 1,
-        profile: "C4.1-party-separated-real-AES-v1",
+        profile: "C41SC1-party-separated-real-AES-v1",
         git_sha: setup_git_sha,
         git_dirty: false,
         real_aes_pcg: true,
@@ -375,6 +396,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         model_initialization_wall_s,
         pcg_setup_wall_s,
         typed_setup_wall_s,
+        verifier_lot_materialize_wall_s,
+        materialized_verifier_lot_payload_bytes: (2
+            * C41_PRODUCTION_CELLS
+            * std::mem::size_of::<volta_field::Fp2>())
+            as u64,
         setup_comm_bytes,
         typed_setup_comm_bytes: exchange.metrics.total_typed_setup_bytes,
         conditional_soundness_bits: exchange.metrics.conditional_soundness_bits,

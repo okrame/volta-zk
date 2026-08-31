@@ -10,7 +10,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use volta_gpt2::decode_verifier_model_canonical;
 use volta_mac::{
-    zero_batch_verify, zero_mask_key, Transcript, VerifierCtx, C41_FIAT_SHAMIR_MAX_CHALLENGES,
+    zero_batch_verify, zero_mask_key, C41SecretChallengeChannel, C41SecretChallengeFrontier,
+    Transcript, VerifierCtx, C41_FIAT_SHAMIR_MAX_CHALLENGES,
 };
 use volta_pcg::{ResponseAuthorizationStore, VerifierPcgPool};
 use volta_pcs::{
@@ -21,9 +22,11 @@ use volta_proto::c41_folded_tole::{C41VerifierDiagnostics, C41VerifierResponseSt
 use volta_proto::logup::Doms;
 use volta_proto::{
     decode_model_proof_c41_canonical, layer_dom_base, prod_batch_verify,
-    verify_response_private_logits_c41_from_profile, C41ModelSetupArtifact,
-    C41ResponseClosureProof, C41ResponseProofEnvelope, C41ResponseStatement, C41VerifierBundle,
-    PrivateChunkPub, C41_RESPONSE_ENVELOPE_MAX_BYTES,
+    verify_response_private_logits_c41_from_profile, C41MaterializedVerifierLot,
+    C41ModelSetupArtifact, C41ResponseClosureProof, C41ResponseProofEnvelope, C41ResponseStatement,
+    C41SecretChallengeRequest, C41SecretChallengeResponse, C41VerifierBundle, PrivateChunkPub,
+    C41_MATERIALIZED_VERIFIER_LOT_MAX_BYTES, C41_RESPONSE_ENVELOPE_MAX_BYTES,
+    C41_SECRET_CHALLENGE_REQUEST_BYTES, C41_SECRET_CHALLENGE_RESPONSE_BYTES,
 };
 
 type AnyError = Box<dyn Error + Send + Sync>;
@@ -31,6 +34,9 @@ type AnyError = Box<dyn Error + Send + Sync>;
 #[derive(Clone)]
 struct Args {
     verifier_bundle: PathBuf,
+    verifier_lot: PathBuf,
+    expected_verifier_lot_bytes: u64,
+    expected_verifier_lot_blake3: String,
     model_setup: PathBuf,
     statement: PathBuf,
     proof: PathBuf,
@@ -40,6 +46,10 @@ struct Args {
     expected_git_sha: String,
     expected_fs_challenges: u64,
     expected_fs_context_digest: String,
+    secret_request: PathBuf,
+    expected_secret_request_blake3: String,
+    secret_challenge_record: PathBuf,
+    expected_secret_response_blake3: String,
     output: PathBuf,
     authorization_store: Option<PathBuf>,
     benchmark_replay: bool,
@@ -59,11 +69,15 @@ struct Record {
     response_index: u64,
     threads: usize,
     proof_bytes: u64,
+    provider_to_verifier_online_bytes: u64,
+    verifier_to_provider_online_bytes: u64,
     proof_blake3: String,
     proof_gate_bytes: u64,
     proof_gate_pass: bool,
     expected_model_setup_blake3: String,
     verifier_bundle_bytes: u64,
+    verifier_lot_artifact_bytes: u64,
+    verifier_lot_artifact_blake3: String,
     verifier_seed_state_bytes: u64,
     materialized_verifier_lot_bytes: u64,
     full_query_bytes: u64,
@@ -73,10 +87,11 @@ struct Record {
     envelope_decode_s: f64,
     component_decode_s: f64,
     fiat_shamir_context_s: f64,
-    model_and_seed_stream_fold_s: f64,
+    model_and_typed_fold_s: f64,
     descriptor_build_s: f64,
     query_chunk_build_s: f64,
     seed_expand_and_stream_fold_s: f64,
+    materialized_key_fold_s: f64,
     degree12_close_s: f64,
     streamed_chunks: usize,
     query_chunk_peak_bytes: u64,
@@ -86,6 +101,9 @@ struct Record {
     verifier_core_s: f64,
     verifier_total_s: f64,
     fiat_shamir_challenges: u64,
+    private_challenges: u64,
+    secret_request_blake3: String,
+    secret_response_blake3: String,
     canonical_transcript_digest: String,
     ordinary_sub_corrs_consumed: u64,
     ordinary_full_corrs_consumed: u64,
@@ -97,12 +115,35 @@ struct Record {
     minor_faults: i64,
 }
 
+struct C41ReplayChallengeChannel {
+    request: C41SecretChallengeRequest,
+    response: C41SecretChallengeResponse,
+}
+
+impl C41SecretChallengeChannel for C41ReplayChallengeChannel {
+    fn challenge(
+        &mut self,
+        frontier: C41SecretChallengeFrontier,
+    ) -> Result<volta_field::Fp2, String> {
+        let replay = C41SecretChallengeRequest::from_frontier(self.request.context, frontier)
+            .map_err(|error| error.to_string())?;
+        if replay != self.request {
+            return Err("C41SC1 verifier replay reached a different frontier".to_owned());
+        }
+        self.response.validate_request(self.request).map_err(|error| error.to_string())
+    }
+}
+
 fn usage() -> ! {
     eprintln!(
-        "usage: c41_verify_client --verifier-bundle FILE --model-setup FILE --statement FILE \
+        "usage: c41_verify_client --verifier-bundle FILE --verifier-lot FILE \
+         --expected-verifier-lot-bytes N --expected-verifier-lot-blake3 HEX \
+         --model-setup FILE --statement FILE \
          --expected-model-setup-blake3 HEX --proof FILE --expected-proof-bytes N \
          --expected-proof-blake3 HEX --expected-git-sha SHA \
-         --expected-fs-challenges N --expected-fs-context-digest HEX --output FILE \
+         --expected-fs-challenges N --expected-fs-context-digest HEX \
+         --secret-request FILE --expected-secret-request-blake3 HEX \
+         --secret-challenge-record FILE --expected-secret-response-blake3 HEX --output FILE \
          (--authorization-store DIR|--benchmark-replay) [--threads 1|4]"
     );
     std::process::exit(2);
@@ -110,6 +151,9 @@ fn usage() -> ! {
 
 fn parse_args() -> Args {
     let mut verifier_bundle = None;
+    let mut verifier_lot = None;
+    let mut expected_verifier_lot_bytes = None;
+    let mut expected_verifier_lot_blake3 = None;
     let mut model_setup = None;
     let mut statement = None;
     let mut proof = None;
@@ -119,6 +163,10 @@ fn parse_args() -> Args {
     let mut expected_git_sha = None;
     let mut expected_fs_challenges = None;
     let mut expected_fs_context_digest = None;
+    let mut secret_request = None;
+    let mut expected_secret_request_blake3 = None;
+    let mut secret_challenge_record = None;
+    let mut expected_secret_response_blake3 = None;
     let mut output = None;
     let mut authorization_store = None;
     let mut benchmark_replay = false;
@@ -129,6 +177,14 @@ fn parse_args() -> Args {
             |args: &mut std::iter::Skip<std::env::Args>| args.next().unwrap_or_else(|| usage());
         match arg.as_str() {
             "--verifier-bundle" => verifier_bundle = Some(PathBuf::from(value(&mut args))),
+            "--verifier-lot" => verifier_lot = Some(PathBuf::from(value(&mut args))),
+            "--expected-verifier-lot-bytes" => {
+                expected_verifier_lot_bytes =
+                    Some(value(&mut args).parse().unwrap_or_else(|_| usage()))
+            }
+            "--expected-verifier-lot-blake3" => {
+                expected_verifier_lot_blake3 = Some(value(&mut args))
+            }
             "--model-setup" => model_setup = Some(PathBuf::from(value(&mut args))),
             "--statement" => statement = Some(PathBuf::from(value(&mut args))),
             "--proof" => proof = Some(PathBuf::from(value(&mut args))),
@@ -142,6 +198,16 @@ fn parse_args() -> Args {
                 expected_fs_challenges = Some(value(&mut args).parse().unwrap_or_else(|_| usage()))
             }
             "--expected-fs-context-digest" => expected_fs_context_digest = Some(value(&mut args)),
+            "--secret-request" => secret_request = Some(PathBuf::from(value(&mut args))),
+            "--expected-secret-request-blake3" => {
+                expected_secret_request_blake3 = Some(value(&mut args))
+            }
+            "--secret-challenge-record" => {
+                secret_challenge_record = Some(PathBuf::from(value(&mut args)))
+            }
+            "--expected-secret-response-blake3" => {
+                expected_secret_response_blake3 = Some(value(&mut args))
+            }
             "--output" => output = Some(PathBuf::from(value(&mut args))),
             "--authorization-store" => authorization_store = Some(PathBuf::from(value(&mut args))),
             "--benchmark-replay" => benchmark_replay = true,
@@ -157,6 +223,11 @@ fn parse_args() -> Args {
     }
     Args {
         verifier_bundle: verifier_bundle.unwrap_or_else(|| usage()),
+        verifier_lot: verifier_lot.unwrap_or_else(|| usage()),
+        expected_verifier_lot_bytes: expected_verifier_lot_bytes.unwrap_or_else(|| usage()),
+        expected_verifier_lot_blake3: checked_blake3_hex(
+            expected_verifier_lot_blake3.unwrap_or_else(|| usage()),
+        ),
         model_setup: model_setup.unwrap_or_else(|| usage()),
         statement: statement.unwrap_or_else(|| usage()),
         proof: proof.unwrap_or_else(|| usage()),
@@ -169,6 +240,14 @@ fn parse_args() -> Args {
         expected_fs_challenges: expected_fs_challenges.unwrap_or_else(|| usage()),
         expected_fs_context_digest: checked_blake3_hex(
             expected_fs_context_digest.unwrap_or_else(|| usage()),
+        ),
+        secret_request: secret_request.unwrap_or_else(|| usage()),
+        expected_secret_request_blake3: checked_blake3_hex(
+            expected_secret_request_blake3.unwrap_or_else(|| usage()),
+        ),
+        secret_challenge_record: secret_challenge_record.unwrap_or_else(|| usage()),
+        expected_secret_response_blake3: checked_blake3_hex(
+            expected_secret_response_blake3.unwrap_or_else(|| usage()),
         ),
         output: output.unwrap(),
         authorization_store,
@@ -250,6 +329,24 @@ fn verify(args: &Args) -> Result<Record, AnyError> {
     let bundle = C41VerifierBundle::decode(&bundle_bytes)?;
     drop(bundle_bytes);
     bundle.context.validate_production()?;
+    let verifier_seed_state_bytes =
+        (bundle.typed.keys.len() * std::mem::size_of::<volta_field::Fp2>()) as u64;
+    if verifier_seed_state_bytes != 4_145_152 {
+        return Err("C41SC1 compact verifier seed state census differs".into());
+    }
+    let verifier_lot_bytes =
+        read_bounded(&args.verifier_lot, C41_MATERIALIZED_VERIFIER_LOT_MAX_BYTES)?;
+    let verifier_lot_blake3 = blake3::hash(&verifier_lot_bytes).to_hex().to_string();
+    if verifier_lot_bytes.len() as u64 != args.expected_verifier_lot_bytes
+        || verifier_lot_blake3 != args.expected_verifier_lot_blake3
+    {
+        return Err("C41SC1 verifier lot differs from the pinned setup manifest".into());
+    }
+    let verifier_lot = C41MaterializedVerifierLot::decode(&verifier_lot_bytes)?;
+    drop(verifier_lot_bytes);
+    if verifier_lot.context != bundle.context {
+        return Err("C41SC1 verifier lot belongs to a different setup".into());
+    }
     let model_setup_bytes = read_bounded(&args.model_setup, 512)?;
     if blake3::hash(&model_setup_bytes).to_hex().as_str() != args.expected_model_setup_blake3 {
         return Err(
@@ -279,6 +376,22 @@ fn verify(args: &Args) -> Result<Record, AnyError> {
         )?;
         store.reserve(&fs_context.response_authorization_binding()?)?;
     }
+    let secret_request_bytes = read_bounded(&args.secret_request, 1_000)?;
+    let secret_request_blake3 = blake3::hash(&secret_request_bytes).to_hex().to_string();
+    if secret_request_blake3 != args.expected_secret_request_blake3 {
+        return Err("C41SC1 request differs from the authenticated provider manifest".into());
+    }
+    let secret_request = C41SecretChallengeRequest::decode(&secret_request_bytes)?;
+    if secret_request.context != fs_context {
+        return Err("C41SC1 request public context differs".into());
+    }
+    let secret_response_bytes = read_bounded(&args.secret_challenge_record, 1_000)?;
+    let secret_response_blake3 = blake3::hash(&secret_response_bytes).to_hex().to_string();
+    if secret_response_blake3 != args.expected_secret_response_blake3 {
+        return Err("C41SC1 local challenge record differs from the provider manifest".into());
+    }
+    let secret_response = C41SecretChallengeResponse::decode(&secret_response_bytes)?;
+    secret_response.validate_request(secret_request)?;
     let proof_to_verdict_started = Instant::now();
     let proof_read_started = Instant::now();
     let proof_bytes = read_bounded(&args.proof, C41_RESPONSE_ENVELOPE_MAX_BYTES)?;
@@ -289,8 +402,14 @@ fn verify(args: &Args) -> Result<Record, AnyError> {
     {
         return Err("C4.1 proof length or digest differs from the authenticated transfer".into());
     }
-    if proof_bytes.len() >= 70_000_000 {
-        return Err("C4.1 proof violates the <70 MB gate".into());
+    if secret_request_bytes.len() != C41_SECRET_CHALLENGE_REQUEST_BYTES
+        || secret_response_bytes.len() != C41_SECRET_CHALLENGE_RESPONSE_BYTES
+    {
+        return Err("C41SC1 challenge framing census differs".into());
+    }
+    let provider_to_verifier_online_bytes = proof_bytes.len() + secret_request_bytes.len();
+    if provider_to_verifier_online_bytes >= 70_000_000 {
+        return Err("C41SC1 provider-to-verifier proof traffic violates the <70 MB gate".into());
     }
     let envelope_started = Instant::now();
     let envelope = C41ResponseProofEnvelope::decode(&proof_bytes)?;
@@ -305,7 +424,10 @@ fn verify(args: &Args) -> Result<Record, AnyError> {
     let component_decode_s = component_started.elapsed().as_secs_f64();
 
     let context_started = Instant::now();
-    let mut tx = Transcript::new_c41_fiat_shamir(context_digest)?;
+    let mut tx = Transcript::new_c41_secret_challenge(
+        context_digest,
+        Box::new(C41ReplayChallengeChannel { request: secret_request, response: secret_response }),
+    )?;
     let fiat_shamir_context_s = context_started.elapsed().as_secs_f64();
 
     let mut vc = VerifierCtx::from_pcg_pool(
@@ -317,17 +439,13 @@ fn verify(args: &Args) -> Result<Record, AnyError> {
     );
     let c41 = proof.c41.as_ref().ok_or("C4.1 model proof has no folded response")?;
     let diagnostics = Arc::new(Mutex::new(C41VerifierDiagnostics::default()));
-    let state = C41VerifierResponseState::new_seed_streaming_with_diagnostics(
-        bundle.typed,
-        bundle.context.public_incidence_seed,
-        bundle.context.first_global_bit as usize,
-        bundle.context.cells as usize,
+    let state = C41VerifierResponseState::new_materialized(
+        verifier_lot.lot,
         c41,
-        bundle.delta,
-        diagnostics.clone(),
+        Some(diagnostics.clone()),
     )?;
-    if !state.is_seed_streaming() || state.persistent_seed_bytes() != 4_145_152 {
-        return Err("C4.1 verifier selected a non-streaming or wrong-size state".into());
+    if !state.is_materialized() || state.persistent_seed_bytes() != 0 {
+        return Err("C41SC1 verifier did not select its materialized key lot".into());
     }
     let chunks = statement
         .chunk_rows
@@ -346,7 +464,7 @@ fn verify(args: &Args) -> Result<Record, AnyError> {
         &mut tx,
     )
     .ok_or("C4.1 model/seed-stream verifier rejected")?;
-    let model_and_seed_stream_fold_s = model_started.elapsed().as_secs_f64();
+    let model_and_typed_fold_s = model_started.elapsed().as_secs_f64();
 
     let weights_started = Instant::now();
     let weights_layout = layout_gpt2_weights_c3();
@@ -432,6 +550,10 @@ fn verify(args: &Args) -> Result<Record, AnyError> {
     if challenges != args.expected_fs_challenges {
         return Err("C41FS1 challenge census differs from the provider artifact manifest".into());
     }
+    let private_challenges = tx.c41_secret_challenge_count();
+    if private_challenges != 1 {
+        return Err("C41SC1 verifier did not consume exactly one private challenge".into());
+    }
     let canonical = tx.canonical_binding_digest()?;
     if vc.counters.sub_corrs != bundle.context.ordinary_sub_corrs
         || vc.counters.full_corrs != bundle.context.ordinary_full_corrs
@@ -442,7 +564,7 @@ fn verify(args: &Args) -> Result<Record, AnyError> {
     let peak_rss_bytes = usage.ru_maxrss as u64 * 1024;
     Ok(Record {
         schema: 1,
-        profile: "C4.1-seed-only-streaming-client-v1",
+        profile: "C41SC1-materialized-client-v1",
         git_sha: args.expected_git_sha.clone(),
         git_dirty: false,
         os: std::env::consts::OS,
@@ -452,13 +574,19 @@ fn verify(args: &Args) -> Result<Record, AnyError> {
         response_index: bundle.context.response_index,
         threads: args.threads,
         proof_bytes: proof_bytes.len() as u64,
+        provider_to_verifier_online_bytes: provider_to_verifier_online_bytes as u64,
+        verifier_to_provider_online_bytes: secret_response_bytes.len() as u64,
         proof_blake3: proof_digest.to_hex().to_string(),
         proof_gate_bytes: 70_000_000,
-        proof_gate_pass: proof_bytes.len() < 70_000_000,
+        proof_gate_pass: provider_to_verifier_online_bytes < 70_000_000,
         expected_model_setup_blake3: args.expected_model_setup_blake3.clone(),
         verifier_bundle_bytes,
-        verifier_seed_state_bytes: 4_145_152,
-        materialized_verifier_lot_bytes: 0,
+        verifier_lot_artifact_bytes: args.expected_verifier_lot_bytes,
+        verifier_lot_artifact_blake3: verifier_lot_blake3,
+        verifier_seed_state_bytes,
+        materialized_verifier_lot_bytes: (2
+            * bundle.context.cells
+            * std::mem::size_of::<volta_field::Fp2>() as u64),
         full_query_bytes: 0,
         bundle_read_decode_s,
         process_wall_s: process_started.elapsed().as_secs_f64(),
@@ -466,10 +594,11 @@ fn verify(args: &Args) -> Result<Record, AnyError> {
         envelope_decode_s,
         component_decode_s,
         fiat_shamir_context_s,
-        model_and_seed_stream_fold_s,
+        model_and_typed_fold_s,
         descriptor_build_s: diagnostics.descriptor_build_s,
         query_chunk_build_s: diagnostics.query_chunk_build_s,
-        seed_expand_and_stream_fold_s: diagnostics.seed_expand_and_stream_fold_s,
+        seed_expand_and_stream_fold_s: 0.0,
+        materialized_key_fold_s: diagnostics.seed_expand_and_stream_fold_s,
         degree12_close_s: diagnostics.degree12_close_s,
         streamed_chunks: diagnostics.chunks,
         query_chunk_peak_bytes: diagnostics.query_chunk_peak_bytes,
@@ -479,6 +608,9 @@ fn verify(args: &Args) -> Result<Record, AnyError> {
         verifier_core_s,
         verifier_total_s: proof_to_verdict_started.elapsed().as_secs_f64(),
         fiat_shamir_challenges: challenges,
+        private_challenges,
+        secret_request_blake3,
+        secret_response_blake3,
         canonical_transcript_digest: blake3::Hash::from(canonical).to_hex().to_string(),
         ordinary_sub_corrs_consumed: vc.counters.sub_corrs,
         ordinary_full_corrs_consumed: vc.counters.full_corrs,

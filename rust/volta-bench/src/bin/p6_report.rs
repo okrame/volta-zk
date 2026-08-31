@@ -33,7 +33,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use volta_accel::{
     Backend, BackendKind, BackendStats, DeviceBuffer, DeviceSlice, DeviceTimingMode, Fp2Repr,
     Operation, ResidentTimingPolicy, CUDA_ABI_VERSION,
@@ -50,7 +50,8 @@ use volta_gpt2::{
 };
 use volta_mac::{
     fresh_zero_mask, zero_batch_exchange, zero_batch_prover, zero_batch_verify, zero_mask_key,
-    CorrelationStream, Transcript, VerifierCtx, C41_FIAT_SHAMIR_MAX_CHALLENGES,
+    C41SecretChallengeChannel, C41SecretChallengeFrontier, CorrelationStream, Transcript,
+    VerifierCtx, C41_FIAT_SHAMIR_MAX_CHALLENGES,
 };
 use volta_pcg::{
     expand_phase_b_production_with_ggm_prg, open_fase_d_connection_with_ggm_prg, ConnectionBinding,
@@ -85,8 +86,10 @@ use volta_proto::{
     cattn_permuted, decode_model_proof_c41_canonical, encode_model_proof_c41_canonical,
     prod_batch_prover, prod_batch_verify, prove_model, prove_model_with_backend,
     C41FiatShamirPublicContext, C41ModelSetupArtifact, C41ProviderBundle, C41ResponseClosureProof,
-    C41ResponseProofEnvelope, C41ResponseStatement, C41_PRODUCTION_ORDINARY_FULL_CORRS,
-    C41_PRODUCTION_ORDINARY_SUB_CORRS, C41_TYPED_POLYNOMIAL_LANES,
+    C41ResponseProofEnvelope, C41ResponseStatement, C41SecretChallengeRequest,
+    C41SecretChallengeResponse, C41_PRODUCTION_ORDINARY_FULL_CORRS,
+    C41_PRODUCTION_ORDINARY_SUB_CORRS, C41_SECRET_CHALLENGE_REQUEST_BYTES,
+    C41_SECRET_CHALLENGE_RESPONSE_BYTES, C41_TYPED_POLYNOMIAL_LANES,
 };
 
 const P7B_PREFILL_CORE_GATE_S: f64 = 10.0;
@@ -1464,6 +1467,9 @@ struct Args {
     c41_provider_bundle_blake3: Option<String>,
     c41_model_setup_blake3: Option<String>,
     c41_artifact_output: Option<PathBuf>,
+    c41_secret_request: Option<PathBuf>,
+    c41_secret_response: Option<PathBuf>,
+    c41_secret_timeout_seconds: Option<u64>,
     x123_foundation_record: bool,
     c1_record: bool,
     flip_readiness_record: bool,
@@ -1634,6 +1640,8 @@ fn usage() -> ! {
          [--c41-provider-bundle FILE --c41-provider-bundle-bytes N \
           --c41-provider-bundle-blake3 HEX --c41-artifact-output DIR] \
          [--c41-model-setup-blake3 HEX] \
+         [--c41-secret-request FILE --c41-secret-response FILE \
+          --c41-secret-timeout-seconds N] \
          [--fase-d-pod-profile v1|v2] \
          [--pcg-backend mock|real] [--pcg-authorization-store PATH] \
          [--pcg-connection-store PATH] \
@@ -1660,6 +1668,9 @@ fn parse_args() -> Args {
         c41_provider_bundle_blake3: None,
         c41_model_setup_blake3: None,
         c41_artifact_output: None,
+        c41_secret_request: None,
+        c41_secret_response: None,
+        c41_secret_timeout_seconds: None,
         x123_foundation_record: false,
         c1_record: false,
         flip_readiness_record: false,
@@ -1711,6 +1722,13 @@ fn parse_args() -> Args {
             out.c41_model_setup_blake3 = Some(args.next().unwrap_or_else(|| usage()));
         } else if a == "--c41-artifact-output" {
             out.c41_artifact_output = Some(PathBuf::from(args.next().unwrap_or_else(|| usage())));
+        } else if a == "--c41-secret-request" {
+            out.c41_secret_request = Some(PathBuf::from(args.next().unwrap_or_else(|| usage())));
+        } else if a == "--c41-secret-response" {
+            out.c41_secret_response = Some(PathBuf::from(args.next().unwrap_or_else(|| usage())));
+        } else if a == "--c41-secret-timeout-seconds" {
+            out.c41_secret_timeout_seconds =
+                Some(args.next().unwrap_or_else(|| usage()).parse().unwrap_or_else(|_| usage()));
         } else if a == "--x123-foundation-record" {
             out.t1_record = true;
             out.x123_foundation_record = true;
@@ -1921,6 +1939,8 @@ fn write_c41_public_artifacts(
     metrics: &C41E2eSession,
     response_index: u64,
     git_sha: &str,
+    secret_request: &Path,
+    secret_response: &Path,
 ) {
     assert!(output.is_absolute(), "C4.1 public artifact output must be absolute");
     let parent = output.parent().expect("C4.1 artifact output parent");
@@ -1953,9 +1973,17 @@ fn write_c41_public_artifacts(
     write("proof.bin", &artifacts.proof);
     write("statement.bin", &artifacts.statement);
     write("model-setup.bin", &artifacts.model_setup);
+    let secret_request_bytes = std::fs::read(secret_request).expect("read C41SC1 request");
+    let request =
+        C41SecretChallengeRequest::decode(&secret_request_bytes).expect("decode C41SC1 request");
+    let secret_response_bytes = std::fs::read(secret_response).expect("read C41SC1 response");
+    C41SecretChallengeResponse::decode(&secret_response_bytes)
+        .and_then(|response| response.validate_request(request))
+        .expect("C41SC1 response must bind the emitted request");
+    write("secret-challenge-request.bin", &secret_request_bytes);
     let manifest = C41PublicArtifactManifest {
         schema: 1,
-        profile: "C4.1-C41FS1-public-artifacts-v1",
+        profile: "C41SC1-public-artifacts-v1",
         git_sha,
         response_index,
         proof_bytes: artifacts.proof.len() as u64,
@@ -1966,6 +1994,11 @@ fn write_c41_public_artifacts(
         model_setup_blake3: blake3::hash(&artifacts.model_setup).to_hex().to_string(),
         fiat_shamir_challenges: metrics.fiat_shamir_challenges,
         fiat_shamir_context_digest: &metrics.fiat_shamir_context_digest,
+        private_challenges: metrics.private_challenges,
+        secret_request_bytes: secret_request_bytes.len() as u64,
+        secret_request_blake3: blake3::hash(&secret_request_bytes).to_hex().to_string(),
+        secret_response_bytes: secret_response_bytes.len() as u64,
+        secret_response_blake3: blake3::hash(&secret_response_bytes).to_hex().to_string(),
     };
     write(
         "manifest.json",
@@ -2253,6 +2286,11 @@ struct C41PublicArtifactManifest<'a> {
     model_setup_blake3: String,
     fiat_shamir_challenges: u64,
     fiat_shamir_context_digest: &'a str,
+    private_challenges: u64,
+    secret_request_bytes: u64,
+    secret_request_blake3: String,
+    secret_response_bytes: u64,
+    secret_response_blake3: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -2282,8 +2320,10 @@ struct C41E2eSession {
     verifier_seed_state_bytes: u64,
     verifier_seed_streaming: bool,
     fiat_shamir: bool,
+    secret_challenge: bool,
     fiat_shamir_context_digest: String,
     fiat_shamir_challenges: u64,
+    private_challenges: u64,
     canonical_transcripts_match: bool,
     serialized_model_proof_bytes: u64,
     serialized_proof_bytes: u64,
@@ -2314,6 +2354,8 @@ struct C41E2eSession {
 struct C41E2eRecord {
     setup: C41E2eSession,
     proof_bytes: u64,
+    provider_to_verifier_online_bytes: u64,
+    verifier_to_provider_online_bytes: u64,
     transcript_proof_bytes: u64,
     proof_gate_bytes: u64,
     proof_gate_pass: bool,
@@ -2488,6 +2530,76 @@ fn run_prefill_resident(
     }
 }
 
+struct C41SecretFiles {
+    request: PathBuf,
+    response: PathBuf,
+    timeout: Duration,
+}
+
+impl C41SecretFiles {
+    fn validate_before_proof(&self) {
+        assert!(
+            self.request.is_absolute() && self.response.is_absolute(),
+            "C41SC1 request/response paths must be absolute"
+        );
+        assert!(
+            !self.request.exists() && !self.response.exists(),
+            "C41SC1 request/response paths must both be fresh before proving"
+        );
+        assert!(
+            (60..=3_600).contains(&self.timeout.as_secs()),
+            "C41SC1 response timeout must be in 60..=3600 seconds"
+        );
+    }
+}
+
+struct C41FileChallengeChannel {
+    context: C41FiatShamirPublicContext,
+    files: C41SecretFiles,
+}
+
+impl C41SecretChallengeChannel for C41FileChallengeChannel {
+    fn challenge(&mut self, frontier: C41SecretChallengeFrontier) -> Result<Fp2, String> {
+        let request = C41SecretChallengeRequest::from_frontier(self.context, frontier)
+            .map_err(|error| error.to_string())?;
+        let request_bytes = request.encode().map_err(|error| error.to_string())?;
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&self.files.request)
+            .map_err(|error| format!("create C41SC1 request: {error}"))?;
+        file.write_all(&request_bytes)
+            .and_then(|_| file.sync_all())
+            .map_err(|error| format!("persist C41SC1 request: {error}"))?;
+        if let Some(parent) = self.files.request.parent() {
+            File::open(parent)
+                .and_then(|directory| directory.sync_all())
+                .map_err(|error| format!("sync C41SC1 request directory: {error}"))?;
+        }
+
+        let deadline = Instant::now() + self.files.timeout;
+        while Instant::now() < deadline {
+            match File::open(&self.files.response) {
+                Ok(mut file) => {
+                    let mut bytes = Vec::new();
+                    Read::by_ref(&mut file)
+                        .take(101)
+                        .read_to_end(&mut bytes)
+                        .map_err(|error| format!("read C41SC1 response: {error}"))?;
+                    let response = C41SecretChallengeResponse::decode(&bytes)
+                        .map_err(|error| error.to_string())?;
+                    return response.validate_request(request).map_err(|error| error.to_string());
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    std::thread::sleep(Duration::from_millis(250));
+                }
+                Err(error) => return Err(format!("open C41SC1 response: {error}")),
+            }
+        }
+        Err("C41SC1 verifier response timed out; the request is burned".to_owned())
+    }
+}
+
 enum SessionPcgBackend {
     Mock,
     Real {
@@ -2497,7 +2609,10 @@ enum SessionPcgBackend {
         connection_binding: [u8; 32],
         response_index: u64,
     },
-    C41ProviderOnly(C41ProviderBundle),
+    C41ProviderOnly {
+        bundle: C41ProviderBundle,
+        secret: C41SecretFiles,
+    },
 }
 
 #[derive(Default)]
@@ -2936,11 +3051,12 @@ fn run_session_impl<'source>(
                 response_index,
                 None,
             ),
-            SessionPcgBackend::C41ProviderOnly(bundle) => {
+            SessionPcgBackend::C41ProviderOnly { bundle, secret } => {
                 bundle
                     .context
                     .validate_production()
                     .expect("valid production C4.1 provider bundle");
+                secret.validate_before_proof();
                 let context = bundle.context;
                 (
                     CorrelationStream::from_pcg_pool(bundle.correlations),
@@ -2948,7 +3064,7 @@ fn run_session_impl<'source>(
                     mock_delta,
                     context.connection_binding,
                     context.response_index,
-                    Some((context, bundle.typed)),
+                    Some((context, bundle.typed, secret)),
                 )
             }
         };
@@ -2974,7 +3090,7 @@ fn run_session_impl<'source>(
             conditional_soundness_bits,
             conditional_weight_zk_bits,
             fs_context,
-        ) = if let Some((context, typed_prover)) = provider_setup {
+        ) = if let Some((context, typed_prover, secret)) = provider_setup {
             assert_eq!(context.model_binding_digest, c41_model_binding_digest());
             assert_eq!(context.quantization_digest, c41_quantization_digest());
             assert_eq!(
@@ -2987,6 +3103,12 @@ fn run_session_impl<'source>(
             let context = context
                 .fiat_shamir_context(c41_statement_digest(t, bands, seq))
                 .expect("complete party-separated C41FS1 context");
+            let context_digest = context.digest().expect("derive party-separated C41FS1 context");
+            txp = Transcript::new_c41_secret_challenge(
+                context_digest,
+                Box::new(C41FileChallengeChannel { context, files: secret }),
+            )
+            .expect("create C41SC1 provider transcript");
             (
                 typed_prover,
                 None,
@@ -2994,7 +3116,7 @@ fn run_session_impl<'source>(
                 0,
                 78.809_294_873_915_72,
                 128.0 - (C41_SEED_ROWS as f64).log2(),
-                context.digest().expect("derive party-separated C41FS1 context"),
+                context_digest,
             )
         } else {
             let transcript_seed = os_random_identity("C4.1 typed-setup transcript seed");
@@ -3035,7 +3157,10 @@ fn run_session_impl<'source>(
                 context.digest().expect("derive complete C41FS1 public context"),
             )
         };
-        txp = Transcript::new_c41_fiat_shamir(fs_context).expect("create C41FS1 prover transcript");
+        if !party_separated_provider {
+            txp = Transcript::new_c41_fiat_shamir(fs_context)
+                .expect("create C41FS1 prover transcript");
+        }
         if vc.is_some() {
             txv = Transcript::new_c41_fiat_shamir(fs_context)
                 .expect("create C41FS1 verifier transcript");
@@ -3091,10 +3216,12 @@ fn run_session_impl<'source>(
             prover_rayon_query_scratch_upper_bytes: 0,
             verifier_lot_prepare_wall_s: 0.0,
             verifier_seed_state_bytes,
-            verifier_seed_streaming: true,
+            verifier_seed_streaming: !party_separated_provider,
             fiat_shamir: true,
+            secret_challenge: party_separated_provider,
             fiat_shamir_context_digest: blake3::Hash::from(fs_context).to_hex().to_string(),
             fiat_shamir_challenges: 0,
+            private_challenges: 0,
             canonical_transcripts_match: false,
             serialized_model_proof_bytes: 0,
             serialized_proof_bytes: 0,
@@ -3219,6 +3346,17 @@ fn run_session_impl<'source>(
         metrics.prover_dense_query_bytes = diagnostics.dense_query_bytes;
         metrics.prover_rayon_query_scratch_upper_bytes =
             diagnostics.rayon_query_scratch_upper_bytes;
+        if metrics.party_separated_provider {
+            assert_eq!(diagnostics.bridges, 640, "C41SC1 production bridge census changed");
+            assert_eq!(
+                diagnostics.bridge_sparse_entries, 8_294_400,
+                "C41SC1 production sparse-entry census changed"
+            );
+            assert_eq!(
+                diagnostics.rayon_query_scratch_upper_bytes, 0,
+                "C41SC1 provider rebuilt per-worker dense query scratch"
+            );
+        }
     }
     let mut proof = proof;
     let mut c41_encoded = None;
@@ -4060,6 +4198,12 @@ fn run_session_impl<'source>(
             txp.canonical_binding_digest().expect("C41FS1 prover transcript must be canonical");
         let metrics = c41_session.as_mut().expect("C4.1 session metrics");
         metrics.fiat_shamir_challenges = prover_challenges;
+        metrics.private_challenges = txp.c41_secret_challenge_count();
+        assert_eq!(
+            metrics.private_challenges,
+            u64::from(metrics.party_separated_provider),
+            "C41SC1 private challenge census differs"
+        );
         if vc.is_some() {
             let verifier_challenges =
                 txv.fiat_shamir_challenge_count().expect("C4.1 verifier must use C41FS1");
@@ -4382,10 +4526,16 @@ fn main() {
         + usize::from(args.c41_provider_bundle_bytes.is_some())
         + usize::from(args.c41_provider_bundle_blake3.is_some())
         + usize::from(args.c41_model_setup_blake3.is_some())
-        + usize::from(args.c41_artifact_output.is_some());
-    if !matches!(party_argument_count, 0 | 5) || party_provider_mode && !args.c41_e2e_record {
+        + usize::from(args.c41_artifact_output.is_some())
+        + usize::from(args.c41_secret_request.is_some())
+        + usize::from(args.c41_secret_response.is_some())
+        + usize::from(args.c41_secret_timeout_seconds.is_some());
+    if !matches!(party_argument_count, 0 | 8)
+        || party_provider_mode && !args.c41_e2e_record
+        || args.c41_secret_timeout_seconds.is_some_and(|seconds| !(60..=3_600).contains(&seconds))
+    {
         eprintln!(
-            "p6_report: party-separated mode requires --c41-e2e-record and all five provider/artifact arguments"
+            "p6_report: C41SC1 party mode requires --c41-e2e-record and all eight provider/artifact/challenge arguments"
         );
         std::process::exit(2);
     }
@@ -5119,9 +5269,23 @@ fn main() {
             let i = repetition as u8;
             let prefill = run_active_prefill!(0x60 + i);
             let backend = if party_provider_mode {
-                SessionPcgBackend::C41ProviderOnly(
-                    c41_provider_bundle.take().expect("one fresh C4.1 provider bundle"),
-                )
+                SessionPcgBackend::C41ProviderOnly {
+                    bundle: c41_provider_bundle.take().expect("one fresh C4.1 provider bundle"),
+                    secret: C41SecretFiles {
+                        request: args
+                            .c41_secret_request
+                            .clone()
+                            .expect("validated C41SC1 request path"),
+                        response: args
+                            .c41_secret_response
+                            .clone()
+                            .expect("validated C41SC1 response path"),
+                        timeout: Duration::from_secs(
+                            args.c41_secret_timeout_seconds
+                                .expect("validated C41SC1 response timeout"),
+                        ),
+                    },
+                }
             } else if shared_connection_record {
                 let setup = fase_d_setup.as_ref().expect("fase-D setup record");
                 fase_d_response_base_ot_bytes.push(
@@ -5168,8 +5332,9 @@ fn main() {
                 let mock_c41 = pre.c41_e2e.as_ref().expect("C4.1 mock prepass metrics");
                 let real_c41 = real.c41_e2e.as_ref().expect("C4.1 provider metrics");
                 assert_eq!(
-                    real_c41.fiat_shamir_challenges, mock_c41.fiat_shamir_challenges,
-                    "C41FS1 provider challenge census differs from the fail-closed prepass"
+                    real_c41.fiat_shamir_challenges + real_c41.private_challenges,
+                    mock_c41.fiat_shamir_challenges,
+                    "C41SC1 total challenge census differs from the fail-closed prepass"
                 );
                 assert_eq!(
                     real_c41.serialized_proof_bytes, mock_c41.serialized_proof_bytes,
@@ -5502,6 +5667,8 @@ fn main() {
             metrics,
             metrics.response_index,
             &git_sha_before_benchmark,
+            args.c41_secret_request.as_deref().expect("validated C41SC1 request path"),
+            args.c41_secret_response.as_deref().expect("validated C41SC1 response path"),
         );
     }
     let t_prove_prefill_only_s = prove_prefill_timing.median_s;
@@ -6389,8 +6556,19 @@ fn main() {
     });
     let c41_e2e = rec.c41_e2e.clone().map(|setup| {
         let proof_bytes = setup.serialized_proof_bytes;
+        let provider_to_verifier_online_bytes = proof_bytes
+            + if setup.party_separated_provider {
+                C41_SECRET_CHALLENGE_REQUEST_BYTES as u64
+            } else {
+                0
+            };
+        let verifier_to_provider_online_bytes = if setup.party_separated_provider {
+            C41_SECRET_CHALLENGE_RESPONSE_BYTES as u64
+        } else {
+            0
+        };
         let prover_ratio = rec.prove_s / C41_ANCHOR_PROVE_SECONDS;
-        let proof_gate_pass = proof_bytes < C41_RESPONSE_GATE_BYTES;
+        let proof_gate_pass = provider_to_verifier_online_bytes < C41_RESPONSE_GATE_BYTES;
         let prover_ratio_gate_pass = prover_ratio <= C41_PROVER_GATE_RATIO;
         let real_aes_pcg =
             args.pcg_backend == PcgBackendArg::Real && args.ggm_prg == GgmPrg::Aes128Mmo;
@@ -6416,6 +6594,8 @@ fn main() {
             single_degree12_close,
             transcript_proof_bytes: setup.transcript_proof_bytes,
             proof_bytes,
+            provider_to_verifier_online_bytes,
+            verifier_to_provider_online_bytes,
             proof_gate_bytes: C41_RESPONSE_GATE_BYTES,
             proof_gate_pass,
             prover_time_s: rec.prove_s,

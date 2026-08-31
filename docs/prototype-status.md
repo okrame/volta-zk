@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E COMPLETE — FUNCTIONAL PASS / PROVER GATE FAIL; C41NISC1 ANALYTIC SCREEN COMPLETE — CONDITIONAL FS+FP2 CI-VOLE ONLY / HARD STOP)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E COMPLETE — FUNCTIONAL PASS / PROVER GATE FAIL; C41SC1 LOCAL CHECKPOINT A100-READY / HARD STOP BEFORE E2E)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,10 +10,10 @@ record; no external plan is authoritative.
 
 Read `c4.1-secret-challenge-no-crs.md` next.
 
-- **Active work.** The no-round/no-CRS analytic screen is complete on branch
-  `agent/c41-secret-challenge`. Generic NISC is rejected. The sole research
-  survivor is `C41FS-LV2`: C41FS1 for every public coin plus direct malicious,
-  transparent, native-`Fp2` CI-VOLE authentication of the registered vector.
+- **Active work.** C41SC1 is locally complete at this checkpoint: sequential
+  C41FS1 is retained and exactly bridge `beta` becomes one private verifier
+  `Fp2` message after all 640 bridge corrections/descriptors are fixed. Setup
+  materializes the verifier typed-key lot for online replay.
 - **Immutable evidence.** Clean `a3604cf` produced and accepted a
   `67,831,020-B` proof. Soundness `78.80929487390853`, weight-ZK
   `120.0170064253057`, setup traffic `40,446,419 B` and peak device use
@@ -22,15 +22,62 @@ Read `c4.1-secret-challenge-no-crs.md` next.
 - **Unchanged failure.** Prover time `7.942478252 s` is
   `1.935020839958646x` the C4 anchor and fails `<=1.30x`; overall C4.1 remains
   FAIL. The successor receives no prover-time repair or promotion credit.
-- **Screen.** Private-challenge census is zero in the FS hybrid. Removing
-  Packed16 `d/e` makes the conservative proof projection `61,446,700 B`; proof
-  bytes pass analytically. Published LogVOLE is only semi-honest `Z_p` at
-  `sigma=40`, which fails security. Its malicious setup is estimated `2--8x`;
-  no compatible `Fp2`, transparent-setup or exact state/timing evidence exists.
-- **Hard stop.** No Rust, Lean or pod work is authorized. Resume requires an
-  `Fp2` CI-VOLE theorem, transparent malicious common-`Delta` setup at
-  `sigma>=96`, exact bytes/work/state, a numerical verifier gate and owner GO.
-  The prover failure remains controlling; `C41SC1` stays the practical fallback.
+- **Local evidence.** Strict codecs, burn/wait/replay seams, materialized fold,
+  sparse scatter and the frozen runbook are implemented; focused checks and
+  `cargo test --workspace` pass. This gives no proof-size, setup, timing,
+  memory, security or E2E credit. Lean stayed frozen because the relation is
+  unchanged.
+- **Checks.** Bind request to context/frontier/censuses, burn before release,
+  require exactly one private challenge, keep provider online traffic (proof
+  plus 330-B request) `<70 MB`, setup traffic `<=115,114,395 B`, prover
+  `<=5.3359744321 s`, device `<29,999,999,999 B`, verifier RSS `<2 GB`, and
+  security `>78` bits. `3.322998133 s` is diagnostic; no numeric successor
+  verifier-time gate exists.
+- **Hard stop.** Stop at an A100-ready clean checkpoint. Resume only on a
+  separate owner GO for the frozen final E2E; no retry or component credit.
+
+- **2026-08-31 — C41SC1 local checkpoint complete and A100-ready; final E2E
+  still forbidden.** The implementation replaces only the final bridge-batch
+  coin with one post-frontier verifier-private `Fp2`; strict `330-B` request
+  and `90-B` response artifacts bind the public context, canonical frontier,
+  C41FS1 census, transcript bytes and request digest. The issuer samples from
+  OS entropy, persists a create-new `0600` response record before one export,
+  and burns every failure. Provider wait/resume and client replay both require
+  exactly one private message; all subsequent public coins bind its canonical
+  transcript event.
+
+  Setup now emits the separately framed `99,533,074-B` verifier-secret lot
+  with exactly `99,532,800 B` of materialized keys. Online verification moves
+  that lot directly into the typed fold. Provider query construction uses one
+  sparse-scatter dense buffer and production asserts `640 / 8,294,400 / 0`
+  bridges, sparse entries and Rayon scratch bytes. All changed bins compile;
+  transcript, C41 codec/fold/bundle and P6 focused tests pass; final
+  `CARGO_INCREMENTAL=0 cargo test --workspace` exits zero. The A100/Debian
+  one-attempt operator sequence is frozen in `c4.1-sc1-e2e-runbook.md`.
+  No setup, full-chain, proof-size, timing, memory, security or hardware credit
+  is claimed, Lean was not opened, and no provider/pod was contacted. A
+  separate owner GO is required before executing the final E2E.
+
+- **2026-08-31 — C41SC1 local implementation and A100 preparation authorized;
+  pod remains stopped.** The owner selects the one-message interactive path.
+  Code may replace only the final typed-bridge batching coin with one fresh
+  verifier-private `Fp2` challenge after the complete 640-bridge frontier.
+  Every earlier and later sequential public coin remains C41FS1, with the
+  private response canonically absorbed before later derivation. The verifier
+  will retain a separately framed `99,532,800-B` materialized typed-key lot so
+  the rejected `12.845134539-s` response-critical seed expansion is absent.
+  This lot is local verifier state, not proof bytes or setup communication.
+
+  The implementation must add strict request/response codecs, context and
+  frontier binding, create-new durable challenge burn, duplicate/missing/tamper
+  rejection, provider wait/resume, verifier replay and a frozen two-party
+  runbook. It may replace the full-size per-Rayon-worker dense-query scratch by
+  one direct sparse-scatter buffer, but that optimization receives no timing
+  credit before the full A100 run. The existing proof, setup, security, device
+  and RSS gates remain binding; the immutable prover failure remains the
+  baseline. No numeric successor verifier-time gate has been set. No pod or
+  provider may be contacted; stop after local tests and a clean checkpoint,
+  then require a separate owner GO for one final no-retry A100 E2E.
 
 - **2026-08-31 — C41NISC1 no-round/no-CRS screen complete; generic NISC
   rejected; FS plus native-Fp2 CI-VOLE is the sole conditional survivor; no

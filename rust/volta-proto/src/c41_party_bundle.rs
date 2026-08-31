@@ -1,6 +1,8 @@
 //! Strict party-separated setup artifacts for the C4.1 response protocol.
 
-use crate::c41_folded_tole::{C41TypedSetupProverState, C41TypedSetupVerifierState};
+use crate::c41_folded_tole::{
+    C41SetupVerifierLot, C41TypedSetupProverState, C41TypedSetupVerifierState,
+};
 use crate::C41FiatShamirPublicContext;
 use std::{fmt, io::Read};
 use volta_field::{Fp, Fp2, P};
@@ -18,10 +20,12 @@ pub const C41_PRODUCTION_ORDINARY_FULL_CORRS: usize = C41_PRODUCTION_TOTAL_FULL_
 const VERSION: u16 = 1;
 const PROVIDER_MAGIC: [u8; 8] = *b"C41PVB1\0";
 const VERIFIER_MAGIC: [u8; 8] = *b"C41VFB1\0";
+const VERIFIER_LOT_MAGIC: [u8; 8] = *b"C41VLT1\0";
 const STATEMENT_MAGIC: [u8; 8] = *b"C41ST1\0\0";
 const MODEL_SETUP_MAGIC: [u8; 8] = *b"C41MS1\0\0";
 const DIGEST_BYTES: usize = 32;
 const MAX_BUNDLE_BYTES: u64 = 128_000_000;
+pub const C41_MATERIALIZED_VERIFIER_LOT_MAX_BYTES: u64 = 100_000_000;
 const MAX_STATEMENT_BYTES: u64 = 1_000_000;
 const MAX_VERIFIER_MODEL_BYTES: usize = 1_000_000;
 const MAX_CORRELATIONS: usize = 10_000_000;
@@ -284,6 +288,59 @@ impl C41VerifierBundle {
             || self.verifier_model.len() > MAX_VERIFIER_MODEL_BYTES
         {
             return Err(C41PartyBundleError::new("C4.1 verifier bundle census differs"));
+        }
+        Ok(())
+    }
+}
+
+/// Verifier-secret C41SC1 setup artifact. It is retained locally and never
+/// contributes proof bytes or setup traffic.
+pub struct C41MaterializedVerifierLot {
+    pub context: C41PartySetupContext,
+    pub lot: C41SetupVerifierLot,
+}
+
+impl C41MaterializedVerifierLot {
+    pub fn encode(&self) -> Result<Vec<u8>> {
+        self.validate()?;
+        let mut out = Writer(VERIFIER_LOT_MAGIC.to_vec());
+        out.u16(VERSION);
+        write_context(&mut out, self.context);
+        for value in &self.lot.a_keys {
+            out.fp2(*value)?;
+        }
+        for value in &self.lot.b_keys {
+            out.fp2(*value)?;
+        }
+        out.finish(C41_MATERIALIZED_VERIFIER_LOT_MAX_BYTES)
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self> {
+        let payload = checked_payload(bytes, C41_MATERIALIZED_VERIFIER_LOT_MAX_BYTES)?;
+        let mut input = Reader { bytes: payload, offset: 0 };
+        if input.take(8)? != VERIFIER_LOT_MAGIC || input.u16()? != VERSION {
+            return Err(C41PartyBundleError::new("wrong C41SC1 verifier-lot header"));
+        }
+        let context = read_context(&mut input)?;
+        let cells = usize::try_from(context.cells)
+            .map_err(|_| C41PartyBundleError::new("C41SC1 verifier-lot cells exceed usize"))?;
+        let a_keys = (0..cells).map(|_| input.fp2()).collect::<Result<Vec<_>>>()?;
+        let b_keys = (0..cells).map(|_| input.fp2()).collect::<Result<Vec<_>>>()?;
+        input.finish()?;
+        let artifact = Self { context, lot: C41SetupVerifierLot { a_keys, b_keys } };
+        artifact.validate()?;
+        Ok(artifact)
+    }
+
+    pub fn decode_reader(reader: impl Read) -> Result<Self> {
+        Self::decode(&bounded_read(reader, C41_MATERIALIZED_VERIFIER_LOT_MAX_BYTES)?)
+    }
+
+    fn validate(&self) -> Result<()> {
+        self.context.validate()?;
+        let cells = self.context.cells as usize;
+        if self.lot.a_keys.len() != cells || self.lot.b_keys.len() != cells {
+            return Err(C41PartyBundleError::new("C41SC1 verifier-lot census differs"));
         }
         Ok(())
     }
@@ -665,14 +722,29 @@ mod tests {
             typed: C41TypedSetupVerifierState { keys: vec![Fp2::ONE; 1024], rows: 1 },
             verifier_model: vec![1, 2, 3],
         };
-        let encoded = verifier.encode().unwrap();
-        let decoded = C41VerifierBundle::decode(&encoded).unwrap();
+        let verifier_encoded = verifier.encode().unwrap();
+        let decoded = C41VerifierBundle::decode(&verifier_encoded).unwrap();
         assert_eq!(decoded.context, verifier.context);
         assert_eq!(decoded.typed, verifier.typed);
         assert_eq!(decoded.verifier_model, verifier.verifier_model);
-        assert!(C41ProviderBundle::decode(&encoded).is_err());
+        assert!(C41ProviderBundle::decode(&verifier_encoded).is_err());
 
-        let mut tampered = encoded;
+        let lot = C41MaterializedVerifierLot {
+            context: context(),
+            lot: C41SetupVerifierLot { a_keys: vec![Fp2::ONE; 16], b_keys: vec![Fp2::ZERO; 16] },
+        };
+        let mut lot_context = lot.context;
+        lot_context.cells = 16;
+        let lot = C41MaterializedVerifierLot { context: lot_context, ..lot };
+        let lot_encoded = lot.encode().unwrap();
+        let decoded = C41MaterializedVerifierLot::decode(&lot_encoded).unwrap();
+        assert_eq!(decoded.context, lot.context);
+        assert_eq!(decoded.lot, lot.lot);
+        let mut tampered = lot_encoded;
+        tampered[250] ^= 1;
+        assert!(C41MaterializedVerifierLot::decode(&tampered).is_err());
+
+        let mut tampered = verifier_encoded;
         tampered[40] ^= 1;
         assert!(C41VerifierBundle::decode(&tampered).is_err());
     }

@@ -43,6 +43,20 @@ pub trait TranscriptChallengeChannel: Send {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C41SecretChallengeFrontier {
+    pub context_digest: [u8; 32],
+    pub transcript_digest: [u8; 32],
+    pub fiat_shamir_challenges: u64,
+    pub transcript_bytes: u64,
+}
+
+/// One-shot transport for the C41SC1 bridge challenge. Implementations must
+/// bind and validate every frontier field before returning the verifier coin.
+pub trait C41SecretChallengeChannel: Send {
+    fn challenge(&mut self, frontier: C41SecretChallengeFrontier) -> Result<Fp2, String>;
+}
+
 enum TranscriptChallenges {
     Private(FpStream),
     Interactive(Box<dyn TranscriptChallengeChannel>),
@@ -121,6 +135,9 @@ pub struct Transcript {
     pending_semantic_bytes: usize,
     unbound_provider_bytes: u64,
     interactive_error: Option<String>,
+    c41_secret_bridge: Option<Box<dyn C41SecretChallengeChannel>>,
+    c41_secret_bridge_required: bool,
+    c41_secret_bridge_used: bool,
     c62_subfield_digest_overrides: Option<HashMap<(usize, usize), [u8; 32]>>,
     c62_subfield_digest_uses: HashSet<(usize, usize)>,
 }
@@ -143,6 +160,9 @@ impl Transcript {
             pending_semantic_bytes: 0,
             unbound_provider_bytes: 0,
             interactive_error: None,
+            c41_secret_bridge: None,
+            c41_secret_bridge_required: false,
+            c41_secret_bridge_used: false,
             c62_subfield_digest_overrides: None,
             c62_subfield_digest_uses: HashSet::new(),
         }
@@ -165,6 +185,9 @@ impl Transcript {
             pending_semantic_bytes: 0,
             unbound_provider_bytes: 0,
             interactive_error: None,
+            c41_secret_bridge: None,
+            c41_secret_bridge_required: false,
+            c41_secret_bridge_used: false,
             c62_subfield_digest_overrides: None,
             c62_subfield_digest_uses: HashSet::new(),
         }
@@ -182,6 +205,18 @@ impl Transcript {
     /// VOLE keys and `Delta` remain outside this public challenge state.
     pub fn new_c41_fiat_shamir(context_digest: [u8; 32]) -> Result<Transcript, String> {
         Self::new_fiat_shamir_profile(context_digest, FiatShamirProfile::C41)
+    }
+
+    /// Construct C41SC1: ordinary C41FS1 for sequential public coins plus one
+    /// verifier-private bridge challenge at the registered response frontier.
+    pub fn new_c41_secret_challenge(
+        context_digest: [u8; 32],
+        channel: Box<dyn C41SecretChallengeChannel>,
+    ) -> Result<Transcript, String> {
+        let mut transcript = Self::new_c41_fiat_shamir(context_digest)?;
+        transcript.c41_secret_bridge = Some(channel);
+        transcript.c41_secret_bridge_required = true;
+        Ok(transcript)
     }
 
     fn new_fiat_shamir_profile(
@@ -210,6 +245,9 @@ impl Transcript {
             pending_semantic_bytes: 0,
             unbound_provider_bytes: 0,
             interactive_error: None,
+            c41_secret_bridge: None,
+            c41_secret_bridge_required: false,
+            c41_secret_bridge_used: false,
             c62_subfield_digest_overrides: None,
             c62_subfield_digest_uses: HashSet::new(),
         })
@@ -678,6 +716,66 @@ impl Transcript {
         }
     }
 
+    /// C4.1's scalar-power bridge batching coin. Legacy C41FS1 keeps its
+    /// public coin; C41SC1 consumes exactly one private verifier message.
+    pub fn challenge_c41_bridge_fp2(&mut self) -> Fp2 {
+        if !self.c41_secret_bridge_required {
+            return self.challenge_fp2();
+        }
+        if self.c41_secret_bridge_used || self.c41_secret_bridge.is_none() {
+            self.interactive_error.get_or_insert_with(|| {
+                "C41SC1 private bridge challenge was requested twice".into()
+            });
+            return Fp2::ONE;
+        }
+        let (context_digest, fiat_shamir_challenges) = match &self.challenges {
+            TranscriptChallenges::FiatShamir(state)
+                if matches!(state.profile, FiatShamirProfile::C41) =>
+            {
+                (state.context_digest, state.challenge_index)
+            }
+            _ => {
+                self.interactive_error
+                    .get_or_insert_with(|| "C41SC1 requires the C41FS1 transcript".into());
+                return Fp2::ONE;
+            }
+        };
+        if self.noncanonical_events != 0 || self.interactive_error.is_some() {
+            self.interactive_error.get_or_insert_with(|| {
+                "C41SC1 private challenge follows a noncanonical transcript event".into()
+            });
+            return Fp2::ONE;
+        }
+        let frontier = C41SecretChallengeFrontier {
+            context_digest,
+            transcript_digest: *self.canonical_moves.clone().finalize().as_bytes(),
+            fiat_shamir_challenges,
+            transcript_bytes: self.total_bytes(),
+        };
+        self.record_challenge_request(TranscriptChallengeRequest::Fp2);
+        let mut channel = self.c41_secret_bridge.take().expect("checked C41SC1 channel");
+        let challenge = match channel.challenge(frontier) {
+            Ok(challenge) => challenge,
+            Err(error) => {
+                self.interactive_error = Some(error);
+                return Fp2::ONE;
+            }
+        };
+        self.c41_secret_bridge_used = true;
+        self.canonical_moves.update(&[6, 2]);
+        self.canonical_moves.update(&challenge.c0.value().to_le_bytes());
+        self.canonical_moves.update(&challenge.c1.value().to_le_bytes());
+        #[cfg(debug_assertions)]
+        self.canonical_event_debug.push((
+            "c41_secret_bridge_response",
+            *blake3::hash(
+                &[challenge.c0.value().to_le_bytes(), challenge.c1.value().to_le_bytes()].concat(),
+            )
+            .as_bytes(),
+        ));
+        challenge
+    }
+
     /// Fresh verifier challenge in the Goldilocks base field.
     ///
     /// Native C6.1 protocols use this for base-field transcript moves.  As
@@ -750,6 +848,10 @@ impl Transcript {
         }
     }
 
+    pub fn c41_secret_challenge_count(&self) -> u64 {
+        u64::from(self.c41_secret_bridge_used)
+    }
+
     /// Exact canonical provider-move and challenge-order identity. Seeded
     /// prover/verifier executions use this as a deterministic parity check;
     /// any legacy length-only event makes the identity unavailable.
@@ -763,6 +865,9 @@ impl Transcript {
                 self.noncanonical_events,
                 self.first_noncanonical_label.unwrap_or("unknown"),
             ));
+        }
+        if self.c41_secret_bridge_required && !self.c41_secret_bridge_used {
+            return Err("C41SC1 private bridge challenge was not consumed".to_owned());
         }
         Ok(*self.canonical_moves.clone().finalize().as_bytes())
     }
@@ -831,6 +936,18 @@ mod tests {
         moves: Arc<Mutex<Vec<(Vec<u8>, TranscriptChallengeRequest)>>>,
     }
 
+    struct ScriptedC41SecretChannel {
+        frontiers: Arc<Mutex<Vec<C41SecretChallengeFrontier>>>,
+        challenge: Fp2,
+    }
+
+    impl C41SecretChallengeChannel for ScriptedC41SecretChannel {
+        fn challenge(&mut self, frontier: C41SecretChallengeFrontier) -> Result<Fp2, String> {
+            self.frontiers.lock().unwrap().push(frontier);
+            Ok(self.challenge)
+        }
+    }
+
     impl TranscriptChallengeChannel for ScriptedChannel {
         fn challenge(
             &mut self,
@@ -866,6 +983,36 @@ mod tests {
         assert_eq!(moves[1].1, TranscriptChallengeRequest::Fp2);
         assert!(moves[1].0.ends_with(&[0xA5; 32]));
         assert_eq!(moves[2], (Vec::new(), TranscriptChallengeRequest::Bits(8)));
+    }
+
+    #[test]
+    fn c41sc1_releases_exactly_one_bridge_coin_and_binds_later_fs() {
+        let frontiers = Arc::new(Mutex::new(Vec::new()));
+        let mut transcript = Transcript::new_c41_secret_challenge(
+            [0x41; 32],
+            Box::new(ScriptedC41SecretChannel {
+                frontiers: Arc::clone(&frontiers),
+                challenge: Fp2::new(Fp::new(11), Fp::new(13)),
+            }),
+        )
+        .unwrap();
+        transcript.append_message("bridge_prefix", &[1, 2, 3]);
+        let public_before = transcript.challenge_fp2();
+        transcript.append_message("bridge_corrections", &[4, 5, 6]);
+        assert_eq!(transcript.challenge_c41_bridge_fp2(), Fp2::new(Fp::new(11), Fp::new(13)));
+        let public_after = transcript.challenge_fp2();
+        assert_ne!(public_before, public_after);
+        assert_eq!(transcript.c41_secret_challenge_count(), 1);
+        assert_eq!(transcript.fiat_shamir_challenge_count(), Some(2));
+        assert!(transcript.canonical_binding_digest().is_ok());
+
+        let frontier = frontiers.lock().unwrap()[0];
+        assert_eq!(frontier.context_digest, [0x41; 32]);
+        assert_eq!(frontier.fiat_shamir_challenges, 1);
+        assert_eq!(frontier.transcript_bytes, 6);
+        assert_ne!(frontier.transcript_digest, [0; 32]);
+        assert_eq!(transcript.challenge_c41_bridge_fp2(), Fp2::ONE);
+        assert!(transcript.interactive_error().unwrap().contains("requested twice"));
     }
 
     #[test]

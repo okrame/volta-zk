@@ -8,6 +8,7 @@ pub(crate) mod boundary_thinning;
 pub mod c41_folded_tole;
 pub mod c41_party_bundle;
 pub mod c41_response_envelope;
+pub mod c41_secret_challenge;
 pub mod c6;
 pub mod c61_certificate;
 pub mod c61_public_instance;
@@ -53,12 +54,14 @@ pub use block_proof::{
     LayerOut, LayerOutV, LayerProof, LnChainProof, TableBankP, TableBankV, TableCloseProof,
 };
 pub use c41_folded_tole::{
-    c41_fold_typed_queries_reference, c41_fold_typed_queries_resident, c41_seed_streaming_checksum,
-    C41FoldedQueries, C41TypedSetupVerifierState, C41_TYPED_POLYNOMIAL_LANES,
+    c41_fold_typed_queries_reference, c41_fold_typed_queries_resident, c41_materialize_packed_keys,
+    c41_seed_streaming_checksum, C41FoldedQueries, C41SetupVerifierLot, C41TypedSetupVerifierState,
+    C41_TYPED_POLYNOMIAL_LANES,
 };
 pub use c41_party_bundle::{
-    C41ModelSetupArtifact, C41PartyBundleError, C41PartySetupContext, C41ProviderBundle,
-    C41ResponseStatement, C41VerifierBundle, C41_PRODUCTION_CELLS,
+    C41MaterializedVerifierLot, C41ModelSetupArtifact, C41PartyBundleError, C41PartySetupContext,
+    C41ProviderBundle, C41ResponseStatement, C41VerifierBundle,
+    C41_MATERIALIZED_VERIFIER_LOT_MAX_BYTES, C41_PRODUCTION_CELLS,
     C41_PRODUCTION_ORDINARY_FULL_CORRS, C41_PRODUCTION_ORDINARY_SUB_CORRS,
     C41_PRODUCTION_SEED_ROWS, C41_PRODUCTION_TOTAL_FULL_CORRS, C41_PRODUCTION_TOTAL_SUB_CORRS,
     C41_PRODUCTION_TYPED_SUB_CORRS,
@@ -66,6 +69,10 @@ pub use c41_party_bundle::{
 pub use c41_response_envelope::{
     C41FiatShamirPublicContext, C41ResponseClosureProof, C41ResponseEnvelopeError,
     C41ResponseProofEnvelope, C41_FIAT_SHAMIR_CONTEXT_VERSION, C41_RESPONSE_ENVELOPE_MAX_BYTES,
+};
+pub use c41_secret_challenge::{
+    C41SecretChallengeError, C41SecretChallengeRequest, C41SecretChallengeResponse,
+    C41_SECRET_CHALLENGE_REQUEST_BYTES, C41_SECRET_CHALLENGE_RESPONSE_BYTES,
 };
 pub use c6::{
     C6CacheHead, C6ClientAttempt, C6ClientState, C6ClientStore, C6CorrelationRange,

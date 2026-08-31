@@ -724,6 +724,49 @@ fn c41_expand_packed_key_at(
     Ok((packed.key, b_key))
 }
 
+/// Materialize the verifier-secret packed keys once during setup. The response
+/// verifier then performs only the descriptor/query fold.
+pub fn c41_materialize_packed_keys(
+    public_seed: [u8; 32],
+    delta: Fp2,
+    setup: &C41TypedSetupVerifierState,
+    first_global_bit: usize,
+    cells: usize,
+) -> Result<C41SetupVerifierLot, &'static str> {
+    let end = cells
+        .checked_mul(C41_BITS_PER_PACKED_CELL)
+        .and_then(|bits| first_global_bit.checked_add(bits));
+    if public_seed == [0; 32]
+        || delta == Fp2::ZERO
+        || cells == 0
+        || setup.rows == 0
+        || setup.keys.len() != setup.rows.saturating_mul(C41_SEED_BITS)
+        || end.is_none_or(|end| end > setup.rows.saturating_mul(C41_PRG_USABLE_BITS))
+    {
+        return Err("invalid C41SC1 materialized verifier inventory");
+    }
+    let seed_keys = setup.keys.iter().copied().map(VerifierKey::new).collect::<Vec<_>>();
+    let pairs = (0..cells)
+        .into_par_iter()
+        .map(|cell| {
+            c41_expand_packed_key_at(
+                public_seed,
+                delta,
+                &seed_keys,
+                setup.rows,
+                first_global_bit + cell * C41_BITS_PER_PACKED_CELL,
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut a_keys = Vec::with_capacity(cells);
+    let mut b_keys = Vec::with_capacity(cells);
+    for (a, b) in pairs {
+        a_keys.push(a);
+        b_keys.push(b);
+    }
+    Ok(C41SetupVerifierLot { a_keys, b_keys })
+}
+
 /// Full-geometry verifier expansion smoke without a materialized lot or dense
 /// query. The all-one fold exercises every seed-derived packed key and leaves
 /// only two field accumulators live.
@@ -1493,41 +1536,23 @@ impl C41ProverResponseState {
             return Err(AccelError::InvalidInput("incomplete C4.1 response consumption"));
         }
         let e = packed_bits(&self.e_values);
-        let bridge_challenge = tx.challenge_fp2();
+        let bridge_challenge = tx.challenge_c41_bridge_fp2();
         let mut bridge_power = Fp2::ONE;
         let cells = self.cells();
         let query_build_started = self.diagnostics_handle.as_ref().map(|_| Instant::now());
-        let query_values = self
-            .bridges
-            .par_iter()
-            .enumerate()
-            .fold(
-                || vec![Fp2::ZERO; cells],
-                |mut local, (index, bridge)| {
-                    let power = fp2_pow(bridge_challenge, index + 1);
-                    for &(cell, coefficient) in &bridge.entries {
-                        local[cell] += power * coefficient;
-                    }
-                    local
-                },
-            )
-            .reduce(
-                || vec![Fp2::ZERO; cells],
-                |mut left, right| {
-                    left.iter_mut().zip(right).for_each(|(left, right)| *left += right);
-                    left
-                },
-            );
-        if let Some(started) = query_build_started {
-            self.diagnostics.dense_query_build_s = started.elapsed().as_secs_f64();
-            self.diagnostics.dense_query_bytes = (cells * std::mem::size_of::<Fp2>()) as u64;
-            self.diagnostics.rayon_query_scratch_upper_bytes =
-                (rayon::current_num_threads() * cells * std::mem::size_of::<Fp2>()) as u64;
-        }
+        let mut query_values = vec![Fp2::ZERO; cells];
         let mut ordinary = C41HdProver::public(Fp2::ZERO);
         for bridge in &self.bridges {
             bridge_power = bridge_power * bridge_challenge;
+            for &(cell, coefficient) in &bridge.entries {
+                query_values[cell] += bridge_power * coefficient;
+            }
             ordinary = ordinary.add(C41HdProver::ordinary(bridge.ordinary).scale(bridge_power));
+        }
+        if let Some(started) = query_build_started {
+            self.diagnostics.dense_query_build_s = started.elapsed().as_secs_f64();
+            self.diagnostics.dense_query_bytes = (cells * std::mem::size_of::<Fp2>()) as u64;
+            self.diagnostics.rayon_query_scratch_upper_bytes = 0;
         }
         let query_raw = query_values.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>();
         let upload_started = self.diagnostics_handle.as_ref().map(|_| Instant::now());
@@ -1669,6 +1694,34 @@ impl C41VerifierResponseState {
         })
     }
 
+    pub fn new_materialized(
+        setup: C41SetupVerifierLot,
+        proof: &C41ResponseProof,
+        diagnostics_handle: Option<Arc<Mutex<C41VerifierDiagnostics>>>,
+    ) -> Result<Self, AccelError> {
+        let cells = setup.a_keys.len();
+        Self::validate_proof_geometry(cells, proof)?;
+        if setup.b_keys.len() != cells {
+            return Err(AccelError::InvalidInput("C41SC1 materialized verifier keys differ"));
+        }
+        Ok(Self {
+            key_source: C41VerifierKeySource::Materialized {
+                lot: None,
+                a_keys: setup.a_keys,
+                b_keys: setup.b_keys,
+            },
+            d: proof.d.clone(),
+            e: proof.e.clone(),
+            segments: BTreeMap::new(),
+            cursor: 0,
+            bridge_corrections: proof.bridge_corrections.clone(),
+            bridge_cursor: 0,
+            bridges: Vec::new(),
+            diagnostics_handle,
+            diagnostics: C41VerifierDiagnostics { cells, ..Default::default() },
+        })
+    }
+
     pub fn new_seed_streaming(
         setup: C41TypedSetupVerifierState,
         public_seed: [u8; 32],
@@ -1781,6 +1834,10 @@ impl C41VerifierResponseState {
 
     pub fn is_seed_streaming(&self) -> bool {
         matches!(self.key_source, C41VerifierKeySource::SeedOnly { .. })
+    }
+
+    pub fn is_materialized(&self) -> bool {
+        matches!(self.key_source, C41VerifierKeySource::Materialized { .. })
     }
 
     pub fn persistent_seed_bytes(&self) -> usize {
@@ -2022,7 +2079,7 @@ impl C41VerifierResponseState {
         if self.cursor != self.d.len() || self.bridge_cursor != self.bridge_corrections.len() {
             return Err(AccelError::InvalidInput("incomplete C4.1 verifier consumption"));
         }
-        let bridge_challenge = tx.challenge_fp2();
+        let bridge_challenge = tx.challenge_c41_bridge_fp2();
         let mut bridge_power = Fp2::ONE;
         let mut bridge_powers = Vec::with_capacity(self.bridges.len());
         let mut ordinary = C41HdVerifier::public(verifier.delta, Fp2::ZERO);
@@ -2141,12 +2198,13 @@ impl C41VerifierResponseState {
             self.diagnostics.degree12_close_s = started.elapsed().as_secs_f64();
         }
         if let C41VerifierKeySource::Materialized { lot, .. } = &mut self.key_source {
-            let lot = lot.take().expect("C4.1 verifier lot is consumed once");
-            let backend = backend
-                .as_deref_mut()
-                .ok_or(AccelError::InvalidInput("C4.1 materialized verifier requires backend"))?;
-            backend.free_device(lot.a_keys)?;
-            backend.free_device(lot.b_keys)?;
+            if let Some(lot) = lot.take() {
+                let backend = backend.as_deref_mut().ok_or(AccelError::InvalidInput(
+                    "C4.1 device-materialized verifier requires backend",
+                ))?;
+                backend.free_device(lot.a_keys)?;
+                backend.free_device(lot.b_keys)?;
+            }
         }
         if let Some(handle) = &self.diagnostics_handle {
             *handle.lock().expect("C4.1 verifier diagnostics mutex poisoned") =
@@ -2161,8 +2219,17 @@ mod tests {
     use super::*;
     use volta_field::Fp;
     use volta_mac::{
-        auth_prover, auth_verifier, CorrelationStream, VerifierCtx, RESERVED_DOMAIN_BITS,
+        auth_prover, auth_verifier, C41SecretChallengeChannel, C41SecretChallengeFrontier,
+        CorrelationStream, VerifierCtx, RESERVED_DOMAIN_BITS,
     };
+
+    struct FixedC41SecretChallenge(Fp2);
+
+    impl C41SecretChallengeChannel for FixedC41SecretChallenge {
+        fn challenge(&mut self, _frontier: C41SecretChallengeFrontier) -> Result<Fp2, String> {
+            Ok(self.0)
+        }
+    }
 
     #[test]
     fn c41_domains_leave_mac_allocator_bits_clear() {
@@ -2308,6 +2375,18 @@ mod tests {
         let verifier =
             c41_expand_packed_keys_reference(public_seed, delta, &verifier_rows, first, 2).unwrap();
         let flat_keys = verifier_rows.iter().flatten().copied().collect::<Vec<_>>();
+        let materialized = c41_materialize_packed_keys(
+            public_seed,
+            delta,
+            &C41TypedSetupVerifierState {
+                keys: flat_keys.iter().map(|key| key.k).collect(),
+                rows: verifier_rows.len(),
+            },
+            first,
+            2,
+        )
+        .unwrap();
+        assert_eq!(materialized, verifier);
         let checksum = c41_seed_streaming_checksum(
             &C41TypedSetupVerifierState {
                 keys: flat_keys.iter().map(|key| key.k).collect(),
@@ -2450,9 +2529,14 @@ mod tests {
         let bridge_corr = prover.draw_fulls(C41_BRIDGE_DOMAIN_BASE, 1)[0];
         let bridge_correction = bridge_value - bridge_corr.x;
         let ordinary = bridge_corr.authenticate(bridge_value);
-        let mut prover_tx = Transcript::new_c41_fiat_shamir([0x46; 32]).unwrap();
+        let secret_challenge = Fp2::new(Fp::new(101), Fp::new(103));
+        let mut prover_tx = Transcript::new_c41_secret_challenge(
+            [0x46; 32],
+            Box::new(FixedC41SecretChallenge(secret_challenge)),
+        )
+        .unwrap();
         prover_tx.append_fp2s(C41_BRIDGE_LABEL, &[bridge_correction]);
-        let challenge = prover_tx.challenge_fp2();
+        let challenge = prover_tx.challenge_c41_bridge_fp2();
         let scaled_query = query.iter().map(|weight| challenge * *weight).collect::<Vec<_>>();
         let ordinary = ordinary.scale(challenge);
         let radix = Fp2::from_base(Fp::new(1 << 16));
@@ -2477,7 +2561,7 @@ mod tests {
         );
         let close = c41_degree_close_prover(relation, &masks, &mut prover_tx).unwrap();
 
-        let run_verifier = |threads| {
+        let run_verifier = |threads, materialized| {
             let pool = rayon::ThreadPoolBuilder::new().num_threads(threads).build().unwrap();
             pool.install(|| {
                 let diagnostics = Arc::new(Mutex::new(C41VerifierDiagnostics::default()));
@@ -2485,15 +2569,32 @@ mod tests {
                 let seed_keys = auth_verifier(&mut verifier, 0x4110, &seed_corrections);
                 let bridge_key =
                     verifier.correct_full_verifier_key(C41_BRIDGE_DOMAIN_BASE, bridge_correction);
-                let state = C41VerifierResponseState {
-                    key_source: C41VerifierKeySource::SeedOnly {
+                let key_source = if materialized {
+                    let lot = c41_expand_packed_keys_reference(
+                        public_seed,
+                        delta,
+                        std::slice::from_ref(&seed_keys),
+                        0,
+                        cells,
+                    )
+                    .unwrap();
+                    C41VerifierKeySource::Materialized {
+                        lot: None,
+                        a_keys: lot.a_keys,
+                        b_keys: lot.b_keys,
+                    }
+                } else {
+                    C41VerifierKeySource::SeedOnly {
                         public_seed,
                         seed_keys,
                         rows: 1,
                         first_global_bit: 0,
                         delta,
                         chunk_cells: 3,
-                    },
+                    }
+                };
+                let state = C41VerifierResponseState {
+                    key_source,
                     d: corrections.d.clone(),
                     e: corrections.e.clone(),
                     segments: BTreeMap::from([(0x4120, segment)]),
@@ -2511,19 +2612,27 @@ mod tests {
                     diagnostics_handle: Some(diagnostics.clone()),
                     diagnostics: C41VerifierDiagnostics { cells, ..Default::default() },
                 };
-                let mut transcript = Transcript::new_c41_fiat_shamir([0x46; 32]).unwrap();
+                let mut transcript = Transcript::new_c41_secret_challenge(
+                    [0x46; 32],
+                    Box::new(FixedC41SecretChallenge(secret_challenge)),
+                )
+                .unwrap();
                 transcript.append_fp2s(C41_BRIDGE_LABEL, &[bridge_correction]);
                 assert!(state.finish(&close, &mut verifier, &mut transcript, None).unwrap());
                 let measured = diagnostics.lock().unwrap().clone();
                 assert_eq!(measured.cells, cells);
-                assert_eq!(measured.chunks, 3);
-                assert_eq!(measured.query_chunk_peak_bytes, 3 * 16);
+                assert_eq!(measured.chunks, if materialized { 1 } else { 3 });
+                assert_eq!(
+                    measured.query_chunk_peak_bytes,
+                    if materialized { cells * 16 } else { 3 * 16 } as u64
+                );
                 transcript.canonical_binding_digest().unwrap()
             })
         };
         let expected = prover_tx.canonical_binding_digest().unwrap();
-        assert_eq!(run_verifier(1), expected);
-        assert_eq!(run_verifier(4), expected);
+        assert_eq!(run_verifier(1, false), expected);
+        assert_eq!(run_verifier(4, false), expected);
+        assert_eq!(run_verifier(4, true), expected);
     }
 
     #[test]

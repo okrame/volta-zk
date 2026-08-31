@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 LOGVOLE FRONTIER V1 ANALYTIC NO-GO — SENDER FOLD LINEAR / NO RUST / NO LEAN / NO H100)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 COMMITTEDFOLDCI-VOLE ANALYTIC NO-GO — EXACT PREFIX FACTORIZATION / SAME-W FAIL / NO CODE)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,27 +11,69 @@ record; no external plan is authoritative.
 Read `c7-stateful-authenticated-lfc-design.md`; the R0.3 pod handoff remains
 inactive.
 
-- **Status.** D118 closes `C7-LOGVOLE-FRONTIER-v1` analytic NO-GO on its first
-  sender gate. No C7 carrier, research line or executable backend is active;
-  D117's frontier/lot concessions do not transfer.
-- **Evidence/credit.** Raw LHE decryption is affine, but coordinatewise
-  `Denoise` is scale-and-round and cleanup supplies only a regular surjection,
-  not the homomorphism needed by the proposed fold. Fresh leaf `H_ct` answers
-  independently determine mask blocks, so an exact dense fold in the
-  published random-oracle syntax requires
-  `Omega(N/n)` explicit ring-word and `Omega(N)` coefficient work for generic
-  dense `q_tau`. The 31B three-base-label
-  control is 7,168.930 s at 12.9 Mlabel/s versus the 60-s VM cap. Frontier
-  pebbling remains useful memory evidence; all controls are `credit:false`.
-- **Hard stop and resume.** Same-`W`, one-`Delta` Fp3, malicious interactive
-  `Q_FS=0`, exact wire/resources/H100 and stateful privacy also remain open.
-  No Rust, Lean, CPU prototype, H100/prover, SIMT, provider or pod;
-  `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`. Resume requires a new
-  owner decision on either a named exact root factorization passing the
-  complete 30/60-s lot gate or a structured fold primitive with exact `o(N)`
-  evaluation, plus a complete all-gates row; no generic search is authorized.
-  Current checks are capsule length, D118/status cross-links and the document
-  diff; no executable check is authorized.
+- **Status.** D119 opened only `C7-COMMITTEDFOLD-CI-VOLE-v0`; D120 closes it
+  analytic NO-GO. No C7 carrier, research line or executable backend is
+  active, and D117's concessions do not transfer.
+- **Evidence/credit.** The new exact prefix lift sets
+  `X_(i+1)-X_i=q_i W_i` and converts HSS shares
+  `A_i-B_i=Delta X_i` into per-cell labels
+  `m_i=(A_(i+1)-A_i)/q_i=k_i+Delta W_i`; the verifier fold is exactly the two
+  endpoints `B_N-B_0`. This algebraic seam passes with `credit:false` when
+  every `q_i` is nonzero. A rank-one PCG variant gives the same endpoint
+  shape conditionally. Neither construction binds its post-challenge prefix
+  or correction to the `W` opened by `C_W`: a malicious prover may use
+  `W'=W+e` with `<q,e>=0`. Published HSS/PCG also lacks the required adaptive
+  malicious direct-Fp3 theorem and complete GPT-2/31B cost row.
+- **Hard stop and resume.** No Rust, Lean, CPU prototype, H100/prover, SIMT,
+  provider or pod; `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`.
+  Resume requires a named endpoint-only proof of
+  `Open(C_W,W)` and `X_(i+1)-X_i=q_i W_i`, under one Fp3 `Delta`, with the
+  complete malicious/stateful and resource row. Current checks are capsule
+  length, D119/D120 cross-links and the document diff.
+
+- **2026-08-31 — `C7-COMMITTEDFOLD-CI-VOLE-v0` closes NO-GO despite an exact
+  endpoint factorization.**  For each segment with nonzero `q_i`, define
+  `X_0=0` and `X_(i+1)=X_i+q_i W_i`.  If a half-chosen bilinear HSS gives the
+  prover shares `A_i` and the verifier virtual shares `B_i` satisfying
+  `A_i-B_i=Delta X_i`, then
+  `m_i=(A_(i+1)-A_i)/q_i` and
+  `k_i=(B_(i+1)-B_i)/q_i` satisfy exactly
+  `m_i=k_i+Delta W_i`; the folded verifier share telescopes to `B_N-B_0`.
+  This is a genuine new algebraic PASS and removes LogVOLE's denoising
+  obstruction. It is not a malicious committed-input protocol.
+
+  The HSS digest/prefix is formed after `q`. A malicious prover can select any
+  nonzero `e` in the kernel of `q`, run the endpoint protocol on `W+e` and
+  retain the same plaintext fold as `W` while authenticating different cells.
+  HSS digests/shares may differ; the verifier has no commitment-derived
+  expected endpoint. Binding only `<q,W>` cannot repair this adaptive same-`W`
+  attack. The missing
+  statement must knowledge-bind the opening of `C_W`, every prefix recurrence
+  and the operator handles while revealing no terminal value. Published
+  Succinct HSS is semi-honest and has no direct exact Goldilocks-Fp3,
+  stateful/adaptive or concrete endpoint-only malicious compiler. Its
+  Power-DDH vector control is 190,694,272 B at the optimistic 128-B
+  group-element codec, above the 31B cap; literal prefix HSS retains
+  `Theta(N)` heavy prover evaluations without a
+  single-H100 row. Published committed VOLE is malicious but linear-size; a
+  materialized direct-Fp3 logical vector would be
+  2,976,000,000/739,833,600,000 B. A conditional rank-one PCG
+  endpoint adapter has only `J` root corrections, but its post-challenge
+  matrix theorem and the same `C_W` bridge are absent. All rows are
+  `credit:false`; no implementation or hardware action follows.
+
+- **2026-08-31 — Owner opens only the named
+  `C7-COMMITTEDFOLD-CI-VOLE-v0` analytic screen.**  The permitted target is an
+  exact construction that gives the prover streamed labels
+  `m_i=k_i+Delta W_i` without the verifier seed or endpoint masks, lets the
+  verifier derive only folded endpoints, and maliciously/statefully binds the
+  input to immutable `C_W` under the existing GPT-2 and Gemma-class 31B gates.
+  New inductive adaptations may be screened when the literature has no
+  complete composition. This is analytic authority only: all setup, proof
+  bytes, VM/H100 work, one-scan memory, direct one-`Delta` Fp3, `Q_FS=0`,
+  78-bit lifetime and allocator/burn gates remain unchanged. No Rust, Lean,
+  CPU prototype, H100/prover, provider or pod action is authorized before the
+  complete row passes.
 
 - **2026-08-31 — `C7-LOGVOLE-FRONTIER-v1` closes NO-GO on the exact
   root-fold/sublinear-sender gate.**  Reconstructing the published sender path

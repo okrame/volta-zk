@@ -1,26 +1,25 @@
 # C7 — stateful authenticated linear-functional commitment
 
-**Status:** `C7-LOGVOLE-FRONTIER-v1` is closed analytic NO-GO by D118.  In the
-published construction raw LHE decryption is affine, but coordinatewise
-`Denoise` is scale-and-round; the paper proves its cleanup map only as a
-regular surjection and supplies no homomorphism.  The proposed affine fold
-therefore cannot be pushed through cleanup.  More decisively, fresh `H_ct`
-answers independently determine every leaf mask block.  In the paper's
-random-oracle syntax, an exact dense fold must query every active leaf.  Under
-its explicit correction API this is `Omega(N/n)` ring-word output and
-`Omega(N)` coefficient work for generic dense `q_tau`.  Pre-folding only
-moves that one-shot work into `T_lot_prepare`.  The 31B three-base-label
-control needs 7,168.930 s at the paper's 12.9-Mlabel/s online rate versus this
-VM's 60-s hard cap; it is foreign semi-honest evidence and remains
-`credit:false`.  Frontier pebbling retains its memory-control value but does
-not pass the sender gate, and same-`W`, direct Fp3 under one `Delta`, malicious
-interactive `Q_FS=0`, exact wire/resources, H100 and stateful-security gates
-also remain open.  This is scoped to the published LogVOLE correction-label
-realization, not a CI-VOLE, RLWE, HSS or secure-computation lower bound.  There
-is no active C7 implementation line. `C7_CPU_REFERENCE_PASS=false`; no Rust,
-Lean, CPU prototype, SIMT, prover, H100, E2E, provider or pod work is
-authorized.  This document is the task-specific authority named by
-`prototype-status.md`.
+**Status:** D119 opened only `C7-COMMITTEDFOLD-CI-VOLE-v0`; D120 closes it
+analytic NO-GO.  Its prefix lift is exact: for
+`X_(i+1)-X_i=q_i W_i` and HSS shares `A_i-B_i=Delta X_i`, the differential
+shares satisfy `m_i=k_i+Delta W_i` and the verifier fold telescopes to two
+endpoints.  A rank-one PCG adapter has the same conditional endpoint shape.
+Both are algebraic controls with `credit:false`, not complete protocols.  A
+malicious prover may instead use `W'=W+e` for any post-challenge
+`<q,e>=0`; the authenticated plaintext fold is unchanged while the local
+labels authenticate different cells. The missing endpoint-only proof must
+bind the opening of immutable `C_W`, every prefix/correction and the operator
+handles.
+Published HSS/PCG does not provide that adaptive malicious/stateful bridge, a
+direct exact Goldilocks-Fp3 one-`Delta` instantiation or a complete GPT-2/31B
+resource row. Published committed VOLE has malicious binding but linear
+vectors; a direct-Fp3 materialization would already be 2.976/739.834 GB for
+one logical vector. No carrier or executable line is active; D117's
+concessions do not transfer.
+`C7_CPU_REFERENCE_PASS=false`; no Rust, Lean, CPU prototype, SIMT, prover,
+H100, E2E, provider or pod work is authorized.  This document is the
+task-specific authority named by `prototype-status.md`.
 
 Volta-ZK is a stateful designated-verifier proof architecture for
 private-weight autoregressive inference. Like modern public zkML systems, it
@@ -64,8 +63,11 @@ R0.8h v0 is closed NO-GO.  D117 reopened only the named
 `C7-LOGVOLE-FRONTIER-v1` revision as an analytic screen with the narrow
 setup/frontier/lot concessions in Section 5.17.  D118 closes that revision on
 its first sender gate; the concessions transfer no credit or authority to a
-successor.  No Rust, Lean, CPU reference, H100/prover, provider or pod action
-is authorized.
+successor. D119 then opened only the named
+`C7-COMMITTEDFOLD-CI-VOLE-v0` analytic screen in Section 5.19. D120 retains its
+exact prefix factorization as a `credit:false` seam but closes the complete
+candidate on the malicious same-`W` gate. No Rust, Lean, CPU reference,
+H100/prover, provider or pod action is authorized.
 
 1. The immutable model, response trace and persistent cache are separate
    commitment planes.  "One opening" means one transcript-bound
@@ -105,11 +107,13 @@ is authorized.
    seventh component.  The 105% value is now the target, not an immediate hard
    stop.  An exact exploratory cap may be preregistered inside 125--150% only
    if the complete certificate also stays within 35/115 MB and 3.5x growth.
-7. The historical authorized tiny CPU screen, bounded R0.8g Bolt screen and
-   both R0.8h LogVOLE screens are complete.  D118 closes v1 on its sender gate.
-   No row supplies a complete admitted relation/resource/security result, so
-   `C7_CPU_REFERENCE_PASS=false`.  No executable-backend implementation,
-   large-prover/E2E, provider or pod action is authorized.
+7. The historical authorized tiny CPU screen, bounded R0.8g Bolt screen, both
+   R0.8h LogVOLE screens and the R0.8i CommittedFoldCI-VOLE screen are
+   complete. D120 closes the latter on malicious same-`W`, after retaining its
+   exact prefix algebra. No row supplies a complete admitted
+   relation/resource/security result, so `C7_CPU_REFERENCE_PASS=false`. No
+   executable-backend implementation, large-prover/E2E, provider or pod
+   action is authorized.
 8. No current backend passes setup, domain support, one-pass opening, all four
    normalized query counts, proof bytes and stateful malicious-DV privacy
    together.  Logical `g=141` remains fixed; every grouped/alphabet query is
@@ -4131,6 +4135,278 @@ direct one-`Delta` Fp3 semantics and the complete same-`W`/resource/security
 row.  That is a new construction, not a scheduling change to LogVOLE, and
 requires a new owner decision.  No generic search or executable work follows.
 
+### 5.19 R0.8i CommittedFoldCI-VOLE prefix and endpoint-PCG screen
+
+#### Exact prefix factorization
+
+D119 names the target `C7-COMMITTEDFOLD-CI-VOLE-v0`.  Work in the selected
+field `E=Fp[u]/(u^3-2)` and the ordered nonpadding cells of one physical
+segment; segment tags are restored below. Let every live coefficient `q_i` be
+nonzero and define
+
+```text
+X_0     = 0,
+X_(i+1) = X_i + q_i W_i.
+```
+
+Assume an ideal half-chosen bilinear HSS defines a prover share `A_i` and a
+virtual verifier share `B_i` of each prefix under the same connection scalar
+`Delta`; the verifier evaluator will instantiate only `B_0,B_N`:
+
+```text
+A_i - B_i = Delta X_i.
+```
+
+The prover and the virtual verifier labels are
+
+```text
+m_i = (A_(i+1) - A_i) / q_i,
+k_i = (B_(i+1) - B_i) / q_i.
+```
+
+Then, with no approximation or cleanup step,
+
+```text
+m_i - k_i
+  = ((A_(i+1)-B_(i+1)) - (A_i-B_i)) / q_i
+  = Delta (X_(i+1)-X_i) / q_i
+  = Delta W_i.
+```
+
+The folded shares telescope:
+
+```text
+M_s = sum_i q_i m_i = A_N - A_0,
+K_s = sum_i q_i k_i = B_N - B_0,
+M_s = K_s + Delta <q,W>.
+```
+
+Thus the prover can stream every `m_i`, while the verifier evaluates only the
+two endpoint shares for each segment.  Once every segment handle and operator
+claim is fixed, the existing post-handle `beta` schedule combines
+`K=sum_s beta^(ordinal_s+1) K_s`; it cannot be sampled earlier.  This exact
+micro-theorem is the requested root-to-`k_q` factorization and is a genuine
+algebraic PASS.  It avoids the LogVOLE denoising obstruction because it never
+pushes a fold through scale-and-round. `M_s` remains prover-local and `K_s`
+verifier-local; neither a raw tag nor `<q,W>` crosses the wire.
+
+Division makes `q_i != 0` load-bearing.  For an MLE equality vector this can
+be enforced by sampling every coordinate challenge from `E \ {0,1}`, making
+all products of `r_j` and `1-r_j` nonzero.  That changes the challenge space
+and the root-count denominator from `|E|` to `|E|-2`; a revised interactive
+soundness theorem is required before admission.  It is not silently assumed
+by the current GKR statement. Canonical padding has `W_i=q_i=0`, is excluded
+from the recurrence and may receive one-shot equal shares `m_i=k_i`; a zero
+coefficient on a live cell is not repaired this way.
+
+#### The adaptive same-`W` attack
+
+The exact identity does not authenticate its input.  In the endpoint-only
+composition the HSS prefixes are formed after `q`, whereas `C_W` was fixed
+before `q`.  For any segment of length greater than one, a malicious prover
+can choose nonzero `e` after seeing `q` such that
+
+```text
+<q,e> = 0,
+W'    = W + e.
+```
+
+It then constructs every internal prefix and local label from `W'`. Because
+`X'_N=X_N`, the authenticated plaintext fold is unchanged while the per-cell
+labels authenticate different values. HSS digests and randomized endpoint
+shares may differ, but the verifier has no commitment-derived expected HSS
+endpoint against which to compare them. Proving only the final inner product
+does not help: `e` is selected after `q`, so this is a deterministic kernel
+attack, not a Schwartz--Zippel event.
+
+The minimum missing extractable statement is therefore a hidden proof of
+
+```text
+VerifyOpen(C_W, W) = 1
+and for every segment/index: X_(i+1) - X_i = q_i W_i
+and every consumed m_i/operator handle uses those same fixed prefixes and W.
+```
+
+It must output only authenticated endpoint handles, not `W`, `<q,W>`, `K_s`
+or a raw prover tag.  This is the same-input PCS-to-MAC bridge required by
+`OpenLinearIntoMac`, not something supplied by telescoping.  Succinct HSS
+2024 proves semi-honest half-chosen VOLE and reusable matrix encodings, but no
+malicious endpoint-only recurrence proof, external-commitment extractor,
+adaptive/stateful compiler or concrete costs for this composition.
+
+Even such input binding would not by itself prove privacy against a malicious
+verifier. The `q`-dependent digest/encoding needs adaptive hasher/input
+privacy, and every malformed setup, rejected challenge and correctness failure
+needs a selective-failure/abort simulation under the one-shot state machine.
+The reusable semi-honest encoding theorem does not supply that property.
+
+#### Conditional PCG endpoint adapter
+
+A second, inductively derived control starts from random sVOLE shares known as
+
+```text
+prover:   (u_i, a_i)
+verifier: (Delta, b_i)
+a_i = b_i + Delta u_i.
+```
+
+After `q`, the prover sends only the root correction
+
+```text
+d_s = <q_s, W_s - u_s>.
+```
+
+The verifier defines
+
+```text
+K_s = <q_s,b_s> - Delta d_s,
+M_s = <q_s,a_s>,
+```
+
+which gives exactly `M_s=K_s+Delta<q_s,W_s>`.  Equivalently, virtual labels
+`k_i=b_i+Delta(u_i-W_i)` satisfy `a_i=k_i+Delta W_i`, although the verifier
+materializes only their fold.
+
+The proposed random-access mechanism is conditional on a typed structured-PCG
+adapter. Let `H_0 in E^(t x N)`, `q,r in E^N`, `h in E^t`, with
+`r^T q=1`, and modify the expansion matrix after the challenge:
+
+```text
+H_q = H_0 + (h - H_0 q) r^T,     r^T q = 1.
+```
+
+Then `H_q q=h`. For row seed shares `e^T,v^T in E^(1 x t)`, define
+`u=e^T H_q` and `b=v^T H_q`; algebraically
+`<q,u>=e^T h` and `<q,b>=v^T h`. If the PCG additionally exposes short point
+selectors `c_0,c_N in E^t`, choosing `h=c_N-c_0` reduces each root to two
+seed evaluations. The equations are exact conditional on that interface;
+the existence and security of these selectors is not proved here.
+
+Published finite-field PCG is algebraically compatible with `E`, but its
+theorems fix the expansion matrix, call `FullEval`, and do not cover an
+adaptive rank-one `H_q`, forced selector/error distributions, one shared C7
+`Delta`, the canonical Fp3 codec or the malicious/stateful composition. The
+prover also learns its ordinary sVOLE input mask `u`; no verifier seed, `b_i`
+or endpoint mask is exposed. If the interface forbids even this prover-local
+random input, this PCG control is out of scope.
+
+Most importantly, `d_s` is freely forgeable.  The same kernel attack replaces
+`W` without changing the claimed root, so PCG still needs a hidden proof that
+`d_s=<q_s,W_s(C_W)-u_s>`.  It therefore does not supply the missing
+same-`W` bridge.
+
+#### Direct-Fp3 and resource audit
+
+The prefix theorem is field-generic. Succinct HSS has no published C7
+direct-Fp3 instantiation; finite-field PCG supports `E` at its base algebraic
+interface, but not the adaptive endpoint adapter or the C7 shared-`Delta`,
+codec and malicious composition above. A three-limb HSS adapter must encode
+multiplication by the one shared
+`Delta=d_0+d_1 u+d_2 u^2` with the single base-field matrix
+
+```text
+[ d_0  2d_2  2d_1 ]
+[ d_1   d_0  2d_2 ]
+[ d_2   d_1   d_0 ].
+```
+
+Three independently accepted base-field deltas are forbidden.  A malicious
+setup proof must establish that all lanes use this one matrix and reject
+noncanonical codecs/subgroups.  Power-DDH HSS is exact only in its stated
+integer residue domains (and, for the class-group result, primes of the
+theorem's security size); Power-RLWE/LWE uses scale-and-round with negligible
+failure.  Neither paper proves this adapter.
+
+The following are controls, not a serialized certificate:
+
+| Quantity | GPT-2 | Gemma-class 31B |
+| --- | ---: | ---: |
+| packed `W` (`2N` bytes) | 248,000,000 | 61,652,800,000 |
+| one materialized Fp3 label vector (`24N`) | 2,976,000,000 | 739,833,600,000 |
+| illustrative weight/all-plane segments `J_W/J_all` | 98 / 106 | 370 / 378 |
+| W-only/all-plane Fp3 root corrections (`24J`) | 2,352 / 2,544 | 8,880 / 9,072 |
+| W-only/all-plane conceptual endpoint pairs (`48J`) | 4,704 / 5,088 | 17,760 / 18,144 |
+
+The label vector therefore must be streamed and never persisted.  The small
+root rows do not include HSS digests, malicious proofs or framing.
+
+For the optimistic three-limb vector/block Power-DDH control, treating the
+whole model as one segment gives
+
+```text
+G(B) = ceil(3N/B) + 6B group elements,
+B approximately sqrt(N/2).
+```
+
+This is 94,489 elements at `B=7,874` for GPT-2 and 1,489,799 at
+`B=124,150` for 31B.  At 128 bytes per element the latter alone is
+190,694,272 B, above the 115-MB complete-certificate cap; it would need at
+most 77.2 bytes per element before any framing. Separate per-segment HSS
+instances increase this square-root control because
+`sum_s sqrt(N_s) >= sqrt(N)`; a single concatenated reusable encoding retains
+the displayed aggregate term and adds endpoint/framing work instead. The
+verifier-side `6B=744,900` element generation
+would additionally need at most about 80.5 microseconds per element to fit the
+31B 60-s VM cap before proof parsing.  No admitted codec or rate exists.
+
+The literal scalar-prefix route avoids vector wire but requires `N+1` HSS
+hash/share evaluations at the prover and has no single-H100 full-chain row. A
+different root-only scalar reduction performs an `O(N)` ordinary field fold
+and only `O(J)` scalar HSS/OLE calls, but it neither generates nor binds the
+per-cell label stream; proving its `M` and `<q,W>` claims is exactly the
+missing committed PCS. Committed Vector OLE 2025 provides a malicious
+committed-input functionality only for its own linear LPN
+commitment/output. A direct-Fp3 projection has one `24N` logical vector—the
+table shows its size if materialized or serialized—but this is not an exact
+wire/persistent-storage floor without a C7 codec analysis, and it does not
+bind immutable `C_W`. Succinct OTE has attractive asymptotics but no exact direct-Fp3,
+endpoint-only malicious/stateful or concrete 115-MB instantiation.
+
+Primary controls screened here are
+[Succinct HSS](https://eprint.iacr.org/2024/814),
+[Succinct OTE](https://eprint.iacr.org/2025/336),
+[Committed Vector OLE](https://eprint.iacr.org/2025/1037),
+[PCG over any finite field](https://eprint.iacr.org/2025/169) and
+[Succinct LPZK](https://eprint.iacr.org/2025/1866).  The last can express an
+extractable same-input circuit in principle, but its published variants retain
+linear verifier work or linear CRS and superlinear prover work; it supplies no
+direct-Fp3, one-scan 31B row.
+
+Seed size is also a lifetime gate, not merely local state.  The conservative
+full-stream control `Q_words<=18*2^20*(N+J_all)` has logarithms
+51.056/59.013 for GPT-2/31B.  A generic 128-bit linear-loss bound therefore
+leaves only 76.944/68.987 bits, below the 78-bit complete-lifetime target.
+A 256-bit addressed generator retains 204.944/196.987 bits under linear loss
+and 153.889/137.973 under a quadratic control, but still needs a concrete
+multi-key/XOF theorem.  No BLAKE3-128 margin is inferred; KMACXOF256 or an
+AES-256 construction remains the candidate order.
+
+#### Stateful order and disposition
+
+Any successor must reserve and durably move `Reserved -> InFlight` before the
+first `W`-dependent byte; fix `C_W`, the input proof and operator prefix before
+`q`; validate the restricted challenge domain and recompute `q` canonically;
+an invalid/zero-live coefficient rejects and burns before an endpoint is
+released. The verifier must prove that its HSS/PCG setup is well formed under
+one `Delta`, without a selective-failure channel. Fix every authenticated
+handle before `beta` and sample `gamma` only for the zero residual. Attempt,
+segment, plane,
+`q`-digest, root epoch, connection and MAC domain separate all seeds.  Accept,
+reject, timeout, crash and abort burn the complete seed/mask/correlation range.
+Only a byte-identical cached duplicate may replay; rollback or fork is rejected
+against the global high-water mark.  Reusing HSS potentials, PCG `u`, endpoint
+masks or root corrections across challenges leaks linear relations and is
+forbidden.
+
+**Disposition.** The prefix root-to-`k_q` factorization is exact and retained
+as `credit:false`.  `C7-COMMITTEDFOLD-CI-VOLE-v0` is nevertheless NO-GO for
+both registered models: the first complete kill gate is malicious same-`W`
+binding to `C_W`; direct one-`Delta` Fp3, adaptive construction security and
+complete H100/VM/setup/wire rows also fail.  D120 authorizes no code or
+hardware experiment.  Resume requires a named endpoint-only proof of the
+extractable statement above, with exact direct-Fp3 and all state/resource
+gates, not another endpoint algebra.
+
 ## 6. Registered analytic screens
 
 The executable calculator is `scripts/budget_c7_stateful_alfc.py`.  Every
@@ -4189,6 +4465,11 @@ to Section 5.16 and uses the paper's published parameters plus the already
 registered C7 dimensions.  Source digests and `git diff --check` are the only
 checks; no executable seam, proof, verifier, H100 or benchmark receives
 credit.
+
+R0.8i likewise changes no calculator, Rust or Lean. Section 5.19 records an
+exact symbolic prefix identity, arithmetic controls and literature audit.
+Document cross-links, capsule length and `git diff --check` are its only
+checks; no HSS/PCG implementation, proof, timing or protocol credit exists.
 
 ### 6.1 Models and common workload
 
@@ -5094,9 +5375,11 @@ Policy 3 remains terminally rejected and policy 2 is active.  Strict-UD RS is
 now only the control baseline; R0.8f closes SPBT as a carrier, R0.8g closes
 the authorized one-candidate direct-Bolt screen, D116 closes the named R0.8h
 LogVOLE challenge-order v0 screen, and D118 closes
-`C7-LOGVOLE-FRONTIER-v1` on its first sender gate.  No carrier, analytic line
-or executable backend is active.  SPBT, Bolt's setup-size control, LogVOLE's
-succinct-wire control and the frontier memory geometry remain reusable
+`C7-LOGVOLE-FRONTIER-v1` on its first sender gate. D120 closes the named R0.8i
+CommittedFoldCI-VOLE screen on malicious same-`W` after retaining its exact
+prefix factorization. No carrier, analytic line or executable backend is
+active. SPBT, Bolt's setup-size control, LogVOLE's succinct-wire control, the
+frontier memory geometry and the prefix/PCG endpoint algebra remain reusable
 evidence only and do not weaken any recorded rejection.
 The selected challenge baseline remains interactive
 honest-DV (`Q_FS=0`) and logical `g=141`.  Setup retains its 2.00 target/2.10
@@ -5110,18 +5393,18 @@ fail-closed readiness handoff is
 prover/E2E, pod contact or pod execution.
 
 Both bounded post-Pareto alternatives and the earlier one-candidate tournament
-remain closed.  There is no generic R0.8i, prototype or further relaxation.
-Section 5.18 shows that scheduling alone cannot repair v1: any successor must
-first supply either an exact root factorization passing the complete 30/60-s
-lot gate or a named exact sublinear fold primitive, and receive a new owner
-decision.  It must also prove
-the one-monotone-scan frontier splice, bind the frontier and pre-`tau` digest
-to canonical `C_W`, instantiate the direct Fp3 malicious interactive
-transcript without uncounted Fiat--Shamir, and provide separate per-root
-setup, per-attempt lot, H100 prover, VM verifier, network, state and security
-rows.  For 31B the verifier row includes both lot preparation and
-proof-read-to-verdict and must pass the 30/60-s target/hard cap.  The tested
-Fp3 codec/MAC seam is carrier-independent and is not implementation authority.
+remain closed. There is no generic R0.8j, prototype or further relaxation.
+Sections 5.18--5.19 show that scheduling alone cannot repair LogVOLE and that
+endpoint algebra alone cannot bind the committed input. Any successor must
+first supply an endpoint-only extractable proof that the prefix/correction and
+all operator handles use exactly the `W` opened by `C_W`, and receive a new
+owner decision. It must also prove the one-monotone-scan splice, instantiate
+the direct Fp3 malicious interactive transcript without uncounted
+Fiat--Shamir, and provide separate per-root setup, per-attempt lot, H100
+prover, VM verifier, network, state and security rows. For 31B the verifier
+row includes both lot preparation and proof-read-to-verdict and must pass the
+30/60-s target/hard cap. The tested Fp3 codec/MAC seam and the exact prefix
+identity are carrier-independent and are not implementation authority.
 Fp3, 78 connection bits, setup 900/990 and
 5,400/5,940 seconds, separate untested refresh counters and computational
 per-root masks otherwise remain fixed.  Any successor must serialize and
@@ -5367,3 +5650,5 @@ entry, but must retain its evidence and reason.
 | `C7-D116` / 2026-08-31 | LogVOLE challenge-order current row NO-GO | LogVOLE is a concrete computational escape from D110's scoped affine-correction lower bound and retains its polylogarithmic-wire evidence. The strongest order binds a randomized fixed-input digest before `tau` and streams the final fold after the verifier response. The published `OnlineRec` still performs bottom-up shrink followed by top-down expansion, requiring another packed read or model-linear intermediate/share state; its first recursive vector is already 1.845/472.446 GB per scalar-field instance at the C7 padded dimensions. Pre-enrollment instead retains at least 2.976/739.834 GB per Fp3 share and gives both parties linear per-response folds. The optimized implementation is semi-honest AVX512 CPU evidence; the reusable malicious route lacks the canonical same-`W`, direct Goldilocks-Fp3 shared-`Delta`, interactive `Q_FS=0`, exact setup/certificate, VM-verifier/H100-prover and stateful malicious-DV rows. The current candidate is not promoted; `C7_CPU_REFERENCE_PASS=false`. This is not a CI-VOLE/RLWE lower bound. No Rust, Lean, prototype, H100, provider or pod action follows. |
 | `C7-D117` / 2026-08-31 | owner reopens only `C7-LOGVOLE-FRONTIER-v1` with bounded setup/frontier/lot concessions | The active analytic revision checkpoints an ordered private digest frontier at model initialization, expands the small upper tree, then rebuilds and expands one macroblock at a time while folding immediately. It must retain one monotone packed-`W` scan online. Only this candidate may use fully counted multi-pass/model-linear setup temporaries, one private frontier sidecar `<=8,000,000,000 B`, response proof scratch `<=8,000,000,000 B` and complete device peak `<=76,000,000,000 B`; the sidecar is outside relative `A_setup` but remains charged to persistent/transfer/refresh/peak ledgers. A verifier-private pre-folded lot is one-shot, reserved and burned per attempted response and is never setup. On this CPU VM, Gemma-class 31B must satisfy `T_V_attempt=T_lot_prepare+T_proof_read_to_verdict`: target `<=30 s`, hard cap `<=60 s`; thus hours moved into inventory fail. The first kill gate is an exact root-to-`k_q` factorization with all lot-specific work inside that total, or a genuinely sublinear sender fold. Same-`W`, direct Fp3 under one `Delta`, malicious interactive `Q_FS=0`, exact wire/resources and stateful privacy remain unchanged. This GO is analytic only: no Rust, Lean, CPU prototype, H100/prover, provider or pod. |
 | `C7-D118` / 2026-08-31 | close `C7-LOGVOLE-FRONTIER-v1` NO-GO on the first sender gate | In the published LogVOLE recursion, concrete LHE decryption is affine before coordinatewise `Denoise`, but scale-and-round is not affine; Lemmas 17--18 characterize cleanup only as a regular surjection with programmable fibers and supply no homomorphism for the proposed direct fold. That push-through leaves a weighted rounding residual, and the paper supplies no compact factorization that accounts for it. More generally, conditioned on no correctness bad event and on a fixed parent/internal path, each fresh domain-separated leaf `H_ct` answer independently determines one clean mask block. For every nonzero fold block, two random oracles can agree on all queried points and differ at an unqueried leaf while changing `k_q`; exact black-box evaluation therefore needs every active leaf. The unit-cost bound is `Omega(s_q)` leaf queries; for generic dense `q_tau`, the paper's explicit API yields `Omega(N/n)` ring-word output and `Omega(N)` coefficient work. Pre-folding moves this one-shot work into `T_lot_prepare` and does not make it setup. The optimistic 31B three-base-label control is 7,168.930 s at the paper's 12.9-Mlabel/s semi-honest AVX512 rate, requiring 119.5x that rate merely for the 60-s VM cap. Frontier pebbling retains only `credit:false` prover-memory evidence. Same-`W`, direct one-`Delta` Fp3, malicious interactive `Q_FS=0`, exact wire/resources/H100, real/AES PCG and complete `AcceptC7` stateful soundness/privacy remain independently open. This result is scoped to the published correction-label random-oracle realization, not CI-VOLE, RLWE, HSS or secure computation generally. A successor requires either a named exact root factorization passing the complete 30/60-s lot gate or a structured exact `o(N)` fold, plus a new owner decision; no generic search, implementation, provider or pod action follows. |
+| `C7-D119` / 2026-08-31 | owner opens only `C7-COMMITTEDFOLD-CI-VOLE-v0` for analytic and inductive screening | The named target must stream prover labels `m_i=k_i+Delta W_i` without exposing the verifier seed or endpoint masks, give the verifier only folded endpoints, and knowledge-bind the input to immutable `C_W` with malicious/stateful security. Literature-backed pieces and explicitly labelled ad hoc adaptations may be combined, but every existing GPT-2/Gemma-class 31B gate remains conjunctive: direct one-`Delta` Fp3, interactive `Q_FS=0`, 78-bit lifetime, setup/wire, one scan, bounded memory, single-H100 proof, 30/60-s 31B VM attempt and global reserve/burn/anti-rollback. D117 concessions do not transfer. This is analytic authority only; no Rust, Lean, CPU prototype, H100/prover, provider or pod action is authorized before the complete row passes. |
+| `C7-D120` / 2026-08-31 | retain the exact prefix factorization; close the complete CommittedFoldCI-VOLE candidate NO-GO on malicious same-`W` | For nonzero `q_i`, prefixes `X_0=0`, `X_(i+1)=X_i+q_iW_i` and ideal HSS shares `A_i-B_i=Delta X_i` give exact labels `m_i=(A_(i+1)-A_i)/q_i`, `k_i=(B_(i+1)-B_i)/q_i` and root `K_s=B_N-B_0`. This is an algebraic PASS with `credit:false`. It is not committed-input security: because prefixes/digests are formed after `q`, a malicious prover can use `W'=W+e` for nonzero `<q,e>=0` and preserve the authenticated plaintext fold while changing local cells. HSS digests/shares may differ, but the verifier has no commitment-derived expected endpoint. The required hidden extractor must jointly prove `VerifyOpen(C_W,W)`, every prefix recurrence/correction and the same operator handles. Succinct HSS is semi-honest and lacks that compiler, exact direct-Fp3 and a full-chain cost row; an ad hoc rank-one PCG gives `J` root corrections and conditional endpoint random access only under an unproved adaptive-matrix/selector distribution, and its correction remains forgeable. Vector Power-DDH has an optimistic 31B control of 1,489,799 group elements (190,694,272 B at 128 B/element). Published malicious committed VOLE has a linear logical output/correction; one direct-Fp3 `24N` vector would be 2,976,000,000/739,833,600,000 B if materialized or serialized, not a proven C7 wire floor. No candidate passes both models. No code, benchmark, H100, provider or pod action follows; resume requires a named endpoint-only same-`W` proof with direct one-`Delta` Fp3 and the complete state/resource row. |

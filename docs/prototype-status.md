@@ -22,12 +22,25 @@ Read `c4.1-secret-challenge-no-crs.md` next.
 - **Credit.** Zero response, certificates, public artifacts or committing
   verification exist. Every proof, time, memory, acceptance, session and E2E
   gate has `credit:false`; the immutable C4.1 prover-time FAIL remains.
-- **Hard stop.** Do not retry, issue a response or contact another pod. Preserve
-  setup authorization and request, checkpoint this result, remove transients,
-  stop the current pod and verify termination.
+- **Hard stop.** Do not retry, issue a response or contact another pod. Result
+  checkpoint `369b93d` is pushed, transients are removed, and RunPod
+  `50bxa16xzffmlt` is `EXITED` with `runtime:null`; SSH is refused. Setup
+  authorization and request remain durably retained.
 - **Resume condition.** A new attempt requires a clean new SHA, setup,
   connection, response index, burn roots and pod endpoint plus explicit owner
   GO. Defer result-file writes until all clean-tree-guarded commands finish.
+
+- **2026-08-31 — C41SC1 terminal-result teardown complete.** Result checkpoint
+  `369b93d6462ef30775bab4a11db4e4aca1f1a1e4` was pushed before teardown.
+  The producer was absent; pod Rust cache, transfer directory, generated large
+  weight payloads and all local setup/transport transients were removed. Both
+  Git worktrees were clean and local `rust/target` remained absent. The fresh
+  setup authorization plus the `330-B` public request remain under the private
+  durable state root; no challenge burn exists because the issuer rejected
+  before creating its store. RunPod `podStop` returned pod `50bxa16xzffmlt` as
+  `EXITED`; a fresh query returned `desiredStatus: EXITED` and `runtime: null`,
+  and SSH to `154.54.102.44:16827` was refused. The immutable teardown record is
+  `c41sc1-control-plane-teardown-2026-08-31-369b93d.json`.
 
 - **2026-08-31 — C41SC1 second fresh A100 attempt terminal operator FAIL
   before private response; no retry and zero gate credit.** Clean

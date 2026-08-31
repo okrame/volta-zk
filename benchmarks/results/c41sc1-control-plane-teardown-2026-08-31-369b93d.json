@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "profile": "C41SC1-final-one-attempt-control-plane-teardown-v1",
+  "status": "complete",
+  "recorded_at": "2026-08-31T22:29:14+02:00",
+  "result_checkpoint": "369b93d6462ef30775bab4a11db4e4aca1f1a1e4",
+  "attempt_source_git_commit": "32fd7c5acdb73026aa350cc7992aaf0f74e18b62",
+  "pod": {
+    "provider": "RunPod",
+    "id": "50bxa16xzffmlt",
+    "name": "tired_purple_alligator",
+    "endpoint": "154.54.102.44:16827"
+  },
+  "pre_stop_cleanup": {
+    "p6_process_absent": true,
+    "pod_rust_target_removed": true,
+    "pod_transfer_artifacts_removed": true,
+    "pod_generated_weight_payloads_removed": true,
+    "pod_git_worktree_clean": true,
+    "local_canonical_rust_target_removed": true,
+    "local_transient_directory_removed": true,
+    "durable_setup_burn_retained": true,
+    "durable_challenge_burn_retained": false,
+    "durable_challenge_burn_note": "The issuer rejected the dirty revision before creating a challenge store.",
+    "durable_request_retained": true
+  },
+  "stop": {
+    "api": "RunPod GraphQL podStop",
+    "mutation_id_matched": true,
+    "mutation_desired_status": "EXITED",
+    "verification_desired_status": "EXITED",
+    "verification_runtime": null,
+    "ssh_endpoint_reachable_after_stop": false,
+    "ssh_observation": "connection refused",
+    "termination_verified": true
+  }
+}

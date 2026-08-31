@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E COMPLETE — FUNCTIONAL PASS / PROVER GATE FAIL; C41SC1 LOCAL CHECKPOINT A100-READY / HARD STOP BEFORE E2E)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E COMPLETE — FUNCTIONAL PASS / PROVER GATE FAIL; C41SC1 FINAL ONE-ATTEMPT A100 E2E AUTHORIZED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,10 +10,10 @@ record; no external plan is authoritative.
 
 Read `c4.1-secret-challenge-no-crs.md` next.
 
-- **Active work.** C41SC1 is locally complete at this checkpoint: sequential
-  C41FS1 is retained and exactly bridge `beta` becomes one private verifier
-  `Fp2` message after all 640 bridge corrections/descriptors are fixed. Setup
-  materializes the verifier typed-key lot for online replay.
+- **Active work.** Execute the frozen C41SC1 one-attempt E2E on the
+  owner-provided A100 pod: sequential C41FS1 plus exactly one private verifier
+  `Fp2` after all 640 bridge corrections/descriptors. Debian retains the
+  materialized verifier lot and both burn stores.
 - **Immutable evidence.** Clean `a3604cf` produced and accepted a
   `67,831,020-B` proof. Soundness `78.80929487390853`, weight-ZK
   `120.0170064253057`, setup traffic `40,446,419 B` and peak device use
@@ -33,8 +33,21 @@ Read `c4.1-secret-challenge-no-crs.md` next.
   `<=5.3359744321 s`, device `<29,999,999,999 B`, verifier RSS `<2 GB`, and
   security `>78` bits. `3.322998133 s` is diagnostic; no numeric successor
   verifier-time gate exists.
-- **Hard stop.** Stop at an A100-ready clean checkpoint. Resume only on a
-  separate owner GO for the frozen final E2E; no retry or component credit.
+- **Authorization.** The 2026-08-31 owner GO authorizes the frozen final E2E on
+  pod `154.54.102.44:14781`, exactly one response and no retry. Complete the
+  producer even on prover-gate failure, record the full result, then stop and
+  verify termination of the pod. No component-only credit is allowed.
+
+- **2026-08-31 — Owner GO for the final C41SC1 one-attempt A100 E2E.** Execute
+  only the operator sequence frozen in `c4.1-sc1-e2e-runbook.md`, using the
+  owner-provided A100 pod `154.54.102.44:14781`. One fresh setup, one response
+  index and one private challenge transfer are authorized. There is no retry:
+  abort, rejection, crash or lost transfer burns the attempt and must be
+  recorded. The producer must run to completion even if the prover exceeds
+  `5.3359744321 s`; only the complete provider plus committing Debian verifier
+  record may receive credit. After append-only records, ledger update and
+  scoped commit, remove transient artifacts, stop the pod and verify it is no
+  longer reachable.
 
 - **2026-08-31 — C41SC1 local checkpoint complete and A100-ready; final E2E
   still forbidden.** The implementation replaces only the final bridge-batch

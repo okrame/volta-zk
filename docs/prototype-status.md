@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E COMPLETE — FUNCTIONAL PASS / PROVER GATE FAIL; C41SC1 SECOND FRESH A100 ATTEMPT TERMINAL OPERATOR FAIL BEFORE PRIVATE RESPONSE — NO CREDIT / NO RETRY)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E COMPLETE — FUNCTIONAL PASS / PROVER GATE FAIL; C41SC1 OPERATOR-SEQUENCING FIX COMPLETE LOCALLY — NO RETRY / POD AUTHORIZED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,24 +11,43 @@ record; no external plan is authoritative.
 Read `c4.1-secret-challenge-no-crs.md` next.
 
 - **Disposition.** C41SC1 remains active under
-  `c4.1-secret-challenge-no-crs.md`, but clean `32fd7c5` is terminal **FAIL**
-  before private response. The only issuer invocation rejected the dirty local
-  tree after the append-only setup record was staged; it sampled nothing and
-  created no challenge store. The no-retry authorization is consumed.
-- **Evidence.** Pod SHA, canonical weights/goldens, CUDA build and producer
-  admission passed. Fresh real/AES setup measured `2,040,886 / 227,098`
-  total sub/full, `32,145,636 B` traffic and `99,532,800 B` typed-key payload.
-  The provider was burned and one authenticated `330-B` request reached Debian.
-- **Credit.** Zero response, certificates, public artifacts or committing
-  verification exist. Every proof, time, memory, acceptance, session and E2E
-  gate has `credit:false`; the immutable C4.1 prover-time FAIL remains.
-- **Hard stop.** Do not retry, issue a response or contact another pod. Result
-  checkpoint `369b93d` is pushed, transients are removed, and RunPod
-  `50bxa16xzffmlt` is `EXITED` with `runtime:null`; SSH is refused. Setup
-  authorization and request remain durably retained.
-- **Resume condition.** A new attempt requires a clean new SHA, setup,
-  connection, response index, burn roots and pod endpoint plus explicit owner
-  GO. Defer result-file writes until all clean-tree-guarded commands finish.
+  `c4.1-secret-challenge-no-crs.md`; clean `32fd7c5` remains terminal **FAIL**
+  before private response and its no-retry authorization is consumed.
+- **Root repair.** `c4.1-sc1-e2e-runbook.md` now freezes a Git-visible
+  repository write barrier from setup through committing verification. All
+  intermediate evidence stays outside Git; pinned-SHA and porcelain-empty
+  assertions repeat after setup and immediately before issuer and verifier.
+  Result files land only after verdict or an irrevocable terminal path.
+- **Checks.** The unchanged issuer was built locally. With a clean tree it
+  passed its revision guard to the next precondition; with one temporary
+  untracked file it rejected before request I/O or entropy. No setup, challenge,
+  response, protocol relation, gate or Lean statement changed.
+- **Credit and hard stop.** This is local operator evidence only. No proof or
+  hardware credit exists; do not retry, issue a response or contact a pod.
+  RunPod `50bxa16xzffmlt` remains stopped and prior material is forbidden.
+- **Resume condition.** A new attempt requires this repair at a clean pushed
+  SHA, new setup, connection, index, burn roots and endpoint, plus explicit
+  owner GO.
+
+- **2026-09-01 — C41SC1 operator-sequencing root fix complete locally; no
+  retry or pod authorized.** The second attempt failed because its setup
+  manifest was published into `benchmarks/results/` while the issuer and later
+  verifier still required the pinned Git tree to remain clean. The Rust guard
+  was correct: it rejected before request I/O, entropy or challenge-store
+  creation. Relaxing it or whitelisting result paths would invalidate clean-run
+  provenance.
+
+  The frozen runbook now treats setup through first committing verification as
+  one Git-visible read-only transaction. Manifests, console captures, transfer
+  times and draft JSON remain under the fresh external run root. Exact SHA and
+  empty `git status --porcelain=v1 --untracked-files=all` are asserted at source
+  pin, after setup before provider transfer, and immediately before issuer and
+  verifier. Repository records are created only after the verifier returns or
+  after an irrevocable terminal path makes verification impossible. A narrow
+  local issuer build passed. Diagnostic invocation on the clean tree advanced
+  to the absolute-path precondition; adding one temporary untracked file caused
+  the expected clean-revision rejection before entropy. No real setup,
+  challenge or response was used; all protocol and hardware credit is false.
 
 - **2026-08-31 — C41SC1 terminal-result teardown complete.** Result checkpoint
   `369b93d6462ef30775bab4a11db4e4aca1f1a1e4` was pushed before teardown.

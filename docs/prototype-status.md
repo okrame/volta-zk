@@ -17,17 +17,33 @@ Read `c4.1-secret-challenge-no-crs.md` next.
   helper passed; the `54,208,454-B` provider crossed once in `7.061376 s` with
   exact BLAKE3. No producer, request, response, proof or verifier exists, so
   every E2E gate remains `credit:false`.
-- **Root cause.** Party `p6_report --c41-e2e-record` unconditionally writes its
-  JSON under compiled `benchmarks/results` and has no external report-output
-  argument, conflicting with the continuous Git-read-only runbook.
+- **Root cause and repair.** Party `p6_report --c41-e2e-record` had no external
+  report output. It now requires `--c41-report-output`: an absolute, fresh,
+  create-new file outside Git, validated before provider consumption.
 - **Hard stop.** The attempt is consumed. No retry, prior material or further
   pod work is authorized except recording, cleanup and teardown. Resume needs
-  a tested external create-new report output, new clean SHA/setup/connection/
-  index/burn roots/endpoint and explicit owner GO.
+  a new clean SHA/setup/connection/index/burn roots/endpoint and explicit owner
+  GO; the repaired binary must be built from that SHA.
 - **Completion.** Failure/setup checkpoint `8be31b7` is pushed. Transients and
   build caches are removed, setup burn is retained, and RunPod
   `dmgiqek878tsj2` is verified `EXITED` with `runtime:null` and SSH
-  unreachable. Teardown is complete; finish the local output-path fix next.
+  unreachable. The local fix passes all 16 `p6_report` tests: 15 passed and the
+  existing production-size test was ignored. No pod is authorized.
+
+- **2026-09-01 — C41SC1 external report-output repair complete locally; no
+  pod or retry authorized.** Party mode now requires
+  `--c41-report-output FILE`. The path must be absolute, its existing parent
+  must canonicalize outside the repository, and the destination must be fresh;
+  final creation uses `OpenOptions::create_new(true)`. Validation occurs before
+  provider consumption. Non-party record modes retain their append-only
+  `benchmarks/results` path. The runbook supplies the external argument.
+
+  The focused regression passed, followed by the complete `p6_report` binary
+  suite: 15 passed, zero failed and the existing production-size test was
+  ignored. `rustfmt --check` and `git diff --check` pass. No pod, setup,
+  challenge, proof or verifier was used; all protocol and hardware credit stays
+  false. A successor attempt still requires a new clean pushed SHA, fresh
+  setup/connection/index/burn roots/endpoint and explicit owner GO.
 
 - **2026-09-01 — C41SC1 fourth-attempt checkpoint and control-plane teardown
   complete.** Failure/setup checkpoint

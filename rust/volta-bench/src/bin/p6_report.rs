@@ -1468,6 +1468,7 @@ struct Args {
     c41_provider_bundle_blake3: Option<String>,
     c41_model_setup_blake3: Option<String>,
     c41_artifact_output: Option<PathBuf>,
+    c41_report_output: Option<PathBuf>,
     c41_secret_request: Option<PathBuf>,
     c41_secret_response: Option<PathBuf>,
     c41_secret_timeout_seconds: Option<u64>,
@@ -1639,7 +1640,8 @@ fn usage() -> ! {
     eprintln!(
         "usage: p6_report [--quick] [--c3|--c3-record|--t1-record|--c4-record|--x123-foundation-record|--c1-record|--flip-readiness-record|--fase-d-record] [--c4-profile anchor|rate8] [--c41-timing-profile anchor|candidate] [--c41-e2e-record] [--pcs-q Q] \
          [--c41-provider-bundle FILE --c41-provider-bundle-bytes N \
-          --c41-provider-bundle-blake3 HEX --c41-artifact-output DIR] \
+          --c41-provider-bundle-blake3 HEX --c41-artifact-output DIR \
+          --c41-report-output FILE] \
          [--c41-model-setup-blake3 HEX] \
          [--c41-secret-request FILE --c41-secret-response FILE \
           --c41-secret-timeout-seconds N] \
@@ -1669,6 +1671,7 @@ fn parse_args() -> Args {
         c41_provider_bundle_blake3: None,
         c41_model_setup_blake3: None,
         c41_artifact_output: None,
+        c41_report_output: None,
         c41_secret_request: None,
         c41_secret_response: None,
         c41_secret_timeout_seconds: None,
@@ -1723,6 +1726,8 @@ fn parse_args() -> Args {
             out.c41_model_setup_blake3 = Some(args.next().unwrap_or_else(|| usage()));
         } else if a == "--c41-artifact-output" {
             out.c41_artifact_output = Some(PathBuf::from(args.next().unwrap_or_else(|| usage())));
+        } else if a == "--c41-report-output" {
+            out.c41_report_output = Some(PathBuf::from(args.next().unwrap_or_else(|| usage())));
         } else if a == "--c41-secret-request" {
             out.c41_secret_request = Some(PathBuf::from(args.next().unwrap_or_else(|| usage())));
         } else if a == "--c41-secret-response" {
@@ -1892,6 +1897,37 @@ fn create_unique_result_file(
         }
     }
     panic!("could not find unused append-only result path for {label}-{date}-{sha}");
+}
+
+fn validate_c41_report_output(path: &Path) -> Result<(), String> {
+    if !path.is_absolute() {
+        return Err("C41SC1 report output must be absolute".to_owned());
+    }
+    let parent = path.parent().ok_or("C41SC1 report output has no parent")?;
+    let canonical_parent = parent
+        .canonicalize()
+        .map_err(|error| format!("canonicalize C41SC1 report parent: {error}"))?;
+    let repository = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .map_err(|error| format!("canonicalize repository root: {error}"))?;
+    if canonical_parent.starts_with(repository) {
+        return Err("C41SC1 report output must stay outside the repository".to_owned());
+    }
+    if path.exists() {
+        return Err("C41SC1 report output must be fresh".to_owned());
+    }
+    Ok(())
+}
+
+fn create_c41_report_file(path: &Path) -> (PathBuf, File) {
+    validate_c41_report_output(path).unwrap_or_else(|error| panic!("{error}"));
+    let file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .unwrap_or_else(|error| panic!("create C41SC1 report {}: {error}", path.display()));
+    (path.to_path_buf(), file)
 }
 
 fn checked_blake3_hex(value: &str) -> bool {
@@ -4528,17 +4564,24 @@ fn main() {
         + usize::from(args.c41_provider_bundle_blake3.is_some())
         + usize::from(args.c41_model_setup_blake3.is_some())
         + usize::from(args.c41_artifact_output.is_some())
+        + usize::from(args.c41_report_output.is_some())
         + usize::from(args.c41_secret_request.is_some())
         + usize::from(args.c41_secret_response.is_some())
         + usize::from(args.c41_secret_timeout_seconds.is_some());
-    if !matches!(party_argument_count, 0 | 8)
+    if !matches!(party_argument_count, 0 | 9)
         || party_provider_mode && !args.c41_e2e_record
         || args.c41_secret_timeout_seconds.is_some_and(|seconds| !(60..=3_600).contains(&seconds))
     {
         eprintln!(
-            "p6_report: C41SC1 party mode requires --c41-e2e-record and all eight provider/artifact/challenge arguments"
+            "p6_report: C41SC1 party mode requires --c41-e2e-record and all nine provider/artifact/report/challenge arguments"
         );
         std::process::exit(2);
+    }
+    if let Some(output) = args.c41_report_output.as_deref() {
+        if let Err(error) = validate_c41_report_output(output) {
+            eprintln!("p6_report: {error}");
+            std::process::exit(2);
+        }
     }
     if let Some(digest) = args.c41_provider_bundle_blake3.as_deref() {
         if !checked_blake3_hex(digest) {
@@ -7170,7 +7213,10 @@ fn main() {
         return;
     }
     let filename_sha = short_git_sha(&git_sha_before_benchmark);
-    let (path, mut file) = create_unique_result_file(&label, &date, &filename_sha);
+    let (path, mut file) = match args.c41_report_output.as_deref() {
+        Some(output) => create_c41_report_file(output),
+        None => create_unique_result_file(&label, &date, &filename_sha),
+    };
     std::io::Write::write_all(&mut file, json.as_bytes()).unwrap();
     eprintln!("wrote {}", path.display());
 }
@@ -7184,6 +7230,25 @@ mod report_tests {
         C6_T1_MODEL_LOCAL_PRODUCT_CLOSURES, C6_T1_MODEL_LOCAL_PRODUCT_TRIPLES,
         C6_T1_MODEL_PRODUCT_MESSAGE_BYTES, C6_T1_MODEL_SUB_CORRELATIONS,
     };
+
+    #[test]
+    fn c41_report_output_is_external_and_create_new() {
+        let root =
+            std::env::temp_dir().join(format!("volta-c41-report-output-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir(&root).unwrap();
+        let output = root.join("report.json");
+        assert!(validate_c41_report_output(&output).is_ok());
+        let (_, file) = create_c41_report_file(&output);
+        drop(file);
+        assert!(validate_c41_report_output(&output).is_err());
+
+        let repository_output = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../benchmarks/results/c41-forbidden-test.json");
+        assert!(validate_c41_report_output(&repository_output).is_err());
+        assert!(validate_c41_report_output(Path::new("relative.json")).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn x123_foundation_reference_projection_is_pinned() {

@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "profile": "C41SC1-final-one-attempt-control-plane-teardown-v1",
+  "status": "complete",
+  "recorded_at": "2026-09-01T19:00:24+02:00",
+  "result_checkpoint": "8be31b7064ffbc7626e8a6dadc8ef2aeec89a324",
+  "attempt_source_git_commit": "a9882fd163d1b30af564f80cc2fe3151e15a7131",
+  "pod": {
+    "provider": "RunPod",
+    "id": "dmgiqek878tsj2",
+    "name": "coherent_pink_python",
+    "endpoint": "154.54.102.24:11577"
+  },
+  "pre_stop_cleanup": {
+    "p6_process_absent": true,
+    "pod_rust_target_removed": true,
+    "pod_transfer_artifacts_removed": true,
+    "pod_generated_weight_payloads_removed": true,
+    "pod_git_worktree_clean": true,
+    "local_canonical_rust_target_removed": true,
+    "local_transient_directory_removed": true,
+    "durable_setup_burn_retained": true,
+    "durable_challenge_burn_retained": false,
+    "durable_challenge_burn_note": "The producer and issuer were never started.",
+    "durable_request_retained": false
+  },
+  "stop": {
+    "api": "RunPod GraphQL podStop",
+    "mutation_id_matched": true,
+    "mutation_desired_status": "EXITED",
+    "verification_desired_status": "EXITED",
+    "verification_runtime": null,
+    "ssh_endpoint_reachable_after_stop": false,
+    "ssh_observation": "connection refused or unreachable within ConnectTimeout=5",
+    "termination_verified": true
+  }
+}

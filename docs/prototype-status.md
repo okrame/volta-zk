@@ -24,8 +24,24 @@ Read `c4.1-secret-challenge-no-crs.md` next.
   pod work is authorized except recording, cleanup and teardown. Resume needs
   a tested external create-new report output, new clean SHA/setup/connection/
   index/burn roots/endpoint and explicit owner GO.
-- **Completion.** Publish immutable records, checkpoint, clean while retaining
-  setup burn, stop the pod and verify termination; then finish the local fix.
+- **Completion.** Failure/setup checkpoint `8be31b7` is pushed. Transients and
+  build caches are removed, setup burn is retained, and RunPod
+  `dmgiqek878tsj2` is verified `EXITED` with `runtime:null` and SSH
+  unreachable. Teardown is complete; finish the local output-path fix next.
+
+- **2026-09-01 — C41SC1 fourth-attempt checkpoint and control-plane teardown
+  complete.** Failure/setup checkpoint
+  `8be31b7064ffbc7626e8a6dadc8ef2aeec89a324` was pushed before teardown. No
+  producer existed. Pod transfer artifacts, generated large weight payloads,
+  Rust target and Python environment were removed; the pod Git worktree was
+  clean at the attempt SHA. Local `rust/target`, the external run root and
+  ephemeral credentials were removed. The fresh setup authorization remains
+  under its private durable burn root; no challenge or request burn exists.
+  RunPod `podStop` matched pod `dmgiqek878tsj2` at
+  `154.54.102.24:11577` and returned `EXITED`; a fresh query returned
+  `desiredStatus: EXITED` and `runtime: null`, while SSH was unreachable. The
+  immutable teardown record is
+  `c41sc1-control-plane-teardown-2026-09-01-8be31b7.json`.
 
 - **2026-09-01 — C41SC1 fourth fresh attempt terminal pre-producer abort;
   WebDAV repair validated, result-output barrier gap blocks launch.** Clean

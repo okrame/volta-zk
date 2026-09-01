@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 CWBRIDGE-ENDPOINT STRUCTURAL PASS — SAME-W CLOSED / RESOURCES DEFERRED / NO CODE)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 BROADCAST-EXACT-ENDPOINT SHAPE PASS — CONCRETE POLICY-2/FP3 CARRIER HARD STOP / NO CODE)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,24 +11,88 @@ record; no external plan is authoritative.
 Read `c7-stateful-authenticated-lfc-design.md`; the R0.3 pod handoff remains
 inactive.
 
-- **Status.** D121 opens only `C7-CWBRIDGE-ENDPOINT-v0`; D122 records a
-  malicious/stateful structural same-`W` PASS for GPT-2 and the 31B envelope.
-  No concrete carrier or executable backend is active.
-- **Evidence/credit.** Before `q`, a hiding `C_m` and the complete operator
-  registry are fixed. `SameWOpBind` jointly knowledge-binds their every
-  weight/label/correction/handle read to the unique `W` opening `C_W`.
-  Hidden committed evaluations give `z=<q,W>`, `M=<q,m>`; after `beta`, one
-  scalar VOLE `w=r+Delta*u` and proved corrections `d=z-u`, `e=M-w` give only
-  V-local `K=e+r-Delta*d`. Defining virtual `k_i=m_i-Delta W_i` proves every
-  cell MAC and canonical prefix exactly. Soundness/privacy allocations retain
-  95.4/79.4 lifetime bits; the optional 104-bit privacy row retains 71.4 and
-  is not selected. All performance evidence remains `credit:false`.
-- **Hard stop and resume.** The owner defers the 115-MB/77.2-B phase. No Rust,
-  Lean, CPU prototype, H100/prover, SIMT, provider or pod;
-  `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`. Resume requires a
-  separate resource checkpoint selecting concrete hidden-evaluation/CAOLE
-  codecs and deriving every setup, byte, scan, memory and timing row. Current
-  checks are capsule length, D121/D122 cross-links and document diff.
+- **Status.** D123 opens the original-gate resource step; D124 selects
+  `C7-BROADCAST-EXACT-ENDPOINT-v0`.  Algebra, ideal-carrier privacy and
+  resource shape pass; no executable carrier is active.
+- **Evidence/credit.** Per terminal, a pre-`q` Fp3 correlation broadcasts one
+  typed tag `m_i=w`.  For `c=sum q!=0`, its scaled chosen-input correction
+  `d=<q,W>-c*u` creates the exact authenticated claim with tag `c*w` and
+  V-only key `K=c*r-Delta*d=<q,k>`.  The identical handle must enter GKR
+  ProductClosure and the policy-2 opening against immutable `C_W`; this removes
+  `C_m`, `Eval_m` and CAOLE.  Canonical prefixes follow from the extracted
+  `W`.  At illustrative `J_W=98/370`, the conservative payload is
+  2,352/8,880 B and leaves 664,593/1,758,091 B below the 105% weight targets.
+  Conditional soundness/privacy controls retain 95.4/79.4 bits; no relaxation
+  is selected.  All resource evidence is `credit:false`.
+- **Hard stop and resume.** Direct-Fp3 policy-2/g141 authenticated opening,
+  verifier-enforced `BroadcastTag` coverage, a compatible all-`c_s` phase
+  barrier, complete codec/setup/scan/H100/VM/state and real-PCG rows are
+  missing.  No Rust, Lean, prototype, provider or pod;
+  `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`.  Resume requires those
+  concrete rows under every original C7 gate.  Current checks are capsule
+  length, D123/D124 cross-links, arithmetic consistency and document diff.
+
+- **2026-09-01 — `C7-BROADCAST-EXACT-ENDPOINT-v0` passes exact algebra,
+  ideal-carrier privacy and resource shape, but complete C7 remains
+  fail-closed at the concrete carrier.**  For every physical terminal,
+  reserve before `q` an independent direct-Fp3 correlation
+  `w_s=r_s+Delta*u_s`.  The only permitted
+  label source is typed `BroadcastTag(h_s,range_s)`, so `m_(s,i)=w_s` and the
+  mathematical verifier keys are `k_(s,i)=w_s-Delta W_(s,i)`.  With
+  `c_s=sum_i q_(s,i)!=0` and `z_s=<q_s,W_s>`, P sends
+  `d_s=z_s-c_su_s` and V derives
+  `K_s=c_sr_s-Delta d_s=c_sw_s-Delta z_s=<q_s,k_s>`.
+
+  The resulting authenticated `z_s` claim has tag `c_sw_s`.  It must be the
+  identical handle consumed by GKR ProductClosure and handed to the policy-2
+  PCS opening against immutable `C_W`; a retag, a second correction or a
+  matching descriptor is not equivalent.  This exact lineage makes a forged
+  correction choose the same value the PCS must bind, while the typed
+  broadcast removes the `<q,e>=0` label kernel.  It therefore eliminates
+  `C_m`, hidden `Eval_m` and CAOLE without materializing labels, keys or
+  prefixes.  The Rust sign refinement is `Delta_code=-Delta_sem` under the
+  one existing Fp3 key.
+
+  For nonzero `c_s`, `d_s` and the V-only endpoint are weight-independent in
+  the ideal fresh-sVOLE carrier; the real malicious-DV claim remains open.
+  The illustrative honest zero-sum availability screen
+  `R_max*378*35/|Fp3|` is below `2^-158.3` and `credit:false`; a malicious
+  zero-sum challenge burns before any correction.  Reuse is forbidden because
+  `d_s/c_s-d_t/c_t` reveals an exact evaluation relation.  The registered
+  128/112-bit allocations still leave 95.4/79.4 lifetime bits; the privacy
+  relaxation is not used.
+
+  At illustrative `J_W=98/370`, charging `24J_W` additively gives
+  2,352/8,880 B.  With the known g141 subcodec, the conservative subtotal is
+  2,608,092/3,738,604 B, leaving 664,593/1,758,091 B below the 105% weight
+  targets.  This is payload-only `credit:false`; unknown framing must fit the
+  same residuals.  No second root, label vector, extra packed scan, codeword,
+  Fp3 wrapper or model-linear scratch is introduced.  Mac'n'Cheese, C-VOLE,
+  Reef, publicly auditable MPC and Dory provide adjacent chosen-input,
+  commitment-consistency, hidden-input and streaming-random-VOLE precedents,
+  not a drop-in.  Newly screened GSFC has hidden group-scalar output but a
+  power-string lower bound of `(2N-1)G1+2NG2`, about 35.712 GB/8.878 TB before
+  inputs, plus fresh-query linear verifier work, and fails
+  groups/SRS/direct-Fp3/setup.
+
+  The current Fp2 code demonstrates same-claim GKR-to-PCS lineage, but the
+  active C7 policy-2/g141 carrier has no direct-Fp3 authenticated-opening
+  refinement, verifier-enforced exact-coverage `BroadcastTag` relation or
+  compatible all-`c_s` phase barrier.
+  Complete codec, setup/refresh, one monotone scan, H100, 30/60-s VM, durable
+  state, real/AES PCG and multi-user rows remain false.  No calculator, code,
+  Lean theorem, benchmark, provider or pod action occurred.
+
+- **2026-09-01 — Owner opens the next C7 step under every original gate.**
+  The resource successor may minimize D122 and use new primary literature or
+  explicitly labelled inductive constructions.  It may not spend soundness,
+  certificate bytes, setup, an extra packed scan, model-linear scratch or a
+  provider exception.  Direct one-`Delta` Fp3, interactive `Q_FS=0`, at least
+  78 lifetime bits, one terminal per segment, complete 30/100-MB and 3x
+  targets (or preregistered 35/115-MB and 3.5x envelope), setup walls,
+  single-H100 fit, 30/60-s 31B VM attempt and full reserve/burn/anti-rollback
+  remain conjunctive.  This is analytic authority only; no implementation,
+  hardware, provider or pod work precedes a complete pass.
 
 - **2026-08-31 — `C7-CWBRIDGE-ENDPOINT-v0` closes the structural same-`W`
   defect without materializing prefix or verifier-key vectors.**  The accepted

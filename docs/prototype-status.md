@@ -25,8 +25,23 @@ Read `c4.1-secret-challenge-no-crs.md` next.
   work is authorized except recording, cleanup and teardown. Resume requires a
   new clean SHA/setup/connection/index/burn roots/endpoint and explicit owner
   GO; the repaired pre-setup gates must pass before setup.
-- **Completion.** Record this terminal result, retain the durable setup burn,
-  remove transients/build caches, stop the exact pod and verify termination.
+- **Completion.** Result checkpoint `326492d` is pushed. Transients and build
+  caches are removed, the durable setup burn is retained, and RunPod
+  `se0xye1llzc0h0` is verified `EXITED` with `runtime:null` and SSH
+  unreachable. Teardown is complete; no pod is authorized.
+
+- **2026-09-01 — C41SC1 fifth-attempt checkpoint and control-plane teardown
+  complete.** Failure/setup checkpoint
+  `326492d93bd228154bf067952de0e5169ba27e56` was pushed before teardown. No
+  provider transfer or producer existed. The pod had no generated weights,
+  Rust target or transfer artifacts and its Git worktree was clean at the
+  attempt SHA. Local `rust/target` and the complete external run root were
+  removed; the fresh setup authorization remains under its private durable burn
+  root. No request or challenge burn exists. RunPod `podStop` matched pod
+  `se0xye1llzc0h0` at `154.54.102.27:16671` and returned `EXITED`; a fresh
+  query returned `desiredStatus: EXITED` and `runtime: null`, while SSH was
+  unreachable. The immutable teardown record is
+  `c41sc1-control-plane-teardown-2026-09-01-326492d.json`.
 
 - **2026-09-01 — C41SC1 fifth fresh attempt terminal before provider
   transfer; pod artifact ordering violated the barrier.** Clean

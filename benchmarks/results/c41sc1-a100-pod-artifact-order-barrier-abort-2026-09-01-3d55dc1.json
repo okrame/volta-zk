@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "profile": "C41SC1-final-one-attempt-a100-v1",
+  "mode": "c41sc1-party-separated-e2e",
+  "status": "aborted_before_provider_transfer_pod_artifacts_missing_at_barrier_start",
+  "recorded_at": "2026-09-01T21:08:52+02:00",
+  "source_git_commit": "3d55dc1e366b338113039dcbf86beb1be71f0058",
+  "git_dirty_at_setup": false,
+  "git_dirty_at_abort": false,
+  "owner_authorization": {
+    "endpoint": "154.54.102.27:16671",
+    "one_response_only": true,
+    "selective_retry_allowed": false,
+    "attempt_consumed": true
+  },
+  "cloud": {
+    "provider": "RunPod",
+    "instance_id": "154.54.102.27:16671",
+    "container_hostname": "f18fc008329b",
+    "region": "owner-unspecified",
+    "image": "Ubuntu 24.04.3 LTS",
+    "driver_version": "580.126.16",
+    "cuda_version": "12.8",
+    "gpu_sku": "NVIDIA A100-SXM4-80GB",
+    "gpu_total_mib": 81920,
+    "gpu_free_mib_before_run": 81152,
+    "host_mem_total_kib": 2101189500,
+    "vcpus": 128,
+    "disk_free_bytes_before_run": 246944014336
+  },
+  "preflight": {
+    "source_sha_clean_and_exact": true,
+    "canonical_weight_checks_pass_on_debian": true,
+    "debian_release_bins_build_pass": true,
+    "a100_resource_admission_pass": true,
+    "pod_weight_and_golden_artifacts_ready_before_setup": false,
+    "provider_transfer_started": false
+  },
+  "setup": {
+    "record": "c41sc1-party-setup-2026-09-01-3d55dc1.json",
+    "response_index": 0,
+    "real_aes_pcg": true,
+    "typed_key_payload_bytes": 99532800,
+    "total_sub_correlations": 2040886,
+    "total_full_correlations": 227098,
+    "ordinary_sub_correlations": 1781814,
+    "ordinary_full_correlations": 227097,
+    "setup_traffic_bytes": 32145636,
+    "conditional_soundness_bits": 78.80929487391572,
+    "conditional_weight_zk_bits": 120.0170064253057,
+    "provider_bundle_bytes": 54208454,
+    "provider_bundle_blake3": "fdb7c25dc4eca5a16fa48b9cd82aa3158de228b7fa62d0a832f114913cfaf591",
+    "provider_transfer_verified": false,
+    "setup_authorization_burned": true
+  },
+  "attempt": {
+    "provider_bundle_consumed_by_producer": false,
+    "producer_started": false,
+    "issuer_invocations": 0,
+    "request_created": false,
+    "response_issued": false,
+    "certificates_produced": 0,
+    "public_artifacts_produced": 0,
+    "committing_verifier_run": false,
+    "selective_retry_performed": false
+  },
+  "gate_credit": {
+    "certificate_bytes": false,
+    "provider_online_bytes": false,
+    "prover_time": false,
+    "device_memory": false,
+    "verifier_time": false,
+    "verifier_memory": false,
+    "protocol_acceptance": false,
+    "e2e": false,
+    "session": false
+  },
+  "diagnosis": {
+    "class": "operator pre-setup pod artifact ordering failure",
+    "root_cause": "The pod was cloned and pinned cleanly, but its generated weight and golden artifacts were not created before the Debian setup started the continuous repository read-only barrier. Generating those ignored files inside the pod repository afterward would mutate repository content during the barrier. Transferring them would violate the registered flow in which only the one-use provider bundle crosses to A100.",
+    "protocol_failure": false,
+    "repair": "Make pod canonical weight export, golden generation, checksum validation and CUDA/release build an explicit pre-setup phase. Assert their completion on both hosts before the sole setup command begins.",
+    "resume_condition": "After local runbook repair and checkpoint, any successor requires a new clean SHA, setup, connection, response index, burn roots, pod endpoint and explicit owner GO."
+  }
+}

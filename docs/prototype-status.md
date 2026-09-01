@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E COMPLETE — FUNCTIONAL PASS / PROVER GATE FAIL; C41SC1 FOURTH ATTEMPT TERMINAL PRE-PRODUCER ABORT; NO RETRY AUTHORIZED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E COMPLETE — FUNCTIONAL PASS / PROVER GATE FAIL; C41SC1 FIFTH ATTEMPT TERMINAL PRE-TRANSFER ABORT; NO RETRY AUTHORIZED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,26 +10,46 @@ record; no external plan is authoritative.
 
 Read `c4.1-secret-challenge-no-crs.md` next.
 
-- **Disposition.** Clean `a9882fd` at `154.54.102.24:11577` is terminal
-  operator/design **FAIL** before producer start. The provider transfer passed,
-  but launching the record binary would have violated the repository barrier.
-- **Evidence versus credit.** Fresh real/AES setup and the repaired WebDAV
-  helper passed; the `54,208,454-B` provider crossed once in `7.061376 s` with
-  exact BLAKE3. No producer, request, response, proof or verifier exists, so
-  every E2E gate remains `credit:false`.
-- **Root cause and repair.** Party `p6_report --c41-e2e-record` had no external
-  report output. It now requires `--c41-report-output`: an absolute, fresh,
-  create-new file outside Git, validated before provider consumption.
-- **Authorization.** The prior attempt is consumed. The owner now authorizes
-  exactly one successor attempt at `154.54.102.27:16671`, after this authority
-  entry is a clean pushed checkpoint. It requires new setup, connection,
-  response index and burn roots; no prior material may be reused.
-- **Completion.** Failure/setup checkpoint `8be31b7` is pushed. Transients and
-  build caches are removed, setup burn is retained, and RunPod
-  `dmgiqek878tsj2` is verified `EXITED` with `runtime:null` and SSH
-  unreachable. The local fix passes all 16 `p6_report` tests: 15 passed and the
-  existing production-size test was ignored. Execute the frozen runbook from
-  the new clean SHA; any abort, rejection, crash or lost transfer is terminal.
+- **Disposition.** Clean `3d55dc1` at `154.54.102.27:16671` is terminal
+  operator **FAIL** before provider transfer. Pod weights/goldens were not
+  generated before setup began the continuous repository barrier.
+- **Evidence versus credit.** A100 admission and fresh real/AES setup passed
+  with exact counters and `32,145,636 B` setup traffic. No provider transfer,
+  producer, request, response, proof or verifier exists; every E2E gate is
+  `credit:false`.
+- **Root cause and repair.** The runbook put pod artifact generation/build inside the
+  producer step, after Debian setup had already started the two-host read-only
+  barrier. It now requires pod canonical export/goldens/checksums and CUDA/
+  release build before setup; producer phase permits only read-only asserts.
+- **Hard stop.** The setup and attempt are consumed. No retry or further pod
+  work is authorized except recording, cleanup and teardown. Resume requires a
+  new clean SHA/setup/connection/index/burn roots/endpoint and explicit owner
+  GO; the repaired pre-setup gates must pass before setup.
+- **Completion.** Record this terminal result, retain the durable setup burn,
+  remove transients/build caches, stop the exact pod and verify termination.
+
+- **2026-09-01 — C41SC1 fifth fresh attempt terminal before provider
+  transfer; pod artifact ordering violated the barrier.** Clean
+  `3d55dc1e366b338113039dcbf86beb1be71f0058` passed local canonical checks,
+  Debian verifier/setup-bin build, pod clean pin and A100 admission at
+  `154.54.102.27:16671`. Fresh real/AES setup measured exact
+  `2,040,886 / 227,098` total and `1,781,814 / 227,097` ordinary sub/full
+  correlations, `32,145,636 B` traffic, `99,532,800 B` lot payload and both
+  security values above 78 bits.
+
+  Before transfer, inspection found the pod lacked its generated weight/golden
+  artifacts. The frozen runbook scheduled their export and CUDA/release build
+  only in the producer phase, after setup had begun the continuous two-host
+  repository read-only barrier. Generating ignored files inside the pod repo at
+  that point would violate the barrier; transferring them would violate the
+  rule that only the provider bundle crosses to A100. No provider moved or was
+  consumed. No producer, request, issuer, response, proof, public artifact or
+  verifier exists. Under no-retry this consumes the attempt, with zero gate
+  credit and no protocol verdict. The runbook now makes pod weights, goldens,
+  checksums and builds explicit pre-setup prerequisites and forbids rebuilding
+  in producer phase. Raw records are
+  `c41sc1-party-setup-2026-09-01-3d55dc1.json` and
+  `c41sc1-a100-pod-artifact-order-barrier-abort-2026-09-01-3d55dc1.json`.
 
 - **2026-09-01 — Owner GO for one fresh output-path-repaired C41SC1 A100
   attempt.** The owner supplies endpoint `154.54.102.27:16671` and says GO.

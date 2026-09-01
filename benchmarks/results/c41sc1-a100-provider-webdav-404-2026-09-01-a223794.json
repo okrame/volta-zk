@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "profile": "C41SC1-final-one-attempt-a100-v1",
+  "mode": "c41sc1-party-separated-e2e",
+  "status": "failed_before_provider_transfer_webdav_directory_cache_404",
+  "recorded_at": "2026-09-01T12:40:32+02:00",
+  "source_git_commit": "a2237945e6447106d82f1453fe2d00a953b6436c",
+  "git_dirty_at_setup": false,
+  "git_dirty_after_setup": false,
+  "owner_authorization": {
+    "endpoint": "154.54.102.47:18140",
+    "one_response_only": true,
+    "selective_retry_allowed": false,
+    "attempt_consumed": true
+  },
+  "cloud": {
+    "provider": "RunPod",
+    "instance_id": "154.54.102.47:18140",
+    "container_hostname": "c3bbdedbe8c0",
+    "region": "owner-unspecified",
+    "image": "Ubuntu 24.04.3 LTS",
+    "driver_version": "580.126.16",
+    "cuda_version": "12.8",
+    "gpu_sku": "NVIDIA A100-SXM4-80GB",
+    "gpu_total_mib": 81920,
+    "gpu_free_mib_before_run": 81152,
+    "cpu_model": "AMD EPYC 7742 64-Core Processor",
+    "host_mem_total_kib": 2101188784,
+    "vcpus": 128
+  },
+  "preflight": {
+    "source_sha_clean_and_exact": true,
+    "canonical_weight_checks_pass": true,
+    "cuda_backend_build_pass": true,
+    "p6_release_build_pass": true,
+    "a100_resource_admission_pass": true,
+    "repository_write_barrier_pass": true
+  },
+  "setup": {
+    "record": "c41sc1-party-setup-2026-09-01-a223794.json",
+    "response_index": 0,
+    "real_aes_pcg": true,
+    "cells": 3110400,
+    "typed_key_payload_bytes": 99532800,
+    "total_sub_correlations": 2040886,
+    "total_full_correlations": 227098,
+    "ordinary_sub_correlations": 1781814,
+    "ordinary_full_correlations": 227097,
+    "setup_traffic_bytes": 32145636,
+    "conditional_soundness_bits": 78.80929487391572,
+    "conditional_weight_zk_bits": 120.0170064253057,
+    "provider_bundle_bytes": 54208454,
+    "provider_bundle_blake3": "ce8f911c2a420d7375c671171908b4e1268e8cf778b5fb54422571ec2ea4b4d2",
+    "provider_https_get_s": 0.494927,
+    "provider_http_status": 404,
+    "provider_actual_get_attempts": 1,
+    "provider_bytes_received": 0,
+    "provider_transfer_verified": false,
+    "verifier_lot_bytes": 99533074,
+    "verifier_lot_blake3": "a10b6c4466a80f7a4fd492da8ec8b55ea4c9ae13fb165f365ebe0a6e3447af71",
+    "model_setup_blake3": "3e1af24c5f0bc541ee9c05e5a309ca1efa4ce50946b5d185f47436aad0d5919f",
+    "verifier_bundle_bytes": 37055667,
+    "verifier_bundle_blake3": "c046950e21f168a10628b2a15d2fe070dbf4ab09b2661b1ceb1a43481047ae07",
+    "setup_authorization_burned": true
+  },
+  "private_message": {
+    "request_created": false,
+    "request_actual_uploads": 0,
+    "issuer_invocations": 0,
+    "challenge_store_created": false,
+    "response_issued": false,
+    "response_actual_downloads": 0,
+    "private_response_burned": false
+  },
+  "attempt": {
+    "provider_bundle_consumed_by_producer": false,
+    "producer_started": false,
+    "producer_reached_private_frontier": false,
+    "certificates_produced": 0,
+    "public_artifacts_produced": 0,
+    "committing_verifier_run": false,
+    "selective_retry_performed": false
+  },
+  "gate_credit": {
+    "certificate_bytes": false,
+    "provider_online_bytes": false,
+    "prover_time": false,
+    "device_memory": false,
+    "verifier_time": false,
+    "verifier_memory": false,
+    "protocol_acceptance": false,
+    "e2e": false,
+    "session": false
+  },
+  "diagnosis": {
+    "class": "operator transport sequencing primed an empty WebDAV directory cache",
+    "root_cause": "The authenticated root test cached an empty rclone WebDAV directory. The provider bundle was then moved directly into the served backing directory instead of being present before the first access or created through WebDAV, so the sole provider GET returned HTTP 404 while the local file remained intact.",
+    "protocol_failure": false,
+    "repair": "Require every served object to exist before the WebDAV server receives its first request, or create it through authenticated WebDAV PUT; never mutate the backing directory behind a running server after priming its directory cache.",
+    "repair_authorized": false,
+    "resume_condition": "Checkpoint this immutable failure and teardown. Any new attempt requires a new clean SHA, setup, connection, response index, burn roots, pod endpoint and explicit owner GO; no second GET is permitted for this attempt."
+  }
+}

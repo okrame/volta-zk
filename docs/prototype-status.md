@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E COMPLETE — FUNCTIONAL PASS / PROVER GATE FAIL; C41SC1 THIRD ATTEMPT TERMINAL TRANSFER FAIL — ZERO GATE CREDIT; CONTROL-PLANE STOP COMPLETE)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E COMPLETE — FUNCTIONAL PASS / PROVER GATE FAIL; C41SC1 THIRD ATTEMPT TERMINAL TRANSFER FAIL; TRANSPORT ROOT FIX PASS LOCALLY; NO POD AUTHORIZED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -19,8 +19,12 @@ Read `c4.1-secret-challenge-no-crs.md` next.
   `32,145,636 B` setup traffic and `99,532,800 B` lot payload. These are setup
   evidence only; every full-chain gate remains `credit:false`.
 - **Cause and repair.** A root probe primed rclone's empty directory cache,
-  then the provider file was moved behind the running server. The runbook now
-  requires objects to exist before first access or be created by WebDAV PUT.
+  then the provider file was moved behind the running server. The registered
+  helper now verifies and stages the provider into a fresh external root before
+  it starts WebDAV; every later object must use authenticated PUT.
+- **Checks.** `bash -n` passes. The local TLS/auth regression twice performed
+  the formerly failing root probe followed by provider GET with exact
+  byte/BLAKE3 equality, and rejected a non-empty root without moving source.
 - **Hard stop.** The one-attempt authorization is consumed. No retry, second
   GET, prior material or further pod contact is authorized except recording,
   cleanup and teardown. Resume requires a new clean SHA, setup, connection,
@@ -29,6 +33,26 @@ Read `c4.1-secret-challenge-no-crs.md` next.
   build caches are removed, durable setup burn is retained, and RunPod
   `zd9np3swa7qspq` is verified `EXITED` with `runtime:null` and SSH
   unreachable. Teardown is complete.
+
+- **2026-09-01 — C41SC1 WebDAV cache-order root fix complete locally; no pod
+  or retry authorized.** `scripts/serve_c41_webdav.sh` is now the sole
+  registered provider-service entrypoint. It requires absolute external paths,
+  a missing or empty `0700` serve root, exact expected length and BLAKE3, and
+  credentials outside Git. It moves the verified provider to mode `0600`
+  before `exec rclone serve webdav`, so no root request can cache an empty
+  backing directory. Once serving begins, the runbook permits later request,
+  response and public objects only through authenticated WebDAV PUT; direct
+  backing-directory writes are forbidden.
+
+  `scripts/check_c41_webdav_publish.sh` creates fresh TLS credentials and a
+  loopback server, executes the exact formerly failing order—root probe then
+  provider GET—and checks byte count and BLAKE3. It also proves fail-closed
+  behavior for a non-empty root and retains the unmoved source. `bash -n` and
+  two independent smoke executions returned `C41_WEBDAV_PUBLISH_PASS`;
+  `git diff --check` passes. This is local operator evidence only: the terminal
+  attempt remains immutable, every protocol/hardware gate stays false, no pod
+  was contacted and any new attempt still requires the full resume conditions
+  plus explicit owner GO.
 
 - **2026-09-01 — C41SC1 third-attempt checkpoint and control-plane teardown
   complete.** Failure/setup checkpoint

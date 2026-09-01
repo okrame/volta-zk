@@ -1,6 +1,6 @@
 # C7 — stateful authenticated linear-functional commitment
 
-**Status:** D123 opens the resource successor to D122 and D124 selects
+**Status:** D123 opens the resource successor to D122, and D124 selects
 `C7-BROADCAST-EXACT-ENDPOINT-v0`.  For each physical terminal, one independent
 pre-`q` direct-Fp3 correlation supplies a single prover tag `w_s`.  The typed
 operator source broadcasts it lazily, so `m_(s,i)=w_s` and the virtual keys
@@ -21,7 +21,12 @@ illustrative, and the complete
 codec/setup/one-scan/H100/VM/state rows remain `credit:false`.  The 128/112-bit
 allocations still leave 95.4/79.4 lifetime bits; no privacy relaxation is
 selected.  No executable line, provider or pod is authorized.  This document
-is the task-specific authority named by `prototype-status.md`.
+is the task-specific authority named by `prototype-status.md`.  D125 freezes
+the architecture charter, conservative contribution inventory, C4.1 roles and
+cost frequencies, weak-verifier and single-H100 profiles, and the staged E2E
+runway in Section 5.22.  It nominates—but does not open—the analytic
+`C7-DIRECT-FP3-AUTHBIND-v0` successor.  No evidence or implementation credit
+changes.
 
 Volta-ZK is a stateful designated-verifier proof architecture for
 private-weight autoregressive inference. Like modern public zkML systems, it
@@ -35,7 +40,11 @@ authenticated KV-cache transition.
 
 **Registered workload:** an accepted 100-token predecessor, followed by one
 50-token response and a 150-token successor, for both GPT-2 and the declared
-Gemma-class 31B screening envelope.
+Gemma-class 31B screening envelope.  D125 makes 31B the first optimization and
+kill-gate workload; GPT-2 small remains the minimum literature/regression
+baseline and every admission gate remains conjunctive across both.  The 31B
+point is not a named Gemma checkpoint until its exact variant and artifact
+manifest are frozen.
 
 ## 0. Decision, authority and hard stops
 
@@ -73,8 +82,9 @@ for `C7-CWBRIDGE-ENDPOINT-v0`; D122 records the Section 5.20 structural PASS
 and deliberately leaves certificate/setup/time/memory admission unopened.
 D123 opens that original-gate resource step; D124 selects the Section 5.21
 scaled-broadcast authenticated-claim shape and leaves the concrete direct-Fp3
-policy-2/g141 carrier fail-closed.  No Rust, Lean, CPU reference, H100/prover,
-provider or pod action is authorized.
+policy-2/g141 carrier fail-closed.  D125 freezes the operational profile and
+future-session runway in Section 5.22 without opening that session.  No Rust,
+Lean, CPU reference, H100/prover, provider or pod action is authorized.
 
 1. The immutable model, response trace and persistent cache are separate
    commitment planes.  "One opening" means one transcript-bound
@@ -140,7 +150,9 @@ provider or pod action is authorized.
 10. Fresh honest-DV `rho_i`, `beta` and `gamma`, each sampled after its exact
     committed prefix and serialized in the durable transcript, are selected.
     The selected protocol uses no Fiat--Shamir oracle (`Q_FS=0`); FS remains
-    quarantined, not a dormant uncounted transform.
+    quarantined, not a dormant uncounted transform.  D125 freezes direct Fp3
+    Fiat--Shamir only as a distinct post-carrier candidate; it cannot alter
+    this carrier baseline and requires a later explicit owner GO.
 11. No optimized SIMT kernel or GPU scaffold may exist: the historical executable CPU
     screen proves the online cost identity but does not pass the PCS distance
     and setup gates.
@@ -167,6 +179,10 @@ provider or pod action is authorized.
     5,400/5,940 seconds for the 31B envelope.  Refresh has distinct counters
     with the same initial numeric target/cap and no budget transfer.  R0.8 does
     not test or credit refresh; its caps remain registered for later work.
+17. The global operational vocabulary, party mapping, cost frequencies,
+    verifier machine class, H100 boundary and response-time definitions are
+    the D125 profile in Section 5.22.  Historical candidate-specific scopes
+    remain evidence only and do not override that profile for successors.
 
 The following are terminal R0 hard stops.  Until all are discharged there is
 no large prover implementation, production equivalence claim, provider/pod
@@ -792,8 +808,9 @@ it needs one frozen paired-RO prefix, two independent Fp3 challenges checking
 the same relation, and exact duplicate/shared response, path, MAC, scan and
 wire accounting.  Its proof-size/resource gate is false.  Neither FS form
 changes malicious-DV privacy or the root query budget.  R0.8 therefore retains
-`Q_FS=0`; reintroducing FS changes the statement and needs a later owner
-decision.
+`Q_FS=0`.  D125 names direct Fp3 FS only as the separate post-carrier
+`C7-FS-CLASSICAL-v0` candidate; opening it still requires an explicit future
+owner GO and all theorem/resource rows in Section 5.22.
 
 An abort at any point after reservation burns the slot, nonce, seed
 commitment, masks and every reserved correlation range.  It leaves the
@@ -4912,7 +4929,7 @@ The conjunctive disposition is:
 | complete certificate | target remains <=30 MB GPT-2 and <=min(100 MB,3x GPT-2), hence <=90 MB jointly for 31B; exploratory 35/115 MB and 3.5x remain conditional; unknown frames prevent credit |
 | setup | no `C_m`, label vector or extra persistent oracle; existing credit-false g141 floors remain 491,686,208/92,844,619,328 B against target/tolerance/envelope 496/520.8/744 MB and 123.3056/129.47088/184.9584 GB; 900/990-s and 5,400/5,940-s setup walls plus refresh remain open |
 | online scan and memory | adds only `O(J)` scalars to the required one monotone 248,000,000/61,652,800,000-B packed scan and no second scan, codeword, Fp3 wrapper or model-linear scratch; concrete opener and full peak rows remain open |
-| prover/verifier time | no full single-H100 inference-plus-proof row; 31B VM target/hard cap remains 30/60 s including lot preparation and proof read; no credit |
+| prover/verifier time | no complete `C7-P-H100-SXM80-v1` inference-plus-proof row; on `C7-V-WEAK-DEBIAN-v1`, `T_V_attempt=T_lot_prepare+T_proof_read_to_verdict` must meet the unchanged `<=30 s` C7 target and strict `<35 s` product ceiling; the old 60-s screen is diagnostic only; no credit |
 | state and production correlations | reserve/burn shape fixed, but the all-`c_s` phase barrier, durable CAS, full event census, real/AES PCG, `Q_root/Q_B/Q_KV/K_model/D_model` and multi-user composition remain unset |
 
 The 115-MB exploratory ceiling cannot be spent unless the actual, unpadded
@@ -4959,6 +4976,197 @@ no verifier-enforced relation proves `BroadcastTag` coverage, and the current
 GKR flow has no proved compatible all-`c_s` phase barrier.  Until those exist
 with the complete codec and state/resource census, no Rust/Lean protocol
 change, CPU prototype, H100, provider or pod action is authorized.
+
+### 5.22 R0.8l D125 operational freeze and staged E2E runway
+
+D125 records the owner's architecture, terminology, priority and machine
+confirmations.  It changes no protocol theorem, parameter, calculator, code or
+credit.  In particular `C7_CPU_REFERENCE_PASS=false` and
+`C7_POD_READY=false` remain fixed.
+
+No security parameter is relaxed: lifetime soundness remains at least 78 bits
+and the current 128/112-bit allocations retain the conditional 95.4/79.4-bit
+controls.  The previously permitted 70-bit privacy floor remains unselected
+and may be reconsidered only against a later exact resource blocker; it cannot
+repair a missing malicious/stateful theorem.
+
+#### Architecture charter and conservative contribution inventory
+
+The architecture paragraph at the top of this document is the frozen charter.
+Its “one batched PCS opening” means one response-wide, transcript-bound,
+multi-commitment ALFC/PCS invocation after all operator terminals have been
+stacked; it does not mean one physical terminal handle.  D124 conforms to that
+charter because its per-segment handles all enter the same response-wide batch,
+and it introduces neither a per-token proof nor a deferred prefix settlement.
+This is an architecture contract, not yet a complete malicious-DV or E2E
+security claim.
+
+Relative only to the primary literature screened in this design, the
+conservative internal inventory has six apparently original contribution
+families and zero complete C7 protocols validated E2E:
+
+| family | counted contribution boundary |
+| --- | --- |
+| causal response relation | one incremental causal response plus a hidden append-only authenticated K/V transition |
+| stateful policy 2 | connection/root/attempt budgets, reserve-before-output, burn, durable CAS and rollback/fork exclusion |
+| multi-plane ALFC | hidden W/B/KV terminals, one terminal per physical segment and one logical response-wide opening into the session MAC |
+| SPBT | the exact invertible streaming transform and complement identity retained after its carrier NO-GO |
+| CommittedFold | the exact prefix-to-label-to-endpoint factorization retained after its malicious same-`W` NO-GO |
+| same-`W` bridge | the single D122--D124 family culminating in exact scaled `BroadcastTag` claim lineage from GKR to `C_W` |
+
+GKR, VOLE, PCS, Fp3, Merkle trees, ordinary batching, parameter selections and
+NO-GO results are not counted.  This is a technical research inventory, not a
+patentability, exhaustive prior-art or independent novelty opinion.
+
+#### Global C4.1 party and frequency profile
+
+All successor work uses the following party names consistently:
+
+| C7 name | C4.1/VOLE role | machine boundary |
+| --- | --- | --- |
+| `P/R` | provider/prover and VOLE receiver; owns inference, private weights and prover tags | one eventual H100 prover |
+| `V/S` | user/designated verifier and VOLE sender; owns nonzero connection `Delta` and verifier keys | weak CPU verifier |
+
+Costs are never merged across these frequencies:
+
+| class | exact frequency and scope |
+| --- | --- |
+| `ModelOnboarding` | once per `(model, version)`; only model-global or `Delta`-independent preparation, with the initial-root work reported as a subrow |
+| `DVConnectionSetup` | once per `(connection_id, user/verifier, model, MAC_domain)`; establishes the connection-scoped nonzero Fp3 `Delta`, keys and domains independently of later root epochs |
+| `CapacitySetup(N_attempts)` | after `DVConnectionSetup`, once for exactly `N_attempts`; provisions exactly `N_attempts` connection-`Delta`-bound one-time slots/ranges, never accepted-response inventory |
+| `ResponseAttempt(id)` | every prompt/tentative response, including reject, abort, timeout and crash; durably assigns/reserves its provisioned ranges and receipt before the first dependent byte, and keeps inference, proof, lot preparation, verification and burn here |
+| `RootRefresh/Rotation` | every disclosed successor-root candidate/epoch after the initial root, with setup, cutover, failed candidate and refresh counters separate; it retains the connection `Delta` unless the connection is explicitly closed |
+| `Transfer(message,direction)` | every message, reported separately for `P->V` and `V->P`; it is not hidden in either party's compute time |
+
+Thus the dependency is
+`ModelOnboarding -> DVConnectionSetup -> CapacitySetup(N_attempts) ->
+ResponseAttempt*`.  Any capacity prepared before the verifier-specific
+`Delta` exists is merely separately counted model-global onboarding; it is not
+VOLE inventory for that connection.  No response-local fold, scan or lot may
+be relabelled setup.  If a rotation requires a fresh connection, it explicitly
+closes the old one, pays another `DVConnectionSetup` and is charged to
+`D_model`; a root epoch never silently resets `Delta` or a lifetime budget.
+
+`C7-V-WEAK-DEBIAN-v1` freezes the verifier reference class to this VM:
+Debian 13.5 (trixie), kernel `6.12.94+deb13-arm64`, AArch64, four online vCPUs
+and at most four verifier threads, 12,526,514,176 B total RAM, and no verifier
+GPU.  ASIMD/NEON, AES, PMULL and SHA instructions are allowed; no CPU model or
+frequency is inferred from the virtual host.  A valid measurement reports
+wall time, peak RSS/VmHWM and swap-I/O deltas, with zero swap-in/out during the
+measured interval.  Another host requires the registered paired remeasurement
+before its rate is quoted.
+
+For every 31B attempt,
+
+```text
+T_V_attempt = T_lot_prepare + T_proof_read_to_verdict.
+```
+
+The unchanged C7 admission target is `T_V_attempt<=30 s`.  The product ceiling
+is strictly `<35 s`; a result in `(30,35)` fails the original C7 target, and
+the historical `<=60 s` LogVOLE screen is diagnostic only for every successor.
+The few-KB folded-verifier-key objective remains uncredited until an exact
+serialized state census exists.
+
+`C7-P-H100-SXM80-v1` freezes one H100 SXM with 80,000,000,000 B nominal HBM as
+the only prover accelerator.  In the fully resident control, the packed 31B
+i16 envelope occupies 61,652,800,000 B (57.419 GiB) and leaves only
+18,347,200,000 B nominal (17.087 GiB) before CUDA/runtime state, activations,
+K/V and proof workspace; this arithmetic is not an established peak.
+Host RAM and disk may hold explicitly bounded, counted persistent setup and
+streaming buffers.  They may not hide a second packed-weight proof scan, a
+complete Fp3 wrapper/codeword, response-local `Theta(N)` scratch or spill,
+multi-GPU work, or per-attempt work reclassified as setup.  HBM/host peaks,
+disk I/O, H2D/D2H/D2D, synchronization and wall time are all counted.
+`T_P_attempt` is the critical response wall from inference start through proof
+durability, with inference, proof, measured overlap and every I/O component
+also reported separately.  D117's 76-GB/sidecar concessions are closed and do
+not transfer.
+
+The 31B envelope is optimized and screened first because it is the dominant
+kill gate.  GPT-2 small remains the minimum literature/regression case and
+growth denominator, so both profiles must still pass.  A real Gemma 31B run
+requires a frozen exact variant, weights, quantization and artifact manifest;
+`N=30,826,400,000` alone remains only the registered envelope.
+
+#### Challenge profiles
+
+The required carrier candidate must preserve the multi-round interactive
+order in Section 3.4 with `Q_FS=0`: each prover prefix precedes its fresh
+`rho_i`; then all canonical `q_s`, descriptors and handles are fixed; D126
+must place one fail-closed all-`c_s` barrier before every `d_s` and consuming
+ProductClosure; and the post-prefix `beta`, ALFC, `gamma`, settlement and
+durable verdict/CAS follow their registered order.  No compatible barrier,
+complete transcript theorem or durable-CAS composition is claimed yet.  The
+flow cannot be collapsed into one challenge after the first commitment
+without a new transcript theorem.
+
+After concrete carrier closure, a separate candidate named
+`C7-FS-CLASSICAL-v0` may be proposed under an explicit future owner GO.  It
+uses direct Fp3 transcript challenges and a global preregistered
+`Q_FS<=2^64`; the current `T=512` fixed-prefix control is 119.000 bits and
+`credit:false`.  Direct FS is the first candidate; paired FS is not selected.
+Designated verification remains operational because `Delta` and folded keys
+stay secret, but no strong deniability or non-transferability property is
+claimed.  Admission requires a canonical multi-round/adaptive ROM theorem,
+lifetime grinding scope, state/epoch/nonce/handle and abort/rollback binding,
+and exact nonce/hash/byte/work costs.  No small SIMD/SIMT constant is assumed
+before those rows are compiled and measured.
+
+#### Recommended next session and gated runway
+
+The recommended next session is the analytic-only
+`C7-DIRECT-FP3-AUTHBIND-v0` checkpoint (prospective D126).  D125 does not open
+it; the next owner instruction must explicitly do so.  That session should:
+
+1. trace the current same-claim lineage through `c7_fp3.rs`,
+   `c7_policy2_reference.rs`, `gemm_proof.rs`, ProductClosure and `batch.rs`;
+2. state a direct-Fp3 policy-2/g141 AuthBind API and theorem using the existing
+   one connection key with `Delta_code=-Delta_sem`;
+3. define verifier-reconstructed `BroadcastTag` provenance with exact,
+   disjoint live-range coverage, zero padding and no prover label vector;
+4. derive the complete transcript DAG and an `O(J log N)`-or-better all-`c_s`
+   barrier before the first correction, or return the exact dependency NO-GO;
+5. give the correction/retag/kernel/range/zero-sum/reuse/replay/crash/fork/
+   rollback attack matrix and the malicious-prover/malicious-DV hypotheses;
+6. derive the exact compiler/segment manifest and complete codec, certificate,
+   setup/refresh, one-scan, security/state and C4.1 GPT-2/31B census of bytes,
+   correlations, work, memory, I/O and both party walls, with every unknown
+   fail-closed; and
+7. return `ANALYTIC PASS`, `NO-GO` or `BLOCKED`, plus the smallest exact Rust
+   and Lean file map for a later implementation GO.
+
+That census evaluates the original 30/100-MB and 3x certificate targets,
+2.00/2.10x setup, 900/990-s and 5,400/5,940-s setup walls, one monotone scan,
+single-H100 fit, weak-verifier target and at least 78 lifetime bits before any
+conditional exploratory envelope.
+
+`ANALYTIC PASS` is permitted only if every original gate in that complete row
+is derived and passes.  Any required but unknown value is `BLOCKED`; a proved
+gate violation is `NO-GO`.  D126 may identify the smallest empirical seam
+needed to resolve a blocker, but it cannot treat that seam as evidence or
+authorize it.
+
+Retagging, a second correction or `Delta`, a clear tag/terminal/limb, a free
+label vector, incomplete `BroadcastTag` coverage, a verifier-`Theta(N)`
+barrier, a second source scan, full codeword/Fp3 wrapper, response-local
+model-linear storage, hidden frequency transfer or a missed original gate is
+an immediate NO-GO.  The session is read-only except for a separately approved
+design/ledger checkpoint; it runs no Cargo, Lean, benchmark, H100, provider or
+pod action and does not design Fiat--Shamir.
+
+Only a complete all-original-gate analytic PASS, recorded in the ledger, plus
+a new owner GO that explicitly revokes the current code hard stop may open a
+minimal local CPU conformance seam for the already-censused AuthBind,
+`BroadcastTag`, barrier, compiler/codec and mutation tests.  If empirical
+evidence is inherently required before such a PASS, D126 returns `BLOCKED`
+and requests that exact authority; D125 grants none.  The seam must then
+revalidate the census and establish the one-pass CPU reference.  SIMT/H100 can
+be proposed only after `C7_CPU_REFERENCE_PASS=true`; `C7_POD_READY=true`
+requires every security, wire, setup, VM, H100 and state row.  Pod contact and
+the smallest complete serialized GPT-2 E2E still require a further explicit
+owner GO; a later real-Gemma 31B E2E follows after its exact manifest is
+frozen, while 31B remains the optimization and kill-gate priority throughout.
 
 ## 6. Registered analytic screens
 
@@ -5040,6 +5248,13 @@ direct-Fp3 policy-2/g141 refinement, `BroadcastTag` compiler and every complete
 runtime/state row remain `credit:false`; document cross-links, capsule length,
 arithmetic consistency and `git diff --check` are the only checks.
 
+R0.8l likewise changes no calculator, Rust or Lean.  Section 5.22 freezes only
+the architecture/contribution boundary, global C4.1 roles and frequencies,
+31B-first priority, weak-verifier/single-H100 profiles, challenge separation
+and gated E2E runway.  Its checks are document cross-links, capsule length,
+machine/arithmetic consistency and `git diff --check`; it adds no protocol,
+timing, hardware, novelty or E2E credit and does not open prospective D126.
+
 ### 6.1 Models and common workload
 
 | Field | GPT-2 | Gemma-class 31B envelope |
@@ -5054,7 +5269,9 @@ arithmetic consistency and `git diff --check` are the only checks.
 
 The 31B point is an explicit screening envelope, not a claim about a named
 published checkpoint.  A real target must replace this configuration and
-rerun the script before it can receive credit.
+rerun the script before it can receive credit.  D125 screens and optimizes the
+31B envelope first, but GPT-2 small remains the minimum literature/regression
+baseline and growth denominator; admission remains conjunctive across both.
 
 For `R = 248.6`, any proof term `N^a` satisfying at most 3x growth obeys
 
@@ -5368,6 +5585,13 @@ read-only roofline             = (2*N) / 3.2e9 seconds
 | code/hash/operator workspace | not derived | not derived |
 | complete peak RSS/device memory | **not established** | **not established** |
 
+Under the D125 single-device fully resident control, the 31B packed source
+would consume 61,652,800,000 B of the H100 SXM's nominal 80,000,000,000 B HBM
+and leave 18,347,200,000 B before every CUDA, activation, K/V and proof
+allocation.  A host-streamed realization instead counts its peak, I/O and wall
+and cannot introduce a second proof scan or response-local `Theta(N)` spill.
+The complete device/host coexistence peak remains **not established**.
+
 The compute/boundary/K/V proxies used by the allocation caps are
 `353,894,400 / 460,800 / 2,764,800` cells for GPT-2 and
 `48,837,427,200 / 10,598,400 / 28,262,400` cells for the 31B envelope.  They
@@ -5376,7 +5600,7 @@ dependence executable.  The 106/378 terminal counts are illustrative and do
 not exist as a compiled schedule.
 
 This packed-source read-only floor is not prover time.  The complete symbolic
-time is
+unoverlapped time decomposition is
 
 ```text
 T_response
@@ -5395,6 +5619,13 @@ time-space sumcheck literature gives bounded RAM by repeated passes; it does
 not establish one pass and bounded memory simultaneously.  Any R1 schedule
 must report exact pass count, source/oracle bytes read, scratch bytes written,
 peak RSS/device use and bandwidth rooflines.
+
+The admission metric is instead the measured critical wall
+`T_P_attempt` from inference start through durable proof completion on that one
+H100.  Inference, proof-only work, their measured overlap, disk and host/device
+traffic, synchronization and durability are also reported as separate
+subcounters; the symbolic sum above cannot silently double-count overlap or
+exclude I/O.
 
 The 256-MB chunk is only a configurable source-stream target, not complete
 working memory.  The missing code/hash/operator rows are an explicit
@@ -5670,7 +5901,7 @@ future R1 journal design.
 | BLAKE3 fallback only | `R_root=512/8192`, global attempts `2^20`, `K_model=2048/128`, total seeds `4096/256`, model-wide `Q_mask_words=3,317,292,859,392/4,211,484,917,760`; complete target allocation is 86.407/86.063 bits and passes 78, but achieved terms remain nonnumeric/false |
 | KMAC unpromoted high-margin control | same confirmed global horizon/profile; frozen 64-KiB v1 codec; conditional ideal-permutation PRG sum 152.992/152.647 bits and conditional whole-privacy allocation 107.415 bits; multi-key reduction/fixed-permutation advantage/setup measurement missing, so unpromoted/false |
 | historical policy-3 salt screen | `Q_leaf=2^64`; not an active theorem cap |
-| challenge mode / `Q_FS` | fresh honest-DV post-prefix interactive / `0`; future FS selects neither primitive now—KMAC favors margin, BLAKE3 throughput only with tightly preregistered `Q_FS`; entropy delivery and transcript binding not instantiated |
+| challenge mode / `Q_FS` | carrier: fresh honest-DV post-prefix interactive / `0`; D125 names direct-Fp3 `C7-FS-CLASSICAL-v0` only as a post-carrier future candidate with global `Q_FS<=2^64`; primitive, ROM theorem, exact work/bytes and owner GO remain absent |
 | inherited unamplified strict-UD Fp2 bound, rate 1/2 `k0=4` | certifies 97.017/89.087 bits across all GPT-2/31B folds; 77.017/69.087 after `2^20`, before other terms; insufficient for admission, not a security upper bound |
 | algebraic closure | direct three-limb Goldilocks Fp3 selected; fixed-point schedules certify 160.011/153.173 response bits and 140.011/133.173 after `2^20` on this axis; Rust codec/KAT and the carrier-independent MAC equation seam pass, while PCS/PCG/VOLE refinement and all other bytes/work/security terms remain required |
 | hash / PCG / state / framing | allocated `2^-128 / 2^-128 / 2^-120 / 2^-128`; not yet derived |
@@ -5695,16 +5926,22 @@ paid by this 64-event arithmetic until a concrete adaptive t-query theorem and
 exact `Q_root/Q_B/Q_KV/K_model` values are registered.
 
 The arithmetic also does not survive an uncharged Fiat--Shamir grinding
-factor.  In particular one roughly 128-bit Fp2 challenge and `Q_FS=2^64`
-give only a roughly 64-bit direct ROM screen.  The registered 110-bit event
-allocation is therefore compatible with the selected fresh post-prefix
-verifier challenges.  A later amplified FS construction would need a new
-owner decision and must charge its work, multiplicity and bytes.
+factor.  The registered 110-bit event allocation is therefore compatible with
+the selected fresh post-prefix verifier challenges.  D125's later direct-Fp3
+candidate has a separate 119-bit fixed-prefix control at `Q_FS=2^64`, not a
+complete theorem.  It requires an explicit owner GO and must charge the whole
+multi-round adaptive grinding scope, work and bytes; paired amplification is
+not selected.
 
-### 6.8 Interactive challenges versus amplified Fiat--Shamir
+### 6.8 Historical Fp2 interactive-versus-amplified-FS control
 
-This is a soundness comparison, not a privacy hybrid.  Fix one complete
-pre-challenge transcript and suppose its nonzero RLC residual has at most
+This is a historical Fp2 soundness comparison, not the active Fp3 candidate
+selection and not a privacy hybrid.  D125 supersedes it for future selection
+with the direct-Fp3 table in Section 3.4: the first possible post-carrier
+candidate is direct FS at the 119-bit fixed-prefix screen, while paired FS is
+unselected.  The older control remains below to preserve its byte/work warning.
+Fix one complete pre-challenge transcript and suppose its nonzero RLC residual
+has at most
 `T` accepting challenges in `E=Fp2`.  With the current analytic cap `T=512`
 and `p=2^64-2^32+1`:
 
@@ -5740,7 +5977,7 @@ work and scan rows are `unknown` and fail closed.  This preserves the owner's
 proof-size concern: an asymptotically stronger probability is not permission
 to duplicate a large query transcript.
 
-The selected protocol remains interactive with `Q_FS=0`: it is simpler, has
+The selected carrier remains interactive with `Q_FS=0`: it is simpler, has
 about nine bits of event-level margin over the 110-bit allocation at this
 uncompiled `T` cap, and avoids both grinding and an uncounted second response.
 Connection composition still separately counts every challenge event and all
@@ -5816,6 +6053,12 @@ The focused command
 
 ### 8.1 Backend/control recommendation
 
+- **D125 OPERATIONAL PROFILE: FROZEN; NO NEW CREDIT.**  Section 5.22 is the
+  global authority for C4.1 parties/frequencies, 31B-first conjunctive
+  screening, `C7-V-WEAK-DEBIAN-v1`, one H100 SXM 80 GB, the `<=30 s` C7
+  verifier target plus strict `<35 s` product ceiling, interactive `Q_FS=0`
+  and the staged E2E runway.  Prospective analytic D126 still needs an
+  explicit owner GO.
 - **`C7-BROADCAST-EXACT-ENDPOINT-v0`: EXACT RESOURCE-SHAPE PASS; CONCRETE
   CARRIER FAIL-CLOSED.**  One pre-`q` correlation tag is broadcast lazily per
   terminal.  Scaling that same handle by `c=sum q` and correcting its input
@@ -5913,7 +6156,8 @@ The focused command
   active leaf correction for a generic dense fold, hence `Omega(N/n)` explicit
   ring-word work in its API.  A one-shot lot merely charges that work to
   `T_lot_prepare`.  The 31B foreign
-  control is 7,168.930 s online versus the 60-s VM hard cap.  D118 closes the
+  control is 7,168.930 s online versus that screen's then-active 60-s VM hard
+  cap.  D118 closes the
   screen; same-`W`, direct Fp3, malicious `Q_FS=0`, exact resources, H100 and
   stateful security also remain open.  All evidence is `credit:false`.
 - **`C7-SPBT-v0`: ALGEBRA RETAINED; CARRIER LINE CLOSED.**  Its
@@ -5962,7 +6206,9 @@ prefix factorization. D122 now closes that structural defect for the
 security-only `C7-CWBRIDGE-ENDPOINT-v0` relation.  D124 then replaces its
 generic `C_m + Eval_m + CAOLE` resource shape with the exact scaled-broadcast
 claim of Section 5.21, while leaving the direct-Fp3 policy-2/g141 carrier and
-complete resource row closed. No executable backend is active. SPBT,
+complete resource row closed. D125 freezes the Section 5.22 operational
+profile and future-session runway but does not open prospective D126. No
+executable backend is active. SPBT,
 Bolt's setup-size control, LogVOLE's succinct-wire control, the frontier
 memory geometry and the prefix/PCG endpoint algebra remain reusable evidence
 only and do not weaken any recorded rejection.
@@ -5971,8 +6217,9 @@ honest-DV (`Q_FS=0`) and logical `g=141`.  Setup retains its 2.00 target/2.10
 baseline, with a conditional exploratory 3x ceiling plus absolute disk,
 setup-wall and refresh-wall caps.  Proof wire retains 105% as target and may
 use a preregistered 125--150% cap only under complete 35/115-MB and 3.5x
-limits.  The four componentwise query-growth counts use the distinct 1.30 hard
-ceiling.  The
+limits; the original 30/100-MB and 3x targets are evaluated first and imply a
+joint 31B target of at most 90 MB.  The four componentwise query-growth counts
+use the distinct 1.30 hard ceiling.  The
 fail-closed readiness handoff is
 `docs/c7-r03-prover-pod-handoff.md`.  Preparation does not authorize a large
 prover/E2E, pod contact or pod execution.
@@ -5984,14 +6231,22 @@ Sections 5.18--5.19 show that scheduling alone cannot repair LogVOLE and an
 unbound endpoint correction cannot authenticate the committed input. Section
 5.21 closes that composition without `C_m` by making the scaled broadcast
 handle, GKR ProductClosure claim and PCS-authenticated `C_W` evaluation one
-object. The next proposal must concretely implement and prove that exact
-direct-Fp3 lineage plus `BroadcastTag` coverage in the policy-2/g141 carrier,
-then provide the one-monotone-scan schedule and separate per-root setup,
-per-attempt lot, complete 35/115-MB certificate, H100 prover, VM verifier,
-network, state and security rows. For 31B the verifier row includes both lot
-preparation and proof-read-to-verdict and must pass the 30/60-s target/hard
-cap. The tested Fp3 codec/MAC seam, exact prefix identity and scaled-broadcast
-theorem are carrier-independent and are not implementation authority.
+object. The next proposal must specify and prove, in the same analytic
+checkpoint defined by D125, the exact direct-Fp3 lineage, `BroadcastTag`
+coverage and all-`c_s` barrier in the policy-2/g141 carrier, plus the exact
+compiler/segment/codec and one-monotone-scan schedule and separate C4.1
+`ModelOnboarding`, `DVConnectionSetup`, `CapacitySetup(N_attempts)`,
+`ResponseAttempt`, rotation and per-message transfer rows, including the
+original complete 30/100-MB and 3x certificate targets before any conditional
+35/115-MB and 3.5x envelope, one-H100 prover, weak-VM verifier, network, state
+and security rows.  An unknown is `BLOCKED`, not PASS; only a complete
+all-original-gate PASS plus a later owner GO may revoke the code hard stop.
+For 31B,
+`T_V_attempt=T_lot_prepare+T_proof_read_to_verdict` on
+`C7-V-WEAK-DEBIAN-v1` must meet `<=30 s`; the strict product ceiling is
+`<35 s`, and 60 s is historical diagnostic evidence only.  The tested Fp3
+codec/MAC seam, exact prefix identity and scaled-broadcast theorem are
+carrier-independent and are not implementation authority.
 Fp3, 78 connection bits, setup 900/990 and
 5,400/5,940 seconds, separate untested refresh counters and computational
 per-root masks otherwise remain fixed.  Any successor must serialize and
@@ -6032,7 +6287,9 @@ closed.  Before an R1 proposal the successor must supply all of:
 
 The R0.5 policy-3 exhaustion remains documented in Section 5.4 and the
 append-only register.  No SIMT S3, prover or pod work follows from activating
-policy 2.  Interactive `Q_FS=0` is fixed; amplified FS remains quarantined.
+policy 2.  Interactive `Q_FS=0` is fixed.  Direct Fp3
+`C7-FS-CLASSICAL-v0` is only a post-carrier candidate requiring a future
+owner GO and complete ROM/resource rows; paired FS remains unselected.
 
 If those pass, R1 is the smallest complete production-equivalent case: two
 incremental responses, real finite PCG, only consumed profiles,
@@ -6125,6 +6382,12 @@ smallest complete serialized case before any larger component benchmark.
   not implementation or certificate credit: exact handle coverage, the
   direct-Fp3 policy-2/g141 carrier and all complete resource/state rows remain
   fail-closed.
+- R0.8l/D125 freezes operational definitions and the recommended analytic
+  successor only.  The six-family contribution inventory is explicitly
+  non-legal and non-E2E; C4.1 costs, weak verifier, single-H100, 31B-first
+  priority and interactive/future-FS separation gain no measured credit.
+  Prospective D126 remains unopened and no source, formalization or hardware
+  action occurred.
 - The proof-byte table is a target allocation calibrated to public component
   evidence, not a composed certificate derivation.  It is `credit:false` and
   is one reason Backend A remains NO-GO.
@@ -6262,3 +6525,4 @@ entry, but must retain its evidence and reason.
 | `C7-D122` / 2026-08-31 | `C7-CWBRIDGE-ENDPOINT-v0` structural same-`W` PASS; resource admission remains closed | Fix a hiding extractably binding `C_m` and the complete operator registry before `q`; prove `SameWOpBind`, which jointly extracts the unique `W` opening immutable `C_W`, the exact `m` opening `C_m`, and equality of every indexed operator weight/label/correction/handle read to those vectors. Privately commit to `z_s=<q_s,W_s>` and `M_s=<q_s,m_s>`, fix all descriptors, sample the ordinary `beta`, and homomorphically combine them to hidden `z,M`. One fresh scalar VOLE `w=r+Delta*u` plus proved corrections `d=z-u`, `e=M-w` lets V alone compute `K=e+r-Delta*d=M-Delta*z`. Defining unmaterialized `k_i=m_i-Delta W_i` gives every exact per-cell MAC and the beta-weighted `K=<q,k>`; canonical `X` prefixes follow uniquely from extracted `W` and never become protocol objects. A fold-only handle check remains unsound under `m+d`, `<q,d>=0`, so complete `C_m` oracle identity is load-bearing. Uniform P-local `m` makes the endpoint distribution weight-independent; `K` never reaches P and masks never cross attempts/domains. With 128-bit soundness components, the pessimistic `R_max*16J` union leaves 95.4 bits for 31B; direct-Fp3 algebra leaves over 163 bits. With 112-bit privacy components the same overcount leaves 79.4 bits; a later 104-bit option would leave 71.4 and is not selected. Mystique C2A supplies a full-vector static-malicious reference, vSQL the hiding committed-output pattern, and C-VOLE the committed-input pattern; none is misreported as a resource-valid drop-in. The theorem is dimension independent and closes D120's structural defect, but every concrete PCS/CAOLE codec, setup, proof byte, one-scan, H100, VM, network and memory row remains `credit:false`. The 115-MB/77.2-B phase requires a separate checkpoint; no implementation or hardware action follows. |
 | `C7-D123` / 2026-09-01 | owner opens the next C7 resource step under every original gate | The successor may minimize the D122 relation and screen new primary literature or explicitly labelled inductive constructions, but may not spend soundness, certificate bytes, setup, an extra packed scan, model-linear scratch or a provider exception. Direct one-`Delta` Fp3, interactive `Q_FS=0`, at least 78 lifetime bits, one terminal per segment, complete 30/100-MB and 3x targets (or preregistered 35/115-MB and 3.5x envelope), 900/990-s and 5,400/5,940-s setup walls, single-H100 fit, 30/60-s 31B VM attempt and the full reserve/burn/anti-replay state machine remain conjunctive. This authorizes an analytic resource checkpoint only; no implementation, hardware, provider or pod action precedes a complete pass. |
 | `C7-D124` / 2026-09-01 | select `C7-BROADCAST-EXACT-ENDPOINT-v0`; algebra/ideal-carrier-privacy/resource shape PASS, concrete carrier fail-closed | Reserve one independent Fp3 correlation `w_s=r_s+Delta*u_s` before `q` and make the only label source a verifier-enforced `BroadcastTag(h_s,range_s)`, so `m_i=w_s` and virtual `k_i=w_s-Delta W_i`. For `c_s=sum q_i!=0`, scale that same handle and send `d_s=z_s-c_su_s`, where `z_s=<q_s,W_s>`; V gets `K_s=c_sr_s-Delta d_s=c_sw_s-Delta z_s=<q_s,k_s>`. The resulting authenticated `z_s` claim has tag `c_sw_s` and must be the identical handle consumed by GKR ProductClosure and bound by the policy-2 PCS to immutable `C_W`; this exact lineage, not a retag or matching digest, closes malicious same-W and removes `C_m`, `Eval_m` and CAOLE. Canonical prefixes follow from extracted `W`. For nonzero `c_s`, the correction and endpoint are weight-independent in the ideal fresh-sVOLE carrier; the real malicious-DV claim remains open. The illustrative honest-zero availability screen is below `2^-158.3` and `credit:false`; malicious zero-sum challenges cause only a pre-correction burn. Reuse leaks exact linear relations and is forbidden. At illustrative `J_W=98/370`, an additive fail-closed charge is 2,352/8,880 B, leaving 664,593/1,758,091 B below the 105% weight targets; this is partial `credit:false` evidence. The current Fp2 code demonstrates same-claim GKR-to-PCS lineage, but C7 lacks the direct-Fp3 policy-2/g141 refinement, verifier-enforced exact-coverage `BroadcastTag` relation and compatible all-`c_s` phase barrier. Complete codec, setup/refresh, one-scan, H100, VM, production PCG and durable state rows therefore remain false; no privacy relaxation, code or hardware action follows. |
+| `C7-D125` / 2026-09-01 | freeze the operational profile and nominate—but do not open—the next analytic carrier checkpoint | The architecture charter remains response-wide/stateful with one logical batched PCS/ALFC opening into the session MAC and append-only authenticated K/V.  The conservative internal inventory records six apparently original families relative to the literature screened and zero complete E2E C7 protocols; it is not a patent/prior-art opinion.  Global C4.1 roles are `P/R` provider-prover/VOLE receiver and `V/S` user-DV/VOLE sender.  Costs are separated as `ModelOnboarding`, `DVConnectionSetup`, post-Delta `CapacitySetup(N_attempts)`, every `ResponseAttempt`, `RootRefresh/Rotation` and per-message/direction `Transfer`; no per-attempt work may become setup.  The weak verifier profile is Debian 13.5 AArch64, four vCPUs/threads, 12,526,514,176 B RAM and no GPU, with ASIMD/AES/PMULL/SHA allowed and zero swap-I/O during timed runs.  Its 31B `T_V_attempt=T_lot_prepare+T_proof_read_to_verdict` must retain the original `<=30 s` C7 target and strict `<35 s` product ceiling; 60 s is historical diagnostic evidence only for successors.  One H100 SXM 80 GB is the prover boundary; the fully resident control would leave 18,347,200,000 B nominal HBM after the 61,652,800,000-B packed 31B source, not establish a peak, while counted host/disk streaming cannot hide a second scan, full wrapper/codeword or response-local `Theta(N)` spill.  The 31B envelope is the first optimization/kill workload, but GPT-2 remains the minimum baseline and both pass conjunctively; a real Gemma target still needs an exact manifest.  The carrier remains interactive `Q_FS=0`.  Direct-Fp3 `C7-FS-CLASSICAL-v0` with global `Q_FS<=2^64` and a 119-bit fixed-prefix screen is only a post-carrier future candidate; paired FS is unselected and deniability is not claimed.  Prospective D126 `C7-DIRECT-FP3-AUTHBIND-v0` must analytically close same-handle Fp3 AuthBind, verifier-enforced `BroadcastTag`, the all-`c_s` barrier, malicious/stateful obligations and the full C4.1 census before any CPU seam.  This owner request prepares that handoff but is not a GO to execute it.  `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`; no Rust, Lean, benchmark, H100, provider or pod action or new credit follows. |

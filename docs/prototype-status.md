@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 BROADCAST-EXACT-ENDPOINT SHAPE PASS — CONCRETE POLICY-2/FP3 CARRIER HARD STOP / NO CODE)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 D125 OPERATIONAL PROFILE FROZEN — DIRECT-FP3 AUTHBIND NOMINATED / NOT OPEN / NO CODE)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,26 +11,99 @@ record; no external plan is authoritative.
 Read `c7-stateful-authenticated-lfc-design.md`; the R0.3 pod handoff remains
 inactive.
 
-- **Status.** D123 opens the original-gate resource step; D124 selects
-  `C7-BROADCAST-EXACT-ENDPOINT-v0`.  Algebra, ideal-carrier privacy and
-  resource shape pass; no executable carrier is active.
-- **Evidence/credit.** Per terminal, a pre-`q` Fp3 correlation broadcasts one
-  typed tag `m_i=w`.  For `c=sum q!=0`, its scaled chosen-input correction
-  `d=<q,W>-c*u` creates the exact authenticated claim with tag `c*w` and
-  V-only key `K=c*r-Delta*d=<q,k>`.  The identical handle must enter GKR
-  ProductClosure and the policy-2 opening against immutable `C_W`; this removes
-  `C_m`, `Eval_m` and CAOLE.  Canonical prefixes follow from the extracted
-  `W`.  At illustrative `J_W=98/370`, the conservative payload is
-  2,352/8,880 B and leaves 664,593/1,758,091 B below the 105% weight targets.
-  Conditional soundness/privacy controls retain 95.4/79.4 bits; no relaxation
-  is selected.  All resource evidence is `credit:false`.
-- **Hard stop and resume.** Direct-Fp3 policy-2/g141 authenticated opening,
-  verifier-enforced `BroadcastTag` coverage, a compatible all-`c_s` phase
-  barrier, complete codec/setup/scan/H100/VM/state and real-PCG rows are
-  missing.  No Rust, Lean, prototype, provider or pod;
-  `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`.  Resume requires those
-  concrete rows under every original C7 gate.  Current checks are capsule
-  length, D123/D124 cross-links, arithmetic consistency and document diff.
+- **Status.** D124's exact scaled-broadcast endpoint retains algebra,
+  ideal-carrier privacy and partial resource-shape PASS. D125 freezes the
+  architecture charter, six-family conservative contribution inventory, C4.1
+  roles/frequencies, 31B-first conjunctive priority, weak-verifier/H100
+  profiles and staged E2E runway. It adds no protocol or measured credit.
+- **Evidence/credit.** One pre-`q` Fp3 handle per terminal gives
+  `d=<q,W>-c*u` and V-only `K=c*r-Delta*d=<q,k>` for `c=sum q!=0`; the same
+  claim must cross GKR ProductClosure and policy-2 AuthBind to immutable
+  `C_W`. Illustrative additions remain 2,352/8,880 B with
+  664,593/1,758,091 B target residual; 95.4/79.4-bit controls remain
+  conditional and `credit:false`.
+- **Frozen operation.** `P/R` is provider/prover on one H100 SXM 80 GB;
+  `V/S` is the Debian 13.5 AArch64 four-vCPU weak verifier. Costs use
+  onboarding, connection, post-Delta `CapacitySetup(N_attempts)`,
+  attempt, rotation and directional-transfer frequencies. Verifier admission
+  remains `<=30 s`, product ceiling `<35 s`; 60 s is historical diagnostic.
+  Carrier challenges remain interactive `Q_FS=0`; future direct-Fp3 FS is a
+  separate unopened profile.
+- **Hard stop/resume.** Direct-Fp3 policy-2/g141 AuthBind, verifier-enforced
+  `BroadcastTag`, all-`c_s` barrier and complete original codec/setup/scan/
+  security/state/VM/H100 rows are missing. Prospective analytic D126 is
+  nominated, not opened. No Rust, Lean, benchmark, provider or pod;
+  `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`. Checks: D125
+  cross-links, capsule length, machine/arithmetic consistency and document
+  diff.
+
+- **2026-09-01 — D125 freezes the C7 operational profile and recommends, but
+  does not open, the direct-Fp3 carrier-closure session.**  The architecture
+  charter remains response-wide and stateful: one causal response, one
+  logical batched multi-commitment PCS/ALFC invocation into the session
+  VOLE-MAC, and one append-only authenticated K/V transition, with neither
+  per-token proof instances nor deferred prefix settlement.  D124 conforms to
+  that charter but is not a complete malicious-DV or E2E guarantee.
+
+  Relative only to primary literature screened so far, the conservative
+  internal inventory counts six apparently original families: the causal
+  response/KV relation; policy-2 reserve/burn/CAS lifecycle; hidden multi-plane
+  one-terminal ALFC; SPBT algebra; CommittedFold prefix factorization; and the
+  single D122--D124 same-`W` bridge family.  It counts zero complete C7 systems
+  validated E2E and is not a patentability or exhaustive prior-art opinion.
+
+  Global C4.1 roles are now `P/R` provider-prover/VOLE receiver and `V/S`
+  user-DV/VOLE sender.  Costs are separated as `ModelOnboarding`,
+  `DVConnectionSetup`, connection-`Delta`-dependent
+  `CapacitySetup(N_attempts)`, every `ResponseAttempt` including aborts,
+  `RootRefresh/Rotation`, and each directional transfer message.  Capacity
+  VOLE follows connection setup; no response-local scan, fold or lot may be
+  moved into setup.
+
+  `C7-V-WEAK-DEBIAN-v1` is Debian 13.5, kernel
+  `6.12.94+deb13-arm64`, AArch64, four online vCPUs/threads,
+  12,526,514,176 B RAM and no verifier GPU; ASIMD/NEON, AES, PMULL and SHA are
+  allowed.  Timed runs must report peak RSS/VmHWM and have zero swap-I/O delta;
+  another host needs a paired remeasurement.  For 31B,
+  `T_V_attempt=T_lot_prepare+T_proof_read_to_verdict` retains the original
+  `<=30 s` C7 target and strict `<35 s` product ceiling.  The old 60-s
+  LogVOLE cap remains historical diagnostic evidence and cannot admit a
+  successor.
+
+  `C7-P-H100-SXM80-v1` permits exactly one H100 SXM with
+  80,000,000,000 B nominal HBM for inference plus proof.  The fully resident
+  control places the 61,652,800,000-B packed i16 31B envelope in HBM and leaves
+  18,347,200,000 B before runtime, activations, K/V and proof state; this is
+  not an established peak.  Host RAM/disk is allowed only as
+  bounded counted setup/staging and cannot hide a second packed scan, a full
+  Fp3 wrapper/codeword, response-local model-linear spill or another GPU.
+  Every HBM/host peak, disk byte, H2D/D2H/D2D transfer, synchronization and
+  critical response wall is charged.  The 31B envelope is optimized and
+  killed first; GPT-2 small remains the minimum literature/regression and
+  growth baseline, and both gates remain conjunctive.  A real Gemma 31B run
+  still needs an exact variant and artifact manifest.
+
+  The carrier stays multi-round interactive with `Q_FS=0`; the all-`c_s`
+  check must occur after canonical queries/handles are fixed and before any
+  correction.  Soundness remains at least 78 lifetime bits; the current
+  79.4-bit conditional privacy control is retained and the permitted 70-bit
+  floor is unselected.  A separate post-carrier `C7-FS-CLASSICAL-v0` may later
+  use direct Fp3 with global `Q_FS<=2^64`; its 119-bit fixed-prefix screen is
+  `credit:false`, paired FS is unselected, and no deniability claim is made.
+  It still needs an explicit owner GO, a multi-round/adaptive ROM theorem and
+  complete state/byte/work accounting.
+
+  The recommended next session is prospective D126
+  `C7-DIRECT-FP3-AUTHBIND-v0`: analytically trace same-handle ProductClosure to
+  PCS, specify direct-Fp3/g141 AuthBind with `Delta_code=-Delta_sem`, prove
+  verifier-reconstructed exact-coverage `BroadcastTag`, derive an
+  `O(J log N)`-or-better all-`c_s` barrier, close the malicious/stateful attack
+  matrix and compile the exact compiler/codec plus every original-gate C4.1
+  row for both models.  An unknown is `BLOCKED`, not PASS.  It returns
+  `ANALYTIC PASS`, `NO-GO` or `BLOCKED` before code.  This request nominates
+  that session but is not its owner GO.  No Rust, Lean, benchmark, H100,
+  provider or pod action occurred; `C7_CPU_REFERENCE_PASS=false` and
+  `C7_POD_READY=false`.
 
 - **2026-09-01 — `C7-BROADCAST-EXACT-ENDPOINT-v0` passes exact algebra,
   ideal-carrier privacy and resource shape, but complete C7 remains

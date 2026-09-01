@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E COMPLETE — FUNCTIONAL PASS / PROVER GATE FAIL; C41SC1 THIRD ATTEMPT TERMINAL TRANSFER FAIL; TRANSPORT ROOT FIX PASS LOCALLY; NO POD AUTHORIZED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E COMPLETE — FUNCTIONAL PASS / PROVER GATE FAIL; C41SC1 TRANSPORT ROOT FIX PASS; ONE FRESH A100 ATTEMPT OWNER-AUTHORIZED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,29 +10,37 @@ record; no external plan is authoritative.
 
 Read `c4.1-secret-challenge-no-crs.md` next.
 
-- **Disposition.** The sole clean `a223794` attempt at
-  `154.54.102.47:18140` is terminal operator **FAIL** before provider transfer.
-  Its only provider GET returned HTTP 404; no producer, request, response,
-  proof or verifier run exists.
-- **Evidence versus credit.** Canonical preflight, CUDA build and fresh
-  real/AES setup passed: exact `2,040,886 / 227,098` correlations,
-  `32,145,636 B` setup traffic and `99,532,800 B` lot payload. These are setup
-  evidence only; every full-chain gate remains `credit:false`.
-- **Cause and repair.** A root probe primed rclone's empty directory cache,
-  then the provider file was moved behind the running server. The registered
-  helper now verifies and stages the provider into a fresh external root before
-  it starts WebDAV; every later object must use authenticated PUT.
-- **Checks.** `bash -n` passes. The local TLS/auth regression twice performed
-  the formerly failing root probe followed by provider GET with exact
-  byte/BLAKE3 equality, and rejected a non-empty root without moving source.
-- **Hard stop.** The one-attempt authorization is consumed. No retry, second
-  GET, prior material or further pod contact is authorized except recording,
-  cleanup and teardown. Resume requires a new clean SHA, setup, connection,
-  index, burn roots, endpoint and explicit owner GO.
-- **Completion.** Failure/setup checkpoint `1c8b89a` is pushed. Transients and
-  build caches are removed, durable setup burn is retained, and RunPod
-  `zd9np3swa7qspq` is verified `EXITED` with `runtime:null` and SSH
-  unreachable. Teardown is complete.
+- **Disposition.** C41SC1 remains active under
+  `c4.1-secret-challenge-no-crs.md`. All prior attempts are immutable **FAIL**.
+  The owner authorizes exactly one fresh no-retry A100 attempt at
+  `154.54.102.24:11577` after this GO is a clean pushed checkpoint.
+- **Completed evidence versus credit.** The WebDAV root fix is local only:
+  `serve_c41_webdav.sh` stages and verifies the provider before server start;
+  its TLS/auth root-probe regression passes. No new protocol or hardware gate
+  has credit.
+- **Checks.** Clean `3d65569`, `bash -n`, repeated cache-order smoke and
+  `git diff --check` pass. Local `rust/target` is absent and 68 GiB is free.
+- **Authorization and hard stop.** Use one new setup, connection, response
+  index and burn roots. Use the registered provider-service helper and PUT for
+  every later object. No prior material, selective retry or component credit.
+  Do not contact the pod until this authority update is clean and pushed.
+- **Completion.** Run once through committing verifier or terminal failure,
+  stage evidence outside Git until the barrier releases, checkpoint, remove
+  transients while retaining burns, stop the pod and verify termination.
+
+- **2026-09-01 — Owner GO for one fresh transport-repaired C41SC1 A100
+  attempt.** The owner supplies endpoint `154.54.102.24:11577` and says GO.
+  After this authority entry is a clean pushed checkpoint, execute exactly one
+  fresh setup, connection, response index and private-challenge flow under
+  `c4.1-sc1-e2e-runbook.md`. The initial provider service must be launched only
+  through `scripts/serve_c41_webdav.sh`, which stages the verified object before
+  the first WebDAV request; every later object must enter via authenticated
+  PUT. Git-visible content on both hosts remains read-only from setup through
+  committing verification or irrevocable terminal abort. Prior setup,
+  correlations, indices, requests and burn roots are forbidden. Any abort,
+  rejection, crash or lost transfer consumes this attempt; no retry or
+  component credit is authorized. Record every outcome, checkpoint, clean
+  transients, stop the pod and verify it is unreachable.
 
 - **2026-09-01 — C41SC1 WebDAV cache-order root fix complete locally; no pod
   or retry authorized.** `scripts/serve_c41_webdav.sh` is now the sole

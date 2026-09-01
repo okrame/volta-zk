@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E COMPLETE — FUNCTIONAL PASS / PROVER GATE FAIL; C41SC1 TRANSPORT ROOT FIX PASS; ONE FRESH A100 ATTEMPT OWNER-AUTHORIZED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E COMPLETE — FUNCTIONAL PASS / PROVER GATE FAIL; C41SC1 FOURTH ATTEMPT TERMINAL PRE-PRODUCER ABORT; NO RETRY AUTHORIZED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,23 +10,45 @@ record; no external plan is authoritative.
 
 Read `c4.1-secret-challenge-no-crs.md` next.
 
-- **Disposition.** C41SC1 remains active under
-  `c4.1-secret-challenge-no-crs.md`. All prior attempts are immutable **FAIL**.
-  The owner authorizes exactly one fresh no-retry A100 attempt at
-  `154.54.102.24:11577` after this GO is a clean pushed checkpoint.
-- **Completed evidence versus credit.** The WebDAV root fix is local only:
-  `serve_c41_webdav.sh` stages and verifies the provider before server start;
-  its TLS/auth root-probe regression passes. No new protocol or hardware gate
-  has credit.
-- **Checks.** Clean `3d65569`, `bash -n`, repeated cache-order smoke and
-  `git diff --check` pass. Local `rust/target` is absent and 68 GiB is free.
-- **Authorization and hard stop.** Use one new setup, connection, response
-  index and burn roots. Use the registered provider-service helper and PUT for
-  every later object. No prior material, selective retry or component credit.
-  Do not contact the pod until this authority update is clean and pushed.
-- **Completion.** Run once through committing verifier or terminal failure,
-  stage evidence outside Git until the barrier releases, checkpoint, remove
-  transients while retaining burns, stop the pod and verify termination.
+- **Disposition.** Clean `a9882fd` at `154.54.102.24:11577` is terminal
+  operator/design **FAIL** before producer start. The provider transfer passed,
+  but launching the record binary would have violated the repository barrier.
+- **Evidence versus credit.** Fresh real/AES setup and the repaired WebDAV
+  helper passed; the `54,208,454-B` provider crossed once in `7.061376 s` with
+  exact BLAKE3. No producer, request, response, proof or verifier exists, so
+  every E2E gate remains `credit:false`.
+- **Root cause.** Party `p6_report --c41-e2e-record` unconditionally writes its
+  JSON under compiled `benchmarks/results` and has no external report-output
+  argument, conflicting with the continuous Git-read-only runbook.
+- **Hard stop.** The attempt is consumed. No retry, prior material or further
+  pod work is authorized except recording, cleanup and teardown. Resume needs
+  a tested external create-new report output, new clean SHA/setup/connection/
+  index/burn roots/endpoint and explicit owner GO.
+- **Completion.** Publish immutable records, checkpoint, clean while retaining
+  setup burn, stop the pod and verify termination; then finish the local fix.
+
+- **2026-09-01 — C41SC1 fourth fresh attempt terminal pre-producer abort;
+  WebDAV repair validated, result-output barrier gap blocks launch.** Clean
+  `a9882fd163d1b30af564f80cc2fe3151e15a7131` passed canonical golden/weights,
+  CUDA build, A100 admission and fresh real/AES setup on
+  `154.54.102.24:11577`. Setup measured exact `2,040,886 / 227,098` total and
+  `1,781,814 / 227,097` ordinary sub/full correlations, `32,145,636 B` traffic,
+  `99,532,800 B` lot payload and security above 78 bits. The registered helper
+  staged the provider before server start; the first root probe saw it, and the
+  sole `54,208,454-B` GET returned HTTP 200 in `7.061376 s` with exact BLAKE3
+  `7495ef60...244e70`. This validates the WebDAV cache-order repair.
+
+  Before producer launch, source inspection showed that party
+  `p6_report --c41-e2e-record` unconditionally creates its JSON in compiled
+  `benchmarks/results`, while the load-bearing barrier requires both repos to
+  remain read-only until committing verification. No external report-output
+  option exists, and moving the file afterward would still violate the
+  continuous barrier. The producer was therefore not started; it did not
+  consume the verified provider. No request, issuer, response, proof, public
+  artifact or verifier exists. Under no-retry this abort consumes the attempt;
+  all E2E gates remain false and this is not a protocol verdict. Raw records are
+  `c41sc1-party-setup-2026-09-01-a9882fd.json` and
+  `c41sc1-a100-producer-result-output-barrier-abort-2026-09-01-a9882fd.json`.
 
 - **2026-09-01 — Owner GO for one fresh transport-repaired C41SC1 A100
   attempt.** The owner supplies endpoint `154.54.102.24:11577` and says GO.

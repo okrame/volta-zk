@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "profile": "C41SC1-final-one-attempt-a100-v1",
+  "mode": "c41sc1-party-separated-e2e",
+  "status": "aborted_before_producer_result_output_would_violate_repository_barrier",
+  "recorded_at": "2026-09-01T18:55:20+02:00",
+  "source_git_commit": "a9882fd163d1b30af564f80cc2fe3151e15a7131",
+  "git_dirty_at_setup": false,
+  "git_dirty_at_abort": false,
+  "owner_authorization": {
+    "endpoint": "154.54.102.24:11577",
+    "one_response_only": true,
+    "selective_retry_allowed": false,
+    "attempt_consumed": true
+  },
+  "cloud": {
+    "provider": "RunPod",
+    "instance_id": "154.54.102.24:11577",
+    "container_hostname": "867ffae9d066",
+    "region": "owner-unspecified",
+    "image": "Ubuntu 24.04.3 LTS",
+    "driver_version": "580.126.16",
+    "cuda_version": "12.8",
+    "gpu_sku": "NVIDIA A100-SXM4-80GB",
+    "gpu_total_mib": 81920,
+    "gpu_free_mib_before_run": 81152,
+    "cpu_model": "AMD EPYC 7742 64-Core Processor",
+    "host_mem_total_kib": 2101189500,
+    "vcpus": 128
+  },
+  "preflight": {
+    "source_sha_clean_and_exact": true,
+    "canonical_weight_checks_pass": true,
+    "cuda_backend_build_pass": true,
+    "p6_release_build_pass": true,
+    "a100_resource_admission_pass": true,
+    "repository_write_barrier_pass": true
+  },
+  "setup": {
+    "record": "c41sc1-party-setup-2026-09-01-a9882fd.json",
+    "response_index": 0,
+    "real_aes_pcg": true,
+    "typed_key_payload_bytes": 99532800,
+    "total_sub_correlations": 2040886,
+    "total_full_correlations": 227098,
+    "ordinary_sub_correlations": 1781814,
+    "ordinary_full_correlations": 227097,
+    "setup_traffic_bytes": 32145636,
+    "conditional_soundness_bits": 78.80929487391572,
+    "conditional_weight_zk_bits": 120.0170064253057,
+    "provider_bundle_bytes": 54208454,
+    "provider_bundle_blake3": "7495ef60e67af1680fabcc5f5a25e75e6e481ad27e19610bafb30330df244e70",
+    "provider_https_get_s": 7.061376,
+    "provider_http_status": 200,
+    "provider_actual_gets": 1,
+    "provider_transfer_verified": true,
+    "provider_service_helper_used": true,
+    "provider_visible_on_first_root_probe": true,
+    "verifier_lot_bytes": 99533074,
+    "verifier_lot_blake3": "ccbbf8761146eaf8a15ce5996d009e6cfd73c4b61d0e3e1f6e6a87c79bef2091",
+    "model_setup_blake3": "3e1af24c5f0bc541ee9c05e5a309ca1efa4ce50946b5d185f47436aad0d5919f",
+    "verifier_bundle_blake3": "0ded44e1c326e70f4f33fbf08b82bb1138b959f46cad8debfd5bacf1b531c4f7",
+    "setup_authorization_burned": true
+  },
+  "private_message": {
+    "request_created": false,
+    "issuer_invocations": 0,
+    "challenge_store_created": false,
+    "response_issued": false,
+    "private_response_burned": false
+  },
+  "attempt": {
+    "provider_bundle_consumed_by_producer": false,
+    "producer_started": false,
+    "producer_reached_private_frontier": false,
+    "certificates_produced": 0,
+    "public_artifacts_produced": 0,
+    "committing_verifier_run": false,
+    "selective_retry_performed": false
+  },
+  "gate_credit": {
+    "certificate_bytes": false,
+    "provider_online_bytes": false,
+    "prover_time": false,
+    "device_memory": false,
+    "verifier_time": false,
+    "verifier_memory": false,
+    "protocol_acceptance": false,
+    "e2e": false,
+    "session": false
+  },
+  "diagnosis": {
+    "class": "operator runbook and producer result-output contract conflict",
+    "root_cause": "The repaired runbook requires Git-visible content to remain read-only through committing verification and says the A100 JSON remains external. The production p6_report --c41-e2e-record path nevertheless unconditionally creates its JSON under the compiled benchmarks/results directory and has no external report-output option. Launching it would therefore violate the load-bearing barrier after consuming the provider and private response.",
+    "protocol_failure": false,
+    "webdav_root_fix_validated": true,
+    "repair": "Add a C41SC1-only absolute external create-new report-output argument, require it in party mode, retain the existing append-only repository default for other record modes, and test that party mode cannot target the repository.",
+    "repair_authorized": true,
+    "resume_condition": "Complete and checkpoint the local output-path repair. Any new attempt still requires a new clean SHA, setup, connection, response index, burn roots, pod endpoint and explicit owner GO."
+  }
+}

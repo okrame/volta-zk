@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "profile": "C41SC1-party-separated-real-AES-v1",
+  "git_sha": "a9882fd163d1b30af564f80cc2fe3151e15a7131",
+  "git_dirty": false,
+  "real_aes_pcg": true,
+  "response_index": 0,
+  "cells": 3110400,
+  "seed_rows": 253,
+  "total_sub_corrs": 2040886,
+  "total_full_corrs": 227098,
+  "ordinary_sub_corrs": 1781814,
+  "ordinary_full_corrs": 227097,
+  "model_initialization_wall_s": 12.336912779,
+  "pcg_setup_wall_s": 4.803419745,
+  "typed_setup_wall_s": 0.032858791,
+  "verifier_lot_materialize_wall_s": 12.36493495,
+  "materialized_verifier_lot_payload_bytes": 99532800,
+  "setup_comm_bytes": 30070682,
+  "typed_setup_comm_bytes": 2074954,
+  "conditional_soundness_bits": 78.80929487391572,
+  "conditional_weight_zk_bits": 120.0170064253057,
+  "artifacts": [
+    {
+      "name": "provider.bundle",
+      "bytes": 54208454,
+      "blake3": "7495ef60e67af1680fabcc5f5a25e75e6e481ad27e19610bafb30330df244e70",
+      "secret": true
+    },
+    {
+      "name": "verifier-lot.bin",
+      "bytes": 99533074,
+      "blake3": "ccbbf8761146eaf8a15ce5996d009e6cfd73c4b61d0e3e1f6e6a87c79bef2091",
+      "secret": true
+    },
+    {
+      "name": "model-setup.bin",
+      "bytes": 234,
+      "blake3": "3e1af24c5f0bc541ee9c05e5a309ca1efa4ce50946b5d185f47436aad0d5919f",
+      "secret": false
+    },
+    {
+      "name": "verifier.bundle",
+      "bytes": 37055667,
+      "blake3": "0ded44e1c326e70f4f33fbf08b82bb1138b959f46cad8debfd5bacf1b531c4f7",
+      "secret": true
+    }
+  ]
+}

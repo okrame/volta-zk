@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E COMPLETE — FUNCTIONAL PASS / PROVER GATE FAIL; C41SC1 THIRD ATTEMPT TERMINAL TRANSFER FAIL — ZERO GATE CREDIT; NO RETRY AUTHORIZED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E COMPLETE — FUNCTIONAL PASS / PROVER GATE FAIL; C41SC1 THIRD ATTEMPT TERMINAL TRANSFER FAIL — ZERO GATE CREDIT; CONTROL-PLANE STOP COMPLETE)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -25,9 +25,24 @@ Read `c4.1-secret-challenge-no-crs.md` next.
   GET, prior material or further pod contact is authorized except recording,
   cleanup and teardown. Resume requires a new clean SHA, setup, connection,
   index, burn roots, endpoint and explicit owner GO.
-- **Completion.** Append-only failure/setup records are staged; checkpoint
-  them, remove transients while retaining durable setup burn, stop the pod and
-  verify termination.
+- **Completion.** Failure/setup checkpoint `1c8b89a` is pushed. Transients and
+  build caches are removed, durable setup burn is retained, and RunPod
+  `zd9np3swa7qspq` is verified `EXITED` with `runtime:null` and SSH
+  unreachable. Teardown is complete.
+
+- **2026-09-01 — C41SC1 third-attempt checkpoint and control-plane teardown
+  complete.** Failure/setup checkpoint
+  `1c8b89abb42698a47faf98d2c9bdb14a25c84a06` was pushed before teardown.
+  No producer existed. Pod transfer artifacts, generated large weight payloads,
+  Rust target and Python environment were removed; the pod Git worktree was
+  clean at the attempt SHA. Local `rust/target` and the complete external run
+  root—including provider, verifier lot, setup bundles and credentials—were
+  removed. The fresh setup authorization remains under its private durable
+  burn root; no challenge or request burn exists. RunPod `podStop` matched pod
+  `zd9np3swa7qspq` at `154.54.102.47:18140` and returned `EXITED`; a fresh
+  query returned `desiredStatus: EXITED` and `runtime: null`, while SSH was
+  unreachable. The immutable teardown record is
+  `c41sc1-control-plane-teardown-2026-09-01-1c8b89a.json`.
 
 - **2026-09-01 — C41SC1 third fresh attempt terminal operator FAIL before
   provider transfer; no retry and zero gate credit.** Clean

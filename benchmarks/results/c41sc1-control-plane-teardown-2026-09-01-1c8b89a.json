@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "profile": "C41SC1-final-one-attempt-control-plane-teardown-v1",
+  "status": "complete",
+  "recorded_at": "2026-09-01T12:46:10+02:00",
+  "result_checkpoint": "1c8b89abb42698a47faf98d2c9bdb14a25c84a06",
+  "attempt_source_git_commit": "a2237945e6447106d82f1453fe2d00a953b6436c",
+  "pod": {
+    "provider": "RunPod",
+    "id": "zd9np3swa7qspq",
+    "name": "naughty_blue_lark",
+    "endpoint": "154.54.102.47:18140"
+  },
+  "pre_stop_cleanup": {
+    "p6_process_absent": true,
+    "pod_rust_target_removed": true,
+    "pod_transfer_artifacts_removed": true,
+    "pod_generated_weight_payloads_removed": true,
+    "pod_git_worktree_clean": true,
+    "local_canonical_rust_target_removed": true,
+    "local_transient_directory_removed": true,
+    "durable_setup_burn_retained": true,
+    "durable_challenge_burn_retained": false,
+    "durable_challenge_burn_note": "No producer request or issuer invocation existed.",
+    "durable_request_retained": false
+  },
+  "stop": {
+    "api": "RunPod GraphQL podStop",
+    "mutation_id_matched": true,
+    "mutation_desired_status": "EXITED",
+    "verification_desired_status": "EXITED",
+    "verification_runtime": null,
+    "ssh_endpoint_reachable_after_stop": false,
+    "ssh_observation": "connection refused or unreachable within ConnectTimeout=5",
+    "termination_verified": true
+  }
+}

@@ -20,15 +20,30 @@ Read `c4.1-secret-challenge-no-crs.md` next.
 - **Root cause and repair.** Party `p6_report --c41-e2e-record` had no external
   report output. It now requires `--c41-report-output`: an absolute, fresh,
   create-new file outside Git, validated before provider consumption.
-- **Hard stop.** The attempt is consumed. No retry, prior material or further
-  pod work is authorized except recording, cleanup and teardown. Resume needs
-  a new clean SHA/setup/connection/index/burn roots/endpoint and explicit owner
-  GO; the repaired binary must be built from that SHA.
+- **Authorization.** The prior attempt is consumed. The owner now authorizes
+  exactly one successor attempt at `154.54.102.27:16671`, after this authority
+  entry is a clean pushed checkpoint. It requires new setup, connection,
+  response index and burn roots; no prior material may be reused.
 - **Completion.** Failure/setup checkpoint `8be31b7` is pushed. Transients and
   build caches are removed, setup burn is retained, and RunPod
   `dmgiqek878tsj2` is verified `EXITED` with `runtime:null` and SSH
   unreachable. The local fix passes all 16 `p6_report` tests: 15 passed and the
-  existing production-size test was ignored. No pod is authorized.
+  existing production-size test was ignored. Execute the frozen runbook from
+  the new clean SHA; any abort, rejection, crash or lost transfer is terminal.
+
+- **2026-09-01 — Owner GO for one fresh output-path-repaired C41SC1 A100
+  attempt.** The owner supplies endpoint `154.54.102.27:16671` and says GO.
+  After this entry is committed and pushed cleanly, execute exactly one fresh
+  setup, connection, response index and private-challenge flow under
+  `c4.1-sc1-e2e-runbook.md`, using the mandatory external create-new report
+  output. The WebDAV helper remains the sole initial provider-service path;
+  later objects enter only through authenticated PUT. Git-visible content on
+  both hosts stays read-only from setup through committing verification or an
+  irrevocable terminal abort. Prior setup, correlations, indices, requests and
+  burn roots are forbidden. Any abort, rejection, crash or lost transfer
+  consumes this attempt; no retry or component credit is authorized. Record
+  every outcome, checkpoint, remove transients, stop the pod and verify it is
+  unreachable.
 
 - **2026-09-01 — C41SC1 external report-output repair complete locally; no
   pod or retry authorized.** Party mode now requires

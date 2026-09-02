@@ -291,6 +291,18 @@ impl Fp3 {
         Fp3::new(self.c0 * rhs, self.c1 * rhs, self.c2 * rhs)
     }
 
+    /// Multiplicative inverse in `F_p[u]/(u^3-2)`. Panics on zero.
+    pub fn inv(self) -> Fp3 {
+        let two = Fp::new(2);
+        let numerator = Fp3::new(
+            self.c0 * self.c0 - two * (self.c1 * self.c2),
+            two * (self.c2 * self.c2) - self.c0 * self.c1,
+            self.c1 * self.c1 - self.c0 * self.c2,
+        );
+        let norm = self.c0 * numerator.c0 + two * (self.c1 * numerator.c2 + self.c2 * numerator.c1);
+        numerator.mul_base(norm.inv())
+    }
+
     pub fn to_bytes(self) -> [u8; Self::ENCODED_BYTES] {
         let mut encoded = [0u8; Self::ENCODED_BYTES];
         for (index, limb) in [self.c0, self.c1, self.c2].into_iter().enumerate() {
@@ -511,6 +523,8 @@ mod tests {
                 Err(Fp3DecodeError::NonCanonicalLimb { limb })
             );
         }
+
+        assert_eq!(left * left.inv(), Fp3::ONE);
     }
 
     #[test]

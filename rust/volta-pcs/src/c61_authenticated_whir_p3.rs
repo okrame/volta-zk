@@ -126,7 +126,7 @@ where
     fn commit(
         &self,
         prover: &HidingWhirProver<
-            '_ ,
+            '_,
             C61P3Fp2,
             Goldilocks,
             Radix2DFTSmallBatch<Goldilocks>,
@@ -9162,16 +9162,16 @@ fn verify_c61_authenticated_whir_p3_compiler_chain_compact_with_transcript(
             decode_c62_shared_multi_oracle_artifact(
                 &artifact,
                 response_num_variables,
-            plan_num_variables,
-        )
-    } else {
-        decode_c61_shared_multi_oracle_artifact(
-            &artifact,
-            response_num_variables,
-            plan_num_variables,
-        )
-    }
-    .map_err(|error| error.to_string())?;
+                plan_num_variables,
+            )
+        } else {
+            decode_c61_shared_multi_oracle_artifact(
+                &artifact,
+                response_num_variables,
+                plan_num_variables,
+            )
+        }
+        .map_err(|error| error.to_string())?;
     if response_commitment.num_roots() != 1
         || plan_commitment.num_roots() != 1
         || response_commitment.roots()[0] != expected_response_root
@@ -10278,10 +10278,10 @@ where
             )
         } else {
             decode_c61_shared_multi_oracle_artifact(
-            &artifact,
-            response_num_variables,
-            plan_num_variables,
-        )
+                &artifact,
+                response_num_variables,
+                plan_num_variables,
+            )
         }
         .map_err(|error| error.to_string())?;
     let mut verifier_transcript = Transcript::new(verifier_seed);
@@ -13253,9 +13253,9 @@ mod tests {
                 model_digest: [0x11; 32],
                 protocol_digest: [0x22; 32],
                 parameter_digest: [num_variables; 32],
-            content_digest: goldilocks_digest(message),
-            field_tag: C62_GPU_WHIR_FIELD_TAG,
-            encoder_version: C62_GPU_WHIR_EXECUTOR_VERSION,
+                content_digest: goldilocks_digest(message),
+                field_tag: C62_GPU_WHIR_FIELD_TAG,
+                encoder_version: C62_GPU_WHIR_EXECUTOR_VERSION,
                 num_variables,
                 folding: folding as u8,
                 height: height as u64,

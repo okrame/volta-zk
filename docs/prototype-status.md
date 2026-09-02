@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 D125 OPERATIONAL PROFILE FROZEN — DIRECT-FP3 AUTHBIND NOMINATED / NOT OPEN / NO CODE)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 D126 BLOCKED / PHASE-A KAT PASS / DIRECT-G141 SCREEN NO-GO — NO CPU / POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,31 +11,300 @@ record; no external plan is authoritative.
 Read `c7-stateful-authenticated-lfc-design.md`; the R0.3 pod handoff remains
 inactive.
 
-- **Status.** D124's exact scaled-broadcast endpoint retains algebra,
-  ideal-carrier privacy and partial resource-shape PASS. D125 freezes the
-  architecture charter, six-family conservative contribution inventory, C4.1
-  roles/frequencies, 31B-first conjunctive priority, weak-verifier/H100
-  profiles and staged E2E runway. It adds no protocol or measured credit.
-- **Evidence/credit.** One pre-`q` Fp3 handle per terminal gives
-  `d=<q,W>-c*u` and V-only `K=c*r-Delta*d=<q,k>` for `c=sum q!=0`; the same
-  claim must cross GKR ProductClosure and policy-2 AuthBind to immutable
-  `C_W`. Illustrative additions remain 2,352/8,880 B with
-  664,593/1,758,091 B target residual; 95.4/79.4-bit controls remain
-  conditional and `credit:false`.
-- **Frozen operation.** `P/R` is provider/prover on one H100 SXM 80 GB;
-  `V/S` is the Debian 13.5 AArch64 four-vCPU weak verifier. Costs use
-  onboarding, connection, post-Delta `CapacitySetup(N_attempts)`,
-  attempt, rotation and directional-transfer frequencies. Verifier admission
-  remains `<=30 s`, product ceiling `<35 s`; 60 s is historical diagnostic.
-  Carrier challenges remain interactive `Q_FS=0`; future direct-Fp3 FS is a
-  separate unopened profile.
-- **Hard stop/resume.** Direct-Fp3 policy-2/g141 AuthBind, verifier-enforced
-  `BroadcastTag`, all-`c_s` barrier and complete original codec/setup/scan/
-  security/state/VM/H100 rows are missing. Prospective analytic D126 is
-  nominated, not opened. No Rust, Lean, benchmark, provider or pod;
-  `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`. Checks: D125
-  cross-links, capsule length, machine/arithmetic consistency and document
-  diff.
+- **Status/evidence.** D126 remains analytic and **BLOCKED**.  The explicit GO
+  was consumed: `cargo test -p volta-pcs c7_phase_a` passed all nine named
+  KATs (0 failed/ignored/measured; 255 filtered).  Thus
+  `C7_PHASE_A_KAT_PASS=true`, test-only and `credit:false`; it is not
+  `C7_CPU_REFERENCE_PASS`.
+- **Closed finite work.** Native-Fp3 inverse/codec, same-object AuthBind,
+  exact three-way `BroadcastTag`, all-c ordering, GPT-2/Gemma static censuses,
+  manifest/certificate/genesis codecs, reducer, crash/replay/KV/GC/race matrix
+  and typed C4.1 reconciliation pass.  Targets remain 50/58 and 472/480
+  segments, with 110/1,554 all-raw uses.
+- **Carrier hard stop.** `C7-DIRECT-G141-WHIR-v0` supplies a true
+  `Encode/Fold/Extend/CheckExtend/EvalLink` relation but its strict-UD
+  realization is **NO-GO**: persisted codeword+tree is
+  4,786,653,504/642,600,433,216 B (19.301x/10.423x), online materialization is
+  4.295/549.756 GB, and its interactive round order conflicts with the frozen
+  all-chains-before-QueryTapes grammar.  HVZK/Fp2 evidence does not prove
+  adaptive stateful malicious-DV privacy.
+- **Resume.** Current W bytes remain incomplete subcodec controls.
+  Lifecycle/workloads, artifacts/LUTs/roots, B/KV schedules, exact PCS
+  messages, AES-Fp3, receipt keys, complete lifetime/byte/resource rows and
+  every measured gate remain unknown.  No ANALYTIC PASS, CPU seam, Lean,
+  benchmark, FS, hardware, provider or pod is authorized.
+
+- **2026-09-02 — D126 Phase-A KATs pass; the concrete true-WHIR carrier screen
+  is NO-GO.** The owner GO was consumed exactly as scoped.  The test-only
+  native-Fp3 inverse/codec and nine `c7_phase_a` KATs pass: 9 passed, 0 failed,
+  0 ignored, 0 measured and 255 filtered.  They cover the same-handle
+  AuthBind/all-c flow, exact BroadcastTag coverage, both static model censuses,
+  masked reducer, canonical containers, Genesis/KV/journal attack matrix and
+  typed C4.1 occurrences.  Record `C7_PHASE_A_KAT_PASS=true`; none of these
+  results is benchmark, proof-size, setup, memory, CPU-reference or hardware
+  credit.
+
+  `C7-DIRECT-G141-WHIR-v0` is the selected concrete relation screen.  WHIR
+  supplies a real randomized-RS Encode, local Fold, successor re-encoding
+  Extend, OOD/STIR/sumcheck CheckExtend and constrained EvalLink; the local C6.1
+  claimless fork shows only the desired affine terminal shape.  The literal
+  strict-UD realization is NO-GO: its persisted codeword+tree is
+  4,786,653,504/642,600,433,216 B (19.301x/10.423x), its online materialization
+  is 4.295/549.756 GB without a registered one-scan bounded opener, and its
+  interactive per-round check order cannot preserve all four commitment chains
+  before every QueryTape.  Published HVZK and the Fp2 fork do not prove
+  adaptive stateful malicious-DV privacy.  Missing Fp3 sumcheck/OOD/mask/base-
+  case frames and generated B/KV schedules keep every complete byte/security
+  row unknown.  This candidate is NO-GO, not a universal impossibility; D126
+  stays BLOCKED, with no CPU seam, Lean, benchmark, FS, hardware, provider or
+  pod authorization.
+
+- **2026-09-02 — Future RunPod control and Git transport are fail-fast without
+  opening C7 execution.** The repo now has one control-plane harness. `pause`
+  maps to `runpodctl pod stop` and preserves billable volume storage; `delete`
+  maps to permanent `runpodctl pod delete` and requires the exact pod id twice.
+  Every future paid creation must carry provider-side `--stop-after` or
+  `--terminate-after`. Codex rules preauthorize only list/get/stop and the
+  non-mutating Git push dry-run; permanent deletion still prompts.
+
+  Repository source remains GitHub HTTPS only. Public clone/fetch is
+  anonymous. Before compilation or generated assets, `git-preflight` requires
+  a clean exact SHA and verifies both remote read and push authorization. Push
+  authentication uses an expiring, repository-scoped fine-grained token
+  supplied as the RunPod Secret `VOLTA_GITHUB_TOKEN`; it never enters a remote
+  URL, Git config, argv, shell history or checkout. This replaces the
+  historical `gh` login failure and the now-forbidden SCP helper without
+  transferring weights, setup or large artifacts through Git. The harness
+  self-test and `git diff --check` pass. No protocol/test/hardware/provider/pod
+  action occurred; D126 remains BLOCKED and all owner-GO conditions are
+  unchanged.
+
+- **2026-09-02 — D126 Phase-A state/codec closure makes the first tests
+  finite without changing the joint verdict.** Logical KV-old/KV-new now map
+  to one stable physical KV-state family; a LIVE 524-B root record carries
+  bounded payload/tree material and becomes a provenance-preserving TOMBSTONE
+  at the terminal CAS. The pre-Authorization Genesis exchange is canonical:
+  `0x1001/0x1002`, a 484-B durable state, 460-B verifier-facing setup request,
+  authenticated receipt wrapper and exact 1,049,308/1,049,356-B
+  response-frame/cache-object caps.
+  BUILDING restarts from leaf zero with the same private seed and increasing
+  generation; COMPLETE precedes every response byte; the matching first A0
+  alone consumes it. Typed ingress-failure parents and four replay kinds make
+  every C4.1 occurrence reconstructible without counting syscalls as records.
+
+  Capacity grants are retry-only for one L/current predecessor. Accepted
+  burns their unassigned correlation suffix and a continuation obtains a new
+  profile while retaining the connection MacDomain/high-waters. KV role
+  charge/mask identity, old-root Q and SERVICE remainder, and owner-scoped
+  B/KV epoch capacity are checked before setup; shared W SERVICE remains an
+  atomic per-reservation condition, not a connection-local promise. The unit fixture now has
+  matching `[3,2,2,2]` charges and four epochs, so N=3 accept-at-zero followed
+  by N=2 is internally realizable. The nine named Phase-A KATs cover these
+  transitions, malicious mutations, codec boundaries and the complete gate
+  registry. They are still unexecuted and `credit:false`. The current g141
+  object still lacks `Encode/Fold/Extend/CheckExtend/EvalLink`, so promotion
+  to a PCS remains NO-GO and carrier selection remains BLOCKED. No Rust,
+  Lean, test, benchmark, FS, hardware, provider or pod action occurred; a
+  fresh owner GO is still required.
+
+- **2026-09-01 — D126 final pre-implementation audit closes finite state/tree
+  ambiguity and retracts the direct-g141 over-claim.** Initial and auxiliary
+  g141 contexts are now acyclic and verifier-derived; the commitment tree is
+  the exact unpadded largest-power-of-two-left tree, with canonical Fp3
+  scalarization and compact-frontier consumption. This makes structural KATs
+  finite but exposes that the current RoundOpening carries neither successor/
+  extension evidence nor an EvalLink. Under the frozen recurrence a width-
+  `2^k` fold determines `N/2^k` symbols while the next root commits `N/2`, so
+  the omitted extension factor is `2^(k-1)`. The existing strict-UD prover is
+  forbidden; therefore current bytes cannot construct `PCSConsumedSet`.
+  Phase A must return `TestOnlyPcsChecked`; literal promotion is NO-GO and a
+  selected/censused carrier remains BLOCKED.
+
+  The durable oracle now has canonical receipt/correlation suites, stable
+  candidate-epoch versus seed-attempt ids, owner-scoped root budgets,
+  pending-root SERVICE transitions, recoverable same-W receipts, exact replay
+  blobs and deterministic post-CAS ACK recovery. Multi-connection MAC domains,
+  capacity grants, K/V keys and accepted-head registry feed an acyclic
+  allocator→head→ActiveRoot→ServiceRoot CAS. Restore origin, historical root
+  views and checked scan/record/generation overflow close the one-slot crash
+  graph without changing the 640-B journal. Authorization is 252 B; ActiveRoot
+  and its pointer are 364/116 B. These are unexecuted design oracles, so first
+  structural/stateful tests are ready only after a fresh GO; D126 stays
+  BLOCKED and no prohibited execution occurred.
+
+- **2026-09-01 — D126 pre-test closure audit removes the remaining finite
+  Phase-A ambiguities without executing it.** `BroadcastTag` is total over the
+  global SegmentLive/RootMask/PublicZero partition without assigning a handle
+  to mask/padding coordinates. Each of the four g141 headers now has an affine
+  prepare/seal receipt before its first fold challenge; all commitment chains
+  precede the ordered query tapes/openings, and `D<10` cannot create an
+  ambiguous zero-round stream. The eight L digests have one byte order,
+  non-genesis workload fields have zero sentinels, and the 16-cell coverage
+  object is explicitly a helper oracle rather than an admissible L.
+
+  Root lifecycle accounting now keeps separately receipted
+  INIT/ROTATE_IN/ROTATE_OUT/LOAD debits behind one canonical set digest. A
+  nonrefundable LOAD debit precedes destructive one-slot overwrite;
+  install-root plus CandidateComplete and both final cutover choices are
+  atomic. The unchanged 640-B journal binds exact build descriptors, real
+  96-B seed bundles, monotone slot generations, the debit set, tree/footer and
+  receipt. A 572-B AcceptedHead and canonical allocator/state-plane snapshot
+  bind Burned-only high-water changes as well as accepted heads. C4.1 rows now
+  count durable canonical record occurrences—coalesced envelope and
+  ReservationStart remain two rows—while partial transport completion and
+  syscalls are separate counters; Error has an exact pre-envelope/in-flight
+  reject context.
+
+  The post-QueryTape W g141 maxima are 2,605,756/3,729,740 B; known W
+  subledgers are 2,611,144/3,788,680 B with 662,442/1,706,105-B margins, all
+  still `credit:false`. The selected-model compiler must return the exact
+  ordered missing-input list: GPT-2 lacks lifecycle split, workload tokens and
+  packed artifacts/roots; Gemma additionally lacks quant profile and verified
+  source bodies. Phase A tests those typed blockers and a generic lifecycle
+  unit profile but cannot emit production L. Therefore
+  `C7_FIRST_IMPLEMENTATION_TESTS_READY=true` while D126 remains **BLOCKED**,
+  never `ANALYTIC PASS`; no Rust, Lean, test, benchmark, FS, hardware,
+  provider or pod action occurred, and a fresh owner GO is required.
+
+- **2026-09-01 — D126 readiness audit closes the remaining Phase-A schema
+  gaps without running it.** `QueryClose` now serializes canonical Q before
+  `ScheduleClose`; certificate decode recovers A0/A1/Q and requires its
+  `composite_manifest_digest` to equal reconstructed M. A canonical 540-B
+  accepted head fixes predecessor root/epoch/high-water lookup. Per-plane
+  `Charge(L,p)` is the sum of RoundCap visible-symbol caps, equals every slot
+  debit, and is byte-bound with service/lifecycle/epoch/horizon fields in the
+  RootMask profile. The W profiles remain 512+64 charges over 2,048 epochs and
+  8,192+1,024 over 128, both with a failure-free `2^20` horizon.
+
+  C4.1 Transfer rows now use typed scopes, including durable malformed-ingress
+  scopes; physical rebuild scans are child rows under one candidate outcome.
+  `StopRebuildOneSlot` has a finite restart-from-zero journal graph, preserves
+  terminal heads during Quiescing and validates a 128-B generation footer.
+  Updated one-slot+journal floors are 493,371,840/92,587,558,592 B; dual-tree
+  GPT exceeds 2.10x by 213,872,052 B. Including Beta/Gamma corrects the fixed
+  outer slices to 5,580/59,132 B and W subledgers to
+  2,611,128/3,788,664 B; they still fit 105% only as `credit:false`.
+
+  Gemma cannot literally inherit GPT-2 P5: calibration, exponents and LUT
+  domains are product/generated inputs. Phase A therefore stops its source
+  compiler at typed `MissingQuantProfile` and needs no weight-body download;
+  full quant selection, shard ingest/export, roots and admissible L are a
+  later separately authorized batch. The Phase-A field/typestate, tiny
+  coverage, GPT/static Gemma census, reducer/barrier, codec, journal and C4.1
+  tests now have finite fail-closed oracles, so
+  `C7_FIRST_IMPLEMENTATION_TESTS_READY=true`. D126 remains BLOCKED; no Rust,
+  Lean, test, benchmark, FS, hardware, provider or pod action occurred.
+
+- **2026-09-01 — D126 implementation-readiness freeze closes the static
+  choices, remains `BLOCKED`, and stops before tests.** Section 5.25 records
+  the owner's acceptance of the staged barrier scope and selects the base
+  text-only checkpoint
+  `google/gemma-4-31B@5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89`.
+  Its physical checkpoint census is 1,188 tensors and 31,273,088,876 BF16
+  scalars. The C7 text partition keeps 772 learned tensors private
+  (`N_W=30,697,345,280`, 61,394,690,560 packed i16 bytes), makes only 60
+  constant layer scalars public, and forbids 356 vision/bridge tensors. Sixty
+  norm bundles preserve learned-norm privacy while giving
+  `J_W/J_all=472/480<=512`. The exact K/V state is 450,560 i16 values per
+  token: global K/V shares one projection weight, but its post-norm K and V
+  cache cells are distinct. Removing 2,364 stored buffers and adding the tied,
+  unmaterialized output reconciles 32,682,372,656 logical parameters; shard
+  framing is 160,496 B.
+
+  A field bridge is rejected: the complete authenticated query-producing
+  subgraph is natively Fp3. One post-use-list `eta_use`, masked
+  round-synchronous reducer corrections, one AuthBind correction per segment
+  and one response-wide ProductClosure give a non-circular same-object
+  reduction. GPT-2 compiles to 50 W segments, 102 W/110 all-raw uses and 51
+  reducer instances; Gemma has 472 W segments, 1,546/1,554 uses and 653
+  instances. Prefix typestates prevent early rho/chi/beta/gamma.
+  The staged DAG has no challenge-to-earlier-correction cycle; the literal Fp2
+  path and any barrier over internal dependency corrections remain scoped
+  NO-GO. Exact-coverage `BroadcastTag` follows from the compiler's global
+  SegmentLive/RootMask/PublicZero partition; mask coordinates have zero
+  segment selectors but are not public padding.
+
+  The checkpoint freezes split `L/A0/A1/Q` manifest bytes, a 256-B attempt
+  envelope, 16-B outer headers, four ordered plane streams, transcript chaining
+  and a `376+record_bytes` accepted-certificate container. The selected outer slice
+  is 5,500/59,052 B for GPT-2/Gemma; the conservative known W subledgers are
+  2,611,048/3,788,584 B and fit their corrected 105-percent controls without
+  earning full-codec credit. One-slot journal-inclusive peaks are
+  493,371,712/92,587,558,464 B and pass 2.00x for GPT-2/Gemma. The rejected
+  dual-tree GPT floor exceeds 2.10x by 213,871,796 B. The D095 test profile
+  retains 512/8,192 service charges plus a 1/8 lifecycle reserve, requiring
+  exactly 2,048/128 failure-free epochs; its privacy proof remains BLOCKED.
+
+  The exact mutation/compiler/reducer/codec/journal/C4.1 test order is now
+  implementation-ready, so `C7_FIRST_IMPLEMENTATION_TESTS_READY=true`.
+  Required test/generated or measured values still include both packed
+  artifacts and roots, concrete direct-g141 extraction, native real/AES Fp3
+  pools, complete B/KV/GKR/receipt/certificate bytes, the full lifetime union,
+  one-scan counters, setup/refresh and CPU/H100 walls/peaks. Every unknown is
+  still BLOCKED, so `ANALYTIC PASS` is forbidden. No Rust, Lean, test,
+  benchmark, FS, hardware, provider or pod action occurred. A new explicit GO
+  is required to execute the first tests.
+
+- **2026-09-01 — D126 six-item continuation derives all currently traceable
+  static cells and remains `BLOCKED`.** The exact GPT-2 artifact partition is
+  124,318,464
+  private i16 values in 50 physical tensors, 383,488 public/LUT values and
+  124,701,952 total values. Its current padded W layouts contain 269,484,032
+  cells, of which 145,165,568 are structural zeros. Current proof lineage has
+  102 claim uses; the historical illustrative `J_W=98` matches neither 50 nor
+  102, but no segment compiler proves an exact terminal count; 98 is BLOCKED,
+  not a proved violation. A 50-terminal physical reducer is only a target. The
+  31B tuple remains an unnamed synthetic envelope and violates
+  the current model-schema equality (`32*128=4096!=4608`), so literal reuse is
+  separately NO-GO. Exact logical KV bytes are recorded, but 31B tensor/DAG/
+  codec data remain unknown.
+
+  Section 5.24 now fixes the deterministic manifest input/output and exact-
+  coverage checks, verifier ownership semantics for `BroadcastTag`, the
+  linear same-handle AuthBind state/API and theorem obligation, the minimum
+  malicious/stateful rejection matrix, durable reserve/burn/CAS contract,
+  message order, fail-closed codec formula and per-occurrence C4.1 schema.
+  Static tracing proves a cycle in the current single GKR transcript: an early
+  correction/ProductClosure precedes challenges needed to derive later
+  queries, which the global barrier would require first. That reuse is NO-GO.
+  A staged pending-terminal schedule is algebraically possible only when the
+  barrier covers every AuthBind `d_s` and consuming ProductClosure; its
+  deferred-closure and malicious-DV theorem is unknown and therefore BLOCKED.
+
+  The latest g141 subcodec controls remain 2,605,740/3,729,724 B and the four
+  1.30 query axes pass only as `credit:false` screens. Complete B/KV codecs,
+  certificate bytes, correlations, production PCG/state composition, setup/
+  refresh bytes and walls, one-scan backend, VM/H100 peaks/walls and the full
+  lifetime event registry remain unknown. Thus no complete conjunctive
+  GPT-2/31B row passes and `ANALYTIC PASS` is forbidden; the two scoped NO-GO
+  branches do not establish a global impossibility, so D126 remains BLOCKED.
+  Resume first requires an owner-selected exact 31B target and acceptance of
+  the staged barrier scope. No CPU seam, Rust, Lean, benchmark, FS, hardware,
+  provider or pod action occurred or is authorized.
+
+- **2026-09-01 — D126 `C7-DIRECT-FP3-AUTHBIND-v0` opens read-only and returns
+  `BLOCKED`.** Static tracing finds only a carrier-independent Fp3 transfer
+  seam and a policy-2 reference leaf codec that expressly is not a PCS,
+  durable allocator or malicious-DV theorem. No existing relation consumes
+  the identical scaled `BroadcastTag` handle through GKR ProductClosure and a
+  direct-Fp3/g141 opening against immutable `C_W`. Exact disjoint live-range
+  coverage, zero padding and verifier-only tag reconstruction therefore lack
+  a manifest/compiler relation; without it, the complete `c_s` set and an
+  `O(J log N)`-or-better pre-correction barrier cannot be derived.
+
+  Correction, retag, label-kernel, range-overlap, zero-sum, reuse, replay,
+  crash, fork and rollback cases retain their fail-closed requirements, but
+  the missing AuthBind, coverage and durable-state compositions prevent a
+  malicious/stateful theorem. The exact GPT-2 and 31B compiler/codec census is
+  also absent, leaving certificate framing, setup/refresh, correlation usage,
+  one-scan work, memory/I/O, H100 wall and weak-verifier wall unknown. Because
+  an unknown is `BLOCKED` and no derived gate violation is established, D126
+  is neither `ANALYTIC PASS` nor `NO-GO`. The charter, six-family inventory,
+  C4.1 terminology/frequencies, `<=30 s` verifier target, strict `<35 s`
+  ceiling, single-H100/31B-first conjunctive GPT-2 priority, interactive
+  `Q_FS=0`, separate essential direct-Fp3 FS profile, `>=78`-bit soundness and
+  unrelaxed privacy remain unchanged. No Rust, Lean, benchmark, hardware,
+  provider or pod action occurred.
 
 - **2026-09-01 — D125 freezes the C7 operational profile and recommends, but
   does not open, the direct-Fp3 carrier-closure session.**  The architecture

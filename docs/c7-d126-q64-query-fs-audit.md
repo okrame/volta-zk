@@ -10,7 +10,10 @@ The 2026-09-04 owner continuation selects the Branch-A working profile and
 authorizes its static carrier/layout/codec/security/memory compilation.  No
 timing run, hardware action, provider contact or pod use is authorized before
 all analytic gates close.  Section 11 records the continuation and the
-current ROWFOLD intake blocker.
+current ROWFOLD intake blocker.  The later same-day analytic amendment replaces
+the historical per-phase weight-use reducer by one compiler-owned terminal per
+physical segment.  It changes no execution authorization; Sections 2, 3 and
+6--12 record its exact consequences and remaining proof obligations.
 
 ## 1. Owner decisions and exact meaning
 
@@ -38,6 +41,13 @@ current ROWFOLD intake blocker.
   arena is not multiplied silently.
 - The exact 125% W-wire caps are preregistered: 3,896,053 B for GPT and
   6,543,685 B for Gemma.  There is no automatic 150% fallback.
+- The expected stacked-use profiles are now GPT-2 `50 W / 58 all / 0 reducer`
+  and Gemma `472 W / 480 all / 0 reducer`.  The old `102/110/51` and
+  `1,546/1,554/653` profiles reject.  This is an analytic profile freeze, not
+  compiler or theorem credit.
+- The field is unchanged: Goldilocks
+  `p=2^64-2^32+1`, with `Fp3=Fp[u]/(u^3-2)`.  One canonical Fp3 value remains
+  24 B and each serialized base-field correction remains 8 B.
 - The 61,394,690,560-B storage acquisition and its roughly 19.186-s control
   are charged once to `ModelOnboarding`, not to every resident response.
 
@@ -167,26 +177,26 @@ four-plane parameters.
 
 | target/model | byte-minimizing per-round q | known-W bits | q sum / Z / U / S / H | P to V | V to P | offline-FS W floor | 105% margin | partial certificate |
 | --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 76 GPT | `[341,156,144,143,143,144]` | 76.016095 | 1,071 / 37,664 / 2,142 / 302,022 / 26,287 | 3,327,872 | 4,924 | 3,331,836 | -59,151 | 3,332,404 |
-| 76 Gemma | `[342,156,146,144,144,144,144,144]` | 76.033087 | 1,364 / 43,824 / 2,728 / 384,648 / 50,513 | 4,783,000 | 6,296 | 4,826,028 | +670,667 | 4,826,596 |
-| 78 GPT | `[346,158,146,145,146,145]` | 78.001579 | 1,086 / 38,152 / 2,172 / 306,252 / 26,619 | 3,373,296 | 4,984 | 3,377,260 | -104,575 | 3,377,828 |
-| 78 Gemma | `[347,158,148,146,146,146,146,146]` | 78.001343 | 1,383 / 44,432 / 2,766 / 390,006 / 51,169 | 4,848,072 | 6,372 | 4,891,100 | +605,595 | 4,891,668 |
-| 84 GPT | `[362,166,152,152,151,151]` | 84.000484 | 1,134 / 39,896 / 2,268 / 319,788 / 27,685 | 3,518,768 | 5,176 | 3,522,732 | -250,047 | 3,523,300 |
-| 84 Gemma | `[362,166,155,153,152,152,153,153]` | 84.002279 | 1,446 / 46,448 / 2,892 / 407,772 / 53,349 | 5,063,992 | 6,624 | 5,107,020 | +389,675 | 5,107,588 |
+| 76 GPT | `[341,156,144,143,143,144]` | 76.016095 | 1,071 / 37,664 / 2,142 / 302,022 / 26,287 | 3,327,872 | 4,924 | 3,329,348 | -56,663 | 3,329,916 |
+| 76 Gemma | `[342,156,146,144,144,144,144,144]` | 76.033087 | 1,364 / 43,824 / 2,728 / 384,648 / 50,513 | 4,783,000 | 6,296 | 4,794,604 | +702,091 | 4,795,172 |
+| 78 GPT | `[346,158,146,145,146,145]` | 78.001579 | 1,086 / 38,152 / 2,172 / 306,252 / 26,619 | 3,373,296 | 4,984 | 3,374,772 | -102,087 | 3,375,340 |
+| 78 Gemma | `[347,158,148,146,146,146,146,146]` | 78.001343 | 1,383 / 44,432 / 2,766 / 390,006 / 51,169 | 4,848,072 | 6,372 | 4,859,676 | +637,019 | 4,860,244 |
+| 84 GPT | `[362,166,152,152,151,151]` | 84.000484 | 1,134 / 39,896 / 2,268 / 319,788 / 27,685 | 3,518,768 | 5,176 | 3,520,244 | -247,559 | 3,520,812 |
+| 84 Gemma | `[362,166,155,153,152,152,153,153]` | 84.002279 | 1,446 / 46,448 / 2,892 / 407,772 / 53,349 | 5,063,992 | 6,624 | 5,075,596 | +421,099 | 5,076,164 |
 
 `Z` is the unstacked Fp atom count, `U` the number of opened leaves,
 `S=141*U` the visible Fp count, and `H` the exact compact-tree sibling count.
 The 76/78/84 GPT floors retain
-564,217/518,793/373,321 B under 125% and
-1,343,428/1,298,004/1,152,532 B under 150%.  The Gemma floors retain
-1,717,657/1,652,585/1,436,665 B under 125% and
-3,026,394/2,961,322/2,745,402 B under 150%.
+566,705/521,281/375,809 B under 125% and
+1,345,916/1,300,492/1,155,020 B under 150%.  The Gemma floors retain
+1,749,081/1,684,009/1,468,089 B under 125% and
+3,057,818/2,992,746/2,776,826 B under 150%.
 
 After the complete known-W conditional sum, the unused fractions of the
 matching error budgets are respectively 1.109443%/2.267327% at 76 bits,
 0.109368%/0.093077% at 78 bits and 0.033522%/0.157842% at 84 bits for
 GPT/Gemma.  These percentages are security-error room, not byte room.  The
-partial-certificate Gemma/GPT growth is 1.448383x, 1.448170x and 1.449660x.
+partial-certificate Gemma/GPT growth is 1.440028x, 1.439927x and 1.441759x.
 
 The search enumerated the following inclusive boxes; individual soundness
 lower bounds exclude smaller entries, while the cost of the displayed
@@ -288,6 +298,84 @@ The B/KV layouts, their internal schedules and exact GKR error are absent.
 Consequently the minimum per-plane tuple and its non-uniform optimum are
 `BLOCKED`.  The values 347/350/357/362 remain initial probes only.
 
+### 2.5 Stacked-use amendment and the W event term
+
+The old Gemma count is exactly
+
+```text
+410 matrices*2 + 60 norm bundles*12 + tied embedding*4 + final norm*2
+  = 1,546 W raw uses;
+1,546 + 8 B/KV identity terminals = 1,554 all-plane raw uses.
+```
+
+Its 653 reducer instances are likewise exact:
+
+```text
+410*ceil(log2(2)) + 60*ceil(log2(12))
+  + ceil(log2(4)) + ceil(log2(2)) = 653.
+```
+
+The amendment moves the aggregation into the operator compiler.  In the
+repository's `X*W` convention, prompt and response activation **rows** for one
+matrix form one matrix relation; the six norm roles of one layer form one
+tagged direct sum across both phases.  The emitted terminal is one query on
+the corresponding physical segment.  Applying the same rule to
+both registered models gives:
+
+| counter | old GPT | amended GPT | old Gemma | amended Gemma |
+| --- | ---: | ---: | ---: | ---: |
+| W raw terminals | 102 | 50 | 1,546 | 472 |
+| all-plane raw terminals | 110 | 58 | 1,554 | 480 |
+| reducer instances | 51 | 0 | 653 | 0 |
+| product triples | 58 | 58 | 480 | 480 |
+
+`L.Use[]`, `Q.raw_use_count`, `RawUseClose.raw_use_count` and
+`ScheduleClose.raw_use_count` must all equal the amended all-plane value;
+`ScheduleClose.reducer_instance_count` must be zero and
+`product_triple_count` remains `J_all`.  A transcript carrying any superseded
+count rejects before correlation reservation.
+
+The amended compiler must use the reducer's identity mode on the use axis,
+whose length is one; each W query keeps its own compiled form and dimensions.
+No W credit exists until the compiler and refinement prove that shape.  Under
+that obligation, `UseEta`, every reducer `rho`, and all reducer correction
+frames disappear.  AuthBind and ProductClosure do **not** disappear.  The
+known Fp3 correlation counts become 59/481 total and 51/473 in the W subledger
+for GPT/Gemma; three-basis production expansion uses 177/1,443 base-field
+slots.  The known challenge lower bound before base GKR and B/KV becomes
+25/32: 22/29 W-fold challenges, one ProductClosure `chi`, and global
+`beta,gamma`.
+
+This does not yet produce a smaller proved W soundness numerator.  The
+repository's old Gemma control is
+
+```text
+(12 + 410*5 + 60*14 + 8 + 5 + 472)/|Fp3| = 3,387/|Fp3|,
+```
+
+not `5*1,546/|Fp3|`.  Its summands are not assigned individually to the old
+`BadGKR`, `BadEta`, `BadReducer` and `BadProductChi` events.  Deleting them by
+ratio would therefore invent a bound.  The old isolated control is about
+180.274 bits, already negligible beside the q357 known-W value of 81.54619
+bits, but it is not a safe theorem for the changed relation either.
+
+For planning only, name the proposed new premise
+`STACKED_GKR_5_EVENTS_PER_TERMINAL`: the stacked compiler contributes at most
+five Fp3-root events per W terminal.  Under that **unproved** premise, only the
+conditional `epsilon_stacked_GKR` contribution would be `250/|Fp3|` (184.034
+bits) for GPT and `2,360/|Fp3|` (180.795 bits) for Gemma.  These are not total
+W controls: ProductClosure and every other named event remain separate.  In
+particular, the old `+J_W` summand cannot be added until it is formally mapped
+to ProductClosure.  The conditional GKR terms do not change the displayed
+q357 known-W bits or 78-bit residual percentages.  Without the premise and
+the complete event map, the margin after GKR remains **BLOCKED**.
+
+The deterministic unblock is to compile all 50/472 stacked operators, map
+each old and new summand to a named bad event, set only eliminated
+`BadEta/BadReducer` events to zero, derive the degree of every new stacked GKR
+check, and add its exact numerator, denominator and lifetime frequency to the
+global rational event registry.
+
 ## 3. Exact W subcodec recompilation
 
 The tables below use the non-uniform round vectors in Section 2.3.  They
@@ -345,33 +433,48 @@ hash counts are:
 | 357 | 29,509 / 55,187 | 31,741 / 58,021 |
 | 362 | 29,869 / 55,881 | 32,131 / 58,753 |
 
-The known fixed W records split as 3,964/43,028 B `P_to_V` and
-1,424/15,912 B challenge `V_to_P`.  Removing all `V_to_P` bytes, then adding
-only the fixed `P_to_V` records while leaving every missing true-PCS message
-at zero gives the following offline-FS record-byte floors.  The authoritative
-allocations and caps are 3,116,843/5,234,948 B,
+Under the stacked-use amendment, the known fixed W records split as
+1,476/11,604 B `P_to_V` and 120/120 B challenge `V_to_P` for GPT/Gemma.
+The former reducer contribution was 2,488/31,424 B `P_to_V` and
+1,304/15,792 B `V_to_P`; offline FS had already removed the latter.
+The interactive reducer codec loses exactly five/nine records: one `UseEta`
+and two/four `UseRoundProver`--`UseRoundVerifier` pairs, because the maximum
+use-reduction depth was two/four.  In offline FS, `UseEta` and the two/four
+verifier challenge records were already rederived rather than serialized, so
+the amended certificate removes exactly the two/four `UseRoundProver`
+records.  The 51/653 reducer instances are payload census values, not
+sequential record counts.
+Across the complete fixed outer slice, reducer deletion changes GPT from
+5,580 to 1,788 B (1,668/120 B by direction) and Gemma from 59,132 to
+11,916 B (11,796/120 B).  The old interactive W subledgers become
+2,607,352 B for GPT and 3,741,464 B for Gemma; Gemma splits as
+3,736,284 B `P_to_V` and 5,180 B `V_to_P`.
+Removing all `V_to_P` bytes, then adding only the amended fixed `P_to_V`
+records while leaving every missing true-PCS message at zero gives the
+following offline-FS record-byte floors.  The authoritative allocations and
+caps are 3,116,843/5,234,948 B,
 3,272,685/5,496,695 B at 105%, 3,896,053/6,543,685 B at 125%, and
 4,675,264/7,852,422 B at 150%.
 
 | first q | GPT FS W floor | % allocation | margin 105% | margin 125% | margin 150% |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 347 | 3,374,236 | 108.258132% | -101,551 | 521,817 | 1,301,028 |
-| 350 | 3,398,428 | 109.034302% | -125,743 | 497,625 | 1,276,836 |
-| 357 | 3,468,108 | 111.269897% | -195,423 | 427,945 | 1,207,156 |
-| 362 | 3,513,468 | 112.725216% | -240,783 | 382,585 | 1,161,796 |
+| 347 | 3,371,748 | 108.178307% | -99,063 | 524,305 | 1,303,516 |
+| 350 | 3,395,940 | 108.954477% | -123,255 | 500,113 | 1,279,324 |
+| 357 | 3,465,620 | 111.190073% | -192,935 | 430,433 | 1,209,644 |
+| 362 | 3,510,980 | 112.645392% | -238,295 | 385,073 | 1,164,284 |
 
 | first q | Gemma FS W floor | % allocation | margin 105% | margin 125% | margin 150% |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 347 | 4,874,380 | 93.112291% | 622,315 | 1,669,305 | 2,978,042 |
-| 350 | 4,908,652 | 93.766968% | 588,043 | 1,635,033 | 2,943,770 |
-| 357 | 5,008,124 | 95.667120% | 488,571 | 1,535,561 | 2,844,298 |
-| 362 | 5,073,196 | 96.910151% | 423,499 | 1,470,489 | 2,779,226 |
+| 347 | 4,842,956 | 92.512017% | 653,739 | 1,700,729 | 3,009,466 |
+| 350 | 4,877,228 | 93.166694% | 619,467 | 1,666,457 | 2,975,194 |
+| 357 | 4,976,700 | 95.066847% | 519,995 | 1,566,985 | 2,875,722 |
+| 362 | 5,041,772 | 96.309877% | 454,923 | 1,501,913 | 2,810,650 |
 
 Therefore the current GPT-2 schedule violates 105% for every requested
 control, before missing positive byte terms.  Dropping to the minimum
 W-only 76-bit row does not fix it: the exact minimizing vector is
-`[341,156,144,143,143,144]`, `P_to_V=3,327,872 B`, and after the 3,964-B
-fixed prover records its FS W floor is 3,331,836 B, still 59,151 B over 105%.
+`[341,156,144,143,143,144]`, `P_to_V=3,327,872 B`, and after the 1,476-B
+fixed prover records its FS W floor is 3,329,348 B, still 56,663 B over 105%.
 The 105% branch is therefore `NO-GO` even after deleting every online
 challenge byte.  The known rows fit both old exploratory bands; the owner now
 preregisters exactly 125%, and 150% is no longer an automatic fallback.
@@ -381,19 +484,19 @@ Turning the W-only AuthBind into the required all-plane AuthBind adds 192 B:
 
 | first q | partial GPT FS certificate floor | partial Gemma FS certificate floor | growth |
 | ---: | ---: | ---: | ---: |
-| 347 | 3,374,804 | 4,874,948 | 1.444513x |
-| 350 | 3,398,996 | 4,909,220 | 1.444315x |
-| 357 | 3,468,676 | 5,008,692 | 1.443978x |
-| 362 | 3,514,036 | 5,073,764 | 1.443857x |
+| 347 | 3,372,316 | 4,843,524 | 1.436260x |
+| 350 | 3,396,508 | 4,877,796 | 1.436121x |
+| 357 | 3,466,188 | 4,977,268 | 1.435949x |
+| 362 | 3,511,548 | 5,042,340 | 1.435931x |
 
 These partial floors pass 30/100 MB and 3x, but cannot pass the full
 certificate gate because all missing records are nonnegative.
 
 The counters also give exact partial work: the prover supplies `S` masked Fp
 occurrences and `U` salts; the verifier parses those values and performs the
-Merkle hashes counted above.  The known new correlation slice is 161/1,787
-Fp3 correlations in total, of which 153/1,779 are W-only, or 483/5,361 base-
-field slots.  The known challenge-scalar count is 77/686 before base GKR and
+Merkle hashes counted above.  The amended known correlation slice is 59/481
+Fp3 correlations in total, of which 51/473 are W-only, or 177/1,443 base-
+field slots.  The known challenge-scalar count is 25/32 before base GKR and
 B/KV; it is not a count of sequential protocol rounds.  Exact true-PCS field
 operations and complete prover/verifier work remain unknown because their
 omitted messages and checks are not zero-cost.
@@ -444,6 +547,12 @@ credit until its complete multi-root theorem and all-plane charges exist.
 | 350 | 88,769,088 / 46,211,904 | 1,803,644,928 / 938,207,232 |
 | 357 | 90,637,056 / 44,343,936 | 1,841,329,152 / 900,523,008 |
 | 362 | 91,855,296 / 43,125,696 | 1,866,018,816 / 875,833,344 |
+
+The stacked-use amendment does not change this table: RootMask consumption is
+set by `q,U,S` in the PCS opening, not by the historical number of GKR
+terminals.  What disappears is the separate 102/1,306 Fp3 blind-mask
+correlations used by the GPT/Gemma raw-use reducers.  Setup bytes, service
+attempts and refresh counts therefore remain unchanged.
 
 The one-slot persistent setup remains 493,371,840/92,587,558,592 B.  The
 minimum packed-read plus tree-write traffic per build is
@@ -575,6 +684,42 @@ calling the old full-transform CUDA path is likewise `NO-GO`.  Offline FS
 removes challenge bytes from the wire; it does not remove their scalar count,
 their transcript order or any source work.
 
+The new one-terminal rule also has its own source-work gate.  It must compile
+the prompt and response activation rows together at the operator relation in
+the repository's `X*W` convention, rather than first generating distinct
+evaluation points and trying to merge them later.
+For the complete registered workload it must emit
+
+```text
+C_stack(N,q,h) = c_stack*N + P_stack(q,h),
+```
+
+where `c_stack` is independent of `q` and `N`; no selector construction may
+add `N log q`, `qN` or `N log N`.  All 4,096-token-dependent activation work
+must remain visible in the compiled GKR row.  It cannot be hidden by lowering
+the context cap or relabelled as a constant value of `N` or `q`.
+
+There is no existing Lean theorem for prompt/decode row stacking in this
+repository.  `VoltaZk.packed_functional_eq` assumes the per-segment `eqAt`
+functions already exist and proves only the packed-functional decomposition.
+The scalar-batch construction uses one shared point:
+`VoltaZk.scalarBatchPoly_eval_commonPoint` requires
+`VoltaZk.HasCommonPoint`, while
+`VoltaZk.outer_scalar_batch_blind_sumcheck_sound` leaves that scheduler
+invariant to the concrete refinement.  It does not merge claims with different
+point histories.  The required named refinement is future file
+`lean/VoltaZk/C7StackedWeightUse.lean`, module
+`VoltaZk.C7StackedWeightUse`, theorem
+`VoltaZk.c7_stacked_weight_use_compiler_complete`, with sublemmas
+`c7_stack_rows_mul_right`, `c7_twelve_norm_uses_bundle_direct_sum` and
+`c7_tied_embedding_direct_sum`.  It must prove an equivalence between every
+old per-use relation and the new stacked relation before producing the single
+`packedSegmentClaim`; exact row/padding coverage; disjoint phase-by-six-role
+norm tags with no cross-terms; the distinct lookup/logits orientations of the
+tied embedding; both phase uses of final norm; and the 50/58/0 and 472/480/0
+censuses.  Until that theorem and its compiler exist, the amended profile is
+frozen but `credit:false`.
+
 For Gemma, one storage acquisition is exactly 61,394,690,560 B and two HBM
 reads of packed W are exactly 122,789,381,120 B.  This gate applies to the
 proof subsystem; ordinary inference GEMM traffic is reported separately, as
@@ -643,6 +788,23 @@ known extended subtotal            71,784,140,544 B
 strict remainder                   <8,215,859,456 B
 ```
 
+Speculative decoding is a later, optional witness-generation profile, not
+part of the present 45--50-s estimate.  Its preregistered incremental H100 cap
+is **2,000,000,000 B total**, including draft weights, draft KV, activations,
+candidate buffers, runtime, allocator cache and workspaces.  Counting that cap
+conservatively as live with the extended subtotal gives:
+
+```text
+known extended subtotal            71,784,140,544 B
+optional speculative profile cap    2,000,000,000 B
+conditional subtotal               73,784,140,544 B
+strict remainder                    <6,215,859,456 B
+```
+
+Exceeding the 2-GB cap rejects only the optional profile.  Reusing memory at a
+different lifetime earns credit only after the same static liveness map proves
+non-overlap; allocator-cached bytes still count as live.
+
 The arena has zero persistent/host-spill bytes, cannot be a codeword or second
 W copy, is created only after inference activations are released, and is
 zeroed/released at attempt end.  Allocator-cached bytes remain live for the
@@ -662,14 +824,14 @@ imply two full copies.  This saves 3,690,987,520 B, but it still needs a static
 liveness proof.  Without that proof, two physical KV arenas make the known
 base 68,776,665,600 B and leave strictly less than 11,223,334,400 B.
 
-In the historical 256,000,000-byte staging scenario, with 480 terminal Fp3 values
-(11,520 B), the one-arena interpretation leaves strictly less than
-14,658,310,400 B; two arenas leave strictly less than 10,967,322,880 B.  The
-remaining objects need a proved liveness allocation.  Interval colouring of
-one arena is one option; several non-overlapping pools are also valid if their
-combined peak is counted.  This is the only numerical allocation optimization
-justified by the current data; choosing overlap without the lifetime graph
-would hide a second copy.
+In the historical 256,000,000-byte staging scenario, with 480 terminal Fp3
+values (11,520 B), the one-KV-arena subtotal **before ROWFOLD** leaves strictly
+less than 14,658,310,400 B; two KV arenas leave strictly less than
+10,967,322,880 B.  The remaining objects need a proved liveness allocation.
+Interval colouring within the one total ROWFOLD arena is one option; several
+non-overlapping pools are also valid if their combined peak is counted.  This
+is the only numerical allocation optimization justified by the current data;
+choosing overlap without the lifetime graph would hide a second copy.
 
 This audit provisionally interprets `v` as the active design's 480 terminal
 `v_j` values:
@@ -679,7 +841,7 @@ This audit provisionally interprets `v` as the active design's 480 terminal
   736,736,286,720 B and the known minimum becomes 801,821,964,800 B, a direct
   H100 `NO-GO` by 721,821,964,800 B.
 
-The exact B buffer, all chain buffers, GKR/reducer liveness, activation peak,
+The exact B buffer, all chain buffers, stacked-GKR liveness, activation peak,
 CUDA context, runtime modules, allocator reserve/fragmentation and every
 chosen-kernel workspace are not present.  The complete strict
 `peak_allocated < 80,000,000,000` inequality is therefore `BLOCKED` in the
@@ -718,15 +880,24 @@ GPT W records <= 3,896,053 B
 Gemma W records <= 6,543,685 B.
 ```
 
+At q357 the amended offline-FS W floors are 3,465,620/4,976,700 B for
+GPT/Gemma, leaving 430,433/1,566,985 B under those 125% caps.  After the
+192-B all-plane AuthBind extension and 376-B certificate container, the exact
+partial certificate floors are 3,466,188/4,977,268 B and Gemma/GPT growth is
+1.435949x.  The Gemma four-plane planning proxy falls by only 31,424 B, from
+25,513,818 to 25,482,394 B, so its rounded planning point remains 30 MB.
+
 These are 125% of the authoritative W allocations, rounded down to whole
 bytes.  They do not enlarge the complete 30/100-MB certificate or 3x growth
 gates.  The former 150% W option and 35/115-MB, 3.5x certificate envelope are
 not selected fallbacks.
 
-Current partial offline-FS W growth is about 1.444x for the requested probes
-and 1.448--1.450x for the exact W-only minima.  It does not violate certificate
-growth by itself.  Missing nonnegative records prevent `EXACT_WIRE_CENSUS` or
-`FULL_CERTIFICATE` credit.  Both verdicts are `BLOCKED`.
+Current partial offline-FS W growth is about 1.436x for the requested probes.
+For the exact 76/78/84 W-only minima it is respectively
+1.440028x/1.439927x/1.441759x, or about 1.440--1.442x.  It does not violate
+certificate growth by itself.  Missing nonnegative records prevent
+`EXACT_WIRE_CENSUS` or `FULL_CERTIFICATE` credit.  Both verdicts are
+`BLOCKED`.
 
 ## 8. Branch B: tight Fiat--Shamir
 
@@ -758,35 +929,48 @@ unique opening only fixes the suffix for a commitment and point already
 selected.  It does not force the attacker to select one commitment or one
 prefix.
 
-### 8.2 Constructive failure in the current reducer
+### 8.2 Constructive failure for the implemented sumcheck relation
 
-Before `rho`, the prover sends masked corrections for `p(0)` and `p(2)`, while
-`p(1)` is constrained by `p(0)+p(1)=C`.  Let `g(X)` be the honest round
+The stacked-use amendment deletes the raw-use reducer, so that deleted
+reducer is no longer a valid witness for this attack.  It does not delete the
+base-GKR sumchecks.  In any surviving round where, before `rho`, the prover
+sends masked corrections for `p(0)` and `p(2)`, while `p(1)` is constrained by
+`p(0)+p(1)=C`, the same construction applies.  Let `g(X)` be the honest round
 polynomial for the real incoming claim `C0=g(0)+g(1)`, and let the malicious
-prover carry a different claim `C`.  Write
+prover carry a different claim `C`.  For `r != 1/2`, write
 
 ```text
 D = C-C0 != 0.
-d_r(X) = D * X*(X-r)/(1-r),  r != 1.
+d_r(X) = D * (X-r)/(1-2*r).
 p_r(X) = g(X)+d_r(X).
 ```
 
 Then `p_r(0)+p_r(1)=C`, but `p_r(r)=g(r)`.  Distinct values of `r` produce
-distinct `p_r(2)` and distinct canonical correction prefixes.  A malicious
+distinct `p_r(2)` and distinct canonical correction prefixes: the relevant
+linear-fractional map is injective because the field characteristic is not
+three.  A malicious
 prover can hash those prefixes locally, keep the one whose `rho` equals its
 chosen `r`, and then continue honestly from `g(r)`.  Even with one fixed mask
 `u_2`, the transmitted corrections `p_r(2)-u_2` are distinct.  With `m` local
-trials this concrete family has `T=1` and success
+trials, define the malicious strategy to abort unless `rho=r`.  This concrete
+family then has exactly one target per query and success
 `1-(1-1/p^3)^m`, approximately `m/p^3` while `m` is small relative to the
 field.  CAS and replay logic see only the winner.  No nonce reuse or hash
 collision is required.
 
-The same general issue remains for randomized commitments, root-mask seeds,
+Thus removing 653 reducer segment-round instances greatly shortens the
+transcript but does not itself establish Challenge-Prefix Uniqueness.  The
+implemented blind-sumcheck grammar has the round relation above, as does any
+amended compiler that retains it.  The exact surviving Fp3 GKR round must
+still be named by the new compiler; if it uses a different message relation,
+this specific counterexample is `BLOCKED` pending a recheck.  The same general
+issue remains for randomized commitments, root-mask seeds,
 roots, auxiliary roots and prover randomness.  Binding can give one opening
 for a fixed root; it cannot give one root.  Deterministic honest-prover coins do
 not constrain a malicious prover unless the relation checks that determinism.
 
-The prefix audit is exhaustive over the requested degrees of freedom:
+The prefix audit covers every requested degree of freedom in the current
+grammar; it must be repeated after the stacked compiler is frozen:
 
 | item varied by the malicious prover | why uniqueness/canonical encoding does not stop many prefixes |
 | --- | --- |
@@ -829,11 +1013,16 @@ single-input control would instead be
 epsilon_FS_unique_prefix = 512/p^3,
 ```
 
-or about 183 bits.  That premise is false for the current transcript; a
-computational version would additionally pay `epsilon_prefix_unique`.
+or about 183 bits.  The implemented historical transcript does not satisfy
+that premise.  The proposed stacked relation has not been compiled, so the
+premise is unproved there; a computational version would additionally pay
+`epsilon_prefix_unique`.
 
-The tight-Q-independent branch is `NO-GO` for the current transcript.  Ways to
-enforce the property would change at least one frozen object:
+No complete tight-Q-independent reduction has been established for this
+transcript, so Branch B is `NO-GO` under the owner's rule.  For a
+not-yet-compiled stacked GKR relation, the specific counterexample above is
+`BLOCKED`, not a universal impossibility theorem.  Ways to enforce the
+property would change at least one frozen object:
 
 - a trusted online signer/TEE could authorize one complete independently
   grindable prefix;
@@ -853,20 +1042,20 @@ These are declared redesigns, not hidden fixes.
 | `SECURITY_84` | **BLOCKED globally; current allocation NO-GO** | the registered conditional sum is already strictly below 84 bits, but larger q and a new complete allocation have not been excluded |
 | owner floor 76 | **BLOCKED** | W has quantified room at q350/q357, but B/KV/GKR and the named assumptions are absent |
 | preferred 78 | **BLOCKED** | q357 is the first requested W control with useful room; the complete sum is absent |
-| `FS_Q64` | **NO-GO for tight Q-independent FS; BLOCKED for amplified linear-Q FS** | current prefixes are not unique; the linear branch lacks the complete carrier/event theorem |
+| `FS_Q64` | **NO-GO for tight Q-independent FS; BLOCKED for amplified linear-Q FS** | no complete tight reduction has been established for this transcript; the implemented sumcheck admits many prefixes, while the future stacked relation and linear branch still need compilation |
 | `MASK_LIFETIME` | **BLOCKED** | W controls are exact; B/KV loads and the adaptive multi-root theorem are absent |
 | `COMPLEXITY_BOUND` | **BLOCKED globally; current transforms NO-GO** | no admitted `c_source*N+P(q,h)` carrier exists |
 | `TWO_HBM_SWEEPS` | **BLOCKED globally; current transforms NO-GO** | ROWFOLD is selected but its absent report cannot prove two scans without forbidden materialization |
 | `ROWFOLD_CARRIER` | **BLOCKED at intake** | owner-selected candidate, but its report/relation/compiler is absent from the repository |
-| `EXACT_WIRE_CENSUS` | **BLOCKED** | only the W Merkle/query slice is exact |
-| `FULL_CERTIFICATE` | **BLOCKED** | B/KV/GKR/PCS/receipt records are missing |
+| `EXACT_WIRE_CENSUS` | **BLOCKED** | the amended reducer deletion and W Merkle/query slice are exact; stacked-GKR and all other records are not |
+| `FULL_CERTIFICATE` | **BLOCKED** | stacked GKR, B/KV, PCS and receipt records are missing |
 | `H100_STATIC_FIT` | **BLOCKED**, or **NO-GO** for a weight-long v | known extended subtotal with one ROWFOLD arena is 71.784 GB; the remaining live set is unknown |
 | `D126` | **BLOCKED** | scoped branches fail, but no universal impossibility is proved |
 
 The selected working point for the preferred 78-bit objective is q357: W
 alone leaves 93.382%/91.440% of the 78-bit error budget for all later terms and
-the GPT offline-FS W floor has 427,945 B left under the 125% cap.  The 76-bit
-fallback is q350: it leaves 86.612%/83.083% of the 76-bit budget and 497,625 B under
+the GPT offline-FS W floor has 430,433 B left under the 125% cap.  The 76-bit
+fallback is q350: it leaves 86.612%/83.083% of the 76-bit budget and 500,113 B under
 GPT's 125% cap.  These numbers quantify future room but do not prove that B,
 KV, GKR and the true PCS will fit it.  q347 is not selected because its W-only
 margin is too narrow.  The requested balanced q362 probes miss 84, while the
@@ -883,16 +1072,18 @@ optimized allocation and normally larger counts.
 2. In a separately authorized artifact-ingest batch, select `GemmaQuantV1`
    and `LUT_TABLE_SCHEMA`, verify every pinned shard hash and tensor offset,
    export packed i16/LUT/golden/root artifacts, then compile the canonical
-   two-model L manifests and every B/KV `RootLayout.RoundCap`.  Those emitted
-   rows, rather than a copied W schedule, supply the missing extents, folds
-   and mask charges.
+   two-model L manifests, the 50/472 stacked W operators and every B/KV
+   `RootLayout.RoundCap`.  Those emitted rows, rather than a copied W schedule,
+   supply the missing extents, folds and mask charges.
 3. Acquire the exact ROWFOLD report, hash and archive it, then translate its
    relation and two-pass pseudocode into complete
    `Encode/Fold/Extend/CheckExtend/EvalLink` messages.  Reject intake if its
    6,442,450,944-B arena excludes output, if a round adds a source scan, or if
    its per-source work depends on q.
 4. Emit every per-plane/per-round `q,U,S,H`, correction, correlation and
-   prover/verifier operation from that compiler.
+   prover/verifier operation from that compiler; discharge
+   `c7_stacked_weight_use_compiler_complete`, rederive the named GKR event
+   numerator, and reject any nonzero reducer count.
 5. Build one global ROM registry containing every query from every session and
    attempt, and prove the bad-set bound for every adaptive prefix.
 6. Build the complete event registry, showing whether a new term replaces or
@@ -908,12 +1099,15 @@ optimized allocation and normally larger counts.
 
 The active path is Branch A only: first `q=357`, offline classical-ROM FS with
 global `Q_FS<=2^64`, selected mask Alternative 1, one physical KV arena and
-exact 125% W caps.  ROWFOLD two-pass is the selected candidate, subject to the
-single-arena contract above.  Static compilation follows Section 10; timing is
-forbidden until the four-plane records, complete security-event registry and
-strict H100 liveness map close.  The first later measurement is the H100
-16-bit kernel rate used by ROWFOLD, under a separate execution GO.  Storage
-load remains model-onboarding cost only.
+exact 125% W caps.  The expected raw-use/reducer profiles are now
+`50/58/0` and `472/480/0`; the current code still implements the superseded
+profile and receives no credit.  ROWFOLD two-pass is the selected candidate,
+subject to the single-arena contract above.  Static compilation follows
+Section 10; timing is forbidden until the stacked-use theorem, four-plane
+records, complete security-event registry and strict H100 liveness map close.
+The first later measurement is the real H100 16-bit inference-kernel rate,
+under a separate execution GO.  Storage load remains model-onboarding cost
+only.
 
 The authoritative manifest grammar remains the design's terminal-digest form
 `header|L|A|Q|digest`, using derive-key context
@@ -921,10 +1115,11 @@ The authoritative manifest grammar remains the design's terminal-digest form
 digest after the header and uses `manifest-container/v1`; it must be corrected
 before reuse and receives no production-byte credit.
 
-The immediate blocker is deterministic: the named ROWFOLD report is not in
-the repository, any Git ref or an identifiable public source.  Its exact file
-or contents are required before the selected candidate can be translated or
-its 6.4-GB object can be identified as input, total arena or persistent state.
+The immediate blockers are deterministic: the named ROWFOLD report is not in
+the repository, any Git ref or an identifiable public source, and the stacked
+operator relation has neither a compiler nor its named Lean refinement.  The
+report's exact file or contents and the Section-10 compiler outputs are
+required before either candidate receives credit.
 
 ## 12. Gemma-31B full-response planning heuristics
 
@@ -943,28 +1138,32 @@ point**, Alternative 1 for mask geometry, one resident KV arena, and a future
 carrier that actually satisfies `c_source*N+P(q,h)` and two sweeps.  It is not
 a complete 78-bit result and is not the optimistic 84-bit point.
 
-As an optimistic one-weight-read-per-step roofline, one prefill read plus 50
-decode reads is `51*61,394,690,560 = 3,131,129,218,560` B.  It is an
-assumption, not a measured Gemma traffic counter.  The two proof sweeps add
-exactly 122,789,381,120 B.  Repository A100 stream controls of
-119.513--418.038 GB/s turn that combined traffic into 7.78--27.23 seconds.
-Applying the registered dimensionless historical `rho_cpu_decode` controls of
-about 0.816--0.946, plus the slow 3.139 control, gives only an arithmetic
-sensitivity of about 6.35--85.5 seconds.  It is not an H100/C7 prediction and
-the missing Fp3, GKR, host and durability work can put the real value outside
-that band.  The 50-second point below is therefore a judgement call, not a
-fitted result.
+One prefill read plus 50 sequential decode reads is
+`51*61,394,690,560 = 3,131,129,218,560` logical B.  These are inference reads,
+not the proof's two packed-source sweeps.  The two proof sweeps add exactly
+122,789,381,120 B.  Neither number is a measured HBM traffic counter.
+
+The amendment removes exactly 1,074 Gemma raw terminals:
+`410 + 60*11 + 3 + 1`.  They are 410 matrix duplicates, 660 norm-bundle
+duplicates, three tied-embedding duplicates and one final-norm duplicate, not
+1,074 full-model scans.  One i16 payload read of the removed segment uses is
+67,058,356,736 B from the frozen source census.  Assuming two such internal
+streams gives about 134.117 GB and explains the rough 140-GB planning claim,
+but the second stream and real HBM traffic remain uncompiled and unmeasured.
+At the desired H100 bandwidth this byte delta alone is only tens of
+milliseconds; the 45--50-s range also assumes that reducer arithmetic and
+scheduling disappear.  That assumption is unmeasured.  This saving does not
+alter the two ROWFOLD source sweeps.
 
 | Gemma Branch-A quantity | central heuristic | sensitivity band, not a bound | confidence |
 | --- | ---: | ---: | --- |
-| prover, inference start through durable proof, warm-resident W | about 50 s | arithmetic control 6--86 s; real upper edge unknown | very low |
-| hypothetical certificate placeholder | about 30 MB | 25--39 MB conditional arithmetic | very low |
-| weak four-vCPU verifier, lot preparation through verdict | about 20 s | 10--30 s heuristic only | very low |
+| prover, inference start through durable proof, warm-resident W | about 47.5 s | 45--50 s planning range; real upper edge unknown | very low |
+| hypothetical certificate placeholder | about 30 MB | 25.482-MB arithmetic proxy; complete size unknown | very low |
+| weak four-vCPU verifier, lot preparation through verdict | about 7.3 s | 6.380--8.134 s transferred arithmetic | very low |
 
-The 39-MB planning edge selects the 125% W band: its registered, uncompiled GPT
-allocation control is 13,164,773 B, so the main 3x arithmetic gives
-39,494,319 B.  It is not a compiled certificate cap.  Selecting 150% would
-instead have given 41,831,952 B, but that band is now explicitly inactive.
+The 30/100-MB and 3x gates remain unchanged.  The 125% preregistration applies
+only to W records; 150% remains inactive.  The values above are planning
+estimates, not admission limits or measured credit.
 
 The registered 3.2-GB/s storage control is about 19.186 seconds, but the owner
 now charges it once to model onboarding.  It is excluded from resident
@@ -974,43 +1173,77 @@ occurrence; it cannot be hidden inside a later response.
 The proof-size point comes from a transparent proxy, not a fitted constant:
 
 ```text
-offline-FS W floor at q357              5,008,124 B
+offline-FS W floor at q357              4,976,700 B
 three conditional D31 plane streams    3 * 3,683,592 B
 illustrative compute/base-GKR budget   9,379,670 B
 MAC plus framing budget                   75,248 B
-proxy subtotal                         25,513,818 B
+proxy subtotal                         25,482,394 B
 ```
 
 The D31 B/KV schedule is not selected and true-PCS/receipt bytes are absent,
-so 25.514 MB is neither a lower nor an upper bound; 30 MB is the practical
+so 25.482 MB is neither a lower nor an upper bound; 30 MB is the practical
 planning point.  For verifier time, existing complete GPT-2 rows are
 0.731--0.932 seconds on a different x86 host.  The displayed heuristic scales
-by the exact raw-use ratio `1,554/110=14.127` and assumes, without measurement,
-roughly a twofold thread penalty for four instead of about eight threads.  It
-is not a transferred AArch64 rate; the required paired weak-verifier baseline
-is absent.  Reading and hashing roughly 30 MB is secondary; lot preparation,
-base GKR and the 1,554 raw uses are expected to dominate.
+by the amended raw-use ratio `480/110=4.363636` and assumes, without
+measurement, a twofold thread penalty for four instead of about eight threads:
+
+```text
+0.731*2*(480/110) = 6.380 s
+0.932*2*(480/110) = 8.134 s.
+```
+
+This makes 15 seconds reachable in the estimate, not proved.  The separate
+known-correlation count falls from 1,787 to 481, a 3.715x reduction, but that
+ratio cannot scale the whole verifier because Merkle, base GKR and fixed work
+remain.  No Gemma lot preparation has been measured.
 
 For the optimistic 84-bit four-plane search seed, first q372 gives Gemma W
-vector `[372,169,158,155,155,155,155,155]`, offline-FS W floor 5,203,340 B
-and a four-plane proxy of about 26.144 MB.  The planning time points remain
-roughly 50/20 seconds for prover/verifier because q changes only `P(q,h)`, not
-inference or the two source sweeps.  This sensitivity does not make
-`SECURITY_84` pass: the real B/KV/GKR errors are still absent.
+vector `[372,169,158,155,155,155,155,155]`, amended offline-FS W floor
+5,171,916 B and a four-plane proxy of about 26.113 MB.  The planning time
+points remain roughly 47.5/7.3 seconds for prover/verifier because q changes
+only `P(q,h)`, not inference or the two source sweeps.  This sensitivity does
+not make `SECURITY_84` pass: the real B/KV/GKR errors are still absent.
 
-If an engineering placeholder is unavoidable, use four minutes of H100 wall,
-39 MB of output and 30 seconds of verifier wall until real measurements exist;
-these are deliberately arbitrary capacity placeholders, not safe maxima.  The
-former 3.5x exploratory envelope is not active.  The W-only byte growth must
-not be mistaken for a bound on the complete prover.
+#### First measurable gate: real i16 inference bandwidth
+
+The first later measurement is the true fixed-point i16/i64 inference kernel,
+not a copy benchmark.  Reading the 3,131,129,218,560 logical B above in
+1.5/1.0 seconds requires respectively
+2,087,419,479,040/3,131,129,218,560 useful B/s (about 2.087/3.131 TB/s).
+The registered result must report logical and hardware HBM bytes, prefill and
+decode separately, kernel wall, all workspaces and `peak_allocated`, and must
+match the canonical fixed-point reference bit for bit.  These are targets for
+a future separately authorized run, not H100 capability claims.
+
+#### Optional later strategy: speculative witness generation
+
+The current `GREEDY` policy makes exact speculative generation plausible, but
+it receives no credit from distributional equivalence.  Its golden gate must
+compare the complete sequential and blocked witnesses bit for bit: tokens,
+accumulators, activations, B trace, successor KV, roots and final digests.  For
+GPT-2 the reference is `scripts/gpt2_fixed.py`; Gemma cannot pass until the
+future `GemmaQuantV1` Python reference is frozen.  Only after this gate may the
+schedule be called a different witness generator for the unchanged relation.
+
+An average 2--4x accepted draft would reduce large-model passes from 51 to
+roughly 26--14 and logical weight reads to about 1.596--0.860 TB; the worst
+case remains 51.  The draft model and acceptance work must be timed.  Its
+all-inclusive 2,000,000,000-B incremental cap and resulting conditional H100
+subtotal are in Section 6.  This option follows the base kernel measurement
+and is excluded from the 45--50-s estimate.
+
+No larger engineering envelope is promoted.  Admission remains the exact
+30/100-MB, 3x, two-sweep, complexity, security and strict-H100 conjunction;
+the W-only byte growth must not be mistaken for a complete-prover bound.
 
 ### Branch B: tight Fiat--Shamir
 
 For the current transcript the only honest complete estimate is **N/A**:
 the branch is `NO-GO`, so there is no admissible prover, proof or verifier to
-time.  The old interactive W subtotal is 3,788,680 B, split as 3,767,708 B
-P-to-V and 20,972 B V-to-P.  A direct FS conversion could remove at most those
-20,972 B (0.554%) before adding its own metadata; at least 686 known challenge
+time.  At the selected q357 point, the amended interactive W subtotal would be
+4,983,328 B, split as 4,976,700 B P-to-V and 6,628 B V-to-P.  A direct FS
+conversion could remove at most those 6,628 B (0.133%) before adding its own
+metadata; at least 32 known challenge
 scalars must be derived before base GKR and B/KV.  This scalar count is not a
 count of sequential prefix rounds.  Those partial values do not
 identify a complete performance range.  Even a hypothetical tight theorem

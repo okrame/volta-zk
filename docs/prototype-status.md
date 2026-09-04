@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 D126 BRANCH-A SELECTED / ROWFOLD INTAKE BLOCKED — NO MEASUREMENT / POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 D126 STACKED-USE / ROWFOLD INTAKE BLOCKED — NO MEASUREMENT / POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,24 +11,64 @@ record; no external plan is authoritative.
 Read `c7-d126-q64-query-fs-audit.md`; the older
 `c7-stateful-authenticated-lfc-design.md` is supporting history.
 
-- **Status/owner profile.** D126 remains **BLOCKED**, with Branch A selected:
-  first `q=357`, offline classical-ROM FS and global `Q_FS<=2^64`; 76-bit
-  minimum, 78 preferred. W masks use 256/4,096 attempts per root, Gemma uses
-  one KV arena and W wire is preregistered at exactly 125%. Static compilation
-  is authorized; no timing, hardware, provider or pod action is authorized.
-- **Evidence, no credit.** Exact q357 W rows leave 93.382%/91.440% of the
-  78-bit error budget. W floors 3,468,108/5,008,124 B fit caps
-  3,896,053/6,543,685 B. W+one Gemma KV arena is 65,085,678,080 B. One total
-  temporary ROWFOLD arena up to 6,442,450,944 B is conditionally admitted,
-  leaving less than 8,471,870,976 B; this is not H100 credit.
-- **Hard stops.** No ROWFOLD report/relation/compiler exists in the checkout
-  or Git refs. The arena must include input and output; full codeword, second
-  W copy, spill and `qN` remain NO-GO. B/KV/GKR rows, event registry and H100
-  liveness are absent. The test manifest codec disagrees with the authoritative
-  terminal-digest grammar and cannot be promoted.
-- **Resume.** Acquire and hash the ROWFOLD report; compile the four layouts,
-  every record and event, then the strict H100 map. Only after 76/78 and all
-  gates close may an H100 16-bit-kernel measurement receive a separate GO.
+- **Status.** D126 remains **BLOCKED** on Branch A: first `q=357`, offline
+  classical-ROM FS, global `Q_FS<=2^64`, 76-bit minimum and 78 preferred.
+  Mask Alternative 1, one Gemma KV arena and exact 125% W caps remain fixed.
+- **Analytic amendment, no credit.** Expected GPT/Gemma profiles are now
+  `50/58/0` and `472/480/0` for W/all/reducer; the old profiles reject.
+  Reducer deletion removes 1,306 Gemma Fp3 masks and 31,424 offline-FS bytes.
+  q357 W floors become 3,465,620/4,976,700 B. Planning only: 45--50-s prover,
+  about 30 MB and 6.380--8.134-s verifier. Field and RootMask stay unchanged.
+- **Hard stops.** ROWFOLD's report/relation/compiler is absent. No Lean theorem
+  or compiler proves the new stacked operator relation, and its GKR event
+  numerator is unknown. B/KV/GKR records, full event registry and H100
+  liveness remain absent. Full codeword, second W copy, spill and `qN` are
+  NO-GO; the admitted 6,442,450,944-B arena includes input and output.
+- **Resume/authorization.** Follow the design's eight static steps: acquire
+  ROWFOLD, compile every layout/record/event and the stacked-use theorem, then
+  build the strict H100 map. No code, timing, hardware, provider or pod action
+  is authorized. The first later measurement, under a separate GO, is the
+  real H100 fixed-point 16-bit inference kernel.
+
+- **2026-09-04 — owner replaces historical per-phase W uses with one stacked
+  terminal per physical segment; all admission gates remain BLOCKED.** The
+  analytic profile now rejects the old GPT/Gemma W/all/reducer values
+  `102/110/51` and `1,546/1,554/653`, and expects `50/58/0` and `472/480/0`.
+  Prompt and response activation rows, in the repository's `X*W` convention,
+  must be compiled into one operator relation per matrix. Each Gemma layer's
+  six normalization tensors across both phases use one tagged direct sum,
+  while tied embedding and final norm retain explicit distinct roles.
+  AuthBind and the 58/480 ProductClosure triples remain; only `UseEta`, reducer
+  protocol records and their corrections disappear.
+
+  This removes exactly 1,306 Gemma Fp3 reducer masks. Known correlations fall
+  from 1,787 to 481, three-basis slots from 5,361 to 1,443, and the known
+  pre-base-GKR challenge count from 686 to 32. RootMask q357 consumption,
+  attempts/root, setup and refresh do not change. The fixed Gemma outer slice
+  falls 59,132->11,916 B; offline FS saves only the 31,424-B P-to-V part.
+  q357 W floors are now 3,465,620/4,976,700 B, partial certificates including
+  framing are 3,466,188/4,977,268 B, and growth is 1.435949x. The complete
+  certificate remains unknown; its planning point stays about 30 MB.
+
+  The claimed `5 events per raw use` is not the repository formula: the old
+  Gemma control is the mixed `3,387/|Fp3|`. Its summands are not mapped to
+  named bad events, so no new GKR numerator or complete security margin is
+  credited. There is also no existing Lean theorem for prompt/decode GEMM
+  stacking. The required future file is
+  `lean/VoltaZk/C7StackedWeightUse.lean`, with theorem
+  `VoltaZk.c7_stacked_weight_use_compiler_complete`; until its
+  compiler, degrees and event registry exist, the new profile is
+  `credit:false/BLOCKED`.
+
+  Low-confidence warm-resident planning becomes 45--50 s prover, about 30 MB
+  and 6.380--8.134 s weak verifier. The first later measurement remains the
+  real fixed-point H100 kernel: 3,131,129,218,560 logical inference bytes need
+  about 2.087/3.131 TB/s for 1.5/1.0 s. Optional speculative decoding is
+  preregistered only after bit-for-bit full-witness equality, with one
+  all-inclusive 2,000,000,000-B incremental H100 cap; conservatively it leaves
+  less than 6,215,859,456 B in the current partial map. The 19.186-s storage
+  load remains one `ModelOnboarding` occurrence. No code, Lean, test,
+  benchmark, hardware, provider or pod action occurred.
 
 - **2026-09-04 — owner selects Branch A/q357 and ROWFOLD two-pass, but the
   carrier is BLOCKED at document intake.** The working path now fixes offline

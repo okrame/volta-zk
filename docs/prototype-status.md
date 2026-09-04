@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 D126 BLOCKED / PHASE-A KAT PASS / DIRECT-G141 SCREEN NO-GO — NO CPU / POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 D126 Q64 AUDIT BLOCKED / TIGHT FS NO-GO / DIRECT-G141 NO-GO — NO CPU / POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,31 +8,93 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-Read `c7-stateful-authenticated-lfc-design.md`; the R0.3 pod handoff remains
-inactive.
+Read `c7-d126-q64-query-fs-audit.md`; the older
+`c7-stateful-authenticated-lfc-design.md` is supporting history.
 
-- **Status/evidence.** D126 remains analytic and **BLOCKED**.  The explicit GO
-  was consumed: `cargo test -p volta-pcs c7_phase_a` passed all nine named
-  KATs (0 failed/ignored/measured; 255 filtered).  Thus
-  `C7_PHASE_A_KAT_PASS=true`, test-only and `credit:false`; it is not
-  `C7_CPU_REFERENCE_PASS`.
-- **Closed finite work.** Native-Fp3 inverse/codec, same-object AuthBind,
-  exact three-way `BroadcastTag`, all-c ordering, GPT-2/Gemma static censuses,
-  manifest/certificate/genesis codecs, reducer, crash/replay/KV/GC/race matrix
-  and typed C4.1 reconciliation pass.  Targets remain 50/58 and 472/480
-  segments, with 110/1,554 all-raw uses.
-- **Carrier hard stop.** `C7-DIRECT-G141-WHIR-v0` supplies a true
-  `Encode/Fold/Extend/CheckExtend/EvalLink` relation but its strict-UD
-  realization is **NO-GO**: persisted codeword+tree is
-  4,786,653,504/642,600,433,216 B (19.301x/10.423x), online materialization is
-  4.295/549.756 GB, and its interactive round order conflicts with the frozen
-  all-chains-before-QueryTapes grammar.  HVZK/Fp2 evidence does not prove
-  adaptive stateful malicious-DV privacy.
-- **Resume.** Current W bytes remain incomplete subcodec controls.
-  Lifecycle/workloads, artifacts/LUTs/roots, B/KV schedules, exact PCS
-  messages, AES-Fp3, receipt keys, complete lifetime/byte/resource rows and
-  every measured gate remain unknown.  No ANALYTIC PASS, CPU seam, Lean,
-  benchmark, FS, hardware, provider or pod is authorized.
+- **Status/owner profile.** D126 is analytic and **BLOCKED**. Gemma's
+  operational context cap is 4,096; one global `Q_FS<=2^64` includes every
+  local query, session, abort, retry and `2^20`-attempt lifetime. Security is
+  76-bit minimum, 78-bit preferred and 84-bit optimistic. No implementation
+  or pod is authorized.
+- **Evidence, no credit.** Non-uniform W controls, exact partial offline-FS W
+  wire/Merkle rows, three mask alternatives and the H100 known base are
+  derived. q357 is the
+  first requested W control with useful room for 78; q350 is the 76 fallback.
+  Exact W-only byte minima start at q341/q342 for 76 and q362/q362 for 84,
+  but the 84 rows have essentially no room for later terms. These are analytic
+  `credit:false` rows. Historical Phase-A KAT evidence
+  remains 9/9 test-only.
+- **Hard stops.** GPT W amplification fails 105% even at 76; 125--150% needs
+  preregistration and full bytes. Tight Q-independent FS is **NO-GO** because
+  current corrections permit many acceptable pre-challenge prefixes. The
+  DirectG141/full-transform realization remains **NO-GO** for `qN`, full
+  codeword, memory and two-sweep gates. Complete B/KV/GKR, mask, certificate,
+  H100 and source-linear successor rows are absent.
+- **Resume.** Freeze generated B/KV layouts and the event registry; select a
+  complete `c_source*N+P(q,h)` two-sweep carrier; compile all records,
+  operations and live ranges; prove global adaptive ROM/mask composition.
+  Only then may 76/78, certificate, verifier or H100 gates be decided.
+
+- **2026-09-04 — D126 global-Q64 query-amplification/tight-FS audit keeps the
+  joint result BLOCKED and closes tight FS on the current transcript.** The
+  active design is `c7-d126-q64-query-fs-audit.md`. The owner replaces the old
+  challenge/context assumptions: Gemma's operational
+  cap is 4,096 tokens; `Q_FS_global<=2^64` includes local invisible queries,
+  concurrent sessions, aborts, retries and all `2^20` attempts; 76 bits is the
+  accepted minimum, 78 preferred and 84 optimistic. Classical ROM, offline
+  challenges, one storage acquisition, two packed-source HBM sweeps, one
+  80,000,000,000-B H100 and all no-spill/no-copy/no-`qN` rules remain fixed.
+
+  The non-uniform W recompilation uses first-round controls 347/350/357/362.
+  After exact round union, the W gap and the conditional linear-BLAKE mask
+  term, GPT-2/Gemma have 77.87447/77.54655, 78.90096/78.56346,
+  81.91738/81.54619 and 83.66370/83.27656 bits. Thus q357 is the first
+  requested W control with useful room for 78; q350 is the 76 fallback. The
+  exact W-only byte minima use first q341/q342, q346/q347 and q362/q362 for
+  76/78/84. The q362 minima reach only 84.000484/84.002279 bits, leaving no
+  useful room for positive B/KV/GKR terms. Those terms and every remaining
+  named event are absent, so no complete security row passes. The authoritative weight caps
+  are 3,272,685/5,496,695 B at 105% and 3,896,053/6,543,685 B at 125%. GPT's
+  offline-FS W floor is already 3,374,236 B at q347 and even the minimum
+  W-only 76-bit row is 3,331,836 B and exceeds 105% by 59,151 B; 105% is
+  NO-GO and 125--150%
+  remains an unselected preregistration band. Earlier contradictory synthetic
+  cap/margin values are stale; the new audit records the authoritative values
+  without rewriting history.
+
+  All three W-mask paths are explicit. Halving attempts/root to 256/4,096
+  doubles epochs to 4,096/256 and keeps lifetime exposure unchanged. Enlarging
+  the domain makes GPT's setup 737,057,920 B, exceeding 2.10x by 214,920,372
+  B. Gemma's exact 76/78 W minima still fit `2^35`, while the q357 planning
+  point and exact 84 minimum need a v1-forbidden `2^36` domain. Keeping
+  current geometry instead needs an unproved adaptive multi-session rank
+  reduction of about 25.54% at q357. B/KV consumption is still unknown, so
+  `MASK_LIFETIME` is BLOCKED.
+
+  Tight Q-independent Fiat--Shamir is NO-GO for the current relation.
+  Canonical bytes do not imply one eligible prefix: before `rho`, a malicious
+  prover can vary a correction polynomial while preserving the pre-challenge
+  identity and its value at a chosen `rho`, hash many distinct prefixes
+  locally and transmit only the winner. Commitments, salts, roots, openings
+  and randomness have the same fixed-object-versus-unique-object gap; nonce
+  and collision resistance do not repair it. Enforcing prefix uniqueness
+  would change the relation, transcript, setup or trust model.
+
+  The repository has only direct `qN` or complete-transform/codeword paths,
+  so the current DirectG141 realization is NO-GO for complexity and two-sweep
+  gates; a successor is BLOCKED. At context 4,096, packed Gemma W plus one
+  shared KV arena is exactly 65,085,678,080 B, leaving less than
+  14,914,321,920 B for every other allocation. B, chains, GKR, reducer,
+  activations, CUDA/runtime/allocator and workspaces are uncensused; H100 fit,
+  full wire and certificate remain BLOCKED. For planning only, the historical
+  100+50-token q357 Gemma heuristic is about 50-s prover, 30-MB certificate
+  and 20-s verifier; the only numeric sensitivities are a non-bounding
+  6--86-s historical arithmetic control, 25--39-MB conditional placeholder
+  and 10--30-s unmeasured verifier heuristic;
+  none receives credit. Tight FS has no admissible cost triple because it is
+  NO-GO; trusted-token figures are redesign overhead only. D126 stays BLOCKED.
+  This is an analytic/documentation checkpoint only: no implementation, Lean,
+  test, benchmark, hardware, provider or pod action occurred.
 
 - **2026-09-02 — D126 Phase-A KATs pass; the concrete true-WHIR carrier screen
   is NO-GO.** The owner GO was consumed exactly as scoped.  The test-only

@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 D126 STACKED-USE / ROWFOLD INTAKE BLOCKED — NO MEASUREMENT / POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 D126 GEMMA-31B STACKED STATIC BLOCKED — LOCAL DEEP TESTS GO / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,27 +8,92 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-Read `c7-d126-q64-query-fs-audit.md`; the older
-`c7-stateful-authenticated-lfc-design.md` is supporting history.
+Read `c7-d126-gemma31b-static-admission.md`; older designs are supporting
+append-only history.
 
-- **Status.** D126 remains **BLOCKED** on Branch A: first `q=357`, offline
-  classical-ROM FS, global `Q_FS<=2^64`, 76-bit minimum and 78 preferred.
-  Mask Alternative 1, one Gemma KV arena and exact 125% W caps remain fixed.
-- **Analytic amendment, no credit.** Expected GPT/Gemma profiles are now
-  `50/58/0` and `472/480/0` for W/all/reducer; the old profiles reject.
-  Reducer deletion removes 1,306 Gemma Fp3 masks and 31,424 offline-FS bytes.
-  q357 W floors become 3,465,620/4,976,700 B. Planning only: 45--50-s prover,
-  about 30 MB and 6.380--8.134-s verifier. Field and RootMask stay unchanged.
-- **Hard stops.** ROWFOLD's report/relation/compiler is absent. No Lean theorem
-  or compiler proves the new stacked operator relation, and its GKR event
-  numerator is unknown. B/KV/GKR records, full event registry and H100
-  liveness remain absent. Full codeword, second W copy, spill and `qN` are
-  NO-GO; the admitted 6,442,450,944-B arena includes input and output.
-- **Resume/authorization.** Follow the design's eight static steps: acquire
-  ROWFOLD, compile every layout/record/event and the stacked-use theorem, then
-  build the strict H100 map. No code, timing, hardware, provider or pod action
-  is authorized. The first later measurement, under a separate GO, is the
-  real H100 fixed-point 16-bit inference kernel.
+- **Status.** D126 has one active Gemma-31B line: context 4,096, first `q=357`,
+  offline classical-ROM FS, global `Q_FS<=2^64`, 472 W / 480 total terminals,
+  zero use reducers, mask Alternative 1 and one KV arena. Realized 78-bit
+  security remains **BLOCKED**.
+- **Completed evidence.** Lean proves stacked `X*W`, grouped norms and tied
+  embedding/final norm. It checks frozen profile arithmetic `472/480/0`, with
+  zero reducers derived from 480 declared length-one axes, plus the abstract
+  fixed-prefix ProductClosure numerator `480+2=482` and a conditional
+  `<2^-78` contract.
+  A tested Rust helper rejects tuples other than `4096/472/480/0`; it is not
+  runtime-wired. Exact Python static checks pass. The 79.481814-bit allocation
+  is conditional, not protocol credit.
+- **Hard stops.** Compiler refinement, B/KV schedules, base-GKR degrees,
+  complete ROM/event registry, ROWFOLD relation, full certificate and H100
+  liveness are absent. Full codeword, second W copy, spill, forbidden
+  superlinear source terms and every pod action remain disallowed.
+- **Authorization.** Local Lean/Rust/Python deep static tests, the 480-terminal
+  compiler/refinement, tiny-fixture B/KV/event compilation and a static H100
+  map are GO. Generated model bodies, hardware timing, provider/production
+  work and pods remain blocked. Resume conditions are the six ordered steps in
+  the active design.
+
+- **2026-09-04 — D126 switches active authority to Gemma-31B stacked static
+  admission; local deep static work is GO while full admission stays
+  BLOCKED.** The active design is now
+  `c7-d126-gemma31b-static-admission.md`. Supporting history remains
+  append-only but supplies no active parameters. The only accepted active
+  profile is pinned Gemma with context 4,096, q vector
+  `[357,163,152,149,149,149,149,149]`, 472 W terminals, eight B/KV terminals,
+  480 total ProductClosure triples and zero use reducers.
+
+  `C7StackedWeightUse.lean` proves prompt/response `X*W` stacking, the tagged
+  phase-by-six norm bundle without cross terms, both tied-embedding
+  orientations, final-norm stacking and active-versus-padding coverage. Its
+  frozen profile has 472/480 terminals and an explicit 480-entry length-one
+  axis vector, from which zero reducers and zero `UseEta` events are derived.
+  The compiler-to-vector refinement remains open. It specializes the existing scalar product soundness
+  theorem at `T=480`: under its abstract fixed-prefix hypotheses, 480 possible
+  `chi` roots plus two `Delta` roots give exactly 482. Lean also normalizes the
+  selected Q64 budget expression `(2^64+1)*482/p^3`, about 119.087 bits. The
+  concrete C7 Fp3 field/verifier refinement, message-before-`chi` and
+  Delta-independence transcript refinement, and global classical-ROM lift are
+  open. Thus only the numerator passes; its C7/Q64 instantiation and the
+  transformer's base GKR remain blocked.
+
+  The conditional q357 contract assigns each of W/B/KV-old/KV-new at most
+  `2^-81`, retains the 64-slot response allocation and the named hash, PCG,
+  state/replay and codec caps, and is machine-proved below `2^-78`. The exact
+  W-envelope planning row gives 79.481814 bits, uses 35.803827% of the 78-bit
+  error budget and leaves 64.196173%; the weaker dyadic Lean cap still gives
+  78.955606 bits. Neither is achieved security: B/KV schedules, base-GKR
+  degrees/common points/final links, the global ROM composition and every
+  computational reduction remain unproved, so `SECURITY_78=BLOCKED`.
+
+  A Rust helper test rejects tuples other than `4096/472/480/0` field by field
+  and checks that a synthetic 480-one-use vector has no reducer depth; neither
+  is wired into the runtime compiler. The focused Python static suite computes
+  the exact q357 query/gap/mask/rejection fractions, conditional 482-root budget, cumulative security
+  margin, W wire and 105/125/150% caps, Alternative-1 mask geometry, partial
+  H100 map, planning bands and fail-closed full-chain gates. Its seven tests pass. The known W
+  floor is 4,976,700 B; the partial framed slice is 4,977,268 B and the
+  four-plane planning proxy is 25,482,394 B. The H100 subtotal is conditionally
+  71,784,140,544 B only if the selected arena caps hold; major omissions,
+  including the exact `v` allocation and liveness, are named and receive no
+  static-fit credit.
+
+  Verification: the focused Rust Gemma test passes; all seven focused Python
+  tests pass; the narrow and full Lean builds pass with no `sorry` or `admit`.
+  The raw Rust workspace run reaches one unrelated historical C6 source-string
+  guard failure whose offending text is already identical at `HEAD`; rerunning
+  the workspace while skipping exactly that known guard passes every remaining
+  test. Repository-wide `cargo fmt --check` also reports pre-existing format
+  drift outside the changed Rust file; the changed file and `git diff --check`
+  pass. Neither pre-existing issue is modified or hidden by this checkpoint.
+
+  Local full Lean/Rust/Python checking, the exact 480-terminal compiler and
+  refinement, tiny-fixture B/KV/event work and the static H100 liveness map are
+  authorized. Generated Gemma bodies, ROWFOLD implementation without its
+  missing report, full-chain claims, hardware timing, provider/production work
+  and every pod action remain blocked. Planning remains 45--50 s prover,
+  about 30 MB and 6.4--8.2 s verifier for a warm resident model; the 19.186-s
+  storage acquisition is model onboarding only and none of these times has
+  measurement credit.
 
 - **2026-09-04 — owner replaces historical per-phase W uses with one stacked
   terminal per physical segment; all admission gates remain BLOCKED.** The

@@ -85,6 +85,25 @@ pub enum SelectedModel {
     Gemma4_31B,
 }
 
+pub const GEMMA4_CONTEXT_CAP: u32 = 4_096;
+pub const GEMMA4_WEIGHT_SEGMENTS: u32 = 472;
+pub const GEMMA4_TERMINALS: u32 = 480;
+pub const GEMMA4_WEIGHT_REDUCERS: u32 = 0;
+
+pub fn require_gemma4_active_profile(
+    context_cap: u32,
+    weight_segments: u32,
+    terminals: u32,
+    weight_reducers: u32,
+) -> Result<()> {
+    if (context_cap, weight_segments, terminals, weight_reducers)
+        != (GEMMA4_CONTEXT_CAP, GEMMA4_WEIGHT_SEGMENTS, GEMMA4_TERMINALS, GEMMA4_WEIGHT_REDUCERS)
+    {
+        return Err("active Gemma-31B profile differs".to_owned());
+    }
+    Ok(())
+}
+
 pub fn selected_model_missing_inputs(model: SelectedModel) -> Vec<MissingInput> {
     match model {
         SelectedModel::Gpt2 => vec![
@@ -2478,11 +2497,26 @@ mod tests {
         assert_eq!(census.private_scalars, 30_697_345_280);
         assert_eq!(census.public_tensors, 60);
         assert_eq!(census.forbidden_tensors, 356);
-        assert_eq!((472, 480), (472, 472 + 8));
-        assert_eq!(1_546 + 8, 1_554);
-        assert_eq!(active_depths(&[472, 61, 60, 60]), vec![4, 4, 4, 4, 4, 4, 1, 1, 1]);
-        assert_eq!(32 * 128, 4_096);
-        assert_eq!(10 * 128 + 8 * 128 + 2_304, 4_608);
+        require_gemma4_active_profile(
+            GEMMA4_CONTEXT_CAP,
+            GEMMA4_WEIGHT_SEGMENTS,
+            GEMMA4_TERMINALS,
+            GEMMA4_WEIGHT_REDUCERS,
+        )
+        .unwrap();
+        assert_eq!(GEMMA4_TERMINALS, GEMMA4_WEIGHT_SEGMENTS + 8);
+        assert!(active_depths(&[1; GEMMA4_TERMINALS as usize]).is_empty());
+        for rejected in [
+            (4_608, 472, 480, 0),
+            (4_096, 471, 480, 0),
+            (4_096, 472, 479, 0),
+            (4_096, 472, 480, 1),
+            (4_096, 1_546, 1_554, 653),
+        ] {
+            assert!(require_gemma4_active_profile(rejected.0, rejected.1, rejected.2, rejected.3)
+                .is_err());
+        }
+        assert_eq!(32 * 128, GEMMA4_CONTEXT_CAP);
         assert_eq!(3_520 * 128, 450_560);
         assert_eq!((60, 5_376, 21_504, 262_144, 262_144), (60, 5_376, 21_504, 262_144, 262_144));
         assert_eq!((50 * 7, 10 * 6), (350, 60));
@@ -2530,16 +2564,13 @@ mod tests {
         assert_eq!(31_273_088_876u64 * 2, 62_546_177_752);
         assert_eq!(62_546_338_248u64 - 62_546_177_752, 160_496);
         assert_eq!(31_273_088_876u64 - 2_364 + 1_409_286_144, 32_682_372_656);
-        assert_eq!(410 * 2 + 60 * 12 + 4 + 2, 1_546);
-        assert_eq!(1_546 + 8, 1_554);
-        assert_eq!(50 * (7 + 1) + 10 * (6 + 1) + 2, 472);
-        assert_eq!(472 + 4 + 2 + 2, 480);
+        assert_eq!(50 * (7 + 1) + 10 * (6 + 1) + 2, GEMMA4_WEIGHT_SEGMENTS);
+        assert_eq!(GEMMA4_WEIGHT_SEGMENTS + 4 + 2 + 2, GEMMA4_TERMINALS);
         let sampler = "GREEDY";
         assert_eq!(sampler, "GREEDY");
         assert_ne!(sampler, "COMMITTED_CDF_V1");
         assert_ne!(d("kv-projection-owner", b"global"), d("kv-cache-cell", b"post-norm"));
         assert_ne!(d("kv-cache-cell", b"K-post-norm"), d("kv-cache-cell", b"V-post-norm"));
-        assert_ne!(1_546, 1_566); // Shared global K/V projection is one W owner, not two edges.
         assert_eq!(
             selected_model_missing_inputs(SelectedModel::Gemma4_31B),
             vec![
@@ -3052,9 +3083,9 @@ mod tests {
         zero_n.n_attempts = 0;
         assert!(zero_n.check(0, 0).is_err());
         require_exact_copy_set(110u32, &[110, 110, 110]).unwrap();
-        require_exact_copy_set(1_554u32, &[1_554, 1_554, 1_554]).unwrap();
+        require_exact_copy_set(GEMMA4_TERMINALS, &[480, 480, 480]).unwrap();
         assert!(require_exact_copy_set(110u32, &[110, 102, 110]).is_err());
-        assert!(require_exact_copy_set(1_554u32, &[1_554, 1_546, 1_554]).is_err());
+        assert!(require_exact_copy_set(GEMMA4_TERMINALS, &[480, 472, 480]).is_err());
 
         let l_digests = (0u8..8).map(id).collect::<Vec<_>>();
         let canonical_l = d("L", &l_digests.concat());

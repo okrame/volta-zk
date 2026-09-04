@@ -1,0 +1,498 @@
+#!/usr/bin/env python3
+"""Static D126 Gemma-31B checks; no benchmark or protocol credit."""
+
+from __future__ import annotations
+
+import copy
+import json
+import math
+from collections.abc import Mapping
+from fractions import Fraction
+
+
+SCHEMA = "volta-c7-d126-gemma-stacked-static-v1"
+BLOCKED = "BLOCKED"
+NO_GO = "NO-GO"
+
+EXPECTED_PROFILE: dict[str, object] = {
+    "profile": "gemma4-31b-stacked-q357",
+    "model": "google/gemma-4-31B",
+    "revision": "5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89",
+    "operational_context_cap": 4_096,
+    "first_q": 357,
+    "q_by_round": (357, 163, 152, 149, 149, 149, 149, 149),
+    "w_segments": 472,
+    "w_raw_terminals": 472,
+    "b_segments": 4,
+    "kv_old_segments": 2,
+    "kv_new_segments": 2,
+    "all_terminals": 480,
+    "reducer_instances": 0,
+    "product_triples": 480,
+    "mask_alternative": 1,
+}
+
+GOLDILOCKS_MODULUS = (1 << 64) - (1 << 32) + 1
+FP3_VALUE_BYTES = 24
+BASE_CORRECTION_BYTES = 8
+
+PACKED_W_BYTES = 61_394_690_560
+KV_VALUES_PER_TOKEN = 450_560
+I16_BYTES = 2
+ROWFOLD_TOTAL_ARENA_CAP_BYTES = 6_442_450_944
+STAGING_BYTES = 256_000_000
+H100_CAP_BYTES = 80_000_000_000
+SPECULATIVE_INCREMENTAL_CAP_BYTES = 2_000_000_000
+
+Q_FS_GLOBAL = 1 << 64
+RESPONSE_ATTEMPT_LIFETIME = 1 << 20
+GEMMA_FOLD_WIDTHS = (4, 3, 3, 3, 4, 4, 4, 4)
+GEMMA_INVERSE_RATE_EXPONENTS = (1, 4, 6, 8, 10, 13, 16, 19)
+GEMMA_Q357 = (357, 163, 152, 149, 149, 149, 149, 149)
+STACKED_PRODUCT_ROOTS = 480 + 2
+
+
+def bits(error: Fraction) -> float:
+    if error <= 0:
+        raise ValueError("error probability must be positive")
+    return math.log2(error.denominator) - math.log2(error.numerator)
+
+
+def exact(error: Fraction) -> str:
+    return f"{error.numerator}/{error.denominator}"
+
+
+def security_report() -> dict[str, object]:
+    """Exact q357 arithmetic; hypotheses stay separate from achieved credit."""
+    q_multiplier = Q_FS_GLOBAL + 1
+    field_cardinality = GOLDILOCKS_MODULUS**3
+    query_error = q_multiplier * sum(
+        (
+            Fraction((1 << ell) + 1, 1 << (ell + 1)) ** q
+            for ell, q in zip(
+                GEMMA_INVERSE_RATE_EXPONENTS, GEMMA_Q357, strict=True
+            )
+        ),
+        Fraction(),
+    )
+    # The padded rate-1/2 Gemma source starts at exponent 36.  Each fold
+    # lowers the bad-value exponent by one.
+    gap_error = q_multiplier * sum(
+        (
+            Fraction(width * (1 << (36 - round_index)), field_cardinality)
+            for round_index, width in enumerate(GEMMA_FOLD_WIDTHS)
+        ),
+        Fraction(),
+    )
+    mask_cells_per_root = 1_841_329_152
+    root_epochs = 256
+    setup_seed_attempts = 2 * root_epochs
+    mask_words_lifetime = 5_656_563_154_944
+    mask_linear_control = Fraction(mask_words_lifetime, 1 << 128)
+    rejection_failure = Fraction(
+        setup_seed_attempts
+        * mask_cells_per_root
+        * ((1 << 32) - 1) ** 6,
+        1 << 384,
+    )
+    plane_envelope = (
+        query_error + gap_error + mask_linear_control + rejection_failure
+    )
+
+    # `prodBatch_sound_scalar` gives T+2 roots for an abstract fixed-prefix
+    # batch: T=480 terminal products plus at most two roots in Delta.  The
+    # expression below is only the budget reserved for the still-unproved
+    # concrete Fp3/transcript/global-ROM bridge.
+    stacked_product_q64_budget = Fraction(
+        q_multiplier * STACKED_PRODUCT_ROOTS, field_cardinality
+    )
+
+    # This is a fail-closed admission allocation, not achieved evidence.
+    # Every residual response-local event must already include any applicable
+    # Q_FS loss before it can consume one of these 64 slots.
+    response_slot_classes = {
+        "operator_compute": 16,
+        "boundary_commitments": 8,
+        "predecessor_successor_state": 8,
+        "pcs_binding_privacy": 16,
+        "extension_mac": 8,
+        "sampling_range": 4,
+        "serialization_order": 4,
+    }
+    response_terms = {
+        name: Fraction(RESPONSE_ATTEMPT_LIFETIME * slots, 1 << 110)
+        for name, slots in response_slot_classes.items()
+    }
+    residual_terms = {
+        **response_terms,
+        "hash": Fraction(1, 1 << 128),
+        "production_pcg": Fraction(1, 1 << 128),
+        "state_replay": Fraction(1, 1 << 120),
+        "codec_transcript": Fraction(1, 1 << 128),
+    }
+    residual_cap = sum(residual_terms.values(), Fraction())
+
+    cumulative: list[dict[str, object]] = []
+    running = Fraction()
+    for name, error in (
+        ("W", plane_envelope),
+        ("B", plane_envelope),
+        ("KV-old", plane_envelope),
+        ("KV-new", plane_envelope),
+        ("stacked-product-Q64-budget", stacked_product_q64_budget),
+        *residual_terms.items(),
+    ):
+        running += error
+        used = float(running * (1 << 78))
+        cumulative.append(
+            {
+                "after": name,
+                "bits": bits(running),
+                "used_78_budget_fraction": used,
+                "remaining_78_budget_fraction": 1.0 - used,
+            }
+        )
+
+    total = 4 * plane_envelope + stacked_product_q64_budget + residual_cap
+    dyadic_contract_total = (
+        4 * Fraction(1, 1 << 81) + stacked_product_q64_budget + residual_cap
+    )
+    target = Fraction(1, 1 << 78)
+    assert plane_envelope < Fraction(1, 1 << 81)
+    assert total < target
+    assert dyadic_contract_total < target
+    return {
+        "q_fs_global": Q_FS_GLOBAL,
+        "q_fs_multiplier": q_multiplier,
+        "response_attempt_lifetime": RESPONSE_ATTEMPT_LIFETIME,
+        "q_by_round": GEMMA_Q357,
+        "inverse_rate_exponents": GEMMA_INVERSE_RATE_EXPONENTS,
+        "fold_widths": GEMMA_FOLD_WIDTHS,
+        "query_error_exact": exact(query_error),
+        "query_bits": bits(query_error),
+        "gap_error_exact": exact(gap_error),
+        "gap_bits": bits(gap_error),
+        "conditional_mask_linear_control_exact": exact(mask_linear_control),
+        "conditional_mask_linear_control_bits": bits(mask_linear_control),
+        "mask_rejection_error_exact": exact(rejection_failure),
+        "mask_rejection_bits": bits(rejection_failure),
+        "one_plane_envelope_exact": exact(plane_envelope),
+        "one_plane_envelope_bits": bits(plane_envelope),
+        "one_plane_dyadic_cap": "1/2^81",
+        "required_each_plane_le_q357_envelope": True,
+        "stacked_product_fixed_prefix_roots": STACKED_PRODUCT_ROOTS,
+        "stacked_product_fixed_prefix_status": "PASS",
+        "stacked_product_q64_budget_error_exact": exact(
+            stacked_product_q64_budget
+        ),
+        "stacked_product_q64_budget_bits": bits(stacked_product_q64_budget),
+        "stacked_product_q64_bridge_status": BLOCKED,
+        "base_transformer_gkr_error": None,
+        "response_slot_classes": response_slot_classes,
+        "residual_terms_exact": {
+            name: exact(error) for name, error in residual_terms.items()
+        },
+        "conditional_total_error_exact": exact(total),
+        "conditional_total_bits": bits(total),
+        "dyadic_contract_total_error_exact": exact(dyadic_contract_total),
+        "dyadic_contract_total_bits": bits(dyadic_contract_total),
+        "dyadic_contract_remaining_78_budget_fraction": float(
+            (target - dyadic_contract_total) / target
+        ),
+        "target_bits": 78,
+        "conditional_total_arithmetic_below_78": total < target,
+        "realized_security_status": BLOCKED,
+        "used_78_budget_fraction": float(total / target),
+        "remaining_78_budget_fraction": float((target - total) / target),
+        "cumulative_margin": cumulative,
+        "required_unproved_premises": [
+            "compiled B plane error is no larger than the q357 plane envelope",
+            "compiled KV-old plane error is no larger than the q357 plane envelope",
+            "compiled KV-new plane error is no larger than the q357 plane envelope",
+            "keyed BLAKE3 satisfies the named linear multi-session control",
+            "the concrete C7 Fp3 field has the intended p^3 challenge cardinality",
+            "the concrete ProductClosure verifier refines prodBatch_sound_scalar",
+            "the C7 transcript fixes product messages before chi and keeps them independent of Delta",
+            "one classical-ROM Q_FS_global factor composes across every session, retry, abort, and local query",
+            "all base-transformer GKR and PCS events fit the 64-slot response registry",
+            "every residual event includes its exact Q_FS, lifetime, abort, and retry scope",
+            "hash, production PCG, state/replay, and codec bounds meet their allocations",
+        ],
+        "status": BLOCKED,
+        "credit": False,
+    }
+
+
+def expected_profile() -> dict[str, object]:
+    return copy.deepcopy(EXPECTED_PROFILE)
+
+
+def validate_profile(profile: Mapping[str, object]) -> None:
+    """Accept only the exact active Gemma-31B profile."""
+    expected_keys = set(EXPECTED_PROFILE)
+    actual_keys = set(profile)
+    if actual_keys != expected_keys:
+        missing = sorted(expected_keys - actual_keys)
+        extra = sorted(actual_keys - expected_keys)
+        raise ValueError(f"Gemma profile keys differ: missing={missing}, extra={extra}")
+
+    for name, expected in EXPECTED_PROFILE.items():
+        actual = profile[name]
+        if type(actual) is not type(expected) or actual != expected:
+            raise ValueError(
+                f"Gemma profile field {name!r} differs: expected {expected!r}, got {actual!r}"
+            )
+
+
+def build_report(profile: Mapping[str, object] | None = None) -> dict[str, object]:
+    selected = expected_profile() if profile is None else dict(profile)
+    validate_profile(selected)
+
+    # The old four reducer depths had active sets 472, 61, 60, 60.
+    old_active_reducer_instances = (472, 61, 60, 60)
+    old_reducer_instances = sum(old_active_reducer_instances)
+    old_reducer_p_to_v = 4 * 20 + 48 * old_reducer_instances
+    old_reducer_v_to_p = 4 * 20 + 24 * old_reducer_instances + 40
+
+    w_stream_p_to_v = 4_965_096
+    w_stream_v_to_p = 6_508
+    amended_fixed_w_p_to_v = 11_604
+    amended_fixed_w_v_to_p = 120
+    offline_fs_w_floor = w_stream_p_to_v + amended_fixed_w_p_to_v
+    all_plane_authbind_extension = 24 * 8
+    certificate_container = 376
+    partial_certificate = (
+        offline_fs_w_floor + all_plane_authbind_extension + certificate_container
+    )
+    frozen_small_reference = 3_466_188
+    w_record_target_105 = 5_496_695
+    w_record_cap = 6_543_685
+    w_record_cap_150 = 7_852_422
+    four_plane_proxy = (
+        offline_fs_w_floor
+        + 3 * 3_683_592
+        + 9_379_670
+        + 75_248
+    )
+
+    visible_fp_per_attempt = 399_594
+    response_attempt_reservations_per_root = 4_096
+    lifecycle_load_reserve_equivalent_per_root = 512
+    root_epochs = 256
+    rootmask_dimension = 2_741_852_160
+    mask_cells = (
+        response_attempt_reservations_per_root
+        + lifecycle_load_reserve_equivalent_per_root
+    ) * visible_fp_per_attempt
+
+    context_cap = int(selected["operational_context_cap"])
+    kv_bytes = KV_VALUES_PER_TOKEN * I16_BYTES * context_cap
+    terminal_product_bytes = int(selected["all_terminals"]) * FP3_VALUE_BYTES
+    selected_w_plus_one_kv = PACKED_W_BYTES + kv_bytes
+    conditional_subtotal = (
+        selected_w_plus_one_kv
+        + ROWFOLD_TOTAL_ARENA_CAP_BYTES
+        + STAGING_BYTES
+        + terminal_product_bytes
+    )
+    conditional_with_speculative = (
+        conditional_subtotal + SPECULATIVE_INCREMENTAL_CAP_BYTES
+    )
+
+    return {
+        "schema": SCHEMA,
+        "scope": "Gemma-31B only; analytic static checks",
+        "profile": selected,
+        "field": {
+            "base": "Goldilocks",
+            "modulus": GOLDILOCKS_MODULUS,
+            "extension": "Fp[u]/(u^3-2)",
+            "degree": 3,
+            "value_bytes": FP3_VALUE_BYTES,
+            "correction_bytes": BASE_CORRECTION_BYTES,
+        },
+        "census": {
+            "w_segments": selected["w_segments"],
+            "w_raw_terminals": selected["w_raw_terminals"],
+            "identity_terminals": (
+                int(selected["b_segments"])
+                + int(selected["kv_old_segments"])
+                + int(selected["kv_new_segments"])
+            ),
+            "all_terminals": selected["all_terminals"],
+            "reducer_instances": selected["reducer_instances"],
+            "product_triples": selected["product_triples"],
+            "known_fp3_correlations": 481,
+            "known_w_fp3_correlations": 473,
+            "known_base_field_slots": 1_443,
+            "known_challenges_before_base_gkr_and_b_kv": 32,
+            "non_gemma_or_legacy_profiles_reject": True,
+        },
+        "wire": {
+            "q_open": 1_417,
+            "unstacked_fp_atoms": 45_456,
+            "opened_leaves": 2_834,
+            "visible_fp": visible_fp_per_attempt,
+            "merkle_siblings": 52_361,
+            "verifier_internal_hashes": 55_187,
+            "verifier_hashes_including_opened_leaves": 58_021,
+            "q357_w_stream_p_to_v_bytes": w_stream_p_to_v,
+            "q357_w_stream_v_to_p_bytes": w_stream_v_to_p,
+            "removed_reducer_p_to_v_bytes": old_reducer_p_to_v,
+            "removed_reducer_v_to_p_bytes": old_reducer_v_to_p,
+            "fixed_outer_p_to_v_bytes": 11_796,
+            "fixed_outer_v_to_p_bytes": 120,
+            "fixed_outer_total_bytes": 11_916,
+            "offline_fs_w_floor_bytes": offline_fs_w_floor,
+            "w_record_cap_125_percent_bytes": w_record_cap,
+            "w_record_target_105_percent_bytes": w_record_target_105,
+            "w_record_cap_150_percent_bytes": w_record_cap_150,
+            "w_record_target_105_margin_bytes": w_record_target_105
+            - offline_fs_w_floor,
+            "w_record_cap_margin_bytes": w_record_cap - offline_fs_w_floor,
+            "w_record_cap_150_margin_bytes": w_record_cap_150
+            - offline_fs_w_floor,
+            "partial_certificate_bytes": partial_certificate,
+            "frozen_small_reference_bytes": frozen_small_reference,
+            "partial_growth_numerator": partial_certificate,
+            "partial_growth_denominator": frozen_small_reference,
+            "partial_to_frozen_reference_growth": partial_certificate
+            / frozen_small_reference,
+            "frozen_small_certificate_cap_bytes": 30_000_000,
+            "frozen_small_reference_within_cap": frozen_small_reference
+            <= 30_000_000,
+            "gemma_full_certificate_cap_bytes": 100_000_000,
+            "maximum_full_certificate_growth": 3,
+            "partial_slice_within_gemma_cap": partial_certificate <= 100_000_000,
+            "partial_slice_within_growth": partial_certificate
+            <= 3 * frozen_small_reference,
+            "four_plane_planning_proxy_bytes": four_plane_proxy,
+            "full_certificate_bytes": None,
+            "missing": [
+                "compiled B/KV streams",
+                "stacked GKR records",
+                "ROWFOLD PCS records",
+                "QueryClose, receipts, and output records",
+            ],
+            "status": BLOCKED,
+            "credit": False,
+        },
+        "masks": {
+            "visible_fp_per_attempt": visible_fp_per_attempt,
+            "response_attempt_reservations_per_root": response_attempt_reservations_per_root,
+            "response_attempt_reservations_include_all_outcomes": True,
+            "lifecycle_load_reserve_attempt_equivalent_per_root": (
+                lifecycle_load_reserve_equivalent_per_root
+            ),
+            "root_epochs": root_epochs,
+            "response_attempt_lifetime": RESPONSE_ATTEMPT_LIFETIME,
+            "mask_cells": mask_cells,
+            "rootmask_dimension": rootmask_dimension,
+            "unused_cells": rootmask_dimension - mask_cells,
+            "removed_reducer_fp3_masks": 2 * old_reducer_instances,
+            "setup_bytes_unchanged": 92_587_558_592,
+            "setup_hard_ratio": "2.10x",
+            "setup_within_hard_ratio": 92_587_558_592 * 10
+            <= PACKED_W_BYTES * 21,
+            "refreshes": root_epochs - 1,
+            "generator_bytes_per_root": 176_767_598_592,
+            "missing": ["B/KV mask schedules", "adaptive multi-session PRG theorem"],
+            "status": BLOCKED,
+            "credit": False,
+        },
+        "h100": {
+            "cap_bytes": H100_CAP_BYTES,
+            "packed_w_bytes": PACKED_W_BYTES,
+            "one_kv_arena_bytes": kv_bytes,
+            "rowfold_total_arena_cap_bytes": ROWFOLD_TOTAL_ARENA_CAP_BYTES,
+            "rowfold_arena_admission": "conditional",
+            "staging_bytes": STAGING_BYTES,
+            "product_terminal_scalars_bytes": terminal_product_bytes,
+            "selected_w_plus_one_kv_bytes": selected_w_plus_one_kv,
+            "conditional_subtotal_if_selected_caps_hold_bytes": conditional_subtotal,
+            "conditional_subtotal_lt_cap": conditional_subtotal < H100_CAP_BYTES,
+            "conditional_subtotal_headroom_bytes": H100_CAP_BYTES
+            - conditional_subtotal,
+            "optional_speculative_incremental_cap_bytes": SPECULATIVE_INCREMENTAL_CAP_BYTES,
+            "conditional_with_speculative_bytes": conditional_with_speculative,
+            "conditional_with_speculative_lt_cap": conditional_with_speculative
+            < H100_CAP_BYTES,
+            "conditional_with_speculative_headroom_bytes": H100_CAP_BYTES
+            - conditional_with_speculative,
+            "peak_allocated_bytes": None,
+            "missing_live_allocations": [
+                "B",
+                "v allocation, exact meaning and liveness",
+                "all commitment chains",
+                "stacked GKR",
+                "activations",
+                "CUDA/runtime modules",
+                "allocator reserve and fragmentation",
+                "selected-kernel workspaces",
+            ],
+            "status": BLOCKED,
+            "credit": False,
+        },
+        "source_work": {
+            "packed_source_bytes": PACKED_W_BYTES,
+            "required_hbm_sweeps": 2,
+            "required_two_sweep_bytes": 2 * PACKED_W_BYTES,
+            "compiled_hbm_sweeps": None,
+            "complexity_required": "C(N,q,h)=c_source*N+P(q,h)",
+            "compiled_c_source": None,
+            "compiled_P": None,
+            "c_source_independent_of_q_and_N": None,
+            "forbidden_terms": ["qN", "N log q", "N log N"],
+            "rowfold_report_present": False,
+            "output_pruned_implementation_present": False,
+            "two_hbm_sweeps_status": BLOCKED,
+            "complexity_bound_status": BLOCKED,
+            "current_direct_qN_path": NO_GO,
+            "credit": False,
+        },
+        "planning_estimates": {
+            "warm_resident_model": True,
+            "prover_seconds_low": 45.0,
+            "prover_seconds_high": 50.0,
+            "complete_proof_bytes": 30_000_000,
+            "verifier_four_core_seconds_low": 6.4,
+            "verifier_four_core_seconds_high": 8.2,
+            "storage_onboarding_seconds_once": 19.186,
+            "confidence": "low",
+            "measurement_credit": False,
+            "required_measurements": [
+                "fixed-point 16-bit H100 kernel throughput",
+                "complete prover wall time",
+                "complete serialized proof size",
+                "four-core proof-read-to-verdict wall time",
+            ],
+            "status": BLOCKED,
+        },
+        "security": security_report(),
+        "verdicts": {
+            "SECURITY_78": BLOCKED,
+            "SECURITY_84": NO_GO,
+            "FS_Q64": BLOCKED,
+            "MASK_LIFETIME": BLOCKED,
+            "COMPLEXITY_BOUND": BLOCKED,
+            "TWO_HBM_SWEEPS": BLOCKED,
+            "EXACT_WIRE_CENSUS": BLOCKED,
+            "FULL_CERTIFICATE": BLOCKED,
+            "H100_STATIC_FIT": BLOCKED,
+            "D126": BLOCKED,
+        },
+        "overall": {
+            "static_known_slice_consistent": True,
+            "admission_pass": False,
+            "status": BLOCKED,
+            "credit": False,
+        },
+    }
+
+
+def main() -> None:
+    print(json.dumps(build_report(), indent=2, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

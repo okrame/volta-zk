@@ -2,9 +2,12 @@
 
 Date: 2026-09-04
 
-This is the active analytic design for the D126 continuation.  It supersedes
-the old D126 challenge-mode and context-cap choices.  Historical evidence in
-`c7-stateful-authenticated-lfc-design.md` remains evidence only.
+> **SUPERSEDED ACTIVE STATUS.** This file is retained only as append-only
+> audit evidence. It supplies no active parameters or authorization. Read
+> `c7-d126-gemma31b-static-admission.md` instead.
+
+This was the analytic design for the earlier D126 continuation.  Historical
+evidence in `c7-stateful-authenticated-lfc-design.md` remains evidence only.
 
 The 2026-09-04 owner continuation selects the Branch-A working profile and
 authorizes its static carrier/layout/codec/security/memory compilation.  No

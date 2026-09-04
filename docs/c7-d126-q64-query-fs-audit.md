@@ -6,8 +6,11 @@ This is the active analytic design for the D126 continuation.  It supersedes
 the old D126 challenge-mode and context-cap choices.  Historical evidence in
 `c7-stateful-authenticated-lfc-design.md` remains evidence only.
 
-No protocol implementation, benchmark, hardware action, provider contact or
-pod use is authorized by this audit.
+The 2026-09-04 owner continuation selects the Branch-A working profile and
+authorizes its static carrier/layout/codec/security/memory compilation.  No
+timing run, hardware action, provider contact or pod use is authorized before
+all analytic gates close.  Section 11 records the continuation and the
+current ROWFOLD intake blocker.
 
 ## 1. Owner decisions and exact meaning
 
@@ -24,6 +27,19 @@ pod use is authorized by this audit.
 - Classical ROM, no online challenge during the proof, at most two packed-W
   HBM sweeps, one storage acquisition, one 80,000,000,000-byte H100, no spill,
   no full codeword, no second weight copy and no `qN` workspace remain fixed.
+- Branch A is selected with first-round `q=357` as the working point.  It is
+  not a claim that every plane or later round has the same count; the compiler
+  must emit every integer count and may increase it to close the complete sum.
+- Alternative 1 is selected for mask geometry: 256/4,096 service attempts per
+  GPT/Gemma root and 4,096/256 root epochs over the `2^20` lifetime.  The
+  32/512 reserve is charged separately to every physical root.
+- Gemma uses one physical KV arena.  Concurrent cryptographic sessions remain
+  covered by Q64, but response jobs sharing this H100 are serialized so the
+  arena is not multiplied silently.
+- The exact 125% W-wire caps are preregistered: 3,896,053 B for GPT and
+  6,543,685 B for Gemma.  There is no automatic 150% fallback.
+- The 61,394,690,560-B storage acquisition and its roughly 19.186-s control
+  are charged once to `ModelOnboarding`, not to every resident response.
 
 `N` is the source length, `q` is a query count and
 `h=ceil(log2(N))`.  They are variables, not “profile constants”.  Lowering
@@ -357,8 +373,8 @@ W-only 76-bit row does not fix it: the exact minimizing vector is
 `[341,156,144,143,143,144]`, `P_to_V=3,327,872 B`, and after the 3,964-B
 fixed prover records its FS W floor is 3,331,836 B, still 59,151 B over 105%.
 The 105% branch is therefore `NO-GO` even after deleting every online
-challenge byte.  The known rows fit 125% and 150%, but one exact cap in that
-band must be preregistered before the complete measurement.
+challenge byte.  The known rows fit both old exploratory bands; the owner now
+preregisters exactly 125%, and 150% is no longer an automatic fallback.
 
 Turning the W-only AuthBind into the required all-plane AuthBind adds 192 B:
 `24*(J_all-J_W)=24*8`.  Adding the fixed 376-B certificate container gives:
@@ -419,7 +435,8 @@ model and therefore receives no theorem credit.
 Keep the present domains, halve the power-of-two service counts to 256/4,096,
 and double the root epochs to 4,096/256 so that service lifetime remains
 `2^20`.  The reserve becomes 32/512.  A failed disclosed root consumes another
-epoch.
+epoch.  This is now the owner-selected working geometry, without security
+credit until its complete multi-root theorem and all-plane charges exist.
 
 | first q | GPT mask cells / unused | Gemma mask cells / unused |
 | ---: | ---: | ---: |
@@ -528,6 +545,36 @@ c_source = c_sweep_1 + c_sweep_2,
 provided neither sweep count nor per-source work grows with q.  `N log q`,
 `qN` and `N log N` are forbidden.
 
+### Selected ROWFOLD two-pass intake
+
+The owner selects the two-pass scheme described as “ROWFOLD”, adapted to
+offline Fiat--Shamir, as the Branch-A carrier candidate.  No report, relation,
+pseudocode or compiler named ROWFOLD exists in this checkout or its Git refs.
+The candidate is therefore selected but `BLOCKED` at document intake; it does
+not yet receive carrier, complexity or two-sweep credit.
+
+The report must instantiate this exact schedule:
+
+1. pass 1 reads every packed-W byte once and fixes all challenge-independent
+   commitments and the canonical FS prefix;
+2. challenges are derived sequentially from domain-separated canonical
+   prefixes, with `(Q_FS_global+1)=(2^64+1)` charged once;
+3. pass 2 reads every packed-W byte once and emits openings and terminals;
+4. no later round rereads an already consumed source block.
+
+It must prove
+
+```text
+C(N,q,h) = (c_pass1+c_pass2)*N + P(q,h),
+```
+
+with both pass coefficients independent of `q` and `N`.  Updating 357
+accumulators for every source element is `qN` and is `NO-GO`.  Repeating a
+block operation `log N` times, retaining the full transform/codeword, or
+calling the old full-transform CUDA path is likewise `NO-GO`.  Offline FS
+removes challenge bytes from the wire; it does not remove their scalar count,
+their transcript order or any source work.
+
 For Gemma, one storage acquisition is exactly 61,394,690,560 B and two HBM
 reads of packed W are exactly 122,789,381,120 B.  This gate applies to the
 proof subsystem; ordinary inference GEMM traffic is reported separately, as
@@ -577,6 +624,37 @@ KV = 450,560 i16/token * 2 B/i16 * 4,096
 known base                       65,085,678,080 B
 strict room for everything else <14,914,321,920 B
 ```
+
+The decision on the proposed “6.4-GB” ROWFOLD block is a conditional admission
+to the static census, not an H100 PASS.  To cover both decimal 6.4 GB and the
+only matching exact repository geometry, the hard arena cap is
+`6,442,450,944 B = 2^28*24 B`.  It means **one total temporary arena including
+both input and output**, not an input allocation with hidden output:
+
+```text
+known W + one KV arena             65,085,678,080 B
+one ROWFOLD arena                   6,442,450,944 B
+known subtotal                     71,528,129,024 B
+strict remainder                   <8,471,870,976 B
+
++ historical staging 256,000,000 B
++ terminal v 11,520 B
+known extended subtotal            71,784,140,544 B
+strict remainder                   <8,215,859,456 B
+```
+
+The arena has zero persistent/host-spill bytes, cannot be a codeword or second
+W copy, is created only after inference activations are released, and is
+zeroed/released at attempt end.  Allocator-cached bytes remain live for the
+peak census.  No second response job may allocate another arena concurrently.
+
+An Fp3 D28 input alone fills the cap.  A separate D27 output would add
+3,221,225,472 B and violates this arena contract.  ROWFOLD must therefore use
+a proved race-free in-place fold or smaller tiles whose simultaneous input and
+output stay within the one cap.  The existing resident fold rejects input/
+output overlap and is not evidence for that requirement.  The historical
+C62 block with the same 6,442,450,944-B number is an Fp2/full-transform cache,
+not ROWFOLD, and transfers neither semantics nor memory credit.
 
 The best conditional control is one physical KV arena: KV-old is a prefix
 view and KV-new extends the same stable family, so the two logical names never
@@ -633,13 +711,17 @@ GPT <= 30,000,000
 Gemma <= min(100,000,000, 3*GPT).
 ```
 
-The optional preregistration is:
+The owner-selected W preregistration is now exactly:
 
 ```text
-GPT <= 35,000,000
-Gemma <= min(115,000,000, 3.5*GPT),
-with one exact W cap chosen in [125%,150%] before measurement.
+GPT W records <= 3,896,053 B
+Gemma W records <= 6,543,685 B.
 ```
+
+These are 125% of the authoritative W allocations, rounded down to whole
+bytes.  They do not enlarge the complete 30/100-MB certificate or 3x growth
+gates.  The former 150% W option and 35/115-MB, 3.5x certificate envelope are
+not selected fallbacks.
 
 Current partial offline-FS W growth is about 1.444x for the requested probes
 and 1.448--1.450x for the exact W-only minima.  It does not violate certificate
@@ -774,13 +856,14 @@ These are declared redesigns, not hidden fixes.
 | `FS_Q64` | **NO-GO for tight Q-independent FS; BLOCKED for amplified linear-Q FS** | current prefixes are not unique; the linear branch lacks the complete carrier/event theorem |
 | `MASK_LIFETIME` | **BLOCKED** | W controls are exact; B/KV loads and the adaptive multi-root theorem are absent |
 | `COMPLEXITY_BOUND` | **BLOCKED globally; current transforms NO-GO** | no admitted `c_source*N+P(q,h)` carrier exists |
-| `TWO_HBM_SWEEPS` | **BLOCKED globally; current transforms NO-GO** | no selected algorithm proves two scans without forbidden materialization |
+| `TWO_HBM_SWEEPS` | **BLOCKED globally; current transforms NO-GO** | ROWFOLD is selected but its absent report cannot prove two scans without forbidden materialization |
+| `ROWFOLD_CARRIER` | **BLOCKED at intake** | owner-selected candidate, but its report/relation/compiler is absent from the repository |
 | `EXACT_WIRE_CENSUS` | **BLOCKED** | only the W Merkle/query slice is exact |
 | `FULL_CERTIFICATE` | **BLOCKED** | B/KV/GKR/PCS/receipt records are missing |
-| `H100_STATIC_FIT` | **BLOCKED**, or **NO-GO** for a weight-long v | only 65.086 GB of the full live set is known |
+| `H100_STATIC_FIT` | **BLOCKED**, or **NO-GO** for a weight-long v | known extended subtotal with one ROWFOLD arena is 71.784 GB; the remaining live set is unknown |
 | `D126` | **BLOCKED** | scoped branches fail, but no universal impossibility is proved |
 
-The provisional design point for the preferred 78-bit objective is q357: W
+The selected working point for the preferred 78-bit objective is q357: W
 alone leaves 93.382%/91.440% of the 78-bit error budget for all later terms and
 the GPT offline-FS W floor has 427,945 B left under the 125% cap.  The 76-bit
 fallback is q350: it leaves 86.612%/83.083% of the 76-bit budget and 497,625 B under
@@ -803,8 +886,11 @@ optimized allocation and normally larger counts.
    two-model L manifests and every B/KV `RootLayout.RoundCap`.  Those emitted
    rows, rather than a copied W schedule, supply the missing extents, folds
    and mask charges.
-3. Select a carrier with complete `Encode/Fold/Extend/CheckExtend/EvalLink`
-   messages and a source-linear, two-sweep algorithm without full output.
+3. Acquire the exact ROWFOLD report, hash and archive it, then translate its
+   relation and two-pass pseudocode into complete
+   `Encode/Fold/Extend/CheckExtend/EvalLink` messages.  Reject intake if its
+   6,442,450,944-B arena excludes output, if a round adds a source scan, or if
+   its per-source work depends on q.
 4. Emit every per-plane/per-round `q,U,S,H`, correction, correlation and
    prover/verifier operation from that compiler.
 5. Build one global ROM registry containing every query from every session and
@@ -812,13 +898,35 @@ optimized allocation and normally larger counts.
 6. Build the complete event registry, showing whether a new term replaces or
    adds to an old 64-slot allocation; compute every cumulative margin in exact
    rational arithmetic.
-7. Choose any 125--150% W cap before measuring, then serialize maximal complete
-   GPT-2 and Gemma certificates and apply absolute and growth gates.
+7. Enforce the already preregistered 125% W caps, then serialize maximal
+   complete GPT-2 and Gemma certificates and apply absolute and growth gates.
 8. Produce a static device-liveness map for every H100 allocation and selected
    CUDA workspace.  A later hardware measurement requires a new owner GO and
    must not use a pod under the present decision.
 
-## 11. Gemma-31B full-response planning heuristics
+## 11. Owner-selected continuation checkpoint
+
+The active path is Branch A only: first `q=357`, offline classical-ROM FS with
+global `Q_FS<=2^64`, selected mask Alternative 1, one physical KV arena and
+exact 125% W caps.  ROWFOLD two-pass is the selected candidate, subject to the
+single-arena contract above.  Static compilation follows Section 10; timing is
+forbidden until the four-plane records, complete security-event registry and
+strict H100 liveness map close.  The first later measurement is the H100
+16-bit kernel rate used by ROWFOLD, under a separate execution GO.  Storage
+load remains model-onboarding cost only.
+
+The authoritative manifest grammar remains the design's terminal-digest form
+`header|L|A|Q|digest`, using derive-key context
+`volta-zk/c7/manifest/container/v1`.  The Phase-A test codec instead places the
+digest after the header and uses `manifest-container/v1`; it must be corrected
+before reuse and receives no production-byte credit.
+
+The immediate blocker is deterministic: the named ROWFOLD report is not in
+the repository, any Git ref or an identifiable public source.  Its exact file
+or contents are required before the selected candidate can be translated or
+its 6.4-GB object can be identified as input, total arena or persistent state.
+
+## 12. Gemma-31B full-response planning heuristics
 
 These numbers answer the owner's request for a realistic planning view, but
 they are not upper/lower bounds or confidence intervals.  There is no complete
@@ -856,11 +964,12 @@ fitted result.
 The 39-MB planning edge selects the 125% W band: its registered, uncompiled GPT
 allocation control is 13,164,773 B, so the main 3x arithmetic gives
 39,494,319 B.  It is not a compiled certificate cap.  Selecting 150% would
-instead give 41,831,952 B and is not silently included in this working range.
+instead have given 41,831,952 B, but that band is now explicitly inactive.
 
-If the single storage acquisition is charged to each response, rather than to
-model residency, the registered 3.2-GB/s control adds 19.186 seconds.  This is
-reported separately, not silently overlapped.
+The registered 3.2-GB/s storage control is about 19.186 seconds, but the owner
+now charges it once to model onboarding.  It is excluded from resident
+per-response prover time.  Eviction followed by reload starts a new onboarding
+occurrence; it cannot be hidden inside a later response.
 
 The proof-size point comes from a transparent proxy, not a fitted constant:
 
@@ -891,11 +1000,9 @@ inference or the two source sweeps.  This sensitivity does not make
 
 If an engineering placeholder is unavoidable, use four minutes of H100 wall,
 39 MB of output and 30 seconds of verifier wall until real measurements exist;
-these are deliberately arbitrary capacity placeholders, not safe maxima.  A
-39--45 MB stress range belongs only to the
-optional 3.5x exploratory envelope and requires its explicit preregistration;
-it is not part of the main 3x heuristic.  The W-only byte growth must not be
-mistaken for a bound on the complete prover.
+these are deliberately arbitrary capacity placeholders, not safe maxima.  The
+former 3.5x exploratory envelope is not active.  The W-only byte growth must
+not be mistaken for a bound on the complete prover.
 
 ### Branch B: tight Fiat--Shamir
 

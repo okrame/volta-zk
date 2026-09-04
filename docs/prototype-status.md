@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 D126 Q64 AUDIT BLOCKED / TIGHT FS NO-GO / DIRECT-G141 NO-GO — NO CPU / POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 D126 BRANCH-A SELECTED / ROWFOLD INTAKE BLOCKED — NO MEASUREMENT / POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,29 +11,63 @@ record; no external plan is authoritative.
 Read `c7-d126-q64-query-fs-audit.md`; the older
 `c7-stateful-authenticated-lfc-design.md` is supporting history.
 
-- **Status/owner profile.** D126 is analytic and **BLOCKED**. Gemma's
-  operational context cap is 4,096; one global `Q_FS<=2^64` includes every
-  local query, session, abort, retry and `2^20`-attempt lifetime. Security is
-  76-bit minimum, 78-bit preferred and 84-bit optimistic. No implementation
-  or pod is authorized.
-- **Evidence, no credit.** Non-uniform W controls, exact partial offline-FS W
-  wire/Merkle rows, three mask alternatives and the H100 known base are
-  derived. q357 is the
-  first requested W control with useful room for 78; q350 is the 76 fallback.
-  Exact W-only byte minima start at q341/q342 for 76 and q362/q362 for 84,
-  but the 84 rows have essentially no room for later terms. These are analytic
-  `credit:false` rows. Historical Phase-A KAT evidence
-  remains 9/9 test-only.
-- **Hard stops.** GPT W amplification fails 105% even at 76; 125--150% needs
-  preregistration and full bytes. Tight Q-independent FS is **NO-GO** because
-  current corrections permit many acceptable pre-challenge prefixes. The
-  DirectG141/full-transform realization remains **NO-GO** for `qN`, full
-  codeword, memory and two-sweep gates. Complete B/KV/GKR, mask, certificate,
-  H100 and source-linear successor rows are absent.
-- **Resume.** Freeze generated B/KV layouts and the event registry; select a
-  complete `c_source*N+P(q,h)` two-sweep carrier; compile all records,
-  operations and live ranges; prove global adaptive ROM/mask composition.
-  Only then may 76/78, certificate, verifier or H100 gates be decided.
+- **Status/owner profile.** D126 remains **BLOCKED**, with Branch A selected:
+  first `q=357`, offline classical-ROM FS and global `Q_FS<=2^64`; 76-bit
+  minimum, 78 preferred. W masks use 256/4,096 attempts per root, Gemma uses
+  one KV arena and W wire is preregistered at exactly 125%. Static compilation
+  is authorized; no timing, hardware, provider or pod action is authorized.
+- **Evidence, no credit.** Exact q357 W rows leave 93.382%/91.440% of the
+  78-bit error budget. W floors 3,468,108/5,008,124 B fit caps
+  3,896,053/6,543,685 B. W+one Gemma KV arena is 65,085,678,080 B. One total
+  temporary ROWFOLD arena up to 6,442,450,944 B is conditionally admitted,
+  leaving less than 8,471,870,976 B; this is not H100 credit.
+- **Hard stops.** No ROWFOLD report/relation/compiler exists in the checkout
+  or Git refs. The arena must include input and output; full codeword, second
+  W copy, spill and `qN` remain NO-GO. B/KV/GKR rows, event registry and H100
+  liveness are absent. The test manifest codec disagrees with the authoritative
+  terminal-digest grammar and cannot be promoted.
+- **Resume.** Acquire and hash the ROWFOLD report; compile the four layouts,
+  every record and event, then the strict H100 map. Only after 76/78 and all
+  gates close may an H100 16-bit-kernel measurement receive a separate GO.
+
+- **2026-09-04 — owner selects Branch A/q357 and ROWFOLD two-pass, but the
+  carrier is BLOCKED at document intake.** The working path now fixes offline
+  classical-ROM Fiat--Shamir with one lifetime-global `Q_FS<=2^64`, first
+  `q=357`, mask Alternative 1 with 256/4,096 service attempts and 4,096/256
+  epochs per GPT/Gemma physical root, one Gemma KV arena, and exact 125% W
+  record caps 3,896,053/6,543,685 B. The 32/512 lifecycle reserve is charged
+  per physical root. Concurrent sessions stay inside the theorem, while one
+  H100 serializes response jobs so KV and proof arenas are not multiplied.
+  The 61,394,690,560-B storage load and its 19.186-s control are one
+  `ModelOnboarding` occurrence, not per-response prover time.
+
+  The selected ROWFOLD candidate must use exactly two 61,394,690,560-B packed-W
+  HBM reads and prove
+  `C=(c_pass1+c_pass2)N+P(q,h)` with both coefficients independent of q and N.
+  Pass 1 fixes the canonical prefix, offline challenges follow, and pass 2
+  emits openings/terminals; a per-round reread, `qN`, `N log q`, `N log N`,
+  full codeword or output-pruned claim without code is NO-GO. No file,
+  relation, pseudocode, hash or compiler named ROWFOLD exists in the checkout
+  or any Git ref, so selection gives no carrier/two-sweep/complexity credit.
+
+  The 6.4-GB decision is conditional GO for one **total temporary arena** capped
+  at 6,442,450,944 B, covering input and output together, with zero spill,
+  persistence or second copy. W+KV+arena is 71,528,129,024 B and leaves
+  strictly less than 8,471,870,976 B; adding historical 256,000,000-B staging
+  and 11,520-B terminal v leaves less than 8,215,859,456 B for every chain,
+  B/GKR/reducer allocation, activation, CUDA/runtime/allocator and workspace.
+  A separate D27 Fp3 output would add 3,221,225,472 B and violates the arena
+  contract; an in-place race-free fold or smaller tile is required. The old
+  C62 block with the same byte count is an Fp2/full-transform cache and grants
+  no ROWFOLD credit. `H100_STATIC_FIT` remains BLOCKED.
+
+  Static inspection also found that Phase-A Rust serializes
+  `header|digest|L|A|Q` under `manifest-container/v1`, while the authoritative
+  design requires `header|L|A|Q|digest` under
+  `manifest/container/v1`. The design grammar wins; test bytes cannot be
+  promoted before correction. B/KV `RoundCap`, exact tokens/artifacts, all
+  ROWFOLD/GKR/security events and complete liveness remain missing. No code,
+  artifact, benchmark, hardware, provider or pod action occurred.
 
 - **2026-09-04 — D126 global-Q64 query-amplification/tight-FS audit keeps the
   joint result BLOCKED and closes tight FS on the current transcript.** The

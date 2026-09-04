@@ -1,8 +1,9 @@
 # C7 D126 Gemma-31B stacked static admission
 
-**Status:** active design; the exact terminal declaration, ragged-norm algebra
-and fail-closed synthetic screens are implemented and checked; full admission
-remains `BLOCKED`.
+**Status:** active design; the terminal declaration, pinned metadata/workload,
+public scalar values, isolated static frontend, ragged-norm algebra and
+conditional heterogeneous-GKR envelope are implemented and checked; full
+admission remains `BLOCKED`.
 
 This document is the only active D126 path.  Historical designs and ledger
 entries remain append-only evidence, not active parameter sources.
@@ -74,7 +75,7 @@ UseEta events = 0
 use-reducer instances = 0
 ```
 
-The canonical declaration is
+The canonical terminal declaration is
 `manifests/c7-d126-gemma31b-terminals-v1.csv`, with BLAKE3
 `c90c41afaaac0c8da4a3c6e4781cd95dab026477999d6e20f565580db82bda25`.
 It contains 480 ordered records and is consumed by both Rust and Lean.  The
@@ -84,19 +85,28 @@ the theorem `c7_gemma_declared_terminal_manifest_refines_stacked_profile`
 proves its order/census conditions.  The pinned text-only source inventory is
 exactly 772 private learned tensors plus 60 public `layer_scalar` dependencies;
 all 356 vision/bridge tensors are excluded.  Packed private W is exactly
-30,697,345,280 scalars or 61,394,690,560 i16 bytes.
+30,697,345,280 scalars or 61,394,690,560 i16 bytes. The two pinned
+safetensors headers and the 120 public-scalar bytes were acquired without
+downloading either complete shard. Their exact ordered BF16 patterns are in
+`c7-d126-gemma31b-layer-scalars-v1.csv`; they are not all one.
 
 Lean derives the last two zeros from an explicit vector of 480 use-axis
 lengths, all equal to one; they are not literal zero-returning definitions.
-This proves the frozen static declaration.  It does not prove that a Gemma
-model/witness compiler binds the checkpoint values to the 472 heterogeneous
-relations.  The predicate `C7RuntimeCompilerEmitsDeclaredGemmaManifest` and
-the ordered values/use of the 60 public scalars remain unproved, so the runtime
-compiler refinement is `BLOCKED`.
+This proves the frozen static declaration. `C7GemmaGKR.lean` additionally
+checks the scalar CSV byte for byte and proves its ordered association with
+the public keys in the terminal manifest. The conditional theorem
+`c7_gemma_bound_runtime_manifest_refines_stacked_profile` shows what follows
+if a runtime output equals both canonical lists; it does not construct that
+runtime equality.
 
-The tested Rust helper rejects every tuple other than
-`context/W/all/reducer = 4096/472/480/0`.  It is not yet connected to the
-runtime compiler.
+The isolated `c7_gemma_frontend.rs` validates the metadata, workload,
+reference-semantics and quantization-requirements digests. It compiles 472 W
+descriptors: 410 matrices, 60 ragged norm bundles, tied embedding and final
+norm, covering all 772 private source descriptors and 60 ordered public
+scalars. Every descriptor has `runtime_value_bound=false`. The frontend emits
+zero B/KV layout rows and zero base-GKR cohort rows rather than filling missing
+values with synthetic defaults. Thus the static frontend census passes while
+checkpoint-value-to-relation refinement remains `BLOCKED`.
 
 ## 3. Proved fixed-prefix numerator; concrete Q64 bridge open
 
@@ -135,20 +145,34 @@ triples already include the eight B/KV identity terminals; upstream B/KV
 query and PCS terms remain separate.
 
 The strongest currently justified base-GKR statement is therefore symbolic.
-For each future common-point cohort `c`, the existing generic Lean theorem
-gives
+`C7GemmaGKR.lean` defines heterogeneous cohort shapes and specializes the
+existing malicious-prover theorem for each shape `c`:
 
 ```text
 R_c = K_c + sum_i d_c[i] + n_c + 2
 epsilon_GKR <= (2^64+1) * sum_c R_c / p^3.
 ```
 
-The global factor is applied once; there is no additional `2^20` factor for a
-lifetime-global FS event.  Exact arithmetic permits at most `R=262,143` in one
-`2^-110` slot, or `sum R=4,398,046,508,032` only if the entire
-`operator_compute` class (`2^-86`) were assigned to GKR.  Other compute events
-must be subtracted.  No current artifact supplies Gemma values for `K`, `d`,
-`n`, common points or final links, so neither ceiling is a concrete GKR term.
+This theorem is deliberately shape-only. It does not invent member-point
+histories or claim that the runtime scheduler used one common point. The
+actual histories, their `HasCommonPoint` proof, the final PCS relation `hfin`
+and the concrete Fp3 verifier refinement remain required inputs.
+
+A separate finite counting lemma places all supplied cohort bad sets under
+one `2^64+1` axis. Its premise must already hold for every local query,
+concurrent session, abort and retry; it is a union bound, not the missing ROM
+reduction. Thus the global factor is applied once and there is no additional
+`2^20` factor for this lifetime-global event.
+
+Exact arithmetic permits at most `R=262,143` in one `2^-110` slot, or
+`sum R=4,398,046,508,032` only if the entire `operator_compute` class
+(`2^-86`) is assigned to GKR. Other compute events must be subtracted. The
+current total already includes that reserve and leaves an additional absolute
+headroom of 722,784,653,514,375 roots before the strict 78-bit boundary; the
+next root fails. Spending that diagnostic headroom would leave about
+`1.01e-16` of the 78-bit error budget and is not the active allocation. No
+current artifact supplies Gemma values for `K`, `d`, `n`, common points or
+final links, so none of these ceilings is a concrete GKR term.
 
 ## 4. 78-bit admission contract
 
@@ -242,10 +266,18 @@ Those missing values are never treated as zero.
 The focused static reports and tests are:
 
 ```text
+scripts/c7_d126_gemma_metadata.py
+tests/test_c7_d126_gemma_metadata.py
+tests/test_c7_d126_gemma_workload.py
+scripts/c7_d126_gemma_quant_contract.py
+tests/test_c7_d126_gemma_quant_contract.py
 scripts/budget_c7_d126_gemma_static.py
 tests/test_budget_c7_d126_gemma_static.py
 scripts/c7_d126_gemma_h100_liveness.py
 tests/test_c7_d126_gemma_h100_liveness.py
+rust/volta-pcs/src/c7_gemma_frontend.rs
+rust/volta-pcs/tests/gemma31b_frontend.rs
+lean/VoltaZk/C7GemmaGKR.lean
 ```
 
 They fail closed on any model revision, context, q vector, terminal count or
@@ -253,19 +285,17 @@ reducer count that differs from the frozen Gemma profile.  They check:
 
 - the 472/480/0 census and 481 known Fp3 correlations;
 - q357 W query, leaf, symbol, sibling, hash and byte counts;
-- the abstract 482-root numerator, its conditional Q64 budget and 78-bit
-  allocation;
+- the abstract 482-root ProductClosure numerator, symbolic heterogeneous GKR
+  numerator, conditional Q64 budgets and 78-bit allocation;
 - Alternative-1 mask capacity, setup and refresh counts;
 - the conditional H100 subtotal and uncensused live allocations;
 - the exact two-sweep and source-linear complexity requirements; and
 - fail-closed `BLOCKED` status for every uncompiled full-chain quantity.
 
-The terminal-manifest Rust test has four passing cases; the B/KV synthetic
-compiler has seven; the two Python files have 38 passing cases; and
-`lake build VoltaZk.C7GemmaTerminalManifest` passes.  The source manifest was
-also compared independently with the pinned checkpoint index: all and only
-the 832 language keys are covered.  These are static/KAT results, not model
-execution or security credit.
+The source manifest was also compared independently with the pinned
+checkpoint index: all and only the 832 language keys are covered. Focused
+Python, Rust and Lean counts are recorded in the active ledger checkpoint.
+These are static/KAT results, not model execution or security credit.
 
 ## 6. Current static resource row
 
@@ -322,7 +352,9 @@ so `MASK_LIFETIME` remains `BLOCKED`.
 
 ```text
 packed W                     61,394,690,560 B
-one KV arena                  3,690,987,520 B
+one KV arena, capacity        3,690,987,520 B
+KV live payload                 135,168,000 B
+unused KV capacity            3,555,819,520 B
 ROWFOLD total arena cap       6,442,450,944 B
 staging                         256,000,000 B
 ProductClosure terminal scalars     11,520 B
@@ -330,7 +362,9 @@ conditional subtotal          71,784,140,544 B
 conditional headroom           8,215,859,456 B
 ```
 
-The subtotal is valid only if the selected KV and ROWFOLD arena caps hold.
+The subtotal charges the complete 4,096-token KV capacity, not only the 150
+live workload tokens, and is valid only if the selected KV and ROWFOLD arena
+caps hold.
 With the optional 2,000,000,000-byte speculative-generation allowance, its
 conditional headroom becomes 6,215,859,456 bytes.  The exact `v` allocation
 and liveness, B, commitment chains, base GKR, activations, CUDA/runtime
@@ -338,17 +372,20 @@ modules, allocator reserve/fragmentation and each selected kernel workspace
 remain uncensused.  Therefore the strict
 `peak_allocated < 80,000,000,000` test remains `BLOCKED`.
 
-The new H100 checker requires a caller-supplied row for packed W, one KV arena,
+The H100 checker requires a caller-supplied row for packed W, one KV arena,
 the unique 11,520-byte `v`, staging, ROWFOLD, B, masks, public constants,
 commitment chains, ProductClosure, base GKR, activations, workspaces,
-CUDA/runtime and allocator reserve. It checks the declared liveness/aliasing,
-two W sweeps, every forbidden allocation, batch size one, at most one GPU
-response at a time, and an explicit prompt/decode split totalling 4,096
-tokens. Its 16-allocation synthetic KAT has a structural peak of
+CUDA/runtime and allocator reserve. Every row separates useful payload,
+temporary device-lane padding, logical bytes and physical allocation, with
+`logical = payload + padding`; the peak sums physical allocation bytes. It
+checks declared liveness/aliasing, two W sweeps, every forbidden allocation,
+batch size one, at most one GPU response at a time, the frozen 100+50 live
+workload and the 4,096-token capacity. Its 16-allocation synthetic KAT has a
+structural peak of
 71,986,689,600 bytes, but returns top-level `BLOCKED`, not `PASS`; the inventory
 is self-declared and its unknown-buffer sizes may be incomplete or too small.
-Only a compiler-owned inventory and allocator trace can prove every byte and
-receive memory credit.
+Only a compiler-owned inventory, CUDA completion fences for alias handoffs and
+an allocator trace can prove every byte and receive memory credit.
 
 ## 7. Complexity and realistic planning values
 
@@ -380,38 +417,46 @@ fixed-point 16-bit H100 kernel rate.
 ## 8. Authorization and deterministic resume
 
 Completed under the current local authorization, without hardware or
-generated model bodies:
+complete private model bodies:
 
 1. focused Lean, Rust and Python static/KAT execution;
 2. repository implementation of the exact 480-terminal static manifest and
    its Rust/Lean declaration refinement;
-3. deterministic B/KV layout compilation and a caller-supplied event-registry
-   schema using tiny synthetic fixtures; and
-4. an internal-consistency checker for a caller-supplied static H100 map.
+3. pinned tensor metadata, 60 public scalar values, tokenizer/workload and an
+   explicitly uninstantiated `GemmaQuantV1` requirements contract;
+4. an isolated static Gemma frontend compiling all 472 W descriptors while
+   emitting zero unearned B/KV or GKR rows;
+5. shape-only heterogeneous-GKR numerator and one-axis union lemmas;
+6. a B/KV/event schema exercised only on tiny synthetic fixtures; and
+7. an internal-consistency checker for a caller-supplied static H100 map.
 
 Still blocked:
 
-1. model-body/range acquisition, Gemma weights/LUTs/goldens/roots and a
-   runtime frontend until a new owner GO freezes `GemmaQuantV1`, workload and
-   padding;
-2. ROWFOLD implementation until its exact report, relation and two-pass
+1. a complete owner-approved Gemma-only arithmetic specification, separately
+   authorized pinned private shard bodies, LUTs and bit-exact goldens;
+2. runtime binding of those values to the 472 relations, the 50 decode IDs,
+   real B/KV roots/layouts and concrete base-GKR cohorts;
+3. scheduler common-point, PCS, Fp3 and global-ROM refinements;
+4. ROWFOLD implementation until its exact report, relation and two-pass
    algorithm are present;
-3. any full-chain security, proof-size, two-sweep, complexity or H100 PASS;
-4. GPU/H100 measurement, production work and every pod action.
+5. any full-chain security, proof-size, two-sweep, complexity or H100 PASS;
+6. GPU/H100 measurement, production work and every pod action.
 
 The next admission run must, in order:
 
-1. bind pinned checkpoint values and shapes, including the ordered 60 public
-   `layer_scalar` values, to a Gemma-only runtime compiler and the 480 static
-   records;
-2. emit real B/KV `q,U,S,H`, physical roots, mask loads and every base-GKR
-   `K,sum(degree),n,hfin` row;
-3. populate every event with numerator, denominator, FS factor, lifetime and
-   abort/retry scope;
-4. serialize the maximal certificate and check all byte caps;
-5. emit the complete H100 allocation timeline and prove the peak is strictly
-   below 80,000,000,000 bytes; and
-6. only then request a separate hardware-measurement authorization.
+1. approve a Gemma-only arithmetic specification containing every currently
+   null `GemmaQuantV1` field;
+2. separately authorize or supply the two pinned private shard bodies;
+3. instantiate quantization, LUTs, goldens and Rust/Python bit equality;
+4. bind runtime values and the 50 decode IDs to the 472 relations and compile
+   the complete operator DAG;
+5. emit real B/KV `q,U,S,H`, physical roots and lifetime mask loads;
+6. emit every GKR `K,d[],sum_d,n,common-point,hfin,PCS,transcript` row and the
+   complete security-event registry, then close the Fp3/ROM refinements;
+7. serialize the maximal certificate and compiler-owned H100 allocation
+   timeline, including CUDA fences and allocator trace, and close every static
+   gate; and
+8. only then request a separate hardware-measurement authorization.
 
 ## 9. Gate status
 
@@ -420,11 +465,15 @@ The next admission run must, in order:
 | matrix/tied/final stacking algebra | `PASS` |
 | exact ragged six-norm algebra | `PASS` |
 | exact static 480-terminal declaration/census | `PASS` |
+| pinned metadata and 60 scalar values | `PASS`, static only |
+| frozen 100+50 workload | prompt `PASS`; decode/runtime `BLOCKED` |
+| isolated 472-W descriptor frontend | `PASS`, static only |
+| `GemmaQuantV1` | `BLOCKED`, 13 fields missing |
 | runtime checkpoint-to-472-relations refinement | `BLOCKED` |
 | synthetic B/KV/event compiler structure | `PASS`, no protocol credit |
 | real B/KV layout/events | `BLOCKED` |
 | fixed-prefix ProductClosure numerator | `PASS` for abstract `T+2=482` |
-| generic base-GKR formula | `PASS`; Gemma parameters/instantiation `BLOCKED` |
+| generic base-GKR shape formula | `PASS`; runtime common-point and Gemma rows `BLOCKED` |
 | concrete Fp3/transcript/Q64 ProductClosure bridge | `BLOCKED` |
 | `SECURITY_78` | conditional arithmetic `PASS`; realized security `BLOCKED` |
 | `SECURITY_84` at q357 | `NO-GO` |

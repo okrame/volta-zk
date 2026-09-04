@@ -10,6 +10,7 @@
 
 pub mod batch;
 pub mod c7_gemma_bkv_events;
+pub mod c7_gemma_frontend;
 #[cfg(test)]
 pub mod c7_phase_a;
 pub mod c7_policy2_reference;

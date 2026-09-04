@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import math
 from collections.abc import Mapping
@@ -15,8 +16,38 @@ SCHEMA = "volta-c7-d126-gemma-stacked-static-v1"
 BLOCKED = "BLOCKED"
 NO_GO = "NO-GO"
 
+ROOT = Path(__file__).resolve().parents[1]
+FROZEN_ARTIFACTS = {
+    "source_metadata": (
+        ROOT / "manifests" / "c7-d126-gemma31b-source-metadata-v1.json",
+        "1ddce0cc399d636488728f663fb756804a07e6b3ad14d43f527c7ad746e27ce2",
+    ),
+    "public_layer_scalars": (
+        ROOT / "manifests" / "c7-d126-gemma31b-layer-scalars-v1.csv",
+        "52c10c73dad7a8a81f937d4954d3b38b6cf38216393793e23571b3c6017d67af",
+    ),
+    "workload": (
+        ROOT / "manifests" / "c7-d126-gemma31b-workload-v1.json",
+        "70875c659be2b2bc0079a954233da639fe1584136c17f8fb353b589454a5d62b",
+    ),
+}
+
+
+def verified_artifact_sha256() -> dict[str, str]:
+    """Fail closed if any frozen Gemma input changes or disappears."""
+    verified: dict[str, str] = {}
+    for name, (path, expected) in FROZEN_ARTIFACTS.items():
+        actual = hashlib.sha256(path.read_bytes()).hexdigest()
+        if actual != expected:
+            raise RuntimeError(
+                f"Gemma artifact {name!r} SHA-256 differs: "
+                f"expected {expected}, got {actual}"
+            )
+        verified[name] = actual
+    return verified
+
 _terminal_manifest_digest_source = (
-    Path(__file__).resolve().parents[1]
+    ROOT
     / "manifests"
     / "c7-d126-gemma31b-terminals-v1.blake3"
 ).read_text(encoding="ascii")
@@ -38,6 +69,9 @@ EXPECTED_PROFILE: dict[str, object] = {
     "model": "google/gemma-4-31B",
     "revision": "5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89",
     "terminal_manifest_blake3": TERMINAL_MANIFEST_BLAKE3,
+    "source_metadata_sha256": FROZEN_ARTIFACTS["source_metadata"][1],
+    "public_layer_scalars_sha256": FROZEN_ARTIFACTS["public_layer_scalars"][1],
+    "workload_sha256": FROZEN_ARTIFACTS["workload"][1],
     "text_only": True,
     "config_sha256": "6a81841cad2b6ba06841e23c6afb5f0a27827bc12c64328ffa6338831a21267e",
     "model_index_sha256": "d4aff3b976d69c123a29d1c085d7ba4de1ac3f4ca1726a7f81e1b11462a64ea2",
@@ -52,6 +86,10 @@ EXPECTED_PROFILE: dict[str, object] = {
     "public_layer_scalar_count": 60,
     "forbidden_vision_bridge_tensor_count": 356,
     "operational_context_cap": 4_096,
+    "prompt_tokens": 100,
+    "decode_tokens": 50,
+    "live_tokens": 150,
+    "kv_capacity_tokens": 4_096,
     "inference_batch_size": 1,
     "max_concurrent_responses_on_device": 1,
     "first_q": 357,
@@ -203,9 +241,27 @@ def security_report() -> dict[str, object]:
         4 * Fraction(1, 1 << 81) + stacked_product_q64_budget + residual_cap
     )
     target = Fraction(1, 1 << 78)
+    gkr_direct_remaining_before = target - total
+    gkr_direct_additional_root_ceiling = (
+        gkr_direct_remaining_before * field_cardinality // q_multiplier
+    )
+    gkr_direct_error_at_ceiling = Fraction(
+        q_multiplier * gkr_direct_additional_root_ceiling,
+        field_cardinality,
+    )
+    gkr_direct_error_at_next = Fraction(
+        q_multiplier * (gkr_direct_additional_root_ceiling + 1),
+        field_cardinality,
+    )
+    total_with_gkr_direct_ceiling = total + gkr_direct_error_at_ceiling
+    total_with_gkr_direct_next = total + gkr_direct_error_at_next
     assert plane_envelope < Fraction(1, 1 << 81)
     assert total < target
     assert dyadic_contract_total < target
+    assert response_terms["operator_compute"] == Fraction(1, 1 << 86)
+    assert gkr_direct_additional_root_ceiling == 722_784_653_514_375
+    assert total_with_gkr_direct_ceiling < target
+    assert total_with_gkr_direct_next >= target
     return {
         "q_fs_global": Q_FS_GLOBAL,
         "q_fs_multiplier": q_multiplier,
@@ -243,6 +299,35 @@ def security_report() -> dict[str, object]:
         "base_transformer_gkr_operator_compute_2^-86_root_ceiling": (
             base_gkr_operator_class_root_ceiling
         ),
+        "base_transformer_gkr_emitted_root_numerator": None,
+        "base_transformer_gkr_operator_compute_reserve_already_in_total": True,
+        "base_transformer_gkr_operator_compute_reserved_error_exact": exact(
+            response_terms["operator_compute"]
+        ),
+        "base_transformer_gkr_direct_additional_margin_semantics": (
+            "extra headroom after the current conditional total, which already "
+            "contains the 2^-86 operator_compute reserve"
+        ),
+        "base_transformer_gkr_direct_additional_root_ceiling": (
+            gkr_direct_additional_root_ceiling
+        ),
+        "base_transformer_gkr_direct_additional_error_at_ceiling_exact": exact(
+            gkr_direct_error_at_ceiling
+        ),
+        "base_transformer_gkr_direct_remaining_before_exact": exact(
+            gkr_direct_remaining_before
+        ),
+        "base_transformer_gkr_direct_remaining_after_ceiling_exact": exact(
+            target - total_with_gkr_direct_ceiling
+        ),
+        "conditional_total_plus_gkr_direct_ceiling_error_exact": exact(
+            total_with_gkr_direct_ceiling
+        ),
+        "conditional_total_plus_gkr_direct_ceiling_below_78": True,
+        "conditional_total_plus_gkr_direct_next_error_exact": exact(
+            total_with_gkr_direct_next
+        ),
+        "conditional_total_plus_gkr_direct_next_below_78": False,
         "base_transformer_gkr_status": BLOCKED,
         "response_slot_classes": response_slot_classes,
         "residual_terms_exact": {
@@ -271,7 +356,8 @@ def security_report() -> dict[str, object]:
             "the C7 transcript fixes product messages before chi and keeps them independent of Delta",
             "one classical-ROM Q_FS_global factor composes across every session, retry, abort, and local query",
             "all base-transformer GKR and PCS events fit the 64-slot response registry",
-            "all 60 public layer scalars are value-bound and used by the fixed-point relation",
+            "the runtime compiler consumes all 60 bound public layer-scalar "
+            "values in the fixed-point relation",
             "every residual event includes its exact Q_FS, lifetime, abort, and retry scope",
             "hash, production PCG, state/replay, and codec bounds meet their allocations",
         ],
@@ -304,6 +390,25 @@ def validate_profile(profile: Mapping[str, object]) -> None:
 def build_report(profile: Mapping[str, object] | None = None) -> dict[str, object]:
     selected = expected_profile() if profile is None else dict(profile)
     validate_profile(selected)
+    artifact_sha256 = verified_artifact_sha256()
+    assert selected["source_metadata_sha256"] == artifact_sha256["source_metadata"]
+    assert (
+        selected["public_layer_scalars_sha256"]
+        == artifact_sha256["public_layer_scalars"]
+    )
+    assert selected["workload_sha256"] == artifact_sha256["workload"]
+    workload = json.loads(FROZEN_ARTIFACTS["workload"][0].read_text(encoding="utf-8"))
+    workload_lengths = workload["lengths"]
+    assert selected["prompt_tokens"] == workload_lengths["prompt_tokens"]
+    assert selected["decode_tokens"] == workload_lengths["decode_tokens"]
+    assert selected["live_tokens"] == workload_lengths["live_tokens"]
+    assert selected["kv_capacity_tokens"] == workload_lengths["context_capacity_tokens"]
+    assert selected["kv_capacity_tokens"] == workload["padding"]["kv_capacity_tokens"]
+    assert selected["live_tokens"] == (
+        int(selected["prompt_tokens"]) + int(selected["decode_tokens"])
+    )
+    assert int(selected["live_tokens"]) < int(selected["operational_context_cap"])
+    assert selected["kv_capacity_tokens"] == selected["operational_context_cap"]
     assert (
         int(selected["shard_00001_file_bytes"])
         + int(selected["shard_00002_file_bytes"])
@@ -349,7 +454,8 @@ def build_report(profile: Mapping[str, object] | None = None) -> dict[str, objec
     ) * visible_fp_per_attempt
 
     context_cap = int(selected["operational_context_cap"])
-    kv_bytes = KV_VALUES_PER_TOKEN * I16_BYTES * context_cap
+    kv_capacity_tokens = int(selected["kv_capacity_tokens"])
+    kv_bytes = KV_VALUES_PER_TOKEN * I16_BYTES * kv_capacity_tokens
     terminal_product_bytes = int(selected["all_terminals"]) * FP3_VALUE_BYTES
     selected_w_plus_one_kv = PACKED_W_BYTES + kv_bytes
     conditional_subtotal = (
@@ -366,6 +472,26 @@ def build_report(profile: Mapping[str, object] | None = None) -> dict[str, objec
         "schema": SCHEMA,
         "scope": "Gemma-31B only; analytic static checks",
         "profile": selected,
+        "artifacts": {
+            "source_metadata_sha256": artifact_sha256["source_metadata"],
+            "public_layer_scalars_sha256": artifact_sha256[
+                "public_layer_scalars"
+            ],
+            "workload_sha256": artifact_sha256["workload"],
+            "all_sha256_verified": True,
+        },
+        "workload": {
+            "prompt_tokens": selected["prompt_tokens"],
+            "decode_tokens": selected["decode_tokens"],
+            "live_tokens": selected["live_tokens"],
+            "operational_context_cap": context_cap,
+            "kv_capacity_tokens": kv_capacity_tokens,
+            "live_tokens_distinct_from_capacity": int(selected["live_tokens"])
+            != kv_capacity_tokens,
+            "live_tokens_within_context_cap": int(selected["live_tokens"])
+            <= context_cap,
+            "kv_allocation_uses_capacity_not_live_tokens": True,
+        },
         "field": {
             "base": "Goldilocks",
             "modulus": GOLDILOCKS_MODULUS,
@@ -473,6 +599,9 @@ def build_report(profile: Mapping[str, object] | None = None) -> dict[str, objec
             "max_concurrent_responses_on_device": selected[
                 "max_concurrent_responses_on_device"
             ],
+            "live_tokens": selected["live_tokens"],
+            "kv_capacity_tokens": kv_capacity_tokens,
+            "kv_allocation_uses_capacity_not_live_tokens": True,
             "packed_w_bytes": PACKED_W_BYTES,
             "one_kv_arena_bytes": kv_bytes,
             "rowfold_total_arena_cap_bytes": ROWFOLD_TOTAL_ARENA_CAP_BYTES,
@@ -495,7 +624,8 @@ def build_report(profile: Mapping[str, object] | None = None) -> dict[str, objec
             "missing_live_allocations": [
                 "B",
                 "mask stream buffers",
-                "public layer-scalar values/digest and fixed-point LUT/constant buffers",
+                "public layer-scalar, fixed-point LUT, and constant GPU buffers "
+                "and liveness",
                 "runtime compiler binding and liveness for the exact v vector",
                 "all commitment chains",
                 "stacked GKR",

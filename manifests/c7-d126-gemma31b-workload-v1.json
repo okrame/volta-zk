@@ -1,0 +1,60 @@
+{
+  "schema": "volta-c7-d126-gemma31b-workload-v1",
+  "model": "google/gemma-4-31B",
+  "revision": "5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89",
+  "tokenizer": {
+    "file": "tokenizer.json",
+    "bytes": 32170070,
+    "sha256": "12bac982b793c44b03d52a250a9f0d0b666813da566b910c24a6da0695fd11e6",
+    "reference_engine": "huggingface-tokenizers-0.22.1",
+    "add_special_tokens": true
+  },
+  "prompt": {
+    "text": "It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief, it was the epoch of incredulity, it was the season of Light, it was the season of Darkness, it was the spring of hope, it was the winter of despair, we had everything before us, we had nothing before us, we were all going direct to Heaven, we were all going direct the other way - in short, the period was so far like the present period, that some of its noisiest authorities insisted on its being received, for good or for evil, in the superlative degree of comparison only.",
+    "text_utf8_sha256": "e322cd81e67fbc271c4bd7683ff79677ae6891079bf173fe617ddb9e4f923b19",
+    "full_token_count": 144,
+    "truncation": "first-100-token-ids-including-bos",
+    "token_ids_u32le_sha256": "f08032f44ff6ca289c3d28d16f1f6911c4628e3b7b986c8e532191542e57287c",
+    "token_ids": [
+      2, 1509, 691, 506, 1791, 529, 2782, 236764, 625, 691,
+      506, 14588, 529, 2782, 236764, 625, 691, 506, 3911, 529,
+      23069, 236764, 625, 691, 506, 3911, 529, 59940, 1788, 236764,
+      625, 691, 506, 29280, 529, 12750, 236764, 625, 691, 506,
+      29280, 529, 10187, 575, 665, 236764, 625, 691, 506, 3409,
+      529, 10847, 236764, 625, 691, 506, 3409, 529, 106819, 236764,
+      625, 691, 506, 6247, 529, 4614, 236764, 625, 691, 506,
+      7208, 529, 53560, 236764, 692, 1053, 4326, 1680, 775, 236764,
+      692, 1053, 5017, 1680, 775, 236764, 692, 964, 784, 1771,
+      1982, 531, 35318, 236764, 692, 964, 784, 1771, 1982, 506
+    ]
+  },
+  "generation": {
+    "decode_tokens": 50,
+    "selection": "greedy-argmax-lowest-token-id-on-tie",
+    "early_stop_on_eos": false,
+    "sampling_randomness": "none",
+    "output_token_ids_status": "blocked-until-GemmaQuantV1-bit-exact-forward"
+  },
+  "lengths": {
+    "prompt_tokens": 100,
+    "decode_tokens": 50,
+    "live_tokens": 150,
+    "context_capacity_tokens": 4096,
+    "batch_size": 1,
+    "max_concurrent_gpu_responses": 1
+  },
+  "padding": {
+    "persistent_tokens": 0,
+    "packed_source_bytes": 0,
+    "certificate_bytes": 0,
+    "transcript_bytes": 0,
+    "kv_capacity_tokens": 4096,
+    "device_lane_padding": "temporary-only-must-be-emitted-and-counted"
+  },
+  "credit": {
+    "prompt_token_ids": true,
+    "decode_token_ids": false,
+    "bit_exact_witness": false,
+    "runtime_enforcement": false
+  }
+}

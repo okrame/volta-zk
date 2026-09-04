@@ -14,6 +14,7 @@ manifest BLAKE3 and liveness are mandatory inputs.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
@@ -30,6 +31,23 @@ H100_CAP_BYTES = 80_000_000_000
 ROWFOLD_ARENA_CAP_BYTES = 6_442_450_944
 FP3_BYTES = 24
 I16_BYTES = 2
+WORKLOAD_MANIFEST = (
+    Path(__file__).resolve().parents[1]
+    / "manifests"
+    / "c7-d126-gemma31b-workload-v1.json"
+)
+EXPECTED_WORKLOAD_MANIFEST_SHA256 = (
+    "70875c659be2b2bc0079a954233da639fe1584136c17f8fb353b589454a5d62b"
+)
+try:
+    _workload_manifest_bytes = WORKLOAD_MANIFEST.read_bytes()
+    FROZEN_WORKLOAD = json.loads(_workload_manifest_bytes)
+except (OSError, json.JSONDecodeError) as error:
+    raise RuntimeError(f"cannot read frozen Gemma-31B workload: {error}") from error
+WORKLOAD_MANIFEST_SHA256 = hashlib.sha256(_workload_manifest_bytes).hexdigest()
+if WORKLOAD_MANIFEST_SHA256 != EXPECTED_WORKLOAD_MANIFEST_SHA256:
+    raise RuntimeError("Gemma-31B workload manifest SHA-256 differs from the frozen value")
+
 TERMINAL_MANIFEST_BLAKE3_SIDECAR = (
     Path(__file__).resolve().parents[1]
     / "manifests"
@@ -130,13 +148,15 @@ TOP_KEYS = {
     "allocations",
     "aliases",
 }
-WORKLOAD_KEYS = {"prompt_tokens", "decode_tokens", "total_tokens", "synthetic"}
+WORKLOAD_KEYS = {"manifest_sha256"}
 ALLOCATION_KEYS = {
     "id",
     "category",
     "storage_id",
+    "payload_bytes",
     "logical_bytes",
     "allocated_bytes",
+    "device_lane_padding_bytes",
     "live_from",
     "live_until",
 }
@@ -216,6 +236,12 @@ def _zero_int(value: object, where: str) -> int:
     return value
 
 
+def _nonnegative_int(value: object, where: str) -> int:
+    if type(value) is not int or value < 0:
+        _fail(NO_GO, f"{where} must be a non-negative integer")
+    return value
+
+
 def _string_list(value: object, where: str, *, nonempty: bool = True) -> list[str]:
     if not isinstance(value, list) or (nonempty and not value):
         _fail(BLOCKED, f"{where} must be a{' non-empty' if nonempty else ''} list")
@@ -231,8 +257,7 @@ def expected_profile() -> dict[str, object]:
     return json.loads(json.dumps(EXPECTED_PROFILE))
 
 
-def kv_arena_bytes() -> int:
-    """Two i16 caches (K and V) for every local/global attention layer."""
+def _kv_bytes(tokens: int) -> int:
     p = EXPECTED_PROFILE
     per_token = 2 * (
         int(p["local_layers"])
@@ -242,7 +267,17 @@ def kv_arena_bytes() -> int:
         * int(p["global_kv_heads"])
         * int(p["global_head_dim"])
     )
-    return per_token * int(p["context_cap"]) * int(p["kv_element_bytes"])
+    return per_token * tokens * int(p["kv_element_bytes"])
+
+
+def kv_arena_bytes() -> int:
+    """Capacity for two i16 caches (K and V), not the live workload size."""
+    return _kv_bytes(int(EXPECTED_PROFILE["context_cap"]))
+
+
+def kv_live_bytes() -> int:
+    """Bytes occupied by the frozen 100-prompt plus 50-decode workload."""
+    return _kv_bytes(int(FROZEN_WORKLOAD["lengths"]["live_tokens"]))
 
 
 def current_repository_report() -> dict[str, object]:
@@ -264,6 +299,19 @@ def current_repository_report() -> dict[str, object]:
             ],
             "packed_w_bytes": EXPECTED_PROFILE["packed_w_bytes"],
             "kv_arena_bytes": kv_arena_bytes(),
+            "kv_live_bytes": kv_live_bytes(),
+            "kv_unused_capacity_bytes": kv_arena_bytes() - kv_live_bytes(),
+            "workload_manifest_sha256": WORKLOAD_MANIFEST_SHA256,
+            "workload_live_tokens": FROZEN_WORKLOAD["lengths"]["live_tokens"],
+            "context_capacity_tokens": FROZEN_WORKLOAD["lengths"][
+                "context_capacity_tokens"
+            ],
+            "persistent_padding": {
+                "tokens": 0,
+                "packed_source_bytes": 0,
+                "certificate_bytes": 0,
+                "transcript_bytes": 0,
+            },
             "rowfold_arena_cap_bytes": ROWFOLD_ARENA_CAP_BYTES,
             "staging_bytes": 256_000_000,
             "v_product_terminal_vector_bytes": (
@@ -276,7 +324,8 @@ def current_repository_report() -> dict[str, object]:
             "compiler proof that v is the ordered 480-terminal vector and its liveness",
             "B buffers",
             "mask stream buffers",
-            "public layer-scalar values/digest and all fixed-point LUT/constant buffers",
+            "GPU buffers/liveness for the bound public layer scalars and all "
+            "fixed-point LUT/constants",
             "all commitment-chain buffers",
             "ProductClosure working buffers",
             "base-GKR buffers",
@@ -286,7 +335,9 @@ def current_repository_report() -> dict[str, object]:
             "allocator reserve and fragmentation",
             "every selected-kernel workspace",
             "one complete ordered event timeline and alias proof",
-            "pinned prompt/decode workload and runtime enforcement of one GPU response at a time",
+            "CUDA completion fences for every aliased-lifetime handoff",
+            "compiler census of temporary device-lane padding bytes",
+            "runtime enforcement of the frozen 100+50 workload and one GPU response at a time",
         ],
     }
 
@@ -381,18 +432,57 @@ def _validate_events(value: object) -> tuple[list[str], dict[str, int]]:
     return events, index
 
 
-def _validate_workload(value: object) -> Mapping[str, object]:
+def _validate_workload(value: object) -> dict[str, object]:
     row = _exact_keys(value, WORKLOAD_KEYS, "workload")
-    prompt = _positive_int(row["prompt_tokens"], "workload.prompt_tokens")
-    decode = _positive_int(row["decode_tokens"], "workload.decode_tokens")
-    total = _positive_int(row["total_tokens"], "workload.total_tokens")
-    if prompt + decode != total:
-        _fail(NO_GO, "workload prompt plus decode tokens must equal total_tokens")
-    if total != EXPECTED_PROFILE["context_cap"]:
-        _fail(NO_GO, "the static peak workload must fill the 4,096-token context cap")
-    if type(row["synthetic"]) is not bool:
-        _fail(NO_GO, "workload.synthetic must explicitly be true or false")
-    return row
+    if row["manifest_sha256"] != WORKLOAD_MANIFEST_SHA256:
+        _fail(NO_GO, "workload does not bind the frozen Gemma-31B manifest")
+
+    workload = _mapping(FROZEN_WORKLOAD, "frozen workload manifest")
+    if workload.get("schema") != "volta-c7-d126-gemma31b-workload-v1":
+        _fail(NO_GO, "frozen workload schema is not Gemma-31B workload v1")
+    if workload.get("model") != EXPECTED_PROFILE["model"]:
+        _fail(NO_GO, "frozen workload model differs from the H100 profile")
+    if workload.get("revision") != EXPECTED_PROFILE["revision"]:
+        _fail(NO_GO, "frozen workload revision differs from the H100 profile")
+
+    lengths = _mapping(workload.get("lengths"), "frozen workload lengths")
+    expected_lengths = {
+        "prompt_tokens": 100,
+        "decode_tokens": 50,
+        "live_tokens": 150,
+        "context_capacity_tokens": 4_096,
+        "batch_size": 1,
+        "max_concurrent_gpu_responses": 1,
+    }
+    if lengths != expected_lengths:
+        _fail(NO_GO, "frozen workload lengths differ from the admitted 100+50 workload")
+    if lengths["prompt_tokens"] + lengths["decode_tokens"] != lengths["live_tokens"]:
+        _fail(NO_GO, "prompt plus decode must equal the live-token count")
+    if lengths["live_tokens"] > lengths["context_capacity_tokens"]:
+        _fail(NO_GO, "live tokens exceed the 4,096-token context capacity")
+    if lengths["context_capacity_tokens"] != EXPECTED_PROFILE["context_cap"]:
+        _fail(NO_GO, "workload context capacity differs from the H100 profile")
+
+    padding = _mapping(workload.get("padding"), "frozen workload padding")
+    expected_padding = {
+        "persistent_tokens": 0,
+        "packed_source_bytes": 0,
+        "certificate_bytes": 0,
+        "transcript_bytes": 0,
+        "kv_capacity_tokens": 4_096,
+        "device_lane_padding": "temporary-only-must-be-emitted-and-counted",
+    }
+    if padding != expected_padding:
+        _fail(NO_GO, "frozen workload padding policy differs from the admitted policy")
+    return {
+        "manifest_sha256": WORKLOAD_MANIFEST_SHA256,
+        **expected_lengths,
+        "persistent_padding_tokens": 0,
+        "packed_source_padding_bytes": 0,
+        "certificate_padding_bytes": 0,
+        "transcript_padding_bytes": 0,
+        "device_lane_padding_policy": padding["device_lane_padding"],
+    }
 
 
 def _validate_inventories(value: object) -> dict[str, list[str]]:
@@ -481,8 +571,19 @@ def _validate_allocations(
             _fail(NO_GO, f"allocation {allocation_id!r} has unknown category {category!r}")
         if type(row["storage_id"]) is not str or not row["storage_id"]:
             _fail(NO_GO, f"allocation {allocation_id!r} has no storage_id")
+        payload = _positive_int(row["payload_bytes"], f"{allocation_id}.payload_bytes")
         logical = _positive_int(row["logical_bytes"], f"{allocation_id}.logical_bytes")
         allocated = _positive_int(row["allocated_bytes"], f"{allocation_id}.allocated_bytes")
+        lane_padding = _nonnegative_int(
+            row["device_lane_padding_bytes"],
+            f"{allocation_id}.device_lane_padding_bytes",
+        )
+        if payload + lane_padding != logical:
+            _fail(
+                NO_GO,
+                f"allocation {allocation_id!r} must satisfy "
+                "logical_bytes = payload_bytes + device_lane_padding_bytes",
+            )
         if logical > allocated:
             _fail(NO_GO, f"allocation {allocation_id!r} exceeds its physical capacity")
         start_name, end_name = row["live_from"], row["live_until"]
@@ -521,15 +622,15 @@ def _validate_allocations(
     }
     for allocation_id, expected in exact_bytes.items():
         row = by_id[allocation_id]
-        if row["logical_bytes"] != expected:
-            _fail(NO_GO, f"{allocation_id} must contain exactly {expected} logical bytes")
+        if row["payload_bytes"] != expected:
+            _fail(NO_GO, f"{allocation_id} must contain exactly {expected} payload bytes")
     rowfold = by_id[FIXED_IDS["rowfold"]]
     if int(rowfold["allocated_bytes"]) > ROWFOLD_ARENA_CAP_BYTES:
         _fail(NO_GO, "the total ROWFOLD arena exceeds 6,442,450,944 bytes")
 
     v = by_id[FIXED_IDS["v"]]
     expected_v = int(v_definition["element_count"]) * int(v_definition["element_bytes"])
-    if v["logical_bytes"] != expected_v:
+    if v["payload_bytes"] != expected_v:
         _fail(NO_GO, "v bytes do not equal element_count * element_bytes")
     v_start, v_end = intervals[FIXED_IDS["v"]]
     used_at = [str(v_definition["producer_event"]), *v_definition["consumer_events"]]
@@ -544,6 +645,16 @@ def _validate_allocations(
         if intervals[allocation_id] != (first, last):
             _fail(NO_GO, f"public constant {allocation_id!r} must remain model-resident")
     response = (event_index["response_begin"], event_index["response_end"])
+    for row in rows:
+        if int(row["device_lane_padding_bytes"]) == 0:
+            continue
+        allocation_id = str(row["id"])
+        start, end = intervals[allocation_id]
+        if not (response[0] <= start < end <= response[1]):
+            _fail(
+                NO_GO,
+                f"device-lane padding in {allocation_id!r} must be response-temporary",
+            )
     if intervals["staging"] != response:
         _fail(NO_GO, "staging must cover the complete response lifetime")
     kv_start, kv_end = intervals["kv_arena"]
@@ -697,12 +808,23 @@ def validate_manifest(manifest: object) -> dict[str, object]:
         "allocation_count": len(rows),
         "physical_storage_count": len({str(row["storage_id"]) for row in rows}),
         "kv_arena_bytes": kv_arena_bytes(),
+        "kv_live_bytes": kv_live_bytes(),
+        "kv_unused_capacity_bytes": kv_arena_bytes() - kv_live_bytes(),
         "workload": dict(workload),
+        "device_lane_padding_bytes": sum(
+            int(row["device_lane_padding_bytes"]) for row in rows
+        ),
+        "payload_bytes": sum(int(row["payload_bytes"]) for row in rows),
+        "device_lane_padding_allocation_ids": sorted(
+            str(row["id"])
+            for row in rows
+            if int(row["device_lane_padding_bytes"]) > 0
+        ),
         "timeline": timeline,
         "measurement_credit": False,
         "remaining_unblock": (
             "compiler-generated complete allocation artifact with measured "
-            "allocated-byte values"
+            "allocated-byte values, CUDA completion fences, and allocator trace"
         ),
     }
 
@@ -723,7 +845,7 @@ def evaluate_manifest(manifest: object | None) -> dict[str, object]:
         }
 
 
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("manifest", nargs="?", type=Path)
     args = parser.parse_args()
@@ -741,7 +863,8 @@ def main() -> None:
                 "reason": f"cannot read canonical JSON manifest: {error}",
             }
     print(json.dumps(report, indent=2, sort_keys=True))
+    return 2 if report["status"] == BLOCKED else int(report["status"] != PASS)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

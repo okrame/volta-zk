@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 D126 GEMMA-31B STACKED STATIC BLOCKED — LOCAL DEEP TESTS GO / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 D126 GEMMA-31B STACKED STATIC BLOCKED — LOCAL DEEP TESTS COMPLETE / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,26 +11,96 @@ record; no external plan is authoritative.
 Read `c7-d126-gemma31b-static-admission.md`; older designs are supporting
 append-only history.
 
-- **Status.** D126 remains **BLOCKED** on the pinned text-only Gemma-31B,
-  context 4,096, `q=357`, offline classical-ROM `Q_FS_global<=2^64`, 472 W / 480
-  total terminals and zero use reducers. The 79.481814-bit total is conditional;
-  realized 78-bit security is not proved.
-- **Completed evidence.** One canonical CSV/BLAKE3 declares 480 ordered
-  terminals and exactly partitions the checkpoint as 772 private language
-  tensors, 60 public layer scalars and 356 forbidden vision/bridge tensors.
-  Rust rejects census/order/source drift. Lean proves the ragged local/global
-  norm bundles (`5376/256/512`), declaration census, zero reducers and abstract
-  ProductClosure numerator 482. Focused checks pass: Lean target, 11 Rust and
-  38 Python tests. The B/KV and H100 fixtures pass structure only and return no
-  protocol or memory credit.
-- **Hard stops.** Runtime value-to-relation binding, ordered public-scalar
-  values, `GemmaQuantV1`, real B/KV roots/layouts, concrete base-GKR cohorts and
-  Fp3/ROM bridge, ROWFOLD relation, full certificate and measured H100 map are
-  absent. No spill, extra W copy, forbidden source work or pod is allowed.
-- **Authorization.** The authorized local static tranche is complete. Resume
-  only after owner GO freezes quantization/workload and permits pinned
-  shape/scalar acquisition plus a new Gemma-only frontend; then emit all GKR,
-  event, certificate and allocation records before requesting hardware GO.
+- **Status.** D126 remains **BLOCKED** for pinned text-only Gemma-31B, context
+  capacity 4,096, 150 live tokens, `q=357`, global offline
+  `Q_FS<=2^64`, 472 W / 480 total terminals and zero use reducers. Realized
+  78-bit security is not yet proved.
+- **Completed evidence.** Pinned metadata covers 1,188 tensors; the 60 public
+  scalar values and 100-token prompt are bound. A new isolated Rust frontend
+  compiles 472 static W descriptors from 772 private tensors and emits zero
+  invented B/KV or GKR rows. Lean binds the scalar CSV and proves the
+  heterogeneous-cohort numerator `K+sum(d)+n+2` plus a one-factor Q64 union
+  bound. The conditional total is 79.481814 bits. The existing `2^-86` GKR
+  reserve holds 4,398,046,508,032 roots; 722,784,653,514,375 more are the exact
+  absolute headroom before 78 bits, not credited capacity.
+- **Hard stops.** `GemmaQuantV1`, full value binding, 50 decode IDs, real B/KV
+  layouts, concrete GKR cohorts, scheduler/PCS/Fp3/ROM refinements, ROWFOLD,
+  maximal certificate and compiler-owned H100 inventory are absent. Static KV
+  capacity is 3,690,987,520 B; live use is 135,168,000 B. No pod is authorized.
+- **Authorization.** All three local GO tranches are complete. Resume needs an
+  owner-approved Gemma-only arithmetic specification and pinned local weight
+  bodies, plus the missing ROWFOLD relation. Hardware remains a separate GO.
+
+- **2026-09-04 — all three Gemma-31B local GO tranches complete; static
+  frontend and formal GKR envelope land, realized D126 stays BLOCKED.** No pod,
+  full checkpoint body or hardware measurement was used. The work is isolated
+  from historical model compilers and introduces no active legacy parameter
+  source.
+
+  The pinned source acquisition read only 160,616 bytes from the two
+  safetensors files: both headers and the 120 bytes holding the 60 public
+  `layer_scalar` values. The canonical metadata inventory contains 1,188
+  physical tensors: 772 private text tensors, 60 public layer scalars and 356
+  forbidden vision/bridge tensors. It proves exact shapes, half-open shard
+  offsets and byte coverage without claiming that private weight bodies were
+  fetched. The 60 BF16 patterns are non-uniform and are bound in order by both
+  Rust and a Lean build-time guard.
+
+  The frozen workload is batch one, 100 prompt tokens and exactly 50 greedy
+  decode steps: 150 live tokens inside a 4,096-token context/KV capacity. The
+  prompt text, tokenizer revision/digest, first 100 token IDs, lowest-ID tie
+  rule and no-early-stop rule are fixed. The 50 output IDs and bit-exact
+  witness remain blocked. Persistent source, certificate and transcript
+  padding are zero; temporary device-lane padding must be emitted and counted.
+
+  `GemmaQuantV1` is deliberately an uninstantiated requirements contract. It
+  freezes BF16 input, little-endian i16 output, zero point, Fp3, 772 private
+  tensors and exactly 61,394,690,560 packed bytes. Thirteen required values,
+  including exponents, rounding, saturation, accumulator bounds, LUTs,
+  goldens and cross-language equality, remain null. It cannot return credit.
+
+  The isolated Rust frontend validates every pinned digest and compiles 472 W
+  relation descriptors: 410 matrices, 60 ragged norm bundles, tied embedding
+  and final norm. They contain 772 source descriptors and the 60 real public
+  scalars. Runtime weight values are explicitly unbound. B/KV and base-GKR
+  contracts contain required field lists but emit zero rows and zero credit;
+  no synthetic row is promoted to protocol evidence.
+
+  `C7GemmaGKR.lean` imports the exact scalar CSV, proves its census/order, and
+  provides a conditional runtime-manifest refinement. For each heterogeneous
+  cohort shape it specializes the existing malicious-prover theorem to the
+  exact numerator `K + sum(d) + n + 2`. This shape theorem does not claim that
+  runtime member histories share a point. A separate finite union lemma puts
+  supplied bad sets under exactly one `2^64+1` axis. Common-point,
+  scheduler/transcript and ROM refinements for all local queries, sessions,
+  aborts and retries remain missing.
+
+  The exact conditional budget remains 79.481814 bits and already contains a
+  `2^-86` operator/compute reserve. That reserve admits at most
+  4,398,046,508,032 GKR roots without consuming the 64.196173% remaining
+  78-bit error budget. If all that remaining budget were reassigned, the exact
+  additional ceiling would be 722,784,653,514,375 roots; the next root fails
+  the strict 78-bit inequality. This extra ceiling is diagnostic, not the
+  design allocation. The real compiler numerator is absent, so
+  `SECURITY_78` remains `BLOCKED`.
+
+  The H100 checker now binds the workload digest and distinguishes
+  135,168,000 live KV bytes from the 3,690,987,520-byte capacity allocation.
+  It requires every allocation to declare temporary device-lane padding and
+  includes physical allocated bytes in the peak. The complete inventory and
+  allocator trace are still missing, so the static fit receives no credit.
+
+  Verification at this boundary: 48 focused Python tests, 16 focused Gemma
+  Rust tests and the full 3,277-job `lake build VoltaZk` pass. The complete
+  Rust workspace stops only at the unchanged historical
+  `c6_t1_owner::native_persistence_source_guard_bypasses_hidden_u_owner` source
+  guard; skipping exactly that named guard makes every remaining workspace
+  test pass. Full Python gives 104 passes and six failures outside this diff:
+  three stale historical expectations and three missing generated/local
+  artifacts. The new Rust files pass `rustfmt --check`; `git diff --check`
+  passes. Build caches are removed after the scoped checkpoint. Planning
+  remains 45--50 s prover, about 30 MB proof and 6.4--8.2 s four-core verifier,
+  all unmeasured; 19.186 s of storage acquisition is model onboarding only.
 
 - **2026-09-04 — D126 Gemma-31B local static tranche completes; exact
   declaration PASS, realized admission remains BLOCKED.** The owner-authorized

@@ -1,0 +1,22 @@
+@schema=volta-c7-d126-gemma31b-reference-semantics-v1
+@runtime_repository=https://github.com/huggingface/transformers
+@runtime_commit=c1c34249fa27deefbd4a377dfbf883a39baf5c6d
+@runtime_tag=v5.5.0
+@scope=text-only-static-frontend
+@dependency_closure=partial
+@runtime_file_columns=path|sha256
+src/transformers/models/gemma4/modular_gemma4.py|5f8f331e2958d2e89b6bf4f5b75a1a39262bc0b80aa5854883741d8674495858
+src/transformers/models/gemma4/modeling_gemma4.py|6a86e03348df5ec104703e7161de9a911137cba500a0be0f133e2850ef0bf935
+src/transformers/models/gemma4/configuration_gemma4.py|3eb1d90bffeb0caf9bd51ab5007bac8696e54109a8f43ea8919cdd83319a1401
+@corroborating_repository=https://github.com/google-deepmind/gemma
+@corroborating_commit=7b785991bd78626c73b317eb43fdbb6c292f7b9c
+@corroborating_file_columns=path|sha256
+gemma/gm/nn/gemma4/_gemma4.py|67cf8c06eed95cbea613e1014f8dd23aade95edf5fb415d875118fe5c1605c4f
+gemma/gm/nn/gemma4/_modules.py|aa422c5904a07e11b9076d91b7648fcd175354dea80c6410c92dc3d67574c17f
+gemma/gm/nn/gemma4/_layers.py|55643c31628bd66e94d72bd035910635a4c5bbf2e5a131ce8fb663ddb28b405c
+gemma/gm/nn/gemma4/_transformer.py|301ae29c9acf9d102f85f63322cf35d96216b16a80334885207c13e7832e3dda
+gemma/gm/nn/gemma4/_config.py|6c72fdb786cc676130a753cac5e49c51fbab0bf785213e84facd64026a8cdc25
+gemma/gm/math/_positional_embeddings.py|6f4814d3554dbb4c67bba794e9fb13a2ae39ea7c77dc4a040527d1536fcb0c92
+@narrow_semantic_assertion=k_eq_v aliases the projection output before key_norm and parameter-free value_norm; global k_norm remains live
+@open_runtime_dependency_closure=transformers runtime helpers and kernels transitively imported by the three pinned files
+@open_corroborating_dependency_prefixes=gemma/gm/math/_pos_utils.py;gemma/gm/nn/gemma4/audio/;gemma/gm/nn/gemma4/vision/;gemma/gm/text/_tokenizer.py;gemma/gm/utils/;gemma/gm/vision/_token_utils.py

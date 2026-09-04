@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import sys
 from pathlib import Path
 
 import pytest
@@ -28,13 +29,17 @@ def allocation(
     *,
     storage_id: str | None = None,
     logical_bytes: int | None = None,
+    device_lane_padding_bytes: int = 0,
 ) -> dict[str, object]:
+    logical = allocated_bytes if logical_bytes is None else logical_bytes
     return {
         "id": allocation_id,
         "category": category,
         "storage_id": storage_id or allocation_id,
-        "logical_bytes": allocated_bytes if logical_bytes is None else logical_bytes,
+        "payload_bytes": logical - device_lane_padding_bytes,
+        "logical_bytes": logical,
         "allocated_bytes": allocated_bytes,
+        "device_lane_padding_bytes": device_lane_padding_bytes,
         "live_from": live_from,
         "live_until": live_until,
     }
@@ -63,12 +68,7 @@ def complete_synthetic_manifest() -> dict[str, object]:
     return {
         "schema": module.SCHEMA,
         "profile": module.expected_profile(),
-        "workload": {
-            "prompt_tokens": 2_048,
-            "decode_tokens": 2_048,
-            "total_tokens": 4_096,
-            "synthetic": True,
-        },
+        "workload": {"manifest_sha256": module.WORKLOAD_MANIFEST_SHA256},
         "events": events,
         "inventories": {
             "b": ["b_arena"],
@@ -199,6 +199,9 @@ def test_repository_values_are_blocked_without_implicit_zeroes() -> None:
     assert module.kv_arena_bytes() == (
         2 * (50 * 16 * 256 + 10 * 4 * 512) * 4_096 * 2
     ) == 3_690_987_520
+    assert module.kv_live_bytes() == (
+        2 * (50 * 16 * 256 + 10 * 4 * 512) * 150 * 2
+    ) == 135_168_000
     assert report["status"] == "BLOCKED"
     assert report["H100_STATIC_FIT"] == "BLOCKED"
     assert report["credit"] is False
@@ -229,6 +232,14 @@ def test_complete_synthetic_timeline_passes_structure_without_gate_credit() -> N
     assert report["headroom_bytes"] == 80_000_000_000 - report["peak_allocated_bytes"]
     assert report["physical_storage_count"] == report["allocation_count"] - 1
     assert report["measurement_credit"] is False
+    assert report["workload"]["prompt_tokens"] == 100
+    assert report["workload"]["decode_tokens"] == 50
+    assert report["workload"]["live_tokens"] == 150
+    assert report["workload"]["context_capacity_tokens"] == 4_096
+    assert report["kv_live_bytes"] == 135_168_000
+    assert report["kv_unused_capacity_bytes"] == 3_555_819_520
+    assert report["device_lane_padding_bytes"] == 0
+    assert report["device_lane_padding_allocation_ids"] == []
 
 
 def test_base_gkr_must_precede_product_closure() -> None:
@@ -251,20 +262,50 @@ def test_base_gkr_must_precede_product_closure() -> None:
     assert "lifecycle markers are out of order" in report["reason"]
 
 
-def test_workload_must_fill_context_and_name_prompt_decode_split() -> None:
+def test_workload_is_frozen_150_live_tokens_with_4096_capacity() -> None:
     module = load_module()
 
     missing = complete_synthetic_manifest()
     missing.pop("workload")
     assert module.evaluate_manifest(missing)["status"] == "BLOCKED"
 
-    wrong_sum = complete_synthetic_manifest()
-    wrong_sum["workload"]["decode_tokens"] -= 1
-    assert module.evaluate_manifest(wrong_sum)["status"] == "NO-GO"
+    wrong_binding = complete_synthetic_manifest()
+    wrong_binding["workload"]["manifest_sha256"] = "0" * 64
+    assert module.evaluate_manifest(wrong_binding)["status"] == "NO-GO"
 
     concurrent = complete_synthetic_manifest()
     concurrent["profile"]["max_concurrent_responses_on_device"] = 2
     assert module.evaluate_manifest(concurrent)["status"] == "NO-GO"
+
+
+def test_device_lane_padding_is_explicit_counted_and_temporary() -> None:
+    module = load_module()
+    counted = complete_synthetic_manifest()
+    activation = find_allocation(counted, "activation_arena")
+    activation["device_lane_padding_bytes"] = 1_024
+    activation["payload_bytes"] -= 1_024
+    report = module.validate_manifest(counted)
+    assert report["device_lane_padding_bytes"] == 1_024
+    assert report["device_lane_padding_allocation_ids"] == ["activation_arena"]
+
+    missing = complete_synthetic_manifest()
+    find_allocation(missing, "activation_arena").pop("device_lane_padding_bytes")
+    assert module.evaluate_manifest(missing)["status"] == "BLOCKED"
+
+    persistent = complete_synthetic_manifest()
+    packed_w = find_allocation(persistent, "packed_w")
+    packed_w["device_lane_padding_bytes"] = 1
+    packed_w["logical_bytes"] += 1
+    packed_w["allocated_bytes"] += 1
+    report = module.evaluate_manifest(persistent)
+    assert report["status"] == "NO-GO"
+    assert "response-temporary" in report["reason"]
+
+    uncounted = complete_synthetic_manifest()
+    find_allocation(uncounted, "activation_arena")["device_lane_padding_bytes"] = 1
+    report = module.evaluate_manifest(uncounted)
+    assert report["status"] == "NO-GO"
+    assert "payload_bytes + device_lane_padding_bytes" in report["reason"]
 
 
 @pytest.mark.parametrize(
@@ -405,18 +446,30 @@ def test_second_weight_copy_rowfold_overflow_and_cap_equality_are_no_go() -> Non
     assert module.evaluate_manifest(duplicate)["status"] == "NO-GO"
 
     rowfold = complete_synthetic_manifest()
+    find_allocation(rowfold, "rowfold_arena")["payload_bytes"] = 6_442_450_945
     find_allocation(rowfold, "rowfold_arena")["logical_bytes"] = 6_442_450_945
     find_allocation(rowfold, "rowfold_arena")["allocated_bytes"] = 6_442_450_945
-    assert module.evaluate_manifest(rowfold)["status"] == "NO-GO"
+    report = module.evaluate_manifest(rowfold)
+    assert report["status"] == "NO-GO"
+    assert "ROWFOLD arena exceeds" in report["reason"]
 
     exact_cap = complete_synthetic_manifest()
     initial = module.validate_manifest(exact_cap)["peak_allocated_bytes"]
     allocator = find_allocation(exact_cap, "allocator_reserve")
+    allocator["payload_bytes"] += 80_000_000_000 - initial
     allocator["logical_bytes"] += 80_000_000_000 - initial
     allocator["allocated_bytes"] += 80_000_000_000 - initial
     report = module.evaluate_manifest(exact_cap)
     assert report["status"] == "NO-GO"
     assert "peak_allocated must be <80000000000" in report["reason"]
+
+
+def test_cli_returns_nonzero_while_h100_gate_is_blocked(monkeypatch, capsys) -> None:
+    module = load_module()
+    monkeypatch.setattr(sys, "argv", [str(MODULE_PATH)])
+
+    assert module.main() == 2
+    assert '"H100_STATIC_FIT": "BLOCKED"' in capsys.readouterr().out
 
 
 def test_use_reducer_zero_is_explicit_and_derived() -> None:

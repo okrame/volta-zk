@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import sys
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
@@ -40,6 +41,11 @@ def test_only_exact_gemma_q357_stacked_profile_is_accepted() -> None:
 
     for key, wrong in (
         ("operational_context_cap", 4_095),
+        ("source_metadata_sha256", "0" * 64),
+        ("public_layer_scalars_sha256", "0" * 64),
+        ("workload_sha256", "0" * 64),
+        ("live_tokens", 149),
+        ("kv_capacity_tokens", 150),
         ("first_q", 350),
         ("reducer_instances", 1),
         ("q_by_round", (357,) * 8),
@@ -61,10 +67,34 @@ def test_gemma_census_and_q357_wire_slice_are_exact_but_not_complete() -> None:
     field = report["field"]
     census = report["census"]
     wire = report["wire"]
+    artifacts = report["artifacts"]
+    workload = report["workload"]
 
     assert profile["operational_context_cap"] == 4_096
     assert profile["inference_batch_size"] == 1
     assert profile["max_concurrent_responses_on_device"] == 1
+    assert artifacts == {
+        "source_metadata_sha256": (
+            "1ddce0cc399d636488728f663fb756804a07e6b3ad14d43f527c7ad746e27ce2"
+        ),
+        "public_layer_scalars_sha256": (
+            "52c10c73dad7a8a81f937d4954d3b38b6cf38216393793e23571b3c6017d67af"
+        ),
+        "workload_sha256": (
+            "70875c659be2b2bc0079a954233da639fe1584136c17f8fb353b589454a5d62b"
+        ),
+        "all_sha256_verified": True,
+    }
+    assert workload == {
+        "prompt_tokens": 100,
+        "decode_tokens": 50,
+        "live_tokens": 150,
+        "operational_context_cap": 4_096,
+        "kv_capacity_tokens": 4_096,
+        "live_tokens_distinct_from_capacity": True,
+        "live_tokens_within_context_cap": True,
+        "kv_allocation_uses_capacity_not_live_tokens": True,
+    }
     assert profile["terminal_manifest_blake3"] == (
         Path(__file__).resolve().parents[1]
         / "manifests"
@@ -167,8 +197,13 @@ def test_h100_conditional_partial_map_fits_but_full_peak_stays_unknown() -> None
     assert h100["cap_bytes"] == 80_000_000_000
     assert h100["inference_batch_size"] == 1
     assert h100["max_concurrent_responses_on_device"] == 1
+    assert h100["live_tokens"] == 150
+    assert h100["kv_capacity_tokens"] == 4_096
+    assert h100["kv_allocation_uses_capacity_not_live_tokens"] is True
     assert h100["packed_w_bytes"] == 61_394_690_560
     assert h100["one_kv_arena_bytes"] == 3_690_987_520
+    assert h100["one_kv_arena_bytes"] == 450_560 * 2 * 4_096
+    assert h100["one_kv_arena_bytes"] != 450_560 * 2 * 150
     assert h100["rowfold_total_arena_cap_bytes"] == 6_442_450_944
     assert h100["rowfold_arena_admission"] == "conditional"
     assert h100["v_product_closure_vector_bytes"] == 480 * 24 == 11_520
@@ -212,6 +247,21 @@ def test_q357_total_allocation_clears_78_but_missing_premises_block_credit() -> 
         security["base_transformer_gkr_operator_compute_2^-86_root_ceiling"]
         == 4_398_046_508_032
     )
+    assert security["base_transformer_gkr_emitted_root_numerator"] is None
+    assert (
+        security["base_transformer_gkr_operator_compute_reserve_already_in_total"]
+        is True
+    )
+    assert Fraction(
+        security["base_transformer_gkr_operator_compute_reserved_error_exact"]
+    ) == Fraction(1, 2**86)
+    assert "already contains" in security[
+        "base_transformer_gkr_direct_additional_margin_semantics"
+    ]
+    direct_ceiling = security[
+        "base_transformer_gkr_direct_additional_root_ceiling"
+    ]
+    assert direct_ceiling == 722_784_653_514_375
     assert security["base_transformer_gkr_status"] == "BLOCKED"
     p3 = ((1 << 64) - (1 << 32) + 1) ** 3
     q64 = (1 << 64) + 1
@@ -221,6 +271,32 @@ def test_q357_total_allocation_clears_78_but_missing_premises_block_credit() -> 
     ):
         assert q64 * ceiling * (1 << cap_bits) <= p3
         assert q64 * (ceiling + 1) * (1 << cap_bits) > p3
+    current_total = Fraction(security["conditional_total_error_exact"])
+    target = Fraction(1, 2**78)
+    direct_error = Fraction(q64 * direct_ceiling, p3)
+    next_direct_error = Fraction(q64 * (direct_ceiling + 1), p3)
+    assert (target - current_total) * p3 // q64 == direct_ceiling
+    assert current_total + direct_error < target
+    assert current_total + next_direct_error >= target
+    assert Fraction(
+        security["base_transformer_gkr_direct_additional_error_at_ceiling_exact"]
+    ) == direct_error
+    assert Fraction(
+        security["base_transformer_gkr_direct_remaining_before_exact"]
+    ) == target - current_total
+    assert Fraction(
+        security[
+            "base_transformer_gkr_direct_remaining_after_ceiling_exact"
+        ]
+    ) == target - (current_total + direct_error)
+    assert Fraction(
+        security["conditional_total_plus_gkr_direct_ceiling_error_exact"]
+    ) == current_total + direct_error
+    assert security["conditional_total_plus_gkr_direct_ceiling_below_78"] is True
+    assert Fraction(
+        security["conditional_total_plus_gkr_direct_next_error_exact"]
+    ) == current_total + next_direct_error
+    assert security["conditional_total_plus_gkr_direct_next_below_78"] is False
     assert security["conditional_total_arithmetic_below_78"] is True
     assert security["realized_security_status"] == "BLOCKED"
     assert abs(security["conditional_total_bits"] - 79.481814299560) < 1e-12

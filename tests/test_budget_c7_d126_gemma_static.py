@@ -27,23 +27,19 @@ def test_only_exact_gemma_q357_stacked_profile_is_accepted() -> None:
     expected = budget.expected_profile()
     budget.validate_profile(expected)
 
-    stale_gemma = copy.deepcopy(expected)
-    stale_gemma.update(
-        w_raw_terminals=1_546,
-        all_terminals=1_554,
-        reducer_instances=653,
-    )
+    wrong_census = copy.deepcopy(expected)
+    wrong_census.update(w_raw_terminals=471, all_terminals=479, reducer_instances=1)
     other_model = copy.deepcopy(expected)
     other_model.update(profile="not-gemma", model="not-gemma")
     ad_hoc = copy.deepcopy(expected)
     ad_hoc["all_terminals"] = 481
 
-    for rejected in (stale_gemma, other_model, ad_hoc):
+    for rejected in (wrong_census, other_model, ad_hoc):
         with pytest.raises(ValueError):
             budget.validate_profile(rejected)
 
     for key, wrong in (
-        ("operational_context_cap", 4_608),
+        ("operational_context_cap", 4_095),
         ("first_q", 350),
         ("reducer_instances", 1),
         ("q_by_round", (357,) * 8),
@@ -67,6 +63,21 @@ def test_gemma_census_and_q357_wire_slice_are_exact_but_not_complete() -> None:
     wire = report["wire"]
 
     assert profile["operational_context_cap"] == 4_096
+    assert profile["inference_batch_size"] == 1
+    assert profile["max_concurrent_responses_on_device"] == 1
+    assert profile["terminal_manifest_blake3"] == (
+        Path(__file__).resolve().parents[1]
+        / "manifests"
+        / "c7-d126-gemma31b-terminals-v1.blake3"
+    ).read_text(encoding="ascii").strip()
+    assert profile["text_only"] is True
+    assert profile["checkpoint_tensor_count"] == 1_188
+    assert profile["private_learned_tensor_count"] == 772
+    assert profile["public_layer_scalar_count"] == 60
+    assert profile["forbidden_vision_bridge_tensor_count"] == 356
+    assert profile["shard_00001_file_bytes"] + profile["shard_00002_file_bytes"] == (
+        profile["safetensors_metadata_bytes"] + profile["safetensors_framing_bytes"]
+    ) == 62_546_338_248
     assert profile["first_q"] == 357
     assert profile["q_by_round"] == (357, 163, 152, 149, 149, 149, 149, 149)
     assert field == {
@@ -78,6 +89,14 @@ def test_gemma_census_and_q357_wire_slice_are_exact_but_not_complete() -> None:
         "correction_bytes": 8,
     }
     assert census["w_segments"] == 472
+    assert census["text_only"] is True
+    assert (
+        census["private_learned_tensor_count"]
+        + census["public_layer_scalar_count"]
+        + census["forbidden_vision_bridge_tensor_count"]
+        == census["checkpoint_tensor_count"]
+        == 1_188
+    )
     assert census["w_raw_terminals"] == 472
     assert census["identity_terminals"] == 8
     assert census["all_terminals"] == 480
@@ -95,8 +114,6 @@ def test_gemma_census_and_q357_wire_slice_are_exact_but_not_complete() -> None:
     assert wire["merkle_siblings"] == 52_361
     assert wire["verifier_internal_hashes"] == 55_187
     assert wire["verifier_hashes_including_opened_leaves"] == 58_021
-    assert wire["removed_reducer_p_to_v_bytes"] == 31_424
-    assert wire["removed_reducer_v_to_p_bytes"] == 15_792
     assert wire["fixed_outer_p_to_v_bytes"] == 11_796
     assert wire["fixed_outer_v_to_p_bytes"] == 120
     assert wire["fixed_outer_total_bytes"] == 11_916
@@ -135,7 +152,6 @@ def test_q357_alternative_one_mask_geometry_is_exact_but_w_only() -> None:
     assert masks["mask_cells"] == 1_841_329_152
     assert masks["rootmask_dimension"] == 2_741_852_160
     assert masks["unused_cells"] == 900_523_008
-    assert masks["removed_reducer_fp3_masks"] == 1_306
     assert masks["setup_bytes_unchanged"] == 92_587_558_592
     assert masks["setup_hard_ratio"] == "2.10x"
     assert masks["setup_within_hard_ratio"] is True
@@ -149,11 +165,14 @@ def test_h100_conditional_partial_map_fits_but_full_peak_stays_unknown() -> None
     h100 = load_budget_module().build_report()["h100"]
 
     assert h100["cap_bytes"] == 80_000_000_000
+    assert h100["inference_batch_size"] == 1
+    assert h100["max_concurrent_responses_on_device"] == 1
     assert h100["packed_w_bytes"] == 61_394_690_560
     assert h100["one_kv_arena_bytes"] == 3_690_987_520
     assert h100["rowfold_total_arena_cap_bytes"] == 6_442_450_944
     assert h100["rowfold_arena_admission"] == "conditional"
-    assert h100["product_terminal_scalars_bytes"] == 480 * 24 == 11_520
+    assert h100["v_product_closure_vector_bytes"] == 480 * 24 == 11_520
+    assert h100["v_is_one_physical_allocation"] is True
     assert h100["selected_w_plus_one_kv_bytes"] == 65_085_678_080
     assert h100["conditional_subtotal_if_selected_caps_hold_bytes"] == 71_784_140_544
     assert h100["conditional_subtotal_lt_cap"] is True
@@ -184,6 +203,24 @@ def test_q357_total_allocation_clears_78_but_missing_premises_block_credit() -> 
         < 1e-12
     )
     assert security["base_transformer_gkr_error"] is None
+    assert security["base_transformer_gkr_bound"] == (
+        "(2^64+1)*sum_c(K_c+sum_i(d_c[i])+n_c+2)/p^3"
+    )
+    assert security["base_transformer_gkr_qfs_lifetime_factor_once"] is True
+    assert security["base_transformer_gkr_single_2^-110_slot_root_ceiling"] == 262_143
+    assert (
+        security["base_transformer_gkr_operator_compute_2^-86_root_ceiling"]
+        == 4_398_046_508_032
+    )
+    assert security["base_transformer_gkr_status"] == "BLOCKED"
+    p3 = ((1 << 64) - (1 << 32) + 1) ** 3
+    q64 = (1 << 64) + 1
+    for cap_bits, ceiling in (
+        (110, security["base_transformer_gkr_single_2^-110_slot_root_ceiling"]),
+        (86, security["base_transformer_gkr_operator_compute_2^-86_root_ceiling"]),
+    ):
+        assert q64 * ceiling * (1 << cap_bits) <= p3
+        assert q64 * (ceiling + 1) * (1 << cap_bits) > p3
     assert security["conditional_total_arithmetic_below_78"] is True
     assert security["realized_security_status"] == "BLOCKED"
     assert abs(security["conditional_total_bits"] - 79.481814299560) < 1e-12

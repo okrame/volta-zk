@@ -11,27 +11,107 @@ record; no external plan is authoritative.
 Read `c7-d126-gemma31b-static-admission.md`; older designs are supporting
 append-only history.
 
-- **Status.** D126 has one active Gemma-31B line: context 4,096, first `q=357`,
-  offline classical-ROM FS, global `Q_FS<=2^64`, 472 W / 480 total terminals,
-  zero use reducers, mask Alternative 1 and one KV arena. Realized 78-bit
-  security remains **BLOCKED**.
-- **Completed evidence.** Lean proves stacked `X*W`, grouped norms and tied
-  embedding/final norm. It checks frozen profile arithmetic `472/480/0`, with
-  zero reducers derived from 480 declared length-one axes, plus the abstract
-  fixed-prefix ProductClosure numerator `480+2=482` and a conditional
-  `<2^-78` contract.
-  A tested Rust helper rejects tuples other than `4096/472/480/0`; it is not
-  runtime-wired. Exact Python static checks pass. The 79.481814-bit allocation
-  is conditional, not protocol credit.
-- **Hard stops.** Compiler refinement, B/KV schedules, base-GKR degrees,
-  complete ROM/event registry, ROWFOLD relation, full certificate and H100
-  liveness are absent. Full codeword, second W copy, spill, forbidden
-  superlinear source terms and every pod action remain disallowed.
-- **Authorization.** Local Lean/Rust/Python deep static tests, the 480-terminal
-  compiler/refinement, tiny-fixture B/KV/event compilation and a static H100
-  map are GO. Generated model bodies, hardware timing, provider/production
-  work and pods remain blocked. Resume conditions are the six ordered steps in
-  the active design.
+- **Status.** D126 remains **BLOCKED** on the pinned text-only Gemma-31B,
+  context 4,096, `q=357`, offline classical-ROM `Q_FS_global<=2^64`, 472 W / 480
+  total terminals and zero use reducers. The 79.481814-bit total is conditional;
+  realized 78-bit security is not proved.
+- **Completed evidence.** One canonical CSV/BLAKE3 declares 480 ordered
+  terminals and exactly partitions the checkpoint as 772 private language
+  tensors, 60 public layer scalars and 356 forbidden vision/bridge tensors.
+  Rust rejects census/order/source drift. Lean proves the ragged local/global
+  norm bundles (`5376/256/512`), declaration census, zero reducers and abstract
+  ProductClosure numerator 482. Focused checks pass: Lean target, 11 Rust and
+  38 Python tests. The B/KV and H100 fixtures pass structure only and return no
+  protocol or memory credit.
+- **Hard stops.** Runtime value-to-relation binding, ordered public-scalar
+  values, `GemmaQuantV1`, real B/KV roots/layouts, concrete base-GKR cohorts and
+  Fp3/ROM bridge, ROWFOLD relation, full certificate and measured H100 map are
+  absent. No spill, extra W copy, forbidden source work or pod is allowed.
+- **Authorization.** The authorized local static tranche is complete. Resume
+  only after owner GO freezes quantization/workload and permits pinned
+  shape/scalar acquisition plus a new Gemma-only frontend; then emit all GKR,
+  event, certificate and allocation records before requesting hardware GO.
+
+- **2026-09-04 — D126 Gemma-31B local static tranche completes; exact
+  declaration PASS, realized admission remains BLOCKED.** The owner-authorized
+  Lean/Rust/Python, 480-terminal compiler, synthetic B/KV/event and static-H100
+  work is complete. No pod, generated model body or hardware run was used.
+  New Gemma modules do not take active geometry or security parameters from a
+  historical model path.
+
+  `manifests/c7-d126-gemma31b-terminals-v1.csv` is the single canonical
+  declaration, bound by BLAKE3
+  `c90c41afaaac0c8da4a3c6e4781cd95dab026477999d6e20f565580db82bda25`.
+  Its 480 records are exactly `472 W + 4 B + 2 KV-old + 2 KV-new`, in ordinal
+  order, with every use axis equal to one. Rust rejects any header, owner,
+  order, source-key or digest drift. An independent comparison with the pinned
+  checkpoint index covers all and only 832 language keys: 772 private learned
+  tensors and 60 public `layer_scalar` keys; 356 vision/bridge keys are
+  forbidden. The private packed census is 30,697,345,280 scalars and
+  61,394,690,560 i16 bytes. The scalar values and their runtime use are not
+  bound.
+
+  `C7GemmaTerminalManifest.lean` checks the shared CSV at build time and proves
+  the declaration/profile censuses. It repairs a discovered overclaim in the
+  earlier uniform-`D` norm statement: the exact Gemma theorem uses a dependent
+  sigma index, proves bundle/per-use equivalence and no cross-role term, and
+  derives local `4*5376+2*256=22,016` and global
+  `4*5376+2*512=22,528` cardinalities. Matrix, tied-embedding and final-norm
+  stacking remain proven generic algebra. No theorem says that a runtime
+  compiler emitted or value-bound all 472 relations.
+
+  `c7_gemma_bkv_events.rs` is a fail-closed synthetic compiler, not a protocol
+  layout. It retains every query pair and tree size, derives `q/U/S/H`, binds
+  terminal ordinals and the shared manifest digest, and requires event scope
+  to cover local queries, concurrent sessions, aborts and retries. It applies
+  `Q_FS_global+1` once across the complete lifetime rather than multiplying by
+  `2^20` again. With one explicitly synthetic root per B/KV plane, the stress
+  fixture derives 256 epochs, 255 refreshes and 471,380,262,912 provisioned
+  lifetime mask loads per root. Real semantics, physical root counts, query
+  geometry, setup and leakage remain `BLOCKED`. Event IDs are caller-owned and
+  rows do not yet distinguish per-root from already-aggregated numerators, so
+  real multi-root union bounds cannot be inferred from this fixture.
+
+  `c7_d126_gemma_h100_liveness.py` checks internal consistency of a
+  caller-supplied inventory spanning packed W, KV, `v`, staging, ROWFOLD, B,
+  masks, constants, chains, ProductClosure, base GKR, activations, workspaces,
+  CUDA/runtime and allocator reserve. It enforces declared lifetimes, aliases,
+  forbidden classes, two W sweeps, batch one, one concurrent GPU response and
+  a 4,096-token prompt/decode split. Adversarial tests closed early-free and
+  early-production counterexamples. It cannot detect an allocation omitted
+  from both the self-declared inventory and rows, or prove realistic minimum
+  sizes. The synthetic 16-allocation KAT has peak 71,986,689,600 B and headroom
+  8,013,310,400 B, but top-level status and `H100_STATIC_FIT` stay `BLOCKED`.
+  The real known subtotal is 71,784,140,544 B with 8,215,859,456 B uncensused;
+  only a compiler-owned inventory plus allocator trace can earn memory credit.
+
+  The base-GKR audit found no safe Gemma instantiation. The existing generic
+  theorem supplies only
+  `R_c=K_c+sum(d_c)+n_c+2` and
+  `epsilon<=(2^64+1)*sum(R_c)/p^3`. Exact admission ceilings are 262,143 roots
+  for one `2^-110` slot or 4,398,046,508,032 roots if the entire
+  `operator_compute` class were used. Missing Gemma cohorts, degrees, common
+  points, final PCS links, Fp3 refinement and ROM lift prevent a concrete term.
+  The current Rust model proof is GPT-specific/Fp2 and its head-shape invariant
+  is false for Gemma, so literal reuse is `NO-GO`. Conditional total arithmetic
+  remains 79.481814 bits; `SECURITY_78` realized remains `BLOCKED`.
+
+  Verification: targeted Lean build passes; 4 terminal-manifest and 7 B/KV
+  Rust tests pass; 38 Python static/adversarial tests pass; new Rust files pass
+  `rustfmt --check`; `git diff --check` passes. The first complete Rust
+  workspace run exposes one unchanged historical source-string guard failure
+  in `c6_t1_owner`; the offending lines are identical at `HEAD`. Rerunning the
+  complete workspace while skipping only that named guard passes all remaining
+  tests. The generated Lean cache was removed after checking.
+
+  Resume needs a new owner GO for pinned header/scalar acquisition and an
+  isolated Gemma-only frontend after `GemmaQuantV1`, workload and padding are
+  frozen. That frontend must emit runtime value bindings, real B/KV roots and
+  rows `{K,n,d[],sum_d,common_point,hfin,PCS links,transcript order}`. Only
+  after the event registry, maximal certificate and compiler-owned H100 map
+  close may a separate hardware GO be requested. Planning stays 45--50 s
+  prover, about 30 MB and 6.4--8.2 s four-core verifier, all low-confidence and
+  unmeasured; the 19.186-s storage acquisition remains model onboarding only.
 
 - **2026-09-04 — D126 switches active authority to Gemma-31B stacked static
   admission; local deep static work is GO while full admission stays

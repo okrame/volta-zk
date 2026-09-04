@@ -8,17 +8,52 @@ import json
 import math
 from collections.abc import Mapping
 from fractions import Fraction
+from pathlib import Path
 
 
 SCHEMA = "volta-c7-d126-gemma-stacked-static-v1"
 BLOCKED = "BLOCKED"
 NO_GO = "NO-GO"
 
+_terminal_manifest_digest_source = (
+    Path(__file__).resolve().parents[1]
+    / "manifests"
+    / "c7-d126-gemma31b-terminals-v1.blake3"
+).read_text(encoding="ascii")
+if (
+    len(_terminal_manifest_digest_source) != 65
+    or not _terminal_manifest_digest_source.endswith("\n")
+    or any(
+        character not in "0123456789abcdef"
+        for character in _terminal_manifest_digest_source[:64]
+    )
+):
+    raise RuntimeError(
+        "Gemma-31B terminal-manifest sidecar is not 64 lowercase hex digits plus LF"
+    )
+TERMINAL_MANIFEST_BLAKE3 = _terminal_manifest_digest_source[:64]
+
 EXPECTED_PROFILE: dict[str, object] = {
     "profile": "gemma4-31b-stacked-q357",
     "model": "google/gemma-4-31B",
     "revision": "5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89",
+    "terminal_manifest_blake3": TERMINAL_MANIFEST_BLAKE3,
+    "text_only": True,
+    "config_sha256": "6a81841cad2b6ba06841e23c6afb5f0a27827bc12c64328ffa6338831a21267e",
+    "model_index_sha256": "d4aff3b976d69c123a29d1c085d7ba4de1ac3f4ca1726a7f81e1b11462a64ea2",
+    "shard_00001_sha256": "186fa361e76abbb5f48ffb3d9965181a5da33522e39c25eb75d7241da1637aac",
+    "shard_00001_file_bytes": 49_784_788_364,
+    "shard_00002_sha256": "b78ae8294981a6d674c47f2261d34240b7539bbeafb4f7d0525f6167946e6da0",
+    "shard_00002_file_bytes": 12_761_549_884,
+    "safetensors_metadata_bytes": 62_546_177_752,
+    "safetensors_framing_bytes": 160_496,
+    "checkpoint_tensor_count": 1_188,
+    "private_learned_tensor_count": 772,
+    "public_layer_scalar_count": 60,
+    "forbidden_vision_bridge_tensor_count": 356,
     "operational_context_cap": 4_096,
+    "inference_batch_size": 1,
+    "max_concurrent_responses_on_device": 1,
     "first_q": 357,
     "q_by_round": (357, 163, 152, 149, 149, 149, 149, 149),
     "w_segments": 472,
@@ -107,6 +142,16 @@ def security_report() -> dict[str, object]:
         q_multiplier * STACKED_PRODUCT_ROOTS, field_cardinality
     )
 
+    # The generic Lean theorem gives one root numerator per compatible cohort:
+    # K + sum(d_i) + n + 2.  No Gemma cohort values exist yet, so expose only
+    # the exact admission ceilings rather than inventing a concrete GKR term.
+    base_gkr_single_slot_root_ceiling = field_cardinality // (
+        q_multiplier * (1 << 110)
+    )
+    base_gkr_operator_class_root_ceiling = field_cardinality // (
+        q_multiplier * (1 << 86)
+    )
+
     # This is a fail-closed admission allocation, not achieved evidence.
     # Every residual response-local event must already include any applicable
     # Q_FS loss before it can consume one of these 64 slots.
@@ -188,6 +233,17 @@ def security_report() -> dict[str, object]:
         "stacked_product_q64_budget_bits": bits(stacked_product_q64_budget),
         "stacked_product_q64_bridge_status": BLOCKED,
         "base_transformer_gkr_error": None,
+        "base_transformer_gkr_bound": (
+            "(2^64+1)*sum_c(K_c+sum_i(d_c[i])+n_c+2)/p^3"
+        ),
+        "base_transformer_gkr_qfs_lifetime_factor_once": True,
+        "base_transformer_gkr_single_2^-110_slot_root_ceiling": (
+            base_gkr_single_slot_root_ceiling
+        ),
+        "base_transformer_gkr_operator_compute_2^-86_root_ceiling": (
+            base_gkr_operator_class_root_ceiling
+        ),
+        "base_transformer_gkr_status": BLOCKED,
         "response_slot_classes": response_slot_classes,
         "residual_terms_exact": {
             name: exact(error) for name, error in residual_terms.items()
@@ -215,6 +271,7 @@ def security_report() -> dict[str, object]:
             "the C7 transcript fixes product messages before chi and keeps them independent of Delta",
             "one classical-ROM Q_FS_global factor composes across every session, retry, abort, and local query",
             "all base-transformer GKR and PCS events fit the 64-slot response registry",
+            "all 60 public layer scalars are value-bound and used by the fixed-point relation",
             "every residual event includes its exact Q_FS, lifetime, abort, and retry scope",
             "hash, production PCG, state/replay, and codec bounds meet their allocations",
         ],
@@ -247,12 +304,18 @@ def validate_profile(profile: Mapping[str, object]) -> None:
 def build_report(profile: Mapping[str, object] | None = None) -> dict[str, object]:
     selected = expected_profile() if profile is None else dict(profile)
     validate_profile(selected)
-
-    # The old four reducer depths had active sets 472, 61, 60, 60.
-    old_active_reducer_instances = (472, 61, 60, 60)
-    old_reducer_instances = sum(old_active_reducer_instances)
-    old_reducer_p_to_v = 4 * 20 + 48 * old_reducer_instances
-    old_reducer_v_to_p = 4 * 20 + 24 * old_reducer_instances + 40
+    assert (
+        int(selected["shard_00001_file_bytes"])
+        + int(selected["shard_00002_file_bytes"])
+        == int(selected["safetensors_metadata_bytes"])
+        + int(selected["safetensors_framing_bytes"])
+    )
+    assert (
+        int(selected["private_learned_tensor_count"])
+        + int(selected["public_layer_scalar_count"])
+        + int(selected["forbidden_vision_bridge_tensor_count"])
+        == int(selected["checkpoint_tensor_count"])
+    )
 
     w_stream_p_to_v = 4_965_096
     w_stream_v_to_p = 6_508
@@ -312,6 +375,13 @@ def build_report(profile: Mapping[str, object] | None = None) -> dict[str, objec
             "correction_bytes": BASE_CORRECTION_BYTES,
         },
         "census": {
+            "text_only": selected["text_only"],
+            "checkpoint_tensor_count": selected["checkpoint_tensor_count"],
+            "private_learned_tensor_count": selected["private_learned_tensor_count"],
+            "public_layer_scalar_count": selected["public_layer_scalar_count"],
+            "forbidden_vision_bridge_tensor_count": selected[
+                "forbidden_vision_bridge_tensor_count"
+            ],
             "w_segments": selected["w_segments"],
             "w_raw_terminals": selected["w_raw_terminals"],
             "identity_terminals": (
@@ -338,8 +408,6 @@ def build_report(profile: Mapping[str, object] | None = None) -> dict[str, objec
             "verifier_hashes_including_opened_leaves": 58_021,
             "q357_w_stream_p_to_v_bytes": w_stream_p_to_v,
             "q357_w_stream_v_to_p_bytes": w_stream_v_to_p,
-            "removed_reducer_p_to_v_bytes": old_reducer_p_to_v,
-            "removed_reducer_v_to_p_bytes": old_reducer_v_to_p,
             "fixed_outer_p_to_v_bytes": 11_796,
             "fixed_outer_v_to_p_bytes": 120,
             "fixed_outer_total_bytes": 11_916,
@@ -389,7 +457,6 @@ def build_report(profile: Mapping[str, object] | None = None) -> dict[str, objec
             "mask_cells": mask_cells,
             "rootmask_dimension": rootmask_dimension,
             "unused_cells": rootmask_dimension - mask_cells,
-            "removed_reducer_fp3_masks": 2 * old_reducer_instances,
             "setup_bytes_unchanged": 92_587_558_592,
             "setup_hard_ratio": "2.10x",
             "setup_within_hard_ratio": 92_587_558_592 * 10
@@ -402,12 +469,17 @@ def build_report(profile: Mapping[str, object] | None = None) -> dict[str, objec
         },
         "h100": {
             "cap_bytes": H100_CAP_BYTES,
+            "inference_batch_size": selected["inference_batch_size"],
+            "max_concurrent_responses_on_device": selected[
+                "max_concurrent_responses_on_device"
+            ],
             "packed_w_bytes": PACKED_W_BYTES,
             "one_kv_arena_bytes": kv_bytes,
             "rowfold_total_arena_cap_bytes": ROWFOLD_TOTAL_ARENA_CAP_BYTES,
             "rowfold_arena_admission": "conditional",
             "staging_bytes": STAGING_BYTES,
-            "product_terminal_scalars_bytes": terminal_product_bytes,
+            "v_product_closure_vector_bytes": terminal_product_bytes,
+            "v_is_one_physical_allocation": True,
             "selected_w_plus_one_kv_bytes": selected_w_plus_one_kv,
             "conditional_subtotal_if_selected_caps_hold_bytes": conditional_subtotal,
             "conditional_subtotal_lt_cap": conditional_subtotal < H100_CAP_BYTES,
@@ -422,13 +494,16 @@ def build_report(profile: Mapping[str, object] | None = None) -> dict[str, objec
             "peak_allocated_bytes": None,
             "missing_live_allocations": [
                 "B",
-                "v allocation, exact meaning and liveness",
+                "mask stream buffers",
+                "public layer-scalar values/digest and fixed-point LUT/constant buffers",
+                "runtime compiler binding and liveness for the exact v vector",
                 "all commitment chains",
                 "stacked GKR",
                 "activations",
                 "CUDA/runtime modules",
                 "allocator reserve and fragmentation",
                 "selected-kernel workspaces",
+                "runtime enforcement of one response at a time on the GPU",
             ],
             "status": BLOCKED,
             "credit": False,

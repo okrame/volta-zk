@@ -1,9 +1,10 @@
 # C7 D126 Gemma-31B stacked static admission
 
 **Status:** active design; the terminal declaration, pinned metadata/workload,
-public scalar values, row-complete weight-use algebra, high-level operator
-invocation DAG, source-once reference ingest and conditional heterogeneous-GKR
-envelope are implemented and checked; full admission remains `BLOCKED`.
+public scalar values, row-complete weight-use algebra, logical tensor shapes,
+source-once reference ingest, native tensor packing and conditional
+heterogeneous-GKR envelope are implemented and checked; full admission remains
+`BLOCKED`.
 
 This document is the only active D126 path.  Historical designs and ledger
 entries remain append-only evidence, not active parameter sources.
@@ -35,6 +36,43 @@ entries remain append-only evidence, not active parameter sources.
 `N` remains the source length and `q` remains a query count.  Neither is
 treated as a fixed profile constant.  The 4,096-token cap does not hide work
 or memory that depends on `N`.
+
+### Service flow and finite setup
+
+The owner-confirmed target flow is:
+
+```text
+offline: DVConnectionSetup -> CapacitySetup(finite attempts) -> one-time slots
+user    -> prompt + attempt_id/nonce + connection/capacity/predecessor binding
+provider-> generated text, pending verification
+provider-> complete proof of the declared quantized Gemma inference
+user    -> local verification with secret Delta/keys -> durable verdict
+user    -> optional ACK now, or acknowledgment carried by the next prompt
+```
+
+This is the required interface; the complete executable protocol remains
+blocked. Fiat--Shamir challenges are derived in the frozen commitment order,
+with no verifier challenge during proving. Delta and verifier keys remain
+local. The user request is bound to the model revision, quantization profile,
+capacity/slot, prompt and predecessor state; the certificate also binds the
+generated token IDs and successor state. A nonce is replay binding, not a
+substitute for the global-Q64 security proof.
+
+Slots and correlation ranges are reserved durably before disclosure and are
+never returned on failure, retry or missing ACK. Verification and committing
+the accepted state do not depend on sending an ACK. A subsequent prompt must
+name the accepted predecessor; absent or conflicting acknowledgment must not
+cause a fresh proof, a second spend or acceptance of an unverified state.
+Crash/replay and concurrent-session refinements remain required before credit.
+
+"Once" means once per connection and purchased finite capacity, not unlimited
+reuse of masks. The current lifetime has 256 root epochs, at most 4,096
+attempts per root and 255 refreshes; those refreshes, all setup traffic and
+their retained state must be charged even when provisioned ahead of time.
+These costs are separate from the 19.186-second model-resident storage load.
+The timing profile remains the frozen 100-prompt/50-generated-token workload;
+the 4,096-token capacity does not assert that every context length has the same
+cost.
 
 ## 2. Stacked relation and exact census
 
@@ -139,14 +177,31 @@ and the prompt IDs, positions, attention masks, embedding scale and 60 layer
 scalars are named public inputs. No output-pruned implementation or theorem is
 claimed.
 
-This artifact is deliberately classified as a declared high-level operator
-invocation DAG. Nodes do not yet carry exact tensor shapes, dtype, active view,
-padding or integer-lowering rows; the pinned runtime dependency closure is also
-partial. Therefore it is not the full semantic DAG, exact wire census or a
-base-GKR circuit and receives no GKR, certificate, performance or hardware
-credit. In particular, one Q/K-norm invocation node contains all its heads; it
-must not be confused with one vector equation. The separate Lean census keeps
-those head uses explicit.
+The original artifact remains a declared high-level operator invocation DAG.
+`scripts/c7_d126_gemma_shapes.py` now refines every node to logical output
+ports, exact shapes, private weight keys, input ports, views, direct consumers
+and matrix contraction widths. Its canonical JSONL stream has SHA-256
+`35c6716f0b8ca5ffc1e089c592af647dcf3c094ed692d7398bff8fbb5561e7d3`.
+It contains 83,023 output ports and 104,322 input-port edges: each cache node
+has separate K and V outputs, so these are not the older tensor-node edge
+counts. All and only 772 private tensor keys are checked against their exact
+source shapes. Rewiring a same-sized graph is rejected.
+
+The logical plan contains 610 aliases and 6,120 cache views. Global V aliases
+the raw K projection, before learned K normalization. GQA uses the indexed
+mapping `kv_head=floor(query_head/(query_heads/kv_heads))`; materializing a
+repeated cache is not assumed. The final-row view retains the exact prefill
+row 99 and subsequent singleton-row selectors. Attention has 21,744,000
+allowed cells and 9,504,000 masked cells; all 31,248,000 rectangular cells
+remain charged. The shape-derived dense/QK/PV MAC counts independently equal
+the earlier census, and the maximum dot width is 21,504.
+
+Concrete integer dtypes/scales, internal nonlinear and requantization rows,
+GKR-domain and device-lane padding, proof-retention lifetimes and runtime source
+dependency closure remain open. The logical shape compiler is not a full
+semantic DAG, exact integer-wire census, base-GKR circuit or physical allocator
+trace. In particular, a direct-consumer index does not authorize releasing an
+aliased value or a witness needed by later proving.
 
 ## 3. Proved fixed-prefix numerator; concrete Q64 bridge open
 
@@ -325,6 +380,9 @@ tests/test_c7_d126_gemma_quant_contract.py
 manifests/c7-d126-gemma31b-qspec-dag-v1.json
 scripts/c7_d126_gemma_qspec_dag.py
 tests/test_c7_d126_gemma_qspec_dag.py
+scripts/c7_d126_gemma_shapes.py
+tests/test_c7_d126_gemma_shapes.py
+tests/test_c7_d126_gemma_native_bf16.py
 scripts/c7_d126_gemma_weight_ingest.py
 tests/test_c7_d126_gemma_weight_ingest.py
 docs/c7-d126-rowfold-two-pass-disposition.md
@@ -337,6 +395,8 @@ tests/test_c7_d126_gemma_h100_liveness.py
 rust/volta-pcs/src/c7_gemma_frontend.rs
 rust/volta-pcs/tests/gemma31b_frontend.rs
 rust/volta-pcs/src/gemma31b_qspec_dag.rs
+rust/volta-pcs/src/gemma31b_bf16.rs
+rust/volta-pcs/examples/gemma31b_bf16_fixture.rs
 rust/volta-pcs/tests/gemma31b_qspec_dag.rs
 lean/VoltaZk/C7GemmaGKR.lean
 lean/VoltaZk/C7GemmaQuantAccumulator.lean
@@ -454,6 +514,21 @@ is self-declared and its unknown-buffer sizes may be incomplete or too small.
 Only a compiler-owned inventory, CUDA completion fences for alias handoffs and
 an allocator trace can prove every byte and receive memory credit.
 
+The logical-shape compiler counts 1,841,924,224 owned real-valued output
+elements, excluding the explicitly aliased/cache-view outputs. If all those
+outputs are retained simultaneously beside the conditional subtotal above:
+
+| Representation assumption | Output bytes | Conditional subtotal plus outputs | Screen |
+| --- | ---: | ---: | --- |
+| i16 throughout | 3,683,848,448 | 75,467,988,992 | `BLOCKED`, 4,532,011,008 bytes before missing classes |
+| every output expanded to Fp | 14,735,393,792 | 86,519,534,336 | `NO-GO_IF_SIMULTANEOUS` |
+| every output expanded to Fp3 | 44,206,181,376 | 115,990,321,920 | `NO-GO_IF_SIMULTANEOUS` |
+
+These are representation screens, not allocation or datatype claims. Integer
+lowering temporaries, B, masks, chains, GKR scratch, CUDA/runtime and allocator
+reserve remain additional. The i16 case cannot pass the memory gate until
+their sizes and exact lifetimes are compiled.
+
 ## 7. Complexity and realistic planning values
 
 Admission still requires
@@ -486,6 +561,16 @@ not to each response.  The static report freezes these bands and fails if they
 drift, but cannot validate runtime performance.  These estimates receive no
 measurement credit.  The prover estimate is controlled mainly by the real
 fixed-point 16-bit H100 kernel rate.
+
+The report now records the timing boundaries explicitly. Prover time starts
+at warm request admission and includes inference, response-local correlation
+work and complete certificate encoding. Verifier time includes its correlation
+preparation, full parsing/hash/algebra and durable verdict on four cores; ACK
+may follow. Proof bytes include every certificate record and frame. Network
+transfer, connection/capacity setup, quantization and root refresh are reported
+separately; they are not covered by the 19.186-second storage acquisition.
+The remaining PCS/ROWFOLD construction is also necessary to substantiate the
+planning times; kernel engineering alone does not close that protocol gate.
 
 ## 8. Authorization and deterministic resume
 
@@ -530,6 +615,25 @@ complete private model bodies:
    conditional signed-i16 dot accumulator bound; and
 10. a tiny-fixture source-once reference weight packer and a fail-closed
     ROWFOLD intake/conditional standard-WHIR screen.
+
+The new native BF16 tensor component uses integer arithmetic for RNE and the
+minimum per-tensor exponent. For a nonzero magnitude `x`, it derives
+`e=floor(log2(x))-14`; BF16 has at most eight significant bits, so scaling
+gives an exact integer in `[16384,32640]`, while `e-1` overflows symmetric
+i16. All-zero tensors use zero. Tests compare all 65,536 BF16 patterns at all
+264 exponents from -149 through 114 with an independent dyadic reference,
+check minimality for every positive finite BF16 magnitude, and compare packed
+bytes with Python. Nonfinite/truncated tensors produce no output; insufficient
+scratch rejects before reading the source.
+
+The component reads one tensor into caller-budgeted scratch, scans and converts
+that same buffer, then writes it. The largest private tensor requires
+2,818,572,288 host bytes, derived from the metadata. This is not a second full
+weight copy or an HBM allocation. The fixture executable caps input at 1 MiB
+and is test-only. Integration with complete shard hashing, canonical tensor
+placement, locking and atomic model publication remains blocked; the existing
+scalar whole-model reference is still the only such integrated path. No native
+full-ingest or H100 throughput is claimed.
 
 Still blocked:
 
@@ -613,10 +717,12 @@ path. No provider contact or pod action is authorized yet.
 | frozen 100+50 workload | prompt `PASS`; decode/runtime `BLOCKED` |
 | isolated 472-W descriptor frontend | `PASS`, static only |
 | declared high-level operator-invocation DAG census | `PASS`, static only |
+| exact logical tensor shapes and input/output ports | `PASS`, static only |
 | full semantic/operator-shape DAG | `BLOCKED` |
 | signed-i16 dot accumulator bound | `PASS` from explicit hypotheses; runtime refinement `BLOCKED` |
 | `GemmaQuantV1` | `BLOCKED`, 13 fields missing |
 | source-once reference weight packer | `PASS` on tiny fixtures; full bodies and throughput uncredited |
+| native source-once BF16 tensor packing | `PASS` on exhaustive arithmetic/tiny tensor tests; whole-model integration `BLOCKED` |
 | runtime checkpoint-to-472-relations refinement | `BLOCKED` |
 | synthetic B/KV/event compiler structure | `PASS`, no protocol credit |
 | real B/KV layout/events | `BLOCKED` |

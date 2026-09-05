@@ -14,28 +14,82 @@ append-only history.
 - **Status.** D126 is **BLOCKED** for pinned text-only Gemma-31B: context 4,096,
   150 live tokens, `q=357`, offline `Q_FS_global<=2^64`, 472 W / 480 total
   terminals and zero weight reducers.
-- **Completed evidence.** The Gemma-only compiler fixes 79,963 high-level
-  invocations, 101,322 dependency edges, 313,344,000 norm equations and
-  801,024 final-norm equations. Lean proves row/head-complete weight sharing,
-  the exact final-row selector and the conditional i16 accumulator bound. Tiny
-  fixtures prove source-once weight packing and fail-closed publication. Checks:
-  66 focused Python tests, focused Gemma Rust tests, Lean build, and the Rust
-  workspace excluding one unchanged historical C6 guard pass.
+- **Completed evidence.** Logical shapes cover 79,963 operations, 83,023
+  output ports and all 772 private tensors. Native BF16 tensor packing passes
+  exhaustive arithmetic and Python byte-equality checks. Prior Lean weight-use
+  algebra is unchanged. Current checks: 74 focused Python tests and 12 focused
+  Rust tests pass. These are component/static checks, not a full Gemma run.
 - **Security.** Conditional arithmetic is 79.481814 bits; realized
   `SECURITY_78` remains **BLOCKED**, and `SECURITY_84` at q357 is **NO-GO**.
-- **Hard stops.** Exact integer lowering, full shapes/wires, concrete GKR,
+- **Hard stops.** Exact integer lowering/wires, concrete GKR,
   real B/KV/masks, PCS/ROM, ROWFOLD relation/implementation, certificate and
   complete H100 inventory are absent. Full local weight ingest is **NO-GO**:
   source plus packed output needs 123,941,028,808 bytes.
 - **Resume.** The owner GO recorded at `ba9d4c5` already authorizes a new
   Gemma-only ROWFOLD carrier and its PCS links while the frozen field,
   transcript, trust and resource bounds stay unchanged; do not request a
-  duplicate ROWFOLD-design GO. Before
-  `GO-RUNPOD`, close locally the source closure, shapes, integer lowering,
+  duplicate ROWFOLD-design GO. Before `GO-RUNPOD`, close source closure, lowering,
   wires, GKR cohorts/common points, PCS links, B/KV geometry, security,
   certificate and static memory plan. Provider contact, shards and GPU work
   still require literal `GO-RUNPOD`; only weight-derived values and hardware
   measurements may remain open at that boundary.
+
+- **2026-09-05 — Gemma logical-shape compiler and native tensor packing
+  pass; performance targets and optional-ACK flow are explicit.** The owner
+  reiterates 45--50 s warm prover, about 30 MB complete certificate, 6.4--8.2 s
+  verifier on four cores and a separate 19.186 s one-time storage load. These
+  remain low-confidence, unmeasured targets. The budget now includes
+  response-local correlation preparation in both prover/verifier timing and
+  complete framing in proof bytes. Setup, quantization, network transfer and
+  root refresh have separate cost boundaries.
+
+  The Gemma-only logical-shape compiler refines every existing DAG node to
+  exact logical ports, shapes, input links, private source keys and contraction
+  widths. It derives 83,023 output ports, 104,322 input-port edges, 610 aliases
+  and 6,120 cache views while covering all and only 772 private tensor keys.
+  Its canonical record stream has SHA-256
+  `35c6716f0b8ca5ffc1e089c592af647dcf3c094ed692d7398bff8fbb5561e7d3`.
+  Matrix shapes independently recover the previous dense/QK/PV MAC census.
+  It rejects same-sized DAG rewiring and preserves the raw global K-to-V alias,
+  indexed GQA, selected final row and predecessor K/V ports. Attention counts
+  all 31,248,000 rectangular cells: 21,744,000 allowed and 9,504,000 masked.
+  Concrete dtypes, integer primitives, GKR-domain padding, CUDA lane padding,
+  proof-retention lifetimes and runtime-source closure remain absent. Logical
+  shape PASS is not an exact integer-wire or H100 PASS.
+
+  The 1,841,924,224 owned real output elements would require 3,683,848,448
+  bytes if all could be stored in i16. Retaining them simultaneously with the
+  known conditional H100 subtotal gives 75,467,988,992 bytes and leaves
+  4,532,011,008 bytes before B, masks, chains, GKR scratch, integer temporaries,
+  CUDA/runtime and allocator reserve. Storing those same outputs in Fp or Fp3
+  instead gives conditional totals 86,519,534,336 or 115,990,321,920 bytes:
+  `NO-GO_IF_SIMULTANEOUS` under the named retention assumption. No representation
+  or physical-memory credit is claimed.
+
+  The new Rust tensor component computes the exact minimum BF16-to-i16
+  exponent and converts with integer RNE. Its caller supplies one bounded
+  tensor buffer, reused for scanning/conversion after one source read. The
+  largest private tensor needs 2,818,572,288 host bytes; it was not allocated
+  here. Exhaustive tests compare 17,301,504 value/exponent pairs against an
+  independent dyadic reference, establish exponent minimality for every
+  positive finite BF16 magnitude, and exercise invalid/truncated/budget
+  rejection. The <=1-MiB fixture driver matches Python packed bytes. Complete
+  native shard hashing/placement/atomic publication and production throughput
+  remain blocked; this does not replace the scalar integrated ingester yet.
+
+  The owner-confirmed service flow requires local secret-key verification to
+  finish before any optional ACK. A next prompt binds the accepted predecessor;
+  missing ACK does not recycle attempts or correlations. Connection/capacity
+  setup is finite, and the current 256 root epochs/255 refreshes remain counted.
+  Session-state/transcript refinements are still required for protocol credit.
+
+  Verification: 74 focused Python tests and 12 focused Cargo tests pass;
+  standalone native tests also pass. Only narrow single-job Cargo compilation
+  was used; host free space was not independently established for a broad
+  workspace/Lean rebuild. Lean is unchanged. No provider contact, full weights,
+  H100 measurement or benchmark run of record occurred. Build caches are
+  removed at this checkpoint. Realized SECURITY_78, full certificate, two
+  sweeps, source-linear PCS complexity and complete memory fit remain BLOCKED.
 
 - **2026-09-05 — owner requires a pre-pod-complete implementation; paid H100
   is measurement, not protocol discovery.** This corrects the prior resume

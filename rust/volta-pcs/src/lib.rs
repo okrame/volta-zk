@@ -67,6 +67,7 @@ pub mod layer_layout;
 pub mod ligero;
 pub mod gemma31b_terminal_manifest;
 pub mod gemma31b_qspec_dag;
+pub mod gemma31b_bf16;
 pub mod merkle;
 pub mod ntt;
 pub mod x4;

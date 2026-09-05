@@ -392,5 +392,6 @@ def test_runtime_and_complete_proof_estimates_are_frozen_without_credit() -> Non
     assert planning["storage_onboarding_seconds_once"] == 19.186
     assert planning["confidence"] == "low"
     assert planning["measurement_credit"] is False
+    assert set(planning["measurement_boundaries"]) == {"prover", "proof", "verifier", "storage_once", "root_refresh"}
     assert planning["required_measurements"]
     assert planning["status"] == "BLOCKED"

@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 D126 GEMMA-31B STACKED STATIC BLOCKED — LOCAL QSPEC/ROW/INGEST INTAKE COMPLETE; REAL GKR/ROWFOLD/POD BLOCKED)
+# Prototype Status Ledger — C7.1 Gemma-31B
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,34 +8,77 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-Read `c7-d126-gemma31b-static-admission.md`; older designs are append-only history.
+Read `c7.1-gemma31b-design.md`. C7.1 is the active design; D126 and earlier
+milestones remain historical evidence, not competing authority.
 
-- **Status.** D126 is **BLOCKED** for pinned text-only Gemma-31B: context 4,096,
-  150 live tokens, `q=357`, offline `Q_FS_global<=2^64`, 472 W / 480 total
-  terminals and zero weight reducers.
-- **Completed evidence.** Logical shapes cover 79,963 operations, 83,023
-  ports and 772 private tensors. BF16 packing and W reservations are component
-  evidence. Current checks: 78 focused non-native Python tests pass; no full
-  Gemma run exists. Lean is unchanged.
-- **ROWFOLD correction.** The owner-supplied v2 report is now archived and
-  reviewed in `c7-d126-rowfold-v2-review.md`. It proposes two passes but is
-  **NO-GO as written**: `N log q`, excess total arena, interactive challenges,
-  and EvalLink/privacy defects. It was previously uninspected, not nonexistent.
-- **Targets, not predictions.** 30 MB and 45--50 s are unsubstantiated until
-  the carrier/codec is complete. The 25.482-MB proxy already includes
-  hypothetical B/KV and GKR, not just known records.
-- **Security.** Conditional arithmetic is 79.481814 bits; realized
-  `SECURITY_78` remains **BLOCKED**, and `SECURITY_84` at q357 is **NO-GO**.
-- **Hard stops.** Integer lowering/wires, GKR, real B/KV/masks, PCS/ROM,
-  repaired ROWFOLD implementation, certificate and complete H100 inventory
-  remain open. Full local weight ingest is **NO-GO**:
-  source plus packed output needs 123,941,028,808 bytes.
-- **Resume.** Existing GO (`ba9d4c5`) covers local Gemma ROWFOLD repair under
-  frozen field/transcript/trust/resource bounds. Before literal `GO-RUNPOD`,
-  close source closure, lowering/wires, GKR/cohorts/PCS links, B/KV, security,
-  certificate and H100 inventory. Only weight-derived values and hardware
-  measurements may remain open. Provider contact, shards and GPU work remain
-  forbidden without that GO.
+- **Objective.** Stateful private-weight Gemma-31B with session VOLE-MAC
+  boundaries and committed-weight evaluations: 45–50 s warm prover,
+  6.4–8.2 s four-core verifier, preferred 30 MB and maximum 35 MB certificate.
+  These are targets, not measurements.
+- **Preserved.** Pinned text-only checkpoint, context 4,096, 100+50-token
+  first workload, Goldilocks/Fp3, offline classical ROM, global Q64,
+  2^20 attempts, at least 78-bit lifetime security, malicious-verifier privacy.
+- **Evidence.** Prior model geometry and component theorems remain useful.
+  New paired-fold identities and MLE links are checked on 16 tiny geometries;
+  a quadratic root bound is exhaustively checked over F7. The planning script
+  imports no old protocol. No complete certificate, timing, security or GPU
+  memory result is claimed. Lean is unchanged.
+- **Work boundary.** Local research and small tests are authorized. No paid
+  provider work, large weights or heavy local builds. Historical objections
+  prohibit reusing defective constructions, not researching C7.1.
+- **Next decision.** The direct paired-reduction/Hobbit-PCS composition uses
+  four W passes; two-pass fusion remains research. Ask whether up to four
+  resident packed-W passes may be studied as an admitted alternative under
+  unchanged time/bytes/memory/privacy targets. Until answered, two passes
+  and the total 6.442-GB arena remain requirements.
+- **Continuation.** Close carrier composition, blind MAC links, codec and
+  security census, then allocation/work counts and local fixtures. Paid
+  hardware requires explicit spending authorization after local preparation.
+
+- **2026-09-05 — C7.1 opened from first principles, with a constructive
+  paired-fold diagnostic and an explicit source-pass decision.** The owner
+  requests a new design oriented toward Gemma-31B performance rather than
+  another disposition table. `docs/c7.1-gemma31b-design.md` is now the active
+  design. The required stateful designated-verifier architecture, private
+  weights and session-VOLE authenticated boundaries/evaluations are retained.
+  The preferred certificate target is 30,000,000 bytes and its ceiling is
+  35,000,000 bytes; prover and verifier targets remain 45–50 s and 6.4–8.2 s.
+  Old internal query/terminal choices are documented starting points, not
+  automatically instantiated parts of a new relation. No security, privacy,
+  field, offline interface, two-pass or total-arena relaxation is inferred.
+
+  Research used the existing AnyDoc Markdown copies of Hobbit, LogVOLE,
+  OpenLLM and DeepProve and checked their primary ePrint pages. The design
+  distinguishes DV-specific savings from optimizations already used by public
+  systems. It introduces a correct bilinear paired-fold identity and the
+  second-pass MLE reduction, with explicit conditional interactive error and
+  separate obligations for zero knowledge, ROM and the original commitment.
+  The direct composition with Hobbit Construction 4 takes four source passes
+  because the final opening point follows the reduction's second pass. It is
+  a candidate reference, not a two-pass construction or complete C7.1 proof.
+  Studying it as an admitted alternative requires the stated owner decision;
+  no universal four-pass lower bound is claimed.
+
+  `scripts/c7_1_gemma_plan.py` reads digest-pinned model metadata only and
+  imports no historical protocol code. Its self-check covers 16 block shapes,
+  independent dense MLE links, unequal EQ forms, every nonzero quadratic over
+  F7 and malformed lengths. It derives 61,394,690,560 packed-W bytes,
+  3,690,987,520 KV-capacity bytes, and 14,914,321,920 bytes remaining before
+  all other allocations. For b=2^24 and a flat unmasked 2^35-cell source,
+  the four-buffer/three-row-vector subtotal is 1,610,760,192 bytes and the
+  clear algebraic payload is 100,896 bytes. Neither is a complete GPU peak
+  or private certificate. Complete security, certificate and timing outputs
+  deliberately remain unknown, not zero.
+
+  Verification: the new standalone self-check completes; all 78 focused
+  non-native Python regression tests pass (2.53 s). These are component tests,
+  not a Gemma benchmark. `git diff --check` is clean. Local checks ran without
+  weights, provider contact, Cargo/Lean builds or new dependencies. This worktree
+  has no `.venv`; the project environment at
+  `/home/okrame/projects/volta-zk/.venv` is used for the final check. No build
+  caches or benchmark record were created. The old D126 source, audit and
+  frozen results remain intact. The active capsule is updated with this
+  design boundary; C7.1 uses progress/evidence language, not old verdict labels.
 
 - **2026-09-05 — owner identifies the actual ROWFOLD report; absence claim
   corrected, v2 rejected as written after direct source review.** The file

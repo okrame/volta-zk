@@ -13,27 +13,84 @@ milestones remain historical evidence, not competing authority.
 
 - **Objective.** Stateful private-weight Gemma-31B with session VOLE-MAC
   boundaries and committed-weight evaluations: 45–50 s warm prover,
-  6.4–8.2 s four-core verifier, preferred 30 MB and maximum 35 MB certificate.
-  These are targets, not measurements.
-- **Preserved.** Pinned text-only checkpoint, context 4,096, 100+50-token
-  first workload, Goldilocks/Fp3, offline classical ROM, global Q64,
-  2^20 attempts, at least 78-bit lifetime security, malicious-verifier privacy.
-- **Evidence.** Prior model geometry and component theorems remain useful.
-  New paired-fold identities and MLE links are checked on 16 tiny geometries;
-  a quadratic root bound is exhaustively checked over F7. The planning script
-  imports no old protocol. No complete certificate, timing, security or GPU
-  memory result is claimed. Lean is unchanged.
-- **Work boundary.** Local research and small tests are authorized. No paid
-  provider work, large weights or heavy local builds. Historical objections
-  prohibit reusing defective constructions, not researching C7.1.
-- **Next decision.** The direct paired-reduction/Hobbit-PCS composition uses
-  four W passes; two-pass fusion remains research. Ask whether up to four
-  resident packed-W passes may be studied as an admitted alternative under
-  unchanged time/bytes/memory/privacy targets. Until answered, two passes
-  and the total 6.442-GB arena remain requirements.
-- **Continuation.** Close carrier composition, blind MAC links, codec and
-  security census, then allocation/work counts and local fixtures. Paid
-  hardware requires explicit spending authorization after local preparation.
+  6.4–8.2 s CPU-only four-core verifier, preferred 30 MB, maximum 35 MB.
+  Targets are not measurements.
+- **Owner authorization.** Up to four packed-W proof reads are admitted;
+  inference and proving use the same H100. Total temporary arena remains
+  6,442,450,944 bytes, total GPU peak below 80 billion bytes, no spill/copy.
+  Soundness and malicious-verifier privacy must each exceed 78 bits lifetime.
+- **Preserved.** Pinned checkpoint, context 4,096, first workload 100+50,
+  Goldilocks/Fp3, offline classical ROM, global Q64 and 2^20 attempts.
+- **Service.** ModelSetup is Delta-independent and model/version-scoped;
+  resident loading, connection, finite capacity, root preparation and attempts
+  have separate frequencies. Multi-pair operation reuses neither slots nor
+  correlations. ACK is optional; context never truncates implicitly.
+- **Evidence.** 86 focused Python tests pass: eight new accounting/arithmetic
+  checks plus 78 regressions. Exact i16 limb and six-product Fp3 diagnostics
+  are not CUDA kernels. No full certificate, security, memory or timing result;
+  Rust/Lean unchanged. Reference VM exposes four Apple ARM64 vCPUs.
+- **Work boundary.** Local research/small tests only; no provider contact,
+  paid GPU, weights or heavy local build. No structural decision is pending.
+- **Continuation.** Close four-pass carrier and blind MAC/PCS composition;
+  compile all records, masks and security events; map allocations and work;
+  validate CPU-only verification and sequential pairs. GPU diagnostics need
+  disposable fixtures and bounded captures. Paid hardware requires explicit
+  spending authorization after local preparation.
+
+- **2026-09-05 — four proof reads admitted; model/connection/capacity costs
+  separated; ARM64 verifier and kernel diagnostics specified.** The owner
+  explicitly permits up to four resident packed-W reads for proving under
+  unchanged 45–50 s prover, 6.4–8.2 s verifier, 35,000,000-byte certificate,
+  total-arena and H100-memory limits. The updated requirement is strictly
+  greater than 78 bits for the complete applicable soundness/privacy games,
+  not rounded 78 bits or only a dominant term. Offline classical ROM, global
+  Q64 and the attempt lifetime remain unchanged. This is algorithm authority,
+  not permission to contact a provider or buy GPU time.
+
+  The active design now requires Delta-independent ModelSetup, one resident
+  model shared by successive prompts, connection-scoped keys, finite
+  capacity, and one-time slots/correlations. Initial and refreshed mask roots
+  are charged separately without resetting their global privacy consumption
+  on reconnect. The one-user accounting model distinguishes prepared versus
+  used capacity/roots, counts reserved aborts, clips the final capacity at
+  2^20 slots, and propagates unknown unit costs. It does not implement a
+  durable session allocator or prove ModelSetup noninterference. At 100 new
+  prompt plus 50 output tokens per pair, 27 pairs use 4,050 context positions;
+  pair 28 is not silently truncated. Larger lifetime examples span explicitly
+  separate conversations while retaining connection/capacity state.
+
+  Local `lscpu --json` exposes four Apple aarch64 vCPUs, one thread per
+  core, CPU set 0–3, AES/ASIMD/PMULL, but no exact CPU model. Guest RAM is
+  12,526,514,176 bytes. The full verifier target now explicitly applies to
+  this class of CPU without GPU or remote assistance; no x86 timing transfer
+  is assumed. The existing ARM AES path was inspected, not imported or timed.
+
+  The static compiler derives nine private matrix shapes and inner width
+  at most 21,504 from digest-pinned metadata. New diagnostics check all
+  65,536 i16 decompositions, 256 edge products, eight dot lengths and 900
+  Fp3 product pairs. The i16 candidate uses four s8/u8 products and i64
+  reconstruction; the Fp3 candidate uses six base products with the unchanged
+  u^3=2 relation. They are algebraic optimization candidates, not implemented
+  CUDA or changed Rust backends. Full-i16 robustness tests do not widen the
+  frozen symmetric quantization domain. P7's Fp2 roofline and GPT-2-fixed
+  inference kernel were inspected and not reused as Gemma evidence.
+
+  Four W reads charge 245,578,762,240 source bytes. The generic paired
+  reduction at b=2^24 separately charges 240,451,055,616 abstract Fp3
+  multiplications before sumchecks, forms, masks and PCS; this is a schedule
+  subtotal, not a universal lower bound or hardware prediction. Detailed
+  future diagnostics distinguish integer/SIMT, tensor decomposition, Fp3,
+  memory traffic, scheduler stalls, allocations, PCG and host/GPU timeline.
+  NVIDIA's replay behavior was checked in primary documentation; profiling
+  must not clone the full resident model or reuse production one-time state.
+
+  Verification: 86 focused non-native Python tests pass (2.53 s), including
+  eight new tests. A separate small algebra/report check used 18,388 KiB
+  peak RSS and approximately 0.004 s; this describes the local diagnostic,
+  not Gemma prover/verifier performance or a benchmark run of record. No
+  Cargo/Lean build, kernel launch, weights, paid provider, new dependency or
+  build cache. The active design and capsule record the authorization and
+  exact continuation; complete certificate/security/timing remain unmeasured.
 
 - **2026-09-05 — C7.1 opened from first principles, with a constructive
   paired-fold diagnostic and an explicit source-pass decision.** The owner

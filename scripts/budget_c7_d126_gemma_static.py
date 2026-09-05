@@ -763,7 +763,10 @@ def build_report(profile: Mapping[str, object] | None = None) -> dict[str, objec
             },
             "c_source_independent_of_q_and_N": None,
             "forbidden_terms": ["qN", "N log q", "N log N"],
-            "rowfold_report_present": False,
+            "rowfold_report_present": (
+                ROOT / "docs/c7-d126-rowfold-v2-source-20260904.md"
+            ).is_file(),
+            "identified_rowfold_v2_admitted": False,
             "output_pruned_implementation_present": False,
             "two_hbm_sweeps_status": BLOCKED,
             "complexity_bound_status": BLOCKED,

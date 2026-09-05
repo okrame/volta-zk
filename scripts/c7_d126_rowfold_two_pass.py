@@ -3,15 +3,21 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+from pathlib import Path
+
+
+SOURCE = Path(__file__).resolve().parents[1] / "docs/c7-d126-rowfold-v2-source-20260904.md"
+SOURCE_SHA256 = "1be8cf1d94ddefe83c86f79751411a26b12c4eeda5cb3e956f5e9604e9d290e4"
 
 
 def _frozen_profile() -> dict:
     return {
-        "carrier_report_present": False,
-        "carrier_version": None,
-        "carrier_sha256": None,
-        "carrier_relation_present": False,
+        "carrier_report_present": True,
+        "carrier_version": "C7-ROWFOLD-v2 normalised 2026-09-04",
+        "carrier_sha256": SOURCE_SHA256,
+        "carrier_relation_present": True,  # proposed, not proved/admitted
         "carrier_compiler_present": False,
         "fs_order_prefix": ["C0", "rho0", "C1", "rho1", "C2"],
         "commitment_required_after_second_challenge": "C2",
@@ -142,6 +148,8 @@ def early_query_counterexample(queries: int = 357) -> dict:
 
 def build_report(profile: dict = PROFILE) -> dict:
     validate_profile(profile)
+    if hashlib.sha256(SOURCE.read_bytes()).hexdigest() != SOURCE_SHA256:
+        raise RowfoldDispositionError("identified ROWFOLD source digest differs")
     candidates = [
         evaluate_candidate(name, profile)
         for name in ("retain", "recompute", "selective", "local_only")
@@ -160,13 +168,29 @@ def build_report(profile: dict = PROFILE) -> dict:
         "required_complexity": "C(N,q,h)=c_source*N+P(q,h)",
         "c_source_independent_of": ["N", "q"],
         "carrier_intake": {
-            "carrier": "owner-named ROWFOLD",
+            "carrier": "C7-ROWFOLD-v2",
             "version": profile["carrier_version"],
             "sha256": profile["carrier_sha256"],
             "report_present": profile["carrier_report_present"],
             "relation_present": profile["carrier_relation_present"],
             "compiler_present": profile["carrier_compiler_present"],
+            "source_identified": True,
+            "proposed_relation_is_admitted": False,
             "verdict": "BLOCKED",
+        },
+        "identified_v2_review": {
+            "verdict": "NO-GO_AS_WRITTEN",
+            "source_sweeps_in_pseudocode": 2,
+            "global_fs_queries_in_report": 0,
+            "query_count_in_report": 266,
+            "dense_standard_whir_control_applies_to_v2": False,
+            "v_bytes": 24 * 2**28,
+            "separate_ntt_buffer_bytes": 8 * 2**29,
+            "v_plus_ntt_bytes": 24 * 2**28 + 8 * 2**29,
+            "violations": ["N_log_q", "total_arena", "online_challenges"],
+            "unclosed_proofs": ["heterogeneous_row_EvalLink", "adaptive_mask_rank", "offline_Q64"],
+            "complete_h100_peak_bytes": None,
+            "complete_certificate_bytes": None,
         },
         "conditional_standard_whir_screen": {
             "carrier_derivation_present": False,
@@ -188,7 +212,7 @@ def build_report(profile: dict = PROFILE) -> dict:
         "global_gates": {
             "COMPLEXITY_BOUND": "BLOCKED",
             "TWO_HBM_SWEEPS": "BLOCKED",
-            "resume_condition": "identified ROWFOLD report or a new/revised PCS with complete relation, proof, and implementation",
+            "resume_condition": "repair the identified relation, mask proof, offline Q64, total arena and source complexity; then implement and compile all records",
         },
     }
 

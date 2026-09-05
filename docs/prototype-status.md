@@ -14,28 +14,73 @@ Read `c7-d126-gemma31b-static-admission.md`; older designs are append-only histo
   150 live tokens, `q=357`, offline `Q_FS_global<=2^64`, 472 W / 480 total
   terminals and zero weight reducers.
 - **Completed evidence.** Logical shapes cover 79,963 operations, 83,023
-  output ports and all 772 private tensors. Native BF16 tensor packing passes
-  exhaustive arithmetic and Python byte-equality checks. Prior Lean weight-use
-  algebra is unchanged. Current checks: 76 focused non-native Python tests
-  pass; prior native/Rust checks remain component evidence. W subcodec counts
-  are recompiled from Gemma geometry. No full Gemma run exists.
+  ports and 772 private tensors. BF16 packing and W reservations are component
+  evidence. Current checks: 78 focused non-native Python tests pass; no full
+  Gemma run exists. Lean is unchanged.
+- **ROWFOLD correction.** The owner-supplied v2 report is now archived and
+  reviewed in `c7-d126-rowfold-v2-review.md`. It proposes two passes but is
+  **NO-GO as written**: `N log q`, excess total arena, interactive challenges,
+  and EvalLink/privacy defects. It was previously uninspected, not nonexistent.
 - **Targets, not predictions.** 30 MB and 45--50 s are unsubstantiated until
   the carrier/codec is complete. The 25.482-MB proxy already includes
   hypothetical B/KV and GKR, not just known records.
 - **Security.** Conditional arithmetic is 79.481814 bits; realized
   `SECURITY_78` remains **BLOCKED**, and `SECURITY_84` at q357 is **NO-GO**.
-- **Hard stops.** Exact integer lowering/wires, concrete GKR,
-  real B/KV/masks, PCS/ROM, ROWFOLD relation/implementation, certificate and
-  complete H100 inventory are absent. Full local weight ingest is **NO-GO**:
+- **Hard stops.** Integer lowering/wires, GKR, real B/KV/masks, PCS/ROM,
+  repaired ROWFOLD implementation, certificate and complete H100 inventory
+  remain open. Full local weight ingest is **NO-GO**:
   source plus packed output needs 123,941,028,808 bytes.
-- **Resume.** The owner GO at `ba9d4c5` authorizes a new
-  Gemma-only ROWFOLD carrier and its PCS links while the frozen field,
-  transcript, trust and resource bounds stay unchanged; do not request a
-  duplicate ROWFOLD-design GO. Before `GO-RUNPOD`, close source closure, lowering,
-  wires, GKR cohorts/common points, PCS links, B/KV geometry, security,
-  certificate and static memory plan. Provider contact, shards and GPU work
-  still require literal `GO-RUNPOD`; only weight-derived values and hardware
-  measurements may remain open at that boundary.
+- **Resume.** Existing GO (`ba9d4c5`) covers local Gemma ROWFOLD repair under
+  frozen field/transcript/trust/resource bounds. Before literal `GO-RUNPOD`,
+  close source closure, lowering/wires, GKR/cohorts/PCS links, B/KV, security,
+  certificate and H100 inventory. Only weight-derived values and hardware
+  measurements may remain open. Provider contact, shards and GPU work remain
+  forbidden without that GO.
+
+- **2026-09-05 — owner identifies the actual ROWFOLD report; absence claim
+  corrected, v2 rejected as written after direct source review.** The file
+  `/home/okrame/.claude/jobs/6ce710fb/tmp/D126-ROWFOLD-report.md` was read in
+  full and archived byte-for-byte as `docs/c7-d126-rowfold-v2-source-20260904.md`,
+  SHA-256 `1be8cf1d94ddefe83c86f79751411a26b12c4eeda5cb3e956f5e9604e9d290e4`.
+  It does contain a proposed relation and two-pass pseudocode. The previous
+  “report absent” diagnosis was incomplete and is withdrawn. Its initial
+  commitment is in setup; standard-WHIR dense-state and Hobbit three-pass
+  controls are not derivations of this carrier. The earlier 51.54-GB dense
+  control must not be assigned to v2's 6.44-GB row combination. The existing
+  local design GO already covers reviewing/repairing this candidate; no
+  duplicate GO or provider access is needed for that work.
+
+  The controlling findings are in `docs/c7-d126-rowfold-v2-review.md`.
+  Section 6 explicitly charges `N*ceil(log2(2q))` and then freezes q to call
+  the coefficient independent: this violates the active complexity rule.
+  Section 5.3 retains 6,442,450,944 bytes of v plus a 4,294,967,296-byte NTT
+  buffer, already 10,737,418,240 bytes against the total arena. The suggested
+  existing NTT is full-output and additionally stores 2,147,483,648 bytes of
+  twiddles; no output-pruned implementation or compatible allocation schedule
+  exists. Full certificate and H100 coexistence were already BLOCKED in the
+  source itself. Its q266/root8192/interactive security row cannot replace
+  the active q357/root4096/offline-Q64 profile.
+
+  An exact EQ-form test refutes the generic shared-fold EvalLink identity:
+  for selector point `(3/4,2/3)`, row weights `(2,3)` and i16 row differences
+  `(3,0),(-2,0)`, the combined vector difference is zero but the claimed
+  functional difference is minus one; the all-c sum is one. A separate tiny
+  Goldilocks test isolates a row from two pairs of fresh-chain openings under
+  chosen nonzero interactive challenges and recovers its live/mask
+  coefficients. For the source's own mask geometry, 965 such pairs (1,930
+  attempts) expose 8,214,080 independent row evaluations against 8,208,384
+  mask cells. This rejects its arbitrary-challenge interactive privacy
+  argument, not the unconstructed offline-FS variant. A new rank proof is
+  required rather than transferring that lemma.
+
+  Status reports now distinguish source identification from admission and
+  reject source-digest drift. V2 is NO-GO as written; repaired carrier,
+  realized SECURITY_78 and overall D126 remain BLOCKED. No active field,
+  trust, query/mask profile, protocol code or frozen Lean statement changed.
+  Verification: 78 focused non-native Python tests pass. No Cargo/Lean build,
+  large allocation, weight download, provider contact or benchmark run of
+  record occurred. Only the 30,788-byte report was archived with the review
+  and small diagnostic/status changes; no build caches were created.
 
 - **2026-09-05 — proof-size provenance corrected; dense-fold and early-query
   shortcuts rejected locally; no complete carrier constructed.** The owner

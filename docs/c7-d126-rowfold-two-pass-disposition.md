@@ -1,14 +1,18 @@
 # C7 D126 two-pass ROWFOLD intake and screen
 
-**Status:** the owner-named `ROWFOLD` carrier is `BLOCKED` at intake. The local
-design GO is already present; this is a construction gap, not a missing GO
-or an H100 measurement. No
-versioned report, digest, relation, pseudocode or compiler with that name is
-present in the repository, its Git refs, or the materials supplied by the
-owner. The numerical standard-WHIR analysis below is an analytic
-assertion screen, not a derivation of the missing carrier. It gives a
-conditional `NO-GO` only when its named assumptions hold. It earns no
-protocol, complexity or implementation credit.
+**Status corrected 2026-09-05:** the owner identified the previously
+uninspected `D126-ROWFOLD-report.md`. Its byte-identical archive and controlling
+assessment are in [the v2 review](c7-d126-rowfold-v2-review.md). A proposed
+relation and two-pass schedule exist; the “report absent” assertion is
+withdrawn. The identified proposal is **NO-GO as written** under the current
+complexity, total-arena and offline requirements, and has EvalLink/privacy
+proof defects. A repaired carrier remains BLOCKED. The existing local GO
+suffices. No complete implementation is present or admitted.
+
+The numerical standard-WHIR and Hobbit analyses below are separate controls,
+not derivations of v2. In particular, the 51.54-GB dense fold is not v2's
+6.44-GB row combination; that smaller combination still exceeds the total
+arena when its separate NTT/workspace objects are included.
 
 ## Frozen boundary
 
@@ -39,7 +43,8 @@ EvalLink(tail, W, authenticated terminal)
 `CheckExtend` must prove that each next oracle is the encoding of the folded
 message; Merkle paths alone do not prove that relation.  The tail must remain
 linked to the same authenticated evaluation of `W`, never to a cleartext
-weight evaluation.  Consequently the transcript prefix is
+weight evaluation. The earlier standard-WHIR control used this sweep mapping
+(it is not the now-identified v2's setup/partial/opening schedule):
 
 ```text
 pass 1 over W -> C0 -> rho0 -> pass 2 over W -> C1 -> rho1 -> C2 -> ...
@@ -93,8 +98,8 @@ transport, not the order `C0 -> rho0 -> C1 -> rho1`.
 
 ## Exact verdict and unblock
 
-- `ROWFOLD_CARRIER = BLOCKED` because its identified source and concrete
-  relation are absent.
+- `ROWFOLD_CARRIER = BLOCKED` because the identified source is not admitted;
+  the v2 review gives its explicit violations and relation defects.
 - `STANDARD_WHIR_2^32_STATE_SCREEN = NO-GO_IF_ASSUMPTIONS_HOLD`; this is not
   transferred to the unnamed carrier.
 - `COMPLEXITY_BOUND = BLOCKED` globally.
@@ -110,7 +115,8 @@ revised PCS, only if it provides all of:
 4. a proved and measured
    `C(N,q,h)=c_source*N+P(q,h)` bound with `c_source` independent of `N,q`.
 
-The deterministic ROWFOLD intake procedure is: obtain the complete report;
+Source identification and immutable archiving are now complete. The original
+deterministic ROWFOLD intake procedure was: obtain the complete report;
 record title, authors, version/date, canonical URL and SHA-256; archive the
 immutable source; transcribe its relation and full pseudocode; derive every
 oracle length/rate and retained state from that source; prove the candidate

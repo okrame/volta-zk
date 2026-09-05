@@ -577,10 +577,17 @@ C(N,q,h) = c_source*N + P(q,h),
 ```
 
 with `c_source` independent of `N` and `q`, exactly two packed-W HBM sweeps,
-and no hidden complete transform or output-pruned claim without code. The
-owner-named ROWFOLD carrier remains `BLOCKED` at intake because no versioned
-report, hash, relation or full algorithm is present. The checked-in intake
-screen freezes the required offline order `C0 -> rho0 -> C1 -> rho1 -> C2`.
+and no hidden complete transform or output-pruned claim without code.
+The owner has now identified the previously uninspected ROWFOLD report;
+its immutable source, digest and [controlling review](c7-d126-rowfold-v2-review.md)
+replace the prior “report absent” diagnosis. V2 has a proposed relation and
+two-pass interactive schedule, but is `NO-GO` as written: it uses `N log q`,
+at least 10,737,418,240 bytes for v plus its separate NTT buffer, and online
+challenges. Its heterogeneous-row EvalLink and interactive mask-lifetime
+arguments also fail the local algebraic checks. No repaired offline-Q64
+implementation is present or admitted. The old standard-WHIR sweep mapping
+is a control, not a derivation of v2, whose initial oracle is precommitted
+in setup.
 Under separately named standard-WHIR controls, a materialized `2^32`-cell
 post-first-fold state would occupy 34,359,738,368 bytes and exceed the one
 6,442,450,944-byte arena by 27,917,287,424 bytes. That is a conditional
@@ -686,8 +693,8 @@ Still blocked:
 2. runtime binding of those values to the 472 relations, the 50 decode IDs,
    real B/KV roots/layouts and concrete base-GKR cohorts;
 3. scheduler common-point, PCS, Fp3 and global-ROM refinements;
-4. ROWFOLD implementation until an exact versioned report, relation and
-   two-pass algorithm are present, or a new/revised PCS is proved;
+4. repair the identified ROWFOLD relation, mask proof, offline-Q64 transcript,
+   total arena and source-linear work, then implement the admitted algorithm;
 5. any full-chain security, proof-size, two-sweep, complexity or H100 PASS;
 6. provider contact, every pod action, GPU/H100 measurement and production
    work until the separate `GO-RUNPOD` is recorded.
@@ -772,7 +779,7 @@ path. No provider contact or pod action is authorized yet.
 | fixed-prefix ProductClosure numerator | `PASS` for abstract `T+2=482` |
 | generic base-GKR shape formula | `PASS`; runtime common-point and Gemma rows `BLOCKED` |
 | concrete Fp3/transcript/Q64 ProductClosure bridge | `BLOCKED` |
-| owner-named ROWFOLD carrier | `BLOCKED`, identified source/relation absent |
+| owner-named ROWFOLD source | identified and digest-checked; proposed v2 `NO-GO` as written; repaired carrier `BLOCKED` |
 | standard-WHIR `2^32` retained-state control | conditional `NO-GO` under named assumptions |
 | `SECURITY_78` | conditional arithmetic `PASS`; realized security `BLOCKED` |
 | `SECURITY_84` at q357 | `NO-GO` |

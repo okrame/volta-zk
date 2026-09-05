@@ -408,7 +408,8 @@ def test_two_sweeps_and_source_linear_complexity_remain_uncredited() -> None:
     assert work["compiled_P"] is None
     assert work["c_source_independent_of_q_and_N"] is None
     assert work["forbidden_terms"] == ["qN", "N log q", "N log N"]
-    assert work["rowfold_report_present"] is False
+    assert work["rowfold_report_present"] is True
+    assert work["identified_rowfold_v2_admitted"] is False
     assert work["output_pruned_implementation_present"] is False
     assert work["two_hbm_sweeps_status"] == "BLOCKED"
     assert work["complexity_bound_status"] == "BLOCKED"
